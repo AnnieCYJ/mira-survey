@@ -47,6 +47,7 @@
   .opttext.show{display:block;}
   textarea.ta{width:100%; min-height:90px; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; resize:vertical;}
   select.sel{width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; background:#fff; color:var(--ink);}
+  .sinput{width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; background:#fff; color:var(--ink);}
   .imgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
   .imgbox{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; background:#faf4f7; aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px; text-align:center;}
   .imgbox img{width:100%; height:100%; object-fit:cover; position:absolute; inset:0;}
@@ -89,7 +90,7 @@
 
   <div class="intro">
     <h2><span class="zh">关于 Mira</span><span class="en">About Mira</span></h2>
-    <p><span class="zh">Mira 是全球首款专为女性<b>周期与心理健康</b>打造的 AI 智能戒指。一枚轻盈的钛金属戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mental wellness</b>. A feather-light titanium ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
+    <p><span class="zh">Mira 是全球首款专为女性<b>周期与情绪压力</b>打造的 AI 智能戒指。一枚轻盈的钛金属戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mood</b>. A feather-light titanium ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
     <p><span class="zh">我们正依据像你这样的真实声音打磨产品。这份问卷帮助我们理解你真正在意什么。</span><span class="en">We're shaping Mira with input from people like you. This survey helps us understand what truly matters to you.</span></p>
     <div class="pills">
       <span class="pill"><span class="zh">周期洞察</span><span class="en">Cycle insights</span></span>
@@ -102,7 +103,7 @@
 
   <form id="survey"></form>
   <div id="result" class="hidden"></div>
-  <footer><span class="zh">© Mira · 为全球女性周期与心理健康而生</span><span class="en">© Mira · Built for women's cycle &amp; mental wellness, worldwide</span></footer>
+  <footer><span class="zh">© Mira · 为全球女性周期与情绪压力而生</span><span class="en">© Mira · Built for women's cycle &amp; mood, worldwide</span></footer>
 </div>
 
 <div class="consent">
@@ -143,15 +144,19 @@ const T = (o)=>`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;
 const TL = (o)=> document.body.classList.contains('lang-zh') ? o.zh : o.en;
 
 const SURVEY = { questions: [
-  { id:"Q1", type:"radio", required:true,
-    label:{zh:"很高兴遇见你！在开始前，想先了解一下你的性别——这样我们能为你给出更贴心的建议：", en:"So glad you're here! Before we begin, we'd love to know your gender so we can tailor our guidance to you:"},
-    hint:{zh:"本产品面向女性周期与心理健康；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mental health; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
+  { id:"Q1", type:"shorttext", required:false,
+    label:{zh:"很高兴遇见你！该怎么称呼你呢？（选填）", en:"So glad you're here! What should we call you? (optional)"},
+    hint:{zh:"填个昵称就好，让这份问卷更有温度～", en:"A nickname is perfect — just so this feels less like a form."} },
+
+  { id:"QSEX", type:"radio", required:true,
+    label:{zh:"想先了解一下你的性别——这样我们能为你给出更贴心的建议：", en:"We'd love to know your gender so we can tailor our guidance to you:"},
+    hint:{zh:"本产品面向女性周期与情绪压力；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mood; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
     options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"},{id:"C",zh:"非二元 / 其他",en:"Non-binary / Other"},{id:"D",zh:"不愿透露",en:"Prefer not to say"}] },
 
   { id:"Q1b", type:"radio", required:false,
     label:{zh:"你是替谁了解这款产品？", en:"Who are you exploring Mira for?"},
     hint:{zh:"（男性 / 非二元朋友请选一项）", en:"(For male / non-binary friends — pick one)"},
-    showIf:{q:"Q1", in:["B","C"]},
+    showIf:{q:"QSEX", in:["B","C"]},
     options:[
       {id:"A",zh:"替我的伴侣（女友/妻子）了解或挑选",en:"For my partner (girlfriend/wife)"},
       {id:"B",zh:"替女性亲友（妈妈/姐妹/朋友）挑礼物",en:"As a gift for a female friend/relative"},
@@ -307,7 +312,7 @@ const SURVEY = { questions: [
   { id:"Q24", type:"multisort", required:false, max:3,
     label:{zh:"假设 Mira 的外观已经像高级首饰一样美，你犹豫是否购买的主要原因是？", en:"If Mira already looks like fine jewelry, why would you still hesitate to buy?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
-    showIf:{q:"Q1", eq:"A"},
+    showIf:{q:"QSEX", eq:"A"},
     options:[
       {id:"A",zh:"佩戴不适——太重、太硌手，或影响洗手/洗澡",en:"Discomfort — heavy/irritating, affects washing"},
       {id:"B",zh:"续航焦虑——电池不耐用，需频繁充电",en:"Battery anxiety — frequent charging"},
@@ -357,6 +362,9 @@ function render(){
     }
     else if(q.type==='text'){
       h+=`<textarea class="ta" name="${q.id}" placeholder="..."></textarea>`;
+    }
+    else if(q.type==='shorttext'){
+      h+=`<input type="text" class="sinput" name="${q.id}" placeholder="${TL({zh:'例如：小安',en:'e.g. Ann'})}">`;
     }
     else if(q.type==='select'){
       h+=`<select class="sel" name="${q.id}"><option value="">${TL({zh:'请选择',en:'Please select'})}</option>`;
@@ -442,7 +450,7 @@ function updateProgress(){
   const vis=SURVEY.questions.filter(q=>!document.getElementById('card-'+q.id).classList.contains('hidden')).length;
   const done=SURVEY.questions.filter(q=>{const c=document.getElementById('card-'+q.id);if(c.classList.contains('hidden'))return false;
     if(q.type==='radio')return !!getVal(q.id);
-    if(q.type==='text')return !!document.querySelector(`textarea[name=${q.id}]`).value.trim();
+    if(q.type==='text'||q.type==='shorttext')return !!document.querySelector(`${q.type==='text'?'textarea':'input'}[name=${q.id}]`).value.trim();
     if(q.type==='multisort'||q.type==='multi'||q.type==='imagesort')return document.querySelectorAll(`input[name=${q.id}]:checked`).length>0;
     return false;}).length;
   document.getElementById('bar').style.width=Math.round(done/vis*100)+'%';
@@ -463,6 +471,11 @@ function submitSurvey(){
     }
     else if(q.type==='text'){
       const v=document.querySelector(`textarea[name=${q.id}]`).value.trim();
+      if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请填写此项',en:'Please fill this in'}));firstBad=firstBad||q.id;}
+      else if(v)answers[q.id]=v;
+    }
+    else if(q.type==='shorttext'){
+      const v=document.querySelector(`input[name=${q.id}]`).value.trim();
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请填写此项',en:'Please fill this in'}));firstBad=firstBad||q.id;}
       else if(v)answers[q.id]=v;
     }
