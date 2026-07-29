@@ -85,6 +85,13 @@
   <footer><span class="zh">© Mira · 为全球女性周期与心理健康而生</span><span class="en">© Mira · Built for women's cycle &amp; mental wellness, worldwide</span></footer>
 </div>
 
+<div class="consent">
+  <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);max-width:640px;margin:0 auto 14px;line-height:1.5">
+    <input type="checkbox" id="consent" style="margin-top:3px;flex:0 0 auto">
+    <span><span class="zh">我已知悉：本调研为匿名产品研究，所填内容仅用于改进 Mira；联系方式为选填，绝不会被分享或用于营销。</span><span class="en">I understand: this is an anonymous product study; answers are used only to improve Mira. Contact info is optional and never shared or used for marketing.</span></span>
+  </label>
+</div>
+
 <div class="submit">
   <button onclick="submitSurvey()"><span class="zh">提交问卷</span><span class="en">Submit Survey</span></button>
 </div>
@@ -117,14 +124,15 @@ const T = (o)=>`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;
 const SURVEY = { questions: [
   { id:"Q1", type:"radio", required:true,
     label:{zh:"你的性别是？", en:"What is your gender?"},
-    options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"}] },
+    hint:{zh:"本产品面向女性周期与心理健康；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mental health; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
+    options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"},{id:"C",zh:"非二元 / 其他",en:"Non-binary / Other"},{id:"D",zh:"不愿透露",en:"Prefer not to say"}] },
 
   { id:"Q2", type:"radio", required:true,
     label:{zh:"你的年龄段是？", en:"Your age range?"},
-    options:[{id:"A",zh:"20–24岁",en:"20–24"},{id:"B",zh:"25–29岁",en:"25–29"},{id:"C",zh:"30–34岁",en:"30–34"},{id:"D",zh:"35–39岁",en:"35–39"},{id:"E",zh:"40–44岁",en:"40–44"}] },
+    options:[{id:"A",zh:"20岁以下",en:"Under 20"},{id:"B",zh:"20–24岁",en:"20–24"},{id:"C",zh:"25–29岁",en:"25–29"},{id:"D",zh:"30–34岁",en:"30–34"},{id:"E",zh:"35–39岁",en:"35–39"},{id:"F",zh:"40–44岁",en:"40–44"},{id:"G",zh:"45岁及以上",en:"45+"},{id:"H",zh:"不愿透露",en:"Prefer not to say"}] },
 
   { id:"Q3", type:"radio", required:true,
-    label:{zh:"你目前是否拥有智能手表 / 手环 / 戒指（如 Apple Watch、Oura、小米手环等）？", en:"Do you currently own a smartwatch / band / ring (e.g. Apple Watch, Oura, Xiaomi band)?"},
+    label:{zh:"你目前是否拥有智能手表 / 手环 / 戒指（如 Apple Watch、Oura、Fitbit 等）？", en:"Do you currently own a smartwatch / band / ring (e.g. Apple Watch, Oura, Fitbit)?"},
     options:[{id:"yes",zh:"是",en:"Yes"},{id:"no",zh:"否",en:"No"}] },
 
   { id:"Q4", type:"radio", required:true,
@@ -237,7 +245,7 @@ const SURVEY = { questions: [
 
   { id:"Q22", type:"radio", required:true,
     label:{zh:"结合 Mira 的设计质感与健康功能，你最能接受的单件售价是？", en:"Given its design & features, the price you'd accept for one ring?"},
-    options:[{id:"A",zh:"¥800 以下",en:"Under ¥800"},{id:"B",zh:"¥800–1199",en:"¥800–1199"},{id:"C",zh:"¥1200–1599",en:"¥1200–1599"},{id:"D",zh:"¥1600–1999",en:"¥1600–1999"},{id:"E",zh:"¥2000–2499",en:"¥2000–2499"},{id:"F",zh:"¥2500–2999",en:"¥2500–2999"},{id:"G",zh:"¥3000–3999",en:"¥3000–3999"},{id:"H",zh:"¥4000 及以上",en:"¥4000+"}] },
+    options:[{id:"A",zh:"$100 以下",en:"Under $100"},{id:"B",zh:"$100–149",en:"$100–149"},{id:"C",zh:"$150–199",en:"$150–199"},{id:"D",zh:"$200–249",en:"$200–249"},{id:"E",zh:"$250–299",en:"$250–299"},{id:"F",zh:"$300–399",en:"$300–399"},{id:"G",zh:"$400–549",en:"$400–549"},{id:"H",zh:"$550 及以上",en:"$550+"}] },
 
   { id:"Q23", type:"radio", required:true,
     label:{zh:"如果为了提升服务，Mira 提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira offered a "hardware + subscription" plan, which would you choose?'},
@@ -279,7 +287,8 @@ const SURVEY = { questions: [
     label:{zh:"其他任何你想对 Mira 说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira? (your ideal ring, design details you care about, feature ideas…)"} },
 
   { id:"Q29", type:"text", required:false,
-    label:{zh:"留下你的联系方式吧（微信昵称 / ins / Facebook 等）", en:"Leave a way to reach you (WeChat / Instagram / Facebook…)"} }
+    label:{zh:"想收到后续回访吗？留下联系方式（邮箱 / Instagram / Facebook / WhatsApp 等）", en:"Want a follow-up? Leave a way to reach you (email / Instagram / Facebook / WhatsApp…)"},
+    hint:{zh:"选填。我们只会用它发送产品进展，绝不外泄或用于营销。", en:"Optional. Used only to share product updates — never sold or shared."} }
 ]};
 
 /* -------- Render -------- */
@@ -380,6 +389,8 @@ function updateProgress(){
 
 /* -------- Submit -------- */
 function submitSurvey(){
+  const c=document.getElementById('consent');
+  if(c && !c.checked){ alert(document.body.classList.contains('lang-zh')?'请先勾选知情同意后再提交':'Please tick the consent box to continue'); c.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   let ok=true, firstBad=null;
   const answers={submittedAt:new Date().toISOString(), lang:document.body.classList.contains('lang-zh')?'zh':'en'};
   SURVEY.questions.forEach(q=>{
