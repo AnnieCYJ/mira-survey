@@ -193,6 +193,7 @@ const SURVEY = { questions: [
   { id:"Q5", type:"multisort", required:false, max:3,
     label:{zh:"方便告诉我们闲置的主要原因是？", en:"If unused, what were the main reasons? (pick 1–3 & rank)"},
     hint:{zh:"请选择 1–3 项并排序（1 = 最主要）", en:"Select 1–3 and rank (1 = most important)"},
+    showIf:{q:"Q4", in:["B","C"]},
     options:[
       {id:"A",zh:"佩戴不舒服（太重、硌手、影响洗手/睡觉）",en:"Uncomfortable (heavy, irritating, affects washing/sleeping)"},
       {id:"B",zh:"续航太差，频繁充电太麻烦",en:"Poor battery, frequent charging is a hassle"},
@@ -234,7 +235,7 @@ const SURVEY = { questions: [
   { id:"Q10", type:"multisort", required:false, max:3,
     label:{zh:"在「生理周期」方面，你关注哪些具体功能？", en:"Under cycle, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
-    showIf:{q:"Q7", includes:["C"]},
+    showIf:{all:[{q:"Q7",includes:["C"]},{q:"QSEX",eq:"A"}]},
     options:[{id:"A",zh:"经期预测与到来提醒",en:"Period prediction & arrival alert"},{id:"B",zh:"排卵期、备孕窗口提示",en:"Ovulation / fertile-window hints"},{id:"C",zh:"经前综合征（PMS）关怀",en:"PMS care"},{id:"D",zh:"周期与情绪、精力的关联解读",en:"Cycle ↔ mood/energy insights"},{id:"E",zh:"痛经、身体不适记录",en:"Cramps & discomfort logging"}] },
 
   { id:"Q11", type:"multisort", required:false, max:3,
@@ -434,13 +435,17 @@ function wire(){
 function updateVisibility(){
   SURVEY.questions.forEach(q=>{
     const card=document.getElementById('card-'+q.id); if(!q.showIf){card.classList.remove('hidden');return;}
-    let show=false; const val=getVal(q.showIf.q); const vals=getVals(q.showIf.q);
-    if(q.showIf.eq!==undefined) show=(val===q.showIf.eq);
-    if(q.showIf.in!==undefined) show=q.showIf.in.includes(val) || q.showIf.in.some(v=>vals.includes(v));
-    if(q.showIf.includes!==undefined) show=q.showIf.includes.some(v=>vals.includes(v));
+    const show = q.showIf.all ? q.showIf.all.every(evalCond) : evalCond(q.showIf);
     card.classList.toggle('hidden',!show);
   });
   renumber();
+}
+function evalCond(c){
+  const val=getVal(c.q); const vals=getVals(c.q);
+  if(c.eq!==undefined) return val===c.eq;
+  if(c.in!==undefined) return c.in.includes(val) || c.in.some(v=>vals.includes(v));
+  if(c.includes!==undefined) return c.includes.some(v=>vals.includes(v));
+  return false;
 }
 function renumber(){
   let n=1;
