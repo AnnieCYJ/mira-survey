@@ -36,6 +36,7 @@
   .opt .rank{margin-left:auto; flex:0 0 auto;}
   .opt .rank select{accent-color:var(--gold); border:1px solid var(--line); border-radius:8px; padding:4px 6px; font-size:13px;}
   .opt.checked{border-color:var(--rose); background:#fff3f8;}
+  .opt img.optimg{width:56px; height:56px; object-fit:cover; border-radius:8px; flex:0 0 auto;}
   .opttext{width:100%; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; font:inherit; font-size:14px; display:none;}
   .opttext.show{display:block;}
   textarea.ta{width:100%; min-height:90px; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; resize:vertical;}
@@ -98,7 +99,18 @@
    2) Q18_IMAGES: the 9 style images (A–I). Put real image URLs/paths here.
    ========================================================= */
 const FORMSPREE_ENDPOINT = "";
-const Q18_IMAGES = ["","","","","","","","",""]; // index 0=A ... 8=I  (image URL each)
+const Q18_IMAGES = [
+  "assets/style-A-purple-wave.jpg",   // A
+  "assets/style-B-floral.jpg",        // B
+  "assets/style-C-plain-band.jpg",    // C
+  "assets/style-D-pink-dome.jpg",     // D
+  "assets/style-E-moonstone.jpg",     // E
+  "assets/style-F-pearl-crystal.jpg", // F
+  "assets/style-G-gemstone.jpg",      // G
+  "assets/style-H-organic-wave.jpg",  // H
+  "assets/style-I-white-ceramic.png", // I
+  "assets/style-J-gold.png"           // J
+]; // index 0=A ... 9=J
 
 const T = (o)=>`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;
 
@@ -204,12 +216,12 @@ const SURVEY = { questions: [
     label:{zh:"关于戒指监测到的健康数据，你是否愿意授权它提醒您的伴侣？", en:"Would you let Mira notify your partner based on your health data?"},
     options:[{id:"A",zh:"非常愿意，希望他能实时了解我的状态",en:"Yes, real-time status"},{id:"B",zh:"只愿意让他看到每周汇总报告",en:"Weekly summary only"},{id:"C",zh:"绝对不允许，这是我的个人隐私",en:"Never — it's private"},{id:"D",zh:"仅紧急情况（SOS/异常）时自动通知",en:"Only in emergencies (SOS/anomaly)"}] },
 
-  { id:"Q18", type:"imagesort", required:false, max:9,
+  { id:"Q18", type:"imagesort", required:false, max:10,
     label:{zh:"你最喜欢哪些外观风格？（按喜好程度排序）", en:"Which look styles do you like best? (rank them)"},
-    hint:{zh:"最少选择 1 项并排序（图片待替换）", en:"Pick at least 1 and rank (images to be added)"},
+    hint:{zh:"最少选择 1 项并排序（最多 10 项）", en:"Pick at least 1 and rank (up to 10)"},
     options:[
-      {id:"A"},{id:"B"},{id:"C"},{id:"D"},{id:"E"},{id:"F"},{id:"G"},{id:"H"},{id:"I"},
-      {id:"J",zh:"其他",en:"Other", hasText:true}
+      {id:"A"},{id:"B"},{id:"C"},{id:"D"},{id:"E"},{id:"F"},{id:"G"},{id:"H"},{id:"I"},{id:"J"},
+      {id:"other",zh:"其他",en:"Other", hasText:true}
     ] },
 
   { id:"Q19", type:"text", required:false,
@@ -218,7 +230,7 @@ const SURVEY = { questions: [
   { id:"Q20", type:"multisort", required:false, max:3,
     label:{zh:"你设想中 Mira 以什么形象陪伴你？", en:"What form should Mira take as your companion?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
-    options:[{id:"A",zh:"治愈系小动物",en:"Healing little animal"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars"},{id:"C",zh:"抽象宝石、水晶精灵",en:"Abstract gem / crystal sprite"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol"},{id:"F",zh:"温柔的光球、能量体",en:"Soft light orb / energy body"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
+    options:[{id:"A",zh:"治愈系小动物",en:"Healing little animal", img:"assets/mascot-animal.png"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars", img:"assets/mascot-moon.png"},{id:"C",zh:"抽象宝石、水晶精灵",en:"Abstract gem / crystal sprite", img:"assets/mascot-blob.png"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol", img:"assets/mascot-geo.png"},{id:"F",zh:"温柔的光球、能量体",en:"Soft light orb / energy body", img:"assets/mascot-blob.png"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression", img:"assets/mascot-round-faces.jpeg"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
 
   { id:"Q21", type:"text", required:false,
     label:{zh:"可以和我分享一下你喜欢的原因吗？（简洁大气、可爱、有能量、科技感等）", en:"Why do you like it? (clean & elegant, cute, energetic, tech-feel…)"} },
@@ -287,7 +299,9 @@ function render(){
     else if(q.type==='multisort'||q.type==='multi'){
       const ranked = q.type==='multisort';
       q.options.forEach(op=>{
-        h+=`<label class="opt" data-opt><input type="checkbox" name="${q.id}" value="${op.id}"><span class="txt">${T(op)}</span>`;
+        h+=`<label class="opt" data-opt style="${op.img?'align-items:center':''}"><input type="checkbox" name="${q.id}" value="${op.id}">`;
+        if(op.img) h+=`<img class="optimg" src="${op.img}" alt="" loading="lazy">`;
+        h+=`<span class="txt">${T(op)}</span>`;
         if(ranked) h+=`<span class="rank hidden"><select data-rank>${Array.from({length:q.options.length},(_,k)=>`<option value="${k+1}">${k+1}</option>`).join('')}</select></span>`;
         h+=`</label>`;
         if(op.hasText) h+=`<input class="opttext" data-text="${q.id}_${op.id}" placeholder="${({zh:'请简述',en:'Please specify'})[document.body.classList.contains('lang-zh')?'zh':'en']}">`;
