@@ -404,14 +404,34 @@ function render(){
   wire(); updateVisibility(); updateProgress();
 }
 
+const clickSeq={}; // qid -> [val, ...] 按点击先后顺序排列
+function assignRanks(qid){
+  const q=SURVEY.questions.find(x=>x.id===qid); if(!q||(q.type!=='multisort'&&q.type!=='imagesort'))return;
+  const seq=clickSeq[qid]||(clickSeq[qid]=[]);
+  const checked=[...document.querySelectorAll(`input[name=${qid}]:checked`)].map(x=>x.value);
+  const ordered=seq.filter(v=>checked.includes(v));
+  checked.forEach(v=>{ if(!ordered.includes(v)) ordered.push(v); });
+  clickSeq[qid]=ordered;
+  ordered.forEach((v,i)=>{
+    const cb=document.querySelector(`input[name=${qid}][value="${v}"]`);
+    if(!cb) return;
+    const rs=cb.closest('[data-opt]')?.querySelector('[data-rank]');
+    if(rs) rs.value=String(i+1);
+  });
+}
 function wire(){
   document.querySelectorAll('#survey input[type=checkbox]').forEach(cb=>{
     cb.addEventListener('change',()=>{
       const opt=cb.closest('[data-opt]'); if(opt){opt.classList.toggle('checked',cb.checked);
         const rank=opt.querySelector('.rank'); if(rank) rank.classList.toggle('hidden',!cb.checked);
         const txt=document.querySelector(`[data-text="${cb.name}_${cb.value}"]`); if(txt) txt.classList.toggle('show',cb.checked);
-        if(cb.name){const q=SURVEY.questions.find(x=>x.id===cb.name);
-          if(q&&q.type==='multisort'&&cb.checked){const used=[...document.querySelectorAll(`input[name=${cb.name}]:checked`)].map(x=>x.closest('[data-opt]').querySelector('[data-rank]')?.value).filter(Boolean);let n=1;while(used.includes(String(n)))n++;const rs=opt.querySelector('[data-rank]');        if(rs)rs.value=n;}}}
+        const q=cb.name?SURVEY.questions.find(x=>x.id===cb.name):null;
+        if(q&&(q.type==='multisort'||q.type==='imagesort')){
+          if(cb.checked){ (clickSeq[q.id]=clickSeq[q.id]||[]); if(!clickSeq[q.id].includes(cb.value)) clickSeq[q.id].push(cb.value); }
+          else if(clickSeq[q.id]){ clickSeq[q.id]=clickSeq[q.id].filter(v=>v!==cb.value); }
+          assignRanks(q.id);
+        }
+      }
       updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
     });
   });
@@ -425,9 +445,10 @@ function wire(){
       cb.checked=!cb.checked;
       box.classList.toggle('checked',cb.checked);
       const q=SURVEY.questions.find(x=>x.id===cb.name);
-      if(q&&q.type==='imagesort'&&cb.checked){
-        const used=[...document.querySelectorAll(`input[name=${cb.name}]:checked`)].map(x=>x.closest('[data-opt]').querySelector('[data-rank]')?.value).filter(Boolean);
-        let n=1;while(used.includes(String(n)))n++;const rs=box.querySelector('[data-rank]');if(rs)rs.value=n;
+      if(q&&q.type==='imagesort'){
+        if(cb.checked){ (clickSeq[q.id]=clickSeq[q.id]||[]); if(!clickSeq[q.id].includes(cb.value)) clickSeq[q.id].push(cb.value); }
+        else if(clickSeq[q.id]){ clickSeq[q.id]=clickSeq[q.id].filter(v=>v!==cb.value); }
+        assignRanks(q.id);
       }
       updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
     });
