@@ -42,6 +42,8 @@
   .opt .rank{margin-left:auto; flex:0 0 auto;}
   .opt .rank select{accent-color:var(--gold); border:1px solid var(--line); border-radius:8px; padding:4px 6px; font-size:13px;}
   .opt.checked{border-color:var(--rose); background:#fff3f8;}
+  .opt.locked{opacity:.38; cursor:not-allowed; filter:grayscale(.35);}
+  .opt.locked input{cursor:not-allowed;}
   .opt img.optimg{width:56px; height:56px; object-fit:cover; border-radius:8px; flex:0 0 auto;}
   .opttext{width:100%; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; font:inherit; font-size:14px; display:none;}
   .opttext.show{display:block;}
@@ -54,6 +56,7 @@
   .imgbox .ph{color:var(--muted); font-size:13px; font-weight:600;}
   .imgbox .tag{position:absolute; top:6px; left:6px; background:var(--rose); color:#fff; font-size:11px; font-weight:700; border-radius:6px; padding:1px 7px; z-index:2;}
   .imgbox.checked{border-color:var(--rose); box-shadow:0 0 0 2px var(--rose) inset;}
+  .imgbox.locked{opacity:.38; cursor:not-allowed; filter:grayscale(.35);}
   .hidden{display:none !important;}
   .req{color:var(--rose); font-weight:700;}
   .submit{position:fixed; left:0; right:0; bottom:0; padding:12px 16px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-top:1px solid var(--line);}
@@ -408,8 +411,8 @@ function wire(){
         const rank=opt.querySelector('.rank'); if(rank) rank.classList.toggle('hidden',!cb.checked);
         const txt=document.querySelector(`[data-text="${cb.name}_${cb.value}"]`); if(txt) txt.classList.toggle('show',cb.checked);
         if(cb.name){const q=SURVEY.questions.find(x=>x.id===cb.name);
-          if(q&&q.type==='multisort'&&cb.checked){const used=[...document.querySelectorAll(`input[name=${cb.name}]:checked`)].map(x=>x.closest('[data-opt]').querySelector('[data-rank]')?.value).filter(Boolean);let n=1;while(used.includes(String(n)))n++;const rs=opt.querySelector('[data-rank]');if(rs)rs.value=n;}}}
-      updateVisibility(); updateProgress(); clearErr(cb.name);
+          if(q&&q.type==='multisort'&&cb.checked){const used=[...document.querySelectorAll(`input[name=${cb.name}]:checked`)].map(x=>x.closest('[data-opt]').querySelector('[data-rank]')?.value).filter(Boolean);let n=1;while(used.includes(String(n)))n++;const rs=opt.querySelector('[data-rank]');        if(rs)rs.value=n;}}}
+      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
     });
   });
   document.querySelectorAll('#survey input[type=radio]').forEach(r=>{
@@ -417,14 +420,16 @@ function wire(){
   });
   document.querySelectorAll('.imgbox').forEach(box=>{
     box.addEventListener('click',()=>{
-      const cb=box.querySelector('input[type=checkbox]'); cb.checked=!cb.checked;
+      const cb=box.querySelector('input[type=checkbox]');
+      if(cb.disabled && !cb.checked) return;
+      cb.checked=!cb.checked;
       box.classList.toggle('checked',cb.checked);
       const q=SURVEY.questions.find(x=>x.id===cb.name);
       if(q&&q.type==='imagesort'&&cb.checked){
         const used=[...document.querySelectorAll(`input[name=${cb.name}]:checked`)].map(x=>x.closest('[data-opt]').querySelector('[data-rank]')?.value).filter(Boolean);
         let n=1;while(used.includes(String(n)))n++;const rs=box.querySelector('[data-rank]');if(rs)rs.value=n;
       }
-      updateVisibility(); updateProgress(); clearErr(cb.name);
+      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
     });
   });
   document.querySelectorAll('.opttext').forEach(t=>t.addEventListener('input',()=>clearErr(t.dataset.text.split('_')[0])));
@@ -437,6 +442,7 @@ function updateVisibility(){
     const card=document.getElementById('card-'+q.id); if(!q.showIf){card.classList.remove('hidden');return;}
     const show = q.showIf.all ? q.showIf.all.every(evalCond) : evalCond(q.showIf);
     card.classList.toggle('hidden',!show);
+    if(q.max) enforceMax(q.id);
   });
   renumber();
 }
@@ -459,6 +465,15 @@ function renumber(){
 function getVal(qid){const r=document.querySelector(`input[name=${qid}]:checked`);return r?r.value:'';}
 function getVals(qid){return [...document.querySelectorAll(`input[name=${qid}]:checked`)].map(b=>b.value);}
 function clearErr(qid){const e=document.getElementById('err-'+qid);if(e)e.style.display='none';}
+function enforceMax(qid){
+  const q=SURVEY.questions.find(x=>x.id===qid); if(!q||!q.max) return;
+  const atMax=document.querySelectorAll(`input[name=${qid}]:checked`).length >= q.max;
+  document.querySelectorAll(`input[name=${qid}]`).forEach(cb=>{
+    if(cb.checked) return;
+    cb.disabled=atMax;
+    const opt=cb.closest('[data-opt]'); if(opt) opt.classList.toggle('locked',atMax);
+  });
+}
 function showErr(qid,msg){const e=document.getElementById('err-'+qid);if(e){e.innerHTML=msg;e.style.display='block';}}
 function updateProgress(){
   const total=SURVEY.questions.length;
