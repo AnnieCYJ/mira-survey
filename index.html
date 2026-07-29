@@ -23,6 +23,12 @@
   .hero{background:linear-gradient(135deg,#fff,#fff6fa); border:1px solid var(--line); border-radius:18px; padding:22px; margin:10px 0 22px; box-shadow:0 8px 30px rgba(200,92,132,.08);}
   .hero h1{margin:0 0 6px; font-size:22px; color:var(--rose-dark);}
   .hero p{margin:0; color:var(--muted); font-size:14px;}
+  .intro{background:#fff; border:1px solid var(--line); border-left:4px solid var(--rose); border-radius:14px; padding:16px 18px; margin:0 0 22px; box-shadow:0 4px 18px rgba(43,36,48,.04);}
+  .intro h2{margin:0 0 8px; font-size:15px; color:var(--rose-dark); font-weight:700;}
+  .intro p{margin:0 0 8px; font-size:13.5px; color:var(--ink);}
+  .intro p:last-of-type{margin-bottom:0;}
+  .intro .pills{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
+  .intro .pill{font-size:12px; background:var(--bg); border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:3px 10px;}
   .progress{height:6px; background:var(--line); border-radius:999px; overflow:hidden; margin:14px 0 4px;}
   .progress > i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--rose),var(--gold)); transition:width .25s;}
   .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 18px 20px; margin-bottom:16px; box-shadow:0 4px 18px rgba(43,36,48,.04);}
@@ -79,6 +85,19 @@
     <h1><span class="zh">Mira 智能戒指产品调研</span><span class="en">Mira Smart Ring — Product Survey</span></h1>
     <p><span class="zh">感谢你参与！本问卷约需 3–5 分钟。所有回答匿名收集，仅用于改进产品。</span><span class="en">Thanks for taking part! This takes about 3–5 minutes. All responses are anonymous and used only to improve the product.</span></p>
     <div class="progress"><i id="bar"></i></div>
+  </div>
+
+  <div class="intro">
+    <h2><span class="zh">关于 Mira</span><span class="en">About Mira</span></h2>
+    <p><span class="zh">Mira 是全球首款专为女性<b>周期与心理健康</b>打造的 AI 智能戒指。一枚轻盈的钛金属戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mental wellness</b>. A feather-light titanium ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
+    <p><span class="zh">我们正依据像你这样的真实声音打磨产品。这份问卷帮助我们理解你真正在意什么。</span><span class="en">We're shaping Mira with input from people like you. This survey helps us understand what truly matters to you.</span></p>
+    <div class="pills">
+      <span class="pill"><span class="zh">周期洞察</span><span class="en">Cycle insights</span></span>
+      <span class="pill"><span class="zh">情绪与压力</span><span class="en">Mood &amp; stress</span></span>
+      <span class="pill"><span class="zh">睡眠与精力</span><span class="en">Sleep &amp; energy</span></span>
+      <span class="pill"><span class="zh">安全守护</span><span class="en">Safety</span></span>
+      <span class="pill"><span class="zh">AI 健康陪伴</span><span class="en">AI companion</span></span>
+    </div>
   </div>
 
   <form id="survey"></form>
