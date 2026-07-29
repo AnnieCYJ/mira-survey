@@ -354,7 +354,7 @@ function render(){
   const form=document.getElementById('survey'); form.innerHTML='';
   SURVEY.questions.forEach((q,i)=>{
     const card=document.createElement('div'); card.className='card'; card.id='card-'+q.id;
-    let h=`<span class="qnum">${q.id}</span><div class="qlabel">${T(q.label)} ${q.required?'<span class="req">*</span>':''}</div>`;
+    let h=`<span class="qnum"></span><div class="qlabel">${T(q.label)} ${q.required?'<span class="req">*</span>':''}</div>`;
     if(q.hint&&(q.hint.zh||q.hint.en)) h+=`<div class="qhint">${T(q.hint)}</div>`;
 
     if(q.type==='radio'){
@@ -439,6 +439,16 @@ function updateVisibility(){
     if(q.showIf.in!==undefined) show=q.showIf.in.includes(val) || q.showIf.in.some(v=>vals.includes(v));
     if(q.showIf.includes!==undefined) show=q.showIf.includes.some(v=>vals.includes(v));
     card.classList.toggle('hidden',!show);
+  });
+  renumber();
+}
+function renumber(){
+  let n=1;
+  SURVEY.questions.forEach(q=>{
+    const card=document.getElementById('card-'+q.id); if(!card) return;
+    const el=card.querySelector('.qnum'); if(!el) return;
+    if(card.classList.contains('hidden')){ el.textContent=''; return; }
+    el.textContent=n++;
   });
 }
 function getVal(qid){const r=document.querySelector(`input[name=${qid}]:checked`);return r?r.value:'';}
