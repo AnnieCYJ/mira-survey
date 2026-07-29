@@ -203,6 +203,7 @@ const SURVEY = { questions: [
     options:[{id:"yes",zh:"是",en:"Yes"},{id:"no",zh:"否",en:"No"}] },
 
   { id:"Q4", type:"radio", required:true,
+    showIf:{q:"Q3", eq:"yes"},
     label:{zh:"你佩戴的频率是怎样的？", en:"How often do you wear it?"},
     options:[{id:"A",zh:"正在使用（几乎每天戴）",en:"Use it daily"},{id:"B",zh:"偶尔戴一下",en:"Occasionally"},{id:"C",zh:"买过但闲置了",en:"Bought but now unused"},{id:"D",zh:"从未买过",en:"Never bought one"}] },
 
