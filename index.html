@@ -40,6 +40,7 @@
   .opttext{width:100%; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; font:inherit; font-size:14px; display:none;}
   .opttext.show{display:block;}
   textarea.ta{width:100%; min-height:90px; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; resize:vertical;}
+  select.sel{width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; background:#fff; color:var(--ink);}
   .imgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
   .imgbox{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; background:#faf4f7; aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px; text-align:center;}
   .imgbox img{width:100%; height:100%; object-fit:cover; position:absolute; inset:0;}
@@ -120,12 +121,38 @@ const Q18_IMAGES = [
 ]; // index 0=A ... 9=J
 
 const T = (o)=>`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;
+const TL = (o)=> document.body.classList.contains('lang-zh') ? o.zh : o.en;
 
 const SURVEY = { questions: [
   { id:"Q1", type:"radio", required:true,
     label:{zh:"你的性别是？", en:"What is your gender?"},
     hint:{zh:"本产品面向女性周期与心理健康；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mental health; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
     options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"},{id:"C",zh:"非二元 / 其他",en:"Non-binary / Other"},{id:"D",zh:"不愿透露",en:"Prefer not to say"}] },
+
+  { id:"Q1b", type:"radio", required:false,
+    label:{zh:"你是替谁了解这款产品？", en:"Who are you exploring Mira for?"},
+    hint:{zh:"（男性 / 非二元朋友请选一项）", en:"(For male / non-binary friends — pick one)"},
+    showIf:{q:"Q1", in:["B","C"]},
+    options:[
+      {id:"A",zh:"替我的伴侣（女友/妻子）了解或挑选",en:"For my partner (girlfriend/wife)"},
+      {id:"B",zh:"替女性亲友（妈妈/姐妹/朋友）挑礼物",en:"As a gift for a female friend/relative"},
+      {id:"C",zh:"做行业 / 投资调研",en:"Industry / investment research"},
+      {id:"D",zh:"单纯好奇",en:"Just curious"},
+      {id:"E",zh:"其他",en:"Other", hasText:true}
+    ] },
+
+  { id:"QN", type:"select", required:false,
+    label:{zh:"你来自哪个国家或地区？", en:"Which country or region are you from?"},
+    hint:{zh:"选填，帮助我们做区域对比", en:"Optional — helps us compare by region"},
+    options:[
+      {id:"CN",zh:"中国",en:"China"},{id:"US",zh:"美国",en:"United States"},{id:"UK",zh:"英国",en:"United Kingdom"},
+      {id:"CA",zh:"加拿大",en:"Canada"},{id:"AU",zh:"澳大利亚",en:"Australia"},{id:"DE",zh:"德国",en:"Germany"},
+      {id:"FR",zh:"法国",en:"France"},{id:"IT",zh:"意大利",en:"Italy"},{id:"ES",zh:"西班牙",en:"Spain"},
+      {id:"NL",zh:"荷兰",en:"Netherlands"},{id:"SE",zh:"瑞典",en:"Sweden"},{id:"JP",zh:"日本",en:"Japan"},
+      {id:"KR",zh:"韩国",en:"South Korea"},{id:"SG",zh:"新加坡",en:"Singapore"},{id:"IN",zh:"印度",en:"India"},
+      {id:"BR",zh:"巴西",en:"Brazil"},{id:"MX",zh:"墨西哥",en:"Mexico"},{id:"ID",zh:"印度尼西亚",en:"Indonesia"},
+      {id:"AE",zh:"阿联酋",en:"UAE"},{id:"ZA",zh:"南非",en:"South Africa"},{id:"OTHER",zh:"其他",en:"Other"}
+    ] },
 
   { id:"Q2", type:"radio", required:true,
     label:{zh:"你的年龄段是？", en:"Your age range?"},
@@ -171,36 +198,43 @@ const SURVEY = { questions: [
   { id:"Q8", type:"multisort", required:false, max:3,
     label:{zh:"在「身体活力与睡眠」方面，你关注哪些具体功能？", en:"Under energy & sleep, which features do you care about?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["A"]},
     options:[{id:"A",zh:"精力管理（低精力时提醒放慢节奏）",en:"Energy management (slow down when low)"},{id:"B",zh:"睡眠质量评分与改善建议",en:"Sleep score & tips"},{id:"C",zh:"深睡、浅睡、REM 阶段拆解",en:"Deep/light/REM breakdown"},{id:"D",zh:"夜间身体恢复度",en:"Overnight recovery"},{id:"E",zh:"久坐提醒与运动建议",en:"Sedentary & workout nudges"}] },
 
   { id:"Q9", type:"multisort", required:false, max:3,
     label:{zh:"在「情绪与压力」方面，你关注哪些具体功能？", en:"Under emotion & stress, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["B"]},
     options:[{id:"A",zh:"经前情绪波动的温柔接住",en:"Gentle catch for pre-period mood swings"},{id:"B",zh:"压力高时的放松引导（呼吸练习、正念）",en:"Relaxation when stressed (breathing, mindfulness)"},{id:"C",zh:"烦躁时的一句安慰或鼓励",en:"A comforting word when irritable"}] },
 
   { id:"Q10", type:"multisort", required:false, max:3,
     label:{zh:"在「生理周期」方面，你关注哪些具体功能？", en:"Under cycle, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["C"]},
     options:[{id:"A",zh:"经期预测与到来提醒",en:"Period prediction & arrival alert"},{id:"B",zh:"排卵期、备孕窗口提示",en:"Ovulation / fertile-window hints"},{id:"C",zh:"经前综合征（PMS）关怀",en:"PMS care"},{id:"D",zh:"周期与情绪、精力的关联解读",en:"Cycle ↔ mood/energy insights"},{id:"E",zh:"痛经、身体不适记录",en:"Cramps & discomfort logging"}] },
 
   { id:"Q11", type:"multisort", required:false, max:3,
     label:{zh:"在「安全守护」方面，你关注哪些具体功能？", en:"Under safety, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["D"]},
     options:[{id:"A",zh:"一键 SOS 联系紧急人",en:"One-tap SOS to emergency contact"},{id:"B",zh:"夜跑、夜路位置实时分享",en:"Live location share (night run/walk)"},{id:"C",zh:"异常心率自动报警",en:"Auto alert on abnormal heart rate"},{id:"D",zh:"跌倒、意外检测",en:"Fall / accident detection"},{id:"E",zh:"安全区域提醒",en:"Safe-zone alerts"}] },
 
   { id:"Q12", type:"multisort", required:false, max:3,
     label:{zh:"在「社交连接」方面，你关注哪些具体功能？", en:"Under social connection, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["E"]},
     options:[{id:"A",zh:"情侣戒指互动（双方状态互通）",en:"Couple rings (shared status)"},{id:"B",zh:"向伴侣推送“她今天需要被照顾”的提示",en:"Nudge partner: 'she needs care today'"},{id:"C",zh:"闺蜜、好友状态分享",en:"Bestie / friend status sharing"},{id:"D",zh:"家人关怀提醒",en:"Family care reminders"}] },
 
   { id:"Q13", type:"multisort", required:false, max:3,
     label:{zh:"在「健康认知与科普」方面，你关注哪些具体功能？", en:"Under health literacy, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["F"]},
     options:[{id:"A",zh:"健康数据白话解读",en:"Plain-language data explainer"},{id:"B",zh:"身体节律科普",en:"Body-rhythm science"},{id:"C",zh:"个性化健康月报",en:"Personalized monthly report"},{id:"D",zh:"异常指标提醒与就医建议",en:"Anomaly alerts & see-a-doctor advice"},{id:"E",zh:"与同龄人对比",en:"Peer comparison"}] },
 
   { id:"Q14", type:"multisort", required:false, max:3,
     label:{zh:"在「AI 健康教练」方面，你关注哪些具体功能？", en:"Under AI health coach, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    showIf:{q:"Q7", includes:["G"]},
     options:[{id:"A",zh:"AI 对话式情绪引导",en:"Conversational AI mood guidance"},{id:"B",zh:"正念练习工具（呼吸、冥想、番茄钟）",en:"Mindfulness tools (breath, meditation, pomodoro)"},{id:"C",zh:"情绪记录与洞察",en:"Mood logging & insights"},{id:"D",zh:"匿名社区",en:"Anonymous community"}] },
 
   { id:"Q15", type:"multisort", required:false, max:3,
@@ -245,7 +279,7 @@ const SURVEY = { questions: [
 
   { id:"Q22", type:"radio", required:true,
     label:{zh:"结合 Mira 的设计质感与健康功能，你最能接受的单件售价是？", en:"Given its design & features, the price you'd accept for one ring?"},
-    options:[{id:"A",zh:"$100 以下",en:"Under $100"},{id:"B",zh:"$100–149",en:"$100–149"},{id:"C",zh:"$150–199",en:"$150–199"},{id:"D",zh:"$200–249",en:"$200–249"},{id:"E",zh:"$250–299",en:"$250–299"},{id:"F",zh:"$300–399",en:"$300–399"},{id:"G",zh:"$400–549",en:"$400–549"},{id:"H",zh:"$550 及以上",en:"$550+"}] },
+    options:[{id:"A",zh:"$100–149",en:"$100–149"},{id:"B",zh:"$150–199",en:"$150–199"},{id:"C",zh:"$200–249",en:"$200–249"},{id:"D",zh:"$250–299",en:"$250–299"},{id:"E",zh:"$300–399",en:"$300–399"},{id:"F",zh:"$400–549",en:"$400–549"},{id:"G",zh:"$550 及以上",en:"$550+"}] },
 
   { id:"Q23", type:"radio", required:true,
     label:{zh:"如果为了提升服务，Mira 提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira offered a "hardware + subscription" plan, which would you choose?'},
@@ -305,6 +339,11 @@ function render(){
     else if(q.type==='text'){
       h+=`<textarea class="ta" name="${q.id}" placeholder="..."></textarea>`;
     }
+    else if(q.type==='select'){
+      h+=`<select class="sel" name="${q.id}"><option value="">${TL({zh:'请选择',en:'Please select'})}</option>`;
+      q.options.forEach(op=>{ h+=`<option value="${op.id}">${TL(op)}</option>`; });
+      h+=`</select>`;
+    }
     else if(q.type==='multisort'||q.type==='multi'){
       const ranked = q.type==='multisort';
       q.options.forEach(op=>{
@@ -362,18 +401,21 @@ function wire(){
   });
   document.querySelectorAll('.opttext').forEach(t=>t.addEventListener('input',()=>clearErr(t.dataset.text.split('_')[0])));
   document.querySelectorAll('textarea').forEach(t=>t.addEventListener('input',()=>clearErr(t.name)));
+  document.querySelectorAll('select.sel').forEach(s=>s.addEventListener('change',()=>{updateVisibility(); updateProgress(); clearErr(s.name);}));
 }
 
 function updateVisibility(){
   SURVEY.questions.forEach(q=>{
     const card=document.getElementById('card-'+q.id); if(!q.showIf){card.classList.remove('hidden');return;}
-    let show=false; const val=getVal(q.showIf.q);
+    let show=false; const val=getVal(q.showIf.q); const vals=getVals(q.showIf.q);
     if(q.showIf.eq!==undefined) show=(val===q.showIf.eq);
-    if(q.showIf.in!==undefined) show=q.showIf.in.includes(val);
+    if(q.showIf.in!==undefined) show=q.showIf.in.includes(val) || q.showIf.in.some(v=>vals.includes(v));
+    if(q.showIf.includes!==undefined) show=q.showIf.includes.some(v=>vals.includes(v));
     card.classList.toggle('hidden',!show);
   });
 }
 function getVal(qid){const r=document.querySelector(`input[name=${qid}]:checked`);return r?r.value:'';}
+function getVals(qid){return [...document.querySelectorAll(`input[name=${qid}]:checked`)].map(b=>b.value);}
 function clearErr(qid){const e=document.getElementById('err-'+qid);if(e)e.style.display='none';}
 function showErr(qid,msg){const e=document.getElementById('err-'+qid);if(e){e.innerHTML=msg;e.style.display='block';}}
 function updateProgress(){
@@ -403,6 +445,11 @@ function submitSurvey(){
     else if(q.type==='text'){
       const v=document.querySelector(`textarea[name=${q.id}]`).value.trim();
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请填写此项',en:'Please fill this in'}));firstBad=firstBad||q.id;}
+      else if(v)answers[q.id]=v;
+    }
+    else if(q.type==='select'){
+      const v=document.querySelector(`select[name=${q.id}]`).value;
+      if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请选择一项',en:'Please select one'}));firstBad=firstBad||q.id;}
       else if(v)answers[q.id]=v;
     }
     else if(q.type==='multi'){
@@ -453,7 +500,8 @@ function showDone(payload,sent){
 }
 function downloadAnswer(){const t=document.getElementById('out').textContent;const b=new Blob([t],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mira-survey-'+Date.now()+'.json';a.click();}
 function copyAnswer(){const t=document.getElementById('out').textContent;navigator.clipboard.writeText(t).then(()=>alert(document.body.classList.contains('lang-zh')?'已复制':'Copied'));}
-function setLang(l){document.body.classList.toggle('lang-zh',l==='zh');document.body.classList.toggle('lang-en',l==='en');document.getElementById('btnZh').classList.toggle('on',l==='zh');document.getElementById('btnEn').classList.toggle('on',l==='en');document.documentElement.lang=l==='zh'?'zh':'en';}
+function setLang(l){document.body.classList.toggle('lang-zh',l==='zh');document.body.classList.toggle('lang-en',l==='en');document.getElementById('btnZh').classList.toggle('on',l==='zh');document.getElementById('btnEn').classList.toggle('on',l==='en');document.documentElement.lang=l==='zh'?'zh':'en';refreshSelects();}
+function refreshSelects(){document.querySelectorAll('select.sel').forEach(sel=>{const q=SURVEY.questions.find(x=>x.id===sel.name);if(!q)return;const cur=sel.value;sel.innerHTML=`<option value="">${TL({zh:'请选择',en:'Please select'})}</option>`+q.options.map(op=>`<option value="${op.id}">${TL(op)}</option>`).join('');sel.value=cur;});}
 
 render();
 </script>
