@@ -12,7 +12,7 @@
   }
   *{box-sizing:border-box}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
-    background:linear-gradient(180deg,#fdf3f7 0%,#fbf7f9 260px); color:var(--ink); line-height:1.6;}
+    background:linear-gradient(180deg,#fdf3f7 0%,#fbf7f9 260px); color:var(--ink); line-height:1.6; padding-bottom:110px;}
   .wrap{max-width:720px; margin:0 auto; padding:18px 16px 90px;}
   header.top{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; flex-wrap:wrap;}
   .brand{font-weight:700; letter-spacing:.5px; color:var(--rose-dark);}
@@ -59,6 +59,17 @@
   .imgbox.locked{opacity:.38; cursor:not-allowed; filter:grayscale(.35);}
   .hidden{display:none !important;}
   .req{color:var(--rose); font-weight:700;}
+  .consent{max-width:720px; margin:18px auto 4px; padding:16px 18px; background:#fff; border:1px solid var(--line); border-left:4px solid var(--ok); border-radius:14px; box-shadow:0 4px 18px rgba(43,36,48,.05);}
+  .consent label{display:flex; gap:10px; align-items:flex-start; font-size:13.5px; color:var(--ink); max-width:680px; line-height:1.6; cursor:pointer;}
+  .consent input[type=checkbox]{accent-color:var(--ok); width:20px; height:20px; flex:0 0 auto; margin-top:2px;}
+  .consent .req{color:var(--rose);}
+  .zoombtn{position:absolute; right:6px; bottom:6px; z-index:6; width:28px; height:28px; border:0; border-radius:50%; background:rgba(255,255,255,.92); box-shadow:0 1px 5px rgba(0,0,0,.25); cursor:zoom-in; font-size:14px; display:flex; align-items:center; justify-content:center; line-height:1;}
+  .imgbox img{cursor:zoom-in;}
+  .opt img.optimg{cursor:zoom-in;}
+  .lightbox{position:fixed; inset:0; background:rgba(20,12,18,.86); display:none; align-items:center; justify-content:center; z-index:9999; cursor:zoom-out;}
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:92vw; max-height:88vh; border-radius:14px; box-shadow:0 12px 50px rgba(0,0,0,.5);}
+  .lightbox .close{position:absolute; top:18px; right:24px; color:#fff; font-size:34px; line-height:1; cursor:pointer; user-select:none;}
   .submit{position:fixed; left:0; right:0; bottom:0; padding:12px 16px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-top:1px solid var(--line);}
   .submit button{width:100%; max-width:720px; margin:0 auto; display:block; border:0; background:linear-gradient(135deg,var(--rose),var(--rose-dark)); color:#fff; font-size:16px; font-weight:700; padding:14px; border-radius:14px; cursor:pointer; box-shadow:0 8px 22px rgba(200,92,132,.35);}
   .submit button:active{transform:translateY(1px);}
@@ -93,7 +104,7 @@
 
   <div class="intro">
     <h2><span class="zh">关于 Mira</span><span class="en">About Mira</span></h2>
-    <p><span class="zh">Mira 是全球首款专为女性<b>周期与情绪压力</b>打造的 AI 智能戒指。一枚轻盈的钛金属戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mood</b>. A feather-light titanium ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
+    <p><span class="zh">Mira 是全球首款专为女性<b>周期与情绪压力</b>打造的 AI 智能戒指。一枚轻盈的智能戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mood</b>. A feather-light smart ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
     <p><span class="zh">我们正依据像你这样的真实声音打磨产品。这份问卷帮助我们理解你真正在意什么。</span><span class="en">We're shaping Mira with input from people like you. This survey helps us understand what truly matters to you.</span></p>
     <div class="pills">
       <span class="pill"><span class="zh">周期洞察</span><span class="en">Cycle insights</span></span>
@@ -119,6 +130,8 @@
 <div class="submit">
   <button onclick="submitSurvey()"><span class="zh">提交问卷</span><span class="en">Submit Survey</span></button>
 </div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()"><span class="close" onclick="closeLightbox()">×</span><img id="lightboxImg" src="" alt=""></div>
 
 <script>
 /* =========================================================
@@ -147,7 +160,7 @@ const T = (o)=>`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;
 const TL = (o)=> document.body.classList.contains('lang-zh') ? o.zh : o.en;
 
 const SURVEY = { questions: [
-  { id:"Q1", type:"shorttext", required:false,
+  { id:"Q1", type:"shorttext", required:true,
     label:{zh:"很高兴遇见你！该怎么称呼你呢？（选填）", en:"So glad you're here! What should we call you? (optional)"},
     hint:{zh:"填个昵称就好，让这份问卷更有温度～", en:"A nickname is perfect — just so this feels less like a form."} },
 
@@ -156,7 +169,7 @@ const SURVEY = { questions: [
     hint:{zh:"本产品面向女性周期与情绪压力；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mood; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
     options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"},{id:"C",zh:"非二元 / 其他",en:"Non-binary / Other"},{id:"D",zh:"不愿透露",en:"Prefer not to say"}] },
 
-  { id:"Q1b", type:"radio", required:false,
+  { id:"Q1b", type:"radio", required:true,
     label:{zh:"你是替谁了解这款产品？", en:"Who are you exploring Mira for?"},
     hint:{zh:"（男性 / 非二元朋友请选一项）", en:"(For male / non-binary friends — pick one)"},
     showIf:{q:"QSEX", in:["B","C"]},
@@ -168,7 +181,7 @@ const SURVEY = { questions: [
       {id:"E",zh:"其他",en:"Other", hasText:true}
     ] },
 
-  { id:"QN", type:"select", required:false,
+  { id:"QN", type:"select", required:true,
     label:{zh:"你来自哪个国家或地区？", en:"Which country or region are you from?"},
     hint:{zh:"选填，帮助我们做区域对比", en:"Optional — helps us compare by region"},
     options:[
@@ -193,7 +206,7 @@ const SURVEY = { questions: [
     label:{zh:"你佩戴的频率是怎样的？", en:"How often do you wear it?"},
     options:[{id:"A",zh:"正在使用（几乎每天戴）",en:"Use it daily"},{id:"B",zh:"偶尔戴一下",en:"Occasionally"},{id:"C",zh:"买过但闲置了",en:"Bought but now unused"},{id:"D",zh:"从未买过",en:"Never bought one"}] },
 
-  { id:"Q5", type:"multisort", required:false, max:3,
+  { id:"Q5", type:"multisort", required:true, max:3,
     label:{zh:"方便告诉我们闲置的主要原因是？", en:"If unused, what were the main reasons? (pick 1–3 & rank)"},
     hint:{zh:"请选择 1–3 项并排序（1 = 最主要）", en:"Select 1–3 and rank (1 = most important)"},
     showIf:{q:"Q4", in:["B","C"]},
@@ -207,11 +220,11 @@ const SURVEY = { questions: [
     ] },
 
   { id:"Q6", type:"radio", required:true,
-    label:{zh:"购买 Mira 时，你更看重哪方面？", en:"When buying Mira, what matters more to you?"},
+    label:{zh:"购买 Mira 智能戒指时，你更看重哪方面？", en:"When buying Mira smart ring, what matters more to you?"},
     options:[{id:"A",zh:"首先是高级首饰（外观），健康功能是加分项",en:"Jewelry first (looks); health is a bonus"},{id:"B",zh:"外观和功能同样重要，缺一不可",en:"Looks and function equally important"},{id:"C",zh:"首先是健康监测工具，外观好看就行",en:"Health tool first; looks-nice is enough"}] },
 
-  { id:"Q7", type:"multisort", required:false, max:3,
-    label:{zh:"你希望 Mira 提供哪些帮助？（请选出真正重要的选项，并按重要程度排序）", en:"What help do you want from Mira? (pick the ones that truly matter & rank)"},
+  { id:"Q7", type:"multisort", required:true, max:3,
+    label:{zh:"你希望 Mira 智能戒指提供哪些帮助？（请选出真正重要的选项，并按重要程度排序）", en:"What help do you want from Mira smart ring? (pick the ones that truly matter & rank)"},
     hint:{zh:"请选择 1–3 项并排序（第1项最核心）", en:"Select 1–3 and rank (1 = most core)"},
     options:[
       {id:"A",zh:"身体活力与睡眠（精力管理、睡眠质量、身体恢复度）",en:"Body energy & sleep (energy, sleep quality, recovery)"},
@@ -223,49 +236,49 @@ const SURVEY = { questions: [
       {id:"G",zh:"AI健康教练（情绪引导对话、微习惯养成、正念练习工具）",en:"AI health coach (empathy chat, micro-habits, mindfulness)"}
     ] },
 
-  { id:"Q8", type:"multisort", required:false, max:3,
+  { id:"Q8", type:"multisort", required:true, max:3,
     label:{zh:"在「身体活力与睡眠」方面，你关注哪些具体功能？", en:"Under energy & sleep, which features do you care about?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["A"]},
     options:[{id:"A",zh:"精力管理（低精力时提醒放慢节奏）",en:"Energy management (slow down when low)"},{id:"B",zh:"睡眠质量评分与改善建议",en:"Sleep score & tips"},{id:"C",zh:"深睡、浅睡、REM 阶段拆解",en:"Deep/light/REM breakdown"},{id:"D",zh:"夜间身体恢复度",en:"Overnight recovery"},{id:"E",zh:"久坐提醒与运动建议",en:"Sedentary & workout nudges"}] },
 
-  { id:"Q9", type:"multisort", required:false, max:3,
+  { id:"Q9", type:"multisort", required:true, max:3,
     label:{zh:"在「情绪与压力」方面，你关注哪些具体功能？", en:"Under emotion & stress, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["B"]},
     options:[{id:"A",zh:"经前情绪波动的温柔接住",en:"Gentle catch for pre-period mood swings"},{id:"B",zh:"压力高时的放松引导（呼吸练习、正念）",en:"Relaxation when stressed (breathing, mindfulness)"},{id:"C",zh:"烦躁时的一句安慰或鼓励",en:"A comforting word when irritable"}] },
 
-  { id:"Q10", type:"multisort", required:false, max:3,
+  { id:"Q10", type:"multisort", required:true, max:3,
     label:{zh:"在「生理周期」方面，你关注哪些具体功能？", en:"Under cycle, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{all:[{q:"Q7",includes:["C"]},{q:"QSEX",eq:"A"}]},
     options:[{id:"A",zh:"经期预测与到来提醒",en:"Period prediction & arrival alert"},{id:"B",zh:"排卵期、备孕窗口提示",en:"Ovulation / fertile-window hints"},{id:"C",zh:"经前综合征（PMS）关怀",en:"PMS care"},{id:"D",zh:"周期与情绪、精力的关联解读",en:"Cycle ↔ mood/energy insights"},{id:"E",zh:"痛经、身体不适记录",en:"Cramps & discomfort logging"}] },
 
-  { id:"Q11", type:"multisort", required:false, max:3,
+  { id:"Q11", type:"multisort", required:true, max:3,
     label:{zh:"在「安全守护」方面，你关注哪些具体功能？", en:"Under safety, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["D"]},
     options:[{id:"A",zh:"一键 SOS 联系紧急人",en:"One-tap SOS to emergency contact"},{id:"B",zh:"夜跑、夜路位置实时分享",en:"Live location share (night run/walk)"},{id:"C",zh:"异常心率自动报警",en:"Auto alert on abnormal heart rate"},{id:"D",zh:"跌倒、意外检测",en:"Fall / accident detection"},{id:"E",zh:"安全区域提醒",en:"Safe-zone alerts"}] },
 
-  { id:"Q12", type:"multisort", required:false, max:3,
+  { id:"Q12", type:"multisort", required:true, max:3,
     label:{zh:"在「社交连接」方面，你关注哪些具体功能？", en:"Under social connection, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["E"]},
     options:[{id:"A",zh:"情侣戒指互动（双方状态互通）",en:"Couple rings (shared status)"},{id:"B",zh:"向伴侣推送“她今天需要被照顾”的提示",en:"Nudge partner: 'she needs care today'"},{id:"C",zh:"闺蜜、好友状态分享",en:"Bestie / friend status sharing"},{id:"D",zh:"家人关怀提醒",en:"Family care reminders"}] },
 
-  { id:"Q13", type:"multisort", required:false, max:3,
+  { id:"Q13", type:"multisort", required:true, max:3,
     label:{zh:"在「健康认知与科普」方面，你关注哪些具体功能？", en:"Under health literacy, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["F"]},
     options:[{id:"A",zh:"健康数据白话解读",en:"Plain-language data explainer"},{id:"B",zh:"身体节律科普",en:"Body-rhythm science"},{id:"C",zh:"个性化健康月报",en:"Personalized monthly report"},{id:"D",zh:"异常指标提醒与就医建议",en:"Anomaly alerts & see-a-doctor advice"},{id:"E",zh:"与同龄人对比",en:"Peer comparison"}] },
 
-  { id:"Q14", type:"multisort", required:false, max:3,
+  { id:"Q14", type:"multisort", required:true, max:3,
     label:{zh:"在「AI 健康教练」方面，你关注哪些具体功能？", en:"Under AI health coach, which features?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q7", includes:["G"]},
     options:[{id:"A",zh:"AI 对话式情绪引导",en:"Conversational AI mood guidance"},{id:"B",zh:"正念练习工具（呼吸、冥想、番茄钟）",en:"Mindfulness tools (breath, meditation, pomodoro)"},{id:"C",zh:"情绪记录与洞察",en:"Mood logging & insights"},{id:"D",zh:"匿名社区",en:"Anonymous community"}] },
 
-  { id:"Q15", type:"multisort", required:false, max:3,
+  { id:"Q15", type:"multisort", required:true, max:3,
     label:{zh:"下面哪些场景最让你有共鸣？并按重要程度排序", en:"Which scenes resonate with you most? Rank them"},
     hint:{zh:"请选择 1–3 项并排序（第1项最戳中你）", en:"Select 1–3 and rank (1 = most resonant)"},
     options:[
@@ -279,14 +292,14 @@ const SURVEY = { questions: [
     ] },
 
   { id:"Q16", type:"radio", required:true,
-    label:{zh:"如果 Mira 只能提供一种反馈方式，你更倾向哪一种？", en:"If Mira could only give ONE kind of feedback, which do you prefer?"},
+    label:{zh:"如果 Mira 智能戒指只能提供一种反馈方式，你更倾向哪一种？", en:"If Mira smart ring could only give ONE kind of feedback, which do you prefer?"},
     options:[{id:"A",zh:"每天主动推送一句鼓励或提醒（像朋友在身边）",en:"Daily nudge/encouragement (friend-like presence)"},{id:"B",zh:"平时完全静默，只在心率异常或熬夜过度时才震动",en:"Silent unless abnormal heart rate / overwork"},{id:"C",zh:"平时静默，只在关键节点主动发声（经期前提醒、每周小结）",en:"Silent, but speaks at key moments (pre-period, weekly summary)"}] },
 
   { id:"Q17", type:"radio", required:true,
     label:{zh:"关于戒指监测到的健康数据，你是否愿意授权它提醒您的伴侣？", en:"Would you let Mira notify your partner based on your health data?"},
     options:[{id:"A",zh:"非常愿意，希望他能实时了解我的状态",en:"Yes, real-time status"},{id:"B",zh:"只愿意让他看到每周汇总报告",en:"Weekly summary only"},{id:"C",zh:"绝对不允许，这是我的个人隐私",en:"Never — it's private"},{id:"D",zh:"仅紧急情况（SOS/异常）时自动通知",en:"Only in emergencies (SOS/anomaly)"}] },
 
-  { id:"Q18", type:"imagesort", required:false, max:10,
+  { id:"Q18", type:"imagesort", required:true, max:10,
     label:{zh:"你最喜欢哪些外观风格？（按喜好程度排序）", en:"Which look styles do you like best? (rank them)"},
     hint:{zh:"最少选择 1 项并排序（最多 10 项）", en:"Pick at least 1 and rank (up to 10)"},
     options:[
@@ -294,15 +307,15 @@ const SURVEY = { questions: [
       {id:"other",zh:"其他",en:"Other", hasText:true}
     ] },
 
-  { id:"Q19", type:"text", required:false,
+  { id:"Q19", type:"text", required:true,
     label:{zh:"你最喜欢的那个外观风格，哪一点吸引了你？（材料、造型、颜色、质感、搭配、佩戴感等）", en:"What attracted you to that style? (material, shape, color, texture, styling, comfort…)"} },
 
-  { id:"Q20", type:"multisort", required:false, max:3,
+  { id:"Q20", type:"multisort", required:true, max:3,
     label:{zh:"你设想中 Mira 以什么形象陪伴你？", en:"What form should Mira take as your companion?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
-    options:[{id:"A",zh:"治愈系小动物",en:"Healing little animal", img:"assets/mascot-animal.jpg"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars", img:"assets/mascot-moon.jpg"},{id:"C",zh:"抽象宝石、水晶精灵",en:"Abstract gem / crystal sprite", img:"assets/mascot-blob.jpg"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol", img:"assets/mascot-geo.jpg"},{id:"F",zh:"温柔的光球、能量体",en:"Soft light orb / energy body", img:"assets/mascot-blob.jpg"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression", img:"assets/mascot-round-faces.jpg"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
+    options:[{id:"A",zh:"治愈系小动物",en:"Healing little animal", img:"assets/mascot-animal.jpg"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars", img:"assets/mascot-moon.jpg"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol", img:"assets/mascot-geo.jpg"},{id:"F",zh:"温柔的光球、能量体",en:"Soft light orb / energy body", img:"assets/mascot-blob.jpg"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression", img:"assets/mascot-round-faces.jpg"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
 
-  { id:"Q21", type:"text", required:false,
+  { id:"Q21", type:"text", required:true,
     label:{zh:"可以和我分享一下你喜欢的原因吗？（简洁大气、可爱、有能量、科技感等）", en:"Why do you like it? (clean & elegant, cute, energetic, tech-feel…)"} },
 
   { id:"Q22", type:"radio", required:true,
@@ -310,11 +323,11 @@ const SURVEY = { questions: [
     options:[{id:"A",zh:"$100–149",en:"$100–149"},{id:"B",zh:"$150–199",en:"$150–199"},{id:"C",zh:"$200–249",en:"$200–249"},{id:"D",zh:"$250–299",en:"$250–299"},{id:"E",zh:"$300–399",en:"$300–399"},{id:"F",zh:"$400–549",en:"$400–549"},{id:"G",zh:"$550 及以上",en:"$550+"}] },
 
   { id:"Q23", type:"radio", required:true,
-    label:{zh:"如果为了提升服务，Mira 提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira offered a "hardware + subscription" plan, which would you choose?'},
+    label:{zh:"如果为了提升服务，Mira 智能戒指提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira smart ring offered a "hardware + subscription" plan, which would you choose?'},
     options:[{id:"A",zh:"愿意，好功能值得付费",en:"Willing — good features worth paying"},{id:"B",zh:"不愿意，讨厌持续付费，宁愿一次性买断",en:"Unwilling — hate recurring fees, prefer one-time"},{id:"C",zh:"不确定，要看订阅包含的具体内容再决定",en:"Undecided — depends on what's included"}] },
 
-  { id:"Q24", type:"multisort", required:false, max:3,
-    label:{zh:"假设 Mira 的外观已经像高级首饰一样美，你犹豫是否购买的主要原因是？", en:"If Mira already looks like fine jewelry, why would you still hesitate to buy?"},
+  { id:"Q24", type:"multisort", required:true, max:3,
+    label:{zh:"假设 Mira 智能戒指的外观已经像高级首饰一样美，你犹豫是否购买的主要原因是？", en:"If Mira smart ring already looks like fine jewelry, why would you still hesitate to buy?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"QSEX", eq:"A"},
     options:[
@@ -330,23 +343,23 @@ const SURVEY = { questions: [
     ] },
 
   { id:"Q25", type:"radio", required:true,
-    label:{zh:"你会考虑购买 Mira 送给身边的女性（伴侣/家人/朋友）吗？", en:"Would you buy Mira as a gift for a woman in your life?"},
+    label:{zh:"你会考虑购买 Mira 智能戒指送给身边的女性（伴侣/家人/朋友）吗？", en:"Would you buy Mira smart ring as a gift for a woman in your life?"},
     options:[{id:"A",zh:"一定会买",en:"Definitely"},{id:"B",zh:"可能会买",en:"Probably"},{id:"C",zh:"不确定",en:"Undecided"},{id:"D",zh:"可能不会",en:"Probably not"},{id:"E",zh:"一定不会",en:"Not at all"}] },
 
-  { id:"Q26", type:"multisort", required:false, max:3,
+  { id:"Q26", type:"multisort", required:true, max:3,
     label:{zh:"如果会买，最吸引你的是什么？", en:"If you'd buy it, what attracts you most?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
     showIf:{q:"Q25", in:["A","B","C"]},
     options:[{id:"A",zh:"好看，像首饰",en:"Beautiful, like jewelry"},{id:"B",zh:"关心她的健康状态",en:"Caring for her health"},{id:"C",zh:"情绪陪伴功能",en:"Emotional companionship"},{id:"D",zh:"生理周期管理",en:"Cycle tracking"},{id:"E",zh:"安全守护",en:"Safety / guardian"},{id:"F",zh:"作为节日/纪念日礼物，兼具仪式感和实用性",en:"Gift with ritual + practical value"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
 
-  { id:"Q27", type:"multi", required:false, max:3,
+  { id:"Q27", type:"multi", required:true, max:3,
     label:{zh:"你不太考虑购买的主要原因是？", en:"Your main reasons for not considering it?"},
     hint:{zh:"请选择 1–3 项", en:"Select up to 3"},
     showIf:{q:"Q25", in:["D","E"]},
     options:[{id:"A",zh:"价格太贵，性价比不高",en:"Too expensive / poor value"},{id:"B",zh:"担心她不喜欢/不戴（闲置率高）",en:"She may not like/wear it"},{id:"C",zh:"担心涉及隐私，她会介意",en:"Privacy concern on her side"},{id:"D",zh:"觉得没必要，手机也能看健康数据",en:"Unnecessary — phone shows health data"},{id:"E",zh:"担心她戴不惯/嫌麻烦",en:"She may find it fussy"},{id:"F",zh:"不知道选哪个款式/尺寸，怕买错",en:"Unsure of style/size, fear wrong pick"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
 
-  { id:"Q28", type:"text", required:false,
-    label:{zh:"其他任何你想对 Mira 说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira? (your ideal ring, design details you care about, feature ideas…)"} },
+  { id:"Q28", type:"text", required:true,
+    label:{zh:"其他任何你想对 Mira 智能戒指说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira smart ring? (your ideal ring, design details you care about, feature ideas…)"} },
 
   { id:"Q29", type:"text", required:false,
     label:{zh:"想收到后续回访吗？留下联系方式（邮箱 / Instagram / Facebook / WhatsApp 等）", en:"Want a follow-up? Leave a way to reach you (email / Instagram / Facebook / WhatsApp…)"},
@@ -456,6 +469,17 @@ function wire(){
   document.querySelectorAll('.opttext').forEach(t=>t.addEventListener('input',()=>clearErr(t.dataset.text.split('_')[0])));
   document.querySelectorAll('textarea').forEach(t=>t.addEventListener('input',()=>clearErr(t.name)));
   document.querySelectorAll('select.sel').forEach(s=>s.addEventListener('change',()=>{updateVisibility(); updateProgress(); clearErr(s.name);}));
+  // 图片点击放大（灯箱）
+  document.querySelectorAll('.optimg').forEach(img=>{
+    img.addEventListener('click',e=>{ e.stopPropagation(); openLightbox(img.src); });
+  });
+  document.querySelectorAll('.imgbox').forEach(box=>{
+    const img=box.querySelector('img'); if(!img) return;
+    const zb=document.createElement('button');
+    zb.type='button'; zb.className='zoombtn'; zb.textContent='🔍';
+    zb.addEventListener('click',e=>{ e.stopPropagation(); openLightbox(img.src); });
+    box.appendChild(zb);
+  });
 }
 
 function updateVisibility(){
@@ -496,6 +520,9 @@ function enforceMax(qid){
   });
 }
 function showErr(qid,msg){const e=document.getElementById('err-'+qid);if(e){e.innerHTML=msg;e.style.display='block';}}
+function openLightbox(src){const lb=document.getElementById('lightbox');document.getElementById('lightboxImg').src=src;lb.classList.add('show');}
+function closeLightbox(){document.getElementById('lightbox').classList.remove('show');document.getElementById('lightboxImg').src='';}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeLightbox(); });
 function updateProgress(){
   const total=SURVEY.questions.length;
   const vis=SURVEY.questions.filter(q=>!document.getElementById('card-'+q.id).classList.contains('hidden')).length;
