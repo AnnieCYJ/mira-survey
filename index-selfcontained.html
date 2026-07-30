@@ -51,7 +51,7 @@
   .opt.locked input{cursor:not-allowed;}
   .opt img.optimg{width:56px; height:56px; object-fit:cover; border-radius:8px; flex:0 0 auto;}
   .opt.imgcard{display:flex; flex-direction:column; align-items:stretch; gap:8px; padding:10px; text-align:center;}
-  .opt.imgcard img.optimg{width:100%; max-width:300px; aspect-ratio:1/1; object-fit:cover; border-radius:10px; margin:0 auto; display:block;}
+  .opt.imgcard img.optimg{width:100%; max-width:300px; height:auto; object-fit:contain; border-radius:10px; margin:0 auto; display:block;}
   .opt.imgcard .imginfo{display:flex; flex-direction:row; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; text-align:center;}
   .opt.imgcard .txt{font-size:14.5px;}
   .opt.imgcard .rank{margin:0;}
@@ -64,7 +64,7 @@
   .imgrid{display:grid; grid-template-columns:1fr; gap:12px;}
   .imgbox{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; background:#faf4f7; display:flex; flex-direction:column; align-items:stretch; text-align:center; padding:10px;}
   .imgwrap{position:relative; width:100%; max-width:300px; margin:0 auto;}
-  .imgbox img{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; border-radius:10px; background:#f1e9ed;}
+  .imgbox img{width:100%; height:auto; display:block; border-radius:10px; background:#f1e9ed;}
   .imgbox .ph{color:var(--muted); font-size:13px; font-weight:600; width:100%; aspect-ratio:1/1; box-sizing:border-box; display:flex; align-items:center; justify-content:center; flex-direction:column; background:#f1e9ed; border-radius:10px;}
   .imgbox .caption{width:100%; max-width:300px; margin:6px auto 0; padding:4px 6px 2px; font-size:12.5px; line-height:1.5; color:var(--ink); background:transparent; border-top:0; min-height:0; display:flex; align-items:center; justify-content:center; text-align:center; flex-direction:column;}
   .imgbox .tag{position:absolute; top:8px; left:8px; background:var(--rose); color:#fff; font-size:11px; font-weight:700; border-radius:6px; padding:1px 7px; z-index:3;}
@@ -180,7 +180,9 @@
   }
   @media (max-width:480px){
     .imgrid{grid-template-columns:1fr}
-    .imgbox img,.imgbox .ph,.opt.imgcard img.optimg{width:100%; max-width:240px; aspect-ratio:1/1;}
+    .imgwrap{max-width:260px;}
+    .opt.imgcard img.optimg{max-width:260px; height:auto;}
+    .imgbox img{height:auto;}
     .hero h1{font-size:19px}
     .cover-title{font-size:32px;}
     .qr-card img{width:78px; height:78px;}
