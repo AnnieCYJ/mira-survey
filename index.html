@@ -166,19 +166,9 @@
   .qr-card img{width:96px; height:96px; display:block; border-radius:8px;}
   .qr-text strong{display:block; font-family:"Cormorant Garamond",serif; font-weight:600; font-size:18px; color:var(--warm-ink); margin-bottom:2px;}
   .qr-text small{display:block; font-size:11.5px; color:var(--warm-mute); letter-spacing:.04em;}
-  .cover-cta{
-    margin-left:auto; display:inline-flex; align-items:center; gap:8px;
-    color:var(--warm-ink); text-decoration:none; font-size:13px; font-weight:600;
-    padding:10px 14px; border-radius:999px; border:1px solid var(--warm-ink);
-    transition:.18s; letter-spacing:.02em;
-  }
-  .cover-cta:hover{background:var(--warm-ink); color:var(--cream);}
-  .cover-progress{margin-top:14px;}
-
   @media (max-width:780px){
     .cover{grid-template-columns:1fr; padding:20px; gap:20px;}
     .cover-photo{aspect-ratio:4/5;}
-    .cover-cta{margin-left:0;}
   }
   @media (max-width:480px){
     .imgrid{grid-template-columns:repeat(2,1fr)}
@@ -233,12 +223,11 @@
             <small><span class="zh">分享给朋友 · 一起被听见</span><span class="en">Share · we want to hear you too</span></small>
           </div>
         </div>
-        <a class="cover-cta" href="#survey"><span class="zh">↓ 开始填写</span><span class="en">↓ Start the survey</span></a>
       </div>
-      <div class="cover-progress"><div class="progress"><i id="bar"></i></div></div>
     </div>
   </section>
 
+  <div class="progress" id="progtop" style="max-width:760px;margin:0 auto 16px;"><i id="bar"></i></div>
   <form id="survey"></form>
   <div id="result" class="hidden"></div>
   <footer><span class="zh">© Mira · 为全球女性周期与情绪压力而生</span><span class="en">© Mira · Built for women's cycle &amp; mood, worldwide</span></footer>
