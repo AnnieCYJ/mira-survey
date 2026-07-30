@@ -4,11 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mira Smart Ring Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --rose:#e8799e; --rose-dark:#c85c84; --gold:#c9a24b;
     --ink:#2b2430; --muted:#7a7080; --line:#efe6ec;
     --bg:#fbf7f9; --card:#ffffff; --ok:#3aa776; --warn:#d98324;
+    --cream:#f6efe5; --cream-deep:#ece2cf;
+    --warm-ink:#3a2f28; --warm-mute:#7c6f63; --warm-gold:#b8856a; --warm-line:#e8dfd0;
   }
   *{box-sizing:border-box}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
@@ -83,7 +88,104 @@
   footer{text-align:center; color:var(--muted); font-size:12px; margin-top:26px;}
   body.lang-zh .en{display:none}
   body.lang-en .zh{display:none}
-  @media (max-width:480px){ .imgrid{grid-template-columns:repeat(2,1fr)} .hero h1{font-size:19px} }
+
+  /* ====== Cover (高级感封面) ====== */
+  .cover{
+    display:grid; grid-template-columns: 1.05fr 1fr; gap:32px;
+    background:var(--cream);
+    border:1px solid var(--warm-line);
+    border-radius:22px;
+    padding:28px;
+    margin:14px 0 22px;
+    box-shadow:0 24px 60px -28px rgba(74,52,38,.22), 0 6px 18px -8px rgba(74,52,38,.10);
+    position:relative; overflow:hidden;
+  }
+  .cover::before{
+    content:""; position:absolute; inset:0;
+    background:radial-gradient(120% 80% at 100% 0%, #fff 0%, transparent 55%),
+               radial-gradient(120% 90% at 0% 100%, #f0e4cf 0%, transparent 60%);
+    pointer-events:none;
+  }
+  .cover-photo{
+    position:relative; border-radius:18px; overflow:hidden;
+    aspect-ratio:3/4;
+    box-shadow:0 18px 38px -20px rgba(74,52,38,.35), inset 0 0 0 1px rgba(255,255,255,.4);
+    background:#e9dccb;
+  }
+  .cover-photo img{width:100%; height:100%; object-fit:cover; display:block; filter:saturate(.92) contrast(1.02);}
+  .cover-photo .photo-tag{
+    position:absolute; left:14px; top:14px;
+    background:rgba(255,255,255,.85); backdrop-filter:blur(8px);
+    color:var(--warm-ink); font-size:11px; letter-spacing:.16em;
+    padding:6px 10px; border-radius:999px; font-weight:600;
+  }
+  .cover-text{position:relative; display:flex; flex-direction:column; justify-content:center; gap:14px; padding:4px 0;}
+  .eyebrow{
+    font-family:"Inter","Noto Serif SC",sans-serif; font-size:11px;
+    letter-spacing:.32em; text-transform:uppercase;
+    color:var(--warm-gold); font-weight:600;
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{content:""; width:18px; height:1px; background:var(--warm-gold);}
+  .cover-title{
+    font-family:"Cormorant Garamond","Noto Serif SC",serif;
+    font-weight:500; font-size:clamp(34px,4.4vw,52px); line-height:1.05;
+    color:var(--warm-ink); margin:0;
+    letter-spacing:-.01em;
+  }
+  .cover-title em{font-style:italic; color:var(--warm-gold); font-weight:500;}
+  .cover-lead{
+    font-family:"Inter","Noto Serif SC",sans-serif;
+    font-size:15px; line-height:1.7; color:#4a3f37; margin:0;
+  }
+  .cover-lead b{color:var(--warm-ink); font-weight:600;}
+  .cover-ask{
+    font-size:14px; line-height:1.7; color:var(--warm-mute); margin:0;
+    border-left:2px solid var(--warm-gold); padding:2px 0 2px 12px;
+  }
+  .cover-meta{
+    display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center;
+    font-size:12.5px; color:var(--warm-mute);
+  }
+  .cover-meta i{width:3px; height:3px; background:var(--warm-gold); border-radius:50%; display:inline-block; opacity:.7;}
+  .cover-meta .dot{
+    display:inline-flex; align-items:center;
+    padding:5px 11px; border:1px solid var(--warm-line); border-radius:999px;
+    background:#fff8ee; color:#5b4a3c; font-weight:500;
+  }
+  .cover-bottom{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    margin-top:6px;
+  }
+  .qr-card{
+    display:flex; align-items:center; gap:14px;
+    background:#fff; border:1px solid var(--warm-line);
+    padding:12px 16px 12px 12px; border-radius:14px;
+    box-shadow:0 10px 24px -16px rgba(74,52,38,.25);
+  }
+  .qr-card img{width:96px; height:96px; display:block; border-radius:8px;}
+  .qr-text strong{display:block; font-family:"Cormorant Garamond",serif; font-weight:600; font-size:18px; color:var(--warm-ink); margin-bottom:2px;}
+  .qr-text small{display:block; font-size:11.5px; color:var(--warm-mute); letter-spacing:.04em;}
+  .cover-cta{
+    margin-left:auto; display:inline-flex; align-items:center; gap:8px;
+    color:var(--warm-ink); text-decoration:none; font-size:13px; font-weight:600;
+    padding:10px 14px; border-radius:999px; border:1px solid var(--warm-ink);
+    transition:.18s; letter-spacing:.02em;
+  }
+  .cover-cta:hover{background:var(--warm-ink); color:var(--cream);}
+  .cover-progress{margin-top:14px;}
+
+  @media (max-width:780px){
+    .cover{grid-template-columns:1fr; padding:20px; gap:20px;}
+    .cover-photo{aspect-ratio:4/5;}
+    .cover-cta{margin-left:0;}
+  }
+  @media (max-width:480px){
+    .imgrid{grid-template-columns:repeat(2,1fr)}
+    .hero h1{font-size:19px}
+    .cover-title{font-size:32px;}
+    .qr-card img{width:78px; height:78px;}
+  }
 </style>
 </head>
 <body class="lang-en">
@@ -96,24 +198,46 @@
     </div>
   </header>
 
-  <div class="hero">
-    <h1><span class="zh">Mira 智能戒指产品调研</span><span class="en">Mira Smart Ring — Product Survey</span></h1>
-    <p><span class="zh">感谢你参与！本问卷约需 3–5 分钟。所有回答匿名收集，仅用于改进产品。</span><span class="en">Thanks for taking part! This takes about 3–5 minutes. All responses are anonymous and used only to improve the product.</span></p>
-    <div class="progress"><i id="bar"></i></div>
-  </div>
-
-  <div class="intro">
-    <h2><span class="zh">关于 Mira</span><span class="en">About Mira</span></h2>
-    <p><span class="zh">Mira 是全球首款专为女性<b>周期与情绪压力</b>打造的 AI 智能戒指。一枚轻盈的智能戒指，默默追踪你的睡眠、精力、情绪与周期信号，并转化为温柔、个性化的陪伴建议——无屏幕、无压力。</span><span class="en">Mira is the world's first AI smart ring built for women's <b>cycle &amp; mood</b>. A feather-light smart ring quietly tracks your sleep, energy, mood, and cycle signals — then turns them into gentle, personalized guidance. No screens, no pressure.</span></p>
-    <p><span class="zh">我们正依据像你这样的真实声音打磨产品。这份问卷帮助我们理解你真正在意什么。</span><span class="en">We're shaping Mira with input from people like you. This survey helps us understand what truly matters to you.</span></p>
-    <div class="pills">
-      <span class="pill"><span class="zh">周期洞察</span><span class="en">Cycle insights</span></span>
-      <span class="pill"><span class="zh">情绪与压力</span><span class="en">Mood &amp; stress</span></span>
-      <span class="pill"><span class="zh">睡眠与精力</span><span class="en">Sleep &amp; energy</span></span>
-      <span class="pill"><span class="zh">安全守护</span><span class="en">Safety</span></span>
-      <span class="pill"><span class="zh">AI 健康陪伴</span><span class="en">AI companion</span></span>
+  <section class="cover">
+    <div class="cover-photo">
+      <img src="assets/mira-cover.jpg" alt="Mira smart ring — worn" />
+      <span class="photo-tag">MIRA · 2026</span>
     </div>
-  </div>
+    <div class="cover-text">
+      <div class="eyebrow">
+        <span class="zh">产品共创调研</span>
+        <span class="en">Mira · Product Survey</span>
+      </div>
+      <h1 class="cover-title">
+        <span class="zh">为你而生的<br/>智能戒指</span>
+        <span class="en">A smart ring,<br/>made for <em>you</em>.</span>
+      </h1>
+      <p class="cover-lead">
+        <span class="zh">Mira 是全球首款专为女性<b>周期与情绪压力</b>打造的 AI 智能戒指。默默感知你的身体信号，转化为温柔、懂你的陪伴——无屏幕、无打扰。</span>
+        <span class="en">Mira is the world's first AI smart ring built for <b>women's cycle &amp; mood</b>. It quietly senses your body's signals and turns them into gentle, personal guidance — no screens, no noise.</span>
+      </p>
+      <p class="cover-ask">
+        <span class="zh">我们正在依据像你这样的真实声音打磨下一代产品。3–5 分钟告诉我们你最在意什么——这份问卷将直接进入产品决策。</span>
+        <span class="en">We're shaping the next generation of Mira with people like you. In 3–5 minutes, tell us what truly matters — your answers go straight into our product decisions.</span>
+      </p>
+      <div class="cover-meta">
+        <span class="dot"><span class="zh">约需 3–5 分钟</span><span class="en">≈ 3–5 min</span></span>
+        <span class="dot"><span class="zh">匿名收集</span><span class="en">Anonymous</span></span>
+        <span class="dot"><span class="zh">仅用于改进产品</span><span class="en">Product insights only</span></span>
+      </div>
+      <div class="cover-bottom">
+        <div class="qr-card">
+          <img alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=https%3A%2F%2FAnnieCYJ.github.io%2Fmira-survey%2F"/>
+          <div class="qr-text">
+            <strong><span class="zh">扫码填写</span><span class="en">Scan to start</span></strong>
+            <small><span class="zh">分享给朋友 · 一起被听见</span><span class="en">Share · we want to hear you too</span></small>
+          </div>
+        </div>
+        <a class="cover-cta" href="#survey"><span class="zh">↓ 开始填写</span><span class="en">↓ Start the survey</span></a>
+      </div>
+      <div class="cover-progress"><div class="progress"><i id="bar"></i></div></div>
+    </div>
+  </section>
 
   <form id="survey"></form>
   <div id="result" class="hidden"></div>
