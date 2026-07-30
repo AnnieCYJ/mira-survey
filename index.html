@@ -787,6 +787,12 @@ function setLang(l){document.body.classList.toggle('lang-zh',l==='zh');document.
 function refreshSelects(){document.querySelectorAll('select.sel').forEach(sel=>{const q=SURVEY.questions.find(x=>x.id===sel.name);if(!q)return;const cur=sel.value;sel.innerHTML=`<option value="">${TL({zh:'请选择',en:'Please select'})}</option>`+q.options.map(op=>`<option value="${op.id}">${TL(op)}</option>`).join('');sel.value=cur;});}
 
 render();
+// 后台预加载图片题(Q18/Q20)的所有图：保留 lazy 不阻塞首屏，但 300ms 后主动下载进缓存，滚动到时直接命中、不再转圈
+setTimeout(function(){
+  var urls=new Set();
+  document.querySelectorAll('.imgbox img, .opt.imgcard img').forEach(function(im){ var u=im.currentSrc||im.src; if(u) urls.add(u); });
+  urls.forEach(function(u){ var i=new Image(); i.src=u; });
+}, 300);
 </script>
 </body>
 </html>
