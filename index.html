@@ -50,17 +50,20 @@
   .opt.locked{opacity:.38; cursor:not-allowed; filter:grayscale(.35);}
   .opt.locked input{cursor:not-allowed;}
   .opt img.optimg{width:56px; height:56px; object-fit:cover; border-radius:8px; flex:0 0 auto;}
+  .opt.imgcard{display:flex; flex-direction:row; align-items:center; gap:12px; padding:8px;}
+  .opt.imgcard img.optimg{width:140px; height:140px; border-radius:10px; flex:0 0 140px;}
+  .opt.imgcard .txt{flex:1; font-size:14.5px;}
   .opttext{width:100%; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; font:inherit; font-size:14px; display:none;}
   .opttext.show{display:block;}
   textarea.ta{width:100%; min-height:90px; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; resize:vertical;}
   select.sel{width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; background:#fff; color:var(--ink);}
   .sinput{width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:14.5px; background:#fff; color:var(--ink);}
-  .imgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
-  .imgbox{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; background:#faf4f7; display:flex; flex-direction:column; align-items:stretch; text-align:center;}
-  .imgbox img{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#f1e9ed;}
-  .imgbox .ph{color:var(--muted); font-size:13px; font-weight:600; width:100%; aspect-ratio:1/1; box-sizing:border-box; display:flex; align-items:center; justify-content:center; flex-direction:column; background:#f1e9ed;}
-  .imgbox .caption{padding:7px 8px; font-size:12px; line-height:1.45; color:var(--ink); background:#fff; border-top:1px solid var(--line); min-height:46px; display:flex; align-items:center; justify-content:center;}
-  .imgbox .tag{position:absolute; top:6px; left:6px; background:var(--rose); color:#fff; font-size:11px; font-weight:700; border-radius:6px; padding:1px 7px; z-index:2;}
+  .imgrid{display:grid; grid-template-columns:1fr; gap:12px;}
+  .imgbox{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; background:#faf4f7; display:flex; flex-direction:row; align-items:center; gap:12px; padding:8px; text-align:left;}
+  .imgbox img{width:140px; height:140px; flex:0 0 140px; object-fit:cover; display:block; border-radius:10px; background:#f1e9ed;}
+  .imgbox .ph{color:var(--muted); font-size:13px; font-weight:600; width:140px; height:140px; flex:0 0 140px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; flex-direction:column; background:#f1e9ed; border-radius:10px;}
+  .imgbox .caption{flex:1; padding:6px 10px; font-size:12.5px; line-height:1.5; color:var(--ink); background:transparent; border-top:0; min-height:0; display:flex; align-items:center; justify-content:flex-start; text-align:left; flex-direction:column;}
+  .imgbox .tag{position:absolute; top:14px; left:14px; background:var(--rose); color:#fff; font-size:11px; font-weight:700; border-radius:6px; padding:1px 7px; z-index:3;}
   .imgbox.checked{border-color:var(--rose); box-shadow:0 0 0 2px var(--rose) inset;}
   .imgbox.locked{opacity:.38; cursor:not-allowed; filter:grayscale(.35);}
   .hidden{display:none !important;}
@@ -69,7 +72,7 @@
   .consent label{display:flex; gap:10px; align-items:flex-start; font-size:13.5px; color:var(--ink); max-width:680px; line-height:1.6; cursor:pointer;}
   .consent input[type=checkbox]{accent-color:var(--ok); width:20px; height:20px; flex:0 0 auto; margin-top:2px;}
   .consent .req{color:var(--rose);}
-  .zoombtn{position:absolute; top:6px; right:6px; z-index:6; width:28px; height:28px; border:0; border-radius:50%; background:rgba(255,255,255,.92); box-shadow:0 1px 5px rgba(0,0,0,.25); cursor:zoom-in; font-size:14px; display:flex; align-items:center; justify-content:center; line-height:1;}
+  .zoombtn{position:absolute; top:14px; right:14px; z-index:6; width:28px; height:28px; border:0; border-radius:50%; background:rgba(255,255,255,.92); box-shadow:0 1px 5px rgba(0,0,0,.25); cursor:zoom-in; font-size:14px; display:flex; align-items:center; justify-content:center; line-height:1;}
   .imgbox img{cursor:zoom-in;}
   .opt img.optimg{cursor:zoom-in;}
   .lightbox{position:fixed; inset:0; background:rgba(20,12,18,.86); display:none; align-items:center; justify-content:center; z-index:9999; cursor:zoom-out;}
@@ -172,7 +175,8 @@
     .cover-photo{aspect-ratio:4/5;}
   }
   @media (max-width:480px){
-    .imgrid{grid-template-columns:repeat(2,1fr)}
+    .imgrid{grid-template-columns:1fr}
+    .imgbox img,.imgbox .ph,.opt.imgcard img.optimg{width:116px; height:116px; flex-basis:116px;}
     .hero h1{font-size:19px}
     .cover-title{font-size:32px;}
     .qr-card img{width:78px; height:78px;}
@@ -528,8 +532,9 @@ function render(){
     else if(q.type==='multisort'||q.type==='multi'){
       const ranked = q.type==='multisort';
       q.options.forEach(op=>{
-        h+=`<label class="opt" data-opt style="${op.img?'align-items:center':''}"><input type="checkbox" name="${q.id}" value="${op.id}">`;
-        if(op.img) h+=`<img class="optimg" src="${op.img}" alt="" loading="lazy">`;
+        const isImg = !!op.img;
+        h+=`<label class="opt ${isImg?'imgcard':''}" data-opt><input type="checkbox" name="${q.id}" value="${op.id}">`;
+        if(isImg) h+=`<img class="optimg" src="${op.img}" alt="" loading="lazy">`;
         h+=`<span class="txt">${T(op)}</span>`;
         if(ranked) h+=`<span class="rank hidden"><select data-rank>${Array.from({length:q.options.length},(_,k)=>`<option value="${k+1}">${k+1}</option>`).join('')}</select></span>`;
         h+=`</label>`;
