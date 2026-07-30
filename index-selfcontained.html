@@ -292,7 +292,7 @@ const SURVEY = { questions: [
       {id:"G",zh:"被伴侣/家人“懂你”——授权后提醒他们你这周负荷重",en:"Understood by partner/family — they're told you're overloaded"}
     ] },
 
-  { id:"QVOICE", type:"multisort", required:true, max:3,
+  { id:"QVOICE", type:"multisort", required:true, max:3, mutex:"G",
     label:{zh:"如果 Mira 智能戒指在监测健康的同时，还具备录音功能，你希望用它来做什么？", en:"If Mira smart ring could also record audio while tracking your health, what would you want to use it for?"},
     hint:{zh:"请选择 1–3 项并排序（1 = 你最想要的；若不需要可只选最后一项）", en:"Select 1–3 and rank (1 = most wanted; pick the last one if you don't need it)"},
     options:[
@@ -459,7 +459,7 @@ function wire(){
           assignRanks(q.id);
         }
       }
-      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
+      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name); applyMutex(cb.name);
     });
   });
   document.querySelectorAll('#survey input[type=radio]').forEach(r=>{
@@ -477,7 +477,7 @@ function wire(){
         else if(clickSeq[q.id]){ clickSeq[q.id]=clickSeq[q.id].filter(v=>v!==cb.value); }
         assignRanks(q.id);
       }
-      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name);
+      updateVisibility(); updateProgress(); clearErr(cb.name); enforceMax(cb.name); applyMutex(cb.name);
     });
   });
   document.querySelectorAll('.opttext').forEach(t=>t.addEventListener('input',()=>clearErr(t.dataset.text.split('_')[0])));
@@ -532,6 +532,30 @@ function enforceMax(qid){
     cb.disabled=atMax;
     const opt=cb.closest('[data-opt]'); if(opt) opt.classList.toggle('locked',atMax);
   });
+}
+// 互斥项：若某题设了 mutex（排他选项 id），则"排他项"与"其他项"不能同时选——
+// 选排他项时清空并禁用其他项；选任意其他项时清空并禁用排他项；都不选时全部恢复可用。
+function applyMutex(qid){
+  const q=SURVEY.questions.find(x=>x.id===qid); if(!q||!q.mutex) return;
+  const mut=q.mutex;
+  const boxes=[...document.querySelectorAll(`input[name=${qid}]`)];
+  const mutBox=boxes.find(b=>b.value===mut);
+  const otherBoxes=boxes.filter(b=>b.value!==mut);
+  const mutOn=mutBox&&mutBox.checked;
+  const otherOn=otherBoxes.some(b=>b.checked);
+  const clearBox=b=>{ if(b.checked){ b.checked=false; const o=b.closest('[data-opt]'); if(o){o.classList.remove('checked'); const r=o.querySelector('.rank'); if(r) r.classList.add('hidden');} } };
+  const lock=b=>{ b.disabled=true; const o=b.closest('[data-opt]'); if(o) o.classList.add('locked'); };
+  const unlock=b=>{ b.disabled=false; const o=b.closest('[data-opt]'); if(o) o.classList.remove('locked'); };
+  if(mutOn){
+    otherBoxes.forEach(b=>{ clearBox(b); lock(b); });
+    if(clickSeq[qid]) clickSeq[qid]=clickSeq[qid].filter(v=>v===mut);
+  } else if(otherOn){
+    if(mutBox){ clearBox(mutBox); lock(mutBox); }
+    if(clickSeq[qid]) clickSeq[qid]=clickSeq[qid].filter(v=>v!==mut);
+  } else {
+    boxes.forEach(unlock);
+  }
+  assignRanks(qid);
 }
 function showErr(qid,msg){const e=document.getElementById('err-'+qid);if(e){e.innerHTML=msg;e.style.display='block';}}
 function openLightbox(src){const lb=document.getElementById('lightbox');document.getElementById('lightboxImg').src=src;lb.classList.add('show');}
