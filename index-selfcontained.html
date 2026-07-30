@@ -718,33 +718,33 @@ function submitSurvey(){
   const c=document.getElementById('consent');
   if(c && !c.checked){ alert(document.body.classList.contains('lang-zh')?'请先勾选知情同意后再提交':'Please tick the consent box to continue'); c.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   let ok=true, firstBad=null;
-  const answers={submittedAt:new Date().toISOString(), lang:document.body.classList.contains('lang-zh')?'zh':'en'};
+  const raw={};
   SURVEY.questions.forEach(q=>{
     const card=document.getElementById('card-'+q.id); if(card.classList.contains('hidden'))return;
     if(q.type==='radio'){
       const v=getVal(q.id);
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请选择一个选项',en:'Please choose an option'}));firstBad=firstBad||q.id;}
-      else if(v)answers[q.id]=v;
+      else if(v)raw[q.id]=v;
     }
     else if(q.type==='text'){
       const v=document.querySelector(`textarea[name=${q.id}]`).value.trim();
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请填写此项',en:'Please fill this in'}));firstBad=firstBad||q.id;}
-      else if(v)answers[q.id]=v;
+      else if(v)raw[q.id]=v;
     }
     else if(q.type==='shorttext'){
       const v=document.querySelector(`input[name=${q.id}]`).value.trim();
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请填写此项',en:'Please fill this in'}));firstBad=firstBad||q.id;}
-      else if(v)answers[q.id]=v;
+      else if(v)raw[q.id]=v;
     }
     else if(q.type==='select'){
       const v=document.querySelector(`select[name=${q.id}]`).value;
       if(q.required&&!v){ok=false;showErr(q.id,T({zh:'请选择一项',en:'Please select one'}));firstBad=firstBad||q.id;}
-      else if(v)answers[q.id]=v;
+      else if(v)raw[q.id]=v;
     }
     else if(q.type==='multi'){
       const vs=[...document.querySelectorAll(`input[name=${q.id}]:checked`)].map(x=>x.value);
       if(q.required&&!vs.length){ok=false;showErr(q.id,T({zh:'请至少选择一项',en:'Pick at least one'}));firstBad=firstBad||q.id;}
-      else collectText(q,vs,answers);
+      else if(vs.length)raw[q.id]=vs;
     }
     else if(q.type==='multisort'||q.type==='imagesort'){
       const checked=[...document.querySelectorAll(`input[name=${q.id}]:checked`)];
@@ -754,11 +754,19 @@ function submitSurvey(){
       else if(checked.length>1&&new Set(ranks).size!==ranks.length){ok=false;showErr(q.id,T({zh:'排序数字不能重复',en:'Rank numbers must be unique'}));firstBad=firstBad||q.id;}
       else{
         const sorted=checked.map(x=>({id:x.value,rank:+(x.closest('[data-opt]').querySelector('[data-rank]')?.value||0)})).sort((a,b)=>a.rank-b.rank).map(o=>o.id);
-        collectText(q,sorted,answers);
+        raw[q.id]=sorted;
       }
     }
   });
   if(!ok){const el=document.getElementById('card-'+(firstBad||SURVEY.questions[0].id));if(el)el.scrollIntoView({behavior:'smooth',block:'center'});return;}
+
+  // 将"编号→代号"转换为"编号. 问题文字 → 可读答案文字"，让 formspree 邮件/表格直接可读
+  const isZh=document.body.classList.contains('lang-zh');
+  const answers={ submittedAt:new Date().toISOString(), lang:isZh?'zh':'en' };
+  SURVEY.questions.forEach(q=>{
+    if(!(q.id in raw)) return;
+    answers[`${q.id}. ${isZh?q.label.zh:q.label.en}`]=formatAnswer(q, raw[q.id], isZh);
+  });
 
   const payload={survey:"Mira Smart Ring", answers};
   if(FORMSPREE_ENDPOINT){
@@ -769,11 +777,21 @@ function submitSurvey(){
     showDone(payload,false);
   }
 }
-function collectText(q,ids,answers){
-  answers[q.id]=ids;
-  q.options.filter(o=>o.hasText&&ids.includes(o.id)).forEach(o=>{
-    const t=document.querySelector(`[data-text="${q.id}_${o.id}"]`); if(t&&t.value.trim()) answers[q.id+'_'+o.id+'_text']=t.value.trim();
-  });
+function formatAnswer(q, val, isZh){
+  const tx=(o)=> isZh? o.zh : o.en;
+  const sep= isZh? '、' : ', ';
+  if(q.type==='text'||q.type==='shorttext') return val||'';
+  if(q.type==='radio'||q.type==='select'){
+    const op=q.options.find(o=>o.id===val); return op?tx(op):(val||'');
+  }
+  if(Array.isArray(val)){
+    return val.map(id=>{
+      const op=q.options.find(o=>o.id===id); let s=op?tx(op):id;
+      if(op&&op.hasText){ const t=document.querySelector(`[data-text="${q.id}_${id}"]`); if(t&&t.value.trim()) s+= isZh? `：${t.value.trim()}` : `: ${t.value.trim()}`; }
+      return s;
+    }).join(sep);
+  }
+  return val==null?'':String(val);
 }
 function showDone(payload,sent){
   const box=document.getElementById('result');
