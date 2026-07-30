@@ -1,0 +1,5 @@
+# macOS system files
+.DS_Store
+
+# Generated cover export (reproducible via screenshot script)
+mira-cover-design.png
