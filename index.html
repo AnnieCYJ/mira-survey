@@ -290,16 +290,16 @@ const SURVEY = { questions: [
 
   { id:"QSEX", type:"radio", required:true,
     label:{zh:"想先了解一下你的性别——这样我们能为你给出更贴心的建议：", en:"We'd love to know your gender so we can tailor our guidance to you:"},
-    hint:{zh:"本产品面向女性周期与情绪压力；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mood; if you identify as male / non-binary, you're still welcome to answer from a partner or gift-giver view."},
+    hint:{zh:"本产品面向女性周期与情绪压力；男性 / 非二元朋友若以伴侣或赠礼视角填写，同样欢迎。", en:"This product is built for women's cycle & mood; if you're male / non-binary, you're still welcome to answer from a partner's or gift-giver's perspective."},
     options:[{id:"A",zh:"女",en:"Female"},{id:"B",zh:"男",en:"Male"},{id:"C",zh:"非二元 / 其他",en:"Non-binary / Other"},{id:"D",zh:"不愿透露",en:"Prefer not to say"}] },
 
   { id:"Q1b", type:"radio", required:true,
     label:{zh:"你是替谁了解这款产品？", en:"Who are you exploring Mira for?"},
-    hint:{zh:"（男性 / 非二元朋友请选一项）", en:"(For male / non-binary friends — pick one)"},
+    hint:{zh:"（男性 / 非二元朋友请选一项）", en:"(For men / non-binary friends — pick one)"},
     showIf:{q:"QSEX", in:["B","C"]},
     options:[
       {id:"A",zh:"替我的伴侣（女友/妻子）了解或挑选",en:"For my partner (girlfriend/wife)"},
-      {id:"B",zh:"替女性亲友（妈妈/姐妹/朋友）挑礼物",en:"As a gift for a female friend/relative"},
+      {id:"B",zh:"替女性亲友（妈妈/姐妹/朋友）挑礼物",en:"As a gift for a woman in my life (mom, sister, friend)"},
       {id:"C",zh:"做行业 / 投资调研",en:"Industry / investment research"},
       {id:"D",zh:"单纯好奇",en:"Just curious"},
       {id:"E",zh:"其他",en:"Other", hasText:true}
@@ -319,7 +319,7 @@ const SURVEY = { questions: [
     ] },
 
   { id:"Q2", type:"radio", required:true,
-    label:{zh:"你的年龄段是？", en:"Your age range?"},
+    label:{zh:"你的年龄段是？", en:"What's your age range?"},
     options:[{id:"A",zh:"20岁以下",en:"Under 20"},{id:"B",zh:"20–24岁",en:"20–24"},{id:"C",zh:"25–29岁",en:"25–29"},{id:"D",zh:"30–34岁",en:"30–34"},{id:"E",zh:"35–39岁",en:"35–39"},{id:"F",zh:"40–44岁",en:"40–44"},{id:"G",zh:"45岁及以上",en:"45+"},{id:"H",zh:"不愿透露",en:"Prefer not to say"}] },
 
   { id:"Q3", type:"radio", required:true,
@@ -329,96 +329,96 @@ const SURVEY = { questions: [
   { id:"Q4", type:"radio", required:true,
     showIf:{q:"Q3", eq:"yes"},
     label:{zh:"你佩戴的频率是怎样的？", en:"How often do you wear it?"},
-    options:[{id:"A",zh:"正在使用（几乎每天戴）",en:"Use it daily"},{id:"B",zh:"偶尔戴一下",en:"Occasionally"},{id:"C",zh:"买过但闲置了",en:"Bought but now unused"},{id:"D",zh:"从未买过",en:"Never bought one"}] },
+    options:[{id:"A",zh:"正在使用（几乎每天戴）",en:"Wear it daily"},{id:"B",zh:"偶尔戴一下",en:"Occasionally"},{id:"C",zh:"买过但闲置了",en:"Bought but now unused"},{id:"D",zh:"从未买过",en:"Never bought one"}] },
 
   { id:"Q5", type:"multisort", required:true, max:3,
-    label:{zh:"方便告诉我们闲置的主要原因是？", en:"If unused, what were the main reasons? (pick 1–3 & rank)"},
-    hint:{zh:"请选择 1–3 项并排序（1 = 最主要）", en:"Select 1–3 and rank (1 = most important)"},
+    label:{zh:"方便告诉我们闲置的主要原因是？", en:"If you've stopped wearing it, what were the main reasons? (pick 1–3 & rank)"},
+    hint:{zh:"请选择 1–3 项并排序（1 = 最主要）", en:"Select up to 3 and rank (1 = most important)"},
     showIf:{q:"Q4", in:["B","C"]},
     options:[
-      {id:"A",zh:"佩戴不舒服（太重、硌手、影响洗手/睡觉）",en:"Uncomfortable (heavy, irritating, affects washing/sleeping)"},
+      {id:"A",zh:"佩戴不舒服（太重、硌手、影响洗手/睡觉）",en:"Uncomfortable — too heavy, or gets in the way of washing up / sleep"},
       {id:"B",zh:"续航太差，频繁充电太麻烦",en:"Poor battery, frequent charging is a hassle"},
-      {id:"C",zh:"数据看了几次就没用了，缺乏持续价值",en:"Data lost value after a few looks"},
-      {id:"D",zh:"推送太多，被打扰得心烦",en:"Too many notifications, felt disturbed"},
-      {id:"E",zh:"App 操作复杂，懒得同步",en:"App is complicated, lazy to sync"},
+      {id:"C",zh:"数据看了几次就没用了，缺乏持续价值",en:"The data stopped being useful after a while"},
+      {id:"D",zh:"推送太多，被打扰得心烦",en:"Too many notifications — became annoying"},
+      {id:"E",zh:"App 操作复杂，懒得同步",en:"App is clunky — too much hassle to sync"},
       {id:"F",zh:"其他（请简述）",en:"Other (please specify)", hasText:true}
     ] },
 
   { id:"Q6", type:"radio", required:true,
     label:{zh:"购买 Mira 智能戒指时，你更看重哪方面？", en:"When buying Mira smart ring, what matters more to you?"},
-    options:[{id:"A",zh:"首先是高级首饰（外观），健康功能是加分项",en:"Jewelry first (looks); health is a bonus"},{id:"B",zh:"外观和功能同样重要，缺一不可",en:"Looks and function equally important"},{id:"C",zh:"首先是健康监测工具，外观好看就行",en:"Health tool first; looks-nice is enough"}] },
+    options:[{id:"A",zh:"首先是高级首饰（外观），健康功能是加分项",en:"Looks first — health is a bonus"},{id:"B",zh:"外观和功能同样重要，缺一不可",en:"Looks and function equally important"},{id:"C",zh:"首先是健康监测工具，外观好看就行",en:"Function first — as long as it looks decent"}] },
 
   { id:"Q7", type:"multisort", required:true, max:3,
-    label:{zh:"你希望 Mira 智能戒指提供哪些帮助？（请选出真正重要的选项，并按重要程度排序）", en:"What help do you want from Mira smart ring? (pick the ones that truly matter & rank)"},
-    hint:{zh:"请选择 1–3 项并排序（第1项最核心）", en:"Select 1–3 and rank (1 = most core)"},
+    label:{zh:"你希望 Mira 智能戒指提供哪些帮助？（请选出真正重要的选项，并按重要程度排序）", en:"What do you most want Mira to help with? (pick up to 3 & rank)"},
+    hint:{zh:"请选择 1–3 项并排序（第1项最核心）", en:"Select up to 3 and rank (1 = top priority)"},
     options:[
       {id:"A",zh:"身体活力与睡眠（精力管理、睡眠质量、身体恢复度）",en:"Body energy & sleep (energy, sleep quality, recovery)"},
-      {id:"B",zh:"情绪与压力（情绪波动识别、压力疏解）",en:"Emotion & stress (mood detection, stress relief)"},
+      {id:"B",zh:"情绪与压力（情绪波动识别、压力疏解）",en:"Mood & stress (mood tracking, stress relief)"},
       {id:"C",zh:"生理周期（经期预测、排卵期、备孕、PMS关怀）",en:"Cycle (period prediction, ovulation, TTC, PMS care)"},
       {id:"D",zh:"安全守护（SOS、位置分享、异常检测）",en:"Safety (SOS, location sharing, anomaly detection)"},
-      {id:"E",zh:"社交连接（情侣/闺蜜互动、家人关怀）",en:"Social connection (partner/bestie interaction, family care)"},
-      {id:"F",zh:"健康认知与科普（数据白话解读、身体节律知识、异常就医提醒）",en:"Health literacy (plain-data, body-rhythm knowledge, see-a-doctor alerts)"},
-      {id:"G",zh:"AI健康教练（情绪引导对话、微习惯养成、正念练习工具）",en:"AI health coach (empathy chat, micro-habits, mindfulness)"}
+      {id:"E",zh:"社交连接（情侣/闺蜜互动、家人关怀）",en:"Staying connected (with partner/friends, family check-ins)"},
+      {id:"F",zh:"健康认知与科普（数据白话解读、身体节律知识、异常就医提醒）",en:"Understanding your health (plain-language data, body-rhythm know-how, when to see a doctor)"},
+      {id:"G",zh:"AI健康教练（情绪引导对话、微习惯养成、正念练习工具）",en:"AI health coach (empathetic chats, micro-habits, mindfulness)"}
     ] },
 
   { id:"Q8", type:"multisort", required:true, max:3,
-    label:{zh:"在「身体活力与睡眠」方面，你关注哪些具体功能？", en:"Under energy & sleep, which features do you care about?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「身体活力与睡眠」方面，你关注哪些具体功能？", en:"For energy & sleep, which features matter to you?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["A"]},
     options:[{id:"A",zh:"精力管理（低精力时提醒放慢节奏）",en:"Energy management (slow down when low)"},{id:"B",zh:"睡眠质量评分与改善建议",en:"Sleep score & tips"},{id:"C",zh:"深睡、浅睡、REM 阶段拆解",en:"Deep/light/REM breakdown"},{id:"D",zh:"夜间身体恢复度",en:"Overnight recovery"},{id:"E",zh:"久坐提醒与运动建议",en:"Sedentary & workout nudges"}] },
 
   { id:"Q9", type:"multisort", required:true, max:3,
-    label:{zh:"在「情绪与压力」方面，你关注哪些具体功能？", en:"Under emotion & stress, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「情绪与压力」方面，你关注哪些具体功能？", en:"For mood & stress, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["B"]},
-    options:[{id:"A",zh:"经前情绪波动的温柔接住",en:"Gentle catch for pre-period mood swings"},{id:"B",zh:"压力高时的放松引导（呼吸练习、正念）",en:"Relaxation when stressed (breathing, mindfulness)"},{id:"C",zh:"烦躁时的一句安慰或鼓励",en:"A comforting word when irritable"}] },
+    options:[{id:"A",zh:"经前情绪波动的温柔接住",en:"Gentle support during pre-period mood swings"},{id:"B",zh:"压力高时的放松引导（呼吸练习、正念）",en:"Relaxation when stressed (breathing, mindfulness)"},{id:"C",zh:"烦躁时的一句安慰或鼓励",en:"A comforting word when irritable"}] },
 
   { id:"Q10", type:"multisort", required:true, max:3,
-    label:{zh:"在「生理周期」方面，你关注哪些具体功能？", en:"Under cycle, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「生理周期」方面，你关注哪些具体功能？", en:"For your cycle, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{all:[{q:"Q7",includes:["C"]},{q:"QSEX",eq:"A"}]},
     options:[{id:"A",zh:"经期预测与到来提醒",en:"Period prediction & arrival alert"},{id:"B",zh:"排卵期、备孕窗口提示",en:"Ovulation / fertile-window hints"},{id:"C",zh:"经前综合征（PMS）关怀",en:"PMS care"},{id:"D",zh:"周期与情绪、精力的关联解读",en:"Cycle ↔ mood/energy insights"},{id:"E",zh:"痛经、身体不适记录",en:"Cramps & discomfort logging"}] },
 
   { id:"Q11", type:"multisort", required:true, max:3,
-    label:{zh:"在「安全守护」方面，你关注哪些具体功能？", en:"Under safety, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「安全守护」方面，你关注哪些具体功能？", en:"For safety, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["D"]},
     options:[{id:"A",zh:"一键 SOS 联系紧急人",en:"One-tap SOS to emergency contact"},{id:"B",zh:"夜跑、夜路位置实时分享",en:"Live location share (night run/walk)"},{id:"C",zh:"异常心率自动报警",en:"Auto alert on abnormal heart rate"},{id:"D",zh:"跌倒、意外检测",en:"Fall / accident detection"},{id:"E",zh:"安全区域提醒",en:"Safe-zone alerts"}] },
 
   { id:"Q12", type:"multisort", required:true, max:3,
-    label:{zh:"在「社交连接」方面，你关注哪些具体功能？", en:"Under social connection, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「社交连接」方面，你关注哪些具体功能？", en:"For staying connected, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["E"]},
     options:[{id:"A",zh:"情侣戒指互动（双方状态互通）",en:"Couple rings (shared status)"},{id:"B",zh:"向伴侣推送“她今天需要被照顾”的提示",en:"Nudge partner: 'she needs care today'"},{id:"C",zh:"闺蜜、好友状态分享",en:"Bestie / friend status sharing"},{id:"D",zh:"家人关怀提醒",en:"Family care reminders"}] },
 
   { id:"Q13", type:"multisort", required:true, max:3,
-    label:{zh:"在「健康认知与科普」方面，你关注哪些具体功能？", en:"Under health literacy, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「健康认知与科普」方面，你关注哪些具体功能？", en:"For understanding your health, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["F"]},
     options:[{id:"A",zh:"健康数据白话解读",en:"Plain-language data explainer"},{id:"B",zh:"身体节律科普",en:"Body-rhythm science"},{id:"C",zh:"个性化健康月报",en:"Personalized monthly report"},{id:"D",zh:"异常指标提醒与就医建议",en:"Anomaly alerts & see-a-doctor advice"},{id:"E",zh:"与同龄人对比",en:"Peer comparison"}] },
 
   { id:"Q14", type:"multisort", required:true, max:3,
-    label:{zh:"在「AI 健康教练」方面，你关注哪些具体功能？", en:"Under AI health coach, which features?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    label:{zh:"在「AI 健康教练」方面，你关注哪些具体功能？", en:"For AI coaching, which features?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q7", includes:["G"]},
     options:[{id:"A",zh:"AI 对话式情绪引导",en:"Conversational AI mood guidance"},{id:"B",zh:"正念练习工具（呼吸、冥想、番茄钟）",en:"Mindfulness tools (breath, meditation, pomodoro)"},{id:"C",zh:"情绪记录与洞察",en:"Mood logging & insights"},{id:"D",zh:"匿名社区",en:"Anonymous community"}] },
 
   { id:"Q15", type:"multisort", required:true, max:3,
     label:{zh:"下面哪些场景最让你有共鸣？并按重要程度排序", en:"Which scenes resonate with you most? Rank them"},
-    hint:{zh:"请选择 1–3 项并排序（第1项最戳中你）", en:"Select 1–3 and rank (1 = most resonant)"},
+    hint:{zh:"请选择 1–3 项并排序（第1项最戳中你）", en:"Select up to 3 and rank (1 = most relatable)"},
     options:[
-      {id:"A",zh:"经期前后被接住——提前知道生理期将至，并理解你经期前的疲惫",en:"Caught before period — know it's coming & why you're tired"},
-      {id:"B",zh:"身体信号被持续看见——压力导致的冒痘、肩酸被积累提醒",en:"Body signals seen — stress acne/shoulder pain flagged before burnout"},
-      {id:"C",zh:"AI闺蜜在身边——懂你的角色陪伴，像朋友一样接住情绪",en:"AI bestie — an understanding companion who catches your mood"},
-      {id:"D",zh:"小改变立刻被看见——早睡20分钟就收到正向反馈",en:"Small change seen — praise for sleeping 20min earlier"},
-      {id:"E",zh:"周期帮你规划生活——把周期从忍受变成利用",en:"Cycle plans your life — from enduring to leveraging it"},
+      {id:"A",zh:"经期前后被接住——提前知道生理期将至，并理解你经期前的疲惫",en:"Know your period's coming — and why you're so wiped out"},
+      {id:"B",zh:"身体信号被持续看见——压力导致的冒痘、肩酸被积累提醒",en:"Body signals noticed — stress breakouts / shoulder tension flagged before burnout"},
+      {id:"C",zh:"AI闺蜜在身边——懂你的角色陪伴，像朋友一样接住情绪",en:"An AI bestie — a companion who just gets your mood"},
+      {id:"D",zh:"小改变立刻被看见——早睡20分钟就收到正向反馈",en:"Small wins noticed — a cheer when you sleep 20 min earlier"},
+      {id:"E",zh:"周期帮你规划生活——把周期从忍受变成利用",en:"Your cycle as a planning tool — turn it from a burden into an edge"},
       {id:"F",zh:"安全守护——独居或夜跑时轻度守护，异常悄悄通知紧急人",en:"Safety — light guard when alone/night-running, silent SOS"},
       {id:"G",zh:"被伴侣/家人“懂你”——授权后提醒他们你这周负荷重",en:"Understood by partner/family — they're told you're overloaded"}
     ] },
 
   { id:"QVOICE", type:"multisort", required:true, max:3, mutex:"G",
     label:{zh:"如果 Mira 智能戒指在监测健康的同时，还具备录音功能，你希望用它来做什么？", en:"If Mira smart ring could also record audio while tracking your health, what would you want to use it for?"},
-    hint:{zh:"请选择 1–3 项并排序（1 = 你最想要的；若不需要可只选最后一项）", en:"Select 1–3 and rank (1 = most wanted; pick the last one if you don't need it)"},
+    hint:{zh:"请选择 1–3 项并排序（1 = 你最想要的；若不需要可只选最后一项）", en:"Select up to 3 and rank (1 = most wanted; pick the last one if you don't need it)"},
     options:[
       {id:"A",zh:"主动录音，随时记录碎碎念 / 灵感",en:"Actively record — capture random thoughts / ideas anytime"},
       {id:"B",zh:"被动智能捕捉，自动感知并记录情绪与状态变化",en:"Passive auto-capture of mood & state changes"},
@@ -450,11 +450,11 @@ const SURVEY = { questions: [
 
   { id:"Q20", type:"multisort", required:true, max:3,
     label:{zh:"你设想中 Mira 以什么形象陪伴你？", en:"What form should Mira take as your companion?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
-    options:[{id:"A",zh:"治愈系小动物",en:"Healing little animal", img:"assets/mascot-animal.jpg"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars", img:"assets/mascot-moon.jpg"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol", img:"assets/mascot-geo.jpg"},{id:"F",zh:"温柔的光球、能量体",en:"Soft light orb / energy body", img:"assets/mascot-blob.jpg"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression", img:"assets/mascot-round-faces.jpg"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
+    options:[{id:"A",zh:"治愈系小动物",en:"A soothing little creature", img:"assets/mascot-animal.jpg"},{id:"B",zh:"温柔的月亮、星星",en:"Gentle moon & stars", img:"assets/mascot-moon.jpg"},{id:"E",zh:"极简几何符号",en:"Minimalist geometric symbol", img:"assets/mascot-geo.jpg"},{id:"F",zh:"温柔的光球、能量体",en:"Soft glowing orb / energy form", img:"assets/mascot-blob.jpg"},{id:"G",zh:"气球可爱表情",en:"Cute balloon expression", img:"assets/mascot-round-faces.jpg"},{id:"H",zh:"其他",en:"Other", hasText:true}] },
 
   { id:"Q21", type:"text", required:true,
-    label:{zh:"可以和我分享一下你喜欢的原因吗？（简洁大气、可爱、有能量、科技感等）", en:"Why do you like it? (clean & elegant, cute, energetic, tech-feel…)"} },
+    label:{zh:"可以和我分享一下你喜欢的原因吗？（简洁大气、可爱、有能量、科技感等）", en:"Why do you like it? (clean & elegant, cute, energetic, techy…)"} },
 
   { id:"Q22", type:"radio", required:true,
     label:{zh:"结合 Mira 的设计质感与健康功能，你最能接受的单件售价是？", en:"Given its design & features, the price you'd accept for one ring?"},
@@ -462,14 +462,14 @@ const SURVEY = { questions: [
 
   { id:"Q23", type:"radio", required:true,
     label:{zh:"如果为了提升服务，Mira 智能戒指提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira smart ring offered a "hardware + subscription" plan, which would you choose?'},
-    options:[{id:"A",zh:"愿意，好功能值得付费",en:"Willing — good features worth paying"},{id:"B",zh:"不愿意，讨厌持续付费，宁愿一次性买断",en:"Unwilling — hate recurring fees, prefer one-time"},{id:"C",zh:"不确定，要看订阅包含的具体内容再决定",en:"Undecided — depends on what's included"}] },
+    options:[{id:"A",zh:"愿意，好功能值得付费",en:"Willing — good features are worth paying for"},{id:"B",zh:"不愿意，讨厌持续付费，宁愿一次性买断",en:"Unwilling — hate recurring fees, prefer one-time"},{id:"C",zh:"不确定，要看订阅包含的具体内容再决定",en:"Undecided — depends on what's included"}] },
 
   { id:"Q24", type:"multisort", required:true, max:3,
     label:{zh:"假设 Mira 智能戒指的外观已经像高级首饰一样美，你犹豫是否购买的主要原因是？", en:"If Mira smart ring already looks like fine jewelry, why would you still hesitate to buy?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"QSEX", eq:"A"},
     options:[
-      {id:"A",zh:"佩戴不适——太重、太硌手，或影响洗手/洗澡",en:"Discomfort — heavy/irritating, affects washing"},
+      {id:"A",zh:"佩戴不适——太重、太硌手，或影响洗手/洗澡",en:"Discomfort — too heavy or gets in the way of washing up"},
       {id:"B",zh:"续航焦虑——电池不耐用，需频繁充电",en:"Battery anxiety — frequent charging"},
       {id:"C",zh:"数据鸡肋——不准确或看了没用",en:"Useless data — inaccurate or impractical"},
       {id:"D",zh:"怕被打扰——推送太多反而心烦",en:"Notification fatigue — too many alerts"},
@@ -486,7 +486,7 @@ const SURVEY = { questions: [
 
   { id:"Q26", type:"multisort", required:true, max:3,
     label:{zh:"如果会买，最吸引你的是什么？", en:"If you'd buy it, what attracts you most?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select 1–3 and rank"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
     showIf:{q:"Q25", in:["A","B","C","D"]},
     options:[{id:"A",zh:"好看，像首饰",en:"Beautiful, like jewelry"},{id:"B",zh:"关心她的健康状态",en:"Caring for her health"},{id:"C",zh:"情绪陪伴功能",en:"Emotional companionship"},{id:"D",zh:"生理周期管理",en:"Cycle tracking"},{id:"E",zh:"安全守护",en:"Safety / guardian"},{id:"F",zh:"作为节日/纪念日礼物，兼具仪式感和实用性",en:"Gift with ritual + practical value"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
 
@@ -494,7 +494,7 @@ const SURVEY = { questions: [
     label:{zh:"你不太考虑购买的主要原因是？", en:"Your main reasons for not considering it?"},
     hint:{zh:"请选择 1–3 项", en:"Select up to 3"},
     showIf:{q:"Q25", in:["B","C","D","E"]},
-    options:[{id:"A",zh:"价格太贵，性价比不高",en:"Too expensive / poor value"},{id:"B",zh:"担心她不喜欢/不戴（闲置率高）",en:"She may not like/wear it"},{id:"C",zh:"担心涉及隐私，她会介意",en:"Privacy concern on her side"},{id:"D",zh:"觉得没必要，手机也能看健康数据",en:"Unnecessary — phone shows health data"},{id:"E",zh:"担心她戴不惯/嫌麻烦",en:"She may find it fussy"},{id:"F",zh:"不知道选哪个款式/尺寸，怕买错",en:"Unsure of style/size, fear wrong pick"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
+    options:[{id:"A",zh:"价格太贵，性价比不高",en:"Too expensive / poor value"},{id:"B",zh:"担心她不喜欢/不戴（闲置率高）",en:"She may not like/wear it"},{id:"C",zh:"担心涉及隐私，她会介意",en:"Privacy concern on her side"},{id:"D",zh:"觉得没必要，手机也能看健康数据",en:"Unnecessary — phone shows health data"},{id:"E",zh:"担心她戴不惯/嫌麻烦",en:"She may find it fussy"},{id:"F",zh:"不知道选哪个款式/尺寸，怕买错",en:"Not sure about style/size — afraid to pick wrong"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
 
   { id:"Q28", type:"text", required:true,
     label:{zh:"其他任何你想对 Mira 智能戒指说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira smart ring? (your ideal ring, design details you care about, feature ideas…)"} },
