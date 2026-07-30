@@ -293,8 +293,8 @@ const SURVEY = { questions: [
     ] },
 
   { id:"QVOICE", type:"multisort", required:true, max:3,
-    label:{zh:"Mira 智能戒指可以主动或被动录音，记录你的情绪、碎碎念、高光与低谷时刻，并自动生成生活日记、挖掘生活里的美好瞬间。你最希望它具备哪些录音相关的能力？", en:"Mira smart ring can record actively or passively — capturing your moods, random thoughts, and what you're doing at your highs and lows — then turn it into a life diary and surface the beautiful moments. Which recording-related abilities would you most want?"},
-    hint:{zh:"请选择 1–3 项并排序（1 = 你最想要的）", en:"Select 1–3 and rank (1 = most wanted)"},
+    label:{zh:"如果 Mira 智能戒指在监测健康的同时，还具备录音功能，你希望用它来做什么？", en:"If Mira smart ring could also record audio while tracking your health, what would you want to use it for?"},
+    hint:{zh:"请选择 1–3 项并排序（1 = 你最想要的；若不需要可只选最后一项）", en:"Select 1–3 and rank (1 = most wanted; pick the last one if you don't need it)"},
     options:[
       {id:"A",zh:"主动录音，随时记录碎碎念 / 灵感",en:"Actively record — capture random thoughts / ideas anytime"},
       {id:"B",zh:"被动智能捕捉，自动感知并记录情绪与状态变化",en:"Passive auto-capture of mood & state changes"},
@@ -302,7 +302,8 @@ const SURVEY = { questions: [
       {id:"D",zh:"生成每日 / 每周生活日记",en:"Generate a daily / weekly life diary"},
       {id:"E",zh:"挖掘并主动提醒生活中的美好瞬间",en:"Mine & remind you of beautiful life moments"},
       {id:"F",zh:"帮我更懂自己，给出温柔的自我洞察",en:"Help me understand myself with gentle insights"},
-      {id:"G",zh:"隐私优先：录音仅本地处理、随时可彻底删除",en:"Privacy-first: on-device only, fully deletable anytime"}
+      {id:"G",zh:"隐私优先：录音仅本地处理、随时可彻底删除",en:"Privacy-first: on-device only, fully deletable anytime"},
+      {id:"H",zh:"不需要这个功能",en:"Don't need this feature"}
     ] },
 
   { id:"Q16", type:"radio", required:true,
