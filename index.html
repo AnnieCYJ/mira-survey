@@ -748,15 +748,10 @@ function collectText(q,ids,answers){
   });
 }
 function showDone(payload,sent){
-  const box=document.getElementById('result'); const json=JSON.stringify(payload,null,2);
+  const box=document.getElementById('result');
   box.classList.remove('hidden');
-  box.innerHTML=`<div class="done"><h2>${T({zh:'✅ 提交成功，感谢您的参与！',en:'✅ Submitted — thank you!'})}</h2>
-  <p style="color:var(--muted);font-size:14px;margin:0 0 12px">${
-    sent?T({zh:'您的回答已通过 Formspree 发送。',en:'Your response was sent via Formspree.'}):
-    T({zh:'本问卷尚未接入服务器，请下载/复制您的回答并发回给调研方。',en:'This form is not linked to a server yet — please download/copy your answer and send it back.'})}</p>
-  <pre id="out">${json}</pre>
-  <div class="row"><button class="primary" onclick="downloadAnswer()">${T({zh:'下载我的回答 (JSON)',en:'Download my answer (JSON)'})}</button>
-  <button onclick="copyAnswer()">${T({zh:'复制回答内容',en:'Copy answer text'})}</button></div></div>`;
+  box.innerHTML=`<div class="done"><h2>${T({zh:'✅ 提交成功，感谢您的参与！',en:'✅ Submitted — thank you!'})}</h2></div>`;
+  const sub=document.querySelector('.submit'); if(sub) sub.classList.add('hidden');
   box.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function downloadAnswer(){const t=document.getElementById('out').textContent;const b=new Blob([t],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mira-survey-'+Date.now()+'.json';a.click();}
