@@ -560,7 +560,7 @@ function render(){
         } else {
           const img = Q18_IMAGES[idx]||"";
           const cap = op.cap ? `<div class="caption"><span class="zh">${op.cap.zh}</span><span class="en">${op.cap.en}</span></div>` : "";
-          h+=`<div class="imgbox" data-opt data-val="${op.id}"><div class="imgwrap"><span class="tag">${op.id}</span>${img?`<img src="${img}" alt="style ${op.id}">`:`<span class="ph">${op.id}<br><span class="zh">风格图待替换</span><span class="en">image TBD</span></span>`}</div>${cap}<input type="checkbox" name="${q.id}" value="${op.id}" hidden></div>`;
+          h+=`<div class="imgbox" data-opt data-val="${op.id}"><div class="imgwrap"><span class="tag">${op.id}</span>${img?`<img src="${img}" alt="style ${op.id}" loading="lazy" decoding="async">`:`<span class="ph">${op.id}<br><span class="zh">风格图待替换</span><span class="en">image TBD</span></span>`}</div>${cap}<input type="checkbox" name="${q.id}" value="${op.id}" hidden></div>`;
         }
       });
       h+=`</div>`;
