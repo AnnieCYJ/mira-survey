@@ -306,6 +306,23 @@ const SURVEY = { questions: [
       {id:"E",zh:"其他",en:"Other", hasText:true}
     ] },
 
+  { id:"Q25", type:"radio", required:true,
+    label:{zh:"你会考虑购买 Mira 智能戒指送给身边的女性（伴侣/家人/朋友）吗？", en:"Would you buy Mira smart ring as a gift for a woman in your life?"},
+    showIf:{q:"QSEX", in:["B","C"]},
+    options:[{id:"A",zh:"一定会买",en:"Definitely"},{id:"B",zh:"可能会买",en:"Probably"},{id:"C",zh:"不确定",en:"Undecided"},{id:"D",zh:"可能不会",en:"Probably not"},{id:"E",zh:"一定不会",en:"Not at all"}] },
+
+  { id:"Q26", type:"multisort", required:true, max:3,
+    label:{zh:"如果会买，最吸引你的是什么？", en:"If you'd buy it, what attracts you most?"},
+    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
+    showIf:{q:"Q25", in:["A","B","C","D"]},
+    options:[{id:"A",zh:"好看，像首饰",en:"Beautiful, like jewelry"},{id:"B",zh:"关心她的健康状态",en:"Caring for her health"},{id:"C",zh:"情绪陪伴功能",en:"Emotional companionship"},{id:"D",zh:"生理周期管理",en:"Cycle tracking"},{id:"E",zh:"安全守护",en:"Safety / guardian"},{id:"F",zh:"作为节日/纪念日礼物，兼具仪式感和实用性",en:"Gift with ritual + practical value"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
+
+  { id:"Q27", type:"multi", required:true, max:3,
+    label:{zh:"你不太考虑购买的主要原因是？", en:"Your main reasons for not considering it?"},
+    hint:{zh:"请选择 1–3 项", en:"Select up to 3"},
+    showIf:{q:"Q25", in:["B","C","D","E"]},
+    options:[{id:"A",zh:"价格太贵，性价比不高",en:"Too expensive / poor value"},{id:"B",zh:"担心她不喜欢/不戴（闲置率高）",en:"She may not like/wear it"},{id:"C",zh:"担心涉及隐私，她会介意",en:"Privacy concern on her side"},{id:"D",zh:"觉得没必要，手机也能看健康数据",en:"Unnecessary — phone shows health data"},{id:"E",zh:"担心她戴不惯/嫌麻烦",en:"She may find it fussy"},{id:"F",zh:"不知道选哪个款式/尺寸，怕买错",en:"Not sure about style/size — afraid to pick wrong"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
+
   { id:"QN", type:"select", required:true,
     label:{zh:"你来自哪个国家或地区？", en:"Which country or region are you from?"},
     hint:{zh:"选填，帮助我们做区域对比", en:"Optional — helps us compare by region"},
