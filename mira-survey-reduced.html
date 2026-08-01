@@ -323,32 +323,6 @@ const SURVEY = { questions: [
     label:{zh:"你的年龄段是？", en:"What's your age range?"},
     options:[{id:"A",zh:"20岁以下",en:"Under 20"},{id:"B",zh:"20–24岁",en:"20–24"},{id:"C",zh:"25–29岁",en:"25–29"},{id:"D",zh:"30–34岁",en:"30–34"},{id:"E",zh:"35–39岁",en:"35–39"},{id:"F",zh:"40–44岁",en:"40–44"},{id:"G",zh:"45岁及以上",en:"45+"},{id:"H",zh:"不愿透露",en:"Prefer not to say"}] },
 
-  { id:"Q3", type:"radio", required:true,
-    label:{zh:"你目前是否拥有智能手表 / 手环 / 戒指（如 Apple Watch、Oura、Fitbit 等）？", en:"Do you currently own a smartwatch / band / ring (e.g. Apple Watch, Oura, Fitbit)?"},
-    options:[{id:"yes",zh:"是",en:"Yes"},{id:"no",zh:"否",en:"No"}] },
-
-  { id:"Q4", type:"radio", required:true,
-    showIf:{q:"Q3", eq:"yes"},
-    label:{zh:"你佩戴的频率是怎样的？", en:"How often do you wear it?"},
-    options:[{id:"A",zh:"正在使用（几乎每天戴）",en:"Wear it daily"},{id:"B",zh:"偶尔戴一下",en:"Occasionally"},{id:"C",zh:"买过但闲置了",en:"Bought but now unused"},{id:"D",zh:"从未买过",en:"Never bought one"}] },
-
-  { id:"Q5", type:"multisort", required:true, max:3,
-    label:{zh:"方便告诉我们闲置的主要原因是？", en:"If you've stopped wearing it, what were the main reasons? (pick 1–3 & rank)"},
-    hint:{zh:"请选择 1–3 项并排序（1 = 最主要）", en:"Select up to 3 and rank (1 = most important)"},
-    showIf:{q:"Q4", in:["B","C"]},
-    options:[
-      {id:"A",zh:"佩戴不舒服（太重、硌手、影响洗手/睡觉）",en:"Uncomfortable — too heavy, or gets in the way of washing up / sleep"},
-      {id:"B",zh:"续航太差，频繁充电太麻烦",en:"Poor battery, frequent charging is a hassle"},
-      {id:"C",zh:"数据看了几次就没用了，缺乏持续价值",en:"The data stopped being useful after a while"},
-      {id:"D",zh:"推送太多，被打扰得心烦",en:"Too many notifications — became annoying"},
-      {id:"E",zh:"App 操作复杂，懒得同步",en:"App is clunky — too much hassle to sync"},
-      {id:"F",zh:"其他（请简述）",en:"Other (please specify)", hasText:true}
-    ] },
-
-  { id:"Q6", type:"radio", required:true,
-    label:{zh:"购买 Mira 智能戒指时，你更看重哪方面？", en:"When buying Mira smart ring, what matters more to you?"},
-    options:[{id:"A",zh:"首先是高级首饰（外观），健康功能是加分项",en:"Looks first — health is a bonus"},{id:"B",zh:"外观和功能同样重要，缺一不可",en:"Looks and function equally important"},{id:"C",zh:"首先是健康监测工具，外观好看就行",en:"Function first — as long as it looks decent"}] },
-
   { id:"Q7", type:"multisort", required:true, max:3,
     label:{zh:"你希望 Mira 智能戒指提供哪些帮助？（请选出真正重要的选项，并按重要程度排序）", en:"What do you most want Mira to help with? (pick up to 3 & rank)"},
     hint:{zh:"请选择 1–3 项并排序（第1项最核心）", en:"Select up to 3 and rank (1 = top priority)"},
@@ -434,10 +408,6 @@ const SURVEY = { questions: [
     label:{zh:"如果 Mira 智能戒指只能提供一种反馈方式，你更倾向哪一种？", en:"If Mira smart ring could only give ONE kind of feedback, which do you prefer?"},
     options:[{id:"A",zh:"每天主动推送一句鼓励或提醒（像朋友在身边）",en:"Daily nudge/encouragement (friend-like presence)"},{id:"B",zh:"平时完全静默，只在心率异常或熬夜过度时才震动",en:"Silent unless abnormal heart rate / overwork"},{id:"C",zh:"平时静默，只在关键节点主动发声（经期前提醒、每周小结）",en:"Silent, but speaks at key moments (pre-period, weekly summary)"}] },
 
-  { id:"Q17", type:"radio", required:true,
-    label:{zh:"关于戒指监测到的健康数据，你是否愿意授权它提醒您的伴侣？", en:"Would you let Mira notify your partner based on your health data?"},
-    options:[{id:"A",zh:"非常愿意，希望他能实时了解我的状态",en:"Yes, real-time status"},{id:"B",zh:"只愿意让他看到每周汇总报告",en:"Weekly summary only"},{id:"C",zh:"绝对不允许，这是我的个人隐私",en:"Never — it's private"},{id:"D",zh:"仅紧急情况（SOS/异常）时自动通知",en:"Only in emergencies (SOS/anomaly)"}] },
-
   { id:"Q18", type:"imagesort", required:true, max:10,
     label:{zh:"你最喜欢哪些外观风格？（按喜好程度排序）", en:"Which look styles do you like best? (rank them)"},
     hint:{zh:"最少选择 1 项并排序（最多 10 项）", en:"Pick at least 1 and rank (up to 10)"},
@@ -470,10 +440,6 @@ const SURVEY = { questions: [
     label:{zh:"结合 Mira 的设计质感与健康功能，你最能接受的单件售价是？", en:"Given its design & features, the price you'd accept for one ring?"},
     options:[{id:"A",zh:"$100–149",en:"$100–149"},{id:"B",zh:"$150–199",en:"$150–199"},{id:"C",zh:"$200–249",en:"$200–249"},{id:"D",zh:"$250–299",en:"$250–299"},{id:"E",zh:"$300–399",en:"$300–399"},{id:"F",zh:"$400–549",en:"$400–549"},{id:"G",zh:"$550 及以上",en:"$550+"}] },
 
-  { id:"Q23", type:"radio", required:true,
-    label:{zh:"如果为了提升服务，Mira 智能戒指提供“硬件+服务订阅”的方案，你会如何选择？", en:'If Mira smart ring offered a "hardware + subscription" plan, which would you choose?'},
-    options:[{id:"A",zh:"愿意，好功能值得付费",en:"Willing — good features are worth paying for"},{id:"B",zh:"不愿意，讨厌持续付费，宁愿一次性买断",en:"Unwilling — hate recurring fees, prefer one-time"},{id:"C",zh:"不确定，要看订阅包含的具体内容再决定",en:"Undecided — depends on what's included"}] },
-
   { id:"Q24", type:"multisort", required:true, max:3,
     label:{zh:"假设 Mira 智能戒指的外观已经像高级首饰一样美，你犹豫是否购买的主要原因是？", en:"If Mira smart ring already looks like fine jewelry, why would you still hesitate to buy?"},
     hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
@@ -489,22 +455,6 @@ const SURVEY = { questions: [
       {id:"H",zh:"怕每天看数据反而焦虑",en:"Data-induced anxiety — daily tracking stresses me"},
       {id:"I",zh:"暂无顾虑——好看且靠谱就很愿意尝试",en:"No concerns — would gladly try"}
     ] },
-
-  { id:"Q25", type:"radio", required:true,
-    label:{zh:"你会考虑购买 Mira 智能戒指送给身边的女性（伴侣/家人/朋友）吗？", en:"Would you buy Mira smart ring as a gift for a woman in your life?"},
-    options:[{id:"A",zh:"一定会买",en:"Definitely"},{id:"B",zh:"可能会买",en:"Probably"},{id:"C",zh:"不确定",en:"Undecided"},{id:"D",zh:"可能不会",en:"Probably not"},{id:"E",zh:"一定不会",en:"Not at all"}] },
-
-  { id:"Q26", type:"multisort", required:true, max:3,
-    label:{zh:"如果会买，最吸引你的是什么？", en:"If you'd buy it, what attracts you most?"},
-    hint:{zh:"请选择 1–3 项并排序", en:"Select up to 3 and rank"},
-    showIf:{q:"Q25", in:["A","B","C","D"]},
-    options:[{id:"A",zh:"好看，像首饰",en:"Beautiful, like jewelry"},{id:"B",zh:"关心她的健康状态",en:"Caring for her health"},{id:"C",zh:"情绪陪伴功能",en:"Emotional companionship"},{id:"D",zh:"生理周期管理",en:"Cycle tracking"},{id:"E",zh:"安全守护",en:"Safety / guardian"},{id:"F",zh:"作为节日/纪念日礼物，兼具仪式感和实用性",en:"Gift with ritual + practical value"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
-
-  { id:"Q27", type:"multi", required:true, max:3,
-    label:{zh:"你不太考虑购买的主要原因是？", en:"Your main reasons for not considering it?"},
-    hint:{zh:"请选择 1–3 项", en:"Select up to 3"},
-    showIf:{q:"Q25", in:["B","C","D","E"]},
-    options:[{id:"A",zh:"价格太贵，性价比不高",en:"Too expensive / poor value"},{id:"B",zh:"担心她不喜欢/不戴（闲置率高）",en:"She may not like/wear it"},{id:"C",zh:"担心涉及隐私，她会介意",en:"Privacy concern on her side"},{id:"D",zh:"觉得没必要，手机也能看健康数据",en:"Unnecessary — phone shows health data"},{id:"E",zh:"担心她戴不惯/嫌麻烦",en:"She may find it fussy"},{id:"F",zh:"不知道选哪个款式/尺寸，怕买错",en:"Not sure about style/size — afraid to pick wrong"},{id:"other",zh:"其他",en:"Other", hasText:true}] },
 
   { id:"Q28", type:"text", required:true,
     label:{zh:"其他任何你想对 Mira 智能戒指说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira smart ring? (your ideal ring, design details you care about, feature ideas…)"} },
