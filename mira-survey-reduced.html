@@ -248,7 +248,7 @@
 <div class="consent">
   <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);max-width:640px;margin:0 auto 14px;line-height:1.5">
     <input type="checkbox" id="consent" style="margin-top:3px;flex:0 0 auto">
-    <span><span class="zh">我已知悉：本调研为匿名产品研究，所填内容仅用于改进 Mira；联系方式为选填，绝不会被分享或用于营销。</span><span class="en">I understand: this is an anonymous product study; answers are used only to improve Mira. Contact info is optional and never shared or used for marketing.</span></span>
+    <span><span class="zh">我已知悉：本调研为匿名产品研究，所填内容仅用于改进 Mira，绝不会被分享或用于营销。</span><span class="en">I understand: this is an anonymous product study; answers are used only to improve Mira and are never shared or used for marketing.</span></span>
   </label>
 </div>
 
@@ -457,11 +457,7 @@ const SURVEY = { questions: [
     ] },
 
   { id:"Q28", type:"text", required:true,
-    label:{zh:"其他任何你想对 Mira 智能戒指说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira smart ring? (your ideal ring, design details you care about, feature ideas…)"} },
-
-  { id:"Q29", type:"text", required:false,
-    label:{zh:"想收到后续回访吗？留下联系方式（邮箱 / Instagram / Facebook / WhatsApp 等）", en:"Want a follow-up? Leave a way to reach you (email / Instagram / Facebook / WhatsApp…)"},
-    hint:{zh:"选填。我们只会用它发送产品进展，绝不外泄或用于营销。", en:"Optional. Used only to share product updates — never sold or shared."} }
+    label:{zh:"其他任何你想对 Mira 智能戒指说的话（理想中的智能戒指长什么样、最在意的外观细节、功能脑洞等）", en:"Anything else for Mira smart ring? (your ideal ring, design details you care about, feature ideas…)"} }
 ]};
 
 /* -------- Render -------- */
