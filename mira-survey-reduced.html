@@ -404,7 +404,7 @@ const SURVEY = { questions: [
       {id:"G",zh:"不需要这个功能",en:"Don't need this feature"}
     ] },
 
-  { id:"Q16", type:"radio", required:true,
+  { id:"Q16", type:"radio", required:true, showIf:{q:"QSEX", in:["A","D"]},
     label:{zh:"如果 Mira 智能戒指只能提供一种反馈方式，你更倾向哪一种？", en:"If Mira smart ring could only give ONE kind of feedback, which do you prefer?"},
     options:[{id:"A",zh:"每天主动推送一句鼓励或提醒（像朋友在身边）",en:"Daily nudge/encouragement (friend-like presence)"},{id:"B",zh:"平时完全静默，只在心率异常或熬夜过度时才震动",en:"Silent unless abnormal heart rate / overwork"},{id:"C",zh:"平时静默，只在关键节点主动发声（经期前提醒、每周小结）",en:"Silent, but speaks at key moments (pre-period, weekly summary)"}] },
 
