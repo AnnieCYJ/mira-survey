@@ -778,16 +778,22 @@ function submitSurvey(){
   }
 }
 function formatAnswer(q, val, isZh){
-  const tx=(o)=> isZh? o.zh : o.en;
+  const labelOf=(o)=>{
+    if(o.zh!==undefined) return isZh?o.zh:o.en;
+    if(o.cap) return isZh?o.cap.zh:o.cap.en;   // imagesort (Q18) stores label in .cap
+    return '';
+  };
   const sep= isZh? '、' : ', ';
   if(q.type==='text'||q.type==='shorttext') return val||'';
   if(q.type==='radio'||q.type==='select'){
-    const op=q.options.find(o=>o.id===val); return op?tx(op):(val||'');
+    const op=q.options.find(o=>o.id===val); return op?labelOf(op):(val||'');
   }
   if(Array.isArray(val)){
-    return val.map(id=>{
-      const op=q.options.find(o=>o.id===id); let s=op?tx(op):id;
+    const ranked=(q.type==='multisort'||q.type==='imagesort'); // keep "rank them" ordering readable
+    return val.map((id,i)=>{
+      const op=q.options.find(o=>o.id===id); let s=op?labelOf(op):id;
       if(op&&op.hasText){ const t=document.querySelector(`[data-text="${q.id}_${id}"]`); if(t&&t.value.trim()) s+= isZh? `：${t.value.trim()}` : `: ${t.value.trim()}`; }
+      if(ranked) s=`${i+1}. ${s}`;
       return s;
     }).join(sep);
   }
