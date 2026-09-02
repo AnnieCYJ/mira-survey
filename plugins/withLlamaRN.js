@@ -67,12 +67,16 @@ const withLlamaRn = (config, options = {}) => {
         const endIdx = contents.indexOf("\n  end", postInstallIdx);
         if (endIdx === -1) return c;
         const insert = `
-    # LLAMA_RN_CXX20: Force C++20 on all Pods
+    # LLAMA_RN_CXX20: 仅对 llama-rn target 强制 C++20，避免冲掉 ExpoModulesCore 等其它 Pod 的 C++ 标准
     installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |config|
-        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
-        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '$(inherited) -std=gnu++20'
+      if target.name == 'llama-rn'
+        target.build_configurations.each do |config|
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
+          config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+          other = config.build_settings['OTHER_CPLUSPLUSFLAGS'] || '$(inherited)'
+          other = other.is_a?(Array) ? other.join(' ') : other.to_s
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "#{other} -std=gnu++20" unless other.include?('-std=gnu++20')
+        end
       end
     end
 `;
@@ -82,6 +86,17 @@ const withLlamaRn = (config, options = {}) => {
       },
     ]);
   }
+
+  // 把 assets/models/*.gguf 注册为 iOS Copy Bundle Resources，绕开 Metro asset 管道。
+  // 不复制到 ios/ 目录（避免 1GB 模型重复占磁盘），Xcode 构建时按相对路径读取并拷进 app bundle。
+  config = withDangerousMod(config, [
+    "ios",
+    async (c) => {
+      const { linkModelIos } = require("../scripts/link-model-ios");
+      linkModelIos(c.modRequest.projectRoot);
+      return c;
+    },
+  ]);
 
   return config;
 };

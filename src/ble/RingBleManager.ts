@@ -269,8 +269,6 @@ class NativeRingSource {
       this.emitter = new NativeEventEmitter(VeepooNative);
       this.emitter.addListener('onStateChange', this.handleState);
       this.emitter.addListener('onMetric', this.handleMetric);
-      this.emitter.addListener('onSleepStages', this.handleSleepStages);
-      this.emitter.addListener('onFemale', this.handleFemale);
       this.emitter.addListener('onLog', (msg: string) => {
         // eslint-disable-next-line no-console
         console.log('[VeepooRing]', msg);

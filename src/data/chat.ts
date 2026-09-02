@@ -1,4 +1,5 @@
 import type { TaskType } from './tasks';
+import type { RingState } from '../ble/RingBleManager';
 
 export const SUGGESTIONS = [
   '为什么最近总是很累？',
@@ -11,6 +12,128 @@ export const QUICK_ACTIONS: { label: string; icon: 'pen' | 'image' | 'sparkle' |
   { label: '重新表达', icon: 'pen' },
   { label: '生成图片', icon: 'image' },
   { label: '睡眠分析', icon: 'breath' },
+];
+
+/** 生成 Mira AI 首页建议问题。基于真实健康数据 + 时间 + 趣味互动。 */
+export function generateQuestions(state: RingState | null): string[][] {
+  const now = new Date();
+  const hour = now.getHours();
+  const health: string[] = [];
+  const fun: string[] = [];
+
+  // —— 经期阶段（优先）——
+  const female = state?.female;
+  const cycleDay = female?.currentMenstrualDays ?? 0;
+  const femaleState = female?.state ?? 0;
+  if (femaleState === 1) {
+    health.push(`经期第 ${Math.max(1, cycleDay)} 天，适合做什么运动？`);
+    health.push('经期睡眠质量变差，怎么调整？');
+  } else if (femaleState === 2) {
+    health.push('备孕期今天要注意什么？');
+    health.push('排卵期身体会有什么信号？');
+  } else if (femaleState === 3) {
+    health.push('怀孕期今天状态怎么样？');
+    health.push('孕期睡眠怎么改善？');
+  } else {
+    // 用睡眠/体温等推断周期阶段？目前 state 没直接暴露 phase；先用通用周期问题
+    health.push('我现在处于周期哪个阶段？');
+    health.push('这个周期阶段适合什么强度训练？');
+  }
+
+  // —— 睡眠 ——
+  const sleep = state?.sleepSummary;
+  if (sleep) {
+    const totalH = sleep.total / 60;
+    if (totalH < 6) {
+      health.push(`昨晚只睡了 ${totalH.toFixed(1)} 小时，今天怎么补？`);
+    } else if (sleep.score <= 2) {
+      health.push('睡眠质量偏低，怎么改善？');
+    } else {
+      health.push('昨晚睡眠质量怎么样？');
+    }
+    if (sleep.deep < 60) {
+      health.push('深睡不足有什么影响？');
+    }
+  } else {
+    health.push('为什么最近入睡困难？');
+  }
+
+  // —— HRV / 压力 ——
+  const hrv = state?.metrics.hrv ?? state?.daily.hrv ?? null;
+  if (hrv !== null) {
+    if (hrv < 40) {
+      health.push('HRV 偏低，今天适合休息吗？');
+      health.push('最近压力是不是太大了？');
+    } else if (hrv > 70) {
+      health.push('HRV 状态不错，今天可以上强度吗？');
+    } else {
+      health.push('我的恢复状态怎么样？');
+    }
+  }
+
+  // —— 活动 / 步数 ——
+  const steps = state?.daily?.steps ?? null;
+  if (steps !== null) {
+    if (steps < 3000) {
+      health.push('今天活动量偏低，要不要出去走走？');
+    } else if (steps > 10000) {
+      health.push('今天走了很多路，睡前要注意什么？');
+    } else {
+      health.push('今天的活动量达标了吗？');
+    }
+  }
+
+  // —— 时间场景 ——
+  if (hour < 11) {
+    health.push('早上状态怎么样？');
+  } else if (hour < 17) {
+    health.push('下午容易犯困怎么办？');
+  } else {
+    health.push('今晚怎么提高睡眠质量？');
+  }
+
+  // —— 趣味互动（每次随机选 3 个，避免重复）——
+  const pool = [
+    '帮我抽一张今日塔罗牌',
+    '解梦：梦见自己在奔跑',
+    '今天适合穿什么颜色？',
+    '随机给我一句正念语录',
+    '用星座解读一下本周运势',
+    '帮我看看今天的幸运数字',
+    '如果用一种天气形容我今天，是什么？',
+    '给我讲一个 30 秒的助眠小故事',
+  ];
+  // 简单伪随机：按日期+小时取种子，保证同小时内稳定，跨小时变化
+  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate() + hour;
+  const shuffled = pool
+    .map((q, i) => ({ q, s: Math.sin(seed * (i + 1) * 9999) }))
+    .sort((a, b) => a.s - b.s)
+    .map((x) => x.q);
+  fun.push(...shuffled.slice(0, 3));
+
+  // 组合：优先健康，补满 6 个；每排 2 个
+  const picked = health.slice(0, 3);
+  picked.push(...fun.slice(0, 6 - picked.length));
+  if (picked.length < 6) {
+    const fallback = [
+      '最近有什么健康趋势？',
+      '我的压力峰值在什么时段？',
+      '这周适合高强度训练吗？',
+      '我的周期规律吗？',
+      '怎么提高白天的专注力？',
+      '晚上总是刷手机怎么办？',
+    ];
+    picked.push(...fallback.slice(0, 6 - picked.length));
+  }
+
+  return [picked.slice(0, 2), picked.slice(2, 4), picked.slice(4, 6)];
+}
+
+/** @deprecated 静态 QUESTIONS 已废弃，改用 generateQuestions(state) */
+export const QUESTIONS: string[][] = [
+  ['昨晚睡得怎么样？', '我现在处于周期哪个阶段？'],
+  ['今天适合什么强度训练？', '下午容易犯困怎么办？'],
+  ['帮我抽一张今日塔罗牌', '解梦：梦见自己在奔跑'],
 ];
 
 export interface AiTask {
@@ -109,12 +232,6 @@ export const ANALYSIS_QA = {
     '顺序别反：先把入睡时间提前 20 分钟稳住睡眠，再上强度。睡眠没稳住时加练，HRV 很容易掉下来。',
   ],
 };
-
-export const QUESTIONS: string[][] = [
-  ['How was my sleep quality?', 'Is my cycle regular?'],
-  ['How to sleep better?', 'What should I eat today?'],
-  ['What is my readiness?', 'Any pattern this week?'],
-];
 
 export function pickReply(text: string): Reply {
   const t = text.toLowerCase();

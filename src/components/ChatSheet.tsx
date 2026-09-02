@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,9 +14,10 @@ import { theme } from '../theme/theme';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
 import AiOrb from './AiOrb';
-import { pickReply, QUICK_ACTIONS, type AiTask } from '../data/chat';
+import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
+import { RingBle, type RingState } from '../ble/RingBleManager';
 
 interface Props {
   visible: boolean;
@@ -45,10 +46,18 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
   const scrollRef = useRef<ScrollView>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
   const { addToolTask } = useAppState();
+
+  useEffect(() => {
+    const unsubscribe = RingBle.onState((s) => setRingState(s));
+    return unsubscribe;
+  }, []);
+
+  const suggestedQuestions = useMemo(() => generateQuestions(ringState), [ringState]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -158,20 +167,20 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
             <View style={styles.empty}>
               <AiOrb size={240} title="Hi, can I help you?" />
               <View style={styles.quickActions}>
-                {QUICK_ACTIONS.map((a, i) => (
+                {suggestedQuestions.flat().map((q, i) => (
                   <TouchableOpacity
-                    key={i}
+                    key={`${q}-${i}`}
                     style={styles.actionChip}
-                    onPress={() => sendMessage(a.label)}
+                    onPress={() => sendMessage(q)}
                     activeOpacity={0.8}
                   >
                     <Icon
-                      name={a.icon}
+                      name="sparkle"
                       size={theme.fs(16)}
                       color={theme.colors.accentSolid}
                       strokeWidth={2}
                     />
-                    <Text style={styles.actionText}>{a.label}</Text>
+                    <Text style={styles.actionText}>{q}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

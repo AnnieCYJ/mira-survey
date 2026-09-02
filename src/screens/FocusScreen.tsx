@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import OrbDots from '../components/OrbDots';
 import Icon from '../components/Icon';
-import { QUESTIONS } from '../data/chat';
+import { generateQuestions } from '../data/chat';
+import { RingBle, type RingState } from '../ble/RingBleManager';
 import { RootStackParamList } from '../navigation/RootStackNavigator';
 
 type FocusNavProp = StackNavigationProp<RootStackParamList, 'Chat'>;
@@ -26,6 +27,14 @@ type FocusNavProp = StackNavigationProp<RootStackParamList, 'Chat'>;
 export default function FocusScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<FocusNavProp>();
+  const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
+
+  useEffect(() => {
+    const unsubscribe = RingBle.onState((s) => setRingState(s));
+    return unsubscribe;
+  }, []);
+
+  const questions = useMemo(() => generateQuestions(ringState), [ringState]);
 
   const openChat = (question?: string) => {
     navigation.navigate('Chat', { initialQuestion: question });
@@ -57,7 +66,7 @@ export default function FocusScreen() {
           <OrbDots />
 
           <View style={styles.questions}>
-            {QUESTIONS.map((row, i) => (
+            {questions.map((row, i) => (
               <QuestionRow key={i} row={row} index={i} scrollRight={i % 2 === 0} onPress={openChat} />
             ))}
           </View>
