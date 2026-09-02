@@ -53,13 +53,13 @@ export const METRICS: Record<MetricKey, MetricDef> = {
   },
   cycle: {
     name: '周期和激素',
-    tag: '第 14 天',
-    val: '排卵期',
+    tag: '周期阶段',
+    val: '—',
     unit: '当前阶段',
-    delta: '↑ 雌激素进入峰值',
+    delta: '在「周期和激素」标签下查看阶段与雌激素建模曲线',
     dir: 'up',
-    note: '雌激素峰值通常带来更好的胰岛素敏感度与疼痛耐受度。',
-    data: [30, 38, 52, 68, 82, 90, 86],
+    note: '阶段与雌激素曲线由真实记录（经期日期 + 周期长度 + 体温确认排卵）驱动，戒指暂未直接测量雌激素。',
+    data: [],
   },
   metabolism: {
     name: '代谢',

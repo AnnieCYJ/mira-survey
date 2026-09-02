@@ -6,6 +6,7 @@ import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
 import InsightBanner from '../components/InsightBanner';
 import DimensionCard from '../components/DimensionCard';
+import HormoneEstrogenCard from '../components/HormoneEstrogenCard';
 import SleepStructureCard from '../components/SleepStructureCard';
 import CyclePhaseCard from '../components/CyclePhaseCard';
 import BasicMetricCard from '../components/BasicMetricCard';
@@ -101,7 +102,10 @@ export default function InsightScreen() {
             })}
           </View>
         ) : tab === 'cycle' ? (
-          <CyclePhaseCard ring={ring} female={ring.female} />
+          <>
+            <CyclePhaseCard ring={ring} female={ring.female} />
+            <HormoneEstrogenCard ring={ring} female={ring.female} />
+          </>
         ) : (
           <View style={styles.stack}>
             <DimensionCard metric={METRICS[tab]} onPress={() => {}} />

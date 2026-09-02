@@ -281,3 +281,76 @@ export function computeCycle(
     nextPeriodRange,
   };
 }
+
+// ───────────────────────────────────────────────────────────
+// 雌激素建模曲线（重要：非实测）
+//
+// 戒指硬件无法直接测量雌激素 / LH。此曲线是根据「标准月经周期激素动力学」
+// （经典月经激素模型）对当前所处阶段大致激素背景的建模估算，用于帮助用户
+// 理解身体阶段，并非实测值。模型形状（与临床周期激素曲线一致）：
+//   - 经期：低位平稳（基线 ~22）
+//   - 卵泡期：随卵泡发育，雌激素由基线平滑上升至排卵前峰值（~100）
+//   - 排卵期：达峰
+//   - 黄体早期：排卵后快速回落
+//   - 黄体中晚期：小幅二次抬升后回落
+//   - 经前：回落至基线
+// 参考：经典 menstrual hormone profile（雌激素双峰型，排卵前主峰 + 黄体期次峰）。
+// ───────────────────────────────────────────────────────────
+export interface EstrogenPoint {
+  /** 周期第几天（1..cycleLength） */
+  day: number;
+  /** 雌激素指数 0–100 */
+  value: number;
+  phase: CyclePhase;
+}
+
+export function modelEstrogenCurve(opts: {
+  cycleLength: number;
+  ovulationDay: number;
+  periodLength: number;
+}): EstrogenPoint[] {
+  const N = Math.max(20, Math.min(45, Math.round(opts.cycleLength)));
+  const ovDay = Math.max(8, Math.min(N - 2, Math.round(opts.ovulationDay)));
+  const periodLen = Math.max(2, Math.min(10, Math.round(opts.periodLength)));
+  const base = 22;
+  const peak = 100;
+  const pts: EstrogenPoint[] = [];
+  for (let day = 1; day <= N; day++) {
+    const dOv = day - ovDay; // <0 卵泡期, 0 排卵日, >0 黄体期
+    let value: number;
+    if (day <= periodLen) {
+      value = base;
+    } else if (dOv < 0) {
+      const t = (day - periodLen) / Math.max(1, ovDay - periodLen); // 0..1
+      value = base + (peak - base) * Math.pow(t, 1.7);
+    } else if (dOv === 0) {
+      value = peak;
+    } else if (dOv <= 5) {
+      const t = dOv / 5;
+      value = peak - (peak - 58) * t;
+    } else {
+      const t = (dOv - 5) / Math.max(1, N - ovDay - 5); // 0..1 到经前
+      const bump = 14 * Math.sin(Math.min(1, t) * Math.PI); // 黄体期二次小峰
+      value = 58 - (58 - base) * Math.min(1, t) + bump;
+    }
+    value = Math.max(0, Math.min(100, Math.round(value)));
+    const phase: CyclePhase =
+      day <= periodLen
+        ? 'period'
+        : Math.abs(dOv) <= 2
+        ? 'ovulation'
+        : dOv > 0
+        ? 'luteal'
+        : 'follicular';
+    pts.push({ day, value, phase });
+  }
+  return pts;
+}
+
+/** 取某周期日的雌激素指数；dayInCycle 越界则夹取边界；无数据返回 null */
+export function estrogenAt(pts: EstrogenPoint[], dayInCycle: number | null): number | null {
+  if (dayInCycle == null || pts.length === 0) return null;
+  const day = Math.min(pts.length, Math.max(1, dayInCycle));
+  const p = pts.find((x) => x.day === day);
+  return p ? p.value : null;
+}
