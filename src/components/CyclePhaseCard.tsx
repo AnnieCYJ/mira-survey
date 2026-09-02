@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
-import { computeCycle, dayKey, parseDate, type CycleLog } from '../lib/cycleMath';
+import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog, saveCycleLog } from '../data/cycleLog';
 import { RingBle, type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import TempBiphasicChart from './TempBiphasicChart';
@@ -66,7 +66,10 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
       : log;
   })();
 
-  const info = computeCycle(effective, new Date());
+  const info = computeCycle(effective, new Date(), {
+    tempSeries: tempDailyToSeries(ring.tempDaily ?? {}),
+    periodHistory: effective?.history,
+  });
 
   const openModal = () => {
     const base = female?.lastMenstrualDate ?? log?.lastPeriodStart ?? dayKey(new Date());
@@ -128,6 +131,13 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
           {ringSynced && stateLabel ? (
             <View style={styles.ringBadge}>
               <Text style={styles.ringBadgeText}>戒指已同步 · {stateLabel}</Text>
+            </View>
+          ) : null}
+          {info.tempConfirmed ? (
+            <View style={styles.tempBadge}>
+              <Text style={styles.tempBadgeText}>
+                体温确认排卵 · 基线 {info.baselineTemp != null ? info.baselineTemp.toFixed(2) : '—'}°C
+              </Text>
             </View>
           ) : null}
         </View>
@@ -240,6 +250,8 @@ const styles = StyleSheet.create({
   phaseSub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
   ringBadge: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: 'rgba(124,106,224,0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radius.pill },
   ringBadgeText: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid, fontWeight: theme.weight.semibold as any },
+  tempBadge: { marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(111,207,180,0.16)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radius.pill },
+  tempBadgeText: { fontSize: theme.fontSize.micro, color: '#3f9e7e', fontWeight: theme.weight.semibold as any },
   recordBtn: {
     backgroundColor: theme.colors.accentSoft,
     paddingHorizontal: 14,

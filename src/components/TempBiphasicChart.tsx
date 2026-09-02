@@ -11,7 +11,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
-import { computeCycle, dayKey, parseDate, type CycleLog } from '../lib/cycleMath';
+import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 
 const W = 680;
 const H = 200;
@@ -65,7 +65,16 @@ export default function TempBiphasicChart({
 
   const pts = seq.map((s, i) => {
     const v = tempDaily[s.key];
-    return { i, x: xAt(i), v, y: v != null ? yAt(v) : null, phase: computeCycle(log, parseDate(s.key)).phase };
+    return {
+      i,
+      x: xAt(i),
+      v,
+      y: v != null ? yAt(v) : null,
+      phase: computeCycle(log, parseDate(s.key), {
+        tempSeries: tempDailyToSeries(tempDaily),
+        periodHistory: log?.history,
+      }).phase,
+    };
   });
 
   const validCount = pts.filter((p) => p.v != null).length;

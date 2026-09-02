@@ -28,6 +28,7 @@ import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
 import {
   computeCycle,
   daysBetween,
+  tempDailyToSeries,
   type CycleInfo,
   type CycleLog,
 } from '../lib/cycleMath';
@@ -939,9 +940,13 @@ class RingConnectionImpl {
     if (this.localCycle && this.localCycle.lastPeriodStart) {
       candidates.push(this.localCycle);
     }
-    if (candidates.length === 0) return computeCycle(null, new Date());
+    const tempSeries = tempDailyToSeries(this.state.tempDaily);
+    const periodHistory = this.localCycle?.history;
+    if (candidates.length === 0) {
+      return computeCycle(null, new Date(), { tempSeries, periodHistory });
+    }
     candidates.sort((a, b) => daysBetween(a.lastPeriodStart, b.lastPeriodStart));
-    return computeCycle(candidates[candidates.length - 1], new Date());
+    return computeCycle(candidates[candidates.length - 1], new Date(), { tempSeries, periodHistory });
   }
 
   /** 重新读取本地经期记录（cycleLog 文件），并触发相位/状态重算。用户在 App 内记经期后调用。 */
