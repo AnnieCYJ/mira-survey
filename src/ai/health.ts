@@ -52,6 +52,15 @@ export function buildHealthSnapshot(): string {
     if (female.lastMenstrualDate) add('末次经期', female.lastMenstrualDate);
   }
 
+  // 用「计算出的真实相位」（经期/卵泡期/排卵期/黄体期）喂给 AI，
+  // 而不是裸的末次经期日期——否则 AI 只能自己拿日期做推算，容易和你实际阶段对不上。
+  // 注意：戒指硬件不测经期相位，相位是按你记录的末次经期 + 标准周期模型算出来的。
+  const cs = st.curveStatus;
+  if (cs && cs.hasLog) {
+    add('生理周期相位', cs.phaseLabel);
+    if (cs.dayInCycle != null) add('周期第几天', `${cs.dayInCycle}`);
+  }
+
   if (parts.length === 0) return '';
   return (
     '【用户今日健康数据（仅作回答参考，不要逐条播报；用户没问就不主动提）】\n' +

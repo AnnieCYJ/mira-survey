@@ -21,21 +21,22 @@ export function generateQuestions(state: RingState | null): string[][] {
   const health: string[] = [];
   const fun: string[] = [];
 
-  // —— 经期阶段（优先）——
-  const female = state?.female;
-  const cycleDay = female?.currentMenstrualDays ?? 0;
-  const femaleState = female?.state ?? 0;
-  if (femaleState === 1) {
+  // —— 经期阶段（优先，用「计算出的真实相位」而非戒指 female.state）——
+  // 戒指硬件不测经期相位，相位是按你记录的末次经期 + 标准周期模型算出来的；
+  // female 当前由原生回传（原生尚未实现 readFemale，恒为 null），故以 curveStatus 的计算相位为准。
+  const cs = state?.curveStatus;
+  const cycleDay = cs?.dayInCycle ?? 0;
+  const phaseLabel = cs?.phaseLabel ?? '';
+  if (cs?.hasLog && phaseLabel === '经期') {
     health.push(`经期第 ${Math.max(1, cycleDay)} 天，适合做什么运动？`);
     health.push('经期睡眠质量变差，怎么调整？');
-  } else if (femaleState === 2) {
-    health.push('备孕期今天要注意什么？');
+  } else if (cs?.hasLog && phaseLabel === '排卵期') {
+    health.push('排卵期今天要注意什么？');
     health.push('排卵期身体会有什么信号？');
-  } else if (femaleState === 3) {
-    health.push('怀孕期今天状态怎么样？');
-    health.push('孕期睡眠怎么改善？');
+  } else if (cs?.hasLog) {
+    health.push(`我现在是${phaseLabel}，适合什么强度训练？`);
+    health.push(`这个${phaseLabel}我需要注意什么？`);
   } else {
-    // 用睡眠/体温等推断周期阶段？目前 state 没直接暴露 phase；先用通用周期问题
     health.push('我现在处于周期哪个阶段？');
     health.push('这个周期阶段适合什么强度训练？');
   }
