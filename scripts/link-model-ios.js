@@ -77,18 +77,22 @@ function findProjectRoot() {
   return path.resolve(__dirname, "..");
 }
 
-function addBundleResource(project, filePath, displayName, targetUuid, groupKey) {
+function addBundleResource(project, filePath, displayName, targetUuid, groupKey, projectName) {
+  // 该 group 的 <group> sourceTree 解析到 ios/（与 mainGroup 一致），
+  // 组内其它文件（如 AppDelegate.h）都用 "miraringfashion/<name>" 路径，
+  // 因此模型也必须带 "miraringfashion/" 前缀，否则 Xcode 会去 ios/<name> 找而找不到。
+  const refPath = `${projectName}/${filePath}`;
   const refSection = project.pbxFileReferenceSection();
   for (const k in refSection) {
     const ref = refSection[k];
-    if (ref && (ref.path === `"${filePath}"` || ref.path === filePath)) {
+    if (ref && (ref.path === `"${refPath}"` || ref.path === refPath)) {
       return { added: false, fileRef: k };
     }
   }
 
   const file = {
     basename: displayName,
-    path: filePath,
+    path: refPath,
     lastKnownFileType: "unknown",
     sourceTree: '"<group>"',
     group: "miraringfashion",
@@ -109,7 +113,7 @@ function addBundleResource(project, filePath, displayName, targetUuid, groupKey)
     delete writtenRef.fileEncoding;
     delete writtenRef.explicitFileType;
     writtenRef.sourceTree = '"<group>"';
-    writtenRef.path = `"${filePath}"`;
+    writtenRef.path = `"${refPath}"`;
   }
   return { added: true, fileRef: file.fileRef, buildFile: file.uuid };
 }
@@ -174,8 +178,8 @@ function linkModelIos(projectRoot = findProjectRoot()) {
     // 先移除旧的同名模型引用，避免重复添加导致 Ld 失败
     removeExistingModelReferences(project, gguf);
 
-    // 文件在主 group 目录下，path 直接用文件名。
-    const result = addBundleResource(project, gguf, gguf, targetUuid, mainGroupKey);
+    // 文件在主 group 目录下，path 用 "miraringfashion/<文件名>" 前缀（与该 group 其它文件一致）。
+    const result = addBundleResource(project, gguf, gguf, targetUuid, mainGroupKey, projectName);
     if (result.added) {
       console.log(`[link-model-ios] 已加入 Xcode resources: ${gguf}`);
     } else {
