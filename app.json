@@ -33,7 +33,11 @@
         "ACCESS_FINE_LOCATION"
       ]
     },
-    "plugins": ["./plugins/withVeepooSDK"],
+    "plugins": [
+      "./plugins/withVeepooSDK",
+      ["expo-build-properties", { "ios": { "forceCxx20": true } }],
+      ["llama.rn", { "enableEntitlements": true, "entitlementsProfile": "production", "forceCxx20": true, "enableOpenCL": false }]
+    ],
     "assetBundlePatterns": ["**/*"]
   }
 }

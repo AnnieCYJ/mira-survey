@@ -14,8 +14,9 @@ import { theme } from '../theme/theme';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
 import AiOrb from './AiOrb';
-import { pickReply, QUICK_ACTIONS, type Reply, type AiTask } from '../data/chat';
+import { pickReply, QUICK_ACTIONS, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
+import { ask, type ChatHistoryItem } from '../ai';
 
 interface Props {
   visible: boolean;
@@ -45,52 +46,70 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   const { addToolTask } = useAppState();
 
-  const sendMessage = useCallback(
-    (text: string) => {
-      if (!text.trim()) return;
-      const q = text.trim();
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    const q = text.trim();
 
-      setMessages((prev) => [...prev, { from: 'user', text: q }]);
-      setInput('');
-      setIsLoading(true);
+    const history: ChatHistoryItem[] = messagesRef.current
+      .filter((m) => m.text && m.text.length > 0)
+      .slice(-10)
+      .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
-      timerRef.current = setTimeout(() => {
-        const reply: Reply = pickReply(q);
-        setMessages((prev) => [...prev, { from: 'ai', text: reply.lines.join('\n'), task: reply.task }]);
-        setIsLoading(false);
+    setMessages((prev) => [...prev, { from: 'user', text: q }, { from: 'ai', text: '' }]);
+    setInput('');
+    setIsLoading(true);
 
-        if (reply.task) {
-          addToolTask({
-            id: `ai-${Date.now()}`,
-            type: reply.task.type,
-            badge: '来自 Mira AI',
-            title: reply.task.title,
-            desc: reply.task.desc,
-            action: '开始',
-            done: false,
-          });
-        }
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
-      }, 1200 + Math.random() * 800);
-    },
-    [addToolTask]
-  );
+    const onToken = (tok: string) => {
+      if (!tok) return;
+      setMessages((prev) => {
+        const idx = prev.length - 1;
+        return prev.map((m, i) => (i === idx ? { ...m, text: m.text + tok } : m));
+      });
+      scrollRef.current?.scrollToEnd({ animated: true });
+    };
+
+    const attachTask = (task?: AiTask) => {
+      if (!task) return;
+      setMessages((prev) => {
+        const idx = prev.length - 1;
+        return prev.map((m, i) => (i === idx ? { ...m, task: task ?? m.task } : m));
+      });
+      addToolTask({
+        id: `ai-${Date.now()}`,
+        type: task.type,
+        badge: '来自 Mira AI',
+        title: task.title,
+        desc: task.desc,
+        action: '开始',
+        done: false,
+      });
+    };
+
+    try {
+      await ask(q, { history, onToken });
+      attachTask(pickReply(q).task);
+    } catch (e) {
+      console.warn('[ChatSheet] MiraAI 出错，回退模板:', e);
+      const fb = pickReply(q);
+      setMessages((prev) => {
+        const idx = prev.length - 1;
+        return prev.map((m, i) => (i === idx ? { ...m, text: fb.lines.join('\n'), task: fb.task } : m));
+      });
+      attachTask(fb.task);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, addToolTask]);
 
   useEffect(() => {
     if (visible && initialQuestion && messages.length === 0) {
       sendMessage(initialQuestion);
     }
   }, [visible, initialQuestion, messages.length, sendMessage]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    },
-    []
-  );
 
   const renderMessage = (msg: Message, idx: number) => {
     const isUser = msg.from === 'user';

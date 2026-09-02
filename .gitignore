@@ -14,3 +14,7 @@ ios/
 android/
 .DS_Store
 .env
+
+# 端侧 LLM 模型权重（1.1GB，本地构建用，不进 git）
+*.gguf
+assets/models/
