@@ -36,7 +36,8 @@
     "plugins": [
       "./plugins/withVeepooSDK",
       ["expo-build-properties", { "ios": { "forceCxx20": true } }],
-      ["llama.rn", { "enableEntitlements": true, "entitlementsProfile": "production", "forceCxx20": true, "enableOpenCL": false }]
+      ["./plugins/withLlamaRN", { "forceCxx20": true }],
+      "./plugins/withMetroScheme"
     ],
     "assetBundlePatterns": ["**/*"]
   }
