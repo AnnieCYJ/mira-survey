@@ -1,0 +1,59 @@
+(node:20344) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+We couldn't find a git repository in your project directory.
+It's recommended to back up your project before proceeding.
+Git status is dirty but the command will continue because the terminal is not interactive.
+- Clearing ios
+✖ Failed to delete ios code: [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":9999,"threshold":50,"scope":"turn","targets":["/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/ios"],"targetCount":1}
+Error: [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":9999,"threshold":50,"scope":"turn","targets":["/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/ios"],"targetCount":1}
+Error: [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":9999,"threshold":50,"scope":"turn","targets":["/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/ios"],"targetCount":1}
+    at checkBulkDeleteGuard (/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/shim/genie-safe-delete.cjs:222:19)
+    at tryTrash (/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/shim/genie-safe-delete.cjs:546:5)
+    at tryRm (/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/shim/genie-safe-delete.cjs:722:5)
+    at Object.wrappedPromisesRm [as rm] (/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/shim/genie-safe-delete.cjs:766:15)
+    at /Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/node_modules/@expo/cli/build/src/prebuild/clearNativeFolder.js:98:76
+    at Array.map (<anonymous>)
+    at clearNativeFolder (/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/node_modules/@expo/cli/build/src/prebuild/clearNativeFolder.js:98:35)
+    at prebuildAsync (/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/node_modules/@expo/cli/build/src/prebuild/prebuildAsync.js:84:56)
+(node:23142) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+- Creating native directory (./ios)
+✔ Created native directory | reusing /ios
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+» ios: icon: No icon is defined in the Expo config.
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+[withVeepooSDK] addSourceFile failed: Cannot read properties of null (reading 'path')
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+✔ Finished prebuild
+(node:23286) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+- Creating native directory (./ios)
+✔ Created native directory | reusing /ios
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+» ios: icon: No icon is defined in the Expo config.
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+[withVeepooSDK] framework already in project
+- Running prebuild
+[withVeepooSDK] added VeepooRing.m
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+» ios: paths-project-pbxproj: Found multiple project.pbxproj file paths, using "ios/miraringfashion.xcodeproj/project.pbxproj". Ignored paths: ["ios/Vendor/MultiplatformBleAdapter/iOS/MultiPlatformBLEAdapter.xcodeproj/project.pbxproj"]
+- Running prebuild
+✔ Finished prebuild

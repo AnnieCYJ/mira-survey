@@ -1,0 +1,242 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { theme } from '../theme/theme';
+import ScreenContainer from '../components/ScreenContainer';
+import Card from '../components/Card';
+import EnergyBall from '../components/EnergyBall';
+import TrendChart, { TrendAxis } from '../components/TrendChart';
+import ListCard, { type ListItem } from '../components/ListCard';
+import { MOODS } from '../data/metrics';
+import { RingBle } from '../ble/RingBleManager';
+import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
+
+const ADVICE: ListItem[] = [
+  {
+    dot: theme.colors.stateEnergy,
+    title: '午后进行 20 分钟中等强度训练',
+    sub: '雌激素峰值窗口，恢复能力处于本月高位',
+  },
+  {
+    dot: theme.colors.stateTense,
+    title: '14:00 会议前安排 5 分钟呼吸',
+    sub: '该时段连续两天出现压力峰值',
+  },
+  {
+    dot: theme.colors.stateTired,
+    title: '入睡时间提前 20 分钟',
+    sub: '深睡窗口稳定，可再争取一个完整周期',
+  },
+];
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+}
+
+// 相位 + 能量状态 → 一句今日分析建议
+function phaseAdvice(phase: string, statusIdx: number | null): string {
+  const low = statusIdx != null && statusIdx >= 2; // 平平静静 / 休息一下
+  const map: Record<string, { ok: string; low: string }> = {
+    经期: { ok: '适合放缓节奏、做温和的整理与复盘', low: '以休息为主，避免高强度安排' },
+    卵泡期: { ok: '精力回升，适合开启新计划与创造性工作', low: '适合轻度规划，别给自个太大压力' },
+    排卵期: { ok: '状态活跃，适合社交、沟通与重要决策', low: '适合一对一沟通，重大决策可稍缓' },
+    黄体期: { ok: '适合专注执行与收尾，留意情绪起伏', low: '以收尾和轻松事务为主' },
+  };
+  const entry = map[phase];
+  if (!entry) return '记录经期后，为你提供周期专属建议';
+  return low ? entry.low : entry.ok;
+}
+
+export default function TodayScreen() {
+  const { width } = useWindowDimensions();
+  const navigation = useNavigation<any>();
+  const [chartW, setChartW] = useState(0);
+  const [ring, setRing] = useState(() => RingBle.getState());
+  useEffect(() => RingBle.onState(setRing), []);
+  const cardWidth =
+    Math.min(width, theme.layout.maxWidth) - theme.space.screen * 2 - theme.space.cardPad * 2;
+
+  // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
+  const status = ring.curveStatus;
+  const statusIdx = status && status.value != null ? curveLevel(status.value, CURVE_DEFAULTS).index : null;
+  const mood = statusIdx != null ? MOODS[statusIdx] : null;
+  const phase = status?.phaseLabel ?? '未记录';
+  const phaseKnown = phase !== '未记录';
+  const advice = phaseAdvice(phase, statusIdx);
+  const hasStatus = !!mood;
+  const showPill = hasStatus || phaseKnown;
+  const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
+
+  return (
+    <View style={styles.page}>
+      {/* 仅 Today 页：上白下紫的分屏背景，其他页面保留 App 根渐变 */}
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite, theme.colors.bgMidAlt, theme.colors.bgTop]}
+        locations={[0, 0.42, 0.72, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <ScreenContainer>
+        <View style={styles.head}>
+          <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarLetter}>K</Text>
+            </View>
+            <Text style={styles.name}>Kristina</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Today</Text>
+        </View>
+
+        <View style={styles.energyWrap}>
+          <EnergyBall status={ring.curveStatus} />
+          <View style={styles.statusPill}>
+            {showPill && (
+              <View style={styles.statusChipRow}>
+                {mood && (
+                  <View style={[styles.statusChip, { backgroundColor: mood.color }]}>
+                    <Text style={styles.statusChipText}>{mood.label}</Text>
+                  </View>
+                )}
+                {phaseKnown && (
+                  <View style={styles.phaseChip}>
+                    <Text style={styles.phaseChipText}>{phase}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            <Text style={styles.statusNarr}>{narrative}</Text>
+          </View>
+        </View>
+
+        <Card style={styles.trendCard}>
+          <Text style={styles.cardTitle}>全天状态趋势</Text>
+          <Text style={styles.axisY}>纵轴：状态指数 0–100（越高越有活力）</Text>
+          <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
+            {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
+          </View>
+          {chartW > 0 ? <TrendAxis width={chartW} /> : null}
+          <View style={styles.legend}>
+            {MOODS.map((m) => (
+              <LegendDot key={m.key} color={m.color} label={m.label} />
+            ))}
+          </View>
+        </Card>
+
+        <View style={styles.adviceWrap}>
+          <ListCard title="今日建议" items={ADVICE} />
+        </View>
+      </ScreenContainer>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, width: '100%' },
+  head: { marginBottom: theme.space.xl * 1.5 },
+  avatarName: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.xs },
+  avatar: {
+    width: theme.sp(9),
+    height: theme.sp(9),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.avatarBgLight,
+    borderWidth: 1,
+    borderColor: theme.colors.avatarBorderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.space.sm,
+  },
+  avatarLetter: {
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textInk,
+  },
+  name: {
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textInk,
+  },
+  title: {
+    fontSize: theme.fontSize.h1,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textInk,
+    marginTop: theme.space.xs,
+  },
+  energyWrap: { marginBottom: theme.space.sm, alignItems: 'center' },
+  statusPill: {
+    marginTop: theme.space.sm,
+    alignSelf: 'center',
+    width: '92%',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+    ...theme.shadow.card,
+  },
+  statusChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: theme.space.xs,
+  },
+  statusChip: {
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: theme.sp(1.5),
+    borderRadius: theme.radius.pill,
+    marginRight: theme.space.xs,
+    marginBottom: theme.space.xs,
+  },
+  statusChipText: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.orbTextInk,
+  },
+  phaseChip: {
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: theme.sp(1.5),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentSoft,
+    marginRight: theme.space.xs,
+    marginBottom: theme.space.xs,
+  },
+  phaseChipText: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.accentSolid,
+  },
+  statusNarr: {
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.55,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
+  trendCard: { marginTop: theme.space.md, marginBottom: theme.space.lg },
+  adviceWrap: { marginTop: theme.space.md },
+  cardTitle: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textTitle,
+    marginBottom: theme.space.sm,
+  },
+  axisY: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.accentSolid,
+    fontWeight: theme.weight.medium,
+    marginBottom: theme.sp(1),
+  },
+  legend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: theme.space.sm,
+    gap: theme.space.md,
+  },
+  legendItem: { flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25), marginRight: theme.sp(1) },
+  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+});

@@ -1,0 +1,140 @@
+/**
+ * Post-export hook: wrap the generated web app in an iPhone-style device frame.
+ * This makes the WorkBuddy web preview look like the real native app.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const distHtml = path.join(__dirname, '..', 'dist', 'index.html');
+if (!fs.existsSync(distHtml)) {
+  console.error('dist/index.html not found. Run expo export --platform web first.');
+  process.exit(1);
+}
+
+const generated = fs.readFileSync(distHtml, 'utf8');
+
+// Preserve the injected Expo bundle script (its hash changes each build).
+const scriptMatch = generated.match(/<script[^>]*src="([^"]+)"[^>]*><\/script>/);
+const appScript = scriptMatch ? scriptMatch[0] : '';
+if (!appScript) {
+  console.warn('No app bundle script found in dist/index.html; preview may be blank.');
+}
+
+const titleMatch = generated.match(/<title>([^<]*)<\/title>/);
+const title = titleMatch ? titleMatch[1] : 'miraringfashion';
+
+const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>${title}</title>
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 30%, #4b3f72 0%, #2a2344 40%, #161226 100%);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      #phone-frame {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        max-width: 96vw;
+        max-height: 96vh;
+        background: #000;
+        border-radius: 52px;
+        box-shadow:
+          0 0 0 10px #1f1b2e,
+          0 25px 70px rgba(0, 0, 0, 0.55),
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      #phone-notch {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 96px;
+        height: 28px;
+        background: #000;
+        border-radius: 20px;
+        z-index: 100;
+      }
+      #phone-frame::before,
+      #phone-frame::after {
+        content: "";
+        position: absolute;
+        right: -14px;
+        width: 6px;
+        background: #2c263d;
+        border-radius: 4px;
+      }
+      #phone-frame::before {
+        top: 112px;
+        height: 28px;
+      }
+      #phone-frame::after {
+        top: 156px;
+        height: 58px;
+      }
+      #root {
+        display: flex;
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        /* Fallback gradient so the app background is always visible in web preview,
+           even if the RN LinearGradient fails to fill (e.g. collapsed flex chain). */
+        background: linear-gradient(
+          180deg,
+          #b5a9f2 0%,
+          #cfc8f7 34%,
+          #e6e3fb 64%,
+          #f7f5fe 100%
+        );
+      }
+      #root * {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      #root *::-webkit-scrollbar {
+        display: none;
+      }
+      #preview-label {
+        position: absolute;
+        bottom: -32px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255, 255, 255, 0.35);
+        font-size: 12px;
+        letter-spacing: 0.6px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="phone-frame">
+      <div id="phone-notch"></div>
+      <div id="root"></div>
+    </div>
+    <div id="preview-label">miraringfashion · Web Preview</div>
+    ${appScript}
+  </body>
+</html>
+`;
+
+fs.writeFileSync(distHtml, html, 'utf8');
+console.log('Phone frame wrapper applied to dist/index.html');

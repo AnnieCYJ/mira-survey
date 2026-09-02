@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "miraringfashion",
+    "slug": "miraringfashion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "scheme": "miraringfashion",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.miraringfashion.app",
+      "buildNumber": "1",
+      "deploymentTarget": "13.4",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "miraringfashion 读取你的睡眠与心率数据用于生成每日状态。",
+        "NSBluetoothAlwaysUsageDescription": "miraringfashion 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
+        "NSBluetoothPeripheralUsageDescription": "miraringfashion 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.miraringfashion.app",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": ["./plugins/withVeepooSDK"],
+    "assetBundlePatterns": ["**/*"]
+  }
+}
