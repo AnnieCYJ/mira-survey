@@ -19,7 +19,9 @@ import {
   RANGE_UNIT,
   type RangeKey,
   SERIES_PARAM,
+  cycleNote,
 } from '../data/metrics';
+import { RingBle } from '../ble/RingBleManager';
 
 interface Props {
   visible: boolean;
@@ -139,7 +141,9 @@ export default function MetricDetailSheet({ visible, metricKey, onClose }: Props
           </View>
         </View>
 
-        <Text style={styles.note}>{RANGE_NOTE[range][metricKey]}</Text>
+        <Text style={styles.note}>
+          {metricKey === 'cycle' ? cycleNote(range, RingBle.getState().curveStatus) : RANGE_NOTE[range][metricKey]}
+        </Text>
       </ScrollView>
     </Sheet>
   );

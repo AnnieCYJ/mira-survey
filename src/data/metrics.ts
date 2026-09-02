@@ -27,6 +27,8 @@ export const TREND_SCRIPT: [StateKey, number][] = [
 ];
 export const TREND_AXIS = ['0时', '4时', '8时', '12时', '16时', '20时', '24时'];
 
+import type { CurveStatus } from '../lib/dailyStatus';
+
 export type MetricKey = 'sleep' | 'cycle' | 'metabolism' | 'heart' | 'mind';
 
 export interface MetricDef {
@@ -401,14 +403,14 @@ export const RANGE_NOTE: Record<RangeKey, Record<MetricKey, string>> = {
   },
   week: {
     sleep: '本周睡眠时长整体上行，工作日与周末差异在 40 分钟以内。',
-    cycle: '本周处于卵泡期末段，雌激素持续爬升。',
+    cycle: '本周周期阶段解读由真实记录（经期日期 + 体温确认排卵）驱动。',
     metabolism: '本周静息代谢波动不大，处在你的正常区间。',
     heart: '本周 HRV 连续高于个人基线，恢复良好。',
     mind: '本周压力峰值集中在工作日中段，周末明显回落。',
   },
   month: {
     sleep: '整月睡眠在排卵期后略有下降，与孕激素升高一致。',
-    cycle: '完整周期呈现清晰的单峰曲线，峰值在第 14 天附近。',
+    cycle: '本周期激素曲线由真实相位驱动，峰值在排卵期附近。',
     metabolism: '整月代谢在黄体期上浮约 5–8%。',
     heart: '整月 HRV 呈缓慢上行趋势，正向平衡。',
     mind: '整月压力与工作节奏高度相关。',
@@ -421,6 +423,43 @@ export const RANGE_NOTE: Record<RangeKey, Record<MetricKey, string>> = {
     mind: '全年压力与工作项目节奏吻合，无长期升高。',
   },
 };
+
+/**
+ * 周期维度的范围解读，改为跟随真实相位数据（非写死）。
+ * 读取 RingState.curveStatus（与首页/今日建议同源单一真相源）。
+ */
+export function cycleNote(range: RangeKey, cs: CurveStatus | null): string {
+  if (!cs || !cs.hasLog || cs.dayInCycle == null) {
+    return '记录经期日期、并持续佩戴后，这里会显示你本周期阶段的趋势解读。';
+  }
+  const day = cs.dayInCycle;
+  const phase = cs.phaseLabel;
+  const est = cs.estrogenIndex;
+
+  if (range === 'day') {
+    return `雌激素在清晨达到日内高点、午后缓慢回落；当前为周期第 ${day} 天（${phase}）。`;
+  }
+  if (range === 'week') {
+    switch (phase) {
+      case '经期':
+        return `本周处于经期（周期第 ${day} 天），雌激素处于低位，注意补铁与休息。`;
+      case '卵泡期':
+        return `本周处于卵泡期（周期第 ${day} 天），雌激素持续爬升，精力与恢复逐步走高。`;
+      case '排卵期':
+        return `本周处于排卵期窗口（周期第 ${day} 天），雌激素达到峰值，是本月状态高点。`;
+      case '黄体期':
+        return `本周处于黄体期（周期第 ${day} 天），孕激素主导，代谢略升、情绪更需关注。`;
+      default:
+        return `本周处于周期第 ${day} 天（${phase}）。`;
+    }
+  }
+  if (range === 'month') {
+    const estTxt = est != null ? `，雌激素指数约 ${est}` : '';
+    return `本周期呈现单峰激素曲线，峰值在排卵期附近；当前周期第 ${day} 天（${phase}）${estTxt}。曲线由真实相位驱动，非固定第 14 天。`;
+  }
+  // year：周期长度规律需要 ≥3 次记录才统计，这里只做阶段描述
+  return `全年周期趋势稳定，当前处于${phase}（周期第 ${day} 天）。记录越久，这里会展示你的周期长度规律。`;
+}
 
 export function genSeries(p: SeriesParam, n: number): number[] {
   const out: number[] = [];
