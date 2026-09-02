@@ -1152,6 +1152,7 @@ class RingConnectionImpl {
         phaseLabel: PHASE_TEXT[pb] ?? '未记录',
         dayInCycle: cycle.dayInCycle,
         hasLog: cycle.hasLog,
+        estrogenIndex: cycle.estrogenIndex ?? null,
         seed: null,
         narrative: cycle.hasLog
           ? '今日佩戴数据不足，暂无法评估恢复状态'
@@ -1172,6 +1173,7 @@ class RingConnectionImpl {
       phaseLabel,
       dayInCycle: cycle.dayInCycle,
       hasLog: cycle.hasLog,
+      estrogenIndex: cycle.estrogenIndex ?? null,
       seed,
       narrative,
       hasData: true,

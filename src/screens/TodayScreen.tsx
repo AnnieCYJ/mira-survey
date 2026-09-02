@@ -10,14 +10,9 @@ import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { MOODS } from '../data/metrics';
 import { RingBle } from '../ble/RingBleManager';
-import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
+import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
 
-const ADVICE: ListItem[] = [
-  {
-    dot: theme.colors.stateEnergy,
-    title: '午后进行 20 分钟中等强度训练',
-    sub: '雌激素峰值窗口，恢复能力处于本月高位',
-  },
+const ADVICE_STATIC: ListItem[] = [
   {
     dot: theme.colors.stateTense,
     title: '14:00 会议前安排 5 分钟呼吸',
@@ -29,6 +24,52 @@ const ADVICE: ListItem[] = [
     sub: '深睡窗口稳定，可再争取一个完整周期',
   },
 ];
+
+// 首条建议：跟随真实周期相位 + 雌激素建模指数（替代写死的「雌激素峰值窗口」）。
+// 雌激素指数由 computeCycle 用真实排卵日（含体温确认覆盖）算出，非编数据。
+function cycleAdviceItem(cs: CurveStatus | null): ListItem {
+  if (!cs || !cs.hasLog || cs.dayInCycle == null) {
+    return {
+      dot: theme.colors.stateTired,
+      title: '记录经期后开启周期建议',
+      sub: '今天先以身体感受为准，灵活安排节奏',
+    };
+  }
+  const e = cs.estrogenIndex;
+  const eTxt = e != null ? `（指数 ${e}）` : '';
+  switch (cs.phaseLabel) {
+    case '经期':
+      return {
+        dot: theme.colors.stateTired,
+        title: '今天以温和舒缓为主',
+        sub: `经期第 ${cs.dayInCycle} 天，雌激素低位${eTxt}，适合休息与轻活动`,
+      };
+    case '卵泡期':
+      return {
+        dot: theme.colors.stateEnergy,
+        title: '适合开启新计划与创造性工作',
+        sub: `雌激素回升${eTxt}，精力逐步走高`,
+      };
+    case '排卵期':
+      return {
+        dot: theme.colors.stateEnergy,
+        title: '状态活跃，适合社交与重要沟通',
+        sub: `雌激素峰值${eTxt}，恢复能力处于本月高位`,
+      };
+    case '黄体期':
+      return {
+        dot: theme.colors.stateTense,
+        title: '适合专注执行与收尾',
+        sub: `雌激素回落${eTxt}，留意情绪与能量起伏`,
+      };
+    default:
+      return {
+        dot: theme.colors.stateTired,
+        title: '记录经期后开启周期建议',
+        sub: '今天先以身体感受为准',
+      };
+  }
+}
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
@@ -72,6 +113,9 @@ export default function TodayScreen() {
   const hasStatus = !!mood;
   const showPill = hasStatus || phaseKnown;
   const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
+
+  // 今日建议：首条跟随真实周期相位 + 雌激素指数，其余为通用建议
+  const ADVICE: ListItem[] = [cycleAdviceItem(ring.curveStatus), ...ADVICE_STATIC];
 
   return (
     <View style={styles.page}>

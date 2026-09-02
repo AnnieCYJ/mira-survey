@@ -641,6 +641,8 @@ export interface CurveStatus {
   dayInCycle: number | null;
   /** 是否已记录经期（决定对比文案） */
   hasLog: boolean;
+  /** 当前周期日的雌激素指数（0–100，建模估算非实测；无记录为 null） */
+  estrogenIndex: number | null;
   /** 晨间种子 S0 + 睡眠恢复读数 */
   seed: SeedResult | null;
   /** 首页叙事文案 */

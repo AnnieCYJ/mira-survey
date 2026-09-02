@@ -94,6 +94,8 @@ export interface CycleInfo {
   cycleLengthStd?: number;
   /** 下次经期置信窗 [早, 晚]（基于均值 ± 标准差） */
   nextPeriodRange?: [string, string] | null;
+  /** 当前周期日的雌激素指数（0–100，建模估算，非实测；无记录为 null） */
+  estrogenIndex?: number | null;
 }
 
 export interface CycleComputeOpts {
@@ -263,6 +265,11 @@ export function computeCycle(
   const daysToNextPeriod = daysBetween(tKey, next);
   const daysToOvulation = daysBetween(tKey, ovulationDate);
 
+  // 雌激素建模指数（非实测）：用真实排卵日（含体温确认覆盖）生成整条曲线，取当前周期日
+  const ovulationDay = daysBetween(log.lastPeriodStart, ovulationDate) + 1;
+  const estCurve = modelEstrogenCurve({ cycleLength, ovulationDay, periodLength: periodLen });
+  const estrogenIndex = estrogenAt(estCurve, dayInCycle);
+
   return {
     hasLog: true,
     dayInCycle,
@@ -279,6 +286,7 @@ export function computeCycle(
     cycleLengthMean,
     cycleLengthStd,
     nextPeriodRange,
+    estrogenIndex,
   };
 }
 
