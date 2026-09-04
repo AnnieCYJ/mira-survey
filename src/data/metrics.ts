@@ -129,6 +129,10 @@ export interface BasicMetricDef {
   manualHint?: string;
   /** 仍在数据链路中（供其他卡片/结构卡聚合），但不在洞察页维度卡列表里单独展示 */
   hideInList?: boolean;
+  /** 基础指标 tab 内的分组标题（非基础 5 实时信号时用来给新增指标分段） */
+  section?: string;
+  /** 是否显示卡片下方的全天趋势图（默认 true） */
+  showTrend?: boolean;
 }
 
 export const BASIC_METRICS: BasicMetricDef[] = [
@@ -210,13 +214,30 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     yMin: 0,
     yMax: 150,
   },
+  {
+    key: 'rr',
+    name: '呼吸率',
+    dimension: 'basics',
+    icon: 'breath',
+    value: '—',
+    unit: '次/分',
+    range: '正常静息 12–20',
+    data: [],
+    live: false,
+    note: '静息呼吸频率。本戒指固件不开放「独立呼吸率测量」（单独接口会打断实时心率/血氧，且恒返不支持），故点击测量时复用心电图 ECG 测量，取 ECG 附带的平均呼吸率——HK18 的 ECG 硬件支持。做一次 ECG 即可获得当日呼吸率与其历史。',
+    freq: '手动测量 · 约 30 秒（经 ECG）',
+    yMin: 5,
+    yMax: 40,
+    hideMeasure: false,
+  },
 ];
 
 // ───────────────────────────────────────────────────────────
 // 扩展信号：均由原生桥（健康一览 healthGlance + 每日 auto_data 睡眠/计步回读）自动接入，
 // 协议文档确认本戒指固件真实返回的字段。每个信号一张 BasicMetricCard，令牌与基础指标一致。
 // 均为「自动同步」类（hideMeasure），无手动测量按钮、无「待接入」占位卡。
-// （呼吸率/静息代谢/血压/ECG/PPG 在本戒指固件上返回 0 或硬件未开放，已按用户要求从 App 移除。）
+// （静息代谢/PPG 在本戒指固件上返回 0 或硬件未开放，已移除；血压改为光电法实时测、ECG 已单独成卡、
+// 呼吸率改为经 ECG 的 aveResRate 获取——均见 BASIC_METRICS / BASICS_EXTRA_SIGNALS。）
 // ───────────────────────────────────────────────────────────
 export const EXTENDED_SIGNALS: BasicMetricDef[] = [
   // —— 睡眠和激素 ——（来自设备每日 auto_data 睡眠回读，无特殊硬件要求）
@@ -299,9 +320,122 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
   },
 ];
 
-/** 取某维度 tab 下应展示的信号卡片：'basics' 返回 6 个实时基础信号，其余返回对应维度的扩展信号。 */
+/** 基础指标 tab 下的「扩展」卡片：均来自 SDK 健康一览（healthGlance）模型，
+ *  之前未 emit/未建卡，现按用户要求补齐。key 严格等于原生 VeepooRing.m 的 emitMetric key。
+ *  - 血脂·心理组：与已工作的 bloodSugar/bloodFat/uricAcid 同属 healthGlance，固件直接返回。
+ *  - 光电血压：依赖 isSupportBPTest，HK18 大概率返 0（卡片会显示"—"，不造假）。
+ *  - 身体成分：需先在 App 录入身高/体重档案（RingBle.setUserInfo 下发戒指），
+ *    之后 healthGlance 才会填充这些字段。 */
+export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
+  // —— 血脂 · 心理（健康一览自动同步）——
+  {
+    key: 'triglyceride', name: '甘油三酯', icon: 'drop', dimension: 'basics',
+    value: '—', unit: 'mmol/L', range: '正常 < 1.7 mmol/L', data: [], live: false,
+    note: '血液中甘油三酯浓度，与饮食、脂代谢相关。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
+  },
+  {
+    key: 'hdl', name: '高密度脂蛋白', icon: 'drop', dimension: 'basics',
+    value: '—', unit: 'mmol/L', range: '正常 > 1.0 mmol/L', data: [], live: false,
+    note: '「好胆固醇」，偏高有助于清除血管多余脂质。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 3, hideMeasure: true, section: '血脂 · 心理',
+  },
+  {
+    key: 'ldl', name: '低密度脂蛋白', icon: 'drop', dimension: 'basics',
+    value: '—', unit: 'mmol/L', range: '正常 < 3.4 mmol/L', data: [], live: false,
+    note: '「坏胆固醇」，过高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
+  },
+  {
+    key: 'depressionRisk', name: '抑郁风险', icon: 'mind', dimension: 'basics',
+    value: '—', unit: '', range: '0 正常 · 1 轻度 · 2 重度', data: [], live: false,
+    note: '健康一览自动评估的抑郁风险等级（0–2）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 2, hideMeasure: true, section: '血脂 · 心理',
+  },
+  {
+    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '', range: '1–99，越高越兴奋', data: [], live: false,
+    note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '血脂 · 心理',
+  },
+  // —— 光电血压（实时测量，HK18 硬件支持）——
+  {
+    key: 'bpSys', name: '收缩压（光电）', icon: 'heart', dimension: 'basics',
+    value: '—', unit: 'mmHg', range: '正常 < 120', data: [], live: false,
+    note: '光电法实时测得的收缩压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 60, yMax: 200, hideMeasure: false, section: '光电血压',
+  },
+  {
+    key: 'bpDia', name: '舒张压（光电）', icon: 'activity', dimension: 'basics',
+    value: '—', unit: 'mmHg', range: '正常 < 80', data: [], live: false,
+    note: '光电法实时测得的舒张压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 130, hideMeasure: false, section: '光电血压',
+  },
+  // —— 心电图 ECG（实时测量，HK18 硬件支持）——
+  {
+    key: 'ecg', name: '心电图 ECG', icon: 'heart', dimension: 'basics',
+    value: '—', unit: 'bpm', range: '平均心率', data: [], live: false,
+    note: '实时心电图测量（HK18 硬件支持），返回平均心率、HRV、呼吸率、QT、PWV 与波形。点击卡片或测量按钮开始测量。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 120, hideMeasure: false, manualOnly: true, section: '心电图 ECG',
+  },
+  // —— 身体成分（健康一览，需先在 App 录入身高/体重档案）——
+  {
+    key: 'bmi', name: 'BMI', icon: 'ring', dimension: 'basics',
+    value: '—', unit: '', range: '18.5–24 正常', data: [], live: false,
+    note: '身体质量指数，由身高体重推算。需先在「身体成分档案」录入身高体重。', freq: '健康一览自动同步（需录入档案）', yMin: 10, yMax: 40, hideMeasure: true, section: '身体成分',
+  },
+  {
+    key: 'bodyFatPercentage', name: '体脂率', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '%', range: '女 20–30% 健康', data: [], live: false,
+    note: '身体脂肪占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 50, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'fatMass', name: '脂肪量', icon: 'activity', dimension: 'basics',
+    value: '—', unit: 'kg', range: '—', data: [], live: false,
+    note: '体内脂肪总重量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 40, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'leanBodyMass', name: '瘦体重', icon: 'activity', dimension: 'basics',
+    value: '—', unit: 'kg', range: '—', data: [], live: false,
+    note: '去脂体重（肌肉+骨骼+水分等）。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 70, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'muscleMass', name: '肌肉量', icon: 'activity', dimension: 'basics',
+    value: '—', unit: 'kg', range: '—', data: [], live: false,
+    note: '骨骼肌+平滑肌等总体肌肉质量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 10, yMax: 60, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'muscleRate', name: '肌肉率', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '%', range: '—', data: [], live: false,
+    note: '肌肉占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 70, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'skeletalMuscleRate', name: '骨骼肌率', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '%', range: '—', data: [], live: false,
+    note: '骨骼肌占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 60, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'subcutaneousFat', name: '皮下脂肪', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '%', range: '—', data: [], live: false,
+    note: '皮下脂肪占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 50, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'waterContent', name: '身体水分', icon: 'drop', dimension: 'basics',
+    value: '—', unit: '%', range: '50–65% 健康', data: [], live: false,
+    note: '体内水分占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 30, yMax: 80, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'boneMass', name: '骨量', icon: 'ring', dimension: 'basics',
+    value: '—', unit: 'kg', range: '—', data: [], live: false,
+    note: '骨骼矿物质重量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 1, yMax: 6, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'proteinAmount', name: '蛋白质', icon: 'drop', dimension: 'basics',
+    value: '—', unit: 'kg', range: '—', data: [], live: false,
+    note: '体内蛋白质总量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 20, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+  {
+    key: 'basalMetabolicRate', name: '基础代谢率', icon: 'activity', dimension: 'basics',
+    value: '—', unit: 'kcal', range: '—', data: [], live: false,
+    note: '静息状态下维持生命的最低能耗。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 800, yMax: 2500, hideMeasure: true, showTrend: false, section: '身体成分',
+  },
+];
+
+/** 取某维度 tab 下应展示的信号卡片：'basics' 返回 5 个实时基础信号 + 扩展信号，其余返回对应维度的扩展信号。 */
 export function signalsForDimension(dim: 'basics' | MetricKey): BasicMetricDef[] {
-  if (dim === 'basics') return BASIC_METRICS;
+  if (dim === 'basics') return [...BASIC_METRICS, ...BASICS_EXTRA_SIGNALS];
   return EXTENDED_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList);
 }
 

@@ -22,9 +22,11 @@ interface Props {
   measureTime: number | null;
   /** 手动测量回调 */
   onMeasure: () => void;
+  /** 点击卡片进入「指标历史详情」全屏页 */
+  onPress?: () => void;
 }
 
-export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure }: Props) {
+export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure, onPress }: Props) {
   const [measuring, setMeasuring] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -33,7 +35,8 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
     if (live && measuring) setMeasuring(false);
   }, [live, measuring]);
 
-  const onPress = () => {
+  // 注意：本地测量处理函数命名为 onPressMeasure，避免遮蔽同名导航 prop onPress。
+  const onPressMeasure = () => {
     if (measuring) return;
     setMeasuring(true);
     onMeasure();
@@ -46,7 +49,8 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
   const showHint = !live && !measuring && metric.manualHint;
 
   return (
-    <Card>
+    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+      <Card>
       {/* 顶部：名称 + 状态标签（无按钮，按钮统一置底） */}
       <View style={styles.top}>
         <Text style={styles.name}>{metric.name}</Text>
@@ -84,14 +88,15 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
       {/* 测量按钮：全宽置底 */}
       <TouchableOpacity
         activeOpacity={0.7}
-        onPress={onPress}
+        onPress={onPressMeasure}
         style={[styles.btn, measuring && styles.btnBusy]}
       >
         <Text style={[styles.btnLabel, measuring && styles.btnLabelBusy]}>
           {measuring ? '测量中…' : live ? '重新测量' : '手动测量'}
         </Text>
       </TouchableOpacity>
-    </Card>
+      </Card>
+    </TouchableOpacity>
   );
 }
 

@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
+import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
@@ -157,9 +158,13 @@ export default function TodayScreen() {
           </View>
         </View>
 
-        <Card style={styles.trendCard}>
-          <Text style={styles.cardTitle}>全天状态趋势</Text>
-          <Text style={styles.axisY}>纵轴：状态指数 0–100（越高越有活力）</Text>
+        <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
+          <Card style={styles.trendCard}>
+            <View style={styles.trendHead}>
+              <Text style={styles.cardTitle}>全天状态趋势</Text>
+              <Icon name="chevronRight" size={theme.fs(18)} color={theme.colors.textSub} />
+            </View>
+            <Text style={styles.axisY}>纵轴：状态指数 0–100（越高越有活力）</Text>
           <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
             {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
           </View>
@@ -169,7 +174,8 @@ export default function TodayScreen() {
               <LegendDot key={m.key} color={m.color} label={m.label} />
             ))}
           </View>
-        </Card>
+          </Card>
+        </TouchableOpacity>
 
         <View style={styles.adviceWrap}>
           <ListCard title="今日建议" items={ADVICE} />
@@ -266,6 +272,11 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.medium,
     color: theme.colors.textTitle,
+  },
+  trendHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: theme.space.sm,
   },
   axisY: {

@@ -14,8 +14,15 @@
 //   注意：原生桥的 framework 仅含 arm64，必须连 iPhone 真机构建运行（模拟器会报架构
 //   不匹配）；且需在 Xcode 里 ⌘R 一次（plugin 会在 prebuild 时把 framework 嵌入并签名）。
 
-/** 后端基址（仅 native 不可用时作回退；iPhone 真机需与 Mac 同一 WiFi 的局域网 IP） */
-export const BACKEND_BASE_URL = 'http://192.168.1.5:3000';
+/**
+ * 云端同步后端（Cloudflare Workers + D1，新项目 mira-ring-sync，契约对齐 backend_write_skeleton.json）。
+ * ⚠️ 首次 `wrangler deploy` 后，请把下面地址替换为终端实际输出的 `https://mira-ring-sync.<子域>.workers.dev`。
+ * 本地调试阶段可临时改回 http://192.168.1.5:3000（需手机与 Mac 同一 Wi-Fi）。
+ */
+export const BACKEND_BASE_URL = 'https://mira-ring-sync.mira-annie.workers.dev';
+
+/** 上传云端时的 Bearer 令牌；为空则不带鉴权（与本地 :3000 dev 行为一致）。生产用 `wrangler secret put API_TOKEN` 设好后端令牌后，填此处即可自动带上。 */
+export const RING_SYNC_TOKEN = '';
 
 /** 当前真实数据来源：'native'（直连戒指）或 'backend'（读后端） */
 export const RING_DATA_SOURCE: 'backend' | 'native' = 'native';

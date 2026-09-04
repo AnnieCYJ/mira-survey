@@ -46,8 +46,13 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
       ? LEVEL_MOOD_IDX[status.level]
       : active;
   const mood = MOODS[hi];
-  const statusValue =
-    status?.hasData && status.value != null ? Math.round(status.value) : null;
+  // 空状态（无数据）：圆环统一紫色，中间显示「暂无数据」
+  const EMPTY_COLOR = '#9D8AF0';
+  const moodColor = MOODS[hi].color;
+  const hasData = !!(status?.hasData && status.value != null);
+  const ringColor = hasData ? moodColor : EMPTY_COLOR;
+  const centerLabel = hasData ? mood.label : '暂无数据';
+  const statusValue = hasData ? Math.round(status.value as number) : null;
 
   const dotAnims = useRef(MOODS.map(() => new Animated.Value(0))).current;
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
@@ -151,20 +156,20 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
       <Svg width={svgSize} height={svgSize}>
         <Defs>
           {/* 外圈光晕：跟随情绪色，向环外大幅扩散 */}
-          <RadialGradient key={`aura-${mood.color}`} id="aura" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={mood.color} stopOpacity="0" />
-            <Stop offset="46%" stopColor={mood.color} stopOpacity="0" />
-            <Stop offset="60%" stopColor={mood.color} stopOpacity="0.14" />
-            <Stop offset="74%" stopColor={mood.color} stopOpacity="0.40" />
-            <Stop offset="86%" stopColor={mood.color} stopOpacity="0.22" />
-            <Stop offset="100%" stopColor={mood.color} stopOpacity="0" />
+          <RadialGradient key={`aura-${ringColor}`} id="aura" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={ringColor} stopOpacity="0" />
+            <Stop offset="46%" stopColor={ringColor} stopOpacity="0" />
+            <Stop offset="60%" stopColor={ringColor} stopOpacity="0.14" />
+            <Stop offset="74%" stopColor={ringColor} stopOpacity="0.40" />
+            <Stop offset="86%" stopColor={ringColor} stopOpacity="0.22" />
+            <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
           </RadialGradient>
           {/* 中央彩色呼吸光晕：跟随情绪色（key 强制按颜色重挂，避免渐变缓存），范围更大更弥散 */}
-          <RadialGradient key={mood.color} id="moodGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={mood.color} stopOpacity="0.86" />
-            <Stop offset="38%" stopColor={mood.color} stopOpacity="0.54" />
-            <Stop offset="70%" stopColor={mood.color} stopOpacity="0.16" />
-            <Stop offset="100%" stopColor={mood.color} stopOpacity="0" />
+          <RadialGradient key={ringColor} id="moodGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={ringColor} stopOpacity="0.86" />
+            <Stop offset="38%" stopColor={ringColor} stopOpacity="0.54" />
+            <Stop offset="70%" stopColor={ringColor} stopOpacity="0.16" />
+            <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
           </RadialGradient>
         </Defs>
 
@@ -177,8 +182,8 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
           fill="url(#moodGlow)"
           opacity={glowOpacity}
         />
-        {/* 四个状态点所在的环：跟随点击的情绪色切换（不再固定紫色） */}
-        <Circle cx={c} cy={c} r={ringR} stroke={mood.color} strokeWidth={2.8} fill="none" opacity={0.92} />
+        {/* 四个状态点所在的环：跟随情绪色切换；无数据时统一紫色 */}
+        <Circle cx={c} cy={c} r={ringR} stroke={ringColor} strokeWidth={2.8} fill="none" opacity={0.92} />
       </Svg>
 
       {/* 轨道层：四个状态点像行星一样绕中心缓慢公转（中心文字不转） */}
@@ -202,9 +207,9 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
                 {
                   left: d.x - theme.sp(1.5),
                   top: d.y - theme.sp(1.5),
-                  backgroundColor: d.color,
+                  backgroundColor: hasData ? d.color : ringColor,
                   transform: [{ scale }],
-                  shadowColor: d.color,
+                  shadowColor: hasData ? d.color : ringColor,
                   shadowOpacity: isOn ? 0.9 : 0.4,
                   shadowRadius: isOn ? 18 : 8,
                   zIndex: isOn ? 3 : 2,
@@ -230,7 +235,7 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
       </Animated.View>
 
       <View style={styles.center} pointerEvents="none">
-        <Text style={styles.label}>{mood.label}</Text>
+        <Text style={[styles.label, !hasData && styles.emptyLabel]}>{centerLabel}</Text>
         {statusValue != null && <Text style={styles.statusValue}>状态值：{statusValue}</Text>}
       </View>
     </View>
@@ -261,6 +266,12 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255,255,255,0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
+  },
+  emptyLabel: {
+    fontSize: theme.fontSize.body,
+    color: theme.colors.textSub,
+    textShadowColor: 'transparent',
+    textShadowRadius: 0,
   },
   statusValue: {
     fontSize: theme.fontSize.micro,

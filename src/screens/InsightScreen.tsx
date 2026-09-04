@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View, StyleSheet, ScrollView } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
 import InsightBanner from '../components/InsightBanner';
 import DimensionCard from '../components/DimensionCard';
-import HormoneEstrogenCard from '../components/HormoneEstrogenCard';
 import SleepStructureCard from '../components/SleepStructureCard';
 import CyclePhaseCard from '../components/CyclePhaseCard';
+import PeriodLogCard from '../components/PeriodLogCard';
 import BasicMetricCard from '../components/BasicMetricCard';
 import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import { METRICS, METRIC_ORDER, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
-import { RingBle, type RingState, type MetricKey as RingMetricKey } from '../ble/RingBleManager';
+import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { useAppState } from '../state/AppState';
 
 function formatValue(v: number | null): string {
@@ -61,6 +62,29 @@ export default function InsightScreen() {
     RingBle.setAutoMonitor(autoMonitor);
   }, [autoMonitor]);
 
+  // 任意卡片点击 → 进入「指标历史详情」全屏页（日/周/月/年切换 + 真实数据）
+  const openDetail = (
+    key: string,
+    name: string,
+    unit: string,
+    yMin: number,
+    yMax: number,
+    color?: string
+  ) => {
+    navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax, color });
+  };
+
+  // 扩展信号末次测量时间：取 dailyHistory 最后一个点的 t（原生每次读取写入一个今日时刻点）
+  const lastTimeOf = (key: string): number | null => {
+    const arr = ring.dailyHistory[key];
+    if (arr && arr.length > 0) return arr[arr.length - 1].t;
+    return null;
+  };
+
+  // 基础指标 tab：前 5 个是实时信号（读 ring.metrics/history），其余扩展信号读 ring.daily/dailyHistory
+  const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
+  const basicsSignals = signalsForDimension('basics');
+
   return (
     <ScreenContainer compactTop>
       <View style={styles.stack}>
@@ -82,29 +106,57 @@ export default function InsightScreen() {
 
         {tab === 'basics' ? (
           <View style={styles.grid}>
-            {BASIC_METRICS.map((m) => {
+            {basicsSignals.map((m, idx) => {
+              const isRealtime = realtimeKeys.has(m.key);
               const rk = m.key as RingMetricKey;
-              const realVal = ring.metrics[rk];
-              const realHistory = ring.history[rk];
+              const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
+              const hist = isRealtime ? (ring.history[rk] ?? []) : (ring.dailyHistory[m.key] ?? []);
+              const measureTime = isRealtime ? ring.lastUpdated[rk] : lastTimeOf(m.key);
+              const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
+              const showHeader = !!m.section && m.section !== prevSection;
               return (
-                <BasicMetricCard
-                  key={m.key}
-                  metric={m}
-                  auto={trendOn}
-                  live={ring.availability[rk] === 'live'}
-                  syncing={ring.availability[rk] === 'syncing'}
-                  value={formatValue(realVal)}
-                  data={realHistory}
-                  onMeasure={() => RingBle.measure(rk)}
-                  measureTime={ring.lastUpdated[rk]}
-                />
+                <React.Fragment key={m.key}>
+                  {showHeader && <Text style={styles.sectionLabel}>{m.section}</Text>}
+                  {m.manualOnly ? (
+                    <ManualMetricCard
+                      metric={m}
+                      live={real != null}
+                      value={real != null ? formatValue(real) : m.value}
+                      measureTime={measureTime}
+                      onMeasure={() => RingBle.measure(rk)}
+                      onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                    />
+                  ) : (
+                    <BasicMetricCard
+                      metric={m}
+                      auto={trendOn}
+                      live={isRealtime ? ring.availability[rk] === 'live' : real != null}
+                      syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
+                      value={formatValue(real)}
+                      data={hist}
+                      onMeasure={() => RingBle.measure(rk)}
+                      hideMeasure={m.hideMeasure ?? true}
+                      measureTime={measureTime}
+                      onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                    />
+                  )}
+                </React.Fragment>
               );
             })}
+            <EcgReadout ring={ring} />
+            <BodyProfileForm />
           </View>
         ) : tab === 'cycle' ? (
           <>
-            <CyclePhaseCard ring={ring} female={ring.female} />
-            <HormoneEstrogenCard ring={ring} female={ring.female} />
+            {/* 周期 tab 不再放日/周/月/年切换：周期不是普通时间序列指标，
+                当前卡片固定展示「本月/当前周期」视角，点击卡片进周期日历看月/年相位。 */}
+            <CyclePhaseCard
+              ring={ring}
+              female={ring.female}
+              onPress={() => navigation.navigate('CycleCalendar')}
+            />
+            {/* 今日经期状态记录（经量 / 疼痛程度），与周期日历共用同一份 periodLog */}
+            <PeriodLogCard onPress={() => navigation.navigate('CycleCalendar')} />
           </>
         ) : (
           <View style={styles.stack}>
@@ -119,6 +171,7 @@ export default function InsightScreen() {
                 remPct={ring.daily['sleepRem'] ?? null}
                 score={ring.daily['sleepScore'] ?? null}
                 fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
+                onPress={() => navigation.navigate('SleepDetail')}
               />
             )}
             {(() => {
@@ -132,12 +185,6 @@ export default function InsightScreen() {
                   </Card>
                 );
               }
-              // 扩展信号末次测量时间：取 dailyHistory 最后一个点的 t（原生每次读取写入一个今日时刻点）
-              const lastTimeOf = (key: string): number | null => {
-                const arr = ring.dailyHistory[key];
-                if (arr && arr.length > 0) return arr[arr.length - 1].t;
-                return null;
-              };
               return (
                 <View style={styles.grid}>
                   {sigs.map((m) => {
@@ -154,6 +201,7 @@ export default function InsightScreen() {
                           value={real != null ? formatValue(real) : m.value}
                           measureTime={measureTime}
                           onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
+                          onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
                         />
                       );
                     }
@@ -169,6 +217,7 @@ export default function InsightScreen() {
                         onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
                         hideMeasure={m.hideMeasure ?? true}
                         measureTime={measureTime}
+                        onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
                       />
                     );
                   })}
@@ -180,6 +229,184 @@ export default function InsightScreen() {
         )}
       </View>
     </ScreenContainer>
+  );
+}
+
+/** 身体成分档案录入：保存后通过 RingBle.setUserInfo 下发戒指，健康一览才会返回身体成分字段。 */
+function BodyProfileForm() {
+  const saved = RingBle.getUserProfile();
+  const [weight, setWeight] = useState(saved ? String(saved.weight) : '');
+  const [height, setHeight] = useState(saved ? String(saved.height) : '');
+  const [age, setAge] = useState(saved ? String(saved.age) : '');
+  const [sex, setSex] = useState<'0' | '1'>(saved ? (String(saved.sex) as '0' | '1') : '0');
+  const [savedAt, setSavedAt] = useState<number | null>(saved ? Date.now() : null);
+  const [measuring, setMeasuring] = useState(false);
+
+  const save = () => {
+    const w = parseFloat(weight);
+    const h = parseFloat(height);
+    const a = parseFloat(age);
+    if (!(w > 0 && h > 0 && a > 0)) return;
+    RingBle.setUserInfo({ weight: w, height: h, age: a, sex: sex === '1' ? 1 : 0 });
+    setSavedAt(Date.now());
+    // 档案下发后立即触发一次身体成分主动测量（HK18 健康一览不自动返回身体成分）
+    setMeasuring(true);
+    RingBle.measure('bodyComposition');
+    setTimeout(() => setMeasuring(false), 35000);
+  };
+
+  return (
+    <Card>
+      <Text style={styles.profTitle}>身体成分档案</Text>
+      <Text style={styles.profHint}>录入身高 / 体重 / 年龄 / 性别后，健康一览才会返回身体成分数据（BMI、体脂率、肌肉量、水分、骨量、基础代谢率…）。</Text>
+      <View style={styles.profRow}>
+        <View style={styles.profField}>
+          <Text style={styles.profLabel}>体重 (kg)</Text>
+          <TextInput style={styles.profInput} keyboardType="numeric" value={weight} onChangeText={setWeight} placeholder="55" placeholderTextColor={theme.colors.textSub} />
+        </View>
+        <View style={styles.profField}>
+          <Text style={styles.profLabel}>身高 (cm)</Text>
+          <TextInput style={styles.profInput} keyboardType="numeric" value={height} onChangeText={setHeight} placeholder="165" placeholderTextColor={theme.colors.textSub} />
+        </View>
+      </View>
+      <View style={styles.profRow}>
+        <View style={styles.profField}>
+          <Text style={styles.profLabel}>年龄</Text>
+          <TextInput style={styles.profInput} keyboardType="numeric" value={age} onChangeText={setAge} placeholder="30" placeholderTextColor={theme.colors.textSub} />
+        </View>
+        <View style={styles.profField}>
+          <Text style={styles.profLabel}>性别</Text>
+          <View style={styles.seg}>
+            <TouchableOpacity style={[styles.segBtn, sex === '0' && styles.segBtnOn]} onPress={() => setSex('0')}>
+              <Text style={[styles.segText, sex === '0' && styles.segTextOn]}>女</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.segBtn, sex === '1' && styles.segBtnOn]} onPress={() => setSex('1')}>
+              <Text style={[styles.segText, sex === '1' && styles.segTextOn]}>男</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.profSave} onPress={save} activeOpacity={0.8}>
+        <Text style={styles.profSaveText}>保存并同步到戒指</Text>
+      </TouchableOpacity>
+      {savedAt != null && (
+        <Text style={styles.profSaved}>
+          {measuring ? '已保存，正在测量身体成分（约 30 秒）…' : '已保存并同步到戒指 · 测量结果将自动刷新卡片'}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+/** ECG 波形路径：原始 ADC/mV 点归一化到 320×80 视窗的折线。 */
+function ecgWaveformPath(values: number[]): string {
+  if (!values || values.length < 2) return '';
+  const W = 320;
+  const H = 80;
+  const pad = 6;
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (max - min < 1e-6) max = min + 1;
+  const n = values.length;
+  return values
+    .map((v, i) => {
+      const x = pad + (i / (n - 1)) * (W - pad * 2);
+      const y = pad + (1 - (v - min) / (max - min)) * (H - pad * 2);
+      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+/** 心电图卡片：空状态 / 测量进度 / 最近一次波形 + 指标。 */
+function EcgReadout({ ring }: { ring: RingState }) {
+  const reading = ring.ecg;
+  const progress = ring.ecgProgress;
+  const caps = ring.deviceCapabilities;
+  const ecgSupported = !caps || caps.ecgType > 0;
+  const isMeasuring = progress != null;
+
+  if (!ecgSupported) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图</Text>
+        <Text style={styles.emptyNote}>当前戒指硬件不支持 ECG 测量</Text>
+      </Card>
+    );
+  }
+
+  const measureBtn = (
+    <TouchableOpacity
+      style={[styles.ecgBtn, isMeasuring && styles.ecgBtnDisabled]}
+      onPress={() => RingBle.measure('ecg')}
+      disabled={isMeasuring}
+    >
+      <Text style={styles.ecgBtnText}>
+        {isMeasuring ? `测量中 ${progress?.progress ?? 0}%` : reading ? '重新测量' : '开始测量'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (!reading && !isMeasuring) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图</Text>
+        <Text style={styles.emptyNote}>尚未测量，点击下方按钮启动 ECG（约 30 秒完成）</Text>
+        {measureBtn}
+      </Card>
+    );
+  }
+
+  if (!reading) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图 · 测量中</Text>
+        <View style={styles.ecgProgressBar}>
+          <View style={[styles.ecgProgressFill, { width: `${progress?.progress ?? 0}%` }]} />
+        </View>
+        <Text style={styles.emptyNote}>
+          {progress?.hr ? `当前心率 ${Math.round(progress.hr)} bpm · ` : ''}
+          {progress?.progress ?? 0}% — 请保持手指稳定接触戒指
+        </Text>
+      </Card>
+    );
+  }
+
+  const rows: [string, string][] = [
+    ['平均心率', `${Math.round(reading.aveHeart)} bpm`],
+    ['HRV', `${Math.round(reading.aveHrv)} ms`],
+    ['呼吸率', `${Math.round(reading.aveResRate)} 次/分`],
+    ['QT', `${Math.round(reading.aveQT)} ms`],
+    ['PWV', `${Math.round(reading.avePWV)} cm/s`],
+  ];
+  return (
+    <Card>
+      <Text style={styles.profTitle}>心电图 · 最近一次测量</Text>
+      <View style={styles.ecgChart}>
+        <Svg width="100%" height={80} viewBox="0 0 320 80" preserveAspectRatio="none">
+          <SvgPath
+            d={ecgWaveformPath(reading.waveform)}
+            fill="none"
+            stroke={theme.colors.accent1}
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </Svg>
+      </View>
+      <View style={styles.ecgGrid}>
+        {rows.map(([k, v]) => (
+          <View style={styles.ecgCell} key={k}>
+            <Text style={styles.ecgLabel}>{k}</Text>
+            <Text style={styles.ecgValue}>{v}</Text>
+          </View>
+        ))}
+      </View>
+      {isMeasuring ? (
+        <Text style={styles.emptyNote}>测量中…（{progress?.progress ?? 0}%）</Text>
+      ) : (
+        measureBtn
+      )}
+    </Card>
   );
 }
 
@@ -198,4 +425,100 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.7,
     color: theme.colors.textSub,
   },
+  sectionLabel: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textSub,
+    marginTop: theme.space.md,
+    marginBottom: theme.space.xs,
+  },
+  ecgBtn: {
+    marginTop: theme.space.md,
+    backgroundColor: theme.colors.accent1,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.md,
+    alignSelf: 'flex-start',
+  },
+  ecgBtnDisabled: { opacity: 0.5 },
+  ecgBtnText: {
+    color: theme.colors.textWhite,
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+  },
+  ecgProgressBar: {
+    height: 6,
+    backgroundColor: theme.colors.textSub + '44',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginVertical: theme.space.sm,
+  },
+  ecgProgressFill: {
+    height: '100%',
+    backgroundColor: theme.colors.accent1,
+    borderRadius: 3,
+  },
+  profTitle: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textTitle,
+    marginBottom: theme.space.xs,
+  },
+  profHint: {
+    fontSize: theme.fontSize.micro,
+    lineHeight: theme.fontSize.micro * 1.7,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.sm,
+  },
+  profRow: { flexDirection: 'row', gap: theme.space.md, marginBottom: theme.space.sm },
+  profField: { flex: 1 },
+  profLabel: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.xs,
+  },
+  profInput: {
+    backgroundColor: theme.colors.ui.offTrack,
+    borderRadius: theme.radius.card,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(2),
+    fontSize: theme.fontSize.card,
+    color: theme.colors.textTitle,
+  },
+  seg: { flexDirection: 'row', backgroundColor: theme.colors.ui.offTrack, borderRadius: theme.radius.card, padding: theme.sp(1) },
+  segBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.sp(1.5),
+    borderRadius: theme.radius.card,
+  },
+  segBtnOn: { backgroundColor: theme.colors.accentSolid },
+  segText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
+  segTextOn: { color: '#FFFFFF' },
+  profSave: {
+    marginTop: theme.space.xs,
+    backgroundColor: theme.colors.accentSolid,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.sp(3),
+    alignItems: 'center',
+  },
+  profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
+  profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.success, textAlign: 'center' },
+  ecgChart: {
+    backgroundColor: theme.colors.ui.offTrack,
+    borderRadius: theme.radius.card,
+    padding: theme.space.sm,
+    marginBottom: theme.space.sm,
+  },
+  ecgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+  ecgCell: {
+    flexBasis: '30%',
+    flexGrow: 1,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+  },
+  ecgLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  ecgValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
 });

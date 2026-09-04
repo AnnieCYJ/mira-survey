@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
-import { MOODS, TREND_SCRIPT, TREND_AXIS } from '../data/metrics';
+import { MOODS, TREND_AXIS } from '../data/metrics';
 import { curveLevel, CURVE_DEFAULTS, type CurvePoint } from '../lib/dailyStatus';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -48,28 +48,22 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
   const { d, area, pts, minGapX } = useMemo(() => {
     const pad = theme.sp(2);
     const innerW = Math.max(1, width - pad * 2);
-    const real = !!(timeline && timeline.length > 0);
 
-    // 真实数据：按 t 落到真实时间轴；无数据回退 TREND_SCRIPT（按整条 0–24h 均匀铺）
-    const source: { value: number; t: number }[] = real
-      ? timeline!
-          .filter(
-            (p) =>
-              p &&
-              typeof p.value === 'number' &&
-              Number.isFinite(p.value) &&
-              Number.isFinite(p.t)
-          )
-          .map((p) => ({ value: p.value, t: p.t }))
-      : TREND_SCRIPT.map(([, value], i) => ({
-          value,
-          t: (DAY_MS * i) / (TREND_SCRIPT.length - 1),
-        }));
+    // 仅用真实数据：按 t 落到真实时间轴（0–24h）；无真实数据则不绘制（不回退脚本曲线，避免假数据）
+    const source: { value: number; t: number }[] = (timeline ?? [])
+      .filter(
+        (p) =>
+          p &&
+          typeof p.value === 'number' &&
+          Number.isFinite(p.value) &&
+          Number.isFinite(p.t)
+      )
+      .map((p) => ({ value: p.value, t: p.t }));
 
     if (source.length === 0) return { d: '', area: '', pts: [] as PPoint[], minGapX: 28 };
 
-    const p: PPoint[] = source.map((s, i) => {
-      const frac = real ? dayFrac(s.t) : i / (source.length - 1);
+    const p: PPoint[] = source.map((s) => {
+      const frac = dayFrac(s.t);
       const x = pad + innerW * frac;
       const y = height - pad - (height - pad * 2) * (s.value / 100);
       return { x, y, value: s.value, t: s.t };

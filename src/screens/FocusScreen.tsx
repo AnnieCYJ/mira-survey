@@ -49,7 +49,7 @@ export default function FocusScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.layout.pageBottomPad(insets.bottom) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -72,7 +72,7 @@ export default function FocusScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: insets.bottom + theme.space.sm }]}>
+        <View style={[styles.inputRow, { paddingBottom: theme.layout.pageBottomPad(insets.bottom) }]}>
           <TouchableOpacity
             style={styles.inputWrap}
             onPress={() => openChat()}
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.45)',
     marginRight: theme.sp(2),
-    maxWidth: 155,
+    maxWidth: 188,
   },
   qText: {
     fontSize: theme.fontSize.sm,
@@ -186,7 +186,7 @@ interface QuestionRowProps {
 
 const SCREEN_W = Dimensions.get('window').width;
 // 估算单个 chip 占位（maxWidth + marginRight）
-const CHIP_SLOT = 155 + theme.sp(2);
+const CHIP_SLOT = 188 + theme.sp(2);
 // 保证一组内容宽度超过屏幕宽度，避免滚动时出现空白
 const REPEAT = Math.max(3, Math.ceil(SCREEN_W / CHIP_SLOT) + 1);
 

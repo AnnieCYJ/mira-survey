@@ -362,3 +362,21 @@ export function estrogenAt(pts: EstrogenPoint[], dayInCycle: number | null): num
   const p = pts.find((x) => x.day === day);
   return p ? p.value : null;
 }
+
+/**
+ * 计算某个具体日期在周期模型中的雌激素指数（非实测）。
+ * 基于用户真实记录（lastPeriodStart / cycleLength / lutealLength / periodLength）
+ * 把日期映射到对应周期日，再查 modeling curve。
+ */
+export function estrogenForDate(log: CycleLog | null, date: Date): number | null {
+  if (!log || !log.lastPeriodStart) return null;
+  const cycleLength = Math.max(20, Math.min(45, Math.round(log.cycleLength || 28)));
+  const luteal = Math.max(9, Math.min(20, Math.round(log.lutealLength || 14)));
+  const periodLen = Math.max(2, Math.min(10, Math.round(log.periodLength || 5)));
+  const ovulationDay = cycleLength - luteal;
+  const curve = modelEstrogenCurve({ cycleLength, ovulationDay, periodLength: periodLen });
+  const offset = daysBetween(log.lastPeriodStart, dayKey(date));
+  if (offset < -365) return null; // 记录前太久，不推断
+  const dayInCycle = ((offset % cycleLength) + cycleLength) % cycleLength + 1;
+  return estrogenAt(curve, dayInCycle);
+}

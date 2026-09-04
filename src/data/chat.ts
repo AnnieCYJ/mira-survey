@@ -28,17 +28,17 @@ export function generateQuestions(state: RingState | null): string[][] {
   const cycleDay = cs?.dayInCycle ?? 0;
   const phaseLabel = cs?.phaseLabel ?? '';
   if (cs?.hasLog && phaseLabel === '经期') {
-    health.push(`经期第 ${Math.max(1, cycleDay)} 天，适合做什么运动？`);
-    health.push('经期睡眠质量变差，怎么调整？');
+    health.push(`经期第${Math.max(1, cycleDay)}天做什么运动`);
+    health.push('经期睡不好怎么调');
   } else if (cs?.hasLog && phaseLabel === '排卵期') {
-    health.push('排卵期今天要注意什么？');
-    health.push('排卵期身体会有什么信号？');
+    health.push('排卵期注意什么');
+    health.push('排卵期有啥信号');
   } else if (cs?.hasLog) {
-    health.push(`我现在是${phaseLabel}，适合什么强度训练？`);
-    health.push(`这个${phaseLabel}我需要注意什么？`);
+    health.push(`${phaseLabel}适合啥强度`);
+    health.push(`${phaseLabel}要注意啥`);
   } else {
-    health.push('我现在处于周期哪个阶段？');
-    health.push('这个周期阶段适合什么强度训练？');
+    health.push('我现在啥阶段');
+    health.push('这阶段适合啥强度');
   }
 
   // —— 睡眠 ——
@@ -46,29 +46,29 @@ export function generateQuestions(state: RingState | null): string[][] {
   if (sleep) {
     const totalH = sleep.total / 60;
     if (totalH < 6) {
-      health.push(`昨晚只睡了 ${totalH.toFixed(1)} 小时，今天怎么补？`);
+      health.push(`只睡${totalH.toFixed(1)}h怎么补`);
     } else if (sleep.score <= 2) {
-      health.push('睡眠质量偏低，怎么改善？');
+      health.push('睡眠差怎么改善');
     } else {
-      health.push('昨晚睡眠质量怎么样？');
+      health.push('昨晚睡得咋样');
     }
     if (sleep.deep < 60) {
-      health.push('深睡不足有什么影响？');
+      health.push('深睡不足影响');
     }
   } else {
-    health.push('为什么最近入睡困难？');
+    health.push('最近为啥难入睡');
   }
 
   // —— HRV / 压力 ——
   const hrv = state?.metrics.hrv ?? state?.daily.hrv ?? null;
   if (hrv !== null) {
     if (hrv < 40) {
-      health.push('HRV 偏低，今天适合休息吗？');
-      health.push('最近压力是不是太大了？');
+      health.push('HRV低今天歇歇？');
+      health.push('最近压力太大？');
     } else if (hrv > 70) {
-      health.push('HRV 状态不错，今天可以上强度吗？');
+      health.push('HRV不错能上强度？');
     } else {
-      health.push('我的恢复状态怎么样？');
+      health.push('恢复状态咋样');
     }
   }
 
@@ -76,33 +76,33 @@ export function generateQuestions(state: RingState | null): string[][] {
   const steps = state?.daily?.steps ?? null;
   if (steps !== null) {
     if (steps < 3000) {
-      health.push('今天活动量偏低，要不要出去走走？');
+      health.push('活动少出去走走？');
     } else if (steps > 10000) {
-      health.push('今天走了很多路，睡前要注意什么？');
+      health.push('走很多路睡前注意');
     } else {
-      health.push('今天的活动量达标了吗？');
+      health.push('今天活动达标没');
     }
   }
 
   // —— 时间场景 ——
   if (hour < 11) {
-    health.push('早上状态怎么样？');
+    health.push('早上状态咋样');
   } else if (hour < 17) {
-    health.push('下午容易犯困怎么办？');
+    health.push('下午犯困咋办');
   } else {
-    health.push('今晚怎么提高睡眠质量？');
+    health.push('今晚怎么睡更好');
   }
 
   // —— 趣味互动（每次随机选 3 个，避免重复）——
   const pool = [
-    '帮我抽一张今日塔罗牌',
-    '解梦：梦见自己在奔跑',
-    '今天适合穿什么颜色？',
-    '随机给我一句正念语录',
-    '用星座解读一下本周运势',
-    '帮我看看今天的幸运数字',
-    '如果用一种天气形容我今天，是什么？',
-    '给我讲一个 30 秒的助眠小故事',
+    '今日塔罗牌',
+    '解梦：奔跑',
+    '今天穿啥色',
+    '来句正念语录',
+    '本周星座运势',
+    '今日幸运数字',
+    '用天气形容今天',
+    '讲个助眠小故事',
   ];
   // 简单伪随机：按日期+小时取种子，保证同小时内稳定，跨小时变化
   const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate() + hour;
@@ -117,12 +117,12 @@ export function generateQuestions(state: RingState | null): string[][] {
   picked.push(...fun.slice(0, 6 - picked.length));
   if (picked.length < 6) {
     const fallback = [
-      '最近有什么健康趋势？',
-      '我的压力峰值在什么时段？',
-      '这周适合高强度训练吗？',
-      '我的周期规律吗？',
-      '怎么提高白天的专注力？',
-      '晚上总是刷手机怎么办？',
+      '最近健康趋势',
+      '压力峰值时段',
+      '本周能高强度？',
+      '周期规律吗',
+      '白天怎么专注',
+      '晚上刷手机咋办',
     ];
     picked.push(...fallback.slice(0, 6 - picked.length));
   }

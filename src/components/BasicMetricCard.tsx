@@ -97,6 +97,10 @@ interface Props {
   hideMeasure?: boolean;
   /** 最近测量/更新时间（epoch ms），显示在数值右侧，确认数据新鲜度 */
   measureTime?: number | null;
+  /** 点击卡片进入「指标历史详情」全屏页 */
+  onPress?: () => void;
+  /** 是否渲染全天趋势图（默认 true） */
+  showTrend?: boolean;
 }
 
 export default function BasicMetricCard({
@@ -109,6 +113,8 @@ export default function BasicMetricCard({
   onMeasure,
   hideMeasure,
   measureTime,
+  onPress,
+  showTrend = true,
 }: Props) {
   const [w, setW] = useState(0);
   const [measuring, setMeasuring] = useState(false);
@@ -142,7 +148,8 @@ export default function BasicMetricCard({
   const statusTag = live ? '实时' : syncing ? '同步中' : '待接入';
 
   return (
-    <Card>
+    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+      <Card>
       {/* 顶部：名称 + 状态标签 + 手动测量按钮（与 DimensionCard 顶部节奏一致） */}
       <View style={styles.top}>
         <View style={styles.topLeft}>
@@ -171,8 +178,8 @@ export default function BasicMetricCard({
 
       <Text style={styles.range}>{metric.range}</Text>
 
-      {/* 自动监测开启 → 全天时间轴趋势图（与睡眠/激素卡片同款 sparkline，X 轴为今日 0→24 时） */}
-      {auto ? (
+      {/* 自动监测开启 + showTrend → 全天时间轴趋势图 */}
+      {auto && showTrend ? (
         <View style={styles.chartWrap}>
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
             {w > 0 ? (
@@ -214,7 +221,8 @@ export default function BasicMetricCard({
         <Text style={styles.freqLabel}>监测频率</Text>
         <Text style={styles.freqValue}>{metric.freq}</Text>
       </View>
-    </Card>
+      </Card>
+    </TouchableOpacity>
   );
 }
 

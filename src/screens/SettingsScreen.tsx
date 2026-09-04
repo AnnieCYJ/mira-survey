@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -13,14 +13,17 @@ import { RingBle, type RingState } from '../ble/RingBleManager';
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const [notif, setNotif] = useState(true);
-  const [sync, setSync] = useState(true);
+  const [sync, setSync] = useState(RingBle.getSyncEnabled());
   const { autoMonitor, setAutoMonitor } = useAppState();
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
     rssi: null,
     battery: null,
     firmware: null,
+    deviceId: null,
     metrics: { hr: null, spo2: null, temp: null, eda: null, hrv: null, rr: null },
     availability: { hr: 'syncing', spo2: 'syncing', temp: 'syncing', eda: 'syncing', hrv: 'syncing', rr: 'unavailable' },
     history: { hr: [], spo2: [], temp: [], eda: [], hrv: [], rr: [] },
@@ -28,6 +31,17 @@ export default function SettingsScreen() {
     daily: {},
     dailyHistory: {},
     tempDaily: {},
+    hrvDaily: {},
+    hrDaily: {},
+    seriesByDay: {},
+    deviceCapabilities: null,
+    spo2Daily: {},
+    edaDaily: {},
+    rrDaily: {},
+    sleepDaily: {},
+    stepDaily: {},
+    statusDaily: {},
+    lastSyncedAt: null,
     sleepStages: null,
     sleepSummary: null,
     sleepTime: null,
@@ -37,11 +51,17 @@ export default function SettingsScreen() {
     dailyCurve: null,
     curveStatus: null,
     statusTimeline: [],
+    statusTimelineByDay: {},
     error: null,
     devices: [],
     flashing: false,
     flashResult: null,
     protocol: null,
+    extDaily: {},
+    ecg: null,
+    ecgDaily: {},
+    lastUploadedAt: null,
+    ecgProgress: null,
   });
 
   // 订阅真实 BLE 连接状态
@@ -65,6 +85,28 @@ export default function SettingsScreen() {
     }
     // 开始扫描（不过滤服务，按设备名识别）；结果以候选列表呈现，可手动点选
     RingBle.startScan();
+  };
+
+  // 手动上传本地戒指数据到云端：仅此按钮触发，本地数据始终保留。
+  const uploadCloud = () => {
+    if (uploading) return;
+    Alert.alert(
+      '上传云端',
+      '将把你佩戴戒指积累的数据上传到云端存储（仅手动触发，本机数据始终保留）。是否继续？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '上传',
+          onPress: async () => {
+            setUploading(true);
+            setUploadMsg(null);
+            const r = await RingBle.uploadRingData();
+            setUploading(false);
+            setUploadMsg(r.ok ? `已上传 ${r.count} 条记录到云端` : `上传失败：${r.error ?? '未知错误'}`);
+          },
+        },
+      ]
+    );
   };
 
   const ringConnected = ring.status === 'connected';
@@ -150,7 +192,19 @@ export default function SettingsScreen() {
         <Card padded={false} style={styles.listCard}>
           <Row icon="bell" title="消息通知" desc="周期提醒与每日洞察推送" value={notif} onValueChange={setNotif} />
           <View style={styles.divider} />
-          <Row icon="sync" title="数据同步" desc="跨设备云端备份与恢复" value={sync} onValueChange={setSync} />
+          <Row
+            icon="sync"
+            title="数据同步"
+            desc="开启后从戒指读取并同步存储的生理数据"
+            value={sync}
+            onValueChange={(v) => {
+              setSync(v);
+              // 「数据同步」开关是唯一控制 backfill（同步）的来源；
+              // 开启即触发一次回填，关闭则停止后续自动同步（不清除已存数据）。
+              RingBle.setSyncEnabled(v);
+              if (v) RingBle.syncBackfill();
+            }}
+          />
         </Card>
 
         {/* 自动监测 */}
@@ -325,7 +379,83 @@ export default function SettingsScreen() {
             ))}
           </Card>
         )}
+
+        {/* 调试 · 数据存量（临时诊断用，确认后可删） */}
+        <Text style={styles.sectionTitle}>调试 · 数据存量（临时）</Text>
+        <Card style={styles.debugCard}>
+          <DebugRow label="连接状态" value={ring.status} />
+          <DebugRow label="最近同步" value={fmtAgo(ring.lastSyncedAt)} />
+          <View style={styles.divider} />
+          <DebugRow label="HRV 历史天数" value={String(Object.keys(ring.hrvDaily).length)} />
+          <DebugRow label="睡眠 历史天数" value={String(Object.keys(ring.sleepDaily).length)} />
+          <DebugRow label="计步 历史天数" value={String(Object.keys(ring.stepDaily).length)} />
+          <DebugRow label="体温 历史天数" value={String(Object.keys(ring.tempDaily).length)} />
+          <DebugRow label="HR 历史天数" value={String(Object.keys(ring.hrDaily).length)} />
+          <DebugRow label="血氧 历史天数" value={String(Object.keys(ring.spo2Daily).length)} />
+          <DebugRow label="EDA 历史天数" value={String(Object.keys(ring.edaDaily).length)} />
+          <DebugRow label="状态趋势 历史天数" value={String(Object.keys(ring.statusDaily).length)} />
+          <Text style={styles.debugNote}>
+            HR/血氧/体温/EDA 历史需佩戴并跨午夜累积；HRV 来自每次同步/周期读取的「当日」值（SDK 历史日 HRV 接口标记为不可用，无法回填过去日）；睡眠/计步来自戒指历史回填（backfill）。{'\n'}
+            若历史天数全为 0 但已连接 → backfill 未回传：看 Xcode 控制台 [backfill] / [VeepooRing CB] 日志（USB 可见，不受网络隔离影响）。
+          </Text>
+        </Card>
+
+        {/* 数据备份 · 上传云端（仅手动触发，本地数据始终保留） */}
+        <Text style={styles.sectionTitle}>数据备份（云端）</Text>
+        <Card style={styles.uploadCard}>
+          <Text style={styles.uploadDesc}>
+            你佩戴戒指积累的数据始终保存在本机。点击下方按钮，可手动把数据上传到云端存储（仅手动触发、上传前会确认）。本机数据不会被删除。
+          </Text>
+          <TouchableOpacity
+            onPress={uploadCloud}
+            disabled={uploading}
+            style={[styles.uploadBtn, uploading && styles.uploadBtnBusy]}
+          >
+            <Icon name="sync" size={theme.fs(14)} color={theme.colors.textWhite} strokeWidth={2} />
+            <Text style={styles.uploadBtnText}>{uploading ? '上传中…' : '上传云端'}</Text>
+          </TouchableOpacity>
+          {uploadMsg && (
+            <Text
+              style={[
+                styles.uploadMsg,
+                { color: uploadMsg.startsWith('已') ? theme.colors.success : theme.colors.danger },
+              ]}
+            >
+              {uploadMsg}
+            </Text>
+          )}
+          <Text style={styles.uploadTime}>
+            最近上传：{fmtUploadTime(ring.lastUploadedAt)}
+          </Text>
+        </Card>
       </ScreenContainer>
+    </View>
+  );
+}
+
+function fmtAgo(ts: number | null): string {
+  if (!ts) return '从未';
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小时前`;
+  return `${Math.floor(hr / 24)} 天前`;
+}
+
+function fmtUploadTime(ts: number | null): string {
+  if (!ts) return '尚未上传';
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function DebugRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.debugRow}>
+      <Text style={styles.debugLabel}>{label}</Text>
+      <Text style={styles.debugVal}>{value}</Text>
     </View>
   );
 }
@@ -594,5 +724,57 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
+  },
+  debugCard: { marginBottom: theme.space.sm },
+  debugRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.space.xs,
+  },
+  debugLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  debugVal: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textTitle,
+  },
+  debugNote: {
+    marginTop: theme.space.sm,
+    fontSize: theme.fontSize.micro,
+    lineHeight: theme.fontSize.micro * 1.6,
+    color: theme.colors.textSub,
+  },
+  uploadCard: { marginBottom: theme.space.sm },
+  uploadDesc: {
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.6,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.md,
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.xs,
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.accentSolid,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.pill,
+  },
+  uploadBtnBusy: { backgroundColor: theme.colors.accentSoft },
+  uploadBtnText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textWhite,
+  },
+  uploadMsg: {
+    marginTop: theme.space.sm,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+  },
+  uploadTime: {
+    marginTop: theme.space.xs,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import SleepStageChart, { SLEEP_STAGE_META } from './SleepStageChart';
 import type { SleepSegment, SleepSummary } from '../ble/RingBleManager';
@@ -21,6 +21,7 @@ export default function SleepStructureCard({
   remPct,
   score,
   fallbackTotalMinutes,
+  onPress,
 }: {
   segments: SleepSegment[] | null;
   summary: SleepSummary | null;
@@ -30,6 +31,7 @@ export default function SleepStructureCard({
   remPct: number | null;
   score: number | null;
   fallbackTotalMinutes?: number | null;
+  onPress?: () => void;
 }) {
   const hasStages = !!segments && segments.length > 0;
   const hasSummary = !!summary && summary.total > 0;
@@ -42,7 +44,12 @@ export default function SleepStructureCard({
   const rPct = remPct != null ? remPct : total > 0 ? Math.round((rem / total) * 100) : null;
 
   return (
-    <View style={[styles.card, theme.glass, theme.shadow.card]}>
+    <TouchableOpacity
+      activeOpacity={onPress ? 0.92 : 1}
+      disabled={!onPress}
+      onPress={onPress}
+      style={[styles.card, theme.glass, theme.shadow.card]}
+    >
       <View style={styles.head}>
         <View>
           <Text style={styles.title}>睡眠结构</Text>
@@ -96,7 +103,7 @@ export default function SleepStructureCard({
           <Text style={styles.sumLabel}>睡眠评分</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

@@ -18,6 +18,7 @@ import { theme } from '../theme/theme';
 import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog, saveCycleLog } from '../data/cycleLog';
 import { RingBle, type FemaleInfo, type RingState } from '../ble/RingBleManager';
+import type { RangeKey } from '../data/metrics';
 import TempBiphasicChart from './TempBiphasicChart';
 
 const PHASE_ORDER: { key: string; label: string }[] = [
@@ -35,7 +36,17 @@ const FEMALE_STATE_LABEL: Record<number, string> = {
   4: '辣妈期',
 };
 
-export default function CyclePhaseCard({ ring, female }: { ring: RingState; female: FemaleInfo | null }) {
+export default function CyclePhaseCard({
+  ring,
+  female,
+  range = 'month',
+  onPress,
+}: {
+  ring: RingState;
+  female: FemaleInfo | null;
+  range?: RangeKey;
+  onPress?: () => void;
+}) {
   const [log, setLog] = useState<CycleLog | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selDate, setSelDate] = useState('');
@@ -118,7 +129,8 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
   }
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+      <View style={styles.card}>
       {/* 阶段头部 */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -141,7 +153,13 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
             </View>
           ) : null}
         </View>
-        <TouchableOpacity style={styles.recordBtn} onPress={openModal}>
+        <TouchableOpacity
+          style={styles.recordBtn}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            openModal();
+          }}
+        >
           <Text style={styles.recordBtnText}>{log || ringSynced ? '修改记录' : '记录经期'}</Text>
         </TouchableOpacity>
       </View>
@@ -187,8 +205,13 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
         </View>
       </View>
 
-      {/* 体温双相曲线（真实数据） */}
-      <TempBiphasicChart tempDaily={ring.tempDaily ?? {}} log={effective} days={30} />
+      {/* 体温双相曲线：仅展示戒指真实测得的体温，不编造数据 */}
+      <TempBiphasicChart
+        tempDaily={ring.tempDaily ?? {}}
+        tempHistory={ring.history.temp}
+        log={effective}
+        range={range}
+      />
 
       {/* 记录 Modal */}
       <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
@@ -232,7 +255,8 @@ export default function CyclePhaseCard({ ring, female }: { ring: RingState; fema
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
