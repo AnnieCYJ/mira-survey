@@ -21,6 +21,9 @@ import Icon from '../components/Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { type RangeKey } from '../data/metrics';
 import { startOfWeek, addDays } from '../lib/dateUtils';
+import { MOODS } from '../data/metrics';
+import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
+
 
 const W = 680;
 const H = 240;
@@ -33,6 +36,11 @@ const Y_MAX = 100;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_LABEL = ['日', '一', '二', '三', '四', '五', '六'];
+
+function moodFor(value: number) {
+  const idx = curveLevel(value, CURVE_DEFAULTS).index;
+  return MOODS[idx] ?? MOODS[1];
+}
 
 function dayFrac(t: number): number {
   if (!Number.isFinite(t)) return 0;
@@ -114,7 +122,7 @@ export default function StatusTrendDetailScreen() {
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
           .map((p) => ({ t: p.t, value: p.value }))
           .sort((a, b) => a.t - b.t);
-        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value }));
+        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value, level: (p as any).level }));
         const values = tl.map((p) => p.value);
         return {
           pts: points,
@@ -136,7 +144,7 @@ export default function StatusTrendDetailScreen() {
           .map((p) => ({ t: p.t as number, value: p.value as number }))
           .sort((a, b) => a.t - b.t);
         const values = tl.map((p) => p.value);
-        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value }));
+        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value, level: (p as any).level }));
         return {
           pts: points,
           axisLabels: DAY_AXIS,
@@ -221,7 +229,7 @@ export default function StatusTrendDetailScreen() {
     };
   }, [range, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor]);
 
-  const plotW = W - PAD_L - PAD_R;
+  const plotW = w - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const yAt = (v: number) => {
     const c = Math.max(Y_MIN, Math.min(Y_MAX, Number.isFinite(v) ? v : Y_MIN));
@@ -230,11 +238,11 @@ export default function StatusTrendDetailScreen() {
 
   // 折线分段（遇 null 断线）；同时把所有真实点收集为散点，保证历史日单点/稀疏点也能看见。
   const { lineD, areaD, last, dots } = useMemo(() => {
-    if (w === 0) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, dots: [] };
+    if (w === 0) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, dots: [] as { x: number; y: number; color: string }[] };
     let line = '';
     let area = '';
     let seg: { x: number; y: number }[] = [];
-    const allDots: { x: number; y: number }[] = [];
+    const allDots: { x: number; y: number; color: string }[] = [];
     const flush = () => {
       if (seg.length < 2) {
         seg = [];
@@ -257,14 +265,14 @@ export default function StatusTrendDetailScreen() {
         flush();
         continue;
       }
-      const pt = { x: PAD_L + p.x * plotW, y: yAt(v) };
+      const pt = { x: PAD_L + p.x * plotW, y: yAt(v), color: moodFor(v).color };
       allDots.push(pt);
       seg.push(pt);
     }
     flush();
     const lastPt = (() => {
-      for (let i = pts.length - 1; i >= 0; i--) if (pts[i].value != null) return { x: PAD_L + pts[i].x * plotW, y: yAt(pts[i].value!) };
-      return { x: 0, y: 0 };
+      for (let i = pts.length - 1; i >= 0; i--) if (pts[i].value != null) return { x: PAD_L + pts[i].x * plotW, y: yAt(pts[i].value!), color: moodFor(pts[i].value!).color };
+      return { x: 0, y: 0, color: '#7C6AE0' };
     })();
     return { lineD: line, areaD: area, last: lastPt, dots: allDots };
   }, [w, pts]);
@@ -340,7 +348,7 @@ export default function StatusTrendDetailScreen() {
         <View style={styles.chartCard}>
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
             {w > 0 ? (
-              <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+              <Svg width={w} height={H}>
                 <Defs>
                   <LinearGradient id="std_grad" x1="0" y1="0" x2="0" y2="1">
                     <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.3} />
@@ -358,7 +366,7 @@ export default function StatusTrendDetailScreen() {
                     key={`g-${i}`}
                     x1={PAD_L}
                     y1={yAt(gv)}
-                    x2={W - PAD_R}
+                    x2={w - PAD_R}
                     y2={yAt(gv)}
                     stroke={theme.colors.ui.borderSoft}
                     strokeWidth={1}
@@ -367,11 +375,18 @@ export default function StatusTrendDetailScreen() {
 
                 {areaD ? <Path d={areaD} fill="url(#std_grad)" /> : null}
                 {lineD ? (
-                  <Path d={lineD} fill="none" stroke="url(#std_line)" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={lineD} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
                 {/* 所有真实数据点（小圆点），历史日单点/稀疏点也能看见 */}
                 {dots.map((d, i) => (
-                  <Circle key={`dot-${i}`} cx={d.x} cy={d.y} r={3.5} fill="#FFFFFF" stroke={theme.colors.accentSolid} strokeWidth={2} />
+                  <Circle
+                    key={`dot-${i}`}
+                    cx={d.x}
+                    cy={d.y}
+                    r={4}
+                    fill={d.color}
+                    opacity={0.9}
+                  />
                 ))}
               </Svg>
             ) : null}

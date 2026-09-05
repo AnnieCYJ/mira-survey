@@ -1,0 +1,471 @@
+{
+    "list": [
+        {
+            "font": [
+                {
+                    "title": "心肌炎风险指数",
+                    "value": "0",
+                    "progress": 0,
+                    "type": 1,
+                    "progressActiveColor": "#10CF6F",
+                    "content": [
+                        {
+                            "value1": "本次测试中心电信号正常，近期发展为心肌炎的风险较低。",
+                            "value2": "",
+                            "status": false,
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试发现您有轻微的心肌炎风险，需要引起注意。\n建议定期进行体检，日常生活中注意休息，避免过度疲劳。",
+                            "value2": "",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试发现您有较高的心肌炎风险，如常感到乏力、心悸、气短、胸闷、胸痛等，请尽快咨询医生。\n请定期进行体检，日常生活中避免剧烈运动，保持充足的休息，近期不要过度劳累。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试发现您有心肌炎风险，需要引起重视。\n请定期进行体检，调整生活作息、多加休息，近期不要过度劳累。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 ST 段振幅、QRS 波振幅、QTc、心率和传导阻滞相关的心律失常风险计算"
+                },
+                {
+                    "title": "心律失常风险指数",
+                    "value": "11",
+                    "progress": 10,
+                    "progressActiveColor": "#10CF6F",
+                    "type": 2,
+                    "content": [
+                        {
+                            "value1": "本次测试中心律平稳，情绪稳定。继续保持当前的生活习惯。",
+                            "status": false,
+                            "value2": "",
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试发现您有轻微的心律失常风险，近期发展为严重心脏疾病的风险较低，但要引起注意。\n请坚持锻炼身体、增强体质，控制情绪稳定、保持良好心态。",
+                            "value2": "",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试发现您有较高的心律失常风险，如常感到心悸、胸闷，建议咨询医生或进行体检。\n请坚持锻炼身体、增强体质，在日常生活、工作中注意控制情绪稳定、保持良好心态。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试发现您有心律失常的风险，需要引起重视。\n请坚持锻炼身体、增强体质，在日常生活、工作中注意控制情绪稳定、保持良好心态。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 SNDD、RMSSD 数值计算"
+                },
+                {
+                    "title": "冠心病风险指数",
+                    "value": "11",
+                    "progress": 10,
+                    "type": 3,
+                    "progressActiveColor": "#10CF6F",
+                    "content": [
+                        {
+                            "value1": "本次测试中心电信号正常，近期发展为冠心病的风险较低。",
+                            "status": false,
+                            "value2": "",
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试发现您有轻微的冠心病风险，需要引起注意。\n建议日常关注血脂、血压、血糖等指标，并保持各项指标在正常范围内。",
+                            "value2": "",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试发现您有较高的冠心病风险，如常感到心悸、呼吸急促或在剧烈运动后出现心绞痛的情况，请尽快咨询医生。\n请定期进行体检，多关注血脂、血压、血糖等指标。戒烟戒酒，保持规律的生活作息和饮食习惯。若您体重超重，请适当减脂。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试发现您有冠心病风险，需要引起重视。\n请定期进行体检，多关注血脂、血压、血糖等指标。戒烟戒酒，保持规律的生活作息和饮食习惯。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 PWV、心率和心肌缺血相关的心律失常风险计算"
+                },
+                {
+                    "title": "血管硬化风险指数",
+                    "value": "11",
+                    "progress": 10,
+                    "type": 4,
+                    "progressActiveColor": "#10CF6F",
+                    "content": [
+                        {
+                            "value1": "本次测试中心电信号正常，近期出现血管硬化的风险较低。",
+                            "status": false,
+                            "value2": "",
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试发现您有轻微的血管硬化风险，需要引起注意。\n建议日常关注血脂、血压、血糖等指标，并保持各项指标在正常范围内。",
+                            "value2": "",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试发现您有较高的血管硬化风险，如常感到手脚发冷、头晕、头痛，请尽快咨询医生。\n戒烟戒酒，保持规律的生活作息和饮食习惯，避免食用高胆固醇、高盐、高糖的食物。若您体重超重，请适当减脂。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试发现您有血管硬化风险，需要引起重视。\n请定期进行体检，多关注血脂、血压、血糖等指标。戒烟戒酒，保持健康的饮食习惯，可以食用低胆固醇、低盐、低糖的食物。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 PWV、心率和传导阻滞相关的心律失常风险计算"
+                },
+                {
+                    "title": "精神压力指数",
+                    "value": "11",
+                    "progress": 10,
+                    "type": 5,
+                    "progressActiveColor": "#10CF6F",
+                    "content": [
+                        {
+                            "value1": "本次测试中精神状态良好、比较放松，请继续保持当前的生活习惯。",
+                            "status": false,
+                            "value2": "",
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试检测到您有一些压力，适当的压力可以提高潜能和效率。",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试中压力偏高，需要引起注意。\n测试时请保持身体放松。若多次测试压力均偏高，建议劳逸结合、避免长时间工作，多进行冥想或呼吸训练等有助于放松身体的活动。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试中压力过高，存在过载风险，需要引起重视。\n测试时请身体保持放松。若多次测试压力均偏高，建议劳逸结合、避免长时间工作。多进行冥想或呼吸训练等有助于放松身体的活动，保持情绪稳定，避免精神紧张、情绪激动。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 SNDD、RMSSD 数值计算"
+                },
+                {
+                    "title": "疲劳指数",
+                    "value": "11",
+                    "progress": 10,
+                    "type": 6,
+                    "progressActiveColor": "#10CF6F",
+                    "content": [
+                        {
+                            "value1": "本次测试中状态良好。您可能觉得自己精力充沛，请继续保持当前的生活习惯。",
+                            "status": false,
+                            "value2": "",
+                            "type": 1
+                        },
+                        {
+                            "value1": "本次测试中状态不佳。您可能会感到轻微疲劳，但这不会影响您的日常活动。\n建议您保持规律的作息时间，保证充足的睡眠，并适当锻炼身体。",
+                            "value2": "",
+                            "status": false,
+                            "type": 2
+                        },
+                        {
+                            "value1": "本次测试中状态较差。您可能会感到明显的疲劳，这可能会影响到您的注意力和工作效率。\n若多次测试疲劳指数均偏高，建议您适当休息。保持规律的生活作息和充足的睡眠，不要熬夜、戒烟戒酒，并进行一些放松身心的活动。",
+                            "value2": "",
+                            "status": false,
+                            "type": 3
+                        },
+                        {
+                            "value1": "本次测试中您精神疲惫。这可能会严重影响您的日常生活，请引起重视。\n若多次测试疲劳指数均偏高，建议尽快调整作息，近期不要过度劳累。戒烟戒酒、保持规律的生活作息和充足的睡眠将有助于缓解疲劳。您也可以进行冥想、瑜伽等有益身心健康的活动。",
+                            "value2": "",
+                            "status": false,
+                            "type": 4
+                        }
+                    ],
+                    "name": "基于 SNDD、RMSSD 数值计算"
+                }
+            ]
+        },
+        {
+            "font": [
+                {
+                    "title": "窦性停搏",
+                    "value": 10,
+                    "type": 1,
+                    "backgroundColor": "#c6f3dc",
+                    "color": "#10cf6f",
+                    "display": true
+                },
+                {
+                    "title": "窦性心律不齐",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 2,
+                    "display": true
+                },
+                {
+                    "title": "窦性心动过缓",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 3,
+                    "display": true
+                },
+                {
+                    "title": "窦性心动过速",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 4,
+                    "display": false
+                },
+                {
+                    "title": "房性早搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 5,
+                    "display": false
+                },
+                {
+                    "title": "三联律",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 6,
+                    "display": false
+                },
+                {
+                    "title": "二联律",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 7,
+                    "display": false
+                },
+                {
+                    "title": "室性早搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 8,
+                    "display": false
+                },
+                {
+                    "title": "心房扑动",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 9,
+                    "display": false
+                },
+                {
+                    "title": "阵发性室性心动过速",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 10,
+                    "display": false
+                },
+                {
+                    "title": "阵发性室上性心动过速",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 11,
+                    "display": false
+                },
+                {
+                    "title": "交界性早搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 12,
+                    "display": false
+                },
+                {
+                    "title": "心房肥大",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 13,
+                    "display": false
+                },
+                {
+                    "title": "心室颤动",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 14,
+                    "display": false
+                },
+                {
+                    "title": "心室扑动",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 15,
+                    "display": false
+                },
+                {
+                    "title": "心房颤动",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 16,
+                    "display": false
+                },
+                {
+                    "title": "心肌梗死（损伤型）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 17,
+                    "display": false
+                },
+                {
+                    "title": "心肌梗死（缺血型）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 18,
+                    "display": false
+                },
+                {
+                    "title": "心肌缺血",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 19,
+                    "display": false
+                },
+                {
+                    "title": "心室肥大",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 20,
+                    "display": false
+                },
+                {
+                    "title": "房性逸搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 21,
+                    "display": false
+                },
+                {
+                    "title": "室性逸搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 22,
+                    "display": false
+                },
+                {
+                    "title": "交界性逸搏",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 23,
+                    "display": false
+                },
+                {
+                    "title": "心肌梗死（坏死型）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 24,
+                    "display": false
+                },
+                {
+                    "title": "三度房室传导阻滞",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 25,
+                    "display": false
+                },
+                {
+                    "title": "二度房室传导阻滞——II 型",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 26,
+                    "display": false
+                },
+                {
+                    "title": "二度房室传导阻滞——I 型",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 27,
+                    "display": false
+                },
+                {
+                    "title": "一度房室传导阻滞",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 28,
+                    "display": false
+                },
+                {
+                    "title": "预激综合征（WPW）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 29,
+                    "display": false
+                },
+                {
+                    "title": "左前分支传导阻滞（LAFB）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 30,
+                    "display": false
+                },
+                {
+                    "title": "右束支传导阻滞（RBBB）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 31,
+                    "display": false
+                },
+                {
+                    "title": "左束支传导阻滞（LBBB）",
+                    "value": 10,
+                    "color": "#10cf6f",
+                    "backgroundColor": "#c6f3dc",
+                    "type": 32,
+                    "display": false
+                }
+            ]
+        }
+    ]
+}

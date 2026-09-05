@@ -17,6 +17,8 @@ export default function SettingsScreen() {
   const { autoMonitor, setAutoMonitor } = useAppState();
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [dumpPath, setDumpPath] = useState<string | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
@@ -42,6 +44,7 @@ export default function SettingsScreen() {
     stepDaily: {},
     statusDaily: {},
     lastSyncedAt: null,
+    lastBackfillAt: null,
     sleepStages: null,
     sleepSummary: null,
     sleepTime: null,
@@ -60,6 +63,7 @@ export default function SettingsScreen() {
     extDaily: {},
     ecg: null,
     ecgDaily: {},
+    ecgHistory: [],
     lastUploadedAt: null,
     ecgProgress: null,
   });
@@ -158,6 +162,53 @@ export default function SettingsScreen() {
     : ringFailed
     ? ring.error || '请重试'
     : '点击连接你的智能戒指';
+
+  const SEP3 = '2026-9-3';
+  const sep3HrVisible =
+    ring.hrDaily[SEP3] != null ||
+    ((ring.seriesByDay?.hr?.[SEP3]?.length ?? 0) > 0);
+  // bundle 是否包含最新方法：若 false，说明需要 Clean Build
+  const methodCheck = {
+    forceResync: typeof (RingBle as any).forceResync === 'function',
+    exportDebugDump: typeof (RingBle as any).exportDebugDump === 'function',
+    syncBackfill: typeof (RingBle as any).syncBackfill === 'function',
+  };
+  const onForceResync = () => {
+    if (diagBusy) return;
+    setDiagBusy(true);
+    try {
+      // 防御 stale bundle：上次修改的 forceResync 方法若未编译进当前运行包，直接调用会崩溃。
+      // 这里先做存在性检查，再用兜底 backfill() 触发同步，至少不崩且大概率能拉数据。
+      const ble = RingBle as any;
+      if (typeof ble.forceResync === 'function') {
+        ble.forceResync();
+      } else if (typeof ble.syncBackfill === 'function') {
+        console.warn('[SettingsScreen] forceResync 未编译进当前 bundle，兜底调用 syncBackfill');
+        ble.syncBackfill();
+      } else {
+        Alert.alert('需要 Clean Build', '当前运行包没有包含最新的 RingBle 方法。请：Xcode → Product → Clean Build Folder，然后 ⌘R 重新运行。');
+      }
+    } catch (e) {
+      Alert.alert('同步失败', String(e));
+    }
+    setTimeout(() => setDiagBusy(false), 4000);
+  };
+  const onExportDump = async () => {
+    if (diagBusy) return;
+    setDiagBusy(true);
+    try {
+      const ble = RingBle as any;
+      if (typeof ble.exportDebugDump !== 'function') {
+        throw new Error('exportDebugDump 未编译进当前 bundle，需要 Xcode Clean Build + ⌘R');
+      }
+      const { path } = await ble.exportDebugDump();
+      setDumpPath(path);
+    } catch (e) {
+      setDumpPath(`导出失败: ${(e as Error).message}`);
+    } finally {
+      setDiagBusy(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -380,24 +431,52 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        {/* 调试 · 数据存量（临时诊断用，确认后可删） */}
-        <Text style={styles.sectionTitle}>调试 · 数据存量（临时）</Text>
+        {/* 调试 · 数据诊断（临时，确认后可删） */}
+        <Text style={styles.sectionTitle}>调试 · 数据诊断（临时）</Text>
         <Card style={styles.debugCard}>
           <DebugRow label="连接状态" value={ring.status} />
           <DebugRow label="最近同步" value={fmtAgo(ring.lastSyncedAt)} />
+          <DebugRow label="最近 backfill" value={fmtAgo(ring.lastBackfillAt)} />
+          <DebugRow
+            label="Bundle 方法"
+            value={`forceResync=${methodCheck.forceResync ? '有' : '无'} export=${methodCheck.exportDebugDump ? '有' : '无'}`}
+          />
+          {!methodCheck.forceResync && (
+            <Text style={[styles.debugNote, { color: theme.colors.danger }]}>
+              ⚠️ 当前运行包缺少 forceResync，必须 Xcode Clean Build + ⌘R 才能用「强制重新同步」。
+            </Text>
+          )}
+          <View style={styles.divider} />
+          <DebugRow label="HR 历史天数" value={String(Object.keys(ring.hrDaily).length)} />
+          <Text style={styles.debugKeys}>HR 日期: {Object.keys(ring.hrDaily).sort().join(', ') || '（空）'}</Text>
+          <Text style={styles.debugKeys}>HR 样本日期: {Object.keys(ring.seriesByDay?.hr ?? {}).sort().join(', ') || '（空）'}</Text>
+          <DebugRow label="9/3 HR 趋势可见" value={sep3HrVisible ? '是 ✅' : '否 ❌'} />
           <View style={styles.divider} />
           <DebugRow label="HRV 历史天数" value={String(Object.keys(ring.hrvDaily).length)} />
           <DebugRow label="睡眠 历史天数" value={String(Object.keys(ring.sleepDaily).length)} />
           <DebugRow label="计步 历史天数" value={String(Object.keys(ring.stepDaily).length)} />
           <DebugRow label="体温 历史天数" value={String(Object.keys(ring.tempDaily).length)} />
-          <DebugRow label="HR 历史天数" value={String(Object.keys(ring.hrDaily).length)} />
           <DebugRow label="血氧 历史天数" value={String(Object.keys(ring.spo2Daily).length)} />
           <DebugRow label="EDA 历史天数" value={String(Object.keys(ring.edaDaily).length)} />
-          <DebugRow label="状态趋势 历史天数" value={String(Object.keys(ring.statusDaily).length)} />
+          <DebugRow label="状态趋势 天数" value={String(Object.keys(ring.statusDaily).length)} />
           <Text style={styles.debugNote}>
-            HR/血氧/体温/EDA 历史需佩戴并跨午夜累积；HRV 来自每次同步/周期读取的「当日」值（SDK 历史日 HRV 接口标记为不可用，无法回填过去日）；睡眠/计步来自戒指历史回填（backfill）。{'\n'}
-            若历史天数全为 0 但已连接 → backfill 未回传：看 Xcode 控制台 [backfill] / [VeepooRing CB] 日志（USB 可见，不受网络隔离影响）。
+            若「HR 日期」里没有 2026-9-3 → 戒指没把 9/3 的 HR 回传（当天没戴 / 已滚出 3 天缓冲 / backfill 未触发）。
+            点「强制重新同步」连上戒指重拉；点「导出诊断」把完整状态存成文件，隔空投送发我即可，我直接看数据定位。
           </Text>
+          <View style={styles.divider} />
+          <View style={styles.diagBtns}>
+            <TouchableOpacity onPress={onForceResync} disabled={diagBusy} style={[styles.diagBtn, diagBusy && styles.uploadBtnBusy]}>
+              <Text style={styles.diagBtnText}>{diagBusy ? '同步中…' : '强制重新同步'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onExportDump} disabled={diagBusy} style={[styles.diagBtn, styles.diagBtnAlt]}>
+              <Text style={styles.diagBtnText}>导出诊断文件</Text>
+            </TouchableOpacity>
+          </View>
+          {dumpPath && (
+            <Text style={[styles.debugKeys, styles.debugPath]} selectable>
+              {dumpPath}
+            </Text>
+          )}
         </Card>
 
         {/* 数据备份 · 上传云端（仅手动触发，本地数据始终保留） */}
@@ -743,6 +822,37 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.micro,
     lineHeight: theme.fontSize.micro * 1.6,
     color: theme.colors.textSub,
+  },
+  debugKeys: {
+    marginTop: theme.space.xs,
+    fontSize: theme.fontSize.micro,
+    lineHeight: theme.fontSize.micro * 1.5,
+    color: theme.colors.textTitle,
+  },
+  debugPath: {
+    marginTop: theme.space.sm,
+    color: theme.colors.accentSolid,
+  },
+  diagBtns: {
+    flexDirection: 'row',
+    gap: theme.space.sm,
+    marginTop: theme.space.sm,
+  },
+  diagBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.accentSolid,
+    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.pill,
+  },
+  diagBtnAlt: {
+    backgroundColor: 'rgba(120,120,140,0.18)',
+  },
+  diagBtnText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textWhite,
   },
   uploadCard: { marginBottom: theme.space.sm },
   uploadDesc: {

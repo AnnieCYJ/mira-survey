@@ -1,0 +1,20 @@
+{
+  "name": "test_vp_sdk",
+  "version": "1.0.0",
+  "main": "main.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@dcloudio/vite-plugin-uni": "^3.0.0-alpha-3000020210521001",
+    "@rollup/plugin-commonjs": "^28.0.9",
+    "vite-plugin-commonjs": "^0.10.4"
+  }
+}

@@ -1,16 +1,22 @@
 /**
  * realSeries —— 洞察页「卡片详情」用的真实历史数据构造
  *
+ * 重构（数据层重做）：本文件不再直接翻 RingState 的 history / seriesByDay / *Daily 三套并存表示，
+ * 而是统一从 **healthStore**（src/data/healthStore.ts，单一规范数据源）读取：
+ *   - 日内逐样本曲线  → healthStore.getIntraday(key, day)
+ *   - 按日聚合均值    → healthStore.getDay(key, day).mean
+ *   - 跨天趋势        → 每日调 getDay（缺口为 null，绘图断线，绝不编造）
+ *   - 睡眠            → healthStore.getSleep(day)
+ * 这样「读哪个」不再有歧义，且与所有写入端（RingBleManager 各 backfill/realtime handler）同源。
+ *
  * 设计原则（与全局一致 · 不造假）：
- *  - day（日）：取今日真实日内时间槽（核心信号 ring.history / 扩展信号 ring.dailyHistory），
- *    按小时聚合为 24 点。
- *  - week/month/year：按自然日聚合。体温走 ring.tempDaily（跨天累积，真多日）;
- *    其余信号运行时只保留当日数据，故仅当日有值，历史日留空（诚实，不编造多日趋势）。
- *  - cycle：戒指测不了雌激素，因此 cycle 详情页不再展示建模雌激素曲线，
- *    改为展示「真实体温序列 + 周期相位背景带」，并标注体温为实测、激素未测。
- *  所有缺口（null）在绘图时断线，绝不臆造连续走势。
+ *  - day（日）：今日取 healthStore 日内逐样本，按真实时间戳连续绘制；历史某天优先连续曲线，否则单点均值。
+ *  - week/month：按自然日取「当日均值」画趋势（每点 = 一天均值，按时间顺序；缺口 null 断线）。
+ *  - year：按月均值趋势（12 个点，每月一个均值）。
+ *  - cycle：温度走 healthStore（实测）；激素戒指测不了，详情页仅展示实测体温 + 周期相位背景带。
  */
 import type { RingState, TimePoint } from '../ble/RingBleManager';
+import { healthStore, dayStartMs, type MetricKey as HSMetricKey } from '../data/healthStore';
 import {
   BASIC_METRICS,
   EXTENDED_SIGNALS,
@@ -22,7 +28,10 @@ import {
 import { computeCycle, parseDate, type CycleLog } from './cycleMath';
 import { dateKeyOf, startOfWeek, addDays } from './dateUtils';
 
-const CORE_KEYS = new Set(['hr', 'spo2', 'temp', 'eda', 'hrv', 'rr']);
+export interface TimePt {
+  t: number;
+  v: number;
+}
 
 /** 有些指标在展示层与数据层 key 不同（如皮肤含水量 skin 实际走 eda 信号） */
 function signalKeyFor(metricKey: string): string {
@@ -30,8 +39,34 @@ function signalKeyFor(metricKey: string): string {
   return metricKey;
 }
 
+/** 把展示/信号 key 映射到 healthStore 的规范 MetricKey（与 RingBleManager.hsKeyFor 保持一致）。 */
+function hsKeyFor(signalKey: string): HSMetricKey {
+  switch (signalKey) {
+    case 'hr': case 'spo2': case 'temp': case 'eda': case 'hrv': case 'rr':
+    case 'steps': case 'distance': case 'calorie':
+    case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
+    case 'bpSys': case 'bpDia':
+      return signalKey as HSMetricKey;
+    case 'snsActivation': return 'sns';
+    case 'bloodSugar': return 'glucose';
+    case 'bloodFat': return 'cholesterol';
+    case 'triglyceride': return 'triglyceride';
+    case 'hdl': return 'hdl';
+    case 'ldl': return 'ldl';
+    case 'uricAcid': return 'ua';
+    default: return signalKey as HSMetricKey;
+  }
+}
+
 export interface HistoryResult {
   kind: 'signal' | 'cycle';
+  /** 渲染方式：continuous=true 时图表按真实 t（tMin..tMax）映射 x 轴；否则按索引 */
+  continuous: boolean;
+  /** 真实时间戳连续序列（continuous 用）。今日实时点与历史回填点都在这里，按 t 升序。 */
+  tPoints?: TimePt[];
+  /** continuous 的时间域（= 所选区间的起止 ms，含「现在」） */
+  tMin?: number;
+  tMax?: number;
   points: (number | null)[];
   /** 自定义 X 轴标签（如周期「第 N 天」）；缺省用 RANGE_DEF[range].axis */
   axisOverride?: string[];
@@ -57,59 +92,16 @@ function dayMean(pts: TimePoint[] | undefined): number | null {
 
 /**
  * 取某指标在某自然日（dateKey）的「当日归档值」，供周/月/年趋势跨天绘制。
- * - 各核心指标走各自的 *Daily 存储（HRV/睡眠/计步来自原生 backfill 历史回填；其余随每日跨天累积）；
- * - 今天的多日归档要等跨天（午夜）才写入，因此对 todayKey 用今日实时均值兜底，避免当天空白。
- * - 缺口（戒指未记录/未同步）返回 null，绘图时断线、不编造。
+ * 统一从 healthStore 读取；睡眠走 getSleep，其余走 getDay().mean。缺口返回 null（绘图断线、不编造）。
  */
-function dailyValueFor(
-  key: string,
-  dk: string,
-  ring: RingState,
-  hist: Record<string, TimePoint[]>,
-  daily: Record<string, TimePoint[]>,
-  todayKey: string
-): number | null {
+function dailyValueFor(key: string, dk: string): number | null {
   const sk = signalKeyFor(key);
-  let v: number | null = null;
-  switch (sk) {
-    case 'hr':
-      v = ring.hrDaily[dk] ?? null;
-      break;
-    case 'spo2':
-      v = ring.spo2Daily[dk] ?? null;
-      break;
-    case 'temp':
-      v = ring.tempDaily[dk] ?? null;
-      break;
-    case 'eda':
-      v = ring.edaDaily[dk] ?? null;
-      break;
-    case 'hrv':
-      v = ring.hrvDaily[dk] ?? null;
-      break;
-    case 'rr':
-      v = ring.rrDaily[dk] ?? null;
-      break;
-    case 'steps':
-      v = ring.stepDaily[dk]?.steps ?? null;
-      break;
-    case 'sleepTotal':
-      v = ring.sleepDaily[dk]?.total ?? null;
-      break;
-    case 'sleepDeep':
-      v = ring.sleepDaily[dk]?.deep ?? null;
-      break;
-    default:
-      // 健康一览扩展指标（血脂/心理/血压/身体成分）+ 手动测量（血压/ECG 平均心率）：
-      // 从按天归档 extDaily 取当日值，供周/月/年跨天趋势。缺口（未记录）返回 null，绘图断线。
-      v = ring.extDaily[dk]?.[sk] ?? null;
-  }
-  if (v == null && dk === todayKey) {
-    // 今天的多日归档尚未跨天写入，用今日实时均值兜底
-    const isCoreSignal = CORE_KEYS.has(sk);
-    v = dayMean(isCoreSignal ? hist[sk] : daily[sk]);
-  }
-  return v;
+  if (sk === 'steps') return healthStore.getDay('steps', dk)?.mean ?? null;
+  if (sk === 'sleepTotal') return healthStore.getSleep(dk)?.total ?? null;
+  if (sk === 'sleepDeep') return healthStore.getSleep(dk)?.deep ?? null;
+  if (sk === 'sleepRem') return healthStore.getSleep(dk)?.rem ?? null;
+  if (sk === 'sleepScore') return healthStore.getSleep(dk)?.score ?? null;
+  return healthStore.getDay(hsKeyFor(key), dk)?.mean ?? null;
 }
 
 function bucketByHour(pts: TimePoint[] | undefined): (number | null)[] {
@@ -148,7 +140,41 @@ function finalize(
   const lo = real.length ? Math.min(...real) : null;
   return {
     kind: 'signal',
+    continuous: false,
     points: vals,
+    unit: def.unit,
+    yMin: def.yMin,
+    yMax: def.yMax,
+    latest,
+    avg,
+    hi,
+    lo,
+    multiDay,
+    note,
+  };
+}
+
+/** 真实时间戳连续序列的收口：统计来自 tPoints；tMin/tMax 为所选时间域（含「现在」）。 */
+function finalizeContinuous(
+  tps: TimePt[],
+  tMin: number,
+  tMax: number,
+  def: BasicMetricDef,
+  multiDay: boolean,
+  note?: string
+): HistoryResult {
+  const real = tps.map((p) => p.v).filter((v) => Number.isFinite(v));
+  const latest = tps.length ? tps[tps.length - 1].v : null;
+  const avg = real.length ? real.reduce((a, b) => a + b, 0) / real.length : null;
+  const hi = real.length ? Math.max(...real) : null;
+  const lo = real.length ? Math.min(...real) : null;
+  return {
+    kind: 'signal',
+    continuous: true,
+    tPoints: tps,
+    tMin,
+    tMax,
+    points: [],
     unit: def.unit,
     yMin: def.yMin,
     yMax: def.yMax,
@@ -164,6 +190,7 @@ function finalize(
 function emptyResult(key: string, note: string): HistoryResult {
   return {
     kind: 'signal',
+    continuous: false,
     points: [],
     unit: '',
     yMin: 0,
@@ -218,15 +245,15 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
 
   if (range === 'day') {
     if (isToday) {
-      // 日（今天）：今日 0–23 时真实体温，每小时一相同时段聚合
-      const vals = bucketByHour(ring.history.temp);
+      // 日（今天）：今日 0–23 时真实体温，每小时一相同时段聚合（统一数据源 healthStore）
+      const vals = bucketByHour(healthStore.getIntraday('temp', anchorKey));
       const phase = phaseForDate(effective, new Date());
       points = vals;
       phaseAt = vals.map(() => phase);
       axisOverride = Array.from({ length: 24 }, (_, i) => `${i}`);
     } else {
       // 日（历史某天）：只有 App 按天归档的当日体温均值（无逐时明细）
-      const v = ring.tempDaily[anchorKey] ?? null;
+      const v = healthStore.getDay('temp', anchorKey)?.mean ?? null;
       if (v == null) {
         return emptyResult('cycle', `${anchorKey} 该日无真实体温数据（App 未在该日记录）`);
       }
@@ -240,7 +267,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
     for (let i = 0; i < 7; i++) {
       const d = addDays(mon, i);
       const dk = dateKeyOf(d.getTime());
-      points.push(ring.tempDaily[dk] ?? null);
+      points.push(healthStore.getDay('temp', dk)?.mean ?? null);
       phaseAt.push(phaseForDate(effective, d));
     }
     axisOverride = points.map((_, i) => {
@@ -256,7 +283,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
       if (range === 'month') {
         const d = new Date(y, m0, step + 1);
         const dk = dateKeyOf(d.getTime());
-        points.push(ring.tempDaily[dk] ?? null);
+        points.push(healthStore.getDay('temp', dk)?.mean ?? null);
         phaseAt.push(phaseForDate(effective, d));
       } else {
         // year：每月均值
@@ -264,7 +291,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
         let cnt = 0;
         const mdim = new Date(y, step + 1, 0).getDate();
         for (let day = 1; day <= mdim; day++) {
-          const v = ring.tempDaily[dateKeyOf(new Date(y, step, day).getTime())] ?? null;
+          const v = healthStore.getDay('temp', dateKeyOf(new Date(y, step, day).getTime()))?.mean ?? null;
           if (v != null) {
             sum += v;
             cnt += 1;
@@ -295,6 +322,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
 
   return {
     kind: 'cycle',
+    continuous: false,
     points,
     axisOverride,
     phaseAt,
@@ -310,6 +338,22 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
   };
 }
 
+/**
+ * 洞察页卡片「今日」趋势的统一数据源。
+ *
+ * 与 MetricDetailScreen 日视图（buildHistorySeries(key,'day')）共用**同一个 healthStore.getTimeRange 调用**，
+ * 因此洞察页每张数据卡片的「今天」这一段，与历史页面（详情页）日视图的今日段**逐点一致、密度一致
+ * （同一 maxPoints / fillDailyMean / 时间窗口）**，不再出现“卡片多日回退、详情页只画今天”的错位。
+ *
+ * @param metricKey 展示层/信号层 key（如 'skin' 'snsActivation' 'bloodSugar'），内部经 hsKeyFor 映射到 healthStore 规范 key。
+ */
+export function getTodaySeries(metricKey: string): TimePt[] {
+  const hsKey = hsKeyFor(metricKey);
+  const start = dayStartMs(Date.now());
+  const end = Date.now();
+  return healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+}
+
 export function buildHistorySeries(
   key: string,
   range: RangeKey,
@@ -322,86 +366,80 @@ export function buildHistorySeries(
   const def = resolveDef(key);
   if (!def) return emptyResult(key, '未找到该指标定义');
 
-  const hist = ring.history as Record<string, TimePoint[]>;
-  const daily = ring.dailyHistory as Record<string, TimePoint[]>;
   const anchorKey = dateKeyOf(anchor.getTime());
+  const isTodayAnchor = anchorKey === dateKeyOf(Date.now());
+  const hsKey = hsKeyFor(key);
+  const DAY = 86400000;
 
-  // 日：今天→实时时间槽 24h 聚合；历史某天→优先用按天日内序列画连续曲线（跨天时间桶），否则单点均值
+  // 日：今日取 healthStore 日内逐样本，按真实时间戳连续绘制（统一数据源 healthStore）；
+  //     历史某天优先连续曲线，否则单点当日均值。
   if (range === 'day') {
-    const isToday = anchorKey === dateKeyOf(Date.now());
-    if (isToday) {
-      const signalKey = signalKeyFor(key);
-      const isCoreSignal = CORE_KEYS.has(signalKey);
-      const src = isCoreSignal ? hist[signalKey] : daily[signalKey];
-      const vals = bucketByHour(src);
-      return finalize(
-        vals,
-        def,
-        false,
-        `${def.name} 为今日真实测量（按小时聚合）。保持佩戴并开启自动监测后，周/月/年将展示跨天趋势。`
-      );
+    const start = dayStartMs(anchor.getTime());
+    const end = isTodayAnchor ? Date.now() : start + DAY;
+    const tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+    if (tps.length === 0) {
+      const dv = healthStore.getDay(hsKey, anchorKey)?.mean ?? null;
+      if (dv == null) return emptyResult(key, `${anchorKey} 该日无真实测量数据（App 未在该日记录）`);
+      return finalize([dv], def, false, `${def.name} ${anchorKey} 当日均值（按天归档，无逐时明细）`);
     }
-    // 历史某天：优先用按天日内序列画连续曲线（跨天时间桶，重连即由 backfill 补回），
-    // 让「离线那段时间的 HR/HRV/血氧/体温」都能直接画到趋势图上；无逐时明细再回退单点均值。
-    const signalKey = signalKeyFor(key);
-    const daySeries = ring.seriesByDay[signalKey]?.[anchorKey];
-    if (daySeries && daySeries.length > 0) {
-      const vals = bucketByHour(daySeries);
-      return finalize(vals, def, false, `${def.name} ${anchorKey} 当日连续测量（按小时聚合，离线回填补全）`);
-    }
-    const dv = dailyValueFor(key, anchorKey, ring, hist, daily, anchorKey);
-    if (dv == null) return emptyResult(key, `${anchorKey} 该日无真实测量数据（App 未在该日记录）`);
-    return finalize([dv], def, false, `${def.name} ${anchorKey} 当日均值（App 按天归档，无逐时明细）`);
+    const note = isTodayAnchor
+      ? `${def.name} 为今日真实测量（按时间戳连续绘制）。`
+      : `${def.name} ${anchorKey} 当日连续测量（按时间戳连续绘制，离线回填补全）。`;
+    return finalizeContinuous(tps, start, end, def, false, note);
   }
 
-  // 周/月/年：以 anchor 为窗口基准（anchor 为最右/末点）
+  // 周 / 月：按自然日取「当日均值」画趋势（每点 = 一天均值，按时间顺序；缺口 null 断线，不编造）。
+  if (range === 'week' || range === 'month') {
+    const out: (number | null)[] = [];
+    const axis: string[] = [];
+    if (range === 'week') {
+      const mon = startOfWeek(anchor);
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(mon, i);
+        const dk = dateKeyOf(d.getTime());
+        out.push(dailyValueFor(key, dk));
+        axis.push(`${d.getMonth() + 1}/${d.getDate()}`);
+      }
+    } else {
+      const y = anchor.getFullYear();
+      const m0 = anchor.getMonth();
+      const dim = new Date(y, m0 + 1, 0).getDate();
+      for (let day = 1; day <= dim; day++) {
+        const dk = dateKeyOf(new Date(y, m0, day).getTime());
+        out.push(dailyValueFor(key, dk));
+        axis.push(`${day}`);
+      }
+    }
+    const nonNull = out.filter((v) => v != null).length;
+    const multiDay = nonNull > 1;
+    const note = multiDay
+      ? undefined
+      : `${def.name} 的多日趋势来自 healthStore 按天归档与持续佩戴累积；当前范围内仅有少量真实数据，缺口为未记录或未同步之日。`;
+    const res = finalize(out, def, multiDay, note);
+    res.axisOverride = axis;
+    return res;
+  }
+
+  // 年：按月均值趋势（12 个点，每月一个均值；缺口 null 断线）。
   const out: (number | null)[] = [];
   const axis: string[] = [];
-  if (range === 'week') {
-    // 自然周：周一 ~ 周日
-    const mon = startOfWeek(anchor);
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(mon, i);
-      const dk = dateKeyOf(d.getTime());
-      out.push(dailyValueFor(key, dk, ring, hist, daily, dk));
-      axis.push(`${d.getMonth() + 1}/${d.getDate()}`);
-    }
-  } else if (range === 'month') {
-    const y = anchor.getFullYear();
-    const m0 = anchor.getMonth();
-    const dim = new Date(y, m0 + 1, 0).getDate();
-    for (let day = 1; day <= dim; day++) {
-      const dk = dateKeyOf(new Date(y, m0, day).getTime());
-      out.push(dailyValueFor(key, dk, ring, hist, daily, dk));
-      axis.push(`${day}`);
-    }
-  } else {
-    // year：anchor 所在自然年，12 个月各取月内每日均值
-    const y = anchor.getFullYear();
-    for (let mo = 0; mo < 12; mo++) {
-      let sum = 0;
-      let cnt = 0;
-      const mdim = new Date(y, mo + 1, 0).getDate();
-      for (let day = 1; day <= mdim; day++) {
-        const dk = dateKeyOf(new Date(y, mo, day).getTime());
-        const v = dailyValueFor(key, dk, ring, hist, daily, dk);
-        if (v != null) {
-          sum += v;
-          cnt += 1;
-        }
+  const y = anchor.getFullYear();
+  for (let mo = 0; mo < 12; mo++) {
+    const mdim = new Date(y, mo + 1, 0).getDate();
+    let sum = 0;
+    let cnt = 0;
+    for (let day = 1; day <= mdim; day++) {
+      const v = dailyValueFor(key, dateKeyOf(new Date(y, mo, day).getTime()));
+      if (v != null) {
+        sum += v;
+        cnt += 1;
       }
-      out.push(cnt ? sum / cnt : null);
-      axis.push(`${mo + 1}月`);
     }
+    out.push(cnt ? sum / cnt : null);
+    axis.push(`${mo + 1}月`);
   }
-
   const nonNull = out.filter((v) => v != null).length;
-  const multiDay = nonNull > 1;
-  const note = multiDay
-    ? undefined
-    : `${def.name} 的多日趋势来自 App 按天归档与持续佩戴累积；当前范围内仅有少量真实数据，缺口为未记录或未同步之日。`;
-
-  const res = finalize(out, def, multiDay, note);
-  if (range === 'year') res.axisOverride = axis;
+  const res = finalize(out, def, nonNull > 1);
+  res.axisOverride = axis;
   return res;
 }

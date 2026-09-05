@@ -1,0 +1,35 @@
+# ===== 系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 依赖 =====
+node_modules/
+
+# ===== uni-app / HBuilderX 编译输出 =====
+unpackage/
+dist/
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+.hbuilderx/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# ===== 日志 =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

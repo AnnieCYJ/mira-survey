@@ -5,9 +5,12 @@ import BottomTabNavigator from './BottomTabNavigator';
 import ChatScreen from '../screens/ChatScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import MetricDetailScreen from '../screens/MetricDetailScreen';
+import BodyCompositionHistoryScreen from '../screens/BodyCompositionHistoryScreen';
 import CycleCalendarScreen from '../screens/CycleCalendarScreen';
 import StatusTrendDetailScreen from '../screens/StatusTrendDetailScreen';
 import SleepDetailScreen from '../screens/SleepDetailScreen';
+import BpDetailScreen from '../screens/BpDetailScreen';
+import EcgDetailScreen from '../screens/EcgDetailScreen';
 
 export interface MetricDetailParams {
   key: string;
@@ -24,9 +27,12 @@ export type RootStackParamList = {
   Chat: { initialQuestion?: string };
   Settings: undefined;
   MetricDetail: MetricDetailParams;
+  BodyCompositionHistory: undefined;
   CycleCalendar: undefined;
   StatusTrendDetail: undefined;
   SleepDetail: undefined;
+  BpDetail: undefined;
+  EcgDetail: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -68,7 +74,40 @@ export default function RootStackNavigator() {
           cardStyle: { backgroundColor: theme.colors.bgBottom },
         }}
       />
+      <Stack.Screen
+        name="BodyCompositionHistory"
+        component={BodyCompositionHistoryScreen}
+        options={{
+          presentation: 'card',
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          cardStyle: { backgroundColor: theme.colors.bgBottom },
+        }}
+      />
       <Stack.Screen name="SleepDetail" component={SleepDetailScreen} />
+      <Stack.Screen
+        name="EcgDetail"
+        component={EcgDetailScreen}
+        options={{
+          presentation: 'card',
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          cardStyle: { backgroundColor: theme.colors.bgBottom },
+        }}
+      />
+      <Stack.Screen
+        name="BpDetail"
+        component={BpDetailScreen}
+        options={{
+          presentation: 'card',
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          cardStyle: { backgroundColor: theme.colors.bgBottom },
+        }}
+      />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen
         name="Chat"

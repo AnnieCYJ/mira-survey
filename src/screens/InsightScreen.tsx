@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath } from 'react-native-svg';
+import BpCard from '../components/BpCard';
+import EcgCard from '../components/EcgCard';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
@@ -14,7 +16,10 @@ import BasicMetricCard from '../components/BasicMetricCard';
 import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
-import { METRICS, METRIC_ORDER, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
+import ExamTab from '../components/ExamTab';
+import BloodComponentPanel from '../components/BloodComponentPanel';
+import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
+import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { useAppState } from '../state/AppState';
 
@@ -26,11 +31,18 @@ function formatValue(v: number | null): string {
 // 以 ima 归档（04-屏幕Screens）的权威洞察页设计为底：
 // 5 个维度 chip（睡眠和激素/周期和激素/代谢/心脏健康/心理和压力）+ 选中后 DimensionCard + 本周关键变化。
 // 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
-type TabKey = 'basics' | MetricKey;
+// 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
+type TabKey = 'basics' | 'exam' | 'activity' | MetricKey;
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'basics', label: '基础指标' },
-  ...METRIC_ORDER.map((k) => ({ key: k, label: METRICS[k].name })),
+  { key: 'sleep', label: METRICS.sleep.name },
+  { key: 'cycle', label: METRICS.cycle.name },
+  { key: 'metabolism', label: METRICS.metabolism.name },
+  { key: 'activity', label: '运动统计' },
+  { key: 'exam', label: '一键体检' },
+  { key: 'heart', label: METRICS.heart.name },
+  { key: 'mind', label: METRICS.mind.name },
 ];
 
 const CHANGES: ListItem[] = [
@@ -74,11 +86,10 @@ export default function InsightScreen() {
     navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax, color });
   };
 
-  // 扩展信号末次测量时间：取 dailyHistory 最后一个点的 t（原生每次读取写入一个今日时刻点）
-  const lastTimeOf = (key: string): number | null => {
-    const arr = ring.dailyHistory[key];
-    if (arr && arr.length > 0) return arr[arr.length - 1].t;
-    return null;
+  // 扩展信号末次测量时间：取今日序列最后一个点的 t（与卡片趋势同源，统一来自 healthStore）
+  const todayLastT = (key: string): number | null => {
+    const arr = getTodaySeries(key);
+    return arr.length > 0 ? arr[arr.length - 1].t : null;
   };
 
   // 基础指标 tab：前 5 个是实时信号（读 ring.metrics/history），其余扩展信号读 ring.daily/dailyHistory
@@ -110,8 +121,9 @@ export default function InsightScreen() {
               const isRealtime = realtimeKeys.has(m.key);
               const rk = m.key as RingMetricKey;
               const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
-              const hist = isRealtime ? (ring.history[rk] ?? []) : (ring.dailyHistory[m.key] ?? []);
-              const measureTime = isRealtime ? ring.lastUpdated[rk] : lastTimeOf(m.key);
+              // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
+              const hist = getTodaySeries(m.key);
+              const measureTime = isRealtime ? ring.lastUpdated[rk] : todayLastT(m.key);
               const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
               const showHeader = !!m.section && m.section !== prevSection;
               return (
@@ -143,9 +155,9 @@ export default function InsightScreen() {
                 </React.Fragment>
               );
             })}
-            <EcgReadout ring={ring} />
-            <BodyProfileForm />
           </View>
+        ) : tab === 'exam' ? (
+          <ExamTab />
         ) : tab === 'cycle' ? (
           <>
             {/* 周期 tab 不再放日/周/月/年切换：周期不是普通时间序列指标，
@@ -158,9 +170,23 @@ export default function InsightScreen() {
             {/* 今日经期状态记录（经量 / 疼痛程度），与周期日历共用同一份 periodLog */}
             <PeriodLogCard onPress={() => navigation.navigate('CycleCalendar')} />
           </>
+        ) : tab === 'activity' ? (
+          <ActivityStatsTab ring={ring} />
         ) : (
           <View style={styles.stack}>
-            <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
+            {tab !== 'heart' && (
+              <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
+            )}
+            {tab === 'metabolism' && (
+              <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+            )}
+
+            {tab === 'heart' && (
+              <>
+                <BpCard ring={ring} onPress={() => navigation.navigate('BpDetail')} />
+                <EcgCard ring={ring} onPress={() => navigation.navigate('EcgDetail')} />
+              </>
+            )}
             {tab === 'sleep' && (
               <SleepStructureCard
                 segments={ring.sleepStages}
@@ -189,8 +215,9 @@ export default function InsightScreen() {
                 <View style={styles.grid}>
                   {sigs.map((m) => {
                     const real = ring.daily[m.key] ?? null;
-                    const hist = ring.dailyHistory[m.key] ?? [];
-                    const measureTime = lastTimeOf(m.key);
+                    // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
+                    const hist = getTodaySeries(m.key);
+                    const measureTime = todayLastT(m.key);
                     // 纯手动测量类信号：使用无趋势图的 ManualMetricCard（数值左 / 测量时间右 / 按钮置底）
                     if (m.manualOnly) {
                       return (
@@ -229,72 +256,6 @@ export default function InsightScreen() {
         )}
       </View>
     </ScreenContainer>
-  );
-}
-
-/** 身体成分档案录入：保存后通过 RingBle.setUserInfo 下发戒指，健康一览才会返回身体成分字段。 */
-function BodyProfileForm() {
-  const saved = RingBle.getUserProfile();
-  const [weight, setWeight] = useState(saved ? String(saved.weight) : '');
-  const [height, setHeight] = useState(saved ? String(saved.height) : '');
-  const [age, setAge] = useState(saved ? String(saved.age) : '');
-  const [sex, setSex] = useState<'0' | '1'>(saved ? (String(saved.sex) as '0' | '1') : '0');
-  const [savedAt, setSavedAt] = useState<number | null>(saved ? Date.now() : null);
-  const [measuring, setMeasuring] = useState(false);
-
-  const save = () => {
-    const w = parseFloat(weight);
-    const h = parseFloat(height);
-    const a = parseFloat(age);
-    if (!(w > 0 && h > 0 && a > 0)) return;
-    RingBle.setUserInfo({ weight: w, height: h, age: a, sex: sex === '1' ? 1 : 0 });
-    setSavedAt(Date.now());
-    // 档案下发后立即触发一次身体成分主动测量（HK18 健康一览不自动返回身体成分）
-    setMeasuring(true);
-    RingBle.measure('bodyComposition');
-    setTimeout(() => setMeasuring(false), 35000);
-  };
-
-  return (
-    <Card>
-      <Text style={styles.profTitle}>身体成分档案</Text>
-      <Text style={styles.profHint}>录入身高 / 体重 / 年龄 / 性别后，健康一览才会返回身体成分数据（BMI、体脂率、肌肉量、水分、骨量、基础代谢率…）。</Text>
-      <View style={styles.profRow}>
-        <View style={styles.profField}>
-          <Text style={styles.profLabel}>体重 (kg)</Text>
-          <TextInput style={styles.profInput} keyboardType="numeric" value={weight} onChangeText={setWeight} placeholder="55" placeholderTextColor={theme.colors.textSub} />
-        </View>
-        <View style={styles.profField}>
-          <Text style={styles.profLabel}>身高 (cm)</Text>
-          <TextInput style={styles.profInput} keyboardType="numeric" value={height} onChangeText={setHeight} placeholder="165" placeholderTextColor={theme.colors.textSub} />
-        </View>
-      </View>
-      <View style={styles.profRow}>
-        <View style={styles.profField}>
-          <Text style={styles.profLabel}>年龄</Text>
-          <TextInput style={styles.profInput} keyboardType="numeric" value={age} onChangeText={setAge} placeholder="30" placeholderTextColor={theme.colors.textSub} />
-        </View>
-        <View style={styles.profField}>
-          <Text style={styles.profLabel}>性别</Text>
-          <View style={styles.seg}>
-            <TouchableOpacity style={[styles.segBtn, sex === '0' && styles.segBtnOn]} onPress={() => setSex('0')}>
-              <Text style={[styles.segText, sex === '0' && styles.segTextOn]}>女</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.segBtn, sex === '1' && styles.segBtnOn]} onPress={() => setSex('1')}>
-              <Text style={[styles.segText, sex === '1' && styles.segTextOn]}>男</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-      <TouchableOpacity style={styles.profSave} onPress={save} activeOpacity={0.8}>
-        <Text style={styles.profSaveText}>保存并同步到戒指</Text>
-      </TouchableOpacity>
-      {savedAt != null && (
-        <Text style={styles.profSaved}>
-          {measuring ? '已保存，正在测量身体成分（约 30 秒）…' : '已保存并同步到戒指 · 测量结果将自动刷新卡片'}
-        </Text>
-      )}
-    </Card>
   );
 }
 
@@ -406,6 +367,77 @@ function EcgReadout({ ring }: { ring: RingState }) {
       ) : (
         measureBtn
       )}
+    </Card>
+  );
+}
+
+/** 运动统计 tab：展示今日步数/步行距离/活动消耗。
+ * 数据来自 ring.stepDaily[今日 dateKey]，由原生 backfill + 实时计步累积。 */
+
+/** 运动统计 tab：展示今日步数/步行距离/活动消耗。
+ * 数据来自 ring.stepDaily[今日 dateKey]，由原生 backfill + 实时计步累积。
+ * 点击任一项进入 MetricDetail 详情页，可切周/月/年查看历史趋势。 */
+function ActivityStatsTab({ ring }: { ring: RingState }) {
+  const navigation = useNavigation<any>();
+  const today = new Date();
+  const dk = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+  const step = ring.stepDaily?.[dk];
+  const steps = step?.steps ?? 0;
+  const distance = step?.distance ?? 0;
+  const calorie = step?.calorie ?? 0;
+
+  const fmtInt = (n: number) => n.toLocaleString('zh-CN');
+  const fmtKm = (km: number) => km >= 10 ? km.toFixed(1) : km.toFixed(2);
+
+  const openDetail = (key: string, name: string, unit: string, yMin: number, yMax: number) => {
+    navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax });
+  };
+
+  const StatTile = ({
+    label, value, unit, color, onPress,
+  }: { label: string; value: string; unit: string; color: string; onPress: () => void }) => (
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={onPress}
+      style={{ alignItems: 'center', flex: 1, paddingVertical: 8 }}
+    >
+      <Text style={{ fontSize: 13, color: theme.colors.textSub, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: 28, fontWeight: '700', color }}>{value}</Text>
+      <Text style={{ fontSize: 12, color: theme.colors.textSub, marginTop: 2 }}>{unit}</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.textInk }}>今日运动</Text>
+        <Text style={{ fontSize: 12, color: theme.colors.textSub }}>{dk}</Text>
+      </View>
+      <View style={{ flexDirection: 'row' }}>
+        <StatTile
+          label="步数"
+          value={fmtInt(steps)}
+          unit="步"
+          color={theme.colors.accentSolid}
+          onPress={() => openDetail('steps', '步数', '步', 0, Math.max(10000, Math.ceil(steps * 1.2)))}
+        />
+        <View style={{ width: 1, height: 60, backgroundColor: theme.colors.cardBorder }} />
+        <StatTile
+          label="步行距离"
+          value={fmtKm(distance)}
+          unit="km"
+          color={theme.colors.stateEnergy}
+          onPress={() => openDetail('distance', '步行距离', 'km', 0, Math.max(5, Math.ceil(distance * 1.5)))}
+        />
+        <View style={{ width: 1, height: 60, backgroundColor: theme.colors.cardBorder }} />
+        <StatTile
+          label="活动消耗"
+          value={fmtInt(Math.round(calorie))}
+          unit="kcal"
+          color={theme.colors.stateTense}
+          onPress={() => openDetail('calorie', '活动消耗', 'kcal', 0, Math.max(300, Math.ceil(calorie * 1.2)))}
+        />
+      </View>
     </Card>
   );
 }

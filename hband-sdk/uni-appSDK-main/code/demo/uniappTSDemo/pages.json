@@ -1,0 +1,313 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+
+		{
+			"path": "pages/operatePage/operatePage",
+			"style": {
+				"navigationBarTitleText": "操作页面"
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "uni-app",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/readDailyData/readDailyData",
+			"style": {
+				"navigationBarTitleText": "读取日常数据"
+			}
+		},
+		{
+			"path": "pages/bodyTemperature/bodyTemperature",
+			"style": {
+				"navigationBarTitleText": "体温手动"
+			}
+		},
+		{
+			"path": "pages/ota/ota",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/dial/dial",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/sleep/sleep",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/waveform/waveform",
+			"style": {
+				"navigationBarTitleText": "波形"
+			}
+		},
+		{
+			"path": "pages/unitSetting/unitSetting",
+			"style": {
+				"navigationBarTitleText": "单位设置"
+			}
+		},
+		{
+			"path": "pages/weatherForecast/weatherForecast",
+			"style": {
+				"navigationBarTitleText": "天气设置"
+			}
+		},
+		{
+			"path": "pages/personalInfo/personalInfo",
+			"style": {
+				"navigationBarTitleText": "个人信息"
+			}
+		},
+		{
+			"path": "pages/switchSetup/switchSetup",
+			"style": {
+				"navigationBarTitleText": "开关设置"
+			}
+		},
+		{
+			"path": "pages/step/step",
+			"style": {
+				"navigationBarTitleText": "计步"
+			}
+		},
+		{
+			"path": "pages/ecgTest/ecgTest",
+			"style": {
+				"navigationBarTitleText": "ECG测量"
+			}
+		},
+		{
+			"path": "pages/ecgRead/ecgRead",
+			"style": {
+				"navigationBarTitleText": "ECG读取"
+			}
+		},
+		{
+			"path": "pages/bodyMeasurement/bodyMeasurement",
+			"style": {
+				"navigationBarTitleText": "身体成分"
+			}
+		},
+		{
+			"path": "pages/bodyTemperatureAuto/bodyTemperatureAuto",
+			"style": {
+				"navigationBarTitleText": "体温自动"
+			}
+		},
+		{
+			"path": "pages/contactPerson/contactPerson",
+			"style": {
+				"navigationBarTitleText": "联系人"
+			}
+		},
+		{
+			"path": "pages/sos/sos",
+			"style": {
+				"navigationBarTitleText": "SOS"
+			}
+		},
+		{
+			"path": "pages/alarmClock/alarmClock",
+			"style": {
+				"navigationBarTitleText": "闹钟"
+			}
+		},
+		{
+			"path": "pages/movementPattern/movementPattern",
+			"style": {
+				"navigationBarTitleText": "运动模式"
+			}
+		},
+		{
+			"path": "pages/lookPhone/lookPhone",
+			"style": {
+				"navigationBarTitleText": "查找手机"
+			}
+		},
+		{
+			"path": "pages/universalBlood/universalBlood",
+			"style": {
+				"navigationBarTitleText": "血压"
+			}
+		},
+		{
+			"path": "pages/screenSetup/screenSetup",
+			"style": {
+				"navigationBarTitleText": "屏幕设置"
+			}
+		},
+		{
+			"path": "pages/heartRateAlarm/heartRateAlarm",
+			"style": {
+				"navigationBarTitleText": "心率报警"
+			}
+		},
+		{
+			"path": "pages/bloodComponent/bloodComponent",
+			"style": {
+				"navigationBarTitleText": "血液成分"
+			}
+		},
+		{
+			"path": "pages/bloodGlucose/bloodGlucose",
+			"style": {
+				"navigationBarTitleText": "血糖测量"
+			}
+		},
+		{
+			"path": "pages/sedentaryToast/sedentaryToast",
+			"style": {
+				"navigationBarTitleText": "久坐提醒"
+			}
+		},
+		{
+			"path": "pages/takeAPicture/takeAPicture",
+			"style": {
+				"navigationBarTitleText": "拍照"
+			}
+		},
+		{
+			"path": "pages/brightScreen/brightScreen",
+			"style": {
+				"navigationBarTitleText": "抬手亮屏"
+			}
+		},
+		{
+			"path": "pages/ANCSToast/ANCSToast",
+			"style": {
+				"navigationBarTitleText": "ANCS开关"
+			}
+		},
+		{
+			"path": "pages/healthToast/healthToast",
+			"style": {
+				"navigationBarTitleText": "健康提醒"
+			}
+		},
+		{
+			"path": "pages/bloodOxygen/bloodOxygen",
+			"style": {
+				"navigationBarTitleText": "血氧自动"
+			}
+		},
+		{
+			"path": "pages/bloodOxygen2/bloodOxygen2",
+			"style": {
+				"navigationBarTitleText": "血氧手动测量"
+			}
+		},
+		{
+			"path": "pages/female/female",
+			"style": {
+				"navigationBarTitleText": "女性经期"
+			}
+		},
+		{
+			"path": "pages/androidCode/androidCode",
+			"style": {
+				"navigationBarTitleText": "android编码"
+			}
+		},
+		{
+			"path": "pages/uiStyle/uiStyle",
+			"style": {
+				"navigationBarTitleText": "UI风格"
+			}
+		},
+		{
+			"path": "pages/syncTime/syncTime",
+			"style": {
+				"navigationBarTitleText": "同步时间"
+			}
+		},
+		{
+			"path": "pages/networkDial/networkDial",
+			"style": {
+				"navigationBarTitleText": "网络表盘"
+			}
+		},
+		{
+			"path": "pages/heartRateTest/heartRateTest",
+			"style": {
+				"navigationBarTitleText": "心率测量"
+			}
+		},
+		{
+			"path": "pages/languagePage/languagePage",
+			"style": {
+				"navigationBarTitleText": "语言切换"
+			}
+		},
+		{
+			"path": "pages/manualMeasurement/manualMeasurement",
+			"style": {
+				"navigationBarTitleText": "读取手动测量"
+			}
+		},
+		{
+			"path": "pages/skinColorSetting/skinColorSetting",
+			"style": {
+				"navigationBarTitleText": "肤色设置"
+			}
+		},
+		{
+			"path": "pages/microCheck/microCheck",
+			"style": {
+				"navigationBarTitleText": "微体检"
+			}
+		},
+		{
+			"path": "pages/b3AutoTestFeature/b3AutoTestFeature",
+			"style": {
+				"navigationBarTitleText": "B3自动测量"
+			}
+		},
+		{
+			"path": "pages/JH58/JH58",
+			"style": {
+				"navigationBarTitleText": "JH58"
+			}
+		},
+		{
+			"path": "pages/ZT163ScreenKillFunction/ZT163ScreenKillFunction",
+			"style": {
+				"navigationBarTitleText": "ZT163常灭屏"
+			}
+		},
+		{
+			"path": "pages/4GService/4GService",
+			"style": {
+				"navigationBarTitleText": "4G服务"
+			}
+		},
+		{
+			"path": "pages/pressureTest/pressureTest",
+			"style": {
+				"navigationBarTitleText": "压力测量"
+			}
+		},
+		{
+			"path": "pages/YM28PROSendCommand/YM28PROSendCommand",
+			"style": {
+				"navigationBarTitleText": "YM28PRO"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {}
+}

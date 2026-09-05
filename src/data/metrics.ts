@@ -263,17 +263,17 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
   },
   // —— 代谢 ——（auto_data 计步 + 健康一览 血糖/血脂/尿酸）
   {
-    key: 'steps', name: '步数', icon: 'ring', dimension: 'metabolism',
+    key: 'steps', name: '步数', icon: 'ring', dimension: 'metabolism', hideInList: true,
     value: '—', unit: '步', range: '目标 10000', data: [], live: false,
     note: '全天步数，反映日常活动量。', freq: '每日自动同步', yMin: 0, yMax: 20000,
   },
   {
-    key: 'distance', name: '步行距离', icon: 'ring', dimension: 'metabolism',
+    key: 'distance', name: '步行距离', icon: 'ring', dimension: 'metabolism', hideInList: true,
     value: '—', unit: 'km', range: '—', data: [], live: false,
     note: '步行与跑步累计距离。', freq: '每日自动同步', yMin: 0, yMax: 20,
   },
   {
-    key: 'calorie', name: '活动消耗', icon: 'ring', dimension: 'metabolism',
+    key: 'calorie', name: '活动消耗', icon: 'ring', dimension: 'metabolism', hideInList: true,
     value: '—', unit: 'kcal', range: '—', data: [], live: false,
     note: '全天活动消耗的热量。', freq: '每日自动同步', yMin: 0, yMax: 4000,
   },
@@ -283,12 +283,12 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
     note: '健康一览自动评估的血糖估算值，非静脉血糖，仅供参考。', freq: '健康一览自动同步', yMin: 2, yMax: 12,
   },
   {
-    key: 'bloodFat', name: '血脂（总胆固醇）', icon: 'drop', dimension: 'metabolism',
+    key: 'bloodFat', name: '血脂（总胆固醇）', icon: 'drop', dimension: 'metabolism', hideInList: true,
     value: '—', unit: 'mmol/L', range: '参考报告', data: [], live: false, hideMeasure: true,
     note: '血液成分中的总胆固醇浓度，健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 10,
   },
   {
-    key: 'uricAcid', name: '尿酸', icon: 'drop', dimension: 'metabolism',
+    key: 'uricAcid', name: '尿酸', icon: 'drop', dimension: 'metabolism', hideInList: true,
     value: '—', unit: 'μmol/L', range: '正常 155–428', data: [], live: false, hideMeasure: true,
     note: '血液成分中的尿酸浓度，与饮食、嘌呤代谢相关。健康一览自动同步。', freq: '健康一览自动同步', yMin: 50, yMax: 600,
   },
@@ -329,17 +329,17 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
 export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
   // —— 血脂 · 心理（健康一览自动同步）——
   {
-    key: 'triglyceride', name: '甘油三酯', icon: 'drop', dimension: 'basics',
+    key: 'triglyceride', name: '甘油三酯', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 < 1.7 mmol/L', data: [], live: false,
     note: '血液中甘油三酯浓度，与饮食、脂代谢相关。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
   },
   {
-    key: 'hdl', name: '高密度脂蛋白', icon: 'drop', dimension: 'basics',
+    key: 'hdl', name: '高密度脂蛋白', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 > 1.0 mmol/L', data: [], live: false,
     note: '「好胆固醇」，偏高有助于清除血管多余脂质。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 3, hideMeasure: true, section: '血脂 · 心理',
   },
   {
-    key: 'ldl', name: '低密度脂蛋白', icon: 'drop', dimension: 'basics',
+    key: 'ldl', name: '低密度脂蛋白', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 < 3.4 mmol/L', data: [], live: false,
     note: '「坏胆固醇」，过高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
   },
@@ -357,77 +357,77 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
   {
     key: 'bpSys', name: '收缩压（光电）', icon: 'heart', dimension: 'basics',
     value: '—', unit: 'mmHg', range: '正常 < 120', data: [], live: false,
-    note: '光电法实时测得的收缩压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 60, yMax: 200, hideMeasure: false, section: '光电血压',
+    note: '光电法实时测得的收缩压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 60, yMax: 200, hideInList: true, hideMeasure: false, section: '光电血压',
   },
   {
     key: 'bpDia', name: '舒张压（光电）', icon: 'activity', dimension: 'basics',
     value: '—', unit: 'mmHg', range: '正常 < 80', data: [], live: false,
-    note: '光电法实时测得的舒张压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 130, hideMeasure: false, section: '光电血压',
+    note: '光电法实时测得的舒张压（点击测量，约 30 秒；HK18 支持）。健康一览也可能自动带出。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 130, hideInList: true, hideMeasure: false, section: '光电血压',
   },
   // —— 心电图 ECG（实时测量，HK18 硬件支持）——
   {
     key: 'ecg', name: '心电图 ECG', icon: 'heart', dimension: 'basics',
     value: '—', unit: 'bpm', range: '平均心率', data: [], live: false,
-    note: '实时心电图测量（HK18 硬件支持），返回平均心率、HRV、呼吸率、QT、PWV 与波形。点击卡片或测量按钮开始测量。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 120, hideMeasure: false, manualOnly: true, section: '心电图 ECG',
+    note: '实时心电图测量（HK18 硬件支持），返回平均心率、HRV、呼吸率、QT、PWV 与波形。点击卡片或测量按钮开始测量。', freq: '手动实时测量 · 约 30 秒', yMin: 40, yMax: 120, hideInList: true, hideMeasure: false, manualOnly: true, section: '心电图 ECG',
   },
   // —— 身体成分（健康一览，需先在 App 录入身高/体重档案）——
   {
-    key: 'bmi', name: 'BMI', icon: 'ring', dimension: 'basics',
+    key: 'bmi', name: 'BMI', icon: 'ring', dimension: 'metabolism',
     value: '—', unit: '', range: '18.5–24 正常', data: [], live: false,
     note: '身体质量指数，由身高体重推算。需先在「身体成分档案」录入身高体重。', freq: '健康一览自动同步（需录入档案）', yMin: 10, yMax: 40, hideMeasure: true, section: '身体成分',
   },
   {
-    key: 'bodyFatPercentage', name: '体脂率', icon: 'activity', dimension: 'basics',
+    key: 'bodyFatPercentage', name: '体脂率', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: '%', range: '女 20–30% 健康', data: [], live: false,
     note: '身体脂肪占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 50, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'fatMass', name: '脂肪量', icon: 'activity', dimension: 'basics',
+    key: 'fatMass', name: '脂肪量', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: 'kg', range: '—', data: [], live: false,
     note: '体内脂肪总重量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 40, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'leanBodyMass', name: '瘦体重', icon: 'activity', dimension: 'basics',
+    key: 'leanBodyMass', name: '瘦体重', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: 'kg', range: '—', data: [], live: false,
     note: '去脂体重（肌肉+骨骼+水分等）。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 70, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'muscleMass', name: '肌肉量', icon: 'activity', dimension: 'basics',
+    key: 'muscleMass', name: '肌肉量', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: 'kg', range: '—', data: [], live: false,
     note: '骨骼肌+平滑肌等总体肌肉质量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 10, yMax: 60, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'muscleRate', name: '肌肉率', icon: 'activity', dimension: 'basics',
+    key: 'muscleRate', name: '肌肉率', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: '%', range: '—', data: [], live: false,
     note: '肌肉占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 70, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'skeletalMuscleRate', name: '骨骼肌率', icon: 'activity', dimension: 'basics',
+    key: 'skeletalMuscleRate', name: '骨骼肌率', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: '%', range: '—', data: [], live: false,
     note: '骨骼肌占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 20, yMax: 60, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'subcutaneousFat', name: '皮下脂肪', icon: 'activity', dimension: 'basics',
+    key: 'subcutaneousFat', name: '皮下脂肪', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: '%', range: '—', data: [], live: false,
     note: '皮下脂肪占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 50, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'waterContent', name: '身体水分', icon: 'drop', dimension: 'basics',
+    key: 'waterContent', name: '身体水分', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: '%', range: '50–65% 健康', data: [], live: false,
     note: '体内水分占体重百分比。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 30, yMax: 80, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'boneMass', name: '骨量', icon: 'ring', dimension: 'basics',
+    key: 'boneMass', name: '骨量', icon: 'ring', dimension: 'metabolism',
     value: '—', unit: 'kg', range: '—', data: [], live: false,
     note: '骨骼矿物质重量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 1, yMax: 6, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'proteinAmount', name: '蛋白质', icon: 'drop', dimension: 'basics',
+    key: 'proteinAmount', name: '蛋白质', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'kg', range: '—', data: [], live: false,
     note: '体内蛋白质总量。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 5, yMax: 20, hideMeasure: true, showTrend: false, section: '身体成分',
   },
   {
-    key: 'basalMetabolicRate', name: '基础代谢率', icon: 'activity', dimension: 'basics',
+    key: 'basalMetabolicRate', name: '基础代谢率', icon: 'activity', dimension: 'metabolism',
     value: '—', unit: 'kcal', range: '—', data: [], live: false,
     note: '静息状态下维持生命的最低能耗。需先录入身高体重档案。', freq: '健康一览自动同步（需录入档案）', yMin: 800, yMax: 2500, hideMeasure: true, showTrend: false, section: '身体成分',
   },
@@ -435,7 +435,7 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
 
 /** 取某维度 tab 下应展示的信号卡片：'basics' 返回 5 个实时基础信号 + 扩展信号，其余返回对应维度的扩展信号。 */
 export function signalsForDimension(dim: 'basics' | MetricKey): BasicMetricDef[] {
-  if (dim === 'basics') return [...BASIC_METRICS, ...BASICS_EXTRA_SIGNALS];
+  if (dim === 'basics') return [...BASIC_METRICS, ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList)];
   return EXTENDED_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList);
 }
 

@@ -13,8 +13,16 @@ import { TREND_AXIS } from '../data/metrics';
 import { formatRelativeTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
 
-// 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），Y 轴改为固定生理量程。
-// 数据点按时间排序后绘制；相邻点间隔超过 30 分钟则断线（诚实留白，不编造连续趋势）。
+// 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
+// Y 轴随今日真实数据自适应缩放（值域上下各留 12% 余量，单点/空时回退固定生理量程）。
+// 数据点按时间排序后绘制；相邻点间隔超过 36h 则断线（诚实留白，不编造连续趋势）。
+/** 迷你趋势图 Y 标注：整数不带小数，小数保留 1 位。 */
+function fmtMini(v: number): string {
+  if (!Number.isFinite(v)) return '';
+  const r = Math.round(v * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
 function buildDayPath(
   points: { t: number; v: number }[],
   w: number,
@@ -46,7 +54,8 @@ function buildDayPath(
   };
   const pts = clean.map((p) => ({ x: xOf(p.t), y: yOf(p.v), t: p.t }));
 
-  const GAP = 30 * 60 * 1000; // 30 分钟以上无数据 → 断线
+  // 断线阈值与 MetricDetailScreen 连续曲线一致（36h）：单日跨度内永不触发，今日点始终连成一条。
+  const GAP = 36 * 3600 * 1000;
   let lineD = '';
   let areaD = '';
   let seg: { x: number; y: number }[] = [];
@@ -122,15 +131,35 @@ export default function BasicMetricCard({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const h = theme.fs(88);
   const gid = `bm_${metric.key}`;
+  // 今日窗口内的实际最大/最小值，作为迷你趋势图的 Y 向参照（不画整条标尺，避免拥挤）
+  const yStats = useMemo(() => {
+    const ys = data.map((d) => d.v).filter((v) => Number.isFinite(v));
+    if (!ys.length) return null;
+    return { max: Math.max(...ys), min: Math.min(...ys) };
+  }, [data]);
+  // 自适应 Y 量程：以今日真实数据为界上下各留 12% 余量；不足 2 点则回退固定生理量程。
+  const yBounds = useMemo(() => {
+    const ys = data.map((d) => d.v).filter((v) => Number.isFinite(v));
+    if (ys.length < 2) return null;
+    const rawMin = Math.min(...ys);
+    const rawMax = Math.max(...ys);
+    if (rawMin === rawMax) return null;
+    const pad = (rawMax - rawMin) * 0.12;
+    return { lo: rawMin - pad, hi: rawMax + pad };
+  }, [data]);
+  // 卡片今日趋势与历史页面日视图同源于 healthStore 今日窗口（数据由父组件经 getTodaySeries 传入）；
+  // 固定今日 0:00–24:00 窗口，不再做“今日不足扩多日”的回退，保证与详情页日视图逐点一致。
   const { lineD, areaD, last, hasData } = useMemo(() => {
-    const now = Date.now();
     const ds = (() => {
-      const d = new Date(now);
+      const d = new Date();
       d.setHours(0, 0, 0, 0);
       return d.getTime();
     })();
-    return buildDayPath(data, w, h, ds, ds + DAY_MS, metric.yMin, metric.yMax);
-  }, [data, w, h, metric.yMin, metric.yMax]);
+    const de = ds + DAY_MS;
+    const yLo = yBounds?.lo ?? metric.yMin;
+    const yHi = yBounds?.hi ?? metric.yMax;
+    return buildDayPath(data, w, h, ds, de, yLo, yHi);
+  }, [data, w, h, yBounds, metric.yMin, metric.yMax]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -181,7 +210,7 @@ export default function BasicMetricCard({
       {/* 自动监测开启 + showTrend → 全天时间轴趋势图 */}
       {auto && showTrend ? (
         <View style={styles.chartWrap}>
-          <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
+          <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)} style={{ position: 'relative' }}>
             {w > 0 ? (
               <Svg width={w} height={h}>
                 <Defs>
@@ -199,6 +228,17 @@ export default function BasicMetricCard({
                 {hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />}
                 {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={theme.colors.accentSolid} strokeWidth={2.4} />}
               </Svg>
+            ) : null}
+            {/* 今日窗口最大 / 最小值（Y 向参照，小字叠加在趋势图左上 / 左下） */}
+            {yStats && hasData ? (
+              <>
+                <Text style={{ position: 'absolute', top: 1, left: 2, fontSize: theme.fontSize.micro, color: theme.colors.textSub, opacity: 0.8 }}>
+                  {fmtMini(yStats.max)}
+                </Text>
+                <Text style={{ position: 'absolute', bottom: 1, left: 2, fontSize: theme.fontSize.micro, color: theme.colors.textSub, opacity: 0.8 }}>
+                  {fmtMini(yStats.min)}
+                </Text>
+              </>
             ) : null}
           </View>
           {/* 全天时间轴刻度：0/6/12/18/24 时（仅轻量文字，无轴线，与 Today 页「全天状态趋势」同源） */}
