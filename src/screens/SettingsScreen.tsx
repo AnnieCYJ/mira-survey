@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
@@ -9,9 +9,15 @@ import Icon from '../components/Icon';
 import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import { healthStore } from '../data/healthStore';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
+  useFocusEffect(
+    React.useCallback(() => {
+      setHsTick((t) => t + 1);
+    }, [])
+  );
   const [notif, setNotif] = useState(true);
   const [sync, setSync] = useState(RingBle.getSyncEnabled());
   const { autoMonitor, setAutoMonitor } = useAppState();
@@ -19,6 +25,7 @@ export default function SettingsScreen() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [dumpPath, setDumpPath] = useState<string | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  const [hsTick, setHsTick] = useState(0);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
@@ -47,6 +54,7 @@ export default function SettingsScreen() {
     lastBackfillAt: null,
     sleepStages: null,
     sleepSummary: null,
+    sleepSummaryDate: null,
     sleepTime: null,
     wakeTime: null,
     female: null,
@@ -191,7 +199,10 @@ export default function SettingsScreen() {
     } catch (e) {
       Alert.alert('同步失败', String(e));
     }
-    setTimeout(() => setDiagBusy(false), 4000);
+    setTimeout(() => {
+      setDiagBusy(false);
+      setHsTick((t) => t + 1);
+    }, 12000);
   };
   const onExportDump = async () => {
     if (diagBusy) return;
@@ -446,6 +457,32 @@ export default function SettingsScreen() {
               ⚠️ 当前运行包缺少 forceResync，必须 Xcode Clean Build + ⌘R 才能用「强制重新同步」。
             </Text>
           )}
+          {/* ★ 图表真实数据源：healthStore 当前内存状态 */}
+          <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 10, marginBottom: 4 }]}>
+            healthStore 真实状态（图表/趋势图数据源）
+          </Text>
+          <Text style={styles.debugNote}>
+            这是图表与趋势图实际读取的唯一数据源。若某指标「天数」&gt;0 但图表仍空 → 渲染问题；若「天数」=0 → 离线数据未回传（见下方旧字段对照并点「强制重新同步」）。
+          </Text>
+          {(() => {
+            const rep = healthStore.freshnessReport();
+            const withData = rep.filter((r) => r.days > 0);
+            const none = rep.filter((r) => r.days === 0);
+            return (
+              <View>
+                {withData.length === 0 ? (
+                  <Text style={[styles.debugKeys, { color: theme.colors.danger }]}>（全部指标 0 天 — 离线数据未回传）</Text>
+                ) : (
+                  withData.map((r) => (
+                    <Text key={r.key} style={styles.debugKeys}>
+                      {r.label}: {r.days}天 · 样本{r.samples} · {r.status === 'fresh' ? '最近更新' : `${r.ageMinutes}分钟前`}
+                    </Text>
+                  ))
+                )}
+                <Text style={styles.debugKeys}>未覆盖: {none.map((r) => r.label).join('、') || '（无）'}</Text>
+              </View>
+            );
+          })()}
           <View style={styles.divider} />
           <DebugRow label="HR 历史天数" value={String(Object.keys(ring.hrDaily).length)} />
           <Text style={styles.debugKeys}>HR 日期: {Object.keys(ring.hrDaily).sort().join(', ') || '（空）'}</Text>
@@ -453,10 +490,15 @@ export default function SettingsScreen() {
           <DebugRow label="9/3 HR 趋势可见" value={sep3HrVisible ? '是 ✅' : '否 ❌'} />
           <View style={styles.divider} />
           <DebugRow label="HRV 历史天数" value={String(Object.keys(ring.hrvDaily).length)} />
+          <Text style={styles.debugKeys}>HRV 样本日期: {Object.keys(ring.seriesByDay?.hrv ?? {}).sort().join(', ') || '（空）'}</Text>
           <DebugRow label="睡眠 历史天数" value={String(Object.keys(ring.sleepDaily).length)} />
+          <Text style={styles.debugKeys}>睡眠日期: {Object.keys(ring.sleepDaily).sort().join(', ') || '（空）'}</Text>
+          <Text style={styles.debugKeys}>睡眠摘要日期: {ring.sleepSummaryDate || '（空）'}</Text>
           <DebugRow label="计步 历史天数" value={String(Object.keys(ring.stepDaily).length)} />
           <DebugRow label="体温 历史天数" value={String(Object.keys(ring.tempDaily).length)} />
+          <Text style={styles.debugKeys}>体温 样本日期: {Object.keys(ring.seriesByDay?.temp ?? {}).sort().join(', ') || '（空）'}</Text>
           <DebugRow label="血氧 历史天数" value={String(Object.keys(ring.spo2Daily).length)} />
+          <Text style={styles.debugKeys}>血氧 样本日期: {Object.keys(ring.seriesByDay?.spo2 ?? {}).sort().join(', ') || '（空）'}</Text>
           <DebugRow label="EDA 历史天数" value={String(Object.keys(ring.edaDaily).length)} />
           <DebugRow label="状态趋势 天数" value={String(Object.keys(ring.statusDaily).length)} />
           <Text style={styles.debugNote}>

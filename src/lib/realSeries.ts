@@ -377,6 +377,11 @@ export function buildHistorySeries(
     const start = dayStartMs(anchor.getTime());
     const end = isTodayAnchor ? Date.now() : start + DAY;
     const tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+    console.log(`[REAL-SERIES-DAY] key=${key} hsKey=${hsKey} anchorKey=${anchorKey} isToday=${isTodayAnchor} tps=${tps.length} start=${start} end=${end}`);
+    // 诊断：直接查 getIntraday
+    const raw = healthStore.getIntraday(hsKey, anchorKey);
+    const dk2 = anchorKey.replace(/-(\d)-(\d)$/, '-0$1-0$2').replace(/-0(\d)-0(\d)$/, '-0$1-0$2');
+    console.log(`[REAL-SERIES-DAY] getIntraday(${hsKey}, ${anchorKey})=${raw.length} normalized=${healthStore.getIntraday(hsKey, dk2).length}`);
     if (tps.length === 0) {
       const dv = healthStore.getDay(hsKey, anchorKey)?.mean ?? null;
       if (dv == null) return emptyResult(key, `${anchorKey} 该日无真实测量数据（App 未在该日记录）`);

@@ -359,6 +359,10 @@ export class HealthStore {
     const end = parseDayKey(toDk);
     if (Number.isNaN(start) || Number.isNaN(end)) return [];
     let cur = start;
+    // ★ getTimeRange 诊断：store.intraday 有哪些 key
+    if (out.length === 0 && cur === start) {
+      console.log(`[HS-GETRANGE] key=${key} fromDk=${fromDk} toDk=${toDk} intraday_keys=[${Object.keys(store.intraday).join(',')}] daily_keys=[${Object.keys(store.daily).join(',')}]`);
+    }
     while (cur <= end) {
       const dk = dayKey(cur);
       const arr = store.intraday[dk];

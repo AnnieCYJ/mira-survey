@@ -109,7 +109,11 @@ export default function MetricDetailScreen() {
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
   const [w, setW] = useState(0);
   const isEcg = params.key === 'ecg';
-  const [measuring, setMeasuring] = useState(false);
+  // ★ ECG 状态完全数据驱动，不从本地 measuring state 读：
+  const _ecgProg = ring.ecgProgress;
+  const _ecgProgress = _ecgProg?.progress ?? 0;
+  const _ecgIsMeasuring = _ecgProg != null && _ecgProgress >= 0 && _ecgProgress < 100;
+  const _ecgIsDone = _ecgProg != null && _ecgProgress >= 100;
   // 打开「历史日」且当前指标无数据时的自动补拉状态
   const [backfilling, setBackfilling] = useState(false);
   const requestedForRef = useRef<string | null>(null);
@@ -119,28 +123,14 @@ export default function MetricDetailScreen() {
 
   // 心电图：仅主动测量。点击按钮触发原生 ECG 测量（约 30 秒），完成后 ring.ecg 更新并自动刷新本页。
   const measureEcg = useCallback(() => {
-    if (measuring) return;
-    setMeasuring(true);
-    RingBle.measure('ecg');
-  }, [measuring]);
+    if (_ecgIsMeasuring || _ecgIsDone) return;
+    RingBle.measure('ecg'); // 内部先清残留 progress
+  }, [_ecgIsMeasuring, _ecgIsDone]);
   // 手动结束 ECG「关闭测试」（对齐 uni-app 文档的「关闭测试」按钮）：提前结束拿结果
   const stopEcg = useCallback(() => {
     RingBle.stopEcg();
-    // 原生会回传 Over + 最终模型，ring.ecg 写入后 useEffect 自动结束「测量中」；
-    // 这里先乐观清进度，避免按钮文案卡在最后进度。
-    setRing((s) => ({ ...s, ecgProgress: null }));
   }, []);
-  useEffect(() => {
-    // 测量完成（ring.ecg 被写入）即结束「测量中」
-    if (measuring && ring.ecg) setMeasuring(false);
-  }, [measuring, ring.ecg]);
-  useEffect(() => {
-    // 安全超时：原生 ECG 为动态流式、需手动点「停止测量」结束（或 150s 兜底自动结束），
-    // 故给 160 秒兜底，避免提前把按钮复位成「重新测量」而误以为失败。
-    if (!measuring) return;
-    const t = setTimeout(() => setMeasuring(false), 160000);
-    return () => clearTimeout(t);
-  }, [measuring]);
+  
 
   useEffect(() => {
     const off = RingBle.onState(setRing);
@@ -593,18 +583,18 @@ export default function MetricDetailScreen() {
                 </View>
               ))}
             </View>
-            <TouchableOpacity activeOpacity={0.7} onPress={measureEcg} disabled={measuring} style={[styles.ecgBtn, measuring && styles.ecgBtnBusy]}>
-              <Text style={[styles.ecgBtnLabel, measuring && styles.ecgBtnLabelBusy]}>
-                {measuring
-                  ? ring.ecgProgress?.progress
-                    ? `测量中 ${ring.ecgProgress.progress}%${ring.ecgProgress.hr ? ` · ${Math.round(ring.ecgProgress.hr)} bpm` : ''}`
-                    : '测量中…（约 30 秒）'
-                  : ring.ecg
-                    ? '重新测量'
-                    : '开始心电图测量'}
+            <TouchableOpacity activeOpacity={0.7} onPress={measureEcg} disabled={_ecgIsMeasuring || _ecgIsDone} style={[styles.ecgBtn, _ecgIsMeasuring && styles.ecgBtnBusy]}>
+              <Text style={[styles.ecgBtnLabel, _ecgIsMeasuring && styles.ecgBtnLabelBusy]}>
+                {_ecgIsMeasuring
+                  ? `测量中 ${_ecgProgress}%${ring.ecgProgress?.hr ? ` · ${Math.round(ring.ecgProgress.hr)} bpm` : ''}`
+                  : _ecgIsDone
+                    ? '处理结果中…'
+                    : ring.ecg
+                      ? '重新测量'
+                      : '开始心电图测量'}
               </Text>
             </TouchableOpacity>
-            {measuring ? (
+            {_ecgIsMeasuring ? (
               <TouchableOpacity activeOpacity={0.7} onPress={stopEcg} style={styles.ecgStopBtn}>
                 <Text style={styles.ecgStopLabel}>停止测量</Text>
               </TouchableOpacity>

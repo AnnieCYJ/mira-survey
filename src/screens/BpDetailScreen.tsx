@@ -191,6 +191,11 @@ function continuousPath(
   return { lineD: line, dots };
 }
 
+/** 日视图固定 0~24 小时刻度；今日末位显示「现在」，避免正午看到右侧标「24」造成错位 */
+function dayXAxis(isToday: boolean): string[] {
+  return ['0', '4', '8', '12', '16', '20', isToday ? '现在' : '24'];
+}
+
 export default function BpDetailScreen() {
   const navigation = useNavigation<any>();
   const [range, setRange] = useState<RangeKey>('day');
@@ -208,6 +213,12 @@ export default function BpDetailScreen() {
   const diaHasData = (data.dia.points.some((v) => v != null) || data.dia.tPoints.length > 0);
   const hasData = sysHasData || diaHasData;
 
+  // 日视图固定以全天 0~24h 为时间轴，测量点按真实时间落位，避免单点被缩到最右侧
+  const isTodayAnchor = dateKeyOf(anchor.getTime()) === dateKeyOf(Date.now());
+  const dayStart = dayStartMs(anchor.getTime());
+  const tMin = dayStart;
+  const tMax = isTodayAnchor ? Math.max(Date.now(), dayStart + 3600000) : dayStart + 86400000;
+
   let sysLine = '', sysDots: { x: number; y: number }[] = [],
       diaLine = '', diaDots: { x: number; y: number }[] = [];
   const gid = 'bp_detail';
@@ -215,8 +226,6 @@ export default function BpDetailScreen() {
   if (w > 0 && hasData) {
     if (data.sys.continuous && data.sys.tPoints.length > 0) {
       const allT = [...data.sys.tPoints, ...data.dia.tPoints];
-      const tMin = allT.length ? Math.min(...allT.map((p) => p.t)) : dayStartMs(anchor.getTime());
-      const tMax = allT.length ? Math.max(...allT.map((p) => p.t)) : tMin + 86400000;
       ({ lineD: sysLine, dots: sysDots } = continuousPath(data.sys.tPoints, tMin, tMax, plotW, yAt));
       ({ lineD: diaLine, dots: diaDots } = continuousPath(data.dia.tPoints, tMin, tMax, plotW, yAt));
     } else {
@@ -315,8 +324,6 @@ export default function BpDetailScreen() {
                   if (data.sys.continuous) {
                     data.sys.tPoints.forEach((p) => tAll.add(p.t));
                     data.dia.tPoints.forEach((p) => tAll.add(p.t));
-                    const tMin = Math.min(...tAll, 1);
-                    const tMax = Math.max(...tAll, tMin + 1);
                     const sysMap = new Map(data.sys.tPoints.map((p) => [p.t, p.v]));
                     const diaMap = new Map(data.dia.tPoints.map((p) => [p.t, p.v]));
                     for (const t of Array.from(tAll).sort((a, b) => a - b)) {
@@ -365,20 +372,12 @@ export default function BpDetailScreen() {
           </View>
         </View>
 
-        {/* X 轴标签 */}
-        {data.sys.axis.length > 0 ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: Y_GUT, marginTop: 6 }}>
-            {data.sys.axis.filter((_, i) => i % Math.max(1, Math.ceil(data.sys.axis.length / 6)) === 0).map((a, i) => (
-              <Text key={i} style={{ fontSize: 11, color: theme.colors.textSub }}>{a}</Text>
-            ))}
-          </View>
-        ) : (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: Y_GUT, marginTop: 6 }}>
-            {['0', '4', '8', '12', '16', '20', '24'].map((h) => (
-              <Text key={h} style={{ fontSize: 11, color: theme.colors.textSub }}>{h}</Text>
-            ))}
-          </View>
-        )}
+        {/* X 轴标签：日视图固定 0/4/8/12/16/20/24（今日末位显示「现在」），与曲线真实时间轴对齐 */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: Y_GUT, marginTop: 6 }}>
+          {(range === 'day' ? dayXAxis(isTodayAnchor) : data.sys.axis.filter((_, i) => i % Math.max(1, Math.ceil(data.sys.axis.length / 6)) === 0)).map((a, i) => (
+            <Text key={i} style={{ fontSize: 11, color: theme.colors.textSub }}>{a}</Text>
+          ))}
+        </View>
 
         {!hasData ? (
           <View style={styles.emptyBox}>

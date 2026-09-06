@@ -89,7 +89,10 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
   }, [width, height, timeline]);
 
   // 默认选中末点（保持当前绿色标记常驻），点其他点则移动气泡
-  const selIdx = selected ?? (pts.length > 0 ? pts.length - 1 : null);
+  // 边界保护：selected 可能来自上一版数据（长度变了），必须 clamp
+  const selIdx = selected != null && selected >= 0 && selected < pts.length
+    ? selected
+    : (pts.length > 0 ? pts.length - 1 : null);
 
   if (pts.length === 0) {
     return (
@@ -127,10 +130,10 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
           );
         })}
         {/* 选中点的白色高亮环 */}
-        {selIdx != null ? (
+        {selIdx != null && pts[selIdx] ? (
           <Circle
-            cx={pts[selIdx].x}
-            cy={pts[selIdx].y}
+            cx={pts[selIdx]!.x}
+            cy={pts[selIdx]!.y}
             r={6}
             fill="none"
             stroke="#fff"
@@ -141,9 +144,9 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
       </Svg>
 
       {/* 选中点的详情气泡：等级名 + 值 + 采样时刻 */}
-      {selIdx != null
+      {selIdx != null && pts[selIdx]
         ? (() => {
-            const p = pts[selIdx];
+            const p = pts[selIdx]!;
             const mood = moodFor(p.value);
             const bubbleW = 78;
             const left = Math.max(4, Math.min(width - bubbleW - 4, p.x - bubbleW / 2));

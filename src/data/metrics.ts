@@ -210,7 +210,7 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     data: [88, 90, 92, 94, 91, 86, 78, 64, 56, 58, 62, 66, 60, 54, 52, 55, 58, 62, 68, 74, 80, 84, 88, 90],
     live: true,
     note: 'HRV 高说明自主神经恢复良好、抗压能力强。',
-    freq: '每日自动采集 · App 每 5 分钟读取',
+    freq: '每日自动采集 · 连接后实时读取并展开逐拍 RR 间期',
     yMin: 0,
     yMax: 150,
   },

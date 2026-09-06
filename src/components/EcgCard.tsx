@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { RingBle, type RingState } from '../ble/RingBleManager';
@@ -27,48 +27,42 @@ function miniWaveform(values: number[]): string {
 }
 
 export default function EcgCard({ ring, onPress }: Props) {
-  const [measuring, setMeasuring] = useState(false);
-  const ecgRunningRef = useRef(false);
+  const prog = ring.ecgProgress;
+  const latest = ring.ecg;
 
+  // ★ 完全数据驱动：根据 ring.ecgProgress 判断状态
+  // progress in [0, 99] → 正在测量
+  // progress = 100 → 刚完成（等待 handleEcg 写入 ring.ecg）
+  // progress = null → 空闲
+  const progress = prog?.progress ?? 0;
+  const isMeasuring = prog != null && progress >= 0 && progress < 100;
+  const isDone = prog != null && progress >= 100;
+
+  // ★ 平滑进度：HK18 固件 ECG 的 progress 回调长期停在低位（如 6%）才跳完成，
+  // 原生无补间，UI 看着像卡死。这里用计时器把显示进度平滑推到 92 封顶，
+  // 与「原生真实 progress」取较大值，complete 时由原生跳 100。
+  const [anim, setAnim] = useState(0);
   useEffect(() => {
-    if (measuring && ring.ecg) setMeasuring(false);
-  }, [measuring, ring.ecg]);
+    if (!isMeasuring) { setAnim(0); return; }
+    const id = setInterval(() => {
+      setAnim((p) => (p >= 92 ? p : Math.min(92, p + 1.2)));
+    }, 250);
+    return () => clearInterval(id);
+  }, [isMeasuring]);
+  const displayProgress = isMeasuring ? Math.max(progress, anim) : progress;
 
   const measureEcg = useCallback(() => {
-    if (ecgRunningRef.current) { console.log('[EcgMeasure] already running, skip'); return; }
+    if (isMeasuring) return; // 正在测，忽略重复点击
+    if (isDone) return;      // 刚完成，等结果落盘
     const st = RingBle.getState();
     if (!st.deviceId) { Alert.alert('提示', '请先连接戒指'); return; }
     if (st.status !== 'connected') { Alert.alert('提示', '戒指未连接（当前: ' + st.status + '）'); return; }
-    try {
-      console.log('[EcgMeasure] → RingBle.measure(ecg)');
-      ecgRunningRef.current = true;
-      setMeasuring(true);
-      RingBle.measure('ecg');
-    } catch (e: any) {
-      Alert.alert('ECG 测量失败', String(e?.message || e));
-      ecgRunningRef.current = false;
-      setMeasuring(false);
-    }
-  }, []);
+    RingBle.measure('ecg'); // measure() 内部先清残留 ecgProgress 再调原生
+  }, [isMeasuring, isDone]);
 
   const stopEcg = useCallback(() => {
-    console.log('[EcgMeasure] RingBle.stopEcg()');
-    ecgRunningRef.current = false;
     RingBle.stopEcg();
-    setMeasuring(false);
   }, []);
-
-  const latest = ring.ecg;
-  const prog = ring.ecgProgress;
-
-  // 收到完整波形或 progress=100 自动解锁
-  useEffect(() => {
-    const p = typeof prog === 'number' ? prog : prog?.progress ?? 0;
-    if (p >= 100 || (latest && latest.waveform && latest.waveform.length > 0)) {
-      ecgRunningRef.current = false;
-      setMeasuring(false);
-    }
-  }, [prog, latest?.waveform?.length]);
 
   return (
     <View style={styles.card}>
@@ -123,16 +117,29 @@ export default function EcgCard({ ring, onPress }: Props) {
         </View>
       ) : null}
 
-      {/* 测量按钮 */}
-      {measuring ? (
-        <TouchableOpacity activeOpacity={0.7} onPress={stopEcg} style={[styles.btn, { backgroundColor: theme.colors.danger }]}>
-          <Text style={styles.btnLabel}>
-            {prog?.progress
-              ? `测量中 ${prog.progress}%${prog.hr ? ` · ${Math.round(prog.hr)} bpm` : ''}`
-              : '测量中…（约 30 秒）'}
-          </Text>
+      {/* 测量按钮（数据驱动三种状态） */}
+      {isMeasuring ? (
+        // 状态 1：正在测量 → 红色按钮 + 进度 + 停止
+        <TouchableOpacity activeOpacity={0.7} onPress={stopEcg} style={[styles.btn, styles.btnMeasuring]}>
+          <View style={styles.btnContent}>
+            <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.btnLabel}>
+              测量中 {Math.round(displayProgress)}%{prog?.hr ? ` · ${Math.round(prog.hr)} bpm` : ''}
+            </Text>
+          </View>
+          {/* 进度条 */}
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.min(displayProgress, 100)}%` }]} />
+          </View>
         </TouchableOpacity>
+      ) : isDone ? (
+        // 状态 2：刚完成（100%）→ 短暂过渡态，等 ring.ecg 写入
+        <View style={[styles.btn, { backgroundColor: theme.colors.success || '#22c55e' }]}>
+          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.btnLabel}>处理结果中…</Text>
+        </View>
       ) : (
+        // 状态 3：空闲 → 绿色按钮开始/重测
         <TouchableOpacity activeOpacity={0.7} onPress={measureEcg} style={styles.btn}>
           <Text style={styles.btnLabel}>{latest ? '重新测量' : '开始心电图测量'}</Text>
         </TouchableOpacity>
@@ -168,5 +175,27 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.accentSolid,
   },
+  btnMeasuring: {
+    backgroundColor: theme.colors.danger,
+    paddingVertical: 10,
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
+  progressTrack: {
+    marginTop: 8,
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 2,
+  },
 });
