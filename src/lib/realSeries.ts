@@ -20,6 +20,7 @@ import { healthStore, dayStartMs, type MetricKey as HSMetricKey } from '../data/
 import {
   BASIC_METRICS,
   EXTENDED_SIGNALS,
+  BASICS_EXTRA_SIGNALS,
   RANGE_DEF,
   cycleNote,
   type RangeKey,
@@ -124,7 +125,10 @@ function lastNonNull(vals: (number | null)[]): number | null {
 }
 
 function resolveDef(key: string): BasicMetricDef | null {
-  return BASIC_METRICS.find((m) => m.key === key) || EXTENDED_SIGNALS.find((m) => m.key === key) || null;
+  return BASIC_METRICS.find((m) => m.key === key)
+    || EXTENDED_SIGNALS.find((m) => m.key === key)
+    || BASICS_EXTRA_SIGNALS.find((m) => m.key === key)
+    || null;
 }
 
 function finalize(
@@ -378,6 +382,14 @@ export function buildHistorySeries(
     const end = isTodayAnchor ? Date.now() : start + DAY;
     const tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
     console.log(`[REAL-SERIES-DAY] key=${key} hsKey=${hsKey} anchorKey=${anchorKey} isToday=${isTodayAnchor} tps=${tps.length} start=${start} end=${end}`);
+    // ★ DEBUG: 打印 tps 首尾值和分布
+    const _first3 = tps.slice(0,3).map(p=>`${p.t%86400000}s=${p.v?.toFixed?.(2)??p.v}`);
+    const _last3 = tps.slice(-3).map(p=>`${p.t%86400000}s=${p.v?.toFixed?.(2)??p.v}`);
+    const _vals = tps.map(p=>p.v).filter(v=>typeof v==='number' && Number.isFinite(v));
+    const _min = _vals.length? Math.min(..._vals):null;
+    const _max = _vals.length? Math.max(..._vals):null;
+    const _avg = _vals.length? _vals.reduce((a,b)=>a+b,0)/_vals.length : null;
+    console.log(`[REAL-SERIES-DAY] tps: first3=[${_first3}] last3=[${_last3}] min=${_min?.toFixed?.(2)} max=${_max?.toFixed?.(2)} avg=${_avg?.toFixed?.(2)}`);
     // 诊断：直接查 getIntraday
     const raw = healthStore.getIntraday(hsKey, anchorKey);
     const dk2 = anchorKey.replace(/-(\d)-(\d)$/, '-0$1-0$2').replace(/-0(\d)-0(\d)$/, '-0$1-0$2');

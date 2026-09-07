@@ -22,6 +22,7 @@ import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { useAppState } from '../state/AppState';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 function formatValue(v: number | null): string {
   if (v == null || Number.isNaN(v)) return '—';
@@ -63,6 +64,11 @@ export default function InsightScreen() {
   // 与设置页总开关无关），不再被 autoMonitor 默认值 false 卡死——否则数据在采、数值有，
   // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
   const trendOn = autoMonitor || ring.status === 'connected';
+
+  // 直接订阅 healthStore 版本号：离线回填 / 实时写入 healthStore 后，本页所有卡片
+  // 立即重渲染并重读 getTodaySeries（不再依赖间接的 ring.dataVersion 触发，杜绝
+  // 「数据明明回了、卡片却一直空白」的时序卡死）。
+  useHealthStoreVersion();
 
   useEffect(() => {
     const off = RingBle.onState(setRing);

@@ -22,6 +22,7 @@ import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf } from '../lib/dateUtils';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 interface Params {
   key: string;
@@ -136,6 +137,9 @@ export default function MetricDetailScreen() {
     const off = RingBle.onState(setRing);
     return off;
   }, []);
+  // 直接订阅 healthStore 版本号：回填写入后本页立即重算 buildHistorySeries，
+  // 历史曲线即时出现，无需切 Tab / 重进。
+  useHealthStoreVersion();
   useEffect(() => {
     void loadCycleLog().then((l) => setCycleLog(l));
   }, []);
@@ -158,6 +162,9 @@ export default function MetricDetailScreen() {
   const manualList: ManualMeasurement[] = showManualList
     ? healthStore.getManualMeasurements(manualHsKeyMap[params.key] ?? params.key as HSMetricKey).slice(0, 30)
     : [];
+  // ★ DEBUG: 详情页收到的参数和数据
+  console.log(`[MD-OPEN] key=${params.key} showManualList=${showManualList} manualHsKey=${manualHsKeyMap[params.key]} manualLen=${manualList.length}`);
+
   const gid = `md_${params.key}`;
 
   const plotW = W - PAD_L - PAD_R;

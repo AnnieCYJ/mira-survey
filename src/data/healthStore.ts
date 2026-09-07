@@ -189,6 +189,8 @@ function recomputeDaily(
 // ───────────────────────────────────────────────────────────────────────────
 // HealthStore
 // ───────────────────────────────────────────────────────────────────────────
+export type HealthStoreListener = () => void;
+
 export class HealthStore {
   private stores: Record<MetricKey, MetricStore> = {} as Record<MetricKey, MetricStore>;
   private sleep: Record<string, SleepSummary> = {};
@@ -197,8 +199,42 @@ export class HealthStore {
   syncEnabled = true;
   userProfile: { weight: number; height: number; age: number; sex: number } | null = null;
 
+  private listeners = new Set<HealthStoreListener>();
+  private notifyScheduled = false;
+  private version = 0;
+
   constructor() {
     for (const k of ALL_METRIC_KEYS) this.stores[k] = emptyStore();
+  }
+
+  /** 内部版本号，每次数据写入后递增；供 useSyncExternalStore 做稳定快照。 */
+  getVersion(): number {
+    return this.version;
+  }
+
+  /** 轻量订阅：数据写入后通知监听者（组件/Router/Manager），让详情页无需切 Tab 即可刷新。 */
+  subscribe(listener: HealthStoreListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify() {
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    queueMicrotask(() => {
+      this.notifyScheduled = false;
+      this.version += 1;
+      for (const fn of this.listeners) {
+        try {
+          fn();
+        } catch (e) {
+          // 单个监听者抛错不能打断其他监听者
+          console.warn('[HealthStore] listener error:', e);
+        }
+      }
+    });
   }
 
   private safeStore(key: MetricKey): MetricStore | null {
@@ -215,6 +251,7 @@ export class HealthStore {
     store.intraday[dk] = arr;
     store.daily[dk] = recomputeDaily(arr, store.daily[dk], 'realtime');
     this.lastUpdated[key] = ts;
+    this.notify();
   }
 
   // ── 写入：backfill 逐样本（历史日曲线） ──────────────────────────────────
@@ -231,6 +268,7 @@ export class HealthStore {
       store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
     }
     this.lastUpdated[key] = Date.now();
+    this.notify();
   }
 
   // ── 写入：backfill 日均值（历史日只有均值、无逐样本时） ──────────────────
@@ -251,6 +289,7 @@ export class HealthStore {
       store.daily[dk] = { ...prev, mean: v, min: v, max: v, source: 'mixed', updatedAt: Date.now() };
     }
     this.lastUpdated[key] = Date.now();
+    this.notify();
   }
 
   // ── 写入：手动测量 ───────────────────────────────────────────────────────
@@ -276,6 +315,7 @@ export class HealthStore {
     if (arr.length > 1000) arr.splice(0, arr.length - 1000);
     arr.sort((a, b) => a.t - b.t);
     this.lastUpdated[key] = ts;
+    this.notify();
   }
 
   getManualMeasurements(key: MetricKey): ManualMeasurement[] {
@@ -290,6 +330,7 @@ export class HealthStore {
     if (Number.isNaN(parseDayKey(dk))) return;
     this.sleep[dk] = summary;
     this.lastUpdated['sleep'] = Date.now();
+    this.notify();
   }
   getSleep(dayKeyRaw: string): SleepSummary | null {
     const dk = normalizeDayKey(dayKeyRaw);
@@ -303,6 +344,7 @@ export class HealthStore {
     if (!this.glance[dk]) this.glance[dk] = {};
     this.glance[dk][sub] = value;
     this.lastUpdated[`glance:${sub}`] = ts;
+    this.notify();
   }
   getGlance(dayKeyRaw: string): HealthGlanceDay | null {
     const dk = normalizeDayKey(dayKeyRaw);
@@ -535,6 +577,7 @@ export class HealthStore {
     this.lastUpdated = json.lastUpdated ?? {};
     if (typeof json.syncEnabled === 'boolean') this.syncEnabled = json.syncEnabled;
     if (json.userProfile) this.userProfile = json.userProfile;
+    this.notify();
   }
 
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */
@@ -542,12 +585,14 @@ export class HealthStore {
     if (!snap || typeof snap !== 'object') return;
     const moveDaily = (src: Record<string, any> | undefined, key: MetricKey) => {
       if (!src) return;
+      const store = this.stores[key];
       for (const rawK of Object.keys(src)) {
         const dk = normalizeDayKey(rawK);
         if (Number.isNaN(parseDayKey(dk))) continue; // 丢弃 NaN-* 等非法 key
         const v = clampValid(Number(src[rawK]));
         if (v == null) continue;
-        const store = this.stores[key];
+        // ★ 仅补 v2 缺失的历史日，绝不覆盖 v2 已有的当日数据（避免旧快照覆盖新值）
+        if (store.daily[dk] && store.daily[dk].samples > 0) continue;
         store.daily[dk] = {
           mean: v, min: v, max: v, last: v, samples: 1, source: 'backfill', updatedAt: Date.now(),
         };
@@ -614,6 +659,7 @@ export class HealthStore {
     }
     if (typeof snap.syncEnabled === 'boolean') this.syncEnabled = snap.syncEnabled;
     if (snap.userProfile) this.userProfile = snap.userProfile;
+    this.notify();
   }
 
   clear(): void {
@@ -621,6 +667,7 @@ export class HealthStore {
     this.sleep = {};
     this.glance = {};
     this.lastUpdated = {};
+    this.notify();
   }
 }
 

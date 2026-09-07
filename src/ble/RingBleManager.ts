@@ -242,6 +242,8 @@ export interface RingState {
   deviceCapabilities: { ecgType: number; funcAssessmentType: number; healthGlanceType: number; supportManualTestType: number } | null;
   /** ECG 实时测量进度（原生 onEcgProgress 回传）：progress=0~100，hr=当前心率（测量中）。非持久化，仅测量期间有效。 */
   ecgProgress: { progress: number; hr?: number } | null;
+  /** healthStore 数据版本计数器：healthStore 写入时递增，让只订阅 RingState 的页面也能感知到数据变化并刷新。 */
+  dataVersion: number;
 }
 
 type StatePatch = Partial<RingState>;
@@ -756,8 +758,9 @@ class NativeRingSource {
       // 追加到历史数组（最多保留 30 次）
       const curHistory = this.getState().ecgHistory ?? [];
       const newHistory = [reading, ...curHistory].slice(0, 30);
-      // ★ 保持 ecgProgress=100 让 UI 先看到完成状态（原生已先 emit progress=100）
-      this.push({ ecg: reading, ecgProgress: { progress: 100, hr: reading.aveHeart }, ecgHistory: newHistory });
+      // ★ 关键：清掉 ecgProgress → UI 从"处理结果中…"回到空闲态（显示"重新测量"）
+      // 之前设 progress:100 会导致 isDone 永远为 true，UI 永远卡在 loading
+      this.push({ ecg: reading, ecgProgress: null, ecgHistory: newHistory });
       // 把平均心率作为 'ecg' 信号推入 flush 归档链路 → extDaily[今日]['ecg']，多日趋势可用
       this.pushMetric({ key: 'ecg', value: reading.aveHeart, unit: 'bpm', ts: reading.ts });
       // 呼吸率：本固件独立 TestBreathingRateStart 会打断实时 HR/SpO₂ 且恒返 NoFunction(7)，故不调；
@@ -1861,6 +1864,7 @@ class RingConnectionImpl {
     ecgHistory: [],
     lastUploadedAt: null,
     ecgProgress: null,
+    dataVersion: 0,
   };
   private native: NativeRingSource;
   private backend: BackendRingSource;
@@ -2101,6 +2105,15 @@ class RingConnectionImpl {
     // 今日状态时间线：对齐「整点 / 整半点」墙钟边界落快照（用户要求 12:00/12:30 出值），
     // 而非从 App 启动时刻起算的 30 分钟漂移，保证每次结果都精确落在 :00 或 :30。
     this.scheduleStatusTick();
+    // healthStore 是独立数据源，写入不经过 RingState。订阅其变更 → 节流触发一次「调和」
+    // （重建首页趋势 + 投影洞察指标 + 单次 emit）。
+    // 原实现每次写入都 applyPatch({dataVersion})→emit()，有两个致命问题：
+    //  (a) dataVersion 不满足 rebuild 触发条件，趋势/卡片永远不刷新（离线回传后首页空白）；
+    //  (b) 每条样本触发一次全量重渲染，实时采集时造成「自动测量开关卡顿」等性能问题。
+    // 改为节流（≥500ms 一次）+ 单次 emit，既保证数据回传后 UI 刷新，又消除重渲染风暴。
+    healthStore.subscribe(() => {
+      this.scheduleHsReconcile();
+    });
   }
 
   private emit() {
@@ -2171,7 +2184,6 @@ class RingConnectionImpl {
       patch.ecgDaily !== undefined
     ) {
       try {
-        console.log("[DIAG] applyPatch about to rebuildHistoricalStatus, this.rebuildHistoricalStatus=", typeof this.rebuildHistoricalStatus);
         this.rebuildHistoricalStatus();
         this.syncExtendedDaily(); // 归档 → daily/dailyHistory 投影，修复「回填型卡片不更新」
         this.recomputeDailyStatus(); // 睡眠/HRV 归档落地后重算今日状态（解锁首页「今日状态」与全天状态趋势）
@@ -2181,6 +2193,43 @@ class RingConnectionImpl {
       }
     }
     this.emit();
+  }
+
+  // ── healthStore → RingState 轻量调和（节流） ──────────────────────────────
+  // 背景：healthStore 是唯一健康数据源，离线回填 / 实时采集都先写它；但首页「全天状态趋势」
+  // 与洞察卡片读的是 RingState（statusTimeline / daily / metrics），其派生数据只由
+  // rebuildHistoricalStatus / syncExtendedDaily 计算。
+  // 原实现每次 healthStore 写入都 applyPatch({dataVersion})→emit()，既不会重建趋势
+  // （dataVersion 不满足 rebuild 触发条件），又因每条样本触发一次全量重渲染，造成
+  // 「自动测量开关卡顿」等性能问题；且原生 onBackfillComplete 事件实际并未回传
+  // （全量日志 0 次），离线数据回传后趋势/卡片永远不刷新。
+  // 现改为：healthStore 变更 → 节流（≥500ms 一次）→ 一次调和 + 单次 emit。
+  private hsReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+  private hsReconcileLast = 0;
+
+  private scheduleHsReconcile() {
+    if (this.hsReconcileTimer) return; // 已排程，连续写入不叠加
+    const MIN_GAP = 500;
+    const sinceLast = Date.now() - this.hsReconcileLast;
+    const delay = sinceLast >= MIN_GAP ? 0 : MIN_GAP - sinceLast;
+    this.hsReconcileTimer = setTimeout(() => {
+      this.hsReconcileTimer = null;
+      this.hsReconcileLast = Date.now();
+      this.reconcileFromHealthStore();
+    }, delay);
+  }
+
+  private reconcileFromHealthStore() {
+    try {
+      this.rebuildHistoricalStatus(); // 今日/历史 statusTimeline 从 healthStore intraday 重建
+      this.syncExtendedDaily();       // 投影 daily/metrics → 洞察卡片
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      postLog('RingBle', `[reconcileFromHealthStore] 异常（已忽略）: ${msg}`);
+    }
+    // 单次脏检查：详情/洞察页直接订阅 healthStore 会自刷；首页订阅 RingState，需此处 emit。
+    const next = (this.state.dataVersion ?? 0) + 1;
+    this.applyPatch({ dataVersion: next });
   }
 
   // ── HRV 主要取自设备历史库：原生 readHistoricalHrv 每 300s 调一次 backfillDayHrv
@@ -2226,6 +2275,14 @@ class RingConnectionImpl {
         healthStore.upsertRealtime(k, { t: m.ts ?? Date.now(), v: m.value });
         availability[k] = 'live';
         lastUpdated[k] = m.ts ?? Date.now();
+        // ★ skin/eda 双写：native emit 'eda'（CORE_KEYS），但 UI 读 extDaily['skin']
+        if (k === 'eda') {
+          const prevDay = extDaily[bucketDay] ?? {};
+          extDaily[bucketDay] = { ...prevDay, skin: m.value };
+          healthStore.upsertRealtime('skin', { t: m.ts ?? Date.now(), v: m.value }, m.ts ?? Date.now());
+          lastUpdated['skin'] = m.ts ?? Date.now();
+          availability['skin'] = 'live';
+        }
       } else {
         // 扩展指标：存最新值，并增量写入 15 分钟时间槽以累积全天趋势曲线
         daily[m.key] = m.value;
@@ -2372,6 +2429,8 @@ class RingConnectionImpl {
     const dailyHistory = { ...st.dailyHistory };
     const hrvDaily = { ...st.hrvDaily };
     const hrDaily = { ...st.hrDaily };
+    const availability = { ...st.availability };
+    const lastUpdated = { ...st.lastUpdated };
 
     // 今日 key：优先 bucketDay（与归档同格式 'YYYY-M-D'），未初始化时回退当天
     const today =
@@ -2411,6 +2470,30 @@ class RingConnectionImpl {
       daily['hr'] = hrVal;
       if (hrDaily[today] == null) hrDaily[today] = hrVal; // 落档：供趋势图与跨天历史
       if (metrics['hr'] == null) metrics['hr'] = hrVal;
+    }
+
+    // 扩展信号（spo2/temp/hr/v/stress/bp 等）：backfill 已写入 seriesByDay[key][today]，
+    // 但 ring.metrics / ring.daily 从未被回填填充——导致首页 basics 卡片（spo2/temp 等按 realtime 读 ring.metrics）
+    // 恒显 "—"。这里把今日聚合均值投影进 metrics/daily，与 HR/HRV 的既有逻辑对齐。
+    // metrics/availability/lastUpdated 仅接受核心 MetricKey（hr/spo2/temp/eda/hrv/rr），
+    // 故核心键才写 metrics；daily 为 Record<string>，所有扩展信号键均可写（卡片读 daily）。
+    const projFromSeries = ['hr', 'hrv', 'spo2', 'temp', 'stress', 'bpSys', 'bpDia'];
+    const CORE_SET = new Set<string>(['hr', 'hrv', 'spo2', 'temp', 'eda', 'rr']);
+    for (const k of projFromSeries) {
+      const byDay = st.seriesByDay[k];
+      const arr = byDay ? byDay[today] : undefined;
+      if (!arr || arr.length === 0) continue;
+      const vals = arr.map((p) => p.v).filter((v) => Number.isFinite(v) && v > 0);
+      if (vals.length === 0) continue;
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const last = arr[arr.length - 1];
+      daily[k] = mean; // 所有信号键都写 daily，卡片通用
+      if (CORE_SET.has(k)) {
+        const ck = k as MetricKey;
+        if (metrics[ck] == null) metrics[ck] = mean; // 实时值优先，回填值兜底
+        if (availability[ck] == null) availability[ck] = 'live';
+        lastUpdated[ck] = last.t;
+      }
     }
 
     // 跨天序列：合并所有归档日期 → {t,v} 点（供趋势图 + 末次测量时间）
@@ -2484,7 +2567,7 @@ class RingConnectionImpl {
       if (pts.length > 0) dailyHistory[k] = pts;
     }
 
-    this.state = { ...this.state, daily, metrics, dailyHistory, hrvDaily, hrDaily };
+    this.state = { ...this.state, daily, metrics, dailyHistory, hrvDaily, hrDaily, availability, lastUpdated };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2673,16 +2756,10 @@ class RingConnectionImpl {
         const sd = new Date(now);
         const sm = sd.getMinutes() >= 30 ? 30 : 0;
         const startTs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate(), sd.getHours(), sm, 0, 0).getTime();
-        const startPt: CurvePoint = {
-          t: startTs,
-          value: seed.value,
-          level: curveLevel(seed.value, CURVE_DEFAULTS).level,
-        };
-        this.state.statusTimeline = [
-          ...this.state.statusTimeline.filter((p) => isSameDay(p.t, now)),
-          startPt,
-        ].slice(-STATUS_TIMELINE_CAP);
-        this.lastCurveAccumTs = now;
+        // 保留当日点、清掉昨日残留，再以边界对齐 ts 去重写入种子起始点
+        this.state.statusTimeline = this.state.statusTimeline.filter((p) => isSameDay(p.t, now));
+        this.pushStatusPoint(seed.value, startTs);
+        this.lastCurveAccumTs = startTs;
       }
     }
 
@@ -2703,7 +2780,12 @@ class RingConnectionImpl {
 
     // —— 累积窗口（每 30 分钟一次）——
     if (curve && curve.seed.value != null) {
-      const due = effectiveForce || this.lastCurveAccumTs == null || (isBoundary && now - this.lastCurveAccumTs >= STATUS_SNAPSHOT_MS);
+      // 统一用对齐到 :00/:30 边界的 ts 作为该点 t，并对同边界 t 去重（见 pushStatusPoint）
+      const boundaryTs = this.alignBoundaryTs(now);
+      const due =
+        effectiveForce ||
+        this.lastCurveAccumTs == null ||
+        (isBoundary && boundaryTs - this.lastCurveAccumTs >= STATUS_SNAPSHOT_MS);
       if (due) {
         const sig = this.deriveWindowSignals(now, curve);
         let prev = this.lastTimelineValue() ?? curve.seed.value;
@@ -2715,13 +2797,8 @@ class RingConnectionImpl {
         }
         const res = accumulateWindow(prev, sig, curve.baseline, CURVE_DEFAULTS);
         const nextValue = Number.isFinite(res.next) ? res.next : (curve.seed.value ?? 50);
-        const point: CurvePoint = {
-          t: now,
-          value: nextValue,
-          level: curveLevel(nextValue, CURVE_DEFAULTS).level,
-        };
-        this.state.statusTimeline = [...this.state.statusTimeline, point].slice(-STATUS_TIMELINE_CAP);
-        this.lastCurveAccumTs = now;
+        this.pushStatusPoint(nextValue, boundaryTs);
+        this.lastCurveAccumTs = boundaryTs;
         curve = { ...curve, lastWindowSteps: this.todaySteps(), lastWearTs: now };
       } else {
         // 数据刷新但非累积边界：戒指在戴，仅刷新佩戴时间戳，不推进曲线
@@ -2745,6 +2822,47 @@ class RingConnectionImpl {
       statusDaily,
       statusTimelineByDay,
     });
+  }
+
+  /** 把任意时间戳对齐到最近的 :00 / :30 墙钟边界（去毫秒），作为 statusTimeline 点的统一 t。
+   *  保证同一 30 分钟边界无论被多少次触发，t 都一致，从根本上避免「同一时间出现多个数据」。 */
+  private alignBoundaryTs(now: number): number {
+    const d = new Date(now);
+    const sm = d.getMinutes() >= 30 ? 30 : 0;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), sm, 0, 0).getTime();
+  }
+
+  /** 向今日 statusTimeline 写入一个边界点：若同边界 t 已存在则替换（去重），否则追加。 */
+  private pushStatusPoint(value: number, ts: number) {
+    const point: CurvePoint = { t: ts, value, level: curveLevel(value, CURVE_DEFAULTS).level };
+    const arr = this.state.statusTimeline;
+    const idx = arr.findIndex((p) => p.t === ts);
+    if (idx >= 0) {
+      const next = arr.slice();
+      next[idx] = point;
+      this.state.statusTimeline = next.slice(-STATUS_TIMELINE_CAP);
+    } else {
+      this.state.statusTimeline = [...arr, point].slice(-STATUS_TIMELINE_CAP);
+    }
+  }
+
+  /** 清洗一组曲线点：只保留 :00 / :30 边界点，按对齐边界 ts 去重（保留每个边界最后一条）。
+   *  用于 loadSnapshot 读入存档时消除历史脏数据中的重复点。 */
+  private dedupeBoundaryPoints(raw: any[]): CurvePoint[] {
+    const seen = new Set<number>();
+    const out: CurvePoint[] = [];
+    for (const p of raw) {
+      if (!p || typeof p.t !== 'number' || !Number.isFinite(p.t)) continue;
+      const d = new Date(p.t);
+      const m = d.getMinutes();
+      if (m !== 0 && m !== 30) continue;
+      const sm = m >= 30 ? 30 : 0;
+      const ts = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), sm, 0, 0).getTime();
+      if (seen.has(ts)) continue;
+      seen.add(ts);
+      out.push({ t: ts, value: typeof p.value === 'number' ? p.value : NaN, level: p.level });
+    }
+    return out;
   }
 
   // ── 曲线辅助：窗口信号提取 / 情境判断 / 头条聚合 ──
@@ -2865,21 +2983,37 @@ class RingConnectionImpl {
    * 诚实标注：这是基于 HRV/睡眠的推算分，不是当时逐 30 分钟的完整曲线。
    */
   private rebuildHistoricalStatus() {
+    if (this.rebuildHistoricalStatusRunning) return;
+    this.rebuildHistoricalStatusRunning = true;
+    try {
+      this.rebuildHistoricalStatusImpl();
+    } finally {
+      this.rebuildHistoricalStatusRunning = false;
+    }
+  }
+
+  private rebuildHistoricalStatusRunning = false;
+
+  private rebuildHistoricalStatusImpl() {
     const hrv = this.state.hrvDaily;
     const sleep = this.state.sleepDaily;
     const days = new Set<string>([...Object.keys(hrv), ...Object.keys(sleep)]);
+    // ★ 今日也参与重建：若今日状态曲线稀疏（典型是当天靠离线回填、App 未在线累积），
+    //   用当日回填的 intraday（hr/steps/met/eda）重建到当前时间的 30min 曲线，补全首页「全天状态趋势图」。
+    days.add(this.bucketDay);
     if (days.size === 0) return;
     const cycle = this.resolveCycle();
     const todayKey = this.bucketDay;
     let statusDaily = this.state.statusDaily;
     let statusTimelineByDay = this.state.statusTimelineByDay;
+    let statusTimeline = this.state.statusTimeline;
     let changed = false;
 
     for (const dk of days) {
-      if (dk === todayKey) continue;
+      const isToday = dk === todayKey;
       const hv = hrv[dk];
       const sl = sleep[dk];
-      if (hv == null && !sl) continue;
+      if (!isToday && hv == null && !sl) continue;
       const hrvOk =
         hv != null && hv <= ALGO_DEFAULTS.HRV_ARTIFACT_MAX && hv >= ALGO_DEFAULTS.HRV_ARTIFACT_MIN ? hv : null;
       const input: TodayInput = {
@@ -2890,30 +3024,52 @@ class RingConnectionImpl {
           : { sleepTotal: null, sleepDeep: null, getUp: null },
       };
       const seed = computeSeed({ input, history: this.state.statusHistory, cycle, consts: CURVE_DEFAULTS });
-      if (seed.value != null && Number.isFinite(seed.value) && statusDaily[dk] !== seed.value) {
+      // 历史日写 statusDaily（今日由 recomputeDailyStatus 用时间线均值覆盖，不在此写）
+      if (!isToday && seed.value != null && Number.isFinite(seed.value) && statusDaily[dk] !== seed.value) {
         statusDaily = { ...statusDaily, [dk]: seed.value };
         changed = true;
       }
 
-      // ★ 新增：重建 statusTimelineByDay[dk] —— 全天 30min 曲线
-      // 这是历史日详情页的数据源，之前只有"跨午夜那一刻"才会被归档，
-      // backfill 历史日完全没反推 → UI 全空！
-      if (seed.value != null && Number.isFinite(seed.value)) {
-        const existing = statusTimelineByDay[dk];
-        // 如果已有归档点（跨午夜那一刻产生的）且 ≥ 12 个点，保留
-        // 如果没有（backfill 历史日）或太少（< 12 点），从 healthStore intraday 重建
-        if (!existing || existing.length < 12) {
-          const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seed.value, cycle);
+      if (!isToday) {
+        // 历史日：重建 statusTimelineByDay[dk] —— 全天 30min 曲线
+        // 这是历史日详情页的数据源，之前只有"跨午夜那一刻"才会被归档，
+        // backfill 历史日完全没反推 → UI 全空！
+        if (seed.value != null && Number.isFinite(seed.value)) {
+          const existing = statusTimelineByDay[dk];
+          // 如果已有归档点（跨午夜那一刻产生的）且 ≥ 12 个点，保留
+          // 如果没有（backfill 历史日）或太少（< 12 点），从 healthStore intraday 重建
+          if (!existing || existing.length < 12) {
+            const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seed.value, cycle);
+            if (rebuilt && rebuilt.length > 0) {
+              statusTimelineByDay = { ...statusTimelineByDay, [dk]: rebuilt };
+              changed = true;
+              postLog('RingBle', `[rebuildHistoricalStatus] ✅ 重建 statusTimelineByDay[${dk}] ${rebuilt.length} 个点`);
+            }
+          }
+        }
+      } else {
+        // 今日：若实时累积的 statusTimeline 稀疏（< 12 点，多为离线回填、当日未在线累积），
+        // 用当日回填的 intraday 重建全天曲线，补全首页「全天状态趋势图」。
+        // 实时已累积出较完整曲线（≥ 12 点）则保留真实累积，不覆盖。
+        if (statusTimeline.length < 12) {
+          const seedVal = seed.value != null && Number.isFinite(seed.value) ? seed.value : 50;
+          const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
           if (rebuilt && rebuilt.length > 0) {
-            statusTimelineByDay = { ...statusTimelineByDay, [dk]: rebuilt };
+            // 用新重建的点补到现有时间线后面（或替换为空的时间线），不要直接丢弃已有的实时点
+            const existingByT = new Map(statusTimeline.map((p) => [p.t, p]));
+            for (const p of rebuilt) {
+              if (!existingByT.has(p.t)) existingByT.set(p.t, p);
+            }
+            const merged = Array.from(existingByT.values()).sort((a, b) => a.t - b.t);
+            statusTimeline = merged;
             changed = true;
-            postLog('RingBle', `[rebuildHistoricalStatus] ✅ 重建 statusTimelineByDay[${dk}] ${rebuilt.length} 个点`);
+            postLog('RingBle', `[rebuildHistoricalStatus] ✅ 合并今日 statusTimeline（回填 ${rebuilt.length} 点，合并后 ${merged.length} 点）`);
           }
         }
       }
     }
     if (changed) {
-      this.state = { ...this.state, statusDaily, statusTimelineByDay };
+      this.state = { ...this.state, statusDaily, statusTimelineByDay, statusTimeline };
       this.emit();
     }
   }
@@ -2942,12 +3098,15 @@ class RingConnectionImpl {
     // 2. 算 baseline（简化：用 cycle.phase 和 hrvDaily 推导）
     const baseline = deriveDaytimeBaseline(this.state.statusHistory, cycle.phase as any, CURVE_DEFAULTS);
 
-    // 3. 构造当天 48 个 30min 窗口边界
+    // 3. 构造当天 30min 窗口边界
     // dayKey = "YYYY-MM-DD"
     const [y, m, d] = dayKey.split('-').map((x) => parseInt(x, 10));
     const midnight = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
     const WINDOW_MS = 30 * 60 * 1000; // 30min
-    const POINTS_PER_DAY = 48;
+    const now = Date.now();
+    const isToday = dayKey === this.bucketDay;
+    // 历史日生成 48 个点（0:00~23:30）；今日只生成到当前时间，避免把 23:30 未来点画出来
+    const POINTS_PER_DAY = isToday ? Math.max(0, Math.ceil((now - midnight) / WINDOW_MS)) : 48;
 
     // 4. 睡眠时段（简化：用 sleepTime/wakeTime 或 sleepDaily 时长反推）
     // 历史日没有实时 sleepTime/wakeTime，用 sleepDaily.total/rem 估算
@@ -3337,23 +3496,17 @@ class RingConnectionImpl {
       if (snap.dailyCurve) patch.dailyCurve = snap.dailyCurve;
       if (snap.curveStatus) patch.curveStatus = snap.curveStatus;
       if (snap.statusTimeline) {
-        // ★ 启动时清洗旧脏数据：只保留 :00 / :30 边界的点
+        // ★ 启动时清洗旧脏数据：只保留 :00 / :30 边界的点，并按对齐边界 t 去重
         const raw = snap.statusTimeline as any[];
-        patch.statusTimeline = raw.filter((p) => {
-          const m = new Date(p.t).getMinutes();
-          return m === 0 || m === 30;
-        });
+        patch.statusTimeline = this.dedupeBoundaryPoints(raw);
       }
       if (snap.statusDaily) patch.statusDaily = snap.statusDaily;
       if (snap.statusTimelineByDay) {
-        // ★ 历史归档每个日也清洗非边界点
+        // ★ 历史归档每个日也清洗非边界点 + 按边界 t 去重
         const rawByDay = snap.statusTimelineByDay as Record<string, any[]>;
         const cleanByDay: Record<string, any[]> = {};
         for (const dk of Object.keys(rawByDay)) {
-          cleanByDay[dk] = rawByDay[dk].filter((p) => {
-            const m = new Date(p.t).getMinutes();
-            return m === 0 || m === 30;
-          });
+          cleanByDay[dk] = this.dedupeBoundaryPoints(rawByDay[dk]);
         }
         patch.statusTimelineByDay = cleanByDay;
       }
@@ -3502,6 +3655,16 @@ class RingConnectionImpl {
       this.saveTimer = null;
     }
     void this.saveSnapshot();
+    // backfill 完成后一次性重建/投影派生数据：之前把 seriesByDay 放进 applyPatch 触发条件，
+    // 导致每个 backfill chunk 都触发重建并卡死 JS 线程。现在改到 backfill 完成时只跑一次。
+    try {
+      this.rebuildHistoricalStatus();
+      this.syncExtendedDaily();
+      this.recomputeDailyStatus();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      postLog('RingBle', `[flushNow] 派生数据投影异常（已忽略）: ${msg}`);
+    }
   }
 
   /** 强制重新同步：触发原生 recoverOffline，从戒指 flash 重新下载最新离线数据后回填

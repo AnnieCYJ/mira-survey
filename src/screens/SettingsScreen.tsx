@@ -18,6 +18,14 @@ export default function SettingsScreen() {
       setHsTick((t) => t + 1);
     }, [])
   );
+
+  const safeGoBack = React.useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Main' as never);
+    }
+  }, [navigation]);
   const [notif, setNotif] = useState(true);
   const [sync, setSync] = useState(RingBle.getSyncEnabled());
   const { autoMonitor, setAutoMonitor } = useAppState();
@@ -50,15 +58,16 @@ export default function SettingsScreen() {
     sleepDaily: {},
     stepDaily: {},
     statusDaily: {},
+    statusHistory: [],
     lastSyncedAt: null,
     lastBackfillAt: null,
+    dataVersion: 0,
     sleepStages: null,
     sleepSummary: null,
     sleepSummaryDate: null,
     sleepTime: null,
     wakeTime: null,
     female: null,
-    statusHistory: [],
     dailyCurve: null,
     curveStatus: null,
     statusTimeline: [],
@@ -175,35 +184,8 @@ export default function SettingsScreen() {
   const sep3HrVisible =
     ring.hrDaily[SEP3] != null ||
     ((ring.seriesByDay?.hr?.[SEP3]?.length ?? 0) > 0);
-  // bundle 是否包含最新方法：若 false，说明需要 Clean Build
-  const methodCheck = {
-    forceResync: typeof (RingBle as any).forceResync === 'function',
-    exportDebugDump: typeof (RingBle as any).exportDebugDump === 'function',
-    syncBackfill: typeof (RingBle as any).syncBackfill === 'function',
-  };
-  const onForceResync = () => {
-    if (diagBusy) return;
-    setDiagBusy(true);
-    try {
-      // 防御 stale bundle：上次修改的 forceResync 方法若未编译进当前运行包，直接调用会崩溃。
-      // 这里先做存在性检查，再用兜底 backfill() 触发同步，至少不崩且大概率能拉数据。
-      const ble = RingBle as any;
-      if (typeof ble.forceResync === 'function') {
-        ble.forceResync();
-      } else if (typeof ble.syncBackfill === 'function') {
-        console.warn('[SettingsScreen] forceResync 未编译进当前 bundle，兜底调用 syncBackfill');
-        ble.syncBackfill();
-      } else {
-        Alert.alert('需要 Clean Build', '当前运行包没有包含最新的 RingBle 方法。请：Xcode → Product → Clean Build Folder，然后 ⌘R 重新运行。');
-      }
-    } catch (e) {
-      Alert.alert('同步失败', String(e));
-    }
-    setTimeout(() => {
-      setDiagBusy(false);
-      setHsTick((t) => t + 1);
-    }, 12000);
-  };
+  // 「强制重新同步」调试按钮已移除：离线数据同步统一由设置页「数据同步」开关管理
+  // （JS syncBackfill → 原生 recoverOffline，从戒指 flash 重拉后回填）。
   const onExportDump = async () => {
     if (diagBusy) return;
     setDiagBusy(true);
@@ -231,7 +213,7 @@ export default function SettingsScreen() {
       <ScreenContainer>
         {/* 顶部导航 */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={10}>
+          <TouchableOpacity onPress={safeGoBack} style={styles.headerBtn} hitSlop={10}>
             <Icon name="chevronLeft" size={theme.fs(24)} color={theme.colors.textWhite} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>设置</Text>
@@ -449,20 +431,15 @@ export default function SettingsScreen() {
           <DebugRow label="最近同步" value={fmtAgo(ring.lastSyncedAt)} />
           <DebugRow label="最近 backfill" value={fmtAgo(ring.lastBackfillAt)} />
           <DebugRow
-            label="Bundle 方法"
-            value={`forceResync=${methodCheck.forceResync ? '有' : '无'} export=${methodCheck.exportDebugDump ? '有' : '无'}`}
+            label="导出诊断"
+            value={typeof (RingBle as any).exportDebugDump === 'function' ? '可用' : '需 Clean Build'}
           />
-          {!methodCheck.forceResync && (
-            <Text style={[styles.debugNote, { color: theme.colors.danger }]}>
-              ⚠️ 当前运行包缺少 forceResync，必须 Xcode Clean Build + ⌘R 才能用「强制重新同步」。
-            </Text>
-          )}
           {/* ★ 图表真实数据源：healthStore 当前内存状态 */}
           <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 10, marginBottom: 4 }]}>
             healthStore 真实状态（图表/趋势图数据源）
           </Text>
           <Text style={styles.debugNote}>
-            这是图表与趋势图实际读取的唯一数据源。若某指标「天数」&gt;0 但图表仍空 → 渲染问题；若「天数」=0 → 离线数据未回传（见下方旧字段对照并点「强制重新同步」）。
+            这是图表与趋势图实际读取的唯一数据源。若某指标「天数」&gt;0 但图表仍空 → 渲染问题；若「天数」=0 → 离线数据未回传（开启设置页「数据同步」开关即可从戒指重拉）。
           </Text>
           {(() => {
             const rep = healthStore.freshnessReport();
@@ -503,13 +480,10 @@ export default function SettingsScreen() {
           <DebugRow label="状态趋势 天数" value={String(Object.keys(ring.statusDaily).length)} />
           <Text style={styles.debugNote}>
             若「HR 日期」里没有 2026-9-3 → 戒指没把 9/3 的 HR 回传（当天没戴 / 已滚出 3 天缓冲 / backfill 未触发）。
-            点「强制重新同步」连上戒指重拉；点「导出诊断」把完整状态存成文件，隔空投送发我即可，我直接看数据定位。
+            开启「数据同步」开关连上戒指重拉最新离线数据；点「导出诊断」把完整状态存成文件，隔空投送发我即可，我直接看数据定位。
           </Text>
           <View style={styles.divider} />
           <View style={styles.diagBtns}>
-            <TouchableOpacity onPress={onForceResync} disabled={diagBusy} style={[styles.diagBtn, diagBusy && styles.uploadBtnBusy]}>
-              <Text style={styles.diagBtnText}>{diagBusy ? '同步中…' : '强制重新同步'}</Text>
-            </TouchableOpacity>
             <TouchableOpacity onPress={onExportDump} disabled={diagBusy} style={[styles.diagBtn, styles.diagBtnAlt]}>
               <Text style={styles.diagBtnText}>导出诊断文件</Text>
             </TouchableOpacity>

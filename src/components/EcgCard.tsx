@@ -39,13 +39,13 @@ export default function EcgCard({ ring, onPress }: Props) {
   const isDone = prog != null && progress >= 100;
 
   // ★ 平滑进度：HK18 固件 ECG 的 progress 回调长期停在低位（如 6%）才跳完成，
-  // 原生无补间，UI 看着像卡死。这里用计时器把显示进度平滑推到 92 封顶，
-  // 与「原生真实 progress」取较大值，complete 时由原生跳 100。
+  // 原生无补间，UI 看着像卡死。这里用计时器把显示进度平滑推到 99 封顶（不再写死 92，
+  // 避免「卡在92%」错觉），与「原生真实 progress」取较大值，complete 时由原生跳 100。
   const [anim, setAnim] = useState(0);
   useEffect(() => {
     if (!isMeasuring) { setAnim(0); return; }
     const id = setInterval(() => {
-      setAnim((p) => (p >= 92 ? p : Math.min(92, p + 1.2)));
+      setAnim((p) => (p >= 99 ? p : Math.min(99, p + 1.2)));
     }, 250);
     return () => clearInterval(id);
   }, [isMeasuring]);
