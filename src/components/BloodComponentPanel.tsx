@@ -32,7 +32,7 @@ const BC_ITEMS: BCItem[] = [
   { key: 'triglyceride', name: '甘油三酯', unit: 'mmol/L', yMin: 0, yMax: 6,   range: '正常 < 1.7' },
   { key: 'hdl',          name: 'HDL',       unit: 'mmol/L', yMin: 0, yMax: 3,   range: '正常 > 1.0' },
   { key: 'ldl',          name: 'LDL',       unit: 'mmol/L', yMin: 0, yMax: 6,   range: '正常 < 3.4' },
-  { key: 'bloodFat',     name: '总胆固醇',   unit: 'mmol/L', yMin: 0, yMax: 10,  range: '参考报告' },
+  { key: 'cholesterol', name: '总胆固醇',   unit: 'mmol/L', yMin: 0, yMax: 10,  range: '参考报告' },
   { key: 'uricAcid',     name: '尿酸',       unit: 'μmol/L', yMin: 50, yMax: 600, range: '正常 155–428' },
 ];
 

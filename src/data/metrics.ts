@@ -44,7 +44,7 @@ export interface MetricDef {
 
 export const METRICS: Record<MetricKey, MetricDef> = {
   sleep: {
-    name: '睡眠和激素',
+    name: '睡眠',
     tag: '深睡 24%',
     val: '7h 12m',
     unit: '总睡眠',
@@ -54,7 +54,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     data: [46, 52, 48, 60, 58, 66, 72],
   },
   cycle: {
-    name: '周期和激素',
+    name: '生理',
     tag: '周期阶段',
     val: '—',
     unit: '当前阶段',
@@ -74,7 +74,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     data: [62, 60, 64, 58, 61, 59, 57],
   },
   heart: {
-    name: '心脏健康',
+    name: '心电',
     tag: '静息 58 bpm',
     val: '62',
     unit: 'ms HRV',
@@ -84,7 +84,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     data: [48, 50, 54, 52, 58, 60, 62],
   },
   mind: {
-    name: '心理和压力',
+    name: '情绪压力',
     tag: '中等',
     val: '34',
     unit: '压力指数',
@@ -229,6 +229,7 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     yMin: 5,
     yMax: 40,
     hideMeasure: false,
+    hideInList: true,
   },
 ];
 
@@ -283,9 +284,9 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
     note: '健康一览自动评估的血糖估算值，非静脉血糖，仅供参考。', freq: '健康一览自动同步', yMin: 2, yMax: 12,
   },
   {
-    key: 'bloodFat', name: '血脂（总胆固醇）', icon: 'drop', dimension: 'metabolism', hideInList: true,
-    value: '—', unit: 'mmol/L', range: '参考报告', data: [], live: false, hideMeasure: true,
-    note: '血液成分中的总胆固醇浓度，健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 10,
+    key: 'cholesterol', name: '总胆固醇', icon: 'drop', dimension: 'metabolism', section: '血脂 · 心理',
+    value: '—', unit: 'mmol/L', range: '正常 < 5.2 mmol/L', data: [], live: false, hideMeasure: true,
+    note: '血液中总胆固醇浓度，偏高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 10,
   },
   {
     key: 'uricAcid', name: '尿酸', icon: 'drop', dimension: 'metabolism', hideInList: true,
@@ -344,12 +345,12 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
     note: '「坏胆固醇」，过高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
   },
   {
-    key: 'depressionRisk', name: '抑郁风险', icon: 'mind', dimension: 'basics',
+    key: 'depressionRisk', name: '抑郁风险', icon: 'mind', dimension: 'basics', hideInList: true,
     value: '—', unit: '', range: '0 正常 · 1 轻度 · 2 重度', data: [], live: false,
     note: '健康一览自动评估的抑郁风险等级（0–2）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 2, hideMeasure: true, section: '血脂 · 心理',
   },
   {
-    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'basics',
+    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'mind',
     value: '—', unit: '', range: '1–99，越高越兴奋', data: [], live: false,
     note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '血脂 · 心理',
   },
@@ -435,8 +436,8 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
 
 /** 取某维度 tab 下应展示的信号卡片：'basics' 返回 5 个实时基础信号 + 扩展信号，其余返回对应维度的扩展信号。 */
 export function signalsForDimension(dim: 'basics' | MetricKey): BasicMetricDef[] {
-  if (dim === 'basics') return [...BASIC_METRICS, ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList)];
-  return EXTENDED_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList);
+  if (dim === 'basics') return [...BASIC_METRICS.filter((m) => !m.hideInList), ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList)];
+  return [...EXTENDED_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList), ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList)];
 }
 
 export type RangeKey = 'day' | 'week' | 'month' | 'year';

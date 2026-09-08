@@ -37,7 +37,7 @@ export function buildHealthSnapshot(): string {
   add('睡眠评分', fmt(daily['sleepScore']));
   add('压力', fmt(daily['stress']));
   add('血糖', fmt(daily['bloodSugar']));
-  add('血脂', fmt(daily['bloodFat']));
+  add('血脂', fmt(daily['cholesterol']));
   add('梅脱', fmt(daily['metabolicRate']));
 
   const tl = st.statusTimeline || [];

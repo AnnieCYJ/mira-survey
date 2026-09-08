@@ -26,6 +26,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(n) if n else b""
+        # /dump：结构化诊断快照（exportDebugDump），单独落盘供 agent 分析
+        if self.path == "/dump":
+            try:
+                d = json.loads(raw.decode("utf-8", "replace"))
+                with open(os.path.join(LOG_DIR, "dump.json"), "w") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=1)
+                self._write(f"{datetime.now():%H:%M:%S} [DUMP] saved {len(raw)} bytes")
+            except Exception as e:
+                self._write(f"{datetime.now():%H:%M:%S} [DUMP] parse fail: {e}")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"ok")
+            return
         try:
             d = json.loads(raw.decode("utf-8", "replace"))
             tag = d.get("tag", "?")

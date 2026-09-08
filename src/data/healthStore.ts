@@ -82,14 +82,14 @@ export type MetricKey =
   | 'hr' | 'hrv' | 'spo2' | 'temp' | 'eda' | 'rr'
   | 'steps' | 'distance' | 'calorie'
   | 'stress' | 'fatigue' | 'sns' | 'met'
-  | 'bpSys' | 'bpDia' | 'glucose' | 'lipid' | 'ua' | 'skin' | 'emotion' | 'cortisol'
+  | 'bpSys' | 'bpDia' | 'ppgSys' | 'ppgDia' | 'glucose' | 'lipid' | 'ua' | 'skin' | 'emotion' | 'cortisol'
   | 'triglyceride' | 'hdl' | 'ldl' | 'cholesterol';
 
 export const ALL_METRIC_KEYS: MetricKey[] = [
   'hr', 'hrv', 'spo2', 'temp', 'eda', 'rr',
   'steps', 'distance', 'calorie',
   'stress', 'fatigue', 'sns', 'met',
-  'bpSys', 'bpDia', 'glucose', 'lipid', 'ua', 'skin', 'emotion', 'cortisol',
+  'bpSys', 'bpDia', 'ppgSys', 'ppgDia', 'glucose', 'lipid', 'ua', 'skin', 'emotion', 'cortisol',
   'triglyceride', 'hdl', 'ldl', 'cholesterol',
 ];
 
@@ -129,6 +129,10 @@ export interface SleepSummary {
   rem: number;
   score: number;
   getUp: number;
+  /** 入睡时间 "HH:mm" (原生 sleepTime) */
+  sleepTime?: string | null;
+  /** 起床时间 "HH:mm" (原生 wakeTime) */
+  wakeTime?: string | null;
 }
 
 export interface HealthGlanceDay {

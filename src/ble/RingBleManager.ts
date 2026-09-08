@@ -553,6 +553,8 @@ class NativeRingSource {
       this.emitter.addListener('onStepSamples', (raw: any) => this.handleDayBucketSamples(raw, 'steps'));
       this.emitter.addListener('onDistanceSamples', (raw: any) => this.handleDayBucketSamples(raw, 'distance'));
       this.emitter.addListener('onCalorieSamples', (raw: any) => this.handleDayBucketSamples(raw, 'calorie'));
+      // ★ healthGlance 复合指标历史回填（SDK ManualTestDataAll 里的 emotion/cortisol/skin/sns/bpSys/bpDia/血脂...）
+      this.emitter.addListener('onManualHealthGlance', (raw: any) => this.handleManualHealthGlance(raw));
       this.emitter.addListener('onDeviceCapabilities', this.handleDeviceCapabilities);
       this.emitter.addListener('onBackfillComplete', () => {
         postLog('RingBle', '[JS] onBackfillComplete 收到 ✅');
@@ -629,6 +631,43 @@ class NativeRingSource {
         } catch (e) {}
       });
     }
+  }
+
+  /** ★ ManualTestData healthGlance 历史回填 — 把 SDK 本地 flash 存的所有 healthGlance 结果灌入 healthStore
+   *  离线后重连能拉回 emotion/cortisol/skin/sns/bpSys/bpDia/血脂/血糖/尿酸 等复合指标 */
+  private handleManualHealthGlance(raw: { samples: Array<Record<string, any>> }) {
+    const samples = raw?.samples;
+    if (!Array.isArray(samples) || samples.length === 0) {
+      postLog('RingBle', '[MANUAL-HG] empty → skip');
+      return;
+    }
+    postLog('RingBle', `[MANUAL-HG] n=${samples.length}`);
+
+    const FIELD_MAP: Record<string, HSMetricKey> = {
+      hr: 'hr', spo2: 'spo2', hrv: 'hrv', temp: 'temp',
+      stress: 'stress', fatigue: 'fatigue',
+      sns: 'sns', cortisol: 'cortisol', emotion: 'emotion', skin: 'skin',
+      bpSys: 'bpSys', bpDia: 'bpDia', ppgSys: 'ppgSys', ppgDia: 'ppgDia',
+      glucose: 'glucose', cholesterol: 'cholesterol',
+      triglyceride: 'triglyceride', hdl: 'hdl', ldl: 'ldl', uricAcid: 'ua',
+    };
+
+    let ingested = 0;
+    for (const pt of samples) {
+      const ts = Math.round(Number(pt.ts) || 0);
+      if (ts <= 0) continue;
+      for (const [field, hsKey] of Object.entries(FIELD_MAP)) {
+        const val = pt[field];
+        if (val == null) continue;
+        const num = Number(val);
+        if (!Number.isFinite(num) || num <= 0) continue;
+        try {
+          healthStore.upsertRealtime(hsKey, { t: ts, v: num }, ts);
+          ingested++;
+        } catch { /* skip */ }
+      }
+    }
+    postLog('RingBle', `[MANUAL-HG] ingested=${ingested}`);
   }
 
   get available(): boolean {

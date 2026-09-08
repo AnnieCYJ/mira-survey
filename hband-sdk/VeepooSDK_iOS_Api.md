@@ -7482,4 +7482,1148 @@ VPBleCentralManage.sharedBleManager().veepooSDKConnectDevice(p) { [weak self](co
     if connectState == .BleConfirmTimeout {
       //需要注意如果设备超时没有操作，请自行执行设备断连操作，否则设备还是蓝牙连接状态
       //    VPBleCentralManage.sharedBleManager().peripheralManage.disconnectPhone()
-//          VPBleCentralManage.sharedBleMa
+//          VPBleCentralManage.sharedBleManager().veepooSDKDisconnectDevice()
+    }
+}
+```
+
+# HRV测量
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPHRVTestVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralModel.isSupportHRVTest
+```
+
+```objective-c
+/// HRV测量
+/// Parameters:
+///   - state: YES:开始 NO:关闭
+///   - result: callBack
+- (void)veepooSDK_HRVTest:(BOOL)state callBack:(void(^)(int con, VPTestHRVState ack, int value))result
+```
+
+### 参数解释
+
+| 参数  | 参数类型       | 备注                                   |
+| ----- | -------------- | -------------------------------------- |
+| con   | int            | 0：不支持测量，1：开始测量 2：关闭测量 |
+| ack   | VPTestHRVState | 0：正常测量，其他值都代表错误          |
+| value | int            | HRV测量结果                            |
+
+### 示例代码
+
+```swift
+// *HRV测量是持续测量,设备端不会主动关闭测量,所以需要App主动关闭测量*
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_HRVTest(state) {[weak self] con, ack, hrvValue in
+    print(con,ack,hrvValue)
+}
+```
+
+# 修改蓝牙名
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPChangeDeviceNameViewController的实现
+
+### 接口
+
+```objective-c
+//设置设备的名称，注意⚠️修改成功之后，设备端已经改完了，但手机端的下一次扫描并不一定会马上变成修改完之后的名称，可能是手机系统蓝牙的缓存
+ @param textString 设备的名称，会进行UTF8编码，转换之后的字节数量有限制，杰理平台最多18个字节，其它平台则为8字节
+ @param resultBlock 结果回调，state 为0表示成功、1表示失败、2表示textString长度溢出、3表示textString长度不足
+ */
+- (void)veepooSDKSettingDeviceNameWithString:(NSString *)textString resultBlock:(void(^)(NSUInteger state))resultBlock;
+```
+
+### 参数解释
+
+| 参数  | 参数类型   | 备注                                                         |
+| ----- | ---------- | ------------------------------------------------------------ |
+| state | NSUInteger | state 为0表示成功、1表示失败、2表示textString长度溢出、3表示textString长度不足 |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDKSettingDeviceName(with: textField.text) { state in
+  print(state)
+}
+```
+
+# JE136P定制功能中医数据下发
+
+### 前提
+
+设备定制功能
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPJE136PTCMVC的实现
+
+### 接口
+
+```objective-c
+/// JE136P定制中医数据下发
+/// Parameters:
+///     - model: 下发的数据模型
+///     - result: callback
+- (void)veepooSDK_JE136PSendTCMCustomData:(VPJE136PTCMModel *)model callBack:(void(^)(uint32_t time))result
+```
+
+### 参数解释
+
+VPJE136PTCMModel
+
+| 参数           | 参数类型 | 备注                                                     |
+| -------------- | -------- | -------------------------------------------------------- |
+| timestamp      | uint32_t | 时间戳                                                   |
+| bloodStasis    | uint16_t | 血瘀                                                     |
+| dampHeat       | uint16_t | 湿热                                                     |
+| specialAllergy | uint16_t | 特禀                                                     |
+| yangDeficiency | uint16_t | 阳虚                                                     |
+| yinDeficiency  | uint16_t | 阴虚                                                     |
+| phlegmDampness | uint16_t | 痰湿                                                     |
+| balanced       | uint16_t | 平和                                                     |
+| qiStagnation   | uint16_t | 气郁                                                     |
+| qiDeficiency   | uint16_t | 气虚                                                     |
+| largeIntestine | uint16_t | 大肠                                                     |
+| gallbladder    | uint16_t | 胆                                                       |
+| liver          | uint16_t | 肝                                                       |
+| spleen         | uint16_t | 脾                                                       |
+| lung           | uint16_t | 肺                                                       |
+| smallIntestine | uint16_t | 小肠                                                     |
+| sanjiaoBladder | uint16_t | 三焦膀胱                                                 |
+| kidney         | uint16_t | 肾                                                       |
+| stomach        | uint16_t | 胃                                                       |
+| heart          | uint16_t | 心脏                                                     |
+| option         | uint32_t | JE136PTCMOption，可以控制下发哪些数据到设备,具体参考demo |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_JE136PSendTCMCustomData(model) {[weak self] time in
+            guard let self = self else { return }
+            AppDelegate.showHUD(message: sendTime == time ? "成功" : "失败", hudModel: MBProgressHUDModeText, showView: self.view)
+        }
+```
+
+# QX17匹克球定制功能
+
+### 前提
+
+设备定制功能
+
+### 类名
+
+VPPeripheralBaseManage`，可参考 Demo 中`VPQX17ViewController 的实现
+
+### 接口
+
+```objective-c
+/// 开启数据采集流
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_QX17StartDataAcquisition:(void(^_Nullable)(VPQX17DataAcqSetResult resultCode))result;
+
+/// 关闭数据采集流
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_QX17StopDataAcquisition:(void(^_Nullable)(VPQX17DataAcqSetResult resultCode))result;
+
+/// 继续数据采集流
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_QX17ContinueDataAcquisition:(void(^_Nullable)(VPQX17DataAcqSetResult resultCode))result;
+
+/// 监听设备实时数据采集开启状态
+/// - Parameters:
+///     - result: callback
+- (void)veepooSDK_QX17DataAcquitionStateSubscribe:(void(^_Nullable)(VPQX17DataAcqState dataAcqState))result;
+
+/// 监听 IMU 实时数据通知
+/// - Parameters:
+///     - result: callback
+- (void)veepooSDK_QX17IMUResultSubscribe:(void(^_Nullable)(NSArray<VPQX17IMUModel *> * _Nullable imuDatas))result;
+
+/// 监听 GPS 实时数据通知
+/// - Parameters:
+///     - result: callback
+- (void)veepooSDK_QX17GPSResultSubscribe:(void(^_Nullable)(NSArray<VPQX17GPSModel *> * _Nullable gpsDatas))result;
+
+/// 监听心率实时数据通知
+/// - Parameters:
+///     - result: callback
+- (void)veepooSDK_QX17HeartRateResultSubscribe:(void(^_Nullable)(NSArray<VPQX17HeartRateModel *> * _Nullable heartDatas))result;
+
+/// 振动马达控制
+/// - Parameters:
+///   - mode : 振动模式
+///   - duration : 自定义时长，单位为 10 毫秒，取值范围：0 到 255
+///   - callback : 结果回调
+- (void)veepooSDK_QX17SetVibrationMode:(VPQX17VibrationMode)mode
+                              duration:(NSInteger)duration
+                              callback:(void(^_Nullable)(VPQX17VibrationModeSetResultCode resultCode))result;
+
+```
+
+### 参数解释
+
+VPQX17IMUModel
+
+| 参数          | 参数类型          | 备注                       |
+| ------------- | ----------------- | -------------------------- |
+| timestamp     | uint32_t          | 此次采样的时间戳，单位毫秒 |
+| accelerometer | AccelerometerData | 加速度计数据               |
+| ax            | int16_t           | 加速度计 x 轴              |
+| ay            | int16_t           | 加速度计 y 轴              |
+| az            | int16_t           | 加速度计 z 轴              |
+| gyroscope     | GyroscopeData     | 陀螺仪数据                 |
+| gx            | int16_t           | 陀螺仪 x 轴                |
+| gy            | int16_t           | 陀螺仪 y 轴                |
+| gz            | int16_t           | 陀螺仪 z 轴                |
+| magnetometer  | MagnetometerData  | 磁力计数据                 |
+| mx            | int16_t           | 磁力计 x 轴                |
+| my            | int16_t           | 磁力计 y 轴                |
+| mz            | int16_t           | 磁力计 z 轴                |
+
+VPQX17GPSModel
+
+| 参数      | 参数类型 | 备注                       |
+| --------- | -------- | -------------------------- |
+| timestamp | uint32_t | 此次采样的时间戳，单位毫秒 |
+| longitude | float    | 经度                       |
+| latitude  | float    | 纬度                       |
+| accuracy  | float    | 定位精度，单位：米         |
+
+VPQX17HeartRateModel
+
+| 参数      | 参数类型 | 备注                       |
+| --------- | -------- | -------------------------- |
+| timestamp | uint32_t | 此次采样的时间戳，单位毫秒 |
+| heartRate | uint8_t  | 心率值                     |
+
+
+
+VPQX17DataAcqState
+
+```
+// QX17 数据采集开启状态
+typedef NS_ENUM(uint8_t, VPQX17DataAcqState) {
+    VPQX17DataAcqStateOpening = 0x36,    // 开启
+    VPQX17DataAcqStateClosed = 0x37,     // 关闭
+};
+```
+
+VPQX17DataAcqSetResult
+
+```
+// QX17 数据采集开启、继续采集、关闭结果
+typedef NS_ENUM(uint8_t, VPQX17DataAcqSetResult) {
+    VPQX17DataAcqSetResultBleConnectFail = 0x00, // 失败，检测蓝牙连接异常
+    VPQX17DataAcqSetSetResultFail = 0x01,        // 失败
+    VPQX17DataAcqSetSetResultSucc = 0x02,        // 成功
+};
+```
+
+VPQX17VibrationMode
+
+```
+// QX17 振动模式
+typedef NS_ENUM(uint8_t, VPQX17VibrationMode) {
+    VPQX17VibrationModeStart = 0x00,         // 开始
+    VPQX17VibrationModeEnd = 0x01,           // 结束
+    VPQX17VibrationModeNotify = 0x02,        // 通知
+    VPQX17VibrationModeReminder = 0x03,      // 提醒
+    VPQX17VibrationModeEnsure = 0x04,        // 确认
+    VPQX17VibrationModeBeat = 0x05,          // 节拍
+    VPQX17VibrationModeConnected = 0x06,     // 已连接
+    VPQX17VibrationModeError = 0x07,         // 错误
+};
+```
+
+VPQX17VibrationModeSetResultCode
+
+```
+// QX17 振动模式设置结果
+typedef NS_ENUM(uint8_t, VPQX17VibrationModeSetResultCode) {
+    VPQX17VibrationModeSetResultCodeBleConnectFail = 0x00, // 失败，检测蓝牙连接异常
+    VPQX17VibrationModeSetResultCodeDurationErr = 0x01,    // 失败，密码长度异常
+    VPQX17VibrationModeSetResultCodeSucc = 0x02,           // 成功
+};
+```
+
+### 
+
+### 示例代码
+
+```swift
+// 监听设备数据采集开启状态通知
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17DataAcquitionStateSubscribe { [weak self] dataAcquitionState in
+            // 可在回调中记录，当前设备端数据采集开启状态
+            guard let self = self else { return }
+            self.dataAcqState = dataAcquitionState
+        }
+
+// 开启数据采集
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17StartDataAcquisition { [weak self] result in
+            // 可在回调中校验设备端采集是否开启成功，若成功可分别添加 IMU、GPS、心率等实时数据回传的监听
+            guard let self = self else { return }
+            let isSucc = result == .setResultSucc
+            if isSucc {
+                self.registDataAcquisitionCallback()
+            }
+        }
+
+// 关闭数据采集
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17StopDataAcquisition { result in
+            // 可在回调中，做一些后续任务
+            let isSucc = result == .setResultSucc
+        }
+
+// 继续数据采集，检查设备目前已在采集数据中时，调用该接口，让设备回传最近 5 分钟离线数据
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17ContinueDataAcquisition { [weak self] result in
+            // 可在回调中校验设备端继续回传是否成功，若成功可分别重新添加 IMU、GPS、心率等实时数据回传的监听              
+            guard let self = self else { return }
+            let isSucc = result == .setResultSucc
+            if isSucc {
+                self.registDataAcquisitionCallback()
+            }
+        }
+
+// 监听 IMU 实时数据通知
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17IMUResultSubscribe { [weak self] imuDatas in
+            guard let self = self else { return }
+            guard let imuResults = imuDatas else {
+                return
+            }
+            // 可在回调中，做一些数据收集任务
+        }
+
+// 监听 GPS 实时数据通知
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17GPSResultSubscribe { [weak self] gpsDatas in
+            guard let self = self else { return }
+            guard let gpsResults = gpsDatas else {
+                return
+            }
+            // 可在回调中，做一些数据收集任务
+        }
+
+// 监听心率实时数据通知
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17HeartRateResultSubscribe { [weak self] heartRateDatas in
+            guard let self = self else { return }
+            guard let hRateResults = heartRateDatas else {
+                return
+            }
+            // 可在回调中，做一些数据收集任务
+        }
+
+
+// 修改振动马达模式
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QX17SetVibrationMode(mode, duration: duration) { [weak self] resultCode in
+            guard let self = self else { return }
+            // 根据返回结果码，完成后续任务执行
+        }
+```
+
+# 中科固件 OTA
+
+### 前提
+
+设备支持使用中科固件升级。
+
+### 类名
+
+`VPHZKDFUManager`，可参考Demo中`VPHZKDFUVC`的实现
+
+### 接口
+
+是否支持中科固件升级
+
+```
+VPBleCentralManage.sharedBleManager().peripheralModel.isSupportZKOTA
+```
+
+### 示例代码
+
+```swift
+// fileURL 固件的URL，固件下载自行实现
+let fileURL = URL(fileURLWithPath: filePath!)
+zkDfuManager.zkDeinitialize()
+zkDfuManager.setFileInfo(fileURL)
+zkDfuManager.enterDfu()
+```
+
+
+
+```objective-c
+// 实现VPHZKDFUManagerDelegate 通过delegate监听升级流程
+  func zkOtaStatusReady() {
+        print("zkOtaStatusReady")
+    }
+    
+    func zkOtaStatusStart() {
+        print("zkOtaStatusStart")
+    }
+    
+    func zkOtaStatusUpdating(progress: UInt) {
+        print("zkOtaStatusUpdating\(progress)")
+    }
+    
+    func zkOtaStatuSuccess() {
+        print("zkOtaStatuSuccess")
+    }
+    
+    func zkOtaStatusFail(errorCode: Int) {
+        print("zkOtaStatusFail\(errorCode)")
+    }
+```
+
+# QH15定制健康数据
+
+### 前提
+
+设备定制功能
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPQH15CustomVC的实现
+
+### 接口
+
+```objective-c
+/// QH15定制健康数据下发
+/// - Parameters:
+///   - model : 健康数据
+///   - callback : 结果回调
+- (void)veepooSDK_QH15SetHealthData:(VPQH15HealthDataModel *_Nullable)model callback:(void(^_Nullable)(BOOL success))result
+```
+
+### 参数解释
+
+VPQH15HealthDataModel
+
+## 年龄相关参数
+
+| 参数          | 参数类型 | 备注           |
+| :------------ | :------- | :------------- |
+| biosAge       | UInt8    | 生物年龄       |
+| heartAge      | UInt8    | 心脏年龄       |
+| fitnessAge    | UInt8    | 健康年龄       |
+| hasBiosAge    | BOOL     | 是否有生物年龄 |
+| hasHeartAge   | BOOL     | 是否有心脏年龄 |
+| hasFitnessAge | BOOL     | 是否有健康年龄 |
+
+## 年龄状态 
+
+| 参数                | 参数类型      | 备注               |
+| :------------------ | :------------ | :----------------- |
+| biosAgeStatus       | AgeStatusType | 生物年龄状态       |
+| heartAgeStatus      | AgeStatusType | 心脏年龄状态       |
+| fitnessAgeStatus    | AgeStatusType | 健康年龄状态       |
+| hasBiosAgeStatus    | BOOL          | 是否有生物年龄状态 |
+| hasHeartAgeStatus   | BOOL          | 是否有心脏年龄状态 |
+| hasFitnessAgeStatus | BOOL          | 是否有健康年龄状态 |
+
+## 年龄变化值
+
+| 参数                | 参数类型 | 备注                 |
+| :------------------ | :------- | :------------------- |
+| biosAgeChange       | UInt8    | 生物年龄变化值       |
+| heartAgeChange      | UInt8    | 心脏年龄变化值       |
+| fitnessAgeChange    | UInt8    | 健康年龄变化值       |
+| hasBiosAgeChange    | BOOL     | 是否有生物年龄变化值 |
+| hasHeartAgeChange   | BOOL     | 是否有心脏年龄变化值 |
+| hasFitnessAgeChange | BOOL     | 是否有健康年龄变化值 |
+
+## 90天趋势数据
+
+| 参数                | 参数类型            | 备注                   |
+| :------------------ | :------------------ | :--------------------- |
+| biosAge90Days       | NSArray<NSNumber *> | 生物年龄90天趋势       |
+| heartAge90Days      | NSArray<NSNumber *> | 心脏年龄90天趋势       |
+| fitnessAge90Days    | NSArray<NSNumber *> | 健康年龄90天趋势       |
+| hasBiosAge90Days    | BOOL                | 是否有生物年龄90天趋势 |
+| hasHeartAge90Days   | BOOL                | 是否有心脏年龄90天趋势 |
+| hasFitnessAge90Days | BOOL                | 是否有健康年龄90天趋势 |
+
+## 上月/去年单点数据
+
+| 参数                   | 参数类型 | 备注               |
+| :--------------------- | :------- | :----------------- |
+| biosAgeLastMonth       | UInt8    | 上月生物年龄       |
+| heartAgeLastMonth      | UInt8    | 上月心脏年龄       |
+| fitnessAgeLastMonth    | UInt8    | 上月健康年龄       |
+| biosAgeLastYear        | UInt8    | 去年生物年龄       |
+| heartAgeLastYear       | UInt8    | 去年心脏年龄       |
+| fitnessAgeLastYear     | UInt8    | 去年健康年龄       |
+| hasBiosAgeLastMonth    | BOOL     | 是否有上月生物年龄 |
+| hasHeartAgeLastMonth   | BOOL     | 是否有上月心脏年龄 |
+| hasFitnessAgeLastMonth | BOOL     | 是否有上月健康年龄 |
+| hasBiosAgeLastYear     | BOOL     | 是否有去年生物年龄 |
+| hasHeartAgeLastYear    | BOOL     | 是否有去年心脏年龄 |
+| hasFitnessAgeLastYear  | BOOL     | 是否有去年健康年龄 |
+
+## 上月/去年状态 
+
+| 参数                         | 参数类型      | 备注                   |
+| :--------------------------- | :------------ | :--------------------- |
+| biosAgeLastMonthStatus       | AgeStatusType | 上月生物年龄状态       |
+| heartAgeLastMonthStatus      | AgeStatusType | 上月心脏年龄状态       |
+| fitnessAgeLastMonthStatus    | AgeStatusType | 上月健康年龄状态       |
+| biosAgeLastYearStatus        | AgeStatusType | 去年生物年龄状态       |
+| heartAgeLastYearStatus       | AgeStatusType | 去年心脏年龄状态       |
+| fitnessAgeLastYearStatus     | AgeStatusType | 去年健康年龄状态       |
+| hasBiosAgeLastMonthStatus    | BOOL          | 是否有上月生物年龄状态 |
+| hasHeartAgeLastMonthStatus   | BOOL          | 是否有上月心脏年龄状态 |
+| hasFitnessAgeLastMonthStatus | BOOL          | 是否有上月健康年龄状态 |
+| hasBiosAgeLastYearStatus     | BOOL          | 是否有去年生物年龄状态 |
+| hasHeartAgeLastYearStatus    | BOOL          | 是否有去年心脏年龄状态 |
+| hasFitnessAgeLastYearStatus  | BOOL          | 是否有去年健康年龄状态 |
+
+## 上月/去年变化值 
+
+| 参数                         | 参数类型 | 备注                   |
+| :--------------------------- | :------- | :--------------------- |
+| biosAgeLastMonthChange       | UInt8    | 上月生物年龄变化值     |
+| heartAgeLastMonthChange      | UInt8    | 上月心脏年龄变化值     |
+| fitnessAgeLastMonthChange    | UInt8    | 上月健康年龄变化值     |
+| biosAgeLastYearChange        | UInt8    | 去年生物年龄变化值     |
+| heartAgeLastYearChange       | UInt8    | 去年心脏年龄变化值     |
+| fitnessAgeLastYearChange     | UInt8    | 去年健康年龄变化值     |
+| hasBiosAgeLastMonthChange    | BOOL     | 是否有上月生物年龄变化 |
+| hasHeartAgeLastMonthChange   | BOOL     | 是否有上月心脏年龄变化 |
+| hasFitnessAgeLastMonthChange | BOOL     | 是否有上月健康年龄变化 |
+| hasBiosAgeLastYearChange     | BOOL     | 是否有去年生物年龄变化 |
+| hasHeartAgeLastYearChange    | BOOL     | 是否有去年心脏年龄变化 |
+| hasFitnessAgeLastYearChange  | BOOL     | 是否有去年健康年龄变化 |
+
+## 三大慢病风险 
+
+| 参数                  | 参数类型 | 备注                 |
+| :-------------------- | :------- | :------------------- |
+| cardiovascularRisk    | UInt8    | 心血管疾病风险       |
+| dementiaRisk          | UInt8    | 痴呆症风险           |
+| diabetesRisk          | UInt8    | 糖尿病风险           |
+| hasCardiovascularRisk | BOOL     | 是否有心血管疾病风险 |
+| hasDementiaRisk       | BOOL     | 是否有痴呆症风险     |
+| hasDiabetesRisk       | BOOL     | 是否有糖尿病风险     |
+
+## 三大慢病风险状态 
+
+| 参数                        | 参数类型      | 备注                 |
+| :-------------------------- | :------------ | :------------------- |
+| cardiovascularRiskStatus    | AgeStatusType | 心血管疾病风险状态   |
+| dementiaRiskStatus          | AgeStatusType | 痴呆症风险状态       |
+| diabetesRiskStatus          | AgeStatusType | 糖尿病风险状态       |
+| hasCardiovascularRiskStatus | BOOL          | 是否有心血管风险状态 |
+| hasDementiaRiskStatus       | BOOL          | 是否有痴呆症风险状态 |
+| hasDiabetesRiskStatus       | BOOL          | 是否有糖尿病风险状态 |
+
+## 三大慢病风险变化值 
+
+| 参数                        | 参数类型 | 备注                 |
+| :-------------------------- | :------- | :------------------- |
+| cardiovascularRiskChange    | UInt8    | 心血管疾病风险变化值 |
+| dementiaRiskChange          | UInt8    | 痴呆症风险变化值     |
+| diabetesRiskChange          | UInt8    | 糖尿病风险变化值     |
+| hasCardiovascularRiskChange | BOOL     | 是否有心血管风险变化 |
+| hasDementiaRiskChange       | BOOL     | 是否有痴呆症风险变化 |
+| hasDiabetesRiskChange       | BOOL     | 是否有糖尿病风险变化 |
+
+## 心血管细化风险 
+
+| 参数                | 参数类型 | 备注                 |
+| :------------------ | :------- | :------------------- |
+| heartAttackRisk     | UInt8    | 心脏病发作风险       |
+| strokeRisk          | UInt8    | 中风风险             |
+| heartFailureRisk    | UInt8    | 心力衰竭风险         |
+| hasHeartAttackRisk  | BOOL     | 是否有心脏病发作风险 |
+| hasStrokeRisk       | BOOL     | 是否有中风风险       |
+| hasHeartFailureRisk | BOOL     | 是否有心力衰竭风险   |
+
+## 心血管细化风险状态 
+
+| 参数                      | 参数类型      | 备注                   |
+| :------------------------ | :------------ | :--------------------- |
+| heartAttackRiskStatus     | AgeStatusType | 心脏病发作风险状态     |
+| strokeRiskStatus          | AgeStatusType | 中风风险状态           |
+| heartFailureRiskStatus    | AgeStatusType | 心力衰竭风险状态       |
+| hasHeartAttackRiskStatus  | BOOL          | 是否有心脏病风险状态   |
+| hasStrokeRiskStatus       | BOOL          | 是否有中风风险状态     |
+| hasHeartFailureRiskStatus | BOOL          | 是否有心力衰竭风险状态 |
+
+## 心血管细化风险变化值 
+
+| 参数                      | 参数类型 | 备注                   |
+| :------------------------ | :------- | :--------------------- |
+| heartAttackRiskChange     | UInt8    | 心脏病发作风险变化值   |
+| strokeRiskChange          | UInt8    | 中风风险变化值         |
+| heartFailureRiskChange    | UInt8    | 心力衰竭风险变化值     |
+| hasHeartAttackRiskChange  | BOOL     | 是否有心脏病风险变化   |
+| hasStrokeRiskChange       | BOOL     | 是否有中风风险变化     |
+| hasHeartFailureRiskChange | BOOL     | 是否有心力衰竭风险变化 |
+
+## 生活质量风险 
+
+| 参数                     | 参数类型 | 备注                 |
+| :----------------------- | :------- | :------------------- |
+| memoryDeclineRisk        | UInt8    | 记忆力衰退风险       |
+| fallInjuryRisk           | UInt8    | 跌倒受伤风险         |
+| independentLivingRisk    | UInt8    | 独立生活能力风险     |
+| hasMemoryDeclineRisk     | BOOL     | 是否有记忆力衰退风险 |
+| hasFallInjuryRisk        | BOOL     | 是否有跌倒受伤风险   |
+| hasIndependentLivingRisk | BOOL     | 是否有独立生活风险   |
+
+## 生活质量风险状态 
+
+| 参数                           | 参数类型      | 备注                   |
+| :----------------------------- | :------------ | :--------------------- |
+| memoryDeclineRiskStatus        | AgeStatusType | 记忆力衰退风险状态     |
+| fallInjuryRiskStatus           | AgeStatusType | 跌倒受伤风险状态       |
+| independentLivingRiskStatus    | AgeStatusType | 独立生活能力风险状态   |
+| hasMemoryDeclineRiskStatus     | BOOL          | 是否有记忆力风险状态   |
+| hasFallInjuryRiskStatus        | BOOL          | 是否有跌倒风险状态     |
+| hasIndependentLivingRiskStatus | BOOL          | 是否有独立生活风险状态 |
+
+## 生活质量风险变化值 (TAG 0x48-0x4A)
+
+| 参数                           | 参数类型 | 备注                   |
+| :----------------------------- | :------- | :--------------------- |
+| memoryDeclineRiskChange        | UInt8    | 记忆力衰退风险变化值   |
+| fallInjuryRiskChange           | UInt8    | 跌倒受伤风险变化值     |
+| independentLivingRiskChange    | UInt8    | 独立生活能力风险变化值 |
+| hasMemoryDeclineRiskChange     | BOOL     | 是否有记忆力风险变化   |
+| hasFallInjuryRiskChange        | BOOL     | 是否有跌倒风险变化     |
+| hasIndependentLivingRiskChange | BOOL     | 是否有独立生活风险变化 |
+
+## 糖尿病并发症风险 
+
+| 参数                 | 参数类型 | 备注               |
+| :------------------- | :------- | :----------------- |
+| kidneyDiseaseRisk    | UInt8    | 肾脏疾病风险       |
+| nerveDamageRisk      | UInt8    | 神经损伤风险       |
+| visionLossRisk       | UInt8    | 视力丧失风险       |
+| hasKidneyDiseaseRisk | BOOL     | 是否有肾脏疾病风险 |
+| hasNerveDamageRisk   | BOOL     | 是否有神经损伤风险 |
+| hasVisionLossRisk    | BOOL     | 是否有视力丧失风险 |
+
+## 糖尿病并发症风险状态 
+
+| 参数                       | 参数类型      | 备注                   |
+| :------------------------- | :------------ | :--------------------- |
+| kidneyDiseaseRiskStatus    | AgeStatusType | 肾脏疾病风险状态       |
+| nerveDamageRiskStatus      | AgeStatusType | 神经损伤风险状态       |
+| visionLossRiskStatus       | AgeStatusType | 视力丧失风险状态       |
+| hasKidneyDiseaseRiskStatus | BOOL          | 是否有肾脏风险状态     |
+| hasNerveDamageRiskStatus   | BOOL          | 是否有神经损伤风险状态 |
+| hasVisionLossRiskStatus    | BOOL          | 是否有视力丧失风险状态 |
+
+## 糖尿病并发症风险变化值
+
+| 参数                       | 参数类型 | 备注                   |
+| :------------------------- | :------- | :--------------------- |
+| kidneyDiseaseRiskChange    | UInt8    | 肾脏疾病风险变化值     |
+| nerveDamageRiskChange      | UInt8    | 神经损伤风险变化值     |
+| visionLossRiskChange       | UInt8    | 视力丧失风险变化值     |
+| hasKidneyDiseaseRiskChange | BOOL     | 是否有肾脏风险变化     |
+| hasNerveDamageRiskChange   | BOOL     | 是否有神经损伤风险变化 |
+| hasVisionLossRiskChange    | BOOL     | 是否有视力丧失风险变化 |
+
+## 健康指数 
+
+| 参数               | 参数类型 | 备注           |
+| :----------------- | :------- | :------------- |
+| nutritionStatus    | UInt8    | 营养状况       |
+| goalStatus         | UInt8    | 目标完成状况   |
+| hasNutritionStatus | BOOL     | 是否有营养状况 |
+| hasGoalStatus      | BOOL     | 是否有目标状况 |
+
+## 时间戳 
+
+| 参数         | 参数类型 | 备注         |
+| :----------- | :------- | :----------- |
+| timestamp    | UInt32   | 时间戳       |
+| hasTimestamp | BOOL     | 是否有时间戳 |
+
+### 示例代码
+
+```swift
+healthData.timestamp = UInt32(Date().timeIntervalSince1970)
+healthData.hasTimestamp = true
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QH15SetHealthData(healthData) { success in
+   print(success ? "发送成功" : "发送失败")
+}
+```
+
+### 接口
+
+```objective-c
+/// QH15定制读取上次设置健康数据时间戳
+/// - Parameters:
+///   - callback : 结果回调
+- (void)veepooSDK_QH15GetHealthDataTimestamp:(void(^_Nullable)(uint32_t timestamp))result;
+```
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QH15GetHealthDataTimestamp { time in
+            print("时间戳\(time)")
+        }
+```
+
+### 接口
+
+```objective-c
+/// QH15定制读取当前的计步数据
+/// - Parameters:
+///   - callback : 结果回调
+- (void)veepooSDK_QH15ReadStepData:(void(^_Nullable)(VPQH15StepDataModel * _Nullable model))result
+```
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QH15ReadStepData { step in
+            guard let stepM = step else { return }
+            print(stepM.readId, stepM.step, stepM.timestamp)
+        }
+```
+
+### 接口
+
+```objective-c
+/// QH15定制设置当前健康目标达标事件到设备
+/// - Parameters:
+///   - callback : 结果回调
+- (void)veepooSDK_QH15SetComplianceEvent:(AchievementType)type callback:(void(^_Nullable)(BOOL success))result
+```
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_QH15SetComplianceEvent(achievementType) { success in
+                print(success ? "发送成功" : "发送失败")
+            }
+```
+
+# 事件提醒
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPReminderEventVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralManage.peripheralModel.isSupportReminderEvent
+```
+
+```objective-c
+/// 读取历史提醒事件
+/// - Parameters:
+///   - type: 事件类型
+///   - time: 时间戳 (设备上报大于等于该时间戳的事件)
+///   - callBack : 结果回调
+- (void)veepooSDK_readHistoricalDataReminderEvents:(VPReminderEventType)type andTime:(uint32_t)time callBack:(void (^_Nullable)(NSArray<VPReminderEventModel *> * _Nullable array))result
+```
+
+```objective-c
+/// 监听提醒事件主动上报
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_listenReminderEventReport:(void (^_Nullable)(NSArray<VPReminderEventModel *> * _Nullable array))result
+```
+
+### 参数解释
+
+VPReminderEventModel
+
+| 参数      | 参数类型            | 备注                                                         |
+| --------- | ------------------- | ------------------------------------------------------------ |
+| type      | VPReminderEventType | VPReminderEventTypeFall：跌倒 VPReminderEventTypeSedentary：久坐 |
+| timestamp | int64_t             | 时间戳                                                       |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_readHistoricalDataReminderEvents(.all, andTime: UInt32(self.checkTimeInterval)) {[weak self] array in
+    guard let self = self, let array = array else { return }
+    self.textView.text += "主动读取:\n"
+    for model in array {
+        self.textView.text += "时间戳\(model.timestamp),事件类型:\(model.type == .fall ? "跌倒" : "久坐")\n"
+    }
+}
+```
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_listenReminderEventReport {[weak self] array in
+    guard let self = self, let array = array else { return }
+    self.textView.text += "主动上报:\n"
+    for model in array {
+        self.textView.text += "时间戳\(model.timestamp),事件类型:\(model.type == .fall ? "跌倒" : "久坐")\n"
+    }
+}
+```
+
+# 获取运动状态数据
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPMotionStateVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralManage.peripheralModel.isSupportMotionState
+```
+
+```objective-c
++ (NSDictionary *)veepooSDKGetOriginalDataWithDate:(NSString *)queryDate andTableID:(NSString *)tableID
+```
+
+### 参数解释
+
+| 参数      | 参数类型 | 备注     |
+| --------- | -------- | -------- |
+| queryDate | NSString | 查询日期 |
+| tableID   | NSString | 设备MAC  |
+
+### 返回数据
+
+```objc
+{
+ "10:40" = {
+ ....
+   motionState:[] //1：走路，2：跑步，3：静息，其他：未知 5分钟数据，每个数据代表1分钟运动状态
+ };
+ }
+```
+
+
+
+### 示例代码
+
+```swift
+let onedayData = VPDataBaseOperation.veepooSDKGetOriginalData(withDate: self.dateL.text, andTableID: VPBleCentralManage.sharedBleManager().peripheralModel.deviceAddress)
+        if onedayData == nil {
+            dataDict = [String : [String: String]]()
+        }else {
+            dataDict = onedayData as! [String : [String : Any]]
+        }
+```
+
+# 梅脱测量
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPMetVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralManage.peripheralModel.isSupportMetTest
+```
+
+```objective-c
+/// 梅脱测量
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_metTest:(BOOL)state callBack:(void(^_Nullable)(int con, VPTestMetState ack, int progress,int hrvValue))result;
+```
+
+### 参数解释
+
+| 参数     | 参数类型       | 备注            |
+| -------- | -------------- | --------------- |
+| con      | int            | 1：开启 2：关闭 |
+| ack      | VPTestMetState | 测量状态        |
+| progress | int            | 进度            |
+| hrvValue | int            | HRV结果值       |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_metTest(state) {[weak self] con, ack, progress, value in
+    print(con,ack, progress,value)
+    guard let self = self else { return }
+    if ack == .testing {
+        if con == 1 {
+            self.progressLab.text = "进度:\(progress)%"
+            if progress == 100 {
+                self.valueLab.text = "结果:\(Double(value)/10.0)"
+                self.testBtn.isSelected = !self.testBtn.isSelected
+            }
+        }
+    } else {
+
+    }
+}
+```
+
+# 情绪测量
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPEmotionVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralManage.peripheralModel.isSupportEmotionTest
+```
+
+```objective-c
+/// 情绪测量
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDK_emotionTest:(BOOL)state callBack:(void(^_Nullable)(int con, VPTestEmotionState ack, int progress,NSInteger value))result;
+```
+
+### 参数解释
+
+| 参数     | 参数类型           | 备注            |
+| -------- | ------------------ | --------------- |
+| con      | int                | 1：开启 2：关闭 |
+| ack      | VPTestEmotionState | 测量状态        |
+| progress | int                | 进度            |
+| value    | int                | 结果值          |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_emotionTest(state) {[weak self] con, ack, progress, value in
+    print(con,ack, progress,value)
+    guard let self = self else { return }
+    if ack == .testing {
+        if con == 1 {
+            self.progressLab.text = "进度:\(progress)%"
+            if progress == 100 {
+                self.valueLab.text = "结果:\(value)"
+                self.testBtn.isSelected = !self.testBtn.isSelected
+            }
+        }
+    } else {
+
+    }
+}
+```
+
+# 健康灯
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPHealthLightVC的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralModel.healthLightType != 0
+```
+
+```objective-c
+/// 读取健康灯状态
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDKReadHealthLightStatus:(void(^_Nullable)(VPHealthLightStatusType type))result
+```
+
+```objective-c
+/// 设置健康灯状态
+/// - Parameters:
+///   - type : 状态
+///   - result : 结果回调
+- (void)veepooSDKSetHealthLightStatus:(VPHealthLightStatusType)type callBack:(void(^_Nullable)(BOOL result, VPHealthLightStatusType type))result
+```
+
+```objective-c
+/// 监听健康灯状态变化
+/// - Parameters:
+///   - result : 结果回调
+- (void)veepooSDKListenHealthLightStatus:(void(^_Nullable)(VPHealthLightStatusType type))result
+```
+
+### 参数解释
+
+VPHealthLightStatusType
+
+| 参数                                      | 参数类型                | 备注   |
+| ----------------------------------------- | ----------------------- | ------ |
+| VPHealthLightStatusTypeOff                | VPHealthLightStatusType | 关闭   |
+| VPHealthLightStatusTypeSlowFlash          | VPHealthLightStatusType | 慢闪   |
+| VPHealthLightStatusTypeContinuousFlashing | VPHealthLightStatusType | 连续闪 |
+| VPHealthLightStatusTypeStayOn             | VPHealthLightStatusType | 常亮   |
+
+### 示例代码
+
+```swift
+/// 设置
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDKSetHealthLightStatus(self.statusType) {[weak self] state, type in
+            guard let self = self else { return }
+            if state {
+                self.statusType = type
+                self.stateLab.text = self.getHealthLightState()
+            }
+        }
+```
+
+```swift
+/// 读取
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDKReadHealthLightStatus {[weak self] type in
+            guard let self = self else { return }
+            self.statusType = type
+            self.stateLab.text = self.getHealthLightState()
+        }
+```
+
+```swift
+/// 监听
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDKListenHealthLightStatus {[weak self] type in
+            guard let self = self else { return }
+            self.statusType = type
+            self.stateLab.text = self.getHealthLightState()
+        }
+```
+
+# 星历读取
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPAGPSViewController的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralModel.agpsFunction != 0
+```
+
+```objective-c
+/// 读取设备星历信息
+/// @param result 回调
+-(void)veepooSDK_readDeviceAGPSDataResult:(void (^)(VPAGPSDataModel *model))result
+```
+
+### 参数解释
+
+VPAGPSDataModel
+
+| 参数     | 参数类型  | 备注                             |
+| -------- | --------- | -------------------------------- |
+| address  | NSInteger | 数据接收地址                     |
+| length   | NSInteger | 可写入数据长度                   |
+| crc      | uint16_t  | crc                              |
+| validDay | int       | 星历文件有效总时长，单位天       |
+| validMin | int       | 星历剩余有效时长，小端，单位分钟 |
+
+### 示例代码
+
+```swift
+VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_readDeviceAGPSDataResult {[weak self] model in
+            guard let weakSelf = self, let m = model else { return }
+            let validDay = String(format: "%.1f", Double(m.validMin) / 1440.0)
+            weakSelf.stateLab.text = "星历有效总时长\(m.validDay)天,星历剩余时长\(validDay)天"
+        }
+```
+
+# 星历下载和传输
+
+### 前提
+
+需要设备支持。
+
+### 类名
+
+VPPeripheralBaseManage`，可参考Demo中`VPAGPSViewController的实现
+
+### 接口
+
+```
+VPBleCentralManage.sharedBleManager().peripheralModel.agpsFunction != 0
+```
+
+```objective-c
+/// 获取星历传输的星历文件 -- 网络请求 需要网络权限
+- (void)veepooSDK_getAGPSFileUrl:(void(^_Nullable)(NSURL *fileUrl, NSURLResponse * _Nullable response ,NSError * _Nullable error))result 
+```
+
+```objective-c
+/// 星历数据传输V1 先通过 peripheralModel.agpsFunction 判定是否支持AGPS功能 -- 建议使用 - 带传输完成回调,传输完成后读取星历数据
+/// @param fileUrl 星历文件（rtcm 格式）
+/// @param timestamp 星历文件生成时间戳（网站获取）
+/// @param result 结果，使用UI传输的方式所以 error有用
+/// @param transformProgress 数据传输进度
+/// @param transformCompleted 数据传输完成
+- (void)veepooSDK_AGPSTransformV1WithFileUrl:(NSURL *_Nullable)fileUrl
+                                 timestamp:(long)timestamp
+                                      result:(void (^_Nullable)(NSError * _Nullable error))result
+                           transformProgress:(void (^_Nullable)(double progress))transformProgress transformCompleted:(void (^_Nullable)(void))transformCompleted
+```
+
+### 参数解释
+
+| 参数               | 参数类型 | 备注                   |
+| ------------------ | -------- | ---------------------- |
+| fileUrl            | NSURL    | 星历文件，通过下载获取 |
+| timestamp          | long     | 星历文件生成时间戳     |
+| transformProgress  | Block    | 数据传输进度           |
+| transformCompleted | Block    | 数据传输完成           |
+
+### 示例代码
+
+```swift
+let timestamp = Int(Date().timeIntervalSince1970) /// veepooSDK_getAGPSFileUrl 是网络请求 需要网络权限
+        VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_getAGPSFileUrl { url, respone, error  in
+            if error == nil && url != nil {
+                VPBleCentralManage.sharedBleManager().peripheralManage.veepooSDK_AGPSTransformV1(withFileUrl: url, timestamp: timestamp) { error in
+                    
+                } transformProgress: { [weak self] progress in
+                    guard let weakSelf = self else { return }
+                    weakSelf.progressLab.text = "传输进度:\(Int(progress * 100))%"
+                } transformCompleted: { [weak self] in
+                    guard let weakSelf = self else { return }
+                    weakSelf.readAGPSAction()// 传输完成后重新读取星历信息
+                }
+            }
+        }
+```
+
+
+
+# 
+

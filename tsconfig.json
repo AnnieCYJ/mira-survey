@@ -17,5 +17,12 @@
     }
   },
   "extends": "expo/tsconfig.base",
-  "include": ["**/*.ts", "**/*.tsx", "*.js"]
+  "include": ["**/*.ts", "**/*.tsx", "*.js"],
+  "exclude": [
+    "node_modules",
+    "hband-sdk",
+    "_hband_sdk",
+    "**/*.bak",
+    "**/*.bak2"
+  ]
 }

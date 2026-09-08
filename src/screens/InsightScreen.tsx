@@ -18,6 +18,8 @@ import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import ExamTab from '../components/ExamTab';
 import BloodComponentPanel from '../components/BloodComponentPanel';
+import StressInsightCard from '../components/StressInsightCard';
+import CognitiveLoadCard from "../components/CognitiveLoadCard";
 import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
@@ -40,8 +42,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'sleep', label: METRICS.sleep.name },
   { key: 'cycle', label: METRICS.cycle.name },
   { key: 'metabolism', label: METRICS.metabolism.name },
-  { key: 'activity', label: '运动统计' },
-  { key: 'exam', label: '一键体检' },
+  { key: 'activity', label: '运动' },
+  { key: 'exam', label: '体检' },
   { key: 'heart', label: METRICS.heart.name },
   { key: 'mind', label: METRICS.mind.name },
 ];
@@ -51,6 +53,13 @@ const CHANGES: ListItem[] = [
   { dot: theme.colors.stateTense, title: '午后压力峰值提前 40 分钟', sub: '与新增的晨会时段高度重合' },
   { dot: theme.colors.stateEnergy, title: '深睡占比 21% → 24%', sub: '入睡时间提前带来的直接改善' },
 ];
+
+/**
+ * 代谢 tab 允许下发的信号白名单（除独立的「血液成分」面板外）。
+ * 只留血糖：血脂四项（总胆固醇/甘油三酯/HDL/LDL）与血液成分面板重复；
+ * BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，未录入时恒为占位空卡。
+ */
+const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
 
 export default function InsightScreen() {
   const navigation = useNavigation<any>();
@@ -75,10 +84,10 @@ export default function InsightScreen() {
     return off;
   }, []);
 
-  // 自动监测开关联动戒指轮询（设置页总开关 → 这里下发到原生桥）
-  useEffect(() => {
-    RingBle.setAutoMonitor(autoMonitor);
-  }, [autoMonitor]);
+  // ★ 已移除「挂载即下发 autoMonitor」的 effect：AppState.setAutoMonitor（设置页开关）
+  // 已经直接转发给 RingBle，这里再转发一次是冗余的；且挂载时 AppState 初始值为 false，
+  // 会把「连上戒指即自动开启监测」的设计推翻——一进洞察页原生 monitorOn 就被关掉，
+  // 戒指实时数据（HealthGlance/GSR 轮询）全部停流（日志 15:04:58 on=0 → raw=0）。
 
   // 任意卡片点击 → 进入「指标历史详情」全屏页（日/周/月/年切换 + 真实数据）
   const openDetail = (
@@ -180,7 +189,7 @@ export default function InsightScreen() {
           <ActivityStatsTab ring={ring} />
         ) : (
           <View style={styles.stack}>
-            {tab !== 'heart' && (
+            {!['heart', 'sleep', 'metabolism', 'psychology', 'mind'].includes(tab) && (
               <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
             )}
             {tab === 'metabolism' && (
@@ -206,8 +215,24 @@ export default function InsightScreen() {
                 onPress={() => navigation.navigate('SleepDetail')}
               />
             )}
+            {tab === 'mind' && (
+              <>
+                <StressInsightCard />
+                <View style={{ height: 16 }} />
+                <CognitiveLoadCard />
+              </>
+            )}
             {(() => {
-              const sigs = signalsForDimension(tab);
+              let sigs = signalsForDimension(tab);
+              // 代谢 tab 只保留「血液成分」面板 +「血糖」两张：
+              //  · 血糖之后的总胆固醇/甘油三酯/HDL/LDL 与上方血液成分面板完全重复；
+              //  · BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，
+              //    未录入时恒为占位空卡。按产品要求一并移除。
+              // 用白名单而非 slice：不依赖 signalsForDimension 的返回顺序，
+              // 即使后续往 metrics.ts 增删信号也不会误放开。
+              if (tab === 'metabolism') {
+                sigs = sigs.filter((s) => METABOLISM_VISIBLE_KEYS.has(s.key));
+              }
               if (sigs.length === 0) {
                 return (
                   <Card>
