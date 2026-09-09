@@ -169,7 +169,8 @@ function continuousPath(
   yAt: (v: number) => number
 ): { lineD: string; dots: { x: number; y: number }[] } {
   if (!tPoints.length) return { lineD: '', dots: [] };
-  const GAP = 36 * 3600 * 1000;
+  // ★ 断线阈值：30min（同 MetricDetailScreen）
+const GAP = 30 * 60 * 1000;
   let line = '';
   const dots: { x: number; y: number }[] = [];
   let seg: { x: number; y: number }[] = [];
@@ -401,7 +402,7 @@ export default function BpDetailScreen() {
             <View style={{ width: 1, height: 40, backgroundColor: theme.colors.cardBorder }} />
             <View style={{ flex: 1, alignItems: 'center' }}>
               <Text style={styles.statLabel}>当前范围</Text>
-              <Text style={styles.statVal}>{range === 'day' ? '日' : range === 'week' ? '周' : range === 'month' ? '月' : '年'}</Text>
+              <Text style={styles.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{range === 'day' ? '日' : range === 'week' ? '周' : range === 'month' ? '月' : '年'}</Text>
             </View>
           </View>
         </Card>

@@ -22,6 +22,7 @@
  * BasicMetricCard）零改动。
  */
 import { Alert, NativeModules, NativeEventEmitter, Platform, AppState, type AppStateStatus } from 'react-native';
+import { postLog as _postLog } from '../lib/logger';
 import * as FileSystem from 'expo-file-system';
 import { theme } from '../theme/theme';
 import { BACKEND_BASE_URL, RING_DATA_SOURCE, RING_SYNC_TOKEN } from '../config';
@@ -51,8 +52,11 @@ import {
   type CurveStatus,
   type PhaseBucket,
   isSameDay,
+  computeSleepScore,
+  type SleepInput,
 } from '../lib/dailyStatus';
 import { computeHRV } from "../lib/hrvCompute";
+import { computeEmotionSnapshot, EMOTION_LABEL_CN, type EmotionSnapshot, type EmotionLabel } from '../lib/emotionEngine';
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
@@ -127,12 +131,17 @@ export interface SleepSegment {
 
 /** 睡眠摘要（聚合值，与 sleepLine 派生互补）。 */
 export interface SleepSummary {
-  total: number; // 总时长（分钟）
-  deep: number;  // 深睡（分钟）
-  light: number; // 浅睡（分钟）
-  rem: number;   // REM（分钟）
-  score: number; // 睡眠评分（0-4 星级 → 这里直传 SDK 值）
-  getUp: number; // 起夜次数
+  total: number;       // 总时长（分钟）
+  deep: number;        // 深睡（分钟）
+  light: number;       // 浅睡（分钟）
+  rem: number;         // REM（分钟）
+  awake?: number;      // 清醒（分钟）—— 从 sleepLine curve 解析
+  insomnia?: number;   // 失眠（分钟）—— 从 sleepLine curve 解析
+  score: number;       // 睡眠评分（0-100，自算，dailyStatus.computeSleepScore 产出）
+  sdkScore?: number;   // 原始 SDK sleepQuality（0-5），留作调试
+  getUp: number;       // 起夜次数
+  sleepTime?: string | null; // 入睡时间 "HH:mm"
+  wakeTime?: string | null;  // 起床时间 "HH:mm"
 }
 
 export interface RingDeviceInfo {
@@ -161,6 +170,17 @@ export interface FemaleInfo {
 }
 
 export interface RingState {
+  /** 实时情绪快照 (每 30s 节流) */
+  emotion: {
+    arousalScore: number;        // 0..100
+    valenceScore: number;        // -100..+100
+    emotionLabel: EmotionLabel;  // 'stressed'|'focused'|'calm'|'bored'|'depleted'
+    scrPeaksPerMin: number;
+    scrMeanAmp: number | null;
+    reason: string;
+    updatedAt: number;
+  } | null;
+
   status: RingConnStatus;
   deviceName: string | null;
   rssi: number | null;
@@ -179,6 +199,8 @@ export interface RingState {
   dailyHistory: Record<string, TimePoint[]>;
   /** 昨夜睡眠分期段（来自 Veepoo parseSleepLine，合并连续同状态）。null = 尚未读到睡眠。 */
   sleepStages: SleepSegment[] | null;
+  /** 历史每天睡眠分期归档：dateKey('YYYY-MM-DD') → SleepSegment[]。backfill 逐日写入。 */
+  sleepStagesDaily: Record<string, SleepSegment[]>;
   /** 昨夜睡眠摘要（总/深/浅/REM/评分/起夜） */
   sleepSummary: SleepSummary | null;
   /** sleepSummary 对应的日期；backfill 按 dn=0,1,2… 顺序读，避免后读的旧日期覆盖今天 */
@@ -320,7 +342,7 @@ function dayStartMs(ts: number): number {
 }
 function dayKeyOf(ts: number): string {
   const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 /** 把 yyyy-M-d / yyyy-MM-dd 字符串安全解析为当天 00:00:00 的毫秒数。
  *  不用 new Date(string) —— iOS/Safari 对非 ISO / 非补零的日期字符串会返回 Invalid Date，
@@ -335,15 +357,26 @@ function dateKeyToStartMs(date: string): number {
   if (!ymd) return Number.NaN;
   return new Date(ymd.y, ymd.m - 1, ymd.d, 0, 0, 0, 0).getTime();
 }
+/** 解析日期字符串为 YYYY-MM-DD key，同时校验年份合法（2020-2099）。
+ *  非法年份（如 2083 溢出、NaN-NaN-NaN）返回空串 ""，调用方应跳过。 */
 function dateKeyOfStr(date: string): string {
   const ms = dateKeyToStartMs(date);
-  if (Number.isNaN(ms)) return date;
+  if (Number.isNaN(ms)) return '';
+  const ymd = parseYmd(date);
+  if (!ymd) return '';
+  if (ymd.y < 2020 || ymd.y > 2030) return ''; // 过滤 2083 溢出等垃圾（2030 年后视为非法）
   return dayKeyOf(ms);
 }
 
 /** 安全解析样本时间：支持字符串 "HH:mm" 或直接毫秒偏移数字，返回绝对时间戳 */
 function sampleTimeMs(t: string | number | undefined, baseMs: number): number {
-  if (typeof t === 'number') return baseMs + t;
+  if (typeof t === 'number') {
+    // ★ 原生 backfill emitDaySamples 发的是绝对 epoch ms（@((long long)slotMs) → JS number > 1e12）
+    // 老 code 误加 baseMs 导致时间戳翻倍，healthStore.getIntraday 查不到数据
+    if (t > 1e12) return t;         // 绝对 ms，直接返回
+    if (t > 1e9) return t * 1000;   // 秒级时间戳，转 ms
+    return baseMs + t;              // 兜底：相对 baseMs 的偏移
+  }
   if (typeof t !== 'string') return Number.NaN;
   const m = t.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return Number.NaN;
@@ -436,10 +469,12 @@ function getLogHost(): string {
     const scriptURL = (NativeModules as any).SourceCode?.scriptURL as string | undefined;
     if (scriptURL) {
       const host = new URL(scriptURL).hostname;
-      if (host) {
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
         _logHost = host;
         return host;
       }
+      _logHost = '192.168.1.12';
+      return _logHost;
     }
   } catch {
     /* ignore */
@@ -456,6 +491,9 @@ function pushMemLog(tag: string, msg: string) {
 export function getRecentLogs(n = 300): { t: number; tag: string; msg: string }[] {
   return _recentLogs.slice(-Math.max(1, n));
 }
+
+const _emotionHistoryArr: { t: number; arousalScore: number; valenceScore: number; emotionLabel: string }[] = [];
+export function getEmotionHistory() { return _emotionHistoryArr.slice(); }
 function postLog(tag: string, msg: string) {
   pushMemLog(tag, msg);
   const host = getLogHost();
@@ -521,6 +559,7 @@ class NativeRingSource {
       this.emitter = new NativeEventEmitter(VeepooNative);
       this.emitter.addListener('onStateChange', this.handleState);
       this.emitter.addListener('onMetric', this.handleMetric);
+
       this.emitter.addListener('onHrvDay', this.handleHrvDay);
       this.emitter.addListener('onHrvSamples', this.handleHrvSamples);
       this.emitter.addListener('onSleepDay', this.handleSleepDay);
@@ -539,6 +578,8 @@ class NativeRingSource {
       // ★ 血压 intraday 补全（原生拆成 onBpSysSamples / onBpDiaSamples 小事件）
       this.emitter.addListener('onBpSysSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpSys'));
       this.emitter.addListener('onBpDiaSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpDia'));
+      // ★ 血糖 intraday 回填：原生 backfill 从 blood_glucose_table 拉每 5 分钟一条 emit onBloodSugarSamples
+      this.emitter.addListener('onBloodSugarSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bloodSugar'));
       // ★ 血液成分历史回填：原生 backfill 从 VPDailyBloodAnalysisModel 逐 5min 读取后 emit
       this.emitter.addListener('onBloodAnalysisDay', this.handleBloodAnalysisDay);
       this.emitter.addListener('onHrDay', this.handleHrDay);
@@ -561,6 +602,15 @@ class NativeRingSource {
         this.push({ lastBackfillAt: Date.now() });
         this.onBackfillComplete();
       });
+      // ★ 调试：constructor 10s 后自动 backfill，让 handleBloodAnalysisDay 跑到
+      setTimeout(() => {
+        if (this.getState().status === 'connected') {
+          postLog('RingBle', '[AUTO_BACKFILL] ✅ 触发');
+          VeepooNative?.backfill?.();
+        } else {
+          postLog('RingBle', `[AUTO_BACKFILL] 跳过 status=${this.getState().status}`);
+        }
+      }, 10000);
       this.emitter.addListener('onLog', (msg: string) => {
         // eslint-disable-next-line no-console
         console.log('[VeepooRing]', msg);
@@ -586,7 +636,7 @@ class NativeRingSource {
         try {
           const s = this.getState();
           // ★ 修：查今天和昨天的数据，不是硬编码 9-3
-          const dk = this.bucketDay || (() => {
+          const dk = (() => {
             const d = new Date();
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           })();
@@ -631,7 +681,10 @@ class NativeRingSource {
         } catch (e) {}
       });
     }
+
   }
+
+  /** ★ ManualTestData healthGlance 历史回填
 
   /** ★ ManualTestData healthGlance 历史回填 — 把 SDK 本地 flash 存的所有 healthGlance 结果灌入 healthStore
    *  离线后重连能拉回 emotion/cortisol/skin/sns/bpSys/bpDia/血脂/血糖/尿酸 等复合指标 */
@@ -705,8 +758,13 @@ class NativeRingSource {
     // 关键：所有 key（核心 hr/spo2/... 与扩展 steps/sleepTotal/...）都要 push 出去，
     // 由 flushPendingMetrics 按 CORE_KEYS 分流——之前只 push 6 个核心 key，
     // 导致扩展指标（睡眠/计步/血糖...）在 handleMetric 就被丢弃，洞察页读不到。
+    postLog('JS', `[handleMetric] RAW key=${m.key} val=${JSON.stringify(m.value)} type=${typeof m.value}`);
     const v = num(m.value);
-    if (v == null) return;
+    if (v == null) {
+      postLog('JS', `[handleMetric] SKIP num(null) key=${m.key} val=${JSON.stringify(m.value)}`);
+      return;
+    }
+    postLog('JS', `[handleMetric] PUSH key=${m.key} v=${v}`);
     this.pushMetric({ key: m.key, value: v, unit: m.unit ?? '', ts: m.ts ?? Date.now() });
   };
 
@@ -984,7 +1042,21 @@ class NativeRingSource {
     samples?: Array<Record<string, any>>;
   }) => {
     try {
-      if (!raw?.date || !Array.isArray(raw.samples) || raw.samples.length === 0) return;
+      postLog('JS', `[handleBloodAnalysisDay] ENTRY rawKeys=${Object.keys(raw ?? {}).join(',')} date=${raw?.date} samples=${Array.isArray(raw?.samples) ? raw.samples.length : 'NOT_ARRAY'}`);
+      // ★ 诊断：dump 第一个 sample 的原始字段
+      const first = Array.isArray(raw?.samples) && raw.samples[0];
+      postLog('JS', `[handleBloodAnalysisDay] SAMPLE[0] raw=${JSON.stringify(first).substring(0, 400)}`);
+      if (first) {
+        for (const k of Object.keys(first)) {
+          const v = first[k];
+          const n = num(v);
+          postLog('JS', `[handleBloodAnalysisDay]   field ${k}=${JSON.stringify(v)} (type=${typeof v}, num()=${n})`);
+        }
+      }
+      if (!raw?.date || !Array.isArray(raw.samples) || raw.samples.length === 0) {
+        postLog('JS', `[handleBloodAnalysisDay] SKIP no date or empty samples. raw=${JSON.stringify(raw).substring(0, 300)}`);
+        return;
+      }
       const dk = dateKeyOfStr(String(raw.date));
       const dayKey = String(raw.date);
       const keys: { nativeKey: string; metricKey: string }[] = [
@@ -994,12 +1066,12 @@ class NativeRingSource {
         { nativeKey: 'totalCholesterol', metricKey: 'cholesterol' },
         { nativeKey: 'uricAcid', metricKey: 'ua' },
       ];
+      // ★ 每个 metricKey 独立 push 一次，跟 handleHrSamples 模式完全一致
       for (const { nativeKey, metricKey } of keys) {
         const samples: Array<{ t: number; v: number }> = [];
         for (const s of raw.samples) {
           const v = num(s[nativeKey]);
           if (v == null || !Number.isFinite(v) || v <= 0) continue;
-          // 原生 time = "HH:mm"，转成当天毫秒时间戳
           const hm = String(s.time || '').split(':');
           const h = parseInt(hm[0], 10) || 0;
           const m = parseInt(hm[1], 10) || 0;
@@ -1008,14 +1080,32 @@ class NativeRingSource {
         }
         if (samples.length > 0) {
           healthStore.upsertBackfillSamples(metricKey as any, dk, samples);
-          // daily 取最后一个有效值
           const last = samples[samples.length - 1].v;
           healthStore.upsertBackfillDay(metricKey as any, dk, last);
+          // ★ 完全照搬 handleHrSamples 模式
+          const prevMetricByDay = this.getState().seriesByDay[metricKey] ?? {};
+          const merged = mergeDaySeries(prevMetricByDay[dk], samples);
+          const patch: StatePatch = {
+            seriesByDay: {
+              ...this.getState().seriesByDay,
+              [metricKey]: { ...prevMetricByDay, [dk]: merged },
+            },
+          };
+          this.push(patch);
+          postLog('JS', `[handleBloodAnalysisDay] ✅ ${metricKey}/${nativeKey} date=${raw.date} n=${samples.length}`);
+        } else {
+          postLog('JS', `[handleBloodAnalysisDay] ⚠️ ${metricKey}/${nativeKey} date=${raw.date} parsed=0`);
         }
       }
-      postLog('JS', `[handleBloodAnalysisDay] date=${raw.date} samples=${raw.samples.length}`);
-    } catch {
-      /* 静默 */
+      // ★ 同步诊断：所有 push 完成后立即确认 state
+      try {
+        const ak = Object.keys(this.getState().seriesByDay ?? {});
+        postLog('JS', `[handleBloodAnalysisDay] ✅ ALL DONE seriesKeys now=${ak} date=${raw.date}`);
+      } catch (e: any) {
+        postLog('JS', `[handleBloodAnalysisDay] ❌ DONE ERR: ${e?.message ?? e}`);
+      }
+    } catch (e: any) {
+      postLog('JS', `[handleBloodAnalysisDay] ❌ OUTER ERR: ${e?.message ?? e}`);
     }
   };
 
@@ -1027,6 +1117,7 @@ class NativeRingSource {
       postLog('JS', `[handleHrvDay] date=${raw.date} value=${raw.value}`);
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
+      if (!dk) { postLog('RingBle', `[handleHrvDay] 非法 date=${date}, 跳过`); return; }
       healthStore.upsertBackfillDay('hrv', dk, raw.value);
       const cur = this.getState().hrvDaily;
       const patch: StatePatch = { hrvDaily: { ...cur, [dk]: raw.value } };
@@ -1052,6 +1143,7 @@ class NativeRingSource {
       }
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
+      if (!dk) { postLog('RingBle', `[handleHrDay] 非法 date=${date}, 跳过`); return; }
       postLog('RingBle', `[handleHrDay] date=${date} dk=${dk} value=${raw.value}`);
       healthStore.upsertBackfillDay('hr', dk, raw.value);
       const cur = this.getState().hrDaily;
@@ -1095,7 +1187,10 @@ class NativeRingSource {
       }
       for (const s of raw.samples) {
         const v = num(s.v);
-        if (v == null || v <= 0) continue;
+        if (v == null) continue;
+        // 恢复原状
+
+        if (v < 0) continue;  // 恢复占位
         const ts = sampleTimeMs(s.t, baseMs);
         if (!Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -1123,10 +1218,9 @@ class NativeRingSource {
       }
       hrvCurve.sort((a, b) => a.t - b.t);
 
-      // 按天存储（所有回溯日都存）→ 历史日详情页画连续曲线（score 锚点 + 密集 tachogram）
+      // 按天存储设备返回的 HRV 聚合值；hearts 展开的 BPM 仅用于补全 HR，不写入 HRV。
       healthStore.upsertBackfillSamples('hrv', sampleDayKey, parsed);
-      if (hrvCurve.length) healthStore.upsertBackfillSamples('hrv', sampleDayKey, hrvCurve);
-      console.log(`[JS-HRV] ✅ upsertBackfillSamples hrv dk=${sampleDayKey} n=${parsed.length} curve=${hrvCurve.length}`);
+      console.log(`[JS-HRV] ✅ upsertBackfillSamples hrv dk=${sampleDayKey} n=${parsed.length} tachogram=${hrvCurve.length}`);
 
       // ★ 从 HRV 的 hearts（RR 间期，每个值×10=ms）反推平均心率，补全睡眠期间 heartValue=0 的空缺
       const hrFromHrv: TimePoint[] = [];
@@ -1153,8 +1247,7 @@ class NativeRingSource {
       }
 
       const prevByDay = this.getState().seriesByDay['hrv'] ?? {};
-      let merged = mergeDaySeries(prevByDay[sampleDayKey], parsed);
-      if (hrvCurve.length) merged = mergeDaySeries(merged, hrvCurve);
+      const merged = mergeDaySeries(prevByDay[sampleDayKey], parsed);
       const patch: StatePatch = { seriesByDay: { ...this.getState().seriesByDay, hrv: { ...prevByDay, [sampleDayKey]: merged } } };
       // 今日：额外喂实时连续序列（history.hrv）+ 卡片当前值（HRV 分数，来自聚合 hrvValue，不被 tachogram 污染）
       if (sampleDayKey === todayKey) {
@@ -1203,12 +1296,16 @@ class NativeRingSource {
       const dayBaseMs = dateKeyToStartMs(date);
       const sampleDayKey = Number.isNaN(dayBaseMs) ? dateKeyOfStr(date) : dayKeyOf(dayBaseMs);
       const todayKey = dayKeyOf(Date.now());
+      console.log(`[JS-HR] handleHrSamples date=${date} dayKey=${sampleDayKey} today=${todayKey} samples=${raw.samples.length}`);
       postLog('RingBle', `[handleHrSamples] date=${date} dayKey=${sampleDayKey} today=${todayKey} samples=${raw.samples.length}`);
       // 解析全部样本为带绝对 ts 的 TimePoint，按 ts 排序
       const parsed: TimePoint[] = [];
       for (const s of raw.samples) {
         const v = num(s.v);
-        if (v == null || v <= 0) continue;
+        if (v == null) continue;
+        // 恢复原状
+
+        if (v < 0) continue;  // 恢复占位
         const ts = parseSampleTs(date, s.t);
         if (ts == null || !Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -1224,6 +1321,7 @@ class NativeRingSource {
           postLog('RingBle', `[handleHrSamples] ⚠️ 时间格式无法解析，已按序号均摊 date=${date} n=${vals.length}`);
         }
       }
+      console.log(`[JS-HR] parsed=${parsed.length} first=${parsed[0]?.t ?? '-'} last=${parsed[parsed.length - 1]?.t ?? '-'}`);
       postLog('RingBle', `[handleHrSamples] parsed=${parsed.length} first=${parsed[0]?.t ?? '-'} last=${parsed[parsed.length - 1]?.t ?? '-'}`);
       // 9/3 专项：把真实收到的值打到日志服务，确认 ppgs 兜底取到的是真实 bpm（非波形噪声）。
       if (sampleDayKey === '2026-9-3') {
@@ -1233,6 +1331,7 @@ class NativeRingSource {
       parsed.sort((a, b) => a.t - b.t);
       // 按天存储（所有回溯日都存）→ 历史日详情页画连续曲线
       healthStore.upsertBackfillSamples('hr', sampleDayKey, parsed);
+      console.log(`[JS-HR] ✅ upsertBackfillSamples hr dk=${sampleDayKey} n=${parsed.length}`);
       const prevByDay = this.getState().seriesByDay['hr'] ?? {};
       const merged = mergeDaySeries(prevByDay[sampleDayKey], parsed);
       const patch: StatePatch = { seriesByDay: { ...this.getState().seriesByDay, hr: { ...prevByDay, [sampleDayKey]: merged } } };
@@ -1281,7 +1380,10 @@ class NativeRingSource {
       }
       for (const s of raw.samples) {
         const v = num(s.v);
-        if (v == null || v <= 0) continue;
+        if (v == null) continue;
+        // 恢复原状
+
+        if (v < 0) continue;  // 恢复占位
         const ts = sampleTimeMs(s.t, baseMs);
         if (!Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -1319,7 +1421,10 @@ class NativeRingSource {
       }
       for (const s of raw.samples) {
         const v = num(s.v);
-        if (v == null || v <= 0) continue;
+        if (v == null) continue;
+        // 恢复原状
+
+        if (v < 0) continue;  // 恢复占位
         const ts = sampleTimeMs(s.t, baseMs);
         if (!Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -1351,8 +1456,8 @@ class NativeRingSource {
         setTimeout(() => {
           const hk = hsKeyFor(signalKey);
           const dk = dateKeyOfStr(String(raw?.date || ''));
-          const ia = healthStore.getIntraday(hk, dk);
-          const dy = healthStore.getDay(hk, dk);
+          const ia = hk ? healthStore.getIntraday(hk, dk) : null;
+          const dy = hk ? healthStore.getDay(hk, dk) : null;
           console.log(`[HS-DUMP] ${signalKey}/${hk} dk=${dk} intraday_n=${ia?.length ?? 0} day_mean=${dy?.mean} day_samples=${dy?.samples ?? 0}`);
         }, 100);
       }
@@ -1365,7 +1470,10 @@ class NativeRingSource {
       const parsed: TimePoint[] = [];
       for (const s of raw.samples) {
         const v = num(s.v);
-        if (v == null || v <= 0) continue;
+        if (v == null) continue;
+        // 恢复原状
+
+        if (v < 0) continue;  // 恢复占位
         const ts = parseSampleTs(date, s.t);
         if (ts == null || !Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -1464,19 +1572,55 @@ class NativeRingSource {
   }) => {
     try {
       if (!raw || !raw.date) return;
-      // 兼容原生两种 payload：当前 HK18/QH15 发扁平字段；未来固件可能发嵌套 summary
       const sm = raw.summary ?? raw;
-      const v: SleepSummary = {
-        total: num(sm.total) ?? 0,
-        deep: num(sm.deep) ?? 0,
-        light: num(sm.light) ?? 0,
-        rem: num(sm.rem) ?? 0,
-        score: num(sm.score) ?? 0,
-        getUp: num(sm.getUp) ?? 0,
+      let total = num(sm.total) ?? 0;
+      let deep  = num(sm.deep)  ?? 0;
+      let light = num(sm.light) ?? 0;
+      let rem   = num(sm.rem)   ?? 0;
+      const sdkScore = num(sm.score) ?? 0;
+      const getUp = num(sm.getUp) ?? 0;
+
+      // ★ 如果有精准曲线（sleepLine 每分钟 stage），重新统计各阶段时长
+      // 协议: 0=深睡 1=浅睡 2=REM 3=失眠 4=苏醒
+      let awake = 0, insomnia = 0;
+      if (Array.isArray(raw.curve) && raw.curve.length > 0) {
+        const curve = raw.curve;
+        deep = light = rem = awake = insomnia = 0;
+        for (const s of curve) {
+          switch (s) {
+            case 0: deep++; break;
+            case 1: light++; break;
+            case 2: rem++; break;
+            case 3: insomnia++; break;
+            case 4: awake++; break;
+          }
+        }
+        // total 以曲线为准
+        total = curve.length;
+      }
+
+      if (total <= 0) return;
+
+      // ★ 用 computeSleepScore 自算 0-100 分（替代 SDK 原始 0-5 分）
+      const si: SleepInput = {
+        sleepTotal: total,
+        sleepDeep: deep,
+        getUp,
       };
-      if (v.total <= 0) return; // 当天无睡眠记录不落库
+      const score = computeSleepScore(si, ALGO_DEFAULTS);
+
+      const v: SleepSummary = {
+        total, deep, light, rem,
+        awake: awake || undefined,
+        insomnia: insomnia || undefined,
+        score,
+        sdkScore: sdkScore || undefined,
+        getUp,
+        sleepTime: fmtSleepClock(raw.sleepTime),
+        wakeTime: fmtSleepClock(raw.wakeTime),
+      };
       const cur = this.getState().sleepDaily;
-      // ★ 优先用原生精准曲线（sleepLine 解析后的每分钟 stage）→ 合并成段；其次历史 segments；最后按时长合成
+      // 生成段
       let segs: SleepSegment[];
       if (Array.isArray(raw.curve) && raw.curve.length) {
         segs = mergeSleepCurve(raw.curve);
@@ -1492,20 +1636,28 @@ class NativeRingSource {
       const patch: StatePatch = {
         sleepDaily: { ...cur, [dk]: v },
       };
-      // ★ 只把 sleepSummary/sleepStages 更新为日期最新的一天，避免 backfill 顺序 dn=0,1,2… 被旧日期覆盖
+      // ★ 每天都存 segments 到 sleepStagesDaily（按天归档），不再只存最新一天
+      const prevStagesDaily = this.getState().sleepStagesDaily;
+      const newStagesByDay = { ...prevStagesDaily };
+      if (segs.length > 0) {
+        newStagesByDay[dk] = segs;
+      }
+      patch.sleepStagesDaily = newStagesByDay;
+
       const curDate = this.getState().sleepSummaryDate;
       if (v.total > 0 && (!curDate || dk >= curDate)) {
         patch.sleepSummary = v;
         patch.sleepSummaryDate = dk;
-        patch.sleepStages = segs.length ? segs : null;
+        patch.sleepStages = segs.length ? segs : null; // InsightScreen 用
         const st = fmtSleepClock(raw.sleepTime);
         const wt = fmtSleepClock(raw.wakeTime);
         if (st) patch.sleepTime = st;
         if (wt) patch.wakeTime = wt;
       }
+      postLog('JS-SLEEP', `handleSleepDay date=${raw.date} total=${total} deep=${deep} light=${light} rem=${rem} awake=${awake} insomnia=${insomnia} score=${score.toFixed(1)} sdkScore=${sdkScore}`);
       this.push(patch);
-    } catch {
-      /* 静默 */
+    } catch (e) {
+      console.warn('[handleSleepDay] error:', e);
     }
   };
 
@@ -1537,6 +1689,8 @@ class NativeRingSource {
       if (!raw || !raw.date || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return;
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
+      if (!dk) { postLog('RingBle', `[handleSleepDay] 非法 date=${date}, 跳过`); return; }
+      if (!dk) { postLog('RingBle', `[handleHrvDay] 非法 date=${date}, 跳过`); return; }
       healthStore.upsertBackfillDay('spo2', dk, raw.value);
       const cur = this.getState().spo2Daily;
       const patch: StatePatch = { spo2Daily: { ...cur, [dk]: raw.value } };
@@ -1558,6 +1712,7 @@ class NativeRingSource {
       if (!raw || !raw.date || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return;
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
+      if (!dk) { postLog('RingBle', `[handleHrvDay] 非法 date=${date}, 跳过`); return; }
       healthStore.upsertBackfillDay('temp', dk, raw.value);
       const cur = this.getState().tempDaily;
       const patch: StatePatch = { tempDaily: { ...cur, [dk]: raw.value } };
@@ -1835,12 +1990,10 @@ class BackendRingSource {
     }
   }
 
+
   private stopTimers() {
     this.stopMetricTimer();
-    if (this.deviceTimer) {
-      clearInterval(this.deviceTimer);
-      this.deviceTimer = null;
-    }
+    if (this.deviceTimer) { clearInterval(this.deviceTimer); this.deviceTimer = null; }
   }
 
   disconnect() {
@@ -1854,6 +2007,7 @@ class BackendRingSource {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class RingConnectionImpl {
+  private _emotionTimer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<StateListener>();
   private state: RingState = {
     status: 'idle',
@@ -1870,6 +2024,7 @@ class RingConnectionImpl {
     dailyHistory: {},
     tempDaily: {},
     sleepStages: null,
+    sleepStagesDaily: {},
     sleepSummary: null,
     sleepSummaryDate: null,
     sleepTime: null,
@@ -1884,6 +2039,7 @@ class RingConnectionImpl {
     rrDaily: {},
     sleepDaily: {},
     stepDaily: {},
+  emotion: null as any,
     lastSyncedAt: null,
     lastBackfillAt: null,
     statusHistory: [],
@@ -1915,6 +2071,7 @@ class RingConnectionImpl {
    * 设置页「数据同步」开关即此字段；调试卡片不再触发控制，仅作诊断展示。
    */
   private syncEnabled = true;
+  private syncFlagLoaded = false;
   /** 身体成分档案（身高/体重/年龄/性别）：录入后下发戒指，健康一览才会返回身体成分字段。 */
   private userProfile: { weight: number; height: number; age: number; sex: number } | null = null;
   private pendingMetrics: MetricEvent[] | null = null;
@@ -2118,7 +2275,9 @@ class RingConnectionImpl {
       () => this.flushNow(),
       () => {
         postLog('RingBle', '[JS] callback: rebuild + saveSnapshot');
-        this.rebuildHistoricalStatus();
+        // ★ 先清历史垃圾 key（如 2083-05-xx），再重建
+    this.purgeInvalidDateKeys();
+    this.rebuildHistoricalStatus();
         this.recomputeDailyStatus();
         this.syncExtendedDaily();
         this.ensureDay(Date.now());
@@ -2151,9 +2310,68 @@ class RingConnectionImpl {
     //  (b) 每条样本触发一次全量重渲染，实时采集时造成「自动测量开关卡顿」等性能问题。
     // 改为节流（≥500ms 一次）+ 单次 emit，既保证数据回传后 UI 刷新，又消除重渲染风暴。
     healthStore.subscribe(() => {
+      // 节流调和前打一条近 1H 诊断（只在前 3 次打，避免刷屏）
+      if (!this._hsDiagCount) this._hsDiagCount = 0;
+      if (this._hsDiagCount < 3) {
+        this._hsDiagCount++;
+        const now = Date.now();
+        const oneHourAgo = now - 60 * 60 * 1000;
+        const tk = dayKeyOf(now);
+        const hrRecent = healthStore.getIntraday('hr', tk).filter((p: any) => p.t >= oneHourAgo).length;
+        const hrvRecent = healthStore.getIntraday('hrv', tk).filter((p: any) => p.t >= oneHourAgo).length;
+        const edaRecent = healthStore.getIntraday('eda', tk).filter((p: any) => p.t >= oneHourAgo).length;
+        const tlRecent = this.state.statusTimeline.filter((p: any) => p.t >= oneHourAgo).length;
+        console.log(`[healthStore调和#${this._hsDiagCount}] hr近1H=${hrRecent} hrv近1H=${hrvRecent} eda近1H=${edaRecent} statusTimeline近1H=${tlRecent}`);
+      }
+
       this.scheduleHsReconcile();
     });
+
+    // ★ Emotion engine: 独立 30s 定时器 (数据源无关)
+    setTimeout(() => this.computeAndPushEmotion(), 500);
+    this._emotionTimer = setInterval(() => this.computeAndPushEmotion(), 30_000);
   }
+
+  /** ★ Emotion engine — 30s 定时计算情绪快照 (arousal + valence + 5类) */
+  private computeAndPushEmotion = () => {
+    try {
+      if (this.state.status !== 'connected') {
+        this.applyPatch({ emotion: null });
+        return;
+      }
+      const snap = computeEmotionSnapshot(Date.now(), this.resolveCycle());
+      if (snap) {
+        this.applyPatch({
+          emotion: {
+            arousalScore: snap.arousalScore,
+            valenceScore: snap.valenceScore,
+            emotionLabel: snap.emotionLabel,
+            scrPeaksPerMin: snap.scrPeaksPerMin,
+            scrMeanAmp: snap.scrMeanAmp,
+            reason: snap.reason,
+            updatedAt: snap.t,
+            cyclePhase: (snap as any).cyclePhase ?? 'unknown',
+          },
+        } as StatePatch);
+        _emotionHistoryArr.push({
+          t: snap.t,
+          arousalScore: snap.arousalScore,
+          valenceScore: snap.valenceScore,
+          emotionLabel: snap.emotionLabel,
+        });
+        if (_emotionHistoryArr.length > 200) _emotionHistoryArr.shift();
+
+        postLog('RingBle', '[Emotion] OK label=' + snap.emotionLabel
+          + ' a=' + snap.arousalScore.toFixed(0)
+          + ' v=' + snap.valenceScore.toFixed(0));
+      } else {
+        this.applyPatch({ emotion: null });
+        postLog('RingBle', '[Emotion] NULL');
+      }
+    } catch (e) {
+      postLog('RingBle', '[Emotion] FAILED: ' + (e as Error).message);
+    }
+  };
 
   private emit() {
     this.scheduleSave();
@@ -2167,6 +2385,13 @@ class RingConnectionImpl {
     const min = d.getMinutes();
     const sec = d.getSeconds();
     const ms = d.getMilliseconds();
+    // ★ 断连重连时立即补打最近的边界点（如果 gap >= 30min）
+    // 比如 13:10 重连，立即补打 13:00 的点；不用等 13:30
+    const boundaryTs = this.alignBoundaryTs(now);
+    if (this.lastCurveAccumTs != null && boundaryTs - this.lastCurveAccumTs >= STATUS_SNAPSHOT_MS) {
+      postLog('RingBle', `[scheduleStatusTick] ⚡ 补打错过的边界: ${new Date(boundaryTs).toISOString().slice(11,16)} (gap=${Math.round((boundaryTs - this.lastCurveAccumTs)/60000)}min)`);
+      this.recomputeDailyStatus(boundaryTs, true); // 用 boundaryTs 而非 now，保证 pushStatusPoint 的 t 对齐
+    }
     // 距下一个 :00 / :30 边界的毫秒数（相对整点的分钟：<30→30，否则下个整点 60）
     const nextBoundaryMin = min < 30 ? 30 : 60;
     let delay = (nextBoundaryMin - min) * 60_000 - sec * 1000 - ms;
@@ -2188,6 +2413,11 @@ class RingConnectionImpl {
   private applyPatch(patch: StatePatch) {
     // eslint-disable-next-line no-console
     if (patch.status) console.log('[DIAG] applyPatch status:', patch.status);
+    // ★ 诊断：seriesByDay push 内容
+    if (patch.seriesByDay) {
+      const keys = Object.keys(patch.seriesByDay);
+      postLog('RingBle', `[applyPatch] 📦 seriesByDay PUSH keys=${keys}`);
+    }
     this.state = { ...this.state, ...patch };
     // 连上戒指即自动开启原生「自动监测」（实时 HR/SpO₂ + 体温/皮电轮询 + HRV 历史读取），
     // 不再依赖用户在设置页手动拨开关——之前 autoMonitor 默认 false 且不持久化，
@@ -2202,7 +2432,7 @@ class RingConnectionImpl {
         if (this.userProfile) this.applyUserProfile();
         // 仅在「数据同步」开关开启时，连接成功才触发历史回填；
         // 开关状态由设置页「数据同步」控制（RingBle.syncEnabled），调试卡片不参与控制。
-        if (this.syncEnabled) this.native.backfill();
+        if (this.syncEnabled && this.syncFlagLoaded) this.native.backfill();
       }
       // 状态快照定时器可能在上次断开时被清掉，重连后确保其运行（对齐 :00/:30 边界）
       if (!this.statusTimer) this.scheduleStatusTick();
@@ -2276,6 +2506,7 @@ class RingConnectionImpl {
   //   下方 flushPendingMetrics 仍保留「基于逐拍 HR 时间戳的 JS 反算」作为实时补充——
   //   仅当原生 HR 回调确为逐拍（相邻 ts 差≈真实 RR 间期）且有效 RR≥10 时才写，否则自动跳过，不污染数值。
   private applyMetric(m: MetricEvent) {
+    postLog('JS', `[applyMetric] ENTER key=${m.key} v=${m.value} queued=${this.metricFlushQueued}`);
     if (!this.pendingMetrics) this.pendingMetrics = [];
     this.pendingMetrics.push(m);
     // 每 30 条打一次（避免 spam）
@@ -2289,14 +2520,17 @@ class RingConnectionImpl {
   }
 
   private flushPendingMetrics() {
+    postLog('JS', `[flushPending] ENTER pending=${this.pendingMetrics?.length ?? 0} queued=${this.metricFlushQueued}`);
     this.metricFlushQueued = false;
     const batch = this.pendingMetrics;
     this.pendingMetrics = null;
-    if (!batch || batch.length === 0) return;
-    console.log('[FLUSH]', `batch=${batch.length} keys=[${batch.map(m=>m.key).join(',')}]`);
+    if (!batch || batch.length === 0) {
+      postLog('JS', `[flushPending] SKIP empty batch`);
+      return;
+    }
     const metrics = { ...this.state.metrics };
-    const availability = { ...this.state.availability };
-    const lastUpdated = { ...this.state.lastUpdated };
+    const availability: Record<string, 'live' | 'syncing' | 'unavailable'> = { ...this.state.availability };
+    const lastUpdated: Record<string, number | null> = { ...this.state.lastUpdated };
     const daily = { ...this.state.daily };
     const dailyHistory = { ...this.state.dailyHistory };
     // 健康一览扩展指标 / 手动测量（血压/ECG）按天归档：extDaily[dateKey][key] = value
@@ -2304,8 +2538,9 @@ class RingConnectionImpl {
     const extDaily = { ...this.state.extDaily };
     const bucketDay = this.bucketDay || (() => {
       const d = new Date();
-      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     })();
+    postLog('JS', `[flushPending] batch=${batch.length} keys=[${batch.map(m=>m.key).join(',')}] bucketDay=${bucketDay}`);
     for (const m of batch) {
       if (CORE_KEYS.includes(m.key as MetricKey)) {
         const k = m.key as MetricKey;
@@ -2408,6 +2643,19 @@ class RingConnectionImpl {
       extDaily,
       lastSyncedAt: Date.now(),
     };
+    // [DIAG] lastUpdated 诊断
+    try {
+      const __nowMs = Date.now();
+      const __lu = this.state.lastUpdated;
+      const __fmt = (k: string) => {
+        const t = (__lu as any)[k];
+        if (!t) return k + '=MISSING';
+        const diff = Math.round((__nowMs - t) / 1000);
+        const h = new Date(t);
+        return k + '=' + h.getHours().toString().padStart(2,'0') + ':' + h.getMinutes().toString().padStart(2,'0') + '(' + diff + 's前)';
+      };
+      postLog('JS', '[FLUSH-LU] ' + __fmt('hr') + ' ' + __fmt('spo2') + ' ' + __fmt('temp') + ' ' + __fmt('eda') + ' ' + __fmt('hrv'));
+    } catch(_e) {}
     // [DIAG] stress/cortisol dailyHistory 状态
     try {
       const ns = dailyHistory['stress']?.length ?? 0;
@@ -2447,6 +2695,7 @@ class RingConnectionImpl {
     this.syncExtendedDaily();
     // 确保「当日」各核心指标日均落档（含 hrv/rr 今天），不依赖跨天瞬间，避免当天被丢
     this.syncDailyFromBuckets();
+
   }
 
   /**
@@ -2469,7 +2718,6 @@ class RingConnectionImpl {
     const hrvDaily = { ...st.hrvDaily };
     const hrDaily = { ...st.hrDaily };
     const availability = { ...st.availability };
-    const lastUpdated = { ...st.lastUpdated };
 
     // 今日 key：优先 bucketDay（与归档同格式 'YYYY-M-D'），未初始化时回退当天
     const today =
@@ -2531,7 +2779,8 @@ class RingConnectionImpl {
         const ck = k as MetricKey;
         if (metrics[ck] == null) metrics[ck] = mean; // 实时值优先，回填值兜底
         if (availability[ck] == null) availability[ck] = 'live';
-        lastUpdated[ck] = last.t;
+        // ★ 完全不碰 lastUpdated！它只由 real-time 流（flushPendingMetrics / applyPatch 实时事件）维护。
+        // syncExtendedDaily 从 backfill 历史取数据，时间戳是旧的，写了会覆盖刚到的 healthGlance 时间。
       }
     }
 
@@ -2606,7 +2855,7 @@ class RingConnectionImpl {
       if (pts.length > 0) dailyHistory[k] = pts;
     }
 
-    this.state = { ...this.state, daily, metrics, dailyHistory, hrvDaily, hrDaily, availability, lastUpdated };
+    this.state = { ...this.state, daily, metrics, dailyHistory, hrvDaily, hrDaily, availability };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2706,8 +2955,15 @@ class RingConnectionImpl {
     getUp: number;
   } | null {
     const todayKey = this.bucketDay || dayKeyOf(Date.now());
+    const todayStart = dayStartMs(Date.now());
     const entries = Object.entries(this.state.sleepDaily)
       .filter(([k]) => k <= todayKey)
+      .filter(([, value]) => value.total > 0)
+      .filter(([k]) => {
+        const [year, month, day] = k.split('-').map(Number);
+        const start = new Date(year, month - 1, day).getTime();
+        return Number.isFinite(start) && todayStart - start <= 2 * DAY_MS;
+      })
       .sort((a, b) => (a[0] < b[0] ? 1 : -1));
     return entries.length ? (entries[0][1] as any) : null;
   }
@@ -2718,7 +2974,8 @@ class RingConnectionImpl {
     // 也会进来加非边界点，这里做硬过滤。
     const d = new Date(now);
     const isBoundary = d.getMinutes() === 0 || d.getMinutes() === 30;
-    const effectiveForce = force && isBoundary; // force 也只在边界生效
+    // ★ force 不再卡 isBoundary：断连重连时 force=true + now=13:10 → boundaryTs=13:00 → 补打 13:00 的点
+    const effectiveForce = force;
     // 清洗今日 statusTimeline：只保留墙钟 :00 / :30 边界的点
     const cleaned = this.state.statusTimeline.filter((p) => {
       const m = new Date(p.t).getMinutes();
@@ -2743,7 +3000,7 @@ class RingConnectionImpl {
         ? hrvRaw
         : null;
     const rhr = this.deriveRHR();
-    const ss = this.state.sleepSummary;
+    const ss = this.state.sleepSummaryDate === dayKey ? this.state.sleepSummary : null;
     let sleepTotal: number | null = ss?.total ?? null;
     let sleepDeep: number | null = ss?.deep ?? null;
     let getUp: number | null = ss?.getUp ?? null;
@@ -2821,10 +3078,10 @@ class RingConnectionImpl {
     if (curve && curve.seed.value != null) {
       // 统一用对齐到 :00/:30 边界的 ts 作为该点 t，并对同边界 t 去重（见 pushStatusPoint）
       const boundaryTs = this.alignBoundaryTs(now);
-      const due =
-        effectiveForce ||
-        this.lastCurveAccumTs == null ||
-        (isBoundary && boundaryTs - this.lastCurveAccumTs >= STATUS_SNAPSHOT_MS);
+      // ★ 去掉 isBoundary 守卫：断连后重连时，即使当前不在边界，也能补打错过的 :00/:30 点
+      // （boundaryTs 是对齐到最近的 :00/:30，pushStatusPoint 按 ts 去重，不会重复）
+      const gap = this.lastCurveAccumTs == null ? Infinity : boundaryTs - this.lastCurveAccumTs;
+      const due = effectiveForce || this.lastCurveAccumTs == null || gap >= STATUS_SNAPSHOT_MS;
       if (due) {
         const sig = this.deriveWindowSignals(now, curve);
         let prev = this.lastTimelineValue() ?? curve.seed.value;
@@ -3032,11 +3289,90 @@ class RingConnectionImpl {
   }
 
   private rebuildHistoricalStatusRunning = false;
+  private _hsDiagCount = 0;
 
+
+  /** 过滤持久化状态里的非法日期 key（如 2083 溢出、NaN-NaN-NaN）。
+   *  遍历所有可能含 dateKey 的 *Daily 字段，删除不符合 YYYY-MM-DD / 2020-2099 的 key。 */
+  private purgeInvalidDateKeys() {
+    const isValid = (k: string) => {
+      const m = k.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!m) return false;
+      const y = Number(m[1]);
+      return y >= 2020 && y <= 2030;
+    };
+    const st = this.state;
+    const patch: any = {};
+    let changed = false;
+    for (const field of ['statusDaily', 'hrvDaily', 'sleepDaily', 'hrDaily', 'spo2Daily', 'tempDaily', 'edaDaily', 'rrDaily', 'stepDaily', 'ecgDaily', 'extDaily']) {
+      const cur = (st as any)[field];
+      if (!cur || typeof cur !== 'object') continue;
+      const cleaned: any = {};
+      for (const [k, v] of Object.entries(cur)) {
+        if (isValid(k)) cleaned[k] = v;
+        else { changed = true; postLog('RingBle', `[purgeInvalidDateKeys] 🗑 丢弃 ${field}[${k}]`); }
+      }
+      if (changed && Object.keys(cur).length !== Object.keys(cleaned).length) {
+        patch[field] = cleaned;
+      }
+    }
+    // statusTimelineByDay 也要清
+    if (st.statusTimelineByDay) {
+      const cleaned: any = {};
+      let tlChanged = false;
+      for (const [k, v] of Object.entries(st.statusTimelineByDay)) {
+        if (isValid(k)) cleaned[k] = v;
+        else { tlChanged = true; postLog('RingBle', `[purgeInvalidDateKeys] 🗑 丢弃 statusTimelineByDay[${k}]`); }
+      }
+      if (tlChanged) patch.statusTimelineByDay = cleaned;
+    }
+    if (Object.keys(patch).length > 0) {
+      this.applyPatch(patch);
+      postLog('RingBle', `[purgeInvalidDateKeys] ✅ 清理完成`);
+    }
+  }
   private rebuildHistoricalStatusImpl() {
     const hrv = this.state.hrvDaily;
     const sleep = this.state.sleepDaily;
-    const days = new Set<string>([...Object.keys(hrv), ...Object.keys(sleep)]);
+    // ★ 过滤非法日期（2083 溢出、NaN-NaN-NaN 等垃圾 key）
+    const isValidDk = (k: string) => {
+      const m = k.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!m) return false;
+      const y = Number(m[1]);
+      return y >= 2020 && y <= 2030;
+    };
+
+    // ★ 近 1 小时全指标诊断：确认断连期间哪些数据源有数据、哪些丢了
+    {
+      const now = Date.now();
+      const oneHourAgo = now - 60 * 60 * 1000;
+      const todayKey2 = dayKeyOf(now);
+      const lastHour: any = {};
+      for (const metric of ['hr', 'hrv', 'eda', 'met', 'steps', 'temp', 'spo2']) {
+        const all = healthStore.getIntraday(metric as any, todayKey2);
+        const recent = all.filter((p: any) => p.t >= oneHourAgo);
+        const last = all.length > 0 ? all[all.length - 1] : null;
+        lastHour[metric] = {
+          totalToday: all.length,
+          lastHourPts: recent.length,
+          lastTs: last ? new Date(last.t).toISOString().slice(11, 19) : null,
+          lastValue: last ? last.v : null,
+        };
+      }
+      const tl = this.state.statusTimeline.filter((p: any) => p.t >= oneHourAgo);
+      const lastPt = tl.length > 0 ? tl[tl.length - 1] : null;
+      const stlDiag = {
+        totalToday: this.state.statusTimeline.length,
+        lastHourPts: tl.length,
+        lastTs: lastPt ? new Date(lastPt.t).toISOString().slice(11, 19) : null,
+        lastValue: lastPt ? lastPt.value : null,
+      };
+      console.log('[近1H诊断]', JSON.stringify({ time: new Date(now).toISOString().slice(11, 19), healthStore: lastHour, statusTimeline: stlDiag }));
+    }
+
+    const days = new Set<string>(
+      [...Object.keys(hrv), ...Object.keys(sleep)].filter(isValidDk)
+    );
     // ★ 今日也参与重建：若今日状态曲线稀疏（典型是当天靠离线回填、App 未在线累积），
     //   用当日回填的 intraday（hr/steps/met/eda）重建到当前时间的 30min 曲线，补全首页「全天状态趋势图」。
     days.add(this.bucketDay);
@@ -3048,11 +3384,36 @@ class RingConnectionImpl {
     let statusTimeline = this.state.statusTimeline;
     let changed = false;
 
+    // ★ 诊断 dump：backfill 后立即检查各数据源是否真有值
+    {
+      const dayList = Array.from(days).sort();
+      const dump = dayList.map((dk) => {
+        const hv = hrv[dk];
+        const sl = sleep[dk];
+        const hsHr = healthStore.getIntraday('hr', dk).length;
+        const hsSteps = healthStore.getIntraday('steps', dk).length;
+        const hsMet = healthStore.getIntraday('met', dk).length;
+        const hsEda = healthStore.getIntraday('eda', dk).length;
+        const hsHrv = healthStore.getIntraday('hrv', dk).length;
+        const sd = this.state.statusDaily[dk];
+        const stl = this.state.statusTimelineByDay[dk]?.length ?? 0;
+        const stlHasVals = this.state.statusTimelineByDay[dk]?.filter(p => p.value > 0).length ?? 0;
+        return { dk, hrv: hv, sleep: sl?.total, hr: hsHr, steps: hsSteps, met: hsMet, eda: hsEda, hrvPts: hsHrv, statusDaily: sd, stlByDay: stl, stlHasVals };
+      });
+      postLog('RingBle', `[rebuildHistoricalStatus] 诊断: ${JSON.stringify(dump)}`);
+      console.log('[STATUS-DIAG]', JSON.stringify(dump, null, 2));
+    }
+
     for (const dk of days) {
       const isToday = dk === todayKey;
       const hv = hrv[dk];
       const sl = sleep[dk];
-      if (!isToday && hv == null && !sl) continue;
+      // ★ 只要 healthStore 有任何 intraday 数据（hr/steps/met），就算没有 hrv/sleep 也重建
+      const hsHr = healthStore.getIntraday('hr', dk).length;
+      const hsSteps = healthStore.getIntraday('steps', dk).length;
+      const hsMet = healthStore.getIntraday('met', dk).length;
+      const hsAny = hsHr + hsSteps + hsMet > 0;
+      if (!isToday && hv == null && !sl && !hsAny) continue;
       const hrvOk =
         hv != null && hv <= ALGO_DEFAULTS.HRV_ARTIFACT_MAX && hv >= ALGO_DEFAULTS.HRV_ARTIFACT_MIN ? hv : null;
       const input: TodayInput = {
@@ -3063,9 +3424,11 @@ class RingConnectionImpl {
           : { sleepTotal: null, sleepDeep: null, getUp: null },
       };
       const seed = computeSeed({ input, history: this.state.statusHistory, cycle, consts: CURVE_DEFAULTS });
+      // ★ seed.value 为 null 时 fallback 到 50（晨间能量基准），确保每天都有一个分
+      const seedVal = seed.value != null && Number.isFinite(seed.value) ? seed.value : 50;
       // 历史日写 statusDaily（今日由 recomputeDailyStatus 用时间线均值覆盖，不在此写）
-      if (!isToday && seed.value != null && Number.isFinite(seed.value) && statusDaily[dk] !== seed.value) {
-        statusDaily = { ...statusDaily, [dk]: seed.value };
+      if (!isToday && statusDaily[dk] !== seedVal) {
+        statusDaily = { ...statusDaily, [dk]: seedVal };
         changed = true;
       }
 
@@ -3073,17 +3436,16 @@ class RingConnectionImpl {
         // 历史日：重建 statusTimelineByDay[dk] —— 全天 30min 曲线
         // 这是历史日详情页的数据源，之前只有"跨午夜那一刻"才会被归档，
         // backfill 历史日完全没反推 → UI 全空！
-        if (seed.value != null && Number.isFinite(seed.value)) {
-          const existing = statusTimelineByDay[dk];
-          // 如果已有归档点（跨午夜那一刻产生的）且 ≥ 12 个点，保留
-          // 如果没有（backfill 历史日）或太少（< 12 点），从 healthStore intraday 重建
-          if (!existing || existing.length < 12) {
-            const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seed.value, cycle);
-            if (rebuilt && rebuilt.length > 0) {
-              statusTimelineByDay = { ...statusTimelineByDay, [dk]: rebuilt };
-              changed = true;
-              postLog('RingBle', `[rebuildHistoricalStatus] ✅ 重建 statusTimelineByDay[${dk}] ${rebuilt.length} 个点`);
-            }
+        // ★ seedVal 已有 fallback 50，无需再检查 seed.value
+        const existing = statusTimelineByDay[dk];
+        // 如果已有归档点（跨午夜那一刻产生的）且 ≥ 12 个点，保留
+        // 如果没有（backfill 历史日）或太少（< 12 点），从 healthStore intraday 重建
+        if (!existing || existing.length < 12) {
+          const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
+          if (rebuilt && rebuilt.length > 0) {
+            statusTimelineByDay = { ...statusTimelineByDay, [dk]: rebuilt };
+            changed = true;
+            postLog('RingBle', `[rebuildHistoricalStatus] ✅ 重建 statusTimelineByDay[${dk}] ${rebuilt.length} 个点`);
           }
         }
       } else {
@@ -3091,7 +3453,6 @@ class RingConnectionImpl {
         // 用当日回填的 intraday 重建全天曲线，补全首页「全天状态趋势图」。
         // 实时已累积出较完整曲线（≥ 12 点）则保留真实累积，不覆盖。
         if (statusTimeline.length < 12) {
-          const seedVal = seed.value != null && Number.isFinite(seed.value) ? seed.value : 50;
           const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
           if (rebuilt && rebuilt.length > 0) {
             // 用新重建的点补到现有时间线后面（或替换为空的时间线），不要直接丢弃已有的实时点
@@ -3274,19 +3635,28 @@ class RingConnectionImpl {
   }
   private async loadSyncFlag() {
     const path = this.syncFlagPath();
-    if (!path) return;
+    if (!path) {
+      this.syncFlagLoaded = true;
+      this.native.setSyncEnabled(this.syncEnabled);
+      return;
+    }
     try {
       const info = await FileSystem.getInfoAsync(path);
-      if (!info.exists) return; // 默认 true
-      const raw = await FileSystem.readAsStringAsync(path);
-      const o = JSON.parse(raw) as { syncEnabled?: boolean };
-      if (typeof o.syncEnabled === 'boolean') {
-        this.syncEnabled = o.syncEnabled;
-        // 恢复即同步给原生，保证 on 连接行为受开关约束
-        this.native.setSyncEnabled(this.syncEnabled);
+      if (info.exists) {
+        const raw = await FileSystem.readAsStringAsync(path);
+        const o = JSON.parse(raw) as { syncEnabled?: boolean };
+        if (typeof o.syncEnabled === 'boolean') {
+          this.syncEnabled = o.syncEnabled;
+        }
       }
     } catch {
       /* 损坏则忽略，回落默认 true */
+    } finally {
+      this.syncFlagLoaded = true;
+      // 原生默认关闭，等持久化开关加载完成后再放行连接回填，避免启动竞态。
+      healthStore.syncEnabled = this.syncEnabled;
+      this.native.setSyncEnabled(this.syncEnabled);
+      if (this.syncEnabled && this.state.status === 'connected') this.syncBackfill();
     }
   }
   private async persistSyncFlag() {
@@ -3557,6 +3927,9 @@ class RingConnectionImpl {
       this.applyPatch(patch);
       // ★ 载入/迁移 healthStore（v2 单一数据源）：优先直接 loadV2；否则用旧 v1 快照迁移
       await this.loadHealthStoreFromDisk(snap);
+      // 独立同步开关优先于健康数据快照中的旧副本；若开关文件尚未加载，
+      // loadSyncFlag 的 finally 会在完成后再次写回正确值。
+      if (this.syncFlagLoaded) healthStore.syncEnabled = this.syncEnabled;
       // reconcile：把恢复的「当日」时间槽反推回各自 *Daily（即使戒指尚未重连，最后活跃日也不丢）
       this.syncDailyFromBuckets();
       postLog('RingBle', '已从本地持久化恢复真实数据（跨 ⌘R 保留趋势曲线）');
@@ -3618,6 +3991,7 @@ class RingConnectionImpl {
       history: { ...EMPTY_HISTORY },
       lastUpdated: { ...DEFAULT_LAST_UPDATED },
       sleepStages: null,
+      sleepStagesDaily: {},
       sleepSummary: null,
       sleepTime: null,
       wakeTime: null,
@@ -3895,6 +4269,8 @@ class RingConnectionImpl {
    */
   setSyncEnabled(v: boolean) {
     this.syncEnabled = v;
+    this.syncFlagLoaded = true;
+    healthStore.syncEnabled = v;
     // 同步给原生：on 连接时 backfill 也受此开关约束（原生 markReadyAndStartIfNeeded → backfill 会自检 syncEnabled）
     this.native.setSyncEnabled(v);
     // 独立落盘，确保即便 App 随后被 ⌘R 也不会丢设置（不依赖快照是否有数据）。

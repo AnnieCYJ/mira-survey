@@ -72,6 +72,74 @@ function cycleAdviceItem(cs: CurveStatus | null): ListItem {
   }
 }
 
+
+function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress }: {
+  title: string; subtitle: string; accent: string; icon: import('../components/Icon').IconName; value: string; unit: string; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
+      <Card padded={true} style={styles.energyMini}>
+        <View style={[styles.energyMiniIcon, { backgroundColor: accent + '1A' }]}>
+          <Icon name={icon} size={theme.fs(16)} color={accent} />
+        </View>
+        <View style={styles.energyMiniMid}>
+          <Text style={styles.energyMiniTitle}>{title}</Text>
+          <Text style={styles.energyMiniSub}>{subtitle}</Text>
+        </View>
+        <View style={styles.energyMiniRight}>
+          <Text style={[styles.energyMiniVal, { color: accent }]}>{value}</Text>
+          <Text style={styles.energyMiniUnit}>{unit}</Text>
+        </View>
+        <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} />
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+
+function EnergyRowData({ ring, onNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void }) {
+  // 情绪: 今日压力事件数
+  const stress = (() => {
+    try {
+      const h = ring?.healthStore?.hourly ?? {};
+      const dk = `${new Date().getFullYear()}-${new Date().getMonth()+1}-${new Date().getDate()}`;
+      const today = h[dk] ?? {};
+      const count = Object.values(today).filter((m: any) => m?.snsActivation > 0.7).length;
+      return count > 0 ? String(count) : '—';
+    } catch { return '—'; }
+  })();
+
+  // 脑力: 认知负荷峰值 (暂取 ring.cognitiveLoadScore)
+  const cognitive = ring?.cognitiveLoadScore != null ? String(ring.cognitiveLoadScore) : '—';
+
+  // 运动: 今日步数
+  const step = (() => {
+    const dk = `${new Date().getFullYear()}-${new Date().getMonth()+1}-${new Date().getDate()}`;
+    const s = ring?.stepDaily?.[dk]?.steps;
+    return s ? s.toLocaleString('zh-CN') : '—';
+  })();
+
+  return (
+    <View style={styles.energyCol}>
+      <EnergyMiniCard
+        title="情绪消耗" subtitle="压力事件" accent={theme.colors.stateTense}
+        icon="heart" value={stress} unit="次"
+        onPress={() => onNav('emotion')}
+      />
+      <EnergyMiniCard
+        title="脑力消耗" subtitle="认知负荷" accent={theme.colors.accentSolid}
+        icon="mind" value={cognitive} unit="/100"
+        onPress={() => onNav('cognitive')}
+      />
+      <EnergyMiniCard
+        title="运动消耗" subtitle="今日步数" accent={theme.colors.stateEnergy}
+        icon="activity" value={step} unit="步"
+        onPress={() => onNav('activity')}
+      />
+    </View>
+  );
+}
+
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <View style={styles.legendItem}>
@@ -177,6 +245,10 @@ export default function TodayScreen() {
           </Card>
         </TouchableOpacity>
 
+
+        {/* 情绪消耗 / 脑力消耗 / 运动消耗 */}
+        <EnergyRowData ring={ring} onNav={(type) => navigation.navigate('EnergyDetail', { type })} />
+
         <View style={styles.adviceWrap}>
           <ListCard title="今日建议" items={ADVICE} />
         </View>
@@ -267,6 +339,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   trendCard: { marginTop: theme.space.md, marginBottom: theme.space.lg },
+
+  energyCol: { gap: theme.space.sm, marginTop: theme.space.md },
+  energyMini: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.space.sm,
+    borderRadius: theme.radius.md,
+  },
+  energyMiniIcon: {
+    width: theme.sp(10), height: theme.sp(10), borderRadius: theme.radius.pill,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  energyMiniMid: { flex: 1 },
+  energyMiniTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  energyMiniSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  energyMiniRight: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+  energyMiniVal: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any },
+  energyMiniUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+
   adviceWrap: { marginTop: theme.space.md },
   cardTitle: {
     fontSize: theme.fontSize.card,

@@ -17,6 +17,7 @@
  *   - sleepDaily   每日睡眠摘要 (healthStore.getSleep)
  *   - edaDaily     每日 EDA 平均水平 (healthStore / ring.history.eda 聚合)
  */
+import { estrogenForDate } from './cycleMath';
 
 import { detectThermalShift, tempDailyToSeries, dayKey, daysBetween, parseDate, addDays } from './cycleMath';
 
@@ -144,7 +145,7 @@ export function inferHormones(
   const rhrLutealElevated = rhrDelta != null && rhrDelta >= 2.0;  // 孕酮使 RHR 升高 ≥2 bpm
 
   // 黄体酮状态判断
-  let progStatus: HormoneStatus = 'insufficient';
+  let progStatus: HormoneStatus;
   let progScore: number | null = null;
   let progLevel: 'follicular' | 'luteal' | 'unknown' = 'unknown';
 
@@ -168,6 +169,14 @@ export function inferHormones(
     progLevel = cycleRef.phase === 'luteal' ? 'luteal' : 'follicular';
     progScore = Math.round(clamp01(rhrDelta / 5.0) * 100);  // 5 bpm 差 ≈ 100 分
     progStatus = rhrLutealElevated ? 'normal' : 'low';
+  } else if (daysWithTemp < 10 && daysWithHRV < 10) {
+    // 数据不够 10 天 — 用周期相位给参考值
+    const phase = cycleRef?.phase ?? 'follicular';
+    if (phase === 'period') { progScore = 15; progStatus = 'reference'; progLevel = 'unknown'; }
+    else if (phase === 'follicular') { progScore = 25; progStatus = 'reference'; progLevel = 'follicular'; }
+    else if (phase === 'ovulation') { progScore = 20; progStatus = 'reference'; progLevel = 'unknown'; }
+    else if (phase === 'luteal') { progScore = 70; progStatus = 'reference'; progLevel = 'luteal'; }
+    else { progScore = 35; progStatus = 'reference'; progLevel = 'unknown'; }
   } else {
     progStatus = 'insufficient';
   }
@@ -211,8 +220,18 @@ export function inferHormones(
     if (l.length >= 3) edaLuteal = mean(l.map(p => p.eda!));
   }
 
-  let e2Status: HormoneStatus = 'insufficient';
-  let e2Score: number | null = null;
+  let e2Status: HormoneStatus;
+  let e2Score: number | null;
+
+  if (daysWithHRV < 10) {
+    // 数据不够 — 用 cycleMath 的双峰模型给参考值
+    const e2Ref = estrogenForDate(cycleRef, new Date());
+    e2Score = e2Ref != null ? Math.round(e2Ref) : 40;
+    e2Status = 'reference';
+  } else {
+    e2Score = null;
+    e2Status = 'insufficient';
+  }
   let e2Trend: 'rising' | 'falling' | 'flat' | 'unknown' = 'unknown';
 
   if (daysWithHRV >= 10 && hrvFollicular != null) {

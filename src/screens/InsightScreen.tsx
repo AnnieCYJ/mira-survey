@@ -19,7 +19,9 @@ import Card from '../components/Card';
 import ExamTab from '../components/ExamTab';
 import BloodComponentPanel from '../components/BloodComponentPanel';
 import StressInsightCard from '../components/StressInsightCard';
+import EmotionCard from '../components/EmotionCard';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
+import CortisolRhythmCard from '../components/CortisolRhythmCard';
 import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
@@ -203,6 +205,7 @@ export default function InsightScreen() {
               </>
             )}
             {tab === 'sleep' && (
+              <>
               <SleepStructureCard
                 segments={ring.sleepStages}
                 summary={ring.sleepSummary}
@@ -214,9 +217,13 @@ export default function InsightScreen() {
                 fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
                 onPress={() => navigation.navigate('SleepDetail')}
               />
+              <CortisolRhythmCard />
+              </>
             )}
             {tab === 'mind' && (
               <>
+                <EmotionCard ring={ring} />
+                <View style={{ height: 16 }} />
                 <StressInsightCard />
                 <View style={{ height: 16 }} />
                 <CognitiveLoadCard />

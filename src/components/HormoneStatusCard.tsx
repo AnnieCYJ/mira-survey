@@ -6,9 +6,11 @@
  */
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Polyline, Circle, Path as SvgPath } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { inferHormones, collectDailyPhysio, type HormoneInference } from '../lib/hormoneInference';
-import type { CycleLog, CycleInfo } from '../lib/cycleMath';
+import { modelProgesteroneCurve, modelEstrogenCurve, type CycleLog, type CycleInfo } from '../lib/cycleMath';
+
 
 function statusLabel(s: string | null | undefined): string {
   switch (s) {
@@ -17,6 +19,7 @@ function statusLabel(s: string | null | undefined): string {
     case 'low': return '偏低';
     case 'inconclusive': return '待确认';
     case 'insufficient': return '数据不够';
+    case 'reference': return '参考值';
     default: return '—';
   }
 }
@@ -28,8 +31,51 @@ function statusColor(s: string | null | undefined): string {
     case 'low': return theme.colors.stateTense;
     case 'inconclusive': return theme.colors.accentSolid;
     case 'insufficient': return theme.colors.textSub;
+    case 'reference': return theme.colors.accentSolid;
     default: return theme.colors.textSub;
   }
+}
+
+
+function ProgSparkline({ dayInCycle, cycleLog, status }: { dayInCycle: number | null; cycleLog: CycleLog | null; status: string }) {
+  if (!cycleLog) return null;
+  const pts = modelProgesteroneCurve({
+    cycleLength: cycleLog.cycleLength,
+    ovulationDay: cycleLog.cycleLength - cycleLog.lutealLength,
+    periodLength: cycleLog.periodLength,
+  });
+  return <Sparkline pts={pts} dayInCycle={dayInCycle} color={theme.colors.stateTense} status={status} />;
+}
+
+function E2Sparkline({ dayInCycle, cycleLog, status }: { dayInCycle: number | null; cycleLog: CycleLog | null; status: string }) {
+  if (!cycleLog) return null;
+  const pts = modelEstrogenCurve({
+    cycleLength: cycleLog.cycleLength,
+    ovulationDay: cycleLog.cycleLength - cycleLog.lutealLength,
+    periodLength: cycleLog.periodLength,
+  });
+  return <Sparkline pts={pts} dayInCycle={dayInCycle} color={theme.colors.accentSolid} status={status} />;
+}
+
+function Sparkline({ pts, dayInCycle, color, status }: { pts: { day: number; value: number }[]; dayInCycle: number | null; color: string; status: string }) {
+  const W = 260, H = 36, padL = 8, padR = 8;
+  const N = pts.length;
+  const xAt = (d: number) => padL + (W - padL - padR) * ((d - 1) / (N - 1));
+  const yAt = (v: number) => H - 4 - (H - 8) * (v / 100);
+  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(p.day).toFixed(1)},${yAt(p.value).toFixed(1)}`).join(' ');
+  const todayX = dayInCycle != null ? xAt(Math.min(N, Math.max(1, dayInCycle))) : null;
+  const todayY = dayInCycle != null ? yAt(pts[Math.min(N - 1, Math.max(0, dayInCycle - 1))].value) : null;
+  const isRef = status === 'reference';
+  return (
+    <View style={{ marginTop: 4 }}>
+      <Svg width={W} height={H}>
+        <SvgPath d={path} fill="none" stroke={color} strokeWidth={isRef ? 1.5 : 2} opacity={isRef ? 0.6 : 1} />
+        {todayX != null && todayY != null && (
+          <Circle cx={todayX} cy={todayY} r={3} fill={color} />
+        )}
+      </Svg>
+    </View>
+  );
 }
 
 export default function HormoneStatusCard({
@@ -71,8 +117,8 @@ export default function HormoneStatusCard({
   // 数据质量提示
   const qOk = dataQuality.daysWithTemp >= 10 || dataQuality.daysWithHRV >= 10;
   const qLabel = qOk
-    ? `数据: ${dataQuality.daysWithTemp} 天体温 / ${dataQuality.daysWithHRV} 天 HRV`
-    : `数据累积中: 体温 ${dataQuality.daysWithTemp}/10 · HRV ${dataQuality.daysWithHRV}/10`;
+    ? `体温 ${dataQuality.daysWithTemp}d · HRV ${dataQuality.daysWithHRV}d`
+    : `体温 ${dataQuality.daysWithTemp}/10 · HRV ${dataQuality.daysWithHRV}/10`;
 
   return (
     <View style={styles.wrap}>
@@ -93,7 +139,7 @@ export default function HormoneStatusCard({
         </View>
 
         {progesterone.score != null && (
-          <View style={styles.scoreBar}>
+          <View style={[styles.scoreBar, progesterone.status === "reference" || estradiol.status === "reference" ? { opacity: 0.6 } : null]}>
             <View style={[styles.scoreFill, { width: progesterone.score + '%', backgroundColor: theme.colors.stateTense }]} />
           </View>
         )}
@@ -101,7 +147,7 @@ export default function HormoneStatusCard({
           <Text style={styles.scoreNum}>{progesterone.score}/100 </Text>
         )}
 
-        <View style={styles.metaRow}>
+        <View style={[styles.metaRow, { flexWrap: 'wrap' }]}>
           {progesterone.bbtConfirmed ? (
             <Text style={styles.metaItem}>✅ 体温出现了双相跳升（有排卵）</Text>
           ) : (
@@ -115,7 +161,9 @@ export default function HormoneStatusCard({
           )}
         </View>
 
-        <Text style={styles.srcLabel}>来源: 体温 + 心率 (体温双相法)</Text>
+        {/* mini sparkline */}
+        <ProgSparkline dayInCycle={cycleInfo?.dayInCycle} cycleLog={cycleLog} status={progesterone.status} />
+        <Text style={styles.srcLabel}>方法: 体温 + 心率</Text>
       </View>
 
       {/* 雌二醇 */}
@@ -130,7 +178,7 @@ export default function HormoneStatusCard({
         </View>
 
         {estradiol.score != null && (
-          <View style={styles.scoreBar}>
+          <View style={[styles.scoreBar, progesterone.status === "reference" || estradiol.status === "reference" ? { opacity: 0.6 } : null]}>
             <View style={[styles.scoreFill, { width: estradiol.score + '%', backgroundColor: theme.colors.accentSolid }]} />
           </View>
         )}
@@ -138,7 +186,7 @@ export default function HormoneStatusCard({
           <Text style={styles.scoreNum}>{estradiol.score}/100 </Text>
         )}
 
-        <View style={styles.metaRow}>
+        <View style={[styles.metaRow, { flexWrap: 'wrap' }]}>
           {estradiol.hrvDipDetected ? (
             <Text style={styles.metaItem}>✅ 排卵前心率下降信号</Text>
           ) : (
@@ -149,7 +197,9 @@ export default function HormoneStatusCard({
           )}
         </View>
 
-        <Text style={styles.srcLabel}>来源: 心率波动 (Frontiers 2021)</Text>
+        {/* mini sparkline */}
+        <E2Sparkline dayInCycle={cycleInfo?.dayInCycle} cycleLog={cycleLog} status={estradiol.status} />
+        <Text style={styles.srcLabel}>方法: 心率波动</Text>
       </View>
 
       {/* 整体周期状态 */}
@@ -194,12 +244,12 @@ export default function HormoneStatusCard({
             <Text key={i} style={styles.flagItem}>• {f}</Text>
           ))
         ) : (
-          <Text style={styles.flagItem}>卵泡期和黄体期心率变化正常</Text>
+          <Text style={styles.flagItem}>跨周期心率变化正常</Text>
         )}
       </View>
 
       <Text style={styles.disclaimer}>
-        ⚠️ 戒指不能直接测激素，这是根据体温和心率变化推算的结果，不是临床诊断。
+        ⚠️ 戒指不能直接测激素, 这是根据生理信号推算的结果, 不是临床诊断。
       </Text>
     </View>
   );
@@ -214,9 +264,9 @@ const styles = StyleSheet.create({
     padding: theme.space.cardPad,
     marginTop: theme.space.sm,
   },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.sm },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.sm, flexWrap: 'wrap' },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
-  dataQ: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  dataQ: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, flexShrink: 1, maxWidth: '55%', textAlign: 'right' },
 
   hormoneRow: {
     backgroundColor: theme.colors.cardBgSoft,
@@ -224,8 +274,8 @@ const styles = StyleSheet.create({
     padding: theme.space.sm,
     marginBottom: theme.space.sm,
   },
-  hormoneHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1) },
-  hormoneName: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  hormoneHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1), flexWrap: 'wrap' },
+  hormoneName: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, flexShrink: 1 },
   statusChip: { paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill },
   statusText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
 
@@ -234,7 +284,7 @@ const styles = StyleSheet.create({
   scoreNum: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.sp(1), gap: theme.sp(1) },
-  metaItem: { fontSize: theme.fontSize.micro, color: theme.colors.textBody, marginRight: theme.sp(1) },
+  metaItem: { fontSize: theme.fontSize.micro, color: theme.colors.textBody, marginRight: theme.sp(1), flexShrink: 1 },
 
   srcLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontStyle: 'italic', marginTop: theme.sp(1) },
 

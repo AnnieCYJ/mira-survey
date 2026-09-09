@@ -120,7 +120,7 @@ export default function BodyCompositionHistoryScreen() {
                       <View style={styles.metricCell} key={m.key}>
                         <Text style={styles.metricName}>{m.name}</Text>
                         <View style={styles.metricValRow}>
-                          <Text style={styles.metricVal}>{fmtMetric(m)}</Text>
+                          <Text style={styles.metricVal} numberOfLines={1}>{fmtMetric(m)}</Text>
                           {m.unit ? <Text style={styles.metricUnit}>{m.unit}</Text> : null}
                         </View>
                         {m.status !== 'info' ? (

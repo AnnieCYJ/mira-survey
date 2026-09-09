@@ -5,24 +5,24 @@ import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
-function fmtRange(span: { startHour: number; endHour: number }): string {
+export function fmtRange(span: { startHour: number; endHour: number }): string {
   const s = String(span.startHour).padStart(2, '0');
   const e = String(span.endHour + 1).padStart(2, '0');
   return s + ':00 – ' + e + ':00';
 }
 
-function loadColor(l: LoadLevel): string {
+export function loadColor(l: LoadLevel): string {
   return l === 'heavy' ? theme.colors.danger
     : l === 'moderate' ? theme.colors.stateTense
     : theme.colors.stateCalm;
 }
-function fatigueColor(l: FatigueLevel): string {
+export function fatigueColor(l: FatigueLevel): string {
   return l === 'severe' ? theme.colors.danger
     : l === 'moderate' ? theme.colors.stateTense
     : l === 'mild' ? theme.colors.moodEnergy
     : theme.colors.stateCalm;
 }
-function loadLabel(l: LoadLevel): string {
+export function loadLabel(l: LoadLevel): string {
   return l === 'heavy' ? '高强度投入'
     : l === 'moderate' ? '中等投入'
     : l === 'light' ? '轻度投入'
@@ -170,30 +170,26 @@ export default function CognitiveLoadCard() {
   );
 }
 
-function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow }: {
+export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH }: {
   hourly: { hour: number; score: number }[];
   peakSpan: { startHour: number; endHour: number; avgScore: number } | null;
   bestSpan: { startHour: number; endHour: number; avgScore: number } | null;
   sleepWindow: { bedHour: number; wakeHour: number } | null;
 }) {
-  // 动态过滤: 排除睡眠时段
-  // sleepWindow = { bedHour, wakeHour }
-  //   - 如果 bedHour > wakeHour (比如 bed=23, wake=7): 睡眠 = [23,24) + [0,7)
-  //   - 如果 bedHour < wakeHour (比如 bed=1, wake=7):   睡眠 = [1,7)
-  function isAsleep(hour: number, sw: { bedHour: number; wakeHour: number } | null): boolean {
-    if (!sw) return false;
-    if (sw.bedHour < sw.wakeHour) return hour >= sw.bedHour && hour < sw.wakeHour;
-    return hour >= sw.bedHour || hour < sw.wakeHour;
-  }
+  // ★ 展示范围 = 起床 → 入睡（含入睡那一小时）。
+  // 例: wake=10 bed=1 → 展示 10,11,12,...,0,1
+  // 例: wake=7  bed=23 → 展示 7,8,...,23
   const sw = sleepWindow;
-  const defaultWake = sw ? sw.wakeHour : 6;
-  const defaultBed = sw ? (sw.bedHour < sw.wakeHour ? 24 : sw.bedHour) : 24;
-  // 默认 fallback: 没 sleepWindow 时显示 wakeHour~24 (06-24)
-  const visible = hourly.filter(h => {
-    if (sw && isAsleep(h.hour, sw)) return false;
-    if (!sw && h.hour < defaultWake) return false;
-    return h.score > 0;  // 只保留有真实数据的小时
-  });
+  const wake = sw ? sw.wakeHour : 6;
+  const bed = sw ? sw.bedHour : 24;
+  // 展示范围 = 起床 → 入睡 (含入睡那一小时, 不含睡眠时段)
+  // bed > wake (夜间睡, 22睡7起): awake = 7..22
+  // bed < wake (凌晨睡, 1睡10起): awake = 10..23 (bed在凌晨已过, 全天清醒)
+  const inAwakeWindow = (h: number) => {
+    if (bed > wake) return h >= wake && h <= bed;
+    return h >= wake;
+  };
+  const visible = hourly.filter(h => inAwakeWindow(h.hour));
   const totalBins = visible.length;
 
   // hour -> visible index 映射 (span 高亮层用)
@@ -215,12 +211,16 @@ function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow }: {
     };
   }
 
+  const wrapH = chartH && chartH > 80 ? chartH - 60 : theme.sp(10);
+  const barsH = Math.max(theme.sp(6), wrapH - theme.sp(3));
+
   return (
-    <View style={styles.histogramWrap}>
-      <View style={styles.histogram}>
+    <View style={[styles.histogramWrap, { height: wrapH + theme.sp(4) }]}>
+      <View style={[styles.histogram, { height: barsH }]}>
         {visible.map((h) => {
           const hVal = Math.max(0, Math.min(dataMax, h.score));
-          const barH = hVal === 0 ? theme.sp(0.5) : Math.max(theme.sp(1.5), (hVal / dataMax) * theme.sp(7));
+          const maxBarH = Math.max(theme.sp(7), barsH - theme.sp(1));
+          const barH = hVal === 0 ? theme.sp(0.5) : Math.max(theme.sp(1.5), (hVal / dataMax) * maxBarH);
           const barColor = hVal === 0 ? theme.colors.ui.borderSoft
             : hVal >= dataMax * 0.65 ? theme.colors.danger
             : hVal >= dataMax * 0.40 ? theme.colors.stateTense

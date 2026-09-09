@@ -13,23 +13,28 @@
  *  - 全部使用真实数据，缺口留空（不编造）；无任何数据时诚实显示占位引导。
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent, Pressable} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Rect, Line, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Rect, Line, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type RingState, type SleepSummary } from '../ble/RingBleManager';
+import { RingBle, type RingState, type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
+import SleepStageChart from '../components/SleepStageChart';
+import { startOfDay, startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 
+// ★ 柱状图 SVG 只负责画柱子、网格线、渐变；所有文字都用 HTML（参考 MetricDetailScreen）
 const W = 680;
-const H = 320;
-const PAD_L = 16;
-const PAD_R = 16;
-const PAD_T = 22;
-const PAD_B = 40;
+const H = 280;          // 纯绘图区高度（不含文字区）
+const PAD_L = 10;       // 绘图区左边界
+const PAD_R = 10;       // 绘图区右边界
+const PAD_T = 14;       // 顶部留白
+const PAD_B = 10;       // 底部留白
+const Y_GUT = 36;       // ★ 左侧 Y 轴刻度列宽度（HTML Text）
+const X_AXIS_H = 48;    // ★ 底部 X 轴标签区高度（HTML Text，两行）
 
 interface DayRec {
   total: number;
@@ -47,8 +52,9 @@ function parseKey(k: string): Date | null {
 
 function fmtDur(min: number): string {
   if (!Number.isFinite(min) || min <= 0) return '—';
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
+  let h = Math.floor(min / 60);
+  let m = Math.round(min % 60);
+  if (m >= 60) { h += 1; m -= 60; }  // ★ 进位：避免 "9h60m"
   if (h > 0) return m > 0 ? `${h}h${m}m` : `${h}h`;
   return `${m}m`;
 }
@@ -104,6 +110,11 @@ export default function SleepDetailScreen() {
   const [range, setRange] = useState<RangeKey>('week');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
+  const [selectedBar, setSelectedBar] = useState<number | null>(null);
+
+  // ★ key 格式必须与 RingBleManager.dayKeyOf 一致 (YYYY-MM-DD 补零)，否则 sleepDaily map 永远匹配不上
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   useEffect(() => {
     const off = RingBle.onState(setRing);
@@ -112,7 +123,20 @@ export default function SleepDetailScreen() {
 
   const sleepDaily = ring.sleepDaily ?? {};
 
+/** ★ 生成 N+1 个均匀分布在 [start, end] 时间域上的 X 轴刻度（和 MetricDetail 一致） */
+function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFirst: boolean, isLast: boolean) => string): string[] {
+  const labels: string[] = [];
+  const t0 = start.getTime();
+  const t1 = end.getTime();
+  for (let i = 0; i <= N; i++) {
+    const d = new Date(t0 + (t1 - t0) * (i / N));
+    labels.push(fmt(d, i === 0, i === N));
+  }
+  return labels;
+}
+
   const { bars, axisLabels, current, avg, best, deepAvg, remAvg, scoreAvg, hasData } = useMemo(() => {
+
     const recs = toRecords(sleepDaily);
     const empty = {
       bars: [] as (number | null)[],
@@ -127,93 +151,106 @@ export default function SleepDetailScreen() {
     };
     if (recs.length === 0) return empty;
 
-    // 以 anchor 为基准筛出窗口内的记录
-    const dayKeyOf2 = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    const inWindow = (r: { key: string; date: Date; rec: DayRec }): boolean => {
-      if (range === 'day') {
-        const lo = new Date(anchor); lo.setHours(0,0,0,0); lo.setDate(anchor.getDate()-13);
-        const hi = new Date(anchor); hi.setHours(0,0,0,0);
-        return r.date.getTime() >= lo.getTime() && r.date.getTime() <= hi.getTime();
-      }
-      if (range === 'week') {
-        const monday = new Date(anchor); const dow=(anchor.getDay()+6)%7; monday.setDate(anchor.getDate()-dow); monday.setHours(0,0,0,0);
-        const lo = new Date(monday); lo.setDate(monday.getDate()-9*7);
-        return r.date.getTime() >= lo.getTime() && r.date.getTime() <= monday.getTime()+86400000-1;
-      }
-      const y = anchor.getFullYear();
-      const m0 = range === 'month' ? anchor.getMonth() : 0;
-      const lo = new Date(y, m0, 1);
-      const hi = range === 'month' ? new Date(y, m0+1, 0) : new Date(y, 11, 31);
-      return r.date.getTime() >= lo.getTime() && r.date.getTime() <= hi.getTime();
-    };
-    const win = recs.filter(inWindow);
-    const winRecs = win.length ? win : recs;
 
-    if (range === 'day') {
-      const lo = new Date(anchor); lo.setHours(0,0,0,0); lo.setDate(anchor.getDate()-13);
+
+    // 通用：[startDate, endDate] 区间内每天一根柱子
+    const dailyBars = (start: Date, end: Date, labelFn: (d: Date, isFirst: boolean, isLast: boolean) => string): {
+      vals: (number | null)[]; labels: string[];
+      current: number | null; avg: number | null; best: number | null;
+      deepAvg: number | null; remAvg: number | null; scoreAvg: number | null;
+      hasData: boolean;
+    } => {
+      const win = recs.filter((r) => r.date.getTime() >= start.getTime() && r.date.getTime() <= end.getTime());
+      const map = new Map(win.map((r) => [r.key, r.rec]));
+      // 生成日期序列
       const keys: string[] = [];
-      for (let i = 13; i >= 0; i--) { const d = new Date(lo); d.setDate(lo.getDate()+i); keys.push(dayKeyOf2(d)); }
-      const map = new Map(winRecs.map((r) => [r.key, r.rec]));
+      const cur = new Date(start); cur.setHours(0, 0, 0, 0);
+      const endNorm = new Date(end); endNorm.setHours(0, 0, 0, 0);
+      while (cur.getTime() <= endNorm.getTime()) {
+        keys.push(dayKey(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
       const vals = keys.map((k) => (map.has(k) ? (map.get(k)!.total as number) : null));
-      const labels = keys.map((k) => { const d = parseKey(k); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ''; });
+      const labels = keys.map((k, i) => {
+        const d = parseKey(k);
+        if (!d) return '';
+        return labelFn(d, i === 0, i === keys.length - 1);
+      });
+      // 统计指标只用有数据的天
+      const validRecs = keys.map((k) => map.get(k)).filter((r): r is DayRec => r != null);
       return {
-        bars: vals, axisLabels: labels, current: lastNonNull(vals), avg: meanOf(vals), best: maxOf(vals),
-        deepAvg: meanOf(winRecs.slice(-14).map((r) => (r.rec.total > 0 ? (r.rec.deep / r.rec.total) * 100 : null))),
-        remAvg: meanOf(winRecs.slice(-14).map((r) => (r.rec.total > 0 ? (r.rec.rem / r.rec.total) * 100 : null))),
-        scoreAvg: meanOf(winRecs.slice(-14).map((r) => (r.rec.score != null ? r.rec.score : null))),
+        vals, labels,
+        current: lastNonNull(vals), avg: meanOf(vals), best: maxOf(vals),
+        deepAvg: meanOf(validRecs.map((r) => (r.total > 0 ? (r.deep / r.total) * 100 : null))),
+        remAvg: meanOf(validRecs.map((r) => (r.total > 0 ? (r.rem / r.total) * 100 : null))),
+        scoreAvg: meanOf(validRecs.map((r) => (r.score != null ? r.score : null))),
         hasData: vals.some((v) => v != null),
       };
+    };
+
+    if (range === 'day') {
+      // 近 14 天，每天一根柱子
+      const end = new Date(anchor); end.setHours(0, 0, 0, 0);
+      const start = new Date(end); start.setDate(end.getDate() - 13);
+      const res = dailyBars(start, end, (d) => `${d.getMonth() + 1}/${d.getDate()}`);
+      return { bars: res.vals, axisLabels: res.labels, current: res.current, avg: res.avg, best: res.best, deepAvg: res.deepAvg, remAvg: res.remAvg, scoreAvg: res.scoreAvg, hasData: res.hasData };
     }
 
     if (range === 'week') {
-      const weeks: { start: Date; vals: number[]; deep: number[]; rem: number[]; score: number[] }[] = [];
-      const getWeekIdx = (d: Date) => { const monday = new Date(d); const dow=(d.getDay()+6)%7; monday.setDate(d.getDate()-dow); monday.setHours(0,0,0,0); return monday.getTime(); };
-      const byWeek = new Map<number, typeof weeks[number]>();
-      for (const r of winRecs) {
-        const wid = getWeekIdx(r.date);
-        if (!byWeek.has(wid)) { const start = new Date(wid); byWeek.set(wid, { start, vals: [], deep: [], rem: [], score: [] }); }
-        const b = byWeek.get(wid)!;
-        b.vals.push(r.rec.total);
-        if (r.rec.total > 0) { b.deep.push((r.rec.deep / r.rec.total) * 100); b.rem.push((r.rec.rem / r.rec.total) * 100); }
-        if (r.rec.score != null) b.score.push(r.rec.score);
-      }
-      const monday = new Date(anchor); const dow=(anchor.getDay()+6)%7; monday.setDate(anchor.getDate()-dow); monday.setHours(0,0,0,0);
-      const startLo = new Date(monday); startLo.setDate(monday.getDate()-9*7);
-      const sorted = Array.from(byWeek.values()).filter((w) => w.start.getTime() >= startLo.getTime() && w.start.getTime() <= monday.getTime()).sort((a,b)=>a.start.getTime()-b.start.getTime());
-      const last = sorted.slice(-10);
-      const vals = last.map((wk) => (wk.vals.length ? wk.vals.reduce((a,b)=>a+b,0)/wk.vals.length : null));
-      const labels = last.map((wk) => `${wk.start.getMonth()+1}/${wk.start.getDate()}`);
-      return {
-        bars: vals, axisLabels: labels, current: lastNonNull(vals), avg: meanOf(vals), best: maxOf(vals),
-        deepAvg: meanOf(last.flatMap((wk) => wk.deep)), remAvg: meanOf(last.flatMap((wk) => wk.rem)), scoreAvg: meanOf(last.flatMap((wk) => wk.score)),
-        hasData: vals.some((v) => v != null),
-      };
+      // ★ 自然周：和 DateAnchorPicker 统一（startOfWeek~endOfWeek，周一~周日）
+      const start = startOfWeek(anchor);
+      const end = endOfWeek(anchor);
+      const res = dailyBars(start, end, (d) => {
+        const days = ['日', '一', '二', '三', '四', '五', '六'];
+        return `${days[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+      });
+      // ★ axisLabels: 7 个均匀分布刻度（和柱子数量解耦）
+      // ★ axisLabels: 7 个刻度，格式 M/D（和 MetricDetail 一致）
+      const weekLabels = buildAxisLabels(start, end, 6, (d) => `${d.getMonth() + 1}/${d.getDate()}`);
+      return { bars: res.vals, axisLabels: weekLabels, current: res.current, avg: res.avg, best: res.best, deepAvg: res.deepAvg, remAvg: res.remAvg, scoreAvg: res.scoreAvg, hasData: res.hasData };
     }
 
-    // month / year：以 anchor 所在自然月 / 年 聚合
-    const y = anchor.getFullYear();
-    const m0 = range === 'month' ? anchor.getMonth() : 0;
-    const lo = new Date(y, m0, 1);
-    const hi = range === 'month' ? new Date(y, m0+1, 0) : new Date(y, 11, 31);
-    const buckets: { prefix: string; label: string; vals: number[]; deep: number[]; rem: number[]; score: number[] }[] = [];
-    const byMonth = new Map<string, (typeof buckets)[number]>();
-    for (const r of winRecs) {
-      if (r.date.getTime() < lo.getTime() || r.date.getTime() > hi.getTime()) continue;
+    if (range === 'month') {
+      // 当月每天一根柱子，X 轴标签稀疏（只在 1/8/15/22/29 日显示）
+      const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0); // 月末
+      const res = dailyBars(start, end, (d, isFirst, isLast) => {
+        const dom = d.getDate();
+        if (isFirst || isLast || dom <= 1 || dom === 8 || dom === 15 || dom === 22 || dom === 29) {
+          return String(dom);
+        }
+        return ''; // 其他天不显示标签，避免溢出
+      });
+      // ★ axisLabels: 7 个均匀分布刻度（不是 30 个！）
+      const monthLabels = buildAxisLabels(start, end, 6, (d) => `${d.getMonth() + 1}/${d.getDate()}`);
+      return { bars: res.vals, axisLabels: monthLabels, current: res.current, avg: res.avg, best: res.best, deepAvg: res.deepAvg, remAvg: res.remAvg, scoreAvg: res.scoreAvg, hasData: res.hasData };
+    }
+
+    // year：anchor 所在年 12 个月，每月一根柱子（月内取平均）
+    const yYear = anchor.getFullYear();
+    const loYear = new Date(yYear, 0, 1);
+    const hiYear = new Date(yYear, 11, 31);
+    const winYear = recs.filter((r) => r.date.getTime() >= loYear.getTime() && r.date.getTime() <= hiYear.getTime());
+    const byMonth = new Map<string, { vals: number[]; deep: number[]; rem: number[]; score: number[] }>();
+    for (const r of winYear) {
       const prefix = `${r.date.getFullYear()}-${r.date.getMonth() + 1}`;
-      if (!byMonth.has(prefix)) byMonth.set(prefix, { prefix, label: `${r.date.getMonth()+1}月`, vals: [], deep: [], rem: [], score: [] });
+      if (!byMonth.has(prefix)) byMonth.set(prefix, { vals: [], deep: [], rem: [], score: [] });
       const b = byMonth.get(prefix)!;
       b.vals.push(r.rec.total);
       if (r.rec.total > 0) { b.deep.push((r.rec.deep / r.rec.total) * 100); b.rem.push((r.rec.rem / r.rec.total) * 100); }
       if (r.rec.score != null) b.score.push(r.rec.score);
     }
-    const months = range === 'month' ? [m0] : Array.from({ length: 12 }, (_, i) => i);
-    const seq = months.map((mo) => ({ prefix: `${y}-${mo+1}`, label: `${mo+1}月` }));
-    const last = seq.map((s) => byMonth.get(s.prefix)).filter((x): x is (typeof buckets)[number] => x != null);
-    const vals = last.map((b) => (b.vals.length ? b.vals.reduce((a,c)=>a+c,0)/b.vals.length : null));
-    const labels = last.map((b) => b.label);
+    const seq: { prefix: string; label: string }[] = Array.from({ length: 12 }, (_, i) => ({ prefix: `${yYear}-${i + 1}`, label: `${i + 1}月` }));
+    const vals = seq.map((s) => {
+      const b = byMonth.get(s.prefix);
+      return b && b.vals.length ? b.vals.reduce((a, c) => a + c, 0) / b.vals.length : null;
+    });
+    const foundMonths = seq.map((s) => byMonth.get(s.prefix)).filter((b) => b != null) as { vals: number[]; deep: number[]; rem: number[]; score: number[] }[];
+    // ★ axisLabels: 7 个均匀分布刻度（N=6，和 MetricDetail 一致）
+    const yearLabels = buildAxisLabels(loYear, hiYear, 6, (d) => `${d.getMonth() + 1}月`);
     return {
-      bars: vals, axisLabels: labels, current: lastNonNull(vals), avg: meanOf(vals), best: maxOf(vals),
-      deepAvg: meanOf(last.flatMap((b) => b.deep)), remAvg: meanOf(last.flatMap((b) => b.rem)), scoreAvg: meanOf(last.flatMap((b) => b.score)),
+      bars: vals, axisLabels: yearLabels, current: lastNonNull(vals), avg: meanOf(vals), best: maxOf(vals),
+      deepAvg: meanOf(foundMonths.flatMap((b) => b.deep)), remAvg: meanOf(foundMonths.flatMap((b) => b.rem)), scoreAvg: meanOf(foundMonths.flatMap((b) => b.score)),
       hasData: vals.some((v) => v != null),
     };
   }, [range, sleepDaily, anchor]);
@@ -241,8 +278,8 @@ export default function SleepDetailScreen() {
           <Icon name="chevronLeft" size={22} color={theme.colors.textTitle} />
         </TouchableOpacity>
         <View style={styles.titleWrap}>
-          <Text style={styles.title}>睡眠时长</Text>
-          <Text style={styles.unit}>总睡眠时长 · 分钟</Text>
+          <Text style={styles.title}>{range === 'day' ? '睡眠结构' : '睡眠时长'}</Text>
+          <Text style={styles.unit}>{range === 'day' ? '昨夜整夜分期' : '总睡眠时长 · 分钟'}</Text>
         </View>
       </View>
 
@@ -251,86 +288,248 @@ export default function SleepDetailScreen() {
       {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
       <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
-      <View style={[styles.chartCard, theme.glass, theme.shadow.card]} onLayout={onLayout}>
-        {!hasData ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>
-              暂无可展示的睡眠记录。连接戒指并将每晚睡眠同步后，这里会自动绘制日 / 周 / 月 / 年睡眠时长柱状图。
-            </Text>
-          </View>
-        ) : (
-          w > 0 && (
-            <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`}>
-              <Defs>
-                <LinearGradient id="sleepBar" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.95} />
-                  <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.55} />
-                </LinearGradient>
-              </Defs>
-              {/* 8 小时参考线（健康睡眠锚点） */}
-              {(() => {
-                const y8 = yAt(480);
-                return <Line x1={PAD_L} y1={y8} x2={W - PAD_R} y2={y8} stroke={theme.colors.ui.borderSoft} strokeWidth={1} strokeDasharray="4 4" />;
-              })()}
-              {bars.map((v, i) => {
-                const cx = PAD_L + slot * i + slot / 2;
-                const x = cx - barW / 2;
-                if (v == null || !Number.isFinite(v)) {
-                  // 缺口：淡占位
-                  return (
-                    <Rect
-                      key={i}
-                      x={x}
-                      y={PAD_T + plotH - 4}
-                      width={barW}
-                      height={4}
-                      rx={2}
-                      fill={theme.colors.cardBgSoft}
-                    />
-                  );
-                }
-                const y = yAt(v);
-                const h = PAD_T + plotH - y;
-                return (
-                  <Rect key={i} x={x} y={y} width={barW} height={Math.max(2, h)} rx={6} fill="url(#sleepBar)" />
-                );
-              })}
-              {/* 数值标签（仅在有值处） */}
-              {bars.map((v, i) => {
-                if (v == null || !Number.isFinite(v)) return null;
-                const cx = PAD_L + slot * i + slot / 2;
-                const y = yAt(v);
-                return (
-                  <SvgTextLabel
-                    key={`t${i}`}
-                    x={cx}
-                    y={Math.max(PAD_T + 12, y - 8)}
-                    text={fmtDur(v)}
-                    anchor="middle"
-                  />
-                );
-              })}
-              {/* X 轴标签 */}
-              {axisLabels.map((lab, i) => {
-                const cx = PAD_L + slot * i + slot / 2;
-                return <SvgTextLabel key={`x${i}`} x={cx} y={H - PAD_B + 18} text={lab} anchor="middle" sub />;
-              })}
-            </Svg>
-          )
-        )}
-      </View>
+      {range === 'day' ? (
+        /* 日：展示最新一天的睡眠分期图 */
+        <View style={[styles.chartCard, { padding: theme.space.cardPad }]}>
+          {(() => {
+            // ★ 按 anchor 日期取那天的 segments + summary
+            const dk = dayKey(anchor);
+            const segs = ring.sleepStagesDaily?.[dk] ?? ring.sleepStages; // 回退：最新一天
+            const summaryObj = ring.sleepDaily?.[dk] ?? null;
+            // 从 sleepDaily 构造 SleepSummary（它不是完整接口，缺 score/awake/insomnia/sdkScore）
+            const summary = summaryObj ? {
+              total: summaryObj.total ?? 0,
+              deep: summaryObj.deep ?? 0,
+              light: summaryObj.light ?? 0,
+              rem: summaryObj.rem ?? 0,
+              score: ring.sleepSummary?.score ?? 0, // 用最新一天的自算分做兜底
+              getUp: 0,
+              sleepTime: ring.sleepTime ?? null,
+              wakeTime: ring.wakeTime ?? null,
+            } : ring.sleepSummary;
+            if (!segs || segs.length === 0) {
+              return (
+                <View style={{ height: 200, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.space.md }}>
+                  <Text style={[styles.emptyText, { textAlign: 'center' }]}>
+                    昨夜睡眠分期暂未同步。将戒指连接 App 后，后台会自动回填历史睡眠分期。
+                  </Text>
+                </View>
+              );
+            }
+            return (
+              <>
+                <SleepStageChart segments={segs} sleepTime={ring.sleepTime} />
+                {/* 单天摘要：4 张独立卡片，2x2 grid */}
+                <View style={styles.statRow}>
+                  <StatItem label="总时长" value={summary ? fmtDur(summary.total) : '—'} />
+                  <StatItem label="深睡" value={summary ? fmtDur(summary.deep) : '—'} />
+                </View>
+                <View style={styles.statRow}>
+                  <StatItem label="REM" value={summary ? fmtDur(summary.rem) : '—'} />
+                  <StatItem label="睡眠评分" value={summary ? String(Math.round(summary.score)) : '—'} />
+                </View>
+              </>
+            );
+          })()}
+        </View>
+      ) : (
+        /* 周 / 月 / 年：柱状图（HTML Y 轴刻度 + SVG 柱子 + HTML X 轴标签） */
+        <View style={[styles.chartCard, { minHeight: H + 80 }]}>
+          {!hasData ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>
+                暂无可展示的睡眠记录。连接戒指并将每晚睡眠同步后，这里会自动绘制睡眠时长柱状图。
+              </Text>
+            </View>
+          ) : (
+            <>
+                {/* ★ 第一行：Y 轴 HTML 刻度列 + SVG 绘图区 */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                  {/* Y 轴刻度：HTML Text 避免 SVG 拉伸变形 */}
+                  <View style={{ width: Y_GUT, height: H, position: 'relative' }}>
+                    {[0, 4, 8, 12].map((h) => {
+                      const y = yAt(h * 60);
+                      return (
+                        <Text
+                          key={`y-html-${h}`}
+                          style={{
+                            position: 'absolute',
+                            top: Math.max(0, y - 7),
+                            right: 4,
+                            fontSize: theme.fontSize.micro,
+                            color: h === 8 ? theme.colors.accent1 : theme.colors.textSub,
+                            fontWeight: h === 8 ? '600' : '400',
+                            textAlign: 'right',
+                          }}
+                        >
+                          {h}h
+                        </Text>
+                      );
+                    })}
+                  </View>
+                  {/* SVG 绘图区：onLayout 拿到实际宽度 */}
+                  <View style={{ flex: 1 }} onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
+                    <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                  <Defs>
+                    <LinearGradient id="sleepBar" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.95} />
+                      <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.55} />
+                    </LinearGradient>
+                  </Defs>
 
-      {/* 统计摘要 */}
-      <View style={[styles.statGrid, theme.glass, theme.shadow.card]}>
-        <StatItem label="最新" value={fmtDur(current ?? 0)} />
-        <StatItem label="均值" value={fmtDur(avg ?? 0)} />
-        <StatItem label="最佳" value={fmtDur(best ?? 0)} />
-      </View>
-      <View style={[styles.statGrid, theme.glass, theme.shadow.card]}>
-        <StatItem label="深睡占比" value={fmtPct(deepAvg)} />
-        <StatItem label="REM 占比" value={fmtPct(remAvg)} />
-        <StatItem label="睡眠评分" value={scoreAvg != null ? String(Math.round(scoreAvg)) : '—'} />
-      </View>
+                  {/* ===== Y 轴网格线（刻度文字移到 HTML 左列 Y_GUT） ===== */}
+                  {[0, 4, 8, 12].map((h) => {
+                    const y = yAt(h * 60);
+                    const isAnchor = h === 8;
+                    return (
+                      <Line
+                        key={`y${h}`}
+                        x1={PAD_L}
+                        y1={y}
+                        x2={W - PAD_R}
+                        y2={y}
+                        stroke={theme.colors.ui.borderSoft}
+                        strokeWidth={isAnchor ? 1 : 0.5}
+                        strokeDasharray={isAnchor ? '4 4' : '2 4'}
+                        opacity={isAnchor ? 0.8 : 0.4}
+                      />
+                    );
+                  })}
+
+                  {/* ===== 柱子 ===== */}
+                  {bars.map((v, i) => {
+                    const cx = PAD_L + slot * i + slot / 2;
+                    const x = cx - barW / 2;
+                    const isSelected = selectedBar === i;
+                    if (v == null || !Number.isFinite(v)) {
+                      return (
+                        <Rect
+                          key={i}
+                          x={x}
+                          y={PAD_T}
+                          width={barW}
+                          height={plotH}
+                          rx={4}
+                          fill="transparent"
+                          stroke={theme.colors.ui.borderSoft}
+                          strokeWidth={1}
+                          strokeDasharray="3 3"
+                        />
+                      );
+                    }
+                    const y = yAt(v);
+                    const hgt = PAD_T + plotH - y;
+                    return (
+                      <Rect
+                        key={i}
+                        x={x}
+                        y={y}
+                        width={barW}
+                        height={Math.max(2, hgt)}
+                        rx={6}
+                        fill={isSelected ? theme.colors.accentSolid : 'url(#sleepBar)'}
+                        opacity={selectedBar != null && !isSelected ? 0.45 : 1}
+                        onPress={() => setSelectedBar(selectedBar === i ? null : i)}
+                      />
+                    );
+                  })}
+
+                  {/* X 轴标签已移到 HTML 外层 axis 行 */}
+                </Svg>
+                  </View>{/* SVG 区域 flex:1 */}
+                </View>{/* row flexDirection */}
+
+                {/* ★ 第二行：X 轴 HTML 标签（两行：周几小在上 + 日期大在下） */}
+                {/* ★ X 轴标签：和 MetricDetail 一致，space-between 自动两端对齐 */}
+                <View style={styles.axis}>
+                  {axisLabels.map((lab, i) => (
+                    <Text key={`x${i}`} style={styles.axisText}>{lab}</Text>
+                  ))}
+                </View>
+
+                {/* ===== Tooltip：选中柱子上方浮出 ===== */}
+                {selectedBar != null && bars[selectedBar] != null && (() => {
+                  const v = bars[selectedBar]!;
+                  const cx = PAD_L + slot * selectedBar + slot / 2;
+                  const tipY = Math.max(PAD_T + 4, yAt(v) - 48);
+                  const tipX = cx / W * w;
+                  const tipSub = axisLabels[selectedBar] || (() => {
+                    if (range === 'week') return '';
+                    if (range === 'month') return `${selectedBar + 1}日`;
+                    if (range === 'year') return `${selectedBar + 1}月`;
+                    return '';
+                  })();
+                  const contentW = 110;
+                  return (
+                    <View
+                      pointerEvents="none"
+                      style={{
+                        position: 'absolute',
+                        left: tipX - contentW / 2,
+                        top: tipY * w / W,
+                        width: contentW,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View style={{
+                        backgroundColor: theme.colors.cardBg,
+                        borderRadius: 8,
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderWidth: 1,
+                        borderColor: theme.colors.ui.borderSoft,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.15,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 2 },
+                        alignItems: 'center',
+                      }}>
+                        <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle }}>
+                          {fmtDur(v)}
+                        </Text>
+                        {tipSub ? (
+                          <Text style={{ fontSize: 10, color: theme.colors.textSub, marginTop: 1 }}>
+                            {tipSub}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {/* 小三角指向柱子 */}
+                      <View style={{
+                        width: 0, height: 0,
+                        borderLeftWidth: 6,
+                        borderRightWidth: 6,
+                        borderTopWidth: 6,
+                        borderLeftColor: 'transparent',
+                        borderRightColor: 'transparent',
+                        borderTopColor: theme.colors.cardBg,
+                        marginTop: -1,
+                      }} />
+                    </View>
+                  );
+                })()}
+              </>
+          )}
+        </View>
+      )}
+
+      {/* 周 / 月 / 年 的统计摘要（柱状图模式） */}
+      {range !== 'day' && (
+        <>
+          {/* 3 个独立卡片，1 行 3 列 */}
+          <View style={styles.statRow}>
+            <StatItem label="最新" value={fmtDur(current ?? 0)} />
+            <StatItem label="均值" value={fmtDur(avg ?? 0)} />
+            <StatItem label="最佳" value={fmtDur(best ?? 0)} />
+          </View>
+          {/* 3 个独立卡片，1 行 3 列（次要指标更低调） */}
+          <View style={styles.statRow}>
+            <StatItem label="深睡占比" value={fmtPct(deepAvg)} sub />
+            <StatItem label="REM 占比" value={fmtPct(remAvg)} sub />
+            <StatItem label="睡眠评分" value={scoreAvg != null ? String(Math.round(scoreAvg)) : '—'} sub />
+          </View>
+        </>
+      )}
+
     </ScreenContainer>
   );
 }
@@ -344,10 +543,11 @@ function SvgTextLabel({ x, y, text, anchor, sub }: { x: number; y: number; text:
   );
 }
 
-function StatItem({ label, value }: { label: string; value: string }) {
+function StatItem({ label, value, sub }: { label: string; value: string; sub?: boolean }) {
+  // sub: 次要指标（深睡%/REM%），用更低调的样式
   return (
-    <View style={styles.statItem}>
-      <Text style={styles.statVal}>{value}</Text>
+    <View style={[styles.statCell, sub && styles.statCellSub]}>
+      <Text style={[styles.statVal, sub && styles.statValSub]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -359,11 +559,56 @@ const styles = StyleSheet.create({
   titleWrap: { flexDirection: 'column' },
   title: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.textWhite },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
-  chartCard: { borderRadius: theme.radius.card, padding: theme.space.cardPad, marginBottom: theme.space.md, minHeight: H },
+  chartCard: {
+    backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    padding: theme.space.sm,
+    marginBottom: theme.space.md,
+    minHeight: 360,
+  },
   emptyWrap: { height: H, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center', lineHeight: 22 },
-  statGrid: { flexDirection: 'row', borderRadius: theme.radius.card, padding: theme.space.md, marginBottom: theme.space.md },
-  statItem: { flex: 1, alignItems: 'center' },
-  statVal: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.accentSolid },
-  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  axis: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: theme.sp(2),
+    paddingLeft: Y_GUT,
+  },
+  axisText: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
+  axisWeekday: { fontSize: 10, color: theme.colors.textSub, fontWeight: '400' },
+  axisDate: { fontSize: theme.fontSize.micro, color: theme.colors.textTitle, fontWeight: '500', marginTop: 1 },
+  axisMonth: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: '500', textAlign: 'center' },
+  statRow: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.sm },
+  statCell: {
+    flex: 1,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.space.md,
+    paddingHorizontal: theme.space.sm,
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.ui.borderSoft,
+  },
+  statCellSub: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  statVal: {
+    fontSize: theme.fontSize.card,   // ~18px，比 h2(22px) 小，不挤
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textTitle,
+    lineHeight: theme.fontSize.card + 4,
+  },
+  statValSub: {
+    fontSize: theme.fontSize.sm,   // ~14px，次要指标更小
+    color: theme.colors.textSub,
+    fontWeight: theme.weight.medium,
+  },
+  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
 });

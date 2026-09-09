@@ -185,12 +185,12 @@ export function computeCognitiveLoadReport(nowMs = Date.now()): CognitiveLoadRep
     const bedH = parseHM(sleepSum.sleepTime);
     const wakeH = parseHM(sleepSum.wakeTime);
     if (bedH != null && wakeH != null) {
-      sleepWindow = { bedHour: Math.round(bedH), wakeHour: Math.round(wakeH) };
+      sleepWindow = { bedHour: Math.floor(bedH), wakeHour: Math.floor(wakeH) };
       (global as any).__cogSleepDebug = { sleepTime: sleepSum.sleepTime, wakeTime: sleepSum.wakeTime, bedH, wakeH, sleepWindow };
     } else if (sleepSum.getUp > 0) {
       // fallback: 用 getUp 和 total 反推
-      const wakeHour = Math.round(sleepSum.getUp / 60);
-      const bedHour = Math.round((sleepSum.getUp - sleepSum.total) / 60 + 24) % 24;
+      const wakeHour = Math.floor(sleepSum.getUp / 60);
+      const bedHour = Math.floor((sleepSum.getUp - sleepSum.total) / 60 + 24) % 24;
       sleepWindow = { bedHour, wakeHour };
     }
   } else {

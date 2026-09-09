@@ -37,7 +37,7 @@ function loadSubtext(load: number | null): string {
   return '过载';
 }
 
-function levelColor(level: StressLevel | null): string {
+export function levelColor(level: StressLevel | null): string {
   switch (level) {
     case 'calm': return theme.colors.stateCalm;
     case 'mild': return theme.colors.moodEnergy;
@@ -142,7 +142,7 @@ export default function StressInsightCard() {
   );
 }
 
-function Metric({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
+export function Metric({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
   return (
     <View style={styles.metricItem}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -153,10 +153,10 @@ function Metric({ label, value, sub, valueColor }: { label: string; value: strin
 }
 
 /** 每小时事件直方图 (24 根竖条) */
-function HourHistogram({ buckets }: { buckets: HourBucket[] }) {
+export function HourHistogram({ buckets, chartH }: { buckets: HourBucket[]; chartH?: number }) {
   const maxCount = Math.max(1, ...buckets.map((b) => b.count));
-  const BAR_AREA_H = theme.sp(16);   // 竖条绘制区高度
-  const BAR_MAX_H = theme.sp(14);    // 最大条高
+  const BAR_AREA_H = chartH && chartH > 80 ? chartH - 40 : theme.sp(16);   // 竖条绘制区高度
+  const BAR_MAX_H = BAR_AREA_H - 12;    // 最大条高
   const BAR_GAP = theme.sp(0.25);    // 条间距
 
   return (
@@ -205,7 +205,7 @@ function HourHistogram({ buckets }: { buckets: HourBucket[] }) {
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
+export function Legend({ color, label }: { color: string; label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <View style={{ width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(0.5), backgroundColor: color, marginRight: theme.sp(0.75) }} />
@@ -215,7 +215,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 /** 全天事件时间戳列表 */
-function EventTimeline({ events }: { events: StressEvent[] }) {
+export function EventTimeline({ events }: { events: StressEvent[] }) {
   const groups = new Map<number, StressEvent[]>();
   for (const e of events) {
     if (!groups.has(e.hour)) groups.set(e.hour, []);

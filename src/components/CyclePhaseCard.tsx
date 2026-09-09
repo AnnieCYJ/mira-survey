@@ -20,6 +20,10 @@ import { loadCycleLog, saveCycleLog } from '../data/cycleLog';
 import { RingBle, type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import type { RangeKey } from '../data/metrics';
 import TempBiphasicChart from './TempBiphasicChart';
+import PhaseInsightSection from './PhaseInsightSection';
+import HormoneCurveCard from './HormoneCurveCard';
+import CycleMetricsCard from './CycleMetricsCard';
+import HormoneStatusCard from './HormoneStatusCard';
 
 const PHASE_ORDER: { key: string; label: string }[] = [
   { key: 'period', label: '经期' },
@@ -212,6 +216,18 @@ export default function CyclePhaseCard({
         log={effective}
         range={range}
       />
+
+      {/* ★ 本阶段身心特征 — 参考 Clue/Flo 官方科普 + 临床研究 */}
+      {info.hasLog ? <PhaseInsightSection phase={info.phase} dayInCycle={info.dayInCycle ?? 0} cycleLength={effective?.cycleLength ?? 28} /> : null}
+
+      {/* 雌激素建模曲线 */}
+      <HormoneCurveCard cycleInfo={info} cycleLog={effective} />
+
+      {/* 完整周期指标面板 */}
+      <CycleMetricsCard cycleInfo={info} cycleLog={effective} />
+
+      {/* ★ 戒指数据推断的激素状态 */}
+      <HormoneStatusCard cycleInfo={info} cycleLog={effective} />
 
       {/* 记录 Modal */}
       <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>

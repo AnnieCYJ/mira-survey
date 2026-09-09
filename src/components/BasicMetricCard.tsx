@@ -55,7 +55,8 @@ function buildDayPath(
   const pts = clean.map((p) => ({ x: xOf(p.t), y: yOf(p.v), t: p.t }));
 
   // 断线阈值与 MetricDetailScreen 连续曲线一致（36h）：单日跨度内永不触发，今日点始终连成一条。
-  const GAP = 36 * 3600 * 1000;
+  const GAP_MS = 30 * 60 * 1000; // 断线阈值 30min
+  console.log(`[BMC] clean=${clean.length} GAP=30min first=${new Date(clean[0]?.t ?? 0).toISOString().slice(11,16)} last=${new Date(clean[clean.length-1]?.t ?? 0).toISOString().slice(11,16)}`);
   let lineD = '';
   let areaD = '';
   let seg: { x: number; y: number }[] = [];
@@ -76,7 +77,12 @@ function buildDayPath(
     seg = [];
   };
   for (let i = 0; i < pts.length; i++) {
-    if (i > 0 && pts[i].t - pts[i - 1].t > GAP) flushSeg();
+    if (i > 0) {
+      const gapMs = pts[i].t - pts[i - 1].t;
+      const gapMin = gapMs / 60000;
+      if (gapMin > 5) console.log(`[BMC-GAP] i=${i} gap=${gapMin.toFixed(1)}min flush=${gapMs > GAP_MS ? 'YES' : 'no'}`);
+      if (gapMs > GAP_MS) flushSeg();
+    }
     seg.push({ x: pts[i].x, y: pts[i].y });
   }
   flushSeg();

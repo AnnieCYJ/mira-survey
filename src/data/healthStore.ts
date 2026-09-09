@@ -127,7 +127,12 @@ export interface SleepSummary {
   deep: number;
   light: number;
   rem: number;
+  awake?: number;
+  insomnia?: number;
+  /** 睡眠评分 0-100（自算，computeSleepScore 产出） */
   score: number;
+  /** 原生 SDK sleepQuality 原始值 0-5（调试用） */
+  sdkScore?: number;
   getUp: number;
   /** 入睡时间 "HH:mm" (原生 sleepTime) */
   sleepTime?: string | null;
@@ -162,6 +167,13 @@ function mergeIntraday(prev: TimePoint[] | undefined, incoming: TimePoint[]): Ti
     }
     if (!replaced) map.set(p.t, p);
   }
+  return Array.from(map.values()).sort((a, b) => a.t - b.t);
+}
+
+function mergeRealtime(prev: TimePoint[] | undefined, incoming: TimePoint): TimePoint[] {
+  const map = new Map<number, TimePoint>();
+  for (const point of prev ?? []) map.set(point.t, point);
+  map.set(incoming.t, incoming);
   return Array.from(map.values()).sort((a, b) => a.t - b.t);
 }
 
@@ -250,8 +262,7 @@ export class HealthStore {
     const dk = dayKey(ts);
     const store = this.safeStore(key);
     if (!store) return;
-    const arr = store.intraday[dk] ? [...store.intraday[dk], point] : [point];
-    arr.sort((a, b) => a.t - b.t);
+    const arr = mergeRealtime(store.intraday[dk], point);
     store.intraday[dk] = arr;
     store.daily[dk] = recomputeDaily(arr, store.daily[dk], 'realtime');
     this.lastUpdated[key] = ts;
@@ -267,10 +278,8 @@ export class HealthStore {
     if (!samples || samples.length === 0) return;
     store.intraday[dk] = mergeIntraday(store.intraday[dk], samples);
     const prev = store.daily[dk];
-    // backfill 仅在样本更多/或尚无日值时覆盖；不抹掉实时已算的当日均值
-    if (!prev || prev.samples === 0 || samples.length >= prev.samples) {
-      store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
-    }
+    // 合并后始终从完整明细重算，避免分片长度较小时漏掉回填更新；实时明细会保留并标记 mixed。
+    store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
     this.lastUpdated[key] = Date.now();
     this.notify();
   }
@@ -284,12 +293,15 @@ export class HealthStore {
     const v = clampValid(value);
     if (v == null) return;
     const prev = store.daily[dk];
-    if (!prev || prev.samples === 0) {
+    const intraday = store.intraday[dk];
+    if (intraday && intraday.length > 0) {
+      store.daily[dk] = recomputeDaily(intraday, prev, 'backfill');
+    } else if (!prev || prev.source === 'backfill') {
       store.daily[dk] = {
         mean: v, min: v, max: v, last: v, samples: 1,
         source: 'backfill', updatedAt: Date.now(),
       };
-    } else if (prev.source !== 'backfill' && prev.mean == null) {
+    } else if (prev.mean == null) {
       store.daily[dk] = { ...prev, mean: v, min: v, max: v, source: 'mixed', updatedAt: Date.now() };
     }
     this.lastUpdated[key] = Date.now();

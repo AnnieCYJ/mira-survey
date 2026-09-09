@@ -211,24 +211,23 @@ export default function MetricDetailScreen() {
   // 折线分段（遇 null / 超阈值断线）；同时把所有真实点收集为散点，保证稀疏/单点历史日也能看见。
   const { lineD, areaD, last, dots } = useMemo(() => {
     if (w === 0) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, dots: [] };
-    const GAP = 36 * 3600 * 1000; // 断裂阈值：相邻点时间差 > 36h 视为缺口断线
+    // ★ 断线阈值：实时采集指标约 5min/条，断 30min 视为明显断连
+    // 之前 36h 阈值导致断连几天都不断线，完全形同虚设
+    const GAP_MS = 30 * 60 * 1000;
 
-    // 连续时间轴：按真实 t 映射 x，今日实时点接在历史回填之后
+    // 连续时间轴（HR/SpO2/Temp/EDA day range）：按真实 t 映射 x
     if (useContinuous && series.tPoints) {
       const pts = series.tPoints;
+      console.log(`[LINE-START] ${params.key} CONTINUOUS pts=${pts.length} GAP=30min firstT=${new Date(pts[0]?.t ?? 0).toISOString().slice(11,16)} lastT=${new Date(pts[pts.length-1]?.t ?? 0).toISOString().slice(11,16)}`);
       let line = '';
       let area = '';
       let seg: { x: number; y: number }[] = [];
       const allDots: { x: number; y: number }[] = [];
       const flush = () => {
-        if (seg.length < 2) {
-          seg = [];
-          return;
-        }
+        if (seg.length < 2) { seg = []; return; }
         let d = `M ${seg[0].x.toFixed(1)} ${seg[0].y.toFixed(1)}`;
         for (let i = 0; i < seg.length - 1; i++) {
-          const a = seg[i];
-          const b = seg[i + 1];
+          const a = seg[i]; const b = seg[i + 1];
           const mx = (a.x + b.x) / 2;
           d += ` C ${mx.toFixed(1)} ${a.y.toFixed(1)}, ${mx.toFixed(1)} ${b.y.toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
         }
@@ -241,7 +240,13 @@ export default function MetricDetailScreen() {
         const x = xAtT(p.t);
         const y = yAt(p.v);
         allDots.push({ x, y });
-        if (i > 0 && p.t - pts[i - 1].t > GAP) flush();
+        // ★ 断线判断：相邻点时间差 > 30min → flush 分段
+        if (i > 0) {
+          const gapMs = p.t - pts[i - 1].t;
+          const gapMin = gapMs / 60000;
+          if (gapMin > 5) console.log(`[LINE-GAP] ${params.key} i=${i} gap=${gapMin.toFixed(1)}min flush=${gapMs > GAP_MS ? 'YES' : 'no'} prev=${new Date(pts[i-1].t).toISOString().slice(11,16)} cur=${new Date(p.t).toISOString().slice(11,16)}`);
+          if (gapMs > GAP_MS) flush();
+        }
         seg.push({ x, y });
       }
       flush();
@@ -249,7 +254,8 @@ export default function MetricDetailScreen() {
       return { lineD: line, areaD: area, last: lastPt, dots: allDots };
     }
 
-    // 非连续（年 / 周期）：按索引绘制
+    // 非连续（week/month/year）：按索引绘制，遇 null 断线
+    console.log(`[LINE-START] ${params.key} INDEXED n=${series.points.length} nulls=${series.points.filter(v=>v==null).length}`);
     if (n === 0) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, dots: [] };
     if (n === 1) {
       const v = series.points[0];
@@ -490,15 +496,15 @@ export default function MetricDetailScreen() {
           <View style={styles.statGrid}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均</Text>
-              <Text style={styles.statValue}>{fmtVal(series.avg)}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.avg)}</Text>
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>最高</Text>
-              <Text style={styles.statValue}>{fmtVal(series.hi)}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.hi)}</Text>
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>最低</Text>
-              <Text style={styles.statValue}>{fmtVal(series.lo)}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.lo)}</Text>
             </View>
           </View>
         )}

@@ -42,6 +42,22 @@ function moodFor(value: number) {
   return MOODS[idx] ?? MOODS[1];
 }
 
+
+/** 把稀疏的 statusTimeline 点展开为全天 48 个 30min 边界槽。
+ *  没数据的槽用 null，让折线分段逻辑自动断线。 */
+function expandTo48Slots(points: { t: number; value: number }[], anchorDayMs: number): { x: number; value: number | null }[] {
+  const slots: { t: number; value: number | null }[] = [];
+  for (let i = 0; i < 48; i++) {
+    const slotT = anchorDayMs + i * 30 * 60 * 1000;
+    slots.push({ t: slotT, value: null });
+  }
+  const byT = new Map(points.map(p => [p.t, p.value]));
+  for (const slot of slots) {
+    if (byT.has(slot.t)) slot.value = byT.get(slot.t)!;
+  }
+  return slots.map(s => ({ x: dayFrac(s.t), value: s.value }));
+}
+
 function dayFrac(t: number): number {
   if (!Number.isFinite(t)) return 0;
   const d = new Date(t);
@@ -117,12 +133,27 @@ export default function StatusTrendDetailScreen() {
 
     if (range === 'day') {
       const todayKey = `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`;
+      // ★ 诊断 log
+      console.log('[STATUS-DAY]', JSON.stringify({
+        anchorKey, todayKey,
+        anchorIsToday: anchorKey === todayKey,
+        timeline_len: (ring.statusTimeline ?? []).length,
+        timeline_first2: (ring.statusTimeline ?? []).slice(0, 2),
+        timelineByDay_keys: Object.keys(ring.statusTimelineByDay ?? {}),
+        timelineByDay_counts: Object.fromEntries(
+          Object.entries(ring.statusTimelineByDay ?? {}).map(([k, v]) => [k, v?.length ?? 0])
+        ),
+        statusDaily_keys: Object.keys(statusDaily ?? {}),
+        statusDaily_vals: Object.fromEntries(Object.entries(statusDaily ?? {}).slice(-7)),
+      }));
       if (anchorKey === todayKey) {
+        const anchorDayMs = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 0, 0, 0, 0).getTime();
         const tl = (ring.statusTimeline ?? [])
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
           .map((p) => ({ t: p.t, value: p.value }))
           .sort((a, b) => a.t - b.t);
-        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value, level: (p as any).level }));
+        // ★ 展开为 48 个完整槽，gap 填 null → 折线自动断线
+        const points = expandTo48Slots(tl, anchorDayMs);
         const values = tl.map((p) => p.value);
         return {
           pts: points,
@@ -139,12 +170,14 @@ export default function StatusTrendDetailScreen() {
       // 历史某天：优先用按天归档的真实状态曲线（每 30 分钟一个点，与当时一致）；无归档则退化为当日均值
       const archived = ring.statusTimelineByDay?.[anchorKey];
       if (archived && archived.length > 0) {
+        const anchorDayMs = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 0, 0, 0, 0).getTime();
         const tl = archived
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
           .map((p) => ({ t: p.t as number, value: p.value as number }))
           .sort((a, b) => a.t - b.t);
+        // ★ 展开为 48 个完整槽，gap 填 null → 折线自动断线
+        const points = expandTo48Slots(tl, anchorDayMs);
         const values = tl.map((p) => p.value);
-        const points = tl.map((p) => ({ x: dayFrac(p.t), value: p.value, level: (p as any).level }));
         return {
           pts: points,
           axisLabels: DAY_AXIS,
@@ -174,6 +207,7 @@ export default function StatusTrendDetailScreen() {
 
     if (range === 'year') {
       const y = anchor.getFullYear();
+      console.log('[STATUS-YEAR]', JSON.stringify({ year: y, statusDaily_all_keys: Object.keys(statusDaily ?? {}) }));
       const labels: string[] = [];
       const values: (number | null)[] = [];
       for (let mo = 0; mo < 12; mo++) {
@@ -195,6 +229,12 @@ export default function StatusTrendDetailScreen() {
     }
 
     // week (anchor 所在自然周 周一~周日) / month (anchor 所在自然月)：每日均值
+    console.log('[STATUS-RANGE]', JSON.stringify({
+      range, anchorKey,
+      statusDaily_all: Object.fromEntries(
+        Object.entries(statusDaily ?? {}).map(([k, v]) => [k, v?.toFixed(1) ?? null])
+      ),
+    }));
     const keys: string[] = [];
     const labels: string[] = [];
     if (range === 'week') {
@@ -411,15 +451,15 @@ export default function StatusTrendDetailScreen() {
         <View style={styles.statGrid}>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>平均</Text>
-            <Text style={styles.statValue}>{fmtVal(avg)}</Text>
+            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(avg)}</Text>
           </View>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>最高</Text>
-            <Text style={styles.statValue}>{fmtVal(hi)}</Text>
+            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(hi)}</Text>
           </View>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>最低</Text>
-            <Text style={styles.statValue}>{fmtVal(lo)}</Text>
+            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(lo)}</Text>
           </View>
         </View>
 

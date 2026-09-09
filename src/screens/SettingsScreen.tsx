@@ -83,6 +83,7 @@ export default function SettingsScreen() {
     ecgHistory: [],
     lastUploadedAt: null,
     ecgProgress: null,
+    emotion: null,
   });
 
   // 订阅真实 BLE 连接状态

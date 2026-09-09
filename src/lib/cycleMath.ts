@@ -355,6 +355,58 @@ export function modelEstrogenCurve(opts: {
   return pts;
 }
 
+export interface HormonePoint { day: number; value: number; phase: CyclePhase; }
+
+/** 孕激素建模曲线 — 经典排卵后升模式:
+ *   经期/卵泡期 = 低 (< 10)
+ *   排卵日 = 开始上升
+ *   黄体期 D3-D7 = 峰值 (80-90)
+ *   经期前 2-3 天 = 骤降
+ */
+export function modelProgesteroneCurve(opts: {
+  cycleLength: number;
+  ovulationDay: number;
+  periodLength: number;
+}): HormonePoint[] {
+  const N = Math.max(20, Math.min(45, Math.round(opts.cycleLength)));
+  const ovDay = Math.max(8, Math.min(N - 2, Math.round(opts.ovulationDay)));
+  const periodLen = Math.max(2, Math.min(10, Math.round(opts.periodLength)));
+  const pts: HormonePoint[] = [];
+  for (let day = 1; day <= N; day++) {
+    const dOv = day - ovDay;
+    let value: number;
+    if (day <= periodLen) {
+      value = 8;  // 经期低
+    } else if (dOv < 0) {
+      value = 6;  // 卵泡期几乎为 0
+    } else if (dOv === 0) {
+      value = 15; // 排卵日起步
+    } else if (dOv <= 7) {
+      // 黄体期上升: 0→7天, 15→90
+      value = 15 + 75 * (dOv / 7);
+    } else if (dOv <= 12) {
+      // 峰值平台
+      value = 85 - 5 * ((dOv - 7) / 5);
+    } else {
+      // 经期前骤降
+      const daysToPeriod = N - day + 1;
+      if (daysToPeriod <= 3) {
+        value = Math.max(8, 85 - 77 * (1 - daysToPeriod / 3));
+      } else {
+        value = 60;
+      }
+    }
+    value = Math.max(0, Math.min(100, Math.round(value)));
+    const phase: CyclePhase =
+      day <= periodLen ? 'period'
+      : Math.abs(dOv) <= 2 ? 'ovulation'
+      : dOv > 0 ? 'luteal'
+      : 'follicular';
+    pts.push({ day, value, phase });
+  }
+  return pts;
+}
+
 /** 取某周期日的雌激素指数；dayInCycle 越界则夹取边界；无数据返回 null */
 export function estrogenAt(pts: EstrogenPoint[], dayInCycle: number | null): number | null {
   if (dayInCycle == null || pts.length === 0) return null;

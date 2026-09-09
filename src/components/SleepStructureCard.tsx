@@ -80,7 +80,7 @@ export default function SleepStructureCard({
 
       {/* 图例 */}
       <View style={styles.legendRow}>
-        {[0, 1, 2, 4].map((t) => (
+        {[0, 1, 2, 3, 4].map((t) => (
           <View key={t} style={styles.legendItem}>
             <View style={[styles.dot, { backgroundColor: SLEEP_STAGE_META[t].color }]} />
             <Text style={styles.legendText}>{SLEEP_STAGE_META[t].label}</Text>
@@ -99,8 +99,8 @@ export default function SleepStructureCard({
           <Text style={styles.sumLabel}>REM 占比</Text>
         </View>
         <View style={styles.sumItem}>
-          <Text style={styles.sumVal}>{score != null ? `${score}` : '—'}</Text>
-          <Text style={styles.sumLabel}>睡眠评分</Text>
+          <Text style={styles.sumVal}>{score != null ? `${Math.round(score)}` : '—'}</Text>
+          <Text style={styles.sumLabel}>{score != null ? '睡眠评分 /100' : '睡眠评分'}</Text>
         </View>
       </View>
     </TouchableOpacity>
