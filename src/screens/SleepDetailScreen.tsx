@@ -25,6 +25,7 @@ import { RingBle, type RingState, type SleepSummary, type SleepSegment } from '.
 import SleepStageChart from '../components/SleepStageChart';
 import { startOfDay, startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
+import { dayKey } from '../data/healthStore';
 
 // ★ 柱状图 SVG 只负责画柱子、网格线、渐变；所有文字都用 HTML（参考 MetricDetailScreen）
 const W = 680;
@@ -71,7 +72,7 @@ function lastDayKeys(n: number): string[] {
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(base);
     d.setDate(base.getDate() - i);
-    arr.push(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`);
+    arr.push(dayKey(d.getTime()));  // ★ 补零格式
   }
   return arr;
 }
@@ -272,7 +273,7 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
   const barW = Math.min(46, slot * 0.6);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.header}>
         <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => navigation.goBack()}>
           <Icon name="chevronLeft" size={22} color={theme.colors.textTitle} />

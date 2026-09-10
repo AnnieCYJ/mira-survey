@@ -65,7 +65,7 @@ export default function EcgDetailScreen() {
   const latest = history.length > 0 ? history[0] : null;
 
   return (
-    <ScreenContainer compactTop>
+    <ScreenContainer withGradient compactTop>
       {/* Header */}
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>

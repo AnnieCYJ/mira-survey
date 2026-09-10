@@ -25,6 +25,7 @@ import CortisolRhythmCard from '../components/CortisolRhythmCard';
 import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
+import { dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
@@ -418,7 +419,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
 function ActivityStatsTab({ ring }: { ring: RingState }) {
   const navigation = useNavigation<any>();
   const today = new Date();
-  const dk = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+  const dk = dayKey(today.getTime());  // ★ 补零格式
   const step = ring.stepDaily?.[dk];
   const steps = step?.steps ?? 0;
   const distance = step?.distance ?? 0;

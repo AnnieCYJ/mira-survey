@@ -36,9 +36,11 @@ export function parseDate(s: string): Date {
 }
 
 /** 生成与 RingBleManager.dayKeyOf 同款的 key：'YYYY-M-D'（无前导零） */
+// ★ 统一用 healthStore.dayKey 补零格式
+import { dayKey as _dayKey } from '../data/healthStore';
 export function dayKey(d: Date | number): string {
-  const dt = typeof d === 'number' ? new Date(d) : d;
-  return `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`;
+  const ts = typeof d === 'number' ? d : d.getTime();
+  return _dayKey(ts);
 }
 
 export function addDays(s: string, n: number): string {

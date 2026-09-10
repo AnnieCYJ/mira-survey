@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
+
+const IMG_EMOTION = require('../assets/card_focus.jpg');
+const IMG_COG = require('../assets/card_cognitive.png');
+const IMG_ACTIVITY = require('../assets/card_meditation.jpg');
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { MOODS } from '../data/metrics';
+import { computeStressReport } from '../lib/stressAlgorithm';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { RingBle } from '../ble/RingBleManager';
+import { dayKey } from '../data/healthStore';
 import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
 
 const ADVICE_STATIC: ListItem[] = [
@@ -73,69 +80,105 @@ function cycleAdviceItem(cs: CurveStatus | null): ListItem {
 }
 
 
-function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress }: {
-  title: string; subtitle: string; accent: string; icon: import('../components/Icon').IconName; value: string; unit: string; onPress: () => void;
+function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
+  title: string; subtitle: string; accent: string; icon: import('../components/Icon').IconName; value: string; unit: string; onPress: () => void; image?: number;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
-      <Card padded={true} style={styles.energyMini}>
-        <View style={[styles.energyMiniIcon, { backgroundColor: accent + '1A' }]}>
-          <Icon name={icon} size={theme.fs(16)} color={accent} />
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+      <ImageBackground
+        source={image || require('../assets/card_stress.jpg')}
+        style={styles.energyMini}
+        imageStyle={styles.energyMiniImg}
+        resizeMode="cover"
+      >
+        {/* 底部渐变遮罩 */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.6)']}
+          style={styles.energyMiniOverlay}
+        />
+        <View style={styles.energyMiniLabel}>
+          <Text style={styles.energyMiniTitle} numberOfLines={1}>{title}</Text>
+          <View style={styles.energyMiniValRow}>
+            <Text style={styles.energyMiniVal}>{value}</Text>
+            <Text style={styles.energyMiniUnit}> {unit}</Text>
+          </View>
         </View>
-        <View style={styles.energyMiniMid}>
-          <Text style={styles.energyMiniTitle}>{title}</Text>
-          <Text style={styles.energyMiniSub}>{subtitle}</Text>
-        </View>
-        <View style={styles.energyMiniRight}>
-          <Text style={[styles.energyMiniVal, { color: accent }]}>{value}</Text>
-          <Text style={styles.energyMiniUnit}>{unit}</Text>
-        </View>
-        <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} />
-      </Card>
+      </ImageBackground>
     </TouchableOpacity>
   );
 }
 
 
 function EnergyRowData({ ring, onNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void }) {
-  // 情绪: 今日压力事件数
+  const _dk = (() => {
+    try {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } catch { return ''; }
+  })();
+  // 情绪消耗 = 今日压力事件数
   const stress = (() => {
     try {
-      const h = ring?.healthStore?.hourly ?? {};
-      const dk = `${new Date().getFullYear()}-${new Date().getMonth()+1}-${new Date().getDate()}`;
-      const today = h[dk] ?? {};
-      const count = Object.values(today).filter((m: any) => m?.snsActivation > 0.7).length;
-      return count > 0 ? String(count) : '—';
+      const r = computeStressReport();
+      return r?.events?.length > 0 ? String(r.events.length) : '—';
     } catch { return '—'; }
   })();
-
-  // 脑力: 认知负荷峰值 (暂取 ring.cognitiveLoadScore)
-  const cognitive = ring?.cognitiveLoadScore != null ? String(ring.cognitiveLoadScore) : '—';
-
-  // 运动: 今日步数
-  const step = (() => {
-    const dk = `${new Date().getFullYear()}-${new Date().getMonth()+1}-${new Date().getDate()}`;
-    const s = ring?.stepDaily?.[dk]?.steps;
-    return s ? s.toLocaleString('zh-CN') : '—';
+  // 脑力消耗 = 认知负荷分 0-100
+  const cognitive = (() => {
+    try {
+      const r = computeCognitiveLoadReport();
+      return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—';
+    } catch { return '—'; }
   })();
-
+  // 运动消耗 = 今日步数
+  const step = (() => {
+    try {
+      const s = ring?.stepDaily?.[_dk]?.steps;
+      return s ? s.toLocaleString('zh-CN') : '—';
+    } catch { return '—'; }
+  })();
+  const card = (img: number, title: string, val: string, unit: string, onPress: () => void) => (
+    <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={{ flex: 1 }}>
+      <ImageBackground
+        source={img}
+        style={{ height: 160, borderRadius: theme.radius.card, overflow: 'hidden' }}
+        resizeMode="cover"
+      >
+        {/* 底部渐暗遮罩，让文字可读 */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.75)']}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 110 }}
+        />
+        {/* 标题 + 值 */}
+        <View style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
+          <Text style={{
+            color: '#fff',
+            fontSize: theme.fontSize.micro,
+            fontWeight: theme.weight.medium,
+            letterSpacing: 0.5,
+            opacity: 0.92,
+          }}>{title}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
+            <Text style={{
+              color: '#fff',
+              fontSize: theme.fontSize.h2,
+              fontWeight: theme.weight.bold,
+            }}>{val}</Text>
+            <Text style={{
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: theme.fontSize.micro,
+              marginLeft: 2,
+            }}>{unit}</Text>
+          </View>
+        </View>
+      </ImageBackground>
+    </TouchableOpacity>
+  );
   return (
-    <View style={styles.energyCol}>
-      <EnergyMiniCard
-        title="情绪消耗" subtitle="压力事件" accent={theme.colors.stateTense}
-        icon="heart" value={stress} unit="次"
-        onPress={() => onNav('emotion')}
-      />
-      <EnergyMiniCard
-        title="脑力消耗" subtitle="认知负荷" accent={theme.colors.accentSolid}
-        icon="mind" value={cognitive} unit="/100"
-        onPress={() => onNav('cognitive')}
-      />
-      <EnergyMiniCard
-        title="运动消耗" subtitle="今日步数" accent={theme.colors.stateEnergy}
-        icon="activity" value={step} unit="步"
-        onPress={() => onNav('activity')}
-      />
+    <View style={{ flexDirection: 'row', gap: theme.sp(3) }}>
+      {card(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
+      {card(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
+      {card(IMG_ACTIVITY, '运动消耗', step, '步', () => onNav('activity'))}
     </View>
   );
 }
@@ -340,22 +383,45 @@ const styles = StyleSheet.create({
   },
   trendCard: { marginTop: theme.space.md, marginBottom: theme.space.lg },
 
-  energyCol: { gap: theme.space.sm, marginTop: theme.space.md },
+  energyCol: {
+    flexDirection: 'row',
+    gap: theme.space.sm,
+    marginTop: theme.space.md,
+  },
   energyMini: {
-    flexDirection: 'row', alignItems: 'center', gap: theme.space.sm,
+    flex: 1,
+    height: 130,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+  },
+  energyMiniImg: {
     borderRadius: theme.radius.md,
   },
-  energyMiniIcon: {
-    width: theme.sp(10), height: theme.sp(10), borderRadius: theme.radius.pill,
-    alignItems: 'center', justifyContent: 'center',
+  energyMiniOverlay: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    height: 70,
   },
-  energyMiniMid: { flex: 1 },
-  energyMiniTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
-  energyMiniSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  energyMiniRight: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  energyMiniVal: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any },
-  energyMiniUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-
+  energyMiniLabel: {
+    position: 'absolute', left: 10, right: 10, bottom: 10,
+  },
+  energyMiniTitle: {
+    fontSize: theme.fontSize.micro,
+    color: '#fff',
+    fontWeight: theme.weight.medium,
+  },
+  energyMiniValRow: {
+    flexDirection: 'row', alignItems: 'baseline',
+    marginTop: 2,
+  },
+  energyMiniVal: {
+    fontSize: theme.fontSize.card,
+    color: '#fff',
+    fontWeight: theme.weight.semibold,
+  },
+  energyMiniUnit: {
+    fontSize: theme.fontSize.micro,
+    color: 'rgba(255,255,255,0.85)',
+  },
   adviceWrap: { marginTop: theme.space.md },
   cardTitle: {
     fontSize: theme.fontSize.card,

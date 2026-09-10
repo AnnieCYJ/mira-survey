@@ -73,7 +73,7 @@ export default function BodyCompositionHistoryScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 返回 + 标题 */}
         <View style={styles.head}>

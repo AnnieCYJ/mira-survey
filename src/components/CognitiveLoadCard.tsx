@@ -1,8 +1,10 @@
 import React from 'react';
-import { Dimensions, View, Text, StyleSheet } from 'react-native';
+import { Dimensions, View, Text, StyleSheet, Image } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
+
+const coverImg = require('../assets/card_cognitive.jpg');
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 export function fmtRange(span: { startHour: number; endHour: number }): string {
@@ -52,6 +54,8 @@ export default function CognitiveLoadCard() {
   if (!hasData) {
     return (
       <Card padded={false}>
+      {/* 顶部装饰图 */}
+      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
         <View style={styles.pad}>
           <Text style={styles.title}>认知负荷 & 疲劳</Text>
           <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
@@ -65,6 +69,8 @@ export default function CognitiveLoadCard() {
 
   return (
     <Card padded={false}>
+      {/* 顶部装饰图 */}
+      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
       <View style={styles.pad}>
         {/* ── 头部: 认知负荷 ── */}
         <View style={styles.headRow}>
@@ -244,6 +250,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
 }
 
 const styles = StyleSheet.create({
+  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
   // ── 复用 StressInsightCard token ──
   pad: { padding: theme.space.cardPad },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

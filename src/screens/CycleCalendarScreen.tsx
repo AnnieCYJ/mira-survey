@@ -119,7 +119,7 @@ export default function CycleCalendarScreen() {
   const estCurve = useMemo(() => buildEstrogenHeader(log, ring), [log, ring.tempDaily]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>

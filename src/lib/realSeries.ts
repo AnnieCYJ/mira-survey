@@ -97,12 +97,21 @@ function dayMean(pts: TimePoint[] | undefined): number | null {
  */
 function dailyValueFor(key: string, dk: string): number | null {
   const sk = signalKeyFor(key);
-  if (sk === 'steps') return healthStore.getDay('steps', dk)?.mean ?? null;
+  if (sk === 'steps') {
+    const val = healthStore.getDay('steps', dk)?.mean ?? null;
+    return val;
+  }
   if (sk === 'sleepTotal') return healthStore.getSleep(dk)?.total ?? null;
   if (sk === 'sleepDeep') return healthStore.getSleep(dk)?.deep ?? null;
   if (sk === 'sleepRem') return healthStore.getSleep(dk)?.rem ?? null;
   if (sk === 'sleepScore') return healthStore.getSleep(dk)?.score ?? null;
-  return healthStore.getDay(hsKeyFor(key), dk)?.mean ?? null;
+  // ★ 其他指标：从 intraday 实时重算 mean（不信任已存 daily.mean，旧数据含 0 占位符）
+  const hsKey = hsKeyFor(key);
+  const today0 = new Date(dk + 'T00:00:00').getTime();
+  const pts = healthStore.getIntraday(hsKey, dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
+  if (pts.length === 0) return healthStore.getDay(hsKey, dk)?.mean ?? null; // fallback
+  const real = pts.map((p) => p.v);
+  return real.reduce((a, b) => a + b, 0) / real.length;
 }
 
 function bucketByHour(pts: TimePoint[] | undefined): (number | null)[] {
@@ -358,6 +367,10 @@ export function getTodaySeries(metricKey: string): TimePt[] {
   return healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
 }
 
+// 真正需要手动测量的指标：戒指没有连续信号，只能手动测
+// 血糖/血压 等戒指有 intraday 连续信号，走下面通用链路
+const MANUAL_KEYS_SET = new Set(['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid']);
+
 export function buildHistorySeries(
   key: string,
   range: RangeKey,
@@ -370,17 +383,98 @@ export function buildHistorySeries(
   const def = resolveDef(key);
   if (!def) return emptyResult(key, '未找到该指标定义');
 
+  // ★ 手动测量类指标（血糖/血脂/尿酸/血压等）：优先从 manualMeasurements 取时间序列画趋势图；
+  // 如果 manualMeasurements 为空（比如原生 SDK 把数据写到 intraday），fallback 到下面通用链路。
+  if (MANUAL_KEYS_SET.has(key)) {
+    const hsKey = hsKeyFor(key);
+    const all = healthStore.getManualMeasurements(hsKey);  // 按时间倒序
+    if (all.length > 0) {
+      // 有 manual 数据，走趋势图
+      const asc = [...all].sort((a, b) => a.t - b.t);
+      if (range === 'day') {
+        const start = dayStartMs(anchor.getTime());
+        const end = start + 86400000;
+        const pts = asc.filter(m => m.t >= start && m.t < end).map(m => ({ t: m.t, v: m.v }));
+        if (pts.length) {
+          return finalizeContinuous(pts, start, end, def, false, `${def.name} 手动测量趋势`);
+        }
+      } else if (range === 'week' || range === 'month') {
+        const DAY = 86400000;
+        const anchorMs = anchor.getTime();
+        const dk0 = new Date(anchorMs);
+        let startDay: Date;
+        let n: number;
+        if (range === 'week') {
+          const mon = new Date(anchorMs);
+          mon.setDate(mon.getDate() - mon.getDay() + 1);
+          startDay = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate());
+          n = 7;
+        } else {
+          startDay = new Date(dk0.getFullYear(), dk0.getMonth(), 1);
+          n = new Date(dk0.getFullYear(), dk0.getMonth() + 1, 0).getDate();
+        }
+        const out: (number | null)[] = [];
+        const axis: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const d = new Date(startDay.getTime() + i * DAY);
+          const dayMs = dayStartMs(d.getTime());
+          const dayEnd = dayMs + DAY;
+          const dayPts = asc.filter(m => m.t >= dayMs && m.t < dayEnd);
+          out.push(dayPts.length ? dayPts[dayPts.length - 1].v : null);
+          axis.push(range === 'week' ? `${d.getMonth() + 1}/${d.getDate()}` : `${i + 1}`);
+        }
+        const nonNull = out.filter(v => v != null).length;
+        if (nonNull > 0) {
+          const res = finalize(out, def, nonNull > 1, `${def.name} 手动测量趋势`);
+          res.axisOverride = axis;
+          return res;
+        }
+      } else {
+        // year
+        const y = anchor.getFullYear();
+        const out: (number | null)[] = [];
+        const axis: string[] = [];
+        for (let mo = 0; mo < 12; mo++) {
+          const monthStart = new Date(y, mo, 1).getTime();
+          const monthEnd = new Date(y, mo + 1, 0).getTime() + 86400000;
+          const monthPts = asc.filter(m => m.t >= monthStart && m.t < monthEnd);
+          out.push(monthPts.length ? monthPts.reduce((s, m) => s + m.v, 0) / monthPts.length : null);
+          axis.push(`${mo + 1}月`);
+        }
+        const nonNull = out.filter(v => v != null).length;
+        if (nonNull > 0) {
+          const res = finalize(out, def, nonNull > 1);
+          res.axisOverride = axis;
+          return res;
+        }
+      }
+      // manual 数据在所选范围内为空 → fallback 到通用链路（继续往下跑）
+    }
+    // manualMeasurements 本身就为空 → fallback 到通用链路
+  }
+
   const anchorKey = dateKeyOf(anchor.getTime());
   const isTodayAnchor = anchorKey === dateKeyOf(Date.now());
   const hsKey = hsKeyFor(key);
   const DAY = 86400000;
+
+  // ★ 诊断日志 — bloodSugar / 所有 key
+  {
+    const _intraday = healthStore.getIntraday(hsKey, anchorKey);
+    const _day = healthStore.getDay(hsKey, anchorKey);
+    const _keys = Object.keys((healthStore as any).stores?.[hsKey]?.intraday ?? {});
+    const _manual = healthStore.getManualMeasurements(hsKey);
+    console.log(`[HISTORY] key=${key} hsKey=${hsKey} range=${range} dayKey=${anchorKey} isToday=${isTodayAnchor} | intraday=${_intraday.length} dayMean=${_day?.mean ?? 'null'} manual=${_manual.length} storeDays=[${_keys.slice(-5).join(',')}]`);
+  }
 
   // 日：今日取 healthStore 日内逐样本，按真实时间戳连续绘制（统一数据源 healthStore）；
   //     历史某天优先连续曲线，否则单点当日均值。
   if (range === 'day') {
     const start = dayStartMs(anchor.getTime());
     const end = isTodayAnchor ? Date.now() : start + DAY;
-    const tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+    let tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+    // ★ 过滤原生 SDK 占位符 0 值（生理指标不可能为 0）
+    tps = tps.filter(p => Number.isFinite(p.v) && p.v > 0);
     console.log(`[REAL-SERIES-DAY] key=${key} hsKey=${hsKey} anchorKey=${anchorKey} isToday=${isTodayAnchor} tps=${tps.length} start=${start} end=${end}`);
     // ★ DEBUG: 打印 tps 首尾值和分布
     const _first3 = tps.slice(0,3).map(p=>`${p.t%86400000}s=${p.v?.toFixed?.(2)??p.v}`);

@@ -5,9 +5,13 @@
  * 设计令牌: 100% theme.ts (Mira Design System v1.0) — 禁止裸值
  */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+const coverImg = require('../assets/card_stress.jpg');
+
+import { View, Text, StyleSheet, Image } from 'react-native';
+
 import { theme } from '../theme/theme';
 import Card from './Card';
+
 import {
   computeStressReport, levelText, formatPeakHour,
   type StressLevel, type StressEvent, type HourBucket, type ValenceLabel,
@@ -66,6 +70,8 @@ export default function StressInsightCard() {
 
   return (
     <Card padded={false}>
+      {/* 顶部装饰图 */}
+      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
       <View style={styles.pad}>
         {/* Header */}
         <View style={styles.headRow}>
@@ -80,7 +86,7 @@ export default function StressInsightCard() {
 
         {/* Big score */}
         <View style={styles.scoreRow}>
-          <Text style={[styles.score, { color }]}>{report.score ?? '—'}</Text>
+          <Text style={[styles.score, { color }]}>{report.emotionalLoad ?? '—'}</Text>
           <Text style={styles.scoreUnit}>/ 100</Text>
           {report.events.length > 0 && (
             <View style={styles.eventCountBadge}>
@@ -273,7 +279,8 @@ const styles = StyleSheet.create({
   levelDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1) },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
 
-  scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(1.5), marginBottom: theme.sp(3) },
+  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(1.5), marginBottom: theme.sp(3)},
   score: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, letterSpacing: -1 },
   scoreUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(1) },
   eventCountBadge: {

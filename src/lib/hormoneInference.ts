@@ -371,7 +371,7 @@ export function collectDailyPhysio(days: number = 60): DailyPhysio[] {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const key = dayKey(d.getTime());  // ★ 补零格式
 
     const daily: DailyPhysio = { date: key };
 
@@ -396,3 +396,4 @@ export function collectDailyPhysio(days: number = 60): DailyPhysio[] {
 
   return result;
 }
+

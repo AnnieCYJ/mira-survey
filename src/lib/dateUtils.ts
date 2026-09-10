@@ -10,8 +10,8 @@ export function startOfDay(d: Date): Date {
 }
 
 export function dateKeyOf(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  // ★ 统一用 healthStore.dayKey 补零格式
+  return require('../data/healthStore').dayKey(ts);
 }
 
 /** 求包含 d 的当周周一 00:00 */

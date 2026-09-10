@@ -182,13 +182,13 @@ function recomputeDaily(
   prevDaily: DayMetric | undefined,
   source: Source,
 ): DayMetric {
-  const vals = intraday.map((p) => p.v).filter((v) => Number.isFinite(v));
-  const real = vals.filter((v) => v > 0 || intraday.length === 0 ? Number.isFinite(v) : false);
-  const use = vals.length ? vals : [];
-  const mean = use.length ? use.reduce((a, b) => a + b, 0) / use.length : null;
-  const min = use.length ? Math.min(...use) : null;
-  const max = use.length ? Math.max(...use) : null;
-  const last = intraday.length ? intraday[intraday.length - 1].v : null;
+  // ★ 过滤 0/负数：生理指标不可能为 0（0 是原生 SDK 的占位符/无测量标记）
+  const clean = intraday.filter((p) => Number.isFinite(p.v) && p.v > 0);
+  const vals = clean.map((p) => p.v);
+  const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  const min = vals.length ? Math.min(...vals) : null;
+  const max = vals.length ? Math.max(...vals) : null;
+  const last = clean.length ? clean[clean.length - 1].v : null;
   const mergedSource: Source =
     prevDaily && prevDaily.source !== source && prevDaily.samples > 0 ? 'mixed' : source;
   return {

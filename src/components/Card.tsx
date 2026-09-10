@@ -18,6 +18,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBg,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
+    overflow: 'hidden',
     ...theme.shadow.card,
   },
   pad: { padding: theme.space.cardPad },

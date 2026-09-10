@@ -109,7 +109,16 @@ export default function MetricDetailScreen() {
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
   const [w, setW] = useState(0);
+  // ★ tooltip 状态：点击图表时显示的白色详情框
+  const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
   const isEcg = params.key === 'ecg';
+  // ★ 运动类指标（步数/距离/消耗）不支持日视图，排除 'day' 按钮
+  const ACTIVITY_KEYS = ['steps', 'distance', 'calorie'] as const;
+  const isActivity = ACTIVITY_KEYS.includes(params.key as any);
+  // 如果是运动类且当前 range 是 'day'，自动 fallback 到 'week'
+  useEffect(() => {
+    if (isActivity && range === 'day') setRange('week');
+  }, [isActivity]);
   // ★ ECG 状态完全数据驱动，不从本地 measuring state 读：
   const _ecgProg = ring.ecgProgress;
   const _ecgProgress = _ecgProg?.progress ?? 0;
@@ -151,7 +160,8 @@ export default function MetricDetailScreen() {
 
   const color = params.color || theme.colors.accentSolid;
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
-  const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'bloodSugar', 'glucose', 'bpSys', 'bpDia', 'bodyComposition'];
+  // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
+const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'bodyComposition'];
   const showManualList = MANUAL_KEYS.includes(params.key);
   const manualHsKeyMap: Record<string, HSMetricKey> = {
     triglyceride: 'triglyceride', hdl: 'hdl', ldl: 'ldl',
@@ -163,8 +173,6 @@ export default function MetricDetailScreen() {
     ? healthStore.getManualMeasurements(manualHsKeyMap[params.key] ?? params.key as HSMetricKey).slice(0, 30)
     : [];
   // ★ DEBUG: 详情页收到的参数和数据
-  console.log(`[MD-OPEN] key=${params.key} showManualList=${showManualList} manualHsKey=${manualHsKeyMap[params.key]} manualLen=${manualList.length}`);
-
   const gid = `md_${params.key}`;
 
   const plotW = W - PAD_L - PAD_R;
@@ -200,6 +208,26 @@ export default function MetricDetailScreen() {
     return PAD_T + (1 - (c - yLo) / (yHi - yLo || 1)) * plotH;
   };
 
+  // ★ 找离触摸点最近的真实数据点（tooltip 用）
+  const wScale = W / Math.max(w, 1);
+  const findNearestDot = (touchXRn: number) => {
+    if (dots.length === 0) return null;
+    const svgX = touchXRn * wScale;
+    let best = -1, bestDist = Infinity;
+    for (let i = 0; i < dots.length; i++) {
+      const d = Math.abs(dots[i].x - svgX);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    if (best < 0) return null;
+    const d = dots[best];
+    const label = axisLabels[Math.min(best, axisLabels.length - 1)] ?? '';
+    // 兼容 indexed 模式（series.points）和 continuous 模式（series.tPoints）
+    let rawVal: number | null = null;
+    if (series.tPoints && series.tPoints.length > 0) rawVal = series.tPoints[best]?.v ?? null;
+    else rawVal = series.points[best] ?? null;
+    return { d, label, rawVal };
+  };
+
   // 连续时间轴（真实时间戳）：今日实时点 + 历史回填点都在 tMin..tMax 域内按 t 映射 x
   const isTodayAnchor = anchorKey === dateKeyOf(Date.now());
   const useContinuous = series.continuous && !!series.tPoints && series.tPoints.length > 0;
@@ -218,7 +246,6 @@ export default function MetricDetailScreen() {
     // 连续时间轴（HR/SpO2/Temp/EDA day range）：按真实 t 映射 x
     if (useContinuous && series.tPoints) {
       const pts = series.tPoints;
-      console.log(`[LINE-START] ${params.key} CONTINUOUS pts=${pts.length} GAP=30min firstT=${new Date(pts[0]?.t ?? 0).toISOString().slice(11,16)} lastT=${new Date(pts[pts.length-1]?.t ?? 0).toISOString().slice(11,16)}`);
       let line = '';
       let area = '';
       let seg: { x: number; y: number }[] = [];
@@ -244,7 +271,6 @@ export default function MetricDetailScreen() {
         if (i > 0) {
           const gapMs = p.t - pts[i - 1].t;
           const gapMin = gapMs / 60000;
-          if (gapMin > 5) console.log(`[LINE-GAP] ${params.key} i=${i} gap=${gapMin.toFixed(1)}min flush=${gapMs > GAP_MS ? 'YES' : 'no'} prev=${new Date(pts[i-1].t).toISOString().slice(11,16)} cur=${new Date(p.t).toISOString().slice(11,16)}`);
           if (gapMs > GAP_MS) flush();
         }
         seg.push({ x, y });
@@ -255,7 +281,6 @@ export default function MetricDetailScreen() {
     }
 
     // 非连续（week/month/year）：按索引绘制，遇 null 断线
-    console.log(`[LINE-START] ${params.key} INDEXED n=${series.points.length} nulls=${series.points.filter(v=>v==null).length}`);
     if (n === 0) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, dots: [] };
     if (n === 1) {
       const v = series.points[0];
@@ -346,7 +371,7 @@ export default function MetricDetailScreen() {
   }, [useContinuous, tMin, tMax, range, isTodayAnchor, series.axisOverride]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -379,7 +404,7 @@ export default function MetricDetailScreen() {
         )}
 
         {/* 日 / 周 / 月 / 年 切换 */}
-        {!isEcg && <RangeSwitch value={range} onChange={setRange} />}
+        {!isEcg && <RangeSwitch value={range} onChange={setRange} exclude={isActivity ? ['day'] : undefined} />}
 
         {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
         {!isEcg && <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />}
@@ -411,7 +436,27 @@ export default function MetricDetailScreen() {
                   );
                 })}
             </View>
-            <View style={{ flex: 1 }} onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
+            <View
+              style={{ flex: 1 }}
+              onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}
+              onTouchStart={(e) => {
+                const touch = e.nativeEvent;
+                const result = findNearestDot(touch.locationX);
+                if (result) {
+                  setTip({
+                    x: result.d.x / wScale,
+                    y: result.d.y / wScale,
+                    label: result.label,
+                    value: fmtVal(result.rawVal),
+                    color,
+                  });
+                } else {
+                  setTip(null);
+                }
+              }}
+              onTouchEnd={() => setTimeout(() => setTip(null), 2000)}
+              pointerEvents="box-none"
+            >
             {w > 0 ? (
               <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                 <Defs>
@@ -456,14 +501,29 @@ export default function MetricDetailScreen() {
                 {lineD ? (
                   <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
-                {/* 所有真实数据点（小圆点），稀疏/单点历史日也能看见；连续密集时只画线避免噪点 */}
-                {dots.length <= 120
-                  ? dots.map((d, i) => (
-                      <Circle key={`dot-${i}`} cx={d.x} cy={d.y} r={3.5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
-                    ))
-                  : null}
+                {/* 数据点已去掉，改用点击 tooltip 展示详细数据 */}
               </Svg>
             ) : null}
+            {/* ★ tooltip：点击显示白色详情框 */}
+            {tip && w > 0 ? (() => {
+              const TW = 110, TH = 60;
+              // 智能定位：不超屏
+              let tipX = tip.x - TW / 2;
+              if (tipX < 4) tipX = 4;
+              if (tipX + TW > w - 4) tipX = w - 4 - TW;
+              const tipY = Math.max(0, tip.y - TH - 12);
+              // 小三角
+              const triX = tip.x - 8;
+              return (
+                <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
+                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 11, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
+                  </View>
+                  <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
+                </View>
+              );
+            })() : null}
           </View>
           </View>
 

@@ -19,7 +19,7 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function BottomTabNavigator() {
   return (
-    <Tab.Navigator tabBar={(props) => <CustomTabBar {...props} />} screenOptions={{ headerShown: false }}>
+    <Tab.Navigator tabBar={(props) => <CustomTabBar {...props} />} screenOptions={{ headerShown: false, sceneContainerStyle: { backgroundColor: 'transparent' } }}>
       <Tab.Screen name="Today" component={TodayScreen} />
       <Tab.Screen name="Insight" component={InsightScreen} />
       <Tab.Screen name="Focus" component={FocusScreen} />

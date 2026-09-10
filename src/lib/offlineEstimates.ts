@@ -60,6 +60,7 @@ export function estimateOfflineMetricsRecent(nDays: number, now: number = Date.n
 }
 
 function healthStoreDayKey(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  // ★ 统一用 healthStore.dayKey 补零格式
+  const { dayKey } = require('../data/healthStore');
+  return dayKey(ts);
 }

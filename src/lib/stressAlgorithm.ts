@@ -201,6 +201,15 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
   // 优先级: 事件前后 emotion 单点 > 恢复时间辅助 > 全天 valence 兜底
   const EVENT_WINDOW_MS = 10 * 60 * 1000; // ±10min 窗口
   const emotionDay = healthStore.getTimeRange('emotion' as MetricKey, dayStart, nowMs, { fillDailyMean: false, maxPoints: 200 });
+  // ★ 全天 emotion 真实性预检测：值域窄 + 方差小 = offlineEstimates 假数据 = Tier 1 全跳过
+  let emotionDayIsReal = false;
+  if (emotionDay.length >= 5) {
+    const vals = emotionDay.map(p => p.v);
+    const vMin = Math.min(...vals), vMax = Math.max(...vals);
+    const vMean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const vVar = vals.reduce((s,v)=>s+(v-vMean)**2,0)/vals.length;
+    emotionDayIsReal = (vMax - vMin) >= 1.5 && vVar >= 0.5;
+  }
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
     const evStart = ev.t - EVENT_WINDOW_MS;
@@ -209,20 +218,35 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
     const windowEmotions = emotionDay.filter((p) => p.t >= evStart && p.t <= evEnd);
     let evLabel: ValenceLabel | null = null;
 
-    if (windowEmotions.length > 0) {
+    // ★ Tier 1: emotion 数据真实性检测
+    // offlineEstimates 用 stress→emotion 映射出固定值 2/3/4，值域窄 (max-min<1.5) 且方差小 → 视为假数据跳过
+    let emotionIsReal = false;
+    if (windowEmotions.length >= 3) {
+      const emoVals = windowEmotions.map(p => p.v);
+      const emoMin = Math.min(...emoVals);
+      const emoMax = Math.max(...emoVals);
+      const emoRange = emoMax - emoMin;
+      const emoMean = emoVals.reduce((a, b) => a + b, 0) / emoVals.length;
+      const emoVar = emoVals.reduce((s, v) => s + (v - emoMean) ** 2, 0) / emoVals.length;
+      emotionIsReal = emoRange >= 1.5 && emoVar >= 0.5;  // 值域≥1.5 且方差≥0.5 → 真数据
+    }
+
+    if (windowEmotions.length > 0 && emotionIsReal) {
       const avgEmo = windowEmotions.reduce((s, p) => s + p.v, 0) / windowEmotions.length;
       if (avgEmo >= 2) evLabel = 'positive';
       else if (avgEmo <= -2) evLabel = 'negative';
       else evLabel = 'neutral';
     } else if (ev.recoverySec != null) {
-      // 没有 emotion 单点 → 用恢复时间 + z-score 辅助判断
-      // 恢复快 + z 高 = 可能是兴奋/投入 (积极唤醒)
-      // 恢复慢 + z 高 = 确定是压力/焦虑 (消极唤醒)
-      if (ev.recoverySec < 45 && ev.z < 2.0) {
-        evLabel = 'positive';  // 快速唤醒 + 中等偏离 → 兴奋
-      } else if (ev.recoverySec > 180 && ev.z > 1.5) {
-        evLabel = 'negative';  // 慢恢复 + 高偏离 → 压力
+      // 没有 emotion 单点 → recoverySec 相对值判定（避免绝对阈值失效）
+      // 同一用户同一天 recoverySec 常常很接近（都≈40s），用 ratio 比较才有区分度
+      const avgRT = validRTs.length > 0 ? validRTs.reduce((a, b) => a + b, 0) / validRTs.length : 40;
+      const ratio = avgRT > 0 ? ev.recoverySec / avgRT : 1;
+      if (ratio < 0.5 && ev.z < 2.0) {
+        evLabel = 'positive';   // 明显快于平均（<50%）→ 兴奋/心流
+      } else if (ratio > 2.0 || ev.z > 2.5) {
+        evLabel = 'negative';   // 明显慢于平均（>200%）或 z 极端高 → 压力
       }
+      // 其他 → 保持 null，下面兜底 neutral
     }
     // 兜底: 没有足够信号 → neutral (不猜)
     if (evLabel == null) evLabel = 'neutral';

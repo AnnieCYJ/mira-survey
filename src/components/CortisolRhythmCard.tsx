@@ -131,24 +131,48 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
     return h >= b || h < w;                    // 跨零点 (bed=22 wake=7)
   };
 
+  // 把 hourlyMean 画成折线图（带正常范围色带）
+  const CHART_W = 320;
+  const CHART_H = 72;
+  const pad = 4;
+  const xOf = (h: number) => pad + (CHART_W - pad * 2) * (h / 23);
+  const yOf = (v: number) => pad + (CHART_H - pad * 2) * (1 - Math.max(0, Math.min(1, (v - lo) / span)));
+  const valid = r.hourlyMean.map((v, h) => v != null ? { v: v!, h } : null).filter(Boolean) as { v: number; h: number }[];
+  const linePath = valid.length >= 2 ? valid.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xOf(p.h).toFixed(1)} ${yOf(p.v).toFixed(1)}`).join(' ') : '';
+  const areaPath = linePath ? `${linePath} L ${xOf(23).toFixed(1)} ${CHART_H - pad} L ${xOf(0).toFixed(1)} ${CHART_H - pad} Z` : '';
+  const p25Y = Number.isFinite(r.baseline.p25) ? yOf(r.baseline.p25) : null;
+  const p75Y = Number.isFinite(r.baseline.p75) ? yOf(r.baseline.p75) : null;
+  const bandPath = (p25Y != null && p75Y != null) ? `M ${xOf(0)} ${p75Y} L ${xOf(23)} ${p75Y} L ${xOf(23)} ${p25Y} L ${xOf(0)} ${p25Y} Z` : '';
+
   return (
     <View>
-      <View style={styles.bars}>
-        {r.hourlyMean.map((v, h) => {
-          const asleep = isAsleep(h);
-          const inBand = !asleep && v != null && v >= r.baseline.p25 && v <= r.baseline.p75;
-          const height = v == null ? 3 : Math.max(3, Math.round(((v - lo) / span) * 72));
-          const predicted = r.hourlyPredicted?.[h];  // 这根是模型拟合的
-          const color = predicted
-            ? theme.colors.ui.borderSoft + '99'  // 半透明灰色 = 拟合值
-            : v == null
-            ? theme.colors.ui.borderSoft
-            : inBand
-            ? "#2ECC71"
-            : theme.colors.danger;
-          return <View key={h} style={[styles.bar, { height, backgroundColor: color }]} />;
+      <Svg width={CHART_W} height={CHART_H + 24} style={{ alignSelf: 'center' }}>
+        {/* 正常范围色带 */}
+        {bandPath ? <Path d={bandPath} fill="#2ECC7122" /> : null}
+        {/* 睡眠时段灰色遮罩 */}
+        {(() => {
+          const rects = [];
+          for (let h = 0; h < 24; h++) {
+            if (isAsleep(h)) {
+              const x = xOf(Math.max(0, h - 0.5));
+              const w = xOf(Math.min(23, h + 0.5)) - x;
+              rects.push(<Rect key={h} x={x} y={0} width={w} height={CHART_H} fill={theme.colors.ui.borderSoft + '22'} />);
+            }
+          }
+          return rects;
+        })()}
+        {/* 面积 */}
+        {areaPath ? <Path d={areaPath} fill={theme.colors.accentSolid + '15'} /> : null}
+        {/* 折线 */}
+        {linePath ? <Path d={linePath} stroke={theme.colors.accentSolid} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {/* 数据点 */}
+        {valid.map((p, i) => {
+          const asleep = isAsleep(p.h);
+          const inBand = !asleep && p.v >= r.baseline.p25 && p.v <= r.baseline.p75;
+          const color = inBand ? "#2ECC71" : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
+          return <Circle key={i} cx={xOf(p.h)} cy={yOf(p.v)} r={2.5} fill={color} />;
         })}
-      </View>
+      </Svg>
       {/* 时间轴 */}
       <View style={styles.timeAxis}>
         {[0, 6, 12, 18, 24].map((h) => (
@@ -156,10 +180,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
         ))}
       </View>
       <Text style={styles.chartCap}>
-        近 14 天你在每个小时的平均皮质醇（浅色柱=睡眠时段，由节律模型拟合）
-        {Number.isFinite(r.baseline.p25) && Number.isFinite(r.baseline.p75)
-          ? `（绿=${fmt(r.baseline.p25)}–${fmt(r.baseline.p75)} 是你的正常范围，红=超出）`
-          : ''}
+        近 14 天每小时平均皮质醇（绿色阴影=你的正常范围，点色=是否在范围内）
       </Text>
     </View>
   );

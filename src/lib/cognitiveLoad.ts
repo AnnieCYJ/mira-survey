@@ -57,14 +57,13 @@ export interface CognitiveLoadReport {
 
 const DAYS_BACK = 7;
 
-function todayKey(nowMs: number): string {
-  const d = new Date(nowMs);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-}
+// ★ 统一用 healthStore.dayKey 补零格式
+import { dayKey as _dayKey } from '../data/healthStore';
+function todayKey(nowMs: number): string { return _dayKey(nowMs); }
 function dayKey(offset: number, nowMs: number): string {
   const d = new Date(nowMs);
   d.setDate(d.getDate() + offset);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return _dayKey(d.getTime());
 }
 
 function mean(arr: number[]): number | null {
@@ -397,7 +396,7 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {
     hs.forEach(p => awakeHrv.push(p.v));
     ss.forEach(p => awakeSns.push(p.v));
   }
-  const _today = `${new Date(nowMs).getFullYear()}-${new Date(nowMs).getMonth()+1}-${new Date(nowMs).getDate()}`;
+  const _today = _dayKey(nowMs);  // ★ 补零格式
   const hrvBaseline = awakeHrv.length >= 3 ? awakeHrv.reduce((a,b)=>a+b,0)/awakeHrv.length : (healthStore.getDay('hrv' as any, _today)?.mean ?? 55);
   const snsBaseline = awakeSns.length >= 3 ? awakeSns.reduce((a,b)=>a+b,0)/awakeSns.length : (healthStore.getDay('sns' as any, _today)?.mean ?? 30);
 

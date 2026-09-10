@@ -42,7 +42,7 @@ function ringDataEnough(): boolean {
   const today = new Date();
   for (let i = 0; i < 60; i++) {
     const d = new Date(today); d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const key = dayKey(d.getTime());  // ★ 补零格式
     if (healthStore.getDay("temp", key)) tempDays++;
     if (healthStore.getDay("hrv", key)) hrvDays++;
   }
@@ -73,7 +73,7 @@ function calibrateWithRing(
 
   for (let i = 0; i < 60; i++) {
     const d = new Date(today); d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const key = dayKey(d.getTime());  // ★ 补零格式
     const dm = Math.round((d.getTime() - startMs) / 86400000) + 1;
 
     const hrvDm = healthStore.getDay("hrv", key);
@@ -298,3 +298,5 @@ const styles = StyleSheet.create({
   legendDot: { width: 10, height: 4, borderRadius: 2, marginRight: 4 },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 });
+
+import { dayKey } from '../data/healthStore';

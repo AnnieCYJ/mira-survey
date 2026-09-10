@@ -238,7 +238,7 @@ export default function BpDetailScreen() {
   }
 
   return (
-    <ScreenContainer compactTop>
+    <ScreenContainer withGradient compactTop>
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
           <Text style={{ fontSize: 20 }}>‹</Text>

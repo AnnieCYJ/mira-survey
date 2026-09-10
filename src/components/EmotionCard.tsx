@@ -4,9 +4,11 @@
  * 设计令牌: 100% theme.ts (Mira Design System v1.0) — 禁止裸值
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Image } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
+
+const coverImg = require('../assets/card_emotion.jpg');
 import EmotionTimeline, { EmotionLegend } from './EmotionTimeline';
 import { getEmotionHistory } from '../ble/RingBleManager';
 import { healthStore, type MetricKey } from '../data/healthStore';
@@ -100,6 +102,7 @@ export default function EmotionCard({ ring, onPress }: Props) {
   return (
     <TouchableOpacity activeOpacity={onPress ? 0.7 : 1} onPress={onPress}>
       <Card padded={false}>
+        <Image source={coverImg} style={styles.cover} resizeMode="cover" />
         <View style={styles.pad}>
           {/* Header: title + levelChip */}
           <View style={styles.headRow}>
@@ -215,7 +218,8 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
 
   return (
     <Card padded={false}>
-      <View style={styles.pad}>
+
+      <Image source={coverImg} style={styles.cover} resizeMode="cover" />      <View style={styles.pad}>
         <View style={styles.headRow}>
           <Text style={styles.title}>今日情绪</Text>
           <Text style={styles.waitingChip}>⌛ 等待数据</Text>
@@ -254,6 +258,7 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
 
 // ── Styles — 100% theme token, 零裸值 ──
 const styles = StyleSheet.create({
+  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
   pad: { paddingVertical: SP(4), paddingHorizontal: SP(4) },
 
   // Header (对齐 StressInsightCard)

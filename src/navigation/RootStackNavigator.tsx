@@ -51,7 +51,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
@@ -62,7 +62,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
@@ -73,7 +73,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
@@ -84,7 +84,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen name="SleepDetail" component={SleepDetailScreen} />
@@ -96,7 +96,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
@@ -107,7 +107,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
@@ -118,7 +118,7 @@ export default function RootStackNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-          cardStyle: { backgroundColor: theme.colors.bgBottom },
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
             <Stack.Screen name="Settings" component={SettingsScreen} />
