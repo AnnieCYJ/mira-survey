@@ -32,7 +32,7 @@ static NSString *MRCollectorHost(void) {
   // 取不到时回退到固定 IP。
   NSString *h = [NSProcessInfo processInfo].environment[@"RCT_PACKAGER_HOSTNAME"];
   if (h.length > 0) return h;
-  return @"192.168.1.5";
+  return @"192.168.1.2";
 }
 
 static void MRForward(NSString *tag, NSString *fmt, ...) {

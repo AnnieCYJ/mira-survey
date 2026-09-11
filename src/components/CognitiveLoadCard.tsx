@@ -181,6 +181,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   peakSpan: { startHour: number; endHour: number; avgScore: number } | null;
   bestSpan: { startHour: number; endHour: number; avgScore: number } | null;
   sleepWindow: { bedHour: number; wakeHour: number } | null;
+  chartH?: number;
 }) {
   // ★ 展示范围 = 起床 → 入睡（含入睡那一小时）。
   // 例: wake=10 bed=1 → 展示 10,11,12,...,0,1

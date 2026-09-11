@@ -128,7 +128,7 @@ export default function PhaseInsightSection({
 
       {/* 阶段进度 */}
       <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: phaseProgress + '%', backgroundColor: data.color }]} />
+        <View style={[styles.progressFill, { flexGrow: phaseProgress / 100, backgroundColor: data.color }]} />
       </View>
 
       {/* 生理/情绪 bullet */}

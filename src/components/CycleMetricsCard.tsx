@@ -142,6 +142,13 @@ const styles = StyleSheet.create({
     color: theme.colors.textTitle,
     marginBottom: theme.space.sm,
   },
+  emptyTitle: {
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.semibold as any,
+    color: theme.colors.textTitle,
+    textAlign: 'center',
+    marginBottom: theme.sp(1),
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -473,13 +473,13 @@ function getLogHost(): string {
         _logHost = host;
         return host;
       }
-      _logHost = '192.168.1.12';
+      _logHost = '192.168.1.2';
       return _logHost;
     }
   } catch {
     /* ignore */
   }
-  _logHost = '192.168.1.12';
+  _logHost = '192.168.1.2';
   return _logHost;
 }
 const MAX_MEM_LOGS = 1200;
@@ -2642,7 +2642,7 @@ class RingConnectionImpl {
       'stress', 'cortisol', 'emotion', 'skin', 'fatigue', 'snsActivation',
       'bpSys', 'bpDia', 'bloodSugar', 'bloodFat', 'uricAcid', 'triglyceride', 'hdl', 'ldl', 'met',
     ];
-    const todayKey = this.bucketDay || (() => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; })();
+    const todayKey = this.bucketDay || dayKeyOf(Date.now());
     const curExt = { ...this.state.extDaily };
     const prevDay = curExt[todayKey] ?? {};
     let extDirty = false;
@@ -2695,11 +2695,7 @@ class RingConnectionImpl {
 
     // 今日 key：优先 bucketDay（与归档同格式 'YYYY-M-D'），未初始化时回退当天
     const today =
-      this.bucketDay ||
-      (() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      })();
+      this.bucketDay || dayKeyOf(Date.now());
 
     const step = st.stepDaily[today];
     if (step) {
@@ -3210,7 +3206,10 @@ class RingConnectionImpl {
   }
 
   private buildCurveStatus(curve: DailyCurveSeed | null, cycle: CycleInfo): CurveStatus {
-    if (!curve || curve.seed.value == null) {
+    // ★ 没戒指 + healthStore 全空时，curve 可能非 null 但 statusTimeline 是空的 → 也判为没数据
+    const tl = this.state.statusTimeline;
+    const tlAllZero = tl.length > 0 && tl.every((p: any) => !Number.isFinite(p.value) || p.value === 0);
+    if (!curve || curve.seed.value == null || tlAllZero) {
       const pb = cycle.phase as PhaseBucket;
       return {
         value: null,
@@ -3308,6 +3307,24 @@ class RingConnectionImpl {
   private rebuildHistoricalStatusImpl() {
     const hrv = this.state.hrvDaily;
     const sleep = this.state.sleepDaily;
+
+    // ★ 守卫：没连戒指 + healthStore 今日全空 → 不重建，避免造假曲线
+    const todayKey0 = dayKeyOf(Date.now());
+    const connected0 = this.state.status === 'connected';
+    if (!connected0) {
+      const hsHr0 = healthStore.getIntraday('hr', todayKey0).length;
+      const hsHrv0 = healthStore.getIntraday('hrv', todayKey0).length;
+      const hsSteps0 = healthStore.getIntraday('steps', todayKey0).length;
+      const hsMet0 = healthStore.getIntraday('met', todayKey0).length;
+      const hsEda0 = healthStore.getIntraday('eda', todayKey0).length;
+      const todayHasAny = hsHr0 + hsHrv0 + hsSteps0 + hsMet0 + hsEda0 > 0;
+      const hasAnyDaily = Object.keys(hrv).length > 0 || Object.keys(sleep).length > 0;
+      if (!todayHasAny && !hasAnyDaily) {
+        postLog('RingBle', '[rebuildHistoricalStatusImpl] 没连戒指 + healthStore 全空，跳过重建');
+        return;
+      }
+    }
+
     // ★ 过滤非法日期（2083 溢出、NaN-NaN-NaN 等垃圾 key）
     const isValidDk = (k: string) => {
       const m = k.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -3348,10 +3365,26 @@ class RingConnectionImpl {
     );
     // ★ 今日也参与重建：若今日状态曲线稀疏（典型是当天靠离线回填、App 未在线累积），
     //   用当日回填的 intraday（hr/steps/met/eda）重建到当前时间的 30min 曲线，补全首页「全天状态趋势图」。
-    days.add(this.bucketDay);
+    // ★ 没连接戒指 + 今日 healthStore 全空 → 不把今天加入 days，避免造今日假曲线
+    const connectedFlag = this.state.status === 'connected';
+    // ★ 不用 this.bucketDay（初始值 '' 会导致 healthStore.getIntraday('', '') 崩溃），用墙钟
+    const todayKeyCheck = this.bucketDay || dayKeyOf(Date.now());
+    if (connectedFlag) {
+      days.add(todayKeyCheck);
+    } else {
+      const tHr = healthStore.getIntraday('hr', todayKeyCheck).length;
+      const tHrv = healthStore.getIntraday('hrv', todayKeyCheck).length;
+      const tSteps = healthStore.getIntraday('steps', todayKeyCheck).length;
+      const tMet = healthStore.getIntraday('met', todayKeyCheck).length;
+      const tEda = healthStore.getIntraday('eda', todayKeyCheck).length;
+      if (tHr + tHrv + tSteps + tMet + tEda > 0) {
+        days.add(todayKeyCheck);
+      }
+    }
     if (days.size === 0) return;
     const cycle = this.resolveCycle();
-    const todayKey = this.bucketDay;
+    // ★ 用墙钟兜底，bucketDay 可能是 ''（数据还没到）
+    const todayKey = this.bucketDay || dayKeyOf(Date.now());
     let statusDaily = this.state.statusDaily;
     let statusTimelineByDay = this.state.statusTimelineByDay;
     let statusTimeline = this.state.statusTimeline;
@@ -3396,10 +3429,16 @@ class RingConnectionImpl {
           : { sleepTotal: null, sleepDeep: null, getUp: null },
       };
       const seed = computeSeed({ input, history: this.state.statusHistory, cycle, consts: CURVE_DEFAULTS });
-      // ★ seed.value 为 null 时 fallback 到 50（晨间能量基准），确保每天都有一个分
-      const seedVal = seed.value != null && Number.isFinite(seed.value) ? seed.value : 50;
+      // ★ seed.value 为 null 时的兜底：只有 healthStore 有 hr/steps/met/eda 真实 intraday 数据时
+      //   才 fallback 到 50（晨间能量基准），确保离线反算能跑；
+      //   全空时 seedVal = null → 后续重建会返回 [] → curveStatus.hasData = false
+      const hasAnyIntraday = hsHr + hsSteps + hsMet + healthStore.getIntraday('eda', dk).length + healthStore.getIntraday('hrv', dk).length > 0;
+      const seedVal = (seed.value != null && Number.isFinite(seed.value))
+        ? seed.value
+        : (hasAnyIntraday ? 50 : null);
       // 历史日写 statusDaily（今日由 recomputeDailyStatus 用时间线均值覆盖，不在此写）
-      if (!isToday && statusDaily[dk] !== seedVal) {
+      // ★ seedVal 为 null（无任何真实生理数据）时不写，保持 statusDaily 未定义 → UI 知道这天没数据
+      if (!isToday && seedVal != null && statusDaily[dk] !== seedVal) {
         statusDaily = { ...statusDaily, [dk]: seedVal };
         changed = true;
       }
@@ -3451,9 +3490,11 @@ class RingConnectionImpl {
    *  用 seed 作起评分，按 30min 窗口聚合 hr/steps/met/eda → accumulateWindow 推后续点。 */
   private rebuildDayTimelineFromHealthStore(
     dayKey: string,
-    seedValue: number,
+    seedValue: number | null,
     cycle: CycleInfo,
   ): CurvePoint[] {
+    // ★ seedValue 为 null → 无任何真实生理数据 → 返回空，不造假曲线
+    if (seedValue == null) return [];
     // 1. 从 healthStore 读当天所有可用的 intraday 5min slot
     const hrArr = healthStore.getIntraday('hr', dayKey);
     const stepsArr = healthStore.getIntraday('steps', dayKey);

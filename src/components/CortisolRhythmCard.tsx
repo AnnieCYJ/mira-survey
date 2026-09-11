@@ -12,6 +12,7 @@ import { theme } from '../theme/theme';
 import Card from './Card';
 import { healthStore, dayKey } from '../data/healthStore';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
+import KalmanFilter from '../lib/kalman-filter';
 
 const LEVEL_META: Record<string, { label: string; color: string }> = {
   normal: { label: '节律正常', color: "#2ECC71" },
@@ -22,7 +23,7 @@ const LEVEL_META: Record<string, { label: string; color: string }> = {
 const LOOKBACK_DAYS = 14;
 
 /** 拉取近 14 天 cortisol 逐样本（已剔除零值），含离线回填日。 */
-function collectSamples(): CortisolSample[] {
+export function collectSamples(): CortisolSample[] {
   const out: CortisolSample[] = [];
   const now = Date.now();
   for (let i = 0; i < LOOKBACK_DAYS; i++) {
@@ -36,7 +37,7 @@ function collectSamples(): CortisolSample[] {
 }
 
 /** 从 healthStore 睡眠数据推导 sleepWindow (bedHour/wakeHour) */
-function getSleepWindow(): { bedHour: number; wakeHour: number } | null {
+export function getSleepWindow(): { bedHour: number; wakeHour: number } | null {
   const todayDk = dayKey(Date.now());
   const sleepSum = healthStore.getSleep(todayDk);
   if (!sleepSum || !sleepSum.sleepTime || !sleepSum.wakeTime) return null;
@@ -48,6 +49,46 @@ function getSleepWindow(): { bedHour: number; wakeHour: number } | null {
   const wakeH = parseHM(sleepSum.wakeTime);
   if (bedH == null || wakeH == null) return null;
   return { bedHour: Math.floor(bedH), wakeHour: Math.floor(wakeH) };
+}
+
+/**
+ * buildCortisolToday30 —— 生成今日皮质醇 30min 槽位（和 TrendChart 今日紫色线完全一致）
+ * 导出给 MetricDetailScreen 复用。
+ */
+export function buildCortisolToday30(): (number | null)[] {
+  const SLOTS = 48;
+  const kf = new KalmanFilter({ R: 2, Q: 0.1 });
+  const todayDK = dayKey(Date.now());
+  const todayRaw: CortisolSample[] = healthStore.getIntraday('cortisol', todayDK)
+    .filter((p) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
+    .map((p) => ({ t: p.t, v: kf.filter(p.v) }));
+
+  const sums: number[] = new Array(SLOTS).fill(0);
+  const cnts: number[] = new Array(SLOTS).fill(0);
+  for (const s of todayRaw) {
+    const d = new Date(s.t);
+    const slot = d.getHours() * 2 + (d.getMinutes() >= 30 ? 1 : 0);
+    sums[slot] += s.v;
+    cnts[slot] += 1;
+  }
+  const today30: (number | null)[] = sums.map((s, i) => (cnts[i] > 0 ? +(s / cnts[i]).toFixed(1) : null));
+
+  const now = new Date();
+  const currentSlot = Math.min(now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), 47);
+  const todayR = analyzeCortisol(todayRaw, 1);
+  const tcos = todayR.cosinor;
+  if (Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
+    const TWO_PI = Math.PI * 2;
+    for (let slot = 0; slot <= currentSlot; slot++) {
+      if (today30[slot] == null) {
+        const h = slot / 2;
+        const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
+        today30[slot] = Math.max(0, +pred.toFixed(1));
+      }
+    }
+  }
+  for (let slot = currentSlot + 1; slot < SLOTS; slot++) today30[slot] = null;
+  return today30;
 }
 
 export default function CortisolRhythmCard() {
@@ -192,7 +233,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null }) {
+export function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null }) {
   console.log(`[TREND-ENTRY] called, hourlyMean=${r.hourlyMean?.filter(v=>v!=null).length}/${r.hourlyMean?.length}`);
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
   const H = 120;

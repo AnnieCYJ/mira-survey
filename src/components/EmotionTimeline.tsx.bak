@@ -1,14 +1,15 @@
 /**
  * EmotionTimeline — 情绪时间线
- *   X = 今日清醒时段 (自动用 HR/HRV 生理信号推断, 无硬编码睡眠)
+ *   X = 今日清醒时段 (wake → bed)，与认知图表横坐标一致
  *   Y = 唤醒度 arousal (0-100) = "剧烈程度"
  *   每个点颜色 = 情绪类型, 大小 = 唤醒度
+ *   睡眠时间自动挖掉
  */
 import React, { useMemo } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import Svg, { Path, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
-import { dayKey, healthStore } from '../data/healthStore';
+import { healthStore } from '../data/healthStore';
 import type { EmotionLabel } from '../lib/emotionEngine';
 
 const LABEL_COLOR: Record<EmotionLabel, string> = {
@@ -45,110 +46,61 @@ function fmtHM(t: number): string {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-/**
- * ★ 用真实生理信号推断清醒窗口 — 不依赖硬编码 sleepTime/wakeTime
- *
- * 优先级:
- *   1. healthStore 官方睡眠记录 (sleepSum.sleepTime/wakeTime) — 最准
- *   2. 全天 HR + HRV 生理信号扫描 — 找 HR 低 + HRV 高的连续段
- *   3. 退化: 全天展示 (0..24h)
- *
- * 保证: 当前时刻永远在 awake 窗口内 (你在看手机 = 你醒着)
- */
-function getTodayAwakeWindow(nowMs: number): { wakeHour: number; bedHour: number } {
-  const now = new Date(nowMs);
-  const nowHour = now.getHours() + now.getMinutes() / 60;
-  const todayKey = dayKey(nowMs);
-  const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+function fmtHour(h: number): string {
+  // h 是可能带小数的 hour (如 6.5 = 06:30)
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
 
-  // ── Step 1: 优先官方睡眠记录 ──
+/** 从 healthStore 拿今天的 sleepWindow, 和 CognitiveLoadCard 完全一样的逻辑 */
+function getTodayAwakeWindow(): { wakeHour: number; bedHour: number } {
+  const now = new Date();
+  const nowHour = now.getHours() + now.getMinutes() / 60;
+  const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   const sleepSum = healthStore.getSleep(todayKey);
+
   const parseHM = (s: string | null | undefined): number | null => {
     if (!s) return null;
     const m = s.match(/(\d{1,2}):(\d{2})/);
     return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
   };
-  if (sleepSum && sleepSum.total > 0) {
+
+  let wakeHour = 6;
+  let bedHour = 24;
+
+  if (sleepSum) {
     const bedH = parseHM(sleepSum.sleepTime);
     const wakeH = parseHM(sleepSum.wakeTime);
     if (bedH != null && wakeH != null) {
-      let wh = wakeH, bh = bedH;
-      // 当前时刻必须在 awake 窗口内
-      if (bh > wh && nowHour > bh) bh = Math.min(24, nowHour + 0.5);
-      if (bh < wh) bh = nowHour + 0.5;
-      if (nowHour < wh) wh = Math.max(0, nowHour - 0.5);
-      return { wakeHour: wh, bedHour: bh };
+      wakeHour = wakeH;
+      bedHour = bedH;
+    } else if (sleepSum.getUp > 0) {
+      wakeHour = sleepSum.getUp / 60;
+      bedHour = ((sleepSum.getUp - sleepSum.total) / 60 + 24) % 24;
     }
   }
 
-  // ── Step 2: 用 HR + HRV 生理信号推断睡眠段 ──
-  const hrPts = healthStore.getTimeRange('hr' as any, today0, nowMs, { maxPoints: 500 });
-  const hrvPts = healthStore.getTimeRange('hrv' as any, today0, nowMs, { maxPoints: 500 });
-
-  if (hrPts.length >= 20 && hrvPts.length >= 20) {
-    const byHour = new Map<number, { hrs: number[]; hrv: number[] }>();
-    for (const p of hrPts) {
-      const h = new Date(p.t).getHours();
-      if (!byHour.has(h)) byHour.set(h, { hrs: [], hrv: [] });
-      byHour.get(h)!.hrs.push(p.v);
-    }
-    for (const p of hrvPts) {
-      const h = new Date(p.t).getHours();
-      if (!byHour.has(h)) byHour.set(h, { hrs: [], hrv: [] });
-      byHour.get(h)!.hrv.push(p.v);
-    }
-
-    const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
-    const hourly: { h: number; hr: number; hrv: number }[] = [];
-    for (let h = 0; h < 24; h++) {
-      const b = byHour.get(h);
-      if (b && b.hrs.length >= 2 && b.hrv.length >= 2) {
-        hourly.push({ h, hr: mean(b.hrs), hrv: mean(b.hrv) });
-      }
-    }
-
-    if (hourly.length >= 8) {
-      const hrMeanAll = mean(hourly.map(x => x.hr));
-      const hrvMeanAll = mean(hourly.map(x => x.hrv));
-
-      // 睡眠候选: HR 低 (<均值×0.88) + HRV 高 (>均值×1.10)
-      const sleepHours = hourly.filter(x =>
-        x.hr < hrMeanAll * 0.88 && x.hrv > hrvMeanAll * 1.10
-      ).map(x => x.h);
-
-      // 合并连续段
-      const ranges: { start: number; end: number }[] = [];
-      let cur: { start: number; end: number } | null = null;
-      for (const h of sleepHours.sort((a, b) => a - b)) {
-        if (!cur || h === cur.end + 1) cur = { start: cur?.start ?? h, end: h };
-        else { ranges.push(cur); cur = { start: h, end: h }; }
-      }
-      if (cur) ranges.push(cur);
-
-      // 取最长的一段作为主睡眠
-      const mainSleep = ranges.slice().sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
-
-      if (mainSleep && mainSleep.end - mainSleep.start >= 2) {
-        let wakeHour = mainSleep.end + 0.5;
-        let bedHour = mainSleep.start - 0.25;
-        // 保证当前时刻在窗口内
-        if (nowHour >= wakeHour && nowHour <= bedHour) {
-          return { wakeHour, bedHour };
-        }
-      }
-    }
+  // ★ 关键修复: 动态扩展 bedHour — 你还没真睡着, 就不算睡眠时间
+  // 如果当前时间已经"超过" bedHour, 把 bedHour 推到 now + 30min
+  // 例: 现在 22:56, 上次记录 22:30 睡 → 扩展到 23:26, 让今晚数据都能画出来
+  if (bedHour > wakeHour && nowHour > bedHour) {
+    bedHour = Math.min(24, nowHour + 0.5);
+  }
+  if (bedHour < wakeHour) {
+    // 凌晨睡的场景: 1睡10起 → bedHour=1, 但现在 22:56 → 已经过了 bed, 扩展到 now+30
+    bedHour = nowHour + 0.5;
   }
 
-  // ── Step 3: 退化 — 全天展示, 当前时刻 +30min ──
-  return { wakeHour: 0, bedHour: Math.min(24, nowHour + 0.5) };
+  return { wakeHour, bedHour };
 }
 
-/** 判断一个时间点是否在 awake window 内 */
+/** 判断一个时间戳是否在 awake window 内 */
 function isAwake(t: number, wakeHour: number, bedHour: number): boolean {
   const d = new Date(t);
   const h = d.getHours() + d.getMinutes() / 60;
-  if (bedHour > wakeHour) return h >= wakeHour && h <= bedHour;
-  return h >= wakeHour || h <= bedHour;
+  if (bedHour > wakeHour) return h >= wakeHour && h <= bedHour;   // 夜间睡: 7..22
+  return h >= wakeHour || h <= bedHour;                            // 凌晨睡: 10..23 + 0..1
 }
 
 export default function EmotionTimeline({
@@ -163,15 +115,23 @@ export default function EmotionTimeline({
   const { pts, path, area, awakeStart, awakeEnd } = useMemo(() => {
     const now = Date.now();
     const dNow = new Date(now);
+    // 今天 0 点
     const today0 = new Date(dNow.getFullYear(), dNow.getMonth(), dNow.getDate()).getTime();
+    const todayEnd = today0 + 24 * 60 * 60 * 1000;
 
-    const aw = getTodayAwakeWindow(now);
-    const awakeStart = today0 + aw.wakeHour * 3600_000;
-    const awakeEnd = (aw.bedHour >= 24 ? today0 + 24 * 3600_000 : today0 + aw.bedHour * 3600_000);
+    // 拿 sleep window, 默认 6:00-24:00
+    const aw = getTodayAwakeWindow();
+    const wakeH = aw?.wakeHour ?? 6;
+    const bedH = aw?.bedHour ?? 24;
 
+    const awakeStart = today0 + wakeH * 3600_000;
+    // bedH 可能是 24 → 次日 0 点
+    const awakeEnd = (bedH >= 24 ? todayEnd : today0 + bedH * 3600_000);
+
+    // 过滤: 今天 + awake window 内
     const visible = history
       .filter(p => p.t >= awakeStart && p.t <= Math.min(awakeEnd, now))
-      .filter(p => isAwake(p.t, aw.wakeHour, aw.bedHour))
+      .filter(p => isAwake(p.t, wakeH, bedH))
       .sort((a, b) => a.t - b.t);
 
     if (visible.length === 0) {
@@ -208,7 +168,7 @@ export default function EmotionTimeline({
           </LinearGradient>
         </Defs>
 
-        {/* Y 轴刻度 */}
+        {/* Y 轴刻度: 0 / 50 / 100 */}
         {[0, 50, 100].map(v => {
           const y = pad.t + innerH * (1 - v / 100);
           return (
@@ -221,7 +181,7 @@ export default function EmotionTimeline({
 
         {empty ? (
           <SvgText x={width / 2} y={height / 2} fontSize={11} fill="#AAA" textAnchor="middle">
-            暂无情绪数据 — 等戒指同步几轮后自动画
+            暂无情绪数据 — 清醒时段内自动累积
           </SvgText>
         ) : (
           <>
@@ -248,7 +208,7 @@ export default function EmotionTimeline({
           </>
         )}
 
-        {/* X 轴时间刻度 */}
+        {/* X 轴: wake / mid / bed 三个点 (显示时钟 HH:mm) */}
         {!empty && [0, 0.5, 1].map((frac, i) => {
           const t = awakeStart + (awakeEnd - awakeStart) * frac;
           const x = pad.l + innerW * frac;

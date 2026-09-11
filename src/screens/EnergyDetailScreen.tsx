@@ -17,9 +17,9 @@ import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import Card from '../components/Card';
-import Svg, { Line, Circle, G, Path } from 'react-native-svg';
+import Svg, { Line, Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { RingBle } from '../ble/RingBleManager';
-import { dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 
 // StressInsightCard 导出的组件/函数
@@ -131,6 +131,7 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 }
 
 /* ========== 情绪消耗：图在上 ========== */
+/** 今日皮质醇 0-24h 折线图（每小时聚合） */
 function EmotionDetail() {
   // ★ 每次渲染都重算（依赖 ring state / 代码逻辑变更后立即生效）
   const { computeStressReport } = require('../lib/stressAlgorithm');

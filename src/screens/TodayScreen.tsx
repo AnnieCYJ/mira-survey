@@ -5,8 +5,9 @@ import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 
-const IMG_EMOTION = require('../assets/card_focus.jpg');
-const IMG_COG = require('../assets/card_cognitive.png');
+const IMG_RECOVERY = require('../assets/card_recovery.jpg');
+const IMG_EMOTION = require("../assets/card_emotion_new.png");
+const IMG_COG = require("../assets/card_focus.jpg");
 const IMG_ACTIVITY = require('../assets/card_meditation.jpg');
 import Card from '../components/Card';
 import Icon from '../components/Icon';
@@ -93,7 +94,7 @@ function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, i
       >
         {/* 底部渐变遮罩 */}
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.6)']}
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)']}
           style={styles.energyMiniOverlay}
         />
         <View style={styles.energyMiniLabel}>
@@ -109,7 +110,7 @@ function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, i
 }
 
 
-function EnergyRowData({ ring, onNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void }) {
+function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void; outerOnNav: () => void }) {
   const _dk = (() => {
     try {
       const d = new Date();
@@ -130,55 +131,77 @@ function EnergyRowData({ ring, onNav }: { ring: any; onNav: (type: 'emotion' | '
       return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—';
     } catch { return '—'; }
   })();
-  // 运动消耗 = 今日步数
-  const step = (() => {
-    try {
-      const s = ring?.stepDaily?.[_dk]?.steps;
-      return s ? s.toLocaleString('zh-CN') : '—';
-    } catch { return '—'; }
-  })();
-  const card = (img: number, title: string, val: string, unit: string, onPress: () => void) => (
+
+  // 子卡（情绪/脑力）——图片背景 + 底部白色渐变蒙层
+  const subCard = (img: number, title: string, val: string, unit: string, onPress: () => void) => (
     <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={{ flex: 1 }}>
-      <ImageBackground
-        source={img}
-        style={{ height: 160, borderRadius: theme.radius.card, overflow: 'hidden' }}
-        resizeMode="cover"
-      >
-        {/* 底部渐暗遮罩，让文字可读 */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.75)']}
-          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 110 }}
-        />
-        {/* 标题 + 值 */}
-        <View style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
-          <Text style={{
-            color: '#fff',
-            fontSize: theme.fontSize.micro,
-            fontWeight: theme.weight.medium,
-            letterSpacing: 0.5,
-            opacity: 0.92,
-          }}>{title}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
-            <Text style={{
-              color: '#fff',
-              fontSize: theme.fontSize.h2,
-              fontWeight: theme.weight.bold,
-            }}>{val}</Text>
-            <Text style={{
-              color: 'rgba(255,255,255,0.8)',
-              fontSize: theme.fontSize.micro,
-              marginLeft: 2,
-            }}>{unit}</Text>
+      <View style={{
+        height: 130,
+        borderRadius: theme.radius.md,
+        overflow: 'hidden',
+      }}>
+        <ImageBackground source={img} style={{ height: '100%', width: '100%' }} resizeMode="cover">
+          {/* 底部白色蒙层：只盖下半部，保证文字可读 */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.75)', '#FFFFFF']}
+            locations={[0.15, 0.45, 0.75, 1.0]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '95%' }}
+          />
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 10, paddingTop: 40 }}>
+            <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 2 }} numberOfLines={1}>{title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.card, fontWeight: theme.weight.bold }} numberOfLines={1} adjustsFontSizeToFit>{val}</Text>
+              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginLeft: 3 }}>{unit}</Text>
+            </View>
           </View>
-        </View>
-      </ImageBackground>
+        </ImageBackground>
+      </View>
     </TouchableOpacity>
   );
+
   return (
-    <View style={{ flexDirection: 'row', gap: theme.sp(3) }}>
-      {card(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
-      {card(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
-      {card(IMG_ACTIVITY, '运动消耗', step, '步', () => onNav('activity'))}
+    <View style={{ gap: theme.space.md, marginBottom: theme.space.md }}>
+      {/* ★ 身体恢复 —— 参考情绪消耗卡：完整图片做背景 + 左白色渐变蒙层 + 文字 */}
+      <TouchableOpacity activeOpacity={0.85} onPress={outerOnNav}>
+        <Card padded={false} style={{ borderWidth: 0, shadowColor: "transparent", shadowOpacity: 0, elevation: 0 }}>
+          <ImageBackground source={IMG_RECOVERY} style={{ height: 132 }} resizeMode="cover">
+            {/* 白色蒙层：左纯白 → 右渐变透明，模糊过渡 */}
+            <LinearGradient
+              colors={[
+                '#FFFFFF',
+                'rgba(255,255,255,0.95)',
+                'rgba(255,255,255,0.85)',
+                'rgba(255,255,255,0.15)',
+                'rgba(255,255,255,0)',
+              ]}
+              locations={[0, 0.25, 0.5, 0.75, 1.0]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}
+            />
+            {/* 文字叠在蒙层上 */}
+            <View style={{ flex: 1, paddingHorizontal: theme.space.cardPad, paddingVertical: theme.space.md, justifyContent: 'space-between' }}>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>身体恢复</Text>
+                  <View style={{ flex: 1 }} />
+
+                </View>
+                <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(1) }}>皮质醇 · 情绪 · 脑力全天追踪</Text>
+              </View>
+
+            </View>
+          </ImageBackground>
+        </Card>
+      </TouchableOpacity>
+
+      {/* ★ 情绪消耗 / 脑力消耗 —— 并排独立小卡 */}
+      <View style={{ flexDirection: 'row', gap: theme.space.md }}>
+        {subCard(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
+        {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
+      </View>
     </View>
   );
 }
@@ -290,7 +313,7 @@ export default function TodayScreen() {
 
 
         {/* 情绪消耗 / 脑力消耗 / 运动消耗 */}
-        <EnergyRowData ring={ring} onNav={(type) => navigation.navigate('EnergyDetail', { type })} />
+        <EnergyRowData ring={ring} onNav={(type) => navigation.navigate('EnergyDetail', { type })} outerOnNav={() => navigation.navigate('EmotionCognitiveDetail')} />
 
         <View style={styles.adviceWrap}>
           <ListCard title="今日建议" items={ADVICE} />

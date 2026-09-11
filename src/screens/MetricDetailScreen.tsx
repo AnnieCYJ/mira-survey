@@ -79,6 +79,11 @@ function timeAxisLabels(range: RangeKey, tMin: number, tMax: number, isToday: bo
   return labels;
 }
 
+/** ★ 皮质醇/EDA/HRV 等 24h 节律指标 → X 轴固定 0/6/12/18/24 小时刻度（和 CortisolDailyChart 完全一致） */
+function dayHourAxis(): string[] {
+  return ['0', '6', '12', '18', '24'];
+}
+
 /** ECG 波形路径：原始 ADC/mV 点归一化到 320×120 视窗的折线。 */
 function ecgWaveformPath(values: number[]): string {
   if (!values || values.length < 2) return '';
@@ -355,7 +360,12 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
   }, [isEcg, isHistorical, hasData, ring.status, anchorKey]);
 
   // X 轴标签：连续时间轴按时间域出刻度（日=时分，周/月=月/日，今日末点标"现在"）
+  // ★ 高频连续指标（cortisol/eda/hrv/stress/fatigue/emotion/skin）日视图 → 固定 0-24h 刻度
+  const KF_DAY_HOUR_AXIS = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
   const axisLabels = useMemo(() => {
+    if (range === 'day' && KF_DAY_HOUR_AXIS.has(params.key)) {
+      return dayHourAxis();
+    }
     if (useContinuous && tMin && tMax && tMax > tMin) {
       return timeAxisLabels(range, tMin, tMax, isTodayAnchor);
     }

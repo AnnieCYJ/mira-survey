@@ -140,7 +140,7 @@ export default function HormoneStatusCard({
 
         {progesterone.score != null && (
           <View style={[styles.scoreBar, progesterone.status === "reference" || estradiol.status === "reference" ? { opacity: 0.6 } : null]}>
-            <View style={[styles.scoreFill, { width: progesterone.score + '%', backgroundColor: theme.colors.stateTense }]} />
+            <View style={[styles.scoreFill, { flexGrow: progesterone.score / 100, backgroundColor: theme.colors.stateTense }]} />
           </View>
         )}
         {progesterone.score != null && (
@@ -179,7 +179,7 @@ export default function HormoneStatusCard({
 
         {estradiol.score != null && (
           <View style={[styles.scoreBar, progesterone.status === "reference" || estradiol.status === "reference" ? { opacity: 0.6 } : null]}>
-            <View style={[styles.scoreFill, { width: estradiol.score + '%', backgroundColor: theme.colors.accentSolid }]} />
+            <View style={[styles.scoreFill, { flexGrow: estradiol.score / 100, backgroundColor: theme.colors.accentSolid }]} />
           </View>
         )}
         {estradiol.score != null && (
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   statusChip: { paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill },
   statusText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
 
-  scoreBar: { height: 6, backgroundColor: 'rgba(124,106,224,0.1)', borderRadius: 3, overflow: 'hidden', marginTop: theme.sp(0.5) },
+  scoreBar: { flexDirection: 'row', height: 6, backgroundColor: 'rgba(124,106,224,0.1)', borderRadius: 3, overflow: 'hidden', marginTop: theme.sp(0.5) },
   scoreFill: { height: 6, borderRadius: 3 },
   scoreNum: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 

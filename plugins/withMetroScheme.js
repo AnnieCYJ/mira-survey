@@ -11,7 +11,7 @@ const path = require("path");
 
 const PLUGIN_NAME = "with-metro-scheme";
 const PLUGIN_VERSION = "1.0.0";
-const HOST = "192.168.1.12";
+const HOST = "192.168.1.2";
 
 const withMetroScheme = (config) => {
   return withDangerousMod(config, [

@@ -162,7 +162,7 @@ export default function StatusTrendDetailScreen() {
     const anchorKey = dayKey(anchor.getTime());  // ★ 补零格式
 
     if (range === 'day') {
-      const todayKey = `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`;
+      const todayKey = dayKey(Date.now());
       // ★ 诊断 log
       console.log('[STATUS-DAY]', JSON.stringify({
         anchorKey, todayKey,

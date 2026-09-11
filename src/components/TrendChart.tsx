@@ -3,7 +3,7 @@ import { View, StyleSheet, Text, Pressable } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { MOODS, TREND_AXIS } from '../data/metrics';
-import { curveLevel, CURVE_DEFAULTS, type CurvePoint } from '../lib/dailyStatus';
+import { curveLevel, CURVE_DEFAULTS, isSameDay, type CurvePoint } from '../lib/dailyStatus';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -50,13 +50,15 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
     const innerW = Math.max(1, width - pad * 2);
 
     // 仅用真实数据：按 t 落到真实时间轴（0–24h）；无真实数据则不绘制（不回退脚本曲线，避免假数据）
+    const now = Date.now();
     const source: { value: number; t: number }[] = (timeline ?? [])
       .filter(
         (p) =>
           p &&
           typeof p.value === 'number' &&
           Number.isFinite(p.value) &&
-          Number.isFinite(p.t)
+          Number.isFinite(p.t) &&
+          isSameDay(p.t, now)
       )
       .map((p) => ({ value: p.value, t: p.t }));
 

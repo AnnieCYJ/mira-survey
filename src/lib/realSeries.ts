@@ -28,6 +28,8 @@ import {
 } from '../data/metrics';
 import { computeCycle, parseDate, type CycleLog } from './cycleMath';
 import { dateKeyOf, startOfWeek, addDays } from './dateUtils';
+import KalmanFilter from './kalman-filter';
+import { buildCortisolToday30 } from '../components/CortisolRhythmCard';
 
 export interface TimePt {
   t: number;
@@ -471,8 +473,11 @@ export function buildHistorySeries(
   //     历史某天优先连续曲线，否则单点当日均值。
   if (range === 'day') {
     const start = dayStartMs(anchor.getTime());
-    const end = isTodayAnchor ? Date.now() : start + DAY;
-    let tps = healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
+    // ★ tMin/tMax 固定为完整 0:00-24:00（让 X 轴 0-24h 刻度对齐），曲线在 Date.now() 之后自然断开
+    const KF_DAY_FULL_RANGE = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
+    const end = KF_DAY_FULL_RANGE.has(hsKey) ? start + DAY : (isTodayAnchor ? Date.now() : start + DAY);
+    const dataEnd = isTodayAnchor && !KF_DAY_FULL_RANGE.has(hsKey) ? Date.now() : end;
+    let tps = healthStore.getTimeRange(hsKey, start, dataEnd, { fillDailyMean: true, maxPoints: 480 });
     // ★ 过滤原生 SDK 占位符 0 值（生理指标不可能为 0）
     tps = tps.filter(p => Number.isFinite(p.v) && p.v > 0);
     console.log(`[REAL-SERIES-DAY] key=${key} hsKey=${hsKey} anchorKey=${anchorKey} isToday=${isTodayAnchor} tps=${tps.length} start=${start} end=${end}`);
@@ -493,6 +498,34 @@ export function buildHistorySeries(
       if (dv == null) return emptyResult(key, `${anchorKey} 该日无真实测量数据（App 未在该日记录）`);
       return finalize([dv], def, false, `${def.name} ${anchorKey} 当日均值（按天归档，无逐时明细）`);
     }
+
+    // ★ 皮质醇今日 → 复用 TrendChart 今日紫色线的完整管线（buildCortisolToday30）
+    // 保证 MetricDetail 和 CortisolDailyChart 画的是完全相同的曲线
+    if (hsKey === 'cortisol' && isTodayAnchor) {
+      const today30 = buildCortisolToday30();
+      const nowMs = Date.now();
+      const today0 = dayStartMs(nowMs);
+      const tps2: { t: number; v: number }[] = [];
+      for (let slot = 0; slot < 48; slot++) {
+        const v = today30[slot];
+        if (v != null && Number.isFinite(v)) {
+          const ts = today0 + slot * 1800000 + 900000; // 30min 槽中点
+          tps2.push({ t: ts, v });
+        }
+      }
+      if (tps2.length > 0) {
+        const note = `皮质醇今日节律趋势（30min 聚合，cosinor 填补已过去槽位）。`;
+        return finalizeContinuous(tps2, start, end, def, false, note);
+      }
+    }
+
+    // ★ 其他高频连续生物信号 → Kalman 滤波
+    const KF_HIGH_FREQ = new Set(['eda', 'hrv', 'stress', 'fatigue', 'met', 'emotion', 'skin']);
+    if (KF_HIGH_FREQ.has(hsKey)) {
+      const kf = new KalmanFilter({ R: 2, Q: 0.1 });
+      tps = tps.map(p => ({ ...p, v: kf.filter(p.v) }));
+    }
+
     const note = isTodayAnchor
       ? `${def.name} 为今日真实测量（按时间戳连续绘制）。`
       : `${def.name} ${anchorKey} 当日连续测量（按时间戳连续绘制，离线回填补全）。`;

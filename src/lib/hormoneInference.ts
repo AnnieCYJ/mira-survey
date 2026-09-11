@@ -54,7 +54,7 @@ export interface CycleLogRef {
 // 输出: 激素推断 + 周期健康度
 // ────────────────────────────────────────────
 
-export type HormoneStatus = 'high' | 'normal' | 'low' | 'inconclusive' | 'insufficient';
+export type HormoneStatus = 'high' | 'normal' | 'low' | 'inconclusive' | 'insufficient' | 'reference';
 
 export interface HormoneInference {
   /** 黄体酮 (Progesterone) 状态 */

@@ -17,7 +17,7 @@
 /**
  * 云端同步后端（Cloudflare Workers + D1，新项目 mira-ring-sync，契约对齐 backend_write_skeleton.json）。
  * ⚠️ 首次 `wrangler deploy` 后，请把下面地址替换为终端实际输出的 `https://mira-ring-sync.<子域>.workers.dev`。
- * 本地调试阶段可临时改回 http://192.168.1.5:3000（需手机与 Mac 同一 Wi-Fi）。
+ * 本地调试阶段可临时改回 http://192.168.1.2:3000（需手机与 Mac 同一 Wi-Fi）。
  */
 export const BACKEND_BASE_URL = 'https://mira-ring-sync.mira-annie.workers.dev';
 
