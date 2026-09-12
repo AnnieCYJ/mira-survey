@@ -16,9 +16,9 @@
  * 每日状态来自 periodLog。相位/预测均为日历+体温推算，非硬件实测。
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
@@ -36,6 +36,7 @@ import {
 } from '../lib/cycleMath';
 import { loadCycleLog, loadPeriodDays, savePeriodDay, FLOW_LABEL, PAIN_LABEL, type FlowLevel, type PainLevel, type PeriodDayLog } from '../data/cycleLog';
 import { PHASE_COLOR, PHASE_LABEL, phaseBg, type PhaseKey } from '../lib/phaseColors';
+import CycleMoonPhase from '../components/CycleMoonPhase';
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -161,8 +162,13 @@ export default function CycleCalendarScreen() {
           </View>
         ) : (
           <>
-            {/* 雌激素波动预测（建模） */}
-            <CycleRing cycleInfo={cycleInfo} log={log} />
+            {/* 月相视图 Hero（参考周期 App「月相视图」设计）：
+                深色星空 + 中央月相 + 外围月相环；点「记录今天」直接打开当日 Sheet */}
+            <CycleMoonPhase
+              cycleInfo={cycleInfo}
+              log={log}
+              onLogToday={() => setSelected(dayKey(new Date()))}
+            />
             {estCurve ? <EstrogenTrend curve={estCurve} /> : null}
 
             {/* 图例 */}
@@ -207,84 +213,6 @@ export default function CycleCalendarScreen() {
   );
 }
 
-// ── 周期圆环（顶部 Hero）──
-function CycleRing({ cycleInfo, log }: { cycleInfo: ReturnType<typeof computeCycle> | null; log: CycleLog | null }) {
-  if (!cycleInfo || !log) return null;
-  const screenW = Dimensions.get('window').width;
-
-  const size = Math.round(screenW * 0.72);
-  const stroke = Math.round(size * 0.14);
-  const r = (size - stroke) / 2;
-  const cx = size / 2;
-  const cy = size / 2;
-
-  const phaseColors: Record<string, string> = {
-    menstruation: '#FC7078',
-    follicular:   '#A69BA9',
-    ovulation:    '#7CD4C4',
-    luteal:       '#F5B8B0',
-    unknown:      '#E8D4D5',
-  };
-
-  const total = log.cycleLength || 28;
-  const periodLen = log.periodLength || 5;
-  const lutealLen = log.lutealLength || 14;
-  const ovDay = total - lutealLen;
-
-  if (total < 2 || periodLen < 1 || lutealLen < 1 || ovDay <= periodLen) return null;
-
-  const rawSegments = [
-    { start: 0,            end: periodLen,            color: phaseColors.menstruation },
-    { start: periodLen,    end: ovDay - 2,            color: phaseColors.follicular },
-    { start: ovDay - 2,    end: ovDay + 3,            color: phaseColors.ovulation },
-    { start: ovDay + 3,    end: total,                color: phaseColors.luteal },
-  ];
-  const segments = rawSegments.filter((s) => s.end - s.start > 0.5);
-
-  const dayToAngle = (day: number) => (-90 + (day / total) * 360) * Math.PI / 180;
-  const arcPath = (s: number, e: number) => {
-    const a1 = dayToAngle(s), a2 = dayToAngle(e);
-    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-    const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
-    const large = (e - s) > total / 2 ? 1 : 0;
-    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
-  };
-
-  const today = cycleInfo.dayInCycle ?? 0;
-  const phaseText = PHASE_LABEL[cycleInfo.phase as PhaseKey] ?? cycleInfo.phaseLabel;
-  const ringColor = phaseColors[cycleInfo.phase as string] ?? phaseColors.unknown;
-
-  return (
-    <View style={{ alignItems: 'center', paddingVertical: theme.space.md }}>
-      <View style={{ width: size, height: size }}>
-        <Svg width={size} height={size}>
-          <Circle cx={cx} cy={cy} r={r} stroke="#F9E0E1" strokeWidth={stroke} fill="none" />
-          {segments.map((s, i) => (
-            <Path key={i} d={arcPath(s.start, s.end)} stroke={s.color} strokeWidth={stroke} strokeLinecap="butt" fill="none" />
-          ))}
-          {today > 0 && today <= total && (
-            <Circle
-              cx={cx + r * Math.cos(dayToAngle(today))}
-              cy={cy + r * Math.sin(dayToAngle(today))}
-              r={stroke * 0.22}
-              fill={ringColor}
-            />
-          )}
-        </Svg>
-        {/* 圆心文字 —— 用绝对定位但父 View 有确定尺寸 */}
-        <View style={{ position: 'absolute', top: 0, left: 0, width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub }}>距离月经结束</Text>
-          <Text style={{ fontSize: theme.fontSize.hero * 0.9, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle, marginVertical: theme.sp(1) }}>
-            {cycleInfo.daysToNextPeriod != null ? cycleInfo.daysToNextPeriod : '-'} 天
-          </Text>
-          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textTitle, fontWeight: theme.weight.semibold as any }}>
-            {phaseText}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
 // ── 雌激素波动预测折线（顶部）──
 function EstrogenTrend({ curve }: { curve: ReturnType<typeof modelEstrogenCurve> }) {
   const W = 680;

@@ -219,7 +219,8 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
   return (
     <Card padded={false}>
 
-      <Image source={coverImg} style={styles.cover} resizeMode="cover" />      <View style={styles.pad}>
+      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+      <View style={styles.pad}>
         <View style={styles.headRow}>
           <Text style={styles.title}>今日情绪</Text>
           <Text style={styles.waitingChip}>⌛ 等待数据</Text>

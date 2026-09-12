@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -104,10 +104,22 @@ export default function InsightScreen() {
     navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax, color });
   };
 
-  // 扩展信号末次测量时间：取今日序列最后一个点的 t（与卡片趋势同源，统一来自 healthStore）
-  const todayLastT = (key: string): number | null => {
+  // ★ 缓存 getTodaySeries 结果，避免每次 render 都遍历 healthStore
+  const _seriesCache = new Map<string, { arr: any[]; last: number | null }>();
+  const getCachedSeries = (key: string) => {
+    const cached = _seriesCache.get(key);
+    if (cached) return cached.arr;
     const arr = getTodaySeries(key);
-    return arr.length > 0 ? arr[arr.length - 1].t : null;
+    _seriesCache.set(key, { arr, last: arr.length > 0 ? arr[arr.length - 1].t : null });
+    return arr;
+  };
+  const todayLastT = (key: string): number | null => {
+    const cached = _seriesCache.get(key);
+    if (cached) return cached.last;
+    const arr = getTodaySeries(key);
+    const last = arr.length > 0 ? arr[arr.length - 1].t : null;
+    _seriesCache.set(key, { arr, last });
+    return last;
   };
 
   // 基础指标 tab：前 5 个是实时信号（读 ring.metrics/history），其余扩展信号读 ring.daily/dailyHistory
@@ -140,7 +152,7 @@ export default function InsightScreen() {
               const rk = m.key as RingMetricKey;
               const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
               // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
-              const hist = getTodaySeries(m.key);
+              const hist = getCachedSeries(m.key);
               const measureTime = isRealtime ? ring.lastUpdated[rk] : todayLastT(m.key);
               const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
               const showHeader = !!m.section && m.section !== prevSection;
@@ -255,7 +267,7 @@ export default function InsightScreen() {
                   {sigs.map((m) => {
                     const real = ring.daily[m.key] ?? null;
                     // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
-                    const hist = getTodaySeries(m.key);
+                    const hist = getCachedSeries(m.key);
                     const measureTime = todayLastT(m.key);
                     // 纯手动测量类信号：使用无趋势图的 ManualMetricCard（数值左 / 测量时间右 / 按钮置底）
                     if (m.manualOnly) {

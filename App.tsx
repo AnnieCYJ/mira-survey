@@ -7,6 +7,7 @@ import { theme } from './src/theme/theme';
 import { AppStateProvider } from './src/state/AppState';
 import RootStackNavigator from './src/navigation/RootStackNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import SyncProgressBanner from './src/components/SyncProgressBanner';
 
 // 关键修复：react-navigation 默认主题会给导航容器涂一层浅灰背景
 // (background: 'rgb(242,242,242)')，盖住根渐变。改成透明让根背景透出来。
@@ -41,6 +42,9 @@ export default function App() {
                 <RootStackNavigator />
               </ErrorBoundary>
             </NavigationContainer>
+            {/* 全局底部「正在同步数据 x%」浮层：绝对定位覆盖在导航之上；
+                pointerEvents="none" 保证纯展示、不拦截任何触摸。 */}
+            <SyncProgressBanner />
           </AppStateProvider>
         </SafeAreaProvider>
       </LinearGradient>

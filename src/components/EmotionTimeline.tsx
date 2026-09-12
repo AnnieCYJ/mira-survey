@@ -82,6 +82,9 @@ function getTodayAwakeWindow(nowMs: number): { wakeHour: number; bedHour: number
   }
 
   // ── Step 2: 用 HR + HRV 生理信号推断睡眠段 ──
+  // ★ 这里原来误用了 useMemo：本函数是【普通函数】而非组件/Hook，调 Hook 会触发
+  //   React「Do not call Hooks inside useMemo(...)」告警（metro.log 已抓获，component stack
+  //   指向 EmotionTimeline）。且它本就运行在外层 useMemo 内，再包一层毫无意义，直接算即可。
   const hrPts = healthStore.getTimeRange('hr' as any, today0, nowMs, { maxPoints: 500 });
   const hrvPts = healthStore.getTimeRange('hrv' as any, today0, nowMs, { maxPoints: 500 });
 

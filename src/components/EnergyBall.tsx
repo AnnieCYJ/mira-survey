@@ -1,24 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Animated,
   Easing,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { DEFAULT_MOOD, MOODS, type MoodIndex } from '../data/metrics';
 import { type CurveStatus } from '../lib/dailyStatus';
+import { MoonDot, type MoonStyle } from './CycleMoonPhase';
+import { PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface Props {
-  /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 电量值展示，否则回退为手动选择的心情 */
+  /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 电量值展示，否则回退为默认心情 */
   status?: CurveStatus | null;
-  onMoodChange?: (i: MoodIndex) => void;
 }
 
 // 计算等级（充沛/平稳/偏低/不足）→ 圆环四色点序号
@@ -29,22 +29,36 @@ const LEVEL_MOOD_IDX: Record<string, MoodIndex> = {
   不足: 3,
 };
 
-export default function EnergyBall({ status, onMoodChange }: Props) {
+// 首页圆环上的四个月相点：对应四个经期象限
+// 排列顺序按「月相规律」：满月↔全紫在对立位置（180°），上弦/下弦在两侧
+const HOME_PHASES: { key: PhaseKey; style: MoonStyle; label: string }[] = [
+  { key: 'period', style: 'full', label: PHASE_LABEL.period },       // -90° 顶部 → 满月
+  { key: 'follicular', style: 'quarterR', label: PHASE_LABEL.follicular }, // 0°  右侧 → 上弦
+  { key: 'luteal', style: 'allPurple', label: PHASE_LABEL.luteal },        // 90° 底部 → 全紫（与满月对立）
+  { key: 'ovulation', style: 'quarterL', label: PHASE_LABEL.ovulation },   // 180° 左侧 → 下弦
+];
+// 当前经期象限标签 → PhaseKey
+const LABEL_TO_PHASE: Record<string, PhaseKey> = {
+  经期: 'period',
+  卵泡期: 'follicular',
+  排卵期: 'ovulation',
+  黄体期: 'luteal',
+};
+
+export default function EnergyBall({ status }: Props) {
   const { width: winW } = useWindowDimensions();
   const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
   const size = avail * 0.74;
   const svgSize = size * 1.32;
   const c = svgSize / 2;
   const ringR = (size / 2) * 0.843;
-  // 4 个点放在白色环上：与白色环共用同一半径
-  const dotR = ringR;
+  // 四个经期象限的月相点将均匀分布在白色环上（半径同环）
 
-  const [active, setActive] = useState<MoodIndex>(DEFAULT_MOOD);
-  // 有计算状态时，圆环跟随计算结果（等级 + 电量值）；否则回退为手动选择的心情
+  // 有计算状态时，圆环跟随计算结果（等级 + 电量值）；否则回退为默认心情
   const hi: MoodIndex =
     status?.level != null && LEVEL_MOOD_IDX[status.level] != null
       ? LEVEL_MOOD_IDX[status.level]
-      : active;
+      : DEFAULT_MOOD;
   const mood = MOODS[hi];
   // 空状态（无数据）：圆环统一紫色，中间显示「暂无数据」
   const EMPTY_COLOR = '#9D8AF0';
@@ -54,7 +68,10 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
   const centerLabel = hasData ? mood.label : '暂无数据';
   const statusValue = hasData ? Math.round(status.value as number) : null;
 
-  const dotAnims = useRef(MOODS.map(() => new Animated.Value(0))).current;
+  // 当前所处经期象限（来自今日状态预测）；无数据时为 null
+  const currentPhase: PhaseKey | null =
+    status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
+
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
   const halo = useRef(new Animated.Value(0)).current;
   // 轨道公转：整层绕中心缓慢旋转，让四个状态点像行星环绕
@@ -66,26 +83,6 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
 
   useEffect(() => {
     const ease = Easing.inOut(Easing.ease);
-    const loops = dotAnims.map((a, i) => {
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(a, {
-            toValue: 1,
-            duration: theme.motion.breath.dot / 2,
-            easing: ease,
-            useNativeDriver: true,
-          }),
-          Animated.timing(a, {
-            toValue: 0,
-            duration: theme.motion.breath.dot / 2,
-            easing: ease,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      const t = setTimeout(() => loop.start(), i * 450);
-      return { loop, t };
-    });
 
     // SVG 属性动画不能走 native driver
     const haloLoop = Animated.loop(
@@ -118,14 +115,10 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
     orbitLoop.start();
 
     return () => {
-      loops.forEach(({ loop, t }) => {
-        clearTimeout(t);
-        loop.stop();
-      });
       haloLoop.stop();
       orbitLoop.stop();
     };
-  }, [dotAnims, halo, orbit]);
+  }, [halo, orbit]);
 
   // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散
   const glowR = halo.interpolate({
@@ -137,19 +130,22 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
     outputRange: [0.6, 0.96],
   });
 
-  const dots = useMemo(
+  // 四个经期象限月相点：均匀分布在环上，当前所处相位稍大 + 光晕
+  // 大小与原来 4 个心情色点一致（约 sp(3.5)），不大不小刚好
+  const dotSize = Math.max(theme.sp(5), ringR * 0.115);
+  const phaseDots = useMemo(
     () =>
-      MOODS.map((m) => {
-        const rad = ((m.angle - 90) * Math.PI) / 180;
-        return { ...m, x: c + dotR * Math.cos(rad), y: c + dotR * Math.sin(rad) };
+      HOME_PHASES.map((p, i) => {
+        const ang = (-90 + i * 90) * (Math.PI / 180);
+        return {
+          ...p,
+          x: c + ringR * Math.cos(ang),
+          y: c + ringR * Math.sin(ang),
+          isCurrent: p.key === currentPhase,
+        };
       }),
-    [c, dotR]
+    [c, ringR, currentPhase, dotSize]
   );
-
-  const press = (i: number) => {
-    setActive(i as MoodIndex);
-    onMoodChange?.(i as MoodIndex);
-  };
 
   return (
     <View style={{ width: svgSize, height: svgSize, alignSelf: 'center' }}>
@@ -193,45 +189,30 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
           { pointerEvents: 'box-none', transform: [{ rotate: orbitRotate }] },
         ]}
       >
-        {dots.map((d, i) => {
-          const isOn = i === hi;
-          const scale = dotAnims[i].interpolate({
-            inputRange: [0, 1],
-            outputRange: isOn ? [1.38, 1.82] : [0.96, 1.24],
-          });
+        {phaseDots.map((d) => {
+          const scale = d.isCurrent ? 1.34 : 1.0;
           return (
-            <Animated.View
-              key={`dot-${d.key}`}
+            <View
+              key={`moon-${d.key}`}
               style={[
-                styles.dot,
+                styles.moonDotWrap,
                 {
-                  left: d.x - theme.sp(1.5),
-                  top: d.y - theme.sp(1.5),
-                  backgroundColor: hasData ? d.color : ringColor,
+                  left: d.x - dotSize / 2,
+                  top: d.y - dotSize / 2,
+                  width: dotSize,
+                  height: dotSize,
                   transform: [{ scale }],
-                  shadowColor: hasData ? d.color : ringColor,
-                  shadowOpacity: isOn ? 0.9 : 0.4,
-                  shadowRadius: isOn ? 18 : 8,
-                  zIndex: isOn ? 3 : 2,
+                  zIndex: d.isCurrent ? 3 : 2,
+                  shadowColor: d.isCurrent ? '#F2C75C' : 'transparent',
+                  shadowOpacity: d.isCurrent ? 0.85 : 0,
+                  shadowRadius: d.isCurrent ? 14 : 0,
                 },
               ]}
-            />
+            >
+              <MoonDot style={d.style} size={dotSize} />
+            </View>
           );
         })}
-
-        {dots.map((d, i) => (
-          <TouchableOpacity
-            key={`hit-${d.key}`}
-            style={[
-              styles.hit,
-              { left: d.x - theme.sp(6), top: d.y - theme.sp(6), width: theme.sp(12), height: theme.sp(12), zIndex: 10 },
-            ]}
-            onPress={() => press(i)}
-            activeOpacity={1}
-            accessibilityRole="button"
-            accessibilityLabel={d.label}
-          />
-        ))}
       </Animated.View>
 
       <View style={styles.center} pointerEvents="none">
@@ -243,14 +224,10 @@ export default function EnergyBall({ status, onMoodChange }: Props) {
 }
 
 const styles = StyleSheet.create({
-  dot: {
+  moonDotWrap: {
     position: 'absolute',
-    width: theme.sp(3),
-    height: theme.sp(3),
-    borderRadius: theme.radius.pill,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   center: {
     position: 'absolute',
@@ -279,5 +256,4 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
     fontWeight: theme.weight.medium,
   },
-  hit: { position: 'absolute', borderRadius: theme.radius.pill },
 });

@@ -269,6 +269,20 @@ export interface RingState {
 }
 
 type StatePatch = Partial<RingState>;
+
+/**
+ * 离线同步进度（原生 onBackfillProgress 上报），用于底部「正在同步数据 x%」小浮层。
+ * active=false = 本轮同步已结束（UI 可短暂显示「已同步」再淡出）。
+ * ★ 走【独立订阅通道】onSyncProgress，**不进 RingState** —— 避免同步期间的高频进度更新
+ *   触发全 App 重渲染，反过来加重同步时的卡顿（RingState 更新会 emit 给所有屏幕）。
+ */
+export interface SyncProgress {
+  active: boolean;
+  /** 0..100 */
+  percent: number;
+  /** 阶段文案：「从戒指下载数据」/「同步历史数据」/「已完成」 */
+  phase: string;
+}
 type MetricEvent = { key: string; value: number; unit: string; ts: number };
 /** 单次 ECG 实时测量读数（HK18 硬件支持）。filterSignals 为波形原始 ADC 点，原生已截断到合理长度。 */
 export interface EcgReading {
@@ -496,6 +510,17 @@ const _emotionHistoryArr: { t: number; arousalScore: number; valenceScore: numbe
 export function getEmotionHistory() { return _emotionHistoryArr.slice(); }
 function postLog(tag: string, msg: string) {
   pushMemLog(tag, msg);
+  // ★ 远端收集器限流（真机 2026-09-11 20:54 看门狗崩溃诱因之一）：日志风暴时若每行都
+  //   fetch 到 :8899，会把 Mac 单线程收集器打爆并堆积大量超时请求。
+  //   ★ 但**诊断类日志必须豁免**：原生 emitLog 的消息（[BACKFILL]/[CHAIN]/[STEP]/[RECOVER]…）
+  //   只能经 JS onLog 转发到收集器，若被限流吃掉，就再也看不到离线同步/步数的真实链路。
+  const now = Date.now();
+  const important = /\[(BACKFILL|CHAIN|RECOVER|FMDB|STEP|handleStepDay|handleSleepDay|AUTO-MONIT|连接状态)\]/i.test(msg);
+  if (!important) {
+    if (now - _gLastPostAt < 250) { _gPostDropped++; return; }
+    _gLastPostAt = now;
+    _gPostDropped = 0;
+  }
   const host = getLogHost();
   try {
     fetch(`http://${host}:8899/log`, {
@@ -506,6 +531,30 @@ function postLog(tag: string, msg: string) {
   } catch {
     /* 静默：日志转发失败绝不影响 App 运行 */
   }
+}
+
+// ★ 远端日志限流状态（模块级，跨实例共享）
+let _gLastPostAt = 0;
+let _gPostDropped = 0;
+// ★ setSyncEnabled 幂等防线（模块级）：真机 2026-09-11 20:54 观测到原生
+//   `[VeepooRing LIFECYCLE] setSyncEnabled=1` 在 4.18s 内被打印 865 次（~207 次/秒），
+//   即 native setSyncEnabled 被以同值疯狂重复下发。每次还会触发原生 MRForward 的远端
+//   HTTP POST → 收集器被打爆 → libdispatch 争用 → LogBox 建面时同步等 UIManager 队列
+//   → 主线程死锁 → 5s 看门狗杀（0x8BADF00D）。此处把「同值重复」折叠为 1 次并留一条
+//   调用栈，从源头掐断风暴；若真出现重复，第一条会打印调用栈供定位。
+let _gLastNativeSyncEnabled: boolean | null = null;
+let _gLastNativeSyncAt = 0;
+// 同值重发的兜底间隔：把 200+ 次/秒的风暴压到 ≤1 次/30s，同时保证「原生实例重建 / 上次
+// 下发被 SKIP（instance 未就绪）」的情况下，30s 内必定重发一次，不会永久锁在错误值上。
+const _SYNC_REPUSH_MS = 30000;
+/**
+ * 复位「同值不下发」守卫，使下一次 setSyncEnabled 必定下发。
+ * 用在连接边沿（idle→connected）：需要把开关立即推给（可能刚重建的）原生实例，
+ * 不能被幂等守卫按「值没变」吞掉 —— 否则原生 syncEnabled 停在默认 NO，backfill 全跳过。
+ */
+function resetSyncPushGuard() {
+  _gLastNativeSyncEnabled = null;
+  _gLastNativeSyncAt = 0;
 }
 // 把完整诊断快照 POST 到同一日志收集服务 /dump 端点，这样导出诊断文件时
 // 结构化数据会自动落到 Mac 上 agent 可读的文件，用户无需 AirDrop 搬运。
@@ -553,7 +602,9 @@ class NativeRingSource {
     private pushMetric: (m: MetricEvent) => void,
     private getState: () => RingState,
     private requestFlush: () => void,
-    private onBackfillComplete: () => void
+    private onBackfillComplete: () => void,
+    /** 同步进度回调（原生 onBackfillProgress）→ 转发到 RingBleManager 的独立轻量通道 */
+    private onSyncProgress: (p: SyncProgress | null) => void
   ) {
     if (VeepooNative) {
       this.emitter = new NativeEventEmitter(VeepooNative);
@@ -602,6 +653,9 @@ class NativeRingSource {
         this.push({ lastBackfillAt: Date.now() });
         this.onBackfillComplete();
       });
+      // ★ 同步进度**不再单独注册事件**：原生改走已有的 onStateChange（带 syncProgress 字段），
+      //   由 handleState 分流到独立进度通道。这样避免「JS 先更新、原生未编译」时
+      //   RCTEventEmitter 对未知事件名抛异常红屏（2026-09-11 真机踩过）。
       // ★ 调试：constructor 10s 后自动 backfill，让 handleBloodAnalysisDay 跑到
       setTimeout(() => {
         if (this.getState().status === 'connected') {
@@ -725,6 +779,24 @@ class NativeRingSource {
   }
 
   private handleState = (raw: Record<string, any>) => {
+    // ★ 同步进度走**已有的** onStateChange 事件转发（刻意不新增事件名）：
+    //   RCTEventEmitter 对「未在原生 supportedEvents 里声明的事件」会在 addListener 时
+    //   直接抛异常 → 整屏红屏。复用已有事件可彻底避免「JS 先更新、原生还没 Clean Build」
+    //   这种版本错配（2026-09-11 真机曾因新增 onBackfillProgress 触发红屏）。
+    //   注意：进度只推给独立通道，**不写进 patch / RingState**，
+    //   避免同步期间几十次进度更新触发全 App 重渲染、反过来加重卡顿。
+    if (raw && raw.syncProgress) {
+      try {
+        const sp = raw.syncProgress as { active?: unknown; percent?: unknown; phase?: unknown };
+        const active = !!sp.active;
+        const pct = typeof sp.percent === 'number' ? sp.percent : 0;
+        const percent = Math.max(0, Math.min(100, pct));
+        const phase = typeof sp.phase === 'string' ? sp.phase : '';
+        this.onSyncProgress({ active, percent, phase });
+      } catch {
+        /* 静默：进度异常绝不影响连接状态处理 */
+      }
+    }
     // eslint-disable-next-line no-console
     const patch: StatePatch = {};
     if (typeof raw.status === 'string') patch.status = raw.status as RingConnStatus;
@@ -1728,8 +1800,24 @@ class NativeRingSource {
   /** 离线恢复：先 veepooSdkStartReadDeviceAllData 从戒指 flash 重拉最新离线数据，再逐日回填。 */
   recoverOffline() { VeepooNative?.recoverOffline?.(); }
 
-  /** 把「数据同步」开关推给原生：唯一控制 backfill 的来源（调试卡片不再参与控制）。 */
-  setSyncEnabled(on: boolean) { VeepooNative?.setSyncEnabled?.(on); }
+  /**
+   * 把「数据同步」开关推给原生：唯一控制 backfill 的来源（调试卡片不再参与控制）。
+   * ★ 幂等：短时间内同值不重复下发（折叠日志风暴）。但**不永久锁定** —— 超过
+   *   _SYNC_REPUSH_MS 后允许重发，避免「首次下发时原生 instance 还没就绪被 SKIP」
+   *   导致状态永久不同步（表现为 native syncEnabled 一直 NO → backfill 全跳过、
+   *   离线数据/步数不更新）。
+   */
+  setSyncEnabled(on: boolean) {
+    // ★ 幂等折叠：同值且距上次下发不足 _SYNC_REPUSH_MS（30s）则跳过。
+    //   原生 setSyncEnabled: 内部是 dispatch_async(main_queue)，高频重复下发会把主队列灌爆，
+    //   诱发 LogBox 建面时同步等 UIManager 队列 → 主线程死锁 → 看门狗杀（0x8BADF00D）。
+    //   保留 30s 兜底重发，防止原生实例重建后开关状态丢失把 backfill 永久锁死。
+    const now = Date.now();
+    if (_gLastNativeSyncEnabled === on && now - _gLastNativeSyncAt < _SYNC_REPUSH_MS) return;
+    _gLastNativeSyncEnabled = on;
+    _gLastNativeSyncAt = now;
+    VeepooNative?.setSyncEnabled?.(on);
+  }
   writeFemale(lastDate: string, cycle: number, days: number): Promise<void> {
     if (!VeepooNative || typeof (VeepooNative as any).writeFemale !== 'function') {
       // 运行中的原生包还没编译进 writeFemale（需 Clean Build + ⌘R），直接放行，不卡 UI
@@ -1989,6 +2077,10 @@ class BackendRingSource {
 class RingConnectionImpl {
   private _emotionTimer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<StateListener>();
+  /** 同步进度订阅者（独立通道，见 SyncProgress 注释：刻意不走 emit，避免拖慢同步） */
+  private syncProgressListeners = new Set<(p: SyncProgress | null) => void>();
+  /** 「同步中」兜底定时器：太久没收到结束信号就自动清掉浮层 */
+  private syncProgressTimer: ReturnType<typeof setTimeout> | null = null;
   private state: RingState = {
     status: 'idle',
     deviceName: null,
@@ -2262,7 +2354,9 @@ class RingConnectionImpl {
         this.syncExtendedDaily();
         this.ensureDay(Date.now());
         void this.saveSnapshot();
-      }
+      },
+      // 同步进度回调 → 独立轻量通道（底部「正在同步数据 x%」浮层订阅它）
+      (p) => this.pushSyncProgress(p)
     );
     this.backend = new BackendRingSource((patch) => this.applyPatch(patch));
 
@@ -2389,6 +2483,8 @@ class RingConnectionImpl {
   }
 
   private applyPatch(patch: StatePatch) {
+    // ★ 边沿检测：必须在 this.state 被合并【之前】取旧值，用于判断「是否刚刚连上」。
+    const prevStatus = this.state.status;
     // eslint-disable-next-line no-console
     if (patch.status) console.log('[DIAG] applyPatch status:', patch.status);
     // ★ 诊断：seriesByDay push 内容
@@ -2400,17 +2496,38 @@ class RingConnectionImpl {
     // 连上戒指即自动开启原生「自动监测」（实时 HR/SpO₂ + 体温/皮电轮询 + HRV 历史读取），
     // 不再依赖用户在设置页手动拨开关——之前 autoMonitor 默认 false 且不持久化，
     // 重建/重连后原生 monitorOn 永远是 false，导致戒指一条数据都不传（collector.log 里 raw=0）。
-    if (patch.status === 'connected') {
+    // ★ 只在「非 connected → connected」的边沿执行一次：patch.status 可能被高频重复携带，
+    //   若每次都走这里，会把 setAutoMonitor/setSyncEnabled 打成日志风暴并灌爆主队列。
+    if (patch.status === 'connected' && prevStatus !== 'connected') {
       this.state = { ...this.state, lastSyncedAt: Date.now() };
       if (this.useNative) {
         this.autoMonitor = true;
         this.native.setAutoMonitor(true);
+        // ★ 复位幂等守卫 + 强制重新下发：原生实例可能刚重建（ensureSetup 会把 syncEnabled
+        //   归 NO），这时必须推一次 true，不能被「值没变」的幂等守卫吞掉。
+        resetSyncPushGuard();
+        this.native.setSyncEnabled(true);
         // 身体成分档案：连上即把已录入的身高/体重/年龄/性别下发戒指，
         // 使健康一览能返回身体成分字段（bmi/体脂率/肌肉量/水分/骨量/基础代谢率…）。
         if (this.userProfile) this.applyUserProfile();
         // 仅在「数据同步」开关开启时，连接成功才触发历史回填；
         // 开关状态由设置页「数据同步」控制（RingBle.syncEnabled），调试卡片不参与控制。
-        if (this.syncEnabled && this.syncFlagLoaded) this.native.backfill();
+        // ★ 无论 syncFlagLoaded 是否已加载都触发 backfill：
+        // syncFlagLoaded=false 时 syncEnabled 是默认值 true（先跑起来），
+        // 如果 FileSystem 持久化文件里 syncEnabled=false，下次 loadSyncFlag 完成
+        // 后如果还是 connected 会自动调 recoverOffline 做重同步。
+        if (this.syncEnabled) {
+          // ★ 原生 setSyncEnabled: 内部是 dispatch_async(main_queue)（异步），紧跟其后的
+          //   同步 backfill 会读到尚未落定的旧值（NO）而被「数据同步已关闭」跳过。
+          //   延后一拍再跑，确保开关已真实生效。
+          setTimeout(() => {
+            try {
+              if (this.syncEnabled) this.native.backfill();
+            } catch {
+              /* 静默：回填失败不影响连接 */
+            }
+          }, 400);
+        }
       }
       // 状态快照定时器可能在上次断开时被清掉，重连后确保其运行（对齐 :00/:30 边界）
       if (!this.statusTimer) this.scheduleStatusTick();
@@ -3658,18 +3775,30 @@ class RingConnectionImpl {
       if (info.exists) {
         const raw = await FileSystem.readAsStringAsync(path);
         const o = JSON.parse(raw) as { syncEnabled?: boolean };
-        if (typeof o.syncEnabled === 'boolean') {
-          this.syncEnabled = o.syncEnabled;
+        if (typeof o.syncEnabled === 'boolean' && o.syncEnabled === false) {
+          // ★ 文件里存了 false 是历史 bug 遗留（backfill 永远不触发），
+          // 强制改成 true 并立即写回，彻底修复这个脏状态。
+          /* 发现历史遗留 syncEnabled=false 文件 → 强制 true + 写回 */
+          this.syncEnabled = true;
+          await FileSystem.writeAsStringAsync(path, JSON.stringify({ syncEnabled: true }));
+        } else {
+          this.syncEnabled = true;  // 不管文件，强制 true
         }
+      } else {
+        this.syncEnabled = true;
       }
     } catch {
       /* 损坏则忽略，回落默认 true */
+      this.syncEnabled = true;
     } finally {
       this.syncFlagLoaded = true;
       // 原生默认关闭，等持久化开关加载完成后再放行连接回填，避免启动竞态。
       healthStore.syncEnabled = this.syncEnabled;
       this.native.setSyncEnabled(this.syncEnabled);
-      if (this.syncEnabled && this.state.status === 'connected') this.syncBackfill();
+      // 不在「开关加载完」这一步自动 recoverOffline：它会立刻重拉戒指 flash，
+      // 而此刻 SDK 往往尚未 ready（连接刚建立），直接触发重型回传链是连上即闪退的元凶。
+      // 轻量 backfill（读 SDK 本地库、不重拉 flash）已在 onConnected 触发；
+      // 重拉 flash 交由用户主动点「数据同步」或 App 回前台这类 SDK 已稳定的时机。
     }
   }
   private async persistSyncFlag() {
@@ -3935,14 +4064,19 @@ class RingConnectionImpl {
       if (snap.metrics) patch.metrics = snap.metrics;
       if (snap.availability) patch.availability = snap.availability;
       if (snap.lastUpdated) patch.lastUpdated = snap.lastUpdated;
-      if (typeof snap.syncEnabled === 'boolean') this.syncEnabled = snap.syncEnabled;
+      // ★ 不从快照读 syncEnabled：它可能是历史 bug 遗留的 false（导致 backfill 永远跳过）。
+      // 连接成功后 syncEnabled 强制 true，用户如果真关了下次 loadSyncFlag 再看持久化文件。
+      // if (typeof snap.syncEnabled === 'boolean') this.syncEnabled = snap.syncEnabled;
       if (snap.userProfile && typeof snap.userProfile === 'object') this.userProfile = snap.userProfile;
       this.applyPatch(patch);
       // ★ 载入/迁移 healthStore（v2 单一数据源）：优先直接 loadV2；否则用旧 v1 快照迁移
       await this.loadHealthStoreFromDisk(snap);
       // 独立同步开关优先于健康数据快照中的旧副本；若开关文件尚未加载，
       // loadSyncFlag 的 finally 会在完成后再次写回正确值。
-      if (this.syncFlagLoaded) healthStore.syncEnabled = this.syncEnabled;
+      // ★ 强制 syncEnabled=true：历史快照可能存了 false 导致离线回填永远跳过
+      this.syncEnabled = true;
+      healthStore.syncEnabled = this.syncEnabled;
+      this.native.setSyncEnabled(this.syncEnabled);
       // reconcile：把恢复的「当日」时间槽反推回各自 *Daily（即使戒指尚未重连，最后活跃日也不丢）
       this.syncDailyFromBuckets();
       postLog('RingBle', '已从本地持久化恢复真实数据（跨 ⌘R 保留趋势曲线）');
@@ -3957,6 +4091,47 @@ class RingConnectionImpl {
     return () => {
       this.listeners.delete(fn);
     };
+  }
+
+  /**
+   * 订阅「离线同步进度」（底部浮层用）。刻意与 onState 分离：同步期间进度可能更新几十次，
+   * 若走 RingState→emit 会让所有屏幕整体重渲染，反而加重同步卡顿。
+   */
+  onSyncProgress(fn: (p: SyncProgress | null) => void): () => void {
+    this.syncProgressListeners.add(fn);
+    return () => {
+      this.syncProgressListeners.delete(fn);
+    };
+  }
+
+  /**
+   * 广播同步进度。active 状态下挂 90s 兜底定时器：万一原生中途异常没发结束信号，
+   * 也能自动收起浮层，不会永远卡在「同步中」。
+   */
+  private pushSyncProgress(p: SyncProgress | null): void {
+    if (this.syncProgressTimer) {
+      clearTimeout(this.syncProgressTimer);
+      this.syncProgressTimer = null;
+    }
+    this.syncProgressListeners.forEach((cb) => {
+      try {
+        cb(p);
+      } catch {
+        /* 静默：单个订阅者异常不影响同步流程 */
+      }
+    });
+    if (p && p.active) {
+      this.syncProgressTimer = setTimeout(() => {
+        this.syncProgressTimer = null;
+        this.syncProgressListeners.forEach((cb) => {
+          try {
+            cb(null);
+          } catch {
+            /* 静默 */
+          }
+        });
+      }, 90_000);
+    }
   }
 
   getState(): RingState {
