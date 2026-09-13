@@ -47,7 +47,7 @@ export default function FocusScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.layout.tabBarHeight + insets.bottom + theme.sp(4) }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.sp(2) + theme.layout.tabBarHeight + theme.sp(2) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -70,15 +70,15 @@ export default function FocusScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: theme.layout.tabBarHeight + insets.bottom + theme.sp(4) }]}>
+        <View style={[styles.inputRow, { paddingBottom: theme.sp(2) + theme.layout.tabBarHeight + theme.sp(2) }]}>
           <TouchableOpacity
             style={styles.inputWrap}
-            onPress={() => openChat()}
+            onPress={() => openChat('帮我分析最近健康情况')}
             activeOpacity={0.85}
           >
-            <Text style={styles.inputPlaceholder}>问 Mira 任何事</Text>
+            <Text style={styles.inputPlaceholder}>帮我分析最近健康情况</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sendBtn} onPress={() => openChat()} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.sendBtn} onPress={() => openChat('帮我分析最近健康情况')} activeOpacity={0.85}>
             <Icon name="send" size={theme.fs(18)} color={theme.colors.textWhite} />
           </TouchableOpacity>
         </View>
