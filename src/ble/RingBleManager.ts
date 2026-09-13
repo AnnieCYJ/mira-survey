@@ -814,7 +814,13 @@ class NativeRingSource {
     }
     if (raw.error) patch.error = String(raw.error);
     if (raw.protocol) patch.protocol = raw.protocol;
-    this.push(patch);
+    // ★ 空 patch（仅含 syncProgress 的进度事件、或 bluetooth 状态事件）不写 RingState：
+    //   进度已走独立通道，再把空 patch 当 emit 会触发所有屏整体重渲染
+    //   （同步期几十次 → 主线程被占满、卡顿，且底部浮层「出现」动画来不及提交就随同步结束消失）。
+    //   空 patch 既无字段可合并也无副作用，跳过 push 是纯收益。
+    if (Object.keys(patch).length > 0) {
+      this.push(patch);
+    }
   };
 
   private handleMetric = (m: MetricEvent) => {
@@ -2445,6 +2451,32 @@ class RingConnectionImpl {
     }
   };
 
+  // ── emit 节流（合并回填期间的重渲染风暴） ──────────────────────────────
+  // 背景：applyPatch 在每次数据到达时调用；离线回填期间逐日/逐指标 handler 高频触发，
+  // 若每次都同步 emit()，会让所有订阅屏在数秒内整体重渲染几十~上百次 → 整屏卡顿。
+  // 现合并为「同窗口内至多 1 次 emit」（默认 200ms）：状态合并与副作用（重连边沿 / 历史投影 /
+  // 今日状态重算）仍同步进行，仅把「通知监听者」节流。数据最多延迟 200ms 呈现（用户无感），
+  // 但重渲染次数降一个数量级。正常实时监测事件间隔远大于窗口，几乎总是立即 emit，不受影响。
+  private emitThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastEmitAt = 0;
+  private readonly EMIT_WINDOW_MS = 200;
+  private scheduleEmitThrottled() {
+    const now = Date.now();
+    const elapsed = now - this.lastEmitAt;
+    if (elapsed >= this.EMIT_WINDOW_MS) {
+      this.lastEmitAt = now;
+      this.emit();
+      return;
+    }
+    if (this.emitThrottleTimer) return;
+    const remain = this.EMIT_WINDOW_MS - elapsed;
+    this.emitThrottleTimer = setTimeout(() => {
+      this.emitThrottleTimer = null;
+      this.lastEmitAt = Date.now();
+      this.emit();
+    }, remain);
+  }
+
   private emit() {
     this.scheduleSave();
     for (const fn of this.listeners) fn(this.state);
@@ -2556,7 +2588,8 @@ class RingConnectionImpl {
         postLog('RingBle', `[applyPatch] 归档投影异常（已忽略，保证 UI 刷新）: ${msg}`);
       }
     }
-    this.emit();
+    // ★ 节流 emit：回填期高频 applyPatch 合并通知，避免全屏重渲染风暴（见 scheduleEmitThrottled）。
+    this.scheduleEmitThrottled();
   }
 
   // ── healthStore → RingState 轻量调和（节流） ──────────────────────────────

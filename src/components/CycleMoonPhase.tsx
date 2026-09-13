@@ -24,7 +24,7 @@ import type { CycleInfo, CycleLog } from '../lib/cycleMath';
 const MOON_LIT = '#F2C75C';
 const MOON_DARK = 'rgba(150,130,235,0.16)';
 const MOON_GLOW = '#F2C75C';
-const MOON_PURPLE = '#7c6ae0'; // 月相暗面 / 全紫色（与 phaseColors 卵泡紫一致）
+const MOON_PURPLE = theme.colors.accent1; // 月相暗面 / 全紫色（与 phaseColors 黄体紫 #9D8AF0 统一，引用 token）
 
 /**
  * 四种月相样式（对应四个经期象限）。
@@ -113,13 +113,24 @@ export function moonPath(cx: number, cy: number, R: number, t: number): string {
 interface Props {
   cycleInfo: CycleInfo | null;
   log: CycleLog | null;
-  /** 点「记录今天」时回调（通常打开当日记录 Sheet） */
+  /** 点「记录今天」时回调（通常打开当日记录 Sheet）；不传则不显示该按钮 */
   onLogToday?: () => void;
+  /**
+   * 覆盖默认尺寸（默认 = min(屏宽 × 0.84, 350)）。
+   * 放进有内边距的容器（如 Card）时容器可用宽度小于屏宽，需显式传更小的值，否则会溢出。
+   */
+  size?: number;
+  /**
+   * 覆盖容器高度（默认 = size，即正方形）。
+   * 在紧凑布局（如洞察页卡片）中可传更小值以减少环下方的留白（环仅占上方 ~75%）。
+   */
+  height?: number;
 }
 
-export default function CycleMoonPhase({ cycleInfo, log, onLogToday }: Props) {
+export default function CycleMoonPhase({ cycleInfo, log, onLogToday, size: sizeProp, height: heightProp }: Props) {
   const screenW = Dimensions.get('window').width;
-  const size = Math.round(Math.min(screenW * 0.84, 350));
+  const size = sizeProp ?? Math.round(Math.min(screenW * 0.84, 350));
+  const h = heightProp ?? size;
   const cx = size / 2;
   const cy = size * 0.385;    // 月相环圆心
   const ringR = size * 0.37;  // 环半径
@@ -182,7 +193,7 @@ export default function CycleMoonPhase({ cycleInfo, log, onLogToday }: Props) {
   const accent = PHASE_COLOR[phaseKey];
 
   return (
-    <View style={[styles.wrap, { width: size, height: size }]}>
+    <View style={[styles.wrap, { width: size, height: h }]}>
       <Svg width={size} height={size}>
         <Defs>
           <RadialGradient id="cmGlow" cx="50%" cy="50%" r="50%">
@@ -205,7 +216,7 @@ export default function CycleMoonPhase({ cycleInfo, log, onLogToday }: Props) {
       <View style={[StyleSheet.absoluteFill]} pointerEvents="box-none">
         <View
           style={[styles.contentCol, { top: moonCy + moonR + size * 0.015 }]}
-          pointerEvents="none"
+          pointerEvents="box-none"
         >
           <Text style={styles.phaseLine}>
             {day != null ? `${phaseText} 第 ${day} 天` : phaseText}

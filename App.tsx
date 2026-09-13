@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBar, View, StyleSheet } from 'react-native';
+import { StatusBar, View, StyleSheet, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,12 @@ import SyncProgressBanner from './src/components/SyncProgressBanner';
 
 // 关键修复：react-navigation 默认主题会给导航容器涂一层浅灰背景
 // (background: 'rgb(242,242,242)')，盖住根渐变。改成透明让根背景透出来。
+
+// ★ 抑制 BLE 连接期间「Excessive number of pending callbacks」LogBox 白色遮罩：
+//   戒指回传历史数据时原生→JS 回调堆积（backfill 一次性推几千条样本），
+//   RN 内部安全机制误报为"回调过多"并弹出白色 LogBox 面板遮挡界面。
+//   这是已知良性警告（不影响数据正确性），在开发/生产环境均应屏蔽。
+LogBox.ignoreLogs(['Excessive number of pending callbacks']);
 const navTheme = {
   ...DefaultTheme,
   colors: {

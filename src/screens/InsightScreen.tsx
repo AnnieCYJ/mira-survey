@@ -11,7 +11,6 @@ import InsightBanner from '../components/InsightBanner';
 import DimensionCard from '../components/DimensionCard';
 import SleepStructureCard from '../components/SleepStructureCard';
 import CyclePhaseCard from '../components/CyclePhaseCard';
-import PeriodLogCard from '../components/PeriodLogCard';
 import BasicMetricCard from '../components/BasicMetricCard';
 import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
@@ -197,8 +196,6 @@ export default function InsightScreen() {
               female={ring.female}
               onPress={() => navigation.navigate('CycleCalendar')}
             />
-            {/* 今日经期状态记录（经量 / 疼痛程度），与周期日历共用同一份 periodLog */}
-            <PeriodLogCard onPress={() => navigation.navigate('CycleCalendar')} />
           </>
         ) : tab === 'activity' ? (
           <ActivityStatsTab ring={ring} />

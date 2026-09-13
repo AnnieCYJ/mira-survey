@@ -14,6 +14,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
+import { phaseBand, type PhaseKey } from '../lib/phaseColors';
+import PhaseLegend from './PhaseLegend';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import type { TimePoint } from '../ble/RingBleManager';
 
@@ -27,26 +29,13 @@ const Y_MIN = 35.5;
 const Y_MAX = 37.6;
 const DAY_MS = 86_400_000;
 
-const PHASE_BG: Record<string, string> = {
-  period: 'rgba(224,123,107,0.16)',
-  follicular: 'rgba(124,106,224,0.10)',
-  ovulation: 'rgba(111,207,180,0.20)',
-  luteal: 'rgba(157,138,240,0.13)',
-  unknown: 'rgba(138,138,168,0.05)',
-};
-
-const LEGEND: { key: string; label: string; color: string }[] = [
-  { key: 'follicular', label: '卵泡期', color: 'rgba(124,106,224,0.55)' },
-  { key: 'ovulation', label: '排卵期', color: 'rgba(111,207,180,0.85)' },
-  { key: 'luteal', label: '黄体期', color: 'rgba(157,138,240,0.7)' },
-  { key: 'period', label: '经期', color: 'rgba(224,123,107,0.7)' },
-];
-
 interface Props {
   tempDaily: Record<string, number>;
   tempHistory?: TimePoint[];
   log: CycleLog | null;
   range: RangeKey;
+  /** 是否绘制自带标题行（默认 true）。外层已提供卡片标题时传 false，避免双标题。 */
+  showHeader?: boolean;
 }
 
 function daysInRange(range: RangeKey): number {
@@ -114,7 +103,7 @@ function buildDailySeries(
   };
 }
 
-export default function TempBiphasicChart({ tempDaily, tempHistory, log, range }: Props) {
+export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, showHeader = true }: Props) {
   const isDay = range === 'day';
 
   const { pts, labelFirst, labelLast, validCount } = useMemo(() => {
@@ -188,14 +177,16 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range }
   const axisLabels = RANGE_DEF[range].axis;
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.headRow}>
-        <Text style={styles.title}>体温双相曲线</Text>
-        <Text style={styles.range}>
-          {labelFirst} – {labelLast} · °C
-        </Text>
-      </View>
-      <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <View style={styles.wrap}>
+        {showHeader && (
+          <View style={styles.headRow}>
+            <Text style={styles.title}>体温双相曲线</Text>
+            <Text style={styles.range}>
+              {labelFirst} – {labelLast} · °C
+            </Text>
+          </View>
+        )}
+        <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {/* 周期阶段背景带（仅周/月/年有按日相位；日视图因是日内，不画阶段带） */}
         {!isDay &&
           (pts as { key: string; date: Date; v: number | null; phase: string }[]).map((p, i) => (
@@ -205,7 +196,7 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range }
               y={PAD_T}
               width={plotW / (pts.length - 1 || 1)}
               height={plotH}
-              fill={PHASE_BG[p.phase] ?? PHASE_BG.unknown}
+              fill={phaseBand(p.phase as PhaseKey)}
             />
           ))}
         {/* 体温参考网格（36.0 / 36.5 / 37.0 / 37.5） */}
@@ -261,14 +252,7 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range }
           </Text>
         ))}
       </View>
-      <View style={styles.legend}>
-        {LEGEND.map((l) => (
-          <View key={l.key} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: l.color }]} />
-            <Text style={styles.legendText}>{l.label}</Text>
-          </View>
-        ))}
-      </View>
+      <PhaseLegend />
     </View>
   );
 }
@@ -280,10 +264,6 @@ const styles = StyleSheet.create({
   range: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingHorizontal: 2 },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.xs, paddingHorizontal: 2 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 14, marginTop: 4 },
-  legendDot: { width: 10, height: 10, borderRadius: 3, marginRight: 5 },
-  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   hintText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 6, paddingHorizontal: 2 },
   empty: { paddingVertical: 26, alignItems: 'center', paddingHorizontal: 22 },
   emptyTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: 8 },

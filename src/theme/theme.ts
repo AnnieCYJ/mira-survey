@@ -92,6 +92,8 @@ export const colors = {
     /** 卡片 chip 文字 / 渐变副色 */
     chipText: '#55557A',
     chipGradEnd: '#6E86E8',
+    /** 中性徽章底色（如「AI 分析」等次级标签 chip） */
+    chipNeutralBg: 'rgba(138,138,168,0.16)',
     /** 阴影用纯黑 / 深紫 */
     shadowBlack: '#000',
     shadowDeep: '#463A6E',

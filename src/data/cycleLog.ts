@@ -86,10 +86,57 @@ export interface PeriodDayLog {
   flow: FlowLevel;
   pain: PainLevel;
   mood?: string;
+  /** 身体症状标签键集合（见 SYMPTOM_TAGS），如 'headache' / 'fatigue' */
+  tags?: string[];
   note?: string;
   /** 记录时间戳（epoch ms），用于显示「最近编辑」 */
   updatedAt?: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 症状 / 心情 记录目录（参考 Clue / Flo / 美柚 等经期 App 的日志维度）
+//
+// 每个项带一个 emoji 作为「图片」图标（RN 原生渲染，无需打包资源），
+// 用于内联展开的经期记录面板，让用户在月相环下方一键勾选当日自感状态。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SymptomTag {
+  key: string;
+  label: string;
+  emoji: string;
+}
+
+/** 身体症状（多选） */
+export const SYMPTOM_TAGS: SymptomTag[] = [
+  { key: 'breast', label: '胸胀', emoji: '🤱' },
+  { key: 'headache', label: '头痛', emoji: '🤕' },
+  { key: 'backache', label: '腰酸', emoji: '🦴' },
+  { key: 'fatigue', label: '疲劳', emoji: '😴' },
+  { key: 'insomnia', label: '失眠', emoji: '🌙' },
+  { key: 'bloating', label: '腹胀', emoji: '🎈' },
+  { key: 'acne', label: '长痘', emoji: '🔴' },
+  { key: 'nausea', label: '恶心', emoji: '🤢' },
+  { key: 'appetite', label: '食欲变化', emoji: '🍽️' },
+  { key: 'diarrhea', label: '腹泻', emoji: '💧' },
+  { key: 'cramps', label: '绞痛', emoji: '⚡' },
+  { key: 'dizzy', label: '头晕', emoji: '💫' },
+];
+
+export interface MoodOption {
+  key: string;
+  label: string;
+  emoji: string;
+}
+
+/** 心情（单选） */
+export const MOOD_OPTIONS: MoodOption[] = [
+  { key: 'happy', label: '开心', emoji: '😊' },
+  { key: 'calm', label: '平静', emoji: '😌' },
+  { key: 'sensitive', label: '敏感', emoji: '🥺' },
+  { key: 'anxious', label: '焦虑', emoji: '😰' },
+  { key: 'low', label: '低落', emoji: '😔' },
+  { key: 'irritable', label: '暴躁', emoji: '😣' },
+];
 
 const PD_PATH = (FileSystem.documentDirectory ?? '') + 'mira_period_log.json';
 
@@ -110,6 +157,7 @@ export async function loadPeriodDays(): Promise<Record<string, PeriodDayLog>> {
         flow: (e.flow as FlowLevel) ?? '',
         pain: (e.pain as PainLevel) ?? '',
         mood: typeof e.mood === 'string' ? e.mood : undefined,
+        tags: Array.isArray(e.tags) ? e.tags.map(String) : undefined,
         note: typeof e.note === 'string' ? e.note : undefined,
         updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : undefined,
       };
