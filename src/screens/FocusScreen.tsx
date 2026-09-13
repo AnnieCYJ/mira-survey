@@ -151,9 +151,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.screen,
     paddingTop: theme.sp(2.5),
     paddingBottom: theme.sp(2.5),
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.35)',
   },
   inputWrap: {
     flex: 1,

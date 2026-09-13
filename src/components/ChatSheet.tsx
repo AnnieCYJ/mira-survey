@@ -198,7 +198,7 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
           ) : null}
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: insets.bottom + theme.space.sm }]}>
+        <View style={[styles.inputRow, { paddingBottom: insets.bottom + theme.sp(1) }]}>
           <TextInput
             style={styles.input}
             placeholder="询问你的健康数据..."
@@ -331,9 +331,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: theme.space.screen,
     paddingTop: theme.sp(2),
-    backgroundColor: theme.colors.cardBgStrong,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.04)',
   },
   input: {
     flex: 1,
