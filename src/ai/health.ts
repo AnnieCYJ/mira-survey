@@ -1,5 +1,4 @@
 // 健康数据快照：注入所有可获取的健康数据给 MiraAI
-// 包括：实时原始值、计算型结果（stress/cognitive/cortisol）、历史趋势摘要、周期预测
 // Token budget 控制：健康块总计 ≤ 800 token，留空间给 system prompt + 对话历史
 
 import { RingBle } from '../ble/RingBleManager';
@@ -7,6 +6,7 @@ import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -28,7 +28,6 @@ function trendDir(vals: number[]): string {
   return pct > 0 ? `上升 ${fmt(Math.abs(pct), '%', 0)}` : `下降 ${fmt(Math.abs(pct), '%', 0)}`;
 }
 
-/** 近 N 天某指标的摘要：均值 + 趋势方向（用 healthStore.getMetricDailyMeans 公开 API） */
 function metricHistorySummary(metric: MetricKey, days = 7): string | null {
   try {
     const vals = healthStore.getMetricDailyMeans(metric, days);
@@ -39,7 +38,173 @@ function metricHistorySummary(metric: MetricKey, days = 7): string | null {
   } catch { return null; }
 }
 
-/** 计算型结果：优先读缓存，缓存没有才现算（现算会自动回写缓存） */
+/**
+ * 皮质醇完整节律分析（身体恢复详情页同款数据，无遗漏）：
+ *   Cosinor: MESOR/振幅/峰值时刻/拟合优度R²/样本数
+ *   CSS: 节律方向性（正=晨型，负=晚间型）
+ *   Baseline: 14天个人基线 P25/P75
+ *   DailyMESOR: 历史 MESOR 漂移趋势
+ *   Status: 节律正常/持续偏高/紊乱 + 具体 flags
+ *   SustainedHighStreak: 连续偏高天数
+ */
+function getCortisolBlock(): string {
+  const today = dayKey(Date.now());
+  const cached = healthStore.getAnalysis(today);
+  const parts: string[] = [];
+
+  // 先尝试从缓存拿 cosinor 完整数据；缓存没有就现算 analyzeCortisol
+  let cc: any = cached?.cortisol;
+  let fullResult: any = null;
+
+  try {
+    if (!cc) {
+      // 现算完整结果（会自动写缓存）
+      const samples: { t: number; v: number }[] = [];
+      for (const mk of ['cortisol'] as MetricKey[]) {
+        
+        const todayIntraday = healthStore.getIntraday(mk, today);
+        for (const p of todayIntraday) samples.push({ t: p.t, v: p.v });
+        // 近30天也抓一点做 baseline
+        const now = Date.now();
+        for (let i = 1; i < 30; i++) {
+          const dk = dayKey(now - i * 86400000);
+          const pts = healthStore.getIntraday(mk, dk);
+          for (const p of pts) samples.push({ t: p.t, v: p.v });
+        }
+      }
+      if (samples.length >= 3) {
+        fullResult = analyzeCortisol(samples, 14);
+        cc = {
+          mesor: fullResult.cosinor.mesor,
+          amplitude: fullResult.cosinor.amplitude,
+          acrophaseH: fullResult.cosinor.acrophaseH,
+          css: fullResult.css,
+          status: fullResult.status.level,
+          sustainedHighStreak: fullResult.sustainedHighStreak,
+          // 额外完整字段
+          r2: fullResult.cosinor.r2,
+          n: fullResult.cosinor.n,
+          baselineP25: fullResult.baseline.p25,
+          baselineP75: fullResult.baseline.p75,
+          baselineN: fullResult.baseline.n,
+          flags: fullResult.status.flags,
+        };
+      }
+    }
+  } catch {}
+
+  if (!cc) return '';
+
+  // 1. cosinor 核心参数（身体恢复详情页同款）
+  const acro = `${String(Math.floor(cc.acrophaseH)).padStart(2,'0')}:${String(Math.round((cc.acrophaseH % 1) * 60)).padStart(2,'0')}`;
+  parts.push(`峰值 ${acro}`);
+  parts.push(`节律中值MESOR ${fmt(cc.mesor)} μg/L`);
+  parts.push(`昼夜振幅 ${fmt(cc.amplitude)} μg/L`);
+  if (cc.r2 != null) parts.push(`拟合优度R² ${fmt(cc.r2, '', 2)}`);
+  if (cc.n != null) parts.push(`样本数 ${cc.n}`);
+
+  // 2. CSS 节律方向
+  const cssLabel = cc.css > 10 ? '早起型' : cc.css < -10 ? '晚睡型' : '不明显';
+  parts.push(`作息类型 ${cssLabel}(CSS=${Math.round(cc.css)})`);
+
+  // 3. 14天个人基线对比
+  if (cc.baselineP25 != null && cc.baselineP75 != null) {
+    const inRange = cc.mesor >= cc.baselineP25 && cc.mesor <= cc.baselineP75;
+    parts.push(`14天基线P25 ${fmt(cc.baselineP25)} / P75 ${fmt(cc.baselineP75)}，今日MESOR${inRange ? '在基线内' : cc.mesor > cc.baselineP75 ? '偏高' : '偏低'}`);
+  }
+
+  // 4. 节律状态 + flags
+  const cmap: Record<string, string> = { normal: '正常', sustained_high: '持续偏高', dysregulated: '节律紊乱' };
+  parts.push(`节律状态 ${cmap[cc.status] ?? cc.status}`);
+  if (cc.flags && cc.flags.length) {
+    parts.push(`节律异常项:${cc.flags.join('、')}`);
+  }
+
+  // 5. 连续偏高
+  if (cc.sustainedHighStreak > 0) {
+    parts.push(`连续 ${cc.sustainedHighStreak} 天皮质醇偏高`);
+  }
+
+  return parts.join('；');
+}
+
+/**
+ * 激素推断（hormoneInference）：戒指实测 → 雌二醇/孕激素状态
+ *   雌二醇: 状态/分数/HRV dip排卵信号/趋势方向
+ *   孕激素: 状态/分数/BBT双相体温确认/cover-baseline温差
+ *   周期规律度: 是否规律双相/HRV黄体期是否下降/RHR黄体期是否升高
+ */
+function getHormoneBlock(): string {
+  const st = RingBle.getState();
+  const cs = st.curveStatus;
+  const parts: string[] = [];
+
+  // 构建 CycleLogRef
+  let cycleRef = null as any;
+  if (cs?.hasLog) {
+    cycleRef = {
+      lastPeriodStart: '', // 不需要，collectDailyPhysio 不看这个
+      cycleLength: 28,
+      lutealLength: 14,
+      periodLength: 5,
+      dayInCycle: cs.dayInCycle,
+      phase: (cs.phaseLabel === '月经期' ? 'period' :
+             cs.phaseLabel === '卵泡期' ? 'follicular' :
+             cs.phaseLabel === '排卵期' ? 'ovulation' :
+             cs.phaseLabel === '黄体期' ? 'luteal' : 'unknown'),
+      ovulationDate: null,
+    };
+  }
+
+  let inference: any = null;
+  try {
+    const physio: DailyPhysio[] = collectDailyPhysio(60);
+    if (physio.filter(p => p.temp != null || p.hrv != null || p.rhr != null).length >= 7) {
+      inference = inferHormones(physio, cycleRef);
+    }
+  } catch { return ''; }
+
+  if (!inference) return '';
+
+  // 雌二醇
+  const e2 = inference.estradiol;
+  if (e2.status !== 'insufficient') {
+    const e2map: Record<string, string> = { high: '偏高', normal: '正常', low: '偏低', inconclusive: '不确定', reference: '参考值' };
+    parts.push(`雌二醇(E2):${e2map[e2.status] ?? e2.status}，指数 ${fmt(e2.score)}`);
+    if (e2.hrvDipDetected) parts.push('检测到HRV dip（排卵前雌激素峰值信号）');
+    const trmap: Record<string, string> = { rising: '上升中', falling: '下降中', flat: '平稳', unknown: '未知' };
+    if (e2.trend !== 'unknown') parts.push(`趋势 ${trmap[e2.trend] ?? e2.trend}`);
+  }
+
+  // 孕激素
+  const p = inference.progesterone;
+  if (p.status !== 'insufficient') {
+    const pmap: Record<string, string> = { high: '偏高', normal: '正常', low: '偏低', inconclusive: '不确定', reference: '参考值' };
+    parts.push(`孕激素(P4):${pmap[p.status] ?? p.status}，指数 ${fmt(p.score)}`);
+    if (p.bbtConfirmed) {
+      parts.push(`BBT双相体温已确认排卵，cover-baseline ${fmt(p.delta, '°C')}`);
+    } else {
+      parts.push('尚未检测到BBT双相体温');
+    }
+    const lmap: Record<string, string> = { follicular: '卵泡期', luteal: '黄体期', unknown: '未知' };
+    parts.push(`当前${lmap[p.level] ?? p.level}`);
+  }
+
+  // 周期规律度
+  const reg = inference.regularity;
+  const regMap: Record<string, string> = { normal: '规律', possible: '可能不规律', likely: '不规律', insufficient: '数据不足' };
+  parts.push(`周期规律度:${regMap[reg.irregularity] ?? reg.irregularity}`);
+  if (reg.hasBiphasicBBT) parts.push('有规律BBT双相（排卵正常）');
+  if (reg.rhrLutealElevated) parts.push('黄体期RHR升高（孕酮作用正常）');
+
+  // 数据质量
+  const dq = inference.dataQuality;
+  parts.push(`数据覆盖:${dq.daysWithTemp}天体温/${dq.daysWithHRV}天HRV/${dq.daysWithRHR}天RHR`);
+
+  return parts.join('；');
+}
+
+/** 计算型结果（stress / cognitive） */
 function getAnalysisBlock(): string {
   const today = dayKey(Date.now());
   const cached = healthStore.getAnalysis(today);
@@ -57,7 +222,7 @@ function getAnalysisBlock(): string {
     if (s) {
       const peak = s.peakHour != null ? `${String(s.peakHour).padStart(2,'0')}:00` : '-';
       const rec = s.avgRecoverySec != null ? `${Math.round(s.avgRecoverySec)}s` : '-';
-      parts.push(`压力:评分 ${s.score}，事件 ${s.eventCount} 次，峰值 ${peak}，平均恢复 ${rec}`);
+      parts.push(`压力评分 ${s.score}；事件 ${s.eventCount} 次；峰值 ${peak}；平均恢复 ${rec}；情绪负荷 ${fmt(s.emotionalLoad)}`);
     }
   } catch {}
 
@@ -75,25 +240,14 @@ function getAnalysisBlock(): string {
     if (c) {
       const peak = c.peakHour != null ? `${String(c.peakHour).padStart(2,'0')}:00` : '-';
       const best = c.bestHour != null ? `${String(c.bestHour).padStart(2,'0')}:00` : '-';
-      parts.push(`脑力:负荷 ${c.loadScore}，疲劳 ${c.fatigueIndex}，峰值 ${peak}，最佳 ${best}，恢复力 ${c.recoveryCapacity != null ? fmt(c.recoveryCapacity, '%', 0) : '-'}`);
+      parts.push(`脑力负荷 ${c.loadScore}；疲劳指数 ${c.fatigueIndex}；峰值 ${peak}；最佳时段 ${best}；恢复力 ${c.recoveryCapacity != null ? fmt(c.recoveryCapacity, '%', 0) : '-'}`);
     }
   } catch {}
 
-  // Cortisol
-  try {
-    const cc = cached?.cortisol;
-    if (cc) {
-      const acro = `${String(Math.floor(cc.acrophaseH)).padStart(2,'0')}:${String(Math.round((cc.acrophaseH % 1) * 60)).padStart(2,'0')}`;
-      const cmap: Record<string, string> = { normal: '正常', sustained_high: '持续偏高', dysregulated: '节律紊乱' };
-      const cssLabel = cc.css > 10 ? '早起型' : cc.css < -10 ? '晚睡型' : '不明显';
-      parts.push(`皮质醇:峰值 ${acro}，振幅 ${fmt(cc.amplitude)}，节律 ${cmap[cc.status] ?? cc.status}，作息 ${cssLabel}，偏高连续 ${cc.sustainedHighStreak} 天`);
-    }
-  } catch {}
-
-  return parts.length ? parts.join('；') : '';
+  return parts.join('；');
 }
 
-/** 周期相位块：用 RingBle 已算好的 curveStatus（同步可用） */
+/** 周期相位（RingBle curveStatus） */
 function getCycleBlock(): string {
   const st = RingBle.getState();
   const cs = st.curveStatus;
@@ -124,21 +278,17 @@ function getCycleBlock(): string {
 /** 历史趋势摘要 */
 function getTrendBlock(): string {
   const metrics: { key: MetricKey; label: string }[] = [
-    { key: 'hrv', label: 'HRV' },
-    { key: 'hr', label: '心率' },
-    { key: 'stress', label: '压力' },
-    { key: 'eda', label: '皮电' },
-    { key: 'spo2', label: '血氧' },
-    { key: 'temp', label: '体温' },
-    { key: 'bpSys', label: '收缩压' },
-    { key: 'bpDia', label: '舒张压' },
+    { key: 'hrv', label: 'HRV' }, { key: 'hr', label: '心率' },
+    { key: 'stress', label: '压力' }, { key: 'eda', label: '皮电' },
+    { key: 'spo2', label: '血氧' }, { key: 'temp', label: '体温' },
+    { key: 'bpSys', label: '收缩压' }, { key: 'bpDia', label: '舒张压' },
   ];
   const parts: string[] = [];
   for (const m of metrics) {
     const s = metricHistorySummary(m.key, 7);
     if (s) parts.push(`${m.label}${s}`);
   }
-  // 睡眠评分从 healthStore.getSleep 拿（不是 MetricKey）
+  // 睡眠评分
   try {
     const sleepMeans: number[] = [];
     const now = Date.now();
@@ -161,7 +311,7 @@ export function buildHealthSnapshot(): string {
   const daily = st.daily || {};
   const blocks: string[] = [];
 
-  // ① 今日实时值
+  // ① 今日实时
   const rt: string[] = [];
   const add = (label: string, v: string | null) => { if (v) rt.push(`${label}=${v}`); };
   add('心率', fmt(daily['hr'], 'bpm'));
@@ -185,17 +335,25 @@ export function buildHealthSnapshot(): string {
   }
   if (rt.length) blocks.push(`今日实时:${rt.join('；')}`);
 
-  // ② 计算型结果（stress/cognitive/cortisol）
-  const analysis = getAnalysisBlock();
-  if (analysis) blocks.push(`计算结果:${analysis}`);
+  // ② 皮质醇完整节律分析（身体恢复详情页同款）
+  const cortisol = getCortisolBlock();
+  if (cortisol) blocks.push(`皮质醇节律:${cortisol}`);
 
-  // ③ 周期相位
+  // ③ 激素推断（雌二醇/孕激素/周期规律度）
+  const hormone = getHormoneBlock();
+  if (hormone) blocks.push(`激素推断:${hormone}`);
+
+  // ④ 计算型结果（stress/cognitive）
+  const analysis = getAnalysisBlock();
+  if (analysis) blocks.push(`情绪脑力:${analysis}`);
+
+  // ⑤ 周期相位
   const cycle = getCycleBlock();
   if (cycle) blocks.push(cycle);
 
-  // ④ 历史趋势摘要
+  // ⑥ 历史趋势
   const trend = getTrendBlock();
-  if (trend) blocks.push(`近7天:${trend}`);
+  if (trend) blocks.push(`近7天趋势:${trend}`);
 
   if (blocks.length === 0) return '';
   return (
