@@ -145,6 +145,38 @@ export interface HealthGlanceDay {
 }
 
 const SCHEMA_VERSION = 2;
+
+/** 计算型指标按天存的精简快照（历史回溯用，不要存太大）。 */
+export interface AnalysisSnapshot {
+  stress?: {
+    score: number | null;
+    peakHour: number | null;
+    emotionalLoad: number | null;
+    avgRecoverySec: number | null;
+    eventCount: number;
+  };
+  cognitive?: {
+    loadScore: number;
+    fatigueIndex: number;
+    peakHour: number | null;
+    bestHour: number | null;
+    recoveryCapacity: number | null;
+  };
+  cortisol?: {
+    mesor: number;
+    amplitude: number;
+    acrophaseH: number;
+    css: number;
+    status: 'normal' | 'sustained_high' | 'dysregulated';
+    sustainedHighStreak: number;
+  };
+  emotion?: {
+    label: string;
+    valence: number | null;
+    arousal: number | null;
+  };
+  updatedAt: number;
+}
 const MERGE_MS = 60 * 1000; // 同一天内时间差 < 1min 的样本视为同一时刻，取后写
 
 function emptyStore(): MetricStore {
@@ -212,6 +244,8 @@ export class HealthStore {
   private sleep: Record<string, SleepSummary> = {};
   private glance: Record<string, HealthGlanceDay> = {}; // dayKey -> 各子指标末值
   private lastUpdated: Record<string, number> = {};     // metricKey or 'sleep'/'glance:<sub>' -> ts
+  /** 计算型指标缓存：dayKey -> { stress?, cognitive?, cortisol?, emotion? } */
+  private analysis: Record<string, Partial<AnalysisSnapshot>> = {};
   syncEnabled = true;
   userProfile: { weight: number; height: number; age: number; sex: number } | null = null;
 
@@ -221,6 +255,7 @@ export class HealthStore {
 
   constructor() {
     for (const k of ALL_METRIC_KEYS) this.stores[k] = emptyStore();
+    this.analysis = {};
   }
 
   /** 内部版本号，每次数据写入后递增；供 useSyncExternalStore 做稳定快照。 */
@@ -576,6 +611,7 @@ export class HealthStore {
       sleep: this.sleep,
       glance: this.glance,
       lastUpdated: this.lastUpdated,
+      analysis: this.analysis,
     });
   }
 
@@ -588,9 +624,38 @@ export class HealthStore {
     this.sleep = json.sleep ?? {};
     this.glance = json.glance ?? {};
     this.lastUpdated = json.lastUpdated ?? {};
+    this.analysis = json.analysis ?? {};
     if (typeof json.syncEnabled === 'boolean') this.syncEnabled = json.syncEnabled;
     if (json.userProfile) this.userProfile = json.userProfile;
     this.notify();
+  }
+
+  /** 存某天的计算结果（stress / cognitive / cortisol / emotion）。同一天多次写会覆盖。 */
+  saveAnalysis(dateKey: string, type: keyof Omit<AnalysisSnapshot, 'updatedAt'>, data: any): void {
+    if (!dateKey || !data) return;
+    if (!this.analysis[dateKey]) this.analysis[dateKey] = { updatedAt: Date.now() };
+    (this.analysis[dateKey] as any)[type] = data;
+    this.analysis[dateKey]!.updatedAt = Date.now();
+    this.lastUpdated[`analysis:${type}`] = Date.now();
+    this.notify();
+  }
+
+  /** 取某天的计算结果快照；不传 dateKey 默认今天。 */
+  getAnalysis(dateKey?: string): Partial<AnalysisSnapshot> | null {
+    const dk = dateKey ?? dayKey(Date.now());
+    return this.analysis[dk] ?? null;
+  }
+
+  /** 拿历史计算结果（近 N 天），供趋势/回溯用。 */
+  getAnalysisHistory(days = 30): { date: string; analysis: Partial<AnalysisSnapshot> }[] {
+    const out: { date: string; analysis: Partial<AnalysisSnapshot> }[] = [];
+    const now = Date.now();
+    for (let i = 0; i < days; i++) {
+      const dk = dayKey(now - i * 86400000);
+      const a = this.analysis[dk];
+      if (a) out.push({ date: dk, analysis: a });
+    }
+    return out;
   }
 
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */

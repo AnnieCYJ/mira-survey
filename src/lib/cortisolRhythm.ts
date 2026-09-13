@@ -13,6 +13,7 @@
  * 不是化验级激素读数。本模块在代理值上做节律分析，呈现趋势/偏高/紊乱，并在 UI 标注「压力代理」。
  */
 export interface CortisolSample { t: number; v: number }
+import { healthStore, dayKey as _dayKey } from '../data/healthStore';
 export interface CosinorResult { mesor: number; amplitude: number; acrophaseH: number; r2: number; n: number }
 export type RhythmLevel = 'normal' | 'sustained_high' | 'dysregulated';
 export interface RhythmStatus { level: RhythmLevel; flags: string[] }
@@ -191,5 +192,15 @@ export function analyzeCortisol(samples: CortisolSample[], baselineDays = 14): C
     if (phaseOff) flags.push(`峰值时刻错位（${cos.acrophaseH.toFixed(1)} 点，正常约 06–10 点）`);
   }
   if (level === 'normal' && flags.length === 0) flags.push('节律正常（压力代理，仅供参考）');
-  return { cosinor: cos, css, baseline, hourlyMean: hourly, hourlyPredicted, dailyMesors, status: { level, flags }, sustainedHighStreak: maxStreak };
+  const result: CortisolRhythmResult = { cosinor: cos, css, baseline, hourlyMean: hourly, hourlyPredicted, dailyMesors, status: { level, flags }, sustainedHighStreak: maxStreak };
+  // ↓ 自动持久化
+  try {
+    const _level: 'normal' | 'sustained_high' | 'dysregulated' =
+      level === 'normal' ? 'normal' : level === 'sustained_high' ? 'sustained_high' : 'dysregulated';
+    healthStore.saveAnalysis(_dayKey(Date.now()), 'cortisol', {
+      mesor: cos.mesor, amplitude: cos.amplitude, acrophaseH: cos.acrophaseH,
+      css, status: _level, sustainedHighStreak: maxStreak,
+    });
+  } catch {}
+  return result;
 }

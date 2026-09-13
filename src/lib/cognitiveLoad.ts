@@ -349,7 +349,7 @@ export function computeCognitiveLoadReport(nowMs = Date.now()): CognitiveLoadRep
     };
   } catch(e) { (global as any).__cogAll = { error: String(e) }; }
 
-  return {
+  const result: CognitiveLoadReport = {
     loadScore: Math.round(loadScore),
     loadLevel,
     loadReason,
@@ -370,6 +370,17 @@ export function computeCognitiveLoadReport(nowMs = Date.now()): CognitiveLoadRep
       temp: tempNow,
     },
   };
+  // ↓ 自动持久化
+  try {
+    healthStore.saveAnalysis(_dayKey(nowMs), 'cognitive', {
+      loadScore: result.loadScore,
+      fatigueIndex: result.fatigueIndex,
+      peakHour: result.peakLoadSpan?.startHour ?? null,
+      bestHour: result.bestSpan?.startHour ?? null,
+      recoveryCapacity: result.recoveryCapacity,
+    });
+  } catch {}
+  return result;
 }
 
 function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {

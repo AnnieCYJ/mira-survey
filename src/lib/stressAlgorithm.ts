@@ -8,7 +8,7 @@
  * 输出: 当前压力分 0-100, 全天压力事件时间戳, 个人基线, 每小时事件分布
  */
 import KalmanFilter from './kalman-filter';
-import { healthStore, dayStartMs, type MetricKey } from '../data/healthStore';
+import { healthStore, dayStartMs, dayKey, type MetricKey } from '../data/healthStore';
 
 export type StressLevel = 'calm' | 'mild' | 'moderate' | 'high';
 
@@ -459,7 +459,7 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
     }
 
 
-  return {
+  const result: StressReport = {
     score, level,
     baseline: allStats?.mean ?? null,
     dailyStd: allStats?.std ?? null,
@@ -478,6 +478,18 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
     valenceLabel,
     valenceReason,
   };
+  // ↓ 自动持久化 —— 每次算完都存到 healthStore.analysis
+  try {
+    const _d = dayKey(nowMs);
+    healthStore.saveAnalysis(_d, 'stress', {
+      score: result.score,
+      peakHour: result.peakHour,
+      emotionalLoad: result.emotionalLoad,
+      avgRecoverySec: result.avgRecoverySec,
+      eventCount: result.events.length,
+    });
+  } catch { /* 存储失败不影响返回值 */ }
+  return result;
 }
 
 function buildValenceReason(
