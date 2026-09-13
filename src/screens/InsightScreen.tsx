@@ -16,6 +16,7 @@ import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import ExamTab from '../components/ExamTab';
+import ChatSheet from '../components/ChatSheet';
 import BloodComponentPanel from '../components/BloodComponentPanel';
 import StressInsightCard from '../components/StressInsightCard';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
@@ -65,6 +66,12 @@ const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
 
 export default function InsightScreen() {
   const navigation = useNavigation<any>();
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = (question: string) => {
+    setChatQuestion(question);
+    setChatVisible(true);
+  };
   const { autoMonitor } = useAppState();
   // 直接订阅戒指实时状态：真实心率/血氧/体温/皮电/HRV/呼吸率都从这里来
   const [ring, setRing] = useState<RingState>(RingBle.getState());
@@ -126,11 +133,12 @@ export default function InsightScreen() {
   const basicsSignals = signalsForDimension('basics');
 
   return (
+    <>
     <ScreenContainer compactTop>
       <View style={styles.stack}>
         <Text style={styles.title}>Insights</Text>
 
-        <InsightBanner onMore={() => navigation.navigate('Chat', { initialQuestion: '帮我详细分析今天的状态' })} />
+        <InsightBanner onMore={() => openChat('帮我详细分析今天的状态')} />
 
         {/* 模块切换：基础指标为戒指真实信号；其余为周期-心理洞察（上线保留） */}
         <ScrollView
@@ -317,6 +325,12 @@ export default function InsightScreen() {
         )}
       </View>
     </ScreenContainer>
+    <ChatSheet
+      visible={chatVisible}
+      onClose={() => setChatVisible(false)}
+      initialQuestion={chatQuestion}
+    />
+  </>
   );
 }
 

@@ -2,7 +2,6 @@ import React from 'react';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
 import BottomTabNavigator from './BottomTabNavigator';
-import ChatScreen from '../screens/ChatScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import MetricDetailScreen from '../screens/MetricDetailScreen';
 import BodyCompositionHistoryScreen from '../screens/BodyCompositionHistoryScreen';
@@ -26,7 +25,6 @@ export interface MetricDetailParams {
 
 export type RootStackParamList = {
   Main: undefined;
-  Chat: { initialQuestion?: string };
   Settings: undefined;
   MetricDetail: MetricDetailParams;
   BodyCompositionHistory: undefined;
@@ -135,17 +133,7 @@ export default function RootStackNavigator() {
         }}
       />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ cardStyle: { backgroundColor: "transparent" } }} />
-      <Stack.Screen
-        name="Chat"
-        component={ChatScreen}
-        options={{
-          presentation: 'modal',
-          cardStyle: { backgroundColor: 'transparent' },
-          cardStyleInterpolator: CardStyleInterpolators.forVerticalIOS,
-          gestureEnabled: true,
-          gestureDirection: 'vertical',
-        }}
-      />
+
     </Stack.Navigator>
   );
 }
