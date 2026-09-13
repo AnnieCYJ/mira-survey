@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBar, View, StyleSheet, LogBox } from 'react-native';
+import { StatusBar, View, StyleSheet } from 'react-native';  // LogBox 已注释
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,7 +7,7 @@ import { theme } from './src/theme/theme';
 import { AppStateProvider } from './src/state/AppState';
 import RootStackNavigator from './src/navigation/RootStackNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import SyncProgressBanner from './src/components/SyncProgressBanner';
+// import SyncProgressBanner from './src/components/SyncProgressBanner';  // ★ 临时注释
 
 // 关键修复：react-navigation 默认主题会给导航容器涂一层浅灰背景
 // (background: 'rgb(242,242,242)')，盖住根渐变。改成透明让根背景透出来。
@@ -16,7 +16,7 @@ import SyncProgressBanner from './src/components/SyncProgressBanner';
 //   戒指回传历史数据时原生→JS 回调堆积（backfill 一次性推几千条样本），
 //   RN 内部安全机制误报为"回调过多"并弹出白色 LogBox 面板遮挡界面。
 //   这是已知良性警告（不影响数据正确性），在开发/生产环境均应屏蔽。
-LogBox.ignoreLogs(['Excessive number of pending callbacks']);
+// LogBox.ignoreLogs(['Excessive number of pending callbacks']);  // ★ 临时注释
 const navTheme = {
   ...DefaultTheme,
   colors: {
@@ -50,7 +50,7 @@ export default function App() {
             </NavigationContainer>
             {/* 全局底部「正在同步数据 x%」浮层：绝对定位覆盖在导航之上；
                 pointerEvents="none" 保证纯展示、不拦截任何触摸。 */}
-            <SyncProgressBanner />
+            {/* <SyncProgressBanner />  ★ 临时注释排查白闪 */}
           </AppStateProvider>
         </SafeAreaProvider>
       </LinearGradient>

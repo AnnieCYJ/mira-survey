@@ -1,10 +1,9 @@
 import React from 'react';
-import { Dimensions, View, Text, StyleSheet, Image } from 'react-native';
+import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
 
-const coverImg = require('../assets/card_cognitive.jpg');
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 export function fmtRange(span: { startHour: number; endHour: number }): string {
@@ -53,9 +52,7 @@ export default function CognitiveLoadCard() {
 
   if (!hasData) {
     return (
-      <Card padded={false}>
-      {/* 顶部装饰图 */}
-      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+      <Card>
         <View style={styles.pad}>
           <Text style={styles.title}>认知负荷 & 疲劳</Text>
           <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
@@ -68,9 +65,7 @@ export default function CognitiveLoadCard() {
   const fCol = fatigueColor(report.fatigueLevel);
 
   return (
-    <Card padded={false}>
-      {/* 顶部装饰图 */}
-      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+    <Card>
       <View style={styles.pad}>
         {/* ── 头部: 认知负荷 ── */}
         <View style={styles.headRow}>
@@ -94,36 +89,26 @@ export default function CognitiveLoadCard() {
           </View>
         </View>
 
-        {/* ── 4 子指标 ── */}
-        <View style={styles.metricGrid}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>负荷时段占比</Text>
-            <Text style={styles.metricValue}>{report.highLoadRatio}%</Text>
-            <Text style={styles.metricSub}>高负荷活跃时段</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>恢复能力</Text>
-            <Text style={styles.metricValue}>
-              {report.recoveryCapacity != null
-                ? `${Math.round(report.recoveryCapacity * 100)}%`
-                : '—'}
-            </Text>
-            <Text style={styles.metricSub}>全天最低窗口 / 基线</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>今日 HRV</Text>
-            <Text style={styles.metricValue}>
-              {report.baselines.hrv != null ? `${Math.round(report.baselines.hrv)} ms` : '—'}
-            </Text>
-            <Text style={styles.metricSub}>迷走神经活力</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>血管张力 (VTI)</Text>
-            <Text style={styles.metricValue}>
-              {report.baselines.vti != null ? `${Math.round(report.baselines.vti)}` : '—'}
-            </Text>
-            <Text style={styles.metricSub}>脑力投入外周信号</Text>
-          </View>
+        {/* ── SumCell 风格 2×2 摘要网格 —— 与详情页对齐 ── */}
+        <View style={styles.summaryGrid}>
+          <SumCell label="负荷时段占比" value={`${report.highLoadRatio}%`} sub="高负荷活跃时段" />
+          <SumCell
+            label="恢复能力"
+            value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
+            sub="全天最低窗口 / 基线"
+          />
+        </View>
+        <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
+          <SumCell
+            label="今日 HRV"
+            value={report.baselines.hrv != null ? `${Math.round(report.baselines.hrv)} ms` : '—'}
+            sub="迷走神经活力"
+          />
+          <SumCell
+            label="血管张力 (VTI)"
+            value={report.baselines.vti != null ? `${Math.round(report.baselines.vti)}` : '—'}
+            sub="脑力投入外周信号"
+          />
         </View>
 
         {/* ── 小时分布 ── */}
@@ -173,6 +158,17 @@ export default function CognitiveLoadCard() {
         <Text style={[styles.reasonText, { marginTop: theme.sp(1) }]}>{report.fatigueReason}</Text>
       </View>
     </Card>
+  );
+}
+
+/** SumCell —— 与详情页 EmotionCognitiveDetailScreen.SumCell 100% 对齐 */
+function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <View style={styles.sumCell}>
+      <Text style={styles.sumLabel}>{label}</Text>
+      {value ? <Text style={styles.sumValue}>{value}</Text> : null}
+      {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
+    </View>
   );
 }
 
@@ -251,7 +247,6 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
 }
 
 const styles = StyleSheet.create({
-  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
   // ── 复用 StressInsightCard token ──
   pad: { padding: theme.space.cardPad },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -307,4 +302,11 @@ const styles = StyleSheet.create({
   peakSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 
   reasonText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(2) },
+
+  // SumCell 风格摘要（与详情页对齐）
+  summaryGrid: { flexDirection: 'row' },
+  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
+  sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
+  sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
+  sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 });

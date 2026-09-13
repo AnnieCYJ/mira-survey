@@ -29,6 +29,17 @@ export default function EmotionCognitiveDetailScreen() {
     return computeCognitiveLoadReport();
   }, []);
 
+  const yesterday = Date.now() - 86400000;
+  const dayKeyY = dayKey(yesterday);
+  const stressReportY = useMemo(() => {
+    const { computeStressReport } = require('../lib/stressAlgorithm');
+    return computeStressReport(yesterday);
+  }, []);
+  const cogReportY = useMemo(() => {
+    const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
+    return computeCognitiveLoadReport(yesterday);
+  }, []);
+  const slY = healthStore.getSleep(dayKeyY);
 
   // 皮质醇节律分析 —— 和 TrendChart 用同一份数据
   const cortisolRhythm = useMemo(() => {
@@ -122,10 +133,27 @@ export default function EmotionCognitiveDetailScreen() {
                 sub={stressReport.events.length > 0 ? `峰值 ${stressReport.peakHour != null ? `${String(Math.floor(stressReport.peakHour)).padStart(2,'0')}:00` : '—'}` : '无事件'}
               />
               <SumCell
-                label="平均恢复"
+                label="恢复"
                 value={stressReport.avgRecoverySec != null ? `${stressReport.avgRecoverySec}s` : '—'}
-                sub={stressReport.avgRecoverySec != null && stressReport.avgRecoverySec > 120 ? '恢复偏慢' : '恢复正常'}
+                sub={stressReport.avgRecoverySec != null ? (stressReport.avgRecoverySec > 120 ? '恢复偏慢' : '恢复正常') : '—'}
               />
+            </View>
+            <View style={styles.compareRow}>
+              <View style={styles.compareCell}>
+                <Text style={styles.compareLabel}>相比昨天</Text>
+                <Text style={styles.compareValue}>
+                  {(() => {
+                    const d = stressReport.events.length - stressReportY.events.length;
+                    const r = (stressReport.avgRecoverySec ?? 0) - (stressReportY.avgRecoverySec ?? 0);
+                    const parts: string[] = [];
+                    if (d !== 0) parts.push(`${d > 0 ? '+' : ''}${d}次压力`);
+                    if (stressReport.avgRecoverySec != null && stressReportY.avgRecoverySec != null && Math.abs(r) >= 10) {
+                      parts.push(`${r > 0 ? '恢复慢' : '恢复快'} ${Math.abs(r)}s`);
+                    }
+                    return parts.length > 0 ? parts.join(' ') : '基本持平';
+                  })()}
+                </Text>
+              </View>
             </View>
           </View>
         </Card>
@@ -136,25 +164,34 @@ export default function EmotionCognitiveDetailScreen() {
             <Text style={styles.cardTitle}>脑力消耗摘要</Text>
             <View style={styles.summaryGrid}>
               <SumCell
-                label="认知负荷"
+                label="脑力负荷"
                 value={cogReport.loadScore != null ? String(cogReport.loadScore) : '—'}
                 sub={cogReport.peakLoadSpan ? `峰值 ${String(cogReport.peakLoadSpan.startHour).padStart(2,'0')}:00–${String(cogReport.peakLoadSpan.endHour).padStart(2,'0')}:00` : '—'}
               />
               <SumCell
-                label="疲劳指数"
-                value={cogReport.fatigueIndex != null ? String(cogReport.fatigueIndex) : '—'}
+                label="恢复"
+                value={cogReport.recoveryCapacity != null ? `${Math.round(cogReport.recoveryCapacity * 100)}%` : '—'}
                 sub={cogReport.bestSpan ? `最佳 ${String(cogReport.bestSpan.startHour).padStart(2,'0')}:00–${String(cogReport.bestSpan.endHour).padStart(2,'0')}:00` : '—'}
               />
-              <SumCell
-                label="负荷占比"
-                value={cogReport.highLoadRatio != null ? `${cogReport.highLoadRatio}%` : '—'}
-                sub="高负荷时段"
-              />
-              <SumCell
-                label="恢复能力"
-                value={cogReport.recoveryCapacity != null ? `${Math.round(cogReport.recoveryCapacity * 100)}%` : '—'}
-                sub="全天最低窗口"
-              />
+            </View>
+            <View style={styles.compareRow}>
+              <View style={styles.compareCell}>
+                <Text style={styles.compareLabel}>相比昨天</Text>
+                <Text style={styles.compareValue}>
+                  {(() => {
+                    const loadD = (cogReport.loadScore ?? 0) - (cogReportY.loadScore ?? 0);
+                    const recD = (cogReport.recoveryCapacity ?? 0) - (cogReportY.recoveryCapacity ?? 0);
+                    const parts: string[] = [];
+                    if (cogReport.loadScore != null && cogReportY.loadScore != null && Math.abs(loadD) >= 5) {
+                      parts.push(`负荷 ${loadD > 0 ? '+' : ''}${loadD.toFixed(0)}`);
+                    }
+                    if (cogReport.recoveryCapacity != null && cogReportY.recoveryCapacity != null && Math.abs(recD) >= 0.05) {
+                      parts.push(`恢复 ${recD > 0 ? '+' : ''}${Math.round(recD * 100)}%`);
+                    }
+                    return parts.length > 0 ? parts.join(' ') : '基本持平';
+                  })()}
+                </Text>
+              </View>
             </View>
           </View>
         </Card>
@@ -181,25 +218,35 @@ export default function EmotionCognitiveDetailScreen() {
                 <Text style={styles.cardTitle}>睡眠恢复摘要</Text>
                 <View style={styles.summaryGrid}>
                   <SumCell
-                    label="总睡眠"
-                    value={`${totalH}h`}
-                    sub={`${sl.sleepTime ?? '—'} → ${sl.wakeTime ?? '—'}`}
+                    label="睡眠负债"
+                    value={`${Math.max(0, +(8 - parseFloat(totalH)).toFixed(1))}h`}
+                    sub={(() => { const d = +(8 - parseFloat(totalH)).toFixed(1); return d <= 0 ? '充足' : d < 1 ? '轻微不足' : d < 2 ? '中度不足' : '严重不足'; })()}
                   />
                   <SumCell
-                    label="睡眠评分"
+                    label="恢复"
                     value={sl.score != null ? String(sl.score) : '—'}
                     sub={sl.score >= 85 ? '恢复良好' : sl.score >= 70 ? '恢复正常' : sl.score >= 55 ? '恢复偏慢' : '需改善'}
                   />
-                  <SumCell
-                    label="深睡占比"
-                    value={`${deepPct}%`}
-                    sub={deepPct >= 20 ? '充足' : deepPct >= 12 ? '适中' : '偏少'}
-                  />
-                  <SumCell
-                    label="REM 占比"
-                    value={`${remPct}%`}
-                    sub={remPct >= 15 ? '正常' : remPct >= 8 ? '适中' : '偏少'}
-                  />
+                </View>
+                <View style={styles.compareRow}>
+                  <View style={styles.compareCell}>
+                    <Text style={styles.compareLabel}>相比昨天</Text>
+                    <Text style={styles.compareValue}>
+                      {(() => {
+                        const debtNow = Math.max(0, +(8 - parseFloat(totalH)).toFixed(1));
+                        const debtY = slY ? Math.max(0, +(8 - (slY.total / 60)).toFixed(1)) : null;
+                        const scoreD = (sl.score ?? 0) - (slY?.score ?? 0);
+                        const parts: string[] = [];
+                        if (debtY != null && debtNow !== debtY) {
+                          parts.push(`负债 ${debtNow < debtY ? '减' : '增'} ${Math.abs(+(debtNow - debtY).toFixed(1))}h`);
+                        }
+                        if (sl.score != null && slY?.score != null && Math.abs(scoreD) >= 5) {
+                          parts.push(`评分 ${scoreD >= 0 ? '+' : ''}${scoreD}`);
+                        }
+                        return parts.length > 0 ? parts.join(' ') : '基本持平';
+                      })()}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </Card>
@@ -246,4 +293,9 @@ const styles = StyleSheet.create({
   sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
   sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
   emptyHint: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  compareRow: { flexDirection: 'row', marginTop: theme.sp(1) },
+  compareCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
+  compareLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5) },
+  compareValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, textAlign: 'center' },
+  compareYesterday: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), textAlign: 'right' },
 });

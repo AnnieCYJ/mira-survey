@@ -4,11 +4,10 @@
  * 设计令牌: 100% theme.ts (Mira Design System v1.0) — 禁止裸值
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
 
-const coverImg = require('../assets/card_emotion.jpg');
 import EmotionTimeline, { EmotionLegend } from './EmotionTimeline';
 import { getEmotionHistory } from '../ble/RingBleManager';
 import { healthStore, type MetricKey } from '../data/healthStore';
@@ -101,8 +100,7 @@ export default function EmotionCard({ ring, onPress }: Props) {
 
   return (
     <TouchableOpacity activeOpacity={onPress ? 0.7 : 1} onPress={onPress}>
-      <Card padded={false}>
-        <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+      <Card>
         <View style={styles.pad}>
           {/* Header: title + levelChip */}
           <View style={styles.headRow}>
@@ -141,25 +139,26 @@ export default function EmotionCard({ ring, onPress }: Props) {
             );
           })()}
 
-          {/* 4 个子指标 (token 与 StressInsightCard 1:1) */}
-          <View style={styles.metricGrid}>
-            <Metric
+          {/* SumCell 风格 2×2 摘要网格 —— 与详情页对齐 */}
+          <View style={styles.summaryGrid}>
+            <SumCell
               label="情绪方向"
               value={(e.valenceScore >= 0 ? '+' : '') + e.valenceScore}
               sub={e.valenceScore >= 30 ? '积极向上' : e.valenceScore <= -30 ? '消极压力' : '不偏不倚'}
-              valueColor={e.valenceScore >= 20 ? theme.colors.stateCalm : e.valenceScore <= -20 ? theme.colors.danger : theme.colors.textSub}
             />
-            <Metric
+            <SumCell
               label="紧张程度"
               value={e.arousalScore.toString()}
               sub={e.arousalScore >= 60 ? '紧绷' : e.arousalScore <= 30 ? '放松' : '适中'}
             />
-            <Metric
+          </View>
+          <View style={[styles.summaryGrid, { marginTop: SP(1) }]}>
+            <SumCell
               label="皮肤电波动"
               value={e.scrPeaksPerMin.toFixed(1) + '/分'}
               sub={e.scrPeaksPerMin > 3 ? '明显波动' : e.scrPeaksPerMin < 1 ? '非常平静' : '小幅波动'}
             />
-            <Metric
+            <SumCell
               label="判定依据"
               value=""
               sub={e.reason}
@@ -177,7 +176,7 @@ export default function EmotionCard({ ring, onPress }: Props) {
   );
 }
 
-/** Metric 子项 — 与 StressInsightCard.Metric 100% token 对齐 */
+/** Metric 子项 — 旧版，保留供历史引用 */
 function Metric({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
   return (
     <View style={styles.metricItem}>
@@ -186,6 +185,17 @@ function Metric({ label, value, sub, valueColor }: { label: string; value: strin
         <Text style={[styles.metricValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
       ) : null}
       {sub ? <Text style={styles.metricSub} numberOfLines={2}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+/** SumCell —— 与详情页 EmotionCognitiveDetailScreen.SumCell 100% 对齐 */
+function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <View style={styles.sumCell}>
+      <Text style={styles.sumLabel}>{label}</Text>
+      {value ? <Text style={styles.sumValue}>{value}</Text> : null}
+      {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
     </View>
   );
 }
@@ -217,9 +227,7 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
     || [diag.eda ?? 0, diag.sns ?? 0, diag.hr ?? 0].filter(n => n >= 3).length >= 2;
 
   return (
-    <Card padded={false}>
-
-      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+    <Card>
       <View style={styles.pad}>
         <View style={styles.headRow}>
           <Text style={styles.title}>今日情绪</Text>
@@ -259,7 +267,6 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
 
 // ── Styles — 100% theme token, 零裸值 ──
 const styles = StyleSheet.create({
-  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
   pad: { paddingVertical: SP(4), paddingHorizontal: SP(4) },
 
   // Header (对齐 StressInsightCard)
@@ -302,6 +309,13 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     lineHeight: theme.fontSize.sm * 1.5,
   },
+
+  // SumCell 风格摘要（与详情页对齐）
+  summaryGrid: { flexDirection: 'row' },
+  sumCell: { flex: 1, alignItems: 'center', paddingVertical: SP(2), paddingHorizontal: SP(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: SP(0.5) },
+  sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: SP(0.5), textAlign: 'center' },
+  sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
+  sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: SP(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 
   // Empty state
   emptyTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle, marginBottom: SP(2) },

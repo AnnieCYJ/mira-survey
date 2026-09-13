@@ -18,8 +18,8 @@ import Card from '../components/Card';
 import ExamTab from '../components/ExamTab';
 import BloodComponentPanel from '../components/BloodComponentPanel';
 import StressInsightCard from '../components/StressInsightCard';
-import EmotionCard from '../components/EmotionCard';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
+import CortisolDailyChart from '../components/CortisolDailyChart';
 import CortisolRhythmCard from '../components/CortisolRhythmCard';
 import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
@@ -145,13 +145,27 @@ export default function InsightScreen() {
         </ScrollView>
 
         {tab === 'basics' ? (
+          <>
           <View style={styles.grid}>
             {basicsSignals.map((m, idx) => {
               const isRealtime = realtimeKeys.has(m.key);
               const rk = m.key as RingMetricKey;
               const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
               // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
-              const hist = getCachedSeries(m.key);
+              let hist = getCachedSeries(m.key);
+              // 戒指实时信号（hr/spo2/temp/eda/hrv/cortisol 等）约 30min 出一点，统一按半小时均值聚合
+              const HALF_HOUR_KEYS = new Set(['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','bpSys','bpDia']);
+              if (HALF_HOUR_KEYS.has(m.key) && hist.length > 0) {
+                const halfHour = 30 * 60 * 1000;
+                const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+                const slots: { sum: number; n: number; t: number }[] = [];
+                for (let i = 0; i < 48; i++) slots.push({ sum: 0, n: 0, t: dayStart.getTime() + i * halfHour });
+                for (const pt of hist) {
+                  const slot = Math.floor((pt.t - dayStart.getTime()) / halfHour);
+                  if (slot >= 0 && slot < 48 && Number.isFinite(pt.v)) { slots[slot].sum += pt.v; slots[slot].n++; }
+                }
+                hist = slots.filter(s => s.n > 0).map(s => ({ t: s.t, v: +(s.sum / s.n).toFixed(1) }));
+              }
               const measureTime = isRealtime ? ring.lastUpdated[rk] : todayLastT(m.key);
               const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
               const showHeader = !!m.section && m.section !== prevSection;
@@ -185,6 +199,7 @@ export default function InsightScreen() {
               );
             })}
           </View>
+          </>
         ) : tab === 'exam' ? (
           <ExamTab />
         ) : tab === 'cycle' ? (
@@ -227,13 +242,11 @@ export default function InsightScreen() {
                 fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
                 onPress={() => navigation.navigate('SleepDetail')}
               />
-              <CortisolRhythmCard />
+              <CortisolDailyChart />
               </>
             )}
             {tab === 'mind' && (
               <>
-                <EmotionCard ring={ring} />
-                <View style={{ height: 16 }} />
                 <StressInsightCard />
                 <View style={{ height: 16 }} />
                 <CognitiveLoadCard />

@@ -19,7 +19,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     overflow: 'hidden',
-    ...theme.shadow.card,
+    // ...theme.shadow.card,  // ★ 临时注释 shadow 排查白闪
   },
   pad: { padding: theme.space.cardPad },
 });

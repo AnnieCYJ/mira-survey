@@ -315,7 +315,7 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
     note: '健康一览自动评估的皮肤含水量（皮电 GSR 相关），随 hydration 与周期波动。', freq: '健康一览自动同步', yMin: 1, yMax: 99,
   },
   {
-    key: 'cortisol', name: '皮质醇', icon: 'ring', dimension: 'sleep',
+    key: 'cortisol', name: '皮质醇', icon: 'ring', dimension: 'basics',
     value: '—', unit: 'μg/L', range: '正常 ~50–250（晨高夜低）', data: [], live: false, hideMeasure: true,
     note: '压力激素皮质醇浓度，随昼夜节律波动（晨高夜低）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 500,
   },
@@ -436,7 +436,7 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
 
 /** 取某维度 tab 下应展示的信号卡片：'basics' 返回 5 个实时基础信号 + 扩展信号，其余返回对应维度的扩展信号。 */
 export function signalsForDimension(dim: 'basics' | MetricKey): BasicMetricDef[] {
-  if (dim === 'basics') return [...BASIC_METRICS.filter((m) => !m.hideInList), ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList)];
+  if (dim === 'basics') return [...BASIC_METRICS.filter((m) => !m.hideInList), ...EXTENDED_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList), ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === 'basics' && !m.hideInList)];
   return [...EXTENDED_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList), ...BASICS_EXTRA_SIGNALS.filter((m) => m.dimension === dim && !m.hideInList)];
 }
 

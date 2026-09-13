@@ -5,9 +5,8 @@
  * 设计令牌: 100% theme.ts (Mira Design System v1.0) — 禁止裸值
  */
 import React from 'react';
-const coverImg = require('../assets/card_stress.jpg');
 
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 import { theme } from '../theme/theme';
 import Card from './Card';
@@ -69,9 +68,7 @@ export default function StressInsightCard() {
   const color = levelColor(report.level);
 
   return (
-    <Card padded={false}>
-      {/* 顶部装饰图 */}
-      <Image source={coverImg} style={styles.cover} resizeMode="cover" />
+    <Card>
       <View style={styles.pad}>
         {/* Header */}
         <View style={styles.headRow}>
@@ -95,20 +92,21 @@ export default function StressInsightCard() {
           )}
         </View>
 
-        {/* 4 个子指标 */}
-        <View style={styles.metricGrid}>
-          <Metric
+        {/* SumCell 风格 2×2 摘要网格 —— 与详情页对齐 */}
+        <View style={styles.summaryGrid}>
+          <SumCell
             label="情绪消耗"
             value={report.emotionalLoad != null ? `${report.emotionalLoad}` : '—'}
             sub={report.emotionalLoad != null ? loadSubtext(report.emotionalLoad) : ''}
           />
-          <Metric
+          <SumCell
             label="今日情绪"
             value={report.valenceLabel != null ? valenceText(report.valenceLabel) : '—'}
             sub={report.valenceReason ?? ''}
-            valueColor={valenceColor(report.valenceLabel)}
           />
-          <Metric
+        </View>
+        <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
+          <SumCell
             label="恢复时间"
             value={report.avgRecoverySec != null ? `${report.avgRecoverySec}s` : '—'}
             sub={report.recoveryProlonged != null
@@ -116,12 +114,8 @@ export default function StressInsightCard() {
                 : report.recoveryProlonged < -15 ? `恢复快 ${Math.abs(report.recoveryProlonged)}%`
                 : '正常'
               : ''}
-            valueColor={report.recoveryProlonged != null && report.recoveryProlonged > 50
-              ? theme.colors.danger
-              : report.recoveryProlonged != null && report.recoveryProlonged < -15
-                ? theme.colors.stateCalm : undefined}
           />
-          <Metric label="峰值时段" value={formatPeakHour(report.peakHour)} sub={report.peakHour != null ? '事件最多' : ''} />
+          <SumCell label="峰值时段" value={formatPeakHour(report.peakHour)} sub={report.peakHour != null ? '事件最多' : ''} />
         </View>
       </View>
 
@@ -154,6 +148,17 @@ export function Metric({ label, value, sub, valueColor }: { label: string; value
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={[styles.metricValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
       {sub ? <Text style={styles.metricSub}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+/** SumCell —— 与详情页 EmotionCognitiveDetailScreen.SumCell 100% 对齐 */
+export function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <View style={styles.sumCell}>
+      <Text style={styles.sumLabel}>{label}</Text>
+      {value ? <Text style={styles.sumValue}>{value}</Text> : null}
+      {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
     </View>
   );
 }
@@ -279,7 +284,6 @@ const styles = StyleSheet.create({
   levelDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1) },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
 
-  cover: { width: '100%', height: 100, borderTopLeftRadius: theme.radius.md, borderTopRightRadius: theme.radius.md },
   scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(1.5), marginBottom: theme.sp(3)},
   score: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, letterSpacing: -1 },
   scoreUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(1) },
@@ -313,6 +317,13 @@ const styles = StyleSheet.create({
   timelineTime: { fontSize: theme.fontSize.body, color: theme.colors.textBody, width: theme.sp(15), fontWeight: theme.weight.medium },
   timelineZ: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, width: theme.sp(12) },
   timelineSev: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, flex: 1, textAlign: 'right' },
+
+  // SumCell 风格摘要（与详情页对齐）
+  summaryGrid: { flexDirection: 'row' },
+  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
+  sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
+  sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
+  sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 
   emptyTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
   emptyText: { fontSize: theme.fontSize.body, color: theme.colors.textSub, lineHeight: theme.fontSize.body + theme.sp(1.5) },

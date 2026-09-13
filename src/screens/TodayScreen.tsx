@@ -19,6 +19,8 @@ import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { RingBle } from '../ble/RingBleManager';
 import { dayKey } from '../data/healthStore';
+import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
 
 const ADVICE_STATIC: ListItem[] = [
@@ -132,6 +134,29 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
     } catch { return '—'; }
   })();
 
+  // 皮质醇峰值 + 恢复水平
+  const cortisolPeak = (() => {
+    try {
+      const samples = collectSamples();
+      const r = analyzeCortisol(samples, 14);
+      if (Number.isFinite(r.cosinor.acrophaseH)) {
+        const h = Math.round(r.cosinor.acrophaseH);
+        return `${String(h).padStart(2,'0')}:00`;
+      }
+      return '—';
+    } catch { return '—'; }
+  })();
+  const cortisolRecovery = (() => {
+    try {
+      const samples = collectSamples();
+      const r = analyzeCortisol(samples, 14);
+      if (r.css > 10) return '良好';
+      if (r.css < -10) return '偏晚';
+      if (Number.isFinite(r.cosinor.amplitude) && Number.isFinite(r.cosinor.mesor) && r.cosinor.amplitude < 0.15 * r.cosinor.mesor) return '扁平';
+      return '一般';
+    } catch { return '—'; }
+  })();
+
   // 子卡（情绪/脑力）——图片背景 + 底部白色渐变蒙层
   const subCard = (img: number, title: string, val: string, unit: string, onPress: () => void) => (
     <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={{ flex: 1 }}>
@@ -181,17 +206,18 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
               end={{ x: 1, y: 0.5 }}
               style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}
             />
-            {/* 文字叠在蒙层上 */}
-            <View style={{ flex: 1, paddingHorizontal: theme.space.cardPad, paddingVertical: theme.space.md, justifyContent: 'space-between' }}>
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>身体恢复</Text>
-                  <View style={{ flex: 1 }} />
-
+            {/* 文字叠在蒙层上 — 贴底部集中在白色区域，排版与 subCard 完全一致 */}
+            <View style={{ position: 'absolute', left: theme.space.cardPad, right: theme.space.md, bottom: 12, paddingTop: 40 }}>
+              {/* 顶部标题 */}
+              <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 6 }}>身体恢复</Text>
+              {/* 皮质醇峰值 — 单列竖排，与 subCard title+value+unit 排版一致 */}
+              <View style={{ marginTop: 2 }}>
+                <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 2 }} numberOfLines={1}>皮质醇峰值</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.card, fontWeight: theme.weight.bold }} numberOfLines={1} adjustsFontSizeToFit>{cortisolPeak}</Text>
+                  <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginLeft: 3 }}>点</Text>
                 </View>
-                <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(1) }}>皮质醇 · 情绪 · 脑力全天追踪</Text>
               </View>
-
             </View>
           </ImageBackground>
         </Card>

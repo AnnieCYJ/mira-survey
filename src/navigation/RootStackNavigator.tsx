@@ -134,7 +134,7 @@ export default function RootStackNavigator() {
           cardStyle: { backgroundColor: 'transparent' },
         }}
       />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ cardStyle: { backgroundColor: "transparent" } }} />
       <Stack.Screen
         name="Chat"
         component={ChatScreen}

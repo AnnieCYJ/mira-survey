@@ -233,7 +233,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-export function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null }) {
+export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean }) {
   console.log(`[TREND-ENTRY] called, hourlyMean=${r.hourlyMean?.filter(v=>v!=null).length}/${r.hourlyMean?.length}`);
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
   const H = 120;
@@ -261,12 +261,14 @@ export function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepW
     return sums.map((s, i) => (cnts[i] > 0 ? +(s / cnts[i]).toFixed(1) : null));
   };
 
-  // 14 天基线 + cosinor 填补空
+  // 14 天基线 + cosinor 填补空（只填到当前时刻）
   let baseline30 = aggregate30m(collectSamples());
   const cos = r.cosinor;
-  if (Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && cos.amplitude > 0 && Number.isFinite(cos.acrophaseH)) {
+  const now = new Date();
+  const baseFillSlot = Math.min(SLOTS - 1, now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0));
+  if (fillGaps && Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && cos.amplitude > 0 && Number.isFinite(cos.acrophaseH)) {
     const TWO_PI = Math.PI * 2;
-    for (let slot = 0; slot < SLOTS; slot++) {
+    for (let slot = 0; slot <= baseFillSlot; slot++) {
       if (baseline30[slot] == null) {
         const h = slot / 2;
         baseline30[slot] = Math.max(0, +(cos.mesor + cos.amplitude * Math.cos(TWO_PI * (h - cos.acrophaseH) / 24)).toFixed(1));
@@ -285,11 +287,13 @@ export function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepW
   console.log(`🔥 [TREND] todayRaw=${todayRaw.length} todayNonNull=${todayNonNull}/48 baselineNonNull=${baseNonNull}/48`);
 
   // 对 todayRaw 单独跑 analyzeCortisol, 拿今天自己的 cosinor 节律来填补
+  // ★ 只填补「当前时刻之前」的空槽，未来时段保持 null（不画预测线）
+  const currentSlot = Math.min(47, now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0));
   const todayR = analyzeCortisol(todayRaw, 1);
   const tcos = todayR.cosinor;
-  if (Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
+  if (fillGaps && Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
     const TWO_PI = Math.PI * 2;
-    for (let slot = 0; slot < 48; slot++) {
+    for (let slot = 0; slot <= currentSlot; slot++) {
       if (today30[slot] == null) {
         const h = slot / 2;
         const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
@@ -381,7 +385,7 @@ export function TrendChart({ r, sleepWindow }: { r: CortisolRhythmResult; sleepW
         {[0, 6, 12, 18, 24].map((h) => {
           const slot = Math.min(h * 2, SLOTS - 1);
           return (
-            <SvgText key={h} x={xOfSlot(slot)} y={H - 2} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">{h % 24}</SvgText>
+            <SvgText key={h} x={xOfSlot(slot)} y={H - 2} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">{h === 24 ? '24' : h % 24}</SvgText>
           );
         })}
       </Svg>

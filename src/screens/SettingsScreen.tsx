@@ -443,7 +443,13 @@ export default function SettingsScreen() {
             这是图表与趋势图实际读取的唯一数据源。若某指标「天数」&gt;0 但图表仍空 → 渲染问题；若「天数」=0 → 离线数据未回传（开启设置页「数据同步」开关即可从戒指重拉）。
           </Text>
           {(() => {
-            const rep = healthStore.freshnessReport();
+            // ★ 先 try/catch 防止 healthStore 写入风暴时 freshnessReport 卡死导致 Card 白屏
+            let rep: any[] = [];
+            try {
+              rep = healthStore.freshnessReport();
+            } catch {
+              rep = [];
+            }
             const withData = rep.filter((r) => r.days > 0);
             const none = rep.filter((r) => r.days === 0);
             return (
@@ -584,7 +590,7 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, width: '100%' },
+  root: { flex: 1, width: '100%', backgroundColor: theme.colors.bgTop },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
