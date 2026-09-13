@@ -115,10 +115,15 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
   }, [isLoading, addToolTask]);
 
   useEffect(() => {
-    if (visible && initialQuestion && messages.length === 0) {
-      sendMessage(initialQuestion);
+    if (visible) {
+      setMessages([]);
+      setInput('');
+      if (initialQuestion) {
+        // 等 state 更新后再发，用 microtask 确保 messages 已清空
+        queueMicrotask(() => sendMessage(initialQuestion));
+      }
     }
-  }, [visible, initialQuestion, messages.length, sendMessage]);
+  }, [visible]);
 
   const renderMessage = (msg: Message, idx: number) => {
     const isUser = msg.from === 'user';
