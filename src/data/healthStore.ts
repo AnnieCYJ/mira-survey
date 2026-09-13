@@ -658,6 +658,21 @@ export class HealthStore {
     return out;
   }
 
+  /** 取某指标近 N 天的日均值数组（最新在前，旧的在后）。跳过没数据的日子。 */
+  getMetricDailyMeans(metric: MetricKey, days = 7): number[] {
+    const store = this.stores[metric];
+    if (!store) return [];
+    const out: number[] = [];
+    const now = Date.now();
+    for (let i = 0; i < days; i++) {
+      const dk = dayKey(now - i * 86400000);
+      const d = store.daily?.[dk];
+      if (d && d.last != null && !Number.isNaN(d.last)) out.push(d.last);
+      else if (d && d.mean != null && !Number.isNaN(d.mean)) out.push(d.mean);
+    }
+    return out;
+  }
+
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */
   migrateFromV1(snap: any): void {
     if (!snap || typeof snap !== 'object') return;
