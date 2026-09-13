@@ -15,7 +15,8 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
 import Icon from '../components/Icon';
-import { pickReply, type AiTask } from '../data/chat';
+import { pickReply, generateQuestions, type AiTask } from '../data/chat';
+import { RingBle, type RingState } from '../ble/RingBleManager';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
 import { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -43,6 +44,13 @@ export default function ChatScreen() {
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
   const { addToolTask } = useAppState();
+
+  const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
+  useEffect(() => {
+    const unsubscribe = RingBle.onState((s) => setRingState(s));
+    return unsubscribe;
+  }, []);
+  const suggestedQuestions = generateQuestions(ringState);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -189,6 +197,18 @@ export default function ChatScreen() {
             <View style={styles.empty}>
               <Icon name="sparkle" size={theme.fs(48)} color="rgba(255,255,255,0.72)" strokeWidth={2} />
               <Text style={styles.emptyText}>Hi, can I help you?</Text>
+              <View style={styles.qWrap}>
+                {suggestedQuestions.flat().map((q, i) => (
+                  <TouchableOpacity
+                    key={`${q}-${i}`}
+                    style={styles.qChip}
+                    onPress={() => sendMessage(q)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.qChipText}>{q}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ) : (
             messages.map(renderMessage)
@@ -273,6 +293,28 @@ const styles = StyleSheet.create({
     marginTop: theme.space.md,
     textShadowColor: 'rgba(80,62,142,0.25)',
     textShadowOffset: { width: 0, height: 1 },
+  },
+  qWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    paddingHorizontal: theme.space.screen,
+    marginTop: theme.space.xl,
+  },
+  qChip: {
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(2.5),
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+    margin: theme.sp(1),
+    maxWidth: 200,
+  },
+  qChipText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textBody,
+    fontWeight: theme.weight.medium,
     textShadowRadius: 12,
   },
   msgRow: { flexDirection: 'row', marginBottom: theme.space.md, alignItems: 'flex-start' },

@@ -49,7 +49,7 @@ export default function FocusScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.layout.pageBottomPad(insets.bottom) }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + theme.sp(2) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -72,7 +72,7 @@ export default function FocusScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: theme.layout.pageBottomPad(insets.bottom) }]}>
+        <View style={[styles.inputRow, { paddingBottom: insets.bottom + theme.sp(2) }]}>
           <TouchableOpacity
             style={styles.inputWrap}
             onPress={() => openChat()}
