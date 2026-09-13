@@ -12,22 +12,19 @@ import {
   Easing,
   Dimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import OrbDots from '../components/OrbDots';
 import Icon from '../components/Icon';
+import ChatSheet from '../components/ChatSheet';
 import { generateQuestions } from '../data/chat';
 import { RingBle, type RingState } from '../ble/RingBleManager';
-import { RootStackParamList } from '../navigation/RootStackNavigator';
-
-type FocusNavProp = StackNavigationProp<RootStackParamList, 'Chat'>;
 
 export default function FocusScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<FocusNavProp>();
   const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const unsubscribe = RingBle.onState((s) => setRingState(s));
@@ -37,7 +34,8 @@ export default function FocusScreen() {
   const questions = useMemo(() => generateQuestions(ringState), [ringState]);
 
   const openChat = (question?: string) => {
-    navigation.navigate('Chat', { initialQuestion: question });
+    setChatQuestion(question);
+    setChatVisible(true);
   };
 
   return (
@@ -49,7 +47,7 @@ export default function FocusScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + theme.sp(2) }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.layout.tabBarHeight + insets.bottom + theme.sp(4) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -72,7 +70,7 @@ export default function FocusScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: insets.bottom + theme.sp(2) }]}>
+        <View style={[styles.inputRow, { paddingBottom: theme.layout.tabBarHeight + insets.bottom + theme.sp(4) }]}>
           <TouchableOpacity
             style={styles.inputWrap}
             onPress={() => openChat()}
@@ -85,6 +83,11 @@ export default function FocusScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <ChatSheet
+        visible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        initialQuestion={chatQuestion}
+      />
     </View>
   );
 }
