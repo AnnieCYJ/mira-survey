@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Easing,
   Text,
+  Dimensions,
   type ViewStyle,
 } from 'react-native';
 import { theme } from '../theme/theme';
@@ -51,7 +52,7 @@ export default function Sheet({ visible, onClose, children, style }: Props) {
               {
                 translateX: tx.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['0%', '100%'],
+                  outputRange: [0, Dimensions.get('window').width],
                 }),
               },
             ],
