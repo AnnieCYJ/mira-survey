@@ -10,6 +10,7 @@ import {
   Dimensions,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import Icon from './Icon';
 
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function Sheet({ visible, onClose, children, style }: Props) {
+  const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(visible);
   const tx = useRef(new Animated.Value(1)).current;
 
@@ -48,6 +50,7 @@ export default function Sheet({ visible, onClose, children, style }: Props) {
           styles.panel,
           style,
           {
+            top: insets.top,
             transform: [
               {
                 translateX: tx.interpolate({
