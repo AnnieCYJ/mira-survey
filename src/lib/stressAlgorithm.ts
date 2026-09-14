@@ -248,8 +248,8 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
       }
       // 其他 → 保持 null，下面兜底 neutral
     }
-    // 兜底: 没有足够信号 → neutral (不猜)
-    if (evLabel == null) evLabel = 'neutral';
+    // 兜底延后：此处先保持 null，交由下方「全天 valence 兜底」统一决定
+    // （对齐上方优先级注释：事件 emotion > 恢复时间 > 全天 valence）
     events[i] = { ...ev, valenceLabel: evLabel };
   }
 
@@ -304,6 +304,14 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
       const pd = meanOf('ppgDia' as MetricKey);
       return (ps != null && pd != null && ps > pd) ? ps - pd : null;
     })();
+
+    // ★ 新增真实生理信号（offlineEstimates 明确跳过今天 → 今天样本必为真实，不会污染算法）
+    //   cortisol: HPA 轴应激激素，相对基线升高 → 偏消极 / 紧张（valence 负向）
+    //   fatigue : 疲劳累积，相对基线升高 → 偏消极 / 耗竭（valence 负向 + 消耗）
+    const cortisolNow = healthStore.getDay('cortisol' as MetricKey, todayKey)?.mean ?? null;
+    const fatigueNow  = healthStore.getDay('fatigue'  as MetricKey, todayKey)?.mean ?? null;
+    const cortisolBaseline = meanOf('cortisol' as MetricKey);
+    const fatigueBaseline  = meanOf('fatigue'  as MetricKey);
 
     // ── 多日事件数基线 ──
     const eventHistoryCounts = daysBack.map((dk) => {
@@ -371,6 +379,20 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
         loadWeight += 1;
       }
 
+      // 输入 6: 皮质醇相对基线上升 (HPA 应激轴激活 = 消耗)
+      if (cortisolNow != null && cortisolBaseline != null && cortisolBaseline > 0) {
+        const dev = (cortisolNow - cortisolBaseline) / cortisolBaseline;
+        loadScore += Math.max(0, Math.min(1, dev * 2));
+        loadWeight += 1;
+      }
+
+      // 输入 7: 疲劳相对基线上升 (疲劳累积 = 消耗)
+      if (fatigueNow != null && fatigueBaseline != null && fatigueBaseline > 0) {
+        const dev = (fatigueNow - fatigueBaseline) / fatigueBaseline;
+        loadScore += Math.max(0, Math.min(1, dev));
+        loadWeight += 1;
+      }
+
       if (loadWeight > 0) {
         emotionalLoad = Math.round(Math.max(0, Math.min(100, 20 + (loadScore / loadWeight) * 80)));
       }
@@ -392,14 +414,20 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
       ? (snsNow - snsBaseline) / snsBaseline : null;
     const vtiDev = (vtiNow != null && vtiBaseline != null && vtiBaseline > 0)
       ? (vtiNow - vtiBaseline) / vtiBaseline : null;
+    const cortisolDev = (cortisolNow != null && cortisolBaseline != null && cortisolBaseline > 0)
+      ? (cortisolNow - cortisolBaseline) / cortisolBaseline : null;
+    const fatigueDev = (fatigueNow != null && fatigueBaseline != null && fatigueBaseline > 0)
+      ? (fatigueNow - fatigueBaseline) / fatigueBaseline : null;
 
-    // 身体状态方向: HRV↑/事件↓/sns↓/VTI↓ → 偏积极 (d>0)
+    // 身体状态方向: HRV↑/事件↓/sns↓/VTI↓/皮质醇↓/疲劳↓ → 偏积极 (d>0)
     const bodyStateDir = (() => {
       let d = 0;
       if (hrvDev != null) d += Math.sign(hrvDev);
       if (eventDev != null) d -= Math.sign(eventDev);
       if (snsDev != null) d -= Math.sign(snsDev);
       if (vtiDev != null) d -= Math.sign(vtiDev);
+      if (cortisolDev != null) d -= Math.sign(cortisolDev);
+      if (fatigueDev != null) d -= Math.sign(fatigueDev);
       return d;
     })();
 
@@ -418,7 +446,9 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
     } else {
       // fallback: 没有 emotionLevel → 完全靠身体信号融合
       const mag = (hrvDev != null ? Math.min(1, Math.abs(hrvDev) * 2) : 0)
-                + (eventDev != null ? Math.min(1, Math.abs(eventDev)) : 0);
+                + (eventDev != null ? Math.min(1, Math.abs(eventDev)) : 0)
+                + (cortisolDev != null ? Math.min(1, Math.abs(cortisolDev) * 2) : 0)
+                + (fatigueDev != null ? Math.min(1, Math.abs(fatigueDev)) : 0);
       if (bodyStateDir >= 1 && mag > 0.15) {
         valenceScore = Math.round(Math.min(100, (mag / 2) * 100));
       } else if (bodyStateDir <= -1 && mag > 0.15) {
@@ -432,7 +462,21 @@ export function computeStressReport(nowMs = Date.now()): StressReport {
       if (valenceScore >= 20) valenceLabel = 'positive';
       else if (valenceScore <= -20) valenceLabel = 'negative';
       else valenceLabel = 'neutral';
-      valenceReason = buildValenceReason(emotionNow, hrvDev, eventDev, snsDev, vtiDev, valenceLabel);
+      valenceReason = buildValenceReason(emotionNow, hrvDev, eventDev, snsDev, vtiDev, cortisolDev, fatigueDev, valenceLabel);
+    }
+
+    // ── 事件级「全天 valence 兜底」（对齐文件头优先级注释） ──
+    // 事件级 emotion 单点 / 恢复时间都没给出方向时，用**全天 valence**
+    //（SDK emotion + HRV + 事件数 + sns + VTI 融合）统一兜底，
+    // 避免所有事件塌陷成 neutral → 图表把 neutral 画成「平静」、全天情绪分布全变平静、失去区分度。
+    if (valenceLabel != null) {
+      for (let i = 0; i < events.length; i++) {
+        if (events[i].valenceLabel == null) events[i] = { ...events[i], valenceLabel };
+      }
+    }
+    // 全天 valence 也拿不到（既无 emotion 又无身体信号偏移）→ 保持 neutral（不猜）
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].valenceLabel == null) events[i] = { ...events[i], valenceLabel: 'neutral' };
     }
 
     // ── 恢复时间延长比例 (%) ──
@@ -498,6 +542,8 @@ function buildValenceReason(
   eventDev: number | null,
   snsDev: number | null,
   vtiDev: number | null,
+  cortisolDev: number | null,
+  fatigueDev: number | null,
   label: ValenceLabel,
 ): string {
   const parts: string[] = [];
@@ -519,6 +565,14 @@ function buildValenceReason(
   if (vtiDev != null) {
     const pct = Math.round(Math.abs(vtiDev) * 100);
     parts.push(vtiDev > 0 ? `血管张力↑${pct}%` : `血管张力↓${pct}%`);
+  }
+  if (cortisolDev != null) {
+    const pct = Math.round(Math.abs(cortisolDev) * 100);
+    parts.push(cortisolDev > 0 ? `皮质醇↑${pct}%` : `皮质醇↓${pct}%`);
+  }
+  if (fatigueDev != null) {
+    const pct = Math.round(Math.abs(fatigueDev) * 100);
+    parts.push(fatigueDev > 0 ? `疲劳↑${pct}%` : `疲劳↓${pct}%`);
   }
   const prefix = label === 'positive' ? '偏积极 · ' : label === 'negative' ? '偏消极 · ' : '情绪平稳 · ';
   return prefix + parts.join('，');

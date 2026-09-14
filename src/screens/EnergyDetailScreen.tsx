@@ -199,7 +199,7 @@ function EmotionDetail() {
               {'● 唤醒分（0–100）：<45 平静 · 45–55 轻度唤醒 · 55–65 中度唤醒 · >65 高度唤醒'}
             </Text>
             <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: theme.fontSize.xs * 1.5 }}>
-              {'● 计算因子：事件密度 25% · 平均强度 25% · HRV 偏离 25% · SCR 恢复 25%（以个人基线为参考）'}
+              {'● 计算因子：事件密度 · 平均强度 · HRV 偏离 · 交感(sns)偏离 · SCR 恢复 · 皮质醇偏离 · 疲劳偏离（各因子等权，以个人 2 日基线为参考）'}
             </Text>
           </View>
           
