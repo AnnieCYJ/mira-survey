@@ -17,7 +17,8 @@ import AiOrb from './AiOrb';
 import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
-import { RingBle, type RingState } from '../ble/RingBleManager';
+import { type RingState } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 
 interface Props {
   visible: boolean;
@@ -46,16 +47,12 @@ export default function ChatSheet({ visible, onClose, initialQuestion }: Props) 
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ringState: RingState | null = useRingState();
   const scrollRef = useRef<ScrollView>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
   const { addToolTask } = useAppState();
-
-  useEffect(() => {
-    const unsubscribe = RingBle.onState((s) => setRingState(s));
-    return unsubscribe;
-  }, []);
 
   const suggestedQuestions = useMemo(() => generateQuestions(ringState), [ringState]);
 

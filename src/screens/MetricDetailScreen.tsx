@@ -17,6 +17,7 @@ import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
@@ -108,7 +109,8 @@ export default function MetricDetailScreen() {
   const route = useRoute<any>();
   const params = route.params as Params;
 
-  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ring = useRingState();
   // 默认打开「日」视图：洞察页卡片今日段已与日视图同源同频，点卡片直接落到对得上的今日趋势。
   const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
@@ -147,10 +149,7 @@ export default function MetricDetailScreen() {
   }, []);
   
 
-  useEffect(() => {
-    const off = RingBle.onState(setRing);
-    return off;
-  }, []);
+  // （BLE 状态订阅已由 useRingState 统一处理，见上方 const ring = useRingState()）
   // 直接订阅 healthStore 版本号：回填写入后本页立即重算 buildHistorySeries，
   // 历史曲线即时出现，无需切 Tab / 重进。
   useHealthStoreVersion();

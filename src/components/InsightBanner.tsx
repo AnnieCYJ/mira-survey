@@ -4,14 +4,25 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import Icon from './Icon';
+import { AiResultRow } from './AiAnalysis';
+
+interface InsightRow {
+  tone: 'good' | 'warn' | 'neutral';
+  title: string;
+  body: string;
+}
 
 interface Props {
   onMore?: () => void;
-  /** 自定义 AI 分析正文；不传则用默认的 HRV/激素通用文案 */
+  /** AI 分析正文（由真实数据生成）；不传则用中性占位文案 */
   text?: React.ReactNode;
+  /** 分点结论行（tone|标题|正文）；传入时优先于 text 渲染（身体恢复页 AI / 规则兜底分点） */
+  rows?: InsightRow[];
+  /** 端侧大模型是否正在生成中（生成期间显示轻提示，正文用兜底文案） */
+  pending?: boolean;
 }
 
-export default function InsightBanner({ onMore, text }: Props) {
+export default function InsightBanner({ onMore, text, rows, pending }: Props) {
   return (
     <Card>
       <LinearGradient
@@ -24,15 +35,25 @@ export default function InsightBanner({ onMore, text }: Props) {
         <Text style={styles.badgeText}>AI 综合分析</Text>
       </LinearGradient>
 
-      {text ? (
+      {rows && rows.length > 0 ? (
+        <View>
+          {rows.map((r, i) => (
+            <AiResultRow key={`${r.title}-${i}`} tone={r.tone} title={r.title}>
+              {r.body}
+            </AiResultRow>
+          ))}
+        </View>
+      ) : text ? (
         <Text style={styles.text}>{text}</Text>
       ) : (
         <Text style={styles.text}>
-          过去 7 天你的 HRV 基线为 <Text style={styles.strong}>58ms</Text>
-          ，较上周提升 6%。雌激素进入峰值区间，身体恢复能力处于本月高位。建议今明两天安排中等强度训练，并把入睡时间提前
-          20 分钟。
+          持续佩戴后，这里会结合你的 HRV、睡眠、体温与周期相位，生成属于你的综合分析。
         </Text>
       )}
+
+      {pending ? (
+        <Text style={styles.pending}>✨ 正在结合你的真实数据生成…</Text>
+      ) : null}
 
       {onMore ? (
         <View style={styles.moreRow}>
@@ -68,6 +89,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
   },
   strong: { color: theme.colors.accentSolid, fontWeight: theme.weight.semibold },
+  pending: {
+    marginTop: theme.sp(1.5),
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    opacity: 0.75,
+  },
   moreRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.md },
   more: {
     flexDirection: 'row',

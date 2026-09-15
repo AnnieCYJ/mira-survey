@@ -18,7 +18,7 @@ import Card from '../components/Card';
 import ExamTab from '../components/ExamTab';
 import ChatSheet from '../components/ChatSheet';
 import BloodComponentPanel from '../components/BloodComponentPanel';
-import StressInsightCard from '../components/StressInsightCard';
+import EmotionInsightView from '../components/EmotionInsightView';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
 import CortisolDailyChart from '../components/CortisolDailyChart';
 import CortisolRhythmCard from '../components/CortisolRhythmCard';
@@ -28,6 +28,8 @@ import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReadi
 import { dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { useAiInsight } from '../hooks/useAiInsight';
+import { buildOverviewFallback } from '../ai/insight';
 
 function formatValue(v: number | null): string {
   if (v == null || Number.isNaN(v)) return '—';
@@ -78,18 +80,32 @@ export default function InsightScreen() {
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
   const [tab, setTab] = useState<TabKey>('basics');
 
+  // ★ 顶部「AI 综合分析」：真实接入端侧大模型（Qwen2.5-1.5B），上下文为该用户的真实健康数据
+  //   （buildHealthSnapshot：今日实时/皮质醇/激素推断/情绪脑力/周期相位/近 7 天趋势）。
+  //   生成完成前用「真实数据规则文案」兜底（不再显示原来硬编码的假数值）；同日同指纹只生成一次。
+  const aiOverview = useAiInsight('overview');
+
   // 趋势图可用性：连上戒指即视为「正在监测」（RingBleManager 连上会强制开启原生采集，
   // 与设置页总开关无关），不再被 autoMonitor 默认值 false 卡死——否则数据在采、数值有，
   // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
   const trendOn = autoMonitor || ring.status === 'connected';
 
-  // 直接订阅 healthStore 版本号：离线回填 / 实时写入 healthStore 后，本页所有卡片
-  // 立即重渲染并重读 getTodaySeries（不再依赖间接的 ring.dataVersion 触发，杜绝
-  // 「数据明明回了、卡片却一直空白」的时序卡死）。
-  useHealthStoreVersion();
+  // healthStoreVersion 订阅已合并到下方 useMemo 里，避免重复重渲染
 
   useEffect(() => {
-    const off = RingBle.onState(setRing);
+    let pending: RingState | null = null;
+    let scheduled = false;
+    const throttled = (s: RingState) => {
+      pending = s;
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          if (pending) setRing(pending);
+        });
+      }
+    };
+    const off = RingBle.onState(throttled);
     return off;
   }, []);
 
@@ -110,25 +126,37 @@ export default function InsightScreen() {
     navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax, color });
   };
 
-  // ★ 缓存 getTodaySeries 结果，避免每次 render 都遍历 healthStore
-  const _seriesCache = new Map<string, { arr: any[]; last: number | null }>();
-  const getCachedSeries = (key: string) => {
-    const cached = _seriesCache.get(key);
-    if (cached) return cached.arr;
-    const arr = getTodaySeries(key);
-    _seriesCache.set(key, { arr, last: arr.length > 0 ? arr[arr.length - 1].t : null });
-    return arr;
+  // ★ 轻量缓存：render 内新建 Map（短生命周期，GC 友好），避免每次 render 遍历 healthStore
+  const _cache = new Map<string, { hist: any[]; lastT: number | null }>();
+  const getCachedHist = (key: string): any[] => {
+    const c = _cache.get(key);
+    if (c) return c.hist;
+    const raw = getTodaySeries(key);
+    const lastT = raw.length ? raw[raw.length - 1].t : null;
+    // 实时信号半小时聚合（只有 render 时才算）
+    const _HALF = ['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','bpSys','bpDia'];
+    let hist = raw;
+    if (_HALF.includes(key) && raw.length > 0) {
+      const halfMs = 30 * 60 * 1000;
+      const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+      const slots: { sum: number; n: number; t: number }[] = [];
+      for (let i = 0; i < 48; i++) slots.push({ sum: 0, n: 0, t: dayStart.getTime() + i * halfMs });
+      for (const pt of raw) {
+        const slot = Math.floor((pt.t - dayStart.getTime()) / halfMs);
+        if (slot >= 0 && slot < 48 && Number.isFinite(pt.v)) { slots[slot].sum += pt.v; slots[slot].n++; }
+      }
+      hist = slots.filter(s => s.n > 0).map(s => ({ t: s.t, v: +(s.sum / s.n).toFixed(1) }));
+    }
+    _cache.set(key, { hist, lastT });
+    return hist;
   };
-  const todayLastT = (key: string): number | null => {
-    const cached = _seriesCache.get(key);
-    if (cached) return cached.last;
-    const arr = getTodaySeries(key);
-    const last = arr.length > 0 ? arr[arr.length - 1].t : null;
-    _seriesCache.set(key, { arr, last });
-    return last;
+  const getCachedLastT = (key: string): number | null => {
+    const c = _cache.get(key);
+    if (c) return c.lastT;
+    getCachedHist(key); // 填充缓存
+    return _cache.get(key)?.lastT ?? null;
   };
 
-  // 基础指标 tab：前 5 个是实时信号（读 ring.metrics/history），其余扩展信号读 ring.daily/dailyHistory
   const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
   const basicsSignals = signalsForDimension('basics');
 
@@ -138,14 +166,23 @@ export default function InsightScreen() {
       <View style={styles.stack}>
         <Text style={styles.title}>Insights</Text>
 
-        <InsightBanner onMore={() => openChat('帮我详细分析今天的状态')} />
+        <InsightBanner
+          onMore={() => openChat('帮我详细分析今天的状态')}
+          text={aiOverview.text ?? buildOverviewFallback()}
+          pending={aiOverview.loading}
+        />
 
         {/* 模块切换：基础指标为戒指真实信号；其余为周期-心理洞察（上线保留） */}
+        {/* 临时预览笑脸动画 */}
+        <View style={{ alignItems: 'center', marginBottom: 12 }}></View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.chipRow}
           contentContainerStyle={styles.chipContent}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={TABS.length > 4}
         >
           {TABS.map((t) => (
             <Chip key={t.key} label={t.label} active={t.key === tab} onPress={() => setTab(t.key)} />
@@ -159,22 +196,8 @@ export default function InsightScreen() {
               const isRealtime = realtimeKeys.has(m.key);
               const rk = m.key as RingMetricKey;
               const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
-              // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
-              let hist = getCachedSeries(m.key);
-              // 戒指实时信号（hr/spo2/temp/eda/hrv/cortisol 等）约 30min 出一点，统一按半小时均值聚合
-              const HALF_HOUR_KEYS = new Set(['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','bpSys','bpDia']);
-              if (HALF_HOUR_KEYS.has(m.key) && hist.length > 0) {
-                const halfHour = 30 * 60 * 1000;
-                const dayStart = new Date(); dayStart.setHours(0,0,0,0);
-                const slots: { sum: number; n: number; t: number }[] = [];
-                for (let i = 0; i < 48; i++) slots.push({ sum: 0, n: 0, t: dayStart.getTime() + i * halfHour });
-                for (const pt of hist) {
-                  const slot = Math.floor((pt.t - dayStart.getTime()) / halfHour);
-                  if (slot >= 0 && slot < 48 && Number.isFinite(pt.v)) { slots[slot].sum += pt.v; slots[slot].n++; }
-                }
-                hist = slots.filter(s => s.n > 0).map(s => ({ t: s.t, v: +(s.sum / s.n).toFixed(1) }));
-              }
-              const measureTime = isRealtime ? ring.lastUpdated[rk] : todayLastT(m.key);
+              const hist = getCachedHist(m.key);
+              const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
               const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
               const showHeader = !!m.section && m.section !== prevSection;
               return (
@@ -255,7 +278,9 @@ export default function InsightScreen() {
             )}
             {tab === 'mind' && (
               <>
-                <StressInsightCard />
+                {/* ★ 情绪洞察：与首页「情绪消耗」点进去的内容共用同一组件（EmotionInsightView），
+                    保证两处完全一致；原「压力洞察」已统一为「情绪洞察」。 */}
+                <EmotionInsightView />
                 <View style={{ height: 16 }} />
                 <CognitiveLoadCard />
               </>
@@ -285,8 +310,8 @@ export default function InsightScreen() {
                   {sigs.map((m) => {
                     const real = ring.daily[m.key] ?? null;
                     // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
-                    const hist = getCachedSeries(m.key);
-                    const measureTime = todayLastT(m.key);
+                    const hist = getCachedHist(m.key);
+                    const measureTime = getCachedLastT(m.key);
                     // 纯手动测量类信号：使用无趋势图的 ManualMetricCard（数值左 / 测量时间右 / 按钮置底）
                     if (m.manualOnly) {
                       return (

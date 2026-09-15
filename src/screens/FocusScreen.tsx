@@ -27,7 +27,19 @@ export default function FocusScreen() {
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const unsubscribe = RingBle.onState((s) => setRingState(s));
+    let pending: RingState | null = null;
+    let scheduled = false;
+    const throttled = (s: RingState) => {
+      pending = s;
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          if (pending) setRingState(pending);
+        });
+      }
+    };
+    const unsubscribe = RingBle.onState(throttled);
     return unsubscribe;
   }, []);
 

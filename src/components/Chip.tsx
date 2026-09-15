@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { Pressable, Text, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 
@@ -11,28 +11,33 @@ interface Props {
 
 export default function Chip({ label, active, onPress }: Props) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.75}
+    <Pressable
       onPress={onPress}
-      style={styles.hit}
+      style={({ pressed }) => [
+        styles.hit,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+      ]}
+      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
     >
-      {active ? (
-        <LinearGradient
-          colors={[theme.colors.accentSolid, theme.colors.ui.chipGradEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.chip, styles.on]}
-        >
-          <Text style={[styles.text, styles.textOn]}>{label}</Text>
-        </LinearGradient>
-      ) : (
-        <View style={[styles.chip, styles.idle]}>
-          <Text style={styles.text}>{label}</Text>
-        </View>
+      {({ pressed: _p }) => (
+        active ? (
+          <LinearGradient
+            colors={[theme.colors.accentSolid, theme.colors.ui.chipGradEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.chip, styles.on]}
+          >
+            <Text style={[styles.text, styles.textOn]}>{label}</Text>
+          </LinearGradient>
+        ) : (
+          <View style={[styles.chip, styles.idle]}>
+            <Text style={styles.text}>{label}</Text>
+          </View>
+        )
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 

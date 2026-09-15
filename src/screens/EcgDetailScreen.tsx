@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import { theme } from '../theme/theme';
 import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 
 /** ECG 波形路径：原始 ADC 点归一化到 W×H 视窗。 */
 function wavePath(values: number[], W: number, H: number): string {
@@ -37,13 +38,9 @@ function fmtRelative(ts: number): string {
 
 export default function EcgDetailScreen() {
   const navigation = useNavigation<any>();
-  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ring = useRingState();
   const [measuring, setMeasuring] = useState(false);
-
-  useEffect(() => {
-    const off = RingBle.onState(setRing);
-    return off;
-  }, []);
   useEffect(() => {
     if (measuring && ring.ecg) setMeasuring(false);
   }, [measuring, ring.ecg]);

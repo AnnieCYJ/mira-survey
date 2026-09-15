@@ -36,6 +36,31 @@ export function collectSamples(): CortisolSample[] {
   return out;
 }
 
+/** 拉取指定某一天的 cortisol 逐样本（已剔除零值）。用于身体恢复详情页按 anchor 日查看。 */
+export function collectSamplesForDay(dk: string): CortisolSample[] {
+  const out: CortisolSample[] = [];
+  for (const p of healthStore.getIntraday('cortisol', dk)) {
+    if (typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0) out.push({ t: p.t, v: p.v });
+  }
+  return out;
+}
+
+/** 拉取 [startMs, endMs] 闭区间内所有天的 cortisol 逐样本（已剔除零值）。用于周/月/年区间聚合。 */
+export function collectSamplesForRange(startMs: number, endMs: number): CortisolSample[] {
+  const out: CortisolSample[] = [];
+  const cur = new Date(startMs);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(endMs);
+  end.setHours(23, 59, 59, 999);
+  while (cur.getTime() <= end.getTime()) {
+    for (const p of healthStore.getIntraday('cortisol', dayKey(cur.getTime()))) {
+      if (typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0) out.push({ t: p.t, v: p.v });
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
 /** 从 healthStore 睡眠数据推导 sleepWindow (bedHour/wakeHour) */
 export function getSleepWindow(): { bedHour: number; wakeHour: number } | null {
   const todayDk = dayKey(Date.now());

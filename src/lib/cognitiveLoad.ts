@@ -102,7 +102,19 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+// ★ 结果缓存：同 (日期, healthStore 版本, 30s 窗) 内直接命中（与 stressAlgorithm 同款）。
+let _cogReportCache: { key: string; val: CognitiveLoadReport } | null = null;
+
 export function computeCognitiveLoadReport(nowMs = Date.now()): CognitiveLoadReport {
+  const key = `${todayKey(nowMs)}|${healthStore.getVersion()}|${Math.floor(nowMs / 30000)}`;
+  const c = _cogReportCache;
+  if (c && c.key === key) return c.val;
+  const val = computeCognitiveLoadReportUncached(nowMs);
+  _cogReportCache = { key, val };
+  return val;
+}
+
+function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport {
   const today = todayKey(nowMs);
 
   // ── 1. 今日均值 ───────────────────────────────────────────

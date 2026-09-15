@@ -206,19 +206,22 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
 
   useEffect(() => {
     const run = () => {
-      const now = Date.now();
-      const d = new Date(now);
-      const today0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      const dk = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
       const keys: MetricKey[] = ['hr', 'hrv', 'eda', 'sns', 'bpSys', 'bpDia'];
       const r: Record<string, number> = {};
       for (const k of keys) {
-        try { r[k] = healthStore.getTimeRange(k, today0, now, { maxPoints: 999 }).length; }
+        // ★ O(1)：直接取当日明细条数。
+        //   原写法 getTimeRange(k, today0, now, {maxPoints:999}).length 每次要遍历/合并最多
+        //   999 个点 × 6 个指标，而本函数每 5s + 每次 healthStore 变更都会被调用 → 明显卡顿。
+        try { r[k] = healthStore.getIntraday(k, dk).length; }
         catch { r[k] = -1; }
       }
       setDiag(r);
     };
     run();
-    const t = setInterval(run, 5000);
+    const t = setInterval(run, 15000);
     const sub = healthStore.subscribe(run);
     return () => { clearInterval(t); sub?.(); };
   }, []);

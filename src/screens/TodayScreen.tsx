@@ -260,7 +260,24 @@ export default function TodayScreen() {
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
   const [ring, setRing] = useState(() => RingBle.getState());
-  useEffect(() => RingBle.onState(setRing), []);
+  // ★ 节流订阅：BLE 状态推送（回填期约 ≥500ms 一次）会带动整屏重渲染，而本屏 render 里还要跑
+  //   computeStressReport/computeCognitiveLoadReport/皮质醇分析。用 rAF 把同一帧内的多次推送合并成
+  //   一次 setRing，避免叠加重渲染造成「点击/切 tab 卡顿」。（与 InsightScreen 同款写法）
+  useEffect(() => {
+    let pending: ReturnType<typeof RingBle.getState> | null = null;
+    let scheduled = false;
+    const throttled = (s: ReturnType<typeof RingBle.getState>) => {
+      pending = s;
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          if (pending) setRing(pending);
+        });
+      }
+    };
+    return RingBle.onState(throttled);
+  }, []);
   const cardWidth =
     Math.min(width, theme.layout.maxWidth) - theme.space.screen * 2 - theme.space.cardPad * 2;
 

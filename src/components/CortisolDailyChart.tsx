@@ -10,13 +10,79 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { analyzeCortisol } from '../lib/cortisolRhythm';
-import { collectSamples, getSleepWindow, TrendChart } from './CortisolRhythmCard';
+import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
+import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
+import { healthStore, dayKey } from '../data/healthStore';
 
-export default function CortisolDailyChart() {
+/** 由某天睡眠数据推导 sleepWindow（用于曲线睡眠阴影），支持指定 dayKey。 */
+function sleepWindowForDay(dk: string): { bedHour: number; wakeHour: number } | null {
+  const sl = healthStore.getSleep(dk);
+  if (!sl || !sl.sleepTime || !sl.wakeTime) return null;
+  const parseHM = (s: string) => {
+    const m = s.match(/(\d{1,2}):(\d{2})/);
+    return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
+  };
+  const bedH = parseHM(sl.sleepTime);
+  const wakeH = parseHM(sl.wakeTime);
+  if (bedH == null || wakeH == null) return null;
+  return { bedHour: Math.floor(bedH), wakeHour: Math.floor(wakeH) };
+}
+
+/** 节律洞察文案：卡片「节律洞察」与身体恢复页 AI 综合分析共用同一份逻辑（单一逻辑源） */
+export function buildRhythmInsights(r: CortisolRhythmResult, isToday: boolean): string[] {
+  const todayHigh = isToday ? r.today.high : false; // 历史单日无 14 天基线，偏高不可信
+  const todayDys = r.today.dys;
+  const dayWord = isToday ? '今日' : '当日';
+  const cos = r.cosinor;
+  const hasCos = Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude);
+  const insights: string[] = [];
+  if (!todayHigh && !todayDys) {
+    insights.push('皮质醇节律弹性好，晨起皮质醇能正常爬升，入睡时能正常下降。');
+  }
+  if (todayHigh) {
+    insights.push(`${dayWord}皮质醇水平偏高（高于你 14 天基线 75 分位），身体可能处于较高压力负荷，注意放松与恢复。`);
+  }
+  if (todayDys) {
+    insights.push(`${dayWord}节律形态紊乱——昼夜曲线异常，可能和睡眠不规律、长期压力或激素波动有关。`);
+  }
+  if (hasCos && cos.amplitude < 0.15 * cos.mesor) {
+    insights.push('昼夜波动幅度偏低，节律扁平——皮质醇早上起不来、晚上降不去。');
+  }
+  if (hasCos && Number.isFinite(cos.acrophaseH)) {
+    if (cos.acrophaseH < 6) insights.push(`峰值出现在 ${cos.acrophaseH.toFixed(0)}:00，皮质醇起得太早，可能后半夜已经开始分泌。`);
+    else if (cos.acrophaseH > 11) insights.push(`峰值出现在 ${cos.acrophaseH.toFixed(0)}:00，偏晚的皮质醇节律可能影响夜间睡眠。`);
+  }
+  if (Number.isFinite(r.css) && r.css < 0) {
+    insights.push('皮质醇节律偏晚间型，"夜猫子"模式，长期可能导致社交时差。');
+  }
+  if (todayHigh || todayDys) {
+    insights.push('💡 建议：保持固定睡眠节律、减少下午 3 点后咖啡因、上午接触自然光 30 分钟。');
+  }
+  return insights;
+}
+
+/**
+ * CortisolDailyChart —— 身体恢复详情页「皮质醇全天趋势」
+ *
+ * 数据管线与洞察页 CortisolRhythmCard.TrendChart 完全一致。
+ * 可选 anchorDayMs：传入则展示该历史日的曲线（不再含 14 天基线对比与持续性卡片）；
+ * 不传则为默认行为（今日 / 近 14 天节律，含持续性卡片），洞察页继续原样使用。
+ * 可选 showStatusChip（默认 true）：控制「节律分析」标题右侧的当日状态 chip；
+ * 身体恢复详情页顶部已有同结论大字，传 false 去重（洞察页不变）。
+ * 可选 showInsights（默认 true）：控制卡片底部「📊 节律洞察」文字块；
+ * 身体恢复页传 false（洞察文案已并入其 AI 综合分析，共用 buildRhythmInsights）。
+ * 点击卡片 → 跳转 MetricDetail（皮质醇日/周/月/年趋势）。
+ */
+export default function CortisolDailyChart({ anchorDayMs, showStatusChip = true, showInsights = true }: { anchorDayMs?: number; showStatusChip?: boolean; showInsights?: boolean } = {}) {
   const navigation = useNavigation<any>();
-  const samples = collectSamples();
-  const sleepWindow = getSleepWindow();
+  const isToday = anchorDayMs == null || dayKey(anchorDayMs) === dayKey(Date.now());
+  const targetMs = anchorDayMs ?? Date.now();
+  const targetDk = dayKey(targetMs);
+  const samples = isToday ? collectSamples() : collectSamplesForDay(targetDk);
+  const sleepWindow = sleepWindowForDay(targetDk) ?? getSleepWindow();
+
+  const mdLabel = `${new Date(targetMs).getMonth() + 1}/${new Date(targetMs).getDate()}`;
+  const title = isToday ? '今日皮质醇全天趋势' : `皮质醇全天趋势 · ${mdLabel}`;
 
   const goDetail = () => {
     navigation.navigate('MetricDetail', {
@@ -32,50 +98,32 @@ export default function CortisolDailyChart() {
   if (samples.length < 4) {
     return (
       <Card>
-        <Text style={styles.title}>今日皮质醇全天趋势</Text>
+        <Text style={styles.title}>{title}</Text>
         <Text style={{ fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-          暂无足够的皮质醇数据，连上戒指开启自动监测后即可查看
+          {isToday ? '暂无足够的皮质醇数据，连上戒指开启自动监测后即可查看' : `${mdLabel} 暂无皮质醇数据`}
         </Text>
       </Card>
     );
   }
 
-  const r = analyzeCortisol(samples, 14);
+  // 历史单日无 14 天基线，baselineDays=1；todayLevel/持续性仅在「今日」有意义
+  const r = analyzeCortisol(samples, isToday ? 14 : 1);
 
-  // ── 节律状态 meta ──
-  const levelMeta: Record<string, { label: string; color: string }> = {
-    normal: { label: '节律正常', color: '#2ECC71' },
-    sustained_high: { label: '持续偏高', color: theme.colors.danger },
-    dysregulated: { label: '节律紊乱', color: theme.colors.stateTense },
-  };
-  const meta = levelMeta[r.status.level] ?? levelMeta.normal;
+  // ── 当前日自身状态（芯片）：紊乱 + 偏高 可能并存，需并排展示 ──
+  // 历史单日无 14 天基线，偏高(high)无意义，强制为 false，仅保留形态紊乱(dys)
+  const todayHigh = isToday ? r.today.high : false;
+  const todayDys = r.today.dys;
+  const chipLabel =
+    todayDys && todayHigh ? '节律紊乱 · 当日偏高'
+    : todayDys ? '节律紊乱'
+    : todayHigh ? '当日偏高'
+    : '节律正常';
+  const chipColor = todayDys ? theme.colors.stateTense : todayHigh ? theme.colors.danger : '#2ECC71';
   const cos = r.cosinor;
   const hasCos = Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude);
 
-  // ── 节律解读文字 ──
-  const insights: string[] = [];
-  if (r.status.level === 'normal') {
-    insights.push('皮质醇节律弹性好，晨起皮质醇能正常爬升，入睡时能正常下降。');
-  }
-  if (r.status.level === 'sustained_high') {
-    insights.push(`连续 ${r.sustainedHighStreak} 天皮质醇水平偏高，HPA 轴处于持续激活状态，身体在慢性应激模式。`);
-  }
-  if (r.status.level === 'dysregulated') {
-    insights.push('节律弹性丢失——身体记不住正常的昼夜节奏，可能和睡眠不规律、长期压力或激素波动有关。');
-  }
-  if (hasCos && cos.amplitude < 0.15 * cos.mesor) {
-    insights.push('昼夜波动幅度偏低，节律扁平——皮质醇早上起不来、晚上降不去。');
-  }
-  if (hasCos && Number.isFinite(cos.acrophaseH)) {
-    if (cos.acrophaseH < 6) insights.push(`峰值出现在 ${cos.acrophaseH.toFixed(0)}:00，皮质醇起得太早，可能后半夜已经开始分泌。`);
-    else if (cos.acrophaseH > 11) insights.push(`峰值出现在 ${cos.acrophaseH.toFixed(0)}:00，偏晚的皮质醇节律可能影响夜间睡眠。`);
-  }
-  if (Number.isFinite(r.css) && r.css < 0) {
-    insights.push('皮质醇节律偏晚间型，"夜猫子"模式，长期可能导致社交时差。');
-  }
-  if (r.status.level !== 'normal') {
-    insights.push('💡 建议：保持固定睡眠节律、减少下午 3 点后咖啡因、上午接触自然光 30 分钟。');
-  }
+  // ── 节律解读文字（与身体恢复页 AI 综合分析共用 buildRhythmInsights，单一逻辑源）──
+  const insights = buildRhythmInsights(r, isToday);
 
   const fmtHour = (h: number) => {
     if (!Number.isFinite(h)) return '—';
@@ -93,7 +141,7 @@ export default function CortisolDailyChart() {
       {/* 趋势图区域：可点击跳转详情 */}
       <TouchableOpacity activeOpacity={0.85} onPress={goDetail}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
-          <Text style={styles.title}>今日皮质醇全天趋势</Text>
+          <Text style={styles.title}>{title}</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
         </View>
         <TrendChart r={r} sleepWindow={sleepWindow}  />
@@ -105,10 +153,12 @@ export default function CortisolDailyChart() {
       {/* 状态 + flags */}
       <View style={styles.rhythmHead}>
         <Text style={styles.rhythmTitle}>节律分析</Text>
-        <View style={[styles.levelChip, { backgroundColor: meta.color + '22' }]}>
-          <View style={[styles.levelDot, { backgroundColor: meta.color }]} />
-          <Text style={[styles.levelText, { color: meta.color }]}>{meta.label}</Text>
-        </View>
+        {showStatusChip && (
+          <View style={[styles.levelChip, { backgroundColor: chipColor + '22' }]}>
+            <View style={[styles.levelDot, { backgroundColor: chipColor }]} />
+            <Text style={[styles.levelText, { color: chipColor }]}>{chipLabel}</Text>
+          </View>
+        )}
       </View>
 
       {/* 2×2 SumCell 摘要 */}
@@ -117,11 +167,11 @@ export default function CortisolDailyChart() {
           label="整体压力水平"
           value={hasCos ? cos.mesor.toFixed(1) : '—'}
           sub={
-            hasCos && Number.isFinite(r.baseline.p75)
+            hasCos && isToday && Number.isFinite(r.baseline.p75)
               ? cos.mesor > r.baseline.p75 ? '高于个人基线 P75'
                 : cos.mesor < r.baseline.p25 ? '低于个人基线 P25'
                 : '在正常区间内'
-              : '全天压力代理均值'
+              : hasCos ? '单日均值' : '全天压力代理均值'
           }
         />
         <SumCell
@@ -167,8 +217,31 @@ export default function CortisolDailyChart() {
         />
       </View>
 
-      {/* AI 洞察文字 */}
-      {insights.length > 0 && (
+      {/* 持续性：偏高 / 紊乱 连续天数（仅「今日」视图有意义，需 14 天基线） */}
+      {isToday && (
+        <View style={styles.persistenceCard}>
+          <Text style={styles.persistenceTitle}>持续性</Text>
+          <View style={styles.persistenceRow}>
+            <Text style={styles.persistenceLabel}>皮质醇偏高</Text>
+            <Text style={[styles.persistenceValue, { color: r.highStreak > 0 ? theme.colors.danger : theme.colors.textSub }]}>
+              {r.highStreak === 0 ? '近期稳定'
+                : r.highStreak === 1 ? '今日偏高'
+                : `已连续 ${r.highStreak} 天（含今天）`}
+            </Text>
+          </View>
+          <View style={[styles.persistenceRow, { marginTop: theme.sp(1) }]}>
+            <Text style={styles.persistenceLabel}>节律紊乱</Text>
+            <Text style={[styles.persistenceValue, { color: r.dysStreak > 0 ? theme.colors.stateTense : theme.colors.textSub }]}>
+              {r.dysStreak === 0 ? '近期稳定'
+                : r.dysStreak === 1 ? '今日紊乱'
+                : `已连续 ${r.dysStreak} 天（含今天）`}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* AI 洞察文字（showInsights=false 时由身体恢复页 AI 综合分析承接同一份文案） */}
+      {showInsights && insights.length > 0 && (
         <View style={styles.insightBox}>
           <Text style={styles.insightTitle}>📊 节律洞察</Text>
           {insights.map((line, i) => (
@@ -177,12 +250,7 @@ export default function CortisolDailyChart() {
         </View>
       )}
 
-      {/* 个人基线 + 持续偏高 */}
-      {r.sustainedHighStreak > 0 && (
-        <Text style={styles.streakText}>
-          ⚠️ 已连续 {r.sustainedHighStreak} 天皮质醇偏高
-        </Text>
-      )}
+      {/* 持续天数已在上方「持续性」卡片展示 */}
     </Card>
   );
 }
@@ -222,4 +290,11 @@ const styles = StyleSheet.create({
   insightLine: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: theme.fontSize.sm * 1.55, marginBottom: theme.sp(0.5) },
 
   streakText: { fontSize: theme.fontSize.sm, color: theme.colors.danger, marginTop: theme.sp(1.5), fontWeight: theme.weight.semibold as any },
+
+  // 持续性卡片
+  persistenceCard: { backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.md, padding: theme.sp(2.5), marginTop: theme.sp(2) },
+  persistenceTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
+  persistenceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  persistenceLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textBody },
+  persistenceValue: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
 });

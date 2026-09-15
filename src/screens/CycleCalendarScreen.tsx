@@ -35,6 +35,7 @@ import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 import {
   computeCycle,
   estrogenAt,
@@ -87,7 +88,8 @@ function mergeCycleLog(ring: RingState, local: CycleLog | null): CycleLog | null
 
 export default function CycleCalendarScreen() {
   const navigation = useNavigation<any>();
-  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ring = useRingState();
   const [localLog, setLocalLog] = useState<CycleLog | null>(null);
   const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
   const [view, setView] = useState<'month' | 'year'>('month');
@@ -97,11 +99,6 @@ export default function CycleCalendarScreen() {
   const [recordOpen, setRecordOpen] = useState(false);
   const [recDate, setRecDate] = useState('');
   const [recCycleLen, setRecCycleLen] = useState(28);
-
-  useEffect(() => {
-    const off = RingBle.onState(setRing);
-    return off;
-  }, []);
   useEffect(() => {
     void loadCycleLog().then(setLocalLog);
     void loadPeriodDays().then(setPeriodDays);

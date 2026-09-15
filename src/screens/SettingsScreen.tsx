@@ -91,7 +91,20 @@ export default function SettingsScreen() {
     // 立即同步当前单例状态：重进设置页时若戒指仍连着，直接显示「已连接」，
     // 而不是从硬编码 idle 默认值起步（避免「看起来断联」的错觉）。
     setRing(RingBle.getState());
-    const off = RingBle.onState(setRing);
+    // ★ 节流订阅（rAF 合并）：BLE 推送较频繁，直接 setRing 会把多次推送叠加成多次全屏重渲染 → 卡顿。
+    let pending: RingState | null = null;
+    let scheduled = false;
+    const throttled = (s: RingState) => {
+      pending = s;
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          if (pending) setRing(pending);
+        });
+      }
+    };
+    const off = RingBle.onState(throttled);
     return () => {
       // 仅退订，不断开戒指：连接由全局单例持有，应跨页面存活。
       // 之前的 bug 是在这里调 RingBle.disconnect()，导致一离开设置页 BLE 就被掐。

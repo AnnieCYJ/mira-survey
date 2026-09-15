@@ -8,6 +8,12 @@ import { AppStateProvider } from './src/state/AppState';
 import RootStackNavigator from './src/navigation/RootStackNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 // import SyncProgressBanner from './src/components/SyncProgressBanner';  // ★ 临时注释
+import { enableFreeze } from 'react-native-screens';
+
+// ★ 性能：开启 react-native-screens 的「冻结」能力，让 React Navigation 的
+//   freezeOnBlur（见 BottomTabNavigator）真正生效 —— 失焦的 Tab 停止重渲染。
+//   否则切 Tab 后旧 Tab 仍在后台订阅 BLE / healthStore 并反复重渲染 → 点击卡顿。
+enableFreeze(true);
 
 // 关键修复：react-navigation 默认主题会给导航容器涂一层浅灰背景
 // (background: 'rgb(242,242,242)')，盖住根渐变。改成透明让根背景透出来。

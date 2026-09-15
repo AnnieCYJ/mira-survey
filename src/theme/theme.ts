@@ -89,6 +89,11 @@ export const colors = {
     offTrack: 'rgba(120,120,140,0.28)',
     /** 成功态文字色 */
     successText: '#3F9E85',
+    /** 身体恢复页节律大字·正常/偏高（浅紫渐变上清晰可读）；紊乱用首页圆环粉 moodRest */
+    rhythmGood: '#1E8E5A',
+    rhythmWarn: '#C2571A',
+    /** 节律日历「正常日」淡紫底（异常日用首页圆环粉 moodRest） */
+    rhythmCalm: '#D9D2F8',
     /** 卡片 chip 文字 / 渐变副色 */
     chipText: '#55557A',
     chipGradEnd: '#6E86E8',

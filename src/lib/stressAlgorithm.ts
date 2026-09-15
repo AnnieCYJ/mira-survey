@@ -89,7 +89,21 @@ function classifyLevel(z: number): StressLevel {
   return 'high';
 }
 
+// ★ 结果缓存：同一 (日期, healthStore 版本, 30s 窗) 内重复调用直接命中，避免重复跑
+//   Kalman 滤波 + 全天事件检测。TodayScreen / StressInsightCard / EnergyDetail / 情绪详情
+//   都在 render 里同步调用本函数，而 BLE 状态推送会带动这些屏幕反复重渲染 → 不缓存必卡。
+let _stressReportCache: { key: string; val: StressReport } | null = null;
+
 export function computeStressReport(nowMs = Date.now()): StressReport {
+  const key = `${dayKey(nowMs)}|${healthStore.getVersion()}|${Math.floor(nowMs / 30000)}`;
+  const c = _stressReportCache;
+  if (c && c.key === key) return c.val;
+  const val = computeStressReportUncached(nowMs);
+  _stressReportCache = { key, val };
+  return val;
+}
+
+function computeStressReportUncached(nowMs: number): StressReport {
   const dayStart = dayStartMs(nowMs);
 
   // ★ 优先用 EDA 原始值；Veepoo SDK 回的是 stress 等级（0~12 整数），fallback 到 stress key

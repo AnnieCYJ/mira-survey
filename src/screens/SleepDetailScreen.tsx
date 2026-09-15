@@ -12,7 +12,7 @@
  *  - 第二排统计：最新 / 均值 / 最佳（小时制），以及该区间深睡% / REM% / 评分的均值；
  *  - 全部使用真实数据，缺口留空（不编造）；无任何数据时诚实显示占位引导。
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent, Pressable} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Rect, Line, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg';
@@ -21,7 +21,8 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type RingState, type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
+import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 import SleepStageChart from '../components/SleepStageChart';
 import { startOfDay, startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
@@ -107,7 +108,8 @@ function toRecords(sleepDaily: Record<string, SleepSummary>): { key: string; dat
 
 export default function SleepDetailScreen() {
   const navigation = useNavigation<any>();
-  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ring = useRingState();
   const [range, setRange] = useState<RangeKey>('week');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
@@ -116,11 +118,6 @@ export default function SleepDetailScreen() {
   // ★ key 格式必须与 RingBleManager.dayKeyOf 一致 (YYYY-MM-DD 补零)，否则 sleepDaily map 永远匹配不上
   const dayKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-  useEffect(() => {
-    const off = RingBle.onState(setRing);
-    return off;
-  }, []);
 
   const sleepDaily = ring.sleepDaily ?? {};
 

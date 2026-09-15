@@ -5,3 +5,12 @@ export { ChatContextStore, type ChatContextSnapshot } from './context';
 export { getLlamaContext, releaseLlama, resolveModelPath, MODEL_FILENAME } from './model';
 export { buildHealthSnapshot } from './health';
 export { inferMood, inferThemes } from './miraAi';
+export {
+  getAiInsight,
+  peekInsight,
+  parseInsightRows,
+  buildOverviewFallback,
+  type InsightKind,
+  type AiInsightRow,
+  type AiTone,
+} from './insight';

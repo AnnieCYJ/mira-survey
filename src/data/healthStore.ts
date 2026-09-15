@@ -633,6 +633,18 @@ export class HealthStore {
   /** 存某天的计算结果（stress / cognitive / cortisol / emotion）。同一天多次写会覆盖。 */
   saveAnalysis(dateKey: string, type: keyof Omit<AnalysisSnapshot, 'updatedAt'>, data: any): void {
     if (!dateKey || !data) return;
+    // ★ 幂等短路：内容与上次一致时，不写、不 notify。
+    //   否则形成「自激渲染循环」：compute*(在 render 中调用) → saveAnalysis → notify
+    //   → version++ → 订阅者(useHealthStoreVersion / RingBle 调和)重渲染 → 再 compute → …
+    //   该循环只靠 notify 的 queueMicrotask 去重，等价于持续重渲染 → 点击/滚动卡顿。
+    const prev = (this.analysis[dateKey] as any)?.[type];
+    if (prev !== undefined) {
+      try {
+        if (JSON.stringify(prev) === JSON.stringify(data)) return; // 无变化 → 直接返回
+      } catch {
+        /* 序列化失败：保守写入（宁可多 notify 也不能丢结果） */
+      }
+    }
     if (!this.analysis[dateKey]) this.analysis[dateKey] = { updatedAt: Date.now() };
     (this.analysis[dateKey] as any)[type] = data;
     this.analysis[dateKey]!.updatedAt = Date.now();

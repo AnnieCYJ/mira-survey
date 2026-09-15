@@ -9,7 +9,7 @@
  *  - 年：每月均值（statusDaily 当月所有天的均值），一月一个点；
  *  - 全部使用真实数据，缺口断线 / 缺天留空，不编造；无数据区间诚实显示占位。
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
@@ -18,7 +18,7 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type RingState } from '../ble/RingBleManager';
+import { useRingState } from '../hooks/useRingState';
 import { type RangeKey } from '../data/metrics';
 import { startOfWeek, addDays } from '../lib/dateUtils';
 import { MOODS } from '../data/metrics';
@@ -125,17 +125,13 @@ const DAY_AXIS = ['0', '6', '12', '18', '24'];
 
 export default function StatusTrendDetailScreen() {
   const navigation = useNavigation<any>();
-  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
+  const ring = useRingState();
   const [range, setRange] = useState<RangeKey>('week');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
   // ★ tooltip 状态
   const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
-
-  useEffect(() => {
-    const off = RingBle.onState(setRing);
-    return off;
-  }, []);
 
   const statusDaily = ring.statusDaily ?? {};
 

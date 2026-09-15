@@ -27,6 +27,14 @@ export interface CortisolRhythmResult {
   dailyMesors: { date: string; mesor: number }[];
   status: RhythmStatus;
   sustainedHighStreak: number;
+  /** 当天(最近一天)节律状态：正常 / 当日偏高 / 节律紊乱 */
+  todayLevel: 'normal' | 'high' | 'dysregulated';
+  /** 当天(最近一天)的细分状态：是否偏高、是否紊乱（用于芯片并排展示，避免只显示优先级更高的一项） */
+  today: { high: boolean; dys: boolean };
+  /** 皮质醇偏高：从最近一天向前数的连续天数（含今天；日均值 > 个人 14 天基线 P75） */
+  highStreak: number;
+  /** 节律紊乱：从最近一天向前数的连续天数（含今天；当天曲线形态异常；样本不足=未知，断开计数） */
+  dysStreak: number;
 }
 
 const PERIOD_H = 24;
@@ -127,6 +135,10 @@ export function analyzeCortisol(samples: CortisolSample[], baselineDays = 14): C
       dailyMesors: [],
       status: { level: 'normal', flags: ['数据不足，需至少 4 个样本以拟合节律'] },
       sustainedHighStreak: 0,
+      todayLevel: 'normal',
+      today: { high: false, dys: false },
+      highStreak: 0,
+      dysStreak: 0,
     };
   }
 
@@ -153,6 +165,43 @@ export function analyzeCortisol(samples: CortisolSample[], baselineDays = 14): C
   // 振幅/峰值时刻在本地时区下即正确；多日趋势主要表现为 MESOR 漂移，已被「持续偏高」分支覆盖。
   const cos = fitCosinor(raw);
   const css = cortisolSineScore(raw);
+
+  // ── 按天评估：当天状态(偏高/紊乱) + 持续性(连续天数) ──
+  // 偏高：当日日均值 > 个人 14 天基线 P75（相对自身偏高）
+  // 紊乱：当日曲线形态异常（每天独立 cosinor + CSS；样本<4 视为未知，不计入）
+  const dayStatus: { date: string; high: boolean; dys: boolean | null }[] = dailyMesors.map(({ date, mesor }) => {
+    const arr = byDay.get(date)!;
+    const high = Number.isFinite(p75) && mesor > p75;
+    let dys: boolean | null = null;
+    if (arr.length >= 4 && Number.isFinite(mesor) && mesor > 0) {
+      const dc = fitCosinor(arr);
+      const dcss = cortisolSineScore(arr);
+      if (Number.isFinite(dc.amplitude) && Number.isFinite(dc.mesor) && dc.mesor > 0) {
+        const dAmpLow = dc.amplitude < 0.15 * dc.mesor;
+        const dHasRhythm = dc.amplitude >= 0.1 * dc.mesor;
+        const dPhaseOff = dHasRhythm && Number.isFinite(dc.acrophaseH) && (dc.acrophaseH < 6 || dc.acrophaseH > 11);
+        const dCssFlat = Number.isFinite(dcss) && Math.abs(dcss) < 1e-6;
+        dys = dAmpLow || dPhaseOff || dCssFlat;
+      }
+    }
+    return { date, high, dys };
+  });
+
+  // 当天状态（最近一天；紊乱优先于偏高）
+  const _today = dayStatus[dayStatus.length - 1];
+  const todayHigh = _today ? _today.high : false;
+  const todayDys = _today ? _today.dys === true : false;
+  const todayLevel: 'normal' | 'high' | 'dysregulated' =
+    todayDys ? 'dysregulated' : todayHigh ? 'high' : 'normal';
+
+  // 连续性：从最近一天向前数，未知或异常中断即停
+  let highStreak = 0, dysStreak = 0;
+  for (let i = dayStatus.length - 1; i >= 0; i--) {
+    if (dayStatus[i].high) highStreak++; else break;
+  }
+  for (let i = dayStatus.length - 1; i >= 0; i--) {
+    if (dayStatus[i].dys === true) dysStreak++; else break;
+  }
 
   // ★ 用 cosinor 预测曲线填补缺数时段 (睡眠等) — 这样 24h 柱图是完整的
   // pred(h) = mesor + amplitude·cos(2π·(h - acrophaseH)/24)
@@ -192,7 +241,7 @@ export function analyzeCortisol(samples: CortisolSample[], baselineDays = 14): C
     if (phaseOff) flags.push(`峰值时刻错位（${cos.acrophaseH.toFixed(1)} 点，正常约 06–10 点）`);
   }
   if (level === 'normal' && flags.length === 0) flags.push('节律正常（压力代理，仅供参考）');
-  const result: CortisolRhythmResult = { cosinor: cos, css, baseline, hourlyMean: hourly, hourlyPredicted, dailyMesors, status: { level, flags }, sustainedHighStreak: maxStreak };
+  const result: CortisolRhythmResult = { cosinor: cos, css, baseline, hourlyMean: hourly, hourlyPredicted, dailyMesors, status: { level, flags }, sustainedHighStreak: maxStreak, todayLevel, today: { high: todayHigh, dys: todayDys }, highStreak, dysStreak };
   // ↓ 自动持久化
   try {
     const _level: 'normal' | 'sustained_high' | 'dysregulated' =

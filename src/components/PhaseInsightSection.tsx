@@ -20,6 +20,7 @@ import type { CyclePhase, CycleInfo } from '../lib/cycleMath';
 import { buildEstrogenData, buildProgesteroneData } from '../lib/hormoneTrend';
 import type { RingState } from '../ble/RingBleManager';
 import AiAnalysis, { AiResultRow, type AiTone } from './AiAnalysis';
+import { useAiInsight } from '../hooks/useAiInsight';
 
 interface InsightRow {
   tone: AiTone;
@@ -116,12 +117,14 @@ export default function PhaseInsightSection({
   ring: RingState;
   cycleInfo: CycleInfo | null;
 }) {
-  if (phase === 'unknown') return null;
-  const data = PHASE_DATA[phase];
-
-  // 双激素趋势解读（真实数据推算），与上方的双相趋势图配套。
+  // ★ hooks 必须无条件调用：原来 useMemo 写在 `phase === 'unknown'` 的 early return 之后，
+  //   属于违反 rules of hooks 的隐患（phase 变化时 hook 顺序会变）。统一移到 return 之前。
   const estData = useMemo(() => buildEstrogenData(ring, 'month'), [ring]);
   const progData = useMemo(() => buildProgesteroneData(ring, cycleInfo, 'month'), [ring, cycleInfo]);
+
+  // ★ 端侧大模型（Qwen2.5-1.5B）：基于真实健康数据生成「当前周期阶段分析」行。
+  //   未就绪 / 模型未打包 / 解析失败 → rows 为 null，回落到下面的规则行，不出现空白。
+  const aiCycle = useAiInsight('cycle');
 
   const hormoneRows = useMemo<InsightRow[]>(() => {
     const rows: InsightRow[] = [];
@@ -167,11 +170,16 @@ export default function PhaseInsightSection({
     return rows;
   }, [estData, progData]);
 
-  const rows: InsightRow[] = [...data.insights, ...hormoneRows];
+  if (phase === 'unknown') return null;
+  const data = PHASE_DATA[phase];
+
+  // ★ 有 AI 结果 → 用 AI 基于真实数据生成的行；否则用现有规则行（阶段科普 + 双激素趋势）
+  const rows: InsightRow[] =
+    aiCycle.rows && aiCycle.rows.length > 0 ? aiCycle.rows : [...data.insights, ...hormoneRows];
 
   return (
     <View style={styles.wrap}>
-      <AiAnalysis label="AI 分析">
+      <AiAnalysis label={aiCycle.loading ? 'AI 分析 · 生成中…' : 'AI 分析'}>
         <Text style={styles.phaseTitle}>{data.title}</Text>
         <Text style={styles.dayTag}>周期第 {dayInCycle} 天</Text>
         {rows.map((r, i) => (
