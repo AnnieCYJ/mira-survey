@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
+import { postLog } from '../lib/logger';
 
 interface Props {
   children: React.ReactNode;
@@ -27,6 +28,10 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary]', error, info);
+    try {
+      const stack = (error && error.stack) ? error.stack : String(error);
+      postLog('ERROR_BOUNDARY', `[${error?.message ?? 'unknown'}]\n${stack}\n--- componentStack ---\n${info?.componentStack ?? ''}`);
+    } catch { /* 静默 */ }
   }
 
   private reload = () => {

@@ -12,6 +12,7 @@ import BpDetailScreen from '../screens/BpDetailScreen';
 import EcgDetailScreen from '../screens/EcgDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
+import BreathingScreen from '../screens/BreathingScreen';
 
 export interface MetricDetailParams {
   key: string;
@@ -35,6 +36,7 @@ export type RootStackParamList = {
   EcgDetail: undefined;
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
+  Breathing: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -132,7 +134,18 @@ export default function RootStackNavigator() {
           cardStyle: { backgroundColor: 'transparent' },
         }}
       />
-            <Stack.Screen name="Settings" component={SettingsScreen} options={{ cardStyle: { backgroundColor: "transparent" } }} />
+        <Stack.Screen
+          name="Breathing"
+          component={BreathingScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+            cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+            cardStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ cardStyle: { backgroundColor: "transparent" } }} />
 
     </Stack.Navigator>
   );

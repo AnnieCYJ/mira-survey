@@ -126,11 +126,28 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
     else if (pts.length < 10) trendTail = `窗口内仅 ${pts.length} 天有效数据，连续佩戴可让趋势更稳定。`;
     else if (phase !== 'unknown') trendTail = `当前为${cycleInfo?.phaseLabel ?? ''}，可结合相位一起看。`;
 
+    // ── 标题 + 建议 ──
+    const phaseLabel = cycleInfo?.phaseLabel ?? '';
+    const phaseDay = cycleInfo?.dayInCycle != null ? `周期第 ${cycleInfo.dayInCycle} 天` : `近 ${windowDays} 天`;
+    const estroTitle = phaseLabel
+      ? `${phaseLabel} · ${knownPhase && consistent ? '雌激素正常' : knownPhase ? '信号不同步' : '趋势观察中'}`
+      : `近 ${windowDays} 天雌激素趋势`;
+
+    const estroAdvice: string[] = [];
+    if (knownPhase && !consistent) estroAdvice.push('雌激素信号与周期相位不同步，注意连续佩戴戒指');
+    if (dir === '上升' && phase === 'follicular') estroAdvice.push('卵泡期雌激素上行，适合运动、社交与创造力活动');
+    if (dir === '下降' && phase === 'luteal') estroAdvice.push('黄体期雌激素回落，多休息、减少高强度运动');
+    if (peakMs != null && Math.abs((peakMs - (ovMs ?? peakMs)) / 86_400_000) > 2 && ovMs != null)
+      estroAdvice.push('峰值与推算排卵期有偏差，建议连续佩戴更多周期确认');
+    if (estroAdvice.length === 0) estroAdvice.push('雌激素趋势正常，保持规律作息与连续佩戴');
+
     return (
       <AiAnalysis
+        title={estroTitle}
+        subtitle={phaseDay}
+        advice={estroAdvice}
         foot={`基于戒指实测 HRV + EDA（皮肤电导）推算的 0–100 相对指数；戒指不直接测量雌激素，仅供了解自身趋势，不构成医学诊断。`}
       >
-        {chip}
         <AiResultRow tone={row1Tone} title="当前相位水平">
           最新（{md(last.date)}）推算指数 {last.value}，处于近 {windowDays} 天的{levelLabel}（区间 {r0(min)}–
           {r0(max)}）。{phaseExpect}
@@ -235,9 +252,29 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
     refText = <>尚未检测到体温双相；连续佩戴 ≥12 天并覆盖排卵前后，可让体温与孕激素两条曲线互相印证。</>;
   }
 
+  // ── 标题 + 建议 ──
+  const pPhaseLabel = cycleInfo?.phaseLabel ?? '';
+  const pPhaseDay = cycleInfo?.dayInCycle != null ? `周期第 ${cycleInfo.dayInCycle} 天` : `近 ${windowDays} 天`;
+  const progTitle =
+    phase === 'luteal'
+      ? pPhaseLabel + ' · ' + (lutealTone === 'good' ? '黄体功能正常' : '黄体功能偏弱')
+      : phase === 'ovulation'
+        ? '排卵期 · 孕酮启动上行'
+        : pPhaseLabel ? pPhaseLabel + ' · 孕酮观察中' : `近 ${windowDays} 天孕酮趋势`;
+
+  const progAdvice: string[] = [];
+  if (lutealTone === 'warn') progAdvice.push('黄体功能偏弱，建议连续佩戴更多周期确认，必要时就医');
+  if (phase === 'luteal' && level < 0.5) progAdvice.push('黄体期孕酮偏低，注意观察是否持续偏低');
+  if (!tempConfirmed && phase === 'luteal') progAdvice.push('体温尚未确认双相，保持连续佩戴覆盖排卵前后');
+  if (progAdvice.length === 0) progAdvice.push('孕酮趋势正常，保持规律作息');
+
   return (
-    <AiAnalysis foot="基于戒指实测体温（BBT 双相）与静息心率的抬升推算的 0–100 相对指数；戒指不直接测量孕酮，仅供了解自身趋势，不构成医学诊断。">
-      {chip}
+    <AiAnalysis
+      title={progTitle}
+      subtitle={pPhaseDay}
+      advice={progAdvice}
+      foot="基于戒指实测体温（BBT 双相）与静息心率的抬升推算的 0–100 相对指数；戒指不直接测量孕酮，仅供了解自身趋势，不构成医学诊断。"
+    >
       <AiResultRow tone={lutealTone} title="黄体相判断">
         {lutealText}
       </AiResultRow>

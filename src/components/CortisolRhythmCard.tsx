@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Svg, { Path, Rect, Circle, Defs, LinearGradient, Stop, Line, G, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { healthStore, dayKey } from '../data/healthStore';
+import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import KalmanFilter from '../lib/kalman-filter';
 
@@ -258,7 +258,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean }) {
+export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string }) {
   console.log(`[TREND-ENTRY] called, hourlyMean=${r.hourlyMean?.filter(v=>v!=null).length}/${r.hourlyMean?.length}`);
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
   const H = 120;
@@ -286,11 +286,26 @@ export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhy
     return sums.map((s, i) => (cnts[i] > 0 ? +(s / cnts[i]).toFixed(1) : null));
   };
 
-  // 14 天基线 + cosinor 填补空（只填到当前时刻）
-  let baseline30 = aggregate30m(collectSamples());
-  const cos = r.cosinor;
   const now = new Date();
-  const baseFillSlot = Math.min(SLOTS - 1, now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0));
+  const currentSlot = Math.min(47, now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0));
+
+  // ★ 主曲线所属的日：显式传 mainDayDk（身体恢复详情页按 anchor 日查看历史）→ 画该日；
+  //   缺省=今天（洞察页复用本组件，行为不变）。
+  const todayDK = dayKey(Date.now());
+  const mainDK = mainDayDk ?? todayDK;
+  const isMainToday = mainDK === todayDK;
+  const mainStartMs = parseDayKey(mainDK);
+  const mainDayMs = Number.isFinite(mainStartMs) ? mainStartMs : Date.now();
+  const mainLabel = isMainToday ? '今天' : `${new Date(mainDayMs).getMonth() + 1}/${new Date(mainDayMs).getDate()}`;
+
+  // 14 天基线 + cosinor 填补空：
+  //  今天视图：基线=近 14 天（含今天）聚合，只填到当前时刻；
+  //  历史日：基线=该日往前 14 天聚合，整天填满（不再是「今天往前 14 天」，各历史页基线也随日期变化）。
+  let baseline30 = isMainToday
+    ? aggregate30m(collectSamples())
+    : aggregate30m(collectSamplesForRange(mainDayMs - 13 * 86400000, mainDayMs));
+  const cos = r.cosinor;
+  const baseFillSlot = isMainToday ? currentSlot : SLOTS - 1;
   if (fillGaps && Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && cos.amplitude > 0 && Number.isFinite(cos.acrophaseH)) {
     const TWO_PI = Math.PI * 2;
     for (let slot = 0; slot <= baseFillSlot; slot++) {
@@ -301,34 +316,36 @@ export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhy
     }
   }
 
-  // 今天
-  const todayDK = dayKey(Date.now());
-  const todayRaw = healthStore.getIntraday('cortisol', todayDK)
+  // ★ 主曲线：所选日（mainDK）的原始逐样本——而非永远取「今天」。
+  const mainRaw = healthStore.getIntraday('cortisol', mainDK)
     .filter((p) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
     .map((p) => ({ t: p.t, v: p.v } as CortisolSample));
-  const today30 = aggregate30m(todayRaw);
-  const todayNonNull = today30.filter(v => v != null).length;
+  const main30 = aggregate30m(mainRaw);
+  const mainNonNull = main30.filter(v => v != null).length;
   const baseNonNull = baseline30.filter(v => v != null).length;
-  console.log(`🔥 [TREND] todayRaw=${todayRaw.length} todayNonNull=${todayNonNull}/48 baselineNonNull=${baseNonNull}/48`);
+  console.log(`🔥 [TREND] dk=${mainDK} mainRaw=${mainRaw.length} mainNonNull=${mainNonNull}/48 baselineNonNull=${baseNonNull}/48`);
 
-  // 对 todayRaw 单独跑 analyzeCortisol, 拿今天自己的 cosinor 节律来填补
-  // ★ 只填补「当前时刻之前」的空槽，未来时段保持 null（不画预测线）
-  const currentSlot = Math.min(47, now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0));
-  const todayR = analyzeCortisol(todayRaw, 1);
-  const tcos = todayR.cosinor;
+  // 对 mainRaw 单独跑 analyzeCortisol, 拿所选日自己的 cosinor 节律来填补空槽
+  // ★ 今天：只填补「当前时刻之前」的空槽，未来时段保持 null（不画预测线）；
+  //   历史日：整天都是过去，填满整天。
+  const mainR = analyzeCortisol(mainRaw, 1);
+  const tcos = mainR.cosinor;
   if (fillGaps && Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
     const TWO_PI = Math.PI * 2;
-    for (let slot = 0; slot <= currentSlot; slot++) {
-      if (today30[slot] == null) {
+    for (let slot = 0; slot <= baseFillSlot; slot++) {
+      if (main30[slot] == null) {
         const h = slot / 2;
         const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
-        today30[slot] = Math.max(0, +pred.toFixed(1));
+        main30[slot] = Math.max(0, +pred.toFixed(1));
       }
     }
   }
+  if (isMainToday) {
+    for (let slot = currentSlot + 1; slot < SLOTS; slot++) main30[slot] = null;
+  }
 
   // Y 轴范围
-  const allVals = [...baseline30, ...today30].filter((v): v is number => v != null);
+  const allVals = [...baseline30, ...main30].filter((v): v is number => v != null);
   if (allVals.length < 2) { console.log(`[TREND-SKIP] allVals=${allVals.length}`); return null; }
   const yLo = Math.min(...allVals) * 0.7;
   const yHi = Math.max(...allVals) * 1.1;
@@ -351,7 +368,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhy
   };
 
   const basePath = makePath(baseline30);
-  const todayPath = makePath(today30);
+  const todayPath = makePath(main30);
 
   // 睡眠阴影
   const sleepRects: { x: number; w: number }[] = [];
@@ -401,8 +418,8 @@ export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhy
           <Path d={todayPath} stroke={"#7C6AE0"} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         ) : null}
 
-        {/* 今天数据点 */}
-        {today30.map((v, i) => v != null && (
+        {/* 所选日数据点 */}
+        {main30.map((v, i) => v != null && (
           <Circle key={i} cx={xOfSlot(i)} cy={yOf(v)} r={2.5} fill={"#7C6AE0"} />
         ))}
 
@@ -421,7 +438,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true }: { r: CortisolRhy
           <Text style={{ color: "#2ECC71" }}>- -</Text> 14 天基线
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.textSub, marginHorizontal: 8 }}>
-          <Text style={{ color: "#7C6AE0" }}>●</Text> 今天
+          <Text style={{ color: "#7C6AE0" }}>●</Text> {mainLabel}
         </Text>
       </View>
     </View>

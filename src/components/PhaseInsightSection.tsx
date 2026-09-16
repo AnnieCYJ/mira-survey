@@ -189,12 +189,12 @@ export default function PhaseInsightSection({
         ))}
       </AiAnalysis>
 
-      {/* 建议块（token 化，沿用 AiResultRow 正文规格） */}
+      {/* 建议（纯文本小点列表，与 AiResultRow 口径注释一致） */}
       <View style={styles.adviceBox}>
-        <Text style={styles.adviceTitle}>建议</Text>
+        <Text style={styles.adviceTitle}>● 建议</Text>
         {data.advice.map((t, i) => (
           <Text key={i} style={styles.adviceItem}>
-            {t}
+            · {t}
           </Text>
         ))}
       </View>
@@ -221,23 +221,18 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   adviceBox: {
-    backgroundColor: theme.colors.cardBgSoft,
-    borderRadius: theme.radius.sm,
-    padding: theme.space.sm,
     marginTop: theme.space.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.accentSoft,
+    gap: theme.sp(0.5),
   },
   adviceTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
-    marginBottom: theme.sp(1),
+    marginBottom: theme.sp(0.5),
   },
   adviceItem: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textBody,
+    color: theme.colors.textSub,
     lineHeight: theme.fontSize.sm * 1.5,
-    marginBottom: theme.sp(0.5),
   },
 });

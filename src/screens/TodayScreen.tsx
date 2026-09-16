@@ -11,6 +11,7 @@ const IMG_COG = require("../assets/card_focus.jpg");
 const IMG_ACTIVITY = require('../assets/card_meditation.jpg');
 import Card from '../components/Card';
 import Icon from '../components/Icon';
+import { MoonDot, phaseToMoonStyle } from '../components/CycleMoonPhase';
 import EnergyBall from '../components/EnergyBall';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
@@ -18,10 +19,11 @@ import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { RingBle } from '../ble/RingBleManager';
-import { dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
+import { getAiInsight } from '../ai/insight';
 
 const ADVICE_STATIC: ListItem[] = [
   {
@@ -241,18 +243,42 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-// 相位 + 能量状态 → 一句今日分析建议
-function phaseAdvice(phase: string, statusIdx: number | null): string {
-  const low = statusIdx != null && statusIdx >= 2; // 平平静静 / 休息一下
-  const map: Record<string, { ok: string; low: string }> = {
-    经期: { ok: '适合放缓节奏、做温和的整理与复盘', low: '以休息为主，避免高强度安排' },
-    卵泡期: { ok: '精力回升，适合开启新计划与创造性工作', low: '适合轻度规划，别给自个太大压力' },
-    排卵期: { ok: '状态活跃，适合社交、沟通与重要决策', low: '适合一对一沟通，重大决策可稍缓' },
-    黄体期: { ok: '适合专注执行与收尾，留意情绪起伏', low: '以收尾和轻松事务为主' },
+// 智能建议：结合经期相位 + 能量等级 + **时段** → 双分句短句
+// ★ 时段优先：晚(18-22)/深夜(22-6) 一律休息导向，不管相位和能量等级
+//   （1.5B 小模型搞不定优先级链，规则确定性兜底避免幻觉）
+function buildSmartAdvice(phase: string, statusIdx: number | null, asleep: boolean): string {
+  if (asleep) {
+    if (phase === '经期') return '经期睡眠中，安心休息助修复';
+    if (phase === '黄体期') return '黄体期睡眠中，深睡稳情绪';
+    return '睡眠恢复中，安心休息';
+  }
+
+  const h = new Date().getHours();
+  const isEvening = h >= 18 && h < 22;
+  const isNight = h >= 22 || h < 6;
+  const low = statusIdx != null && statusIdx >= 2;
+  const high = statusIdx === 0;
+
+  // 时段优先：傍晚/深夜 → 休息导向
+  if (isEvening || isNight) {
+    if (phase === '经期')     return '收工放松，别安排高强度活动';
+    if (phase === '卵泡期')   return '适合轻松阅读，早点休息养精蓄锐';
+    if (phase === '排卵期')   return '今日社交已够，收工放松别熬夜';
+    if (phase === '黄体期')   return '情绪易起伏，做些轻量放松后早点休息';
+    return '收工放松，别熬夜';
+  }
+
+  // 白天：相位 × 能量等级 组合
+  const map: Record<string, { ok: string; low: string; high: string }> = {
+    经期:     { ok: '放缓节奏，温和整理与复盘', low: '以休息为主，避免高强度安排', high: '适度活动，有助缓解经期不适' },
+    卵泡期:   { ok: '精力回升，适合开启新计划', low: '轻度规划，别给自己太大压力', high: '精力峰值，推进项目和头脑风暴' },
+    排卵期:   { ok: '状态活跃，社交沟通黄金窗口', low: '适合一对一沟通，重大决策可稍缓', high: '能量情商双高，谈判汇报都是黄金时机' },
+    黄体期:   { ok: '专注执行收尾，留意情绪起伏', low: '轻松事务为主，别做重大决策', high: '适合深度工作，别熬夜' },
   };
+
   const entry = map[phase];
   if (!entry) return '记录经期后，为你提供周期专属建议';
-  return low ? entry.low : entry.ok;
+  return low ? entry.low : high ? entry.high : entry.ok;
 }
 
 export default function TodayScreen() {
@@ -287,7 +313,57 @@ export default function TodayScreen() {
   const mood = statusIdx != null ? MOODS[statusIdx] : null;
   const phase = status?.phaseLabel ?? '未记录';
   const phaseKnown = phase !== '未记录';
-  const advice = phaseAdvice(phase, statusIdx);
+  // 月相：与首页圆环一致，用 CycleMoonPhase 的 MoonDot
+  const phaseKeyMap: Record<string, 'period' | 'follicular' | 'ovulation' | 'luteal'> = {
+    '经期': 'period',
+    '卵泡期': 'follicular',
+    '排卵期': 'ovulation',
+    '黄体期': 'luteal',
+  };
+  const phaseMoonStyle = phaseKeyMap[phase] ? phaseToMoonStyle(phaseKeyMap[phase]) : null;
+  // ★ 真实睡眠检测：用最近一次 healthStore 中记录的睡眠窗口（sleepTime / wakeTime HH:mm）
+  //   healthStore 里存的是「今天结束的那次睡眠」，跨午夜睡眠（23:30 → 07:00）正常工作。
+  const todaySleep = healthStore.getSleep(dayKey(Date.now()));
+  const { isAsleep, isNap } = (() => {
+    const sl = todaySleep;
+    if (!sl?.sleepTime || !sl?.wakeTime) return { isAsleep: false, isNap: false };
+    const toMs = (hhmm: string): number | null => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+      if (!m) return null;
+      const d = new Date();
+      d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+      return d.getTime();
+    };
+    const s = toMs(sl.sleepTime);
+    const w = toMs(sl.wakeTime);
+    if (s == null || w == null || s === w) return { isAsleep: false, isNap: false };
+    const now = Date.now();
+    const inWindow = s < w ? now >= s && now <= w : now >= s || now <= w;
+    const h = new Date().getHours();
+    return { isAsleep: inWindow && (h >= 22 || h < 7), isNap: inWindow && h >= 8 && h < 22 };
+  })();
+
+  // AI 建议：每次进入首页都调 getAiInsight('today')，绕过 hook 缓存层
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // 睡眠中不跑 AI，直接用硬文案
+    if (isAsleep) { setAiAdvice(null); return; }
+    setAiAdvice(null);
+    const timer = setTimeout(() => {
+      getAiInsight('today')
+        .then((t) => { if (!cancelled) setAiAdvice(t); })
+        .catch(() => { if (!cancelled) setAiAdvice(null); });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [phase, statusIdx, isAsleep, status?.value, status?.level]);
+
+  const fallbackAdvice = buildSmartAdvice(phase, statusIdx, isNap);
+  const advice = isAsleep
+    ? (phase === '经期' ? '经期睡眠中，安心休息助修复' : phase === '黄体期' ? '黄体期睡眠中，深睡稳情绪' : '睡眠恢复中，安心休息')
+    : fallbackAdvice;
+  if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx}`);
+  const isAiText = false;  // 圆环下建议用规则更准（1.5B 模型搞不定时段优先级）
   const hasStatus = !!mood;
   const showPill = hasStatus || phaseKnown;
   const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
@@ -315,7 +391,7 @@ export default function TodayScreen() {
         </View>
 
         <View style={styles.energyWrap}>
-          <EnergyBall status={ring.curveStatus} />
+          <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
           <View style={styles.statusPill}>
             {showPill && (
               <View style={styles.statusChipRow}>
@@ -325,8 +401,16 @@ export default function TodayScreen() {
                   </View>
                 )}
                 {phaseKnown && (
-                  <View style={styles.phaseChip}>
-                    <Text style={styles.phaseChipText}>{phase}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={styles.phaseChip}>
+                      {phaseMoonStyle ? <MoonDot style={phaseMoonStyle} size={theme.fs(14)} /> : null}
+                      <Text style={styles.phaseChipText}>{phase}</Text>
+                    </View>
+                    {isAiText && (
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: theme.colors.accentSoft, marginRight: theme.space.xs, marginBottom: theme.space.xs }}>
+                        <Text style={{ fontSize: 10, color: theme.colors.accentSolid, fontWeight: theme.weight.medium }}>AI</Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
@@ -435,6 +519,13 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accentSoft,
     marginRight: theme.space.xs,
     marginBottom: theme.space.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  phaseChipIcon: {
+    fontSize: theme.fs(12),
+    marginRight: theme.sp(1),
+    lineHeight: theme.fs(12),
   },
   phaseChipText: {
     fontSize: theme.fontSize.micro,

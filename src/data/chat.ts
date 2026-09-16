@@ -14,117 +14,103 @@ export const QUICK_ACTIONS: { label: string; icon: 'pen' | 'image' | 'sparkle' |
   { label: '睡眠分析', icon: 'breath' },
 ];
 
-/** 生成 Mira AI 首页建议问题。基于真实健康数据 + 时间 + 趣味互动。 */
+/** 生成 Mira AI 首页建议问题。基于真实健康数据 + 时间 + 趣味互动。
+ * 设计约束：
+ *   1. 去重：6 条不重复
+ *   2. 比例：健康 : 趣味 = 4 : 2（太健康很枯燥，全趣味又不落地）
+ *   3. 稳定：按「日期 + 小时 + phaseLabel + sleepTotal」做种子 —— 同一场景下稳定，
+ *      只有真实数据变化才换问题，避免 ringState 高频推送导致的滑动跳跃
+ */
 export function generateQuestions(state: RingState | null): string[][] {
   const now = new Date();
   const hour = now.getHours();
+  const seen = new Set<string>();
   const health: string[] = [];
   const fun: string[] = [];
+  const pushUniq = (arr: string[], q: string) => {
+    if (!seen.has(q) && q.length <= 16) { seen.add(q); arr.push(q); }
+  };
 
-  // —— 经期阶段（优先，用「计算出的真实相位」而非戒指 female.state）——
-  // 戒指硬件不测经期相位，相位是按你记录的末次经期 + 标准周期模型算出来的；
-  // female 当前由原生回传（原生尚未实现 readFemale，恒为 null），故以 curveStatus 的计算相位为准。
   const cs = state?.curveStatus;
   const cycleDay = cs?.dayInCycle ?? 0;
   const phaseLabel = cs?.phaseLabel ?? '';
+
+  // —— 经期阶段 ——
   if (cs?.hasLog && phaseLabel === '经期') {
-    health.push(`经期第${Math.max(1, cycleDay)}天做什么运动`);
-    health.push('经期睡不好怎么调');
+    pushUniq(health, `经期第${Math.max(1, cycleDay)}天适合做啥运动？`);
+    pushUniq(health, '经期睡不好怎么调？');
+    pushUniq(health, '经期适合吃啥？');
   } else if (cs?.hasLog && phaseLabel === '排卵期') {
-    health.push('排卵期注意什么');
-    health.push('排卵期有啥信号');
+    pushUniq(health, '排卵期要注意啥？');
+    pushUniq(health, '排卵期有啥身体信号？');
   } else if (cs?.hasLog) {
-    health.push(`${phaseLabel}适合啥强度`);
-    health.push(`${phaseLabel}要注意啥`);
+    pushUniq(health, `${phaseLabel}适合啥强度运动？`);
+    pushUniq(health, `${phaseLabel}要注意啥？`);
   } else {
-    health.push('我现在啥阶段');
-    health.push('这阶段适合啥强度');
+    pushUniq(health, '我现在处于周期哪个阶段？');
+    pushUniq(health, '这阶段适合啥强度运动？');
   }
 
   // —— 睡眠 ——
   const sleep = state?.sleepSummary;
   if (sleep) {
     const totalH = sleep.total / 60;
-    if (totalH < 6) {
-      health.push(`只睡${totalH.toFixed(1)}h怎么补`);
-    } else if (sleep.score <= 2) {
-      health.push('睡眠差怎么改善');
-    } else {
-      health.push('昨晚睡得咋样');
-    }
-    if (sleep.deep < 60) {
-      health.push('深睡不足影响');
-    }
+    if (totalH < 6)       pushUniq(health, `只睡${totalH.toFixed(1)}h怎么补回来？`);
+    else if (sleep.score <= 2) pushUniq(health, '睡眠质量差怎么改善？');
+    else                  pushUniq(health, '昨晚睡得怎么样？');
+    if (sleep.deep < 60)  pushUniq(health, '深睡不足有啥影响？');
   } else {
-    health.push('最近为啥难入睡');
+    pushUniq(health, '最近为啥总难入睡？');
   }
 
   // —— HRV / 压力 ——
   const hrv = state?.metrics.hrv ?? state?.daily.hrv ?? null;
   if (hrv !== null) {
-    if (hrv < 40) {
-      health.push('HRV低今天歇歇？');
-      health.push('最近压力太大？');
-    } else if (hrv > 70) {
-      health.push('HRV不错能上强度？');
-    } else {
-      health.push('恢复状态咋样');
-    }
+    if (hrv < 40)       pushUniq(health, 'HRV低今天要不要歇歇？');
+    else if (hrv > 70)  pushUniq(health, 'HRV不错能上强度训练吗？');
+    else                pushUniq(health, '我的恢复状态怎么样？');
   }
 
-  // —— 活动 / 步数 ——
+  // —— 活动 ——
   const steps = state?.daily?.steps ?? null;
   if (steps !== null) {
-    if (steps < 3000) {
-      health.push('活动少出去走走？');
-    } else if (steps > 10000) {
-      health.push('走很多路睡前注意');
-    } else {
-      health.push('今天活动达标没');
-    }
+    if (steps < 3000)       pushUniq(health, '活动量少要出去走走吗？');
+    else if (steps > 10000) pushUniq(health, '走了很多路睡前要注意啥？');
+    else                    pushUniq(health, '今天活动量达标了吗？');
   }
 
   // —— 时间场景 ——
-  if (hour < 11) {
-    health.push('早上状态咋样');
-  } else if (hour < 17) {
-    health.push('下午犯困咋办');
-  } else {
-    health.push('今晚怎么睡更好');
-  }
+  if (hour < 11)       pushUniq(health, '今早状态怎么样？');
+  else if (hour < 17)  pushUniq(health, '下午犯困怎么办？');
+  else                 pushUniq(health, '今晚怎么睡能更好？');
 
-  // —— 趣味互动（每次随机选 3 个，避免重复）——
-  const pool = [
-    '今日塔罗牌',
-    '解梦：奔跑',
-    '今天穿啥色',
-    '来句正念语录',
-    '本周星座运势',
-    '今日幸运数字',
-    '用天气形容今天',
-    '讲个助眠小故事',
+  // —— 趣味互动（稳定种子：日期+小时+phase+sleepTotal）——
+  const funPool = [
+    '今日塔罗牌', '解梦：奔跑', '今天穿啥色', '来句正念语录',
+    '本周星座运势', '今日幸运数字', '用天气形容今天', '讲个助眠小故事',
+    '给我一句鼓励', '未来一周运势',
   ];
-  // 简单伪随机：按日期+小时取种子，保证同小时内稳定，跨小时变化
-  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate() + hour;
-  const shuffled = pool
-    .map((q, i) => ({ q, s: Math.sin(seed * (i + 1) * 9999) }))
+  const sleepSeed = sleep ? Math.floor(sleep.total / 30) : 0;
+  const phaseSeed = phaseLabel ? phaseLabel.length : 0;
+  const seed = now.getDate() + hour * 31 + phaseSeed * 17 + sleepSeed * 7;
+  const shuffled = funPool
+    .map((q, i) => ({ q, s: Math.sin(seed + i * 12.9898) }))
     .sort((a, b) => a.s - b.s)
     .map((x) => x.q);
-  fun.push(...shuffled.slice(0, 3));
+  shuffled.forEach((q) => pushUniq(fun, q));
 
-  // 组合：优先健康，补满 6 个；每排 2 个
-  const picked = health.slice(0, 3);
-  picked.push(...fun.slice(0, 6 - picked.length));
+  // —— 组合：health 取前 4，fun 补到 6 ——
+  const picked: string[] = [];
+  for (const q of health) if (picked.length < 4) picked.push(q);
+  for (const q of fun)    if (picked.length < 6) picked.push(q);
+
+  // fallback 兜底（极端情况 health+fun 不够 6）
   if (picked.length < 6) {
     const fallback = [
-      '最近健康趋势',
-      '压力峰值时段',
-      '本周能高强度？',
-      '周期规律吗',
-      '白天怎么专注',
-      '晚上刷手机咋办',
+      '最近健康有啥趋势？', '我的压力峰值在哪个时段？', '本周能上高强度训练吗？',
+      '我的周期规律吗？', '白天怎么更专注？', '晚上总刷手机怎么办？',
     ];
-    picked.push(...fallback.slice(0, 6 - picked.length));
+    for (const q of fallback) if (picked.length < 6 && !seen.has(q)) picked.push(q);
   }
 
   return [picked.slice(0, 2), picked.slice(2, 4), picked.slice(4, 6)];

@@ -20,6 +20,9 @@ import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
 import { healthStore, dayKey } from '../data/healthStore';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
+import InsightBanner from '../components/InsightBanner';
+import ChatSheet from '../components/ChatSheet';
+import { reportNowMsForDay } from '../lib/dayAnchor';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
@@ -49,10 +52,14 @@ export default function EnergyDetailScreen() {
   const meta = META[type];
   const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = (q: string) => { setChatQuestion(q); setChatVisible(true); };
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
 
   return (
+    <>
     <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
@@ -73,9 +80,12 @@ export default function EnergyDetailScreen() {
         {type !== 'activity' && <RangeSwitch value={range} onChange={setRange} />}
         <DateAnchorPicker value={anchor} onChange={setAnchor} range={type === 'activity' ? 'day' : range} />
 
-        {/* ===== 内容：图在上，数据在下 ===== */}
-        {type === 'emotion' && range === 'day' && <EmotionInsightView />}
-        {type === 'cognitive' && range === 'day' && <CognitiveDetail />}
+        {/* AI 分析：情绪洞察 & 脑力消耗（按锚定日取数） */}
+        {type !== 'activity' && <EnergyAiBanner type={type} ring={ring} openChat={openChat} anchor={anchor} />}
+
+        {/* ===== 内容：图在上，数据在下（按锚定日取数） ===== */}
+        {type === 'emotion' && range === 'day' && <EmotionInsightView anchorMs={anchor.getTime()} />}
+        {type === 'cognitive' && range === 'day' && <CognitiveDetail anchorMs={anchor.getTime()} />}
         {type === 'activity' && range === 'day' && <ActivityDetail ring={ring} navigation={navigation} anchor={anchor} />}
 
         {range !== 'day' && (
@@ -87,22 +97,31 @@ export default function EnergyDetailScreen() {
         )}
       </View>
     </ScreenContainer>
+    <ChatSheet
+      visible={chatVisible}
+      onClose={() => setChatVisible(false)}
+      initialQuestion={chatQuestion}
+    />
+    </>
   );
 }
 
 /* ========== Hero ========== */
 function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: string; anchor: Date; ring: any }) {
+  // ★ 按「锚定日」取报告：今天=此刻；历史日=该日整天（传错会得到空区间/永远是今天）
+  const reportMs = reportNowMsForDay(anchor.getTime());
   const report = useMemo(() => {
     if (type === 'emotion') {
       const { computeStressReport } = require('../lib/stressAlgorithm');
-      return computeStressReport();
+      return computeStressReport(reportMs);
     }
     if (type === 'cognitive') {
       const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
-      return computeCognitiveLoadReport();
+      return computeCognitiveLoadReport(reportMs);
     }
     return null;
-  }, [type]);
+    // reportMs 对历史日是稳定的；对今天是 Date.now()（每帧变），但报告内部按 30s 桶缓存，重算廉价
+  }, [type, reportMs]);
 
   if (type === 'activity') {
     const dk = dayKey(anchor.getTime());  // ★ 跟随日期选择器
@@ -127,10 +146,10 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 
 /* ========== 情绪消耗：图在上 ========== */
 /* ========== 脑力消耗：图在上 ========== */
-function CognitiveDetail() {
-  // ★ 每次渲染都重算
+function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
+  // ★ 每次渲染都重算；按「锚定日」取报告（今天=此刻 / 历史日=整天）
   const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
-  const report = computeCognitiveLoadReport();
+  const report = computeCognitiveLoadReport(reportNowMsForDay(anchorMs));
 
   const hasData = report.sampleCount >= 2;
   const lCol = loadColor(report.loadLevel);
@@ -367,3 +386,83 @@ const styles = StyleSheet.create({
   activityValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any },
   activityUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
 });
+
+
+/** EnergyAiBanner —— 情绪/脑力消耗详情页的规则 AI 分析卡片
+ * 参考身体恢复页格式：InsightBanner（第一段纯段落 + 其余 AiResultRow） */
+function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ring: any; openChat: (q: string) => void; anchor: Date }) {
+  // ★ 按「锚定日」取报告，历史日文案才不是「今日…」
+  const reportMs = reportNowMsForDay(anchor.getTime());
+  const { computeStressReport } = require('../lib/stressAlgorithm');
+  const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
+  const report = type === 'emotion' ? computeStressReport(reportMs) : computeCognitiveLoadReport(reportMs);
+
+  // ── 情绪洞察 ──
+  if (type === 'emotion') {
+    const events = report?.events?.length ?? 0;
+    const peak = report?.peakHour;
+    const avgRec = report?.avgRecoverySec;
+    const load = report?.emotionalLoad;
+    const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
+
+    // 第一段：纯段落（InsightBanner 会自动处理）
+    const firstBody = events === 0
+      ? '今日暂无压力事件记录，状态保持平稳。'
+      : events <= 3
+        ? `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，整体处于低压力区间。`
+        : events <= 6
+          ? `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，处于中等压力水平。`
+          : `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，压力负荷较高，注意放松。`;
+
+    // 其余分段
+    if (events > 0 && peak != null) {
+      rows.push({ tone: 'neutral', title: '峰值时段', body: `压力事件集中于 ${String(Math.floor(peak)).padStart(2, '0')}:00 前后。` });
+    }
+    if (avgRec != null) {
+      rows.push({ tone: avgRec > 120 ? 'warn' : 'good', title: '恢复速度', body: avgRec > 120 ? `平均恢复 ${avgRec}s，偏慢，建议注意恢复策略。` : `平均恢复 ${avgRec}s，处于正常区间。` });
+    }
+
+    return (
+      <InsightBanner
+        rows={[{ tone: 'neutral', title: '', body: firstBody }, ...rows]}
+        onMore={() => openChat('帮我分析身体恢复情况')}
+      />
+    );
+  }
+
+  // ── 脑力消耗 ──
+  if (type === 'cognitive') {
+    const loadScore = report?.loadScore;
+    const fatigueScore = report?.fatigueIndex;
+    const bestSpan = report?.bestSpan;
+    const peakSpan = report?.peakLoadSpan;
+    const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
+
+    const firstBody = loadScore == null
+      ? '今日暂无脑力数据。'
+      : loadScore >= 70
+        ? `今日脑力负荷 ${loadScore}，处于高位，建议安排适当休息。`
+        : loadScore >= 40
+          ? `今日脑力负荷 ${loadScore}，处于中等区间，可持续工作。`
+          : `今日脑力负荷 ${loadScore}，处于低位，精力较充裕。`;
+
+    if (peakSpan) {
+      rows.push({ tone: 'neutral', title: '负荷高峰', body: `${String(peakSpan.startHour).padStart(2, '0')}:00–${String(peakSpan.endHour).padStart(2, '0')}:00 为今日脑力负荷集中时段。` });
+    }
+    if (bestSpan) {
+      rows.push({ tone: 'good', title: '高效时段', body: `${String(bestSpan.startHour).padStart(2, '0')}:00–${String(bestSpan.endHour).padStart(2, '0')}:00 为今日脑力黄金时段，适合深度工作。` });
+    }
+    if (fatigueScore != null && fatigueScore >= 60) {
+      rows.push({ tone: 'warn', title: '疲劳提醒', body: `今日疲劳分 ${fatigueScore}，建议尽早休息。` });
+    }
+
+    return (
+      <InsightBanner
+        rows={[{ tone: 'neutral', title: '', body: firstBody }, ...rows]}
+        onMore={() => openChat('帮我分析脑力消耗情况')}
+      />
+    );
+  }
+
+  return null;
+}

@@ -7,6 +7,7 @@ import { theme } from './src/theme/theme';
 import { AppStateProvider } from './src/state/AppState';
 import RootStackNavigator from './src/navigation/RootStackNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { postLog } from './src/lib/logger';
 // import SyncProgressBanner from './src/components/SyncProgressBanner';  // ★ 临时注释
 import { enableFreeze } from 'react-native-screens';
 
@@ -14,6 +15,24 @@ import { enableFreeze } from 'react-native-screens';
 //   freezeOnBlur（见 BottomTabNavigator）真正生效 —— 失焦的 Tab 停止重渲染。
 //   否则切 Tab 后旧 Tab 仍在后台订阅 BLE / healthStore 并反复重渲染 → 点击卡顿。
 enableFreeze(true);
+
+// ★ 全局未捕获错误上报（开发期）：捕捉 React 红屏 / “Maximum update depth” /
+// 异步未处理拒绝等 ErrorBoundary 兜不住的致命 JS 错误，POST 到 :8899 收集器，
+// 便于真机复现时定位“回退不出去 / 页面卡死”的根因。
+if (__DEV__) {
+  const g = globalThis as any;
+  if (g.ErrorUtils && typeof g.ErrorUtils.setGlobalHandler === 'function') {
+    const prev = g.ErrorUtils.getGlobalHandler();
+    g.ErrorUtils.setGlobalHandler((err: any, isFatal?: boolean) => {
+      try {
+        const msg = err && err.message ? err.message : String(err);
+        const stack = err && err.stack ? err.stack : '';
+        postLog('GLOBAL_ERR', `[${msg}]${isFatal ? ' (FATAL)' : ''}\n${stack}`);
+      } catch { /* 静默 */ }
+      if (typeof prev === 'function') prev(err, isFatal);
+    });
+  }
+}
 
 // 关键修复：react-navigation 默认主题会给导航容器涂一层浅灰背景
 // (background: 'rgb(242,242,242)')，盖住根渐变。改成透明让根背景透出来。

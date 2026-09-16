@@ -277,11 +277,21 @@ function computeStressReportUncached(nowMs: number): StressReport {
     if (e.severity > hourBuckets[e.hour].maxSeverity) hourBuckets[e.hour].maxSeverity = e.severity;
   }
 
-  // 找峰值小时 (事件数最多)
+  // 找峰值小时（事件数最多）
+  // ★ 并列处理：旧实现用严格 `>` 从 0 点开始扫描 → **并列时永远落在最早的小时**。
+  //   实测（2026-09-16 真机）：三个小时各 1 次事件（00:12 / 10:22 / 11:02）→ peakHour 被算成 0 点，
+  //   AI 文案因此出现「压力事件集中于 00:00 前后」这种明显错误的结论。
+  //   并列时改用「该小时最高强度」决胜（强度相同再取更晚的小时），让「峰值时段」反映最明显的那一刻。
   let peakHour: number | null = null;
   let peakCount = 0;
+  let peakSev = -1;
   for (const b of hourBuckets) {
-    if (b.count > peakCount) { peakCount = b.count; peakHour = b.hour; }
+    if (b.count === 0) continue;
+    if (b.count > peakCount || (b.count === peakCount && b.maxSeverity >= peakSev)) {
+      peakCount = b.count;
+      peakSev = b.maxSeverity;
+      peakHour = b.hour;
+    }
   }
   if (peakCount === 0) peakHour = null;
 

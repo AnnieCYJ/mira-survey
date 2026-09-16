@@ -23,6 +23,7 @@ export type IconName =
   | 'pen'
   | 'image'
   | 'close'
+  | 'pause'
   | 'play'
   | 'bell'
   | 'sync'
@@ -121,6 +122,13 @@ const ICONS: Record<IconName, IconDef> = {
     nodes: [
       { p: 'M18 6L6 18' },
       { p: 'M6 6l12 12' },
+    ],
+  },
+  pause: {
+    mode: 'fill',
+    nodes: [
+      { p: 'M6 4h4v16H6z' },
+      { p: 'M14 4h4v16h-4z' },
     ],
   },
   play: {

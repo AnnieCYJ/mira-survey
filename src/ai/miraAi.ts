@@ -2,7 +2,7 @@
 // 加载角色卡 → 注入话术锚点 → recall 记忆 → load 上下文 → 注入健康数据 → Qwen 生成 → 写回记忆/上下文
 // 流式 token 回调给 UI。
 
-import { getLlamaContext } from './model';
+import { runOnModel } from './model';
 import { MemoryStore } from './memory';
 import { ChatContextStore, type ChatContextSnapshot } from './context';
 import { buildSystemPrompt } from './character';
@@ -25,8 +25,6 @@ export interface AskOptions {
 
 /** 主入口：问 Mira 一句，流式返回 */
 export async function ask(userText: string, opts: AskOptions = {}): Promise<string> {
-  const ctx = await getLlamaContext();
-
   const recentText = [userText, ...(opts.history || []).map((m) => m.content)].join('\n');
   const system = buildSystemPrompt(recentText);
 
@@ -53,36 +51,44 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
 
   let full = '';
   try {
-    const res = await ctx.completion(
-      {
-        messages,
-        n_predict: 220,
-        temperature: 0.8,
-        top_p: 0.9,
-        stop: ['<|im_end|>', 'User:', '用户：', '用户:'],
-      },
-      (data) => {
-        const tok = (data && data.token) || '';
-        if (tok) {
-          full += tok;
-          opts.onToken?.(tok);
+    // ★ 走全局推理队列：与「AI 分析」共用同一条串行链。
+    //   端侧 ctx 单例，两者并发会抛 "Context is busy" 且被静默降级（聊天表现为答非所问/无内容）。
+    const res = await runOnModel((ctx) =>
+      ctx.completion(
+        {
+          messages,
+          n_predict: 220,
+          temperature: 0.8,
+          top_p: 0.9,
+          stop: ['<|im_end|>', 'User:', '用户：', '用户:'],
+        },
+        (data) => {
+          const tok = (data && data.token) || '';
+          if (tok) {
+            full += tok;
+            opts.onToken?.(tok);
+          }
         }
-      }
+      )
     );
     full = res?.text || full;
   } finally {
     // 无论如何都写回记忆 + 上下文（延续性）
     try {
       await memory.add(userText);
-      const snap: ChatContextSnapshot = {
-        moodLabel: inferMood(userText),
-        recentThemes: inferThemes(userText),
-        lastUserTopic: userText.slice(0, 40),
-        healthNote: '',
-        summary: (full || '').slice(0, 120),
-        updatedAt: Date.now(),
-      };
-      await context.save(snap);
+      // 只有真的生成出内容才更新「上次聊到的延续」：
+      // 否则推理失败会把空的 summary 写进去、抹掉上一轮的上下文。
+      if (full) {
+        const snap: ChatContextSnapshot = {
+          moodLabel: inferMood(userText),
+          recentThemes: inferThemes(userText),
+          lastUserTopic: userText.slice(0, 40),
+          healthNote: '',
+          summary: full.slice(0, 120),
+          updatedAt: Date.now(),
+        };
+        await context.save(snap);
+      }
     } catch (e) {
       console.warn('[MiraAI] 写回记忆/上下文失败:', e);
     }

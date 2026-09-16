@@ -15,6 +15,9 @@
  * 本模块不依赖 React Native，纯 TS，可在 Node 下单测。
  */
 
+// 睡眠评分唯一实现（同样纯 TS、零依赖；此处用于「载入时按当前公式重算评分」）
+import { computeSleepScore } from '../lib/sleepScore';
+
 // ───────────────────────────────────────────────────────────────────────────
 // 日期工具（全仓唯一实现，禁止在别处 new Date('... 00:00:00')）
 // ───────────────────────────────────────────────────────────────────────────
@@ -621,13 +624,76 @@ export class HealthStore {
     for (const k of ALL_METRIC_KEYS) {
       this.stores[k] = json.stores?.[k] ?? emptyStore();
     }
-    this.sleep = json.sleep ?? {};
+    // ★ 睡眠评分是「由冻结的原始 total/deep/getUp 算出的**派生值**」，必须按**当前公式**重算。
+    //   否则快照里按旧公式存下的 score（例如满屏 100）会被原样恢复 → 改了公式却"看不出变化"。
+    //   原始测量值（total/deep/light/rem/awake/getUp/sleepTime/wakeTime）原样保留、不受影响。
+    this.sleep = this.rebuildSleepFromSnapshot(json.sleep);
     this.glance = json.glance ?? {};
     this.lastUpdated = json.lastUpdated ?? {};
     this.analysis = json.analysis ?? {};
     if (typeof json.syncEnabled === 'boolean') this.syncEnabled = json.syncEnabled;
     if (json.userProfile) this.userProfile = json.userProfile;
     this.notify();
+  }
+
+  /**
+   * 睡眠快照归一：**保留全部原始测量字段**（total/deep/light/rem/awake/insomnia/getUp/sleepTime/wakeTime），
+   * 只把 `score` 按**当前公式**重算。
+   *
+   * 为什么必须重算：`score` 是派生值（原始三个量算出来的）。快照里存的是旧公式的结果，
+   * 若原样恢复，改了公式也"看不出变化"（实测：老快照里的 100 一直在）。
+   * 原始测量值不动 → 不违反"历史冻结"（冻结的是测量，不是派生计算）。
+   */
+  private rebuildSleepFromSnapshot(raw: any): Record<string, SleepSummary> {
+    const out: Record<string, SleepSummary> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const k of Object.keys(raw)) {
+      const dk = normalizeDayKey(k);
+      if (Number.isNaN(parseDayKey(dk))) continue;
+      const s = raw[k];
+      if (!s || typeof s !== 'object') continue;
+      const total = Number(s.total) || 0;
+      const deep = Number(s.deep) || 0;
+      const getUp = Number(s.getUp) || 0;
+      const awake = Number(s.awake) || 0;
+      const insomnia = Number(s.insomnia) || 0;
+      out[dk] = {
+        total,
+        deep,
+        light: Number(s.light) || 0,
+        rem: Number(s.rem) || 0,
+        awake: awake || undefined,
+        insomnia: insomnia || undefined,
+        score: total > 0 ? computeSleepScore({ sleepTotal: total, sleepDeep: deep, getUp }) : Number(s.score) || 0,
+        sdkScore: Number(s.sdkScore) || undefined,
+        getUp,
+        sleepTime: (s.sleepTime as string | null) ?? null,
+        wakeTime: (s.wakeTime as string | null) ?? null,
+      };
+    }
+    return out;
+  }
+
+  /**
+   * 从 legacy 快照的 `sleepDaily` 补齐睡眠（**只补缺失/空日，不覆盖已有**）。
+   *
+   * 背景（实测踩坑）：v2 快照里的 `sleep` 可能为空（历史遗留），而 legacy 快照的 `sleepDaily`
+   * 一直有数据；`loadHealthStoreFromDisk` 一旦走 v2 分支就 `return`，**不再执行 v1 迁移**，
+   * 于是 `healthStore.sleep` 为空 → 身体恢复页「睡眠恢复摘要」空白，必须等戒指重新回填才出现。
+   * 这里在 v2 载入后显式补齐，保证重启即有数据。
+   */
+  hydrateSleepFromLegacy(rawDaily: any): number {
+    const fixed = this.rebuildSleepFromSnapshot(rawDaily);
+    let added = 0;
+    for (const dk of Object.keys(fixed)) {
+      const cur = this.sleep[dk];
+      if (!cur || cur.total <= 0) {
+        this.sleep[dk] = fixed[dk];
+        added++;
+      }
+    }
+    if (added > 0) this.notify();
+    return added;
   }
 
   /** 存某天的计算结果（stress / cognitive / cortisol / emotion）。同一天多次写会覆盖。 */
@@ -739,15 +805,10 @@ export class HealthStore {
     moveDaily(snap.seriesByDay?.bpDia, 'bpDia');
 
     if (snap.sleepDaily) {
-      for (const rawK of Object.keys(snap.sleepDaily)) {
-        const dk = normalizeDayKey(rawK);
-        if (Number.isNaN(parseDayKey(dk))) continue;
-        const s = snap.sleepDaily[rawK];
-        this.sleep[dk] = {
-          total: Number(s.total) || 0, deep: Number(s.deep) || 0,
-          light: Number(s.light) || 0, rem: Number(s.rem) || 0,
-          score: Number(s.score) || 0, getUp: Number(s.getUp) || 0,
-        };
+      // v1 睡眠同样走「保留原始测量值 + 按当前公式重算 score」；只补 v1 缺失的日，不覆盖已有
+      const fixed = this.rebuildSleepFromSnapshot(snap.sleepDaily);
+      for (const dk of Object.keys(fixed)) {
+        if (!this.sleep[dk]) this.sleep[dk] = fixed[dk];
       }
     }
     if (snap.extDaily) {

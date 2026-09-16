@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   Animated,
   PanResponder,
   TouchableOpacity,
+  Platform,
+  UIManager,
   type LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,14 +16,33 @@ import Icon from './Icon';
 import Card from './Card';
 import { TASK_COLORS, TASK_ICONS, type TaskItem } from '../data/tasks';
 
+// 每张卡不同的图标渐变色（引导页同款配色）
+const TYPE_GRADIENTS: Record<number, [string, string]> = {
+  0: ['#FCE7F3', '#F9A8D4'],
+  1: ['#C4B5FD', '#A78BFA'],
+  2: ['#CFFAFE', '#67E8F9'],
+  3: ['#FEF3C7', '#FBBF24'],
+};
+const TYPE_LABEL = ['01', '02', '03', '04'];
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/**
+ * 纵向堆叠卡片（rotate 循环模式，参考 NFT gallery 切换动效）
+ * - 顶卡不 fly-out 消失，而是沉到底层 + 循环
+ * - 所有卡的 stack offset/rotate 都用 Animated.Value 驱动
+ * - topIdx 变化时 spring 平滑重排，顶卡沉到最底，下面的升上来
+ * - 左拖 / 点按钮 → drag 归零 → advance 切下一张
+ */
+
 const VISIBLE = 3;
-const DECK_TF = [
-  { x: 0, y: -2, s: 1, r: '0deg' },
-  { x: 13, y: 14, s: 0.95, r: '1.2deg' },
-  { x: -10, y: 28, s: 0.9, r: '-1.8deg' },
-];
-const DECK_LIFT = [4, 22, 32];
-const SWIPE = 56;
+const STACK_OFFSET_Y = 16;
+const STACK_OFFSET_X = 10;
+const ROTATION_DEG = [0, 1.6, 0.8, 0.4];
+const EXIT_THRESHOLD = 60;
+const ENTER_FROM_Y = 160;
 
 interface Props {
   tools: TaskItem[];
@@ -29,136 +50,192 @@ interface Props {
 }
 
 export default function TaskDeck({ tools, onComplete }: Props) {
-  const [top, setTop] = useState(0);
+  const [topIdx, setTopIdx] = useState(0);
   const [baseH, setBaseH] = useState(0);
-  const drag = useRef(new Animated.ValueXY()).current;
   const n = tools.length;
+  const dragX = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
   const lastCount = useRef(n);
   const enterAnims = useRef<Record<string, Animated.Value>>({});
+  // ★ rotate 模式：每张卡自己的 stack offset / rotate Animated.Value
+  const cardPosAnims = useRef<Record<string, { ox: Animated.Value; oy: Animated.Value }>>({});
 
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => n > 1,
-        onMoveShouldSetPanResponder: (_, g) => n > 1 && Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
-        onPanResponderMove: (_, g) => {
-          drag.setValue({ x: 0, y: g.dy < 0 ? g.dy : g.dy * 0.5 });
-        },
-        onPanResponderRelease: (_, g) => {
-          if (g.dy < -SWIPE) {
-            Animated.timing(drag, { toValue: { x: 0, y: -400 }, duration: 260, useNativeDriver: true }).start(
-              () => {
-                drag.setValue({ x: 0, y: 0 });
-                setTop((t) => (t + 1) % n);
-              }
-            );
-          } else if (g.dy > SWIPE) {
-            drag.setValue({ x: 0, y: 0 });
-            setTop((t) => (t - 1 + n) % n);
-          } else {
-            Animated.spring(drag, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
-          }
-        },
-      }),
-    [drag, n]
-  );
-
+  // 入场动画
   useEffect(() => {
     if (tools.length > lastCount.current) {
       const newestId = tools[0]?.id;
       if (newestId) {
-        setTop(0);
-        enterAnims.current[newestId] = new Animated.Value(0);
-        Animated.spring(enterAnims.current[newestId], {
-          toValue: 1,
-          friction: 8,
-          tension: 42,
-          useNativeDriver: true,
-        }).start();
+        setTopIdx(0);
+        tools.forEach((t, i) => {
+          const v = new Animated.Value(0);
+          enterAnims.current[t.id] = v;
+          const delay = (n - 1 - i) * 60;
+          Animated.spring(v, {
+            toValue: 1,
+            friction: 8,
+            tension: 42,
+            useNativeDriver: true,
+            delay,
+          }).start();
+        });
       }
     }
     lastCount.current = tools.length;
   }, [tools.length, tools]);
 
-  const stackH = baseH + DECK_LIFT[Math.max(0, Math.min(n, VISIBLE) - 1)];
-  const deckH = stackH + (n > 1 ? 28 : 0);
+  // ★ rotate 核心：topIdx 变化 → 所有卡 spring 到新 stack offset
+  useEffect(() => {
+    tools.forEach((t, i) => {
+      const pos = (i - topIdx + n) % n;
+      const ox = pos * STACK_OFFSET_X;
+      const oy = pos * STACK_OFFSET_Y;
+      const rot = ROTATION_DEG[Math.min(pos, ROTATION_DEG.length - 1)];
+
+      // 首次初始化
+      if (!cardPosAnims.current[t.id]) {
+        cardPosAnims.current[t.id] = {
+          ox: new Animated.Value(ox),
+          oy: new Animated.Value(oy),
+        };
+        return;
+      }
+
+      // 已有 → spring 到新位置（rotate 动效就靠这个）
+      const a = cardPosAnims.current[t.id];
+      Animated.parallel([
+        Animated.spring(a.ox, { toValue: ox, friction: 7, tension: 100, useNativeDriver: true }),
+        Animated.spring(a.oy, { toValue: oy, friction: 7, tension: 100, useNativeDriver: true }),
+      ]).start();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topIdx]);
+
+  // rotate：循环切下一张（顶卡绕到底层）
+  const advance = useCallback(() => {
+    if (n <= 1) return;
+    setTopIdx((t) => (t + 1) % n);
+  }, [n]);
+
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => n > 1,
+        onMoveShouldSetPanResponder: (_, g) =>
+          n > 1 && Math.abs(g.dx) > 4 && Math.abs(g.dx) > Math.abs(g.dy),
+        onPanResponderMove: (_, g) => {
+          const x = g.dx < 0 ? g.dx : g.dx * 0.3;
+          dragX.setValue(x);
+          dragY.setValue(g.dy < 0 ? g.dy : g.dy * 0.4);
+        },
+        onPanResponderRelease: (_, g) => {
+          const dx = g.dx;
+          if (dx < -EXIT_THRESHOLD) {
+            // 顶卡 drag 先 spring 归零 → 然后 advance 让所有卡重排
+            Animated.parallel([
+              Animated.spring(dragX, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+              Animated.spring(dragY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+            ]).start(() => advance());
+          } else {
+            Animated.parallel([
+              Animated.spring(dragX, { toValue: 0, friction: 6, tension: 120, useNativeDriver: true }),
+              Animated.spring(dragY, { toValue: 0, friction: 6, tension: 120, useNativeDriver: true }),
+            ]).start();
+          }
+        },
+      }),
+    [dragX, dragY, n, advance]
+  );
+
+  const handleComplete = useCallback(
+    (id: string) => {
+      onComplete(id);
+      advance();
+    },
+    [onComplete, advance]
+  );
+
+  const maxVisible = Math.min(VISIBLE, n);
+  const stackH = baseH + STACK_OFFSET_Y * Math.max(0, maxVisible - 1);
+  const deckH = stackH + 36;
 
   return (
     <View style={[styles.deck, { height: deckH }]}>
       <View style={[styles.stack, { height: stackH }]} {...pan.panHandlers}>
         {tools.map((t, i) => {
-          const pos = (i - top + n) % n;
-          const tf = DECK_TF[Math.min(pos, DECK_TF.length - 1)];
+          const pos = (i - topIdx + n) % n;
           const isTop = pos === 0;
+          const baseOpacity = pos >= VISIBLE ? 0 : 1 - pos * 0.18;
           const enter = enterAnims.current[t.id];
           const enterY = enter
-            ? enter.interpolate({ inputRange: [0, 1], outputRange: [-140, 0] })
+            ? enter.interpolate({ inputRange: [0, 1], outputRange: [ENTER_FROM_Y, 0] })
             : 0;
           const enterScale = enter
-            ? enter.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] })
+            ? enter.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] })
             : 1;
-          const baseOpacity = pos >= VISIBLE ? 0 : 1 - pos * 0.13;
           const opacity = enter
             ? enter.interpolate({ inputRange: [0, 1], outputRange: [0, baseOpacity] })
             : baseOpacity;
-          const transform = isTop
-            ? [
-                { translateX: drag.x },
-                {
-                  translateY: Animated.add(
-                    Animated.add(drag.y, tf.y),
-                    enterY
-                  ) as Animated.AnimatedInterpolation<string | number>,
-                },
-                { scale: Animated.multiply(tf.s, enterScale) as Animated.AnimatedMultiplication<string | number> },
-                { rotate: tf.r },
-              ]
-            : [
-                { translateX: tf.x },
-                { translateY: Animated.add(tf.y, enterY) as Animated.AnimatedAddition<string | number> },
-                { scale: Animated.multiply(tf.s, enterScale) as Animated.AnimatedMultiplication<string | number> },
-                { rotate: tf.r },
-              ];
+
+          // rotate 模式：所有卡的 stack offset / rotate 都用 cardPosAnims Animated.Value
+          const pa = cardPosAnims.current[t.id];
+          const rot = ROTATION_DEG[Math.min(pos, ROTATION_DEG.length - 1)];
+          const stackOx = pa ? pa.ox : new Animated.Value(0);
+          const stackOy = pa ? pa.oy : new Animated.Value(pos * STACK_OFFSET_Y);
+
+          // translateX / translateY：顶卡额外叠加 drag 手势
+          const tx = isTop
+            ? Animated.add(stackOx, dragX as any)
+            : stackOx;
+          const tyBase = Animated.add(stackOy, enterY as any);
+          const ty = isTop
+            ? Animated.add(tyBase, dragY as any)
+            : tyBase;
+
+          const transform: any[] = [
+            { translateX: tx },
+            { translateY: ty },
+            { scale: enterScale },
+            { rotate: isTop
+              ? dragY.interpolate({ inputRange: [-80, 0, 80], outputRange: ['-6deg', '0deg', '3deg'] })
+              : `${rot}deg` },
+          ];
 
           return (
             <Animated.View
               key={t.id}
               style={[
                 styles.cardWrap,
-                {
-                  zIndex: 40 - Math.min(pos, 5),
-                  opacity,
-                  transform,
-                },
+                { zIndex: 40 - pos, opacity, transform },
               ]}
               pointerEvents={isTop ? 'auto' : 'none'}
               onLayout={i === 0 ? (e: LayoutChangeEvent) => setBaseH(e.nativeEvent.layout.height) : undefined}
             >
               <Card style={[styles.card, isTop && styles.cardTop]}>
+                {/* 引导页同款：右上角大数字角标 */}
+                <Text style={styles.cardNum}>{TYPE_LABEL[t.type] || '0'}</Text>
                 <View style={styles.recTop}>
-                  <View style={[styles.ico, { shadowColor: TASK_COLORS[t.type] }]}>
+                  {/* 引导页同款：56×56 圆角 18 渐变方块图标容器 */}
+                  <LinearGradient
+                    colors={TYPE_GRADIENTS[t.type] || ['#C4B5FD', '#8B7CF6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.ico}
+                  >
                     <Icon
                       name={TASK_ICONS[t.type]}
-                      size={theme.fs(20)}
-                      color={TASK_COLORS[t.type]}
+                      size={theme.fs(28)}
+                      color="#FFFFFF"
                       strokeWidth={2.4}
                     />
-                  </View>
+                  </LinearGradient>
                   <Badge label={t.badge} />
-                  <View style={styles.grip}>
-                    <View style={[styles.gripBar, { width: theme.sp(4.5) }]} />
-                    <View style={[styles.gripBar, { width: theme.sp(3) }]} />
-                    <View style={[styles.gripBar, { width: theme.sp(1.5) }]} />
-                  </View>
                 </View>
-
                 <Text style={styles.title}>{t.title}</Text>
                 <Text style={styles.desc}>{t.desc}</Text>
-
                 <TouchableOpacity
                   style={[styles.btn, t.done && styles.btnDone]}
                   disabled={t.done}
-                  onPress={() => onComplete(t.id)}
+                  onPress={() => handleComplete(t.id)}
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.btnText, t.done && styles.btnTextDone]}>
@@ -174,13 +251,23 @@ export default function TaskDeck({ tools, onComplete }: Props) {
       {n > 1 ? (
         <View style={styles.foot}>
           <View style={styles.dots}>
-            {tools.map((_, i) => (
-              <TouchableOpacity key={i} onPress={() => setTop(i)}>
-                <View style={[styles.dot, i === top && styles.dotOn]} />
-              </TouchableOpacity>
-            ))}
+            {tools.map((_, i) => {
+              const active = i <= topIdx;
+              return (
+                <TouchableOpacity key={i} onPress={() => setTopIdx(i)}>
+                  <View style={[styles.stepLine, active && styles.stepLineActive]}>
+                    <Animated.View
+                      style={[
+                        styles.stepLineFill,
+                        { width: active ? '100%' : '0%' },
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <Text style={styles.hint}>上滑查看下一个任务</Text>
+          <Text style={styles.hint}>左滑或点开始 · 切换下一个</Text>
         </View>
       ) : null}
     </View>
@@ -209,29 +296,46 @@ const styles = StyleSheet.create({
   deck: { marginBottom: theme.space.card },
   stack: { position: 'relative' },
   cardWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
-  card: { padding: theme.space.md + theme.sp(1) },
+  // 引导页同款卡壳：overflow visible（不裁角标数字）、padding 28/24
+  card: {
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    overflow: 'visible', // 覆盖 Card 默认的 overflow:hidden
+  },
+  // 顶卡双层紫阴影（引导页 feature-card shadow）
   cardTop: {
-    backgroundColor: theme.colors.cardBgStrong,
-    borderColor: 'rgba(255,255,255,0.85)',
-    shadowColor: theme.colors.ui.shadowDeep,
+    shadowColor: '#8B7CF6',
     shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.18,
-    shadowRadius: 44,
+    shadowOpacity: 0.22,
+    shadowRadius: 40,
     elevation: 10,
   },
-  recTop: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.sm },
+  // 引导页同款：右上角 44px italic 半透明大数字
+  cardNum: {
+    position: 'absolute',
+    top: 14,
+    right: 18,
+    fontSize: 44,
+    fontWeight: '800',
+    fontStyle: 'italic',
+    color: '#1F2937',
+    opacity: 0.12,
+    letterSpacing: -1,
+  },
+  recTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  // 引导页同款：56×56 圆角 18 渐变方块图标容器
   ico: {
-    width: theme.sp(9),
-    height: theme.sp(9),
-    borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: theme.space.sm,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 3,
+    marginRight: 14,
+    shadowColor: '#8B7CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 4,
   },
   badge: {
     paddingHorizontal: theme.space.sm - theme.sp(1),
@@ -249,23 +353,22 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold,
     color: theme.colors.textWhite,
   },
-  grip: { marginLeft: 'auto', alignItems: 'center' },
-  gripBar: { height: 2, borderRadius: 2, backgroundColor: theme.colors.textSub, marginBottom: 3, opacity: 0.4 },
   title: {
-    fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.medium,
-    color: theme.colors.textTitle,
-    marginBottom: theme.sp(1.5),
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 8,
+    letterSpacing: -0.3,
   },
   desc: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.6,
+    fontSize: 14,
+    lineHeight: 23.8,
     color: theme.colors.textSub,
-    marginBottom: theme.space.md,
+    marginBottom: 18,
   },
   btn: {
-    height: theme.sp(11),
-    paddingHorizontal: theme.space.lg,
+    height: 44,
+    paddingHorizontal: 22,
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -277,14 +380,18 @@ const styles = StyleSheet.create({
   btnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
   btnTextDone: { color: theme.colors.ui.successText },
   foot: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' },
-  dots: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1.5) },
-  dot: {
-    width: theme.sp(1.5),
-    height: theme.sp(1.5),
-    borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(124,106,224,0.26)',
-    marginHorizontal: theme.sp(1),
+  dots: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1.5), gap: theme.sp(1.5) },
+  stepLine: {
+    width: theme.sp(3),
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(139,124,246,0.18)',
+    overflow: 'hidden',
   },
-  dotOn: { width: theme.sp(4.5), backgroundColor: theme.colors.accentSolid },
+  stepLineActive: { width: theme.sp(5.5) },
+  stepLineFill: {
+    height: '100%',
+    backgroundColor: theme.colors.accent1,
+  },
   hint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, opacity: 0.7 },
 });

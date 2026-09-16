@@ -1,8 +1,14 @@
 /**
  * AiAnalysis —— 统一的「AI 分析」展示外壳
  *
- * 与洞察页 InsightBanner 同一套视觉语言：渐变 ✨ 胶囊 + 正文规格（sm / 行高 1.6 / textSub）。
- * 供周期日历页各处 AI 解读（体温双相 / 雌激素 / 孕激素）复用，保证多张卡的分析样式一致。
+ * 统一格式（PhaseInsightSection 模板）：
+ *   ✨ AI 分析 badge
+ *   [大标题]              ← title
+ *   [小字标签]            ← subtitle（可选，如「周期第 14 天」）
+ *   ● 分段结论 (AiResultRow)
+ *   ● 建议               ← advice 小点列表
+ *
+ * 供周期各阶段、雌激素/孕激素趋势、体温双相、皮质醇节律等 AI 解读统一复用。
  */
 import React, { type ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -42,20 +48,44 @@ export function AiBadge({ label = 'AI 分析' }: { label?: string }) {
   );
 }
 
-/** 完整外壳：胶囊 + 结论内容 + 脚注 */
+/**
+ * 完整外壳：badge + 大标题 + 标签 + 结论行(children) + 小点建议 + 脚注
+ *
+ * @param title 大标题（加粗，如「排卵期·状态巅峰」）
+ * @param subtitle 小字标签（如「周期第 14 天」）
+ * @param advice 建议小点列表（纯文本）
+ * @param label badge 文案（默认「AI 分析」）
+ * @param foot 脚注（免责声明等）
+ */
 export default function AiAnalysis({
   children,
   foot,
   label,
+  title,
+  subtitle,
+  advice,
 }: {
   children: ReactNode;
   foot?: ReactNode;
   label?: string;
+  title?: string;
+  subtitle?: string;
+  advice?: string[];
 }) {
   return (
     <View style={styles.wrap}>
       <AiBadge label={label} />
+      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {children}
+      {advice && advice.length > 0 ? (
+        <View style={styles.adviceBox}>
+          <Text style={styles.adviceTitle}>● 建议</Text>
+          {advice.map((t, i) => (
+            <Text key={i} style={styles.adviceItem}>· {t}</Text>
+          ))}
+        </View>
+      ) : null}
       {foot ? <Text style={styles.foot}>{foot}</Text> : null}
     </View>
   );
@@ -70,7 +100,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    marginBottom: theme.space.sm,
+    marginBottom: theme.sp(1),
   },
   aiBadgeText: {
     fontSize: theme.fontSize.micro,
@@ -78,7 +108,18 @@ const styles = StyleSheet.create({
     color: theme.colors.textWhite,
     marginLeft: theme.sp(1.5),
   },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(2), marginBottom: theme.space.xs },
+  title: {
+    fontSize: theme.fontSize.h2,
+    fontWeight: theme.weight.bold as any,
+    color: theme.colors.textTitle,
+    marginBottom: theme.sp(0.5),
+  },
+  subtitle: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.sm,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: theme.space.xs },
   dot: {
     width: theme.sp(2.5),
     height: theme.sp(2.5),
@@ -86,7 +127,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.5),
     flexShrink: 0,
   },
-  rowBody: { flex: 1 },
+  rowBody: { flex: 1, marginLeft: theme.space.sm },
   rowTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold as any,
@@ -97,6 +138,21 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.6,
     color: theme.colors.textSub,
+  },
+  adviceBox: {
+    marginTop: theme.space.sm,
+    gap: theme.sp(0.5),
+  },
+  adviceTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold as any,
+    color: theme.colors.textTitle,
+    marginBottom: theme.sp(0.5),
+  },
+  adviceItem: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    lineHeight: theme.fontSize.sm * 1.5,
   },
   foot: {
     fontSize: theme.fontSize.micro,

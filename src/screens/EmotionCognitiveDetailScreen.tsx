@@ -17,7 +17,10 @@ import Icon from '../components/Icon';
 import Card from '../components/Card';
 import CortisolDailyChart, { buildRhythmInsights } from '../components/CortisolDailyChart';
 import { useAiInsight } from '../hooks/useAiInsight';
+import { useDebouncedHealthStoreRefresh, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
+import { buildRecoveryFallbackRows, resolveInsightRows } from '../ai/insight';
 import InsightBanner from '../components/InsightBanner';
+import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
@@ -26,6 +29,9 @@ import { analyzeCortisol, type CortisolSample, type RhythmLevel } from '../lib/c
 import { type RangeKey } from '../data/metrics';
 import { type StressReport } from '../lib/stressAlgorithm';
 import { type CognitiveLoadReport } from '../lib/cognitiveLoad';
+import { reportNowMsForDay, reportNowMsForPrevDay } from '../lib/dayAnchor';
+import { computeSleepLoad, SLEEP_LOAD_LABEL, type SleepLoadDay } from '../lib/sleepLoad';
+import { isLateBedtime } from '../lib/sleepTime';
 
 const DAY_MS = 86400000;
 
@@ -47,7 +53,7 @@ type RangeAgg = {
   recoverySec: number | null;
   cogLoad: number | null;
   cogRecovery: number | null; // 百分比
-  sleepDebt: number | null;
+  sleepLoad: number | null;
   sleepScore: number | null;
   cortisolMesor: number | null;
   cortisolPeakH: number | null;
@@ -85,12 +91,25 @@ const mean = (xs: (number | null)[]): number | null => {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
 
+/** 某日（含）往前 14 天窗口的睡眠记录（升序，末项=该日）——日视图与区间聚合共用同一口径 */
+function sleepWindowEndingAt(dayMs: number): SleepLoadDay[] {
+  const recs: SleepLoadDay[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const s = healthStore.getSleep(dayKey(dayMs - i * 86400000));
+    if (s && s.total > 0) {
+      recs.push({ total: s.total, deep: s.deep, rem: s.rem, awake: s.awake, getUp: s.getUp, sleepTime: s.sleepTime });
+    }
+  }
+  return recs;
+}
+
 /** 对一段日期数组逐日取值后聚合为单个 RangeAgg（周/月/单月均走这里） */
 function aggregateOverDays(days: Date[]): RangeAgg {
   const { computeStressReport } = require('../lib/stressAlgorithm');
   const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
-  const stresses = days.map((d) => computeStressReport(d.getTime()));
-  const cogs = days.map((d) => computeCognitiveLoadReport(d.getTime()));
+  // ★ 逐日报告必须传「该日锚点→nowMs」（历史日=当日 23:59:59.999）；传零点会得到空区间
+  const stresses = days.map((d) => computeStressReport(reportNowMsForDay(d.getTime())));
+  const cogs = days.map((d) => computeCognitiveLoadReport(reportNowMsForDay(d.getTime())));
   const sleeps = days.map((d) => healthStore.getSleep(dayKey(d.getTime())));
 
   const startMs = days[days.length - 1].getTime();
@@ -106,7 +125,13 @@ function aggregateOverDays(days: Date[]): RangeAgg {
     recoverySec: mean(stresses.map((s) => s.avgRecoverySec)),
     cogLoad: mean(cogs.map((c) => c.loadScore)),
     cogRecovery: mean(cogs.map((c) => (c.recoveryCapacity != null ? c.recoveryCapacity * 100 : null))),
-    sleepDebt: mean(sleeps.map((s) => (s && s.total > 0 ? Math.max(0, +(8 - s.total / 60).toFixed(1)) : null))),
+    // 睡眠负载：逐日以「该日往前 14 天」为窗口计算（与日视图 SleepCard 同口径）
+    sleepLoad: mean(
+      days.map((d) => {
+        const recs = sleepWindowEndingAt(d.getTime());
+        return recs.length ? computeSleepLoad(recs).load : null;
+      })
+    ),
     sleepScore: mean(sleeps.map((s) => (s && s.score != null ? s.score : null))),
     cortisolMesor: r && cos && Number.isFinite(cos.mesor) ? cos.mesor : null,
     cortisolPeakH: r && cos && Number.isFinite(cos.acrophaseH) ? cos.acrophaseH : null,
@@ -145,7 +170,7 @@ function averageRangeAggs(monthly: RangeAgg[]): RangeAgg {
     recoverySec: numMean((a) => a.recoverySec),
     cogLoad: numMean((a) => a.cogLoad),
     cogRecovery: numMean((a) => a.cogRecovery),
-    sleepDebt: numMean((a) => a.sleepDebt),
+    sleepLoad: numMean((a) => a.sleepLoad),
     sleepScore: numMean((a) => a.sleepScore),
     cortisolMesor: numMean((a) => a.cortisolMesor),
     cortisolPeakH: numMean((a) => a.cortisolPeakH),
@@ -193,6 +218,12 @@ export default function EmotionCognitiveDetailScreen() {
     return d;
   });
 
+  // ── 防抖订阅 healthStore：实时/回填数据到达后约 700ms 刷新一次本页（而非每个样本重渲染），
+  //    既修复「今日趋势要退出重进才出」，又避免实时流高频写把主线程压满导致返回键点不动 ──
+  const refreshKey = useDebouncedHealthStoreRefresh(700);
+  // ── 回填派生指标（eda/cortisol…）intraday：修复「历史皮质醇数据没有」──
+  useEnsureDerivedMetrics(30);
+
   // ── 日视图：锚定日 + 前一天 ──
   const dayData = useMemo(() => {
     const D = new Date(anchor);
@@ -200,14 +231,19 @@ export default function EmotionCognitiveDetailScreen() {
     const prevD = new Date(D.getTime() - DAY_MS);
     const { computeStressReport } = require('../lib/stressAlgorithm');
     const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
-    const stress = computeStressReport(D.getTime());
-    const stressPrev = computeStressReport(prevD.getTime());
-    const cog = computeCognitiveLoadReport(D.getTime());
-    const cogPrev = computeCognitiveLoadReport(prevD.getTime());
+    // ★ 必须传「日锚点→报告 nowMs」（今天=此刻 / 历史日=23:59:59.999）。
+    //   早前传 D.getTime()（零点）会让 getTimeRange 退化成 [零点,零点] 空区间 → 情绪消耗恒为 0 次 / —。
+    const nowMs = reportNowMsForDay(anchor.getTime());
+    const prevNowMs = reportNowMsForPrevDay(anchor.getTime());
+    const stress = computeStressReport(nowMs);
+    const stressPrev = computeStressReport(prevNowMs);
+    const cog = computeCognitiveLoadReport(nowMs);
+    const cogPrev = computeCognitiveLoadReport(prevNowMs);
     const sl = healthStore.getSleep(dayKey(D.getTime()));
     const slPrev = healthStore.getSleep(dayKey(prevD.getTime()));
     return { D, prevD, stress, stressPrev, cog, cogPrev, sl, slPrev };
-  }, [anchor]);
+    // 依赖 refreshKey：数据到达约 700ms 后重新 computeStressReport（其内部门缓存按版本失效），情绪消耗卡刷新
+  }, [anchor, refreshKey]);
 
   // ── 区间视图：聚合 + 对比上一周期 ──
   const rangeData = useMemo(() => {
@@ -221,98 +257,125 @@ export default function EmotionCognitiveDetailScreen() {
   const todayRhythm = useMemo(() => {
     const r = analyzeCortisol(collectSamples(), 14);
     return { level: r.todayLevel, firstInsight: buildRhythmInsights(r, true)[0] ?? '' };
-  }, []);
-  const rhythmLabelMap: Record<'normal' | 'high' | 'dysregulated', { label: string; color: string }> = {
-    normal: { label: '节律正常', color: theme.colors.ui.rhythmGood },
-    high: { label: '皮质醇偏高', color: theme.colors.ui.rhythmWarn },
-    dysregulated: { label: '节律紊乱', color: theme.colors.moodRest },
+    // 依赖 refreshKey：回填/实时皮质醇到达后，顶部「今日皮质醇节律」大字与节律卡同步刷新
+  }, [refreshKey]);
+  /**
+   * 节律结论文案。颜色不再按状态区分——统一走主题 `textTitle`，
+   * 与情绪/脑力消耗详情页的 Hero 大字保持一致（形态异常另由节律卡的色块/日历承担）。
+   */
+  const RHYTHM_LABEL: Record<'normal' | 'high' | 'dysregulated', string> = {
+    normal: '节律正常',
+    high: '皮质醇偏高',
+    dysregulated: '节律紊乱',
   };
-  const todayRhythmMeta = rhythmLabelMap[todayRhythm.level];
+  const todayRhythmLabel = RHYTHM_LABEL[todayRhythm.level];
 
   // ── AI 综合分析 ──
   // ★ 真实端侧大模型（MiraAI · Qwen2.5-1.5B）：与洞察页同通道（ai/insight.ts 'recovery' kind），
   //   输出分点行 tone|标题|正文（皮质醇节律→情绪→脑力→睡眠），带落盘缓存与静默降级。
-  const aiRecovery = useAiInsight('recovery');
+  //   ★ 跟随锚定日：历史日按「该日事实串」生成（aiDayArg=该日 dk），不再固定用今天的数据。
+  const anchorDk = dayKey(anchor.getTime());
+  const aiDayArg = anchorDk === dayKey(Date.now()) ? undefined : anchorDk;
+  const aiRecovery = useAiInsight('recovery', aiDayArg);
 
-  /** 规则兜底：与 AI 行同构的分点（AI 生成中 pending 提示 + 不可用/无数据时显示） */
+  // 「查看更多分析」→ 拉起端侧聊天，带入今日皮质醇追问
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = (question: string) => {
+    setChatQuestion(question);
+    setChatVisible(true);
+  };
+
+  /** 规则兜底：与 AI 行同构的 2 点分点（异常数据分析 + 今日建议），全区间一致、不铺陈。 */
   const aiFallbackRows = useMemo<SummaryRow[]>(() => {
-    const rows: SummaryRow[] = [];
+    const parts: string[] = [];
+    const titles: string[] = [];
+
     if (range === 'day') {
-      const { D, stress: s, cog: g } = dayData;
+      const { D } = dayData;
       const isToday = dayKey(D.getTime()) === dayKey(Date.now());
-      // 皮质醇节律（洞察文案与卡片同源 buildRhythmInsights，取首条作分点正文）
-      if (isToday) {
-        if (todayRhythm.firstInsight) {
-          rows.push({
-            tone: todayRhythm.level === 'normal' ? 'good' : 'warn',
-            title: '皮质醇节律',
-            body: todayRhythm.firstInsight,
-          });
-        }
-      } else {
-        const rSamples = collectSamplesForDay(dayKey(D.getTime()));
-        if (rSamples.length >= 4) {
-          const rr = analyzeCortisol(rSamples, 1);
-          const lines = buildRhythmInsights(rr, false);
-          if (lines[0]) rows.push({ tone: rr.today.dys ? 'warn' : 'good', title: '皮质醇节律', body: lines[0] });
+      // 今日：直接复用与洞察页共用的兜底（首行=皮质醇节律 + 今日建议，2 点）
+      if (isToday) return buildRecoveryFallbackRows() as SummaryRow[];
+      // 历史日：无 14 天基线，偏高不可信，只看当日曲线形态 + 情绪/脑力
+      const rSamples = collectSamplesForDay(dayKey(D.getTime()));
+      if (rSamples.length >= 4) {
+        const rr = analyzeCortisol(rSamples, 1);
+        if (rr.today.dys || rr.today.high) {
+          parts.push(rr.today.dys ? '当日皮质醇节律紊乱' : '当日皮质醇节律偏高');
+          titles.push('代谢');
         }
       }
-      if (s.emotionalLoad != null) {
-        rows.push({
-          tone: s.emotionalLoad >= 70 ? 'warn' : s.emotionalLoad >= 40 ? 'neutral' : 'good',
-          title: '情绪消耗',
-          body: `情绪消耗 ${s.emotionalLoad}/100${s.events.length > 0 ? `，当日 ${s.events.length} 次压力事件` : '，无压力事件'}。`,
-        });
+      if (dayData.stress?.emotionalLoad != null && dayData.stress.emotionalLoad >= 70) {
+        parts.push('当日情绪消耗偏高');
+        titles.push('情绪压力');
       }
-      if (g.loadScore != null) {
-        rows.push({
-          tone: g.loadLevel === 'heavy' ? 'warn' : g.loadLevel === 'moderate' ? 'neutral' : 'good',
-          title: '脑力负荷',
-          body: `脑力消耗 ${g.loadScore}/100${g.bestSpan ? `，最佳时段 ${String(g.bestSpan.startHour).padStart(2, '0')}:00–${String(g.bestSpan.endHour).padStart(2, '0')}:00` : ''}。`,
-        });
+      if (dayData.cog?.loadLevel === 'heavy') {
+        parts.push('当日脑力负荷偏高');
+        titles.push('情绪压力');
       }
-      if (!isToday) rows.push({ tone: 'neutral', title: '数据说明', body: `以上为 ${periodLabel('day', D)} 数据。` });
     } else if (rangeData) {
-      const { cur, prev } = rangeData;
-      if (cur.emotionLoad != null) {
-        const d = prev.emotionLoad != null ? cur.emotionLoad - prev.emotionLoad : null;
-        rows.push({
-          tone: cur.emotionLoad >= 70 ? 'warn' : cur.emotionLoad >= 40 ? 'neutral' : 'good',
-          title: '情绪消耗',
-          body: `${periodLabel(range, anchor)}平均情绪消耗 ${cur.emotionLoad.toFixed(0)}/100${d != null ? `，较上期${d >= 0 ? '升' : '降'} ${Math.abs(d).toFixed(0)}` : ''}。`,
-        });
+      const { cur } = rangeData;
+      const st = cur.cortisolStatus;
+      if (st && st !== 'normal') {
+        parts.push(st === 'dysregulated' ? '区间内皮质醇节律紊乱' : '区间内皮质醇持续偏高');
+        titles.push('代谢');
       }
-      if (cur.cogLoad != null) {
-        const d = prev.cogLoad != null ? cur.cogLoad - prev.cogLoad : null;
-        rows.push({
-          tone: cur.cogLoad >= 70 ? 'warn' : cur.cogLoad >= 40 ? 'neutral' : 'good',
-          title: '脑力负荷',
-          body: `平均脑力负荷 ${cur.cogLoad.toFixed(0)}/100${d != null ? `，较上期${d >= 0 ? '升' : '降'} ${Math.abs(d).toFixed(0)}` : ''}。`,
-        });
+      if (cur.sleepScore != null && cur.sleepScore < 70) {
+        parts.push('平均睡眠评分偏低');
+        titles.push('睡眠');
       }
-      if (cur.cortisolMesor != null) {
-        const st = cur.cortisolStatus;
-        rows.push({
-          tone: st === 'normal' ? 'good' : st != null ? 'warn' : 'neutral',
-          title: '皮质醇节律',
-          body: `平均皮质醇 ${cur.cortisolMesor.toFixed(1)}${st === 'dysregulated' ? '，区间内节律形态紊乱' : st === 'sustained_high' ? '，区间内持续偏高' : ''}。`,
-        });
+      if (cur.emotionLoad != null && cur.emotionLoad >= 70) {
+        parts.push('平均情绪消耗偏高');
+        titles.push('情绪压力');
       }
-      if (cur.sleepScore != null) {
-        rows.push({
-          tone: cur.sleepScore >= 75 ? 'good' : cur.sleepScore >= 60 ? 'neutral' : 'warn',
-          title: '睡眠恢复',
-          body: `平均睡眠评分 ${cur.sleepScore.toFixed(0)}${cur.sleepDebt != null ? `，睡眠负债 ${cur.sleepDebt.toFixed(1)} 小时` : ''}。`,
-        });
+      if (cur.cogLoad != null && cur.cogLoad >= 70) {
+        parts.push('平均脑力负荷偏高');
+        titles.push('情绪压力');
       }
     }
-    if (rows.length === 0) {
-      rows.push({ tone: 'neutral', title: '等待数据', body: '继续佩戴戒指，更多数据生成后即可提供皮质醇、情绪与脑力的综合分析。' });
+
+    const PRIORITY = ['代谢', '睡眠', '情绪压力', '恢复'];
+    const verdictMap: Record<string, string> = {
+      代谢: '压力与恢复偏弱，注意休息。',
+      睡眠: '修复不够充分，今晚早点补觉。',
+      情绪压力: '主动减压，留点放松时间。',
+      恢复: '恢复力不足，今天多休息。',
+    };
+    let anomaly: SummaryRow;
+    if (!parts.length) {
+      anomaly = { tone: 'good', title: '异常数据分析', body: '该区间各项指标都在正常范围内，整体平稳。' };
+    } else {
+      const top = PRIORITY.find((t) => titles.includes(t)) ?? '代谢';
+      anomaly = {
+        tone: 'warn',
+        title: '异常数据分析',
+        body: parts.slice(0, 3).join('、') + '，' + (verdictMap[top] ?? '注意调整恢复。'),
+      };
     }
-    return rows;
+    const advice: SummaryRow = {
+      tone: parts.length ? 'warn' : 'good',
+      title: '今日建议',
+      body: parts.length ? '保持规律作息，关注最突出的异常项。' : '状态平稳，保持现在的节奏即可。',
+    };
+    return [anomaly, advice];
   }, [range, dayData, rangeData, anchor, todayRhythm]);
 
+  /**
+   * 「AI 综合分析」最终展示行。
+   *  - day：走 resolveInsightRows —— AI 行不满足质量门禁（<3 行 / 有超长行 / 首行不是皮质醇节律）
+   *    时**整段回落**规则分点，满足时与规则分点合流。这样无论如何都是分点、首行都是皮质醇节律。
+   *  - 周/月/年：AI 只产出「今日」视角的 recovery 分析，与区间聚合口径不符，直接用区间规则分点。
+   */
+  const aiBannerRows = useMemo<SummaryRow[]>(
+    // 历史日：把该日 dk 传进去，规则兜底也按该日（AI 行同样来自该日事实）
+    () => (range === 'day' ? resolveInsightRows('recovery', aiRecovery.rows, aiDayArg) : aiFallbackRows),
+    // 依赖 text（字符串，身份稳定）而非 rows（每次渲染新数组），避免每帧重算 14 天节律
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [range, aiRecovery.text, aiFallbackRows, aiDayArg]
+  );
+
   return (
+    <>
     <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 返回头 */}
@@ -322,22 +385,28 @@ export default function EmotionCognitiveDetailScreen() {
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>身体恢复</Text>
+            {/* ★ 副标题：与情绪/脑力消耗详情页同结构（标题 + 副标题） */}
+            <Text style={styles.sub}>今日皮质醇节律 · 睡眠恢复</Text>
           </View>
         </View>
 
-        {/* 当日皮质醇节律结论（大字，仅日视图显示；周/月/年为区间聚合，无"今日"概念） */}
+        {/* 当日皮质醇节律结论（大字，仅日视图显示；周/月/年为区间聚合，无"今日"概念）
+            ★ 颜色/字重与情绪/脑力消耗详情页 Hero 完全一致：fontSize.hero + medium + textTitle */}
         {range === 'day' && (
           <View style={styles.rhythmHero}>
-            <Text style={styles.rhythmHeroLabel}>今日皮质醇节律</Text>
-            <Text style={[styles.rhythmHeroVal, { color: todayRhythmMeta.color }]}>{todayRhythmMeta.label}</Text>
+            <Text style={styles.rhythmHeroVal}>{todayRhythmLabel}</Text>
           </View>
         )}
         {/* ★ 统一选择器：日/周/月/年 + 日期步进器（与情绪/脑力消耗详情页一致） */}
         <RangeSwitch value={range} onChange={setRange} />
         <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
-        {/* AI 综合分析（真实端侧 MiraAI 分点行；生成中 pending 提示，失败回落规则分点） */}
-        <InsightBanner rows={aiRecovery.rows ?? aiFallbackRows} pending={aiRecovery.loading} />
+        {/* AI 综合分析（真实端侧 MiraAI 分点行；生成中 pending 提示，不合格/失败回落规则分点） */}
+        <InsightBanner
+          rows={aiBannerRows}
+          pending={aiRecovery.loading}
+          onMore={() => openChat('帮我详细分析今天的皮质醇节律')}
+        />
 
         {/* ── 内容 ── */}
         {range === 'day' ? (
@@ -347,6 +416,12 @@ export default function EmotionCognitiveDetailScreen() {
         ) : null}
       </View>
     </ScreenContainer>
+    <ChatSheet
+      visible={chatVisible}
+      onClose={() => setChatVisible(false)}
+      initialQuestion={chatQuestion}
+    />
+    </>
   );
 }
 
@@ -409,8 +484,8 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
         </View>
       </Card>
 
-      {/* 睡眠恢复摘要 */}
-      <SleepCard sl={sl} slPrev={slPrev} />
+      {/* 睡眠恢复摘要（睡眠负载 + 恢复） */}
+      <SleepCard sl={sl} slPrev={slPrev} anchorDayMs={anchorDayMs} />
     </>
   );
 }
@@ -588,7 +663,7 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>睡眠恢复 · 区间均值</Text>
           <View style={styles.summaryGrid}>
-            <SumCell label="平均睡眠负债" value={cur.sleepDebt != null ? `${cur.sleepDebt.toFixed(1)}h` : '—'} sub={prev.sleepDebt != null && cur.sleepDebt != null ? `上期 ${fmtDelta(cur.sleepDebt - prev.sleepDebt, 1)}h` : '对比上一周期'} />
+            <SumCell label="平均睡眠负载" value={cur.sleepLoad != null ? `${cur.sleepLoad.toFixed(0)}` : '—'} sub={prev.sleepLoad != null && cur.sleepLoad != null ? `上期 ${fmtDelta(cur.sleepLoad - prev.sleepLoad)}` : '对比上一周期'} />
             <SumCell label="平均睡眠评分" value={cur.sleepScore != null ? `${cur.sleepScore.toFixed(0)}` : '—'} sub={prev.sleepScore != null && cur.sleepScore != null ? `上期 ${fmtDelta(cur.sleepScore - prev.sleepScore)}` : '对比上一周期'} />
           </View>
         </View>
@@ -597,8 +672,17 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
   );
 }
 
-/** 睡眠恢复卡片（日/区间共用） */
-function SleepCard({ sl, slPrev }: { sl: ReturnType<typeof healthStore.getSleep>; slPrev: ReturnType<typeof healthStore.getSleep> }) {
+/**
+ * 睡眠恢复卡片（日视图）：**睡眠负载** + **恢复**。
+ *  - 睡眠负载：参考成熟算法（WHOOP 睡眠债 / Apple 就寝一致性 / Oura Timing / Fitbit·Garmin 碎片化与阶段质量），
+ *    见 `lib/sleepLoad.ts`；窗口 = 该日及此前共 14 天。越高越「欠账」。
+ *  - 恢复：当晚睡眠质量分（`lib/sleepScore.ts`：时长达成 / 深睡结构 / 起夜）。
+ *  - 晚睡归入「睡眠负载」（时机维度），不再和恢复分重复计分。
+ */
+function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthStore.getSleep>; slPrev: ReturnType<typeof healthStore.getSleep>; anchorDayMs: number }) {
+  // ★ hooks 不能放在下面 early-return 之后（hook 必须无条件调用）
+  const load = useMemo(() => computeSleepLoad(sleepWindowEndingAt(anchorDayMs)), [anchorDayMs, sl]);
+
   if (!sl || sl.total <= 0) {
     return (
       <Card padded={false}>
@@ -609,26 +693,42 @@ function SleepCard({ sl, slPrev }: { sl: ReturnType<typeof healthStore.getSleep>
       </Card>
     );
   }
-  const totalH = (sl.total / 60).toFixed(1);
-  const debtNow = Math.max(0, +(8 - parseFloat(totalH)).toFixed(1));
-  const debtPrev = slPrev ? Math.max(0, +(8 - slPrev.total / 60).toFixed(1)) : null;
+  const totalH = sl.total / 60;
+  const prevH = slPrev && slPrev.total > 0 ? slPrev.total / 60 : null;
   const scoreD = (sl.score ?? 0) - (slPrev?.score ?? 0);
+  const scoreLabel =
+    sl.score == null ? '—'
+    : sl.score >= 90 ? '恢复优秀'
+    : sl.score >= 80 ? '恢复良好'
+    : sl.score >= 70 ? '恢复正常'
+    : sl.score >= 55 ? '恢复偏慢'
+    : '需改善';
+  const debtTxt = load.debtH >= 0.1 ? ` · 欠 ${load.debtH.toFixed(1)}h` : '';
   return (
     <Card padded={false}>
       <View style={styles.pad}>
         <Text style={styles.cardTitle}>睡眠恢复摘要</Text>
         <View style={styles.summaryGrid}>
-          <SumCell label="睡眠负债" value={`${debtNow}h`} sub={(() => { const d = debtNow; return d <= 0 ? '充足' : d < 1 ? '轻微不足' : d < 2 ? '中度不足' : '严重不足'; })()} />
-          <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={sl.score >= 85 ? '恢复良好' : sl.score >= 70 ? '恢复正常' : sl.score >= 55 ? '恢复偏慢' : '需改善'} />
+          <SumCell label="睡眠负载" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} />
+          <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} />
         </View>
+        {(sl.sleepTime || sl.wakeTime) && (
+          <Text style={styles.sleepMeta}>
+            入睡 {sl.sleepTime ?? '—'} · 起床 {sl.wakeTime ?? '—'}{isLateBedtime(sl.sleepTime) ? ' · 偏晚' : ''} · 时长 {totalH.toFixed(1)}h
+          </Text>
+        )}
         <View style={styles.compareRow}>
           <View style={styles.compareCell}>
             <Text style={styles.compareLabel}>相比前一天</Text>
             <Text style={styles.compareValue}>
               {(() => {
                 const parts: string[] = [];
-                if (debtPrev != null && debtNow !== debtPrev) parts.push(`负债 ${debtNow < debtPrev ? '减' : '增'} ${Math.abs(+(debtNow - debtPrev).toFixed(1))}h`);
-                if (sl.score != null && slPrev?.score != null && Math.abs(scoreD) >= 5) parts.push(`评分 ${scoreD >= 0 ? '+' : ''}${scoreD}`);
+                if (prevH != null && Math.abs(totalH - prevH) >= 0.1) {
+                  parts.push(`时长${totalH > prevH ? '增' : '减'} ${Math.abs(totalH - prevH).toFixed(1)}h`);
+                }
+                if (sl.score != null && slPrev?.score != null && Math.abs(scoreD) >= 3) {
+                  parts.push(`评分 ${scoreD >= 0 ? '+' : ''}${scoreD}`);
+                }
                 return parts.length > 0 ? parts.join(' ') : '基本持平';
               })()}
             </Text>
@@ -678,10 +778,12 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
+  // ★ 与情绪/脑力消耗详情页（EnergyDetailScreen）完全一致：标题 textTitle + 副标题 sub
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
+  sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
   rhythmHero: { marginTop: theme.sp(1), marginBottom: theme.sp(1) },
-  rhythmHeroLabel: { fontSize: theme.fontSize.body, color: theme.colors.textWhite80, marginBottom: theme.sp(0.5) },
-  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any },
+  // 大字结论：与另两页 Hero 同款（hero 字号 + medium + textTitle；不再用状态色）
+  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
 
   pad,
   cardTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(2) },
@@ -696,6 +798,8 @@ const styles = StyleSheet.create({
   compareCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
   compareLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5) },
   compareValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, textAlign: 'center' },
+  /** 睡眠恢复卡：入睡/起床/时长 一行小字 */
+  sleepMeta: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1.5), textAlign: 'center' },
   compareYesterday: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), textAlign: 'right' },
 
   levelChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },

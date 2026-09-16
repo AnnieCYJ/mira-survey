@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
@@ -9,6 +10,9 @@ import TaskDeck from '../components/TaskDeck';
 import Icon from '../components/Icon';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { TOOL_GRID } from '../data/tasks';
+import type { RootStackParamList } from '../navigation/RootStackNavigator';
+import type { TabParamList } from '../navigation/BottomTabNavigator';
+
 
 const TOOL_IMAGES: Record<string, number> = {
   '呼吸冥想': require('../assets/card_meditation.jpg'),
@@ -17,7 +21,7 @@ const TOOL_IMAGES: Record<string, number> = {
   '知识学习': require('../assets/card_learn.png'),
 };
 import { useAppState } from '../state/AppState';
-import type { TabParamList } from '../navigation/BottomTabNavigator';
+
 
 const RECENT: ListItem[] = [
   { dot: theme.colors.accent1, title: '4-7-8 呼吸法', sub: '昨天 · 8 分钟', right: '已完成' },
@@ -27,7 +31,8 @@ const RECENT: ListItem[] = [
 
 export default function MeditationScreen() {
   const { tools, completeTask } = useAppState();
-  const navigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
+  type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
+  const navigation = useNavigation<NavProp>();
 
   const handleComplete = useCallback(
     (id: string) => {
@@ -45,7 +50,14 @@ export default function MeditationScreen() {
 
       <View style={styles.grid}>
         {TOOL_GRID.map((t) => (
-          <TouchableOpacity key={t.name} activeOpacity={0.88} style={styles.gridCell}>
+          <TouchableOpacity
+            key={t.name}
+            activeOpacity={0.88}
+            style={styles.gridCell}
+            onPress={() => {
+              if (t.name === '呼吸冥想') navigation.navigate('Breathing');
+            }}
+          >
             <ImageBackground
               source={TOOL_IMAGES[t.name]}
               style={styles.toolCard}

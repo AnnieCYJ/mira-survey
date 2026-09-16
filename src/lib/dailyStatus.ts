@@ -14,6 +14,7 @@
  */
 
 import { computeCycle, type CycleInfo, type CyclePhase } from './cycleMath';
+import { computeSleepScore as computeSleepScoreCore, type SleepScoreConst } from './sleepScore';
 
 export type PhaseBucket = CyclePhase | 'unknown';
 
@@ -48,7 +49,8 @@ export interface AlgoConst {
   W_HRV: number;
   W_RHR: number;
   W_SLEEP: number;
-  TARGET_DURATION: number; // 分钟
+  TARGET_DURATION: number; // 分钟：满分区间下限
+  TARGET_DURATION_MAX: number; // 分钟：满分区间上限，超过后线性轻扣
   TARGET_DEEP_PCT: number;
   TARGET_GETUP: number;
   W_D: number;
@@ -74,8 +76,9 @@ export const ALGO_DEFAULTS: AlgoConst = {
   W_RHR: 0.25,
   W_SLEEP: 0.35,
   TARGET_DURATION: 450, // 7.5h
+  TARGET_DURATION_MAX: 510, // 8.5h：满分区间上限（原来 9h 会让 9.0h 卡边界不扣分 → 满屏 100）
   TARGET_DEEP_PCT: 20,
-  TARGET_GETUP: 1,
+  TARGET_GETUP: 3, // 起夜平滑：每次约扣 10 分（原为 1 → 0/1 悬崖）
   W_D: 0.35,
   W_DEEP: 0.35,
   W_G: 0.3,
@@ -179,15 +182,15 @@ export interface SleepInput {
   getUp: number | null;
 }
 
+/**
+ * 睡眠评分（0–100）。**实现已抽到 `lib/sleepScore.ts`**（纯函数、零依赖），
+ * 以便 `data/healthStore.ts` 在读取/载入睡眠时用同一公式重算（healthStore → 本文件 → cycleMath
+ * → healthStore 会成环，故不能直接引用本文件）。
+ *
+ * 这里保留同名导出 + `AlgoConst` 入参，调用方（RingBleManager / 本文件的就绪度聚合）无需改动。
+ */
 export function computeSleepScore(s: SleepInput, c: AlgoConst): number {
-  if (!s.sleepTotal || s.sleepTotal <= 0) return 0;
-  const durNorm = clamp(s.sleepTotal / c.TARGET_DURATION, 0, 1);
-  const total = s.sleepTotal;
-  const deepPct = ((s.sleepDeep ?? 0) / total) * 100;
-  const deepNorm = clamp(deepPct / c.TARGET_DEEP_PCT, 0, 1);
-  const getUpNorm = clamp(1 - (s.getUp ?? 0) / c.TARGET_GETUP, 0, 1);
-  const v = 100 * (c.W_D * durNorm + c.W_DEEP * deepNorm + c.W_G * getUpNorm);
-  return clamp(v, 0, 100);
+  return computeSleepScoreCore(s, c as SleepScoreConst);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

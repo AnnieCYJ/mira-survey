@@ -193,20 +193,26 @@ export default function TempBiphasicAnalysis({ ring, cycleInfo }: Props) {
     fertText = '暂无法确定排卵日，受孕窗待体温连续记录后补充。';
   }
 
-  return (
-    <AiAnalysis foot="基于戒指真测皮肤温度与 symptothermal 开源算法推算，仅供参考，不构成医学诊断。">
-      {shift && mag != null ? (
-        <View style={styles.metricRow}>
-          <View style={styles.metricChip}>
-            <Text style={styles.metricValue}>{mag.toFixed(2)}</Text>
-            <Text style={styles.metricUnit}>°C 双相幅度</Text>
-          </View>
-          <Text style={styles.metricDetail}>
-            低温相 {baseline?.toFixed(2)}°C → 高温相 {cover?.toFixed(2)}°C · 高温期 {highDays} 天
-          </Text>
-        </View>
-      ) : null}
+  // ── 标题 + 建议 ──
+  const phaseLabel = cycleInfo?.phaseLabel ?? '';
+  const dayStr = cycleInfo?.dayInCycle != null ? `周期第 ${cycleInfo.dayInCycle} 天` : '体温监测';
+  const bipTitle = shift
+    ? `${phaseLabel || '双相监测'} · ${ovTone === 'good' ? '排卵已确认' : ovTone === 'warn' ? '排卵存疑' : '检测到双相'}`
+    : `${phaseLabel || '双相监测'} · 尚未检测到双相`;
 
+  const bipAdvice: string[] = [];
+  if (!shift) bipAdvice.push('尚未检测到体温双相，连续佩戴 ≥12 天覆盖排卵前后即可补充');
+  if (lutTone === 'warn') bipAdvice.push('黄体功能偏弱，建议连续佩戴更多周期确认');
+  if (ovTone === 'warn') bipAdvice.push('排卵确认存疑，注意保证佩戴连续性');
+  if (shift && bipAdvice.length === 0) bipAdvice.push('体温双相规律，保持连续佩戴记录');
+
+  return (
+    <AiAnalysis
+      title={bipTitle}
+      subtitle={dayStr}
+      advice={bipAdvice}
+      foot="基于戒指真测皮肤温度与 symptothermal 开源算法推算，仅供参考，不构成医学诊断。"
+    >
       <AiResultRow tone={ovTone} title="确认排卵">
         {ovText}
       </AiResultRow>

@@ -10,6 +10,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import Card from './Card';
+import AiAnalysis, { AiResultRow } from './AiAnalysis';
+import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
 import { healthStore, dayKey } from '../data/healthStore';
@@ -71,9 +73,22 @@ export function buildRhythmInsights(r: CortisolRhythmResult, isToday: boolean): 
  * 身体恢复详情页顶部已有同结论大字，传 false 去重（洞察页不变）。
  * 可选 showInsights（默认 true）：控制卡片底部「📊 节律洞察」文字块；
  * 身体恢复页传 false（洞察文案已并入其 AI 综合分析，共用 buildRhythmInsights）。
+ * 可选 insightRows：传入则用「AI 分析」行（与身体恢复页 AI 综合分析**同源**、同一 AiResultRow 组件）
+ * 替代静态「节律洞察」——洞察页睡眠 tab 用它承接恢复页同款 AI，保证两处一致。
  * 点击卡片 → 跳转 MetricDetail（皮质醇日/周/月/年趋势）。
  */
-export default function CortisolDailyChart({ anchorDayMs, showStatusChip = true, showInsights = true }: { anchorDayMs?: number; showStatusChip?: boolean; showInsights?: boolean } = {}) {
+export default function CortisolDailyChart({
+  anchorDayMs,
+  showStatusChip = true,
+  showInsights = true,
+  insightRows,
+}: {
+  anchorDayMs?: number;
+  showStatusChip?: boolean;
+  showInsights?: boolean;
+  /** 替代静态「节律洞察」的 AI 分析行（与身体恢复页 AI 综合分析同源：皮质醇节律 + 今日建议）。传入则优先展示 AI。 */
+  insightRows?: AiInsightRow[];
+} = {}) {
   const navigation = useNavigation<any>();
   const isToday = anchorDayMs == null || dayKey(anchorDayMs) === dayKey(Date.now());
   const targetMs = anchorDayMs ?? Date.now();
@@ -144,7 +159,7 @@ export default function CortisolDailyChart({ anchorDayMs, showStatusChip = true,
           <Text style={styles.title}>{title}</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
         </View>
-        <TrendChart r={r} sleepWindow={sleepWindow}  />
+        <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} />
       </TouchableOpacity>
 
       {/* ── 节律分析 ── */}
@@ -240,15 +255,39 @@ export default function CortisolDailyChart({ anchorDayMs, showStatusChip = true,
         </View>
       )}
 
-      {/* AI 洞察文字（showInsights=false 时由身体恢复页 AI 综合分析承接同一份文案） */}
-      {showInsights && insights.length > 0 && (
-        <View style={styles.insightBox}>
-          <Text style={styles.insightTitle}>📊 节律洞察</Text>
-          {insights.map((line, i) => (
-            <Text key={i} style={styles.insightLine}>{line}</Text>
-          ))}
-        </View>
-      )}
+      {/* AI 分析：统一 AiAnalysis 外壳 + 大标题 + 小点建议 */}
+      {(() => {
+        // 标题
+        const { css } = r;
+        const cssLabel = Number.isFinite(css) ? (css > 10 ? '早起型' : Math.abs(css) < 10 ? '中间型' : '晚起型') : '节律未定型';
+        const cortisolTitle = todayHigh && todayDys ? `${cssLabel} · 皮质醇偏高 + 节律紊乱`
+          : todayHigh ? `${cssLabel} · 皮质醇偏高`
+          : todayDys ? `${cssLabel} · 节律紊乱`
+          : `${cssLabel} · 节律正常`;
+        const cortisolSub = isToday ? '今日' : mdLabel;
+
+        if (insightRows && insightRows.length > 0) {
+          return (
+            <AiAnalysis title={cortisolTitle} subtitle={cortisolSub}>
+              {insightRows.map((row, i) => (
+                <AiResultRow key={`${row.title}-${i}`} tone={row.tone} title={row.title}>
+                  {row.body}
+                </AiResultRow>
+              ))}
+            </AiAnalysis>
+          );
+        }
+        if (showInsights && insights.length > 0) {
+          return (
+            <AiAnalysis title={cortisolTitle} subtitle={cortisolSub}>
+              <AiResultRow tone={r.today.high ? 'warn' : 'good'} title={r.today.high ? '今日皮质醇偏高' : '今日节律良好'}>
+                {insights.join(' ')}
+              </AiResultRow>
+            </AiAnalysis>
+          );
+        }
+        return null;
+      })()}
 
       {/* 持续天数已在上方「持续性」卡片展示 */}
     </Card>

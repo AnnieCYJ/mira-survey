@@ -243,13 +243,20 @@ export function analyzeCortisol(samples: CortisolSample[], baselineDays = 14): C
   if (level === 'normal' && flags.length === 0) flags.push('节律正常（压力代理，仅供参考）');
   const result: CortisolRhythmResult = { cosinor: cos, css, baseline, hourlyMean: hourly, hourlyPredicted, dailyMesors, status: { level, flags }, sustainedHighStreak: maxStreak, todayLevel, today: { high: todayHigh, dys: todayDys }, highStreak, dysStreak };
   // ↓ 自动持久化
+  //   ★ 只在「多日窗口（含今天）」的分析上落缓存：
+  //     历史日浏览、TrendChart 的单日拟合等调用，语义不是「今日节律」；早期它们也写到
+  //     今天的键上，会把 AI 事实串（getCortisolBlock）读到的今日缓存污染成单日结果
+  //     （峰值/MESOR/振幅/异常项全错）→ AI 文案与页面大字对不上。
   try {
-    const _level: 'normal' | 'sustained_high' | 'dysregulated' =
-      level === 'normal' ? 'normal' : level === 'sustained_high' ? 'sustained_high' : 'dysregulated';
-    healthStore.saveAnalysis(_dayKey(Date.now()), 'cortisol', {
-      mesor: cos.mesor, amplitude: cos.amplitude, acrophaseH: cos.acrophaseH,
-      css, status: _level, sustainedHighStreak: maxStreak,
-    });
+    const newestMs = raw.reduce((m, s) => (s.t > m ? s.t : m), raw[0].t);
+    if (baselineDays > 1 && dayKeyOf(newestMs) === dayKeyOf(Date.now())) {
+      const _level: 'normal' | 'sustained_high' | 'dysregulated' =
+        level === 'normal' ? 'normal' : level === 'sustained_high' ? 'sustained_high' : 'dysregulated';
+      healthStore.saveAnalysis(_dayKey(newestMs), 'cortisol', {
+        mesor: cos.mesor, amplitude: cos.amplitude, acrophaseH: cos.acrophaseH,
+        css, status: _level, sustainedHighStreak: maxStreak,
+      });
+    }
   } catch {}
   return result;
 }

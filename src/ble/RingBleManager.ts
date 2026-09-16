@@ -35,6 +35,7 @@ import {
 } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from '../data/healthStore';
+import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
 import {
   computeSeed,
   deriveDaytimeBaseline,
@@ -1714,7 +1715,8 @@ class NativeRingSource {
         if (st) patch.sleepTime = st;
         if (wt) patch.wakeTime = wt;
       }
-      postLog('JS-SLEEP', `handleSleepDay date=${raw.date} total=${total} deep=${deep} light=${light} rem=${rem} awake=${awake} insomnia=${insomnia} score=${score.toFixed(1)} sdkScore=${sdkScore}`);
+      // sleepTime/wakeTime 一并打出：睡眠负载的「晚睡/规律性」维度依赖它，便于核对
+      postLog('JS-SLEEP', `handleSleepDay date=${raw.date} total=${total} deep=${deep} light=${light} rem=${rem} awake=${awake} insomnia=${insomnia} score=${score.toFixed(1)} sdkScore=${sdkScore} 入睡=${v.sleepTime ?? '-'} 起床=${v.wakeTime ?? '-'} getUp=${getUp}`);
       this.push(patch);
     } catch (e) {
     }
@@ -2171,6 +2173,9 @@ class RingConnectionImpl {
   private lastCurveAccumTs: number | null = null;
   /** 用户在 App 内手动记录的经期（本地 cycleLog 文件），作为相位的权威兜底来源 */
   private localCycle: CycleLog | null = null;
+  /** healthStore 写入后延迟落盘用的 debounce 定时器（见 scheduleHealthStorePersist） */
+  private healthStorePersistTimer: ReturnType<typeof setTimeout> | null = null;
+  private healthStorePersistSubscribed = false;
 
   // ── 全天时间槽聚合存储：原生实时流高频到达，先落入"今日时间槽"，再派生 history 供卡片绘制 ──
   private bucketDay = '';
@@ -3872,6 +3877,18 @@ class RingConnectionImpl {
     return { core, ext };
   }
 
+  /**
+   * healthStore 写入后延迟落盘（debounce 5s）。回填出的合成皮质醇/eda 等
+   * 借此在重载前落盘，避免「重载即丢历史」；同时让实时流的 intraday 也能定期持久化。
+   */
+  private scheduleHealthStorePersist(): void {
+    if (this.healthStorePersistTimer != null) return;
+    this.healthStorePersistTimer = setTimeout(() => {
+      this.healthStorePersistTimer = null;
+      void this.saveSnapshot();
+    }, 5000);
+  }
+
   private async saveSnapshot() {
     if (!this.hasPersistableData()) return; // 不把空状态覆盖掉已有的好数据
     // 落盘前先把「当日」各核心指标日均写进 *Daily（不依赖跨天瞬间，避免当天被丢）
@@ -4006,7 +4023,14 @@ class RingConnectionImpl {
           const json = JSON.parse(raw);
           if (json && json.schema === 2) {
             healthStore.loadV2(json);
-            postLog('RingBle', '[healthStore] 已从 v2 快照恢复');
+            // ★ 补齐睡眠：v2 快照的 sleep 可能为空，而 legacy 快照的 sleepDaily 一直有数据；
+            //   走 v2 分支就不会再执行 v1 迁移，若不补，重启后「睡眠恢复摘要」会空白。
+            const v2SleepDays = json.sleep && typeof json.sleep === 'object' ? Object.keys(json.sleep).length : 0;
+            const added = healthStore.hydrateSleepFromLegacy(legacySnap?.sleepDaily);
+            postLog(
+              'RingBle',
+              `[healthStore] 已从 v2 快照恢复（v2.sleep=${v2SleepDays} 天，legacy 睡眠补齐 ${added} 天）`
+            );
             return;
           }
         }
@@ -4020,6 +4044,24 @@ class RingConnectionImpl {
     } catch {
       /* 忽略 */
     }
+  }
+
+  /**
+   * 睡眠评分是**派生值**（由冻结的原始 total/deep/getUp 算出）。快照里存的是旧公式的结果，
+   * 若原样恢复，改了公式也"看不出变化"（实测：老快照里的 100 一直沿用）。
+   * 载入时统一按当前公式重算；原始测量字段原样保留（不违反"冻结测量"原则）。
+   */
+  private rescoreSleep(s: any): any {
+    if (!s) return s;
+    const total = Number(s.total) || 0;
+    if (total <= 0) return s;
+    return {
+      ...s,
+      score: computeSleepScore(
+        { sleepTotal: total, sleepDeep: Number(s.deep) || 0, getUp: Number(s.getUp) || 0 },
+        ALGO_DEFAULTS
+      ),
+    };
   }
 
   private async loadPersisted() {
@@ -4056,7 +4098,7 @@ class RingConnectionImpl {
       if (snap.daily) patch.daily = snap.daily;
       if (snap.dailyHistory) patch.dailyHistory = snap.dailyHistory;
       if (snap.sleepStages) patch.sleepStages = snap.sleepStages;
-      if (snap.sleepSummary) patch.sleepSummary = snap.sleepSummary;
+      if (snap.sleepSummary) patch.sleepSummary = this.rescoreSleep(snap.sleepSummary);
       if (snap.sleepTime) patch.sleepTime = snap.sleepTime;
       if (snap.wakeTime) patch.wakeTime = snap.wakeTime;
       if (snap.female) patch.female = snap.female;
@@ -4068,7 +4110,14 @@ class RingConnectionImpl {
       if (snap.spo2Daily) patch.spo2Daily = snap.spo2Daily;
       if (snap.edaDaily) patch.edaDaily = snap.edaDaily;
       if (snap.rrDaily) patch.rrDaily = snap.rrDaily;
-      if (snap.sleepDaily) patch.sleepDaily = snap.sleepDaily;
+      if (snap.sleepDaily) {
+        // ★ 按当前公式重算每天评分（原始 total/deep/getUp 保留），否则快照里的旧分数会一直沿用
+        const fixedDaily: Record<string, any> = {};
+        for (const [k, v] of Object.entries(snap.sleepDaily as Record<string, any>)) {
+          fixedDaily[k] = this.rescoreSleep(v);
+        }
+        patch.sleepDaily = fixedDaily;
+      }
       if (snap.stepDaily) patch.stepDaily = snap.stepDaily;
       if (snap.lastSyncedAt) patch.lastSyncedAt = snap.lastSyncedAt;
       if (snap.extDaily) patch.extDaily = snap.extDaily;
@@ -4112,6 +4161,26 @@ class RingConnectionImpl {
       this.native.setSyncEnabled(this.syncEnabled);
       // reconcile：把恢复的「当日」时间槽反推回各自 *Daily（即使戒指尚未重连，最后活跃日也不丢）
       this.syncDailyFromBuckets();
+      // ★ 启动即回填派生指标历史（cortisol/eda/sns/emotion/skin/fatigue）：
+      //   用已恢复的 stress 重算历史 intraday。修复「Metro 重载/重启后历史皮质醇丢失」——
+      //   重载后无「App 回前台」事件、30min 周期回填计时器也重置、且首屏未必是详情页，
+      //   先前只在详情页挂载时才跑回填，导致重载后历史为空。此处保证每次冷启动都补齐。
+      try {
+        const filled = estimateOfflineMetricsRecent(30);
+        if (filled > 0) {
+          postLog('RingBle', `[BOOT_BACKFILL] 启动回填派生指标历史：${filled} 天`);
+        }
+      } catch (e) {
+        postLog('RingBle', `[BOOT_BACKFILL] 失败（忽略）: ${e instanceof Error ? e.message : e}`);
+      }
+      // ★ 订阅 healthStore：任何写入（实时流 / 回填 / 手动）后 5s 内自动落盘，
+      //   保证回填出的合成皮质醇/eda 等不因子弹重载前未存盘而丢失。一次性订阅。
+      if (!this.healthStorePersistSubscribed) {
+        this.healthStorePersistSubscribed = true;
+        healthStore.subscribe(() => this.scheduleHealthStorePersist());
+      }
+      // 启动回填出的历史立即落盘：否则紧接着再重载仍靠重算（虽自愈，但不如直接冻结）。
+      void this.saveSnapshot();
       postLog('RingBle', '已从本地持久化恢复真实数据（跨 ⌘R 保留趋势曲线）');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

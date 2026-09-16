@@ -12,18 +12,24 @@
  *  5. **优雅降级**：模型未打包 / 无数据 / 解析失败 → 返回 null，由 UI 回落到规则文案。
  */
 import * as FileSystem from 'expo-file-system';
-import { getLlamaContext } from './model';
-import { buildHealthSnapshot } from './health';
-import { dayKey } from '../data/healthStore';
+import { runOnModel } from './model';
+import {
+  buildHealthSnapshot,
+  getTodayCortisolSummary,
+  type TodayCortisolSummary,
+} from './health';
+import { healthStore, dayKey, parseDayKey, type SleepSummary } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
+import { computeStressReport } from '../lib/stressAlgorithm';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { reportNowMsForDay } from '../lib/dayAnchor';
+import { postLog } from '../lib/logger';
+import { parseInsightRows, type AiInsightRow, type AiTone } from './parseRows';
 
-export type InsightKind = 'overview' | 'cycle' | 'recovery';
-export type AiTone = 'good' | 'warn' | 'neutral';
-export interface AiInsightRow {
-  tone: AiTone;
-  title: string;
-  body: string;
-}
+export type InsightKind = 'overview' | 'cycle' | 'recovery' | 'today';
+export type { AiInsightRow, AiTone };
+export { parseInsightRows };
 
 const FILE = (FileSystem.documentDirectory ?? '') + 'mira_ai_insight.json';
 const MIN_REGEN_MS = 30 * 60 * 1000; // 同一数据指纹 30 分钟内不重复生成
@@ -33,12 +39,26 @@ interface CacheEntry {
   day: string;
   text: string;
   at: number;
+  /**
+   * 结论级状态指纹（见 `insightTag`）。仅 recovery 通道使用：
+   * 皮质醇结论（正常/偏高/紊乱 + 连续天数）一变，旧文案立即作废。
+   * 旧落盘缓存没有该字段 → 视为缺失（`''`）→ 一次性重新生成。
+   */
+  tag?: string;
 }
-type CacheMap = Partial<Record<InsightKind, CacheEntry>>;
+/**
+ * 缓存键：今天沿用旧的 `kind`；历史日按 `kind@YYYY-MM-DD` 分桶（各日独立冻结、互不覆盖）。
+ * 键变成 string 后旧落盘文件（kind 为键）依然兼容。
+ */
+type CacheMap = Record<string, CacheEntry>;
 
 let memCache: CacheMap = {};
 let cacheLoaded = false;
-const inFlight: Partial<Record<InsightKind, Promise<string | null>>> = {};
+const inFlight: Record<string, Promise<string | null> | undefined> = {};
+
+const todayDk = (): string => dayKey(Date.now());
+/** 今天 → `kind`；历史日 → `kind@dk`。 */
+const cacheKeyOf = (kind: InsightKind, dk: string): string => (dk === todayDk() ? kind : `${kind}@${dk}`);
 
 // ── 缓存读写 ────────────────────────────────────────────────────────────────
 async function loadCache(): Promise<void> {
@@ -66,11 +86,53 @@ async function saveCache(): Promise<void> {
 // 模块加载即预热缓存，让首帧就能命中（避免显示规则文案后又闪成 AI 文案）
 void loadCache();
 
-/** 同步读取今天已生成的文案（未生成/不是今天 → null），供首帧直接渲染。 */
-export function peekInsight(kind: InsightKind): string | null {
-  const c = memCache[kind];
+/**
+ * 与 AI 文案强相关的「结论级状态指纹」。
+ *
+ * 为什么必须有它：AI 文案是**按天缓存**的（生成一次当天不再重算），而页面上那行大字是
+ * **每次数据变动都重算**的。只比对日期的话，就会出现
+ * 「早上生成时皮质醇正常 → 下午样本补齐后大字翻成『偏高』，但 AI 仍说正常」的自相矛盾。
+ * 把结论做成指纹后，结论一变缓存即失效 → 触发重新生成，两者不再打架。
+ *
+ * 非 recovery 通道不需要（返回空串，保持原行为）。
+ */
+export function insightTag(kind: InsightKind, dayDk?: string): string {
+  if (kind === 'recovery') {
+    const today = todayDk();
+    const isToday = !dayDk || dayDk === today;
+    const cs = isToday ? getTodayCortisolSummary() : cortisolSummaryForDay(dayDk!);
+    if (!cs) return 'none';
+    return `${cs.level}#${cs.highStreak}#${cs.dysStreak}`;
+  }
+  // 洞察页综合分析也含「结论 + 关键数值」（如「压力峰值 X:00」「今日 N 次压力事件」），
+  // 同样是按天冻结的文案 → 数值变了不重算就会和页面自相矛盾（本次「峰值 0:00」就是这类）。
+  // 用**粗分桶**做指纹：只在结论级变化时重算，避免每来一个样本就跑一次端侧推理。
+  if (kind === 'overview') {
+    try {
+      const s = computeStressReport();
+      const cs = getTodayCortisolSummary();
+      const loadBucket = s.emotionalLoad != null ? Math.floor(s.emotionalLoad / 20) : 'na';
+      const peakBucket = s.peakHour != null ? Math.floor(s.peakHour / 3) : 'na';
+      return `ov#${cs?.level ?? 'na'}#${Math.min(9, s.events.length)}#${loadBucket}#${peakBucket}`;
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+/** 同步读取已生成的文案（未生成/不是该日/结论已变 → null），供首帧直接渲染。传 dayDk 则取该历史日缓存。 */
+export function peekInsight(kind: InsightKind, dayDk?: string): string | null {
+  // today kind：强制每次重新推理，不走缓存
+  if (kind === 'today') return null;
+  const dk = dayDk ?? todayDk();
+  const c = memCache[cacheKeyOf(kind, dk)];
   if (!c) return null;
-  return c.day === dayKey(Date.now()) ? c.text : null;
+  if (c.day !== dk) return null;
+  // ★ 结论级状态变了（例：皮质醇 正常 → 偏高）→ 旧文案作废，交回上层重新生成。
+  //   否则会「大字已翻成偏高、AI 仍说正常」。
+  if ((c.tag ?? '') !== insightTag(kind, dk)) return null;
+  return c.text;
 }
 
 // ── 真实数据 + 指纹 ────────────────────────────────────────────────────────
@@ -92,194 +154,748 @@ function buildFacts(): { facts: string; sig: string } {
 }
 
 // ── 提示词（= 「案例格式」要求） ────────────────────────────────────────────
-const OVERVIEW_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据给出的【用户健康数据】做解读，绝不编造数据，也不假设数据里没有的事。
-输出要求（严格遵守）：
-1. 只输出一段话，60–110 个汉字；不要换行、不要分点、不要 Markdown、不要 emoji、不要引号包裹。
-2. 结构固定为三句：① 第 1 句说出最关键的数据事实（必须引用数据里的真实数值）→ ② 第 2 句解释它在生理/状态上意味着什么 → ③ 第 3 句给一条今天或这两天可执行的具体建议。
-3. 用第二人称「你」，语气温和、口语化，像懂她的朋友在说话。
-4. 若数据不足以支撑某项结论，就明确说"还缺哪项数据、继续佩戴多久可以生成"，不要硬编。
-5. 不做医学诊断，不给药物剂量建议。`;
+/**
+ * 三个 kind 共用的输出格式硬约束（1.5B 模型必须把格式说死，否则解析必挂）。
+ * 注意：各 kind 的**总行数**在各自的 *_SYS 里规定（overview = 分析一段话 + 建议一段话，共 2 段；
+ * recovery = 2 点：皮质醇节律 + 今日建议），这里只定通用格式，不写死行数。
+ */
+const FORMAT_RULES = `
+【输出格式（最高优先级，必须逐字遵守）】
+- 每行严格以「good|」或「warn|」或「neutral|」开头，即 语气|标题|正文 三段。
+- 行与行之间只允许一个换行符，不要空行。
+- 标题简洁具体：分析行用「异常数据分析」或维度名「睡眠」「生理」「代谢」「情绪压力」；建议行用「今日建议」。禁止「身体恢复」「综合分析」「健康状态」这类泛化标题。
+- 正文直接给结论、不要罗列数字；必要时代入 1 个关键数值即可。第二人称「你」，口语化。
+- 数值若引用必须与【用户健康数据】完全一致，不允许编造或改写。
+- 只讲数据里出现的维度；不编造、不假设、不要 Markdown、不要 emoji、不要编号。
+- **正文长度按通道要求**：身体恢复 / 周期每句不超过 26 字（短句）；洞察页为「一段话」，分析段约 60–120 字、建议段约 30–80 字，要有细节、不要只泛泛而谈。
+
+【正例 A（身体恢复页：2 行短句）】
+warn|皮质醇节律|今天皮质醇节律紊乱，压力负荷偏高，夜间回落不足。
+warn|今日建议|固定今晚入睡时间，下午 3 点前停咖啡因。
+
+【正例 B（洞察页：分析一段话 + 建议一段话，共 2 段）】
+warn|异常数据分析|今天皮质醇节律紊乱、夜间回落不足，血脂与血糖基本正常，深睡偏少、睡眠修复不充分；生理指标平稳、情绪与脑力负荷在线。整体看，压力与睡眠是今天的主要短板。
+warn|今日建议|固定今晚入睡时间，下午 3 点前停咖啡因；另外留 10 分钟做呼吸放松，整体节奏放慢。`;
+
+const OVERVIEW_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造，也绝不堆数字。
+
+今天的综合分析只输出 2 行，每行是一段完整的话：
+第 1 行（分析）：标题写「异常数据分析」。把今天 代谢（血液指标 / 血糖 / 皮质醇）、睡眠、生理、情绪压力 各维度综合成**一段连贯的分析**（约 60–120 字，手机约 3–5 行）——异常项重点说、正常项也要带一句，要有细节、不要只泛泛而谈；可引用【用户健康数据】里的真实数值（如血脂 / 血糖 / 深睡占比 / HRV）。
+第 2 行（建议）：标题写「今日建议」。针对分析里最突出的问题，给**一段**可执行建议（可含 2–3 个动作用逗号连成一段，约 30–80 字）。
+
+输出要求：
+- 每行严格 tone|标题|正文 三段，用「语气|标题|正文」分隔。
+- 异常用 warn，正常用 good。
+- 数值若引用必须与【用户健康数据】完全一致；不编造、不假设、不要 Markdown、不要 emoji、不要编号。
+- 只讲数据里出现的维度；不要复述本格式说明。`;
 
 const CYCLE_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据给出的【用户健康数据】做解读，绝不编造数据。
 输出要求（严格遵守）：
-1. 输出 2–3 行文本，每行一条结论，行格式严格为：tone|标题|正文
+1. 输出 3 行，每行一条结论，行格式严格为：tone|标题|正文。
 2. tone 只能是 good、warn、neutral 三者之一（表示积极 / 需注意 / 中性）。
-3. 标题不超过 10 个汉字；正文 30–60 个汉字，用第二人称「你」，口语化。
-4. 内容要围绕【当前生理周期阶段】展开：阶段生理特征 → 与你实测数据（HRV/体温/睡眠/情绪等）的关系 → 注意事项。至少一行的正文里要引用数据里的真实数值。
-5. 不要输出示例、不要输出解释、不要 Markdown、不要 emoji、不要编号前缀。
-示例（仅示意格式）：
-good|精力正在回升|你的 HRV 这几天在往上走，雌激素也在爬升，体力和情绪都会更好，适合安排重要的事。`;
+3. 标题不超过 10 个汉字；正文不超过 26 个汉字，用第二人称「你」，口语化。
+4. 内容要围绕【当前生理周期阶段】展开：阶段生理特征 → 与你实测数据（HRV/体温/睡眠/情绪等）的关系 → 注意事项。三行正文里都要引用数据里的真实数值。
+${FORMAT_RULES}`;
 
-const RECOVERY_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据给出的【用户健康数据】做解读，绝不编造数据。
-输出要求（严格遵守）：
-1. 输出 3–4 行文本，每行一条结论，行格式严格为：tone|标题|正文
-2. tone 只能是 good、warn、neutral 三者之一（表示积极 / 需注意 / 中性）。
-3. 标题不超过 6 个汉字；正文 25–50 个汉字，用第二人称「你」，口语化。
-4. 内容按维度展开：皮质醇节律（曲线形态/峰值时刻/是否偏高紊乱）→ 情绪消耗与压力事件 → 脑力负荷与恢复 → 睡眠恢复。至少两行正文要引用数据里的真实数值；数据里没有的维度直接跳过，不要硬编。
-5. 不要输出示例、不要输出解释、不要 Markdown、不要 emoji、不要编号前缀。
-示例（仅示意格式）：
-warn|皮质醇节律|今天节律形态紊乱，峰值 13:00 偏晚，下午容易疲惫，建议上午多接触自然光。`;
+const RECOVERY_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造。
+
+【用户健康数据】里的「皮质醇节律」块是这次分析的主角（含 今日节律 normal/偏高/紊乱、峰值时刻、连续偏高天数）。
+
+今天的身体恢复分析只输出 2 行：
+1. 第 1 行：标题写「皮质醇节律」，明确今天皮质醇正常/偏高/紊乱并给结论（压力负荷、夜间回落）；可顺带一句最相关的恢复表现（如深睡），不要展开多维度。
+2. 第 2 行：标题写「今日建议」，给一条恢复建议。
+
+输出要求：
+- 每行严格 tone|标题|正文 三段，正文不超过 26 字。
+- 异常用 warn，正常用 good。禁止弱化处理皮质醇。
+${FORMAT_RULES}`;
 
 // ── 推理 ───────────────────────────────────────────────────────────────────
+/**
+ * 说明：**不要**把 '\n\n' 放进 stop。
+ * 曾经加过它，结果模型在多行输出时吐一个空行就被截断 → 只剩第一行，
+ * 表现就是「身体恢复的 AI 分析只讲睡眠、不讲皮质醇」。
+ */
 async function runCompletion(
   messages: { role: string; content: string }[],
   nPredict: number,
-  temperature: number
+  temperature: number,
+  dedupKey?: string
 ): Promise<string> {
-  const ctx = await getLlamaContext();
-  let full = '';
-  const res: any = await ctx.completion(
-    {
-      messages,
-      n_predict: nPredict,
-      temperature,
-      top_p: 0.9,
-      stop: ['<|im_end|>', '用户：', 'User:', '\n\n'],
-    },
-    (data: any) => {
-      const tok = (data && data.token) || '';
-      if (tok) full += tok;
-    }
-  );
-  return String((res && res.text) || full || '').trim();
+  // ★ 走全局推理队列（串行 + 同 key 去重 + busy 退避重试）：
+  //   端侧 ctx 是单例，并发 completion 会抛 "Context is busy" 并被上层静默降级成规则文案。
+  return runOnModel(async (ctx) => {
+    let full = '';
+    const res: any = await ctx.completion(
+      {
+        messages,
+        n_predict: nPredict,
+        temperature,
+        top_p: 0.9,
+        penalty_repeat: 1.12, // 抑制 1.5B 复读机式重复（llama.rn 字段名）
+        stop: ['<|im_end|>', '<|endoftext|>', '用户：', 'User:', '【用户健康数据'],
+      },
+      (data: any) => {
+        const tok = (data && data.token) || '';
+        if (tok) full += tok;
+      }
+    );
+    return String((res && res.text) || full || '').trim();
+  }, dedupKey);
 }
 
-/** 清洗：去掉被模型带出来的 Markdown/引号/多余空行 */
+/** 清洗：去掉被模型带出来的 Markdown/引号/空行/格式复述行（解析交给 parseInsightRows） */
 function cleanText(kind: InsightKind, raw: string): string {
-  let s = (raw || '')
+  const s = (raw || '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/^\s*["'“”‘’]\s*|\s*["'“”‘’]\s*$/g, '')
     .replace(/\*\*/g, '')
     .replace(/^#+\s*/gm, '')
     .trim();
-  if (kind === 'overview') {
-    // 概述必须是一段话
-    s = s.replace(/\s*\n+\s*/g, '').replace(/\s{2,}/g, ' ').trim();
-  } else {
-    s = s
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 4)
-      .join('\n');
-  }
-  return s;
+  return s
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !/^(tone|语气)?\s*\|?\s*标题\s*\|?\s*正文/.test(l)) // 丢掉模型复述的格式说明行
+    .slice(0, 8) // 上限 8 行：给 7 行洞察页留余量，避免末行被截断
+    .join('\n');
 }
 
 // ── 对外：生成（带缓存 + 去重 + 降级） ──────────────────────────────────────
-export async function getAiInsight(kind: InsightKind): Promise<string | null> {
+export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<string | null> {
   await loadCache();
-  const { facts, sig } = buildFacts();
+  const today = todayDk();
+  // 仅「身体恢复」通道支持按日；其余 kind 即使被误传 dayDk 也强制按今天（保证事实串与缓存键一致）
+  const targetDk = kind === 'recovery' ? dayDk ?? today : today;
+  const isToday = targetDk === today;
+  const historicalRecovery = kind === 'recovery' && !isToday;
+
+  let facts: string;
+  let sig: string;
+  if (historicalRecovery) {
+    facts = buildRecoveryFactsForDay(targetDk);
+    sig = simpleHash(facts);
+  } else {
+    const f = buildFacts();
+    facts = f.facts;
+    sig = f.sig;
+  }
   if (!facts) return null; // 无任何真实数据 → 交给规则文案
 
-  const today = dayKey(Date.now());
-  const c = memCache[kind];
-  if (c && c.day === today && (c.sig === sig || Date.now() - c.at < MIN_REGEN_MS)) {
+  const cKey = cacheKeyOf(kind, targetDk);
+  const tag = insightTag(kind, targetDk);
+  const c = memCache[cKey];
+  // today kind：强制跳过缓存（prompt 常迭代，让用户立刻看到新版效果）
+  // ★ 除数据指纹外，还要求「结论级状态」一致：状态变了一定重算（否则页面会自相矛盾）。
+  if (
+    kind !== 'today' &&
+    c &&
+    c.day === targetDk &&
+    (c.tag ?? '') === tag &&
+    (c.sig === sig || Date.now() - c.at < MIN_REGEN_MS)
+  ) {
     return c.text;
   }
-  const running = inFlight[kind];
+  const running = inFlight[cKey];
   if (running) return running;
 
   const task = (async (): Promise<string | null> => {
     try {
+      // 同 key 去重：即便上层 inFlight 去重失效，模型层也不会对同一份数据重复推理
+      const runKind = (
+        m: { role: string; content: string }[],
+        nPredict: number,
+        temperature: number
+      ) => runCompletion(m, nPredict, temperature, cKey);
       const text =
-        kind === 'overview'
-          ? await runCompletion(
+          kind === 'overview'
+          ? await runKind(
               [
                 { role: 'system', content: OVERVIEW_SYS },
                 { role: 'system', content: facts },
-                { role: 'user', content: '请按格式要求，输出今天的综合分析。' },
+                { role: 'user', content: '只输出 2 行：第1行「异常数据分析」把代谢/睡眠/生理/情绪压力综合成一段话（有细节），第2行「今日建议」一段话。' },
               ],
-              190,
+              540, // 分析段 ~120 字 + 建议段 ~80 字 + 格式开销
               0.55
             )
           : kind === 'recovery'
-          ? await runCompletion(
+          ? await runKind(
               [
                 { role: 'system', content: RECOVERY_SYS },
                 { role: 'system', content: facts },
-                { role: 'user', content: '请按格式输出今天的身体恢复分析（3–4 行）。' },
+                {
+                  role: 'user',
+                  content: historicalRecovery
+                    ? `只输出 2 行：第1行「皮质醇节律」，第2行「当日建议」。这是历史日 ${targetDk} 的数据，全部用「当日」表述，禁止出现「今天」「今日」。`
+                    : '只输出 2 行：第1行「皮质醇节律」，第2行「今日建议」。',
+                },
               ],
-              300,
+              200, // 2 行短结论，过大会让 1.5B 灌水
               0.6
             )
-          : await runCompletion(
+          : kind === 'today'
+          ? await runKind(
+              [
+                { role: 'system', content: `你是一位基于健康数据给出日常建议的助手。输出必须是一句中文建议（20–40字），结合用户当前经期相位、能量等级、异常数据，给出具体的生活/工作/认知行动建议。不要开头词如「今日建议」。**绝对不要在建议开头重复经期相位名**（如「经期」「排卵期」「卵泡期」「黄体期」——界面上方已有相位标签，再出现就是冗余）。直接说行动或状态描述。
+
+参考语气风格（双分句、8–14字、动词开头、具体行动导向）：
+- 经期 高能量: 适度活动，有助缓解经期不适
+- 经期 正常: 放缓节奏，温和整理与复盘
+- 经期 低能量: 以休息为主，避免高强度安排
+- 卵泡期 高能量: 精力峰值，推进项目和头脑风暴
+- 卵泡期 正常: 精力回升，适合开启新计划
+- 卵泡期 低能量: 轻度规划，别给自己太大压力
+- 排卵期 高能量: 能量情商双高，谈判汇报都是黄金时机
+- 排卵期 正常: 状态活跃，社交沟通黄金窗口
+- 排卵期 低能量: 适合一对一沟通，重大决策可稍缓
+- 黄体期 高能量: 适合深度工作，别熬夜
+- 黄体期 正常: 专注执行收尾，留意情绪起伏
+- 黄体期 低能量: 轻松事务为主，别做重大决策
+- 睡眠中 通用: 睡眠恢复中，安心休息
+- 睡眠中 经期: 经期睡眠中，安心休息助修复
+- 睡眠中 黄体期: 黄体期睡眠中，深睡稳情绪
+
+当 facts 中出现异常数据（皮质醇偏高、节律紊乱、睡眠不足、HRV 偏低等），结合异常项调整建议重点。
+
+**时段规则（必须遵守）：**
+- 若 facts 中「当前时段」= 傍晚或深夜，且「今日状态值」显示能量非高（level 不是充沛 / value < 65）→ 建议偏休息、放松、收工，不要给高强度社交或深度工作建议。
+- 若 facts 中「当前时段」= 上午或下午，且能量充沛 → 参考对应相位的高能量风格。
+- 若 facts 中「当前时段」= 上午或下午，能量平稳或偏低 → 参考对应相位的正常/低能量风格。` },
+                { role: 'system', content: facts },
+                { role: 'user', content: '输出一句建议（20–40字，无换行，无标号）。' },
+              ],
+              80,
+              0.55
+            )
+          : await runKind(
               [
                 { role: 'system', content: CYCLE_SYS },
                 { role: 'system', content: facts },
                 { role: 'user', content: '请按格式输出当前周期阶段的分析（2–3 行）。' },
               ],
-              230,
+              280,
               0.6
             );
 
-      const clean = cleanText(kind, text);
+      let clean = cleanText(kind, text);
+      // today kind 后处理：去掉相位名前缀（界面已有，重复冗余）
+      if (kind === 'today') {
+        clean = clean.replace(/^(经期|卵泡期|排卵期|黄体期)[、:：\s]*/, '').trim();
+        clean = clean.replace(/^(经期|卵泡期|排卵期|黄体期)/, '').trim();
+      }
       if (!clean) return null;
 
-      memCache[kind] = { sig, day: today, text: clean, at: Date.now() };
+      // 诊断：真机 Xcode/Metro 控制台看这一行就能判断「AI 到底有没有生效」
+      //   rows=0 → 模型没吐出可解析内容（UI 会回落规则兜底，看起来就像「改了没生效」）
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        const rows = parseInsightRows(clean);
+        console.log(
+          `[AI-Insight] kind=${kind} dk=${targetDk} rows=${rows ? rows.length : 0}\n原始输出:\n${text}\n清洗后:\n${clean}`
+        );
+      }
+
+      memCache[cKey] = { sig, day: targetDk, text: clean, at: Date.now(), tag };
       void saveCache();
       return clean;
     } catch (e) {
-      // 模型未打包 / 设备不支持 / 推理异常 → 静默回落规则文案
+      // 模型未打包 / 设备不支持 / 推理异常 → 回落规则文案。
+      // ★ 同时把「真实错误」写到 8899 日志（见 scripts/logcollector.js）——LogBox 上的提示是截断的，
+      //   只有这里能看到完整 message/stack，便于定位是 init 失败还是推理失败。
+      const detail = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
       console.warn('[AI-Insight] 生成失败（回落到规则文案）:', e);
+      try {
+        postLog('AI-Insight', `生成失败 kind=${kind} dk=${targetDk}：${detail}`);
+      } catch {
+        /* 日志失败不影响降级 */
+      }
       return null;
     } finally {
-      delete inFlight[kind];
+      delete inFlight[cKey];
     }
   })();
 
-  inFlight[kind] = task;
+  inFlight[cKey] = task;
   return task;
 }
 
-/** 把周期 tab 的多行结果解析成 AiResultRow 需要的结构（解析失败 → null，回落规则行） */
-export function parseInsightRows(text: string | null): AiInsightRow[] | null {
-  if (!text) return null;
-  const out: AiInsightRow[] = [];
-  for (const raw of text.split(/\n+/)) {
-    const line = raw.trim().replace(/^[-•*\d.\s]+/, '');
-    if (!line) continue;
-    const parts = line.split(/\s*[|｜]\s*/);
-    if (parts.length < 3) continue;
-    const t = parts[0].toLowerCase();
-    const tone: AiTone = t.includes('good') ? 'good' : t.includes('warn') ? 'warn' : 'neutral';
-    const title = parts[1].trim().slice(0, 14);
-    const body = parts.slice(2).join(' ').trim();
-    if (title && body) out.push({ tone, title, body });
+// ── 规则兜底（真实数据 · 有实质结论） ───────────────────────────────────────
+/**
+ * 为什么兜底要写这么细：
+ * 端侧 1.5B 可能因模型未打包 / 内存不足 / 解析失败而拿不到结果，此时用户看到的就是这里的内容。
+ * 它必须**等价于一份及格的 AI 分析**——引用真实数值、对比正常区间、一行一个指标、
+ * 首行必须是皮质醇节律、最后给可执行建议——否则「AI 没分析皮质醇节律」这类问题
+ * 在降级路径上会一直复现（用户看到的其实是兜底，不是 AI）。
+ */
+const EMPTY_ROWS: AiInsightRow[] = [
+  {
+    tone: 'neutral',
+    title: '等待数据',
+    body: '佩戴戒指后，这里会生成属于你的分点分析。',
+  },
+];
+
+const num = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+function dailyNow(): any {
+  try {
+    return ((RingBle.getState() as any)?.daily) ?? {};
+  } catch {
+    return {};
   }
-  return out.length ? out.slice(0, 4) : null;
 }
 
-/** 无 AI 时的真实数据兜底文案（替代原来硬编码的假数据「58ms」） */
-export function buildOverviewFallback(): string {
-  const EMPTY = '开始佩戴戒指后，这里会结合你的 HRV、睡眠、体温与周期相位，生成属于你的综合分析。';
+function sleepToday(): SleepSummary | null {
   try {
-    const st: any = RingBle.getState();
-    const d: any = (st && st.daily) || {};
-    const num = (v: any): number | null =>
-      typeof v === 'number' && Number.isFinite(v) ? v : null;
-
-    const hrv = num(d.hrv);
-    const sleepMin = num(d.sleepTotal);
-    const sleepScore = num(d.sleepScore);
-    const temp = num(d.temp);
-
-    const bits: string[] = [];
-    if (hrv != null) bits.push(`HRV ${Math.round(hrv)}ms`);
-    if (sleepMin != null && sleepMin > 0) bits.push(`睡眠 ${(sleepMin / 60).toFixed(1)} 小时`);
-    if (temp != null) bits.push(`体温 ${temp.toFixed(1)}℃`);
-    if (sleepScore != null) bits.push(`睡眠评分 ${Math.round(sleepScore)}`);
-    if (bits.length === 0) return EMPTY;
-
-    const head = `今天你的实测数据：${bits.join('、')}。`;
-    const tail =
-      sleepScore != null && sleepScore < 70
-        ? '睡眠恢复偏慢，建议今晚提前 20 分钟入睡、睡前减少屏幕时间。'
-        : hrv != null && hrv > 0
-        ? '整体状态平稳，可以按计划推进；继续保持规律作息，分析会越来越贴合你。'
-        : '继续全天佩戴，HRV 与睡眠基线稳定后，这里会给出更贴合你的建议。';
-    return head + tail;
+    return healthStore.getSleep(dayKey(Date.now()));
   } catch {
-    return EMPTY;
+    return null;
   }
+}
+
+/** ① 皮质醇节律（代谢维度核心；与身体恢复页顶部大字、CortisolDailyChart 同源）。
+ * 注意：cs.level 是「今日节律」，cs.flags 是「整体状态项」，两维度不同 —— 早期版本把 flags
+ * 当今日异常项拼进去导致「今日紊乱，异常项含节律正常」的自相矛盾，这里已规避。 */
+function rowCortisol(cs: TodayCortisolSummary | null, isToday = true): AiInsightRow | null {
+  if (!cs) return null;
+  const lv = cs.level;
+  const tone: AiTone = lv === 'normal' ? 'good' : 'warn';
+  const w = isToday ? '今天' : '当日';
+  let body: string;
+  if (lv === 'normal') body = `${w}皮质醇节律正常，晨升夜降都正常。`;
+  else if (lv === 'high') body = `${w}皮质醇节律偏高，高于你的日常基线，压力负荷偏重。`;
+  else body = `${w}皮质醇节律紊乱，压力负荷偏高，夜间回落不足。`;
+  return { tone, title: '皮质醇节律', body };
+}
+
+/** 某历史日皮质醇节律摘要：单日样本 + analyzeCortisol(…,1)。无 14 天基线 → high 不可信，level 只区分 紊乱/正常。 */
+function cortisolSummaryForDay(dk: string): TodayCortisolSummary | null {
+  try {
+    const samples = healthStore
+      .getIntraday('cortisol', dk)
+      .filter((p) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
+      .map((p) => ({ t: p.t, v: p.v }));
+    if (samples.length < 4) return null;
+    const r = analyzeCortisol(samples, 1);
+    const fin = (v: number): number | null => (Number.isFinite(v) ? v : null);
+    return {
+      level: r.today.dys ? 'dysregulated' : 'normal',
+      peakH: fin(r.cosinor.acrophaseH),
+      mesor: fin(r.cosinor.mesor),
+      amplitude: fin(r.cosinor.amplitude),
+      highStreak: 0,
+      dysStreak: 0,
+      flags: r.status.flags || [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 某历史日睡眠是否异常（供历史日兜底用）。 */
+function sleepBadForDay(dk: string): boolean {
+  try {
+    const sl = healthStore.getSleep(dk);
+    if (sl && sl.total > 0) return sl.score < 70 || Math.round(sl.deep) < 60;
+  } catch {
+    /* 无睡眠数据视为不异常 */
+  }
+  return false;
+}
+
+/**
+ * 历史日「身体恢复」事实串：该日的 皮质醇节律 / 情绪压力 / 脑力负荷 / 睡眠。
+ * 与 RECOVERY_SYS 输出格式对齐；无任何数据 → 返回空串（调用方回落规则文案）。
+ */
+export function buildRecoveryFactsForDay(dk: string): string {
+  const start = parseDayKey(dk);
+  const dayMs = Number.isFinite(start) ? start : Date.now();
+  const nowMs = reportNowMsForDay(dayMs);
+  const lines: string[] = [];
+
+  const cs = cortisolSummaryForDay(dk);
+  if (cs) {
+    const bits: string[] = [cs.level === 'dysregulated' ? '节律紊乱' : '节律正常'];
+    if (cs.peakH != null) bits.push(`峰值约 ${String(Math.floor(cs.peakH)).padStart(2, '0')}:00`);
+    if (cs.mesor != null) bits.push(`中值 ${Math.round(cs.mesor)}`);
+    if (cs.amplitude != null && cs.mesor) {
+      bits.push(`波动幅度约 ${Math.round((cs.amplitude / Math.max(1, cs.mesor)) * 100)}%`);
+    }
+    if (cs.flags.length) bits.push(cs.flags.join('、'));
+    lines.push(`• 皮质醇节律：${bits.join('，')}`);
+  }
+  try {
+    const s = computeStressReport(nowMs);
+    if (s.emotionalLoad != null || s.events.length > 0) {
+      const bits = [`情绪消耗 ${s.emotionalLoad ?? '—'}/100`, `压力事件 ${s.events.length} 次`];
+      if (s.avgRecoverySec != null) bits.push(`平均恢复 ${s.avgRecoverySec}s`);
+      lines.push(`• 情绪压力：${bits.join('，')}`);
+    }
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    const g = computeCognitiveLoadReport(nowMs);
+    if (g.sampleCount >= 2) {
+      const bits = [`脑力负荷 ${g.loadScore}/100`, `疲劳 ${g.fatigueIndex}`];
+      if (g.peakLoadSpan) {
+        const p = `${String(g.peakLoadSpan.startHour).padStart(2, '0')}:00–${String(g.peakLoadSpan.endHour).padStart(2, '0')}:00`;
+        bits.push(`负荷高峰 ${p}`);
+      }
+      lines.push(`• 脑力负荷：${bits.join('，')}`);
+    }
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    const sl = healthStore.getSleep(dk);
+    if (sl && sl.total > 0) {
+      lines.push(
+        `• 睡眠：总时长 ${Math.round(sl.total)}min，深睡 ${Math.round((sl.deep / sl.total) * 100)}%，睡眠评分 ${Math.round(sl.score)}`
+      );
+    }
+  } catch {
+    /* 忽略 */
+  }
+
+  if (!lines.length) return '';
+  return (
+    `【用户健康数据（历史日 ${dk}；仅作解读参考；不要逐条播报原始数字，要给出结论与建议）】\n` +
+    `• 日期：${dk}\n` +
+    lines.join('\n')
+  );
+}
+
+/** 睡眠是否异常（供合并成一句话结论，少数字） */
+function sleepBad(): boolean {
+  const sl = sleepToday();
+  if (sl && sl.total > 0) return sl.score < 70 || Math.round(sl.deep) < 60;
+  const d = dailyNow();
+  const min = num(d['sleepTotal']);
+  const score = num(d['sleepScore']);
+  if (min == null || min <= 0) return false;
+  return score != null && score < 70;
+}
+
+/** 情绪压力（读取缓存的计算型结果，失败回退实时计算） */
+function getStressToday(): any {
+  try {
+    const c: any = (healthStore.getAnalysis(dayKey(Date.now())) as any)?.stress;
+    if (c) return c;
+    const r = computeStressReport();
+    return { emotionalLoad: r.emotionalLoad, eventCount: r.events.length, avgRecoverySec: r.avgRecoverySec };
+  } catch {
+    return null;
+  }
+}
+
+/** 脑力负荷（读取缓存的计算型结果，失败回退实时计算） */
+function getCognitiveToday(): any {
+  try {
+    const c: any = (healthStore.getAnalysis(dayKey(Date.now())) as any)?.cognitive;
+    if (c) return c;
+    const r = computeCognitiveLoadReport();
+    return {
+      loadScore: r.loadScore,
+      fatigueIndex: r.fatigueIndex,
+      recoveryCapacity: r.recoveryCapacity,
+      bestHour: r.bestSpan?.startHour ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 生理异常短语（静息心率 / HRV / 体温；结论优先、不带数字） */
+function physioState(): string | null {
+  const hrv = num(dailyNow()['hrv']);
+  const hr = num(dailyNow()['hr']);
+  const t = num(dailyNow()['temp']);
+  if (hrv != null && hrv < 40) return '自主神经偏应激';
+  if (hr != null && hr > 85) return '静息心率偏高';
+  if (t != null && (t > 37.3 || t < 35.9)) return '体温异常';
+  return null;
+}
+
+/** 恢复异常短语（恢复力 / 疲劳） */
+function recoveryState(): string | null {
+  const g = getCognitiveToday();
+  const rc = num(g?.recoveryCapacity);
+  const fi = num(g?.fatigueIndex);
+  if (rc != null && (rc <= 1 ? rc < 0.5 : rc < 50)) return '恢复力不足';
+  if (fi != null && fi > 20) return '疲劳堆积';
+  return null;
+}
+
+/** 情绪压力异常短语（情绪消耗 / 脑力负荷） */
+function emotionState(): string | null {
+  const s = getStressToday();
+  const load = num(s?.emotionalLoad);
+  const g = getCognitiveToday();
+  const cog = num(g?.loadScore);
+  if (load != null && Math.round(load) >= 60) return '情绪压力偏大';
+  if (cog != null && Math.round(cog) >= 60) return '脑力负荷偏高';
+  return null;
+}
+
+const ADVICE_MAP: Record<string, string> = {
+  代谢: '固定今晚入睡时间，下午 3 点前停咖啡因。',
+  睡眠: '今晚提前上床，优先把深睡补回来。',
+  生理: '今天用散步代替高强度训练，放慢节奏。',
+  恢复: '别硬撑，安排点恢复放松。',
+  情绪压力: '留 10 分钟做呼吸放松，主动减压。',
+};
+
+/**
+ * 代谢血液指标状态（读取「代谢」tab 血液成分面板：血糖/甘油三酯/HDL/LDL/总胆固醇/尿酸）。
+ * 返回一句结论短语（异常项点名、正常给整体结论）；无任何数据返回 null。
+ * 与 BloodComponentPanel 的正常区间口径一致（甘油三酯<1.7 / HDL>1.0 / LDL<3.4 / 尿酸155–428）。
+ */
+function metabState(): string | null {
+  const d = dailyNow();
+  const tri = num(d['triglyceride']);
+  const hdl = num(d['hdl']);
+  const ldl = num(d['ldl']);
+  const sugar = num(d['bloodSugar']);
+  const uric = num(d['uricAcid']);
+  if (tri == null && hdl == null && ldl == null && sugar == null && uric == null) return null;
+  const issues: string[] = [];
+  if (tri != null && tri >= 1.7) issues.push('甘油三酯偏高');
+  if (hdl != null && hdl < 1.0) issues.push('HDL偏低');
+  if (ldl != null && ldl >= 3.4) issues.push('LDL偏高');
+  if (sugar != null && sugar >= 6.1) issues.push('血糖偏高');
+  if (uric != null && uric > 428) issues.push('尿酸偏高');
+  return issues.length ? `${issues.join('、')}，代谢血液指标需关注` : '血脂与血糖都在正常范围内';
+}
+
+/** 异常维度 → 一句整体总结（分析段收尾用） */
+function overallVerdict(titles: string[]): string {
+  if (!titles.length) return '整体状态良好，继续保持即可。';
+  const map: Record<string, string> = {
+    代谢: '压力与代谢', 睡眠: '睡眠', 生理: '生理节律', 情绪压力: '情绪压力', 恢复: '身体恢复',
+  };
+  return `${map[titles[0]] ?? '状态'}是今天的主要短板，先从作息和放松调整入手。`;
+}
+
+/**
+ * 洞察页兜底（分析一段话 + 建议一段话，共 2 段）：① 分析段——把 代谢（皮质醇+血液指标）、
+ * 睡眠、生理、情绪压力 各维度综合成**一段连贯的话**（异常重点说、正常带过、有细节）；
+ * ② 建议段——针对最突出问题给一段可执行建议。与 OVERVIEW_SYS 的「2 段式」对齐；
+ * 无核心数据（连皮质醇都没有）→ 回落等待文案。
+ */
+export function buildOverviewFallbackRows(): AiInsightRow[] {
+  const cs = getTodayCortisolSummary();
+  if (!cs) return EMPTY_ROWS; // 无核心数据（连皮质醇都没有）→ 等待数据
+
+  const ph = physioState();
+  const em = emotionState();
+  const rec = recoveryState();
+  const metab = metabState();
+
+  // 异常维度（用于建议挑选 + 收尾总结）
+  const titles: string[] = [];
+  if (cs.level !== 'normal') titles.push('代谢');
+  if (sleepBad()) titles.push('睡眠');
+  if (ph) titles.push('生理');
+  if (em) titles.push('情绪压力');
+  if (rec) titles.push('恢复');
+
+  // 分析段：各维度综合成一段话（异常重点、正常带过）
+  const cort = cs.level === 'normal'
+    ? '皮质醇节律正常、代谢压力可控'
+    : cs.level === 'high'
+      ? '皮质醇偏高、压力负荷偏重'
+      : '皮质醇节律紊乱、夜间回落不足';
+  const sleep = sleepBad()
+    ? '深睡偏少、睡眠修复不充分'
+    : '睡眠结构正常、深睡与夜间修复到位';
+  const abnormal: string[] = [cort];
+  if (metab) abnormal.push(metab);
+  abnormal.push(sleep);
+  if (ph) abnormal.push(`${ph}、心率波动偏大`);
+  if (em) abnormal.push(em);
+  if (rec) abnormal.push(rec);
+
+  const normalBits: string[] = [];
+  if (!ph) normalBits.push('静息心率与 HRV 平稳');
+  if (!em) normalBits.push('情绪与脑力负荷在线');
+  if (!rec) normalBits.push('恢复力充足');
+
+  const analysisBody =
+    `今天${abnormal.join('，')}${normalBits.length ? `；${normalBits.join('、')}` : ''}。整体看，${overallVerdict(titles)}`;
+
+  // 建议段
+  const top = ['代谢', '睡眠', '生理', '情绪压力', '恢复'].find((t) => titles.includes(t)) ?? null;
+  let advice: string;
+  const advTone: AiTone = top ? 'warn' : 'good';
+  if (!top) {
+    advice = '今天状态平稳，保持现在的作息节奏、规律佩戴即可。';
+  } else {
+    const main = ADVICE_MAP[top] ?? '保持现在的节奏，注意劳逸结合。';
+    const extra = (top === '情绪压力' || top === '恢复')
+      ? '今晚早点休息，给身体留点恢复时间。'
+      : '另外留 10 分钟做呼吸放松，整体节奏放慢。';
+    advice = `${main}${extra}`;
+  }
+  return [
+    { tone: titles.length ? 'warn' : 'good', title: '异常数据分析', body: analysisBody },
+    { tone: advTone, title: '今日建议', body: advice },
+  ];
+}
+
+/**
+ * 身体恢复页兜底（2 点）：①「皮质醇节律」为分析核心（异常时顺带一句深睡）；②「今日建议」。
+ * 与 RECOVERY_SYS 的「2 行」要求对齐。
+ */
+export function buildRecoveryFallbackRows(dayDk?: string): AiInsightRow[] {
+  const today = todayDk();
+  const isToday = !dayDk || dayDk === today;
+  const cs = isToday ? getTodayCortisolSummary() : cortisolSummaryForDay(dayDk!);
+  const cortisol = rowCortisol(cs, isToday);
+  if (!cortisol) return EMPTY_ROWS;
+  const abnormal = !!cs && cs.level !== 'normal';
+  const badSleep = isToday ? sleepBad() : sleepBadForDay(dayDk!);
+  let body = cortisol.body.replace(/[。.]$/, '');
+  if (abnormal && badSleep) body += '，深睡也偏少';
+  const anomaly: AiInsightRow = { tone: cortisol.tone, title: '皮质醇节律', body: body + '。' };
+  const act = abnormal ? '固定今晚入睡时间，下午 3 点前停咖啡因。' : '状态平稳，保持现在的作息节奏即可。';
+  const advice: AiInsightRow = { tone: abnormal ? 'warn' : 'good', title: isToday ? '今日建议' : '当日建议', body: act };
+  return [anomaly, advice];
+}
+
+// ── AI 行质量门禁 + 与规则分点合流 ──────────────────────────────────────────
+/**
+ * 为什么必须有门禁：
+ * 端侧 1.5B 经常**完全无视** `tone|标题|正文` 格式，把整份健康数据念成一大段自然语言。
+ * 这种「一长段」经容错解析只会变成 1 行长行，于是 UI 里 `rows={ai ?? fallback}`
+ * 永远命中 AI、用户看到的却是「没有分点、整段糊住」。这里给出显式合格标准，
+ * 不合格一律回落规则分点（结构正确、数值同源）。
+ */
+
+const isCortisolRow = (r: AiInsightRow | undefined): boolean =>
+  !!r && /皮质醇|节律/.test(`${r.title}${r.body}`);
+
+/**
+ * AI 的皮质醇结论是否与算法结论**矛盾**（防「大字说偏高、AI 说正常」）。
+ *
+ * 判定刻意做成「单向排斥」：只有 AI **只**说了相反结论时才算矛盾。
+ * 因此「今天皮质醇偏高，但深睡正常」这类**正确**的混合陈述不会被误杀。
+ */
+function cortisolCopyContradicts(body: string, level: 'normal' | 'high' | 'dysregulated'): boolean {
+  const t = body || '';
+  const saysNormal = /正常|平稳|无异常|未见异常|没问题/.test(t);
+  const saysAbnormal = /偏高|紊乱|异常|负荷偏重|回落不足|压力偏大/.test(t);
+  if (level === 'normal') return saysAbnormal && !saysNormal;
+  return saysNormal && !saysAbnormal;
+}
+
+/**
+ * 单行正文上限（字符数）。身体恢复/周期走短句，洞察页「一段话」走更长段落。
+ */
+const MAX_BODY_SHORT = 34; // 身体恢复 / 周期：短句上限
+const MAX_BODY_OVERVIEW = 160; // 洞察页「一段话」段落上限
+
+/**
+ * AI 输出是否达到「可展示」标准：
+ *   ① 至少 2 行（洞察页 = 分析段 + 建议段；身体恢复 = 皮质醇节律 + 今日建议）；
+ *   ② 任何一行不超过对应 kind 的字符上限（超长 = 又写成长段）；
+ *   ③ 身体恢复必须**含皮质醇**那一行（用户明确要求：身体恢复的分析基于皮质醇节律）；
+ *   ④ 洞察页至少要有 1 行分析段 + 1 行「今日建议」（不足的由合流用规则补到 2 段）。
+ */
+export function aiRowsAcceptable(
+  kind: 'overview' | 'recovery',
+  rows: AiInsightRow[] | null | undefined
+): boolean {
+  if (!rows || rows.length < 2) return false;
+  if (rows.some((r) => !r.title || !r.body)) return false;
+  if (kind === 'recovery') {
+    // 身体恢复：固定 2 点（皮质醇节律 + 今日建议），必须含皮质醇行；短句上限
+    if (rows.some((r) => (r.body || '').length > MAX_BODY_SHORT)) return false;
+    if (!rows.some(isCortisolRow)) return false;
+    return true;
+  }
+  // 洞察页：分析段（≥1 行）+ 今日建议（≥1 行），长度在 OVERVIEW 上限内
+  if (rows.some((r) => (r.body || '').length > MAX_BODY_OVERVIEW)) return false;
+  if (rows.filter((r) => !/建议/.test(r.title)).length < 1) return false;
+  if (!rows.some((r) => /建议/.test(r.title))) return false;
+  return true;
+}
+
+/**
+ * AI 行与规则分点合流：
+ *   - 身体恢复（recovery）：合流成 **2 点** ——「皮质醇节律 + 今日建议」。
+ *   - 洞察页（overview）：合流成 **分析一段话 + 建议一段话** —— 多行分析合并成一段，保留今日建议一段。
+ *   - AI 不合格 → 整段回落规则分点（结构稳定）。
+ */
+export function resolveInsightRows(
+  kind: 'overview' | 'recovery',
+  aiRows: AiInsightRow[] | null | undefined,
+  dayDk?: string
+): AiInsightRow[] {
+  const isTodayCtx = !dayDk || dayDk === todayDk();
+  const rule = kind === 'recovery' ? buildRecoveryFallbackRows(dayDk) : buildOverviewFallbackRows();
+  if (!aiRowsAcceptable(kind, aiRows)) return rule;
+  const rows = aiRows as AiInsightRow[];
+
+  // 身体恢复：合格 AI → 合并成 2 点（皮质醇节律 + 今日建议）
+  if (kind === 'recovery') {
+    // 历史日语境：模型常忽略 prompt 里「禁止出现今天/今日」的要求（实测真机缓存里
+    // `recovery@2026-09-14` 仍写「今日皮质醇节律紊乱」），这里确定性改写。
+    const dayWord = (s: string): string =>
+      isTodayCtx ? s : s.replace(/今日/g, '当日').replace(/今天/g, '当天');
+    let suggestion = rows.find((r) => /建议/.test(r.title));
+    if (!suggestion) suggestion = rows[rows.length - 1]; // 兜底取末行
+    const others = rows.filter((r) => r !== suggestion);
+    if (!others.length) return rule;
+    const merged = others.map((o) => o.body.replace(/[。.]$/, '')).join('，');
+    const trimmed = merged.length > 34 ? merged.slice(0, 34) + '…' : merged;
+    const body = dayWord(trimmed);
+    const adviceRow: AiInsightRow = {
+      tone: suggestion.tone,
+      title: isTodayCtx ? '今日建议' : '当日建议',
+      body: dayWord(suggestion.body),
+    };
+
+    // ★ 一致性强校验（本次修复核心）：AI 的皮质醇结论必须与算法结论同向。
+    //   矛盾 → 换回规则文案（规则与页面大字/图表同源，必然一致）；建议行仍保留 AI 的措辞。
+    //   这样无论 AI 缓存过期、还是 1.5B 模型自己写反，页面都不会再自相矛盾。
+    const level =
+      (isTodayCtx ? getTodayCortisolSummary() : cortisolSummaryForDay(dayDk!))?.level ?? null;
+    if (level && cortisolCopyContradicts(body, level)) {
+      const ruleCort = rule.find((r) => isCortisolRow(r));
+      if (ruleCort) return [ruleCort, adviceRow];
+    }
+
+    // tone 以算法结论为准（模型可能把「偏高」标成 good），保证行配色/图标与结论一致
+    const tone: AiTone = level
+      ? level === 'normal'
+        ? 'good'
+        : 'warn'
+      : others.some((o) => o.tone === 'warn')
+      ? 'warn'
+      : others.some((o) => o.tone === 'neutral')
+      ? 'neutral'
+      : 'good';
+    return [
+      { tone, title: '皮质醇节律', body: body.endsWith('。') ? body : body + '。' },
+      adviceRow,
+    ];
+  }
+
+  // 洞察页：把非「建议」行合并成一段分析 + 保留 1 条建议 = 2 段。
+  // （即使模型吐出 4–5 个维度短行，也会在此合并成「一段话」，与规则兜底同构）
+  const analyses = rows.filter((r) => !/建议/.test(r.title));
+  const suggestion =
+    rows.find((r) => /建议/.test(r.title)) ?? rule.find((r) => /建议/.test(r.title));
+  if (!analyses.length || !suggestion) return rule;
+  const merged = analyses.map((o) => o.body.replace(/[。.]$/, '')).join('，');
+  const body = merged.length > MAX_BODY_OVERVIEW ? merged.slice(0, MAX_BODY_OVERVIEW) + '…' : merged;
+  const tone = analyses.some((o) => o.tone === 'warn')
+    ? 'warn'
+    : analyses.some((o) => o.tone === 'neutral')
+      ? 'neutral'
+      : 'good';
+  return [
+    { tone, title: '异常数据分析', body: body.endsWith('。') ? body : body + '。' },
+    { tone: suggestion.tone, title: '今日建议', body: suggestion.body },
+  ];
 }

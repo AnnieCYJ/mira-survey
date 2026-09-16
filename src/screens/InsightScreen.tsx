@@ -27,9 +27,9 @@ import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
-import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
 import { useAiInsight } from '../hooks/useAiInsight';
-import { buildOverviewFallback } from '../ai/insight';
+import { resolveInsightRows } from '../ai/insight';
 
 function formatValue(v: number | null): string {
   if (v == null || Number.isNaN(v)) return '—';
@@ -40,17 +40,16 @@ function formatValue(v: number | null): string {
 // 5 个维度 chip（睡眠和激素/周期和激素/代谢/心脏健康/心理和压力）+ 选中后 DimensionCard + 本周关键变化。
 // 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
 // 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
-type TabKey = 'basics' | 'exam' | 'activity' | MetricKey;
+type TabKey = 'basics' | 'activity' | MetricKey;
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'basics', label: '基础指标' },
   { key: 'sleep', label: METRICS.sleep.name },
   { key: 'cycle', label: METRICS.cycle.name },
   { key: 'metabolism', label: METRICS.metabolism.name },
   { key: 'activity', label: '运动' },
-  { key: 'exam', label: '体检' },
   { key: 'heart', label: METRICS.heart.name },
   { key: 'mind', label: METRICS.mind.name },
+  { key: 'basics', label: '基础指标' },
 ];
 
 const CHANGES: ListItem[] = [
@@ -84,11 +83,38 @@ export default function InsightScreen() {
   //   （buildHealthSnapshot：今日实时/皮质醇/激素推断/情绪脑力/周期相位/近 7 天趋势）。
   //   生成完成前用「真实数据规则文案」兜底（不再显示原来硬编码的假数值）；同日同指纹只生成一次。
   const aiOverview = useAiInsight('overview');
+  // ★ 睡眠 tab「今日皮质醇全天趋势」卡片底部的节奏洞察 → 复用身体恢复页同款 AI（皮质醇节律 + 今日建议）。
+  //   同源通道保证两处分析一致；同日同指纹只生成一次（与恢复页共享模块级缓存）。
+  const aiRecovery = useAiInsight('recovery');
+
+  /**
+   * 顶部「AI 综合分析」最终分点行。
+   * ★ 不能直接写 `aiOverview.rows ?? 兜底`：端侧 1.5B 经常不按格式分行，把整份数据念成一大段，
+   *   parseInsightRows 会把这一大段也容错成 1 行 —— `??` 于是永远命中 AI，
+   *   页面就变成「没有分点、整段糊住」。resolveInsightRows 会做质量门禁：
+   *   不合格（<3 行 / 有超长行）→ 回落规则分点；合格 → 与规则分点合流补齐缺失指标。
+   */
+  const insightRows = useMemo(
+    () => resolveInsightRows('overview', aiOverview.rows),
+    // 依赖 text（字符串，身份稳定）而非 rows（每次渲染新数组）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aiOverview.text]
+  );
+
+  // 与身体恢复页同源：recovery 通道 → 2 点（皮质醇节律 + 今日建议）。resolveInsightRows 永远返回非空兜底。
+  const recoveryRows = useMemo(
+    () => resolveInsightRows('recovery', aiRecovery.rows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aiRecovery.text]
+  );
 
   // 趋势图可用性：连上戒指即视为「正在监测」（RingBleManager 连上会强制开启原生采集，
   // 与设置页总开关无关），不再被 autoMonitor 默认值 false 卡死——否则数据在采、数值有，
   // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
   const trendOn = autoMonitor || ring.status === 'connected';
+
+  // 回填派生指标（eda/cortisol…）intraday：修复「历史皮质醇数据没有」（洞察页节律卡同样依赖）
+  useEnsureDerivedMetrics(30);
 
   // healthStoreVersion 订阅已合并到下方 useMemo 里，避免重复重渲染
 
@@ -168,7 +194,7 @@ export default function InsightScreen() {
 
         <InsightBanner
           onMore={() => openChat('帮我详细分析今天的状态')}
-          text={aiOverview.text ?? buildOverviewFallback()}
+          rows={insightRows}
           pending={aiOverview.loading}
         />
 
@@ -231,8 +257,6 @@ export default function InsightScreen() {
             })}
           </View>
           </>
-        ) : tab === 'exam' ? (
-          <ExamTab />
         ) : tab === 'cycle' ? (
           <>
             {/* 周期 tab 不再放日/周/月/年切换：周期不是普通时间序列指标，
@@ -250,10 +274,6 @@ export default function InsightScreen() {
             {!['heart', 'sleep', 'metabolism', 'psychology', 'mind'].includes(tab) && (
               <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
             )}
-            {tab === 'metabolism' && (
-              <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
-            )}
-
             {tab === 'heart' && (
               <>
                 <BpCard ring={ring} onPress={() => navigation.navigate('BpDetail')} />
@@ -273,7 +293,9 @@ export default function InsightScreen() {
                 fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
                 onPress={() => navigation.navigate('SleepDetail')}
               />
-              <CortisolDailyChart />
+              <CortisolDailyChart
+                insightRows={recoveryRows}
+              />
               </>
             )}
             {tab === 'mind' && (
@@ -305,14 +327,59 @@ export default function InsightScreen() {
                   </Card>
                 );
               }
+              // 代谢 tab：血糖 → 血液成分 → 体检卡片
+              if (tab === 'metabolism') {
+                return (
+                  <>
+                    {/* 1. 血糖卡片 */}
+                    <View style={styles.grid}>
+                      {sigs.map((m) => {
+                        const real = ring.daily[m.key] ?? null;
+                        const hist = getCachedHist(m.key);
+                        const measureTime = getCachedLastT(m.key);
+                        if (m.manualOnly) {
+                          return (
+                            <ManualMetricCard
+                              key={m.key}
+                              metric={m}
+                              live={real != null}
+                              value={real != null ? formatValue(real) : m.value}
+                              measureTime={measureTime}
+                              onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
+                              onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                            />
+                          );
+                        }
+                        return (
+                          <BasicMetricCard
+                            key={m.key}
+                            metric={m}
+                            auto={trendOn}
+                            live={real != null}
+                            syncing={false}
+                            value={real != null ? formatValue(real) : m.value}
+                            data={hist}
+                            onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
+                            hideMeasure={m.hideMeasure ?? true}
+                            measureTime={measureTime}
+                            onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                          />
+                        );
+                      })}
+                    </View>
+                    {/* 2. 血液成分 */}
+                    <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+                    {/* 3. 体检 tab 卡片 */}
+                    <ExamTab />
+                  </>
+                );
+              }
               return (
                 <View style={styles.grid}>
                   {sigs.map((m) => {
                     const real = ring.daily[m.key] ?? null;
-                    // 今日趋势统一走 getTodaySeries（与历史页面日视图同源同频）
                     const hist = getCachedHist(m.key);
                     const measureTime = getCachedLastT(m.key);
-                    // 纯手动测量类信号：使用无趋势图的 ManualMetricCard（数值左 / 测量时间右 / 按钮置底）
                     if (m.manualOnly) {
                       return (
                         <ManualMetricCard

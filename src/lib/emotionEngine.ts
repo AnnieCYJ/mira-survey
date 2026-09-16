@@ -270,3 +270,100 @@ export const EMOTION_LABEL_EMOJI: Record<EmotionLabel, string> = {
   bored: '😶',
   depleted: '😩',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ★ 以下是 AI 对话侧的情绪分析（文本 VAD + Plutchik 8 类基本情绪）
+// 独立于上面的 ring 生物信号 pipeline，不影响现有功能
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Plutchik Wheel — 8 类基本情绪 + 强度（2017 论文 validated）
+ * joy/sadness/trust/disgust/fear/anticipation/anger/surprise
+ * 每类 0-1 强度，互相独立（不是非此即彼）
+ */
+export type PlutchikLabel = 'joy' | 'sadness' | 'trust' | 'disgust' | 'fear' | 'anticipation' | 'anger' | 'surprise';
+
+export interface PlutchikScores {
+  scores: Record<PlutchikLabel, number>;
+  top3: Array<{ label: PlutchikLabel; score: number }>;
+  dominant: PlutchikLabel;
+  /** Russell circumplex 映射 */
+  valence: number;   // -1 ~ 1  (从 Plutchik 组合推导)
+  arousal: number;   //  0 ~ 1
+}
+
+// Plutchik 关键词词典（精简中文，覆盖 8 类情绪 + 反向词）
+const PLUTCHIK_LEXICON: Record<PlutchikLabel, string[]> = {
+  joy:      ['开心', '高兴', '快乐', '棒', '赞', '满意', '满足', '幸福', '美好', '喜欢', '爱', '享受', '爽', '嘻嘻', '哈哈'],
+  sadness:  ['难过', '伤心', '悲伤', '哭', '眼泪', '痛', '遗憾', '后悔', '失望', '沮丧', '低落', '郁闷', '难受', '心碎', '唉'],
+  trust:    ['信任', '安心', '踏实', '放心', '靠谱', '稳', '可靠', '支持', '理解', '陪伴', '爱'],
+  disgust:  ['恶心', '讨厌', '烦', '厌恶', '反感', '不适', '排斥'],
+  fear:     ['怕', '害怕', '担心', '焦虑', '紧张', '不安', '恐惧', '顾虑', '慌', '怂', '吓'],
+  anticipation: ['期待', '盼望', '希望', '等', '等不及', '想', '盼', '好奇', '想知道'],
+  anger:    ['生气', '怒', '愤怒', '烦', '讨厌', '破', '傻逼', '贱', '蠢', '火', '怼', '骂', '恨'],
+  surprise: ['惊', '竟然', '居然', '没想到', '意外', '突然', '懵', '震惊'],
+};
+
+// Russell VAD 极性词典（补充 Plutchik 的 Valence/Arousal 推导）
+const VAD_LEXICON = {
+  positive: ['好', '棒', '赞', '开心', '喜欢', '爱', '满意', '幸福', '感谢', '棒', '不错', '挺好', '行', '没问题', '可以'],
+  negative: ['烦', '累', '难过', '生气', '焦虑', '压力', '讨厌', '糟糕', '不行', '完蛋', '惨', '坏', '差', '糟', '累', '困'],
+  highArousal: ['激动', '兴奋', '紧张', '焦虑', '生气', '怒', '慌', '怕', '恐惧', '急', '赶', '冲', '爆'],
+  lowArousal: ['累', '困', '懒', '倦', '疲', '躺', '睡', '发呆', '放空', '静', '慢', '歇', '缓'],
+};
+
+/** 纯词典驱动，0ms，不调 LLM，安全（不依赖云端） */
+export function analyzeTextEmotion(text: string): PlutchikScores {
+  const t = text.toLowerCase();
+  const scores: Record<PlutchikLabel, number> = {
+    joy: 0, sadness: 0, trust: 0, disgust: 0,
+    fear: 0, anticipation: 0, anger: 0, surprise: 0,
+  };
+  for (const label of Object.keys(PLUTCHIK_LEXICON) as PlutchikLabel[]) {
+    const words = PLUTCHIK_LEXICON[label];
+    let hits = 0;
+    for (const w of words) {
+      if (t.includes(w)) hits++;
+    }
+    scores[label] = hits;
+  }
+
+  // 归一化到 0-1
+  const maxScore = Math.max(1, ...Object.values(scores));
+  for (const k of Object.keys(scores) as PlutchikLabel[]) {
+    scores[k] = scores[k] / maxScore;
+  }
+
+  const top3 = (Object.entries(scores) as [PlutchikLabel, number][])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([label, score]) => ({ label, score: Math.round(score * 100) / 100 }));
+  const dominant = top3[0].label;
+
+  // Russell VAD 推导（从 Plutchik 组合 → valence + arousal）
+  const posKeys: PlutchikLabel[] = ['joy', 'trust', 'anticipation'];
+  const negKeys: PlutchikLabel[] = ['sadness', 'disgust', 'fear', 'anger'];
+  const valence = (
+    posKeys.reduce((s, k) => s + scores[k], 0) -
+    negKeys.reduce((s, k) => s + scores[k], 0)
+  ) / 3;  // 归一化
+
+  const highArousalKeys: PlutchikLabel[] = ['anger', 'fear', 'joy', 'surprise'];
+  const lowArousalKeys: PlutchikLabel[] = ['sadness', 'trust', 'anticipation'];
+  const arousalBase = highArousalKeys.reduce((s, k) => s + scores[k], 0);
+  const arousalAdj = lowArousalKeys.reduce((s, k) => s - scores[k], 0);
+  const arousal = clamp(arousalBase + arousalAdj + 0.5, 0, 1);
+
+  return {
+    scores,
+    top3,
+    dominant,
+    valence: clamp(valence, -1, 1),
+    arousal: Math.round(arousal * 100) / 100,
+  };
+}
+
+export const PLUTCHIK_LABEL_CN: Record<PlutchikLabel, string> = {
+  joy: '愉悦', sadness: '难过', trust: '安心', disgust: '厌恶',
+  fear: '担忧', anticipation: '期待', anger: '生气', surprise: '惊讶',
+};

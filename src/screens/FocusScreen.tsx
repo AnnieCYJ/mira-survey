@@ -25,6 +25,9 @@ export default function FocusScreen() {
   const [ringState, setRingState] = useState<RingState | null>(() => RingBle.getState());
   const [chatVisible, setChatVisible] = useState(false);
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const PRESET_QUESTION = '帮我分析最近健康情况';
+  const [aiInput, setAiInput] = useState<string>('');
+  const aiInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     let pending: RingState | null = null;
@@ -83,14 +86,34 @@ export default function FocusScreen() {
         </ScrollView>
 
         <View style={[styles.inputRow, { paddingBottom: theme.sp(2) + theme.layout.tabBarHeight + theme.sp(2) }]}>
+          <TextInput
+            ref={aiInputRef}
+            style={styles.aiTextInput}
+            placeholder={PRESET_QUESTION}
+            placeholderTextColor={theme.colors.textSub}
+            value={aiInput}
+            onChangeText={setAiInput}
+            onFocus={() => {
+              // 点进输入框 → 清空占位，让用户输入新问题
+              if (!aiInput) setAiInput('');
+            }}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              const q = aiInput.trim() || PRESET_QUESTION;
+              openChat(q);
+              setAiInput('');
+            }}
+          />
           <TouchableOpacity
-            style={styles.inputWrap}
-            onPress={() => openChat('帮我分析最近健康情况')}
+            style={styles.sendBtn}
             activeOpacity={0.85}
+            onPress={() => {
+              const q = aiInput.trim() || PRESET_QUESTION;
+              openChat(q);
+              setAiInput('');
+            }}
           >
-            <Text style={styles.inputPlaceholder}>帮我分析最近健康情况</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.sendBtn} onPress={() => openChat('帮我分析最近健康情况')} activeOpacity={0.85}>
             <Icon name="send" size={theme.fs(18)} color={theme.colors.textWhite} />
           </TouchableOpacity>
         </View>
@@ -178,6 +201,17 @@ const styles = StyleSheet.create({
   inputPlaceholder: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSub,
+  },
+  aiTextInput: {
+    flex: 1,
+    height: theme.sp(12),
+    paddingHorizontal: theme.space.md,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(247,246,252,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textBody,
   },
   sendBtn: {
     width: theme.sp(12),

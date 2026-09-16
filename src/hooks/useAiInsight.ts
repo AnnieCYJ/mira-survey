@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   getAiInsight,
   peekInsight,
+  insightTag,
   parseInsightRows,
   type AiInsightRow,
   type InsightKind,
@@ -17,13 +18,21 @@ import {
  *  - 失败/模型未打包 → text 保持 null（静默降级，不抛错、不空白）。
  *
  * @param kind 'overview'（洞察页顶部综合分析）| 'cycle'（周期 tab 的 AI 分析）| 'recovery'（身体恢复详情页）
+ * @param dayDk 可选：按「某历史日」生成/读取（当前仅 recovery 支持）。缺省=今天。
+ *              传历史日时走该日的事实串与 `kind@dk` 缓存，切日即重新生成该日分析。
  */
-export function useAiInsight(kind: InsightKind): {
+export function useAiInsight(kind: InsightKind, dayDk?: string): {
   text: string | null;
   rows: AiInsightRow[] | null;
   loading: boolean;
 } {
-  const initial = peekInsight(kind);
+  /**
+   * ★ 结论级状态指纹（recovery = 皮质醇 正常/偏高/紊乱 + 连续天数）。
+   * 它是 effect 的依赖：数据补齐导致结论翻转时（正常 → 偏高），缓存作废、重新生成，
+   * 否则会一直显示早上生成的那版文案（大字已变、AI 未变）。
+   */
+  const tag = insightTag(kind, dayDk);
+  const initial = peekInsight(kind, dayDk);
   const [text, setText] = useState<string | null>(initial);
   const [loading, setLoading] = useState<boolean>(initial == null);
   const alive = useRef(true);
@@ -32,7 +41,8 @@ export function useAiInsight(kind: InsightKind): {
     alive.current = true;
     let cancelled = false;
 
-    const cached = peekInsight(kind);
+    // 切日：先同步取该日缓存（有则秒显），无则清空并重新生成
+    const cached = peekInsight(kind, dayDk);
     if (cached) {
       setText(cached);
       setLoading(false);
@@ -40,12 +50,13 @@ export function useAiInsight(kind: InsightKind): {
         cancelled = true;
       };
     }
+    setText(null);
 
     setLoading(true);
     // ★ 延后启动：端侧模型约 1.1GB，加载 + 推理会占用内存与主线程，
     //   必须让首屏渲染/滚动先跑完，否则进页面就卡。
     const timer = setTimeout(() => {
-      getAiInsight(kind)
+      getAiInsight(kind, dayDk)
         .then((t) => {
           if (cancelled || !alive.current) return;
           setText(t);
@@ -62,7 +73,8 @@ export function useAiInsight(kind: InsightKind): {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [kind]);
+    // tag 进依赖：结论翻转（例：皮质醇 正常 → 偏高）→ 旧文案作废并重新生成
+  }, [kind, dayDk, tag]);
 
   useEffect(
     () => () => {
@@ -73,7 +85,7 @@ export function useAiInsight(kind: InsightKind): {
 
   return {
     text,
-    rows: kind === 'cycle' || kind === 'recovery' ? parseInsightRows(text) : null,
+    rows: kind === 'cycle' || kind === 'recovery' || kind === 'overview' ? parseInsightRows(text) : null,
     loading,
   };
 }

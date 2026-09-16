@@ -17,6 +17,19 @@ function fmt(v: number | null | undefined, unit = '', digits = 1): string | null
   return `${Math.round(v * Math.pow(10, digits)) / Math.pow(10, digits)}${unit}`;
 }
 
+/**
+ * 只在有值时输出「标签 值」，无值**整项省略**。
+ *
+ * 为什么必须这样：这段文本是**直接喂给端侧小模型**的。早期用 `${fmt(v)}` / `${v}` 直接插值，
+ * fmt 无值时返回 null、字段缺失时是 undefined，模板字符串会把它变成字符串 "null" / "undefined"
+ * 写进数据串，模型原样复述出去 → 页面上出现「压力评分null」「最佳时段~」这类脏文案；
+ * 用 '-' 占位同样会被模型读成「无数据」并复述。所以缺数据就整项别写。
+ */
+function kv(out: string[], label: string, v: number | null | undefined, unit = '', digits = 1): void {
+  const s = fmt(v, unit, digits);
+  if (s != null && s !== '') out.push(`${label} ${s}`);
+}
+
 function trendDir(vals: number[]): string {
   if (vals.length < 4) return '';
   const mid = Math.floor(vals.length / 2);
@@ -47,6 +60,52 @@ function metricHistorySummary(metric: MetricKey, days = 7): string | null {
  *   Status: 节律正常/持续偏高/紊乱 + 具体 flags
  *   SustainedHighStreak: 连续偏高天数
  */
+/** 今日皮质醇节律摘要（todayLevel + 峰值/连续天数/异常项），与身体恢复页顶部大字、CortisolDailyChart 同源 */
+export interface TodayCortisolSummary {
+  level: 'normal' | 'high' | 'dysregulated';
+  /** 峰值时刻（小时，小数） */
+  peakH: number | null;
+  /** 节律中值 MESOR */
+  mesor: number | null;
+  amplitude: number | null;
+  /** 连续偏高天数（含今天） */
+  highStreak: number;
+  /** 连续紊乱天数（含今天） */
+  dysStreak: number;
+  /** 具体异常项（来自算法 flags） */
+  flags: string[];
+}
+
+/** 取今日皮质醇节律摘要（无样本 → null）。AI 与规则兜底共用，保证页面、大字、文案三者口径一致。 */
+export function getTodayCortisolSummary(): TodayCortisolSummary | null {
+  try {
+    const samples: { t: number; v: number }[] = [];
+    const now = Date.now();
+    for (let i = 0; i < 14; i++) {
+      const dk = dayKey(now - i * 86400000);
+      for (const p of healthStore.getIntraday('cortisol', dk)) samples.push({ t: p.t, v: p.v });
+    }
+    if (samples.length < 4) return null;
+    const r = analyzeCortisol(samples, 14);
+    const fin = (v: number): number | null => (Number.isFinite(v) ? v : null);
+    return {
+      level: r.todayLevel,
+      peakH: fin(r.cosinor.acrophaseH),
+      mesor: fin(r.cosinor.mesor),
+      amplitude: fin(r.cosinor.amplitude),
+      highStreak: r.highStreak,
+      dysStreak: r.dysStreak,
+      flags: r.status.flags || [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getTodayRhythmLevel(): 'normal' | 'high' | 'dysregulated' | null {
+  return getTodayCortisolSummary()?.level ?? null;
+}
+
 function getCortisolBlock(): string {
   const today = dayKey(Date.now());
   const cached = healthStore.getAnalysis(today);
@@ -113,16 +172,19 @@ function getCortisolBlock(): string {
     parts.push(`14天基线P25 ${fmt(cc.baselineP25)} / P75 ${fmt(cc.baselineP75)}，今日MESOR${inRange ? '在基线内' : cc.mesor > cc.baselineP75 ? '偏高' : '偏低'}`);
   }
 
-  // 4. 节律状态 + flags
-  const cmap: Record<string, string> = { normal: '正常', sustained_high: '持续偏高', dysregulated: '节律紊乱' };
-  parts.push(`节律状态 ${cmap[cc.status] ?? cc.status}`);
+  // 4. 今日节律（todayLevel）—— 与身体恢复页顶部大字 / CortisolDailyChart 同源，保证 AI 文案与其一致。
+  //    ★ 只保留这一条「今日」表述。早期同时输出「节律状态 节律紊乱」和「今日节律 紊乱」，
+  //      模型会把块名「皮质醇节律」和值「节律紊乱」连读成「皮质醇节律节律紊乱」。
+  const cmap: Record<string, string> = { normal: '正常', sustained_high: '偏高', dysregulated: '紊乱' };
+  const todayLv = getTodayRhythmLevel();
+  parts.push(`今日节律 ${todayLv ? cmap[todayLv] : cmap[cc.status] ?? cc.status}`);
   if (cc.flags && cc.flags.length) {
-    parts.push(`节律异常项:${cc.flags.join('、')}`);
+    parts.push(`异常项 ${cc.flags.join('、')}`);
   }
 
   // 5. 连续偏高
   if (cc.sustainedHighStreak > 0) {
-    parts.push(`连续 ${cc.sustainedHighStreak} 天皮质醇偏高`);
+    parts.push(`连续 ${cc.sustainedHighStreak} 天偏高`);
   }
 
   return parts.join('；');
@@ -210,7 +272,7 @@ function getAnalysisBlock(): string {
   const cached = healthStore.getAnalysis(today);
   const parts: string[] = [];
 
-  // Stress
+  // Stress（全程用 kv 组装：缺项整项省略，不写 null / '-'）
   try {
     const s = cached?.stress ?? (() => {
       const r = computeStressReport();
@@ -220,9 +282,13 @@ function getAnalysisBlock(): string {
       };
     })();
     if (s) {
-      const peak = s.peakHour != null ? `${String(s.peakHour).padStart(2,'0')}:00` : '-';
-      const rec = s.avgRecoverySec != null ? `${Math.round(s.avgRecoverySec)}s` : '-';
-      parts.push(`压力评分 ${s.score}；事件 ${s.eventCount} 次；峰值 ${peak}；平均恢复 ${rec}；情绪负荷 ${fmt(s.emotionalLoad)}`);
+      const bits: string[] = [];
+      kv(bits, '压力评分', s.score);
+      if (s.eventCount != null) bits.push(`压力事件 ${s.eventCount} 次`);
+      kv(bits, '情绪消耗', s.emotionalLoad, '/100', 0);
+      if (s.avgRecoverySec != null) bits.push(`压力后平均恢复 ${Math.round(s.avgRecoverySec)}s`);
+      if (s.peakHour != null) bits.push(`压力峰值 ${String(Math.round(s.peakHour)).padStart(2, '0')}:00`);
+      if (bits.length) parts.push(`情绪压力：${bits.join('，')}`);
     }
   } catch {}
 
@@ -238,9 +304,16 @@ function getAnalysisBlock(): string {
       };
     })();
     if (c) {
-      const peak = c.peakHour != null ? `${String(c.peakHour).padStart(2,'0')}:00` : '-';
-      const best = c.bestHour != null ? `${String(c.bestHour).padStart(2,'0')}:00` : '-';
-      parts.push(`脑力负荷 ${c.loadScore}；疲劳指数 ${c.fatigueIndex}；峰值 ${peak}；最佳时段 ${best}；恢复力 ${c.recoveryCapacity != null ? fmt(c.recoveryCapacity, '%', 0) : '-'}`);
+      const bits: string[] = [];
+      kv(bits, '脑力负荷', c.loadScore, '/100', 0);
+      kv(bits, '疲劳指数', c.fatigueIndex);
+      // ★ 恢复力是 0–1 比值（见 cognitiveLoad.computeRecoveryCapacity = minWinMean / hrvBase），
+      //   必须 ×100 才是百分数。早期直接 fmt(0.98,'%',0) → 四舍五入成「1%」，
+      //   模型据此写出「恢复力1%」这种明显离谱的结论。
+      if (c.recoveryCapacity != null) kv(bits, '恢复力', c.recoveryCapacity * 100, '%', 0);
+      if (c.bestHour != null) bits.push(`最佳时段 ${String(Math.round(c.bestHour)).padStart(2, '0')}:00`);
+      if (c.peakHour != null) bits.push(`负荷峰值 ${String(Math.round(c.peakHour)).padStart(2, '0')}:00`);
+      if (bits.length) parts.push(`脑力与疲劳：${bits.join('，')}`);
     }
   } catch {}
 
@@ -320,44 +393,88 @@ export function buildHealthSnapshot(): string {
   add('体温', fmt(daily['temp'], '℃'));
   add('皮电', fmt(daily['eda']));
   add('步数', fmt(daily['steps']));
-  add('睡眠总时长', fmt(daily['sleepTotal'], 'min'));
-  add('深睡', fmt(daily['sleepDeep'], 'min'));
-  add('REM', fmt(daily['sleepRem'], 'min'));
-  add('睡眠评分', fmt(daily['sleepScore']));
+  // 睡眠：优先取 healthStore 的分钟级明细。
+  // ★ RingBle.daily 里 sleepTotal 是「分钟」、而 sleepDeep/sleepRem 是「百分比」，
+  //   早期把三者都标成 min 喂给模型，导致 AI 输出「深睡只有 30min」这类错口径结论。
+  let sleepFromStore = false;
+  try {
+    const ss = healthStore.getSleep(dayKey(Date.now()));
+    if (ss && ss.total > 0) {
+      add('睡眠总时长', `${Math.round(ss.total)}min`);
+      // 同时给「分钟」和「占比」：只给分钟时，模型看到「深睡 30min / 总时长 591min」会
+      // 直接判「深睡严重不足」，但无法解释它到底占多少，容易和「睡眠评分」自相矛盾。
+      const deepPct = Math.round((ss.deep / ss.total) * 100);
+      add('深睡', `${Math.round(ss.deep)}min(占${deepPct}%)`);
+      add('REM', `${Math.round(ss.rem)}min(占${Math.round((ss.rem / ss.total) * 100)}%)`);
+      if (ss.awake != null && ss.awake > 0) add('夜间清醒', `${Math.round(ss.awake)}min`);
+      add('睡眠评分', fmt(ss.score));
+      if (ss.sleepTime) add('入睡时刻', ss.sleepTime);
+      if (ss.wakeTime) add('起床时刻', ss.wakeTime);
+      sleepFromStore = true;
+    }
+  } catch {}
+  if (!sleepFromStore) {
+    add('睡眠总时长', fmt(daily['sleepTotal'], 'min'));
+    add('深睡占比', fmt(daily['sleepDeep'], '%', 0));
+    add('REM占比', fmt(daily['sleepRem'], '%', 0));
+    add('睡眠评分', fmt(daily['sleepScore']));
+  }
   add('压力', fmt(daily['stress']));
-  add('血糖', fmt(daily['bloodSugar']));
-  add('血脂', fmt(daily['cholesterol']));
-  add('梅脱', fmt(daily['metabolicRate']));
   const tl = st.statusTimeline || [];
   if (tl.length) {
     const last = tl[tl.length - 1];
     add('今日状态值', `${last.value}/100(${last.level})`);
   }
-  if (rt.length) blocks.push(`今日实时:${rt.join('；')}`);
+  // 当前时段（AI 用它判断是白天工作还是夜晚休息场景）
+  const h = new Date().getHours();
+  const timeLabel = h >= 6 && h < 12 ? '上午' : h >= 12 && h < 18 ? '下午' : h >= 18 && h < 22 ? '傍晚' : '深夜';
+  blocks.push(`• 当前时段：${timeLabel}(${h}:00)`);
+  if (rt.length) blocks.push(`• 今日实时：${rt.join('，')}`);
 
-  // ② 皮质醇完整节律分析（身体恢复详情页同款）
+  // ② 代谢血液指标（「代谢」tab 真实展示的数据，与下方皮质醇节律分属不同维度）
+  //    ★ 早期事实串只有总胆固醇/血糖/梅脱，模型分析「代谢」时拿不到血脂四项细节，
+  //      分析文案写不出 tab 里看到的真实指标。这里补齐血液成分面板全量数据。
+  {
+    const metabParts: string[] = [];
+    const mkv = (label: string, v: number | null | undefined, unit: string) => {
+      const s = fmt(v, unit);
+      if (s != null && s !== '') metabParts.push(`${label} ${s}`);
+    };
+    mkv('血糖', daily['bloodSugar'], 'mmol/L');
+    mkv('甘油三酯', daily['triglyceride'], 'mmol/L');
+    mkv('HDL', daily['hdl'], 'mmol/L');
+    mkv('LDL', daily['ldl'], 'mmol/L');
+    mkv('总胆固醇', daily['cholesterol'], 'mmol/L');
+    mkv('尿酸', daily['uricAcid'], 'μmol/L');
+    mkv('代谢率', daily['metabolicRate'], 'kcal');
+    if (metabParts.length) blocks.push(`• 代谢血液指标：${metabParts.join('，')}`);
+  }
+
+  // ③ 皮质醇完整节律分析（身体恢复详情页同款）
   const cortisol = getCortisolBlock();
-  if (cortisol) blocks.push(`皮质醇节律:${cortisol}`);
+  if (cortisol) blocks.push(`• 皮质醇节律：${cortisol}`);
 
-  // ③ 激素推断（雌二醇/孕激素/周期规律度）
+  // ④ 激素推断（雌二醇/孕激素/周期规律度）
   const hormone = getHormoneBlock();
-  if (hormone) blocks.push(`激素推断:${hormone}`);
+  if (hormone) blocks.push(`• 激素推断：${hormone}`);
 
-  // ④ 计算型结果（stress/cognitive）
+  // ⑤ 计算型结果（stress/cognitive）
   const analysis = getAnalysisBlock();
-  if (analysis) blocks.push(`情绪脑力:${analysis}`);
+  if (analysis) blocks.push(`• 情绪脑力：${analysis}`);
 
-  // ⑤ 周期相位
+  // ⑥ 周期相位
   const cycle = getCycleBlock();
-  if (cycle) blocks.push(cycle);
+  if (cycle) blocks.push(`• 周期相位：${cycle}`);
 
-  // ⑥ 历史趋势
+  // ⑦ 历史趋势
   const trend = getTrendBlock();
-  if (trend) blocks.push(`近7天趋势:${trend}`);
+  if (trend) blocks.push(`• 近7天趋势：${trend}`);
 
   if (blocks.length === 0) return '';
+  // 每块独占一行、以「• 块名：」开头：早期把多块用「；」串成一段，模型会把「皮质醇节律」
+  // 和「情绪脑力」等块名当成正文一起复述成一大段。分块换行后模型更容易按块分行输出。
   return (
-    '【用户健康数据（仅作回答参考，不要逐条播报；用户没问就不主动提）】\\n' +
-    blocks.join('\\n')
+    '【用户健康数据（仅作解读参考；不要逐条播报原始数字，要给出结论与建议）】\n' +
+    blocks.join('\n')
   );
 }

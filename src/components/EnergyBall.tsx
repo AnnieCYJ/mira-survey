@@ -19,6 +19,8 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 interface Props {
   /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 电量值展示，否则回退为默认心情 */
   status?: CurveStatus | null;
+  /** 覆盖圆环中央文字（如睡眠场景显示「睡眠恢复中」） */
+  centerLabelOverride?: string;
 }
 
 // 计算等级（充沛/平稳/偏低/不足）→ 圆环四色点序号
@@ -45,7 +47,7 @@ const LABEL_TO_PHASE: Record<string, PhaseKey> = {
   黄体期: 'luteal',
 };
 
-export default function EnergyBall({ status }: Props) {
+export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const { width: winW } = useWindowDimensions();
   const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
   const size = avail * 0.74;
@@ -65,7 +67,7 @@ export default function EnergyBall({ status }: Props) {
   const moodColor = MOODS[hi].color;
   const hasData = !!(status?.hasData && status.value != null);
   const ringColor = hasData ? moodColor : EMPTY_COLOR;
-  const centerLabel = hasData ? mood.label : '暂无数据';
+  const centerLabel = !hasData ? '暂无数据' : (centerLabelOverride ?? mood.label);
   const statusValue = hasData ? Math.round(status.value as number) : null;
 
   // 当前所处经期象限（来自今日状态预测）；无数据时为 null

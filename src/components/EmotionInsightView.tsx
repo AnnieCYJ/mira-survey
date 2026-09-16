@@ -15,10 +15,11 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, G } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeStressReport, type StressReport } from '../lib/stressAlgorithm';
+import { reportNowMsForDay } from '../lib/dayAnchor';
 import { levelColor } from './StressInsightCard';
 
 /** 等宽均分数据单元（与 MetricDetail statCell 同款；两处共用） */
@@ -27,14 +28,29 @@ export function StatCell({ label, value, sub, valueColor }: {
 }) {
   return (
     <View style={styles.statCell}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
-      {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
+      <Text style={styles.statLabel} numberOfLines={1}>{label}</Text>
+      <Text
+        style={[styles.statValue, valueColor ? { color: valueColor } : null]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >{value}</Text>
+      {sub ? <Text style={styles.statSub} numberOfLines={1}>{sub}</Text> : null}
     </View>
   );
 }
 
-/** 全天情绪分布：情绪事件点阵（4 行 × 小时列，5 档情绪着色 + 睡眠时段过滤） */
+/**
+ * 全天情绪分布：情绪事件点阵（24 小时列 × 4 行，5 档情绪着色）
+ *
+ * 网格语义：**一列 = 1 小时，一行 = 15 分钟**（:00 / :15 / :30 / :45）；
+ * 同一格里出现多个事件时**横向并排画多个点**（不串行、不丢弃）→ 圆点数恒等于事件次数。
+ *
+ * ★ 两条不变量（2026-09-16 修「图上是 3 个点、文案说 4 次」）：
+ *  1. **时间轴固定 0–23 全天**。旧实现把轴裁成「起床时刻 → 24」，当睡眠跨零点时
+ *     （实测 00:41 入睡 / 09:41 起床）会把 00:00–09:41 这段**清醒时间**整段丢掉，
+ *     落在其中的事件图上消失、却仍计入「N 次压力事件」→ 点数 ≠ 次数。标题即「全天」，就该画满 24 列。
+ *  2. **不因睡眠丢事件**：睡眠时段的列只加浅底标注，事件照常画。
+ */
 export function StressEventStems({ events, chartH = 200 }: { events: any[]; chartH?: number }) {
   void chartH;
   // ★ 5 档情绪分类
@@ -44,7 +60,7 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
   const COL_STRESSED = theme.colors.stateEnergy;  // 压力
   const COL_ANXIOUS = theme.colors.danger;        // 焦虑
 
-  // ★ 睡眠过滤
+  // 睡眠窗口：**只用于给睡眠时段的列加浅底**，不再用来过滤事件
   let bedHour: number | null = null;
   let wakeHour: number | null = null;
   try {
@@ -65,42 +81,28 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
     }
   } catch {}
 
-  const isAsleep = (tMs: number): boolean => {
+  const isSleepHour = (h: number): boolean => {
     if (bedHour == null || wakeHour == null) return false;
-    const d = new Date(tMs);
-    const h = d.getHours() + d.getMinutes() / 60;
     if (bedHour > wakeHour) return h >= bedHour || h < wakeHour;
     return h >= bedHour && h < wakeHour;
   };
-  const filtered = events.filter((e) => !isAsleep(e.t));
-  const useEvents = filtered.length > 0 ? filtered : events;
 
-  // ★ 时间轴
-  let axisStartH = 0, axisEndH = 24;
-  if (bedHour != null && wakeHour != null) {
-    if (bedHour > wakeHour) { axisStartH = wakeHour; axisEndH = bedHour; }
-    else { axisStartH = wakeHour; axisEndH = 24; }
-  }
-  const hourCols: number[] = [];
-  for (let h = Math.ceil(axisStartH); h <= Math.floor(axisEndH); h++) hourCols.push(h);
-  if (hourCols.length === 0) hourCols.push(new Date().getHours());
+  const COLS = 24; // ★ 全天 24 列（标题即「全天」，不再按时段裁剪）
+  const ROWS = 4;  // 4 行 = 每小时的 4 个 15 分钟刻度（:00/:15/:30/:45）
+  const hourCols = Array.from({ length: COLS }, (_, h) => h);
 
-  const COLS = hourCols.length;
-  const ROWS = 4; // ★ 固定 4 行 = :00 / :15 / :30 / :45
-
-  // ★ grid[col][row] = event (row 按分钟分配)
-  const grid: (any | null)[][] = Array.from({ length: COLS }, () => Array(ROWS).fill(null));
-  for (const e of useEvents) {
+  // ★ grid[col][row] = 该 15 分钟格内的事件列表（多个则同格并排画，不丢、不串行）
+  const grid: any[][][] = Array.from({ length: COLS }, () =>
+    Array.from({ length: ROWS }, () => [] as any[])
+  );
+  for (const e of events) {
+    if (!e || !Number.isFinite(e.t)) continue;
     const d = new Date(e.t);
-    const h = d.getHours();
-    const m = d.getMinutes();
-    const col = hourCols.indexOf(h);
-    if (col < 0) continue;
-    const row = Math.min(3, Math.floor(m / 15)); // :00→0, :15→1, :30→2, :45→3
-    // 同一格多个事件 → 保留 severity 更高的
-    if (!grid[col][row] || (e.severity || 0) > (grid[col][row]?.severity || 0)) {
-      grid[col][row] = e;
-    }
+    const col = d.getHours();
+    // 一列 = 1 小时、一行 = 15 分钟：同一格里的事件**并存**（横向并排画多个点），
+    // 顺延到别的行会破坏「行=分钟」的时间语义。
+    const row = Math.min(ROWS - 1, Math.floor(d.getMinutes() / 15)); // :00→0 … :45→3
+    grid[col][row].push(e);
   }
 
   // ★ 5 档情绪判定 (valenceLabel + severity 细分)
@@ -116,8 +118,9 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
     return { r: 6 + (sev / 100) * 7, opacity: 0.4 + (sev / 100) * 0.5 };
   };
 
-  const GAP = theme.sp(1);
-  const LABEL_H = theme.sp(4);
+  // 24 列比原来的 15 列更密 → 列间距收到 2px，避免网格被间隙吃掉
+  const GAP = theme.sp(0.5);
+  const LABEL_H = theme.sp(3);
 
   return (
     <View style={{ width: '100%', paddingHorizontal: theme.space.xs, marginTop: theme.sp(2) }}>
@@ -125,24 +128,38 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
       {[0, 1, 2, 3].map((row) => (
         <View key={row} style={{ flexDirection: 'row', marginBottom: row < ROWS - 1 ? GAP : 0 }}>
           {hourCols.map((h, col) => {
-            const e = grid[col][row];
-            const color = dotColor(e);
-            const st = dotStyle(e);
+            const cell = grid[col][row];
+            const has = cell.length > 0;
             return (
               <View key={`${h}-${row}`} style={{
                 flex: 1, aspectRatio: 0.7,
                 marginRight: col < COLS - 1 ? GAP : 0,
                 borderRadius: theme.radius.sm,
-                backgroundColor: e ? theme.colors.ui.white25 : 'transparent',
+                // 空格：睡眠时段给浅底（提示"这会儿在睡"），事件格用白底高亮
+                backgroundColor: has
+                  ? theme.colors.ui.white25
+                  : isSleepHour(h) ? theme.colors.cardBgSoft : 'transparent',
                 alignItems: 'center', justifyContent: 'center',
-                borderWidth: e ? 1 : 0,
-                borderColor: e ? theme.colors.ui.borderSoft : 'transparent',
+                borderWidth: has ? 1 : 0,
+                borderColor: has ? theme.colors.ui.borderSoft : 'transparent',
               }}>
-                {e && (
+                {has && (
                   <Svg width="100%" height="100%" viewBox="0 0 40 20">
-                    <Circle cx={20} cy={10} r={st.r + 6} fill={color} opacity={st.opacity * 0.15} />
-                    <Circle cx={20} cy={10} r={st.r + 3} fill={color} opacity={st.opacity * 0.35} />
-                    <Circle cx={20} cy={10} r={st.r} fill={color} opacity={st.opacity} />
+                    {cell.map((e, i) => {
+                      const color = dotColor(e);
+                      const st = dotStyle(e);
+                      // 同一格内多个事件 → 横向等分并排（整体缩小，避免糊成一团）
+                      const n = cell.length;
+                      const k = n === 1 ? 1 : n === 2 ? 0.64 : n === 3 ? 0.5 : 0.42;
+                      const cx = (40 / (n + 1)) * (i + 1);
+                      return (
+                        <G key={i}>
+                          <Circle cx={cx} cy={10} r={(st.r + 6) * k} fill={color} opacity={st.opacity * 0.15} />
+                          <Circle cx={cx} cy={10} r={(st.r + 3) * k} fill={color} opacity={st.opacity * 0.35} />
+                          <Circle cx={cx} cy={10} r={st.r * k} fill={color} opacity={st.opacity} />
+                        </G>
+                      );
+                    })}
                   </Svg>
                 )}
               </View>
@@ -151,18 +168,18 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
         </View>
       ))}
 
-      {/* ★ X 轴时间标签 (下) */}
+      {/* ★ X 轴时间标签（24 列太密 → 每 3 小时标一个刻度） */}
       <View style={{ flexDirection: 'row', marginTop: theme.sp(1), height: LABEL_H }}>
         {hourCols.map((h, i) => (
           <Text key={h} style={{
             flex: 1,
-            fontSize: theme.fontSize.sm,
+            fontSize: theme.fontSize.micro,
             color: theme.colors.textSub,
             textAlign: 'center',
             fontWeight: theme.weight.medium,
             marginRight: i < COLS - 1 ? GAP : 0,
           }}>
-            {h}
+            {h % 3 === 0 ? h : ''}
           </Text>
         ))}
       </View>
@@ -184,13 +201,22 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
           </View>
         ))}
       </View>
+
+      {/* 口径提示：轴固定全天、睡眠只作浅底标注 → 圆点数恒等于下方「今日 N 次压力事件」 */}
+      <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1) }}>
+        横轴 0–23 点 · 浅底为睡眠时段（事件不隐藏，圆点数＝下方事件次数）
+      </Text>
     </View>
   );
 }
 
-/** 「情绪洞察」主体：全天情绪分布 + 4 项指标 + 口径注释 + 5 档说明 */
-export default function EmotionInsightView() {
-  const report: StressReport = computeStressReport();
+/**
+ * 「情绪洞察」主体：全天情绪分布 + 4 项指标 + 口径注释 + 5 档说明。
+ * 可选 anchorMs：传则展示该「锚定日」的全天（历史日 23:59:59.999，今天=此刻）；
+ * 不传=今天（洞察页「情绪压力」tab 沿用默认，行为不变）。
+ */
+export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } = {}) {
+  const report: StressReport = computeStressReport(reportNowMsForDay(anchorMs ?? Date.now()));
   const color = levelColor(report.level);
   const hasData = report.sampleCount >= 5;
 
@@ -325,10 +351,10 @@ const styles = StyleSheet.create({
   },
   statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   statValue: {
-    fontSize: theme.fontSize.orb,
+    fontSize: theme.fontSize.card,
     fontWeight: theme.weight.bold as any,
     color: theme.colors.textTitle,
-    lineHeight: theme.fontSize.orb * 1.15,
+    lineHeight: theme.fontSize.card * 1.2,
     textAlign: 'center',
   },
   statSub: {
