@@ -31,7 +31,10 @@ export type IconName =
   | 'heart'
   | 'drop'
   | 'thermometer'
-  | 'activity';
+  | 'activity'
+  | 'mic'
+  | 'speaker'
+  | 'speaker_off';  // 🔇 喇叭关
 
 type Node = { p: string } | { cx: number; cy: number; r: number; fill?: boolean };
 
@@ -152,6 +155,21 @@ const ICONS: Record<IconName, IconDef> = {
     mode: 'stroke',
     nodes: [{ cx: 12, cy: 12, r: 8 }, { cx: 12, cy: 12, r: 3.4 }],
   },
+  speaker: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M11 5L6 9H2v6h4l5 4V5z' },
+      { p: 'M15.54 8.46a5 5 0 0 1 0 7.07' },
+      { p: 'M19.07 4.93a10 10 0 0 1 0 14.14' },
+    ],
+  },
+  speaker_off: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M11 5L6 9H2v6h4l5 4V5z' },
+      { p: 'M23 9l-6 6M17 9l6 6' },
+    ],
+  },
   heart: {
     mode: 'fill',
     nodes: [
@@ -169,6 +187,15 @@ const ICONS: Record<IconName, IconDef> = {
     nodes: [
       { p: 'M14 14.76V4a2 2 0 0 0-4 0v10.76a4 4 0 1 0 4 0z' },
       { cx: 12, cy: 18, r: 1.6 },
+    ],
+  },
+  // 🎤 麦克风：按住说话
+  mic: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z' },
+      { p: 'M19 10v2a7 7 0 0 1-14 0v-2' },
+      { p: 'M12 19v3' },
     ],
   },
   activity: {

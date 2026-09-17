@@ -14,7 +14,7 @@
  * 设计：100% design token（theme.ts），禁止裸值。
  */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type TextStyle } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
@@ -123,7 +123,7 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
   const LABEL_H = theme.sp(3);
 
   return (
-    <View style={{ width: '100%', paddingHorizontal: theme.space.xs, marginTop: theme.sp(2) }}>
+    <View style={{ width: '100%', paddingBottom: theme.sp(2), marginTop: theme.sp(2), position: 'relative' }}>
       {/* ★ 固定 4 行格子 */}
       {[0, 1, 2, 3].map((row) => (
         <View key={row} style={{ flexDirection: 'row', marginBottom: row < ROWS - 1 ? GAP : 0 }}>
@@ -138,7 +138,7 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
                 // 空格：睡眠时段给浅底（提示"这会儿在睡"），事件格用白底高亮
                 backgroundColor: has
                   ? theme.colors.ui.white25
-                  : isSleepHour(h) ? theme.colors.cardBgSoft : 'transparent',
+                  : isSleepHour(h) ? theme.colors.cardBgSoft + '66' : 'transparent',
                 alignItems: 'center', justifyContent: 'center',
                 borderWidth: has ? 1 : 0,
                 borderColor: has ? theme.colors.ui.borderSoft : 'transparent',
@@ -168,20 +168,65 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
         </View>
       ))}
 
-      {/* ★ X 轴时间标签（24 列太密 → 每 3 小时标一个刻度） */}
-      <View style={{ flexDirection: 'row', marginTop: theme.sp(1), height: LABEL_H }}>
-        {hourCols.map((h, i) => (
-          <Text key={h} style={{
-            flex: 1,
+      {/* ★ X 轴时间标签：和格子行等宽对齐（flex:1 + GAP 和格子一致）。
+                       首尾用 absolute 贴根容器左右边缘（根容器无 paddingHorizontal），
+                       中间用 flex:1。所有 Text 显式 lineHeight 保证等高 */}
+      <View style={{
+        flexDirection: 'row',
+        marginTop: theme.sp(1),
+        height: LABEL_H,
+      }}>
+        {hourCols.map((h, i) => {
+          const displayH = h + 1;
+          const isFirst = i === 0;
+          const isLast  = i === COLS - 1;
+          const showMiddle = !isFirst && !isLast && h % 4 === 0;
+          const baseStyle: TextStyle = {
             fontSize: theme.fontSize.micro,
             color: theme.colors.textSub,
             textAlign: 'center',
-            fontWeight: theme.weight.medium,
-            marginRight: i < COLS - 1 ? GAP : 0,
-          }}>
-            {h % 3 === 0 ? h : ''}
-          </Text>
-        ))}
+            lineHeight: LABEL_H,  // ★ 显式 lineHeight —— 所有标签等高
+          };
+          // 首尾也返回空 flex spacer，保证 24 列和格子对齐
+          const spacer = <Text key={h} style={{ flex: 1, marginRight: i < COLS - 1 ? GAP : 0, lineHeight: LABEL_H }} />;
+          if (isFirst) {
+            return (
+              <React.Fragment key={h}>
+                {spacer}
+                <Text style={{
+                  position: 'absolute',
+                  left: 0, top: 0,
+                  ...baseStyle,
+                  fontWeight: theme.weight.medium,
+                }}>1</Text>
+              </React.Fragment>
+            );
+          }
+          if (isLast) {
+            return (
+              <React.Fragment key={h}>
+                {spacer}
+                <Text style={{
+                  position: 'absolute',
+                  right: 0, top: 0,
+                  ...baseStyle,
+                  fontWeight: theme.weight.medium,
+                }}>24</Text>
+              </React.Fragment>
+            );
+          }
+          if (!showMiddle) return spacer;
+          return (
+            <Text key={h} style={{
+              flex: 1,
+              ...baseStyle,
+              fontWeight: theme.weight.medium,
+              marginRight: i < COLS - 1 ? GAP : 0,
+            }}>
+              {displayH}
+            </Text>
+          );
+        })}
       </View>
 
       {/* ★ 5 档情绪图例 */}

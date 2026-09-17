@@ -179,25 +179,15 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   sleepWindow: { bedHour: number; wakeHour: number } | null;
   chartH?: number;
 }) {
-  // ★ 展示范围 = 起床 → 入睡（含入睡那一小时）。
-  // 例: wake=10 bed=1 → 展示 10,11,12,...,0,1
-  // 例: wake=7  bed=23 → 展示 7,8,...,23
-  const sw = sleepWindow;
-  const wake = sw ? sw.wakeHour : 6;
-  const bed = sw ? sw.bedHour : 24;
-  // 展示范围 = 起床 → 入睡 (含入睡那一小时, 不含睡眠时段)
-  // bed > wake (夜间睡, 22睡7起): awake = 7..22
-  // bed < wake (凌晨睡, 1睡10起): awake = 10..23 (bed在凌晨已过, 全天清醒)
-  const inAwakeWindow = (h: number) => {
-    if (bed > wake) return h >= wake && h <= bed;
-    return h >= wake;
-  };
-  const visible = hourly.filter(h => inAwakeWindow(h.hour));
-  const totalBins = visible.length;
+  // ★ 和情绪洞察统一：固定 24 列全天 0-23，标签显示 1-24
+  // 不再按睡眠窗口裁剪——睡眠时段的柱状图自然会是 0 高度（因为没数据）
+  const HOURS = Array.from({ length: 24 }, (_, i) => i);
+  const hourMap = new Map(hourly.map(h => [h.hour, h]));
+  const visible = HOURS.map(h => hourMap.get(h) ?? { hour: h, score: 0 });
+  const totalBins = 24;
 
-  // hour -> visible index 映射 (span 高亮层用)
-  const hourToIdx = new Map<number, number>();
-  visible.forEach((h, i) => hourToIdx.set(h.hour, i));
+  // hour -> index 映射（固定 0-23 全有）
+  const hourToIdx = new Map(HOURS.map((h, i) => [h, i]));
 
   // ── 用数据里的最大值做归一化, 确保柱子都能撑开 ──
   const dataMax = Math.max(10, ...visible.map(h => h.score));
@@ -235,12 +225,50 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
           );
         })}
       </View>
+      {/* ★ X 轴标签：和格子等宽对齐（flex:1），首尾 absolute 贴根容器边缘 */}
       <View style={styles.histAxis}>
-        {visible.map((h) => (
-          <Text key={h.hour} style={styles.histAxisLabel}>
-            {String(h.hour).padStart(2, '0')}
-          </Text>
-        ))}
+        {visible.map((h, i) => {
+          const n = visible.length;
+          const isFirst = i === 0;
+          const isLast  = i === n - 1;
+          const displayH = h.hour + 1;
+          const showMiddle = !isFirst && !isLast && (h.hour % 4 === 0);
+          const baseLabel = {
+            fontSize: theme.fontSize.micro,
+            color: theme.colors.textSub,
+            lineHeight: theme.sp(3),
+          };
+          // 首尾也返回空 flex spacer，保证 n 列和柱子对齐
+          const spacer = <Text key={h.hour} style={{ flex: 1, lineHeight: theme.sp(3) }} />;
+          if (isFirst) {
+            return (
+              <React.Fragment key={h.hour}>
+                {spacer}
+                <Text style={{
+                  position: 'absolute', left: 0, top: 0,
+                  ...baseLabel, fontWeight: theme.weight.medium,
+                }}>{displayH}</Text>
+              </React.Fragment>
+            );
+          }
+          if (isLast) {
+            return (
+              <React.Fragment key={h.hour}>
+                {spacer}
+                <Text style={{
+                  position: 'absolute', right: 0, top: 0,
+                  ...baseLabel, fontWeight: theme.weight.medium,
+                }}>{displayH}</Text>
+              </React.Fragment>
+            );
+          }
+          if (!showMiddle) return spacer;
+          return (
+            <Text key={h.hour} style={{
+              flex: 1, ...baseLabel, textAlign: 'center', fontWeight: theme.weight.medium,
+            }}>{displayH}</Text>
+          );
+        })}
       </View>
     </View>
   );
@@ -275,7 +303,7 @@ const styles = StyleSheet.create({
   score: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, letterSpacing: -1 },
   scoreDivider: { width: 1, height: theme.sp(10), backgroundColor: theme.colors.ui.borderSoft },
 
-  histogramWrap: { height: theme.sp(10), paddingHorizontal: theme.sp(1), marginTop: theme.sp(1) },
+  histogramWrap: { height: theme.sp(10), marginTop: theme.sp(1), position: 'relative' },
   spanHighlight: {
     position: 'absolute',
     top: 0, bottom: theme.sp(1.5),
@@ -285,8 +313,8 @@ const styles = StyleSheet.create({
   histogram: { flexDirection: 'row', alignItems: 'flex-end', height: theme.sp(6) },
   histBin: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
   histBar: { width: theme.sp(1.5), borderRadius: theme.sp(0.5) },
-  histAxis: { flexDirection: 'row', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(0.5) },
-  histAxisLabel: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center' },
+  histAxis: { flexDirection: 'row', marginTop: theme.sp(0.5), paddingHorizontal: 0 },
+  histAxisLabel: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', lineHeight: theme.sp(3) },
   hourAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(1), paddingHorizontal: theme.sp(0.5) },
   hourAxisLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 

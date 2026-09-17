@@ -8,6 +8,9 @@ import { AppStateProvider } from './src/state/AppState';
 import RootStackNavigator from './src/navigation/RootStackNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { postLog } from './src/lib/logger';
+import { VoiceTriggerProvider } from './src/hooks/useVoiceTrigger';
+import VoiceQuickOverlay from './src/components/VoiceQuickOverlay';
+import { warmupModel } from './src/ai/model';
 // import SyncProgressBanner from './src/components/SyncProgressBanner';  // ★ 临时注释
 import { enableFreeze } from 'react-native-screens';
 
@@ -15,6 +18,9 @@ import { enableFreeze } from 'react-native-screens';
 //   freezeOnBlur（见 BottomTabNavigator）真正生效 —— 失焦的 Tab 停止重渲染。
 //   否则切 Tab 后旧 Tab 仍在后台订阅 BLE / healthStore 并反复重渲染 → 点击卡顿。
 enableFreeze(true);
+
+// 🔥 App 启动后后台预热端侧模型（不要 await，不阻塞首屏）
+warmupModel();
 
 // ★ 全局未捕获错误上报（开发期）：捕捉 React 红屏 / “Maximum update depth” /
 // 异步未处理拒绝等 ErrorBoundary 兜不住的致命 JS 错误，POST 到 :8899 收集器，
@@ -70,7 +76,10 @@ export default function App() {
           <AppStateProvider>
             <NavigationContainer theme={navTheme}>
               <ErrorBoundary>
-                <RootStackNavigator />
+                <VoiceTriggerProvider>
+                  <RootStackNavigator />
+                  <VoiceQuickOverlay />
+                </VoiceTriggerProvider>
               </ErrorBoundary>
             </NavigationContainer>
             {/* 全局底部「正在同步数据 x%」浮层：绝对定位覆盖在导航之上；

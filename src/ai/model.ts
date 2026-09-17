@@ -190,3 +190,11 @@ export async function releaseLlama(): Promise<void> {
     loading = null;
   }
 }
+
+/** 🔥 App 启动时后台预热模型（不要 await，不阻塞 UI） */
+export function warmupModel(): void {
+  getLlamaContext().then(
+    (c) => console.log('[MiraAI] ✅ 模型预热完成, gpu=', c.gpu),
+    (e) => console.warn('[MiraAI] 预热失败（不影响首次 ask，会重试）:', e)
+  );
+}

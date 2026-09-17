@@ -28,7 +28,7 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
   const recentText = [userText, ...(opts.history || []).map((m) => m.content)].join('\n');
   const system = buildSystemPrompt(recentText);
 
-  const recalls = await memory.recall(userText, 3);
+  const recalls = await memory.recall(userText, 2);
   const memBlock = recalls.length
     ? `【你记得关于用户的事（聊到过即可，不必每次提）】\n` + recalls.map((r) => `- ${r}`).join('\n')
     : '';
@@ -40,12 +40,20 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
 
   const health = buildHealthSnapshot();
 
+  // ★ Prompt 精简：减少每次 prefill 的 token 量（直接影响首字延迟）
+  // 系统 prompt 用压缩版，完整版只保留给 insight 等长文本场景
+  const lightSystem = system.length > 400 ? system.slice(0, 400) : system;
+
+  // 健康快照只在用户问了相关问题时才注入（省一大块）
+  const healthKeywords = ['睡眠', '心率', '压力', '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '疲劳', '指标', '数据', '健康'];
+  const needsHealth = healthKeywords.some(k => userText.includes(k));
+
   const messages: { role: string; content: string }[] = [
-    { role: 'system', content: system },
+    { role: 'system', content: lightSystem },
     ...(memBlock ? [{ role: 'system', content: memBlock }] : []),
     ...(ctxBlock ? [{ role: 'system', content: ctxBlock }] : []),
-    ...(health ? [{ role: 'system', content: health }] : []),
-    ...(opts.history || []).map((m) => ({ role: m.role, content: m.content })),
+    ...(needsHealth && health ? [{ role: 'system', content: health }] : []),
+    ...(opts.history || []).slice(-3).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userText },
   ];
 
@@ -57,7 +65,7 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
       ctx.completion(
         {
           messages,
-          n_predict: 220,
+          n_predict: 150,
           temperature: 0.8,
           top_p: 0.9,
           stop: ['<|im_end|>', 'User:', '用户：', '用户:'],

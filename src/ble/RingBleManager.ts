@@ -608,48 +608,71 @@ class NativeRingSource {
     private onSyncProgress: (p: SyncProgress | null) => void
   ) {
     if (VeepooNative) {
-      this.emitter = new NativeEventEmitter(VeepooNative);
-      this.emitter.addListener('onStateChange', this.handleState);
-      this.emitter.addListener('onMetric', this.handleMetric);
+      const emitter = new NativeEventEmitter(VeepooNative);
+      this.emitter = emitter;
+      // ★★ 2026-09-17 修红屏：原生 `supportedEvents` 只声明 6 个事件
+      //    （onStateChange / onMetric / onLog / onBackfillDay / onBackfillSamples / onBackfillComplete）。
+      //    RN 对**未声明**的事件名调 addListener 会弹「'onX' is not a supported event type」红屏
+      //    （真机栈 RCTEventEmitter.m:106），且中断构造流程——之前 onHrvDay 在很靠前的位置就弹了，
+      //    排在它后面的监听器（含离线回填的 onBackfillDay/onBackfillSamples）根本没机会注册。
+      //    下面白名单只注册原生真正支持的事件；其余（onHrvDay/onStepDay/onSleepDay/… 原生侧早已不再
+      //    emit，属历史遗留死监听）一律跳过。若将来原生新增事件，把事件名加进这个 Set 即可。
+      const NATIVE_SUPPORTED_EVENTS = new Set<string>([
+        'onStateChange', 'onMetric', 'onLog',
+        'onBackfillDay', 'onBackfillSamples', 'onBackfillComplete',
+      ]);
+      const reg = (name: string, fn: (...a: any[]) => void) => {
+        if (!NATIVE_SUPPORTED_EVENTS.has(name)) return; // 原生未声明 → 不注册（否则红屏）
+        emitter.addListener(name, fn);
+      };
+      reg('onStateChange', this.handleState);
+      reg('onMetric', this.handleMetric);
 
-      this.emitter.addListener('onHrvDay', this.handleHrvDay);
-      this.emitter.addListener('onHrvSamples', this.handleHrvSamples);
-      this.emitter.addListener('onSleepDay', this.handleSleepDay);
-      this.emitter.addListener('onStepDay', this.handleStepDay);
-      this.emitter.addListener('onSpo2Day', this.handleSpo2Day);
-      this.emitter.addListener('onTempDay', this.handleTempDay);
-      this.emitter.addListener('onFemale', this.handleFemale);
-      this.emitter.addListener('onEcg', this.handleEcg);
-      this.emitter.addListener('onEcgProgress', this.handleEcgProgress);
-      this.emitter.addListener('onEcgDay', this.handleEcgDay);
-      this.emitter.addListener('onHealthGlanceDay', this.handleHealthGlanceDay);
+      reg('onHrvDay', this.handleHrvDay);
+      reg('onHrvSamples', this.handleHrvSamples);
+      reg('onSleepDay', this.handleSleepDay);
+      reg('onStepDay', this.handleStepDay);
+      reg('onSpo2Day', this.handleSpo2Day);
+      reg('onTempDay', this.handleTempDay);
+      reg('onFemale', this.handleFemale);
+      reg('onEcg', this.handleEcg);
+      reg('onEcgProgress', this.handleEcgProgress);
+      reg('onEcgDay', this.handleEcgDay);
+      reg('onHealthGlanceDay', this.handleHealthGlanceDay);
       // ★ 血压历史回填：原生 backfill 从 veepooSDKGetOriginalData 聚合血压后 emit onBpDay
-      this.emitter.addListener('onBpDay', this.handleBpDay);
+      reg('onBpDay', this.handleBpDay);
       // ★ raw 5 分钟 slot 批量回填（hr/bp/steps/stress/met 等逐点，趋势图用）
-      this.emitter.addListener('onBackfillDaySlots', this.handleBackfillDaySlots);
+      reg('onBackfillDaySlots', this.handleBackfillDaySlots);
+      // ★★ 2026-09-17 修「连上戒指离线数据也不回来」：原生 backfill 真正 emit 的是
+      //    onBackfillDay（日汇总：step/dist/cal/sleepTotalMin/spo2/hrv/temp/bpSys…）
+      //    与 onBackfillSamples（5min slot 批量）；而 JS 之前只注册了 onBackfillDaySlots
+      //    ——一个原生从不 emit 的名字。两条离线数据事件无同名监听器 → 被 RN 静默丢弃，
+      //    于是只有实时流 onMetric(hr/spo2/temp/eda) 能落库，steps/sleep 等派生指标永远缺。
+      reg('onBackfillDay', this.handleBackfillDay);
+      reg('onBackfillSamples', this.handleBackfillSamples);
       // ★ 血压 intraday 补全（原生拆成 onBpSysSamples / onBpDiaSamples 小事件）
-      this.emitter.addListener('onBpSysSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpSys'));
-      this.emitter.addListener('onBpDiaSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpDia'));
+      reg('onBpSysSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpSys'));
+      reg('onBpDiaSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bpDia'));
       // ★ 血糖 intraday 回填：原生 backfill 从 blood_glucose_table 拉每 5 分钟一条 emit onBloodSugarSamples
-      this.emitter.addListener('onBloodSugarSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bloodSugar'));
+      reg('onBloodSugarSamples', (raw: any) => this.handleDayBucketSamples(raw, 'bloodSugar'));
       // ★ 血液成分历史回填：原生 backfill 从 VPDailyBloodAnalysisModel 逐 5min 读取后 emit
-      this.emitter.addListener('onBloodAnalysisDay', this.handleBloodAnalysisDay);
-      this.emitter.addListener('onHrDay', this.handleHrDay);
-      this.emitter.addListener('onHrSamples', this.handleHrSamples);
-      this.emitter.addListener('onSpo2Samples', this.handleSpo2Samples);
-      this.emitter.addListener('onTempSamples', this.handleTempSamples);
+      reg('onBloodAnalysisDay', this.handleBloodAnalysisDay);
+      reg('onHrDay', this.handleHrDay);
+      reg('onHrSamples', this.handleHrSamples);
+      reg('onSpo2Samples', this.handleSpo2Samples);
+      reg('onTempSamples', this.handleTempSamples);
       // ★ 逐 slot 全天序列 — 从原生 veepooSDKGetOriginalDataWithDate 每个时间桶 emit
-      this.emitter.addListener('onStressSamples', (raw: any) => this.handleDayBucketSamples(raw, 'stress'));
-      this.emitter.addListener('onFatigueSamples', (raw: any) => this.handleDayBucketSamples(raw, 'fatigue'));
-      this.emitter.addListener('onSnsSamples', (raw: any) => this.handleDayBucketSamples(raw, 'snsActivation'));
-      this.emitter.addListener('onMetSamples', (raw: any) => this.handleDayBucketSamples(raw, 'met'));
-      this.emitter.addListener('onStepSamples', (raw: any) => this.handleDayBucketSamples(raw, 'steps'));
-      this.emitter.addListener('onDistanceSamples', (raw: any) => this.handleDayBucketSamples(raw, 'distance'));
-      this.emitter.addListener('onCalorieSamples', (raw: any) => this.handleDayBucketSamples(raw, 'calorie'));
+      reg('onStressSamples', (raw: any) => this.handleDayBucketSamples(raw, 'stress'));
+      reg('onFatigueSamples', (raw: any) => this.handleDayBucketSamples(raw, 'fatigue'));
+      reg('onSnsSamples', (raw: any) => this.handleDayBucketSamples(raw, 'snsActivation'));
+      reg('onMetSamples', (raw: any) => this.handleDayBucketSamples(raw, 'met'));
+      reg('onStepSamples', (raw: any) => this.handleDayBucketSamples(raw, 'steps'));
+      reg('onDistanceSamples', (raw: any) => this.handleDayBucketSamples(raw, 'distance'));
+      reg('onCalorieSamples', (raw: any) => this.handleDayBucketSamples(raw, 'calorie'));
       // ★ healthGlance 复合指标历史回填（SDK ManualTestDataAll 里的 emotion/cortisol/skin/sns/bpSys/bpDia/血脂...）
-      this.emitter.addListener('onManualHealthGlance', (raw: any) => this.handleManualHealthGlance(raw));
-      this.emitter.addListener('onDeviceCapabilities', this.handleDeviceCapabilities);
-      this.emitter.addListener('onBackfillComplete', () => {
+      reg('onManualHealthGlance', (raw: any) => this.handleManualHealthGlance(raw));
+      reg('onDeviceCapabilities', this.handleDeviceCapabilities);
+      reg('onBackfillComplete', () => {
         postLog('RingBle', '[JS] onBackfillComplete 收到 ✅');
         this.push({ lastBackfillAt: Date.now() });
         this.onBackfillComplete();
@@ -666,7 +689,7 @@ class NativeRingSource {
           postLog('RingBle', `[AUTO_BACKFILL] 跳过 status=${this.getState().status}`);
         }
       }, 10000);
-      this.emitter.addListener('onLog', (msg: string) => {
+      reg('onLog', (msg: string) => {
         // eslint-disable-next-line no-console
         postLog('JS', msg);
       });
@@ -1104,6 +1127,79 @@ class NativeRingSource {
         ['hr','bpSys','bpDia','steps','calorie','distance','stress','met']
           .map(k => `${k}=${(raw as any)[k]?.length ?? 0}`).join(' ')
       }`);
+    } catch { /* 静默 */ }
+  };
+
+  /** ★★ 2026-09-17 新增：接住原生 backfill 真正发出的「日汇总」事件 onBackfillDay。
+   *  原生字段名是 step/dist/cal/sleepTotalMin/sleepDeepMin/sleepLightMin/sleepScore/spo2/hrv/temp/bpSys/bpDia，
+   *  与各 per-metric handler 期望的键不同，这里做翻译后转调，直接复用它们的落库逻辑（不重复实现）。
+   *  修复前：onBackfillDay 无监听器 → 离线 steps/sleep/spo2/hrv/temp/bp 全部被丢。 */
+  private handleBackfillDay = (raw: any) => {
+    try {
+      if (!raw?.date) return;
+      const date = String(raw.date);
+      postLog('JS', `[handleBackfillDay] ✅ date=${date} step=${raw.step} dist=${raw.dist} cal=${raw.cal} `
+        + `sleep=${raw.sleepTotalMin} spo2=${raw.spo2} hrv=${raw.hrv} temp=${raw.temp} bp=${raw.bpSys}/${raw.bpDia}`);
+      // 计步 / 距离 / 卡路里
+      if (num(raw.step) != null || num(raw.dist) != null || num(raw.cal) != null) {
+        this.handleStepDay({
+          date,
+          steps: num(raw.step) ?? 0,
+          distance: num(raw.dist) ?? 0,
+          calorie: num(raw.cal) ?? 0,
+        });
+      }
+      // 睡眠（原生只给 total/deep/light/score，无曲线/入睡起床时间）
+      if ((num(raw.sleepTotalMin) ?? 0) > 0) {
+        this.handleSleepDay({
+          date,
+          total: num(raw.sleepTotalMin) ?? 0,
+          deep: num(raw.sleepDeepMin) ?? 0,
+          light: num(raw.sleepLightMin) ?? 0,
+          score: num(raw.sleepScore) ?? 0,
+        });
+      }
+      // 日值：血氧 / HRV / 体温 / 血压
+      const spo2 = num(raw.spo2); if (spo2 != null && spo2 > 0) this.handleSpo2Day({ date, value: spo2 });
+      const hrv = num(raw.hrv);   if (hrv != null && hrv > 0)  this.handleHrvDay({ date, value: hrv });
+      const temp = num(raw.temp); if (temp != null && temp > 0) this.handleTempDay({ date, value: temp });
+      const sys = num(raw.bpSys); const dia = num(raw.bpDia);
+      if (sys != null && dia != null && sys > 0 && dia > 0) this.handleBpDay({ date, sys, dia });
+    } catch { /* 静默 */ }
+  };
+
+  /** ★★ 2026-09-17 新增：接住原生 backfill 的 5min slot 批量事件 onBackfillSamples。
+   *  原生形态 { date, slots:[{date,time,hr,bpSys,bpDia,stress,met,step,cal,dist}] }，
+   *  reshape 成 handleBackfillDaySlots 期望的 { date, hr:[{t,v}], steps:[{t,v}], … } 再转调。 */
+  private handleBackfillSamples = (raw: any) => {
+    try {
+      if (!raw?.date || !Array.isArray(raw.slots) || raw.slots.length === 0) return;
+      const date = String(raw.date);
+      const mk = (nativeKey: string): Array<{ t: number; v: number }> => {
+        const out: Array<{ t: number; v: number }> = [];
+        for (const s of raw.slots) {
+          const v = num(s?.[nativeKey]);
+          if (v == null || !Number.isFinite(v) || v <= 0) continue;
+          const t = parseSampleTs(date, s?.time);
+          if (t == null) continue;
+          out.push({ t, v });
+        }
+        return out;
+      };
+      const reshaped = {
+        date,
+        hr: mk('hr'),
+        bpSys: mk('bpSys'),
+        bpDia: mk('bpDia'),
+        steps: mk('step'),
+        calorie: mk('cal'),
+        distance: mk('dist'),
+        stress: mk('stress'),
+        met: mk('met'),
+      };
+      postLog('JS', `[handleBackfillSamples] ✅ date=${date} slots=${raw.slots.length} `
+        + `hr=${reshaped.hr.length} step=${reshaped.steps.length} stress=${reshaped.stress.length}`);
+      this.handleBackfillDaySlots(reshaped);
     } catch { /* 静默 */ }
   };
 

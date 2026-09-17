@@ -33,9 +33,9 @@ export default function BottomTabNavigator() {
     >
       <Tab.Screen name="Today" component={TodayScreen} />
       <Tab.Screen name="Insight" component={InsightScreen} />
-      <Tab.Screen name="Focus" component={FocusScreen} />
       <Tab.Screen name="Meditation" component={MeditationScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Focus" component={FocusScreen} />
     </Tab.Navigator>
   );
 }

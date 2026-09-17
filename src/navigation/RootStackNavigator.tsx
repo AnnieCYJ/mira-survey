@@ -13,6 +13,7 @@ import EcgDetailScreen from '../screens/EcgDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
 import BreathingScreen from '../screens/BreathingScreen';
+import VoiceChatScreen from '../screens/VoiceChatScreen';
 
 export interface MetricDetailParams {
   key: string;
@@ -37,6 +38,7 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   Breathing: undefined;
+  VoiceChat: { question: string };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -45,6 +47,16 @@ export default function RootStackNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={BottomTabNavigator} />
+      <Stack.Screen
+        name="VoiceChat"
+        component={VoiceChatScreen}
+        options={{
+          headerShown: false,
+          presentation: 'fullScreenModal',
+          animation: 'slide_from_bottom',
+          gestureEnabled: true,
+        }}
+      />
       <Stack.Screen
         name="MetricDetail"
         component={MetricDetailScreen}
