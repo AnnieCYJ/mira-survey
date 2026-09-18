@@ -127,7 +127,7 @@ export default function StatusTrendDetailScreen() {
   const navigation = useNavigation<any>();
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
-  const [range, setRange] = useState<RangeKey>('week');
+  const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
   // ★ tooltip 状态
@@ -342,15 +342,22 @@ export default function StatusTrendDetailScreen() {
         seg = [];
         return;
       }
+      // Catmull-Rom → Bezier 平滑 (用 seg 内部邻居)
+      const sn = seg.length;
       let d = `M ${seg[0].x.toFixed(1)} ${seg[0].y.toFixed(1)}`;
-      for (let i = 0; i < seg.length - 1; i++) {
-        const a = seg[i];
-        const b = seg[i + 1];
-        const mx = (a.x + b.x) / 2;
-        d += ` C ${mx.toFixed(1)} ${a.y.toFixed(1)}, ${mx.toFixed(1)} ${b.y.toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+      for (let i = 0; i < sn - 1; i++) {
+        const p0 = seg[Math.max(0, i - 1)];
+        const p1 = seg[i];
+        const p2 = seg[i + 1];
+        const p3 = seg[Math.min(sn - 1, i + 2)];
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
       }
       line += d;
-      area += `${d} L ${seg[seg.length - 1].x.toFixed(1)} ${(PAD_T + plotH).toFixed(1)} L ${seg[0].x.toFixed(1)} ${(PAD_T + plotH).toFixed(1)} Z`;
+      area += `${d} L ${seg[sn - 1].x.toFixed(1)} ${(PAD_T + plotH).toFixed(1)} L ${seg[0].x.toFixed(1)} ${(PAD_T + plotH).toFixed(1)} Z`;
       seg = [];
     };
     for (const p of pts) {
@@ -382,11 +389,19 @@ export default function StatusTrendDetailScreen() {
         }
         // 画 seg 折线
         if (seg.length >= 2) {
+          // Catmull-Rom 平滑
+          const cn = seg.length;
           let d = `M ${seg[0].x.toFixed(1)} ${seg[0].y.toFixed(1)}`;
-          for (let k = 0; k < seg.length - 1; k++) {
-            const a = seg[k]; const b = seg[k + 1];
-            const mx = (a.x + b.x) / 2;
-            d += ` C ${mx.toFixed(1)} ${a.y.toFixed(1)}, ${mx.toFixed(1)} ${b.y.toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+          for (let k = 0; k < cn - 1; k++) {
+            const p0 = seg[Math.max(0, k - 1)];
+            const p1 = seg[k];
+            const p2 = seg[k + 1];
+            const p3 = seg[Math.min(cn - 1, k + 2)];
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+            d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
           }
           colorLines.push({ d, color: seg[0].color });
         }
@@ -433,7 +448,7 @@ export default function StatusTrendDetailScreen() {
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
           <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}>
-            <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>全天状态趋势</Text>
@@ -551,10 +566,7 @@ export default function StatusTrendDetailScreen() {
                 {colorLines.map((cl, i) => (
                   <Path key={`cline-${i}`} d={cl.d} fill="none" stroke={cl.color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                 ))}
-                {/* ★ 彩色数据点（按等级上色，白底描边更醒目） */}
-                {dots.map((d, i) => (
-                  <Circle key={`dot-${i}`} cx={d.x} cy={d.y} r={4.5} fill={d.color} stroke="#FFFFFF" strokeWidth={1.5} />
-                ))}
+                {/* dots removed */}
               </Svg>
             ) : null}
             {/* ★ tooltip：点击显示白色详情框 */}
@@ -631,8 +643,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { padding: theme.space.xs, marginRight: theme.space.sm },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
-  sub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: '#FFFFFF' },
+  sub: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
   liveTag: {
     paddingHorizontal: 10,
     paddingVertical: 4,

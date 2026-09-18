@@ -9,6 +9,7 @@ import { View, StyleSheet, Text } from 'react-native';
 import Svg, { Path, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { dayKey, healthStore } from '../data/healthStore';
+import { parseClockMinutes } from '../lib/sleepTime';
 import type { EmotionLabel } from '../lib/emotionEngine';
 
 const LABEL_COLOR: Record<EmotionLabel, string> = {
@@ -63,10 +64,11 @@ function getTodayAwakeWindow(nowMs: number): { wakeHour: number; bedHour: number
 
   // ── Step 1: 优先官方睡眠记录 ──
   const sleepSum = healthStore.getSleep(todayKey);
+  // ★ 复用 lib/sleepTime.parseClockMinutes（全仓唯一解析实现）：兼容 "HH:mm" 与原生
+  //   "yyyy-MM-dd HH:mm"，且保留分钟精度（此前本文件是第三份自写正则副本）。
   const parseHM = (s: string | null | undefined): number | null => {
-    if (!s) return null;
-    const m = s.match(/(\d{1,2}):(\d{2})/);
-    return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
+    const min = parseClockMinutes(s);
+    return min == null ? null : min / 60;
   };
   if (sleepSum && sleepSum.total > 0) {
     const bedH = parseHM(sleepSum.sleepTime);

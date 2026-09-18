@@ -108,6 +108,46 @@ export default function InsightScreen() {
     [aiRecovery.text]
   );
 
+  /**
+   * ★ 睡眠卡「入睡 / 起床」以**当日**为唯一真值源。
+   *
+   * 为什么不能直接用 `ring.sleepTime / ring.wakeTime`：这两个是「最新一次」的便捷字段，
+   * 与 sleepSummary 平行维护，可能残留更早一天的陈旧值 —— 实测 09-18 的
+   * `sleepSummary.sleepTime = "2026-09-18 01:38"`，而顶层 `ring.sleepTime` 仍是 09-16 的
+   * `"00:41"`。直接渲染会让卡片文案陈旧、且分期图时间轴也从 00:41 起算。
+   *
+   * 取数优先级（先命中先用；命中项可只含一侧时刻）：
+   *   ① `ring.sleepSummary`（仅当 `sleepSummaryDate === 今天` 才代表当日，日期吻合才可信）
+   *   ② `ring.sleepDaily[今天]`（按天归档，backfill 逐日写入）
+   *   ③ `ring.sleepTime / ring.wakeTime`（顶层兜底，不再区分日期）
+   * 取出的原始串（可能是原生完整 datetime）交给 SleepStructureCard 统一归一为 HH:mm，
+   * 保证同一份值同时驱动文案与分期图时间轴，两处永不脱节。
+   */
+  const todaySleep = useMemo<{ sleepTime: string | null; wakeTime: string | null }>(() => {
+    type ClockSrc = { sleepTime?: string | null; wakeTime?: string | null } | null;
+    const todayDk = dayKey(Date.now());
+    const daySummary: ClockSrc = ring.sleepSummaryDate === todayDk ? ring.sleepSummary : null;
+    const dayDaily: ClockSrc = ring.sleepDaily?.[todayDk] ?? null;
+    const fallback: ClockSrc = { sleepTime: ring.sleepTime, wakeTime: ring.wakeTime };
+    const hit = [daySummary, dayDaily, fallback].find(
+      (c) => !!c && (!!c.sleepTime || !!c.wakeTime)
+    );
+    return { sleepTime: hit?.sleepTime ?? null, wakeTime: hit?.wakeTime ?? null };
+  }, [ring]);
+
+  /**
+   * ★ 夜期分期段同样按「当日优先」（与 SleepDetailScreen 的 isLatest 规则一致）。
+   *
+   * `ring.sleepStages` 是「最新一次」便捷字段，实测快照里它仍停留在 09-16（曲线跨度 540 分钟），
+   * 而同日会渲染的 `sleepSummary` 已是 09-18（total 521）—— 两者混用会把旧曲线画在新摘要下面。
+   * 取数：当日归档 `sleepStagesDaily[今天]`（backfill 逐日写入）→ 缺失才回落顶层字段
+   * （保持原有可见性，绝不清空图）。
+   */
+  const todaySegments = useMemo(
+    () => ring.sleepStagesDaily?.[dayKey(Date.now())] ?? ring.sleepStages,
+    [ring]
+  );
+
   // 趋势图可用性：连上戒指即视为「正在监测」（RingBleManager 连上会强制开启原生采集，
   // 与设置页总开关无关），不再被 autoMonitor 默认值 false 卡死——否则数据在采、数值有，
   // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
@@ -283,10 +323,10 @@ export default function InsightScreen() {
             {tab === 'sleep' && (
               <>
               <SleepStructureCard
-                segments={ring.sleepStages}
+                segments={todaySegments}
                 summary={ring.sleepSummary}
-                sleepTime={ring.sleepTime}
-                wakeTime={ring.wakeTime}
+                sleepTime={todaySleep.sleepTime}
+                wakeTime={todaySleep.wakeTime}
                 deepPct={ring.daily['sleepDeep'] ?? null}
                 remPct={ring.daily['sleepRem'] ?? null}
                 score={ring.daily['sleepScore'] ?? null}

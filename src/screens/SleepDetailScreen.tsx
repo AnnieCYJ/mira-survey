@@ -290,20 +290,22 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
         /* 日：展示最新一天的睡眠分期图 */
         <View style={[styles.chartCard, { padding: theme.space.cardPad }]}>
           {(() => {
-            // ★ 按 anchor 日期取那天的 segments + summary
+            // ★ 按 anchor 日期取那天的 segments + summary（每天的分期段由 RingBleManager 解析 sleepLine 归档）
             const dk = dayKey(anchor);
-            const segs = ring.sleepStagesDaily?.[dk] ?? ring.sleepStages; // 回退：最新一天
+            const isLatest = !ring.sleepSummaryDate || ring.sleepSummaryDate === dk;
+            // 只有该日就是「最新同步日」时才允许回退到 sleepStages，否则会把今天的分期画到历史日上
+            const segs = ring.sleepStagesDaily?.[dk] ?? (isLatest ? ring.sleepStages : null);
             const summaryObj = ring.sleepDaily?.[dk] ?? null;
-            // 从 sleepDaily 构造 SleepSummary（它不是完整接口，缺 score/awake/insomnia/sdkScore）
+            // 从 sleepDaily 构造 SleepSummary（它是归档子集，缺 sdkScore 等字段）
             const summary = summaryObj ? {
               total: summaryObj.total ?? 0,
               deep: summaryObj.deep ?? 0,
               light: summaryObj.light ?? 0,
               rem: summaryObj.rem ?? 0,
-              score: ring.sleepSummary?.score ?? 0, // 用最新一天的自算分做兜底
-              getUp: 0,
-              sleepTime: ring.sleepTime ?? null,
-              wakeTime: ring.wakeTime ?? null,
+              score: summaryObj.score ?? ring.sleepSummary?.score ?? 0, // 该日自身评分优先
+              getUp: summaryObj.getUp ?? 0,
+              sleepTime: summaryObj.sleepTime ?? (isLatest ? ring.sleepTime : null),
+              wakeTime: summaryObj.wakeTime ?? (isLatest ? ring.wakeTime : null),
             } : ring.sleepSummary;
             if (!segs || segs.length === 0) {
               return (
@@ -316,7 +318,11 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
             }
             return (
               <>
-                <SleepStageChart segments={segs} sleepTime={ring.sleepTime} />
+                <SleepStageChart
+                  segments={segs}
+                  sleepTime={summary?.sleepTime ?? null}
+                  totalMinutes={summary?.total ?? null}
+                />
                 {/* 单天摘要：4 张独立卡片，2x2 grid */}
                 <View style={styles.statRow}>
                   <StatItem label="总时长" value={summary ? fmtDur(summary.total) : '—'} />

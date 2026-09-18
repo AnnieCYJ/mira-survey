@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { parseClockMinutes } from '../lib/sleepTime';
 import type { SleepSegment } from '../ble/RingBleManager';
 
 /** 睡眠阶段元数据：颜色严格取自 design token，避免裸值。
@@ -21,13 +22,16 @@ const BAR_H = theme.sp(2.5);       // 行内矩形高度 ≈10（短于行高，
 const ROW_GAP = theme.sp(0.75);    // 行间距 ≈3（密集）
 const AXIS_H = theme.sp(5);        // 时间轴
 
-function parseClock(s?: string | null): number | null {
-  if (!s || /^\d{1,2}:\d{2}/.test(s) === false) return null;
-  const parts = s.split(':');
-  const h = Number(parts[0]) || 0;
-  const m = Number(parts[1]) || 0;
-  return h * 60 + m;
-}
+/**
+ * 时间轴起点（自 0 点分钟数）。
+ *
+ * ★ 必须复用 `lib/sleepTime.parseClockMinutes`（全仓唯一实现）：睡眠时刻串既可能是
+ * `"01:38"`，也可能是原生原样的 `"2026-09-18 01:38"`。旧实现在此写死
+ * `/^\d{1,2}:\d{2}/`（要求**以 HH:mm 开头**）→ 遇到完整 datetime 直接 null →
+ * 时间轴退化成 `+0h / +2h` 相对刻度，刻度与真实入睡时刻错位。
+ * 下方 `fmtClock` 的 `%24` 取模与「每 2 小时一刻度」的跨天逻辑本身是正确的，保持不动。
+ */
+const parseClock = parseClockMinutes;
 
 function fmtClock(absMin: number): string {
   const h = (((Math.floor(absMin / 60) % 24) + 24) % 24);
@@ -38,9 +42,12 @@ function fmtClock(absMin: number): string {
 export default function SleepStageChart({
   segments,
   sleepTime,
+  totalMinutes,
 }: {
   segments: SleepSegment[];
   sleepTime?: string | null;
+  /** 横轴基准（分钟）—— 传卡片标题同源的「总睡眠时长」；缺省则回落到分期段跨度 */
+  totalMinutes?: number | null;
 }) {
   const { width: winW } = useWindowDimensions();
   const padX = theme.space.screen + theme.space.cardPad;
@@ -48,11 +55,23 @@ export default function SleepStageChart({
   const rows = [0, 1, 2, 3];
   const chartH = rows.length * ROW_H + (rows.length - 1) * ROW_GAP;
   const H = chartH + AXIS_H;
-  const totalMin = segments && segments.length > 0
+  const segSpan = segments && segments.length > 0
     ? segments[segments.length - 1].end
     : 0;
 
-  const x = (min: number) => (totalMin > 0 ? (min / totalMin) * W : 0);
+  /**
+   * ★ 横轴基准 = **卡片标题同源的「总睡眠时长」**（summary.total），缺失才回落到分期段跨度。
+   *
+   * 为什么必须同源：分期曲线（sleepLine 逐分钟）与「总睡眠」口径不同 —— 实测同一晚
+   * 曲线跨度 540 分钟而 summary.total = 521（尾部清醒/未计入段），此前横轴按 540 画、
+   * 标题写 521，两个数字对不上（相差 19 分钟），用户会以为数据错。
+   *
+   * 曲线比总时长长时，把段尾**夹回轴内**（Math.min），避免条形溢出画布 / 刻度跑到框外；
+   * 19 分钟量级的压缩在视觉上不可见，但「轴长 = 标题数字」的口径从此一致。
+   */
+  const totalMin = totalMinutes != null && totalMinutes > 0 ? totalMinutes : segSpan;
+
+  const x = (min: number) => (totalMin > 0 ? (Math.min(min, totalMin) / totalMin) * W : 0);
   const startAbs = parseClock(sleepTime);
 
   // 时间轴刻度：从入睡时间开始，每 2 小时一个标签

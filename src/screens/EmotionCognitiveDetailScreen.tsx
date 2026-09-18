@@ -31,7 +31,7 @@ import { type StressReport } from '../lib/stressAlgorithm';
 import { type CognitiveLoadReport } from '../lib/cognitiveLoad';
 import { reportNowMsForDay, reportNowMsForPrevDay } from '../lib/dayAnchor';
 import { computeSleepLoad, SLEEP_LOAD_LABEL, type SleepLoadDay } from '../lib/sleepLoad';
-import { isLateBedtime } from '../lib/sleepTime';
+import { formatSleepClockText, isLateBedtime } from '../lib/sleepTime';
 
 const DAY_MS = 86400000;
 
@@ -381,7 +381,7 @@ export default function EmotionCognitiveDetailScreen() {
         {/* 返回头 */}
         <View style={styles.head}>
           <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}>
-            <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>身体恢复</Text>
@@ -704,6 +704,11 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
     : sl.score >= 55 ? '恢复偏慢'
     : '需改善';
   const debtTxt = load.debtH >= 0.1 ? ` · 欠 ${load.debtH.toFixed(1)}h` : '';
+  // ★ 展示前归一为 "HH:mm" 并处理跨天（唯一实现见 lib/sleepTime.formatSleepClockText）：
+  //   `healthStore.getSleep(dk).sleepTime` 存的是完整 datetime（真机实测 "2026-09-18 01:38"），
+  //   旧代码直接插值 → 界面印出「入睡 2026-09-18 01:38 · 起床 2026-09-18 10:19」。
+  //   23:05 入睡 → 次日 07:20 起床 时，起床侧显示「次日 07:20」，不再让人误以为是同一天早上。
+  const clock = formatSleepClockText(sl.sleepTime, sl.wakeTime);
   return (
     <Card padded={false}>
       <View style={styles.pad}>
@@ -712,9 +717,9 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
           <SumCell label="睡眠负载" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} />
           <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} />
         </View>
-        {(sl.sleepTime || sl.wakeTime) && (
+        {(clock.bed || clock.wake) && (
           <Text style={styles.sleepMeta}>
-            入睡 {sl.sleepTime ?? '—'} · 起床 {sl.wakeTime ?? '—'}{isLateBedtime(sl.sleepTime) ? ' · 偏晚' : ''} · 时长 {totalH.toFixed(1)}h
+            入睡 {clock.bed ?? '—'} · 起床 {clock.wake ?? '—'}{isLateBedtime(sl.sleepTime) ? ' · 偏晚' : ''} · 时长 {totalH.toFixed(1)}h
           </Text>
         )}
         <View style={styles.compareRow}>
@@ -779,8 +784,8 @@ const styles = StyleSheet.create({
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
   // ★ 与情绪/脑力消耗详情页（EnergyDetailScreen）完全一致：标题 textTitle + 副标题 sub
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
-  sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
+  sub: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginTop: theme.sp(1) },
   rhythmHero: { marginTop: theme.sp(1), marginBottom: theme.sp(1) },
   // 大字结论：与另两页 Hero 同款（hero 字号 + medium + textTitle；不再用状态色）
   rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },

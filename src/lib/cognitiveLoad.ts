@@ -19,6 +19,7 @@
  *   两者相关但不等价: 心流时 高负荷+低压力, 被吓一跳时 低负荷+高压力
  */
 import { healthStore, dayStartMs, type MetricKey } from '../data/healthStore';
+import { parseClockMinutes } from './sleepTime';
 
 export type LoadLevel = 'rested' | 'light' | 'moderate' | 'heavy';
 export type FatigueLevel = 'fresh' | 'mild' | 'moderate' | 'severe';
@@ -186,12 +187,11 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   const sleepSum = healthStore.getSleep(todayDK);
   let sleepWindow: { bedHour: number; wakeHour: number } | null = null;
   if (sleepSum && sleepSum.total > 0) {
-    // 优先用原生精准 sleepTime/wakeTime ("HH:mm")
+    // 优先用原生精准 sleepTime/wakeTime（"HH:mm" 或原生 "YYYY-MM-DD HH:mm"）
+    // ★ 解析复用 lib/sleepTime.parseClockMinutes（全仓唯一解析实现，保留分钟精度）
     const parseHM = (s: string | null | undefined): number | null => {
-      if (!s) return null;
-      // 兼容 "HH:mm" 和 "YYYY-MM-DD HH:mm" 两种格式
-      const m = s.match(/(\d{1,2}):(\d{2})/);
-      return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
+      const min = parseClockMinutes(s);
+      return min == null ? null : min / 60;
     };
     const bedH = parseHM(sleepSum.sleepTime);
     const wakeH = parseHM(sleepSum.wakeTime);
@@ -399,10 +399,10 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {
   const dayMs = dayStartMs(nowMs);
   const _todayKey = todayKey(nowMs);
   const sleepSum = healthStore.getSleep(_todayKey);
+  // ★ 解析复用 lib/sleepTime.parseClockMinutes（唯一解析实现；兼容 "HH:mm" 与原生完整 datetime）
   const parseHM = (s: string | null | undefined): number | null => {
-    if (!s) return null;
-    const m = s.match(/(\d{1,2}):(\d{2})/);
-    return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
+    const min = parseClockMinutes(s);
+    return min == null ? null : min / 60;
   };
   const bedH = parseHM(sleepSum?.sleepTime);
   const wakeH = parseHM(sleepSum?.wakeTime);

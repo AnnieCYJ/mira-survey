@@ -63,6 +63,7 @@ export default function SettingsScreen() {
     lastBackfillAt: null,
     dataVersion: 0,
     sleepStages: null,
+    sleepStagesDaily: {},
     sleepSummary: null,
     sleepSummaryDate: null,
     sleepTime: null,
@@ -504,6 +505,9 @@ export default function SettingsScreen() {
           </Text>
           <View style={styles.divider} />
           <View style={styles.diagBtns}>
+            <TouchableOpacity onPress={() => { try { (RingBle as any).forceResync?.(); } catch(e) {} }} style={[styles.diagBtn, styles.diagBtnAlt]}>
+              <Text style={styles.diagBtnText}>🔄 重新同步离线数据</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={onExportDump} disabled={diagBusy} style={[styles.diagBtn, styles.diagBtnAlt]}>
               <Text style={styles.diagBtnText}>导出诊断文件</Text>
             </TouchableOpacity>

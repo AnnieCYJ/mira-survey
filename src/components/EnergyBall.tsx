@@ -125,7 +125,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散
   const glowR = halo.interpolate({
     inputRange: [0, 1],
-    outputRange: [ringR * 0.45, ringR * 1.32],
+    outputRange: [ringR * 0.45, ringR * 1.6],
   });
   const glowOpacity = halo.interpolate({
     inputRange: [0, 1],

@@ -2,7 +2,7 @@
 // 单例 context，懒加载。模型走 iOS bundle 原生资源，用 expo-file-system 取真实路径，
 // 绕开 Metro 对 1.1GB 二进制资源的字符串长度限制。
 
-import { initLlama, type LlamaContext } from 'llama.rn';
+import { initLlama, releaseAllLlama, type LlamaContext } from 'llama.rn';
 import * as FileSystem from 'expo-file-system';
 import { postLog } from '../lib/logger';
 
@@ -11,6 +11,15 @@ export const MODEL_FILENAME = 'qwen2.5-1.5b-instruct-q4_k_m.gguf';
 let ctx: LlamaContext | null = null;
 let loading: Promise<LlamaContext> | null = null;
 let cachedPath: string | null = null;
+/**
+ * ★★ 2026-09-17：每个 JS 世代只清理一次「上次遗留在原生的 llama context」。
+ * 为什么需要：llama.rn 的原生 context **不随 JS Runtime 销毁**。JS reload 后旧 Runtime 被释放，
+ * 但旧 context 还挂在原生侧、还持有指向旧 Runtime 的 jsi 回调；一旦在新 Runtime 里再次
+ * initLlama，原生侧触碰到已死 Runtime → EXC_BAD_ACCESS（崩溃栈 = rnllama_jsi::installJSIBindings，
+ * 真机 4 次崩溃全部命中）→ 表现为「reload 后白屏」。
+ * 每次真正加载模型前先 releaseAllLlama() 把这些残留 context 释放掉，即可根治。
+ */
+let didCleanStaleContexts = false;
 
 function normalizeNativePath(p: string | null | undefined): string {
   if (!p) return '';
@@ -49,6 +58,18 @@ export function getLlamaContext(): Promise<LlamaContext> {
   if (loading) return loading;
   loading = (async () => {
     try {
+      // ★★ 2026-09-17：先释放「上次 reload 遗留在原生侧的 llama context」再加载模型，
+      //    否则新 Runtime 里 initLlama 会触碰已死 Runtime → EXC_BAD_ACCESS → 白屏。
+      //    每个 JS 世代只做一次（didCleanStaleContexts），不影响本世代后续推理。
+      if (!didCleanStaleContexts) {
+        didCleanStaleContexts = true;
+        try {
+          await releaseAllLlama();
+          console.log('[MiraAI] 已释放遗留的原生 llama context（防 reload 崩溃）');
+        } catch (e) {
+          console.warn('[MiraAI] releaseAllLlama 失败（忽略，继续加载）:', e);
+        }
+      }
       const model = await resolveModelPath();
       console.log('[MiraAI] initLlama:', model);
       const c = await initLlama({

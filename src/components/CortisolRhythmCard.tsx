@@ -11,6 +11,7 @@ import Svg, { Path, Rect, Circle, Defs, LinearGradient, Stop, Line, G, Text as S
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
+import { parseClockMinutes } from '../lib/sleepTime';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import KalmanFilter from '../lib/kalman-filter';
 
@@ -61,19 +62,22 @@ export function collectSamplesForRange(startMs: number, endMs: number): Cortisol
   return out;
 }
 
-/** 从 healthStore 睡眠数据推导 sleepWindow (bedHour/wakeHour) */
-export function getSleepWindow(): { bedHour: number; wakeHour: number } | null {
-  const todayDk = dayKey(Date.now());
-  const sleepSum = healthStore.getSleep(todayDk);
+/**
+ * 从 healthStore 睡眠数据推导 sleepWindow (bedHour/wakeHour，**小数小时 / 分钟精度**)。
+ *
+ * ★ 不再 `Math.floor` 到整点：实测 00:41 入睡 / 09:41 起床，而压力事件发生在 00:12 ——
+ *   取整会把 00:12 误判成睡眠时段。解析复用 `lib/sleepTime.parseClockMinutes`
+ *   （全仓唯一实现，兼容 "HH:mm" 与原生 "yyyy-MM-dd HH:mm"）。
+ * @param dk 目标日期；省略 = 今日（本地日）
+ */
+export function getSleepWindow(dk?: string): { bedHour: number; wakeHour: number } | null {
+  const targetDk = dk ?? dayKey(Date.now());
+  const sleepSum = healthStore.getSleep(targetDk);
   if (!sleepSum || !sleepSum.sleepTime || !sleepSum.wakeTime) return null;
-  const parseHM = (s: string) => {
-    const m = s.match(/(\d{1,2}):(\d{2})/);
-    return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
-  };
-  const bedH = parseHM(sleepSum.sleepTime);
-  const wakeH = parseHM(sleepSum.wakeTime);
-  if (bedH == null || wakeH == null) return null;
-  return { bedHour: Math.floor(bedH), wakeHour: Math.floor(wakeH) };
+  const bedMin = parseClockMinutes(sleepSum.sleepTime);
+  const wakeMin = parseClockMinutes(sleepSum.wakeTime);
+  if (bedMin == null || wakeMin == null) return null;
+  return { bedHour: bedMin / 60, wakeHour: wakeMin / 60 };
 }
 
 /**
@@ -204,8 +208,21 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
   const xOf = (h: number) => pad + (CHART_W - pad * 2) * (h / 23);
   const yOf = (v: number) => pad + (CHART_H - pad * 2) * (1 - Math.max(0, Math.min(1, (v - lo) / span)));
   const valid = r.hourlyMean.map((v, h) => v != null ? { v: v!, h } : null).filter(Boolean) as { v: number; h: number }[];
-  const linePath = valid.length >= 2 ? valid.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xOf(p.h).toFixed(1)} ${yOf(p.v).toFixed(1)}`).join(' ') : '';
-  const areaPath = linePath ? `${linePath} L ${xOf(23).toFixed(1)} ${CHART_H - pad} L ${xOf(0).toFixed(1)} ${CHART_H - pad} Z` : '';
+  const ptColor = (h: number, v: number) => {
+    const asleep = isAsleep(h);
+    const inBand = !asleep && v >= r.baseline.p25 && v <= r.baseline.p75;
+    return inBand ? '#2ECC71' : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
+  };
+  const segments: { d: string; color: string }[] = [];
+  let segD = '', segColor = '';
+  valid.forEach((p, i) => {
+    const c = ptColor(p.h, p.v);
+    const cmd = `${segColor === c && segD ? 'L' : 'M'} ${xOf(p.h).toFixed(1)} ${yOf(p.v).toFixed(1)}`;
+    if (segColor && segColor !== c && segD) segments.push({ d: segD, color: segColor });
+    segD = (segColor === c ? segD + ' ' : '') + cmd;
+    segColor = c;
+  });
+  if (segD) segments.push({ d: segD, color: segColor });
   const p25Y = Number.isFinite(r.baseline.p25) ? yOf(r.baseline.p25) : null;
   const p75Y = Number.isFinite(r.baseline.p75) ? yOf(r.baseline.p75) : null;
   const bandPath = (p25Y != null && p75Y != null) ? `M ${xOf(0)} ${p75Y} L ${xOf(23)} ${p75Y} L ${xOf(23)} ${p25Y} L ${xOf(0)} ${p25Y} Z` : '';
@@ -227,10 +244,10 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
           }
           return rects;
         })()}
-        {/* 面积 */}
-        {areaPath ? <Path d={areaPath} fill={theme.colors.accentSolid + '15'} /> : null}
-        {/* 折线 */}
-        {linePath ? <Path d={linePath} stroke={theme.colors.accentSolid} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {/* 分段彩色折线 */}
+        {segments.map((sg, i) => (
+          <Path key={'seg'+i} d={sg.d} stroke={sg.color} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
         {/* 数据点 */}
         {valid.map((p, i) => {
           const asleep = isAsleep(p.h);
@@ -324,6 +341,15 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   const mainNonNull = main30.filter(v => v != null).length;
   const baseNonNull = baseline30.filter(v => v != null).length;
   console.log(`🔥 [TREND] dk=${mainDK} mainRaw=${mainRaw.length} mainNonNull=${mainNonNull}/48 baselineNonNull=${baseNonNull}/48`);
+  // ★ 数据分布诊断
+  if (mainRaw.length > 0) {
+    const times = mainRaw.map(p => new Date(p.t).toLocaleTimeString().slice(0,5));
+    const vals = mainRaw.map(p => p.v.toFixed(0));
+    console.log(`🔥 [TREND] mainRaw TIMES=[${times.join(",")}]`);
+    console.log(`🔥 [TREND] mainRaw VALS=[${vals.join(",")}] unit=SDK_μg/L`);
+    const nonNull30 = main30.map((v,i) => v != null ? `${i/2}h=${v.toFixed(1)}` : null).filter(Boolean);
+    console.log(`🔥 [TREND] main30 SLOTS: ${nonNull30.join(", ")}`);
+  }
 
   // 对 mainRaw 单独跑 analyzeCortisol, 拿所选日自己的 cosinor 节律来填补空槽
   // ★ 今天：只填补「当前时刻之前」的空槽，未来时段保持 null（不画预测线）；
@@ -350,6 +376,9 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   const yLo = Math.min(...allVals) * 0.7;
   const yHi = Math.max(...allVals) * 1.1;
   const yRange = yHi - yLo || 1;
+  // ⚠️ 必须放在 yLo/yHi/yRange 声明之后：Hermes 不做 TDZ 检查，提前访问只会得到 undefined，
+  //    对 undefined 调 .toFixed 会整屏 Render Error（曾把皮质醇卡片打成红屏）。
+  console.log(`🔥 [TREND] yLo=${yLo.toFixed(0)} yHi=${yHi.toFixed(0)} range=${yRange.toFixed(0)}`);
 
   // 坐标换算
   const xOfSlot = (slot: number) => padL + (slot / (SLOTS - 1)) * chartW;
@@ -412,6 +441,10 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
         {basePath ? (
           <Path d={basePath} stroke={"#2ECC71"} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5,4" />
         ) : null}
+        {/* 基线数据点 (绿色) */}
+        {baseline30.map((v, i) => v != null && (
+          <Circle key={'b'+i} cx={xOfSlot(i)} cy={yOf(v)} r={2} fill={"#2ECC71"} />
+        ))}
 
         {/* 今天 (蓝实线) */}
         {todayPath ? (

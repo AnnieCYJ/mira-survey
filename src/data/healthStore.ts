@@ -141,6 +141,10 @@ export interface SleepSummary {
   sleepTime?: string | null;
   /** 起床时间 "HH:mm" (原生 wakeTime) */
   wakeTime?: string | null;
+  /** 入睡小时 0-23（从 sleepTime 解析，用于 sleepWindow 计算） */
+  bedHour?: number | null;
+  /** 起床小时 0-23（从 wakeTime 解析，用于 sleepWindow 计算） */
+  wakeHour?: number | null;
 }
 
 export interface HealthGlanceDay {
@@ -177,6 +181,18 @@ export interface AnalysisSnapshot {
     label: string;
     valence: number | null;
     arousal: number | null;
+  };
+  hormone?: {
+    estrogen: string;
+    progesterone: string;
+    tsh: string;
+    hrvTrend: string;
+  };
+  sleepLoad?: {
+    load: number;
+    level: string;
+    debtH: number;
+    windowDays: number;
   };
   updatedAt: number;
 }
@@ -247,6 +263,10 @@ export class HealthStore {
   private sleep: Record<string, SleepSummary> = {};
   private glance: Record<string, HealthGlanceDay> = {}; // dayKey -> 各子指标末值
   private lastUpdated: Record<string, number> = {};     // metricKey or 'sleep'/'glance:<sub>' -> ts
+  /** V2 incremental sync anchor: last successful backfill date (YYYY-MM-DD).
+   *  JS computes delta = lastSyncDate -> today. null = never synced (fallback full 30d). */
+  private lastSyncDate: string | null = null;
+
   /** 计算型指标缓存：dayKey -> { stress?, cognitive?, cortisol?, emotion? } */
   private analysis: Record<string, Partial<AnalysisSnapshot>> = {};
   syncEnabled = true;
@@ -480,6 +500,19 @@ export class HealthStore {
     return out;
   }
 
+  // V2 incremental sync anchor API
+  getLastSyncDate(): string | null { return this.lastSyncDate; }
+
+  /** JS calls this after native onState.backfillDone to advance the delta anchor. */
+  setLastSyncDate(dateKey: string | null): void {
+    const dk = dateKey ? normalizeDayKey(dateKey) : null;
+    if (dk && Number.isNaN(parseDayKey(dk))) return;
+    if (this.lastSyncDate !== dk) {
+      this.lastSyncDate = dk;
+      this.notify();
+    }
+  }
+
   getLatest(key: MetricKey, nDays = 1): number | null {
     const store = this.safeStore(key);
     if (!store) return null;
@@ -610,6 +643,7 @@ export class HealthStore {
       schema: SCHEMA_VERSION,
       syncEnabled: this.syncEnabled,
       userProfile: this.userProfile,
+      lastSyncDate: this.lastSyncDate,
       stores: this.stores,
       sleep: this.sleep,
       glance: this.glance,
@@ -633,6 +667,7 @@ export class HealthStore {
     this.analysis = json.analysis ?? {};
     if (typeof json.syncEnabled === 'boolean') this.syncEnabled = json.syncEnabled;
     if (json.userProfile) this.userProfile = json.userProfile;
+    if (typeof json.lastSyncDate === "string") this.lastSyncDate = json.lastSyncDate;
     this.notify();
   }
 

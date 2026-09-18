@@ -20,6 +20,7 @@ import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeStressReport, type StressReport } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
+import { parseClockMinutes } from '../lib/sleepTime';
 import { levelColor } from './StressInsightCard';
 
 /** 等宽均分数据单元（与 MetricDetail statCell 同款；两处共用） */
@@ -64,14 +65,17 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
   let bedHour: number | null = null;
   let wakeHour: number | null = null;
   try {
-    const { healthStore } = require('../data/healthStore');
-    const dk = new Date().toISOString().slice(0, 10);
+    const { healthStore, dayKey } = require('../data/healthStore');
+    // ★ 必须用**本地日** dayKey：此前 `new Date().toISOString().slice(0, 10)` 取的是 **UTC 日**，
+    //   东八区 00:00–08:00 会落到「昨天」→ 睡眠浅底与当天小时列错配、跨天判断失真。
+    const dk = dayKey(Date.now());
     const sleepSum = healthStore.getSleep(dk);
     if (sleepSum && sleepSum.total > 0) {
+      // ★ 解析复用 lib/sleepTime.parseClockMinutes（全仓唯一实现，兼容原生 "yyyy-MM-dd HH:mm"），
+      //   并保留分钟精度（旧版自写 parseHM 是第二份实现，口径易漂移）。
       const parseHM = (s: string | null | undefined): number | null => {
-        if (!s) return null;
-        const m = s.match(/(\d{1,2}):(\d{2})/);
-        return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
+        const min = parseClockMinutes(s);
+        return min == null ? null : min / 60;
       };
       const bH = parseHM(sleepSum.sleepTime);
       const wH = parseHM(sleepSum.wakeTime);

@@ -14,21 +14,13 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
-import { healthStore, dayKey } from '../data/healthStore';
+import { dayKey } from '../data/healthStore';
 
-/** 由某天睡眠数据推导 sleepWindow（用于曲线睡眠阴影），支持指定 dayKey。 */
-function sleepWindowForDay(dk: string): { bedHour: number; wakeHour: number } | null {
-  const sl = healthStore.getSleep(dk);
-  if (!sl || !sl.sleepTime || !sl.wakeTime) return null;
-  const parseHM = (s: string) => {
-    const m = s.match(/(\d{1,2}):(\d{2})/);
-    return m ? parseInt(m[1]) + parseInt(m[2]) / 60 : null;
-  };
-  const bedH = parseHM(sl.sleepTime);
-  const wakeH = parseHM(sl.wakeTime);
-  if (bedH == null || wakeH == null) return null;
-  return { bedHour: Math.floor(bedH), wakeHour: Math.floor(wakeH) };
-}
+/**
+ * ★ 删除本文件私有的 `sleepWindowForDay`（第四份各自为政的睡眠窗实现，且用 Math.floor 丢分钟）：
+ *   改为复用 `CortisolRhythmCard.getSleepWindow(dk)`（内部委托 lib/sleepTime.parseClockMinutes，
+ *   分钟精度、兼容 "HH:mm" 与原生 "yyyy-MM-dd HH:mm"）。下方取窗口处传 targetDk 即可。
+ */
 
 /** 节律洞察文案：卡片「节律洞察」与身体恢复页 AI 综合分析共用同一份逻辑（单一逻辑源） */
 export function buildRhythmInsights(r: CortisolRhythmResult, isToday: boolean): string[] {
@@ -94,7 +86,7 @@ export default function CortisolDailyChart({
   const targetMs = anchorDayMs ?? Date.now();
   const targetDk = dayKey(targetMs);
   const samples = isToday ? collectSamples() : collectSamplesForDay(targetDk);
-  const sleepWindow = sleepWindowForDay(targetDk) ?? getSleepWindow();
+  const sleepWindow = getSleepWindow(targetDk) ?? getSleepWindow();
 
   const mdLabel = `${new Date(targetMs).getMonth() + 1}/${new Date(targetMs).getDate()}`;
   const title = isToday ? '今日皮质醇全天趋势' : `皮质醇全天趋势 · ${mdLabel}`;

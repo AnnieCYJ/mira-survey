@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import SleepStageChart, { SLEEP_STAGE_META } from './SleepStageChart';
+import { formatSleepClockText } from '../lib/sleepTime';
 import type { SleepSegment, SleepSummary } from '../ble/RingBleManager';
 
 function fmtDuration(min: number): string {
@@ -43,6 +44,12 @@ export default function SleepStructureCard({
   const dPct = deepPct != null ? deepPct : total > 0 ? Math.round((deep / total) * 100) : null;
   const rPct = remPct != null ? remPct : total > 0 ? Math.round((rem / total) * 100) : null;
 
+  // ★ 展示前归一为 "HH:mm"：传入的睡眠时刻可能是原生完整 datetime
+  //   （真实形态 "2026-09-18 01:38"），直接插值会印出「入睡 2026-09-18 01:38」。
+  //   跨天（23:05 睡 → 次日 07:20 起）时起床侧自动带「次日」标注。
+  //   归一后的 bed 同时传给分期图做时间轴起点，保证文案与刻度同源。
+  const clock = formatSleepClockText(sleepTime, wakeTime);
+
   return (
     <TouchableOpacity
       activeOpacity={onPress ? 0.92 : 1}
@@ -62,17 +69,21 @@ export default function SleepStructureCard({
       </View>
 
       <View style={styles.timeRow}>
-        <Text style={styles.timeText}>入睡 {sleepTime ?? '—'}</Text>
-        <Text style={styles.timeText}>起床 {wakeTime ?? '—'}</Text>
+        <Text style={styles.timeText}>入睡 {clock.bed ?? '—'}</Text>
+        <Text style={styles.timeText}>起床 {clock.wake ?? '—'}</Text>
       </View>
 
       {hasStages ? (
-        <SleepStageChart segments={segments!} sleepTime={sleepTime} />
+        <SleepStageChart
+          segments={segments!}
+          sleepTime={clock.bed}
+          totalMinutes={total > 0 ? total : null}
+        />
       ) : (
         <View style={styles.chartEmpty}>
           <Text style={styles.emptyText}>
             {hasSummary
-              ? '睡眠摘要已同步。整夜分期图需重新编译原生包（Xcode ⌘R）后显示。'
+              ? '睡眠摘要已同步；整夜分期尚未同步，连接戒指同步后自动补齐。'
               : '连接戒指并将昨夜睡眠同步后，自动绘制整夜分期'}
           </Text>
         </View>
