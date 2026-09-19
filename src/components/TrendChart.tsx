@@ -45,7 +45,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
   const [selected, setSelected] = useState<number | null>(null);
 
   const { path, gradStops, pts, minGapX } = useMemo(() => {
-    const pad = theme.sp(2);
+    const pad = 0;
     const innerW = Math.max(1, width - pad * 2);
     const now = Date.now();
     const source: { value: number; t: number }[] = (timeline ?? [])
@@ -106,22 +106,6 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
   return (
     <View style={{ width, height }}>
       <Svg width={width} height={height}>
-        {/* 四色背景分段 (从上到下: 元气→良好→平静→休息) */}
-        {(() => {
-          const pad = theme.sp(2);
-          const innerW = width - pad * 2;
-          const topY = pad;
-          const botY = height - pad;
-          const bandH = (botY - topY) / 4;
-          const bands = MOODS.map((m, i) => ({
-            y: topY + i * bandH,
-            h: bandH,
-            color: m.color,
-          }));
-          return bands.map((b, i) => (
-            <Rect key={'band' + i} x={pad} y={b.y} width={innerW} height={b.h} fill={b.color} opacity={0.12} />
-          ));
-        })()}
         <Defs>
           <LinearGradient id="trendStroke" x1="0" y1="0" x2="1" y2="0">
             {gradStops.map((gs, i) => (
@@ -155,6 +139,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
     </View>
   );
 }
+
 
 export function TrendAxis({ width }: { width: number }) {
   return (

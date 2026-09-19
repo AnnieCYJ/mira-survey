@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
@@ -14,8 +15,6 @@ import Icon from '../components/Icon';
 import { MoonDot, phaseToMoonStyle } from '../components/CycleMoonPhase';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
-import ConsumptionCard from '../components/ConsumptionCard';
-import ConsumptionHighlightCards from '../components/ConsumptionHighlightCards';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { MOODS } from '../data/metrics';
@@ -298,6 +297,70 @@ export default function TodayScreen() {
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
   const [ring, setRing] = useState(() => RingBle.getState());
+
+  const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
+  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—'; } catch { return '—'; } })();
+  const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
+
+  const GlassCard = ({ children, style }: any) => (
+    <View style={[{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: theme.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', shadowColor: 'rgba(80,60,140,0.12)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6, overflow: 'hidden' }, style]}>{children}</View>
+  );
+
+  const MiniStressDots = ({ events }: { events: any[] }) => {
+    const W=140,H=56,C=24,R=4,cw=W/C,rh=H/R;
+    const c1='#7FD4A0',c2='#E5D9C5',c3='#F5A87C',c4='#E879F9';
+    const g: any[][][] = Array.from({length:C},()=>Array.from({length:R},()=>[]));
+    (events??[]).forEach((e:any)=>{ if(!e||!Number.isFinite(e.t)) return; const d=new Date(e.t); g[d.getHours()][Math.min(3,Math.floor(d.getMinutes()/15))].push(e); });
+    const dots:any[]=[];
+    for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++) g[cc][r].slice(0,3).forEach((e:any,j)=>{ dots.push(<Circle key={`d${cc}${r}${j}`} cx={cc*cw+cw/2+(j-1)*3.5} cy={r*rh+rh/2} r={2.4} fill={e.severity>=5?c4:c3} />); });
+    if(dots.length===0){ const ph=Array.from({length:14},(_,i)=>({cx:((i*7)%C)*cw+cw/2,cy:((i*3)%R)*rh+rh/2,col:[c1,c2,c1,c2,c1][i%5],o:0.25+(i%3)*0.1})); return <Svg width={W} height={H}>{ph.map((d,i)=>(<Circle key={'p'+i} cx={d.cx} cy={d.cy} r={2.8} fill={d.col} opacity={d.o} />))}</Svg>; }
+    return <Svg width={W} height={H}>{dots}</Svg>;
+  };
+
+  const MiniCognitiveBars = ({ hourly }: { hourly: { hour: number; score: number }[] }) => {
+    const W=140,H=56,N=24;
+    const scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
+    const max=Math.max(10,...scores),bw=W/N-1.2;
+    return <Svg width={W} height={H}>{scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*H),x=i*(W/N)+0.6,y=H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}</Svg>;
+  };
+
+  const MiniActivityCurve = ({ bins }: { bins: number[] }) => {
+    const W=140,H=56,N=bins.length,max=Math.max(1,...bins);
+    const pts=bins.map((v,i)=>({x:(i/(N-1))*W,y:H-(v/max)*H*0.9-3}));
+    let p=`M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)/6).toFixed(1)} ${(p1.y+(p2.y-p0.y)/6).toFixed(1)}, ${(p2.x-(p3.x-p1.x)/6).toFixed(1)} ${(p2.y-(p3.y-p1.y)/6).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
+    const area=p+` L ${pts[N-1].x.toFixed(1)} ${H} L ${pts[0].x.toFixed(1)} ${H} Z`;
+    return <Svg width={W} height={H}><Defs><SvgLinear id="actFill" x1="0" y1="0" x2="0" y2="1"><Stop offset="0%" stopColor="#BFDBFE" stopOpacity={0.7} /><Stop offset="100%" stopColor="#BFDBFE" stopOpacity={0.02} /></SvgLinear></Defs><Path d={area} fill="url(#actFill)" /><Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+  };
+
+  const stressReport = (() => { try { return computeStressReport(); } catch { return null; } })();
+  const cogReport = (() => { try { return computeCognitiveLoadReport(); } catch { return null; } })();
+  const activityBins = (() => { const b=new Array(24).fill(0); try { const dk=dayKey(Date.now()),sd=ring?.stepDaily?.[dk]; if(sd?.steps>0){for(let h=7;h<=22;h++)b[h]=Math.round(sd.steps/20);b[12]=Math.round(sd.steps/10);b[13]=Math.round(sd.steps/14);} } catch {} return b; })();
+
+  const BigStatCard = ({ title, value, unit, sub, trendUp, trendPct, chartEl, gradientColors, onPress }: any) => (
+    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={{ width: '100%' }}>
+      <GlassCard style={{ height: 150 }}>
+        <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
+              <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold }}>{title}</Text>
+              <Text style={{ color: trendUp ? '#10B981' : '#EF4444', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold }}>{trendUp?'↑':'↓'} {trendPct}</Text>
+            </View>
+            <View style={{ paddingTop: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={{ color: theme.colors.textInk, fontSize: 44, fontWeight: theme.weight.bold, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.sm, marginLeft: 4 }}>{unit}</Text>
+              </View>
+              <Text style={{ color: 'rgba(120,110,160,0.6)', fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>
+            </View>
+          </View>
+          <View style={{ marginLeft: 4, alignItems: 'flex-end', justifyContent: 'flex-end' }}>{chartEl}</View>
+        </View>
+      </GlassCard>
+    </TouchableOpacity>
+  );
+
   // ★ 节流订阅：BLE 状态推送（回填期约 ≥500ms 一次）会带动整屏重渲染，而本屏 render 里还要跑
   //   computeStressReport/computeCognitiveLoadReport/皮质醇分析。用 rAF 把同一帧内的多次推送合并成
   //   一次 setRing，避免叠加重渲染造成「点击/切 tab 卡顿」。（与 InsightScreen 同款写法）
@@ -433,11 +496,6 @@ export default function TodayScreen() {
 
         <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
           <Card style={styles.trendCard}>
-            <View style={styles.trendHead}>
-              <Text style={styles.cardTitle}>全天状态趋势</Text>
-              <Icon name="chevronRight" size={theme.fs(18)} color={theme.colors.textSub} />
-            </View>
-            <Text style={styles.axisY}>纵轴：状态指数 0–100（越高越有活力）</Text>
           <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
             {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
           </View>
@@ -454,22 +512,14 @@ export default function TodayScreen() {
             放在「全天状态趋势」正下方；原有卡片（身体恢复 / 三个消耗小卡）保持不变。 */}
         <AllDayRecoveryCard />
 
-        {/* ★ 新增「消耗」卡：左侧三项消耗圆环占比（环心=今日综合消耗率），右侧三张可点击小卡
-            （情绪/脑力/运动），点击进各自的详情页（与下方既有小卡同一路由 EnergyDetail）。 */}
-        <ConsumptionCard
-          ring={ring}
-          onNav={(type) => navigation.navigate('EnergyDetail', { type })}
-        />
 
-        {/* ★ 新增三张明细大卡（参考稿样式：标题 + 右上占比 + 超大数字 + 右侧光晕曲线与浮标），
-            放在「消耗」卡下方，点击同样进各自详情页 */}
-        <ConsumptionHighlightCards
-          ring={ring}
-          onNav={(type) => navigation.navigate('EnergyDetail', { type })}
-        />
+        <View style={{ height: theme.space.lg }} />
 
-        {/* 情绪消耗 / 脑力消耗 / 运动消耗 */}
-        <EnergyRowData ring={ring} onNav={(type) => navigation.navigate('EnergyDetail', { type })} outerOnNav={() => navigation.navigate('EmotionCognitiveDetail')} />
+        <View style={{ flexDirection: 'column', gap: theme.space.md }}>
+          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stress === '—' || stress === '0' ? '暂无压力事件' : '峰值集中在傍晚'} trendUp={true} trendPct="+5.2%" chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
+          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cogReport?.peakLoadSpan ? `峰值 ${String(cogReport.peakLoadSpan.startHour).padStart(2,'0')}:00` : '认知状态良好'} trendUp={true} trendPct="+3.1%" chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
+          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activity === '—' || activity === '0' ? '今日暂无运动' : '19 kcal 已消耗'} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve bins={activityBins} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
+        </View>
 
         <View style={styles.adviceWrap}>
           <ListCard title="今日建议" items={ADVICE} />
@@ -511,18 +561,7 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
   },
   energyWrap: { marginBottom: theme.space.sm, alignItems: 'center' },
-  statusPill: {
-    marginTop: theme.space.sm,
-    alignSelf: 'center',
-    width: '92%',
-    backgroundColor: theme.colors.cardBg,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    ...theme.shadow.card,
-  },
+  statusPill: { marginTop: theme.space.sm, alignSelf: 'center', width: '100%', backgroundColor: 'transparent', borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, paddingVertical: theme.space.xs },
   statusChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

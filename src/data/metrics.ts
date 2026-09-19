@@ -1,16 +1,16 @@
 export const STATE_COLOR = {
-  calm: '#6FCFB4',
-  energy: '#9D8AF0',
+  calm: '#4AD8A0',
+  energy: '#8B5CF6',
   tense: '#E8A87C',
   tired: '#7EA6F8',
 } as const;
 export type StateKey = keyof typeof STATE_COLOR;
 
 export const MOODS = [
-  { key: 'energy', label: '元气满满', angle: 315, color: '#F0C46E' },
-  { key: 'good', label: '状态良好', angle: 45, color: '#6FCFB4' },
-  { key: 'neutral', label: '平平静静', angle: 135, color: '#9D8AF0' },
-  { key: 'rest', label: '休息一下', angle: 225, color: '#F2A3C6' },
+  { key: 'energy', label: '元气满满', angle: 315, color: '#F5C542' },
+  { key: 'good', label: '状态良好', angle: 45, color: '#4AD8A0' },
+  { key: 'neutral', label: '平平静静', angle: 135, color: '#8B5CF6' },
+  { key: 'rest', label: '休息一下', angle: 225, color: '#F9A8D4' },
 ] as const;
 export type MoodIndex = 0 | 1 | 2 | 3;
 export const DEFAULT_MOOD: MoodIndex = 1;

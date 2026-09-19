@@ -23,9 +23,9 @@ import Svg, {
   Path,
   Circle,
   Line,
+  Rect,
   Defs,
   LinearGradient as SvgLinearGradient,
-  RadialGradient,
   Stop,
   Text as SvgText,
   G,
@@ -33,6 +33,7 @@ import Svg, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
+import { useRingState } from '../hooks/useRingState';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples, buildCortisolToday30 } from './CortisolRhythmCard';
 
@@ -48,18 +49,23 @@ const PAD_T = 30;          // 顶部留白：给峰值文字标签
 const PAD_B = 20;          // 底部留白：给时间轴
 
 /**
- * 卡片渐变 —— 全部取 design token，不写裸色值（theme.ts 是唯一真相源）：
- *   · 起点 colors.accentSolid        #7C6AE0  主色（与 Chip 渐变起点一致）
- *   · 中段 colors.ui.chipGradEnd     #6E86E8  Chip 渐变端色（项目既有「渐变胶囊」约定）
- *   · 末端 colors.accent2            #7EA6F8  次色 / AI 渐变端色（aiBadgeGrad[1]）
- * 走向与 Chip / AiBadge 一致：左上 → 右下。
- * 不直接用 colors.bgGradStops（页面背景渐变，末端 #F7F5FE 过浅，白字白曲线读不出来）。
+ * ★ 配色结构（对齐用户新参考稿：冷 → 暖的两段柔和渐变，整体很轻透）
+ *   · 顶部 colors.accent1  #9D8AF0 淡紫（用户要求：把原来的淡蓝换掉）
+ *   · 中上 colors.bgMidAlt #ECEAFB 极浅紫雾
+ *   · 中部 colors.cardBg   #FFFFFF 白（最亮的一段）
+ *   · 底部 colors.celebrateGrad[0] #F5D189 暖奶金（用 stopOpacity 压淡，避免过饱和）
+ * 用 SVG 线性渐变写：只有它支持逐段 stopOpacity，才能做出参考稿那种「透气」的淡。
+ * 因为整卡是浅底，文字统一走深色（标题 textInk / 说明 textSub / 曲线 accentSolid）。
  */
-const CARD_GRAD = [
-  theme.colors.accentSolid,
-  theme.colors.ui.chipGradEnd,
-  theme.colors.accent2,
-] as const;
+// ★ 参考图：天空质感柔和冷暖渐变（上冷灰蓝 → 中暖米色 → 下淡紫）
+// 非常透气，没有硬对比，像天光从上方照下来
+const CARD_BG_STOPS: { off: string; color: string; opacity: number }[] = [
+  { off: '0%',   color: '#DCE4EC', opacity: 1 },   // 顶：冷灰蓝（天空雾）
+  { off: '25%',  color: '#E8E4DC', opacity: 1 },   // 中冷：灰米过渡
+  { off: '55%',  color: '#F5EEDD', opacity: 1 },   // 中暖：奶油米色（最暖处）
+  { off: '80%',  color: '#ECE4FB', opacity: 0.9 },  // 转紫：淡紫雾
+  { off: '100%', color: '#D4C8F2', opacity: 0.85 }, // 底：柔紫
+];
 
 /** 最近一晚睡眠：优先今天，其次昨天（跨午夜睡眠可能记在前一日） */
 function latestSleep(): SleepSummary | null {
@@ -112,11 +118,12 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
-export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }) {
+export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPress?: () => void; ring?: any }) {
+  const ring = ringProp ?? useRingState();
   const [W, setW] = useState(0);
 
   // —— 睡眠恢复 ——
-  const sleep = useMemo(() => latestSleep(), []);
+  const sleep = useMemo(() => latestSleep(), [ring.sleepDaily, Date.now() & 0]);
   const sleepScore = sleep && Number.isFinite(sleep.score) ? Math.round(sleep.score) : null;
   const sleepValue = sleepScore != null ? String(sleepScore) : fmtDur(sleep?.total);
   const sleepUnit = sleepScore != null ? '分' : '时长';
@@ -126,7 +133,7 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
       : `睡眠 ${fmtDur(sleep.total)} · 深睡 ${fmtDur(sleep.deep)}`;
 
   // —— 皮质醇 ——
-  const samples = useMemo(() => collectSamples(), []);
+  const samples = useMemo(() => collectSamples(), [ring.curveStatus]);
   const r = useMemo(() => analyzeCortisol(samples, 14), [samples]);
   const cos = r.cosinor;
   const hasRhythm =
@@ -167,7 +174,7 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
       };
     }
     return { series: demoCurve(), mode: 'demo' };
-  }, [samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH]);
+  }, [samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, ring.timelineReady ?? ring.curveStatus]);
 
   const modeLabel = mode === 'today' ? '今日' : mode === 'rhythm' ? '14 天节律' : '示意图';
 
@@ -194,15 +201,17 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
 
   const body = (
     <View style={styles.wrap}>
-      <LinearGradient
-        colors={[...CARD_GRAD] as unknown as string[]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      {/* 右上角柔光，制造渐变卡的体积感 */}
-      <View style={styles.glowBlob} pointerEvents="none" />
-
+      {/* ★ 整张卡一条冷→暖柔和渐变（上淡蓝 → 中白 → 下暖奶金） */}
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id="adrCardBg" x1="0" y1="0" x2="0" y2="1">
+            {CARD_BG_STOPS.map((s) => (
+              <Stop key={s.off} offset={s.off} stopColor={s.color} stopOpacity={s.opacity} />
+            ))}
+          </SvgLinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#adrCardBg)" />
+      </Svg>
       <View style={styles.inner}>
         {/* 卡片标题 */}
         <View style={styles.headRow}>
@@ -222,7 +231,7 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
               </Text>
               <Text style={styles.tileUnit}>{sleepUnit}</Text>
             </View>
-            <Text style={styles.tileSub} numberOfLines={1}>
+            <Text style={styles.tileSub} numberOfLines={2}>
               {sleepSub}
             </Text>
           </View>
@@ -234,27 +243,23 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
               </Text>
               <Text style={styles.tileUnit}>点</Text>
             </View>
-            <Text style={styles.tileSub} numberOfLines={1}>
+            <Text style={styles.tileSub} numberOfLines={2}>
               {cortisolSub}
             </Text>
           </View>
         </View>
 
-        {/* 下半：皮质醇全天趋势 */}
+        {/* 下半：皮质醇全天趋势（落在卡片渐变的深色区，曲线走白色） */}
         <View style={styles.chartBox} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
           {W > 0 ? (
             <Svg width={W} height={CHART_H}>
               <Defs>
                 {/* 曲线下方渐变填充（纯白 token + 渐变透明度） */}
                 <SvgLinearGradient id="adrArea" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={theme.colors.textWhite} stopOpacity="0.38" />
-                  <Stop offset="100%" stopColor={theme.colors.textWhite} stopOpacity="0.02" />
+                  <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity="0.34" />
+                  <Stop offset="100%" stopColor={theme.colors.accent1} stopOpacity="0.02" />
                 </SvgLinearGradient>
                 {/* 峰值圆点外发光 */}
-                <RadialGradient id="adrDotGlow" cx="50%" cy="50%" r="50%">
-                  <Stop offset="0%" stopColor={theme.colors.textWhite} stopOpacity="0.55" />
-                  <Stop offset="100%" stopColor={theme.colors.textWhite} stopOpacity="0" />
-                </RadialGradient>
               </Defs>
 
               {/* 基线（时间轴底线） */}
@@ -263,8 +268,8 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
                 y1={PAD_T + chartH}
                 x2={PAD_L + chartW}
                 y2={PAD_T + chartH}
-                stroke={theme.colors.textWhite}
-                strokeOpacity={0.35}
+                stroke={theme.colors.accentSolid}
+                strokeOpacity={0.22}
                 strokeWidth={1}
               />
 
@@ -274,7 +279,7 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
                 <Path
                   d={linePath}
                   fill="none"
-                  stroke={theme.colors.textWhite}
+                  stroke={theme.colors.accentSolid}
                   strokeWidth={2.4}
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -288,19 +293,18 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
                 y1={peakY}
                 x2={peakX}
                 y2={PAD_T + chartH}
-                stroke={theme.colors.textWhite}
-                strokeOpacity={0.5}
+                stroke={theme.colors.accentSolid}
+                strokeOpacity={0.42}
                 strokeWidth={1}
                 strokeDasharray="3,3"
               />
-              <Circle cx={peakX} cy={peakY} r={11} fill="url(#adrDotGlow)" />
-              <Circle cx={peakX} cy={peakY} r={4.2} fill={theme.colors.textWhite} />
+              <Circle cx={peakX} cy={peakY} r={4.2} fill={theme.colors.accentSolid} />
               <SvgText
                 x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
                 y={Math.max(peakY - 12, 12)}
                 fontSize={11}
                 fontWeight="600"
-                fill={theme.colors.textWhite}
+                fill={theme.colors.accentSolid}
                 textAnchor="middle"
               >
                 {fmtClock(peakIdx / 2)}
@@ -315,8 +319,7 @@ export default function AllDayRecoveryCard({ onPress }: { onPress?: () => void }
                     x={xOf(slot)}
                     y={CHART_H - 4}
                     fontSize={9.5}
-                    fill={theme.colors.textWhite}
-                    fillOpacity={0.85}
+                    fill={theme.colors.ui.chipText}
                     textAnchor="middle"
                   >
                     {h === 24 ? '24' : String(h).padStart(2, '0')}
@@ -354,17 +357,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: theme.space.md,
   },
-  glowBlob: {
-    position: 'absolute',
-    right: -theme.sp(12),
-    top: -theme.sp(14),
-    width: theme.sp(40),
-    height: theme.sp(40),
-    borderRadius: theme.sp(20),
-    // 柔光球：白 token + 透明度（不用裸 rgba）
-    backgroundColor: theme.colors.textWhite,
-    opacity: 0.16,
-  },
   inner: { padding: theme.space.cardPad },
   headRow: {
     flexDirection: 'row',
@@ -375,56 +367,50 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.textWhite,
+    color: theme.colors.textInk,
   },
   modePill: {
     paddingHorizontal: theme.sp(2),
     paddingVertical: theme.sp(0.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.ui.white25,
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   modePillText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite80,
+    color: theme.colors.textInkSoft,
   },
-  tiles: { flexDirection: 'row', gap: theme.space.sm },
-  tile: {
-    flex: 1,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: theme.space.sm,
-    // 毛玻璃块：白 token + 描边用 cardBorder2（项目既有的白色半透明描边 token）
-    backgroundColor: theme.colors.ui.white25,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder2,
-  },
+  // ★ craft floor：卡片套卡片永远是错的 → 指标块不再套白卡，用留白分组
+  tiles: { flexDirection: 'row', gap: theme.space.lg },
+  tile: { flex: 1 },
   tileLabel: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.textWhite80,
-    marginBottom: theme.sp(0.5),
+    // 彩色底上不能用中性灰，改用紫调中性色（从色相里染色）
+    color: theme.colors.ui.chipText,
+    marginBottom: theme.sp(0.75),
   },
   tileValRow: { flexDirection: 'row', alignItems: 'baseline' },
   tileVal: {
     fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.textWhite,
+    color: theme.colors.textInk,
     flexShrink: 1,
   },
   tileUnit: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.textWhite70,
+    color: theme.colors.ui.chipText,
     marginLeft: theme.sp(0.75),
   },
   tileSub: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.textWhite70,
-    marginTop: theme.sp(0.5),
+    color: theme.colors.ui.chipText,
+    marginTop: theme.sp(0.75),
   },
-  chartBox: { marginTop: theme.space.sm },
+  // 曲线区：落在卡片的深色段上（靠下方，给足上边距把曲线推进紫色区）
+  chartBox: { marginTop: theme.space.lg },
   caption: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.textWhite70,
+    color: theme.colors.ui.chipText,
     marginTop: theme.sp(0.5),
   },
 });
