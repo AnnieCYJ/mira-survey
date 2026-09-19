@@ -510,7 +510,7 @@ export default function TodayScreen() {
 
         {/* ★ 新增「全天恢复」卡：上半睡眠恢复 + 皮质醇峰值，下半皮质醇全天趋势（渐变卡）。
             放在「全天状态趋势」正下方；原有卡片（身体恢复 / 三个消耗小卡）保持不变。 */}
-        <AllDayRecoveryCard />
+        <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
 
 
         <View style={{ height: theme.space.lg }} />
