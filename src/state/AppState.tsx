@@ -40,6 +40,9 @@ interface AppStateValue {
   /** 基础指标自动监测总开关：设置页开启 → 洞察页基础指标卡片展示全天趋势 */
   autoMonitor: boolean;
   setAutoMonitor: (v: boolean) => void;
+  /** AI 语音播报（TTS）总开关：首页与问答页共享同一状态 */
+  ttsOn: boolean;
+  setTtsOn: (v: boolean) => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -58,6 +61,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setAutoMonitorState(v);
     RingBle.setAutoMonitor(v);
   }, []);
+  const [ttsOn, setTtsOn] = useState(true);
   const toolsRef = useRef(tools);
   toolsRef.current = tools;
 
@@ -111,6 +115,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       dismissCelebration,
       autoMonitor,
       setAutoMonitor,
+      ttsOn,
+      setTtsOn,
     }),
     [
       tasks,
@@ -123,6 +129,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       triggerCelebration,
       dismissCelebration,
       autoMonitor,
+      ttsOn,
     ]
   );
 

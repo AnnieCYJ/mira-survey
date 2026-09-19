@@ -18,7 +18,7 @@ import KalmanFilter from '../lib/kalman-filter';
 const LEVEL_META: Record<string, { label: string; color: string }> = {
   normal: { label: '节律正常', color: "#2ECC71" },
   sustained_high: { label: '持续偏高', color: theme.colors.danger },
-  dysregulated: { label: '节律紊乱', color: theme.colors.stateTense },
+  dysregulated: { label: '节律紊乱', color: '#FFFFFF' },
 };
 
 const LOOKBACK_DAYS = 14;

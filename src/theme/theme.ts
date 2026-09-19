@@ -67,6 +67,16 @@ export const colors = {
   aiBadgeGrad: ['#9D8AF0', '#7EA6F8'] as const,
 
   /**
+   * 消耗卡（首页）三张小卡的**单侧色晕**色 —— 参考稿是「白底 + 右侧一团柔光」，不是整卡铺色。
+   * 色相取自首页下方三张消耗卡图片（card_emotion_new.png 暖橘桃 / card_focus.jpg 柔青蓝 / card_meditation.jpg 紫蓝），
+   * 亮度饱和度对齐参考稿实测档位（S45~50 / L92~94，参考稿实测绿卡 #E7F6ED、粉卡 #F7EAEA），
+   * 保证卡上深色文字对比度 ≥5.7。
+   */
+  cardGlowEmotion: '#F5E8E0',
+  cardGlowBrain: '#E0F1F5',
+  cardGlowSport: '#E0E2F5',
+
+  /**
    * ui — 语义化界面令牌（从各组件收敛的高频裸值，值与原组件一致，UI 零变化）。
    * 新增界面元素请优先复用以下 token，避免再次散落裸值。
    */

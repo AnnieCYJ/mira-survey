@@ -16,7 +16,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: theme.radius.card,
     backgroundColor: theme.colors.cardBg,
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: theme.colors.cardBorder,
     overflow: 'hidden',
     // ...theme.shadow.card,  // ★ 临时注释 shadow 排查白闪

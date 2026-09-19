@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Path as SvgPath } from 'react-native-svg';
+import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import BpCard from '../components/BpCard';
 import EcgCard from '../components/EcgCard';
 import { theme } from '../theme/theme';
@@ -15,14 +16,21 @@ import BasicMetricCard from '../components/BasicMetricCard';
 import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
+import Icon from '../components/Icon';
 import ExamTab from '../components/ExamTab';
 import ChatSheet from '../components/ChatSheet';
 import BloodComponentPanel from '../components/BloodComponentPanel';
 import EmotionInsightView from '../components/EmotionInsightView';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
-import CortisolDailyChart from '../components/CortisolDailyChart';
+import CortisolSleepSummary from '../components/CortisolSleepSummary';
 import CortisolRhythmCard from '../components/CortisolRhythmCard';
-import { METRICS, BASIC_METRICS, signalsForDimension, type MetricKey } from '../data/metrics';
+import {
+  METRICS,
+  BASIC_METRICS,
+  signalsForDimension,
+  type MetricKey,
+  type BasicMetricDef,
+} from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { dayKey } from '../data/healthStore';
@@ -30,6 +38,7 @@ import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
 import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
+import { formatRelativeTime } from '../utils/format';
 
 function formatValue(v: number | null): string {
   if (v == null || Number.isNaN(v)) return '—';
@@ -40,13 +49,12 @@ function formatValue(v: number | null): string {
 // 5 个维度 chip（睡眠和激素/周期和激素/代谢/心脏健康/心理和压力）+ 选中后 DimensionCard + 本周关键变化。
 // 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
 // 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
-type TabKey = 'basics' | 'activity' | MetricKey;
+type TabKey = 'basics' | MetricKey;
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'sleep', label: METRICS.sleep.name },
   { key: 'cycle', label: METRICS.cycle.name },
   { key: 'metabolism', label: METRICS.metabolism.name },
-  { key: 'activity', label: '运动' },
   { key: 'heart', label: METRICS.heart.name },
   { key: 'mind', label: METRICS.mind.name },
   { key: 'basics', label: '基础指标' },
@@ -64,6 +72,33 @@ const CHANGES: ListItem[] = [
  * BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，未录入时恒为占位空卡。
  */
 const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
+
+/**
+ * 基础指标「矮卡」白名单：只有数值行、**不渲染**底部 88pt 全天迷你趋势图。
+ * 用于双列瀑布流的高度估算与错落排布，同时作为卡片的 showTrend 判据，
+ * 保证「估高」与实际渲染高度一致（不会一个说有图一个说没图）。
+ */
+const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol', 'stress', 'fatigue', 'emotion', 'skin', 'snsActivation']);
+const showTrendFor = (key: string) => !SHORT_METRIC_KEYS.has(key);
+
+/**
+ * 把卡片按「估高」贪心分配到两列：**每次放进当前最矮的一列**。
+ *
+ * 为什么这样做：参考稿左侧是「错落有致」的瀑布流 —— 两列各自竖向堆叠、卡片高度不一，
+ * 行与行天然不对齐。RN 没有原生 masonry，但只要把卡片交给两个独立的列容器，
+ * 再让两列总高尽量接近（避免一条长一条短），就能得到同样的错落观感；
+ * 而原来的 flexWrap 网格会因为每行等高而显得呆板。
+ */
+function splitColumnsBalanced<T>(items: T[], estH: (it: T) => number): [T[], T[]] {
+  const cols: [T[], T[]] = [[], []];
+  const sum = [0, 0];
+  for (const it of items) {
+    const i = sum[0] <= sum[1] ? 0 : 1;
+    cols[i].push(it);
+    sum[i] += estH(it);
+  }
+  return cols;
+}
 
 export default function InsightScreen() {
   const navigation = useNavigation<any>();
@@ -224,7 +259,65 @@ export default function InsightScreen() {
   };
 
   const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
-  const basicsSignals = signalsForDimension('basics');
+  // 基础指标信号（纯静态定义，只算一次）
+  const basicsSignals = useMemo(() => signalsForDimension('basics'), []);
+  // ★ 双列瀑布流布局：按 section 分组（组标题占整行），组内按「有无趋势图」估高做两列分配。
+  //   分配结果（当前 6 张卡）：
+  //     左列 = 心率 / EDA皮电 / 心率变异性（高·矮·高）
+  //     右列 = 血氧 / 体温 / 皮质醇     （矮·高·矮）
+  //   两列卡片高度交错 → 行不对齐，复刻参考稿左侧的「错落有致」。
+  const basicsGroups = useMemo(() => {
+    const estH = (m: BasicMetricDef) => (showTrendFor(m.key) ? 2 : 1);
+    const groups: { section?: string; items: BasicMetricDef[] }[] = [];
+    for (const m of basicsSignals) {
+      const last = groups[groups.length - 1];
+      if (last && last.section === m.section) last.items.push(m);
+      else groups.push({ section: m.section, items: [m] });
+    }
+    return groups.map((g) => ({
+      section: g.section,
+      columns: splitColumnsBalanced(g.items, estH),
+    }));
+  }, [basicsSignals]);
+
+  /** 渲染单张基础指标卡（原网格内的卡片逻辑抽出，供左右两列复用）。 */
+  const renderBasicsCard = (m: BasicMetricDef) => {
+    const isRealtime = realtimeKeys.has(m.key);
+    const rk = m.key as RingMetricKey;
+    const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
+    const hist = getCachedHist(m.key);
+    const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
+    if (m.manualOnly) {
+      return (
+        <ManualMetricCard
+          key={m.key}
+          metric={m}
+          live={real != null}
+          value={real != null ? formatValue(real) : m.value}
+          measureTime={measureTime}
+          onMeasure={() => RingBle.measure(rk)}
+          onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+        />
+      );
+    }
+    return (
+      <BasicMetricCard
+        key={m.key}
+        compact
+        metric={m}
+        auto={trendOn}
+        live={isRealtime ? ring.availability[rk] === 'live' : real != null}
+        syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
+        value={formatValue(real)}
+        data={hist}
+        onMeasure={() => RingBle.measure(rk)}
+        hideMeasure={m.hideMeasure ?? true}
+        measureTime={measureTime}
+        showTrend={showTrendFor(m.key)}
+        onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+      />
+    );
+  };
 
   return (
     <>
@@ -257,45 +350,19 @@ export default function InsightScreen() {
 
         {tab === 'basics' ? (
           <>
-          <View style={styles.grid}>
-            {basicsSignals.map((m, idx) => {
-              const isRealtime = realtimeKeys.has(m.key);
-              const rk = m.key as RingMetricKey;
-              const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
-              const hist = getCachedHist(m.key);
-              const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
-              const prevSection = idx > 0 ? basicsSignals[idx - 1].section : undefined;
-              const showHeader = !!m.section && m.section !== prevSection;
-              return (
-                <React.Fragment key={m.key}>
-                  {showHeader && <Text style={styles.sectionLabel}>{m.section}</Text>}
-                  {m.manualOnly ? (
-                    <ManualMetricCard
-                      metric={m}
-                      live={real != null}
-                      value={real != null ? formatValue(real) : m.value}
-                      measureTime={measureTime}
-                      onMeasure={() => RingBle.measure(rk)}
-                      onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                    />
-                  ) : (
-                    <BasicMetricCard
-                      metric={m}
-                      auto={trendOn}
-                      live={isRealtime ? ring.availability[rk] === 'live' : real != null}
-                      syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
-                      value={formatValue(real)}
-                      data={hist}
-                      onMeasure={() => RingBle.measure(rk)}
-                      hideMeasure={m.hideMeasure ?? true}
-                      measureTime={measureTime}
-                      onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                    />
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </View>
+          {/* 双列瀑布流：左右两列各自竖向堆叠，卡片高度交错 → 错落有致 */}
+          {basicsGroups.map((g, gi) => (
+            <React.Fragment key={g.section ?? `basics-group-${gi}`}>
+              {g.section ? <Text style={styles.sectionLabel}>{g.section}</Text> : null}
+              <View style={styles.masonry}>
+                {g.columns.map((col, ci) => (
+                  <View key={ci} style={styles.masonryCol}>
+                    {col.map((m) => renderBasicsCard(m))}
+                  </View>
+                ))}
+              </View>
+            </React.Fragment>
+          ))}
           </>
         ) : tab === 'cycle' ? (
           <>
@@ -307,18 +374,35 @@ export default function InsightScreen() {
               onPress={() => navigation.navigate('CycleCalendar')}
             />
           </>
-        ) : tab === 'activity' ? (
-          <ActivityStatsTab ring={ring} />
         ) : (
           <View style={styles.stack}>
-            {!['heart', 'sleep', 'metabolism', 'psychology', 'mind'].includes(tab) && (
+            {!['heart', 'sleep', 'metabolism', 'psychology', 'mind', 'cycle'].includes(tab) && (
               <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
             )}
             {tab === 'heart' && (
-              <>
-                <BpCard ring={ring} onPress={() => navigation.navigate('BpDetail')} />
-                <EcgCard ring={ring} onPress={() => navigation.navigate('EcgDetail')} />
-              </>
+              <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
+                {/* 血压（小卡，紫色渐变，模仿血糖） */}
+                <View style={{ flex: 1, alignSelf: 'stretch' }}>
+                  <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('BpDetail')}>
+                    <LinearGradient
+                      colors={['#6C5CE7', '#A29BFE']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ padding: theme.sp(2.5), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
+                    >
+                      <BpCard ring={ring} onPress={() => {}} gradientMode />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+                {/* 心电图（大卡，白底，模仿血液成分） */}
+                <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
+                  <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('EcgDetail')}>
+                    <Card style={{ padding: theme.sp(2.5), flex: 1 }}>
+                      <EcgCard ring={ring} onPress={() => {}} compactMode />
+                    </Card>
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
             {tab === 'sleep' && (
               <>
@@ -333,21 +417,20 @@ export default function InsightScreen() {
                 fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
                 onPress={() => navigation.navigate('SleepDetail')}
               />
-              <CortisolDailyChart
-                insightRows={recoveryRows}
-              />
+              {/* 皮质醇关键指标（昼夜波动幅度 / 作息类型）+ AI 分析：同一张卡，紧跟睡眠结构卡 */}
+              {/* 原「今日皮质醇全天趋势」卡已按需求移除（组件仍供身体恢复详情页使用） */}
+              <CortisolSleepSummary insightRows={recoveryRows} />
               </>
             )}
             {tab === 'mind' && (
               <>
-                {/* ★ 情绪洞察：与首页「情绪消耗」点进去的内容共用同一组件（EmotionInsightView），
-                    保证两处完全一致；原「压力洞察」已统一为「情绪洞察」。 */}
                 <EmotionInsightView />
-                <View style={{ height: 16 }} />
+                <View style={{ height: theme.sp(0.5) }} />
                 <CognitiveLoadCard />
               </>
             )}
-            {(() => {
+            {/* 睡眠 tab 到此结束：其下原有「空信号提示卡」与「本周关键变化」两张卡对睡眠无意义，跳过 */}
+            {tab !== 'sleep' && (() => {
               let sigs = signalsForDimension(tab);
               // 代谢 tab 只保留「血液成分」面板 +「血糖」两张：
               //  · 血糖之后的总胆固醇/甘油三酯/HDL/LDL 与上方血液成分面板完全重复；
@@ -359,6 +442,8 @@ export default function InsightScreen() {
                 sigs = sigs.filter((s) => METABOLISM_VISIBLE_KEYS.has(s.key));
               }
               if (sigs.length === 0) {
+                // heart 心电 tab：直接返回空，不渲染空提示卡
+                if (tab === 'heart' || tab === 'mind' || tab === 'sleep') return null;
                 return (
                   <Card>
                     <Text style={styles.emptyNote}>
@@ -371,45 +456,93 @@ export default function InsightScreen() {
               if (tab === 'metabolism') {
                 return (
                   <>
-                    {/* 1. 血糖卡片 */}
-                    <View style={styles.grid}>
-                      {sigs.map((m) => {
-                        const real = ring.daily[m.key] ?? null;
-                        const hist = getCachedHist(m.key);
-                        const measureTime = getCachedLastT(m.key);
-                        if (m.manualOnly) {
-                          return (
-                            <ManualMetricCard
-                              key={m.key}
-                              metric={m}
-                              live={real != null}
-                              value={real != null ? formatValue(real) : m.value}
-                              measureTime={measureTime}
-                              onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
-                              onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                            />
-                          );
+                    {/* 血糖 + 血液成分 并排一行 */}
+                    <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
+                    {/* 血糖卡片（小） */}
+                    <View style={{ flex: 1, alignSelf: 'stretch' }}>
+                    {sigs.map((m) => {
+                      const real = ring.daily[m.key] ?? null;
+                      const hist = getCachedHist(m.key);
+                      const measureTime = getCachedLastT(m.key);
+                      const gid = `bm_${m.key}`;
+                      const placeholderPath = (() => {
+                        const pad = 4, w = 320, h = 56;
+                        let d = '';
+                        for (let i = 0; i <= 30; i++) {
+                          const x = pad + ((w - pad * 2) * i) / 30;
+                          const y = pad + (h - pad * 2) * (0.55 + 0.12 * Math.sin((i / 30) * Math.PI * 2.5));
+                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
                         }
-                        return (
-                          <BasicMetricCard
-                            key={m.key}
-                            metric={m}
-                            auto={trendOn}
-                            live={real != null}
-                            syncing={false}
-                            value={real != null ? formatValue(real) : m.value}
-                            data={hist}
-                            onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
-                            hideMeasure={m.hideMeasure ?? true}
-                            measureTime={measureTime}
-                            onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                          />
-                        );
-                      })}
+                        return d.trim();
+                      })();
+                      const trendD = (() => {
+                        if (!hist || hist.length < 2) return '';
+                        const pad = 4, w = 320, h = 56;
+                        const vals = hist.map(p => p.v);
+                        const lo = Math.min(...vals), hi = Math.max(...vals);
+                        const yR = hi === lo ? 1 : (h - pad * 2) / (hi - lo);
+                        let d = '';
+                        hist.forEach((p, i) => {
+                          const x = pad + ((w - pad * 2) * i) / (hist.length - 1);
+                          const y = pad + (hi - p.v) * yR;
+                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+                        });
+                        return d.trim();
+                      })();
+                      return (
+                        <TouchableOpacity key={m.key} activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}>
+                          <LinearGradient
+                            colors={['#6C5CE7', '#A29BFE']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
+                          >
+                            {/* header：icon + 名字 / 更新时间 */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Icon name={m.icon ?? 'activity'} size={theme.fontSize.card + 2} color="white" style={{ marginRight: theme.sp(1) }} />
+                              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: 'white' }}>{m.name}</Text>
+                            </View>
+                            <Text style={{ fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.75)' }}>{formatRelativeTime(measureTime)}</Text>
+                          </View>
+                          {/* 数值 + 单位 */}
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
+                            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: 'white' }}>{formatValue(real)}</Text>
+                            <Text style={{ fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.85)', marginLeft: theme.sp(1) }}>{m.unit}</Text>
+                          </View>
+                          {/* 趋势图 */}
+                          <Svg width="100%" height={theme.fs(56)} viewBox="0 0 320 56" preserveAspectRatio="none">
+                            {trendD ? (
+                              <>
+                                <Defs>
+                                  <SvgGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
+                                    <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.3} />
+                                    <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
+                                  </SvgGradient>
+                                  <SvgGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
+                                    <Stop offset="0%" stopColor={theme.colors.accent1} />
+                                    <Stop offset="100%" stopColor={theme.colors.accent2} />
+                                  </SvgGradient>
+                                </Defs>
+                                <SvgPath d={trendD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.2} strokeLinecap="round" />
+                              </>
+                            ) : (
+                              <SvgPath d={placeholderPath} fill="none" stroke={theme.colors.accent1} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+                            )}
+                            </Svg>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      );
+                    })}
                     </View>
-                    {/* 2. 血液成分 */}
-                    <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
-                    {/* 3. 体检 tab 卡片 */}
+                    {/* 血液成分卡片（大） */}
+                    <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
+                      <Card style={{ padding: theme.sp(2.5), flex: 1 }}>
+                        <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+                      </Card>
+                    </View>
+                    </View>
+                    {/* 身体成分卡片 */}
                     <ExamTab />
                   </>
                 );
@@ -452,7 +585,7 @@ export default function InsightScreen() {
                 </View>
               );
             })()}
-            <ListCard title="本周关键变化" items={CHANGES} />
+
           </View>
         )}
       </View>
@@ -466,23 +599,34 @@ export default function InsightScreen() {
   );
 }
 
-/** ECG 波形路径：原始 ADC/mV 点归一化到 320×80 视窗的折线。 */
+/** ECG 波形路径：归一化 + Catmull-Rom 平滑成真实心电图曲线。 */
 function ecgWaveformPath(values: number[]): string {
-  if (!values || values.length < 2) return '';
+  if (!values || values.length < 4) return '';
   const W = 320;
   const H = 80;
-  const pad = 6;
+  const pad = 8;
   let min = Math.min(...values);
   let max = Math.max(...values);
   if (max - min < 1e-6) max = min + 1;
   const n = values.length;
-  return values
-    .map((v, i) => {
-      const x = pad + (i / (n - 1)) * (W - pad * 2);
-      const y = pad + (1 - (v - min) / (max - min)) * (H - pad * 2);
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(' ');
+  const pts: [number, number][] = values.map((v, i) => [
+    pad + (i / (n - 1)) * (W - pad * 2),
+    pad + (1 - (v - min) / (max - min)) * (H - pad * 2),
+  ]);
+  // Catmull-Rom → cubic bezier
+  const d = [`M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d.push(`C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`);
+  }
+  return d.join(' ');
 }
 
 /** 心电图卡片：空状态 / 测量进度 / 最近一次波形 + 指标。 */
@@ -578,79 +722,8 @@ function EcgReadout({ ring }: { ring: RingState }) {
   );
 }
 
-/** 运动统计 tab：展示今日步数/步行距离/活动消耗。
- * 数据来自 ring.stepDaily[今日 dateKey]，由原生 backfill + 实时计步累积。 */
-
-/** 运动统计 tab：展示今日步数/步行距离/活动消耗。
- * 数据来自 ring.stepDaily[今日 dateKey]，由原生 backfill + 实时计步累积。
- * 点击任一项进入 MetricDetail 详情页，可切周/月/年查看历史趋势。 */
-function ActivityStatsTab({ ring }: { ring: RingState }) {
-  const navigation = useNavigation<any>();
-  const today = new Date();
-  const dk = dayKey(today.getTime());  // ★ 补零格式
-  const step = ring.stepDaily?.[dk];
-  const steps = step?.steps ?? 0;
-  const distance = step?.distance ?? 0;
-  const calorie = step?.calorie ?? 0;
-
-  const fmtInt = (n: number) => n.toLocaleString('zh-CN');
-  const fmtKm = (km: number) => km >= 10 ? km.toFixed(1) : km.toFixed(2);
-
-  const openDetail = (key: string, name: string, unit: string, yMin: number, yMax: number) => {
-    navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax });
-  };
-
-  const StatTile = ({
-    label, value, unit, color, onPress,
-  }: { label: string; value: string; unit: string; color: string; onPress: () => void }) => (
-    <TouchableOpacity
-      activeOpacity={0.6}
-      onPress={onPress}
-      style={{ alignItems: 'center', flex: 1, paddingVertical: 8 }}
-    >
-      <Text style={{ fontSize: 13, color: theme.colors.textSub, marginBottom: 4 }}>{label}</Text>
-      <Text style={{ fontSize: 28, fontWeight: '700', color }}>{value}</Text>
-      <Text style={{ fontSize: 12, color: theme.colors.textSub, marginTop: 2 }}>{unit}</Text>
-    </TouchableOpacity>
-  );
-
-  return (
-    <Card style={{ marginBottom: 16 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.textInk }}>今日运动</Text>
-        <Text style={{ fontSize: 12, color: theme.colors.textSub }}>{dk}</Text>
-      </View>
-      <View style={{ flexDirection: 'row' }}>
-        <StatTile
-          label="步数"
-          value={fmtInt(steps)}
-          unit="步"
-          color={theme.colors.accentSolid}
-          onPress={() => openDetail('steps', '步数', '步', 0, Math.max(10000, Math.ceil(steps * 1.2)))}
-        />
-        <View style={{ width: 1, height: 60, backgroundColor: theme.colors.cardBorder }} />
-        <StatTile
-          label="步行距离"
-          value={fmtKm(distance)}
-          unit="km"
-          color={theme.colors.stateEnergy}
-          onPress={() => openDetail('distance', '步行距离', 'km', 0, Math.max(5, Math.ceil(distance * 1.5)))}
-        />
-        <View style={{ width: 1, height: 60, backgroundColor: theme.colors.cardBorder }} />
-        <StatTile
-          label="活动消耗"
-          value={fmtInt(Math.round(calorie))}
-          unit="kcal"
-          color={theme.colors.stateTense}
-          onPress={() => openDetail('calorie', '活动消耗', 'kcal', 0, Math.max(300, Math.ceil(calorie * 1.2)))}
-        />
-      </View>
-    </Card>
-  );
-}
-
 const styles = StyleSheet.create({
-  stack: { gap: theme.space.xl },
+  stack: { gap: theme.space.lg },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
@@ -658,7 +731,10 @@ const styles = StyleSheet.create({
   },
   chipRow: { flexGrow: 0, marginLeft: -theme.space.screen },
   chipContent: { paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1) },
-  grid: { gap: theme.space.lg },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), alignItems: 'stretch' },
+  // 双列瀑布流：两列等宽、各自竖向堆叠（配 gap），卡片高度不一 → 错落有致
+  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1.5) },
+  masonryCol: { flex: 1, gap: theme.sp(1.5) },
   emptyNote: {
     fontSize: theme.fontSize.micro,
     lineHeight: theme.fontSize.micro * 1.7,
@@ -669,7 +745,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold,
     color: theme.colors.textSub,
     marginTop: theme.space.md,
-    marginBottom: theme.space.xs,
+    marginBottom: theme.sp(1),
   },
   ecgBtn: {
     marginTop: theme.space.md,

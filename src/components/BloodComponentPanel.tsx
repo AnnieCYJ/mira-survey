@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
+import Icon from './Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 
 /**
@@ -17,6 +18,8 @@ import { RingBle, type RingState } from '../ble/RingBleManager';
 interface Props {
   ring: RingState;
   onOpenDetail: (key: string, name: string, unit: string, yMin: number, yMax: number) => void;
+  /** 不带 header，嵌入到其他卡片底部 */
+  headerless?: boolean;
 }
 
 interface BCItem {
@@ -50,7 +53,7 @@ function timeAgo(ts: number | null | undefined): string {
   return `${Math.floor(diff / 86400)}天前`;
 }
 
-export default function BloodComponentPanel({ ring, onOpenDetail }: Props) {
+export default function BloodComponentPanel({ ring, onOpenDetail, headerless = false }: Props) {
   const [measuring, setMeasuring] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,30 +81,18 @@ export default function BloodComponentPanel({ ring, onOpenDetail }: Props) {
     return best;
   }, 0) || null;
 
+  const Wrap: any = headerless ? View : Card;
   return (
-    <Card>
-      {/* Card 顶部：标题 + 右上角补测按钮（与其他 Card 风格一致） */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>血液成分</Text>
-          <Text style={styles.sub}>
-            {lastTs ? `自动监测 · 最近 ${timeAgo(lastTs)}` : '戒指自动监测中'}
-          </Text>
+    <Wrap {...(headerless ? {} : { style: { padding: theme.sp(3) } })}>
+      {!headerless && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Icon name="drop" size={theme.fontSize.card + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />
+            <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>血液成分</Text>
+          </View>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{lastTs ? timeAgo(lastTs) : '待检测'}</Text>
         </View>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={onSpotCheck}
-          disabled={measuring}
-          style={[styles.refreshBtn, measuring && styles.refreshBtnBusy]}
-        >
-          <Text style={[styles.refreshIcon, measuring && styles.refreshIconBusy]}>
-            {measuring ? '…' : '↻'}
-          </Text>
-          <Text style={[styles.refreshLabel, measuring && styles.refreshLabelBusy]}>
-            {measuring ? '检测中' : '补测'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      )}
 
       {/* 5 项汇总：3 列网格（最后一行两列居中更美观） */}
       <View style={styles.grid}>
@@ -124,7 +115,7 @@ export default function BloodComponentPanel({ ring, onOpenDetail }: Props) {
           );
         })}
       </View>
-    </Card>
+    </Wrap>
   );
 }
 
@@ -133,13 +124,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
+    marginBottom: theme.sp(1.5),
   },
   title: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.medium,
     color: theme.colors.textTitle,
   },
+  // compact 复用
   sub: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
@@ -150,8 +142,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: theme.colors.accentSoft,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.sp(3),
-    paddingVertical: theme.sp(2),
+    paddingHorizontal: theme.sp(2),
+    paddingVertical: theme.sp(1.25),
   },
   refreshBtnBusy: { backgroundColor: theme.colors.ui.offTrack },
   refreshIcon: {
@@ -170,21 +162,26 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -theme.sp(1),
+    justifyContent: 'center',
+    gap: theme.sp(1.5),
   },
   item: {
-    width: '33.333%',
-    paddingHorizontal: theme.sp(1),
-    paddingVertical: theme.space.sm,
+    width: '30%',
+    paddingVertical: theme.sp(1.25),
     alignItems: 'center',
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   itemName: {
     fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
     color: theme.colors.textSub,
     marginBottom: 2,
   },
   itemVal: {
-    fontSize: theme.fontSize.card,
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
   },
   itemValLive: { color: theme.colors.textTitle },

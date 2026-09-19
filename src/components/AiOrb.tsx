@@ -74,9 +74,10 @@ export default function AiOrb({ size = 220, title = 'Hi, can I help you?' }: Pro
         return { x, y, s, opacity, delay, color, key: `${radius}-${i}` };
       });
 
-    const inner = makeRing(INNER_COUNT, size * 0.32, 0.8, 0.6, 0.32, 0.16, 0.8, 0.35);
-    const mid = makeRing(MID_COUNT, size * 0.42, 1.0, 0.8, 0.24, 0.14, 0.5, 0.45);
-    const outer = makeRing(OUTER_COUNT, size * 0.52, 1.3, 1.0, 0.18, 0.12, 0.25, 0.55);
+    // ★ 透明度整体上调（0.32/0.24/0.18 → 0.55/0.45/0.38）：用户反馈浅色背景下小圆点看不清
+    const inner = makeRing(INNER_COUNT, size * 0.32, 0.8, 0.6, 0.55, 0.20, 0.8, 0.35);
+    const mid = makeRing(MID_COUNT, size * 0.42, 1.0, 0.8, 0.45, 0.18, 0.5, 0.45);
+    const outer = makeRing(OUTER_COUNT, size * 0.52, 1.3, 1.0, 0.38, 0.16, 0.25, 0.55);
     return [...inner, ...mid, ...outer];
   }, [size]);
 

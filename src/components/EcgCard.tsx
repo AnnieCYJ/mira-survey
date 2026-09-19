@@ -7,6 +7,7 @@ import { RingBle, type RingState } from '../ble/RingBleManager';
 interface Props {
   ring: RingState;
   onPress: () => void;
+  compactMode?: boolean;
 }
 
 /** ECG 波形路径：原始 ADC 点归一化到 160×32 视窗的迷你折线。 */
@@ -26,7 +27,7 @@ function miniWaveform(values: number[]): string {
   return d;
 }
 
-export default function EcgCard({ ring, onPress }: Props) {
+export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
   const prog = ring.ecgProgress;
   const latest = ring.ecg;
 
@@ -65,7 +66,7 @@ export default function EcgCard({ ring, onPress }: Props) {
   }, []);
 
   return (
-    <View style={styles.card}>
+    <View style={compactMode ? {} : styles.card}>
       {/* 头部 */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Text style={styles.title}>心电图 ECG</Text>

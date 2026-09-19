@@ -20,15 +20,17 @@ import AiOrb from './AiOrb';
 import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
+import { useSpeech } from '../hooks/useSpeech';
 import { type RingState } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TaskType } from '../data/tasks';
 
 interface Props {
-  visible: boolean;
+  visible?: boolean;          // fullScreen 时可选，默认 true
   onClose: () => void;
   initialQuestion?: string;
+  fullScreen?: boolean;       // ★ 跳过 Sheet Modal，直接当全屏页面渲染
 }
 
 interface Message {
@@ -48,7 +50,29 @@ function VersionBadge() {
   );
 }
 
-function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
+/** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享 */
+function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) }}>
+      <VersionBadge />
+      <TouchableOpacity
+        style={styles.speakerBtn}
+        onPress={onToggle}
+        activeOpacity={0.7}
+        accessibilityLabel="语音播报开关"
+      >
+        <Icon
+          name={ttsOn ? 'speaker' : 'speaker_off'}
+          size={theme.fs(20)}
+          color={ttsOn ? theme.colors.accentSolid : theme.colors.textSub}
+          strokeWidth={2.2}
+        />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }: Props) {
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,7 +83,16 @@ function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
   const inputRef = useRef<TextInput>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
-  const { addToolTask } = useAppState();
+  const { addToolTask, ttsOn, setTtsOn } = useAppState();
+  const { speak, stop } = useSpeech();
+  // ttsOn 经全局共享；用 ref 避免 sendMessage 闭包拿到旧值（sendMessage 未把 ttsOn 列入依赖）
+  const ttsOnRef = useRef(ttsOn);
+  ttsOnRef.current = ttsOn;
+  const toggleTts = useCallback(() => {
+    const next = !ttsOnRef.current;
+    setTtsOn(next);
+    if (!next) stop();
+  }, [setTtsOn, stop]);
   type Nav = StackNavigationProp<RootStackParamList>;
   const navigation = useNavigation<Nav>();
 
@@ -108,7 +141,12 @@ function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
     };
 
     try {
-      await ask(q, { history, onToken });
+      await ask(q, {
+        history,
+        onToken,
+        // ★ 回复完整后播报（仅当喇叭开启）：流式逐字播会断句错乱，必须等全文到齐
+        onDone: (full) => { if (ttsOnRef.current && full) speak(full); },
+      });
       attachTask(pickReply(q).task);
     } catch (e) {
       console.warn('[ChatSheet] MiraAI 出错，回退模板:', e);
@@ -124,14 +162,16 @@ function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
   }, [isLoading, addToolTask]);
 
   useEffect(() => {
-    if (visible) {
-      setMessages([]);
-      setInput('');
-      if (initialQuestion) {
-        // 等 state 更新后再发，用 microtask 确保 messages 已清空
-        queueMicrotask(() => sendMessage(initialQuestion));
-      }
-    }
+    if (!visible) return;
+    setMessages([]);
+    setInput('');
+    if (!initialQuestion) return;
+    // ★ 延后到页面转场动画结束（≈320ms）再发请求。
+    //   端侧大模型（Qwen2.5-1.5B）推理是重活，旧实现用 queueMicrotask 在**挂载瞬间**
+    //   就起跑，正好和 push 转场动画抢 JS/UI 线程 → 「跳到 AI 问答页特别卡」。
+    //   等动画走完再推理，转场就丝滑了（用户感知不到这 320ms，因为屏幕上已在播转场）。
+    const t = setTimeout(() => sendMessage(initialQuestion), 320);
+    return () => clearTimeout(t);
   }, [visible]);
 
   const renderMessage = (msg: Message, idx: number) => {
@@ -221,16 +261,17 @@ function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
     );
   };
 
-  return (
-    <Sheet visible={visible} onClose={onClose} style={{ paddingBottom: 0 }}>
-      <SheetHead
-        title="Mira AI"
-        subtitle="你的健康助手"
-        onBack={onClose}
-        right={<VersionBadge />}
-      />
+  const sheetHead = (
+    <SheetHead
+      title="Mira AI"
+      subtitle="你的健康助手"
+      onBack={onClose}
+      right={<HeaderRight ttsOn={ttsOn} onToggle={toggleTts} />}
+    />
+  );
 
-      <KeyboardAvoidingView
+  const body = (
+    <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
@@ -299,6 +340,23 @@ function ChatSheetInner({ visible, onClose, initialQuestion }: Props) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+  );
+
+  // ★ fullScreen：直接返回内容（SheetHead + body），不包 Sheet Modal
+  if (fullScreen) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.colors.bgMid }}>
+        {sheetHead}
+        {body}
+      </View>
+    );
+  }
+
+  // 默认：Sheet Modal 包装（侧滑面板）
+  return (
+    <Sheet visible={visible} onClose={onClose} style={{ paddingBottom: 0 }}>
+      {sheetHead}
+      {body}
     </Sheet>
   );
 }
@@ -335,6 +393,14 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: theme.colors.textBody,
     marginRight: theme.sp(1),
+  },
+  speakerBtn: {
+    width: theme.sp(9),
+    height: theme.sp(9),
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124,106,224,0.12)',
   },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl },
   quickActions: {

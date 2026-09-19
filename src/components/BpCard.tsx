@@ -10,9 +10,10 @@ const COL_DIA = '#7EA6F8';
 interface Props {
   ring: any;
   onPress: () => void;
+  gradientMode?: boolean;
 }
 
-export default function BpCard({ ring, onPress }: Props) {
+export default function BpCard({ ring, onPress, gradientMode = false }: Props) {
   const now = Date.now();
   const start = dayStartMs(now);
   const sysTPs = healthStore.getTimeRange('bpSys', start, now, { maxPoints: 240 });
@@ -33,29 +34,26 @@ export default function BpCard({ ring, onPress }: Props) {
   const hasData = !!lastSys || !!lastDia;
 
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={styles.card}>
+    <View style={gradientMode ? {} : styles.card}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={styles.title}>血压</Text>
-        <Text style={styles.time}>{fmtTime(lastT)}</Text>
+        <Text style={{ ...styles.title, color: gradientMode ? 'white' : styles.title.color }}>血压</Text>
+        <Text style={{ ...styles.time, color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.time.color }}>{fmtTime(lastT)}</Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-        <Text style={[styles.val, { color: COL_SYS }]}>{lastSys ? Math.round(lastSys.v) : '—'}</Text>
-        <Text style={[styles.sep, { color: theme.colors.textSub }]}>/</Text>
-        <Text style={[styles.val, { color: COL_DIA }]}>{lastDia ? Math.round(lastDia.v) : '—'}</Text>
-        <Text style={styles.unit}>mmHg</Text>
-      </View>
-      <View style={{ flexDirection: 'row', marginTop: 6, gap: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COL_SYS }} />
-          <Text style={styles.legend}>收缩压</Text>
+      <View style={{ flexDirection: 'column', gap: theme.sp(1.25) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={[styles.unit, { color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.unit.color }]}>收缩压</Text>
+          <Text style={[styles.val, { color: gradientMode ? 'white' : COL_SYS }]}>{lastSys ? Math.round(lastSys.v) : '—'}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COL_DIA }} />
-          <Text style={styles.legend}>舒张压</Text>
+        <View style={{ height: 1, backgroundColor: gradientMode ? 'rgba(255,255,255,0.2)' : theme.colors.cardBorder }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={[styles.unit, { color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.unit.color }]}>舒张压</Text>
+          <Text style={[styles.val, { color: gradientMode ? 'white' : COL_DIA }]}>{lastDia ? Math.round(lastDia.v) : '—'}</Text>
         </View>
-        {!hasData && <Text style={{ marginLeft: 'auto', color: theme.colors.textSub, fontSize: 12 }}>点击查看</Text>}
+        {!hasData && (
+          <Text style={{ fontSize: 11, color: gradientMode ? 'rgba(255,255,255,0.6)' : theme.colors.textSub, textAlign: 'center' }}>点击查看</Text>
+        )}
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 

@@ -13,13 +13,16 @@ import Card from '../components/Card';
 import Icon from '../components/Icon';
 import { MoonDot, phaseToMoonStyle } from '../components/CycleMoonPhase';
 import EnergyBall from '../components/EnergyBall';
+import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import ConsumptionCard from '../components/ConsumptionCard';
+import ConsumptionHighlightCards from '../components/ConsumptionHighlightCards';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { RingBle } from '../ble/RingBleManager';
-import { healthStore, dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
@@ -135,6 +138,14 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
       return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—';
     } catch { return '—'; }
   })();
+  // 运动消耗 = 今日步数
+  const activity = (() => {
+    try {
+      const dk = dayKey(Date.now());
+      const steps = ring?.stepDaily?.[dk]?.steps ?? 0;
+      return steps > 0 ? String(steps) : '—';
+    } catch { return '—'; }
+  })();
 
   // 皮质醇峰值 + 恢复水平
   const cortisolPeak = (() => {
@@ -225,10 +236,11 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
         </Card>
       </TouchableOpacity>
 
-      {/* ★ 情绪消耗 / 脑力消耗 —— 并排独立小卡 */}
+      {/* ★ 情绪消耗 / 脑力消耗 / 运动消耗 —— 并排独立小卡 */}
       <View style={{ flexDirection: 'row', gap: theme.space.md }}>
         {subCard(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
         {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
+        {subCard(IMG_ACTIVITY, '运动消耗', activity, '步', () => onNav('activity'))}
       </View>
     </View>
   );
@@ -438,6 +450,23 @@ export default function TodayScreen() {
           </Card>
         </TouchableOpacity>
 
+        {/* ★ 新增「全天恢复」卡：上半睡眠恢复 + 皮质醇峰值，下半皮质醇全天趋势（渐变卡）。
+            放在「全天状态趋势」正下方；原有卡片（身体恢复 / 三个消耗小卡）保持不变。 */}
+        <AllDayRecoveryCard />
+
+        {/* ★ 新增「消耗」卡：左侧三项消耗圆环占比（环心=今日综合消耗率），右侧三张可点击小卡
+            （情绪/脑力/运动），点击进各自的详情页（与下方既有小卡同一路由 EnergyDetail）。 */}
+        <ConsumptionCard
+          ring={ring}
+          onNav={(type) => navigation.navigate('EnergyDetail', { type })}
+        />
+
+        {/* ★ 新增三张明细大卡（参考稿样式：标题 + 右上占比 + 超大数字 + 右侧光晕曲线与浮标），
+            放在「消耗」卡下方，点击同样进各自详情页 */}
+        <ConsumptionHighlightCards
+          ring={ring}
+          onNav={(type) => navigation.navigate('EnergyDetail', { type })}
+        />
 
         {/* 情绪消耗 / 脑力消耗 / 运动消耗 */}
         <EnergyRowData ring={ring} onNav={(type) => navigation.navigate('EnergyDetail', { type })} outerOnNav={() => navigation.navigate('EmotionCognitiveDetail')} />

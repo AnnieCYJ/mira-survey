@@ -8,7 +8,7 @@
  *  2) 洞察页 →「情绪压力」tab 下的情绪洞察卡（原名「压力洞察」，已统一）
  *
  * 内容两块（合并在同一张卡片内）：
- *  - 全天情绪分布：5 档情绪点阵（兴奋/愉悦/平静/压力/焦虑），基于事件 valenceLabel + severity
+ *  - 情绪负荷：5 档情绪点阵（兴奋/愉悦/平静/压力/焦虑），基于事件 valenceLabel + severity
  *  - 情绪洞察：4 项指标（情绪消耗/恢复时间/峰值时段/唤醒分）+ 口径注释 + 5 档情绪说明
  *
  * 设计：100% design token（theme.ts），禁止裸值。
@@ -41,7 +41,7 @@ export function StatCell({ label, value, sub, valueColor }: {
 }
 
 /**
- * 全天情绪分布：情绪事件点阵（24 小时列 × 4 行，5 档情绪着色）
+ * 情绪负荷：情绪事件点阵（24 小时列 × 4 行，5 档情绪着色）
  *
  * 网格语义：**一列 = 1 小时，一行 = 15 分钟**（:00 / :15 / :30 / :45）；
  * 同一格里出现多个事件时**横向并排画多个点**（不串行、不丢弃）→ 圆点数恒等于事件次数。
@@ -139,13 +139,15 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
                 flex: 1, aspectRatio: 0.7,
                 marginRight: col < COLS - 1 ? GAP : 0,
                 borderRadius: theme.radius.sm,
-                // 空格：睡眠时段给浅底（提示"这会儿在睡"），事件格用白底高亮
+                // 有事件 → 情绪色直接做格子背景；睡眠 → 白色；其他空格透明
                 backgroundColor: has
-                  ? theme.colors.ui.white25
-                  : isSleepHour(h) ? theme.colors.cardBgSoft + '66' : 'transparent',
+                  ? dotColor(cell[0])
+                  : isSleepHour(h) ? '#FFFFFF' : 'transparent',
                 alignItems: 'center', justifyContent: 'center',
-                borderWidth: has ? 1 : 0,
-                borderColor: has ? theme.colors.ui.borderSoft : 'transparent',
+                borderWidth: 1,
+                borderColor: has
+                  ? dotColor(cell[0]) + 'CC'
+                  : isSleepHour(h) ? theme.colors.cardBorder + 'AA' : 'transparent',
               }}>
                 {has && (
                   <Svg width="100%" height="100%" viewBox="0 0 40 20">
@@ -251,16 +253,12 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
         ))}
       </View>
 
-      {/* 口径提示：轴固定全天、睡眠只作浅底标注 → 圆点数恒等于下方「今日 N 次压力事件」 */}
-      <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1) }}>
-        横轴 0–23 点 · 浅底为睡眠时段（事件不隐藏，圆点数＝下方事件次数）
-      </Text>
     </View>
   );
 }
 
 /**
- * 「情绪洞察」主体：全天情绪分布 + 4 项指标 + 口径注释 + 5 档说明。
+ * 「情绪洞察」主体：情绪负荷 + 4 项指标 + 口径注释 + 5 档说明。
  * 可选 anchorMs：传则展示该「锚定日」的全天（历史日 23:59:59.999，今天=此刻）；
  * 不传=今天（洞察页「情绪压力」tab 沿用默认，行为不变）。
  */
@@ -279,29 +277,23 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
     );
   }
 
-  // ★ 全天情绪分布 + 情绪洞察 合并为同一张卡片：
+  // ★ 情绪负荷 + 情绪洞察 合并为同一张卡片：
   //   洞察页「情绪压力」tab 与首页「情绪消耗」详情共用此视图，合并后两处仍完全一致。
   return (
     <Card padded={false}>
       <View style={styles.pad}>
-        {/* 图在最上面 —— 全天情绪分布（5 档情绪点阵） */}
+        {/* 图在最上面 —— 情绪负荷（5 档情绪点阵） */}
         {report.events.length > 0 && (
           <>
             <Text style={[styles.chartTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(2) }]}>
-              全天情绪分布
+              情绪负荷
             </Text>
+            <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.md, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
             <StressEventStems events={report.events} chartH={200} />
+            </View>
             {/* 与下方「情绪洞察」拉开间距，还原原两卡之间的视觉间隔 */}
             <View style={{ height: theme.sp(4) }} />
           </>
-        )}
-
-        {/* 情绪洞察：大分数 + 4 项子指标 + 口径注释 + 5 档说明 */}
-        <Text style={styles.cardTitle}>情绪洞察</Text>
-        {report.events.length > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>今日 {report.events.length} 次压力事件</Text>
-          </View>
         )}
 
         <View style={styles.statGrid}>
@@ -324,41 +316,12 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             sub={report.peakHour != null ? '事件最多' : ''}
           />
           <StatCell
-            label="唤醒分"
-            value={
-              report.level === 'calm' ? '平静' :
-              report.level === 'mild' ? '轻度唤醒' :
-              report.level === 'moderate' ? '中度唤醒' :
-              report.level === 'high' ? '高度唤醒' : '—'
-            }
-            valueColor={color}
-            sub={
-              report.level === 'calm' ? '唤醒分<45 · 身心放松' :
-              report.level === 'mild' ? '唤醒分 45–55 · 正常活动' :
-              report.level === 'moderate' ? '唤醒分 55–65 · 有些紧张' :
-              report.level === 'high' ? '唤醒分>65 · 焦虑/兴奋' : ''
-            }
+            label="情绪压力事件"
+            value={String(report.events.length)}
+            sub={report.events.length > 8 ? '事件较多' : report.events.length > 4 ? '适中' : '较少'}
           />
         </View>
 
-        {/* ★ 指标口径注释 */}
-        <View style={{ marginTop: theme.sp(2), gap: theme.sp(1) }}>
-          <Text style={styles.note}>
-            {'● 情绪消耗（0–100）：0–30 低消耗 · 31–60 中等消耗 · 61–100 高消耗'}
-          </Text>
-          <Text style={styles.note}>
-            {'● 唤醒分（0–100）：<45 平静 · 45–55 轻度唤醒 · 55–65 中度唤醒 · >65 高度唤醒'}
-          </Text>
-          <Text style={styles.note}>
-            {'● 计算因子：事件密度 · 平均强度 · HRV 偏离 · 交感(sns)偏离 · SCR 恢复 · 皮质醇偏离 · 疲劳偏离（各因子等权，以个人 2 日基线为参考）'}
-          </Text>
-        </View>
-
-        {/* ★ 5 档情绪说明 */}
-        <View style={{ marginTop: theme.sp(1.5), gap: theme.sp(0.5) }}>
-          <Text style={styles.catTitle}>情绪分类（5 档）</Text>
-          <Text style={styles.note}>{'兴奋 / 愉悦 / 平静 · 压力 / 焦虑'}</Text>
-        </View>
       </View>
     </Card>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Path, Circle, G } from 'react-native-svg';
 import { theme } from '../theme/theme';
 
@@ -209,6 +210,8 @@ interface IconProps {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  /** 外层样式（如 marginRight 留白），透传给底层 Svg */
+  style?: StyleProp<ViewStyle>;
 }
 
 export default function Icon({
@@ -216,11 +219,12 @@ export default function Icon({
   size = theme.fs(24),
   color = theme.colors.textSub,
   strokeWidth = 2,
+  style,
 }: IconProps) {
   const def = ICONS[name];
   const isStroke = def.mode === 'stroke';
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Svg width={size} height={size} viewBox="0 0 24 24" style={style}>
       <G
         fill={isStroke ? 'none' : color}
         stroke={isStroke ? color : 'none'}

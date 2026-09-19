@@ -560,11 +560,11 @@ export default function StatusTrendDetailScreen() {
                 {areaD ? <Path d={areaD} fill="url(#std_grad)" /> : null}
                 {/* 主折线：白底，保证彩色段不会太细 */}
                 {lineD ? (
-                  <Path d={lineD} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={lineD} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
                 {/* ★ 4 等级彩色分段折线 */}
                 {colorLines.map((cl, i) => (
-                  <Path key={`cline-${i}`} d={cl.d} fill="none" stroke={cl.color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path key={`cline-${i}`} d={cl.d} fill="none" stroke={cl.color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
                 ))}
                 {/* dots removed */}
               </Svg>
@@ -653,8 +653,8 @@ const styles = StyleSheet.create({
   },
   liveText: { fontSize: theme.fontSize.micro, color: theme.colors.success, fontWeight: theme.weight.medium as any },
   hero: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  heroVal: { fontSize: 40, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
-  heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  heroVal: { fontSize: 40, fontWeight: theme.weight.bold as any, color: '#FFFFFF' },
+  heroUnit: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.75)' },
   delta: { fontSize: theme.fontSize.sm, marginLeft: 6 },
   up: { color: theme.colors.danger },
   down: { color: theme.colors.success },

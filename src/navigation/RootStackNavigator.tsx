@@ -52,9 +52,11 @@ export default function RootStackNavigator() {
         component={VoiceChatScreen}
         options={{
           headerShown: false,
-          presentation: 'fullScreenModal',
-          animation: 'slide_from_bottom',
+          presentation: 'card',
           gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          cardStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen

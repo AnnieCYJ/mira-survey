@@ -14,14 +14,15 @@ export const QUICK_ACTIONS: { label: string; icon: 'pen' | 'image' | 'sparkle' |
   { label: '睡眠分析', icon: 'breath' },
 ];
 
-/** 生成 Mira AI 首页建议问题。基于真实健康数据 + 时间 + 趣味互动。
+/** 生成 Mira AI 建议问题。基于真实健康数据 + 时间 + 趣味互动。
  * 设计约束：
- *   1. 去重：6 条不重复
- *   2. 比例：健康 : 趣味 = 4 : 2（太健康很枯燥，全趣味又不落地）
+ *   1. 去重：perRow*3 条不重复
+ *   2. 比例：健康 : 趣味 ≈ (perRow+2) : (perRow*2-2)（太健康很枯燥，全趣味又不落地）
  *   3. 稳定：按「日期 + 小时 + phaseLabel + sleepTotal」做种子 —— 同一场景下稳定，
  *      只有真实数据变化才换问题，避免 ringState 高频推送导致的滑动跳跃
+ * @param perRow 每排问题数。默认 2（ChatSheet 换行平铺）；MiraAI 首页跑马灯传 4
  */
-export function generateQuestions(state: RingState | null): string[][] {
+export function generateQuestions(state: RingState | null, perRow = 2): string[][] {
   const now = new Date();
   const hour = now.getHours();
   const seen = new Set<string>();
@@ -99,21 +100,25 @@ export function generateQuestions(state: RingState | null): string[][] {
     .map((x) => x.q);
   shuffled.forEach((q) => pushUniq(fun, q));
 
-  // —— 组合：health 取前 4，fun 补到 6 ——
+  // —— 组合：health 取前 perRow+2，fun 补到 perRow*3 ——
+  const total = perRow * 3;
+  const healthCap = Math.min(total, perRow + 2);
   const picked: string[] = [];
-  for (const q of health) if (picked.length < 4) picked.push(q);
-  for (const q of fun)    if (picked.length < 6) picked.push(q);
+  for (const q of health) if (picked.length < healthCap) picked.push(q);
+  for (const q of fun)    if (picked.length < total) picked.push(q);
 
-  // fallback 兜底（极端情况 health+fun 不够 6）
-  if (picked.length < 6) {
+  // fallback 兜底（极端情况 health+fun 不够 perRow*3）
+  if (picked.length < total) {
     const fallback = [
       '最近健康有啥趋势？', '我的压力峰值在哪个时段？', '本周能上高强度训练吗？',
       '我的周期规律吗？', '白天怎么更专注？', '晚上总刷手机怎么办？',
     ];
-    for (const q of fallback) if (picked.length < 6 && !seen.has(q)) picked.push(q);
+    for (const q of fallback) if (picked.length < total && !seen.has(q)) picked.push(q);
   }
 
-  return [picked.slice(0, 2), picked.slice(2, 4), picked.slice(4, 6)];
+  const rows: string[][] = [];
+  for (let i = 0; i < 3; i++) rows.push(picked.slice(i * perRow, (i + 1) * perRow));
+  return rows;
 }
 
 /** @deprecated 静态 QUESTIONS 已废弃，改用 generateQuestions(state) */

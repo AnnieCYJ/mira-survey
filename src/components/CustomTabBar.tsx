@@ -11,10 +11,12 @@ const TAB_ICON: Record<string, IconName> = {
   Insight: 'insights',
   Meditation: 'tools',
   Profile: 'calendar',
-  Focus: 'orb',
+  __voice__: 'orb',
 };
-const VOICE_ROUTE = 'Focus';
+const VOICE_ROUTE = '__voice__'; // 虚拟路由, 不对应真实 tab
 const LEFT_ROUTES = ['Today', 'Insight', 'Meditation', 'Profile'];
+/** 真实存在但不渲染图标的 tab：MiraAI 由中间 bot 按钮触发进入 */
+const HIDDEN_ROUTES = ['MiraAI'];
 
 // 右下 tab 上会动的 Mira Bot 脸
 // 全用 Animated.Views，避免 SVG transform 坐标混乱
@@ -49,17 +51,17 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
   // wander
   useEffect(() => {
     let cancelled = false;
+    const WANDER_DUR = 380;        // 固定时长，保证速度一致
+    const WANDER_GAP = 140;        // 固定间隔
+    const AMP_X = 18 * SCALE;
+    const AMP_Y = 20 * SCALE;
     const wander = () => {
       if (cancelled) return;
-      // 加大幅度 + 速度加快，方向有规律（左上/右上/左下/右下，更灵动）
-      const dir = Math.floor(Math.random() * 4);
-      const ampX = (14 + Math.random() * 8) * SCALE;
-      const ampY = (16 + Math.random() * 10) * SCALE;
-      const dur = 250 + Math.random() * 380;
+      const dir = Math.floor(Math.random() * 4); // 0=左上 1=右上 2=左下 3=右下
       Animated.parallel([
-        Animated.timing(lookX, { toValue: (dir === 0 || dir === 2 ? -1 : 1) * ampX * (0.85 + Math.random()*0.3), duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(lookY, { toValue: (dir === 0 || dir === 1 ? -1 : 1) * ampY * (0.85 + Math.random()*0.3), duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]).start(() => setTimeout(wander, dur * 0.15));
+        Animated.timing(lookX, { toValue: (dir === 0 || dir === 2 ? -1 : 1) * AMP_X, duration: WANDER_DUR, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(lookY, { toValue: (dir === 0 || dir === 1 ? -1 : 1) * AMP_Y, duration: WANDER_DUR, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]).start(() => setTimeout(wander, WANDER_GAP));
     };
     wander();
     return () => { cancelled = true; };
@@ -194,24 +196,46 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const isLongPressing = useRef(false);
   const marginBottom = theme.sp(2);
 
+  // ★ 松手后 stop() 一解析出转写文本就立刻导航。
+  //   旧实现把导航挂在 `setTimeout(..., 800)` 的兜底里 —— 等于**每次跳转前固定空等 800ms**，
+  //   手感发滞（转场前的那段"卡"多半来自这里）；而且 `onStop` 定义了却从未被调用（死代码）。
+  //   现在直接在 open() 的回调里跳，延迟只取决于语音识别 stop() 本身。
+  const doNavigate = (text: string) => {
+    const parentNav = (navigation as any).getParent?.() ?? navigation;
+    const routeNames = navigation.getState().routes.map((r: any) => r.name).join(' → ');
+    console.log('[CustomTabBar] 导航栈:', routeNames, '→ VoiceChat, question:', JSON.stringify(text));
+    parentNav.navigate('VoiceChat', { question: text });
+  };
+
+  // ★ 单击 bot → 跳「三排建议问题」的 MiraAI 页面（VoiceChat 不带初始问题时，ChatSheet 即展示 suggestedQuestions）；
+  //   长按(>HOLD_MS) → 开录音浮层，松手转写后带问题跳 VoiceChat。用延时区分两者，避免单击误触录音。
+  const PRESS_HOLD_MS = 220;
   const handleVoicePressIn = () => {
+    isLongPressing.current = true;
+    if (voiceStartTimer.current) clearTimeout(voiceStartTimer.current);
     voiceStartTimer.current = setTimeout(() => {
-      isLongPressing.current = true;
+      voiceStartTimer.current = null; // 标记：已进入录音态
+      console.log('[CustomTabBar] 长按 bot → 打开录音');
       open((text) => {
-        const parentNav = (navigation as any).getParent?.() ?? navigation;
-        parentNav.navigate('Main', { screen: 'Focus', params: { autoOpen: text } });
+        console.log('[CustomTabBar] onRelease 回调, text:', JSON.stringify(text));
+        doNavigate((text || '').trim());
       });
-    }, 300);
+    }, PRESS_HOLD_MS);
   };
 
   const handleVoicePressOut = () => {
+    if (!isLongPressing.current) return;
+    isLongPressing.current = false;
     if (voiceStartTimer.current) {
+      // 未到长按阈值 = 单击 → 切到 MiraAI 首页 tab（tab 栏保持可见，与设计稿一致）
       clearTimeout(voiceStartTimer.current);
       voiceStartTimer.current = null;
-    }
-    if (isLongPressing.current) {
+      console.log('[CustomTabBar] 单击 bot → 切到 MiraAI tab');
+      navigation.navigate('MiraAI');
+    } else {
+      // 已在录音态 → 松手关录音
+      console.log('[CustomTabBar] 松手 → close（转写完成后跳转 VoiceChat）');
       close();
-      isLongPressing.current = false;
     }
   };
 
@@ -226,15 +250,15 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     }
   };
 
-  const voiceIdx = state.routes.findIndex((r) => r.name === VOICE_ROUTE);
-  const voiceFocused = state.index === voiceIdx;
+  const voiceIdx = -1; // 无对应 tab
+  const voiceFocused = false;
   const botSize = theme.layout.tabCenterSize;
 
   return (
     <View style={[styles.wrap, { marginBottom }]}>
       <View style={styles.leftCard}>
         {state.routes.map((route, idx) => {
-          if (!LEFT_ROUTES.includes(route.name)) return null;
+          if (route.name === VOICE_ROUTE || HIDDEN_ROUTES.includes(route.name)) return null;
           const focused = state.index === idx;
           return (
             <TouchableOpacity
@@ -258,10 +282,11 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       </View>
 
       <TouchableOpacity
-        onPress={() => handlePress(state.routes[voiceIdx], voiceFocused)}
+        onPress={() => { /* bot 按钮不做 tab 切换, 只做长按录音 */ }}
         onPressIn={handleVoicePressIn}
         onPressOut={handleVoicePressOut}
         delayPressIn={0}
+        delayPressOut={0}
         activeOpacity={0.9}
         style={[styles.botBtn, { width: botSize, height: botSize }]}
         accessibilityRole="button"
@@ -291,7 +316,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     height: theme.layout.tabBarHeight,
-    backgroundColor: theme.colors.ui.tabBar,
+    backgroundColor: 'rgba(230,228,242,0.94)',
     borderRadius: theme.radius.card,
     paddingHorizontal: theme.space.sm,
     marginRight: theme.sp(2),
@@ -306,7 +331,7 @@ const styles = StyleSheet.create({
     height: theme.sp(1),
     marginLeft: -theme.sp(0.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.textNavOn,
+    backgroundColor: theme.colors.accentSolid,
   },
   botBtn: {
     borderRadius: theme.radius.pill,

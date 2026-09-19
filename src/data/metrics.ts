@@ -74,7 +74,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     data: [62, 60, 64, 58, 61, 59, 57],
   },
   heart: {
-    name: '心电',
+    name: '心血管',
     tag: '静息 58 bpm',
     val: '62',
     unit: 'ms HRV',
@@ -84,7 +84,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     data: [48, 50, 54, 52, 58, 60, 62],
   },
   mind: {
-    name: '情绪压力',
+    name: '情绪&认知',
     tag: '中等',
     val: '34',
     unit: '压力指数',
@@ -284,7 +284,7 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
     note: '健康一览自动评估的血糖估算值，非静脉血糖，仅供参考。', freq: '健康一览自动同步', yMin: 2, yMax: 12,
   },
   {
-    key: 'cholesterol', name: '总胆固醇', icon: 'drop', dimension: 'metabolism', section: '血脂 · 心理',
+    key: 'cholesterol', name: '总胆固醇', icon: 'drop', dimension: 'metabolism', section: '',
     value: '—', unit: 'mmol/L', range: '正常 < 5.2 mmol/L', data: [], live: false, hideMeasure: true,
     note: '血液中总胆固醇浓度，偏高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 10,
   },
@@ -295,22 +295,22 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
   },
   // —— 心理和压力 ——（全部来自健康一览 healthGlance 自动快照；协议 dataType 3 压力 / 11 疲劳度 / 10 情绪 / 12 皮电 / 皮质醇）
   {
-    key: 'stress', name: '压力', icon: 'mind', dimension: 'mind',
+    key: 'stress', name: '压力', icon: 'mind', dimension: 'basics',
     value: '—', unit: '', range: '0–100，越高越紧张', data: [], live: false, hideMeasure: true,
     note: '设备压力/紧张度读数，与皮电 GSR 的交感分量互为印证。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 100,
   },
   {
-    key: 'fatigue', name: '疲劳度', icon: 'mind', dimension: 'mind',
+    key: 'fatigue', name: '疲劳度', icon: 'mind', dimension: 'basics',
     value: '—', unit: '', range: '0–100，越高越疲劳', data: [], live: false, hideMeasure: true,
     note: '健康一览自动评估的身体疲劳程度，与睡眠质量、活动量相关。', freq: '健康一览自动同步', yMin: 0, yMax: 100,
   },
   {
-    key: 'emotion', name: '情绪', icon: 'mind', dimension: 'mind',
+    key: 'emotion', name: '情绪', icon: 'mind', dimension: 'basics',
     value: '—', unit: '', range: '-10–10，负向偏低落、正向偏高涨', data: [], live: false, hideMeasure: true,
     note: '健康一览自动评估的实时情绪状态，范围 -10（低落）到 10（高涨）。', freq: '健康一览自动同步', yMin: -10, yMax: 10,
   },
   {
-    key: 'skin', name: '皮肤含水量', icon: 'mind', dimension: 'mind',
+    key: 'skin', name: '皮肤含水量', icon: 'mind', dimension: 'basics',
     value: '—', unit: '%', range: '1–99，越高越润泽', data: [], live: false, hideMeasure: true,
     note: '健康一览自动评估的皮肤含水量（皮电 GSR 相关），随 hydration 与周期波动。', freq: '健康一览自动同步', yMin: 1, yMax: 99,
   },
@@ -332,27 +332,27 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
   {
     key: 'triglyceride', name: '甘油三酯', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 < 1.7 mmol/L', data: [], live: false,
-    note: '血液中甘油三酯浓度，与饮食、脂代谢相关。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
+    note: '血液中甘油三酯浓度，与饮食、脂代谢相关。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '',
   },
   {
     key: 'hdl', name: '高密度脂蛋白', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 > 1.0 mmol/L', data: [], live: false,
-    note: '「好胆固醇」，偏高有助于清除血管多余脂质。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 3, hideMeasure: true, section: '血脂 · 心理',
+    note: '「好胆固醇」，偏高有助于清除血管多余脂质。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 3, hideMeasure: true, section: '',
   },
   {
     key: 'ldl', name: '低密度脂蛋白', icon: 'drop', dimension: 'metabolism',
     value: '—', unit: 'mmol/L', range: '正常 < 3.4 mmol/L', data: [], live: false,
-    note: '「坏胆固醇」，过高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '血脂 · 心理',
+    note: '「坏胆固醇」，过高增加心血管负担。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 6, hideMeasure: true, section: '',
   },
   {
     key: 'depressionRisk', name: '抑郁风险', icon: 'mind', dimension: 'basics', hideInList: true,
     value: '—', unit: '', range: '0 正常 · 1 轻度 · 2 重度', data: [], live: false,
-    note: '健康一览自动评估的抑郁风险等级（0–2）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 2, hideMeasure: true, section: '血脂 · 心理',
+    note: '健康一览自动评估的抑郁风险等级（0–2）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 2, hideMeasure: true, section: '',
   },
   {
-    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'mind',
+    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'basics',
     value: '—', unit: '', range: '1–99，越高越兴奋', data: [], live: false,
-    note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '血脂 · 心理',
+    note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '',
   },
   // —— 光电血压（实时测量，HK18 硬件支持）——
   {

@@ -425,67 +425,140 @@ export default function EmotionCognitiveDetailScreen() {
   );
 }
 
+
+
+
+/** 指标小卡：label + 大数值 + 迷你对比箭头 */
+function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, showHour }: {
+  label: string;
+  value: string;
+  unit?: string;
+  todayN?: number | null;
+  prevN?: number | null;
+  goodWhen?: 'up' | 'down';
+  noCompare?: boolean;
+  showHour?: boolean;
+}) {
+  return (
+    <View style={{ flex: 1, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, alignItems: 'center' }}>
+      <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>{label}</Text>
+      <Text style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>
+        {value}{unit ? <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular, color: theme.colors.textSub }}>{unit}</Text> : null}
+      </Text>
+      {!noCompare && todayN != null && prevN != null && todayN !== prevN ? (
+        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
+          相比昨天 {(() => {
+            const diff = showHour ? (todayN - prevN) / 60 : todayN - prevN;
+            const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '';
+            const v = showHour ? (Math.abs(diff) >= 1 ? `${Math.abs(diff).toFixed(0)}h` : `${Math.abs((todayN - prevN) % 60)}m`) : Math.abs(diff).toFixed(0);
+            return `${arrow} ${v}`;
+          })()}
+        </Text>
+      ) : !noCompare ? (
+        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>相比昨天 —</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** 迷你对比行：today vs prev 一句话 */
+function CompareMini({ today, prev, label, goodWhen }: { today: string; prev: string; label: string; goodWhen: 'up' | 'down' }) {
+  if (today === prev || today === '—' || prev === '—') return null;
+  return (
+    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
+      相比前一天 {label} {today} {(() => {
+        const t = parseFloat(today), p = parseFloat(prev);
+        if (isNaN(t) || isNaN(p)) return '';
+        const diff = t - p;
+        const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '';
+        const good = goodWhen === 'up' ? diff > 0 : diff < 0;
+        return arrow ? `${arrow} ${Math.abs(diff).toFixed(0)}` : '';
+      })()}
+    </Text>
+  );
+}
+
+/** 睡眠摘要（内嵌版，用于三卡并排） */
+function SleepSummaryInline({ sl }: { sl: SleepSummary | null }) {
+  if (!sl) return <SumCell label="睡眠" value="—" sub="无数据" />;
+  const total = sl.total ?? 0;
+  const deep = sl.deep ?? 0;
+  const score = sl.score;
+  const clock = formatSleepClockText(sl.sleepTime ?? '', sl.wakeTime ?? '');
+  return (
+    <>
+      <SumCell label="睡眠时长" value={total > 0 ? `${Math.floor(total / 60)}h ${total % 60}m` : '—'} sub={deep > 0 ? `深睡 ${Math.round((deep / total) * 100)}%` : ''} />
+      <SumCell label="睡眠评分" value={score != null ? String(score) : '—'} sub={`${clock.bed ?? "—"} 入睡`} />
+    </>
+  );
+}
+
 /** 日视图：锚定日全天看板 */
 function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) {
-  const { D, stress: s, stressPrev: sP, cog: g, cogPrev: gP, sl, slPrev } = data;
+  const { D, prevD, stress: s, stressPrev: sP, cog: g, cogPrev: gP, sl, slPrev } = data;
+  const debt = computeSleepLoad(sleepWindowEndingAt(anchorDayMs)).debtH;
+  const debtPrev = computeSleepLoad(sleepWindowEndingAt(prevD.getTime())).debtH;
   return (
     <>
       <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} />
 
-      {/* 情绪消耗摘要 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>情绪消耗摘要</Text>
-          <View style={styles.summaryGrid}>
-            <SumCell label="压力事件" value={`${s.events.length} 次`} sub={s.events.length > 0 ? `峰值 ${s.peakHour != null ? `${String(Math.floor(s.peakHour)).padStart(2, '0')}:00` : '—'}` : '无事件'} />
-            <SumCell label="恢复" value={s.avgRecoverySec != null ? `${s.avgRecoverySec}s` : '—'} sub={s.avgRecoverySec != null ? (s.avgRecoverySec > 120 ? '恢复偏慢' : '恢复正常') : '—'} />
-          </View>
-          <View style={styles.compareRow}>
-            <View style={styles.compareCell}>
-              <Text style={styles.compareLabel}>相比前一天</Text>
-              <Text style={styles.compareValue}>
-                {(() => {
-                  const d = s.events.length - sP.events.length;
-                  const r = (s.avgRecoverySec ?? 0) - (sP.avgRecoverySec ?? 0);
-                  const parts: string[] = [];
-                  if (d !== 0) parts.push(`${d > 0 ? '+' : ''}${d}次压力`);
-                  if (s.avgRecoverySec != null && sP.avgRecoverySec != null && Math.abs(r) >= 10) parts.push(`${r > 0 ? '恢复慢' : '恢复快'} ${Math.abs(r)}s`);
-                  return parts.length > 0 ? parts.join(' ') : '基本持平';
-                })()}
-              </Text>
+      {/* 三张摘要卡（外大卡纵向，内小卡横向各含对比） */}
+      <View style={{ gap: theme.sp(1), marginTop: theme.sp(2) }}>
+        {/* 情绪消耗摘要 */}
+        <Card padded={false}>
+          <View style={{ padding: theme.sp(3) }}>
+            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>情绪消耗摘要</Text>
+            <View style={{ flexDirection: 'row', gap: theme.sp(1) }}>
+              <MetricMini label="压力事件" value={`${s.events.length}`} todayN={s.events.length} prevN={sP.events.length} unit="次" goodWhen="down" />
+              <MetricMini label="恢复时长" value={s.avgRecoverySec != null ? `${s.avgRecoverySec}` : '—'} todayN={s.avgRecoverySec} prevN={sP.avgRecoverySec} unit="s" goodWhen="down" />
+              <MetricMini label="峰值时段" value={s.peakHour != null ? `${String(Math.floor(s.peakHour)).padStart(2, '0')}:00` : '—'} noCompare />
             </View>
           </View>
-        </View>
-      </Card>
+        </Card>
 
-      {/* 脑力消耗摘要 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>脑力消耗摘要</Text>
-          <View style={styles.summaryGrid}>
-            <SumCell label="脑力负荷" value={g.loadScore != null ? String(g.loadScore) : '—'} sub={g.peakLoadSpan ? `峰值 ${String(g.peakLoadSpan.startHour).padStart(2, '0')}:00–${String(g.peakLoadSpan.endHour).padStart(2, '0')}:00` : '—'} />
-            <SumCell label="恢复" value={g.recoveryCapacity != null ? `${Math.round(g.recoveryCapacity * 100)}%` : '—'} sub={g.bestSpan ? `最佳 ${String(g.bestSpan.startHour).padStart(2, '0')}:00–${String(g.bestSpan.endHour).padStart(2, '0')}:00` : '—'} />
-          </View>
-          <View style={styles.compareRow}>
-            <View style={styles.compareCell}>
-              <Text style={styles.compareLabel}>相比前一天</Text>
-              <Text style={styles.compareValue}>
-                {(() => {
-                  const loadD = (g.loadScore ?? 0) - (gP.loadScore ?? 0);
-                  const recD = (g.recoveryCapacity ?? 0) - (gP.recoveryCapacity ?? 0);
-                  const parts: string[] = [];
-                  if (g.loadScore != null && gP.loadScore != null && Math.abs(loadD) >= 5) parts.push(`负荷 ${loadD > 0 ? '+' : ''}${loadD.toFixed(0)}`);
-                  if (g.recoveryCapacity != null && gP.recoveryCapacity != null && Math.abs(recD) >= 0.05) parts.push(`恢复 ${recD > 0 ? '+' : ''}${Math.round(recD * 100)}%`);
-                  return parts.length > 0 ? parts.join(' ') : '基本持平';
-                })()}
-              </Text>
+        {/* 脑力消耗摘要 — v2: 脑力值 / 专注力 / 决策力 + 预测峰谷 */}
+        <Card padded={false}>
+          <View style={styles.pad}>
+            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>脑力消耗摘要</Text>
+            {/* Row 1: 当下能力 */}
+            <View style={styles.metricRow}>
+              <MetricMini label="脑力值" value={g.mentalEnergy != null ? String(g.mentalEnergy) : '—'} todayN={g.mentalEnergy} prevN={gP.mentalEnergy} goodWhen="up" />
+              <MetricMini label="专注力" value={g.focusScore != null ? String(g.focusScore) : '—'} todayN={g.focusScore} prevN={gP.focusScore} goodWhen="up" />
+              <MetricMini label="决策力" value={g.decisionScore != null ? String(g.decisionScore) : '—'} todayN={g.decisionScore} prevN={gP.decisionScore} goodWhen="up" />
+            </View>
+            {/* Row 2: 预测峰谷 + 脑力负荷 */}
+            <View style={[styles.metricRow, { marginTop: theme.sp(1.5) }]}>
+              <MetricMini
+                label="峰值预测"
+                value={g.forecast?.peak
+                  ? `${String(g.forecast.peak.hour).padStart(2, '0')}:00 · ${g.forecast.peak.energy}`
+                  : '—'}
+                noCompare
+              />
+              <MetricMini
+                label="低谷预测"
+                value={g.forecast?.trough
+                  ? `${String(g.forecast.trough.hour).padStart(2, '0')}:00 · ${g.forecast.trough.energy}`
+                  : '—'}
+                noCompare
+              />
+              <MetricMini label="脑力负荷" value={g.loadScore != null ? String(g.loadScore) : '—'} todayN={g.loadScore} prevN={gP.loadScore} goodWhen="down" />
             </View>
           </View>
-        </View>
-      </Card>
+        </Card>
 
-      {/* 睡眠恢复摘要（睡眠负载 + 恢复） */}
-      <SleepCard sl={sl} slPrev={slPrev} anchorDayMs={anchorDayMs} />
+        {/* 睡眠恢复摘要 */}
+        <Card padded={false}>
+          <View style={styles.pad}>
+            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>睡眠恢复摘要</Text>
+            <View style={styles.metricRow}>
+              <MetricMini label="睡眠负债" value={debt > 0 ? `${debt.toFixed(1)}` : '0.0'} todayN={debt > 0 ? Math.round(debt * 10) / 10 : 0} prevN={debtPrev > 0 ? Math.round(debtPrev * 10) / 10 : 0} unit="h" goodWhen="down" />
+              <MetricMini label="睡眠恢复度" value={sl?.score != null ? String(sl.score) : '—'} todayN={sl?.score ?? null} prevN={slPrev?.score ?? null} goodWhen="up" />
+              <MetricMini label="睡眠时长" value={sl && sl.total ? `${(sl.total / 60).toFixed(1)}h` : '—'} todayN={sl ? Math.round(sl.total / 60 * 10) / 10 : null} prevN={slPrev ? Math.round(slPrev.total / 60 * 10) / 10 : null} unit="h" goodWhen="up" />
+            </View>
+          </View>
+        </Card>
+      </View>
     </>
   );
 }
@@ -605,9 +678,9 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
 /** 区间视图：聚合均值 + 对比上一周期 */
 function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg; range: RangeKey; anchor: Date }) {
   const levelMeta: Record<RhythmLevel, { label: string; color: string }> = {
-    normal: { label: '节律正常', color: '#2ECC71' },
+    normal: { label: '节律正常', color: theme.colors.stateCalm },
     sustained_high: { label: '持续偏高', color: theme.colors.danger },
-    dysregulated: { label: '节律紊乱', color: theme.colors.stateTense },
+    dysregulated: { label: '节律紊乱', color: theme.colors.textWhite },
   };
   const cMeta = cur.cortisolStatus ? levelMeta[cur.cortisolStatus] : null;
   return (
@@ -714,7 +787,7 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
       <View style={styles.pad}>
         <Text style={styles.cardTitle}>睡眠恢复摘要</Text>
         <View style={styles.summaryGrid}>
-          <SumCell label="睡眠负载" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} />
+          <SumCell label="睡眠负载(0–100)" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} />
           <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} />
         </View>
         {(clock.bed || clock.wake) && (
@@ -784,13 +857,14 @@ const styles = StyleSheet.create({
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
   // ★ 与情绪/脑力消耗详情页（EnergyDetailScreen）完全一致：标题 textTitle + 副标题 sub
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
-  sub: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
+  sub: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginTop: theme.sp(1) },
   rhythmHero: { marginTop: theme.sp(1), marginBottom: theme.sp(1) },
   // 大字结论：与另两页 Hero 同款（hero 字号 + medium + textTitle；不再用状态色）
-  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
+  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
 
   pad,
+  metricRow: { flexDirection: 'row', gap: theme.sp(1.5) },
   cardTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(2) },
 
   summaryGrid: { flexDirection: 'row' },

@@ -9,6 +9,7 @@ import {
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
+import Icon from './Icon';
 import { TREND_AXIS } from '../data/metrics';
 import { formatRelativeTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
@@ -95,6 +96,8 @@ const SLOT_MS = 60_000;
 const DAY_MS = 86_400_000;
 
 interface Props {
+  /** 洞察页 2 列小卡片形态：只留「图标+名称 / 数值 / 可选趋势图」，切掉 range/note/freq 三级信息 */
+  compact?: boolean;
   metric: BasicMetricDef;
   /** 是否开启全局「基础指标自动监测」（设置页控制），决定下方趋势图是否展示 */
   auto: boolean;
@@ -119,6 +122,7 @@ interface Props {
 }
 
 export default function BasicMetricCard({
+  compact = false,
   metric,
   auto,
   live,
@@ -181,6 +185,66 @@ export default function BasicMetricCard({
 
   const measureLabel = measuring || syncing ? '测量中…' : lastMeasured ? '刚刚测量' : '手动测量';
   const statusTag = live ? '实时' : syncing ? '同步中' : '待接入';
+
+  // compact: Insight 2列小卡片，有图/无图由 showTrend 决定
+  if (compact) {
+    const placeholderPath = (() => {
+      if (!showTrend || w <= 0) return '';
+      const pad = 4;
+      const cw = w - pad * 2;
+      const ch = h - pad * 2;
+      let d = '';
+      for (let i = 0; i <= 30; i++) {
+        const x = pad + (cw * i) / 30;
+        const y = pad + ch * (0.55 + 0.12 * Math.sin((i / 30) * Math.PI * 2.5));
+        d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+      }
+      return d.trim();
+    })();
+    return (
+      <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+        <Card style={{ padding: theme.sp(3) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {metric.icon && <Icon name={metric.icon} size={theme.fontSize.card + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />}
+              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>{metric.name}</Text>
+            </View>
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{formatRelativeTime(measureTime)}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
+            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>{value}</Text>
+            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
+          </View>
+          {showTrend && (
+          <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
+            {w > 0 ? (
+              <Svg width={w} height={h}>
+                {hasData ? (
+                  <>
+                    <Defs>
+                      <LinearGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.32} />
+                        <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
+                      </LinearGradient>
+                      <LinearGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
+                        <Stop offset="0%" stopColor={theme.colors.accent1} />
+                        <Stop offset="100%" stopColor={theme.colors.accent2} />
+                      </LinearGradient>
+                    </Defs>
+                    <Path d={areaD} fill={`url(#${gid}_grad)`} />
+                    <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />
+                  </>
+                ) : (
+                  <Path d={placeholderPath} fill="none" stroke={theme.colors.accent1} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+                )}
+              </Svg>
+            ) : null}
+          </View>
+          )}
+        </Card>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>

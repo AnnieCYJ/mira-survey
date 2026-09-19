@@ -138,7 +138,7 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
   const heroVal = type === 'emotion' ? report?.emotionalLoad : report?.loadScore;
   return (
     <View style={styles.hero}>
-      <Text style={[styles.heroVal, { color: accent }]}>{heroVal ?? '—'}</Text>
+      <Text style={styles.heroVal}>{heroVal ?? '—'}</Text>
       <Text style={styles.heroUnit}>/ 100</Text>
     </View>
   );
@@ -207,45 +207,37 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               <Text style={[styles.bigScore, { color: fCol }]}>{report.fatigueIndex}</Text>
             </View>
           </View>
-          {/* 4 子指标 — 等宽均分 */}
+          {/* v2: 脑力 3 指标 + 预测峰谷 + 原有生理指标 — 两行各 4 */}
           <View style={styles.statGrid}>
-            <StatCell label="负荷占比" value={`${report.highLoadRatio}%`} sub="高负荷时段" />
+            <StatCell label="脑力值"
+              value={report.mentalEnergy != null ? `${report.mentalEnergy}` : '—'}
+              sub="当下可用储备" />
+            <StatCell label="专注力"
+              value={report.focusScore != null ? `${report.focusScore}` : '—'}
+              sub="当前注意力状态" />
+            <StatCell label="决策力"
+              value={report.decisionScore != null ? `${report.decisionScore}` : '—'}
+              sub="决策质量预估" />
             <StatCell label="恢复能力"
               value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
-              sub="全天最低窗口" />
-            <StatCell label="今日 HRV"
-              value={report.baselines.hrv != null ? `${Math.round(report.baselines.hrv)}` : '—'}
-              sub="迷走活力 ms" />
-            <StatCell label="血管张力"
-              value={report.baselines.vti != null ? `${Math.round(report.baselines.vti)}` : '—'}
-              sub="脑力投入信号" />
+              sub="全天恢复水平" />
+          </View>
+          <View style={[styles.statGrid, { marginTop: theme.sp(1) }]}>
+            <StatCell label="峰值预测"
+              value={report.forecast?.peak
+                ? `${String(report.forecast.peak.hour).padStart(2, '0')}:00`
+                : '—'}
+              sub={report.forecast?.peak ? `能量 ${report.forecast.peak.energy}` : ''} />
+            <StatCell label="低谷预测"
+              value={report.forecast?.trough
+                ? `${String(report.forecast.trough.hour).padStart(2, '0')}:00`
+                : '—'}
+              sub={report.forecast?.trough ? `能量 ${report.forecast.trough.energy}` : ''} />
           </View>
         </View>
       </Card>
 
-      {/* 极值时段 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <View style={styles.peakRow}>
-            {report.peakLoadSpan != null && (
-              <View style={styles.peakChip}>
-                <Text style={styles.peakLabel}>最高负荷时段</Text>
-                <Text style={[styles.peakTime, { color: theme.colors.danger }]}>{fmtRange(report.peakLoadSpan)}</Text>
-                <Text style={styles.peakSub}>平均负荷 {report.peakLoadSpan.avgScore}</Text>
-              </View>
-            )}
-            {report.bestSpan != null && (
-              <View style={styles.peakChip}>
-                <Text style={styles.peakLabel}>认知状态最佳</Text>
-                <Text style={[styles.peakTime, { color: theme.colors.stateCalm }]}>{fmtRange(report.bestSpan)}</Text>
-                <Text style={styles.peakSub}>平均负荷 {report.bestSpan.avgScore}</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.reasonText}>{report.loadReason}</Text>
-          <Text style={[styles.reasonText, { marginTop: theme.sp(1) }]}>{report.fatigueReason}</Text>
-        </View>
-      </Card>
+
     </>
   );
 }
@@ -328,8 +320,8 @@ const styles = StyleSheet.create({
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
   sub: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginTop: theme.sp(1) },
   hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.sp(1) },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
-  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
+  heroUnit: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginLeft: theme.sp(2) },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl * 2 },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
 

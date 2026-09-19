@@ -1,0 +1,822 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import BpCard from '../components/BpCard';
+import EcgCard from '../components/EcgCard';
+import { theme } from '../theme/theme';
+import ScreenContainer from '../components/ScreenContainer';
+import Chip from '../components/Chip';
+import InsightBanner from '../components/InsightBanner';
+import DimensionCard from '../components/DimensionCard';
+import SleepStructureCard from '../components/SleepStructureCard';
+import CyclePhaseCard from '../components/CyclePhaseCard';
+import BasicMetricCard from '../components/BasicMetricCard';
+import ManualMetricCard from '../components/ManualMetricCard';
+import ListCard, { type ListItem } from '../components/ListCard';
+import Card from '../components/Card';
+import Icon from '../components/Icon';
+import ExamTab from '../components/ExamTab';
+import ChatSheet from '../components/ChatSheet';
+import BloodComponentPanel from '../components/BloodComponentPanel';
+import EmotionInsightView from '../components/EmotionInsightView';
+import CognitiveLoadCard from "../components/CognitiveLoadCard";
+import CortisolSleepSummary from '../components/CortisolSleepSummary';
+import CortisolRhythmCard from '../components/CortisolRhythmCard';
+import {
+  METRICS,
+  BASIC_METRICS,
+  signalsForDimension,
+  type MetricKey,
+  type BasicMetricDef,
+} from '../data/metrics';
+import { getTodaySeries } from '../lib/realSeries';
+import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
+import { dayKey } from '../data/healthStore';
+import { useAppState } from '../state/AppState';
+import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
+import { useAiInsight } from '../hooks/useAiInsight';
+import { resolveInsightRows } from '../ai/insight';
+import { formatRelativeTime } from '../utils/format';
+
+function formatValue(v: number | null): string {
+  if (v == null || Number.isNaN(v)) return '—';
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+// 以 ima 归档（04-屏幕Screens）的权威洞察页设计为底：
+// 5 个维度 chip（睡眠和激素/周期和激素/代谢/心脏健康/心理和压力）+ 选中后 DimensionCard + 本周关键变化。
+// 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
+// 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
+type TabKey = 'basics' | MetricKey;
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'sleep', label: METRICS.sleep.name },
+  { key: 'cycle', label: METRICS.cycle.name },
+  { key: 'metabolism', label: METRICS.metabolism.name },
+  { key: 'heart', label: METRICS.heart.name },
+  { key: 'mind', label: METRICS.mind.name },
+  { key: 'basics', label: '基础指标' },
+];
+
+const CHANGES: ListItem[] = [
+  { dot: theme.colors.stateCalm, title: 'HRV 基线 58 → 62 ms', sub: '连续 5 天高于个人基线' },
+  { dot: theme.colors.stateTense, title: '午后压力峰值提前 40 分钟', sub: '与新增的晨会时段高度重合' },
+  { dot: theme.colors.stateEnergy, title: '深睡占比 21% → 24%', sub: '入睡时间提前带来的直接改善' },
+];
+
+/**
+ * 代谢 tab 允许下发的信号白名单（除独立的「血液成分」面板外）。
+ * 只留血糖：血脂四项（总胆固醇/甘油三酯/HDL/LDL）与血液成分面板重复；
+ * BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，未录入时恒为占位空卡。
+ */
+const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
+
+/**
+ * 基础指标「矮卡」白名单：只有数值行、**不渲染**底部 88pt 全天迷你趋势图。
+ * 用于双列瀑布流的高度估算与错落排布，同时作为卡片的 showTrend 判据，
+ * 保证「估高」与实际渲染高度一致（不会一个说有图一个说没图）。
+ */
+const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol']);
+const showTrendFor = (key: string) => !SHORT_METRIC_KEYS.has(key);
+
+/**
+ * 把卡片按「估高」贪心分配到两列：**每次放进当前最矮的一列**。
+ *
+ * 为什么这样做：参考稿左侧是「错落有致」的瀑布流 —— 两列各自竖向堆叠、卡片高度不一，
+ * 行与行天然不对齐。RN 没有原生 masonry，但只要把卡片交给两个独立的列容器，
+ * 再让两列总高尽量接近（避免一条长一条短），就能得到同样的错落观感；
+ * 而原来的 flexWrap 网格会因为每行等高而显得呆板。
+ */
+function splitColumnsBalanced<T>(items: T[], estH: (it: T) => number): [T[], T[]] {
+  const cols: [T[], T[]] = [[], []];
+  const sum = [0, 0];
+  for (const it of items) {
+    const i = sum[0] <= sum[1] ? 0 : 1;
+    cols[i].push(it);
+    sum[i] += estH(it);
+  }
+  return cols;
+}
+
+export default function InsightScreen() {
+  const navigation = useNavigation<any>();
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = (question: string) => {
+    setChatQuestion(question);
+    setChatVisible(true);
+  };
+  const { autoMonitor } = useAppState();
+  // 直接订阅戒指实时状态：真实心率/血氧/体温/皮电/HRV/呼吸率都从这里来
+  const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
+  const [tab, setTab] = useState<TabKey>('basics');
+
+  // ★ 顶部「AI 综合分析」：真实接入端侧大模型（Qwen2.5-1.5B），上下文为该用户的真实健康数据
+  //   （buildHealthSnapshot：今日实时/皮质醇/激素推断/情绪脑力/周期相位/近 7 天趋势）。
+  //   生成完成前用「真实数据规则文案」兜底（不再显示原来硬编码的假数值）；同日同指纹只生成一次。
+  const aiOverview = useAiInsight('overview');
+  // ★ 睡眠 tab「今日皮质醇全天趋势」卡片底部的节奏洞察 → 复用身体恢复页同款 AI（皮质醇节律 + 今日建议）。
+  //   同源通道保证两处分析一致；同日同指纹只生成一次（与恢复页共享模块级缓存）。
+  const aiRecovery = useAiInsight('recovery');
+
+  /**
+   * 顶部「AI 综合分析」最终分点行。
+   * ★ 不能直接写 `aiOverview.rows ?? 兜底`：端侧 1.5B 经常不按格式分行，把整份数据念成一大段，
+   *   parseInsightRows 会把这一大段也容错成 1 行 —— `??` 于是永远命中 AI，
+   *   页面就变成「没有分点、整段糊住」。resolveInsightRows 会做质量门禁：
+   *   不合格（<3 行 / 有超长行）→ 回落规则分点；合格 → 与规则分点合流补齐缺失指标。
+   */
+  const insightRows = useMemo(
+    () => resolveInsightRows('overview', aiOverview.rows),
+    // 依赖 text（字符串，身份稳定）而非 rows（每次渲染新数组）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aiOverview.text]
+  );
+
+  // 与身体恢复页同源：recovery 通道 → 2 点（皮质醇节律 + 今日建议）。resolveInsightRows 永远返回非空兜底。
+  const recoveryRows = useMemo(
+    () => resolveInsightRows('recovery', aiRecovery.rows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aiRecovery.text]
+  );
+
+  /**
+   * ★ 睡眠卡「入睡 / 起床」以**当日**为唯一真值源。
+   *
+   * 为什么不能直接用 `ring.sleepTime / ring.wakeTime`：这两个是「最新一次」的便捷字段，
+   * 与 sleepSummary 平行维护，可能残留更早一天的陈旧值 —— 实测 09-18 的
+   * `sleepSummary.sleepTime = "2026-09-18 01:38"`，而顶层 `ring.sleepTime` 仍是 09-16 的
+   * `"00:41"`。直接渲染会让卡片文案陈旧、且分期图时间轴也从 00:41 起算。
+   *
+   * 取数优先级（先命中先用；命中项可只含一侧时刻）：
+   *   ① `ring.sleepSummary`（仅当 `sleepSummaryDate === 今天` 才代表当日，日期吻合才可信）
+   *   ② `ring.sleepDaily[今天]`（按天归档，backfill 逐日写入）
+   *   ③ `ring.sleepTime / ring.wakeTime`（顶层兜底，不再区分日期）
+   * 取出的原始串（可能是原生完整 datetime）交给 SleepStructureCard 统一归一为 HH:mm，
+   * 保证同一份值同时驱动文案与分期图时间轴，两处永不脱节。
+   */
+  const todaySleep = useMemo<{ sleepTime: string | null; wakeTime: string | null }>(() => {
+    type ClockSrc = { sleepTime?: string | null; wakeTime?: string | null } | null;
+    const todayDk = dayKey(Date.now());
+    const daySummary: ClockSrc = ring.sleepSummaryDate === todayDk ? ring.sleepSummary : null;
+    const dayDaily: ClockSrc = ring.sleepDaily?.[todayDk] ?? null;
+    const fallback: ClockSrc = { sleepTime: ring.sleepTime, wakeTime: ring.wakeTime };
+    const hit = [daySummary, dayDaily, fallback].find(
+      (c) => !!c && (!!c.sleepTime || !!c.wakeTime)
+    );
+    return { sleepTime: hit?.sleepTime ?? null, wakeTime: hit?.wakeTime ?? null };
+  }, [ring]);
+
+  /**
+   * ★ 夜期分期段同样按「当日优先」（与 SleepDetailScreen 的 isLatest 规则一致）。
+   *
+   * `ring.sleepStages` 是「最新一次」便捷字段，实测快照里它仍停留在 09-16（曲线跨度 540 分钟），
+   * 而同日会渲染的 `sleepSummary` 已是 09-18（total 521）—— 两者混用会把旧曲线画在新摘要下面。
+   * 取数：当日归档 `sleepStagesDaily[今天]`（backfill 逐日写入）→ 缺失才回落顶层字段
+   * （保持原有可见性，绝不清空图）。
+   */
+  const todaySegments = useMemo(
+    () => ring.sleepStagesDaily?.[dayKey(Date.now())] ?? ring.sleepStages,
+    [ring]
+  );
+
+  // 趋势图可用性：连上戒指即视为「正在监测」（RingBleManager 连上会强制开启原生采集，
+  // 与设置页总开关无关），不再被 autoMonitor 默认值 false 卡死——否则数据在采、数值有，
+  // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
+  const trendOn = autoMonitor || ring.status === 'connected';
+
+  // 回填派生指标（eda/cortisol…）intraday：修复「历史皮质醇数据没有」（洞察页节律卡同样依赖）
+  useEnsureDerivedMetrics(30);
+
+  // healthStoreVersion 订阅已合并到下方 useMemo 里，避免重复重渲染
+
+  useEffect(() => {
+    let pending: RingState | null = null;
+    let scheduled = false;
+    const throttled = (s: RingState) => {
+      pending = s;
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          if (pending) setRing(pending);
+        });
+      }
+    };
+    const off = RingBle.onState(throttled);
+    return off;
+  }, []);
+
+  // ★ 已移除「挂载即下发 autoMonitor」的 effect：AppState.setAutoMonitor（设置页开关）
+  // 已经直接转发给 RingBle，这里再转发一次是冗余的；且挂载时 AppState 初始值为 false，
+  // 会把「连上戒指即自动开启监测」的设计推翻——一进洞察页原生 monitorOn 就被关掉，
+  // 戒指实时数据（HealthGlance/GSR 轮询）全部停流（日志 15:04:58 on=0 → raw=0）。
+
+  // 任意卡片点击 → 进入「指标历史详情」全屏页（日/周/月/年切换 + 真实数据）
+  const openDetail = (
+    key: string,
+    name: string,
+    unit: string,
+    yMin: number,
+    yMax: number,
+    color?: string
+  ) => {
+    navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax, color });
+  };
+
+  // ★ 轻量缓存：render 内新建 Map（短生命周期，GC 友好），避免每次 render 遍历 healthStore
+  const _cache = new Map<string, { hist: any[]; lastT: number | null }>();
+  const getCachedHist = (key: string): any[] => {
+    const c = _cache.get(key);
+    if (c) return c.hist;
+    const raw = getTodaySeries(key);
+    const lastT = raw.length ? raw[raw.length - 1].t : null;
+    // 实时信号半小时聚合（只有 render 时才算）
+    const _HALF = ['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','bpSys','bpDia'];
+    let hist = raw;
+    if (_HALF.includes(key) && raw.length > 0) {
+      const halfMs = 30 * 60 * 1000;
+      const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+      const slots: { sum: number; n: number; t: number }[] = [];
+      for (let i = 0; i < 48; i++) slots.push({ sum: 0, n: 0, t: dayStart.getTime() + i * halfMs });
+      for (const pt of raw) {
+        const slot = Math.floor((pt.t - dayStart.getTime()) / halfMs);
+        if (slot >= 0 && slot < 48 && Number.isFinite(pt.v)) { slots[slot].sum += pt.v; slots[slot].n++; }
+      }
+      hist = slots.filter(s => s.n > 0).map(s => ({ t: s.t, v: +(s.sum / s.n).toFixed(1) }));
+    }
+    _cache.set(key, { hist, lastT });
+    return hist;
+  };
+  const getCachedLastT = (key: string): number | null => {
+    const c = _cache.get(key);
+    if (c) return c.lastT;
+    getCachedHist(key); // 填充缓存
+    return _cache.get(key)?.lastT ?? null;
+  };
+
+  const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
+  // 基础指标信号（纯静态定义，只算一次）
+  const basicsSignals = useMemo(() => signalsForDimension('basics'), []);
+  // ★ 双列瀑布流布局：按 section 分组（组标题占整行），组内按「有无趋势图」估高做两列分配。
+  //   分配结果（当前 6 张卡）：
+  //     左列 = 心率 / EDA皮电 / 心率变异性（高·矮·高）
+  //     右列 = 血氧 / 体温 / 皮质醇     （矮·高·矮）
+  //   两列卡片高度交错 → 行不对齐，复刻参考稿左侧的「错落有致」。
+  const basicsGroups = useMemo(() => {
+    const estH = (m: BasicMetricDef) => (showTrendFor(m.key) ? 2 : 1);
+    const groups: { section?: string; items: BasicMetricDef[] }[] = [];
+    for (const m of basicsSignals) {
+      const last = groups[groups.length - 1];
+      if (last && last.section === m.section) last.items.push(m);
+      else groups.push({ section: m.section, items: [m] });
+    }
+    return groups.map((g) => ({
+      section: g.section,
+      columns: splitColumnsBalanced(g.items, estH),
+    }));
+  }, [basicsSignals]);
+
+  /** 渲染单张基础指标卡（原网格内的卡片逻辑抽出，供左右两列复用）。 */
+  const renderBasicsCard = (m: BasicMetricDef) => {
+    const isRealtime = realtimeKeys.has(m.key);
+    const rk = m.key as RingMetricKey;
+    const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
+    const hist = getCachedHist(m.key);
+    const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
+    if (m.manualOnly) {
+      return (
+        <ManualMetricCard
+          key={m.key}
+          metric={m}
+          live={real != null}
+          value={real != null ? formatValue(real) : m.value}
+          measureTime={measureTime}
+          onMeasure={() => RingBle.measure(rk)}
+          onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+        />
+      );
+    }
+    return (
+      <BasicMetricCard
+        key={m.key}
+        compact
+        metric={m}
+        auto={trendOn}
+        live={isRealtime ? ring.availability[rk] === 'live' : real != null}
+        syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
+        value={formatValue(real)}
+        data={hist}
+        onMeasure={() => RingBle.measure(rk)}
+        hideMeasure={m.hideMeasure ?? true}
+        measureTime={measureTime}
+        showTrend={showTrendFor(m.key)}
+        onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+      />
+    );
+  };
+
+  return (
+    <>
+    <ScreenContainer compactTop>
+      <View style={styles.stack}>
+        <Text style={styles.title}>Insights</Text>
+
+        <InsightBanner
+          onMore={() => openChat('帮我详细分析今天的状态')}
+          rows={insightRows}
+          pending={aiOverview.loading}
+        />
+
+        {/* 模块切换：基础指标为戒指真实信号；其余为周期-心理洞察（上线保留） */}
+        {/* 临时预览笑脸动画 */}
+        <View style={{ alignItems: 'center', marginBottom: 12 }}></View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipRow}
+          contentContainerStyle={styles.chipContent}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={TABS.length > 4}
+        >
+          {TABS.map((t) => (
+            <Chip key={t.key} label={t.label} active={t.key === tab} onPress={() => setTab(t.key)} />
+          ))}
+        </ScrollView>
+
+        {tab === 'basics' ? (
+          <>
+          {/* 双列瀑布流：左右两列各自竖向堆叠，卡片高度交错 → 错落有致 */}
+          {basicsGroups.map((g, gi) => (
+            <React.Fragment key={g.section ?? `basics-group-${gi}`}>
+              {g.section ? <Text style={styles.sectionLabel}>{g.section}</Text> : null}
+              <View style={styles.masonry}>
+                {g.columns.map((col, ci) => (
+                  <View key={ci} style={styles.masonryCol}>
+                    {col.map((m) => renderBasicsCard(m))}
+                  </View>
+                ))}
+              </View>
+            </React.Fragment>
+          ))}
+          </>
+        ) : tab === 'cycle' ? (
+          <>
+            {/* 周期 tab 不再放日/周/月/年切换：周期不是普通时间序列指标，
+                当前卡片固定展示「本月/当前周期」视角，点击卡片进周期日历看月/年相位。 */}
+            <CyclePhaseCard
+              ring={ring}
+              female={ring.female}
+              onPress={() => navigation.navigate('CycleCalendar')}
+            />
+          </>
+        ) : (
+          <View style={styles.stack}>
+            {!['heart', 'sleep', 'metabolism', 'psychology', 'mind'].includes(tab) && (
+              <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
+            )}
+            {tab === 'heart' && (
+              <>
+                <BpCard ring={ring} onPress={() => navigation.navigate('BpDetail')} />
+                <EcgCard ring={ring} onPress={() => navigation.navigate('EcgDetail')} />
+              </>
+            )}
+            {tab === 'sleep' && (
+              <>
+              <SleepStructureCard
+                segments={todaySegments}
+                summary={ring.sleepSummary}
+                sleepTime={todaySleep.sleepTime}
+                wakeTime={todaySleep.wakeTime}
+                deepPct={ring.daily['sleepDeep'] ?? null}
+                remPct={ring.daily['sleepRem'] ?? null}
+                score={ring.daily['sleepScore'] ?? null}
+                fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
+                onPress={() => navigation.navigate('SleepDetail')}
+              />
+              {/* 皮质醇关键指标（昼夜波动幅度 / 作息类型）+ AI 分析：同一张卡，紧跟睡眠结构卡 */}
+              {/* 原「今日皮质醇全天趋势」卡已按需求移除（组件仍供身体恢复详情页使用） */}
+              <CortisolSleepSummary insightRows={recoveryRows} />
+              </>
+            )}
+            {tab === 'mind' && (
+              <>
+                {/* ★ 情绪洞察：与首页「情绪消耗」点进去的内容共用同一组件（EmotionInsightView），
+                    保证两处完全一致；原「压力洞察」已统一为「情绪洞察」。 */}
+                <EmotionInsightView />
+                <View style={{ height: 16 }} />
+                <CognitiveLoadCard />
+              </>
+            )}
+            {/* 睡眠 tab 到此结束：其下原有「空信号提示卡」与「本周关键变化」两张卡对睡眠无意义，跳过 */}
+            {tab !== 'sleep' && (() => {
+              let sigs = signalsForDimension(tab);
+              // 代谢 tab 只保留「血液成分」面板 +「血糖」两张：
+              //  · 血糖之后的总胆固醇/甘油三酯/HDL/LDL 与上方血液成分面板完全重复；
+              //  · BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，
+              //    未录入时恒为占位空卡。按产品要求一并移除。
+              // 用白名单而非 slice：不依赖 signalsForDimension 的返回顺序，
+              // 即使后续往 metrics.ts 增删信号也不会误放开。
+              if (tab === 'metabolism') {
+                sigs = sigs.filter((s) => METABOLISM_VISIBLE_KEYS.has(s.key));
+              }
+              if (sigs.length === 0) {
+                // heart 心电 tab：直接返回空，不渲染空提示卡
+                if (tab === 'heart') return null;
+                return (
+                  <Card>
+                    <Text style={styles.emptyNote}>
+                      该维度暂无可直连的信号，等待原生接入。
+                    </Text>
+                  </Card>
+                );
+              }
+              // 代谢 tab：血糖 → 血液成分 → 体检卡片
+              if (tab === 'metabolism') {
+                return (
+                  <>
+                    {/* 血糖 + 血液成分 并排一行 */}
+                    <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
+                    {/* 血糖卡片（小） */}
+                    <View style={{ flex: 1, alignSelf: 'stretch' }}>
+                    {sigs.map((m) => {
+                      const real = ring.daily[m.key] ?? null;
+                      const hist = getCachedHist(m.key);
+                      const measureTime = getCachedLastT(m.key);
+                      const gid = `bm_${m.key}`;
+                      const placeholderPath = (() => {
+                        const pad = 4, w = 320, h = 56;
+                        let d = '';
+                        for (let i = 0; i <= 30; i++) {
+                          const x = pad + ((w - pad * 2) * i) / 30;
+                          const y = pad + (h - pad * 2) * (0.55 + 0.12 * Math.sin((i / 30) * Math.PI * 2.5));
+                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+                        }
+                        return d.trim();
+                      })();
+                      const trendD = (() => {
+                        if (!hist || hist.length < 2) return '';
+                        const pad = 4, w = 320, h = 56;
+                        const vals = hist.map(p => p.v);
+                        const lo = Math.min(...vals), hi = Math.max(...vals);
+                        const yR = hi === lo ? 1 : (h - pad * 2) / (hi - lo);
+                        let d = '';
+                        hist.forEach((p, i) => {
+                          const x = pad + ((w - pad * 2) * i) / (hist.length - 1);
+                          const y = pad + (hi - p.v) * yR;
+                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+                        });
+                        return d.trim();
+                      })();
+                      return (
+                        <TouchableOpacity key={m.key} activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}>
+                          <LinearGradient
+                            colors={['rgba(124,106,224,0.55)', 'rgba(157,138,240,0.15)']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
+                          >
+                            {/* header：icon + 名字 / 更新时间 */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Icon name={m.icon ?? 'activity'} size={theme.fontSize.card + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />
+                              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>{m.name}</Text>
+                            </View>
+                            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{formatRelativeTime(measureTime)}</Text>
+                          </View>
+                          {/* 数值 + 单位 */}
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
+                            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>{formatValue(real)}</Text>
+                            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.sp(1) }}>{m.unit}</Text>
+                          </View>
+                          {/* 趋势图 */}
+                          <Svg width="100%" height={theme.fs(56)} viewBox="0 0 320 56" preserveAspectRatio="none">
+                            {trendD ? (
+                              <>
+                                <Defs>
+                                  <SvgGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
+                                    <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.3} />
+                                    <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
+                                  </SvgGradient>
+                                  <SvgGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
+                                    <Stop offset="0%" stopColor={theme.colors.accent1} />
+                                    <Stop offset="100%" stopColor={theme.colors.accent2} />
+                                  </SvgGradient>
+                                </Defs>
+                                <SvgPath d={trendD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.2} strokeLinecap="round" />
+                              </>
+                            ) : (
+                              <SvgPath d={placeholderPath} fill="none" stroke={theme.colors.accent1} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+                            )}
+                            </Svg>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    </View>
+                    {/* 血液成分卡片（大） */}
+                    <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
+                      <Card style={{ padding: theme.sp(2.5), flex: 1 }}>
+                        <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+                      </Card>
+                    </View>
+                    </View>
+                    {/* 身体成分卡片 */}
+                    <ExamTab />
+                  </>
+                );
+              }
+              return (
+                <View style={styles.grid}>
+                  {sigs.map((m) => {
+                    const real = ring.daily[m.key] ?? null;
+                    const hist = getCachedHist(m.key);
+                    const measureTime = getCachedLastT(m.key);
+                    if (m.manualOnly) {
+                      return (
+                        <ManualMetricCard
+                          key={m.key}
+                          metric={m}
+                          live={real != null}
+                          value={real != null ? formatValue(real) : m.value}
+                          measureTime={measureTime}
+                          onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
+                          onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                        />
+                      );
+                    }
+                    return (
+                      <BasicMetricCard
+                        key={m.key}
+                        metric={m}
+                        auto={trendOn}
+                        live={real != null}
+                        syncing={false}
+                        value={real != null ? formatValue(real) : m.value}
+                        data={hist}
+                        onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
+                        hideMeasure={m.hideMeasure ?? true}
+                        measureTime={measureTime}
+                        onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+                      />
+                    );
+                  })}
+                </View>
+              );
+            })()}
+
+          </View>
+        )}
+      </View>
+    </ScreenContainer>
+    <ChatSheet
+      visible={chatVisible}
+      onClose={() => setChatVisible(false)}
+      initialQuestion={chatQuestion}
+    />
+  </>
+  );
+}
+
+/** ECG 波形路径：归一化 + Catmull-Rom 平滑成真实心电图曲线。 */
+function ecgWaveformPath(values: number[]): string {
+  if (!values || values.length < 4) return '';
+  const W = 320;
+  const H = 80;
+  const pad = 8;
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (max - min < 1e-6) max = min + 1;
+  const n = values.length;
+  const pts: [number, number][] = values.map((v, i) => [
+    pad + (i / (n - 1)) * (W - pad * 2),
+    pad + (1 - (v - min) / (max - min)) * (H - pad * 2),
+  ]);
+  // Catmull-Rom → cubic bezier
+  const d = [`M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d.push(`C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`);
+  }
+  return d.join(' ');
+}
+
+/** 心电图卡片：空状态 / 测量进度 / 最近一次波形 + 指标。 */
+function EcgReadout({ ring }: { ring: RingState }) {
+  const reading = ring.ecg;
+  const progress = ring.ecgProgress;
+  const caps = ring.deviceCapabilities;
+  const ecgSupported = !caps || caps.ecgType > 0;
+  const isMeasuring = progress != null;
+
+  if (!ecgSupported) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图</Text>
+        <Text style={styles.emptyNote}>当前戒指硬件不支持 ECG 测量</Text>
+      </Card>
+    );
+  }
+
+  const measureBtn = (
+    <TouchableOpacity
+      style={[styles.ecgBtn, isMeasuring && styles.ecgBtnDisabled]}
+      onPress={() => RingBle.measure('ecg')}
+      disabled={isMeasuring}
+    >
+      <Text style={styles.ecgBtnText}>
+        {isMeasuring ? `测量中 ${progress?.progress ?? 0}%` : reading ? '重新测量' : '开始测量'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (!reading && !isMeasuring) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图</Text>
+        <Text style={styles.emptyNote}>尚未测量，点击下方按钮启动 ECG（约 30 秒完成）</Text>
+        {measureBtn}
+      </Card>
+    );
+  }
+
+  if (!reading) {
+    return (
+      <Card>
+        <Text style={styles.profTitle}>心电图 · 测量中</Text>
+        <View style={styles.ecgProgressBar}>
+          <View style={[styles.ecgProgressFill, { width: `${progress?.progress ?? 0}%` }]} />
+        </View>
+        <Text style={styles.emptyNote}>
+          {progress?.hr ? `当前心率 ${Math.round(progress.hr)} bpm · ` : ''}
+          {progress?.progress ?? 0}% — 请保持手指稳定接触戒指
+        </Text>
+      </Card>
+    );
+  }
+
+  const rows: [string, string][] = [
+    ['平均心率', `${Math.round(reading.aveHeart)} bpm`],
+    ['HRV', `${Math.round(reading.aveHrv)} ms`],
+    ['呼吸率', `${Math.round(reading.aveResRate)} 次/分`],
+    ['QT', `${Math.round(reading.aveQT)} ms`],
+    ['PWV', `${Math.round(reading.avePWV)} cm/s`],
+  ];
+  return (
+    <Card>
+      <Text style={styles.profTitle}>心电图 · 最近一次测量</Text>
+      <View style={styles.ecgChart}>
+        <Svg width="100%" height={80} viewBox="0 0 320 80" preserveAspectRatio="none">
+          <SvgPath
+            d={ecgWaveformPath(reading.waveform)}
+            fill="none"
+            stroke={theme.colors.accent1}
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </Svg>
+      </View>
+      <View style={styles.ecgGrid}>
+        {rows.map(([k, v]) => (
+          <View style={styles.ecgCell} key={k}>
+            <Text style={styles.ecgLabel}>{k}</Text>
+            <Text style={styles.ecgValue}>{v}</Text>
+          </View>
+        ))}
+      </View>
+      {isMeasuring ? (
+        <Text style={styles.emptyNote}>测量中…（{progress?.progress ?? 0}%）</Text>
+      ) : (
+        measureBtn
+      )}
+    </Card>
+  );
+}
+
+const styles = StyleSheet.create({
+  stack: { gap: theme.space.lg },
+  title: {
+    fontSize: theme.fontSize.h1,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textWhite,
+  },
+  chipRow: { flexGrow: 0, marginLeft: -theme.space.screen },
+  chipContent: { paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1) },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), alignItems: 'stretch' },
+  // 双列瀑布流：两列等宽、各自竖向堆叠（配 gap），卡片高度不一 → 错落有致
+  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1.5) },
+  masonryCol: { flex: 1, gap: theme.sp(1.5) },
+  emptyNote: {
+    fontSize: theme.fontSize.micro,
+    lineHeight: theme.fontSize.micro * 1.7,
+    color: theme.colors.textSub,
+  },
+  sectionLabel: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textSub,
+    marginTop: theme.space.md,
+    marginBottom: theme.sp(1),
+  },
+  ecgBtn: {
+    marginTop: theme.space.md,
+    backgroundColor: theme.colors.accent1,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.md,
+    alignSelf: 'flex-start',
+  },
+  ecgBtnDisabled: { opacity: 0.5 },
+  ecgBtnText: {
+    color: theme.colors.textWhite,
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+  },
+  ecgProgressBar: {
+    height: 6,
+    backgroundColor: theme.colors.textSub + '44',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginVertical: theme.space.sm,
+  },
+  ecgProgressFill: {
+    height: '100%',
+    backgroundColor: theme.colors.accent1,
+    borderRadius: 3,
+  },
+  profTitle: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textTitle,
+    marginBottom: theme.space.xs,
+  },
+  profHint: {
+    fontSize: theme.fontSize.micro,
+    lineHeight: theme.fontSize.micro * 1.7,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.sm,
+  },
+  profRow: { flexDirection: 'row', gap: theme.space.md, marginBottom: theme.space.sm },
+  profField: { flex: 1 },
+  profLabel: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    marginBottom: theme.space.xs,
+  },
+  profInput: {
+    backgroundColor: theme.colors.ui.offTrack,
+    borderRadius: theme.radius.card,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(2),
+    fontSize: theme.fontSize.card,
+    color: theme.colors.textTitle,
+  },
+  seg: { flexDirection: 'row', backgroundColor: theme.colors.ui.offTrack, borderRadius: theme.radius.card, padding: theme.sp(1) },
+  segBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.sp(1.5),
+    borderRadius: theme.radius.card,
+  },
+  segBtnOn: { backgroundColor: theme.colors.accentSolid },
+  segText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
+  segTextOn: { color: '#FFFFFF' },
+  profSave: {
+    marginTop: theme.space.xs,
+    backgroundColor: theme.colors.accentSolid,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.sp(3),
+    alignItems: 'center',
+  },
+  profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
+  profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.success, textAlign: 'center' },
+  ecgChart: {
+    backgroundColor: theme.colors.ui.offTrack,
+    borderRadius: theme.radius.card,
+    padding: theme.space.sm,
+    marginBottom: theme.space.sm,
+  },
+  ecgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+  ecgCell: {
+    flexBasis: '30%',
+    flexGrow: 1,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+  },
+  ecgLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  ecgValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+});

@@ -249,14 +249,7 @@ export default function CortisolDailyChart({
 
       {/* AI 分析：统一 AiAnalysis 外壳 + 大标题 + 小点建议 */}
       {(() => {
-        // 标题
-        const { css } = r;
-        const cssLabel = Number.isFinite(css) ? (css > 10 ? '早起型' : Math.abs(css) < 10 ? '中间型' : '晚起型') : '节律未定型';
-        const cortisolTitle = todayHigh && todayDys ? `${cssLabel} · 皮质醇偏高 + 节律紊乱`
-          : todayHigh ? `${cssLabel} · 皮质醇偏高`
-          : todayDys ? `${cssLabel} · 节律紊乱`
-          : `${cssLabel} · 节律正常`;
-        const cortisolSub = isToday ? '今日' : mdLabel;
+        const { title: cortisolTitle, sub: cortisolSub } = buildCortisolAiTitle(r, isToday, mdLabel);
 
         if (insightRows && insightRows.length > 0) {
           return (
@@ -286,8 +279,31 @@ export default function CortisolDailyChart({
   );
 }
 
-/** SumCell —— 与 EmotionCognitiveDetailScreen 同款 */
-function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/**
+ * 皮质醇 AI 分析的大标题 / 小标签（从本组件内联逻辑抽出，供睡眠 tab 的
+ * CortisolSleepSummary 复用，保证「同一个结论只写一份」）。
+ */
+export function buildCortisolAiTitle(
+  r: CortisolRhythmResult,
+  isToday: boolean,
+  mdLabel: string
+): { title: string; sub: string } {
+  const todayHigh = isToday ? r.today.high : false; // 历史单日无 14 天基线，偏高不可信
+  const todayDys = r.today.dys;
+  const css = r.css;
+  const cssLabel = Number.isFinite(css)
+    ? css > 10 ? '早起型' : Math.abs(css) < 10 ? '中间型' : '晚起型'
+    : '节律未定型';
+  const title =
+    todayHigh && todayDys ? `${cssLabel} · 皮质醇偏高 + 节律紊乱`
+    : todayHigh ? `${cssLabel} · 皮质醇偏高`
+    : todayDys ? `${cssLabel} · 节律紊乱`
+    : `${cssLabel} · 节律正常`;
+  return { title, sub: isToday ? '今日' : mdLabel };
+}
+
+/** SumCell —— 与 EmotionCognitiveDetailScreen 同款（导出供 CortisolSleepSummary 复用，样式单一来源） */
+export function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <View style={styles.sumCell}>
       <Text style={styles.sumLabel}>{label}</Text>

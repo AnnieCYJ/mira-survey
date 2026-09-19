@@ -1,8 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { theme } from '../theme/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatSheet from '../components/ChatSheet';
 
 interface Props {
@@ -10,14 +9,15 @@ interface Props {
 }
 
 export default function VoiceChatScreen({ route }: Props) {
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const question = route.params?.question ?? '';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" />
       <ChatSheet
-        visible={true}
+        fullScreen
         onClose={() => navigation.goBack()}
         initialQuestion={question}
       />
@@ -26,8 +26,5 @@ export default function VoiceChatScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
+  root: { flex: 1 },
 });

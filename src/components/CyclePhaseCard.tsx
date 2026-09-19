@@ -23,7 +23,6 @@ import { loadCycleLog } from '../data/cycleLog';
 import { type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import CycleMoonPhase from './CycleMoonPhase';
 import PhaseInsightSection from './PhaseInsightSection';
-import HormoneDualTrend from './HormoneDualTrend';
 import PeriodRecordPanel from './PeriodRecordPanel';
 
 const FEMALE_STATE_LABEL: Record<number, string> = {
@@ -197,8 +196,8 @@ export default function CyclePhaseCard({
         </View>
       ) : null}
 
-      {/* ★ 雌激素 + 孕激素 双相趋势（近 30 天，真实数据推算），置于「精力回升」分析之上 */}
-      <HormoneDualTrend ring={ring} cycleInfo={info} log={effective} />
+      {/* ★ 已按需求移除「雌激素 + 孕激素 双相趋势」图（HormoneDualTrend）
+          —— 组件本身保留（HormoneDualTrend.tsx 未删除，便于随时恢复）。 */}
 
       {/* ★ 本阶段身心特征（AI 分析外壳）— 参考 Clue/Flo 官方科普 + 临床研究 */}
       {info.hasLog ? (

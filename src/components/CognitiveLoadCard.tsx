@@ -53,10 +53,8 @@ export default function CognitiveLoadCard() {
   if (!hasData) {
     return (
       <Card>
-        <View style={styles.pad}>
           <Text style={styles.title}>认知负荷 & 疲劳</Text>
           <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
-        </View>
       </Card>
     );
   }
@@ -66,54 +64,11 @@ export default function CognitiveLoadCard() {
 
   return (
     <Card>
-      <View style={styles.pad}>
-        {/* ── 头部: 认知负荷 ── */}
-        <View style={styles.headRow}>
-          <Text style={styles.title}>认知负荷 & 疲劳</Text>
-          <View style={[styles.levelChip, { backgroundColor: lCol + '24' }]}>
-            <View style={[styles.levelDot, { backgroundColor: lCol }]} />
-            <Text style={[styles.levelText, { color: lCol }]}>{loadLabel(report.loadLevel)}</Text>
-          </View>
-        </View>
+        {/* ── 头部 ── */}
+        <Text style={styles.title}>认知负荷 & 疲劳</Text>
 
-        {/* ── 两个大数值 ── */}
-        <View style={styles.scoreRow}>
-          <View style={styles.scoreBlock}>
-            <Text style={styles.scoreLabel}>认知负荷</Text>
-            <Text style={[styles.score, { color: lCol }]}>{report.loadScore}</Text>
-          </View>
-          <View style={styles.scoreDivider} />
-          <View style={styles.scoreBlock}>
-            <Text style={styles.scoreLabel}>疲劳指数</Text>
-            <Text style={[styles.score, { color: fCol }]}>{report.fatigueIndex}</Text>
-          </View>
-        </View>
-
-        {/* ── SumCell 风格 2×2 摘要网格 —— 与详情页对齐 ── */}
-        <View style={styles.summaryGrid}>
-          <SumCell label="负荷时段占比" value={`${report.highLoadRatio}%`} sub="高负荷活跃时段" />
-          <SumCell
-            label="恢复能力"
-            value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
-            sub="全天最低窗口 / 基线"
-          />
-        </View>
-        <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
-          <SumCell
-            label="今日 HRV"
-            value={report.baselines.hrv != null ? `${Math.round(report.baselines.hrv)} ms` : '—'}
-            sub="迷走神经活力"
-          />
-          <SumCell
-            label="血管张力 (VTI)"
-            value={report.baselines.vti != null ? `${Math.round(report.baselines.vti)}` : '—'}
-            sub="脑力投入外周信号"
-          />
-        </View>
-
-        {/* ── 小时分布 ── */}
+        {/* ── 全天认知负荷分布图（移到上面） ── */}
         <View style={styles.hourSection}>
-          <Text style={styles.sectionTitle}>全天认知负荷分布</Text>
           <HourHistogram hourly={report.hourly} peakSpan={report.peakLoadSpan} bestSpan={report.bestSpan} sleepWindow={report.sleepWindow} />
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
@@ -131,42 +86,25 @@ export default function CognitiveLoadCard() {
           </View>
         </View>
 
-        {/* ── 极值时段 ── */}
-        <View style={styles.peakRow}>
-          {report.peakLoadSpan != null && (
-            <View style={styles.peakChip}>
-              <Text style={styles.peakLabel}>最高负荷时段</Text>
-              <Text style={[styles.peakTime, { color: theme.colors.danger }]}>
-                {fmtRange(report.peakLoadSpan)}
-              </Text>
-              <Text style={styles.peakSub}>平均负荷 {report.peakLoadSpan.avgScore}</Text>
-            </View>
-          )}
-          {report.bestSpan != null && (
-            <View style={styles.peakChip}>
-              <Text style={styles.peakLabel}>认知状态最佳</Text>
-              <Text style={[styles.peakTime, { color: theme.colors.stateCalm }]}>
-                {fmtRange(report.bestSpan)}
-              </Text>
-              <Text style={styles.peakSub}>平均负荷 {report.bestSpan.avgScore}</Text>
-            </View>
-          )}
+        {/* ── 三个核心指标 ── */}
+        <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
+          <SumCell label="认知负荷" value={String(report.loadScore)} valueColor={lCol} />
+          <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
+          <SumCell
+            label="恢复能力"
+            value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
+          />
         </View>
-
-        {/* ── 解释 ── */}
-        <Text style={styles.reasonText}>{report.loadReason}</Text>
-        <Text style={[styles.reasonText, { marginTop: theme.sp(1) }]}>{report.fatigueReason}</Text>
-      </View>
     </Card>
   );
 }
 
 /** SumCell —— 与详情页 EmotionCognitiveDetailScreen.SumCell 100% 对齐 */
-function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function SumCell({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
   return (
     <View style={styles.sumCell}>
       <Text style={styles.sumLabel}>{label}</Text>
-      {value ? <Text style={styles.sumValue}>{value}</Text> : null}
+      {value ? <Text style={[styles.sumValue, valueColor ? { color: valueColor } : null]}>{value}</Text> : null}
       {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
     </View>
   );
@@ -193,7 +131,8 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   const dataMax = Math.max(10, ...visible.map(h => h.score));
 
   // histogramWrap 内部可用宽度 = 屏幕宽 - sp(1)*2 padding
-  const wrapWidth = Dimensions.get('window').width - theme.sp(2);
+  // 减去 Card(cardPad≈20)*2 + hourSection padding(sp(2))*2
+  const wrapWidth = Dimensions.get('window').width - theme.space.cardPad * 2 - theme.sp(2) * 2;
   function spanPos(start: number, end: number) {
     const s = hourToIdx.get(start) ?? 0;
     const e = hourToIdx.get(end) ?? totalBins - 1;
@@ -232,11 +171,11 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
           const isFirst = i === 0;
           const isLast  = i === n - 1;
           const displayH = h.hour + 1;
-          const showMiddle = !isFirst && !isLast && (h.hour % 4 === 0);
+          const showMiddle = !isFirst && !isLast && (h.hour === 6 || h.hour === 12 || h.hour === 18);
           const baseLabel = {
             fontSize: theme.fontSize.micro,
             color: theme.colors.textSub,
-            lineHeight: theme.sp(3),
+            lineHeight: theme.fontSize.micro + 2,
           };
           // 首尾也返回空 flex spacer，保证 n 列和柱子对齐
           const spacer = <Text key={h.hour} style={{ flex: 1, lineHeight: theme.sp(3) }} />;
@@ -264,8 +203,8 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
           }
           if (!showMiddle) return spacer;
           return (
-            <Text key={h.hour} style={{
-              flex: 1, ...baseLabel, textAlign: 'center', fontWeight: theme.weight.medium,
+            <Text key={h.hour} numberOfLines={1} style={{
+              minWidth: theme.sp(4), ...baseLabel, textAlign: 'center', fontWeight: theme.weight.medium,
             }}>{displayH}</Text>
           );
         })}
@@ -290,9 +229,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textBody, marginBottom: theme.sp(1.5) },
   hourSection: {
     backgroundColor: theme.colors.cardBgSoft,
-    marginTop: theme.sp(2), paddingVertical: theme.sp(2.5),
-    borderTopWidth: 1, borderTopColor: theme.colors.cardBorder2,
-    borderBottomWidth: 1, borderBottomColor: theme.colors.cardBorder2,
+    marginTop: theme.sp(2), paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(2),
+    borderRadius: theme.radius.md,
+    borderWidth: 1, borderColor: theme.colors.cardBorder2,
+    overflow: 'visible',
   },
   emptyText: { fontSize: theme.fontSize.body, color: theme.colors.textSub, lineHeight: theme.fontSize.body + theme.sp(1.5), marginTop: theme.sp(1.5) },
 
@@ -303,14 +243,14 @@ const styles = StyleSheet.create({
   score: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, letterSpacing: -1 },
   scoreDivider: { width: 1, height: theme.sp(10), backgroundColor: theme.colors.ui.borderSoft },
 
-  histogramWrap: { height: theme.sp(10), marginTop: theme.sp(1), position: 'relative' },
+  histogramWrap: { height: theme.sp(10), marginTop: theme.sp(1), position: 'relative', width: '100%', overflow: 'visible' },
   spanHighlight: {
     position: 'absolute',
     top: 0, bottom: theme.sp(1.5),
     borderTopWidth: 2, borderBottomWidth: 2,
     opacity: 0.5,
   },
-  histogram: { flexDirection: 'row', alignItems: 'flex-end', height: theme.sp(6) },
+  histogram: { flexDirection: 'row', alignItems: 'flex-end', height: theme.sp(6), gap: 1 },
   histBin: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
   histBar: { width: theme.sp(1.5), borderRadius: theme.sp(0.5) },
   histAxis: { flexDirection: 'row', marginTop: theme.sp(0.5), paddingHorizontal: 0 },
