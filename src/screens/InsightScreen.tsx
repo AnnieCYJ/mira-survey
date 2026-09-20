@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity, ImageBackground } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -321,18 +321,6 @@ export default function InsightScreen() {
 
   return (
     <>
-    {/* 洞察页背景：上半留白纯白不变，下半磨砂玻璃质感（与首页一致） */}
-    <ImageBackground
-      source={require('../../assets/images/bg-frost.jpg')}
-      resizeMode="cover"
-      style={StyleSheet.absoluteFill}
-    />
-    <LinearGradient
-      colors={[theme.colors.textWhite, theme.colors.textWhite, 'rgba(255,255,255,0)', 'rgba(255,255,255,0)']}
-      locations={[0, 0.42, 0.72, 1]}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
     <ScreenContainer compactTop>
       <View style={styles.stack}>
         <Text style={styles.title}>Insights</Text>

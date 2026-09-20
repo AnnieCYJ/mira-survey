@@ -525,19 +525,12 @@ export default function TodayScreen() {
 
   return (
     <View style={styles.page}>
-      {/* 仅 Today 页：上半留白纯白不变，下半紫色渐变换成磨砂玻璃质感背景图 */}
-      <ImageBackground
-        source={require('../../assets/images/bg-frost.jpg')}
-        resizeMode="cover"
+      {/* 仅 Today 页：上白下紫的分屏背景，其他页面保留 App 根渐变 */}
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite, theme.colors.bgMidAlt, theme.colors.bgTop]}
+        locations={[0, 0.42, 0.72, 1]}
         style={StyleSheet.absoluteFill}
-      >
-        {/* 白色蒙层：0~42% 全白（与旧版留白区一致），42%~72% 渐隐露出磨砂图，底部全露 */}
-        <LinearGradient
-          colors={[theme.colors.textWhite, theme.colors.textWhite, 'rgba(255,255,255,0)', 'rgba(255,255,255,0)']}
-          locations={[0, 0.42, 0.72, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-      </ImageBackground>
+      />
       <ScreenContainer>
         <View style={styles.head}>
           <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
