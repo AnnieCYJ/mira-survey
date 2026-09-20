@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
 
@@ -11,6 +11,7 @@ const IMG_EMOTION = require("../assets/card_emotion_new.png");
 const IMG_COG = require("../assets/card_focus.jpg");
 const IMG_ACTIVITY = require('../assets/card_meditation.jpg');
 import Card from '../components/Card';
+import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
@@ -25,6 +26,12 @@ import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
 import { getAiInsight } from '../ai/insight';
+import { MemoryStore } from '../ai/memory';
+import { inferThemes } from '../ai/miraAi';
+import { onAiRecord } from '../lib/aiRecordBus';
+
+/** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
+const memoryStore = new MemoryStore();
 
 
 function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
@@ -240,13 +247,27 @@ export default function TodayScreen() {
   const [chartW, setChartW] = useState(0);
   const [ring, setRing] = useState(() => RingBle.getState());
 
+  // ★ 今日日历数据源之二：今天与 Mira 的对话记录（MemoryStore）
+  //   写入发生在 miraAi.ask 结束（memory.add）后 → 经 aiRecordBus 广播即时刷新；
+  //   另外每次回到首页（focus）再兜底拉一次，覆盖在别的页面聊天的情况。
+  const [aiRecords, setAiRecords] = useState<{ text: string; ts: number }[]>([]);
+  const loadAiRecords = useCallback(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    memoryStore
+      .listSince(start.getTime())
+      .then(setAiRecords)
+      .catch(() => setAiRecords([]));
+  }, []);
+  useEffect(() => {
+    loadAiRecords();
+    return onAiRecord(loadAiRecords);
+  }, [loadAiRecords]);
+  useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
+
   const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
   const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
-
-  const GlassCard = ({ children, style }: any) => (
-    <View style={[{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: theme.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', shadowColor: 'rgba(80,60,140,0.12)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6, overflow: 'hidden' }, style]}>{children}</View>
-  );
 
   // 通用 mini chart 尺寸
   const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
@@ -366,7 +387,7 @@ export default function TodayScreen() {
 
   const BigStatCard = ({ title, value, unit, sub, trendUp, trendPct, chartEl, gradientColors, onPress }: any) => (
     <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={{ width: '100%' }}>
-      <GlassCard style={{ height: 150 }}>
+      <GlassCard padded={false} style={{ height: 150 }}>
         <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
@@ -461,74 +482,124 @@ export default function TodayScreen() {
   const showPill = statusIdx != null || phaseKnown;
   const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
 
-  // ★ 今日时间轴：真实数据组装（起床→相位→情绪峰值→脑力高峰→活动→AI 洞察），5 条左右
+  // ★ 今日日历：把「真实生理数据」+「与 Mira 的对话记录」按一天的时间顺序编排（约 6~7 条）
   const fmtMin = (min: number | null | undefined): string => {
     if (min == null || !Number.isFinite(min) || min <= 0) return '—';
     const h = Math.floor(min / 60);
     const m = Math.round(min % 60);
     return h > 0 ? `${h}小时${m > 0 ? `${m}分` : ''}` : `${m}分钟`;
   };
+  const pad2 = (n: number) => String(n).padStart(2, '0');
   const now0 = new Date();
   const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const dateLabel = `${now0.getMonth() + 1}月${now0.getDate()}日 · ${WEEKDAYS[now0.getDay()]}`;
-  const timelineItems: TimelineItem[] = [];
-  // 1. 起床（真实睡眠窗口）
-  if (todaySleep?.wakeTime) {
-    timelineItems.push({
-      time: todaySleep.wakeTime,
-      color: theme.colors.stateTired,
-      title: `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
-      sub: `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
-    });
-  }
-  // 2. 周期相位（当天背景事项）
+  /** 当前时刻（当天分钟数）——凡是「还没发生的时段」一律不写死标签，回落到现在已经过到的位置 */
+  const curMin = now0.getHours() * 60 + now0.getMinutes();
+
+  // 排序键 = 当天分钟数（'全天'=-1 置顶，'现在'=1440 置底）
+  type DatedItem = TimelineItem & { k: number };
+  const dated: DatedItem[] = [];
+  const pushItem = (it: TimelineItem, k: number) => dated.push({ ...it, k });
+
+  // 1. 周期相位（当天背景事项，置顶）
   const cs = ring.curveStatus;
   if (cs?.hasLog && cs.phaseLabel) {
-    timelineItems.push({
+    pushItem({
       time: '全天',
       color: theme.colors.accent1,
       title: `${cs.phaseLabel}${cs.dayInCycle != null ? ` 第 ${cs.dayInCycle} 天` : ''}`,
       sub: cs.phaseLabel === '黄体期' ? '激素回落，留意情绪与能量起伏' : cs.phaseLabel === '经期' ? '以温和舒缓为主，适合休息' : '激素节律影响今日状态节奏',
-    });
+    }, -1);
+  }
+  // 2. 起床（真实睡眠窗口）
+  if (todaySleep?.wakeTime) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(todaySleep.wakeTime.trim());
+    pushItem({
+      time: todaySleep.wakeTime,
+      color: theme.colors.stateTired,
+      title: `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
+      sub: `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
+    }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
   // 3. 情绪波动峰值事件
   const evs = stressReport?.events ?? [];
-  if (evs.length > 0) {
-    const peak = evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a));
-    timelineItems.push({
-      time: `${String(peak.hour).padStart(2, '0')}:${String(peak.minute).padStart(2, '0')}`,
+  const peakEvent = evs.length > 0 ? evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a)) : null;
+  if (peakEvent) {
+    pushItem({
+      time: `${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}`,
       color: theme.colors.stateTense,
       title: `情绪波动 ${evs.length} 次`,
-      sub: `峰值强度 ${Math.round(peak.severity)} · 前后可安排 5 分钟呼吸调整`,
-    });
+      sub: `峰值强度 ${Math.round(peakEvent.severity)} · 前后可安排 5 分钟呼吸调整`,
+    }, peakEvent.hour * 60 + peakEvent.minute);
   }
-  // 4. 脑力负荷高峰
+  // 4. 脑力负荷高峰（峰值来自已观测的小时数据；高峰段尚未到来时只显示「今日」，不写未来时刻）
   if (cogReport?.loadScore != null) {
     const span = cogReport.peakLoadSpan;
-    timelineItems.push({
-      time: span ? `${String(span.startHour).padStart(2, '0')}:00` : '午后',
+    const spanMin = span ? span.startHour * 60 : null;
+    const spanPast = spanMin != null && spanMin <= curMin;
+    pushItem({
+      time: spanPast ? `${pad2(span!.startHour)}:00` : '今日',
       color: theme.colors.accentSolid,
       title: `脑力负荷 ${Math.round(cogReport.loadScore)}`,
       sub: '高峰时段安排专注任务更高效',
-    });
+    }, spanPast ? spanMin! : curMin);
   }
-  // 5. 活动量
-  const stepsToday = ring?.stepDaily?.[dayKey(Date.now())]?.steps ?? 0;
+  // 5. 活动量：累计步数——时间用「最后一次计步采样的真实时刻」，没有采样就不写时间标签
+  const dkToday = dayKey(Date.now());
+  const stepsToday = ring?.stepDaily?.[dkToday]?.steps ?? 0;
   if (stepsToday > 0) {
-    timelineItems.push({
-      time: '傍晚',
+    let lastStepMin: number | null = null;
+    try {
+      const pts = healthStore.getIntraday('steps' as any, dkToday) ?? [];
+      const last = pts.length > 0 ? pts[pts.length - 1] : null;
+      if (last && Number.isFinite(last.t)) {
+        const d = new Date(last.t);
+        const m = d.getHours() * 60 + d.getMinutes();
+        // 只信任「已经发生」的采样时刻，避免脏样本把条目推到未来
+        if (m <= curMin) lastStepMin = m;
+      }
+    } catch { lastStepMin = null; }
+    pushItem({
+      time: lastStepMin != null ? `${pad2(Math.floor(lastStepMin / 60))}:${pad2(lastStepMin % 60)}` : '今日',
       color: theme.colors.stateCalm,
       title: `活动 ${stepsToday} 步`,
       sub: '保持轻量活动，助力晚间恢复',
-    });
+    }, lastStepMin ?? curMin);
   }
-  // 6. AI 洞察 / 聊天要点（异步加载，兜底用规则文案）
-  timelineItems.push({
+  // 6. AI 对话记录：★ 真实聊天记忆（MemoryStore），对话产生关键信息后即时刷新
+  const latestRecord = aiRecords[0];
+  if (latestRecord) {
+    const d = new Date(latestRecord.ts);
+    const themes = inferThemes(latestRecord.text);
+    const snippet = latestRecord.text.length > 30 ? `${latestRecord.text.slice(0, 30)}…` : latestRecord.text;
+    pushItem({
+      time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+      color: theme.colors.accent2,
+      title: themes.length ? `AI 对话 · ${themes.join('/')}` : 'AI 对话 · 与 Mira',
+      sub: aiRecords.length > 1 ? `今日 ${aiRecords.length} 条记录 · ${snippet}` : snippet,
+    }, d.getHours() * 60 + d.getMinutes());
+  }
+  // 7. AI 今日洞察（异步生成，兜底用规则文案，置底）
+  pushItem({
     time: '现在',
     color: theme.colors.accent2,
     title: 'AI 今日洞察',
     sub: aiAdvice ?? narrative,
-  });
+  }, 24 * 60);
+
+  const timelineItems: TimelineItem[] = dated
+    .sort((a, b) => a.k - b.k)
+    .slice(0, 7)
+    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub }));
+
+  // 三张消耗卡的副标题：一律由真实数据推导，不写死「峰值集中在傍晚」「19 kcal」这类未发生或编造的结论
+  const stressSub = peakEvent ? `峰值 ${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '暂无压力事件';
+  const cogSpan = cogReport?.peakLoadSpan ?? null;
+  const cognitiveSub = cogSpan && cogSpan.startHour * 60 <= curMin ? `峰值 ${pad2(cogSpan.startHour)}:00` : '认知状态平稳';
+  const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
+  const activitySub = activity === '—' || activity === '0'
+    ? '今日暂无运动'
+    : stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中';
 
   return (
     <View style={styles.page}>
@@ -583,13 +654,13 @@ export default function TodayScreen() {
         <View style={{ height: theme.space.lg }} />
 
         <View style={{ flexDirection: 'column', gap: theme.space.md }}>
-          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stress === '—' || stress === '0' ? '暂无压力事件' : '峰值集中在傍晚'} trendUp={true} trendPct="+5.2%" chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
-          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cogReport?.peakLoadSpan ? `峰值 ${String(cogReport.peakLoadSpan.startHour).padStart(2,'0')}:00` : '认知状态良好'} trendUp={true} trendPct="+3.1%" chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activity === '—' || activity === '0' ? '今日暂无运动' : '19 kcal 已消耗'} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
+          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trendUp={true} trendPct="+5.2%" chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
+          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trendUp={true} trendPct="+3.1%" chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
+          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
         </View>
 
         <View style={styles.adviceWrap}>
-          <TodayTimelineCard title="今日时间轴" dateLabel={dateLabel} items={timelineItems.slice(0, 6)} />
+          <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
         </View>
       </ScreenContainer>
     </View>

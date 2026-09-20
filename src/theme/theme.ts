@@ -97,6 +97,10 @@ export const colors = {
     accentSoft20: 'rgba(124,106,224,0.2)',
     /** 开关未选轨道 / 次按钮浅底 */
     offTrack: 'rgba(120,120,140,0.28)',
+    /** 拟态玻璃卡：半透明白底 / 高光描边 / 柔和紫投影（首页消耗卡、概览卡同款） */
+    glassBg: 'rgba(255,255,255,0.55)',
+    glassBorder: 'rgba(255,255,255,0.7)',
+    glassShadow: 'rgba(80,60,140,0.12)',
     /** 成功态文字色 */
     successText: '#3F9E85',
     /** 身体恢复页节律大字·正常/偏高（浅紫渐变上清晰可读）；紊乱用首页圆环粉 moodRest */
@@ -238,6 +242,24 @@ export const glass = {
   borderWidth: 1,
 } as const;
 
+/**
+ * glassMorph — 「拟态玻璃」卡片外观（首页 3 张消耗卡 / 概览卡同款）。
+ * 半透明白底 + 白色高光描边 + 柔和紫色投影，压在底色上呈现毛玻璃质感。
+ * 组件层请通过 <GlassCard> 使用，不要直接写 rgba。
+ */
+export const glassMorph = {
+  backgroundColor: colors.ui.glassBg,
+  borderWidth: 1,
+  borderColor: colors.ui.glassBorder,
+  shadowColor: colors.ui.glassShadow,
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 1,
+  shadowRadius: 20,
+  elevation: 6,
+  overflow: 'hidden',
+} as const;
+
+
 export const theme = {
   colors,
   space,
@@ -250,6 +272,7 @@ export const theme = {
   motion,
   layout,
   glass,
+  glassMorph,
 };
 
 export type Theme = typeof theme;

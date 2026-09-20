@@ -107,6 +107,26 @@ export class MemoryStore {
     return scored.slice(0, topK).map((s) => s.orig);
   }
 
+  /** 读取某时间点之后写入的 AI 记录（「今日日历」按天取聊天记录用） */
+  async listSince(sinceTs: number, limit = 20): Promise<{ text: string; ts: number }[]> {
+    const db = await this.open();
+    try {
+      if (this.useFTS) {
+        return await db.getAllAsync<{ text: string; ts: number }>(
+          `SELECT orig AS text, ts FROM mem_fts WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
+          [sinceTs, limit]
+        );
+      }
+      return await db.getAllAsync<{ text: string; ts: number }>(
+        `SELECT text, ts FROM mem_plain WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
+        [sinceTs, limit]
+      );
+    } catch (e) {
+      console.warn('[MemoryStore] listSince failed:', e);
+      return [];
+    }
+  }
+
   private async trim(db: SQLite.SQLiteDatabase): Promise<void> {
     try {
       if (this.useFTS) {

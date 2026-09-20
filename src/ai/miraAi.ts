@@ -7,6 +7,7 @@ import { MemoryStore } from './memory';
 import { ChatContextStore, type ChatContextSnapshot } from './context';
 import { buildSystemPrompt } from './character';
 import { buildHealthSnapshot } from './health';
+import { emitAiRecord } from '../lib/aiRecordBus';
 
 const memory = new MemoryStore();
 const context = new ChatContextStore();
@@ -84,6 +85,8 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
     // 无论如何都写回记忆 + 上下文（延续性）
     try {
       await memory.add(userText);
+      // ★ 广播：首页「今日日历」订阅此事件，对话产生关键信息后时间轴即时刷新
+      emitAiRecord();
       // 只有真的生成出内容才更新「上次聊到的延续」：
       // 否则推理失败会把空的 summary 写进去、抹掉上一轮的上下文。
       if (full) {
