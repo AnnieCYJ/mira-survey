@@ -15,7 +15,7 @@ import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
-import ListCard, { type ListItem } from '../components/ListCard';
+import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
@@ -23,67 +23,8 @@ import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
-import { curveLevel, CURVE_DEFAULTS, type CurveStatus } from '../lib/dailyStatus';
+import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
 import { getAiInsight } from '../ai/insight';
-
-const ADVICE_STATIC: ListItem[] = [
-  {
-    dot: theme.colors.stateTense,
-    title: '14:00 会议前安排 5 分钟呼吸',
-    sub: '该时段连续两天出现压力峰值',
-  },
-  {
-    dot: theme.colors.stateTired,
-    title: '入睡时间提前 20 分钟',
-    sub: '深睡窗口稳定，可再争取一个完整周期',
-  },
-];
-
-// 首条建议：跟随真实周期相位 + 雌激素建模指数（替代写死的「雌激素峰值窗口」）。
-// 雌激素指数由 computeCycle 用真实排卵日（含体温确认覆盖）算出，非编数据。
-function cycleAdviceItem(cs: CurveStatus | null): ListItem {
-  if (!cs || !cs.hasLog || cs.dayInCycle == null) {
-    return {
-      dot: theme.colors.stateTired,
-      title: '记录经期后开启周期建议',
-      sub: '今天先以身体感受为准，灵活安排节奏',
-    };
-  }
-  const e = cs.estrogenIndex;
-  const eTxt = e != null ? `（指数 ${e}）` : '';
-  switch (cs.phaseLabel) {
-    case '经期':
-      return {
-        dot: theme.colors.stateTired,
-        title: '今天以温和舒缓为主',
-        sub: `经期第 ${cs.dayInCycle} 天，雌激素低位${eTxt}，适合休息与轻活动`,
-      };
-    case '卵泡期':
-      return {
-        dot: theme.colors.stateEnergy,
-        title: '适合开启新计划与创造性工作',
-        sub: `雌激素回升${eTxt}，精力逐步走高`,
-      };
-    case '排卵期':
-      return {
-        dot: theme.colors.stateEnergy,
-        title: '状态活跃，适合社交与重要沟通',
-        sub: `雌激素峰值${eTxt}，恢复能力处于本月高位`,
-      };
-    case '黄体期':
-      return {
-        dot: theme.colors.stateTense,
-        title: '适合专注执行与收尾',
-        sub: `雌激素回落${eTxt}，留意情绪与能量起伏`,
-      };
-    default:
-      return {
-        dot: theme.colors.stateTired,
-        title: '记录经期后开启周期建议',
-        sub: '今天先以身体感受为准',
-      };
-  }
-}
 
 
 function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
@@ -520,8 +461,74 @@ export default function TodayScreen() {
   const showPill = statusIdx != null || phaseKnown;
   const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
 
-  // 今日建议：首条跟随真实周期相位 + 雌激素指数，其余为通用建议
-  const ADVICE: ListItem[] = [cycleAdviceItem(ring.curveStatus), ...ADVICE_STATIC];
+  // ★ 今日时间轴：真实数据组装（起床→相位→情绪峰值→脑力高峰→活动→AI 洞察），5 条左右
+  const fmtMin = (min: number | null | undefined): string => {
+    if (min == null || !Number.isFinite(min) || min <= 0) return '—';
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return h > 0 ? `${h}小时${m > 0 ? `${m}分` : ''}` : `${m}分钟`;
+  };
+  const now0 = new Date();
+  const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const dateLabel = `${now0.getMonth() + 1}月${now0.getDate()}日 · ${WEEKDAYS[now0.getDay()]}`;
+  const timelineItems: TimelineItem[] = [];
+  // 1. 起床（真实睡眠窗口）
+  if (todaySleep?.wakeTime) {
+    timelineItems.push({
+      time: todaySleep.wakeTime,
+      color: theme.colors.stateTired,
+      title: `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
+      sub: `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
+    });
+  }
+  // 2. 周期相位（当天背景事项）
+  const cs = ring.curveStatus;
+  if (cs?.hasLog && cs.phaseLabel) {
+    timelineItems.push({
+      time: '全天',
+      color: theme.colors.accent1,
+      title: `${cs.phaseLabel}${cs.dayInCycle != null ? ` 第 ${cs.dayInCycle} 天` : ''}`,
+      sub: cs.phaseLabel === '黄体期' ? '激素回落，留意情绪与能量起伏' : cs.phaseLabel === '经期' ? '以温和舒缓为主，适合休息' : '激素节律影响今日状态节奏',
+    });
+  }
+  // 3. 情绪波动峰值事件
+  const evs = stressReport?.events ?? [];
+  if (evs.length > 0) {
+    const peak = evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a));
+    timelineItems.push({
+      time: `${String(peak.hour).padStart(2, '0')}:${String(peak.minute).padStart(2, '0')}`,
+      color: theme.colors.stateTense,
+      title: `情绪波动 ${evs.length} 次`,
+      sub: `峰值强度 ${Math.round(peak.severity)} · 前后可安排 5 分钟呼吸调整`,
+    });
+  }
+  // 4. 脑力负荷高峰
+  if (cogReport?.loadScore != null) {
+    const span = cogReport.peakLoadSpan;
+    timelineItems.push({
+      time: span ? `${String(span.startHour).padStart(2, '0')}:00` : '午后',
+      color: theme.colors.accentSolid,
+      title: `脑力负荷 ${Math.round(cogReport.loadScore)}`,
+      sub: '高峰时段安排专注任务更高效',
+    });
+  }
+  // 5. 活动量
+  const stepsToday = ring?.stepDaily?.[dayKey(Date.now())]?.steps ?? 0;
+  if (stepsToday > 0) {
+    timelineItems.push({
+      time: '傍晚',
+      color: theme.colors.stateCalm,
+      title: `活动 ${stepsToday} 步`,
+      sub: '保持轻量活动，助力晚间恢复',
+    });
+  }
+  // 6. AI 洞察 / 聊天要点（异步加载，兜底用规则文案）
+  timelineItems.push({
+    time: '现在',
+    color: theme.colors.accent2,
+    title: 'AI 今日洞察',
+    sub: aiAdvice ?? narrative,
+  });
 
   return (
     <View style={styles.page}>
@@ -582,7 +589,7 @@ export default function TodayScreen() {
         </View>
 
         <View style={styles.adviceWrap}>
-          <ListCard title="今日建议" items={ADVICE} showChevron />
+          <TodayTimelineCard title="今日时间轴" dateLabel={dateLabel} items={timelineItems.slice(0, 6)} />
         </View>
       </ScreenContainer>
     </View>
