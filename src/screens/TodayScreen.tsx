@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop } from 'react-native-svg';
+import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import ScreenContainer from '../components/ScreenContainer';
@@ -12,7 +12,6 @@ const IMG_COG = require("../assets/card_focus.jpg");
 const IMG_ACTIVITY = require('../assets/card_meditation.jpg');
 import Card from '../components/Card';
 import Icon from '../components/Icon';
-import { MoonDot, phaseToMoonStyle } from '../components/CycleMoonPhase';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
@@ -218,6 +217,8 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
               end={{ x: 1, y: 0.5 }}
               style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}
             />
+            {/* 右上角跳转指示 */}
+            <Icon name="chevronRight" size={20} color={theme.colors.textTitle} style={{ position: 'absolute', top: 12, right: 12 }} />
             {/* 文字叠在蒙层上 — 贴底部集中在白色区域，排版与 subCard 完全一致 */}
             <View style={{ position: 'absolute', left: theme.space.cardPad, right: theme.space.md, bottom: 12, paddingTop: 40 }}>
               {/* 顶部标题 */}
@@ -306,36 +307,121 @@ export default function TodayScreen() {
     <View style={[{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: theme.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', shadowColor: 'rgba(80,60,140,0.12)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6, overflow: 'hidden' }, style]}>{children}</View>
   );
 
+  // 通用 mini chart 尺寸
+  const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
+
+  // —— 情绪消耗：点状图 (24h × 5 严重度网格) + 横坐标 + 最新事件 pop ——
   const MiniStressDots = ({ events }: { events: any[] }) => {
-    const W=140,H=56,C=24,R=4,cw=W/C,rh=H/R;
-    const c1='#7FD4A0',c2='#E5D9C5',c3='#F5A87C',c4='#E879F9';
-    const g: any[][][] = Array.from({length:C},()=>Array.from({length:R},()=>[]));
-    (events??[]).forEach((e:any)=>{ if(!e||!Number.isFinite(e.t)) return; const d=new Date(e.t); g[d.getHours()][Math.min(3,Math.floor(d.getMinutes()/15))].push(e); });
+    const C=24, R=5, cw=MW/C, rh=CHART_H/R;
+    const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
+    // 聚合到 (hour, severityBucket) 格子，取最大 severity
+    const grid: number[][] = Array.from({length:C},()=>Array(R).fill(0));
+    ev.forEach((e:any)=>{ const h=new Date(e.t).getHours(); const s=e.severity??3; const b=Math.min(R-1,Math.floor(s/2)); if(s>grid[h][b]) grid[h][b]=s; });
     const dots:any[]=[];
-    for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++) g[cc][r].slice(0,3).forEach((e:any,j)=>{ dots.push(<Circle key={`d${cc}${r}${j}`} cx={cc*cw+cw/2+(j-1)*3.5} cy={r*rh+rh/2} r={2.4} fill={e.severity>=5?c4:c3} />); });
-    if(dots.length===0){ const ph=Array.from({length:14},(_,i)=>({cx:((i*7)%C)*cw+cw/2,cy:((i*3)%R)*rh+rh/2,col:[c1,c2,c1,c2,c1][i%5],o:0.25+(i%3)*0.1})); return <Svg width={W} height={H}>{ph.map((d,i)=>(<Circle key={'p'+i} cx={d.cx} cy={d.cy} r={2.8} fill={d.col} opacity={d.o} />))}</Svg>; }
-    return <Svg width={W} height={H}>{dots}</Svg>;
+    for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++){
+      const s=grid[cc][r];
+      if(s>0){ const color=s>=5?'#E879F9':s>=3?'#F5A87C':'#F8C5A5'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
+    }
+    // 空态：淡色散点示意
+    const phDots:any[]=[];
+    if(dots.length===0){
+      const ph=[[2,3],[4,2],[6,3],[9,1],[11,3],[13,2],[15,4],[17,2],[19,3],[21,2]];
+      ph.forEach(([h,r],i)=>{ phDots.push(<Circle key={'ph'+i} cx={h*cw+cw/2} cy={r*rh+rh/2} r={3} fill="#E879F9" opacity={0.18} />); });
+    }
+    const popHour = ev.length>0 ? new Date(ev[ev.length-1].t).getHours() : new Date().getHours();
+    const popX = popHour*cw+cw/2;
+    const PopX = Math.max(18, Math.min(MW-36, popX-18));
+    const ticks=[0,6,12,18,24];
+    return (
+      <View style={{ width: MW, height: MH }}>
+        <Svg width={MW} height={MH}>
+          {/* 与情绪详情页点状图一致：无横向网格线 */}
+          {phDots}
+          {dots}
+          {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*cw+cw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
+        </Svg>
+        {ev.length>0 ? (
+          <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(232,121,249,0.25)' }}>
+            <Text style={{ fontSize:10, color:'#E879F9', fontWeight:'700' }}>{ev.length} 次</Text>
+          </View>
+        ):null}
+      </View>
+    );
   };
 
+  // —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
   const MiniCognitiveBars = ({ hourly }: { hourly: { hour: number; score: number }[] }) => {
-    const W=140,H=56,N=24;
-    const scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
-    const max=Math.max(10,...scores),bw=W/N-1.2;
-    return <Svg width={W} height={H}>{scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*H),x=i*(W/N)+0.6,y=H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}</Svg>;
+    const N=24, scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
+    const max=Math.max(10,...scores), bw=MW/N-1;
+    const lastIdx = scores.map((v,i)=>({v,i})).filter(x=>x.v>0).slice(-1)[0]?.i ?? 0;
+    const popVal = scores[lastIdx];
+    const popX = lastIdx*(MW/N)+bw/2;
+    const PopX = Math.max(18, Math.min(MW-36, popX-14));
+    const ticks=[0,6,12,18,24];
+    return (
+      <View style={{ width: MW, height: MH }}>
+        <Svg width={MW} height={MH}>
+          {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+          {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
+        </Svg>
+        {popVal>0 ? (
+          <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(124,58,237,0.2)' }}>
+            <Text style={{ fontSize:10, color:'#7C3AED', fontWeight:'700' }}>{Math.round(popVal)}</Text>
+          </View>
+        ):null}
+      </View>
+    );
   };
 
-  const MiniActivityCurve = ({ bins }: { bins: number[] }) => {
-    const W=140,H=56,N=bins.length,max=Math.max(1,...bins);
-    const pts=bins.map((v,i)=>({x:(i/(N-1))*W,y:H-(v/max)*H*0.9-3}));
-    let p=`M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-    for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)/6).toFixed(1)} ${(p1.y+(p2.y-p0.y)/6).toFixed(1)}, ${(p2.x-(p3.x-p1.x)/6).toFixed(1)} ${(p2.y-(p3.y-p1.y)/6).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
-    const area=p+` L ${pts[N-1].x.toFixed(1)} ${H} L ${pts[0].x.toFixed(1)} ${H} Z`;
-    return <Svg width={W} height={H}><Defs><SvgLinear id="actFill" x1="0" y1="0" x2="0" y2="1"><Stop offset="0%" stopColor="#BFDBFE" stopOpacity={0.7} /><Stop offset="100%" stopColor="#BFDBFE" stopOpacity={0.02} /></SvgLinear></Defs><Path d={area} fill="url(#actFill)" /><Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+  // —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
+  const MiniActivityCurve = ({ weekSteps }: { weekSteps: { dayKey: string; steps: number; date: Date }[] }) => {
+    const N=7, MON=['一','二','三','四','五','六','日'];
+    const series = weekSteps.slice(-7);
+    const steps = series.map(s=>s.steps);
+    const max = Math.max(1,...steps);
+    const pts = steps.map((v,i)=>({x:(i/(N-1))*(MW-8)+4, y:CHART_H-(v/max)*CHART_H*0.85-3}));
+    let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
+    const area = p+` L ${pts[N-1].x.toFixed(1)} ${CHART_H} L ${pts[0].x.toFixed(1)} ${CHART_H} Z`;
+    const last = pts[N-1];
+    const PopX = Math.max(18, Math.min(MW-48, last.x-20));
+    return (
+      <View style={{ width: MW, height: MH }}>
+        <Svg width={MW} height={MH}>
+          <Defs>
+            <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
+              <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
+            </SvgLinear>
+          </Defs>
+          <Path d={area} fill="url(#actFill2)" />
+          <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
+          {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CHART_H+AXIS_H-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
+        </Svg>
+        {steps[N-1]>0 ? (
+          <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
+            <Text style={{ fontSize:10, color:'#7EA6F8', fontWeight:'700' }}>{steps[N-1]}</Text>
+          </View>
+        ):null}
+      </View>
+    );
   };
 
   const stressReport = (() => { try { return computeStressReport(); } catch { return null; } })();
   const cogReport = (() => { try { return computeCognitiveLoadReport(); } catch { return null; } })();
-  const activityBins = (() => { const b=new Array(24).fill(0); try { const dk=dayKey(Date.now()),sd=ring?.stepDaily?.[dk]; if(sd?.steps>0){for(let h=7;h<=22;h++)b[h]=Math.round(sd.steps/20);b[12]=Math.round(sd.steps/10);b[13]=Math.round(sd.steps/14);} } catch {} return b; })();
+  // 近 7 天步数
+  const weekSteps = (() => {
+    const out: { dayKey: string; steps: number; date: Date }[] = [];
+    const now = new Date();
+    for(let i=6;i>=0;i--){
+      const d=new Date(now); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
+      const dk=dayKey(d.getTime());
+      const s = ring?.stepDaily?.[dk]?.steps ?? 0;
+      out.push({ dayKey:dk, steps:s, date:d });
+    }
+    return out;
+  })();
 
   const BigStatCard = ({ title, value, unit, sub, trendUp, trendPct, chartEl, gradientColors, onPress }: any) => (
     <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={{ width: '100%' }}>
@@ -343,7 +429,7 @@ export default function TodayScreen() {
         <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold }}>{title}</Text>
               <Text style={{ color: trendUp ? '#10B981' : '#EF4444', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold }}>{trendUp?'↑':'↓'} {trendPct}</Text>
             </View>
@@ -357,6 +443,7 @@ export default function TodayScreen() {
           </View>
           <View style={{ marginLeft: 4, alignItems: 'flex-end', justifyContent: 'flex-end' }}>{chartEl}</View>
         </View>
+        <Icon name="chevronRight" size={18} color={theme.colors.textSub} style={{ position: 'absolute', top: 12, right: 12, zIndex: 3 }} />
       </GlassCard>
     </TouchableOpacity>
   );
@@ -385,17 +472,8 @@ export default function TodayScreen() {
   // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
   const status = ring.curveStatus;
   const statusIdx = status && status.value != null ? curveLevel(status.value, CURVE_DEFAULTS).index : null;
-  const mood = statusIdx != null ? MOODS[statusIdx] : null;
   const phase = status?.phaseLabel ?? '未记录';
   const phaseKnown = phase !== '未记录';
-  // 月相：与首页圆环一致，用 CycleMoonPhase 的 MoonDot
-  const phaseKeyMap: Record<string, 'period' | 'follicular' | 'ovulation' | 'luteal'> = {
-    '经期': 'period',
-    '卵泡期': 'follicular',
-    '排卵期': 'ovulation',
-    '黄体期': 'luteal',
-  };
-  const phaseMoonStyle = phaseKeyMap[phase] ? phaseToMoonStyle(phaseKeyMap[phase]) : null;
   // ★ 真实睡眠检测：用最近一次 healthStore 中记录的睡眠窗口（sleepTime / wakeTime HH:mm）
   //   healthStore 里存的是「今天结束的那次睡眠」，跨午夜睡眠（23:30 → 07:00）正常工作。
   const todaySleep = healthStore.getSleep(dayKey(Date.now()));
@@ -439,8 +517,7 @@ export default function TodayScreen() {
     : fallbackAdvice;
   if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx}`);
   const isAiText = false;  // 圆环下建议用规则更准（1.5B 模型搞不定时段优先级）
-  const hasStatus = !!mood;
-  const showPill = hasStatus || phaseKnown;
+  const showPill = statusIdx != null || phaseKnown;
   const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
 
   // 今日建议：首条跟随真实周期相位 + 雌激素指数，其余为通用建议
@@ -466,36 +543,19 @@ export default function TodayScreen() {
         </View>
 
         <View style={styles.energyWrap}>
-          <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
+          <View style={styles.energyBallCol}>
+            <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
+          </View>
           <View style={styles.statusPill}>
-            {showPill && (
-              <View style={styles.statusChipRow}>
-                {mood && (
-                  <View style={[styles.statusChip, { backgroundColor: mood.color }]}>
-                    <Text style={styles.statusChipText}>{mood.label}</Text>
-                  </View>
-                )}
-                {phaseKnown && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={styles.phaseChip}>
-                      {phaseMoonStyle ? <MoonDot style={phaseMoonStyle} size={theme.fs(14)} /> : null}
-                      <Text style={styles.phaseChipText}>{phase}</Text>
-                    </View>
-                    {isAiText && (
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: theme.colors.accentSoft, marginRight: theme.space.xs, marginBottom: theme.space.xs }}>
-                        <Text style={{ fontSize: 10, color: theme.colors.accentSolid, fontWeight: theme.weight.medium }}>AI</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
             <Text style={styles.statusNarr}>{narrative}</Text>
           </View>
         </View>
 
         <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
           <Card style={styles.trendCard}>
+          <View style={styles.cardChevronRow}>
+            <Icon name="chevronRight" size={18} color={theme.colors.textSub} />
+          </View>
           <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
             {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
           </View>
@@ -518,11 +578,11 @@ export default function TodayScreen() {
         <View style={{ flexDirection: 'column', gap: theme.space.md }}>
           <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stress === '—' || stress === '0' ? '暂无压力事件' : '峰值集中在傍晚'} trendUp={true} trendPct="+5.2%" chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
           <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cogReport?.peakLoadSpan ? `峰值 ${String(cogReport.peakLoadSpan.startHour).padStart(2,'0')}:00` : '认知状态良好'} trendUp={true} trendPct="+3.1%" chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activity === '—' || activity === '0' ? '今日暂无运动' : '19 kcal 已消耗'} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve bins={activityBins} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
+          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activity === '—' || activity === '0' ? '今日暂无运动' : '19 kcal 已消耗'} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
         </View>
 
         <View style={styles.adviceWrap}>
-          <ListCard title="今日建议" items={ADVICE} />
+          <ListCard title="今日建议" items={ADVICE} showChevron />
         </View>
       </ScreenContainer>
     </View>
@@ -561,7 +621,8 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
   },
   energyWrap: { marginBottom: theme.space.sm, alignItems: 'center' },
-  statusPill: { marginTop: theme.space.sm, alignSelf: 'center', width: '100%', backgroundColor: 'transparent', borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, paddingVertical: theme.space.xs },
+  energyBallCol: { alignItems: 'center' },
+  statusPill: { flex: 1, marginTop: theme.space.xs, justifyContent: 'center' },
   statusChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -604,9 +665,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.55,
     color: theme.colors.textSub,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   trendCard: { marginTop: theme.space.md, marginBottom: theme.space.lg },
+  cardChevronRow: { flexDirection: 'row', justifyContent: 'flex-end' },
 
   energyCol: {
     flexDirection: 'row',

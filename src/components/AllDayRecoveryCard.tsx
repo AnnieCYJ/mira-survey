@@ -32,6 +32,7 @@ import Svg, {
 } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import Icon from './Icon';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
@@ -43,9 +44,9 @@ const MIN_SAMPLES = 4;
 const MIN_TODAY_SLOTS = 6;
 const SLOTS = 48;          // 48 × 30min = 全天
 const CHART_H = 120;
-const PAD_L = 8;
-const PAD_R = 8;
-const PAD_T = 30;          // 顶部留白：给峰值文字标签
+const PAD_L = 3;           // ★ 曲线两端贴近 SVG 边缘（时间轴刻度改用 start/end 锚点防截断）
+const PAD_R = 3;
+const PAD_T = 44;          // ★ 顶部留白加大：峰值圆点 + 时刻标签不再被裁切（含平滑过冲余量）
 const PAD_B = 20;          // 底部留白：给时间轴
 
 /**
@@ -160,9 +161,10 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
     const today = buildCortisolToday30();                       // 48 槽，尾段为 null
     const todayNonNull = today.filter((v) => v != null).length;
     if (todayNonNull >= MIN_TODAY_SLOTS) {
-      // 尾部 null 用前一个有效值延续，图面更完整（不画预测）
-      const last = today.filter((v): v is number => v != null).slice(-1)[0] ?? 0;
-      return { series: today.map((v) => v ?? last), mode: 'today' };
+      // 只截到最后一个有效值 — 未来时段不画
+      const lastIdx = today.findIndex((v, i) => i > 0 && v == null && today[i - 1] != null);
+      const truncate: number[] = (lastIdx > 0 ? today.slice(0, lastIdx) : today.filter((v) => v != null)) as number[];
+      return { series: truncate, mode: 'today' };
     }
     if (samples.length >= MIN_SAMPLES && hasRhythm) {
       const TWO_PI = Math.PI * 2;
@@ -176,26 +178,36 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
     return { series: demoCurve(), mode: 'demo' };
   }, [samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, ring.timelineReady ?? ring.curveStatus]);
 
-  const modeLabel = mode === 'today' ? '今日' : mode === 'rhythm' ? '14 天节律' : '示意图';
-
   // —— 坐标换算 ——
   const chartW = Math.max(40, W - PAD_L - PAD_R);
   const chartH = CHART_H - PAD_T - PAD_B;
-  const lo = Math.min(...series);
-  const hi = Math.max(...series);
+  // ★ 圆弧平滑：先做 (1,2,1)/4 加权滑动平均柔化尖峰/深谷（峰值位置基本不变），
+  //   再走 Catmull-Rom → 贝塞尔，消除 11:00 那种生硬的 V 形折角
+  const sm = series.map((v, i) => {
+    const a = series[i - 1] ?? v;
+    const c = series[i + 1] ?? v;
+    return (a + 2 * v + c) / 4;
+  });
+  const lo = Math.min(...sm);
+  const hi = Math.max(...sm);
   const span = hi - lo || 1;
   const yLo = lo - span * 0.18;
   const yHi = hi + span * 0.18;
   const yOf = (v: number) => PAD_T + chartH - ((v - yLo) / (yHi - yLo)) * chartH;
   const xOf = (i: number) => PAD_L + (i / (SLOTS - 1)) * chartW;
 
-  const pts = series.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
+  const pts = sm.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
   const linePath = smoothPath(pts);
+  // ★ 面积填充在「最后一个数据点」收口：今日模式曲线只画到当前时刻时，
+  //   填充不再斜插到 24:00 右下角，避免右侧出现一块无曲线的悬空渐变
+  const lastDataX = xOf(series.length - 1);
   const areaPath = linePath
-    ? `${linePath} L ${xOf(SLOTS - 1).toFixed(1)} ${(PAD_T + chartH).toFixed(1)} L ${PAD_L.toFixed(1)} ${(PAD_T + chartH).toFixed(1)} Z`
+    ? `${linePath} L ${lastDataX.toFixed(1)} ${(PAD_T + chartH).toFixed(1)} L ${PAD_L.toFixed(1)} ${(PAD_T + chartH).toFixed(1)} Z`
     : '';
 
-  const peakIdx = series.indexOf(hi);
+  // ★ 修复错位：hi 是「平滑后」数组的最大值，必须在 sm 里找下标；
+  //   之前在原始 series 里 indexOf 找不到（平滑已改值）→ 返回 -1，峰值点/虚线/时刻标签全部错位
+  const peakIdx = Math.max(0, sm.indexOf(hi));
   const peakX = xOf(peakIdx);
   const peakY = yOf(hi);
 
@@ -216,9 +228,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
         {/* 卡片标题 */}
         <View style={styles.headRow}>
           <Text style={styles.title}>全天恢复</Text>
-          <View style={styles.modePill}>
-            <Text style={styles.modePillText}>{modeLabel}</Text>
-          </View>
+          <Icon name="chevronRight" size={18} color={theme.colors.ui.chipText} />
         </View>
 
         {/* 上半：睡眠恢复情况 / 皮质醇峰值 */}
@@ -310,19 +320,21 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 {fmtClock(peakIdx / 2)}
               </SvgText>
 
-              {/* 时间轴 00 / 06 / 12 / 18 / 24 */}
+              {/* 时间轴 00 / 06 / 12 / 18 / 24（两端刻度改 start/end 锚点，贴边不截断） */}
               {[0, 6, 12, 18, 24].map((h) => {
                 const slot = Math.min(h * 2, SLOTS - 1);
+                const edgeL = h === 0;
+                const edgeR = h === 24;
                 return (
                   <SvgText
                     key={h}
-                    x={xOf(slot)}
+                    x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + chartW - 1 : xOf(slot)}
                     y={CHART_H - 4}
                     fontSize={9.5}
                     fill={theme.colors.ui.chipText}
-                    textAnchor="middle"
+                    textAnchor={edgeL ? 'start' : edgeR ? 'end' : 'middle'}
                   >
-                    {h === 24 ? '24' : String(h).padStart(2, '0')}
+                    {String(h).padStart(2, '0')}
                   </SvgText>
                 );
               })}

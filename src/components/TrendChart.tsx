@@ -45,8 +45,11 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
   const [selected, setSelected] = useState<number | null>(null);
 
   const { path, gradStops, pts, minGapX } = useMemo(() => {
-    const pad = 0;
-    const innerW = Math.max(1, width - pad * 2);
+    const padX = 0;
+    // ★ 顶部留出气泡高度：值 100 的峰点也只到 padTop 线，浮层气泡完全悬在曲线上方，不再盖住峰点
+    const padTop = 36;
+    const padBottom = 6;
+    const innerW = Math.max(1, width - padX * 2);
     const now = Date.now();
     const source: { value: number; t: number }[] = (timeline ?? [])
       .filter((p) => p && typeof p.value === 'number' && Number.isFinite(p.value) && Number.isFinite(p.t) && isSameDay(p.t, now))
@@ -56,8 +59,8 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
 
     const p: PPoint[] = source.map((s) => {
       const frac = dayFrac(s.t);
-      const x = pad + innerW * frac;
-      const y = height - pad - (height - pad * 2) * (s.value / 100);
+      const x = padX + innerW * frac;
+      const y = height - padBottom - (height - padTop - padBottom) * (s.value / 100);
       return { x, y, value: s.value, t: s.t };
     });
 
@@ -69,11 +72,11 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
       const p1 = p[i];
       const p2 = p[i + 1];
       const p3 = p[Math.min(n - 1, i + 2)];
-      // Catmull-Rom 切线
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      // Catmull-Rom → Cubic Bezier (smoother, 0.5 tension)
+      const cp1x = p1.x + (p2.x - p0.x) * 0.25;
+      const cp1y = p1.y + (p2.y - p0.y) * 0.25;
+      const cp2x = p2.x - (p3.x - p1.x) * 0.25;
+      const cp2y = p2.y - (p3.y - p1.y) * 0.25;
       path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
     }
 
@@ -112,11 +115,20 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
               <Stop key={'gs' + i} offset={gs.offset} stopColor={gs.color} />
             ))}
           </LinearGradient>
+          <LinearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={gradStops[0]?.color ?? '#8B5CF6'} stopOpacity={0.28} />
+            <Stop offset="55%" stopColor={gradStops[Math.floor(gradStops.length/2)]?.color ?? '#8B5CF6'} stopOpacity={0.10} />
+            <Stop offset="100%" stopColor={gradStops[gradStops.length-1]?.color ?? '#8B5CF6'} stopOpacity={0.02} />
+          </LinearGradient>
         </Defs>
+        <Path d={`${path} L ${pts[pts.length - 1]?.x.toFixed(1) ?? 0} ${height} L ${pts[0]?.x.toFixed(1) ?? 0} ${height} Z`} fill="url(#trendFill)" />
         <Path d={path} fill="none" stroke="url(#trendStroke)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-        {selIdx != null && pts[selIdx] ? (
-          <Circle cx={pts[selIdx]!.x} cy={pts[selIdx]!.y} r={6} fill="none" stroke="#fff" strokeWidth={1.6} opacity={0.9} />
-        ) : null}
+        {selIdx != null && pts[selIdx] ? (() => {
+          const p = pts[selIdx]!;
+          const mood = moodFor(p.value);
+          // ★ 最新数据点：状态色实心点 + 白描边，明确展示当前所在档位（替代不显眼的白圈）
+          return <Circle key="selDot" cx={p.x} cy={p.y} r={5} fill={mood.color} stroke="#fff" strokeWidth={2} />;
+        })() : null}
       </Svg>
 
       {selIdx != null && pts[selIdx] ? (() => {
@@ -124,7 +136,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
         const mood = moodFor(p.value);
         const bubbleW = 78;
         const left = Math.max(4, Math.min(width - bubbleW - 4, p.x - bubbleW / 2));
-        const top = Math.max(2, p.y - 42);
+        const top = Math.max(2, p.y - 46);
         return (
           <Pressable key="bubble" pointerEvents="none" style={[styles.bubble, { left, top, backgroundColor: mood.color }]}>
             <Text style={styles.bubbleLevel}>{mood.label} {Math.round(p.value)}</Text>

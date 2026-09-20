@@ -73,6 +73,8 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   // 当前所处经期象限（来自今日状态预测）；无数据时为 null
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
+  // 圆环内状态值下方展示的相位（月相图标 + 文字），与首页圆环四周的四个象限点同源
+  const phaseEntry = currentPhase ? HOME_PHASES.find((p) => p.key === currentPhase) ?? null : null;
 
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
   const halo = useRef(new Animated.Value(0)).current;
@@ -220,6 +222,12 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       <View style={styles.center} pointerEvents="none">
         <Text style={[styles.label, !hasData && styles.emptyLabel]}>{centerLabel}</Text>
         {statusValue != null && <Text style={styles.statusValue}>状态值：{statusValue}</Text>}
+        {phaseEntry && (
+          <View style={styles.phaseInner}>
+            <MoonDot style={phaseEntry.style} size={theme.fs(13)} />
+            <Text style={styles.phaseInnerText}>{phaseEntry.label}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -256,6 +264,18 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.micro,
     color: theme.colors.orbTextInkSub,
     marginTop: theme.space.xs,
+    fontWeight: theme.weight.medium,
+  },
+  phaseInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.sp(1),
+    marginTop: theme.space.xs,
+  },
+  phaseInnerText: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.orbTextInkSub,
     fontWeight: theme.weight.medium,
   },
 });

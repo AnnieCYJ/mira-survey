@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
+import Icon from './Icon';
 
 export interface ListItem {
   dot: string;
@@ -13,12 +14,17 @@ export interface ListItem {
 interface Props {
   title: string;
   items: ListItem[];
+  /** 可选：标题右侧显示跳转箭头（首页卡片用） */
+  showChevron?: boolean;
 }
 
-export default function ListCard({ title, items }: Props) {
+export default function ListCard({ title, items, showChevron }: Props) {
   return (
     <Card>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.headRow}>
+        <Text style={styles.title}>{title}</Text>
+        {showChevron ? <Icon name="chevronRight" size={18} color={theme.colors.textSub} /> : null}
+      </View>
       {items.map((it, i) => (
         <View key={i} style={[styles.row, i === items.length - 1 && styles.last]}>
           <View style={[styles.dot, { backgroundColor: it.dot }]} />
@@ -34,6 +40,7 @@ export default function ListCard({ title, items }: Props) {
 }
 
 const styles = StyleSheet.create({
+  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.medium,
