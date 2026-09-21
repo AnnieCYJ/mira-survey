@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   hourSection: {
     backgroundColor: theme.colors.cardBgSoft,
     marginTop: theme.sp(2), paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(2),
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.sm,
     borderWidth: 1, borderColor: theme.colors.cardBorder2,
     overflow: 'visible',
   },
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 
   peakRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2) },
-  peakChip: { flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.md, paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(2), marginHorizontal: theme.sp(0.75) },
+  peakChip: { flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(2), marginHorizontal: theme.sp(0.75) },
   peakLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textTransform: 'uppercase', letterSpacing: theme.sp(0.0625) },
   peakTime: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, marginTop: theme.sp(0.5) },
   peakSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },

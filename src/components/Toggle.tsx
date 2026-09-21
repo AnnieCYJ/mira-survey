@@ -21,15 +21,16 @@ export default function Toggle({ value, onValueChange, disabled }: Props) {
   useEffect(() => {
     Animated.timing(x, {
       toValue: value ? ON_X : OFF_X,
-      duration: 200,
-      easing: theme.motion.ease,
+      // 开关属于「点下去必须立刻有反应」的控件 → 用 quick 档 + 屏内标准曲线
+      duration: theme.motion.quick,
+      easing: theme.motion.easeStandard,
       useNativeDriver: true,
     }).start();
   }, [value, x]);
 
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={theme.press.opacity}
       disabled={disabled}
       onPress={() => onValueChange(!value)}
       style={[

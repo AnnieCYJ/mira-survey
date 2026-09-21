@@ -288,7 +288,7 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             <Text style={[styles.chartTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(2) }]}>
               情绪负荷
             </Text>
-            <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.md, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
+            <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
             <StressEventStems events={report.events} chartH={200} />
             </View>
             {/* 与下方「情绪洞察」拉开间距，还原原两卡之间的视觉间隔 */}

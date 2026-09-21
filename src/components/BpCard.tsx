@@ -36,21 +36,21 @@ export default function BpCard({ ring, onPress, gradientMode = false }: Props) {
   return (
     <View style={gradientMode ? {} : styles.card}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={{ ...styles.title, color: gradientMode ? 'white' : styles.title.color }}>血压</Text>
-        <Text style={{ ...styles.time, color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.time.color }}>{fmtTime(lastT)}</Text>
+        <Text style={{ ...styles.title, color: gradientMode ? theme.colors.ui.onGrad : styles.title.color }}>血压</Text>
+        <Text style={{ ...styles.time, color: gradientMode ? theme.colors.ui.onGrad : styles.time.color }}>{fmtTime(lastT)}</Text>
       </View>
       <View style={{ flexDirection: 'column', gap: theme.sp(1.25) }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={[styles.unit, { color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.unit.color }]}>收缩压</Text>
-          <Text style={[styles.val, { color: gradientMode ? 'white' : COL_SYS }]}>{lastSys ? Math.round(lastSys.v) : '—'}</Text>
+          <Text style={[styles.unit, { color: gradientMode ? theme.colors.ui.onGrad : styles.unit.color }]}>收缩压</Text>
+          <Text style={[styles.val, { color: gradientMode ? theme.colors.ui.onGrad : COL_SYS }]}>{lastSys ? Math.round(lastSys.v) : '—'}</Text>
         </View>
-        <View style={{ height: 1, backgroundColor: gradientMode ? 'rgba(255,255,255,0.2)' : theme.colors.cardBorder }} />
+        <View style={{ height: 1, backgroundColor: gradientMode ? theme.colors.ui.white25 : theme.colors.cardBorder }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={[styles.unit, { color: gradientMode ? 'rgba(255,255,255,0.75)' : styles.unit.color }]}>舒张压</Text>
-          <Text style={[styles.val, { color: gradientMode ? 'white' : COL_DIA }]}>{lastDia ? Math.round(lastDia.v) : '—'}</Text>
+          <Text style={[styles.unit, { color: gradientMode ? theme.colors.ui.onGrad : styles.unit.color }]}>舒张压</Text>
+          <Text style={[styles.val, { color: gradientMode ? theme.colors.ui.onGrad : COL_DIA }]}>{lastDia ? Math.round(lastDia.v) : '—'}</Text>
         </View>
         {!hasData && (
-          <Text style={{ fontSize: 11, color: gradientMode ? 'rgba(255,255,255,0.6)' : theme.colors.textSub, textAlign: 'center' }}>点击查看</Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: gradientMode ? theme.colors.ui.onGrad : theme.colors.textSub, textAlign: 'center' }}>点击查看</Text>
         )}
       </View>
     </View>
@@ -60,16 +60,16 @@ export default function BpCard({ ring, onPress, gradientMode = false }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: 14,
     marginBottom: 12,
   },
-  title: { fontSize: 15, fontWeight: '600', color: theme.colors.textTitle },
-  time: { fontSize: 12, color: theme.colors.textSub },
-  val: { fontSize: 32, fontWeight: '700' },
-  sep: { fontSize: 22, marginHorizontal: 4 },
-  unit: { fontSize: 13, color: theme.colors.textSub, marginLeft: 6 },
-  legend: { fontSize: 11, color: theme.colors.textSub },
+  title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  val: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold },
+  sep: { fontSize: theme.fontSize.h2, marginHorizontal: theme.sp(1) },
+  unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginLeft: theme.sp(1.5) },
+  legend: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 });

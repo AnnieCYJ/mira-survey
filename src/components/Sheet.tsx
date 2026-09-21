@@ -30,8 +30,9 @@ export default function Sheet({ visible, onClose, children, style }: Props) {
     if (visible) setMounted(true);
     Animated.timing(tx, {
       toValue: visible ? 0 : 1,
-      duration: theme.motion.durL,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      // 进场减速 / 离场加速，且离场更快（用户更不耐受「消失得慢」）
+      duration: visible ? theme.motion.sheet : theme.motion.sheetExit,
+      easing: visible ? theme.motion.easeEnter : theme.motion.easeExit,
       useNativeDriver: true,
     }).start(() => {
       if (!visible) setMounted(false);

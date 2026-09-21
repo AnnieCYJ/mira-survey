@@ -265,7 +265,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               key={route.key}
               onPress={() => handlePress(route, focused)}
               style={styles.item}
-              activeOpacity={0.7}
+              activeOpacity={theme.press.opacity}
               accessibilityRole="button"
               accessibilityState={{ selected: focused }}
             >
@@ -287,7 +287,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
         onPressOut={handleVoicePressOut}
         delayPressIn={0}
         delayPressOut={0}
-        activeOpacity={0.9}
+        activeOpacity={theme.press.opacity}
         style={[styles.botBtn, { width: botSize, height: botSize }]}
         accessibilityRole="button"
         accessibilityLabel="Mira Bot — 长按说话"
@@ -317,7 +317,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     height: theme.layout.tabBarHeight,
     backgroundColor: 'rgba(230,228,242,0.94)',
-    borderRadius: theme.radius.card,
+    // ★ 必须用 pill：高度 = tabBarHeight(56)，pill(999) 会解析成半高 28 → 完整胶囊。
+    //   原先写 radius.card 时 card 恰好是 28 才碰巧是胶囊；2026-09-20 把 card 收紧到 14 后就退化成圆角矩形了。
+    borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     marginRight: theme.sp(2),
     ...theme.shadow.nav,

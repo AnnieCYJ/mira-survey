@@ -384,7 +384,10 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="返回"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>

@@ -56,7 +56,7 @@ export default function ExamTab() {
   const sexText = sex === 'male' ? '男' : '女';
 
   return (
-    <Card style={{ padding: theme.sp(2) }}>
+    <Card style={{ padding: theme.space.cardPadCompact }}>
       {/* 标题 */}
       <Text style={styles.cardTitle}>身体成分</Text>
 

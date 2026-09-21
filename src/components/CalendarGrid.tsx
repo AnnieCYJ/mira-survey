@@ -1,102 +1,112 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
-import { PLAN_PER_DAY, TASK_COLORS, TODAY_DAY } from '../data/tasks';
+import { TASK_EVENTS, TODAY_DAY, type TaskType } from '../data/tasks';
 
 interface Props {
   year: number;
-  /** 0-based month */
   month: number;
   tasks: Record<number, number[]>;
   onDayPress?: (day: number) => void;
-  /** 每个日期格子的宿主节点引用，用于测量屏幕坐标 */
   dayRefs?: React.MutableRefObject<Record<number, any>>;
 }
 
-export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }: Props) {
-  const { days, firstDayOffset } = useMemo(() => {
-    const first = new Date(year, month, 1).getDay();
-    const total = new Date(year, month + 1, 0).getDate();
-    const list: { day: number; tasks: number[]; allDone: boolean }[] = [];
-    for (let d = 1; d <= total; d++) {
-      const dayTasks = tasks[d] || [];
-      list.push({ day: d, tasks: dayTasks, allDone: dayTasks.length >= PLAN_PER_DAY });
-    }
-    return { days: list, firstDayOffset: first };
-  }, [year, month, tasks]);
+const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+const GOLD = '#F5A623';
+const CELL_BG = '#EEEEEF';
+const TODAY_BG = '#FFF3CD';
+const GAP = theme.sp(1.5);
 
-  const renderDay = (day: number, allDone: boolean, taskTypes: number[]) => {
+/**
+ * 所有格子（有日期/空白）必须用同一个 baseCellStyle，
+ * 否则 RN flex:1 + aspectRatio 在不同 style 对象上计算结果可能微差 → 出现大格子。
+ */
+const baseCellStyle = {
+  flex: 1 as const,
+  aspectRatio: 0.55,
+  marginRight: GAP,
+  paddingHorizontal: theme.sp(1.5),
+  paddingVertical: theme.sp(1),
+  backgroundColor: CELL_BG,
+  borderRadius: theme.radius.sm,
+};
+
+export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }: Props) {
+  const { rows } = useMemo(() => {
+    const first = new Date(year, month, 1).getDay();
+    const lead = (first + 6) % 7;
+    const total = new Date(year, month + 1, 0).getDate();
+    const cells: number[] = [];
+    for (let i = 0; i < lead; i++) cells.push(-1);
+    for (let d = 1; d <= total; d++) cells.push(d);
+    const filled = Math.ceil(cells.length / 7) * 7;
+    while (cells.length < filled) cells.push(-1);
+    const rowList: number[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rowList.push(cells.slice(i, i + 7));
+    return { rows: rowList };
+  }, [year, month]);
+
+  const renderCell = (day: number, isLast: boolean) => {
+    if (day < 0) {
+      return <View key={`e${day}-${Math.random()}`} style={[baseCellStyle, isLast && { marginRight: 0 }]} />;
+    }
     const isToday = day === TODAY_DAY;
+    const taskTypes = (tasks[day] ?? []).slice(0, 2);
     return (
       <TouchableOpacity
         key={day}
-        ref={(node) => {
-          if (dayRefs && node) dayRefs.current[day] = node;
-        }}
-        style={[styles.day, isToday && styles.today, allDone && styles.allDone]}
+        ref={(node) => { if (dayRefs && node) dayRefs.current[day] = node; }}
+        style={[baseCellStyle, isToday && styles.cellToday, isLast && { marginRight: 0 }]}
         onPress={() => onDayPress?.(day)}
         disabled={!onDayPress}
-        activeOpacity={0.7}
+        activeOpacity={0.8}
       >
-        <Text style={[styles.dayText, isToday && styles.todayText, allDone && styles.allDoneText]}>{day}</Text>
-        <View style={styles.taskDots}>
-          {taskTypes.slice(0, 3).map((t, i) => (
-            <View key={i} style={[styles.taskDot, { backgroundColor: TASK_COLORS[t] ?? TASK_COLORS[0] }]} />
-          ))}
-        </View>
+        <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day}</Text>
+        {taskTypes.length > 0 ? (
+          <View style={styles.events}>
+            {taskTypes.map((t, i) => (
+              <Text key={i} style={styles.evEmoji}>{TASK_EVENTS[t as TaskType].emoji}</Text>
+            ))}
+          </View>
+        ) : null}
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.grid}>
-      {['日', '一', '二', '三', '四', '五', '六'].map((w) => (
-        <Text key={w} style={styles.weekLabel}>
-          {w}
-        </Text>
+    <View style={styles.root}>
+      <View style={styles.weekRow}>
+        {WEEK_LABELS.map((w, i) => {
+          const isWE = i >= 5;
+          const isLast = i === 6;
+          return <Text key={w} style={[styles.weekLabel, isWE && styles.weekLabelWE, isLast && { marginRight: 0 }]}>{w}</Text>;
+        })}
+      </View>
+      {rows.map((row, ri) => (
+        <View key={ri} style={styles.row}>
+          {row.map((day, ci) => renderCell(day, ci === 6))}
+        </View>
       ))}
-      {Array.from({ length: firstDayOffset }).map((_, i) => (
-        <View key={`empty-${i}`} style={styles.emptyDay} />
-      ))}
-      {days.map((d) => renderDay(d.day, d.allDone, d.tasks))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: theme.radius.md,
-    padding: theme.sp(2),
-  },
+  root: {},
+  weekRow: { flexDirection: 'row', marginBottom: theme.sp(1) },
   weekLabel: {
-    width: '14.28%',
-    textAlign: 'center',
-    fontSize: theme.fontSize.micro,
-    color: theme.colors.textSub,
-    fontWeight: theme.weight.semibold,
-    paddingVertical: theme.sp(1.5),
+    flex: 1, marginRight: GAP, textAlign: 'center',
+    fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any,
+    color: theme.colors.textBody, paddingVertical: theme.sp(1),
   },
-  day: {
-    width: '14.28%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radius.sm,
-    marginVertical: 2,
+  weekLabelWE: { color: GOLD },
+  row: { flexDirection: 'row', marginBottom: GAP },
+  cellToday: { backgroundColor: TODAY_BG },
+  dayNum: {
+    fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any,
+    color: theme.colors.textSub, textAlign: 'center', marginBottom: theme.sp(0.5),
   },
-  today: { backgroundColor: theme.colors.accent1 },
-  allDone: {
-    backgroundColor: theme.colors.celebrateGrad[0] + '44',
-    borderWidth: 1,
-    borderColor: theme.colors.celebrateGrad[0],
-  },
-  emptyDay: { width: '14.28%', aspectRatio: 1 },
-  dayText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textBody },
-  todayText: { color: theme.colors.textWhite },
-  allDoneText: { color: theme.colors.textTitle },
-  taskDots: { flexDirection: 'row', marginTop: 2, gap: 2 },
-  taskDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.radius.pill },
+  dayNumToday: { color: '#D97706', fontWeight: theme.weight.bold as any },
+  events: { flexDirection: 'row', justifyContent: 'center', gap: 3 },
+  evEmoji: { fontSize: 10, lineHeight: 12 },
 });

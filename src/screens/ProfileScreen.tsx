@@ -21,6 +21,11 @@ const FADE_MS = 420; // 落点后整体淡出时长
 const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
 export default function ProfileScreen() {
+  // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
+
   const { tasks, celebration, triggerCelebration, dismissCelebration } = useAppState();
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current; // 0=居中, 1=飞到目标日期
@@ -128,8 +133,10 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenContainer compactTop>
-        <Text style={styles.title}>Calendar</Text>
+      <ScreenContainer compactTop scrollY={scrollY}>
+        <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
+          <Text style={styles.title}>Calendar</Text>
+        </Animated.View>
 
         <Card style={styles.statsCard}>
           <View style={styles.statsRow}>

@@ -358,8 +358,8 @@ const styles = StyleSheet.create({
   cardUnit: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.regular,
-    // ★ 用 ui.chipText 而非 textSub：在暖橘/青蓝/紫蓝三档渐变上，
-    //   textSub(#8A8AA8) 对比度仅 2.0~2.6，chipText(#55557A) 可到 4.2~5.5
+    // ★ 用 ui.chipText 而非 textSub：在暖橘/青蓝/紫蓝三档渐变上 chipText 实测 4.2~5.5。
+    //   （2026-09-20 起 textSub 本身已压深到 #5F5F74 并达标；此处沿用 chipText 是为了与卡片其它小字统一）
     color: theme.colors.ui.chipText,
   },
   cardSub: {

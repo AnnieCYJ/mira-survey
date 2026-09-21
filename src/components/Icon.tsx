@@ -33,6 +33,8 @@ export type IconName =
   | 'drop'
   | 'thermometer'
   | 'activity'
+  | 'food'
+  | 'run'
   | 'mic'
   | 'speaker'
   | 'speaker_off';  // 🔇 喇叭关
@@ -169,6 +171,21 @@ const ICONS: Record<IconName, IconDef> = {
     nodes: [
       { p: 'M11 5L6 9H2v6h4l5 4V5z' },
       { p: 'M23 9l-6 6M17 9l6 6' },
+    ],
+  },
+  food: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M4 11h16v1a8 8 0 0 1-16 0z' },
+      { p: 'M8 11V7a4 4 0 0 1 8 0v4' },
+    ],
+  },
+  run: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M13 4a2 2 0 1 1-4 0 2 2 0 0 1 4 0z' },
+      { p: 'M9 21l2-6 3-2 4 2-1 2-3-1-2 5z' },
+      { p: 'M12 13l-3-4 4-1 3 3-4 2' },
     ],
   },
   heart: {

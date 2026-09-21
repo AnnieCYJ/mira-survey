@@ -59,7 +59,10 @@ export default function BreathingScreen() {
 
       {/* ——— 返回 + 标题 ——— */}
       <View style={styles.head}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="返回"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={styles.headText}>

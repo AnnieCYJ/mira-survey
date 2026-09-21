@@ -27,8 +27,28 @@ export const colors = {
   bgGradLocs: [0, 0.34, 0.64, 1] as const,
   accent1: '#9D8AF0',
   accent2: '#7EA6F8',
+  /**
+   * accentSolid —— 强调色的**色块/描边/图形**用（圆点、竖轨、进度、图标底）。
+   * 若要把它当**小字颜色**用，请改用 accentText（见下），否则在玻璃卡上只有 3.06~3.91 < 4.5。
+   */
   accentSolid: '#7C6AE0',
+  /**
+   * accentText —— 用**小字**呈现的强调色（卡片日期、强调标签等）。
+   * = accentSolid 压深到 78%；实测 白卡 6.27 / 玻璃卡 5.82 / 玻璃卡下层 4.55，全部达标 AA。
+   */
+  accentText: '#6153AF',
   accentSoft: 'rgba(124,106,224,0.12)',
+  /**
+   * 紫色渐变卡（血压 / 血糖）的两端 —— 由深到浅：from 左上、to 右下。
+   * ★ 2026-09-20 第四版（用户定稿方向）：**紫底 + 白字**，但紫要落在 design token 的量级
+   *   （原 `#5B4BC8 → #6A5AE2` 太深）。现取值 = `accentSolid #7C6AE0` 同色相下压两档
+   *   （×0.80 / ×0.96），也就是 App 主紫本身，不再另造一套紫。
+   *   ⚠️ 硬约束：小字用纯白要 ≥4.5，**渐变「最浅的那一端」决定生死** ——
+   *   最浅可用 = `#7766D7`（纯白 4.51）；再浅一档就是 `#7C6AE0`，只有 4.20（不达标）。
+   *   因此卡上文字一律用 `onGrad`（纯白），**不要用半透明白**（92% 白在浅端仅 4.02）。
+   */
+  gradCardFrom: '#6355B3',
+  gradCardTo: '#7766D7',
   stateCalm: '#6FCFB4',
   stateEnergy: '#9D8AF0',
   stateTense: '#E8A87C',
@@ -42,9 +62,19 @@ export const colors = {
   textWhite70: 'rgba(255,255,255,0.70)',
   textTitle: '#6C5647',
   textBody: '#4A4A5C',
-  textSub: '#8A8AA8',
-  textNavIdle: '#A6A3C2',
+  /**
+   * textSub —— 次级文字。★ 2026-09-20 按 WCAG 实算重新定值：
+   * 原 #8A8AA8 在任何底上都不达 4.5（白卡 3.34 / 玻璃卡 2.44 / 色晕卡 2.61），却在 69 个文件用了 382 处。
+   * 现值 #5F5F74 = 压深到 69%，是「最浅但仍全部达标」的解：白卡 6.20 / 玻璃卡 4.52~5.75 / 色晕卡 4.83~5.34。
+   * 层次感靠字号与字重区分，不要再往回调浅。
+   */
+  textSub: '#5F5F74',
+  /** tab 未选中标签：原 #A6A3C2 在胶囊底上仅 2.32 → 压深到 69%，实测 4.53 */
+  textNavIdle: '#737086',
   textNavOn: '#6C5FB5',
+  /** 指标涨跌（仅用于文字；配对 ↑/↓ 图标以保证不只靠颜色传达） */
+  trendUp: '#0A6F4D',
+  trendDown: '#B13232',
   textInk: '#1A1A1A',
   textInkSoft: '#4A4660',
   ringOnLight: 'rgba(157,138,240,0.55)',
@@ -90,6 +120,7 @@ export const colors = {
     scrimDark: 'rgba(0,0,0,0.42)',
     /** 白色半透明（进度/卡片/描边等） */
     white25: 'rgba(255,255,255,0.25)',
+
     white55: 'rgba(255,255,255,0.55)',
     white72: 'rgba(255,255,255,0.72)',
     white92: 'rgba(255,255,255,0.92)',
@@ -121,6 +152,13 @@ export const colors = {
     /** 播放角标：深色遮罩 + 半透明白 */
     playScrim: 'rgba(0,0,0,0.42)',
     playBadge: 'rgba(255,255,255,0.10)',
+    /**
+     * 紫色渐变卡（血压卡 / 血糖卡）上的文字。
+     * 该卡是**紫底白字**：阈值由渐变「最浅端」决定，纯白在两端 6.04 / 4.51（均 ≥4.5）。
+     * ⚠️ 只能用纯白：任何半透明白都会在浅端跌破 4.5（92% 白 → 4.02）。
+     * 文字层次靠**字号/字重**区分，不要靠降低不透明度。
+     */
+    onGrad: '#FFFFFF',
   } as const,
 } as const;
 
@@ -130,6 +168,12 @@ export const space = {
   screen: sp(6),
   card: sp(4),
   cardPad: sp(5),
+  /**
+   * 紧凑卡内边距（半宽卡 / 并排小卡 / 体检卡这类密度更高的卡）。
+   * ★ 卡片内边距只允许**两级**：外层卡 cardPad(20) 与紧凑卡 cardPadCompact(12)。
+   *   不要再出现 sp(2.5)=10、sp(2)=8 这类第三、第四种密度。
+   */
+  cardPadCompact: sp(3),
   xs: sp(2),
   sm: sp(3),
   md: sp(4),
@@ -137,7 +181,16 @@ export const space = {
   xl: sp(6),
 } as const;
 
-export const radius = { phone: 55, card: 28, md: 22, sm: 17, pill: 999 } as const;
+/**
+ * 圆角尺度（★ 2026-09-20 两轮收紧：28 → 18 → 14，用户评价「太圆」）。
+ * 保持「外层卡 > 控件 > 卡内分块」的递减比例（14 : 11 : 9 ≈ 原 28 : 22 : 17 的缩放），
+ * 避免出现内层比外层更圆：
+ *   card 14 → 外层卡（Card / GlassCard / 自绘卡片容器）
+ *   md   11 → 控件（按钮、次级卡）
+ *   sm    9 → 卡内分块、小色块
+ *   pill 999 → 胶囊（chip / tag / 圆形头像），不参与上面的递减关系
+ */
+export const radius = { phone: 55, card: 14, md: 11, sm: 9, pill: 999 } as const;
 
 const BASE_WIDTH = 390;
 const fontScale = Math.min(Math.max(SCREEN_WIDTH / BASE_WIDTH, 0.88), 1.22);
@@ -146,6 +199,8 @@ export const fs = (size: number): number => Math.round(size * fontScale * 10) / 
 export const fontSize = {
   h1: fs(36),
   h2: fs(22),
+  /** 卡片内的「指标大数字」（如血压 118 / 76）。介于 h2 与 h1 之间，避免用裸值 32。 */
+  stat: fs(32),
   card: fs(18),
   body: fs(15),
   sm: fs(13.5),
@@ -215,12 +270,51 @@ export const shadow = {
   },
 } as const;
 
+/**
+ * ★ 动效 token（2026-09-20 建立）——**所有 duration / easing 一律取自这里，不要再写裸值**。
+ * 依据：Material 3 motion token（easing + duration）、Apple HIG、以及 UI 动效上限 <300ms 的经验值。
+ * 建立原因：此前代码里散落 **27 种不同的裸 duration**（0/5/55/100…3400）与 9 种 Easing 组合，
+ * 这正是「交互不统一、不高级」的根源——每个组件各自拍一个数字。
+ *
+ * 时长四档（按元素大小与感知阈值，不是按手感拍）：
+ *   instant  100ms  开关、状态点、按压反馈（≈「立即响应」的临界）
+ *   quick    160ms  颜色/透明度、小位移、图标互换
+ *   base     220ms  默认：卡片入场、列表项、普通过渡
+ *   slow     320ms  需要被「看见」的过渡：大位移、局部展开
+ *   sheet    440ms  整屏面板 / 大表面（large element 300~500ms 区间）
+ *   sheetExit      ≈ sheet × 0.8，**离场要比进场快**（用户更不耐受「消失慢」）
+ *
+ * 缓动三类（按元素在该时刻的物理语义选，**不要默认用 inOut**）：
+ *   easeEnter     进场减速 decelerate（m3 emphasized decelerate）→ 元素出现/进入
+ *   easeExit      离场加速 accelerate（m3 emphasized accelerate）→ 元素消失/离开
+ *   easeStandard  屏内标准曲线（m3 standard）→ 已在屏上的元素移动/变色
+ */
 export const motion = {
-  dur: 220,
-  durS: 160,
-  durL: 440,
-  ease: Easing.bezier(0.22, 1, 0.36, 1),
+  instant: 100,
+  quick: 160,
+  base: 220,
+  slow: 320,
+  sheet: 440,
+  sheetExit: 350,
+  easeEnter: Easing.bezier(0.05, 0.7, 0.1, 1),
+  easeExit: Easing.bezier(0.3, 0, 0.8, 0.15),
+  easeStandard: Easing.bezier(0.2, 0, 0, 1),
+  /** 呼吸/环境类循环动画的周期（毫秒），不属于 UI 过渡 */
   breath: { dot: 3000, dotActive: 2600, halo: 4600, orbRotate: 120000 },
+} as const;
+
+/**
+ * ★ 按压反馈 token（2026-09-20 建立）——全 App 统一手感，替代此前 **9 种不同的 activeOpacity**。
+ * 按下即缩、松手回弹（走 transform，原生驱动）。原则：反馈必须在 `motion.instant` 内完成，
+ * 否则会被感知成「卡」而不是「弹」。
+ */
+export const press = {
+  /** 小控件（图标按钮、chip） */
+  scale: 0.96,
+  /** 卡片等大表面：缩放要更轻，否则像「整块在动」 */
+  scaleCard: 0.985,
+  /** 非缩放场景（列表行、链接）统一用的不透明度 */
+  opacity: 0.7,
 } as const;
 
 export const layout = {
@@ -270,6 +364,7 @@ export const theme = {
   weight,
   shadow,
   motion,
+  press,
   layout,
   glass,
   glassMorph,

@@ -47,9 +47,9 @@ export default function TodayTimelineCard({ title, dateLabel, items }: Props) {
                 <View style={[styles.dot, { backgroundColor: it.color }]} />
                 {!last && <View style={[styles.line, { backgroundColor: `${it.color}55` }]} />}
               </View>
-              {/* 中：时间胶囊 */}
+              {/* 中：时间胶囊 —— 底色保留状态色相，文字用深色（同色系文字压同色底必然低对比，实测仅 1.62~3.40） */}
               <View style={[styles.timePill, { backgroundColor: `${it.color}1F` }]}>
-                <Text style={[styles.timeText, { color: it.color }]} numberOfLines={1}>
+                <Text style={styles.timeText} numberOfLines={1}>
                   {it.time}
                 </Text>
               </View>
@@ -80,7 +80,8 @@ const styles = StyleSheet.create({
   },
   dateLabel: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.accentSolid,
+    /** accentSolid 作小字在玻璃卡上仅 3.06~3.91 → 用专门的 accentText（4.55~6.27） */
+    color: theme.colors.accentText,
     marginTop: theme.space.xs,
     fontWeight: theme.weight.medium,
   },
@@ -122,6 +123,8 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
+    /** 深色文字（而不是状态色本身）：chipText 在各状态色 12% 底上实测 4.58~6.15，全部达标 */
+    color: theme.colors.ui.chipText,
   },
   body: {
     flex: 1,

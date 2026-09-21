@@ -14,7 +14,6 @@ import { type CurveStatus } from '../lib/dailyStatus';
 import { MoonDot, type MoonStyle } from './CycleMoonPhase';
 import { PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface Props {
   /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 电量值展示，否则回退为默认心情 */
@@ -88,20 +87,22 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   useEffect(() => {
     const ease = Easing.inOut(Easing.ease);
 
-    // SVG 属性动画不能走 native driver
+    // ★ 呼吸光晕走**原生驱动**：把「改圆的半径」改成「缩放一个固定半径的圆」——
+    //   半径驱动的是 SVG 属性（只能 JS 线程），而 scale/opacity 是 View 样式（可原生驱动）。
+    //   原来是 useNativeDriver:false 的常驻循环，首页挂着就一直占 JS 线程，与滚动争资源。
     const haloLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(halo, {
           toValue: 1,
           duration: theme.motion.breath.halo / 2,
           easing: ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.timing(halo, {
           toValue: 0,
           duration: theme.motion.breath.halo / 2,
           easing: ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ])
     );
@@ -124,10 +125,13 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     };
   }, [halo, orbit]);
 
-  // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散
-  const glowR = halo.interpolate({
+  // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散。
+  // ★ 圆固定画在最大半径，用 scale 表达「呼吸」——映射与原实现等值：[ringR*0.45, ringR*1.6] → [0.28, 1]。
+  //   渐变是相对圆的包围盒定义的（r="50%"），所以缩放后视觉等价。
+  const GLOW_MAX_R = ringR * 1.6;
+  const glowScale = halo.interpolate({
     inputRange: [0, 1],
-    outputRange: [ringR * 0.45, ringR * 1.6],
+    outputRange: [(ringR * 0.45) / GLOW_MAX_R, 1],
   });
   const glowOpacity = halo.interpolate({
     inputRange: [0, 1],
@@ -164,27 +168,35 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
             <Stop offset="86%" stopColor={ringColor} stopOpacity="0.22" />
             <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
           </RadialGradient>
-          {/* 中央彩色呼吸光晕：跟随情绪色（key 强制按颜色重挂，避免渐变缓存），范围更大更弥散 */}
-          <RadialGradient key={ringColor} id="moodGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={ringColor} stopOpacity="0.86" />
-            <Stop offset="38%" stopColor={ringColor} stopOpacity="0.54" />
-            <Stop offset="70%" stopColor={ringColor} stopOpacity="0.16" />
-            <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
-          </RadialGradient>
         </Defs>
 
         <Circle cx={c} cy={c} r={svgSize / 2} fill="url(#aura)" />
-        {/* 中间弥散彩色呼吸光晕（仅颜色变化，不动文字） */}
-        <AnimatedCircle
-          cx={c}
-          cy={c}
-          r={glowR}
-          fill="url(#moodGlow)"
-          opacity={glowOpacity}
-        />
         {/* 四个状态点所在的环：跟随情绪色切换；无数据时统一紫色 */}
         <Circle cx={c} cy={c} r={ringR} stroke={ringColor} strokeWidth={2.8} fill="none" opacity={0.92} />
       </Svg>
+
+      {/* 中央弥散彩色呼吸光晕：独立图层，整层 scale/opacity → 可走原生驱动。
+          固定画在最大半径，靠 scale 呼吸；渐变 r="50%" 相对包围盒，缩放后视觉等价。
+          key 强制按颜色重挂，避免渐变缓存。 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          { opacity: glowOpacity, transform: [{ scale: glowScale }] },
+        ]}
+      >
+        <Svg width={svgSize} height={svgSize}>
+          <Defs>
+            <RadialGradient key={ringColor} id="moodGlow" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor={ringColor} stopOpacity="0.86" />
+              <Stop offset="38%" stopColor={ringColor} stopOpacity="0.54" />
+              <Stop offset="70%" stopColor={ringColor} stopOpacity="0.16" />
+              <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={c} cy={c} r={GLOW_MAX_R} fill="url(#moodGlow)" />
+        </Svg>
+      </Animated.View>
 
       {/* 轨道层：四个状态点像行星一样绕中心缓慢公转（中心文字不转） */}
       <Animated.View

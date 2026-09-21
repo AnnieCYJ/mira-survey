@@ -83,7 +83,7 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
 
   const Wrap: any = headerless ? View : Card;
   return (
-    <Wrap {...(headerless ? {} : { style: { padding: theme.sp(3) } })}>
+    <Wrap {...(headerless ? {} : { style: { padding: theme.space.cardPadCompact } })}>
       {!headerless && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>

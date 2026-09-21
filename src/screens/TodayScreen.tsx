@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground, Animated, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -241,8 +241,190 @@ function buildSmartAdvice(phase: string, statusIdx: number | null, asleep: boole
   return low ? entry.low : high ? entry.high : entry.ok;
 }
 
+// ─────────────────────────────────────────────────────────────
+// ★ 模块级组件：必须放在组件外部。
+//   反例（2026-09-20 修）：这些组件原先定义在 TodayScreen 内部，导致每次 setState
+//   都产生「新的组件类型」，React 会把整棵 SVG 子树卸载重建 —— 这是整屏卡顿的根因。
+//   新增图表/卡片一律写在模块作用域，并用 React.memo 包裹。
+// ─────────────────────────────────────────────────────────────
+// 通用 mini chart 尺寸
+const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
+
+// —— 情绪消耗：点状图 (24h × 5 严重度网格) + 横坐标 + 最新事件 pop ——
+const MiniStressDots = React.memo(function MiniStressDots({ events }: { events: any[] }) {
+  const C=24, R=5, cw=MW/C, rh=CHART_H/R;
+  const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
+  // 聚合到 (hour, severityBucket) 格子，取最大 severity
+  const grid: number[][] = Array.from({length:C},()=>Array(R).fill(0));
+  ev.forEach((e:any)=>{ const h=new Date(e.t).getHours(); const s=e.severity??3; const b=Math.min(R-1,Math.floor(s/2)); if(s>grid[h][b]) grid[h][b]=s; });
+  const dots:any[]=[];
+  for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++){
+    const s=grid[cc][r];
+    if(s>0){ const color=s>=5?'#E879F9':s>=3?'#F5A87C':'#F8C5A5'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
+  }
+  // 空态：淡色散点示意
+  const phDots:any[]=[];
+  if(dots.length===0){
+    const ph=[[2,3],[4,2],[6,3],[9,1],[11,3],[13,2],[15,4],[17,2],[19,3],[21,2]];
+    ph.forEach(([h,r],i)=>{ phDots.push(<Circle key={'ph'+i} cx={h*cw+cw/2} cy={r*rh+rh/2} r={3} fill="#E879F9" opacity={0.18} />); });
+  }
+  const popHour = ev.length>0 ? new Date(ev[ev.length-1].t).getHours() : new Date().getHours();
+  const popX = popHour*cw+cw/2;
+  const PopX = Math.max(18, Math.min(MW-36, popX-18));
+  const ticks=[0,6,12,18,24];
+  return (
+    <View style={{ width: MW, height: MH }}>
+      <Svg width={MW} height={MH}>
+        {/* 与情绪详情页点状图一致：无横向网格线 */}
+        {phDots}
+        {dots}
+        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*cw+cw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
+      </Svg>
+      {ev.length>0 ? (
+        <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(232,121,249,0.25)' }}>
+          <Text style={{ fontSize:10, color:'#E879F9', fontWeight:'700' }}>{ev.length} 次</Text>
+        </View>
+      ):null}
+    </View>
+  );
+});
+
+// —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
+const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { hourly: { hour: number; score: number }[] }) {
+  const N=24, scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
+  const max=Math.max(10,...scores), bw=MW/N-1;
+  const lastIdx = scores.map((v,i)=>({v,i})).filter(x=>x.v>0).slice(-1)[0]?.i ?? 0;
+  const popVal = scores[lastIdx];
+  const popX = lastIdx*(MW/N)+bw/2;
+  const PopX = Math.max(18, Math.min(MW-36, popX-14));
+  const ticks=[0,6,12,18,24];
+  return (
+    <View style={{ width: MW, height: MH }}>
+      <Svg width={MW} height={MH}>
+        {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
+      </Svg>
+      {popVal>0 ? (
+        <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(124,58,237,0.2)' }}>
+          <Text style={{ fontSize:10, color:'#7C3AED', fontWeight:'700' }}>{Math.round(popVal)}</Text>
+        </View>
+      ):null}
+    </View>
+  );
+});
+
+// —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
+const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps }: { weekSteps: { dayKey: string; steps: number; date: Date }[] }) {
+  const N=7, MON=['一','二','三','四','五','六','日'];
+  const series = weekSteps.slice(-7);
+  const steps = series.map(s=>s.steps);
+  const max = Math.max(1,...steps);
+  const pts = steps.map((v,i)=>({x:(i/(N-1))*(MW-8)+4, y:CHART_H-(v/max)*CHART_H*0.85-3}));
+  let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
+  const area = p+` L ${pts[N-1].x.toFixed(1)} ${CHART_H} L ${pts[0].x.toFixed(1)} ${CHART_H} Z`;
+  const last = pts[N-1];
+  const PopX = Math.max(18, Math.min(MW-48, last.x-20));
+  return (
+    <View style={{ width: MW, height: MH }}>
+      <Svg width={MW} height={MH}>
+        <Defs>
+          <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
+            <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
+          </SvgLinear>
+        </Defs>
+        <Path d={area} fill="url(#actFill2)" />
+        <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
+        {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CHART_H+AXIS_H-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
+      </Svg>
+      {steps[N-1]>0 ? (
+        <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
+          <Text style={{ fontSize:10, color:'#7EA6F8', fontWeight:'700' }}>{steps[N-1]}</Text>
+        </View>
+      ):null}
+    </View>
+  );
+});
+
+const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress }: any) {
+  // ★ 按压回弹：全 App 统一手感（theme.press）。缩放只动 transform → 原生驱动，不占 JS 线程。
+  //   原实现是 activeOpacity={0.92}（几乎看不出反馈，且全 App 有 9 种不同取值）。
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const pressTo = (v: number) =>
+    Animated.timing(pressScale, {
+      toValue: v,
+      duration: theme.motion.instant,
+      easing: theme.motion.easeStandard,
+      useNativeDriver: true,
+    }).start();
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => pressTo(theme.press.scaleCard)}
+      onPressOut={() => pressTo(1)}
+      accessibilityRole="button"
+      accessibilityLabel={`${title} ${value}${unit}`}
+      style={{ width: '100%' }}
+    >
+      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+    <GlassCard padded={false} style={{ height: 150 }}>
+      <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold }}>{title}</Text>
+            {trend ? (
+              <Text style={{ color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown), fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold }}>
+                {trend.dir === 'up' ? '↑ ' : trend.dir === 'down' ? '↓ ' : ''}{trend.label}
+              </Text>
+            ) : null}
+          </View>
+          <View style={{ paddingTop: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={{ color: theme.colors.textInk, fontSize: 44, fontWeight: theme.weight.bold, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.sm, marginLeft: 4 }}>{unit}</Text>
+            </View>
+            <Text style={{ color: 'rgba(120,110,160,0.6)', fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>
+          </View>
+        </View>
+        <View style={{ marginLeft: 4, alignItems: 'flex-end', justifyContent: 'flex-end' }}>{chartEl}</View>
+      </View>
+      <Icon name="chevronRight" size={18} color={theme.colors.textSub} style={{ position: 'absolute', top: 12, right: 12, zIndex: 3 }} />
+    </GlassCard>
+      </Animated.View>
+    </Pressable>
+  );
+});
+
+/**
+ * ★ 全天状态面板底部圆弧的「羽化层」（2026-09-21）。
+ * 目的：白面板与弧下紫雾之间原来是**几何硬切**（像素级突变），用户反馈「边缘过于清晰」。
+ * 做法：把同一条弧路径**多层下移 + 逐层降 alpha** 叠在白、紫之间，硬边被摊成一条 ~12pt 的过渡带，
+ *      形成「白 → 淡紫 → 主题紫」的自然弥散。
+ * 为什么不用 SVG filter（高斯模糊）：react-native-svg 的 Filter 平台支持/性能都不稳，多路径叠加零风险。
+ * 调参：层数（长度）、`dy` 步长（过渡带宽度）、`opacity` 区间（柔化强度）三处。
+ */
+const ARC_FEATHER = Array.from({ length: 6 }, (_, i) => ({
+  /** 越靠下（i 越小）下移越多、越淡 */
+  dy: theme.sp(0.5) * (6 - i),
+  opacity: 0.12 + (i / 5) * 0.66,
+}));
+
 export default function TodayScreen() {
   const { width } = useWindowDimensions();
+
+  // ─────────────────────────────────────────────────────────────
+  // ★ 滚动联动（2026-09-20 新增）。所有插值只驱动 opacity / transform → 走**原生驱动**，
+  //   滚动过程中 JS 线程不参与。强度就下面这几个数字，调整改这里即可：
+  //     头部：scrollY 0 → 110px 淡出 1 → 0，同时上移 0 → -14px（给出「离开」的动势）
+  //   顶部「化入」遮罩已经统一收进 ScreenContainer（所有页面共用），这里只需传白色覆盖默认的 bgTop。
+  //   注意：动效只跟「位置」有关，不跟时间，所以上下滑都成立、不消耗额外性能。
+  // ─────────────────────────────────────────────────────────────
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
   const [ring, setRing] = useState(() => RingBle.getState());
@@ -269,106 +451,74 @@ export default function TodayScreen() {
   const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
 
-  // 通用 mini chart 尺寸
-  const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
+  // ★ 三张消耗卡的涨跌 = 真实数据，且**同口径比较**（今天「至今」 vs 昨天「同一时刻」）。
+  //   为什么必须同口径：拿今天到 15:00 的累计值去比昨天的全天值，每天上午都会显示暴跌，
+  //   那是另一种形式的假数字。拿不到可比数据时整块隐藏，绝不回落到占位/硬编码。
+  //   方向用箭头、好坏用颜色（两重编码，色盲用户也能读）。
+  const trendCmp = (() => {
+    const nowD = new Date();
+    const nowMin = nowD.getHours() * 60 + nowD.getMinutes();
+    const nowHour = nowD.getHours();
+    const tMs = Date.now();
+    const yMs = tMs - 86400000;
 
-  // —— 情绪消耗：点状图 (24h × 5 严重度网格) + 横坐标 + 最新事件 pop ——
-  const MiniStressDots = ({ events }: { events: any[] }) => {
-    const C=24, R=5, cw=MW/C, rh=CHART_H/R;
-    const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
-    // 聚合到 (hour, severityBucket) 格子，取最大 severity
-    const grid: number[][] = Array.from({length:C},()=>Array(R).fill(0));
-    ev.forEach((e:any)=>{ const h=new Date(e.t).getHours(); const s=e.severity??3; const b=Math.min(R-1,Math.floor(s/2)); if(s>grid[h][b]) grid[h][b]=s; });
-    const dots:any[]=[];
-    for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++){
-      const s=grid[cc][r];
-      if(s>0){ const color=s>=5?'#E879F9':s>=3?'#F5A87C':'#F8C5A5'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
-    }
-    // 空态：淡色散点示意
-    const phDots:any[]=[];
-    if(dots.length===0){
-      const ph=[[2,3],[4,2],[6,3],[9,1],[11,3],[13,2],[15,4],[17,2],[19,3],[21,2]];
-      ph.forEach(([h,r],i)=>{ phDots.push(<Circle key={'ph'+i} cx={h*cw+cw/2} cy={r*rh+rh/2} r={3} fill="#E879F9" opacity={0.18} />); });
-    }
-    const popHour = ev.length>0 ? new Date(ev[ev.length-1].t).getHours() : new Date().getHours();
-    const popX = popHour*cw+cw/2;
-    const PopX = Math.max(18, Math.min(MW-36, popX-18));
-    const ticks=[0,6,12,18,24];
-    return (
-      <View style={{ width: MW, height: MH }}>
-        <Svg width={MW} height={MH}>
-          {/* 与情绪详情页点状图一致：无横向网格线 */}
-          {phDots}
-          {dots}
-          {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*cw+cw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
-        </Svg>
-        {ev.length>0 ? (
-          <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(232,121,249,0.25)' }}>
-            <Text style={{ fontSize:10, color:'#E879F9', fontWeight:'700' }}>{ev.length} 次</Text>
-          </View>
-        ):null}
-      </View>
-    );
-  };
+    // 情绪消耗：比较「到当前小时为止」的压力事件数
+    const evUpTo = (ms: number): number | null => {
+      try {
+        const r = computeStressReport(ms);
+        if (!r) return null;
+        return (r.events ?? []).filter((e: any) => Number.isFinite(e.hour) && e.hour <= nowHour).length;
+      } catch { return null; }
+    };
+    // 脑力消耗：比较「到当前小时为止」的小时负荷均值（至少 2 个有效小时才算，避免噪声）
+    const cogUpTo = (ms: number): number | null => {
+      try {
+        const hs = (computeCognitiveLoadReport(ms)?.hourly ?? [])
+          .filter((h: any) => Number.isFinite(h.hour) && h.hour <= nowHour);
+        if (hs.length < 2) return null;
+        return hs.reduce((a: number, h: any) => a + h.score, 0) / hs.length;
+      } catch { return null; }
+    };
+    // 运动消耗：步数采样可能是「当日累计快照」也可能是「每段增量」——
+    //   用昨天的全天总数当参照反推属于哪种（自校准），再取同一时刻的值。
+    const stepsUpTo = (dk: string, dayTotal: number | null): number | null => {
+      try {
+        const pts = (healthStore.getIntraday('steps' as any, dk) ?? [])
+          .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v));
+        if (pts.length === 0) return null;
+        const upToNow = pts.filter((p) => {
+          const d = new Date(p.t);
+          return d.getHours() * 60 + d.getMinutes() <= nowMin;
+        });
+        if (upToNow.length === 0) return null;
+        const mx = Math.max(...pts.map((p) => p.v));
+        const sum = pts.reduce((a, p) => a + p.v, 0);
+        // 与全天总数更接近的那个模型，就是这套采样真实的语义
+        const isCumulative = dayTotal == null ? true : Math.abs(mx - dayTotal) <= Math.abs(sum - dayTotal);
+        return isCumulative ? upToNow[upToNow.length - 1].v : upToNow.reduce((a, p) => a + p.v, 0);
+      } catch { return null; }
+    };
+    // 组装涨跌：|Δ|<3% 视为持平；昨天为 0/无数据 → 不给结论
+    const cmp = (today: number | null, yest: number | null, upIsGood: boolean) => {
+      if (today == null || yest == null || !Number.isFinite(today) || !Number.isFinite(yest) || yest <= 0) return null;
+      const pct = ((today - yest) / yest) * 100;
+      if (Math.abs(pct) < 3) return { dir: 'flat' as const, favorable: true, label: '持平' };
+      const dir = pct > 0 ? ('up' as const) : ('down' as const);
+      return { dir, favorable: dir === 'up' ? upIsGood : !upIsGood, label: `${pct > 0 ? '+' : ''}${Math.round(pct)}%` };
+    };
 
-  // —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
-  const MiniCognitiveBars = ({ hourly }: { hourly: { hour: number; score: number }[] }) => {
-    const N=24, scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
-    const max=Math.max(10,...scores), bw=MW/N-1;
-    const lastIdx = scores.map((v,i)=>({v,i})).filter(x=>x.v>0).slice(-1)[0]?.i ?? 0;
-    const popVal = scores[lastIdx];
-    const popX = lastIdx*(MW/N)+bw/2;
-    const PopX = Math.max(18, Math.min(MW-36, popX-14));
-    const ticks=[0,6,12,18,24];
-    return (
-      <View style={{ width: MW, height: MH }}>
-        <Svg width={MW} height={MH}>
-          {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
-          {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
-        </Svg>
-        {popVal>0 ? (
-          <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(124,58,237,0.2)' }}>
-            <Text style={{ fontSize:10, color:'#7C3AED', fontWeight:'700' }}>{Math.round(popVal)}</Text>
-          </View>
-        ):null}
-      </View>
-    );
-  };
-
-  // —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
-  const MiniActivityCurve = ({ weekSteps }: { weekSteps: { dayKey: string; steps: number; date: Date }[] }) => {
-    const N=7, MON=['一','二','三','四','五','六','日'];
-    const series = weekSteps.slice(-7);
-    const steps = series.map(s=>s.steps);
-    const max = Math.max(1,...steps);
-    const pts = steps.map((v,i)=>({x:(i/(N-1))*(MW-8)+4, y:CHART_H-(v/max)*CHART_H*0.85-3}));
-    let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-    for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
-    const area = p+` L ${pts[N-1].x.toFixed(1)} ${CHART_H} L ${pts[0].x.toFixed(1)} ${CHART_H} Z`;
-    const last = pts[N-1];
-    const PopX = Math.max(18, Math.min(MW-48, last.x-20));
-    return (
-      <View style={{ width: MW, height: MH }}>
-        <Svg width={MW} height={MH}>
-          <Defs>
-            <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
-              <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
-            </SvgLinear>
-          </Defs>
-          <Path d={area} fill="url(#actFill2)" />
-          <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
-          {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CHART_H+AXIS_H-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
-        </Svg>
-        {steps[N-1]>0 ? (
-          <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
-            <Text style={{ fontSize:10, color:'#7EA6F8', fontWeight:'700' }}>{steps[N-1]}</Text>
-          </View>
-        ):null}
-      </View>
-    );
-  };
+    const dkT = dayKey(tMs);
+    const dkY = dayKey(yMs);
+    return {
+      emotion: cmp(evUpTo(tMs), evUpTo(yMs), false),      // 情绪波动变多 = 不利
+      cognitive: cmp(cogUpTo(tMs), cogUpTo(yMs), false),  // 脑力负荷变高 = 不利
+      activity: cmp(
+        stepsUpTo(dkT, ring?.stepDaily?.[dkT]?.steps ?? null),
+        stepsUpTo(dkY, ring?.stepDaily?.[dkY]?.steps ?? null),
+        true,                                             // 步数变多 = 有利
+      ),
+    };
+  })();
 
   const stressReport = (() => { try { return computeStressReport(); } catch { return null; } })();
   const cogReport = (() => { try { return computeCognitiveLoadReport(); } catch { return null; } })();
@@ -385,30 +535,6 @@ export default function TodayScreen() {
     return out;
   })();
 
-  const BigStatCard = ({ title, value, unit, sub, trendUp, trendPct, chartEl, gradientColors, onPress }: any) => (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={{ width: '100%' }}>
-      <GlassCard padded={false} style={{ height: 150 }}>
-        <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold }}>{title}</Text>
-              <Text style={{ color: trendUp ? '#10B981' : '#EF4444', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold }}>{trendUp?'↑':'↓'} {trendPct}</Text>
-            </View>
-            <View style={{ paddingTop: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                <Text style={{ color: theme.colors.textInk, fontSize: 44, fontWeight: theme.weight.bold, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.sm, marginLeft: 4 }}>{unit}</Text>
-              </View>
-              <Text style={{ color: 'rgba(120,110,160,0.6)', fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>
-            </View>
-          </View>
-          <View style={{ marginLeft: 4, alignItems: 'flex-end', justifyContent: 'flex-end' }}>{chartEl}</View>
-        </View>
-        <Icon name="chevronRight" size={18} color={theme.colors.textSub} style={{ position: 'absolute', top: 12, right: 12, zIndex: 3 }} />
-      </GlassCard>
-    </TouchableOpacity>
-  );
 
   // ★ 节流订阅：BLE 状态推送（回填期约 ≥500ms 一次）会带动整屏重渲染，而本屏 render 里还要跑
   //   computeStressReport/computeCognitiveLoadReport/皮质醇分析。用 rAF 把同一帧内的多次推送合并成
@@ -430,6 +556,14 @@ export default function TodayScreen() {
   }, []);
   const cardWidth =
     Math.min(width, theme.layout.maxWidth) - theme.space.screen * 2 - theme.space.cardPad * 2;
+  // 全天状态面板是「全宽」的（左右不留边），宽度 = 屏宽（桌面上限 maxWidth）
+  const panelW = Math.min(width, theme.layout.maxWidth);
+  // 面板底部圆弧高度（方案 A：两端上扬、中间最低）
+  const panelArcH = theme.sp(9);
+  // 圆弧路径：控制点 y = 1.335×arcH 时，曲线最低点正好落在 arcH
+  // 弧下弥散紫的纵向长度（渐变由此高度从紫收到透明）
+  const panelUnderH = theme.sp(50);
+  const panelArcD = `M0,0 H${panelW} C${(panelW * 0.77).toFixed(1)},${(panelArcH * 1.335).toFixed(1)} ${(panelW * 0.23).toFixed(1)},${(panelArcH * 1.335).toFixed(1)} 0,0 Z`;
 
   // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
   const status = ring.curveStatus;
@@ -609,8 +743,10 @@ export default function TodayScreen() {
         locations={[0, 0.42, 0.72, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer>
-        <View style={styles.head}>
+      <ScreenContainer scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+        <Animated.View
+          style={[styles.head, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}
+        >
           <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
             <View style={styles.avatar}>
               <Text style={styles.avatarLetter}>K</Text>
@@ -618,33 +754,82 @@ export default function TodayScreen() {
             <Text style={styles.name}>Kristina</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Today</Text>
+        </Animated.View>
+
+        {/* ─────────────────────────────────────────────────────────────
+            ★ 全天状态面板（2026-09-21）：圆环 + 全天状态趋势 = **同一块全宽白面**。
+            · 上/左/右不留边界：负 margin 抵消 ScreenContainer 的 24pt 内边距实现全宽铺满，
+              且与页面上半部分的纯白底同色 → 接缝不可见，读起来是「一个整体、同一份数据」。
+            · 只在最下方用一段**向上圆弧**收边（两端上扬、中间最低），呼应圆环的圆形。
+            · 无标题文字（原来也没有）；箭头改成玻璃感小圆按钮，放在趋势图右侧，不突兀。
+            ───────────────────────────────────────────────────────────── */}
+        <View style={styles.statusPanel}>
+          <View style={styles.energyWrap}>
+            <View style={styles.energyBallCol}>
+              <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
+            </View>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusNarr}>{narrative}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
+            {/* 玻璃小圆改为**绝对定位浮在图上** → 趋势图因此占满整宽、左右真正居中
+                （原来右侧留出 44pt 给按钮，会把图整体压左） */}
+            <View style={styles.trendWrap}>
+              <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
+                {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
+              </View>
+              <View style={styles.trendChevBtn} pointerEvents="none">
+                <Icon name="chevronRight" size={theme.fontSize.body} color={theme.colors.ui.chipText} />
+              </View>
+            </View>
+            {chartW > 0 ? <TrendAxis width={chartW} /> : null}
+            <View style={styles.legend}>
+              {MOODS.map((m) => (
+                <LegendDot key={m.key} color={m.color} label={m.label} />
+              ))}
+            </View>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.energyWrap}>
-          <View style={styles.energyBallCol}>
-            <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
-          </View>
-          <View style={styles.statusPill}>
-            <Text style={styles.statusNarr}>{narrative}</Text>
-          </View>
-        </View>
+        {/* 面板底部「向上圆弧」收边：独立一层全宽 SVG。
+            曲线 M(0,0)→H(W,0)→C 回到 (0,0)，控制点 y = 1.335×arcH 时最低点正好落在 arcH。
 
-        <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
-          <Card style={styles.trendCard}>
-          <View style={styles.cardChevronRow}>
-            <Icon name="chevronRight" size={18} color={theme.colors.textSub} />
-          </View>
-          <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
-            {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
-          </View>
-          {chartW > 0 ? <TrendAxis width={chartW} /> : null}
-          <View style={styles.legend}>
-            {MOODS.map((m) => (
-              <LegendDot key={m.key} color={m.color} label={m.label} />
-            ))}
-          </View>
-          </Card>
-        </TouchableOpacity>
+            ★ 2026-09-21 修正三点（用户反馈）：
+            ① 弧下的弥散紫改用 **页面本来的主题紫 `colors.bgTop`**（不再是偏蓝的 periwinkle）——
+               它与 App 根渐变顶部同源，所以弧下的紫和页面底色是同一支紫，衔接自然。
+            ② **去掉圆弧的「紫色柔边」两层描边**：不再有那一圈人工描边。
+            ③ **弧线边缘羽化**（下同）：白与紫之间不再是几何硬切，用 `ARC_FEATHER` 多层白弧摊成过渡带。 */}
+        <Svg
+          width={panelW}
+          height={panelArcH + panelUnderH}
+          style={[styles.statusPanelArc, { marginBottom: theme.space.lg - panelUnderH }]}
+        >
+          <Defs>
+            {/* ★ 弧下弥散紫：竖渐变由主题紫收到全透明 → 视觉上「紫由上而下弥散开」。
+                它的高度不计入布局（下方用负 margin 抵掉），所以下面的卡片会浮在这层紫雾上。 */}
+            <SvgLinear id="panelUnderGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor={theme.colors.bgTop} stopOpacity={1} />
+              <Stop offset="18%" stopColor={theme.colors.bgTop} stopOpacity={0.88} />
+              <Stop offset="45%" stopColor={theme.colors.bgTop} stopOpacity={0.4} />
+              <Stop offset="100%" stopColor={theme.colors.bgTop} stopOpacity={0} />
+            </SvgLinear>
+          </Defs>
+          <Rect x={0} y={0} width={panelW} height={panelArcH + panelUnderH} fill="url(#panelUnderGrad)" />
+          {/* ★ 羽化层（由下往上、由淡到浓）：把「白 ↔ 紫雾」的硬边摊成一条柔和过渡带 */}
+          {ARC_FEATHER.map((f, i) => (
+            <Path
+              key={i}
+              d={panelArcD}
+              fill={theme.colors.cardBg}
+              opacity={f.opacity}
+              transform={`translate(0, ${f.dy})`}
+            />
+          ))}
+          {/* 卡本体白弧（最后画，保证面板本体是纯白、不被羽化层影响） */}
+          <Path d={panelArcD} fill={theme.colors.cardBg} />
+        </Svg>
 
         {/* ★ 新增「全天恢复」卡：上半睡眠恢复 + 皮质醇峰值，下半皮质醇全天趋势（渐变卡）。
             放在「全天状态趋势」正下方；原有卡片（身体恢复 / 三个消耗小卡）保持不变。 */}
@@ -654,9 +839,9 @@ export default function TodayScreen() {
         <View style={{ height: theme.space.lg }} />
 
         <View style={{ flexDirection: 'column', gap: theme.space.md }}>
-          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trendUp={true} trendPct="+5.2%" chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
-          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trendUp={true} trendPct="+3.1%" chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trendUp={true} trendPct="+12%" chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
+          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
+          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
+          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
         </View>
 
         <View style={styles.adviceWrap}>
@@ -743,10 +928,41 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.55,
     color: theme.colors.textSub,
-    textAlign: 'left',
+    // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
+    textAlign: 'center',
   },
-  trendCard: { marginTop: theme.space.md, marginBottom: theme.space.lg },
-  cardChevronRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  // ★ 全天状态面板：全宽白面（负 margin 抵消 ScreenContainer 的 24pt 内边距）
+  statusPanel: {
+    backgroundColor: theme.colors.cardBg,
+    marginHorizontal: -theme.space.screen,
+    paddingHorizontal: theme.space.screen,
+  },
+  // marginBottom 补回原来 trendCard 的 marginBottom(space.lg)：否则下一张「全天恢复」卡会贴着圆弧
+  statusPanelArc: {
+    marginHorizontal: -theme.space.screen,
+    marginTop: -1,
+  },
+  trendWrap: { position: 'relative', marginTop: theme.space.sm },
+  trendChevBtn: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    marginTop: -theme.sp(4),
+    width: theme.sp(8),
+    height: theme.sp(8),
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 玻璃感：沿用 App 的 glassMorph 语言（半透明白 + 白色高光描边 + 柔紫投影）
+    backgroundColor: theme.colors.ui.glassBg,
+    borderWidth: 1,
+    borderColor: theme.colors.ui.glassBorder,
+    shadowColor: theme.colors.ui.glassShadow,
+    shadowOffset: { width: 0, height: theme.sp(0.5) },
+    shadowOpacity: 1,
+    shadowRadius: theme.sp(2),
+    elevation: 2,
+  },
 
   energyCol: {
     flexDirection: 'row',
@@ -808,7 +1024,9 @@ const styles = StyleSheet.create({
   legend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: theme.space.sm,
+    // 收紧：让底部圆弧离图表更近（原 12）
+    marginTop: theme.space.xs,
+    marginBottom: theme.space.sm,
     gap: theme.space.md,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center' },

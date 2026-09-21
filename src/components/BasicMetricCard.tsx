@@ -139,7 +139,7 @@ export default function BasicMetricCard({
   const [measuring, setMeasuring] = useState(false);
   const [lastMeasured, setLastMeasured] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const h = theme.fs(76);
+  const h = theme.fs(84);
   const gid = `bm_${metric.key}`;
   // 今日窗口内的实际最大/最小值，作为迷你趋势图的 Y 向参照（不画整条标尺，避免拥挤）
   const yStats = useMemo(() => {
@@ -203,18 +203,18 @@ export default function BasicMetricCard({
     })();
     return (
       <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
-        <Card style={{ padding: theme.sp(3) }}>
+        <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
               标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: theme.sp(1) }}>
               {metric.icon && <Icon name={metric.icon} size={theme.fontSize.body + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />}
-              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, color: theme.colors.textTitle, flexShrink: 1 }}>{metric.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle, flexShrink: 1 }}>{metric.name}</Text>
             </View>
             <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{formatRelativeTime(measureTime)}</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.textInk }}>{value}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textInk }}>{value}</Text>
             <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
           </View>
           {showTrend && (

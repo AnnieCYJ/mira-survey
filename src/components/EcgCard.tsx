@@ -97,7 +97,7 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
             <Path d={miniWaveform(latest.waveform)} fill="none" stroke="url(#ecgMini)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
         ) : (
-          <Text style={{ fontSize: 12, color: theme.colors.textSub }}>点击查看历史测量记录</Text>
+          <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub }}>点击查看历史测量记录</Text>
         )}
       </TouchableOpacity>
 
@@ -109,10 +109,10 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
             ['HRV', `${Math.round(latest.aveHrv)}`, 'ms'],
             ['呼吸', `${Math.round(latest.aveResRate)}`, '次/分'],
           ].map(([k, v, u]) => (
-            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: theme.radius.sm, paddingVertical: 6 }}>
-              <Text style={{ fontSize: 11, color: theme.colors.textSub }}>{k}</Text>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: theme.colors.textTitle }}>{v}</Text>
-              <Text style={{ fontSize: 10, color: theme.colors.textSub }}>{u}</Text>
+            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.ui.white55, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{k}</Text>
+              <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>{v}</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{u}</Text>
             </View>
           ))}
         </View>
@@ -152,17 +152,17 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: 14,
     marginBottom: 12,
   },
-  title: { fontSize: 15, fontWeight: '600', color: theme.colors.textTitle },
-  time: { fontSize: 12, color: theme.colors.textSub },
+  title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   waveBox: {
     height: 40,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: theme.colors.ui.white55,
     borderRadius: theme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -185,18 +185,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
+  btnLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
   progressTrack: {
     marginTop: 8,
     width: '100%',
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 2,
+    backgroundColor: theme.colors.ui.white25,
+    borderRadius: theme.sp(0.5),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 2,
+    backgroundColor: theme.colors.textWhite,
+    borderRadius: theme.sp(0.5),
   },
 });

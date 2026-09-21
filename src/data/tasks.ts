@@ -1,13 +1,15 @@
 import { theme } from '../theme/theme';
 import type { IconName } from '../components/Icon';
 
-export type TaskType = 0 | 1 | 2 | 3;
+export type TaskType = 0 | 1 | 2 | 3 | 4 | 5;
 
 export const TASK_COLORS: string[] = [
-  theme.colors.accent1,
-  theme.colors.accent2,
-  theme.colors.stateCalm,
-  theme.colors.stateTense,
+  theme.colors.accent1,       // 0 呼吸冥想
+  theme.colors.accent2,       // 1 认知提升
+  theme.colors.stateCalm,     // 2 专注力提升
+  theme.colors.stateTense,    // 3 知识学习
+  '#F59E6B',                  // 4 吃得好 暖橙
+  '#22C55E',                  // 5 运动 嫩绿
 ];
 
 export const TASK_ICONS: Record<TaskType, IconName> = {
@@ -15,9 +17,21 @@ export const TASK_ICONS: Record<TaskType, IconName> = {
   1: 'mind',
   2: 'focus',
   3: 'learn',
+  4: 'food',
+  5: 'run',
 };
 
-export const TASK_LABELS = ['呼吸冥想', '认知提升', '专注力提升', '知识学习'];
+export const TASK_LABELS = ['呼吸冥想', '认知提升', '专注力提升', '知识学习', '吃得好', '运动'];
+
+/** 每个习惯类型的日历事件元信息（emoji + 短名 + 默认时间） */
+export const TASK_EVENTS: Record<TaskType, { emoji: string; short: string; time: string }> = {
+  0: { emoji: '🧘', short: '冥想',   time: '07:30' },
+  1: { emoji: '🧠', short: '认知',   time: '09:00' },
+  2: { emoji: '🎯', short: '专注',   time: '14:00' },
+  3: { emoji: '📖', short: '学习',   time: '20:00' },
+  4: { emoji: '🍱', short: '吃得好', time: '12:30' },
+  5: { emoji: '🚴', short: '运动',   time: '18:00' },
+};
 
 export interface TaskItem {
   id: string;
@@ -57,14 +71,14 @@ export const INITIAL_TASKS: Record<number, TaskType[]> = {
   9: [2],
   11: [0],
   12: [1],
-  13: [0, 2, 3],
+  13: [0, 2, 3, 4],
   15: [1],
   17: [0],
   18: [2],
-  19: [0, 1],
+  19: [0, 1, 5],
   21: [3],
   22: [0],
-  24: [1, 2],
+  24: [1, 2, 4, 5],
   25: [0],
   26: [3],
   27: [0],

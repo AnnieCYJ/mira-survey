@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -30,6 +30,11 @@ const RECENT: ListItem[] = [
 ];
 
 export default function MeditationScreen() {
+  // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
+
   const { tools, completeTask } = useAppState();
   type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
   const navigation = useNavigation<NavProp>();
@@ -43,8 +48,10 @@ export default function MeditationScreen() {
   );
 
   return (
-    <ScreenContainer compactTop>
-      <Text style={styles.title}>Tools</Text>
+    <ScreenContainer compactTop scrollY={scrollY}>
+      <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
+        <Text style={styles.title}>Tools</Text>
+      </Animated.View>
 
       <TaskDeck tools={tools} onComplete={handleComplete} />
 

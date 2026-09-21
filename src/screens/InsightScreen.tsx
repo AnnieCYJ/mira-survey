@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -101,6 +101,10 @@ function splitColumnsBalanced<T>(items: T[], estH: (it: T) => number): [T[], T[]
 }
 
 export default function InsightScreen() {
+  // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const navigation = useNavigation<any>();
   const [chatVisible, setChatVisible] = useState(false);
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
@@ -321,9 +325,11 @@ export default function InsightScreen() {
 
   return (
     <>
-    <ScreenContainer compactTop>
+    <ScreenContainer compactTop scrollY={scrollY}>
       <View style={styles.stack}>
-        <Text style={styles.title}>Insights</Text>
+        <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
+          <Text style={styles.title}>Insights</Text>
+        </Animated.View>
 
         <InsightBanner
           onMore={() => openChat('帮我详细分析今天的状态')}
@@ -385,7 +391,7 @@ export default function InsightScreen() {
                 <View style={{ flex: 1, alignSelf: 'stretch' }}>
                   <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('BpDetail')}>
                     <LinearGradient
-                      colors={['#6C5CE7', '#A29BFE']}
+                      colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={{ padding: theme.sp(2.5), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
@@ -397,7 +403,7 @@ export default function InsightScreen() {
                 {/* 心电图（大卡，白底，模仿血液成分） */}
                 <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
                   <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('EcgDetail')}>
-                    <Card style={{ padding: theme.sp(2.5), flex: 1 }}>
+                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
                       <EcgCard ring={ring} onPress={() => {}} compactMode />
                     </Card>
                   </TouchableOpacity>
@@ -492,7 +498,7 @@ export default function InsightScreen() {
                       return (
                         <TouchableOpacity key={m.key} activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}>
                           <LinearGradient
-                            colors={['#6C5CE7', '#A29BFE']}
+                            colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
@@ -500,15 +506,15 @@ export default function InsightScreen() {
                             {/* header：icon + 名字 / 更新时间 */}
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Icon name={m.icon ?? 'activity'} size={theme.fontSize.card + 2} color="white" style={{ marginRight: theme.sp(1) }} />
-                              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: 'white' }}>{m.name}</Text>
+                              <Icon name={m.icon ?? 'activity'} size={theme.fontSize.card + 2} color={theme.colors.ui.onGrad} style={{ marginRight: theme.sp(1) }} />
+                              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{m.name}</Text>
                             </View>
-                            <Text style={{ fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.75)' }}>{formatRelativeTime(measureTime)}</Text>
+                            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.ui.onGrad }}>{formatRelativeTime(measureTime)}</Text>
                           </View>
                           {/* 数值 + 单位 */}
                           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-                            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: 'white' }}>{formatValue(real)}</Text>
-                            <Text style={{ fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.85)', marginLeft: theme.sp(1) }}>{m.unit}</Text>
+                            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{formatValue(real)}</Text>
+                            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.ui.onGrad, marginLeft: theme.sp(1) }}>{m.unit}</Text>
                           </View>
                           {/* 趋势图 */}
                           <Svg width="100%" height={theme.fs(56)} viewBox="0 0 320 56" preserveAspectRatio="none">
@@ -537,7 +543,7 @@ export default function InsightScreen() {
                     </View>
                     {/* 血液成分卡片（大） */}
                     <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
-                      <Card style={{ padding: theme.sp(2.5), flex: 1 }}>
+                      <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
                         <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
                       </Card>
                     </View>
@@ -731,10 +737,10 @@ const styles = StyleSheet.create({
   },
   chipRow: { flexGrow: 0, marginLeft: -theme.space.screen },
   chipContent: { paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1) },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), alignItems: 'stretch' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2.5), alignItems: 'stretch' },
   // 双列瀑布流：两列等宽、各自竖向堆叠（配 gap），卡片高度不一 → 错落有致
-  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1.5) },
-  masonryCol: { flex: 1, gap: theme.sp(1.5) },
+  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(2.5) },
+  masonryCol: { flex: 1, gap: theme.sp(2.5) },
   emptyNote: {
     fontSize: theme.fontSize.micro,
     lineHeight: theme.fontSize.micro * 1.7,
@@ -809,7 +815,7 @@ const styles = StyleSheet.create({
   },
   segBtnOn: { backgroundColor: theme.colors.accentSolid },
   segText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
-  segTextOn: { color: '#FFFFFF' },
+  segTextOn: { color: theme.colors.textWhite },
   profSave: {
     marginTop: theme.space.xs,
     backgroundColor: theme.colors.accentSolid,
@@ -817,7 +823,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(3),
     alignItems: 'center',
   },
-  profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
+  profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
   profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.success, textAlign: 'center' },
   ecgChart: {
     backgroundColor: theme.colors.ui.offTrack,
@@ -829,7 +835,7 @@ const styles = StyleSheet.create({
   ecgCell: {
     flexBasis: '30%',
     flexGrow: 1,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: theme.colors.ui.white55,
     borderRadius: theme.radius.sm,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
