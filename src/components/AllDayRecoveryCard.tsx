@@ -63,7 +63,7 @@ const PAD_B = 20;          // 底部留白：给时间轴
 const CARD_BG_STOPS: { off: string; color: string; opacity: number }[] = [
   { off: '0%',   color: '#DCE4EC', opacity: 1 },   // 顶：冷灰蓝（天空雾）
   { off: '25%',  color: '#E8E4DC', opacity: 1 },   // 中冷：灰米过渡
-  { off: '55%',  color: '#F5EEDD', opacity: 1 },   // 中暖：奶油米色（最暖处）
+  { off: '55%',  color: theme.colors.ui.hazeWarm, opacity: 1 }, // 中暖：奶油米色（最暖处；与面板下缘弥散同源）
   { off: '80%',  color: '#ECE4FB', opacity: 0.9 },  // 转紫：淡紫雾
   { off: '100%', color: '#D4C8F2', opacity: 0.85 }, // 底：柔紫
 ];
@@ -366,8 +366,10 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
 const styles = StyleSheet.create({
   wrap: {
     borderRadius: theme.radius.card,
+    borderBottomLeftRadius: theme.radius.card,
+    borderBottomRightRadius: theme.radius.card,
     overflow: 'hidden',
-    marginTop: theme.space.md,
+    marginTop: 0,
   },
   inner: { padding: theme.space.cardPad },
   headRow: {

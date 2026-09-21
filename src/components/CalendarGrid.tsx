@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Image } from 'react-native';
 import { theme } from '../theme/theme';
 import { TASK_EVENTS, TODAY_DAY, type TaskType } from '../data/tasks';
+
+const puzzleImg = require('../../assets/calendar-puzzle.jpg');
 
 interface Props {
   year: number;
@@ -16,23 +18,18 @@ const GOLD = '#F5A623';
 const CELL_BG = '#EEEEEF';
 const TODAY_BG = '#FFF3CD';
 const GAP = theme.sp(1.5);
+const COLS = 7;
+const ROWS = 6;
 
-/**
- * 所有格子（有日期/空白）必须用同一个 baseCellStyle，
- * 否则 RN flex:1 + aspectRatio 在不同 style 对象上计算结果可能微差 → 出现大格子。
- */
 const baseCellStyle = {
   flex: 1 as const,
   aspectRatio: 0.55,
   marginRight: GAP,
-  paddingHorizontal: theme.sp(1.5),
-  paddingVertical: theme.sp(1),
-  backgroundColor: CELL_BG,
   borderRadius: theme.radius.sm,
 };
 
 export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }: Props) {
-  const { rows } = useMemo(() => {
+  const { rows, cellInfos } = useMemo(() => {
     const first = new Date(year, month, 1).getDay();
     const lead = (first + 6) % 7;
     const total = new Date(year, month + 1, 0).getDate();
@@ -41,34 +38,109 @@ export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }
     for (let d = 1; d <= total; d++) cells.push(d);
     const filled = Math.ceil(cells.length / 7) * 7;
     while (cells.length < filled) cells.push(-1);
+
+    const infoList: { day: number; flipped: boolean }[] = cells.map(day => ({
+      day,
+      flipped: day > 0 && (tasks[day]?.length ?? 0) > 0,
+    }));
+
     const rowList: number[][] = [];
     for (let i = 0; i < cells.length; i += 7) rowList.push(cells.slice(i, i + 7));
-    return { rows: rowList };
-  }, [year, month]);
+    return { rows: rowList, cellInfos: infoList };
+  }, [year, month, tasks]);
 
-  const renderCell = (day: number, isLast: boolean) => {
-    if (day < 0) {
-      return <View key={`e${day}-${Math.random()}`} style={[baseCellStyle, isLast && { marginRight: 0 }]} />;
-    }
+  // 42 个 cell 的 flip 状态：isFlippedRef（布尔）+ flipRefs（动画值）
+  const isFlippedRef = useRef<boolean[]>([]);
+  const flipRefs = useRef<Animated.Value[]>([]);
+  if (flipRefs.current.length !== 42) {
+    isFlippedRef.current = cellInfos.map(i => i.flipped);
+    flipRefs.current = cellInfos.map(i => new Animated.Value(i.flipped ? 1 : 0));
+  }
+
+  // tasks 变化 → 同步（无动画）
+  useEffect(() => {
+    cellInfos.forEach((info, idx) => {
+      const target = info.flipped;
+      isFlippedRef.current[idx] = target;
+      flipRefs.current[idx].setValue(target ? 1 : 0);
+    });
+  }, [cellInfos]);
+
+  const [cellSize, setCellSize] = useState({ w: 40, h: 73 });
+  const onGridLayout = (e: any) => {
+    const gridW = e.nativeEvent.layout.width;
+    const cellW = (gridW - GAP * (COLS - 1)) / COLS;
+    const cellH = cellW / 0.55;
+    setCellSize({ w: cellW, h: cellH });
+  };
+
+  const toggleFlip = (idx: number) => {
+    const v = flipRefs.current[idx];
+    const next = !isFlippedRef.current[idx];
+    isFlippedRef.current[idx] = next;
+    Animated.timing(v, {
+      toValue: next ? 1 : 0,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const renderCell = (day: number, rowIdx: number, colIdx: number, isLast: boolean) => {
+    const idx = rowIdx * 7 + colIdx;
+    const isEmpty = day < 0;
     const isToday = day === TODAY_DAY;
     const taskTypes = (tasks[day] ?? []).slice(0, 2);
+
+    const flip = flipRefs.current[idx];
+    const frontRot = flip.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+    const backRot = flip.interpolate({ inputRange: [0, 1], outputRange: ['-180deg', '0deg'] });
+
+    const puzzleImgW = cellSize.w * COLS;
+    const puzzleImgH = cellSize.h * ROWS;
+
     return (
       <TouchableOpacity
-        key={day}
-        ref={(node) => { if (dayRefs && node) dayRefs.current[day] = node; }}
-        style={[baseCellStyle, isToday && styles.cellToday, isLast && { marginRight: 0 }]}
-        onPress={() => onDayPress?.(day)}
-        disabled={!onDayPress}
         activeOpacity={0.8}
+        disabled={isEmpty}
+        style={[baseCellStyle, isLast && { marginRight: 0 }, styles.cellOuter]}
+        onPress={() => { toggleFlip(idx); onDayPress?.(day); }}
       >
-        <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day}</Text>
-        {taskTypes.length > 0 ? (
-          <View style={styles.events}>
-            {taskTypes.map((t, i) => (
-              <Text key={i} style={styles.evEmoji}>{TASK_EVENTS[t as TaskType].emoji}</Text>
-            ))}
-          </View>
-        ) : null}
+        <Animated.View
+          style={[
+            styles.face, styles.front,
+            { transform: [{ rotateX: frontRot }] },
+            !isEmpty && isToday && { backgroundColor: TODAY_BG },
+          ]}
+        >
+          {!isEmpty && (
+            <>
+              <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day}</Text>
+              {taskTypes.length > 0 ? (
+                <View style={styles.events}>
+                  {taskTypes.map((t, i) => (
+                    <Text key={i} style={styles.evEmoji}>{TASK_EVENTS[t as TaskType].emoji}</Text>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          )}
+        </Animated.View>
+
+        <Animated.View
+          style={[styles.face, styles.back, { transform: [{ rotateX: backRot }] }]}
+        >
+          <Image
+            source={puzzleImg}
+            style={{
+              position: 'absolute',
+              width: puzzleImgW,
+              height: puzzleImgH,
+              left: -colIdx * cellSize.w,
+              top: -rowIdx * cellSize.h,
+              resizeMode: 'cover',
+            }}
+          />
+        </Animated.View>
       </TouchableOpacity>
     );
   };
@@ -82,11 +154,13 @@ export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }
           return <Text key={w} style={[styles.weekLabel, isWE && styles.weekLabelWE, isLast && { marginRight: 0 }]}>{w}</Text>;
         })}
       </View>
-      {rows.map((row, ri) => (
-        <View key={ri} style={styles.row}>
-          {row.map((day, ci) => renderCell(day, ci === 6))}
-        </View>
-      ))}
+      <View style={styles.grid} onLayout={onGridLayout}>
+        {rows.map((row, ri) => (
+          <View key={ri} style={styles.row}>
+            {row.map((day, ci) => renderCell(day, ri, ci, ci === 6))}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -100,8 +174,21 @@ const styles = StyleSheet.create({
     color: theme.colors.textBody, paddingVertical: theme.sp(1),
   },
   weekLabelWE: { color: GOLD },
+  grid: {},
   row: { flexDirection: 'row', marginBottom: GAP },
-  cellToday: { backgroundColor: TODAY_BG },
+  cellOuter: { transform: [{ perspective: 1000 }] },
+  face: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: theme.radius.sm,
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
+  },
+  front: {
+    backgroundColor: CELL_BG,
+    paddingHorizontal: theme.sp(1.5),
+    paddingVertical: theme.sp(1),
+  },
+  back: { backgroundColor: '#fff' },
   dayNum: {
     fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any,
     color: theme.colors.textSub, textAlign: 'center', marginBottom: theme.sp(0.5),

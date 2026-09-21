@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dimensions, View, Text, StyleSheet } from 'react-native';
+import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
@@ -53,7 +54,7 @@ export default function CognitiveLoadCard() {
   if (!hasData) {
     return (
       <Card>
-          <Text style={styles.title}>认知负荷 & 疲劳</Text>
+          <Text style={styles.title}>认知疲劳度</Text>
           <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
       </Card>
     );
@@ -65,9 +66,9 @@ export default function CognitiveLoadCard() {
   return (
     <Card>
         {/* ── 头部 ── */}
-        <Text style={styles.title}>认知负荷 & 疲劳</Text>
+        <Text style={styles.title}>认知疲劳度</Text>
 
-        {/* ── 全天认知负荷分布图（移到上面） ── */}
+        {/* ── 全天趋势分布图 ── */}
         <View style={styles.hourSection}>
           <HourHistogram hourly={report.hourly} peakSpan={report.peakLoadSpan} bestSpan={report.bestSpan} sleepWindow={report.sleepWindow} />
           <View style={styles.legendRow}>
@@ -88,7 +89,7 @@ export default function CognitiveLoadCard() {
 
         {/* ── 三个核心指标 ── */}
         <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
-          <SumCell label="认知负荷" value={String(report.loadScore)} valueColor={lCol} />
+          <SumCell label="疲劳度" value={String(report.loadScore)} valueColor={lCol} />
           <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
           <SumCell
             label="恢复能力"
@@ -111,104 +112,137 @@ function SumCell({ label, value, sub, valueColor }: { label: string; value: stri
 }
 
 export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH }: {
-  hourly: { hour: number; score: number }[];
+  hourly: { hour: number; score: number; hasData?: boolean }[];
   peakSpan: { startHour: number; endHour: number; avgScore: number } | null;
   bestSpan: { startHour: number; endHour: number; avgScore: number } | null;
   sleepWindow: { bedHour: number; wakeHour: number } | null;
   chartH?: number;
 }) {
-  // ★ 和情绪洞察统一：固定 24 列全天 0-23，标签显示 1-24
-  // 不再按睡眠窗口裁剪——睡眠时段的柱状图自然会是 0 高度（因为没数据）
-  const HOURS = Array.from({ length: 24 }, (_, i) => i);
-  const hourMap = new Map(hourly.map(h => [h.hour, h]));
-  const visible = HOURS.map(h => hourMap.get(h) ?? { hour: h, score: 0 });
-  const totalBins = 24;
+  // 认知疲劳度 = 分类变量 (低/中/高), 半小时步长 48 根柱
+  // 档位: <40 低(绿), 40-65 中(琥珀), >=65 高(红)
+  const LEVELS = [
+    { max: 40, color: '#22C55E', label: '低疲劳' },
+    { max: 65, color: '#F59E0B', label: '中疲劳' },
+    { max: 101, color: '#9D8AF0', label: '高疲劳' },
+  ];
+  const barColor = (s: number) => LEVELS.find(l => s < l.max)!.color;
 
-  // hour -> index 映射（固定 0-23 全有）
-  const hourToIdx = new Map(HOURS.map((h, i) => [h, i]));
+  const N = 48; // 半小时步长
+  const rows = Array.from({ length: N }, (_, i) => {
+    const raw = hourly?.find(h => h.hour === i);
+    const hasData = raw?.hasData === true && raw?.score != null;
+    return { hour: i, score: raw?.score ?? 0, hasData };
+  });
 
-  // ── 用数据里的最大值做归一化, 确保柱子都能撑开 ──
-  const dataMax = Math.max(10, ...visible.map(h => h.score));
+  const wrapW = Dimensions.get('window').width - theme.space.cardPad * 2 - theme.sp(2) * 2;
+  const padL = 12, padR = 12, padT = 8, padB = 22;
+  const svgW = wrapW;
+  const svgH = (chartH ?? 240) - 30;
+  const plotW = svgW - padL - padR;
+  const plotH = svgH - padT - padB;
 
-  // histogramWrap 内部可用宽度 = 屏幕宽 - sp(1)*2 padding
-  // 减去 Card(cardPad≈20)*2 + hourSection padding(sp(2))*2
-  const wrapWidth = Dimensions.get('window').width - theme.space.cardPad * 2 - theme.sp(2) * 2;
-  function spanPos(start: number, end: number) {
-    const s = hourToIdx.get(start) ?? 0;
-    const e = hourToIdx.get(end) ?? totalBins - 1;
-    const binW = wrapWidth / totalBins;
-    return {
-      left: s * binW,
-      width: (e - s + 1) * binW,
-    };
+  // 每小时一根柱子, 柱宽 = 可用宽 / 24 * 0.6
+  const slotW = plotW / N;
+  const barW = slotW * 0.55;
+  const hourCenterX = (h: number) => padL + slotW * (h + 0.5);
+  const barY = (score: number) => padT + plotH - (score / 100) * plotH;
+
+  // 背景遮罩
+  let sleepMask: { startX: number; endX: number } | null = null;
+  if (sleepWindow) {
+    const sStep = Math.round(sleepWindow.bedHour * 2);
+    const eStep = Math.round((sleepWindow.wakeHour < sleepWindow.bedHour ? 47 : Math.min(47, sleepWindow.wakeHour * 2)));
+    const sX = hourCenterX(sStep) - barW / 2;
+    const eX = hourCenterX(eStep) + barW / 2;
+    sleepMask = { startX: sX, endX: Math.max(eX, sX + 4) };
   }
+  const peakSX = peakSpan ? hourCenterX(Math.round(peakSpan.startHour * 2)) - barW / 2 : 0;
+  const peakEX = peakSpan ? hourCenterX(Math.round(Math.min(23, peakSpan.endHour) * 2)) + barW / 2 : 0;
+  const bestSX = bestSpan ? hourCenterX(Math.round(bestSpan.startHour * 2)) - barW / 2 : 0;
+  const bestEX = bestSpan ? hourCenterX(Math.round(Math.min(23, bestSpan.endHour) * 2)) + barW / 2 : 0;
 
-  const wrapH = chartH && chartH > 80 ? chartH - 60 : theme.sp(10);
-  const barsH = Math.max(theme.sp(6), wrapH - theme.sp(3));
+  const anyData = rows.some(r => r.hasData);
+  // tickHours 存 step 索引 (0-47), 整数小时 = step*2
+  const tickHours: { step: number; label: string; align: 'start'|'middle'|'end' }[] = [
+    { step: 0,  label: '0',  align: 'start' },
+    { step: 12, label: '6',  align: 'middle' },
+    { step: 24, label: '12', align: 'middle' },
+    { step: 36, label: '18', align: 'middle' },
+    { step: 47, label: '23', align: 'end' },
+  ];
 
   return (
-    <View style={[styles.histogramWrap, { height: wrapH + theme.sp(4) }]}>
-      <View style={[styles.histogram, { height: barsH }]}>
-        {visible.map((h) => {
-          const hVal = Math.max(0, Math.min(dataMax, h.score));
-          const maxBarH = Math.max(theme.sp(7), barsH - theme.sp(1));
-          const barH = hVal === 0 ? theme.sp(0.5) : Math.max(theme.sp(1.5), (hVal / dataMax) * maxBarH);
-          const barColor = hVal === 0 ? theme.colors.ui.borderSoft
-            : hVal >= dataMax * 0.65 ? theme.colors.danger
-            : hVal >= dataMax * 0.40 ? theme.colors.stateTense
-            : theme.colors.stateCalm;
+    <View style={{ height: svgH + 8, width: '100%' }}>
+      <Svg width={svgW} height={svgH + 8}>
+        {/* 3 条水平网格 (档位边界) */}
+        {[40, 65].map(v => (
+          <Path key={'yg' + v}
+            d={`M ${padL} ${barY(v)} L ${padL + plotW} ${barY(v)}`}
+            stroke="rgba(120,110,160,0.08)" strokeWidth={1} strokeDasharray="3 3" />
+        ))}
+
+        {/* 睡眠遮罩 */}
+        {sleepMask && sleepMask.endX > sleepMask.startX + 2 && (
+          <>
+            <Rect x={sleepMask.startX} y={padT}
+              width={sleepMask.endX - sleepMask.startX} height={plotH}
+              fill="rgba(100,116,139,0.10)" />
+            <SvgText x={(sleepMask.startX + sleepMask.endX) / 2} y={padT + 14}
+              textAnchor="middle" fontSize={8} fill="rgba(100,116,139,0.5)"
+              fontWeight="600">睡眠中</SvgText>
+          </>
+        )}
+
+        {/* peakSpan 红色半透明遮罩 */}
+        {peakSpan && peakEX > peakSX && (
+          <Rect x={peakSX} y={padT} width={peakEX - peakSX} height={plotH}
+            fill="rgba(157,138,240,0.10)" />
+        )}
+        {/* bestSpan 绿色半透明遮罩 */}
+        {bestSpan && bestEX > bestSX && (
+          <Rect x={bestSX} y={padT} width={bestEX - bestSX} height={plotH}
+            fill="rgba(34,197,94,0.06)" />
+        )}
+
+        {/* 柱状图 — 按档位分色 */}
+        {rows.map(r => {
+          if (!r.hasData) return null;  // 无数据/睡眠 → 不画
+          const c = barColor(r.score);
+          const x = hourCenterX(r.hour) - barW / 2;
+          const y = barY(r.score);
+          const h = (padT + plotH) - y;
+          const rx = Math.min(3, barW / 2);
           return (
-            <View key={h.hour} style={styles.histBin}>
-              <View style={[styles.histBar, { height: barH, backgroundColor: barColor }]} />
-            </View>
+            <Rect key={'b' + r.hour}
+              x={x} y={y} width={barW} height={Math.max(h, 2)}
+              fill={c} rx={rx} opacity={0.85} />
           );
         })}
+
+        {/* X 轴刻度 */}
+        {tickHours.map(t => (
+          <SvgText key={'tx' + t.step} x={hourCenterX(t.step)} y={padT + plotH + 16}
+            textAnchor={t.align} fontSize={10} fill="rgba(120,110,160,0.65)">
+            {t.label.padStart(2, '0')}
+          </SvgText>
+        ))}
+      </Svg>
+
+      {/* 档位图例 */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 4 }}>
+        {LEVELS.map(l => (
+          <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: l.color, opacity: 0.85 }} />
+            <Text style={{ fontSize: 10, color: 'rgba(120,110,160,0.65)' }}>{l.label}</Text>
+          </View>
+        ))}
       </View>
-      {/* ★ X 轴标签：和格子等宽对齐（flex:1），首尾 absolute 贴根容器边缘 */}
-      <View style={styles.histAxis}>
-        {visible.map((h, i) => {
-          const n = visible.length;
-          const isFirst = i === 0;
-          const isLast  = i === n - 1;
-          const displayH = h.hour + 1;
-          const showMiddle = !isFirst && !isLast && (h.hour === 6 || h.hour === 12 || h.hour === 18);
-          const baseLabel = {
-            fontSize: theme.fontSize.micro,
-            color: theme.colors.textSub,
-            lineHeight: theme.fontSize.micro + 2,
-          };
-          // 首尾也返回空 flex spacer，保证 n 列和柱子对齐
-          const spacer = <Text key={h.hour} style={{ flex: 1, lineHeight: theme.sp(3) }} />;
-          if (isFirst) {
-            return (
-              <React.Fragment key={h.hour}>
-                {spacer}
-                <Text style={{
-                  position: 'absolute', left: 0, top: 0,
-                  ...baseLabel, fontWeight: theme.weight.medium,
-                }}>{displayH}</Text>
-              </React.Fragment>
-            );
-          }
-          if (isLast) {
-            return (
-              <React.Fragment key={h.hour}>
-                {spacer}
-                <Text style={{
-                  position: 'absolute', right: 0, top: 0,
-                  ...baseLabel, fontWeight: theme.weight.medium,
-                }}>{displayH}</Text>
-              </React.Fragment>
-            );
-          }
-          if (!showMiddle) return spacer;
-          return (
-            <Text key={h.hour} numberOfLines={1} style={{
-              minWidth: theme.sp(4), ...baseLabel, textAlign: 'center', fontWeight: theme.weight.medium,
-            }}>{displayH}</Text>
-          );
-        })}
-      </View>
+
+      {!anyData && (
+        <Text style={{ position: 'absolute', left: '50%', top: '40%', transform: [{ translateX: -40 }], fontSize: 11, color: 'rgba(120,110,160,0.5)' }}>
+          暂无数据
+        </Text>
+      )}
     </View>
   );
 }

@@ -559,11 +559,12 @@ export default function TodayScreen() {
   // 全天状态面板是「全宽」的（左右不留边），宽度 = 屏宽（桌面上限 maxWidth）
   const panelW = Math.min(width, theme.layout.maxWidth);
   // 面板底部圆弧高度（方案 A：两端上扬、中间最低）
-  const panelArcH = theme.sp(9);
+  const panelArcH = theme.sp(6); // 弧度高度更小, 图离边缘更近
   // 圆弧路径：控制点 y = 1.335×arcH 时，曲线最低点正好落在 arcH
   // 弧下弥散紫的纵向长度（渐变由此高度从紫收到透明）
   const panelUnderH = theme.sp(50);
-  const panelArcD = `M0,0 H${panelW} C${(panelW * 0.77).toFixed(1)},${(panelArcH * 1.335).toFixed(1)} ${(panelW * 0.23).toFixed(1)},${(panelArcH * 1.335).toFixed(1)} 0,0 Z`;
+  const panelArcR = theme.radius.card * 2; // 弧度更大
+  const panelArcD = `M0,0 H${panelW} V${(panelArcH - panelArcR).toFixed(1)} A${panelArcR},${panelArcR} 0 0 1 ${(panelW - panelArcR).toFixed(1)},${panelArcH} H${panelArcR} A${panelArcR},${panelArcR} 0 0 1 0,${(panelArcH - panelArcR).toFixed(1)} V0 Z`;
 
   // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
   const status = ring.curveStatus;
@@ -1022,6 +1023,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(1),
   },
   legend: {
+    justifyContent: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     // 收紧：让底部圆弧离图表更近（原 12）

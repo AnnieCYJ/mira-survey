@@ -522,10 +522,10 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
         {/* 脑力消耗摘要 — v2: 脑力值 / 专注力 / 决策力 + 预测峰谷 */}
         <Card padded={false}>
           <View style={styles.pad}>
-            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>脑力消耗摘要</Text>
+            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>疲劳摘要</Text>
             {/* Row 1: 当下能力 */}
             <View style={styles.metricRow}>
-              <MetricMini label="脑力值" value={g.mentalEnergy != null ? String(g.mentalEnergy) : '—'} todayN={g.mentalEnergy} prevN={gP.mentalEnergy} goodWhen="up" />
+              <MetricMini label="节律能量" value={g.mentalEnergy != null ? (g.mentalEnergy >= 65 ? '高' : g.mentalEnergy >= 40 ? '中' : '低') : '—'} noCompare />
               <MetricMini label="专注力" value={g.focusScore != null ? String(g.focusScore) : '—'} todayN={g.focusScore} prevN={gP.focusScore} goodWhen="up" />
               <MetricMini label="决策力" value={g.decisionScore != null ? String(g.decisionScore) : '—'} todayN={g.decisionScore} prevN={gP.decisionScore} goodWhen="up" />
             </View>
@@ -545,7 +545,13 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
                   : '—'}
                 noCompare
               />
-              <MetricMini label="脑力负荷" value={g.loadScore != null ? String(g.loadScore) : '—'} todayN={g.loadScore} prevN={gP.loadScore} goodWhen="down" />
+              <MetricMini label="认知负荷" value={g.loadScore != null ? ((() => {
+  const ll = g.loadLevel;
+  if (ll === 'rested' || ll === 'light') return '低';
+  if (ll === 'moderate') return '中';
+  if (ll === 'heavy') return '高';
+  return g.loadScore < 40 ? '低' : g.loadScore < 65 ? '中' : '高';
+})()) : '—'} noCompare />
             </View>
           </View>
         </Card>
@@ -728,7 +734,7 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>脑力消耗 · 区间均值</Text>
           <View style={styles.summaryGrid}>
-            <SumCell label="平均脑力负荷" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} />
+            <SumCell label="平均疲劳度" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} />
             <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}%` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}%` : '对比上一周期'} />
           </View>
         </View>

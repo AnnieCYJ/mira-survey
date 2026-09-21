@@ -20,12 +20,15 @@
  */
 import { healthStore, dayStartMs, type MetricKey } from '../data/healthStore';
 import { parseClockMinutes } from './sleepTime';
+import { detectCognitiveLoad, applyLoadCorrection, CognitiveLoadEvent } from './cognitiveLoadDetector';
+import { analyzeCortisol } from './cortisolRhythm';
+import type { CortisolRhythmResult } from './cortisolRhythm';
 
 export type LoadLevel = 'rested' | 'light' | 'moderate' | 'heavy';
 export type FatigueLevel = 'fresh' | 'mild' | 'moderate' | 'severe';
 
 export interface CognitiveLoadReport {
-  /** 认知负荷分 0-100 (今日均值) */
+  /** 认知负荷分 0-100 (今日均值, 仅基于有数据的小时) */
   loadScore: number;
   loadLevel: LoadLevel;
   loadReason: string;
@@ -33,8 +36,8 @@ export interface CognitiveLoadReport {
   fatigueIndex: number;
   fatigueLevel: FatigueLevel;
   fatigueReason: string;
-  /** 全天逐小时负荷分 (0-23) */
-  hourly: { hour: number; score: number }[];
+  /** 全天逐小时负荷分 (0-23), hasData=false 表示该小时无 HRV/SNS 数据 (score=0 仅占位) */
+  hourly: { hour: number; score: number; hasData: boolean }[];
   /** 恢复能力 (全天 RMSSD 基线 vs 近期最低窗口) */
   recoveryCapacity: number | null;
   /** 活跃时段高负荷占比 */
@@ -63,10 +66,33 @@ export interface CognitiveLoadReport {
   decisionScore: number | null;
   /** 今日剩余时段脑力预测峰谷: peak = 脑力最佳时刻, trough = 脑力最低时刻 */
   forecast: {
-    peak: { hour: number; energy: number } | null;
-    trough: { hour: number; energy: number } | null;
-    hourlyEnergy: { hour: number; energy: number }[]; // 24h 预测脑力分布
+    peak: { hour: number; energy: number; confidence?: number } | null;
+    trough: { hour: number; energy: number; confidence?: number } | null;
+    /** 认知高峰区间 (±1.5h) */
+    peakSpan?: { startHour: number; endHour: number } | null;
+    /** 认知低谷区间 (±1.5h) */
+    troughSpan?: { startHour: number; endHour: number } | null;
+    hourlyEnergy: { hour: number; energy: number }[];
+    /** 节律拟合 R² — 个体化程度 */
+    rhythmR2?: number;
   };
+  /** 睡眠恢复因子 (v2 核心, 0-1) */
+  sleepRecovery: number;
+  /** 7 天睡眠债 (小时) */
+  sleepDebt: number;
+  /** 节律峰值时刻 (cosinor acrophaseH) */
+  circadianPeakH?: number;
+  /** 节律状态 */
+  rhythmStatus?: 'normal' | 'sustained_high' | 'dysregulated';
+  /** 第二步: 实时负荷检测事件 */
+  loadEvent?: import('./cognitiveLoadDetector').CognitiveLoadEvent;
+  // ── Borbély 双过程模型输出（给用户看的直白数） ──
+  /** Process S: 脑子已消耗量 (0-100, 从起床到现在线性累积 + 睡眠债加速) */
+  brainUsed: number;
+  /** Process C: 节律能量 (0-100, 当前时刻生物钟给你的能量) */
+  circadianEnergy: number;
+  /** 认知剩余储备 (0-100, brainUsed - circadianEnergy 修正后) */
+  brainRemaining: number;
 }
 
 const DAYS_BACK = 7;
@@ -141,20 +167,24 @@ function circadianWeight(hour: number): number {
  *
  * energy = 0.35 * HRV_ratio + 0.30 * sleepRecovery + 0.25 * circadian + 0.10 * (1 - load/100)
  */
+/**
+ * mentalEnergy v2 — 节律+睡眠 85% / HRV 辅助 15%
+ * 能量 = 节律峰值 × 睡眠恢复 × 债惩罚 × HRV 辅助
+ */
 function computeMentalEnergy(params: {
   hrvNow: number | null; hrvBaseline: number | null;
-  sleepRecoveryFactor: number;  // 0-1, Borbély Process S 有效还债量
+  sleepRecoveryFactor: number;
   circadianHour: number;
-  cumulativeLoad: number;  // 今日平均负荷
+  cumulativeLoad: number;
 }): number | null {
-  if (params.hrvNow == null || params.hrvBaseline == null || params.hrvBaseline <= 0) return null;
-  const hrvRatio = clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6);
   const circ = circadianWeight(params.circadianHour);
+  // 节律+睡眠主导
   const term =
-    0.35 * hrvRatio +
-    0.30 * params.sleepRecoveryFactor +
-    0.25 * circ +
-    0.10 * (1 - params.cumulativeLoad / 100);
+    0.40 * params.sleepRecoveryFactor +
+    0.35 * circ +
+    0.15 * (1 - params.cumulativeLoad / 100) +
+    0.10 * (params.hrvNow != null && params.hrvBaseline != null && params.hrvBaseline > 0
+      ? clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6) : 0.7);
   return Math.round(clamp(term * 100, 0, 100));
 }
 
@@ -164,15 +194,16 @@ function computeMentalEnergy(params: {
  *
  * focus = 0.45 * RMSSD_ratio + 0.30 * arousal_optimal + 0.15 * circadian_focus + 0.10 * (1-fatigue/100)
  */
+/**
+ * focus v2 — 节律窗口 40% / Yerkes-Dodson 唤醒度 30% / 疲劳/睡眠 20% / HRV 辅助 10%
+ * （Yerkes-Dodson 是心理物理定律，保留较高权重）
+ */
 function computeFocus(params: {
   hrvNow: number | null; hrvBaseline: number | null;
   snsNow: number | null; snsBaseline: number | null;
   circadianHour: number;
   fatigueIndex: number;
 }): number | null {
-  if (params.hrvNow == null || params.hrvBaseline == null || params.hrvBaseline <= 0) return null;
-  const hrvRatio = clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6);
-
   // 唤醒度最优区间 (Yerkes-Dodson): SNS/Baseline ∈ [0.85, 1.25] = 满分
   let arousalOptimal = 0.5;
   if (params.snsNow != null && params.snsBaseline != null && params.snsBaseline > 0) {
@@ -181,8 +212,7 @@ function computeFocus(params: {
     else if (snsRatio >= 0.6 && snsRatio <= 1.5) arousalOptimal = 0.7;
     else arousalOptimal = 0.3;
   }
-
-  // 专注黄金窗口: 9-11am / 2-4pm
+  // 专注黄金窗口: 9-11am / 2-4pm (节律驱动)
   const h = params.circadianHour;
   let circFocus = 0.5;
   if (h >= 9 && h <= 11) circFocus = 1.0;
@@ -190,11 +220,14 @@ function computeFocus(params: {
   else if (h >= 8 && h <= 18) circFocus = 0.6;
   else circFocus = 0.3;
 
+  const hrvAux = (params.hrvNow != null && params.hrvBaseline != null && params.hrvBaseline > 0)
+    ? clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6) : 0.7;
+
   const term =
-    0.45 * hrvRatio +
+    0.40 * circFocus +
     0.30 * arousalOptimal +
-    0.15 * circFocus +
-    0.10 * (1 - params.fatigueIndex / 100);
+    0.20 * (1 - params.fatigueIndex / 100) +
+    0.10 * hrvAux;
   return Math.round(clamp(term * 100, 0, 100));
 }
 
@@ -204,16 +237,15 @@ function computeFocus(params: {
  *
  * decision = 0.40 * RMSSD_ratio + 0.30 * circadian_decision + 0.20 * sleep_recovery + 0.10 * (1-load/100)
  */
+/**
+ * decision v2 — 节律窗口 40% / 睡眠恢复 35% / 负荷 15% / HRV 辅助 10%
+ */
 function computeDecision(params: {
   hrvNow: number | null; hrvBaseline: number | null;
   circadianHour: number;
   sleepRecoveryFactor: number;
   loadScore: number;
 }): number | null {
-  if (params.hrvNow == null || params.hrvBaseline == null || params.hrvBaseline <= 0) return null;
-  const hrvRatio = clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6);
-
-  // 决策力窗口: 8-11am 最高 (前额叶 alert), 午后降, 晚上最低
   const h = params.circadianHour;
   let circDec = 0.5;
   if (h >= 8 && h <= 11) circDec = 1.0;
@@ -222,11 +254,14 @@ function computeDecision(params: {
   else if (h >= 18 && h <= 20) circDec = 0.4;
   else circDec = 0.25;
 
+  const hrvAux = (params.hrvNow != null && params.hrvBaseline != null && params.hrvBaseline > 0)
+    ? clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6) : 0.7;
+
   const term =
-    0.40 * hrvRatio +
-    0.30 * circDec +
-    0.20 * params.sleepRecoveryFactor +
-    0.10 * (1 - params.loadScore / 100);
+    0.40 * circDec +
+    0.35 * params.sleepRecoveryFactor +
+    0.15 * (1 - params.loadScore / 100) +
+    0.10 * hrvAux;
   return Math.round(clamp(term * 100, 0, 100));
 }
 
@@ -234,43 +269,87 @@ function computeDecision(params: {
  * 今日剩余时段脑力预测 — 过去 7 天同小时中位数 + 今天已测走势 + circadian 修正
  * 参考: WHOOP Daily Outlook, AstroGuard (NASA) LOESS 思想
  */
-function computeForecast(hourly: { hour: number; score: number }[],
-                          hrvBaseline: number | null,
-                          nowHour: number,
-                          circadianHour: number): {
-  peak: { hour: number; energy: number } | null;
-  trough: { hour: number; energy: number } | null;
+/**
+ * computeForecast — v2 节律+睡眠驱动 (2026-09-21)
+ *
+ * 科学依据:
+ *   - Cosinor 拟合皮质醇代理值 → 个体化 acrophaseH (峰值时刻)
+ *   - Borbély Process S → 睡眠恢复因子修正节律振幅
+ *   - 睡眠窗 → 个体作息相位 (早睡/晚起整体偏移节律)
+ */
+function computeForecast(
+  hourly: { hour: number; score: number }[],
+  cortisolResult: CortisolRhythmResult | null,
+  sleepRecoveryFactor: number,
+  sleepWindow: { bedHour: number; wakeHour: number } | null,
+  circadianHour: number,
+): {
+  peak: { hour: number; energy: number; confidence?: number } | null;
+  trough: { hour: number; energy: number; confidence?: number } | null;
+  peakSpan: { startHour: number; endHour: number } | null;
+  troughSpan: { startHour: number; endHour: number } | null;
   hourlyEnergy: { hour: number; energy: number }[];
 } {
-  // 先算过去 7 天同小时的基线负荷 (简单用 hour 对应的 circadian 能量倒数)
   const hourlyEnergy: { hour: number; energy: number }[] = [];
+  let cosinorPeakH: number | null = null;
+  let r2 = 0;
+
+  if (cortisolResult?.cosinor && Number.isFinite(cortisolResult.cosinor.acrophaseH)) {
+    cosinorPeakH = cortisolResult.cosinor.acrophaseH;
+    r2 = cortisolResult.cosinor.r2;
+  }
+
+  // 睡眠相位修正 — 起床时间偏离 8:00 的小时数
+  let phaseShift = 0;
+  if (sleepWindow) phaseShift = sleepWindow.wakeHour - 8;
+
+  // 逐小时能量
   for (let h = 0; h < 24; h++) {
-    const circ = circadianWeight(h);
-    // energy = circadian - 今日已观测的 load 走势修正
-    const todayAtH = hourly[h]?.score ?? null;
-    let energy;
-    if (todayAtH != null && todayAtH > 0) {
-      // 已观测到: energy 与 load 反向
-      energy = clamp(100 - todayAtH * 0.7 - (1 - circ) * 30, 0, 100);
+    let base;
+    if (cosinorPeakH != null && cortisolResult?.hourlyMean) {
+      const m = cortisolResult.hourlyMean[h];
+      if (m != null) {
+        const mesor = cortisolResult.cosinor.mesor;
+        const amp = cortisolResult.cosinor.amplitude;
+        const normalized = clamp((m - (mesor - amp)) / (amp * 2), 0, 1);
+        base = normalized * 100;
+      } else {
+        base = circadianWeight(h + phaseShift) * 100;
+      }
     } else {
-      // 未观测: 纯 circadian 预测 + HRV 基线修正
-      const hrvBoost = hrvBaseline != null ? clamp((hrvBaseline / 55 - 1) * 10, -15, 15) : 0;
-      energy = clamp(circ * 100 + hrvBoost, 0, 100);
+      base = circadianWeight(h + phaseShift) * 100;
     }
-    hourlyEnergy.push({ hour: h, energy: Math.round(energy) });
+    const recoveryPenalty = (1 - sleepRecoveryFactor) * 20;
+    hourlyEnergy.push({ hour: h, energy: Math.round(clamp(base - recoveryPenalty, 0, 100)) });
   }
 
-  // 只看"剩下的时段" (nowHour 之后) 或全量 (凌晨/早间)
-  const futureHours = hourlyEnergy.filter(e => e.hour > circadianHour);
-  const scanList = futureHours.length > 0 ? futureHours : hourlyEnergy.filter(e => e.hour >= 7 && e.hour <= 23);
+  const confidence = clamp(Math.round((r2 > 0 ? r2 : 0.5) * 100), 30, 95);
+  let peak: { hour: number; energy: number; confidence?: number } | null = null;
+  let trough: { hour: number; energy: number; confidence?: number } | null = null;
 
-  let peak: { hour: number; energy: number } | null = null;
-  let trough: { hour: number; energy: number } | null = null;
-  if (scanList.length >= 3) {
-    peak = scanList.reduce((a, b) => (b.energy > (a?.energy ?? -1) ? b : a), null as any);
-    trough = scanList.reduce((a, b) => (b.energy < (a?.energy ?? 999) ? b : a), null as any);
+  if (cosinorPeakH != null) {
+    const ph = Math.round(cosinorPeakH);
+    peak = { hour: ph, energy: hourlyEnergy[ph]?.energy ?? 70, confidence };
+    // 下午低谷 = 峰值后约 6h
+    const th = Math.round((cosinorPeakH + 6) % 24);
+    trough = { hour: th, energy: hourlyEnergy[th]?.energy ?? 50, confidence: Math.max(20, confidence - 15) };
+  } else {
+    const scanList = hourlyEnergy.filter(e => e.hour >= (sleepWindow?.wakeHour ?? 7) && e.hour <= 23);
+    if (scanList.length >= 3) {
+      peak = { ...scanList.reduce((a, b) => (b.energy > a.energy ? b : a)), confidence: 55 };
+      trough = { ...scanList.reduce((a, b) => (b.energy < a.energy ? b : a)), confidence: 40 };
+    }
   }
-  return { peak, trough, hourlyEnergy };
+  // 区间 = 峰/谷时刻 ± 1.5h (3小时窗口，对齐整点)
+  const makeSpan = (h: number | undefined | null) => {
+    if (h == null) return null;
+    const start = (Math.round(h - 1.5) + 24) % 24;
+    const end = (Math.round(h + 1.5)) % 24;
+    return { startHour: start, endHour: end };
+  };
+  const peakSpan = peak ? makeSpan(peak.hour) : null;
+  const troughSpan = trough ? makeSpan(trough.hour) : null;
+  return { peak, trough, peakSpan, troughSpan, hourlyEnergy };
 }
 
 // ★ 结果缓存：同 (日期, healthStore 版本, 30s 窗) 内直接命中（与 stressAlgorithm 同款）。
@@ -305,46 +384,56 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   // ── 3. 各因子偏离 ────────────────────────────────────────
   const hrvDev = (hrvNow != null && hrvBaseline != null && hrvBaseline > 0)
     ? (hrvNow - hrvBaseline) / hrvBaseline : null;
-  const vtiDev = (vtiNow != null && vtiBaseline != null && vtiBaseline > 0)
-    ? (vtiNow - vtiBaseline) / vtiBaseline : null;
   const snsDev = (snsNow != null && snsBaseline != null && snsBaseline > 0)
     ? (snsNow - snsBaseline) / snsBaseline : null;
   const tempDev = (tempNow != null && tempBaseline != null && tempBaseline > 0)
     ? (tempNow - tempBaseline) / tempBaseline : null;
+  // vtiDev 保留但降权 (自研指标)
+  const vtiDev = (vtiNow != null && vtiBaseline != null && vtiBaseline > 0)
+    ? (vtiNow - vtiBaseline) / vtiBaseline : null;
 
-  // ── 4. 融合认知负荷分 (0-100) ────────────────────────────
+  // ── 4. 融合认知负荷分 v2 (2026-09-21)
+  //     科学依据: 节律+睡眠 85% / HRV代理 15%
+  //     节律+睡眠 = 个体化皮质醇节律相位 + Borbély 恢复因子
+  //     HRV 代理 = 生理紧张度 (辅助, 不可单独解释认知)
+  //
+  // 步骤 A: 先算节律驱动的基础负荷 (基于 hourly 已观测 HRV/SNS 偏离)
   let loadScore = 50;
-  let loadWeight = 0;
+  let hrContrib = 0;   // HRV/SNS/VTI 贡献 (占 15%)
+  let hrWeight = 0;
 
-  // HRV: RMSSD↓ 10% → 负荷 +8
-  if (hrvDev != null) {
-    loadScore += -hrvDev * 80;
-    loadWeight += 30;
-  }
-  // VTI: 血管张力↑ 10% → 负荷 +5
-  if (vtiDev != null) {
-    loadScore += vtiDev * 50;
-    loadWeight += 25;
-  }
-  // SNS: 只有 HRV↓ 时才认为是认知伴随激活
-  if (snsDev != null && hrvDev != null && hrvDev < -0.03) {
-    loadScore += snsDev * 30;
-    loadWeight += 20;
-  } else if (snsDev != null) {
-    loadScore += snsDev * 15;
-    loadWeight += 10;
-  }
-  // Temp: 体温偏高 → 疲劳加罚
-  if (tempDev != null) {
-    loadScore += tempDev * 30;
-    loadWeight += 15;
-  }
+  if (hrvDev != null) { hrContrib += -hrvDev * 80; hrWeight += 8; }
+  if (snsDev != null && hrvDev != null && hrvDev < -0.03) { hrContrib += snsDev * 30; hrWeight += 5; }
+  if (vtiDev != null) { hrContrib += vtiDev * 30; hrWeight += 2; }
+  if (tempDev != null) { hrContrib += tempDev * 30; hrWeight += 0; }
+  hrContrib = clamp(hrContrib, -30, 30);
 
-  if (loadWeight >= 30) {
-    loadScore = clamp(loadScore, 0, 100);
-  } else {
-    loadScore = 50;
+  // 步骤 B: 睡眠恢复因子 (Borbély Process S) — 直接影响基础负荷
+  //         恢复差 → 基础负荷整体上移
+  const _todayKey2 = todayKey(nowMs);
+  const _sleepSum2 = healthStore.getSleep(_todayKey2);
+  let sleepRecovery = 0.75;  // 默认
+  if (_sleepSum2 && _sleepSum2.total > 0) {
+    const sleepHours = _sleepSum2.total / 60;
+    const deepRatio = _sleepSum2.total > 0 ? (_sleepSum2.deep / _sleepSum2.total) : 0.15;
+    // 恢复 = 睡眠时长充足性 × 深睡占比
+    const durationAdequacy = clamp((sleepHours - 6) / 2, 0, 1);  // 6h=0, 8h+=1
+    const deepBonus = clamp((deepRatio - 0.12) / 0.08, 0, 1);   // 12%=0, 20%+=1
+    sleepRecovery = 0.6 * durationAdequacy + 0.4 * deepBonus;
   }
+  // 步骤 C: 睡眠债修正 (过去 7 天 Borbély)
+  let sleepDebt = 0;
+  for (let di = 1; di <= 7; di++) {
+    const sl = healthStore.getSleep(dayKey(-di, nowMs));
+    if (sl && sl.total > 0) {
+      const gap = Math.max(0, (8 * 60 - sl.total) / 60);
+      sleepDebt += gap * Math.exp(-di / 5);
+    }
+  }
+  const debtPenalty = clamp(sleepDebt * 6, 0, 30);  // 每欠 1h 加 6 分负荷, 封顶 30
+
+  // 最终融合: 基础 40 + 睡眠恢复驱动 + 债 penalty + HRV 代理辅助
+  loadScore = clamp(40 + (1 - sleepRecovery) * 35 + debtPenalty + hrContrib * 0.5, 0, 100);
 
   // ── 5. 疲劳指数 ───────────────────────────────────────────
   const highLoadThreshold = 65;
@@ -416,8 +505,8 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     : fatigueIndex >= 25 ? 'mild'
     : 'fresh';
 
-  const loadReason = buildLoadReason({ hrvDev, vtiDev, snsDev, loadLevel });
-  const fatigueReason = buildFatigueReason({ fatigueIndex, highLoadRatio, recoveryCapacity, tempDev });
+  const loadReason = buildLoadReason({ hrvDev, vtiDev, snsDev, loadLevel, sleepRecovery: sleepRecovery, sleepDebt });
+  const fatigueReason = buildFatigueReason({ fatigueIndex, highLoadRatio, recoveryCapacity, tempDev, sleepRecovery: sleepRecovery, sleepDebt });
 
   // ── 8. 极值时段 (互斥 + bestSpan 重新定义) ─────────────────
   function classify(h: { hour: number; score: number }): 'heavy' | 'moderate' | 'light' | 'calm' | 'empty' {
@@ -564,7 +653,47 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     hrvNow, hrvBaseline, circadianHour,
     sleepRecoveryFactor, loadScore,
   });
-  const forecast = computeForecast(hourly, hrvBaseline, new Date(nowMs).getHours(), circadianHour);
+  // ── ★ v2 节律驱动: 拟合皮质醇代理值 ──
+  let cortisolResult: CortisolRhythmResult | null = null;
+  try {
+    const _dayMs = dayStartMs(nowMs);
+    const samples: { t: number; v: number }[] = [];
+    for (let di = 0; di < 14; di++) {
+      const dStart = _dayMs - di * 86400000;
+      const pts = healthStore.getTimeRange('cortisol' as MetricKey, dStart, dStart + 86400000, { maxPoints: 500 });
+      pts.forEach(p => { if (p.v > 0) samples.push({ t: p.t, v: p.v }); });
+    }
+    if (samples.length >= 8) cortisolResult = analyzeCortisol(samples, 14);
+  } catch {}
+  const forecast = computeForecast(hourly, cortisolResult, sleepRecoveryFactor, sleepWindow, circadianHour);
+
+  // ── Borbély 双过程模型 (给用户看的直白数) ──────────────
+  // Process S (睡眠驱动力) = 脑子已消耗量: 清醒时长线性累积 + 睡眠债加速
+  // Process C (昼夜节律能量) = cosinor 个体化 acrophaseH 的节律位置
+  const _wakeH = sleepWindow?.wakeHour ?? 7;
+  let _awakeH = circadianHour - _wakeH;
+  if (_awakeH < 0) _awakeH += 24;
+  const _debtAccel = 1 + sleepDebt * 0.08;
+  let brainUsed = clamp(Math.round(_awakeH * 8.3 * _debtAccel), 0, 100);
+  const _acrophase = cortisolResult?.cosinor?.acrophaseH != null && Number.isFinite(cortisolResult.cosinor.acrophaseH)
+    ? cortisolResult.cosinor.acrophaseH : 8;
+  let circadianEnergy = clamp(Math.round(
+    50 + 50 * Math.sin(2 * Math.PI * (circadianHour - _acrophase + 6) / 24)
+  ), 0, 100);
+  let brainRemaining = clamp(Math.round(
+    100 - brainUsed * 0.7 + circadianEnergy * 0.3 - debtPenalty * 0.3
+  ), 0, 100);
+
+  // ── 第二步: 实时负荷检测 + 动态修正 ────────────────────
+  const loadEvent: CognitiveLoadEvent | null = detectCognitiveLoad(
+    hrvBaseline ?? 55, snsBaseline ?? 30, nowMs,
+  );
+  if (loadEvent) {
+    const corrected = applyLoadCorrection({ brainUsed, circadianEnergy, brainRemaining }, loadEvent);
+    brainUsed = corrected.brainUsed;
+    circadianEnergy = corrected.circadianEnergy;
+    brainRemaining = corrected.brainRemaining;
+  }
 
   const result: CognitiveLoadReport = {
     loadScore: Math.round(loadScore),
@@ -589,7 +718,20 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     mentalEnergy,
     focusScore,
     decisionScore,
-    forecast,
+    forecast: {
+      ...forecast,
+      rhythmR2: cortisolResult?.cosinor?.r2,
+    },
+    sleepRecovery: sleepRecovery,
+    sleepDebt: Math.round(sleepDebt * 10) / 10,
+    circadianPeakH: cortisolResult?.cosinor?.acrophaseH != null && Number.isFinite(cortisolResult.cosinor.acrophaseH)
+      ? Math.round(cortisolResult.cosinor.acrophaseH * 10) / 10
+      : undefined,
+    rhythmStatus: cortisolResult?.status?.level,
+    loadEvent: loadEvent ?? undefined,
+    brainUsed,
+    circadianEnergy,
+    brainRemaining,
   };
 
   try {
@@ -615,13 +757,20 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   return result;
 }
 
-function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {
+function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasData: boolean }[] {
+  // ══════════════════════════════════════════════════════════════════════
+  // ★ v3: 认知疲劳度 — lex-fatigue 风格能量衰减模型
+  // 核心: 疲劳是累积过程, 用 ODE 离散化模拟能量衰减 + 恢复
+  // E(t+dt) = E(t) - fatigueDrive · dt + recoveryDrive · dt
+  // fatigue = 100 - E  (能量越低 = 疲劳越高)
+  // dt = 0.5h (半小时步长), 输出 48 个点
+  // 参考: IEEE 2026 Bi-LSTM 疲劳预测, lex-fatigue (MIT)
+  // ══════════════════════════════════════════════════════════════════════
   const dayMs = dayStartMs(nowMs);
   const _todayKey = todayKey(nowMs);
   const sleepSum = healthStore.getSleep(_todayKey);
-  // ★ 解析复用 lib/sleepTime.parseClockMinutes（唯一解析实现；兼容 "HH:mm" 与原生完整 datetime）
-  const parseHM = (s: string | null | undefined): number | null => {
-    const min = parseClockMinutes(s);
+  const parseHM = (st: string | null | undefined): number | null => {
+    const min = parseClockMinutes(st);
     return min == null ? null : min / 60;
   };
   const bedH = parseHM(sleepSum?.sleepTime);
@@ -629,6 +778,7 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {
   const bedHour = bedH != null ? Math.floor(bedH) : 0;
   const wakeHour = wakeH != null ? Math.floor(wakeH) : 7;
 
+  // ── 1. 先算 baseline (全天清醒时段 HRV/SNS) ──
   const awakeHrv: number[] = [];
   const awakeSns: number[] = [];
   for (let h = 0; h < 24; h++) {
@@ -639,24 +789,101 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number }[] {
     hs.forEach(p => awakeHrv.push(p.v));
     ss.forEach(p => awakeSns.push(p.v));
   }
-  const _today = _dayKey(nowMs);  // ★ 补零格式
-  const hrvBaseline = awakeHrv.length >= 3 ? awakeHrv.reduce((a,b)=>a+b,0)/awakeHrv.length : (healthStore.getDay('hrv' as any, _today)?.mean ?? 55);
-  const snsBaseline = awakeSns.length >= 3 ? awakeSns.reduce((a,b)=>a+b,0)/awakeSns.length : (healthStore.getDay('sns' as any, _today)?.mean ?? 30);
+  const _today = _dayKey(nowMs);
+  const hrvBaseline = awakeHrv.length >= 3 ? awakeHrv.reduce((a, b) => a + b, 0) / awakeHrv.length
+    : (healthStore.getDay('hrv' as any, _today)?.mean ?? 55);
+  const snsBaseline = awakeSns.length >= 3 ? awakeSns.reduce((a, b) => a + b, 0) / awakeSns.length
+    : (healthStore.getDay('sns' as any, _today)?.mean ?? 30);
 
-  const hourly: { hour: number; score: number }[] = [];
-  for (let h = 0; h < 24; h++) {
-    const hourStart = dayMs + h * 3600000;
-    const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, hourStart, hourStart + 3600000, { maxPoints: 50 });
-    const snsPts = healthStore.getTimeRange('sns' as MetricKey, hourStart, hourStart + 3600000, { maxPoints: 50 });
-    const hrvMean = hrvPts.length > 0 ? hrvPts.reduce((a,p)=>a+p.v,0)/hrvPts.length : null;
-    const snsMean = snsPts.length > 0 ? snsPts.reduce((a,p)=>a+p.v,0)/snsPts.length : null;
-    let score = 0, w = 0;
-    if (hrvMean != null && hrvBaseline > 0) { score += ((hrvBaseline - hrvMean) / hrvBaseline) * 50; w++; }
-    if (snsMean != null && snsBaseline > 0) { score += ((snsMean - snsBaseline) / snsBaseline) * 50; w++; }
-    if (w === 0) score = 0;
-    hourly.push({ hour: h, score: Math.round(clamp(score, 0, 100)) });
+  // ── 2. 睡眠恢复因子 → 初始能量 ──
+  const sleepRec = (() => {
+    const totalMin = sleepSum?.total ?? 480;
+    const deepRatio = sleepSum?.deep != null && totalMin > 0 ? sleepSum.deep / totalMin : 0.15;
+    const durAdequacy = clamp((totalMin / 60 - 6) / 2, 0, 1); // 6h=0, 8h+=1
+    const deepBonus = clamp((deepRatio - 0.12) / 0.08, 0, 1);  // 12%=0, 20%+=1
+    return clamp(durAdequacy * 0.6 + deepBonus * 0.4, 0.2, 1);
+  })();
+  // 7 天睡眠债
+  let debt = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = healthStore.getSleep(dayKey(-i, nowMs));
+    const h = (d?.total ?? 480) / 60;
+    if (h < 8) debt += (8 - h) * Math.exp(-i / 5);
   }
-  return hourly;
+  debt = clamp(debt, 0, 6);
+  const debtAccel = 1 + debt * 0.08;  // 每欠 1h, 疲劳加速 8%
+
+  // ── 3. 节律驱动 (cosinor 或 fallback) ──
+  let acrophaseH = 8;
+  try {
+    const samples: { t: number; v: number }[] = [];
+    for (let di = 0; di < 14; di++) {
+      const dStart = dayMs - di * 86400000;
+      const pts = healthStore.getTimeRange('cortisol' as MetricKey, dStart, dStart + 86400000, { maxPoints: 500 });
+      pts.forEach(p => { if (p.v > 0) samples.push({ t: p.t, v: p.v }); });
+    }
+    if (samples.length >= 8) {
+      const r = analyzeCortisol(samples, 14);
+      if (r.cosinor?.acrophaseH != null && Number.isFinite(r.cosinor.acrophaseH)) acrophaseH = r.cosinor.acrophaseH;
+    }
+  } catch {}
+
+  // ── 4. ODE 离散化: 48 个半小时步 ──
+  // E(t) = 认知能量 (0-100), fatigue = 100 - E
+  const DT = 0.5;  // 半小时
+  const ALPHA_HRV = 0.04;  // HRV 偏离 → 疲劳衰减系数
+  const ALPHA_SNS = 0.03;  // SNS 偏离 → 疲劳衰减系数
+  const ALPHA_AWAKE = 0.8; // 清醒时长线性衰减 (每 h 基础疲劳增长)
+  const BETA_CIRC = 2.0;   // 节律窗口恢复系数
+
+  let energy = sleepRec * 80 + 20;  // 初始能量 20-100
+  const result: { hour: number; score: number; hasData: boolean }[] = [];
+
+  for (let step = 0; step < 48; step++) {
+    const halfH = step * 0.5;
+    const fullH = Math.floor(halfH);
+    const isAsleep = (bedHour < wakeHour) ? (fullH >= bedHour && fullH < wakeHour) : (fullH >= bedHour || fullH < wakeHour);
+
+    if (isAsleep) {
+      // 睡眠时: 能量快速恢复 (指数上升至 ~90)
+      energy = clamp(energy + 15 * DT, 0, 92);
+      result.push({ hour: step, score: 0, hasData: false });
+      continue;
+    }
+
+    // ── 取这个半小时的 HRV/SNS ──
+    const stepStart = dayMs + step * 1800000;  // 半小时 = 1800s
+    const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 25 });
+    const snsPts = healthStore.getTimeRange('sns' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 25 });
+    const hrvMean = hrvPts.length > 0 ? hrvPts.reduce((a, p) => a + p.v, 0) / hrvPts.length : null;
+    const snsMean = snsPts.length > 0 ? snsPts.reduce((a, p) => a + p.v, 0) / snsPts.length : null;
+    const hasData = hrvMean != null || snsMean != null;
+
+    // ── fatigueDrive: 当前半小时的能量衰减驱动力 ──
+    let fatigueDrive = 0;
+    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础衰减 + 睡眠债加速
+    if (hrvMean != null && hrvBaseline > 0) {
+      const hrvDrop = clamp((hrvBaseline - hrvMean) / hrvBaseline, 0, 1);
+      fatigueDrive += ALPHA_HRV * hrvDrop * 100;
+    }
+    if (snsMean != null && snsBaseline > 0) {
+      const snsRise = clamp((snsMean - snsBaseline) / snsBaseline, 0, 1);
+      fatigueDrive += ALPHA_SNS * snsRise * 100;
+    }
+
+    // ── recoveryDrive: 节律窗口恢复 ──
+    const circPhase = 0.5 + 0.5 * Math.sin(2 * Math.PI * (halfH - acrophaseH + 6) / 24);
+    // circPhase 在 acrophaseH 附近 ~1 (节律峰), 远离 ~0.5 (谷)
+    let recoveryDrive = BETA_CIRC * circPhase;
+
+    // ── ODE 更新 ──
+    energy = clamp(energy - fatigueDrive * DT + recoveryDrive * DT, 8, 100);
+
+    // ── 计算疲劳度 = 100 - 能量 ──
+    const fatigue = Math.round(100 - energy);
+    result.push({ hour: step, score: fatigue, hasData });
+  }
+  return result;
 }
 
 function computeRecoveryCapacity(nowMs: number): number | null {
@@ -674,31 +901,46 @@ function computeRecoveryCapacity(nowMs: number): number | null {
   return minWinMean / hrvBase;
 }
 
-function buildLoadReason(p: { hrvDev: number | null; vtiDev: number | null; snsDev: number | null; loadLevel: LoadLevel }): string {
+/**
+ * 诚实描述: 节律+睡眠为主, HRV仅辅助 (不声称"HRV下降导致负荷高")
+ */
+function buildLoadReason(p: {
+  hrvDev: number | null; vtiDev: number | null; snsDev: number | null;
+  loadLevel: LoadLevel;
+  sleepRecovery: number; sleepDebt: number;
+}): string {
   const parts: string[] = [];
-  if (p.hrvDev != null) {
-    const sign = p.hrvDev >= 0 ? '↑' : '↓';
-    parts.push(`HRV${sign}${Math.round(Math.abs(p.hrvDev) * 100)}%`);
-  }
-  if (p.vtiDev != null) {
-    const sign = p.vtiDev >= 0 ? '↑' : '↓';
-    parts.push(`血管张力${sign}${Math.round(Math.abs(p.vtiDev) * 100)}%`);
-  }
-  if (p.snsDev != null && p.hrvDev != null && p.hrvDev < -0.03) {
-    parts.push(`交感↑${Math.round(p.snsDev * 100)}%`);
-  }
-  if (parts.length === 0) return '数据不足';
-  return `${labelForLevel(p.loadLevel)} · ${parts.join('，')}`;
+  // 睡眠债 — 最可靠的预测因子
+  if (p.sleepDebt >= 2) parts.push(`累计睡眠债 ${p.sleepDebt.toFixed(1)}h`);
+  else if (p.sleepDebt >= 1) parts.push(`轻度睡眠债 ${p.sleepDebt.toFixed(1)}h`);
+  // 睡眠恢复
+  if (p.sleepRecovery < 0.4) parts.push('睡眠恢复不足');
+  else if (p.sleepRecovery < 0.6) parts.push('恢复一般');
+  // HRV 偏离 — 仅作为"今天生理状态"的辅助信号
+  if (p.hrvDev != null && p.hrvDev < -0.08) parts.push('今日生理紧张');
+  if (parts.length === 0) return '状态良好';
+  return parts.join('，');
 }
 
-function buildFatigueReason(p: { fatigueIndex: number; highLoadRatio: number; recoveryCapacity: number | null; tempDev: number | null }): string {
+/**
+ * 诚实描述: 疲劳压力来自恢复因子 (睡眠债+恢复能力), HRV 辅助
+ */
+function buildFatigueReason(p: {
+  fatigueIndex: number; highLoadRatio: number;
+  recoveryCapacity: number | null; tempDev: number | null;
+  sleepRecovery: number; sleepDebt: number;
+}): string {
   const parts: string[] = [];
-  if (p.highLoadRatio > 0) parts.push(`高负荷时段占 ${p.highLoadRatio}%`);
+  // 睡眠恢复压力
+  if (p.sleepRecovery < 0.3) parts.push('深度睡眠恢复严重不足');
+  else if (p.sleepRecovery < 0.5) parts.push('恢复压力偏高');
+  if (p.sleepDebt >= 3) parts.push(`睡眠债 ${p.sleepDebt.toFixed(1)}h`);
+  // 生理恢复能力
   if (p.recoveryCapacity != null) {
-    if (p.recoveryCapacity < 0.7) parts.push('恢复能力显著下降');
+    if (p.recoveryCapacity < 0.7) parts.push('迷走恢复显著下降');
     else if (p.recoveryCapacity < 0.85) parts.push('恢复能力略差');
   }
-  if (p.tempDev != null && p.tempDev > 0.005) parts.push('体温偏高');
+  if (p.highLoadRatio >= 0.3) parts.push(`今日高强度时段较多`);
   if (parts.length === 0) return '恢复良好';
   return parts.join('，');
 }

@@ -23,6 +23,7 @@ import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
+import { parseClockMinutes } from '../lib/sleepTime';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
@@ -41,7 +42,7 @@ interface RouteParams { type: EnergyType; }
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
   emotion:   { name: '情绪洞察', accent: theme.colors.stateTense,  sub: '情绪消耗 + 唤醒分' },
-  cognitive: { name: '脑力消耗', accent: theme.colors.accentSolid, sub: '基于认知负荷 & 疲劳' },
+  cognitive: { name: '脑力消耗', accent: theme.colors.accentSolid, sub: '基于时序疲劳累积模型' },
   activity:  { name: '运动消耗', accent: theme.colors.stateEnergy,  sub: '步数 · 距离 · 活动消耗' },
 };
 
@@ -137,8 +138,23 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
     );
   }
 
-  // ★ Hero 左上角: emotion 显示情绪消耗分
-  const heroVal = type === 'emotion' ? report?.emotionalLoad : report?.loadScore;
+  // ★ Hero 左上角: emotion 显示分, cognitive 显示档位文字
+  if (type === 'cognitive') {
+    const ll = report?.loadLevel;
+    const map: Record<string, { text: string; color: string }> = {
+      rested: { text: '低疲劳', color: '#22C55E' },
+      light: { text: '低疲劳', color: '#22C55E' },
+      moderate: { text: '中疲劳', color: '#F59E0B' },
+      heavy: { text: '高疲劳', color: '#9D8AF0' },
+    };
+    const m = ll ? map[ll] : null;
+    return (
+      <View style={styles.hero}>
+        <Text style={[styles.heroVal, m && { color: m.color }]}>{m ? m.text : '—'}</Text>
+      </View>
+    );
+  }
+  const heroVal = report?.emotionalLoad;
   return (
     <View style={styles.hero}>
       <Text style={styles.heroVal}>{heroVal ?? '—'}</Text>
@@ -150,7 +166,6 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 /* ========== 情绪消耗：图在上 ========== */
 /* ========== 脑力消耗：图在上 ========== */
 function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
-  // ★ 每次渲染都重算；按「锚定日」取报告（今天=此刻 / 历史日=整天）
   const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
   const report = computeCognitiveLoadReport(reportNowMsForDay(anchorMs));
 
@@ -166,77 +181,127 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
     );
   }
 
+  const rhythmChip = (() => {
+    if (report.rhythmStatus === 'sustained_high') return { text: '节律偏高', color: theme.colors.danger };
+    if (report.rhythmStatus === 'dysregulated') return { text: '节律紊乱', color: theme.colors.stateTense };
+    if (report.rhythmStatus === 'normal') return { text: '节律正常', color: theme.colors.stateCalm };
+    return null;
+  })();
+
+  const { sleepRecovery, sleepDebt } = report;
+  const recoveryPenalty = Math.round((1 - sleepRecovery) * 35);
+  const debtScore = Math.round(Math.min(sleepDebt * 6, 30));
+  const recoveryLabel = sleepRecovery >= 0.75 ? '恢复良好' : sleepRecovery >= 0.55 ? '恢复一般' : sleepRecovery >= 0.35 ? '恢复不足' : '严重不足';
+
   return (
     <>
-      {/* ★ 图在最上面 —— 全天认知负荷分布 */}
+      {/* 全天趋势图 */}
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={styles.chartTitle}>全天认知负荷分布</Text>
-          <CognitiveHistogram chartH={240} 
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5), marginBottom: theme.sp(1.5) }}>
+            <Text style={styles.chartTitle}>认知疲劳度</Text>
+            {/* 当前负荷 chip: 高/中/低 */}
+            {(() => {
+              const ll = report.loadLevel;
+              const map = {
+                rested: { text: '低疲劳', color: '#22C55E' },
+                light: { text: '低疲劳', color: '#22C55E' },
+                moderate: { text: '中疲劳', color: '#F59E0B' },
+                heavy: { text: '高疲劳', color: '#9D8AF0' },
+              } as const;
+              const m = map[ll as keyof typeof map];
+              return (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: m.color + '20' }}>
+                  <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: m.color }}>
+                    {m.text}
+                  </Text>
+                </View>
+              );
+            })()}
+            {/* 节律 chip */}
+            {rhythmChip && (
+              <View style={{ paddingHorizontal: theme.sp(1.5), paddingVertical: 2, borderRadius: 10, backgroundColor: rhythmChip.color + '22' }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: rhythmChip.color }}>{rhythmChip.text}</Text>
+              </View>
+            )}
+          </View>
+          <CognitiveHistogram chartH={200}
             hourly={report.hourly}
             peakSpan={report.peakLoadSpan}
             bestSpan={report.bestSpan}
             sleepWindow={report.sleepWindow}
           />
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.stateCalm }]} />
-              <Text style={styles.legendText}>放松</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.stateTense }]} />
-              <Text style={styles.legendText}>中度</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.danger }]} />
-              <Text style={styles.legendText}>高强度</Text>
-            </View>
-          </View>
         </View>
       </Card>
 
-      {/* 大分数 */}
+      {/* 今日认知窗口 — 人话 */}
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={styles.cardTitle}>认知负荷 & 疲劳</Text>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreBlock}>
-              <Text style={styles.scoreLabel}>认知负荷</Text>
-              <Text style={[styles.bigScore, { color: lCol }]}>{report.loadScore}</Text>
+          <Text style={styles.cardTitle}>今日认知窗口</Text>
+
+          {/* 早起认知准备度 — 最上面一行, 早上看最有用 */}
+          {(() => {
+            const wakeH = (() => {
+              try {
+                const dk = dayKey(anchorMs);
+                const sl = healthStore.getSleep(dk);
+                const m = parseClockMinutes(sl?.wakeTime);
+                return m != null ? m / 60 : null;
+              } catch { return null; }
+            })();
+            const rec = report.sleepRecovery ?? 0.6;
+            const debt = report.sleepDebt ?? 0;
+            const peak = report.circadianPeakH ?? 8;
+            // 早起准备度 (0-100): 睡眠恢复基础分 - 债扣分 + 节律相位加分
+            const circAdj = wakeH != null ? (Math.max(0, Math.min(100, 50 + 50 * Math.sin(2 * Math.PI * (wakeH - peak + 6) / 24))) / 100) : 0.5;
+            const clamp2 = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+            const prep = Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3);
+            const ll = prep >= 70 ? { text: '准备好了', color: '#22C55E', tip: '起床即有清晰认知状态' }
+                     : prep >= 45 ? { text: '一般', color: '#F59E0B', tip: '需要 30-60 分钟暖脑' }
+                     : { text: '偏低', color: '#9D8AF0', tip: '建议先轻度活动，避免烧脑' };
+            return (
+              <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: ll.color + '12', borderLeftWidth: 3, borderLeftColor: ll.color }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>早起认知准备度</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
+                  <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: ll.color }}>{ll.text}</Text>
+                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft }}>· {prep}/100</Text>
+                </View>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
+                  {ll.tip}
+                  {rec < 0.6 ? ' · 昨晚恢复不足' : ''}
+                  {debt > 1.5 ? ' · 累计睡眠债 ' + debt.toFixed(1) + 'h' : ''}
+                  {wakeH != null ? ' · 起床 ' + fmtHM(wakeH) : ''}
+                </Text>
+              </View>
+            );
+          })()}
+
+          <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateEnergy + '18' }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰</Text>
+              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: theme.colors.stateEnergy }}>
+                {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
+              </Text>
+              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
+                最适合烧脑
+              </Text>
             </View>
-            <View style={styles.scoreDivider} />
-            <View style={styles.scoreBlock}>
-              <Text style={styles.scoreLabel}>疲劳指数</Text>
-              <Text style={[styles.bigScore, { color: fCol }]}>{report.fatigueIndex}</Text>
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷</Text>
+              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: theme.colors.stateTense }}>
+                {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '--'}
+              </Text>
+              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
+                轻度任务 / 休息
+              </Text>
             </View>
           </View>
-          {/* v2: 脑力 3 指标 + 预测峰谷 + 原有生理指标 — 两行各 4 */}
-          <View style={styles.statGrid}>
-            <StatCell label="脑力值"
-              value={report.mentalEnergy != null ? `${report.mentalEnergy}` : '—'}
-              sub="当下可用储备" />
-            <StatCell label="专注力"
-              value={report.focusScore != null ? `${report.focusScore}` : '—'}
-              sub="当前注意力状态" />
-            <StatCell label="决策力"
-              value={report.decisionScore != null ? `${report.decisionScore}` : '—'}
-              sub="决策质量预估" />
-            <StatCell label="恢复能力"
-              value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
-              sub="全天恢复水平" />
-          </View>
-          <View style={[styles.statGrid, { marginTop: theme.sp(1) }]}>
-            <StatCell label="峰值预测"
-              value={report.forecast?.peak
-                ? `${String(report.forecast.peak.hour).padStart(2, '0')}:00`
-                : '—'}
-              sub={report.forecast?.peak ? `能量 ${report.forecast.peak.energy}` : ''} />
-            <StatCell label="低谷预测"
-              value={report.forecast?.trough
-                ? `${String(report.forecast.trough.hour).padStart(2, '0')}:00`
-                : '—'}
-              sub={report.forecast?.trough ? `能量 ${report.forecast.trough.energy}` : ''} />
-          </View>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+            {report.forecast?.rhythmR2 != null
+              ? (report.forecast.rhythmR2 >= 0.6 ? '节律稳定，预测准' : report.forecast.rhythmR2 >= 0.3 ? '节律一般，仅供参考' : '节律不稳定，预测不准')
+              : '需积累 7+ 天节律数据'}
+            {report.circadianPeakH != null ? ' · 个体化峰值 ' + fmtHM(report.circadianPeakH) : ''}
+          </Text>
         </View>
       </Card>
 
@@ -245,6 +310,17 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
   );
 }
 
+// 时间格式化工具
+function fmtHM(h: number | null | undefined): string {
+  if (h == null) return '--';
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+function peakSpanText(span: { startHour: number; endHour: number } | null | undefined): string {
+  if (!span) return '--';
+  return `${fmtHM(span.startHour)} - ${fmtHM(span.endHour)}`;
+}
 
 function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: any; anchor: Date }) {
   const dk = dayKey(anchor.getTime());  // ★ 跟随日期选择器

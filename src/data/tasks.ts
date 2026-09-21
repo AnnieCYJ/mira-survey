@@ -53,6 +53,33 @@ export const DEFAULT_TOOLS: TaskItem[] = [
     action: '开始 · 10 min',
     done: false,
   },
+  {
+    id: 'mind-training',
+    type: 1,
+    badge: 'AI · 脑力提升',
+    title: '认知灵活性训练',
+    desc: '昨晚深睡恢复良好，大脑可塑性窗口已打开，15 分钟效果最佳。',
+    action: '开始 · 15 min',
+    done: false,
+  },
+  {
+    id: 'focus-deep',
+    type: 2,
+    badge: '专注课程',
+    title: '25 分钟深度专注',
+    desc: '皮质醇节律平稳，适合进入心流状态，专注效率比平时高 32%。',
+    action: '开始 · 25 min',
+    done: false,
+  },
+  {
+    id: 'learn-article',
+    type: 3,
+    badge: '知识推荐',
+    title: '《压力下的大脑》',
+    desc: '基于你近期情绪日志精选，5 分钟读完，帮助你更好地理解压力反应。',
+    action: '开始 · 5 min',
+    done: false,
+  },
 ];
 
 export const TOOL_GRID: { icon: IconName; name: string; sub: string }[] = [

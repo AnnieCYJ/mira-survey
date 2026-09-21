@@ -51,6 +51,7 @@ export default function MeditationScreen() {
     <ScreenContainer compactTop scrollY={scrollY}>
       <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
         <Text style={styles.title}>Tools</Text>
+        <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
       </Animated.View>
 
       <TaskDeck tools={tools} onComplete={handleComplete} />
@@ -91,6 +92,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
+    color: theme.colors.textWhite,
+    marginBottom: theme.sp(1),
+  },
+  subtitle: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textWhite,
     marginBottom: theme.space.md,
   },

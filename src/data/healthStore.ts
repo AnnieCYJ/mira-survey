@@ -258,6 +258,27 @@ function recomputeDaily(
 // ───────────────────────────────────────────────────────────────────────────
 export type HealthStoreListener = () => void;
 
+
+/** 第三步: 用户认知标注 (训练个性化分类器的壁垒数据) */
+export interface CognitiveLabel {
+  /** 标注时间戳 */
+  t?: number;
+  /** 关联的日期 key */
+  dateKey: string;
+  /** 标注类型: 负荷事件反馈 / 日常回顾 */
+  type: 'event_feedback' | 'daily_review';
+  /** 主观认知类型: 烧脑(高负荷) vs 心累(情绪) vs 平静 */
+  cognitiveType: 'burn' | 'emotion' | 'calm';
+  /** 主观认知负荷强度 1-5 */
+  intensity: 1 | 2 | 3 | 4 | 5;
+  /** 任务类型: 开会 / 写代码 / 阅读 / 运动 / 其他 */
+  taskType?: string;
+  /** 关联的 detector 事件 id (如果是 event_feedback) */
+  eventT?: number;
+  /** 备注 */
+  note?: string;
+}
+
 export class HealthStore {
   private stores: Record<MetricKey, MetricStore> = {} as Record<MetricKey, MetricStore>;
   private sleep: Record<string, SleepSummary> = {};
@@ -269,6 +290,8 @@ export class HealthStore {
 
   /** 计算型指标缓存：dayKey -> { stress?, cognitive?, cortisol?, emotion? } */
   private analysis: Record<string, Partial<AnalysisSnapshot>> = {};
+  /** 第三步: 用户认知标注 (ring buffer, 最多 500 条, 训练个性化分类器的壁垒数据) */
+  private labels: CognitiveLabel[] = [];
   syncEnabled = true;
   userProfile: { weight: number; height: number; age: number; sex: number } | null = null;
 
@@ -757,6 +780,31 @@ export class HealthStore {
   getAnalysis(dateKey?: string): Partial<AnalysisSnapshot> | null {
     const dk = dateKey ?? dayKey(Date.now());
     return this.analysis[dk] ?? null;
+  }
+
+  // ── 第三步: 用户标注数据模型 (训练个性化分类器的壁垒) ──
+  // 用户标注: 某个时间段的认知状态自评
+  //   - 触发时机: 认知负荷事件后、或每日回顾时
+  //   - 用途: 训练个性化分类器 (通用模型 → 她的模型)
+  //   - 存储: 按时间戳存, 可与同期 HRV/SNS 数据 join
+
+  /** 认知标注类型 — 用户对某个时段的自评 */
+  saveLabel(label: CognitiveLabel): void {
+    if (!label.t) label.t = Date.now();
+
+    this.labels.push(label);
+    // 只保留最近 500 条 (ring buffer)
+    if (this.labels.length > 500) this.labels = this.labels.slice(-500);
+    this.lastUpdated['label'] = Date.now();
+    this.notify();
+  }
+
+  /** 取标注, 可按日期范围过滤 */
+  getLabels(fromMs?: number, toMs?: number): CognitiveLabel[] {
+    if (!this.labels) return [];
+    return this.labels.filter(l =>
+      (fromMs == null || (l.t ?? 0) >= fromMs) && (toMs == null || (l.t ?? 0) <= toMs)
+    );
   }
 
   /** 拿历史计算结果（近 N 天），供趋势/回溯用。 */
