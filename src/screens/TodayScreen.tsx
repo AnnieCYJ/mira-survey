@@ -19,7 +19,7 @@ import TrendChart, { TrendAxis } from '../components/TrendChart';
 import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel } from '../lib/cognitiveLoad';
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
@@ -77,11 +77,11 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
       return r?.events?.length > 0 ? String(r.events.length) : '—';
     } catch { return '—'; }
   })();
-  // 脑力消耗 = 认知负荷分 0-100
+  // 脑力消耗 = 全天平均疲劳度 (与柱状图同源, 0-100)
   const cognitive = (() => {
     try {
       const r = computeCognitiveLoadReport();
-      return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—';
+      return r?.avgFatigue != null ? String(r.avgFatigue) : '—';
     } catch { return '—'; }
   })();
   // 运动消耗 = 今日步数
@@ -250,39 +250,39 @@ function buildSmartAdvice(phase: string, statusIdx: number | null, asleep: boole
 // 通用 mini chart 尺寸
 const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
 
-// —— 情绪消耗：点状图 (24h × 5 严重度网格) + 横坐标 + 最新事件 pop ——
-const MiniStressDots = React.memo(function MiniStressDots({ events }: { events: any[] }) {
-  const C=24, R=5, cw=MW/C, rh=CHART_H/R;
+// —— 情绪消耗：每小时压力事件数柱状图（柱高=次数，颜色=低/中/高三档）——
+//   ★ 为什么不用点阵：每小时在图上只有 7px 宽，3 个事件画 3 个点必然挤成一坨糊点，
+//     看上去像一块「小热力图」，与卡片上的「N 次」对不上。
+//     改成柱状后：柱高 = 该小时事件数，24 根柱高之和正好 = 卡片大数字（次数），两者同源。
+const MiniStressBars = React.memo(function MiniStressBars({ events }: { events: any[] }) {
+  const N=24, bw=MW/N-1, CAP=5;              // CAP: 每小时 5 次事件 = 柱满高
   const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
-  // 聚合到 (hour, severityBucket) 格子，取最大 severity
-  const grid: number[][] = Array.from({length:C},()=>Array(R).fill(0));
-  ev.forEach((e:any)=>{ const h=new Date(e.t).getHours(); const s=e.severity??3; const b=Math.min(R-1,Math.floor(s/2)); if(s>grid[h][b]) grid[h][b]=s; });
-  const dots:any[]=[];
-  for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++){
-    const s=grid[cc][r];
-    if(s>0){ const color=s>=5?theme.colors.moodRest:s>=3?theme.colors.stateTense:'rgba(240,196,110,0.5)'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
+  const cnt = new Array(N).fill(0);
+  ev.forEach((e:any)=>{
+    const h = new Date(e.t).getHours();
+    if (h >= 0 && h < N) cnt[h] += 1;
+  });
+  const bars: any[] = [];
+  for (let h = 0; h < N; h++) {
+    if (cnt[h] === 0) continue;
+    const bh = Math.max(3, Math.min(1, cnt[h] / CAP) * CHART_H);
+    // 颜色 = 该小时「事件数」低/中/高三档（与卡片数字同口径，不再用严重度色）
+    const col = cnt[h] >= 4 ? theme.colors.danger : cnt[h] >= 2 ? theme.colors.warn : theme.colors.success;
+    bars.push(<Rect key={'b'+h} x={h*(MW/N)+0.5} y={CHART_H-bh} width={bw} height={bh} rx={1.5} fill={col} />);
   }
-  // 空态：淡色散点示意
-  const phDots:any[]=[];
-  if(dots.length===0){
-    const ph=[[2,3],[4,2],[6,3],[9,1],[11,3],[13,2],[15,4],[17,2],[19,3],[21,2]];
-    ph.forEach(([h,r],i)=>{ phDots.push(<Circle key={'ph'+i} cx={h*cw+cw/2} cy={r*rh+rh/2} r={3} fill="#E879F9" opacity={0.18} />); });
-  }
-  const popHour = ev.length>0 ? new Date(ev[ev.length-1].t).getHours() : new Date().getHours();
-  const popX = popHour*cw+cw/2;
-  const PopX = Math.max(18, Math.min(MW-36, popX-18));
+  const peakH = cnt.indexOf(Math.max(...cnt));
+  const popX = peakH*(MW/N)+bw/2;
+  const PopX = Math.max(18, Math.min(MW-36, popX-14));
   const ticks=[0,6,12,18,24];
   return (
     <View style={{ width: MW, height: MH }}>
       <Svg width={MW} height={MH}>
-        {/* 与情绪详情页点状图一致：无横向网格线 */}
-        {phDots}
-        {dots}
-        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*cw+cw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
+        {bars}
+        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
       {ev.length>0 ? (
-        <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(232,121,249,0.25)' }}>
-          <Text style={{ fontSize:10, color: theme.colors.moodRest, fontWeight:'700' }}>{ev.length} 次</Text>
+        <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.stateTense + '44' }}>
+          <Text style={{ fontSize:10, color: theme.colors.stateTense, fontWeight:'700' }}>{ev.length} 次</Text>
         </View>
       ):null}
     </View>
@@ -290,21 +290,28 @@ const MiniStressDots = React.memo(function MiniStressDots({ events }: { events: 
 });
 
 // —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
-const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { hourly: { hour: number; score: number }[] }) {
-  const N=24, scores=Array.from({length:N},(_,i)=>hourly?.find(h=>h.hour===i)?.score??0);
-  const max=Math.max(10,...scores), bw=MW/N-1;
-  const lastIdx = scores.map((v,i)=>({v,i})).filter(x=>x.v>0).slice(-1)[0]?.i ?? 0;
-  const popVal = scores[lastIdx];
+// ★ hour = 钟点 0–23（computeHourlyLoad 已收敛为 24 整点桶）；柱色与详情页大图、Hero 共用
+//   统一三档：低<40 绿 / 中 40–70 黄 / 高≥70 红（COG_LEVEL_LOW / COG_LEVEL_HIGH）
+const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { hourly: { hour: number; score: number; hasData?: boolean }[] }) {
+  const N=24;
+  const rows = Array.from({length:N},(_,i)=>{ const b:any = hourly?.find((h:any)=>h.hour===i); return { v: b?.score ?? 0, has: !!b?.hasData }; });
+  const bw=MW/N-1;
+  // ★ 峰值/最新值只取「有实测」的小时；睡眠段与未到时段的占位桩不算数据
+  const lastIdx = rows.map((r,i)=>({...r,i})).filter(x=>x.has).slice(-1)[0]?.i ?? 0;
+  const popVal = rows[lastIdx]?.v ?? 0;
+  const hasAny = rows.some(r=>r.has);
   const popX = lastIdx*(MW/N)+bw/2;
   const PopX = Math.max(18, Math.min(MW-36, popX-14));
   const ticks=[0,6,12,18,24];
+  const barColor = (v:number)=> v>=COG_LEVEL_HIGH ? theme.colors.danger : v>=COG_LEVEL_LOW ? theme.colors.warn : theme.colors.success;
+  const NO_DATA = 'rgba(120,110,160,0.13)';   // 无实测时段(睡眠/未到) = 浅灰占位，不用彩色
   return (
     <View style={{ width: MW, height: MH }}>
       <Svg width={MW} height={MH}>
-        {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?theme.colors.accentSolid:v>40?theme.colors.stateEnergy:theme.colors.ringOnLight; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+        {rows.map((r,i)=>{ const h=Math.max(1.5,(r.v/100)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
         {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
-      {popVal>0 ? (
+      {hasAny && popVal>0 ? (
         <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.accentSolid + '33' }}>
           <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{Math.round(popVal)}</Text>
         </View>
@@ -448,7 +455,8 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
 
   const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
-  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.loadScore != null ? String(Math.round(r.loadScore)) : '—'; } catch { return '—'; } })();
+  // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）
+  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.avgFatigue != null ? String(r.avgFatigue) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
 
   // ★ 三张消耗卡的涨跌 = 真实数据，且**同口径比较**（今天「至今」 vs 昨天「同一时刻」）。
@@ -667,17 +675,16 @@ export default function TodayScreen() {
       sub: `峰值强度 ${Math.round(peakEvent.severity)} · 前后可安排 5 分钟呼吸调整`,
     }, peakEvent.hour * 60 + peakEvent.minute);
   }
-  // 4. 脑力负荷高峰（峰值来自已观测的小时数据；高峰段尚未到来时只显示「今日」，不写未来时刻）
-  if (cogReport?.loadScore != null) {
-    const span = cogReport.peakLoadSpan;
-    const spanMin = span ? span.startHour * 60 : null;
-    const spanPast = spanMin != null && spanMin <= curMin;
+  // 4. 脑力消耗：数字与柱状图同源（avgFatigue）；高峰时刻取「已观测小时柱」最高点，不写未来时刻
+  if (cogReport?.avgFatigue != null) {
+    const barsPast = (cogReport.hourly ?? []).filter(h => h.hasData && h.hour * 60 <= curMin);
+    const peakBar = barsPast.length > 0 ? barsPast.reduce((a, b) => (b.score > a.score ? b : a)) : null;
     pushItem({
-      time: spanPast ? `${pad2(span!.startHour)}:00` : '今日',
+      time: peakBar ? `${pad2(peakBar.hour)}:00` : '今日',
       color: theme.colors.stateTired,
-      title: `脑力负荷 ${Math.round(cogReport.loadScore)}`,
+      title: `脑力消耗 ${cogReport.avgFatigue} · ${cogLevelLabel(cogReport.avgFatigue)}`,
       sub: '高峰时段安排专注任务更高效',
-    }, spanPast ? spanMin! : curMin);
+    }, peakBar ? peakBar.hour * 60 : curMin);
   }
   // 5. 活动量：累计步数——时间用「最后一次计步采样的真实时刻」，没有采样就不写时间标签
   const dkToday = dayKey(Date.now());
@@ -729,8 +736,15 @@ export default function TodayScreen() {
 
   // 三张消耗卡的副标题：一律由真实数据推导，不写死「峰值集中在傍晚」「19 kcal」这类未发生或编造的结论
   const stressSub = peakEvent ? `峰值 ${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '暂无压力事件';
-  const cogSpan = cogReport?.peakLoadSpan ?? null;
-  const cognitiveSub = cogSpan && cogSpan.startHour * 60 <= curMin ? `峰值 ${pad2(cogSpan.startHour)}:00` : '认知状态平稳';
+  const cogLevelTxt = cogLevelLabel(cogReport?.avgFatigue);
+  // 峰值时刻取「已观测小时柱」最高点（与卡片柱状图完全同源）；未观测到就只给档位，不写未来时刻
+  const cogPeakBar = (() => {
+    const bars = (cogReport?.hourly ?? []).filter(h => h.hasData && h.hour * 60 <= curMin);
+    return bars.length > 0 ? bars.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+  })();
+  const cognitiveSub = cogPeakBar
+    ? `峰值 ${pad2(cogPeakBar.hour)}:00 · ${cogLevelTxt}`
+    : `全天${cogLevelTxt}疲劳`;
   const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
   const activitySub = activity === '—' || activity === '0'
     ? '今日暂无运动'
@@ -841,7 +855,7 @@ export default function TodayScreen() {
 
         <View style={{ flexDirection: 'column', gap: theme.space.md }}>
           <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
+          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
           <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
         </View>
 

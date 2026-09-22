@@ -4,7 +4,7 @@
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport, cogLevelLabel } from '../lib/cognitiveLoad';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
 
@@ -297,7 +297,7 @@ function getAnalysisBlock(): string {
     const c = cached?.cognitive ?? (() => {
       const r = computeCognitiveLoadReport();
       return {
-        loadScore: r.loadScore, fatigueIndex: r.fatigueIndex,
+        loadScore: r.loadScore, avgFatigue: r.avgFatigue, fatigueIndex: r.fatigueIndex,
         peakHour: r.peakLoadSpan?.startHour ?? null,
         bestHour: r.bestSpan?.startHour ?? null,
         recoveryCapacity: r.recoveryCapacity,
@@ -305,7 +305,8 @@ function getAnalysisBlock(): string {
     })();
     if (c) {
       const bits: string[] = [];
-      kv(bits, '脑力负荷', c.loadScore, '/100', 0);
+      kv(bits, '脑力消耗', c.avgFatigue, '/100', 0);
+      if (c.avgFatigue != null) bits.push(`等级${cogLevelLabel(c.avgFatigue)}`);
       kv(bits, '疲劳指数', c.fatigueIndex);
       // ★ 恢复力是 0–1 比值（见 cognitiveLoad.computeRecoveryCapacity = minWinMean / hrvBase），
       //   必须 ×100 才是百分数。早期直接 fmt(0.98,'%',0) → 四舍五入成「1%」，

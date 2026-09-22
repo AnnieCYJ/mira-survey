@@ -306,11 +306,9 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
         <View style={styles.statGrid}>
           <StatCell
             label="情绪消耗"
-            value={report.emotionalLoad != null ? `${report.emotionalLoad}` : '—'}
-            sub={report.emotionalLoad != null
-              ? (report.emotionalLoad > 60 ? '高消耗 · 需要休息' : report.emotionalLoad > 30 ? '中等 · 恢复较快' : '低消耗 · 状态良好')
-              : ''}
-            valueColor={report.emotionalLoad != null && report.emotionalLoad > 60 ? theme.colors.danger : undefined}
+            value={`${report.events.length} 次`}
+            sub={report.events.length > 8 ? '事件较多 · 注意放松' : report.events.length > 4 ? '事件适中' : '事件较少 · 状态平稳'}
+            valueColor={report.events.length > 8 ? theme.colors.danger : report.events.length > 4 ? theme.colors.warn : undefined}
           />
           <StatCell
             label="恢复时间"
@@ -323,9 +321,9 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             sub={report.peakHour != null ? '事件最多' : ''}
           />
           <StatCell
-            label="情绪压力事件"
-            value={String(report.events.length)}
-            sub={report.events.length > 8 ? '事件较多' : report.events.length > 4 ? '适中' : '较少'}
+            label="消耗分数"
+            value={report.emotionalLoad != null ? `${report.emotionalLoad}` : '—'}
+            sub={report.emotionalLoad != null ? '/100' : ''}
           />
         </View>
 

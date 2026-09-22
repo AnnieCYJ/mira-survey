@@ -38,6 +38,8 @@ export interface CognitiveLoadReport {
   fatigueReason: string;
   /** 全天逐小时负荷分 (0-23), hasData=false 表示该小时无 HRV/SNS 数据 (score=0 仅占位) */
   hourly: { hour: number; score: number; hasData: boolean }[];
+  /** 全天平均疲劳度 0-100 (仅基于有数据的小时, 与柱状图同源; 卡片大数字与柱子保持一致) */
+  avgFatigue: number | null;
   /** 恢复能力 (全天 RMSSD 基线 vs 近期最低窗口) */
   recoveryCapacity: number | null;
   /** 活跃时段高负荷占比 */
@@ -492,11 +494,11 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   }
   fatigueIndex = clamp(fatigueIndex, 0, 100);
 
-  // ── 6. 分类 ────────────────────────────────────────────────
+  // ── 6. 分类（阈值与全 App 统一的 COG_LEVEL_LOW/HIGH 对齐：≥70 高 / 40–70 中 / <40 低）──
   const loadLevel: LoadLevel =
-    loadScore >= 75 ? 'heavy'
-    : loadScore >= 60 ? 'moderate'
-    : loadScore >= 40 ? 'light'
+    loadScore >= COG_LEVEL_HIGH ? 'heavy'
+    : loadScore >= COG_LEVEL_LOW ? 'moderate'
+    : loadScore >= 20 ? 'light'
     : 'rested';
 
   const fatigueLevel: FatigueLevel =
@@ -684,6 +686,12 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     100 - brainUsed * 0.7 + circadianEnergy * 0.3 - debtPenalty * 0.3
   ), 0, 100);
 
+  // ── 全天平均疲劳度（仅统计有数据的小时），与柱状图同源，作为卡片大数字 ──
+  const _fatigueScores = hourly.filter(h => h.hasData).map(h => h.score);
+  const avgFatigue = _fatigueScores.length > 0
+    ? Math.round(_fatigueScores.reduce((a, b) => a + b, 0) / _fatigueScores.length)
+    : null;
+
   // ── 第二步: 实时负荷检测 + 动态修正 ────────────────────
   const loadEvent: CognitiveLoadEvent | null = detectCognitiveLoad(
     hrvBaseline ?? 55, snsBaseline ?? 30, nowMs,
@@ -703,6 +711,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     fatigueLevel,
     fatigueReason,
     hourly,
+    avgFatigue,
     recoveryCapacity,
     highLoadRatio: Math.round(highLoadRatio * 100),
     peakLoadSpan,
@@ -742,12 +751,26 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
       troughHour: forecast?.trough?.hour, troughEnergy: forecast?.trough?.energy,
       sleepDebtH, sleepRecoveryFactor,
       circadianHour,
+      // ★ 口径诊断（首页大数字 = avgFatigue，副标题峰值 = 柱子最高点）
+      loadScore: result.loadScore,
+      avgFatigue: result.avgFatigue,
+      fatigueIndex: result.fatigueIndex,
+      loadLevel: result.loadLevel,
+      dataHours: hourly.filter(h => h.hasData).length,
+      hourlyMax: hourly.length ? Math.max(...hourly.map(h => h.score)) : null,
+      hourlyPeakHour: hourly.length ? hourly.reduce((a, b) => (b.score > a.score ? b : a)).hour : null,
+      hourlyStr: hourly.filter(h => h.hasData).map(h => `${h.hour}:${h.score}`).join(' '),
+      // ★ 调用身份诊断：区分「不同 nowMs / 不同天 / 不同数据快照」的多个调用方
+      nowMs, today: _dayKey(nowMs), debt: Math.round(sleepDebt * 100) / 100,
+      sleepWin: sleepWindow ? `${sleepWindow.bedHour}->${sleepWindow.wakeHour}` : null,
+      sleepRaw: sleepSum ? { sleepTime: sleepSum.sleepTime, wakeTime: sleepSum.wakeTime, getUp: sleepSum.getUp, total: sleepSum.total, deep: sleepSum.deep } : null,
     }));
   } catch {}
   // ↓ 自动持久化
   try {
     healthStore.saveAnalysis(_dayKey(nowMs), 'cognitive', {
       loadScore: result.loadScore,
+      avgFatigue: result.avgFatigue,
       fatigueIndex: result.fatigueIndex,
       peakHour: result.peakLoadSpan?.startHour ?? null,
       bestHour: result.bestSpan?.startHour ?? null,
@@ -831,13 +854,17 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
   // ── 4. ODE 离散化: 48 个半小时步 ──
   // E(t) = 认知能量 (0-100), fatigue = 100 - E
   const DT = 0.5;  // 半小时
-  const ALPHA_HRV = 0.04;  // HRV 偏离 → 疲劳衰减系数
-  const ALPHA_SNS = 0.03;  // SNS 偏离 → 疲劳衰减系数
-  const ALPHA_AWAKE = 0.8; // 清醒时长线性衰减 (每 h 基础疲劳增长)
-  const BETA_CIRC = 2.0;   // 节律窗口恢复系数
+  const ALPHA_HRV = 0.04;  // HRV 偏离 → 疲劳累积系数
+  const ALPHA_SNS = 0.03;  // SNS 偏离 → 疲劳累积系数
+  const ALPHA_AWAKE = 1.6; // 清醒期基础疲劳累积 (每 h)
+  // ★ 曲线是否铺满「清醒时段」由当天整体实测量决定：
+  //   旧实现要求「该半小时内有实测样本」才算 hasData，戒指采样断续时曲线被打成碎片
+  //   （实测只落在 1 个半小时 → 均值只由 1 小时决定 → 出现「平均疲劳度 8」这类无意义值）
+  const dayHasData = (awakeHrv.length + awakeSns.length) >= 10;
 
-  let energy = sleepRec * 80 + 20;  // 初始能量 20-100
-  const result: { hour: number; score: number; hasData: boolean }[] = [];
+  const morningEnergy = clamp(sleepRec * 80 + 20, 20, 100); // 睡眠恢复决定的晨起能量上限
+  let energy = morningEnergy;  // 初始能量 20-100
+  const half: { score: number; hasData: boolean }[] = []; // 内部 48 个半步
 
   for (let step = 0; step < 48; step++) {
     const halfH = step * 0.5;
@@ -845,23 +872,26 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
     const isAsleep = (bedHour < wakeHour) ? (fullH >= bedHour && fullH < wakeHour) : (fullH >= bedHour || fullH < wakeHour);
 
     if (isAsleep) {
-      // 睡眠时: 能量快速恢复 (指数上升至 ~90)
-      energy = clamp(energy + 15 * DT, 0, 92);
-      result.push({ hour: step, score: 0, hasData: false });
+      // 睡眠时: 能量恢复至「本次晨起能量」上限
+      // ★ 不再固定 92 —— 旧实现会把睡眠期能量顶到 92，从而把 sleepRec（睡得好不好）
+      //   对全天疲劳曲线的影响彻底抹掉
+      energy = clamp(energy + 18 * DT, 0, morningEnergy);
+      half.push({ score: 0, hasData: false });
       continue;
     }
 
     // ── 取这个半小时的 HRV/SNS ──
     const stepStart = dayMs + step * 1800000;  // 半小时 = 1800s
+    const inFuture = stepStart >= nowMs;       // ★ 只到「此刻」为止算已观测(不写未发生时段)
     const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 25 });
     const snsPts = healthStore.getTimeRange('sns' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 25 });
     const hrvMean = hrvPts.length > 0 ? hrvPts.reduce((a, p) => a + p.v, 0) / hrvPts.length : null;
     const snsMean = snsPts.length > 0 ? snsPts.reduce((a, p) => a + p.v, 0) / snsPts.length : null;
-    const hasData = hrvMean != null || snsMean != null;
+    const hasData = !inFuture && (dayHasData || hrvMean != null || snsMean != null);
 
-    // ── fatigueDrive: 当前半小时的能量衰减驱动力 ──
+    // ── fatigueDrive: Process S —— 清醒期疲劳单调累积 ──
     let fatigueDrive = 0;
-    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础衰减 + 睡眠债加速
+    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础累积 + 睡眠债加速
     if (hrvMean != null && hrvBaseline > 0) {
       const hrvDrop = clamp((hrvBaseline - hrvMean) / hrvBaseline, 0, 1);
       fatigueDrive += ALPHA_HRV * hrvDrop * 100;
@@ -871,19 +901,32 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
       fatigueDrive += ALPHA_SNS * snsRise * 100;
     }
 
-    // ── recoveryDrive: 节律窗口恢复 ──
-    const circPhase = 0.5 + 0.5 * Math.sin(2 * Math.PI * (halfH - acrophaseH + 6) / 24);
-    // circPhase 在 acrophaseH 附近 ~1 (节律峰), 远离 ~0.5 (谷)
-    let recoveryDrive = BETA_CIRC * circPhase;
+    // ── 节律只调制「累积速度」(0.9–1.6×)：清晨略慢、下午低谷略快，但不产生「回血」──
+    //    旧实现的 recoveryDrive(最大 2.0/h) 与 fatigueDrive(≈1.13/h) 几乎相等，
+    //    导致能量全天几乎不降、疲劳度恒在 8–12，曲线与卡片数字双双失去意义。
+    const circSpeed = 0.9 + 0.7 * (0.5 + 0.5 * Math.sin(2 * Math.PI * (halfH - acrophaseH + 12) / 24));
 
     // ── ODE 更新 ──
-    energy = clamp(energy - fatigueDrive * DT + recoveryDrive * DT, 8, 100);
+    energy = clamp(energy - fatigueDrive * circSpeed * DT, 0, 100);
 
     // ── 计算疲劳度 = 100 - 能量 ──
-    const fatigue = Math.round(100 - energy);
-    result.push({ hour: step, score: fatigue, hasData });
+    half.push({ score: Math.round(100 - energy), hasData });
   }
-  return result;
+
+  // ── 聚合为 24 个整点桶 (hour = 钟点 0–23, 每桶 = 该小时两个半步的均值) ──
+  const out: { hour: number; score: number; hasData: boolean }[] = [];
+  for (let h = 0; h < 24; h++) {
+    const a = half[2 * h];
+    const b = half[2 * h + 1];
+    const has = !!(a?.hasData || b?.hasData);
+    let score = 0;
+    if (has) {
+      const vals = [a?.hasData ? a.score : null, b?.hasData ? b.score : null].filter((v): v is number => v != null);
+      score = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+    out.push({ hour: h, score, hasData: has });
+  }
+  return out;
 }
 
 function computeRecoveryCapacity(nowMs: number): number | null {
@@ -957,4 +1000,29 @@ export function levelLabel(l: LoadLevel | FatigueLevel): string {
     : l === 'moderate' ? '中'
     : l === 'mild' ? '轻度'
     : '良好';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ★ 脑力「高中低」三档 —— 全 App 唯一权威阈值（图表柱色 / Y 轴 / Hero chip / 首页副标题 全部对齐）
+//   低 < 40（绿，状态好）｜中 40–70（黄，一般）｜高 ≥ 70（红，需关注）
+//   注：hourly[].score 是「疲劳度(0-100)」、loadScore 是「负荷(0-100)」，二者量纲不同，
+//       但都用同一组阈值着色，保证颜色语义一致（绿=低、黄=中、红=高）。
+// ══════════════════════════════════════════════════════════════════════
+export const COG_LEVEL_LOW = 40;
+export const COG_LEVEL_HIGH = 70;
+
+export type CogLevelKey = 'low' | 'mid' | 'high';
+
+/** 由分数判定档位（统一用 COG_LEVEL_LOW / COG_LEVEL_HIGH） */
+export function cogLevel(score: number | null | undefined): CogLevelKey {
+  if (score == null || !Number.isFinite(score)) return 'low';
+  if (score < COG_LEVEL_LOW) return 'low';
+  if (score < COG_LEVEL_HIGH) return 'mid';
+  return 'high';
+}
+
+/** 档位中文短标签（高中低） */
+export function cogLevelLabel(score: number | null | undefined): string {
+  const k = cogLevel(score);
+  return k === 'low' ? '低' : k === 'mid' ? '中' : '高';
 }

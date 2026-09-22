@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 方案三（冷调虚化人像 + 极简玻璃）</title>
+<style>
+  :root{
+    --ink:#23202B; --sub:#55505F;
+    --g-fill:rgba(255,255,255,0.15);
+    --g-fill-2:rgba(255,255,255,0.10);
+    --g-stroke:rgba(255,255,255,0.30);
+    --t:#FFFFFF; --t70:rgba(255,255,255,0.72); --t55:rgba(255,255,255,0.55); --t38:rgba(255,255,255,0.38);
+    --lime:#CFE96A;                    /* 细酸绿曲线 */
+    --r-card:40px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:#E7E3F0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:32px 16px;-webkit-font-smoothing:antialiased;color:var(--ink);}
+
+  .phone{position:relative;width:390px;height:844px;border-radius:46px;background:#FFFFFF;
+    overflow:hidden;box-shadow:0 26px 66px rgba(90,80,130,0.28);border:1px solid rgba(255,255,255,0.7);}
+  .screen{height:100%;display:flex;flex-direction:column;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;color:var(--ink);
+    font-size:13px;font-weight:600;padding:10px 22px 4px;}
+  .scroll{flex:1;overflow-y:auto;padding:0 20px 110px;}
+  .scroll::-webkit-scrollbar{display:none;}
+
+  /* ===== 上面：不动 ===== */
+  .head{display:flex;align-items:center;padding:6px 4px 0;}
+  .avatar{width:36px;height:36px;border-radius:50%;background:rgba(157,138,240,0.16);
+    border:1px solid rgba(157,138,240,0.55);display:flex;align-items:center;justify-content:center;
+    font-weight:600;font-size:14px;color:var(--ink);}
+  .name{font-size:15px;font-weight:500;margin-left:9px;}
+  .title{font-size:34px;font-weight:500;color:var(--ink);margin-top:10px;padding-left:2px;}
+  .panel{position:relative;margin:14px -20px 0;padding:18px 20px 0;background:rgba(255,255,255,0.62);}
+  .orbwrap{display:flex;flex-direction:column;align-items:center;}
+  .orbCap{font-size:22px;font-weight:500;color:#2E2A3A;margin-top:6px;}
+  .orbSub{font-size:11px;color:#6B6480;margin-top:3px;font-weight:500;}
+  .narr{font-size:13.5px;line-height:1.55;color:var(--sub);text-align:center;margin:10px auto 4px;max-width:300px;}
+  .legend{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin:8px 0 14px;}
+  .legend span{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);}
+  .legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .arc{display:block;width:100%;height:54px;margin-top:-1px;}
+
+  /* ===== 下面：冷调虚化人像 + 极简玻璃 ===== */
+  .lower{position:relative;margin:14px -20px 0;border-radius:38px 38px 0 0;overflow:hidden;
+    padding:22px 20px 34px;
+    background:#5C7484 url("data:image/jpeg;base64,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") center center / cover no-repeat;}
+  .lower::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(28,38,48,0.10) 0%,rgba(28,38,48,0.22) 40%,rgba(28,38,48,0.34) 100%);}
+  .lower > *{position:relative;z-index:1;}
+
+  /* 超大圆角高通透玻璃卡 */
+  .g3{position:relative;border-radius:var(--r-card);padding:22px 20px 18px;margin-bottom:14px;
+    background:linear-gradient(180deg,rgba(255,255,255,0.20),rgba(255,255,255,0.10));
+    backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);
+    border:1px solid var(--g-stroke);
+    box-shadow:0 20px 50px rgba(10,14,20,0.22), inset 0 1px 0 rgba(255,255,255,0.34);}
+  .g3::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:radial-gradient(120% 80% at 20% 0%,rgba(255,255,255,0.16),transparent 55%);}
+
+  .lblTop{text-align:center;font-size:12.5px;color:var(--t55);letter-spacing:.3px;}
+  .dots{display:flex;justify-content:center;margin:14px 0 8px;}
+  .dots svg{display:block;}
+  .word{text-align:center;font-size:14px;color:var(--t70);letter-spacing:.4px;}
+
+  .viz{margin-top:14px;}
+  .viz svg{display:block;width:100%;}
+  .hair{height:1px;background:rgba(255,255,255,0.22);margin:14px 0 12px;}
+
+  .trio{display:flex;justify-content:space-between;gap:8px;}
+  .trio .it{flex:1;min-width:0;}
+  .trio .it b{display:block;font-size:15px;font-weight:600;color:var(--t);letter-spacing:-0.2px;}
+  .trio .it span{display:block;font-size:11px;color:var(--t38);margin-top:2px;}
+  .trio .it.c{text-align:center;}
+  .trio .it.r{text-align:right;}
+
+  /* 滑块（Total Sleep 那种）*/
+  .slider{position:relative;height:26px;display:flex;align-items:center;}
+  .slider .track{position:absolute;left:0;right:0;height:1.5px;background:rgba(255,255,255,0.35);border-radius:2px;}
+  .slider .tdot{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.65);top:50%;transform:translate(-50%,-50%);}
+  .slider .knob{position:absolute;width:26px;height:26px;border-radius:50%;background:#fff;top:50%;transform:translate(-50%,-50%);
+    box-shadow:0 6px 16px rgba(10,14,20,0.30);}
+
+  /* 底部导航 */
+  .nav{position:absolute;left:16px;right:16px;bottom:18px;z-index:3;display:flex;justify-content:space-around;
+    padding:10px 8px;border-radius:var(--r-pill);background:rgba(255,255,255,0.18);
+    backdrop-filter:blur(28px) saturate(155%);-webkit-backdrop-filter:blur(28px) saturate(155%);
+    border:1px solid var(--g-stroke);box-shadow:0 12px 34px rgba(10,14,20,0.26);}
+  .nav a{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--t55);text-decoration:none;}
+  .nav a.active{color:#fff;font-weight:600;}
+  .nav a .ic{font-size:18px;}
+  .tpill{background:rgba(255,255,255,0.16);border:1px solid var(--g-stroke);border-radius:999px;
+    padding:4px 10px;font-size:11px;font-weight:600;color:#fff;white-space:nowrap;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);flex:none;}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="screen">
+      <div class="statusbar"><span>9:41</span><span>📶 🔋</span></div>
+      <div class="scroll">
+        <!-- 不动区 -->
+        <div class="head"><div class="avatar">K</div><div class="name">Kristina</div></div>
+        <div class="title">Today</div>
+
+        <div class="panel">
+          <div class="orbwrap">
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              <defs>
+                <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+                  <stop offset="46%" stop-color="#9D8AF0" stop-opacity="0"/>
+                  <stop offset="62%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+                  <stop offset="78%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+                </radialGradient>
+                <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.55"/>
+                  <stop offset="55%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+                </linearGradient>
+                <linearGradient id="hz" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#EDE4CB" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="#EDE4CB" stop-opacity="0.9"/>
+                </linearGradient>
+              </defs>
+              <circle cx="100" cy="100" r="98" fill="url(#aura)"/>
+              <circle cx="100" cy="100" r="74" fill="url(#glow)"/>
+              <circle cx="100" cy="100" r="74" stroke="#9D8AF0" stroke-width="2.6" fill="none" opacity="0.92"/>
+              <circle cx="100" cy="26" r="6" fill="#9D8AF0"/>
+              <circle cx="174" cy="100" r="6" fill="#9D8AF0" opacity="0.7"/>
+              <circle cx="100" cy="174" r="6" fill="#9D8AF0" opacity="0.7"/>
+              <circle cx="26" cy="100" r="8" fill="#F2A3C6" stroke="#fff" stroke-width="1.5"/>
+            </svg>
+            <div class="orbCap">平稳</div>
+            <div class="orbSub">状态值 72 · 🌸 排卵期</div>
+          </div>
+          <div class="narr">状态活跃，社交沟通黄金窗口</div>
+          <svg width="100%" height="78" viewBox="0 0 320 78" preserveAspectRatio="none" style="display:block">
+            <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28 L320,78 L0,78 Z" fill="url(#tg)"/>
+            <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="170" cy="22" r="3.4" fill="#F0C46E"/>
+            <circle cx="100" cy="38" r="3" fill="#6FCFB4"/>
+            <circle cx="210" cy="30" r="3" fill="#F2A3C6"/>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#F0C46E"></i>充沛</span>
+            <span><i style="background:#6FCFB4"></i>良好</span>
+            <span><i style="background:#9D8AF0"></i>平稳</span>
+            <span><i style="background:#F2A3C6"></i>低落</span>
+            <span><i style="background:#7EA6F8"></i>疲惫</span>
+          </div>
+          <svg class="arc" viewBox="0 0 390 54" preserveAspectRatio="none">
+            <path d="M0,18 Q195,-22 390,18 L390,54 L0,54 Z" fill="url(#hz)"/>
+            <path d="M0,18 Q195,-22 390,18" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+          </svg>
+        </div>
+
+        <!-- 方案三：冷调虚化人像 + 极简玻璃 -->
+        <div class="lower">
+
+          <!-- ① 全天恢复（对齐参考图「Total Air Score」卡）-->
+          <div class="g3">
+            <div class="lblTop">睡眠恢复评分</div>
+            <div class="dots"><svg viewBox="0 0 77 49" width="77" height="49" xmlns="http://www.w3.org/2000/svg"><circle cx="10.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="17.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="10.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="17.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="10.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="17.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="52.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="59.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="45.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="73.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="73.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="59.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="52.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="45.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="52.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="59.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="73.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/></svg></div>
+            <div class="word">良好</div>
+            <div class="viz">
+              <svg viewBox="0 0 320 76" preserveAspectRatio="none">
+                <line x1="6" y1="66" x2="314" y2="66" stroke="rgba(255,255,255,0.30)" stroke-width="1"/>
+                <line x1="196" y1="20" x2="196" y2="66" stroke="rgba(255,255,255,0.42)" stroke-width="1" stroke-dasharray="2,4"/>
+                <path d="M6,62 C60,58 110,52 160,42 C186,36 200,28 208,16" fill="none" stroke="var(--lime)" stroke-width="2.2" stroke-linecap="round"/>
+                <circle cx="196" cy="38" r="17" fill="rgba(255,255,255,0.22)"/>
+                <circle cx="196" cy="38" r="17" fill="none" stroke="rgba(255,255,255,0.35)"/>
+                <circle cx="196" cy="38" r="3" fill="#fff" opacity=".9"/>
+                <circle cx="190" cy="32" r="2" fill="#fff" opacity=".6"/><circle cx="202" cy="32" r="2" fill="#fff" opacity=".6"/>
+                <circle cx="190" cy="44" r="2" fill="#fff" opacity=".6"/><circle cx="202" cy="44" r="2" fill="#fff" opacity=".6"/>
+                <circle cx="6" cy="66" r="3" fill="#fff"/><circle cx="160" cy="66" r="3" fill="#fff"/><circle cx="314" cy="66" r="3" fill="#fff"/>
+              </svg>
+            </div>
+            <div class="hair"></div>
+            <div class="trio">
+              <div class="it"><b>7h32m</b><span>睡眠时长</span></div>
+              <div class="it c"><b>1h40m</b><span>深睡</span></div>
+              <div class="it r"><b>85%</b><span>效率</span></div>
+            </div>
+          </div>
+
+          <!-- ② 脑力消耗（滑块式）-->
+          <div class="g3">
+            <div class="lblTop">脑力消耗</div>
+            <div class="viz" style="margin-top:22px;">
+              <div class="slider">
+                <div class="track"></div>
+                <div class="tdot" style="left:2%"></div>
+                <div class="tdot" style="left:38%"></div>
+                <div class="knob" style="left:66%"></div>
+              </div>
+            </div>
+            <div class="dots" style="margin:14px 0 8px;"><svg viewBox="0 0 77 49" width="77" height="49" xmlns="http://www.w3.org/2000/svg"><circle cx="17.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="10.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="10.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="17.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="3.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="31.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="10.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="17.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="24.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="3.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="59.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="10.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="52.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="17.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="45.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="24.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="45.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="52.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="59.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="73.5" cy="31.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="38.5" r="2.6" fill="rgba(255,255,255,0.95)"/><circle cx="66.5" cy="45.5" r="2.6" fill="rgba(255,255,255,0.95)"/></svg></div>
+            <div class="word">中等 · /100</div>
+            <div class="hair"></div>
+            <div class="trio">
+              <div class="it"><b>16:00</b><span>高峰时段</span></div>
+              <div class="it c"><b>64</b><span>负荷值</span></div>
+              <div class="it r"><b>良好</b><span>恢复</span></div>
+            </div>
+          </div>
+
+          <!-- ③ 情绪消耗（弧线式）-->
+          <div class="g3">
+            <div class="lblTop">情绪消耗</div>
+            <div class="viz" style="margin-top:16px;">
+              <svg viewBox="0 0 320 92" preserveAspectRatio="none">
+                <path d="M40,88 A120 120 0 0 1 280,88" fill="none" stroke="rgba(255,255,255,0.30)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M40,88 A120 120 0 0 1 232,18" fill="none" stroke="var(--lime)" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="232" cy="18" r="5" fill="#fff"/>
+              </svg>
+            </div>
+            <div class="dots" style="margin:8px 0 8px;"><svg viewBox="0 0 42 58" width="42" height="58" xmlns="http://www.w3.org/2000/svg"><circle cx="4.2" cy="4.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="12.6" cy="4.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="21.0" cy="4.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="29.4" cy="4.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="37.8" cy="4.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="29.4" cy="12.6" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="21.0" cy="21.0" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="29.4" cy="29.4" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="37.8" cy="37.8" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="4.2" cy="46.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="37.8" cy="46.2" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="12.6" cy="54.6" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="21.0" cy="54.6" r="3.1" fill="rgba(255,255,255,0.95)"/><circle cx="29.4" cy="54.6" r="3.1" fill="rgba(255,255,255,0.95)"/></svg></div>
+            <div class="word">次波动</div>
+            <div class="hair"></div>
+            <div class="trio">
+              <div class="it"><b>14:00</b><span>峰值时刻</span></div>
+              <div class="it c"><b>强度 4</b><span>峰值强度</span></div>
+              <div class="it r"><b>5 min</b><span>建议呼吸</span></div>
+            </div>
+          </div>
+
+          <!-- ④ 运动消耗 -->
+          <div class="g3">
+            <div class="lblTop">运动消耗</div>
+            <div class="dots" style="margin:14px 0 8px;"><svg viewBox="0 0 124 37" width="124" height="37" xmlns="http://www.w3.org/2000/svg"><circle cx="8.1" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="13.5" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="18.9" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="2.7" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="24.3" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="2.7" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="24.3" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="8.1" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="13.5" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="18.9" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="2.7" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="24.3" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="2.7" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="24.3" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="8.1" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="13.5" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="18.9" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="45.9" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="40.5" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="35.1" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="35.1" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="40.5" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="45.9" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="56.7" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="51.3" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="67.5" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="72.9" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="78.3" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="83.7" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="89.1" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="83.7" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="78.3" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="83.7" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="89.1" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="67.5" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="89.1" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="72.9" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="78.3" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="83.7" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="105.3" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="110.7" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="116.1" cy="2.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="99.9" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="121.5" cy="8.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="121.5" cy="13.5" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="116.1" cy="18.9" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="110.7" cy="24.3" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="105.3" cy="29.7" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="99.9" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="105.3" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="110.7" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="116.1" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/><circle cx="121.5" cy="35.1" r="2.0" fill="rgba(255,255,255,0.95)"/></svg></div>
+            <div class="word">步 · 达标 78%</div>
+            <div class="viz">
+              <svg viewBox="0 0 320 60" preserveAspectRatio="none">
+                <line x1="6" y1="52" x2="314" y2="52" stroke="rgba(255,255,255,0.30)" stroke-width="1"/>
+                <path d="M6,48 C40,44 60,30 90,36 C124,42 150,18 186,24 C220,30 250,14 280,20 C296,23 306,22 314,24" fill="none" stroke="var(--lime)" stroke-width="2.2" stroke-linecap="round"/>
+                <circle cx="150" cy="20" r="4" fill="#fff"/><circle cx="250" cy="16" r="4" fill="#fff"/>
+                <circle cx="6" cy="52" r="3" fill="#fff"/><circle cx="314" cy="52" r="3" fill="#fff"/>
+              </svg>
+            </div>
+            <div class="hair"></div>
+            <div class="trio">
+              <div class="it"><b>582</b><span>kcal</span></div>
+              <div class="it c"><b>8432</b><span>步数</span></div>
+              <div class="it r"><b>+12%</b><span>较上周</span></div>
+            </div>
+          </div>
+
+          <!-- ⑤ 今日日历 -->
+          <div class="g3">
+            <div class="lblTop" style="text-align:left;font-size:15px;color:#fff;font-weight:600;">今日日历</div>
+            <div class="word" style="text-align:left;margin-top:4px;font-size:11.5px;color:var(--t55);">9月22日 · 周二</div>
+            <div class="hair" style="margin:14px 0 4px;"></div>
+            <div class="tl-row" style="display:flex;align-items:flex-start;margin-top:12px;">
+              <span class="tpill">全天</span><div style="flex:1;margin-left:10px;"><div style="font-size:14px;color:#fff;">排卵期 第 14 天</div><div style="font-size:12px;color:var(--t70);margin-top:2px;">激素节律影响今日状态节奏</div></div></div>
+            <div class="tl-row" style="display:flex;align-items:flex-start;margin-top:12px;">
+              <span class="tpill">07:20</span><div style="flex:1;margin-left:10px;"><div style="font-size:14px;color:#fff;">起床 · 睡眠评分 82</div><div style="font-size:12px;color:var(--t70);margin-top:2px;">睡眠 7h32m · 深睡 1h40m</div></div></div>
+            <div class="tl-row" style="display:flex;align-items:flex-start;margin-top:12px;">
+              <span class="tpill">14:00</span><div style="flex:1;margin-left:10px;"><div style="font-size:14px;color:#fff;">情绪波动 3 次</div><div style="font-size:12px;color:var(--t70);margin-top:2px;">峰值强度 4 · 可安排呼吸调整</div></div></div>
+            <div class="tl-row" style="display:flex;align-items:flex-start;margin-top:12px;">
+              <span class="tpill">现在</span><div style="flex:1;margin-left:10px;"><div style="font-size:14px;color:#fff;">AI 今日洞察</div><div style="font-size:12px;color:var(--t70);margin-top:2px;">状态活跃，社交沟通黄金窗口</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav">
+        <a class="active"><span class="ic">🏠</span>首页</a><a><span class="ic">🌸</span>周期</a>
+        <a><span class="ic">💓</span>健康</a><a><span class="ic">👤</span>我的</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

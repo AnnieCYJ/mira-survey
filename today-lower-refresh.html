@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 下半区重做（白底 + 白灰质感卡 + 彩色点缀）</title>
+<style>
+  :root{
+    /* —— 白底 + 白灰卡（参考图风格）—— */
+    --bg:#FFFFFF;
+    --card:#F5F5F7;          /* 白灰卡 */
+    --card-soft:#FAFAFB;
+    --hair:#EDEDF0;          /* 细描边 */
+    --ink:#141416;
+    --sub:#6E6E77;
+    --faint:#9A9AA3;
+    --lime:#DDF247;          /* 亮柠檬黄点缀 */
+    --lime-ink:#2B3200;
+    /* 彩球色 */
+    --orb-peach:#F2A25C; --orb-lav:#9D8AF0; --orb-pink:#F2A3C6; --orb-blue:#7EA6F8;
+    --r-card:26px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:#E7E3F0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:32px 16px;-webkit-font-smoothing:antialiased;color:var(--ink);}
+
+  .phone{position:relative;width:390px;height:844px;border-radius:46px;background:var(--bg);
+    overflow:hidden;box-shadow:0 26px 66px rgba(90,80,130,0.28);border:1px solid rgba(255,255,255,0.7);}
+  .screen{height:100%;display:flex;flex-direction:column;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;color:var(--ink);
+    font-size:13px;font-weight:600;padding:10px 22px 4px;}
+  .scroll{flex:1;overflow-y:auto;padding:0 20px 110px;}
+  .scroll::-webkit-scrollbar{display:none;}
+
+  /* ================= 上面：保持不动（头部 + 全天状态面板）================= */
+  .head{display:flex;align-items:center;padding:6px 4px 0;}
+  .avatar{width:36px;height:36px;border-radius:50%;background:rgba(157,138,240,0.16);
+    border:1px solid rgba(157,138,240,0.55);display:flex;align-items:center;justify-content:center;
+    font-weight:600;font-size:14px;color:var(--ink);}
+  .name{font-size:15px;font-weight:500;margin-left:9px;}
+  .title{font-size:34px;font-weight:500;color:var(--ink);margin-top:10px;padding-left:2px;}
+  .panel{position:relative;margin:14px -20px 0;padding:18px 20px 0;background:rgba(255,255,255,0.62);}
+  .orbwrap{display:flex;flex-direction:column;align-items:center;}
+  .orbCap{font-size:22px;font-weight:500;color:#2E2A3A;margin-top:6px;}
+  .orbSub{font-size:11px;color:#6B6480;margin-top:3px;font-weight:500;}
+  .narr{font-size:13.5px;line-height:1.55;color:var(--sub);text-align:center;margin:10px auto 4px;max-width:300px;}
+  .legend{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin:8px 0 14px;}
+  .legend span{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);}
+  .legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .arc{display:block;width:100%;height:54px;margin-top:-1px;}
+
+  /* ================= 下面：重做区 ================= */
+  .sec{padding-top:2px;}
+
+  /* 白灰质感卡 */
+  .card{position:relative;background:var(--card);border-radius:var(--r-card);padding:16px 18px 14px;
+    margin-bottom:12px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,20,30,0.03),0 10px 26px rgba(20,20,30,0.045);}
+  /* 细腻颗粒质感 */
+  .card::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.06'/></svg>");}
+  .card > *{position:relative;z-index:1;}
+
+  /* 柔光渐变球（彩色点缀）*/
+  .orbCluster{position:relative;width:66px;height:52px;flex:none;}
+  .orbCluster .halo{position:absolute;left:-6px;top:-4px;width:74px;height:64px;border-radius:50%;filter:blur(12px);opacity:.75;}
+  .orb{position:absolute;border-radius:50%;}
+  .orb.big{width:42px;height:42px;left:2px;top:4px;}
+  .orb.small{width:24px;height:24px;left:32px;top:22px;opacity:.95;}
+  .orb .hl{position:absolute;left:22%;top:16%;width:34%;height:28%;border-radius:50%;background:rgba(255,255,255,0.85);filter:blur(2px);}
+  .orb-peach .big{background:radial-gradient(circle at 34% 30%,#FDE0C2,#F2A25C 58%,#E07F35);box-shadow:inset -5px -7px 14px rgba(200,110,40,.30),0 8px 16px rgba(230,150,80,.30);}
+  .orb-peach .small{background:radial-gradient(circle at 34% 30%,#FFF3E6,#F6BE86 60%,#E8A45F);box-shadow:inset -3px -4px 8px rgba(200,120,50,.28);}
+  .orb-peach .halo{background:#F7C08A;}
+  .orb-lav .big{background:radial-gradient(circle at 34% 30%,#E4DBFF,#9D8AF0 58%,#7A63D8);box-shadow:inset -5px -7px 14px rgba(110,80,200,.30),0 8px 16px rgba(150,120,230,.30);}
+  .orb-lav .small{background:radial-gradient(circle at 34% 30%,#F3EEFF,#BCACF5 60%,#9A85EC);box-shadow:inset -3px -4px 8px rgba(110,80,200,.26);}
+  .orb-lav .halo{background:#C3B4F6;}
+  .orb-pink .big{background:radial-gradient(circle at 34% 30%,#FCE1EC,#F2A3C6 58%,#E07CA8);box-shadow:inset -5px -7px 14px rgba(200,100,150,.28),0 8px 16px rgba(230,140,180,.30);}
+  .orb-pink .small{background:radial-gradient(circle at 34% 30%,#FFF0F6,#F6BDD6 60%,#EE9BBF);box-shadow:inset -3px -4px 8px rgba(200,110,160,.24);}
+  .orb-pink .halo{background:#F6BCD4;}
+  .orb-blue .big{background:radial-gradient(circle at 34% 30%,#DCE9FF,#7EA6F8 58%,#5A85E6);box-shadow:inset -5px -7px 14px rgba(70,110,210,.28),0 8px 16px rgba(130,165,240,.30);}
+  .orb-blue .small{background:radial-gradient(circle at 34% 30%,#EEF4FF,#AFC7FA 60%,#8FAEF2);box-shadow:inset -3px -4px 8px rgba(80,120,210,.24);}
+  .orb-blue .halo{background:#AFC8F7;}
+
+  .row1{display:flex;align-items:center;gap:12px;}
+  .stat{flex:1;min-width:0;}
+  .meta{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .meta .lbl{font-size:12.5px;color:var(--sub);}
+  .badge{background:var(--lime);color:var(--lime-ink);font-size:11px;font-weight:700;
+    padding:4px 10px;border-radius:var(--r-pill);white-space:nowrap;}
+  .num{font-size:30px;font-weight:700;color:var(--ink);line-height:1.05;margin-top:4px;}
+  .num .unit{font-size:13px;font-weight:500;color:var(--faint);margin-left:3px;}
+  .cap{font-size:11.5px;color:var(--faint);margin-top:8px;}
+
+  /* 极简图表 */
+  .chart{display:block;width:100%;height:52px;margin-top:10px;}
+  .axis{display:flex;justify-content:space-between;font-size:9.5px;color:var(--faint);margin-top:4px;padding:0 1px;}
+
+  /* 分段时间胶囊（参考图 Day/Week/Month）*/
+  .seg{display:flex;gap:8px;margin-bottom:12px;}
+  .seg span{font-size:12px;padding:6px 13px;border-radius:var(--r-pill);border:1px solid var(--hair);
+    background:#fff;color:var(--sub);}
+  .seg span.on{background:#141416;color:#fff;border-color:#141416;}
+
+  /* 今日日历（同风格）*/
+  .tl{padding:16px 18px 16px;}
+  .tl .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .tl .hd b{font-size:16px;font-weight:600;color:var(--ink);}
+  .tl .hd .d{font-size:12px;color:var(--faint);margin-top:3px;}
+  .tl-row{display:flex;align-items:flex-start;}
+  .rail{width:12px;display:flex;flex-direction:column;align-items:center;margin-right:10px;}
+  .dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;}
+  .line{width:1.5px;flex:1;background:var(--hair);margin-top:5px;margin-bottom:-4px;border-radius:2px;}
+  .tpill{background:#fff;border:1px solid var(--hair);border-radius:var(--r-pill);padding:3px 9px;margin-top:1px;
+    font-size:11px;font-weight:600;color:var(--sub);white-space:nowrap;}
+  .tl-body{flex:1;min-width:0;margin-left:10px;}
+  .tl-row:not(:last-child) .tl-body{padding-bottom:12px;}
+  .tl-body .it{font-size:14px;font-weight:500;color:var(--ink);}
+  .tl-body .is{font-size:12px;color:var(--sub);margin-top:2px;line-height:1.45;}
+
+  /* 底部导航（白底轻描边）*/
+  .nav{position:absolute;left:16px;right:16px;bottom:18px;z-index:2;display:flex;justify-content:space-around;
+    padding:10px 8px;border-radius:var(--r-pill);background:rgba(255,255,255,0.92);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--hair);
+    box-shadow:0 8px 26px rgba(90,80,130,0.12);}
+  .nav a{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--faint);text-decoration:none;}
+  .nav a.active{color:#141416;font-weight:600;}
+  .nav a .ic{font-size:18px;}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="screen">
+      <div class="statusbar"><span>9:41</span><span>📶 🔋</span></div>
+      <div class="scroll">
+        <!-- ===== 不动区：头部 + 全天状态面板 ===== -->
+        <div class="head"><div class="avatar">K</div><div class="name">Kristina</div></div>
+        <div class="title">Today</div>
+
+        <div class="panel">
+          <div class="orbwrap">
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              <defs>
+                <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+                  <stop offset="46%" stop-color="#9D8AF0" stop-opacity="0"/>
+                  <stop offset="62%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+                  <stop offset="78%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+                </radialGradient>
+                <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.55"/>
+                  <stop offset="55%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+                  <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+                </linearGradient>
+                <linearGradient id="hz" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#EDE4CB" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="#EDE4CB" stop-opacity="0.9"/>
+                </linearGradient>
+              </defs>
+              <circle cx="100" cy="100" r="98" fill="url(#aura)"/>
+              <circle cx="100" cy="100" r="74" fill="url(#glow)"/>
+              <circle cx="100" cy="100" r="74" stroke="#9D8AF0" stroke-width="2.6" fill="none" opacity="0.92"/>
+              <circle cx="100" cy="26" r="6" fill="#9D8AF0"/>
+              <circle cx="174" cy="100" r="6" fill="#9D8AF0" opacity="0.7"/>
+              <circle cx="100" cy="174" r="6" fill="#9D8AF0" opacity="0.7"/>
+              <circle cx="26" cy="100" r="8" fill="#F2A3C6" stroke="#fff" stroke-width="1.5"/>
+            </svg>
+            <div class="orbCap">平稳</div>
+            <div class="orbSub">状态值 72 · 🌸 排卵期</div>
+          </div>
+          <div class="narr">状态活跃，社交沟通黄金窗口</div>
+          <svg width="100%" height="78" viewBox="0 0 320 78" preserveAspectRatio="none" style="display:block">
+            <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28 L320,78 L0,78 Z" fill="url(#tg)"/>
+            <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="170" cy="22" r="3.4" fill="#F0C46E"/>
+            <circle cx="100" cy="38" r="3" fill="#6FCFB4"/>
+            <circle cx="210" cy="30" r="3" fill="#F2A3C6"/>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#F0C46E"></i>充沛</span>
+            <span><i style="background:#6FCFB4"></i>良好</span>
+            <span><i style="background:#9D8AF0"></i>平稳</span>
+            <span><i style="background:#F2A3C6"></i>低落</span>
+            <span><i style="background:#7EA6F8"></i>疲惫</span>
+          </div>
+          <svg class="arc" viewBox="0 0 390 54" preserveAspectRatio="none">
+            <path d="M0,18 Q195,-22 390,18 L390,54 L0,54 Z" fill="url(#hz)"/>
+            <path d="M0,18 Q195,-22 390,18" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+          </svg>
+        </div>
+
+        <!-- ===== 重做区：白灰质感卡 + 彩色点缀 ===== -->
+        <div class="sec">
+          <!-- 全天恢复 -->
+          <div class="card">
+            <div class="seg"><span class="on">日</span><span>周</span><span>月</span></div>
+            <div class="row1">
+              <div class="orbCluster orb-peach"><div class="halo"></div><div class="orb big"><div class="hl"></div></div><div class="orb small"><div class="hl"></div></div></div>
+              <div class="stat">
+                <div class="meta"><span class="lbl">睡眠恢复</span><span class="badge">恢复良好</span></div>
+                <div class="num">82<span class="unit">分</span></div>
+              </div>
+            </div>
+            <svg class="chart" viewBox="0 0 320 52" preserveAspectRatio="none">
+              <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.20"/><stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.01"/>
+              </linearGradient></defs>
+              <line x1="2" y1="44" x2="318" y2="44" stroke="#E3E3E8" stroke-width="1"/>
+              <path d="M2,40 C40,34 70,16 100,24 C140,32 170,8 210,15 C250,21 280,12 318,18 L318,44 L2,44 Z" fill="url(#ar)"/>
+              <path d="M2,40 C40,34 70,16 100,24 C140,32 170,8 210,15 C250,21 280,12 318,18" fill="none" stroke="#9D8AF0" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="210" cy="15" r="3.6" fill="#F2A25C"/><circle cx="210" cy="15" r="7" fill="#F2A25C" opacity="0.16"/>
+            </svg>
+            <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+            <div class="cap">皮质醇峰值 14:00 · 波动 38% · 深睡 1h40m</div>
+          </div>
+
+          <!-- 脑力消耗 -->
+          <div class="card">
+            <div class="row1">
+              <div class="orbCluster orb-lav"><div class="halo"></div><div class="orb big"><div class="hl"></div></div><div class="orb small"><div class="hl"></div></div></div>
+              <div class="stat">
+                <div class="meta"><span class="lbl">脑力消耗</span><span class="badge">中等</span></div>
+                <div class="num">64<span class="unit">/100</span></div>
+              </div>
+            </div>
+            <svg class="chart" viewBox="0 0 320 52" preserveAspectRatio="none">
+              <line x1="2" y1="44" x2="318" y2="44" stroke="#E3E3E8" stroke-width="1"/>
+              <g>
+                <rect x="6" y="30" width="7" height="14" rx="3" fill="#DADAE0"/><rect x="30" y="24" width="7" height="20" rx="3" fill="#DADAE0"/>
+                <rect x="54" y="32" width="7" height="12" rx="3" fill="#DADAE0"/><rect x="78" y="18" width="7" height="26" rx="3" fill="#C3B4F6"/>
+                <rect x="102" y="26" width="7" height="18" rx="3" fill="#DADAE0"/><rect x="126" y="10" width="7" height="34" rx="3" fill="#9D8AF0"/>
+                <rect x="150" y="20" width="7" height="24" rx="3" fill="#C3B4F6"/><rect x="174" y="28" width="7" height="16" rx="3" fill="#DADAE0"/>
+                <rect x="198" y="16" width="7" height="28" rx="3" fill="#C3B4F6"/><rect x="222" y="24" width="7" height="20" rx="3" fill="#DADAE0"/>
+                <rect x="246" y="30" width="7" height="14" rx="3" fill="#DADAE0"/><rect x="270" y="22" width="7" height="22" rx="3" fill="#C3B4F6"/>
+                <rect x="294" y="28" width="7" height="16" rx="3" fill="#DADAE0"/>
+              </g>
+            </svg>
+            <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+            <div class="cap">高峰 16:00 · 建议安排专注任务</div>
+          </div>
+
+          <!-- 情绪消耗 -->
+          <div class="card">
+            <div class="row1">
+              <div class="orbCluster orb-pink"><div class="halo"></div><div class="orb big"><div class="hl"></div></div><div class="orb small"><div class="hl"></div></div></div>
+              <div class="stat">
+                <div class="meta"><span class="lbl">情绪消耗</span><span class="badge">峰值 3 次</span></div>
+                <div class="num">3<span class="unit">次波动</span></div>
+              </div>
+            </div>
+            <svg class="chart" viewBox="0 0 320 52" preserveAspectRatio="none">
+              <line x1="2" y1="44" x2="318" y2="44" stroke="#E3E3E8" stroke-width="1"/>
+              <g fill="#DEDEE3">
+                <circle cx="14" cy="20" r="3"/><circle cx="40" cy="34" r="3"/><circle cx="66" cy="14" r="3"/>
+                <circle cx="92" cy="40" r="3"/><circle cx="118" cy="24" r="3"/><circle cx="144" cy="36" r="3"/>
+                <circle cx="170" cy="16" r="3"/><circle cx="196" cy="30" r="3"/><circle cx="222" cy="42" r="3"/>
+                <circle cx="248" cy="20" r="3"/><circle cx="274" cy="34" r="3"/><circle cx="300" cy="26" r="3"/>
+              </g>
+              <circle cx="92" cy="40" r="4.5" fill="#F2A3C6"/><circle cx="170" cy="16" r="4.5" fill="#F2A3C6"/><circle cx="248" cy="20" r="4.5" fill="#F2A3C6"/>
+            </svg>
+            <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+            <div class="cap">峰值 14:00 · 强度 4 · 可安排 5 分钟呼吸调整</div>
+          </div>
+
+          <!-- 运动消耗 -->
+          <div class="card">
+            <div class="row1">
+              <div class="orbCluster orb-blue"><div class="halo"></div><div class="orb big"><div class="hl"></div></div><div class="orb small"><div class="hl"></div></div></div>
+              <div class="stat">
+                <div class="meta"><span class="lbl">运动消耗</span><span class="badge">达标 78%</span></div>
+                <div class="num">8432<span class="unit">步</span></div>
+              </div>
+            </div>
+            <svg class="chart" viewBox="0 0 320 52" preserveAspectRatio="none">
+              <defs><linearGradient id="ab" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.22"/><stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.01"/>
+              </linearGradient></defs>
+              <line x1="2" y1="44" x2="318" y2="44" stroke="#E3E3E8" stroke-width="1"/>
+              <path d="M2,38 C30,34 50,22 80,28 C110,34 140,14 170,20 C200,26 230,10 260,16 C290,21 308,18 318,20 L318,44 L2,44 Z" fill="url(#ab)"/>
+              <path d="M2,38 C30,34 50,22 80,28 C110,34 140,14 170,20 C200,26 230,10 260,16 C290,21 308,18 318,20" fill="none" stroke="#7EA6F8" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="140" cy="14" r="3.6" fill="#7EA6F8"/><circle cx="230" cy="10" r="3.6" fill="#7EA6F8"/>
+            </svg>
+            <div class="axis"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span></div>
+            <div class="cap">582 kcal 已消耗 · 较上周 +12%</div>
+          </div>
+
+          <!-- 今日日历 -->
+          <div class="card tl">
+            <div class="hd"><div><b>今日日历</b><div class="d">9月22日 · 周二</div></div><span style="color:var(--faint);font-size:16px;">›</span></div>
+            <div class="tl-row"><div class="rail"><div class="dot" style="background:#9D8AF0"></div><div class="line"></div></div><div class="tpill">全天</div><div class="tl-body"><div class="it">排卵期 第 14 天</div><div class="is">激素节律影响今日状态节奏</div></div></div>
+            <div class="tl-row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line"></div></div><div class="tpill">07:20</div><div class="tl-body"><div class="it">起床 · 睡眠评分 82</div><div class="is">睡眠 7h32m · 深睡 1h40m</div></div></div>
+            <div class="tl-row"><div class="rail"><div class="dot" style="background:#F2A25C"></div><div class="line"></div></div><div class="tpill">14:00</div><div class="tl-body"><div class="it">情绪波动 3 次</div><div class="is">峰值强度 4 · 可安排呼吸调整</div></div></div>
+            <div class="tl-row"><div class="rail"><div class="dot" style="background:#9D8AF0"></div><div class="line"></div></div><div class="tpill">16:00</div><div class="tl-body"><div class="it">脑力负荷 64</div><div class="is">高峰时段安排专注任务更高效</div></div></div>
+            <div class="tl-row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div></div><div class="tpill">现在</div><div class="tl-body"><div class="it">AI 今日洞察</div><div class="is">状态活跃，社交沟通黄金窗口</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav">
+        <a class="active"><span class="ic">🏠</span>首页</a><a><span class="ic">🌸</span>周期</a>
+        <a><span class="ic">💓</span>健康</a><a><span class="ic">👤</span>我的</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

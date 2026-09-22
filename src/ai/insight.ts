@@ -21,7 +21,7 @@ import {
 import { healthStore, dayKey, parseDayKey, type SleepSummary } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport, cogLevelLabel, COG_LEVEL_HIGH } from '../lib/cognitiveLoad';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { postLog } from '../lib/logger';
@@ -536,7 +536,7 @@ export function buildRecoveryFactsForDay(dk: string): string {
   try {
     const g = computeCognitiveLoadReport(nowMs);
     if (g.sampleCount >= 2) {
-      const bits = [`脑力负荷 ${g.loadScore}/100`, `疲劳 ${g.fatigueIndex}`];
+      const bits = [`脑力消耗 ${g.avgFatigue}/100`, `等级${cogLevelLabel(g.avgFatigue)}`, `疲劳 ${g.fatigueIndex}`];
       if (g.peakLoadSpan) {
         const p = `${String(g.peakLoadSpan.startHour).padStart(2, '0')}:00–${String(g.peakLoadSpan.endHour).padStart(2, '0')}:00`;
         bits.push(`负荷高峰 ${p}`);
@@ -596,6 +596,7 @@ function getCognitiveToday(): any {
     const r = computeCognitiveLoadReport();
     return {
       loadScore: r.loadScore,
+      avgFatigue: r.avgFatigue,
       fatigueIndex: r.fatigueIndex,
       recoveryCapacity: r.recoveryCapacity,
       bestHour: r.bestSpan?.startHour ?? null,
@@ -631,9 +632,12 @@ function emotionState(): string | null {
   const s = getStressToday();
   const load = num(s?.emotionalLoad);
   const g = getCognitiveToday();
-  const cog = num(g?.loadScore);
+  const cog = num(g?.avgFatigue);
   if (load != null && Math.round(load) >= 60) return '情绪压力偏大';
-  if (cog != null && Math.round(cog) >= 60) return '脑力负荷偏高';
+  if (cog != null && Math.round(cog) >= COG_LEVEL_HIGH) {
+    const lv = cogLevelLabel(cog);
+    return `脑力负荷${lv} 需安排休息`;
+  }
   return null;
 }
 

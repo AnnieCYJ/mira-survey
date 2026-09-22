@@ -24,6 +24,8 @@ import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
+// ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
+import { cogLevel, cogLevelLabel } from '../lib/cognitiveLoad';
 import { parseClockMinutes } from '../lib/sleepTime';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
@@ -32,10 +34,6 @@ import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
 // CognitiveLoadCard 导出的组件/函数
 import {
   HourHistogram as CognitiveHistogram,
-  loadColor,
-  fatigueColor,
-  loadLabel,
-  fmtRange,
 } from '../components/CognitiveLoadCard';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
@@ -135,14 +133,14 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 
   // ★ Hero 左上角: emotion 显示分, cognitive 显示档位文字
   if (type === 'cognitive') {
-    const ll = report?.loadLevel;
+    // 与卡片大数字同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）
+    const lv = report?.avgFatigue != null ? cogLevel(report.avgFatigue) : null;
     const map: Record<string, { text: string; color: string }> = {
-      rested: { text: '低疲劳', color: theme.colors.success },
-      light: { text: '低疲劳', color: theme.colors.success },
-      moderate: { text: '中疲劳', color: theme.colors.warn },
-      heavy: { text: '高疲劳', color: theme.colors.stateEnergy },
+      low: { text: '低疲劳', color: theme.colors.success },
+      mid: { text: '中疲劳', color: theme.colors.warn },
+      high: { text: '高疲劳', color: theme.colors.danger },
     };
-    const m = ll ? map[ll] : null;
+    const m = lv ? map[lv] : null;
     return (
       <View style={styles.hero}>
         <Text style={[styles.heroVal, m && { color: m.color }]}>{m ? m.text : '—'}</Text>
@@ -165,8 +163,6 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
   const report = computeCognitiveLoadReport(reportNowMsForDay(anchorMs));
 
   const hasData = report.sampleCount >= 2;
-  const lCol = loadColor(report.loadLevel);
-  const fCol = fatigueColor(report.fatigueLevel);
 
   if (!hasData) {
     return (
@@ -197,14 +193,14 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             <Text style={styles.chartTitle}>认知疲劳度</Text>
             {/* 当前负荷 chip: 高/中/低 */}
             {(() => {
-              const ll = report.loadLevel;
+              // 与卡片大数字 / 柱状图同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）
+              const lv = cogLevel(report.avgFatigue);
               const map = {
-                rested: { text: '低疲劳', color: theme.colors.success },
-                light: { text: '低疲劳', color: theme.colors.success },
-                moderate: { text: '中疲劳', color: theme.colors.warn },
-                heavy: { text: '高疲劳', color: theme.colors.stateEnergy },
+                low: { text: '低疲劳', color: theme.colors.success },
+                mid: { text: '中疲劳', color: theme.colors.warn },
+                high: { text: '高疲劳', color: theme.colors.danger },
               } as const;
-              const m = map[ll as keyof typeof map];
+              const m = map[lv];
               return (
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: m.color + '20' }}>
                   <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: m.color }}>
@@ -498,22 +494,20 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
 
   // ── 脑力消耗 ──
   if (type === 'cognitive') {
-    const loadScore = report?.loadScore;
+    // ★ 与卡片大数字 / 柱状图同源：avgFatigue + 统一三档
+    const avgFatigue = report?.avgFatigue;
     const fatigueScore = report?.fatigueIndex;
     const bestSpan = report?.bestSpan;
-    const peakSpan = report?.peakLoadSpan;
+    const bars = (report?.hourly ?? []).filter((h: any) => h.hasData);
+    const peakBar = bars.length > 0 ? bars.reduce((a: any, b: any) => (b.score > a.score ? b : a)) : null;
     const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
 
-    const firstBody = loadScore == null
+    const firstBody = avgFatigue == null
       ? '今日暂无脑力数据。'
-      : loadScore >= 70
-        ? `今日脑力负荷 ${loadScore}，处于高位，建议安排适当休息。`
-        : loadScore >= 40
-          ? `今日脑力负荷 ${loadScore}，处于中等区间，可持续工作。`
-          : `今日脑力负荷 ${loadScore}，处于低位，精力较充裕。`;
+      : `今日脑力消耗 ${avgFatigue}，处于${cogLevelLabel(avgFatigue)}位，${cogLevel(avgFatigue) === 'high' ? '建议安排适当休息。' : cogLevel(avgFatigue) === 'mid' ? '可持续工作。' : '精力较充裕。'}`;
 
-    if (peakSpan) {
-      rows.push({ tone: 'neutral', title: '负荷高峰', body: `${String(peakSpan.startHour).padStart(2, '0')}:00–${String(peakSpan.endHour).padStart(2, '0')}:00 为今日脑力负荷集中时段。` });
+    if (peakBar) {
+      rows.push({ tone: 'neutral', title: '疲劳高峰', body: `疲劳度在 ${String(peakBar.hour).padStart(2, '0')}:00 达到当日最高（${peakBar.score}），此时段适合安排轻量任务。` });
     }
     if (bestSpan) {
       rows.push({ tone: 'good', title: '高效时段', body: `${String(bestSpan.startHour).padStart(2, '0')}:00–${String(bestSpan.endHour).padStart(2, '0')}:00 为今日脑力黄金时段，适合深度工作。` });

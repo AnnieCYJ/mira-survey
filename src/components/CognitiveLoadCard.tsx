@@ -3,7 +3,7 @@ import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect, G, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH } from '../lib/cognitiveLoad';
 
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
@@ -13,16 +13,17 @@ export function fmtRange(span: { startHour: number; endHour: number }): string {
   return s + ':00 – ' + e + ':00';
 }
 
+// 与 HourHistogram 的 LEVELS、首页 MiniCognitiveBars、Hero chip 共用同一套配色：
+// 低(<40)=success 绿 / 中(40–70)=warn 黄 / 高(≥70)=danger 红
 export function loadColor(l: LoadLevel): string {
   return l === 'heavy' ? theme.colors.danger
-    : l === 'moderate' ? theme.colors.stateTense
-    : theme.colors.stateCalm;
+    : l === 'moderate' ? theme.colors.warn
+    : theme.colors.success;
 }
 export function fatigueColor(l: FatigueLevel): string {
   return l === 'severe' ? theme.colors.danger
-    : l === 'moderate' ? theme.colors.stateTense
-    : l === 'mild' ? theme.colors.moodEnergy
-    : theme.colors.stateCalm;
+    : l === 'moderate' ? theme.colors.warn
+    : theme.colors.success;
 }
 export function loadLabel(l: LoadLevel): string {
   return l === 'heavy' ? '高强度投入'
@@ -60,7 +61,12 @@ export default function CognitiveLoadCard() {
     );
   }
 
-  const lCol = loadColor(report.loadLevel);
+  // 疲劳度大数字与柱状图同源 (avgFatigue)；负荷分 loadScore 降为副信息
+  const cogColor = (v: number | null) =>
+    v == null ? theme.colors.textTitle
+      : v >= COG_LEVEL_HIGH ? theme.colors.danger
+      : v >= COG_LEVEL_LOW ? theme.colors.warn
+      : theme.colors.success;
   const fCol = fatigueColor(report.fatigueLevel);
 
   return (
@@ -73,23 +79,23 @@ export default function CognitiveLoadCard() {
           <HourHistogram hourly={report.hourly} peakSpan={report.peakLoadSpan} bestSpan={report.bestSpan} sleepWindow={report.sleepWindow} />
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.stateCalm }]} />
-              <Text style={styles.legendText}>放松</Text>
+              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.success }]} />
+              <Text style={styles.legendText}>低</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.stateTense }]} />
-              <Text style={styles.legendText}>中度</Text>
+              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.warn }]} />
+              <Text style={styles.legendText}>中</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendSwatch, { backgroundColor: theme.colors.danger }]} />
-              <Text style={styles.legendText}>高强度</Text>
+              <Text style={styles.legendText}>高</Text>
             </View>
           </View>
         </View>
 
         {/* ── 三个核心指标 ── */}
         <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
-          <SumCell label="疲劳度" value={String(report.loadScore)} valueColor={lCol} />
+          <SumCell label="疲劳度" value={report.avgFatigue != null ? String(report.avgFatigue) : '—'} valueColor={cogColor(report.avgFatigue)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
           <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
           <SumCell
             label="恢复能力"
@@ -119,19 +125,20 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   chartH?: number;
 }) {
   // ═══════════════════════════════════════════════════════════
-  // 认知疲劳度 48 根半小时柱, 坐标系统一规范:
-  //   Y 轴 0/25/50/75/100 + 3 条档位边界线
-  //   X 轴 24h 完整刻度 (每 4h 主刻度 + 中间细刻度)
+  // 认知疲劳度 24 根整点柱 (hour = 钟点 0–23), 坐标系统一规范:
+  //   Y 轴 0 基线 + 「低<40 / 中 40–70 / 高≥70」三档边界线
+  //   X 轴 24h 完整刻度 (每 4h 主刻度)
   //   无数据柱画透明骨架, 睡眠遮罩叠在上面
+  //   与 homepage MiniCognitiveBars / Hero chip 共用同一组阈值与配色
   // ═══════════════════════════════════════════════════════════
   const LEVELS = [
-    { max: 40,  color: theme.colors.success,     label: '低疲劳' },
-    { max: 65,  color: theme.colors.warn,        label: '中疲劳' },
-    { max: 101, color: theme.colors.stateEnergy, label: '高疲劳' },
+    { max: COG_LEVEL_LOW,  color: theme.colors.success, label: '低' },
+    { max: COG_LEVEL_HIGH, color: theme.colors.warn,    label: '中' },
+    { max: 101,            color: theme.colors.danger,  label: '高' },
   ];
   const barColor = (v: number) => LEVELS.find(l => v < l.max)!.color;
 
-  const N = 48;
+  const N = 24;
   const rows = Array.from({ length: N }, (_, i) => {
     const raw = hourly?.find(h => h.hour === i);
     const hasData = raw?.hasData === true && raw?.score != null;
@@ -155,25 +162,23 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   const cx = (step: number) => padL + slotW * (step + 0.5);
   const yFor = (v: number) => padT + plotH - (v / 100) * plotH;
 
-  // ── 遮罩 X 坐标 ──
+  // ── 遮罩 X 坐标 (sleepWindow / peakSpan / bestSpan 的 hour 已是钟点 0–23) ──
   const sleepMask = sleepWindow ? (() => {
-    const sStep = Math.round(sleepWindow.bedHour * 2);
-    const eStep = Math.round(sleepWindow.wakeHour * 2);
-    const sX = cx(sStep) - barW / 2;
-    const eX = cx(Math.min(47, eStep)) + barW / 2;
+    const sX = cx(sleepWindow.bedHour) - barW / 2;
+    const eX = cx(Math.min(23, sleepWindow.wakeHour)) + barW / 2;
     return { sX, eX: Math.max(eX, sX + 4) };
   })() : null;
-  const peakSX = peakSpan ? cx(Math.round(peakSpan.startHour * 2)) - barW / 2 : 0;
-  const peakEX = peakSpan ? cx(Math.round(Math.min(23, peakSpan.endHour) * 2)) + barW / 2 : 0;
-  const bestSX = bestSpan ? cx(Math.round(bestSpan.startHour * 2)) - barW / 2 : 0;
-  const bestEX = bestSpan ? cx(Math.round(Math.min(23, bestSpan.endHour) * 2)) + barW / 2 : 0;
+  const peakSX = peakSpan ? cx(peakSpan.startHour) - barW / 2 : 0;
+  const peakEX = peakSpan ? cx(Math.min(23, peakSpan.endHour)) + barW / 2 : 0;
+  const bestSX = bestSpan ? cx(bestSpan.startHour) - barW / 2 : 0;
+  const bestEX = bestSpan ? cx(Math.min(23, bestSpan.endHour)) + barW / 2 : 0;
 
   const anyData = rows.some(r => r.hasData);
 
-  // ── X 轴刻度: 每 4 小时主刻度 (7 个点), 中间半小时次刻度 (无文字) ──
+  // ── X 轴刻度: 每 4 小时主刻度 (钟点 0/4/8/12/16/20/23) ──
   const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 23];
   const mainTicks = MAIN_HOURS.map(h => ({
-    step: h * 2,
+    step: h,
     label: String(h).padStart(2, '0'),
     // 0 点用 start align, 23 点用 end align, 其他 middle
     align: h === 0 ? 'start' as const : h === 23 ? 'end' as const : 'middle' as const,
@@ -188,7 +193,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         <Path d={`M ${padL} ${yFor(0)} L ${padL + plotW} ${yFor(0)}`}
           stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
         {/* 3 条网格虚线 (对齐档位边界) */}
-        {[40, 65].map(v => (
+        {[COG_LEVEL_LOW, COG_LEVEL_HIGH].map(v => (
           <Path key={'yg' + v}
             d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
             stroke={theme.colors.ui.borderSoft}
@@ -196,22 +201,22 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         ))}
         {/* 3 档 Y 轴文字 — 低/中/高, 颜色对应档位 */}
         {LEVELS.map((lv, i) => {
-          // 档位中值 Y 坐标
-          const midV = i === 0 ? 20 : i === 1 ? 52.5 : 82.5;
+          // 档位中值 Y 坐标（低 0–40→20, 中 40–70→55, 高 70–100→85）
+          const midV = i === 0 ? 20 : i === 1 ? 55 : 85;
           const y = yFor(midV);
           return (
             <G key={'yl' + i}>
               <SvgText x={padL - theme.sp(1.5)} y={y + 3}
                 textAnchor="end" fontSize={theme.fontSize.micro}
                 fontWeight="600" fill={lv.color}>
-                {lv.label.replace('疲劳', '')}
+                {lv.label}
               </SvgText>
             </G>
           );
         })}
 
         {/* ═══ 档位边界虚线 (叠加在网格上) ═══ */}
-        {[40, 65].map(v => (
+        {[COG_LEVEL_LOW, COG_LEVEL_HIGH].map(v => (
           <Path key={'g' + v}
             d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
             stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
@@ -241,7 +246,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
             fill={theme.colors.successSoft} />
         )}
 
-        {/* ═══ 48 根柱 (无数据也画透明骨架) ═══ */}
+        {/* ═══ 24 根整点柱 (无数据也画透明骨架) ═══ */}
         {rows.map(r => {
           const x = cx(r.hour) - barW / 2;
           const c = r.hasData ? barColor(r.score) : theme.colors.ui.white25;
@@ -264,8 +269,8 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
           </SvgText>
         ))}
 
-        {/* ═══ X 轴次刻度 (每 2h, 细灰线) ═══ */}
-        {Array.from({ length: 12 }, (_, i) => (i + 1) * 4).filter(s => !MAIN_HOURS.includes(s * 2 / 2)).map(step => (
+        {/* ═══ X 轴次刻度 (每 2h 细灰线, 避开主刻度) ═══ */}
+        {[2, 6, 10, 14, 18, 22].map(step => (
           <Path key={'txs' + step}
             d={`M ${cx(step)} ${padT + plotH} L ${cx(step)} ${padT + plotH + theme.sp(0.75)}`}
             stroke={theme.colors.textSub} strokeWidth={0.5} opacity={0.4} />

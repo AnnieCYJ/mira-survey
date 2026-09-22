@@ -164,6 +164,7 @@ export interface AnalysisSnapshot {
   };
   cognitive?: {
     loadScore: number;
+    avgFatigue: number | null;
     fatigueIndex: number;
     peakHour: number | null;
     bestHour: number | null;

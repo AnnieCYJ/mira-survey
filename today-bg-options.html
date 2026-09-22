@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 下半区背景方案对比（A/B/C）</title>
+<style>
+:root{
+  --glass-bg:rgba(255,255,255,0.50);
+  --glass-border:rgba(255,255,255,0.80);
+  --glass-blur:22px;
+  --glass-shadow:0 8px 28px rgba(150,130,190,0.12);
+  --ink:#1A1A1A; --title:#6C5647; --sub:#5F5F74;
+  --accentText:#6153AF;
+  --r-card:14px; --r-pill:999px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background:#E7E3F0;min-height:100vh;display:flex;gap:30px;align-items:flex-start;justify-content:center;
+  padding:34px 24px 60px;-webkit-font-smoothing:antialiased;color:var(--ink);flex-wrap:wrap;}
+.col{display:flex;flex-direction:column;align-items:center;gap:12px;}
+.colLabel{text-align:center;}
+.colLabel b{font-size:15px;color:#3A3350;}
+.colLabel p{font-size:12px;color:#6B6480;margin-top:3px;}
+
+.phone{position:relative;width:390px;height:844px;border-radius:46px;overflow:hidden;
+  box-shadow:0 26px 66px rgba(120,90,170,0.26);border:1px solid rgba(255,255,255,0.6);}
+.phone.vA{background:#F2EFF9;}
+.phone.vB{background:linear-gradient(180deg,#FCF6EA 0%,#F8EBD6 42%,#F0DDBF 100%);}
+.phone.vC{background:linear-gradient(180deg,#F3F0FE 0%,#E4DDFB 45%,#CEC6F6 100%);}
+
+.bg{position:absolute;inset:0;z-index:0;pointer-events:none;}
+.halo{position:absolute;border-radius:50%;filter:blur(70px);}
+.vA .h1{width:480px;height:440px;background:rgba(216,209,248,0.95);top:-120px;right:-150px;}
+.vA .h2{width:440px;height:420px;background:rgba(247,206,229,0.92);top:300px;left:-170px;}
+.vA .h3{width:400px;height:360px;background:rgba(252,226,206,0.85);bottom:-120px;right:-90px;}
+.vB .h1{width:480px;height:420px;background:rgba(253,232,196,0.95);top:-120px;right:-150px;}
+.vB .h2{width:440px;height:420px;background:rgba(250,220,190,0.85);top:320px;left:-160px;}
+.vB .h3{width:380px;height:340px;background:rgba(247,214,205,0.75);bottom:-110px;right:-80px;}
+.vC .h1{width:480px;height:440px;background:rgba(206,196,246,0.95);top:-120px;right:-150px;}
+.vC .h2{width:440px;height:420px;background:rgba(198,213,246,0.80);top:320px;left:-160px;}
+.vC .h3{width:380px;height:340px;background:rgba(226,214,250,0.85);bottom:-110px;right:-80px;}
+.silk{position:absolute;border-radius:50%;pointer-events:none;}
+.vA .s1{width:320px;height:220px;left:10px;top:360px;
+  background:conic-gradient(from 220deg at 50% 50%,#F6CBDE,#CFC5F4,#BFD4F6,#F8E2D2,#E9D4F6,#F6CBDE);
+  filter:blur(20px);opacity:.8;transform:rotate(-18deg);}
+.vB .s1{width:320px;height:220px;left:20px;top:380px;
+  background:conic-gradient(from 200deg at 50% 50%,#FBE6C4,#F5D6A8,#F3DCC8,#FBE9CF,#FBE6C4);
+  filter:blur(26px);opacity:.7;transform:rotate(-14deg);}
+.vC .s1{width:320px;height:220px;left:20px;top:380px;
+  background:conic-gradient(from 210deg at 50% 50%,#DCD4FA,#C6D4F8,#D9CCF6,#E4DAFB,#DCD4FA);
+  filter:blur(26px);opacity:.7;transform:rotate(-16deg);}
+
+.screen{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;}
+.statusbar{display:flex;justify-content:space-between;align-items:center;color:var(--ink);
+  font-size:13px;font-weight:600;padding:10px 22px 4px;}
+.scroll{flex:1;overflow-y:auto;padding:0 20px 110px;}
+.scroll::-webkit-scrollbar{display:none;}
+.glass{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(150%);border:1px solid var(--glass-border);
+  box-shadow:var(--glass-shadow);border-radius:var(--r-card);}
+
+.head{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 4px;}
+.avatar{width:36px;height:36px;border-radius:50%;background:rgba(157,138,240,0.16);
+  border:1px solid rgba(157,138,240,0.55);display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:14px;color:var(--ink);}
+.name{font-size:15px;font-weight:500;margin-left:9px;}
+.title{font-size:34px;font-weight:500;color:var(--ink);margin-top:10px;padding-left:2px;}
+
+.panel{position:relative;margin:14px -20px 0;padding:18px 20px 0;
+  background:rgba(255,255,255,0.62);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+.orbwrap{display:flex;flex-direction:column;align-items:center;}
+.orbCap{font-size:22px;font-weight:500;color:#2E2A3A;margin-top:6px;text-shadow:0 1px 8px rgba(255,255,255,.6);}
+.orbSub{font-size:11px;color:#6B6480;margin-top:3px;font-weight:500;}
+.narr{font-size:13.5px;line-height:1.55;color:var(--sub);text-align:center;margin:10px auto 4px;max-width:300px;}
+.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin:8px 0 14px;}
+.legend span{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);}
+.legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.arc{display:block;width:100%;height:54px;margin-top:-1px;}
+
+.recovery{margin:0 0 14px;border-radius:var(--r-card);overflow:hidden;
+  background:linear-gradient(180deg,#DCE4EC 0%,#E8E4DC 25%,#F5EEDD 55%,#ECE4FB 80%,#D4C8F2 100%);
+  padding:16px 18px 14px;box-shadow:0 8px 24px rgba(150,130,190,0.10);}
+.recovery .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.recovery .hd b{font-size:18px;font-weight:600;color:var(--ink);}
+.tiles{display:flex;gap:20px;}
+.tile{flex:1;}
+.tile .k{font-size:11px;color:#55557A;margin-bottom:3px;}
+.tile .vrow{display:flex;align-items:baseline;}
+.tile .v{font-size:20px;font-weight:600;color:var(--ink);}
+.tile .u{font-size:11px;color:#55557A;margin-left:3px;}
+.tile .s{font-size:11px;color:#55557A;margin-top:3px;line-height:1.4;}
+.cap{font-size:11px;color:#55557A;margin-top:6px;}
+
+.big{display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;position:relative;overflow:hidden;}
+.big .glow{position:absolute;right:-30px;top:-30px;width:160px;height:160px;border-radius:50%;filter:blur(26px);opacity:.7;}
+.big .info{flex:1;min-width:0;}
+.big .t{font-size:14px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;align-items:center;}
+.big .trend{font-size:11px;font-weight:600;}
+.big .vrow{display:flex;align-items:baseline;margin-top:6px;}
+.big .v{font-size:36px;font-weight:700;color:var(--ink);line-height:1;}
+.big .u{font-size:13px;color:var(--sub);margin-left:4px;}
+.big .s{font-size:11px;color:var(--sub);margin-top:4px;}
+.big .chart{width:96px;height:64px;flex:none;}
+.big .chev{position:absolute;top:12px;right:12px;color:var(--sub);font-size:16px;}
+
+.timeline{padding:16px 18px 18px;margin-bottom:6px;}
+.timeline .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+.timeline .hd b{font-size:18px;font-weight:500;color:var(--title);}
+.timeline .hd .d{font-size:13.5px;color:var(--accentText);font-weight:500;margin-top:3px;}
+.row{display:flex;align-items:flex-start;}
+.rail{width:14px;display:flex;flex-direction:column;align-items:center;margin-right:10px;}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex:none;}
+.line{width:2px;flex:1;margin-top:4px;margin-bottom:-4px;border-radius:2px;}
+.tpill{background:rgba(124,106,224,0.12);border-radius:var(--r-pill);padding:3px 8px;margin-top:1px;font-size:11px;font-weight:600;color:#55557A;white-space:nowrap;}
+.body{flex:1;min-width:0;margin-left:10px;}
+.row:not(:last-child) .body{padding-bottom:12px;}
+.body .it{font-size:15px;font-weight:500;color:var(--title);}
+.body .is{font-size:13px;color:#55557A;margin-top:2px;line-height:1.45;}
+
+.nav{position:absolute;left:16px;right:16px;bottom:18px;z-index:2;display:flex;justify-content:space-around;
+  padding:10px 8px;border-radius:var(--r-pill);background:rgba(250,250,254,0.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);
+  box-shadow:0 10px 30px rgba(135,114,180,0.18);}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:#737086;text-decoration:none;}
+.nav a.active{color:#6C5FB5;font-weight:600;}
+.nav a .ic{font-size:18px;}
+</style>
+</head>
+<body>
+
+  <div class="col">
+    <div class="colLabel"><b>A｜SOFTER 柔光晕（强显）</b><p>柔光晕更饱和 + 虹彩丝绸缎带明显可见</p></div>
+    <div class="phone vA">
+      <div class="bg"><div class="halo h1"></div><div class="halo h2"></div><div class="halo h3"></div><div class="silk s1"></div></div>
+      <div class="screen">
+<div class="statusbar"><span>9:41</span><span>📶 🔋</span></div>
+<div class="scroll">
+  <div class="head"><div style="display:flex;align-items:center"><div class="avatar">K</div><div class="name">Kristina</div></div></div>
+  <div class="title">Today</div>
+
+  <div class="panel">
+    <div class="orbwrap">
+      <svg width="200" height="200" viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="aura0" cx="50%" cy="50%" r="50%">
+            <stop offset="46%" stop-color="#9D8AF0" stop-opacity="0"/>
+            <stop offset="62%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="78%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="glow0" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.55"/>
+            <stop offset="55%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="tg0" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="hz0" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#EDE4CB" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#EDE4CB" stop-opacity="0.9"/>
+          </linearGradient>
+          <linearGradient id="ar0" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.34"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="ac0" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="98" fill="url(#aura0)"/>
+        <circle cx="100" cy="100" r="74" fill="url(#glow0)"/>
+        <circle cx="100" cy="100" r="74" stroke="#9D8AF0" stroke-width="2.6" fill="none" opacity="0.92"/>
+        <circle cx="100" cy="26" r="6" fill="#9D8AF0"/>
+        <circle cx="174" cy="100" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="100" cy="174" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="26" cy="100" r="8" fill="#F2A3C6" stroke="#fff" stroke-width="1.5"/>
+      </svg>
+      <div class="orbCap">平稳</div>
+      <div class="orbSub">状态值 72 · 🌸 排卵期</div>
+    </div>
+    <div class="narr">状态活跃，社交沟通黄金窗口</div>
+    <svg width="100%" height="78" viewBox="0 0 320 78" preserveAspectRatio="none" style="display:block">
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28 L320,78 L0,78 Z" fill="url(#tg0)"/>
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="170" cy="22" r="3.4" fill="#F0C46E"/>
+      <circle cx="100" cy="38" r="3" fill="#6FCFB4"/>
+      <circle cx="210" cy="30" r="3" fill="#F2A3C6"/>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#F0C46E"></i>充沛</span>
+      <span><i style="background:#6FCFB4"></i>良好</span>
+      <span><i style="background:#9D8AF0"></i>平稳</span>
+      <span><i style="background:#F2A3C6"></i>低落</span>
+      <span><i style="background:#7EA6F8"></i>疲惫</span>
+    </div>
+    <svg class="arc" viewBox="0 0 390 54" preserveAspectRatio="none">
+      <path d="M0,18 Q195,-22 390,18 L390,54 L0,54 Z" fill="url(#hz0)"/>
+      <path d="M0,18 Q195,-22 390,18" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div class="recovery">
+    <div class="hd"><b>全天恢复</b><span style="color:#55557A;font-size:16px;">›</span></div>
+    <div class="tiles">
+      <div class="tile"><div class="k">睡眠恢复</div><div class="vrow"><div class="v">82</div><div class="u">分</div></div><div class="s">睡眠 7h32m · 深睡 1h40m</div></div>
+      <div class="tile"><div class="k">皮质醇峰值</div><div class="vrow"><div class="v">14:00</div><div class="u">点</div></div><div class="s">波动 38% · 恢复良好</div></div>
+    </div>
+    <svg width="100%" height="96" viewBox="0 0 320 96" preserveAspectRatio="none" style="display:block;margin-top:6px">
+      <line x1="3" y1="74" x2="317" y2="74" stroke="#7C6AE0" stroke-opacity="0.22" stroke-width="1"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30 L317,74 L3,74 Z" fill="url(#ar0)"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="210" y1="26" x2="210" y2="74" stroke="#7C6AE0" stroke-opacity="0.42" stroke-width="1" stroke-dasharray="3,3"/>
+      <circle cx="210" cy="26" r="4.2" fill="#7C6AE0"/>
+      <text x="210" y="16" font-size="11" font-weight="600" fill="#7C6AE0" text-anchor="middle">14:00</text>
+      <text x="3" y="92" font-size="9.5" fill="#55557A">00</text>
+      <text x="63" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">06</text>
+      <text x="157" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">12</text>
+      <text x="251" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">18</text>
+      <text x="317" y="92" font-size="9.5" fill="#55557A" text-anchor="end">24</text>
+    </svg>
+    <div class="cap">皮质醇全天节律 · 今日真实趋势（示意数据）</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#DDD6FE"></div>
+    <div class="info">
+      <div class="t">脑力消耗 <span class="trend" style="color:#0A6F4D">↑ +6%</span></div>
+      <div class="vrow"><div class="v">64</div><div class="u">/100</div></div>
+      <div class="s">认知负荷中等 · 高峰 16:00</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <rect x="2" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="9" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="16" y="34" width="3" height="16" rx="1" fill="#6FCFB4"/><rect x="23" y="18" width="3" height="32" rx="1" fill="#F0C46E"/>
+      <rect x="30" y="26" width="3" height="24" rx="1" fill="#F0C46E"/><rect x="37" y="12" width="3" height="38" rx="1" fill="#E07B6B"/>
+      <rect x="44" y="20" width="3" height="30" rx="1" fill="#F0C46E"/><rect x="51" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/>
+      <rect x="58" y="16" width="3" height="34" rx="1" fill="#F0C46E"/><rect x="65" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="72" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="79" y="22" width="3" height="28" rx="1" fill="#F0C46E"/>
+      <rect x="86" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/><rect x="93" y="26" width="3" height="24" rx="1" fill="#6FCFB4"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#FDE8F0"></div>
+    <div class="info">
+      <div class="t">情绪消耗 <span class="trend" style="color:#0A6F4D">↓ -2%</span></div>
+      <div class="vrow"><div class="v">3</div><div class="u">次</div></div>
+      <div class="s">峰值 14:00 · 强度 4</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <g fill="#E879F9" opacity="0.16">
+        <circle cx="6" cy="20" r="2.4"/><circle cx="18" cy="36" r="2.4"/><circle cx="30" cy="14" r="2.4"/>
+        <circle cx="42" cy="44" r="2.4"/><circle cx="54" cy="24" r="2.4"/><circle cx="66" cy="38" r="2.4"/>
+        <circle cx="78" cy="16" r="2.4"/><circle cx="90" cy="34" r="2.4"/>
+      </g>
+      <circle cx="42" cy="44" r="3.4" fill="#F2A3C6"/><circle cx="66" cy="38" r="3.4" fill="#F2A3C6"/><circle cx="78" cy="16" r="3.4" fill="#F2A3C6"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#BFD9FE"></div>
+    <div class="info">
+      <div class="t">运动消耗 <span class="trend" style="color:#0A6F4D">↑ +12%</span></div>
+      <div class="vrow"><div class="v">8432</div><div class="u">步</div></div>
+      <div class="s">582 kcal 已消耗</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28 L94,60 L6,60 Z" fill="url(#ac0)"/>
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28" fill="none" stroke="#7EA6F8" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="30" cy="24" r="2.2" fill="#7EA6F8"/><circle cx="44" cy="30" r="2.2" fill="#7EA6F8"/>
+      <circle cx="66" cy="18" r="2.2" fill="#7EA6F8"/><circle cx="80" cy="22" r="2.2" fill="#7EA6F8"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass timeline">
+    <div class="hd"><div><b>今日日历</b><div class="d">9月22日 · 周二</div></div><span style="color:#5F5F74;font-size:16px;">›</span></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#9D8AF0"></div><div class="line" style="background:#9D8AF055"></div></div><div class="tpill">全天</div><div class="body"><div class="it">排卵期 第 14 天</div><div class="is">激素节律影响今日状态节奏</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">07:20</div><div class="body"><div class="it">起床 · 睡眠评分 82</div><div class="is">睡眠 7h32m · 深睡 1h40m</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#E8A87C"></div><div class="line" style="background:#E8A87C55"></div></div><div class="tpill">14:00</div><div class="body"><div class="it">情绪波动 3 次</div><div class="is">峰值强度 4 · 前后可安排 5 分钟呼吸调整</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">16:00</div><div class="body"><div class="it">脑力负荷 64</div><div class="is">高峰时段安排专注任务更高效</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#6FCFB4"></div><div class="line" style="background:#6FCFB455"></div></div><div class="tpill">18:30</div><div class="body"><div class="it">活动 8432 步</div><div class="is">保持轻量活动，助力晚间恢复</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div></div><div class="tpill">现在</div><div class="body"><div class="it">AI 今日洞察</div><div class="is">状态活跃，社交沟通黄金窗口</div></div></div>
+  </div>
+</div>
+<div class="nav">
+  <a class="active"><span class="ic">🏠</span>首页</a><a><span class="ic">🌸</span>周期</a>
+  <a><span class="ic">💓</span>健康</a><a><span class="ic">👤</span>我的</a>
+</div>
+</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="colLabel"><b>B｜奶金暖阳</b><p>下半区暖米/奶金渐变压底，呼应暖 haze</p></div>
+    <div class="phone vB">
+      <div class="bg"><div class="halo h1"></div><div class="halo h2"></div><div class="halo h3"></div><div class="silk s1"></div></div>
+      <div class="screen">
+<div class="statusbar"><span>9:41</span><span>📶 🔋</span></div>
+<div class="scroll">
+  <div class="head"><div style="display:flex;align-items:center"><div class="avatar">K</div><div class="name">Kristina</div></div></div>
+  <div class="title">Today</div>
+
+  <div class="panel">
+    <div class="orbwrap">
+      <svg width="200" height="200" viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="aura1" cx="50%" cy="50%" r="50%">
+            <stop offset="46%" stop-color="#9D8AF0" stop-opacity="0"/>
+            <stop offset="62%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="78%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.55"/>
+            <stop offset="55%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="tg1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="hz1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#EDE4CB" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#EDE4CB" stop-opacity="0.9"/>
+          </linearGradient>
+          <linearGradient id="ar1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.34"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="ac1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="98" fill="url(#aura1)"/>
+        <circle cx="100" cy="100" r="74" fill="url(#glow1)"/>
+        <circle cx="100" cy="100" r="74" stroke="#9D8AF0" stroke-width="2.6" fill="none" opacity="0.92"/>
+        <circle cx="100" cy="26" r="6" fill="#9D8AF0"/>
+        <circle cx="174" cy="100" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="100" cy="174" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="26" cy="100" r="8" fill="#F2A3C6" stroke="#fff" stroke-width="1.5"/>
+      </svg>
+      <div class="orbCap">平稳</div>
+      <div class="orbSub">状态值 72 · 🌸 排卵期</div>
+    </div>
+    <div class="narr">状态活跃，社交沟通黄金窗口</div>
+    <svg width="100%" height="78" viewBox="0 0 320 78" preserveAspectRatio="none" style="display:block">
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28 L320,78 L0,78 Z" fill="url(#tg1)"/>
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="170" cy="22" r="3.4" fill="#F0C46E"/>
+      <circle cx="100" cy="38" r="3" fill="#6FCFB4"/>
+      <circle cx="210" cy="30" r="3" fill="#F2A3C6"/>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#F0C46E"></i>充沛</span>
+      <span><i style="background:#6FCFB4"></i>良好</span>
+      <span><i style="background:#9D8AF0"></i>平稳</span>
+      <span><i style="background:#F2A3C6"></i>低落</span>
+      <span><i style="background:#7EA6F8"></i>疲惫</span>
+    </div>
+    <svg class="arc" viewBox="0 0 390 54" preserveAspectRatio="none">
+      <path d="M0,18 Q195,-22 390,18 L390,54 L0,54 Z" fill="url(#hz1)"/>
+      <path d="M0,18 Q195,-22 390,18" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div class="recovery">
+    <div class="hd"><b>全天恢复</b><span style="color:#55557A;font-size:16px;">›</span></div>
+    <div class="tiles">
+      <div class="tile"><div class="k">睡眠恢复</div><div class="vrow"><div class="v">82</div><div class="u">分</div></div><div class="s">睡眠 7h32m · 深睡 1h40m</div></div>
+      <div class="tile"><div class="k">皮质醇峰值</div><div class="vrow"><div class="v">14:00</div><div class="u">点</div></div><div class="s">波动 38% · 恢复良好</div></div>
+    </div>
+    <svg width="100%" height="96" viewBox="0 0 320 96" preserveAspectRatio="none" style="display:block;margin-top:6px">
+      <line x1="3" y1="74" x2="317" y2="74" stroke="#7C6AE0" stroke-opacity="0.22" stroke-width="1"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30 L317,74 L3,74 Z" fill="url(#ar1)"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="210" y1="26" x2="210" y2="74" stroke="#7C6AE0" stroke-opacity="0.42" stroke-width="1" stroke-dasharray="3,3"/>
+      <circle cx="210" cy="26" r="4.2" fill="#7C6AE0"/>
+      <text x="210" y="16" font-size="11" font-weight="600" fill="#7C6AE0" text-anchor="middle">14:00</text>
+      <text x="3" y="92" font-size="9.5" fill="#55557A">00</text>
+      <text x="63" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">06</text>
+      <text x="157" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">12</text>
+      <text x="251" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">18</text>
+      <text x="317" y="92" font-size="9.5" fill="#55557A" text-anchor="end">24</text>
+    </svg>
+    <div class="cap">皮质醇全天节律 · 今日真实趋势（示意数据）</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#DDD6FE"></div>
+    <div class="info">
+      <div class="t">脑力消耗 <span class="trend" style="color:#0A6F4D">↑ +6%</span></div>
+      <div class="vrow"><div class="v">64</div><div class="u">/100</div></div>
+      <div class="s">认知负荷中等 · 高峰 16:00</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <rect x="2" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="9" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="16" y="34" width="3" height="16" rx="1" fill="#6FCFB4"/><rect x="23" y="18" width="3" height="32" rx="1" fill="#F0C46E"/>
+      <rect x="30" y="26" width="3" height="24" rx="1" fill="#F0C46E"/><rect x="37" y="12" width="3" height="38" rx="1" fill="#E07B6B"/>
+      <rect x="44" y="20" width="3" height="30" rx="1" fill="#F0C46E"/><rect x="51" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/>
+      <rect x="58" y="16" width="3" height="34" rx="1" fill="#F0C46E"/><rect x="65" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="72" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="79" y="22" width="3" height="28" rx="1" fill="#F0C46E"/>
+      <rect x="86" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/><rect x="93" y="26" width="3" height="24" rx="1" fill="#6FCFB4"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#FDE8F0"></div>
+    <div class="info">
+      <div class="t">情绪消耗 <span class="trend" style="color:#0A6F4D">↓ -2%</span></div>
+      <div class="vrow"><div class="v">3</div><div class="u">次</div></div>
+      <div class="s">峰值 14:00 · 强度 4</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <g fill="#E879F9" opacity="0.16">
+        <circle cx="6" cy="20" r="2.4"/><circle cx="18" cy="36" r="2.4"/><circle cx="30" cy="14" r="2.4"/>
+        <circle cx="42" cy="44" r="2.4"/><circle cx="54" cy="24" r="2.4"/><circle cx="66" cy="38" r="2.4"/>
+        <circle cx="78" cy="16" r="2.4"/><circle cx="90" cy="34" r="2.4"/>
+      </g>
+      <circle cx="42" cy="44" r="3.4" fill="#F2A3C6"/><circle cx="66" cy="38" r="3.4" fill="#F2A3C6"/><circle cx="78" cy="16" r="3.4" fill="#F2A3C6"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#BFD9FE"></div>
+    <div class="info">
+      <div class="t">运动消耗 <span class="trend" style="color:#0A6F4D">↑ +12%</span></div>
+      <div class="vrow"><div class="v">8432</div><div class="u">步</div></div>
+      <div class="s">582 kcal 已消耗</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28 L94,60 L6,60 Z" fill="url(#ac1)"/>
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28" fill="none" stroke="#7EA6F8" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="30" cy="24" r="2.2" fill="#7EA6F8"/><circle cx="44" cy="30" r="2.2" fill="#7EA6F8"/>
+      <circle cx="66" cy="18" r="2.2" fill="#7EA6F8"/><circle cx="80" cy="22" r="2.2" fill="#7EA6F8"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass timeline">
+    <div class="hd"><div><b>今日日历</b><div class="d">9月22日 · 周二</div></div><span style="color:#5F5F74;font-size:16px;">›</span></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#9D8AF0"></div><div class="line" style="background:#9D8AF055"></div></div><div class="tpill">全天</div><div class="body"><div class="it">排卵期 第 14 天</div><div class="is">激素节律影响今日状态节奏</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">07:20</div><div class="body"><div class="it">起床 · 睡眠评分 82</div><div class="is">睡眠 7h32m · 深睡 1h40m</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#E8A87C"></div><div class="line" style="background:#E8A87C55"></div></div><div class="tpill">14:00</div><div class="body"><div class="it">情绪波动 3 次</div><div class="is">峰值强度 4 · 前后可安排 5 分钟呼吸调整</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">16:00</div><div class="body"><div class="it">脑力负荷 64</div><div class="is">高峰时段安排专注任务更高效</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#6FCFB4"></div><div class="line" style="background:#6FCFB455"></div></div><div class="tpill">18:30</div><div class="body"><div class="it">活动 8432 步</div><div class="is">保持轻量活动，助力晚间恢复</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div></div><div class="tpill">现在</div><div class="body"><div class="it">AI 今日洞察</div><div class="is">状态活跃，社交沟通黄金窗口</div></div></div>
+  </div>
+</div>
+<div class="nav">
+  <a class="active"><span class="ic">🏠</span>首页</a><a><span class="ic">🌸</span>周期</a>
+  <a><span class="ic">💓</span>健康</a><a><span class="ic">👤</span>我的</a>
+</div>
+</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="colLabel"><b>C｜晨雾紫</b><p>下半区走品牌浅紫渐变，接近 App 原本紫底气质</p></div>
+    <div class="phone vC">
+      <div class="bg"><div class="halo h1"></div><div class="halo h2"></div><div class="halo h3"></div><div class="silk s1"></div></div>
+      <div class="screen">
+<div class="statusbar"><span>9:41</span><span>📶 🔋</span></div>
+<div class="scroll">
+  <div class="head"><div style="display:flex;align-items:center"><div class="avatar">K</div><div class="name">Kristina</div></div></div>
+  <div class="title">Today</div>
+
+  <div class="panel">
+    <div class="orbwrap">
+      <svg width="200" height="200" viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="aura2" cx="50%" cy="50%" r="50%">
+            <stop offset="46%" stop-color="#9D8AF0" stop-opacity="0"/>
+            <stop offset="62%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="78%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.55"/>
+            <stop offset="55%" stop-color="#9D8AF0" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="tg2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="hz2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#EDE4CB" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#EDE4CB" stop-opacity="0.9"/>
+          </linearGradient>
+          <linearGradient id="ar2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9D8AF0" stop-opacity="0.34"/>
+            <stop offset="100%" stop-color="#9D8AF0" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="ac2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="98" fill="url(#aura2)"/>
+        <circle cx="100" cy="100" r="74" fill="url(#glow2)"/>
+        <circle cx="100" cy="100" r="74" stroke="#9D8AF0" stroke-width="2.6" fill="none" opacity="0.92"/>
+        <circle cx="100" cy="26" r="6" fill="#9D8AF0"/>
+        <circle cx="174" cy="100" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="100" cy="174" r="6" fill="#9D8AF0" opacity="0.7"/>
+        <circle cx="26" cy="100" r="8" fill="#F2A3C6" stroke="#fff" stroke-width="1.5"/>
+      </svg>
+      <div class="orbCap">平稳</div>
+      <div class="orbSub">状态值 72 · 🌸 排卵期</div>
+    </div>
+    <div class="narr">状态活跃，社交沟通黄金窗口</div>
+    <svg width="100%" height="78" viewBox="0 0 320 78" preserveAspectRatio="none" style="display:block">
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28 L320,78 L0,78 Z" fill="url(#tg2)"/>
+      <path d="M0,52 C40,40 70,30 100,38 C140,48 170,22 210,30 C250,38 280,20 320,28" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="170" cy="22" r="3.4" fill="#F0C46E"/>
+      <circle cx="100" cy="38" r="3" fill="#6FCFB4"/>
+      <circle cx="210" cy="30" r="3" fill="#F2A3C6"/>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#F0C46E"></i>充沛</span>
+      <span><i style="background:#6FCFB4"></i>良好</span>
+      <span><i style="background:#9D8AF0"></i>平稳</span>
+      <span><i style="background:#F2A3C6"></i>低落</span>
+      <span><i style="background:#7EA6F8"></i>疲惫</span>
+    </div>
+    <svg class="arc" viewBox="0 0 390 54" preserveAspectRatio="none">
+      <path d="M0,18 Q195,-22 390,18 L390,54 L0,54 Z" fill="url(#hz2)"/>
+      <path d="M0,18 Q195,-22 390,18" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div class="recovery">
+    <div class="hd"><b>全天恢复</b><span style="color:#55557A;font-size:16px;">›</span></div>
+    <div class="tiles">
+      <div class="tile"><div class="k">睡眠恢复</div><div class="vrow"><div class="v">82</div><div class="u">分</div></div><div class="s">睡眠 7h32m · 深睡 1h40m</div></div>
+      <div class="tile"><div class="k">皮质醇峰值</div><div class="vrow"><div class="v">14:00</div><div class="u">点</div></div><div class="s">波动 38% · 恢复良好</div></div>
+    </div>
+    <svg width="100%" height="96" viewBox="0 0 320 96" preserveAspectRatio="none" style="display:block;margin-top:6px">
+      <line x1="3" y1="74" x2="317" y2="74" stroke="#7C6AE0" stroke-opacity="0.22" stroke-width="1"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30 L317,74 L3,74 Z" fill="url(#ar2)"/>
+      <path d="M3,68 C40,60 70,30 100,40 C140,52 170,18 210,26 C250,34 280,22 317,30" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="210" y1="26" x2="210" y2="74" stroke="#7C6AE0" stroke-opacity="0.42" stroke-width="1" stroke-dasharray="3,3"/>
+      <circle cx="210" cy="26" r="4.2" fill="#7C6AE0"/>
+      <text x="210" y="16" font-size="11" font-weight="600" fill="#7C6AE0" text-anchor="middle">14:00</text>
+      <text x="3" y="92" font-size="9.5" fill="#55557A">00</text>
+      <text x="63" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">06</text>
+      <text x="157" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">12</text>
+      <text x="251" y="92" font-size="9.5" fill="#55557A" text-anchor="middle">18</text>
+      <text x="317" y="92" font-size="9.5" fill="#55557A" text-anchor="end">24</text>
+    </svg>
+    <div class="cap">皮质醇全天节律 · 今日真实趋势（示意数据）</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#DDD6FE"></div>
+    <div class="info">
+      <div class="t">脑力消耗 <span class="trend" style="color:#0A6F4D">↑ +6%</span></div>
+      <div class="vrow"><div class="v">64</div><div class="u">/100</div></div>
+      <div class="s">认知负荷中等 · 高峰 16:00</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <rect x="2" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="9" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="16" y="34" width="3" height="16" rx="1" fill="#6FCFB4"/><rect x="23" y="18" width="3" height="32" rx="1" fill="#F0C46E"/>
+      <rect x="30" y="26" width="3" height="24" rx="1" fill="#F0C46E"/><rect x="37" y="12" width="3" height="38" rx="1" fill="#E07B6B"/>
+      <rect x="44" y="20" width="3" height="30" rx="1" fill="#F0C46E"/><rect x="51" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/>
+      <rect x="58" y="16" width="3" height="34" rx="1" fill="#F0C46E"/><rect x="65" y="24" width="3" height="26" rx="1" fill="#6FCFB4"/>
+      <rect x="72" y="30" width="3" height="20" rx="1" fill="#6FCFB4"/><rect x="79" y="22" width="3" height="28" rx="1" fill="#F0C46E"/>
+      <rect x="86" y="28" width="3" height="22" rx="1" fill="#6FCFB4"/><rect x="93" y="26" width="3" height="24" rx="1" fill="#6FCFB4"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#FDE8F0"></div>
+    <div class="info">
+      <div class="t">情绪消耗 <span class="trend" style="color:#0A6F4D">↓ -2%</span></div>
+      <div class="vrow"><div class="v">3</div><div class="u">次</div></div>
+      <div class="s">峰值 14:00 · 强度 4</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <g fill="#E879F9" opacity="0.16">
+        <circle cx="6" cy="20" r="2.4"/><circle cx="18" cy="36" r="2.4"/><circle cx="30" cy="14" r="2.4"/>
+        <circle cx="42" cy="44" r="2.4"/><circle cx="54" cy="24" r="2.4"/><circle cx="66" cy="38" r="2.4"/>
+        <circle cx="78" cy="16" r="2.4"/><circle cx="90" cy="34" r="2.4"/>
+      </g>
+      <circle cx="42" cy="44" r="3.4" fill="#F2A3C6"/><circle cx="66" cy="38" r="3.4" fill="#F2A3C6"/><circle cx="78" cy="16" r="3.4" fill="#F2A3C6"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass big">
+    <div class="glow" style="background:#BFD9FE"></div>
+    <div class="info">
+      <div class="t">运动消耗 <span class="trend" style="color:#0A6F4D">↑ +12%</span></div>
+      <div class="vrow"><div class="v">8432</div><div class="u">步</div></div>
+      <div class="s">582 kcal 已消耗</div>
+    </div>
+    <svg class="chart" viewBox="0 0 96 64">
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28 L94,60 L6,60 Z" fill="url(#ac2)"/>
+      <path d="M6,46 C20,40 30,24 44,30 C58,36 66,18 80,22 C88,24 92,30 94,28" fill="none" stroke="#7EA6F8" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="30" cy="24" r="2.2" fill="#7EA6F8"/><circle cx="44" cy="30" r="2.2" fill="#7EA6F8"/>
+      <circle cx="66" cy="18" r="2.2" fill="#7EA6F8"/><circle cx="80" cy="22" r="2.2" fill="#7EA6F8"/>
+    </svg>
+    <div class="chev">›</div>
+  </div>
+
+  <div class="glass timeline">
+    <div class="hd"><div><b>今日日历</b><div class="d">9月22日 · 周二</div></div><span style="color:#5F5F74;font-size:16px;">›</span></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#9D8AF0"></div><div class="line" style="background:#9D8AF055"></div></div><div class="tpill">全天</div><div class="body"><div class="it">排卵期 第 14 天</div><div class="is">激素节律影响今日状态节奏</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">07:20</div><div class="body"><div class="it">起床 · 睡眠评分 82</div><div class="is">睡眠 7h32m · 深睡 1h40m</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#E8A87C"></div><div class="line" style="background:#E8A87C55"></div></div><div class="tpill">14:00</div><div class="body"><div class="it">情绪波动 3 次</div><div class="is">峰值强度 4 · 前后可安排 5 分钟呼吸调整</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div><div class="line" style="background:#7EA6F855"></div></div><div class="tpill">16:00</div><div class="body"><div class="it">脑力负荷 64</div><div class="is">高峰时段安排专注任务更高效</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#6FCFB4"></div><div class="line" style="background:#6FCFB455"></div></div><div class="tpill">18:30</div><div class="body"><div class="it">活动 8432 步</div><div class="is">保持轻量活动，助力晚间恢复</div></div></div>
+    <div class="row"><div class="rail"><div class="dot" style="background:#7EA6F8"></div></div><div class="tpill">现在</div><div class="body"><div class="it">AI 今日洞察</div><div class="is">状态活跃，社交沟通黄金窗口</div></div></div>
+  </div>
+</div>
+<div class="nav">
+  <a class="active"><span class="ic">🏠</span>首页</a><a><span class="ic">🌸</span>周期</a>
+  <a><span class="ic">💓</span>健康</a><a><span class="ic">👤</span>我的</a>
+</div>
+</div>
+    </div>
+  </div>
+</body>
+</html>
