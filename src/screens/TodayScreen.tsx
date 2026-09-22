@@ -248,14 +248,18 @@ function buildSmartAdvice(phase: string, statusIdx: number | null, asleep: boole
 //   新增图表/卡片一律写在模块作用域，并用 React.memo 包裹。
 // ─────────────────────────────────────────────────────────────
 // 通用 mini chart 尺寸
-const MW=168, MH=88, AXIS_H=16, CHART_H=MH-AXIS_H;
+const MW=168, MH=88, AXIS_H=16, CH=MH-AXIS_H;
 
 // —— 情绪消耗：每小时压力事件数柱状图（柱高=次数，颜色=低/中/高三档）——
 //   ★ 为什么不用点阵：每小时在图上只有 7px 宽，3 个事件画 3 个点必然挤成一坨糊点，
 //     看上去像一块「小热力图」，与卡片上的「N 次」对不上。
 //     改成柱状后：柱高 = 该小时事件数，24 根柱高之和正好 = 卡片大数字（次数），两者同源。
-const MiniStressBars = React.memo(function MiniStressBars({ events }: { events: any[] }) {
-  const N=24, bw=MW/N-1, CAP=5;              // CAP: 每小时 5 次事件 = 柱满高
+const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }: { events: any[]; condensed?: boolean }) {
+  const W = condensed ? 80 : MW;
+  const H = condensed ? 44 : MH;
+  const AX = condensed ? 0 : AXIS_H;
+  const CH = H - AX;
+  const N=24, bw=W/N-1, CAP=5;              // CAP: 每小时 5 次事件 = 柱满高
   const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
   const cnt = new Array(N).fill(0);
   ev.forEach((e:any)=>{
@@ -265,22 +269,22 @@ const MiniStressBars = React.memo(function MiniStressBars({ events }: { events: 
   const bars: any[] = [];
   for (let h = 0; h < N; h++) {
     if (cnt[h] === 0) continue;
-    const bh = Math.max(3, Math.min(1, cnt[h] / CAP) * CHART_H);
+    const bh = Math.max(3, Math.min(1, cnt[h] / CAP) * CH);
     // 颜色 = 该小时「事件数」低/中/高三档（与卡片数字同口径，不再用严重度色）
     const col = cnt[h] >= 4 ? theme.colors.danger : cnt[h] >= 2 ? theme.colors.warn : theme.colors.success;
-    bars.push(<Rect key={'b'+h} x={h*(MW/N)+0.5} y={CHART_H-bh} width={bw} height={bh} rx={1.5} fill={col} />);
+    bars.push(<Rect key={'b'+h} x={h*(W/N)+0.5} y={CH-bh} width={bw} height={bh} rx={1.5} fill={col} />);
   }
   const peakH = cnt.indexOf(Math.max(...cnt));
-  const popX = peakH*(MW/N)+bw/2;
-  const PopX = Math.max(18, Math.min(MW-36, popX-14));
+  const popX = peakH*(W/N)+bw/2;
+  const PopX = Math.max(18, Math.min(W-36, popX-14));
   const ticks=[0,6,12,18,24];
   return (
-    <View style={{ width: MW, height: MH }}>
-      <Svg width={MW} height={MH}>
+    <View style={{ width: W, height: H }}>
+      <Svg width={W} height={H}>
         {bars}
-        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
+        {!condensed && ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
-      {ev.length>0 ? (
+      {!condensed && ev.length>0 ? (
         <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.stateTense + '44' }}>
           <Text style={{ fontSize:10, color: theme.colors.stateTense, fontWeight:'700' }}>{ev.length} 次</Text>
         </View>
@@ -292,26 +296,30 @@ const MiniStressBars = React.memo(function MiniStressBars({ events }: { events: 
 // —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
 // ★ hour = 钟点 0–23（computeHourlyLoad 已收敛为 24 整点桶）；柱色与详情页大图、Hero 共用
 //   统一三档：低<40 绿 / 中 40–70 黄 / 高≥70 红（COG_LEVEL_LOW / COG_LEVEL_HIGH）
-const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { hourly: { hour: number; score: number; hasData?: boolean }[] }) {
+const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, condensed }: { hourly: { hour: number; score: number; hasData?: boolean }[]; condensed?: boolean }) {
+  const W = condensed ? 80 : MW;
+  const H = condensed ? 44 : MH;
+  const AX = condensed ? 0 : AXIS_H;
+  const CH = H - AX;
   const N=24;
   const rows = Array.from({length:N},(_,i)=>{ const b:any = hourly?.find((h:any)=>h.hour===i); return { v: b?.score ?? 0, has: !!b?.hasData }; });
-  const bw=MW/N-1;
+  const bw=W/N-1;
   // ★ 峰值/最新值只取「有实测」的小时；睡眠段与未到时段的占位桩不算数据
   const lastIdx = rows.map((r,i)=>({...r,i})).filter(x=>x.has).slice(-1)[0]?.i ?? 0;
   const popVal = rows[lastIdx]?.v ?? 0;
   const hasAny = rows.some(r=>r.has);
-  const popX = lastIdx*(MW/N)+bw/2;
-  const PopX = Math.max(18, Math.min(MW-36, popX-14));
+  const popX = lastIdx*(W/N)+bw/2;
+  const PopX = Math.max(18, Math.min(W-36, popX-14));
   const ticks=[0,6,12,18,24];
   const barColor = (v:number)=> v>=COG_LEVEL_HIGH ? theme.colors.danger : v>=COG_LEVEL_LOW ? theme.colors.warn : theme.colors.success;
   const NO_DATA = 'rgba(120,110,160,0.13)';   // 无实测时段(睡眠/未到) = 浅灰占位，不用彩色
   return (
-    <View style={{ width: MW, height: MH }}>
-      <Svg width={MW} height={MH}>
-        {rows.map((r,i)=>{ const h=Math.max(1.5,(r.v/100)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
-        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
+    <View style={{ width: W, height: H }}>
+      <Svg width={W} height={H}>
+        {rows.map((r,i)=>{ const h=Math.max(1.5,(r.v/100)*CH),x=i*(W/N)+0.5,y=CH-h,col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
-      {hasAny && popVal>0 ? (
+      {!condensed && hasAny && popVal>0 ? (
         <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.accentSolid + '33' }}>
           <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{Math.round(popVal)}</Text>
         </View>
@@ -321,20 +329,24 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { ho
 });
 
 // —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
-const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps }: { weekSteps: { dayKey: string; steps: number; date: Date }[] }) {
+const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, condensed }: { weekSteps: { dayKey: string; steps: number; date: Date }[]; condensed?: boolean }) {
+  const W = condensed ? 80 : MW;
+  const H = condensed ? 44 : MH;
+  const AX = condensed ? 0 : AXIS_H;
+  const CH = H - AX;
   const N=7, MON=['一','二','三','四','五','六','日'];
   const series = weekSteps.slice(-7);
   const steps = series.map(s=>s.steps);
   const max = Math.max(1,...steps);
-  const pts = steps.map((v,i)=>({x:(i/(N-1))*(MW-8)+4, y:CHART_H-(v/max)*CHART_H*0.85-3}));
+  const pts = steps.map((v,i)=>({x:(i/(N-1))*(W-8)+4, y:CH-(v/max)*CH*0.85-3}));
   let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
   for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
-  const area = p+` L ${pts[N-1].x.toFixed(1)} ${CHART_H} L ${pts[0].x.toFixed(1)} ${CHART_H} Z`;
+  const area = p+` L ${pts[N-1].x.toFixed(1)} ${CH} L ${pts[0].x.toFixed(1)} ${CH} Z`;
   const last = pts[N-1];
   const PopX = Math.max(18, Math.min(MW-48, last.x-20));
   return (
-    <View style={{ width: MW, height: MH }}>
-      <Svg width={MW} height={MH}>
+    <View style={{ width: W, height: H }}>
+      <Svg width={W} height={H}>
         <Defs>
           <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
@@ -344,9 +356,9 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps }: {
         <Path d={area} fill="url(#actFill2)" />
         <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
         {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
-        {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CHART_H+AXIS_H-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
+        {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CH+AX-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
       </Svg>
-      {steps[N-1]>0 ? (
+      {!condensed && steps[N-1]>0 ? (
         <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
           <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{steps[N-1]}</Text>
         </View>
@@ -355,51 +367,53 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps }: {
   );
 });
 
-const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress }: any) {
-  // ★ 按压回弹：全 App 统一手感（theme.press）。缩放只动 transform → 原生驱动，不占 JS 线程。
-  //   原实现是 activeOpacity={0.92}（几乎看不出反馈，且全 App 有 9 种不同取值）。
+const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress, height }: any) {
   const pressScale = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
-    Animated.timing(pressScale, {
-      toValue: v,
-      duration: theme.motion.instant,
-      easing: theme.motion.easeStandard,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(pressScale, { toValue: v, duration: theme.motion.instant, easing: theme.motion.easeStandard, useNativeDriver: true }).start();
+  const h = height ?? 150;
+  const isBig = h >= 200;
+  const titleSize = isBig ? theme.fontSize.body : theme.fontSize.sm;
+  const padH = isBig ? theme.space.md : theme.space.sm;
+  const padV = isBig ? theme.space.sm : theme.space.xs;
+  /* 方案3 固定比例:title ~10% / 图 ~45% / gap / 数字 ~35% */
+  const chartAreaH = isBig ? 88 : 44;   // 和 Mini 组件 SVGMH 对齐 (大卡 88, condensed 44)
+  const numAreaH = isBig ? 52 : 34;     // 数字 + caption 预留
   return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() => pressTo(theme.press.scaleCard)}
-      onPressOut={() => pressTo(1)}
-      accessibilityRole="button"
-      accessibilityLabel={`${title} ${value}${unit}`}
-      style={{ width: '100%' }}
-    >
+    <Pressable onPress={onPress} onPressIn={() => pressTo(theme.press.scaleCard)} onPressOut={() => pressTo(1)}
+      style={{ width: '100%' }} accessibilityRole="button" accessibilityLabel={`${title} ${value}${unit}`}>
       <Animated.View style={{ transform: [{ scale: pressScale }] }}>
-    <GlassCard padded={false} style={{ height: 150 }}>
-      <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, height: '100%', justifyContent: 'space-between', paddingVertical: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold }}>{title}</Text>
-            {trend ? (
-              <Text style={{ color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown), fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold }}>
-                {trend.dir === 'up' ? '↑ ' : trend.dir === 'down' ? '↓ ' : ''}{trend.label}
-              </Text>
-            ) : null}
-          </View>
-          <View style={{ paddingTop: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={{ color: theme.colors.textInk, fontSize: 44, fontWeight: theme.weight.bold, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.sm, marginLeft: 4 }}>{unit}</Text>
+        <GlassCard padded={false} style={{ height: h }}>
+          <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+          <View style={{ paddingHorizontal: padH, paddingTop: padV, paddingBottom: padV * 0.6, flexDirection: 'column' }}>
+            {/* 顶行:title + trend badge */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 22 }}>
+              <Text style={{ color: theme.colors.textInk, fontSize: titleSize, fontWeight: theme.weight.semibold }} numberOfLines={1}>{title}</Text>
+              {trend ? (
+                <Text style={{
+                  color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown),
+                  fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold,
+                  backgroundColor: trend.favorable ? theme.colors.successSoft : trend.dir === 'down' ? theme.colors.dangerSoft : 'transparent',
+                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: theme.radius.pill,
+                }}>
+                  {trend.dir === 'up' ? '↑' : trend.dir === 'down' ? '↓' : '—'} {trend.label}
+                </Text>
+              ) : null}
             </View>
-            <Text style={{ color: 'rgba(120,110,160,0.6)', fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>
+            {/* 中间:图固定高,左右对齐 */}
+            {chartEl && <View style={{ height: chartAreaH, marginTop: isBig ? 6 : 4, alignItems: 'stretch' }}>{chartEl}</View>}
+            {/* gap */}
+            <View style={{ height: isBig ? 8 : 4 }} />
+            {/* 底部:数字区固定高 */}
+            <View style={{ height: numAreaH, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={{ color: theme.colors.textInk, fontSize: isBig ? 34 : 22, fontWeight: theme.weight.bold, lineHeight: isBig ? 38 : 26 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: isBig ? theme.fontSize.sm : theme.fontSize.micro, marginLeft: 3 }}>{unit}</Text>
+              </View>
+              {!!sub && <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro, marginTop: isBig ? 3 : 1 }} numberOfLines={1}>{sub}</Text>}
+            </View>
           </View>
-        </View>
-        <View style={{ marginLeft: 4, alignItems: 'flex-end', justifyContent: 'flex-end' }}>{chartEl}</View>
-      </View>
-      <Icon name="chevronRight" size={18} color={theme.colors.textSub} style={{ position: 'absolute', top: 12, right: 12, zIndex: 3 }} />
-    </GlassCard>
+        </GlassCard>
       </Animated.View>
     </Pressable>
   );
@@ -434,6 +448,7 @@ export default function TodayScreen() {
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
+  const [todayTab, setTodayTab] = useState<'rhythm' | 'diary'>('rhythm');
   const [ring, setRing] = useState(() => RingBle.getState());
 
   // ★ 今日日历数据源之二：今天与 Mira 的对话记录（MemoryStore）
@@ -818,20 +833,10 @@ export default function TodayScreen() {
             ③ **弧线边缘羽化**（下同）：白与紫之间不再是几何硬切，用 `ARC_FEATHER` 多层白弧摊成过渡带。 */}
         <Svg
           width={panelW}
-          height={panelArcH + panelUnderH}
-          style={[styles.statusPanelArc, { marginBottom: theme.space.lg - panelUnderH }]}
+          height={panelArcH}
+          style={[styles.statusPanelArc, { marginBottom: theme.space.lg }]}
         >
-          <Defs>
-            {/* ★ 弧下弥散紫：竖渐变由主题紫收到全透明 → 视觉上「紫由上而下弥散开」。
-                它的高度不计入布局（下方用负 margin 抵掉），所以下面的卡片会浮在这层紫雾上。 */}
-            <SvgLinear id="panelUnderGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#F5D189" stopOpacity={0.55} />
-              <Stop offset="25%" stopColor="#F5D189" stopOpacity={0.3} />
-              <Stop offset="60%" stopColor="#F5D189" stopOpacity={0.1} />
-              <Stop offset="100%" stopColor="#F5D189" stopOpacity={0} />
-            </SvgLinear>
-          </Defs>
-          <Rect x={0} y={0} width={panelW} height={panelArcH + panelUnderH} fill="url(#panelUnderGrad)" />
+
           {/* ★ 羽化层（由下往上、由淡到浓）：把「白 ↔ 紫雾」的硬边摊成一条柔和过渡带 */}
           {ARC_FEATHER.map((f, i) => (
             <Path
@@ -846,22 +851,39 @@ export default function TodayScreen() {
           <Path d={panelArcD} fill={theme.colors.cardBg} />
         </Svg>
 
-        {/* ★ 新增「全天恢复」卡：上半睡眠恢复 + 皮质醇峰值，下半皮质醇全天趋势（渐变卡）。
-            放在「全天状态趋势」正下方；原有卡片（身体恢复 / 三个消耗小卡）保持不变。 */}
+        {/* Tab 切换器: 消耗与恢复节律 / 日记 */}
+        <View style={{ flexDirection: 'row', marginTop: theme.space.lg, marginBottom: theme.space.sm }}>
+          <TouchableOpacity onPress={() => setTodayTab('rhythm')}
+            style={[styles.todayTabBtn, todayTab === 'rhythm' && styles.todayTabBtnOn]}>
+            <Text style={[styles.todayTabLabel, todayTab === 'rhythm' && styles.todayTabLabelOn]}>消耗与恢复节律</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setTodayTab('diary')}
+            style={[styles.todayTabBtn, todayTab === 'diary' && styles.todayTabBtnOn]}>
+            <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>日记</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tab 内容 */}
+        {todayTab === 'rhythm' ? (
+          <View style={{ flexDirection: 'row', gap: theme.space.md }}>
+            <View style={{ flex: 1 }}>
+              <BigStatCard height={220} title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
+            </View>
+            <View style={{ flex: 1, gap: theme.space.sm }}>
+              <BigStatCard height={128} title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} condensed />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
+              <BigStatCard height={128} title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} condensed />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.adviceWrap}>
+            <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
+          </View>
+        )}
+
+        <View style={{ height: theme.space.md }} />
+
+        {/* 全天恢复 (始终显示) */}
         <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
-
-
-        <View style={{ height: theme.space.lg }} />
-
-        <View style={{ flexDirection: 'column', gap: theme.space.md }}>
-          <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
-          <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
-        </View>
-
-        <View style={styles.adviceWrap}>
-          <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
-        </View>
       </ScreenContainer>
     </View>
   );
@@ -1048,4 +1070,25 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center' },
   legendDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25), marginRight: theme.sp(1) },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  todayTabBtn: {
+    flex: 1,
+    paddingVertical: theme.space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: theme.space.xs,
+  },
+  todayTabBtnOn: {
+    backgroundColor: theme.colors.accentSolid,
+  },
+  todayTabLabel: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textInk,
+  },
+  todayTabLabelOn: {
+    color: theme.colors.textWhite,
+    fontWeight: theme.weight.semibold,
+  },
 });

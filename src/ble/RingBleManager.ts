@@ -1647,14 +1647,22 @@ class NativeRingSource {
           calorie: num(raw.cal) ?? 0,
         });
       }
-      // 睡眠（原生只给 total/deep/light/score，无曲线/入睡起床时间）
+      // 睡眠（原生 VeepooRing.m 从 VPAccurateSleepModel 发完整数据：
+      //   total/deep/light/insomnia/sleepTime/wakeTime/sleepLine(hex曲线)
+      // JS handleSleepDay 解析 sleepLine → 重算各阶段(minute 精度)，
+      // 并用 sleepTime/wakeTime 填睡眠窗口(供 sleepWindow / stress / emotion 用)。
       if ((num(raw.sleepTotalMin) ?? 0) > 0) {
         this.handleSleepDay({
           date,
           total: num(raw.sleepTotalMin) ?? 0,
           deep: num(raw.sleepDeepMin) ?? 0,
           light: num(raw.sleepLightMin) ?? 0,
+          rem: num(raw.sleepRemMin) ?? 0,
+          insomnia: num(raw.sleepInsomniaMin) ?? 0,
           score: num(raw.sleepScore) ?? 0,
+          sleepTime: raw.sleepTime ?? null,
+          wakeTime: raw.wakeTime ?? null,
+          curve: parseSleepLineHex(raw.sleepLine),
         });
       }
       // 日值：血氧 / HRV / 体温 / 血压
@@ -2266,6 +2274,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     deep?: number;
     light?: number;
     rem?: number;
+    insomnia?: number;
     score?: number;
     getUp?: number;
     sleepTime?: string;
@@ -2305,10 +2314,12 @@ steps点数=${reshaped.steps?.length ?? 0}`,
 
       if (total <= 0) return;
 
-      // ★ 用 computeSleepScore 自算 0-100 分（替代 SDK 原始 0-5 分）
+      // ★ 用 computeSleepScore v2 自算 0-100 分（替代 SDK 原始 0-5 分）
+      // v2 新增效率维度(sleepAwake)：从 sleepLine 曲线拿到的 stage 3+4 分钟数
       const si: SleepInput = {
         sleepTotal: total,
         sleepDeep: deep,
+        sleepAwake: awake + insomnia,   // 卧床期间的非睡眠分钟数
         getUp,
       };
       const score = computeSleepScore(si, ALGO_DEFAULTS);
@@ -4724,10 +4735,16 @@ class RingConnectionImpl {
     if (!s) return s;
     const total = Number(s.total) || 0;
     if (total <= 0) return s;
+    const awake = (Number(s.awake) || 0) + (Number(s.insomnia) || 0);
     return {
       ...s,
       score: computeSleepScore(
-        { sleepTotal: total, sleepDeep: Number(s.deep) || 0, getUp: Number(s.getUp) || 0 },
+        {
+          sleepTotal: total,
+          sleepDeep: Number(s.deep) || 0,
+          sleepAwake: awake > 0 ? awake : undefined,
+          getUp: Number(s.getUp) || 0,
+        },
         ALGO_DEFAULTS
       ),
     };

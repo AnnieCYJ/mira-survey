@@ -74,10 +74,10 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
       const p2 = p[i + 1];
       const p3 = p[Math.min(n - 1, i + 2)];
       // Catmull-Rom → Cubic Bezier (smoother, 0.5 tension)
-      const cp1x = p1.x + (p2.x - p0.x) * 0.25;
-      const cp1y = p1.y + (p2.y - p0.y) * 0.25;
-      const cp2x = p2.x - (p3.x - p1.x) * 0.25;
-      const cp2y = p2.y - (p3.y - p1.y) * 0.25;
+      const cp1x = p1.x + (p2.x - p0.x) * 0.22;
+      const cp1y = p1.y + (p2.y - p0.y) * 0.22;
+      const cp2x = p2.x - (p3.x - p1.x) * 0.22;
+      const cp2y = p2.y - (p3.y - p1.y) * 0.22;
       path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
     }
 
@@ -122,8 +122,16 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
             <Stop offset="100%" stopColor={gradStops[gradStops.length-1]?.color ?? '#8B5CF6'} stopOpacity={0.02} />
           </LinearGradient>
         </Defs>
-        <Path d={`${path} L ${pts[pts.length - 1]?.x.toFixed(1) ?? 0} ${height} L ${pts[0]?.x.toFixed(1) ?? 0} ${height} Z`} fill="url(#trendFill)" />
-        <Path d={path} fill="none" stroke="url(#trendStroke)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        {/* 波浪填充：首尾用贝塞尔平滑下探到底部，不是硬垂直线 */}
+        {(() => {
+          const fLN = pts[0]?.x ?? 0;
+          const fLYN = pts[0]?.y ?? height;
+          const fRN = pts[pts.length - 1]?.x ?? 0;
+          const dipX = Math.min(28, (fRN - fLN) * 0.15);
+          const fPath = `${path} C ${(fRN - dipX).toFixed(1)} ${fLYN.toFixed(1)}, ${fRN.toFixed(1)} ${height}, ${fRN.toFixed(1)} ${height} L ${fLN.toFixed(1)} ${height} C ${fLN.toFixed(1)} ${height}, ${(fLN + dipX).toFixed(1)} ${fLYN.toFixed(1)}, ${fLN.toFixed(1)} ${fLYN.toFixed(1)} Z`;
+          return <Path d={fPath} fill="url(#trendFill)" />;
+        })()}
+        <Path d={path} fill="none" stroke="url(#trendStroke)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
         {selIdx != null && pts[selIdx] ? (() => {
           const p = pts[selIdx]!;
           const mood = moodFor(p.value);

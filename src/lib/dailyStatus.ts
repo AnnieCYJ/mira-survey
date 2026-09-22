@@ -31,6 +31,8 @@ export interface DailyRecord {
   sleepDeep: number | null;
   /** REM（分钟） */
   sleepRem: number | null;
+  /** 卧床期间的清醒/失眠分钟数 */
+  sleepAwake?: number | null;
   /** 起夜次数 */
   getUp: number | null;
   /** 发烧标记：true 则永不计入基线窗口 */
@@ -53,8 +55,10 @@ export interface AlgoConst {
   TARGET_DURATION_MAX: number; // 分钟：满分区间上限，超过后线性轻扣
   TARGET_DEEP_PCT: number;
   TARGET_GETUP: number;
+  TARGET_EFFICIENCY: number;
   W_D: number;
   W_DEEP: number;
+  W_EFF: number;
   W_G: number;
   HRV_ARTIFACT_MAX: number;
   HRV_ARTIFACT_MIN: number;
@@ -78,10 +82,12 @@ export const ALGO_DEFAULTS: AlgoConst = {
   TARGET_DURATION: 450, // 7.5h
   TARGET_DURATION_MAX: 510, // 8.5h：满分区间上限（原来 9h 会让 9.0h 卡边界不扣分 → 满屏 100）
   TARGET_DEEP_PCT: 20,
-  TARGET_GETUP: 3, // 起夜平滑：每次约扣 10 分（原为 1 → 0/1 悬崖）
-  W_D: 0.35,
-  W_DEEP: 0.35,
-  W_G: 0.3,
+  TARGET_GETUP: 3, // 起夜平滑
+  TARGET_EFFICIENCY: 0.85, // WHOOP 睡眠效率目标
+  W_D: 0.30,
+  W_DEEP: 0.28,
+  W_EFF: 0.22,
+  W_G: 0.20,
   HRV_ARTIFACT_MAX: 120,
   HRV_ARTIFACT_MIN: 15,
   LEVEL_TOP: 76,
@@ -179,6 +185,8 @@ function madMedian(values: number[], k = 3): number {
 export interface SleepInput {
   sleepTotal: number | null;
   sleepDeep: number | null;
+  /** 卧床期间的清醒/失眠分钟数。缺 → 不扣分 */
+  sleepAwake?: number | null;
   getUp: number | null;
 }
 

@@ -426,7 +426,20 @@ export class HealthStore {
   recordSleep(dayKeyRaw: string, summary: SleepSummary): void {
     const dk = normalizeDayKey(dayKeyRaw);
     if (Number.isNaN(parseDayKey(dk))) return;
-    this.sleep[dk] = summary;
+    // ★ 自动从 sleepTime/wakeTime 解析 bedHour/wakeHour（如果还没填）
+    const v: SleepSummary = { ...summary };
+    if ((v.bedHour == null || v.wakeHour == null) && (v.sleepTime || v.wakeTime)) {
+      const parse = (s?: string | null): number | null => {
+        if (!s) return null;
+        const m = String(s).match(/(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        const h = parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+        return Number.isFinite(h) && h >= 0 && h <= 24 ? h : null;
+      };
+      if (v.bedHour == null) v.bedHour = parse(v.sleepTime) ?? null;
+      if (v.wakeHour == null) v.wakeHour = parse(v.wakeTime) ?? null;
+    }
+    this.sleep[dk] = v;
     this.lastUpdated['sleep'] = Date.now();
     this.notify();
   }
@@ -723,7 +736,11 @@ export class HealthStore {
         rem: Number(s.rem) || 0,
         awake: awake || undefined,
         insomnia: insomnia || undefined,
-        score: total > 0 ? computeSleepScore({ sleepTotal: total, sleepDeep: deep, getUp }) : Number(s.score) || 0,
+        score: total > 0 ? computeSleepScore({
+          sleepTotal: total, sleepDeep: deep,
+          sleepAwake: awake + insomnia > 0 ? awake + insomnia : undefined,
+          getUp,
+        }) : Number(s.score) || 0,
         sdkScore: Number(s.sdkScore) || undefined,
         getUp,
         sleepTime: (s.sleepTime as string | null) ?? null,
