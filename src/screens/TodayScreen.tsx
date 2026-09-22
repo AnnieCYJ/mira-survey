@@ -790,28 +790,39 @@ export default function TodayScreen() {
    * 运动=当日步数、恢复=最近一晚睡眠评分），只是把趋势图去掉、只留当前值。
    * 无数据的项一律显式传 '—' 并在第三行说明，不编数字。
    */
+  /**
+   * ★ 顶部四张指标小卡（2026-09-22 第二版）：认知 / 情绪 / 运动 / 恢复。
+   * 视觉 = **环 + 环心数值**（用户定稿），环色/底色一一对应下方大卡的色相家族。
+   * 环的进度口径与 ConsumptionCard 完全同一套满量程：
+   *   认知 = avgFatigue/100 · 情绪 = min(1, 事件数/6) · 运动 = min(1, 步数/8000) · 恢复 = 睡眠评分/100。
+   * 无数据 → progress 0、环心 '—'，不编数字。
+   */
   const metricTiles: MetricTileData[] = [
     {
-      key: 'cog', label: '认知', value: cognitive, unit: '/100',
-      sub: cognitive === '—' ? '暂无' : cogLevelTxt,
+      key: 'cog', label: '认知', value: cognitive,
+      progress: (() => { const v = cogReport?.avgFatigue; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
+      ringColor: theme.colors.tileRingCog,
       bg: theme.colors.tileCog,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }),
     },
     {
-      key: 'emo', label: '情绪', value: stress, unit: '次',
-      sub: peakEvent ? `峰值${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '今日无',
+      key: 'emo', label: '情绪', value: stress,
+      progress: (() => { const n = stressReport?.events?.length ?? 0; return Math.max(0, Math.min(1, n / 6)); })(),
+      ringColor: theme.colors.tileRingEmo,
       bg: theme.colors.tileEmo,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }),
     },
     {
-      key: 'act', label: '运动', value: activity, unit: '步',
-      sub: activity === '—' ? '暂无' : (stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal` : '进行中'),
+      key: 'act', label: '运动', value: activity,
+      progress: (() => { try { const s = ring?.stepDaily?.[dkToday]?.steps ?? 0; return Number.isFinite(s) ? Math.max(0, Math.min(1, s / 8000)) : 0; } catch { return 0; } })(),
+      ringColor: theme.colors.tileRingAct,
       bg: theme.colors.tileAct,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }),
     },
     {
-      key: 'rec', label: '恢复', value: recovery, unit: '分',
-      sub: recoverySub,
+      key: 'rec', label: '恢复', value: recovery,
+      progress: (() => { const v = recoverySleep?.score; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
+      ringColor: theme.colors.tileRingRec,
       bg: theme.colors.tileRec,
       onPress: () => navigation.navigate('EmotionCognitiveDetail'),
     },
@@ -839,9 +850,8 @@ export default function TodayScreen() {
         </Animated.View>
 
         {/* ─────────────────────────────────────────────────────────────
-            ★ 顶部四张指标小卡（2026-09-22 新增）：认知 / 情绪 / 运动 / 恢复。
-            · 只回答「现在是多少」——**不画趋势图**（按用户要求先看效果）。
-            · 一行四项、等宽等构，颜色只落在底色上（色相与下方对应大卡对齐）。
+            ★ 顶部四张指标小卡（2026-09-22 第二版定稿）：环 + 环心数值。
+            · 一行四项、等宽等构；环色/底色与下方对应大卡同一色相家族。
             · 间距：上方沿用 head 的 marginBottom(36)，下方给 panel 留 space.md(16)。
             ───────────────────────────────────────────────────────────── */}
         <View style={{ marginBottom: theme.space.md }}>

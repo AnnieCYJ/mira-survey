@@ -124,6 +124,19 @@ export const colors = {
   tileRec: '#F6EFE0',
 
   /**
+   * ★ 四小卡「环 + 环心数值」版的**环色**（2026-09-22 第二版，用户定稿「环中间加数」）。
+   * 取色原则：与各 tile 底色**同族色相加深**（emo/act/rec 由既有粉/蓝/米家族压暗得到，
+   * cog 直接复用 accentText #6153AF）。环是图形不是文字，按 WCAG **UI 组件 3:1** 档实算：
+   *   ringCog 4.88 / ringEmo 3.04 / ringAct 3.00 / ringRec 3.01 —— 全部达标。
+   */
+  tileRingCog: '#6153AF',
+  tileRingEmo: '#C36B86',
+  tileRingAct: '#5D87C3',
+  tileRingRec: '#AB843B',
+  /** 环底轨：textInk(#1A1A1A) 的 10% 透明度，在任何浅色 tile 底上都是「淡淡一圈」 */
+  tileRingTrack: 'rgba(26,26,26,0.10)',
+
+  /**
    * ui — 语义化界面令牌（从各组件收敛的高频裸值，值与原组件一致，UI 零变化）。
    * 新增界面元素请优先复用以下 token，避免再次散落裸值。
    */
