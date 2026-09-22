@@ -12,13 +12,14 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import Svg, { Rect, Text as SvgText, Line, Defs, LinearGradient, Stop, G } from 'react-native-svg';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
-import { healthStore, dayKey } from '../data/healthStore';
+import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
@@ -69,7 +70,7 @@ export default function EnergyDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={theme.colors.textWhite} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{meta.name}</Text>
@@ -92,13 +93,7 @@ export default function EnergyDetailScreen() {
         {type === 'cognitive' && range === 'day' && <CognitiveDetail anchorMs={anchor.getTime()} />}
         {type === 'activity' && range === 'day' && <ActivityDetail ring={ring} navigation={navigation} anchor={anchor} />}
 
-        {range !== 'day' && (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>
-              {meta.name} · {RANGE_DEF[range].label}趋势分析（即将上线）
-            </Text>
-          </View>
-        )}
+        {range !== 'day' && <RangeTrendBars type={type} range={range} anchor={anchor} />}
       </View>
     </ScreenContainer>
     <ChatSheet
@@ -142,10 +137,10 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
   if (type === 'cognitive') {
     const ll = report?.loadLevel;
     const map: Record<string, { text: string; color: string }> = {
-      rested: { text: '低疲劳', color: '#22C55E' },
-      light: { text: '低疲劳', color: '#22C55E' },
-      moderate: { text: '中疲劳', color: '#F59E0B' },
-      heavy: { text: '高疲劳', color: '#9D8AF0' },
+      rested: { text: '低疲劳', color: theme.colors.success },
+      light: { text: '低疲劳', color: theme.colors.success },
+      moderate: { text: '中疲劳', color: theme.colors.warn },
+      heavy: { text: '高疲劳', color: theme.colors.stateEnergy },
     };
     const m = ll ? map[ll] : null;
     return (
@@ -204,10 +199,10 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             {(() => {
               const ll = report.loadLevel;
               const map = {
-                rested: { text: '低疲劳', color: '#22C55E' },
-                light: { text: '低疲劳', color: '#22C55E' },
-                moderate: { text: '中疲劳', color: '#F59E0B' },
-                heavy: { text: '高疲劳', color: '#9D8AF0' },
+                rested: { text: '低疲劳', color: theme.colors.success },
+                light: { text: '低疲劳', color: theme.colors.success },
+                moderate: { text: '中疲劳', color: theme.colors.warn },
+                heavy: { text: '高疲劳', color: theme.colors.stateEnergy },
               } as const;
               const m = map[ll as keyof typeof map];
               return (
@@ -225,7 +220,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               </View>
             )}
           </View>
-          <CognitiveHistogram chartH={200}
+          <CognitiveHistogram chartH={160}
             hourly={report.hourly}
             peakSpan={report.peakLoadSpan}
             bestSpan={report.bestSpan}
@@ -256,14 +251,14 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const circAdj = wakeH != null ? (Math.max(0, Math.min(100, 50 + 50 * Math.sin(2 * Math.PI * (wakeH - peak + 6) / 24))) / 100) : 0.5;
             const clamp2 = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
             const prep = Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3);
-            const ll = prep >= 70 ? { text: '准备好了', color: '#22C55E', tip: '起床即有清晰认知状态' }
-                     : prep >= 45 ? { text: '一般', color: '#F59E0B', tip: '需要 30-60 分钟暖脑' }
-                     : { text: '偏低', color: '#9D8AF0', tip: '建议先轻度活动，避免烧脑' };
+            const ll = prep >= 70 ? { text: '准备好了', color: theme.colors.success, tip: '起床即有清晰认知状态' }
+                     : prep >= 45 ? { text: '一般', color: theme.colors.warn, tip: '需要 30-60 分钟暖脑' }
+                     : { text: '偏低', color: theme.colors.stateEnergy, tip: '建议先轻度活动，避免烧脑' };
             return (
               <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: ll.color + '12', borderLeftWidth: 3, borderLeftColor: ll.color }}>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>早起认知准备度</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
-                  <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: ll.color }}>{ll.text}</Text>
+                  <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: ll.color }}>{ll.text}</Text>
                   <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft }}>· {prep}/100</Text>
                 </View>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
@@ -279,7 +274,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
             <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateEnergy + '18' }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰</Text>
-              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: theme.colors.stateEnergy }}>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateEnergy }}>
                 {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
@@ -288,7 +283,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             </View>
             <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷</Text>
-              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: theme.colors.stateTense }}>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
                 {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
@@ -396,11 +391,11 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
-  sub: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
+  sub: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginTop: theme.sp(1) },
   hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.sp(1) },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: '#FFFFFF' },
-  heroUnit: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginLeft: theme.sp(2) },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
+  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginLeft: theme.sp(2) },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl * 2 },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
 
@@ -537,3 +532,296 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
 
   return null;
 }
+
+/* ========== 跨天/周/月/年分析卡 ========== */
+function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: RangeKey; anchor: Date }) {
+  const anchorMs = anchor.getTime();
+  const { axis } = RANGE_DEF[range];
+
+  const periods: { label: string; dayKeys: string[] }[] = (() => {
+    const out: { label: string; dayKeys: string[] }[] = [];
+    if (range === 'week') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(anchorMs); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
+        out.push({ label: axis[6-i] ?? '', dayKeys: [dayKey(d.getTime())] });
+      }
+    } else if (range === 'month') {
+      for (let g = 5; g >= 0; g--) {
+        const days: string[] = [];
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(anchorMs); d.setHours(0,0,0,0); d.setDate(d.getDate() - (g*5 + i));
+          days.push(dayKey(d.getTime()));
+        }
+        const firstD = new Date(anchorMs); firstD.setHours(0,0,0,0); firstD.setDate(firstD.getDate() - (g*5 + 4));
+        out.push({ label: String(firstD.getDate()), dayKeys: days });
+      }
+    } else if (range === 'year') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(anchorMs); d.setDate(1); d.setHours(0,0,0,0); d.setMonth(d.getMonth() - i);
+        const y = d.getFullYear(), m = d.getMonth();
+        const days: string[] = [];
+        const dim = new Date(y, m+1, 0).getDate();
+        for (let dd = 1; dd <= dim; dd++) days.push(dayKey(new Date(y, m, dd).getTime()));
+        out.push({ label: axis[11-i] ?? '', dayKeys: days });
+      }
+    }
+    return out;
+  })();
+
+  const computeScores = (periodList: { dayKeys: string[] }[]): (number | null)[] =>
+    periodList.map(p => {
+      let sum = 0, cnt = 0;
+      for (const dk of p.dayKeys) {
+        try {
+          if (type === 'cognitive') {
+            const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
+            const midMs = (parseDayKey(dk) || 0) + 12 * 3600 * 1000;
+            const rep = computeCognitiveLoadReport(midMs);
+            if (rep?.sampleCount >= 2 && rep.loadScore != null) { sum += rep.loadScore; cnt++; }
+          } else if (type === 'emotion') {
+            const { computeStressReport } = require('../lib/stressAlgorithm');
+            const midMs = (parseDayKey(dk) || 0) + 12 * 3600 * 1000;
+            const rep = computeStressReport(midMs);
+            if (rep?.sampleCount >= 2 && rep.emotionalLoad != null) { sum += rep.emotionalLoad; cnt++; }
+          } else if (type === 'activity') {
+            const d = healthStore.getDay('steps' as any, dk);
+            if (d?.mean != null) { sum += Math.min(100, (d.mean / 8000) * 100); cnt++; }
+          }
+        } catch {}
+      }
+      return cnt > 0 ? Math.round(sum / cnt) : null;
+    });
+
+  const scores = computeScores(periods);
+
+  const prevAnchor = new Date(anchorMs);
+  if (range === 'week') prevAnchor.setDate(prevAnchor.getDate() - 7);
+  else if (range === 'month') prevAnchor.setMonth(prevAnchor.getMonth() - 1);
+  else if (range === 'year') prevAnchor.setFullYear(prevAnchor.getFullYear() - 1);
+
+  const prevPeriods: { dayKeys: string[] }[] = (() => {
+    const out: { dayKeys: string[] }[] = [];
+    if (range === 'week') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(prevAnchor.getTime()); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
+        out.push({ dayKeys: [dayKey(d.getTime())] });
+      }
+    } else if (range === 'month') {
+      for (let g = 5; g >= 0; g--) {
+        const days: string[] = [];
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(prevAnchor.getTime()); d.setHours(0,0,0,0); d.setDate(d.getDate() - (g*5 + i));
+          days.push(dayKey(d.getTime()));
+        }
+        out.push({ dayKeys: days });
+      }
+    } else if (range === 'year') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(prevAnchor.getTime()); d.setDate(1); d.setHours(0,0,0,0); d.setMonth(d.getMonth() - i);
+        const y = d.getFullYear(), m = d.getMonth();
+        const days: string[] = [];
+        const dim = new Date(y, m+1, 0).getDate();
+        for (let dd = 1; dd <= dim; dd++) days.push(dayKey(new Date(y, m, dd).getTime()));
+        out.push({ dayKeys: days });
+      }
+    }
+    return out;
+  })();
+  const prevScores = computeScores(prevPeriods);
+
+  const validScores = scores.filter((s): s is number => s != null);
+  const validPrev = prevScores.filter((s): s is number => s != null);
+  const hasAny = validScores.length > 0;
+
+  const mean = hasAny ? Math.round(validScores.reduce((a,b)=>a+b,0) / validScores.length) : 0;
+  const peak = hasAny ? Math.max(...validScores) : 0;
+  const trough = hasAny ? Math.min(...validScores) : 0;
+  const volatility = hasAny && validScores.length > 1
+    ? Math.round(Math.sqrt(validScores.reduce((a,b)=>a+(b-mean)**2,0) / validScores.length))
+    : 0;
+
+  const prevMean = validPrev.length > 0 ? Math.round(validPrev.reduce((a,b)=>a+b,0) / validPrev.length) : null;
+  const delta = prevMean != null ? mean - prevMean : null;
+  const deltaPct = prevMean != null && prevMean > 0 ? Math.round((delta! / prevMean) * 100) : null;
+
+  const gradId = (i: number) => `rbg-${type}-${range}-${i}`;
+  const stopsFor = (s: number | null) => {
+    if (s == null) return ['transparent', 'transparent'];
+    // 与 StressInsightCard.HourHistogram 档位语义一致:
+    //   低负荷/低疲劳 → success (绿, 好状态)
+    //   中负荷/中疲劳 → warn (黄, 一般)
+    //   高负荷/高疲劳 → stateEnergy (紫, 需注意)
+    let top: string, bot: string;
+    const TH_LOW  = type === 'emotion' ? 30 : 40;
+    const TH_HIGH = type === 'emotion' ? 60 : 65;
+    if (s < TH_LOW) { top = theme.colors.success;    bot = theme.colors.ui.successText; }
+    else if (s < TH_HIGH) { top = theme.colors.warn; bot = theme.colors.stateTense; }
+    else { top = theme.colors.stateEnergy; bot = theme.colors.accentSolid; }
+    return [top, bot];
+  };
+
+  const lowerIsBetter = type === 'cognitive' || type === 'emotion';
+  const trendBad = delta != null && ((lowerIsBetter && delta > 0) || (!lowerIsBetter && delta < 0));
+  const trendColor = trendBad ? theme.colors.danger : delta != null && delta !== 0 ? theme.colors.success : theme.colors.textSub;
+  const trendLabel = range === 'week' ? '上周' : range === 'month' ? '上月' : '去年同期';
+  const trendArrow = delta == null ? '—' : delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
+
+  // 图表尺寸用主题间距
+  const barW = theme.sp(5);         // 20
+  const gap = theme.sp(2);          // 8
+  const chartW = periods.length * barW + (periods.length - 1) * gap + theme.sp(9); // +36
+  const plotTop = theme.sp(4.5);    // 18
+  const plotH = theme.sp(37.5);     // 150
+  const chartH = plotTop + plotH + theme.sp(6.5); // +26
+
+  return (
+    <>
+      {/* 卡 ① 趋势图 — SVG 始终渲染, 空数据画骨架 + 覆盖层 */}
+      <Card padded={false}>
+        <View style={styles.pad}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={styles.chartTitle}>{META[type].name} · {RANGE_DEF[range].label}趋势</Text>
+            {prevMean != null && deltaPct != null && (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 10, color: theme.colors.textSub }}>vs {trendLabel}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: trendColor, marginLeft: 4 }}>
+                  {trendArrow} {Math.abs(deltaPct!)}%
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ position: 'relative' }}>
+            <Svg width={chartW} height={chartH}>
+              <Defs>
+                {scores.map((s, i) => {
+                  const [t, b] = stopsFor(s);
+                  return (
+                    <LinearGradient key={i} id={gradId(i)} x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0%" stopColor={t} stopOpacity="1" />
+                      <Stop offset="100%" stopColor={b} stopOpacity="1" />
+                    </LinearGradient>
+                  );
+                })}
+              </Defs>
+
+              {/* Y 轴刻度 & 网格 — 始终渲染 */}
+              {[0, 25, 50, 75, 100].map(v => {
+                const y = plotTop + plotH - (v / 100) * plotH;
+                return (
+                  <G key={`y${v}`}>
+                    <SvgText x={theme.sp(7)} y={y + theme.sp(0.75)} textAnchor="end" fontSize={theme.fontSize.xs} fill={theme.colors.textSub}>
+                      {v}
+                    </SvgText>
+                    {v > 0 && v < 100 && (
+                      <Line x1={32} y1={y} x2={chartW - 4} y2={y}
+                        stroke={theme.colors.cardBorder + '50'} strokeWidth={0.5} strokeDasharray="2 3" />
+                    )}
+                  </G>
+                );
+              })}
+
+              {/* 50 分参考线 (加粗) */}
+              <Line x1={32} y1={plotTop + plotH - 50 / 100 * plotH}
+                    x2={chartW - 4} y2={plotTop + plotH - 50 / 100 * plotH}
+                    stroke={theme.colors.celebrateGrad[0]} strokeWidth={1.2} strokeDasharray="4 3" />
+
+              {/* 柱子 — 空数据画灰色 2px 底条 */}
+              {scores.map((s, i) => {
+                const h = s != null ? Math.max(3, (s / 100) * plotH) : 0;
+                const x = 36 + i * (barW + gap);
+                const y = plotTop + plotH - h;
+                const isPeak = hasAny && s != null && s === peak;
+                return (
+                  <G key={i}>
+                    {s != null ? (
+                      <Rect x={x} y={y} width={barW} height={h} rx={theme.radius.sm} ry={theme.radius.sm}
+                            fill={`url(#${gradId(i)})`} />
+                    ) : (
+                      <Rect x={x} y={plotTop + plotH - 2} width={barW} height={2} rx={theme.sp(0.25)} ry={theme.sp(0.25)}
+                            fill={theme.colors.cardBorder + '50'} />
+                    )}
+                    {s != null && (
+                      <SvgText x={x + barW/2} y={y - theme.sp(1)} textAnchor="middle" fontSize={theme.fontSize.xs}
+                               fontWeight={isPeak ? '700' : '500'}
+                               fill={isPeak ? theme.colors.celebrateGrad[0] : theme.colors.textSub}>
+                        {s}
+                      </SvgText>
+                    )}
+                    {isPeak && validScores.filter(v => v === peak).length === 1 && (
+                      <SvgText x={x + barW/2} y={y - theme.sp(4)} textAnchor="middle" fontSize={theme.fontSize.micro}
+                               fill={theme.colors.celebrateGrad[0]}>▲</SvgText>
+                    )}
+                    <SvgText x={x + barW/2} y={chartH - theme.sp(1.5)} textAnchor="middle" fontSize={theme.fontSize.sm} fill={theme.colors.textSub}>
+                      {periods[i].label}
+                    </SvgText>
+                  </G>
+                );
+              })}
+            </Svg>
+            {/* 空数据覆盖层 */}
+            {!hasAny && (
+              <View style={{ position: 'absolute', left: 0, right: 0, top: plotTop + plotH / 2 - 10, alignItems: 'center' }}>
+                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, backgroundColor: theme.colors.cardBgSoft + 'CC', paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.sm }}>
+                  暂无 {RANGE_DEF[range].label}数据
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Card>
+
+      {/* 卡 ② 统计指标网格 */}
+      {hasAny && (
+        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+          <View style={styles.pad}>
+            <View style={styles.statGrid}>
+              <StatCell label="周期均值" value={String(mean)} sub={type === 'activity' ? '' : '/ 100'} />
+              <StatCell label="峰值" value={String(peak)} sub={type === 'activity' ? '' : '/ 100'} valueColor={theme.colors.celebrateGrad[0]} />
+              <StatCell label="低谷" value={String(trough)} sub={type === 'activity' ? '' : '/ 100'} valueColor={theme.colors.success} />
+              <StatCell label="波动度" value={String(volatility)} sub="σ" />
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {/* 卡 ③ 对比上周期 */}
+      {hasAny && prevMean != null && (
+        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+          <View style={styles.pad}>
+            <Text style={styles.chartTitle}>对比{trendLabel}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Text style={{ fontSize: 26, fontWeight: '800', color: trendColor }}>
+                {delta == null ? '—' : (delta > 0 ? '+' : '') + delta}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.colors.textSub, marginLeft: 6 }}>
+                {deltaPct != null ? `(${trendArrow} ${Math.abs(deltaPct!)}%)` : ''}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 11, color: theme.colors.textSub }}>{trendLabel}均值</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: theme.colors.textTitle }}>{prevMean}</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1.5), lineHeight: 18 }}>
+              {lowerIsBetter
+                ? (delta! > 0
+                    ? `本周期${META[type].name}负荷较${trendLabel}上升 ${deltaPct!}%，建议关注高负荷时段，调整节奏避免疲劳累积。`
+                    : delta! < 0
+                      ? `本周期${META[type].name}负荷较${trendLabel}下降 ${Math.abs(deltaPct!)}%，状态良好，继续保持当前作息与活动节奏。`
+                      : `本周期${META[type].name}负荷与${trendLabel}基本持平，稳定在健康区间。`)
+                : (delta! > 0
+                    ? `本周期运动量较${trendLabel}提升 ${deltaPct!}%，继续保持！注意运动后恢复。`
+                    : delta! < 0
+                      ? `本周期运动量较${trendLabel}下降 ${Math.abs(deltaPct!)}%，建议每天增加 10-15 分钟活动。`
+                      : `本周期运动量与${trendLabel}基本持平，稳定输出中。`)
+              }
+            </Text>
+          </View>
+        </Card>
+      )}
+    </>
+  );
+}
+
+

@@ -260,7 +260,7 @@ const MiniStressDots = React.memo(function MiniStressDots({ events }: { events: 
   const dots:any[]=[];
   for(let cc=0;cc<C;cc++) for(let r=0;r<R;r++){
     const s=grid[cc][r];
-    if(s>0){ const color=s>=5?'#E879F9':s>=3?'#F5A87C':'#F8C5A5'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
+    if(s>0){ const color=s>=5?theme.colors.moodRest:s>=3?theme.colors.stateTense:'rgba(240,196,110,0.5)'; dots.push(<Circle key={`d${cc}${r}`} cx={cc*cw+cw/2} cy={r*rh+rh/2} r={3.2} fill={color} opacity={0.92} />); }
   }
   // 空态：淡色散点示意
   const phDots:any[]=[];
@@ -282,7 +282,7 @@ const MiniStressDots = React.memo(function MiniStressDots({ events }: { events: 
       </Svg>
       {ev.length>0 ? (
         <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(232,121,249,0.25)' }}>
-          <Text style={{ fontSize:10, color:'#E879F9', fontWeight:'700' }}>{ev.length} 次</Text>
+          <Text style={{ fontSize:10, color: theme.colors.moodRest, fontWeight:'700' }}>{ev.length} 次</Text>
         </View>
       ):null}
     </View>
@@ -301,12 +301,12 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly }: { ho
   return (
     <View style={{ width: MW, height: MH }}>
       <Svg width={MW} height={MH}>
-        {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?'#7C3AED':v>40?'#9D8AF0':'#C4B5FD'; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+        {scores.map((v,i)=>{ const h=Math.max(1.5,(v/max)*CHART_H),x=i*(MW/N)+0.5,y=CHART_H-h,col=v>70?theme.colors.accentSolid:v>40?theme.colors.stateEnergy:theme.colors.ringOnLight; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
         {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?MW-1:h*(MW/N)+bw/2} y={CHART_H+AXIS_H-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
       {popVal>0 ? (
-        <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(124,58,237,0.2)' }}>
-          <Text style={{ fontSize:10, color:'#7C3AED', fontWeight:'700' }}>{Math.round(popVal)}</Text>
+        <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.accentSolid + '33' }}>
+          <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{Math.round(popVal)}</Text>
         </View>
       ):null}
     </View>
@@ -341,7 +341,7 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps }: {
       </Svg>
       {steps[N-1]>0 ? (
         <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
-          <Text style={{ fontSize:10, color:'#7EA6F8', fontWeight:'700' }}>{steps[N-1]}</Text>
+          <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{steps[N-1]}</Text>
         </View>
       ):null}
     </View>
@@ -674,7 +674,7 @@ export default function TodayScreen() {
     const spanPast = spanMin != null && spanMin <= curMin;
     pushItem({
       time: spanPast ? `${pad2(span!.startHour)}:00` : '今日',
-      color: theme.colors.accentSolid,
+      color: theme.colors.stateTired,
       title: `脑力负荷 ${Math.round(cogReport.loadScore)}`,
       sub: '高峰时段安排专注任务更高效',
     }, spanPast ? spanMin! : curMin);
@@ -811,10 +811,10 @@ export default function TodayScreen() {
             {/* ★ 弧下弥散紫：竖渐变由主题紫收到全透明 → 视觉上「紫由上而下弥散开」。
                 它的高度不计入布局（下方用负 margin 抵掉），所以下面的卡片会浮在这层紫雾上。 */}
             <SvgLinear id="panelUnderGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor={theme.colors.bgTop} stopOpacity={1} />
-              <Stop offset="18%" stopColor={theme.colors.bgTop} stopOpacity={0.88} />
-              <Stop offset="45%" stopColor={theme.colors.bgTop} stopOpacity={0.4} />
-              <Stop offset="100%" stopColor={theme.colors.bgTop} stopOpacity={0} />
+              <Stop offset="0%" stopColor="#F5D189" stopOpacity={0.55} />
+              <Stop offset="25%" stopColor="#F5D189" stopOpacity={0.3} />
+              <Stop offset="60%" stopColor="#F5D189" stopOpacity={0.1} />
+              <Stop offset="100%" stopColor="#F5D189" stopOpacity={0} />
             </SvgLinear>
           </Defs>
           <Rect x={0} y={0} width={panelW} height={panelArcH + panelUnderH} fill="url(#panelUnderGrad)" />
@@ -840,8 +840,8 @@ export default function TodayScreen() {
         <View style={{ height: theme.space.lg }} />
 
         <View style={{ flexDirection: 'column', gap: theme.space.md }}>
-          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
           <BigStatCard title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
+          <BigStatCard title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressDots events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
           <BigStatCard title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
         </View>
 
@@ -923,7 +923,7 @@ const styles = StyleSheet.create({
   phaseChipText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.stateTired,
   },
   statusNarr: {
     fontSize: theme.fontSize.sm,
@@ -1018,7 +1018,7 @@ const styles = StyleSheet.create({
   },
   axisY: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.accentSolid,
+    color: theme.colors.stateTired,
     fontWeight: theme.weight.medium,
     marginBottom: theme.sp(1),
   },

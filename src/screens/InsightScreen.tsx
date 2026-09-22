@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,6 +38,9 @@ import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
 import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
+import HealthAgeCard from '../components/HealthAgeCard';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
 
 function formatValue(v: number | null): string {
@@ -50,6 +53,23 @@ function formatValue(v: number | null): string {
 // 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
 // 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
 type TabKey = 'basics' | MetricKey;
+
+const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
+  { key: 'rhythm', label: '节律健康' },
+  { key: 'longevity', label: '长期健康' },
+];
+
+const RHYTHM_SUBS: { key: string; label: string }[] = [
+  { key: 'sleep', label: '睡眠' },
+  { key: 'body', label: '生理' },
+  { key: 'mind', label: '情绪&认知' },
+];
+
+const LONGEVITY_SUBS: { key: string; label: string }[] = [
+  { key: 'heart', label: '心血管' },
+  { key: 'metabolism', label: '代谢' },
+  { key: 'basics', label: '基础指标' },
+];
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'sleep', label: METRICS.sleep.name },
@@ -116,6 +136,8 @@ export default function InsightScreen() {
   // 直接订阅戒指实时状态：真实心率/血氧/体温/皮电/HRV/呼吸率都从这里来
   const [ring, setRing] = useState<RingState>(RingBle.getState());
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
+    const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
+  const [subTab, setSubTab] = useState<string>('sleep'); // rhythm: sleep | body | mind  longevity: heart | metabolism | basics
   const [tab, setTab] = useState<TabKey>('basics');
 
   // ★ 顶部「AI 综合分析」：真实接入端侧大模型（Qwen2.5-1.5B），上下文为该用户的真实健康数据
@@ -133,6 +155,20 @@ export default function InsightScreen() {
    *   页面就变成「没有分点、整段糊住」。resolveInsightRows 会做质量门禁：
    *   不合格（<3 行 / 有超长行）→ 回落规则分点；合格 → 与规则分点合流补齐缺失指标。
    */
+  const overallScoreFromReport = useMemo(() => {
+    try {
+      const fatigue = computeCognitiveLoadReport();
+      const stress = computeStressReport();
+      const sleep = ring.daily['sleepScore'];
+      const scores: number[] = [];
+      if (fatigue?.loadScore != null) scores.push(100 - fatigue.loadScore * 0.6);
+      if (stress?.emotionalLoad != null) scores.push(100 - stress.emotionalLoad * 0.5);
+      if (sleep != null) scores.push(sleep);
+      if (scores.length === 0) return 75;
+      return Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
+    } catch { return 75; }
+  }, [ring.daily['sleepScore']]);
+
   const insightRows = useMemo(
     () => resolveInsightRows('overview', aiOverview.rows),
     // 依赖 text（字符串，身份稳定）而非 rows（每次渲染新数组）
@@ -331,76 +367,79 @@ export default function InsightScreen() {
           <Text style={styles.title}>Insights</Text>
         </Animated.View>
 
-        <InsightBanner
-          onMore={() => openChat('帮我详细分析今天的状态')}
-          rows={insightRows}
-          pending={aiOverview.loading}
-        />
+        
 
-        {/* 模块切换：基础指标为戒指真实信号；其余为周期-心理洞察（上线保留） */}
-        {/* 临时预览笑脸动画 */}
-        <View style={{ alignItems: 'center', marginBottom: 12 }}></View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.chipRow}
-          contentContainerStyle={styles.chipContent}
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          scrollEnabled={TABS.length > 4}
-        >
-          {TABS.map((t) => (
-            <Chip key={t.key} label={t.label} active={t.key === tab} onPress={() => setTab(t.key)} />
-          ))}
-        </ScrollView>
-
-        {tab === 'basics' ? (
+        {topTab === 'rhythm' ? (
           <>
-          {/* 双列瀑布流：左右两列各自竖向堆叠，卡片高度交错 → 错落有致 */}
-          {basicsGroups.map((g, gi) => (
-            <React.Fragment key={g.section ?? `basics-group-${gi}`}>
-              {g.section ? <Text style={styles.sectionLabel}>{g.section}</Text> : null}
-              <View style={styles.masonry}>
-                {g.columns.map((col, ci) => (
-                  <View key={ci} style={styles.masonryCol}>
-                    {col.map((m) => renderBasicsCard(m))}
-                  </View>
-                ))}
-              </View>
-            </React.Fragment>
-          ))}
-          </>
-        ) : tab === 'cycle' ? (
-          <>
-            {/* 周期 tab 不再放日/周/月/年切换：周期不是普通时间序列指标，
-                当前卡片固定展示「本月/当前周期」视角，点击卡片进周期日历看月/年相位。 */}
-            <CyclePhaseCard
+            {/* ═══ 节律健康: 左身体年龄 + 右 AI 分析 ═══ */}
+            <HealthAgeCard
+              healthAge={22.6}
+              actualAge={28}
+              overallScore={overallScoreFromReport}
               ring={ring}
-              female={ring.female}
-              onPress={() => navigation.navigate('CycleCalendar')}
+              rows={insightRows}
+              pending={aiOverview.loading}
             />
+            {/* ═══ 节律健康 / 长期健康 切换 ═══ */}
+            <Segmented
+              options={TOP_TABS.map(t => t.label)}
+              activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
+              onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
+            />
+            {/* ═══ 子 tab: 睡眠 / 生理 / 情绪&认知 ═══ */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={styles.chipRow} contentContainerStyle={styles.chipContent}>
+              <UnderlineTabs
+                options={RHYTHM_SUBS.map(t => t.label)}
+                activeIndex={RHYTHM_SUBS.findIndex(t => t.key === subTab)}
+                onChange={(i) => setSubTab(RHYTHM_SUBS[i].key)}
+              />
+            </ScrollView>
+
+            {subTab === 'sleep' ? (
+              <>
+                <SleepStructureCard segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
+                <CortisolSleepSummary insightRows={recoveryRows} />
+              </>
+            ) : subTab === 'body' ? (
+              <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
+            ) : (
+              <>
+                <EmotionInsightView />
+                <View style={{ height: theme.sp(0.5) }} />
+                <CognitiveLoadCard />
+              </>
+            )}
           </>
         ) : (
-          <View style={styles.stack}>
-            {!['heart', 'sleep', 'metabolism', 'psychology', 'mind', 'cycle'].includes(tab) && (
-              <DimensionCard metric={METRICS[tab]} onPress={() => {}} />
-            )}
-            {tab === 'heart' && (
+          <>
+            {/* ═══ 长期健康: AI 分析全宽 banner ═══ */}
+            <InsightBanner rows={insightRows} pending={aiOverview.loading} />
+            {/* ═══ 节律健康 / 长期健康 切换 ═══ */}
+            <Segmented
+              options={TOP_TABS.map(t => t.label)}
+              activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
+              onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
+            />
+            {/* ═══ 子 tab: 心血管 / 代谢 / 基础指标 ═══ */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={styles.chipRow} contentContainerStyle={styles.chipContent}>
+              <UnderlineTabs
+                options={LONGEVITY_SUBS.map(t => t.label)}
+                activeIndex={LONGEVITY_SUBS.findIndex(t => t.key === subTab)}
+                onChange={(i) => setSubTab(LONGEVITY_SUBS[i].key)}
+              />
+            </ScrollView>
+
+            {subTab === 'heart' ? (
               <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
-                {/* 血压（小卡，紫色渐变，模仿血糖） */}
                 <View style={{ flex: 1, alignSelf: 'stretch' }}>
                   <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('BpDetail')}>
-                    <LinearGradient
-                      colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ padding: theme.sp(2.5), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
-                    >
+                    <LinearGradient colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: theme.sp(2.5), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}>
                       <BpCard ring={ring} onPress={() => {}} gradientMode />
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
-                {/* 心电图（大卡，白底，模仿血液成分） */}
                 <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
                   <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('EcgDetail')}>
                     <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
@@ -409,190 +448,43 @@ export default function InsightScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            )}
-            {tab === 'sleep' && (
+            ) : subTab === 'metabolism' ? (
               <>
-              <SleepStructureCard
-                segments={todaySegments}
-                summary={ring.sleepSummary}
-                sleepTime={todaySleep.sleepTime}
-                wakeTime={todaySleep.wakeTime}
-                deepPct={ring.daily['sleepDeep'] ?? null}
-                remPct={ring.daily['sleepRem'] ?? null}
-                score={ring.daily['sleepScore'] ?? null}
-                fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null}
-                onPress={() => navigation.navigate('SleepDetail')}
-              />
-              {/* 皮质醇关键指标（昼夜波动幅度 / 作息类型）+ AI 分析：同一张卡，紧跟睡眠结构卡 */}
-              {/* 原「今日皮质醇全天趋势」卡已按需求移除（组件仍供身体恢复详情页使用） */}
-              <CortisolSleepSummary insightRows={recoveryRows} />
-              </>
-            )}
-            {tab === 'mind' && (
-              <>
-                <EmotionInsightView />
-                <View style={{ height: theme.sp(0.5) }} />
-                <CognitiveLoadCard />
-              </>
-            )}
-            {/* 睡眠 tab 到此结束：其下原有「空信号提示卡」与「本周关键变化」两张卡对睡眠无意义，跳过 */}
-            {tab !== 'sleep' && (() => {
-              let sigs = signalsForDimension(tab);
-              // 代谢 tab 只保留「血液成分」面板 +「血糖」两张：
-              //  · 血糖之后的总胆固醇/甘油三酯/HDL/LDL 与上方血液成分面板完全重复；
-              //  · BMI/体脂率/脂肪量/肌肉量/骨量等身体成分需先录入身高体重档案，
-              //    未录入时恒为占位空卡。按产品要求一并移除。
-              // 用白名单而非 slice：不依赖 signalsForDimension 的返回顺序，
-              // 即使后续往 metrics.ts 增删信号也不会误放开。
-              if (tab === 'metabolism') {
-                sigs = sigs.filter((s) => METABOLISM_VISIBLE_KEYS.has(s.key));
-              }
-              if (sigs.length === 0) {
-                // heart 心电 tab：直接返回空，不渲染空提示卡
-                if (tab === 'heart' || tab === 'mind' || tab === 'sleep') return null;
-                return (
-                  <Card>
-                    <Text style={styles.emptyNote}>
-                      该维度暂无可直连的信号，等待原生接入。
-                    </Text>
-                  </Card>
-                );
-              }
-              // 代谢 tab：血糖 → 血液成分 → 体检卡片
-              if (tab === 'metabolism') {
-                return (
-                  <>
-                    {/* 血糖 + 血液成分 并排一行 */}
-                    <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
-                    {/* 血糖卡片（小） */}
-                    <View style={{ flex: 1, alignSelf: 'stretch' }}>
-                    {sigs.map((m) => {
-                      const real = ring.daily[m.key] ?? null;
-                      const hist = getCachedHist(m.key);
-                      const measureTime = getCachedLastT(m.key);
-                      const gid = `bm_${m.key}`;
-                      const placeholderPath = (() => {
-                        const pad = 4, w = 320, h = 56;
-                        let d = '';
-                        for (let i = 0; i <= 30; i++) {
-                          const x = pad + ((w - pad * 2) * i) / 30;
-                          const y = pad + (h - pad * 2) * (0.55 + 0.12 * Math.sin((i / 30) * Math.PI * 2.5));
-                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
-                        }
-                        return d.trim();
-                      })();
-                      const trendD = (() => {
-                        if (!hist || hist.length < 2) return '';
-                        const pad = 4, w = 320, h = 56;
-                        const vals = hist.map(p => p.v);
-                        const lo = Math.min(...vals), hi = Math.max(...vals);
-                        const yR = hi === lo ? 1 : (h - pad * 2) / (hi - lo);
-                        let d = '';
-                        hist.forEach((p, i) => {
-                          const x = pad + ((w - pad * 2) * i) / (hist.length - 1);
-                          const y = pad + (hi - p.v) * yR;
-                          d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
-                        });
-                        return d.trim();
-                      })();
-                      return (
-                        <TouchableOpacity key={m.key} activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}>
-                          <LinearGradient
-                            colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}
-                          >
-                            {/* header：icon + 名字 / 更新时间 */}
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Icon name={m.icon ?? 'activity'} size={theme.fontSize.card + 2} color={theme.colors.ui.onGrad} style={{ marginRight: theme.sp(1) }} />
-                              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{m.name}</Text>
-                            </View>
-                            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.ui.onGrad }}>{formatRelativeTime(measureTime)}</Text>
-                          </View>
-                          {/* 数值 + 单位 */}
-                          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-                            <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{formatValue(real)}</Text>
-                            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.ui.onGrad, marginLeft: theme.sp(1) }}>{m.unit}</Text>
-                          </View>
-                          {/* 趋势图 */}
-                          <Svg width="100%" height={theme.fs(56)} viewBox="0 0 320 56" preserveAspectRatio="none">
-                            {trendD ? (
-                              <>
-                                <Defs>
-                                  <SvgGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
-                                    <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.3} />
-                                    <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
-                                  </SvgGradient>
-                                  <SvgGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
-                                    <Stop offset="0%" stopColor={theme.colors.accent1} />
-                                    <Stop offset="100%" stopColor={theme.colors.accent2} />
-                                  </SvgGradient>
-                                </Defs>
-                                <SvgPath d={trendD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.2} strokeLinecap="round" />
-                              </>
-                            ) : (
-                              <SvgPath d={placeholderPath} fill="none" stroke={theme.colors.accent1} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
-                            )}
-                            </Svg>
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    </View>
-                    {/* 血液成分卡片（大） */}
-                    <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
-                      <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
-                        <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
-                      </Card>
-                    </View>
-                    </View>
-                    {/* 身体成分卡片 */}
-                    <ExamTab />
-                  </>
-                );
-              }
-              return (
-                <View style={styles.grid}>
-                  {sigs.map((m) => {
-                    const real = ring.daily[m.key] ?? null;
-                    const hist = getCachedHist(m.key);
-                    const measureTime = getCachedLastT(m.key);
-                    if (m.manualOnly) {
-                      return (
-                        <ManualMetricCard
-                          key={m.key}
-                          metric={m}
-                          live={real != null}
-                          value={real != null ? formatValue(real) : m.value}
-                          measureTime={measureTime}
-                          onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
-                          onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                        />
-                      );
-                    }
-                    return (
-                      <BasicMetricCard
-                        key={m.key}
-                        metric={m}
-                        auto={trendOn}
-                        live={real != null}
-                        syncing={false}
-                        value={real != null ? formatValue(real) : m.value}
-                        data={hist}
-                        onMeasure={() => RingBle.measure(m.key as RingMetricKey)}
-                        hideMeasure={m.hideMeasure ?? true}
-                        measureTime={measureTime}
-                        onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
-                      />
-                    );
-                  })}
+                <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
+                  <View style={{ flex: 1, alignSelf: 'stretch' }}>
+                    <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
+                      <LinearGradient colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden' }}>
+                        <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>血糖</Text>
+                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
+                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
+                      <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+                    </Card>
+                  </View>
                 </View>
-              );
-            })()}
-
-          </View>
+                <ExamTab />
+              </>
+            ) : (
+              // basics
+              <>
+                {basicsGroups.map((g, gi) => (
+                  <React.Fragment key={g.section ?? `basics-group-${gi}`}>
+                    {g.section ? <Text style={styles.sectionLabel}>{g.section}</Text> : null}
+                    <View style={styles.masonry}>
+                      {g.columns.map((col, ci) => (
+                        <View key={ci} style={styles.masonryCol}>
+                          {col.map((m) => renderBasicsCard(m))}
+                        </View>
+                      ))}
+                    </View>
+                  </React.Fragment>
+                ))}
+              </>
+            )}
+          </>
         )}
       </View>
     </ScreenContainer>
@@ -728,6 +620,59 @@ function EcgReadout({ ring }: { ring: RingState }) {
   );
 }
 
+
+// ── 方案 A: Segmented 滑动块 ──
+function Segmented({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
+  const W = theme.fs(160);
+  const itemW = W / options.length;
+  const [anim] = useState(() => new Animated.Value(activeIndex));
+  useEffect(() => {
+    Animated.timing(anim, { toValue: activeIndex, duration: 260, useNativeDriver: false }).start();
+  }, [activeIndex]);
+  const thumbLeft = anim.interpolate({ inputRange: options.map((_, i) => i), outputRange: options.map((_, i) => theme.sp(1) + itemW * i) });
+  return (
+    <View style={[styles.segmentedWrap, { width: W + theme.sp(2) }]}>
+      <View style={[styles.segmentedTrack, { width: W + theme.sp(2) }]}>
+        <Animated.View style={[styles.segmentedThumb, { width: itemW - theme.sp(2), left: thumbLeft }]} />
+        {options.map((label, i) => {
+          const isActive = i === activeIndex;
+          return (
+            <Pressable key={label} onPress={() => onChange(i)} style={[styles.segmentedBtn, { width: itemW }]}>
+              <Text style={[styles.segmentedLabel, isActive && styles.segmentedLabelOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ── 方案 A: 下划线子 tab ──
+function UnderlineTabs({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
+  const [anim] = useState(() => new Animated.Value(activeIndex));
+  useEffect(() => {
+    Animated.timing(anim, { toValue: activeIndex, duration: 260, useNativeDriver: false }).start();
+  }, [activeIndex]);
+  return (
+    <View style={styles.underlineWrap}>
+      {options.map((label, i) => {
+        const isActive = i === activeIndex;
+        return (
+          <Pressable key={label} onPress={() => onChange(i)} style={styles.underlineBtn}>
+            <Text style={[styles.underlineLabel, isActive && styles.underlineLabelOn]}>{label}</Text>
+          </Pressable>
+        );
+      })}
+      <Animated.View
+        style={[styles.underlineIndicator, {
+          left: anim.interpolate({ inputRange: options.map((_, j) => j), outputRange: options.map((_, j) => j * theme.sp(7)) }),
+        }]}
+      />
+      <View style={styles.underlineBaseline} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   stack: { gap: theme.space.lg },
   title: {
@@ -735,6 +680,8 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: theme.colors.textWhite,
   },
+  topTabRow: { flexDirection: 'row', marginBottom: theme.sp(2) },
+  topTab: { paddingHorizontal: theme.sp(4), paddingVertical: theme.sp(2), borderRadius: theme.radius.pill, marginRight: theme.sp(1.5), fontSize: theme.fontSize.card },
   chipRow: { flexGrow: 0, marginLeft: -theme.space.screen },
   chipContent: { paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1) },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2.5), alignItems: 'stretch' },
@@ -842,4 +789,53 @@ const styles = StyleSheet.create({
   },
   ecgLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
   ecgValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  // 方案 A Segmented
+  segmentedWrap: { alignItems: 'flex-start' },
+  segmentedTrack: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: theme.radius.xl,
+    padding: theme.sp(1),
+    flexDirection: 'row',
+    position: 'relative',
+    height: theme.sp(10),
+  },
+  segmentedThumb: {
+    position: 'absolute',
+    top: theme.sp(1),
+    bottom: theme.sp(1),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.accentSolid,
+    shadowColor: theme.colors.accentSolid,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  segmentedBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: theme.sp(8),
+    borderRadius: theme.radius.md,
+  },
+  segmentedLabel: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: 'rgba(255,255,255,0.82)',
+  },
+  segmentedLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold },
+
+  // 方案 A Underline
+  underlineWrap: { flexDirection: 'row', position: 'relative', paddingTop: theme.sp(2), paddingBottom: theme.sp(2.5) },
+  underlineBtn: { paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(1) },
+  underlineLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.regular, color: 'rgba(255,255,255,0.82)' },
+  underlineLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold },
+  underlineIndicator: {
+    position: 'absolute', bottom: 0,
+    width: theme.sp(5), height: 3,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accentSolid,
+    marginLeft: theme.sp(0.5),
+  },
+  underlineBaseline: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
+
 });

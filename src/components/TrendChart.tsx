@@ -43,9 +43,10 @@ interface PPoint {
 
 export default function TrendChart({ width, height = theme.fs(108), timeline }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
+  const padX = 10;  // 左右内边距, 保证首尾点不被左/右边缘裁掉
 
   const { path, gradStops, pts, minGapX } = useMemo(() => {
-    const padX = 0;
+    // padX 用顶层常量
     // ★ 顶部留出气泡高度：值 100 的峰点也只到 padTop 线，浮层气泡完全悬在曲线上方，不再盖住峰点
     const padTop = 36;
     const padBottom = 6;
@@ -146,7 +147,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline }: 
       })() : null}
 
       {pts.map((p, i) => (
-        <Pressable key={`hit-${i}`} onPress={() => setSelected(i)} style={[styles.hit, { left: Math.max(0, p.x - hitW / 2), top: Math.max(0, p.y - hitH / 2), width: hitW, height: hitH }]} />
+        <Pressable key={`hit-${i}`} onPress={() => setSelected(i)} style={[styles.hit, { left: Math.max(padX, p.x - hitW / 2), top: Math.max(0, p.y - hitH / 2), width: hitW, height: hitH }]} />
       ))}
     </View>
   );

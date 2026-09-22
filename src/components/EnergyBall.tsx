@@ -62,7 +62,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       : DEFAULT_MOOD;
   const mood = MOODS[hi];
   // 空状态（无数据）：圆环统一紫色，中间显示「暂无数据」
-  const EMPTY_COLOR = '#9D8AF0';
+  const EMPTY_COLOR = theme.colors.stateEnergy;
   const moodColor = MOODS[hi].color;
   const hasData = !!(status?.hasData && status.value != null);
   const ringColor = hasData ? moodColor : EMPTY_COLOR;
@@ -219,7 +219,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
                   height: dotSize,
                   transform: [{ scale }],
                   zIndex: d.isCurrent ? 3 : 2,
-                  shadowColor: d.isCurrent ? '#F2C75C' : 'transparent',
+                  shadowColor: d.isCurrent ? theme.colors.warn : 'transparent',
                   shadowOpacity: d.isCurrent ? 0.85 : 0,
                   shadowRadius: d.isCurrent ? 14 : 0,
                 },

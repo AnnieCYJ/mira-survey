@@ -1,6 +1,6 @@
 import React from 'react';
 import { Dimensions, View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect, G, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel } from '../lib/cognitiveLoad';
@@ -118,130 +118,176 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   sleepWindow: { bedHour: number; wakeHour: number } | null;
   chartH?: number;
 }) {
-  // 认知疲劳度 = 分类变量 (低/中/高), 半小时步长 48 根柱
-  // 档位: <40 低(绿), 40-65 中(琥珀), >=65 高(红)
+  // ═══════════════════════════════════════════════════════════
+  // 认知疲劳度 48 根半小时柱, 坐标系统一规范:
+  //   Y 轴 0/25/50/75/100 + 3 条档位边界线
+  //   X 轴 24h 完整刻度 (每 4h 主刻度 + 中间细刻度)
+  //   无数据柱画透明骨架, 睡眠遮罩叠在上面
+  // ═══════════════════════════════════════════════════════════
   const LEVELS = [
-    { max: 40, color: '#22C55E', label: '低疲劳' },
-    { max: 65, color: '#F59E0B', label: '中疲劳' },
-    { max: 101, color: '#9D8AF0', label: '高疲劳' },
+    { max: 40,  color: theme.colors.success,     label: '低疲劳' },
+    { max: 65,  color: theme.colors.warn,        label: '中疲劳' },
+    { max: 101, color: theme.colors.stateEnergy, label: '高疲劳' },
   ];
-  const barColor = (s: number) => LEVELS.find(l => s < l.max)!.color;
+  const barColor = (v: number) => LEVELS.find(l => v < l.max)!.color;
 
-  const N = 48; // 半小时步长
+  const N = 48;
   const rows = Array.from({ length: N }, (_, i) => {
     const raw = hourly?.find(h => h.hour === i);
     const hasData = raw?.hasData === true && raw?.score != null;
     return { hour: i, score: raw?.score ?? 0, hasData };
   });
 
+  // ── 画布尺寸 (和 RangeTrendBars 对齐) ──
   const wrapW = Dimensions.get('window').width - theme.space.cardPad * 2 - theme.sp(2) * 2;
-  const padL = 12, padR = 12, padT = 8, padB = 22;
+  const Y_W = theme.sp(7);         // Y 轴标签预留宽 = 28px
+  const padL = Y_W + theme.sp(1);  // 32px, 含 Y 轴标签
+  const padR = theme.sp(3);
+  const padT = theme.sp(2);
+  const padB = theme.sp(6);        // X 轴 label + padding = 24px
   const svgW = wrapW;
-  const svgH = (chartH ?? 240) - 30;
+  const svgH = (chartH ?? theme.sp(50)) - theme.sp(2);
   const plotW = svgW - padL - padR;
   const plotH = svgH - padT - padB;
 
-  // 每小时一根柱子, 柱宽 = 可用宽 / 24 * 0.6
   const slotW = plotW / N;
   const barW = slotW * 0.55;
-  const hourCenterX = (h: number) => padL + slotW * (h + 0.5);
-  const barY = (score: number) => padT + plotH - (score / 100) * plotH;
+  const cx = (step: number) => padL + slotW * (step + 0.5);
+  const yFor = (v: number) => padT + plotH - (v / 100) * plotH;
 
-  // 背景遮罩
-  let sleepMask: { startX: number; endX: number } | null = null;
-  if (sleepWindow) {
+  // ── 遮罩 X 坐标 ──
+  const sleepMask = sleepWindow ? (() => {
     const sStep = Math.round(sleepWindow.bedHour * 2);
-    const eStep = Math.round((sleepWindow.wakeHour < sleepWindow.bedHour ? 47 : Math.min(47, sleepWindow.wakeHour * 2)));
-    const sX = hourCenterX(sStep) - barW / 2;
-    const eX = hourCenterX(eStep) + barW / 2;
-    sleepMask = { startX: sX, endX: Math.max(eX, sX + 4) };
-  }
-  const peakSX = peakSpan ? hourCenterX(Math.round(peakSpan.startHour * 2)) - barW / 2 : 0;
-  const peakEX = peakSpan ? hourCenterX(Math.round(Math.min(23, peakSpan.endHour) * 2)) + barW / 2 : 0;
-  const bestSX = bestSpan ? hourCenterX(Math.round(bestSpan.startHour * 2)) - barW / 2 : 0;
-  const bestEX = bestSpan ? hourCenterX(Math.round(Math.min(23, bestSpan.endHour) * 2)) + barW / 2 : 0;
+    const eStep = Math.round(sleepWindow.wakeHour * 2);
+    const sX = cx(sStep) - barW / 2;
+    const eX = cx(Math.min(47, eStep)) + barW / 2;
+    return { sX, eX: Math.max(eX, sX + 4) };
+  })() : null;
+  const peakSX = peakSpan ? cx(Math.round(peakSpan.startHour * 2)) - barW / 2 : 0;
+  const peakEX = peakSpan ? cx(Math.round(Math.min(23, peakSpan.endHour) * 2)) + barW / 2 : 0;
+  const bestSX = bestSpan ? cx(Math.round(bestSpan.startHour * 2)) - barW / 2 : 0;
+  const bestEX = bestSpan ? cx(Math.round(Math.min(23, bestSpan.endHour) * 2)) + barW / 2 : 0;
 
   const anyData = rows.some(r => r.hasData);
-  // tickHours 存 step 索引 (0-47), 整数小时 = step*2
-  const tickHours: { step: number; label: string; align: 'start'|'middle'|'end' }[] = [
-    { step: 0,  label: '0',  align: 'start' },
-    { step: 12, label: '6',  align: 'middle' },
-    { step: 24, label: '12', align: 'middle' },
-    { step: 36, label: '18', align: 'middle' },
-    { step: 47, label: '23', align: 'end' },
-  ];
+
+  // ── X 轴刻度: 每 4 小时主刻度 (7 个点), 中间半小时次刻度 (无文字) ──
+  const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 23];
+  const mainTicks = MAIN_HOURS.map(h => ({
+    step: h * 2,
+    label: String(h).padStart(2, '0'),
+    // 0 点用 start align, 23 点用 end align, 其他 middle
+    align: h === 0 ? 'start' as const : h === 23 ? 'end' as const : 'middle' as const,
+  }));
 
   return (
-    <View style={{ height: svgH + 8, width: '100%' }}>
-      <Svg width={svgW} height={svgH + 8}>
-        {/* 3 条水平网格 (档位边界) */}
+    <View style={{ height: svgH + theme.sp(2), width: '100%' }}>
+      <Svg width={svgW} height={svgH + theme.sp(2)}>
+
+        {/* ═══ Y 轴网格 (0 基线 + 档位边界虚线) + 档位文字 ═══ */}
+        {/* 0 基线 (实线加粗) */}
+        <Path d={`M ${padL} ${yFor(0)} L ${padL + plotW} ${yFor(0)}`}
+          stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
+        {/* 3 条网格虚线 (对齐档位边界) */}
         {[40, 65].map(v => (
           <Path key={'yg' + v}
-            d={`M ${padL} ${barY(v)} L ${padL + plotW} ${barY(v)}`}
-            stroke="rgba(120,110,160,0.08)" strokeWidth={1} strokeDasharray="3 3" />
+            d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
+            stroke={theme.colors.ui.borderSoft}
+            strokeWidth={0.8} strokeDasharray="3 3" />
         ))}
-
-        {/* 睡眠遮罩 */}
-        {sleepMask && sleepMask.endX > sleepMask.startX + 2 && (
-          <>
-            <Rect x={sleepMask.startX} y={padT}
-              width={sleepMask.endX - sleepMask.startX} height={plotH}
-              fill="rgba(100,116,139,0.10)" />
-            <SvgText x={(sleepMask.startX + sleepMask.endX) / 2} y={padT + 14}
-              textAnchor="middle" fontSize={8} fill="rgba(100,116,139,0.5)"
-              fontWeight="600">睡眠中</SvgText>
-          </>
-        )}
-
-        {/* peakSpan 红色半透明遮罩 */}
-        {peakSpan && peakEX > peakSX && (
-          <Rect x={peakSX} y={padT} width={peakEX - peakSX} height={plotH}
-            fill="rgba(157,138,240,0.10)" />
-        )}
-        {/* bestSpan 绿色半透明遮罩 */}
-        {bestSpan && bestEX > bestSX && (
-          <Rect x={bestSX} y={padT} width={bestEX - bestSX} height={plotH}
-            fill="rgba(34,197,94,0.06)" />
-        )}
-
-        {/* 柱状图 — 按档位分色 */}
-        {rows.map(r => {
-          if (!r.hasData) return null;  // 无数据/睡眠 → 不画
-          const c = barColor(r.score);
-          const x = hourCenterX(r.hour) - barW / 2;
-          const y = barY(r.score);
-          const h = (padT + plotH) - y;
-          const rx = Math.min(3, barW / 2);
+        {/* 3 档 Y 轴文字 — 低/中/高, 颜色对应档位 */}
+        {LEVELS.map((lv, i) => {
+          // 档位中值 Y 坐标
+          const midV = i === 0 ? 20 : i === 1 ? 52.5 : 82.5;
+          const y = yFor(midV);
           return (
-            <Rect key={'b' + r.hour}
-              x={x} y={y} width={barW} height={Math.max(h, 2)}
-              fill={c} rx={rx} opacity={0.85} />
+            <G key={'yl' + i}>
+              <SvgText x={padL - theme.sp(1.5)} y={y + 3}
+                textAnchor="end" fontSize={theme.fontSize.micro}
+                fontWeight="600" fill={lv.color}>
+                {lv.label.replace('疲劳', '')}
+              </SvgText>
+            </G>
           );
         })}
 
-        {/* X 轴刻度 */}
-        {tickHours.map(t => (
-          <SvgText key={'tx' + t.step} x={hourCenterX(t.step)} y={padT + plotH + 16}
-            textAnchor={t.align} fontSize={10} fill="rgba(120,110,160,0.65)">
-            {t.label.padStart(2, '0')}
+        {/* ═══ 档位边界虚线 (叠加在网格上) ═══ */}
+        {[40, 65].map(v => (
+          <Path key={'g' + v}
+            d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
+            stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
+        ))}
+
+        {/* ═══ 睡眠遮罩 ═══ */}
+        {sleepMask && sleepMask.eX > sleepMask.sX + 2 && (
+          <>
+            <Rect x={sleepMask.sX} y={padT}
+              width={sleepMask.eX - sleepMask.sX} height={plotH}
+              fill={theme.colors.ui.borderSoft} />
+            <SvgText x={(sleepMask.sX + sleepMask.eX) / 2} y={padT + theme.sp(3)}
+              textAnchor="middle" fontSize={theme.fontSize.micro}
+              fill={theme.colors.textSub} fontWeight="600">
+              睡眠中
+            </SvgText>
+          </>
+        )}
+
+        {/* ═══ peakSpan / bestSpan 遮罩 ═══ */}
+        {peakSpan && peakEX > peakSX && (
+          <Rect x={peakSX} y={padT} width={peakEX - peakSX} height={plotH}
+            fill={theme.colors.accentSoft} />
+        )}
+        {bestSpan && bestEX > bestSX && (
+          <Rect x={bestSX} y={padT} width={bestEX - bestSX} height={plotH}
+            fill={theme.colors.successSoft} />
+        )}
+
+        {/* ═══ 48 根柱 (无数据也画透明骨架) ═══ */}
+        {rows.map(r => {
+          const x = cx(r.hour) - barW / 2;
+          const c = r.hasData ? barColor(r.score) : theme.colors.ui.white25;
+          const h = r.hasData ? Math.max(theme.sp(0.5), (r.score / 100) * plotH) : theme.sp(0.5);
+          const y = padT + plotH - h;
+          return (
+            <Rect key={'b' + r.hour}
+              x={x} y={y} width={barW} height={h}
+              fill={c} rx={theme.sp(0.75)}
+              opacity={r.hasData ? 0.9 : 0.08} />
+          );
+        })}
+
+        {/* ═══ X 轴主刻度 (每 4h) ═══ */}
+        {mainTicks.map(t => (
+          <SvgText key={'tx' + t.step} x={cx(t.step)} y={padT + plotH + theme.sp(4)}
+            textAnchor={t.align} fontSize={theme.fontSize.xs}
+            fill={theme.colors.textSub}>
+            {t.label}
           </SvgText>
+        ))}
+
+        {/* ═══ X 轴次刻度 (每 2h, 细灰线) ═══ */}
+        {Array.from({ length: 12 }, (_, i) => (i + 1) * 4).filter(s => !MAIN_HOURS.includes(s * 2 / 2)).map(step => (
+          <Path key={'txs' + step}
+            d={`M ${cx(step)} ${padT + plotH} L ${cx(step)} ${padT + plotH + theme.sp(0.75)}`}
+            stroke={theme.colors.textSub} strokeWidth={0.5} opacity={0.4} />
         ))}
       </Svg>
 
       {/* 档位图例 */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) }}>
         {LEVELS.map(l => (
-          <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: l.color, opacity: 0.85 }} />
-            <Text style={{ fontSize: 10, color: 'rgba(120,110,160,0.65)' }}>{l.label}</Text>
+          <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+            <View style={{ width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(0.5), backgroundColor: l.color, opacity: 0.85 }} />
+            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub }}>{l.label}</Text>
           </View>
         ))}
       </View>
 
       {!anyData && (
-        <Text style={{ position: 'absolute', left: '50%', top: '40%', transform: [{ translateX: -40 }], fontSize: 11, color: 'rgba(120,110,160,0.5)' }}>
-          暂无数据
-        </Text>
+        <View style={{ position: 'absolute', left: 0, right: 0, top: padT + plotH / 2 - theme.sp(3), alignItems: 'center' }}>
+          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, backgroundColor: theme.colors.cardBgSoft + 'CC', paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.sm }}>
+            暂无数据
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -251,7 +297,7 @@ const styles = StyleSheet.create({
   // ── 复用 StressInsightCard token ──
   pad: { padding: theme.space.cardPad },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
+  title: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   levelChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },
   levelDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1) },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },

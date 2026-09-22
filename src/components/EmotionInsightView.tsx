@@ -21,7 +21,7 @@ import Card from './Card';
 import { computeStressReport, type StressReport } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { parseClockMinutes } from '../lib/sleepTime';
-import { levelColor } from './StressInsightCard';
+import { levelColor, HourHistogram } from './StressInsightCard';
 
 /** 等宽均分数据单元（与 MetricDetail statCell 同款；两处共用） */
 export function StatCell({ label, value, sub, valueColor }: {
@@ -142,7 +142,7 @@ export function StressEventStems({ events, chartH = 200 }: { events: any[]; char
                 // 有事件 → 情绪色直接做格子背景；睡眠 → 白色；其他空格透明
                 backgroundColor: has
                   ? dotColor(cell[0])
-                  : isSleepHour(h) ? '#FFFFFF' : 'transparent',
+                  : isSleepHour(h) ? theme.colors.textWhite : 'transparent',
                 alignItems: 'center', justifyContent: 'center',
                 borderWidth: 1,
                 borderColor: has
@@ -267,7 +267,7 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   const color = levelColor(report.level);
   const hasData = report.sampleCount >= 5;
 
-  if (!hasData) {
+  if (!hasData && false) {  // 禁用 early return, 让骨架图始终出来
     return (
       <Card>
         <Text style={styles.emptyText}>
@@ -282,19 +282,26 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   return (
     <Card padded={false}>
       <View style={styles.pad}>
-        {/* 图在最上面 —— 情绪负荷（5 档情绪点阵） */}
+        {/* 图在最上面 —— 情绪负荷 + 每小时分布 (始终渲染 HourHistogram 骨架) */}
+        <Text style={[styles.chartTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(2) }]}>
+          情绪负荷
+        </Text>
+
+        {/* ① 每小时事件分布柱状图 — 始终渲染 (无数据时 StressInsightCard.HourHistogram 画 0.06 透明骨架) */}
+        <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder, marginBottom: theme.sp(2) }}>
+          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每小时压力事件</Text>
+          <HourHistogram buckets={report.hourBuckets} chartH={120} />
+        </View>
+
+        {/* ② 全天 15 分钟粒度情绪点阵热力图 — 有事件才画 */}
         {report.events.length > 0 && (
-          <>
-            <Text style={[styles.chartTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(2) }]}>
-              情绪负荷
-            </Text>
-            <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
+          <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
+            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每 15 分钟情绪分布</Text>
             <StressEventStems events={report.events} chartH={200} />
-            </View>
-            {/* 与下方「情绪洞察」拉开间距，还原原两卡之间的视觉间隔 */}
-            <View style={{ height: theme.sp(4) }} />
-          </>
+          </View>
         )}
+
+        <View style={{ height: theme.sp(3) }} />
 
         <View style={styles.statGrid}>
           <StatCell
@@ -321,6 +328,53 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             sub={report.events.length > 8 ? '事件较多' : report.events.length > 4 ? '适中' : '较少'}
           />
         </View>
+
+        {/* 今日情绪窗口 */}
+        <View style={{ height: theme.sp(4) }} />
+        <Card padded={false}>
+          <View style={styles.pad}>
+            <Text style={styles.cardTitle}>今日情绪窗口</Text>
+            {report.level && (() => {
+              const lm: Record<string, { text: string; color: string }> = {
+                calm: { text: '平稳', color: theme.colors.success },
+                light: { text: '轻微波动', color: theme.colors.warn },
+                moderate: { text: '偏紧张', color: theme.colors.warn },
+                high: { text: '高压', color: theme.colors.stateEnergy },
+              };
+              const m = lm[report.level];
+              return m ? (
+                <View style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: m.color + '20', marginBottom: theme.sp(2) }}>
+                  <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: m.color }}>{m.text}</Text>
+                </View>
+              ) : null;
+            })()}
+            <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
+              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>情绪高峰</Text>
+                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
+                  {report.peakHour != null ? `${String(Math.floor(report.peakHour)).padStart(2,'0')}:00–${String(Math.min(23, Math.floor(report.peakHour)+1)).padStart(2,'0')}:00` : '--'}
+                </Text>
+                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>压力事件集中</Text>
+              </View>
+              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateCalm + '18' }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>恢复建议</Text>
+                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateCalm }}>
+                  {report.avgRecoverySec == null ? '--' : report.avgRecoverySec > 120 ? '深呼吸' : report.avgRecoverySec > 60 ? '散步 5min' : '状态良好'}
+                </Text>
+                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
+                  {report.avgRecoverySec != null ? `恢复 ${report.avgRecoverySec}s` : ''}
+                </Text>
+              </View>
+            </View>
+            {report.valenceScore != null && (
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+                {report.valenceScore > 20 ? '今日偏积极' : report.valenceScore < -20 ? '今日偏消极' : '情绪中性'}
+                {report.loadConstructive != null && report.loadDestructive != null
+                  ? ` · 建设 ${Math.round(report.loadConstructive)} vs 破坏 ${Math.round(report.loadDestructive)}` : ''}
+              </Text>
+            )}
+          </View>
+        </Card>
 
       </View>
     </Card>
@@ -364,7 +418,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   statValue: {
     fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.bold as any,
+    fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
     lineHeight: theme.fontSize.card * 1.2,
     textAlign: 'center',
