@@ -792,33 +792,34 @@ export default function TodayScreen() {
    */
   /**
    * ★ 顶部四张指标环（2026-09-22 第三版定稿）：无外层方卡，环内 = 图标 + 领域名 + 数值。
-   * 环色与下方对应大卡同一色相家族；进度口径与 ConsumptionCard 完全同一套满量程：
+   * 环色全部复用**既有语义 token**（不另造色）：accentSolid / moodRest / stateTired / stateCalm。
+   * 进度口径与 ConsumptionCard 完全同一套满量程：
    *   认知 = avgFatigue/100 · 情绪 = min(1, 事件数/6) · 运动 = min(1, 步数/8000) · 恢复 = 睡眠评分/100。
    * 无数据 → progress 0、数值 '—'，不编数字。
    */
   const metricTiles: MetricTileData[] = [
     {
-      key: 'cog', icon: 'focus', label: '认知', value: cognitive,
+      key: 'cog', icon: 'focus', label: '认知疲劳度', value: cognitive,
       progress: (() => { const v = cogReport?.avgFatigue; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
-      ringColor: theme.colors.tileRingCog,
+      ringColor: theme.colors.accentSolid,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }),
     },
     {
-      key: 'emo', icon: 'mind', label: '情绪', value: stress,
+      key: 'emo', icon: 'mind', label: '情绪负荷', value: stress,
       progress: (() => { const n = stressReport?.events?.length ?? 0; return Math.max(0, Math.min(1, n / 6)); })(),
-      ringColor: theme.colors.tileRingEmo,
+      ringColor: theme.colors.moodRest,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }),
     },
     {
-      key: 'act', icon: 'run', label: '运动', value: activity,
+      key: 'act', icon: 'run', label: '运动消耗', value: activity,
       progress: (() => { try { const s = ring?.stepDaily?.[dkToday]?.steps ?? 0; return Number.isFinite(s) ? Math.max(0, Math.min(1, s / 8000)) : 0; } catch { return 0; } })(),
-      ringColor: theme.colors.tileRingAct,
+      ringColor: theme.colors.stateTired,
       onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }),
     },
     {
-      key: 'rec', icon: 'breath', label: '恢复', value: recovery,
+      key: 'rec', icon: 'breath', label: '恢复程度', value: recovery,
       progress: (() => { const v = recoverySleep?.score; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
-      ringColor: theme.colors.tileRingRec,
+      ringColor: theme.colors.stateCalm,
       onPress: () => navigation.navigate('EmotionCognitiveDetail'),
     },
   ];

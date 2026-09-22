@@ -2,8 +2,9 @@
  * TodayMetricTiles —— 首页顶部四张「指标环」（认知 / 情绪 / 运动 / 恢复）。
  * ---------------------------------------------------------------------------
  * 2026-09-22 第三版（用户定稿）：**去掉外层方卡**——
- *   每一项就是一个**圆环**，环内自上而下 = 图标（theme 色环同色）+ 领域名 + 数值。
- *   环色 = theme.colors.tileRingXxx（与下方对应大卡同族色相），页面白底直接透出。
+ *   每一项就是一个**圆环**，环内自上而下 = 图标（与环同色）+ 领域名 + 数值。
+ *   环色直接复用**既有语义 token**（accentSolid / moodRest / stateTired / stateCalm），
+ *   由 TodayScreen 传入；白底直接透出。
  *
  * 环的进度口径（与下方大卡 / ConsumptionCard 完全同源，由 TodayScreen 传入）：
  *   认知 = avgFatigue/100 · 情绪 = min(1, 事件数/6) · 运动 = min(1, 步数/8000) · 恢复 = 睡眠评分/100
@@ -31,13 +32,13 @@ export type MetricTileData = {
   value: string;
   /** 环填充进度 0-1（无数据传 0 → 只剩底轨） */
   progress: number;
-  /** 环色（同时用作图标色），取自 theme.colors.tileRingXxx */
+  /** 环色（同时用作图标色），取自既有语义 token：accentSolid / moodRest / stateTired / stateCalm */
   ringColor: string;
   onPress?: () => void;
 };
 
-/** 环外径 / 环宽：全部走 theme 缩放，不写裸尺寸 */
-const TILE_RING_SIZE = theme.fs(66);
+/** 环外径 / 环宽：全部走 theme 缩放，不写裸尺寸（72：给 5 字领域名留足环内净宽） */
+const TILE_RING_SIZE = theme.fs(72);
 const TILE_RING_STROKE = theme.sp(1);
 
 const Tile = React.memo(function Tile({ d }: { d: MetricTileData }) {
@@ -69,7 +70,14 @@ const Tile = React.memo(function Tile({ d }: { d: MetricTileData }) {
         >
           <View style={styles.inner}>
             <Icon name={d.icon} size={theme.fs(14)} color={d.ringColor} />
-            <Text style={styles.label} numberOfLines={1}>{d.label}</Text>
+            <Text
+              style={styles.label}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
+              {d.label}
+            </Text>
             <Text
               style={styles.value}
               numberOfLines={1}
