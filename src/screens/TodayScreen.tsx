@@ -15,6 +15,7 @@ import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import TodayMetricTiles, { type MetricTileData } from '../components/TodayMetricTiles';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
@@ -276,7 +277,9 @@ const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }:
   }
   const peakH = cnt.indexOf(Math.max(...cnt));
   const popX = peakH*(W/N)+bw/2;
-  const PopX = Math.max(18, Math.min(W-36, popX-14));
+  // ★ NaN 防御：Math.max/min 遇 NaN 会原样传播，NaN 一旦进入 left/x 就是 native 红屏
+  //   （此前的 RNSVGText x=NaN / RCTView left=NaN 红屏即此路径）
+  const PopX = Number.isFinite(popX) ? Math.max(18, Math.min(W-36, popX-14)) : 0;
   const ticks=[0,6,12,18,24];
   return (
     <View style={{ width: W, height: H }}>
@@ -309,7 +312,7 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
   const popVal = rows[lastIdx]?.v ?? 0;
   const hasAny = rows.some(r=>r.has);
   const popX = lastIdx*(W/N)+bw/2;
-  const PopX = Math.max(18, Math.min(W-36, popX-14));
+  const PopX = Number.isFinite(popX) ? Math.max(18, Math.min(W-36, popX-14)) : 0;
   const ticks=[0,6,12,18,24];
   const barColor = (v:number)=> v>=COG_LEVEL_HIGH ? theme.colors.danger : v>=COG_LEVEL_LOW ? theme.colors.warn : theme.colors.success;
   const NO_DATA = 'rgba(120,110,160,0.13)';   // 无实测时段(睡眠/未到) = 浅灰占位，不用彩色
@@ -334,8 +337,10 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, con
   const H = condensed ? 44 : MH;
   const AX = condensed ? 0 : AXIS_H;
   const CH = H - AX;
-  const N=7, MON=['一','二','三','四','五','六','日'];
   const series = weekSteps.slice(-7);
+  // ★ 防御：不足 7 天（新装/数据缺失）时按实际条数画，避免 pts[N-1] 为 undefined 直接崩溃
+  if (series.length < 2) return null;
+  const N = series.length, MON=['一','二','三','四','五','六','日'];
   const steps = series.map(s=>s.steps);
   const max = Math.max(1,...steps);
   const pts = steps.map((v,i)=>({x:(i/(N-1))*(W-8)+4, y:CH-(v/max)*CH*0.85-3}));
@@ -343,7 +348,7 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, con
   for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
   const area = p+` L ${pts[N-1].x.toFixed(1)} ${CH} L ${pts[0].x.toFixed(1)} ${CH} Z`;
   const last = pts[N-1];
-  const PopX = Math.max(18, Math.min(MW-48, last.x-20));
+  const PopX = Number.isFinite(last.x) ? Math.max(18, Math.min(MW-48, last.x-20)) : 0;
   return (
     <View style={{ width: W, height: H }}>
       <Svg width={W} height={H}>
@@ -473,6 +478,20 @@ export default function TodayScreen() {
   // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）
   const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.avgFatigue != null ? String(r.avgFatigue) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
+  // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径：
+  // 优先今天、其次昨天——跨午夜的睡眠常记在前一日）。没有睡眠记录就诚实留 —，不编数字。
+  const recoverySleep = (() => {
+    try {
+      return healthStore.getSleep(dayKey(Date.now())) ?? healthStore.getSleep(dayKey(Date.now() - 86400000)) ?? null;
+    } catch { return null; }
+  })();
+  const recovery = recoverySleep && Number.isFinite(recoverySleep.score) ? String(Math.round(recoverySleep.score)) : '—';
+  const recoverySub = (() => {
+    const t = recoverySleep?.total;
+    if (t == null || !Number.isFinite(t) || t <= 0) return '暂无';
+    const h = Math.floor(t / 60), m = Math.round(t % 60);
+    return m > 0 ? `${h}h${m}m` : `${h}h`;
+  })();
 
   // ★ 三张消耗卡的涨跌 = 真实数据，且**同口径比较**（今天「至今」 vs 昨天「同一时刻」）。
   //   为什么必须同口径：拿今天到 15:00 的累计值去比昨天的全天值，每天上午都会显示暴跌，
@@ -765,6 +784,39 @@ export default function TodayScreen() {
     ? '今日暂无运动'
     : stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中';
 
+  /**
+   * ★ 顶部四张指标小卡（2026-09-22）：认知 / 情绪 / 运动 / 恢复。
+   * 一行四项，全部与下方大卡**同源同口径**（认知=avgFatigue、情绪=事件次数、
+   * 运动=当日步数、恢复=最近一晚睡眠评分），只是把趋势图去掉、只留当前值。
+   * 无数据的项一律显式传 '—' 并在第三行说明，不编数字。
+   */
+  const metricTiles: MetricTileData[] = [
+    {
+      key: 'cog', label: '认知', value: cognitive, unit: '/100',
+      sub: cognitive === '—' ? '暂无' : cogLevelTxt,
+      bg: theme.colors.tileCog,
+      onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }),
+    },
+    {
+      key: 'emo', label: '情绪', value: stress, unit: '次',
+      sub: peakEvent ? `峰值${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '今日无',
+      bg: theme.colors.tileEmo,
+      onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }),
+    },
+    {
+      key: 'act', label: '运动', value: activity, unit: '步',
+      sub: activity === '—' ? '暂无' : (stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal` : '进行中'),
+      bg: theme.colors.tileAct,
+      onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }),
+    },
+    {
+      key: 'rec', label: '恢复', value: recovery, unit: '分',
+      sub: recoverySub,
+      bg: theme.colors.tileRec,
+      onPress: () => navigation.navigate('EmotionCognitiveDetail'),
+    },
+  ];
+
   return (
     <View style={styles.page}>
       {/* 仅 Today 页：上白下紫的分屏背景，其他页面保留 App 根渐变 */}
@@ -785,6 +837,16 @@ export default function TodayScreen() {
           </TouchableOpacity>
           <Text style={styles.title}>Today</Text>
         </Animated.View>
+
+        {/* ─────────────────────────────────────────────────────────────
+            ★ 顶部四张指标小卡（2026-09-22 新增）：认知 / 情绪 / 运动 / 恢复。
+            · 只回答「现在是多少」——**不画趋势图**（按用户要求先看效果）。
+            · 一行四项、等宽等构，颜色只落在底色上（色相与下方对应大卡对齐）。
+            · 间距：上方沿用 head 的 marginBottom(36)，下方给 panel 留 space.md(16)。
+            ───────────────────────────────────────────────────────────── */}
+        <View style={{ marginBottom: theme.space.md }}>
+          <TodayMetricTiles items={metricTiles} />
+        </View>
 
         {/* ─────────────────────────────────────────────────────────────
             ★ 全天状态面板（2026-09-21）：圆环 + 全天状态趋势 = **同一块全宽白面**。
