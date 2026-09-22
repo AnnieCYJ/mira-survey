@@ -744,7 +744,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   };
 
   try {
-    console.log('[COG-V2]', JSON.stringify({
+    if (__DEV__) console.log('[COG-V2]', JSON.stringify({
       hrvNow, hrvBaseline, snsNow, snsBaseline,
       mentalEnergy, focusScore, decisionScore,
       peakHour: forecast?.peak?.hour, peakEnergy: forecast?.peak?.energy,
