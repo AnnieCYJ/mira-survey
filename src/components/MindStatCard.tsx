@@ -60,7 +60,7 @@ function MindStatCardImpl({ title, sub, value, unit, cornerIcon, cornerTone = 'l
   );
 }
 
-export default React.memo(MindStatCard);
+export default React.memo(MindStatCardImpl);
 
 const styles = StyleSheet.create({
   card: {

@@ -48,7 +48,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
   );
 }
 
-export default React.memo(MindChips);
+export default React.memo(MindChipsImpl);
 
 const styles = StyleSheet.create({
   row: {

@@ -38,7 +38,7 @@ function EmotionDotsImpl({ slots, columns = 24 }: { slots: MindMoodKey[]; column
   );
 }
 
-export default React.memo(EmotionDots);
+export default React.memo(EmotionDotsImpl);
 
 const styles = StyleSheet.create({
   wrap: {

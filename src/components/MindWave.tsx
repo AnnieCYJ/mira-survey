@@ -51,7 +51,7 @@ function MindWaveImpl({ values, color, dotColor, height = 36 }: Props) {
   );
 }
 
-export default React.memo(MindWave);
+export default React.memo(MindWaveImpl);
 
 const styles = StyleSheet.create({
   wrap: {
