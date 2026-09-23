@@ -59,6 +59,12 @@ export const mm = {
     arcLavender: '#A98FE8',
     arcPink: '#F2A3C6',
 
+    /* ── 身体年龄 hero 卡（SPEC §2 #1：淡紫渐变卡 + 速度表半圆）── */
+    heroGradFrom: '#EFE6FB',
+    heroGradTo: '#F7F2FD',
+    heroTrack: 'rgba(255,255,255,0.72)', // 弧轨道：白 72%（在淡紫底上可见）
+    heroPillGreen: '#D9F2E5',            // 「年轻 x 岁」绿胶囊底
+
     /* ── 底栏（SPEC §2 #13）── */
     tabBg: 'rgba(255,255,255,0.96)',
     fabFrom: '#A98FE8',

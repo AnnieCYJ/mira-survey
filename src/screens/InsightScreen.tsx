@@ -443,9 +443,10 @@ export default function InsightScreen() {
               <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
                 <View style={{ flex: 1, alignSelf: 'stretch' }}>
                   <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('BpDetail')}>
-                    <LinearGradient colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: theme.sp(2.5), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden', borderWidth: 0 }}>
-                      <BpCard ring={ring} onPress={() => {}} gradientMode />
-                    </LinearGradient>
+                    {/* v10：血压卡回归白卡（旧紫渐变底废弃）；双折线语义色在 BpCard 内（粉/蓝） */}
+                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
+                      <BpCard ring={ring} onPress={() => {}} />
+                    </Card>
                   </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
@@ -461,10 +462,11 @@ export default function InsightScreen() {
                 <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
                   <View style={{ flex: 1, alignSelf: 'stretch' }}>
                     <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                      <LinearGradient colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: theme.sp(3), flex: 1, borderRadius: theme.radius.card, overflow: 'hidden' }}>
-                        <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>血糖</Text>
-                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.ui.onGrad }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
-                      </LinearGradient>
+                      {/* v10：血糖卡回归白卡（旧紫渐变底废弃）；数值 ink，目标区间带色在详情页 */}
+                      <Card style={{ padding: theme.sp(3), flex: 1 }}>
+                        <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>血糖</Text>
+                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                      </Card>
                     </TouchableOpacity>
                   </View>
                   <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
@@ -613,7 +615,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
           <SvgPath
             d={ecgWaveformPath(reading.waveform)}
             fill="none"
-            stroke={mm.colors.ringPurpleDeep}
+            stroke={mm.colors.ringTealDeep}
             strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"

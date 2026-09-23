@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 
 interface Props {
@@ -90,8 +91,9 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           <Svg width="100%" height={36} viewBox="0 0 160 32" preserveAspectRatio="none">
             <Defs>
               <LinearGradient id="ecgMini" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.4} />
-                <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={1} />
+                {/* v10 SPEC §2 #8：ECG 波形 = teal 家族（不再用旧紫色 accent） */}
+                <Stop offset="0%" stopColor={mm.colors.ringTeal} stopOpacity={0.4} />
+                <Stop offset="100%" stopColor={mm.colors.ringTealDeep} stopOpacity={1} />
               </LinearGradient>
             </Defs>
             <Path d={miniWaveform(latest.waveform)} fill="none" stroke="url(#ecgMini)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />

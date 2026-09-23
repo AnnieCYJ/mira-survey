@@ -8,3 +8,9 @@
   - `git push origin master` 成功：6a77e1f..069aba8，7 个积压提交已推送到 gitcode。
 - 决策默认值（无人值守）：不代用户在第三方上游子模块（github.com/HBandSDK）里做本地提交——会产生无法推送的悬空指针；子模块脏改动保持原样并报告。
 - 遗留：子模块内 libs/vp_sdk/index.js 的本地修改未纳入任何版本控制。若需长期保存，建议把该文件复制到父仓库目录（如 tools/ 或 docs/）再提交。
+
+## 2026-09-23 14:12（第二次运行）
+- 发现：分支与 origin/master 同步（无积压）；新增未跟踪项 `.workbuddy/memory/automations/`（本 automation 首次运行时写入的记忆文件，上次 status 时尚未生成）。
+- 处理：`git add -A` 仅暂存了该记忆文件（子模块脏改动依旧无法暂存，HEAD 未变）→ commit 3284f57「添加 Git 巡检自动化运行记录」→ push 成功 069aba8..3284f57。
+- 说明：`.workbuddy/` 不在 .gitignore 中，按指令 add -A 一并入库；自动化记忆文件随仓库版本化，后续运行会在已跟踪文件上产生增量改动，可正常提交。
+- 稳态预期：无新工作时，唯一持续的脏项仍是子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK（-dirty），将按首次运行的默认决策保持原样、仅报告。
