@@ -49,12 +49,13 @@ export const colors = {
    */
   gradCardFrom: '#6355B3',
   gradCardTo: '#7766D7',
-  stateCalm: '#6FCFB4',
+  // v16 五色系统迁移：青→黄绿、杏→黄（legacy 值重映射，新代码请用 mindmate 五色相 token）
+  stateCalm: '#BCCB62',
   stateEnergy: '#9D8AF0',
-  stateTense: '#E8A87C',
+  stateTense: '#F0C46E',
   stateTired: '#7EA6F8',
   moodEnergy: '#F0C46E',
-  moodGood: '#6FCFB4',
+  moodGood: '#BCCB62',
   moodNeutral: '#9D8AF0',
   moodRest: '#F2A3C6',
   textWhite: '#FFFFFF',
@@ -87,13 +88,14 @@ export const colors = {
   cardBgStrong: '#FFFFFF',
   cardBorder: '#E8E6F2',
   cardBorder2: 'rgba(255,255,255,0.18)',
-  success: '#6FCFB4',
-  successSoft: 'rgba(111,207,180,0.16)',
+  // v16：success/危险色只做文字与标记（好坏由数字与文案表达），青→黄绿 deep
+  success: '#6E7A24',
+  successSoft: 'rgba(188,203,98,0.18)',
   danger: '#E07B6B',
   dangerSoft: 'rgba(224,123,107,0.14)',
   warn: '#F0C46E',
   overlay: 'rgba(70,58,110,0.30)',
-  celebrateGrad: ['#F5D189', '#E8A87C'] as const,
+  celebrateGrad: ['#F3D49B', '#F6B3D0'] as const,
   aiBadgeGrad: ['#9D8AF0', '#7EA6F8'] as const,
 
   /**

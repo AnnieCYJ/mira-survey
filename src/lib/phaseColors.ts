@@ -12,11 +12,13 @@ import type { CyclePhase } from './cycleMath';
 
 export type PhaseKey = CyclePhase | 'unknown';
 
+// v16 §4.2 #6：相位色唯一映射——月经粉 mid / 卵泡紫 mid / 排卵黄绿 core / 黄体黄 core
+// （黄体期体温与代谢上行，与「黄 = 能量·代谢」同源；青已删除）
 export const PHASE_COLOR: Record<PhaseKey, string> = {
-  period: theme.colors.danger, // 经期：珊瑚
-  follicular: theme.colors.accent2, // 卵泡期：蓝
-  ovulation: theme.colors.stateCalm, // 排卵期：青绿
-  luteal: theme.colors.accent1, // 黄体期：紫
+  period: '#F6B3D0', // 经期：粉 mid（roseMid）
+  follicular: '#C7B9F2', // 卵泡期：紫 mid（purpleMid）
+  ovulation: '#D5E384', // 排卵期：黄绿 core（limeCore）
+  luteal: '#F0C46E', // 黄体期：黄 core（honeyCore）
   unknown: theme.colors.textSub, // 未记录：灰
 };
 

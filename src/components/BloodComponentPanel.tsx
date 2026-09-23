@@ -98,21 +98,20 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
         </View>
       )}
 
-      {/* 5 项汇总：3 列网格（最后一行两列居中更美观）· 每项一个 pastel 家族（多巴胺） */}
+      {/* 5 项汇总：3 列网格（最后一行两列居中更美观）· v16 白底格 + ink 数值 */}
       <View style={styles.grid}>
-        {BC_ITEMS.map((it, idx) => {
+        {BC_ITEMS.map((it) => {
           const v = (ring as any).daily?.[it.key] ?? null;
           const live = v != null && v > 0;
-          const fam = PASTEL_FAMILIES[idx % PASTEL_FAMILIES.length];
           return (
             <TouchableOpacity
               key={it.key}
               activeOpacity={0.92}
-              style={[styles.item, { backgroundColor: fam.soft, borderColor: 'rgba(31,29,26,0.05)' }]}
+              style={styles.item}
               onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
             >
               <Text style={styles.itemName}>{it.name}</Text>
-              <Text style={[styles.itemVal, { color: live ? fam.fg : mm.colors.inkFaint }]}>
+              <Text style={[styles.itemVal, !live && styles.itemValIdle]}>
                 {fmt(v, it.unit)}
               </Text>
               <Text style={styles.itemUnit}>{live ? it.unit : '待检测'}</Text>
@@ -125,12 +124,12 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
 }
 
 const styles = StyleSheet.create({
-  // v10：26px pastel 图标方块（血液=粉家族）
+  // v16：26px pastel 图标方块（血液=情绪粉族：rose soft 底 + rose deep 图标）
   iconSq: {
     width: 26,
     height: 26,
     borderRadius: mm.radius.iconSq,
-    backgroundColor: mm.colors.pink,
+    backgroundColor: mm.colors.roseSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: theme.sp(1),
@@ -186,6 +185,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: theme.radius.sm,
     borderWidth: 1,
+    borderColor: mm.colors.cardBorder,
+    backgroundColor: mm.colors.cardBg,
   },
   itemName: {
     fontSize: theme.fontSize.micro,
@@ -196,19 +197,12 @@ const styles = StyleSheet.create({
   itemVal: {
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
   },
+  itemValIdle: { color: mm.colors.inkFaint },
   itemUnit: {
     fontSize: theme.fontSize.micro,
     color: mm.colors.inkFaint,
     marginTop: 1,
   },
 });
-
-/** v10 多巴胺：5 项血液成分按索引轮转 pastel 家族（与 mm.pastelFamilyFor 同一套） */
-const PASTEL_FAMILIES = [
-  { soft: mm.colors.lavenderSoft, fg: mm.colors.lavenderDeep },
-  { soft: mm.colors.cyanSoft, fg: mm.colors.cyanDeep },
-  { soft: mm.colors.pinkSoft, fg: mm.colors.pinkDeep },
-  { soft: mm.colors.limeSoft, fg: mm.colors.limeDeep },
-  { soft: mm.colors.butter, fg: mm.colors.butterDeep },
-];

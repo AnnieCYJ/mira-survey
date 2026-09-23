@@ -19,7 +19,7 @@ import { phaseBand, PHASE_COLOR } from '../lib/phaseColors';
 import { buildEstrogenData, buildProgesteroneData, phaseOfDay, type TrendRange } from '../lib/hormoneTrend';
 import type { RingState } from '../ble/RingBleManager';
 
-const EST_COLOR = PHASE_COLOR.ovulation; // 绿 #6FCFB4
+const EST_COLOR = PHASE_COLOR.ovulation; // 黄绿 #D5E384（v16 排卵/雌激素=黄绿 core）
 const PROG_COLOR = theme.colors.accentSolid; // 紫 #7C6AE0
 const RANGE: TrendRange = 'month';
 

@@ -5,9 +5,9 @@ import { mm } from '../theme/mindmate';
 import { healthStore } from '../data/healthStore';
 import { dayStartMs } from '../data/healthStore';
 
-// v10 SPEC §2 #7：双折线语义色——收缩=粉、舒张=蓝（圆环家族数据色）
-const COL_SYS = mm.colors.ringPinkDeep;
-const COL_DIA = mm.colors.ringBlueDeep;
+// v16 §4.2 #7：血压 = 蓝双档（同色相双折线，收缩 core / 舒张 mid）
+const COL_SYS = mm.colors.skyCore;
+const COL_DIA = mm.colors.skyMid;
 
 interface Props {
   ring: any;

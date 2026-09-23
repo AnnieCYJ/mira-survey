@@ -293,7 +293,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 strokeWidth={1}
                 strokeDasharray="3,3"
               />
-              <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.ringTealDeep} />
+              <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.limeMid} />
               <SvgText
                 x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
                 y={Math.max(peakY - 12, 12)}
@@ -385,17 +385,17 @@ const styles = StyleSheet.create({
     color: theme.colors.textInk,
   },
   headRight: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
-  // 青色胶囊 badge（chipBg.cyan 对）
+  // v16 黄绿胶囊 badge（恢复=黄绿；chipBg.cyan 已改语义为蓝·运动，恢复一律用 lime）
   badge: {
     paddingHorizontal: theme.sp(2),
     paddingVertical: theme.sp(0.75),
     borderRadius: theme.radius.pill,
-    backgroundColor: mm.chipBg.cyan.bg,
+    backgroundColor: mm.chipBg.lime.bg,
   },
   badgeText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: mm.chipBg.cyan.fg,
+    color: mm.chipBg.lime.fg,
   },
   // 底部解读行（SPEC #10）：8px 色点 + 加粗结论 + 灰说明
   keyRow: {

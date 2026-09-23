@@ -25,7 +25,7 @@ interface Props {
   loop?: boolean;
 }
 
-const PALETTE = ['#F0C46E', '#6FCFB4', '#9D8AF0', '#F2A3C6', '#E8A87C', '#7C6AE0', '#8FB4FA'];
+const PALETTE = ['#F0C46E', '#BCCB62', '#9D8AF0', '#F2A3C6', '#7EA6F8', '#6E58C8', '#C7B9F2'];
 
 function createParticles(count: number): Particle[] {
   const centerX = SCREEN_W / 2;

@@ -19,15 +19,15 @@ import type { BasicMetricDef } from '../data/metrics';
 // 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
 // Y 轴随今日真实数据自适应缩放（值域上下各留 12% 余量，单点/空时回退固定生理量程）。
 // 数据点按时间排序后绘制；相邻点间隔超过 36h 则断线（诚实留白，不编造连续趋势）。
-// v10 reskin（2026-09-24）：趋势线不再全线同紫——按指标 key 从五色家族稳定取色，
-// 同一指标永远同色（跨页面/刷新不变），不同指标错开色相（参考稿多色趋势）。
+// v16 reskin（2026-09-24）：趋势线按指标 key 从五色 core 家族稳定取色（紫/蓝/粉/黄/黄绿mid），
+// 同一指标永远同色（跨页面/刷新不变），不同指标错开色相。青色已删除。
 const TREND_PALETTE: string[] = [
-  mm.colors.ringPurpleDeep, // 紫
-  mm.colors.cyanDeep,       // 青
-  mm.colors.ringPinkDeep,   // 粉
-  mm.colors.ringTealDeep,   // 绿青
-  mm.colors.ringYellowDeep, // 琥珀
-  mm.colors.lavenderDeep,   // 淡紫
+  mm.colors.purpleCore, // 紫 = 认知
+  mm.colors.skyCore,    // 蓝 = 运动·心肺
+  mm.colors.roseCore,   // 粉 = 情绪
+  mm.colors.honeyCore,  // 黄 = 代谢
+  mm.colors.limeMid,    // 黄绿 mid = 恢复
+  mm.colors.purpleDeep, // 紫 deep（第 6 项兜底）
 ];
 function trendColorFor(key: string): string {
   let h = 0;
@@ -207,7 +207,7 @@ export default function BasicMetricCard({
 
   // compact: Insight 2列小卡片，有图/无图由 showTrend 决定
   if (compact) {
-    // v10 多巴胺：按 key 稳定取 pastel 家族（卡浅底 + 图标方块），不再全白
+    // v16：数据卡一律白底——pastel 家族只用于卡内 26px 图标方块（soft 底 + deep 图标）
     const fam = pastelFamilyFor(metric.key);
     const placeholderPath = (() => {
       if (!showTrend || w <= 0) return '';
@@ -224,7 +224,7 @@ export default function BasicMetricCard({
     })();
     return (
       <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
-        <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md, backgroundColor: fam.soft }}>
+        <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
               标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>

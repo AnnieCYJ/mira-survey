@@ -92,9 +92,9 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           <Svg width="100%" height={36} viewBox="0 0 160 32" preserveAspectRatio="none">
             <Defs>
               <LinearGradient id="ecgMini" x1="0" y1="0" x2="1" y2="0">
-                {/* v10 SPEC §2 #8：ECG 波形 = teal 家族（不再用旧紫色 accent） */}
-                <Stop offset="0%" stopColor={mm.colors.ringTeal} stopOpacity={0.4} />
-                <Stop offset="100%" stopColor={mm.colors.ringTealDeep} stopOpacity={1} />
+                {/* v16 §4.2 #8：ECG = 蓝 core（心电归蓝·心肺族，青已删除） */}
+                <Stop offset="0%" stopColor={mm.colors.skyCore} stopOpacity={0.45} />
+                <Stop offset="100%" stopColor={mm.colors.skyCore} stopOpacity={1} />
               </LinearGradient>
             </Defs>
             <Path d={miniWaveform(latest.waveform)} fill="none" stroke="url(#ecgMini)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />

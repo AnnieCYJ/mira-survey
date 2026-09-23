@@ -50,17 +50,17 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
   };
 
   const showHint = !live && !measuring && metric.manualHint;
-  // v10 多巴胺：按 key 稳定取 pastel 家族（卡浅底 + 图标方块）
+  // v16：数据卡一律白底——pastel 家族只用于图标方块/标签色（soft 底 + deep 图标）
   const fam = pastelFamilyFor(metric.key);
 
   return (
     <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
-      <Card style={{ backgroundColor: fam.soft }}>
+      <Card>
       {/* 顶部：名称 + 状态标签（无按钮，按钮统一置底） */}
       <View style={styles.top}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
           {metric.icon && (
-            <View style={styles.iconSq}>
+            <View style={[styles.iconSq, { backgroundColor: fam.chipBg }]}>
               <Icon name={metric.icon} size={14} color={fam.fg} />
             </View>
           )}

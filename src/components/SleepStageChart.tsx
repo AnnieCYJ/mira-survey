@@ -10,14 +10,14 @@ import type { SleepSegment } from '../ble/RingBleManager';
  *  0=深睡 1=浅睡 2=REM 3=失眠 4=清醒（KH18 固件通常只返回 0/1/2/4）。
  *  每个阶段占独立水平带（row），行高和行间距都压小，形成参考图那种密集分层。
  */
-// v10 reskin（2026-09-24）：分期改五色家族（参考稿多色趋势）——
-// 紫=深睡 / 青=浅睡 / 粉=REM / 红=失眠 / 琥珀=清醒，全部取 deep 档 token 保证白底可辨。
+// v16 reskin（2026-09-24）：分期改四色系统（SPEC §3 睡眠分期 4 类，失眠并入「清醒·夜间醒来」）——
+// 深睡=紫 core / 浅睡=紫 mid / REM=蓝 core / 失眠·清醒=黄 core（honey，与「能量·代谢」同源）。
 export const SLEEP_STAGE_META: Record<number, { label: string; color: string; row: number }> = {
-  0: { label: '深睡', color: mm.colors.ringPurpleDeep, row: 0 },   // 最底行，紫矮条
-  1: { label: '浅睡', color: mm.colors.cyanDeep, row: 1 },         // 青中条
-  2: { label: 'REM', color: mm.colors.ringPinkDeep, row: 2 },      // 粉高条
-  3: { label: '失眠', color: theme.colors.trendDown, row: 3 },     // 与清醒同行
-  4: { label: '清醒', color: mm.colors.ringYellowDeep, row: 3 },   // 最顶行，琥珀小条
+  0: { label: '深睡', color: mm.colors.purpleCore, row: 0 },   // 最底行，紫矮条
+  1: { label: '浅睡', color: mm.colors.purpleMid, row: 1 },    // 紫中条（同族深浅档）
+  2: { label: 'REM', color: mm.colors.skyCore, row: 2 },       // 蓝高条
+  3: { label: '失眠', color: mm.colors.honeyCore, row: 3 },    // 并入清醒·夜间醒来（黄）
+  4: { label: '清醒', color: mm.colors.honeyCore, row: 3 },    // 最顶行，黄小条
 };
 
 const ROW_H = theme.sp(4.5);       // 行带高度 ≈18

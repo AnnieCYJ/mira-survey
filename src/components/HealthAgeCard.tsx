@@ -29,11 +29,10 @@ export default function HealthAgeCard({
   const isYounger = healthAge < actualAge;
   const deltaSign = delta >= 0 ? '+' : '';
   const deltaStr = `${deltaSign}${delta.toFixed(1)}`;
-  const deltaColor = isYounger ? theme.colors.success : theme.colors.danger;
-  // v10 SPEC §2 #1：绿胶囊（年轻）→ #D9F2E5/深绿；衰老 → 粉胶囊
-  const pill = isYounger
-    ? { bg: mm.colors.heroPillGreen, fg: mm.colors.ringTealDeep }
-    : { bg: mm.colors.pinkSoft, fg: mm.colors.pinkDeep };
+  // v16 §4.2 #1：黄绿胶囊统一（#EAF0BE / #6E7A24），不再按年轻/衰老换色
+  const pill = { bg: mm.colors.heroPillGreen, fg: mm.colors.limeDeep };
+  // v16 端点圆点 = 黄绿 mid #BCCB62（好坏由数字与文案表达，不用红绿）
+  const markerColor = mm.colors.limeMid;
 
   // ═══ 参考 HTML 的扁平大弧: M 5 135 A 220 220 0 0 1 385 135 ═══
   // SVG viewBox 尺寸
@@ -106,31 +105,31 @@ export default function HealthAgeCard({
 
   return (
     <View style={styles.cardShell}>
-      {/* v10 SPEC §2 #1：淡紫渐变卡底（#EFE6FB→#F7F2FD），弧线画在其上才可见 */}
+      {/* v16 §4.2 #1：浅黄绿渐变卡底（#F8FAE8→#FDFEF7），弧线画在其上 */}
       <ExpoLinearGradient
         colors={[mm.colors.heroGradFrom, mm.colors.heroGradTo]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 0.6, y: 1 }}
+        end={{ x: 0, y: 1 }}
         style={styles.heroGrad}
       >
         {/* ═══ SVG 弧 (参考 HTML) ═══ */}
         <View style={{ alignItems: 'center', paddingTop: theme.sp(1.5) }}>
           <Svg width="100%" height={VB_H} viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
             <Defs>
-              {/* v10 SPEC §2 #1：进度弧 lime → cyan → teal（端点圆点同 teal 收尾） */}
+              {/* v16 §4.2 #1：进度弧黄绿阶 soft→core→mid（#EAF0BE→#D5E384→#BCCB62） */}
               <LinearGradient id="haRing" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor={mm.colors.lime} />
-                <Stop offset="50%" stopColor={mm.colors.cyan} />
-                <Stop offset="100%" stopColor={mm.colors.ringTealDeep} />
+                <Stop offset="0%" stopColor={mm.colors.limeSoft} />
+                <Stop offset="50%" stopColor={mm.colors.limeCore} />
+                <Stop offset="100%" stopColor={mm.colors.limeMid} />
               </LinearGradient>
             </Defs>
 
-            {/* 背景轨道: 白 72%（淡紫底上可见） */}
+            {/* 背景轨道: #E7EBD4 */}
             <Path d={arcD}
               stroke={mm.colors.heroTrack} strokeWidth={stroke}
               fill="none" strokeLinecap="round" />
 
-            {/* 进度弧: lime→cyan→teal 渐变（原 #FFFFFF 白弧在浅底上不可见，已修） */}
+            {/* 进度弧: 黄绿阶渐变 */}
             {pct > 0 && (
               <Path d={arcD}
                 stroke="url(#haRing)" strokeWidth={stroke}
@@ -138,15 +137,15 @@ export default function HealthAgeCard({
                 strokeDasharray={`${targetLen} ${totalLen - targetLen}`} />
             )}
 
-            {/* 进度终点 marker: teal 实心 + 白色高光 (参考 .arc-dot + .arc-dot-highlight) */}
+            {/* 进度终点 marker: 黄绿 mid 实心 + 白色高光 */}
             {pct > 0 && (
               <G>
                 {/* 外圈光晕 */}
                 <Circle cx={markerX} cy={markerY} r={22}
-                  fill="none" stroke={mm.colors.ringTealDeep} strokeWidth={1} opacity={0.25} />
+                  fill="none" stroke={markerColor} strokeWidth={1} opacity={0.25} />
                 {/* 实心圆 */}
                 <Circle cx={markerX} cy={markerY} r={14}
-                  fill={deltaColor} />
+                  fill={markerColor} />
                 {/* 白色高光 (左上偏移) */}
                 <Circle cx={markerX - 4} cy={markerY - 4} r={5}
                   fill="rgba(255,255,255,0.55)" />
@@ -165,8 +164,8 @@ export default function HealthAgeCard({
             </View>
 
             <View style={styles.labelRow}>
-              <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.lavenderDeep} style={{ marginRight: 4 }} />
-              <Text style={styles.labelText}>身体年龄</Text>
+              <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
+              <Text style={[styles.labelText, { color: mm.colors.limeDeep }]}>身体年龄</Text>
             </View>
           </View>
         </View>
@@ -230,10 +229,10 @@ const styles = StyleSheet.create({
     color: mm.colors.ink,
     letterSpacing: 0.5,
   },
-  // v10：外层壳只负责描边+阴影+裁切；淡紫渐变底由内部 heroGrad 铺满（SPEC §2 #1）
+  // v16：外层壳描边用黄绿系（SPEC §4.2 #1 rgba(146,168,52,.18)）；淡紫旧底废弃
   cardShell: {
     borderWidth: 1,
-    borderColor: 'rgba(31,29,26,0.05)',
+    borderColor: mm.colors.heroBorder,
     borderRadius: mm.radius.card,
     overflow: 'hidden',
     shadowColor: mm.shadow.color,

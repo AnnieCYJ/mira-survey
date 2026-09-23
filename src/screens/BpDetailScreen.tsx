@@ -20,9 +20,9 @@ const PAD_R = 6;
 const PAD_T = 10;
 const PAD_B = 22;
 
-// 颜色（对应截图：收缩压橙、舒张压蓝）
-const COL_SYS = '#E8A87C';   // 橙
-const COL_DIA = '#7EA6F8';   // 蓝
+// v16：血压=蓝图（收缩=蓝 core / 舒张=蓝 mid）
+const COL_SYS = '#7EA6F8';
+const COL_DIA = '#B9CCF9';
 
 type Pt = { t: number; v: number };
 

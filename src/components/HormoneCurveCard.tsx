@@ -252,8 +252,8 @@ export default function HormoneCurveCard({
           const ovX = xForDay(ovulationDay);
           return (
             <React.Fragment>
-              <Circle cx={ovX} cy={yForVal(curve.find(p => p.day === ovulationDay)?.value ?? 100)} r={3.5} fill="#6FCFB4" />
-              <SvgText x={ovX} y={H - 4} fontSize={8} fill="#6FCFB4" textAnchor="middle">排卵</SvgText>
+              <Circle cx={ovX} cy={yForVal(curve.find(p => p.day === ovulationDay)?.value ?? 100)} r={3.5} fill="#BCCB62" />
+              <SvgText x={ovX} y={H - 4} fontSize={8} fill="#6E7A24" textAnchor="middle">排卵</SvgText>
             </React.Fragment>
           );
         })()}

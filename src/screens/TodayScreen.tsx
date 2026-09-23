@@ -1273,15 +1273,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
-    // MindMate v10：白底描边胶囊，选中 lavender（SPEC §1 #6）
+    // v16 §1.7：白底描边胶囊，选中统一黄绿
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: mm.colors.tabBorder,
     marginHorizontal: theme.space.xs,
   },
   todayTabBtnOn: {
-    backgroundColor: mm.colors.lavender,
-    borderColor: mm.colors.lavender,
+    backgroundColor: mm.colors.limeSoft,
+    borderColor: mm.colors.limeCore,
   },
   todayTabLabel: {
     fontSize: theme.fontSize.sm,
@@ -1289,7 +1289,7 @@ const styles = StyleSheet.create({
     color: mm.colors.inkSoft,
   },
   todayTabLabelOn: {
-    color: mm.colors.lavenderDeep,
+    color: mm.colors.limeDeep,
     fontWeight: theme.weight.bold,
   },
 });

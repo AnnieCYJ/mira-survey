@@ -1,14 +1,15 @@
+// v16 五色系统：平静=黄绿mid（青退场）/ 元气=紫core（专注）/ 紧张=黄core / 疲惫=蓝core
 export const STATE_COLOR = {
-  calm: '#6FCFB4',
+  calm: '#BCCB62',
   energy: '#9D8AF0',
-  tense: '#E8A87C',
+  tense: '#F0C46E',
   tired: '#7EA6F8',
 } as const;
 export type StateKey = keyof typeof STATE_COLOR;
 
 export const MOODS = [
   { key: 'energy', label: '元气满满', angle: 315, color: '#F0C46E' },
-  { key: 'good', label: '状态良好', angle: 45, color: '#6FCFB4' },
+  { key: 'good', label: '状态良好', angle: 45, color: '#BCCB62' },
   { key: 'neutral', label: '平平静静', angle: 135, color: '#9D8AF0' },
   { key: 'rest', label: '休息一下', angle: 225, color: '#F2A3C6' },
 ] as const;

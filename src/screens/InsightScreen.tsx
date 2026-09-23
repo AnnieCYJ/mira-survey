@@ -462,16 +462,16 @@ export default function InsightScreen() {
                 <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
                   <View style={{ flex: 1, alignSelf: 'stretch' }}>
                     <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                      {/* v10 多巴胺：血糖卡奶油黄浅底 + 图标方块（数值 butterDeep） */}
-                      <Card style={{ padding: theme.sp(3), flex: 1, backgroundColor: mm.colors.butter }}>
+                      {/* v16：数据卡白底，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
+                      <Card style={{ padding: theme.sp(3), flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.cardBg, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
-                            <Icon name="drop" size={14} color={mm.colors.butterDeep} />
+                          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+                            <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
                           </View>
                           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
                         </View>
-                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.butterDeep, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
-                        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
+                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
                       </Card>
                     </TouchableOpacity>
                   </View>
@@ -621,7 +621,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
           <SvgPath
             d={ecgWaveformPath(reading.waveform)}
             fill="none"
-            stroke={mm.colors.ringTealDeep}
+            stroke={mm.colors.skyCore}
             strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -677,17 +677,14 @@ function UnderlineTabs({
   options,
   activeIndex,
   onChange,
-  tone = 'lav',
 }: {
   options: string[];
   activeIndex: number;
   onChange: (i: number) => void;
   tone?: 'lav' | 'cy';
 }) {
-  const pair =
-    tone === 'cy'
-      ? { bg: mm.colors.cyan, fg: mm.colors.cyanDeep }
-      : { bg: mm.colors.lavender, fg: mm.colors.lavenderDeep };
+  // v16 §1.7：所有胶囊选中态统一黄绿（soft 底 + deep 字），不再分 lavender/cyan（tone 仅为兼容保留）
+  const pair = { bg: mm.colors.limeSoft, fg: mm.colors.limeDeep };
   return (
     <View style={styles.underlineWrap}>
       {options.map((label, i) => {
