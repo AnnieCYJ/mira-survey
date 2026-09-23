@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 
 const IMG_RECOVERY = require('../assets/card_recovery.jpg');
@@ -15,7 +16,10 @@ import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
-import TodayMetricTiles, { type MetricTileData } from '../components/TodayMetricTiles';
+import MindChips, { type MindChipItem } from '../components/MindChips';
+import MindStatCard from '../components/MindStatCard';
+import EmotionDots, { type MindMoodKey } from '../components/EmotionDots';
+import MindWave from '../components/MindWave';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
 import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
@@ -827,51 +831,87 @@ export default function TodayScreen() {
     : stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中';
 
   /**
-   * ★ 顶部四张指标小卡（2026-09-22）：认知 / 情绪 / 运动 / 恢复。
-   * 一行四项，全部与下方大卡**同源同口径**（认知=avgFatigue、情绪=事件次数、
-   * 运动=当日步数、恢复=最近一晚睡眠评分），只是把趋势图去掉、只留当前值。
-   * 无数据的项一律显式传 '—' 并在第三行说明，不编数字。
+   * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
+   * 数据与消耗卡**同源同口径**：认知=avgFatigue、情绪=事件数、运动=当日步数、恢复=睡眠评分。
+   * 无数据显式传 '—'，不编数字。
    */
-  /**
-   * ★ 顶部四张指标环（2026-09-22 第三版定稿）：无外层方卡，环内 = 图标 + 领域名 + 数值。
-   * 环色全部复用**既有语义 token**（不另造色）：accentSolid / moodRest / stateTired / stateCalm。
-   * 进度口径与 ConsumptionCard 完全同一套满量程：
-   *   认知 = avgFatigue/100 · 情绪 = min(1, 事件数/6) · 运动 = min(1, 步数/8000) · 恢复 = 睡眠评分/100。
-   * 无数据 → progress 0、数值 '—'，不编数字。
-   */
-  const metricTiles: MetricTileData[] = [
-    {
-      key: 'cog', icon: 'focus', label: '认知疲劳度', value: cognitive,
-      progress: (() => { const v = cogReport?.avgFatigue; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
-      ringColor: theme.colors.accentSolid,
-      onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }),
-    },
-    {
-      key: 'emo', icon: 'mind', label: '情绪负荷', value: stress,
-      progress: (() => { const n = stressReport?.events?.length ?? 0; return Math.max(0, Math.min(1, n / 6)); })(),
-      ringColor: theme.colors.moodRest,
-      onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }),
-    },
-    {
-      key: 'act', icon: 'run', label: '运动消耗', value: activity,
-      progress: (() => { try { const s = ring?.stepDaily?.[dkToday]?.steps ?? 0; return Number.isFinite(s) ? Math.max(0, Math.min(1, s / 8000)) : 0; } catch { return 0; } })(),
-      ringColor: theme.colors.stateTired,
-      onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }),
-    },
-    {
-      key: 'rec', icon: 'breath', label: '恢复程度', value: recovery,
-      progress: (() => { const v = recoverySleep?.score; return Number.isFinite(v) ? Math.max(0, Math.min(1, v! / 100)) : 0; })(),
-      ringColor: theme.colors.stateCalm,
-      onPress: () => navigation.navigate('EmotionCognitiveDetail'),
-    },
+  const metricChips: MindChipItem[] = [
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '认知疲劳度', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
+    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activity, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
   ];
+
+  /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
+  const sleepCard = (() => {
+    const s = recoverySleep;
+    if (!s) return null;
+    const deepPct = s.total > 0 && Number.isFinite(s.deep) ? Math.round((s.deep / s.total) * 100) : null;
+    const wakeCount = s.awake ?? s.insomnia ?? null;
+    const h = Math.floor((s.total ?? 0) / 60);
+    const m = Math.round((s.total ?? 0) % 60);
+    const total = h > 0 ? (m > 0 ? `${h}h${m}m` : `${h}h`) : `${m}m`;
+    return {
+      score: Number.isFinite(s.score) ? Math.round(s.score) : null,
+      deepPct,
+      wakeCount,
+      total,
+      sleepTime: s.sleepTime ?? null,
+      wakeTime: s.wakeTime ?? null,
+    };
+  })();
+
+  /**
+   * 情绪点阵 96 槽映射（15 分钟/点）。**只用真实数据，不编状态**：
+   * · 睡眠窗口（真实睡眠摘要 sleepTime→wakeTime，跨午夜）→ sleep
+   * · 压力事件所在的 15 分钟槽（真实 EDA 事件）→ stress
+   * · 其余清醒时段 → 取「今日状态曲线」（每 30 分钟一个真实档位）：
+   *   充沛→元气、平稳→平静、偏低/不足→疲惫；无曲线覆盖时回落平静（中性底色）。
+   * 专注档无对应数据源，不参与映射（图例不展示，仅颜色编码）。
+   */
+  const emotionSlots: MindMoodKey[] = (() => {
+    const slots: MindMoodKey[] = new Array(96).fill('calm');
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const parseHM = (s?: string | null): number | null => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim());
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    const sleepStart = parseHM(recoverySleep?.sleepTime);
+    const sleepEnd = parseHM(recoverySleep?.wakeTime);
+    const inSleep = (m: number) =>
+      sleepStart != null && sleepEnd != null
+        ? sleepStart > sleepEnd ? (m >= sleepStart || m < sleepEnd) : (m >= sleepStart && m < sleepEnd)
+        : false;
+    const lvlMap: Record<string, MindMoodKey> = { '充沛': 'energy', '平稳': 'calm', '偏低': 'tired', '不足': 'tired' };
+    const pts = ring.statusTimeline ?? [];
+    for (let i = 0; i < 96; i++) {
+      const m = i * 15;
+      if (inSleep(m)) { slots[i] = 'sleep'; continue; }
+      if (m > nowMin) { slots[i] = 'calm'; continue; }
+      let lvl: string | null = null;
+      for (const p of pts) {
+        if (!Number.isFinite(p.t)) continue;
+        const d = new Date(p.t);
+        const pm = d.getHours() * 60 + d.getMinutes();
+        if (pm <= m + 15 && m - pm < 60) lvl = p.level;
+      }
+      slots[i] = lvl ? (lvlMap[lvl] ?? 'calm') : 'calm';
+    }
+    for (const e of stressReport?.events ?? []) {
+      if (Number.isFinite(e.hour) && Number.isFinite(e.minute)) {
+        const idx = Math.min(95, Math.max(0, Math.floor((e.hour * 60 + e.minute) / 15)));
+        slots[idx] = 'stress';
+      }
+    }
+    return slots;
+  })();
 
   return (
     <View style={styles.page}>
-      {/* 仅 Today 页：上白下紫的分屏背景，其他页面保留 App 根渐变 */}
+      {/* MindMate v10：首页背景全白（SPEC §0 规则 1）。原「上白下紫」分屏收起——
+          状态面板圆弧在纯白底上自然隐形，页面成为一个连续白面。 */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite, theme.colors.bgMidAlt, theme.colors.bgTop]}
-        locations={[0, 0.42, 0.72, 1]}
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
         style={StyleSheet.absoluteFill}
       />
       <ScreenContainer scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
@@ -888,12 +928,11 @@ export default function TodayScreen() {
         </Animated.View>
 
         {/* ─────────────────────────────────────────────────────────────
-            ★ 顶部四张指标小卡（2026-09-22 第二版定稿）：环 + 环心数值。
-            · 一行四项、等宽等构；环色/底色与下方对应大卡同一色相家族。
-            · 间距：上方沿用 head 的 marginBottom(36)，下方给 panel 留 space.md(16)。
+            ★ 顶部四指标 chips（MindMate v10）：白卡 chip + pastel 方块 icon。
+            · 数据与消耗卡同源同口径；间距沿用 head 的 marginBottom(36)。
             ───────────────────────────────────────────────────────────── */}
         <View style={{ marginBottom: theme.space.md }}>
-          <TodayMetricTiles items={metricTiles} />
+          <MindChips items={metricChips} />
         </View>
 
         {/* ─────────────────────────────────────────────────────────────
@@ -973,12 +1012,64 @@ export default function TodayScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Tab 内容 */}
+        {/* Tab 内容（MindMate v10：睡眠+情绪 / 认知+运动 两行白卡；无 AI 建议卡——用户明确首页不放） */}
         {todayTab === 'rhythm' ? (
           <View style={{ gap: theme.space.sm }}>
-            <BigStatCard height={120} title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} layout="horizontal" />
-            <BigStatCard height={120} title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} layout="horizontal" />
-            <BigStatCard height={120} title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} layout="horizontal" />
+            <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
+              <MindStatCard
+                title="睡眠恢复"
+                cornerIcon="moon"
+                cornerTone="lav"
+                sub={sleepCard ? `恢复得分 ${sleepCard.score ?? '—'} · 深睡 ${sleepCard.deepPct != null ? `${sleepCard.deepPct}%` : '—'}` : '暂无睡眠记录'}
+                value={sleepCard ? sleepCard.total : '—'}
+                foot={sleepCard ? `入睡 ${sleepCard.sleepTime ?? '—'} · 夜间醒来 ${sleepCard.wakeCount != null ? sleepCard.wakeCount : '—'} 次` : undefined}
+                onPress={() => navigation.navigate('SleepDetail')}
+              />
+              <MindStatCard
+                title="情绪消耗"
+                cornerIcon="heart"
+                cornerTone="pink"
+                sub="15 分钟 / 点 · 全天 96 点"
+                value={stress}
+                unit="次峰值"
+                chart={<EmotionDots slots={emotionSlots} />}
+                onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
+              <MindStatCard
+                title="认知消耗"
+                cornerIcon="nodes"
+                cornerTone="lav"
+                sub={`全天平均负荷 · ${cogLevelTxt}`}
+                value={cognitive}
+                unit="/100"
+                chart={
+                  <MindWave
+                    values={(cogReport?.hourly ?? []).filter((h: any) => h.hasData && Number.isFinite(h.score)).map((h: any) => h.score)}
+                    color={mm.colors.ringPurple}
+                    dotColor={mm.colors.ringPurpleDeep}
+                  />
+                }
+                onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
+              />
+              <MindStatCard
+                title="运动消耗"
+                cornerIcon="bolt"
+                cornerTone="cyan"
+                sub="目标 8,000 步 · 今日累计"
+                value={activity}
+                unit="步"
+                chart={
+                  <MindWave
+                    values={weekSteps.map((w) => w.steps)}
+                    color={mm.colors.ringBlue}
+                    dotColor={mm.colors.ringBlueDeep}
+                  />
+                }
+                onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
+              />
+            </View>
           </View>
         ) : (
           <View style={styles.adviceWrap}>
@@ -1182,19 +1273,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    // MindMate v10：白底描边胶囊，选中 lavender（SPEC §1 #6）
+    backgroundColor: mm.colors.cardBg,
+    borderWidth: 1,
+    borderColor: mm.colors.tabBorder,
     marginHorizontal: theme.space.xs,
   },
   todayTabBtnOn: {
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.lavender,
+    borderColor: mm.colors.lavender,
   },
   todayTabLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textInk,
+    color: mm.colors.inkSoft,
   },
   todayTabLabelOn: {
-    color: theme.colors.textWhite,
-    fontWeight: theme.weight.semibold,
+    color: mm.colors.lavenderDeep,
+    fontWeight: theme.weight.bold,
   },
 });
