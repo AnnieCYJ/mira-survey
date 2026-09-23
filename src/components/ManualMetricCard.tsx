@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
+import Icon from './Icon';
 import { formatClockTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
 
@@ -47,13 +50,22 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
   };
 
   const showHint = !live && !measuring && metric.manualHint;
+  // v10 多巴胺：按 key 稳定取 pastel 家族（卡浅底 + 图标方块）
+  const fam = pastelFamilyFor(metric.key);
 
   return (
     <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
-      <Card>
+      <Card style={{ backgroundColor: fam.soft }}>
       {/* 顶部：名称 + 状态标签（无按钮，按钮统一置底） */}
       <View style={styles.top}>
-        <Text style={styles.name}>{metric.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+          {metric.icon && (
+            <View style={styles.iconSq}>
+              <Icon name={metric.icon} size={14} color={fam.fg} />
+            </View>
+          )}
+          <Text style={[styles.name, { color: mm.colors.ink }]}>{metric.name}</Text>
+        </View>
         <View style={[styles.tag, live ? styles.tagLive : styles.tagOff]}>
           <Text style={[styles.tagText, live ? styles.tagTextLive : styles.tagTextOff]}>
             {live ? '已测量' : '待测量'}
@@ -64,18 +76,18 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
       {/* 主区：数值 + 单位（左）｜测量时间（右，带标签） */}
       <View style={styles.mainRow}>
         <View style={styles.valueBox}>
-          <Text style={styles.val}>{value}</Text>
+          <Text style={[styles.val, { color: mm.colors.ink }]}>{value}</Text>
           <Text style={styles.unit}>{metric.unit}</Text>
         </View>
         <View style={styles.timeBox}>
           <Text style={styles.timeLabel}>测量时间</Text>
-          <Text style={[styles.timeValue, !live && styles.timeValueIdle]}>
+          <Text style={[styles.timeValue, { color: fam.fg }, !live && styles.timeValueIdle]}>
             {formatClockTime(measureTime)}
           </Text>
         </View>
       </View>
 
-      <Text style={styles.range}>{metric.range}</Text>
+      <Text style={[styles.range, { color: fam.fg }]}>{metric.range}</Text>
 
       <Text style={styles.note}>{metric.note}</Text>
 
@@ -85,15 +97,23 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
         </View>
       ) : null}
 
-      {/* 测量按钮：全宽置底 */}
+      {/* 测量按钮：全宽置底 · v10 统一 lime→粉 渐变 */}
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={onPressMeasure}
         style={[styles.btn, measuring && styles.btnBusy]}
+        disabled={measuring}
       >
-        <Text style={[styles.btnLabel, measuring && styles.btnLabelBusy]}>
-          {measuring ? '测量中…' : live ? '重新测量' : '手动测量'}
-        </Text>
+        <LinearGradient
+          colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.btnGrad}
+        >
+          <Text style={styles.btnLabel}>
+            {measuring ? '测量中…' : live ? '重新测量' : '手动测量'}
+          </Text>
+        </LinearGradient>
       </TouchableOpacity>
       </Card>
     </TouchableOpacity>
@@ -101,6 +121,15 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
 }
 
 const styles = StyleSheet.create({
+  // v10：26px pastel 图标方块（SPEC §5）
+  iconSq: {
+    width: 26,
+    height: 26,
+    borderRadius: mm.radius.iconSq,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(1),
+  },
   top: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -147,7 +176,6 @@ const styles = StyleSheet.create({
   timeValue: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
   },
   timeValueIdle: { color: theme.colors.textSub },
   range: {
@@ -177,15 +205,16 @@ const styles = StyleSheet.create({
   btn: {
     marginTop: theme.space.sm,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSoft,
+    overflow: 'hidden',
+  },
+  btnBusy: { opacity: 0.5 },
+  btnGrad: {
     paddingVertical: theme.space.sm,
     alignItems: 'center',
   },
-  btnBusy: { backgroundColor: theme.colors.ui.offTrack },
   btnLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: mm.colors.btnTextOnGrad,
   },
-  btnLabelBusy: { color: theme.colors.textSub },
 });

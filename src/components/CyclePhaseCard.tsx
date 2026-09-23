@@ -17,7 +17,9 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Dimensions, View, Text, TouchableOpacity, ScrollView, Modal, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { computeCycle, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { type FemaleInfo, type RingState } from '../ble/RingBleManager';
@@ -119,9 +121,17 @@ export default function CyclePhaseCard({
             setExpanded(true);
           }}
         >
-          <Text style={styles.recordBtnText}>
-            {effective ? '记录 / 修改' : '记录经期'}
-          </Text>
+          {/* v10：主操作按钮统一 lime→粉 渐变 */}
+          <LinearGradient
+            colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.recordBtnGrad}
+          >
+            <Text style={styles.recordBtnText}>
+              {effective ? '记录 / 修改' : '记录经期'}
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -224,12 +234,15 @@ const styles = StyleSheet.create({
   },
   recordHint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.space.xs },
   recordBtn: {
-    backgroundColor: theme.colors.accentSoft,
     paddingHorizontal: theme.space.md,
-    paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,
+    overflow: 'hidden',
   },
-  recordBtnText: { color: theme.colors.accentSolid, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
+  recordBtnGrad: {
+    paddingVertical: theme.sp(2),
+    alignItems: 'center',
+  },
+  recordBtnText: { color: mm.colors.btnTextOnGrad, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
 
   ringBadge: {
     alignSelf: 'flex-start',

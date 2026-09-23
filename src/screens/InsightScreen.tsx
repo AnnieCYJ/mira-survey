@@ -462,10 +462,16 @@ export default function InsightScreen() {
                 <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
                   <View style={{ flex: 1, alignSelf: 'stretch' }}>
                     <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                      {/* v10：血糖卡回归白卡（旧紫渐变底废弃）；数值 ink，目标区间带色在详情页 */}
-                      <Card style={{ padding: theme.sp(3), flex: 1 }}>
-                        <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>血糖</Text>
-                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                      {/* v10 多巴胺：血糖卡奶油黄浅底 + 图标方块（数值 butterDeep） */}
+                      <Card style={{ padding: theme.sp(3), flex: 1, backgroundColor: mm.colors.butter }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.cardBg, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+                            <Icon name="drop" size={14} color={mm.colors.butterDeep} />
+                          </View>
+                          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
+                        </View>
+                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.butterDeep, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
                       </Card>
                     </TouchableOpacity>
                   </View>

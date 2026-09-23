@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
@@ -87,27 +88,31 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
       {!headerless && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon name="drop" size={theme.fontSize.card + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />
-            <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>血液成分</Text>
+            {/* v10：26px pastel 方块（血液=粉家族） */}
+            <View style={styles.iconSq}>
+              <Icon name="drop" size={14} color={mm.colors.pinkDeep} />
+            </View>
+            <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血液成分</Text>
           </View>
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{lastTs ? timeAgo(lastTs) : '待检测'}</Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint }}>{lastTs ? timeAgo(lastTs) : '待检测'}</Text>
         </View>
       )}
 
-      {/* 5 项汇总：3 列网格（最后一行两列居中更美观） */}
+      {/* 5 项汇总：3 列网格（最后一行两列居中更美观）· 每项一个 pastel 家族（多巴胺） */}
       <View style={styles.grid}>
-        {BC_ITEMS.map((it) => {
+        {BC_ITEMS.map((it, idx) => {
           const v = (ring as any).daily?.[it.key] ?? null;
           const live = v != null && v > 0;
+          const fam = PASTEL_FAMILIES[idx % PASTEL_FAMILIES.length];
           return (
             <TouchableOpacity
               key={it.key}
               activeOpacity={0.92}
-              style={styles.item}
+              style={[styles.item, { backgroundColor: fam.soft, borderColor: 'rgba(31,29,26,0.05)' }]}
               onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
             >
               <Text style={styles.itemName}>{it.name}</Text>
-              <Text style={[styles.itemVal, live ? styles.itemValLive : styles.itemValIdle]}>
+              <Text style={[styles.itemVal, { color: live ? fam.fg : mm.colors.inkFaint }]}>
                 {fmt(v, it.unit)}
               </Text>
               <Text style={styles.itemUnit}>{live ? it.unit : '待检测'}</Text>
@@ -120,6 +125,16 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
 }
 
 const styles = StyleSheet.create({
+  // v10：26px pastel 图标方块（血液=粉家族）
+  iconSq: {
+    width: 26,
+    height: 26,
+    borderRadius: mm.radius.iconSq,
+    backgroundColor: mm.colors.pink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(1),
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -171,24 +186,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: theme.radius.sm,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   itemName: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textSub,
+    color: mm.colors.inkSoft,
     marginBottom: 2,
   },
   itemVal: {
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
   },
-  itemValLive: { color: theme.colors.textTitle },
-  itemValIdle: { color: theme.colors.textSub },
   itemUnit: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.textSub,
+    color: mm.colors.inkFaint,
     marginTop: 1,
   },
 });
+
+/** v10 多巴胺：5 项血液成分按索引轮转 pastel 家族（与 mm.pastelFamilyFor 同一套） */
+const PASTEL_FAMILIES = [
+  { soft: mm.colors.lavenderSoft, fg: mm.colors.lavenderDeep },
+  { soft: mm.colors.cyanSoft, fg: mm.colors.cyanDeep },
+  { soft: mm.colors.pinkSoft, fg: mm.colors.pinkDeep },
+  { soft: mm.colors.limeSoft, fg: mm.colors.limeDeep },
+  { soft: mm.colors.butter, fg: mm.colors.butterDeep },
+];

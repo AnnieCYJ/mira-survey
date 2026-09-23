@@ -18,6 +18,13 @@ export const mm = {
     pink: '#F8CADA',
     pinkSoft: '#FCEBF2',
     pinkDeep: '#C2597F',
+    butter: '#F6EFBE',
+    butterDeep: '#8A7A2A',
+
+    /* ── 渐变按钮文字（SPEC §1 #12：lime→粉渐变上白字对比不足，用暖深色）── */
+    btnTextOnGrad: '#4A4A22',
+    // 渐变按钮 busy 态扁平底（测量中不可点）
+    btnBusyBg: 'rgba(31,29,26,0.06)',
 
     /* ── 文字 ── */
     ink: '#1F1D1A',
@@ -84,6 +91,7 @@ export const mm = {
     pink: { bg: '#F8CADA', fg: '#C2597F' },
     cyan: { bg: '#B0D8E0', fg: '#41788C' },
     lime: { bg: '#D5E384', fg: '#5A6B1F' },
+    butter: { bg: '#F6EFBE', fg: '#8A7A2A' },
   } as const,
 
   /** 白卡阴影：CSS `0 14px 34px -18px rgba(31,29,26,.14)` 的 RN 拆解 */
@@ -106,3 +114,21 @@ export const mm = {
 } as const;
 
 export type MindChipTone = keyof typeof mm.chipBg;
+
+/**
+ * 基础指标卡「多巴胺」pastel 家族：按 key 稳定哈希取一组
+ * （soft = 卡片浅底，chip = 图标方块深一档 bg/fg 对）。
+ * 同一指标永远同色（跨页面/刷新不变），五组轮转保证相邻卡颜色错开。
+ */
+export function pastelFamilyFor(key: string): { soft: string; chipBg: string; fg: string } {
+  const FAMILIES = [
+    { soft: mm.colors.lavenderSoft, chipBg: mm.chipBg.lav.bg, fg: mm.chipBg.lav.fg },
+    { soft: mm.colors.cyanSoft, chipBg: mm.chipBg.cyan.bg, fg: mm.chipBg.cyan.fg },
+    { soft: mm.colors.pinkSoft, chipBg: mm.chipBg.pink.bg, fg: mm.chipBg.pink.fg },
+    { soft: mm.colors.limeSoft, chipBg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
+    { soft: mm.colors.butter, chipBg: mm.chipBg.butter.bg, fg: mm.chipBg.butter.fg },
+  ];
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return FAMILIES[h % FAMILIES.length];
+}

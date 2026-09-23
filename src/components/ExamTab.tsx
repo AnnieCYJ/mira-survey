@@ -8,6 +8,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
+import { LinearGradient } from 'expo-linear-gradient';
 import Card from './Card';
 import { RingBle } from '../ble/RingBleManager';
 import {
@@ -115,7 +117,15 @@ export default function ExamTab() {
             </View>
           </View>
           <TouchableOpacity style={styles.save} onPress={generate} disabled={saving} activeOpacity={0.8}>
-            <Text style={styles.saveText}>{saving ? '计算中…' : '生成报告'}</Text>
+            {/* v10：主按钮统一 lime→粉 渐变 */}
+            <LinearGradient
+              colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.saveGrad}
+            >
+              <Text style={styles.saveText}>{saving ? '计算中…' : '生成报告'}</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </>
       ) : (
@@ -187,17 +197,19 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(0.75),
     borderRadius: theme.radius.sm,
   },
-  segBtnOn: { backgroundColor: theme.colors.accentSolid },
-  segText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
-  segTextOn: { color: '#FFFFFF' },
+  segBtnOn: { backgroundColor: mm.colors.lime },
+  segText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: mm.colors.inkSoft },
+  segTextOn: { color: mm.colors.ink },
   save: {
     marginTop: theme.sp(0.5),
-    backgroundColor: theme.colors.accentSolid,
     borderRadius: theme.radius.sm,
+    overflow: 'hidden',
+  },
+  saveGrad: {
     paddingVertical: theme.sp(1.25),
     alignItems: 'center',
   },
-  saveText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
+  saveText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
 
   // 摘要模式（紧凑）
   summaryRow: {
@@ -228,5 +240,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: theme.sp(0.75),
   },
-  viewReportText: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid, fontWeight: theme.weight.medium },
+  viewReportText: { fontSize: theme.fontSize.micro, color: mm.colors.lavenderDeep, fontWeight: theme.weight.medium },
 });

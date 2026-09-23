@@ -7,8 +7,9 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
-import { mm } from '../theme/mindmate';
+import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
 import { TREND_AXIS } from '../data/metrics';
@@ -206,6 +207,8 @@ export default function BasicMetricCard({
 
   // compact: Insight 2列小卡片，有图/无图由 showTrend 决定
   if (compact) {
+    // v10 多巴胺：按 key 稳定取 pastel 家族（卡浅底 + 图标方块），不再全白
+    const fam = pastelFamilyFor(metric.key);
     const placeholderPath = (() => {
       if (!showTrend || w <= 0) return '';
       const pad = 4;
@@ -221,19 +224,27 @@ export default function BasicMetricCard({
     })();
     return (
       <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
-        <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
+        <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md, backgroundColor: fam.soft }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
               标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: theme.sp(1) }}>
-              {metric.icon && <Icon name={metric.icon} size={theme.fontSize.body + 2} color={theme.colors.textSub} style={{ marginRight: theme.sp(1) }} />}
-              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle, flexShrink: 1 }}>{metric.name}</Text>
+              {metric.icon && (
+                <View style={{
+                  width: 26, height: 26, borderRadius: mm.radius.iconSq,
+                  backgroundColor: fam.chipBg, alignItems: 'center', justifyContent: 'center',
+                  marginRight: theme.sp(1),
+                }}>
+                  <Icon name={metric.icon} size={14} color={fam.fg} />
+                </View>
+              )}
+              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flexShrink: 1 }}>{metric.name}</Text>
             </View>
-            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{formatRelativeTime(measureTime)}</Text>
+            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint }}>{formatRelativeTime(measureTime)}</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textInk }}>{value}</Text>
-            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink }}>{value}</Text>
+            <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
           </View>
           {showTrend && (
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
@@ -283,7 +294,15 @@ export default function BasicMetricCard({
             onPress={onPressMeasure}
             style={[styles.measureWrap, measuring && styles.measureWrapBusy]}
           >
-            <Text style={[styles.measureLabel, measuring && styles.measureLabelBusy]}>{measureLabel}</Text>
+            {/* v10：所有按钮统一 lime→粉 渐变（SPEC §1 #12） */}
+            <ExpoLinearGradient
+              colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.measureGrad}
+            >
+              <Text style={styles.measureLabel}>{measureLabel}</Text>
+            </ExpoLinearGradient>
           </TouchableOpacity>
         )}
       </View>
@@ -392,18 +411,19 @@ const styles = StyleSheet.create({
   measureWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+  },
+  measureWrapBusy: { opacity: 0.5 },
+  measureGrad: {
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(1.5),
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSoft,
   },
-  measureWrapBusy: { backgroundColor: theme.colors.ui.offTrack },
   measureLabel: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: mm.colors.btnTextOnGrad,
   },
-  measureLabelBusy: { color: theme.colors.textSub },
   main: { flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) },
   val: {
     fontSize: theme.fontSize.h2,

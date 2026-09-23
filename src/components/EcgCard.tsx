@@ -3,6 +3,7 @@ import { Alert, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } fr
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 
 interface Props {
@@ -142,9 +143,16 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           <Text style={styles.btnLabel}>处理结果中…</Text>
         </View>
       ) : (
-        // 状态 3：空闲 → 绿色按钮开始/重测
+        // 状态 3：空闲 → v10 渐变按钮（lime→粉，全 app 按钮统一）
         <TouchableOpacity activeOpacity={0.7} onPress={measureEcg} style={styles.btn}>
-          <Text style={styles.btnLabel}>{latest ? '重新测量' : '开始心电图测量'}</Text>
+          <ExpoLinearGradient
+            colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.btnGrad}
+          >
+            <Text style={styles.btnLabelGrad}>{latest ? '重新测量' : '开始心电图测量'}</Text>
+          </ExpoLinearGradient>
         </TouchableOpacity>
       )}
     </View>
@@ -172,11 +180,18 @@ const styles = StyleSheet.create({
   },
   btn: {
     marginTop: 12,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+  },
+  btnGrad: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 11,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.accentSolid,
+  },
+  btnLabelGrad: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.btnTextOnGrad,
   },
   btnMeasuring: {
     backgroundColor: theme.colors.danger,
