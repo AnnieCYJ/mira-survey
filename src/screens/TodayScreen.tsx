@@ -186,7 +186,7 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
       </TouchableOpacity>
 
       {/* ★ 情绪消耗 / 脑力消耗 / 运动消耗 —— 并排独立小卡 */}
-      <View style={{ flexDirection: 'row', gap: theme.space.md }}>
+      <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
         {subCard(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
         {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
         {subCard(IMG_ACTIVITY, '运动消耗', activity, '步', () => onNav('activity'))}
@@ -372,18 +372,61 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, con
   );
 });
 
-const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress, height }: any) {
+const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress, height, layout }: any) {
   const pressScale = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
     Animated.timing(pressScale, { toValue: v, duration: theme.motion.instant, easing: theme.motion.easeStandard, useNativeDriver: true }).start();
   const h = height ?? 150;
+  const isHorizontal = layout === 'horizontal';
   const isBig = h >= 200;
   const titleSize = isBig ? theme.fontSize.body : theme.fontSize.sm;
   const padH = isBig ? theme.space.md : theme.space.sm;
   const padV = isBig ? theme.space.sm : theme.space.xs;
+
+  if (isHorizontal) {
+    // ★ 横卡:left = title + 数字 + caption(weight 1), right = chartEl(weight ~0.7)
+    const numFont = h >= 110 ? 30 : 26;
+    const unitFont = h >= 110 ? theme.fontSize.sm : theme.fontSize.micro;
+    return (
+      <Pressable onPress={onPress} onPressIn={() => pressTo(theme.press.scaleCard)} onPressOut={() => pressTo(1)}
+        style={{ width: '100%' }} accessibilityRole="button" accessibilityLabel={`${title} ${value}${unit}`}>
+        <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+          <GlassCard padded={false} style={{ height: h }}>
+            <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+            <View style={{ paddingHorizontal: padH, paddingVertical: padV, flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              {/* 左侧:title + 数字 + caption + trend */}
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ color: theme.colors.textInk, fontSize: titleSize, fontWeight: theme.weight.semibold }} numberOfLines={1}>{title}</Text>
+                  {trend ? (
+                    <Text style={{
+                      color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown),
+                      fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold,
+                      backgroundColor: trend.favorable ? theme.colors.successSoft : trend.dir === 'down' ? theme.colors.dangerSoft : 'transparent',
+                      paddingHorizontal: 6, paddingVertical: 1, borderRadius: theme.radius.pill,
+                    }}>
+                      {trend.dir === 'up' ? '↑' : trend.dir === 'down' ? '↓' : '—'} {trend.label}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
+                  <Text style={{ color: theme.colors.textInk, fontSize: numFont, fontWeight: theme.weight.bold, lineHeight: numFont + 4 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+                  <Text style={{ color: theme.colors.textSub, fontSize: unitFont, marginLeft: 3 }}>{unit}</Text>
+                </View>
+                {!!sub && <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>}
+              </View>
+              {/* 右侧:图 */}
+              {chartEl && <View style={{ width: '38%', alignItems: 'stretch', marginLeft: padH * 0.6 }}>{chartEl}</View>}
+            </View>
+          </GlassCard>
+        </Animated.View>
+      </Pressable>
+    );
+  }
+
   /* 方案3 固定比例:title ~10% / 图 ~45% / gap / 数字 ~35% */
-  const chartAreaH = isBig ? 88 : 44;   // 和 Mini 组件 SVGMH 对齐 (大卡 88, condensed 44)
-  const numAreaH = isBig ? 52 : 34;     // 数字 + caption 预留
+  const chartAreaH = isBig ? 88 : 44;
+  const numAreaH = isBig ? 52 : 34;
   return (
     <Pressable onPress={onPress} onPressIn={() => pressTo(theme.press.scaleCard)} onPressOut={() => pressTo(1)}
       style={{ width: '100%' }} accessibilityRole="button" accessibilityLabel={`${title} ${value}${unit}`}>
@@ -405,11 +448,10 @@ const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, t
                 </Text>
               ) : null}
             </View>
-            {/* 中间:图固定高,左右对齐 */}
+            {/* 中间:图固定高 */}
             {chartEl && <View style={{ height: chartAreaH, marginTop: isBig ? 6 : 4, alignItems: 'stretch' }}>{chartEl}</View>}
-            {/* gap */}
             <View style={{ height: isBig ? 8 : 4 }} />
-            {/* 底部:数字区固定高 */}
+            {/* 底部:数字区 */}
             <View style={{ height: numAreaH, justifyContent: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                 <Text style={{ color: theme.colors.textInk, fontSize: isBig ? 34 : 22, fontWeight: theme.weight.bold, lineHeight: isBig ? 38 : 26 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
@@ -933,14 +975,10 @@ export default function TodayScreen() {
 
         {/* Tab 内容 */}
         {todayTab === 'rhythm' ? (
-          <View style={{ flexDirection: 'row', gap: theme.space.md }}>
-            <View style={{ flex: 1 }}>
-              <BigStatCard height={220} title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} />
-            </View>
-            <View style={{ flex: 1, gap: theme.space.sm }}>
-              <BigStatCard height={128} title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} condensed />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} />
-              <BigStatCard height={128} title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} condensed />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} />
-            </View>
+          <View style={{ gap: theme.space.sm }}>
+            <BigStatCard height={120} title="脑力消耗" value={cognitive} unit="/100" sub={cognitiveSub} trend={trendCmp.cognitive} chartEl={<MiniCognitiveBars hourly={cogReport?.hourly ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(221,214,254,0.4)', 'rgba(221,214,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })} layout="horizontal" />
+            <BigStatCard height={120} title="情绪消耗" value={stress} unit="次" sub={stressSub} trend={trendCmp.emotion} chartEl={<MiniStressBars events={stressReport?.events ?? []} />} gradientColors={['rgba(255,255,255,0)', 'rgba(253,232,240,0.4)', 'rgba(253,232,240,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })} layout="horizontal" />
+            <BigStatCard height={120} title="运动消耗" value={activity} unit="步" sub={activitySub} trend={trendCmp.activity} chartEl={<MiniActivityCurve weekSteps={weekSteps} />} gradientColors={['rgba(255,255,255,0)', 'rgba(191,219,254,0.4)', 'rgba(191,219,254,0.7)']} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })} layout="horizontal" />
           </View>
         ) : (
           <View style={styles.adviceWrap}>
