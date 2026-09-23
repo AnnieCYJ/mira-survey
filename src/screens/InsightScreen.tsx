@@ -371,7 +371,8 @@ export default function InsightScreen() {
     <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
-          <Text style={styles.title}>Insights</Text>        </Animated.View>
+          <Text style={styles.title}>Insights</Text>
+        </Animated.View>
 
         
 
