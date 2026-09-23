@@ -302,16 +302,24 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: '#1F2937', marginBottom: 5, letterSpacing: -0.3 },
   desc: { fontSize: 12, lineHeight: 19, color: '#6B7280', marginBottom: 14 },
 
+  // ★ 渐变按钮套路（同设置页）：Touchable 只留圆角+裁切，尺寸全由渐变层撑起。
+  //   此前渐变用 absoluteFillObject 绝对定位 → 不占布局宽，按钮塌成 32px 窄条（真机 bug）。
   btn: {
-    height: 38, paddingHorizontal: 16, borderRadius: theme.radius.pill,
-    alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start',
+    borderRadius: theme.radius.pill,
     overflow: 'hidden',
+    alignSelf: 'flex-start',
   },
   btnGrad: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  btnDone: { backgroundColor: mm.colors.limeSoft },
+  btnDone: {
+    backgroundColor: mm.colors.limeSoft,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+  },
   btnText: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
   btnTextDone: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
 

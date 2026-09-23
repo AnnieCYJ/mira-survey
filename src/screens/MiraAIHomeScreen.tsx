@@ -1,13 +1,13 @@
 /**
  * MiraAIHomeScreen —— 点击 tab bar 中间 bot 后进入的「Mira AI 首页」。
  *
- * ★ 严格按设计稿 + 用户要求实现，不自创样式：
- *   - 整页紫色渐变背景（theme.colors.bgGradStops）。
+ * ★ v16 reskin：整页白底 + 墨字（AI 语义紫只保留在 AiOrb 光球上）；
+ *   版本徽章/喇叭钮 = 黄绿；发送钮 = 统一 lime→粉 渐变。
  *   - 顶部：白色左对齐大标题「Mira AI」+ 标题右侧「1.3」半透明胶囊徽章；
  *     下一行副标题「你的健康助手」；右上角 🔊 喇叭按钮。无返回键（tab 页靠 tab bar 导航）。
  *   - 中部：AiOrb 光球（"Hi, can I help you?"）+ 三排建议问题跑马灯：
  *     第 1/3 排向左滚动，第 2 排向右滚动；手指按住可暂停并手动拖动，松手 2.2s 后恢复。
- *   - 底部：圆角输入框 + 紫色发送圆钮（麦克风按钮已按用户要求移除）。
+ *   - 底部：圆角输入框 + 渐变发送圆钮（麦克风按钮已按用户要求移除）。
  *     ★ 输入行用 position:absolute 贴在屏底、paddingBottom = tabBarHeight + sp(2) + sp(2.5) = 74px，
  *       即「tab 卡片顶边(64px) + 10px 间距」纯几何计算（**不加 insets.bottom**，tab bar 是
  *       bottom:0 浮层、不含安全区，加了会重复计算）。绕开 KeyboardAvoidingView 在 iOS 篡改 padding 的坑。
@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Icon from '../components/Icon';
 import AiOrb from '../components/AiOrb';
 import { generateQuestions } from '../data/chat';
@@ -175,12 +176,7 @@ export default function MiraAIHomeScreen() {
 
   return (
     <View style={styles.root}>
-      {/* 整页紫色渐变背景（设计稿：上深紫 → 下浅紫白） */}
-      <LinearGradient
-        colors={[...theme.colors.bgGradStops] as unknown as string[]}
-        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/* v16：整页白底（同首页/洞察页），AI 语义紫只保留在光球上 */}
 
       {/* 顶部：左对齐标题 + 1.3 徽章 / 副标题；右上喇叭。无返回键 */}
       <View style={[styles.header, { paddingTop: insets.top + theme.sp(2) }]}>
@@ -206,7 +202,7 @@ export default function MiraAIHomeScreen() {
           <Icon
             name={ttsOn ? 'speaker' : 'speaker_off'}
             size={theme.fs(20)}
-            color={theme.colors.textWhite}
+            color={ttsOn ? mm.colors.limeDeep : mm.colors.inkFaint}
             strokeWidth={2.2}
           />
         </TouchableOpacity>
@@ -255,11 +251,19 @@ export default function MiraAIHomeScreen() {
           onPress={submitDraft}
           accessibilityLabel="发送"
         >
-          <Icon
-            name="send"
-            size={theme.fs(18)}
-            color={draft.trim() ? theme.colors.textWhite : theme.colors.textSub}
-          />
+          {draft.trim() ? (
+            /* v16：发送钮 = 统一 lime→粉 渐变（渐变层自带圆角） */
+            <LinearGradient
+              colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sendBtnGrad}
+            >
+              <Icon name="send" size={theme.fs(18)} color={mm.colors.btnTextOnGrad} />
+            </LinearGradient>
+          ) : (
+            <Icon name="send" size={theme.fs(18)} color={mm.colors.inkFaint} />
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -269,9 +273,9 @@ export default function MiraAIHomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: theme.colors.bgTop,
+    backgroundColor: '#FFFFFF',
   },
-  // —— 顶部 header（透明，浮在渐变背景上）——
+  // —— 顶部 header（白底 + 墨字）——
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -286,22 +290,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
   },
   versionBadge: {
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.sp(0.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: mm.colors.limeSoft,
   },
   versionText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.textWhite,
+    color: mm.colors.limeDeep,
   },
   subtitle: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textWhite70,
+    color: mm.colors.inkSoft,
     marginTop: theme.sp(1),
   },
   speakerBtn: {
@@ -310,6 +314,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: mm.colors.limeSoft,
   },
   // —— 中部内容 ——
   content: { flex: 1 },
@@ -339,13 +344,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: mm.colors.btnBusyBg,
   },
   qChipText: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.textBody,
+    color: mm.colors.inkSoft,
     fontWeight: theme.weight.medium,
   },
   // —— 底部输入行（absolute 贴屏底）——
@@ -368,21 +371,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2.5),
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textBody,
+    color: mm.colors.ink,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: mm.colors.cardBorder,
   },
   sendBtn: {
     width: theme.sp(10),
     height: theme.sp(10),
     borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+  },
+  sendBtnGrad: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.accentSolid,
   },
   sendBtnDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: mm.colors.btnBusyBg,
   },
 });

@@ -233,25 +233,28 @@ const styles = StyleSheet.create({
     marginTop: -theme.space.xs,
   },
   recordHint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.space.xs },
+  // ★ 渐变自成胶囊：圆角+水平 padding 都在渐变层上（同 TaskDeck/设置页套路），
+  //   外层 Touchable 只负责点击区域，避免父级裁切/宽度解析出方形渐变块
   recordBtn: {
-    paddingHorizontal: theme.space.md,
     borderRadius: theme.radius.pill,
     overflow: 'hidden',
   },
   recordBtnGrad: {
     paddingVertical: theme.sp(2),
+    paddingHorizontal: theme.space.md,
+    borderRadius: theme.radius.pill,
     alignItems: 'center',
   },
   recordBtnText: { color: mm.colors.btnTextOnGrad, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
 
   ringBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: theme.colors.accentSoft,
+    backgroundColor: mm.colors.limeSoft,
     paddingHorizontal: theme.sp(2.5),
     paddingVertical: theme.sp(1),
     borderRadius: theme.radius.pill,
   },
-  ringBadgeText: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid, fontWeight: theme.weight.semibold as any },
+  ringBadgeText: { fontSize: theme.fontSize.micro, color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
   tempBadge: {
     alignSelf: 'flex-start',
     backgroundColor: theme.colors.successSoft,
