@@ -1,9 +1,11 @@
 import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import TaskDeck from '../components/TaskDeck';
@@ -48,11 +50,17 @@ export default function MeditationScreen() {
   );
 
   return (
-    <ScreenContainer compactTop scrollY={scrollY}>
-      <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
-        <Text style={styles.title}>Tools</Text>
-        <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
-      </Animated.View>
+    <View style={styles.page}>
+      {/* v10：工具页背景全白（与首页/洞察页/日历页同款）；TOOL_GRID 图片卡保持原样 */}
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+        <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
+          <Text style={styles.title}>Tools</Text>
+          <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
+        </Animated.View>
 
       <TaskDeck tools={tools} onComplete={handleComplete} />
 
@@ -84,20 +92,22 @@ export default function MeditationScreen() {
       </View>
 
       <ListCard title="最近使用" items={RECENT} />
-    </ScreenContainer>
+      </ScreenContainer>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1 },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
     marginBottom: theme.sp(1),
   },
   subtitle: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textWhite,
+    color: mm.colors.inkSoft,
     marginBottom: theme.space.md,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -theme.sp(2) },

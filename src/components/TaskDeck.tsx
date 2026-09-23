@@ -5,15 +5,24 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import Card from './Card';
-import { TASK_COLORS, TASK_ICONS, type TaskItem } from '../data/tasks';
+import { TASK_ICONS, type TaskItem } from '../data/tasks';
 
+// v16 五色系统：四类任务 = soft→mid 双档渐变（图标方块用），青 #CFFAFE/#67E8F9 已删
 const TYPE_GRADIENTS: Record<number, [string, string]> = {
-  0: ['#FCE7F3', '#F9A8D4'],
-  1: ['#C4B5FD', '#A78BFA'],
-  2: ['#CFFAFE', '#67E8F9'],
-  3: ['#FEF3C7', '#FBBF24'],
+  0: [mm.colors.roseSoft, mm.colors.roseMid],     // 呼吸冥想 = 情绪·粉
+  1: [mm.colors.purpleSoft, mm.colors.purpleMid], // 认知提升 = 认知·紫
+  2: [mm.colors.skySoft, mm.colors.skyMid],       // 专注力提升 → 蓝（旧青语义由蓝接管）
+  3: [mm.colors.honeySoft, mm.colors.honeyMid],   // 知识学习 = 代谢·黄
+};
+// 图标色 = 对应 deep 档（soft 底上白 icon 对比不足）
+const TYPE_ICON_COLORS: Record<number, string> = {
+  0: mm.colors.roseDeep,
+  1: mm.colors.purpleDeep,
+  2: mm.colors.skyDeep,
+  3: mm.colors.honeyDeep,
 };
 const TYPE_LABEL = ['01', '02', '03', '04'];
 
@@ -180,11 +189,16 @@ export default function TaskDeck({ tools, onComplete }: Props) {
               <Card style={[styles.card, isTop && styles.cardTop]}>
                 <View style={styles.headerRow}>
                   <LinearGradient
-                    colors={TYPE_GRADIENTS[t.type] || ['#C4B5FD', '#8B7CF6']}
+                    colors={TYPE_GRADIENTS[t.type] || [mm.colors.purpleSoft, mm.colors.purpleMid]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                     style={styles.ico}
                   >
-                    <Icon name={TASK_ICONS[t.type]} size={theme.fs(24)} color="#FFFFFF" strokeWidth={2.4} />
+                    <Icon
+                      name={TASK_ICONS[t.type]}
+                      size={theme.fs(24)}
+                      color={TYPE_ICON_COLORS[t.type] ?? mm.colors.purpleDeep}
+                      strokeWidth={2.4}
+                    />
                   </LinearGradient>
                   <View style={styles.headerRight}>
                     <Badge label={t.badge} />
@@ -199,9 +213,17 @@ export default function TaskDeck({ tools, onComplete }: Props) {
                   onPress={() => handleComplete(t.id)}
                   activeOpacity={0.85}
                 >
-                  <Text style={[styles.btnText, t.done && styles.btnTextDone]}>
-                    {t.done ? '已完成 · 已记录' : t.action}
-                  </Text>
+                  {t.done ? (
+                    <Text style={styles.btnTextDone}>已完成 · 已记录</Text>
+                  ) : (
+                    <LinearGradient
+                      colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                      style={styles.btnGrad}
+                    >
+                      <Text style={styles.btnText}>{t.action}</Text>
+                    </LinearGradient>
+                  )}
                 </TouchableOpacity>
               </Card>
             </Animated.View>
@@ -273,8 +295,8 @@ const styles = StyleSheet.create({
   cardNum: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1 },
 
   badge: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },
-  badgePlain: { backgroundColor: 'rgba(139,124,246,0.1)' },
-  badgeText: { fontSize: 10, fontWeight: theme.weight.semibold, color: theme.colors.accentSolid },
+  badgePlain: { backgroundColor: mm.colors.limeSoft },
+  badgeText: { fontSize: 10, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
   badgeTextAi: { fontSize: 10, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 
   title: { fontSize: 18, fontWeight: '700', color: '#1F2937', marginBottom: 5, letterSpacing: -0.3 },
@@ -283,15 +305,19 @@ const styles = StyleSheet.create({
   btn: {
     height: 38, paddingHorizontal: 16, borderRadius: theme.radius.pill,
     alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start',
-    backgroundColor: theme.colors.accent1,
+    overflow: 'hidden',
   },
-  btnDone: { backgroundColor: 'rgba(111,207,180,0.2)' },
-  btnText: { fontSize: 12, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
-  btnTextDone: { color: theme.colors.ui.successText },
+  btnGrad: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnDone: { backgroundColor: mm.colors.limeSoft },
+  btnText: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
+  btnTextDone: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
 
   foot: { marginTop: 16, alignItems: 'center' },
   dots: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1.5), gap: theme.sp(1.5) },
-  stepLine: { width: theme.sp(3), height: 4, borderRadius: 2, backgroundColor: 'rgba(139,124,246,0.18)' },
-  stepLineActive: { width: theme.sp(5.5), backgroundColor: theme.colors.accent1 },
+  stepLine: { width: theme.sp(3), height: 4, borderRadius: 2, backgroundColor: mm.colors.emptyFill },
+  stepLineActive: { width: theme.sp(5.5), backgroundColor: mm.colors.limeCore },
   hint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, opacity: 0.7 },
 });

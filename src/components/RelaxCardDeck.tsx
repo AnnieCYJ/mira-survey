@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
   deckTitle: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: theme.colors.textTitle, // v10：页面已全白，标题不再用白字
     marginBottom: theme.space.sm,
   },
   cards: {

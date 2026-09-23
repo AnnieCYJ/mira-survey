@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
@@ -220,16 +221,16 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
+      {/* v10：设置页背景全白（与首页/洞察页/日历页同款），原紫渐变收起 */}
       <LinearGradient
-        colors={[...theme.colors.bgGradStops] as unknown as string[]}
-        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
         style={StyleSheet.absoluteFill}
       />
       <ScreenContainer>
         {/* 顶部导航 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={safeGoBack} style={styles.headerBtn} hitSlop={10}>
-            <Icon name="chevronLeft" size={theme.fs(24)} color={theme.colors.textWhite} />
+            <Icon name="chevronLeft" size={theme.fs(24)} color={mm.colors.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>设置</Text>
           <View style={styles.headerBtn} />
@@ -249,10 +250,11 @@ export default function SettingsScreen() {
         {/* 日常设置 */}
         <Text style={styles.sectionTitle}>日常设置</Text>
         <Card padded={false} style={styles.listCard}>
-          <Row icon="bell" title="消息通知" desc="周期提醒与每日洞察推送" value={notif} onValueChange={setNotif} />
+          <Row icon="bell" tone="pink" title="消息通知" desc="周期提醒与每日洞察推送" value={notif} onValueChange={setNotif} />
           <View style={styles.divider} />
           <Row
             icon="sync"
+            tone="cyan"
             title="数据同步"
             desc="开启后从戒指读取并同步存储的生理数据"
             value={sync}
@@ -271,8 +273,8 @@ export default function SettingsScreen() {
         <Card style={styles.noteCard}>
           <View style={styles.toggleCard}>
             <View style={styles.toggleLeft}>
-              <View style={styles.iconWrap}>
-                <Icon name="orb" size={theme.fs(20)} color={theme.colors.accentSolid} strokeWidth={2} />
+              <View style={[styles.iconWrap, { backgroundColor: mm.chipBg.lime.bg }]}>
+                <Icon name="orb" size={theme.fs(20)} color={mm.chipBg.lime.fg} strokeWidth={2} />
               </View>
               <View style={styles.toggleText}>
                 <Text style={styles.rowTitle}>基础指标自动监测</Text>
@@ -322,29 +324,48 @@ export default function SettingsScreen() {
             <TouchableOpacity
               onPress={connectRing}
               disabled={ringBusy}
+              activeOpacity={0.7}
               style={[
                 styles.connectBtn,
                 ringConnected && styles.connectBtnOn,
                 ringBusy && styles.connectBtnBusy,
               ]}
             >
-              <Text
-                style={[
-                  styles.connectBtnText,
-                  ringConnected ? { color: theme.colors.textSub } : null,
-                ]}
-              >
-                {ringConnected ? '断开' : ringBusy ? '连接中' : ringFailed ? '重试' : '连接'}
-              </Text>
+              {ringConnected || ringBusy ? (
+                <Text style={[styles.connectBtnText, styles.connectBtnTextAlt]}>
+                  {ringConnected ? '断开' : '连接中'}
+                </Text>
+              ) : (
+                <LinearGradient
+                  colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                >
+                  <View style={styles.connectBtnGradInner}>
+                    <Text style={styles.connectBtnTextGrad}>{ringFailed ? '重试' : '连接'}</Text>
+                  </View>
+                </LinearGradient>
+              )}
             </TouchableOpacity>
             {ringConnected && (
               <TouchableOpacity
                 onPress={() => RingBle.flashRing()}
                 disabled={ring.flashing}
+                activeOpacity={0.7}
                 style={styles.findBtn}
               >
-                <Icon name="bell" size={theme.fs(14)} color={theme.colors.textWhite} strokeWidth={2} />
-                <Text style={styles.findBtnText}>{ring.flashing ? '查找中' : '查找戒指'}</Text>
+                <LinearGradient
+                  colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                >
+                  <View style={styles.connectBtnGradInner}>
+                    <Icon name="bell" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
+                    <Text style={styles.findBtnText}>{ring.flashing ? '查找中' : '查找戒指'}</Text>
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
             )}
           </View>
@@ -528,10 +549,24 @@ export default function SettingsScreen() {
           <TouchableOpacity
             onPress={uploadCloud}
             disabled={uploading}
+            activeOpacity={0.7}
             style={[styles.uploadBtn, uploading && styles.uploadBtnBusy]}
           >
-            <Icon name="sync" size={theme.fs(14)} color={theme.colors.textWhite} strokeWidth={2} />
-            <Text style={styles.uploadBtnText}>{uploading ? '上传中…' : '上传云端'}</Text>
+            {uploading ? (
+              <Text style={styles.uploadBtnText}>{'上传中…'}</Text>
+            ) : (
+              <LinearGradient
+                colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              >
+                <View style={styles.uploadBtnGradInner}>
+                  <Icon name="sync" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
+                  <Text style={styles.uploadBtnText}>{'上传云端'}</Text>
+                </View>
+              </LinearGradient>
+            )}
           </TouchableOpacity>
           {uploadMsg && (
             <Text
@@ -581,21 +616,25 @@ function DebugRow({ label, value }: { label: string; value: string }) {
 
 function Row({
   icon,
+  tone = 'lav',
   title,
   desc,
   value,
   onValueChange,
 }: {
   icon: any;
+  /** v16 图标方块语义色（chipBg 五家族之一） */
+  tone?: 'lav' | 'pink' | 'cyan' | 'lime' | 'butter';
   title: string;
   desc: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
 }) {
+  const chip = mm.chipBg[tone];
   return (
     <View style={styles.row}>
-      <View style={styles.iconWrap}>
-        <Icon name={icon} size={theme.fs(20)} color={theme.colors.accentSolid} strokeWidth={2} />
+      <View style={[styles.iconWrap, { backgroundColor: chip.bg }]}>
+        <Icon name={icon} size={theme.fs(20)} color={chip.fg} strokeWidth={2} />
       </View>
       <View style={styles.toggleText}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -607,7 +646,7 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, width: '100%', backgroundColor: theme.colors.bgTop },
+  root: { flex: 1, width: '100%', backgroundColor: theme.colors.textWhite },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -619,7 +658,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
   },
   profileCard: {
     flexDirection: 'row',
@@ -703,17 +742,32 @@ const styles = StyleSheet.create({
   },
   rowDesc: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
   connectBtn: {
+    borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: mm.colors.btnGradFrom,
+  },
+  connectBtnOn: { borderColor: 'rgba(120,120,140,0.28)', backgroundColor: 'rgba(120,120,140,0.18)' },
+  connectBtnBusy: { backgroundColor: mm.colors.btnBusyBg, borderColor: 'rgba(120,120,140,0.28)' },
+  connectBtnGradInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: theme.sp(2.5),
     paddingHorizontal: theme.sp(6),
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSolid,
   },
-  connectBtnOn: { backgroundColor: 'rgba(120,120,140,0.18)' },
-  connectBtnBusy: { backgroundColor: theme.colors.accentSoft },
   connectBtnText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: theme.colors.textSub,
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(6),
+  },
+  connectBtnTextAlt: { color: theme.colors.textSub },
+  connectBtnTextGrad: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: mm.colors.btnTextOnGrad,
   },
   ringHeader: {
     flexDirection: 'row',
@@ -731,15 +785,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.xs,
-    backgroundColor: theme.colors.accentSolid,
+    overflow: 'hidden',
     paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
     borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: mm.colors.btnGradFrom,
   },
   findBtnText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.btnTextOnGrad,
   },
   flashHint: {
     marginTop: theme.space.sm,
@@ -830,7 +885,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBorder,
   },
   barOn: {
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.limeCore,
   },
   errorBox: {
     marginTop: theme.space.sm,
@@ -902,20 +957,24 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.md,
   },
   uploadBtn: {
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: mm.colors.btnGradFrom,
+  },
+  uploadBtnGradInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.xs,
-    alignSelf: 'flex-start',
-    backgroundColor: theme.colors.accentSolid,
     paddingHorizontal: theme.space.lg,
     paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.pill,
   },
-  uploadBtnBusy: { backgroundColor: theme.colors.accentSoft },
+  uploadBtnBusy: { backgroundColor: mm.colors.btnBusyBg, borderColor: 'rgba(120,120,140,0.28)' },
   uploadBtnText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.btnTextOnGrad,
   },
   uploadMsg: {
     marginTop: theme.space.sm,

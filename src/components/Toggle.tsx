@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 
 const W = 51;
 const H = 31;
@@ -35,7 +36,8 @@ export default function Toggle({ value, onValueChange, disabled }: Props) {
       onPress={() => onValueChange(!value)}
       style={[
         styles.track,
-        { backgroundColor: value ? theme.colors.accentSolid : theme.colors.ui.offTrack },
+        // v16 §1.6：开关=控件，选中态用黄绿（全 app 唯一控件色），替代旧 accentSolid 紫
+        { backgroundColor: value ? mm.colors.limeMid : theme.colors.ui.offTrack },
       ]}
     >
       <Animated.View style={[styles.knob, { transform: [{ translateX: x }] }]} />

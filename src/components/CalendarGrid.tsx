@@ -14,9 +14,10 @@ interface Props {
 }
 
 const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
-const GOLD = '#F5A623';
-const CELL_BG = '#EEEEEF';
-const TODAY_BG = '#FFF3CD';
+// v16 五色系统：周末/今日用黄（honey）家族——黄=元气·能量档，替代旧 #F5A623/#FFF3CD
+const GOLD = '#F0C46E';        // honeyCore
+const CELL_BG = '#F6F4F1';     // mm.colors.emptyFill（中性空格子）
+const TODAY_BG = '#FBEFD6';    // honeySoft
 const GAP = theme.sp(1.5);
 const COLS = 7;
 const ROWS = 6;
@@ -193,7 +194,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any,
     color: theme.colors.textSub, textAlign: 'center', marginBottom: theme.sp(0.5),
   },
-  dayNumToday: { color: '#D97706', fontWeight: theme.weight.bold as any },
+  dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any }, // honeyDeep
   events: { flexDirection: 'row', justifyContent: 'center', gap: 3 },
   evEmoji: { fontSize: 10, lineHeight: 12 },
 });

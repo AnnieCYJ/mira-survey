@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import CalendarGrid from '../components/CalendarGrid';
@@ -133,7 +135,12 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenContainer compactTop scrollY={scrollY}>
+      {/* v10：日历页背景全白（与首页/洞察页同款处理） */}
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Calendar</Text>
         </Animated.View>
@@ -149,7 +156,14 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>计划任务</Text>
             </View>
             <View style={styles.statItem}>
-              <ProgressRing progress={completionRate} size={theme.fs(56)} stroke={5}>
+              {/* v16 §1.6：完成度 = 黄绿（唯一控件色/唯一绿） */}
+              <ProgressRing
+                progress={completionRate}
+                size={theme.fs(56)}
+                stroke={5}
+                color={mm.colors.limeCore}
+                track={mm.colors.emptyFill}
+              >
                 <Text style={styles.ringPct}>{Math.round(completionRate * 100)}%</Text>
               </ProgressRing>
             </View>
@@ -230,7 +244,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
     marginBottom: theme.space.md,
   },
   statsCard: { marginBottom: theme.space.card },
@@ -245,7 +259,7 @@ const styles = StyleSheet.create({
   ringPct: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.bold,
-    color: theme.colors.accentSolid,
+    color: mm.colors.limeDeep,
   },
   calHead: {
     flexDirection: 'row',
