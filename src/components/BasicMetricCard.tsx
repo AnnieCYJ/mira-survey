@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
 import { TREND_AXIS } from '../data/metrics';
@@ -17,6 +18,22 @@ import type { BasicMetricDef } from '../data/metrics';
 // 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
 // Y 轴随今日真实数据自适应缩放（值域上下各留 12% 余量，单点/空时回退固定生理量程）。
 // 数据点按时间排序后绘制；相邻点间隔超过 36h 则断线（诚实留白，不编造连续趋势）。
+// v10 reskin（2026-09-24）：趋势线不再全线同紫——按指标 key 从五色家族稳定取色，
+// 同一指标永远同色（跨页面/刷新不变），不同指标错开色相（参考稿多色趋势）。
+const TREND_PALETTE: string[] = [
+  mm.colors.ringPurpleDeep, // 紫
+  mm.colors.cyanDeep,       // 青
+  mm.colors.ringPinkDeep,   // 粉
+  mm.colors.ringTealDeep,   // 绿青
+  mm.colors.ringYellowDeep, // 琥珀
+  mm.colors.lavenderDeep,   // 淡紫
+];
+function trendColorFor(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return TREND_PALETTE[h % TREND_PALETTE.length];
+}
+
 /** 迷你趋势图 Y 标注：整数不带小数，小数保留 1 位。 */
 function fmtMini(v: number): string {
   if (!Number.isFinite(v)) return '';
@@ -141,6 +158,7 @@ export default function BasicMetricCard({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const h = theme.fs(84);
   const gid = `bm_${metric.key}`;
+  const tc = trendColorFor(metric.key); // v10 本卡趋势色
   // 今日窗口内的实际最大/最小值，作为迷你趋势图的 Y 向参照（不画整条标尺，避免拥挤）
   const yStats = useMemo(() => {
     const ys = data.map((d) => d.v).filter((v) => Number.isFinite(v));
@@ -225,19 +243,19 @@ export default function BasicMetricCard({
                   <>
                     <Defs>
                       <LinearGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.32} />
-                        <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
+                        <Stop offset="0%" stopColor={tc} stopOpacity={0.32} />
+                        <Stop offset="100%" stopColor={tc} stopOpacity={0.02} />
                       </LinearGradient>
                       <LinearGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
-                        <Stop offset="0%" stopColor={theme.colors.accent1} />
-                        <Stop offset="100%" stopColor={theme.colors.accent2} />
+                        <Stop offset="0%" stopColor={tc} />
+                        <Stop offset="100%" stopColor={tc} stopOpacity={0.72} />
                       </LinearGradient>
                     </Defs>
                     <Path d={areaD} fill={`url(#${gid}_grad)`} />
                     <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />
                   </>
                 ) : (
-                  <Path d={placeholderPath} fill="none" stroke={theme.colors.accent1} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+                  <Path d={placeholderPath} fill="none" stroke={tc} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
                 )}
               </Svg>
             ) : null}
@@ -287,18 +305,18 @@ export default function BasicMetricCard({
               <Svg width={w} height={h}>
                 <Defs>
                   <LinearGradient id={`${gid}_grad`} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.32} />
-                    <Stop offset="100%" stopColor={theme.colors.accent2} stopOpacity={0.02} />
+                    <Stop offset="0%" stopColor={tc} stopOpacity={0.32} />
+                    <Stop offset="100%" stopColor={tc} stopOpacity={0.02} />
                   </LinearGradient>
                   <LinearGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0%" stopColor={theme.colors.accent1} />
-                    <Stop offset="100%" stopColor={theme.colors.accent2} />
+                    <Stop offset="0%" stopColor={tc} />
+                    <Stop offset="100%" stopColor={tc} stopOpacity={0.72} />
                   </LinearGradient>
                 </Defs>
                 {/* 与睡眠/激素卡片视觉同源：渐变面积 + 渐变曲线 + 末端白点；无数据则整张图留白 */}
                 {hasData && <Path d={areaD} fill={`url(#${gid}_grad)`} />}
                 {hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />}
-                {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={theme.colors.accentSolid} strokeWidth={2.4} />}
+                {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={tc} strokeWidth={2.4} />}
               </Svg>
             ) : null}
             {/* 今日窗口最大 / 最小值（Y 向参照，小字叠加在趋势图左上 / 左下） */}

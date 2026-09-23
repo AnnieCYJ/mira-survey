@@ -47,9 +47,17 @@ export const mm = {
     /* ── 白卡与描边 ── */
     cardBg: '#FFFFFF',
     ghostCard: '#F4F1FA',
-    cardBorder: 'rgba(31,29,26,0.05)',
+    // 0.05 在纯白上几乎不可见（用户实测反馈「看不到边框」）→ 提到 0.09
+    cardBorder: 'rgba(31,29,26,0.09)',
     chipBorder: 'rgba(31,29,26,0.10)',
     tabBorder: 'rgba(31,29,26,0.14)',
+    // 参考稿「Save Mood」渐变按钮：lime → 粉（135°）
+    btnGradFrom: '#D5E384',
+    btnGradTo: '#F2B8D0',
+    // 弧形/环形图的多色家族（参考稿 Emotional Check-in 甜甜圈）
+    arcLime: '#B9D06B',
+    arcLavender: '#A98FE8',
+    arcPink: '#F2A3C6',
 
     /* ── 底栏（SPEC §2 #13）── */
     tabBg: 'rgba(255,255,255,0.96)',

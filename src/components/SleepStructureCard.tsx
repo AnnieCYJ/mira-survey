@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import SleepStageChart, { SLEEP_STAGE_META } from './SleepStageChart';
 import { formatSleepClockText } from '../lib/sleepTime';
 import type { SleepSegment, SleepSummary } from '../ble/RingBleManager';
@@ -55,7 +56,7 @@ export default function SleepStructureCard({
       activeOpacity={onPress ? 0.92 : 1}
       disabled={!onPress}
       onPress={onPress}
-      style={[styles.card, theme.glass, theme.shadow.card]}
+      style={[styles.card, theme.shadow.card]}
     >
       <View style={styles.head}>
         <View>
@@ -120,7 +121,10 @@ export default function SleepStructureCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
+    backgroundColor: mm.colors.cardBg,
+    borderWidth: 1,
+    borderColor: mm.colors.cardBorder,
     padding: theme.space.cardPad,
     gap: theme.space.md,
   },

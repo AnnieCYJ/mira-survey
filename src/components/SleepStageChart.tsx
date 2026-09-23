@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { parseClockMinutes } from '../lib/sleepTime';
 import type { SleepSegment } from '../ble/RingBleManager';
 
@@ -9,12 +10,14 @@ import type { SleepSegment } from '../ble/RingBleManager';
  *  0=深睡 1=浅睡 2=REM 3=失眠 4=清醒（KH18 固件通常只返回 0/1/2/4）。
  *  每个阶段占独立水平带（row），行高和行间距都压小，形成参考图那种密集分层。
  */
+// v10 reskin（2026-09-24）：分期改五色家族（参考稿多色趋势）——
+// 紫=深睡 / 青=浅睡 / 粉=REM / 红=失眠 / 琥珀=清醒，全部取 deep 档 token 保证白底可辨。
 export const SLEEP_STAGE_META: Record<number, { label: string; color: string; row: number }> = {
-  0: { label: '深睡', color: theme.colors.accent1, row: 0 },      // 最底行，浅紫矮条
-  1: { label: '浅睡', color: theme.colors.accentSolid, row: 1 }, // 中紫中条
-  2: { label: 'REM', color: theme.colors.accent2, row: 2 },      // 浅蓝高条
-  3: { label: '失眠', color: theme.colors.danger, row: 3 },        // 与清醒同行
-  4: { label: '清醒', color: theme.colors.stateTense, row: 3 },    // 最顶行，黄色小条
+  0: { label: '深睡', color: mm.colors.ringPurpleDeep, row: 0 },   // 最底行，紫矮条
+  1: { label: '浅睡', color: mm.colors.cyanDeep, row: 1 },         // 青中条
+  2: { label: 'REM', color: mm.colors.ringPinkDeep, row: 2 },      // 粉高条
+  3: { label: '失眠', color: theme.colors.trendDown, row: 3 },     // 与清醒同行
+  4: { label: '清醒', color: mm.colors.ringYellowDeep, row: 3 },   // 最顶行，琥珀小条
 };
 
 const ROW_H = theme.sp(4.5);       // 行带高度 ≈18

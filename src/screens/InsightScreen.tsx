@@ -553,15 +553,23 @@ function EcgReadout({ ring }: { ring: RingState }) {
     );
   }
 
+  // v10：渐变按钮（lime→粉，135°，参考稿「Save Mood」）
   const measureBtn = (
     <TouchableOpacity
       style={[styles.ecgBtn, isMeasuring && styles.ecgBtnDisabled]}
       onPress={() => RingBle.measure('ecg')}
       disabled={isMeasuring}
     >
-      <Text style={styles.ecgBtnText}>
-        {isMeasuring ? `测量中 ${progress?.progress ?? 0}%` : reading ? '重新测量' : '开始测量'}
-      </Text>
+      <LinearGradient
+        colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.ecgBtnGrad}
+      >
+        <Text style={styles.ecgBtnText}>
+          {isMeasuring ? `测量中 ${progress?.progress ?? 0}%` : reading ? '重新测量' : '开始测量'}
+        </Text>
+      </LinearGradient>
     </TouchableOpacity>
   );
 
@@ -605,7 +613,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
           <SvgPath
             d={ecgWaveformPath(reading.waveform)}
             fill="none"
-            stroke={theme.colors.accent1}
+            stroke={mm.colors.ringPurpleDeep}
             strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -723,11 +731,13 @@ const styles = StyleSheet.create({
   },
   ecgBtn: {
     marginTop: theme.space.md,
-    backgroundColor: theme.colors.accent1,
+    borderRadius: theme.radius.pill,
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+  },
+  ecgBtnGrad: {
     paddingHorizontal: theme.space.lg,
     paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.md,
-    alignSelf: 'flex-start',
   },
   ecgBtnDisabled: { opacity: 0.5 },
   ecgBtnText: {

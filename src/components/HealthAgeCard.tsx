@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop, Path, Text as SvgText, G } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import { AiBadge } from './AiAnalysis';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
@@ -99,20 +100,22 @@ export default function HealthAgeCard({
   })();
 
   return (
-    <View>
+    <View style={styles.cardShell}>
       {/* ═══ SVG 弧 (参考 HTML) ═══ */}
       <View style={{ alignItems: 'center', paddingTop: theme.sp(1.5) }}>
         <Svg width="100%" height={VB_H} viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
           <Defs>
+            {/* v10 多色弧：lime → 紫 → 粉（参考稿甜甜圈家族），底弧用 ghostCard 保证白卡上可见 */}
             <LinearGradient id="haRing" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0%" stopColor={theme.colors.success} />
-              <Stop offset="100%" stopColor={isYounger ? theme.colors.accent1 : theme.colors.danger} />
+              <Stop offset="0%" stopColor={mm.colors.arcLime} />
+              <Stop offset="55%" stopColor={mm.colors.arcLavender} />
+              <Stop offset="100%" stopColor={mm.colors.arcPink} />
             </LinearGradient>
           </Defs>
 
           {/* 背景弧: 半透明白 */}
           <Path d={arcD}
-            stroke="rgba(255,255,255,0.22)" strokeWidth={stroke}
+            stroke={mm.colors.ghostCard} strokeWidth={stroke}
             fill="none" strokeLinecap="round" />
 
           {/* 进度弧: 纯白 */}
@@ -141,16 +144,16 @@ export default function HealthAgeCard({
 
         {/* ═══ 中央内容 (position: absolute 风格, 但用 View 布局) ═══ */}
         <View style={[styles.centerContent, { marginTop: -VB_H + 82 }]} pointerEvents="none">
-          <View style={[styles.trendBadge, { backgroundColor: deltaColor, shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: {width: 0, height: 2}, elevation: 3 }]}>
+          <View style={[styles.trendBadge, { backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder }]}>
             <Icon name={isYounger ? 'activity' : 'breath'}
-              size={theme.fontSize.sm} color={'#FFFFFF'} />
-            <Text style={[styles.trendText, { color: '#FFFFFF' }]}>
+              size={theme.fontSize.sm} color={mm.colors.ink} />
+            <Text style={[styles.trendText, { color: mm.colors.ink }]}>
               {isYounger ? '年轻' : '衰老'} {Math.abs(delta).toFixed(1)} 岁
             </Text>
           </View>
 
           <View style={styles.labelRow}>
-            <Icon name="heart" size={theme.fontSize.sm} color={'#FFFFFF'} style={{ marginRight: 4 }} />
+            <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.lavenderDeep} style={{ marginRight: 4 }} />
             <Text style={styles.labelText}>身体年龄</Text>
           </View>
         </View>
@@ -212,22 +215,31 @@ const styles = StyleSheet.create({
   labelText: {
     fontSize: theme.fontSize.card,
     fontWeight: '400',
-    color: '#FFFFFF',
+    color: mm.colors.ink,
     letterSpacing: 0.5,
+  },
+  // v10：整卡一个白卡容器（描边+阴影），AI 分析为卡内区块
+  cardShell: {
+    backgroundColor: mm.colors.cardBg,
+    borderWidth: 1,
+    borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card,
+    paddingTop: theme.sp(2),
+    overflow: 'hidden',
+    shadowColor: mm.shadow.color,
+    shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius,
+    shadowOffset: { width: 0, height: mm.shadow.height },
+    elevation: mm.shadow.elevation,
   },
   cardWrap: {
     marginHorizontal: theme.sp(3),
-    marginTop: theme.sp(2.5),
-    marginBottom: theme.sp(2),
+    marginTop: theme.sp(1),
+    marginBottom: theme.sp(3),
     paddingHorizontal: theme.sp(3),
-    paddingVertical: theme.sp(2.5),
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.radius.card,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingTop: theme.sp(2.5),
+    borderTopWidth: 1,
+    borderTopColor: mm.colors.chipBorder,
   },
   body: {
     fontSize: theme.fontSize.sm,
