@@ -2,9 +2,10 @@ import React, { useRef, useEffect, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Icon, { type IconName } from './Icon';
 import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SvgLg, Stop } from 'react-native-svg';
 
 const TAB_ICON: Record<string, IconName> = {
   Today: 'home',
@@ -101,14 +102,13 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
 
   return (
     <View style={{ width: size, height: size }}>
-      {/* 身体 —— 用 design token 颜色 */}
+      {/* 身体 —— v10 紫渐变（#A98FE8→#C3B2D4, 135°） */}
       <Svg viewBox="0 0 200 200" width={size} height={size}>
         <Defs>
-          <RadialGradient id="tabBotBody" cx="35%" cy="28%" r="75%">
-            <Stop offset="0%" stopColor={theme.colors.accent1} />
-            <Stop offset="60%" stopColor={theme.colors.accentSolid} />
-            <Stop offset="100%" stopColor={theme.colors.accentSolid} />
-          </RadialGradient>
+          <SvgLg id="tabBotBody" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={mm.colors.fabFrom} />
+            <Stop offset="100%" stopColor={mm.colors.fabTo} />
+          </SvgLg>
         </Defs>
         <Circle cx={100} cy={100} r={82} fill="url(#tabBotBody)" />
       </Svg>
@@ -269,13 +269,15 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               accessibilityRole="button"
               accessibilityState={{ selected: focused }}
             >
-              <Icon
-                name={TAB_ICON[route.name] ?? 'home'}
-                size={theme.fs(26)}
-                color={focused ? theme.colors.textNavOn : theme.colors.textNavIdle}
-                strokeWidth={2}
-              />
-              {focused ? <View style={styles.dot} /> : null}
+              {/* v10 选中态：lime 圆底 + 深色 icon；未选 = inkFaint */}
+              <View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }]}>
+                <Icon
+                  name={TAB_ICON[route.name] ?? 'home'}
+                  size={theme.fs(22)}
+                  color={focused ? mm.colors.ink : mm.colors.inkFaint}
+                  strokeWidth={2}
+                />
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -316,7 +318,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     height: theme.layout.tabBarHeight,
-    backgroundColor: 'rgba(230,228,242,0.94)',
+    backgroundColor: mm.colors.tabBg,
+    borderWidth: 1,
+    borderColor: mm.colors.cardBorder,
     // ★ 必须用 pill：高度 = tabBarHeight(56)，pill(999) 会解析成半高 28 → 完整胶囊。
     //   原先写 radius.card 时 card 恰好是 28 才碰巧是胶囊；2026-09-20 把 card 收紧到 14 后就退化成圆角矩形了。
     borderRadius: theme.radius.pill,
@@ -325,22 +329,24 @@ const styles = StyleSheet.create({
     ...theme.shadow.nav,
   },
   item: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
-  dot: {
-    position: 'absolute',
-    bottom: theme.sp(-1),
-    left: '50%',
-    width: theme.sp(1),
-    height: theme.sp(1),
-    marginLeft: -theme.sp(0.5),
+  // v10：选中项 = 42px lime 圆底（SPEC §2 #13），不再用小圆点
+  itemCircle: {
+    width: theme.fs(38),
+    height: theme.fs(38),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSolid,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   botBtn: {
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.layout.tabBarHeight / 2 - theme.layout.tabCenterSize / 2,
-    ...theme.shadow.center,
+    shadowColor: mm.fabShadow.color,
+    shadowOpacity: mm.fabShadow.opacity,
+    shadowRadius: mm.fabShadow.radius,
+    shadowOffset: { width: 0, height: mm.fabShadow.height },
+    elevation: mm.fabShadow.elevation,
   },
   voiceDot: {
     position: 'absolute',
@@ -350,6 +356,6 @@ const styles = StyleSheet.create({
     height: theme.sp(1.5),
     marginLeft: -theme.sp(0.75),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.ink,
   },
 });

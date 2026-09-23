@@ -23,15 +23,13 @@ import Svg, {
   Path,
   Circle,
   Line,
-  Rect,
   Defs,
   LinearGradient as SvgLinearGradient,
   Stop,
   Text as SvgText,
-  G,
 } from 'react-native-svg';
-import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
@@ -50,23 +48,11 @@ const PAD_T = 44;          // ★ 顶部留白加大：峰值圆点 + 时刻标�
 const PAD_B = 20;          // 底部留白：给时间轴
 
 /**
- * ★ 配色结构（对齐用户新参考稿：冷 → 暖的两段柔和渐变，整体很轻透）
- *   · 顶部 colors.accent1  #9D8AF0 淡紫（用户要求：把原来的淡蓝换掉）
- *   · 中上 colors.bgMidAlt #ECEAFB 极浅紫雾
- *   · 中部 colors.cardBg   #FFFFFF 白（最亮的一段）
- *   · 底部 colors.celebrateGrad[0] #F5D189 暖奶金（用 stopOpacity 压淡，避免过饱和）
- * 用 SVG 线性渐变写：只有它支持逐段 stopOpacity，才能做出参考稿那种「透气」的淡。
- * 因为整卡是浅底，文字统一走深色（标题 textInk / 说明 textSub / 曲线 accentSolid）。
+ * ★ v10 reskin（2026-09-23）：整卡改白卡（SPEC §2 #10）——
+ *   白底 + 细描边 + v10 白卡阴影；图表走青色系（ringTeal 线/面积、ringTealDeep 峰值标记）。
+ *   标题行加青色胶囊 badge（数值来自真实睡眠评分）；底部解读行 = 色点 + 加粗结论 + 灰色说明。
+ *   注：SPEC 里的「虚线目标线」无对应真实目标值，按数据铁律不上（不编造基线）。
  */
-// ★ 参考图：天空质感柔和冷暖渐变（上冷灰蓝 → 中暖米色 → 下淡紫）
-// 非常透气，没有硬对比，像天光从上方照下来
-const CARD_BG_STOPS: { off: string; color: string; opacity: number }[] = [
-  { off: '0%',   color: '#DCE4EC', opacity: 1 },   // 顶：冷灰蓝（天空雾）
-  { off: '25%',  color: '#E8E4DC', opacity: 1 },   // 中冷：灰米过渡
-  { off: '55%',  color: theme.colors.ui.hazeWarm, opacity: 1 }, // 中暖：奶油米色（最暖处；与面板下缘弥散同源）
-  { off: '80%',  color: '#ECE4FB', opacity: 0.9 },  // 转紫：淡紫雾
-  { off: '100%', color: '#D4C8F2', opacity: 0.85 }, // 底：柔紫
-];
 
 /** 最近一晚睡眠：优先今天，其次昨天（跨午夜睡眠可能记在前一日） */
 function latestSleep(): SleepSummary | null {
@@ -156,6 +142,11 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
     ? `${ampPct != null ? `波动 ${ampPct}%` : '节律已建模'} · ${recoveryWord}`
     : '佩戴后生成节律';
 
+  // ★ 青色 badge（SPEC #10「82% · 接近目标」）：数值 = 真实睡眠评分，档位词由评分推导
+  const badgeWord =
+    sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
+  const badgeText = sleepScore != null ? `${sleepScore}% · ${badgeWord}` : badgeWord;
+
   // —— 曲线数据（三级降级）——
   const { series, mode } = useMemo<{ series: number[]; mode: 'today' | 'rhythm' | 'demo' }>(() => {
     const today = buildCortisolToday30();                       // 48 槽，尾段为 null
@@ -213,22 +204,16 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
 
   const body = (
     <View style={styles.wrap}>
-      {/* ★ 整张卡一条冷→暖柔和渐变（上淡蓝 → 中白 → 下暖奶金） */}
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
-        <Defs>
-          <SvgLinearGradient id="adrCardBg" x1="0" y1="0" x2="0" y2="1">
-            {CARD_BG_STOPS.map((s) => (
-              <Stop key={s.off} offset={s.off} stopColor={s.color} stopOpacity={s.opacity} />
-            ))}
-          </SvgLinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#adrCardBg)" />
-      </Svg>
       <View style={styles.inner}>
-        {/* 卡片标题 */}
+        {/* 卡片标题 + 青色胶囊 badge */}
         <View style={styles.headRow}>
           <Text style={styles.title}>全天恢复</Text>
-          <Icon name="chevronRight" size={18} color={theme.colors.ui.chipText} />
+          <View style={styles.headRight}>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badgeText}</Text>
+            </View>
+            <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
+          </View>
         </View>
 
         {/* 上半：睡眠恢复情况 / 皮质醇峰值 */}
@@ -266,8 +251,8 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
               <Defs>
                 {/* 曲线下方渐变填充（纯白 token + 渐变透明度） */}
                 <SvgLinearGradient id="adrArea" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity="0.34" />
-                  <Stop offset="100%" stopColor={theme.colors.accent1} stopOpacity="0.02" />
+                  <Stop offset="0%" stopColor={mm.colors.ringTeal} stopOpacity="0.34" />
+                  <Stop offset="100%" stopColor={mm.colors.ringTeal} stopOpacity="0.02" />
                 </SvgLinearGradient>
                 {/* 峰值圆点外发光 */}
               </Defs>
@@ -278,8 +263,8 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 y1={PAD_T + chartH}
                 x2={PAD_L + chartW}
                 y2={PAD_T + chartH}
-                stroke={theme.colors.accentSolid}
-                strokeOpacity={0.22}
+                stroke={mm.colors.ringTealDeep}
+                strokeOpacity={0.25}
                 strokeWidth={1}
               />
 
@@ -289,8 +274,8 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 <Path
                   d={linePath}
                   fill="none"
-                  stroke={theme.colors.accentSolid}
-                  strokeWidth={2.4}
+                  stroke={mm.colors.ringTeal}
+                  strokeWidth={2.6}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeOpacity={mode === 'demo' ? 0.75 : 1}
@@ -303,18 +288,18 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 y1={peakY}
                 x2={peakX}
                 y2={PAD_T + chartH}
-                stroke={theme.colors.accentSolid}
+                stroke={mm.colors.ringTealDeep}
                 strokeOpacity={0.42}
                 strokeWidth={1}
                 strokeDasharray="3,3"
               />
-              <Circle cx={peakX} cy={peakY} r={4.2} fill={theme.colors.accentSolid} />
+              <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.ringTealDeep} />
               <SvgText
                 x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
                 y={Math.max(peakY - 12, 12)}
                 fontSize={11}
                 fontWeight="600"
-                fill={theme.colors.accentSolid}
+                fill={mm.colors.ringTealDeep}
                 textAnchor="middle"
               >
                 {fmtClock(peakIdx / 2)}
@@ -331,7 +316,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                     x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + chartW - 1 : xOf(slot)}
                     y={CHART_H - 4}
                     fontSize={9.5}
-                    fill={theme.colors.ui.chipText}
+                    fill={mm.colors.inkFaint}
                     textAnchor={edgeL ? 'start' : edgeR ? 'end' : 'middle'}
                   >
                     {String(h).padStart(2, '0')}
@@ -344,13 +329,22 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
           )}
         </View>
 
-        <Text style={styles.caption}>
-          {mode === 'demo'
-            ? '皮质醇全天节律 · 示意曲线，戴上戒指后显示你的真实趋势'
-            : mode === 'rhythm'
-              ? '皮质醇全天节律 · 近 14 天日均拟合，今日样本累积后会更贴合'
-              : '皮质醇全天节律 · 今日真实趋势'}
-        </Text>
+        {/* v10 解读行：色点 + 加粗结论 + 灰色说明（全部来自真实数据口径） */}
+        <View style={styles.keyRow}>
+          <View style={[styles.keyDot, { backgroundColor: mm.colors.ringTeal }]} />
+          <View style={styles.keyTx}>
+            <Text style={styles.keyBold} numberOfLines={1}>
+              {mode === 'demo' ? '节律示意' : recoveryWord}
+            </Text>
+            <Text style={styles.keySub} numberOfLines={1}>
+              {mode === 'demo'
+                ? '戴上戒指后显示你的真实皮质醇趋势'
+                : mode === 'rhythm'
+                  ? `近 14 天日均拟合 · ${cortisolSub}`
+                  : `今日真实趋势 · ${cortisolSub}`}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -364,12 +358,19 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
 }
 
 const styles = StyleSheet.create({
+  // v10 白卡：白底 + 细描边 + v10 卡片阴影
   wrap: {
-    borderRadius: theme.radius.card,
-    borderBottomLeftRadius: theme.radius.card,
-    borderBottomRightRadius: theme.radius.card,
+    backgroundColor: mm.colors.cardBg,
+    borderWidth: 1,
+    borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card,
     overflow: 'hidden',
     marginTop: 0,
+    shadowColor: mm.shadow.color,
+    shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius,
+    shadowOffset: { width: 0, height: mm.shadow.height },
+    elevation: mm.shadow.elevation,
   },
   inner: { padding: theme.space.cardPad },
   headRow: {
@@ -382,6 +383,38 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,
     color: theme.colors.textInk,
+  },
+  headRight: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
+  // 青色胶囊 badge（chipBg.cyan 对）
+  badge: {
+    paddingHorizontal: theme.sp(2),
+    paddingVertical: theme.sp(0.75),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.chipBg.cyan.bg,
+  },
+  badgeText: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.semibold,
+    color: mm.chipBg.cyan.fg,
+  },
+  // 底部解读行（SPEC #10）：8px 色点 + 加粗结论 + 灰说明
+  keyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.sp(1.5),
+    marginTop: theme.sp(0.5),
+  },
+  keyDot: { width: theme.sp(2), height: theme.sp(2), borderRadius: theme.radius.pill },
+  keyTx: { flex: 1 },
+  keyBold: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.bold,
+    color: mm.colors.ink,
+  },
+  keySub: {
+    fontSize: theme.fontSize.micro,
+    color: mm.colors.inkSoft,
+    marginTop: 1,
   },
   modePill: {
     paddingHorizontal: theme.sp(2),
@@ -400,7 +433,7 @@ const styles = StyleSheet.create({
   tileLabel: {
     fontSize: theme.fontSize.micro,
     // 彩色底上不能用中性灰，改用紫调中性色（从色相里染色）
-    color: theme.colors.ui.chipText,
+    color: mm.colors.inkSoft,
     marginBottom: theme.sp(0.75),
   },
   tileValRow: { flexDirection: 'row', alignItems: 'baseline' },
@@ -412,19 +445,19 @@ const styles = StyleSheet.create({
   },
   tileUnit: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.ui.chipText,
+    color: mm.colors.inkSoft,
     marginLeft: theme.sp(0.75),
   },
   tileSub: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.ui.chipText,
+    color: mm.colors.inkSoft,
     marginTop: theme.sp(0.75),
   },
   // 曲线区：落在卡片的深色段上（靠下方，给足上边距把曲线推进紫色区）
   chartBox: { marginTop: theme.space.lg },
   caption: {
     fontSize: theme.fontSize.micro,
-    color: theme.colors.ui.chipText,
+    color: mm.colors.inkSoft,
     marginTop: theme.sp(0.5),
   },
 });

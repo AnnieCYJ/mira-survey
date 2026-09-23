@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BpCard from '../components/BpCard';
 import EcgCard from '../components/EcgCard';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
 import InsightBanner from '../components/InsightBanner';
@@ -361,11 +362,16 @@ export default function InsightScreen() {
 
   return (
     <>
-    <ScreenContainer compactTop scrollY={scrollY}>
+    {/* v10 reskin：页面全白底（与 Today 同款做法），盖住 App 根渐变 */}
+    <View style={{ flex: 1 }}>
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
-          <Text style={styles.title}>Insights</Text>
-        </Animated.View>
+          <Text style={styles.title}>Insights</Text>        </Animated.View>
 
         
 
@@ -428,6 +434,7 @@ export default function InsightScreen() {
                 options={LONGEVITY_SUBS.map(t => t.label)}
                 activeIndex={LONGEVITY_SUBS.findIndex(t => t.key === subTab)}
                 onChange={(i) => setSubTab(LONGEVITY_SUBS[i].key)}
+                tone="cy"
               />
             </ScrollView>
 
@@ -488,6 +495,7 @@ export default function InsightScreen() {
         )}
       </View>
     </ScreenContainer>
+    </View>
     <ChatSheet
       visible={chatVisible}
       onClose={() => setChatVisible(false)}
@@ -621,7 +629,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
 }
 
 
-// ── 方案 A: Segmented 滑动块 ──
+// ── v10: 组 tab 胶囊（白底描边轨道 + lime 选中滑块，SPEC §1 #15）──
 function Segmented({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
   const W = theme.fs(160);
   const itemW = W / options.length;
@@ -647,28 +655,40 @@ function Segmented({ options, activeIndex, onChange }: { options: string[]; acti
   );
 }
 
-// ── 方案 A: 下划线子 tab ──
-function UnderlineTabs({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
-  const [anim] = useState(() => new Animated.Value(activeIndex));
-  useEffect(() => {
-    Animated.timing(anim, { toValue: activeIndex, duration: 260, useNativeDriver: false }).start();
-  }, [activeIndex]);
+// ── v10: 子 tab 胶囊（节律=lavender 选中 / 长期=cyan 选中，SPEC §1 #15）──
+function UnderlineTabs({
+  options,
+  activeIndex,
+  onChange,
+  tone = 'lav',
+}: {
+  options: string[];
+  activeIndex: number;
+  onChange: (i: number) => void;
+  tone?: 'lav' | 'cy';
+}) {
+  const pair =
+    tone === 'cy'
+      ? { bg: mm.colors.cyan, fg: mm.colors.cyanDeep }
+      : { bg: mm.colors.lavender, fg: mm.colors.lavenderDeep };
   return (
     <View style={styles.underlineWrap}>
       {options.map((label, i) => {
         const isActive = i === activeIndex;
         return (
-          <Pressable key={label} onPress={() => onChange(i)} style={styles.underlineBtn}>
-            <Text style={[styles.underlineLabel, isActive && styles.underlineLabelOn]}>{label}</Text>
+          <Pressable
+            key={label}
+            onPress={() => onChange(i)}
+            style={[styles.underlineBtn, isActive && { backgroundColor: pair.bg }]}
+          >
+            <Text
+              style={[styles.underlineLabel, isActive && { color: pair.fg, fontWeight: theme.weight.semibold }]}
+            >
+              {label}
+            </Text>
           </Pressable>
         );
       })}
-      <Animated.View
-        style={[styles.underlineIndicator, {
-          left: anim.interpolate({ inputRange: options.map((_, j) => j), outputRange: options.map((_, j) => j * theme.sp(7)) }),
-        }]}
-      />
-      <View style={styles.underlineBaseline} />
     </View>
   );
 }
@@ -678,7 +698,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
   },
   topTabRow: { flexDirection: 'row', marginBottom: theme.sp(2) },
   topTab: { paddingHorizontal: theme.sp(4), paddingVertical: theme.sp(2), borderRadius: theme.radius.pill, marginRight: theme.sp(1.5), fontSize: theme.fontSize.card },
@@ -792,24 +812,22 @@ const styles = StyleSheet.create({
   // 方案 A Segmented
   segmentedWrap: { alignItems: 'flex-start' },
   segmentedTrack: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: mm.colors.tabBg,
+    borderWidth: 1,
+    borderColor: mm.colors.chipBorder,
     borderRadius: theme.radius.xl,
     padding: theme.sp(1),
     flexDirection: 'row',
     position: 'relative',
     height: theme.sp(10),
   },
+  // v10：选中滑块 = lime 圆角块（无阴影，pastel 轻量）
   segmentedThumb: {
     position: 'absolute',
     top: theme.sp(1),
     bottom: theme.sp(1),
     borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.accentSolid,
-    shadowColor: theme.colors.accentSolid,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    backgroundColor: mm.colors.lime,
   },
   segmentedBtn: {
     alignItems: 'center',
@@ -820,22 +838,17 @@ const styles = StyleSheet.create({
   segmentedLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: 'rgba(255,255,255,0.82)',
+    color: mm.colors.inkSoft,
   },
-  segmentedLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold },
+  segmentedLabelOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold },
 
-  // 方案 A Underline
-  underlineWrap: { flexDirection: 'row', position: 'relative', paddingTop: theme.sp(2), paddingBottom: theme.sp(2.5) },
-  underlineBtn: { paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(1) },
-  underlineLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.regular, color: 'rgba(255,255,255,0.82)' },
-  underlineLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold },
-  underlineIndicator: {
-    position: 'absolute', bottom: 0,
-    width: theme.sp(5), height: 3,
-    borderRadius: 2,
-    backgroundColor: theme.colors.accentSolid,
-    marginLeft: theme.sp(0.5),
+  // v10 子 tab 胶囊（选中底色由 tone 在组件内注入）
+  underlineWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1) },
+  underlineBtn: {
+    paddingHorizontal: theme.sp(2.5),
+    paddingVertical: theme.sp(1.25),
+    borderRadius: theme.radius.pill,
   },
-  underlineBaseline: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
+  underlineLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.inkSoft },
 
 });

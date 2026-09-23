@@ -50,6 +50,11 @@ export const mm = {
     cardBorder: 'rgba(31,29,26,0.05)',
     chipBorder: 'rgba(31,29,26,0.10)',
     tabBorder: 'rgba(31,29,26,0.14)',
+
+    /* ── 底栏（SPEC §2 #13）── */
+    tabBg: 'rgba(255,255,255,0.96)',
+    fabFrom: '#A98FE8',
+    fabTo: '#C3B2D4',
   },
 
   radius: {
@@ -74,6 +79,15 @@ export const mm = {
     height: 7,
     radius: 17,
     elevation: 2,
+  },
+
+  /** 底栏 AI FAB 紫色光晕：CSS `0 16px 30px -12px rgba(157,138,240,.6)` 的 RN 拆解 */
+  fabShadow: {
+    color: '#9D8AF0',
+    opacity: 0.6,
+    height: 16,
+    radius: 15,
+    elevation: 6,
   },
 } as const;
 
