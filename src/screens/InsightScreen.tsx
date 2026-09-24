@@ -828,42 +828,42 @@ const styles = StyleSheet.create({
   // 方案 A Segmented
   segmentedWrap: { alignItems: 'flex-start' },
   segmentedTrack: {
-    backgroundColor: mm.colors.tabBg,
-    borderWidth: 1,
-    borderColor: mm.colors.chipBorder,
-    borderRadius: theme.radius.xl,
+    // v16 统一 tab 样式：轨道 = 中性灰浅底（无描边），与首页模块 tab/子 tab 同款
+    backgroundColor: mm.colors.btnBusyBg,
+    borderRadius: theme.radius.pill,
     padding: theme.sp(1),
     flexDirection: 'row',
     position: 'relative',
     height: theme.sp(10),
   },
-  // v10：选中滑块 = lime 圆角块（无阴影，pastel 轻量）
+  // 选中滑块 = limeSoft（选中字 limeDeep，与子 tab 一致）
   segmentedThumb: {
     position: 'absolute',
     top: theme.sp(1),
     bottom: theme.sp(1),
-    borderRadius: theme.radius.md,
-    backgroundColor: mm.colors.lime,
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.limeSoft,
   },
   segmentedBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     height: theme.sp(8),
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.pill,
   },
   segmentedLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
   },
-  segmentedLabelOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold },
+  segmentedLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold },
 
-  // v10 子 tab 胶囊（选中底色由 tone 在组件内注入）
+  // v16 统一 tab 样式：未选 = 中性灰浅底（原透明），选中 limeSoft 由组件内注入
   underlineWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1) },
   underlineBtn: {
     paddingHorizontal: theme.sp(2.5),
     paddingVertical: theme.sp(1.25),
     borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.btnBusyBg,
   },
   underlineLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.inkSoft },
 

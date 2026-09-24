@@ -340,11 +340,9 @@ export default function SettingsScreen() {
                   colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
+                  style={styles.connectBtnGrad}
                 >
-                  <View style={styles.connectBtnGradInner}>
-                    <Text style={styles.connectBtnTextGrad}>{ringFailed ? '重试' : '连接'}</Text>
-                  </View>
+                  <Text style={styles.connectBtnTextGrad}>{ringFailed ? '重试' : '连接'}</Text>
                 </LinearGradient>
               )}
             </TouchableOpacity>
@@ -359,12 +357,10 @@ export default function SettingsScreen() {
                   colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
+                  style={styles.findBtnGrad}
                 >
-                  <View style={styles.connectBtnGradInner}>
-                    <Icon name="bell" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
-                    <Text style={styles.findBtnText}>{ring.flashing ? '查找中' : '查找戒指'}</Text>
-                  </View>
+                  <Icon name="bell" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
+                  <Text style={styles.findBtnText}>{ring.flashing ? '查找中' : '查找戒指'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -553,18 +549,16 @@ export default function SettingsScreen() {
             style={[styles.uploadBtn, uploading && styles.uploadBtnBusy]}
           >
             {uploading ? (
-              <Text style={styles.uploadBtnText}>{'上传中…'}</Text>
+              <Text style={styles.uploadBtnTextBusy}>{'上传中…'}</Text>
             ) : (
               <LinearGradient
                 colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
+                style={styles.uploadBtnGrad}
               >
-                <View style={styles.uploadBtnGradInner}>
-                  <Icon name="sync" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
-                  <Text style={styles.uploadBtnText}>{'上传云端'}</Text>
-                </View>
+                <Icon name="sync" size={theme.fs(14)} color={mm.colors.btnTextOnGrad} strokeWidth={2} />
+                <Text style={styles.uploadBtnText}>{'上传云端'}</Text>
               </LinearGradient>
             )}
           </TouchableOpacity>
@@ -741,6 +735,8 @@ const styles = StyleSheet.create({
     color: theme.colors.textTitle,
   },
   rowDesc: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
+  // ★ 渐变按钮铁律：渐变层作为正常流子元素、自带 padding 撑起尺寸；
+  //   绝不用 absoluteFill（不占布局宽 → 外层无 padding 时按钮塌成 0 宽，点不到）。
   connectBtn: {
     borderRadius: theme.radius.pill,
     overflow: 'hidden',
@@ -749,12 +745,11 @@ const styles = StyleSheet.create({
   },
   connectBtnOn: { borderColor: 'rgba(120,120,140,0.28)', backgroundColor: 'rgba(120,120,140,0.18)' },
   connectBtnBusy: { backgroundColor: mm.colors.btnBusyBg, borderColor: 'rgba(120,120,140,0.28)' },
-  connectBtnGradInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  connectBtnGrad: {
     paddingVertical: theme.sp(2.5),
     paddingHorizontal: theme.sp(6),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   connectBtnText: {
     fontSize: theme.fontSize.sm,
@@ -782,14 +777,17 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   findBtn: {
+    borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: mm.colors.btnGradFrom,
+  },
+  findBtnGrad: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.xs,
-    overflow: 'hidden',
     paddingHorizontal: theme.space.md,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: mm.colors.btnGradFrom,
+    paddingVertical: theme.space.sm,
   },
   findBtnText: {
     fontSize: theme.fontSize.sm,
@@ -963,7 +961,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: mm.colors.btnGradFrom,
   },
-  uploadBtnGradInner: {
+  uploadBtnGrad: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.xs,
@@ -975,6 +973,13 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
     color: mm.colors.btnTextOnGrad,
+  },
+  uploadBtnTextBusy: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textSub,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.sm,
   },
   uploadMsg: {
     marginTop: theme.space.sm,

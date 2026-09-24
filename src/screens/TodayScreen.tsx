@@ -1271,15 +1271,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
-    // v16 §1.7：白底描边胶囊，选中统一黄绿
-    backgroundColor: mm.colors.cardBg,
-    borderWidth: 1,
-    borderColor: mm.colors.tabBorder,
+    // v16 统一 tab 样式：未选 = 中性灰浅底（与洞察页 Segmented/子 tab 同款，无描边）
+    backgroundColor: mm.colors.btnBusyBg,
     marginHorizontal: theme.space.xs,
   },
   todayTabBtnOn: {
     backgroundColor: mm.colors.limeSoft,
-    borderColor: mm.colors.limeCore,
   },
   todayTabLabel: {
     fontSize: theme.fontSize.sm,
@@ -1288,6 +1285,6 @@ const styles = StyleSheet.create({
   },
   todayTabLabelOn: {
     color: mm.colors.limeDeep,
-    fontWeight: theme.weight.bold,
+    fontWeight: theme.weight.semibold,
   },
 });
