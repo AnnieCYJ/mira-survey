@@ -139,6 +139,8 @@ export default function InsightScreen() {
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
   const [subTab, setSubTab] = useState<string>('sleep'); // rhythm: sleep | body | mind  longevity: heart | metabolism | basics
+  // 当前 top tab 生效的子 tab 配置（hero/Segmented/UnderlineTabs 两个分支共用一套）
+  const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : LONGEVITY_SUBS;
   const [tab, setTab] = useState<TabKey>('basics');
 
   // ★ 顶部「AI 综合分析」：真实接入端侧大模型（Qwen2.5-1.5B），上下文为该用户的真实健康数据
@@ -376,33 +378,32 @@ export default function InsightScreen() {
 
         
 
+        {/* ═══ hero + 顶 tab + 子 tab：两个 top tab 共用（目标稿六变体顶部是同一张 lime 大卡）═══ */}
+        <HealthAgeCard
+          healthAge={22.6}
+          actualAge={28}
+          overallScore={overallScoreFromReport}
+          ring={ring}
+          rows={insightRows}
+          pending={aiOverview.loading}
+        />
+        <Segmented
+          options={TOP_TABS.map(t => t.label)}
+          activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
+          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={styles.chipRow} contentContainerStyle={styles.chipContent}>
+          <UnderlineTabs
+            options={ACTIVE_SUBS.map(t => t.label)}
+            activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
+            onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
+            tone={topTab === 'rhythm' ? undefined : 'cy'}
+          />
+        </ScrollView>
+
         {topTab === 'rhythm' ? (
           <>
-            {/* ═══ 节律健康: 左身体年龄 + 右 AI 分析 ═══ */}
-            <HealthAgeCard
-              healthAge={22.6}
-              actualAge={28}
-              overallScore={overallScoreFromReport}
-              ring={ring}
-              rows={insightRows}
-              pending={aiOverview.loading}
-            />
-            {/* ═══ 节律健康 / 长期健康 切换 ═══ */}
-            <Segmented
-              options={TOP_TABS.map(t => t.label)}
-              activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
-              onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
-            />
-            {/* ═══ 子 tab: 睡眠 / 生理 / 情绪&认知 ═══ */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={styles.chipRow} contentContainerStyle={styles.chipContent}>
-              <UnderlineTabs
-                options={RHYTHM_SUBS.map(t => t.label)}
-                activeIndex={RHYTHM_SUBS.findIndex(t => t.key === subTab)}
-                onChange={(i) => setSubTab(RHYTHM_SUBS[i].key)}
-              />
-            </ScrollView>
-
             {subTab === 'sleep' ? (
               <>
                 <SleepStructureCard segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
@@ -420,67 +421,38 @@ export default function InsightScreen() {
           </>
         ) : (
           <>
-            {/* ═══ 长期健康: AI 分析全宽 banner ═══ */}
-            <InsightBanner rows={insightRows} pending={aiOverview.loading} />
-            {/* ═══ 节律健康 / 长期健康 切换 ═══ */}
-            <Segmented
-              options={TOP_TABS.map(t => t.label)}
-              activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
-              onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
-            />
-            {/* ═══ 子 tab: 心血管 / 代谢 / 基础指标 ═══ */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={styles.chipRow} contentContainerStyle={styles.chipContent}>
-              <UnderlineTabs
-                options={LONGEVITY_SUBS.map(t => t.label)}
-                activeIndex={LONGEVITY_SUBS.findIndex(t => t.key === subTab)}
-                onChange={(i) => setSubTab(LONGEVITY_SUBS[i].key)}
-                tone="cy"
-              />
-            </ScrollView>
-
+            {/* v16：心血管目标稿为「血压卡 / ECG 卡各自全宽竖排」（旧双列横排废弃） */}
             {subTab === 'heart' ? (
-              <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
-                <View style={{ flex: 1, alignSelf: 'stretch' }}>
-                  <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('BpDetail')}>
-                    {/* v10：血压卡回归白卡（旧紫渐变底废弃）；双折线语义色在 BpCard 内（粉/蓝） */}
-                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
-                      <BpCard ring={ring} onPress={() => {}} />
-                    </Card>
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
-                  <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => navigation.navigate('EcgDetail')}>
-                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
-                      <EcgCard ring={ring} onPress={() => {}} compactMode />
-                    </Card>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <>
+                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('BpDetail')}>
+                  <Card style={{ padding: theme.space.cardPadCompact }}>
+                    <BpCard ring={ring} onPress={() => {}} />
+                  </Card>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EcgDetail')}>
+                  <Card style={{ padding: theme.space.cardPadCompact }}>
+                    <EcgCard ring={ring} onPress={() => {}} compactMode />
+                  </Card>
+                </TouchableOpacity>
+              </>
             ) : subTab === 'metabolism' ? (
               <>
-                <View style={{ flexDirection: 'row', gap: theme.sp(1.5), alignItems: 'stretch' }}>
-                  <View style={{ flex: 1, alignSelf: 'stretch' }}>
-                    <TouchableOpacity activeOpacity={0.92} style={{ alignSelf: 'stretch', flex: 1 }} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                      {/* v16：数据卡白底，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
-                      <Card style={{ padding: theme.sp(3), flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
-                            <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
-                          </View>
-                          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
-                        </View>
-                        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
-                        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
-                      </Card>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{ flex: 1.6, alignSelf: 'stretch' }}>
-                    <Card style={{ padding: theme.space.cardPadCompact, flex: 1 }}>
-                      <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
-                    </Card>
-                  </View>
-                </View>
+                <TouchableOpacity activeOpacity={0.92} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
+                  {/* v16：数据卡白底全宽，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
+                  <Card style={{ padding: theme.sp(3) }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+                        <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
+                      </View>
+                      <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
+                    </View>
+                    <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
+                  </Card>
+                </TouchableOpacity>
+                <Card style={{ padding: theme.space.cardPadCompact }}>
+                  <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
+                </Card>
                 <ExamTab />
               </>
             ) : (
@@ -500,6 +472,8 @@ export default function InsightScreen() {
                 ))}
               </>
             )}
+            {/* AI 分析洞察：长期健康语义，固定在内容末尾 */}
+            <InsightBanner rows={insightRows} pending={aiOverview.loading} />
           </>
         )}
       </View>

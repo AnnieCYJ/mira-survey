@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginBottom: theme.space.xs,
   },
-  strong: { color: theme.colors.accentSolid, fontWeight: theme.weight.semibold },
+  strong: { color: theme.colors.accentText, fontWeight: theme.weight.semibold }, // v16：正文字色用 accentText（accentSolid 仅图形/色块）
   adviceBox: {
     marginTop: theme.space.sm,
     gap: theme.sp(0.5),
@@ -129,6 +129,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.sp(1),
     paddingVertical: theme.sp(0.5),
   },
-  moreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentSolid, fontWeight: theme.weight.medium },
-  moreArrow: { fontSize: theme.fontSize.h2, color: theme.colors.accentSolid, lineHeight: theme.fontSize.h2, marginLeft: 2 },
+  moreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.medium },
+  moreArrow: { fontSize: theme.fontSize.h2, color: theme.colors.accentText, lineHeight: theme.fontSize.h2, marginLeft: 2 },
 });

@@ -9,9 +9,11 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Polyline } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import Card from '../components/Card';
@@ -376,7 +378,13 @@ export default function EmotionCognitiveDetailScreen() {
 
   return (
     <>
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：详情页全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 返回头 */}
         <View style={styles.head}>
@@ -384,7 +392,7 @@ export default function EmotionCognitiveDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>身体恢复</Text>
@@ -419,6 +427,7 @@ export default function EmotionCognitiveDetailScreen() {
         ) : null}
       </View>
     </ScreenContainer>
+    </View>
     <ChatSheet
       visible={chatVisible}
       onClose={() => setChatVisible(false)}
@@ -687,9 +696,9 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
 /** 区间视图：聚合均值 + 对比上一周期 */
 function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg; range: RangeKey; anchor: Date }) {
   const levelMeta: Record<RhythmLevel, { label: string; color: string }> = {
-    normal: { label: '节律正常', color: theme.colors.stateCalm },
+    normal: { label: '节律正常', color: mm.colors.limeDeep },
     sustained_high: { label: '持续偏高', color: theme.colors.danger },
-    dysregulated: { label: '节律紊乱', color: theme.colors.textWhite },
+    dysregulated: { label: '节律紊乱', color: mm.colors.honeyDeep },
   };
   const cMeta = cur.cortisolStatus ? levelMeta[cur.cortisolStatus] : null;
   return (
@@ -842,7 +851,7 @@ function MesorSparkline({ data }: { data: { date: string; mesor: number }[] }) {
     <View style={{ marginTop: theme.sp(2) }}>
       <Text style={styles.sparkLabel}>区间每日均值</Text>
       <Svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <Polyline points={pts.join(' ')} fill="none" stroke={theme.colors.accentSolid} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <Polyline points={pts.join(' ')} fill="none" stroke={mm.colors.honeyDeep} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       </Svg>
     </View>
   );
@@ -866,11 +875,11 @@ const styles = StyleSheet.create({
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
   // ★ 与情绪/脑力消耗详情页（EnergyDetailScreen）完全一致：标题 textTitle + 副标题 sub
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
-  sub: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
+  sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
   rhythmHero: { marginTop: theme.sp(1), marginBottom: theme.sp(1) },
   // 大字结论：与另两页 Hero 同款（hero 字号 + medium + textTitle；不再用状态色）
-  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
+  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
 
   pad,
   metricRow: { flexDirection: 'row', gap: theme.sp(1.5) },
@@ -896,7 +905,7 @@ const styles = StyleSheet.create({
   calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   calCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   calMonthCell: { flex: 1, aspectRatio: 1.5, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
-  calCellToday: { borderWidth: 2, borderColor: theme.colors.accentSolid },
+  calCellToday: { borderWidth: 2, borderColor: mm.colors.honeyDeep },
   calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.ui.chipText },
   calCellEmpty: { flex: 1 },
   calTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

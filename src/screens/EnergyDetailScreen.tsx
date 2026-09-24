@@ -10,8 +10,10 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Svg, { Rect, Text as SvgText, Line, Defs, LinearGradient, Stop, G } from 'react-native-svg';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
@@ -40,9 +42,9 @@ type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
-  emotion:   { name: '情绪洞察', accent: theme.colors.stateTense,  sub: '情绪消耗 + 唤醒分' },
-  cognitive: { name: '脑力消耗', accent: theme.colors.accentSolid, sub: '基于时序疲劳累积模型' },
-  activity:  { name: '运动消耗', accent: theme.colors.stateEnergy,  sub: '步数 · 距离 · 活动消耗' },
+  emotion:   { name: '情绪洞察', accent: mm.colors.roseCore,    sub: '情绪消耗 + 唤醒分' }, // v16：情绪=Rose（旧 stateTense=honey 语义不符）
+  cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '基于时序疲劳累积模型' },
+  activity:  { name: '运动消耗', accent: mm.colors.skyCore,  sub: '步数 · 距离 · 活动消耗' },
 };
 
 export default function EnergyDetailScreen() {
@@ -60,7 +62,13 @@ export default function EnergyDetailScreen() {
 
   return (
     <>
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：详情页全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -68,7 +76,7 @@ export default function EnergyDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={theme.colors.textWhite} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{meta.name}</Text>
@@ -94,6 +102,7 @@ export default function EnergyDetailScreen() {
         {range !== 'day' && <RangeTrendBars type={type} range={range} anchor={anchor} />}
       </View>
     </ScreenContainer>
+    </View>
     <ChatSheet
       visible={chatVisible}
       onClose={() => setChatVisible(false)}
@@ -174,8 +183,8 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
 
   const rhythmChip = (() => {
     if (report.rhythmStatus === 'sustained_high') return { text: '节律偏高', color: theme.colors.danger };
-    if (report.rhythmStatus === 'dysregulated') return { text: '节律紊乱', color: theme.colors.stateTense };
-    if (report.rhythmStatus === 'normal') return { text: '节律正常', color: theme.colors.stateCalm };
+    if (report.rhythmStatus === 'dysregulated') return { text: '节律紊乱', color: mm.colors.honeyDeep };
+    if (report.rhythmStatus === 'normal') return { text: '节律正常', color: mm.colors.limeDeep };
     return null;
   })();
 
@@ -249,7 +258,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const prep = Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3);
             const ll = prep >= 70 ? { text: '准备好了', color: theme.colors.success, tip: '起床即有清晰认知状态' }
                      : prep >= 45 ? { text: '一般', color: theme.colors.warn, tip: '需要 30-60 分钟暖脑' }
-                     : { text: '偏低', color: theme.colors.stateEnergy, tip: '建议先轻度活动，避免烧脑' };
+                     : { text: '偏低', color: mm.colors.purpleDeep, tip: '建议先轻度活动，避免烧脑' };
             return (
               <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: ll.color + '12', borderLeftWidth: 3, borderLeftColor: ll.color }}>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>早起认知准备度</Text>
@@ -268,9 +277,9 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           })()}
 
           <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateEnergy + '18' }}>
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.purpleSoft }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateEnergy }}>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.purpleDeep }}>
                 {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
@@ -330,13 +339,13 @@ function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: a
   return (
     <>
       <View style={styles.chartCard}>
-        <ActivityTile label="步数" value={fmtInt(steps)} unit="步" color={theme.colors.accentSolid}
+        <ActivityTile label="步数" value={fmtInt(steps)} unit="步" color={mm.colors.skyDeep}
           onPress={() => openDetail('steps', '步数', '步', 0, Math.max(10000, Math.ceil(steps * 1.2)))} />
         <View style={{ height: 1, backgroundColor: theme.colors.ui.borderSoft }} />
-        <ActivityTile label="步行距离" value={fmtKm(distance)} unit="km" color={theme.colors.stateEnergy}
+        <ActivityTile label="步行距离" value={fmtKm(distance)} unit="km" color={mm.colors.skyDeep}
           onPress={() => openDetail('distance', '步行距离', 'km', 0, Math.max(5, Math.ceil(distance * 1.5)))} />
         <View style={{ height: 1, backgroundColor: theme.colors.ui.borderSoft }} />
-        <ActivityTile label="活动消耗" value={fmtInt(Math.round(calorie))} unit="kcal" color={theme.colors.stateTense} last
+        <ActivityTile label="活动消耗" value={fmtInt(Math.round(calorie))} unit="kcal" color={mm.colors.honeyDeep} last
           onPress={() => openDetail('calorie', '活动消耗', 'kcal', 0, Math.max(200, Math.ceil(calorie * 1.5)))} />
       </View>
       <View style={styles.statGrid}>
@@ -387,11 +396,11 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
-  sub: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
+  sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
   hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.sp(1) },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite },
-  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textWhite70, marginLeft: theme.sp(2) },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
+  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl * 2 },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
 
@@ -650,7 +659,7 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
     const TH_HIGH = type === 'emotion' ? 60 : 65;
     if (s < TH_LOW) { top = theme.colors.success;    bot = theme.colors.ui.successText; }
     else if (s < TH_HIGH) { top = theme.colors.warn; bot = theme.colors.stateTense; }
-    else { top = theme.colors.stateEnergy; bot = theme.colors.accentSolid; }
+    else { top = mm.colors.purpleCore; bot = mm.colors.purpleDeep; } // v16：认知疲劳=紫（旧 stateEnergy/accentSolid 同值改名）
     return [top, bot];
   };
 

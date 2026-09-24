@@ -13,10 +13,12 @@
  *  - 全部使用真实数据，缺口留空（不编造）；无任何数据时诚实显示占位引导。
  */
 import React, { useMemo, useState } from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent, Pressable} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent, Pressable } from 'react-native';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Rect, Line, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -270,10 +272,16 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
   const barW = Math.min(46, slot * 0.6);
 
   return (
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：详情页全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.header}>
         <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => navigation.goBack()}>
-          <Icon name="chevronLeft" size={22} color={theme.colors.textTitle} />
+          <Icon name="chevronLeft" size={22} color={mm.colors.ink} />
         </TouchableOpacity>
         <View style={styles.titleWrap}>
           <Text style={styles.title}>{range === 'day' ? '睡眠结构' : '睡眠时长'}</Text>
@@ -361,7 +369,7 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                             top: Math.max(0, y - 7),
                             right: 4,
                             fontSize: theme.fontSize.micro,
-                            color: h === 8 ? theme.colors.accent1 : theme.colors.textSub,
+                            color: h === 8 ? mm.colors.limeDeep : theme.colors.textSub,
                             fontWeight: h === 8 ? '600' : '400',
                             textAlign: 'right',
                           }}
@@ -375,9 +383,10 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                   <View style={{ flex: 1 }} onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
                     <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                   <Defs>
+                    {/* v16：睡眠语义=lime（旧紫 accentSolid 废弃） */}
                     <LinearGradient id="sleepBar" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.95} />
-                      <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.55} />
+                      <Stop offset="0%" stopColor={mm.colors.limeMid} stopOpacity={0.95} />
+                      <Stop offset="100%" stopColor={mm.colors.limeSoft} stopOpacity={0.55} />
                     </LinearGradient>
                   </Defs>
 
@@ -431,7 +440,7 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                         width={barW}
                         height={Math.max(2, hgt)}
                         rx={6}
-                        fill={isSelected ? theme.colors.accentSolid : 'url(#sleepBar)'}
+                        fill={isSelected ? mm.colors.limeDeep : 'url(#sleepBar)'}
                         opacity={selectedBar != null && !isSelected ? 0.45 : 1}
                         onPress={() => setSelectedBar(selectedBar === i ? null : i)}
                       />
@@ -535,6 +544,7 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
       )}
 
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -561,7 +571,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginBottom: theme.space.md },
   back: { padding: theme.sp(1), marginLeft: -theme.sp(1) },
   titleWrap: { flexDirection: 'column' },
-  title: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: theme.colors.textWhite },
+  title: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
