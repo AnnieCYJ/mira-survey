@@ -52,6 +52,13 @@ function questionKey(rs: RingState | null): string {
 const MARQUEE_SPEED = 26;   // 自动滚动速度 px/s
 const RESUME_DELAY_MS = 2200; // 手动拖动后恢复自动滚动的延时
 
+/** v16：三排建议问题 = 三个 pastel 家族（紫=认知 / 粉=情绪 / 蓝=运动心肺），soft 底 + deep 字 */
+const ROW_TONES = [
+  { bg: mm.colors.purpleSoft, fg: mm.colors.purpleDeep },
+  { bg: mm.colors.roseSoft, fg: mm.colors.roseDeep },
+  { bg: mm.colors.skySoft, fg: mm.colors.skyDeep },
+] as const;
+
 /**
  * 单排问题跑马灯：内容复制一份做无缝循环。
  * direction=1 内容向左移（第 1/3 排），direction=-1 内容向右移（第 2 排）。
@@ -66,11 +73,16 @@ function MarqueeRow({
   direction,
   onPick,
   active,
+  bg,
+  fg,
 }: {
   questions: string[];
   direction: 1 | -1;
   onPick: (q: string) => void;
   active: boolean;
+  /** v16：每排一个 pastel 家族（soft 底 + deep 字） */
+  bg: string;
+  fg: string;
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const halfW = useRef(0);                  // 单份内容的宽度（循环周期）
@@ -126,11 +138,11 @@ function MarqueeRow({
         {loop.map((q, i) => (
           <TouchableOpacity
             key={`${q}-${i}`}
-            style={styles.qChip}
+            style={[styles.qChip, { backgroundColor: bg }]}
             onPress={() => onPick(q)}
             activeOpacity={0.8}
           >
-            <Text style={styles.qChipText}>{q}</Text>
+            <Text style={[styles.qChipText, { color: fg }]}>{q}</Text>
           </TouchableOpacity>
         ))}
       </Animated.View>
@@ -224,6 +236,8 @@ export default function MiraAIHomeScreen() {
               direction={ri === 1 ? -1 : 1}
               onPick={openChat}
               active={focused}
+              bg={ROW_TONES[ri % ROW_TONES.length].bg}
+              fg={ROW_TONES[ri % ROW_TONES.length].fg}
             />
           ))}
         </View>

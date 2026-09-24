@@ -1070,17 +1070,15 @@ export default function TodayScreen() {
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
               />
             </View>
+
+            {/* 全天恢复：只在「消耗与恢复节律」tab 显示（2026-09-24 用户要求日历 tab 下去掉） */}
+            <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
           </View>
         ) : (
           <View style={styles.adviceWrap}>
             <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
           </View>
         )}
-
-        <View style={{ height: theme.space.md }} />
-
-        {/* 全天恢复 (始终显示) */}
-        <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
       </ScreenContainer>
     </View>
   );
