@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
 import AiOrb from './AiOrb';
@@ -64,7 +65,7 @@ function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void
         <Icon
           name={ttsOn ? 'speaker' : 'speaker_off'}
           size={theme.fs(20)}
-          color={ttsOn ? theme.colors.accentSolid : theme.colors.textSub}
+          color={ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
           strokeWidth={2.2}
         />
       </TouchableOpacity>
@@ -297,7 +298,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
                     <Icon
                       name="sparkle"
                       size={theme.fs(16)}
-                      color={theme.colors.accentSolid}
+                      color={mm.colors.purpleDeep}
                       strokeWidth={2}
                     />
                     <Text style={styles.actionText}>{q}</Text>
@@ -400,7 +401,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(124,106,224,0.12)',
+    backgroundColor: mm.colors.purpleSoft,
   },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl },
   quickActions: {
@@ -435,7 +436,7 @@ const styles = StyleSheet.create({
     width: theme.sp(6),
     height: theme.sp(6),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accent1,
+    backgroundColor: mm.colors.purpleCore,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: theme.sp(2),
@@ -446,7 +447,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(2.5),
     borderRadius: theme.radius.md,
   },
-  userBubble: { backgroundColor: theme.colors.accentSolid },
+  userBubble: { backgroundColor: mm.colors.purpleBtn },
   aiBubble: {
     backgroundColor: theme.colors.cardBgStrong,
     borderWidth: 1,
@@ -464,7 +465,7 @@ const styles = StyleSheet.create({
   taskSuggestionTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   taskSuggestionDesc: {
     fontSize: theme.fontSize.xs,
@@ -484,7 +485,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accent1,
+    backgroundColor: mm.colors.purpleBtn,
     marginTop: theme.sp(1),
   },
   taskPrimaryBtn: {
@@ -493,7 +494,7 @@ const styles = StyleSheet.create({
     gap: theme.sp(1.5),
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
-    backgroundColor: theme.colors.accent1,
+    backgroundColor: mm.colors.purpleBtn,
     marginTop: 0,
   },
   taskPrimaryBtnText: {
@@ -526,7 +527,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.ui.accentSoft20,
+    backgroundColor: mm.colors.purpleSoft,
     marginTop: theme.sp(1),
   },
   taskAddedBtnText: {
@@ -539,7 +540,7 @@ const styles = StyleSheet.create({
     width: theme.sp(1.5),
     height: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accent1,
+    backgroundColor: mm.colors.purpleCore,
     marginHorizontal: 2,
     opacity: 0.4,
   },
@@ -553,8 +554,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: theme.sp(11),
     maxHeight: theme.sp(18),
-    backgroundColor: 'rgba(247,246,252,0.7)',
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
     fontSize: theme.fontSize.sm,
@@ -565,9 +568,9 @@ const styles = StyleSheet.create({
     width: theme.sp(11),
     height: theme.sp(11),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accent1,
+    backgroundColor: mm.colors.purpleBtn,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: theme.colors.ui.accentSoft20 },
+  sendBtnDisabled: { backgroundColor: mm.colors.purpleSoft },
 });

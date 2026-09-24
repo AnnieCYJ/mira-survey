@@ -16,6 +16,12 @@ export const mm = {
     /* ── 五色相 · 每相 5 档（v16 锁定）── */
     // 紫 Iris = 认知
     purpleTint: '#F4EDFC', purpleSoft: '#E7E1FB', purpleMid: '#C7B9F2', purpleCore: '#9D8AF0', purpleDeep: '#6E58C8',
+    /**
+     * purpleBtn —— 紫**按钮/气泡底**（上面压白字或白图标）专用档。
+     * 白字 ≥4.5 的最浅紫上限 = #7766D7（4.51，与 theme.gradCardTo 同源）；
+     * purpleCore(#9D8AF0) 白字仅 2.9、purpleDeep(#6E58C8) 偏深，按钮一律取本档。
+     */
+    purpleBtn: '#7766D7',
     // 粉 Rose = 情绪
     roseTint: '#FDF0F6', roseSoft: '#FCE7F0', roseMid: '#F6B3D0', roseCore: '#F2A3C6', roseDeep: '#C9598A',
     // 蓝 Sky = 运动 / 心肺（含血压·心电）
