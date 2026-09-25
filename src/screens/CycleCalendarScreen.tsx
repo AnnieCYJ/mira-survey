@@ -31,7 +31,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
@@ -172,7 +174,13 @@ export default function CycleCalendarScreen() {
   const legendNode = <PhaseLegend />;
 
   return (
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -180,7 +188,7 @@ export default function CycleCalendarScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <Text style={styles.title}>周期日历</Text>
         </View>
@@ -279,7 +287,7 @@ export default function CycleCalendarScreen() {
             <TrendCard
               kind="progesterone"
               title="孕激素波动（体温推算）"
-              lineColor={theme.colors.accentSolid}
+              lineColor={mm.colors.purpleCore}
               data={progData}
               log={log}
               ring={ring}
@@ -358,6 +366,7 @@ export default function CycleCalendarScreen() {
         </View>
       </Modal>
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -734,7 +743,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBg,
     marginRight: theme.space.sm,
   },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: theme.colors.textTitle, flex: 1 },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink, flex: 1 },
 
   emptyBox: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, padding: theme.space.lg, borderWidth: 1, borderColor: theme.colors.cardBorder },
   emptyTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
@@ -761,7 +770,7 @@ const styles = StyleSheet.create({
   recordRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   recordHint: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   recordBtn: { backgroundColor: theme.colors.accentSoft, paddingHorizontal: theme.space.md, paddingVertical: theme.sp(2), borderRadius: theme.radius.pill },
-  recordBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid },
+  recordBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentText },
   recHint: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1), marginBottom: theme.space.xs },
   recScroll: { marginTop: theme.space.xs, maxHeight: theme.sp(13) },
   recScrollContent: { gap: theme.space.xs },
@@ -769,11 +778,11 @@ const styles = StyleSheet.create({
   recStepperLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle },
   recStepper: { flexDirection: 'row', alignItems: 'center' },
   recStepBtn: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.sp(4.5), backgroundColor: theme.colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  recStepBtnText: { fontSize: theme.fontSize.card, color: theme.colors.accentSolid, fontWeight: theme.weight.bold as any },
+  recStepBtnText: { fontSize: theme.fontSize.card, color: theme.colors.accentText, fontWeight: theme.weight.bold as any },
   recStepValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginHorizontal: theme.space.md, minWidth: theme.sp(12), textAlign: 'center' },
   recActions: { flexDirection: 'row', marginTop: theme.space.lg, gap: theme.space.sm },
   recCancelBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: theme.colors.ui.offTrack },
-  recSaveBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: theme.colors.accentSolid },
+  recSaveBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: mm.colors.purpleBtn },
   recCancelText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
   recSaveText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
 
@@ -783,7 +792,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, padding: theme.sp(0.75), aspectRatio: 1 },
   dayBox: { flex: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  dayToday: { borderWidth: 2, borderColor: theme.colors.accentSolid },
+  dayToday: { borderWidth: 2, borderColor: mm.colors.honeyDeep }, // 今日=honey 语义（与 CalendarGrid 一致）
   dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, borderStyle: 'dashed' },
   dayNum: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
   dayDot: { position: 'absolute', bottom: 4, width: 5, height: 5, borderRadius: 2.5 },
@@ -811,10 +820,10 @@ const styles = StyleSheet.create({
   sheetLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle, marginTop: theme.space.md, marginBottom: 6, fontWeight: theme.weight.semibold as any },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSoft },
-  chipOn: { backgroundColor: theme.colors.accentSolid },
+  chipOn: { backgroundColor: mm.colors.purpleBtn },
   chipText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   chipTextOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
-  saveBtn: { marginTop: theme.space.lg, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: theme.colors.accentSolid },
+  saveBtn: { marginTop: theme.space.lg, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: mm.colors.purpleBtn },
   saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
   cancelBtn: { marginTop: theme.sp(2.5), alignItems: 'center', paddingVertical: theme.sp(3) },
   cancelBtnText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },

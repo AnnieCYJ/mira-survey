@@ -11,7 +11,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop, Line } from 'react-native-svg';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -380,7 +382,13 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
   }, [useContinuous, tMin, tMax, range, isTodayAnchor, series.axisOverride]);
 
   return (
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -388,7 +396,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{params.name}</Text>
@@ -477,7 +485,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                     <Stop offset="100%" stopColor={color} stopOpacity={0.02} />
                   </LinearGradient>
                   <LinearGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0%" stopColor={theme.colors.accent1} />
+                    <Stop offset="0%" stopColor={mm.colors.purpleCore} />
                     <Stop offset="100%" stopColor={color} />
                   </LinearGradient>
                 </Defs>
@@ -644,7 +652,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
             {ring.ecg ? (
               <View style={styles.ecgChart}>
                 <Svg width="100%" height={120} viewBox="0 0 320 120" preserveAspectRatio="none">
-                  <Path d={ecgWaveformPath(ring.ecg.waveform)} fill="none" stroke={theme.colors.accent1} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+                  <Path d={ecgWaveformPath(ring.ecg.waveform)} fill="none" stroke={mm.colors.skyDeep} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
                 </Svg>
               </View>
             ) : (
@@ -688,6 +696,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         ) : null}
       </View>
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -704,8 +713,8 @@ const styles = StyleSheet.create({
     marginRight: theme.space.sm,
   },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: '#FFFFFF' },
-  sub: { fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.75)', marginTop: theme.sp(1) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink },
+  sub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
   liveTag: {
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.sp(1),
@@ -772,7 +781,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: theme.space.md,
     borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.purpleBtn, // v16：白字按钮最浅紫上限 4.51
   },
   ecgBtnBusy: { backgroundColor: theme.colors.ui.offTrack },
   ecgBtnLabel: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },

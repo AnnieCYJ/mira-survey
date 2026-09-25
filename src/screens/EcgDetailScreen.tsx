@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 
@@ -62,7 +64,13 @@ export default function EcgDetailScreen() {
   const latest = history.length > 0 ? history[0] : null;
 
   return (
-    <ScreenContainer withGradient compactTop>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
       {/* Header */}
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
@@ -82,8 +90,8 @@ export default function EcgDetailScreen() {
             <Svg width="100%" height={72} viewBox="0 0 320 72" preserveAspectRatio="none" style={{ marginTop: 10 }}>
               <Defs>
                 <LinearGradient id="ecgLatest" x1="0" y1="0" x2="1" y2="0">
-                  <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.5} />
-                  <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={1} />
+                  <Stop offset="0%" stopColor={mm.colors.skyCore} stopOpacity={0.5} />
+                  <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={1} />
                 </LinearGradient>
               </Defs>
               <Path d={wavePath(latest.waveform, 320, 72)} fill="none" stroke="url(#ecgLatest)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
@@ -140,7 +148,7 @@ export default function EcgDetailScreen() {
               </View>
               {r.waveform && r.waveform.length > 0 ? (
                 <Svg width="100%" height={44} viewBox="0 0 160 44" preserveAspectRatio="none">
-                  <Path d={wavePath(r.waveform, 160, 44)} fill="none" stroke={theme.colors.accentSolid} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                  <Path d={wavePath(r.waveform, 160, 44)} fill="none" stroke={mm.colors.skyDeep} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
                 </Svg>
               ) : null}
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
@@ -153,6 +161,7 @@ export default function EcgDetailScreen() {
         </ScrollView>
       )}
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -188,7 +197,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.skyDeep, // v16：ECG=心肺=sky；白字对比 5.0
     marginBottom: 16,
   },
   btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },

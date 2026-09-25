@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { healthStore } from '../data/healthStore';
 import type { RangeKey } from '../data/metrics';
 import { dayStartMs } from '../data/healthStore';
@@ -238,7 +240,13 @@ export default function BpDetailScreen() {
   }
 
   return (
-    <ScreenContainer withGradient compactTop>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
           <Text style={{ fontSize: 20 }}>‹</Text>
@@ -408,6 +416,7 @@ export default function BpDetailScreen() {
         </Card>
       ) : null}
     </ScreenContainer>
+    </View>
   );
 }
 

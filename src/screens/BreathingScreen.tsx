@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, ImageBackground, StatusBar, TouchableOpacity, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -54,8 +55,14 @@ export default function BreathingScreen() {
   const [meditationTrack, setMeditationTrack] = useState<MeditationTrack | null>(null);
 
   return (
-    <ScreenContainer withGradient compactTop>
-      <StatusBar barStyle="light-content" />
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <LinearGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
+      <StatusBar barStyle="dark-content" /> // v16：白底
 
       {/* ——— 返回 + 标题 ——— */}
       <View style={styles.head}>
@@ -63,7 +70,7 @@ export default function BreathingScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
+          <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={styles.headText}>
           <Text style={styles.title}>呼吸冥想</Text>
@@ -129,7 +136,7 @@ export default function BreathingScreen() {
           <Pressable key={i} style={({ pressed }) => [styles.courseItem, pressed && { opacity: 0.8 }]}
             onPress={() => setBreathPlayer({ patternKey: c.patternKey, style: c.style, duration: c.duration })}
           >
-            <View style={[styles.courseIcon, c.tag === 'live' ? { backgroundColor: theme.colors.accentSolid } : { backgroundColor: theme.colors.moodGood }]}>
+            <View style={[styles.courseIcon, c.tag === 'live' ? { backgroundColor: mm.colors.purpleCore } : { backgroundColor: mm.colors.limeMid }]}>
               <Icon name={c.tag === 'live' ? 'mind' : 'learn'} size={theme.fs(18)} color={theme.colors.textWhite} strokeWidth={1.8} />
             </View>
             <View style={styles.courseInfo}>
@@ -160,6 +167,7 @@ export default function BreathingScreen() {
         <MeditationPlayer track={meditationTrack} onClose={() => setMeditationTrack(null)} />
       </Modal>
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -172,7 +180,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: theme.fontSize.card, fontWeight: theme.weight.medium as any,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
     marginTop: theme.space.lg, marginBottom: theme.space.card,
   },
 
@@ -198,7 +206,7 @@ const styles = StyleSheet.create({
   },
   playBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.purpleBtn, // 白色播放图标
     alignItems: 'center', justifyContent: 'center',
   },
   trackInfo: { gap: 2 },
@@ -218,7 +226,7 @@ const styles = StyleSheet.create({
   courseInfo: { flex: 1, gap: 2 },
   courseTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textBody },
   courseMeta: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.accentSolid },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: mm.colors.roseCore }, // live=rose
 
   modalBg: {
     flex: 1,

@@ -13,7 +13,9 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -443,7 +445,13 @@ export default function StatusTrendDetailScreen() {
   };
 
   return (
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -451,7 +459,7 @@ export default function StatusTrendDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color="#FFFFFF" strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>全天状态趋势</Text>
@@ -517,12 +525,12 @@ export default function StatusTrendDetailScreen() {
               <Svg width={w} height={H}>
                 <Defs>
                   <LinearGradient id="std_grad" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0%" stopColor={theme.colors.accent1} stopOpacity={0.3} />
-                    <Stop offset="100%" stopColor={theme.colors.accent1} stopOpacity={0.02} />
+                    <Stop offset="0%" stopColor={mm.colors.purpleCore} stopOpacity={0.3} />
+                    <Stop offset="100%" stopColor={mm.colors.purpleCore} stopOpacity={0.02} />
                   </LinearGradient>
                   <LinearGradient id="std_line" x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0%" stopColor={theme.colors.accent1} />
-                    <Stop offset="100%" stopColor={theme.colors.accentSolid} />
+                    <Stop offset="0%" stopColor={mm.colors.purpleCore} />
+                    <Stop offset="100%" stopColor={mm.colors.purpleDeep} />
                   </LinearGradient>
                 </Defs>
 
@@ -629,6 +637,7 @@ export default function StatusTrendDetailScreen() {
         </Text>
       </View>
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -646,7 +655,7 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { padding: theme.space.xs, marginRight: theme.space.sm },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: '#FFFFFF' },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
   sub: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
   liveTag: {
     paddingHorizontal: 10,

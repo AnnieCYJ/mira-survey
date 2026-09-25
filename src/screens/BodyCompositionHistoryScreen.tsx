@@ -9,7 +9,9 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
@@ -73,7 +75,13 @@ export default function BodyCompositionHistoryScreen() {
   };
 
   return (
-    <ScreenContainer withGradient>
+    <View style={{ flex: 1 }}>
+      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      <BgGradient
+        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        style={StyleSheet.absoluteFill}
+      />
+    <ScreenContainer topFadeColor={theme.colors.textWhite}>
       <View style={styles.stack}>
         {/* 返回 + 标题 */}
         <View style={styles.head}>
@@ -81,7 +89,7 @@ export default function BodyCompositionHistoryScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={theme.colors.textTitle} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>身体成分历史</Text>
@@ -145,6 +153,7 @@ export default function BodyCompositionHistoryScreen() {
         )}
       </View>
     </ScreenContainer>
+    </View>
   );
 }
 
@@ -153,7 +162,7 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { padding: theme.space.xs, marginRight: theme.space.sm },
   headText: { flex: 1 },
-  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
   sub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
 
   emptyText: {
@@ -180,7 +189,7 @@ const styles = StyleSheet.create({
     width: theme.sp(3.5),
     height: theme.sp(3.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: mm.colors.purpleCore,
     borderWidth: 3,
     borderColor: theme.colors.bgBottom,
   },
@@ -197,7 +206,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.sp(3),
     paddingVertical: theme.sp(1),
   },
-  dateText: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid, fontWeight: theme.weight.medium },
+  dateText: { fontSize: theme.fontSize.micro, color: theme.colors.accentText, fontWeight: theme.weight.medium },
   delText: { fontSize: theme.fontSize.sm, color: theme.colors.danger, fontWeight: theme.weight.medium },
 
   inputs: {
