@@ -91,7 +91,7 @@ export const colors = {
   // v16：success/危险色只做文字与标记（好坏由数字与文案表达），青→黄绿 deep
   success: '#6E7A24',
   successSoft: 'rgba(188,203,98,0.18)',
-  danger: '#E07B6B',
+  danger: '#C9598A', // v21：珊瑚第六色相清零 → roseDeep（疲劳三档 high 同源）
   dangerSoft: 'rgba(224,123,107,0.14)',
   warn: '#F0C46E',
   overlay: 'rgba(70,58,110,0.30)',

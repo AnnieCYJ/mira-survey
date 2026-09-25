@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { LinearGradient } from 'expo-linear-gradient';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
 import AiOrb from './AiOrb';
@@ -198,15 +199,21 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
                 // ★ 呼吸冥想：主按钮「立即开始」+ 次按钮「添加到工具」
                 <View style={styles.taskBtnRow}>
                   <TouchableOpacity
-                    style={[styles.taskAddBtn, styles.taskPrimaryBtn]}
+                    style={styles.taskPrimaryWrap}
                     onPress={() => {
                       onClose();
                       setTimeout(() => navigation.navigate('Breathing'), 120);
                     }}
                     activeOpacity={0.7}
                   >
-                    <Icon name="breath" size={theme.fs(14)} color={theme.colors.textWhite} strokeWidth={2} />
-                    <Text style={[styles.taskAddBtnText, styles.taskPrimaryBtnText]}>立即开始呼吸 →</Text>
+                    <LinearGradient
+                      colors={[mm.colors.limeCore, mm.colors.limeMid]}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                      style={styles.taskPrimaryBtn}
+                    >
+                      <Icon name="breath" size={theme.fs(14)} color="#3F4A0E" strokeWidth={2} />
+                      <Text style={styles.taskPrimaryBtnText}>立即开始呼吸 →</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.taskAddBtnSecondary}
@@ -337,7 +344,14 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
             disabled={!input.trim()}
             onPress={() => sendMessage(input)}
           >
-            <Icon name="send" size={theme.fs(18)} color={input.trim() ? theme.colors.textWhite : theme.colors.textSub} />
+            {!input.trim() ? null : (
+              <LinearGradient
+                colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            )}
+            <Icon name="send" size={theme.fs(18)} color={input.trim() ? mm.colors.btnTextOnGrad : mm.colors.inkFaint} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -480,12 +494,11 @@ const styles = StyleSheet.create({
     gap: theme.sp(2),
     marginTop: theme.sp(1),
   },
-  taskAddBtn: {
+  // v21 §4.8 #5：主按钮=黄绿渐变实底、次按钮=白底描边
+  taskPrimaryWrap: {
     alignSelf: 'flex-start',
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.purpleBtn,
+    overflow: 'hidden',
     marginTop: theme.sp(1),
   },
   taskPrimaryBtn: {
@@ -494,13 +507,21 @@ const styles = StyleSheet.create({
     gap: theme.sp(1.5),
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
-    backgroundColor: mm.colors.purpleBtn,
-    marginTop: 0,
   },
   taskPrimaryBtnText: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.textWhite,
+    color: '#3F4A0E',
     fontWeight: theme.weight.semibold,
+  },
+  taskAddBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(1.5),
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.textWhite,
+    marginTop: theme.sp(1),
   },
   taskAddBtnSecondary: {
     alignSelf: 'flex-start',
@@ -519,7 +540,7 @@ const styles = StyleSheet.create({
   },
   taskAddBtnText: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.cardBg,
+    color: theme.colors.textTitle,
     fontWeight: theme.weight.semibold,
   },
   taskAddedBtn: {
@@ -568,9 +589,10 @@ const styles = StyleSheet.create({
     width: theme.sp(11),
     height: theme.sp(11),
     borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.purpleBtn,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(31,29,26,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: mm.colors.purpleSoft },
+  sendBtnDisabled: { backgroundColor: 'rgba(31,29,26,0.06)' },
 });

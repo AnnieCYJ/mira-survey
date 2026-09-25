@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   courseInfo: { flex: 1, gap: 2 },
   courseTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textBody },
   courseMeta: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: mm.colors.roseCore }, // live=rose
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: mm.colors.purpleCore }, // v21：live=紫
 
   modalBg: {
     flex: 1,

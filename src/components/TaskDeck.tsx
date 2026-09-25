@@ -11,18 +11,18 @@ import Card from './Card';
 import { TASK_ICONS, type TaskItem } from '../data/tasks';
 
 // v16 五色系统：四类任务 = soft→mid 双档渐变（图标方块用），青 #CFFAFE/#67E8F9 已删
+// v21 §4.3：四张卡统一「黄绿渐变圆角方块 + 深绿 icon」（原四类分色废弃）
 const TYPE_GRADIENTS: Record<number, [string, string]> = {
-  0: [mm.colors.roseSoft, mm.colors.roseMid],     // 呼吸冥想 = 情绪·粉
-  1: [mm.colors.purpleSoft, mm.colors.purpleMid], // 认知提升 = 认知·紫
-  2: [mm.colors.skySoft, mm.colors.skyMid],       // 专注力提升 → 蓝（旧青语义由蓝接管）
-  3: [mm.colors.honeySoft, mm.colors.honeyMid],   // 知识学习 = 代谢·黄
+  0: [mm.colors.limeCore, mm.colors.limeMid],
+  1: [mm.colors.limeCore, mm.colors.limeMid],
+  2: [mm.colors.limeCore, mm.colors.limeMid],
+  3: [mm.colors.limeCore, mm.colors.limeMid],
 };
-// 图标色 = 对应 deep 档（soft 底上白 icon 对比不足）
 const TYPE_ICON_COLORS: Record<number, string> = {
-  0: mm.colors.roseDeep,
-  1: mm.colors.purpleDeep,
-  2: mm.colors.skyDeep,
-  3: mm.colors.honeyDeep,
+  0: mm.colors.limeDeep,
+  1: mm.colors.limeDeep,
+  2: mm.colors.limeDeep,
+  3: mm.colors.limeDeep,
 };
 const TYPE_LABEL = ['01', '02', '03', '04'];
 
@@ -189,14 +189,14 @@ export default function TaskDeck({ tools, onComplete }: Props) {
               <Card style={[styles.card, isTop && styles.cardTop]}>
                 <View style={styles.headerRow}>
                   <LinearGradient
-                    colors={TYPE_GRADIENTS[t.type] || [mm.colors.purpleSoft, mm.colors.purpleMid]}
+                    colors={TYPE_GRADIENTS[t.type] || [mm.colors.limeCore, mm.colors.limeMid]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                     style={styles.ico}
                   >
                     <Icon
                       name={TASK_ICONS[t.type]}
                       size={theme.fs(24)}
-                      color={TYPE_ICON_COLORS[t.type] ?? mm.colors.purpleDeep}
+                      color={TYPE_ICON_COLORS[t.type] ?? mm.colors.limeDeep}
                       strokeWidth={2.4}
                     />
                   </LinearGradient>
@@ -217,7 +217,7 @@ export default function TaskDeck({ tools, onComplete }: Props) {
                     <Text style={styles.btnTextDone}>已完成 · 已记录</Text>
                   ) : (
                     <LinearGradient
-                      colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+                      colors={[mm.colors.fabFrom, mm.colors.fabTo]} // v21：行动按钮=紫渐变（认知训练入口）
                       start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                       style={styles.btnGrad}
                     >

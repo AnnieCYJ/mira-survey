@@ -32,6 +32,15 @@ interface BCItem {
   range: string;
 }
 
+// v21 §3.3 指标身份色：tint 底 + soft 边 + core 3px 顶条 + deep 名称/数值（纯分类编码，不承载语义）
+const ITEM_TONE: Record<string, { tint: string; soft: string; core: string; deep: string }> = {
+  triglyceride: { tint: mm.colors.roseTint,   soft: mm.colors.roseSoft,   core: mm.colors.roseCore,   deep: mm.colors.roseDeep },
+  hdl:          { tint: mm.colors.skyTint,    soft: mm.colors.skySoft,    core: mm.colors.skyCore,    deep: mm.colors.skyDeep },
+  ldl:          { tint: mm.colors.limeTint,   soft: mm.colors.limeSoft,   core: mm.colors.limeCore,   deep: mm.colors.limeDeep },
+  cholesterol:  { tint: mm.colors.purpleTint, soft: mm.colors.purpleSoft, core: mm.colors.purpleCore, deep: mm.colors.purpleDeep },
+  uricAcid:     { tint: mm.colors.honeyTint,  soft: mm.colors.honeySoft,  core: mm.colors.honeyCore,  deep: mm.colors.honeyDeep },
+};
+
 const BC_ITEMS: BCItem[] = [
   { key: 'triglyceride', name: '甘油三酯', unit: 'mmol/L', yMin: 0, yMax: 6,   range: '正常 < 1.7' },
   { key: 'hdl',          name: 'HDL',       unit: 'mmol/L', yMin: 0, yMax: 3,   range: '正常 > 1.0' },
@@ -103,15 +112,17 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
         {BC_ITEMS.map((it) => {
           const v = (ring as any).daily?.[it.key] ?? null;
           const live = v != null && v > 0;
+          const tone = ITEM_TONE[it.key];
           return (
             <TouchableOpacity
               key={it.key}
               activeOpacity={0.92}
-              style={styles.item}
+              style={[styles.item, { backgroundColor: tone.tint, borderColor: tone.soft }]}
               onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
             >
-              <Text style={styles.itemName}>{it.name}</Text>
-              <Text style={[styles.itemVal, !live && styles.itemValIdle]}>
+              <View style={[styles.itemBar, { backgroundColor: tone.core }]} />
+              <Text style={[styles.itemName, { color: tone.deep }]}>{it.name}</Text>
+              <Text style={[styles.itemVal, !live && styles.itemValIdle, live && { color: tone.deep }]}>
                 {fmt(v, it.unit)}
               </Text>
               <Text style={styles.itemUnit}>{live ? it.unit : '待检测'}</Text>
@@ -181,17 +192,23 @@ const styles = StyleSheet.create({
   },
   item: {
     width: '30%',
-    paddingVertical: theme.sp(1.25),
+    paddingVertical: theme.sp(1.5),
     alignItems: 'center',
     borderRadius: theme.radius.sm,
     borderWidth: 1,
-    borderColor: mm.colors.cardBorder,
-    backgroundColor: mm.colors.cardBg,
+    overflow: 'hidden' as const,
+  },
+  // v21：core 档 3px 顶条 = 唯一「图形」色相标识
+  itemBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
   itemName: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    color: mm.colors.inkSoft,
     marginBottom: 2,
   },
   itemVal: {

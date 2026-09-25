@@ -225,10 +225,10 @@ export default function PeriodRecordPanel({
         </View>
       ) : null}
 
-      {/* 保存：v16 统一 lime→粉 渐变（渐变层自带 padding/圆角，Touchable 只留裁切） */}
+      {/* v21：保存 CTA=紫实底（周期域紫主控）；渐变层自带 padding，Touchable 只留裁切 */}
       <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.85}>
         <LinearGradient
-          colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+          colors={[mm.colors.purpleBtn, mm.colors.purpleBtn]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.saveBtnGrad}
@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.btnBusyBg,
     marginRight: 8,
   },
-  dateChipOn: { backgroundColor: mm.colors.limeSoft },
+  dateChipOn: { backgroundColor: theme.colors.accentSolid }, // v21：周期域选中=紫实底
   chipText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft },
-  chipTextOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
+  chipTextOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   pill: {
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 8,
   },
-  pillOn: { backgroundColor: mm.colors.limeSoft },
+  pillOn: { backgroundColor: theme.colors.accentSolid },
 
   moodChip: {
     alignItems: 'center',
@@ -287,10 +287,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     minWidth: 52,
   },
-  moodChipOn: { backgroundColor: mm.colors.limeSoft, borderWidth: 1, borderColor: mm.colors.limeMid },
+  moodChipOn: { backgroundColor: theme.colors.accentSolid },
   moodEmoji: { fontSize: 20, marginBottom: 2 },
   moodLabel: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
-  moodLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
+  moodLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
   symptomGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   symptomTile: {
@@ -301,10 +301,10 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.btnBusyBg,
     marginBottom: 8,
   },
-  symptomTileOn: { backgroundColor: mm.colors.limeSoft, borderWidth: 1, borderColor: mm.colors.limeMid },
+  symptomTileOn: { backgroundColor: theme.colors.accentSolid },
   symptomEmoji: { fontSize: 22, marginBottom: 3 },
   symptomLabel: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
-  symptomLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
+  symptomLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
   startToggle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.md },
   checkbox: {
@@ -312,13 +312,13 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: mm.colors.limeMid,
+    borderColor: theme.colors.accentSolid,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: theme.space.xs,
   },
-  checkboxOn: { backgroundColor: mm.colors.limeCore },
-  checkMark: { color: mm.colors.limeDeep, fontSize: 14, fontWeight: theme.weight.bold as any },
+  checkboxOn: { backgroundColor: theme.colors.accentSolid },
+  checkMark: { color: theme.colors.textWhite, fontSize: 14, fontWeight: theme.weight.bold as any },
   startTextWrap: { flex: 1 },
   startTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   startSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 1 },
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBtnText: { fontSize: 20, color: mm.colors.limeDeep, fontWeight: theme.weight.bold as any },
+  stepBtnText: { fontSize: 20, color: theme.colors.accentSolid, fontWeight: theme.weight.bold as any },
   stepValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginHorizontal: 16, minWidth: 48, textAlign: 'center' },
 
   // v16：保存按钮 = lime→粉 渐变（Touchable 只留圆角+裁切，padding 在渐变层）
@@ -347,5 +347,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 13,
   },
-  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: mm.colors.btnTextOnGrad },
+  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
 });

@@ -539,8 +539,8 @@ function MonthGrid({
                 <Text style={[styles.dayNum, { color: ph === 'unknown' ? theme.colors.textSub : PHASE_COLOR[ph] }]}>
                   {dt.getDate()}
                 </Text>
-                {isPeriodDay ? <View style={[styles.dayDot, { backgroundColor: PHASE_COLOR.period }]} /> : null}
-                {ph === 'ovulation' ? <View style={[styles.dayRing, { borderColor: PHASE_COLOR.ovulation }]} /> : null}
+                {isPeriodDay ? <View style={[styles.dayDot, { backgroundColor: mm.colors.roseDeep }]} /> : null} {/* v20.5：粉 deep 标记 */}
+                {ph === 'ovulation' ? <View style={[styles.dayRing, { borderColor: mm.colors.limeDeep }]} /> : null} {/* v20.5：标记色比底色深一档，黄绿 core 同色压同色 */}
               </View>
             </TouchableOpacity>
           );
@@ -792,7 +792,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, padding: theme.sp(0.75), aspectRatio: 1 },
   dayBox: { flex: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  dayToday: { borderWidth: 2, borderColor: mm.colors.honeyDeep }, // 今日=honey 语义（与 CalendarGrid 一致）
+  dayToday: { borderWidth: 2, borderColor: theme.colors.accentSolid }, // v21：本页紫主控（周期语义域）
   dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, borderStyle: 'dashed' },
   dayNum: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
   dayDot: { position: 'absolute', bottom: 4, width: 5, height: 5, borderRadius: 2.5 },

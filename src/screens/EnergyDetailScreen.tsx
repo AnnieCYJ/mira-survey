@@ -258,7 +258,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const prep = Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3);
             const ll = prep >= 70 ? { text: '准备好了', color: theme.colors.success, tip: '起床即有清晰认知状态' }
                      : prep >= 45 ? { text: '一般', color: theme.colors.warn, tip: '需要 30-60 分钟暖脑' }
-                     : { text: '偏低', color: mm.colors.purpleDeep, tip: '建议先轻度活动，避免烧脑' };
+                     : { text: '偏低', color: mm.colors.limeDeep, tip: '建议先轻度活动，避免烧脑' }; // v21：疲劳低档=limeDeep
             return (
               <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: ll.color + '12', borderLeftWidth: 3, borderLeftColor: ll.color }}>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>早起认知准备度</Text>
@@ -277,9 +277,9 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           })()}
 
           <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.purpleSoft }}>
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.purpleDeep }}>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
                 {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
@@ -659,7 +659,7 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
     const TH_HIGH = type === 'emotion' ? 60 : 65;
     if (s < TH_LOW) { top = theme.colors.success;    bot = theme.colors.ui.successText; }
     else if (s < TH_HIGH) { top = theme.colors.warn; bot = theme.colors.stateTense; }
-    else { top = mm.colors.purpleCore; bot = mm.colors.purpleDeep; } // v16：认知疲劳=紫（旧 stateEnergy/accentSolid 同值改名）
+    else { top = mm.colors.honeyCore; bot = mm.colors.honeyDeep; } // v21：认知疲劳=蜜（中档 honeyDeep，与 fatigueLevels 同源）
     return [top, bot];
   };
 
