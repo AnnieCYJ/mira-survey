@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(2),
     paddingTop: theme.sp(2),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(124,106,224,0.2)',
+    borderTopColor: 'rgba(31,29,26,0.09)', // v21 §4.8#7：分隔线一律中性灰，紫只留给 AI 身份元素
   },
   taskSuggestionTitle: {
     fontSize: theme.fontSize.sm,
