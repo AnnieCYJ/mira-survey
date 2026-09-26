@@ -13,6 +13,7 @@ import EcgDetailScreen from '../screens/EcgDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
 import BreathingScreen from '../screens/BreathingScreen';
+import FoodScanScreen from '../screens/FoodScanScreen';
 import VoiceChatScreen from '../screens/VoiceChatScreen';
 
 export interface MetricDetailParams {
@@ -38,6 +39,7 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   Breathing: undefined;
+  FoodScan: undefined;
   VoiceChat: { question: string };
 };
 
@@ -151,6 +153,17 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="Breathing"
           component={BreathingScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+            cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+            cardStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen
+          name="FoodScan"
+          component={FoodScanScreen}
           options={{
             presentation: 'card',
             gestureEnabled: true,

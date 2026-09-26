@@ -51,6 +51,14 @@
     "plugins": [
       "./plugins/withVeepooSDK",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "用于拍摄餐食照片，识别菜品并记录热量",
+          "photosPermission": "用于选择餐食照片，识别菜品并记录热量",
+          "savePhotosPermission": "用于保存餐食照片到相册"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {

@@ -21,6 +21,7 @@ const TOOL_IMAGES: Record<string, number> = {
   '认知提升': require('../assets/card_cognitive.png'),
   '专注力提升': require('../assets/card_focus.jpg'),
   '知识学习': require('../assets/card_learn.png'),
+  '饮食识别': require('../assets/card_food.jpg'),
 };
 import { useAppState } from '../state/AppState';
 
@@ -72,6 +73,7 @@ export default function MeditationScreen() {
             style={styles.gridCell}
             onPress={() => {
               if (t.name === '呼吸冥想') navigation.navigate('Breathing');
+              if (t.name === '饮食识别') navigation.navigate('FoodScan');
             }}
           >
             <ImageBackground

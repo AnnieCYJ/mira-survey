@@ -87,6 +87,7 @@ export const TOOL_GRID: { icon: IconName; name: string; sub: string }[] = [
   { icon: 'mind', name: '认知提升', sub: '8 个训练' },
   { icon: 'focus', name: '专注力提升', sub: '6 个课程' },
   { icon: 'learn', name: '知识学习', sub: '24 篇文章' },
+  { icon: 'food', name: '饮食识别', sub: '拍照记热量' },
 ];
 
 export const INITIAL_TASKS: Record<number, TaskType[]> = {
