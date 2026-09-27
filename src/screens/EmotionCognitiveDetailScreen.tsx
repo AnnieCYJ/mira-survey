@@ -1,5 +1,5 @@
 /**
- * EmotionCognitiveDetailScreen —— 身体恢复详情页（与情绪/脑力消耗详情页统一骨架）
+ * EmotionCognitiveDetailScreen —— 全天恢复详情页（首页/洞察页「全天恢复」卡点入；与情绪/脑力消耗详情页统一骨架）
  *
  * 结构：返回头 → Hero(周期标题) → RangeSwitch(日/周/月/年) → DateAnchorPicker → InsightBanner(AI综合) → 内容
  *   · 日：锚定日的全天看板（皮质醇全天趋势 + 情绪/脑力/睡眠摘要 + 相比前一天），与之前一致
@@ -36,6 +36,18 @@ import { computeSleepLoad, SLEEP_LOAD_LABEL, type SleepLoadDay } from '../lib/sl
 import { formatSleepClockText, isLateBedtime } from '../lib/sleepTime';
 
 const DAY_MS = 86400000;
+
+/**
+ * v18.22 摘要格 pastel 底色（与首页 MindStatCard 角标同源，mm.chipBg）：
+ *   情绪=粉 / 疲劳=紫 / 睡眠恢复=lime(恢复语义) / 皮质醇=主题紫(accentSoft+accentSolid，与主曲线同源)。
+ * 不传 bg/fg 时回落 cardBgSoft 灰（仅无数据占位格用）。
+ */
+const MOD_BG = {
+  emotion: { bg: mm.chipBg.pink.bg, fg: mm.chipBg.pink.fg },
+  mind: { bg: mm.chipBg.lav.bg, fg: mm.chipBg.lav.fg },
+  sleep: { bg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
+  cortisol: { bg: theme.colors.accentSoft, fg: theme.colors.accentSolid },
+};
 
 interface DayData {
   D: Date;
@@ -395,9 +407,9 @@ export default function EmotionCognitiveDetailScreen() {
             <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
-            <Text style={styles.title}>身体恢复</Text>
+            <Text style={styles.title}>全天恢复</Text>
             {/* ★ 副标题：与情绪/脑力消耗详情页同结构（标题 + 副标题） */}
-            <Text style={styles.sub}>今日皮质醇节律 · 睡眠恢复</Text>
+            <Text style={styles.sub}>皮质醇节律 · 情绪 · 疲劳 · 睡眠恢复</Text>
           </View>
         </View>
 
@@ -440,8 +452,8 @@ export default function EmotionCognitiveDetailScreen() {
 
 
 
-/** 指标小卡：label + 大数值 + 迷你对比箭头 */
-function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, showHour }: {
+/** 指标小卡：label + 大数值 + 迷你对比箭头（bg/fg = 模块 pastel 底/字色，不传=灰底） */
+function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, showHour, bg, fg }: {
   label: string;
   value: string;
   unit?: string;
@@ -450,10 +462,12 @@ function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, sh
   goodWhen?: 'up' | 'down';
   noCompare?: boolean;
   showHour?: boolean;
+  bg?: string;
+  fg?: string;
 }) {
   return (
-    <View style={{ flex: 1, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, alignItems: 'center' }}>
-      <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>{label}</Text>
+    <View style={{ flex: 1, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: bg ?? theme.colors.cardBgSoft, alignItems: 'center' }}>
+      <Text style={{ fontSize: theme.fontSize.micro, color: fg ?? theme.colors.textSub, marginBottom: theme.sp(0.5) }}>{label}</Text>
       <Text style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>
         {value}{unit ? <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular, color: theme.colors.textSub }}>{unit}</Text> : null}
       </Text>
@@ -521,9 +535,9 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
           <View style={{ padding: theme.sp(3) }}>
             <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>情绪消耗摘要</Text>
             <View style={{ flexDirection: 'row', gap: theme.sp(1) }}>
-              <MetricMini label="压力事件" value={`${s.events.length}`} todayN={s.events.length} prevN={sP.events.length} unit="次" goodWhen="down" />
-              <MetricMini label="恢复时长" value={s.avgRecoverySec != null ? `${s.avgRecoverySec}` : '—'} todayN={s.avgRecoverySec} prevN={sP.avgRecoverySec} unit="s" goodWhen="down" />
-              <MetricMini label="峰值时段" value={s.peakHour != null ? `${String(Math.floor(s.peakHour)).padStart(2, '0')}:00` : '—'} noCompare />
+              <MetricMini label="压力事件" value={`${s.events.length}`} todayN={s.events.length} prevN={sP.events.length} unit="次" goodWhen="down" bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
+              <MetricMini label="恢复时长" value={s.avgRecoverySec != null ? `${s.avgRecoverySec}` : '—'} todayN={s.avgRecoverySec} prevN={sP.avgRecoverySec} unit="s" goodWhen="down" bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
+              <MetricMini label="峰值时段" value={s.peakHour != null ? `${String(Math.floor(s.peakHour)).padStart(2, '0')}:00` : '—'} noCompare bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
             </View>
           </View>
         </Card>
@@ -534,9 +548,9 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
             <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>疲劳摘要</Text>
             {/* Row 1: 当下能力 */}
             <View style={styles.metricRow}>
-              <MetricMini label="节律能量" value={g.mentalEnergy != null ? (g.mentalEnergy >= 65 ? '高' : g.mentalEnergy >= 40 ? '中' : '低') : '—'} noCompare />
-              <MetricMini label="专注力" value={g.focusScore != null ? String(g.focusScore) : '—'} todayN={g.focusScore} prevN={gP.focusScore} goodWhen="up" />
-              <MetricMini label="决策力" value={g.decisionScore != null ? String(g.decisionScore) : '—'} todayN={g.decisionScore} prevN={gP.decisionScore} goodWhen="up" />
+              <MetricMini label="节律能量" value={g.mentalEnergy != null ? (g.mentalEnergy >= 65 ? '高' : g.mentalEnergy >= 40 ? '中' : '低') : '—'} noCompare bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
+              <MetricMini label="专注力" value={g.focusScore != null ? String(g.focusScore) : '—'} todayN={g.focusScore} prevN={gP.focusScore} goodWhen="up" bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
+              <MetricMini label="决策力" value={g.decisionScore != null ? String(g.decisionScore) : '—'} todayN={g.decisionScore} prevN={gP.decisionScore} goodWhen="up" bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
             </View>
             {/* Row 2: 预测峰谷 + 脑力负荷 */}
             <View style={[styles.metricRow, { marginTop: theme.sp(1.5) }]}>
@@ -546,6 +560,7 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
                   ? `${String(g.forecast.peak.hour).padStart(2, '0')}:00 · ${g.forecast.peak.energy}`
                   : '—'}
                 noCompare
+                bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
               />
               <MetricMini
                 label="低谷预测"
@@ -553,6 +568,7 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
                   ? `${String(g.forecast.trough.hour).padStart(2, '0')}:00 · ${g.forecast.trough.energy}`
                   : '—'}
                 noCompare
+                bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
               />
               <MetricMini label="认知负荷" value={g.loadScore != null ? ((() => {
   const ll = g.loadLevel;
@@ -560,7 +576,7 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
   if (ll === 'moderate') return '中';
   if (ll === 'heavy') return '高';
   return g.loadScore < 40 ? '低' : g.loadScore < 65 ? '中' : '高';
-})()) : '—'} noCompare />
+})()) : '—'} noCompare bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
             </View>
           </View>
         </Card>
@@ -570,9 +586,9 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
           <View style={styles.pad}>
             <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>睡眠恢复摘要</Text>
             <View style={styles.metricRow}>
-              <MetricMini label="睡眠负债" value={debt > 0 ? `${debt.toFixed(1)}` : '0.0'} todayN={debt > 0 ? Math.round(debt * 10) / 10 : 0} prevN={debtPrev > 0 ? Math.round(debtPrev * 10) / 10 : 0} unit="h" goodWhen="down" />
-              <MetricMini label="睡眠恢复度" value={sl?.score != null ? String(sl.score) : '—'} todayN={sl?.score ?? null} prevN={slPrev?.score ?? null} goodWhen="up" />
-              <MetricMini label="睡眠时长" value={sl && sl.total ? `${(sl.total / 60).toFixed(1)}h` : '—'} todayN={sl ? Math.round(sl.total / 60 * 10) / 10 : null} prevN={slPrev ? Math.round(slPrev.total / 60 * 10) / 10 : null} unit="h" goodWhen="up" />
+              <MetricMini label="睡眠负债" value={debt > 0 ? `${debt.toFixed(1)}` : '0.0'} todayN={debt > 0 ? Math.round(debt * 10) / 10 : 0} prevN={debtPrev > 0 ? Math.round(debtPrev * 10) / 10 : 0} unit="h" goodWhen="down" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
+              <MetricMini label="睡眠恢复度" value={sl?.score != null ? String(sl.score) : '—'} todayN={sl?.score ?? null} prevN={slPrev?.score ?? null} goodWhen="up" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
+              <MetricMini label="睡眠时长" value={sl && sl.total ? `${(sl.total / 60).toFixed(1)}h` : '—'} todayN={sl ? Math.round(sl.total / 60 * 10) / 10 : null} prevN={slPrev ? Math.round(slPrev.total / 60 * 10) / 10 : null} unit="h" goodWhen="up" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
             </View>
           </View>
         </Card>
@@ -727,8 +743,8 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
             </View>
           )}
           <View style={styles.summaryGrid}>
-            <SumCell label="平均压力水平" value={cur.cortisolMesor != null ? cur.cortisolMesor.toFixed(1) : '—'} sub="区间日均值" />
-            <SumCell label="平均峰值时刻" value={cur.cortisolPeakH != null ? `${String(Math.round(cur.cortisolPeakH)).padStart(2, '0')}:00` : '—'} sub={cur.cortisolPeakH != null ? (cur.cortisolPeakH >= 6 && cur.cortisolPeakH <= 11 ? '正常 06–11' : cur.cortisolPeakH < 6 ? '过早' : '偏晚') : '—'} />
+            <SumCell label="平均压力水平" value={cur.cortisolMesor != null ? cur.cortisolMesor.toFixed(1) : '—'} sub="区间日均值" bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
+            <SumCell label="平均峰值时刻" value={cur.cortisolPeakH != null ? `${String(Math.round(cur.cortisolPeakH)).padStart(2, '0')}:00` : '—'} sub={cur.cortisolPeakH != null ? (cur.cortisolPeakH >= 6 && cur.cortisolPeakH <= 11 ? '正常 06–11' : cur.cortisolPeakH < 6 ? '过早' : '偏晚') : '—'} bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
           </View>
           <MesorSparkline data={cur.cortisolDaily} />
         </View>
@@ -739,11 +755,11 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>情绪消耗 · 区间均值</Text>
           <View style={styles.summaryGrid}>
-            <SumCell label="平均情绪消耗" value={cur.emotionLoad != null ? `${cur.emotionLoad.toFixed(0)}/100` : '—'} sub={prev.emotionLoad != null && cur.emotionLoad != null ? `上期 ${fmtDelta(cur.emotionLoad - prev.emotionLoad)}` : '对比上一周期'} />
-            <SumCell label="日均压力事件" value={cur.eventsPerDay != null ? `${cur.eventsPerDay.toFixed(1)} 次` : '—'} sub={prev.eventsPerDay != null && cur.eventsPerDay != null ? `上期 ${fmtDelta(cur.eventsPerDay - prev.eventsPerDay, 1)}` : '对比上一周期'} />
+            <SumCell label="平均情绪消耗" value={cur.emotionLoad != null ? `${cur.emotionLoad.toFixed(0)}/100` : '—'} sub={prev.emotionLoad != null && cur.emotionLoad != null ? `上期 ${fmtDelta(cur.emotionLoad - prev.emotionLoad)}` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
+            <SumCell label="日均压力事件" value={cur.eventsPerDay != null ? `${cur.eventsPerDay.toFixed(1)} 次` : '—'} sub={prev.eventsPerDay != null && cur.eventsPerDay != null ? `上期 ${fmtDelta(cur.eventsPerDay - prev.eventsPerDay, 1)}` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
           </View>
           <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
-            <SumCell label="平均恢复" value={cur.recoverySec != null ? `${cur.recoverySec.toFixed(0)}s` : '—'} sub={prev.recoverySec != null && cur.recoverySec != null ? `上期 ${fmtDelta(cur.recoverySec - prev.recoverySec)}s` : '对比上一周期'} />
+            <SumCell label="平均恢复" value={cur.recoverySec != null ? `${cur.recoverySec.toFixed(0)}s` : '—'} sub={prev.recoverySec != null && cur.recoverySec != null ? `上期 ${fmtDelta(cur.recoverySec - prev.recoverySec)}s` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
           </View>
         </View>
       </Card>
@@ -753,8 +769,8 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>脑力消耗 · 区间均值</Text>
           <View style={styles.summaryGrid}>
-            <SumCell label="平均疲劳度" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} />
-            <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}%` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}%` : '对比上一周期'} />
+            <SumCell label="平均疲劳度" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
+            <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}%` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}%` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
           </View>
         </View>
       </Card>
@@ -764,8 +780,8 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>睡眠恢复 · 区间均值</Text>
           <View style={styles.summaryGrid}>
-            <SumCell label="平均睡眠负载" value={cur.sleepLoad != null ? `${cur.sleepLoad.toFixed(0)}` : '—'} sub={prev.sleepLoad != null && cur.sleepLoad != null ? `上期 ${fmtDelta(cur.sleepLoad - prev.sleepLoad)}` : '对比上一周期'} />
-            <SumCell label="平均睡眠评分" value={cur.sleepScore != null ? `${cur.sleepScore.toFixed(0)}` : '—'} sub={prev.sleepScore != null && cur.sleepScore != null ? `上期 ${fmtDelta(cur.sleepScore - prev.sleepScore)}` : '对比上一周期'} />
+            <SumCell label="平均睡眠负载" value={cur.sleepLoad != null ? `${cur.sleepLoad.toFixed(0)}` : '—'} sub={prev.sleepLoad != null && cur.sleepLoad != null ? `上期 ${fmtDelta(cur.sleepLoad - prev.sleepLoad)}` : '对比上一周期'} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
+            <SumCell label="平均睡眠评分" value={cur.sleepScore != null ? `${cur.sleepScore.toFixed(0)}` : '—'} sub={prev.sleepScore != null && cur.sleepScore != null ? `上期 ${fmtDelta(cur.sleepScore - prev.sleepScore)}` : '对比上一周期'} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
           </View>
         </View>
       </Card>
@@ -815,8 +831,8 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
       <View style={styles.pad}>
         <Text style={styles.cardTitle}>睡眠恢复摘要</Text>
         <View style={styles.summaryGrid}>
-          <SumCell label="睡眠负载(0–100)" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} />
-          <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} />
+          <SumCell label="睡眠负载(0–100)" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
+          <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
         </View>
         {(clock.bed || clock.wake) && (
           <Text style={styles.sleepMeta}>
@@ -868,10 +884,10 @@ function MesorSparkline({ data }: { data: { date: string; mesor: number }[] }) {
   );
 }
 
-function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function SumCell({ label, value, sub, bg, fg }: { label: string; value: string; sub?: string; bg?: string; fg?: string }) {
   return (
-    <View style={styles.sumCell}>
-      <Text style={styles.sumLabel}>{label}</Text>
+    <View style={[styles.sumCell, bg ? { backgroundColor: bg } : null]}>
+      <Text style={[styles.sumLabel, fg ? { color: fg } : null]}>{label}</Text>
       <Text style={styles.sumValue}>{value}</Text>
       {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
     </View>
