@@ -303,6 +303,8 @@ const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }:
 // —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
 // ★ hour = 钟点 0–23（computeHourlyLoad 已收敛为 24 整点桶）；柱色与详情页大图、Hero 共用
 //   统一三档：低<40 绿 / 中 40–70 黄 / 高≥70 红（COG_LEVEL_LOW / COG_LEVEL_HIGH）
+// 无真实数据时的空骨架数据源（模块级常量，引用稳定不触发 memo 重绘）
+const COG_EMPTY_HOURLY = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
 const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, condensed }: { hourly: { hour: number; score: number; hasData?: boolean }[]; condensed?: boolean }) {
   const W = condensed ? 80 : MW;
   const H = condensed ? 44 : MH;
@@ -1044,22 +1046,20 @@ export default function TodayScreen() {
                 title="认知消耗"
                 cornerIcon="nodes"
                 cornerTone="lav"
-                sub={cogHasData ? `认知疲劳度 · ${cogLevelTxt}` : '暂无数据 · 点开查看图表'}
+                sub={cogHasData ? `认知疲劳度 · ${cogLevelTxt}` : '暂无数据'}
                 value={cognitive}
                 unit="/100"
-                chart={cogHasData ? <MiniCognitiveBars hourly={cogReport!.hourly} /> : null}
+                chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourly : COG_EMPTY_HOURLY} />}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
               />
               <MindStatCard
                 title="运动消耗"
                 cornerIcon="bolt"
                 cornerTone="cyan"
-                sub={activityHasData ? `目标 8,000 步 · 今日累计` : '暂无数据 · 点开查看图表'}
+                sub={activityHasData ? `目标 8,000 步 · 今日累计` : '暂无数据'}
                 value={activity}
                 unit="步"
-                chart={activityHasData ? (
-                  <MiniActivityCurve weekSteps={weekSteps} />
-                ) : null}
+                chart={<MiniActivityCurve weekSteps={weekSteps} />}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
               />
             </View>
