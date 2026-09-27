@@ -64,6 +64,9 @@ export default React.memo(MindStatCardImpl);
 
 const styles = StyleSheet.create({
   card: {
+    // ★ 同行两卡等高：Pressable 被 row 拉伸到行高（由较高的一张决定），
+    //   卡体 flexGrow 填满该高度 → 矮卡（只有脚注）不会比带图表的卡矮一截
+    flexGrow: 1,
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: mm.colors.cardBorder,
