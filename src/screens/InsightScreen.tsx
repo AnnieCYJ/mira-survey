@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import BpCard from '../components/BpCard';
 import EcgCard from '../components/EcgCard';
@@ -41,7 +41,6 @@ import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
-import MindWave from '../components/MindWave';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { computeStressReport } from '../lib/stressAlgorithm';
@@ -528,7 +527,47 @@ const CogTabCard = React.memo(function CogTabCard({ ring, navigation }: { ring: 
   );
 });
 
-/** v18.2：运动恢复节律卡 —— 今日步数/距离/活动消耗 + 近 7 天步数波浪，点击进运动消耗详情。 */
+/** v18.13：周步数柱状图 —— 7 根柱（一~日），今日高亮；全零=空骨架灰桩（不冒充数据）。宽度 onLayout 实测。 */
+const WeekStepsBars = React.memo(function WeekStepsBars({ values }: { values: number[] }) {
+  const [measuredW, setMeasuredW] = React.useState(0);
+  const H = 64, AX = 13, CH = H - AX;
+  const MON = ['一', '二', '三', '四', '五', '六', '日'];
+  const N = values.length || 7;
+  const empty = !values.some(v => v > 0);
+  const max = Math.max(1, ...values);
+  const slotW = measuredW / N;
+  const bw = Math.max(6, slotW * 0.5);
+  const todayIdx = N - 1;
+  const EMPTY_COL = 'rgba(120,110,160,0.13)';
+  return (
+    <View
+      onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
+      style={{ width: '100%', height: H }}
+    >
+      {measuredW > 0 && (
+        <Svg width={measuredW} height={H}>
+          {values.map((v, i) => {
+            const bh = empty ? 3 : Math.max(3, (v / max) * CH * 0.92);
+            const x = i * slotW + (slotW - bw) / 2;
+            const y = CH - bh;
+            const col = empty ? EMPTY_COL : i === todayIdx ? mm.colors.skyDeep : mm.colors.skyCore;
+            return <SvgRect key={'wb' + i} x={x} y={y} width={bw} height={bh} rx={2.5} fill={col} opacity={empty ? 1 : i === todayIdx ? 1 : 0.55} />;
+          })}
+          {MON.slice(0, N).map((d, i) => (
+            <SvgText key={'wl' + i} x={i * slotW + slotW / 2} y={H - 2}
+              textAnchor="middle" fontSize={9}
+              fontWeight={i === todayIdx ? '700' : '500'}
+              fill={i === todayIdx ? mm.colors.skyDeep : 'rgba(120,110,160,0.6)'}>
+              {d}
+            </SvgText>
+          ))}
+        </Svg>
+      )}
+    </View>
+  );
+});
+
+/** v18.2：运动恢复节律卡 —— 今日步数/距离/活动消耗 + 近 7 天步数柱状图，点击进运动消耗详情。 */
 const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigation }: { ring: any; navigation: any }) {
   const weekSteps = useMemo(() => {
     const out: number[] = [];
@@ -554,7 +593,7 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
     <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}>
       <Card style={{ padding: theme.space.cardPadCompact }}>
         <Text style={styles.profTitle}>运动恢复</Text>
-        <MindWave values={weekSteps} color={mm.colors.skyCore} dotColor={mm.colors.skyDeep} height={56} />
+        <WeekStepsBars values={weekSteps} />
         <View style={{ marginTop: theme.sp(1.5), gap: theme.sp(1) }}>
           {rows.map(([label, val, unit]) => (
             <View key={label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
