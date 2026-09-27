@@ -32,9 +32,9 @@ export interface FoodLog {
 // OpenAI 兼容多模态端点：POST {endpoint}/chat/completions
 // model 需支持 image 输入（gpt-4o-mini / qwen-vl-plus / glm-4v-flash 等）
 export const FOOD_VLM = {
-  endpoint: '', // 例：'https://api.openai.com/v1'（不含 /chat/completions）
-  apiKey: '',   // 服务端下发或用户自填；不要提交真实 key 到仓库
-  model: '',    // 例：'gpt-4o-mini'
+  endpoint: 'https://open.bigmodel.cn/api/paas/v4',
+  apiKey: '6ddc2611586f4bc6872c827b7c83ed12.WW6v8SMnx99bf03t',
+  model: 'glm-4v-flash',
 };
 
 const RECOGNIZE_PROMPT = `你是饮食记录助手。识别照片中的食物，返回 JSON（不要多余文字）：
@@ -66,7 +66,10 @@ export async function recognizeMeal(base64Jpeg: string): Promise<MealItem[] | nu
         temperature: 0.2,
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[FoodScan] VLM 请求失败:', res.status, (await res.text()).slice(0, 200));
+      return null;
+    }
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content ?? '';
     const m = text.match(/\{[\s\S]*\}/);
@@ -76,6 +79,7 @@ export async function recognizeMeal(base64Jpeg: string): Promise<MealItem[] | nu
       .filter((it) => it && it.name && Number.isFinite(Number(it.kcal)))
       .slice(0, 8)
       .map((it) => ({ name: String(it.name), portion: String(it.portion || '1 份'), kcal: Math.round(Number(it.kcal)) }));
+    console.log('[FoodScan] VLM 识别成功:', items.length, '项 |', text.slice(0, 120));
     return items.length ? items : null;
   } catch {
     return null;

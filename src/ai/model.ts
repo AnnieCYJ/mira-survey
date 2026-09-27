@@ -12,6 +12,16 @@ let ctx: LlamaContext | null = null;
 let loading: Promise<LlamaContext> | null = null;
 let cachedPath: string | null = null;
 /**
+ * ★★ 模型挂起（2026-09-27）：进入重内存场景（相机/相册）前调用 suspendModel()，
+ * 之后任何 getLlamaContext() 直接快速失败（上层已有降级兜底），防止后台洞察任务
+ * 把刚释放的 1GB 模型又加载回去。离开场景后 resumeModel() + warmupModel() 恢复。
+ * 真机实证：use_mlock 钉死 1GB → 系统 wired 2.68GB / free 仅 27MB → 相机缓冲区分配
+ * 失败 → launchCameraAsync 永不返回（JetsamEvent-2026-09-27-133123.ips 铁证）。
+ */
+let suspended = false;
+export function suspendModel(): void { suspended = true; }
+export function resumeModel(): void { suspended = false; }
+/**
  * ★★ 2026-09-17：每个 JS 世代只清理一次「上次遗留在原生的 llama context」。
  * 为什么需要：llama.rn 的原生 context **不随 JS Runtime 销毁**。JS reload 后旧 Runtime 被释放，
  * 但旧 context 还挂在原生侧、还持有指向旧 Runtime 的 jsi 回调；一旦在新 Runtime 里再次
@@ -54,6 +64,9 @@ export async function resolveModelPath(): Promise<string> {
 }
 
 export function getLlamaContext(): Promise<LlamaContext> {
+  if (suspended) {
+    return Promise.reject(new Error('[MiraAI] 模型已挂起（相机场景腾内存），任务走降级'));
+  }
   if (ctx) return Promise.resolve(ctx);
   if (loading) return loading;
   loading = (async () => {
@@ -79,7 +92,8 @@ export function getLlamaContext(): Promise<LlamaContext> {
         n_batch: 512, // 加速 prompt prefill（TTFT 关键）
         n_ubatch: 512,
         n_threads: 4, // CPU 部分并行（GPU offload 下仍有益）
-        use_mlock: true,
+        // ★ 2026-09-27 移除 use_mlock：它把 ~1GB 模型内存钉成 wired 不可换出，
+        //   iPhone 13 4GB 上直接把全机 free 内存压到 27MB，相机等重内存场景全部卡死。
       });
       ctx = c;
       // —— 诊断：确认 GPU/Metal 是否真的启用（慢的根因往往在这里）——
@@ -201,9 +215,16 @@ export function runOnModel<T>(task: (ctx: LlamaContext) => Promise<T>, key?: str
 }
 
 export async function releaseLlama(): Promise<void> {
+  // ★ 修竞态（2026-09-27）：若 initLlama 还在飞行中，此时 ctx 为 null、直接返回会
+  //   「释放了个寂寞」——加载完成后模型照样常驻（真机日志已复现：release 后紧跟
+  //   「模型已加载」）。必须先等 loading 落地，再释放。
+  if (loading) {
+    try { await loading; } catch { /* 加载失败也无 ctx 可释放 */ }
+  }
   if (ctx) {
     try {
       await ctx.release();
+      console.log('[MiraAI] 模型已释放，内存已归还系统');
     } catch {
       /* ignore */
     }

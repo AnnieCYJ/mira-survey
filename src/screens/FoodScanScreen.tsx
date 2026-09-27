@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -12,9 +13,11 @@ import Card from '../components/Card';
 import Icon from '../components/Icon';
 import {
   recognizeMeal, loadFoodLogs, saveFoodLog, deleteFoodLog,
+  FOOD_VLM,
   BUILT_IN_FOODS, PORTION_FACTORS, dateKeyOf, sumKcal,
   type MealItem, type FoodLog,
 } from '../lib/foodAi';
+import { releaseLlama, warmupModel, suspendModel, resumeModel } from '../ai/model';
 
 /**
  * FoodScanScreen — 饮食识别（工具页「饮食识别」卡入口）
@@ -23,11 +26,13 @@ import {
  *   ├─ 识别成功 → 结果卡（菜品/份量/热量，可逐项删）→ 保存记录
  *   └─ 未配置 VLM / 识别失败 → 兜底：内置常见菜品快速多选 + 份量系数 → 本地估算热量 → 保存
  * 记录：expo-sqlite food_logs 表，页底「今日已记录」实时刷新。
+ *
+ * 性能铁律：拍照时**绝不**要 base64:true——整张照片转 base64 过桥会卡死 JS 线程、
+ * 大图直接 OOM 闪退。只在确认要调 VLM 时才用 expo-file-system 异步读文件转码。
  */
 export default function FoodScanScreen() {
   const navigation = useNavigation();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [base64, setBase64] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [items, setItems] = useState<MealItem[]>([]);
   const [source, setSource] = useState<'ai' | 'manual'>('manual');
@@ -41,6 +46,21 @@ export default function FoodScanScreen() {
   const refreshLogs = useCallback(() => setLogs(loadFoodLogs()), []);
   useEffect(() => { refreshLogs(); }, [refreshLogs]);
 
+  // ★ 内存腾挪：进页挂起端侧大模型并释放（~1GB，use_mlock 时更是 wired 钉死），
+  //   防后台洞察任务重载；离页恢复+预热。真机 Jetsam 铁证：模型常驻时全机 free 仅 27MB，
+  //   相机缓冲区分配失败 → launchCameraAsync 永不返回（点拍照没反应的直接原因）。
+  useEffect(() => {
+    suspendModel();
+    releaseLlama().then(
+      () => console.log('[FoodScan] 端侧模型已释放，为相机腾内存'),
+      () => {}
+    );
+    return () => {
+      resumeModel();
+      warmupModel();
+    };
+  }, []);
+
   const totalKcal = items.reduce((s, it) => s + it.kcal, 0);
   const manualKcal = [...picked].reduce((s, name) => {
     const f = BUILT_IN_FOODS.find((x) => x.name === name);
@@ -49,26 +69,38 @@ export default function FoodScanScreen() {
 
   const pickImage = useCallback(async (useCamera: boolean) => {
     try {
+      console.log('[FoodScan] tap:', useCamera ? '相机' : '相册');
       const perm = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('[FoodScan] 权限:', perm.granted, perm.status);
       if (!perm.granted) {
         Alert.alert('需要权限', useCamera ? '请在系统设置里允许使用相机' : '请在系统设置里允许访问相册');
         return;
       }
+      const options = { quality: 0.6, base64: false, exif: false } as const;
       const res = useCamera
-        ? await ImagePicker.launchCameraAsync({ quality: 0.5, base64: true, allowsEditing: true, aspect: [4, 3] })
-        : await ImagePicker.launchImageLibraryAsync({ quality: 0.5, base64: true, allowsEditing: true, aspect: [4, 3] });
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+      console.log('[FoodScan] picker 返回:', res.canceled ? '已取消' : res.assets?.[0]?.uri ?? '无资源');
       if (res.canceled || !res.assets?.[0]) return;
       const a = res.assets[0];
       setPhotoUri(a.uri);
-      setBase64(a.base64 ?? null);
       setItems([]);
       setPicked(new Set());
 
-      // 有 VLM 配置 → 自动识别；否则直接进手动兜底
+      // 仅在 VLM 已配置时才识别（异步读文件转 base64，不阻塞拍照返回）
+      const vlmReady = Boolean(FOOD_VLM.endpoint && FOOD_VLM.apiKey && FOOD_VLM.model);
+      if (!vlmReady) {
+        setSource('manual');
+        return;
+      }
       setScanning(true);
-      const aiItems = a.base64 ? await recognizeMeal(a.base64) : null;
+      let aiItems: MealItem[] | null = null;
+      try {
+        const b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+        aiItems = await recognizeMeal(b64);
+      } catch { aiItems = null; }
       setScanning(false);
       if (aiItems) {
         setItems(aiItems);
@@ -76,8 +108,9 @@ export default function FoodScanScreen() {
       } else {
         setSource('manual');
       }
-    } catch {
+    } catch (e) {
       setScanning(false);
+      console.warn('[FoodScan] 拍照/读图失败:', e);
       Alert.alert('出错了', '拍照或读取照片失败，请重试');
     }
   }, []);
@@ -103,7 +136,6 @@ export default function FoodScanScreen() {
     setItems([]);
     setPicked(new Set());
     setPhotoUri(null);
-    setBase64(null);
   };
 
   const hasResult = source === 'ai' ? items.length > 0 : picked.size > 0;
@@ -124,7 +156,7 @@ export default function FoodScanScreen() {
         {/* 拍照区 */}
         <Card style={styles.scanCard}>
           {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photo} />
+            <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="cover" />
           ) : (
             <View style={styles.photoPlaceholder}>
               <Icon name="food" size={theme.fs(34)} color={mm.colors.honeyDeep} strokeWidth={1.6} />
