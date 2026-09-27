@@ -535,7 +535,7 @@ export default function TodayScreen() {
   const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
   // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）；无真实数据 → 诚实显示 —
   const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.avgFatigue != null ? String(r.avgFatigue) : '—'; } catch { return '—'; } })();
-  const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
+  const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径：
   // 优先今天、其次昨天——跨午夜的睡眠常记在前一日）。没有睡眠记录就诚实留 —，不编数字。
   const recoverySleep = (() => {
@@ -840,10 +840,9 @@ export default function TodayScreen() {
     ? `峰值 ${pad2(cogPeakBar.hour)}:00 · ${cogLevelTxt}`
     : `全天${cogLevelTxt}疲劳`;
   const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
-  const activityHasData = weekSteps.some((w) => w.steps > 0);
-  const activitySub = activityHasData
-    ? (stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中')
-    : '暂无数据 · 点开查看图表';
+  const stepDistToday = (() => { try { return ring?.stepDaily?.[dkToday]?.distance ?? 0; } catch { return 0; } })();
+  // 运动卡数据口径：卡路里为主数字（kcal），脚注行=步数(stepsToday 复用上方声明)+距离；今日有任何步数即视为有数据
+  const activityHasData = (stepsToday > 0) || weekSteps.some((w) => w.steps > 0);
 
   /**
    * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
@@ -853,7 +852,7 @@ export default function TodayScreen() {
   const metricChips: MindChipItem[] = [
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '认知疲劳度', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activity, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
   ];
 
@@ -1065,10 +1064,12 @@ export default function TodayScreen() {
                 title="运动消耗"
                 cornerIcon="bolt"
                 cornerTone="cyan"
-                sub={activityHasData ? `目标 8,000 步 · 今日累计` : '暂无数据'}
-                value={activity}
-                unit="步"
-                chart={<MiniActivityCurve weekSteps={weekSteps} />}
+                sub="今日活动消耗"
+                value={activityHasData ? String(Math.round(stepKcalToday)) : '暂无数据'}
+                unit={activityHasData ? 'kcal' : undefined}
+                foot={activityHasData
+                  ? `步数 ${stepsToday.toLocaleString('en-US')} · 距离 ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km`
+                  : '连上戒指后自动同步今日活动'}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
               />
             </View>
