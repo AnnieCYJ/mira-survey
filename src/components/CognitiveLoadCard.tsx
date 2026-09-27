@@ -52,14 +52,11 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
   } catch(e) { console.log('COG-ERR', e); }
   const hasData = report.sampleCount >= 2;
 
-  if (!hasData) {
-    return (
-      <Card>
-          <Text style={styles.title}>认知疲劳度</Text>
-          <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
-      </Card>
-    );
-  }
+  // v18.5：无数据时也渲染柱状图框架（低/中/高三档坐标轴 + 图例 + 空柱骨架），
+  //   只把「暂无数据」浮层压在图中央——认知 tab 的主体就是这个柱状图，不能只剩空文案。
+  const hourly = hasData
+    ? report.hourly
+    : Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
 
   // 疲劳度大数字与柱状图同源 (avgFatigue)；负荷分 loadScore 降为副信息
   const cogColor = (v: number | null) =>
@@ -77,7 +74,7 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
 
         {/* ── 全天趋势分布图 ── */}
         <View style={styles.hourSection}>
-          <HourHistogram hourly={report.hourly} peakSpan={report.peakLoadSpan} bestSpan={report.bestSpan} sleepWindow={report.sleepWindow} />
+          <HourHistogram hourly={hourly} peakSpan={hasData ? report.peakLoadSpan : null} bestSpan={hasData ? report.bestSpan : null} sleepWindow={hasData ? report.sleepWindow : null} />
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendSwatch, { backgroundColor: theme.colors.success }]} />
@@ -94,15 +91,21 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
           </View>
         </View>
 
-        {/* ── 三个核心指标 ── */}
-        <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
-          <SumCell label="疲劳度" value={report.avgFatigue != null ? String(report.avgFatigue) : '—'} valueColor={cogColor(report.avgFatigue)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
-          <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
-          <SumCell
-            label="恢复能力"
-            value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
-          />
-        </View>
+        {/* ── 三个核心指标（无数据时换成提示，不显示假数字） ── */}
+        {hasData ? (
+          <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
+            <SumCell label="疲劳度" value={report.avgFatigue != null ? String(report.avgFatigue) : '—'} valueColor={cogColor(report.avgFatigue)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
+            <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
+            <SumCell
+              label="恢复能力"
+              value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
+            />
+          </View>
+        ) : (
+          <Text style={[styles.emptyText, { marginTop: theme.sp(2) }]}>
+            连上戒指跑 2-3 轮自动监测后自动生成报告
+          </Text>
+        )}
     </Card>
   );
 }
