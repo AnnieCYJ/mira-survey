@@ -19,9 +19,27 @@ interface Props {
 
 function MindWaveImpl({ values, color, dotColor, height = 36 }: Props) {
   const pts = (values ?? []).filter((v) => Number.isFinite(v));
-  if (pts.length < 2) return null;
   const W = 150;
   const H = 36;
+  if (pts.length < 2) {
+    // ★ 2026-09-27：无数据不再整块留白，画一条灰色虚线示意波浪（不冒充真实数据）
+    const mid = H / 2;
+    const d = `M6,${mid} Q ${W * 0.28},${mid - 11} ${W * 0.5},${mid} T ${W - 6},${mid}`;
+    return (
+      <View style={[styles.wrap, { height: theme.fs(height) }]}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <Path
+            d={d}
+            fill="none"
+            stroke="rgba(31,29,26,0.18)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeDasharray="5 6"
+          />
+        </Svg>
+      </View>
+    );
+  }
   const min = Math.min(...pts);
   const max = Math.max(...pts);
   const span = max - min || 1;

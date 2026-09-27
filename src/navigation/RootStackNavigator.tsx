@@ -39,7 +39,7 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   Breathing: undefined;
-  FoodScan: undefined;
+  FoodScan: { autoCamera?: boolean } | undefined;
   VoiceChat: { question: string };
 };
 

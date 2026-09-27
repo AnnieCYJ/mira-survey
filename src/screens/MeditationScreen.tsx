@@ -73,7 +73,7 @@ export default function MeditationScreen() {
             style={styles.gridCell}
             onPress={() => {
               if (t.name === '呼吸冥想') navigation.navigate('Breathing');
-              if (t.name === '饮食识别') navigation.navigate('FoodScan');
+              if (t.name === '饮食识别') navigation.navigate('FoodScan', { autoCamera: true });
             }}
           >
             <ImageBackground
@@ -82,12 +82,19 @@ export default function MeditationScreen() {
               imageStyle={{ borderRadius: theme.radius.md }}
               resizeMode="cover"
             >
-              <View style={styles.toolOverlay} />
-              <View style={styles.toolIco}>
-                <Icon name={t.icon} size={theme.fs(22)} color="#fff" strokeWidth={1.8} />
+              {/* v17：下半白色渐变蒙层——图片区留白标题，白色区放副标题 */}
+              <LinearGradient
+                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.55)', 'rgba(255,255,255,0.96)']}
+                locations={[0, 0.45, 1]}
+                style={styles.toolMask}
+              />
+              <View style={styles.toolInner} pointerEvents="none">
+                <View style={styles.toolIco}>
+                  <Icon name={t.icon} size={theme.fs(22)} color="#fff" strokeWidth={1.8} />
+                </View>
+                <Text style={styles.toolName}>{t.name}</Text>
+                <Text style={styles.toolSub}>{t.sub}</Text>
               </View>
-              <Text style={styles.toolName}>{t.name}</Text>
-              <Text style={styles.toolSub}>{t.sub}</Text>
             </ImageBackground>
           </TouchableOpacity>
         ))}
@@ -115,39 +122,43 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -theme.sp(2) },
   gridCell: { width: '50%', padding: theme.sp(2) },
   toolCard: {
-    alignItems: 'center',
-    paddingVertical: theme.space.lg,
     borderRadius: theme.radius.md,
     overflow: 'hidden',
     height: 180,
-    justifyContent: 'center',
   },
-  toolOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: theme.radius.md,
+  toolMask: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    height: '62%',
+    borderBottomLeftRadius: theme.radius.md,
+    borderBottomRightRadius: theme.radius.md,
+  },
+  toolInner: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    paddingTop: theme.space.lg,
   },
   toolIco: {
     width: theme.sp(12),
     height: theme.sp(12),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.space.sm,
   },
   toolName: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowRadius: 4,
+    textShadowColor: 'rgba(80,70,120,0.35)',
+    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
   },
   toolSub: {
     fontSize: theme.fontSize.micro,
-    color: 'rgba(255,255,255,0.85)',
+    color: mm.colors.inkSoft,
     marginTop: theme.sp(1),
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowRadius: 3,
   },
 });

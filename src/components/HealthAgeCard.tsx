@@ -34,34 +34,33 @@ export default function HealthAgeCard({
   // v16 端点圆点 = 黄绿 mid #BCCB62（好坏由数字与文案表达，不用红绿）
   const markerColor = mm.colors.limeMid;
 
-  // ═══ 参考 HTML 的扁平大弧: M 5 135 A 220 220 0 0 1 385 135 ═══
-  // SVG viewBox 尺寸
-  const VB_W = 335;
+  // ═══ 扁平大弧：端点 (EDGE,END_Y)→(W-EDGE,END_Y)，圆心在画布下方 ═══
+  // ★ 2026-09-27 重写几何：旧实现端点/半径/圆心三者不自洽（asin 用 R=220 但真实过弦圆心
+  //   在 cy≈243），marker 悬空在弧外 ~22px；且 preserveAspectRatio="none" 横向拉伸把圆点
+  //   拉成椭圆。现在 onLayout 实测宽度 W，viewBox 1:1 无拉伸，R/圆心/角度全部精确互洽。
   const VB_H = 160;
   const stroke = 24;
-  // 大半径, 圆心在画布下方, 形成扁平拱
-  const R = 220;
-  const cx = VB_W / 2;           // 167.5
-  const cy = VB_H + (R - VB_H);  // 圆心 y, 让弧落在画布底部附近
-  // 弧的两个端点: 左右边缘, y=135 (接近底部)
-  const x1 = 5, y1 = 95;
-  const x2 = VB_W - 5, y2 = 95;
-  // Path d
-  const arcD = `M ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2}`;
+  const END_Y = 95;
+  const EDGE = 5;
+  const [W, setW] = React.useState(0);
+  const halfChord = W > 0 ? (W - EDGE * 2) / 2 : 0;
+  // R 下限：保证弧顶 (cy-R) 不低于 stroke/2（弧顶不被画布裁掉）；再取参考稿扁平度
+  const RMin = halfChord > 0 ? (halfChord * halfChord + (END_Y - stroke / 2) * (END_Y - stroke / 2)) / (2 * (END_Y - stroke / 2)) : 220;
+  const R = Math.max(220, RMin + 2);
+  const cx = W / 2;
+  const cy = END_Y + Math.sqrt(Math.max(R * R - halfChord * halfChord, 1));
+  const arcD = `M ${EDGE} ${END_Y} A ${R} ${R} 0 0 1 ${W - EDGE} ${END_Y}`;
 
-  // 弧总长 (用参考值 459 按比例缩放)
-  const totalLen = 459 * (VB_W / 390);
+  // 弧长（精确）：L = 2R·asin(halfChord/R)
+  const halfAngle = halfChord > 0 ? Math.asin(halfChord / R) : 0;
+  const totalLen = 2 * R * halfAngle;
   const pct = Math.max(0, Math.min(100, overallScore)) / 100;
   const targetLen = totalLen * pct;
 
-  // ═══ 进度终点圆点数学 (和 reference 完全一致) ═══
-  const halfAngle = Math.asin((x2 - cx) / R);   // 半角
+  // ═══ 进度终点圆点：θ 从 -halfAngle（左端）到 +halfAngle（右端），严格落在圆上 ═══
   const dotAngle = -halfAngle + halfAngle * 2 * pct;
-  const dotCx = cx;
-  const dotCy = cy;
-  const dotR = R;
-  const markerX = dotCx + dotR * Math.sin(dotAngle);
-  const markerY = dotCy - dotR * Math.cos(dotAngle);
+  const markerX = cx + R * Math.sin(dotAngle);
+  const markerY = cy - R * Math.cos(dotAngle);
 
   // ═══ 皮质醇 + 经期分析 ═══
   const analysisText = (() => {
@@ -112,9 +111,13 @@ export default function HealthAgeCard({
         end={{ x: 0, y: 1 }}
         style={styles.heroGrad}
       >
-        {/* ═══ SVG 弧 (参考 HTML) ═══ */}
-        <View style={{ alignItems: 'center', paddingTop: theme.sp(1.5) }}>
-          <Svg width="100%" height={VB_H} viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
+        {/* ═══ SVG 弧（onLayout 实测宽度，viewBox 1:1，无拉伸变形） ═══ */}
+        <View style={{ alignItems: 'center', paddingTop: theme.sp(1.5) }} onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          if (Math.abs(w - W) > 0.5) setW(w);
+        }}>
+          {W > 0 ? (
+          <Svg width={W} height={VB_H} viewBox={`0 0 ${W} ${VB_H}`}>
             <Defs>
               {/* v16 §4.2 #1：进度弧黄绿阶 soft→core→mid（#EAF0BE→#D5E384→#BCCB62） */}
               <LinearGradient id="haRing" x1="0" y1="0" x2="1" y2="0">
@@ -152,6 +155,7 @@ export default function HealthAgeCard({
               </G>
             )}
           </Svg>
+          ) : null}
 
           {/* ═══ 中央内容 (position: absolute 风格, 但用 View 布局) ═══ */}
           <View style={[styles.centerContent, { marginTop: -VB_H + 82 }]} pointerEvents="none">

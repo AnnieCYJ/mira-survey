@@ -5,7 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -38,6 +38,7 @@ export default function FoodScanScreen() {
   const [source, setSource] = useState<'ai' | 'manual'>('manual');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [portionIdx, setPortionIdx] = useState(1);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [logs, setLogs] = useState<FoodLog[]>([]);
 
   const todayKey = dateKeyOf();
@@ -60,6 +61,17 @@ export default function FoodScanScreen() {
       warmupModel();
     };
   }, []);
+
+  // ★ 从工具页卡点进来：直接拉起相机（card 直达，免再点一次「拍照识别」）
+  const route = useRoute<RouteProp<{ FoodScan: { autoCamera?: boolean } | undefined }, 'FoodScan'>>();
+  const autoFired = React.useRef(false);
+  useEffect(() => {
+    if (route.params?.autoCamera && !autoFired.current) {
+      autoFired.current = true;
+      pickImage(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.autoCamera]);
 
   const totalKcal = items.reduce((s, it) => s + it.kcal, 0);
   const manualKcal = [...picked].reduce((s, name) => {
@@ -224,12 +236,24 @@ export default function FoodScanScreen() {
           </Card>
         ) : null}
 
-        {/* 手动兜底：内置菜品快速选择 */}
+        {/* 手动兜底：内置菜品快速选择（可收起） */}
         {!scanning && (source === 'manual' || (source === 'ai' && items.length === 0)) ? (
           <Card style={styles.resultCard}>
-            <Text style={styles.resultTitle}>
-              {photoUri ? '没认出来？选一下你吃了什么' : '选择菜品（可多选）'}
-            </Text>
+            <TouchableOpacity
+              style={styles.pickerHead}
+              activeOpacity={0.7}
+              onPress={() => setPickerOpen((v) => !v)}
+            >
+              <Text style={styles.resultTitle}>
+                {photoUri ? '没认出来？选一下你吃了什么' : '选择菜品（可多选）'}
+              </Text>
+              {picked.size > 0 ? <Text style={styles.pickerCount}>已选 {picked.size}</Text> : null}
+              <View style={[styles.chev, pickerOpen && styles.chevOpen]}>
+                <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+              </View>
+            </TouchableOpacity>
+            {pickerOpen ? (
+              <>
             <View style={styles.chipWrap}>
               {BUILT_IN_FOODS.map((f) => {
                 const on = picked.has(f.name);
@@ -275,6 +299,8 @@ export default function FoodScanScreen() {
                 <Text style={styles.scanBtnText}>保存记录</Text>
               </LinearGradient>
             </TouchableOpacity>
+              </>
+            ) : null}
           </Card>
         ) : null}
 
@@ -323,9 +349,9 @@ const styles = StyleSheet.create({
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as never, color: mm.colors.ink },
   subtitle: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginBottom: theme.space.md },
   scanCard: { padding: theme.space.cardPadCompact, marginBottom: theme.space.md },
-  photo: { width: '100%', height: 180, borderRadius: theme.radius.sm, backgroundColor: mm.colors.emptyFill },
+  photo: { width: '100%', height: 280, borderRadius: theme.radius.sm, backgroundColor: mm.colors.emptyFill },
   photoPlaceholder: {
-    height: 140, borderRadius: theme.radius.sm, backgroundColor: mm.colors.emptyFill,
+    height: 240, borderRadius: theme.radius.sm, backgroundColor: mm.colors.emptyFill,
     alignItems: 'center', justifyContent: 'center', gap: theme.sp(1),
   },
   photoHint: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
@@ -344,6 +370,10 @@ const styles = StyleSheet.create({
   resultCard: { padding: theme.space.cardPadCompact, marginBottom: theme.space.md },
   resultHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) },
   resultTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  pickerHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5), marginBottom: theme.sp(1) },
+  pickerCount: { fontSize: theme.fontSize.xs, color: mm.colors.honeyDeep, fontWeight: theme.weight.medium as never, marginLeft: 'auto' },
+  chev: { transform: [{ rotate: '0deg' }] },
+  chevOpen: { transform: [{ rotate: '90deg' }] },
   rematch: { fontSize: theme.fontSize.xs, color: theme.colors.accentText, fontWeight: theme.weight.medium as never },
   itemRow: {
     flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5),
