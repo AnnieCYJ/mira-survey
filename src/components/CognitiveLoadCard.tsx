@@ -78,21 +78,8 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
 
         {/* ── 全天趋势分布图 ── */}
         <View style={styles.hourSection}>
+          {/* 图例已内建在 HourHistogram 底部（此前的卡层图例与之重复展示） */}
           <HourHistogram hourly={hourly} peakSpan={spans.peak} bestSpan={spans.best} sleepWindow={spans.sleep} />
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.success }]} />
-              <Text style={styles.legendText}>低</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.warn }]} />
-              <Text style={styles.legendText}>中</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.danger }]} />
-              <Text style={styles.legendText}>高</Text>
-            </View>
-          </View>
         </View>
 
         {/* ── 三个核心指标（无数据时换成提示，不显示假数字） ── */}
@@ -185,13 +172,14 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
 
   const anyData = rows.some(r => r.hasData);
 
-  // ── X 轴刻度: 每 4 小时主刻度 (钟点 0/4/8/12/16/20/23) ──
-  const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 23];
+  // ── X 轴刻度: 每 4 小时主刻度 (钟点 0/4/8/12/16/20/24) ──
+  // ★ 末刻度是「24」不是 23（用户要求横坐标满 24），24 点画在绘图区右缘、右对齐
+  const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 24];
   const mainTicks = MAIN_HOURS.map(h => ({
     step: h,
+    x: h === 24 ? padL + plotW : cx(h),
     label: String(h).padStart(2, '0'),
-    // 0 点用 start align, 23 点用 end align, 其他 middle
-    align: h === 0 ? 'start' as const : h === 23 ? 'end' as const : 'middle' as const,
+    align: h === 0 ? 'start' as const : h >= 24 ? 'end' as const : 'middle' as const,
   }));
 
   return (
@@ -200,7 +188,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         const w = e.nativeEvent.layout.width;
         if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w);
       }}
-      style={{ height: svgH + theme.sp(2), width: '100%' }}
+      style={{ width: '100%' }}
     >
       <Svg width={svgW} height={svgH + theme.sp(2)}>
 

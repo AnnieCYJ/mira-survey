@@ -306,7 +306,9 @@ const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }:
 // 无真实数据时的空骨架数据源（模块级常量，引用稳定不触发 memo 重绘）
 const COG_EMPTY_HOURLY = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
 const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, condensed }: { hourly: { hour: number; score: number; hasData?: boolean }[]; condensed?: boolean }) {
-  const W = condensed ? 80 : MW;
+  // ★ 宽度 onLayout 实测：固定 168 会超出半宽卡片内框（横坐标「24」溢出卡片边界）
+  const [measuredW, setMeasuredW] = React.useState(0);
+  const W = condensed ? 80 : measuredW;
   const H = condensed ? 44 : MH;
   const AX = condensed ? 0 : AXIS_H;
   const CH = H - AX;
@@ -323,7 +325,12 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
   const barColor = (v:number)=> v>=COG_LEVEL_HIGH ? theme.colors.danger : v>=COG_LEVEL_LOW ? theme.colors.warn : theme.colors.success;
   const NO_DATA = 'rgba(120,110,160,0.13)';   // 无实测时段(睡眠/未到) = 浅灰占位，不用彩色
   return (
-    <View style={{ width: W, height: H }}>
+    <View
+      onLayout={!condensed ? (e) => { const cw = e.nativeEvent.layout.width; if (cw > 0 && Math.abs(cw - measuredW) > 1) setMeasuredW(cw); } : undefined}
+      style={{ width: condensed ? 80 : '100%', height: H }}
+    >
+      {!condensed && W <= 0 ? null : (
+      <>
       <Svg width={W} height={H}>
         {rows.map((r,i)=>{ const h=Math.max(1.5,(r.v/100)*CH),x=i*(W/N)+0.5,y=CH-h,col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
         {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
@@ -333,6 +340,8 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
           <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{Math.round(popVal)}</Text>
         </View>
       ):null}
+      </>
+      )}
     </View>
   );
 });
