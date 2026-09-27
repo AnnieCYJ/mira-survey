@@ -260,7 +260,7 @@ export default function MiraAIHomeScreen() {
           blurOnSubmit={false}
         />
         <TouchableOpacity
-          style={[styles.sendBtn, !draft.trim() && styles.sendBtnDisabled]}
+          style={styles.sendBtn}
           disabled={!draft.trim()}
           onPress={submitDraft}
           accessibilityLabel="发送"
@@ -276,7 +276,11 @@ export default function MiraAIHomeScreen() {
               <Icon name="send" size={theme.fs(18)} color={mm.colors.btnTextOnGrad} />
             </LinearGradient>
           ) : (
-            <Icon name="send" size={theme.fs(18)} color={mm.colors.inkFaint} />
+            /* v18.20：禁用态也用铺满内层——此前 Icon 直接当子元素会被
+               TouchableOpacity（纵向容器）顶到左上角，图标飘出圆心 */
+            <View style={[styles.sendBtnGrad, { backgroundColor: mm.colors.btnBusyBg }]}>
+              <Icon name="send" size={theme.fs(18)} color={mm.colors.inkFaint} />
+            </View>
           )}
         </TouchableOpacity>
       </View>
@@ -402,8 +406,5 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sendBtnDisabled: {
-    backgroundColor: mm.colors.btnBusyBg,
   },
 });

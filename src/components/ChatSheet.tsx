@@ -318,10 +318,18 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
           )}
 
           {isLoading ? (
-            <View style={styles.loadingRow}>
-              <View style={styles.loadingDot} />
-              <View style={[styles.loadingDot, { opacity: 0.6 }]} />
-              <View style={[styles.loadingDot, { opacity: 0.4 }]} />
+            /* v18.20：加载点装进 AI 气泡（此前三点裸飘在页面上） */
+            <View style={styles.msgRow}>
+              <View style={styles.aiAvatar}>
+                <Icon name="sparkle" size={theme.fs(12)} color={theme.colors.textWhite} strokeWidth={2.4} />
+              </View>
+              <View style={[styles.msgBubble, styles.aiBubble]}>
+                <View style={styles.loadingRow}>
+                  <View style={styles.loadingDot} />
+                  <View style={[styles.loadingDot, { opacity: 0.6 }]} />
+                  <View style={[styles.loadingDot, { opacity: 0.4 }]} />
+                </View>
+              </View>
             </View>
           ) : null}
         </ScrollView>
@@ -358,9 +366,10 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   );
 
   // ★ fullScreen：直接返回内容（SheetHead + body），不包 Sheet Modal
+  //   v18.20：背景白——此前整页饱和紫(bgMid)与 App 其他页的白色语言割裂
   if (fullScreen) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.bgMid }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.textWhite }}>
         {sheetHead}
         {body}
       </View>
@@ -461,11 +470,16 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(2.5),
     borderRadius: theme.radius.md,
   },
-  userBubble: { backgroundColor: mm.colors.purpleBtn },
+  // v18.20：气泡带「尾巴」圆角——用户右下收尖、AI 左下收尖，对话方向更清晰
+  userBubble: {
+    backgroundColor: mm.colors.purpleBtn,
+    borderBottomRightRadius: theme.sp(1),
+  },
   aiBubble: {
-    backgroundColor: theme.colors.cardBgStrong,
+    backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
+    borderBottomLeftRadius: theme.sp(1),
   },
   msgText: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.6 },
   userText: { color: theme.colors.textWhite },
@@ -556,13 +570,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     fontWeight: theme.weight.semibold,
   },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: theme.sp(2), paddingLeft: theme.sp(2) },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
   loadingDot: {
     width: theme.sp(1.5),
     height: theme.sp(1.5),
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.purpleCore,
-    marginHorizontal: 2,
     opacity: 0.4,
   },
   inputRow: {
@@ -570,6 +583,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: theme.space.screen,
     paddingTop: theme.sp(2),
+    // v18.20：输入条垫白 + 顶部细分隔线，白底页面上不再悬浮
+    backgroundColor: theme.colors.textWhite,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.cardBorder,
   },
   input: {
     flex: 1,
