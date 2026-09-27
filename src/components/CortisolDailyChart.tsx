@@ -125,7 +125,8 @@ export default function CortisolDailyChart({
     : todayDys ? '节律紊乱'
     : todayHigh ? '当日偏高'
     : '节律正常';
-  const chipColor = todayDys ? theme.colors.stateTense : todayHigh ? theme.colors.danger : '#2ECC71';
+  // v18.21：正常档改 ui.rhythmGood token（裸 hex #2ECC71 违反组件层禁裸色铁律；语义=节律正常）
+  const chipColor = todayDys ? theme.colors.stateTense : todayHigh ? theme.colors.danger : theme.colors.ui.rhythmGood;
   const cos = r.cosinor;
   const hasCos = Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude);
 

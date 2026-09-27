@@ -597,15 +597,23 @@ function dayAbnormal(dk: string, isToday: boolean): boolean {
   return v;
 }
 
-/** 节律日历配色（引用 token）：异常=首页圆环粉 moodRest，正常=淡紫 ui.rhythmCalm */
-const CAL_COLOR = { abn: theme.colors.moodRest, normal: theme.colors.ui.rhythmCalm };
+/**
+ * v18.21 节律日历配色（对齐设计规范语义）：
+ *   正常日 = limeSoft 底 + limeDeep 字（App「好状态」语言，与 tab 选中同源）；
+ *   异常日 = danger 柔和底 + danger 字（危险语义，不再借用首页圆环粉）；
+ *   紫(accentSolid) 只留给「今日」描边——与皮质醇主曲线/认知环同源，不再大面积铺紫。
+ */
+const CAL_COLOR = {
+  normal: { bg: mm.colors.limeSoft, text: mm.colors.limeDeep },
+  abn: { bg: theme.colors.danger + '2E', text: theme.colors.danger },
+};
 
 type CalCell = { key: string; label: string; abn: boolean; isToday: boolean };
 type CalData = { mode: 'year' | 'days'; head?: string[]; rows: CalCell[][] };
 /** AI 综合分析分点行（AI 生成行与规则兜底行同构，均由 InsightBanner rows 渲染） */
 type SummaryRow = { tone: 'good' | 'warn' | 'neutral'; title: string; body: string };
 
-/** 周/月：按天 7 列日历；年：12 月格。异常=首页圆环粉(moodRest)，正常/无数据=淡紫(rhythmCalm) */
+/** 周/月：按天 7 列日历；年：12 月格。正常=limeSoft，异常=danger 柔和底（v18.21 语义色规范） */
 function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
   const data = useMemo<CalData | null>(() => {
     const todayDk = dayKey(Date.now());
@@ -653,12 +661,12 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
           <Text style={styles.cardTitle}>{data.mode === 'year' ? '月度节律' : '节律日历'}</Text>
           <View style={styles.calLegendRow}>
             <View style={styles.calLegendItem}>
-              <View style={[styles.calLegendSwatch, { backgroundColor: CAL_COLOR.abn }]} />
-              <Text style={styles.calLegendText}>{data.mode === 'year' ? '异常偏多' : '异常'}</Text>
+              <View style={[styles.calLegendSwatch, { backgroundColor: CAL_COLOR.abn.bg }]} />
+              <Text style={[styles.calLegendText, { color: CAL_COLOR.abn.text }]}>{data.mode === 'year' ? '异常偏多' : '异常'}</Text>
             </View>
             <View style={styles.calLegendItem}>
-              <View style={[styles.calLegendSwatch, { backgroundColor: CAL_COLOR.normal }]} />
-              <Text style={styles.calLegendText}>正常</Text>
+              <View style={[styles.calLegendSwatch, { backgroundColor: CAL_COLOR.normal.bg }]} />
+              <Text style={[styles.calLegendText, { color: CAL_COLOR.normal.text }]}>正常</Text>
             </View>
           </View>
         </View>
@@ -676,11 +684,13 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
                 key={c.key}
                 style={[
                   data.mode === 'year' ? styles.calMonthCell : styles.calCell,
-                  { backgroundColor: c.abn ? CAL_COLOR.abn : CAL_COLOR.normal },
+                  { backgroundColor: c.abn ? CAL_COLOR.abn.bg : CAL_COLOR.normal.bg },
                   c.isToday && styles.calCellToday,
                 ]}
               >
-                <Text style={styles.calCellText}>{c.label}</Text>
+                <Text style={[styles.calCellText, { color: c.abn ? CAL_COLOR.abn.text : CAL_COLOR.normal.text }]}>
+                  {c.label}
+                </Text>
               </View>
             ))}
             {Array.from({ length: perRow - row.length }).map((_, i) => (
@@ -851,7 +861,8 @@ function MesorSparkline({ data }: { data: { date: string; mesor: number }[] }) {
     <View style={{ marginTop: theme.sp(2) }}>
       <Text style={styles.sparkLabel}>区间每日均值</Text>
       <Svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <Polyline points={pts.join(' ')} fill="none" stroke={mm.colors.honeyDeep} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        {/* v18.21：折线改 accentSolid——与皮质醇主曲线(#7C6AE0)/「当前进度」语义同源，不再借用认知疲劳的蜜色 */}
+        <Polyline points={pts.join(' ')} fill="none" stroke={theme.colors.accentSolid} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       </Svg>
     </View>
   );
@@ -905,8 +916,8 @@ const styles = StyleSheet.create({
   calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   calCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   calMonthCell: { flex: 1, aspectRatio: 1.5, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
-  calCellToday: { borderWidth: 2, borderColor: mm.colors.honeyDeep },
-  calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.ui.chipText },
+  calCellToday: { borderWidth: 2, borderColor: theme.colors.accentSolid },
+  calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any },
   calCellEmpty: { flex: 1 },
   calTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   calLegendRow: { flexDirection: 'row' },
