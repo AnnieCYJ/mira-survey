@@ -338,6 +338,7 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
 });
 
 // —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
+// ★ 全零步数 = 无数据态：只画灰色虚线基线 + 横坐标（不画蓝色实曲线，不冒充数据）
 const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, condensed }: { weekSteps: { dayKey: string; steps: number; date: Date }[]; condensed?: boolean }) {
   const W = condensed ? 80 : MW;
   const H = condensed ? 44 : MH;
@@ -348,28 +349,37 @@ const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, con
   if (series.length < 2) return null;
   const N = series.length, MON=['一','二','三','四','五','六','日'];
   const steps = series.map(s=>s.steps);
+  const isEmpty = !steps.some(v=>v>0);
   const max = Math.max(1,...steps);
   const pts = steps.map((v,i)=>({x:(i/(N-1))*(W-8)+4, y:CH-(v/max)*CH*0.85-3}));
   let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`; }
+  for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${pts[i+1].y.toFixed(1)}`; }
   const area = p+` L ${pts[N-1].x.toFixed(1)} ${CH} L ${pts[0].x.toFixed(1)} ${CH} Z`;
   const last = pts[N-1];
   const PopX = Number.isFinite(last.x) ? Math.max(18, Math.min(MW-48, last.x-20)) : 0;
   return (
     <View style={{ width: W, height: H }}>
       <Svg width={W} height={H}>
-        <Defs>
-          <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
-            <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
-          </SvgLinear>
-        </Defs>
-        <Path d={area} fill="url(#actFill2)" />
-        <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
+        {!isEmpty && (
+          <Defs>
+            <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
+              <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
+            </SvgLinear>
+          </Defs>
+        )}
+        {isEmpty ? (
+          <Path d={`M ${pts[0].x.toFixed(1)} ${CH-3} L ${pts[N-1].x.toFixed(1)} ${CH-3}`} fill="none" stroke="rgba(120,110,160,0.35)" strokeWidth={1.5} strokeDasharray="4 4" />
+        ) : (
+          <>
+            <Path d={area} fill="url(#actFill2)" />
+            <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
+          </>
+        )}
         {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CH+AX-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
       </Svg>
-      {!condensed && steps[N-1]>0 ? (
+      {!condensed && !isEmpty && steps[N-1]>0 ? (
         <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
           <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{steps[N-1]}</Text>
         </View>
@@ -1046,9 +1056,8 @@ export default function TodayScreen() {
                 title="认知消耗"
                 cornerIcon="nodes"
                 cornerTone="lav"
-                sub={cogHasData ? `认知疲劳度 · ${cogLevelTxt}` : '暂无数据'}
-                value={cognitive}
-                unit="/100"
+                sub="认知疲劳度 · 全天趋势"
+                value={cogHasData ? `${cogLevelTxt}疲劳` : '暂无数据'}
                 chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourly : COG_EMPTY_HOURLY} />}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
               />
