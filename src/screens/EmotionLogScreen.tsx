@@ -30,9 +30,8 @@ import {
 import { dayKey } from '../data/healthStore';
 
 /* ── 珠雨参数 ────────────────────────────────────────────── */
-const BEAD_COUNT = 34;          // 珠子数量（性能与观感平衡）
 const RAIN_H = 330;             // 珠雨区高度
-const R_MIN = 14, R_MAX = 20;   // 珠半径范围
+const R_MIN = 24, R_MAX = 28;   // 珠半径（每情绪一颗，珠子加大）
 const SHAKE_EVERY = 80;         // 每 N 帧给珠堆一次轻摇晃
 
 /** 一颗情绪珠：物理 body + 显示属性 */
@@ -73,9 +72,9 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
       Matter.Bodies.rectangle(W + 30, RAIN_H / 2, 60, RAIN_H * 3, wallOpts),                       // 右墙
     ]);
 
-    // 34 颗情绪珠：emoji 按 12 档循环+抖动取，位置随机错落下落
+    // 12 颗情绪珠：每种情绪恰好一颗，位置随机错落下落
     const beads: Bead[] = [];
-    for (let i = 0; i < BEAD_COUNT; i++) {
+    for (let i = 0; i < MOOD_ORDER.length; i++) {
       const r = R_MIN + Math.random() * (R_MAX - R_MIN);
       const x = r + 4 + Math.random() * (W - 2 * (r + 4));
       const y = -40 - Math.random() * (RAIN_H * 2.2);
@@ -90,7 +89,7 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
       beads.push({
         body,
         r,
-        mood: MOOD_ORDER[(i + Math.floor(Math.random() * 3)) % MOOD_ORDER.length],
+        mood: MOOD_ORDER[i],
       });
     }
     beadsRef.current = beads;
