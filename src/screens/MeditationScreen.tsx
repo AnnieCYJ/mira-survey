@@ -81,10 +81,10 @@ export default function MeditationScreen() {
               imageStyle={{ borderRadius: theme.radius.md }}
               resizeMode="cover"
             >
-              {/* v18：只留图 + 底部黑色标题（白色渐变蒙层保证可读性） */}
+              {/* v18.15：参考「Pick your Plan」四宫格 —— 图铺满整卡，蒙层只轻轻提亮底部，灰字居中 */}
               <LinearGradient
-                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.96)']}
-                locations={[0, 0.42, 1]}
+                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.32)', 'rgba(255,255,255,0.86)']}
+                locations={[0, 0.5, 1]}
                 style={styles.toolMask}
               />
               <View style={styles.toolInner} pointerEvents="none">
@@ -134,8 +134,9 @@ const styles = StyleSheet.create({
     paddingBottom: theme.space.md,
   },
   toolName: {
-    fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.semibold,
-    color: mm.colors.ink,
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkSoft,
+    textAlign: 'center',
   },
 });
