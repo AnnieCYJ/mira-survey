@@ -452,8 +452,8 @@ export default function EmotionCognitiveDetailScreen() {
 
 
 
-/** 指标小卡：label + 大数值 + 迷你对比箭头（bg/fg = 模块 pastel 底/字色，不传=灰底） */
-function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, showHour, bg, fg }: {
+/** 指标小卡：label + 大数值 + 小字副行(sub)或迷你对比箭头（bg/fg = 模块 pastel 底/字色，不传=灰底） */
+function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, showHour, sub, bg, fg }: {
   label: string;
   value: string;
   unit?: string;
@@ -462,16 +462,20 @@ function MetricMini({ label, value, unit, todayN, prevN, goodWhen, noCompare, sh
   goodWhen?: 'up' | 'down';
   noCompare?: boolean;
   showHour?: boolean;
+  /** 固定小字副行（如「脑力 78」）；设置后不再渲染「相比昨天」 */
+  sub?: string;
   bg?: string;
   fg?: string;
 }) {
   return (
     <View style={{ flex: 1, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: bg ?? theme.colors.cardBgSoft, alignItems: 'center' }}>
       <Text style={{ fontSize: theme.fontSize.micro, color: fg ?? theme.colors.textSub, marginBottom: theme.sp(0.5) }}>{label}</Text>
-      <Text style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>
+      <Text style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold, color: theme.colors.textTitle }} numberOfLines={1} adjustsFontSizeToFit>
         {value}{unit ? <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular, color: theme.colors.textSub }}>{unit}</Text> : null}
       </Text>
-      {!noCompare && todayN != null && prevN != null && todayN !== prevN ? (
+      {sub ? (
+        <Text style={{ fontSize: theme.fontSize.micro, color: fg ?? theme.colors.textSub, marginTop: theme.sp(1) }}>{sub}</Text>
+      ) : !noCompare && todayN != null && prevN != null && todayN !== prevN ? (
         <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
           相比昨天 {(() => {
             const diff = showHour ? (todayN - prevN) / 60 : todayN - prevN;
@@ -557,16 +561,18 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
               <MetricMini
                 label="峰值预测"
                 value={g.forecast?.peak
-                  ? `${String(g.forecast.peak.hour).padStart(2, '0')}:00 · ${g.forecast.peak.energy}`
+                  ? `${String(g.forecast.peak.hour).padStart(2, '0')}:00`
                   : '—'}
+                sub={g.forecast?.peak ? `脑力 ${g.forecast.peak.energy}` : undefined}
                 noCompare
                 bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
               />
               <MetricMini
                 label="低谷预测"
                 value={g.forecast?.trough
-                  ? `${String(g.forecast.trough.hour).padStart(2, '0')}:00 · ${g.forecast.trough.energy}`
+                  ? `${String(g.forecast.trough.hour).padStart(2, '0')}:00`
                   : '—'}
+                sub={g.forecast?.trough ? `脑力 ${g.forecast.trough.energy}` : undefined}
                 noCompare
                 bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
               />
