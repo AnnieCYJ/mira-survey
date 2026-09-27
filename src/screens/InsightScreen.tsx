@@ -43,6 +43,7 @@ import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import MindWave from '../components/MindWave';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { reportNowMsForDay } from '../lib/dayAnchor';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
 
@@ -422,11 +423,14 @@ export default function InsightScreen() {
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
               <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
             ) : subTab === 'mindCog' ? (
-              // v18.2：认知 = 认知负荷
-              <CognitiveLoadCard />
+              // v18.3：认知 = 认知负荷（与首页「认知消耗」同源 computeCognitiveLoadReport；
+              //   今天无采样时回退到最近有数据日，避免整卡空态）
+              <CogTabCard ring={ring} navigation={navigation} />
             ) : subTab === 'emotion' ? (
-              // v18.3：情绪 = 情绪洞察（从恢复节律拆出独立 tab）
-              <EmotionInsightView />
+              // v18.3：情绪 = 情绪洞察，点卡片进「情绪消耗」日/周/年详情页
+              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
+                <EmotionInsightView />
+              </TouchableOpacity>
             ) : (
               // v18.2：运动恢复节律 = 步数/距离/活动消耗 + 近 7 天步数波浪
               <SportRecoveryCard ring={ring} navigation={navigation} />
@@ -501,6 +505,28 @@ export default function InsightScreen() {
   </>
   );
 }
+
+/** v18.3：认知 tab 卡 —— 与首页「认知消耗」同源（computeCognitiveLoadReport）。
+ *  今天采样不足时回退到最近有数据日（≤6 天前），note 标注展示的是哪天；整卡可点进认知消耗详情。 */
+const CogTabCard = React.memo(function CogTabCard({ ring, navigation }: { ring: any; navigation: any }) {
+  const { nowMs, note } = useMemo(() => {
+    // 先试今天（=此刻）；采样不够再往前找最近有数据的一天
+    if (computeCognitiveLoadReport(Date.now()).sampleCount >= 2) return { nowMs: Date.now(), note: undefined as string | undefined };
+    for (let i = 1; i <= 6; i++) {
+      const ms = Date.now() - i * 86400000;
+      if (computeCognitiveLoadReport(reportNowMsForDay(ms)).sampleCount >= 2) {
+        const d = new Date(ms);
+        return { nowMs: reportNowMsForDay(ms), note: `展示最近有数据日 · ${d.getMonth() + 1}-${d.getDate()}` };
+      }
+    }
+    return { nowMs: undefined, note: undefined };
+  }, [ring]);
+  return (
+    <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}>
+      <CognitiveLoadCard nowMs={nowMs} note={note} />
+    </TouchableOpacity>
+  );
+});
 
 /** v18.2：运动恢复节律卡 —— 今日步数/距离/活动消耗 + 近 7 天步数波浪，点击进运动消耗详情。 */
 const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigation }: { ring: any; navigation: any }) {

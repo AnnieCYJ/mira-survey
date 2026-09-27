@@ -38,9 +38,9 @@ function fatigueLabel(l: FatigueLevel): string {
     : '精力充沛';
 }
 
-export default function CognitiveLoadCard() {
+export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; note?: string }) {
   useHealthStoreVersion(); // 触发 re-render
-  const report = computeCognitiveLoadReport();
+  const report = computeCognitiveLoadReport(nowMs ?? Date.now());
   // ★ debug: 每次 render 打印 sleepWindow
   try {
     const postLog = (globalThis as any).__postLog;
@@ -73,6 +73,7 @@ export default function CognitiveLoadCard() {
     <Card>
         {/* ── 头部 ── */}
         <Text style={styles.title}>认知疲劳度</Text>
+        {note ? <Text style={styles.noteText}>{note}</Text> : null}
 
         {/* ── 全天趋势分布图 ── */}
         <View style={styles.hourSection}>
@@ -303,6 +304,7 @@ const styles = StyleSheet.create({
   pad: { padding: theme.space.cardPad },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  noteText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   levelChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },
   levelDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1) },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
