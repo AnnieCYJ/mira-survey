@@ -560,8 +560,9 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
             <View key={label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft }}>{label}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
-                <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.skyDeep }}>{val}</Text>
-                <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkSoft }}>{unit}</Text>
+                {/* v18.11：数值与首页运动卡同步加大（card 18 → h2 22） */}
+                <Text style={{ fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as never, color: mm.colors.skyDeep }}>{val}</Text>
+                <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft }}>{unit}</Text>
               </View>
             </View>
           ))}

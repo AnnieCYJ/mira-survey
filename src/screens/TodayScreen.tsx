@@ -1068,8 +1068,11 @@ export default function TodayScreen() {
                 value={activityHasData ? String(Math.round(stepKcalToday)) : '暂无数据'}
                 unit={activityHasData ? 'kcal' : undefined}
                 foot={activityHasData
-                  ? `步数 ${stepsToday.toLocaleString('en-US')} · 距离 ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km`
+                  ? undefined
                   : '连上戒指后自动同步今日活动'}
+                footLines={activityHasData
+                  ? [`步数 ${stepsToday.toLocaleString('en-US')}`, `距离 ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km`]
+                  : undefined}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
               />
             </View>

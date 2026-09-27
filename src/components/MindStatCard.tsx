@@ -20,10 +20,12 @@ interface Props {
   chart?: React.ReactNode;
   /** 底部虚线分隔脚注（如「入睡 23:42 · 夜间醒来 1 次」） */
   foot?: string;
+  /** 底部虚线分隔脚注·多行版（每项一行，如 ['步数 8,432', '距离 6.1 km']） */
+  footLines?: string[];
   onPress?: () => void;
 }
 
-function MindStatCardImpl({ title, sub, value, unit, cornerIcon, cornerTone = 'lav', chart, foot, onPress }: Props) {
+function MindStatCardImpl({ title, sub, value, unit, cornerIcon, cornerTone = 'lav', chart, foot, footLines, onPress }: Props) {
   const pressScale = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
     Animated.timing(pressScale, { toValue: v, duration: theme.motion.instant, easing: theme.motion.easeStandard, useNativeDriver: true }).start();
@@ -53,6 +55,13 @@ function MindStatCardImpl({ title, sub, value, unit, cornerIcon, cornerTone = 'l
         {!!foot && (
           <View style={styles.foot}>
             <Text style={styles.footText} numberOfLines={1}>{foot}</Text>
+          </View>
+        )}
+        {!!footLines?.length && (
+          <View style={styles.foot}>
+            {footLines.map((line, i) => (
+              <Text key={i} style={styles.footLineText} numberOfLines={1}>{line}</Text>
+            ))}
           </View>
         )}
       </Animated.View>
@@ -127,8 +136,14 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   footText: {
-    fontSize: theme.fs(9.5),
+    fontSize: theme.fs(11.5),
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
+  },
+  footLineText: {
+    fontSize: theme.fs(12),
+    fontWeight: theme.weight.medium,
+    color: mm.colors.ink,
+    marginTop: theme.sp(1),
   },
 });
