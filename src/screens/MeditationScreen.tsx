@@ -9,7 +9,6 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import TaskDeck from '../components/TaskDeck';
-import Icon from '../components/Icon';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { TOOL_GRID } from '../data/tasks';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -82,18 +81,14 @@ export default function MeditationScreen() {
               imageStyle={{ borderRadius: theme.radius.md }}
               resizeMode="cover"
             >
-              {/* v17：下半白色渐变蒙层——图片区留白标题，白色区放副标题 */}
+              {/* v18：只留图 + 底部黑色标题（白色渐变蒙层保证可读性） */}
               <LinearGradient
-                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.55)', 'rgba(255,255,255,0.96)']}
-                locations={[0, 0.45, 1]}
+                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.96)']}
+                locations={[0, 0.42, 1]}
                 style={styles.toolMask}
               />
               <View style={styles.toolInner} pointerEvents="none">
-                <View style={styles.toolIco}>
-                  <Icon name={t.icon} size={theme.fs(22)} color="#fff" strokeWidth={1.8} />
-                </View>
                 <Text style={styles.toolName}>{t.name}</Text>
-                <Text style={styles.toolSub}>{t.sub}</Text>
               </View>
             </ImageBackground>
           </TouchableOpacity>
@@ -134,31 +129,13 @@ const styles = StyleSheet.create({
   },
   toolInner: {
     ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingTop: theme.space.lg,
-  },
-  toolIco: {
-    width: theme.sp(12),
-    height: theme.sp(12),
-    borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: theme.space.sm,
+    paddingBottom: theme.space.md,
   },
   toolName: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,
-    color: '#fff',
-    textShadowColor: 'rgba(80,70,120,0.35)',
-    textShadowRadius: 6,
-    textShadowOffset: { width: 0, height: 1 },
-  },
-  toolSub: {
-    fontSize: theme.fontSize.micro,
-    color: mm.colors.inkSoft,
-    marginTop: theme.sp(1),
+    color: mm.colors.ink,
   },
 });

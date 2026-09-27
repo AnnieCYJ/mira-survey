@@ -67,8 +67,10 @@ const RHYTHM_SUBS: { key: string; label: string }[] = [
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
-  { key: 'heart', label: '心血管' },
-  { key: 'metabolism', label: '代谢' },
+  { key: 'ecg', label: '心电' },
+  { key: 'bp', label: '血压' },
+  { key: 'sugar', label: '血糖' },
+  { key: 'bodycomp', label: '身体成分' },
   { key: 'basics', label: '基础指标' },
 ];
 
@@ -138,7 +140,7 @@ export default function InsightScreen() {
   const [ring, setRing] = useState<RingState>(RingBle.getState());
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
-  const [subTab, setSubTab] = useState<string>('sleep'); // rhythm: sleep | body | mind  longevity: heart | metabolism | basics
+  const [subTab, setSubTab] = useState<string>('sleep'); // rhythm: sleep | body | mind  longevity: ecg | bp | sugar | bodycomp | basics
   // 当前 top tab 生效的子 tab 配置（hero/Segmented/UnderlineTabs 两个分支共用一套）
   const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : LONGEVITY_SUBS;
   const [tab, setTab] = useState<TabKey>('basics');
@@ -390,7 +392,7 @@ export default function InsightScreen() {
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
-          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'heart'); }}
+          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'ecg'); }}
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           style={styles.chipRow} contentContainerStyle={styles.chipContent}>
@@ -421,21 +423,20 @@ export default function InsightScreen() {
           </>
         ) : (
           <>
-            {/* v16：心血管目标稿为「血压卡 / ECG 卡各自全宽竖排」（旧双列横排废弃） */}
-            {subTab === 'heart' ? (
-              <>
-                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('BpDetail')}>
-                  <Card style={{ padding: theme.space.cardPadCompact }}>
-                    <BpCard ring={ring} onPress={() => {}} />
-                  </Card>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EcgDetail')}>
-                  <Card style={{ padding: theme.space.cardPadCompact }}>
-                    <EcgCard ring={ring} onPress={() => {}} compactMode />
-                  </Card>
-                </TouchableOpacity>
-              </>
-            ) : subTab === 'metabolism' ? (
+            {/* v18：心血管拆成「心电 / 血压」两个独立子 tab，各自全宽竖排 */}
+            {subTab === 'ecg' ? (
+              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EcgDetail')}>
+                <Card style={{ padding: theme.space.cardPadCompact }}>
+                  <EcgCard ring={ring} onPress={() => {}} compactMode />
+                </Card>
+              </TouchableOpacity>
+            ) : subTab === 'bp' ? (
+              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('BpDetail')}>
+                <Card style={{ padding: theme.space.cardPadCompact }}>
+                  <BpCard ring={ring} onPress={() => {}} />
+                </Card>
+              </TouchableOpacity>
+            ) : subTab === 'sugar' ? (
               <>
                 <TouchableOpacity activeOpacity={0.92} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
                   {/* v16：数据卡白底全宽，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
@@ -453,8 +454,10 @@ export default function InsightScreen() {
                 <Card style={{ padding: theme.space.cardPadCompact }}>
                   <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
                 </Card>
-                <ExamTab />
               </>
+            ) : subTab === 'bodycomp' ? (
+              // v18：一键体检 = 本地估算身体成分并持久化，独立成「身体成分」子 tab
+              <ExamTab />
             ) : (
               // basics
               <>
@@ -622,7 +625,7 @@ function EcgReadout({ ring }: { ring: RingState }) {
 
 // ── v10: 组 tab 胶囊（白底描边轨道 + lime 选中滑块，SPEC §1 #15）──
 function Segmented({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
-  const W = theme.fs(160);
+  const W = theme.fs(200); // v18：节律/长期 tab 加长
   const itemW = W / options.length;
   const [anim] = useState(() => new Animated.Value(activeIndex));
   useEffect(() => {
