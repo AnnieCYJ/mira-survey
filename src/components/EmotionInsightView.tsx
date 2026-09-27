@@ -22,6 +22,7 @@ import { computeStressReport, type StressReport } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { parseClockMinutes } from '../lib/sleepTime';
 import { levelColor, HourHistogram } from './StressInsightCard';
+import EmotionLogCard from './EmotionLogCard';
 
 /** 等宽均分数据单元（与 MetricDetail statCell 同款；两处共用） */
 export function StatCell({ label, value, sub, valueColor }: {
@@ -300,6 +301,9 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             <StressEventStems events={report.events} chartH={200} />
           </View>
         )}
+
+        {/* ③ 情绪记录卡（Mooda 式自报入口：选心情球+一句话；与 EDA 推断负荷独立并排） */}
+        <EmotionLogCard />
 
         <View style={{ height: theme.sp(3) }} />
 
