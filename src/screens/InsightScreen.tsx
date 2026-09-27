@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,6 +40,8 @@ import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHeal
 import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
+import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import MindWave from '../components/MindWave';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
@@ -63,7 +65,9 @@ const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
 const RHYTHM_SUBS: { key: string; label: string }[] = [
   { key: 'sleep', label: '睡眠' },
   { key: 'body', label: '生理' },
-  { key: 'mind', label: '情绪&认知' },
+  { key: 'recover', label: '恢复节律' },
+  { key: 'mindCog', label: '认知恢复节律' },
+  { key: 'sportRec', label: '运动恢复节律' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
@@ -413,12 +417,18 @@ export default function InsightScreen() {
               </>
             ) : subTab === 'body' ? (
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
-            ) : (
+            ) : subTab === 'recover' ? (
+              // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）+ 情绪洞察
               <>
+                <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
                 <EmotionInsightView />
-                <View style={{ height: theme.sp(0.5) }} />
-                <CognitiveLoadCard />
               </>
+            ) : subTab === 'mindCog' ? (
+              // v18.2：认知恢复节律 = 认知负荷
+              <CognitiveLoadCard />
+            ) : (
+              // v18.2：运动恢复节律 = 步数/距离/活动消耗 + 近 7 天步数波浪
+              <SportRecoveryCard ring={ring} navigation={navigation} />
             )}
           </>
         ) : (
@@ -490,6 +500,49 @@ export default function InsightScreen() {
   </>
   );
 }
+
+/** v18.2：运动恢复节律卡 —— 今日步数/距离/活动消耗 + 近 7 天步数波浪，点击进运动消耗详情。 */
+const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigation }: { ring: any; navigation: any }) {
+  const weekSteps = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const dk = dayKey(Date.now() - i * 86400000);
+      out.push(ring?.stepDaily?.[dk]?.steps ?? 0);
+    }
+    return out;
+  }, [ring]);
+  const today = ring?.stepDaily?.[dayKey(Date.now())] ?? {};
+  const steps = today?.steps ?? 0;
+  const distanceKm = (today?.distance ?? 0) >= 10
+    ? (today?.distance ?? 0).toFixed(1)
+    : (today?.distance ?? 0).toFixed(2);
+  const calorie = Math.round(today?.calorie ?? 0);
+
+  const rows: [string, string, string][] = [
+    ['今日步数', steps > 0 ? steps.toLocaleString('zh-CN') : '—', '步'],
+    ['步行距离', steps > 0 ? distanceKm : '—', 'km'],
+    ['活动消耗', calorie > 0 ? String(calorie) : '—', 'kcal'],
+  ];
+  return (
+    <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}>
+      <Card style={{ padding: theme.space.cardPadCompact }}>
+        <Text style={styles.profTitle}>运动恢复</Text>
+        <MindWave values={weekSteps} color={mm.colors.skyCore} dotColor={mm.colors.skyDeep} height={56} />
+        <View style={{ marginTop: theme.sp(1.5), gap: theme.sp(1) }}>
+          {rows.map(([label, val, unit]) => (
+            <View key={label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft }}>{label}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+                <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.skyDeep }}>{val}</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkSoft }}>{unit}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </Card>
+    </TouchableOpacity>
+  );
+});
 
 /** ECG 波形路径：归一化 + Catmull-Rom 平滑成真实心电图曲线。 */
 function ecgWaveformPath(values: number[]): string {
@@ -625,7 +678,9 @@ function EcgReadout({ ring }: { ring: RingState }) {
 
 // ── v10: 组 tab 胶囊（白底描边轨道 + lime 选中滑块，SPEC §1 #15）──
 function Segmented({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
-  const W = theme.fs(200); // v18：节律/长期 tab 加长
+  // v18.2：与 App 内容区同宽（ScreenContainer 左右各 space.screen，轨道自身再留 sp(1)×2）
+  const { width: winW } = useWindowDimensions();
+  const W = winW - 2 * theme.space.screen - theme.sp(2);
   const itemW = W / options.length;
   const [anim] = useState(() => new Animated.Value(activeIndex));
   useEffect(() => {
