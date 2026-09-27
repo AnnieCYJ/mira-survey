@@ -66,8 +66,9 @@ const RHYTHM_SUBS: { key: string; label: string }[] = [
   { key: 'sleep', label: '睡眠' },
   { key: 'body', label: '生理' },
   { key: 'recover', label: '恢复节律' },
-  { key: 'mindCog', label: '认知恢复节律' },
-  { key: 'sportRec', label: '运动恢复节律' },
+  { key: 'mindCog', label: '认知' },
+  { key: 'sportRec', label: '运动' },
+  { key: 'emotion', label: '情绪' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
@@ -418,14 +419,14 @@ export default function InsightScreen() {
             ) : subTab === 'body' ? (
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
             ) : subTab === 'recover' ? (
-              // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）+ 情绪洞察
-              <>
-                <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
-                <EmotionInsightView />
-              </>
+              // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
+              <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
             ) : subTab === 'mindCog' ? (
-              // v18.2：认知恢复节律 = 认知负荷
+              // v18.2：认知 = 认知负荷
               <CognitiveLoadCard />
+            ) : subTab === 'emotion' ? (
+              // v18.3：情绪 = 情绪洞察（从恢复节律拆出独立 tab）
+              <EmotionInsightView />
             ) : (
               // v18.2：运动恢复节律 = 步数/距离/活动消耗 + 近 7 天步数波浪
               <SportRecoveryCard ring={ring} navigation={navigation} />
