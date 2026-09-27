@@ -11,9 +11,30 @@
  *  - 同一天允许多条记录；日历取当天最新一条着色。
  */
 import * as FileSystem from 'expo-file-system';
+import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { dayKey } from './healthStore';
 
-export type MoodKey = 'excited' | 'pleasant' | 'calm' | 'stressed' | 'anxious';
+/** 12 档情绪 → theme token 色（唯一映射，UI 层统一引用）：
+ *  亮色系=积极（moodEnergy/moodGood/rose/honey/sky），沉色系=低落（state/danger/purple/灰紫） */
+export const MOOD_COLOR: Record<MoodKey, string> = {
+  excited: theme.colors.moodEnergy,
+  happy: theme.colors.moodGood,
+  love: mm.colors.roseCore,
+  grateful: mm.colors.honeyDeep,
+  pleasant: mm.colors.skyCore,
+  calm: theme.colors.stateTired,
+  tired: mm.colors.limeDeep,
+  stressed: theme.colors.stateEnergy,
+  anxious: theme.colors.danger,
+  sad: mm.colors.purpleDeep,
+  angry: theme.colors.stateTense,
+  lonely: theme.colors.textNavIdle,
+};
+
+export type MoodKey =
+  | 'excited' | 'happy' | 'love' | 'grateful' | 'pleasant' | 'calm'
+  | 'tired' | 'stressed' | 'anxious' | 'sad' | 'angry' | 'lonely';
 
 export interface EmotionEntry {
   id: string;
@@ -25,23 +46,40 @@ export interface EmotionEntry {
   note?: string;
 }
 
-/** 记录页选择顺序：愉悦 → 平静 → 低落（Mooda 式从亮到沉） */
-export const MOOD_ORDER: MoodKey[] = ['excited', 'pleasant', 'calm', 'stressed', 'anxious'];
+/** 记录页珠雨中的出现顺序：亮→沉（v18.25 扩到 12 档；旧 5 档 key 全部保留向后兼容） */
+export const MOOD_ORDER: MoodKey[] = [
+  'excited', 'happy', 'love', 'grateful', 'pleasant', 'calm',
+  'tired', 'stressed', 'anxious', 'sad', 'angry', 'lonely',
+];
 
 export const MOOD_LABEL: Record<MoodKey, string> = {
   excited: '兴奋',
+  happy: '开心',
+  love: '心动',
+  grateful: '感激',
   pleasant: '愉悦',
   calm: '平静',
+  tired: '疲惫',
   stressed: '压力',
   anxious: '焦虑',
+  sad: '难过',
+  angry: '生气',
+  lonely: '孤独',
 };
 
 export const MOOD_EMOJI: Record<MoodKey, string> = {
   excited: '🤩',
+  happy: '😄',
+  love: '🥰',
+  grateful: '🤗',
   pleasant: '😊',
   calm: '😌',
+  tired: '😴',
   stressed: '😕',
   anxious: '😰',
+  sad: '😢',
+  angry: '😠',
+  lonely: '😔',
 };
 
 // ── 事件总线 ──────────────────────────────────────────────────────────────

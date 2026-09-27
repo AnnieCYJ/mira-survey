@@ -2,8 +2,8 @@
  * EmotionLogCard —— 情绪记录卡片（Mooda 式入口卡）
  *
  * 位置：EmotionInsightView 内「情绪负荷」图表区之下（情绪消耗详情页 + 洞察页情绪 tab 共用）。
- * 内容：今日最新一条自报情绪（球 + 档位 + 备注 + 时刻）；未记录 → 引导文案。
- * 点击 → EmotionLogScreen（选心情球 + 一句话 + 当月心情日历）。
+ * 内容：一排迷你情绪球（入口感）+ 今日最新自报记录（球 + 档位 + 备注 + 时刻）；
+ *       未记录 → 引导文案。点击 → EmotionLogScreen（Matter.js 情绪珠雨选心情）。
  * 数据：data/emotionLog.ts（用户自报，与 EDA 推断的情绪负荷独立）。
  */
 import React, { useEffect, useState } from 'react';
@@ -12,19 +12,13 @@ import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import {
-  MOOD_EMOJI, MOOD_LABEL, type MoodKey,
+  MOOD_EMOJI, MOOD_LABEL, MOOD_COLOR,
   ensureEmotionLogLoaded, getLatestForDay, onEmotionLog,
 } from '../data/emotionLog';
 import { dayKey } from '../data/healthStore';
 
-/** 5 档情绪 → theme token 色（与情绪负荷点阵同源） */
-const MOOD_COLOR: Record<MoodKey, string> = {
-  excited: theme.colors.moodEnergy,
-  pleasant: theme.colors.moodGood,
-  calm: theme.colors.stateTired,
-  stressed: theme.colors.stateEnergy,
-  anxious: theme.colors.danger,
-};
+/** 入口装饰球：固定 5 个（亮→沉），预览「记录页里的珠子」长什么样 */
+const PREVIEW_MOODS = ['excited', 'happy', 'calm', 'stressed', 'anxious'] as const;
 
 function EmotionLogCardImpl() {
   const navigation = useNavigation<any>();
@@ -62,7 +56,16 @@ function EmotionLogCardImpl() {
           </View>
         </View>
 
-        {/* 内容行：已记录 → 球+档位+备注；未记录 → 引导 */}
+        {/* 迷你情绪球排（入口感：进页后这些珠子会从顶部落下堆积） */}
+        <View style={styles.ballRow}>
+          {PREVIEW_MOODS.map((k) => (
+            <View key={k} style={[styles.miniBall, { backgroundColor: MOOD_COLOR[k] + '3D', borderColor: MOOD_COLOR[k] }]}>
+              <Text style={styles.miniEmoji}>{MOOD_EMOJI[k]}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* 今日最新记录（无 → 引导） */}
         {entry ? (
           <View style={styles.row}>
             <View style={[styles.ball, { backgroundColor: color + '2E' }]}>
@@ -81,12 +84,9 @@ function EmotionLogCardImpl() {
           </View>
         ) : (
           <View style={styles.row}>
-            <View style={[styles.ball, { backgroundColor: theme.colors.cardBgSoft }]}>
-              <Text style={styles.ballEmoji}>🙂</Text>
-            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.moodLabel}>今天还没记录</Text>
-              <Text style={styles.note}>选一个心情球，记下此刻的感受</Text>
+              <Text style={styles.note}>点进去接住一颗此刻的心情</Text>
             </View>
             <Text style={styles.chev}>›</Text>
           </View>
@@ -115,6 +115,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ballRow: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.sp(2.5) },
+  miniBall: {
+    width: theme.sp(8),
+    height: theme.sp(8),
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniEmoji: { fontSize: theme.fs(13) },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
   ball: {
     width: theme.sp(11),

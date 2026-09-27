@@ -1,121 +1,171 @@
 /**
- * EmotionLogScreen —— 情绪记录页（Mooda 式：选心情球 + 一句话 + 当月心情日历）
+ * EmotionLogScreen —— 情绪记录页（Mooda 式 + 物理珠雨）
  *
- * 口径：情绪=用户自报（Mira 不做情绪推断/评分）；与情绪负荷图（EDA 推断）独立并排。
- * 入口：情绪消耗详情页「情绪负荷」下的情绪记录卡片 → 整卡点击进本页。
+ * v18.25 改版：
+ *  - 情绪扩到 12 档；去掉月历（用户要求）。
+ *  - 选择方式改为 Matter.js 弹珠动效：12 种情绪玻璃珠从顶部随机落下，重力下落、
+ *    互相碰撞反弹、底部堆积，堆积后持续轻微摇晃；点一颗珠子=选中该情绪。
+ *    物理由 matter-js 模拟，渲染 react-native-svg（每帧读 body 位置重绘）。
+ *
+ * 口径不变：情绪=用户自报（Mira 不做情绪推断/评分）。
  * 数据：data/emotionLog.ts（documentDirectory/emotionLog.json）。
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, TextInput,
+  TextInput, LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import Svg, { Circle, G, Text as SvgText } from 'react-native-svg';
+import Matter from 'matter-js';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import {
-  MOOD_ORDER, MOOD_LABEL, MOOD_EMOJI, type MoodKey,
-  ensureEmotionLogLoaded, getLatestForDay, monthMoodMap,
-  addEmotionEntry, onEmotionLog,
+  MOOD_ORDER, MOOD_LABEL, MOOD_EMOJI, MOOD_COLOR, type MoodKey,
+  ensureEmotionLogLoaded, getLatestForDay, addEmotionEntry,
 } from '../data/emotionLog';
 import { dayKey } from '../data/healthStore';
 
-/** 5 档情绪 → theme token 色（与情绪负荷点阵 StressEventStems 同源） */
-const MOOD_COLOR: Record<MoodKey, string> = {
-  excited: theme.colors.moodEnergy,
-  pleasant: theme.colors.moodGood,
-  calm: theme.colors.stateTired,
-  stressed: theme.colors.stateEnergy,
-  anxious: theme.colors.danger,
-};
+/* ── 珠雨参数 ────────────────────────────────────────────── */
+const BEAD_COUNT = 34;          // 珠子数量（性能与观感平衡）
+const RAIN_H = 330;             // 珠雨区高度
+const R_MIN = 14, R_MAX = 20;   // 珠半径范围
+const SHAKE_EVERY = 80;         // 每 N 帧给珠堆一次轻摇晃
 
-/** 心情球：pastel 底圆 + emoji；选中放大 + 深色描边 */
-function MoodBall({ mood, selected, onPress }: { mood: MoodKey; selected: boolean; onPress: () => void }) {
-  const scale = useRef(new Animated.Value(selected ? 1.12 : 1)).current;
-  useEffect(() => {
-    Animated.spring(scale, {
-      toValue: selected ? 1.12 : 1,
-      useNativeDriver: true,
-      speed: 30,
-      bounciness: 6,
-    }).start();
-  }, [selected, scale]);
-  const c = MOOD_COLOR[mood];
-  return (
-    <TouchableOpacity
-      activeOpacity={theme.press.opacity}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${MOOD_LABEL[mood]}${selected ? '（已选）' : ''}`}
-      style={styles.ballTouch}
-    >
-      <Animated.View
-        style={[
-          styles.ball,
-          { transform: [{ scale }], backgroundColor: c + (selected ? '' : '55'), borderColor: selected ? c : 'transparent' },
-        ]}
-      >
-        <Text style={styles.ballEmoji}>{MOOD_EMOJI[mood]}</Text>
-      </Animated.View>
-      <Text style={[styles.ballLabel, selected && { color: mm.colors.ink, fontWeight: theme.weight.semibold as never }]}>
-        {MOOD_LABEL[mood]}
-      </Text>
-    </TouchableOpacity>
-  );
+/** 一颗情绪珠：物理 body + 显示属性 */
+interface Bead {
+  body: Matter.Body;
+  mood: MoodKey;
+  r: number;
 }
 
-/** 当月心情日历（Mooda 式：有记录的天画情绪色点，今日描边） */
-function MoodCalendar({ anchor }: { anchor: Date }) {
-  const [ver, setVer] = useState(0);
-  useEffect(() => onEmotionLog(() => setVer((v) => v + 1)), []);
-  void ver; // 仅触发重渲染
+/**
+ * EmotionBeadRain —— Matter.js 情绪玻璃珠雨。
+ * onLayout 实测容器宽度后建 engine（铁律：SVG 宽度必须实测，不估算）；
+ * rAF 驱动 Engine.update，渲染节流 ~30fps；每 SHAKE_EVERY 帧随机扰动珠堆=轻微摇晃感。
+ */
+function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onSelect: (m: MoodKey) => void }) {
+  const [W, setW] = useState(0);
+  const engineRef = useRef<Matter.Engine | null>(null);
+  const beadsRef = useRef<Bead[]>([]);
+  const rafRef = useRef<number | null>(null);
+  const frameRef = useRef(0);
+  const [, setTick] = useState(0);
 
-  const y = anchor.getFullYear();
-  const m = anchor.getMonth();
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const firstDow = new Date(y, m, 1).getDay(); // 0=日
-  const todayDk = dayKey(Date.now());
-  const moodMap = useMemo(() => monthMoodMap(y, m), [y, m, ver]);
+  const onLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - W) > 1) setW(w);
+  };
 
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstDow }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
+  useEffect(() => {
+    if (W <= 0 || engineRef.current) return;
+    const engine = Matter.Engine.create({ gravity: { x: 0, y: 1.1, scale: 0.001 } });
+    engineRef.current = engine;
 
+    // 容器四壁（地板带一点摩擦让珠子堆稳）
+    const wallOpts: Matter.IChamferableBodyDefinition = { isStatic: true, restitution: 0.4 };
+    Matter.World.add(engine.world, [
+      Matter.Bodies.rectangle(W / 2, RAIN_H + 30, W + 200, 60, { ...wallOpts, friction: 0.6 }),   // 地板
+      Matter.Bodies.rectangle(-30, RAIN_H / 2, 60, RAIN_H * 3, wallOpts),                          // 左墙
+      Matter.Bodies.rectangle(W + 30, RAIN_H / 2, 60, RAIN_H * 3, wallOpts),                       // 右墙
+    ]);
+
+    // 34 颗情绪珠：emoji 按 12 档循环+抖动取，位置随机错落下落
+    const beads: Bead[] = [];
+    for (let i = 0; i < BEAD_COUNT; i++) {
+      const r = R_MIN + Math.random() * (R_MAX - R_MIN);
+      const x = r + 4 + Math.random() * (W - 2 * (r + 4));
+      const y = -40 - Math.random() * (RAIN_H * 2.2);
+      const body = Matter.Bodies.circle(x, y, r, {
+        restitution: 0.55,          // 玻璃珠弹性
+        friction: 0.05,
+        frictionAir: 0.012,
+        frictionStatic: 0.4,
+        density: 0.0012,
+      });
+      Matter.World.add(engine.world, body);
+      beads.push({
+        body,
+        r,
+        mood: MOOD_ORDER[(i + Math.floor(Math.random() * 3)) % MOOD_ORDER.length],
+      });
+    }
+    beadsRef.current = beads;
+
+    // rAF 主循环：物理 60fps，渲染节流 ~30fps
+    let lastDraw = 0;
+    const loop = (ts: number) => {
+      const engine2 = engineRef.current;
+      if (!engine2) return;
+      Matter.Engine.update(engine2, 1000 / 60);
+      frameRef.current++;
+      // 轻微摇晃：随机扰动 2-3 颗珠子（主要打在堆积层，body.sleeping 会自然过滤）
+      if (frameRef.current % SHAKE_EVERY === 0) {
+        const live = beadsRef.current.filter((b) => b.body.position.y > RAIN_H * 0.4);
+        for (let k = 0; k < 3 && live.length > 0; k++) {
+          const b = live[Math.floor(Math.random() * live.length)];
+          Matter.Body.setVelocity(b.body, {
+            x: b.body.velocity.x + (Math.random() - 0.5) * 1.6,
+            y: b.body.velocity.y - Math.random() * 1.4,
+          });
+        }
+      }
+      if (ts - lastDraw > 30) {
+        lastDraw = ts;
+        setTick((t) => (t + 1) % 100000);
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      Matter.World.clear(engine.world, false);
+      Matter.Engine.clear(engine);
+      engineRef.current = null;
+      beadsRef.current = [];
+    };
+  }, [W]);
+
+  const beads = beadsRef.current;
   return (
-    <View>
-      <View style={styles.calHead}>
-        {['日', '一', '二', '三', '四', '五', '六'].map((w, i) => (
-          <Text key={w} style={[styles.calHeadText, (i === 0 || i === 6) && { color: mm.colors.inkSoft }]}>{w}</Text>
-        ))}
-      </View>
-      {Array.from({ length: Math.ceil(cells.length / 7) }, (_, row) => (
-        <View key={row} style={styles.calRow}>
-          {cells.slice(row * 7, row * 7 + 7).map((d, col) => {
-            if (d == null) return <View key={`e${row}-${col}`} style={styles.calCell} />;
-            const dk = dayKey(new Date(y, m, d).getTime());
-            const mood = moodMap[dk];
-            const isToday = dk === todayDk;
+    <View style={styles.rainWrap} onLayout={onLayout}>
+      {W > 0 ? (
+        <Svg width={W} height={RAIN_H}>
+          {beads.map((b, i) => {
+            const { x, y } = b.body.position;
+            if (y < -30 || y > RAIN_H + 60) return null; // 屏外不画
+            const isSel = selected === b.mood;
+            const c = MOOD_COLOR[b.mood];
             return (
-              <View
-                key={dk}
-                style={[styles.calCell, isToday && { borderWidth: 1.5, borderColor: theme.colors.accentSolid, borderRadius: theme.radius.md }]}
-              >
-                <Text style={styles.calDay}>{d}</Text>
-                <View
-                  style={[
-                    styles.calDot,
-                    { backgroundColor: mood ? MOOD_COLOR[mood] : 'transparent' },
-                  ]}
+              <G key={i} onPress={() => onSelect(b.mood)}>
+                <Circle cx={x} cy={y} r={b.r + 3} fill={c} opacity={0.14} />
+                <Circle
+                  cx={x} cy={y} r={b.r}
+                  fill={c + (isSel ? 'D9' : '55')}
+                  stroke={c}
+                  strokeWidth={isSel ? 2.4 : 1}
+                  opacity={isSel ? 1 : 0.92}
                 />
-              </View>
+                <SvgText
+                  x={x} y={y + b.r * 0.38}
+                  fontSize={b.r * 1.05}
+                  textAnchor="middle"
+                  pointerEvents="none"
+                >
+                  {MOOD_EMOJI[b.mood]}
+                </SvgText>
+              </G>
             );
           })}
-        </View>
-      ))}
+        </Svg>
+      ) : (
+        <View style={{ height: RAIN_H }} />
+      )}
     </View>
   );
 }
@@ -126,7 +176,7 @@ export default function EmotionLogScreen() {
   const [note, setNote] = useState('');
   const [savedTick, setSavedTick] = useState(false);
 
-  // 进页载入历史；今天已有记录 → 预选最新一条
+  // 进页载入历史；今天已有记录 → 预填（珠雨仍从头落下，选中态只是高亮）
   useEffect(() => {
     let alive = true;
     ensureEmotionLogLoaded().then(() => {
@@ -167,16 +217,24 @@ export default function EmotionLogScreen() {
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>情绪记录</Text>
-            <Text style={styles.sub}>此刻的心情，由你来记</Text>
+            <Text style={styles.sub}>接住一颗此刻的心情</Text>
           </View>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} bounces>
-          {/* 选心情（Mooda 式 5 球） */}
-          <View style={styles.ballRow}>
-            {MOOD_ORDER.map((k) => (
-              <MoodBall key={k} mood={k} selected={selected === k} onPress={() => setSelected(k)} />
-            ))}
+          {/* 情绪珠雨：Matter.js 掉落堆积，点珠选中 */}
+          <EmotionBeadRain selected={selected} onSelect={(m) => setSelected(m)} />
+
+          {/* 选中回显 */}
+          <View style={styles.selectedRow}>
+            {selected ? (
+              <>
+                <Text style={styles.selectedEmoji}>{MOOD_EMOJI[selected]}</Text>
+                <Text style={styles.selectedLabel}>{MOOD_LABEL[selected]}</Text>
+              </>
+            ) : (
+              <Text style={styles.selectedHint}>点一颗落下来的珠子，记下此刻的心情</Text>
+            )}
           </View>
 
           {/* 一句话备注（选中后出现） */}
@@ -219,23 +277,10 @@ export default function EmotionLogScreen() {
               </View>
             )}
           </TouchableOpacity>
-
-          {/* 当月心情日历 */}
-          <View style={styles.calCard}>
-            <Text style={styles.calTitle}>
-              {anchorLabel()}
-            </Text>
-            <MoodCalendar anchor={new Date()} />
-          </View>
         </ScrollView>
       </View>
     </ScreenContainer>
   );
-}
-
-function anchorLabel(): string {
-  const d = new Date();
-  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月的心情`;
 }
 
 const styles = StyleSheet.create({
@@ -246,26 +291,29 @@ const styles = StyleSheet.create({
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
   sub: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint, marginTop: theme.sp(0.2) },
 
-  ballRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.sp(1),
-    marginTop: theme.sp(2),
+  rainWrap: {
+    marginTop: theme.sp(1),
+    backgroundColor: theme.colors.cardBgSoft + 'AA',
+    borderRadius: theme.fs(14),
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    overflow: 'hidden',
   },
-  ballTouch: { alignItems: 'center', gap: theme.sp(1) },
-  ball: {
-    width: theme.sp(13),
-    height: theme.sp(13),
-    borderRadius: theme.radius.pill,
-    borderWidth: 2,
+
+  selectedRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: theme.sp(1.5),
+    minHeight: theme.sp(9),
+    marginTop: theme.sp(2),
   },
-  ballEmoji: { fontSize: theme.fs(24) },
-  ballLabel: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft },
+  selectedEmoji: { fontSize: theme.fs(24) },
+  selectedLabel: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
+  selectedHint: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint },
 
   noteInput: {
-    marginTop: theme.sp(3),
+    marginTop: theme.sp(2),
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: mm.colors.cardBorder,
@@ -284,20 +332,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  calCard: {
-    marginTop: theme.sp(4),
-    backgroundColor: mm.colors.cardBg,
-    borderWidth: 1,
-    borderColor: mm.colors.cardBorder,
-    borderRadius: theme.fs(14),
-    padding: theme.sp(3.5),
-  },
-  calTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(2.5) },
-  calHead: { flexDirection: 'row' },
-  calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginBottom: theme.sp(1) },
-  calRow: { flexDirection: 'row' },
-  calCell: { flex: 1, aspectRatio: 0.9, alignItems: 'center', justifyContent: 'center', gap: theme.sp(0.4), margin: 1 },
-  calDay: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
-  calDot: { width: theme.sp(1.6), height: theme.sp(1.6), borderRadius: theme.radius.pill },
 });
