@@ -195,9 +195,9 @@ export function HourHistogram({ buckets, chartH }: { buckets: HourBucket[]; char
         })}
       </View>
 
-      {/* 时间轴刻度 00 / 06 / 12 / 18 / 23 */}
+      {/* 时间轴刻度 00 / 06 / 12 / 18 / 24（末位 24 = 右缘，与认知图口径一致） */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5) }}>
-        {[0, 6, 12, 18, 23].map((h) => (
+        {[0, 6, 12, 18, 24].map((h) => (
           <Text key={h} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
             {String(h).padStart(2, '0')}
           </Text>
