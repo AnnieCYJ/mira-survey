@@ -16,6 +16,7 @@ import {
   TextInput, LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Accelerometer } from 'expo-sensors';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Circle, G, Text as SvgText } from 'react-native-svg';
 import Matter from 'matter-js';
@@ -30,9 +31,11 @@ import {
 import { dayKey } from '../data/healthStore';
 
 /* ── 珠雨参数 ────────────────────────────────────────────── */
-const RAIN_H = 330;             // 珠雨区高度
-const R_MIN = 24, R_MAX = 28;   // 珠半径（每情绪一颗，珠子加大）
+const RAIN_H = 430;             // 珠雨区高度（v18.27 加大）
+const R_MIN = 30, R_MAX = 35;   // 珠半径（每情绪一颗，v18.27 再加大）
 const SHAKE_EVERY = 80;         // 每 N 帧给珠堆一次轻摇晃
+const TILT_GAIN = 0.22;         // 手机倾斜/摇晃 → 珠子水平速度增益
+const TILT_DEAD = 0.08;         // 死区：小于该倾斜值不施力（防手抖误动）
 
 /** 一颗情绪珠：物理 body + 显示属性 */
 interface Bead {
@@ -52,7 +55,15 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
   const beadsRef = useRef<Bead[]>([]);
   const rafRef = useRef<number | null>(null);
   const frameRef = useRef(0);
+  const tiltRef = useRef(0);          // 加速度计 x（左负右正），主循环每帧读取
   const [, setTick] = useState(0);
+
+  // 摇一摇联动：加速度计 60ms 采样，tilt 存 ref 供物理循环使用
+  useEffect(() => {
+    Accelerometer.setUpdateInterval(60);
+    const sub = Accelerometer.addListener(({ x }) => { tiltRef.current = x; });
+    return () => { sub.remove(); tiltRef.current = 0; };
+  }, []);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
@@ -101,6 +112,14 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
       if (!engine2) return;
       Matter.Engine.update(engine2, 1000 / 60);
       frameRef.current++;
+      // 摇一摇联动：手机倾斜/摇晃 → 给每颗珠子水平速度（限幅防爆）
+      const tilt = tiltRef.current;
+      if (Math.abs(tilt) > TILT_DEAD) {
+        for (const b of beadsRef.current) {
+          const vx = Math.max(-9, Math.min(9, b.body.velocity.x + tilt * TILT_GAIN));
+          Matter.Body.setVelocity(b.body, { x: vx, y: b.body.velocity.y });
+        }
+      }
       // 轻微摇晃：随机扰动 2-3 颗珠子（主要打在堆积层，body.sleeping 会自然过滤）
       if (frameRef.current % SHAKE_EVERY === 0) {
         const live = beadsRef.current.filter((b) => b.body.position.y > RAIN_H * 0.4);
@@ -220,7 +239,7 @@ export default function EmotionLogScreen() {
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} bounces>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} bounces>
           {/* 情绪珠雨：Matter.js 掉落堆积，点珠选中 */}
           <EmotionBeadRain selected={selected} onSelect={(m) => setSelected(m)} />
 
@@ -248,35 +267,35 @@ export default function EmotionLogScreen() {
               style={styles.noteInput}
             />
           ) : null}
-
-          {/* 保存（渐变按钮铁律：渐变层为正常流子元素、自带 padding/radius） */}
-          <TouchableOpacity
-            disabled={!selected || savedTick}
-            onPress={save}
-            accessibilityRole="button"
-            accessibilityLabel="保存情绪记录"
-            style={{ alignSelf: 'stretch', marginTop: theme.sp(2) }}
-          >
-            {selected ? (
-              <LinearGradient
-                colors={savedTick ? [mm.colors.limeDeep, mm.colors.limeDeep] : [mm.colors.btnGradFrom, mm.colors.btnGradTo]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.saveBtn}
-              >
-                <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: savedTick ? mm.colors.limeSoft : mm.colors.btnTextOnGrad }}>
-                  {savedTick ? '已记录 ✓' : '记下此刻'}
-                </Text>
-              </LinearGradient>
-            ) : (
-              <View style={[styles.saveBtn, { backgroundColor: mm.colors.btnBusyBg }]}>
-                <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint }}>
-                  选一个心情
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </ScrollView>
+
+        {/* 保存固定在页面底部（滚动区之外） */}
+        <TouchableOpacity
+          disabled={!selected || savedTick}
+          onPress={save}
+          accessibilityRole="button"
+          accessibilityLabel="保存情绪记录"
+          style={styles.saveWrap}
+        >
+          {selected ? (
+            <LinearGradient
+              colors={savedTick ? [mm.colors.limeDeep, mm.colors.limeDeep] : [mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.saveBtn}
+            >
+              <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: savedTick ? mm.colors.limeSoft : mm.colors.btnTextOnGrad }}>
+                {savedTick ? '已记录 ✓' : '记下此刻'}
+              </Text>
+            </LinearGradient>
+          ) : (
+            <View style={[styles.saveBtn, { backgroundColor: mm.colors.btnBusyBg }]}>
+              <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint }}>
+                选一个心情
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
     </ScreenContainer>
   );
@@ -325,6 +344,11 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
+  saveWrap: {
+    alignSelf: 'stretch',
+    paddingTop: theme.sp(1),
+    paddingBottom: theme.sp(1),
+  },
   saveBtn: {
     paddingVertical: theme.sp(3.5),
     borderRadius: theme.radius.pill,
