@@ -52,11 +52,13 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
   } catch(e) { console.log('COG-ERR', e); }
   const hasData = report.sampleCount >= 2;
 
-  // v18.5：无数据时也渲染柱状图框架（低/中/高三档坐标轴 + 图例 + 空柱骨架），
-  //   只把「暂无数据」浮层压在图中央——认知 tab 的主体就是这个柱状图，不能只剩空文案。
+  // 无真实数据 → 空骨架示意图（24 根空柱 + 档位轴 + 「暂无数据」浮层），绝不放演示数据
   const hourly = hasData
     ? report.hourly
     : Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
+  const spans = hasData
+    ? { peak: report.peakLoadSpan, best: report.bestSpan, sleep: report.sleepWindow }
+    : { peak: null, best: null, sleep: null };
 
   // 疲劳度大数字与柱状图同源 (avgFatigue)；负荷分 loadScore 降为副信息
   const cogColor = (v: number | null) =>
@@ -69,12 +71,14 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
   return (
     <Card>
         {/* ── 头部 ── */}
-        <Text style={styles.title}>认知疲劳度</Text>
-        {note ? <Text style={styles.noteText}>{note}</Text> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
+          <Text style={styles.title}>认知疲劳度</Text>
+          {note ? <Text style={styles.noteText}>{note}</Text> : null}
+        </View>
 
         {/* ── 全天趋势分布图 ── */}
         <View style={styles.hourSection}>
-          <HourHistogram hourly={hourly} peakSpan={hasData ? report.peakLoadSpan : null} bestSpan={hasData ? report.bestSpan : null} sleepWindow={hasData ? report.sleepWindow : null} />
+          <HourHistogram hourly={hourly} peakSpan={spans.peak} bestSpan={spans.best} sleepWindow={spans.sleep} />
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendSwatch, { backgroundColor: theme.colors.success }]} />
@@ -149,14 +153,16 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
     return { hour: i, score: raw?.score ?? 0, hasData };
   });
 
-  // ── 画布尺寸 (和 RangeTrendBars 对齐) ──
-  const wrapW = Dimensions.get('window').width - theme.space.cardPad * 2 - theme.sp(2) * 2;
+  // ── 画布尺寸：宽度用 onLayout 实测（保证图表严格落在所在卡片框内），
+  //    首帧未测量时退回「屏宽 - 页边距 - 卡片内边距」的保守估算 ──
+  const [measuredW, setMeasuredW] = React.useState(0);
+  const estW = Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2;
   const Y_W = theme.sp(7);         // Y 轴标签预留宽 = 28px
   const padL = Y_W + theme.sp(1);  // 32px, 含 Y 轴标签
   const padR = theme.sp(3);
   const padT = theme.sp(2);
   const padB = theme.sp(6);        // X 轴 label + padding = 24px
-  const svgW = wrapW;
+  const svgW = measuredW > padL + padR ? measuredW : estW;
   const svgH = (chartH ?? theme.sp(50)) - theme.sp(2);
   const plotW = svgW - padL - padR;
   const plotH = svgH - padT - padB;
@@ -189,7 +195,13 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   }));
 
   return (
-    <View style={{ height: svgH + theme.sp(2), width: '100%' }}>
+    <View
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w);
+      }}
+      style={{ height: svgH + theme.sp(2), width: '100%' }}
+    >
       <Svg width={svgW} height={svgH + theme.sp(2)}>
 
         {/* ═══ Y 轴网格 (0 基线 + 档位边界虚线) + 档位文字 ═══ */}

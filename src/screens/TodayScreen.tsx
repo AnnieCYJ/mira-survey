@@ -521,7 +521,7 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
 
   const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
-  // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）
+  // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）；无真实数据 → 诚实显示 —
   const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.avgFatigue != null ? String(r.avgFatigue) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })();
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径：
@@ -610,6 +610,8 @@ export default function TodayScreen() {
 
   const stressReport = (() => { try { return computeStressReport(); } catch { return null; } })();
   const cogReport = (() => { try { return computeCognitiveLoadReport(); } catch { return null; } })();
+  // 认知柱状图只在有真实采样时渲染（首页卡片无数据不放示意图，副标题提示点开查看）
+  const cogHasData = (cogReport?.hourly ?? []).some((h: any) => h.hasData);
   // 近 7 天步数
   const weekSteps = (() => {
     const out: { dayKey: string; steps: number; date: Date }[] = [];
@@ -826,9 +828,10 @@ export default function TodayScreen() {
     ? `峰值 ${pad2(cogPeakBar.hour)}:00 · ${cogLevelTxt}`
     : `全天${cogLevelTxt}疲劳`;
   const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
-  const activitySub = activity === '—' || activity === '0'
-    ? '今日暂无运动'
-    : stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中';
+  const activityHasData = weekSteps.some((w) => w.steps > 0);
+  const activitySub = activityHasData
+    ? (stepKcalToday > 0 ? `${Math.round(stepKcalToday)} kcal 已消耗` : '今日活动进行中')
+    : '暂无数据 · 点开查看图表';
 
   /**
    * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
@@ -1041,32 +1044,22 @@ export default function TodayScreen() {
                 title="认知消耗"
                 cornerIcon="nodes"
                 cornerTone="lav"
-                sub={`全天平均负荷 · ${cogLevelTxt}`}
+                sub={cogHasData ? `认知疲劳度 · ${cogLevelTxt}` : '暂无数据 · 点开查看图表'}
                 value={cognitive}
                 unit="/100"
-                chart={
-                  <MindWave
-                    values={(cogReport?.hourly ?? []).filter((h: any) => h.hasData && Number.isFinite(h.score)).map((h: any) => h.score)}
-                    color={mm.colors.ringPurple}
-                    dotColor={mm.colors.ringPurpleDeep}
-                  />
-                }
+                chart={cogHasData ? <MiniCognitiveBars hourly={cogReport!.hourly} /> : null}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
               />
               <MindStatCard
                 title="运动消耗"
                 cornerIcon="bolt"
                 cornerTone="cyan"
-                sub="目标 8,000 步 · 今日累计"
+                sub={activityHasData ? `目标 8,000 步 · 今日累计` : '暂无数据 · 点开查看图表'}
                 value={activity}
                 unit="步"
-                chart={
-                  <MindWave
-                    values={weekSteps.map((w) => w.steps)}
-                    color={mm.colors.ringBlue}
-                    dotColor={mm.colors.ringBlueDeep}
-                  />
-                }
+                chart={activityHasData ? (
+                  <MiniActivityCurve weekSteps={weekSteps} />
+                ) : null}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
               />
             </View>

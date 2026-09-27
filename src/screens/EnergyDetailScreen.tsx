@@ -142,7 +142,7 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 
   // ★ Hero 左上角: emotion 显示分, cognitive 显示档位文字
   if (type === 'cognitive') {
-    // 与卡片大数字同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）
+    // 与卡片大数字同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）；无真实数据 → 诚实显示 —
     const lv = report?.avgFatigue != null ? cogLevel(report.avgFatigue) : null;
     const map: Record<string, { text: string; color: string }> = {
       low: { text: '低疲劳', color: theme.colors.success },
@@ -173,10 +173,24 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
 
   const hasData = report.sampleCount >= 2;
 
+  // 无真实数据 → 空骨架示意图：24 根空柱 + 三档坐标轴 + 「暂无数据」浮层（HourHistogram 内建），
+  // 不放演示数据——示意图只说明「这里会有图表」，不冒充任何真实值。
   if (!hasData) {
+    const skeletonHourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
     return (
-      <Card>
-        <Text style={styles.emptyText}>暂无足够的生理数据，连上戒指跑 2-3 轮自动监测后自动生成报告</Text>
+      <Card padded={false}>
+        <View style={styles.pad}>
+          <Text style={[styles.chartTitle, { marginBottom: theme.sp(1.5) }]}>认知疲劳度</Text>
+          <CognitiveHistogram chartH={160}
+            hourly={skeletonHourly}
+            peakSpan={null}
+            bestSpan={null}
+            sleepWindow={null}
+          />
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
+            连上戒指跑 2-3 轮自动监测后，这里将展示你的真实认知疲劳曲线
+          </Text>
+        </View>
       </Card>
     );
   }
@@ -595,7 +609,9 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
       return cnt > 0 ? Math.round(sum / cnt) : null;
     });
 
-  const scores = computeScores(periods);
+  const rawScores = computeScores(periods);
+  // 无真实数据 → 保持骨架（灰色 2px 底条 + 「暂无数据」覆盖层），不放演示序列
+  const scores = rawScores;
 
   const prevAnchor = new Date(anchorMs);
   if (range === 'week') prevAnchor.setDate(prevAnchor.getDate() - 7);
