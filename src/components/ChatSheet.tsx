@@ -42,23 +42,18 @@ interface Message {
   taskAdded?: boolean;  // 是否已添加到工具页
 }
 
-function VersionBadge() {
-  return (
-    <View style={styles.badge}>
-      <View style={styles.badgeDot} />
-      <Text style={styles.badgeText}>AI 1.3.2</Text>
-      <Icon name="chevronRight" size={theme.fs(12)} color={theme.colors.textSub} strokeWidth={2.2} />
-    </View>
-  );
-}
-
-/** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享 */
-function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void }) {
+/** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享。
+ *  onPurple：紫色头部变体——徽章/喇叭换半透明白底、白字白图标（v18.30 问答页紫头复刻）。 */
+function HeaderRight({ ttsOn, onToggle, onPurple }: { ttsOn: boolean; onToggle: () => void; onPurple?: boolean }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) }}>
-      <VersionBadge />
+      <View style={[styles.badge, onPurple && styles.badgeOnPurple]}>
+        <View style={[styles.badgeDot, onPurple && styles.badgeDotOnPurple]} />
+        <Text style={[styles.badgeText, onPurple && styles.badgeTextOnPurple]}>AI 1.3.2</Text>
+        <Icon name="chevronRight" size={theme.fs(12)} color={onPurple ? theme.colors.textWhite : theme.colors.textSub} strokeWidth={2.2} />
+      </View>
       <TouchableOpacity
-        style={styles.speakerBtn}
+        style={[styles.speakerBtn, onPurple && styles.speakerBtnOnPurple]}
         onPress={onToggle}
         activeOpacity={0.7}
         accessibilityLabel="语音播报开关"
@@ -66,7 +61,7 @@ function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void
         <Icon
           name={ttsOn ? 'speaker' : 'speaker_off'}
           size={theme.fs(20)}
-          color={ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
+          color={onPurple ? theme.colors.textWhite : ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
           strokeWidth={2.2}
         />
       </TouchableOpacity>
@@ -282,7 +277,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 118 : 0}
       >
         <ScrollView
           ref={scrollRef}
@@ -365,13 +360,32 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       </KeyboardAvoidingView>
   );
 
-  // ★ fullScreen：直接返回内容（SheetHead + body），不包 Sheet Modal
-  //   v18.20：背景白——此前整页饱和紫(bgMid)与 App 其他页的白色语言割裂
+  // ★ fullScreen：直接返回内容，不包 Sheet Modal
+  //   v18.30：顶部恢复紫色渐变头（AI 身份色，白字用 gradCard 验证过的 token 组合），
+  //   内容区白底圆角上叠——紫头负责身份、白区负责可读性。
   if (fullScreen) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.textWhite }}>
-        {sheetHead}
-        {body}
+      <View style={{ flex: 1, backgroundColor: theme.colors.gradCardFrom }}>
+        <LinearGradient
+          colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={[styles.purpleHead, { paddingTop: insets.top + theme.sp(1) }]}
+        >
+          <View style={styles.purpleHeadRow}>
+            <TouchableOpacity onPress={onClose} style={styles.purpleBack} accessibilityLabel="返回">
+              <Icon name="back" size={theme.fs(22)} color={theme.colors.textWhite} strokeWidth={2.2} />
+            </TouchableOpacity>
+            <View style={styles.purpleHeadText}>
+              <Text style={styles.purpleTitle}>Mira AI</Text>
+              <Text style={styles.purpleSub}>你的健康助手</Text>
+            </View>
+            <HeaderRight ttsOn={ttsOn} onToggle={toggleTts} onPurple />
+          </View>
+        </LinearGradient>
+        <View style={styles.whiteBody}>
+          {body}
+        </View>
       </View>
     );
   }
@@ -612,4 +626,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: 'rgba(31,29,26,0.06)' },
+  // ── v18.30 紫色头部 + 白色圆角内容区 ──
+  purpleHead: {
+    paddingHorizontal: theme.space.screen,
+    paddingBottom: theme.sp(7),
+  },
+  purpleHeadRow: { flexDirection: 'row', alignItems: 'center' },
+  purpleBack: { marginRight: theme.sp(2), padding: theme.sp(1), marginLeft: -theme.sp(1) },
+  purpleHeadText: { flex: 1 },
+  purpleTitle: {
+    fontSize: theme.fontSize.h2,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textWhite,
+  },
+  purpleSub: {
+    fontSize: theme.fontSize.xs,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 2,
+  },
+  whiteBody: {
+    flex: 1,
+    backgroundColor: theme.colors.textWhite,
+    borderTopLeftRadius: theme.radius.card,
+    borderTopRightRadius: theme.radius.card,
+    marginTop: -theme.sp(5),
+  },
+  badgeOnPurple: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  badgeDotOnPurple: { backgroundColor: theme.colors.textWhite },
+  badgeTextOnPurple: { color: theme.colors.textWhite },
+  speakerBtnOnPurple: { backgroundColor: 'rgba(255,255,255,0.16)' },
 });

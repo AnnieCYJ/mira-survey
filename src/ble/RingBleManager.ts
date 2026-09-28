@@ -3867,6 +3867,21 @@ class RingConnectionImpl {
       const due = effectiveForce || this.lastCurveAccumTs == null || gap >= STATUS_SNAPSHOT_MS;
       if (due) {
         const sig = this.deriveWindowSignals(now, curve);
+        // ★ 未佩戴守卫（v18.30）：本累积窗口内没有任何真实生理采样（HR/EDA 无窗口内新点、步数零增量）
+        //   → 视为「戒指没在采集」，跳过累积：不打卡点、不推进曲线，今日状态冻结在最后一个有数据的边界。
+        //   此前的 bug：边界定时器 force=true 恒 due → 窗口里全是旧数据/零信号也照样 accumulateWindow，
+        //   摘下戒指后今日状态仍在“自走”（每 30 分钟凭空变一次）。
+        //   跳过时把 lastCurveAccumTs 推进到本边界（空档记为已处理，避免重连补打拿错窗口的信号），
+        //   但【不】刷新 lastWearTs → 长时间摘下后，软重置逻辑照常在重新佩戴时生效。
+        const winStart = this.lastCurveAccumTs == null ? now - STATUS_SNAPSHOT_MS : this.lastCurveAccumTs;
+        const hasFreshHr = this.state.history.hr.some((p) => p.t > winStart && p.t <= now);
+        const hasFreshEda = this.state.history.eda.some((p) => p.t > winStart && p.t <= now);
+        const hasFreshSteps = (sig.stepsDelta ?? 0) > 0;
+        if (!hasFreshHr && !hasFreshEda && !hasFreshSteps) {
+          const fmtT = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+          postLog('RingBle', `[DailyStatus] 窗口无新采样(未佩戴?) ${fmtT(winStart)}→${fmtT(now)}，跳过累积`);
+          this.lastCurveAccumTs = boundaryTs;
+        } else {
         let prev = this.lastTimelineValue() ?? curve.seed.value;
         if (!Number.isFinite(prev)) prev = curve.seed.value ?? 50;
         // 佩戴中断 >2h：以当前情境快照对 S(t) 做软重置（0.3 快照 + 0.7 累积值）
@@ -3879,6 +3894,7 @@ class RingConnectionImpl {
         this.pushStatusPoint(nextValue, boundaryTs);
         this.lastCurveAccumTs = boundaryTs;
         curve = { ...curve, lastWindowSteps: this.todaySteps(), lastWearTs: now };
+        }
       } else {
         // 数据刷新但非累积边界：戒指在戴，仅刷新佩戴时间戳，不推进曲线
         curve = { ...curve, lastWearTs: now };
