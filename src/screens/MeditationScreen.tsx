@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
@@ -13,14 +13,17 @@ import ListCard, { type ListItem } from '../components/ListCard';
 import { TOOL_GRID } from '../data/tasks';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
+import { RingBle } from '../ble/RingBleManager';
+import { buildToolCtx, recommendTools } from '../lib/toolRecommend';
 
 
 const TOOL_IMAGES: Record<string, number> = {
-  '呼吸冥想': require('../assets/card_meditation.jpg'),
-  '认知提升': require('../assets/card_cognitive.png'),
-  '专注力提升': require('../assets/card_focus.jpg'),
-  '知识学习': require('../assets/card_learn.png'),
-  '饮食识别': require('../assets/card_food.jpg'),
+  '情绪调节': require('../assets/card_emotion.jpg'),
+  '提升颜值': require('../assets/card_recovery.jpg'),
+  '营养搭配': require('../assets/card_food.jpg'),
+  '运动建议': require('../assets/card_activity.jpg'),
+  '稳定睡眠': require('../assets/card_meditation.jpg'),
+  '知识科普': require('../assets/card_learn.png'),
 };
 import { useAppState } from '../state/AppState';
 
@@ -40,6 +43,17 @@ export default function MeditationScreen() {
   const { tools, completeTask } = useAppState();
   type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
   const navigation = useNavigation<NavProp>();
+
+  // ★ v18.39 每日三张推荐卡：基于当天真实数据（电量档/睡眠评分/压力事件/步数/相位/时段）
+  //   从候选池评分排序取 3，理由句带当天数字；同日顺序稳定（日期 hash 打散），跨天自然轮换。
+  const dailyTools = useMemo(() => {
+    try {
+      const ring = RingBle.getState();
+      return recommendTools(buildToolCtx(ring));
+    } catch {
+      return [];
+    }
+  }, []);
 
   const handleComplete = useCallback(
     (id: string) => {
@@ -62,7 +76,8 @@ export default function MeditationScreen() {
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
         </Animated.View>
 
-      <TaskDeck tools={tools} onComplete={handleComplete} />
+      {/* v18.39：顶部牌堆 = 每日数据驱动的三张推荐卡（原固定任务废弃） */}
+      {dailyTools.length > 0 ? <TaskDeck tools={dailyTools} onComplete={handleComplete} /> : <TaskDeck tools={tools} onComplete={handleComplete} />}
 
       <View style={styles.grid}>
         {TOOL_GRID.map((t) => (
@@ -71,8 +86,13 @@ export default function MeditationScreen() {
             activeOpacity={0.88}
             style={styles.gridCell}
             onPress={() => {
-              if (t.name === '呼吸冥想') navigation.navigate('Breathing');
-              if (t.name === '饮食识别') navigation.navigate('FoodScan', { autoCamera: true });
+              // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪记录页；其余 → 通用内容页
+              if (t.name === '稳定睡眠') navigation.navigate('Breathing');
+              if (t.name === '营养搭配') navigation.navigate('FoodScan', { autoCamera: true });
+              if (t.name === '情绪调节') navigation.navigate('EmotionLog');
+              if (t.name === '提升颜值') navigation.navigate('ToolTopic', { topic: 'glow' });
+              if (t.name === '运动建议') navigation.navigate('ToolTopic', { topic: 'sport' });
+              if (t.name === '知识科普') navigation.navigate('ToolTopic', { topic: 'learn' });
             }}
           >
             <ImageBackground
