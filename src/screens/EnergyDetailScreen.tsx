@@ -266,10 +266,10 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const rec = report.sleepRecovery ?? 0.6;
             const debt = report.sleepDebt ?? 0;
             const peak = report.circadianPeakH ?? 8;
-            // 早起准备度 (0-100): 睡眠恢复基础分 - 债扣分 + 节律相位加分
-            const circAdj = wakeH != null ? (Math.max(0, Math.min(100, 50 + 50 * Math.sin(2 * Math.PI * (wakeH - peak + 6) / 24))) / 100) : 0.5;
+            // 准备度 = 报告里的脑力账户储备（computeMorningReadiness 同一公式），旧内联公式仅兜底
             const clamp2 = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-            const prep = Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3);
+            const circAdjFb = wakeH != null ? (Math.max(0, Math.min(100, 50 + 50 * Math.sin(2 * Math.PI * (wakeH - peak + 6) / 24))) / 100) : 0.5;
+            const prep = report.brainReserve ?? Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdjFb * 100 * 0.3);
             const ll = prep >= 70 ? { text: '准备好了', color: theme.colors.success, tip: '起床即有清晰认知状态' }
                      : prep >= 45 ? { text: '一般', color: theme.colors.warn, tip: '需要 30-60 分钟暖脑' }
                      : { text: '偏低', color: mm.colors.limeDeep, tip: '建议先轻度活动，避免烧脑' }; // v21：疲劳低档=limeDeep
@@ -286,6 +286,47 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
                   {debt > 1.5 ? ' · 累计睡眠债 ' + debt.toFixed(1) + 'h' : ''}
                   {wakeH != null ? ' · 起床 ' + fmtHM(wakeH) : ''}
                 </Text>
+              </View>
+            );
+          })()}
+
+          {/* 今日脑力账户 — 与准备度/疲劳曲线同一条能量线：
+              储备 = 早起准备度；已用只算「脑」（情绪事件/运动窗口的唤醒偏离已剔除）；剩余 = 100 − 当前疲劳度 */}
+          {(() => {
+            const reserve = report.brainReserve;
+            const used = report.brainUsed;
+            const remain = report.brainRemaining;
+            if (reserve == null || used == null || remain == null) return null;
+            const ex = report.brainExcluded;
+            const exTotal = ex ? ex.emotion + ex.exercise : 0;
+            const excludeNote = exTotal >= 30
+              ? `已剔除非认知消耗 ${Math.round(exTotal / 6) / 10}h（情绪 ${Math.round(ex.emotion / 6) / 10}h · 运动 ${Math.round(ex.exercise / 6) / 10}h）`
+              : null;
+            return (
+              <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeTint }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>今日脑力账户</Text>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 6 }}>· 估算</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: theme.sp(2) }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk }}>{reserve}</Text>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>早上储备</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk }}>−{used}</Text>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>已用（只算脑）</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>{remain}</Text>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>当前剩余</Text>
+                  </View>
+                </View>
+                {excludeNote != null && (
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
+                    {excludeNote}
+                  </Text>
+                )}
               </View>
             );
           })()}

@@ -20,9 +20,15 @@
  */
 import { healthStore, dayStartMs, type MetricKey } from '../data/healthStore';
 import { parseClockMinutes } from './sleepTime';
+import { getEntriesForDay, ensureEmotionLogLoaded } from '../data/emotionLog';
 import { detectCognitiveLoad, applyLoadCorrection, CognitiveLoadEvent } from './cognitiveLoadDetector';
 import { analyzeCortisol } from './cortisolRhythm';
 import type { CortisolRhythmResult } from './cortisolRhythm';
+
+/** 归因为「情绪事件」的自报情绪档（沉色系高唤醒/低落; tired 归恢复不归情绪事件） */
+const EMOTION_EVENT_MOODS = new Set<string>(['stressed', 'anxious', 'sad', 'angry', 'lonely']);
+/** 半小时步数增量 ≥ 此值 → 归因为运动窗口（约 ≥500 步/小时的活动强度） */
+const EXERCISE_STEP_DELTA = 250;
 
 export type LoadLevel = 'rested' | 'light' | 'moderate' | 'heavy';
 export type FatigueLevel = 'fresh' | 'mild' | 'moderate' | 'severe';
@@ -88,13 +94,19 @@ export interface CognitiveLoadReport {
   rhythmStatus?: 'normal' | 'sustained_high' | 'dysregulated';
   /** 第二步: 实时负荷检测事件 */
   loadEvent?: import('./cognitiveLoadDetector').CognitiveLoadEvent;
-  // ── Borbély 双过程模型输出（给用户看的直白数） ──
-  /** Process S: 脑子已消耗量 (0-100, 从起床到现在线性累积 + 睡眠债加速) */
+  // ── 脑力账户（Borbély 双过程，给用户看的直白数）──
+  //   一条账讲完：早上的储备 = 早起认知准备度；白天清醒+费脑持续扣款；
+  //   剩余 = 储备 − 已用；疲劳度 = 100 − 剩余（与逐时柱状图同一条能量线）。
+  /** 早上的脑力储备 = 早起认知准备度 (0-100) */
+  brainReserve: number;
+  /** 今日已消耗脑力 (储备 − 剩余, 0-100) */
   brainUsed: number;
-  /** Process C: 节律能量 (0-100, 当前时刻生物钟给你的能量) */
+  /** 当前节律能量位置 (0-100, Process C 参考值, 不参与余额计算) */
   circadianEnergy: number;
-  /** 认知剩余储备 (0-100, brainUsed - circadianEnergy 修正后) */
+  /** 当前脑力余额 (0-100, = 100 − 当前疲劳度) */
   brainRemaining: number;
+  /** 今日被剔除的非认知消耗分钟数（只算脑：情绪事件 / 运动窗口的唤醒偏离不计入脑力消耗） */
+  brainExcluded: { emotion: number; exercise: number };
 }
 
 const DAYS_BACK = 7;
@@ -268,6 +280,24 @@ function computeDecision(params: {
 }
 
 /**
+ * 早起认知准备度 — 脑力账户的「早上储备」
+ *   70% 睡眠恢复基础分（睡得好不好 − 睡眠债扣分）
+ * + 30% 节律相位分（起床时间落在个体化节律的什么位置）
+ * 与 EnergyDetailScreen「早起认知准备度」是同一个数（该 UI 已改读本报告字段）。
+ */
+export function computeMorningReadiness(p: {
+  rec: number;          // sleepRecovery 0-1
+  debt: number;         // 7 天睡眠债（小时）
+  peakH: number;        // 个体化皮质醇峰值时刻（小时，默认 8）
+  wakeH: number | null; // 起床时间（小时，浮点）
+}): number {
+  const circAdj = p.wakeH != null
+    ? clamp(50 + 50 * Math.sin(2 * Math.PI * (p.wakeH - p.peakH + 6) / 24), 0, 100) / 100
+    : 0.5;
+  return Math.round(clamp(clamp(p.rec * 80 + 20 - p.debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3, 0, 100));
+}
+
+/**
  * 今日剩余时段脑力预测 — 过去 7 天同小时中位数 + 今天已测走势 + circadian 修正
  * 参考: WHOOP Daily Outlook, AstroGuard (NASA) LOESS 思想
  */
@@ -437,9 +467,32 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   // 最终融合: 基础 40 + 睡眠恢复驱动 + 债 penalty + HRV 代理辅助
   loadScore = clamp(40 + (1 - sleepRecovery) * 35 + debtPenalty + hrContrib * 0.5, 0, 100);
 
-  // ── 5. 疲劳指数 ───────────────────────────────────────────
+  // ── 4.5 节律拟合（提前：准备度 / 逐时负荷 / 预测三处共用一次 cosinor）──
+  void ensureEmotionLogLoaded(); // 情绪归因素材：异步载入，未就绪的本帧按空表处理（下一帧生效）
+  let cortisolResult: CortisolRhythmResult | null = null;
+  try {
+    const _dayMs0 = dayStartMs(nowMs);
+    const samples: { t: number; v: number }[] = [];
+    for (let di = 0; di < 14; di++) {
+      const dStart = _dayMs0 - di * 86400000;
+      const pts = healthStore.getTimeRange('cortisol' as MetricKey, dStart, dStart + 86400000, { maxPoints: 500 });
+      pts.forEach(p => { if (p.v > 0) samples.push({ t: p.t, v: p.v }); });
+    }
+    if (samples.length >= 8) cortisolResult = analyzeCortisol(samples, 14);
+  } catch {}
+  const _acrophase = cortisolResult?.cosinor?.acrophaseH != null && Number.isFinite(cortisolResult.cosinor.acrophaseH)
+    ? cortisolResult.cosinor.acrophaseH : 8;
+
+  // ── 5. 疲劳指数 = 脑力账户能量线：早上准备度开局 → 白天消耗 → 此刻剩余 ──
   const highLoadThreshold = 65;
-  const hourly = computeHourlyLoad(nowMs);
+  const _sleepPre = healthStore.getSleep(todayKey(nowMs));
+  const _wakeMin = _sleepPre?.wakeTime != null ? parseClockMinutes(_sleepPre.wakeTime) : null;
+  const morningReadiness = computeMorningReadiness({
+    rec: sleepRecovery, debt: sleepDebt, peakH: _acrophase,
+    wakeH: _wakeMin != null ? _wakeMin / 60 : null,
+  });
+  const hourlyRes = computeHourlyLoad(nowMs, { initEnergy: morningReadiness, acrophaseH: _acrophase });
+  const hourly = hourlyRes.hourly;
   // ★ debug: 暴露 hourly 到 global
   (global as any).__cogHourlyDebug = hourly.filter(h => h.score > 0).map(h => `${h.hour}:${h.score}`).join(',');
 
@@ -655,36 +708,18 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     hrvNow, hrvBaseline, circadianHour,
     sleepRecoveryFactor, loadScore,
   });
-  // ── ★ v2 节律驱动: 拟合皮质醇代理值 ──
-  let cortisolResult: CortisolRhythmResult | null = null;
-  try {
-    const _dayMs = dayStartMs(nowMs);
-    const samples: { t: number; v: number }[] = [];
-    for (let di = 0; di < 14; di++) {
-      const dStart = _dayMs - di * 86400000;
-      const pts = healthStore.getTimeRange('cortisol' as MetricKey, dStart, dStart + 86400000, { maxPoints: 500 });
-      pts.forEach(p => { if (p.v > 0) samples.push({ t: p.t, v: p.v }); });
-    }
-    if (samples.length >= 8) cortisolResult = analyzeCortisol(samples, 14);
-  } catch {}
   const forecast = computeForecast(hourly, cortisolResult, sleepRecoveryFactor, sleepWindow, circadianHour);
 
-  // ── Borbély 双过程模型 (给用户看的直白数) ──────────────
-  // Process S (睡眠驱动力) = 脑子已消耗量: 清醒时长线性累积 + 睡眠债加速
-  // Process C (昼夜节律能量) = cosinor 个体化 acrophaseH 的节律位置
-  const _wakeH = sleepWindow?.wakeHour ?? 7;
-  let _awakeH = circadianHour - _wakeH;
-  if (_awakeH < 0) _awakeH += 24;
-  const _debtAccel = 1 + sleepDebt * 0.08;
-  let brainUsed = clamp(Math.round(_awakeH * 8.3 * _debtAccel), 0, 100);
-  const _acrophase = cortisolResult?.cosinor?.acrophaseH != null && Number.isFinite(cortisolResult.cosinor.acrophaseH)
-    ? cortisolResult.cosinor.acrophaseH : 8;
-  let circadianEnergy = clamp(Math.round(
+  // ── 脑力账户（与疲劳曲线同一条能量线，一条账讲完）──────────
+  //   储备 = 早起认知准备度（sleepRecovery / sleepDebt / 节律相位）
+  //   已用 = 储备 − 剩余；剩余 = 此刻能量（清醒+费脑扣款，情绪/运动窗口已剔除）
+  //   疲劳度 = 100 − 剩余（逐时柱状图同源）
+  const brainReserve = morningReadiness;
+  const circadianEnergy = clamp(Math.round(
     50 + 50 * Math.sin(2 * Math.PI * (circadianHour - _acrophase + 6) / 24)
   ), 0, 100);
-  let brainRemaining = clamp(Math.round(
-    100 - brainUsed * 0.7 + circadianEnergy * 0.3 - debtPenalty * 0.3
-  ), 0, 100);
+  let brainRemaining = clamp(hourlyRes.energyNow, 0, 100);
+  let brainUsed = clamp(brainReserve - brainRemaining, 0, 100);
 
   // ── 全天平均疲劳度（仅统计有数据的小时），与柱状图同源，作为卡片大数字 ──
   const _fatigueScores = hourly.filter(h => h.hasData).map(h => h.score);
@@ -698,9 +733,9 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   );
   if (loadEvent) {
     const corrected = applyLoadCorrection({ brainUsed, circadianEnergy, brainRemaining }, loadEvent);
-    brainUsed = corrected.brainUsed;
-    circadianEnergy = corrected.circadianEnergy;
-    brainRemaining = corrected.brainRemaining;
+    // 保持一条账：实时负荷修正只调余额，已用恒 = 储备 − 剩余
+    brainRemaining = clamp(corrected.brainRemaining, 0, brainReserve);
+    brainUsed = clamp(brainReserve - brainRemaining, 0, 100);
   }
 
   const result: CognitiveLoadReport = {
@@ -738,9 +773,11 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
       : undefined,
     rhythmStatus: cortisolResult?.status?.level,
     loadEvent: loadEvent ?? undefined,
+    brainReserve,
     brainUsed,
     circadianEnergy,
     brainRemaining,
+    brainExcluded: hourlyRes.excludedMin,
   };
 
   try {
@@ -780,7 +817,10 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   return result;
 }
 
-function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasData: boolean }[] {
+function computeHourlyLoad(
+  nowMs: number,
+  opts?: { initEnergy?: number | null; acrophaseH?: number | null },
+): { hourly: { hour: number; score: number; hasData: boolean }[]; energyNow: number; initEnergy: number; excludedMin: { emotion: number; exercise: number } } {
   // ══════════════════════════════════════════════════════════════════════
   // ★ v3: 认知疲劳度 — lex-fatigue 风格能量衰减模型
   // 核心: 疲劳是累积过程, 用 ODE 离散化模拟能量衰减 + 恢复
@@ -836,20 +876,8 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
   debt = clamp(debt, 0, 6);
   const debtAccel = 1 + debt * 0.08;  // 每欠 1h, 疲劳加速 8%
 
-  // ── 3. 节律驱动 (cosinor 或 fallback) ──
-  let acrophaseH = 8;
-  try {
-    const samples: { t: number; v: number }[] = [];
-    for (let di = 0; di < 14; di++) {
-      const dStart = dayMs - di * 86400000;
-      const pts = healthStore.getTimeRange('cortisol' as MetricKey, dStart, dStart + 86400000, { maxPoints: 500 });
-      pts.forEach(p => { if (p.v > 0) samples.push({ t: p.t, v: p.v }); });
-    }
-    if (samples.length >= 8) {
-      const r = analyzeCortisol(samples, 14);
-      if (r.cosinor?.acrophaseH != null && Number.isFinite(r.cosinor.acrophaseH)) acrophaseH = r.cosinor.acrophaseH;
-    }
-  } catch {}
+  // ── 3. 节律驱动 (外部传入 cosinor acrophase, 无数据 fallback 8 点) ──
+  const acrophaseH = opts?.acrophaseH != null && Number.isFinite(opts.acrophaseH) ? opts.acrophaseH : 8;
 
   // ── 4. ODE 离散化: 48 个半小时步 ──
   // E(t) = 认知能量 (0-100), fatigue = 100 - E
@@ -863,8 +891,15 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
   const dayHasData = (awakeHrv.length + awakeSns.length) >= 10;
 
   const morningEnergy = clamp(sleepRec * 80 + 20, 20, 100); // 睡眠恢复决定的晨起能量上限
-  let energy = morningEnergy;  // 初始能量 20-100
+
+  // ── 3.5 窗口归因素材（只算脑）──
+  const emotionEntries = getEntriesForDay(_today);
+  const excludedMin = { emotion: 0, exercise: 0 };
+  // 开局能量 = 脑力账户储备（早起认知准备度）；未传时退回睡眠恢复决定的晨起上限
+  const initEnergy = opts?.initEnergy != null ? clamp(opts.initEnergy, 20, 100) : morningEnergy;
+  let energy = initEnergy;
   const half: { score: number; hasData: boolean }[] = []; // 内部 48 个半步
+  let energyAtNow = initEnergy; // 此刻的能量余额（用于脑力账户）
 
   for (let step = 0; step < 48; step++) {
     const halfH = step * 0.5;
@@ -876,6 +911,7 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
       // ★ 不再固定 92 —— 旧实现会把睡眠期能量顶到 92，从而把 sleepRec（睡得好不好）
       //   对全天疲劳曲线的影响彻底抹掉
       energy = clamp(energy + 18 * DT, 0, morningEnergy);
+      if (dayMs + step * 1800000 < nowMs) energyAtNow = energy;
       half.push({ score: 0, hasData: false });
       continue;
     }
@@ -889,17 +925,36 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
     const snsMean = snsPts.length > 0 ? snsPts.reduce((a, p) => a + p.v, 0) / snsPts.length : null;
     const hasData = !inFuture && (dayHasData || hrvMean != null || snsMean != null);
 
+    // ── ★ 窗口归因（只算脑，不混情绪/运动）──
+    //   运动: 半小时步数增量 ≥250 → 该窗口 HRV/SNS 偏离是身体活动所致, 不计入脑
+    //   情绪: ±30min 内有用户自报沉色情绪(stressed/anxious/sad/angry/lonely)
+    //         → 该窗口唤醒偏离大概率是情绪事件触发, 不计入脑（概率归因, 诚实剔除）
+    let isExercise = false;
+    if (!inFuture) {
+      const stepPts = healthStore.getTimeRange('steps' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 10 });
+      if (stepPts.length >= 2 && stepPts[stepPts.length - 1].v - stepPts[0].v >= EXERCISE_STEP_DELTA) isExercise = true;
+    }
+    const isEmotionEvent = !inFuture && emotionEntries.some(
+      e => EMOTION_EVENT_MOODS.has(e.mood) && Math.abs(e.t - (stepStart + 900000)) <= 1800000,
+    );
+    if (isExercise) excludedMin.exercise += 30;
+    else if (isEmotionEvent) excludedMin.emotion += 30;
+
     // ── fatigueDrive: Process S —— 清醒期疲劳单调累积 ──
     let fatigueDrive = 0;
-    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础累积 + 睡眠债加速
+    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础累积 + 睡眠债加速（醒着就在用脑）
+    let arousalDrive = 0;                     // 唤醒偏离: 需归因后才能计入脑
     if (hrvMean != null && hrvBaseline > 0) {
       const hrvDrop = clamp((hrvBaseline - hrvMean) / hrvBaseline, 0, 1);
-      fatigueDrive += ALPHA_HRV * hrvDrop * 100;
+      arousalDrive += ALPHA_HRV * hrvDrop * 100;
     }
     if (snsMean != null && snsBaseline > 0) {
       const snsRise = clamp((snsMean - snsBaseline) / snsBaseline, 0, 1);
-      fatigueDrive += ALPHA_SNS * snsRise * 100;
+      arousalDrive += ALPHA_SNS * snsRise * 100;
     }
+    // 归因裁决: 运动窗口全剔除; 情绪事件窗口全剔除; 其余视为认知投入, 全额计入
+    if (isExercise || isEmotionEvent) arousalDrive = 0;
+    fatigueDrive += arousalDrive;
 
     // ── 节律只调制「累积速度」(0.9–1.6×)：清晨略慢、下午低谷略快，但不产生「回血」──
     //    旧实现的 recoveryDrive(最大 2.0/h) 与 fatigueDrive(≈1.13/h) 几乎相等，
@@ -908,6 +963,7 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
 
     // ── ODE 更新 ──
     energy = clamp(energy - fatigueDrive * circSpeed * DT, 0, 100);
+    if (!inFuture) energyAtNow = energy;
 
     // ── 计算疲劳度 = 100 - 能量 ──
     half.push({ score: Math.round(100 - energy), hasData });
@@ -926,7 +982,7 @@ function computeHourlyLoad(nowMs: number): { hour: number; score: number; hasDat
     }
     out.push({ hour: h, score, hasData: has });
   }
-  return out;
+  return { hourly: out, energyNow: Math.round(energyAtNow), initEnergy: Math.round(initEnergy), excludedMin };
 }
 
 function computeRecoveryCapacity(nowMs: number): number | null {
