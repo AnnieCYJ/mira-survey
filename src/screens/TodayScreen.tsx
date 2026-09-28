@@ -859,10 +859,10 @@ export default function TodayScreen() {
    * 无数据显式传 '—'，不编数字。
    */
   const metricChips: MindChipItem[] = [
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '认知疲劳度', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
