@@ -8,6 +8,7 @@ import Icon from '../components/Icon';
 import { LinearGradient } from 'expo-linear-gradient';
 import BreathingPlayer from '../components/breathing/BreathingPlayer';
 import MeditationPlayer from '../components/meditation/MeditationPlayer';
+import ListCard, { type ListItem } from '../components/ListCard';
 import { MEDITATION_TRACKS } from '../data/meditation/tracks';
 import type { BreathStyle } from '../components/breathing/BreathingEngine';
 import type { MeditationTrack } from '../data/meditation/tracks';
@@ -47,6 +48,14 @@ interface Course { title: string; meta: string; tag?: 'live' | 'course'; pattern
 const COURSES: Course[] = [
   { title: '轻松冥想入门', meta: '8 小时系列课程', tag: 'course', patternKey: 'box',  style: 'orb',  duration: 5 },
   { title: '线上团体课',   meta: '6 人在线',       tag: 'live',   patternKey: 'calm', style: 'ring', duration: 5 },
+];
+
+// —— 睡眠科学（v18.42 并入：斯坦福平衡激素法则中与睡眠相关的条目收拢在这里）——
+const SLEEP_CARDS: ListItem[] = [
+  { dot: mm.colors.limeDeep, title: '褪黑素怕光', sub: '夜间哪怕中等亮度也会压制褪黑素——睡前把灯调暗、屏幕拿远，比任何补剂都靠谱。' },
+  { dot: mm.colors.limeDeep, title: '深睡是修复窗口', sub: '生长激素主要在深睡分泌，皮肤屏障与身体修复都在这里发生；睡眠债会直接写在状态上。' },
+  { dot: mm.colors.limeDeep, title: '热水澡是降温开关', sub: '热水把血带到体表，出浴后核心温度下降——身体降温正是入睡的开关。' },
+  { dot: mm.colors.limeDeep, title: 'NSDR：20 分钟快速回血', sub: '非睡眠深度休息（身体扫描/瑜伽休憩）能降低皮质醇、恢复多巴胺，午后低谷比咖啡好用。' },
 ];
 
 export default function BreathingScreen() {
@@ -146,6 +155,11 @@ export default function BreathingScreen() {
             {c.tag === 'live' && <View style={styles.liveDot} />}
           </Pressable>
         ))}
+      </View>
+
+      {/* ——— 睡眠科学（平衡激素法则 × 睡眠，v18.42 并入）——— */}
+      <View style={{ marginTop: theme.space.lg, marginBottom: theme.space.xl }}>
+        <ListCard title="睡眠科学" items={SLEEP_CARDS} />
       </View>
 
       {/* ——— Breathing Player Modal ——— */}
