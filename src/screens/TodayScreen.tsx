@@ -542,8 +542,8 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
 
   const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
-  // 脑力消耗 = 全天平均疲劳度 avgFatigue（与卡片柱状图同源，0-100）；无真实数据 → 诚实显示 —
-  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.avgFatigue != null ? String(r.avgFatigue) : '—'; } catch { return '—'; } })();
+  // 认知准备度 = 脑力账户当前剩余（早上从准备度/储备起步，白天随消耗下降，只算脑）；无数据 → 诚实显示 —
+  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径：
   // 优先今天、其次昨天——跨午夜的睡眠常记在前一日）。没有睡眠记录就诚实留 —，不编数字。
@@ -579,13 +579,10 @@ export default function TodayScreen() {
         return (r.events ?? []).filter((e: any) => Number.isFinite(e.hour) && e.hour <= nowHour).length;
       } catch { return null; }
     };
-    // 脑力消耗：比较「到当前小时为止」的小时负荷均值（至少 2 个有效小时才算，避免噪声）
-    const cogUpTo = (ms: number): number | null => {
+    // 认知准备度：当前剩余 vs 昨日同时刻剩余（同一 ODE 能量线，直接可比）
+    const cogAt = (ms: number): number | null => {
       try {
-        const hs = (computeCognitiveLoadReport(ms)?.hourly ?? [])
-          .filter((h: any) => Number.isFinite(h.hour) && h.hour <= nowHour);
-        if (hs.length < 2) return null;
-        return hs.reduce((a: number, h: any) => a + h.score, 0) / hs.length;
+        return computeCognitiveLoadReport(ms)?.brainRemaining ?? null;
       } catch { return null; }
     };
     // 运动消耗：步数采样可能是「当日累计快照」也可能是「每段增量」——
@@ -620,7 +617,7 @@ export default function TodayScreen() {
     const dkY = dayKey(yMs);
     return {
       emotion: cmp(evUpTo(tMs), evUpTo(yMs), false),      // 情绪波动变多 = 不利
-      cognitive: cmp(cogUpTo(tMs), cogUpTo(yMs), false),  // 脑力负荷变高 = 不利
+      cognitive: cmp(cogAt(tMs), cogAt(yMs), true),        // 准备度（剩余）更高 = 有利
       activity: cmp(
         stepsUpTo(dkT, ring?.stepDaily?.[dkT]?.steps ?? null),
         stepsUpTo(dkY, ring?.stepDaily?.[dkY]?.steps ?? null),
@@ -855,12 +852,12 @@ export default function TodayScreen() {
 
   /**
    * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
-   * 数据与消耗卡**同源同口径**：认知=avgFatigue、情绪=事件数、运动=当日步数、恢复=睡眠评分。
+   * 数据与消耗卡**同源同口径**：认知=准备度（脑力账户剩余）、情绪=事件数、运动=当日步数、恢复=睡眠评分。
    * 无数据显式传 '—'，不编数字。
    */
   const metricChips: MindChipItem[] = [
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '认知疲劳度', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '认知准备度', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
   ];
