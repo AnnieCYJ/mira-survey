@@ -857,7 +857,7 @@ export default function TodayScreen() {
    */
   const metricChips: MindChipItem[] = [
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '当前脑力', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
   ];

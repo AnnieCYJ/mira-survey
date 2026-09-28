@@ -251,7 +251,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>今日认知窗口</Text>
 
-          {/* 当前脑力 — 一个数据：当前 = 脑力账户剩余（早上从储备开始，白天只算脑的消耗往下走） */}
+          {/* 脑力值 — 一个数据：当前 = 脑力账户剩余（早上从储备开始，白天只算脑的消耗往下走） */}
           {(() => {
             const reserve = report.brainReserve;
             const used = report.brainUsed;
@@ -264,7 +264,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const exTotal = ex ? ex.emotion + ex.exercise : 0;
             return (
               <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: lv.color + '12', borderLeftWidth: 3, borderLeftColor: lv.color }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>当前脑力 · 估算</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>脑力值 · 估算</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(1.5) }}>
                   <Text style={{ fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, color: lv.color, lineHeight: theme.fontSize.hero }}>{remain}</Text>
                   <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, paddingBottom: 6 }}>/100 · {lv.text}</Text>
