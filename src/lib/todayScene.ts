@@ -164,7 +164,7 @@ export function evaluateTodayScene(ctx: SceneCtx): TodayScene | null {
 
   // 3. 情绪尖峰：最近 1h 压力事件 ≥2（与情绪负荷柱状图着色同口径：≥2 黄、≥4 红）
   if (stressRecent1h >= 2 && ok('emotionSpike')) {
-    return { key: 'emotionSpike', word: '先缓一缓', explain: '刚才一小时情绪消耗偏高，交感还在高位——离开现在的环境几分钟，喝口水再回来' };
+    return { key: 'emotionSpike', word: '先缓一缓', explain: '刚才一小时情绪消耗偏高，离开环境几分钟，喝口水再回来' };
   }
 
   // 4. 晨间满电：起床后 90 分钟内 且 睡眠评分 ≥85
@@ -219,33 +219,32 @@ export interface CauseCtx {
 }
 
 const HORMONE_TXT: Record<string, string> = {
-  经期: '雌激素、孕激素都在低位，能量与情绪本来就在低点',
-  卵泡期: '雌激素持续爬升，恢复力在变强',
-  排卵期: '雌激素在峰值附近，是本月状态高点',
-  黄体期: '孕激素升高、雌激素回落，代谢上行，能量天生更容易偏低',
+  经期: '激素都在低位，能量情绪本来就在低点',
+  卵泡期: '雌激素爬升，恢复力在变强',
+  排卵期: '雌激素峰值，本月状态高点',
+  黄体期: '孕激素升高，能量天生易偏低',
 };
 
 export function buildCauseNarrative(c: CauseCtx): string {
+  // v18.41 胶囊限 1.5 行（用户口径）：最多 2 条原因、逐条压短；
+  // 正常的皮质醇节律和好睡眠不占字数，只报「异常/不足」这类真原因。
   const parts: string[] = [];
   const known = c.phaseLabel !== '未记录' && HORMONE_TXT[c.phaseLabel] != null;
   if (known) {
-    const idx = c.phaseLabel === '卵泡期' && c.estrogenIndex != null ? `（雌激素指数 ${Math.round(c.estrogenIndex)}）` : '';
-    const day = c.dayInCycle != null ? `·周期第 ${c.dayInCycle} 天` : '';
-    parts.push(`${c.phaseLabel}${day}：${HORMONE_TXT[c.phaseLabel]}${idx}`);
+    const day = c.dayInCycle != null ? `·第 ${c.dayInCycle} 天` : '';
+    parts.push(`${c.phaseLabel}${day}：${HORMONE_TXT[c.phaseLabel]}`);
   }
   if (c.cortisolRhythm === '偏晚' && c.cortisolPeak !== '—') {
-    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 偏晚，上午容易没精神`);
+    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 偏晚`);
   } else if (c.cortisolRhythm === '扁平') {
-    parts.push('皮质醇节律偏扁平，全天能量起伏小');
-  } else if (c.cortisolRhythm === '良好' && c.cortisolPeak !== '—') {
-    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 前后，节律正常`);
+    parts.push('皮质醇节律偏扁平');
   }
-  if (c.sleepScore != null) {
-    const s = Math.round(c.sleepScore);
-    if (s >= 80) parts.push(`昨晚睡眠 ${s} 分，恢复到位`);
-    else if (s >= 60) parts.push(`昨晚睡眠 ${s} 分，一般`);
-    else parts.push(`昨晚睡眠 ${s} 分，恢复不足是今天电量低的主因`);
+  if (c.sleepScore != null && c.sleepScore < 60) {
+    parts.push(`昨晚睡眠 ${Math.round(c.sleepScore)} 分，恢复不足`);
   }
-  if (parts.length === 0) return '';
-  return parts.join('；') + '。';
+  if (parts.length === 0) {
+    // 无相位也无异常 → 报唯一可说的好消息，一句话
+    return c.sleepScore != null ? `昨晚睡眠 ${Math.round(c.sleepScore)} 分，节律平稳。` : '';
+  }
+  return parts.slice(0, 2).join('；') + '。';
 }

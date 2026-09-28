@@ -1027,7 +1027,8 @@ export default function TodayScreen() {
               <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
             </View>
             <View style={styles.statusPill}>
-              <Text style={styles.statusNarr}>{narrative}</Text>
+              {/* v18.41 胶囊限 1.5 行：源头已压短（多因分析≤2条/逐句精简），此处兜底防溢出 */}
+              <Text style={styles.statusNarr} numberOfLines={2} ellipsizeMode="tail">{narrative}</Text>
             </View>
           </View>
 

@@ -1,9 +1,12 @@
 /**
- * ToolTopicScreen —— 工具页通用内容页（v18.39）
+ * ToolTopicScreen —— 工具页通用内容页（v18.41 按斯坦福平衡激素法则重做）
  *
  * 承接工具页六宫格中尚无独立模块的三类：提升颜值 / 运动建议 / 知识科普。
  * 结构：标题 + 副标题 + 一条「今日状态」数据驱动提示 + 知识条目（ListCard）。
- * 内容口径：平实、带原因、不做诊断承诺（Mira 文案铁律）。
+ * 内容框架：斯坦福神经科学的激素平衡四杠杆——光（皮质醇/褪黑素节律）、
+ * 睡（深睡修复）、压（皮质醇/多巴胺基线）、动（训练与恢复）；
+ * 再叠上 Mira 的周期视角（雌/孕激素对每个杠杆的调制）。
+ * 口径：平实、带原因、不做诊断承诺（Mira 文案铁律）。
  */
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
@@ -23,9 +26,9 @@ import type { TabParamList } from '../navigation/BottomTabNavigator';
 type TopicKey = 'glow' | 'sport' | 'learn';
 
 const TOPIC_META: Record<TopicKey, { title: string; sub: string }> = {
-  glow: { title: '提升颜值', sub: '跟着周期节奏，把气色养回来' },
-  sport: { title: '运动建议', sub: '按今天的状态开运动处方' },
-  learn: { title: '知识科普', sub: '读懂周期与身体信号的来龙去脉' },
+  glow: { title: '提升颜值', sub: '斯坦福平衡激素法则 × 周期节奏：激素调顺，气色是结果' },
+  sport: { title: '运动建议', sub: '按激素状态定强度：先看恢复，再看意志力' },
+  learn: { title: '知识科普', sub: '平衡激素的四根杠杆：光 · 睡 · 压 · 动' },
 };
 
 const ACCENT: Record<TopicKey, string> = {
@@ -55,46 +58,46 @@ export default function ToolTopicScreen() {
   const value = ring?.curveStatus?.value ?? null;
   const levelIdx = value != null ? (value >= 65 ? 0 : value >= 30 ? 1 : value >= 5 ? 2 : 3) : null;
 
-  // ── 「今日」一条数据驱动提示 ──
+  // ── 「今日」一条数据驱动提示（挂激素杠杆 + 周期视角） ──
   const today: ListItem = (() => {
     if (topic === 'glow') {
-      if (sleepScore == null) return { dot: ACCENT.glow, title: '睡眠与气色', sub: '连续佩戴记录睡眠后，这里会告诉你昨晚的修复给气色加了多少分。' };
+      if (sleepScore == null) return { dot: ACCENT.glow, title: '睡眠与气色', sub: '连续佩戴记录睡眠后，这里会告诉你昨晚的深睡修复给气色加了多少分。' };
       return sleepScore >= 80
-        ? { dot: ACCENT.glow, title: `昨晚睡眠 ${sleepScore} 分`, sub: `${phase}期皮肤修复窗口在线——今天防晒做好，气色能保住。` }
-        : { dot: ACCENT.glow, title: `昨晚睡眠 ${sleepScore} 分`, sub: '皮肤屏障修复主要发生在深睡——今晚提前 30 分钟放下手机。' };
+        ? { dot: ACCENT.glow, title: `昨晚睡眠 ${sleepScore} 分`, sub: `深睡修复到位，${phase}期皮肤修复窗口在线——今天防晒做好，气色能保住。` }
+        : { dot: ACCENT.glow, title: `昨晚睡眠 ${sleepScore} 分`, sub: '生长激素主要在深睡分泌——今晚提前 30 分钟调暗灯光，把修复窗口找回来。' };
     }
     if (topic === 'sport') {
-      if (levelIdx == null) return { dot: ACCENT.sport, title: '今日运动建议', sub: '佩戴后按实时电量与恢复状态给出运动强度建议。' };
-      if (phase === '经期') return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '经期以低强度为主：散步、拉伸、温和瑜伽都合适。' };
-      if (levelIdx === 0) return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '电量在高位，适合安排一次有强度训练，HRV 基线也会受益。' };
-      return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '电量偏低，先快走 15 分钟恢复代谢，别硬扛高强度。' };
+      if (levelIdx == null) return { dot: ACCENT.sport, title: '今日运动建议', sub: '佩戴后按实时电量与恢复状态（HRV）给出强度建议。' };
+      if (phase === '经期') return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '经期激素在低位，以低强度为主：散步、拉伸、温和瑜伽都合适。' };
+      if (levelIdx === 0) return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '电量在高位，适合安排一次有强度训练——力量课是胰岛素敏感性的杠杆。' };
+      return { dot: ACCENT.sport, title: `今日 ${steps} 步 · 电量 ${Math.round(value!)}`, sub: '电量偏低，先快走 15 分钟（Zone 2 强度）恢复代谢，别硬扛高强度。' };
     }
     // learn
     return phase === '未记录'
-      ? { dot: ACCENT.learn, title: '周期与大脑', sub: '记录经期后，科普内容会跟着你的周期阶段一起更新。' }
-      : { dot: ACCENT.learn, title: `当前 ${phase}`, sub: '本阶段激素如何影响精力与情绪，下方条目按你的周期定制。' };
+      ? { dot: ACCENT.learn, title: '平衡激素法则', sub: '记录经期后，科普内容会跟着你的周期阶段与节律数据一起更新。' }
+      : { dot: ACCENT.learn, title: `当前 ${phase}`, sub: '本阶段激素如何改写你的光-睡-压-动四根杠杆，下方条目按周期定制。' };
   })();
 
-  // ── 静态知识条目 ──
+  // ── 静态知识条目（斯坦福平衡激素法则 × 周期） ──
   const items: ListItem[] = topic === 'glow'
     ? [
-        { dot: ACCENT.glow, title: '卵泡期：皮肤血流量增加', sub: '雌激素上行让皮肤供血变好，是上妆最服帖的窗口。' },
-        { dot: ACCENT.glow, title: '黄体期：出油与敏感上行', sub: '孕激素升高伴随体温上升，精简护肤、少叠加功效品。' },
-        { dot: ACCENT.glow, title: '糖化是暗沉主因之一', sub: '高糖饮食后的糖化终产物让肤色发黄，先从含糖饮料下手。' },
-        { dot: ACCENT.glow, title: '防晒是性价比最高的护肤', sub: '紫外线贡献了外源性衰老的大头，阴天也有 UVA。' },
+        { dot: ACCENT.glow, title: '晨光：免费的气色开关', sub: '起床 30-60 分钟内到户外见光 5-10 分钟，皮质醇准点爬升、褪黑素准点到来——节律顺了，气色是结果。' },
+        { dot: ACCENT.glow, title: '深睡是修复窗口', sub: '生长激素主要在深睡分泌，皮肤屏障与胶原修复都在这里发生；睡眠债会直接写在脸上。' },
+        { dot: ACCENT.glow, title: '压力皮质醇是暗沉推手', sub: '长期高压让皮质醇持续偏高，出油、爆痘、屏障变弱跟着来。两次短吸 + 一次长呼的「生理性叹息」能快速降温。' },
+        { dot: ACCENT.glow, title: '黄体期：精简护肤', sub: '孕激素升高伴随核心体温上行，出油与敏感增加——精简护肤、少叠加功效品，把屏障养住。' },
       ]
     : topic === 'sport'
       ? [
-          { dot: ACCENT.sport, title: '卵泡期：适合上强度', sub: '雌激素高位时肌肉恢复快、疼痛敏感低，力量训练安排在这里。' },
-          { dot: ACCENT.sport, title: '黄体期后期：降强度提频次', sub: '核心体温升高、恢复变慢，把大重量换成中低强度多次数。' },
-          { dot: ACCENT.sport, title: 'HRV 是强度调节器', sub: '晨间 HRV 明显低于基线时，把当天的强度课换成恢复课。' },
-          { dot: ACCENT.sport, title: '步数是底线不是目标', sub: '每天 7000 步以上的日常活动量，比一周一次大练更养线粒体。' },
+          { dot: ACCENT.sport, title: '先看 HRV，再定强度', sub: '晨间 HRV 明显低于基线 = 交感还没退位，把当天的强度课换成恢复课，硬练只会加深疲劳。' },
+          { dot: ACCENT.sport, title: '卵泡期上强度，黄体期降强度', sub: '雌激素高位时肌肉恢复快、疼痛敏感低，力量课安排在这里；黄体期核心体温升高、恢复变慢，降强度提频次。' },
+          { dot: ACCENT.sport, title: 'Zone 2 是激素底盘', sub: '每周 2-3 次「还能对话」节奏的有氧，改善线粒体与胰岛素敏感性——这是所有激素平稳运转的地基。' },
+          { dot: ACCENT.sport, title: '力量训练是激素杠杆', sub: '每周 2-4 次复合动作优先的力量训练，对胰岛素敏感性和情绪韧性都有长期回报。' },
         ]
       : [
-          { dot: ACCENT.learn, title: '雌激素与大脑敏感性', sub: '雌激素影响血清素与多巴胺通路，卵泡期精力上扬有生理基础。' },
-          { dot: ACCENT.learn, title: '孕激素的镇静与代价', sub: '黄体期孕激素代谢物作用于 GABA 受体，嗜睡与情绪波动的来源。' },
-          { dot: ACCENT.learn, title: '皮质醇的晨峰意义', sub: '晨起皮质醇高峰帮你清醒；节律偏晚，上午就没精神。' },
-          { dot: ACCENT.learn, title: '为什么戒指测不了激素', sub: '激素分子需要生化检测；戒指测的是它们留下的生理足迹。' },
+          { dot: ACCENT.learn, title: '皮质醇不是敌人，时机才是', sub: '晨峰帮你清醒、动员能量；问题只出现在它出现在错误的时间。晨光是校准器，不靠咖啡硬拉。' },
+          { dot: ACCENT.learn, title: '褪黑素怕光', sub: '夜间哪怕中等亮度也会压制褪黑素。睡前把灯调暗、屏幕拿远，比任何补剂都靠谱。' },
+          { dot: ACCENT.learn, title: '多巴胺基线：别喂廉价刺激', sub: '刷手机、糖、频繁切换任务都在抬高多巴胺基线，难事显得无趣。早上第一个小时别喂手机，把动力留给正事。' },
+          { dot: ACCENT.learn, title: 'NSDR：20 分钟快速回血', sub: '非睡眠深度休息（瑜伽休憩/身体扫描）能降低皮质醇、恢复多巴胺储备，午后低谷比咖啡更好用。' },
         ];
 
   return (
