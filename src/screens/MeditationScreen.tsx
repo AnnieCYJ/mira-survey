@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo } from 'react';
+import React, { useCallback, useRef, useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
@@ -14,7 +14,7 @@ import { TOOL_GRID } from '../data/tasks';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import { RingBle } from '../ble/RingBleManager';
-import { buildToolCtx, recommendTools } from '../lib/toolRecommend';
+import { buildToolCtx, recommendTools, markRecDone, initRecDone } from '../lib/toolRecommend';
 
 
 const TOOL_IMAGES: Record<string, number> = {
@@ -46,6 +46,8 @@ export default function MeditationScreen() {
 
   // ★ v18.39 每日三张推荐卡：基于当天真实数据（电量档/睡眠评分/压力事件/步数/相位/时段）
   //   从候选池评分排序取 3，理由句带当天数字；同日顺序稳定（日期 hash 打散），跨天自然轮换。
+  //   v18.40 完成态持久化：doneTick 触发重算 recommendTools（内部读当日完成记录）。
+  const [recDoneTick, setRecDoneTick] = useState(0);
   const dailyTools = useMemo(() => {
     try {
       const ring = RingBle.getState();
@@ -53,11 +55,26 @@ export default function MeditationScreen() {
     } catch {
       return [];
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recDoneTick]);
+
+  // 挂载时加载当日完成记录（跨重启恢复「已完成」态），加载完刷新牌堆一次
+  useEffect(() => {
+    let alive = true;
+    initRecDone().then(() => { if (alive) setRecDoneTick((t) => t + 1); });
+    return () => { alive = false; };
   }, []);
 
   const handleComplete = useCallback(
     (id: string) => {
-      completeTask(id);
+      if (id.startsWith('rec-')) {
+        // 每日推荐卡：完成态按天持久化（tool_rec_done.json），当天按钮保持「已完成」
+        markRecDone(id);
+        setRecDoneTick((t) => t + 1);
+      } else {
+        // 固定任务（兜底牌堆）：走 AppState 原有完成逻辑
+        completeTask(id);
+      }
       navigation.navigate('Profile');
     },
     [completeTask, navigation]

@@ -8,6 +8,7 @@
  *  - 优先级不足 3 张时从常青池（知识科普/呼吸/好气色）补齐，永远正好 3 张
  *  - 理由句（desc）嵌入当天真实数字，不用模板空话
  */
+import * as FileSystem from 'expo-file-system';
 import { dayKey, healthStore } from '../data/healthStore';
 import type { TaskItem } from '../data/tasks';
 import { curveLevel, CURVE_DEFAULTS } from './dailyStatus';
@@ -172,6 +173,47 @@ function dayHash(seed: string): number {
   return Math.abs(h % 17); // 0-16
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 每日完成记录（进程内缓存 + 文件持久化 tool_rec_done.json）
+// 推荐卡 id 不在 AppState 的 DEFAULT_TOOLS 里，completeTask 对它们是空操作；
+// 完成态单独按天记录：当天完成 → 按钮变「已完成 · 已记录」，跨天自动清零重来。
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RecDone { dk: string; ids: string[]; }
+
+let recDone: RecDone | null = null;
+let recSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function recDoneFileUri(): string {
+  return `${(FileSystem.documentDirectory ?? '').replace(/\/$/, '')}/tool_rec_done.json`;
+}
+
+/** App 启动/工具页挂载时调用一次：加载当日完成记录（跨重启有效） */
+export async function initRecDone(): Promise<void> {
+  const dk = dayKey(Date.now());
+  try {
+    const raw = await FileSystem.readAsStringAsync(recDoneFileUri());
+    const parsed = JSON.parse(raw) as RecDone;
+    recDone = parsed && parsed.dk === dk && Array.isArray(parsed.ids) ? parsed : { dk, ids: [] };
+  } catch {
+    recDone = { dk, ids: [] };
+  }
+}
+
+function flushRecDone(): void {
+  if (recDone == null) return;
+  FileSystem.writeAsStringAsync(recDoneFileUri(), JSON.stringify(recDone)).catch(() => {});
+}
+
+/** 标记某张推荐卡今日已完成（跨重启有效） */
+export function markRecDone(id: string): void {
+  const dk = dayKey(Date.now());
+  if (recDone == null || recDone.dk !== dk) recDone = { dk, ids: [] };  // 跨天清零
+  if (!recDone.ids.includes(id)) recDone.ids.push(id);
+  if (recSaveTimer) clearTimeout(recSaveTimer);
+  recSaveTimer = setTimeout(flushRecDone, 300);  // 防抖落盘
+}
+
 /** 由真实数据构建推荐上下文；任何一环出错都退回安全默认值（不抛错） */
 export function buildToolCtx(ring: any): ToolCtx {
   const now = Date.now();
@@ -200,9 +242,10 @@ export function buildToolCtx(ring: any): ToolCtx {
   return { now, levelIdx, statusValue, sleepScore, stressEventsToday, steps, phase, dayInCycle };
 }
 
-/** 主入口：返回恰好 3 张推荐卡 */
+/** 主入口：返回恰好 3 张推荐卡（完成态读当日记录，跨重启恢复） */
 export function recommendTools(c: ToolCtx): TaskItem[] {
   const dk = dayKey(c.now);
+  const doneIds = new Set(recDone && recDone.dk === dk ? recDone.ids : []);
   const scored = POOL.map((cand) => {
     const base = cand.evergreen ? cand.prio(c) : cand.prio(c);
     return { cand, score: base > 0 || cand.evergreen ? base + dayHash(dk + cand.id) : -1 };
@@ -226,6 +269,6 @@ export function recommendTools(c: ToolCtx): TaskItem[] {
     title: cand.title,
     desc: cand.desc(c),
     action: cand.action,
-    done: false,
+    done: doneIds.has(cand.id),
   }));
 }
