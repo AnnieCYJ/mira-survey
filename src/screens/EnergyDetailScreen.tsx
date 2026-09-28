@@ -158,7 +158,7 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
   return (
     <View style={styles.hero}>
       <Text style={styles.heroVal}>{heroVal ?? '—'}</Text>
-      <Text style={styles.heroUnit}>/ 100</Text>
+      <Text style={styles.heroUnit}>/100</Text>
     </View>
   );
 }

@@ -856,8 +856,8 @@ export default function TodayScreen() {
    * 无数据显式传 '—'，不编数字。
    */
   const metricChips: MindChipItem[] = [
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', onPress: () => navigation.navigate('EmotionCognitiveDetail') },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
   ];
@@ -1040,7 +1040,7 @@ export default function TodayScreen() {
                 title="睡眠恢复"
                 cornerIcon="moon"
                 cornerTone="lav"
-                sub={sleepCard ? `恢复得分 ${sleepCard.score ?? '—'} · 深睡 ${sleepCard.deepPct != null ? `${sleepCard.deepPct}%` : '—'}` : '暂无睡眠记录'}
+                sub={sleepCard ? `恢复得分 ${sleepCard.score != null ? `${sleepCard.score}/100` : '—'} · 深睡 ${sleepCard.deepPct != null ? `${sleepCard.deepPct}%` : '—'}` : '暂无睡眠记录'}
                 value={sleepCard ? sleepCard.total : '—'}
                 foot={sleepCard ? `入睡 ${sleepCard.sleepTime ?? '—'} · 夜间醒来 ${sleepCard.wakeCount != null ? sleepCard.wakeCount : '—'} 次` : undefined}
                 onPress={() => navigation.navigate('SleepDetail')}

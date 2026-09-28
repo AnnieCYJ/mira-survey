@@ -15,6 +15,8 @@ export interface MindChipItem {
   tone: MindChipTone;
   label: string;
   value: string;
+  /** 可选小号单位后缀（如 '/100'），紧跟数值右侧；不传则不渲染 */
+  unit?: string;
   onPress: () => void;
 }
 
@@ -38,9 +40,14 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
             <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
               {it.label}
             </Text>
-            <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
-              {it.value}
-            </Text>
+            <View style={styles.valueRow}>
+              <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
+                {it.value}
+              </Text>
+              {it.unit != null && it.value !== '—' && (
+                <Text style={styles.unit}>{it.unit}</Text>
+              )}
+            </View>
           </Pressable>
         );
       })}
@@ -85,6 +92,19 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.bold,
     color: mm.colors.ink,
     marginTop: 0,
+    flexShrink: 1,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
     maxWidth: '100%',
+    marginTop: 0,
+  },
+  unit: {
+    fontSize: theme.fs(8.5),
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkFaint,
+    marginLeft: 1,
   },
 });

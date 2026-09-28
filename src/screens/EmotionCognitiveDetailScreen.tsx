@@ -776,7 +776,7 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
           <Text style={styles.cardTitle}>脑力消耗 · 区间均值</Text>
           <View style={styles.summaryGrid}>
             <SumCell label="平均疲劳度" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-            <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}%` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}%` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
+            <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}/100` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
           </View>
         </View>
       </Card>

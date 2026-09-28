@@ -145,7 +145,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
   // ★ 青色 badge（SPEC #10「82% · 接近目标」）：数值 = 真实睡眠评分，档位词由评分推导
   const badgeWord =
     sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
-  const badgeText = sleepScore != null ? `${sleepScore}% · ${badgeWord}` : badgeWord;
+  const badgeText = sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
 
   // —— 曲线数据（三级降级）——
   const { series, mode } = useMemo<{ series: number[]; mode: 'today' | 'rhythm' | 'demo' }>(() => {
