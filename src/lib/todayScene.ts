@@ -36,8 +36,6 @@ export interface TodayScene {
   word: string;
   /** 胶囊解释（≤2 行，带原因） */
   explain: string;
-  /** 解释与「周期和激素」页挂钩：胶囊可点击跳转 CycleCalendar */
-  linkCycle: boolean;
 }
 
 /** 每个场景词的每日上限与最短冷却 */
@@ -155,47 +153,99 @@ export function evaluateTodayScene(ctx: SceneCtx): TodayScene | null {
   const ok = (k: SceneKey) => sceneEligible(k, now);
 
   // 1. 睡眠窗口：持续显示，不受频控
-  if (isAsleep) return { key: 'asleep', word: '安心休息', explain: '睡眠是唯一回血方式，恢复都在这里发生', linkCycle: false };
+  if (isAsleep) return { key: 'asleep', word: '安心休息', explain: '睡眠是唯一回血方式，恢复都在这里发生' };
 
   // 2. 睡前 1h（个人化）：习惯入睡时刻前 60 分钟起；无习惯史回退 22:30
   const bedMin = habitBedtimeMinutes(now) ?? 22 * 60 + 30;
   const inBedWindow = nowMin >= bedMin - 60 && nowMin <= bedMin + 30;
   if (inBedWindow && ok('bedtime')) {
-    return { key: 'bedtime', word: '该睡了', explain: '按你的节奏，快到入睡时间了——电量充电只在睡眠里发生', linkCycle: false };
+    return { key: 'bedtime', word: '该睡了', explain: '按你的节奏，快到入睡时间了——电量充电只在睡眠里发生' };
   }
 
   // 3. 情绪尖峰：最近 1h 压力事件 ≥2（与情绪负荷柱状图着色同口径：≥2 黄、≥4 红）
   if (stressRecent1h >= 2 && ok('emotionSpike')) {
-    return { key: 'emotionSpike', word: '先缓一缓', explain: '刚才一小时情绪消耗偏高，交感还在高位——离开现在的环境几分钟，喝口水再回来', linkCycle: false };
+    return { key: 'emotionSpike', word: '先缓一缓', explain: '刚才一小时情绪消耗偏高，交感还在高位——离开现在的环境几分钟，喝口水再回来' };
   }
 
   // 4. 晨间满电：起床后 90 分钟内 且 睡眠评分 ≥85
   const wakeMin = parseClockMinutes(wakeTimeStr);
   if (wakeMin != null && sleepScore != null && sleepScore >= 85
       && nowMin >= wakeMin && nowMin <= wakeMin + 90 && ok('morningFull')) {
-    return { key: 'morningFull', word: '满电开局', explain: '昨晚恢复到位，早上的认知窗口最值钱，把难的事放这里', linkCycle: false };
+    return { key: 'morningFull', word: '满电开局', explain: '昨晚恢复到位，早上的认知窗口最值钱，把难的事放这里' };
   }
 
   // 5. 饭前电量低：10:30-12 / 16:30-18 且偏低/不足
   const preMeal = inRange(h, 10.5, 12) || inRange(h, 16.5, 18);
   if (preMeal && low && ok('preMealLow')) {
-    return { key: 'preMealLow', word: '先吃点好的', explain: '血糖在低位，脑子先欠着——这顿吃好，下午才转得动', linkCycle: false };
+    return { key: 'preMealLow', word: '先吃点好的', explain: '血糖在低位，脑子先欠着——这顿吃好，下午才转得动' };
   }
 
   // 6. 久坐：清醒时段（8-22）近 2h 步数 <100
   if (inRange(h, 8, 22) && stepsLast2h < 100 && ok('sedentary')) {
-    return { key: 'sedentary', word: '摸个鱼吧', explain: '快两小时没动了，走两分钟，血氧和情绪都会回来一点', linkCycle: false };
+    return { key: 'sedentary', word: '摸个鱼吧', explain: '快两小时没动了，走两分钟，血氧和情绪都会回来一点' };
   }
 
   // 7. 午后低谷：13-15 且偏低（节律低谷 × 电量——与皮质醇节律相关，解释挂「周期和激素」页）
   if (inRange(h, 13, 15) && low && ok('afternoonTrough')) {
-    return { key: 'afternoonTrough', word: '眯一会儿', explain: '节律低谷碰上电量偏低，20 分钟小睡刚好，超过 30 分钟醒来更昏', linkCycle: true };
+    return { key: 'afternoonTrough', word: '眯一会儿', explain: '节律低谷碰上电量偏低，20 分钟小睡刚好，超过 30 分钟醒来更昏' };
   }
 
   // 8. 傍晚收工：18-22（睡前窗口未激活时才会落到这里）
   if (inRange(h, 18, 22) && ok('eveningWind')) {
-    return { key: 'eveningWind', word: '收工放松', explain: '今天够多了，别再安排烧脑的事，留点电量给晚上心情', linkCycle: false };
+    return { key: 'eveningWind', word: '收工放松', explain: '今天够多了，别再安排烧脑的事，留点电量给晚上心情' };
   }
 
-  return null; // 无场景 → 常规相位×等级句（TodayScreen.buildSmartAdvice 兜底）
+  return null; // 无场景 → 常规多因分析（buildCauseNarrative，TodayScreen 兜底）
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 多因分析段（无场景触发时的胶囊文案）
+// 内容挂钩「周期和激素」数据（不跳转）：相位 → 雌激素/孕激素 → 皮质醇节律 → 睡眠恢复。
+// 逐条拼接、缺数据静默跳过；结果 ≤3 行。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CauseCtx {
+  /** 经期/卵泡期/排卵期/黄体期/未记录 */
+  phaseLabel: string;
+  dayInCycle: number | null;
+  /** 当前雌激素指数 0-100（建模估算，CurveStatus.estrogenIndex） */
+  estrogenIndex: number | null;
+  /** 皮质醇晨峰时刻字符串（如 '08:00'）或 '—' */
+  cortisolPeak: string;
+  /** 皮质醇节律评价：良好/偏晚/扁平/一般/'—' */
+  cortisolRhythm: string;
+  /** 最近一晚睡眠评分 0-100 */
+  sleepScore: number | null;
+}
+
+const HORMONE_TXT: Record<string, string> = {
+  经期: '雌激素、孕激素都在低位，能量与情绪本来就在低点',
+  卵泡期: '雌激素持续爬升，恢复力在变强',
+  排卵期: '雌激素在峰值附近，是本月状态高点',
+  黄体期: '孕激素升高、雌激素回落，代谢上行，能量天生更容易偏低',
+};
+
+export function buildCauseNarrative(c: CauseCtx): string {
+  const parts: string[] = [];
+  const known = c.phaseLabel !== '未记录' && HORMONE_TXT[c.phaseLabel] != null;
+  if (known) {
+    const idx = c.phaseLabel === '卵泡期' && c.estrogenIndex != null ? `（雌激素指数 ${Math.round(c.estrogenIndex)}）` : '';
+    const day = c.dayInCycle != null ? `·周期第 ${c.dayInCycle} 天` : '';
+    parts.push(`${c.phaseLabel}${day}：${HORMONE_TXT[c.phaseLabel]}${idx}`);
+  }
+  if (c.cortisolRhythm === '偏晚' && c.cortisolPeak !== '—') {
+    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 偏晚，上午容易没精神`);
+  } else if (c.cortisolRhythm === '扁平') {
+    parts.push('皮质醇节律偏扁平，全天能量起伏小');
+  } else if (c.cortisolRhythm === '良好' && c.cortisolPeak !== '—') {
+    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 前后，节律正常`);
+  }
+  if (c.sleepScore != null) {
+    const s = Math.round(c.sleepScore);
+    if (s >= 80) parts.push(`昨晚睡眠 ${s} 分，恢复到位`);
+    else if (s >= 60) parts.push(`昨晚睡眠 ${s} 分，一般`);
+    else parts.push(`昨晚睡眠 ${s} 分，恢复不足是今天电量低的主因`);
+  }
+  if (parts.length === 0) return '';
+  return parts.join('；') + '。';
 }

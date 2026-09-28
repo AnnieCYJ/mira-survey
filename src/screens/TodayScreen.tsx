@@ -34,7 +34,7 @@ import { getAiInsight } from '../ai/insight';
 import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
-import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, type TodayScene } from '../lib/todayScene';
+import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNarrative, type TodayScene } from '../lib/todayScene';
 
 /** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
 const memoryStore = new MemoryStore();
@@ -757,7 +757,32 @@ export default function TodayScreen() {
   if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx} scene=${scene?.key ?? 'none'}`);
   const isAiText = false;  // 圆环下建议用规则更准（1.5B 模型搞不定时段优先级）
   const showPill = statusIdx != null || phaseKnown;
-  const narrative = scene ? scene.explain : (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析');
+  // ★ 无场景触发时：胶囊 = 多因分析段（相位→雌/孕激素→皮质醇→睡眠，挂钩周期激素数据但不跳转）
+  const causeNarrative = (() => {
+    try {
+      // 皮质醇晨峰/节律（14 天 cosinor，与洞察页同一套拟合）
+      let cortisolPeak = '—';
+      let cortisolRhythm = '—';
+      const samples = collectSamples();
+      const cr = analyzeCortisol(samples, 14);
+      if (cr && Number.isFinite(cr.cosinor?.acrophaseH)) {
+        cortisolPeak = `${String(Math.round(cr.cosinor.acrophaseH)).padStart(2, '0')}:00`;
+        if (cr.css > 10) cortisolRhythm = '良好';
+        else if (cr.css < -10) cortisolRhythm = '偏晚';
+        else if (Number.isFinite(cr.cosinor.amplitude) && Number.isFinite(cr.cosinor.mesor) && cr.cosinor.amplitude < 0.15 * cr.cosinor.mesor) cortisolRhythm = '扁平';
+        else cortisolRhythm = '一般';
+      }
+      return buildCauseNarrative({
+        phaseLabel: phase,
+        dayInCycle: status?.dayInCycle ?? null,
+        estrogenIndex: status?.estrogenIndex ?? null,
+        cortisolPeak,
+        cortisolRhythm,
+        sleepScore: recoverySleep && Number.isFinite(recoverySleep.score) ? recoverySleep.score : null,
+      });
+    } catch { return ''; }
+  })();
+  const narrative = scene ? scene.explain : (causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析'));
 
   // ★ 今日日历：把「真实生理数据」+「与 Mira 的对话记录」按一天的时间顺序编排（约 6~7 条）
   const fmtMin = (min: number | null | undefined): string => {
@@ -1001,19 +1026,9 @@ export default function TodayScreen() {
             <View style={styles.energyBallCol}>
               <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
             </View>
-            {/* 场景解释与「周期和激素」页挂钩：涉及节律/相位的解释可点击跳转 CycleCalendar */}
-            <Pressable
-              style={styles.statusPill}
-              disabled={!scene?.linkCycle}
-              onPress={() => navigation.navigate('CycleCalendar')}
-              accessibilityRole={scene?.linkCycle ? 'button' : undefined}
-              accessibilityLabel={narrative}
-            >
+            <View style={styles.statusPill}>
               <Text style={styles.statusNarr}>{narrative}</Text>
-              {scene?.linkCycle && (
-                <Text style={[styles.statusNarr, styles.statusLinkHint]}>周期和激素 ›</Text>
-              )}
-            </Pressable>
+            </View>
           </View>
 
           <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
@@ -1218,13 +1233,6 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
     textAlign: 'center',
-  },
-  // 场景解释挂钩「周期和激素」页的跳转提示（accent 字 + 小箭头）
-  statusLinkHint: {
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.medium,
-    color: theme.colors.accentText,
-    marginTop: 2,
   },
   // ★ 全天状态面板：全宽白面（负 margin 抵消 ScreenContainer 的 24pt 内边距）
   statusPanel: {
