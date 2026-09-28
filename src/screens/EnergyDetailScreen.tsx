@@ -21,14 +21,12 @@ import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
-import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
-import { RANGE_DEF, type RangeKey } from '../data/metrics';
+import { healthStore, dayKey, parseDayKey } from '../data/healthStore';import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 // ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
 import { cogLevel, cogLevelLabel } from '../lib/cognitiveLoad';
-import { parseClockMinutes } from '../lib/sleepTime';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
@@ -253,80 +251,28 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>今日认知窗口</Text>
 
-          {/* 早起认知准备度 — 最上面一行, 早上看最有用 */}
-          {(() => {
-            const wakeH = (() => {
-              try {
-                const dk = dayKey(anchorMs);
-                const sl = healthStore.getSleep(dk);
-                const m = parseClockMinutes(sl?.wakeTime);
-                return m != null ? m / 60 : null;
-              } catch { return null; }
-            })();
-            const rec = report.sleepRecovery ?? 0.6;
-            const debt = report.sleepDebt ?? 0;
-            const peak = report.circadianPeakH ?? 8;
-            // 准备度 = 报告里的脑力账户储备（computeMorningReadiness 同一公式），旧内联公式仅兜底
-            const clamp2 = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-            const circAdjFb = wakeH != null ? (Math.max(0, Math.min(100, 50 + 50 * Math.sin(2 * Math.PI * (wakeH - peak + 6) / 24))) / 100) : 0.5;
-            const prep = report.brainReserve ?? Math.round(clamp2(rec * 80 + 20 - debt * 8, 0, 100) * 0.7 + circAdjFb * 100 * 0.3);
-            const ll = prep >= 70 ? { text: '准备好了', color: theme.colors.success, tip: '起床即有清晰认知状态' }
-                     : prep >= 45 ? { text: '一般', color: theme.colors.warn, tip: '需要 30-60 分钟暖脑' }
-                     : { text: '偏低', color: mm.colors.limeDeep, tip: '建议先轻度活动，避免烧脑' }; // v21：疲劳低档=limeDeep
-            return (
-              <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: ll.color + '12', borderLeftWidth: 3, borderLeftColor: ll.color }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>早起认知准备度</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
-                  <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: ll.color }}>{ll.text}</Text>
-                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft }}>· {prep}/100</Text>
-                </View>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
-                  {ll.tip}
-                  {rec < 0.6 ? ' · 昨晚恢复不足' : ''}
-                  {debt > 1.5 ? ' · 累计睡眠债 ' + debt.toFixed(1) + 'h' : ''}
-                  {wakeH != null ? ' · 起床 ' + fmtHM(wakeH) : ''}
-                </Text>
-              </View>
-            );
-          })()}
-
-          {/* 今日脑力账户 — 与准备度/疲劳曲线同一条能量线：
-              储备 = 早起准备度；已用只算「脑」（情绪事件/运动窗口的唤醒偏离已剔除）；剩余 = 100 − 当前疲劳度 */}
+          {/* 认知准备度 — 一个数据：当前 = 脑力账户剩余（早上从储备开始，白天只算脑的消耗往下走） */}
           {(() => {
             const reserve = report.brainReserve;
             const used = report.brainUsed;
             const remain = report.brainRemaining;
             if (reserve == null || used == null || remain == null) return null;
+            const lv = remain >= 70 ? { text: '转得动', color: theme.colors.success, tip: '认知状态在线' }
+                     : remain >= 40 ? { text: '还剩一半', color: theme.colors.warn, tip: '注意节奏，重活放高峰' }
+                     : { text: '接近见底', color: theme.colors.danger, tip: '先恢复再投入' };
             const ex = report.brainExcluded;
             const exTotal = ex ? ex.emotion + ex.exercise : 0;
-            const excludeNote = exTotal >= 30
-              ? `已剔除非认知消耗 ${Math.round(exTotal / 6) / 10}h（情绪 ${Math.round(ex.emotion / 6) / 10}h · 运动 ${Math.round(ex.exercise / 6) / 10}h）`
-              : null;
             return (
-              <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeTint }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
-                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>今日脑力账户</Text>
-                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 6 }}>· 估算</Text>
+              <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: lv.color + '12', borderLeftWidth: 3, borderLeftColor: lv.color }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>认知准备度 · 估算</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(1.5) }}>
+                  <Text style={{ fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, color: lv.color, lineHeight: theme.fontSize.hero }}>{remain}</Text>
+                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, paddingBottom: 6 }}>/100 · {lv.text}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: theme.sp(2) }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk }}>{reserve}</Text>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>早上储备</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk }}>−{used}</Text>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>已用（只算脑）</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>{remain}</Text>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>当前剩余</Text>
-                  </View>
-                </View>
-                {excludeNote != null && (
-                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-                    {excludeNote}
-                  </Text>
-                )}
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
+                  {lv.tip} · 早上储备 {reserve} · 已用 {used}（只算脑）
+                  {exTotal >= 30 ? ` · 已剔除非认知 ${Math.round(exTotal / 6) / 10}h` : ''}
+                </Text>
               </View>
             );
           })()}
