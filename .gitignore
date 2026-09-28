@@ -3,6 +3,8 @@ node_modules/
 .expo-shared/
 dist/
 web-build/
+# Xcode 构建中间产物（~3GB，本地构建用，不进 git）
+build/
 npm-debug.*
 *.jks
 *.p8

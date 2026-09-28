@@ -34,3 +34,9 @@
 - 发现：工作区存在未提交改动——src/ai/model.ts、src/lib/foodAi.ts、src/screens/FoodScanScreen.tsx（食物 AI 识别相关），新增未跟踪 generated-images/ 目录下 1 张 PNG，以及 automation 记忆文件本次追加条目；子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty 状态。
 - 处理：执行 `git add -A` → commit 85a62e0「更新食物 AI 识别逻辑、生成图片资源并记录巡检」→ push 成功 426aab9..85a62e0。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-09-28 14:12（第七次运行）
+- 发现：本地 master 领先 origin/master **29 个提交**（v17.3→v18.28 MindMate 迭代系列：情绪珠雨 Matter.js 动效、洞察页 tab 拆分、认知/运动/情绪卡改版、饮食识别卡底图定稿、expo-sensors 降级等）；新增未跟踪 `build/` 目录（3.0GB Xcode 构建中间产物，当天 11:15 生成，不在 .gitignore）；子模块仍为已知 -dirty。
+- 关键决策：**未盲目 add -A**——build/ 为 3GB 构建产物，硬提交会污染仓库且推送必失败。将其加入 .gitignore（与已忽略的 ios/、dist/ 同类），属本次唯一源码外改动，已在 commit message 中注明。
+- 处理：.gitignore 加 build/ → git add -A（暂存 .gitignore + 记忆文件）→ commit → push origin master（29 个积压提交 + 本次 1 个一并推送）。
+- 结果：master 与 origin/master 同步。build/ 已被忽略不再出现在 status；子模块脏改动维持既有决策：不动、仅报告。
