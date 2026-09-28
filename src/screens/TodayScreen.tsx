@@ -34,6 +34,7 @@ import { getAiInsight } from '../ai/insight';
 import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
+import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, type TodayScene } from '../lib/todayScene';
 
 /** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
 const memoryStore = new MemoryStore();
@@ -717,13 +718,46 @@ export default function TodayScreen() {
   }, [phase, statusIdx, isAsleep, status?.value, status?.level]);
 
   const fallbackAdvice = buildSmartAdvice(phase, statusIdx, isNap);
+
+  // ★ v18.37 场景建议引擎：圈内 = 短建议词（≤6 字），胶囊 = 具体解释（≤2 行）。
+  //   优先级：睡眠窗口 > 睡前1h(个人入睡习惯-60min) > 情绪尖峰 > 晨间满电
+  //           > 饭前低电量 > 久坐 > 午后低谷 > 傍晚收工；无场景 → 常规相位句。
+  //   频控：每词每日 ≤3 次（多数 ≤1）+ 最短冷却，持久化跨重启（lib/todayScene）。
+  const scene: TodayScene | null = (() => {
+    try {
+      const nowMs = Date.now();
+      const stepsPts = healthStore.getTimeRange('steps' as any, nowMs - 2 * 3600e3, nowMs, { maxPoints: 60 });
+      const stepsLast2h = stepsPts.length >= 2 ? Math.max(0, stepsPts[stepsPts.length - 1].v - stepsPts[0].v) : 0;
+      const stressRecent1h = (stressReport?.events ?? []).filter((e: any) => Number.isFinite(e.t) && e.t >= nowMs - 3600e3).length;
+      return evaluateTodayScene({
+        now: nowMs,
+        isAsleep,
+        statusValue: status?.value ?? null,
+        sleepScore: recoverySleep && Number.isFinite(recoverySleep.score) ? recoverySleep.score : null,
+        wakeTimeStr: recoverySleep?.wakeTime ?? null,
+        stressRecent1h,
+        stepsLast2h,
+      });
+    } catch { return null; }
+  })();
+
+  // 频控计数：同一次持续触发只记一次（key 变化再重新计），跨重启由文件持久化
+  const markedSceneRef = useRef<string | null>(null);
+  useEffect(() => { initTodaySceneCounter(); }, []);
+  useEffect(() => {
+    if (scene?.key && markedSceneRef.current !== scene.key) {
+      markedSceneRef.current = scene.key;
+      markSceneShown(scene.key);
+    }
+  }, [scene?.key]);
+
   const advice = isAsleep
     ? (phase === '经期' ? '经期睡眠中，安心休息助修复' : phase === '黄体期' ? '黄体期睡眠中，深睡稳情绪' : '睡眠恢复中，安心休息')
     : fallbackAdvice;
-  if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx}`);
+  if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx} scene=${scene?.key ?? 'none'}`);
   const isAiText = false;  // 圆环下建议用规则更准（1.5B 模型搞不定时段优先级）
   const showPill = statusIdx != null || phaseKnown;
-  const narrative = showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析';
+  const narrative = scene ? scene.explain : (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析');
 
   // ★ 今日日历：把「真实生理数据」+「与 Mira 的对话记录」按一天的时间顺序编排（约 6~7 条）
   const fmtMin = (min: number | null | undefined): string => {
@@ -965,11 +999,21 @@ export default function TodayScreen() {
         <View style={styles.statusPanel}>
           <View style={styles.energyWrap}>
             <View style={styles.energyBallCol}>
-              <EnergyBall status={ring.curveStatus} centerLabelOverride={isAsleep ? '睡眠恢复中' : undefined} />
+              <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
             </View>
-            <View style={styles.statusPill}>
+            {/* 场景解释与「周期和激素」页挂钩：涉及节律/相位的解释可点击跳转 CycleCalendar */}
+            <Pressable
+              style={styles.statusPill}
+              disabled={!scene?.linkCycle}
+              onPress={() => navigation.navigate('CycleCalendar')}
+              accessibilityRole={scene?.linkCycle ? 'button' : undefined}
+              accessibilityLabel={narrative}
+            >
               <Text style={styles.statusNarr}>{narrative}</Text>
-            </View>
+              {scene?.linkCycle && (
+                <Text style={[styles.statusNarr, styles.statusLinkHint]}>周期和激素 ›</Text>
+              )}
+            </Pressable>
           </View>
 
           <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
@@ -1174,6 +1218,13 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
     textAlign: 'center',
+  },
+  // 场景解释挂钩「周期和激素」页的跳转提示（accent 字 + 小箭头）
+  statusLinkHint: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.accentText,
+    marginTop: 2,
   },
   // ★ 全天状态面板：全宽白面（负 margin 抵消 ScreenContainer 的 24pt 内边距）
   statusPanel: {
