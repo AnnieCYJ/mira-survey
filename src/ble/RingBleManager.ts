@@ -1027,12 +1027,23 @@ class NativeRingSource {
           }
           if (total <= 0) total = curve.length;
         }
+        // ★ 2026-09-29 修复：SDK 原始 sleepScore 是 0–5 分制，之前直接当 score 存进去，
+        //   详情页/恢复卡按 0–100 展示就成了「3 分」。这里与 handleSleepDay 同口径，
+        //   用 computeSleepScore v2 自算 0–100（SDK 原始分保留在 sdkScore 字段）。
         const sleepObj = {
           total,
           deep,
           light,
           rem,
-          score: num(d.sleepScore) ?? 0,
+          score: total > 0 ? computeSleepScore(
+            {
+              sleepTotal: total,
+              sleepDeep: deep,
+              sleepAwake: awake + insomnia > 0 ? awake + insomnia : undefined,
+              getUp: num(d.sleepGetUp) ?? 0,
+            },
+            ALGO_DEFAULTS
+          ) : 0,
           getUp: num(d.sleepGetUp) ?? 0,
           // ★ 原生发的是 "yyyy-MM-dd HH:mm"；图上时间轴与睡眠窗推导都要 "HH:mm"，此处统一格式化
           sleepTime: fmtSleepClock(d.sleepTime) ?? d.sleepTime ?? null,

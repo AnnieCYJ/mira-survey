@@ -104,14 +104,19 @@ export function buildCortisolToday30(): (number | null)[] {
 
   const now = new Date();
   const currentSlot = Math.min(now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), 47);
-  const todayR = analyzeCortisol(todayRaw, 1);
-  const tcos = todayR.cosinor;
-  if (Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
+  // ★ 2026-09-29 修复：补齐空槽不再用「当日稀疏样本」做单日 cosinor（早上只有几小时的样本，
+  //   拟合出的 acrophase 基本随机，补出来的曲线形状是错的）。改用近 14 天稳定节律补齐——
+  //   真实样本槽保持不动，只填无数据时段，形状与「14天节律」模式一致。
+  const r14 = analyzeCortisol(collectSamples(), 14);
+  const c14 = r14.cosinor;
+  const hasR14 =
+    Number.isFinite(c14.mesor) && Number.isFinite(c14.amplitude) && c14.amplitude > 0 && Number.isFinite(c14.acrophaseH);
+  if (hasR14) {
     const TWO_PI = Math.PI * 2;
     for (let slot = 0; slot <= currentSlot; slot++) {
       if (today30[slot] == null) {
         const h = slot / 2;
-        const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
+        const pred = c14.mesor + c14.amplitude * Math.cos(TWO_PI * (h - c14.acrophaseH) / 24);
         today30[slot] = Math.max(0, +pred.toFixed(1));
       }
     }
