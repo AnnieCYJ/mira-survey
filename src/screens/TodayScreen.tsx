@@ -1113,7 +1113,7 @@ export default function TodayScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setTodayTab('diary')}
             style={[styles.todayTabBtn, todayTab === 'diary' && styles.todayTabBtnOn]}>
-            <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>日记</Text>
+            <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>今日旅程</Text>
           </TouchableOpacity>
         </View>
 
