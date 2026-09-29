@@ -1021,13 +1021,14 @@ export default function TodayScreen() {
         <Animated.View
           style={[styles.head, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}
         >
+          {/* v18.45 头部单行：Today 居左（原头像位），头像+名字移到右侧 */}
+          <Text style={styles.title}>Today</Text>
           <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
             <View style={styles.avatar}>
               <Text style={styles.avatarLetter}>K</Text>
             </View>
             <Text style={styles.name}>Kristina</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Today</Text>
         </Animated.View>
 
         {/* ─────────────────────────────────────────────────────────────
@@ -1182,8 +1183,13 @@ export default function TodayScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, width: '100%' },
-  head: { marginBottom: theme.space.xl * 1.5 },
-  avatarName: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.xs },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.space.xl * 1.5,
+  },
+  avatarName: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
     width: theme.sp(9),
     height: theme.sp(9),
@@ -1209,7 +1215,6 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
     color: theme.colors.textInk,
-    marginTop: theme.space.xs,
   },
   energyWrap: { marginBottom: theme.space.xs, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
