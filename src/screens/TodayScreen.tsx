@@ -909,16 +909,40 @@ export default function TodayScreen() {
   // 运动卡数据口径：卡路里为主数字（kcal），脚注行=步数(stepsToday 复用上方声明)+距离；今日有任何步数即视为有数据
   const activityHasData = (stepsToday > 0) || weekSteps.some((w) => w.steps > 0);
 
+  // ★ chips 数据标签（数值下方一行小字）：全部由当天真实数据推导档位，无数据不给词
+  const recTag = (() => {
+    if (recovery == null || recovery === '—') return undefined;
+    const s = Number(recovery);
+    return s >= 80 ? '恢复良好' : s >= 60 ? '恢复中' : '恢复偏弱';
+  })();
+  const cogTag = (() => {
+    try {
+      const used = computeCognitiveLoadReport()?.brainUsed;
+      if (used == null) return undefined;
+      return used < 20 ? '低消耗' : used < 45 ? '中等消耗' : '高消耗';
+    } catch { return undefined; }
+  })();
+  const emoTag = (() => {
+    if (stress === '—') return undefined;
+    const n = Number(stress);
+    if (!Number.isFinite(n)) return undefined;
+    return n === 0 ? '平稳' : n <= 2 ? '有波动' : '消耗偏高';
+  })();
+  const actTag = (() => {
+    if (!activityHasData || stepsToday <= 0) return undefined;
+    return stepsToday < 3000 ? '活动偏少' : stepsToday < 7000 ? '轻度活动' : '活力充足';
+  })();
+
   /**
    * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
    * 数据与消耗卡**同源同口径**：认知=准备度（脑力账户剩余）、情绪=事件数、运动=当日步数、恢复=睡眠评分。
    * 无数据显式传 '—'，不编数字。
    */
   const metricChips: MindChipItem[] = [
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', onPress: () => navigation.navigate('EmotionCognitiveDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
-    { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
+    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', tag: actTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
@@ -1187,7 +1211,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textInk,
     marginTop: theme.space.xs,
   },
-  energyWrap: { marginBottom: theme.space.sm, alignItems: 'center' },
+  energyWrap: { marginBottom: theme.space.xs, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
   statusPill: { flex: 1, marginTop: theme.space.xs, justifyContent: 'center' },
   statusChipRow: {
@@ -1246,7 +1270,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -theme.space.screen,
     marginTop: -1,
   },
-  trendWrap: { position: 'relative', marginTop: theme.space.sm },
+  trendWrap: { position: 'relative', marginTop: theme.space.xs },
   trendChevBtn: {
     position: 'absolute',
     right: 0,

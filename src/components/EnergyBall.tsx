@@ -49,8 +49,10 @@ const LABEL_TO_PHASE: Record<string, PhaseKey> = {
 export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const { width: winW } = useWindowDimensions();
   const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
-  const size = avail * 0.74;
-  const svgSize = size * 1.32;
+  // ★ 2026-09-29：圆环略收（0.74→0.70 / 1.32→1.28）——此前面板被圆环撑太高，
+  //   下方趋势图压到底部 tab 栏。收 ~7% 换图表上移 ~28pt，视觉几乎无感。
+  const size = avail * 0.70;
+  const svgSize = size * 1.28;
   const c = svgSize / 2;
   const ringR = (size / 2) * 0.843;
   // 四个经期象限的月相点将均匀分布在白色环上（半径同环）

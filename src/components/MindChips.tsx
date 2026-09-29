@@ -17,6 +17,8 @@ export interface MindChipItem {
   value: string;
   /** 可选小号单位后缀（如 '/100'），紧跟数值右侧；不传则不渲染 */
   unit?: string;
+  /** 数值下方的数据标签（如「恢复良好」「低消耗」）；无数据/不传则不渲染 */
+  tag?: string;
   onPress: () => void;
 }
 
@@ -48,6 +50,11 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
                 <Text style={styles.unit}>{it.unit}</Text>
               )}
             </View>
+            {it.tag != null && it.value !== '—' && (
+              <Text style={styles.tag} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                {it.tag}
+              </Text>
+            )}
           </Pressable>
         );
       })}
@@ -106,5 +113,12 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     marginLeft: 1,
+  },
+  tag: {
+    fontSize: theme.fs(8),
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkFaint,
+    marginTop: theme.sp(0.5),
+    maxWidth: '100%',
   },
 });
