@@ -951,7 +951,7 @@ export default function TodayScreen() {
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', tag: actTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
-    { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', tag: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : undefined, moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
+    { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
@@ -1267,11 +1267,14 @@ const styles = StyleSheet.create({
     color: theme.colors.stateTired,
   },
   statusNarr: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.55,
-    color: theme.colors.textSub,
+    // ★ v18.48 选 A：16px 墨色 medium + 两侧留白 28，字更大更居中更突出
+    fontSize: 16,
+    lineHeight: 24,
+    color: theme.colors.textInk,
+    fontWeight: theme.weight.medium,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
     textAlign: 'center',
+    paddingHorizontal: 28,
   },
   // ★ 全天状态面板：全宽白面（负 margin 抵消 ScreenContainer 的 24pt 内边距）
   statusPanel: {
