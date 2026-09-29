@@ -728,6 +728,8 @@ export default function TodayScreen() {
       const nowMs = Date.now();
       const stepsPts = healthStore.getTimeRange('steps' as any, nowMs - 2 * 3600e3, nowMs, { maxPoints: 60 });
       const stepsLast2h = stepsPts.length >= 2 ? Math.max(0, stepsPts[stepsPts.length - 1].v - stepsPts[0].v) : 0;
+      const spo2Pts = healthStore.getTimeRange('spo2' as any, nowMs - 3 * 3600e3, nowMs, { maxPoints: 20 });
+      const spo2Latest = spo2Pts.length > 0 ? spo2Pts[spo2Pts.length - 1].v : null;
       const stressRecent1h = (stressReport?.events ?? []).filter((e: any) => Number.isFinite(e.t) && e.t >= nowMs - 3600e3).length;
       return evaluateTodayScene({
         now: nowMs,
@@ -737,6 +739,7 @@ export default function TodayScreen() {
         wakeTimeStr: recoverySleep?.wakeTime ?? null,
         stressRecent1h,
         stepsLast2h,
+        spo2Latest,
       });
     } catch { return null; }
   })();
@@ -938,11 +941,17 @@ export default function TodayScreen() {
    * 数据与消耗卡**同源同口径**：认知=准备度（脑力账户剩余）、情绪=事件数、运动=当日步数、恢复=睡眠评分。
    * 无数据显式传 '—'，不编数字。
    */
+  // 经期卡：月相图标与圆环四个象限点同一套（经期=满月/卵泡=上弦/黄体=全紫/排卵=下弦）
+  const PHASE_MOON: Record<string, 'full' | 'quarterR' | 'allPurple' | 'quarterL'> = {
+    经期: 'full', 卵泡期: 'quarterR', 黄体期: 'allPurple', 排卵期: 'quarterL',
+  };
+  const phaseMoon = status?.phaseLabel != null ? PHASE_MOON[status.phaseLabel] : undefined;
   const metricChips: MindChipItem[] = [
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', tag: actTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', tag: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : undefined, moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */

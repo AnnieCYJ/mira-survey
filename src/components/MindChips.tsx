@@ -4,10 +4,11 @@
  * 取代原「四指标环」TodayMetricTiles 的展示位（组件文件保留，可随时回退）。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm, type MindChipTone } from '../theme/mindmate';
 import { MindIcon, type MindIconName } from './MindIcons';
+import { MoonDot, type MoonStyle } from './CycleMoonPhase';
 
 export interface MindChipItem {
   key: string;
@@ -19,12 +20,24 @@ export interface MindChipItem {
   unit?: string;
   /** 数值下方的数据标签（如「恢复良好」「低消耗」）；无数据/不传则不渲染 */
   tag?: string;
+  /** 月相图标（经期卡）：传入后用 MoonDot 取代线性 icon，与首页圆环四个象限点同一套 */
+  moonStyle?: MoonStyle;
   onPress: () => void;
 }
 
 function MindChipsImpl({ items }: { items: MindChipItem[] }) {
+  // v18.47 横向滑动：一行刚好放下 4 张完整卡 + 右侧露一点第 5 张边，提示可右滑
+  const { width: winW } = useWindowDimensions();
+  const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
+  const GAP = theme.sp(2);
+  const chipW = (avail - GAP * 3) / 4 - 3;
   return (
-    <View style={styles.row}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: GAP }}
+      decelerationRate="fast"
+    >
       {items.map((it) => {
         const cb = mm.chipBg[it.tone];
         return (
@@ -32,12 +45,14 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
             key={it.key}
             onPress={it.onPress}
             onPressIn={() => {}} // 视觉反馈交给 activeOpacity 类；chip 保持轻量
-            style={({ pressed }) => [styles.chip, pressed && { opacity: 0.82 }]}
+            style={({ pressed }) => [styles.chip, { width: chipW }, pressed && { opacity: 0.82 }]}
             accessibilityRole="button"
             accessibilityLabel={`${it.label} ${it.value}`}
           >
             <View style={[styles.iconSq, { backgroundColor: cb.bg }]}>
-              <MindIcon name={it.icon} size={theme.fs(14)} color={cb.fg} />
+              {it.moonStyle != null
+                ? <MoonDot style={it.moonStyle} size={theme.fs(15)} />
+                : <MindIcon name={it.icon} size={theme.fs(14)} color={cb.fg} />}
             </View>
             <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
               {it.label}
@@ -58,19 +73,14 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
 export default React.memo(MindChipsImpl);
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: theme.sp(2),
-  },
   chip: {
-    flex: 1,
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: mm.colors.chipBorder,

@@ -71,11 +71,9 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const centerLabel = !hasData ? '暂无数据' : (centerLabelOverride ?? mood.label);
   const statusValue = hasData ? Math.round(status.value as number) : null;
 
-  // 当前所处经期象限（来自今日状态预测）；无数据时为 null
+  // 当前所处经期象限（来自今日状态预测）；无数据时为 null（仅用于环上高亮，中央相位文字已移除）
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
-  // 圆环内状态值下方展示的相位（月相图标 + 文字），与首页圆环四周的四个象限点同源
-  const phaseEntry = currentPhase ? HOME_PHASES.find((p) => p.key === currentPhase) ?? null : null;
 
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
   const halo = useRef(new Animated.Value(0)).current;
@@ -236,12 +234,6 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       <View style={styles.center} pointerEvents="none">
         <Text style={[styles.label, !hasData && styles.emptyLabel]}>{centerLabel}</Text>
         {statusValue != null && <Text style={styles.statusValue}>状态值：{statusValue}</Text>}
-        {phaseEntry && (
-          <View style={styles.phaseInner}>
-            <MoonDot style={phaseEntry.style} size={theme.fs(13)} />
-            <Text style={styles.phaseInnerText}>{phaseEntry.label}</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -255,15 +247,17 @@ const styles = StyleSheet.create({
   },
   center: {
     position: 'absolute',
-    alignSelf: 'center',
-    top: '42%',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: theme.fontSize.orb,
+    fontSize: theme.fs(28),
     color: theme.colors.orbTextInk,
-    fontWeight: theme.weight.medium,
+    fontWeight: theme.weight.semibold,
     textShadowColor: 'rgba(255,255,255,0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
@@ -271,25 +265,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     fontSize: theme.fontSize.body,
     color: theme.colors.textSub,
+    fontWeight: theme.weight.medium,
     textShadowColor: 'transparent',
     textShadowRadius: 0,
   },
   statusValue: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.orbTextInkSub,
-    marginTop: theme.space.xs,
-    fontWeight: theme.weight.medium,
-  },
-  phaseInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.sp(1),
-    marginTop: theme.space.xs,
-  },
-  phaseInnerText: {
-    fontSize: theme.fontSize.micro,
-    color: theme.colors.orbTextInkSub,
+    marginTop: 2,
     fontWeight: theme.weight.medium,
   },
 });

@@ -140,12 +140,14 @@ export interface SceneCtx {
   stressRecent1h: number;
   /** 最近 2h 步数增量 */
   stepsLast2h: number;
+  /** 最近一次血氧 %（近 3h 内）；null = 无新样本 */
+  spo2Latest: number | null;
 }
 
 const inRange = (h: number, a: number, b: number) => h >= a && h < b;
 
 export function evaluateTodayScene(ctx: SceneCtx): TodayScene | null {
-  const { now, isAsleep, statusValue, sleepScore, wakeTimeStr, stressRecent1h, stepsLast2h } = ctx;
+  const { now, isAsleep, statusValue, sleepScore, wakeTimeStr, stressRecent1h, stepsLast2h, spo2Latest } = ctx;
   const d = new Date(now);
   const h = d.getHours() + d.getMinutes() / 60;
   const nowMin = d.getHours() * 60 + d.getMinutes();
@@ -180,9 +182,16 @@ export function evaluateTodayScene(ctx: SceneCtx): TodayScene | null {
     return { key: 'preMealLow', word: '先吃点好的', explain: '血糖在低位，脑子先欠着——这顿吃好，下午才转得动' };
   }
 
-  // 6. 久坐：清醒时段（8-22）近 2h 步数 <100
+  // 6. 久坐：清醒时段（8-22）近 2h 步数 <100；血氧只在偏低时才提（正常时不占字数）
   if (inRange(h, 8, 22) && stepsLast2h < 100 && ok('sedentary')) {
-    return { key: 'sedentary', word: '摸个鱼吧', explain: '快两小时没动了，走两分钟，血氧和情绪都会回来一点' };
+    const spo2Low = spo2Latest != null && spo2Latest < 95;
+    return {
+      key: 'sedentary',
+      word: '摸个鱼吧',
+      explain: spo2Low
+        ? `快两小时没动了，血氧 ${Math.round(spo2Latest)}% 偏低——起来走两分钟会回来`
+        : '快两小时没动了，走两分钟，情绪也会回来一点',
+    };
   }
 
   // 7. 午后低谷：13-15 且偏低（节律低谷 × 电量——与皮质醇节律相关，解释挂「周期和激素」页）
