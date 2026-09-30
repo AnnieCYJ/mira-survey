@@ -20,3 +20,6 @@ android/
 # 端侧 LLM 模型权重（1.1GB，本地构建用，不进 git）
 *.gguf
 assets/models/
+
+# Xcode 构建中间产物副本（~3.3GB，本地构建用，不进 git）
+build_fresh/

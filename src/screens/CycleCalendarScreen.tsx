@@ -793,7 +793,7 @@ const styles = StyleSheet.create({
   cell: { width: `${100 / 7}%`, padding: theme.sp(0.75), aspectRatio: 1 },
   dayBox: { flex: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dayToday: { borderWidth: 2, borderColor: theme.colors.accentSolid }, // v21：本页紫主控（周期语义域）
-  dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, borderStyle: 'dashed' },
+  dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, },
   dayNum: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
   dayDot: { position: 'absolute', bottom: 4, width: 5, height: 5, borderRadius: 2.5 },
   dayRing: { position: 'absolute', top: 3, right: 3, width: 7, height: 7, borderRadius: 4, borderWidth: 2 },

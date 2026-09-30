@@ -9,6 +9,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Svg, { Path, Rect, Circle, Defs, LinearGradient, Stop, Line, G, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
@@ -16,7 +17,7 @@ import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from 
 import KalmanFilter from '../lib/kalman-filter';
 
 const LEVEL_META: Record<string, { label: string; color: string }> = {
-  normal: { label: '节律正常', color: "#2ECC71" },
+  normal: { label: '节律正常', color: mm.colors.ink },
   sustained_high: { label: '持续偏高', color: theme.colors.danger },
   dysregulated: { label: '节律紊乱', color: '#FFFFFF' },
 };
@@ -84,7 +85,7 @@ export function getSleepWindow(dk?: string): { bedHour: number; wakeHour: number
  * buildCortisolToday30 —— 生成今日皮质醇 30min 槽位（和 TrendChart 今日紫色线完全一致）
  * 导出给 MetricDetailScreen 复用。
  */
-export function buildCortisolToday30(): (number | null)[] {
+export function buildCortisolToday30Ex(): { vals: (number | null)[]; real: boolean[] } {
   const SLOTS = 48;
   const kf = new KalmanFilter({ R: 2, Q: 0.1 });
   const todayDK = dayKey(Date.now());
@@ -101,6 +102,9 @@ export function buildCortisolToday30(): (number | null)[] {
     cnts[slot] += 1;
   }
   const today30: (number | null)[] = sums.map((s, i) => (cnts[i] > 0 ? +(s / cnts[i]).toFixed(1) : null));
+  // ★ v18.69：标记哪些槽是「真实样本」——节律插值补的槽不算，
+  //   供首页卡/详情页做「>1h 缺口断线」分段连线
+  const real: boolean[] = today30.map((v) => v != null);
 
   const now = new Date();
   const currentSlot = Math.min(now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), 47);
@@ -122,7 +126,12 @@ export function buildCortisolToday30(): (number | null)[] {
     }
   }
   for (let slot = currentSlot + 1; slot < SLOTS; slot++) today30[slot] = null;
-  return today30;
+  return { vals: today30, real };
+}
+
+/** 兼容旧调用方：只要槽位值（补齐后的连续序列） */
+export function buildCortisolToday30(): (number | null)[] {
+  return buildCortisolToday30Ex().vals;
 }
 
 export default function CortisolRhythmCard() {
@@ -216,7 +225,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
   const ptColor = (h: number, v: number) => {
     const asleep = isAsleep(h);
     const inBand = !asleep && v >= r.baseline.p25 && v <= r.baseline.p75;
-    return inBand ? '#2ECC71' : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
+    return inBand ? mm.colors.ink : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
   };
   const segments: { d: string; color: string }[] = [];
   let segD = '', segColor = '';
@@ -236,7 +245,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
     <View>
       <Svg width={CHART_W} height={CHART_H + 24} style={{ alignSelf: 'center' }}>
         {/* 正常范围色带 */}
-        {bandPath ? <Path d={bandPath} fill="#2ECC7122" /> : null}
+        {bandPath ? <Path d={bandPath} fill="#1F1D1A22" /> : null}
         {/* 睡眠时段灰色遮罩 */}
         {(() => {
           const rects = [];
@@ -257,7 +266,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
         {valid.map((p, i) => {
           const asleep = isAsleep(p.h);
           const inBand = !asleep && p.v >= r.baseline.p25 && p.v <= r.baseline.p75;
-          const color = inBand ? "#2ECC71" : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
+          const color = inBand ? mm.colors.ink : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
           return <Circle key={i} cx={xOf(p.h)} cy={yOf(p.v)} r={2.5} fill={color} />;
         })}
       </Svg>
@@ -342,7 +351,36 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   const mainRaw = healthStore.getIntraday('cortisol', mainDK)
     .filter((p) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
     .map((p) => ({ t: p.t, v: p.v } as CortisolSample));
-  const main30 = aggregate30m(mainRaw);
+  // ★ v18.65 今日曲线与首页「全天恢复」卡**同源同款**：buildCortisolToday30()
+  //   （Kalman 滤波槽均值 + 14 天节律补空槽到当前时刻，未来时段不画）。
+  //   旧实现用单日 cosinor 填空——样本稀疏时 acrophase 基本随机，补出的形状是错的。
+  let main30: (number | null)[];
+  if (isMainToday) {
+    // ★ v18.69 与首页同款「分段连线」：只画真实样本槽；真实样本间隔 ≤1h（中间恰好 1 个
+    //   空槽）桥接连线，>1h 断开——节律插值不再把稀疏观测连成一条连续曲线冒充实测
+    const ex = buildCortisolToday30Ex();
+    main30 = ex.vals.map((v, i) => {
+      if (ex.real[i]) return v;
+      const prevReal = i > 0 && ex.real[i - 1];
+      const nextReal = i < ex.vals.length - 1 && ex.real[i + 1];
+      return prevReal && nextReal ? v : null;   // 1h 桥接点保留；缺口 ≥1.5h 断开
+    });
+  } else {
+    main30 = aggregate30m(mainRaw);
+    // 历史日：整天都是过去，用该日自己的 cosinor 节律填满
+    const mainR = analyzeCortisol(mainRaw, 1);
+    const tcos = mainR.cosinor;
+    if (fillGaps && Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
+      const TWO_PI = Math.PI * 2;
+      for (let slot = 0; slot < SLOTS; slot++) {
+        if (main30[slot] == null) {
+          const h = slot / 2;
+          const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
+          main30[slot] = Math.max(0, +pred.toFixed(1));
+        }
+      }
+    }
+  }
   const mainNonNull = main30.filter(v => v != null).length;
   const baseNonNull = baseline30.filter(v => v != null).length;
   console.log(`🔥 [TREND] dk=${mainDK} mainRaw=${mainRaw.length} mainNonNull=${mainNonNull}/48 baselineNonNull=${baseNonNull}/48`);
@@ -356,24 +394,8 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
     console.log(`🔥 [TREND] main30 SLOTS: ${nonNull30.join(", ")}`);
   }
 
-  // 对 mainRaw 单独跑 analyzeCortisol, 拿所选日自己的 cosinor 节律来填补空槽
-  // ★ 今天：只填补「当前时刻之前」的空槽，未来时段保持 null（不画预测线）；
-  //   历史日：整天都是过去，填满整天。
-  const mainR = analyzeCortisol(mainRaw, 1);
-  const tcos = mainR.cosinor;
-  if (fillGaps && Number.isFinite(tcos.mesor) && Number.isFinite(tcos.amplitude) && tcos.amplitude > 0 && Number.isFinite(tcos.acrophaseH)) {
-    const TWO_PI = Math.PI * 2;
-    for (let slot = 0; slot <= baseFillSlot; slot++) {
-      if (main30[slot] == null) {
-        const h = slot / 2;
-        const pred = tcos.mesor + tcos.amplitude * Math.cos(TWO_PI * (h - tcos.acrophaseH) / 24);
-        main30[slot] = Math.max(0, +pred.toFixed(1));
-      }
-    }
-  }
-  if (isMainToday) {
-    for (let slot = currentSlot + 1; slot < SLOTS; slot++) main30[slot] = null;
-  }
+  // （v18.65：旧「单日 cosinor 填空 + isMainToday 未来截断」已上移进上面的同源分支——
+  //   今日曲线直接取 buildCortisolToday30()，与首页完全一致；历史日填满整天。）
 
   // Y 轴范围
   const allVals = [...baseline30, ...main30].filter((v): v is number => v != null);
@@ -404,6 +426,13 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   const basePath = makePath(baseline30);
   const todayPath = makePath(main30);
 
+  // ★ v18.65 首页同款曲线样式：ringTeal 线 + 曲线下渐变面积（仅今日视图，历史日保持纯线）
+  const mainIdxs = main30.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0);
+  const todayAreaPath =
+    isMainToday && mainIdxs.length >= 2
+      ? `${todayPath} L ${xOfSlot(mainIdxs[mainIdxs.length - 1]).toFixed(1)},${(padT + chartH).toFixed(1)} L ${xOfSlot(mainIdxs[0]).toFixed(1)},${(padT + chartH).toFixed(1)} Z`
+      : '';
+
   // 睡眠阴影
   const sleepRects: { x: number; w: number }[] = [];
   if (sleepWindow) {
@@ -422,6 +451,15 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   return (
     <View style={{ marginTop: theme.sp(1) }}>
       <Svg width={W} height={H}>
+        {/* ★ 首页同款：今日曲线下渐变面积 */}
+        <Defs>
+          <LinearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={mm.colors.ringTeal} stopOpacity="0.34" />
+            <Stop offset="100%" stopColor={mm.colors.ringTeal} stopOpacity="0.02" />
+          </LinearGradient>
+        </Defs>
+        {todayAreaPath ? <Path d={todayAreaPath} fill="url(#trendArea)" /> : null}
+
         {/* 睡眠阴影 */}
         {sleepRects.map((sr, i) => (
           <Rect key={`s${i}`} x={sr.x} y={padT} width={Math.max(1, sr.w)} height={chartH} fill={theme.colors.ui.borderSoft + '33'} />
@@ -444,22 +482,17 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
 
         {/* 基线 (14天, 绿虚线) */}
         {basePath ? (
-          <Path d={basePath} stroke={"#2ECC71"} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5,4" />
+          <Path d={basePath} stroke={mm.colors.ink} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5,4" />
         ) : null}
         {/* 基线数据点 (绿色) */}
         {baseline30.map((v, i) => v != null && (
-          <Circle key={'b'+i} cx={xOfSlot(i)} cy={yOf(v)} r={2} fill={"#2ECC71"} />
+          <Circle key={'b'+i} cx={xOfSlot(i)} cy={yOf(v)} r={2} fill={mm.colors.ink} />
         ))}
 
-        {/* 今天 (蓝实线) */}
+        {/* 今天（★ v18.65 与首页同款：ringTeal 实线 2.6pt 圆头，不再用紫线+逐点圆） */}
         {todayPath ? (
-          <Path d={todayPath} stroke={"#7C6AE0"} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={todayPath} stroke={mm.colors.ringTeal} strokeWidth={2.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         ) : null}
-
-        {/* 所选日数据点 */}
-        {main30.map((v, i) => v != null && (
-          <Circle key={i} cx={xOfSlot(i)} cy={yOf(v)} r={2.5} fill={"#7C6AE0"} />
-        ))}
 
         {/* X 时间刻度 0/6/12/18/24 */}
         {[0, 6, 12, 18, 24].map((h) => {
@@ -473,10 +506,10 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
       {/* 图例 */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: theme.sp(0.5) }}>
         <Text style={{ fontSize: 11, color: theme.colors.textSub, marginHorizontal: 8 }}>
-          <Text style={{ color: "#2ECC71" }}>- -</Text> 14 天基线
+          <Text style={{ color: mm.colors.ink }}>- -</Text> 14 天基线
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.textSub, marginHorizontal: 8 }}>
-          <Text style={{ color: "#7C6AE0" }}>●</Text> {mainLabel}
+          <Text style={{ color: mm.colors.ringTeal }}>—</Text> {mainLabel}
         </Text>
       </View>
     </View>
@@ -492,7 +525,7 @@ function RhythmSummary({ r }: { r: CortisolRhythmResult }) {
   const ampRatio = amp > 0 && mesor > 0 ? amp / mesor : 0;  // 相对波动比例
 
   // 日均值: 高/正常/低
-  let levelText = '正常', levelColor = "#2ECC71";
+  let levelText = '正常', levelColor: string = mm.colors.ink;
   if (Number.isFinite(p25) && Number.isFinite(p75)) {
     if (mesor > p75) { levelText = '偏高'; levelColor = theme.colors.stateTense; }
     else if (mesor < p25) { levelText = '偏低'; levelColor = theme.colors.stateTense; }

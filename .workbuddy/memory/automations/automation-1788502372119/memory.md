@@ -40,3 +40,8 @@
 - 关键决策：**未盲目 add -A**——build/ 为 3GB 构建产物，硬提交会污染仓库且推送必失败。将其加入 .gitignore（与已忽略的 ios/、dist/ 同类），属本次唯一源码外改动，已在 commit message 中注明。
 - 处理：.gitignore 加 build/ → git add -A（暂存 .gitignore + 记忆文件）→ commit → push origin master（29 个积压提交 + 本次 1 个一并推送）。
 - 结果：master 与 origin/master 同步。build/ 已被忽略不再出现在 status；子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-09-29 14:12（第八次运行）
+- 发现：本地 master 领先 origin/master **19 个提交**（v18.29→v18.47 MindMate 迭代系列：恢复程度 chip 提位、脑力账户/认知准备度定名、今日状态场景建议引擎、激素法则工具卡、首页单行头部与圆环改版等）；未提交改动：src/screens/TodayScreen.tsx（今日状态叙述文字 16px 墨色 medium + 两侧留白 28、经期 chip 去「第 X 天」tag，即 v18.48 选 A）+ 已知子模块 -dirty。
+- 处理：git add -A 仅暂存 TodayScreen.tsx → commit 2394021「v18.48 首页今日状态叙述文字改 16px 墨色居中加留白 + 经期 chip 去天数 tag」→ push 成功 0ed8876..2394021（19 个积压提交 + 本次 1 个，共 20 个）。
+- 结果：master 与 origin/master 完全同步。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 脏改动维持既有决策：不动、仅报告。

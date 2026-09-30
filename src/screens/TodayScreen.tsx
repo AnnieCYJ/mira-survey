@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground, Animated, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground, Animated, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import ScreenContainer from '../components/ScreenContainer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const IMG_RECOVERY = require('../assets/card_recovery.jpg');
 const IMG_EMOTION = require("../assets/card_emotion_new.png");
@@ -16,8 +16,10 @@ import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import { loadPeriodDays } from '../data/cycleLog';
 import MindChips, { type MindChipItem } from '../components/MindChips';
 import MindStatCard from '../components/MindStatCard';
+import BentoCard from '../components/BentoCard';
 import EmotionDots, { type MindMoodKey } from '../components/EmotionDots';
 import MindWave from '../components/MindWave';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
@@ -347,6 +349,35 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
   );
 });
 
+// —— v18.52 经期日期圈（参考图 Activity 卡的圆圈行）：最近 7 天，圈 = 日期数字。
+//   经期日（有 PeriodDayLog 自记）= lime 深色实心白字；今天 = 深色描边；其余白底。
+const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { marked: Record<string, true> }) {
+  const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d; });
+  const todayKey = keyOf(new Date());
+  return (
+    <View style={styles.pdRow}>
+      {days.map((d) => {
+        const k = keyOf(d);
+        const isPeriod = !!marked[k];
+        const isToday = k === todayKey;
+        return (
+          <View
+            key={k}
+            style={[
+              styles.pdCircle,
+              isPeriod && { backgroundColor: mm.chipBg.lav.fg },
+              isToday && !isPeriod && { borderWidth: 2, borderColor: mm.chipBg.lav.fg },
+            ]}
+          >
+            <Text style={[styles.pdCircleText, isPeriod && { color: mm.colors.cardBg }]}>{d.getDate()}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
 // —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
 // ★ 全零步数 = 无数据态：只画灰色虚线基线 + 横坐标（不画蓝色实曲线，不冒充数据）
 const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, condensed }: { weekSteps: { dayKey: string; steps: number; date: Date }[]; condensed?: boolean }) {
@@ -519,9 +550,20 @@ export default function TodayScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
+  const dims = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
   const [todayTab, setTodayTab] = useState<'rhythm' | 'diary'>('rhythm');
+  // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
+  const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
+  useEffect(() => {
+    let alive = true;
+    loadPeriodDays()
+      .then((p) => { if (alive) setPeriodMarks(Object.fromEntries(Object.keys(p).map((k) => [k, true as const]))); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const [ring, setRing] = useState(() => RingBle.getState());
 
   // ★ 今日日历数据源之二：今天与 Mira 的对话记录（MemoryStore）
@@ -629,8 +671,17 @@ export default function TodayScreen() {
 
   const stressReport = (() => { try { return computeStressReport(); } catch { return null; } })();
   const cogReport = (() => { try { return computeCognitiveLoadReport(); } catch { return null; } })();
-  // 认知柱状图只在有真实采样时渲染（首页卡片无数据不放示意图，副标题提示点开查看）
-  const cogHasData = (cogReport?.hourly ?? []).some((h: any) => h.hasData);
+  // ★ v18.69：认知图门槛加「戒指今日同步过」——lastSyncedAt 非今日 = 今天没连过戒指，
+  //   不该出现任何「今日疲劳」图形（用户实锤：没戴戒指怎么还有认知疲劳度趋势图）
+  const ringSyncedToday = (() => {
+    const ls = ring?.lastSyncedAt as number | null | undefined;
+    if (!ls) return false;
+    const a = new Date(ls);
+    const b = new Date();
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  })();
+  // 认知柱状图只在「今日同步过 + 有真实 HRV 采样的时段」渲染（首页卡片无数据不放示意图）
+  const cogHasData = ringSyncedToday && (cogReport?.hourly ?? []).some((h: any) => h.hasData);
   // 近 7 天步数
   const weekSteps = (() => {
     const out: { dayKey: string; steps: number; date: Date }[] = [];
@@ -812,7 +863,8 @@ export default function TodayScreen() {
     pushItem({
       time: '全天',
       color: theme.colors.accent1,
-      title: `${cs.phaseLabel}${cs.dayInCycle != null ? ` 第 ${cs.dayInCycle} 天` : ''}`,
+      // ★ v18.48：全天事项标题只显示相位名（如"黄体期"），不再拼"第 N 天"
+      title: cs.phaseLabel,
       sub: cs.phaseLabel === '黄体期' ? '激素回落，留意情绪与能量起伏' : cs.phaseLabel === '经期' ? '以温和舒缓为主，适合休息' : '激素节律影响今日状态节奏',
     }, -1);
   }
@@ -907,6 +959,27 @@ export default function TodayScreen() {
   const cognitiveSub = cogPeakBar
     ? `峰值 ${pad2(cogPeakBar.hour)}:00 · ${cogLevelTxt}`
     : `全天${cogLevelTxt}疲劳`;
+  // ★ v18.68 认知大卡峰谷行：默认展示「预测」峰谷（cortisol 节律 + 睡眠恢复预测）；
+  //   某端预测窗口已完全过去 → 改展示该端「真实」峰谷（已过去时段的实测小时柱；
+  //   峰=疲劳最低=状态最佳、谷=疲劳最高=状态最差，与预测同语义；实测不足 2 小时保留预测）
+  const cogPeakTrough = (() => {
+    if (!cogHasData) return null;
+    const f: any = (cogReport as any)?.forecast;
+    const seg = (h: number) => `${pad2(h)}–${pad2((h + 1) % 24)}时`;
+    // 真实峰谷：只取「已完全过去」的实测小时（h+1 点 ≤ 当前分钟），且至少 2 个实测小时才有峰谷意义
+    const passed = (cogReport?.hourly ?? []).filter((h) => h.hasData && (h.hour + 1) * 60 <= curMin);
+    const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
+    const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
+    const part = (label: string, predHour: number | null | undefined, real: { hour: number } | null) => {
+      if (real) return `${label} ${seg(real.hour)}`;          // 预测窗已过 → 真实
+      if (predHour != null) return `${label} ${seg(predHour)}`;
+      return null;
+    };
+    const pk = part('峰', f?.peak?.hour, f?.peak?.hour != null && (f.peak.hour + 1) * 60 <= curMin ? realPeak : null);
+    const tr = part('谷', f?.trough?.hour, f?.trough?.hour != null && (f.trough.hour + 1) * 60 <= curMin ? realTrough : null);
+    const parts = [pk, tr].filter((s): s is string => s != null);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  })();
   const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
   const stepDistToday = (() => { try { return ring?.stepDaily?.[dkToday]?.distance ?? 0; } catch { return 0; } })();
   // 运动卡数据口径：卡路里为主数字（kcal），脚注行=步数(stepsToday 复用上方声明)+距离；今日有任何步数即视为有数据
@@ -974,15 +1047,16 @@ export default function TodayScreen() {
   })();
 
   /**
-   * 情绪点阵 96 槽映射（15 分钟/点）。**只用真实数据，不编状态**：
-   * · 睡眠窗口（真实睡眠摘要 sleepTime→wakeTime，跨午夜）→ sleep
+   * 情绪点阵 96 槽映射（15 分钟/点）。★ v18.60 口径（用户定稿）：展示「睡醒时间段」的情绪，
+   * **没有数据 = 灰色（none）**，有数据按档位上色：
+   * · 睡眠窗口（真实睡眠摘要 sleepTime→wakeTime，跨午夜）→ none（灰，无情绪数据）
+   * · 未到时段（未来）→ none（灰）
    * · 压力事件所在的 15 分钟槽（真实 EDA 事件）→ stress
-   * · 其余清醒时段 → 取「今日状态曲线」（每 30 分钟一个真实档位）：
-   *   充沛→元气、平稳→平静、偏低/不足→疲惫；无曲线覆盖时回落平静（中性底色）。
-   * 专注档无对应数据源，不参与映射（图例不展示，仅颜色编码）。
+   * · 清醒且有「今日状态曲线」档位 → 充沛=energy / 平静=calm / 偏低·不足=tired
+   * · 清醒但曲线未覆盖 → none（灰，不冒充数据）
    */
   const emotionSlots: MindMoodKey[] = (() => {
-    const slots: MindMoodKey[] = new Array(96).fill('calm');
+    const slots: MindMoodKey[] = new Array(96).fill('none');
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
     const parseHM = (s?: string | null): number | null => {
       const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim());
@@ -998,8 +1072,8 @@ export default function TodayScreen() {
     const pts = ring.statusTimeline ?? [];
     for (let i = 0; i < 96; i++) {
       const m = i * 15;
-      if (inSleep(m)) { slots[i] = 'sleep'; continue; }
-      if (m > nowMin) { slots[i] = 'calm'; continue; }
+      if (inSleep(m)) { slots[i] = 'none'; continue; }
+      if (m > nowMin) { slots[i] = 'none'; continue; }
       let lvl: string | null = null;
       for (const p of pts) {
         if (!Number.isFinite(p.t)) continue;
@@ -1007,7 +1081,7 @@ export default function TodayScreen() {
         const pm = d.getHours() * 60 + d.getMinutes();
         if (pm <= m + 15 && m - pm < 60) lvl = p.level;
       }
-      slots[i] = lvl ? (lvlMap[lvl] ?? 'calm') : 'calm';
+      slots[i] = lvl ? (lvlMap[lvl] ?? 'none') : 'none';
     }
     for (const e of stressReport?.events ?? []) {
       if (Number.isFinite(e.hour) && Number.isFinite(e.minute)) {
@@ -1018,6 +1092,24 @@ export default function TodayScreen() {
     return slots;
   })();
 
+  // ★ v18.56.1 Bento 情绪卡点阵：96 槽(15min) → 48 点(30min/点，覆盖全天)。
+  //   有数据档优先保留（stress > energy > tired > calm > none），压力事件点不因抽样丢失。
+  const emotionDots48: MindMoodKey[] = (() => {
+    const out: MindMoodKey[] = [];
+    for (let j = 0; j < 48; j++) {
+      const a = emotionSlots[j * 2];
+      const b = emotionSlots[j * 2 + 1] ?? a;
+      out.push(
+        a === 'stress' || b === 'stress' ? 'stress'
+        : a === 'energy' || b === 'energy' ? 'energy'
+        : a === 'tired' || b === 'tired' ? 'tired'
+        : a === 'calm' || b === 'calm' ? 'calm'
+        : 'none',
+      );
+    }
+    return out;
+  })();
+
   return (
     <View style={styles.page}>
       {/* MindMate v10：首页背景全白（SPEC §0 规则 1）。原「上白下紫」分屏收起——
@@ -1026,19 +1118,30 @@ export default function TodayScreen() {
         colors={[theme.colors.textWhite, theme.colors.textWhite]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
-        <Animated.View
-          style={[styles.head, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}
-        >
-          {/* v18.45 头部单行：Today 居左（原头像位），头像+名字移到右侧 */}
-          <Text style={styles.title}>Today</Text>
-          <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarLetter}>K</Text>
+      {/* ★ v18.50 整屏吸附翻页（Full-page Scroll Snap）：外层垂直分页 ScrollView，
+          每屏高度 = 屏幕高，snapToInterval 让滑动后自动吸附到下一屏顶部。 */}
+      <ScrollView
+        style={styles.pagerScroll}
+        contentContainerStyle={styles.pagerContent}
+        snapToInterval={dims.height}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        {/* ===== 第一屏：状态区（整屏） ===== */}
+        <View style={[styles.pageSnap, { height: dims.height }]}>
+          <View style={[styles.pageInner, { paddingTop: insets.top + theme.space.xl }]}>
+            {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出） */}
+            <View style={styles.head}>
+              <Text style={styles.title}>Today</Text>
+              <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarLetter}>K</Text>
+                </View>
+                <Text style={styles.name}>Kristina</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.name}>Kristina</Text>
-          </TouchableOpacity>
-        </Animated.View>
 
         {/* ─────────────────────────────────────────────────────────────
             ★ 顶部四指标 chips（MindMate v10）：白卡 chip + pastel 方块 icon。
@@ -1114,84 +1217,149 @@ export default function TodayScreen() {
           <Path d={panelArcD} fill={theme.colors.cardBg} />
         </Svg>
 
-        {/* Tab 切换器: 消耗与恢复节律 / 日记 */}
-        <View style={{ flexDirection: 'row', marginTop: theme.space.lg, marginBottom: theme.space.sm }}>
-          <TouchableOpacity onPress={() => setTodayTab('rhythm')}
-            style={[styles.todayTabBtn, todayTab === 'rhythm' && styles.todayTabBtnOn]}>
-            <Text style={[styles.todayTabLabel, todayTab === 'rhythm' && styles.todayTabLabelOn]}>消耗与恢复节律</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setTodayTab('diary')}
-            style={[styles.todayTabBtn, todayTab === 'diary' && styles.todayTabBtnOn]}>
-            <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>今日旅程</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tab 内容（MindMate v10：睡眠+情绪 / 认知+运动 两行白卡；无 AI 建议卡——用户明确首页不放） */}
-        {todayTab === 'rhythm' ? (
-          <View style={{ gap: theme.space.sm }}>
-            <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
-              <MindStatCard
-                title="睡眠恢复"
-                cornerIcon="moon"
-                cornerTone="lav"
-                sub={sleepCard ? `恢复得分 ${sleepCard.score != null ? `${sleepCard.score}/100` : '—'} · 深睡 ${sleepCard.deepPct != null ? `${sleepCard.deepPct}%` : '—'}` : '暂无睡眠记录'}
-                value={sleepCard ? sleepCard.total : '—'}
-                foot={sleepCard ? `入睡 ${sleepCard.sleepTime ?? '—'} · 夜间醒来 ${sleepCard.wakeCount != null ? sleepCard.wakeCount : '—'} 次` : undefined}
-                onPress={() => navigation.navigate('SleepDetail')}
-              />
-              <MindStatCard
-                title="情绪消耗"
-                cornerIcon="heart"
-                cornerTone="pink"
-                sub="15 分钟 / 点 · 全天 96 点"
-                value={stress}
-                unit="次峰值"
-                chart={<EmotionDots slots={emotionSlots} />}
-                onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}
-              />
+            {/* 第一屏底部：向下滑动提示（避免用户以为下面是空的） */}
+            <View style={styles.snapHint}>
+              <View style={{ transform: [{ rotate: '90deg' }] }}>
+                <Icon name="chevronRight" size={theme.fontSize.card} color={theme.colors.textSub} />
+              </View>
+              <Text style={styles.snapHintText}>滑动查看 消耗与恢复节律</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
-              <MindStatCard
-                title="认知消耗"
-                cornerIcon="nodes"
-                cornerTone="lav"
-                sub="认知疲劳度 · 全天趋势"
+          </View>{/* /pageInner 第一屏 */}
+        </View>{/* /pageSnap 第一屏 */}
+
+        {/* ===== 第二屏：消耗与恢复节律 / 今日旅程（整屏，Tab 吸顶 + 屏内滚动） ===== */}
+        <View style={[styles.pageSnap, { height: dims.height }]}>
+          <View style={[styles.pageInner, { paddingTop: insets.top + theme.space.md }]}>
+            <View style={styles.tabBarSticky}>
+              <TouchableOpacity onPress={() => setTodayTab('rhythm')}
+                style={[styles.todayTabBtn, todayTab === 'rhythm' && styles.todayTabBtnOn]}>
+                <Text style={[styles.todayTabLabel, todayTab === 'rhythm' && styles.todayTabLabelOn]}>消耗与恢复节律</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setTodayTab('diary')}
+                style={[styles.todayTabBtn, todayTab === 'diary' && styles.todayTabBtnOn]}>
+                <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>今日旅程</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.page2Scroll} contentContainerStyle={{ paddingBottom: insets.bottom + theme.space.sm }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+
+        {/* Tab 内容（v18.51 Bento 网格：参考用户 health metrics 风格——柔和彩底大圆角块 + 白圆 chip 图标 + 大数字）
+            ★ v18.53.2：恢复=黄(butter)、认知=绿(lime)（用户指定）；高度压缩保证第二屏所有卡完整展示在一屏 */}
+        {todayTab === 'rhythm' ? (
+          <View style={{ gap: theme.space.xs }}>
+            {/* 最上面 = 全天恢复（★ v18.62 去彩底回白卡：颜色留给 lime chip/badge + 趋势曲线） */}
+            <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+
+            {/* 中排：左高块 = 认知（lime：24h 疲劳柱状图 + 预测/真实峰谷行）；右列 = 情绪 / 运动
+                ★ v18.68：去准备度（只在脑力消耗详情展示）；标题精简为「认知」
+                ★ v18.59：两小卡一律固定高 sp(32.5)=130（130+8+130=268 正好占满）——flex:1 的 flexGrow 分配在 Fabric 下
+                  与 stretch/gap 组合会把运动卡压成 ~30pt 细条（真机实锤），禁用 flexGrow 依赖 */}
+            <View style={{ flexDirection: 'row', gap: theme.space.xs, height: theme.sp(67) }}>
+              <BentoCard
+                bg={mm.colors.cardBg}
+                chipBg={mm.chipBg.lime.bg}
+                icon="nodes"
+                iconFg={mm.chipBg.lime.fg}
+                title="认知"
+                sub="全天疲劳趋势"
                 value={cogHasData ? `${cogLevelTxt}疲劳` : '暂无数据'}
                 chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourly : COG_EMPTY_HOURLY} />}
+                foot={cogHasData ? (cogPeakTrough ?? undefined) : undefined}
+                style={{ width: '53%' }}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
               />
-              <MindStatCard
-                title="运动消耗"
-                cornerIcon="bolt"
-                cornerTone="cyan"
-                sub="今日活动消耗"
-                value={activityHasData ? String(Math.round(stepKcalToday)) : '暂无数据'}
-                unit={activityHasData ? 'kcal' : undefined}
-                foot={activityHasData
-                  ? undefined
-                  : '连上戒指后自动同步今日活动'}
-                footLines={activityHasData
-                  ? [`步数 ${stepsToday.toLocaleString('en-US')}`, `距离 ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km`]
-                  : undefined}
-                onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
-              />
+              <View style={{ flex: 1, gap: theme.space.xs }}>
+                <BentoCard
+                  bg={mm.colors.cardBg}
+                  chipBg={mm.chipBg.pink.bg}
+                  icon="heart"
+                  iconFg={mm.chipBg.pink.fg}
+                  title="情绪消耗"
+                  value={stress}
+                  unit="次峰值"
+                  chart={<EmotionDots slots={emotionDots48} columns={12} dotSize={theme.fs(5.5)} gap={theme.fs(2.25)} tight />}
+                  compact
+                  style={{ height: theme.sp(32.5), flexGrow: 0, flexShrink: 0 }}
+                  onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}
+                />
+                <BentoCard
+                  bg={mm.colors.cardBg}
+                  chipBg={mm.chipBg.cyan.bg}
+                  icon="bolt"
+                  iconFg={mm.chipBg.cyan.fg}
+                  title="运动消耗"
+                  subLine={activityHasData ? `${stepsToday.toLocaleString('en-US')} 步 · ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km` : '连上戒指后自动同步'}
+                  value={activityHasData ? String(Math.round(stepKcalToday)) : '—'}
+                  unit={activityHasData ? 'kcal' : undefined}
+                  compact
+                  style={{ height: theme.sp(32.5), flexGrow: 0, flexShrink: 0 }}
+                  onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}
+                />
+              </View>
             </View>
 
-            {/* 全天恢复：只在「消耗与恢复节律」tab 显示（2026-09-24 用户要求日历 tab 下去掉） */}
-            <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+            {/* 底部：经期卡——处于什么时期 + 第 N 天 + 最近 7 天日期圈 */}
+            <BentoCard
+              bg={mm.colors.cardBg}
+              chipBg={mm.chipBg.lav.bg}
+              icon="moon"
+              iconFg={mm.chipBg.lav.fg}
+              title="经期"
+              aside={status?.phaseLabel
+                ? `${status.phaseLabel}${status.dayInCycle != null ? ` · 第 ${status.dayInCycle} 天` : ''}`
+                : undefined}
+              chart={<PeriodDayCircles marked={periodMarks} />}
+              style={{ height: theme.sp(25), flexGrow: 0 }}
+              onPress={() => navigation.navigate('CycleCalendar')}
+            />
           </View>
         ) : (
           <View style={styles.adviceWrap}>
             <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
           </View>
         )}
-      </ScreenContainer>
+            </ScrollView>{/* /page2Scroll 第二屏内容 */}
+          </View>{/* /pageInner 第二屏 */}
+        </View>{/* /pageSnap 第二屏 */}
+      </ScrollView>{/* /pager 整屏吸附 */}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, width: '100%' },
+  // ★ v18.50 整屏吸附分页
+  pagerScroll: { flex: 1, width: '100%' },
+  pagerContent: {},
+  pageSnap: { width: '100%', alignItems: 'center' },
+  pageInner: {
+    width: '100%',
+    maxWidth: theme.layout.maxWidth,
+    alignSelf: 'center',
+    paddingHorizontal: theme.space.screen,
+    flex: 1,
+    position: 'relative',
+  },
+  snapHint: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.space.xs,
+  },
+  snapHintText: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    fontWeight: theme.weight.medium,
+  },
+  tabBarSticky: {
+    flexDirection: 'row',
+    marginTop: theme.space.sm,     // ★ v18.53.3 lg(20)→sm(12)：一屏预算
+    marginBottom: theme.space.xs,  // ★ sm(12)→xs(8)
+  },
+  page2Scroll: { flex: 1, width: '100%' },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1227,7 +1395,28 @@ const styles = StyleSheet.create({
   },
   energyWrap: { marginBottom: theme.space.xs, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
-  statusPill: { flex: 1, marginTop: theme.space.xs, justifyContent: 'center' },
+  // ★ v18.50 修复：不要 flex:1——整屏吸附后 pageInner 是确定高度，flex:1（flexBasis=0）
+  // 会让胶囊在自适应父容器里塌成 0 高，分析文字整句不可见。自动高度即可。
+  statusPill: { marginTop: theme.space.xs },
+  // ★ v18.52 经期日期圈（PeriodDayCircles）
+  pdRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 'auto',
+  },
+  pdCircle: {
+    width: theme.fs(30),
+    height: theme.fs(30),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.btnBusyBg,   // ★ v18.62 白卡上未标记日期圈改中性浅灰（cardBg 白圈会隐形）
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pdCircleText: {
+    fontSize: theme.fs(11.5),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+  },
   statusChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1267,11 +1456,11 @@ const styles = StyleSheet.create({
     color: theme.colors.stateTired,
   },
   statusNarr: {
-    // ★ v18.48 选 A：16px 墨色 medium + 两侧留白 28，字更大更居中更突出
+    // ★ v18.49：保留 A 的 16px/居中/留白28，但降浓——常规字重 + 柔和灰，不再浓黑
     fontSize: 16,
     lineHeight: 24,
-    color: theme.colors.textInk,
-    fontWeight: theme.weight.medium,
+    color: theme.colors.textSub,
+    fontWeight: theme.weight.regular,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
     textAlign: 'center',
     paddingHorizontal: 28,

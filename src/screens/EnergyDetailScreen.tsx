@@ -264,7 +264,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const exTotal = ex ? ex.emotion + ex.exercise : 0;
             return (
               <View style={{ marginBottom: theme.sp(2.5), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: lv.color + '12', borderLeftWidth: 3, borderLeftColor: lv.color }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>脑力值 · 估算</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>认知准备度 · 估算</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(1.5) }}>
                   <Text style={{ fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, color: lv.color, lineHeight: theme.fontSize.hero }}>{remain}</Text>
                   <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, paddingBottom: 6 }}>/100 · {lv.text}</Text>
@@ -279,7 +279,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
 
           <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
             <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰 · 预测</Text>
               <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
                 {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
               </Text>
@@ -288,7 +288,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               </Text>
             </View>
             <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷 · 预测</Text>
               <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
                 {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '--'}
               </Text>
@@ -297,6 +297,39 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               </Text>
             </View>
           </View>
+          {/* 真实峰谷：已过去时段的实测疲劳柱（★ v18.68）。峰=疲劳最低=状态最佳，谷=疲劳最高；
+              实测不足 2 小时不渲染（诚实数据，不拿单点冒充峰谷） */}
+          {(() => {
+            const d = new Date(reportNowMsForDay(anchorMs));
+            const curMin = d.getHours() * 60 + d.getMinutes();
+            const passed = (report.hourly ?? []).filter((h: any) => h.hasData && (h.hour + 1) * 60 <= curMin);
+            if (passed.length < 2) return null;
+            const realPeak = passed.reduce((a: any, b: any) => (b.score <= a.score ? b : a));
+            const realTrough = passed.reduce((a: any, b: any) => (b.score >= a.score ? b : a));
+            const seg = (h: number) => `${String(h).padStart(2, '0')}:00 - ${String((h + 1) % 24).padStart(2, '0')}:00`;
+            return (
+              <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
+                <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰 · 真实</Text>
+                  <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
+                    {seg(realPeak.hour)}
+                  </Text>
+                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
+                    今日实测 · 疲劳最低
+                  </Text>
+                </View>
+                <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷 · 真实</Text>
+                  <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
+                    {seg(realTrough.hour)}
+                  </Text>
+                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
+                    今日实测 · 疲劳最高
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
             {report.forecast?.rhythmR2 != null
               ? (report.forecast.rhythmR2 >= 0.6 ? '节律稳定，预测准' : report.forecast.rhythmR2 >= 0.3 ? '节律一般，仅供参考' : '节律不稳定，预测不准')

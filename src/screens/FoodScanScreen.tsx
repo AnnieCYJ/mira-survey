@@ -6,6 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -18,6 +20,7 @@ import {
   type MealItem, type FoodLog,
 } from '../lib/foodAi';
 import { releaseLlama, warmupModel, suspendModel, resumeModel } from '../ai/model';
+import { NUTRITION_ARTICLES } from '../lib/nutritionArticles';
 
 /**
  * FoodScanScreen — 饮食识别（工具页「饮食识别」卡入口）
@@ -332,11 +335,106 @@ export default function FoodScanScreen() {
           )}
         </Card>
 
+        {/* 荷尔蒙×营养科普（v18.85）：静态内容，与珠雨/拍照流程无状态耦合 */}
+        <NutritionSection />
+
         <ScrollView style={{ height: 0 }} />
       </ScreenContainer>
     </View>
   );
 }
+
+/* ── 荷尔蒙×营养 · 图文版块（v18.85）────────────────────────
+ * 与知识科普系列同构的文章卡列表（无 hero，落地页底部版块）。
+ * 数据全部来自 nutritionArticles.ts 静态文章库，无假数据。
+ * 模块级组件 + 模块级样式：拍照/识别/记录的 state 变化不会重建本版块。
+ */
+function NutritionSection() {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  return (
+    <>
+      <View style={ns.secHead}>
+        <Text style={ns.secTitle}>荷尔蒙和营养</Text>
+        <Text style={ns.secCount}>{NUTRITION_ARTICLES.length} 篇</Text>
+      </View>
+      {NUTRITION_ARTICLES.map((a) => (
+        <TouchableOpacity
+          key={a.id}
+          activeOpacity={theme.press.opacity}
+          style={ns.articleCard}
+          onPress={() => navigation.navigate('LearnRead', { articleId: a.id, collection: 'nutrition' })}
+          accessibilityRole="button"
+          accessibilityLabel={`阅读 ${a.title}`}
+        >
+          <Image source={a.cover} style={ns.thumb} resizeMode="cover" />
+          <View style={ns.articleBody}>
+            <Text style={ns.articleEyebrow}>{a.eyebrow} · {a.minutes} 分钟</Text>
+            <Text style={ns.articleTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={ns.articleLink}>阅读全文 →</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+      <View style={{ height: theme.space.xl }} />
+    </>
+  );
+}
+
+const ns = StyleSheet.create({
+  secHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: theme.sp(2),
+  },
+  secTitle: {
+    fontSize: theme.fs(15),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+  },
+  secCount: {
+    fontSize: theme.fs(12),
+    color: mm.colors.inkFaint,
+  },
+  articleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    padding: theme.space.cardPadCompact,
+    marginBottom: theme.sp(2.5),
+  },
+  thumb: {
+    width: theme.sp(14),
+    height: theme.sp(14),
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+  },
+  articleBody: {
+    flex: 1,
+    marginLeft: theme.sp(3),
+  },
+  articleEyebrow: {
+    fontSize: theme.fs(10.5),
+    fontWeight: theme.weight.semibold,
+    letterSpacing: 0.6,
+    color: mm.chipBg.lav.fg,
+    marginBottom: theme.sp(0.5),
+  },
+  articleTitle: {
+    fontSize: theme.fs(14),
+    lineHeight: theme.fs(19),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+    marginBottom: theme.sp(1),
+  },
+  articleLink: {
+    fontSize: theme.fs(11.5),
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkFaint,
+  },
+});
 
 const styles = StyleSheet.create({
   page: { flex: 1 },

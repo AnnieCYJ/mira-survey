@@ -72,6 +72,7 @@ export const mm = {
     moodStress: '#F2A3C6', // 紧张（粉 core）
     moodTired: '#7EA6F8',  // 疲惫（蓝 core）
     moodSleep: '#EAE7E2',  // 睡眠（中性）
+    moodNone: '#BDB7AE',   // 无数据（中灰，Bento 情绪卡点阵：睡眠段/未到时段/无曲线覆盖）
 
     /* ── 白卡与描边 ── */
     cardBg: '#FFFFFF',

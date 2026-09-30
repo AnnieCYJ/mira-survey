@@ -44,16 +44,16 @@ interface Message {
 
 /** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享。
  *  onPurple：紫色头部变体——徽章/喇叭换半透明白底、白字白图标（v18.30 问答页紫头复刻）。 */
-function HeaderRight({ ttsOn, onToggle, onPurple }: { ttsOn: boolean; onToggle: () => void; onPurple?: boolean }) {
+function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) }}>
-      <View style={[styles.badge, onPurple && styles.badgeOnPurple]}>
-        <View style={[styles.badgeDot, onPurple && styles.badgeDotOnPurple]} />
-        <Text style={[styles.badgeText, onPurple && styles.badgeTextOnPurple]}>AI 1.3.2</Text>
-        <Icon name="chevronRight" size={theme.fs(12)} color={onPurple ? theme.colors.textWhite : theme.colors.textSub} strokeWidth={2.2} />
+      <View style={styles.badge}>
+        <View style={styles.badgeDot} />
+        <Text style={styles.badgeText}>AI 1.3.2</Text>
+        <Icon name="chevronRight" size={theme.fs(12)} color={theme.colors.textSub} strokeWidth={2.2} />
       </View>
       <TouchableOpacity
-        style={[styles.speakerBtn, onPurple && styles.speakerBtnOnPurple]}
+        style={styles.speakerBtn}
         onPress={onToggle}
         activeOpacity={0.7}
         accessibilityLabel="语音播报开关"
@@ -61,10 +61,42 @@ function HeaderRight({ ttsOn, onToggle, onPurple }: { ttsOn: boolean; onToggle: 
         <Icon
           name={ttsOn ? 'speaker' : 'speaker_off'}
           size={theme.fs(20)}
-          color={onPurple ? theme.colors.textWhite : ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
+          color={ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
           strokeWidth={2.2}
         />
       </TouchableOpacity>
+    </View>
+  );
+}
+
+/** ★ v18.78 输入框上方「猜你想问」横向滑动条（模块级 + memo：ringState 高频推送不触发重建）。
+ *  交互丝滑要点：横向 ScrollView 免嵌套冲突、decelerationRate=fast 手感跟手、
+ *  keyboardShouldPersistTaps=handled 键盘弹起时点 chip 立即生效不吞一次点击。 */
+function SuggestStrip({ questions, onPick }: { questions: string[]; onPick: (q: string) => void }) {
+  if (questions.length === 0) return null;
+  return (
+    <View style={styles.suggestWrap}>
+      <Text style={styles.suggestLabel}>猜你想问</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        decelerationRate="fast"
+        keyboardShouldPersistTaps="handled"
+        style={styles.suggestScroll}
+        contentContainerStyle={styles.suggestContent}
+      >
+        {questions.map((q) => (
+          <TouchableOpacity
+            key={q}
+            style={styles.suggestChip}
+            onPress={() => onPick(q)}
+            activeOpacity={0.75}
+          >
+            <Icon name="sparkle" size={theme.fs(13)} color={mm.colors.purpleDeep} strokeWidth={2.2} />
+            <Text style={styles.suggestChipText} numberOfLines={1}>{q}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -95,6 +127,8 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
 
   // 打开时生成一次建议问题，避免 ringState 高频推送导致滑动跳跃
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[][]>(() => generateQuestions(ringState));
+  // ★ v18.78 建议条数据：取前 3 条（用户口径「猜你想问的三个问题」）
+  const suggestList = useMemo(() => suggestedQuestions.flat().slice(0, 3), [suggestedQuestions]);
   const prevVisible = useRef(visible);
   useEffect(() => {
     if (visible && !prevVisible.current) {
@@ -157,6 +191,11 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       setIsLoading(false);
     }
   }, [isLoading, addToolTask]);
+
+  // ★ v18.78 onPick 经 ref 转发保持引用稳定 → SuggestStrip 的 memo 不因 isLoading 变化而失效
+  const sendRef = useRef(sendMessage);
+  sendRef.current = sendMessage;
+  const onAskSuggest = useCallback((q: string) => { sendRef.current(q); }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -288,25 +327,8 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         >
           {messages.length === 0 ? (
             <View style={styles.empty}>
+              {/* v18.78：建议问题移到输入框上方横向滑动条（SuggestStrip），空态只留 Orb */}
               <AiOrb size={240} title="Hi, can I help you?" />
-              <View style={styles.quickActions}>
-                {suggestedQuestions.flat().map((q, i) => (
-                  <TouchableOpacity
-                    key={q}
-                    style={styles.actionChip}
-                    onPress={() => sendMessage(q)}
-                    activeOpacity={0.8}
-                  >
-                    <Icon
-                      name="sparkle"
-                      size={theme.fs(16)}
-                      color={mm.colors.purpleDeep}
-                      strokeWidth={2}
-                    />
-                    <Text style={styles.actionText}>{q}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
           ) : (
             messages.map(renderMessage)
@@ -328,6 +350,9 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
             </View>
           ) : null}
         </ScrollView>
+
+        {/* ★ v18.78 输入框上方「猜你想问」横向滑动条 */}
+        <SuggestStrip questions={suggestList} onPick={onAskSuggest} />
 
         <View style={[styles.inputRow, { paddingBottom: insets.bottom }]}>
           <TextInput
@@ -361,29 +386,24 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   );
 
   // ★ fullScreen：直接返回内容，不包 Sheet Modal
-  //   v18.30：顶部恢复紫色渐变头（AI 身份色，白字用 gradCard 验证过的 token 组合），
-  //   内容区白底圆角上叠——紫头负责身份、白区负责可读性。
+  //   v18.76：废弃紫色渐变头（与其他页面不一致且观感重）——对齐全 App 白底语言：
+  //   白底 + 墨色标题 + 返回圆钮 + limeSoft 徽章 + purpleSoft 喇叭钮（HeaderRight 非 onPurple 变体）。
   if (fullScreen) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.gradCardFrom }}>
-        <LinearGradient
-          colors={[theme.colors.gradCardFrom, theme.colors.gradCardTo]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={[styles.purpleHead, { paddingTop: insets.top + theme.sp(1) }]}
-        >
-          <View style={styles.purpleHeadRow}>
-            <TouchableOpacity onPress={onClose} style={styles.purpleBack} accessibilityLabel="返回">
-              <Icon name="back" size={theme.fs(22)} color={theme.colors.textWhite} strokeWidth={2.2} />
+      <View style={{ flex: 1, backgroundColor: theme.colors.textWhite }}>
+        <View style={[styles.fsHead, { paddingTop: insets.top + theme.sp(2) }]}>
+          <View style={styles.fsHeadRow}>
+            <TouchableOpacity onPress={onClose} style={styles.fsBack} accessibilityLabel="返回">
+              <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
             </TouchableOpacity>
-            <View style={styles.purpleHeadText}>
-              <Text style={styles.purpleTitle}>Mira AI</Text>
-              <Text style={styles.purpleSub}>你的健康助手</Text>
+            <View style={styles.fsHeadText}>
+              <Text style={styles.fsTitle}>Mira AI</Text>
+              <Text style={styles.fsSub}>你的健康助手</Text>
             </View>
-            <HeaderRight ttsOn={ttsOn} onToggle={toggleTts} onPurple />
+            <HeaderRight ttsOn={ttsOn} onToggle={toggleTts} />
           </View>
-        </LinearGradient>
-        <View style={styles.whiteBody}>
+        </View>
+        <View style={styles.fsBody}>
           {body}
         </View>
       </View>
@@ -441,30 +461,43 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.purpleSoft,
   },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl },
-  quickActions: {
+  // ── v18.78 「猜你想问」横向滑动条 ──
+  suggestWrap: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: theme.sp(2),
-    marginTop: theme.space.xl,
-    paddingHorizontal: theme.space.screen,
+    alignItems: 'center',
+    backgroundColor: theme.colors.textWhite,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.cardBorder,
+    paddingVertical: theme.sp(2),
   },
-  actionChip: {
+  suggestLabel: {
+    fontSize: theme.fontSize.xs,
+    color: mm.colors.inkFaint,
+    fontWeight: theme.weight.medium,
+    marginLeft: theme.space.screen,
+    marginRight: theme.sp(2),
+  },
+  suggestScroll: { flex: 1 },
+  suggestContent: {
+    paddingHorizontal: theme.space.screen,
+    gap: theme.sp(2),
+  },
+  suggestChip: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: theme.space.md,
-    paddingVertical: theme.sp(2),
+    paddingVertical: theme.sp(1.75),
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.cardBg,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
-    margin: theme.sp(1),
   },
-  actionText: {
+  suggestChipText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.textBody,
     fontWeight: theme.weight.medium,
     marginLeft: theme.sp(1.5),
+    maxWidth: theme.sp(52),
   },
   msgRow: { flexDirection: 'row', marginBottom: theme.space.md, alignItems: 'flex-start' },
   userRow: { justifyContent: 'flex-end' },
@@ -596,11 +629,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: theme.space.screen,
-    paddingTop: theme.sp(2),
-    // v18.20：输入条垫白 + 顶部细分隔线，白底页面上不再悬浮
+    paddingTop: theme.sp(1.5),
+    // v18.78：分隔线上移到「猜你想问」条上缘，输入行不再自带描边（避免双线）
     backgroundColor: theme.colors.textWhite,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.cardBorder,
   },
   input: {
     flex: 1,
@@ -626,36 +657,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: 'rgba(31,29,26,0.06)' },
-  // ── v18.30 紫色头部 + 白色圆角内容区 ──
-  purpleHead: {
+  // ── v18.76 全屏头：白底 + 墨色字（与其他详情页同款返回圆钮）──
+  fsHead: {
     paddingHorizontal: theme.space.screen,
-    paddingBottom: theme.sp(7),
+    paddingBottom: theme.sp(2),
+    backgroundColor: theme.colors.textWhite,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.cardBorder,
   },
-  purpleHeadRow: { flexDirection: 'row', alignItems: 'center' },
-  purpleBack: { marginRight: theme.sp(2), padding: theme.sp(1), marginLeft: -theme.sp(1) },
-  purpleHeadText: { flex: 1 },
-  purpleTitle: {
+  fsHeadRow: { flexDirection: 'row', alignItems: 'center' },
+  fsBack: {
+    width: theme.sp(9),
+    height: theme.sp(9),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(2),
+  },
+  fsHeadText: { flex: 1 },
+  fsTitle: {
     fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.textWhite,
+    color: mm.colors.ink,
   },
-  purpleSub: {
+  fsSub: {
     fontSize: theme.fontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
+    color: mm.colors.inkFaint,
     marginTop: 2,
   },
-  whiteBody: {
-    flex: 1,
-    backgroundColor: theme.colors.textWhite,
-    borderTopLeftRadius: theme.radius.card,
-    borderTopRightRadius: theme.radius.card,
-    marginTop: -theme.sp(5),
-  },
-  badgeOnPurple: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  badgeDotOnPurple: { backgroundColor: theme.colors.textWhite },
-  badgeTextOnPurple: { color: theme.colors.textWhite },
-  speakerBtnOnPurple: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  fsBody: { flex: 1, backgroundColor: theme.colors.textWhite },
 });

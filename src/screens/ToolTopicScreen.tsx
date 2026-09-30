@@ -1,12 +1,14 @@
 /**
- * ToolTopicScreen —— 工具页通用内容页（v18.39）
+ * ToolTopicScreen —— 工具页通用内容页（v18.70）
  *
  * 承接工具页六宫格中尚无独立模块的三类：提升颜值 / 运动建议 / 知识科普。
  * 结构：标题 + 副标题 + 一条「今日状态」数据驱动提示 + 知识条目（ListCard）。
+ * v18.70：知识科普（learn）改版为图文科普样式——hero 插画卡 + 文章列表卡，
+ *         点进 LearnRead 阅读详情页（参考图文阅读排版）。
  * 内容口径：平实、带原因、不做诊断承诺（Mira 文案铁律）。
  */
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, ImageBackground, TouchableOpacity, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -17,6 +19,9 @@ import ScreenContainer from '../components/ScreenContainer';
 import ListCard, { type ListItem } from '../components/ListCard';
 import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
+import { LEARN_ARTICLES, LEARN_HERO_ID, getLearnArticle } from '../lib/learnArticles';
+import { GLOW_ARTICLES, GLOW_HERO_ID, getGlowArticle } from '../lib/glowArticles';
+import { SPORT_ARTICLES, SPORT_HERO_ID, getSportArticle } from '../lib/sportArticles';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 
@@ -112,13 +117,331 @@ export default function ToolTopicScreen() {
           <Text style={styles.title}>{meta.title}</Text>
           <Text style={styles.subtitle}>{meta.sub}</Text>
         </Animated.View>
-        <ListCard title="今天" items={[today]} />
-        <View style={{ height: theme.space.md }} />
-        <ListCard title="为什么 & 怎么做" items={items} />
+        {(topic === 'learn' || topic === 'glow' || topic === 'sport') ? (
+          topic === 'learn'
+            ? <LearnSection phase={phase} navigation={navigation} />
+            : topic === 'glow'
+              ? <GlowSection sleepScore={sleepScore} navigation={navigation} />
+              : <SportSection steps={steps} phase={phase} levelIdx={levelIdx} navigation={navigation} />
+        ) : (
+          <>
+            <ListCard title="今天" items={[today]} />
+            <View style={{ height: theme.space.md }} />
+            <ListCard title="为什么 & 怎么做" items={items} />
+          </>
+        )}
       </ScreenContainer>
     </View>
   );
 }
+
+/* ── 知识科普 · 图文科普版块（v18.70）────────────────────────
+ * 参考图文科普样式：hero 插画大卡（本周主题）+ 文章列表卡
+ * （左缩略图 + 分类·时长眉行 + 标题 + 阅读全文 →）。
+ * 数据全部来自 learnArticles.ts 静态文章库，无假数据。
+ */
+type TopicNav = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList>,
+  StackNavigationProp<RootStackParamList>
+>;
+
+function LearnSection({ phase, navigation }: { phase: string; navigation: TopicNav }) {
+  const hero = getLearnArticle(LEARN_HERO_ID);
+  const articles = LEARN_ARTICLES.filter((a) => a.id !== LEARN_HERO_ID);
+  return (
+    <>
+      {/* Hero 插画卡：图铺满，左上叠白色信息卡 */}
+      <TouchableOpacity
+        activeOpacity={theme.press.opacity}
+        onPress={() => navigation.navigate('LearnRead', { articleId: hero.id })}
+        accessibilityRole="button"
+        accessibilityLabel={`阅读 ${hero.title}`}
+      >
+        <ImageBackground
+          source={hero.cover}
+          style={ls.hero}
+          imageStyle={{ borderRadius: theme.radius.card }}
+          resizeMode="cover"
+        >
+          <View style={ls.heroCard}>
+            <Text style={ls.heroEyebrow}>{hero.eyebrow}</Text>
+            <Text style={ls.heroTitle} numberOfLines={2}>{hero.shortTitle ?? hero.title}</Text>
+            <View style={ls.heroLinkRow}>
+              <Text style={ls.heroLink}>开始阅读</Text>
+              <Text style={ls.heroLink}> →</Text>
+            </View>
+          </View>
+        </ImageBackground>
+      </TouchableOpacity>
+
+      {/* 周期关联提示（诚实口径：未记录就直说） */}
+      <Text style={ls.phaseTip}>
+        {phase === '未记录'
+          ? '记录经期后，内容会跟着你的周期阶段更新。'
+          : `当前 ${phase} · 内容跟着你的周期阶段更新`}
+      </Text>
+
+      {/* 列表区标题 */}
+      <View style={ls.secHead}>
+        <Text style={ls.secTitle}>为你现在的阶段挑的</Text>
+        <Text style={ls.secCount}>{articles.length} 篇</Text>
+      </View>
+
+      {/* 文章列表卡 */}
+      {articles.map((a) => (
+        <TouchableOpacity
+          key={a.id}
+          activeOpacity={theme.press.opacity}
+          style={ls.articleCard}
+          onPress={() => navigation.navigate('LearnRead', { articleId: a.id })}
+          accessibilityRole="button"
+          accessibilityLabel={`阅读 ${a.title}`}
+        >
+          <Image source={a.cover} style={ls.thumb} resizeMode="cover" />
+          <View style={ls.articleBody}>
+            <Text style={ls.articleEyebrow}>{a.eyebrow} · {a.minutes} 分钟</Text>
+            <Text style={ls.articleTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={ls.articleLink}>阅读全文 →</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+      <View style={{ height: theme.space.xl }} />
+    </>
+  );
+}
+
+/* ── 提升颜值 · 图文版块（v18.79）────────────────────────
+ * 与知识科普完全同构（hero 插画卡 + 文章列表卡，复用 ls 样式）。
+ * 内容：斯坦福皮肤科共识 + 明星极简护肤路线（glowArticles.ts，静态无假数据）。
+ * 顶部提示行带昨晚睡眠分（有数据才展示，诚实口径）。
+ */
+function GlowSection({ sleepScore, navigation }: { sleepScore: number | null; navigation: TopicNav }) {
+  const hero = getGlowArticle(GLOW_HERO_ID);
+  const articles = GLOW_ARTICLES.filter((a) => a.id !== GLOW_HERO_ID);
+  return (
+    <>
+      <TouchableOpacity
+        activeOpacity={theme.press.opacity}
+        onPress={() => navigation.navigate('LearnRead', { articleId: hero.id, collection: 'glow' })}
+        accessibilityRole="button"
+        accessibilityLabel={`阅读 ${hero.title}`}
+      >
+        <ImageBackground
+          source={hero.cover}
+          style={ls.hero}
+          imageStyle={{ borderRadius: theme.radius.card }}
+          resizeMode="cover"
+        >
+          <View style={ls.heroCard}>
+            <Text style={ls.heroEyebrow}>{hero.eyebrow}</Text>
+            <Text style={ls.heroTitle} numberOfLines={2}>{hero.shortTitle ?? hero.title}</Text>
+            <View style={ls.heroLinkRow}>
+              <Text style={ls.heroLink}>开始阅读</Text>
+              <Text style={ls.heroLink}> →</Text>
+            </View>
+          </View>
+        </ImageBackground>
+      </TouchableOpacity>
+
+      {/* 状态提示行（诚实口径：睡眠没记录就直说） */}
+      <Text style={ls.phaseTip}>
+        {sleepScore != null
+          ? `昨晚睡眠 ${sleepScore} 分 · 皮肤修复主要发生在深睡`
+          : '记录睡眠后，这里会告诉你昨晚的修复给气色加了多少分。'}
+      </Text>
+
+      <View style={ls.secHead}>
+        <Text style={ls.secTitle}>简单方法，先做稳的</Text>
+        <Text style={ls.secCount}>{articles.length} 篇</Text>
+      </View>
+
+      {articles.map((a) => (
+        <TouchableOpacity
+          key={a.id}
+          activeOpacity={theme.press.opacity}
+          style={ls.articleCard}
+          onPress={() => navigation.navigate('LearnRead', { articleId: a.id, collection: 'glow' })}
+          accessibilityRole="button"
+          accessibilityLabel={`阅读 ${a.title}`}
+        >
+          <Image source={a.cover} style={ls.thumb} resizeMode="cover" />
+          <View style={ls.articleBody}>
+            <Text style={ls.articleEyebrow}>{a.eyebrow} · {a.minutes} 分钟</Text>
+            <Text style={ls.articleTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={ls.articleLink}>阅读全文 →</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+      <View style={{ height: theme.space.xl }} />
+    </>
+  );
+}
+
+/* ── 运动建议 · 图文版块（v18.83）────────────────────────
+ * 与知识科普/提升颜值同构（hero 插画卡 + 文章列表卡，复用 ls 样式）。
+ * 内容：周期阶段 × 荷尔蒙运动科学（sportArticles.ts，静态无假数据）。
+ * 顶部提示行带今日步数/电量（有数据才展示，诚实口径）。
+ */
+function SportSection({ steps, phase, levelIdx, navigation }: { steps: number; phase: string; levelIdx: number | null; navigation: TopicNav }) {
+  const hero = getSportArticle(SPORT_HERO_ID);
+  const articles = SPORT_ARTICLES.filter((a) => a.id !== SPORT_HERO_ID);
+  return (
+    <>
+      <TouchableOpacity
+        activeOpacity={theme.press.opacity}
+        onPress={() => navigation.navigate('LearnRead', { articleId: hero.id, collection: 'sport' })}
+        accessibilityRole="button"
+        accessibilityLabel={`阅读 ${hero.title}`}
+      >
+        <ImageBackground
+          source={hero.cover}
+          style={ls.hero}
+          imageStyle={{ borderRadius: theme.radius.card }}
+          resizeMode="cover"
+        >
+          <View style={ls.heroCard}>
+            <Text style={ls.heroEyebrow}>{hero.eyebrow}</Text>
+            <Text style={ls.heroTitle} numberOfLines={2}>{hero.shortTitle ?? hero.title}</Text>
+            <View style={ls.heroLinkRow}>
+              <Text style={ls.heroLink}>开始阅读</Text>
+              <Text style={ls.heroLink}> →</Text>
+            </View>
+          </View>
+        </ImageBackground>
+      </TouchableOpacity>
+
+      {/* 状态提示行（诚实口径：未佩戴就直说） */}
+      <Text style={ls.phaseTip}>
+        {levelIdx == null
+          ? '佩戴戒指后，这里会按今天的电量与恢复状态给运动提示。'
+          : phase === '未记录'
+            ? `今日 ${steps} 步 · 记录经期后，运动内容会跟着你的周期阶段更新。`
+            : `今日 ${steps} 步 · 当前 ${phase} · 运动跟着周期阶段调强度`}
+      </Text>
+
+      <View style={ls.secHead}>
+        <Text style={ls.secTitle}>按荷尔蒙节奏安排训练</Text>
+        <Text style={ls.secCount}>{articles.length} 篇</Text>
+      </View>
+
+      {articles.map((a) => (
+        <TouchableOpacity
+          key={a.id}
+          activeOpacity={theme.press.opacity}
+          style={ls.articleCard}
+          onPress={() => navigation.navigate('LearnRead', { articleId: a.id, collection: 'sport' })}
+          accessibilityRole="button"
+          accessibilityLabel={`阅读 ${a.title}`}
+        >
+          <Image source={a.cover} style={ls.thumb} resizeMode="cover" />
+          <View style={ls.articleBody}>
+            <Text style={ls.articleEyebrow}>{a.eyebrow} · {a.minutes} 分钟</Text>
+            <Text style={ls.articleTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={ls.articleLink}>阅读全文 →</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+      <View style={{ height: theme.space.xl }} />
+    </>
+  );
+}
+
+const ls = StyleSheet.create({
+  hero: {
+    height: theme.sp(42),
+    justifyContent: 'flex-start',
+  },
+  heroCard: {
+    alignSelf: 'flex-start',
+    maxWidth: '78%',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.cardPadCompact,
+    paddingVertical: theme.space.cardPadCompact,
+    marginLeft: theme.sp(3),
+    marginTop: theme.sp(3),
+  },
+  heroEyebrow: {
+    fontSize: theme.fs(10.5),
+    fontWeight: theme.weight.semibold,
+    letterSpacing: 1,
+    color: mm.chipBg.lav.fg,
+    marginBottom: theme.sp(1),
+  },
+  heroTitle: {
+    fontSize: theme.fs(15.5),
+    lineHeight: theme.fs(21),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+    marginBottom: theme.sp(1),
+  },
+  heroLinkRow: { flexDirection: 'row' },
+  heroLink: {
+    fontSize: theme.fs(12),
+    fontWeight: theme.weight.semibold,
+    color: mm.chipBg.lav.fg,
+  },
+  phaseTip: {
+    fontSize: theme.fs(12),
+    color: mm.colors.inkFaint,
+    marginTop: theme.sp(2.5),
+    marginBottom: theme.space.lg,
+  },
+  secHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: theme.sp(2),
+  },
+  secTitle: {
+    fontSize: theme.fs(15),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+  },
+  secCount: {
+    fontSize: theme.fs(12),
+    color: mm.colors.inkFaint,
+  },
+  articleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    padding: theme.space.cardPadCompact,
+    marginBottom: theme.sp(2.5),
+  },
+  thumb: {
+    width: theme.sp(14),
+    height: theme.sp(14),
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+  },
+  articleBody: {
+    flex: 1,
+    marginLeft: theme.sp(3),
+  },
+  articleEyebrow: {
+    fontSize: theme.fs(10.5),
+    fontWeight: theme.weight.semibold,
+    letterSpacing: 0.6,
+    color: mm.chipBg.lav.fg,
+    marginBottom: theme.sp(0.5),
+  },
+  articleTitle: {
+    fontSize: theme.fs(14),
+    lineHeight: theme.fs(19),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+    marginBottom: theme.sp(1),
+  },
+  articleLink: {
+    fontSize: theme.fs(11.5),
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkFaint,
+  },
+});
 
 const styles = StyleSheet.create({
   page: { flex: 1 },

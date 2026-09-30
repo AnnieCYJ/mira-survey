@@ -888,7 +888,13 @@ function computeHourlyLoad(
   // ★ 曲线是否铺满「清醒时段」由当天整体实测量决定：
   //   旧实现要求「该半小时内有实测样本」才算 hasData，戒指采样断续时曲线被打成碎片
   //   （实测只落在 1 个半小时 → 均值只由 1 小时决定 → 出现「平均疲劳度 8」这类无意义值）
-  const dayHasData = (awakeHrv.length + awakeSns.length) >= 10;
+  //   ★★ v18.63 诚实数据：只认**真实戒指 HRV 采样**。SNS 是 offlineEstimates 用 stress
+  //   推导的估计值（没戴戒指也恒有），计入门槛会把全天模型曲线伪装成实测（用户实锤投诉：
+  //   「没戴戒指怎么可能有数据」）。估计值一律不作为 hasData 依据。
+  //   ★★ v18.69 再收紧：dayHasData（当日≥10 采样就全天开门）废弃——用户再次实锤
+  //   「没戴戒指怎么还有认知疲劳度趋势图」：只戴了早上 1 小时，当天其余时段全被模型柱
+  //   冒充实测。hasData 改回**逐时段判定**：该半小时真的有 HRV 采样才算，没采样的
+  //   时段显示灰桩（MiniCognitiveBars NO_DATA）。「均值只由少数时段决定」= 诚实，不修。
 
   const morningEnergy = clamp(sleepRec * 80 + 20, 20, 100); // 睡眠恢复决定的晨起能量上限
 
@@ -923,7 +929,8 @@ function computeHourlyLoad(
     const snsPts = healthStore.getTimeRange('sns' as MetricKey, stepStart, stepStart + 1800000, { maxPoints: 25 });
     const hrvMean = hrvPts.length > 0 ? hrvPts.reduce((a, p) => a + p.v, 0) / hrvPts.length : null;
     const snsMean = snsPts.length > 0 ? snsPts.reduce((a, p) => a + p.v, 0) / snsPts.length : null;
-    const hasData = !inFuture && (dayHasData || hrvMean != null || snsMean != null);
+    // ★ v18.69：该半小时真的有戒指 HRV 采样才算「有实测」；没戴/没采样的时段 = 无数据
+    const hasData = !inFuture && hrvMean != null;
 
     // ── ★ 窗口归因（只算脑，不混情绪/运动）──
     //   运动: 半小时步数增量 ≥250 → 该窗口 HRV/SNS 偏离是身体活动所致, 不计入脑

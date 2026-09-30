@@ -17,6 +17,7 @@ import FoodScanScreen from '../screens/FoodScanScreen';
 import VoiceChatScreen from '../screens/VoiceChatScreen';
 import EmotionLogScreen from '../screens/EmotionLogScreen';
 import ToolTopicScreen from '../screens/ToolTopicScreen';
+import LearnReadScreen from '../screens/LearnReadScreen';
 
 export interface MetricDetailParams {
   key: string;
@@ -44,6 +45,7 @@ export type RootStackParamList = {
   Breathing: undefined;
   FoodScan: { autoCamera?: boolean } | undefined;
   ToolTopic: { topic: 'glow' | 'sport' | 'learn' };
+  LearnRead: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition' };
   VoiceChat: { question: string };
 };
 
@@ -190,6 +192,17 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="ToolTopic"
           component={ToolTopicScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+            cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+            cardStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen
+          name="LearnRead"
+          component={LearnReadScreen}
           options={{
             presentation: 'card',
             gestureEnabled: true,

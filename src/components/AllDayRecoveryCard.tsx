@@ -31,21 +31,22 @@ import Svg, {
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
+import { MindIcon } from './MindIcons';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
-import { collectSamples, buildCortisolToday30 } from './CortisolRhythmCard';
+import { collectSamples, buildCortisolToday30Ex } from './CortisolRhythmCard';
 
 /** 最小可信样本数：与 CortisolRhythmCard / CortisolSleepSummary 保持一致 */
 const MIN_SAMPLES = 4;
 /** 今日曲线至少要有这么多非空槽位才认为是「真实可画」 */
 const MIN_TODAY_SLOTS = 6;
 const SLOTS = 48;          // 48 × 30min = 全天
-const CHART_H = 120;
+const CHART_H = 96;        // ★ v18.60：54→96（用户：趋势图纵坐标高度太小——原 54-20-20=14pt 曲线振幅几乎贴平）
 const PAD_L = 3;           // ★ 曲线两端贴近 SVG 边缘（时间轴刻度改用 start/end 锚点防截断）
 const PAD_R = 3;
-const PAD_T = 44;          // ★ 顶部留白加大：峰值圆点 + 时刻标签不再被裁切（含平滑过冲余量）
-const PAD_B = 20;          // 底部留白：给时间轴
+const PAD_T = 18;          // ★ v18.60：20→18（峰值点+标签仍不裁切）
+const PAD_B = 18;          // 底部留白：给时间轴 → 曲线可用振幅 96-18-18=60pt（原 14pt）
 
 /**
  * ★ v10 reskin（2026-09-23）：整卡改白卡（SPEC §2 #10）——
@@ -76,16 +77,7 @@ function fmtClock(hourFloat: number): string {
   return `${String(h).padStart(2, '0')}:00`;
 }
 
-/** 典型皮质醇昼夜节律示意（无真实数据时用）：凌晨最低 → 6-9 点陡升达峰 → 日间缓降 → 午后小峰 → 夜间低平 */
-function demoCurve(): number[] {
-  return Array.from({ length: SLOTS }, (_, i) => {
-    const h = i / 2;
-    const morning = 78 * Math.exp(-Math.pow((h - 8.4) / 2.5, 2));
-    const afternoon = 20 * Math.exp(-Math.pow((h - 16.6) / 3.2, 2));
-    const nightFloor = 10;
-    return nightFloor + morning + afternoon;
-  });
-}
+/** （v18.64 移除 demoCurve 示意曲线：Mira 诚实数据铁律——没戴戒指就空态，不放「看起来像数据」的示意图） */
 
 /** Catmull-Rom → 三次贝塞尔：把折线转成平滑曲线 */
 function smoothPath(pts: { x: number; y: number }[]): string {
@@ -105,9 +97,13 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
-export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPress?: () => void; ring?: any }) {
+export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string }) {
+  // ★ v18.53.2：bg 可传 butter（黄）；图标/强调色默认 lime，黄底时由调用方传 butter.fg
+  const iconFg = iconFgProp ?? mm.chipBg.lime.fg;
   const ring = ringProp ?? useRingState();
   const [W, setW] = useState(0);
+  // ★ v18.53：可传背景色（Bento 化，恢复=lime）；有底色时 badge 改白底避免同色相融
+  const onColor = !!bg;
 
   // —— 睡眠恢复 ——
   const sleep = useMemo(() => latestSleep(), [ring.sleepDaily, Date.now() & 0]);
@@ -147,70 +143,112 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
     sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
   const badgeText = sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
 
-  // —— 曲线数据（三级降级）——
-  const { series, mode } = useMemo<{ series: number[]; mode: 'today' | 'rhythm' | 'demo' }>(() => {
-    const today = buildCortisolToday30();                       // 48 槽，尾段为 null
-    const todayNonNull = today.filter((v) => v != null).length;
-    if (todayNonNull >= MIN_TODAY_SLOTS) {
-      // 只截到最后一个有效值 — 未来时段不画
-      const lastIdx = today.findIndex((v, i) => i > 0 && v == null && today[i - 1] != null);
-      const truncate: number[] = (lastIdx > 0 ? today.slice(0, lastIdx) : today.filter((v) => v != null)) as number[];
-      return { series: truncate, mode: 'today' };
+  // —— 曲线数据（★ v18.69 门槛 + 分段）——
+  //   三重门槛，缺一不画：
+  //   1) 戒指今日同步过（lastSyncedAt 是今天）——没连过戒指的当天不画
+  //   2) 今日有真实 HRV 采样——估计值/节律插值不冒充实测
+  //   3) 30min 槽位非空 ≥6——太少不构成「趋势」
+  //   realFlags 标记真实样本槽：画线只走真实槽，间隔 >1h 断开（见下方分段逻辑）。
+  //   14 天节律拟合不上首页卡（用户定稿：那是详情页「14 天基线」的事）。
+  const { series, realFlags, mode } = useMemo<{ series: number[]; realFlags: boolean[]; mode: 'today' | 'none' }>(() => {
+    const ls = ring.lastSyncedAt as number | null | undefined;
+    const syncedToday = (() => {
+      if (!ls) return false;
+      const a = new Date(ls);
+      const b = new Date();
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    })();
+    const realHrvToday = (() => {
+      try { return healthStore.getIntraday('hrv', dayKey(Date.now())).length; } catch { return 0; }
+    })();
+    if (syncedToday && realHrvToday > 0) {
+      const { vals, real } = buildCortisolToday30Ex();
+      if (vals.filter((v) => v != null).length >= MIN_TODAY_SLOTS) {
+        let lastIdx = vals.length - 1;
+        while (lastIdx >= 0 && vals[lastIdx] == null) lastIdx--;
+        return { series: vals.slice(0, lastIdx + 1) as number[], realFlags: real.slice(0, lastIdx + 1), mode: 'today' };
+      }
     }
-    if (samples.length >= MIN_SAMPLES && hasRhythm) {
-      const TWO_PI = Math.PI * 2;
-      return {
-        series: Array.from({ length: SLOTS }, (_, i) =>
-          Math.max(0, cos.mesor + cos.amplitude * Math.cos((TWO_PI * (i / 2 - cos.acrophaseH)) / 24)),
-        ),
-        mode: 'rhythm',
-      };
-    }
-    return { series: demoCurve(), mode: 'demo' };
-  }, [samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, ring.timelineReady ?? ring.curveStatus]);
+    return { series: [], realFlags: [], mode: 'none' };
+  }, [ring.lastSyncedAt, samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, ring.timelineReady ?? ring.curveStatus]);
 
   // —— 坐标换算 ——
   const chartW = Math.max(40, W - PAD_L - PAD_R);
   const chartH = CHART_H - PAD_T - PAD_B;
-  // ★ 圆弧平滑：先做 (1,2,1)/4 加权滑动平均柔化尖峰/深谷（峰值位置基本不变），
-  //   再走 Catmull-Rom → 贝塞尔，消除 11:00 那种生硬的 V 形折角
-  const sm = series.map((v, i) => {
-    const a = series[i - 1] ?? v;
-    const c = series[i + 1] ?? v;
-    return (a + 2 * v + c) / 4;
-  });
-  const lo = Math.min(...sm);
-  const hi = Math.max(...sm);
+  // ★ v18.69 分段连线：只画「真实样本」槽；真实样本间隔 >1h（槽差 >2）断开——
+  //   节律插值补的空槽不再连线冒充连续观测（用户实锤：数据超过 1 小时不连线）。
+  //   间隔 ≤1h（相邻真实槽中间恰好 1 个空槽）桥接连线。
+  const realPts: { i: number; v: number }[] = [];
+  for (let i = 0; i < series.length; i++) {
+    if (realFlags[i] && Number.isFinite(series[i])) realPts.push({ i, v: series[i] });
+  }
+  const segs: { i: number; v: number }[][] = (() => {
+    const out: { i: number; v: number }[][] = [];
+    let cur: { i: number; v: number }[] = [];
+    for (const p of realPts) {
+      if (cur.length === 0 || p.i - cur[cur.length - 1].i <= 2) cur.push(p);
+      else { out.push(cur); cur = [p]; }
+    }
+    if (cur.length) out.push(cur);
+    return out;
+  })();
+
+  // Y 轴范围按真实样本算（插值点不参与，避免把真实曲线压扁）
+  const realVals = realPts.map((p) => p.v);
+  const lo = realVals.length > 0 ? Math.min(...realVals) : 0;
+  const hi = realVals.length > 0 ? Math.max(...realVals) : 1;
   const span = hi - lo || 1;
   const yLo = lo - span * 0.18;
   const yHi = hi + span * 0.18;
   const yOf = (v: number) => PAD_T + chartH - ((v - yLo) / (yHi - yLo)) * chartH;
   const xOf = (i: number) => PAD_L + (i / (SLOTS - 1)) * chartW;
 
-  const pts = sm.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
-  const linePath = smoothPath(pts);
-  // ★ 面积填充在「最后一个数据点」收口：今日模式曲线只画到当前时刻时，
-  //   填充不再斜插到 24:00 右下角，避免右侧出现一块无曲线的悬空渐变
-  const lastDataX = xOf(series.length - 1);
-  const areaPath = linePath
-    ? `${linePath} L ${lastDataX.toFixed(1)} ${(PAD_T + chartH).toFixed(1)} L ${PAD_L.toFixed(1)} ${(PAD_T + chartH).toFixed(1)} Z`
-    : '';
+  // 段内 (1,2,1) 平滑 + Catmull-Rom → 贝塞尔；单点段不画线（诚实）
+  const segD = (seg: { i: number; v: number }[]): string => {
+    if (seg.length < 2) return '';
+    const smv = seg.map((p, k) => ((seg[k - 1]?.v ?? p.v) + 2 * p.v + (seg[k + 1]?.v ?? p.v)) / 4);
+    return smoothPath(seg.map((p, k) => ({ x: xOf(p.i), y: yOf(smv[k]) })));
+  };
+  const linePath = segs.map(segD).filter(Boolean).join(' ');
+  // 面积填充逐段收口到基线（不再斜插跨过缺口）
+  const yBase = (PAD_T + chartH).toFixed(1);
+  const areaPath =
+    linePath
+      ? segs
+          .map((seg) => {
+            const d = segD(seg);
+            if (!d) return '';
+            const x0 = xOf(seg[0].i).toFixed(1);
+            const x1 = xOf(seg[seg.length - 1].i).toFixed(1);
+            return `${d} L ${x1} ${yBase} L ${x0} ${yBase} Z`;
+          })
+          .filter(Boolean)
+          .join(' ')
+      : '';
 
-  // ★ 修复错位：hi 是「平滑后」数组的最大值，必须在 sm 里找下标；
-  //   之前在原始 series 里 indexOf 找不到（平滑已改值）→ 返回 -1，峰值点/虚线/时刻标签全部错位
-  const peakIdx = Math.max(0, sm.indexOf(hi));
-  const peakX = xOf(peakIdx);
-  const peakY = yOf(hi);
+  // 峰值标记 = 真实样本的最高点（不再取节律插值）
+  let peakIdx = -1;
+  let peakV = -Infinity;
+  for (const p of realPts) {
+    if (p.v > peakV) { peakV = p.v; peakIdx = p.i; }
+  }
+  const peakX = peakIdx >= 0 ? xOf(peakIdx) : 0;
+  const peakY = peakIdx >= 0 ? yOf(peakV) : 0;
 
   const body = (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
       <View style={styles.inner}>
-        {/* 卡片标题 + 青色胶囊 badge */}
+        {/* 卡片标题 + leaf 图标 chip（与首页圆环上方 chips 的恢复 icon 同款）+ 青色胶囊 badge */}
         <View style={styles.headRow}>
-          <Text style={styles.title}>全天恢复</Text>
+          <View style={styles.titleRow}>
+            <View style={[styles.iconChip, onColor && { backgroundColor: mm.colors.cardBg }]}>
+              <MindIcon name="leaf" size={theme.fs(17)} color={iconFg} />
+            </View>
+            <Text style={styles.title}>全天恢复</Text>
+          </View>
           <View style={styles.headRight}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{badgeText}</Text>
+            <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>
+              <Text style={[styles.badgeText, onColor && { color: iconFg }]}>{badgeText}</Text>
             </View>
             <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
           </View>
@@ -226,7 +264,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
               </Text>
               <Text style={styles.tileUnit}>{sleepUnit}</Text>
             </View>
-            <Text style={styles.tileSub} numberOfLines={2}>
+            <Text style={styles.tileSub} numberOfLines={1}>
               {sleepSub}
             </Text>
           </View>
@@ -238,7 +276,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
               </Text>
               <Text style={styles.tileUnit}>点</Text>
             </View>
-            <Text style={styles.tileSub} numberOfLines={2}>
+            <Text style={styles.tileSub} numberOfLines={1}>
               {cortisolSub}
             </Text>
           </View>
@@ -247,6 +285,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
         {/* 下半：皮质醇全天趋势（落在卡片渐变的深色区，曲线走白色） */}
         <View style={styles.chartBox} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
           {W > 0 ? (
+            <>
             <Svg width={W} height={CHART_H}>
               <Defs>
                 {/* 曲线下方渐变填充（纯白 token + 渐变透明度） */}
@@ -278,32 +317,35 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                   strokeWidth={2.6}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeOpacity={mode === 'demo' ? 0.75 : 1}
                 />
               ) : null}
 
-              {/* 峰值：竖直虚线 + 发光圆点 + 时刻标签 */}
-              <Line
-                x1={peakX}
-                y1={peakY}
-                x2={peakX}
-                y2={PAD_T + chartH}
-                stroke={mm.colors.ringTealDeep}
-                strokeOpacity={0.42}
-                strokeWidth={1}
-                strokeDasharray="3,3"
-              />
-              <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.limeMid} />
-              <SvgText
-                x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
-                y={Math.max(peakY - 12, 12)}
-                fontSize={11}
-                fontWeight="600"
-                fill={mm.colors.ringTealDeep}
-                textAnchor="middle"
-              >
-                {fmtClock(peakIdx / 2)}
-              </SvgText>
+              {/* 峰值：竖直虚线 + 发光圆点 + 时刻标签（★ v18.69 取真实样本最高点；空数据整块不渲染，防 NaN 进 SVG） */}
+              {peakIdx >= 0 ? (
+                <>
+                  <Line
+                    x1={peakX}
+                    y1={peakY}
+                    x2={peakX}
+                    y2={PAD_T + chartH}
+                    stroke={mm.colors.ringTealDeep}
+                    strokeOpacity={0.42}
+                    strokeWidth={1}
+                    strokeDasharray="3,3"
+                  />
+                  <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.limeMid} />
+                  <SvgText
+                    x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
+                    y={Math.max(peakY - 12, 12)}
+                    fontSize={11}
+                    fontWeight="600"
+                    fill={mm.colors.ringTealDeep}
+                    textAnchor="middle"
+                  >
+                    {fmtClock(peakIdx / 2)}
+                  </SvgText>
+                </>
+              ) : null}
 
               {/* 时间轴 00 / 06 / 12 / 18 / 24（两端刻度改 start/end 锚点，贴边不截断） */}
               {[0, 6, 12, 18, 24].map((h) => {
@@ -324,6 +366,13 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
                 );
               })}
             </Svg>
+            {/* ★ v18.64 空态：没戴戒指不画示意曲线，只留时间轴 + 居中提示 */}
+            {mode === 'none' ? (
+              <View style={styles.emptyHint} pointerEvents="none">
+                <Text style={styles.emptyHintText}>戴上戒指后，这里显示你的真实皮质醇趋势</Text>
+              </View>
+            ) : null}
+            </>
           ) : (
             <View style={{ height: CHART_H }} />
           )}
@@ -331,17 +380,15 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp }: { onPres
 
         {/* v10 解读行：色点 + 加粗结论 + 灰色说明（全部来自真实数据口径） */}
         <View style={styles.keyRow}>
-          <View style={[styles.keyDot, { backgroundColor: mm.colors.ringTeal }]} />
+          <View style={[styles.keyDot, mode === 'none' ? { backgroundColor: mm.colors.inkFaint } : { backgroundColor: mm.colors.ringTeal }]} />
           <View style={styles.keyTx}>
             <Text style={styles.keyBold} numberOfLines={1}>
-              {mode === 'demo' ? '节律示意' : recoveryWord}
+              {mode === 'none' ? '暂无数据' : recoveryWord}
             </Text>
             <Text style={styles.keySub} numberOfLines={1}>
-              {mode === 'demo'
-                ? '戴上戒指后显示你的真实皮质醇趋势'
-                : mode === 'rhythm'
-                  ? `近 14 天日均拟合 · ${cortisolSub}`
-                  : `今日真实趋势 · ${cortisolSub}`}
+              {mode === 'none'
+                ? '戴上戒指后，这里显示你的真实皮质醇趋势'
+                : `今日真实趋势 · ${cortisolSub}`}
             </Text>
           </View>
         </View>
@@ -372,12 +419,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: mm.shadow.height },
     elevation: mm.shadow.elevation,
   },
-  inner: { padding: theme.space.cardPad },
+  inner: { padding: theme.sp(2.5) },        // ★ v18.53.3：14→10，一屏预算（sp=n*4 实测重算）
   headRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
+    marginBottom: theme.space.xs,   // ★ v18.53.2 sm(12)→xs(8)，一屏预算
+  },
+  // ★ v18.53：leaf 图标 chip（与 Bento 卡白圆 chip 同规格）
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
+  iconChip: {
+    width: theme.fs(36),
+    height: theme.fs(36),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.chipBg.lime.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(2),
   },
   title: {
     fontSize: theme.fontSize.card,
@@ -453,8 +511,18 @@ const styles = StyleSheet.create({
     color: mm.colors.inkSoft,
     marginTop: theme.sp(0.75),
   },
-  // 曲线区：落在卡片的深色段上（靠下方，给足上边距把曲线推进紫色区）
-  chartBox: { marginTop: theme.space.lg },
+  // 曲线区：★ v18.53 贴近上方文字（用户反馈：图表离上面的字太远），lg→sm
+  chartBox: { marginTop: theme.space.sm },
+  // ★ v18.64 空态提示（盖在 SVG 上居中）
+  emptyHint: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHintText: {
+    fontSize: theme.fontSize.micro,
+    color: mm.colors.inkFaint,
+  },
   caption: {
     fontSize: theme.fontSize.micro,
     color: mm.colors.inkSoft,

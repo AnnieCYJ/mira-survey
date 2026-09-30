@@ -80,6 +80,25 @@ export default function MeditationScreen() {
     [completeTask, navigation]
   );
 
+  // v18.88 牌堆卡翻面「查看详情」→ 科普阅读页（learn/glow/emotion/sport/nutrition 五集合）
+  const openArticle = useCallback(
+    (articleId: string, collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition') => {
+      navigation.navigate('LearnRead', collection ? { articleId, collection } : { articleId });
+    },
+    [navigation]
+  );
+
+  // v18.91 翻面「去完成」→ 对应实操页（呼吸/情绪记录/拍照记餐）
+  const doTask = useCallback(
+    (t: { flip?: { do?: { route: 'Breathing' | 'EmotionLog' | 'FoodScan'; autoCamera?: boolean } } }) => {
+      const d = t.flip?.do;
+      if (!d) return;
+      if (d.route === 'FoodScan') navigation.navigate('FoodScan', { autoCamera: true });
+      else navigation.navigate(d.route);
+    },
+    [navigation]
+  );
+
   return (
     <View style={styles.page}>
       {/* v10：工具页背景全白（与首页/洞察页/日历页同款）；TOOL_GRID 图片卡保持原样 */}
@@ -93,8 +112,12 @@ export default function MeditationScreen() {
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
         </Animated.View>
 
-      {/* v18.39：顶部牌堆 = 每日数据驱动的三张推荐卡（原固定任务废弃） */}
-      {dailyTools.length > 0 ? <TaskDeck tools={dailyTools} onComplete={handleComplete} /> : <TaskDeck tools={tools} onComplete={handleComplete} />}
+      {/* v18.39：顶部牌堆 = 每日数据驱动的三张推荐卡（原固定任务废弃）；v18.88 点卡片翻面看科普，查看详情跳阅读页 */}
+      {dailyTools.length > 0 ? (
+        <TaskDeck tools={dailyTools} onComplete={handleComplete} onOpenArticle={openArticle} onDoTask={doTask} />
+      ) : (
+        <TaskDeck tools={tools} onComplete={handleComplete} onOpenArticle={openArticle} onDoTask={doTask} />
+      )}
 
       <View style={styles.grid}>
         {TOOL_GRID.map((t) => (

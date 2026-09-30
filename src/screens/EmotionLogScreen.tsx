@@ -13,7 +13,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput, LayoutChangeEvent,
+  TextInput, LayoutChangeEvent, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Accelerometer } from 'expo-sensors';
@@ -29,6 +29,81 @@ import {
   ensureEmotionLogLoaded, getLatestForDay, addEmotionEntry,
 } from '../data/emotionLog';
 import { dayKey } from '../data/healthStore';
+import { EMOTION_ARTICLES } from '../lib/emotionArticles';
+
+/* ── v18.82 情绪调节的方法 · 文章版块（模块级：珠雨重渲染不重建） ── */
+function EmotionArticlesSection() {
+  const navigation = useNavigation<any>();
+  return (
+    <View style={eas.wrap}>
+      <View style={eas.secHead}>
+        <Text style={eas.secTitle}>情绪调节的方法</Text>
+        <Text style={eas.secCount}>{EMOTION_ARTICLES.length} 篇</Text>
+      </View>
+      {EMOTION_ARTICLES.map((a) => (
+        <TouchableOpacity
+          key={a.id}
+          activeOpacity={theme.press.opacity}
+          style={eas.card}
+          onPress={() => navigation.navigate('LearnRead', { articleId: a.id, collection: 'emotion' })}
+          accessibilityRole="button"
+          accessibilityLabel={`阅读 ${a.title}`}
+        >
+          <Image source={a.cover} style={eas.thumb} resizeMode="cover" />
+          <View style={eas.body}>
+            <Text style={eas.eyebrow}>{a.eyebrow} · {a.minutes} 分钟</Text>
+            <Text style={eas.cardTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={eas.link}>阅读全文 →</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+const eas = StyleSheet.create({
+  wrap: { marginTop: theme.space.lg },
+  secHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: theme.sp(2),
+  },
+  secTitle: { fontSize: theme.fs(15), fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  secCount: { fontSize: theme.fs(12), color: mm.colors.inkFaint },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    padding: theme.space.cardPadCompact,
+    marginBottom: theme.sp(2.5),
+  },
+  thumb: {
+    width: theme.sp(14),
+    height: theme.sp(14),
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+  },
+  body: { flex: 1, marginLeft: theme.sp(3) },
+  eyebrow: {
+    fontSize: theme.fs(10.5),
+    fontWeight: theme.weight.semibold,
+    letterSpacing: 0.6,
+    color: mm.chipBg.lav.fg,
+    marginBottom: theme.sp(0.5),
+  },
+  cardTitle: {
+    fontSize: theme.fs(14),
+    lineHeight: theme.fs(19),
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+    marginBottom: theme.sp(1),
+  },
+  link: { fontSize: theme.fs(11.5), fontWeight: theme.weight.medium, color: mm.colors.inkFaint },
+});
 
 /* ── 珠雨参数 ────────────────────────────────────────────── */
 const RAIN_H = 430;             // 珠雨区高度（v18.27 加大）
@@ -267,6 +342,9 @@ export default function EmotionLogScreen() {
               style={styles.noteInput}
             />
           ) : null}
+
+          {/* ★ v18.82 情绪调节的方法（图文文章，点进阅读详情页） */}
+          <EmotionArticlesSection />
         </ScrollView>
 
         {/* 保存固定在页面底部（滚动区之外） */}

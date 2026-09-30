@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.sp(2.25),
     borderTopWidth: 1,
     borderTopColor: 'rgba(31,29,26,0.10)',
-    borderStyle: 'dashed',
+    
   },
   footText: {
     fontSize: theme.fs(11.5),

@@ -240,8 +240,8 @@ export function buildCauseNarrative(c: CauseCtx): string {
   const parts: string[] = [];
   const known = c.phaseLabel !== '未记录' && HORMONE_TXT[c.phaseLabel] != null;
   if (known) {
-    const day = c.dayInCycle != null ? `·第 ${c.dayInCycle} 天` : '';
-    parts.push(`${c.phaseLabel}${day}：${HORMONE_TXT[c.phaseLabel]}`);
+    // ★ v18.49：分析文案不再以相位名开头（黄体期/卵泡期…已在经期卡体现，不重复强调）
+    parts.push(`${HORMONE_TXT[c.phaseLabel]}`);
   }
   if (c.cortisolRhythm === '偏晚' && c.cortisolPeak !== '—') {
     parts.push(`皮质醇晨峰 ${c.cortisolPeak} 偏晚`);
