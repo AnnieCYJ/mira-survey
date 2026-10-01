@@ -44,7 +44,7 @@ export type RootStackParamList = {
   EmotionLog: undefined;
   Breathing: undefined;
   FoodScan: { autoCamera?: boolean } | undefined;
-  ToolTopic: { topic: 'glow' | 'sport' | 'learn' };
+  ToolTopic: { topic: 'glow' | 'sport' | 'learn' | 'nutrition' | 'sportArticles' };
   LearnRead: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition' };
   VoiceChat: { question: string };
 };

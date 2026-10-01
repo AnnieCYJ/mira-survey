@@ -29,6 +29,7 @@
           "UISceneConfigurations": {}
         },
         "NSMicrophoneUsageDescription": "Mira 需要访问麦克风以支持语音输入。",
+        "NSMotionUsageDescription": "miraringfashion 读取运动与步数数据用于计算每日活动量与状态分析。",
         "NSSpeechRecognitionUsageDescription": "Mira 需要语音识别权限以将你的语音转换成文字。"
       }
     },

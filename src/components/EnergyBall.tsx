@@ -16,7 +16,7 @@ import { PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 
 
 interface Props {
-  /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 电量值展示，否则回退为默认心情 */
+  /** 当前「今日状态」曲线结果；传入后圆环按计算出的状态等级 + 今日状态值展示，否则回退为默认心情 */
   status?: CurveStatus | null;
   /** 覆盖圆环中央文字（如睡眠场景显示「睡眠恢复中」） */
   centerLabelOverride?: string;
@@ -57,7 +57,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const ringR = (size / 2) * 0.843;
   // 四个经期象限的月相点将均匀分布在白色环上（半径同环）
 
-  // 有计算状态时，圆环跟随计算结果（等级 + 电量值）；否则回退为默认心情
+  // 有计算状态时，圆环跟随计算结果（等级 + 今日状态值）；否则回退为默认心情
   const hi: MoodIndex =
     status?.level != null && LEVEL_MOOD_IDX[status.level] != null
       ? LEVEL_MOOD_IDX[status.level]

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>饮食识别 · 营养分析 + 周期建议（设计 token 对照）</title>
+<style>
+  :root{
+    --cardBg:#FFFFFF; --cardBgSoft:#F7F6FC; --cardBorder:#E8E6F2;
+    --honeyCore:#F0C46E; --honeyDeep:#B98A2E; --honeySoft:#FBEFD6;
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --textTitle:#6C5647; --textSub:#5F5F74;
+    --protein:#4C74C9; --carbs:#6E7A24; --fat:#C9598A; /* mm.chipBg cyan/lime/pink */
+    --focus:#6E7A24; --avoid:#B13232; /* lime.fg / trendDown */
+    --phaseLuteal:#F0C46E;
+    --radiusCard:14px; --radiusSm:9px; --radiusPill:999px;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  body{margin:0; background:#EFEDF6; font-family:-apple-system,"PingFang SC","SF Pro Text",Roboto,system-ui,sans-serif; color:var(--ink);}
+  .phone{width:390px; margin:24px auto; padding:0 0 40px;}
+  .card{background:var(--cardBg); border:1px solid var(--cardBorder); border-radius:var(--radiusCard); padding:16px; margin:12px;}
+  .row{display:flex; align-items:center; justify-content:space-between;}
+  .title{font-size:18px; font-weight:600; color:var(--textTitle);}
+  .sub{font-size:11px; color:var(--textSub);}
+  /* 今日营养概览（营养分析，不变） */
+  .ovTarget{font-size:11px; font-weight:600; color:var(--inkFaint);}
+  .kcalRow{display:flex; align-items:baseline; gap:6px; margin:4px 0 10px;}
+  .kcal{font-size:36px; font-weight:600; color:var(--honeyDeep); line-height:1;}
+  .kcalUnit{font-size:11px; color:var(--textSub);}
+  .track{height:10px; border-radius:var(--radiusPill); background:var(--honeySoft); overflow:hidden;}
+  .fill{height:100%; border-radius:var(--radiusPill); background:var(--honeyCore);}
+  .bar{display:flex; height:10px; border-radius:var(--radiusPill); overflow:hidden; background:var(--cardBgSoft); margin-top:14px;}
+  .seg{height:100%;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;}
+  .legendItem{display:flex; align-items:center; gap:4px; font-size:11px; color:var(--ink);}
+  .legendDot{width:7px; height:7px; border-radius:50%;}
+  .legendVal{font-weight:600;}
+  .legendLabel{color:var(--textSub);}
+  /* 周期建议卡（后边新增，token 化） */
+  .phaseBadge{display:flex; align-items:center; gap:6px;}
+  .phaseDot{width:10px; height:10px; border-radius:50%; background:var(--phaseLuteal);}
+  .phaseLabel{font-size:18px; font-weight:600; color:var(--ink);}
+  .kcalRow2{display:flex; align-items:baseline; gap:6px; margin:8px 0 2px;}
+  .kcalNum{font-size:36px; font-weight:600; color:var(--honeyDeep); line-height:1;}
+  .kcalUnit2{font-size:13px; color:var(--inkSoft);}
+  .kcalNote{font-size:11px; color:var(--textSub); margin-bottom:10px;}
+  .macroRow{display:flex; gap:8px; margin-bottom:10px;}
+  .macroItem{flex:1; background:var(--cardBgSoft); border-radius:var(--radiusSm); padding:8px 4px; text-align:center;}
+  .macroDot{width:7px; height:7px; border-radius:50%; margin:0 auto 4px;}
+  .macroVal{font-size:18px; font-weight:600; color:var(--ink);}
+  .macroName{font-size:11px; color:var(--textSub); margin-top:2px;}
+  .chipRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;}
+  .chip{padding:4px 10px; border-radius:var(--radiusPill); font-size:11px; font-weight:600;}
+  .chipFocus{background:rgba(110,122,36,0.10); color:var(--focus);}
+  .chipAvoid{background:rgba(177,50,50,0.10); color:var(--avoid);}
+  .note{font-size:11px; color:var(--textSub); line-height:1.6; margin-top:10px;}
+  .evalHead{display:flex; align-items:center; margin:14px 0 8px; padding-top:10px; border-top:1px solid rgba(31,29,26,0.08);}
+  .evalTitle{font-size:13px; font-weight:600; color:var(--ink);}
+  .evalRow{display:flex; align-items:flex-start; gap:8px; margin-bottom:8px;}
+  .evalDot{width:5px; height:5px; border-radius:50%; background:var(--honeyDeep); margin-top:7px; flex:none;}
+  .evalText{font-size:13px; color:var(--inkSoft); line-height:1.5; flex:1;}
+  .cap{text-align:center; font-size:11px; color:var(--inkFaint); margin:18px 0 4px;}
+</style>
+</head>
+<body>
+  <div class="phone">
+
+    <!-- 营养分析：保持不变 -->
+    <div class="card">
+      <div class="row">
+        <span class="title">今日营养概览</span>
+        <span class="ovTarget">目标 1980 kcal · 黄体期</span>
+      </div>
+      <div class="kcalRow">
+        <span class="kcal">1250</span>
+        <span class="kcalUnit">kcal 已摄入 · 还可 730</span>
+      </div>
+      <div class="track"><div class="fill" style="width:63%"></div></div>
+      <div class="bar">
+        <div class="seg" style="width:30%; background:var(--protein)"></div>
+        <div class="seg" style="width:48%; background:var(--carbs)"></div>
+        <div class="seg" style="width:22%; background:var(--fat)"></div>
+      </div>
+      <div class="legend">
+        <div class="legendItem"><span class="legendDot" style="background:var(--protein)"></span><span class="legendLabel">蛋白质</span><span class="legendVal">74g · 30%</span></div>
+        <div class="legendItem"><span class="legendDot" style="background:var(--carbs)"></span><span class="legendLabel">碳水</span><span class="legendVal">148g · 48%</span></div>
+        <div class="legendItem"><span class="legendDot" style="background:var(--fat)"></span><span class="legendLabel">脂肪</span><span class="legendVal">30g · 22%</span></div>
+      </div>
+    </div>
+
+    <!-- 周期建议：营养分析后新增，全 token -->
+    <div class="card">
+      <div class="phaseBadge">
+        <span class="phaseDot"></span>
+        <span class="phaseLabel">黄体期 · 阶段化建议</span>
+      </div>
+
+      <div class="kcalRow2">
+        <span class="kcalNum">1980</span>
+        <span class="kcalUnit2">kcal 目标</span>
+      </div>
+      <div class="kcalNote">黄体期孕酮升高使代谢略升，目标比平时多约 180 kcal</div>
+
+      <div class="macroRow">
+        <div class="macroItem"><div class="macroDot" style="background:var(--protein)"></div><div class="macroVal">72g</div><div class="macroName">蛋白质</div></div>
+        <div class="macroItem"><div class="macroDot" style="background:var(--carbs)"></div><div class="macroVal">232g</div><div class="macroName">碳水</div></div>
+        <div class="macroItem"><div class="macroDot" style="background:var(--fat)"></div><div class="macroVal">66g</div><div class="macroName">脂肪</div></div>
+      </div>
+
+      <div class="chipRow">
+        <span class="chip chipFocus">↑ 镁（坚果 / 深绿菜）</span>
+        <span class="chip chipFocus">↑ 维B6</span>
+        <span class="chip chipFocus">↑ 钙</span>
+        <span class="chip chipFocus">↑ 复合碳水（稳情绪）</span>
+      </div>
+      <div class="chipRow">
+        <span class="chip chipAvoid">↓ 高盐高糖（加重经前不适）</span>
+        <span class="chip chipAvoid">↓ 过量咖啡因</span>
+      </div>
+
+      <div class="note">黄体期代谢上行、碳水渴望增强，用复合碳水 + 蛋白质顶住饱腹，少碰甜食。</div>
+
+      <div class="evalHead"><span class="evalTitle">今日 vs 本阶段</span></div>
+      <div class="evalRow"><span class="evalDot"></span><span class="evalText">距本阶段目标还差约 730 kcal（已摄入 1250/1980）。</span></div>
+      <div class="evalRow"><span class="evalDot"></span><span class="evalText">蛋白质还差约 22g（本阶段建议 72g）。</span></div>
+      <div class="evalRow"><span class="evalDot"></span><span class="evalText">黄体期碳水渴望强，优先选燕麦 / 薯类 / 全麦等复合碳水，少碰甜食。</span></div>
+    </div>
+
+    <div class="cap">配色全部取自设计 token：热量/能量=黄(honey)，阶段徽章=PHASE_COLOR，重点补充=黄绿(lime)，少碰=红(trendDown)，宏量=蓝/黄绿/粉</div>
+  </div>
+</body>
+</html>

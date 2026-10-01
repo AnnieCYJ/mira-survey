@@ -42,6 +42,8 @@ export default function SettingsScreen() {
     battery: null,
     firmware: null,
     deviceId: null,
+    deviceInfo: null,
+    sportSessions: null,
     metrics: { hr: null, spo2: null, temp: null, eda: null, hrv: null, rr: null },
     availability: { hr: 'syncing', spo2: 'syncing', temp: 'syncing', eda: 'syncing', hrv: 'syncing', rr: 'unavailable' },
     history: { hr: [], spo2: [], temp: [], eda: [], hrv: [], rr: [] },

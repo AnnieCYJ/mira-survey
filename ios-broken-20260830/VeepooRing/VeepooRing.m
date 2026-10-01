@@ -123,6 +123,25 @@ RCT_EXPORT_MODULE(VeepooRing)
     VPPeripheralModel *pm = self.manager.peripheralModel;
     NSString *fw = pm ? [NSString stringWithFormat:@"%@-%lu", pm.deviceVersion, (unsigned long)pm.deviceNumber] : nil;
     [self emitStatus:@"connected" deviceName:pm.deviceName address:pm.deviceAddress battery:nil firmware:fw];
+    // 模组身份 + 运动能力快照：决定固件是否支持多运动识别（runningType=1 → 10 种多运动）。
+    // 这些值只能连接成功时由 SDK 的 VPPeripheralModel 现场给出，静态代码无法预知。
+    if (pm) {
+      NSDictionary *info = @{
+        @"deviceNumber":       @(pm.deviceNumber),
+        @"deviceVersion":      pm.deviceVersion ?: @"",
+        @"CPUType":            @(pm.CPUType),
+        @"fiveProtocolType":   @(pm.fiveProtocolType),
+        @"runningType":        @(pm.runningType),
+        @"runningSaveTimes":   @(pm.runningSaveTimes),
+        @"isSupportMotionState": @(pm.isSupportMotionState),
+        @"motionState":        @(pm.motionState),
+      };
+      [self emit:@"onStateChange" body:@{@"deviceInfo": info}];
+      [self emitLog:[NSString stringWithFormat:
+        @"[设备能力] deviceNumber=%lu version=%@ CPUType=%lu fiveProto=%ld runningType=%ld(1=10种多运动) runningSaveTimes=%ld motionState=%d",
+        (unsigned long)pm.deviceNumber, pm.deviceVersion, (unsigned long)pm.CPUType,
+        (long)pm.fiveProtocolType, (long)pm.runningType, (long)pm.runningSaveTimes, pm.isSupportMotionState]];
+    }
     [self emitLog:@"密码验证成功，已连接"];
     [self onPasswordVerified];
   } else if (state == VPDeviceConnectStateDisConnect) {

@@ -71,7 +71,8 @@ export default function BreathingScreen() {
         style={StyleSheet.absoluteFill}
       />
     <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
-      <StatusBar barStyle="dark-content" /> // v16：白底
+      {/* v16：白底 */}
+      <StatusBar barStyle="dark-content" />
 
       {/* ——— 返回 + 标题 ——— */}
       <View style={styles.head}>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>饮食识别 · Cal AI 风格单餐视图（预览）</title>
+<style>
+  :root{
+    --honeyDeep:#B98A2E; --honeyCore:#F0C46E; --honeySoft:#FBEFD6;
+    --ink:#1F1D1A; --inkSoft:#4A4742; --sub:#8A857D; --faint:#B5B0A8;
+    --card:#FFFFFF; --bg:#F7F5F1; --line:rgba(31,29,26,0.08); --busy:rgba(31,29,26,0.06);
+    --prot:#3F6FB0; --carb:#6E7A24; --fat:#C9598A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;}
+  body{background:var(--bg);display:flex;justify-content:center;padding:24px 12px;}
+  .phone{width:390px;}
+  .minihead{font-size:12px;color:var(--sub);text-align:center;margin-bottom:10px;letter-spacing:.5px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .title{font-size:15px;font-weight:600;color:var(--ink);}
+  .right{display:flex;align-items:center;gap:12px;}
+  .tag{padding:3px 10px;border-radius:999px;background:var(--busy);font-size:11px;font-weight:600;color:var(--sub);}
+  .rematch{font-size:12px;font-weight:600;color:#6153AF;}
+  .ringWrap{display:flex;justify-content:center;margin:6px 0 4px;}
+  .ringSub{text-align:center;font-size:13px;color:var(--sub);margin-bottom:6px;}
+
+  .macrobar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--honeySoft);}
+  .seg{height:100%;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;}
+  .leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--inkSoft);}
+  .ld{width:7px;height:7px;border-radius:3.5px;}
+  .legv{font-weight:600;color:var(--ink);}
+
+  .tiles{display:flex;gap:8px;margin:14px 0 4px;}
+  .tile{flex:1;background:#F5F3EF;border-radius:12px;padding:12px 0;text-align:center;}
+  .td{width:7px;height:7px;border-radius:3.5px;margin:0 auto 4px;}
+  .tv{font-size:15px;font-weight:700;color:var(--ink);}
+  .tn{font-size:11px;color:var(--sub);margin-top:1px;}
+  .tp{font-size:11px;color:var(--faint);margin-top:1px;}
+
+  .foodList{margin-top:20px;border-top:1px solid var(--line);padding-top:8px;}
+  .foodRow{display:flex;align-items:center;gap:10px;padding:10px 0;}
+  .thumb{width:32px;height:32px;border-radius:10px;background:var(--honeySoft);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--honeyDeep);flex:none;}
+  .foodMain{flex:1;margin-left:4px;}
+  .fn{font-size:14px;color:#3A3733;}
+  .fp{font-size:11px;color:var(--sub);margin-top:1px;}
+  .fk{font-size:14px;font-weight:600;color:var(--honeyDeep);}
+  .fx{color:var(--sub);font-size:14px;}
+
+  .insight{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;}
+  .irow{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
+  .idot{width:5px;height:5px;border-radius:3px;background:var(--honeyDeep);margin-top:6px;flex:none;}
+  .itext{flex:1;font-size:14px;color:var(--inkSoft);line-height:20px;}
+  .note{font-size:11px;color:var(--sub);margin-top:8px;line-height:16px;}
+
+  .save{margin-top:14px;background:linear-gradient(135deg,var(--honeyCore),var(--honeyDeep));color:#fff;font-weight:600;font-size:14px;text-align:center;padding:12px;border-radius:999px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="minihead">饮食识别 · Cal AI 风格单餐视图（示例餐·卵泡期目标 1800）</div>
+  <div class="card">
+    <div class="head">
+      <div class="title">这一餐</div>
+      <div class="right">
+        <div class="tag">AI 识别</div>
+        <div class="rematch">重新识别</div>
+      </div>
+    </div>
+
+    <div class="ringWrap">
+      <svg width="136" height="136" viewBox="0 0 136 136">
+        <circle cx="68" cy="68" r="62" stroke="#FBEFD6" stroke-width="12" fill="none"/>
+        <circle cx="68" cy="68" r="62" stroke="#F0C46E" stroke-width="12" fill="none"
+          stroke-linecap="round" stroke-dasharray="389.56" stroke-dashoffset="230" transform="rotate(-90 68 68)"/>
+        <text x="68" y="64" text-anchor="middle" font-size="30" font-weight="700" fill="#B98A2E" font-family="-apple-system,sans-serif">730</text>
+        <text x="68" y="84" text-anchor="middle" font-size="12" fill="#8A857D" font-family="-apple-system,sans-serif">kcal</text>
+      </svg>
+    </div>
+    <div class="ringSub">约占今日目标 41%</div>
+
+    <div class="macrobar">
+      <div class="seg" style="width:28.3%;background:var(--prot)"></div>
+      <div class="seg" style="width:34.2%;background:var(--carb)"></div>
+      <div class="seg" style="width:37.5%;background:var(--fat)"></div>
+    </div>
+    <div class="legend">
+      <div class="leg"><span class="ld" style="background:var(--prot)"></span>蛋白质 50g <span class="legv">28%</span></div>
+      <div class="leg"><span class="ld" style="background:var(--carb)"></span>碳水 60g <span class="legv">34%</span></div>
+      <div class="leg"><span class="ld" style="background:var(--fat)"></span>脂肪 30g <span class="legv">38%</span></div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><div class="td" style="background:var(--prot)"></div><div class="tv">50g</div><div class="tn">蛋白质</div><div class="tp">28%</div></div>
+      <div class="tile"><div class="td" style="background:var(--carb)"></div><div class="tv">60g</div><div class="tn">碳水</div><div class="tp">34%</div></div>
+      <div class="tile"><div class="td" style="background:var(--fat)"></div><div class="tv">30g</div><div class="tn">脂肪</div><div class="tp">38%</div></div>
+    </div>
+
+    <div class="foodList">
+      <div class="foodRow"><div class="thumb">番</div><div class="foodMain"><div class="fn">番茄炒蛋</div><div class="fp">1 份</div></div><div class="fk">260 kcal</div><div class="fx">✕</div></div>
+      <div class="foodRow"><div class="thumb">米</div><div class="foodMain"><div class="fn">米饭</div><div class="fp">1 碗</div></div><div class="fk">230 kcal</div><div class="fx">✕</div></div>
+      <div class="foodRow"><div class="thumb">清</div><div class="foodMain"><div class="fn">清蒸鱼</div><div class="fp">1 份</div></div><div class="fk">240 kcal</div><div class="fx">✕</div></div>
+    </div>
+
+    <div class="insight">
+      <div class="irow"><span class="idot"></span><div class="itext">这一餐约占今日目标的 41%，分量适中。</div></div>
+      <div class="irow"><span class="idot"></span><div class="itext">蛋白质供能约 28%，本餐蛋白质来源较充足。</div></div>
+      <div class="irow"><span class="idot"></span><div class="itext">碳水供能约 34%。</div></div>
+      <div class="irow"><span class="idot"></span><div class="itext">脂肪供能约 38%。</div></div>
+      <div class="note">以上为图像 / 选择估算，仅供记录参考，不作营养诊断。</div>
+    </div>
+
+    <div class="save">保存记录</div>
+  </div>
+</div>
+</body>
+</html>

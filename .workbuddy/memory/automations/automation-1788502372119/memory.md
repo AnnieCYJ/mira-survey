@@ -45,3 +45,9 @@
 - 发现：本地 master 领先 origin/master **19 个提交**（v18.29→v18.47 MindMate 迭代系列：恢复程度 chip 提位、脑力账户/认知准备度定名、今日状态场景建议引擎、激素法则工具卡、首页单行头部与圆环改版等）；未提交改动：src/screens/TodayScreen.tsx（今日状态叙述文字 16px 墨色 medium + 两侧留白 28、经期 chip 去「第 X 天」tag，即 v18.48 选 A）+ 已知子模块 -dirty。
 - 处理：git add -A 仅暂存 TodayScreen.tsx → commit 2394021「v18.48 首页今日状态叙述文字改 16px 墨色居中加留白 + 经期 chip 去天数 tag」→ push 成功 0ed8876..2394021（19 个积压提交 + 本次 1 个，共 20 个）。
 - 结果：master 与 origin/master 完全同步。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 脏改动维持既有决策：不动、仅报告。
+
+## 2026-09-30 14:12（第九次运行）
+- 发现：本地与 origin/master 同步（0 领先），但工作区有大量未提交改动（66 项）——新增知识科普阅读功能（LearnReadScreen 阅读详情页 + learn/glow/emotion/sport/nutrition 5 个文章库 lib + BentoCard 组件 + 4 个分类配图目录约 3.5MB）+ 20 个源文件修改（TodayScreen/ToolTopicScreen 大改、mindmate.ts 加 moodNone 色），属 v18.5x–v18.8x 迭代系列；新增未跟踪 `build_fresh/`（3.3GB Xcode 构建产物，不在 .gitignore）+ automation 记忆文件；子模块仍为已知 -dirty。
+- 关键决策：**build_fresh/ 未提交**——与 09-28 处理 build/ 同类（3.3GB 构建产物），按既有先例加入 .gitignore 而非提交，commit message 已注明。
+- 处理：.gitignore 加 build_fresh/ → git add -A（66 文件，+3091/-425）→ commit 799323a「新增知识科普阅读功能：文章库×5 + 阅读详情页 + BentoCard 组件及首页/工具页迭代（v18.5x–v18.8x）；ignore build_fresh 构建产物」→ push 成功 2394021..799323a。
+- 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。

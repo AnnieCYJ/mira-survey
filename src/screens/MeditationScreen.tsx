@@ -44,7 +44,7 @@ export default function MeditationScreen() {
   type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
   const navigation = useNavigation<NavProp>();
 
-  // ★ v18.39 每日三张推荐卡：基于当天真实数据（电量档/睡眠评分/压力事件/步数/相位/时段）
+  // ★ v18.39 每日三张推荐卡：基于当天真实数据（今日状态档/睡眠评分/压力事件/步数/相位/时段）
   //   从候选池评分排序取 3，理由句带当天数字；同日顺序稳定（日期 hash 打散），跨天自然轮换。
   //   v18.40 完成态持久化：doneTick 触发重算 recommendTools（内部读当日完成记录）。
   const [recDoneTick, setRecDoneTick] = useState(0);
@@ -65,17 +65,28 @@ export default function MeditationScreen() {
     return () => { alive = false; };
   }, []);
 
+  // v18.93 主按钮「开始」：标记完成 + 跳到对应功能页（不再跳 Profile）。
+  // 路由优先级：flip.do（呼吸/情绪/拍照）→ 有 flip 科普的卡直接读文章 → 无页卡（认知/专注/快走）只标记完成。
   const handleComplete = useCallback(
-    (id: string) => {
-      if (id.startsWith('rec-')) {
+    (t: { id: string; title?: string; flip?: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition'; do?: { route: 'Breathing' | 'EmotionLog' | 'FoodScan'; autoCamera?: boolean } } }) => {
+      if (t.id.startsWith('rec-')) {
         // 每日推荐卡：完成态按天持久化（tool_rec_done.json），当天按钮保持「已完成」
-        markRecDone(id);
-        setRecDoneTick((t) => t + 1);
+        markRecDone(t.id);
+        setRecDoneTick((v) => v + 1);
       } else {
         // 固定任务（兜底牌堆）：走 AppState 原有完成逻辑
-        completeTask(id);
+        completeTask(t.id);
       }
-      navigation.navigate('Profile');
+      const d = t.flip?.do;
+      if (d) {
+        if (d.route === 'FoodScan') navigation.navigate('FoodScan', { autoCamera: true });
+        else navigation.navigate(d.route);
+      } else if (t.flip) {
+        // 纯科普任务：读文章即完成
+        const { articleId, collection } = t.flip;
+        navigation.navigate('LearnRead', collection ? { articleId, collection } : { articleId });
+      }
+      // 无对应页面的卡（认知训练/深度专注/快走）：只标记完成，留在工具页
     },
     [completeTask, navigation]
   );
@@ -128,7 +139,7 @@ export default function MeditationScreen() {
             onPress={() => {
               // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪记录页；其余 → 通用内容页
               if (t.name === '稳定睡眠') navigation.navigate('Breathing');
-              if (t.name === '营养搭配') navigation.navigate('FoodScan', { autoCamera: true });
+              if (t.name === '营养搭配') navigation.navigate('FoodScan'); // 进饮食首页（状态卡+相册+识别按钮），不再一进就弹相机
               if (t.name === '情绪调节') navigation.navigate('EmotionLog');
               if (t.name === '提升颜值') navigation.navigate('ToolTopic', { topic: 'glow' });
               if (t.name === '运动建议') navigation.navigate('ToolTopic', { topic: 'sport' });

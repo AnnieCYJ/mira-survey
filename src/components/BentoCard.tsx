@@ -30,8 +30,10 @@ interface Props {
   statTop?: string;
   /** 顶行右侧小标签（参考图 Activity 卡的「4 days streak」位） */
   aside?: string;
-  /** 标题行下方的独立整行小字（如运动卡「8,432 步 · 6.1 km」）——窄卡里不能塞 topRow，会截断 */
-  subLine?: string;
+  /** 标题行下方的独立整行小字（如运动卡「8,432 步 · 6.1 km」）——窄卡里不能塞 topRow，会截断。
+   *  ★ v18.88 放宽为 ReactNode：运动卡要按运动类别上色（嵌套 Text 同排混色），
+   *    string 仍可直接传，不影响其它调用点。 */
+  subLine?: string | React.ReactNode;
   /** 图表槽（MiniCognitiveBars / 日期圈行等），占卡中部 */
   chart?: React.ReactNode;
   foot?: string;

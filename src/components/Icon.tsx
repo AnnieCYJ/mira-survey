@@ -173,11 +173,15 @@ const ICONS: Record<IconName, IconDef> = {
       { p: 'M23 9l-6 6M17 9l6 6' },
     ],
   },
+  // 🍽 叉勺（fork + knife）：与 HTML 预览 CTA 图标 1:1
   food: {
     mode: 'stroke',
     nodes: [
-      { p: 'M4 11h16v1a8 8 0 0 1-16 0z' },
-      { p: 'M8 11V7a4 4 0 0 1 8 0v4' },
+      { p: 'M6 3v4M8 3v4M10 3v4' },
+      { p: 'M6 7h4' },
+      { p: 'M8 7v14' },
+      { p: 'M18 3v18' },
+      { p: 'M18 3c-3 1-5 3-5 7' },
     ],
   },
   run: {

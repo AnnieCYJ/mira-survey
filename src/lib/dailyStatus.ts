@@ -62,9 +62,9 @@ export interface AlgoConst {
   W_G: number;
   HRV_ARTIFACT_MAX: number;
   HRV_ARTIFACT_MIN: number;
-  LEVEL_TOP: number; // 充沛阈值（电量刻度 0–100 切点）
-  LEVEL_MID: number; // 平稳阈值（电量刻度 0–100 切点）
-  LEVEL_LOW: number; // 偏低阈值（电量刻度 0–100 切点）
+  LEVEL_TOP: number; // 充沛阈值（今日状态刻度 0–100 切点）
+  LEVEL_MID: number; // 平稳阈值（今日状态刻度 0–100 切点）
+  LEVEL_LOW: number; // 偏低阈值（今日状态刻度 0–100 切点）
   MIN_PHASE_SAMPLES: number;
   MIN_GLOBAL_SAMPLES: number;
   MIN_DAYS: number; // 百分位归一化成熟所需天数
@@ -417,13 +417,13 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
 // ═══════════════════════════════════════════════════════════════════════════
 // v2 累积能量模型（今日状态曲线）
 //
-// 取代 v1「每日总分」：输出每 30 分钟一个 0–100 电量，形成连续曲线
+// 取代 v1「每日总分」：输出每 30 分钟一个 0–100 今日状态，形成连续曲线
 // （类似 Garmin Body Battery / WHOOP）。S0 晨间算一次锁死，之后每窗口累积 ΔE。
 // 设计详见 docs/daily-status-curve-spec.md
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface CurveConst extends AlgoConst {
-  /** 持平基线时电量（S0 锚点） */
+  /** 持平基线时今日状态（S0 锚点） */
   BASE_CHARGE: number;
   /** S0 三项权重（HRV / RHR / 睡眠） */
   W_S0_H: number; W_S0_R: number; W_S0_S: number;
@@ -464,7 +464,7 @@ export const CURVE_DEFAULTS: CurveConst = {
 };
 
 export interface SeedResult {
-  /** 绝对电量 0–100（null = 无数据） */
+  /** 绝对今日状态 0–100（null = 无数据） */
   value: number | null;
   /** 个人 wake-norm（同相位 S0 的近期中心）；冷启动 null */
   wakeNorm: number | null;
@@ -516,7 +516,7 @@ export function deriveDaytimeBaseline(history: DailyRecord[], phase: PhaseBucket
 }
 
 /**
- * 晨间种子 S0：夜间 HRV/RHR/睡眠 → 同相位基线 → 绝对电量。
+ * 晨间种子 S0：夜间 HRV/RHR/睡眠 → 同相位基线 → 绝对今日状态。
  * 仅在醒后第一个窗口算一次（调用方负责锁死 + 持久化）。
  * wakeNorm 用历史 rawReadiness 的近期中心作代理（S0 ≈ rawReadiness − ANCHOR + BASE_CHARGE）。
  */
@@ -634,7 +634,7 @@ export function isRecoveringNow(sig: WindowSignals, dt: DaytimeBaseline, c: Curv
 export interface CurvePoint {
   /** 快照时刻 epoch ms */
   t: number;
-  /** 当前电量 0–100（S(t)） */
+  /** 当前状态值 0–100（S(t)） */
   value: number;
   /** 该点档位文字（充沛/平稳/偏低/不足） */
   level: string;
@@ -642,7 +642,7 @@ export interface CurvePoint {
 
 /** 首页「今日状态」头条（曲线模型展示聚合） */
 export interface CurveStatus {
-  /** 当前最新电量 S(t_now)（null = 无数据） */
+  /** 当前最新今日状态 S(t_now)（null = 无数据） */
   value: number | null;
   /** 当前档位 */
   level: string | null;
@@ -662,7 +662,7 @@ export interface CurveStatus {
   hasData: boolean;
 }
 
-/** 电量 → 四档（直接套 0–100 电量尺；切点 65/30/5 与 spec §8 一致） */
+/** 今日状态 → 四档（直接套 0–100 今日状态尺；切点 65/30/5 与 spec §8 一致） */
 export function curveLevel(value: number, c: CurveConst): LevelInfo {
   if (value >= c.LEVEL_TOP) return { level: '充沛', index: 0, advice: '状态良好，可安排重要工作' };
   if (value >= c.LEVEL_MID) return { level: '平稳', index: 1, advice: '处于正常波动，按节奏推进' };

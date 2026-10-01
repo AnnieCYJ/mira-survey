@@ -6,7 +6,7 @@
  *   React Native 无法桥接它，因此本文件通过一层 ObjC 原生桥 `VeepooRing`
  *   （见 ios/VeepooRing/VeepooRing.m + plugins/withVeepooSDK.js）包裹 SDK：
  *     mira-app --(NativeModules)--> VeepooRing --(VeepooBleSDK)--> HK18 戒指
- *   原生桥把扫描/连接/电量/心率/血氧/体温/皮电(EDA)/HRV/呼吸率 通过事件推给 JS。
+ *   原生桥把扫描/连接/今日状态/心率/血氧/体温/皮电(EDA)/HRV/呼吸率 通过事件推给 JS。
  *
  * 回退方案：后端客户端（原型期可用，且作为原生不可用时的兜底）
  *   当原生模块因故不可用（如 Android、或尚未 prebuild）时，自动回退到读
@@ -86,6 +86,35 @@ const PHASE_TEXT: Record<string, string> = {
 const STATUS_TIMELINE_CAP = 48;
 
 export type RingConnStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error';
+
+/** 连接成功时由原生从 Veepoo `VPPeripheralModel` 读取的设备身份 + 运动能力快照。
+ *  - `deviceNumber` / `deviceVersion` / `CPUType` / `fiveProtocolType` 用于判定具体 Veepoo 模组（QX17/JH58 等）。
+ *  - `runningType`=1 表示固件支持「10 种多运动」分类；`runningSaveTimes`>0 表示有运动模式；`isSupportMotionState` 表示支持运动状态上报。
+ *  这些值只能连接成功时由 SDK 现场给出，静态代码无法预知，故需连上后由原生上报。 */
+export interface RingModuleInfo {
+  deviceNumber: number;
+  deviceVersion: string;
+  CPUType: number;
+  fiveProtocolType: number;
+  runningType: number;
+  runningSaveTimes: number;
+  isSupportMotionState: boolean;
+  motionState: number;
+}
+
+/** 戒指已记录的一段运动（固件按类型分类，由原生 readDeviceSportWithCRC: 读出透传）。
+ *  `typeName` 由原生按 Veepoo VPDeviceRuningMode 枚举映射（户外跑步/骑行/游泳/瑜伽/… 约 50 种）。 */
+export interface RingSportSession {
+  type: number;
+  typeName: string;
+  beginTime: string;
+  endTime: string;
+  totalStep: number;
+  totalDis: number;   // m
+  totalCal: number;   // kcal
+  averHeart: number;
+  totalTime: number;  // s
+}
 export type MetricKey = 'hr' | 'spo2' | 'temp' | 'eda' | 'hrv' | 'rr';
 /** 核心实时信号 key（走 ingest 时间槽聚合）；其余 key 落入 daily 扩展指标存储 */
 const CORE_KEYS: MetricKey[] = ['hr', 'spo2', 'temp', 'eda', 'hrv', 'rr'];
@@ -191,6 +220,10 @@ export interface RingState {
   firmware: string | null;
   /** 设备稳定标识（戒指 MAC 地址），用于上传云端时作为 device_id；原生 onStateChange 回传 deviceAddress */
   deviceId: string | null;
+  /** 连接成功时原生上报的模组身份 + 运动能力快照（判定 QX17/JH58 及是否支持多运动识别）。null = 尚未连接。 */
+  deviceInfo: RingModuleInfo | null;
+  /** 戒指已记录的运动段（固件按类型分类的多运动识别结果）。null = 尚未读取。 */
+  sportSessions: RingSportSession[] | null;
   metrics: RingMetrics;
   availability: Record<MetricKey, 'live' | 'syncing' | 'unavailable'>;
   history: Record<MetricKey, TimePoint[]>;
@@ -245,7 +278,7 @@ export interface RingState {
   dailyCurve: DailyCurveSeed | null;
   /** 首页「今日状态」头条（曲线模型展示聚合） */
   curveStatus: CurveStatus | null;
-  /** 今日状态曲线：每 30 分钟一个电量点（最多 48 点 = 24h），用于首页日内趋势 */
+  /** 今日状态曲线：每 30 分钟一个今日状态点（最多 48 点 = 24h），用于首页日内趋势 */
   statusTimeline: CurvePoint[];
   /** 按天聚合的「今日状态」分值（0–100）：当天 statusTimeline 的均值；跨天累积持久化，供周/月/年趋势 */
   statusDaily: Record<string, number>;
@@ -1264,6 +1297,12 @@ class NativeRingSource {
     if (raw.battery != null) patch.battery = num(raw.battery) ?? null;
     if (raw.firmware) patch.firmware = String(raw.firmware);
     if (raw.deviceAddress) patch.deviceId = String(raw.deviceAddress);
+    if (raw.deviceInfo) patch.deviceInfo = raw.deviceInfo as RingModuleInfo;
+    if (Array.isArray(raw.sportSessions)) {
+      patch.sportSessions = raw.sportSessions as RingSportSession[];
+      const names = (raw.sportSessions as any[]).map((s) => s.typeName).join('、');
+      postLog('RingBle', `[Sport] 读取到 ${raw.sportSessions.length} 段运动: ${names}`);
+    }
 
     if (Object.keys(patch).length > 0) {
       this.push(patch);
@@ -1312,6 +1351,15 @@ class NativeRingSource {
     if (raw.battery != null) patch.battery = num(raw.battery) ?? patch.battery;
     if (raw.firmware) patch.firmware = raw.firmware;
     if (raw.deviceAddress) patch.deviceId = String(raw.deviceAddress);
+    if (raw.deviceInfo) {
+      patch.deviceInfo = raw.deviceInfo as RingModuleInfo;
+      postLog('RingBle', `[DeviceInfo] deviceNumber=${raw.deviceInfo.deviceNumber} version=${raw.deviceInfo.deviceVersion} runningType=${raw.deviceInfo.runningType}(1=10种多运动) runningSaveTimes=${raw.deviceInfo.runningSaveTimes} motionState=${raw.deviceInfo.isSupportMotionState}`);
+    }
+    if (Array.isArray(raw.sportSessions)) {
+      patch.sportSessions = raw.sportSessions as RingSportSession[];
+      const names = (raw.sportSessions as any[]).map((s) => s.typeName).join('、');
+      postLog('RingBle', `[Sport] 读取到 ${raw.sportSessions.length} 段运动: ${names}`);
+    }
     if (Array.isArray(raw.devices)) {
       patch.devices = raw.devices.map((d: any) => ({
         id: String(d.id ?? ''),
@@ -2761,6 +2809,8 @@ class RingConnectionImpl {
     battery: null,
     firmware: null,
     deviceId: null,
+    deviceInfo: null,
+    sportSessions: null,
     metrics: { ...DEFAULT_METRICS },
     availability: { ...DEFAULT_AVAILABILITY },
     history: { ...EMPTY_HISTORY },
@@ -3735,7 +3785,7 @@ class RingConnectionImpl {
   /**
    * 今日状态曲线（v2 累积能量模型）。
    * - 每个自然日醒后第一次调用：算一次晨间种子 S0 并锁死（持久化），向时间线压入起点。
-   * - 仅当距上次累积 ≥30 分钟：提取本窗口信号 → accumulateWindow 累积 → 追加一个电量点。
+   * - 仅当距上次累积 ≥30 分钟：提取本窗口信号 → accumulateWindow 累积 → 追加一个今日状态点。
    * - 高频数据刷新不触发累积，只刷新头条（用时间线最新点），避免重复扣减。
    * 详见 docs/daily-status-curve-spec.md。
    */
@@ -4035,7 +4085,7 @@ class RingConnectionImpl {
     return h >= 8 && h < 22;
   }
 
-  /** 佩戴中断软重置用：依据当前窗口情境估算一个粗略电量 */
+  /** 佩戴中断软重置用：依据当前窗口情境估算一个粗略今日状态 */
   private spotBattery(sig: WindowSignals, baseline: DaytimeBaseline): number {
     if (sig.asleep) return 95;
     if (isRecoveringNow(sig, baseline, CURVE_DEFAULTS)) return 90;

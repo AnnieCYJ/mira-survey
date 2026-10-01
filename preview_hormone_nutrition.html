@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>激素 × 今日饮食 · 预览</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --textSub:#5F5F74;
+    --lime:#6E7A24; --down:#B13232; --busy:rgba(31,29,26,0.06); --empty:#F6F4F1;
+    --card:#FFFFFF; --bg:#F2EFEA;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;display:flex;justify-content:center;padding:24px 0;color:var(--ink);}
+  .phone{width:390px;background:var(--bg);padding:16px;}
+  .card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .title{font-size:16px;font-weight:600;color:var(--ink);}
+  .tag{background:var(--busy);border-radius:999px;padding:3px 10px;font-size:11px;color:var(--textSub);font-weight:500;}
+  .row{display:flex;gap:10px;margin-bottom:16px;}
+  .dot{width:10px;height:10px;border-radius:999px;margin-top:5px;flex:none;}
+  .body{flex:1;}
+  .rowHead{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .name{font-size:14px;font-weight:600;color:var(--ink);}
+  .chip{border-radius:999px;padding:3px 10px;font-size:11px;font-weight:500;}
+  .hint{font-size:13px;color:var(--inkSoft);margin-top:5px;line-height:1.5;}
+  .note{font-size:11px;color:var(--textSub);margin-top:4px;line-height:1.45;}
+  .empty{font-size:13px;color:var(--textSub);line-height:1.6;}
+  .sub{font-size:12px;color:var(--textSub);margin:0 0 8px 2px;}
+</style>
+</head>
+<body>
+  <div class="phone">
+
+    <div class="sub">上一卡：周期阶段 × 营养建议（通用阶段目标，不变）</div>
+
+    <!-- 激素 × 今日饮食 -->
+    <div class="card">
+      <div class="head">
+        <div class="title">激素水平 × 今日饮食</div>
+        <div class="tag">推算参考</div>
+      </div>
+
+      <!-- 皮质醇：偏高（红） -->
+      <div class="row">
+        <div class="dot" style="background:var(--down)"></div>
+        <div class="body">
+          <div class="rowHead">
+            <div class="name">皮质醇（压力代理）</div>
+            <div class="chip" style="background:rgba(177,50,50,0.1);color:var(--down)">当日偏高</div>
+          </div>
+          <div class="hint">皮质醇偏高（已连续 3 天偏高）时，可留意含镁食物（深绿蔬菜、坚果、黑巧）与充足水分，少碰咖啡因与高糖。</div>
+        </div>
+      </div>
+
+      <!-- 雌激素：上行（绿） -->
+      <div class="row">
+        <div class="dot" style="background:var(--lime)"></div>
+        <div class="body">
+          <div class="rowHead">
+            <div class="name">雌激素</div>
+            <div class="chip" style="background:rgba(110,122,36,0.1);color:var(--lime)">正常 · 上行</div>
+          </div>
+          <div class="hint">雌激素上行，适量优质脂肪与十字花科蔬菜（西兰花、羽衣甘蓝）有助雌激素代谢。</div>
+        </div>
+      </div>
+
+      <!-- 孕激素：黄体期正常（绿） -->
+      <div class="row">
+        <div class="dot" style="background:var(--lime)"></div>
+        <div class="body">
+          <div class="rowHead">
+            <div class="name">孕激素</div>
+            <div class="chip" style="background:rgba(110,122,36,0.1);color:var(--lime)">正常</div>
+          </div>
+          <div class="hint">孕酮处于黄体期高位，身体更需稳定碳水与温润杂粮。</div>
+        </div>
+      </div>
+
+      <div class="note">激素均为戒指信号推算的参考值（压力代理 / 生理相关），非化验结果，不作诊断。</div>
+    </div>
+
+    <!-- 空态示例 -->
+    <div class="card">
+      <div class="head">
+        <div class="title">激素水平 × 今日饮食</div>
+        <div class="tag">推算参考</div>
+      </div>
+      <div class="empty">激素推算需要连续佩戴戒指的体温 / HRV / 皮质醇数据。先记一次经期并连续戴几天，这里会自动出现针对激素的饮食建议。</div>
+    </div>
+
+  </div>
+</body>
+</html>

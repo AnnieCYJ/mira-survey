@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 饮食页预览（修正版：与真机一致）</title>
+<style>
+  :root{
+    --honeyCore:#F0C46E; --honeyDeep:#B98A2E; --honeySoft:#FBEFD6;
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --cardBg:#FFFFFF; --cardBorder:rgba(31,29,26,0.09);
+    --limeFg:#6E7A24; --limeBg:#EAF0BE;
+    --trendDown:#B13232; --trendDownBg:rgba(177,50,50,0.10);
+    --textSub:#5F5F74;
+    --btnFrom:#D5E384; --btnTo:#F6B3D0; --btnText:#5F6B1F;
+    --protein:#4C74C9; --carbs:#6E7A24; --fat:#C9598A;
+    --phaseLuteal:#F0C46E;
+    --limeTrans:rgba(110,122,36,0.10); --trendTrans:rgba(177,50,50,0.10);
+    --emptyFill:#F1EFEA; --cardSoft:#F6F4F1;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  html,body{margin:0; padding:0; background:#EDEAF4; color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;}
+  .stage{max-width:1000px; margin:0 auto; padding:28px 16px 56px;}
+  .pageTitle{font-size:20px; font-weight:600; color:var(--ink); margin:0 0 4px;}
+  .pageSub{font-size:13px; color:var(--textSub); margin:0 0 8px; line-height:1.5;}
+  .pageNote{font-size:12px; color:var(--inkFaint); margin:0 0 22px; line-height:1.6;}
+  .phones{display:flex; gap:28px; flex-wrap:wrap; justify-content:center;}
+  .phone{width:390px; background:#fff; border-radius:44px; overflow:hidden;
+    box-shadow:0 30px 60px -24px rgba(70,58,110,0.35), 0 0 0 10px #1c1a22, 0 0 0 11px #34313d;
+    position:relative; display:flex; flex-direction:column;}
+  .statusBar{height:44px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 26px; font-size:13px; font-weight:600; color:var(--ink); flex:0 0 auto;}
+  .statusBar .right{display:flex; gap:6px; align-items:center;}
+  .notch{position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    width:120px; height:26px; background:#1c1a22; border-radius:16px; z-index:5;}
+  .screen{flex:1; background:#fff; padding:6px 16px 0; min-height:780px; display:flex; flex-direction:column;}
+  .viewCap{font-size:12px; font-weight:600; color:#6153AF; letter-spacing:.04em; text-align:center; margin:10px 0 14px;}
+  .header{display:flex; align-items:center; gap:10px; padding:4px 2px 12px;}
+  .back{width:34px; height:34px; border-radius:10px; background:var(--cardBg); border:1px solid var(--cardBorder);
+    display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--ink);}
+  .title{font-size:22px; font-weight:700; color:var(--ink);}
+  .scroll{flex:1; overflow:hidden; display:flex; flex-direction:column; gap:14px; padding-bottom:8px;}
+  .homeSub{font-size:13px; color:var(--inkSoft); margin:2px 2px 0;}
+  .card{background:var(--cardBg); border:1px solid var(--cardBorder); border-radius:24px; padding:18px;
+    box-shadow:0 14px 34px -18px rgba(31,29,26,0.14);}
+  /* ── 状态卡 ── */
+  .phaseRow{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .phaseDot{width:10px; height:10px; border-radius:50%; background:var(--phaseLuteal);}
+  .phaseLabel{font-size:16px; font-weight:700; color:var(--ink);}
+  .phaseTag{margin-left:auto; font-size:11px; color:var(--inkFaint); background:var(--honeySoft); padding:3px 9px; border-radius:999px;}
+  .statusLine{font-size:14px; font-weight:600; color:var(--trendDown); margin-bottom:12px;}
+  .suggestHead{font-size:12px; font-weight:600; color:var(--inkFaint); margin:10px 0 7px;}
+  .chips{display:flex; flex-wrap:wrap; gap:7px;}
+  .chip{padding:6px 11px; border-radius:999px; font-size:13px; font-weight:600;}
+  .chipMore{background:var(--limeTrans); color:var(--limeFg);}
+  .chipLess{background:var(--trendTrans); color:var(--trendDown);}
+  .emptyTitle{font-size:15px; font-weight:600; color:var(--ink);}
+  .emptySub{font-size:12.5px; color:var(--inkFaint); line-height:1.5; margin-top:6px;}
+  /* ── 相册（有记录态，与真机一致）── */
+  .galHead{display:flex; align-items:baseline; margin-bottom:10px;}
+  .galDate{font-size:15px; font-weight:700; color:var(--ink);}
+  .galKcal{margin-left:auto; font-size:12.5px; color:var(--inkFaint); font-weight:600;}
+  .galGrid{display:flex; gap:10px;}
+  .galTile{width:104px; height:104px; border-radius:14px; background:var(--honeySoft); position:relative;
+    display:flex; align-items:center; justify-content:center;}
+  .galInitial{font-size:26px; font-weight:700; color:var(--honeyDeep);}
+  .galDel{position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%;
+    background:rgba(31,29,26,0.55); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center;}
+  .galKcalBadge{position:absolute; left:0; right:0; bottom:0; background:rgba(31,29,26,0.55); color:#fff;
+    font-size:11px; font-weight:600; text-align:center; padding:3px 0; border-radius:0 0 14px 14px;}
+  /* ── 落地页头部 ── */
+  .backRow{display:flex; align-items:center; gap:4px; padding:4px 0 12px;}
+  .backArrow{font-size:20px; color:var(--ink); line-height:1;}
+  .backText{font-size:15px; font-weight:600; color:var(--ink);}
+  .photo{height:170px; border-radius:18px; background:linear-gradient(135deg,#FCE7C8,#F0C46E);
+    display:flex; align-items:center; justify-content:center; color:#8a6a25; font-size:13px; margin-bottom:14px;}
+  .mealTitle{font-size:16px; font-weight:700; color:var(--ink);}
+  .mealHead{display:flex; align-items:center; margin-bottom:12px;}
+  .mealTag{margin-left:auto; font-size:11px; color:var(--inkFaint); background:var(--honeySoft); padding:3px 9px; border-radius:999px;}
+  .rematch{font-size:12px; color:var(--honeyDeep); font-weight:600; margin-left:10px;}
+  /* ── 卡路里环（真实 = 单色蜂蜜进度环，pct=本餐热量/今日目标）── */
+  .ringWrap{display:flex; justify-content:center; margin:6px 0 14px;}
+  .ring{width:128px; height:128px; border-radius:50%;
+    background:conic-gradient(var(--honeyCore) 0 62%, var(--honeySoft) 62% 100%);
+    display:flex; align-items:center; justify-content:center; position:relative;}
+  .ring::after{content:""; position:absolute; inset:12px; border-radius:50%; background:#fff;}
+  .ringCenter{position:relative; text-align:center; z-index:1;}
+  .ringKcal{font-size:30px; font-weight:700; color:var(--ink); line-height:1.1;}
+  .ringUnit{font-size:13px; color:var(--inkFaint);}
+  /* ── 宏量分段条（真实 = 一条连续分段条，protein/#4C74C9 carbs/#6E7A24 fat/#C9598A）── */
+  .macroBar{display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--emptyFill); margin-bottom:10px;}
+  .seg{height:100%;}
+  .legend{display:flex; flex-direction:column; gap:6px; margin-bottom:12px;}
+  .legRow{display:flex; align-items:center; gap:7px; font-size:12.5px;}
+  .legDot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .legLabel{color:var(--inkSoft);}
+  .legVal{margin-left:auto; color:var(--inkFaint); font-weight:600;}
+  /* ── 三格宏量瓦片 ── */
+  .tiles{display:flex; gap:8px; margin-bottom:12px;}
+  .tile{flex:1; background:var(--cardSoft); border-radius:12px; padding:10px 4px; align-items:center; display:flex; flex-direction:column; gap:2px;}
+  .tileDot{width:8px; height:8px; border-radius:50%;}
+  .tileVal{font-size:15px; font-weight:700; color:var(--ink);}
+  .tileName{font-size:11px; color:var(--inkFaint);}
+  .tilePct{font-size:11px; color:var(--inkSoft); font-weight:600;}
+  /* ── 菜品清单 ── */
+  .foodList{display:flex; flex-direction:column; gap:8px; margin-bottom:10px;}
+  .foodRow{display:flex; align-items:center; gap:8px;}
+  .thumb{width:32px; height:32px; border-radius:8px; background:var(--honeySoft); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--honeyDeep); font-weight:700; flex:0 0 auto;}
+  .foodName{font-size:13px; font-weight:600; color:var(--ink);}
+  .foodPortion{font-size:11px; color:var(--inkFaint);}
+  .foodKcal{margin-left:auto; font-size:12px; color:var(--inkSoft); font-weight:600;}
+  .foodX{font-size:14px; color:var(--inkFaint);}
+  .insight{display:flex; flex-direction:column; gap:6px;}
+  .insRow{display:flex; align-items:flex-start; gap:7px; font-size:12.5px; color:var(--inkSoft); line-height:1.5;}
+  .insDot{width:5px; height:5px; border-radius:50%; background:var(--honeyCore); margin-top:6px; flex:0 0 auto;}
+  .note{font-size:11px; color:var(--inkFaint); line-height:1.5; margin-top:6px;}
+  /* ── 元素 / 激素卡 ── */
+  .secHead{display:flex; align-items:center; margin-bottom:12px;}
+  .secTitle{font-size:15px; font-weight:700; color:var(--ink);}
+  .secTag{margin-left:auto; font-size:11px; color:var(--inkFaint); background:var(--honeySoft); padding:3px 9px; border-radius:999px;}
+  .elChip{display:inline-flex; align-items:center; gap:5px; padding:6px 11px; border-radius:999px; font-size:13px; font-weight:600; background:var(--limeTrans); color:var(--limeFg); margin:0 6px 8px 0;}
+  .elChipDot{width:7px; height:7px; border-radius:50%; background:var(--limeFg);}
+  .lack{font-size:12.5px; color:var(--inkSoft); margin-bottom:6px;}
+  .lack b{color:var(--ink); font-weight:600;}
+  .hormRow{display:flex; align-items:flex-start; gap:7px; font-size:12.5px; color:var(--inkSoft); line-height:1.5; margin-bottom:7px;}
+  .hormDot{width:6px; height:6px; border-radius:50%; background:var(--honeyDeep); margin-top:5px; flex:0 0 auto;}
+  .nextTip{font-size:12.5px; color:var(--honeyDeep); font-weight:600; margin:4px 0 6px;}
+  /* ── 固定底部主按钮（同源渐变）── */
+  .footerCta{padding:8px 4px 14px; flex:0 0 auto;}
+  .cta{width:100%; border:none; border-radius:999px; padding:17px 0;
+    background:linear-gradient(135deg,var(--btnFrom),var(--btnTo));
+    color:var(--btnText); font-size:16px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow:0 12px 24px -10px rgba(150,160,80,0.5); cursor:pointer;}
+  .cta .ico{width:18px;height:18px;display:inline-block;vertical-align:middle;}
+  .legend2{font-size:12px; color:var(--textSub); text-align:center; margin-top:14px; line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="pageTitle">Mira · 饮食页（双视图 · 修正版）</div>
+  <div class="pageSub">左：首页（状态卡 → 美食相册 → 固定底部大号「饮食识别」）。右：拍照落地页（照片 → 这一餐 → 元素 → 激素影响 → 保存）。</div>
+  <div class="pageNote">⚠️ 修正点：① 真实组件：环是 <b>单色蜂蜜进度环（128px，中心大 kcal + "kcal" 单位，pct=本餐热量/今日目标）</b>；宏量是 <b>一条连续分段条 + 图例 + 三格瓦片</b>。② 底部「饮食识别」已修复为<b>真正贴底</b>（内容短时也固定在屏幕最下方，不再悬在内容后面）。③ 左屏相册已改为有记录实况（与真机一致）。</div>
+  <div class="phones">
+
+    <!-- ════════ 左：首页 ════════ -->
+    <div class="phone">
+      <div class="statusBar"><span>9:41</span><span class="right">●●● 5G ▱</span></div>
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="viewCap">首页 · 工具「饮食识别」卡入口</div>
+        <div class="header"><span class="back">‹</span><span class="title">饮食</span></div>
+        <div class="scroll">
+          <div class="homeSub">你现在的阶段，和今天适合吃什么</div>
+
+          <!-- 状态卡 -->
+          <div class="card">
+            <div class="phaseRow">
+              <span class="phaseDot"></span><span class="phaseLabel">黄体期</span>
+              <span class="phaseTag">阶段营养</span>
+            </div>
+            <div class="statusLine">皮质醇节律紊乱 · 今天饮食宜清淡</div>
+            <div class="suggestHead">多吃</div>
+            <div class="chips">
+              <span class="chip chipMore">↑ 镁（坚果 / 深绿菜）</span>
+              <span class="chip chipMore">↑ 维B6（鸡肉 · 香蕉 · 土豆）</span>
+              <span class="chip chipMore">↑ 钙（奶 · 豆腐 · 小鱼干）</span>
+              <span class="chip chipMore">↑ 复合碳水（燕麦 · 红薯 · 糙米）</span>
+            </div>
+            <div class="suggestHead">少吃</div>
+            <div class="chips">
+              <span class="chip chipLess">↓ 高盐高糖（甜点 · 含糖饮料 · 腌制品）</span>
+              <span class="chip chipLess">↓ 过量咖啡因（咖啡 · 浓茶 · 可乐）</span>
+              <span class="chip chipLess">↓ 咖啡因</span>
+              <span class="chip chipLess">↓ 高糖</span>
+            </div>
+          </div>
+
+          <!-- 美食相册：有记录（按日期分组 + 照片格 + 删除） -->
+          <div>
+            <div class="galHead"><span class="galDate">9月27日</span><span class="galKcal">900 kcal</span></div>
+            <div class="galGrid">
+              <div class="galTile"><span class="galInitial">油</span><span class="galDel">✕</span><span class="galKcalBadge">300</span></div>
+              <div class="galTile"><span class="galInitial">糕</span><span class="galDel">✕</span><span class="galKcalBadge">600</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 固定底部大号 CTA -->
+        <div class="footerCta">
+          <button class="cta"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6B1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v4M8 3v4M10 3v4"/><path d="M6 7h4"/><path d="M8 7v14"/><path d="M18 3v18"/><path d="M18 3c-3 1-5 3-5 7"/></svg>饮食识别</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 右：拍照落地页 ════════ -->
+    <div class="phone">
+      <div class="statusBar"><span>9:41</span><span class="right">●●● 5G ▱</span></div>
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="viewCap">拍照落地页 · 识别后</div>
+        <div class="backRow"><span class="backArrow">‹</span><span class="backText">返回</span></div>
+
+        <!-- 照片 -->
+        <div class="photo">（刚拍的餐食照片）</div>
+
+        <!-- 这一餐 -->
+        <div class="card">
+          <div class="mealHead">
+            <span class="mealTitle">这一餐</span>
+            <span class="mealTag">AI 识别</span>
+            <span class="rematch">重新识别</span>
+          </div>
+
+          <!-- 卡路里环（单色蜂蜜进度环） -->
+          <div class="ringWrap">
+            <div class="ring">
+              <div class="ringCenter">
+                <div class="ringKcal">642</div>
+                <div class="ringUnit">kcal</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 宏量分段条 -->
+          <div class="macroBar">
+            <div class="seg" style="width:30%;background:var(--protein);"></div>
+            <div class="seg" style="width:48%;background:var(--carbs);"></div>
+            <div class="seg" style="width:22%;background:var(--fat);"></div>
+          </div>
+          <div class="legend">
+            <div class="legRow"><span class="legDot" style="background:var(--protein);"></span><span class="legLabel">蛋白质</span><span class="legVal">48g · 30%</span></div>
+            <div class="legRow"><span class="legDot" style="background:var(--carbs);"></span><span class="legLabel">碳水</span><span class="legVal">76g · 48%</span></div>
+            <div class="legRow"><span class="legDot" style="background:var(--fat);"></span><span class="legLabel">脂肪</span><span class="legVal">16g · 22%</span></div>
+          </div>
+
+          <!-- 三格宏量瓦片 -->
+          <div class="tiles">
+            <div class="tile"><span class="tileDot" style="background:var(--protein);"></span><span class="tileVal">48g</span><span class="tileName">蛋白质</span><span class="tilePct">30%</span></div>
+            <div class="tile"><span class="tileDot" style="background:var(--carbs);"></span><span class="tileVal">76g</span><span class="tileName">碳水</span><span class="tilePct">48%</span></div>
+            <div class="tile"><span class="tileDot" style="background:var(--fat);"></span><span class="tileVal">16g</span><span class="tileName">脂肪</span><span class="tilePct">22%</span></div>
+          </div>
+
+          <!-- 菜品清单 -->
+          <div class="foodList">
+            <div class="foodRow"><span class="thumb">米</span><div><div class="foodName">米饭</div><div class="foodPortion">1 碗</div></div><span class="foodKcal">230 kcal</span><span class="foodX">✕</span></div>
+            <div class="foodRow"><span class="thumb">鸡</span><div><div class="foodName">鸡蛋</div><div class="foodPortion">1 个</div></div><span class="foodKcal">90 kcal</span><span class="foodX">✕</span></div>
+            <div class="foodRow"><span class="thumb">菠</span><div><div class="foodName">菠菜</div><div class="foodPortion">1 份</div></div><span class="foodKcal">120 kcal</span><span class="foodX">✕</span></div>
+            <div class="foodRow"><span class="thumb">坚</span><div><div class="foodName">坚果</div><div class="foodPortion">1 小把</div></div><span class="foodKcal">180 kcal</span><span class="foodX">✕</span></div>
+          </div>
+
+          <!-- 营养解读 -->
+          <div class="insight">
+            <div class="insRow"><span class="insDot"></span><span>这一餐约占今日目标的 62%，是一餐较扎实的摄入。</span></div>
+            <div class="insRow"><span class="insDot"></span><span>蛋白质供能约 30%，本餐蛋白质来源较充足。</span></div>
+            <div class="note">以上为图像 / 选择估算，仅供记录参考，不作营养诊断。</div>
+          </div>
+        </div>
+
+        <!-- 这餐的元素 -->
+        <div class="card">
+          <div class="secHead">
+            <span class="secTitle">这餐的元素</span>
+            <span class="secTag">估算</span>
+          </div>
+          <div>
+            <span class="elChip"><span class="elChipDot"></span>富含 镁（深绿菜·坚果）≈80mg</span>
+            <span class="elChip"><span class="elChipDot"></span>富含 锌（贝类·瘦肉）≈5mg</span>
+            <span class="elChip"><span class="elChipDot"></span>富含 铁（红肉·菠菜）≈3mg</span>
+          </div>
+          <div class="lack">可留意补充：<b>钙（奶·豆腐） · B6（鸡肉·香蕉） · 叶酸（绿叶菜·豆）</b></div>
+          <div class="note">元素含量由识别模型按菜品估算（叶酸为微克），非精确检测，仅供参考。</div>
+        </div>
+
+        <!-- 这餐对激素的影响 -->
+        <div class="card">
+          <div class="secHead">
+            <span class="secTitle">这餐对激素的影响</span>
+            <span class="secTag">估算</span>
+          </div>
+          <div class="hormRow"><span class="hormDot"></span><span>含镁与锌，对孕激素偏弱阶段偏友好。</span></div>
+          <div class="hormRow"><span class="hormDot"></span><span>蛋白占比 30%，有助于平稳血糖与皮质醇。</span></div>
+          <div class="nextTip">下一餐 · 可补锌：贝类 / 瘦肉 / 坚果。</div>
+          <div class="note">以上为基于菜品的估算，非诊断，不替代专业建议。</div>
+        </div>
+
+        <!-- 保存（同源渐变） -->
+        <div class="footerCta">
+          <button class="cta"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6B1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>保存记录</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="legend2">按钮渐变 = <code>btnGradFrom #D5E384 → btnGradTo #F6B3D0</code>；卡片 = 全 App 统一白卡。宏量配色：蛋白 <code>#4C74C9</code> · 碳水 <code>#6E7A24</code> · 脂肪 <code>#C9598A</code>。</div>
+</div>
+</body>
+</html>

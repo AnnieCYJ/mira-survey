@@ -27,7 +27,7 @@ import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelin
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel } from '../lib/cognitiveLoad';
-import { RingBle } from '../ble/RingBleManager';
+import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
@@ -37,6 +37,8 @@ import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
 import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNarrative, type TodayScene } from '../lib/todayScene';
+import { resolveSportName } from '../lib/veepooSportTypes';
+import { sportVisualOf } from '../lib/sportVisual';
 
 /** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
 const memoryStore = new MemoryStore();
@@ -772,7 +774,7 @@ export default function TodayScreen() {
 
   // ★ v18.37 场景建议引擎：圈内 = 短建议词（≤6 字），胶囊 = 具体解释（≤2 行）。
   //   优先级：睡眠窗口 > 睡前1h(个人入睡习惯-60min) > 情绪尖峰 > 晨间满电
-  //           > 饭前低电量 > 久坐 > 午后低谷 > 傍晚收工；无场景 → 常规相位句。
+  //           > 饭前低今日状态 > 久坐 > 午后低谷 > 傍晚收工；无场景 → 常规相位句。
   //   频控：每词每日 ≤3 次（多数 ≤1）+ 最短冷却，持久化跨重启（lib/todayScene）。
   const scene: TodayScene | null = (() => {
     try {
@@ -984,6 +986,32 @@ export default function TodayScreen() {
   const stepDistToday = (() => { try { return ring?.stepDaily?.[dkToday]?.distance ?? 0; } catch { return 0; } })();
   // 运动卡数据口径：卡路里为主数字（kcal），脚注行=步数(stepsToday 复用上方声明)+距离；今日有任何步数即视为有数据
   const activityHasData = (stepsToday > 0) || weekSteps.some((w) => w.steps > 0);
+  // 戒指固件已按类型分类的运动段（多运动识别）：把识别出的运动类型与各自消耗塞进「运动消耗」卡
+  const sportSessions: RingSportSession[] | null = ring?.sportSessions ?? null;
+  const hasSportSessions = !!sportSessions && sportSessions.length > 0;
+  const sportKcalTotal = hasSportSessions
+    ? sportSessions.reduce((acc, s) => acc + (s.totalCal || 0), 0)
+    : 0;
+  // 原生只映射固件枚举前 53 项，超出会回「未知(N)」→ 按 type 用全量表还原（VEEPOO_SPORT_NAMES 0–188）
+  const sportNames = hasSportSessions
+    ? sportSessions.map((s) => resolveSportName(s.type, s.typeName)).filter(Boolean).join(' · ')
+    : '';
+  // ★ v18.88 首页运动卡副行：首段类型名按运动类别上色（嵌套 Text），段数走右上角 aside，
+  //   整行刻意压短（「跑步 等 3 段」）——130pt 高的窄卡里超一行就会被 numberOfLines:1 吃成省略号。
+  const sportFirst = hasSportSessions ? resolveSportName(sportSessions?.[0]?.type, sportSessions?.[0]?.typeName) : '';
+  const sportFirstColor = hasSportSessions ? sportVisualOf(sportSessions?.[0]?.type).color : '';
+  const sportCount = hasSportSessions ? (sportSessions?.length ?? 0) : 0;
+  // 右上角 aside 放总时长的短写法（≥1h 用 1:36 时钟式，否则用「96 分钟」）——
+  // 段数放副行，时长放 aside，两边不重复同一句话
+  const sportTotalSec = hasSportSessions
+    ? sportSessions.reduce((a, s) => a + (s.totalTime || 0), 0)
+    : 0;
+  const sportTotalMin = Math.round(sportTotalSec / 60);
+  const sportAside = hasSportSessions
+    ? (sportTotalMin >= 60
+      ? `${Math.floor(sportTotalMin / 60)}:${String(sportTotalMin % 60).padStart(2, '0')}`
+      : `${sportTotalMin} 分钟`)
+    : undefined;
 
   // ★ chips 数据标签（数值下方一行小字）：全部由当天真实数据推导档位，无数据不给词
   const recTag = (() => {
@@ -1287,9 +1315,17 @@ export default function TodayScreen() {
                   icon="bolt"
                   iconFg={mm.chipBg.cyan.fg}
                   title="运动消耗"
-                  subLine={activityHasData ? `${stepsToday.toLocaleString('en-US')} 步 · ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km` : '连上戒指后自动同步'}
-                  value={activityHasData ? String(Math.round(stepKcalToday)) : '—'}
-                  unit={activityHasData ? 'kcal' : undefined}
+                  aside={sportAside}
+                  subLine={hasSportSessions ? (
+                    <Text style={{ fontSize: theme.fs(10.5), fontWeight: theme.weight.medium, color: mm.colors.inkSoft }}>
+                      <Text style={{ color: sportFirstColor, fontWeight: theme.weight.semibold as never }}>
+                        {sportFirst}
+                      </Text>
+                      {sportCount > 1 ? ` 等 ${sportCount} 段` : ''}
+                    </Text>
+                  ) : (activityHasData ? `${stepsToday.toLocaleString('en-US')} 步 · ${stepDistToday >= 1 ? stepDistToday.toFixed(1) : stepDistToday.toFixed(2)} km` : '连上戒指后自动同步')}
+                  value={hasSportSessions ? String(Math.round(sportKcalTotal)) : (activityHasData ? String(Math.round(stepKcalToday)) : '—')}
+                  unit={(hasSportSessions || activityHasData) ? 'kcal' : undefined}
                   compact
                   style={{ height: theme.sp(32.5), flexGrow: 0, flexShrink: 0 }}
                   onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}

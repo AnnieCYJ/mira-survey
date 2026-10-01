@@ -2,7 +2,7 @@
  * toolRecommend.ts —— 工具页顶部「每日三张推荐卡」引擎（v18.39）
  *
  * 需求（用户 2026-09-28）：每天基于当天数据情况推荐三张卡片。
- *  - 候选池每项带优先级函数（0 = 不可选），全部用真实数据判定：电量档/睡眠评分/
+ *  - 候选池每项带优先级函数（0 = 不可选），全部用真实数据判定：今日状态档/睡眠评分/
  *    今日压力事件数/步数/周期相位/时段
  *  - 同分用「日期 hash」打散：同一天顺序稳定（刷新不变），跨天自然轮换
  *  - 优先级不足 3 张时从常青池（知识科普/呼吸/好气色）补齐，永远正好 3 张
@@ -16,9 +16,9 @@ import { computeStressReport } from './stressAlgorithm';
 
 export interface ToolCtx {
   now: number;
-  /** 电量档 0-3（充沛/平稳/偏低/不足）；null = 无数据 */
+  /** 今日状态档 0-3（充沛/平稳/偏低/不足）；null = 无数据 */
   levelIdx: number | null;
-  /** 当前电量 0-100 */
+  /** 当前状态值 0-100 */
   statusValue: number | null;
   /** 最近一晚睡眠评分 0-100 */
   sleepScore: number | null;
@@ -62,7 +62,7 @@ const POOL: Candidate[] = [
       if (h >= 20) p += 18;
       return Math.min(96, p);
     },
-    desc: (c) => `当前电量 ${c.statusValue != null ? Math.round(c.statusValue) : '—'}，身体还绷着——10 分钟 4-7-8 呼吸把它松开，晚上更容易睡着。`,
+    desc: (c) => `当前状态值 ${c.statusValue != null ? Math.round(c.statusValue) : '—'}，身体还绷着——10 分钟 4-7-8 呼吸把它松开，晚上更容易睡着。`,
     flip: {
       articleId: 'sigh',
       collection: 'emotion',
@@ -157,7 +157,7 @@ const POOL: Candidate[] = [
     title: '25 分钟深度专注',
     action: '开始 · 25 min',
     prio: (c) => (c.levelIdx === 0 ? 70 : 0),
-    desc: (c) => `电量 ${c.statusValue != null ? Math.round(c.statusValue) : '—'} 在高位，正是能沉下来的时候——把最难的事放进这 25 分钟。`,
+    desc: (c) => `今日状态 ${c.statusValue != null ? Math.round(c.statusValue) : '—'} 在高位，正是能沉下来的时候——把最难的事放进这 25 分钟。`,
     flip: {
       articleId: 'dopamine',
       collection: 'learn',
@@ -283,7 +283,7 @@ const POOL: Candidate[] = [
     title: '90 秒生理性叹息',
     action: '开始 · 2 min',
     prio: (c) => (c.levelIdx != null && c.levelIdx >= 2 ? 58 : 0),
-    desc: (c) => `电量 ${c.statusValue != null ? Math.round(c.statusValue) : '—'}，身体绷着——90 秒生理性叹息，最快把心率压下来。`,
+    desc: (c) => `今日状态 ${c.statusValue != null ? Math.round(c.statusValue) : '—'}，身体绷着——90 秒生理性叹息，最快把心率压下来。`,
     flip: {
       articleId: 'sigh',
       collection: 'emotion',

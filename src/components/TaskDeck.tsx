@@ -53,7 +53,8 @@ const EXIT_THRESHOLD = 60;
 
 interface Props {
   tools: TaskItem[];
-  onComplete: (id: string) => void;
+  /** v18.93 主按钮「开始」→ 标记完成 + 跳对应功能页（传整卡供路由判断） */
+  onComplete: (t: TaskItem) => void;
   /** v18.88 翻面「查看详情」→ 跳转科普阅读页 */
   onOpenArticle?: (articleId: string, collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition') => void;
   /** v18.91 背面「去完成」→ 跳对应实操页（有 flip.do 的卡才显示该按钮） */
@@ -237,7 +238,7 @@ export default function TaskDeck({ tools, onComplete, onOpenArticle, onDoTask }:
   }), [dragX, dragY, n, advance, handleDeckTap]);
 
   const handleComplete = useCallback(
-    (id: string) => { onComplete(id); advance(); },
+    (t: TaskItem) => { onComplete(t); advance(); },
     [onComplete, advance]
   );
 
@@ -311,7 +312,7 @@ export default function TaskDeck({ tools, onComplete, onOpenArticle, onDoTask }:
                 <TouchableOpacity
                   style={[styles.btn, t.done && styles.btnDone]}
                   disabled={t.done}
-                  onPress={() => handleComplete(t.id)}
+                  onPress={() => handleComplete(t)}
                   activeOpacity={0.85}
                 >
                   {/* v18.77：行动按钮回归全 App 主按钮标准——btnGradFrom→btnGradTo 紫渐变 + 白字

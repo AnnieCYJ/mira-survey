@@ -23,7 +23,7 @@ function fmtTime(t: number): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-// 电量档位分界（spec §8，均匀 25 段）：休息一下 0–25 / 平平静静 26–50 / 状态良好 51–75 / 元气满满 76–100
+// 今日状态档位分界（spec §8，均匀 25 段）：休息一下 0–25 / 平平静静 26–50 / 状态良好 51–75 / 元气满满 76–100
 const CUTS = [26, 51, 76];
 
 export default function DailyStatusCard({
@@ -44,7 +44,7 @@ export default function DailyStatusCard({
     return (
       <Card style={styles.card}>
         <Text style={styles.title}>今日状态</Text>
-        <Text style={styles.empty}>连接戒指并连续佩戴几天后，这里会显示你的恢复电量曲线</Text>
+        <Text style={styles.empty}>连接戒指并连续佩戴几天后，这里会显示你的今日状态曲线</Text>
       </Card>
     );
   }
@@ -85,7 +85,7 @@ export default function DailyStatusCard({
         <Text style={styles.phase}>{phaseText}</Text>
       </View>
 
-      {/* 电量刻度条：分界 26/51/76，标记点 = 当前电量 */}
+      {/* 今日状态刻度条：分界 26/51/76，标记点 = 当前状态分 */}
       <View style={styles.track}>
         {CUTS.map((c) => (
           <View key={c} style={[styles.divider, { left: `${c}%` }]} />
@@ -109,7 +109,7 @@ export default function DailyStatusCard({
         </Text>
       </View>
 
-      {/* 日内趋势：每 30 分钟一个电量点 */}
+      {/* 日内趋势：每 30 分钟一个今日状态点 */}
       <Text style={styles.trendLabel}>
         日内趋势（每 30 分钟）{lastT ? `· 最近 ${fmtTime(lastT)}` : ''}
       </Text>
@@ -120,7 +120,7 @@ export default function DailyStatusCard({
         <Text style={styles.sparkHint}>
           {todayPts.length === 1
             ? `已记录 ${fmtTime(todayPts[0].t)} 的读数，每 30 分钟自动新增一个点`
-            : '佩戴 30 分钟后，这里会画出今天的恢复电量曲线'}
+            : '佩戴 30 分钟后，这里会画出今天的今日状态曲线'}
         </Text>
       ) : null}
 

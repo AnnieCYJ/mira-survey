@@ -26,6 +26,7 @@ import Icon from '../components/Icon';
 import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import SleepStageChart from '../components/SleepStageChart';
+import SleepHormoneCorrelation from '../components/SleepHormoneCorrelation';
 import { startOfDay, startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey } from '../data/healthStore';
@@ -47,6 +48,8 @@ interface DayRec {
   rem: number;
   score: number;
   getUp: number;
+  sleepTime?: string | null;   // 入睡时间 "HH:mm"（用于作息规律性）
+  wakeTime?: string | null;    // 起床时间 "HH:mm"
 }
 
 function parseKey(k: string): Date | null {
@@ -54,8 +57,8 @@ function parseKey(k: string): Date | null {
   return Number.isFinite(t.getTime()) ? t : null;
 }
 
-function fmtDur(min: number): string {
-  if (!Number.isFinite(min) || min <= 0) return '—';
+function fmtDur(min: number | null): string {
+  if (min == null || !Number.isFinite(min) || min <= 0) return '—';
   let h = Math.floor(min / 60);
   let m = Math.round(min % 60);
   if (m >= 60) { h += 1; m -= 60; }  // ★ 进位：避免 "9h60m"
@@ -106,6 +109,110 @@ function toRecords(sleepDaily: Record<string, SleepSummary>): { key: string; dat
     })
     .filter((x): x is { key: string; date: Date; rec: DayRec } => x != null)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+const GOAL_MIN = 450; // 7.5h 参考目标线（仅作对比参考，非强制目标）
+
+function parseHM(s?: string | null): number | null {
+  if (!s || typeof s !== 'string') return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+/** 入睡跨午夜归一到「傍晚起点」：AM(<12:00) 视为 +1440，便于算入睡波动 */
+function bedMinute(s?: string | null): number | null {
+  const t = parseHM(s);
+  if (t == null) return null;
+  return t < 720 ? t + 1440 : t;
+}
+function stdOf(vals: (number | null)[]): number | null {
+  const v = vals.filter((x): x is number => x != null && Number.isFinite(x));
+  if (v.length < 2) return null;
+  const m = v.reduce((a, b) => a + b, 0) / v.length;
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+}
+interface Agg {
+  total: number | null;
+  deepPct: number | null;
+  remPct: number | null;
+  score: number | null;
+  count: number;
+  bedStd: number | null;
+  wakeStd: number | null;
+  bedMean: number | null;
+  wakeMean: number | null;
+}
+/** 对 [start,end] 窗口内的睡眠记录做聚合（与柱状图当前窗口口径一致） */
+function aggSleep(recs: { key: string; date: Date; rec: DayRec }[], start: Date, end: Date): Agg {
+  const valid = recs
+    .filter((r) => r.date.getTime() >= start.getTime() && r.date.getTime() <= end.getTime())
+    .map((r) => r.rec)
+    .filter((r) => r.total > 0);
+  return {
+    total: meanOf(valid.map((r) => r.total)),
+    deepPct: meanOf(valid.map((r) => (r.deep / r.total) * 100)),
+    remPct: meanOf(valid.map((r) => (r.rem / r.total) * 100)),
+    score: meanOf(valid.map((r) => (r.score != null ? r.score : null))),
+    count: valid.length,
+    bedStd: stdOf(valid.map((r) => bedMinute(r.sleepTime ?? null))),
+    wakeStd: stdOf(valid.map((r) => parseHM(r.wakeTime ?? null))),
+    bedMean: meanOf(valid.map((r) => bedMinute(r.sleepTime ?? null))),
+    wakeMean: meanOf(valid.map((r) => parseHM(r.wakeTime ?? null))),
+  };
+}
+/** 当前区间窗口（周=自然周 / 月=自然月 / 年=整年 / 日=当天） */
+function windowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
+  if (range === 'week') return { start: startOfWeek(anchor), end: endOfWeek(anchor) };
+  if (range === 'month') {
+    const y = anchor.getFullYear(), m = anchor.getMonth();
+    const s = new Date(y, m, 1);
+    const e = new Date(y, m + 1, 0); e.setHours(23, 59, 59, 999);
+    return { start: s, end: e };
+  }
+  if (range === 'year') {
+    const y = anchor.getFullYear();
+    const s = new Date(y, 0, 1);
+    const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
+    return { start: s, end: e };
+  }
+  const a = new Date(anchor); a.setHours(0, 0, 0, 0);
+  const e = new Date(a); e.setHours(23, 59, 59, 999);
+  return { start: a, end: e };
+}
+/** 上一等长周期窗口（用于「环比上一周期」对比） */
+function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
+  if (range === 'week') {
+    const s = startOfWeek(anchor), e = endOfWeek(anchor);
+    s.setDate(s.getDate() - 7); e.setDate(e.getDate() - 7);
+    return { start: s, end: e };
+  }
+  if (range === 'month') {
+    const y = anchor.getFullYear(), m = anchor.getMonth();
+    const s = new Date(y, m - 1, 1);
+    const e = new Date(y, m, 0); e.setHours(23, 59, 59, 999);
+    return { start: s, end: e };
+  }
+  if (range === 'year') {
+    const y = anchor.getFullYear() - 1;
+    const s = new Date(y, 0, 1);
+    const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
+    return { start: s, end: e };
+  }
+  const a = new Date(anchor); a.setDate(a.getDate() - 1); a.setHours(0, 0, 0, 0);
+  const e = new Date(a); e.setHours(23, 59, 59, 999);
+  return { start: a, end: e };
+}
+type CmpKind = 'dur' | 'pct' | 'score';
+/** 对比信息：当前值文本 + 环比 delta（箭头+颜色，上升=好） */
+function cmpInfo(cur: number | null, prev: number | null, kind: CmpKind): { curText: string; deltaText: string; deltaColor: string } {
+  const curText = cur == null ? '—' : kind === 'dur' ? fmtDur(cur) : kind === 'pct' ? `${Math.round(cur)}%` : `${Math.round(cur)}`;
+  if (cur == null || prev == null) return { curText, deltaText: '上期无数据', deltaColor: theme.colors.textSub };
+  const d = cur - prev;
+  const tol = kind === 'dur' ? 1 : 0.5;
+  if (Math.abs(d) < tol) return { curText, deltaText: '→ 持平', deltaColor: theme.colors.textSub };
+  const up = d > 0;
+  const deltaText = (up ? '▲ ' : '▼ ') + (kind === 'dur' ? fmtDur(Math.abs(d)) : kind === 'pct' ? `${Math.abs(d).toFixed(1)}pp` : `${Math.round(Math.abs(d))}`);
+  return { curText, deltaText, deltaColor: up ? theme.colors.trendUp : theme.colors.trendDown };
 }
 
 export default function SleepDetailScreen() {
@@ -254,6 +361,23 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
       hasData: vals.some((v) => v != null),
     };
   }, [range, sleepDaily, anchor]);
+
+  // ★ 对比聚合：当前区间 vs 上一等长周期 + 个人基线（近30天），复用 EmotionCognitiveDetailScreen 范式
+  const cmp = useMemo<{
+    has: boolean; cur?: Agg; prev?: Agg; baseline?: Agg; goalPct?: number | null; bedStd?: number | null; wakeStd?: number | null;
+  }>(() => {
+    const recsAll = toRecords(sleepDaily);
+    if (recsAll.length === 0) return { has: false };
+    const cur = windowOf(range, anchor);
+    const prev = prevWindowOf(range, anchor);
+    const baseStart = new Date(prev.start); baseStart.setDate(baseStart.getDate() - 30);
+    const curAgg = aggSleep(recsAll, cur.start, cur.end);
+    const prevAgg = aggSleep(recsAll, prev.start, prev.end);
+    const baseAgg = aggSleep(recsAll, baseStart, prev.start);
+    const goalPct = curAgg.total != null ? Math.min(150, Math.round((curAgg.total / GOAL_MIN) * 100)) : null;
+    return { has: true, cur: curAgg, prev: prevAgg, baseline: baseAgg, goalPct, bedStd: curAgg.bedStd, wakeStd: curAgg.wakeStd };
+  }, [range, sleepDaily, anchor]);
+
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const yMax = (() => {
@@ -331,15 +455,7 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                   sleepTime={summary?.sleepTime ?? null}
                   totalMinutes={summary?.total ?? null}
                 />
-                {/* 单天摘要：4 张独立卡片，2x2 grid */}
-                <View style={styles.statRow}>
-                  <StatItem label="总时长" value={summary ? fmtDur(summary.total) : '—'} />
-                  <StatItem label="深睡" value={summary ? fmtDur(summary.deep) : '—'} />
-                </View>
-                <View style={styles.statRow}>
-                  <StatItem label="REM" value={summary ? fmtDur(summary.rem) : '—'} />
-                  <StatItem label="睡眠评分" value={summary ? String(Math.round(summary.score)) : '—'} />
-                </View>
+                {/* 单天指标（总时长/深睡/REM/评分/作息）统一移到下方 SleepMetricCompare 行式列表 */}
               </>
             );
           })()}
@@ -447,6 +563,16 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                     );
                   })}
 
+                  {/* ===== 均值参考线 + 目标参考线 ===== */}
+                  {avg != null && (() => {
+                    const y = yAt(avg);
+                    return <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={mm.colors.limeDeep} strokeWidth={1.4} strokeDasharray="6 4" opacity={0.85} />;
+                  })()}
+                  {GOAL_MIN <= yMax && (() => {
+                    const y = yAt(GOAL_MIN);
+                    return <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={theme.colors.accentSolid} strokeWidth={1.4} strokeDasharray="2 3" opacity={0.85} />;
+                  })()}
+
                   {/* X 轴标签已移到 HTML 外层 axis 行 */}
                 </Svg>
                   </View>{/* SVG 区域 flex:1 */}
@@ -458,6 +584,20 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
                   {axisLabels.map((lab, i) => (
                     <Text key={`x${i}`} style={styles.axisText}>{lab}</Text>
                   ))}
+                </View>
+
+                {/* 参考线图例：均值（虚线）/ 目标（点线） */}
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendLine, { borderColor: mm.colors.limeDeep, borderStyle: 'dashed' }]} />
+                    <Text style={styles.legendText}>均值 {avg != null ? fmtDur(avg) : '—'}</Text>
+                  </View>
+                  {GOAL_MIN <= yMax && (
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendLine, { borderColor: theme.colors.accentSolid, borderStyle: 'dotted' }]} />
+                      <Text style={styles.legendText}>目标 {fmtDur(GOAL_MIN)}</Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* ===== Tooltip：选中柱子上方浮出 ===== */}
@@ -525,22 +665,14 @@ function buildAxisLabels(start: Date, end: Date, N: number, fmt: (d: Date, isFir
         </View>
       )}
 
-      {/* 周 / 月 / 年 的统计摘要（柱状图模式） */}
-      {range !== 'day' && (
-        <>
-          {/* 3 个独立卡片，1 行 3 列 */}
-          <View style={styles.statRow}>
-            <StatItem label="最新" value={fmtDur(current ?? 0)} />
-            <StatItem label="均值" value={fmtDur(avg ?? 0)} />
-            <StatItem label="最佳" value={fmtDur(best ?? 0)} />
-          </View>
-          {/* 3 个独立卡片，1 行 3 列（次要指标更低调） */}
-          <View style={styles.statRow}>
-            <StatItem label="深睡占比" value={fmtPct(deepAvg)} sub />
-            <StatItem label="REM 占比" value={fmtPct(remAvg)} sub />
-            <StatItem label="睡眠评分" value={scoreAvg != null ? String(Math.round(scoreAvg)) : '—'} sub />
-          </View>
-        </>
+      {/* 睡眠指标 · 对比上一周期（参考 Oura/Whoop 行式：标签左 · 数值右 · 趋势箭头） */}
+      <SleepMetricCompare range={range} cmp={cmp} />
+
+      {/* 睡眠 × 周期阶段 × 皮质醇 观察关联（仅月视图展示） */}
+      {range === 'month' && (
+        <View style={{ marginTop: theme.space.md }}>
+          <SleepHormoneCorrelation ring={ring} />
+        </View>
       )}
 
     </ScreenContainer>
@@ -557,12 +689,80 @@ function SvgTextLabel({ x, y, text, anchor, sub }: { x: number; y: number; text:
   );
 }
 
-function StatItem({ label, value, sub }: { label: string; value: string; sub?: boolean }) {
-  // sub: 次要指标（深睡%/REM%），用更低调的样式
+/** 睡眠指标行式对比卡（参考 Oura / Whoop：每个指标一行，名称左·数值右·环比箭头） */
+function fmtClock(min: number | null): string {
+  if (min == null || !Number.isFinite(min)) return '—';
+  const m = ((min % 1440) + 1440) % 1440; // 入睡跨午夜归一到 0–1440
+  const h = Math.floor(m / 60);
+  const mm2 = Math.round(m % 60);
+  return `${String(h).padStart(2, '0')}:${String(mm2).padStart(2, '0')}`;
+}
+/** 入睡/起床时间环比：更早(数值减小)通常更好 → 绿；更晚 → 红（健康作息常识，非诊断） */
+function cmpTime(cur: number | null, prev: number | null): { text: string; color: string } {
+  if (cur == null || prev == null) return { text: '上期无数据', color: theme.colors.textSub };
+  const d = cur - prev;
+  if (Math.abs(d) < 1) return { text: '→ 持平', color: theme.colors.textSub };
+  const earlier = d < 0;
+  return { text: (earlier ? '早 ' : '晚 ') + Math.abs(Math.round(d)) + '分', color: earlier ? theme.colors.trendUp : theme.colors.trendDown };
+}
+
+function MetricRow({ name, dot, value, delta }: { name: string; dot?: string; value: string; delta: { deltaText: string; deltaColor: string } }) {
   return (
-    <View style={[styles.statCell, sub && styles.statCellSub]}>
-      <Text style={[styles.statVal, sub && styles.statValSub]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.mRow}>
+      <View style={styles.mNameWrap}>
+        {dot ? <View style={[styles.mDot, { backgroundColor: dot }]} /> : null}
+        <Text style={styles.mName}>{name}</Text>
+      </View>
+      <View style={styles.mValWrap}>
+        <Text style={styles.mVal}>{value}</Text>
+        <Text style={[styles.mDelta, { color: delta.deltaColor }]}>{delta.deltaText}</Text>
+      </View>
+    </View>
+  );
+}
+
+function SleepMetricCompare({ range, cmp }: { range: RangeKey; cmp: { has: boolean; cur?: Agg; prev?: Agg; baseline?: Agg; goalPct?: number | null; bedStd?: number | null; wakeStd?: number | null } }) {
+  if (!cmp.has || !cmp.cur || !cmp.prev) return null;
+  const { cur, prev, baseline, goalPct, bedStd, wakeStd } = cmp;
+  const subTitle = range === 'day' ? '对比前一晚' : '对比上一周期';
+  const structRows = [
+    { name: '总睡眠时长', dot: mm.colors.limeDeep, value: fmtDur(cur.total), delta: cmpInfo(cur.total, prev.total, 'dur') },
+    { name: '深睡占比', dot: theme.colors.accentSolid, value: fmtPct(cur.deepPct), delta: cmpInfo(cur.deepPct, prev.deepPct, 'pct') },
+    { name: 'REM 占比', dot: theme.colors.accent2, value: fmtPct(cur.remPct), delta: cmpInfo(cur.remPct, prev.remPct, 'pct') },
+    { name: '睡眠评分', dot: mm.colors.ink, value: cur.score != null ? String(Math.round(cur.score)) : '—', delta: cmpInfo(cur.score, prev.score, 'score') },
+  ];
+  const bedD = cmpTime(cur.bedMean, prev.bedMean);
+  const wakeD = cmpTime(cur.wakeMean, prev.wakeMean);
+  const timeRows = [
+    { name: '平均入睡', value: fmtClock(cur.bedMean), delta: { deltaText: bedD.text, deltaColor: bedD.color } },
+    { name: '平均起床', value: fmtClock(cur.wakeMean), delta: { deltaText: wakeD.text, deltaColor: wakeD.color } },
+  ];
+  return (
+    <View style={styles.mCard}>
+      <View style={styles.mHead}>
+        <Text style={styles.mTitle}>睡眠指标</Text>
+        <Text style={styles.mHeadSub}>{subTitle}</Text>
+      </View>
+      {structRows.map((r, i) => (
+        <View key={r.name}>
+          <MetricRow name={r.name} dot={r.dot} value={r.value} delta={r.delta} />
+          {i < structRows.length - 1 && <View style={styles.mDivider} />}
+        </View>
+      ))}
+      <View style={styles.mDivider} />
+      <Text style={styles.mGroupTitle}>作息规律</Text>
+      {timeRows.map((r, i) => (
+        <View key={r.name}>
+          <MetricRow name={r.name} value={r.value} delta={r.delta} />
+          {i < timeRows.length - 1 && <View style={styles.mDivider} />}
+        </View>
+      ))}
+      <View style={styles.mFooter}>
+        <Text style={styles.mFootItem}>个人基线 <Text style={styles.mFootVal}>{baseline?.total != null ? fmtDur(baseline.total) : '—'}</Text></Text>
+        <Text style={styles.mFootItem}>目标达成 <Text style={styles.mFootVal}>{goalPct != null ? `${Math.round(goalPct)}%` : '—'}</Text></Text>
+        {bedStd != null && <Text style={styles.mFootItem}>入睡波动 <Text style={styles.mFootVal}>±{Math.round(bedStd)}分</Text></Text>}
+        {wakeStd != null && <Text style={styles.mFootItem}>起床波动 <Text style={styles.mFootVal}>±{Math.round(wakeStd)}分</Text></Text>}
+      </View>
     </View>
   );
 }
@@ -598,31 +798,37 @@ const styles = StyleSheet.create({
   axisWeekday: { fontSize: 10, color: theme.colors.textSub, fontWeight: '400' },
   axisDate: { fontSize: theme.fontSize.micro, color: theme.colors.textTitle, fontWeight: '500', marginTop: 1 },
   axisMonth: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: '500', textAlign: 'center' },
-  statRow: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.sm },
-  statCell: {
-    flex: 1,
-    borderRadius: theme.radius.card,
-    paddingVertical: theme.space.md,
-    paddingHorizontal: theme.space.sm,
-    alignItems: 'center',
-    backgroundColor: theme.colors.cardBgSoft,
+  // ===== 指标行式对比卡（参考 Oura/Whoop） =====
+  mCard: {
+    backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: theme.colors.ui.borderSoft,
+    borderColor: theme.colors.cardBorder,
+    padding: theme.space.cardPad,
+    marginBottom: theme.space.md,
   },
-  statCellSub: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
+  mHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: theme.space.sm },
+  mTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  mHeadSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  mGroupTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.sm, marginBottom: theme.space.xs },
+  mRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.space.sm },
+  mNameWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  mDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25), marginRight: theme.space.sm },
+  mName: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle, fontWeight: theme.weight.medium },
+  mValWrap: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space.sm },
+  mVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, minWidth: 56, textAlign: 'right' },
+  mDelta: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, minWidth: 56, textAlign: 'right' },
+  mDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
+  mFooter: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm,
+    marginTop: theme.space.sm, paddingTop: theme.space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft,
   },
-  statVal: {
-    fontSize: theme.fontSize.card,   // ~18px，比 h2(22px) 小，不挤
-    fontWeight: theme.weight.semibold,
-    color: theme.colors.textTitle,
-    lineHeight: theme.fontSize.card + 4,
-  },
-  statValSub: {
-    fontSize: theme.fontSize.sm,   // ~14px，次要指标更小
-    color: theme.colors.textSub,
-    fontWeight: theme.weight.medium,
-  },
-  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  mFootItem: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  mFootVal: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  // ===== 参考线图例 =====
+  legendRow: { flexDirection: 'row', justifyContent: 'center', gap: theme.space.lg, marginTop: theme.sp(1) },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  legendLine: { width: 18, height: 0, borderTopWidth: 2 },
+  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 });

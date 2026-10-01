@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>饮食识别 · 这一餐分析（预览）</title>
+<style>
+  :root{
+    --honeyDeep:#B98A2E; --honeyCore:#F0C46E; --honeySoft:#FBEFD6;
+    --ink:#1F1D1A; --inkSoft:#4A4742; --sub:#8A857D; --line:rgba(31,29,26,0.08);
+    --card:#FFFFFF; --bg:#F7F5F1;
+    --prot:#3F6FB0; --carb:#6E7A24; --fat:#C9598A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;}
+  body{background:var(--bg);display:flex;justify-content:center;padding:24px 12px;}
+  .phone{width:390px;}
+  .minihead{font-size:12px;color:var(--sub);text-align:center;margin-bottom:10px;letter-spacing:.5px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;}
+  /* 识别结果（已有） */
+  .rhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .rtitle{font-size:15px;font-weight:600;color:var(--ink);}
+  .rematch{font-size:12px;color:#6153AF;font-weight:600;}
+  .item{padding:10px 0;border-bottom:1px solid rgba(31,29,26,0.06);}
+  .itemrow{display:flex;align-items:center;gap:8px;}
+  .iname{flex:1;font-size:14px;color:#3A3733;}
+  .ipor{font-size:12px;color:var(--sub);}
+  .ikcal{font-size:14px;font-weight:600;color:var(--honeyDeep);}
+  .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .pill{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600;}
+  .dot{width:5px;height:5px;border-radius:3px;}
+  .total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid rgba(31,29,26,0.09);}
+  .tlabel{font-size:14px;color:var(--inkSoft);}
+  .tval{font-size:20px;font-weight:700;color:var(--honeyDeep);}
+  .macrobar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--honeySoft);margin-top:10px;}
+  .seg{height:100%;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;}
+  .leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--inkSoft);}
+  .legval{font-weight:600;color:var(--ink);}
+  .save{margin-top:14px;background:linear-gradient(135deg,var(--honeyCore),var(--honeyDeep));color:#fff;font-weight:600;font-size:14px;text-align:center;padding:12px;border-radius:999px;}
+  /* 这一餐分析（新增） */
+  .ma-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .ma-title{font-size:15px;font-weight:600;color:var(--ink);}
+  .ma-tag{padding:3px 10px;border-radius:999px;background:rgba(31,29,26,0.06);font-size:11px;font-weight:600;color:var(--sub);}
+  .ma-hero{display:flex;align-items:baseline;gap:8px;margin-bottom:14px;}
+  .ma-kcal{font-size:30px;font-weight:700;color:var(--honeyDeep);}
+  .ma-unit{font-size:14px;color:var(--sub);}
+  .subhead{font-size:14px;font-weight:600;color:var(--ink);margin:18px 0 8px;}
+  .lines{margin-top:8px;}
+  .line{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
+  .ldot{width:5px;height:5px;border-radius:3px;background:var(--honeyDeep);margin-top:6px;flex:none;}
+  .ltext{flex:1;font-size:14px;color:var(--inkSoft);line-height:20px;}
+  .src{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .srcname{width:96px;font-size:12px;color:#3A3733;}
+  .srcwrap{flex:1;height:8px;border-radius:999px;background:var(--honeySoft);overflow:hidden;}
+  .srcbar{height:100%;background:var(--honeyCore);border-radius:999px;}
+  .srckcal{width:64px;text-align:right;font-size:12px;font-weight:600;color:var(--honeyDeep);}
+  .note{font-size:11px;color:var(--sub);margin-top:14px;line-height:16px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="minihead">饮食识别 · 示例餐（卵泡期目标 1800 kcal）</div>
+
+  <!-- 已有：识别结果 -->
+  <div class="card">
+    <div class="rhead"><div class="rtitle">识别结果</div><div class="rematch">重新识别</div></div>
+    <div class="item">
+      <div class="itemrow"><div class="iname">🍅 番茄炒蛋</div><div class="ipor">1 份</div><div class="ikcal">260 kcal</div></div>
+      <div class="pills">
+        <div class="pill" style="background:rgba(63,111,176,.1)"><span class="dot" style="background:var(--prot)"></span>蛋白质 12g</div>
+        <div class="pill" style="background:rgba(110,122,36,.1)"><span class="dot" style="background:var(--carb)"></span>碳水 10g</div>
+        <div class="pill" style="background:rgba(201,89,138,.1)"><span class="dot" style="background:var(--fat)"></span>脂肪 18g</div>
+      </div>
+    </div>
+    <div class="item">
+      <div class="itemrow"><div class="iname">🍚 米饭</div><div class="ipor">1 碗</div><div class="ikcal">230 kcal</div></div>
+      <div class="pills">
+        <div class="pill" style="background:rgba(63,111,176,.1)"><span class="dot" style="background:var(--prot)"></span>蛋白质 4g</div>
+        <div class="pill" style="background:rgba(110,122,36,.1)"><span class="dot" style="background:var(--carb)"></span>碳水 50g</div>
+      </div>
+    </div>
+    <div class="item">
+      <div class="itemrow"><div class="iname">🐟 清蒸鱼</div><div class="ipor">1 份</div><div class="ikcal">240 kcal</div></div>
+      <div class="pills">
+        <div class="pill" style="background:rgba(63,111,176,.1)"><span class="dot" style="background:var(--prot)"></span>蛋白质 34g</div>
+        <div class="pill" style="background:rgba(201,89,138,.1)"><span class="dot" style="background:var(--fat)"></span>脂肪 11g</div>
+      </div>
+    </div>
+    <div class="total"><div class="tlabel">合计</div><div class="tval">730 kcal</div></div>
+    <div class="macrobar">
+      <div class="seg" style="width:28.4%;background:var(--prot)"></div>
+      <div class="seg" style="width:34.0%;background:var(--carb)"></div>
+      <div class="seg" style="width:37.6%;background:var(--fat)"></div>
+    </div>
+    <div class="legend">
+      <div class="leg"><span class="dot" style="background:var(--prot)"></span>蛋白质 50g <span class="legval">28%</span></div>
+      <div class="leg"><span class="dot" style="background:var(--carb)"></span>碳水 60g <span class="legval">34%</span></div>
+      <div class="leg"><span class="dot" style="background:var(--fat)"></span>脂肪 30g <span class="legval">38%</span></div>
+    </div>
+    <div class="save">保存记录</div>
+  </div>
+
+  <!-- 新增：这一餐分析 -->
+  <div class="card">
+    <div class="ma-head"><div class="ma-title">这一餐分析</div><div class="ma-tag">AI 识别</div></div>
+    <div class="ma-hero"><div class="ma-kcal">730</div><div class="ma-unit">kcal · 约占今日目标 41%</div></div>
+
+    <div class="subhead">三大营养素供能占比</div>
+    <div class="macrobar">
+      <div class="seg" style="width:28.4%;background:var(--prot)"></div>
+      <div class="seg" style="width:34.0%;background:var(--carb)"></div>
+      <div class="seg" style="width:37.6%;background:var(--fat)"></div>
+    </div>
+    <div class="lines">
+      <div class="line"><span class="ldot"></span><div class="ltext">这一餐约占今日目标的 41%，分量适中。</div></div>
+      <div class="line"><span class="ldot"></span><div class="ltext">蛋白质供能约 28%，本餐蛋白质来源较充足。</div></div>
+      <div class="line"><span class="ldot"></span><div class="ltext">碳水供能约 34%。</div></div>
+      <div class="line"><span class="ldot"></span><div class="ltext">脂肪供能约 38%。</div></div>
+    </div>
+
+    <div class="subhead">热量来源</div>
+    <div class="src"><div class="srcname">🍅 番茄炒蛋</div><div class="srcwrap"><div class="srcbar" style="width:100%"></div></div><div class="srckcal">260 kcal</div></div>
+    <div class="src"><div class="srcname">🐟 清蒸鱼</div><div class="srcwrap"><div class="srcbar" style="width:92%"></div></div><div class="srckcal">240 kcal</div></div>
+    <div class="src"><div class="srcname">🍚 米饭</div><div class="srcwrap"><div class="srcbar" style="width:88%"></div></div><div class="srckcal">230 kcal</div></div>
+
+    <div class="note">以上为图像 / 选择估算，仅供记录参考，不作营养诊断。</div>
+  </div>
+</div>
+</body>
+</html>

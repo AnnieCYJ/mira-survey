@@ -1,11 +1,16 @@
 import React, { useRef } from 'react';
-import { Animated, View, StyleSheet, type ViewStyle } from 'react-native';
+import { Animated, View, StyleSheet, type ScrollView, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 
 interface Props {
   children: React.ReactNode;
+  /**
+   * ★ 把内部 ScrollView 的 ref 交给调用方（可选，不传行为与原来完全一致）。
+   *   用于「点 CTA 滚到某区块」：调用方 measure 目标 View 后 scrollTo。
+   */
+  scrollRef?: React.Ref<ScrollView> | null;
   compactTop?: boolean;
   style?: ViewStyle;
   contentStyle?: ViewStyle;
@@ -22,6 +27,12 @@ interface Props {
    * 例外：TodayScreen 自己铺了「上白下紫」，所以它传 `colors.textWhite`。
    */
   topFadeColor?: string | null;
+  /**
+   * ★ 让 inner 容器 flex:1（配合 contentStyle={{flexGrow:1}} 使用）。
+   * 用于「滚动区 + 固定底部 CTA」结构：内容短时按钮也稳稳贴在屏幕底部。
+   * 默认关闭，不影响任何现有页面。
+   */
+  stretchInner?: boolean;
 }
 
 // 与 App 根渐变同源（不再重复写色值，唯一真相源在 theme.colors.bgGradStops）
@@ -30,12 +41,14 @@ const GRAD_LOCS: number[] = [0, 0.34, 0.64, 1];
 
 export default function ScreenContainer({
   children,
+  scrollRef,
   compactTop = false,
   style,
   contentStyle,
   withGradient = false,
   scrollY,
   topFadeColor = theme.colors.bgTop,
+  stretchInner = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   // ★ 顶边「化入」遮罩（全 App 共用）：内容滚到顶边时溶入底色，而不是被上边缘硬切。
@@ -59,6 +72,7 @@ export default function ScreenContainer({
         />
       )}
       <Animated.ScrollView
+        ref={scrollRef as React.Ref<ScrollView> | undefined}
         style={styles.fill}
         contentContainerStyle={[
           styles.content,
@@ -75,7 +89,7 @@ export default function ScreenContainer({
           useNativeDriver: true,
         })}
       >
-        <View style={styles.inner}>{children}</View>
+        <View style={[styles.inner, stretchInner && styles.innerStretch]}>{children}</View>
       </Animated.ScrollView>
 
       {topFadeColor ? (
@@ -102,4 +116,5 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: theme.space.screen,
   },
+  innerStretch: { flex: 1 },
 });
