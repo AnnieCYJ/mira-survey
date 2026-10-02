@@ -13,38 +13,26 @@ import { MEDITATION_TRACKS } from '../data/meditation/tracks';
 import type { BreathStyle } from '../components/breathing/BreathingEngine';
 import type { MeditationTrack } from '../data/meditation/tracks';
 
-// —— 流体艺术背景图 ——
-const IMG_CALM = require('../assets/mood_calm.jpg');
-const IMG_STRESS = require('../assets/mood_stress.jpg');
-const IMG_HEARTBREAK = require('../assets/mood_heartbreak.jpg');
+// —— 呼吸引导配图 ——
+const IMG_BOX = require('../assets/breathing/thumb_box.jpg');
+const IMG_CALM_BREATH = require('../assets/breathing/thumb_calm.jpg');
+const IMG_SLEEP_BREATH = require('../assets/breathing/thumb_sleep.jpg');
+const IMG_ENERGIZE = require('../assets/breathing/thumb_energize.jpg');
 
-// —— Your Mood ——
-interface MoodCard {
-  key: string;
-  label: string;
-  image: number;
-  patternKey: 'box' | 'calm' | 'energize' | 'sleep' | 'stress';
-  style: BreathStyle;
-  duration: number;
-}
-
-const MOODS: MoodCard[] = [
-  { key: 'calm',       label: '平静', image: IMG_CALM,       patternKey: 'calm',    style: 'orb',   duration: 5 },
-  { key: 'stress',     label: '压力', image: IMG_STRESS,     patternKey: 'stress',  style: 'watch', duration: 5 },
-  { key: 'heartbreak', label: '疗愈', image: IMG_HEARTBREAK, patternKey: 'box',     style: 'ring',  duration: 5 },
-];
+// —— Pattern keys（共享类型）——
+type PatternKey = 'box' | 'calm' | 'energize' | 'sleep' | 'stress';
 
 // —— 呼吸引导（Breathing）——
-interface BreathTrack { title: string; duration: string; patternKey: MoodCard['patternKey']; style: BreathStyle; }
+interface BreathTrack { title: string; duration: string; patternKey: PatternKey; style: BreathStyle; thumb: number; accent: string; }
 const BREATH_TRACKS: BreathTrack[] = [
-  { title: '箱式呼吸',  duration: '4-4-4-4 · 平衡自主神经', patternKey: 'box',     style: 'orb' },
-  { title: '放松呼吸',  duration: '4-2-6 · 延长呼气',       patternKey: 'calm',    style: 'ring' },
-  { title: '睡前呼吸',  duration: '4-7-8 · 助眠',           patternKey: 'sleep',   style: 'wave' },
-  { title: '提神呼吸',  duration: '6-2 · 激活交感',         patternKey: 'energize',style: 'watch' },
+  { title: '箱式呼吸',  duration: '4-4-4-4 · 平衡自主神经', patternKey: 'box',     style: 'orb',   thumb: IMG_BOX,           accent: '#B8A9C9' },
+  { title: '放松呼吸',  duration: '4-2-6 · 延长呼气',       patternKey: 'calm',    style: 'ring',  thumb: IMG_CALM_BREATH,   accent: '#E8B4B8' },
+  { title: '睡前呼吸',  duration: '4-7-8 · 助眠',           patternKey: 'sleep',   style: 'wave',  thumb: IMG_SLEEP_BREATH,  accent: '#9B8EC4' },
+  { title: '提神呼吸',  duration: '6-2 · 激活交感',         patternKey: 'energize',style: 'watch', thumb: IMG_ENERGIZE,      accent: '#F4A261' },
 ];
 
 // —— Mini Courses ——
-interface Course { title: string; meta: string; tag?: 'live' | 'course'; patternKey: MoodCard['patternKey']; style: BreathStyle; duration: number; }
+interface Course { title: string; meta: string; tag?: 'live' | 'course'; patternKey: PatternKey; style: BreathStyle; duration: number; }
 const COURSES: Course[] = [
   { title: '轻松冥想入门', meta: '8 小时系列课程', tag: 'course', patternKey: 'box',  style: 'orb',  duration: 5 },
   { title: '线上团体课',   meta: '6 人在线',       tag: 'live',   patternKey: 'calm', style: 'ring', duration: 5 },
@@ -60,7 +48,7 @@ const SLEEP_CARDS: ListItem[] = [
 
 export default function BreathingScreen() {
   const navigation = useNavigation<any>();
-  const [breathPlayer, setBreathPlayer] = useState<null | { patternKey: MoodCard['patternKey']; style: BreathStyle; duration: number }>(null);
+  const [breathPlayer, setBreathPlayer] = useState<null | { patternKey: PatternKey; style: BreathStyle; duration: number }>(null);
   const [meditationTrack, setMeditationTrack] = useState<MeditationTrack | null>(null);
 
   return (
@@ -88,20 +76,6 @@ export default function BreathingScreen() {
         </View>
       </View>
 
-      {/* ——— 你的情绪 ——— */}
-      <Text style={styles.sectionTitle}>你的情绪</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moodRow} snapToInterval={148 + theme.space.sm} decelerationRate="fast">
-        {MOODS.map((m) => (
-          <Pressable key={m.key} style={({ pressed }) => [{ opacity: pressed ? 0.88 : 1 }]}
-            onPress={() => setBreathPlayer({ patternKey: m.patternKey, style: m.style, duration: m.duration })}
-          >
-            <ImageBackground source={m.image} style={styles.moodCard} imageStyle={styles.moodImage}>
-              <Text style={styles.moodLabel}>{m.label}</Text>
-            </ImageBackground>
-          </Pressable>
-        ))}
-      </ScrollView>
-
       {/* ——— 呼吸引导（可视化节奏）——— */}
       <Text style={styles.sectionTitle}>呼吸引导</Text>
       <View style={styles.trackList}>
@@ -109,13 +83,14 @@ export default function BreathingScreen() {
           <Pressable key={i} style={({ pressed }) => [styles.trackItem, pressed && { opacity: 0.7 }]}
             onPress={() => setBreathPlayer({ patternKey: t.patternKey, style: t.style, duration: 5 })}
           >
-            <View style={styles.playBtn}>
+            <View style={[styles.playBtn, { backgroundColor: t.accent }]}>
               <Icon name="play" size={theme.fs(16)} color={theme.colors.textWhite} strokeWidth={2.2} />
             </View>
             <View style={styles.trackInfo}>
               <Text style={styles.trackTitle}>{t.title}</Text>
               <Text style={styles.trackDuration}>{t.duration}</Text>
             </View>
+            <Image source={t.thumb} style={styles.trackThumb} />
           </Pressable>
         ))}
       </View>
@@ -127,7 +102,6 @@ export default function BreathingScreen() {
           <Pressable key={i} style={({ pressed }) => [styles.trackItem, pressed && { opacity: 0.7 }]}
             onPress={() => setMeditationTrack(t)}
           >
-            <Image source={t.thumb} style={styles.trackThumb} />
             <View style={[styles.playBtn, { backgroundColor: t.accent }]}>
               <Icon name="play" size={theme.fs(16)} color={theme.colors.textWhite} strokeWidth={2.2} />
             </View>
@@ -135,6 +109,7 @@ export default function BreathingScreen() {
               <Text style={styles.trackTitle}>{t.title}</Text>
               <Text style={styles.trackDuration}>{t.subtitle}</Text>
             </View>
+            <Image source={t.thumb} style={styles.trackThumb} />
           </Pressable>
         ))}
       </View>
@@ -199,16 +174,6 @@ const styles = StyleSheet.create({
     marginTop: theme.space.lg, marginBottom: theme.space.card,
   },
 
-  moodRow: { gap: theme.space.card, paddingVertical: theme.space.sm },
-  moodCard: { width: 148, height: 148, borderRadius: theme.radius.card, overflow: 'hidden', justifyContent: 'flex-end' },
-  moodImage: { width: '100%', height: '100%' },
-  moodLabel: {
-    fontSize: theme.fontSize.card, fontWeight: theme.weight.bold,
-    color: theme.colors.textWhite,
-    padding: theme.space.cardPad,
-    textShadowColor: 'rgba(0,0,0,0.25)', textShadowRadius: 6,
-  },
-
   trackThumb: { width: 52, height: 52, borderRadius: theme.radius.sm },
   trackList: { gap: theme.space.card },
   trackItem: {
@@ -221,10 +186,10 @@ const styles = StyleSheet.create({
   },
   playBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: mm.colors.purpleBtn, // 白色播放图标
+    backgroundColor: mm.colors.purpleBtn,
     alignItems: 'center', justifyContent: 'center',
   },
-  trackInfo: { gap: 2 },
+  trackInfo: { flex: 1, gap: 2 },
   trackTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textBody },
   trackDuration: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
 
@@ -241,7 +206,7 @@ const styles = StyleSheet.create({
   courseInfo: { flex: 1, gap: 2 },
   courseTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textBody },
   courseMeta: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: mm.colors.purpleCore }, // v21：live=紫
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: mm.colors.purpleCore },
 
   modalBg: {
     flex: 1,

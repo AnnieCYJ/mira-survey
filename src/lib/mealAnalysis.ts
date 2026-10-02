@@ -16,7 +16,7 @@
 import type { MealItem } from './foodAi';
 import type { HormoneNutritionSnapshot } from './hormoneNutrition';
 
-export type ElementKey = 'mg' | 'zn' | 'fe' | 'ca' | 'b6' | 'fa';
+export type ElementKey = 'mg' | 'zn' | 'fe' | 'ca' | 'b6' | 'fa' | 'se';
 
 export const ELEMENT_META: Record<ElementKey, { label: string; foods: string; unit: string }> = {
   mg: { label: '镁', foods: '深绿菜 / 坚果 / 豆 / 黑巧', unit: 'mg' },
@@ -25,6 +25,7 @@ export const ELEMENT_META: Record<ElementKey, { label: string; foods: string; un
   ca: { label: '钙', foods: '奶 / 酸奶 / 豆腐 / 小鱼', unit: 'mg' },
   b6: { label: '维生素 B6', foods: '鸡肉 / 鱼 / 土豆 / 香蕉', unit: 'mg' },
   fa: { label: '叶酸', foods: '绿叶菜 / 豆 / 肝', unit: 'μg' },
+  se: { label: '硒', foods: '巴西坚果 / 海鲜 / 鸡蛋 / 大蒜', unit: 'μg' },
 };
 
 const ELEMENT_KEYWORDS: Record<ElementKey, string[]> = {
@@ -34,6 +35,7 @@ const ELEMENT_KEYWORDS: Record<ElementKey, string[]> = {
   ca: ['牛奶', '奶', '酸奶', '奶酪', '芝士', '豆腐', '小鱼', '绿叶菜', '芥蓝'],
   b6: ['鸡肉', '鸡', '鱼', '土豆', '香蕉', '坚果', '三文鱼', '金枪鱼'],
   fa: ['菠菜', '西兰花', '青菜', '绿叶', '豆', '肝', '橙子', '柑橘', '芦笋'],
+  se: ['巴西坚果', '海鲜', '金枪鱼', '三文鱼', '鸡蛋', '大蒜', '蘑菇', '燕麦', '全麦'],
 };
 
 export interface ElementResult {

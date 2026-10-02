@@ -1,5 +1,5 @@
 /**
- * EmotionCognitiveDetailScreen —— 全天恢复详情页（首页/洞察页「全天恢复」卡点入；与情绪/脑力消耗详情页统一骨架）
+ * EmotionCognitiveDetailScreen —— 昼夜节律详情页（首页/洞察页「昼夜节律」卡点入，v18.96 由「全天恢复」更名；与情绪/脑力消耗详情页统一骨架）
  *
  * 结构：返回头 → Hero(周期标题) → RangeSwitch(日/周/月/年) → DateAnchorPicker → InsightBanner(AI综合) → 内容
  *   · 日：锚定日的全天看板（皮质醇全天趋势 + 情绪/脑力/睡眠摘要 + 相比前一天），与之前一致
@@ -407,9 +407,9 @@ export default function EmotionCognitiveDetailScreen() {
             <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
-            <Text style={styles.title}>全天恢复</Text>
+            <Text style={styles.title}>昼夜节律</Text>
             {/* ★ 副标题：与情绪/脑力消耗详情页同结构（标题 + 副标题） */}
-            <Text style={styles.sub}>皮质醇节律 · 情绪 · 疲劳 · 睡眠恢复</Text>
+            <Text style={styles.sub}>皮质醇昼夜曲线 · 情绪 · 疲劳 · 睡眠恢复</Text>
           </View>
         </View>
 

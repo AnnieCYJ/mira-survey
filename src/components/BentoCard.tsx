@@ -158,21 +158,21 @@ const styles = StyleSheet.create({
     marginRight: theme.sp(1.5),
   },
   ttlCompact: {
-    fontSize: theme.fs(12.5),
+    fontSize: theme.fontSize.xs,
   },
   ttl: {
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
   },
   sub: {
-    fontSize: theme.fs(10),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
     marginTop: theme.sp(0.2),
   },
   subLine: {
-    fontSize: theme.fs(10.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
     marginTop: theme.sp(0.5),
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   aside: {
     marginLeft: 'auto',
     paddingLeft: theme.sp(2),
-    fontSize: theme.fs(11.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
   },
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.sp(1),
   },
   statTop: {
-    fontSize: theme.fs(12.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
     marginBottom: theme.sp(0.4),
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     lineHeight: theme.fs(30),
   },
   unit: {
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: mm.colors.inkSoft,
     marginLeft: theme.sp(0.5),
@@ -235,12 +235,12 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(31,29,26,0.08)',   // ★ v18.59：dashed 在 Fabric 报「Unsupported dashed/dotted border style」红条，改实线浅色
   },
   footText: {
-    fontSize: theme.fs(11.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
   },
   footLineText: {
-    fontSize: theme.fs(12),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
     marginTop: theme.sp(0.75),

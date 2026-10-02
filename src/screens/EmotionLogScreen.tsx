@@ -2,8 +2,8 @@
  * EmotionLogScreen —— 情绪记录页（Mooda 式 + 物理珠雨）
  *
  * v18.25 改版：
- *  - 情绪扩到 12 档；去掉月历（用户要求）。
- *  - 选择方式改为 Matter.js 弹珠动效：12 种情绪玻璃珠从顶部随机落下，重力下落、
+ *  - 情绪为 5 档愉悦度（兴奋/开心/平静/压力/难过，v19.00 从 12 档收敛）；去掉月历。
+ *  - 选择方式改为 Matter.js 弹珠动效：5 颗情绪玻璃珠从顶部随机落下，重力下落、
  *    互相碰撞反弹、底部堆积，堆积后持续轻微摇晃；点一颗珠子=选中该情绪。
  *    物理由 matter-js 模拟，渲染 react-native-svg（每帧读 body 位置重绘）。
  *
@@ -69,8 +69,8 @@ const eas = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: theme.sp(2),
   },
-  secTitle: { fontSize: theme.fs(15), fontWeight: theme.weight.semibold, color: mm.colors.ink },
-  secCount: { fontSize: theme.fs(12), color: mm.colors.inkFaint },
+  secTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  secCount: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -89,20 +89,20 @@ const eas = StyleSheet.create({
   },
   body: { flex: 1, marginLeft: theme.sp(3) },
   eyebrow: {
-    fontSize: theme.fs(10.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
     letterSpacing: 0.6,
     color: mm.chipBg.lav.fg,
     marginBottom: theme.sp(0.5),
   },
   cardTitle: {
-    fontSize: theme.fs(14),
+    fontSize: theme.fontSize.body,
     lineHeight: theme.fs(19),
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
     marginBottom: theme.sp(1),
   },
-  link: { fontSize: theme.fs(11.5), fontWeight: theme.weight.medium, color: mm.colors.inkFaint },
+  link: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium, color: mm.colors.inkFaint },
 });
 
 /* ── 珠雨参数 ────────────────────────────────────────────── */
@@ -158,7 +158,7 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
       Matter.Bodies.rectangle(W + 30, RAIN_H / 2, 60, RAIN_H * 3, wallOpts),                       // 右墙
     ]);
 
-    // 12 颗情绪珠：每种情绪恰好一颗，位置随机错落下落
+    // 5 颗情绪珠（5 档愉悦度，每种恰好一颗），位置随机错落下落
     const beads: Bead[] = [];
     for (let i = 0; i < MOOD_ORDER.length; i++) {
       const r = R_MIN + Math.random() * (R_MAX - R_MIN);
@@ -362,13 +362,13 @@ export default function EmotionLogScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.saveBtn}
             >
-              <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: savedTick ? mm.colors.limeSoft : mm.colors.btnTextOnGrad }}>
+              <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: savedTick ? mm.colors.limeSoft : mm.colors.btnTextOnGrad }}>
                 {savedTick ? '已记录 ✓' : '记下此刻'}
               </Text>
             </LinearGradient>
           ) : (
             <View style={[styles.saveBtn, { backgroundColor: mm.colors.btnBusyBg }]}>
-              <Text style={{ fontSize: theme.fs(15), fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint }}>
+              <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint }}>
                 选一个心情
               </Text>
             </View>
@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.sp(3),
     paddingVertical: theme.sp(2.5),
-    fontSize: theme.fs(14),
+    fontSize: theme.fontSize.body,
     color: mm.colors.ink,
     minHeight: theme.sp(11),
     textAlignVertical: 'top',

@@ -101,13 +101,41 @@ const POOL: Candidate[] = [
       if (c.steps < 7000 && h >= 15) return 45;
       return 0;
     },
-    desc: (c) => `今天才 ${c.steps} 步，几乎没动——下午快走 15 分钟，情绪和恢复都会回来一点。`,
+    // v18.96：理由句对齐运动建议页口径（周期阶段 × 皮质醇时段闸门），不另起一套说法
+    desc: (c) => {
+      if (c.phase === '经期') return `今天才 ${c.steps} 步——经期不冲强度，慢走 15 分钟把身体带活就好。`;
+      if (c.phase === '黄体期') return `今天才 ${c.steps} 步——黄体期恢复慢，快走 15 分钟、收在还能说话的配速刚好。`;
+      const h = new Date(c.now).getHours();
+      const slotWord = inRange(h, 14, 19)
+        ? '这个点皮质醇正低、体感最好'
+        : inRange(h, 10, 14)
+          ? '上午晚些训练性价比最高'
+          : '挑今天还有精力的时候';
+      return `今天才 ${c.steps} 步，几乎没动——${slotWord}，快走 15 分钟，情绪和恢复都会回来一点。`;
+    },
     flip: {
       articleId: 'cortisolcalm',
       collection: 'sport',
       articleTitle: '把皮质醇降下来的四件小事',
       tip: '坐了一下午，身体会以为你在省电，其实是在攒疲劳。快走十几分钟，肌肉帮血液把糖带走、血流回大脑，下午的困和闷会松开一大截。不用换运动服，下楼两圈就够。',
       src: 'DiPietro L. et al., Diabetes Care, 2013',
+    },
+  },
+  {
+    id: 'rec-deload',
+    type: 5,
+    badge: '今日推荐 · 运动建议',
+    title: '经前减载 · 拉伸慢走',
+    action: '开始 · 15 min',
+    // v18.96 新增：黄体期（含经前窗口）推「主动减载」，与运动建议页「经前减载不是退步」同口径
+    prio: (c) => (c.phase === '黄体期' ? 62 : 0),
+    desc: () => '月经来前这几天身体在自动往下调——换拉伸和慢走，练得轻是攒劲，不是退步。',
+    flip: {
+      articleId: 'lutealtrain',
+      collection: 'sport',
+      articleTitle: '黄体期：降强度，提质量',
+      tip: '黄体期孕激素一路走高，同样的强度会更累、恢复更慢。经前 4–5 天主动减载——换拉伸、慢走和柔韧动作，把前三周的训练吸收掉。练得轻不是退步，是给身体留出变强的间隙。',
+      src: 'Oosthuyse T. & Lisonek M., Sports Med, 2008',
     },
   },
   {
@@ -119,12 +147,16 @@ const POOL: Candidate[] = [
     prio: (c) => {
       const h = new Date(c.now).getHours();
       if (c.phase === '经期') return 65;
+      // v18.96：黄体期馋甜/蛋白需求上行（Sims 口径），推记录帮用户看见搭配
+      if (c.phase === '黄体期') return 60;
       if (inRange(h, 10.5, 13) || inRange(h, 16.5, 19)) return 55;
       return 0;
     },
-    desc: (c) => c.phase === '经期'
-      ? '经期铁流失加快，这餐把红肉或深绿叶菜安排上——拍一张看看搭配。'
-      : '饭点前后记一餐最准，拍一张看搭配比例，不用算卡路里。',
+    desc: (c) => {
+      if (c.phase === '经期') return '经期铁流失加快，这餐把红肉或深绿叶菜安排上——拍一张看看搭配。';
+      if (c.phase === '黄体期') return '黄体期馋得快——这餐复合碳水别断、来点蛋白，血糖稳了馋就轻。拍一张看看搭配。';
+      return '饭点前后记一餐最准，拍一张看搭配比例，不用算卡路里。';
+    },
     flip: {
       articleId: 'ironwomen',
       collection: 'nutrition',

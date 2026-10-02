@@ -403,3 +403,140 @@ export function buildTodayWorkout(inp: WorkoutInput): TodayWorkout {
       : undefined,
   };
 }
+
+/* ════════════════════════════════════════════════════════════════
+ * 运动建议页 V3（mira-design/SPORT-DIET-SPEC-v1.md §2.7）
+ * Sims 四阶段文案表：环色 / 档位名 / 副标 / 周期理由 / 推荐池三选二。
+ * 全部是静态口径文案（斯坦福 Stacy Sims 周期同步训练法）；
+ * 相位、时段、睡眠、皮质醇等数据仍由调用方从真实来源传入，这里不编数据。
+ * 口径红线：不宣称改变激素；「燃脂」指供能档位，不是减重承诺。
+ */
+export interface SportRec {
+  name: string;
+  minutes: number;
+  why: string;
+  /** 展示用时间（如「下午 4:30」），与 stat3 时段值同源 */
+  timeLabel: string;
+}
+
+export interface SportBrief {
+  /** 强度环亮段色（当前相位） */
+  ringColor: string;
+  /** 环中心档位名（恢复 / 黄金窗口 / 巅峰 / 燃脂） */
+  gearName: string;
+  /** 环中心副标（低 · 温和活动 …） */
+  gearSub: string;
+  /** 周期理由（adv 第一条） */
+  reason: string;
+  /** 推荐池（三条） */
+  recs: SportRec[];
+  /** stat3「时段」值（与推荐第一条时间一致） */
+  slotClock: string;
+}
+
+/** 时段 → 推荐时间（stat3 与推荐文案必须取同一源） */
+const SLOT_TIME = {
+  morning: { clock: '08:00', label: '上午 8:00' },
+  noon: { clock: '11:00', label: '上午 11:00' },
+  afternoon: { clock: '16:30', label: '下午 4:30' },
+  evening: { clock: '18:30', label: '傍晚 6:30' },
+  night: { clock: '21:30', label: '睡前 9:30' },
+} as const satisfies Record<TimeSlot, { clock: string; label: string }>;
+
+interface PhaseSportRow {
+  ringColor: string;
+  gearName: string;
+  gearSub: string;
+  reason: string;
+  recs: Array<{ name: string; minutes: number; why: string; /** 覆盖默认时段（如睡前拉伸） */ at?: TimeSlot }>;
+}
+
+const PHASE_SPORT: Record<string, PhaseSportRow> = {
+  经期: {
+    ringColor: '#F6B3D0', gearName: '恢复', gearSub: '低 · 温和活动',
+    reason: '雌孕激素都在低位，精力偏低——低强度促进循环、缓解不适，猛练反而更累。',
+    recs: [
+      { name: '散步', minutes: 20, why: '促进循环，缓解腰腹坠胀' },
+      { name: '温和瑜伽', minutes: 15, why: '松开腰背，缓和经期不适' },
+      { name: '拉伸', minutes: 10, why: '睡前放松，帮入睡', at: 'night' },
+    ],
+  },
+  卵泡期: {
+    ringColor: '#C7B9F2', gearName: '黄金窗口', gearSub: '高 · 放开练',
+    reason: '雌激素上行，糖原利用好、恢复快——HIIT 和大重量都安排在这几天，收益最高。',
+    recs: [
+      { name: 'HIIT', minutes: 20, why: '雌激素窗口期，后燃效应最划算' },
+      { name: '力量', minutes: 30, why: '恢复快，适合上大重量' },
+      { name: '节奏跑', minutes: 25, why: '配速拉一档，体感还不吃力' },
+    ],
+  },
+  排卵期: {
+    ringColor: '#D5E384', gearName: '巅峰', gearSub: '高 · 防伤',
+    reason: '雌激素到顶、力量最强；但韧带偏松，跳跃和变向前把热身做足。',
+    recs: [
+      { name: '力量', minutes: 30, why: '力量到顶，可以冲个人最佳' },
+      { name: '间歇', minutes: 20, why: '短平快，别拖长' },
+      { name: '游泳', minutes: 30, why: '低冲击，护着韧带' },
+    ],
+  },
+  黄体期: {
+    ringColor: '#F0C46E', gearName: '燃脂', gearSub: '轻 · 中低强度',
+    reason: '孕激素上行，这个阶段身体更偏脂肪供能，中低强度正好烧脂，猛练反而事倍功半。',
+    recs: [
+      { name: '快走', minutes: 30, why: '体温高峰时段，脂肪动员最顺' },
+      { name: '轻力量', minutes: 20, why: '减重量加次数，保肌肉稳代谢' },
+      { name: '拉伸', minutes: 10, why: '睡前把压力松掉再睡，别挤掉深睡', at: 'night' },
+    ],
+  },
+};
+
+/** 周期未记录时的通用保守池（不编阶段结论） */
+const PHASE_SPORT_FALLBACK: PhaseSportRow = {
+  ringColor: '#BCCB62', gearName: '平稳', gearSub: '中低 · 保守档',
+  reason: '周期还没记录，先按通用保守档来；记一次经期，这里会换成阶段定制版。',
+  recs: [
+    { name: '快走', minutes: 20, why: '微微出汗、还能说话的程度就好' },
+    { name: '轻力量', minutes: 20, why: '轻重量多次数，留两组余力' },
+    { name: '拉伸', minutes: 10, why: '睡前放松肩颈腰背', at: 'night' },
+  ],
+};
+
+export function buildSportBrief(phase: string, slot: TimeSlot): SportBrief {
+  const row = PHASE_SPORT[phase] ?? PHASE_SPORT_FALLBACK;
+  const t = SLOT_TIME[slot];
+  return {
+    ringColor: row.ringColor,
+    gearName: row.gearName,
+    gearSub: row.gearSub,
+    reason: row.reason,
+    slotClock: t.clock,
+    recs: row.recs.map((r) => ({
+      name: r.name,
+      minutes: r.minutes,
+      why: r.why,
+      timeLabel: SLOT_TIME[r.at ?? slot].label,
+    })),
+  };
+}
+
+/** 状态理由（adv 第二条，按优先级取一条；SPEC §2.7 规则列，数据缺失逐级退） */
+export function sportStatusReason(inp: {
+  sleepTotalMin?: number | null;
+  sleepDeepMin?: number | null;
+  cortisolLabel?: string | null;
+  gearName: string;
+}): string {
+  const st = inp.sleepTotalMin ?? null;
+  const dp = inp.sleepDeepMin ?? null;
+  if (dp != null && dp < 60) {
+    if (st != null) return `昨晚睡 ${hm(st)} · 深睡偏短，上强度只会加压，今天把强度收一档。`;
+    return '昨晚深睡不到 1 小时，上强度只会加压，今天把强度收一档。';
+  }
+  if (st != null && st < 390) {
+    return `昨晚睡 ${hm(st)} · 睡得偏短，上强度只会加压，今天把强度收一档。`;
+  }
+  if (inp.cortisolLabel === '偏高') {
+    return `皮质醇偏高 + 恢复变慢，今天按${inp.gearName}的节奏稳稳来，不靠拼。`;
+  }
+  return '状态平稳，可以按计划走。';
+}

@@ -30,6 +30,8 @@ import { cogLevel, cogLevelLabel } from '../lib/cognitiveLoad';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
+// 底部常驻「记录此时心情」悬浮按钮（仅情绪消耗页出现）
+import EmotionQuickRecord from '../components/EmotionQuickRecord';
 
 // CognitiveLoadCard 导出的组件/函数
 import {
@@ -98,9 +100,15 @@ export default function EnergyDetailScreen() {
         {type === 'activity' && range === 'day' && <ActivityDetail ring={ring} navigation={navigation} anchor={anchor} />}
 
         {range !== 'day' && <RangeTrendBars type={type} range={range} anchor={anchor} />}
+
+        {/* 给底部常驻「记录情绪」按钮留白，避免情绪洞察末尾被遮挡 */}
+        {type === 'emotion' && <View style={{ height: 120 }} />}
       </View>
     </ScreenContainer>
     </View>
+
+    {/* 首页「情绪消耗」点进去的情绪洞察页：底部常驻记录按钮（仅情绪类型） */}
+    {type === 'emotion' && <EmotionQuickRecord />}
     <ChatSheet
       visible={chatVisible}
       onClose={() => setChatVisible(false)}

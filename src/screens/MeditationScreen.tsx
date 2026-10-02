@@ -137,10 +137,10 @@ export default function MeditationScreen() {
             activeOpacity={0.88}
             style={styles.gridCell}
             onPress={() => {
-              // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪记录页；其余 → 通用内容页
+              // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪干预四方案（缓一缓/换个说法/动一动/记两笔）；其余 → 通用内容页
               if (t.name === '稳定睡眠') navigation.navigate('Breathing');
               if (t.name === '营养搭配') navigation.navigate('FoodScan'); // 进饮食首页（状态卡+相册+识别按钮），不再一进就弹相机
-              if (t.name === '情绪调节') navigation.navigate('EmotionLog');
+              if (t.name === '情绪调节') navigation.navigate('EmotionIntervene');
               if (t.name === '提升颜值') navigation.navigate('ToolTopic', { topic: 'glow' });
               if (t.name === '运动建议') navigation.navigate('ToolTopic', { topic: 'sport' });
               if (t.name === '知识科普') navigation.navigate('ToolTopic', { topic: 'learn' });

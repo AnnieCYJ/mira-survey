@@ -40,6 +40,8 @@ interface Props {
   maxDate?: Date;
   /** 可选：最小可选日期（含），默认去年 1/1 */
   minDate?: Date;
+  /** 可选：覆盖中间标签文案（如「10月2日 · 今天」）；不传用内置格式 */
+  formatLabel?: (d: Date) => string;
 }
 
 function clamp(d: Date, min: Date, max: Date): Date {
@@ -79,7 +81,7 @@ function centerLabel(value: Date, range: RangeKey): string {
 
 const WEEK_HEAD = ['一', '二', '三', '四', '五', '六', '日'];
 
-export default function DateAnchorPicker({ value, onChange, range, maxDate, minDate }: Props) {
+export default function DateAnchorPicker({ value, onChange, range, maxDate, minDate, formatLabel }: Props) {
   const today = startOfDay(new Date());
   const max = startOfDay(maxDate ?? today);
   const min = startOfDay(minDate ?? new Date(today.getFullYear() - 1, 0, 1));
@@ -121,7 +123,7 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
         </TouchableOpacity>
         <TouchableOpacity style={styles.center} onPress={openCalendar} activeOpacity={0.85}>
           <Icon name="calendar" size={theme.fs(15)} color={theme.colors.accentSolid} />
-          <Text style={styles.centerText}>{centerLabel(value, range)}</Text>
+          <Text style={styles.centerText}>{formatLabel ? formatLabel(value) : centerLabel(value, range)}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.arrow} onPress={goNext} hitSlop={8}>
           <Icon name="chevronRight" size={theme.fs(20)} color={theme.colors.textTitle} />

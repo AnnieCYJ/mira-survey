@@ -98,13 +98,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ttl: {
-    fontSize: theme.fs(12.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.bold,
     color: mm.colors.ink,
     maxWidth: '72%',
   },
   sub: {
-    fontSize: theme.fs(9.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     marginTop: theme.sp(0.1),
@@ -116,14 +116,14 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.75),
   },
   num: {
-    fontSize: theme.fs(22),
+    fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.bold,
     color: mm.colors.ink,
     lineHeight: theme.fs(25),
     flexShrink: 1,
   },
   unit: {
-    fontSize: theme.fs(11.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
     color: mm.colors.inkFaint,
     marginLeft: theme.sp(0.3),
@@ -136,12 +136,12 @@ const styles = StyleSheet.create({
     
   },
   footText: {
-    fontSize: theme.fs(11.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
   },
   footLineText: {
-    fontSize: theme.fs(12),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
     marginTop: theme.sp(1),

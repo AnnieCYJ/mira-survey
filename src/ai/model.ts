@@ -214,21 +214,35 @@ export function runOnModel<T>(task: (ctx: LlamaContext) => Promise<T>, key?: str
   return tracked;
 }
 
+let releaseSeq = 0;
 export async function releaseLlama(): Promise<void> {
+  // ★★ 修崩溃（2026-10-01 真机 .ips 铁证：EXC_BAD_ACCESS @ rnllama_jsi::createCompletionResult）：
+  //   释放时若推理链上还有飞行中的 completion（单次推理 10–15s），native 回调回来取结果时
+  //   访问的已是已释放的 context → JS 线程 SIGSEGV、App 闪退（打开 FoodScan 触发释放时撞上
+  //   MiraAI 后台洞察推理，必崩）。所以必须先等推理链清空（链上已吞异常，不会 reject）再释放。
+  const gen = ++releaseSeq;
+  await inferenceChain.catch(() => undefined);
+  // ★ 修崩溃 2（2026-10-01 15:41 .ips：lm_ggml_metal_synchronize ← initLlama abort）：
+  //   等链清空期间用户退出页面 → cleanup 的 resumeModel()+warmupModel() 开始重新加载模型，
+  //   而本函数还没返回 → 继续把刚加载/加载中的模型 release → init 与 release 并发操作 Metal → abort。
+  //   所以等待结束后必须复查：场景已退出（resume）或释放请求已被更新的调用取代 → 放弃释放。
+  if (gen !== releaseSeq || !suspended) return;
   // ★ 修竞态（2026-09-27）：若 initLlama 还在飞行中，此时 ctx 为 null、直接返回会
   //   「释放了个寂寞」——加载完成后模型照样常驻（真机日志已复现：release 后紧跟
   //   「模型已加载」）。必须先等 loading 落地，再释放。
   if (loading) {
     try { await loading; } catch { /* 加载失败也无 ctx 可释放 */ }
   }
+  if (!suspended) return; // 等 loading 期间可能又被 resume（用户快速进出页面）
   if (ctx) {
+    const c = ctx;
+    ctx = null; // 先摘引用再释放：防并发的 releaseLlama 双重 release
     try {
-      await ctx.release();
+      await c.release();
       console.log('[MiraAI] 模型已释放，内存已归还系统');
     } catch {
       /* ignore */
     }
-    ctx = null;
     loading = null;
   }
 }

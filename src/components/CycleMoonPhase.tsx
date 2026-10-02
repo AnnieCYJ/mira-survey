@@ -253,14 +253,14 @@ const styles = StyleSheet.create({
   },
   phaseLine: {
     color: theme.colors.textTitle,
-    fontSize: theme.fs(18),
+    fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,
     letterSpacing: 0.4,
   },
   subLine: {
     marginTop: theme.sp(3),
     color: theme.colors.textSub,
-    fontSize: theme.fs(12),
+    fontSize: theme.fontSize.xs,
   },
   logBtnCompact: {
     marginTop: theme.sp(4),
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   logBtnTextCompact: {
-    fontSize: theme.fs(9.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
   },
 });

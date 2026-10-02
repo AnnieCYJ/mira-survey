@@ -76,6 +76,8 @@ export const mm = {
 
     /* ── 白卡与描边 ── */
     cardBg: '#FFFFFF',
+    // 干预系列页暖白底（设计稿 out-iv2/0-plans.png 口径；区别于 App 根紫渐变）
+    pageWarm: '#F7F5F0',
     // 0.05 在纯白上几乎不可见（用户实测反馈「看不到边框」）→ 提到 0.09
     cardBorder: 'rgba(31,29,26,0.09)',
     chipBorder: 'rgba(31,29,26,0.10)',

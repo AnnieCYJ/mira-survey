@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import * as SQLite from 'expo-sqlite';
+import * as FileSystem from 'expo-file-system';
 
 export interface MealItem {
   name: string;
@@ -20,8 +21,8 @@ export interface MealItem {
   carbs?: number;
   /** 脂肪克数 */
   fat?: number;
-  /** 模型估算的激素相关元素含量（毫克；叶酸 fa 为微克 μg）。仅拍照识别返回，手动兜底时为 undefined。仅供参考，非化验值。 */
-  elements?: Partial<Record<'mg' | 'zn' | 'fe' | 'ca' | 'b6' | 'fa', number>>;
+  /** 模型估算的激素相关元素含量（毫克；叶酸 fa、硒 se 为微克 μg）。仅拍照识别返回，手动兜底时为 undefined。仅供参考，非化验值。 */
+  elements?: Partial<Record<'mg' | 'zn' | 'fe' | 'ca' | 'b6' | 'fa' | 'se', number>>;
 }
 
 /** 宏量营养素聚合（克） */
@@ -72,8 +73,8 @@ export const FOOD_VLM = {
   model: 'glm-4v-flash',
 };
 
-/** 可识别的激素相关元素键（毫克；叶酸 fa 为微克 μg） */
-export const ELEMENT_KEYS = ['mg', 'zn', 'fe', 'ca', 'b6', 'fa'] as const;
+/** 可识别的激素相关元素键（毫克；叶酸 fa、硒 se 为微克 μg） */
+export const ELEMENT_KEYS = ['mg', 'zn', 'fe', 'ca', 'b6', 'fa', 'se'] as const;
 type ElementField = Partial<Record<(typeof ELEMENT_KEYS)[number], number>>;
 
 /** 把 VLM 返回的任意元素对象规整为合法数值字段（仅保留正数，四舍五入） */
@@ -88,7 +89,7 @@ function normalizeElements(raw?: Record<string, unknown>): ElementField | undefi
 }
 
 const RECOGNIZE_PROMPT = `你是饮食记录助手。识别照片中的食物，返回 JSON（不要多余文字）：
-{"items":[{"name":"菜品名","portion":"份量描述如1碗/150g","kcal":估算热量整数,"protein":蛋白质克数,"carbs":碳水克数,"fat":脂肪克数,"elements":{"mg":镁毫克,"zn":锌毫克,"fe":铁毫克,"ca":钙毫克,"b6":维生素B6毫克,"fa":叶酸微克}}]}
+{"items":[{"name":"菜品名","portion":"份量描述如1碗/150g","kcal":估算热量整数,"protein":蛋白质克数,"carbs":碳水克数,"fat":脂肪克数,"elements":{"mg":镁毫克,"zn":锌毫克,"fe":铁毫克,"ca":钙毫克,"b6":维生素B6毫克,"fa":叶酸微克,"se":硒微克}}]}
 规则：每样食物单独一项；kcal 与宏量按常见做法估算；elements 为该菜品可食部常见含量的估算（毫克 mg，叶酸用微克 μg），识别不出某项就省略该键；最多 8 项；识别不出就返回 {"items":[]}。`;
 
 /** 调 VLM 识别餐食照片；任何失败返回 null（调用方走兜底） */
@@ -208,10 +209,28 @@ export function dateKeyOf(ts: number = Date.now()): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * ★ 修「拍的照片过阵子就不显示」（2026-10-01 真机实锤）：
+ *   以前入库的是 file:// **绝对路径**，里面带 App 数据容器的 UUID。
+ *   iOS 重装/更新/容器迁移都会换 UUID（实测：16:26 存的 D2AD6D2C-…，16:31 后容器变成
+ *   E3066767-…），绝对路径立刻失效 → 缩略图全挂。文件本身还在新容器的 Documents 里。
+ *   所以：入库只存文件名，读取时一律按**当前** documentDirectory 重建路径。
+ */
+function resolvePhotoUri(uri?: string | null): string | undefined {
+  if (!uri) return undefined;
+  // 入库只存文件名（容器 UUID 会变），读取时一律按当前 documentDirectory 重建完整路径
+  if (uri.startsWith('food_')) return `${FileSystem.documentDirectory}${uri}`;
+  if (uri.startsWith('file://')) {
+    const name = uri.split('/').pop();
+    if (name && name.startsWith('food_')) return `${FileSystem.documentDirectory}${name}`;
+  }
+  return uri;
+}
+
 function rowToLog(r: { id: string; date_key: string; ts: number; source: string; items: string; total_kcal: number; photo_uri?: string | null }): FoodLog {
   let items: MealItem[] = [];
   try { items = JSON.parse(r.items); } catch { /* 容错：坏行当空 */ }
-  return { id: r.id, dateKey: r.date_key, ts: r.ts, source: r.source as FoodLog['source'], items, totalKcal: r.total_kcal, photoUri: r.photo_uri ?? undefined };
+  return { id: r.id, dateKey: r.date_key, ts: r.ts, source: r.source as FoodLog['source'], items, totalKcal: r.total_kcal, photoUri: resolvePhotoUri(r.photo_uri) };
 }
 
 export function loadFoodLogs(): FoodLog[] {

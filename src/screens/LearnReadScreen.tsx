@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   headTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: theme.fs(14),
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
   },
@@ -152,21 +152,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBgSoft,
   },
   eyebrow: {
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
     letterSpacing: 0.8,
     color: mm.chipBg.lav.fg,
     marginBottom: theme.sp(1.5),
   },
   title: {
-    fontSize: theme.fs(20),
+    fontSize: theme.fontSize.h2,
     lineHeight: theme.fs(27),
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
     marginBottom: theme.sp(1.5),
   },
   byline: {
-    fontSize: theme.fs(12),
+    fontSize: theme.fontSize.xs,
     color: mm.colors.inkFaint,
   },
   divider: {
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     marginVertical: theme.space.md,
   },
   para: {
-    fontSize: theme.fs(14),
+    fontSize: theme.fontSize.body,
     lineHeight: theme.fs(23),
     color: mm.colors.inkSoft,
     marginBottom: theme.space.md,
@@ -189,14 +189,14 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.lg,
   },
   sourcesTitle: {
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
     letterSpacing: 0.8,
     color: mm.colors.inkFaint,
     marginBottom: theme.sp(1.5),
   },
   sourceItem: {
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
     lineHeight: theme.fs(17),
     color: mm.colors.inkFaint,
     marginBottom: theme.sp(0.75),
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.xl,
   },
   chatText: {
-    fontSize: theme.fs(13.5),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: mm.chipBg.lav.fg,
   },

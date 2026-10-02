@@ -294,13 +294,16 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
           <HourHistogram buckets={report.hourBuckets} chartH={120} />
         </View>
 
-        {/* ② 全天 15 分钟粒度情绪点阵热力图 — 有事件才画 */}
-        {report.events.length > 0 && (
-          <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
-            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每 15 分钟情绪分布</Text>
-            <StressEventStems events={report.events} chartH={200} />
-          </View>
-        )}
+        {/* ② 全天 15 分钟粒度情绪点阵热力图 — 恒渲染（无事件也展示空网格 + 提示，不再整块消失） */}
+        <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
+          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每 15 分钟情绪分布</Text>
+          <StressEventStems events={report.events} chartH={200} />
+          {report.events.length === 0 && (
+            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
+              今天还没有情绪事件采样 · 连上戒指后自动监测会在这里逐刻画出你的状态
+            </Text>
+          )}
+        </View>
 
         {/* ③ 情绪记录卡（Mooda 式自报入口：选心情球+一句话；与 EDA 推断负荷独立并排） */}
         <EmotionLogCard />

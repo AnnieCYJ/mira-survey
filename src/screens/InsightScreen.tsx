@@ -22,6 +22,7 @@ import ExamTab from '../components/ExamTab';
 import ChatSheet from '../components/ChatSheet';
 import BloodComponentPanel from '../components/BloodComponentPanel';
 import EmotionInsightView from '../components/EmotionInsightView';
+import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
 import CortisolSleepSummary from '../components/CortisolSleepSummary';
 import CortisolRhythmCard from '../components/CortisolRhythmCard';
@@ -427,9 +428,13 @@ export default function InsightScreen() {
               <CogTabCard ring={ring} navigation={navigation} />
             ) : subTab === 'emotion' ? (
               // v18.3：情绪 = 情绪洞察，点卡片进「情绪消耗」日/周/年详情页
-              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
-                <EmotionInsightView />
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
+                  <EmotionInsightView />
+                </TouchableOpacity>
+                {/* 给底部悬浮「记录情绪」按钮留白，避免情绪洞察末尾被遮挡 */}
+                <View style={{ height: 120 }} />
+              </>
             ) : (
               // v18.2：运动恢复节律 = 步数/距离/活动消耗 + 近 7 天步数波浪
               <SportRecoveryCard ring={ring} navigation={navigation} />
@@ -495,6 +500,8 @@ export default function InsightScreen() {
         )}
       </View>
     </ScreenContainer>
+    {/* 情绪洞察页底部悬浮记录卡（仅 emotion 子 tab 出现；认知/其他 tab 不动） */}
+    {topTab === 'rhythm' && subTab === 'emotion' && <EmotionQuickRecord />}
     </View>
     <ChatSheet
       visible={chatVisible}

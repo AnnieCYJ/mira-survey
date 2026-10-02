@@ -66,9 +66,9 @@ export const PHASE_NUTRITION: Record<PhaseKey, PhaseNutritionTarget> = {
     phase: 'luteal', label: PHASE_LABEL.luteal,
     kcal: 1980, proteinG: 72, carbsG: 232, fatG: 66,
     kcalNote: '黄体期孕酮升高使代谢略升，目标比平时多约 180 kcal',
-    focus: ['镁（坚果 / 深绿菜）', '维B6（鸡肉 · 香蕉 · 土豆）', '钙（奶 · 豆腐 · 小鱼干）', '复合碳水（燕麦 · 红薯 · 糙米）'],
+    focus: ['优质蛋白（蛋 · 鱼 · 豆腐 · 酸奶），每餐来一点', '复合碳水（燕麦 · 红薯 · 糙米），别断顿', '镁（坚果 / 深绿菜）', '维B6（鸡肉 · 香蕉 · 土豆）'],
     avoid: ['高盐高糖（甜点 · 含糖饮料 · 腌制品）', '过量咖啡因（咖啡 · 浓茶 · 可乐）'],
-    note: '黄体期代谢上行、碳水渴望增强，用复合碳水 + 蛋白质顶住饱腹，少碰甜食。',
+    note: '黄体期代谢上行、碳水渴望增强：复合碳水别断、每餐来点蛋白质，用稳血糖的方式顶住馋，少碰甜食。',
   },
   unknown: {
     phase: 'unknown', label: PHASE_LABEL.unknown,
@@ -112,7 +112,7 @@ export function evaluateAgainstPhase(target: PhaseNutritionTarget, intake: Today
   if (target.phase === 'period') {
     out.push('经期重点补铁：今天可安排红肉、动物血或深绿菜，配维C更好吸收。');
   } else if (target.phase === 'luteal') {
-    out.push('黄体期碳水渴望强，优先选燕麦 / 薯类 / 全麦等复合碳水，少碰甜食。');
+    out.push('黄体期碳水渴望强：复合碳水别断，每餐来点蛋白（蛋 / 鱼 / 豆腐），血糖稳了馋得也轻。');
   } else if (target.phase === 'ovulation') {
     out.push('排卵期多喝水、补叶酸和抗氧化物，状态会更稳。');
   }

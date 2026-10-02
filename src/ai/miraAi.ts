@@ -5,7 +5,7 @@
 import { runOnModel } from './model';
 import { MemoryStore } from './memory';
 import { ChatContextStore, type ChatContextSnapshot } from './context';
-import { buildSystemPrompt } from './character';
+import { CHARACTER, buildCompanionInjection } from './character';
 import { buildHealthSnapshot } from './health';
 import { emitAiRecord } from '../lib/aiRecordBus';
 
@@ -27,7 +27,11 @@ export interface AskOptions {
 /** 主入口：问 Mira 一句，流式返回 */
 export async function ask(userText: string, opts: AskOptions = {}): Promise<string> {
   const recentText = [userText, ...(opts.history || []).map((m) => m.content)].join('\n');
-  const system = buildSystemPrompt(recentText);
+  // ★ 人设与知识锚点分开发：
+  //   lightSystem 只装人设（压缩控首字延迟）；世界书按关键词命中单独成一条 system。
+  //   旧实现把 companion 拼进 system 后一起 slice(0,400)，世界书知识从来没真正送到过模型。
+  const lightSystem = CHARACTER.system_prompt.slice(0, 400);
+  const companion = buildCompanionInjection(recentText);
 
   const recalls = await memory.recall(userText, 2);
   const memBlock = recalls.length
@@ -41,16 +45,13 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
 
   const health = buildHealthSnapshot();
 
-  // ★ Prompt 精简：减少每次 prefill 的 token 量（直接影响首字延迟）
-  // 系统 prompt 用压缩版，完整版只保留给 insight 等长文本场景
-  const lightSystem = system.length > 400 ? system.slice(0, 400) : system;
-
   // 健康快照只在用户问了相关问题时才注入（省一大块）
   const healthKeywords = ['睡眠', '心率', '压力', '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '疲劳', '指标', '数据', '健康'];
   const needsHealth = healthKeywords.some(k => userText.includes(k));
 
   const messages: { role: string; content: string }[] = [
     { role: 'system', content: lightSystem },
+    ...(companion ? [{ role: 'system', content: companion }] : []),
     ...(memBlock ? [{ role: 'system', content: memBlock }] : []),
     ...(ctxBlock ? [{ role: 'system', content: ctxBlock }] : []),
     ...(needsHealth && health ? [{ role: 'system', content: health }] : []),

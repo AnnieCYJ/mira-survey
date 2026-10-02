@@ -11,14 +11,15 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import MoodBlob from './MoodBlob';
 import {
-  MOOD_EMOJI, MOOD_LABEL, MOOD_COLOR,
+  MOOD_LABEL, MOOD_COLOR, type MoodKey,
   ensureEmotionLogLoaded, getLatestForDay, onEmotionLog,
 } from '../data/emotionLog';
 import { dayKey } from '../data/healthStore';
 
-/** 入口装饰球：固定 5 个（亮→沉），预览「记录页里的珠子」长什么样 */
-const PREVIEW_MOODS = ['excited', 'happy', 'calm', 'stressed', 'anxious'] as const;
+/** 入口情绪小家伙：5 档愉悦度（与记录页 MOOD_ORDER 一致），预览「记录页心情」长什么样（会动） */
+const PREVIEW_MOODS: MoodKey[] = ['excited', 'happy', 'calm', 'stressed', 'sad'];
 
 function EmotionLogCardImpl() {
   const navigation = useNavigation<any>();
@@ -52,25 +53,21 @@ function EmotionLogCardImpl() {
         <View style={styles.headRow}>
           <Text style={styles.title}>情绪记录</Text>
           <View style={[styles.plusChip, { backgroundColor: color + '22' }]}>
-            <Text style={{ fontSize: theme.fs(14), lineHeight: theme.fs(16), color }}>+</Text>
+            <Text style={{ fontSize: theme.fontSize.body, lineHeight: theme.fs(16), color }}>+</Text>
           </View>
         </View>
 
-        {/* 迷你情绪球排（入口感：进页后这些珠子会从顶部落下堆积） */}
+        {/* 迷你情绪小家伙排（v19.00：果冻 blob 动效图标，参考视频设计） */}
         <View style={styles.ballRow}>
-          {PREVIEW_MOODS.map((k) => (
-            <View key={k} style={[styles.miniBall, { backgroundColor: MOOD_COLOR[k] + '3D', borderColor: MOOD_COLOR[k] }]}>
-              <Text style={styles.miniEmoji}>{MOOD_EMOJI[k]}</Text>
-            </View>
+          {PREVIEW_MOODS.map((k, i) => (
+            <MoodBlob key={k} mood={k} size={theme.sp(8)} variant={i} />
           ))}
         </View>
 
         {/* 今日最新记录（无 → 引导） */}
         {entry ? (
           <View style={styles.row}>
-            <View style={[styles.ball, { backgroundColor: color + '2E' }]}>
-              <Text style={styles.ballEmoji}>{MOOD_EMOJI[entry.mood]}</Text>
-            </View>
+            <MoodBlob mood={entry.mood} size={theme.sp(11)} variant={3} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
                 <Text style={styles.moodLabel}>{MOOD_LABEL[entry.mood]}</Text>
@@ -116,24 +113,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ballRow: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.sp(2.5) },
-  miniBall: {
-    width: theme.sp(8),
-    height: theme.sp(8),
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniEmoji: { fontSize: theme.fs(13) },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
-  ball: {
-    width: theme.sp(11),
-    height: theme.sp(11),
-    borderRadius: theme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ballEmoji: { fontSize: theme.fs(20) },
   moodLabel: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: theme.colors.textTitle },
   time: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   note: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(0.3) },

@@ -187,12 +187,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textWhite,
   },
   label: {
-    fontSize: theme.fs(10),
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textWhite80,
     marginTop: theme.sp(0.25),
   },
   sub: {
-    fontSize: theme.fs(10),
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textWhite80,
     marginTop: theme.sp(1.5),
   },

@@ -42,7 +42,7 @@ export default function ListCard({ title, items, showChevron }: Props) {
 const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: {
-    fontSize: theme.fontSize.card,
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.medium,
     color: theme.colors.textTitle,
     marginBottom: theme.space.sm,
@@ -63,11 +63,11 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1 },
   itemTitle: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.medium,
     color: theme.colors.textBody,
     marginBottom: theme.sp(1),
   },
-  itemSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  right: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid },
+  itemSub: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
+  right: { fontSize: theme.fontSize.body, color: theme.colors.accentSolid },
 });

@@ -27,6 +27,7 @@ import { type RingState } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TaskType } from '../data/tasks';
+import { pickJumps, type AiJump } from '../lib/aiJumps';
 
 interface Props {
   visible?: boolean;          // fullScreen 时可选，默认 true
@@ -40,6 +41,7 @@ interface Message {
   text: string;
   task?: AiTask;
   taskAdded?: boolean;  // 是否已添加到工具页
+  jumps?: AiJump[];     // ★ v18.94 AI 回复下方的工具跳转按钮（按用户问题域挑）
 }
 
 /** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享。
@@ -171,6 +173,15 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       });
     };
 
+    // ★ v18.94 按用户问题域挂工具跳转按钮（最多 2 个；没命中就不挂）
+    const attachJumps = (jumps: AiJump[]) => {
+      if (!jumps.length) return;
+      setMessages((prev) => {
+        const idx = prev.length - 1;
+        return prev.map((m, i) => (i === idx ? { ...m, jumps } : m));
+      });
+    };
+
     try {
       await ask(q, {
         history,
@@ -179,6 +190,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         onDone: (full) => { if (ttsOnRef.current && full) speak(full); },
       });
       attachTask(pickReply(q).task);
+      attachJumps(pickJumps(q));
     } catch (e) {
       console.warn('[ChatSheet] MiraAI 出错，回退模板:', e);
       const fb = pickReply(q);
@@ -187,6 +199,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         return prev.map((m, i) => (i === idx ? { ...m, text: fb.lines.join('\n'), task: fb.task } : m));
       });
       attachTask(fb.task);
+      attachJumps(pickJumps(q));
     } finally {
       setIsLoading(false);
     }
@@ -212,6 +225,9 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
 
   const renderMessage = (msg: Message, idx: number) => {
     const isUser = msg.from === 'user';
+    // ★ 空 AI 占位消息不渲染：发送时会先塞一条 {text:''} 占位，等待期它会画出一个空泡，
+    //   和下面的「三点加载泡」叠成两个 AI 回复（用户看到 AI 出了两条输出）。空泡跳过，由加载泡代表等待中。
+    if (!isUser && !msg.text) return null;
     return (
       <View key={idx} style={[styles.msgRow, isUser ? styles.userRow : styles.aiRow]}>
         {!isUser ? (
@@ -296,6 +312,24 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
                   <Text style={styles.taskAddBtnText}>+ 添加到工具</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          ) : null}
+          {msg.jumps && msg.jumps.length > 0 ? (
+            /* ★ v18.94 工具跳转按钮：按用户问题域挑（运动/饮食/情绪/呼吸），点按钮直达工具页 */
+            <View style={styles.jumpRow}>
+              {msg.jumps.map((j) => (
+                <TouchableOpacity
+                  key={j.label}
+                  style={styles.jumpChip}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    navigation.navigate(j.route as any, j.params as any);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.jumpChipText}>{j.label} →</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           ) : null}
         </View>
@@ -615,6 +649,26 @@ const styles = StyleSheet.create({
   taskAddedBtnText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.textSub,
+    fontWeight: theme.weight.semibold,
+  },
+  // ── v18.94 AI 回复下方的工具跳转按钮（AI 语义紫：soft 底 + deep 字）──
+  jumpRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.sp(1.5),
+    marginTop: theme.sp(2),
+  },
+  jumpChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(1.75),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.purpleSoft,
+  },
+  jumpChipText: {
+    fontSize: theme.fontSize.xs,
+    color: mm.colors.purpleDeep,
     fontWeight: theme.weight.semibold,
   },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },

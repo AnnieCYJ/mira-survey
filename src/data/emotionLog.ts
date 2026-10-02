@@ -44,12 +44,41 @@ export interface EmotionEntry {
   t: number;
   mood: MoodKey;
   note?: string;
+  /** 触发/伴随的生活事件（可选，多选用） */
+  events?: EventKey[];
+  /** 用户自建事件（「添加」自由输入，可选，多选用） */
+  customEvents?: string[];
 }
 
-/** 记录页珠雨中的出现顺序：亮→沉（v18.25 扩到 12 档；旧 5 档 key 全部保留向后兼容） */
+/** 生活事件 key（记录时「发生了什么」，多选用，纯内容、与 UI 图标解耦） */
+export type EventKey =
+  | 'work' | 'sport' | 'eat' | 'sleep' | 'social'
+  | 'study' | 'relax' | 'health' | 'family' | 'travel';
+
+/** 事件顺序（卡片展示顺序） */
+export const EVENT_KEYS: EventKey[] = [
+  'work', 'sport', 'eat', 'sleep', 'social',
+  'study', 'relax', 'health', 'family', 'travel',
+];
+
+/** 事件中文标签 */
+export const EVENT_LABEL: Record<EventKey, string> = {
+  work: '工作',
+  sport: '运动',
+  eat: '饮食',
+  sleep: '睡眠',
+  social: '社交',
+  study: '学习',
+  relax: '放松',
+  health: '健康',
+  family: '家人',
+  travel: '出行',
+};
+
+/** 记录页珠雨中的出现顺序：5 档愉悦度（兴奋→开心→平静→压力→难过，参照视频的 valence 设计）。
+ *  v19.00 起从 12 档收敛到 5 档，更轻、更直觉；旧档位 key 仍保留在类型里，历史记录可读。 */
 export const MOOD_ORDER: MoodKey[] = [
-  'excited', 'happy', 'love', 'grateful', 'pleasant', 'calm',
-  'tired', 'stressed', 'anxious', 'sad', 'angry', 'lonely',
+  'excited', 'happy', 'calm', 'stressed', 'sad',
 ];
 
 export const MOOD_LABEL: Record<MoodKey, string> = {
@@ -175,13 +204,15 @@ export function monthRecordCount(year: number, month: number): number {
 }
 
 /** 新增一条记录（dk=今天本地日） */
-export function addEmotionEntry(mood: MoodKey, note?: string): EmotionEntry {
+export function addEmotionEntry(mood: MoodKey, note?: string, events?: EventKey[], customEvents?: string[]): EmotionEntry {
   const entry: EmotionEntry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     dk: dayKey(Date.now()),
     t: Date.now(),
     mood,
     note: note && note.trim() ? note.trim() : undefined,
+    events: events && events.length > 0 ? events : undefined,
+    customEvents: customEvents && customEvents.length > 0 ? customEvents : undefined,
   };
   entries.push(entry);
   persist();

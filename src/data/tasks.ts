@@ -133,12 +133,12 @@ export const DEFAULT_TOOLS: TaskItem[] = [
  *  · 营养搭配 = 原饮食识别模块（FoodScan，不改）；稳定睡眠 = 原呼吸冥想模块（Breathing，不改）
  *  · 情绪调节 → 情绪记录页；提升颜值 / 运动建议 / 知识科普 → ToolTopic 通用内容页 */
 export const TOOL_GRID: { icon: IconName; name: string; sub: string }[] = [
+  { icon: 'learn', name: '知识科普', sub: '读懂周期' },
+  { icon: 'breath', name: '稳定睡眠', sub: '呼吸与冥想' },
   { icon: 'mind', name: '情绪调节', sub: '记录与降温' },
-  { icon: 'focus', name: '提升颜值', sub: '好气色养成' },
   { icon: 'food', name: '营养搭配', sub: '拍照记热量' },
   { icon: 'run', name: '运动建议', sub: '按状态开方' },
-  { icon: 'breath', name: '稳定睡眠', sub: '呼吸与冥想' },
-  { icon: 'learn', name: '知识科普', sub: '读懂周期' },
+  { icon: 'focus', name: '提升颜值', sub: '好气色养成' },
 ];
 
 export const INITIAL_TASKS: Record<number, TaskType[]> = {

@@ -18,6 +18,9 @@ import VoiceChatScreen from '../screens/VoiceChatScreen';
 import EmotionLogScreen from '../screens/EmotionLogScreen';
 import ToolTopicScreen from '../screens/ToolTopicScreen';
 import LearnReadScreen from '../screens/LearnReadScreen';
+import {
+  EmotionInterveneHome,
+} from '../screens/EmotionInterveneScreen';
 
 export interface MetricDetailParams {
   key: string;
@@ -42,6 +45,7 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   EmotionLog: undefined;
+  EmotionIntervene: undefined;
   Breathing: undefined;
   FoodScan: { autoCamera?: boolean } | undefined;
   ToolTopic: { topic: 'glow' | 'sport' | 'learn' | 'nutrition' | 'sportArticles' };
@@ -159,6 +163,18 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="EmotionLog"
         component={EmotionLogScreen}
+        options={{
+          presentation: 'card',
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          cardStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+      {/* 情绪干预四方案（工具页「情绪调节」入口） */}
+      <Stack.Screen
+        name="EmotionIntervene"
+        component={EmotionInterveneHome}
         options={{
           presentation: 'card',
           gestureEnabled: true,

@@ -1317,7 +1317,7 @@ export default function TodayScreen() {
                   title="运动消耗"
                   aside={sportAside}
                   subLine={hasSportSessions ? (
-                    <Text style={{ fontSize: theme.fs(10.5), fontWeight: theme.weight.medium, color: mm.colors.inkSoft }}>
+                    <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium, color: mm.colors.inkSoft }}>
                       <Text style={{ color: sportFirstColor, fontWeight: theme.weight.semibold as never }}>
                         {sportFirst}
                       </Text>
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pdCircleText: {
-    fontSize: theme.fs(11.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
   },
@@ -1482,7 +1482,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   phaseChipIcon: {
-    fontSize: theme.fs(12),
+    fontSize: theme.fontSize.xs,
     marginRight: theme.sp(1),
     lineHeight: theme.fs(12),
   },

@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textTitle,
   },
   share: {
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
   },
   valueRow: {

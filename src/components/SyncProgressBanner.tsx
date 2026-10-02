@@ -153,13 +153,13 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     color: theme.colors.textBody,
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
   },
   pct: {
     marginLeft: theme.sp(10),
     color: theme.colors.accent1,
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
   },
   pctDone: { color: theme.colors.success },
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(2),
     marginLeft: theme.sp(15),
     color: theme.colors.textSub,
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
   },
   track: {
     height: theme.sp(3),

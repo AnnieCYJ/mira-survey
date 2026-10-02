@@ -37,7 +37,11 @@ export type IconName =
   | 'run'
   | 'mic'
   | 'speaker'
-  | 'speaker_off';  // 🔇 喇叭关
+  | 'speaker_off'  // 🔇 喇叭关
+  | 'briefcase'    // 💼 工作
+  | 'moon'         // 🌙 睡眠
+  | 'people'       // 👥 社交
+  | 'plane';       // ✈️ 出行
 
 type Node = { p: string } | { cx: number; cy: number; r: number; fill?: boolean };
 
@@ -223,6 +227,31 @@ const ICONS: Record<IconName, IconDef> = {
   activity: {
     mode: 'stroke',
     nodes: [{ p: 'M22 12h-4l-3 9L9 3l-3 9H2' }],
+  },
+  briefcase: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+      { p: 'M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2' },
+      { p: 'M3 11h18' },
+    ],
+  },
+  moon: {
+    mode: 'stroke',
+    nodes: [{ p: 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z' }],
+  },
+  people: {
+    mode: 'stroke',
+    nodes: [
+      { p: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
+      { p: 'M2 20a6 6 0 0 1 12 0' },
+      { p: 'M18 11a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z' },
+      { p: 'M14.5 20a4.5 4.5 0 0 1 7-3.7' },
+    ],
+  },
+  plane: {
+    mode: 'stroke',
+    nodes: [{ p: 'M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z' }],
   },
 };
 

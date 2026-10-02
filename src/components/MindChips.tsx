@@ -99,13 +99,13 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.75),
   },
   label: {
-    fontSize: theme.fs(8.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     maxWidth: '100%',
   },
   value: {
-    fontSize: theme.fs(12.5),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.bold,
     color: mm.colors.ink,
     marginTop: 0,
@@ -119,13 +119,13 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   unit: {
-    fontSize: theme.fs(8.5),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     marginLeft: 1,
   },
   tag: {
-    fontSize: theme.fs(8),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     marginTop: theme.sp(0.5),

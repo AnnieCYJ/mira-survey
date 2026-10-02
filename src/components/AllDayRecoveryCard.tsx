@@ -1,5 +1,5 @@
 /**
- * AllDayRecoveryCard —— 首页「全天恢复」卡片（新增，独立组件，不影响既有卡片）
+ * AllDayRecoveryCard —— 首页「昼夜节律」卡片（v18.96 由「全天恢复」更名：内容本就是皮质醇昼夜曲线）
  *
  * 结构（按用户要求）：
  *   上半：睡眠恢复情况 + 皮质醇峰值（两枚毛玻璃指标块）
@@ -244,7 +244,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             <View style={[styles.iconChip, onColor && { backgroundColor: mm.colors.cardBg }]}>
               <MindIcon name="leaf" size={theme.fs(17)} color={iconFg} />
             </View>
-            <Text style={styles.title}>全天恢复</Text>
+            <Text style={styles.title}>昼夜节律</Text>
           </View>
           <View style={styles.headRight}>
             <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>

@@ -51,3 +51,8 @@
 - 关键决策：**build_fresh/ 未提交**——与 09-28 处理 build/ 同类（3.3GB 构建产物），按既有先例加入 .gitignore 而非提交，commit message 已注明。
 - 处理：.gitignore 加 build_fresh/ → git add -A（66 文件，+3091/-425）→ commit 799323a「新增知识科普阅读功能：文章库×5 + 阅读详情页 + BentoCard 组件及首页/工具页迭代（v18.5x–v18.8x）；ignore build_fresh 构建产物」→ push 成功 2394021..799323a。
 - 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-01 14:12（第十次运行）
+- 发现：工作区存在大量未提交改动（100 项）——40+ 图片资源被替换并保留 `_old.jpg` 备份、app.json 与多个源码文件修改、新增运动/饮食/睡眠相关 lib（workoutLibrary、todayWorkout、sportLog、sportVisual、cycleNutrition、hormoneNutrition、mealAnalysis 等）、新增 SleepHormoneCorrelation 组件与 5 个预览 HTML；子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：执行 `git add -A` → commit 4a0c864「更新图资与运动/饮食/睡眠模块：替换卡片与科普配图、新增运动库与营养分析 lib、预览 HTML 及备份图资」→ push 成功 799323a..4a0c864。
+- 结果：master 与 origin/master 同步。子模块脏改动维持既有决策：不动、仅报告。

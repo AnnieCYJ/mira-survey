@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textInk,
   },
   centerPctSmall: {
-    fontSize: theme.fs(14),
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
     color: theme.colors.textSub,
   },
@@ -212,12 +212,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   itemLabel: {
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textTitle,
     fontWeight: theme.weight.medium,
   },
   itemShare: {
-    fontSize: theme.fs(9),
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
   },
   itemValueRow: {
@@ -227,13 +227,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   itemValue: {
-    fontSize: theme.fs(20),
+    fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.bold,
     color: theme.colors.textInk,
     flexShrink: 1,
   },
   itemUnit: {
-    fontSize: theme.fs(11),
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
     marginLeft: 2,
   },
