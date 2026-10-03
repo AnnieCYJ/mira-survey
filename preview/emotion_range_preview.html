@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 情绪洞察（MD3 设计尺度重做）</title>
+<style>
+  /* ── Material Design 3 开源尺度 · 映射到 Mira 薰衣草品牌 ── */
+  :root{
+    --primary:#7C6BD6; --on-primary:#fff; --primary-container:#E9E3FB; --on-primary-container:#2C2159;
+    --secondary:#6B5FA8; --tertiary:#C9598A;
+    --surface:#fff; --surface-variant:#F3F0FA; --surface-container-low:#F7F5FC; --surface-container:#EFEBFA;
+    --on-surface:#211E2E; --on-surface-variant:#5F5B71; --outline:#E3DEF2; --outline-variant:#EAE6F5;
+    /* 形状尺度 */
+    --r-sm:8px; --r-md:14px; --r-lg:22px; --r-xl:28px; --r-pill:999px;
+    /* 间距 4dp 网格 */
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+    /* 文本色 */
+    --title:#3A2F5E; --body:#4A4660; --sub:#6E6A82;
+    /* 情绪 5 色（品牌 token） */
+    --ca:#7EA6F8; --pl:#BCCB62; --ex:#F0C46E; --st:#9D8AF0; --an:#C9598A;
+    /* 周期色 */
+    --period:#F6B3D0; --pre:#EC9CC2; --follicular:#C7B9F2; --ovulation:#D5E384; --luteal:#F0C46E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  html,body{background:#E7E3F2;font-family:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    display:flex;justify-content:center;padding:24px 12px;color:var(--body);}
+  .wrap{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
+
+  /* 手机 */
+  .phone{width:390px;height:844px;background:#fff;border-radius:48px;
+    box-shadow:0 30px 70px rgba(70,52,130,.22), inset 0 0 0 11px #1b1827;overflow:hidden;position:relative;flex:none;}
+  .notch{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:132px;height:28px;background:#1b1827;border-radius:0 0 18px 18px;z-index:40;}
+  .statusbar{height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;
+    font-size:13px;font-weight:600;color:#2a2740;}
+  .screen{height:calc(844px - 52px);overflow-y:auto;overflow-x:hidden;background:var(--surface-variant);}
+
+  /* App bar */
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:6px 22px 14px;}
+  .ab-eyebrow{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--primary);}
+  .ab-title{font-size:27px;font-weight:600;color:var(--title);margin-top:2px;letter-spacing:-.3px;}
+  .ab-avatar{width:42px;height:42px;border-radius:var(--r-pill);background:var(--primary-container);color:var(--on-primary-container);
+    display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;}
+
+  /* 分段控件（MD3 滑块） */
+  .seg{position:relative;display:flex;background:var(--surface-container);border-radius:var(--r-pill);
+    margin:0 22px;padding:5px;}
+  .seg-ind{position:absolute;top:5px;left:5px;width:calc(25% - 5px);height:calc(100% - 10px);
+    background:var(--primary-container);border-radius:var(--r-pill);transition:transform .26s cubic-bezier(.3,.8,.4,1);}
+  .seg-opt{flex:1;text-align:center;padding:9px 0;font-size:14px;font-weight:600;color:var(--on-surface-variant);
+    border-radius:var(--r-pill);cursor:pointer;z-index:1;transition:color .2s;}
+  .seg-opt.active{color:var(--on-primary-container);}
+
+  /* 日期锚 */
+  .anchor{display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0 4px;}
+  .anchor .chip{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--outline);
+    border-radius:var(--r-pill);padding:8px 16px;font-size:14px;font-weight:600;color:var(--body);
+    box-shadow:0 1px 2px rgba(40,30,80,.05);}
+  .anchor .arrow{width:30px;height:30px;border-radius:var(--r-pill);background:var(--surface);border:1px solid var(--outline);
+    display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:15px;cursor:pointer;}
+
+  /* 卡（MD3 elevation） */
+  .card{background:var(--surface);border-radius:var(--r-lg);margin:16px 22px;padding:20px;
+    box-shadow:0 1px 2px rgba(40,30,80,.06), 0 4px 14px rgba(40,30,80,.07);}
+  .headrow{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;}
+  .charttitle{font-size:19px;font-weight:600;color:var(--title);letter-spacing:-.2px;}
+  .headsub{font-size:12px;color:var(--sub);margin-top:3px;}
+  .rangechip{font-size:11px;font-weight:600;color:var(--primary);background:var(--primary-container);
+    padding:5px 11px;border-radius:var(--r-pill);}
+
+  .scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .scrollx::-webkit-scrollbar{height:0;}
+  svg{display:block;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;align-items:center;}
+  .leg{display:flex;align-items:center;gap:6px;}
+  .sw{width:11px;height:11px;border-radius:4px;}
+  .legtxt{font-size:12px;color:var(--sub);}
+
+  .hint{font-size:13px;color:var(--sub);line-height:1.6;margin-top:4px;}
+
+  /* 对比卡 */
+  .statgrid{display:flex;gap:10px;margin-top:6px;}
+  .tile{flex:1;border-radius:var(--r-md);padding:13px 12px;}
+  .tile-l{font-size:11px;color:var(--sub);line-height:1.3;}
+  .tile-v{font-size:21px;font-weight:700;margin-top:5px;line-height:1.1;}
+  .tile-s{font-size:10px;color:var(--sub);margin-top:5px;line-height:1.3;}
+  .analysis{font-size:13px;color:var(--body);line-height:1.62;margin-top:14px;
+    padding-top:14px;border-top:1px solid var(--outline-variant);}
+  .note{font-size:11px;color:var(--sub);margin-top:8px;}
+
+  /* 日视图 */
+  .hero{display:flex;align-items:center;gap:14px;background:var(--primary-container);border-radius:var(--r-lg);padding:16px;}
+  .hero-emoji{width:54px;height:54px;border-radius:18px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;flex:none;
+    box-shadow:0 2px 6px rgba(40,30,80,.1);}
+  .hero-b b{font-size:17px;color:var(--title);display:block;}
+  .hero-b p{font-size:12.5px;color:var(--secondary);margin-top:3px;}
+
+  .matrix-wrap{margin-top:6px;}
+  .dot-grid{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;}
+  .cell{width:100%;aspect-ratio:1/1;border-radius:3px;}
+  .timeline{display:flex;justify-content:space-between;margin-top:7px;padding:0 2px;}
+  .tl{font-size:10px;color:var(--sub);}
+
+  .ovgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .ov{border-radius:var(--r-md);padding:13px 14px;}
+  .ov-l{font-size:11px;color:var(--sub);}
+  .ov-v{font-size:19px;font-weight:700;margin-top:4px;}
+  .ov-s{font-size:10px;color:var(--sub);margin-top:4px;line-height:1.3;}
+
+  .foot{text-align:center;font-size:10px;color:#9b97b0;padding:6px 0 20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="statusbar"><span>9:41</span><span>●●● ▮ ▮ 100%</span></div>
+    <div class="screen">
+      <div class="appbar">
+        <div><div class="ab-eyebrow">身心状态</div><div class="ab-title">情绪洞察</div></div>
+        <div class="ab-avatar">M</div>
+      </div>
+
+      <div class="seg" id="seg">
+        <div class="seg-ind" id="segInd"></div>
+        <div class="seg-opt" data-r="day">日</div>
+        <div class="seg-opt" data-r="week">周</div>
+        <div class="seg-opt active" data-r="month">月</div>
+        <div class="seg-opt" data-r="year">年</div>
+      </div>
+
+      <div class="anchor">
+        <div class="arrow">‹</div>
+        <div class="chip" id="anchorLabel">2026 年 9 月</div>
+        <div class="arrow">›</div>
+      </div>
+
+      <div id="panel"></div>
+      <div class="foot">预览稿 · 设计尺度参照 Material Design 3（开源）· 与 App 构建逻辑一致</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MOODS=[
+  {key:'ca',c:'#7EA6F8',t:'平静'},{key:'pl',c:'#BCCB62',t:'愉悦'},{key:'ex',c:'#F0C46E',t:'兴奋'},
+  {key:'st',c:'#9D8AF0',t:'压力'},{key:'an',c:'#C9598A',t:'焦虑'}
+];
+const PHASE={period:'#F6B3D0',follicular:'#C7B9F2',ovulation:'#D5E384',luteal:'#F0C46E',pre:'#EC9CC2',unknown:'#E5E2F0'};
+const SUB='#6E6A82', OV='#E3DEF2', ONSURF='#3A3550';
+const PAD={LEFT:30,RIGHT:12,TOP:30,PLOT_H:150,BAND_H:15,GAP:12};
+
+/* ── 演示数据 ── */
+const PHASE_SEQ=['period','period','period','period','period','follicular','follicular','follicular','follicular','follicular','follicular','follicular','ovulation','ovulation','ovulation','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','pre','pre','pre','pre','pre','pre','pre','pre'];
+function genDay(p,i){let ca=2+(i%3),pl=1+(i%2),ex=i%2,st=0,an=0;
+  if(p==='period'){st=2+(i%2);an=1+(i%2);pl=Math.max(0,pl-1);}
+  if(p==='pre'){st=1+(i%2);an=2+(i%2);}
+  if(p==='ovulation')ex+=2; if(p==='luteal')ca+=1;
+  return{ca,pl,ex,st,an,phase:p,isPre:p==='pre',total:0};}
+const MONTH_DATA=PHASE_SEQ.map((p,i)=>{const d=genDay(p,i);d.total=d.ca+d.pl+d.ex+d.st+d.an;return d;});
+const YEAR_AXIS=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+const YEAR_PHASE=['period','follicular','follicular','ovulation','luteal','luteal','pre','pre','period','follicular','ovulation','luteal'];
+const YEAR_DATA=YEAR_PHASE.map((p,i)=>{const b=70+((i*37)%80);const r=k=>Math.round(b*(0.2+(Math.sin(i*1.7+k)*0.5+0.5)*0.5));
+  const d={ca:r(1),pl:r(2),ex:r(3),st:r(4),an:r(5),phase:p,isPre:p==='pre'};d.total=d.ca+d.pl+d.ex+d.st+d.an;return d;});
+
+function roundTop(x,y,w,h,r){r=Math.min(r,w/2,h);
+  return `M ${x} ${y+h} L ${x} ${y+r} Q ${x} ${y} ${x+r} ${y} L ${x+w-r} ${y} Q ${x+w} ${y} ${x+w} ${y+r} L ${x+w} ${y+h} Z`;}
+
+/* ── 堆叠柱 SVG ── */
+function stackedSVG(bars,o){
+  const LEFT=PAD.LEFT,RIGHT=PAD.RIGHT,TOP=PAD.TOP,PH=PAD.PLOT_H,BAND=PAD.BAND_H,GAP=PAD.GAP;
+  const barW=o.barW,gap=o.gap;
+  const contentW=LEFT+RIGHT+bars.length*(barW+gap);
+  const stripY=TOP+PH+GAP;
+  const xLabelY=stripY+BAND+6;
+  const chartH=xLabelY+12;
+  const yMax=Math.max(1,...bars.map(b=>b.total));
+  const y0=TOP+PH;
+  let s=`<svg width="${contentW}" height="${chartH}" viewBox="0 0 ${contentW} ${chartH}">`;
+
+  // 横向网格 + Y 刻度
+  [0,yMax/2,yMax].forEach(v=>{const y=y0-(v/yMax)*PH;
+    s+=`<line x1="${LEFT}" y1="${y}" x2="${contentW-RIGHT}" y2="${y}" stroke="${OV}" stroke-width="1" stroke-dasharray="2 4" opacity="0.8"/>`;
+    s+=`<text x="${LEFT-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${SUB}">${Math.round(v)}</text>`;});
+
+  // 经期/经前 背景列
+  bars.forEach((b,i)=>{const x=LEFT+i*(barW+gap);const cx=x-gap/2+1,cw=barW+gap-2;
+    if(b.phase==='period')s+=`<rect x="${cx}" y="${TOP-3}" width="${cw}" height="${PH+6}" rx="7" fill="${PHASE.period}" opacity="0.10"/>`;
+    else if(b.isPre){s+=`<rect x="${cx}" y="${TOP-3}" width="${cw}" height="${PH+6}" rx="7" fill="${PHASE.pre}" opacity="0.16"/>`;
+      s+=`<rect x="${cx}" y="${TOP-3}" width="${cw}" height="3.5" rx="1.75" fill="${PHASE.pre}"/>`;}});
+
+  // 堆叠柱
+  bars.forEach((b,i)=>{const x=LEFT+i*(barW+gap);
+    if(b.total>0){let last=-1;MOODS.forEach((m,k)=>{if((b[m.key]||0)>0)last=k;});
+      const barH=Math.max(4,(b.total/yMax)*PH);let cur=y0;
+      MOODS.forEach((m,k)=>{const c=b[m.key]||0;if(!c)return;const h=(c/b.total)*barH;cur-=h;
+        if(k===last)s+=`<path d="${roundTop(x,cur,barW,h,Math.min(5,barW/2))}" fill="${m.c}"/>`;
+        else s+=`<rect x="${x}" y="${cur.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${m.c}"/>`;});
+      s+=`<text x="${x+barW/2}" y="${y0-barH-6}" text-anchor="middle" font-size="10.5" font-weight="700" fill="${SUB}">${b.total}</text>`;
+    }else{s+=`<rect x="${x}" y="${y0-3}" width="${barW}" height="3" rx="1.5" fill="${OV}"/>`;}});
+
+  // 连续 run 浮标
+  const runs=[];let cur=null;
+  bars.forEach((b,i)=>{const kind=b.phase==='period'?'period':b.isPre?'pre':null;
+    if(kind){if(cur&&cur.kind===kind)cur.end=i;else{if(cur)runs.push(cur);cur={kind,start:i,end:i};}}
+    else if(cur){runs.push(cur);cur=null;}});if(cur)runs.push(cur);
+  runs.filter(r=>r.end-r.start>=(o.runMin||1)).forEach(r=>{const cx=LEFT+(r.start+(r.end-r.start)/2+0.5)*(barW+gap);
+    const txt=r.kind==='period'?'经期':'经前';const w=txt.length*12+16;
+    s+=`<rect x="${cx-w/2}" y="${TOP-24}" width="${w}" height="17" rx="8.5" fill="${r.kind==='period'?PHASE.period:PHASE.pre}"/>`;
+    s+=`<text x="${cx}" y="${TOP-24+12}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">${txt}</text>`;});
+
+  // 周期色带
+  s+=`<rect x="${LEFT-3}" y="${stripY-3}" width="${contentW-RIGHT-LEFT+6}" height="${BAND+6}" rx="9" fill="#F3F0FA"/>`;
+  s+=`<text x="${LEFT}" y="${stripY-7}" font-size="10" font-weight="600" fill="${SUB}">周期阶段</text>`;
+  bars.forEach((b,i)=>{const x=LEFT+i*(barW+gap);const col=b.phase==='period'?PHASE.period:b.isPre?PHASE.pre:PHASE[b.phase]||PHASE.unknown;
+    s+=`<rect x="${x}" y="${stripY}" width="${barW}" height="${BAND}" rx="3.5" fill="${col}"/>`;});
+  bars.forEach((b,i)=>{const x=LEFT+i*(barW+gap);
+    s+=`<text x="${x+barW/2}" y="${xLabelY}" text-anchor="middle" font-size="10" fill="${SUB}">${b.label}</text>`;});
+
+  s+=`</svg>`;return s;
+}
+
+/* ── 对比卡 ── */
+function compareCard(bars){
+  const sum=list=>{const days=list.length;const total=list.reduce((s,b)=>s+b.total,0);
+    const neg=list.reduce((s,b)=>s+(b.st||0)+(b.an||0),0);return{days,total,neg,negShare:total>0?neg/total:0,dayAvg:days>0?total/days:0};};
+  const p=sum(bars.filter(b=>b.phase==='period')),pr=sum(bars.filter(b=>b.isPre)),o=sum(bars.filter(b=>b.phase!=='period'&&!b.isPre));
+  const pct=x=>Math.round(x*100)+'%';
+  const has=bars.some(b=>b.total>0);
+  if(!has)return `<div class="hint">本区间暂无情绪事件记录 · 连上戒指开启自动监测后，这里将展示真实的情绪分布与周期对比。</div>`;
+  let txt='';
+  if(pr.total>0)txt+=`经前期（距经期 ≤7 天）的消极情绪（压力 / 焦虑）占比 ${pct(pr.negShare)}，其他时期 ${pct(o.negShare)}。`;
+  if(p.days>0)txt+=`经期共 ${p.days} 天，日均情绪事件 ${p.dayAvg.toFixed(1)} 次。`;
+  txt+=' 周期为推算（日历 + 体温），仅帮助你观察身体节律与情绪的关联，不构成诊断。';
+  return `<div class="statgrid">
+    <div class="tile" style="background:${PHASE.period}1f"><div class="tile-l">经期情绪事件</div><div class="tile-v" style="color:#C24E8A">${p.total} 次</div><div class="tile-s">覆盖 ${p.days} 天</div></div>
+    <div class="tile" style="background:${PHASE.pre}1f"><div class="tile-l">经前消极占比</div><div class="tile-v" style="color:#C24E8A">${pr.total>0?pct(pr.negShare):'—'}</div><div class="tile-s">压力+焦虑 / 经前事件</div></div>
+    <div class="tile" style="background:${MOODS[0].c}1f"><div class="tile-l">其他期消极占比</div><div class="tile-v" style="color:#5B7FD0">${o.total>0?pct(o.negShare):'—'}</div><div class="tile-s">压力+焦虑 / 其他事件</div></div>
+  </div><div class="analysis">${txt}</div><div class="note">周期为推算 · 不构成诊断</div>`;
+}
+
+/* ── 各视图 ── */
+function chartCard(label,sub,svg){const legend=MOODS.map(m=>`<div class="leg"><div class="sw" style="background:${m.c}"></div><span class="legtxt">${m.t}</span></div>`).join('')
+  +`<div class="leg"><div class="sw" style="background:${PHASE.period}"></div><span class="legtxt">经期</span></div>`
+  +`<div class="leg"><div class="sw" style="background:${PHASE.pre}"></div><span class="legtxt">经前</span></div>`;
+  return `<div class="card"><div class="headrow"><div><div class="charttitle">情绪分布</div><div class="headsub">${sub}</div></div><div class="rangechip">${label}</div></div>
+    <div class="scrollx">${svg}</div><div class="legend">${legend}</div></div>`;}
+
+function renderDay(){
+  const cols=[];for(let i=0;i<96;i++){const hr=Math.floor(i/4);let col='#EDEAF6';
+    if(hr>=8&&hr<=22){const r=(i*53)%100;
+      if(r<8)col='#C9598A';else if(r<22)col='#9D8AF0';else if(r<46)col='#F0C46E';else if(r<68)col='#BCCB62';else col='#7EA6F8';}
+    cols.push(col);}
+  const dots=cols.map(c=>`<div class="cell" style="background:${c}"></div>`).join('');
+  const ticks=[0,4,8,12,16,20,24].map(h=>`<span class="tl">${String(h).padStart(2,'0')}</span>`).join('');
+  const legend=MOODS.map(m=>`<div class="leg"><div class="sw" style="background:${m.c}"></div><span class="legtxt">${m.t}</span></div>`).join('');
+  return `<div class="card">
+    <div class="hero"><div class="hero-emoji">😟</div><div class="hero-b"><b>今日主情绪 · 焦虑</b><p>全天 9 次情绪记录，焦虑占多数</p></div></div>
+    <div class="matrix-wrap"><div class="dot-grid">${dots}</div><div class="timeline">${ticks}</div></div>
+    <div class="legend" style="margin-top:14px">${legend}</div>
+  </div>
+  <div class="card"><div class="charttitle" style="margin-bottom:4px">今日概览</div>
+    <div class="ovgrid">
+      <div class="ov" style="background:#FCEAF2"><div class="ov-l">情绪消耗</div><div class="ov-v" style="color:#C9598A">偏高</div><div class="ov-s">经前波动上升</div></div>
+      <div class="ov" style="background:#EAF1FE"><div class="ov-l">恢复时间</div><div class="ov-v" style="color:#5B7FD0">7.2 h</div><div class="ov-s">低于平时</div></div>
+      <div class="ov" style="background:#F1ECFE"><div class="ov-l">峰值时段</div><div class="ov-v" style="color:#7C6BD6">21:00</div><div class="ov-s">晚间情绪最密</div></div>
+      <div class="ov" style="background:#F7F5E0"><div class="ov-l">情绪负荷</div><div class="ov-v" style="color:#B59A2E">偏重</div><div class="ov-s">压力+焦虑占 44%</div></div>
+    </div>
+  </div>`;
+}
+function renderWeek(){const bars=MONTH_DATA.slice(-7).map((d,i)=>({...d,label:['一','二','三','四','五','六','日'][i]}));
+  return chartCard('周','每天一根柱 · 按情绪占比堆叠',stackedSVG(bars,{barW:40,gap:10,runMin:1}))+compareCard(bars);}
+function renderMonth(){const bars=MONTH_DATA.map((d,i)=>({...d,label:String(i+1)}));
+  return chartCard('月','每天一根柱 · 按情绪占比堆叠',stackedSVG(bars,{barW:20,gap:6,runMin:2}))+compareCard(bars);}
+function renderYear(){const bars=YEAR_DATA.map((d,i)=>({...d,label:YEAR_AXIS[i]}));
+  return chartCard('年','每月一根柱 · 按情绪占比堆叠',stackedSVG(bars,{barW:22,gap:8,runMin:1}))+compareCard(bars);}
+
+const ANCHOR={day:'2026 年 9 月 30 日',week:'第 40 周',month:'2026 年 9 月',year:'2026 年'};
+function render(r){document.getElementById('anchorLabel').textContent=ANCHOR[r];
+  document.getElementById('panel').innerHTML = r==='day'?renderDay():r==='week'?renderWeek():r==='month'?renderMonth():renderYear();}
+
+const seg=document.getElementById('seg'),ind=document.getElementById('segInd');
+const opts=[...seg.querySelectorAll('.seg-opt')];
+seg.addEventListener('click',e=>{const o=e.target.closest('.seg-opt');if(!o)return;
+  opts.forEach(x=>x.classList.remove('active'));o.classList.add('active');
+  ind.style.transform=`translateX(${opts.indexOf(o)*100}%)`;render(o.dataset.r);});
+ind.style.transform='translateX(200%)';
+render('month');
+</script>
+</body>
+</html>

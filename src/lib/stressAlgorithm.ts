@@ -1,11 +1,18 @@
 /**
- * 压力检测算法 — 开源参考
+ * 压力/情绪检测算法 — 开源参考
  *  - KalmanJS (MIT): https://github.com/wouterbulten/kalmanjs
  *  - Kalman-Normalized GSR (2025): https://onlinelibrary.wiley.com/doi/full/10.1155/ijta/8828363
  *  - hrv-stress-wearable (MIT): https://github.com/Kaizer-1/hrv-stress-wearable
+ *  - cvxEDA (Greco et al., 2016): EDA 分解 tonic+phasic 的金标准框架；本实现取其
+ *    「事件=相对 tonic 基线的 phasic 偏离」思想，用稳健统计替代凸优化求解器。
+ *  - 稳健基线: Iglewicz & Hoaglin (1993) modified z-score = 0.6745·(x−median)/MAD
+ *    （正态分布下与经典 z 等价，但对离群点/佩戴时长差异稳健）。
+ *  - HRV 应激特征: Shaffer & Ginsberg (2017) HRV 综述; 应激状态典型表现为
+ *    HR↑ 且 RMSSD↓ → 事件级方向判定的生理学依据。
+ *  - Veepoo SDK stress(0-12)/emotionLevel/sns/VTI: 厂商端上成熟算法，作为主输入。
  *
- * 输入: EDA(skinMoisture) 序列 (全天), HRV(RMSSD) 单值
- * 输出: 当前压力分 0-100, 全天压力事件时间戳, 个人基线, 每小时事件分布
+ * 输入: EDA 序列(全天), HR/HRV(RMSSD) 逐样本, SDK stress/emotion, 过去 7 天历史
+ * 输出: 当前压力分 0-100, 全天压力事件时间戳, 个人基线(7天逐小时稳健), 每小时事件分布
  */
 import KalmanFilter from './kalman-filter';
 import { healthStore, dayStartMs, dayKey, type MetricKey } from '../data/healthStore';
@@ -46,6 +53,12 @@ export interface StressReport {
   hourBuckets: HourBucket[];    // 每小时事件分布
   peakHour: number | null;
   sampleCount: number;
+
+  /** ★ 佩戴信号：当天是否有任何传感器数据（EDA 仅实时、无回填 → 有原始点即代表佩戴过）。
+   *   用于区分「未佩戴（无数据）」与「佩戴但情绪平稳（0 事件）」，避免柱状图把两者都画成 0。 */
+  worn: boolean;
+  /** 估算佩戴覆盖分钟数（原始采样序列跨度，未填充）。0 仅代表「无逐样本可算跨度」(如只有日均)。 */
+  wearMin: number;
 
   // ★ 情绪消耗 (分建设性 vs 破坏性) + 恢复时间
   emotionalLoad: number | null;         // 0-100, 总消耗
@@ -89,6 +102,35 @@ function classifyLevel(z: number): StressLevel {
   return 'high';
 }
 
+/**
+ * ★ 7 天逐小时稳健基线（median + MAD）— Iglewicz & Hoaglin (1993)
+ *  modified z = 0.6745·(x−median)/MAD：正态分布下数值上与经典 z 等价，
+ *  但不受离群点拖拽、不因「当天只戴了 2 小时」这类采样偏倚而失真。
+ *  每小时一组（人的 EDA/HR/HRV 有明显昼夜节律，全天单基线会把夜间低值误判为异常）。
+ *  返回 24 项数组；某小时样本不足(<15)或全天样本太少(<60)时该位为 null，调用方回退到当日基线。
+ */
+function robustHourlyBaselines(
+  key: 'eda' | 'hr' | 'hrv',
+  dayStart: number,
+): ({ med: number; mad: number } | null)[] | null {
+  const start = dayStart - 6 * 86400000;
+  const pts = healthStore.getTimeRange(key as MetricKey, start, dayStart, { fillDailyMean: false, maxPoints: 3600 });
+  if (pts.length < 60) return null;
+  const groups: number[][] = Array.from({ length: 24 }, () => []);
+  for (const p of pts) groups[new Date(p.t).getHours()].push(p.v);
+  const out: ({ med: number; mad: number } | null)[] = [];
+  for (let h = 0; h < 24; h++) {
+    const arr = groups[h];
+    if (arr.length < 15) { out.push(null); continue; }
+    const sorted = [...arr].sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    const devs = arr.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+    const mad = devs[Math.floor(devs.length / 2)];
+    out.push(mad > 1e-6 ? { med, mad } : null);
+  }
+  return out;
+}
+
 // ★ 结果缓存：同一 (日期, healthStore 版本, 30s 窗) 内重复调用直接命中，避免重复跑
 //   Kalman 滤波 + 全天事件检测。TodayScreen / StressInsightCard / EnergyDetail / 情绪详情
 //   都在 render 里同步调用本函数，而 BLE 状态推送会带动这些屏幕反复重渲染 → 不缓存必卡。
@@ -107,9 +149,12 @@ function computeStressReportUncached(nowMs: number): StressReport {
   const dayStart = dayStartMs(nowMs);
 
   // ★ 优先用 EDA 原始值；Veepoo SDK 回的是 stress 等级（0~12 整数），fallback 到 stress key
+  // worn = 任意序列有数据（filled 序列在「有日均、无逐样本」的日子也会补正午点 → 比 unfilled 更稳）
   let edaRaw = healthStore.getTimeRange('eda', dayStart, nowMs, { fillDailyMean: true, maxPoints: 480 });
+  let worn = edaRaw.length > 0;
   if (edaRaw.length === 0) {
     edaRaw = healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: true, maxPoints: 480 });
+    worn = edaRaw.length > 0;
   }
   if (edaRaw.length === 0) {
     return {
@@ -118,7 +163,22 @@ function computeStressReportUncached(nowMs: number): StressReport {
       emotionalLoad: null, loadConstructive: null, loadDestructive: null,
       avgRecoverySec: null, recoveryProlonged: null,
       valenceScore: null, valenceLabel: null, valenceReason: null,
+      worn: false, wearMin: 0,
     };
+  }
+
+  // ★ 佩戴覆盖分钟数：必须用「未填充」原始序列算时间跨度，否则 fillDailyMean 给无逐样本日补的正午点
+  //   会夸大覆盖。EDA 仅实时、无回填 → 有原始点即代表佩戴；stress 兜底同理。
+  let wearMin = 0;
+  {
+    const rawEda = healthStore.getTimeRange('eda', dayStart, nowMs, { fillDailyMean: false, maxPoints: 1000 });
+    const rawForSpan = rawEda.length > 1
+      ? rawEda
+      : healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: false, maxPoints: 1000 });
+    if (rawForSpan.length > 1) {
+      const span = (rawForSpan[rawForSpan.length - 1].t - rawForSpan[0].t) / 60000;
+      wearMin = Math.min(1440, Math.max(0, Math.round(span)));
+    }
   }
 
   // Kalman 滤波
@@ -150,10 +210,18 @@ function computeStressReportUncached(nowMs: number): StressReport {
   }
 
   // ── 当前压力分 ──
+  // ★ SDK 成熟算法转正（v19.52）：Veepoo 端上 stress(0-12) 由 HRV+HR+PPG 多信号融合，
+  //   是厂商标定过的输出 → 主源。EDA z-score 公式仅在 SDK stress 缺失时兜底。
+  const sdkStressRecent = healthStore.getTimeRange('stress', nowMs - SCORE_WINDOW_MS, nowMs, { fillDailyMean: false, maxPoints: 24 });
+  const sdkStressLatest = sdkStressRecent.length > 0 ? sdkStressRecent[sdkStressRecent.length - 1].v : null;
   const edaNow = filtered[filtered.length - 1]?.v ?? null;
   let score: number | null = null;
   let level: StressLevel | null = null;
-  if (edaNow != null && recentStats && recentStats.std > 0.01) {
+  if (sdkStressLatest != null) {
+    score = Math.round(Math.max(0, Math.min(100, (sdkStressLatest / 12) * 100)));
+    // SDK 档位（Veepoo 0-12 分级惯例）: 0-3 放松 / 4-6 轻度 / 7-9 中度 / 10-12 高压
+    level = sdkStressLatest <= 3 ? 'calm' : sdkStressLatest <= 6 ? 'mild' : sdkStressLatest <= 9 ? 'moderate' : 'high';
+  } else if (edaNow != null && recentStats && recentStats.std > 0.01) {
     const z = (edaNow - recentStats.mean) / recentStats.std;
     score = Math.round(Math.max(0, Math.min(100, 40 + z * 15)));
     if (hrvTrend === 'down' && z > 0.5) score = Math.min(100, score + 10);
@@ -161,13 +229,24 @@ function computeStressReportUncached(nowMs: number): StressReport {
   }
 
   // ── 全天压力事件检测 ──
-  // 用全天 mean/std 做统一基线，检测全天所有偏离事件
+  // ★ 基线升级（v19.52）：过去 7 天逐小时 median+MAD 稳健基线（Iglewicz & Hoaglin），
+  //   事件 = modified z ≥ 阈值 + 8min 不应期。某小时无周基线时回退当日 mean/std 经典 z。
   const events: StressEvent[] = [];
-  if (allStats && allStats.std > 0.01) {
+  const edaWeekly = robustHourlyBaselines('eda', dayStart);
+  if (edaWeekly || (allStats && allStats.std > 0.01)) {
     let lastEventT = -Infinity;
     for (const p of filtered) {
-      const z = (p.v - allStats.mean) / allStats.std;
-      if (z >= EVENT_Z_THRESHOLD && p.t - lastEventT >= EVENT_MIN_GAP_MS) {
+      const hb = edaWeekly?.[new Date(p.t).getHours()] ?? null;
+      let z: number | null = null;
+      let baseline = 0;
+      if (hb) {
+        z = (0.6745 * (p.v - hb.med)) / hb.mad;   // modified z，正态下≈经典 z
+        baseline = hb.med;
+      } else if (allStats && allStats.std > 0.01) {
+        z = (p.v - allStats.mean) / allStats.std;
+        baseline = allStats.mean;
+      }
+      if (z != null && z >= EVENT_Z_THRESHOLD && p.t - lastEventT >= EVENT_MIN_GAP_MS) {
         const d = new Date(p.t);
         const severity = Math.min(100, Math.round(z * 30));
         events.push({
@@ -175,7 +254,7 @@ function computeStressReportUncached(nowMs: number): StressReport {
           hour: d.getHours(),
           minute: d.getMinutes(),
           eda: p.v,
-          baseline: allStats.mean,
+          baseline,
           z,
           severity,
           level: classifyLevel(z),
@@ -212,9 +291,22 @@ function computeStressReportUncached(nowMs: number): StressReport {
     : null;
 
   // ── 事件级情绪方向判定 ──
-  // 优先级: 事件前后 emotion 单点 > 恢复时间辅助 > 全天 valence 兜底
+  // 优先级: 事件前后 emotion 单点 > HRV/HR 生理窗口响应 > 恢复时间辅助 > 全天 valence 兜底
+  //   生理窗口层依据（Shaffer & Ginsberg 2017; Kaizer-1/hrv-stress-wearable）:
+  //   应激 → 交感激活 = HR↑（≥+8%）且/或 RMSSD↓（≥−15%）；放松副交感占优 = HR↓ & RMSSD↑。
   const EVENT_WINDOW_MS = 10 * 60 * 1000; // ±10min 窗口
   const emotionDay = healthStore.getTimeRange('emotion' as MetricKey, dayStart, nowMs, { fillDailyMean: false, maxPoints: 200 });
+  const hrDay = healthStore.getTimeRange('hr', dayStart, nowMs, { fillDailyMean: false, maxPoints: 1440 });
+  const hrvDay = healthStore.getTimeRange('hrv', dayStart, nowMs, { fillDailyMean: false, maxPoints: 720 });
+  const hrWeekly = robustHourlyBaselines('hr', dayStart);
+  const hrvWeekly = robustHourlyBaselines('hrv', dayStart);
+  // 当日兜底均值（无周基线时用）
+  const meanOfPts = (arr: { t: number; v: number }[]): number | null => {
+    if (arr.length === 0) return null;
+    return arr.reduce((s, p) => s + p.v, 0) / arr.length;
+  };
+  const hrDayMean = meanOfPts(hrDay);
+  const hrvDayMean = meanOfPts(hrvDay);
   // ★ 全天 emotion 真实性预检测：值域窄 + 方差小 = offlineEstimates 假数据 = Tier 1 全跳过
   let emotionDayIsReal = false;
   if (emotionDay.length >= 5) {
@@ -250,17 +342,38 @@ function computeStressReportUncached(nowMs: number): StressReport {
       if (avgEmo >= 2) evLabel = 'positive';
       else if (avgEmo <= -2) evLabel = 'negative';
       else evLabel = 'neutral';
-    } else if (ev.recoverySec != null) {
-      // 没有 emotion 单点 → recoverySec 相对值判定（避免绝对阈值失效）
-      // 同一用户同一天 recoverySec 常常很接近（都≈40s），用 ratio 比较才有区分度
-      const avgRT = validRTs.length > 0 ? validRTs.reduce((a, b) => a + b, 0) / validRTs.length : 40;
-      const ratio = avgRT > 0 ? ev.recoverySec / avgRT : 1;
-      if (ratio < 0.5 && ev.z < 2.0) {
-        evLabel = 'positive';   // 明显快于平均（<50%）→ 兴奋/心流
-      } else if (ratio > 2.0 || ev.z > 2.5) {
-        evLabel = 'negative';   // 明显慢于平均（>200%）或 z 极端高 → 压力
+    } else {
+      // ★ Tier 2: HRV/HR 生理窗口响应（v19.52 新增）
+      // 事件 ±10min 窗口的 HR/RMSSD 均值 vs 个人基线（7天逐小时 median，回退当日均值）
+      const hrWin = hrDay.filter((p) => p.t >= evStart && p.t <= evEnd);
+      const hrvWin = hrvDay.filter((p) => p.t >= evStart && p.t <= evEnd);
+      const hrWinMean = meanOfPts(hrWin);
+      const hrvWinMean = meanOfPts(hrvWin);
+      if (hrWinMean != null && hrvWinMean != null && (hrWin.length >= 3 || hrvWin.length >= 3)) {
+        const hour = ev.hour;
+        const hrBase = hrWeekly?.[hour]?.med ?? hrDayMean;
+        const hrvBase = hrvWeekly?.[hour]?.med ?? hrvDayMean;
+        if (hrBase != null && hrBase > 0 && hrvBase != null && hrvBase > 0) {
+          const hrDev = (hrWinMean - hrBase) / hrBase;
+          const hrvDevW = (hrvWinMean - hrvBase) / hrvBase;
+          if (hrDev >= 0.08 || hrvDevW <= -0.15) {
+            evLabel = 'negative';   // HR↑8%+ 或 RMSSD↓15%+ → 交感激活/应激
+          } else if (hrDev <= -0.04 && hrvDevW >= 0.10) {
+            evLabel = 'positive';   // HR↓ & RMSSD↑ → 副交感占优/恢复态
+          }
+        }
       }
-      // 其他 → 保持 null，下面兜底 neutral
+      // Tier 3: 没有 HR/HRV 窗口数据 → SCR 恢复时间相对值判定
+      if (evLabel == null && ev.recoverySec != null) {
+        // 同一用户同一天 recoverySec 常常很接近（都≈40s），用 ratio 比较才有区分度
+        const avgRT = validRTs.length > 0 ? validRTs.reduce((a, b) => a + b, 0) / validRTs.length : 40;
+        const ratio = avgRT > 0 ? ev.recoverySec / avgRT : 1;
+        if (ratio < 0.5 && ev.z < 2.0) {
+          evLabel = 'positive';   // 明显快于平均（<50%）→ 兴奋/心流
+        } else if (ratio > 2.0 || ev.z > 2.5) {
+          evLabel = 'negative';   // 明显慢于平均（>200%）或 z 极端高 → 压力
+        }
+      }
     }
     // 兜底延后：此处先保持 null，交由下方「全天 valence 兜底」统一决定
     // （对齐上方优先级注释：事件 emotion > 恢复时间 > 全天 valence）
@@ -537,6 +650,8 @@ function computeStressReportUncached(nowMs: number): StressReport {
     hourBuckets,
     peakHour,
     sampleCount: filtered.length,
+    worn,
+    wearMin,
     emotionalLoad,
     loadConstructive,
     loadDestructive,

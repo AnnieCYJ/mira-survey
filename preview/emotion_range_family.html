@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>情绪洞察 · 日/周/月/年 同步设计（设计 B）</title>
+<style>
+  :root{
+    --c-excited:#F0C46E; --c-pleasant:#BCCB62; --c-calm:#7EA6F8;
+    --c-stressed:#9D8AF0; --c-anxious:#C9598A; --neutral:#ECEAFB;
+    --title:#6C5647; --sub:#5F5F74; --ink:#4A4660; --page:#FBFAFF; --line:#ECEAFB;
+    --rad-card:14px; --rad-md:11px; --rad-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{background:#EFEAF6;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    display:flex;gap:20px;flex-wrap:wrap;justify-content:center;padding:26px 12px 60px;color:var(--ink);}
+  .phone{width:380px;background:var(--page);border-radius:34px;padding:16px 15px 26px;
+    box-shadow:0 18px 50px rgba(76,60,120,.22);overflow:hidden;position:relative;}
+  .tag{position:absolute;top:14px;left:15px;font-size:11px;font-weight:700;letter-spacing:.5px;
+    color:#fff;background:#C9598A;padding:4px 10px;border-radius:999px;z-index:5;}
+  /* top range selector — 同步元素，四个页面一致 */
+  .selector{display:flex;gap:6px;margin:26px 0 14px;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:4px;}
+  .selector .s{flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--sub);
+    padding:7px 0;border-radius:999px;}
+  .selector .s.on{background:#9D8AF0;color:#fff;}
+  .head{display:flex;justify-content:space-between;align-items:center;}
+  .h-title{font-size:19px;font-weight:700;color:var(--title);}
+  .chip{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;
+    font-size:12px;font-weight:700;}
+  .chip i{width:7px;height:7px;border-radius:99px;display:inline-block;}
+  .sub{font-size:11px;color:var(--sub);margin:8px 0 4px;line-height:1.5;}
+  .sec{font-size:14px;font-weight:700;color:var(--title);margin:18px 0 8px;}
+  /* dot matrix (day) */
+  .matrix{padding:6px 2px 2px;}
+  .mrow{display:flex;gap:3px;margin-bottom:3px;}
+  .mcell{flex:1;display:flex;justify-content:center;}
+  .dot{width:9px;height:9px;border-radius:99px;}
+  .axis{display:flex;gap:3px;margin-top:5px;}
+  .acell{flex:1;text-align:center;font-size:9px;color:var(--sub);}
+  .legend{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:11px;}
+  .lg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--sub);}
+  .lg i{width:8px;height:8px;border-radius:99px;display:inline-block;}
+  /* histogram */
+  .hist{display:flex;align-items:flex-end;gap:3px;height:84px;padding:0 1px;}
+  .hbar{flex:1;border-radius:4px 4px 2px 2px;}
+  /* tiles (design B) */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tile{border-radius:12px;padding:11px 12px;}
+  .tl{font-size:10.5px;color:var(--sub);margin-bottom:3px;}
+  .tv{font-size:20px;font-weight:700;color:var(--title);line-height:1.1;}
+  .ts{font-size:9.5px;color:var(--sub);margin-top:2px;}
+  /* week grid */
+  .week{display:flex;gap:6px;}
+  .wcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;}
+  .wpanel{border-radius:12px;width:100%;height:64px;display:flex;align-items:center;justify-content:center;}
+  .wdot{width:18px;height:18px;border-radius:99px;border:2px solid #fff;}
+  .wlab{font-size:10px;color:var(--sub);}
+  /* month pixels */
+  .pixels{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;}
+  .px{border-radius:5px;aspect-ratio:1;}
+  /* year panels */
+  .year{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .ym{border-radius:11px;padding:10px 6px;text-align:center;}
+  .ym .ymv{font-size:12px;font-weight:700;margin-top:6px;}
+  .note{font-size:10px;color:var(--sub);margin-top:12px;line-height:1.6;
+    background:#fff;border:1px dashed var(--line);border-radius:10px;padding:8px 10px;}
+</style>
+</head>
+<body>
+
+<!-- ===== 今日 ===== -->
+<div class="phone">
+  <span class="tag">今日</span>
+  <div class="selector"><div class="s on">今天</div><div class="s">本周</div><div class="s">本月</div><div class="s">本年</div></div>
+  <div class="head"><div class="h-title">情绪洞察</div>
+    <div class="chip" style="background:rgba(126,166,248,.22)"><i style="background:#7EA6F8"></i>平静</div></div>
+  <div class="sub">全天 14 次情绪记录，平静占多数</div>
+
+  <div class="sec">全天情绪分布</div>
+  <div class="matrix" id="dayM"></div>
+
+  <div class="sec">每小时压力事件</div>
+  <div class="hist" id="dayH"></div>
+
+  <div class="sec">今日概览</div>
+  <div class="tiles">
+    <div class="tile" style="background:rgba(201,89,138,.14)"><div class="tl">情绪消耗</div><div class="tv" style="color:#C9598A">14 次</div><div class="ts">事件适中</div></div>
+    <div class="tile" style="background:rgba(126,166,248,.14)"><div class="tl">恢复时间</div><div class="tv">82s</div><div class="ts">正常</div></div>
+    <div class="tile" style="background:rgba(157,138,240,.14)"><div class="tl">峰值时段</div><div class="tv">14:00</div><div class="ts">事件最集中</div></div>
+    <div class="tile" style="background:rgba(240,196,110,.16)"><div class="tl">情绪负荷</div><div class="tv">适中</div><div class="ts">全天情绪张力</div></div>
+  </div>
+</div>
+
+<!-- ===== 本周 ===== -->
+<div class="phone">
+  <span class="tag">本周</span>
+  <div class="selector"><div class="s">今天</div><div class="s on">本周</div><div class="s">本月</div><div class="s">本年</div></div>
+  <div class="head"><div class="h-title">本周情绪</div>
+    <div class="chip" style="background:rgba(126,166,248,.22)"><i style="background:#7EA6F8"></i>平静</div></div>
+  <div class="sub">7 天里 4 天主情绪为平静，整体平稳</div>
+
+  <div class="sec">本周每日主情绪</div>
+  <div class="week" id="weekGrid"></div>
+
+  <div class="sec">本周概览</div>
+  <div class="tiles">
+    <div class="tile" style="background:rgba(201,89,138,.14)"><div class="tl">情绪消耗</div><div class="tv" style="color:#C9598A">73 次</div><div class="ts">日均 10 次</div></div>
+    <div class="tile" style="background:rgba(126,166,248,.14)"><div class="tl">平均恢复</div><div class="tv">78s</div><div class="ts">略好于上周</div></div>
+    <div class="tile" style="background:rgba(157,138,240,.14)"><div class="tl">高峰日</div><div class="tv">周三</div><div class="ts">压力最集中</div></div>
+    <div class="tile" style="background:rgba(240,196,110,.16)"><div class="tl">情绪负荷</div><div class="tv">适中</div><div class="ts">本周张力</div></div>
+  </div>
+  <div class="note">同步设计：顶部选择器 + 主情绪 chip + 语义色浅底瓷片，与「今日」完全一致；仅中部 HERO 随周期变化。</div>
+</div>
+
+<!-- ===== 本月 ===== -->
+<div class="phone">
+  <span class="tag">本月</span>
+  <div class="selector"><div class="s">今天</div><div class="s">本周</div><div class="s on">本月</div><div class="s">本年</div></div>
+  <div class="head"><div class="h-title">本月情绪</div>
+    <div class="chip" style="background:rgba(188,203,98,.18)"><i style="background:#BCCB62"></i>愉悦</div></div>
+  <div class="sub">30 天里愉悦 11 天、平静 9 天，整体偏积极</div>
+
+  <div class="sec">本月每日主情绪</div>
+  <div class="pixels" id="monthGrid"></div>
+
+  <div class="sec">本月概览</div>
+  <div class="tiles">
+    <div class="tile" style="background:rgba(201,89,138,.14)"><div class="tl">情绪消耗</div><div class="tv" style="color:#C9598A">312 次</div><div class="ts">日均 10 次</div></div>
+    <div class="tile" style="background:rgba(126,166,248,.14)"><div class="tl">平均恢复</div><div class="tv">80s</div><div class="ts">稳定</div></div>
+    <div class="tile" style="background:rgba(157,138,240,.14)"><div class="tl">高峰周</div><div class="tv">第 3 周</div><div class="ts">压力偏多</div></div>
+    <div class="tile" style="background:rgba(240,196,110,.16)"><div class="tl">情绪负荷</div><div class="tv">适中</div><div class="ts">本月张力</div></div>
+  </div>
+</div>
+
+<!-- ===== 本年 ===== -->
+<div class="phone">
+  <span class="tag">本年</span>
+  <div class="selector"><div class="s">今天</div><div class="s">本周</div><div class="s">本月</div><div class="s on">本年</div></div>
+  <div class="head"><div class="h-title">本年情绪</div>
+    <div class="chip" style="background:rgba(126,166,248,.22)"><i style="background:#7EA6F8"></i>平静</div></div>
+  <div class="sub">12 个月里平静占 5 个月，是今年主基调</div>
+
+  <div class="sec">本年度每月主情绪</div>
+  <div class="year" id="yearGrid"></div>
+
+  <div class="sec">本年概览</div>
+  <div class="tiles">
+    <div class="tile" style="background:rgba(201,89,138,.14)"><div class="tl">情绪消耗</div><div class="tv" style="color:#C9598A">3.6k</div><div class="ts">日均 10 次</div></div>
+    <div class="tile" style="background:rgba(126,166,248,.14)"><div class="tl">平均恢复</div><div class="tv">81s</div><div class="ts">稳定</div></div>
+    <div class="tile" style="background:rgba(157,138,240,.14)"><div class="tl">高峰月</div><div class="tv">3 月</div><div class="ts">压力偏多</div></div>
+    <div class="tile" style="background:rgba(240,196,110,.16)"><div class="tl">情绪负荷</div><div class="tv">适中</div><div class="ts">年度张力</div></div>
+  </div>
+</div>
+
+<script>
+const COL={e:'#F0C46E',p:'#BCCB62',c:'#7EA6F8',s:'#9D8AF0',a:'#C9598A',n:'#ECEAFB'};
+const T={e:'rgba(240,196,110,.18)',p:'rgba(188,203,98,.20)',c:'rgba(126,166,248,.20)',s:'rgba(157,138,240,.20)',a:'rgba(201,89,138,.18)'};
+function colorAt(h,m){const t=h+m/60;
+  if(t<7)return COL.n; if(t<9)return COL.c; if(t<11)return COL.p;
+  if(t>=13&&t<16)return(m<30?COL.s:COL.a); if(t>=16&&t<19)return COL.p;
+  if(t>=19&&t<22)return COL.c; return COL.n;}
+function buildDay(){
+  const w=document.getElementById('dayM');
+  for(let r=0;r<4;r++){const row=document.createElement('div');row.className='mrow';
+    for(let c=0;c<24;c++){const cell=document.createElement('div');cell.className='mcell';
+      const d=document.createElement('div');d.className='dot';const col=colorAt(c,r*15);
+      if(col===COL.n){d.style.background='transparent';d.style.border='1px solid '+COL.n;}
+      else{d.style.background=col;}
+      cell.appendChild(d);row.appendChild(cell);}
+    w.appendChild(row);}
+  const ax=document.createElement('div');ax.className='axis';
+  for(let c=0;c<24;c++){const a=document.createElement('div');a.className='acell';
+    a.textContent=(c%4===0||c===23)?(c===23?'24':String(c).padStart(2,'0')):'';ax.appendChild(a);}
+  w.appendChild(ax);
+  const lg=document.createElement('div');lg.className='legend';
+  [['兴奋',COL.e],['愉悦',COL.p],['平静',COL.c],['压力',COL.s],['焦虑',COL.a]].forEach(([t,c])=>{
+    const e=document.createElement('div');e.className='lg';e.innerHTML='<i style="background:'+c+'"></i>'+t;lg.appendChild(e);});
+  w.appendChild(lg);
+}
+function buildHist(id){const w=document.getElementById(id);
+  const bars=[20,15,10,8,12,30,55,70,85,92,78,60,45,80,95,72,40,35,28,22,18,14,12,10];
+  bars.forEach(v=>{const b=document.createElement('div');b.className='hbar';b.style.height=v+'%';
+    let c=v>75?COL.a:v>55?COL.s:v>35?COL.e:COL.p;b.style.background=c;w.appendChild(b);});}
+const WEEK=['一','二','三','四','五','六','日'];
+const WCOL=[COL.c,COL.c,COL.s,COL.p,COL.c,COL.e,COL.c];
+function buildWeek(){const w=document.getElementById('weekGrid');
+  WEEK.forEach((lab,i)=>{const col=WCOL[i];const col2=col===COL.n?COL.c:col;
+    const col2key=col2===COL.e?'e':col2===COL.p?'p':col2===COL.c?'c':col2===COL.s?'s':'a';
+    const cdiv=document.createElement('div');cdiv.className='wcol';
+    const p=document.createElement('div');p.className='wpanel';p.style.background=T[col2key];
+    const dot=document.createElement('div');dot.className='wdot';dot.style.background=col2;p.appendChild(dot);
+    const l=document.createElement('div');l.className='wlab';l.textContent=lab;
+    cdiv.appendChild(p);cdiv.appendChild(l);w.appendChild(cdiv);});}
+function buildMonth(){const w=document.getElementById('monthGrid');
+  const pat=[COL.c,COL.c,COL.p,COL.e,COL.c,COL.s,COL.p,COL.c,COL.c,COL.a,
+             COL.p,COL.c,COL.e,COL.c,COL.s,COL.p,COL.c,COL.c,COL.e,COL.c,
+             COL.s,COL.p,COL.c,COL.c,COL.e,COL.a,COL.c,COL.p,COL.c,COL.c];
+  pat.forEach(col=>{const c2=col===COL.n?COL.c:col;
+    const k=c2===COL.e?'e':c2===COL.p?'p':c2===COL.c?'c':c2===COL.s?'s':'a';
+    const d=document.createElement('div');d.className='px';d.style.background=T[k];
+    d.style.border='1px solid '+c2;w.appendChild(d);});}
+const YMON=['1','2','3','4','5','6','7','8','9','10','11','12'];
+const YCOL=[COL.c,COL.p,COL.s,COL.c,COL.e,COL.c,COL.p,COL.c,COL.c,COL.a,COL.c,COL.p];
+function buildYear(){const w=document.getElementById('yearGrid');
+  YMON.forEach((m,i)=>{const col=YCOL[i];const c2=col===COL.n?COL.c:col;
+    const k=c2===COL.e?'e':c2===COL.p?'p':c2===COL.c?'c':c2===COL.s?'s':'a';
+    const lab={e:'兴奋',p:'愉悦',c:'平静',s:'压力',a:'焦虑'}[k];
+    const d=document.createElement('div');d.className='ym';d.style.background=T[k];
+    d.innerHTML='<div style="font-size:11px;color:var(--sub)">'+m+'月</div><div class="ymv" style="color:'+c2+'">'+lab+'</div>';
+    w.appendChild(d);});}
+buildDay();buildHist('dayH');buildWeek();buildMonth();buildYear();
+</script>
+</body>
+</html>

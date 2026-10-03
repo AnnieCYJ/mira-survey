@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 情绪分布样式稿（方案2 终稿）</title>
+<style>
+  :root{
+    --m-excited:#F0C46E; --m-pleasant:#BCCB62; --m-calm:#7EA6F8;
+    --m-stress:#9D8AF0; --m-anx:#C9598A; --neutral:#ECEAFB;
+    --card:#FFFFFF; --cardSoft:#F7F6FC; --border:#E8E6F2;
+    --title:#6C5647; --sub:#5F5F74; --accent:#7C6AE0; --ink:#4A4660;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    background:linear-gradient(180deg,#F3F0FB,#FBFAFF);color:var(--ink);
+    padding:40px 16px 80px;display:flex;justify-content:center;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:26px;
+    padding:34px 32px 30px;width:100%;max-width:720px;
+    box-shadow:0 8px 30px rgba(124,106,224,.07);overflow:hidden;}
+  .chead{margin-bottom:22px;}
+  .chead h1{font-size:22px;color:var(--title);font-weight:700;}
+  .chead p{font-size:13.5px;color:var(--sub);margin-top:7px;line-height:1.6;}
+  .tag{display:inline-block;margin-top:12px;background:var(--neutral);color:var(--accent);
+    font-size:12px;font-weight:600;padding:6px 14px;border-radius:999px;}
+
+  /* 点阵：用 flex 等分，min-width:0 防溢出，整体绝不超出卡片 */
+  .matrix{width:100%;}
+  .mrow{display:flex;align-items:center;margin-bottom:9px;}
+  .mlabel{width:30px;flex:0 0 30px;text-align:right;margin-right:12px;
+    font-size:11px;color:#B0ACC4;}
+  .mcells{flex:1;display:flex;min-width:0;}
+  .mcell{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;}
+  .mdot{width:72%;max-width:15px;aspect-ratio:1/1;border-radius:50%;}
+  .maxis{margin-top:4px;}
+  .mtext{font-size:10.5px;color:#9A96B0;text-align:center;font-variant-numeric:tabular-nums;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:22px;
+    padding-top:18px;border-top:1px dashed var(--border);}
+  .legend span{font-size:12.5px;color:var(--sub);}
+  .legend i{width:12px;height:12px;border-radius:50%;display:inline-block;
+    margin-right:6px;vertical-align:middle;}
+  .foot{text-align:center;font-size:12px;color:var(--sub);margin-top:22px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="chead">
+    <h1>全天情绪分布</h1>
+    <p>每 15 分钟一个情绪点 · 24 小时 × 4 刻 = 96 点。横轴 24 小时，整块不超出卡片边框。</p>
+    <span class="tag">方案 2 · 情绪点阵（参考 Daylio 每日像素）· 终稿样式</span>
+  </div>
+
+  <div class="matrix" id="matrix"></div>
+
+  <div class="legend">
+    <span><i style="background:var(--m-excited)"></i>兴奋</span>
+    <span><i style="background:var(--m-pleasant)"></i>愉悦</span>
+    <span><i style="background:var(--m-calm)"></i>平静</span>
+    <span><i style="background:var(--m-stress)"></i>压力</span>
+    <span><i style="background:var(--m-anx)"></i>焦虑</span>
+    <span><i style="background:var(--neutral)"></i>无采样</span>
+  </div>
+  <div class="foot">选定后落到 EmotionInsightView，整页（标题/每小时压力事件/今日概览瓷片）按同款语言统一。</div>
+</div>
+
+<script>
+const MOOD={
+  excited:'#F0C46E',pleasant:'#BCCB62',calm:'#7EA6F8',stress:'#9D8AF0',anx:'#C9598A'
+};
+function moodAt(h,q){
+  if(h>=0&&h<7)return null;
+  if(h===7)return q===0?null:'calm';
+  if(h>=8&&h<=10)return ['calm','pleasant','pleasant','calm'][q];
+  if(h===11)return ['pleasant','pleasant','stress','stress'][q];
+  if(h===12)return ['stress','stress','anx','stress'][q];
+  if(h>=13&&h<=15)return ['stress','anx','stress','pleasant'][q];
+  if(h===16)return ['pleasant','pleasant','calm','calm'][q];
+  if(h>=17&&h<=18)return ['calm','pleasant','pleasant','calm'][q];
+  if(h===19)return ['calm','calm','pleasant','pleasant'][q];
+  if(h>=20&&h<=21)return ['pleasant','calm','calm','calm'][q];
+  return 'calm';
+}
+const rowLabels=['00','15','30','45'];
+const matrix=document.getElementById('matrix');
+for(let q=0;q<4;q++){
+  const row=document.createElement('div');row.className='mrow';
+  const lab=document.createElement('div');lab.className='mlabel';lab.textContent=rowLabels[q];
+  row.appendChild(lab);
+  const cells=document.createElement('div');cells.className='mcells';
+  for(let h=0;h<24;h++){
+    const c=document.createElement('div');c.className='mcell';
+    const m=moodAt(h,q);
+    const dot=document.createElement('div');dot.className='mdot';
+    dot.style.background=m?MOOD[m]:'#ECEAFB';
+    c.appendChild(dot);cells.appendChild(c);
+  }
+  row.appendChild(cells);matrix.appendChild(row);
+}
+// 横轴
+const axisRow=document.createElement('div');axisRow.className='mrow maxis';
+const alab=document.createElement('div');alab.className='mlabel';axisRow.appendChild(alab);
+const acells=document.createElement('div');acells.className='mcells';
+for(let h=0;h<24;h++){
+  const c=document.createElement('div');c.className='mcell';
+  const show=h%4===0||h===23;
+  const t=h===23?'24':String(h).padStart(2,'0');
+  const tx=document.createElement('div');tx.className='mtext';tx.textContent=show?t:'';
+  c.appendChild(tx);acells.appendChild(c);
+}
+axisRow.appendChild(acells);matrix.appendChild(axisRow);
+</script>
+</body>
+</html>

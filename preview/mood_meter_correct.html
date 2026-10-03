@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mood Meter 正确画法</title>
+<style>
+*:{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+body{background:#E9E6F3;font-family:-apple-system,"PingFang SC",sans-serif;display:flex;justify-content:center;padding:30px 0;}
+.box{width:430px;background:#fff;border:1px solid #ECEAFB;border-radius:18px;padding:18px;}
+h3{font-size:16px;color:#2B2B33;margin-bottom:4px;}
+.d{font-size:12px;color:#7A7689;margin-bottom:14px;line-height:1.5;}
+.meter{position:relative;width:100%;aspect-ratio:1/1;border-radius:16px;overflow:hidden;border:1px solid #ECEAFB;}
+.q{position:absolute;width:50%;height:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;}
+.tl{left:0;top:0;background:#C9598B;}      /* 高能量·不愉悦 */
+.tr{right:0;top:0;background:#F0C46E;}      /* 高能量·愉悦 */
+.bl{left:0;bottom:0;background:#7EA6F8;}    /* 低能量·不愉悦 */
+.br{right:0;bottom:0;background:#BCCB62;}   /* 低能量·愉悦 */
+/* 细分情绪词 */
+.tags{position:absolute;font-size:9px;color:#fff;opacity:.92;font-weight:600;text-align:center;line-height:1.2;width:46%;}
+.axis{display:flex;justify-content:space-between;font-size:10px;color:#7A7689;margin-top:6px;}
+.axis-y{position:absolute;left:-2px;top:0;bottom:0;width:14px;display:flex;flex-direction:column;justify-content:space-between;font-size:9px;color:#7A7689;writing-mode:vertical-rl;transform:rotate(180deg);padding:4px 0;}
+/* 采样点 = 用户记录 */
+.dot{position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid #2B2B33;transform:translate(-50%,-50%);box-shadow:0 2px 5px rgba(0,0,0,.2);}
+.note{font-size:11px;color:#7A7689;margin-top:14px;line-height:1.6;background:#F7F6FC;border-radius:10px;padding:10px;}
+.note b{color:#2B2B33;}
+</style>
+</head>
+<body>
+<div class="box">
+  <h3>How We Feel · Mood Meter（正确画法）</h3>
+  <div class="d">二维情绪地图：横轴=愉悦度，纵轴=能量。底色是<b>固定的情绪分区</b>，不是数据。</div>
+  <div style="position:relative;">
+    <div class="axis-y"><span>高能量 ↑</span><span>↓ 低能量</span></div>
+    <div class="meter">
+      <div class="q tl">紧张 / 生气</div>
+      <div class="q tr">兴奋 / 开心</div>
+      <div class="q bl">难过 / 疲惫</div>
+      <div class="q br">平静 / 放松</div>
+      <!-- 采样点：今天 3 次记录 -->
+      <div class="dot" style="left:62%;top:28%"></div>
+      <div class="dot" style="left:78%;top:70%"></div>
+      <div class="dot" style="left:40%;top:22%"></div>
+    </div>
+  </div>
+  <div class="axis"><span>← 不愉悦</span><span>愉悦 →</span></div>
+  <div class="note">
+    <b>一次记录 = 网格上一个点</b>（白点）。<br/>
+    <b>一天 / 一月 = 同网格上点的积累</b>——看点的聚集区判断整体偏向，<b>不是网格变色</b>。<br/>
+    所以它表达"情绪落在哪个象限"，<b>不表达时间顺序</b>；和"每15分钟一个点铺时间轴"是两类图。
+  </div>
+</div>
+</body>
+</html>

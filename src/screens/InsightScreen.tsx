@@ -239,6 +239,10 @@ export default function InsightScreen() {
   // 但洞察页所有趋势图整体不渲染，造成「有数据没图」的观感。
   const trendOn = autoMonitor || ring.status === 'connected';
 
+  // ★ v18.104 断流即空态（与首页圆环 / 昼夜节律卡 / 睡眠结构卡同一口径）：
+  //   戒指超过 3 小时没送新采样时，睡眠 tab 不再把旧归档当成「昨夜实测」继续展示。
+  const dataStale = (ring?.curveStatus as any)?.dataStale === true;
+
   // 回填派生指标（eda/cortisol…）intraday：修复「历史皮质醇数据没有」（洞察页节律卡同样依赖）
   useEnsureDerivedMetrics(30);
 
@@ -414,8 +418,8 @@ export default function InsightScreen() {
           <>
             {subTab === 'sleep' ? (
               <>
-                <SleepStructureCard segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
-                <CortisolSleepSummary insightRows={recoveryRows} />
+                <SleepStructureCard dataStale={dataStale} segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
+                <CortisolSleepSummary dataStale={dataStale} insightRows={recoveryRows} />
               </>
             ) : subTab === 'body' ? (
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />

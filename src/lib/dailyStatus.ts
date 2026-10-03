@@ -638,6 +638,9 @@ export interface CurvePoint {
   value: number;
   /** 该点档位文字（充沛/平稳/偏低/不足） */
   level: string;
+  /** ★ v18.106：true = 由 healthStore intraday 反推「补齐空缺」生成的点，不是戒指真实采样。
+   *  首页全天趋势图（TrendChart）只画真实点，避免断流期出现一条伪造的水平线。 */
+  fill?: boolean;
 }
 
 /** 首页「今日状态」头条（曲线模型展示聚合） */
@@ -660,6 +663,17 @@ export interface CurveStatus {
   narrative: string;
   /** 是否具备计算所需最低输入 */
   hasData: boolean;
+  /** ★ v18.98：今日状态用的是**非今天**的睡眠归档（昨夜/更早）时的归属日期（否则 null）。
+   *  首页据此在圆环上显式标来源——不能让「用昨夜睡眠推算的今日状态」看起来像今天实测。 */
+  staleSleepDate: string | null;
+  /** ★ v18.98：今日最后一个状态点的时刻（无点则 null）。超过 30 分钟没新数据 → UI 提示「数据截至 HH:MM」。 */
+  lastPointAt: number | null;
+  /** ★ v18.100 断流即空态：最近一次真实采样距今已超过 STALE_AFTER_MS（3 小时）。
+   *  此时页面上任何「今日/实时」数字都是旧快照，UI 必须整体置空（恢复/脑力/情绪一律「—」），
+   *  不允许再挂一个旧数字让用户当成实时（用户 2026-10-03 明确选了这个口径，覆盖 v18.97 的「保留断开前值」）。 */
+  dataStale: boolean;
+  /** ★ v18.100：最近一次真实采样的时刻（指标级 lastUpdated 的最大值；无则 null） */
+  lastSampleAt: number | null;
 }
 
 /** 今日状态 → 四档（直接套 0–100 今日状态尺；切点 65/30/5 与 spec §8 一致） */

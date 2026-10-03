@@ -5,24 +5,44 @@
  *
  * 共用方：
  *  1) 首页 →「情绪消耗」点进去的 `EnergyDetailScreen`（type='emotion'）
- *  2) 洞察页 →「情绪压力」tab 下的情绪洞察卡（原名「压力洞察」，已统一）
+ *  2) 洞察页 →「情绪压力」tab 下的情绪洞察卡
  *
- * 内容两块（合并在同一张卡片内）：
- *  - 情绪负荷：5 档情绪点阵（兴奋/愉悦/平静/压力/焦虑），基于事件 valenceLabel + severity
- *  - 情绪洞察：4 项指标（情绪消耗/恢复时间/峰值时段/唤醒分）+ 口径注释 + 5 档情绪说明
- *
- * 设计：100% design token（theme.ts），禁止裸值。
+ * 设计：shadcn/ui 语言 —— 描边白卡 + 薰衣草主色(accentSolid) + lucide 线性图标 + 中性文字。
+ * 模块「开口式分区」渲染（无灰底盒子），情绪分布作为本页重点，做成最大「全天情绪点阵(24×4)」。
  */
-import React from 'react';
-import { View, Text, StyleSheet, type TextStyle } from 'react-native';
-import Svg, { Circle, G } from 'react-native-svg';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { computeStressReport, type StressReport } from '../lib/stressAlgorithm';
+import {
+  computeStressReport,
+  formatPeakHour,
+  type StressReport,
+  type StressEvent,
+} from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
-import { parseClockMinutes } from '../lib/sleepTime';
-import { levelColor, HourHistogram } from './StressInsightCard';
-import EmotionLogCard from './EmotionLogCard';
+import { dayKey } from '../data/healthStore';
+import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, type EmotionEntry } from '../data/emotionLog';
+import { HourHistogram } from './StressInsightCard';
+
+/** lucide 线性图标（stroke 1.8，统一栅格） */
+function Lucide({ name, size = 13, color }: { name: string; size?: number; color: string }) {
+  const P: Record<string, string> = {
+    heart: 'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z',
+    moon: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z',
+    clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2',
+    gauge: 'm12 14 4-4M3.34 19a10 10 0 1 1 17.32 0',
+    flower: 'M12 12a3 3 0 1 0 0-6 3 3 0 1 0 0 6Zm0 0a3 3 0 1 0 0 6 3 3 0 1 0 0-6Zm0 0a3 3 0 1 1-6 0 3 3 0 1 1 6 0Zm0 0a3 3 0 1 1 6 0 3 3 0 1 1-6 0Z',
+    info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 8h.01M11 12h1v4h1',
+  };
+  if (!P[name]) return null;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <Path d={P[name]} />
+    </Svg>
+  );
+}
 
 /** 等宽均分数据单元（与 MetricDetail statCell 同款；两处共用） */
 export function StatCell({ label, value, sub, valueColor }: {
@@ -41,402 +61,327 @@ export function StatCell({ label, value, sub, valueColor }: {
   );
 }
 
+/* ── 5 档情绪色：与全仓情绪语义 token 一致 ── */
+const COL_EXCITED = theme.colors.moodEnergy;   // 兴奋
+const COL_PLEASANT = theme.colors.moodGood;    // 愉悦
+const COL_CALM = theme.colors.stateTired;      // 平静
+const COL_STRESSED = theme.colors.stateEnergy; // 压力
+const COL_ANXIOUS = theme.colors.danger;       // 焦虑
+const NEUTRAL = theme.colors.bgMidAlt;         // 情绪流动带底色（柔紫浅底）
+const PRIMARY = theme.colors.accentSolid;      // 薰衣草主色
+
+/** 事件 → 5 档情绪色（valenceLabel + severity 细分） */
+const moodColor = (e: any): string => {
+  if (!e) return NEUTRAL;
+  const sev = e.severity || 50;
+  if (e.valenceLabel === 'positive') return sev > 50 ? COL_EXCITED : COL_PLEASANT;
+  if (e.valenceLabel === 'negative') return sev > 50 ? COL_ANXIOUS : COL_STRESSED;
+  return COL_CALM;
+};
+
+/** 5 档情绪 → 中文标签（用于「今日主情绪」与图例） */
+const MOOD_LABELS: { c: string; t: string }[] = [
+  { c: COL_EXCITED, t: '兴奋' },
+  { c: COL_PLEASANT, t: '愉悦' },
+  { c: COL_CALM, t: '平静' },
+  { c: COL_STRESSED, t: '压力' },
+  { c: COL_ANXIOUS, t: '焦虑' },
+];
+const colorToLabel = (c: string): string =>
+  (MOOD_LABELS.find((m) => m.c === c)?.t) ?? '平静';
+
+/** 5 档情绪 → emoji（HERO 展示用；无记录时用中性符号，绝不假装有主情绪） */
+const MOOD_EMOJI: Record<string, string> = {
+  [COL_EXCITED]: '😆',
+  [COL_PLEASANT]: '🙂',
+  [COL_CALM]: '😌',
+  [COL_STRESSED]: '😣',
+  [COL_ANXIOUS]: '😰',
+};
+
 /**
- * 情绪负荷：情绪事件点阵（24 小时列 × 4 行，5 档情绪着色）
- *
- * 网格语义：**一列 = 1 小时，一行 = 15 分钟**（:00 / :15 / :30 / :45）；
- * 同一格里出现多个事件时**横向并排画多个点**（不串行、不丢弃）→ 圆点数恒等于事件次数。
- *
- * ★ 两条不变量（2026-09-16 修「图上是 3 个点、文案说 4 次」）：
- *  1. **时间轴固定 0–23 全天**。旧实现把轴裁成「起床时刻 → 24」，当睡眠跨零点时
- *     （实测 00:41 入睡 / 09:41 起床）会把 00:00–09:41 这段**清醒时间**整段丢掉，
- *     落在其中的事件图上消失、却仍计入「N 次压力事件」→ 点数 ≠ 次数。标题即「全天」，就该画满 24 列。
- *  2. **不因睡眠丢事件**：睡眠时段的列只加浅底标注，事件照常画。
+ * 全天情绪点阵 —— 上 0–12 / 下 12–24 两段，每段 12 列(小时) × 4 行(15 分钟)。
+ * 每个格子 = 一个 15 分钟时段，有记录则按情绪色绘实心圆点，无记录淡灰占位。
+ * 横轴标注 12 / 24 边界（无纵轴）。
  */
-export function StressEventStems({ events, chartH = 200 }: { events: any[]; chartH?: number }) {
-  void chartH;
-  // ★ 5 档情绪分类
-  const COL_EXCITED = theme.colors.moodEnergy;    // 兴奋
-  const COL_PLEASANT = theme.colors.moodGood;     // 愉悦
-  const COL_CALM = theme.colors.stateTired;       // 平静
-  const COL_STRESSED = theme.colors.stateEnergy;  // 压力
-  const COL_ANXIOUS = theme.colors.danger;        // 焦虑
-
-  // 睡眠窗口：**只用于给睡眠时段的列加浅底**，不再用来过滤事件
-  let bedHour: number | null = null;
-  let wakeHour: number | null = null;
-  try {
-    const { healthStore, dayKey } = require('../data/healthStore');
-    // ★ 必须用**本地日** dayKey：此前 `new Date().toISOString().slice(0, 10)` 取的是 **UTC 日**，
-    //   东八区 00:00–08:00 会落到「昨天」→ 睡眠浅底与当天小时列错配、跨天判断失真。
-    const dk = dayKey(Date.now());
-    const sleepSum = healthStore.getSleep(dk);
-    if (sleepSum && sleepSum.total > 0) {
-      // ★ 解析复用 lib/sleepTime.parseClockMinutes（全仓唯一实现，兼容原生 "yyyy-MM-dd HH:mm"），
-      //   并保留分钟精度（旧版自写 parseHM 是第二份实现，口径易漂移）。
-      const parseHM = (s: string | null | undefined): number | null => {
-        const min = parseClockMinutes(s);
-        return min == null ? null : min / 60;
-      };
-      const bH = parseHM(sleepSum.sleepTime);
-      const wH = parseHM(sleepSum.wakeTime);
-      if (bH != null && wH != null) { bedHour = bH; wakeHour = wH; }
-      else if (bH != null) { bedHour = bH; wakeHour = (bH + sleepSum.total / 60) % 24; }
-      else if (wH != null) { wakeHour = wH; bedHour = (wH - sleepSum.total / 60 + 24) % 24; }
-    }
-  } catch {}
-
-  const isSleepHour = (h: number): boolean => {
-    if (bedHour == null || wakeHour == null) return false;
-    if (bedHour > wakeHour) return h >= bedHour || h < wakeHour;
-    return h >= bedHour && h < wakeHour;
-  };
-
-  const COLS = 24; // ★ 全天 24 列（标题即「全天」，不再按时段裁剪）
-  const ROWS = 4;  // 4 行 = 每小时的 4 个 15 分钟刻度（:00/:15/:30/:45）
-  const hourCols = Array.from({ length: COLS }, (_, h) => h);
-
-  // ★ grid[col][row] = 该 15 分钟格内的事件列表（多个则同格并排画，不丢、不串行）
-  const grid: any[][][] = Array.from({ length: COLS }, () =>
-    Array.from({ length: ROWS }, () => [] as any[])
-  );
+export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
+  // 分桶：bySlot[hour][slot] = 该 15 分钟时段内的事件
+  const bySlot: any[][][] = Array.from({ length: 24 }, () => [[], [], [], []]);
   for (const e of events) {
     if (!e || !Number.isFinite(e.t)) continue;
     const d = new Date(e.t);
-    const col = d.getHours();
-    // 一列 = 1 小时、一行 = 15 分钟：同一格里的事件**并存**（横向并排画多个点），
-    // 顺延到别的行会破坏「行=分钟」的时间语义。
-    const row = Math.min(ROWS - 1, Math.floor(d.getMinutes() / 15)); // :00→0 … :45→3
-    grid[col][row].push(e);
+    const h = d.getHours();
+    const slot = Math.min(3, Math.floor(d.getMinutes() / 15));
+    bySlot[h][slot].push(e);
   }
-
-  // ★ 5 档情绪判定 (valenceLabel + severity 细分)
-  const dotColor = (e: any): string => {
-    if (!e) return 'transparent';
-    const sev = e.severity || 50;
-    if (e.valenceLabel === 'positive') return sev > 50 ? COL_EXCITED : COL_PLEASANT;
-    if (e.valenceLabel === 'negative') return sev > 50 ? COL_ANXIOUS : COL_STRESSED;
-    return COL_CALM;
+  const slotColor = (evs: any[]): string | null => {
+    if (!evs.length) return null;
+    const neg = evs.find((e) => { const c = moodColor(e); return c === COL_ANXIOUS || c === COL_STRESSED; });
+    return moodColor(neg ?? evs[0]);
   };
-  const dotStyle = (e: any) => {
-    const sev = e?.severity || 50;
-    return { r: 6 + (sev / 100) * 7, opacity: 0.4 + (sev / 100) * 0.5 };
-  };
-
-  // 24 列比原来的 15 列更密 → 列间距收到 2px，避免网格被间隙吃掉
-  const GAP = theme.sp(0.5);
-  const LABEL_H = theme.sp(3);
-
-  return (
-    <View style={{ width: '100%', paddingBottom: theme.sp(2), marginTop: theme.sp(2), position: 'relative' }}>
-      {/* ★ 固定 4 行格子 */}
-      {[0, 1, 2, 3].map((row) => (
-        <View key={row} style={{ flexDirection: 'row', marginBottom: row < ROWS - 1 ? GAP : 0 }}>
-          {hourCols.map((h, col) => {
-            const cell = grid[col][row];
-            const has = cell.length > 0;
-            return (
-              <View key={`${h}-${row}`} style={{
-                flex: 1, aspectRatio: 0.7,
-                marginRight: col < COLS - 1 ? GAP : 0,
-                borderRadius: theme.radius.sm,
-                // 有事件 → 情绪色直接做格子背景；睡眠 → 白色；其他空格透明
-                backgroundColor: has
-                  ? dotColor(cell[0])
-                  : isSleepHour(h) ? theme.colors.textWhite : 'transparent',
-                alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: has
-                  ? dotColor(cell[0]) + 'CC'
-                  : isSleepHour(h) ? theme.colors.cardBorder + 'AA' : 'transparent',
-              }}>
-                {has && (
-                  <Svg width="100%" height="100%" viewBox="0 0 40 20">
-                    {cell.map((e, i) => {
-                      const color = dotColor(e);
-                      const st = dotStyle(e);
-                      // 同一格内多个事件 → 横向等分并排（整体缩小，避免糊成一团）
-                      const n = cell.length;
-                      const k = n === 1 ? 1 : n === 2 ? 0.64 : n === 3 ? 0.5 : 0.42;
-                      const cx = (40 / (n + 1)) * (i + 1);
-                      return (
-                        <G key={i}>
-                          <Circle cx={cx} cy={10} r={(st.r + 6) * k} fill={color} opacity={st.opacity * 0.15} />
-                          <Circle cx={cx} cy={10} r={(st.r + 3) * k} fill={color} opacity={st.opacity * 0.35} />
-                          <Circle cx={cx} cy={10} r={st.r * k} fill={color} opacity={st.opacity} />
-                        </G>
-                      );
-                    })}
-                  </Svg>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      ))}
-
-      {/* ★ X 轴时间标签：和格子行等宽对齐（flex:1 + GAP 和格子一致）。
-                       首尾用 absolute 贴根容器左右边缘（根容器无 paddingHorizontal），
-                       中间用 flex:1。所有 Text 显式 lineHeight 保证等高 */}
-      <View style={{
-        flexDirection: 'row',
-        marginTop: theme.sp(1),
-        height: LABEL_H,
-      }}>
-        {hourCols.map((h, i) => {
-          const displayH = h + 1;
-          const isFirst = i === 0;
-          const isLast  = i === COLS - 1;
-          const showMiddle = !isFirst && !isLast && h % 4 === 0;
-          const baseStyle: TextStyle = {
-            fontSize: theme.fontSize.micro,
-            color: theme.colors.textSub,
-            textAlign: 'center',
-            lineHeight: LABEL_H,  // ★ 显式 lineHeight —— 所有标签等高
-          };
-          // 首尾也返回空 flex spacer，保证 24 列和格子对齐
-          const spacer = <Text key={h} style={{ flex: 1, marginRight: i < COLS - 1 ? GAP : 0, lineHeight: LABEL_H }} />;
-          if (isFirst) {
-            return (
-              <React.Fragment key={h}>
-                {spacer}
-                <Text style={{
-                  position: 'absolute',
-                  left: 0, top: 0,
-                  ...baseStyle,
-                  fontWeight: theme.weight.medium,
-                }}>1</Text>
-              </React.Fragment>
-            );
-          }
-          if (isLast) {
-            return (
-              <React.Fragment key={h}>
-                {spacer}
-                <Text style={{
-                  position: 'absolute',
-                  right: 0, top: 0,
-                  ...baseStyle,
-                  fontWeight: theme.weight.medium,
-                }}>24</Text>
-              </React.Fragment>
-            );
-          }
-          if (!showMiddle) return spacer;
-          return (
-            <Text key={h} style={{
-              flex: 1,
-              ...baseStyle,
-              fontWeight: theme.weight.medium,
-              marginRight: i < COLS - 1 ? GAP : 0,
-            }}>
-              {displayH}
-            </Text>
-          );
-        })}
-      </View>
-
-      {/* ★ 5 档情绪图例 */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: theme.sp(2), gap: theme.space.sm }}>
-        {[
-          { c: COL_EXCITED, t: '兴奋' },
-          { c: COL_PLEASANT, t: '愉悦' },
-          { c: COL_CALM, t: '平静' },
-          { c: COL_STRESSED, t: '压力' },
-          { c: COL_ANXIOUS, t: '焦虑' },
-        ].map(({ c, t }) => (
-          <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
-            <Svg width={theme.sp(3)} height={theme.sp(3)}>
-              <Circle cx={theme.sp(1.5)} cy={theme.sp(1.5)} r={theme.sp(1)} fill={c} opacity={0.9} />
-            </Svg>
-            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub }}>{t}</Text>
+  const section = (hours: number[], labels: number[]) => (
+    <View key={hours[0]} style={styles.hmSection}>
+      <View style={styles.hmCols}>
+        {hours.map((h) => (
+          <View key={h} style={styles.hmCol}>
+            {[0, 1, 2, 3].map((s) => {
+              const c = slotColor(bySlot[h][s]);
+              return (
+                <View key={s} style={styles.hmSlot}>
+                  {c ? <View style={[styles.hmDot, { backgroundColor: c }]} /> : <View style={styles.hmDotEmpty} />}
+                </View>
+              );
+            })}
           </View>
         ))}
       </View>
-
+      <View style={styles.hmAxis}>
+        {hours.map((h) => (
+          <Text key={h} style={styles.hmAxisText}>{labels.includes(h) ? String(h).padStart(2, '0') : ''}</Text>
+        ))}
+      </View>
+    </View>
+  );
+  return (
+    <View style={styles.matrixWrap}>
+      {section([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 3, 6, 9, 12])}
+      {section([12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23], [12, 15, 18, 21, 24])}
+      {/* 5 档情绪图例 */}
+      <View style={styles.matrixLegend}>
+        {MOOD_LABELS.map(({ c, t }) => (
+          <View key={t} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: c }]} />
+            <Text style={styles.legendText}>{t}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
+/** 小分区标题（开口式） */
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.sectionTitle}>{children}</Text>;
+}
+
+/** 今日概览大瓷片（shadcn：描边白卡 + 彩色值，不用灰底大色块） */
+function SummaryTile({ icon, label, value, sub, valueColor }: {
+  icon: string; label: string; value: string; sub?: string; valueColor?: string;
+}) {
+  return (
+    <View style={styles.tile}>
+      <View style={styles.tileHead}>
+        <Lucide name={icon} size={12} color={valueColor ?? theme.colors.textSub} />
+        <Text style={styles.tileLabel}>{label}</Text>
+      </View>
+      <Text style={[styles.tileValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
+      {sub ? <Text style={styles.tileSub}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+/** 手动心情记录 → 点阵伪事件：按记录时刻落进对应 15 分钟槽，5 档映射到点阵色。
+ *  兴奋=正性·高强度 / 开心=正性 / 平静=中性 / 压力=负性 / 难过=负性·高强度（→ 焦虑色）。 */
+function selfEntryToEvent(e: EmotionEntry): StressEvent {
+  const valence: 'positive' | 'negative' | 'neutral' =
+    e.mood === 'excited' || e.mood === 'happy' ? 'positive'
+      : e.mood === 'stressed' || e.mood === 'sad' ? 'negative'
+        : 'neutral';
+  const severity = e.mood === 'excited' || e.mood === 'sad' ? 80 : 30;
+  const d = new Date(e.t);
+  return {
+    t: e.t,
+    hour: d.getHours(),
+    minute: d.getMinutes(),
+    eda: 0,
+    baseline: 0,
+    z: 0,
+    severity,
+    level: 'mid',
+    recoverySec: null,
+    valenceLabel: valence,
+  } as unknown as StressEvent;
+}
+
 /**
- * 「情绪洞察」主体：情绪负荷 + 4 项指标 + 口径注释 + 5 档说明。
- * 可选 anchorMs：传则展示该「锚定日」的全天（历史日 23:59:59.999，今天=此刻）；
- * 不传=今天（洞察页「情绪压力」tab 沿用默认，行为不变）。
+ * 「情绪洞察」主体（日视图）：全天情绪点阵（上 0–12 / 下 12–24）+ 情绪节律（高峰 / 低谷）。
+ * 可选 anchorMs：传则展示该「锚定日」的全天（历史日 23:59:59.999，今天=此刻）。
+ * ★ 数据 = EDA 采样事件 + 用户手动心情记录（emotionLog，写入即经事件总线刷新）。
  */
 export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } = {}) {
-  const report: StressReport = computeStressReport(reportNowMsForDay(anchorMs ?? Date.now()));
-  const color = levelColor(report.level);
-  const hasData = report.sampleCount >= 5;
+  const dk = dayKey(anchorMs ?? Date.now());
+  const [selfEntries, setSelfEntries] = useState<EmotionEntry[]>([]);
 
-  if (!hasData && false) {  // 禁用 early return, 让骨架图始终出来
+  // 载入手动记录 + 订阅变更（「记录此刻心情」写入后 emit → 点阵/节律卡即时刷新）
+  useEffect(() => {
+    let alive = true;
+    void ensureEmotionLogLoaded().then(() => {
+      if (alive) setSelfEntries(getEntriesForDay(dk));
+    });
+    const off = onEmotionLog(() => setSelfEntries(getEntriesForDay(dk)));
+    return () => { alive = false; off(); };
+  }, [dk]);
+
+  const report: StressReport = computeStressReport(reportNowMsForDay(anchorMs ?? Date.now()));
+  const selfEvents = selfEntries.map(selfEntryToEvent);
+  // 合并：手动记录 + EDA 采样，按时间升序；手动记录在同槽内优先展示（slotColor 取优先级）
+  const allEvents = [...selfEvents, ...report.events].sort((a, b) => a.t - b.t);
+  const hasData = report.sampleCount >= 5 || allEvents.length > 0;
+
+  // ★ v18.106：无数据 ≠ 只丢一行小字（用户口径：「什么占位都没有就没了」）。
+  //   保留「空图表骨架」（点阵空槽网格）+ 两个结论瓷片写「—」+ 一行说明。
+  if (!hasData) {
     return (
-      <Card>
-        <Text style={styles.emptyText}>
-          还没有足够的 EDA 数据。连上戒指后开启自动监测，约 30 分钟后开始生成个人基线。
-        </Text>
+      <Card padded={false}>
+        <View style={styles.pad}>
+          <Text style={styles.title}>情绪洞察</Text>
+          <Text style={styles.emptyText}>
+            还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
+          </Text>
+          <SectionTitle>全天情绪点阵</SectionTitle>
+          <MoodDotMatrix events={[]} />
+          <SectionTitle>情绪节律</SectionTitle>
+          <View style={styles.hmCardsRow}>
+            <SummaryTile icon="clock" label="情绪高峰" value="—" sub="消极最集中" valueColor={theme.colors.textSub} />
+            <SummaryTile icon="moon" label="情绪低谷" value="—" sub="情绪最舒缓" valueColor={theme.colors.textSub} />
+          </View>
+        </View>
       </Card>
     );
   }
 
-  // ★ 情绪负荷 + 情绪洞察 合并为同一张卡片：
-  //   洞察页「情绪压力」tab 与首页「情绪消耗」详情共用此视图，合并后两处仍完全一致。
+  const eventCount = allEvents.length;
+
+  // 时段峰谷：高峰 = 消极情绪最集中的小时；低谷 = 消极最少的小时
+  const hourNegD = Array(24).fill(0);
+  const hourAllD = Array(24).fill(0);
+  for (const e of allEvents) {
+    const h = new Date(e.t ?? Date.now()).getHours();
+    hourAllD[h] += 1;
+    const c = moodColor(e);
+    if (c === COL_ANXIOUS || c === COL_STRESSED) hourNegD[h] += 1;
+  }
+  let peakHourD = -1, calmHourD = -1;
+  if (hourAllD.some((v: number) => v > 0)) {
+    let bestP = -1;
+    for (let h = 0; h < 24; h++) {
+      if (hourNegD[h] === 0) continue;
+      const score = hourNegD[h] * 100 + hourAllD[h];
+      if (score > bestP) { bestP = score; peakHourD = h; }
+    }
+    let bestC = Infinity, bestCP = -1;
+    for (let h = 0; h < 24; h++) {
+      if (hourAllD[h] === 0) continue;
+      const neg = hourNegD[h];
+      const pleasant = hourAllD[h] - hourNegD[h];
+      if (neg < bestC || (neg === bestC && pleasant > bestCP)) { bestC = neg; bestCP = pleasant; calmHourD = h; }
+    }
+    if (peakHourD < 0) { let m = -1; for (let h = 0; h < 24; h++) if (hourAllD[h] > m) { m = hourAllD[h]; peakHourD = h; } }
+  }
+  const hourLabelD = (h: number) => `${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00`;
+  const peakRange = peakHourD >= 0 ? hourLabelD(peakHourD) : '—';
+  const calmRange = calmHourD >= 0 ? hourLabelD(calmHourD) : '—';
+
   return (
     <Card padded={false}>
       <View style={styles.pad}>
-        {/* 图在最上面 —— 情绪负荷 + 每小时分布 (始终渲染 HourHistogram 骨架) */}
-        <Text style={[styles.chartTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(2) }]}>
-          情绪负荷
-        </Text>
+        {/* 全天情绪点阵（上 0–12 / 下 12–24） */}
+        <SectionTitle>全天情绪点阵</SectionTitle>
+        <MoodDotMatrix events={allEvents} />
+        {selfEvents.length > 0 && (
+          <Text style={styles.hint}>含手动心情记录 {selfEvents.length} 条（按记录时刻落在对应时段）</Text>
+        )}
+        {eventCount === 0 && (
+          <Text style={styles.hint}>今天还没有情绪事件采样 · 用页面底部的「记录此刻心情」记下第一笔</Text>
+        )}
 
-        {/* ① 每小时事件分布柱状图 — 始终渲染 (无数据时 StressInsightCard.HourHistogram 画 0.06 透明骨架) */}
-        <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder, marginBottom: theme.sp(2) }}>
-          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每小时压力事件</Text>
-          <HourHistogram buckets={report.hourBuckets} chartH={120} />
+        {/* 情绪高峰 / 低谷（时段结论） */}
+        <SectionTitle>情绪节律</SectionTitle>
+        <View style={styles.hmCardsRow}>
+          <SummaryTile icon="clock" label="情绪高峰" value={peakRange} sub="消极最集中" valueColor={COL_STRESSED} />
+          <SummaryTile icon="moon" label="情绪低谷" value={calmRange} sub="情绪最舒缓" valueColor={COL_CALM} />
         </View>
 
-        {/* ② 全天 15 分钟粒度情绪点阵热力图 — 恒渲染（无事件也展示空网格 + 提示，不再整块消失） */}
-        <View style={{ backgroundColor: theme.colors.cardBgSoft + 'CC', borderRadius: theme.radius.sm, padding: theme.sp(2), borderWidth: 1, borderColor: theme.colors.cardBorder }}>
-          <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>每 15 分钟情绪分布</Text>
-          <StressEventStems events={report.events} chartH={200} />
-          {report.events.length === 0 && (
-            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-              今天还没有情绪事件采样 · 连上戒指后自动监测会在这里逐刻画出你的状态
-            </Text>
-          )}
+        {/* 周期提示 */}
+        <View style={styles.cycleCard}>
+          <Lucide name="flower" size={16} color={COL_ANXIOUS} />
+          <Text style={styles.cycleText}>
+            情绪随周期波动属正常节律 · 周期为推算（日历 + 体温），不构成诊断。
+          </Text>
         </View>
-
-        {/* ③ 情绪记录卡（Mooda 式自报入口：选心情球+一句话；与 EDA 推断负荷独立并排） */}
-        <EmotionLogCard />
-
-        <View style={{ height: theme.sp(3) }} />
-
-        <View style={styles.statGrid}>
-          <StatCell
-            label="情绪消耗"
-            value={`${report.events.length} 次`}
-            sub={report.events.length > 8 ? '事件较多 · 注意放松' : report.events.length > 4 ? '事件适中' : '事件较少 · 状态平稳'}
-            valueColor={report.events.length > 8 ? theme.colors.danger : report.events.length > 4 ? theme.colors.warn : undefined}
-          />
-          <StatCell
-            label="恢复时间"
-            value={report.avgRecoverySec != null ? `${report.avgRecoverySec}s` : '—'}
-            sub={report.avgRecoverySec != null && report.avgRecoverySec > 120 ? '偏慢' : '正常'}
-          />
-          <StatCell
-            label="峰值时段"
-            value={report.peakHour != null ? `${String(Math.floor(report.peakHour)).padStart(2, '0')}:00` : '—'}
-            sub={report.peakHour != null ? '事件最多' : ''}
-          />
-          <StatCell
-            label="消耗分数"
-            value={report.emotionalLoad != null ? `${report.emotionalLoad}` : '—'}
-            sub={report.emotionalLoad != null ? '/100' : ''}
-          />
-        </View>
-
-        {/* 今日情绪窗口 */}
-        <View style={{ height: theme.sp(4) }} />
-        <Card padded={false}>
-          <View style={styles.pad}>
-            <Text style={styles.cardTitle}>今日情绪窗口</Text>
-            {report.level && (() => {
-              const lm: Record<string, { text: string; color: string }> = {
-                calm: { text: '平稳', color: theme.colors.success },
-                light: { text: '轻微波动', color: theme.colors.warn },
-                moderate: { text: '偏紧张', color: theme.colors.warn },
-                high: { text: '高压', color: theme.colors.stateEnergy },
-              };
-              const m = lm[report.level];
-              return m ? (
-                <View style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: m.color + '20', marginBottom: theme.sp(2) }}>
-                  <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: m.color }}>{m.text}</Text>
-                </View>
-              ) : null;
-            })()}
-            <View style={{ flexDirection: 'row', gap: theme.sp(3), marginBottom: theme.sp(2) }}>
-              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>情绪高峰</Text>
-                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
-                  {report.peakHour != null ? `${String(Math.floor(report.peakHour)).padStart(2,'0')}:00–${String(Math.min(23, Math.floor(report.peakHour)+1)).padStart(2,'0')}:00` : '--'}
-                </Text>
-                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>压力事件集中</Text>
-              </View>
-              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateCalm + '18' }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>恢复建议</Text>
-                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateCalm }}>
-                  {report.avgRecoverySec == null ? '--' : report.avgRecoverySec > 120 ? '深呼吸' : report.avgRecoverySec > 60 ? '散步 5min' : '状态良好'}
-                </Text>
-                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                  {report.avgRecoverySec != null ? `恢复 ${report.avgRecoverySec}s` : ''}
-                </Text>
-              </View>
-            </View>
-            {report.valenceScore != null && (
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
-                {report.valenceScore > 20 ? '今日偏积极' : report.valenceScore < -20 ? '今日偏消极' : '情绪中性'}
-                {report.loadConstructive != null && report.loadDestructive != null
-                  ? ` · 建设 ${Math.round(report.loadConstructive)} vs 破坏 ${Math.round(report.loadDestructive)}` : ''}
-              </Text>
-            )}
-          </View>
-        </Card>
-
       </View>
     </Card>
   );
 }
 
+const DOT_CELL = theme.sp(3.8);  // 每行(15 分钟)槽高
+const DOT_SIZE = theme.sp(3.2);  // 圆点直径（放大，便于辨识）
+
 const styles = StyleSheet.create({
   pad: { padding: theme.space.cardPad },
-  cardTitle: {
+  title: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
-    marginBottom: theme.sp(2),
   },
-  chartTitle: {
-    fontSize: theme.fontSize.sm,
+
+  sectionTitle: {
+    fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
-    marginBottom: theme.sp(1),
-  },
-  badge: {
-    paddingHorizontal: theme.sp(2),
-    paddingVertical: theme.sp(1),
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.stateTense + '22',
-    alignSelf: 'flex-start',
+    marginTop: theme.space.lg,
     marginBottom: theme.sp(2),
   },
-  badgeText: { fontSize: theme.fontSize.micro, color: theme.colors.stateTense },
 
-  statGrid: { flexDirection: 'row' },
+  // 全天情绪点阵容器
+  matrixWrap: { width: '100%' },
+  matrixLegend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: theme.sp(2.5), gap: theme.space.sm },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) },
+  legendDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25) },
+  legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+
+  // 全天情绪点阵：上 0–12 / 下 12–24 两段，每段 12 列(小时) × 4 行(15 分钟)
+  hmSection: { marginBottom: theme.sp(2) },
+  hmCols: { width: '100%', flexDirection: 'row' },
+  hmCol: { flex: 1, flexDirection: 'column' },
+  hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
+  hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'rgba(0,0,0,0.06)' },
+  hmAxis: { flex: 1, flexDirection: 'row', marginTop: theme.sp(0.5) },
+  hmAxisText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+
+  hint: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(1.5), lineHeight: theme.fontSize.xs * 1.5 },
+
+  // 今日情绪双卡（描边瓷片）
+  tile: {
+    flex: 1, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md, padding: theme.space.cardPadCompact, marginBottom: theme.space.sm,
+  },
+  tileHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.75), marginBottom: theme.sp(1) },
+  tileLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  tileValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.card * 1.2 },
+  tileSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), lineHeight: theme.fontSize.micro * 1.4 },
+
+  // 周期提示条
+  cycleCard: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5),
+    backgroundColor: '#FDF4F9', borderWidth: 1, borderColor: '#F0DCEA', borderRadius: theme.radius.md, padding: theme.sp(2), marginTop: theme.sp(2) },
+  cycleText: { flex: 1, fontSize: theme.fontSize.xs, color: '#A8628C', lineHeight: theme.fontSize.xs * 1.5 },
+
+  // 情绪高峰 / 低谷 双卡行
+  hmCardsRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(1.5) },
+
+  // 兼容 EnergyDetailScreen 的 StatCell（维持原样）
   statCell: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: theme.sp(2),
-    paddingHorizontal: theme.sp(1),
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.cardBgSoft,
-    marginHorizontal: theme.sp(0.5),
+    flex: 1, alignItems: 'center',
+    paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1),
+    borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5),
   },
   statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   statValue: {
-    fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.semibold as any,
-    color: theme.colors.textTitle,
-    lineHeight: theme.fontSize.card * 1.2,
-    textAlign: 'center',
+    fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any,
+    color: theme.colors.textTitle, lineHeight: theme.fontSize.card * 1.2, textAlign: 'center',
   },
-  statSub: {
-    fontSize: theme.fontSize.micro,
-    color: theme.colors.textSub,
-    marginTop: theme.sp(0.5),
-    textAlign: 'center',
-    lineHeight: theme.fontSize.micro * 1.4,
-  },
+  statSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 
-  note: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: theme.fontSize.xs * 1.5 },
-  catTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textInkSoft, fontWeight: theme.weight.medium as any },
-  emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
+  emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.5, marginTop: theme.sp(1) },
 });

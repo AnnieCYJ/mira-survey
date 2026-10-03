@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>竞品情绪样式小样</title>
+<style>
+:root{--ex:#F0C46E;--pl:#BCCB62;--ca:#7EA6F8;--st:#9D8AF0;--ax:#C9598B;--empty:#E4E0F4;--ink:#2B2B33;--sub:#7A7689;--line:#ECEAFB;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+body{background:#E9E6F3;font-family:-apple-system,"PingFang SC",sans-serif;display:flex;justify-content:center;padding:24px 0;}
+.wrap{width:820px;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.demo{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;}
+.demo h3{font-size:15px;color:var(--ink);margin-bottom:4px;}
+.demo .d{font-size:11px;color:var(--sub);margin-bottom:12px;}
+.chip{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;margin-bottom:10px;font-weight:700;}
+/* Daylio */
+.year{display:grid;grid-template-columns:repeat(53,1fr);gap:2px;}
+.year i{aspect-ratio:1;border-radius:2.5px;background:var(--empty);}
+.big{display:flex;gap:18px;margin-top:12px;align-items:flex-end;}
+.big .n{font-size:34px;font-weight:800;color:var(--ink);line-height:1;}
+.big .n small{font-size:12px;color:var(--sub);font-weight:600;display:block;margin-top:3px;}
+/* Bearable */
+.tl{position:relative;height:110px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px 12px;}
+.tl .ln{position:absolute;left:12px;right:12px;top:56px;height:3px;border-radius:2px;background:var(--empty);}
+.bead{position:absolute;border-radius:50%;transform:translate(-50%,-50%);}
+/* How We Feel */
+.q{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:stretch;}
+.qlab{display:flex;flex-direction:column;justify-content:space-around;font-size:10px;color:var(--sub);font-weight:700;}
+.qgrid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;}
+.qgrid i{aspect-ratio:1;border-radius:3px;}
+/* Moodflow */
+.px{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;}
+.px i{aspect-ratio:1;border-radius:2px;}
+.mcap{font-size:10px;color:var(--sub);margin-top:8px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 1 Daylio -->
+  <div class="demo">
+    <h3>① Daylio · Year in Pixels</h3>
+    <div class="d">每天一格纯色，一整年排成色带；统计是开口大数字</div>
+    <span class="chip" style="background:#FDF3DC;color:#8A6A1F;">年视图</span>
+    <div class="year" id="year"></div>
+    <div class="mcap">2026 · 一年 365 格，颜色=当天主情绪</div>
+    <div class="big">
+      <div class="n">128<small>平静天数</small></div>
+      <div class="n">62<small>愉悦天数</small></div>
+      <div class="n">31<small>压力天数</small></div>
+    </div>
+  </div>
+
+  <!-- 2 Bearable -->
+  <div class="demo">
+    <h3>② Bearable · 时间线点</h3>
+    <div class="d">一天的情绪按时间排在横轴上，点色=情绪、点大小=强度</div>
+    <span class="chip" style="background:#E8F0FE;color:#2E5FA8;">日视图</span>
+    <div class="tl" id="tl">
+      <div class="ln"></div>
+    </div>
+    <div class="mcap">横轴 00 → 24 时 · 睡眠时段无点</div>
+  </div>
+
+  <!-- 3 How We Feel -->
+  <div class="demo">
+    <h3>③ How We Feel · Mood Meter</h3>
+    <div class="d">纵轴激活度(高/低) × 横轴愉悦度(正向/负向) 四象限</div>
+    <span class="chip" style="background:#F3E8FE;color:#6B3FA8;">象限视图</span>
+    <div class="q">
+      <div class="qlab"><span>高能量</span><span>低能量</span></div>
+      <div class="qgrid" id="qg"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--sub);"><span>← 不愉悦</span><span>愉悦 →</span></div>
+  </div>
+
+  <!-- 4 Moodflow -->
+  <div class="demo">
+    <h3>④ Moodflow · Pixels</h3>
+    <div class="d">「月度像素」：每天一格纯色密集排布，靠色彩分区、无边框</div>
+    <span class="chip" style="background:#EAF6DF;color:#4C7A1E;">月视图</span>
+    <div class="px" id="px"></div>
+    <div class="mcap">10月 · 31 格 = 每天 4 个 15 分钟段压成 1 格</div>
+  </div>
+
+</div>
+<script>
+const C={ex:'#F0C46E',pl:'#BCCB62',ca:'#7EA6F8',st:'#9D8AF0',ax:'#C9598B',em:'#E4E0F4'};
+const R=seed=>{let s=seed;return()=>{s=(s*9301+49297)%233280;return s/233280;};};
+// 1 Daylio 一年
+{const r=R(7),y=document.getElementById('year');
+ for(let i=0;i<371;i++){const v=r();const c=v<.34?'ca':v<.55?'pl':v<.7?'ex':v<.86?'st':'ax';
+  const d=document.createElement('i');d.style.background=C[c];y.appendChild(d);}}
+// 2 Bearable 时间线
+{const tl=document.getElementById('tl');
+ const pts=[[7,1,'ca'],[9,2,'ca'],[10.5,3,'pl'],[12,2.5,'st'],[13.5,3.5,'ax'],[15,2.5,'st'],[17,2,'pl'],[19,1.5,'ca'],[21,1,'ca']];
+ for(const[h,s,c]of pts){const b=document.createElement('i');b.className='bead';
+  b.style.left=(h/24*100)+'%';b.style.top='50%';const r=4+s*2.4;
+  b.style.width=r*2+'px';b.style.height=r*2+'px';b.style.background=C[c];tl.appendChild(b);}
+ // 睡眠淡带
+ const sl=document.createElement('i');sl.style.cssText='position:absolute;left:0;top:0;bottom:0;width:29%;background:#F4F2FB;border-radius:14px 0 0 14px;';
+ tl.insertBefore(sl,tl.firstChild);tl.appendChild(sl);}
+// 3 四象限 (12x8: 左半负向色系 紫粉/红，右半正向 黄绿)
+{const g=document.getElementById('qg'),r=R(42);
+ for(let row=0;row<8;row++)for(let col=0;col<12;col++){
+  const v=r();let c;
+  if(col<6){ c=row<4?(v<.5?'ax':'st'):(v<.5?'st':'ax'); }
+  else{ c=row<4?(v<.5?'ex':'pl'):(v<.5?'pl':'ca'); }
+  const d=document.createElement('i');d.style.background=C[c];d.style.opacity=.55+r()*.45;g.appendChild(d);}}
+// 4 Moodflow 一个月
+{const p=document.getElementById('px'),r=R(11);
+ for(let i=0;i<31;i++){const v=r();const c=v<.3?'ca':v<.5?'pl':v<.65?'ex':v<.85?'st':'ax';
+  const d=document.createElement('i');d.style.background=C[c];p.appendChild(d);}}
+</script>
+</body>
+</html>

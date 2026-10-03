@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 情绪洞察整页设计稿</title>
+<style>
+  :root{
+    --excited:#F0C46E; --pleasant:#BCCB62; --calm:#7EA6F8; --stressed:#9D8AF0; --anxious:#C9598A;
+    --empty:#ECEAFB; --sleep:#CFC9E6;
+    --ink:#2B2740; --sub:#6B6783; --inkSoft:#8E8AA6;
+    --rose:#E5769B; --roseDeep:#C84E7E; --blue:#7EA6F8; --roseTint:#FBEAF1; --blueTint:#EAF1FC;
+    --line:#EDEAF5;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  body{margin:0; background:#F2F0F8; font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; display:flex; gap:28px; padding:32px; flex-wrap:wrap; justify-content:center;}
+  .phone{width:390px; background:#fff; border-radius:38px; padding:14px 16px 22px; box-shadow:0 24px 60px rgba(60,40,90,.18); overflow:hidden;}
+  .phone-bottom-pad{padding-bottom:96px;}
+  /* app bar */
+  .appbar{display:flex; align-items:center; gap:10px; margin:6px 2px 10px;}
+  .back{width:34px; height:34px; border-radius:50%; background:#F4F2FA; display:flex; align-items:center; justify-content:center; color:var(--ink); font-size:18px;}
+  .apptitle{font-size:20px; font-weight:600; color:var(--ink);}
+  .appsub{font-size:12px; color:var(--sub); margin-top:2px;}
+  /* hero */
+  .hero{display:flex; align-items:flex-end; gap:8px; margin:4px 2px 14px;}
+  .hero-num{font-size:58px; font-weight:600; line-height:1; color:var(--ink); letter-spacing:-1px;}
+  .hero-unit{font-size:15px; color:var(--sub); padding-bottom:8px;}
+  .hero-cap{font-size:12px; color:var(--sub); margin-left:auto; padding-bottom:10px; text-align:right;}
+  .hero-bar{height:8px; border-radius:6px; background:linear-gradient(90deg,var(--pleasant),var(--calm) 40%,var(--stressed) 75%,var(--anxious)); position:relative; margin:2px 2px 16px;}
+  .hero-dot{position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:#fff; border:3px solid var(--rose); transform:translate(-50%,-50%); left:42%; box-shadow:0 2px 6px rgba(200,78,126,.4);}
+  /* time selector */
+  .seg{display:flex; background:#F4F2FA; border-radius:14px; padding:3px; gap:3px; margin:0 2px 8px;}
+  .seg button{flex:1; border:0; background:transparent; font-size:13px; padding:8px 0; border-radius:11px; color:var(--sub); font-weight:600;}
+  .seg button.on{background:#fff; color:var(--ink); box-shadow:0 2px 8px rgba(60,40,90,.12);}
+  .date{display:flex; align-items:center; justify-content:space-between; margin:0 2px 16px; padding:11px 14px; border-radius:14px; border:1px solid var(--line);}
+  .date-t{font-size:14px; font-weight:600; color:var(--ink);}
+  .date-s{font-size:12px; color:var(--sub);}
+  .date .arr{color:var(--inkSoft); font-size:13px;}
+  /* ai block */
+  .ai{margin:0 2px 18px; padding:13px 14px; border-radius:16px; background:var(--roseTint); border-left:3px solid var(--rose);}
+  .ai-t{font-size:13px; color:#7a3b53; line-height:1.55;}
+  .ai-more{font-size:12px; font-weight:600; color:var(--roseDeep); margin-top:7px; display:inline-block;}
+  /* section title */
+  .sec{font-size:15px; font-weight:600; color:var(--ink); margin:18px 2px 12px;}
+  /* matrix */
+  .matrix{padding:0 2px;}
+  .mrow{display:flex; gap:3px; margin-bottom:3px;}
+  .mrow.axis{margin-top:7px;}
+  .mcell{flex:1; display:flex; align-items:center; justify-content:center;}
+  .dot{width:9px; height:9px; border-radius:50%;}
+  .mlabel{flex:1; text-align:center; font-size:9px; color:var(--inkSoft);}
+  .legend{display:flex; flex-wrap:wrap; gap:10px 14px; justify-content:center; margin:16px 2px 2px;}
+  .lg{display:flex; align-items:center; gap:5px;}
+  .lg .d{width:9px; height:9px; border-radius:50%;}
+  .lg span{font-size:11px; color:var(--sub);}
+  /* histogram */
+  .hist{display:flex; align-items:flex-end; gap:3px; height:130px; padding:0 2px;}
+  .hbar{flex:1; border-radius:4px 4px 2px 2px; min-height:3px;}
+  .haxis{display:flex; justify-content:space-between; padding:6px 2px 0; font-size:9px; color:var(--inkSoft);}
+  /* overview open stats */
+  .ov{display:flex; flex-wrap:wrap; gap:0; border-radius:16px; overflow:hidden; border:1px solid var(--line);}
+  .ostat{flex:0 0 50%; padding:14px 16px; border-bottom:1px solid var(--line);}
+  .ostat:nth-child(odd){border-right:1px solid var(--line);}
+  .ostat:nth-child(3),.ostat:nth-child(4){border-bottom:0;}
+  .ol{font-size:12px; color:var(--sub);}
+  .ov-n{font-size:26px; font-weight:600; color:var(--ink); margin-top:4px; line-height:1;}
+  .os{font-size:11px; color:var(--inkSoft); margin-top:5px;}
+  /* window panels */
+  .win{display:flex; gap:10px;}
+  .wpanel{flex:1; padding:14px; border-radius:16px;}
+  .wl{font-size:11px; color:var(--sub);}
+  .wv{font-size:17px; font-weight:600; margin-top:5px;}
+  .ws{font-size:11px; color:var(--inkSoft); margin-top:5px;}
+  /* floating button */
+  .fab{position:fixed; left:50%; transform:translateX(-50%); width:362px; bottom:30px; display:flex; align-items:center; justify-content:center; gap:8px;
+       background:linear-gradient(135deg,#F4C36A,#E5769B); color:#fff; font-size:15px; font-weight:600; padding:15px 0; border-radius:999px; box-shadow:0 10px 26px rgba(200,78,126,.35);}
+  .note{width:300px; color:#6B6783; font-size:13px; line-height:1.7;}
+  .note h3{color:#2B2740; font-size:15px; margin:0 0 8px;}
+  .note li{margin-bottom:6px;}
+</style>
+</head>
+<body>
+
+<div class="phone phone-bottom-pad">
+  <!-- app bar -->
+  <div class="appbar">
+    <div class="back">‹</div>
+    <div>
+      <div class="apptitle">情绪洞察</div>
+      <div class="appsub">情绪消耗 + 唤醒分</div>
+    </div>
+  </div>
+
+  <!-- hero 整体数据 -->
+  <div class="hero">
+    <div class="hero-num">42</div>
+    <div class="hero-unit">/100</div>
+    <div class="hero-cap">情绪消耗<br/>适中 · 偏稳定</div>
+  </div>
+  <div class="hero-bar"><div class="hero-dot"></div></div>
+
+  <!-- 时间选择器 -->
+  <div class="seg">
+    <button class="on">今天</button>
+    <button>本周</button>
+    <button>本月</button>
+    <button>本年</button>
+  </div>
+  <div class="date">
+    <div>
+      <div class="date-t">10月2日 周四</div>
+      <div class="date-s">数据截至 15:48</div>
+    </div>
+    <div class="arr">▾</div>
+  </div>
+
+  <!-- AI 分析 -->
+  <div class="ai">
+    <div class="ai-t">今日共有 6 次压力事件，情绪消耗 42，处于中等压力水平。压力峰值集中在 14:00 前后，平均恢复 95s，恢复速度正常。</div>
+    <span class="ai-more">问 Mira AI ›</span>
+  </div>
+
+  <!-- 全天情绪分布 -->
+  <div class="sec">全天情绪分布</div>
+  <div class="matrix" id="matrix"></div>
+  <div class="legend">
+    <div class="lg"><div class="d" style="background:var(--excited)"></div><span>兴奋</span></div>
+    <div class="lg"><div class="d" style="background:var(--pleasant)"></div><span>愉悦</span></div>
+    <div class="lg"><div class="d" style="background:var(--calm)"></div><span>平静</span></div>
+    <div class="lg"><div class="d" style="background:var(--stressed)"></div><span>压力</span></div>
+    <div class="lg"><div class="d" style="background:var(--anxious)"></div><span>焦虑</span></div>
+  </div>
+
+  <!-- 每小时压力事件 -->
+  <div class="sec">每小时压力事件</div>
+  <div class="hist" id="hist"></div>
+  <div class="haxis"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><span>24</span></div>
+
+  <!-- 今日概览 -->
+  <div class="sec">今日概览</div>
+  <div class="ov">
+    <div class="ostat"><div class="ol">情绪消耗</div><div class="ov-n">6 次</div><div class="os">事件适中</div></div>
+    <div class="ostat"><div class="ol">恢复时间</div><div class="ov-n">95s</div><div class="os">正常</div></div>
+    <div class="ostat"><div class="ol">峰值时段</div><div class="ov-n">14:00</div><div class="os">事件最集中</div></div>
+    <div class="ostat"><div class="ol">消耗分数</div><div class="ov-n" style="color:var(--rose)">42</div><div class="os">/100 · 适中</div></div>
+  </div>
+
+  <!-- 今日情绪窗口 -->
+  <div class="sec">今日情绪窗口</div>
+  <div class="win">
+    <div class="wpanel" style="background:var(--roseTint)">
+      <div class="wl">情绪高峰</div>
+      <div class="wv" style="color:var(--roseDeep)">14:00–15:00</div>
+      <div class="ws">压力事件集中</div>
+    </div>
+    <div class="wpanel" style="background:var(--blueTint)">
+      <div class="wl">恢复建议</div>
+      <div class="wv" style="color:var(--blue)">状态良好</div>
+      <div class="ws">恢复 95s</div>
+    </div>
+  </div>
+
+  <div style="height:8px"></div>
+</div>
+
+<div class="fab">● 记录此刻心情</div>
+
+<script>
+  // 24×4 点阵：每 15 分钟一个点，睡眠段用淡灰蓝，事件用情绪色
+  const C = {excited:'#F0C46E',pleasant:'#BCCB62',calm:'#7EA6F8',stressed:'#9D8AF0',anxious:'#C9598A',empty:'#ECEAFB',sleep:'#CFC9E6'};
+  const events = {
+    '7-0':C.calm,'8-2':C.calm,'9-1':C.pleasant,'10-3':C.calm,'12-1':C.pleasant,
+    '13-2':C.stressed,'14-0':C.stressed,'14-3':C.anxious,'15-2':C.calm,'16-1':C.pleasant,
+    '18-0':C.pleasant,'19-2':C.calm,'21-0':C.calm,'22-1':C.excited
+  };
+  const isSleep = (h)=> h<7; // 0-6 点睡眠
+  const m = document.getElementById('matrix');
+  for(let row=0; row<4; row++){
+    const r = document.createElement('div'); r.className='mrow';
+    for(let h=0; h<24; h++){
+      const c = document.createElement('div'); c.className='mcell';
+      const d = document.createElement('div'); d.className='dot';
+      const key = h+'-'+row;
+      if(events[key]) d.style.background = events[key];
+      else if(isSleep(h)) d.style.background = C.sleep;
+      else d.style.background = C.empty;
+      c.appendChild(d); r.appendChild(c);
+    }
+    m.appendChild(r);
+  }
+  // axis
+  const ax = document.createElement('div'); ax.className='mrow axis';
+  for(let h=0; h<24; h++){
+    const c = document.createElement('div'); c.className='mcell';
+    const t = document.createElement('div'); t.className='mlabel';
+    const show = (h%4===0)||h===23;
+    t.textContent = show ? (h===23?'24':String(h).padStart(2,'0')) : '';
+    c.appendChild(t); ax.appendChild(c);
+  }
+  m.appendChild(ax);
+
+  // 每小时压力事件柱状图
+  const vals = [0,0,0,0,0,0,2,5,8,6,4,7,9,11,14,10,6,5,7,4,3,2,1,0];
+  const hg = document.getElementById('hist');
+  const max = 14;
+  vals.forEach((v,i)=>{
+    const b = document.createElement('div'); b.className='hbar';
+    const ratio = v/max;
+    b.style.height = (3 + ratio*100) + '%';
+    let col = 'linear-gradient(180deg,#E6E2F4,#D9D3EE)';
+    if(v>0){ if(v<4) col='linear-gradient(180deg,#C9E0A8,#BCCB62)'; else if(v<8) col='linear-gradient(180deg,#A9BEF6,#7EA6F8)'; else if(v<11) col='linear-gradient(180deg,#B3A3F0,#9D8AF0)'; else col='linear-gradient(180deg,#E07FAA,#C9598A)'; }
+    b.style.background = col;
+    hg.appendChild(b);
+  });
+</script>
+</body>
+</html>

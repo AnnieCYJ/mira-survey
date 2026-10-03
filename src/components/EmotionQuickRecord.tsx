@@ -17,7 +17,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Easing, Dimensions, PanResponder, TextInput,
-  Keyboard, TouchableWithoutFeedback,
+  Keyboard, TouchableWithoutFeedback, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,6 +73,7 @@ export default function EmotionQuickRecord() {
   // 打开时重置选择 + 播放进入动画
   const open = () => {
     setIndex(2);
+    indexRef.current = 2;
     pos.setValue(0.5);
     setEvents([]);
     setCustomSel([]);
@@ -117,36 +118,61 @@ export default function EmotionQuickRecord() {
     setCustomSel((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   };
 
-  // ── 情绪滑条：拖动/点按吸附到最近一档（兴奋→开心→平静→压力→难过） ──
+  // ── 情绪滑条（复刻参考视频）：一颗半透明软胶囊光标贴轨滑动，全程只动一个原生动画值 ──
+  // 拖动路径零 React 状态更新：index 只在跨过档位阈值时由 pos 监听器触发一次 setState。
   const [trackW, setTrackW] = useState(0);
-  const trackWRef = useRef(0); // ★ 用 ref 持有宽度，避免 PanResponder 闭包捕获到首次渲染的 0 导致滑条卡死
-  const THUMB = theme.sp(5);
-  const pos = useRef(new Animated.Value(0.5)).current; // 0..1 归一化位置（随手指连续移动）
-  const pop = useRef(new Animated.Value(1)).current;    // 切档时表情轻微弹一下，给「变化的过程」
+  const trackWRef = useRef(0); // ★ ref 持有宽度，避免 PanResponder 闭包捕获首帧 0 导致卡死
+  const THUMB_W = theme.sp(9);  // 软胶囊光标宽度（比档位间距大，滑过时"吞过"小点，参考视频同款）
+  const pos = useRef(new Animated.Value(0.5)).current; // 0..1 归一化位置（唯一动效真源）
+  const pop = useRef(new Animated.Value(1)).current;    // 切档时表情轻微弹一下
   const indexRef = useRef(index);
   indexRef.current = index;
+  const liveRatioRef = useRef(0.5); // 实时归一化位置（松手吸附用，避免依赖四舍五入后的 index 造成错位）
+
+  // 拖动中只 setValue（原生驱动）；跨档时才 setIndex → 最大程度消灭重渲闪烁
   const setFromX = (x: number) => {
     const w = trackWRef.current;
     if (w <= 0) return;
-    const ratio = Math.min(1, Math.max(0, x / w));
-    pos.setValue(ratio);
-    setIndex(Math.round(ratio * (MOODS.length - 1)));
+    pos.stopAnimation(); // 拖动时打断吸附动画，避免跳动
+    pos.setValue(Math.min(1, Math.max(0, x / w)));
+  };
+  // 点按（无拖拽）时让光标平滑滑到目标位置，而不是瞬移
+  const glideTo = (x: number) => {
+    const w = trackWRef.current;
+    if (w <= 0) return;
+    Animated.spring(pos, {
+      toValue: Math.min(1, Math.max(0, x / w)),
+      tension: 120, friction: 14, useNativeDriver: true,
+    }).start();
   };
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => setFromX(e.nativeEvent.locationX),
+      onPanResponderGrant: (e) => glideTo(e.nativeEvent.locationX),
       onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
       onPanResponderRelease: () => {
         // 松手吸附到最近档（弹簧，丝滑收尾）
+        const nearest = Math.round(liveRatioRef.current * (MOODS.length - 1)) / (MOODS.length - 1);
         Animated.spring(pos, {
-          toValue: indexRef.current / (MOODS.length - 1),
+          toValue: nearest,
           tension: 120, friction: 14, useNativeDriver: true,
         }).start();
       },
     }),
   ).current;
+  // pos 监听：仅在最近档位变化时更新 React 状态（blob/文字重渲，每划一次最多 4 次）
+  useEffect(() => {
+    const id = pos.addListener(({ value }) => {
+      liveRatioRef.current = value;
+      const next = Math.round(value * (MOODS.length - 1));
+      if (next !== indexRef.current) {
+        indexRef.current = next;
+        setIndex(next);
+      }
+    });
+    return () => pos.removeListener(id);
+  }, [pos]);
   // 切档时表情轻轻弹一下
   useEffect(() => {
     pop.setValue(1);
@@ -189,6 +215,10 @@ export default function EmotionQuickRecord() {
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => { Keyboard.dismiss(); close(); }} />
           </Animated.View>
 
+          <KeyboardAvoidingView
+            style={styles.sheetKav}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
           <Animated.View style={[styles.sheet, { height: SHEET_H, transform: [{ translateY: offY }] }]}>
             <View style={styles.handle} />
 
@@ -202,16 +232,21 @@ export default function EmotionQuickRecord() {
 
             {/* 可滚动主体（点空白处收起键盘） */}
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.body}>
+            <ScrollView
+              style={styles.bodyScroll}
+              contentContainerStyle={styles.body}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               {/* 居中大号会动小团 + 当前心情文字（切档时轻微弹一下） */}
               <View style={styles.blobBlock}>
                 <Animated.View style={{ transform: [{ scale: pop }] }}>
-                  <MoodBlob mood={mood} size={theme.sp(18)} variant={0} />
+                  <MoodBlob mood={mood} size={theme.sp(26)} variant={0} />
                 </Animated.View>
                 <Text style={styles.blobMood}>{MOOD_LABEL[mood]}</Text>
               </View>
 
-              {/* 情绪滑条：拖动选择，thumb 随手指连续滑动 + 变色 */}
+              {/* 情绪滑条（复刻参考视频）：细轨 + 小点 + 半透明软胶囊光标，无彩色填充条 */}
               <View style={styles.sliderBlock}>
                 <View
                   style={styles.trackWrap}
@@ -219,34 +254,22 @@ export default function EmotionQuickRecord() {
                   {...panResponder.panHandlers}
                 >
                   <View style={styles.track} />
-                  <Animated.View
-                    style={[styles.trackFill, trackW > 0 ? { width: pos.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(1, trackW)] }) } : { width: 0 }]}
-                  />
-                  {/* 5 个档位刻度点 */}
+                  {/* 5 个档位小点（参考视频：细轨上淡淡的档位点） */}
                   {MOODS.map((m, i) => (
                     <View
                       key={m}
                       style={[styles.tick, { left: `${(i / (MOODS.length - 1)) * 100}%`, backgroundColor: MOOD_COLOR[m] }]}
                     />
                   ))}
-                  {/* 滑块 thumb（跟随手指连续移动） */}
+                  {/* 软胶囊光标（半透明白，原生 transform 连续跟手，滑过时「吞过」小点） */}
                   <Animated.View
                     style={[
                       styles.thumb,
                       {
-                        transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(1, trackW - THUMB)] }) }],
-                        borderColor: MOOD_COLOR[mood],
+                        transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(1, trackW - THUMB_W)] }) }],
                       },
                     ]}
                   />
-                </View>
-                {/* 档位标签 */}
-                <View style={styles.tickLabels}>
-                  {MOODS.map((m, i) => (
-                    <Text key={m} style={[styles.tickLabel, i === index && styles.tickLabelOn]}>
-                      {MOOD_LABEL[m]}
-                    </Text>
-                  ))}
                 </View>
               </View>
 
@@ -316,7 +339,7 @@ export default function EmotionQuickRecord() {
                   })}
                 </View>
               )}
-            </View>
+            </ScrollView>
             </TouchableWithoutFeedback>
 
             {/* 底部记录按钮（钉在抽屉底） */}
@@ -333,6 +356,7 @@ export default function EmotionQuickRecord() {
               </TouchableOpacity>
             </View>
           </Animated.View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </>
@@ -376,6 +400,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  sheetKav: {
+    width: '100%',
+  },
   sheet: {
     width: '100%',
     backgroundColor: theme.colors.textWhite,
@@ -405,8 +432,11 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold as never,
     color: theme.colors.textTitle,
   },
-  body: {
+  bodyScroll: {
     flex: 1,
+  },
+  body: {
+    paddingBottom: theme.sp(3),
   },
   blobBlock: {
     alignItems: 'center',
@@ -423,58 +453,41 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(3),
   },
   trackWrap: {
-    height: theme.sp(5),
+    height: theme.sp(7),
     justifyContent: 'center',
   },
   track: {
     position: 'absolute',
     left: 0, right: 0,
-    height: theme.sp(1.5),
+    height: theme.sp(0.75),
     borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.btnBusyBg,
-  },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    height: theme.sp(1.5),
-    borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.purpleSoft,
+    backgroundColor: 'rgba(31,29,26,0.08)',
   },
   tick: {
     position: 'absolute',
-    width: theme.sp(2),
-    height: theme.sp(2),
-    borderRadius: theme.sp(1),
-    marginLeft: -theme.sp(1),
+    width: theme.sp(1.5),
+    height: theme.sp(1.5),
+    borderRadius: theme.sp(0.75),
+    marginLeft: -theme.sp(0.75),
+    opacity: 0.85,
   },
+  // 半透明软胶囊光标（参考视频同款：大而软、磨砂白，滑过档位点）
   thumb: {
     position: 'absolute',
-    top: theme.sp(0),
+    top: theme.sp(0.25),
     left: 0,
-    width: theme.sp(5),
-    height: theme.sp(5),
-    borderRadius: theme.sp(2.5),
-    marginLeft: -theme.sp(2.5),
-    backgroundColor: theme.colors.textWhite,
-    borderWidth: 3,
-    shadowColor: '#1F1D1A',
-    shadowOpacity: 0.14,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  tickLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: theme.sp(1.5),
-  },
-  tickLabel: {
-    fontSize: theme.fontSize.micro,
-    color: mm.colors.inkSoft,
-  },
-  tickLabelOn: {
-    color: mm.colors.purpleDeep,
-    fontWeight: theme.weight.semibold as never,
+    width: theme.sp(9),
+    height: theme.sp(6.5),
+    borderRadius: theme.radius.pill,
+    marginLeft: -theme.sp(4.5),
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(31,29,26,0.05)',
+    shadowColor: '#8A8AA0',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   evTitle: {
     fontSize: theme.fontSize.sm,

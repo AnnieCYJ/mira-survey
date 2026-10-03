@@ -97,14 +97,22 @@ export interface CognitiveLoadReport {
   // ── 脑力账户（Borbély 双过程，给用户看的直白数）──
   //   一条账讲完：早上的储备 = 早起认知准备度；白天清醒+费脑持续扣款；
   //   剩余 = 储备 − 已用；疲劳度 = 100 − 剩余（与逐时柱状图同一条能量线）。
-  /** 早上的脑力储备 = 早起认知准备度 (0-100) */
-  brainReserve: number;
-  /** 今日已消耗脑力 (储备 − 剩余, 0-100) */
-  brainUsed: number;
+  //   ★ v18.95 全部可空：账户完全建立在「睡眠恢复」上，最近两晚无真实睡眠记录 → null（诚实空态）。
+  /** 早上的脑力储备 = 早起认知准备度 (0-100)；最近两晚无真实睡眠记录 → null */
+  brainReserve: number | null;
+  /** 今日已消耗脑力 (储备 − 剩余, 0-100)；无睡眠记录 → null */
+  brainUsed: number | null;
+  /**
+   * 脑力账户所用睡眠的日期 key（'YYYY-MM-DD'）；null = 无睡眠数据（账户整体为空）。
+   * ★ v18.98（用户口径：对齐 Oura）：这里**只可能是今晚（昨天 key 但起床在今早）或今天**，
+   *   更早的睡眠归档一律不算数 → 账户直接置空（UI 显示「—」）。
+   *   不再给旧数据打「昨」标 —— 没昨晚的睡眠就该是空态，而不是拿旧数 + 一行说明。
+   */
+  brainSleepDate: string | null;
   /** 当前节律能量位置 (0-100, Process C 参考值, 不参与余额计算) */
   circadianEnergy: number;
-  /** 当前脑力余额 (0-100, = 100 − 当前疲劳度) */
-  brainRemaining: number;
+  /** 当前脑力余额 (0-100, = 100 − 当前疲劳度)；无睡眠记录 → null */
+  brainRemaining: number | null;
   /** 今日被剔除的非认知消耗分钟数（只算脑：情绪事件 / 运动窗口的唤醒偏离不计入脑力消耗） */
   brainExcluded: { emotion: number; exercise: number };
 }
@@ -444,6 +452,29 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   //         恢复差 → 基础负荷整体上移
   const _todayKey2 = todayKey(nowMs);
   const _sleepSum2 = healthStore.getSleep(_todayKey2);
+  // ★ v18.95 诚实守卫（提前声明，mentalEnergy / 脑力账户两处共用）：
+  //   今天和昨天都没有真实睡眠记录（total>0）→ 睡眠恢复无从谈起。
+  //   此前的兜底（无睡眠按 8h 假设、无债按恢复因子 0.95）会凭空做出一本假账
+  //   （用户实锤：一晚没连戒指，首页照样出现脑力值/恢复程度）。
+  // ★ v18.98（用户口径：参考 Oura——没昨晚的睡眠就是「—」，不写「昨」、不拿更早的旧数据冒充）：
+  //   睡眠恢复只认「昨晚这一夜」= 今天的睡眠摘要，或**昨天那条记录且起床时刻落在今早**
+  //   （跨午夜睡眠常被 SDK 记在前一日）。昨天 12 点以后睡的、以及前天/更早的任何归档，
+  //   一律不算「昨晚」→ sleepSourceDate = null → 脑力账户/准备度诚实显示「—」。
+  const isLastNightSleep = (s: { total?: number; wakeTime?: string | null; getUp?: number | null } | null | undefined): boolean => {
+    if (!s || !((s.total ?? 0) > 0)) return false;
+    const upMin = s.getUp ?? (s.wakeTime ? (() => {
+      const m = /(\d{1,2}):(\d{2})/.exec(String(s.wakeTime));
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    })() : null);
+    // 起床在 12:00 之前 ⇒ 这一夜是昨晚睡到今早的；起床 ≥12:00 说明这是更旧的白天存档
+    return upMin == null || upMin < 12 * 60;
+  };
+  const sleepSourceDate: string | null = (() => {
+    if (isLastNightSleep(_sleepSum2)) return _todayKey2;
+    const yst = healthStore.getSleep(dayKey(-1, nowMs)); // 昨天（跨午夜睡眠常记在前一日）
+    return isLastNightSleep(yst) ? dayKey(-1, nowMs) : null;
+  })();
+  const hasRecentSleep = sleepSourceDate != null;
   let sleepRecovery = 0.75;  // 默认
   if (_sleepSum2 && _sleepSum2.total > 0) {
     const sleepHours = _sleepSum2.total / 60;
@@ -694,12 +725,13 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
 
   const circadianHour = new Date(nowMs).getHours() + new Date(nowMs).getMinutes() / 60;
 
-  const mentalEnergy = computeMentalEnergy({
+  // ★ v18.95：mentalEnergy 睡眠权重 40%，无真实睡眠记录时与脑力账户一起置 null（诚实空态）
+  const mentalEnergy = hasRecentSleep ? computeMentalEnergy({
     hrvNow, hrvBaseline,
     sleepRecoveryFactor,
     circadianHour,
     cumulativeLoad: loadScore,
-  });
+  }) : null;
   const focusScore = computeFocus({
     hrvNow, hrvBaseline, snsNow, snsBaseline,
     circadianHour, fatigueIndex,
@@ -714,12 +746,15 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   //   储备 = 早起认知准备度（sleepRecovery / sleepDebt / 节律相位）
   //   已用 = 储备 − 剩余；剩余 = 此刻能量（清醒+费脑扣款，情绪/运动窗口已剔除）
   //   疲劳度 = 100 − 剩余（逐时柱状图同源）
-  const brainReserve = morningReadiness;
+  //   ★ v18.95 诚实守卫：无真实睡眠记录（hasRecentSleep，判定见步骤 B 处）→ 整条账户
+  //   （储备/已用/剩余）与睡眠主导的 mentalEnergy 返回 null，首页诚实显「—」。
+  const brainReserve: number | null = hasRecentSleep ? morningReadiness : null;
   const circadianEnergy = clamp(Math.round(
     50 + 50 * Math.sin(2 * Math.PI * (circadianHour - _acrophase + 6) / 24)
   ), 0, 100);
-  let brainRemaining = clamp(hourlyRes.energyNow, 0, 100);
-  let brainUsed = clamp(brainReserve - brainRemaining, 0, 100);
+  let brainRemaining: number | null = hasRecentSleep ? clamp(hourlyRes.energyNow, 0, 100) : null;
+  let brainUsed: number | null =
+    brainReserve != null && brainRemaining != null ? clamp(brainReserve - brainRemaining, 0, 100) : null;
 
   // ── 全天平均疲劳度（仅统计有数据的小时），与柱状图同源，作为卡片大数字 ──
   const _fatigueScores = hourly.filter(h => h.hasData).map(h => h.score);
@@ -731,7 +766,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   const loadEvent: CognitiveLoadEvent | null = detectCognitiveLoad(
     hrvBaseline ?? 55, snsBaseline ?? 30, nowMs,
   );
-  if (loadEvent) {
+  if (loadEvent && brainRemaining != null && brainUsed != null && brainReserve != null) {
     const corrected = applyLoadCorrection({ brainUsed, circadianEnergy, brainRemaining }, loadEvent);
     // 保持一条账：实时负荷修正只调余额，已用恒 = 储备 − 剩余
     brainRemaining = clamp(corrected.brainRemaining, 0, brainReserve);
@@ -775,6 +810,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     loadEvent: loadEvent ?? undefined,
     brainReserve,
     brainUsed,
+    brainSleepDate: sleepSourceDate,
     circadianEnergy,
     brainRemaining,
     brainExcluded: hourlyRes.excludedMin,
@@ -838,15 +874,23 @@ function computeHourlyLoad(
   };
   const bedH = parseHM(sleepSum?.sleepTime);
   const wakeH = parseHM(sleepSum?.wakeTime);
+  // ★ v18.96（审计 4-4）：旧实现 bedHour/wakeHour 缺省硬编码 0:00–7:00，等于凭空认定
+  //   「0–7 点在睡觉」。今天没有真实睡眠记录时**不判睡眠窗**（整天按清醒处理），
+  //   夜里若有真实 HRV 采样就如实计入疲劳，而不是被假睡眠窗吞掉。
+  //   （睡眠的跨天豁免只用于「展示最近一晚」，不用于编造今天的作息窗。）
+  const hasSleepWindow = bedH != null && wakeH != null && bedH !== wakeH;
   const bedHour = bedH != null ? Math.floor(bedH) : 0;
   const wakeHour = wakeH != null ? Math.floor(wakeH) : 7;
+  const inSleepWindow = (h: number): boolean => {
+    if (!hasSleepWindow) return false;
+    return (bedHour < wakeHour) ? (h >= bedHour && h < wakeHour) : (h >= bedHour || h < wakeHour);
+  };
 
   // ── 1. 先算 baseline (全天清醒时段 HRV/SNS) ──
   const awakeHrv: number[] = [];
   const awakeSns: number[] = [];
   for (let h = 0; h < 24; h++) {
-    const isAsleep = (bedHour < wakeHour) ? (h >= bedHour && h < wakeHour) : (h >= bedHour || h < wakeHour);
-    if (isAsleep) continue;
+    if (inSleepWindow(h)) continue;
     const hs = healthStore.getTimeRange('hrv' as MetricKey, dayMs + h * 3600000, dayMs + (h + 1) * 3600000, { maxPoints: 50 });
     const ss = healthStore.getTimeRange('sns' as MetricKey, dayMs + h * 3600000, dayMs + (h + 1) * 3600000, { maxPoints: 50 });
     hs.forEach(p => awakeHrv.push(p.v));
@@ -859,9 +903,13 @@ function computeHourlyLoad(
     : (healthStore.getDay('sns' as any, _today)?.mean ?? 30);
 
   // ── 2. 睡眠恢复因子 → 初始能量 ──
+  // ★ v18.96（审计 2-4）：旧实现 `sleepSum?.total ?? 480` = 无睡眠记录时**按满睡 8h 假设**，
+  //   凭空造出一个偏高的起点能量。今天无睡眠记录时改用中性 0.5（不奖不罚），
+  //   有记录（含沿用最近一晚）才按真实时长/深睡算。
   const sleepRec = (() => {
-    const totalMin = sleepSum?.total ?? 480;
-    const deepRatio = sleepSum?.deep != null && totalMin > 0 ? sleepSum.deep / totalMin : 0.15;
+    if (!sleepSum || sleepSum.total <= 0) return 0.5;
+    const totalMin = sleepSum.total;
+    const deepRatio = sleepSum.deep != null && totalMin > 0 ? sleepSum.deep / totalMin : 0.15;
     const durAdequacy = clamp((totalMin / 60 - 6) / 2, 0, 1); // 6h=0, 8h+=1
     const deepBonus = clamp((deepRatio - 0.12) / 0.08, 0, 1);  // 12%=0, 20%+=1
     return clamp(durAdequacy * 0.6 + deepBonus * 0.4, 0.2, 1);
@@ -870,7 +918,10 @@ function computeHourlyLoad(
   let debt = 0;
   for (let i = 0; i < 7; i++) {
     const d = healthStore.getSleep(dayKey(-i, nowMs));
-    const h = (d?.total ?? 480) / 60;
+    // ★ v18.96（审计 2-5）：缺失日旧实现按「睡满 8h」处理（`?? 480`）→ 从没戴戒指的那天
+    //   反而算出 0 睡眠债、「睡得很好」。缺失 = 未知，不奖不罚，直接跳过。
+    if (!d || !(d.total > 0)) continue;
+    const h = d.total / 60;
     if (h < 8) debt += (8 - h) * Math.exp(-i / 5);
   }
   debt = clamp(debt, 0, 6);
@@ -910,7 +961,7 @@ function computeHourlyLoad(
   for (let step = 0; step < 48; step++) {
     const halfH = step * 0.5;
     const fullH = Math.floor(halfH);
-    const isAsleep = (bedHour < wakeHour) ? (fullH >= bedHour && fullH < wakeHour) : (fullH >= bedHour || fullH < wakeHour);
+    const isAsleep = inSleepWindow(fullH);
 
     if (isAsleep) {
       // 睡眠时: 能量恢复至「本次晨起能量」上限

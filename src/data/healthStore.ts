@@ -362,7 +362,13 @@ export class HealthStore {
     const prev = store.daily[dk];
     // 合并后始终从完整明细重算，避免分片长度较小时漏掉回填更新；实时明细会保留并标记 mixed。
     store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
-    this.lastUpdated[key] = Date.now();
+    // ★ v18.96：lastUpdated 记「数据本身的时间戳」（取本批样本最新 t），不是 Date.now()。
+    //   否则回填 30 天历史也会把 lastUpdated 刷成「现在」，新鲜度判断（freshnessReport、
+    //   RingBleManager 的 hrvFreshToday 等）会把历史数据误认为刚采到的。
+    const newest = samples.reduce((a, s) => (Number.isFinite(s.t) && s.t > a ? s.t : a), 0);
+    if (newest > 0) {
+      this.lastUpdated[key] = Math.max(this.lastUpdated[key] ?? 0, Math.min(newest, Date.now()));
+    }
     this.notify();
   }
 
@@ -385,8 +391,25 @@ export class HealthStore {
       };
     } else if (prev.mean == null) {
       store.daily[dk] = { ...prev, mean: v, min: v, max: v, source: 'mixed', updatedAt: Date.now() };
+    } else {
+      // ★ v18.96（审计 1-7）：已有 realtime 来源的日均 + 回填均值 → 旧实现三个分支全不命中，
+      //   回填被静默丢弃（数据永远补不回来）。这里合并进均值，日均取两条来源的平均。
+      store.daily[dk] = {
+        ...prev,
+        mean: (prev.mean + v) / 2,
+        min: Math.min(prev.min ?? v, v),
+        max: Math.max(prev.max ?? v, v),
+        source: 'mixed',
+        updatedAt: Date.now(),
+      };
     }
-    this.lastUpdated[key] = Date.now();
+    // ★ v18.96：同 upsertBackfillSamples，lastUpdated 用该日归档时刻而非 Date.now()。
+    const dayEnd = parseDayKey(dk) + 86400000;
+    if (Number.isFinite(dayEnd)) {
+      this.lastUpdated[key] = Math.max(this.lastUpdated[key] ?? 0, Math.min(dayEnd, Date.now()));
+    } else {
+      this.lastUpdated[key] = Date.now();
+    }
     this.notify();
   }
 

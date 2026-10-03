@@ -14,6 +14,13 @@ import type { TaskItem, TaskFlip } from '../data/tasks';
 import { curveLevel, CURVE_DEFAULTS } from './dailyStatus';
 import { computeStressReport } from './stressAlgorithm';
 
+/** ★ v18.96：睡眠来源时间词。沿用昨天归档时写明日期（口径：睡眠可跨天，但日期要写明）。 */
+function sleepWhen(c: ToolCtx): string {
+  if (!c.sleepIsStale) return '昨晚';
+  const d = new Date(c.now - 86400000);
+  return `昨晚（${d.getMonth() + 1}/${d.getDate()}）`;
+}
+
 export interface ToolCtx {
   now: number;
   /** 今日状态档 0-3（充沛/平稳/偏低/不足）；null = 无数据 */
@@ -22,6 +29,9 @@ export interface ToolCtx {
   statusValue: number | null;
   /** 最近一晚睡眠评分 0-100 */
   sleepScore: number | null;
+  /** ★ v18.96：sleepScore 取自昨天归档（今天无睡眠记录）时为 true → 推荐文案写明日期，
+   *  避免「昨晚睡眠 82 分」在隔夜未连戒指时被读成昨夜实测。 */
+  sleepIsStale?: boolean;
   /** 今日压力事件数 */
   stressEventsToday: number;
   /** 今日步数 */
@@ -173,7 +183,7 @@ const POOL: Candidate[] = [
     title: '工作记忆训练',
     action: '开始 · 15 min',
     prio: (c) => (c.sleepScore != null && c.sleepScore >= 80 && (c.levelIdx == null || c.levelIdx <= 1) ? 75 : 0),
-    desc: (c) => `昨晚睡眠 ${c.sleepScore != null ? Math.round(c.sleepScore) : '—'} 分，大脑今天在状态——15 分钟训练放在现在，效果最好。`,
+    desc: (c) => `${sleepWhen(c)}睡眠 ${c.sleepScore != null ? Math.round(c.sleepScore) : '—'} 分，大脑今天在状态——15 分钟训练放在现在，效果最好。`,
     flip: {
       articleId: 'hormCognition',
       collection: 'learn',
@@ -450,9 +460,12 @@ export function buildToolCtx(ring: any): ToolCtx {
   } catch {}
   const levelIdx = statusValue != null ? curveLevel(statusValue, CURVE_DEFAULTS).index : null;
   let sleepScore: number | null = null;
+  // ★ v18.96（审计 4-3）：今天无睡眠记录时回退昨天 → 记下 stale 供文案标注日期
+  let sleepIsStale = false;
   try {
-    const s = healthStore.getSleep(dayKey(now)) ?? healthStore.getSleep(dayKey(now - 86400000));
-    if (s && Number.isFinite(s.score)) sleepScore = s.score;
+    const todaySl = healthStore.getSleep(dayKey(now));
+    const s = todaySl ?? healthStore.getSleep(dayKey(now - 86400000));
+    if (s && Number.isFinite(s.score)) { sleepScore = s.score; sleepIsStale = todaySl == null; }
   } catch {}
   let stressEventsToday = 0;
   try {
@@ -462,7 +475,7 @@ export function buildToolCtx(ring: any): ToolCtx {
   try {
     steps = ring?.stepDaily?.[dayKey(now)]?.steps ?? 0;
   } catch {}
-  return { now, levelIdx, statusValue, sleepScore, stressEventsToday, steps, phase, dayInCycle };
+  return { now, levelIdx, statusValue, sleepScore, sleepIsStale, stressEventsToday, steps, phase, dayInCycle };
 }
 
 /** 主入口：返回恰好 3 张推荐卡（完成态读当日记录，跨重启恢复） */

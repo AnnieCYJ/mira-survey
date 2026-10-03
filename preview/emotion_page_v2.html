@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>情绪洞察 · 收敛版</title>
+<style>
+  :root{
+    --bg:#F4F2FB; --card:#FFFFFF; --line:#ECEAFB; --ink:#2B2B33; --sub:#7A7689;
+    --ex:#F0C46E; --pl:#BCCB62; --ca:#7EA6F8; --st:#9D8AF0; --ax:#C9598B;
+    --empty:#E4E0F4; --lime:#E7F2C9; --limeD:#5B7A2E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{background:#E9E6F3;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;display:flex;justify-content:center;padding:24px 0;}
+  .phone{width:390px;background:var(--bg);border-radius:38px;padding:18px 16px 28px;box-shadow:0 20px 60px rgba(80,70,140,.22);overflow:hidden;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:6px 4px 10px;}
+  .topbar .t{font-size:20px;font-weight:700;color:var(--ink);}
+  .topbar .ic{width:30px;height:30px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--sub);border:1px solid var(--line);}
+  /* 日期选择器（沿用现版） */
+  .seg{display:flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin:4px 0 2px;}
+  .seg b{flex:1;text-align:center;font-size:13px;padding:7px 0;border-radius:999px;color:var(--sub);font-weight:600;}
+  .seg b.on{background:var(--lime);color:var(--limeD);}
+  .dateline{font-size:12px;color:var(--sub);padding:4px 6px 2px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;}
+  .lbl{font-size:13px;color:var(--sub);font-weight:600;margin-bottom:8px;}
+  /* 整体数据：情绪基调 + 压力数字（不瞎编 0-100） */
+  .hero{display:flex;align-items:center;gap:14px;}
+  .moodball{width:62px;height:62px;border-radius:20px;background:var(--ca);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;box-shadow:0 6px 16px rgba(126,166,248,.4);}
+  .hero .main{font-size:22px;font-weight:800;color:var(--ink);}
+  .hero .sub{font-size:12px;color:var(--sub);margin-top:3px;}
+  .hero .sub b{color:var(--st);}
+  /* 点阵 24x4 */
+  .matrix{display:flex;flex-direction:column;gap:5px;}
+  .mrow{display:flex;gap:3px;}
+  .mcell{flex:1;aspect-ratio:1/1;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--empty);}
+  .dot{border-radius:50%;}
+  .axis{display:flex;justify-content:space-between;margin-top:8px;}
+  .axis span{font-size:10px;color:var(--sub);}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .legend i{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--sub);}
+  .legend u{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  /* AI 白框 */
+  .ai{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;}
+  .ai .h{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:7px;}
+  .ai .h em{font-style:normal;font-size:10px;background:var(--lime);color:var(--limeD);padding:2px 7px;border-radius:999px;font-weight:700;}
+  .ai p{font-size:13px;line-height:1.6;color:#44414F;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="topbar"><div class="t">情绪洞察</div><div class="ic">⋮</div></div>
+
+  <!-- 日期选择器：沿用现版 -->
+  <div class="seg">
+    <b class="on">今天</b><b>本周</b><b>本月</b><b>本年</b>
+  </div>
+  <div class="dateline">10月2日 周五</div>
+
+  <!-- 整体数据：情绪基调 + 压力数字（无瞎编 0-100） -->
+  <div class="card">
+    <div class="lbl">今日整体</div>
+    <div class="hero">
+      <div class="moodball" id="mball">平静</div>
+      <div>
+        <div class="main" id="mname">整体偏平静</div>
+        <div class="sub">压力 <b id="stress">38</b> · 高峰出现在午后 · 夜间恢复良好</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全天情绪分布：24x4 点阵，无纵坐标，点放大 -->
+  <div class="card">
+    <div class="lbl">全天情绪分布（每 15 分钟一个点）</div>
+    <div class="matrix" id="matrix"></div>
+    <div class="axis"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><span>24</span></div>
+    <div class="legend">
+      <i><u style="background:var(--ex)"></u>兴奋</i>
+      <i><u style="background:var(--pl)"></u>愉悦</i>
+      <i><u style="background:var(--ca)"></u>平静</i>
+      <i><u style="background:var(--st)"></u>压力</i>
+      <i><u style="background:var(--ax)"></u>焦虑</i>
+    </div>
+  </div>
+
+  <!-- AI 白框 -->
+  <div class="ai">
+    <div class="h">Mira AI <em>洞察</em></div>
+    <p>你今天午后的压力明显升高，和连续开会的时间重合；傍晚回家后情绪回落到平静。夜间睡得不错，明早更适合安排需要专注的事。</p>
+  </div>
+</div>
+
+<script>
+  const C={excited:'#F0C46E',pleasant:'#BCCB62',calm:'#7EA6F8',stressed:'#9D8AF0',anxious:'#C9598B'};
+  function moodAt(h,m){
+    const t=h+m/60;
+    if(t<6.5||t>=23) return null;
+    if(t<9) return 'calm';
+    if(t<11) return 'pleasant';
+    if(t<13) return 'stressed';
+    if(t<14.5) return 'anxious';
+    if(t<16.5) return 'stressed';
+    if(t<19) return 'pleasant';
+    return 'calm';
+  }
+  // 轻微抖动，模拟真实采样
+  const jitter={calm:['calm','pleasant'],pleasant:['pleasant','calm'],stressed:['stressed','anxious'],anxious:['anxious','stressed']};
+  const mtx=document.getElementById('matrix');
+  const counts={excited:0,pleasant:0,calm:0,stressed:0,anxious:0,empty:0};
+  for(let h=0;h<24;h++){
+    const row=document.createElement('div');row.className='mrow';
+    for(const m of [0,15,30,45]){
+      const cell=document.createElement('div');cell.className='mcell';
+      const mood=moodAt(h,m);
+      if(mood){
+        const pick=(h*4+(m/15))%3===0 && jitter[mood]?jitter[mood][1]:mood;
+        counts[pick]++;
+        const d=document.createElement('div');d.className='dot';
+        const sz=10+((h*7+m)%4)*2; // 10~16px
+        d.style.width=sz+'px';d.style.height=sz+'px';d.style.background=C[pick];
+        cell.appendChild(d);
+      }else{counts.empty++;}
+      row.appendChild(cell);
+    }
+    mtx.appendChild(row);
+  }
+  // 主情绪 = 出现最多的（排除空）
+  const top=Object.entries(counts).filter(([k])=>k!=='empty').sort((a,b)=>b[1]-a[1])[0][0];
+  const NAME={excited:'整体偏兴奋',pleasant:'整体偏愉悦',calm:'整体偏平静',stressed:'整体偏紧张',anxious:'整体偏焦虑'};
+  const COL={excited:'#F0C46E',pleasant:'#BCCB62',calm:'#7EA6F8',stressed:'#9D8AF0',anxious:'#C9598B'};
+  document.getElementById('mname').textContent=NAME[top];
+  const ball=document.getElementById('mball');
+  ball.style.background=COL[top];ball.textContent={excited:'兴奋',pleasant:'愉悦',calm:'平静',stressed:'紧张',anxious:'焦虑'}[top];
+</script>
+</body>
+</html>

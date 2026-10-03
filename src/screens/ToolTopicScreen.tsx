@@ -97,6 +97,8 @@ export default function ToolTopicScreen() {
   const sleep = (() => {
     try { return healthStore.getSleep(dayKey(now)) ?? healthStore.getSleep(dayKey(now - 86400000)); } catch { return null; }
   })();
+  // ★ v18.98：睡眠只取「昨晚」，不标注来源日期（用户口径：不要写「昨」，没有就是「—」）。
+  const sleepIsStale = false;
   const sleepScore = sleep && Number.isFinite(sleep.score) ? Math.round(sleep.score) : null;
   const phase = ring?.curveStatus?.phaseLabel ?? '未记录';
 
@@ -194,7 +196,7 @@ export default function ToolTopicScreen() {
         {topic === 'learn'
           ? <LearnSection phase={phase} navigation={navigation} />
           : topic === 'glow'
-            ? <GlowSection sleepScore={sleepScore} navigation={navigation} />
+            ? <GlowSection sleepScore={sleepScore} sleepIsStale={sleepIsStale} navigation={navigation} />
             : topic === 'nutrition'
               ? <NutritionSection navigation={navigation} />
               : <SportArticlesSection navigation={navigation} />}
@@ -283,7 +285,7 @@ function LearnSection({ phase, navigation }: { phase: string; navigation: TopicN
  * 内容：斯坦福皮肤科共识 + 明星极简护肤路线（glowArticles.ts，静态无假数据）。
  * 顶部提示行带昨晚睡眠分（有数据才展示，诚实口径）。
  */
-function GlowSection({ sleepScore, navigation }: { sleepScore: number | null; navigation: TopicNav }) {
+function GlowSection({ sleepScore, sleepIsStale, navigation }: { sleepScore: number | null; sleepIsStale?: boolean; navigation: TopicNav }) {
   const hero = getGlowArticle(GLOW_HERO_ID);
   const articles = GLOW_ARTICLES.filter((a) => a.id !== GLOW_HERO_ID);
   return (
@@ -366,6 +368,7 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
     try { return healthStore.getSleep(sk) ?? (isToday ? healthStore.getSleep(dayKey(dayTs - 86400000)) : null); }
     catch { return null; }
   })();
+  // ★ v18.98：睡眠只取「昨晚」，不标注来源日期（用户口径：不要写「昨」，没有就是「—」）。
   const steps = (() => { try { return ring?.stepDaily?.[sk]?.steps ?? 0; } catch { return 0; } })();
   // HRV 只有当天能读（固件限制），历史日不编
   const hrv = isToday ? (() => { try { return ring?.hrvDaily?.[sk] ?? null; } catch { return null; } })() : null;
@@ -417,6 +420,8 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
     sleepDeepMin: sleepSel?.deep ?? null,
     cortisolLabel,
     gearName: brief.gearName,
+    sleepIsStale: false, // ★ v18.98：不再挂「昨（日期）」溯源小字，拿不到昨晚睡眠就是「—」
+    sleepDateLabel: undefined,
   });
 
   /* ── 记录运动：运动种类选择 + 时长 + 保存（v18.87 既有功能）────────── */

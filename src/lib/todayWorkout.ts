@@ -525,15 +525,21 @@ export function sportStatusReason(inp: {
   sleepDeepMin?: number | null;
   cortisolLabel?: string | null;
   gearName: string;
+  /** ★ v18.96：所选日为今天、但睡眠取自昨天归档时为 true → 文案前缀标注日期，
+   *  避免「昨晚睡 7h20m」在隔夜未连戒指时被读成昨夜实测（睡眠可跨天，但日期要写明）。 */
+  sleepIsStale?: boolean;
+  sleepDateLabel?: string;
 }): string {
   const st = inp.sleepTotalMin ?? null;
   const dp = inp.sleepDeepMin ?? null;
+  // 睡眠来源标注：正常「昨晚」；跨天沿用昨天数据时改成「昨晚（10/2）」
+  const when = inp.sleepIsStale && inp.sleepDateLabel ? `昨晚（${inp.sleepDateLabel}）` : '昨晚';
   if (dp != null && dp < 60) {
-    if (st != null) return `昨晚睡 ${hm(st)} · 深睡偏短，上强度只会加压，今天把强度收一档。`;
-    return '昨晚深睡不到 1 小时，上强度只会加压，今天把强度收一档。';
+    if (st != null) return `${when}睡 ${hm(st)} · 深睡偏短，上强度只会加压，今天把强度收一档。`;
+    return `${when}深睡不到 1 小时，上强度只会加压，今天把强度收一档。`;
   }
   if (st != null && st < 390) {
-    return `昨晚睡 ${hm(st)} · 睡得偏短，上强度只会加压，今天把强度收一档。`;
+    return `${when}睡 ${hm(st)} · 睡得偏短，上强度只会加压，今天把强度收一档。`;
   }
   if (inp.cortisolLabel === '偏高') {
     return `皮质醇偏高 + 恢复变慢，今天按${inp.gearName}的节奏稳稳来，不靠拼。`;

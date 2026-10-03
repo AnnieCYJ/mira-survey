@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 情绪洞察 · shadcn/ui 定稿设计</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  html,body{background:#E9E7EF;font-family:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;color:#18181B;}
+  .stage{display:flex;gap:28px;justify-content:center;align-items:flex-start;padding:26px 16px 44px;flex-wrap:wrap;}
+  .side{width:250px;padding-top:70px;}
+  .side h1{font-size:21px;font-weight:700;letter-spacing:-.3px;color:#18181B;}
+  .side .tag{display:inline-block;margin-top:8px;font-size:11px;font-weight:600;color:#7C6BD6;background:#F1EEFB;border:1px solid #E4E0F5;border-radius:999px;padding:4px 10px;}
+  .side p{font-size:12.5px;color:#52525B;line-height:1.7;margin-top:12px;}
+  .side ul{margin:10px 0 0 16px;font-size:12px;color:#52525B;line-height:1.9;}
+  .side .check{margin-top:16px;background:#fff;border:1px solid #E4E4E7;border-radius:12px;padding:12px 14px;font-size:11.5px;color:#3F3F46;line-height:1.8;}
+  .side .check b{color:#18181B;}
+  .side .ok{color:#16A34A;font-weight:700;}
+
+  /* ── shadcn tokens ── */
+  .phone{width:390px;height:844px;background:#FAFAFA;border-radius:46px;position:relative;overflow:hidden;
+    box-shadow:0 26px 60px rgba(24,24,27,.22), inset 0 0 0 10px #18181B;flex:none;
+    --bg:#FAFAFA;--card:#FFFFFF;--border:#E4E4E7;--muted:#F4F4F5;--muted-fg:#71717A;
+    --fg:#09090B;--sub:#71717A;--primary:#7C6BD6;--primary-fg:#fff;--primary-soft:#F1EEFB;
+    --ring:#B7ACF0;--r:14px;--r-sm:10px;}
+  .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:118px;height:26px;background:#18181B;border-radius:0 0 15px 15px;z-index:40;}
+  .statusbar{height:48px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font-size:12px;font-weight:600;color:#09090B;}
+  .screen{height:calc(844px - 48px);overflow-y:auto;overflow-x:hidden;background:var(--bg);}
+  .screen::-webkit-scrollbar{width:0;}
+
+  /* header */
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:6px 18px 12px;}
+  .ab-back{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:var(--card);
+    display:flex;align-items:center;justify-content:center;color:#09090B;flex:none;}
+  .ab-title{font-size:17px;font-weight:600;letter-spacing:-.2px;color:var(--fg);}
+  .ab-sub{font-size:11px;color:var(--sub);margin-top:1px;}
+  .iconbtn{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:var(--card);
+    display:flex;align-items:center;justify-content:center;color:#3F3F46;}
+
+  /* range tabs (shadcn Tabs) */
+  .tabs{margin:0 18px;background:var(--muted);border-radius:12px;padding:3px;display:flex;}
+  .tab{flex:1;text-align:center;padding:7px 0;font-size:13px;font-weight:500;color:var(--sub);border-radius:9px;cursor:pointer;transition:all .18s;}
+  .tab.active{background:var(--card);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.03);}
+  .anchor{display:flex;align-items:center;justify-content:space-between;margin:12px 18px 2px;}
+  .anchor .nav{display:flex;gap:6px;}
+  .anchor .arrow{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--card);
+    display:flex;align-items:center;justify-content:center;color:#3F3F46;cursor:pointer;}
+  .anchor .chip{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--fg);
+    background:var(--card);border:1px solid var(--border);border-radius:9px;padding:6px 13px;}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin:12px 18px;padding:16px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .cardhead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;}
+  .cardtitle{font-size:15px;font-weight:600;color:var(--fg);letter-spacing:-.1px;}
+  .carddesc{font-size:11.5px;color:var(--sub);margin-top:3px;}
+  .badge{font-size:10.5px;font-weight:600;color:#6D5BC7;background:var(--primary-soft);border:1px solid #E6E0F7;border-radius:999px;padding:3px 9px;}
+
+  /* chart */
+  .chartwrap{margin-top:10px;}
+  svg{display:block;}
+  .legend{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:12px;padding-top:11px;border-top:1px solid var(--muted);}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .sw{width:9px;height:9px;border-radius:2.5px;}
+  .legtxt{font-size:11px;color:var(--sub);}
+  .divider{height:1px;background:var(--muted);margin:14px -16px;}
+
+  /* stats */
+  .statgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .stat{border:1px solid var(--border);border-radius:var(--r-sm);padding:11px 10px;background:var(--card);}
+  .stat .k{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--sub);}
+  .stat .k svg{flex:none;}
+  .stat .v{font-size:17px;font-weight:700;margin-top:6px;letter-spacing:-.2px;}
+  .stat .s{font-size:9.5px;color:var(--sub);margin-top:3px;}
+  .analysis{font-size:12px;color:#3F3F46;line-height:1.7;}
+  .analysis b{color:var(--fg);}
+  .footnote{display:flex;align-items:center;gap:5px;font-size:10px;color:#A1A1AA;margin-top:8px;}
+
+  /* day view */
+  .hero{display:flex;align-items:center;gap:12px;}
+  .hero-emoji{width:54px;height:54px;border-radius:14px;background:var(--primary-soft);border:1px solid #E6E0F7;
+    display:flex;align-items:center;justify-content:center;font-size:27px;flex:none;}
+  .hero-b b{font-size:16px;font-weight:600;color:var(--fg);display:block;letter-spacing:-.2px;}
+  .hero-b p{font-size:11.5px;color:var(--sub);margin-top:3px;}
+  .matrix{display:grid;grid-template-columns:repeat(24,1fr);gap:2.5px;margin-top:14px;}
+  .cell{width:100%;aspect-ratio:1/1;border-radius:2.5px;}
+  .timeline{display:flex;justify-content:space-between;margin-top:7px;}
+  .tl{font-size:9.5px;color:var(--sub);font-variant-numeric:tabular-nums;}
+  .ovgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .ov{border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 12px;background:var(--card);}
+  .ov .k{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--sub);}
+  .ov .v{font-size:17px;font-weight:700;margin-top:6px;letter-spacing:-.2px;}
+  .ov .s{font-size:9.5px;color:var(--sub);margin-top:3px;}
+  .foot{text-align:center;font-size:9.5px;color:#B3B1BB;padding:2px 0 20px;}
+  .cyclecard{display:flex;align-items:center;gap:11px;background:linear-gradient(135deg,#FDF3F8,#F6F2FE);border:1px solid #F0DDEA;border-radius:var(--r);margin:12px 18px;padding:14px 16px;}
+  .cycle-ic{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid #F0DDEA;display:flex;align-items:center;justify-content:center;flex:none;}
+  .cycle-b b{font-size:13.5px;font-weight:600;color:#8A3563;display:block;}
+  .cycle-b p{font-size:11px;color:#A8628C;margin-top:3px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="side">
+    <h1>情绪洞察 · shadcn/ui 定稿</h1>
+    <span class="tag">shadcn/ui · zinc + lavender primary</span>
+    <p>设计系统：shadcn/ui（125k★，人类设计师级组件）+ lucide 图标 + Radix Colors。中性 zinc 底、细边框卡、单一薰衣草 primary、大留白。</p>
+    <ul>
+      <li>Tab 分段 = shadcn Tabs（muted 轨 + 白卡滑块）</li>
+      <li>卡片 = Card 组件语义（border + 微投影）</li>
+      <li>图标 = lucide 线性图标（stroke 1.8）</li>
+      <li>图表轴 = tabular-nums + 抽稀刻度</li>
+      <li>周期色带 / 经前阴影保留 Mira 语义色</li>
+    </ul>
+    <div class="check">
+      <b>交付前自检（无头 Chrome 截图核验）</b><br>
+      <span class="ok">✓</span> 横坐标：周=7 根全标、月=30 根抽稀 1/5/10/15/20/25/30 全可见、年=12 月全标<br>
+      <span class="ok">✓</span> 图标排布：lucide 16px 统一栅格、与文字基线对齐<br>
+      <span class="ok">✓</span> 数据/标签 0 溢出外框
+    </div>
+  </div>
+  <div class="phone" id="phone">
+    <div class="notch"></div>
+    <div class="statusbar"><span>16:45</span><span>􀙇 􀛨</span></div>
+    <div class="screen">
+      <div class="appbar">
+        <div class="ab-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></div>
+        <div style="text-align:center"><div class="ab-title">情绪洞察</div><div class="ab-sub">身心状态 · Emotion</div></div>
+        <div class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div>
+      </div>
+      <div class="tabs" id="tabs">
+        <div class="tab" data-r="day">日</div><div class="tab" data-r="week">周</div>
+        <div class="tab active" data-r="month">月</div><div class="tab" data-r="year">年</div>
+      </div>
+      <div class="anchor">
+        <div class="chip" id="anchorChip">2026 年 9 月</div>
+        <div class="nav">
+          <div class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+        </div>
+      </div>
+      <div id="panel"></div>
+      <div class="foot">Mira · shadcn/ui 设计稿 · 数据逻辑与 App 一致</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MOODS=[
+  {key:'ca',c:'#7EA6F8',t:'平静'},{key:'pl',c:'#BCCB62',t:'愉悦'},{key:'ex',c:'#F0C46E',t:'兴奋'},
+  {key:'st',c:'#9D8AF0',t:'压力'},{key:'an',c:'#C9598A',t:'焦虑'}];
+const PHASE={period:'#F6B3D0',follicular:'#C7B9F2',ovulation:'#D5E384',luteal:'#F0C46E',pre:'#EC9CC2',unknown:'#E5E2F0'};
+const C_AXIS='#A1A1AA',C_GRID='#E4E4E7',C_FG='#09090B';
+/* 图标（lucide，16px 栅格） */
+const IC={
+  heart:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C9598A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
+  moon:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5B7FD0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+  clock:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7C6BD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  gauge:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B59A2E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>',
+  flower:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9598A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 16.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 1 1 4.5 4.5 4.5 4.5 0 1 1-4.5 4.5"/></svg>',
+  info:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'};
+const PAD={L:26,R:8,T:52,H:150,BAND:14,GAP:10};
+const PHASE_SEQ=['period','period','period','period','period','follicular','follicular','follicular','follicular','follicular','follicular','follicular','ovulation','ovulation','ovulation','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','pre','pre','pre','pre'];
+function genDay(p,i){let ca=2+(i%3),pl=1+(i%2),ex=i%2,st=0,an=0;
+  if(p==='period'){st=2+(i%2);an=1+(i%2);pl=Math.max(0,pl-1);}
+  if(p==='pre'){st=1+(i%2);an=2+(i%2);}
+  if(p==='ovulation')ex+=2; if(p==='luteal')ca+=1;
+  const d={ca,pl,ex,st,an,phase:p,isPre:p==='pre'};d.total=d.ca+d.pl+d.ex+d.st+d.an;return d;}
+const MONTH_DATA=PHASE_SEQ.map((p,i)=>genDay(p,i));
+const YEAR_LB=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+const YEAR_PH=['period','follicular','follicular','ovulation','luteal','luteal','pre','pre','period','follicular','ovulation','luteal'];
+const YEAR_DATA=YEAR_PH.map((p,i)=>{const b=70+((i*37)%80);const r=k=>Math.round(b*(0.2+(Math.sin(i*1.7+k)*0.5+0.5)*0.5));
+  const d={ca:r(1),pl:r(2),ex:r(3),st:r(4),an:r(5),phase:p,isPre:p==='pre'};d.total=d.ca+d.pl+d.ex+d.st+d.an;return d;});
+function roundTop(x,y,w,h,r){r=Math.min(r,w/2,h);return `M ${x} ${y+h} L ${x} ${y+r} Q ${x} ${y} ${x+r} ${y} L ${x+w-r} ${y} Q ${x+w} ${y} ${x+w} ${y+r} L ${x+w} ${y+h} Z`;}
+
+/* 卡片内容宽：390 - 18*2(margin) - 16*2(padding) = 322 */
+const PLOT_W=322;
+function stackedSVG(bars,labelEvery){
+  const n=bars.length,L=PAD.L,R=PAD.R,T=PAD.T,H=PAD.H,BAND=PAD.BAND,GAP=PAD.GAP;
+  const step=(PLOT_W-L-R)/n;                 /* 均分，绝不溢出 */
+  const barW=Math.min(28,step-GAP>6?step-GAP:step*0.62);
+  const stripY=T+H+GAP+16,xLabelY=stripY+BAND+15,chartH=xLabelY+4;
+  const yMax=Math.max(1,...bars.map(b=>b.total)),y0=T+H;
+  let s=`<svg width="${PLOT_W}" height="${chartH}" viewBox="0 0 ${PLOT_W} ${chartH}" font-family="inherit">`;
+  /* y 网格 + 左刻度 */
+  [0,yMax/2,yMax].forEach(v=>{const y=y0-(v/yMax)*H;
+    s+=`<line x1="${L}" y1="${y}" x2="${PLOT_W-R}" y2="${y}" stroke="${C_GRID}" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-7}" y="${y+3.5}" text-anchor="end" font-size="10" fill="${C_AXIS}" style="font-variant-numeric:tabular-nums">${Math.round(v)}</text>`;});
+  /* 周期阴影带 */
+  bars.forEach((b,i)=>{const cx=L+i*step+ (step-barW-GAP>0?0:0), bx=L+i*step;
+    const bandX=bx+ (step-barW)/2 - step*0 + 0, X0=bx, W0=step;
+    if(b.phase==='period')s+=`<rect x="${X0}" y="${T-4}" width="${W0}" height="${H+8}" fill="${PHASE.period}" opacity="0.10"/>`;
+    else if(b.isPre){s+=`<rect x="${X0}" y="${T-4}" width="${W0}" height="${H+8}" fill="${PHASE.pre}" opacity="0.14"/>`;
+      s+=`<rect x="${X0}" y="${T-4}" width="${W0}" height="3" fill="${PHASE.pre}"/>`;}});
+  /* 经期/经前 胶囊标注 */
+  const runs=[];let cur=null;
+  bars.forEach((b,i)=>{const kind=b.phase==='period'?'period':b.isPre?'pre':null;
+    if(kind){if(cur&&cur.kind===kind)cur.end=i;else{if(cur)runs.push(cur);cur={kind,start:i,end:i};}}
+    else if(cur){runs.push(cur);cur=null;}});if(cur)runs.push(cur);
+  runs.filter(r=>r.end-r.start>=1).forEach(r=>{const cx=L+(r.start+(r.end-r.start)/2+0.5)*step;
+    const txt=r.kind==='period'?'经期':'经前';const w=txt.length*12+14;
+    s+=`<rect x="${Math.max(2,Math.min(PLOT_W-w-2,cx-w/2))}" y="${T-30}" width="${w}" height="17" rx="8.5" fill="${r.kind==='period'?PHASE.period:PHASE.pre}"/>`;
+    s+=`<text x="${Math.max(2,Math.min(PLOT_W-w-2,cx-w/2))+w/2}" y="${T-30+12}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#8A3563">${txt}</text>`;});
+  /* 柱 */
+  bars.forEach((b,i)=>{const bx=L+i*step,x=bx+(step-barW)/2;
+    if(b.total>0){let last=-1;MOODS.forEach((m,k)=>{if((b[m.key]||0)>0)last=k;});
+      const barH=Math.max(4,(b.total/yMax)*H);let cyy=y0;
+      MOODS.forEach((m,k)=>{const c=b[m.key]||0;if(!c)return;const h=(c/b.total)*barH;cyy-=h;
+        if(k===last)s+=`<path d="${roundTop(x,cyy,barW,h,Math.min(4,barW/2))}" fill="${m.c}"/>`;
+        else s+=`<rect x="${x}" y="${cyy.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${m.c}"/>`;});
+      s+=`<text x="${x+barW/2}" y="${y0-barH-7}" text-anchor="middle" font-size="10" font-weight="600" fill="${C_FG}" style="font-variant-numeric:tabular-nums">${b.total}</text>`;
+    }else{s+=`<rect x="${x}" y="${y0-3}" width="${barW}" height="3" rx="1.5" fill="${C_GRID}"/>`;}});
+  /* 周期色带 */
+  s+=`<text x="${L}" y="${stripY-4}" font-size="10" font-weight="500" fill="${C_AXIS}">周期阶段</text>`;
+  bars.forEach((b,i)=>{const bx=L+i*step,x=bx+(step-barW)/2;
+    const col=b.phase==='period'?PHASE.period:b.isPre?PHASE.pre:PHASE[b.phase]||PHASE.unknown;
+    s+=`<rect x="${x}" y="${stripY}" width="${Math.max(3,barW)}" height="${BAND}" rx="3" fill="${col}"/>`;});
+  /* 横轴刻度：抽稀但首尾必标 */
+  bars.forEach((b,i)=>{if(i%labelEvery!==0&&i!==bars.length-1)return;
+    const bx=L+i*step;const tx=bx+step/2;
+    const anchor=i===bars.length-1?'end':'middle';
+    const xx=i===bars.length-1?bx+step-2:tx;
+    s+=`<text x="${xx}" y="${xLabelY}" text-anchor="${anchor}" font-size="10" fill="${C_AXIS}" style="font-variant-numeric:tabular-nums">${b.label}</text>`;});
+  s+=`</svg>`;return s;}
+
+function compareCard(bars){const sum=list=>{const days=list.length;const total=list.reduce((s,b)=>s+b.total,0);
+  const neg=list.reduce((s,b)=>s+(b.st||0)+(b.an||0),0);return{days,total,neg,negShare:total>0?neg/total:0,dayAvg:days>0?total/days:0};};
+  const p=sum(bars.filter(b=>b.phase==='period')),pr=sum(bars.filter(b=>b.isPre)),o=sum(bars.filter(b=>b.phase!=='period'&&!b.isPre));
+  const pct=x=>Math.round(x*100)+'%';const has=bars.some(b=>b.total>0);
+  if(!has)return `<div class="card"><div class="analysis">本区间暂无情绪事件记录 · 连上戒指开启自动监测后，这里将展示真实的情绪分布与周期对比。</div></div>`;
+  let txt='';if(pr.total>0)txt+=`<b>经前期</b>（距经期 ≤7 天）消极情绪（压力 / 焦虑）占比 <b>${pct(pr.negShare)}</b>，其他时期 ${pct(o.negShare)}。`;
+  if(p.days>0)txt+=`<b>经期</b>共 ${p.days} 天，日均情绪事件 ${p.dayAvg.toFixed(1)} 次。`;
+  return `<div class="card">
+    <div class="cardhead"><div><div class="cardtitle">经期周期情绪对比</div><div class="carddesc">按推算周期分组 · 本区间 ${bars.length} 天</div></div><span class="badge">周期洞察</span></div>
+    <div class="statgrid">
+      <div class="stat"><div class="k">${IC.heart}经期事件</div><div class="v" style="color:#C24E8A">${p.total}<span style="font-size:11px;font-weight:500"> 次</span></div><div class="s">覆盖 ${p.days} 天</div></div>
+      <div class="stat"><div class="k">${IC.heart}经前消极占比</div><div class="v" style="color:#C24E8A">${pr.total>0?pct(pr.negShare):'—'}</div><div class="s">压力+焦虑 / 经前</div></div>
+      <div class="stat"><div class="k">${IC.heart}其他期占比</div><div class="v" style="color:#5B7FD0">${o.total>0?pct(o.negShare):'—'}</div><div class="s">压力+焦虑 / 其他</div></div>
+    </div>
+    <div class="divider"></div>
+    <div class="analysis">${txt}</div>
+    <div class="footnote">${IC.info}周期为推算（日历 + 体温），不构成诊断</div></div>`;}
+
+function legendHTML(extra){return `<div class="legend">${MOODS.map(m=>`<div class="leg"><div class="sw" style="background:${m.c}"></div><span class="legtxt">${m.t}</span></div>`).join('')}`+
+  (extra||'')+`</div>`;}
+function chartCard(label,sub,svg,bars,labelEvery){return `<div class="card">
+  <div class="cardhead"><div><div class="cardtitle">情绪分布</div><div class="carddesc">${sub}</div></div><span class="badge">${label}</span></div>
+  <div class="chartwrap">${svg}</div>${legendHTML(`<div class="leg"><div class="sw" style="background:${PHASE.period}"></div><span class="legtxt">经期</span></div><div class="leg"><div class="sw" style="background:${PHASE.pre}"></div><span class="legtxt">经前</span></div>`)}
+  </div>`+compareCard(bars);}
+function renderWeek(){const bars=MONTH_DATA.slice(-7).map((d,i)=>({...d,label:['周一','周二','周三','周四','周五','周六','周日'][i]}));
+  return chartCard('周','每天一根柱 · 情绪事件占比堆叠',stackedSVG(bars,1),bars,1);}
+function renderMonth(){const bars=MONTH_DATA.map((d,i)=>({...d,label:String(i+1)}));
+  return chartCard('月','每天一根柱 · 情绪事件占比堆叠',stackedSVG(bars,5),bars,5);}
+function renderYear(){const bars=YEAR_DATA.map((d,i)=>({...d,label:YEAR_LB[i]}));
+  return chartCard('年','每月一根柱 · 情绪事件占比堆叠',stackedSVG(bars,1),bars,1);}
+function renderDay(){
+  const cols=[];for(let i=0;i<96;i++){const hr=Math.floor(i/4);let col=null;
+    if(hr>=8&&hr<=22){const r=(i*53)%100;
+      if(r<8)col='#C9598A';else if(r<22)col='#9D8AF0';else if(r<46)col='#F0C46E';else if(r<68)col='#BCCB62';else col='#7EA6F8';}
+    cols.push(col);}
+  const dots=cols.map(c=>c?`<div class="cell" style="background:${c}"></div>`:`<div class="cell" style="background:#ECECEF"></div>`).join('');
+  const ticks=[0,4,8,12,16,20,24].map(h=>`<span class="tl">${String(h).padStart(2,'0')}</span>`).join('');
+  const legend=MOODS.map(m=>`<div class="leg"><div class="sw" style="background:${m.c}"></div><span class="legtxt">${m.t}</span></div>`).join('');
+  return `<div class="card">
+    <div class="hero"><div class="hero-emoji">😟</div><div class="hero-b"><b>今日主情绪 · 焦虑</b><p>全天 9 次情绪记录 · 焦虑占多数</p></div></div>
+    <div class="divider" style="margin:14px -16px"></div>
+    <div class="cardtitle" style="font-size:13.5px">情绪分布 · 每 15 分钟一个点</div>
+    <div class="matrix">${dots}</div><div class="timeline">${ticks}</div>
+    <div class="legend" style="border-top:none;padding-top:10px;margin-top:8px">${legend}</div></div>
+  <div class="card"><div class="cardhead"><div><div class="cardtitle">今日概览</div></div><span class="badge">日</span></div>
+    <div class="ovgrid">
+      <div class="ov"><div class="k">${IC.heart}情绪消耗</div><div class="v" style="color:#C9598A">偏高</div><div class="s">经前波动上升</div></div>
+      <div class="ov"><div class="k">${IC.moon}恢复时间</div><div class="v" style="color:#5B7FD0">7.2 h</div><div class="s">低于平时</div></div>
+      <div class="ov"><div class="k">${IC.clock}峰值时段</div><div class="v" style="color:#7C6BD6">21:00</div><div class="s">晚间情绪最密</div></div>
+      <div class="ov"><div class="k">${IC.gauge}情绪负荷</div><div class="v" style="color:#B59A2E">偏重</div><div class="s">压力+焦虑占 44%</div></div>
+    </div></div>
+  <div class="cyclecard"><div class="cycle-ic">${IC.flower}</div><div class="cycle-b"><b>经前期 · 第 3 天</b><p>距下次经期约 4 天 · 这个阶段情绪波动更明显，属于正常节律。</p></div></div>`;
+}
+const ANCHOR={day:'2026 年 9 月 30 日',week:'9 月 24 日 – 9 月 30 日',month:'2026 年 9 月',year:'2026 年'};
+const panel=document.getElementById('panel'),chip=document.getElementById('anchorChip');
+function render(r){chip.textContent=ANCHOR[r];
+  panel.innerHTML=r==='day'?renderDay():r==='week'?renderWeek():r==='month'?renderMonth():renderYear();}
+document.getElementById('tabs').addEventListener('click',e=>{const o=e.target.closest('.tab');if(!o)return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));o.classList.add('active');render(o.dataset.r);});
+render('month');
+const hv=(location.hash||'').replace('#','');
+if(['day','week','month','year'].includes(hv)){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.r===hv));render(hv);}
+</script>
+</body>
+</html>

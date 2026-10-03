@@ -34,6 +34,7 @@ import Icon from './Icon';
 import { MindIcon } from './MindIcons';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples, buildCortisolToday30Ex } from './CortisolRhythmCard';
 
@@ -55,13 +56,20 @@ const PAD_B = 18;          // 底部留白：给时间轴 → 曲线可用振幅
  *   注：SPEC 里的「虚线目标线」无对应真实目标值，按数据铁律不上（不编造基线）。
  */
 
-/** 最近一晚睡眠：优先今天，其次昨天（跨午夜睡眠可能记在前一日） */
+/** ★ v18.98（对齐 Oura）：只认「昨晚」这一夜 —— 今天的睡眠摘要，或昨天那条但起床落在今早。
+ *  旧实现「优先今天、其次昨天、有多少天算多少天」会让一堆旧归档被当成昨晚睡的，
+ *  早上打开就冒出一个恢复分；现在拿不到昨晚睡眠 → 返回 null → UI 显示「—」。 */
 function latestSleep(): SleepSummary | null {
-  for (let i = 0; i < 2; i++) {
-    const s = healthStore.getSleep(dayKey(Date.now() - i * 86400000));
-    if (s) return s;
-  }
-  return null;
+  const isLastNight = (s: SleepSummary | null): boolean => {
+    if (!s || !((s.total ?? 0) > 0)) return false;
+    const up = typeof s.getUp === 'number' ? s.getUp : null;
+    if (up == null) return true;
+    return up < 12 * 60; // 起床在 12:00 前 ⇒ 昨晚睡到今早
+  };
+  const t = healthStore.getSleep(dayKey(Date.now()));
+  if (isLastNight(t)) return t;
+  const y = healthStore.getSleep(dayKey(Date.now() - 86400000));
+  return isLastNight(y) ? y : null;
 }
 
 function fmtDur(min: number | null | undefined): string {
@@ -105,25 +113,39 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   // ★ v18.53：可传背景色（Bento 化，恢复=lime）；有底色时 badge 改白底避免同色相融
   const onColor = !!bg;
 
+  // ★ v18.101 断流即空态：与首页圆环（curveStatus.dataStale）同一口径。
+  //   这张卡原来只看睡眠有没有，圆环已经空了它还挂着恢复分/曲线 → 首页出现「圆环空、卡片有数」的撕裂，
+  //   用户看到的就是这个：一会儿空、一会儿又冒出数字。数据不再新鲜时整张卡一起空。
+  const dataStale = (ring?.curveStatus as any)?.dataStale === true;
   // —— 睡眠恢复 ——
   const sleep = useMemo(() => latestSleep(), [ring.sleepDaily, Date.now() & 0]);
-  const sleepScore = sleep && Number.isFinite(sleep.score) ? Math.round(sleep.score) : null;
-  const sleepValue = sleepScore != null ? String(sleepScore) : fmtDur(sleep?.total);
-  const sleepUnit = sleepScore != null ? '分' : '时长';
-  const sleepSub =
-    sleep == null
+  const sleepScore = !dataStale && sleep && Number.isFinite(sleep.score) ? Math.round(sleep.score) : null;
+  // ★ v18.104：断流时空态要「连时长也不挂」—— 原来 sleepScore 置 null 后会退回 fmtDur(sleep.total)，
+  //   等于把旧睡眠时长继续印在那里（用户实锤：圆环都空了这张卡还有数）。直接走「—」。
+  const sleepValue = dataStale ? '—' : sleepScore != null ? String(sleepScore) : fmtDur(sleep?.total);
+  const sleepUnit = dataStale ? '' : sleepScore != null ? '分' : '时长';
+  // ★ v18.98（用户口径：不写「昨」，对齐 Oura）：只认**昨晚**的睡眠；
+  //   latestSleep() 已经只取今晚，拿不到就是「暂无睡眠数据」+ 数值留「—」，不再挂溯源小字。
+  const sleepSub = dataStale
+    ? '戒指暂无新数据'
+    : sleep == null
       ? '暂无睡眠数据'
       : `睡眠 ${fmtDur(sleep.total)} · 深睡 ${fmtDur(sleep.deep)}`;
 
   // —— 皮质醇 ——
-  const samples = useMemo(() => collectSamples(), [ring.curveStatus]);
+  // ★ v18.110：离线回填把近 14 天的 cortisol/eda 逐样本补进 healthStore 后，这里必须重新取一遍，
+  //   否则「皮质醇波动 / 峰值时刻 / 节律评价」会一直挂着重连前的旧拟合值（用户：重连后要按现有数据重算）。
+  //   用防抖订阅：回填/实时流高频写不会每秒重算 fit，但 700ms 静默后一定算一次新值。
+  const hsRefresh = useDebouncedHealthStoreRefresh(700);
+  const samples = useMemo(() => collectSamples(), [ring.curveStatus, hsRefresh]);
   const r = useMemo(() => analyzeCortisol(samples, 14), [samples]);
   const cos = r.cosinor;
   const hasRhythm =
     Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && Number.isFinite(cos.acrophaseH) && cos.amplitude > 0;
 
-  const peakClock = hasRhythm ? fmtClock(cos.acrophaseH) : '—';
-  const ampPct = hasRhythm && cos.mesor > 0 ? Math.round((cos.amplitude / cos.mesor) * 100) : null;
+  // ★ v18.104：断流时皮质醇峰值也不该挂旧拟合值（cosinor 是拿旧采样拟合出来的时刻）。
+  const peakClock = dataStale ? '—' : hasRhythm ? fmtClock(cos.acrophaseH) : '—';
+  const ampPct = !dataStale && hasRhythm && cos.mesor > 0 ? Math.round((cos.amplitude / cos.mesor) * 100) : null;
   const recoveryWord =
     samples.length < MIN_SAMPLES
       ? '数据不足'
@@ -134,14 +156,16 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
           : cos.amplitude < 0.15 * cos.mesor
             ? '节律偏平'
             : '一般';
-  const cortisolSub = hasRhythm
-    ? `${ampPct != null ? `波动 ${ampPct}%` : '节律已建模'} · ${recoveryWord}`
-    : '佩戴后生成节律';
+  const cortisolSub = dataStale
+    ? '戒指暂无新数据'
+    : hasRhythm
+      ? `${ampPct != null ? `波动 ${ampPct}%` : '节律已建模'} · ${recoveryWord}`
+      : '佩戴后生成节律';
 
   // ★ 青色 badge（SPEC #10「82% · 接近目标」）：数值 = 真实睡眠评分，档位词由评分推导
   const badgeWord =
     sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
-  const badgeText = sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
+  const badgeText = dataStale ? '暂无数据' : sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
 
   // —— 曲线数据（★ v18.69 门槛 + 分段）——
   //   三重门槛，缺一不画：
@@ -170,7 +194,10 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       }
     }
     return { series: [], realFlags: [], mode: 'none' };
-  }, [ring.lastSyncedAt, samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, ring.timelineReady ?? ring.curveStatus]);
+  }, [ring.lastSyncedAt, samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, hsRefresh, ring.timelineReady ?? ring.curveStatus]);
+  // ★ v18.101：断流时整张卡走「无数据」路径（曲线不画、结论行走空态文案），
+  //   与圆环/三个 chip 保持同一口径，避免同一屏上「圆环空了、这张卡还有数」。
+  const chartMode: 'today' | 'none' = dataStale ? 'none' : mode;
 
   // —— 坐标换算 ——
   const chartW = Math.max(40, W - PAD_L - PAD_R);
@@ -367,9 +394,13 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
               })}
             </Svg>
             {/* ★ v18.64 空态：没戴戒指不画示意曲线，只留时间轴 + 居中提示 */}
-            {mode === 'none' ? (
+            {chartMode === 'none' ? (
               <View style={styles.emptyHint} pointerEvents="none">
-                <Text style={styles.emptyHintText}>戴上戒指后，这里显示你的真实皮质醇趋势</Text>
+                {/* ★ v18.104：断流（戴了戒指但很久没新采样）与「没戴过」是两种空态，文案要区分，
+                    否则用户以为自己没戴 → 一直对着「戴上戒指后…」发呆。 */}
+                <Text style={styles.emptyHintText}>
+                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的真实皮质醇趋势'}
+                </Text>
               </View>
             ) : null}
             </>
@@ -380,14 +411,16 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
 
         {/* v10 解读行：色点 + 加粗结论 + 灰色说明（全部来自真实数据口径） */}
         <View style={styles.keyRow}>
-          <View style={[styles.keyDot, mode === 'none' ? { backgroundColor: mm.colors.inkFaint } : { backgroundColor: mm.colors.ringTeal }]} />
+          <View style={[styles.keyDot, chartMode === 'none' ? { backgroundColor: mm.colors.inkFaint } : { backgroundColor: mm.colors.ringTeal }]} />
           <View style={styles.keyTx}>
             <Text style={styles.keyBold} numberOfLines={1}>
-              {mode === 'none' ? '暂无数据' : recoveryWord}
+              {chartMode === 'none' ? '暂无数据' : recoveryWord}
             </Text>
             <Text style={styles.keySub} numberOfLines={1}>
-              {mode === 'none'
-                ? '戴上戒指后，这里显示你的真实皮质醇趋势'
+              {chartMode === 'none'
+                ? dataStale
+                  ? '请佩戴戒指，约半小时会更新最新数据'
+                  : '戴上戒指后，这里显示你的真实皮质醇趋势'
                 : `今日真实趋势 · ${cortisolSub}`}
             </Text>
           </View>

@@ -28,9 +28,12 @@ const MIN_SAMPLES = 4;
 
 export default function CortisolSleepSummary({
   insightRows,
+  dataStale,
 }: {
   /** AI 分析行（与身体恢复页 AI 综合分析同源）。传入则用它；否则回落本地规则文案。 */
   insightRows?: AiInsightRow[];
+  /** ★ v18.104 断流即空态：与首页/睡眠结构卡同口径，旧采样拟合出的结论一律不展示。 */
+  dataStale?: boolean;
 }) {
   const samples = collectSamples();
   const r = analyzeCortisol(samples, 14);
@@ -63,16 +66,27 @@ export default function CortisolSleepSummary({
 
   const { title: aiTitle, sub: aiSub } = buildCortisolAiTitle(r, true, '');
   const fallbackInsights = buildRhythmInsights(r, true);
-  const showAi = enough && ((insightRows && insightRows.length > 0) || fallbackInsights.length > 0);
+  const showAi = !dataStale && enough && ((insightRows && insightRows.length > 0) || fallbackInsights.length > 0);
 
   return (
     <Card>
       {/* 皮质醇分析（置于睡眠结构卡正下方，一屏可见） */}
       <Text style={styles.title}>皮质醇分析</Text>
       <View style={styles.grid}>
-        <SumCell label="昼夜波动幅度" value={ampValue} sub={ampSub} />
-        <SumCell label="作息类型" value={cssValue} sub={cssSub} />
+        <SumCell
+          label="昼夜波动幅度"
+          value={dataStale ? '—' : ampValue}
+          sub={dataStale ? '戒指暂无新数据' : ampSub}
+        />
+        <SumCell
+          label="作息类型"
+          value={dataStale ? '—' : cssValue}
+          sub={dataStale ? '戒指暂无新数据' : cssSub}
+        />
       </View>
+      {dataStale ? (
+        <Text style={styles.staleNote}>戒指已很久没有新数据，这里基于旧采样得出的结论暂不显示。</Text>
+      ) : null}
 
       {/* AI 分析（与身体恢复页同源）：与关键指标同卡，用分割线区隔 */}
       {showAi ? (
@@ -108,6 +122,11 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(2),
   },
   grid: { flexDirection: 'row' },
+  staleNote: {
+    marginTop: theme.sp(2),
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+  },
   divider: {
     height: 1,
     backgroundColor: theme.colors.cardBorder2,

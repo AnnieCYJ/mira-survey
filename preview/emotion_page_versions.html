@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>情绪洞察页 · 整页方案</title>
+<style>
+  :root{
+    --excite:#F0C46E; --pleasant:#BCCB62; --calm:#7EA6F8; --stress:#9D8AF0; --anx:#C9598A;
+    --neutral:#ECEAFB; --title:#6C5647; --sub:#5F5F74; --card:#FFFFFF; --border:#E8E6F2;
+    --bg:#F6F5FB; --rose:#C9598A; --md:11px; --sm:9px; --pill:999px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;background:#EFEEF6;color:var(--title);padding:24px 12px 60px;}
+  h1.page-title{font-size:18px;text-align:center;color:#3a2f28;margin:0 0 4px;font-weight:700;}
+  .subhint{text-align:center;color:#9a93a6;font-size:12px;margin:0 0 28px;}
+  .versions{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;align-items:flex-start;}
+  .col{display:flex;flex-direction:column;align-items:center;}
+  .vlabel{font-size:13px;font-weight:700;color:#3a2f28;margin-bottom:10px;letter-spacing:.5px;}
+  .vnote{font-size:11px;color:#9a93a6;margin-top:10px;max-width:330px;text-align:center;line-height:1.5;}
+  .phone{width:360px;background:var(--bg);border-radius:38px;padding:14px;box-shadow:0 18px 50px rgba(80,70,120,.18);border:1px solid #e4e1ee;}
+  .screen{background:#fff;border-radius:28px;padding:18px 16px 22px;min-height:740px;overflow:hidden;}
+  /* common atoms */
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
+  .htitle{font-size:19px;font-weight:700;color:var(--title);}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:var(--pill);font-size:12px;font-weight:600;}
+  .chip .dot{width:7px;height:7px;border-radius:50%;}
+  .sectitle{font-size:15px;font-weight:700;color:var(--title);margin:18px 0 11px;}
+  .legend{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:12px;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  /* dot matrix */
+  .matrix{display:flex;flex-direction:column;gap:5px;}
+  .mrow{display:flex;}
+  .mcells{display:flex;flex:1;}
+  .mcell{flex:1;display:flex;align-items:center;justify-content:center;}
+  .mdot{border-radius:50%;}
+  .axis{display:flex;margin-top:6px;}
+  .alabel{flex:1;text-align:center;font-size:9px;color:#a39cb4;}
+
+  /* bars */
+  .bars{display:flex;align-items:flex-end;gap:2px;height:120px;}
+  .bar{flex:1;border-radius:3px 3px 0 0;}
+
+  /* tiles */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tile{background:var(--neutral);border-radius:var(--md);padding:12px 13px;}
+  .tl{font-size:11px;color:var(--sub);}
+  .tv{font-size:21px;font-weight:700;color:var(--title);margin-top:3px;}
+  .ts{font-size:10px;color:#9a93a6;margin-top:2px;}
+
+  /* window */
+  .win{display:flex;gap:10px;}
+  .wpanel{flex:1;border-radius:var(--md);padding:12px;}
+  .wl{font-size:11px;color:var(--sub);}
+  .wv{font-size:16px;font-weight:700;margin-top:4px;}
+  .ws{font-size:10px;color:#9a93a6;margin-top:2px;}
+
+  /* divider */
+  .divider{height:1px;background:var(--border);margin:16px 0;}
+
+  /* ---- version-specific ---- */
+  /* A: soft cards */
+  .vA .screen{background:var(--bg);}
+  .vA .card{background:var(--card);border:1px solid var(--border);border-radius:var(--md);padding:15px;margin-bottom:12px;}
+  .vA .sectitle{margin:0 0 11px;}
+
+  /* B: editorial open */
+  .vB .screen{background:#fff;}
+  .vB .sectitle{margin:22px 0 11px;}
+  .vB .hero-panel{background:var(--neutral);border-radius:14px;padding:15px;}
+
+  /* C: compact dashboard */
+  .vC .screen{background:var(--bg);}
+  .vC .hero-panel{background:var(--neutral);border-radius:14px;padding:14px;margin-bottom:12px;}
+  .vC .stats{display:flex;gap:8px;}
+  .vC .stat{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--sm);padding:9px 8px;text-align:center;}
+  .vC .stat .tl{font-size:9.5px;}
+  .vC .stat .tv{font-size:16px;margin-top:2px;}
+  .vC .stat .ts{font-size:8.5px;margin-top:1px;}
+  .vC .win{margin-top:12px;}
+  .vC .wpanel{border-radius:var(--sm);padding:10px;}
+  .vC .sectitle{margin:14px 0 9px;font-size:14px;}
+</style>
+</head>
+<body>
+  <h1 class="page-title">情绪洞察页 · 整页方案对比</h1>
+  <p class="subhint">三版均使用 Mira 真实 token（5 档情绪色 / 中性底 #ECEAFB / 圆角 md11 / 卡边 #E8E6F2）。点阵为 24×4、无纵坐标、点放大、横轴不溢出。</p>
+  <div class="versions">
+
+    <!-- 版本 A -->
+    <div class="col">
+      <div class="vlabel">版本 A · 柔和卡片</div>
+      <div class="phone vA"><div class="screen" id="A"></div></div>
+      <div class="vnote">每个模块独立白卡 + 细描边，柔底页面。最接近「分块清晰」，但不喜欢灰盒子的你之前嫌它重。</div>
+    </div>
+
+    <!-- 版本 B -->
+    <div class="col">
+      <div class="vlabel">版本 B · 留白编辑式</div>
+      <div class="phone vB"><div class="screen" id="B"></div></div>
+      <div class="vnote">无模块卡片，纯留白 + 细分隔线；只有情绪分布用淡色面板托底。最轻盈、最「设计感」。</div>
+    </div>
+
+    <!-- 版本 C -->
+    <div class="col">
+      <div class="vlabel">版本 C · 紧凑仪表盘</div>
+      <div class="phone vC"><div class="screen" id="C"></div></div>
+      <div class="vnote">信息密度高：情绪分布大面板置顶，概览压成一行 4 个统计，窗口做底条。一屏看到更多。</div>
+    </div>
+  </div>
+
+<script>
+const MOOD={excited:'#F0C46E',pleasant:'#BCCB62',calm:'#7EA6F8',stressed:'#9D8AF0',anxious:'#C9598A'};
+const NEU='#ECEAFB';
+// 24h×4 mock 事件（h,m,mood,sev）
+const EV=[
+ [7,15,'calm',55],[8,30,'calm',48],[10,0,'pleasant',62],[11,30,'stressed',70],
+ [12,15,'stressed',78],[13,0,'anxious',88],[14,30,'stressed',72],[15,45,'pleasant',60],
+ [17,0,'excited',80],[18,30,'calm',50],[20,0,'pleasant',58],[22,0,'calm',45]
+];
+const grid=Array.from({length:24},()=>Array(4).fill(null));
+EV.forEach(([h,m,mood,sev])=>{grid[h][Math.min(3,Math.floor(m/15))]={mood,sev};});
+
+const HOURS=[];for(let h=0;h<24;h++)HOURS.push(h);
+// 每小时压力（0-100）mock：夜低→午后峰
+const PRESS=HOURS.map(h=>{const v=Math.max(0,Math.min(100,Math.round(18+70*Math.exp(-Math.pow((h-13)/4.2),2))));return v;});
+
+function dotMatrixHTML(){
+  let rows='';
+  for(let r=0;r<4;r++){
+    let cells='';
+    for(let h=0;h<24;h++){
+      const e=grid[h][r];
+      const size=e?(10+e.sev/100*6):7;
+      const bg=e?MOOD[e.mood]:NEU;
+      const op=e?1:0.55;
+      cells+=`<div class="mcell"><div class="mdot" style="width:${size}px;height:${size}px;background:${bg};opacity:${op}"></div></div>`;
+    }
+    rows+=`<div class="mrow"><div class="mcells">${cells}</div></div>`;
+  }
+  let axis='';
+  for(let h=0;h<24;h++){const show=(h%4===0)||h===23;const lab=h===23?'24':String(h).padStart(2,'0');axis+=`<div class="alabel">${show?lab:''}</div>`;}
+  const legend=['excited|兴奋','pleasant|愉悦','calm|平静','stressed|压力','anxious|焦虑']
+    .map(s=>{const[c,t]=s.split('|');return `<span><i style="background:${MOOD[c]}"></i>${t}</span>`}).join('');
+  return `<div class="matrix">${rows}</div><div class="axis">${axis}</div><div class="legend">${legend}</div>`;
+}
+function barsHTML(){
+  let b='';
+  PRESS.forEach(v=>{
+    const h=Math.max(8,v/100*118);
+    let col='#C9D6F5';
+    if(v>70)col='#C9598A';else if(v>45)col='#9D8AF0';else if(v>25)col='#B9C6F2';
+    b+=`<div class="bar" style="height:${h}px;background:${col}"></div>`;
+  });
+  return `<div class="bars">${b}</div>`;
+}
+function headHTML(){
+  return `<div class="head"><div class="htitle">情绪洞察</div>
+    <div class="chip" style="background:#C9598A22"><span class="dot" style="background:#C9598A"></span><span style="color:#C9598A">偏紧张</span></div></div>`;
+}
+function tilesHTML(){
+  const T=[['情绪消耗','12 次','事件较多 · 注意放松','#C9598A'],
+           ['恢复时间','140s','偏慢','#6C5647'],
+           ['峰值时段','13:00','事件最集中','#6C5647'],
+           ['消耗分数','62','/100 · 偏重','#C9598A']];
+  return `<div class="tiles">`+T.map(([l,v,s,c])=>
+    `<div class="tile"><div class="tl">${l}</div><div class="tv" style="color:${c}">${v}</div><div class="ts">${s}</div></div>`).join('')+`</div>`;
+}
+function windowHTML(){
+  return `<div class="win">
+    <div class="wpanel" style="background:#9D8AF018"><div class="wl">情绪高峰</div><div class="wv" style="color:#9D8AF0">13:00–14:00</div><div class="ws">压力事件集中</div></div>
+    <div class="wpanel" style="background:#7EA6F818"><div class="wl">恢复建议</div><div class="wv" style="color:#5b86d6">深呼吸</div><div class="ws">恢复 140s</div></div>
+  </div>`;
+}
+
+// A: soft cards
+document.getElementById('A').innerHTML=
+  headHTML()+
+  `<div class="card"><div class="sectitle">全天情绪分布</div>${dotMatrixHTML()}</div>`+
+  `<div class="card"><div class="sectitle">每小时压力事件</div>${barsHTML()}</div>`+
+  `<div class="card"><div class="sectitle">今日概览</div>${tilesHTML()}</div>`+
+  `<div class="card"><div class="sectitle">今日情绪窗口</div>${windowHTML()}</div>`;
+
+// B: editorial open
+document.getElementById('B').innerHTML=
+  headHTML()+
+  `<div class="sectitle">全天情绪分布</div><div class="hero-panel">${dotMatrixHTML()}</div>`+
+  `<div class="divider"></div>`+
+  `<div class="sectitle">每小时压力事件</div>${barsHTML()}`+
+  `<div class="divider"></div>`+
+  `<div class="sectitle">今日概览</div>${tilesHTML()}`+
+  `<div class="divider"></div>`+
+  `<div class="sectitle">今日情绪窗口</div>${windowHTML()}`;
+
+// C: compact dashboard
+document.getElementById('C').innerHTML=
+  headHTML()+
+  `<div class="hero-panel">${dotMatrixHTML()}</div>`+
+  `<div class="sectitle">每小时压力事件</div>${barsHTML()}`+
+  `<div class="sectitle">今日概览</div><div class="stats">`+
+    [['情绪消耗','12 次','#C9598A'],['恢复时间','140s','#6C5647'],['峰值时段','13:00','#6C5647'],['消耗分数','62','#C9598A']]
+    .map(([l,v,c])=>`<div class="stat"><div class="tl">${l}</div><div class="tv" style="color:${c}">${v}</div></div>`).join('')+
+  `</div>`+
+  `<div class="sectitle">今日情绪窗口</div>${windowHTML()}`;
+</script>
+</body>
+</html>

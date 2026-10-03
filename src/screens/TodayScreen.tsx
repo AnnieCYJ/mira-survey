@@ -586,23 +586,52 @@ export default function TodayScreen() {
   }, [loadAiRecords]);
   useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
 
-  const stress = (() => { try { const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
+  const stress = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
   // 认知准备度 = 脑力账户当前剩余（早上从准备度/储备起步，白天随消耗下降，只算脑）；无数据 → 诚实显示 —
-  const cognitive = (() => { try { const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
+  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
-  // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径：
-  // 优先今天、其次昨天——跨午夜的睡眠常记在前一日）。没有睡眠记录就诚实留 —，不编数字。
+  // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径）。
+  // ★ v18.98（用户口径：对齐 Oura）：只认**昨晚**这一夜 ——
+  //   今天的睡眠摘要，或昨天那条但起床时刻落在今早；再往前的旧归档一律不算（→ 显示「—」）。
+  //   同时不再写「昨 ·」溯源前缀：没有昨晚睡眠就是「—」，不是拿旧数 + 一行说明。
   const recoverySleep = (() => {
     try {
-      return healthStore.getSleep(dayKey(Date.now())) ?? healthStore.getSleep(dayKey(Date.now() - 86400000)) ?? null;
+      const upMin = (s: any): number | null => {
+        if (typeof s?.getUp === 'number') return s.getUp;
+        const m = /(\d{1,2}):(\d{2})/.exec(String(s?.wakeTime ?? ''));
+        return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+      };
+      const isLastNight = (s: any, allowYesterday: boolean): boolean => {
+        if (!s || !((s.total ?? 0) > 0)) return false;
+        if (!allowYesterday) return true;
+        const up = upMin(s);
+        return up == null || up < 12 * 60;
+      };
+      const t = healthStore.getSleep(dayKey(Date.now()));
+      if (isLastNight(t, false)) return t;
+      const y = healthStore.getSleep(dayKey(Date.now() - 86400000));
+      return isLastNight(y, true) ? y : null;
     } catch { return null; }
   })();
-  const recovery = recoverySleep && Number.isFinite(recoverySleep.score) ? String(Math.round(recoverySleep.score)) : '—';
+  // ★ v18.98（用户口径：对齐 Oura，且明确「不要写『昨』」）：
+  //   恢复分只认**昨晚**的睡眠。没有任何日期标注、也不写「昨」——
+  //   拿不到昨晚睡眠就直接是「—」（见下方 recovery），而不是拿旧数据 + 一行溯源小字。
+  const recoveryIsStale = false;
+  // ★ v18.100 断流即空态（用户 2026-10-03 选定，覆盖 v18.97「没连戒指保留断开前值」）：
+  //   戒指超过 3 小时没给 App 送采样（curveStatus.dataStale）时，页面上的恢复/脑力/情绪
+  //   全是旧快照里的数，一律显示「—」，不许再挂一个数字让人当成实时。
+  //   真机取证：00:29 之后一直到 12:22 都没有新采样，而首页还挂着恢复 96/脑力 39/圆环 62。
+  const dataStale = (ring?.curveStatus as any)?.dataStale === true;
+  const recovery =
+    dataStale || !recoverySleep || !Number.isFinite(recoverySleep.score)
+      ? '—'
+      : String(Math.round(recoverySleep.score));
   const recoverySub = (() => {
     const t = recoverySleep?.total;
     if (t == null || !Number.isFinite(t) || t <= 0) return '暂无';
     const h = Math.floor(t / 60), m = Math.round(t % 60);
-    return m > 0 ? `${h}h${m}m` : `${h}h`;
+    const dur = m > 0 ? `${h}h${m}m` : `${h}h`;
+    return dur;
   })();
 
   // ★ 三张消耗卡的涨跌 = 真实数据，且**同口径比较**（今天「至今」 vs 昨天「同一时刻」）。
@@ -838,7 +867,24 @@ export default function TodayScreen() {
       });
     } catch { return ''; }
   })();
-  const narrative = scene ? scene.explain : (causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析'));
+  // ★ v18.109 断流即空态：戒指超过 3 小时没回传采样（dataStale）时，圆环下方不写任何相位/多因分析
+  //   （旧实现会继续输出「孕激素升高，能量天生易偏低」这类周期文案，看着像今天有数据其实是推算的），
+  //   统一写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」，与 curveStatus.narrative 同口径。
+  const narrative = dataStale
+    ? '暂无数据，请佩戴戒指。约半小时会更新最新数据。'
+    : scene
+      ? scene.explain
+      : causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析');
+
+  // ★ v18.96（审计 2-3）：全天状态趋势图只画**今天**的曲线点。
+  //   旧实现直接把 ring.statusTimeline 整条传进 TrendChart（组件内无日期过滤），
+  //   与 DailyStatusCard / EnergyBall 的当日口径不一致 → 跨天时会画出昨天的曲线。
+  const todayStatusTimeline = (ring.statusTimeline ?? []).filter((p: any) => {
+    if (!Number.isFinite(p?.t)) return false;
+    const d = new Date(p.t);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  });
 
   // ★ 今日日历：把「真实生理数据」+「与 Mira 的对话记录」按一天的时间顺序编排（约 6~7 条）
   const fmtMin = (min: number | null | undefined): string => {
@@ -871,13 +917,17 @@ export default function TodayScreen() {
     }, -1);
   }
   // 2. 起床（真实睡眠窗口）
+  // ★ v18.104：断流时这条只留「起床时刻」这个事实，睡眠评分/时长/深睡全部改空态文案 ——
+  //   不把 0:29 那次同步的昨夜睡眠当成今天早上刚测到的（与圆环/昼夜节律卡同一口径）。
   if (todaySleep?.wakeTime) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(todaySleep.wakeTime.trim());
     pushItem({
       time: todaySleep.wakeTime,
       color: theme.colors.stateTired,
-      title: `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
-      sub: `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
+      title: dataStale ? '起床' : `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
+      sub: dataStale
+        ? '戒指暂无新数据，昨夜睡眠明细暂不显示'
+        : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
     }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
   // 3. 情绪波动峰值事件
@@ -1021,9 +1071,13 @@ export default function TodayScreen() {
   })();
   const cogTag = (() => {
     try {
-      const used = computeCognitiveLoadReport()?.brainUsed;
+      const r = computeCognitiveLoadReport();
+      const used = r?.brainUsed;
       if (used == null) return undefined;
-      return used < 20 ? '低消耗' : used < 45 ? '中等消耗' : '高消耗';
+      // ★ v18.98：不写「昨」标注 —— 没有昨晚睡眠时 cognitiveLoad 已把账户整体置空，
+      //   这里直接不渲染标签（value 显示「—」），跟 Oura 的「无数据就是不显示」一致。
+      const label = used < 20 ? '低消耗' : used < 45 ? '中等消耗' : '高消耗';
+      return label;
     } catch { return undefined; }
   })();
   const emoTag = (() => {
@@ -1047,6 +1101,11 @@ export default function TodayScreen() {
     经期: 'full', 卵泡期: 'quarterR', 黄体期: 'allPurple', 排卵期: 'quarterL',
   };
   const phaseMoon = status?.phaseLabel != null ? PHASE_MOON[status.phaseLabel] : undefined;
+
+  // ★ v18.107 撤回 staleSleepTip：用户明确反对「戒指已 N 小时没有新数据 · 数据截至 HH:MM」这类
+  //   时效小字（口径还会和真实采样时刻 00:29 打架，看着像没用的东西）。
+  //   断流就画空图表（中间一行「暂无数据」）+ 圆环下方分析写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」
+
   const metricChips: MindChipItem[] = [
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
@@ -1097,14 +1156,23 @@ export default function TodayScreen() {
         ? sleepStart > sleepEnd ? (m >= sleepStart || m < sleepEnd) : (m >= sleepStart && m < sleepEnd)
         : false;
     const lvlMap: Record<string, MindMoodKey> = { '充沛': 'energy', '平稳': 'calm', '偏低': 'tired', '不足': 'tired' };
-    const pts = ring.statusTimeline ?? [];
+    // ★ v18.96（审计 2-1）：状态曲线只取**今天**的点。旧实现只比时分、不比日期，
+    //   昨天某时段的 level 会被画进今天同一时刻的槽位（跨天清零后此处本已无残留，加过滤做防御）。
+    const todayKeyStr = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const pts = (ring.statusTimeline ?? []).filter((p: any) => {
+      if (!Number.isFinite(p?.t)) return false;
+      const d = new Date(p.t);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === todayKeyStr;
+    });
     for (let i = 0; i < 96; i++) {
       const m = i * 15;
       if (inSleep(m)) { slots[i] = 'none'; continue; }
       if (m > nowMin) { slots[i] = 'none'; continue; }
       let lvl: string | null = null;
       for (const p of pts) {
-        if (!Number.isFinite(p.t)) continue;
         const d = new Date(p.t);
         const pm = d.getHours() * 60 + d.getMinutes();
         if (pm <= m + 15 && m - pm < 60) lvl = p.level;
@@ -1202,7 +1270,9 @@ export default function TodayScreen() {
                 （原来右侧留出 44pt 给按钮，会把图整体压左） */}
             <View style={styles.trendWrap}>
               <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
-                {chartW > 0 ? <TrendChart width={chartW} timeline={ring.statusTimeline} /> : null}
+                {/* ★ v18.105：全天状态趋势图也要「断流即空」——旧实现把今天所有点连成一条平滑线，
+                    0:29 之后没再戴戒指，曲线却一路铺到现在（用户：中间都应该是空的）。 */}
+                {chartW > 0 ? <TrendChart width={chartW} timeline={todayStatusTimeline} stale={dataStale} /> : null}
               </View>
               <View style={styles.trendChevBtn} pointerEvents="none">
                 <Icon name="chevronRight" size={theme.fontSize.body} color={theme.colors.ui.chipText} />

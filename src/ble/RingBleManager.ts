@@ -63,6 +63,9 @@ import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recom
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
+/** ★ v18.100 断流阈值：超过这么久没有真实采样，就认为戒指当前没在给 App 传数据，
+ *  页面上所有「今日/实时」数字（恢复/脑力/情绪/圆环）一律置空态，不许再挂旧快照的值。 */
+const STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 
 /** 当日曲线上下文：晨间种子 + 日间基线 + 跨窗口滑动状态 */
 interface DailyCurveSeed {
@@ -73,6 +76,12 @@ interface DailyCurveSeed {
   lastWindowSteps: number | null;
   /** 上次见到戒指（有数据刷新）的时刻，用于佩戴中断 >2h 软重置 */
   lastWearTs: number | null;
+  /** ★ v18.95：晨间种子用的睡眠回退归档日期（'YYYY-M-D'）；null = 用的是今日 sleepSummary。
+   *  非 null 时头条文案标注「睡眠为 M/D 数据」，不再静默拿旧夜数据冒充昨夜。 */
+  seedSleepFallbackDate?: string | null;
+  /** ★ v18.96 逻辑B：本次种子是否用到了「今日睡眠」输入。false = 当初算种子时还没有睡眠数据
+   *  （例如 00:05 夜里先有 HRV、清晨才回传昨夜睡眠）→ 睡眠落地后需要用新数据重算补齐。 */
+  seedHadTodaySleep?: boolean;
 }
 
 const clampN = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x));
@@ -922,6 +931,19 @@ class NativeRingSource {
       uricAcid: 'ua',  // UI 别名
     };
 
+    // ★ V2 性能：backfill 期间 RingState patch 先累加到 this._pendingBatchPatch，
+    //   不在 handleBatch 里 this.push()，避免 30 天 × 1 setState = 30 次 React render
+    //   等 backfillDone 统一 flush 一次（见 handleStateV2.backfillDone）
+    //   （path A 的 lastUpdated 也要走它，故声明提前到 path A 之前）
+    const isBackfillInProgress = this._pendingBatchPatch !== null;
+    const mergePatch = (p: StatePatch) => {
+      if (isBackfillInProgress) {
+        this._pendingBatchPatch = { ...this._pendingBatchPatch!, ...p };
+      } else {
+        this.push(p);
+      }
+    };
+
     // ── path A: slots（5min intraday）──
     const slots = Array.isArray(raw.daily?.slots) && raw.daily.slots.length > 0
                   ? raw.daily.slots
@@ -945,11 +967,18 @@ class NativeRingSource {
 
       let okCount = 0;
       let skipCount = 0;
+      // ★ v18.96 逻辑B（重连补齐）：path A 原来只写 healthStore、不更新 state.lastUpdated →
+      //   回传上来的今日样本无法通过「今天新鲜度」守卫，今日状态种子拿不到 HRV/HR。
+      //   这里用**样本自身的真实时间戳**登记新鲜度（不是 Date.now()，历史日不会被当成新鲜）。
+      const batchLatestTs: Record<string, number> = {};
       for (const [nativeKey, hsKey] of Object.entries(METRIC_MAP)) {
         const samples = extract(nativeKey);
         if (samples.length > 0) {
           try {
             healthStore.upsertBackfillSamples(hsKey as any, dk, samples);
+            for (const s of samples) {
+              if (!batchLatestTs[hsKey] || s.t > batchLatestTs[hsKey]) batchLatestTs[hsKey] = s.t;
+            }
             okCount++;
             postLog('RingBle', `[Batch] ✅ ${hsKey} dk=${dk} n=${samples.length}`);
           } catch (err: any) {
@@ -959,21 +988,18 @@ class NativeRingSource {
           skipCount++;
         }
       }
+      const curLastUpd = this.getState().lastUpdated ?? {};
+      const newLastUpd: Record<string, number | null> = { ...curLastUpd };
+      let lastUpdChanged = false;
+      for (const [k, v] of Object.entries(batchLatestTs)) {
+        if (newLastUpd[k] == null || v > (newLastUpd[k] as number)) { newLastUpd[k] = v; lastUpdChanged = true; }
+      }
+      if (lastUpdChanged) mergePatch({ lastUpdated: newLastUpd as any });
       postLog('RingBle', `[Batch] date=${date} dk=${dk} OK=${okCount} SKIP=${skipCount} slots=${slots.length}`);
     }
 
     // ── path B: daily（日汇总）──
-    // ★ V2 性能：backfill 期间 RingState patch 先累加到 this._pendingBatchPatch，
-    //   不在 handleBatch 里 this.push()，避免 30 天 × 1 setState = 30 次 React render
-    //   等 backfillDone 统一 flush 一次（见 handleStateV2.backfillDone）
-    const isBackfillInProgress = this._pendingBatchPatch !== null;
-    const mergePatch = (p: StatePatch) => {
-      if (isBackfillInProgress) {
-        this._pendingBatchPatch = { ...this._pendingBatchPatch!, ...p };
-      } else {
-        this.push(p);
-      }
-    };
+    // （mergePatch / isBackfillInProgress 已上移到 path A 之前，供两条通道共用）
     if (raw.daily && typeof raw.daily === 'object') {
       const d = raw.daily;
       // step/dist/cal → stepDaily (特殊：复合结构)
@@ -2947,6 +2973,28 @@ class RingConnectionImpl {
       for (const key of Object.keys(this.dayBuckets) as MetricKey[]) this.dayBuckets[key].clear();
       for (const key of Object.keys(this.extBuckets)) this.extBuckets[key].clear();
       this.hrBeatQueue = []; // 跨天清空心跳队列，HRV 按日重置
+      // ★ v18.96 跨天清零（用户口径：没连戒指=当天没新数据，app 展示断开前的值，但跨天清零；
+      //   睡眠情况特殊，可跨天沿用最近一晚并加日期标注）。
+      //   metrics / availability / lastUpdated / daily 是**无日期维度的「最新值」扁平表**，
+      //   旧实现全仓无任何跨天清零 → 整夜未佩戴时它们还是昨天的数，首页基础卡/日均继续显示昨日值，
+      //   且 lastUpdated 的时间戳让「新鲜度」判断误判。现在统一按天清零；
+      //   昨日真值已归档在 hrDaily/hrvDaily/tempDaily/spo2Daily/edaDaily/rrDaily/sleepDaily/
+      //   stepDaily/extDaily（按天 key）与 healthStore（按天分桶）里，趋势与详情不受影响；
+      //   sleepSummary / sleepStages / sleepTime / wakeTime 属睡眠豁免，**不清**（跨天沿用）。
+      //   重连回传后 syncExtendedDaily / backfill 会按新数据重新投影并 push（口径B 补齐）。
+      this.state = {
+        ...this.state,
+        metrics: { ...DEFAULT_METRICS },
+        availability: Object.keys(DEFAULT_METRICS).reduce(
+          (acc, key) => { (acc as any)[key] = 'unavailable'; return acc; },
+          {} as Record<MetricKey, 'live' | 'syncing' | 'unavailable'>,
+        ),
+        lastUpdated: Object.keys(DEFAULT_METRICS).reduce(
+          (acc, key) => { (acc as any)[key] = null; return acc; },
+          {} as Record<MetricKey, number | null>,
+        ),
+        daily: {},
+      };
     }
   }
 
@@ -3104,6 +3152,20 @@ class RingConnectionImpl {
     // 今日状态时间线：对齐「整点 / 整半点」墙钟边界落快照（用户要求 12:00/12:30 出值），
     // 而非从 App 启动时刻起算的 30 分钟漂移，保证每次结果都精确落在 :00 或 :30。
     this.scheduleStatusTick();
+    // ★ v18.98：App 切回前台就重算一次今日状态（不必为了看新数据把进程杀掉重开）。
+    //   原来只有「完全杀掉 App 重开」才会走 loadPersisted → 跨天重算（v18.97），
+    //   而最常见的场景是「把 App 丢后台一夜、第二天早上切回来」——页面挂着的仍是昨天的数字。
+    //   recomputeDailyStatus 内部有 ensureDay（跨天清零）+ buildCurveStatus 的今日守卫，
+    //   无新数据时它会把今日状态诚实置空，有回传数据时再补上。
+    try {
+      AppState.addEventListener('change', (next: AppStateStatus) => {
+        if (next !== 'active') return;
+        try {
+          this.recomputeDailyStatus(Date.now(), true);
+          postLog('RingBle', '[FOREGROUND_RECOMPUTE] App 回到前台已重算今日状态');
+        } catch (e) {}
+      });
+    } catch (e) {}
     // healthStore 是独立数据源，写入不经过 RingState。订阅其变更 → 节流触发一次「调和」
     // （重建首页趋势 + 投影洞察指标 + 单次 emit）。
     // 原实现每次写入都 applyPatch({dataVersion})→emit()，有两个致命问题：
@@ -3412,8 +3474,14 @@ class RingConnectionImpl {
         // 扩展指标：存最新值，并增量写入 15 分钟时间槽以累积全天趋势曲线
         daily[m.key] = m.value;
         const t = m.ts ?? Date.now();
-        // ★ 关键修复：扩展指标也要写 lastUpdated + availability，否则 UI 显示"没更新"
-        lastUpdated[m.key] = t;
+        // ★ v18.102（用户实锤「一会儿空、一会儿又冒出数据」的元凶）：
+        //   扩展指标多由 HealthGlance/健康一览轮询（~60s）取回，原生**不带样本时间戳**，
+        //   旧代码 `m.ts ?? Date.now()` 会把「刚刚轮询到」当成「刚刚测到」写进 lastUpdated，
+        //   于是只要 App 在前台，每 60 秒就把「最近采样时刻」刷成当前时间 → 断流判定永远 false，
+        //   圆环/恢复/脑力全用旧快照出数；App 一被杀/切后台 → 清成 00:29 → 又变空态。
+        //   这就是用户看到的空一下又冒数。修法：没有真实样本时刻就**不刷新 lastUpdated**
+        //   （值照常入库供 UI 读，只是不伪造"此刻刚测到"）。
+        if (typeof m.ts === 'number' && m.ts > 0) lastUpdated[m.key] = m.ts;
         availability[m.key] = 'live';
         this.ingestExt(m.key, m.value, t);
         dailyHistory[m.key] = this.deriveExtHistory(m.key);
@@ -3586,8 +3654,13 @@ class RingConnectionImpl {
     }
     // HRV：优先用历史日归档；原生实时 HRV 走 emitMetric 实时流（落 metrics.hrv / history.hrv），
     // 若归档缺今日值则用实时值兜底并落档，保证「心率变异性」卡与趋势图有值。
+    // ★ v18.95 新鲜度守卫：metrics.hrv 是 last-known 值，隔夜未连戒指时它还是昨天的数。
+    //   旧实现会把它写进「今天」的 hrvDaily 归档 → 今日状态种子/趋势被昨天的数污染
+    //   （用户实锤：一晚没连，打开 app 照样有恢复程度）。只接受今天收到的实时值（lastUpdated）。
+    const todayStartMs0 = new Date(); todayStartMs0.setHours(0, 0, 0, 0);
+    const hrvLiveToday = (st.lastUpdated?.hrv ?? 0) >= todayStartMs0.getTime();
     let hv: number | undefined = hrvDaily[today];
-    if (typeof hv !== 'number' && typeof st.metrics.hrv === 'number') hv = st.metrics.hrv;
+    if (typeof hv !== 'number' && hrvLiveToday && typeof st.metrics.hrv === 'number') hv = st.metrics.hrv;
     if (typeof hv === 'number') {
       daily['hrv'] = hv;
       if (hrvDaily[today] == null) hrvDaily[today] = hv; // 落档：供趋势图与跨天历史
@@ -3595,8 +3668,10 @@ class RingConnectionImpl {
     }
     // HR：优先用历史日归档 hrDaily；原生实时 HR 走 emitMetric 实时流（落 metrics.hr / history.hr），
     // 若归档缺今日值则用实时值兜底并落档，保证「心率」卡与趋势图有值。
+    // ★ v18.95：同 HRV，兜底只允许「今天收到的实时值」（lastUpdated 判定）。
+    const hrLiveToday = (st.lastUpdated?.hr ?? 0) >= todayStartMs0.getTime();
     let hrVal: number | undefined = hrDaily[today];
-    if (typeof hrVal !== 'number' && typeof st.metrics.hr === 'number') hrVal = st.metrics.hr;
+    if (typeof hrVal !== 'number' && hrLiveToday && typeof st.metrics.hr === 'number') hrVal = st.metrics.hr;
     if (typeof hrVal === 'number') {
       daily['hr'] = hrVal;
       if (hrDaily[today] == null) hrDaily[today] = hrVal; // 落档：供趋势图与跨天历史
@@ -3724,11 +3799,13 @@ class RingConnectionImpl {
     const hi = toMs(wakeTime ?? '');
     const now = Date.now();
     if (lo == null || hi == null || hi <= lo) {
-      const cutoff = now - DAY_MS;
-      const inWin = hr.filter((p) => p.t >= cutoff);
+      // ★ v18.95：只认今天的 HR 采样。history.hr 持久化含昨天旧点，旧实现的「过去 24h 最小值」
+      //   会把昨晚的最小心率当作今天的 RHR（用户实锤：一晚没连也出晨间静息心率）。
+      const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+      const inWin = hr.filter((p) => p.t >= dayStart.getTime());
       return inWin.length ? Math.min(...inWin.map((p) => p.v)) : null;
     }
-    const inWin = hr.filter((p) => p.t >= lo && p.t <= hi);
+    const inWin = hr.filter((p) => p.t >= lo && p.t <= hi && isSameDay(p.t, now));
     return inWin.length ? Math.min(...inWin.map((p) => p.v)) : null;
   }
 
@@ -3789,8 +3866,14 @@ class RingConnectionImpl {
    * - 高频数据刷新不触发累积，只刷新头条（用时间线最新点），避免重复扣减。
    * 详见 docs/daily-status-curve-spec.md。
    */
-  /** 最近的睡眠归档（日期 ≤ 今天），用于「今日状态」种子在没有今日 sleepSummary 时回退到最近一晚 */
-  private latestSleepDaily(): {
+  /** 「昨晚这一夜」的睡眠归档（今天那条，或昨天那条但起床落在今早）。
+   *  ★ v18.98（用户口径：对齐 Oura）：没有昨晚的睡眠就是「没有数据」，
+   *    **不再**允许回退到 2–N 天前的旧归档去凑一个晨间恢复分。
+   *    旧实现（≤2 天内任意一晚）会让「连着两晚没戴戒指」的早上照样冒出状态分/恢复分 ——
+   *    用户实锤后改为只认今晚；返回 null 时 recomputeDailyStatus 的 hasTodayInput 为假，
+   *    种子直接为 null → 首页圆环/全天趋势诚实空态，恢复/脑力 chip 显示「—」。 */
+  private lastNightSleep(): {
+    dateKey: string;
     total: number;
     deep: number;
     light: number;
@@ -3799,20 +3882,46 @@ class RingConnectionImpl {
     getUp: number;
   } | null {
     const todayKey = this.bucketDay || dayKeyOf(Date.now());
-    const todayStart = dayStartMs(Date.now());
-    const entries = Object.entries(this.state.sleepDaily)
-      .filter(([k]) => k <= todayKey)
-      .filter(([, value]) => value.total > 0)
-      .filter(([k]) => {
-        const [year, month, day] = k.split('-').map(Number);
-        const start = new Date(year, month - 1, day).getTime();
-        return Number.isFinite(start) && todayStart - start <= 2 * DAY_MS;
-      })
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1));
-    return entries.length ? (entries[0][1] as any) : null;
+    const ystKey = dayKeyOf(Date.now() - DAY_MS);
+    const sleepAt = (k: string, v: any) => {
+      if (!v || !(v.total > 0)) return false;
+      if (k !== todayKey && k !== ystKey) return false;             // 只要今晚（或记在前一日的昨晚）
+      const up = typeof v.getUp === 'number' ? v.getUp : null;      // 起床时刻（分钟）
+      if (up == null) return true;                                  // 无起床时刻 → 无法证伪，按今晚算
+      return up < 12 * 60;                                          // 12:00 前起床 ⇒ 昨晚睡到今早
+    };
+    for (const k of [todayKey, ystKey]) {
+      const v = (this.state.sleepDaily as any)?.[k];
+      if (sleepAt(k, v)) return { dateKey: k, ...(v as any) };
+    }
+    return null;
   }
 
   private recomputeDailyStatus(now: number = Date.now(), force = false) {
+    // ★ v18.96 跨天驱动（审计 1-1）：ensureDay 原本只在 ingest/ingestExt/flush 里调用，
+    //   整夜未佩戴（无任何实时样本）时 bucketDay 永远停在昨天 → 所有 `bucketDay || dayKeyOf(now)`
+    //   兜底都返回昨天，statusDaily 也会把今天的均值写到昨天的 key 下。
+    //   状态重算/打点（含冷启动首帧、边界定时器）都是可靠的跨天触发点，在这里先驱动日切。
+    this.ensureDay(now);
+    // ★ v18.99 一次性取证日志（用户质疑「0:29 和 10:02 到底哪个是真的」）：
+    //   同时打印两套 lastUpdated —— 戒指侧 state.lastUpdated（实时流/回填写入的样本时刻）
+    //   与 healthStore 侧缓存时间（洞察页健康项卡片用的是这个）。两者口径不同，
+    //   之前错在把前者直接搬到首页、和后者显示的 0:29 撞成「两个时间打架」。
+    // ★ v18.100：探针改为**无条件 + 5 分钟节流**（原来挂在 force 上，冷启动没走到就永远抓不到）。
+    try {
+      if (now - ((this as any).__probeAt ?? 0) > 5 * 60 * 1000) {
+        (this as any).__probeAt = now;
+        const g = (t: any): string => (typeof t === 'number' && t > 0 ? new Date(t).toTimeString().slice(0, 5) : '—');
+        const lu: any = this.state.lastUpdated ?? {};
+        const hs: any = (healthStore as any)?.lastUpdated ?? {};
+        const newest = Math.max(lu.hr ?? 0, lu.spo2 ?? 0, lu.eda ?? 0, lu.hrv ?? 0, lu.temp ?? 0, lu.rr ?? 0, this.state.lastSyncedAt ?? 0);
+        const tlLast = this.state.statusTimeline.length ? this.state.statusTimeline[this.state.statusTimeline.length - 1].t : 0;
+        postLog(
+          'JS',
+          `[LU-PROBE] now=${g(now)} | ring: hr=${g(lu.hr)} spo2=${g(lu.spo2)} eda=${g(lu.eda)} hrv=${g(lu.hrv)} temp=${g(lu.temp)} sync=${g(this.state.lastSyncedAt)} | newestSample=${g(newest)} newest=${Math.round((now - newest) / 60000)}min tlLast=${g(tlLast)} | hs: hr=${g(hs.hr)} steps=${g(hs.steps)} sleep=${g(hs.sleep)}`,
+        );
+      }
+    } catch (_e) {}
     // ★ 只允许在 :00 / :30 墙钟边界打点 — 过滤掉连接瞬间 / 数据到达时触发的非边界点。
     // scheduleStatusTick 本身已对齐边界，但其他调用方（归档落地 / female change / 连接首次）
     // 也会进来加非边界点，这里做硬过滤。
@@ -3835,33 +3944,63 @@ class RingConnectionImpl {
     // —— 晨间种子 S0（每个自然日算一次）——
     let curve = this.state.dailyCurve;
     let needSeed = !curve || curve.dayKey !== dayKey;
-    // 这样只要戒指历史 HRV 回传过，今日状态种子就有 HRV 输入。
+    // ★ v18.95 新鲜度守卫：种子只吃「今天」的 HRV（用户实锤：一晚没连戒指还出晨间恢复分）。
+    //   metrics.hrv 是 last-known（可能是昨天的旧值）、daily['hrv'] 也可能被 syncExtendedDaily
+    //   用旧实时值兜底过 → 一律以 lastUpdated['hrv'] 是否 ≥ 今日 0 点为准；今日归档 hrvDaily
+    //   只能来自今天真实采样（backfill / 今日实时落档）。
+    const todayStartMs = new Date(now); todayStartMs.setHours(0, 0, 0, 0);
+    const hrvFreshToday = (this.state.lastUpdated?.hrv ?? 0) >= todayStartMs.getTime();
+    const hrvDailyToday = typeof this.state.hrvDaily[dayKey] === 'number' ? this.state.hrvDaily[dayKey] : null;
+    const liveHrv = hrvFreshToday && typeof this.state.metrics.hrv === 'number' ? this.state.metrics.hrv : null;
     const hrvRaw =
-      this.state.metrics.hrv ??
-      (typeof this.state.daily['hrv'] === 'number' ? this.state.daily['hrv'] : null);
+      hrvDailyToday ??
+      liveHrv ??
+      (hrvFreshToday && typeof this.state.daily['hrv'] === 'number' ? this.state.daily['hrv'] : null);
     const hrv =
       hrvRaw != null && hrvRaw <= ALGO_DEFAULTS.HRV_ARTIFACT_MAX && hrvRaw >= ALGO_DEFAULTS.HRV_ARTIFACT_MIN
         ? hrvRaw
         : null;
     const rhr = this.deriveRHR();
     const ss = this.state.sleepSummaryDate === dayKey ? this.state.sleepSummary : null;
-    let sleepTotal: number | null = ss?.total ?? null;
+    // ★ v18.96：todaySleepTotal = 属于「今天」的睡眠（今日 sleepSummary）；与下面的历史回退严格区分，
+    //   跨天清零判定只看它 + 今日 HRV/RHR。
+    const todaySleepTotal: number | null = ss?.total ?? null;
+    let sleepTotal: number | null = todaySleepTotal;
     let sleepDeep: number | null = ss?.deep ?? null;
     let getUp: number | null = ss?.getUp ?? null;
-    // 今日 sleepSummary 缺失时（backfill 只回填过去夜 dn>=1），回退到最近一晚的真实睡眠归档
+    // 今日 sleepSummary 缺失时（backfill 只回填过去夜 dn>=1），回退到最近一晚的真实睡眠归档。
+    // ★ v18.95：回退不再静默——记下用的哪一天的归档，buildCurveStatus 会在文案里显式标注，
+    //   避免「昨晚没戴/没连，今早照样出晨间恢复分」被误读成昨夜实测。
+    let seedSleepFallbackDate: string | null = null;
     if (sleepTotal == null) {
-      const latest = this.latestSleepDaily();
+      const latest = this.lastNightSleep();
       if (latest) {
         sleepTotal = latest.total;
         sleepDeep = latest.deep;
         getUp = latest.getUp;
+        seedSleepFallbackDate = latest.dateKey;
       }
     }
-    const sleep: TodayInput['sleep'] = { sleepTotal, sleepDeep, getUp };
+    // ★ v18.96 跨天清零（用户口径：断开时展示断开前的数据，跨天清零；睡眠情况特殊可沿用并加日期）：
+    //   今日状态种子必须至少有一个「今天的新输入」——今日睡眠归档 / 今日 HRV / 今日 RHR。
+    //   隔夜未连戒指时三者皆无 → 纯历史睡眠回退**不作为今日种子**（否则每天早上都能拿昨天的
+    //   睡眠生成今天的恢复分）。睡眠的跨天豁免体现在：恢复 chip 与脑力账户（认知准备度）
+    //   仍用最近一晚并各自带日期标注；今日状态在有今日输入时，回退的那一晚也会在头条标来源。
+    const hasTodayInput = todaySleepTotal != null || hrv != null || rhr != null;
+    // 今日记录（写 statusHistory / 算基线）同样只收今日真实输入，回退睡眠不进基线（避免同一晚被计两次）。
+    const sleep: TodayInput['sleep'] = hasTodayInput
+      ? { sleepTotal, sleepDeep, getUp }
+      : { sleepTotal: null, sleepDeep: null, getUp: null };
     const input: TodayInput = { hrv, rhr, sleep };
     // 解锁被锁死的 null 种子：已有曲线、但其 seed 为 null、且当前已拿到有效输入（HRV/睡眠/静息心率任一）→ 强制重算。
     // 修复「当日首次 recompute 时数据尚未到达 → 种子锁死为 null，之后数据到了也不再解锁」导致今日状态全天空白。
-    if (curve && curve.seed.value == null && (hrv != null || sleepTotal != null || rhr != null)) {
+    if (curve && curve.seed.value == null && hasTodayInput) {
+      needSeed = true;
+    }
+    // ★ v18.96 逻辑B（重连补齐）：今日睡眠此刻才落库（清晨回传昨夜睡眠），而当前种子是
+    //   「还没有今日睡眠」时算出来的（常见于夜里先有 HRV、清晨才同步）→ 用新到的睡眠重算种子，
+    //   否则今日状态会一直沿用缺睡眠的旧种子。重算后按当前边界重锚该点（pushStatusPoint 同 ts 覆盖）。
+    if (curve && todaySleepTotal != null && curve.seedHadTodaySleep === false) {
       needSeed = true;
     }
 
@@ -3884,13 +4023,18 @@ class RingConnectionImpl {
             (a, b) => a.t - b.t,
           );
         }
+        // ★ v18.96 跨天清零（用户口径：断开时展示断开前的数据，跨天清零；睡眠例外）：
+        //   归档后把非今日的点从「今日时间线」里真正裁掉。旧实现只归档不裁剪 →
+        //   昨天整条曲线会继续留在 statusTimeline 里，被后面的 todayVals 当成今天的均值
+        //   写进 statusDaily[今天] → 隔夜没连戒指，趋势图今天照样有曲线/数值。
+        this.state.statusTimeline = this.state.statusTimeline.filter((p) => isSameDay(p.t, now));
       }
     }
 
     if (needSeed) {
       const seed = computeSeed({ input, history, cycle, consts: CURVE_DEFAULTS });
       const baseline = deriveDaytimeBaseline(history, cycle.phase as PhaseBucket, CURVE_DEFAULTS);
-      curve = { dayKey, seed, baseline, lastWindowSteps: this.todaySteps(), lastWearTs: now };
+      curve = { dayKey, seed, baseline, lastWindowSteps: this.todaySteps(), lastWearTs: now, seedSleepFallbackDate, seedHadTodaySleep: todaySleepTotal != null };
       if (seed.value != null) {
         // 种子起始点也对齐到最近的 :00 / :30 边界（不新增非边界点）
         const sd = new Date(now);
@@ -3901,6 +4045,12 @@ class RingConnectionImpl {
         this.pushStatusPoint(seed.value, startTs);
         this.lastCurveAccumTs = startTs;
       }
+    }
+
+    // ★ v18.95：睡眠回退状态随数据到达而变（如今晨连上拿到昨夜 sleepSummary）→ 曲线标志同步更新，
+    //   头条「睡眠为 M/D 数据」标注随之消失/出现。
+    if (curve && curve.seedSleepFallbackDate !== seedSleepFallbackDate) {
+      curve = { ...curve, seedSleepFallbackDate };
     }
 
     // —— 更新历史日记录（用于基线 / wakeNorm）——
@@ -3935,8 +4085,9 @@ class RingConnectionImpl {
         //   跳过时把 lastCurveAccumTs 推进到本边界（空档记为已处理，避免重连补打拿错窗口的信号），
         //   但【不】刷新 lastWearTs → 长时间摘下后，软重置逻辑照常在重新佩戴时生效。
         const winStart = this.lastCurveAccumTs == null ? now - STATUS_SNAPSHOT_MS : this.lastCurveAccumTs;
-        const hasFreshHr = this.state.history.hr.some((p) => p.t > winStart && p.t <= now);
-        const hasFreshEda = this.state.history.eda.some((p) => p.t > winStart && p.t <= now);
+        // ★ v18.96：新鲜采样判定同样限定「今天」，跨天首窗口不再被昨天 23:xx 的点误判为在戴。
+        const hasFreshHr = this.state.history.hr.some((p) => p.t > winStart && p.t <= now && isSameDay(p.t, now));
+        const hasFreshEda = this.state.history.eda.some((p) => p.t > winStart && p.t <= now && isSameDay(p.t, now));
         const hasFreshSteps = (sig.stepsDelta ?? 0) > 0;
         if (!hasFreshHr && !hasFreshEda && !hasFreshSteps) {
           const fmtT = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
@@ -3963,11 +4114,14 @@ class RingConnectionImpl {
     }
 
     // 当日状态分值：今天 statusTimeline 的均值，写入 statusDaily（按天聚合，供周/月/年趋势）
-    const todayVals = this.state.statusTimeline.filter((p) => Number.isFinite(p.value)).map((p) => p.value);
+    // ★ v18.96：只取**今天**的点。旧实现不过滤日期，跨天时残留的昨日点会被算成今天的均值。
+    const todayVals = this.state.statusTimeline
+      .filter((p) => isSameDay(p.t, now) && Number.isFinite(p.value))
+      .map((p) => p.value);
     const todayMean = todayVals.length ? todayVals.reduce((a, b) => a + b, 0) / todayVals.length : null;
     const statusDaily =
       todayMean != null && Number.isFinite(todayMean)
-        ? { ...this.state.statusDaily, [this.bucketDay]: todayMean }
+        ? { ...this.state.statusDaily, [dayKeyOf(now)]: todayMean }
         : this.state.statusDaily;
 
     this.applyPatch({
@@ -3990,7 +4144,8 @@ class RingConnectionImpl {
 
   /** 向今日 statusTimeline 写入一个边界点：若同边界 t 已存在则替换（去重），否则追加。 */
   private pushStatusPoint(value: number, ts: number) {
-    const point: CurvePoint = { t: ts, value, level: curveLevel(value, CURVE_DEFAULTS).level };
+    // ★ v18.106：真实采样点显式 fill:false —— 首页趋势图只画这种点。
+    const point: CurvePoint = { t: ts, value, level: curveLevel(value, CURVE_DEFAULTS).level, fill: false };
     const arr = this.state.statusTimeline;
     const idx = arr.findIndex((p) => p.t === ts);
     if (idx >= 0) {
@@ -4016,7 +4171,8 @@ class RingConnectionImpl {
       const ts = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), sm, 0, 0).getTime();
       if (seen.has(ts)) continue;
       seen.add(ts);
-      out.push({ t: ts, value: typeof p.value === 'number' ? p.value : NaN, level: p.level });
+      // ★ v18.106：保留 fill 标记（真实采样点 false / 空缺补齐点 true 都要活过持久化）
+      out.push({ t: ts, value: typeof p.value === 'number' ? p.value : NaN, level: p.level, fill: p.fill });
     }
     return out;
   }
@@ -4037,11 +4193,13 @@ class RingConnectionImpl {
   /** 提取最近 30 分钟窗口信号，供 accumulateWindow 使用 */
   private deriveWindowSignals(now: number, curve: DailyCurveSeed): WindowSignals {
     const WIN = STATUS_SNAPSHOT_MS;
-    const hrPts = this.state.history.hr.filter((p) => now - p.t <= WIN);
+    // ★ v18.96：只取**今天**的窗口内样本。history 由快照恢复时含昨天旧点，
+    //   跨天后的第一个窗口（00:00–00:30）会把昨天 23:40 的心率当成当前信号。
+    const hrPts = this.state.history.hr.filter((p) => now - p.t <= WIN && isSameDay(p.t, now));
     const hrMean = hrPts.length ? hrPts.reduce((a, p) => a + p.v, 0) / hrPts.length : null;
     const cur = this.todaySteps();
     const stepsDelta = cur != null && curve.lastWindowSteps != null ? Math.max(0, cur - curve.lastWindowSteps) : 0;
-    const edaPts = this.state.history.eda.filter((p) => now - p.t <= WIN);
+    const edaPts = this.state.history.eda.filter((p) => now - p.t <= WIN && isSameDay(p.t, now));
     const edaEvents = this.countEdaEvents(edaPts);
     const hrvRaw = this.state.metrics.hrv;
     const hrv =
@@ -4066,6 +4224,10 @@ class RingConnectionImpl {
   private isAsleepNow(now: number): boolean {
     const { sleepTime, wakeTime } = this.state;
     if (!sleepTime || !wakeTime) return false;
+    // ★ v18.96：sleepTime/wakeTime 是无日期的顶层扁平字段（只在「今日」分支写入、跨天不清）。
+    //   昨天夜里的入睡/起床时刻会被套到今天，误判「现在还在睡」→ 今日状态/情绪点阵错位。
+    //   今天没有睡眠记录时一律不判睡眠（睡眠跨天豁免只用于展示最近一晚，不用于判定此刻状态）。
+    if (this.state.sleepSummaryDate !== dayKeyOf(now)) return false;
     const toMs = (hhmm: string): number | null => {
       const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
       if (!m) return null;
@@ -4096,11 +4258,65 @@ class RingConnectionImpl {
   }
 
   private buildCurveStatus(curve: DailyCurveSeed | null, cycle: CycleInfo): CurveStatus {
-    // ★ 没戒指 + healthStore 全空时，curve 可能非 null 但 statusTimeline 是空的 → 也判为没数据
-    const tl = this.state.statusTimeline;
+    const now = Date.now();
+    // ★ v18.96 跨天清零（审计 2-2）：只认**今天**的时间线点。旧实现 tlAllZero 只判「全为 0」，
+    //   跨天后残留的昨天曲线会让首页圆环/大字继续显示昨天的状态分且无任何提示。
+    const tl = this.state.statusTimeline.filter((p: any) => isSameDay(p.t, now));
     const tlAllZero = tl.length > 0 && tl.every((p: any) => !Number.isFinite(p.value) || p.value === 0);
-    if (!curve || curve.seed.value == null || tlAllZero) {
+    // ★ v18.97：曲线种子本身也必须是今天的。冷启动/热重载时若快照里的 dailyCurve 属于昨天，
+    //   它的 seed.value 是昨天的晨间恢复分 —— 即使时间线已清空，也会让圆环显示昨天的数字。
+    const curveIsToday = !!curve && curve.dayKey === dayKeyOf(now);
+    // ★ v18.98（用户口径：对齐 Oura）：「今天到底有没有在测量」必须能被证伪。
+    //   三条硬凭据任一成立才允许圆环出数：①今天已经累积过真实状态点；②近 30 分钟内有戒指采样
+    //   （戒指此刻在戴）；③种子是用**今晚**的睡眠算的（晨间恢复分，当晚戴了戒指才有）。
+    //   旧实现只要 seed 有值就出数 → 连着几晚没戴戒指，早上打开仍挂着一个昨天的状态分（用户实锤）。
+    const freshSample = (arr: { t: number }[] | undefined): boolean =>
+      !!arr && arr.some((p: any) => isSameDay(p.t, now) && now - p.t <= 30 * 60 * 1000);
+    const hasTodayMeasurement =
+      tl.length > 0 || freshSample(this.state.history?.hr) || freshSample(this.state.history?.eda) || curve?.seedHadTodaySleep === true;
+    // ★ v18.100 断流即空态：戒指太久没给 App 送数据（>3h）→ 屏幕上任何数字都是旧快照。
+    //   真机取证：2026-10-03 用户实测 lastUpdated 全部停在 00:29（hr/spo2/eda/hrv/temp/sync 一致），
+    //   而首页还挂着恢复 96 / 脑力 39 / 圆环 62 → 正是用户要「断流即空态」的场景。
+    const luAny: Record<string, unknown> = (this.state.lastUpdated ?? {}) as Record<string, unknown>;
+    // ★ v18.101 只认**指标级真实采样**（lastUpdated），不再把 lastSyncedAt / 今日状态点算进兜底。
+    //   根因实锤（用户「显示空的一会儿又展示数据」）：`lastSyncedAt` 在「连上戒指」边沿和
+    //   「离线回填完成」都会被刷成 Date.now()，而「今日最后状态点」来自回填的历史采样。
+    //   于是冷启动第一帧 state 被跨天清零 → 判断流 → 圆环空；几秒后回填跑完把 lastSyncedAt 刷成 now，
+    //   判定立刻翻回「有数据」→ 旧值又冒出来。这就是用户看到的「空一下又冒数」。
+    //   现在判定源只有一处：戒指真正推送过采样的时刻。回填再多也不是「此刻有实时数据」。
+    const lastSampleAt = (() => {
+      const vals = (['hr', 'spo2', 'eda', 'hrv', 'temp', 'rr', 'skin'] as const).map((k) => {
+        const v = luAny[k];
+        return typeof v === 'number' && v > 0 ? v : 0;
+      });
+      return Math.max(...vals) || null;
+    })();
+    // 没有任何一个指标写过采样时间（跨天清零那一帧 / 戒指从没回传）= 断流，不能放数字上屏。
+    const dataStale = lastSampleAt == null || now - lastSampleAt > STALE_AFTER_MS;
+    // ★ v18.101：只在判定结果翻转时打日志（原来每次都打会灌爆主队列，也看不出翻转）。
+    //   日志里打出**全部 lastUpdated 明细**——翻转的元凶就是某个被刷新的指标（上一轮就是
+    //   lastSyncedAt 被回填刷成 now 导致的），只报一个 max 值定位不到是谁。
+    try {
+      const f = (t: unknown) => (typeof t === 'number' && t > 0 ? new Date(t).toTimeString().slice(0, 5) : '—');
+      const detail = Object.keys(luAny)
+        .filter((k) => typeof luAny[k] === 'number')
+        .map((k) => `${k}=${f(luAny[k] as number)}`)
+        .join(' ');
+      const prev: boolean | undefined = (this as any).__lastDataStale;
+      if (prev !== dataStale) {
+        (this as any).__lastDataStale = dataStale;
+        postLog(
+          'RingBle',
+          `[CurveStatus] ${dataStale ? '⇄ 判定为空态（断流）' : '⇄ 判定为有数据'}：最近采样 ${f(lastSampleAt)} 距今 ${Math.round((now - (lastSampleAt ?? now)) / 60000)}min · lastUpdated=[${detail || '空'}], sync=${f(this.state.lastSyncedAt)}`,
+        );
+      }
+    } catch (_e) {}
+    if (!curve || !curveIsToday || curve.seed.value == null || tlAllZero || !hasTodayMeasurement || dataStale) {
       const pb = cycle.phase as PhaseBucket;
+      const lastT = tl.length ? tl[tl.length - 1].t : null;
+      // 阈值 3h，按小时取整；不足 1 小时（刚跨过阈值）也至少写 1 小时，不写「0 小时」
+      // ★ v18.107：断流时圆环下方分析统一写这一句——不报「已 N 小时 / 数据截至几点」（用户嫌没用且口径打架）
+      const staleNarrative = '暂无数据，请佩戴戒指。约半小时会更新最新数据。';
       return {
         value: null,
         level: null,
@@ -4109,19 +4325,31 @@ class RingConnectionImpl {
         hasLog: cycle.hasLog,
         estrogenIndex: cycle.estrogenIndex ?? null,
         seed: null,
-        narrative: cycle.hasLog
+        narrative: dataStale ? staleNarrative : cycle.hasLog
           ? '今日佩戴数据不足，暂无法评估恢复状态'
           : '记录经期并连续佩戴几天后，开启今日状态评估',
         hasData: false,
+        staleSleepDate: null,
+        // ★ 断流时仍把最后一点交出去，UI 那行小字才能写「已 N 小时无新数据 · 数据截至 HH:MM」
+        lastPointAt: dataStale ? lastT : null,
+        dataStale,
+        lastSampleAt,
       };
     }
-    const value = this.lastTimelineValue() ?? curve.seed.value;
+    // ★ v18.96：取「今天最后一个点」，跨天时不用昨天的末值冒充今天。
+    const value = (tl.length ? tl[tl.length - 1].value : null) ?? curve.seed.value;
     const lvl = curveLevel(value, CURVE_DEFAULTS);
     const seed = curve.seed;
     const delta = seed.recoveryDelta != null ? `${seed.recoveryDelta > 0 ? '+' : ''}${Math.round(seed.recoveryDelta)}` : '';
     // 显示相位跟随实时 cycle（用户中途记经期立即生效）；seed.phaseBucket 仅用于晨间能量种子，保持锁死
     const phaseLabel = PHASE_TEXT[cycle.phase as PhaseBucket] ?? '未记录';
-    const narrative = `${phaseLabel}${cycle.hasLog && cycle.dayInCycle ? ` · 周期第 ${cycle.dayInCycle} 天` : ''} · 晨间恢复 ${Math.round(curve.seed.value)}（${seed.recoveryLabel}${delta ? ' ' + delta : ''}）`;
+    let narrative = `${phaseLabel}${cycle.hasLog && cycle.dayInCycle ? ` · 周期第 ${cycle.dayInCycle} 天` : ''} · 晨间恢复 ${Math.round(curve.seed.value)}（${seed.recoveryLabel}${delta ? ' ' + delta : ''}）`;
+    // ★ v18.98：不再在头条塞「睡眠为 M/D 数据」这类溯源小字（用户口径：不要写昨/日期，
+    //   拿不到昨晚睡眠时圆环直接是空态）。种子来源仍保留在 curve.seedSleepFallbackDate 字段里，
+    //   只作诊断/日志用途，UI 不渲染。
+    const staleSleepDate =
+      curve.seedSleepFallbackDate && curve.seedSleepFallbackDate !== dayKeyOf(now) ? curve.seedSleepFallbackDate : null;
+    if (staleSleepDate) postLog('RingBle', `[CurveStatus] ⚠️ 今日种子用了非今晚的睡眠归档（${staleSleepDate}）`);
     return {
       value,
       level: lvl.level,
@@ -4132,6 +4360,10 @@ class RingConnectionImpl {
       seed,
       narrative,
       hasData: true,
+      staleSleepDate,
+      lastPointAt: tl.length ? tl[tl.length - 1].t : null,
+      dataStale,
+      lastSampleAt,
     };
   }
 
@@ -4353,18 +4585,30 @@ class RingConnectionImpl {
         // 今日：若实时累积的 statusTimeline 稀疏（< 12 点，多为离线回填、当日未在线累积），
         // 用当日回填的 intraday 重建全天曲线，补全首页「全天状态趋势图」。
         // 实时已累积出较完整曲线（≥ 12 点）则保留真实累积，不覆盖。
-        if (statusTimeline.length < 12) {
-          const rebuilt = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
+        // ★ v18.110：合并门槛放宽——只要「重建出来的真实数据点」比现有时间线里的真实点多，
+        //   就重新合并。作用：戒指重新连上、healthStore 补进新的 intraday 窗口后，
+        //   趋势图能立刻用上这些回填点（旧实现 statusTimeline.length < 12 时一次性就不合了，
+        //   导致重连后曲线仍停在几个点）。
+        const existingReal = statusTimeline.filter((p) => p.fill === false).length;
+        const rebuilt0 = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
+        const rebuiltReal = (rebuilt0 ?? []).filter((p) => p.fill === false).length;
+        if (rebuilt0 && rebuilt0.length > 0 && (statusTimeline.length < 12 || rebuiltReal > existingReal)) {
+          const rebuilt = rebuilt0;
           if (rebuilt && rebuilt.length > 0) {
-            // 用新重建的点补到现有时间线后面（或替换为空的时间线），不要直接丢弃已有的实时点
+            // 用新重建的点补到现有时间线后面（或替换为空的时间线），不要直接丢弃已有的实时点；
+            // ★ v18.110：窗口已有「空窗占位点(fill:true)」而现在有了真实数据 → 用真实点覆盖它。
             const existingByT = new Map(statusTimeline.map((p) => [p.t, p]));
             for (const p of rebuilt) {
-              if (!existingByT.has(p.t)) existingByT.set(p.t, p);
+              const ex = existingByT.get(p.t);
+              if (!ex || (ex.fill === true && p.fill === false)) existingByT.set(p.t, p);
             }
             const merged = Array.from(existingByT.values()).sort((a, b) => a.t - b.t);
             statusTimeline = merged;
             changed = true;
-            postLog('RingBle', `[rebuildHistoricalStatus] ✅ 合并今日 statusTimeline（回填 ${rebuilt.length} 点，合并后 ${merged.length} 点）`);
+            // ★ v18.110 诊断：回填点里到底有多少是「窗口内有真实采样」的（fill:false）——
+            //   首页趋势图只画 fill:false 的点，这个数直接决定曲线画不画得出来。
+            const mergedReal = merged.filter((p) => p.fill === false).length;
+            postLog('RingBle', `[rebuildHistoricalStatus] ✅ 合并今日 statusTimeline（回填 ${rebuilt.length} 点，合并后 ${merged.length} 点，其中真实采样点 ${mergedReal}）`);
           }
         }
       }
@@ -4460,6 +4704,7 @@ class RingConnectionImpl {
       const stepsDelta = winSteps.reduce((s, p) => s + p.v, 0);
 
       // 5c. 聚合 edaEvents（简化：窗口内 eda 均值 > 中位数 30% 视为应激）
+      const winMet = metArr.filter((p) => p.t >= winStart && p.t < winEnd);
       const winEda = edaArr.filter((p) => p.t >= winStart && p.t < winEnd).map((p) => p.v);
       let edaEvents = 0;
       if (winEda.length >= 3) {
@@ -4492,10 +4737,17 @@ class RingConnectionImpl {
         next = Number.isFinite(res.next) ? res.next : prev;
       }
 
+      // ★ v18.110：fill 不再「一刀切全 true」，改为**按窗口是否真有 healthStore 采样**判定：
+      //   · 窗口内有 hr/steps/met/eda/hrv 任意真实样本 → fill:false = 这条值有数据支撑，趋势图要画；
+      //   · 窗口内一个样本都没有（纯 seed 递推）→ fill:true = 空窗占位，趋势图不画（断流期就不该出现水平线）。
+      //   这样「断流即空」与「有新回填数据就补上曲线」两套口径可以共存：
+      //   戒指离线时窗口没数据=空，重新戴上后回填进来=画出来（用户 v18.110 口径）。
+      const winReal = winHr.length + winSteps.length + winMet.length + winEda.length + hrvArrWin.length;
       points.push({
         t: winStart,
         value: clampN(next, 0, 100),
         level: curveLevel(clampN(next, 0, 100), CURVE_DEFAULTS).level,
+        fill: winReal === 0,
       });
       prev = next;
       cumSteps += stepsDelta;
@@ -4930,6 +5182,15 @@ class RingConnectionImpl {
         // ★ 启动时清洗旧脏数据：只保留 :00 / :30 边界的点，并按对齐边界 t 去重
         const raw = snap.statusTimeline as any[];
         patch.statusTimeline = this.dedupeBoundaryPoints(raw);
+        // ★ v18.97：再按「今天」过滤一次。快照里存的是上次退出时的今日曲线，隔夜未佩戴再冷启动，
+        //   那些点属于昨天 —— 直接灌进今日时间线会让首页圆环/趋势图继续显示昨天的状态分
+        //   （用户实锤）。跨天过滤后由启动帧的 recomputeDailyStatus 决定今天是否重新出点。
+        const t0 = Date.now();
+        patch.statusTimeline = patch.statusTimeline.filter((p) => isSameDay(p.t, t0));
+        // ★ v18.106：旧快照里「没有任何 fill 标记」的点 = 当年 healthStore 回填的补齐点
+        //   （那条 seed 推出来的水平线）。统一标成 fill:true —— 首页趋势图只画 fill:false 的真实采样点，
+        //   否则每次冷启动恢复旧快照，断流期的伪造曲线又会冒出来。
+        patch.statusTimeline = patch.statusTimeline.map((p: any) => (p.fill === false ? p : { ...p, fill: true }));
       }
       if (snap.statusDaily) patch.statusDaily = snap.statusDaily;
       if (snap.statusTimelineByDay) {
@@ -4979,6 +5240,17 @@ class RingConnectionImpl {
       }
       // 启动回填出的历史立即落盘：否则紧接着再重载仍靠重算（虽自愈，但不如直接冻结）。
       void this.saveSnapshot();
+      // ★ v18.97 跨天清零的启动帧（用户实锤：「首页圆环还展示恢复程度，趋势图还展示没连戒指的指标」）：
+      //   快照恢复会把 curveStatus / statusTimeline 原样灌回state，但此路径**从不调用**
+      //   recomputeDailyStatus → 隔夜未佩戴、早上冷启动时，首页圆环与全天趋势图读到的仍是
+      //   快照里「昨天」的 curveStatus 与时间线（今天没有任何输入，recompute 也不会给出数）。
+      //   这里在恢复完成后立刻驱动一次：ensureDay 跨天清零「最新值」结构 + 归档裁剪昨日曲线
+      //   + buildCurveStatus 重算（今天无输入 → 诚实空态）。之后正常打点/连接会继续更新。
+      try {
+        this.recomputeDailyStatus(Date.now(), true);
+      } catch (e) {
+        postLog('RingBle', `[loadPersisted] ⚠️ 启动跨天重算失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
       postLog('RingBle', '已从本地持久化恢复真实数据（跨 ⌘R 保留趋势曲线）');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

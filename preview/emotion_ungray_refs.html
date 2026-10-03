@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>情绪洞察 · 去灰参考</title>
+<style>
+  :root{
+    --c-excited:#F0C46E; --c-pleasant:#BCCB62; --c-calm:#7EA6F8;
+    --c-stressed:#9D8AF0; --c-anxious:#C9598A; --neutral:#ECEAFB;
+    --gray:#F7F6FC; --title:#6C5647; --sub:#5F5F74; --ink:#4A4660;
+    --card:#FFFFFF; --page:#FBFAFF; --line:#ECEAFB;
+    --rad-card:14px; --rad-md:11px; --rad-pill:999px;
+    --exc-tint:rgba(240,196,110,.14); --ple-tint:rgba(188,203,98,.16);
+    --cal-tint:rgba(126,166,248,.14); --str-tint:rgba(157,138,240,.14);
+    --anx-tint:rgba(201,89,138,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{background:#EFEAF6;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    display:flex;gap:22px;flex-wrap:wrap;justify-content:center;padding:26px 12px 60px;color:var(--ink);}
+  .col{display:flex;flex-direction:column;gap:18px;}
+  .phone{width:392px;background:var(--page);border-radius:34px;padding:18px 16px 30px;
+    box-shadow:0 18px 50px rgba(76,60,120,.22);overflow:hidden;position:relative;}
+  .tag{position:absolute;top:14px;left:16px;font-size:11px;font-weight:700;letter-spacing:.5px;
+    color:#fff;background:#9D8AF0;padding:4px 10px;border-radius:999px;z-index:5;}
+  .tag.b{background:#7EA6F8;} .tag.c{background:#C9598A;} .tag.ref{background:#6C5647;}
+  h1.ref-h{font-size:15px;color:var(--title);font-weight:700;margin:2px 0 2px;}
+  .ref-sub{font-size:11px;color:var(--sub);line-height:1.5;margin-bottom:6px;}
+  .ref-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .ref-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;}
+  .ref-card h4{font-size:12px;color:var(--title);font-weight:700;margin-bottom:6px;}
+  .ref-card p{font-size:10.5px;color:var(--sub);line-height:1.5;}
+  /* generic app bits */
+  .head{display:flex;justify-content:space-between;align-items:center;margin-top:6px;}
+  .title{font-size:20px;font-weight:700;color:var(--title);}
+  .chip{display:flex;align-items:center;gap:5px;background:rgba(157,138,240,.14);
+    padding:5px 11px;border-radius:999px;font-size:12px;font-weight:700;color:#9D8AF0;}
+  .chip i{width:7px;height:7px;border-radius:99px;background:#9D8AF0;display:inline-block;}
+  .sec{font-size:14px;font-weight:700;color:var(--title);margin:20px 0 10px;}
+  /* dot matrix */
+  .matrix{padding:10px 4px 4px;}
+  .mrow{display:flex;gap:3px;margin-bottom:3px;}
+  .mcell{flex:1;display:flex;justify-content:center;}
+  .dot{width:9px;height:9px;border-radius:99px;}
+  .axis{display:flex;gap:3px;margin-top:6px;}
+  .acell{flex:1;text-align:center;font-size:9px;color:var(--sub);}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:12px;}
+  .lg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--sub);}
+  .lg i{width:8px;height:8px;border-radius:99px;display:inline-block;}
+  .hint{font-size:10.5px;color:var(--sub);margin-top:10px;line-height:1.5;}
+  /* histogram */
+  .hist{display:flex;align-items:flex-end;gap:4px;height:96px;padding:0 2px;}
+  .hbar{flex:1;border-radius:5px 5px 2px 2px;}
+  /* version A: fully open */
+  .ov-a{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;margin-top:4px;}
+  .ov-a .it{border-top:2px solid var(--line);padding-top:8px;}
+  .ov-a .lab{font-size:10.5px;color:var(--sub);margin-bottom:3px;}
+  .ov-a .val{font-size:22px;font-weight:700;color:var(--title);line-height:1.1;}
+  .ov-a .sub{font-size:10px;color:var(--sub);margin-top:2px;}
+  .win-a{display:flex;gap:10px;margin-top:14px;}
+  .win-a .p{flex:1;border-radius:12px;padding:12px;border:1px solid var(--line);}
+  .win-a .pl{font-size:10px;color:var(--sub);margin-bottom:4px;}
+  .win-a .pv{font-size:15px;font-weight:700;}
+  .win-a .ps{font-size:10px;margin-top:3px;}
+  /* version B: color-tinted */
+  .ov-b{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;}
+  .ov-b .t{border-radius:12px;padding:12px 13px;}
+  .ov-b .lab{font-size:10.5px;color:var(--sub);margin-bottom:3px;}
+  .ov-b .val{font-size:21px;font-weight:700;color:var(--title);line-height:1.1;}
+  .ov-b .sub{font-size:10px;color:var(--sub);margin-top:2px;}
+  .win-b{display:flex;gap:10px;margin-top:14px;}
+  .win-b .p{flex:1;border-radius:12px;padding:12px;}
+  .win-b .pl{font-size:10px;color:var(--sub);margin-bottom:4px;}
+  .win-b .pv{font-size:15px;font-weight:700;}
+  .win-b .ps{font-size:10px;margin-top:3px;}
+  .note{font-size:10px;color:var(--sub);margin-top:14px;line-height:1.6;
+    background:#fff;border:1px dashed var(--line);border-radius:10px;padding:9px 11px;}
+</style>
+</head>
+<body>
+
+<!-- ============ REFERENCE COLUMN ============ -->
+<div class="col">
+  <div class="phone">
+    <span class="tag ref">竞品怎么设计</span>
+    <div style="height:26px"></div>
+    <h1 class="ref-h">别的情绪 App 怎么做「洞察页」</h1>
+    <p class="ref-sub">共同点：<b>几乎不用灰底卡片</b>，靠颜色 + 留白 + 细分隔表达层级；情绪数据用彩色点/色块直接说话。</p>
+    <div class="ref-grid">
+      <div class="ref-card">
+        <h4>Daylio · Year in Pixels</h4>
+        <p>每天一个彩色方块，一年排成色带。统计页是<b>开口式</b>大字数字，无灰卡。</p>
+      </div>
+      <div class="ref-card">
+        <h4>Bearable · 时间线点</h4>
+        <p>一天的情绪按<b>时间轴排成彩色圆点</b>，点色=情绪、点大小=强度，背景全白。</p>
+      </div>
+      <div class="ref-card">
+        <h4>How We Feel · Mood Meter</h4>
+        <p>用<b>红/黄/绿/蓝四象限</b>把情绪画成一张彩色网格，完全无灰。</p>
+      </div>
+      <div class="ref-card">
+        <h4>Moodflow · Pixels</h4>
+        <p>「年度像素」：每个情绪一格纯色，密集排布成画，靠色彩而非边框分区。</p>
+      </div>
+    </div>
+    <div class="note">
+      结论给 Mira 的方向：<br>
+      ① 情绪点阵保持「每 15 分钟一个点」（你的硬要求）；<br>
+      ② 去掉 #F7F6FC 灰底卡，改成<b>开口式</b>或<b>对应情绪色的浅色底</b>；<br>
+      ③ 数字用语义色（高消耗=玫红、恢复好=绿），让页面自己说话。
+    </div>
+  </div>
+</div>
+
+<!-- ============ VERSION A : 全开口 ============ -->
+<div class="col">
+  <div class="phone">
+    <span class="tag">方案 A · 全开口去灰</span>
+    <div style="height:26px"></div>
+    <div class="head"><div class="title">情绪洞察</div>
+      <div class="chip"><i></i>偏紧张</div></div>
+
+    <div class="sec">全天情绪分布</div>
+    <div class="matrix" id="mA"></div>
+
+    <div class="sec">每小时压力事件</div>
+    <div class="hist" id="hA"></div>
+
+    <div class="sec">今日概览</div>
+    <div class="ov-a">
+      <div class="it"><div class="lab">情绪消耗</div><div class="val" style="color:#C9598A">12 次</div><div class="sub">事件较多 · 注意放松</div></div>
+      <div class="it"><div class="lab">恢复时间</div><div class="val">82s</div><div class="sub">正常</div></div>
+      <div class="it"><div class="lab">峰值时段</div><div class="val">14:00</div><div class="sub">事件最集中</div></div>
+      <div class="it"><div class="lab">消耗分数</div><div class="val">63</div><div class="sub">/100 · 偏重</div></div>
+    </div>
+
+    <div class="win-a">
+      <div class="p"><div class="pl">情绪高峰</div><div class="pv" style="color:#F0C46E">14:00–15:00</div><div class="ps" style="color:var(--sub)">压力事件集中</div></div>
+      <div class="p"><div class="pl">恢复建议</div><div class="pv" style="color:#BCCB62">深呼吸</div><div class="ps" style="color:var(--sub)">恢复 82s</div></div>
+    </div>
+    <div class="hint">今天偏消极 · 建设 38 vs 破坏 51</div>
+  </div>
+</div>
+
+<!-- ============ VERSION B : 彩色软底 ============ -->
+<div class="col">
+  <div class="phone">
+    <span class="tag b">方案 B · 彩色软底</span>
+    <div style="height:26px"></div>
+    <div class="head"><div class="title">情绪洞察</div>
+      <div class="chip"><i></i>偏紧张</div></div>
+
+    <div class="sec">全天情绪分布</div>
+    <div class="matrix" id="mB"></div>
+
+    <div class="sec">每小时压力事件</div>
+    <div class="hist" id="hB"></div>
+
+    <div class="sec">今日概览</div>
+    <div class="ov-b">
+      <div class="t" style="background:var(--anx-tint)"><div class="lab">情绪消耗</div><div class="val" style="color:#C9598A">12 次</div><div class="sub">事件较多 · 注意放松</div></div>
+      <div class="t" style="background:var(--cal-tint)"><div class="lab">恢复时间</div><div class="val">82s</div><div class="sub">正常</div></div>
+      <div class="t" style="background:var(--str-tint)"><div class="lab">峰值时段</div><div class="val">14:00</div><div class="sub">事件最集中</div></div>
+      <div class="t" style="background:var(--exc-tint)"><div class="lab">消耗分数</div><div class="val">63</div><div class="sub">/100 · 偏重</div></div>
+    </div>
+
+    <div class="win-b">
+      <div class="p" style="background:var(--exc-tint)"><div class="pl">情绪高峰</div><div class="pv" style="color:#C68A2E">14:00–15:00</div><div class="ps" style="color:var(--sub)">压力事件集中</div></div>
+      <div class="p" style="background:var(--ple-tint)"><div class="pl">恢复建议</div><div class="pv" style="color:#6E8A2E">深呼吸</div><div class="ps" style="color:var(--sub)">恢复 82s</div></div>
+    </div>
+    <div class="hint">今天偏消极 · 建设 38 vs 破坏 51</div>
+  </div>
+</div>
+
+<script>
+// ---- sample data: 24h x 4 (15min) mood points ----
+const COL={e:'#F0C46E',p:'#BCCB62',c:'#7EA6F8',s:'#9D8AF0',a:'#C9598A',n:'#ECEAFB'};
+// pattern: night sleep(neutral) -> calm morning -> stress peak midday -> recover evening -> calm night
+function colorAt(h,m){
+  const t=h+m/60;
+  if(t<7) return COL.n;                 // sleep
+  if(t<9) return COL.c;                 // calm wake
+  if(t<11) return COL.p;                // pleasant
+  if(t>=13&&t<16) return (m<30?COL.s:COL.a); // stress/anx peak
+  if(t>=16&&t<19) return COL.p;        // recover
+  if(t>=19&&t<22) return COL.c;        // calm evening
+  return COL.n;
+}
+function buildMatrix(id){
+  const wrap=document.getElementById(id);
+  for(let r=0;r<4;r++){
+    const row=document.createElement('div');row.className='mrow';
+    for(let c=0;c<24;c++){
+      const cell=document.createElement('div');cell.className='mcell';
+      const d=document.createElement('div');d.className='dot';
+      const col=colorAt(c,r*15);
+      d.style.background=col;
+      d.style.opacity = col===COL.n?0.5:1;
+      if(col===COL.n){d.style.background='transparent';d.style.border='1px solid '+COL.n;}
+      cell.appendChild(d);row.appendChild(cell);
+    }
+    wrap.appendChild(row);
+  }
+  // axis
+  const ax=document.createElement('div');ax.className='axis';
+  for(let c=0;c<24;c++){const a=document.createElement('div');a.className='acell';
+    a.textContent=(c%4===0||c===23)?(c===23?'24':String(c).padStart(2,'0')):'';ax.appendChild(a);}
+  wrap.appendChild(ax);
+  // legend
+  const lg=document.createElement('div');lg.className='legend';
+  [['兴奋',COL.e],['愉悦',COL.p],['平静',COL.c],['压力',COL.s],['焦虑',COL.a]].forEach(([t,c])=>{
+    const e=document.createElement('div');e.className='lg';
+    e.innerHTML='<i style="background:'+c+'"></i>'+t;lg.appendChild(e);});
+  wrap.appendChild(lg);
+}
+function buildHist(id){
+  const wrap=document.getElementById(id);
+  const bars=[20,15,10,8,12,30,55,70,85,92,78,60,45,80,95,72,40,35,28,22,18,14,12,10];
+  bars.forEach(v=>{const b=document.createElement('div');b.className='hbar';
+    b.style.height=v+'%';
+    let c= v>75?COL.a : v>55?COL.s : v>35?COL.e : COL.p;
+    b.style.background=c;b.style.opacity=0.9;wrap.appendChild(b);});
+}
+buildMatrix('mA');buildMatrix('mB');buildHist('hA');buildHist('hB');
+</script>
+</body>
+</html>
