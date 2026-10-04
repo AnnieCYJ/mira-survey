@@ -3,7 +3,7 @@ import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect, G, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogBarRatio } from '../lib/cognitiveLoad';
 
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
@@ -44,23 +44,40 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
   // ★ debug: 每次 render 打印 sleepWindow
   try {
     const postLog = (globalThis as any).__postLog;
-    if (postLog) postLog('COG-CARD', `sleepWindow=${JSON.stringify(report?.sleepWindow)} sampleCount=${report?.sampleCount}`);
+    // ★ v18.130：诊断补上「详情页实际画的是哪条序列 + 各档柱数」——
+    //   v18.129 改完用户仍报「详情页全是低疲劳」，但日志里没这条 → 无法对质。
+    const inst = report?.hourlyInstant ?? report?.hourly ?? [];
+    const instHas = inst.filter((h: any) => h.hasData);
+    const instTier = { low: 0, mid: 0, high: 0 };
+    instHas.forEach((h: any) => { const v = h.score; if (v >= 70) instTier.high++; else if (v >= 40) instTier.mid++; else instTier.low++; });
+    const msg = `sleepWindow=${JSON.stringify(report?.sleepWindow)} sampleCount=${report?.sampleCount}`
+      + ` | src=${report?.hourlyInstant ? 'hourlyInstant' : 'hourly(累积!)'}`
+      + ` | hasData=${instHas.length}/24 low=${instTier.low} mid=${instTier.mid} high=${instTier.high}`
+      + ` | vals=[${instHas.map((h: any) => h.hour + ':' + h.score).join(' ')}]`
+      + ` | peakSpan=${JSON.stringify(report?.peakLoadSpan)} bestSpan=${JSON.stringify(report?.bestSpan)}`;
+    if (postLog) postLog('COG-CARD', msg);
     else {
       const fetch = (globalThis as any).fetch;
-      if (fetch) fetch('http://localhost:8899/log', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tag:'COG-CARD', msg:`sleepWindow=${JSON.stringify(report?.sleepWindow)} sampleCount=${report?.sampleCount}`}) }).catch(()=>{});
+      if (fetch) fetch('http://localhost:8899/log', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tag:'COG-CARD', msg}) }).catch(()=>{});
     }
   } catch(e) { console.log('COG-ERR', e); }
   const hasData = report.sampleCount >= 2;
 
   // 无真实数据 → 空骨架示意图（24 根空柱 + 档位轴 + 「暂无数据」浮层），绝不放演示数据
+  // ★ v18.129 改用 `hourlyInstant`（瞬时/状态量），与首页 `MiniCognitiveBars` **同一数据源**。
+  //   原用 `report.hourly`（累积量）→ 首页与详情页一个爬坡、一个等高，用户看着割裂
+  //   （用户要求「首页跟详情页的要一样」）。累积量仍保留给脑力账户（brainUsed/brainRemaining）。
   const hourly = hasData
-    ? report.hourly
+    ? (report.hourlyInstant ?? report.hourly)
     : Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
   const spans = hasData
     ? { peak: report.peakLoadSpan, best: report.bestSpan, sleep: report.sleepWindow }
     : { peak: null, best: null, sleep: null };
 
-  // 疲劳度大数字与柱状图同源 (avgFatigue)；负荷分 loadScore 降为副信息
+  // ★ v18.129 疲劳度大数字也切到**瞬时**均值 `avgFatigueInstant` —— 必须与柱状图同源，
+  //   否则出现「柱子都在同一档，但数字差很多」的割裂（v18.127 首页已切，详情页漏了）。
+  const fatigueShown = report.avgFatigueInstant ?? report.avgFatigue;
+  // 疲劳度大数字与柱状图同源；负荷分 loadScore 降为副信息
   const cogColor = (v: number | null) =>
     v == null ? theme.colors.textTitle
       : v >= COG_LEVEL_HIGH ? theme.colors.danger
@@ -85,7 +102,7 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
         {/* ── 三个核心指标（无数据时换成提示，不显示假数字） ── */}
         {hasData ? (
           <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
-            <SumCell label="疲劳度" value={report.avgFatigue != null ? String(report.avgFatigue) : '—'} valueColor={cogColor(report.avgFatigue)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
+            <SumCell label="疲劳度" value={fatigueShown != null ? String(fatigueShown) : '—'} valueColor={cogColor(fatigueShown)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
             <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
             <SumCell
               label="恢复能力"
@@ -250,11 +267,15 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
             fill={theme.colors.successSoft} />
         )}
 
-        {/* ═══ 24 根整点柱 (无数据也画透明骨架) ═══ */}
+        {/* ═══ 24 根整点柱 · ★ v18.129 柱高改**档位离散**（低/中/高三级，同档等高）
+             与首页 MiniCognitiveBars 调同一个 cogBarRatio()，两处必然同款。
+             原先 `(r.score/100)*plotH` 连续映射：同属「低」档的 12/16/19 会画出三根不同高度，
+             视觉上像在说 19 比 12 累得多 —— 同档内无此含义。 ═══ */}
         {rows.map(r => {
           const x = cx(r.hour) - barW / 2;
           const c = r.hasData ? barColor(r.score) : theme.colors.ui.white25;
-          const h = r.hasData ? Math.max(theme.sp(0.5), (r.score / 100) * plotH) : theme.sp(0.5);
+          const ratio = r.hasData ? cogBarRatio(r.score) : null;
+          const h = ratio == null ? theme.sp(0.5) : Math.max(theme.sp(0.5), ratio * plotH);
           const y = padT + plotH - h;
           return (
             <Rect key={'b' + r.hour}

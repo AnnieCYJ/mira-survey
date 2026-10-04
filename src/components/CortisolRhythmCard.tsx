@@ -15,6 +15,10 @@ import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import KalmanFilter from '../lib/kalman-filter';
+// ★ v18.123：今日曲线改用多模态反推的皮质醇活性（与首页昼夜节律卡同源）
+import { buildCortisolProxyBaseline, buildCortisolProxyToday } from '../lib/cortisolProxy';
+// ★ v18.125：与首页昼夜节律卡**共用同一套绘图几何**（用户：两处图不一样，看着难受）
+import { buildSmoothSeries, computeYRange, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
 const LEVEL_META: Record<string, { label: string; color: string }> = {
   normal: { label: '节律正常', color: mm.colors.ink },
@@ -290,14 +294,10 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 灰色阴影 = 睡眠时段
  */
 export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string }) {
-  console.log(`[TREND-ENTRY] called, hourlyMean=${r.hourlyMean?.filter(v=>v!=null).length}/${r.hourlyMean?.length}`);
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
   const H = 120;
   const padL = 38, padR = 12, padT = 10, padB = 18;
-  const chartW = Math.max(50, W - padL - padR);
-  const chartH = H - padT - padB;
-  const SLOTS = 48;
-  console.log(`[TREND] W=${W.toFixed(0)} padL=${padL} chartW=${chartW.toFixed(0)} x0=${padL} x47=${(padL + chartW).toFixed(0)}`);
+  const SLOTS = CHART_SLOTS;
 
   // ★ 等宽度拿到后再渲染 SVG
   if (W === 0) {
@@ -356,15 +356,13 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   //   旧实现用单日 cosinor 填空——样本稀疏时 acrophase 基本随机，补出的形状是错的。
   let main30: (number | null)[];
   if (isMainToday) {
-    // ★ v18.69 与首页同款「分段连线」：只画真实样本槽；真实样本间隔 ≤1h（中间恰好 1 个
-    //   空槽）桥接连线，>1h 断开——节律插值不再把稀疏观测连成一条连续曲线冒充实测
-    const ex = buildCortisolToday30Ex();
-    main30 = ex.vals.map((v, i) => {
-      if (ex.real[i]) return v;
-      const prevReal = i > 0 && ex.real[i - 1];
-      const nextReal = i < ex.vals.length - 1 && ex.real[i + 1];
-      return prevReal && nextReal ? v : null;   // 1h 桥接点保留；缺口 ≥1.5h 断开
-    });
+    // ★ v18.123：今日主曲线改用**多模态反推的皮质醇活性**（lib/cortisolProxy，与首页昼夜节律卡同源）。
+    //   旧实现 `buildCortisolToday30Ex()` 走的是 cosinor 拟合 + 14 天补形状 ——
+    //   输入是 `stress×1.6+20` 的线性代理，且空槽被拟合曲线填满 → 既非实测、形状也不生理。
+    //   proxy 每槽由该窗口实测 HRV/EDA/体温/心率算出，**没信号就是 null**（不填）。
+    const bl = buildCortisolProxyBaseline(14);
+    const px = buildCortisolProxyToday(bl);
+    main30 = px.vals.map((v, i) => (px.real[i] ? v : null));
   } else {
     main30 = aggregate30m(mainRaw);
     // 历史日：整天都是过去，用该日自己的 cosinor 节律填满
@@ -383,55 +381,36 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   }
   const mainNonNull = main30.filter(v => v != null).length;
   const baseNonNull = baseline30.filter(v => v != null).length;
-  console.log(`🔥 [TREND] dk=${mainDK} mainRaw=${mainRaw.length} mainNonNull=${mainNonNull}/48 baselineNonNull=${baseNonNull}/48`);
-  // ★ 数据分布诊断
-  if (mainRaw.length > 0) {
-    const times = mainRaw.map(p => new Date(p.t).toLocaleTimeString().slice(0,5));
-    const vals = mainRaw.map(p => p.v.toFixed(0));
-    console.log(`🔥 [TREND] mainRaw TIMES=[${times.join(",")}]`);
-    console.log(`🔥 [TREND] mainRaw VALS=[${vals.join(",")}] unit=SDK_μg/L`);
-    const nonNull30 = main30.map((v,i) => v != null ? `${i/2}h=${v.toFixed(1)}` : null).filter(Boolean);
-    console.log(`🔥 [TREND] main30 SLOTS: ${nonNull30.join(", ")}`);
-  }
+  // ★ v18.125：清掉 v18.123 排查时加的逐帧 console.log（每帧刷 5 行、真机日志被冲掉）
 
   // （v18.65：旧「单日 cosinor 填空 + isMainToday 未来截断」已上移进上面的同源分支——
   //   今日曲线直接取 buildCortisolToday30()，与首页完全一致；历史日填满整天。）
 
-  // Y 轴范围
-  const allVals = [...baseline30, ...main30].filter((v): v is number => v != null);
-  if (allVals.length < 2) { console.log(`[TREND-SKIP] allVals=${allVals.length}`); return null; }
-  const yLo = Math.min(...allVals) * 0.7;
-  const yHi = Math.max(...allVals) * 1.1;
+  // ★ v18.125：**与首页昼夜节律卡调用同一个 buildSmoothSeries()**。
+  //   改动前：首页是 Catmull-Rom 平滑曲线，详情页是 `makePath` 的直线折线（L 拼接）——
+  //   同一份数据、一个圆润一个尖角嶙峢，用户反馈「看着难受」。现在物理上不可能再分叉。
+  //   · 今日主曲线：走 proxy 的 48 槽实测活性（real 标记有生理信号的槽）
+  //   · 14 天基线：同样平滑（此前也是折线 + 逐点小圆点，视觉噪）
+  const todayReal: boolean[] = main30.map((v) => v != null);
+  // ★ 14 天基线也要平滑：基线本身来自 14 天逐样本聚合，稀疏时折线很难看。
+  //   用「真实槽=有聚合值的槽」构造，gapSlots 放大到 4（2 小时）避免基线被切太碎。
+  const baseReal: boolean[] = baseline30.map((v) => v != null);
+  // 先取「今日 + 14 天基线」的并集 Y 范围，再让两条线都用这一把尺
+  const yr = computeYRange([
+    { values: main30, real: todayReal },
+    { values: baseline30, real: baseReal },
+  ]);
+  const gMain = buildSmoothSeries(main30, todayReal, { W, H, padL, padR, padT, padB }, { yLo: yr.lo, yHi: yr.hi });
+  const gBase = buildSmoothSeries(baseline30, baseReal, { W, H, padL, padR, padT, padB }, { gapSlots: 4, yLo: yr.lo, yHi: yr.hi });
+  const yLo = yr.lo;
+  const yHi = yr.hi;
   const yRange = yHi - yLo || 1;
-  // ⚠️ 必须放在 yLo/yHi/yRange 声明之后：Hermes 不做 TDZ 检查，提前访问只会得到 undefined，
-  //    对 undefined 调 .toFixed 会整屏 Render Error（曾把皮质醇卡片打成红屏）。
-  console.log(`🔥 [TREND] yLo=${yLo.toFixed(0)} yHi=${yHi.toFixed(0)} range=${yRange.toFixed(0)}`);
-
-  // 坐标换算
-  const xOfSlot = (slot: number) => padL + (slot / (SLOTS - 1)) * chartW;
-  const yOf = (v: number) => padT + chartH - ((v - yLo) / yRange) * chartH;
-
-  // 生成 SVG path (空槽 = 断线)
-  const makePath = (arr: (number | null)[]) => {
-    let d = '';
-    let started = false;
-    arr.forEach((v, i) => {
-      if (v == null) { started = false; return; }
-      d += (started ? ' L' : 'M') + `${xOfSlot(i).toFixed(1)},${yOf(v).toFixed(1)}`;
-      started = true;
-    });
-    return d;
-  };
-
-  const basePath = makePath(baseline30);
-  const todayPath = makePath(main30);
-
-  // ★ v18.65 首页同款曲线样式：ringTeal 线 + 曲线下渐变面积（仅今日视图，历史日保持纯线）
-  const mainIdxs = main30.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0);
-  const todayAreaPath =
-    isMainToday && mainIdxs.length >= 2
-      ? `${todayPath} L ${xOfSlot(mainIdxs[mainIdxs.length - 1]).toFixed(1)},${(padT + chartH).toFixed(1)} L ${xOfSlot(mainIdxs[0]).toFixed(1)},${(padT + chartH).toFixed(1)} Z`
-      : '';
+  const basePath = gBase.linePath;
+  const todayPath = gMain.linePath;
+  const xOfSlot = gMain.xOf;
+  const yOf = (v: number) => gMain.yOf(v);
+  const chartH = gMain.chartH;
+  const chartW = gMain.chartW;
 
   // 睡眠阴影
   const sleepRects: { x: number; w: number }[] = [];
@@ -458,7 +437,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
             <Stop offset="100%" stopColor={mm.colors.ringTeal} stopOpacity="0.02" />
           </LinearGradient>
         </Defs>
-        {todayAreaPath ? <Path d={todayAreaPath} fill="url(#trendArea)" /> : null}
+        {gMain.areaPath ? <Path d={gMain.areaPath} fill="url(#trendArea)" /> : null}
 
         {/* 睡眠阴影 */}
         {sleepRects.map((sr, i) => (
@@ -484,14 +463,44 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
         {basePath ? (
           <Path d={basePath} stroke={mm.colors.ink} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5,4" />
         ) : null}
-        {/* 基线数据点 (绿色) */}
-        {baseline30.map((v, i) => v != null && (
-          <Circle key={'b'+i} cx={xOfSlot(i)} cy={yOf(v)} r={2} fill={mm.colors.ink} />
-        ))}
+        {/* ★ v18.125：14 天基线不再逐点画小圆（用户要「平滑」）——
+            折线已由共用模块平滑成曲线，散点只会让它看起来噪。 */}
 
         {/* 今天（★ v18.65 与首页同款：ringTeal 实线 2.6pt 圆头，不再用紫线+逐点圆） */}
         {todayPath ? (
           <Path d={todayPath} stroke={mm.colors.ringTeal} strokeWidth={2.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        ) : null}
+
+        {/* ★ v18.125 与首页对齐：孤立真实单点画实心点（真实但断开，画了才知道「测到了」） */}
+        {gMain.singles.map((p, k) => (
+          <Circle key={'sg' + k} cx={p.x} cy={p.y} r={3.2} fill={mm.colors.ringTeal} />
+        ))}
+
+        {/* ★ v18.125 与首页对齐：峰值竖虚线 + 发光圆点 + 时刻标签 */}
+        {gMain.peakIdx >= 0 ? (
+          <>
+            <Line
+              x1={gMain.peakX}
+              y1={gMain.peakY}
+              x2={gMain.peakX}
+              y2={gMain.yBase}
+              stroke={mm.colors.ringTealDeep}
+              strokeOpacity={0.42}
+              strokeWidth={1}
+              strokeDasharray="3,3"
+            />
+            <Circle cx={gMain.peakX} cy={gMain.peakY} r={4.2} fill={mm.colors.limeMid} />
+            <SvgText
+              x={Math.min(Math.max(gMain.peakX, padL + 16), padL + chartW - 16)}
+              y={Math.max(gMain.peakY - 12, 12)}
+              fontSize={11}
+              fontWeight="600"
+              fill={mm.colors.ringTealDeep}
+              textAnchor="middle"
+            >
+              {slotToClock(gMain.peakIdx)}
+            </SvgText>
+          </>
         ) : null}
 
         {/* X 时间刻度 0/6/12/18/24 */}
@@ -503,14 +512,17 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
         })}
       </Svg>
 
-      {/* 图例 */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: theme.sp(0.5) }}>
-        <Text style={{ fontSize: 11, color: theme.colors.textSub, marginHorizontal: 8 }}>
-          <Text style={{ color: mm.colors.ink }}>- -</Text> 14 天基线
-        </Text>
-        <Text style={{ fontSize: 11, color: theme.colors.textSub, marginHorizontal: 8 }}>
-          <Text style={{ color: mm.colors.ringTeal }}>—</Text> {mainLabel}
-        </Text>
+      {/* ★ v18.125 图例：用真实线段样式（View 画线）而不是「- -」「—」字符 ——
+          字符字形与实际 strokeDasharray 观感不一致，线宽/虚线间距都对不上。 */}
+      <View style={styles.trendLegend}>
+        <View style={styles.trendLegendItem}>
+          <View style={[styles.trendLegendDash, { borderColor: mm.colors.ink }]} />
+          <Text style={styles.trendLegendTx}>14 天基线</Text>
+        </View>
+        <View style={styles.trendLegendItem}>
+          <View style={[styles.trendLegendLine, { backgroundColor: mm.colors.ringTeal }]} />
+          <Text style={styles.trendLegendTx}>{mainLabel}</Text>
+        </View>
       </View>
     </View>
   );
@@ -568,6 +580,11 @@ function fmt(v: number): string {
 }
 
 const styles = StyleSheet.create({
+  trendLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(2), marginTop: theme.sp(0.5) },
+  trendLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.8) },
+  trendLegendLine: { width: theme.sp(3), height: 2.6, borderRadius: 1.3 },
+  trendLegendDash: { width: theme.sp(3), height: 0, borderTopWidth: 1.5, borderStyle: 'dashed' },
+  trendLegendTx: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
   levelChip: { flexDirection: 'row', alignItems: 'center', borderRadius: theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10 },

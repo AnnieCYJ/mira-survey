@@ -240,14 +240,28 @@ export class BaselineStore {
     this.dayCount = history.filter((r) => !r.fever).length;
   }
 
-  /** 返回某指标在某相位的基线值 + 来源（同相位个人 → 全局个人 → 文献群体） */
+  /**
+   * 返回某指标在某相位的基线值 + 来源（同相位个人 → 全局个人 → 文献群体）。
+   *
+   * ★ v18.115 分级门槛：个人基线**按已有天数逐级收紧**，而不是死等「同相位 8 天 + 总计 30 天」。
+   * 原因：用户回填的通常是近 5~14 天，原门槛下这些天全部落到文献值（HRV 50 / RHR 59 / 睡眠 74），
+   * 等于「明明有自己的数据却用通用值算」。分级后：
+   *   第 1 档 ≥3 天  → 用个人中位数（HRV/RHR 波动大，3 天已明显优于群体值）
+   *   第 2 档 ≥5 天  → 个人中位数 + 更紧的 MAD 剔除阈值
+   *   第 3 档 ≥8 天且总计 ≥30 天 → 正式启用「同相位个人基线」（HRV 有明显周期差异，必须样本足）
+   * 分级只影响**何时切换到个人值**，不改变打分公式 —— 避免引入额外不确定度。
+   */
   baselineFor(metric: MetricKeyAlg, phase: PhaseBucket): { value: number; source: 'phase' | 'global' | 'lit' } {
     const phaseArr = (this.byPhase[phase] ?? this.byPhase.unknown)[metric];
     const globalArr = this.globalAll[metric];
+    // 第 3 档：同相位个人基线（样本最足时才用，HRV 的周期差异需要足够天数才可靠）
     if (phaseArr.length >= this.c.MIN_PHASE_SAMPLES && this.dayCount >= this.c.MIN_DAYS) {
       return { value: madMedian(phaseArr), source: 'phase' };
     }
-    if (globalArr.length >= this.c.MIN_GLOBAL_SAMPLES) {
+    // ★ 第 1/2 档：全局个人基线，3 天起就能用上自己的数据
+    // （分级只决定「何时切到个人值」，不改打分公式；同相位那档仍要求样本充足）
+    const MIN_STAGED = 3;
+    if (globalArr.length >= MIN_STAGED) {
       return { value: madMedian(globalArr), source: 'global' };
     }
     const lit = LIT[phase] ?? LIT.unknown;

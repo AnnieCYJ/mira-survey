@@ -29,7 +29,7 @@ import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { buildNaturalPeriods, buildPrevNaturalPeriods } from '../lib/periods';
 // ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
-import { cogLevel, cogLevelLabel, computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH } from '../lib/cognitiveLoad';
+import { cogLevel, cogLevelLabel, computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, COG_LEVEL_BAR_RATIO } from '../lib/cognitiveLoad';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
@@ -277,8 +277,10 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5), marginBottom: theme.sp(1) }}>
             <Text style={styles.cardTitle}>认知疲劳度</Text>
             {(() => {
-              // 与卡片大数字 / 柱状图同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）
-              const lv = cogLevel(report.avgFatigue);
+              // ★ v18.131 档位徽章改用**瞬时**均值 avgFatigueInstant ——
+              //   与下方 FatigueTimeline 柱状图逐槽同源。原用累积量 avgFatigue，
+              //   两者能差出一整档（用户看到「柱子都是绿的但徽章写低疲劳/不一致」）。
+              const lv = cogLevel(report.avgFatigueInstant ?? report.avgFatigue);
               const map = {
                 low: { text: '低疲劳', color: theme.colors.success },
                 mid: { text: '中疲劳', color: theme.colors.warn },
@@ -294,7 +296,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           </View>
           <FatigueTimeline report={report} />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            横轴为一天时间（已去掉睡眠时段），每半小时一根柱，柱高对应疲劳档位（低 / 中 / 高），颜色同档位
+            横轴为一天时间（已去掉睡眠时段），每半小时一根柱，同档柱子等高；颜色与高度都对应疲劳档位（低 / 中 / 高）
           </Text>
         </View>
       </Card>
@@ -347,7 +349,12 @@ function isAsleep(hour: number, sleep: { bedHour: number; wakeHour: number } | n
 // ★ SVG 必须用 viewBox + width 100% 自适应卡片宽；纵轴标注 低/中/高 三档
 function FatigueTimeline({ report }: { report: any }) {
   const sleep = report.sleepWindow;
-  const hourly: { hour: number; score: number; hasData: boolean }[] = report.hourly ?? [];
+  // ★ v18.131 数据源改**瞬时**（与首页 MiniCognitiveBars / 详情页 HourHistogram 同源）。
+  //   原来用 `report.hourly`（**累积**量）→ 这张图显示的是一路爬升的斜坡，
+  //   与同页上方的 HourHistogram（已改瞬时）**同一页出现两种形态** = 用户说的「不一样」。
+  //   累积量仍保留给脑力账户（brainReserve/brainUsed/brainRemaining）。
+  const hourly: { hour: number; score: number; hasData: boolean }[] =
+    report.hourlyInstant ?? report.hourly ?? [];
   // 24 小时 → 48 个半小时槽
   const slots: { score: number | null; asleep: boolean }[] = [];
   for (let h = 0; h < 24; h++) {
@@ -368,8 +375,10 @@ function FatigueTimeline({ report }: { report: any }) {
   const plotH = 112;
   const plotBottom = plotTop + plotH;
   const chartH = plotBottom + 18;
-  // 三档离散高度（低/中/高 各一个档位高度，让档位一眼可辨）
-  const LEVEL_H = { low: 0.30, mid: 0.62, high: 1.0 } as const;
+  // ★ v18.131 档位高度改用**共用** COG_LEVEL_BAR_RATIO（与首页/详情页另一张图同源）。
+  //   原来这里自己写死 `{low:0.30, mid:0.62, high:1.0}`，与共用的 `{low:0.34, mid:0.67, high:1.0}`
+  //   不一样 —— **同一页两张图的中档柱子高度不同**（0.62 vs 0.67），肉眼可见。
+  const LEVEL_H = COG_LEVEL_BAR_RATIO;
   const LEVEL_C = { low: theme.colors.success, mid: theme.colors.warn, high: theme.colors.danger } as const;
   const xOf = (i: number) => AX_L + i * step;
   const yOfLevel = (lh: number) => plotBottom - lh * plotH;
@@ -381,7 +390,7 @@ function FatigueTimeline({ report }: { report: any }) {
         <Rect key={`sl${i}`} x={xOf(i)} y={plotTop} width={step} height={plotH} fill={theme.colors.ui.borderSoft} opacity={0.45} />
       ) : null)}
       {/* 纵轴：三档档位线 + 标签 */}
-      {([['high', 1.0, '高'], ['mid', 0.62, '中'], ['low', 0.30, '低']] as const).map(([key, lh, label]) => (
+      {([['high', LEVEL_H.high, '高'], ['mid', LEVEL_H.mid, '中'], ['low', LEVEL_H.low, '低']] as const).map(([key, lh, label]) => (
         <G key={`lv${key}`}>
           <Line x1={AX_L} y1={yOfLevel(lh)} x2={W - AX_R} y2={yOfLevel(lh)} stroke={theme.colors.cardBorder} strokeWidth={0.6} strokeDasharray="3 4" opacity={0.7} />
           <SvgText x={AX_L - 4} y={yOfLevel(lh) + 3} textAnchor="end" fontSize={8.5} fill={LEVEL_C[key]}>{label}</SvgText>

@@ -95,3 +95,131 @@ export function computeSleepScore(
   const v = 100 * parts.reduce((acc, p) => acc + (p.w / sumW) * p.v, 0);
   return Math.round(clamp(v, 0, 100));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v18.144 · 个人相对口径
+//
+// ★ 为什么加这个而不改 computeSleepScore：
+//   `computeSleepScore` 是**落盘字段** `healthStore.sleep[dk].score` 的生产者，
+//   被 RingBleManager / healthStore / 全项目 UI 读。直接改算法会让历史数据
+//   （用旧口径算出的分）与新算法算出的分**混在同一字段里无法区分**。
+//   ⇒ 正确做法：**保留绝对分作冷启动/回退**，另开一个「今天该显示哪个」的入口。
+//
+// 口径（与 Oura 一致）：**对比你自己的 14 天基线**，不是对比 7.5h 这个常量。
+//   详见 sleepBaseline.ts 头注（含「睡 9h 但平时也睡 9h 不该被扣分」这个反例）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 把「今天值相对个人中心的偏离」换算成 0-1 归一分。 */
+function relNorm(today: number, base: number, tol: number): number {
+  if (base <= 0 || tol <= 0) return 0.5;
+  const ratio = today / base;
+  return clamp(0.5 + (ratio - 1) * (0.5 / tol), 0, 1);
+}
+
+export interface PersonalizedSleepResult {
+  /** 最终分 0-100（整数） */
+  score: number;
+  /** 口径：relative = 已对比个人基线；absolute = 基线不足，仍用旧绝对口径 */
+  mode: 'relative' | 'absolute';
+  /** 参与基线的天数 */
+  baselineDays: number;
+  /** 距进入个人化口径还差几天（relative 时为 0） */
+  daysToReady: number;
+  /** 各维度归一分（诊断用；absolute 模式下为 null） */
+  parts?: { key: string; w: number; v: number; today: number | null; base: number | null }[];
+}
+
+/**
+ * 睡眠恢复分（个人相对口径，基线不足自动退回绝对口径）。
+ *
+ * @param today      今晚这一觉
+ * @param centers    个人四维基线中心（`buildSleepDimensionCenters().centers`）
+ * @param baselineDays 参与基线的天数
+ * @param ready      是否达到个人化门槛（`buildSleepDimensionCenters().ready`）
+ * @param c          权重与绝对目标（沿用 SLEEP_SCORE_DEFAULTS，保证两套口径权重一致）
+ */
+export function computePersonalizedSleepScore(
+  today: SleepScoreInput,
+  centers: {
+    total: number | null; deepPct: number | null; eff: number | null; getUp: number | null;
+  },
+  baselineDays: number,
+  ready: boolean,
+  c: SleepScoreConst = SLEEP_SCORE_DEFAULTS,
+): PersonalizedSleepResult {
+  const MIN_D = 5;
+  if (!ready || baselineDays < MIN_D) {
+    return {
+      score: computeSleepScore(today, c),
+      mode: 'absolute',
+      baselineDays,
+      daysToReady: Math.max(0, MIN_D - baselineDays),
+    };
+  }
+
+  const total = today.sleepTotal ?? 0;
+  const parts: PersonalizedSleepResult['parts'] = [];
+
+  // ① 时长：相对自己的平均时长。tol=10% ⇒ 睡够 10% 拿满分、睡够 −10% 拿 0 分。
+  //   ⚠ 与绝对口径的差别：绝对口径对「比平时多睡」也给满分（7.5h+ 封顶），
+  //   这里给**超出部分不加分但不扣分**（ratio>1 时 clamp 到 1）—— 与 Oura 一致。
+  if (centers.total != null && centers.total > 0) {
+    parts.push({
+      key: 'duration', w: c.W_D,
+      v: relNorm(total, centers.total, 0.10),
+      today: total, base: centers.total,
+    });
+  }
+  // ② 深睡占比
+  if (total > 0 && centers.deepPct != null && centers.deepPct > 0) {
+    const deepPct = ((today.sleepDeep ?? 0) / total) * 100;
+    parts.push({
+      key: 'deep', w: c.W_DEEP,
+      v: relNorm(deepPct, centers.deepPct, 0.25),
+      today: deepPct, base: centers.deepPct,
+    });
+  }
+  // ③ 效率（与个人基线比；绝对目标是 85%，个人基线通常在 85% 上下，
+  //    所以这里 tol 用 0.06（±6 个百分点）比时长的 10% 更严）
+  if (today.sleepAwake != null && Number.isFinite(today.sleepAwake) && total > 0 && centers.eff != null && centers.eff > 0) {
+    const eff = ((total - today.sleepAwake) / total) * 100;
+    parts.push({
+      key: 'eff', w: c.W_EFF,
+      v: relNorm(eff, centers.eff, 0.06),
+      today: eff, base: centers.eff,
+    });
+  }
+  // ④ 起夜次数：个人基线可能是 0.5 次/晚，这时「相对」几乎无意义
+  //   ⇒ 只有基线 ≥0.8 次才纳入，否则起夜这个维度对「从不夜醒的人」完全失效。
+  //   （这是个真实缺陷：绝对口径下从不夜醒的人该项满分 1.0，纳入相对分反而被扣。）
+  if (today.getUp != null && Number.isFinite(today.getUp) && centers.getUp != null && centers.getUp >= 0.8) {
+    parts.push({
+      key: 'getup', w: c.W_G,
+      // 起夜越少越好 ⇒ 方向取反：today < base ⇒ 分数高
+      v: clamp(0.5 + ((centers.getUp - today.getUp) / centers.getUp) * 0.5, 0, 1),
+      today: today.getUp, base: centers.getUp,
+    });
+  }
+
+  if (!parts.length) {
+    return {
+      score: computeSleepScore(today, c),
+      mode: 'absolute',
+      baselineDays,
+      daysToReady: 0,
+    };
+  }
+
+  const sumW = parts.reduce((a, p) => a + p.w, 0);
+  // 相对口径的锚点：与个人基线一样 ⇒ 50 分（不是绝对口径的 100）。
+  // ⚠ 这是最重要的口径变化：50 = 和你平时一样。UI 副标必须写清，
+  //   否则用户会把 62 读成「睡眠 62 分」（绝对量）。
+  const v = 100 * parts.reduce((a, p) => a + (p.w / sumW) * p.v, 0);
+  return {
+    score: Math.round(clamp(v, 0, 100)),
+    mode: 'relative',
+    baselineDays,
+    daysToReady: 0,
+    parts,
+  };
+}

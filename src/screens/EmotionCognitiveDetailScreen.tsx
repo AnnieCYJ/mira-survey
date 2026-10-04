@@ -27,6 +27,8 @@ import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { collectSamples, collectSamplesForDay, collectSamplesForRange } from '../components/CortisolRhythmCard';
+// ★ v18.124：皮质醇水平/峰值改用多模态反推的实测槽统计（与首页/趋势图同源）
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots } from '../lib/cortisolProxy';
 import { analyzeCortisol, type CortisolSample, type RhythmLevel } from '../lib/cortisolRhythm';
 import { type RangeKey } from '../data/metrics';
 import { type StressReport } from '../lib/stressAlgorithm';
@@ -128,9 +130,29 @@ function aggregateOverDays(days: Date[]): RangeAgg {
 
   const startMs = days[days.length - 1].getTime();
   const endMs = days[0].getTime() + DAY_MS - 1;
-  const samples: CortisolSample[] = collectSamplesForRange(startMs, endMs);
-  const r = samples.length >= 4 ? analyzeCortisol(samples, days.length) : null;
-  const cos = r?.cosinor;
+  // ★ v18.124：皮质醇水平/峰值改用**多模态反推的实测槽统计**（lib/cortisolProxy）。
+  //   旧实现 `collectSamplesForRange` 读的是 cortisol intraday（`stress×1.6+20` 线性代理），
+  //   经 `analyzeCortisol` 拟合 cosinor —— 今天只有 8 条/4 槽 → 拟合不出 → mesor/acrophaseH 是 NaN
+  //   → 详情页「平均压力水平 / 平均峰值时刻」全显示「—」（用户实锤「都是杠」）。
+  //   新口径：**逐日**用 `buildCortisolProxyToday(now=该日)` 取 48 槽实测活性，再对区间取均值。
+  //   注意 proxy 的基线窗口不含当天（v18.117），所以历史日必须逐日单独算，不能只算一次。
+  const perDayMesor: (number | null)[] = [];
+  const perDayPeak: (number | null)[] = [];
+  const perDayMesors: { date: string; mesor: number }[] = [];
+  for (const d of days) {
+    try {
+      const pbl = buildCortisolProxyBaseline(14, d.getTime() + DAY_MS - 1);
+      const px = buildCortisolProxyToday(pbl, { now: d.getTime() + DAY_MS - 1 });
+      const s = proxySummaryFromSlots(px.vals, px.real);
+      perDayMesor.push(s.mesor);
+      perDayPeak.push(s.acrophaseH);
+      if (s.mesor != null) perDayMesors.push({ date: dayKey(d.getTime()), mesor: s.mesor });
+    } catch {
+      perDayMesor.push(null);
+      perDayPeak.push(null);
+    }
+  }
+  perDayMesors.sort((a, b) => a.date.localeCompare(b.date));
 
   return {
     days: days.length,
@@ -147,11 +169,12 @@ function aggregateOverDays(days: Date[]): RangeAgg {
       })
     ),
     sleepScore: mean(sleeps.map((s) => (s && s.score != null ? s.score : null))),
-    cortisolMesor: r && cos && Number.isFinite(cos.mesor) ? cos.mesor : null,
-    cortisolPeakH: r && cos && Number.isFinite(cos.acrophaseH) ? cos.acrophaseH : null,
-    cortisolCss: r ? r.css : null,
-    cortisolStatus: r ? r.status.level : null,
-    cortisolDaily: r ? r.dailyMesors : [],
+    // ★ v18.124：取上面逐日 proxy 实测统计的均值（不再读 cosinor 拟合值）
+    cortisolMesor: mean(perDayMesor),
+    cortisolPeakH: mean(perDayPeak),
+    cortisolCss: null,
+    cortisolStatus: null,
+    cortisolDaily: perDayMesors,
   };
 }
 
@@ -268,10 +291,27 @@ export default function EmotionCognitiveDetailScreen() {
   }, [range, anchor]);
 
   // ── 返回头/大字：今日皮质醇节律结论（固定=今天，与当前 anchor/range 选择无关） ──
+  // ★ v18.124：顶部大字也改用 proxy 实测口径（与趋势图、下面两个格子同源）。
+  //   旧实现 `analyzeCortisol(collectSamples(), 14)` 读 cortisol intraday + cosinor 拟合 →
+  //   样本稀疏时 todayLevel 恒 'normal'、洞察文案也不对。
   const todayRhythm = useMemo(() => {
-    const r = analyzeCortisol(collectSamples(), 14);
-    return { level: r.todayLevel, firstInsight: buildRhythmInsights(r, true)[0] ?? '' };
-    // 依赖 refreshKey：回填/实时皮质醇到达后，顶部「今日皮质醇节律」大字与节律卡同步刷新
+    try {
+      const pbl = buildCortisolProxyBaseline(14);
+      const px = buildCortisolProxyToday(pbl);
+      const sm = proxySummaryFromSlots(px.vals, px.real);
+      if (sm.mesor == null) {
+        return { level: 'normal' as const, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+      }
+      // 按实测水平给档位（阈值与首页「压力偏高/放松良好/节律平稳」一致：≥70 偏高、≤40 放松）
+      const level = sm.mesor >= 70 ? ('high' as const) : sm.mesor <= 40 ? ('normal' as const) : ('normal' as const);
+      const peakClock = `${String(Math.floor(sm.acrophaseH ?? 0)).padStart(2, '0')}:${(sm.acrophaseH ?? 0) % 1 >= 0.5 ? '30' : '00'}`;
+      const word = sm.mesor >= 70 ? '压力偏高' : sm.mesor <= 40 ? '放松良好' : '节律平稳';
+      const amp = sm.amplitudePct != null ? `波动 ${sm.amplitudePct}%` : '活性已建模';
+      return { level, firstInsight: `今日皮质醇活性平均 ${sm.mesor}（${amp}）· ${word}，峰值出现在 ${peakClock}。由心率变异性、皮电、体温与心率反推。` };
+    } catch {
+      return { level: 'normal' as const, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+    }
+    // 依赖 refreshKey：回填/实时数据到达后，顶部大字与节律卡同步刷新
   }, [refreshKey]);
   /**
    * 节律结论文案。颜色不再按状态区分——统一走主题 `textTitle`，
@@ -532,61 +572,7 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
     <>
       <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} />
 
-      {/* 三张摘要卡（外大卡纵向，内小卡横向各含对比） */}
-      <View style={{ gap: theme.sp(1), marginTop: theme.sp(2) }}>
-        {/* 情绪消耗摘要 */}
-        <Card padded={false}>
-          <View style={{ padding: theme.sp(3) }}>
-            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>情绪消耗摘要</Text>
-            <View style={{ flexDirection: 'row', gap: theme.sp(1) }}>
-              <MetricMini label="压力事件" value={`${s.events.length}`} todayN={s.events.length} prevN={sP.events.length} unit="次" goodWhen="down" bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-              <MetricMini label="恢复时长" value={s.avgRecoverySec != null ? `${s.avgRecoverySec}` : '—'} todayN={s.avgRecoverySec} prevN={sP.avgRecoverySec} unit="s" goodWhen="down" bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-              <MetricMini label="峰值时段" value={s.peakHour != null ? `${String(Math.floor(s.peakHour)).padStart(2, '0')}:00` : '—'} noCompare bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-            </View>
-          </View>
-        </Card>
-
-        {/* 脑力消耗摘要 — v2: 脑力值 / 专注力 / 决策力 + 预测峰谷 */}
-        <Card padded={false}>
-          <View style={styles.pad}>
-            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>疲劳摘要</Text>
-            {/* Row 1: 当下能力 */}
-            <View style={styles.metricRow}>
-              <MetricMini label="节律能量" value={g.mentalEnergy != null ? (g.mentalEnergy >= 65 ? '高' : g.mentalEnergy >= 40 ? '中' : '低') : '—'} noCompare bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-              <MetricMini label="专注力" value={g.focusScore != null ? String(g.focusScore) : '—'} todayN={g.focusScore} prevN={gP.focusScore} goodWhen="up" bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-              <MetricMini label="决策力" value={g.decisionScore != null ? String(g.decisionScore) : '—'} todayN={g.decisionScore} prevN={gP.decisionScore} goodWhen="up" bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-            </View>
-            {/* Row 2: 预测峰谷 + 脑力负荷 */}
-            <View style={[styles.metricRow, { marginTop: theme.sp(1.5) }]}>
-              <MetricMini
-                label="峰值预测"
-                value={g.forecast?.peak
-                  ? `${String(g.forecast.peak.hour).padStart(2, '0')}:00`
-                  : '—'}
-                sub={g.forecast?.peak ? `脑力 ${g.forecast.peak.energy}` : undefined}
-                noCompare
-                bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
-              />
-              <MetricMini
-                label="低谷预测"
-                value={g.forecast?.trough
-                  ? `${String(g.forecast.trough.hour).padStart(2, '0')}:00`
-                  : '—'}
-                sub={g.forecast?.trough ? `脑力 ${g.forecast.trough.energy}` : undefined}
-                noCompare
-                bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg}
-              />
-              <MetricMini label="认知负荷" value={g.loadScore != null ? ((() => {
-  const ll = g.loadLevel;
-  if (ll === 'rested' || ll === 'light') return '低';
-  if (ll === 'moderate') return '中';
-  if (ll === 'heavy') return '高';
-  return g.loadScore < 40 ? '低' : g.loadScore < 65 ? '中' : '高';
-})()) : '—'} noCompare bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-            </View>
-          </View>
-        </Card>
-
+      {/* ★ v18.123 用户要求：去掉「情绪消耗摘要」与「疲劳摘要」两张卡，只保留下面的睡眠恢复摘要。 */}
         {/* 睡眠恢复摘要 */}
         <Card padded={false}>
           <View style={styles.pad}>
@@ -598,7 +584,6 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
             </View>
           </View>
         </Card>
-      </View>
     </>
   );
 }
@@ -919,7 +904,10 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(2) },
 
   summaryGrid: { flexDirection: 'row' },
-  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
+  // ★ v18.123：用户不喜欢灰色底。原 `cardBgSoft` = #F7F6FC（冷灰紫）。
+  //   换成品牌紫的极浅底（accentSoft 系列），与皮质醇卡的紫调一致；
+  //   文字色不变（textTitle/textSub 在浅紫上对比度更高，实测 AA 达标）。
+  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.accentSoft, marginHorizontal: theme.sp(0.5) },
   sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
   sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },

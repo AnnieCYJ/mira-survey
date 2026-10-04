@@ -83,6 +83,11 @@ export const colors = {
   avatarBorderLight: 'rgba(157,138,240,0.55)',
   orbTextInk: '#2E2A3A',
   orbTextInkSub: '#6B6480',
+  /** ★ v18.118：用于「更新于 HH:MM」这类时效信息。比 orbTextInk 弱一档（信息层级：值 > 时效），
+   *  但仍保持 WCAG AA：圆环中心背景是浅紫玻璃渐变（#F7F5FE~#B5A9F2），
+   *  本色在**最深的 #B5A9F2 上仍有 4.70:1**（AA 阈值 4.5），全区间 4.70~10.4:1。
+   *  （注：既有的 orbTextInkSub #6B6480 在深端只有 2.64:1，是历史遗留，不在本次改动范围。） */
+  orbTextInkFaint: '#453F5A',
   cardBg: '#FFFFFF',
   cardBgSoft: '#F7F6FC',
   cardBgStrong: '#FFFFFF',

@@ -716,7 +716,25 @@ export class HealthStore {
   loadV2(json: any): void {
     if (!json || json.schema !== SCHEMA_VERSION) return;
     for (const k of ALL_METRIC_KEYS) {
-      this.stores[k] = json.stores?.[k] ?? emptyStore();
+      const incoming = json.stores?.[k];
+      // ★ v18.111 破坏性覆盖修复：旧版本写盘时若在回填落盘前就存过一次，
+      //   快照里 stores 可能是**空壳**（{daily:{},intraday:{},manualMeasurements:[]}）。
+      //   旧实现 `?? emptyStore()` 会把快照里那个空壳当成有效值灌进来，
+      //   在内存已有数据时也照样清空 → 重启后 healthStore 全空，
+      //   而 legacy 快照（mira_ring_state_v1.json）里当天数据还在 → 两套数据源打架，
+      //   intraday 重建拿不到任何窗口，全天状态趋势图 / 皮质醇昼夜节律画不出来。
+      // 现在：快照里该指标确实没有任何数据时，**保留内存现状**（不清空）。
+      if (incoming) {
+        const hasData =
+          Object.keys(incoming.daily ?? {}).length > 0 ||
+          Object.keys(incoming.intraday ?? {}).length > 0 ||
+          (incoming.manualMeasurements?.length ?? 0) > 0;
+        if (hasData || !this.stores[k]) {
+          this.stores[k] = incoming;
+        }
+      } else if (!this.stores[k]) {
+        this.stores[k] = emptyStore();
+      }
     }
     // ★ 睡眠评分是「由冻结的原始 total/deep/getUp 算出的**派生值**」，必须按**当前公式**重算。
     //   否则快照里按旧公式存下的 score（例如满屏 100）会被原样恢复 → 改了公式却"看不出变化"。

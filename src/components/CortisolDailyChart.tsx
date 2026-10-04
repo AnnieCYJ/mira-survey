@@ -5,7 +5,7 @@
  *   collectSamples → analyzeCortisol → TrendChart（30min 槽位 + cosinor 填补 + 睡眠阴影 + 14天基线对比）
  * 点击卡片 → 跳转 MetricDetail（皮质醇日/周/月/年趋势）
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -14,6 +14,8 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { dayKey } from '../data/healthStore';
 
 /**
@@ -82,11 +84,26 @@ export default function CortisolDailyChart({
   insightRows?: AiInsightRow[];
 } = {}) {
   const navigation = useNavigation<any>();
+  // ★ v18.123：回填/实时数据到达后要重算曲线（与首页昼夜节律卡同一 hook）
+  const hsRefresh = useDebouncedHealthStoreRefresh(700);
   const isToday = anchorDayMs == null || dayKey(anchorDayMs) === dayKey(Date.now());
   const targetMs = anchorDayMs ?? Date.now();
   const targetDk = dayKey(targetMs);
-  const samples = isToday ? collectSamples() : collectSamplesForDay(targetDk);
+  // ★ v18.123：数据源切到**多模态反推的皮质醇活性**（v18.116 方案 A），与首页昼夜节律卡同源。
+  //   旧实现读 `collectSamples()`（cortisol intraday，来自 `stress×1.6+20` 线性代理），
+  //   门槛 `samples.length < 4`：今天只有 8 条 / 4 个槽 → 经常刚好卡在门槛附近或以下 → 「全天趋势图不展示」。
+  //   新实现按 **30min 槽**判门槛（与首页一致），并且时段基线同样是「同时段跨天比较」。
   const sleepWindow = getSleepWindow(targetDk) ?? getSleepWindow();
+
+  const proxy = useMemo(() => {
+    if (!isToday) return null;
+    const bl = buildCortisolProxyBaseline(14);
+    return { ...buildCortisolProxyToday(bl), baselineDays: bl.days };
+  }, [isToday, hsRefresh]);
+
+  const proxyValid = proxy ? proxy.vals.filter((v: number | null): v is number => v != null).length : 0;
+  // ★ 历史单日仍走旧的逐样本链路（多模态反推需要个人基线，历史日基线窗口不含当天，暂不适用）
+  const samples = isToday ? [] : collectSamplesForDay(targetDk);
 
   const mdLabel = `${new Date(targetMs).getMonth() + 1}/${new Date(targetMs).getDate()}`;
   const title = isToday ? '今日皮质醇全天趋势' : `皮质醇全天趋势 · ${mdLabel}`;
@@ -102,19 +119,63 @@ export default function CortisolDailyChart({
     });
   };
 
-  if (samples.length < 4) {
+  // ★ v18.123：门槛按 30min 槽数判（≥3 槽即可画），并要求基线已成熟（≥3 天）。
+  if (isToday ? proxyValid < 3 : false) {
     return (
       <Card>
         <Text style={styles.title}>{title}</Text>
         <Text style={{ fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-          {isToday ? '暂无足够的皮质醇数据，连上戒指开启自动监测后即可查看' : `${mdLabel} 暂无皮质醇数据`}
+          {isToday
+            ? (proxy && proxy.baselineDays < MIN_BASELINE_DAYS
+                ? `正在建立你的个人基线（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天），多戴几天戒指就能看到全天趋势。`
+                : '佩戴戒指约半小时后，这里会显示由心率变异性、皮电、体温与心率反推出的全天皮质醇活性曲线。')
+            : `${mdLabel} 暂无皮质醇数据`}
         </Text>
       </Card>
     );
   }
 
   // 历史单日无 14 天基线，baselineDays=1；todayLevel/持续性仅在「今日」有意义
-  const r = analyzeCortisol(samples, isToday ? 14 : 1);
+  // ★ v18.123：今日主曲线已由 TrendChart 内部直接取 proxy（见 CortisolRhythmCard）；
+  //   这里的 r 只用于顶部大字/chip/洞察文案，hourlyMean 同样喂 proxy 的槽值。
+  //   填进 r.hourlyMean（每槽值）与 hourlyPredicted（true=实测槽 / false=无数据）。
+  //   TrendChart 内部直接消费 r.hourlyMean 画 30min 曲线，因此这里只需把 proxy 结果映射成 r 的形状。
+  //   历史日维持旧链路（analyzeCortisol + collectSamplesForDay）。
+  // ★ v18.124：实测槽统计（水平/峰值时刻/波动幅度）——供 r.cosinor 消费，详情页那两个格子靠它出数
+  const psum = useMemo(
+    () => (proxy ? proxySummaryFromSlots(proxy.vals, proxy.real) : { mesor: null, acrophaseH: null, amplitudePct: null, n: 0 }),
+    [proxy],
+  );
+  const r: CortisolRhythmResult = isToday && proxy
+    ? {
+        // ★ v18.124：不再填 NaN —— 直接用**实测槽统计**给水平/峰值/波动。
+        //   旧实现这里全 NaN → 详情页「平均压力水平 / 平均峰值时刻」全显示「—」（用户实锤）。
+        cosinor: {
+          mesor: psum.mesor ?? NaN,
+          amplitude: psum.amplitudePct != null && psum.mesor ? (psum.amplitudePct / 100) * psum.mesor : NaN,
+          acrophaseH: psum.acrophaseH ?? NaN,
+          r2: 0,
+          n: proxyValid,
+        },
+        css: NaN,
+        baseline: { p25: NaN, p75: NaN, n: proxy.baselineDays },
+        // 每 2 个 30min 槽合成 1 个小时（TrendChart 内部会再聚合成 30min，这里给小时粒度即可）
+        hourlyMean: Array.from({ length: 24 }, (_, h) => {
+          const a = proxy.vals[h * 2];
+          const b = proxy.vals[h * 2 + 1];
+          const both = [a, b].filter((v): v is number => v != null);
+          return both.length ? +(both.reduce((x, y) => x + y, 0) / both.length).toFixed(1) : null;
+        }),
+        hourlyPredicted: Array.from({ length: 24 }, (_, h) => !(proxy.vals[h * 2] != null || proxy.vals[h * 2 + 1] != null)),
+        dailyMesors: psum.mesor != null ? [{ date: targetDk, mesor: psum.mesor }] : [],
+        status: { level: 'normal', flags: [] },
+        sustainedHighStreak: 0,
+        todayLevel: 'normal',
+        today: { high: false, dys: false },
+        highStreak: 0,
+        dysStreak: 0,
+      }
+    : analyzeCortisol(samples, 1);
 
   // ── 当前日自身状态（芯片）：紊乱 + 偏高 可能并存，需并排展示 ──
   // 历史单日无 14 天基线，偏高(high)无意义，强制为 false，仅保留形态紊乱(dys)

@@ -1,21 +1,27 @@
 /**
- * AllDayRecoveryCard —— 首页「昼夜节律」卡片（v18.96 由「全天恢复」更名：内容本就是皮质醇昼夜曲线）
+ * AllDayRecoveryCard —— 首页「昼夜节律」卡片
  *
- * 结构（按用户要求）：
- *   上半：睡眠恢复情况 + 皮质醇峰值（两枚毛玻璃指标块）
- *   下半：皮质醇全天趋势图（平滑曲线 + 峰值高亮圆点 + 竖直虚线）
- *   视觉：参考用户提供的渐变卡样式 —— 整卡紫色渐变、白色曲线、底部时间轴
+ * 结构：
+ *   上半：睡眠恢复情况 + 皮质醇活性峰值（两枚指标块）
+ *   下半：皮质醇活性全天趋势（平滑曲线 + 峰值高亮圆点 + 竖直虚线）
  *
- * 数据口径（与既有皮质醇链路完全一致，不另起一套）：
- *   · collectSamples()           近 14 天逐样本（已剔除零值）
- *   · analyzeCortisol(_, 14)     → cosinor.acrophaseH（峰值时刻）/ amplitude / mesor / css
- *   · buildCortisolToday30()     今日 48 个 30min 槽位（已用 cosinor 补齐到当前时刻，未来时段为 null）
- *   · healthStore.getSleep()     最近一晚睡眠（评分 / 总时长 / 深睡）
+ * ════════════════════════════════════════════════════════════════════════
+ * ★ v18.116 数据口径改版：多模态反推「皮质醇活性」（方案 A）
+ * ════════════════════════════════════════════════════════════════════════
+ *  旧链路（已废弃）：collectSamples → analyzeCosinor(14天) → buildCortisolToday30Ex
+ *    问题：① 输入是 `stress × 1.6 + 20` 的线性代理（HRV 二次加工）；
+ *          ② 缺失时段用 14 天 cosinor 拟合曲线填补（v18.114 的虚线）—— 既非实测也不生理；
+ *          ③ 输出叫「皮质醇值」，但戒指根本没有皮质醇传感器。
+ *  新链路：lib/cortisolProxy.ts
+ *    · 每 30 分钟窗口，由**实测** HRV(反相)/EDA/体温偏移/静息心率偏移/活动(负相)/睡眠债
+ *      各自算 z-score（相对个人 14 天基线，中位数 + MAD×1.4826）→ 加权 → tanh 压缩到 0~100；
+ *    · **没有实测信号的窗口 = null**，UI 留白。不拟合、不补形状、**不画虚线**；
+ *    · 输出叫「皮质醇活性」，是**相对个人基线的相对量**，不是激素浓度。
+ *  业界依据（Garmin Firstbeat / Oura / WHOOP 均为反推，非实测）：
+ *    Garmin 压力分 vs 唾液皮质醇 r=0.29~0.71；Body Battery vs 晨起皮质醇 r=0.52（n=127, 2024）。
  *
- * 曲线三级降级（保证任何时候都有东西可看）：
- *   1) 今日真实样本 ≥ 6 槽  → 画今日真实曲线，角标「今日」
- *   2) 今日稀疏但有 14 天节律 → 用 cosinor 拟合的 14 天日均节律铺满全天，角标「14天节律」
- *   3) 两者都无（新用户/未佩戴）→ 画典型皮质醇节律示意图，角标「示意图」并给出说明
+ *  睡眠：healthStore.getSleep() 最近一晚（评分 / 总时长 / 深睡），口径未变。
+ *  断流（dataStale）：整张卡走空态，不显示任何反推值。
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
@@ -36,7 +42,9 @@ import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
-import { collectSamples, buildCortisolToday30Ex } from './CortisolRhythmCard';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+// ★ v18.125：绘图几何与详情页共用同一模块（保证「同一指标画出同一张图」）
+import { buildSmoothSeries, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
 /** 最小可信样本数：与 CortisolRhythmCard / CortisolSleepSummary 保持一致 */
 const MIN_SAMPLES = 4;
@@ -87,23 +95,6 @@ function fmtClock(hourFloat: number): string {
 
 /** （v18.64 移除 demoCurve 示意曲线：Mira 诚实数据铁律——没戴戒指就空态，不放「看起来像数据」的示意图） */
 
-/** Catmull-Rom → 三次贝塞尔：把折线转成平滑曲线 */
-function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length < 2) return '';
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
-}
 
 export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string }) {
   // ★ v18.53.2：bg 可传 butter（黄）；图标/强调色默认 lime，黄底时由调用方传 butter.fg
@@ -132,135 +123,89 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       ? '暂无睡眠数据'
       : `睡眠 ${fmtDur(sleep.total)} · 深睡 ${fmtDur(sleep.deep)}`;
 
-  // —— 皮质醇 ——
-  // ★ v18.110：离线回填把近 14 天的 cortisol/eda 逐样本补进 healthStore 后，这里必须重新取一遍，
-  //   否则「皮质醇波动 / 峰值时刻 / 节律评价」会一直挂着重连前的旧拟合值（用户：重连后要按现有数据重算）。
-  //   用防抖订阅：回填/实时流高频写不会每秒重算 fit，但 700ms 静默后一定算一次新值。
+  // —— 皮质醇活性（★ v18.116 方案 A：多模态反推，全实测驱动，无拟合无虚线）——
+  //  废弃原 `analyzeCortisol` + cosinor 拟合：那套用 `stress×1.6+20` 的线性代理值，
+  //  再拿 14 天拟合曲线填补缺失槽（v18.114 的虚线）—— 既不是实测也不是生理学形状。
+  //  现在改为每 30 分钟窗口直接由实测信号算「皮质醇活性 0~100（相对个人基线）」：
+  //  HRV(反相) / EDA / 体温偏移 / 静息心率偏移 / 活动(负相) / 睡眠债，z-score 加权 + tanh 压缩。
+  //  缺信号 → 该槽 null（不编造、不画虚线）。
   const hsRefresh = useDebouncedHealthStoreRefresh(700);
-  const samples = useMemo(() => collectSamples(), [ring.curveStatus, hsRefresh]);
-  const r = useMemo(() => analyzeCortisol(samples, 14), [samples]);
-  const cos = r.cosinor;
-  const hasRhythm =
-    Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && Number.isFinite(cos.acrophaseH) && cos.amplitude > 0;
+  const proxy = useMemo(() => {
+    // ★ v18.117：14 天窗口、**不含今天**、按 30min 时段分桶（皮质醇有昼夜节律，
+    //   必须同一时段跨天比较，否则凌晨槽会被白天样本的基线判成「偏高」）。
+    const bl = buildCortisolProxyBaseline(14);
+    const built = buildCortisolProxyToday(bl);
+    const valid = built.vals.filter((v): v is number => v != null);
+    let peakIdx = -1;
+    let peakV = -Infinity;
+    built.vals.forEach((v, i) => {
+      if (v != null && v > peakV) { peakV = v; peakIdx = i; }
+    });
+    // 波动幅度 = 有效槽的 (max−min)/中位 —— 相对量，不是激素浓度
+    const ampPct =
+      valid.length >= 3 && peakV > -Infinity
+        ? Math.round(((Math.max(...valid) - Math.min(...valid)) / (valid.reduce((a, b) => a + b, 0) / valid.length)) * 100)
+        : null;
+    return { ...built, validCount: valid.length, peakIdx, peakV, ampPct, baselineDays: bl.days };
+  }, [ring.curveStatus, hsRefresh]);
 
-  // ★ v18.104：断流时皮质醇峰值也不该挂旧拟合值（cosinor 是拿旧采样拟合出来的时刻）。
-  const peakClock = dataStale ? '—' : hasRhythm ? fmtClock(cos.acrophaseH) : '—';
-  const ampPct = !dataStale && hasRhythm && cos.mesor > 0 ? Math.round((cos.amplitude / cos.mesor) * 100) : null;
-  const recoveryWord =
-    samples.length < MIN_SAMPLES
-      ? '数据不足'
-      : r.css > 10
-        ? '恢复良好'
-        : r.css < -10
-          ? '偏晚'
-          : cos.amplitude < 0.15 * cos.mesor
-            ? '节律偏平'
-            : '一般';
+  // ★ v18.117：基线不足 3 天时不输出数（尺度是 MAD 估的，样本太少不可靠）
+  const baselineReady = proxy.baselineDays >= MIN_BASELINE_DAYS;
+  const hasProxy = baselineReady && proxy.validCount >= 3;
+  // 峰值时刻 = 实测活性最高的那一槽（不是拟合出来的）
+  const peakClock = dataStale || !hasProxy ? '—' : fmtClock(proxy.peakIdx / 2);
+  const recoveryWord = !hasProxy
+    ? baselineReady ? '数据不足' : `建立基线中（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天）`
+    : proxy.peakV >= 70
+        ? '压力偏高'
+        : proxy.peakV <= 40
+          ? '放松良好'
+          : proxy.ampPct != null && proxy.ampPct >= 60
+            ? '波动偏大'
+            : '节律平稳';
   const cortisolSub = dataStale
     ? '戒指暂无新数据'
-    : hasRhythm
-      ? `${ampPct != null ? `波动 ${ampPct}%` : '节律已建模'} · ${recoveryWord}`
-      : '佩戴后生成节律';
+    : hasProxy
+      ? `${proxy.ampPct != null ? `波动 ${proxy.ampPct}%` : '活性已建模'} · ${recoveryWord}`
+      : '佩戴后生成活性曲线';
 
   // ★ 青色 badge（SPEC #10「82% · 接近目标」）：数值 = 真实睡眠评分，档位词由评分推导
   const badgeWord =
     sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
   const badgeText = dataStale ? '暂无数据' : sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
 
-  // —— 曲线数据（★ v18.69 门槛 + 分段）——
-  //   三重门槛，缺一不画：
-  //   1) 戒指今日同步过（lastSyncedAt 是今天）——没连过戒指的当天不画
-  //   2) 今日有真实 HRV 采样——估计值/节律插值不冒充实测
-  //   3) 30min 槽位非空 ≥6——太少不构成「趋势」
-  //   realFlags 标记真实样本槽：画线只走真实槽，间隔 >1h 断开（见下方分段逻辑）。
-  //   14 天节律拟合不上首页卡（用户定稿：那是详情页「14 天基线」的事）。
+  // —— 曲线数据（★ v18.116 方案 A：直接用多模态反推结果，**无拟合、无虚线**）——
+  //   数据源 = buildCortisolProxyToday() 的 48 槽实测活性（每槽由该窗口 HRV/EDA/体温/心率算出）。
+  //   realFlags 标记「该槽真有生理信号」——绘图只连这些槽，间隔 >1h 断开。
+  //   门槛：有效槽 >= MIN_TODAY_SLOTS 才算「构成趋势」，否则整张卡走空态。
+  //   ★ 不再调用 buildCortisolToday30Ex（那是 cosinor 拟合 + 14 天补形状，v18.114 的虚线已废弃）。
   const { series, realFlags, mode } = useMemo<{ series: number[]; realFlags: boolean[]; mode: 'today' | 'none' }>(() => {
-    const ls = ring.lastSyncedAt as number | null | undefined;
-    const syncedToday = (() => {
-      if (!ls) return false;
-      const a = new Date(ls);
-      const b = new Date();
-      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-    })();
-    const realHrvToday = (() => {
-      try { return healthStore.getIntraday('hrv', dayKey(Date.now())).length; } catch { return 0; }
-    })();
-    if (syncedToday && realHrvToday > 0) {
-      const { vals, real } = buildCortisolToday30Ex();
-      if (vals.filter((v) => v != null).length >= MIN_TODAY_SLOTS) {
-        let lastIdx = vals.length - 1;
-        while (lastIdx >= 0 && vals[lastIdx] == null) lastIdx--;
-        return { series: vals.slice(0, lastIdx + 1) as number[], realFlags: real.slice(0, lastIdx + 1), mode: 'today' };
+    const vals = proxy.vals;
+    const real = proxy.real;
+    if (proxy.validCount >= MIN_TODAY_SLOTS) {
+      let lastIdx = vals.length - 1;
+      while (lastIdx >= 0 && vals[lastIdx] == null) lastIdx--;
+      if (lastIdx >= 0) {
+        return {
+          series: vals.slice(0, lastIdx + 1) as number[],
+          realFlags: real.slice(0, lastIdx + 1),
+          mode: 'today',
+        };
       }
     }
     return { series: [], realFlags: [], mode: 'none' };
-  }, [ring.lastSyncedAt, samples.length, hasRhythm, cos.mesor, cos.amplitude, cos.acrophaseH, hsRefresh, ring.timelineReady ?? ring.curveStatus]);
+  }, [proxy.validCount, proxy.vals, proxy.real, hsRefresh, ring.timelineReady ?? ring.curveStatus]);
   // ★ v18.101：断流时整张卡走「无数据」路径（曲线不画、结论行走空态文案），
   //   与圆环/三个 chip 保持同一口径，避免同一屏上「圆环空了、这张卡还有数」。
   const chartMode: 'today' | 'none' = dataStale ? 'none' : mode;
 
   // —— 坐标换算 ——
   const chartW = Math.max(40, W - PAD_L - PAD_R);
-  const chartH = CHART_H - PAD_T - PAD_B;
-  // ★ v18.69 分段连线：只画「真实样本」槽；真实样本间隔 >1h（槽差 >2）断开——
-  //   节律插值补的空槽不再连线冒充连续观测（用户实锤：数据超过 1 小时不连线）。
-  //   间隔 ≤1h（相邻真实槽中间恰好 1 个空槽）桥接连线。
-  const realPts: { i: number; v: number }[] = [];
-  for (let i = 0; i < series.length; i++) {
-    if (realFlags[i] && Number.isFinite(series[i])) realPts.push({ i, v: series[i] });
-  }
-  const segs: { i: number; v: number }[][] = (() => {
-    const out: { i: number; v: number }[][] = [];
-    let cur: { i: number; v: number }[] = [];
-    for (const p of realPts) {
-      if (cur.length === 0 || p.i - cur[cur.length - 1].i <= 2) cur.push(p);
-      else { out.push(cur); cur = [p]; }
-    }
-    if (cur.length) out.push(cur);
-    return out;
-  })();
-
-  // Y 轴范围按真实样本算（插值点不参与，避免把真实曲线压扁）
-  const realVals = realPts.map((p) => p.v);
-  const lo = realVals.length > 0 ? Math.min(...realVals) : 0;
-  const hi = realVals.length > 0 ? Math.max(...realVals) : 1;
-  const span = hi - lo || 1;
-  const yLo = lo - span * 0.18;
-  const yHi = hi + span * 0.18;
-  const yOf = (v: number) => PAD_T + chartH - ((v - yLo) / (yHi - yLo)) * chartH;
-  const xOf = (i: number) => PAD_L + (i / (SLOTS - 1)) * chartW;
-
-  // 段内 (1,2,1) 平滑 + Catmull-Rom → 贝塞尔；单点段不画线（诚实）
-  const segD = (seg: { i: number; v: number }[]): string => {
-    if (seg.length < 2) return '';
-    const smv = seg.map((p, k) => ((seg[k - 1]?.v ?? p.v) + 2 * p.v + (seg[k + 1]?.v ?? p.v)) / 4);
-    return smoothPath(seg.map((p, k) => ({ x: xOf(p.i), y: yOf(smv[k]) })));
-  };
-  const linePath = segs.map(segD).filter(Boolean).join(' ');
-  // 面积填充逐段收口到基线（不再斜插跨过缺口）
-  const yBase = (PAD_T + chartH).toFixed(1);
-  const areaPath =
-    linePath
-      ? segs
-          .map((seg) => {
-            const d = segD(seg);
-            if (!d) return '';
-            const x0 = xOf(seg[0].i).toFixed(1);
-            const x1 = xOf(seg[seg.length - 1].i).toFixed(1);
-            return `${d} L ${x1} ${yBase} L ${x0} ${yBase} Z`;
-          })
-          .filter(Boolean)
-          .join(' ')
-      : '';
-
-  // 峰值标记 = 真实样本的最高点（不再取节律插值）
-  let peakIdx = -1;
-  let peakV = -Infinity;
-  for (const p of realPts) {
-    if (p.v > peakV) { peakV = p.v; peakIdx = p.i; }
-  }
-  const peakX = peakIdx >= 0 ? xOf(peakIdx) : 0;
-  const peakY = peakIdx >= 0 ? yOf(peakV) : 0;
+    // ★ v18.125：几何计算收敛到共用模块 buildSmoothSeries() ——
+  //   详情页皮质醇趋势图调用的是**同一个函数**，同一份数据必然画出同一张图
+  //   （此前首页走 Catmull-Rom 平滑、详情页是折线 L 拼接，观感割裂 → 用户「看着难受」）。
+  const g = buildSmoothSeries(series, realFlags, { W, H: CHART_H, padL: PAD_L, padR: PAD_R, padT: PAD_T, padB: PAD_B });
+  const xOf = g.xOf;
 
   const body = (
     <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
@@ -296,7 +241,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             </Text>
           </View>
           <View style={styles.tile}>
-            <Text style={styles.tileLabel}>皮质醇峰值</Text>
+            <Text style={styles.tileLabel}>皮质醇活性峰值</Text>
             <View style={styles.tileValRow}>
               <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
                 {peakClock}
@@ -326,19 +271,19 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
               {/* 基线（时间轴底线） */}
               <Line
                 x1={PAD_L}
-                y1={PAD_T + chartH}
+                y1={g.yBase}
                 x2={PAD_L + chartW}
-                y2={PAD_T + chartH}
+                y2={g.yBase}
                 stroke={mm.colors.ringTealDeep}
                 strokeOpacity={0.25}
                 strokeWidth={1}
               />
 
               {/* 曲线下方填充 + 平滑曲线 */}
-              {areaPath ? <Path d={areaPath} fill="url(#adrArea)" /> : null}
-              {linePath ? (
+              {g.areaPath ? <Path d={g.areaPath} fill="url(#adrArea)" /> : null}
+              {g.linePath ? (
                 <Path
-                  d={linePath}
+                  d={g.linePath}
                   fill="none"
                   stroke={mm.colors.ringTeal}
                   strokeWidth={2.6}
@@ -347,42 +292,47 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                 />
               ) : null}
 
+              {/* 孤立真实单点（真实但断开，画实心点让「测到了」可见） */}
+              {g.singles.map((p, k) => (
+                <Circle key={`sg${k}`} cx={p.x} cy={p.y} r={3.2} fill={mm.colors.ringTeal} />
+              ))}
+
               {/* 峰值：竖直虚线 + 发光圆点 + 时刻标签（★ v18.69 取真实样本最高点；空数据整块不渲染，防 NaN 进 SVG） */}
-              {peakIdx >= 0 ? (
+              {g.peakIdx >= 0 ? (
                 <>
                   <Line
-                    x1={peakX}
-                    y1={peakY}
-                    x2={peakX}
-                    y2={PAD_T + chartH}
+                    x1={g.peakX}
+                    y1={g.peakY}
+                    x2={g.peakX}
+                    y2={g.yBase}
                     stroke={mm.colors.ringTealDeep}
                     strokeOpacity={0.42}
                     strokeWidth={1}
                     strokeDasharray="3,3"
                   />
-                  <Circle cx={peakX} cy={peakY} r={4.2} fill={mm.colors.limeMid} />
+                  <Circle cx={g.peakX} cy={g.peakY} r={4.2} fill={mm.colors.limeMid} />
                   <SvgText
-                    x={Math.min(Math.max(peakX, PAD_L + 16), PAD_L + chartW - 16)}
-                    y={Math.max(peakY - 12, 12)}
+                    x={Math.min(Math.max(g.peakX, PAD_L + 16), PAD_L + g.chartW - 16)}
+                    y={Math.max(g.peakY - 12, 12)}
                     fontSize={11}
                     fontWeight="600"
                     fill={mm.colors.ringTealDeep}
                     textAnchor="middle"
                   >
-                    {fmtClock(peakIdx / 2)}
+                    {slotToClock(g.peakIdx)}
                   </SvgText>
                 </>
               ) : null}
 
               {/* 时间轴 00 / 06 / 12 / 18 / 24（两端刻度改 start/end 锚点，贴边不截断） */}
               {[0, 6, 12, 18, 24].map((h) => {
-                const slot = Math.min(h * 2, SLOTS - 1);
+                const slot = Math.min(h * 2, CHART_SLOTS - 1);
                 const edgeL = h === 0;
                 const edgeR = h === 24;
                 return (
                   <SvgText
                     key={h}
-                    x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + chartW - 1 : xOf(slot)}
+                    x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + g.chartW - 1 : xOf(slot)}
                     y={CHART_H - 4}
                     fontSize={9.5}
                     fill={mm.colors.inkFaint}
@@ -399,7 +349,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                 {/* ★ v18.104：断流（戴了戒指但很久没新采样）与「没戴过」是两种空态，文案要区分，
                     否则用户以为自己没戴 → 一直对着「戴上戒指后…」发呆。 */}
                 <Text style={styles.emptyHintText}>
-                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的真实皮质醇趋势'}
+                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的皮质醇活性趋势'}
                 </Text>
               </View>
             ) : null}
@@ -420,10 +370,19 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
               {chartMode === 'none'
                 ? dataStale
                   ? '请佩戴戒指，约半小时会更新最新数据'
-                  : '戴上戒指后，这里显示你的真实皮质醇趋势'
-                : `今日真实趋势 · ${cortisolSub}`}
+                  : '戴上戒指后，这里显示你的皮质醇活性趋势'
+                : `今日趋势 · ${cortisolSub}`}
             </Text>
           </View>
+          {/* ★ v18.116：方案 A 全程实测驱动，没有推算段 → 不需要「实测/节律」双色图例。
+              改为标注「反推自 N 项生理信号」，让用户知道这个值怎么来的、不是直接测的激素浓度。 */}
+          {chartMode === 'today' && g.points.length > 0 ? (
+            <View style={styles.legendBox}>
+              <Text style={styles.legendTx}>
+                反推自 HRV · 皮电 · 体温 · 心率
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
@@ -507,6 +466,9 @@ const styles = StyleSheet.create({
     color: mm.colors.inkSoft,
     marginTop: 1,
   },
+  // ★ v18.114：图例（实线=实测 / 虚线=14 天节律）
+  legendBox: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.2) },
+  legendTx: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint },
   modePill: {
     paddingHorizontal: theme.sp(2),
     paddingVertical: theme.sp(0.5),

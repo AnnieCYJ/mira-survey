@@ -16,6 +16,7 @@ import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import SleepCard from '../components/SleepCard';
 import { loadPeriodDays } from '../data/cycleLog';
 import MindChips, { type MindChipItem } from '../components/MindChips';
 import MindStatCard from '../components/MindStatCard';
@@ -26,7 +27,10 @@ import TrendChart, { TrendAxis } from '../components/TrendChart';
 import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel } from '../lib/cognitiveLoad';
+// ★ v18.132：情绪压力改多信号融合判定（分离运动/设备故障），替代单信号 EDA 事件计数
+import { computeEmotionalStress, LEVEL_LABEL, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
+import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel, cogBarRatio } from '../lib/cognitiveLoad';
+import { computeSleepPersonalized } from '../lib/sleepPersonalized';
 import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
@@ -73,6 +77,11 @@ function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, i
 }
 
 
+// ⚠️⚠️ **死代码，勿在此加逻辑或日志**（2026-10-03 实锤）
+// `grep -nE "EnergyRowData" src/screens/TodayScreen.tsx` 只有这一行定义处命中 ——
+// 它**从未被任何地方渲染**。v18.133 我把运动门控诊断加在这里，`grep 'MOTION-GATE'`
+// 连续两轮 0 条日志，白排查一轮。真渲染的是下面 ~1140 行处（同文件另一个组件作用域）。
+// 要改「顶部情绪压力」请去那里；要删这个组件请连同它的 esReport/stress/cognitive 一起删。
 function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void; outerOnNav: () => void }) {
   const _dk = (() => {
     try {
@@ -81,10 +90,26 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
     } catch { return ''; }
   })();
   // 情绪消耗 = 今日压力事件数
+  // ★ v18.132 情绪压力：值改为「今日程度 0-100」（由 EDA 相对个人基线的偏离换算），
+  //   不再显示「事件次数 19」—— 次数没有量纲意义，且 2026-10-03 设备漂 3 倍时全被误触发。
+  //   数据源 = computeEmotionalStress()（多信号融合：排除运动 / 设备故障）。
+  // ★ v18.133：把固件运动段传进去 —— 少了它，运动门控只剩 MET/步数两层，
+  //   「通勤走路」这类步数不多但确有活动的时段会被误判成情绪压力。
+  const esReport = (() => {
+    try {
+      return computeEmotionalStress(Date.now(), ring?.sportSessions ?? null);
+    } catch { return null; }
+  })();
+  // ★ v18.140 心理压力数字：**必须过自报校准闸门**。
+  //   `stressScoreVisible=false`（样本不足 / r 太低）⇒ 显「—」，只保留档位。
+  //   ⚠ 死代码里的这个组件不参与渲染，但保持与 ~1200 行处口径一致，避免以后误用。
   const stress = (() => {
     try {
-      const r = computeStressReport();
-      return r?.events?.length > 0 ? String(r.events.length) : '—';
+      if ((ring?.curveStatus as any)?.dataStale) return '—';
+      if (!esReport || esReport.deviceDrift) return '—';
+      if (esReport.baselineDays < ES_MIN_BASELINE_DAYS) return '—';
+      if (!esReport.stressScoreVisible) return '—';
+      return esReport.meanSeverity != null ? String(esReport.meanSeverity) : '—';
     } catch { return '—'; }
   })();
   // 脑力消耗 = 全天平均疲劳度 (与柱状图同源, 0-100)
@@ -126,8 +151,14 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
     } catch { return '—'; }
   })();
 
-  // 子卡（情绪/脑力）——图片背景 + 底部白色渐变蒙层
-  const subCard = (img: number, title: string, val: string, unit: string, onPress: () => void) => (
+  // 子卡（心理压力/脑力）——图片背景 + 底部白色渐变蒙层
+  // ★ v18.137：心理压力卡多一行**口径说明**（「相对你自己平时」）。
+  //   没有这一行，用户会把 62 读成「压力 62 分」（绝对量），而它其实是百分位。
+  //   `note` 为空则不占位（其它两张卡不受影响）。
+  const subCard = (
+    img: number, title: string, val: string, unit: string, onPress: () => void,
+    note?: string,
+  ) => (
     <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={{ flex: 1 }}>
       <View style={{
         height: 130,
@@ -149,6 +180,9 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
               <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.card, fontWeight: theme.weight.bold }} numberOfLines={1} adjustsFontSizeToFit>{val}</Text>
               <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginLeft: 3 }}>{unit}</Text>
             </View>
+            {note ? (
+              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginTop: 1 }} numberOfLines={1}>{note}</Text>
+            ) : null}
           </View>
         </ImageBackground>
       </View>
@@ -194,11 +228,18 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
         </Card>
       </TouchableOpacity>
 
-      {/* ★ 情绪消耗 / 脑力消耗 / 运动消耗 —— 并排独立小卡 */}
+      {/* ★ 心理压力 / 脑力准备度 / 运动量 —— 并排独立小卡
+          v18.137：情绪卡从「情绪消耗·次」改为「心理压力·0-100 百分位」。
+          旧标题的问题：①「消耗」没定义 ②单位「次」与 0-100 分数矛盾（用户反馈「看不懂」）
+          ③「心理压力」是 Oura/Garmin 在用的标准名。 */}
       <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
-        {subCard(IMG_EMOTION, '情绪消耗', stress, '次', () => onNav('emotion'))}
-        {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'))}
-        {subCard(IMG_ACTIVITY, '运动消耗', activity, '步', () => onNav('activity'))}
+        {subCard(
+          IMG_EMOTION, '心理压力', stress, '',
+          () => onNav('emotion'),
+          esReport?.stressScale ? esReport.stressScale.caption : undefined,
+        )}
+        {subCard(IMG_COG, '脑力准备度', cognitive, '/100', () => onNav('cognitive'))}
+        {subCard(IMG_ACTIVITY, '运动量', activity, '步', () => onNav('activity'))}
       </View>
     </View>
   );
@@ -337,7 +378,12 @@ const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, conden
       {!condensed && W <= 0 ? null : (
       <>
       <Svg width={W} height={H}>
-        {rows.map((r,i)=>{ const h=Math.max(1.5,(r.v/100)*CH),x=i*(W/N)+0.5,y=CH-h,col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
+        {/* ★ v18.129 柱高改**档位离散**（用户：只分低/中/高三个高度，同档等高）。
+            原先用 (r.v/100)*CH 连续映射 → 12/16/19 同属「低」档却画出三根不同高度，
+            视觉上像在说 19 比 12 累得多（同档内无此含义）。现在高度只由档位决定。 */}
+        {rows.map((r,i)=>{ const ratio=r.has?cogBarRatio(r.v):null;
+          const h=ratio==null?1.5:Math.max(2,ratio*CH), x=i*(W/N)+0.5, y=CH-h;
+          const col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
         {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
       </Svg>
       {!condensed && hasAny && popVal>0 ? (
@@ -586,9 +632,24 @@ export default function TodayScreen() {
   }, [loadAiRecords]);
   useFocusEffect(useCallback(() => { loadAiRecords(); }, [loadAiRecords]));
 
-  const stress = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeStressReport(); return r?.events?.length > 0 ? String(r.events.length) : '0'; } catch { return '—'; } })();
-  // 认知准备度 = 脑力账户当前剩余（早上从准备度/储备起步，白天随消耗下降，只算脑）；无数据 → 诚实显示 —
-  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
+  // ★ v18.140 心理压力数字的**真正定义在下方**（`stressValue`，esReport 声明之后）。
+  //   ⚠⚠ 这里原来读的是 `computeStressReport().events.length`（旧算法的「压力事件次数」）——
+  //   顶部 chip 标着「心理压力」但显示的是事件数（当年那个「19」就是它），
+  //   与 v18.134~139 算的百分位**完全不是一回事**。
+  // ⚠⚠ **不能在本行调 `computeEmotionalStress(..., sportSessions)`**：
+  //   `sportSessions` 在本作用域**后面才声明**（TS2448/TS2454），
+  //   必须复用下方已算好的 `esReport`，否则要么编译不过、要么算出两份不一致的数据。
+  //   （这个坑与 v18.133 那次「诊断加在死代码里」同源：作用域顺序必须先确认。）
+  // ★ v18.128 改回**脑力准备度**（晨起值 brainReserve，纯睡眠驱动，不用瞬时疲劳度）。
+  // 为什么换回来（用户判断：「脑力准备度通过睡眠算，这个是有科学依据的是吧？」——对）：
+  //   · 文献支撑强：Lowe et al. 2017（61 项研究 meta 分析）睡眠限制→认知总体 g=−0.383、
+  //     **持续性注意 g=−0.409**（受损最重）、执行功能 −0.324；Wüst 2024（44 研究）**只睡一晚**即可损害。
+  //   · 输入全是戒指实测睡眠（时长/深睡/睡眠债/起床相位），**不是反推**；
+  //   · **一天一个数**（晨起），不逐小时抖，不需要回答「此刻准不准」。
+  //   对比 v18.127 的瞬时疲劳度：那个是「HRV 掉多少→脑力剩多少」，无 meta 支撑、系数全拍。
+  // 口径：`brainReserve = (睡眠恢复×80 + 20 − 睡眠债×8)×0.7 + 节律相位×100×0.3`（见 computeMorningReadiness）。
+  // 诚实边界：系数仍是经验值，**量纲未校准**（不能说 72 分比 65 分「认知好 7%」）。后续用用户自报回归校准。
+  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainReserve != null ? String(r.brainReserve) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径）。
   // ★ v18.98（用户口径：对齐 Oura）：只认**昨晚**这一夜 ——
@@ -622,11 +683,22 @@ export default function TodayScreen() {
   //   全是旧快照里的数，一律显示「—」，不许再挂一个数字让人当成实时。
   //   真机取证：00:29 之后一直到 12:22 都没有新采样，而首页还挂着恢复 96/脑力 39/圆环 62。
   const dataStale = (ring?.curveStatus as any)?.dataStale === true;
+  // ★ v18.144 改用「个人相对口径」（对比自己 14 天基线，Oura 同款）而非固定目标达标分。
+  //   旧口径是绝对分（7.5h 满分 / 深睡 20% 满分），会出现「平时也睡 9h 却被轻扣」这类不合理。
+  //   ⚠ dataStale 判定保持不变：断流时一律「—」，不许挂旧快照的数。
+  const sleepPers = (() => { try { return computeSleepPersonalized(); } catch { return null; } })();
   const recovery =
-    dataStale || !recoverySleep || !Number.isFinite(recoverySleep.score)
+    dataStale || !recoverySleep || sleepPers?.score == null
       ? '—'
-      : String(Math.round(recoverySleep.score));
+      : String(sleepPers.score);
+  // 副标：把「口径」和「还差几天进入个人化」说清楚，否则口径切换会被当成分数忽高忽低。
   const recoverySub = (() => {
+    if (sleepPers?.mode === 'absolute' && sleepPers.daysToReady > 0) {
+      return `还需 ${sleepPers.daysToReady} 晚建立个人基线`;
+    }
+    return null;
+  })();
+  const recoverySubDur = (() => {
     const t = recoverySleep?.total;
     if (t == null || !Number.isFinite(t) || t <= 0) return '暂无';
     const h = Math.floor(t / 60), m = Math.round(t % 60);
@@ -1002,15 +1074,16 @@ export default function TodayScreen() {
 
   // 三张消耗卡的副标题：一律由真实数据推导，不写死「峰值集中在傍晚」「19 kcal」这类未发生或编造的结论
   const stressSub = peakEvent ? `峰值 ${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '暂无压力事件';
-  const cogLevelTxt = cogLevelLabel(cogReport?.avgFatigue);
+  // ★ v18.127：档位改用**瞬时**疲劳度均值（与柱状图同源，v18.125 前用的是累积量 avgFatigue）
+  const cogLevelTxt = cogLevelLabel(cogReport?.avgFatigueInstant);
   // 峰值时刻取「已观测小时柱」最高点（与卡片柱状图完全同源）；未观测到就只给档位，不写未来时刻
   const cogPeakBar = (() => {
-    const bars = (cogReport?.hourly ?? []).filter(h => h.hasData && h.hour * 60 <= curMin);
+    const bars = (cogReport?.hourlyInstant ?? []).filter(h => h.hasData && h.hour * 60 <= curMin);
     return bars.length > 0 ? bars.reduce((a, b) => (b.score > a.score ? b : a)) : null;
   })();
   const cognitiveSub = cogPeakBar
-    ? `峰值 ${pad2(cogPeakBar.hour)}:00 · ${cogLevelTxt}`
-    : `全天${cogLevelTxt}疲劳`;
+    ? `疲劳最高 ${pad2(cogPeakBar.hour)}:00`
+    : `${cogLevelTxt}疲劳`;
   // ★ v18.68 认知大卡峰谷行：默认展示「预测」峰谷（cortisol 节律 + 睡眠恢复预测）；
   //   某端预测窗口已完全过去 → 改展示该端「真实」峰谷（已过去时段的实测小时柱；
   //   峰=疲劳最低=状态最佳、谷=疲劳最高=状态最差，与预测同语义；实测不足 2 小时保留预测）
@@ -1019,7 +1092,8 @@ export default function TodayScreen() {
     const f: any = (cogReport as any)?.forecast;
     const seg = (h: number) => `${pad2(h)}–${pad2((h + 1) % 24)}时`;
     // 真实峰谷：只取「已完全过去」的实测小时（h+1 点 ≤ 当前分钟），且至少 2 个实测小时才有峰谷意义
-    const passed = (cogReport?.hourly ?? []).filter((h) => h.hasData && (h.hour + 1) * 60 <= curMin);
+    // ★ v18.127：峰谷也改用**瞬时**序列（与柱状图/chip 同源）
+    const passed = (cogReport?.hourlyInstant ?? []).filter((h) => h.hasData && (h.hour + 1) * 60 <= curMin);
     const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
     const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
     const part = (label: string, predHour: number | null | undefined, real: { hour: number } | null) => {
@@ -1064,27 +1138,120 @@ export default function TodayScreen() {
     : undefined;
 
   // ★ chips 数据标签（数值下方一行小字）：全部由当天真实数据推导档位，无数据不给词
+  // ★ v18.144：档位阈值随口径切换。
+  //   ⚠ 这是必须的，不是可选：绝对口径下「80 = 睡够 7.5h+」，
+  //   相对口径下「50 = 和你平时一样」⇒ 两套口径共用 80/60 阈值会得到相反的结论。
+  //   （这正是 MEMORY 里「同一指标两界面口径不同 ⇒ 自相矛盾」的同类问题。）
   const recTag = (() => {
     if (recovery == null || recovery === '—') return undefined;
     const s = Number(recovery);
+    if (!Number.isFinite(s)) return undefined;
+    if (sleepPers?.mode === 'relative') {
+      // 相对口径：50 = 和平时一样 ⇒ 档位围绕 50 而非 80
+      return s >= 62 ? '恢复较好' : s >= 45 ? '恢复一般' : '恢复偏弱';
+    }
+    // 绝对口径（基线不足 5 晚）：沿用旧的 80/60
     return s >= 80 ? '恢复良好' : s >= 60 ? '恢复中' : '恢复偏弱';
   })();
+  // ★ v18.128：档位按**晨起准备度剩余**判（与 chip 数值同一口径、同一个字段 brainReserve）。
+  //   数值方向 = 准备度（高 = 更好），所以 ≥70 准备度高 / 40~70 准备度中 / <40 准备度低。
+  //   阈值沿用 COG_LEVEL_HIGH/LOW（70/40），与 WHOOP 67 / Oura 70 的通行区间对齐。
+  //   历史坑（v18.125）：曾用 `brainUsed`（已消耗）判档而数值读 `brainRemaining`（剩余），
+  //   两者方向相反 → 「值 82 · 标签 高消耗」自相矛盾。**标签与数值必须取同一字段。**
   const cogTag = (() => {
     try {
-      const r = computeCognitiveLoadReport();
-      const used = r?.brainUsed;
-      if (used == null) return undefined;
-      // ★ v18.98：不写「昨」标注 —— 没有昨晚睡眠时 cognitiveLoad 已把账户整体置空，
-      //   这里直接不渲染标签（value 显示「—」），跟 Oura 的「无数据就是不显示」一致。
-      const label = used < 20 ? '低消耗' : used < 45 ? '中等消耗' : '高消耗';
-      return label;
+      if ((ring?.curveStatus as any)?.dataStale) return undefined;
+      const reserve = computeCognitiveLoadReport()?.brainReserve;
+      if (reserve == null || !Number.isFinite(reserve)) return undefined;
+      return reserve >= COG_LEVEL_HIGH ? '准备度高' : reserve >= COG_LEVEL_LOW ? '准备度中' : '准备度低';
     } catch { return undefined; }
   })();
+  // ★ v18.132：情绪压力（多信号融合）在 TodayScreen 侧再取一次，供 chip 小字用。
+  //   （与 EnergyRowData 里的 esReport 属不同组件作用域，各自算；healthStore 有内部缓存，代价小）
+  // ★ v18.133：同 EnergyRowData，必须传 sportSessions，否则两处算出来的 moving 槽数会不一致
+  //   （chip 说「平稳」、下面卡片说有运动 ⇒ 用户看到的图就自相矛盾）。
+  const esReport = (() => {
+    try { return computeEmotionalStress(Date.now(), sportSessions); } catch { return null; }
+  })();
+  // ★ v18.141 心理压力 0-100 —— **显示，不再被校准闸门挡住**。
+  //   ⚠⚠ v18.140 我加的 `stressScoreVisible` 闸门把数字全挡成「—」，
+  //   但那时候**生理分其实算得出来**（41/42 槽、全天 55 分）。
+  //   ⇒ 这是我拿「还没验证准不准」当「不给看」的理由，**过度保守**：
+  //   用户要的是「今天压力多少」，一个标着「未校准」的 55 分比空白有用得多
+  //   —— 前者还能用来观察趋势，后者什么都看不到。
+  //   现在口径：数字**照出**，但副标必须写明未校准（`stressNote`），
+  //   且 `calibration.level === 'invalid'`（r<0.2，证明这套数据对你没用）时才真正不给数。
+  // ★ v18.142 诊断已取证（moving 18→4，MET 均值口径误判），按纪律移除。
+  //   需要复查时重新加，打 `[PS-DEBUG] value/dataSlots/moving/byReason/calLevel`。
+  // ★ v18.143 诊断已取证（加权后 value=51 / moving=4 / wSum=0.414），按纪律移除。
+  //   需复查时重加，打 `[RB-DEBUG] value/dataSlots/moving/baseDays/drift/avgUsed/wSum`。
+  // ★ v18.144 诊断已取证（relative/47/reg=96/midSd=13.9），按纪律移除。
+  //   需复查时重加，打 `[SLEEP-P] score/mode/baseDays/daysToReady/reg/midSd/wakeSd/bedSd/regDays`。
+  const stressValue = (() => {
+    try {
+      if ((ring?.curveStatus as any)?.dataStale) return '—';
+      if (!esReport || !esReport.stressScale) return '—';
+      if (esReport.baselineDays < ES_MIN_BASELINE_DAYS) return '—';
+      // 只在「已证明无效」时不给数（r < 0.2）；样本不足（insufficient）照给，只是标未校准
+      if (esReport.calibration?.level === 'invalid') return '—';
+      return String(esReport.stressScale.value);
+    } catch { return '—'; }
+  })();
+  // ★ v18.133 运动门控诊断：**已取证完毕（fw=NO / 戒指未连上），按「排查 log 同轮清掉」纪律移除。**
+  //   需要复查时把下面这段 uncomment 即可（依赖已就绪，字段都在）：
+  //   ⚠ 位置说明：这段必须在**真正渲染的组件作用域**里。同文件的 `EnergyRowData` 看着像，
+  //     但它**从未被任何地方使用**（`grep EnergyRowData` 只有定义处命中）——往那里加日志永远不打印。
+  //   useEffect(() => {
+  //     const d = esReport?.motionDiag; if (!d) return;
+  //     console.log(`[MOTION-GATE] fw=${d.hasFirmwareSessions?'YES':'NO'} gate=[${d.gateSummary}] ` +
+  //       `layers=${JSON.stringify(d.byReason)} moving=${esReport.movingSlots}/${esReport.dataSlots} ` +
+  //       `stress=${esReport.stressSlots} peak=${esReport.peakLevel??'-'} sev=${esReport.meanSeverity??'-'} ` +
+  //       `driftZ=${d.driftZ??'-'} edaScale=${d.edaScalePool??'-'} baseDays=${esReport.baselineDays}`);
+  //   }, [esReport?.dataSlots, esReport?.movingSlots, esReport?.stressSlots, esReport?.meanSeverity, esReport?.deviceDrift, sportSessions?.length]);
+  // ★ v18.134 6 特征融合诊断：**已取证（avgUsed=0 的根因是今日 EDA 真实漂移 2.65×，
+  //   deviceDrift 正确拦下全部 40 槽），按「排查 log 同轮清掉」纪律移除。**
+  //   需要复查时 uncomment 下面这段（字段都在 esReport.featureDetail）。
+  //   ⚠ 位置：必须在真正渲染的组件作用域（EnergyRowData 是死代码，别放那儿）。
+  // useEffect(() => {
+  //   if (!esReport) return;
+  //   const fd = esReport.featureDetail;
+  //   console.log(`[FEAT-6] avgUsed=${fd.avgUsedCount} moving=${esReport.movingSlots}/${esReport.dataSlots} ` +
+  //     `stress=${esReport.stressSlots} peak=${esReport.peakLevel ?? '-'} sev=${esReport.meanSeverity ?? '-'} ` +
+  //     `drift=${esReport.deviceDrift} driftZ=${esReport.motionDiag.driftZ} baseDays=${esReport.baselineDays}`);
+  // }, [esReport?.dataSlots, esReport?.stressSlots, esReport?.meanSeverity]);
+  // ★ v18.137：chip 小字用 `stressScale.bandLabel`（「压力中/压力低/压力高」）。
+  // ★ v18.141 修正：**档位不再被校准状态吃掉**。
+  //   旧逻辑：`calibration.level === 'insufficient'` 直接 return「记录情绪可校准」，
+  //   **排在档位判断之前** ⇒ 用户只看到引导文案，看不到「压力中」这个有效结论。
+  //   为什么改：档位是**有数据的结论**（41/42 槽算得出、全天 55 分），
+  //   校准只影响「这个数字可不可信」，不该把结论一起藏掉。
+  //   ⇒ 改为：档位照常显示，**校准不足时在副标追加一句提示**。
   const emoTag = (() => {
-    if (stress === '—') return undefined;
-    const n = Number(stress);
-    if (!Number.isFinite(n)) return undefined;
-    return n === 0 ? '平稳' : n <= 2 ? '有波动' : '消耗偏高';
+    try {
+      if ((ring?.curveStatus as any)?.dataStale) return undefined;
+      if (!esReport) return undefined;
+      if (esReport.baselineDays < ES_MIN_BASELINE_DAYS) return '建立基线中';
+      const ss = esReport.stressScale;
+      if (!ss) return undefined;
+      if (ss.confidence === 'low') return '信号较少';
+      return ss.bandLabel;
+    } catch { return undefined; }
+  })();
+  // ★ v18.141：校准不足时的**副标提示**（不占档位名，只在卡片小字出现）。
+  //   empty = 不显示（已校准通过时）。
+  const stressNote = (() => {
+    try {
+      const cal = esReport?.calibration;
+      if (!cal) return undefined;
+      if (cal.level === 'insufficient') {
+        return cal.stressReports === 0
+          ? '记录情绪可校准'
+          : `压力时记录 ${cal.stressReports}/3`;
+      }
+      if (cal.level === 'weak') return `准确度 ${cal.r?.toFixed(2) ?? '—'}·仅参考`;
+      if (cal.level === 'invalid') return '身体数据分不出压力大小';
+      return undefined;
+    } catch { return undefined; }
   })();
   const actTag = (() => {
     if (!activityHasData || stepsToday <= 0) return undefined;
@@ -1107,9 +1274,9 @@ export default function TodayScreen() {
   //   断流就画空图表（中间一行「暂无数据」）+ 圆环下方分析写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」
 
   const metricChips: MindChipItem[] = [
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '恢复程度', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力值', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
-    { key: 'emo', icon: 'heart', tone: 'pink', label: '情绪负荷', value: stress, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力准备度', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', tag: actTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
     { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
@@ -1344,11 +1511,17 @@ export default function TodayScreen() {
             ★ v18.53.2：恢复=黄(butter)、认知=绿(lime)（用户指定）；高度压缩保证第二屏所有卡完整展示在一屏 */}
         {todayTab === 'rhythm' ? (
           <View style={{ gap: theme.space.xs }}>
+            {/* ★ v18.145 睡眠卡（新）：昨晚这一觉 = 分数 + 作息规律 + 入睡/起床/时长。
+                ⚠ 放在 AllDayRecoveryCard **之前**：那张是「全天节律曲线」，
+                   这张是「昨晚具体事件」，用户先看具体的、再看趋势更符合阅读顺序。
+                   dataStale 与首页圆环同源（同一判据，不另设口径）。 */}
+            <SleepCard dataStale={dataStale} onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+
             {/* 最上面 = 全天恢复（★ v18.62 去彩底回白卡：颜色留给 lime chip/badge + 趋势曲线） */}
             <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
 
-            {/* 中排：左高块 = 认知（lime：24h 疲劳柱状图 + 预测/真实峰谷行）；右列 = 情绪 / 运动
-                ★ v18.68：去准备度（只在脑力消耗详情展示）；标题精简为「认知」
+            {/* 中排：左高块 = 脑力（lime：24h 疲劳柱状图 + 预测/真实峰谷行）；右列 = 情绪 / 运动
+                ★ v18.68：去准备度（只在脑力消耗详情展示）；★ v18.126 标题「认知」→「脑力」（与顶部 chip 口径统一）
                 ★ v18.59：两小卡一律固定高 sp(32.5)=130（130+8+130=268 正好占满）——flex:1 的 flexGrow 分配在 Fabric 下
                   与 stretch/gap 组合会把运动卡压成 ~30pt 细条（真机实锤），禁用 flexGrow 依赖 */}
             <View style={{ flexDirection: 'row', gap: theme.space.xs, height: theme.sp(67) }}>
@@ -1357,10 +1530,10 @@ export default function TodayScreen() {
                 chipBg={mm.chipBg.lime.bg}
                 icon="nodes"
                 iconFg={mm.chipBg.lime.fg}
-                title="认知"
-                sub="全天疲劳趋势"
+                title="脑力"
+                sub={cogHasData ? '随时疲劳程度' : '暂无数据'}
                 value={cogHasData ? `${cogLevelTxt}疲劳` : '暂无数据'}
-                chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourly : COG_EMPTY_HOURLY} />}
+                chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourlyInstant : COG_EMPTY_HOURLY} />}
                 foot={cogHasData ? (cogPeakTrough ?? undefined) : undefined}
                 style={{ width: '53%' }}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
@@ -1371,9 +1544,23 @@ export default function TodayScreen() {
                   chipBg={mm.chipBg.pink.bg}
                   icon="heart"
                   iconFg={mm.chipBg.pink.fg}
-                  title="情绪消耗"
-                  value={stress}
-                  unit="次峰值"
+                  // ★ v18.140：标题从「情绪消耗·次峰值」改为「心理压力」，
+                  //   值从「事件次数」改为 0-100 百分位（`stressValue`）。
+                  //   旧标题三重矛盾（同 v18.137）：「消耗」没定义 / 单位「次」与分数不符 /
+                  //   「峰值」是事件计数的概念，用户看不懂。
+                  //   ⚠ 事件次数仍保留在内部（`emotionDots48` 点阵图需要它做时间轴），
+                  //     只是不再当「压力大小」展示。
+                  // ★ v18.141：`sub` 写档位 + 校准提示（原来只有 `unit`）。
+                  title="心理压力"
+                  value={stressValue}
+                  sub={(() => {
+                    try {
+                      const b = esReport?.stressScale?.bandLabel;
+                      const n = stressNote;
+                      return n ? `${b ?? ''}·${n}` : b;
+                    } catch { return undefined; }
+                  })()}
+                  unit=""
                   chart={<EmotionDots slots={emotionDots48} columns={12} dotSize={theme.fs(5.5)} gap={theme.fs(2.25)} tight />}
                   compact
                   style={{ height: theme.sp(32.5), flexGrow: 0, flexShrink: 0 }}

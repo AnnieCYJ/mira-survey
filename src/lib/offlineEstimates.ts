@@ -43,25 +43,39 @@ export function estimateOfflineMetricsForDay(dayKey: string, todayKey: string): 
   let filled = 0;
   for (const key of ['eda', 'sns', 'cortisol', 'emotion', 'skin', 'fatigue'] as EstimatedMetricKey[]) {
     const k = key as MetricKey;
-    // ① 已有真实 intraday → 已冻结，跳过（绝不覆写）。
+    // ① 已有**足够**的真实 intraday → 已冻结，跳过（绝不覆写）。
+    // ★ v18.113：只有 1 个点（旧版②的正午点）视为「未成形」——
+    //   单点拟合不出昼夜节律（首页昼夜节律的皮质醇趋势要靠 14 天 cosinor 形状），
+    //   属于「补齐未完成」而非「已冻结」，允许用当日 stress 逐样本补全成全天曲线。
+    //   判据 ≥2 个不同半小时槽（t 相差 >30min），避免把同一时刻的抖动当成有数据。
     const existing = healthStore.getIntraday(k, dayKey);
-    if (existing && existing.length > 0) continue;
+    if (existing && existing.length > 0) {
+      const ts = existing.map((p) => p.t).sort((a, b) => a - b);
+      const spread = ts.length > 1 ? ts[ts.length - 1] - ts[0] : 0;
+      if (ts.length >= 2 && spread > 30 * 60 * 1000) continue; // 已成形，冻结
+    }
 
-    // ② 有真实日聚合值 → 提升为正午单点（真实测值降采样，非推算）。
+    // ★ v18.113 顺序调整（用户实锤「昼夜节律里皮质醇趋势没算出来」）：
+    //   原来②「有 daily 值 → 只落一个正午点」排在③「用逐样本 stress 推算」之前，
+    //   于是历史日 cortisol 只剩 1 个点 → 14 天窗口里 collectSamples 拿不到节律形状，
+    //   analyzeCortisol 拟合不出可靠 mesor/amplitude/acrophase → 首页昼夜节律的皮质醇趋势空态。
+    //   改为：**优先用当日逐样本 stress 映射**（历史日 stress 有 110~247 条，能还原真实全天形状），
+    //   只有 stress 完全没有样本时才退到 daily 正午点。两分支都不复写已有 intraday（冻结契约不变）。
+    // ②′ 逐样本 stress 推算（真实全天形状，优先）。
+    const fromStress = deriveFromStress(key, dayKey);
+    if (fromStress.length > 0) {
+      healthStore.upsertBackfillSamples(k, dayKey, fromStress);
+      filled++;
+      continue;
+    }
+
+    // ③ 退化兜底：有真实日聚合值 → 提升为正午单点（真实测值降采样，非推算）。
     const d = healthStore.getDay(k, dayKey);
     const dailyVal = d?.last ?? d?.mean;
     if (typeof dailyVal === 'number' && dailyVal > 0) {
       const start = parseDayKey(dayKey);
       const noon = Number.isFinite(start) ? start + 12 * 3600000 : Date.now();
       healthStore.upsertBackfillSamples(k, dayKey, [{ t: noon, v: dailyVal }]);
-      filled++;
-      continue;
-    }
-
-    // ③ 退化兜底：用当日实测 stress（真实主干）线性推算。
-    const samples = deriveFromStress(key, dayKey);
-    if (samples.length > 0) {
-      healthStore.upsertBackfillSamples(k, dayKey, samples);
       filled++;
     }
   }

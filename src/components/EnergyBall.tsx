@@ -71,6 +71,24 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const centerLabel = !hasData ? '暂无数据' : (centerLabelOverride ?? mood.label);
   const statusValue = hasData ? Math.round(status.value as number) : null;
 
+  // ★ v18.118/119：数据更新时刻（HH:MM，整点/半点）。
+  //   数据源用 `lastPointAt`（今日最后一个状态点的时刻）—— 全天状态按 30 分钟窗口累积，
+  //   `pushStatusPoint` 写入前必过 `alignBoundaryTs()` 对齐到 :00/:30，所以天然是整点/半点。
+  //   显示 `lastSampleAt`（如 16:05）会与曲线上的点对不上。
+  //   ★ v18.121：断开期间**照常显示**（旧口径下 dataStale 会把它藏起来）。
+  //     用户口径：「3 点断开 → 看到 3 点的值；4 点看还是 3 点的值；连上戒指数据才更新」。
+  //     而「更新于」正是这句话的载体 —— 3 点断开后一直显示「更新于 15:00」，
+  //     用户自己就能看出数据停在 3 点，**不需要额外的「停止更新」提示文案**。
+  const updatedClock = (() => {
+    const ts = status?.lastPointAt ?? null;
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return null;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return null;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  })();
+
   // 当前所处经期象限（来自今日状态预测）；无数据时为 null（仅用于环上高亮，中央相位文字已移除）
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
@@ -234,6 +252,14 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       <View style={styles.center} pointerEvents="none">
         <Text style={[styles.label, !hasData && styles.emptyLabel]}>{centerLabel}</Text>
         {statusValue != null && <Text style={styles.statusValue}>状态值：{statusValue}</Text>}
+        {/* ★ v18.118：状态值下方显示「数据更新于 HH:MM」。
+            口径：只写**更新时刻**，不写「已 N 小时没有新数据」——
+            v18.107 用户明确说过后者「没用」（且和真实采样时刻口径打架）。
+            数据源 = curveStatus.lastSampleAt（指标级 lastUpdated 的最大值 = 最近一次真实采样时刻）。
+            无数据（断流/从没戴过）时不显示 —— 避免出现一个孤零零的时间戳。 */}
+        {updatedClock ? (
+          <Text style={styles.updatedAt}>更新于 {updatedClock}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -274,5 +300,12 @@ const styles = StyleSheet.create({
     color: theme.colors.orbTextInkSub,
     marginTop: 2,
     fontWeight: theme.weight.medium,
+  },
+  // ★ v18.118：状态值下方的「数据更新于 HH:MM」——比状态值更弱一级（信息层级：值 > 时效）
+  updatedAt: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.orbTextInkFaint,
+    marginTop: 1,
+    fontWeight: theme.weight.regular,
   },
 });

@@ -65,7 +65,7 @@ import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recom
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
 /** ★ v18.100 断流阈值：超过这么久没有真实采样，就认为戒指当前没在给 App 传数据，
  *  页面上所有「今日/实时」数字（恢复/脑力/情绪/圆环）一律置空态，不许再挂旧快照的值。 */
-const STALE_AFTER_MS = 3 * 60 * 60 * 1000;
+const STALE_AFTER_MS = 3 * 60 * 60 * 1000; // ★ v18.121 已不再用于 dataStale 判定（改为「从未采到过数据」），保留常量供他处引用
 
 /** 当日曲线上下文：晨间种子 + 日间基线 + 跨窗口滑动状态 */
 interface DailyCurveSeed {
@@ -699,6 +699,8 @@ class NativeRingSource {
   private lastHrvIngestTs = 0;
   /** 已 ingest 的最新 HR 样本时间戳（ms），用于 onHrSamples 去重 */
   private lastHrIngestTs = 0;
+  /** v18.112：收到 ready 但当时还没 connected → 挂起，等 connected 落地再补触发回填 */
+  private _pendingReadyBackfill = false;
 
   constructor(
     private push: (patch: StatePatch) => void,
@@ -1238,6 +1240,21 @@ class NativeRingSource {
       healthStore.setLastSyncDate(today);
       // ★ V2 派生指标管道：backfill 完成后立即把积压的所有 dayKey 重算一遍
       try { flushAll(); } catch {}
+      // ★ v18.113：历史日派生指标（cortisol/eda/sns/…）的 intraday 补齐**必须放在 backfill 之后**。
+      //   启动时那次 estimateOfflineMetricsRecent(30) 跑在回填之前 —— 当时历史日 stress 还是空的，
+      //   deriveFromStress 拿不到样本 → 只落 1 个正午点（甚至完全不落），
+      //   于是首页昼夜节律的皮质醇趋势拿到的是「14 天各 1 个点」，拟合不出节律 → 空态。
+      //   这里回填完成后再补一次：此时历史日 stress 已有 110~247 条逐样本，能还原真实全天形状。
+      try {
+        const filledDays = estimateOfflineMetricsRecent(30);
+        if (filledDays > 0) {
+          postLog('RingBle', `[BACKFILL-DERIVED] 回填后补齐历史派生指标：${filledDays} 天`);
+        }
+      } catch (e) {
+        postLog('RingBle', `[BACKFILL-DERIVED] ⚠️ 补齐失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
+      // 补完再重算 analysis，让 cortisol 拟合结果用上新样本
+      try { flushAll(); } catch {}
       // ★ V2 性能：backfill 期间累积的 RingState patch 一次性 flush
       const accumulated = this._pendingBatchPatch;
       this._pendingBatchPatch = null;
@@ -1248,18 +1265,35 @@ class NativeRingSource {
       }
       this.onBackfillComplete();
       // ★ V2: backfill 写完了 sleep/hrv/hr/stress → 触发今日状态重算
-      // 用 setTimeout 等最后一个 onBatch push 完成后再算（RingState patch 是异步 flush 的）
-      setTimeout(() => {
+      // ★ v18.112：固定等 1500ms 不可靠 —— 30 天回填时 RingState patch 是异步 flush 的，
+      //   1.5s 内 healthStore 可能还在写；而 rebuildHistoricalStatus 有重入锁，
+      //   这次若被丢弃就**再也没有第二次**（实锤：`合并今日 statusTimeline` 全程 0 次）。
+      //   改成「等 RingState patch 落地 + 重建不在运行中」再跑，最多等 8s。
+      //   注意：重建锁 rebuildHistoricalStatusRunning 在 RingConnectionImpl（私有），
+      //   这里通过 requestFlush 提供的上下文无法直接读 —— 改为「多等几拍 + 幂等重跑」：
+      //   requestFlush 内部若正忙，rebuildHistoricalStatus 会记一次待补跑（v18.112），
+      //   所以这里重复调用是安全的，且能确保回填后的最终状态一定被算进去。
+      const waitFlush = (attempt: number) => {
+        if (attempt < 5) {
+          setTimeout(() => {
+            try {
+              this.requestFlush();
+            } catch { /* 下一拍再试 */ }
+            waitFlush(attempt + 1);
+          }, 700);
+          return;
+        }
         try {
           // ★ 修: recomputeDailyStatus 是 RingConnectionImpl 的方法，NativeRingSource 调不到！
           // 用 this.requestFlush() 代替 —— 它实际指向 RingConnectionImpl 的回调：
           //   requestFlush = () => { this.rebuildHistoricalStatus(); this.recomputeDailyStatus(); ... }
           this.requestFlush();
-          postLog('RingBle', '[State] ✅ requestFlush (rebuild+recompute) after backfill');
+          postLog('RingBle', `[State] ✅ requestFlush (rebuild+recompute) after backfill (settled)`);
         } catch (err: any) {
           postLog('RingBle', `[State] ❌ recomputeDailyStatus FAILED: ${err?.message ?? err}`);
         }
-      }, 1500);
+      };
+      setTimeout(() => waitFlush(0), 600);
       postLog('RingBle', `[State] ✅ backfillDone days=${raw.days ?? '?'} lastSyncDate=${today}`);
       return;
     }
@@ -1269,21 +1303,21 @@ class NativeRingSource {
       // ★ V2 性能：开启累积模式（backfill 期间 RingState patch 不立即 push）
       this._pendingBatchPatch = {};
       postLog('RingBle', `[State] ready totalDays=${raw.deviceTotalDays ?? '?'}`);
-      if (this.getState().status === 'connected' && this.syncEnabled) {
-        const last = healthStore.getLastSyncDate();
-        setTimeout(() => {
-          try {
-            if (last) {
-              postLog('RingBle', `[State] ready → backfillSince(${last})`);
-              VeepooNative?.backfillSince?.(last);
-            } else {
-              postLog('RingBle', '[State] ready → full backfill (no lastSyncDate)');
-              VeepooNative?.backfill?.();
-            }
-          } catch (e: any) {
-            postLog('RingBle', `[State] backfill trigger FAILED: ${e?.message ?? e}`);
-          }
-        }, 500);
+      if (this.getState().status === 'connected' && healthStore.syncEnabled) {
+        this.triggerBackfillOnReady('ready');
+      } else {
+        // ★ v18.112：`ready` 常常**早于** connected 到达（原生先报告设备就绪，
+        //   JS 侧 status 还在 scanning/connecting）。旧守卫直接 return，
+        //   而 ready 是**回填的唯一触发点** → 这次连接永远不会回填，
+        //   戒指里存着的离线数据（用户口述的第二段逻辑）永远拉不回来。
+        //   实锤：近 3 次重启 `[State] ready` 0 次，原生却报
+        //   `BACKFILL-API 2026-10-03 original=166 HR=141 hrv=141 temp=29`。
+        //   现在记住这次 ready，等 connected 落地后再补触发（见下方 CONNECTED 分支）。
+        this._pendingReadyBackfill = true;
+        postLog(
+          'RingBle',
+          `[State] ready 先于 connected 到达（status=${this.getState().status}），挂起回填待连接后补触发`,
+        );
       }
       return;
     }
@@ -1334,7 +1368,36 @@ class NativeRingSource {
       this.push(patch);
       postLog('RingBle', `[State] ${status} patch=${Object.keys(patch).join(',')}`);
     }
+    // ★ v18.112：connected 落地后，若此前收到过 ready 但被守卫跳过，此刻补触发回填。
+    if (status === 'connected' && this._pendingReadyBackfill) {
+      this._pendingReadyBackfill = false;
+      this.triggerBackfillOnReady('connected 补触发');
+    }
   };
+
+  /** 统一发起离线回填：用 lastSyncDate 做增量锚点，没有锚点则全量。 */
+  private triggerBackfillOnReady(reason: string): void {
+    // ★ syncEnabled 归 healthStore 全局单例持有（NativeRingSource 只有 setSyncEnabled 写入口），
+    //   与 ready 分支原判断同源。
+    if (!healthStore.syncEnabled) {
+      postLog('RingBle', `[State] 跳过回填（syncEnabled=false，来源=${reason}）`);
+      return;
+    }
+    const last = healthStore.getLastSyncDate();
+    setTimeout(() => {
+      try {
+        if (last) {
+          postLog('RingBle', `[State] ready → backfillSince(${last})（${reason}）`);
+          VeepooNative?.backfillSince?.(last);
+        } else {
+          postLog('RingBle', `[State] ready → full backfill (no lastSyncDate)（${reason}）`);
+          VeepooNative?.backfill?.();
+        }
+      } catch (e: any) {
+        postLog('RingBle', `[State] backfill trigger FAILED: ${e?.message ?? e}`);
+      }
+    }, 500);
+  }
 
   private handleState = (raw: Record<string, any>) => {
     // ★ 同步进度走**已有的** onStateChange 事件转发（刻意不新增事件名）：
@@ -2916,7 +2979,9 @@ class RingConnectionImpl {
   private localCycle: CycleLog | null = null;
   /** healthStore 写入后延迟落盘用的 debounce 定时器（见 scheduleHealthStorePersist） */
   private healthStorePersistTimer: ReturnType<typeof setTimeout> | null = null;
-    private healthStorePersistSubscribed = false;
+  private healthStorePersistSubscribed = false;
+  /** v18.111 落盘诊断计数器（只打前 3 次，避免刷屏） */
+  private _hsPersistDiagCount = 0;
   /** ★ V2 性能：backfill 期间累积 RingState patch，结束后一次性 flush */
   private _pendingBatchPatch: StatePatch | null = null;
 
@@ -4292,7 +4357,19 @@ class RingConnectionImpl {
       return Math.max(...vals) || null;
     })();
     // 没有任何一个指标写过采样时间（跨天清零那一帧 / 戒指从没回传）= 断流，不能放数字上屏。
-    const dataStale = lastSampleAt == null || now - lastSampleAt > STALE_AFTER_MS;
+    // ★ v18.121 口径反转（用户口述定稿，**覆盖 v18.100 的「3 小时断流即空态」**）：
+    //   「3 点断开 → 手机上看的就是 3 点的值；4 点看还是 3 点的值；什么时候连上戒指，数据才更新上去。
+    //    不用写「10:20 停止更新」这类提示，就是旧值停着不动。」
+    //   ⇒ dataStale 的含义从「最近一次采样距今 > 3h」改成「**当前没连着戒指**」：
+    //   **只在从来没采到过数据时置空**；一旦采到过，就保留那最后一批值（冻结），
+    //   等重连 + 离线回填带来新数据时自然刷新。
+    //   ⚠ 不再用「3 小时」做阈值：3 点断开、4 点看是同一份值（同一口径），
+    //   若用时长阈值就会出现「2 点还显示、3 点突然全空」的割裂。
+    const notConnected = this.state.status !== 'connected';
+    const dataStale = lastSampleAt == null;
+    // 「已采到过数据但当前断开」→ 保留旧值冻结显示（v18.121 口径）。
+    // notConnected 目前只用于上面的语义说明与日志；UI 不需要额外提示（用户明确不要「停止更新」文案）。
+    void notConnected;
     // ★ v18.101：只在判定结果翻转时打日志（原来每次都打会灌爆主队列，也看不出翻转）。
     //   日志里打出**全部 lastUpdated 明细**——翻转的元凶就是某个被刷新的指标（上一轮就是
     //   lastSyncedAt 被回填刷成 now 导致的），只报一个 max 值定位不到是谁。
@@ -4315,7 +4392,9 @@ class RingConnectionImpl {
       const pb = cycle.phase as PhaseBucket;
       const lastT = tl.length ? tl[tl.length - 1].t : null;
       // 阈值 3h，按小时取整；不足 1 小时（刚跨过阈值）也至少写 1 小时，不写「0 小时」
-      // ★ v18.107：断流时圆环下方分析统一写这一句——不报「已 N 小时 / 数据截至几点」（用户嫌没用且口径打架）
+      // ★ v18.121：dataStale 现在只表示「**从来没采到过数据**」（旧口径是「距上次采样 > 3h」，
+      //   会把「断开 3 小时后仍显示同一份旧值」的正常冻结误判成空态）。
+      //   真正断流（从未采到）时的引导文案；v18.107 已定稿不报「已 N 小时 / 数据截至几点」。
       const staleNarrative = '暂无数据，请佩戴戒指。约半小时会更新最新数据。';
       return {
         value: null,
@@ -4330,8 +4409,10 @@ class RingConnectionImpl {
           : '记录经期并连续佩戴几天后，开启今日状态评估',
         hasData: false,
         staleSleepDate: null,
-        // ★ 断流时仍把最后一点交出去，UI 那行小字才能写「已 N 小时无新数据 · 数据截至 HH:MM」
-        lastPointAt: dataStale ? lastT : null,
+        // ★ v18.121：始终交出最后一点（不再按 dataStale 清空）——
+        //   圆环下方「更新于 HH:MM」要靠它表达「数据停在什么时候」。
+        //   从没采到数据时 lastT 本来就是 null，不会误导。
+        lastPointAt: lastT,
         dataStale,
         lastSampleAt,
       };
@@ -4374,16 +4455,36 @@ class RingConnectionImpl {
    * 诚实标注：这是基于 HRV/睡眠的推算分，不是当时逐 30 分钟的完整曲线。
    */
   private rebuildHistoricalStatus() {
-    if (this.rebuildHistoricalStatusRunning) return;
+    if (this.rebuildHistoricalStatusRunning) {
+      // ★ v18.112 重入丢失是「回填完了趋势图还是没线」的真凶：
+      //   healthStore.subscribe(节流调和) 在回填期间几百毫秒一次地触发重建，
+      //   而 rebuildHistoricalStatusImpl 是同步重活（30 天 × 48 窗聚合），
+      //   第一次还在跑时后续调用全被这个锁静默丢弃 ——
+      //   包括 backfillDone 之后那次最关键的 requestFlush（实锤：日志里
+      //   `[Batch] ✅ hr dk=2026-10-03 n=147` 之后 `requestFlush` 跑了，
+      //   但 `合并今日 statusTimeline` 0 次）。
+      // 改成「记一次待重跑」：当前这次跑完立刻再跑一轮，保证回填最后状态被算进去。
+      this._rebuildPending = true;
+      return;
+    }
     this.rebuildHistoricalStatusRunning = true;
     try {
       this.rebuildHistoricalStatusImpl();
     } finally {
       this.rebuildHistoricalStatusRunning = false;
     }
+    if (this._rebuildPending) {
+      this._rebuildPending = false;
+      postLog('RingBle', '[rebuildHistoricalStatus] 期间有请求被合并，补跑一轮');
+      this.rebuildHistoricalStatus();
+    }
   }
 
   private rebuildHistoricalStatusRunning = false;
+  /** v18.112：运行期间收到的重建请求（合并成一次补跑，避免丢最后一次） */
+  private _rebuildPending = false;
+  /** v18.112：今日合并判定只诊断一次 */
+  private _hsTodayDiagDone = false;
   private _hsDiagCount = 0;
 
 
@@ -4510,6 +4611,8 @@ class RingConnectionImpl {
     let statusDaily = this.state.statusDaily;
     let statusTimelineByDay = this.state.statusTimelineByDay;
     let statusTimeline = this.state.statusTimeline;
+    // ★ v18.115：历史回填也要能写基线库（见循环内的说明）
+    let statusHistory = this.state.statusHistory;
     let changed = false;
 
     // ★ 诊断 dump：backfill 后立即检查各数据源是否真有值
@@ -4529,6 +4632,41 @@ class RingConnectionImpl {
         return { dk, hrv: hv, sleep: sl?.total, hr: hsHr, steps: hsSteps, met: hsMet, eda: hsEda, hrvPts: hsHrv, statusDaily: sd, stlByDay: stl, stlHasVals };
       });
       postLog('RingBle', `[rebuildHistoricalStatus] 诊断: ${JSON.stringify(dump)}`);
+    }
+
+    // ★ v18.115 前置：先把回填日灌进基线库，再进重建循环。
+    //   顺序很关键 —— 基线（hrRest / hrvExpected）是在重建循环里逐日调 computeSeed 与
+    //   deriveDaytimeBaseline 时读的。若先重建后灌库，本轮仍用旧（空/文献）基线算完所有曲线，
+    //   要等下一次触发才生效；回填是低频事件（启动/重连一次），很可能永远等不到。
+    //   这里两段式：① 先全量灌库 → ② 再重建，基线从第一轮就是个人值。
+    //   ⚠ mergeRecord 每次都返回新数组，引用比较恒不等 → 用「天数 + 末条内容」判断是否真的变了。
+    const histBefore = this.state.statusHistory;
+    const histBeforeKey = `${histBefore.length}|${histBefore[histBefore.length - 1]?.date ?? ''}|${
+      histBefore[histBefore.length - 1]?.hrv ?? ''
+    }|${histBefore[histBefore.length - 1]?.rhr ?? ''}|${histBefore[histBefore.length - 1]?.phase ?? ''}`;
+    for (const dk of days) {
+      if (dk === todayKey) continue; // 今日由 recomputeDailyStatus 走 mergeRecord 那条路
+      const hrvOk =
+        hrv[dk] != null && hrv[dk] <= ALGO_DEFAULTS.HRV_ARTIFACT_MAX && hrv[dk] >= ALGO_DEFAULTS.HRV_ARTIFACT_MIN
+          ? hrv[dk]
+          : null;
+      const rec = this.buildBackfillBaselineRecord(dk, hrvOk, sleep[dk]);
+      if (rec) statusHistory = this.mergeRecord(statusHistory, rec);
+    }
+    // ★ 基线库灌入后要落盘：否则下次冷启动 loadPersisted 拿的是旧 statusHistory，
+    //   分级门槛又退回文献值，等于白灌（末尾的 emit() 会 scheduleSave 5s 内写盘）。
+    const lastRec = statusHistory[statusHistory.length - 1];
+    const histAfterKey = `${statusHistory.length}|${lastRec?.date ?? ''}|${lastRec?.hrv ?? ''}|${
+      lastRec?.rhr ?? ''
+    }|${lastRec?.phase ?? ''}`;
+    if (histAfterKey !== histBeforeKey) {
+      this.state = { ...this.state, statusHistory };
+      const byPhase: Record<string, number> = {};
+      for (const r of statusHistory) byPhase[r.phase] = (byPhase[r.phase] ?? 0) + 1;
+      postLog(
+        'RingBle',
+        `[rebuildHistoricalStatus] 📥 基线库前置灌入：${statusHistory.length} 天 · 相位分布 ${JSON.stringify(byPhase)}`,
+      );
     }
 
     for (const dk of days) {
@@ -4565,6 +4703,9 @@ class RingConnectionImpl {
         changed = true;
       }
 
+      // ★ v18.115 历史回填喂进个人基线库：已在**循环之前**统一完成（见上方「前置」段），
+      //   这里不再逐日 merge —— 顺序理由见前置段注释（基线在重建时被读，必须先灌库）。
+
       if (!isToday) {
         // 历史日：重建 statusTimelineByDay[dk] —— 全天 30min 曲线
         // 这是历史日详情页的数据源，之前只有"跨午夜那一刻"才会被归档，
@@ -4592,6 +4733,16 @@ class RingConnectionImpl {
         const existingReal = statusTimeline.filter((p) => p.fill === false).length;
         const rebuilt0 = this.rebuildDayTimelineFromHealthStore(dk, seedVal, cycle);
         const rebuiltReal = (rebuilt0 ?? []).filter((p) => p.fill === false).length;
+        // ★ v18.112 诊断：今日合并为什么没走，一行看清（rebuilt 为空 / 门槛不够 / 已合并过）
+        if (!this._hsTodayDiagDone) {
+          this._hsTodayDiagDone = true;
+          postLog(
+            'RingBle',
+            `[rebuildHistoricalStatus] 今日合并判定：statusTimeline=${statusTimeline.length}(真实 ${existingReal}) ` +
+              `rebuilt=${rebuilt0?.length ?? 0}(真实 ${rebuiltReal}) seed=${seedVal} willMerge=` +
+              `${(rebuilt0?.length ?? 0) > 0 && (statusTimeline.length < 12 || rebuiltReal > existingReal)}`,
+          );
+        }
         if (rebuilt0 && rebuilt0.length > 0 && (statusTimeline.length < 12 || rebuiltReal > existingReal)) {
           const rebuilt = rebuilt0;
           if (rebuilt && rebuilt.length > 0) {
@@ -4614,7 +4765,8 @@ class RingConnectionImpl {
       }
     }
     if (changed) {
-      this.state = { ...this.state, statusDaily, statusTimelineByDay, statusTimeline };
+      this.state = { ...this.state, statusDaily, statusTimelineByDay, statusTimeline, statusHistory };
+      // 基线库灌入诊断已在上方「前置」段打过（更详细：天数 + 相位分布），此处不再重复。
       this.emit();
     }
   }
@@ -4742,6 +4894,22 @@ class RingConnectionImpl {
       //   · 窗口内一个样本都没有（纯 seed 递推）→ fill:true = 空窗占位，趋势图不画（断流期就不该出现水平线）。
       //   这样「断流即空」与「有新回填数据就补上曲线」两套口径可以共存：
       //   戒指离线时窗口没数据=空，重新戴上后回填进来=画出来（用户 v18.110 口径）。
+      //
+      // ★ v18.122 **回退 v18.120 的 connectedSince 判据**（v18.120 引入了新 bug，已撤销）。
+      //   v18.120 的错法：用「本次连接起点 connectedSince」当界，只数 t >= CONN 的样本。
+      //   问题：**每次 App 重启都会重新记一个连接起点**，
+      //   于是「3 点断开 → 4 点打开 App 自动连上」时，0:00~3:00 那段**真实佩戴数据**会被
+      //   误判成「断开前的旧数据」而整段排除 —— 违背用户口径
+      //   「3 点断开就一直看到 3 点的数据，重新连上才补齐」，且导致曲线中间莫名断开。
+      //
+      //   ★ 正确判据（v18.110 起就是对的）：**只看「该 30min 窗口内有没有真实采样」**。
+      //     · 窗口内有真实样本 → fill:false = 有数据支撑，画（无论断开前采的还是回填的）；
+      //       断开前的数据本来就是真实佩戴期间采的，必须画。
+      //     · 窗口内一个样本都没有 → fill:true = 该时段确实没戴/没连，留白。
+      //   「3 点断开」这个场景天然正确：3 点之后的窗口没有任何采样 → 自然留白；
+      //   0~3 点是你真戴着的 → 窗口内有采样 → 正常画。**不需要任何连接时刻判据。**
+      //   实锤：本会话 App 启动 7 次、每次自动连上并回填，34 个点全 `fill:false` 真实点
+      //   —— 数据是真的，不是伪造的水平线。
       const winReal = winHr.length + winSteps.length + winMet.length + winEda.length + hrvArrWin.length;
       points.push({
         t: winStart,
@@ -4956,6 +5124,12 @@ class RingConnectionImpl {
         lastUploadedAt: this.state.lastUploadedAt,
         availability: this.state.availability,
         lastUpdated: this.state.lastUpdated,
+        // ★ v18.133 补：运动段必须落盘。
+        //   理由：`lib/motionGate` 的**恢复期**要跨时段判（今天早上 6:30 跑步，
+        //   6:45 那一槽仍处恢复期），而固件运动段只在 App 连接时读一次；
+        //   不落盘 ⇒ 冷启动后 gate 是空的，恢复期逻辑对「今天早些时候的运动」完全失效。
+        //   同时它是 TodayScreen/ToolTopicScreen 运动卡的数据源，重启不该丢。
+        sportSessions: this.state.sportSessions,
         syncEnabled: this.syncEnabled,
         userProfile: this.userProfile,
       };
@@ -4964,6 +5138,16 @@ class RingConnectionImpl {
       const hsPath = this.healthStorePath();
       if (hsPath) {
         try {
+          // ★ v18.111 诊断：落盘前统计 healthStore 实际有多少 intraday 点。
+          //   实锤过「mira_health_store_v2.json 写出来 stores 全空」——legacy 有今天数据、
+          //   healthStore 却空，导致重启后 intraday 重建拿不到任何窗口、趋势图画不出来。
+          if (this._hsPersistDiagCount < 3) {
+            this._hsPersistDiagCount++;
+            const probe = (['hr', 'hrv', 'met', 'eda', 'steps'] as const).map(
+              (k) => `${k}=${healthStore.getIntraday(k, this.bucketDay).length}`,
+            );
+            postLog('RingBle', `[saveSnapshot] healthStore 今日 intraday: ${probe.join(' ')}`);
+          }
           await FileSystem.writeAsStringAsync(hsPath, healthStore.serialize());
         } catch {
           /* 写盘失败静默：绝不阻塞 App */
@@ -5022,6 +5206,193 @@ class RingConnectionImpl {
   }
 
   /** 载入或迁移 healthStore：优先读 v2 快照；否则把旧 v1 快照（*Daily/seriesByDay/extDaily/ecgDaily）迁移进来，丢弃非法 key。 */
+  /**
+   * v18.111：把 legacy 快照 buckets（今日 15min 槽）里的真实采样补进 healthStore.intraday。
+   *
+   * 为什么必须有这一步（用户实锤链）：
+   *   ① backfill/实时流的数据**只**落在 RingState.dayBuckets（+ 落进 legacy 快照），
+   *      healthStore.intraday 靠 upsertRealtime/upsertBackfillSamples 写，但重启恢复路径
+   *      从不把 buckets 回灌进去 → 实测真机 `mira_health_store_v2.json` 写出来 stores 全空。
+   *   ② 而 `rebuildDayTimelineFromHealthStore`（全天状态趋势图的数据源）与
+   *      `collectSamples`（皮质醇昼夜节律的数据源）**只读 healthStore**。
+   *   → 重启后两者都拿不到样本：曲线重建 `totalPts===0` 直接 return []，皮质醇空态。
+   *
+   * 口径：槽值取该槽 `last`（最后一次真实读数，语义上最接近「实测值」），
+   * 时刻取槽起点（`dayStart + slot*SLOT_MS`）而非中点 —— 曲线按 :00/:15/:30/:45 对齐更好读。
+   * 只补不覆盖：healthStore 已有同刻样本则跳过。
+   */
+  private hydrateHealthStoreFromBuckets(snap: any): void {
+    const buckets = snap?.buckets;
+    const dayStart = typeof snap?.dayStart === 'number' ? snap.dayStart : null;
+    if (!buckets || dayStart == null) return;
+    const dk = dayKeyOf(dayStart);
+    const core = (buckets as any).core || buckets;
+    const ext = (buckets as any).ext || {};
+    let added = 0;
+    const put = (signalKey: string, m: Record<string, any>) => {
+      const hk = hsKeyFor(signalKey);
+      if (!hk) return;
+      for (const rawSlot of Object.keys(m || {})) {
+        const slot = Number(rawSlot);
+        if (!Number.isFinite(slot) || slot < 0) continue;
+        const e = m[rawSlot];
+        const v = Number(e?.last);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        const t = dayStart + slot * SLOT_MS;
+        if (t > Date.now()) continue; // 未来槽位不补
+        if (healthStore.getIntraday(hk, dk).some((p) => Math.abs(p.t - t) < SLOT_MS / 2)) continue;
+        healthStore.upsertRealtime(hk, { t, v }, t);
+        added++;
+      }
+    };
+    for (const k of CORE_KEYS) put(k, core?.[k] || {});
+    for (const k of Object.keys(ext)) put(k, ext[k]);
+    if (added > 0) {
+      postLog('RingBle', `[buckets→healthStore] 已补入今日 intraday 样本 ${added} 条（dayKey=${dk}）`);
+      // 补完必须触发一次重建：否则曲线/皮质醇还停留在补齐前的空态
+      try {
+        this.rebuildHistoricalStatus();
+      } catch (e) {
+        postLog('RingBle', `[buckets→healthStore] ⚠️ 触发重建失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  }
+
+  /**
+   * v18.112：App 启动后自动连上**上次那台戒指**，让离线回填与派生重算自己跑起来。
+   *
+   * 背景（用户口述的产品逻辑）：没戴戒指 → 当天没数据；戴了但没连 App → 数据存在戒指里，
+   * 下次连上要能「回填回来」，然后由 App 重算全天状态趋势与皮质醇昼夜节律。
+   * 改之前只有设置页手动点会连，导致重启后这条链彻底断掉。
+   *
+   * 做法：
+   *  1. 没有上次设备（deviceId 从未持久化过）→ 不扫，避免无意义耗电；
+   *  2. 扫描 → 候选里优先按 deviceId 精确匹配，匹配不到再按设备名兜底（原生按名字识别）；
+   *  3. 匹配到就 connectToId，交给既有 `ready → backfillSince → backfillDone → requestFlush` 链路；
+   *  4. 3s 内没扫到就静默放弃（用户可去设置页手动连），不弹任何东西。
+   */
+  private autoConnectOnLaunch(): void {
+    if (!this.useNative) return;
+    const lastId = this.state.deviceId;
+    const lastName = this.state.deviceName;
+    if (!lastId && !lastName) {
+      postLog('RingBle', '[autoConnect] 跳过：没有上次设备记录（首次使用请在设置页连接）');
+      return;
+    }
+    postLog('RingBle', `[autoConnect] 启动自动连接 lastId=${lastId ?? '-'} name=${lastName ?? '-'}`);
+    const un = this.onState((s) => {
+      const list = s.devices ?? [];
+      if (Array.isArray(list) && list.length > 0) {
+        const byId = lastId ? list.find((d: any) => String(d?.id ?? d?.deviceId ?? '') === String(lastId)) : null;
+        const byName = lastName
+          ? list.find((d: any) => String(d?.name ?? d?.deviceName ?? '') === String(lastName))
+          : null;
+        const hit = byId ?? byName ?? null;
+        un();
+        if (hit) {
+          const id = String(hit?.id ?? '');
+          if (id) {
+            postLog('RingBle', `[autoConnect] ✅ 命中上次设备 → 连接 ${hit?.name ?? id}`);
+            void this.connectToId(id);
+          }
+        } else {
+          postLog('RingBle', '[autoConnect] 扫到的设备里没有上次那台，放弃（可在设置页手动连）');
+        }
+      }
+    });
+    setTimeout(() => {
+      un();
+      postLog('RingBle', '[autoConnect] 3s 内未命中，结束');
+    }, 3000);
+    void this.startScan();
+  }
+
+  /**
+   * v18.115：用**某一天回填回来的真实数据**构造一条基线库记录（DailyRecord）。
+   *
+   * 为什么必须有（用户实锤「历史回填肯定要放，未进基线库呢」）：
+   *   `BaselineStore.baselineFor()` 的三级回落是「同相位个人 → 全局个人 → 文献群体」，
+   *   门槛 `MIN_PHASE_SAMPLES=8` + `MIN_DAYS=30`。但 `statusHistory` 原来只有实时佩戴累积那条路会写，
+   *   离线回填日一条不进 → 永远命中不了第 1/2 级，一直用文献值（HRV 50 / RHR 59 / 睡眠 74）。
+   *   同时 `cycle.phase` 也从 `statusHistory[i].phase` 读，历史日不回填 → 相位恒 unknown，
+   *   也就是「生理周期校正」在代码里写了、实际从未生效。
+   *
+   * 口径（都取该日真实值，取不到就 null 让基线库忽略该字段，绝不用邻近日/默认值填充）：
+   *   hrv       → healthStore 该日 intraday HRV 的**晨间代表值**（近 12 点中位数，最贴晨间基线语义）
+   *   rhr       → 该日 intraday HR 的**夜间最低 10% 分位**（RHR 近似，awake 期间会偏高）
+   *   sleep*    → sleepDaily 该日归档（total/deep/rem/getUp）
+   *   phase     → `computeCycle(log, 该日日期)`，**按那天推算**，不是复用今天的相位
+   *   fever     → 暂 false（协议无体温阈值判定）；TODO 未来用 skin temp 阈值补
+   */
+  private buildBackfillBaselineRecord(
+    dk: string,
+    hrvDaily: number | null,
+    sleep: { total?: number | null; deep?: number | null; rem?: number | null; getUp?: number | null } | undefined,
+  ): DailyRecord | null {
+    // 该日日期对象（dayKey 是 'YYYY-MM-DD'，本地时区解析）
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(dk);
+    if (!m) return null;
+    const dayDate = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+
+    // ① HRV：优先用 intraday 的晨间代表值（近 12 点中位数），退回日均值
+    let hrv: number | null = null;
+    try {
+      const arr = healthStore
+        .getIntraday('hrv', dk)
+        .filter((p) => Number.isFinite(p.v) && p.v >= ALGO_DEFAULTS.HRV_ARTIFACT_MIN && p.v <= ALGO_DEFAULTS.HRV_ARTIFACT_MAX)
+        .map((p) => ({ t: p.t, v: p.v }))
+        .sort((a, b) => a.t - b.t);
+      if (arr.length > 0) {
+        const from = new Date(dayDate.getTime() - 12 * 3600000).getTime();
+        const morning = arr.filter((p) => p.t >= from);
+        const pick = morning.length > 0 ? morning : arr;
+        const vs = pick.map((p) => p.v).sort((a, b) => a - b);
+        hrv = vs.length % 2 === 1 ? vs[(vs.length - 1) / 2] : (vs[vs.length / 2 - 1] + vs[vs.length / 2]) / 2;
+      }
+    } catch {
+      /* 取不到就退回 hrvDaily */
+    }
+    if (hrv == null) hrv = hrvDaily;
+
+    // ② RHR：夜间最低 10% 分位
+    let rhr: number | null = null;
+    try {
+      const hrArr = healthStore.getIntraday('hr', dk).filter((p) => Number.isFinite(p.v) && p.v > 0).map((p) => p.v).sort((a, b) => a - b);
+      if (hrArr.length >= 10) {
+        const idx = Math.min(hrArr.length - 1, Math.floor(hrArr.length * 0.1));
+        rhr = hrArr[idx];
+      } else if (hrArr.length > 0) {
+        rhr = hrArr[0];
+      }
+    } catch {
+      /* 无 HR 则 rhr 保持 null */
+    }
+
+    // ③ 相位：按该日日期推算（不能复用今天的相位 —— 否则历史日全被标成今天所处的阶段）
+    let phase: DailyRecord['phase'] = 'unknown';
+    try {
+      const cyc = computeCycle(this.localCycle, dayDate);
+      if (cyc.phase && cyc.phase !== 'unknown') phase = cyc.phase as DailyRecord['phase'];
+    } catch {
+      /* 无经期记录 → unknown，基线库会落到全局个人级 */
+    }
+
+    // 全为空 → 这天没有可用基线料，不写（避免污染基线中位数）
+    if (hrv == null && rhr == null && !(sleep && (sleep.total ?? 0) > 0)) return null;
+
+    return {
+      date: dk,
+      hrv,
+      rhr,
+      sleepTotal: sleep?.total != null && sleep.total > 0 ? sleep.total : null,
+      sleepDeep: sleep?.deep ?? null,
+      sleepRem: sleep?.rem ?? null,
+      getUp: sleep?.getUp ?? null,
+      fever: false,
+      phase,
+    } as DailyRecord;
+  }
+
   private async loadHealthStoreFromDisk(legacySnap: any): Promise<void> {
     const path = this.healthStorePath();
     if (path) {
@@ -5175,6 +5546,14 @@ class RingConnectionImpl {
       if (snap.ecgDaily) patch.ecgDaily = snap.ecgDaily;
       if (snap.lastUploadedAt) patch.lastUploadedAt = snap.lastUploadedAt;
       if (snap.deviceId) patch.deviceId = snap.deviceId;
+      // ★ v18.133 补：恢复运动段（与 saveSnapshot 新增字段配对）。
+      //   冷启动后 motionGate 靠它判「今天早些时候的运动 + 恢复期」——
+      //   固件运动段只在连接成功时读一次，不恢复就等于恢复期逻辑对当天已发生的运动失效。
+      //   只接受数组（老快照是 undefined ⇒ 保持 null，等本次连接读回来）。
+      if (Array.isArray(snap.sportSessions)) {
+        patch.sportSessions = snap.sportSessions as RingSportSession[];
+        postLog('RingBle', `[loadPersisted] ✅ 恢复运动段 ${patch.sportSessions.length} 段`);
+      }
       if (snap.statusHistory) patch.statusHistory = snap.statusHistory;
       if (snap.dailyCurve) patch.dailyCurve = snap.dailyCurve;
       if (snap.curveStatus) patch.curveStatus = snap.curveStatus;
@@ -5212,6 +5591,18 @@ class RingConnectionImpl {
       this.applyPatch(patch);
       // ★ 载入/迁移 healthStore（v2 单一数据源）：优先直接 loadV2；否则用旧 v1 快照迁移
       await this.loadHealthStoreFromDisk(snap);
+      // ★ v18.111（用户实锤「戒指数据有更新，全天状态趋势图却还是没数据」的真凶）：
+      //   legacy 快照 buckets（今日 30min 槽：hr/hrv/spo2/temp/eda + 扩展指标）**只**恢复进
+      //   RingState.dayBuckets，从来不写 healthStore.intraday。而
+      //   rebuildDayTimelineFromHealthStore / analyzeCortisol(collectSamples) 全都只读 healthStore
+      //   → 重启后 healthStore 是空的（实测 mira_health_store_v2.json 写出来 stores 全空），
+      //   于是：① 曲线重建 totalPts===0 直接 return []；② 皮质醇无样本 → 昼夜节律空态。
+      //   这里把 buckets 里的真实采样按槽中心时刻补进 healthStore（只补缺失，不覆盖已有）。
+      try {
+        this.hydrateHealthStoreFromBuckets(snap);
+      } catch (e) {
+        postLog('RingBle', `[loadPersisted] ⚠️ buckets→healthStore 补齐失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
       // 独立同步开关优先于健康数据快照中的旧副本；若开关文件尚未加载，
       // loadSyncFlag 的 finally 会在完成后再次写回正确值。
       // ★ 强制 syncEnabled=true：历史快照可能存了 false 导致离线回填永远跳过
@@ -5252,6 +5643,18 @@ class RingConnectionImpl {
         postLog('RingBle', `[loadPersisted] ⚠️ 启动跨天重算失败（已忽略）: ${e instanceof Error ? e.message : e}`);
       }
       postLog('RingBle', '已从本地持久化恢复真实数据（跨 ⌘R 保留趋势曲线）');
+      // ★ v18.112 启动自动连接（用户口述的真实产品逻辑第二段：「有佩戴的时候戴上以后它就会拉取
+      //   历史的数据」）。改之前 App 重启后**从不连戒指** —— 只有设置页手动点才调 startScan，
+      //   于是：① 戒指里存着的离线数据永远拉不回来；② `[State] ready`（回填唯一触发点）不来；
+      //   ③ 全天状态趋势图 / 皮质醇昼夜节律自然也算不出离线那段时间。
+      //   实锤：近 3 次重启日志里 `[State] ready` 0 次，而原生曾报
+      //   `BACKFILL-API 2026-10-03 original=166 HR=141 hrv=141 temp=29`（今天确实有 141 条 HR 躺在戒指里）。
+      //   这里在恢复完成后自动发起扫描 + 连上**上次那台设备**（deviceId 已随快照持久化）。
+      try {
+        this.autoConnectOnLaunch();
+      } catch (e) {
+        postLog('RingBle', `[autoConnect] ⚠️ 启动自动连接失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       postLog('RingBle', `[loadPersisted] ⚠️ 快照加载失败（已忽略，从头开始）: ${msg}`);
