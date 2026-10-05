@@ -5,7 +5,7 @@
  *   返回头 → Hero → RangeSwitch → DateAnchorPicker → 图表(置顶) → 指标网格 → 其他内容 → 解读
  *
  * 情绪消耗: EmotionInsightView（★ 与洞察页「情绪压力」tab 共用同一实现，内容一致）
- * 脑力消耗: CognitiveLoadCard 的数据，图=全天认知负荷分布
+ * 脑力消耗: 认知准备度（computeReadinessSeries），日=全天趋势图 / 周月年=区间准备度趋势
  * 运动消耗: 步数/距离/消耗 list + MetricDetail 跳转
  */
 import React, { useMemo, useState } from 'react';
@@ -14,7 +14,7 @@ import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import Svg, { Rect, Text as SvgText, Line, Defs, LinearGradient, Stop, G, Polyline, Circle } from 'react-native-svg';
+import Svg, { Rect, Text as SvgText, Line, Defs, LinearGradient, Stop, G, Polyline, Circle, Path } from 'react-native-svg';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -29,24 +29,23 @@ import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { buildNaturalPeriods, buildPrevNaturalPeriods } from '../lib/periods';
 // ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
-import { cogLevel, cogLevelLabel, computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, COG_LEVEL_BAR_RATIO } from '../lib/cognitiveLoad';
+import { cogLevel, cogLevelLabel, computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
 // 底部常驻「记录此时心情」悬浮按钮（仅情绪消耗页出现）
 import EmotionQuickRecord from '../components/EmotionQuickRecord';
 
-// CognitiveLoadCard 导出的组件/函数
-import {
-  HourHistogram as CognitiveHistogram,
-} from '../components/CognitiveLoadCard';
+// ★ 认知准备度（2026-10-05）：详情页日/周/月/年统一改用准备度口径
+import ReadinessTrendChart, { readinessColor } from '../components/ReadinessTrendChart';
+import { computeReadinessSeries, readinessLevel } from '../lib/cognitiveReadiness';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
   emotion:   { name: '情绪洞察', accent: mm.colors.roseCore,    sub: '情绪消耗 + 唤醒分' }, // v16：情绪=Rose（旧 stateTense=honey 语义不符）
-  cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '基于时序疲劳累积模型' },
+  cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '认知准备度 · 全天与区间趋势' },
   activity:  { name: '运动消耗', accent: mm.colors.skyCore,  sub: '步数 · 距离 · 活动消耗' },
 };
 
@@ -155,17 +154,24 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 
   // ★ Hero 左上角: emotion 显示分, cognitive 显示档位文字
   if (type === 'cognitive') {
-    // 与卡片大数字同源：档位取自 avgFatigue（低<40 / 中40-70 / 高≥70）；无真实数据 → 诚实显示 —
-    const lv = report?.avgFatigue != null ? cogLevel(report.avgFatigue) : null;
+    // ★ 2026-10-05 改准备度：Hero 与下方趋势图同源（同一份 computeReadinessSeries）
+    const readyNow = report ? computeReadinessSeries(report).now : null;
     const map: Record<string, { text: string; color: string }> = {
-      low: { text: '低疲劳', color: theme.colors.success },
-      mid: { text: '中疲劳', color: theme.colors.warn },
-      high: { text: '高疲劳', color: theme.colors.danger },
+      low: { text: '需要休息', color: theme.colors.danger },
+      mid: { text: '状态中等', color: theme.colors.warn },
+      high: { text: '状态充足', color: theme.colors.success },
     };
-    const m = lv ? map[lv] : null;
+    const m = readyNow != null ? map[readinessLevel(readyNow)] : null;
     return (
       <View style={styles.hero}>
-        <Text style={[styles.heroVal, m && { color: m.color }]}>{m ? m.text : '—'}</Text>
+        {m ? (
+          <>
+            <Text style={[styles.heroVal, { color: m.color }]}>{readyNow}</Text>
+            <Text style={styles.heroUnit}>/100 · {m.text}</Text>
+          </>
+        ) : (
+          <Text style={styles.heroVal}>—</Text>
+        )}
       </View>
     );
   }
@@ -181,44 +187,29 @@ function HeroRow({ type, accent, anchor, ring }: { type: EnergyType; accent: str
 /* ========== 情绪消耗：图在上 ========== */
 /* ========== 脑力消耗：图在上 ========== */
 function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
-  const { computeCognitiveLoadReport } = require('../lib/cognitiveLoad');
   const report = computeCognitiveLoadReport(reportNowMsForDay(anchorMs));
+  // ★ 准备度序列：与 report 同源（同一小时是否有采样），只做反向映射 + 节律塑形
+  const ready = computeReadinessSeries(report, reportNowMsForDay(anchorMs));
+  const isToday = dayKey(reportNowMsForDay(anchorMs)) === dayKey(Date.now());
 
   const hasData = report.sampleCount >= 2;
 
   // 无真实数据 → 空骨架示意图：24 根空柱 + 三档坐标轴 + 「暂无数据」浮层（HourHistogram 内建），
   // 不放演示数据——示意图只说明「这里会有图表」，不冒充任何真实值。
   if (!hasData) {
-    const skeletonHourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
+    const skeletonPoints = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
     return (
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={[styles.chartTitle, { marginBottom: theme.sp(1.5) }]}>认知疲劳度</Text>
-          <CognitiveHistogram chartH={160}
-            hourly={skeletonHourly}
-            peakSpan={null}
-            bestSpan={null}
-            sleepWindow={null}
-          />
+          <Text style={[styles.chartTitle, { marginBottom: theme.sp(1.5) }]}>认知准备度 · 全天趋势</Text>
+          <ReadinessTrendChart chartH={170} points={skeletonPoints} sleepWindow={null} />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            连上戒指跑 2-3 轮自动监测后，这里将展示你的真实认知疲劳曲线
+            连上戒指跑 2-3 轮自动监测后，这里将展示你的真实认知准备度曲线
           </Text>
         </View>
       </Card>
     );
   }
-
-  const rhythmChip = (() => {
-    if (report.rhythmStatus === 'sustained_high') return { text: '节律偏高', color: theme.colors.danger };
-    if (report.rhythmStatus === 'dysregulated') return { text: '节律紊乱', color: mm.colors.honeyDeep };
-    if (report.rhythmStatus === 'normal') return { text: '节律正常', color: mm.colors.limeDeep };
-    return null;
-  })();
-
-  const { sleepRecovery, sleepDebt } = report;
-  const recoveryPenalty = Math.round((1 - sleepRecovery) * 35);
-  const debtScore = Math.round(Math.min(sleepDebt * 6, 30));
-  const recoveryLabel = sleepRecovery >= 0.75 ? '恢复良好' : sleepRecovery >= 0.55 ? '恢复一般' : sleepRecovery >= 0.35 ? '恢复不足' : '严重不足';
 
   return (
     <>
@@ -271,20 +262,20 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
         </View>
       </Card>
 
-      {/* ② 中间：认知疲劳度（低 / 中 / 高 三柱分布） */}
+      {/* ② 中间：认知准备度 · 全天趋势（★ 替换原「认知疲劳度」半小柱图）
+          柱状图 → 折线趋势：准备度是连续状态量（晨高晚低波形），柱图会把相邻两小时
+          切成互不相干的两根，看不出「上午走高、傍晚回落」这个关键形态。 */}
       <Card padded={false}>
         <View style={styles.pad}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5), marginBottom: theme.sp(1) }}>
-            <Text style={styles.cardTitle}>认知疲劳度</Text>
+            <Text style={styles.cardTitle}>认知准备度 · 全天趋势</Text>
             {(() => {
-              // ★ v18.131 档位徽章改用**瞬时**均值 avgFatigueInstant ——
-              //   与下方 FatigueTimeline 柱状图逐槽同源。原用累积量 avgFatigue，
-              //   两者能差出一整档（用户看到「柱子都是绿的但徽章写低疲劳/不一致」）。
-              const lv = cogLevel(report.avgFatigueInstant ?? report.avgFatigue);
+              // 徽章与曲线同源：用当天有数据小时的准备度均值分档
+              const lv = readinessLevel(ready.avg);
               const map = {
-                low: { text: '低疲劳', color: theme.colors.success },
-                mid: { text: '中疲劳', color: theme.colors.warn },
-                high: { text: '高疲劳', color: theme.colors.danger },
+                high: { text: '状态充足', color: theme.colors.success },
+                mid: { text: '状态中等', color: theme.colors.warn },
+                low: { text: '需要休息', color: theme.colors.danger },
               } as const;
               const m = map[lv];
               return (
@@ -294,34 +285,39 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               );
             })()}
           </View>
-          <FatigueTimeline report={report} />
+          <ReadinessTrendChart
+            chartH={180}
+            points={ready.points}
+            sleepWindow={report.sleepWindow ?? null}
+            nowHour={isToday ? new Date(reportNowMsForDay(anchorMs)).getHours() : null}
+          />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            横轴为一天时间（已去掉睡眠时段），每半小时一根柱，同档柱子等高；颜色与高度都对应疲劳档位（低 / 中 / 高）
+            横轴为一天时间（0–24 时），灰底为睡眠时段；分数越高表示此刻越「转得动」
           </Text>
         </View>
       </Card>
 
-      {/* ③ 底部：实际疲劳时段 — 最高 / 最低 */}
+      {/* ③ 底部：准备度最佳 / 最低时段（★ 原「实际疲劳时段」，峰谷语义随准备度反转） */}
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={styles.cardTitle}>实际疲劳时段</Text>
+          <Text style={styles.cardTitle}>准备度时段</Text>
           <View style={{ flexDirection: 'row', gap: theme.sp(3) }}>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.danger + '14' }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>疲劳最高</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.danger }}>
-                {report.peakLoadSpan ? peakSpanText(report.peakLoadSpan) : '--'}
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>状态最佳</Text>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
+                {ready.peakHour != null ? `${String(ready.peakHour).padStart(2, '0')}:00` : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                需留意 · 少安排烧脑
+                最适合烧脑
               </Text>
             </View>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>疲劳最低</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
-                {report.bestSpan ? peakSpanText(report.bestSpan) : '--'}
+            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.danger + '14' }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>需要休息</Text>
+              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.danger }}>
+                {ready.troughHour != null ? `${String(ready.troughHour).padStart(2, '0')}:00` : '--'}
               </Text>
               <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                状态最佳窗口
+                轻度任务 / 休息
               </Text>
             </View>
           </View>
@@ -345,81 +341,6 @@ function isAsleep(hour: number, sleep: { bedHour: number; wakeHour: number } | n
   return hour >= bedHour || hour < wakeHour;
 }
 
-// 认知疲劳度时间轴：横轴=一天(去掉睡眠)，每半小时一根柱，柱高=疲劳档位(低/中/高)
-// ★ SVG 必须用 viewBox + width 100% 自适应卡片宽；纵轴标注 低/中/高 三档
-function FatigueTimeline({ report }: { report: any }) {
-  const sleep = report.sleepWindow;
-  // ★ v18.131 数据源改**瞬时**（与首页 MiniCognitiveBars / 详情页 HourHistogram 同源）。
-  //   原来用 `report.hourly`（**累积**量）→ 这张图显示的是一路爬升的斜坡，
-  //   与同页上方的 HourHistogram（已改瞬时）**同一页出现两种形态** = 用户说的「不一样」。
-  //   累积量仍保留给脑力账户（brainReserve/brainUsed/brainRemaining）。
-  const hourly: { hour: number; score: number; hasData: boolean }[] =
-    report.hourlyInstant ?? report.hourly ?? [];
-  // 24 小时 → 48 个半小时槽
-  const slots: { score: number | null; asleep: boolean }[] = [];
-  for (let h = 0; h < 24; h++) {
-    const slot = hourly.find((x: any) => x.hour === h);
-    const score = slot && slot.hasData ? slot.score : null;
-    const asleep = isAsleep(h, sleep);
-    slots.push({ score, asleep });
-    slots.push({ score, asleep });
-  }
-  const n = slots.length;
-  // viewBox 固定坐标系，实际渲染 width=100% 等比铺满卡片
-  const W = 320;
-  const AX_L = 26;  // 左边距：留给纵轴 低/中/高 标签
-  const AX_R = 6;
-  const step = (W - AX_L - AX_R) / n;
-  const barW = step * 0.68;
-  const plotTop = 8;
-  const plotH = 112;
-  const plotBottom = plotTop + plotH;
-  const chartH = plotBottom + 18;
-  // ★ v18.131 档位高度改用**共用** COG_LEVEL_BAR_RATIO（与首页/详情页另一张图同源）。
-  //   原来这里自己写死 `{low:0.30, mid:0.62, high:1.0}`，与共用的 `{low:0.34, mid:0.67, high:1.0}`
-  //   不一样 —— **同一页两张图的中档柱子高度不同**（0.62 vs 0.67），肉眼可见。
-  const LEVEL_H = COG_LEVEL_BAR_RATIO;
-  const LEVEL_C = { low: theme.colors.success, mid: theme.colors.warn, high: theme.colors.danger } as const;
-  const xOf = (i: number) => AX_L + i * step;
-  const yOfLevel = (lh: number) => plotBottom - lh * plotH;
-  const ticks = [0, 6, 12, 18, 24];
-  return (
-    <Svg viewBox={`0 0 ${W} ${chartH}`} width="100%" height={chartH * 1.7}>
-      {/* 睡眠带 */}
-      {slots.map((s, i) => s.asleep ? (
-        <Rect key={`sl${i}`} x={xOf(i)} y={plotTop} width={step} height={plotH} fill={theme.colors.ui.borderSoft} opacity={0.45} />
-      ) : null)}
-      {/* 纵轴：三档档位线 + 标签 */}
-      {([['high', LEVEL_H.high, '高'], ['mid', LEVEL_H.mid, '中'], ['low', LEVEL_H.low, '低']] as const).map(([key, lh, label]) => (
-        <G key={`lv${key}`}>
-          <Line x1={AX_L} y1={yOfLevel(lh)} x2={W - AX_R} y2={yOfLevel(lh)} stroke={theme.colors.cardBorder} strokeWidth={0.6} strokeDasharray="3 4" opacity={0.7} />
-          <SvgText x={AX_L - 4} y={yOfLevel(lh) + 3} textAnchor="end" fontSize={8.5} fill={LEVEL_C[key]}>{label}</SvgText>
-        </G>
-      ))}
-      {/* 基线 */}
-      <Line x1={AX_L} y1={plotBottom} x2={W - AX_R} y2={plotBottom} stroke={theme.colors.cardBorder} strokeWidth={0.75} />
-      {/* 柱 */}
-      {slots.map((s, i) => {
-        if (s.asleep) return null;
-        const x = xOf(i);
-        if (s.score == null) {
-          return <Rect key={i} x={x} y={plotBottom - 2} width={barW} height={2} fill={theme.colors.textSub} opacity={0.3} />;
-        }
-        const lv = cogLevel(s.score);
-        const h = Math.max(3, LEVEL_H[lv] * plotH);
-        return <Rect key={i} x={x} y={plotBottom - h} width={barW} height={h} fill={LEVEL_C[lv]} rx={1} opacity={0.92} />;
-      })}
-      {/* 时间轴刻度 */}
-      {ticks.map((hh) => {
-        const idx = hh === 24 ? n - 1 : hh * 2;
-        const x = xOf(idx) + barW / 2;
-        return (
-          <SvgText key={`tk${hh}`} x={x} y={chartH - 4} textAnchor="middle" fontSize={8.5} fill={theme.colors.textSub}>{hh}</SvgText>
-        );
-      })}
-    </Svg>
-  );
-}
 
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -438,12 +359,20 @@ function showXLabel(range: RangeKey, i: number, label: string): boolean {
 }
 
 interface CogPeriodRow {
+  /** 该周期内「每天准备度全天均值」再取平均（0–100） */
   readiness: number | null;
-  lowPct: number; midPct: number; highPct: number;
+  /** 准备度三档小时占比（按佩戴且清醒的小时统计）：充足 / 中等 / 偏低 */
+  highPct: number; midPct: number; lowPct: number;
   hasData: boolean;
 }
 
-// 单周期认知指标：准备度(脑力余额均值) + 疲劳三档占比(按佩戴且清醒小时统计)
+/**
+ * 单周期认知指标（★ 2026-10-05 改准备度口径）
+ *  - readiness：每天走 `computeReadinessSeries(...).avg`（与日视图曲线、首页趋势同源），
+ *    再对本周期内的天取平均。**不再用 brainRemaining**（那是脑力账户余额，量纲不同）。
+ *  - 三档占比：按清醒佩戴小时统计准备度落在 充足(≥70)/中等(40–70)/偏低(<40) 的比例。
+ *  - hasData 只认「该周期至少一天有 ≥2 个真实样本」。
+ */
 function computeCogRow(p: { dayKeys: string[] }): CogPeriodRow {
   let readySum = 0, readyCnt = 0, low = 0, mid = 0, high = 0, any = false;
   for (const dk of p.dayKeys) {
@@ -451,21 +380,22 @@ function computeCogRow(p: { dayKeys: string[] }): CogPeriodRow {
     const rep = computeCognitiveLoadReport(midMs);
     if (!rep || rep.sampleCount < 2) continue;
     any = true;
-    if (rep.brainRemaining != null) { readySum += rep.brainRemaining; readyCnt++; }
+    const series = computeReadinessSeries(rep, midMs);
+    if (series.avg != null) { readySum += series.avg; readyCnt++; }
     const sleep = rep.sleepWindow;
-    for (const hr of rep.hourly) {
-      if (!hr.hasData) continue;
-      if (isAsleep(hr.hour, sleep)) continue;
-      const lv = cogLevel(hr.score);
-      if (lv === 'low') low++; else if (lv === 'mid') mid++; else high++;
+    for (const pt of series.points) {
+      if (!pt.hasData) continue;
+      if (isAsleep(pt.hour, sleep)) continue;
+      const lv = readinessLevel(pt.score);
+      if (lv === 'high') high++; else if (lv === 'mid') mid++; else low++;
     }
   }
   const tot = low + mid + high;
   return {
     readiness: readyCnt > 0 ? Math.round(readySum / readyCnt) : null,
-    lowPct: tot > 0 ? low / tot : 0,
-    midPct: tot > 0 ? mid / tot : 0,
     highPct: tot > 0 ? high / tot : 0,
+    midPct: tot > 0 ? mid / tot : 0,
+    lowPct: tot > 0 ? low / tot : 0,
     hasData: any,
   };
 }
@@ -489,7 +419,6 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
   const chartH = plotTop + plotH + xLabelH;
   const step = (VW - AX_L - AX_R) / n;  // 每个周期格宽
   const barW = Math.min(24, Math.max(4, step * 0.55));
-  const xOf = (i: number) => AX_L + i * step + (step - barW) / 2;
   const cxOf = (i: number) => AX_L + i * step + step / 2;
   const yOf = (v: number) => plotTop + (1 - v / 100) * plotH;
 
@@ -561,24 +490,19 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
         </View>
       </Card>
 
-      {/* 卡 ② 疲劳度高中低占比堆叠柱（每天一根） */}
+      {/* 卡 ② 准备度趋势（★ 替换原「疲劳度高中低占比」堆叠柱）
+          同量级比同量级：周视图按天、月视图按天、年视图按月；一条线看趋势，堆叠柱只看占比。 */}
       <Card padded={false} style={{ marginTop: theme.sp(2) }}>
         <View style={styles.pad}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1) }}>
-            <Text style={styles.chartTitle}>疲劳度高中低占比</Text>
+            <Text style={styles.chartTitle}>认知准备度 · {RANGE_DEF[range].label}趋势</Text>
             <View style={{ flexDirection: 'row', gap: theme.sp(2) }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
-                <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: 2, backgroundColor: theme.colors.success }} />
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>低</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
-                <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: 2, backgroundColor: theme.colors.warn }} />
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>中</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
-                <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: 2, backgroundColor: theme.colors.danger }} />
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>高</Text>
-              </View>
+              {([['充足', theme.colors.success], ['中等', theme.colors.warn], ['偏低', theme.colors.danger]] as const).map(([t, c]) => (
+                <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
+                  <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: 2, backgroundColor: c }} />
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{t}</Text>
+                </View>
+              ))}
             </View>
           </View>
           <Svg viewBox={`0 0 ${VW} ${chartH}`} width="100%" height={chartH * 1.7}>
@@ -593,27 +517,40 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
                 </G>
               );
             })}
-            {rows.map((r, i) => {
-              const x = xOf(i);
-              const baseY = plotTop + plotH;
-              if (!r.hasData) {
-                return <Rect key={i} x={x} y={baseY - 2} width={barW} height={2} fill={theme.colors.cardBorder + '55'} />;
-              }
-              const hLow = r.lowPct * plotH, hMid = r.midPct * plotH, hHigh = r.highPct * plotH;
-              return (
-                <G key={i}>
-                  <Rect x={x} y={baseY - hLow} width={barW} height={Math.max(0.5, hLow)} fill={theme.colors.success} opacity={0.9} />
-                  <Rect x={x} y={baseY - hLow - hMid} width={barW} height={Math.max(0.5, hMid)} fill={theme.colors.warn} opacity={0.9} />
-                  <Rect x={x} y={baseY - hLow - hMid - hHigh} width={barW} height={Math.max(0.5, hHigh)} fill={theme.colors.danger} opacity={0.9} />
+            {/* 区间均值参考线 */}
+            {meanReady != null && (
+              <Line x1={AX_L} y1={yOf(meanReady)} x2={VW - AX_R} y2={yOf(meanReady)}
+                stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="4 3" opacity={0.5} />
+            )}
+            {/* 折线：连续有值的周期才连，缺口断开不插值 */}
+            {(() => {
+              const segs: number[][] = [];
+              let cur: number[] = [];
+              rows.forEach((r, i) => {
+                if (r.readiness != null) cur.push(i);
+                else { if (cur.length) segs.push(cur); cur = []; }
+              });
+              if (cur.length) segs.push(cur);
+              const path = (idx: number[]) => idx.map((k, j) => `${j === 0 ? 'M' : 'L'} ${cxOf(k).toFixed(1)} ${yOf(rows[k].readiness!).toFixed(1)}`).join(' ');
+              return segs.map((idx, i) => (
+                <G key={'ln' + i}>
+                  {idx.length > 1 && (
+                    <Path d={path(idx)} fill="none" stroke={theme.colors.accentSolid}
+                      strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                  )}
+                  {idx.map((k) => (
+                    <Circle key={'p' + k} cx={cxOf(k)} cy={yOf(rows[k].readiness!)} r={2.6}
+                      fill={readinessColor(rows[k].readiness)} stroke={theme.colors.cardBg} strokeWidth={1.2} />
+                  ))}
                 </G>
-              );
-            })}
+              ));
+            })()}
             {periods.map((p, i) => (
               <SvgText key={i} x={cxOf(i)} y={chartH - 5} textAnchor="middle" fontSize={8.5} fill={theme.colors.textSub}>{showXLabel(range, i, p.label) ? p.label : ''}</SvgText>
             ))}
           </Svg>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            每根柱 = 当天清醒佩戴时段里，低/中/高疲劳所占比例（合计 100%）
+            每个点 = 该{RANGE_DEF[range].label}内「每天准备度全天均值」再取平均；虚线 = 区间均值
           </Text>
         </View>
       </Card>
@@ -635,13 +572,13 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
                   </Text>
                 )}
               </View>
-              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.danger + '14' }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>高疲劳占比</Text>
-                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.danger }}>
+              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.success + '14' }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>状态充足占比</Text>
+                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.success }}>
                   {meanHigh != null ? `${meanHigh}%` : '—'}
                 </Text>
                 {highDelta != null && (
-                  <Text style={{ fontSize: theme.fontSize.micro, color: highDelta <= 0 ? theme.colors.success : theme.colors.danger, marginTop: theme.sp(0.5) }}>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: highDelta >= 0 ? theme.colors.success : theme.colors.danger, marginTop: theme.sp(0.5) }}>
                     {highDelta > 0 ? '↑' : highDelta < 0 ? '↓' : '→'} {Math.abs(highDelta)}pp vs {prevLabel}
                   </Text>
                 )}
@@ -657,10 +594,10 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
                 : ''}
               {meanHigh != null && prevMeanHigh != null
                 ? (highDelta! > 0
-                    ? `高疲劳时段占比上升 ${highDelta} 个百分点，注意劳逸结合。`
+                    ? `状态充足时段占比上升 ${highDelta} 个百分点，可用脑时间变多。`
                     : highDelta! < 0
-                      ? `高疲劳时段占比下降 ${Math.abs(highDelta!)} 个百分点，状态在改善。`
-                      : `高疲劳时段占比稳定。`)
+                      ? `状态充足时段占比下降 ${Math.abs(highDelta!)} 个百分点，试着提前安排重活。`
+                      : `状态充足时段占比稳定。`)
                 : ''}
             </Text>
           </View>

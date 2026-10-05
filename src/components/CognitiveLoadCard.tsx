@@ -4,6 +4,9 @@ import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Re
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogBarRatio } from '../lib/cognitiveLoad';
+// ★ 2026-10-05 改「认知准备度」：柱状图 → 趋势图，口径与首页/详情页同源
+import { computeReadinessSeries, readinessLevel, readinessLevelLabel, READY_LOW, READY_HIGH } from '../lib/cognitiveReadiness';
+import ReadinessTrendChart from './ReadinessTrendChart';
 
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
@@ -74,40 +77,40 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
     ? { peak: report.peakLoadSpan, best: report.bestSpan, sleep: report.sleepWindow }
     : { peak: null, best: null, sleep: null };
 
-  // ★ v18.129 疲劳度大数字也切到**瞬时**均值 `avgFatigueInstant` —— 必须与柱状图同源，
-  //   否则出现「柱子都在同一档，但数字差很多」的割裂（v18.127 首页已切，详情页漏了）。
-  const fatigueShown = report.avgFatigueInstant ?? report.avgFatigue;
-  // 疲劳度大数字与柱状图同源；负荷分 loadScore 降为副信息
+  // ★ 2026-10-05：认知准备度序列（与下方趋势图、首页小卡、详情页曲线**同一份数据**）
+  const ready = computeReadinessSeries(report, nowMs ?? Date.now());
+  // 准备度配色方向与旧疲劳相反：**分数高 = 状态好 = 绿**（旧疲劳是高=red）
   const cogColor = (v: number | null) =>
     v == null ? theme.colors.textTitle
-      : v >= COG_LEVEL_HIGH ? theme.colors.danger
-      : v >= COG_LEVEL_LOW ? theme.colors.warn
-      : theme.colors.success;
-  const fCol = fatigueColor(report.fatigueLevel);
+      : v >= READY_HIGH ? theme.colors.success
+      : v >= READY_LOW ? theme.colors.warn
+      : theme.colors.danger;
 
   return (
     <Card>
         {/* ── 头部 ── */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
-          <Text style={styles.title}>认知疲劳度</Text>
+          <Text style={styles.title}>认知准备度</Text>
           {note ? <Text style={styles.noteText}>{note}</Text> : null}
         </View>
 
-        {/* ── 全天趋势分布图 ── */}
+        {/* ── 全天趋势图（★ 折线+面积，替换原 24 根柱） ── */}
         <View style={styles.hourSection}>
-          {/* 图例已内建在 HourHistogram 底部（此前的卡层图例与之重复展示） */}
-          <HourHistogram hourly={hourly} peakSpan={spans.peak} bestSpan={spans.best} sleepWindow={spans.sleep} />
+          <ReadinessTrendChart
+            chartH={150}
+            points={ready.points}
+            sleepWindow={spans.sleep}
+            nowHour={new Date(nowMs ?? Date.now()).getHours()}
+            caption="分数越高表示此刻越「转得动」；灰底为睡眠时段"
+          />
         </View>
 
         {/* ── 三个核心指标（无数据时换成提示，不显示假数字） ── */}
         {hasData ? (
           <View style={[styles.summaryGrid, { marginTop: theme.sp(2) }]}>
-            <SumCell label="疲劳度" value={fatigueShown != null ? String(fatigueShown) : '—'} valueColor={cogColor(fatigueShown)} sub={report.loadScore != null ? `负荷 ${report.loadScore}` : undefined} />
-            <SumCell label="疲劳指数" value={String(report.fatigueIndex)} valueColor={fCol} />
-            <SumCell
-              label="恢复能力"
-              value={report.recoveryCapacity != null ? `${Math.round(report.recoveryCapacity * 100)}%` : '—'}
-            />
+            <SumCell label="此刻准备度" value={ready.now != null ? String(ready.now) : '—'} valueColor={cogColor(ready.now)} />
+            <SumCell label="全天均值" value={ready.avg != null ? String(ready.avg) : '—'} valueColor={cogColor(ready.avg)} />
+            <SumCell label="状态" value={readinessLevelLabel(ready.now)} valueColor={cogColor(ready.now)} />
           </View>
         ) : (
           <Text style={[styles.emptyText, { marginTop: theme.sp(2) }]}>

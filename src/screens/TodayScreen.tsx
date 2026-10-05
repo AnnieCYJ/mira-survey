@@ -30,6 +30,9 @@ import { computeStressReport } from '../lib/stressAlgorithm';
 // ★ v18.132：情绪压力改多信号融合判定（分离运动/设备故障），替代单信号 EDA 事件计数
 import { computeEmotionalStress, LEVEL_LABEL, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
 import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel, cogBarRatio } from '../lib/cognitiveLoad';
+// ★ 认知准备度（2026-10-05）：首页「脑力」卡由「疲劳」改为「准备度」，柱状图改趋势图
+import { computeReadinessSeries, readinessLevelLabel } from '../lib/cognitiveReadiness';
+import MiniReadinessTrend from '../components/MiniReadinessTrend';
 import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
@@ -787,6 +790,10 @@ export default function TodayScreen() {
   })();
   // 认知柱状图只在「今日同步过 + 有真实 HRV 采样的时段」渲染（首页卡片无数据不放示意图）
   const cogHasData = ringSyncedToday && (cogReport?.hourly ?? []).some((h: any) => h.hasData);
+  // ★ 认知准备度序列（与上面同一数据源 hourlyInstant，仅做「反向映射 + 节律塑形」）
+  //   computeReadinessSeries 内部已按 nowMs 缓存报告的 key，这里直接算即可，无需 useMemo。
+  const cogReadiness = cogReport ? computeReadinessSeries(cogReport) : null;
+  const cogReadyLabel = readinessLevelLabel(cogReadiness?.now ?? null);
   // 近 7 天步数
   const weekSteps = (() => {
     const out: { dayKey: string; steps: number; date: Date }[] = [];
@@ -1095,9 +1102,11 @@ export default function TodayScreen() {
     const seg = (h: number) => `${pad2(h)}–${pad2((h + 1) % 24)}时`;
     // 真实峰谷：只取「已完全过去」的实测小时（h+1 点 ≤ 当前分钟），且至少 2 个实测小时才有峰谷意义
     // ★ v18.127：峰谷也改用**瞬时**序列（与柱状图/chip 同源）
+    // ★ 2026-10-05 改「准备度」后峰谷方向反转：准备度 **峰 = 分数最高（状态最好）**、
+    //   谷 = 分数最低。旧疲劳口径是「峰 = 分数最低」，直接沿用会把最好/最差说反。
     const passed = (cogReport?.hourlyInstant ?? []).filter((h) => h.hasData && (h.hour + 1) * 60 <= curMin);
-    const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
-    const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
+    const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
+    const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
     const part = (label: string, predHour: number | null | undefined, real: { hour: number } | null) => {
       if (real) return `${label} ${seg(real.hour)}`;          // 预测窗已过 → 真实
       if (predHour != null) return `${label} ${seg(predHour)}`;
@@ -1540,9 +1549,11 @@ export default function TodayScreen() {
                 icon="nodes"
                 iconFg={mm.chipBg.lime.fg}
                 title="脑力"
-                sub={cogHasData ? '随时疲劳程度' : '暂无数据'}
-                value={cogHasData ? `${cogLevelTxt}疲劳` : '暂无数据'}
-                chart={<MiniCognitiveBars hourly={cogHasData ? cogReport!.hourlyInstant : COG_EMPTY_HOURLY} />}
+                sub={cogHasData ? '此刻剩余脑力' : '暂无数据'}
+                value={cogHasData ? cogReadyLabel : '暂无数据'}
+                chart={cogReadiness
+                  ? <MiniReadinessTrend points={cogReadiness.points} />
+                  : undefined}
                 foot={cogHasData ? (cogPeakTrough ?? undefined) : undefined}
                 style={{ width: '53%' }}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
