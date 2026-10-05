@@ -254,11 +254,19 @@ export function computeCycle(
   const fertilityStart = addDays(ovulationDate, -5);
   const fertilityEnd = addDays(ovulationDate, 1);
 
-  // 阶段判定（优先级：经期 > 排卵期窗口 > 黄体期 > 卵泡期），用最终 ovulationDate
+  // 阶段判定（优先级：经期 > 排卵期窗口 > 黄体期 > 卵泡期）。
+  // ★ 修（v18.151）：按「周期内位置」判定（对 cycleLength 取模），不再拿查询日与 ovulationDate 直接比大小。
+  //   原实现只对「当前这一轮周期内」的日期正确：
+  //     - 查未来日期（如月视图里的下半月）→ daysBetween(ovulation, t) 恒 > 0 → 恒判「黄体期」；
+  //     - 查上一轮及更早的历史日期 → 恒判「卵泡期」。
+  //   月视图相位背景带因此整月只剩「黄体期 + PMS」。取模后当天（正常周期内）结果与原来完全一致，
+  //   跨周期的历史/未来日期回到正确相位（日历标记、体温双相图、激素卡同样受益）。
+  const offWrap = ((offset % cycleLength) + cycleLength) % cycleLength; // 0-based，= dayInCycle - 1
+  const offOv = ((daysBetween(log.lastPeriodStart, ovulationDate) % cycleLength) + cycleLength) % cycleLength;
   let phase: CyclePhase;
-  if (offset >= 0 && offset < periodLen) phase = 'period';
-  else if (Math.abs(daysBetween(ovulationDate, tKey)) <= 2) phase = 'ovulation';
-  else if (daysBetween(ovulationDate, tKey) > 0) phase = 'luteal';
+  if (offWrap < periodLen) phase = 'period';
+  else if (Math.abs(offWrap - offOv) <= 2) phase = 'ovulation';
+  else if (offWrap > offOv) phase = 'luteal';
   else phase = 'follicular';
 
   // 下次经期：从 lastPeriodStart 累加 cycleLength 直到落在今天之后

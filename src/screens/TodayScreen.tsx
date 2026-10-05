@@ -47,6 +47,11 @@ import { sportVisualOf } from '../lib/sportVisual';
 /** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
 const memoryStore = new MemoryStore();
 
+/** ★ 睡眠卡显示开关（2026-10-05）：用户要求**先隐藏、代码保留**。
+ *  改回 true 即恢复原样 —— 组件、props、数据口径都没有改动，只是不渲染。
+ *  注意：这不影响「睡眠恢复」chip（第一屏）与 EmotionCognitiveDetail 详情页。 */
+const SHOW_SLEEP_CARD: boolean = false;
+
 
 function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
   title: string; subtitle: string; accent: string; icon: import('../components/Icon').IconName; value: string; unit: string; onPress: () => void; image?: number;
@@ -1253,15 +1258,17 @@ export default function TodayScreen() {
       return undefined;
     } catch { return undefined; }
   })();
-  const actTag = (() => {
-    if (!activityHasData || stepsToday <= 0) return undefined;
-    return stepsToday < 3000 ? '活动偏少' : stepsToday < 7000 ? '轻度活动' : '活力充足';
-  })();
+  // ★ v18.153：`actTag`（活动偏少 / 轻度活动 / 活力充足）随「运动消耗」chip 一并移除 ——
+  //   它的唯一消费方就是那颗 chip；第二屏的「运动消耗」Bento 卡用的是 stepsToday / sportKcalTotal，
+  //   与此 IIFE 无关，不受影响。
 
   /**
-   * ★ 顶部四指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
-   * 数据与消耗卡**同源同口径**：认知=准备度（脑力账户剩余）、情绪=事件数、运动=当日步数、恢复=睡眠评分。
+   * ★ 顶部指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
+   * 数据与消耗卡**同源同口径**：恢复=睡眠评分、脑力=准备度（脑力账户剩余）、情绪=事件数、经期=当前相位。
    * 无数据显式传 '—'，不编数字。
+   * ★ v18.153：**移除「运动消耗」chip**（用户口径）——圆环上面那排只保留恢复/脑力/情绪/经期，
+   *   正好 4 张排满一行（不再有一条半截卡提示右滑）。运动消耗仍在第二屏
+   *   「消耗与恢复节律」的 Bento 卡里，数据与点击入口都没丢。
    */
   // 经期卡：月相图标与圆环四个象限点同一套（经期=满月/卵泡=上弦/黄体=全紫/排卵=下弦）
   const PHASE_MOON: Record<string, 'full' | 'quarterR' | 'allPurple' | 'quarterL'> = {
@@ -1277,7 +1284,6 @@ export default function TodayScreen() {
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力准备度', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    { key: 'act', icon: 'bolt', tone: 'cyan', label: '运动消耗', value: activityHasData ? `${Math.round(stepKcalToday)} kcal` : '—', tag: actTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
     { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
@@ -1407,10 +1413,12 @@ export default function TodayScreen() {
             </View>
 
         {/* ─────────────────────────────────────────────────────────────
-            ★ 顶部四指标 chips（MindMate v10）：白卡 chip + pastel 方块 icon。
-            · 数据与消耗卡同源同口径；间距沿用 head 的 marginBottom(36)。
+            ★ 顶部指标 chips（MindMate v10）：白卡 chip + pastel 方块 icon。
+            · 数据与消耗卡同源同口径。
+            · ★ v18.153 间距 md(16) → sm(12)：一屏纵向预算收紧（见 statusPanel 注释），
+              给下方趋势图让出 4pt，图例才落在一屏内。
             ───────────────────────────────────────────────────────────── */}
-        <View style={{ marginBottom: theme.space.md }}>
+        <View style={{ marginBottom: theme.space.sm }}>
           <MindChips items={metricChips} />
         </View>
 
@@ -1465,7 +1473,7 @@ export default function TodayScreen() {
         <Svg
           width={panelW}
           height={panelArcH}
-          style={[styles.statusPanelArc, { marginBottom: theme.space.lg }]}
+          style={[styles.statusPanelArc, { marginBottom: theme.space.sm }]}
         >
 
           {/* ★ 羽化层（由下往上、由淡到浓）：把「白 ↔ 紫雾」的硬边摊成一条柔和过渡带 */}
@@ -1514,8 +1522,11 @@ export default function TodayScreen() {
             {/* ★ v18.145 睡眠卡（新）：昨晚这一觉 = 分数 + 作息规律 + 入睡/起床/时长。
                 ⚠ 放在 AllDayRecoveryCard **之前**：那张是「全天节律曲线」，
                    这张是「昨晚具体事件」，用户先看具体的、再看趋势更符合阅读顺序。
-                   dataStale 与首页圆环同源（同一判据，不另设口径）。 */}
-            <SleepCard dataStale={dataStale} onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+                   dataStale 与首页圆环同源（同一判据，不另设口径）。
+                ★ 2026-10-05：暂时隐藏（见文件顶部 SHOW_SLEEP_CARD），代码与 props 原样保留。 */}
+            {SHOW_SLEEP_CARD ? (
+              <SleepCard dataStale={dataStale} onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+            ) : null}
 
             {/* 最上面 = 全天恢复（★ v18.62 去彩底回白卡：颜色留给 lime chip/badge + 趋势曲线） */}
             <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
@@ -1686,7 +1697,16 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: theme.colors.textInk,
   },
-  energyWrap: { marginBottom: theme.space.xs, alignItems: 'center' },
+  /**
+   * ★ v18.153（用户：「趋势图往上一点，把下面的图例露出来」）：
+   *   一屏纵向预算：head(36+36) + chips(87+12) + [环 + 胶囊 + 趋势图 + 时间轴 + 图例] + 底部圆弧。
+   *   环本身已由 EnergyBall 收回画布底部空带（−0.07×svgSize ≈ −21pt）；
+   *   这里再把「胶囊 → 趋势图」的间距从 16 收到 8（marginBottom 归零，留给 trendWrap.marginTop），
+   *   合计让趋势图与图例整体上移 **≈45pt** → 图例不再被顶出一屏 / 被底部滑动提示压住。
+   *   ⚠ 若还要更多空间，下一个旋钮是 EnergyBall 的 size 系数 0.70（环视觉会一起变小），
+   *     不要再来动这里的间距。
+   */
+  energyWrap: { marginBottom: 0, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
   // ★ v18.50 修复：不要 flex:1——整屏吸附后 pageInner 是确定高度，flex:1（flexBasis=0）
   // 会让胶囊在自适应父容器里塌成 0 高，分析文字整句不可见。自动高度即可。
@@ -1854,7 +1874,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     // 收紧：让底部圆弧离图表更近（原 12）
     marginTop: theme.space.xs,
-    marginBottom: theme.space.sm,
+    // ★ v18.153 再收 12 → 8：一屏预算（图例必须落在可视区内）
+    marginBottom: theme.space.xs,
     gap: theme.space.md,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center' },

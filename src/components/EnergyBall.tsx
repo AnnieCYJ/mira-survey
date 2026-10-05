@@ -55,6 +55,18 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const svgSize = size * 1.28;
   const c = svgSize / 2;
   const ringR = (size / 2) * 0.843;
+  /**
+   * ★ 2026-10-05：**画布底部空带不参与排版**。
+   *   svgSize(1.28×size) 比可见圆环(直径 0.843×size)大一圈 —— 环下沿到画布底还留着
+   *   svgSize/2 − ringR ≈ 52pt 的空高（size=239 时），那里只有最外圈光晕（透明度 0.22→0）。
+   *   这段空高对排版却是实打实的：它把下方「状态分析」胶囊和全天状态趋势图整体往下压，
+   *   首页一屏装不下 → 趋势图下的 4 等级图例被顶出可视区（用户实测「图例没露出来」）。
+   *   用等量负 margin 收回：**环的尺寸与位置一个像素都不动**，只让下方内容上移。
+   *   取 0.07×svgSize = aura 最后一个可见 stop(86% 画布半径) 到画布边缘的那一段
+   *   （0.22 → 0 的收尾，本来就看不见），所以收起后不存在任何可见重叠。
+   *   只改外框，不改内部：中央文字/光晕都按 svgSize 居中，与这个外框无关。
+   */
+  const bottomBlank = svgSize * 0.07;
   // 四个经期象限的月相点将均匀分布在白色环上（半径同环）
 
   // 有计算状态时，圆环跟随计算结果（等级 + 今日状态值）；否则回退为默认心情
@@ -174,7 +186,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   );
 
   return (
-    <View style={{ width: svgSize, height: svgSize, alignSelf: 'center' }}>
+    <View style={{ width: svgSize, height: svgSize, alignSelf: 'center', marginBottom: -bottomBlank }}>
       <Svg width={svgSize} height={svgSize}>
         <Defs>
           {/* 外圈光晕：跟随情绪色，向环外大幅扩散 */}

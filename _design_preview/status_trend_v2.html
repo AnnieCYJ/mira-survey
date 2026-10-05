@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>全天状态趋势 · 新版（周皮质醇 / 月相位）</title>
+<style>
+  :root{
+    --ink:#2B2740; --sub:#8A8AA0; --card:#FFFFFF; --cardBorder:#ECECF3;
+    --purple:#7C6AE0; --purpleDeep:#5B4BC4; --accentSoft:#F0EDFF;
+    --success:#3FB68B; --danger:#E0594F; --line:#4A3F8F;
+    /* 相位色（与 App phaseColors 一致） */
+    --period:#F6B3D0; --follicular:#C7B9F2; --ovulation:#D5E384; --luteal:#F0C46E;
+    --pms:#ECAE7C;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;}
+  body{background:#F4F4F8;display:flex;justify-content:center;padding:24px;}
+  .phone{width:390px;background:#fff;border-radius:38px;overflow:hidden;
+    box-shadow:0 12px 40px rgba(40,30,80,.12);border:1px solid #eee;}
+  .screen{background:#fff;padding:14px 18px 28px;min-height:820px;}
+
+  .head{display:flex;align-items:center;margin-top:6px;}
+  .back{width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:22px;margin-right:8px;}
+  .headText{flex:1;}
+  .title{font-size:19px;font-weight:700;color:var(--ink);}
+  .sub{font-size:11px;color:var(--sub);margin-top:2px;}
+  .liveTag{padding:4px 10px;border-radius:999px;background:rgba(63,182,139,.16);font-size:10px;color:var(--success);font-weight:600;}
+
+  .hero{display:flex;align-items:baseline;gap:6px;margin-top:14px;}
+  .heroVal{font-size:40px;font-weight:800;color:#221F33;line-height:1;}
+  .heroUnit{font-size:13px;color:var(--sub);}
+  .delta{font-size:13px;margin-left:6px;}
+  .up{color:var(--danger);} .down{color:var(--success);}
+
+  .tabs{display:flex;gap:8px;margin-top:16px;}
+  .chip{padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.7);border:1px solid #eee;
+    font-size:13px;font-weight:600;color:var(--sub);cursor:pointer;}
+  .chipOn{background:var(--purple);color:#fff;border-color:var(--purple);}
+
+  .stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;}
+  .arrow{width:36px;height:36px;border-radius:999px;background:var(--card);border:1px solid var(--cardBorder);
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:#221F33;cursor:pointer;}
+  .center{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--purple);
+    background:var(--accentSoft);border-radius:999px;padding:8px 0;font-size:13px;font-weight:600;color:#221F33;cursor:pointer;}
+
+  .chartCard{margin-top:16px;background:var(--card);border:1px solid var(--cardBorder);border-radius:14px;padding:14px 12px 8px;}
+  svg{width:100%;height:auto;display:block;}
+  .axis{display:flex;justify-content:space-between;margin-top:4px;}
+  .axisText{font-size:10px;color:var(--sub);flex:1;text-align:center;}
+
+  /* 图下说明 / 图例 */
+  .legend{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:10px;padding:0 2px;}
+  .lgItem{display:flex;align-items:center;gap:5px;}
+  .lgDot{width:10px;height:10px;border-radius:3px;}
+  .lgText{font-size:10px;color:var(--sub);}
+  .cap{font-size:10px;color:var(--sub);margin-top:8px;line-height:1.5;}
+
+  .statGrid{display:flex;gap:10px;margin-top:16px;}
+  .statCell{flex:1;background:var(--card);border:1px solid var(--cardBorder);border-radius:14px;padding:12px 0;text-align:center;}
+  .statLabel{font-size:10px;color:var(--sub);}
+  .statValue{font-size:20px;font-weight:700;color:#221F33;margin-top:3px;}
+
+  .cmpHead{display:flex;align-items:baseline;justify-content:space-between;margin-top:24px;margin-bottom:6px;}
+  .cmpTitle{font-size:15px;font-weight:700;color:var(--ink);}
+  .cmpSub{font-size:10px;color:var(--sub);}
+  .cmpGrid2{display:flex;gap:10px;}
+  .cmpGrid3{display:flex;gap:10px;margin-top:6px;}
+  .cmpCell{flex:1;background:var(--card);border:1px solid var(--cardBorder);border-radius:14px;padding:12px;}
+  .cmpDot{width:8px;height:8px;border-radius:4px;margin-bottom:6px;}
+  .cmpLabel{font-size:10px;color:var(--sub);margin-bottom:3px;}
+  .cmpVal{font-size:24px;font-weight:700;color:var(--ink);}
+  .cmpMeta{font-size:10px;color:var(--sub);margin-top:3px;}
+  .cmpNote{font-size:10px;color:var(--sub);font-style:italic;margin-top:12px;}
+  .note{font-size:12px;color:var(--sub);line-height:1.7;margin-top:18px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="screen">
+    <div class="head">
+      <div class="back">‹</div>
+      <div class="headText"><div class="title">全天状态趋势</div><div class="sub">状态指数 0–100（越高越有活力）</div></div>
+      <div class="liveTag">真实数据</div>
+    </div>
+
+    <div class="hero">
+      <span class="heroVal" id="heroVal">64</span>
+      <span class="heroUnit">/ 100</span>
+      <span class="delta up" id="heroDelta">↑ 8% · 较区间首点</span>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <div class="chip chipOn" data-r="day">日</div>
+      <div class="chip" data-r="week">周</div>
+      <div class="chip" data-r="month">月</div>
+      <div class="chip" data-r="year">年</div>
+    </div>
+
+    <div class="stepper">
+      <div class="arrow" id="prev">‹</div>
+      <div class="center" id="center"><span>📅</span><span id="centerText">2026/09/03</span></div>
+      <div class="arrow" id="next">›</div>
+    </div>
+
+    <div class="chartCard">
+      <svg id="chart" viewBox="0 0 680 240" preserveAspectRatio="none"></svg>
+      <div class="axis" id="axis"></div>
+      <div class="legend" id="legend"></div>
+      <div class="cap" id="cap"></div>
+    </div>
+
+    <div class="statGrid">
+      <div class="statCell"><div class="statLabel">平均</div><div class="statValue" id="stAvg">62</div></div>
+      <div class="statCell"><div class="statLabel">最高</div><div class="statValue" id="stHi">78</div></div>
+      <div class="statCell"><div class="statLabel">最低</div><div class="statValue" id="stLo">34</div></div>
+    </div>
+
+    <div class="cmpHead"><div class="cmpTitle">对比</div><div class="cmpSub" id="cmpRange">本周</div></div>
+    <div class="cmpGrid2">
+      <div class="cmpCell"><div class="cmpLabel">状态最好</div><div class="cmpVal" style="color:var(--success)">73</div><div class="cmpMeta">周三</div></div>
+      <div class="cmpCell"><div class="cmpLabel">状态最差</div><div class="cmpVal" style="color:var(--danger)">46</div><div class="cmpMeta">周五</div></div>
+    </div>
+    <div class="cmpGrid2" style="margin-top:10px">
+      <div class="cmpCell"><div class="cmpLabel">对比上周</div><div class="cmpVal">60</div><div class="cmpMeta" style="color:var(--success)">▲ 3%</div></div>
+      <div class="cmpCell"><div class="cmpLabel">对比30天基线</div><div class="cmpVal">59</div><div class="cmpMeta" style="color:var(--success)">▲ 5%</div></div>
+    </div>
+    <div class="cmpHead"><div class="cmpTitle">激素均值</div><div class="cmpSub">近 30 天</div></div>
+    <div class="cmpGrid3">
+      <div class="cmpCell"><div class="cmpDot" style="background:#BA7517"></div><div class="cmpLabel">皮质醇</div><div class="cmpVal">64</div></div>
+      <div class="cmpCell"><div class="cmpDot" style="background:#7C6AE0"></div><div class="cmpLabel">雌激素</div><div class="cmpVal">58</div></div>
+      <div class="cmpCell"><div class="cmpDot" style="background:#D4537E"></div><div class="cmpLabel">孕激素</div><div class="cmpVal">41</div></div>
+    </div>
+    <div class="cmpNote">皮质醇晨峰、雌孕相位为戒指信号推算，非临床诊断。</div>
+    <div class="note">状态指数由当日心率变异、静息心率与睡眠恢复综合推算。周 / 月为每日均值，年为每月均值，均来自戒指真实测量，缺口不补值。</div>
+  </div>
+</div>
+
+<script>
+const W=680,H=240,PAD_L=14,PAD_R=14,PAD_B=28;
+const plotW=W-PAD_L-PAD_R;
+const yAt=(v,padT,plotH)=>padT+(1-Math.max(0,Math.min(100,v))/100)*plotH;
+
+// 相位色（与 App phaseColors 一致）
+const PHASE={
+  period:'#F6B3D0', follicular:'#C7B9F2', ovulation:'#D5E384', luteal:'#F0C46E', pms:'#ECAE7C'
+};
+
+let range='day';
+let anchor=new Date(2026,8,3);
+
+// ---- mock 数据 ----
+function dayData(){const a=[];for(let i=0;i<48;i++){const h=i*0.5;
+  let v=52+16*Math.sin((h-14)/24*2*Math.PI)+6*Math.sin((h-3)/12*Math.PI);
+  a.push(Math.max(20,Math.min(85,Math.round(v+(i%5-2)))));}return a;}
+
+const WEEK_VAL=[62,58,70,66,45,73,60];
+// 周视图：皮质醇异常日（index）→ level: elevated(橙)/high(红)
+const WEEK_CORTISOL=[null,'elevated',null,null,'high',null,'elevated'];
+const WEEK_AXIS=['一','二','三','四','五','六','日'];
+
+function monthData(){const a=[];for(let i=0;i<30;i++){
+  let v=60+12*Math.sin(i/30*2*Math.PI)+(i%7===5?-14:0)+(i%4===0?6:0);
+  a.push(Math.max(28,Math.min(82,Math.round(v))));}return a;}
+// 月视图：30 天相位（模拟一个 ~30 天周期）
+// 经期1-5 / 卵泡6-11 / 排卵12-14 / 黄体15-30；经前PMS=黄体末段 24-30
+const MONTH_PHASE=['period','period','period','period','period',
+  'follicular','follicular','follicular','follicular','follicular','follicular',
+  'ovulation','ovulation','ovulation',
+  'luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal','luteal',
+  'pms','pms','pms','pms','pms','pms','pms'];
+
+const YEAR_VAL=[58,62,55,64,69,72,68,60,57,63,66,71];
+const YEAR_AXIS=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+function dataFor(r){return r==='day'?dayData():r==='week'?WEEK_VAL:r==='month'?monthData():YEAR_VAL;}
+function axisFor(r){return r==='day'?['0','6','12','18','24']:r==='week'?WEEK_AXIS:r==='month'?Array.from({length:30},(_,i)=>String(i+1)):YEAR_AXIS;}
+
+function renderAxis(labels){
+  const ax=document.getElementById('axis');ax.innerHTML='';
+  let show=labels;
+  if(labels.length>7){const pick=7;const idxs=Array.from({length:pick},(_,i)=>Math.floor(i*(labels.length-1)/(pick-1)));show=idxs.map(i=>labels[i]);}
+  show.forEach(t=>{const s=document.createElement('span');s.className='axisText';s.textContent=t;ax.appendChild(s);});
+}
+
+function renderChart(){
+  const data=dataFor(range);
+  const n=data.length;
+  const padT = range==='week'?40:18;          // 周视图顶部留白放皮质醇 icon
+  const plotH=H-padT-PAD_B;
+  const xAt=i=>PAD_L+(n>1? i/(n-1):0.5)*plotW;
+  const pts=data.map((v,i)=>({x:xAt(i),y:yAt(v,padT,plotH),v}));
+  let svg=`<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#7C6AE0" stop-opacity="0.3"/>
+    <stop offset="100%" stop-color="#7C6AE0" stop-opacity="0.02"/></linearGradient></defs>`;
+
+  // 月视图：相位竖条带（Voronoi 边界）
+  if(range==='month'){
+    for(let i=0;i<n;i++){
+      const left = i===0?PAD_L:(pts[i-1].x+pts[i].x)/2;
+      const right= i===n-1?W-PAD_R:(pts[i].x+pts[i+1].x)/2;
+      const ph=MONTH_PHASE[i];
+      const col = ph==='pms'?PHASE.pms:PHASE[ph];
+      const alpha = ph==='ovulation'?0.20:ph==='pms'?0.30:0.14;
+      svg+=`<rect x="${left}" y="${padT}" width="${right-left}" height="${plotH}" fill="${col}" opacity="${alpha}"/>`;
+    }
+  }
+  // 参考线 0/50/100
+  [0,50,100].forEach(gv=>{const y=yAt(gv,padT,plotH);
+    svg+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="#ECECF3" stroke-width="1"/>`;});
+
+  // 面积 + 单色折线（避免与相位撞色）
+  let area=`M ${pts[0].x} ${pts[0].y}`;pts.forEach(p=>area+=` L ${p.x} ${p.y}`);
+  area+=` L ${pts[n-1].x} ${yAt(0,padT,plotH)} L ${pts[0].x} ${yAt(0,padT,plotH)} Z`;
+  svg+=`<path d="${area}" fill="url(#g)"/>`;
+  let line='';pts.forEach((p,i)=>line+=(i?' L ':'M ')+`${p.x} ${p.y}`);
+  svg+=`<path d="${line}" fill="none" stroke="var(--line)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+  // 周视图：皮质醇异常 icon（图上、柱上方、彩色）
+  if(range==='week'){
+    for(let i=0;i<n;i++){
+      const lvl=WEEK_CORTISOL[i];if(!lvl)continue;
+      const col = lvl==='high'?'#E0594F':'#E8954A';
+      const cx=pts[i].x, cy=14;
+      svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="${col}"/>`;
+      svg+=`<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">!</text>`;
+      // 小竖线连到数据点
+      svg+=`<line x1="${cx}" y1="${cy+9}" x2="${cx}" y2="${pts[i].y}" stroke="${col}" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>`;
+    }
+  }
+  document.getElementById('chart').innerHTML=svg;
+
+  // 统计
+  const vals=data.filter(v=>v!=null);
+  document.getElementById('stAvg').textContent=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  document.getElementById('stHi').textContent=Math.max(...vals);
+  document.getElementById('stLo').textContent=Math.min(...vals);
+  document.getElementById('heroVal').textContent=vals[vals.length-1];
+  renderAxis(axisFor(range));
+  renderLegend();
+}
+
+function renderLegend(){
+  const el=document.getElementById('legend');const cap=document.getElementById('cap');el.innerHTML='';cap.textContent='';
+  if(range==='month'){
+    const items=[['period','经期'],['follicular','卵泡期'],['ovulation','排卵期'],['luteal','黄体期'],['pms','经前 PMS']];
+    items.forEach(([k,t])=>{const d=document.createElement('div');d.className='lgItem';
+      d.innerHTML=`<span class="lgDot" style="background:${PHASE[k]}"></span><span class="lgText">${t}</span>`;el.appendChild(d);});
+    cap.textContent='月视图按日历/体温推算的相位着色（经期·卵泡·排卵·黄体），经前 7 天叠加暖色 PMS 标记。相位为推算，非硬件实测。';
+  } else if(range==='week'){
+    const d=document.createElement('div');d.className='lgItem';
+    d.innerHTML=`<span class="lgDot" style="background:#E8954A"></span><span class="lgText">皮质醇偏高</span>`;el.appendChild(d);
+    const d2=document.createElement('div');d2.className='lgItem';
+    d2.innerHTML=`<span class="lgDot" style="background:#E0594F"></span><span class="lgText">皮质醇高</span>`;el.appendChild(d2);
+    cap.textContent='周视图在皮质醇异常日上方标彩色 icon（橙=偏高，红=高），由当日皮质醇 mesor 超阈值判定。';
+  }
+}
+
+// ---- 日期 ----
+function fmtDate(d){return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x;}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function centerLabel(){
+  if(range==='day')return fmtDate(anchor);
+  if(range==='week'){const s=startOfWeek(anchor);const e=addDays(s,6);return `${fmtDate(s)} – ${fmtDate(e)}`;}
+  if(range==='month')return `${anchor.getFullYear()}年${anchor.getMonth()+1}月`;
+  return `${anchor.getFullYear()}年`;
+}
+function updateLabel(){document.getElementById('centerText').textContent=centerLabel();}
+
+document.getElementById('tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.chip');if(!t)return;range=t.dataset.r;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('chipOn',c===t));
+  document.getElementById('cmpRange').textContent={day:'今日',week:'本周',month:'本月',year:'本年'}[range];
+  renderChart();
+});
+function step(dir){
+  if(range==='day')anchor=addDays(anchor,dir);
+  else if(range==='week')anchor=addDays(anchor,dir*7);
+  else if(range==='month')anchor=new Date(anchor.getFullYear(),anchor.getMonth()+dir,1);
+  else anchor=new Date(anchor.getFullYear()+dir,anchor.getMonth(),1);
+  updateLabel();
+}
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+document.getElementById('center').onclick=()=>{anchor=addDays(anchor,-7);updateLabel();};
+
+updateLabel();renderChart();
+</script>
+</body>
+</html>

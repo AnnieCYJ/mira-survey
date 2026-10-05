@@ -69,5 +69,5 @@
 
 ## 2026-10-04 14:12（第十三次运行）
 - 发现：工作区存在 29 项未提交改动（本地与 origin 0 领先）——新建压力/睡眠/皮质醇算法体系：10 个新 lib（emotionalStress 764 行、cortisolProxy、stressFeatures、motionGate、selfReportCalibration、psychologicalStressScale、sleepBaseline、cortisolChartGeom、recencyBaseline、sleepPersonalized，合计约 3600 行）+ SleepCard 组件；修改 15 个源文件（RingBleManager +457 行大增强、cognitiveLoad/sleepScore 算法扩展、TodayScreen/AllDayRecoveryCard/CortisolRhythmCard 等界面迭代、theme 加色）；automation 记忆文件待提交修改。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
-- 处理：先追加本条记录 → 执行 `git add -A` → commit → push origin master。
+- 处理：先追加本条记录 → 执行 `git add -A` → commit ed48e76「新增压力/睡眠/皮质醇算法体系：情绪压力、压力特征、运动门控、自报校准、睡眠基线等 10 个 lib 与 SleepCard 组件；增强 BLE 管理层并迭代认知负荷、睡眠评分与今日/能量等界面」→ push 成功 37c32df..ed48e76（28 files, +5053/-431）。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。

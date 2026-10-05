@@ -26,7 +26,8 @@ export interface MindChipItem {
 }
 
 function MindChipsImpl({ items }: { items: MindChipItem[] }) {
-  // v18.47 横向滑动：一行刚好放下 4 张完整卡 + 右侧露一点第 5 张边，提示可右滑
+  // ★ v18.153：条目数由 5 → 4（首页去掉「运动消耗」），一行正好排满、不再需要横向滑动；
+  //   chipW 的算法不变（按 4 张算宽），若日后回到 5 条会自动溢出为「4 张 + 露第 5 张边」可滑动形态。
   const { width: winW } = useWindowDimensions();
   const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
   const GAP = theme.sp(2);

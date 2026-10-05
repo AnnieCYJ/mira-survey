@@ -43,6 +43,9 @@ import { useRingState } from '../hooks/useRingState';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+// ★ v18.146：睡眠分统一走「今天该显示哪个睡眠分」的唯一入口（与圆环 chip、SleepCard 同源），
+//   不再直接读旧落盘字段 sleep.score（绝对分），否则同一标签「睡眠恢复」会出现两把尺。
+import { computeSleepPersonalized } from '../lib/sleepPersonalized';
 // ★ v18.125：绘图几何与详情页共用同一模块（保证「同一指标画出同一张图」）
 import { buildSmoothSeries, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
@@ -109,12 +112,17 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   //   用户看到的就是这个：一会儿空、一会儿又冒出数字。数据不再新鲜时整张卡一起空。
   const dataStale = (ring?.curveStatus as any)?.dataStale === true;
   // —— 睡眠恢复 ——
+  // ★ v18.146：分数走 `computeSleepPersonalized()`（相对个人基线、锚点 50=和平时一样），
+  //   与圆环 chip、SleepCard 同源。之前这里直接读 `sleep.score`（旧绝对分落盘字段，锚点 100=达标），
+  //   同一标签「睡眠恢复」在圆环是 52、在节律卡是 94，用户以为算错了。
   const sleep = useMemo(() => latestSleep(), [ring.sleepDaily, Date.now() & 0]);
-  const sleepScore = !dataStale && sleep && Number.isFinite(sleep.score) ? Math.round(sleep.score) : null;
+  const pers = useMemo(() => { try { return computeSleepPersonalized(); } catch { return null; } }, [ring.sleepDaily, Date.now() & 0]);
+  const sleepScore = !dataStale && pers && pers.score != null && Number.isFinite(pers.score) ? pers.score : null;
+  const persRelative = pers?.mode === 'relative';
   // ★ v18.104：断流时空态要「连时长也不挂」—— 原来 sleepScore 置 null 后会退回 fmtDur(sleep.total)，
   //   等于把旧睡眠时长继续印在那里（用户实锤：圆环都空了这张卡还有数）。直接走「—」。
-  const sleepValue = dataStale ? '—' : sleepScore != null ? String(sleepScore) : fmtDur(sleep?.total);
-  const sleepUnit = dataStale ? '' : sleepScore != null ? '分' : '时长';
+  const sleepValue = dataStale ? '—' : sleepScore != null ? String(sleepScore) : (sleep ? fmtDur(sleep.total) : '—');
+  const sleepUnit = dataStale ? '' : sleepScore != null ? '分' : (sleep ? '时长' : '');
   // ★ v18.98（用户口径：不写「昨」，对齐 Oura）：只认**昨晚**的睡眠；
   //   latestSleep() 已经只取今晚，拿不到就是「暂无睡眠数据」+ 数值留「—」，不再挂溯源小字。
   const sleepSub = dataStale
@@ -146,7 +154,20 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       valid.length >= 3 && peakV > -Infinity
         ? Math.round(((Math.max(...valid) - Math.min(...valid)) / (valid.reduce((a, b) => a + b, 0) / valid.length)) * 100)
         : null;
-    return { ...built, validCount: valid.length, peakIdx, peakV, ampPct, baselineDays: bl.days };
+    const out = { ...built, validCount: valid.length, peakIdx, peakV, ampPct, baselineDays: bl.days };
+    // ★ COR-PROBE：诊断日志（离线重算对账用，仅 __DEV__）。核对命令：grep COR-PROBE /tmp/metro_8081.log
+    //   输出：峰值槽/值、有效槽数、每槽「值(参与信号数)」压缩串、基线天数。
+    //   ★ 必须留在 useMemo 内：原先写在组件体里，每次渲染都会重跑一次 map/join 并打印，
+    //     刷屏之外还把 render 路径变成 I/O 路径（真机掉帧排查时会误导定位）。
+    if (__DEV__ && !dataStale) {
+      const row = built.vals
+        .map((v, i) => (v == null ? null : `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}=${v.toFixed(0)}(n${built.counts[i]})`))
+        .filter(Boolean)
+        .join(' ');
+      console.log(`[COR-PROBE] peak=${Math.floor((peakIdx ?? -1) / 2)}:${(peakIdx ?? -1) % 2 ? '30' : '00'} v=${peakV?.toFixed(1)} valid=${valid.length} baseDays=${bl.days}`);
+      console.log(`[COR-PROBE-SLOTS] ${row}`);
+    }
+    return out;
   }, [ring.curveStatus, hsRefresh]);
 
   // ★ v18.117：基线不足 3 天时不输出数（尺度是 MAD 估的，样本太少不可靠）
@@ -169,9 +190,14 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       ? `${proxy.ampPct != null ? `波动 ${proxy.ampPct}%` : '活性已建模'} · ${recoveryWord}`
       : '佩戴后生成活性曲线';
 
-  // ★ 青色 badge（SPEC #10「82% · 接近目标」）：数值 = 真实睡眠评分，档位词由评分推导
+  // ★ v18.146：badge 档位词与圆环 chip 的 recTag、SleepCard 的 recoveryLabel **同源**
+  //   （相对≥62 较好 / ≥45 一般；绝对≥80 良好 / ≥60 中），不再用旧的「接近目标」绝对措辞，
+  //   避免 badge 文案和卡片大数字语义错位（MEMORY：标签与数值必须同一口径）。
   const badgeWord =
-    sleepScore == null ? '待数据' : sleepScore >= 80 ? '接近目标' : sleepScore >= 60 ? '恢复中' : '恢复偏弱';
+    sleepScore == null ? '待数据'
+      : persRelative
+        ? (sleepScore >= 62 ? '恢复较好' : sleepScore >= 45 ? '恢复一般' : '恢复偏弱')
+        : (sleepScore >= 80 ? '恢复良好' : sleepScore >= 60 ? '恢复中' : '恢复偏弱');
   const badgeText = dataStale ? '暂无数据' : sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
 
   // —— 曲线数据（★ v18.116 方案 A：直接用多模态反推结果，**无拟合、无虚线**）——

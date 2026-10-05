@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>全天状态趋势 · 当前版本</title>
+<style>
+  :root{
+    --ink:#2B2740; --sub:#8A8AA0; --card:#FFFFFF; --cardBorder:#ECECF3;
+    --purple:#7C6AE0; --purpleDeep:#5B4BC4; --accentSoft:#F0EDFF;
+    --success:#3FB68B; --danger:#E0594F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;}
+  body{background:#F4F4F8;display:flex;justify-content:center;padding:24px;}
+  .phone{width:390px;background:#fff;border-radius:38px;overflow:hidden;
+    box-shadow:0 12px 40px rgba(40,30,80,.12);border:1px solid #eee;}
+  .screen{background:#fff;padding:14px 18px 28px;min-height:780px;}
+
+  /* header */
+  .head{display:flex;align-items:center;margin-top:6px;}
+  .back{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+    color:var(--ink);font-size:22px;margin-right:8px;}
+  .headText{flex:1;}
+  .title{font-size:19px;font-weight:700;color:var(--ink);}
+  .sub{font-size:11px;color:var(--sub);margin-top:2px;}
+  .liveTag{padding:4px 10px;border-radius:999px;background:rgba(63,182,139,.16);
+    font-size:10px;color:var(--success);font-weight:600;}
+
+  /* hero */
+  .hero{display:flex;align-items:baseline;gap:6px;margin-top:14px;}
+  .heroVal{font-size:40px;font-weight:800;color:#221F33;line-height:1;}
+  .heroUnit{font-size:13px;color:var(--sub);}
+  .delta{font-size:13px;margin-left:6px;}
+  .up{color:var(--danger);} .down{color:var(--success);}
+
+  /* tabs */
+  .tabs{display:flex;gap:8px;margin-top:16px;}
+  .chip{padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.7);
+    border:1px solid #eee;font-size:13px;font-weight:600;color:var(--sub);cursor:pointer;}
+  .chipOn{background:var(--purple);color:#fff;border-color:var(--purple);}
+
+  /* date picker */
+  .stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;}
+  .arrow{width:36px;height:36px;border-radius:999px;background:var(--card);
+    border:1px solid var(--cardBorder);display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:#221F33;cursor:pointer;}
+  .center{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--purple);background:var(--accentSoft);border-radius:999px;padding:8px 0;
+    font-size:13px;font-weight:600;color:#221F33;cursor:pointer;}
+
+  /* chart */
+  .chartCard{margin-top:16px;background:var(--card);border:1px solid var(--cardBorder);
+    border-radius:14px;padding:14px 12px 8px;}
+  svg{width:100%;height:auto;display:block;}
+  .axis{display:flex;justify-content:space-between;margin-top:4px;}
+  .axisText{font-size:10px;color:var(--sub);flex:1;text-align:center;}
+
+  /* stat grid */
+  .statGrid{display:flex;gap:10px;margin-top:16px;}
+  .statCell{flex:1;background:var(--card);border:1px solid var(--cardBorder);border-radius:14px;
+    padding:12px 0;text-align:center;}
+  .statLabel{font-size:10px;color:var(--sub);}
+  .statValue{font-size:20px;font-weight:700;color:#221F33;margin-top:3px;}
+
+  /* comparison */
+  .cmpHead{display:flex;align-items:baseline;justify-content:space-between;margin-top:24px;margin-bottom:6px;}
+  .cmpTitle{font-size:15px;font-weight:700;color:var(--ink);}
+  .cmpSub{font-size:10px;color:var(--sub);}
+  .cmpGrid2{display:flex;gap:10px;}
+  .cmpGrid3{display:flex;gap:10px;margin-top:6px;}
+  .cmpCell{flex:1;background:var(--card);border:1px solid var(--cardBorder);border-radius:14px;padding:12px;}
+  .cmpDot{width:8px;height:8px;border-radius:4px;margin-bottom:6px;}
+  .cmpLabel{font-size:10px;color:var(--sub);margin-bottom:3px;}
+  .cmpVal{font-size:24px;font-weight:700;color:var(--ink);}
+  .cmpMeta{font-size:10px;color:var(--sub);margin-top:3px;}
+  .cmpNote{font-size:10px;color:var(--sub);font-style:italic;margin-top:12px;}
+  .note{font-size:12px;color:var(--sub);line-height:1.7;margin-top:18px;}
+  .sectionTag{display:inline-block;font-size:10px;color:var(--purple);font-weight:700;
+    background:var(--accentSoft);padding:2px 8px;border-radius:6px;margin:18px 0 6px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="screen">
+    <!-- header -->
+    <div class="head">
+      <div class="back">‹</div>
+      <div class="headText">
+        <div class="title">全天状态趋势</div>
+        <div class="sub">状态指数 0–100（越高越有活力）</div>
+      </div>
+      <div class="liveTag">真实数据</div>
+    </div>
+
+    <!-- hero -->
+    <div class="hero">
+      <span class="heroVal" id="heroVal">64</span>
+      <span class="heroUnit">/ 100</span>
+      <span class="delta up" id="heroDelta">↑ 8% · 较区间首点</span>
+    </div>
+
+    <!-- tabs -->
+    <div class="tabs" id="tabs">
+      <div class="chip chipOn" data-r="day">日</div>
+      <div class="chip" data-r="week">周</div>
+      <div class="chip" data-r="month">月</div>
+      <div class="chip" data-r="year">年</div>
+    </div>
+
+    <!-- date picker -->
+    <div class="stepper">
+      <div class="arrow" id="prev">‹</div>
+      <div class="center" id="center">
+        <span>📅</span><span id="centerText">2026/09/03</span>
+      </div>
+      <div class="arrow" id="next">›</div>
+    </div>
+
+    <!-- chart -->
+    <div class="chartCard">
+      <svg id="chart" viewBox="0 0 680 240" preserveAspectRatio="none"></svg>
+      <div class="axis" id="axis"></div>
+    </div>
+
+    <!-- stat grid -->
+    <div class="statGrid">
+      <div class="statCell"><div class="statLabel">平均</div><div class="statValue" id="stAvg">62</div></div>
+      <div class="statCell"><div class="statLabel">最高</div><div class="statValue" id="stHi">78</div></div>
+      <div class="statCell"><div class="statLabel">最低</div><div class="statValue" id="stLo">34</div></div>
+    </div>
+
+    <!-- comparison -->
+    <div class="cmpHead"><div class="cmpTitle">对比</div><div class="cmpSub" id="cmpRange">本周</div></div>
+    <div class="cmpGrid2">
+      <div class="cmpCell"><div class="cmpLabel">状态最好</div><div class="cmpVal" style="color:var(--success)">73</div><div class="cmpMeta">周三</div></div>
+      <div class="cmpCell"><div class="cmpLabel">状态最差</div><div class="cmpVal" style="color:var(--danger)">46</div><div class="cmpMeta">周五</div></div>
+    </div>
+    <div class="cmpGrid2" style="margin-top:10px">
+      <div class="cmpCell"><div class="cmpLabel">对比上周</div><div class="cmpVal">60</div><div class="cmpMeta" style="color:var(--success)">▲ 3%</div></div>
+      <div class="cmpCell"><div class="cmpLabel">对比30天基线</div><div class="cmpVal">59</div><div class="cmpMeta" style="color:var(--success)">▲ 5%</div></div>
+    </div>
+
+    <div class="cmpHead"><div class="cmpTitle">激素均值</div><div class="cmpSub">近 30 天</div></div>
+    <div class="cmpGrid3">
+      <div class="cmpCell"><div class="cmpDot" style="background:#BA7517"></div><div class="cmpLabel">皮质醇</div><div class="cmpVal">64</div></div>
+      <div class="cmpCell"><div class="cmpDot" style="background:#7C6AE0"></div><div class="cmpLabel">雌激素</div><div class="cmpVal">58</div></div>
+      <div class="cmpCell"><div class="cmpDot" style="background:#D4537E"></div><div class="cmpLabel">孕激素</div><div class="cmpVal">41</div></div>
+    </div>
+    <div class="cmpNote">皮质醇晨峰、雌孕相位为戒指信号推算，非临床诊断。</div>
+
+    <div class="note">状态指数由当日心率变异、静息心率与睡眠恢复综合推算，反映整日活力节律。周 / 月为每日均值，年为每月均值，均来自戒指真实测量，缺口不补值。</div>
+  </div>
+</div>
+
+<script>
+const MOODS=[
+  {label:'元气满满',color:'#F0C46E'},
+  {label:'状态良好',color:'#BCCB62'},
+  {label:'平平静静',color:'#9D8AF0'},
+  {label:'休息一下',color:'#F2A3C6'},
+];
+const LEVEL={TOP:76,MID:51,LOW:26};
+const W=680,H=240,PAD_L=14,PAD_R=14,PAD_T=18,PAD_B=28;
+const plotW=W-PAD_L-PAD_R, plotH=H-PAD_T-PAD_B;
+const yAt=v=>PAD_T+(1-Math.max(0,Math.min(100,v))/100)*plotH;
+function moodFor(v){return v>=LEVEL.TOP?0:v>=LEVEL.MID?1:v>=LEVEL.LOW?2:3;}
+
+// ---- mock data per range ----
+function dayData(){
+  const a=[];
+  for(let i=0;i<48;i++){const h=i*0.5;
+    let v=52+16*Math.sin((h-14)/24*2*Math.PI)+6*Math.sin((h-3)/12*Math.PI);
+    a.push(Math.max(20,Math.min(85,Math.round(v+ (i%5-2)))));}
+  return a;
+}
+const WEEK=[62,58,70,66,54,73,60];
+function monthData(){const a=[];for(let i=0;i<30;i++){
+  let v=60+12*Math.sin(i/30*2*Math.PI)+ (i%7===5?-14:0) + (i%4===0?6:0);
+  a.push(Math.max(28,Math.min(82,Math.round(v))));}return a;}
+const YEAR=[58,62,55,64,69,72,68,60,57,63,66,71];
+
+const AXIS={
+  day:['0','6','12','18','24'],
+  week:['一','二','三','四','五','六','日'],
+  month:(()=>{const a=[];for(let i=1;i<=30;i++)a.push(String(i));return a;})(),
+  year:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+};
+
+let range='day';
+let anchor=new Date(2026,8,3); // 2026/09/03
+
+function dataFor(r){
+  if(r==='day')return dayData();
+  if(r==='week')return WEEK;
+  if(r==='month')return monthData();
+  return YEAR;
+}
+
+function renderAxis(labels){
+  const ax=document.getElementById('axis');ax.innerHTML='';
+  let show=labels;
+  if(labels.length>7){
+    const pick=7;const idxs=Array.from({length:pick},(_,i)=>Math.floor(i*(labels.length-1)/(pick-1)));
+    show=idxs.map(i=>labels[i]);
+  }
+  show.forEach(t=>{const s=document.createElement('span');s.className='axisText';s.textContent=t;ax.appendChild(s);});
+}
+
+function renderChart(){
+  const data=dataFor(range);
+  const n=data.length;
+  const xAt=i=>PAD_L+(n>1? i/(n-1):0.5)*plotW;
+  // build point coords
+  const pts=data.map((v,i)=>({x:xAt(i),y:yAt(v),v}));
+  let svg='';
+  // background bands
+  const bands=[
+    {y0:LEVEL.TOP,y1:100,c:MOODS[0].color},
+    {y0:LEVEL.MID,y1:LEVEL.TOP,c:MOODS[1].color},
+    {y0:LEVEL.LOW,y1:LEVEL.MID,c:MOODS[2].color},
+    {y0:0,y1:LEVEL.LOW,c:MOODS[3].color},
+  ];
+  bands.forEach(b=>{
+    const y1=yAt(b.y1), h=Math.max(0,yAt(b.y0)-yAt(b.y1));
+    svg+=`<rect x="${PAD_L}" y="${y1}" width="${plotW}" height="${h}" fill="${b.c}" opacity="0.08"/>`;
+  });
+  // reference lines 0/50/100
+  [0,50,100].forEach(gv=>{
+    const y=yAt(gv);
+    svg+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="#ECECF3" stroke-width="1"/>`;
+  });
+  // area
+  let area=`M ${pts[0].x} ${pts[0].y}`;
+  pts.forEach(p=>area+=` L ${p.x} ${p.y}`);
+  area+=` L ${pts[n-1].x} ${yAt(0)} L ${pts[0].x} ${yAt(0)} Z`;
+  svg+=`<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#7C6AE0" stop-opacity="0.3"/>
+    <stop offset="100%" stop-color="#7C6AE0" stop-opacity="0.02"/></linearGradient></defs>`;
+  svg+=`<path d="${area}" fill="url(#g)"/>`;
+  // white underlay
+  let line='';pts.forEach((p,i)=>line+=(i?' L ':'M ')+`${p.x} ${p.y}`);
+  svg+=`<path d="${line}" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // colored segments by start mood
+  for(let i=0;i<n-1;i++){
+    const c=MOODS[moodFor(pts[i].v)].color;
+    svg+=`<path d="M ${pts[i].x} ${pts[i].y} L ${pts[i+1].x} ${pts[i+1].y}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;
+  }
+  document.getElementById('chart').innerHTML=svg;
+
+  // stats
+  const vals=data.filter(v=>v!=null);
+  const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  document.getElementById('stAvg').textContent=avg;
+  document.getElementById('stHi').textContent=Math.max(...vals);
+  document.getElementById('stLo').textContent=Math.min(...vals);
+  document.getElementById('heroVal').textContent=vals[vals.length-1];
+  // axis
+  let labels=AXIS[range];
+  if(range==='day')labels=AXIS.day;
+  renderAxis(labels);
+}
+
+// ---- date label ----
+function fmtDate(d){return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x;}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function centerLabel(){
+  if(range==='day')return fmtDate(anchor);
+  if(range==='week'){const s=startOfWeek(anchor);const e=addDays(s,6);return `${fmtDate(s)} – ${fmtDate(e)}`;}
+  if(range==='month')return `${anchor.getFullYear()}年${anchor.getMonth()+1}月`;
+  return `${anchor.getFullYear()}年`;
+}
+function updateLabel(){document.getElementById('centerText').textContent=centerLabel();}
+
+// ---- interactions ----
+document.getElementById('tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.chip');if(!t)return;
+  range=t.dataset.r;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('chipOn',c===t));
+  document.getElementById('cmpRange').textContent={day:'今日',week:'本周',month:'本月',year:'本年'}[range];
+  renderChart();
+});
+function step(dir){
+  if(range==='day')anchor=addDays(anchor,dir);
+  else if(range==='week')anchor=addDays(anchor,dir*7);
+  else if(range==='month')anchor=new Date(anchor.getFullYear(),anchor.getMonth()+dir,1);
+  else anchor=new Date(anchor.getFullYear()+dir,anchor.getMonth(),1);
+  updateLabel();
+}
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+document.getElementById('center').onclick=()=>{ // demo: jump -7 days
+  anchor=addDays(anchor,-7);updateLabel();
+};
+
+// init
+updateLabel();
+renderChart();
+</script>
+</body>
+</html>
