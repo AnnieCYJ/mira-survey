@@ -45,7 +45,7 @@ import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
 // ★ v18.146：睡眠分统一走「今天该显示哪个睡眠分」的唯一入口（与圆环 chip、SleepCard 同源），
 //   不再直接读旧落盘字段 sleep.score（绝对分），否则同一标签「睡眠恢复」会出现两把尺。
-import { computeSleepPersonalized } from '../lib/sleepPersonalized';
+import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 // ★ v18.125：绘图几何与详情页共用同一模块（保证「同一指标画出同一张图」）
 import { buildSmoothSeries, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
@@ -190,15 +190,16 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       ? `${proxy.ampPct != null ? `波动 ${proxy.ampPct}%` : '活性已建模'} · ${recoveryWord}`
       : '佩戴后生成活性曲线';
 
-  // ★ v18.146：badge 档位词与圆环 chip 的 recTag、SleepCard 的 recoveryLabel **同源**
-  //   （相对≥62 较好 / ≥45 一般；绝对≥80 良好 / ≥60 中），不再用旧的「接近目标」绝对措辞，
-  //   避免 badge 文案和卡片大数字语义错位（MEMORY：标签与数值必须同一口径）。
-  const badgeWord =
-    sleepScore == null ? '待数据'
-      : persRelative
-        ? (sleepScore >= 62 ? '恢复较好' : sleepScore >= 45 ? '恢复一般' : '恢复偏弱')
-        : (sleepScore >= 80 ? '恢复良好' : sleepScore >= 60 ? '恢复中' : '恢复偏弱');
-  const badgeText = dataStale ? '暂无数据' : sleepScore != null ? `${sleepScore}/100 · ${badgeWord}` : badgeWord;
+  // ★ v18.156：档位词与 chip 走**同一个函数**（sleepPersonalized.sleepRecoveryTag）。
+  //   此前这里自带一套 62/45 + 「恢复较好」措辞，而 chip 是 58/42 + 「高于平时」
+  //   ⇒ 同一个 61 在首页出现两种说法，用户会当成两个指标。
+  //   ⚠ 相对口径下不再挂 `/100`：50 = 和你平时一样，挂百分制必然被读成「刚及格」。
+  const badgeWord = sleepRecoveryTag(sleepScore, persRelative ? 'relative' : 'absolute') ?? '待数据';
+  const badgeText = dataStale
+    ? '暂无数据'
+    : sleepScore != null
+      ? (persRelative ? `${sleepScore} · ${badgeWord}` : `${sleepScore}/100 · ${badgeWord}`)
+      : badgeWord;
 
   // —— 曲线数据（★ v18.116 方案 A：直接用多模态反推结果，**无拟合、无虚线**）——
   //   数据源 = buildCortisolProxyToday() 的 48 槽实测活性（每槽由该窗口 HRV/EDA/体温/心率算出）。
@@ -242,7 +243,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             <View style={[styles.iconChip, onColor && { backgroundColor: mm.colors.cardBg }]}>
               <MindIcon name="leaf" size={theme.fs(17)} color={iconFg} />
             </View>
-            <Text style={styles.title}>昼夜节律</Text>
+            <Text style={styles.title}>睡眠节律</Text>
           </View>
           <View style={styles.headRight}>
             <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>
@@ -385,31 +386,11 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
           )}
         </View>
 
-        {/* v10 解读行：色点 + 加粗结论 + 灰色说明（全部来自真实数据口径） */}
-        <View style={styles.keyRow}>
-          <View style={[styles.keyDot, chartMode === 'none' ? { backgroundColor: mm.colors.inkFaint } : { backgroundColor: mm.colors.ringTeal }]} />
-          <View style={styles.keyTx}>
-            <Text style={styles.keyBold} numberOfLines={1}>
-              {chartMode === 'none' ? '暂无数据' : recoveryWord}
-            </Text>
-            <Text style={styles.keySub} numberOfLines={1}>
-              {chartMode === 'none'
-                ? dataStale
-                  ? '请佩戴戒指，约半小时会更新最新数据'
-                  : '戴上戒指后，这里显示你的皮质醇活性趋势'
-                : `今日趋势 · ${cortisolSub}`}
-            </Text>
-          </View>
-          {/* ★ v18.116：方案 A 全程实测驱动，没有推算段 → 不需要「实测/节律」双色图例。
-              改为标注「反推自 N 项生理信号」，让用户知道这个值怎么来的、不是直接测的激素浓度。 */}
-          {chartMode === 'today' && g.points.length > 0 ? (
-            <View style={styles.legendBox}>
-              <Text style={styles.legendTx}>
-                反推自 HRV · 皮电 · 体温 · 心率
-              </Text>
-            </View>
-          ) : null}
-        </View>
+        {/* ★ v18.147（用户要求）：删除底部「压力分析」解读行（原 keyRow：色点 + 压力结论 + 趋势说明）。
+            只保留数据来源说明——用户需要知道这个值不是直接测的激素浓度，而是从 4 项生理信号反推出来的。 */}
+        {chartMode === 'today' && g.points.length > 0 ? (
+          <Text style={styles.legendTx}>反推自 HRV · 皮电 · 体温 · 心率 · 非血液检测</Text>
+        ) : null}
       </View>
     </View>
   );

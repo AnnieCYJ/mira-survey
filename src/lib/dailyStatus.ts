@@ -11,6 +11,24 @@
  *     档位切点设在百分位 65/30/5 → 不足≈5%（稀有且严肃）。
  *
  * 本模块为纯 TS、零 react-native 依赖，可被 node 直接单测。
+ *
+ * ── 综合指标的方法论溯源（用户 2026-10-05 要求补齐「可参考的来源」）──
+ * 今日状态 = 一个 0–100 的「恢复就绪度」复合分，融合多路戒指真测信号。它的设计**不是拍的**，
+ * 而是对齐业界已公开的复合就绪度方法论 + 学术恢复-应激框架：
+ *   · **Oura Readiness**（公开方法论 support.ouraring.com）：复合分 = 9 个「贡献因子」，
+ *     其中「身体压力」支柱 = HRV 平衡 + 静息心率 + **皮肤体温偏离个人基线** + 恢复指数。
+ *     ★ Oura 明确把「体温偏离个人基线」列为准备度核心压力信号（升温 ⇒ 生理负荷/疾病前兆/激素波动）。
+ *   · **Fitbit Daily Readiness** / **WHOOP Recovery**：同样以 HRV + RHR + 睡眠为主输入，
+ *     全部相对「个人基线」而非人群均值（WHOOP HRV 权重最高 ~40–50%）。
+ *   · **Garmin Body Battery / Training Readiness**：今日状态的 v2 曲线（充电/消耗模型）
+ *     直接对应 Garmin 的「电量」范式——睡眠/休息充电、活动/应激消耗。
+ *   · **Banister Fitness-Fatigue 模型 (1975) → CTL/ATL/TSB**：就绪度 = 体能(慢积慢消,τ≈42d) − 疲劳(快积快消,τ≈7d)。
+ *     论证了「恢复就绪度」应含多日维度（当前 v2 曲线只有日内+晨间锚点，多日疲劳项见 Phase 2）。
+ *   · **RESTQ-Sport (Kellmann)**：经验证的心理量表，确认「恢复-应激平衡」是正确构念（双轴 × 19 子量表），
+ *     为客观复合分提供构念效度背书（但它是主观量表，不参与本算法权重）。
+ *   · ⚠ **诚实边界（与 Mira 品牌一致）**：原始输入（HRV/RHR）有 ECG 验证（Oura Gen4 CCC 0.99），
+ *     但**所有厂商的复合分都是闭源、缺少独立验证**（2026 综述）。故本复合分只作「个人趋势线」，
+ *     不宣称绝对生理真值；档位/百分比一律相对用户自身历史。
  */
 
 import { computeCycle, type CycleInfo, type CyclePhase } from './cycleMath';
@@ -35,6 +53,9 @@ export interface DailyRecord {
   sleepAwake?: number | null;
   /** 起夜次数 */
   getUp: number | null;
+  /** 当日日均皮肤体温（℃，来自 ring.tempDaily）；null = 当日未取到。
+   *  ★ 2026-10-05 纳入综合复合分：对齐 Oura 将「体温偏离个人基线」列为准备度核心压力信号。 */
+  temp: number | null;
   /** 发烧标记：true 则永不计入基线窗口 */
   fever: boolean;
   /** 当日相位桶 */
@@ -48,9 +69,11 @@ export interface AlgoConst {
   K_HRV: number;
   HRV_DOWN_GAIN: number; // 低于基线时的不对称放大
   K_RHR: number;
+  K_TEMP: number; // 体温每升高 1℃ 对就绪度的扣分（Oura：体温偏离个人基线=压力信号）
   W_HRV: number;
   W_RHR: number;
   W_SLEEP: number;
+  W_TEMP: number; // ★ 体温贡献权重（Oura 身体压力支柱含体温）
   TARGET_DURATION: number; // 分钟：满分区间下限
   TARGET_DURATION_MAX: number; // 分钟：满分区间上限，超过后线性轻扣
   TARGET_DEEP_PCT: number;
@@ -76,9 +99,11 @@ export const ALGO_DEFAULTS: AlgoConst = {
   K_HRV: 120,
   HRV_DOWN_GAIN: 1.6,
   K_RHR: 100,
-  W_HRV: 0.4,
-  W_RHR: 0.25,
-  W_SLEEP: 0.35,
+  K_TEMP: 10, // 体温每升高 1℃ 扣 10 分（升温=生理压力；相位基线已吸收黄体期升温，残留≈真实应变）
+  W_HRV: 0.34,
+  W_RHR: 0.21,
+  W_SLEEP: 0.30,
+  W_TEMP: 0.15,
   TARGET_DURATION: 450, // 7.5h
   TARGET_DURATION_MAX: 510, // 8.5h：满分区间上限（原来 9h 会让 9.0h 卡边界不扣分 → 满屏 100）
   TARGET_DEEP_PCT: 20,
@@ -101,16 +126,17 @@ export const ALGO_DEFAULTS: AlgoConst = {
 // ── 文献默认女性群体基线（按相位分桶的常量表，TBD-1）
 // 冷启动（个人样本不足）时使用：取健康女性单群体中位 × 各相位典型偏移。
 // 这些是占位文献常数值，正式上线前应替换为已发表的纵向研究数据。
-type LitRow = { hrv: number; rhr: number; sleep: number };
+// temp 为日均皮肤温（℃）相位典型值：黄体期因孕激素升温 ~0.3–0.5℃（Oura 同口径用「偏离个人基线」）。
+type LitRow = { hrv: number; rhr: number; sleep: number; temp: number };
 const LIT: Record<PhaseBucket, LitRow> = {
-  follicular: { hrv: 50, rhr: 58, sleep: 75 },
-  ovulation: { hrv: 55, rhr: 56, sleep: 76 },
-  luteal: { hrv: 45, rhr: 62, sleep: 72 }, // 整段黄体期取晚期偏保守值
-  period: { hrv: 47, rhr: 60, sleep: 70 },
-  unknown: { hrv: 50, rhr: 59, sleep: 74 },
+  follicular: { hrv: 50, rhr: 58, sleep: 75, temp: 36.5 },
+  ovulation: { hrv: 55, rhr: 56, sleep: 76, temp: 36.6 },
+  luteal: { hrv: 45, rhr: 62, sleep: 72, temp: 36.9 }, // 整段黄体期取晚期偏保守值；皮肤温因孕激素偏高
+  period: { hrv: 47, rhr: 60, sleep: 70, temp: 36.4 },
+  unknown: { hrv: 50, rhr: 59, sleep: 74, temp: 36.6 },
 };
 
-export type MetricKeyAlg = 'hrv' | 'rhr' | 'sleep';
+export type MetricKeyAlg = 'hrv' | 'rhr' | 'sleep' | 'temp';
 
 export interface LevelInfo {
   level: '充沛' | '平稳' | '偏低' | '不足';
@@ -213,9 +239,9 @@ export class BaselineStore {
   constructor(history: DailyRecord[], private c: AlgoConst) {
     const phases: PhaseBucket[] = ['follicular', 'ovulation', 'luteal', 'period', 'unknown'];
     this.byPhase = {} as any;
-    this.globalAll = { hrv: [], rhr: [], sleep: [] };
+    this.globalAll = { hrv: [], rhr: [], sleep: [], temp: [] };
     for (const p of phases) {
-      this.byPhase[p] = { hrv: [], rhr: [], sleep: [] };
+      this.byPhase[p] = { hrv: [], rhr: [], sleep: [], temp: [] };
     }
     // 发烧日永不计入基线（spec §9）
     for (const r of history) {
@@ -235,6 +261,10 @@ export class BaselineStore {
           bucket.sleep.push(sv);
           this.globalAll.sleep.push(sv);
         }
+      }
+      if (r.temp != null && Number.isFinite(r.temp)) {
+        bucket.temp.push(r.temp);
+        this.globalAll.temp.push(r.temp);
       }
     }
     this.dayCount = history.filter((r) => !r.fever).length;
@@ -265,7 +295,10 @@ export class BaselineStore {
       return { value: madMedian(globalArr), source: 'global' };
     }
     const lit = LIT[phase] ?? LIT.unknown;
-    return { value: metric === 'hrv' ? lit.hrv : metric === 'rhr' ? lit.rhr : lit.sleep, source: 'lit' };
+    return {
+      value: metric === 'hrv' ? lit.hrv : metric === 'rhr' ? lit.rhr : metric === 'temp' ? lit.temp : lit.sleep,
+      source: 'lit',
+    };
   }
 }
 
@@ -284,6 +317,17 @@ function scoreRhr(rhr: number, base: number, c: AlgoConst): number {
   const ratio = rhr / base;
   // 静息比基线低 15%（ratio≈0.85）为最优区
   return clamp(c.ANCHOR - (ratio - 0.85) * c.K_RHR, 0, 100);
+}
+
+/**
+ * 体温（皮肤温）偏离个人同相位基线 → 恢复就绪度。
+ * Oura 将「皮肤温偏离个人基线」列为准备度核心压力信号（升温 ⇒ 生理负荷 / 疾病前兆 / 激素波动）。
+ * 我们的相位基线已吸收黄体期孕激素升温，故残留偏差 ≈ 真实应变。
+ * 升温扣分、降温轻微正向（对称映射，K_TEMP≈10/℃）。
+ */
+function scoreTemp(temp: number, base: number, c: AlgoConst): number {
+  const dev = temp - base; // ℃，+ = 高于个人同相位基线
+  return clamp(c.ANCHOR - dev * c.K_TEMP, 0, 100);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -327,6 +371,8 @@ export interface TodayInput {
   hrv: number | null;
   rhr: number | null;
   sleep: SleepInput;
+  /** 当日日均皮肤体温（℃，null = 未取到）。★ 2026-10-05 纳入复合分（Oura 身体压力支柱）。 */
+  temp: number | null;
 }
 
 export interface ComputeOpts {
@@ -391,6 +437,13 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
     const sv = computeSleepScore(input.sleep, c);
     parts.push({ w: c.W_SLEEP, v: sv });
   }
+  // ★ 体温：偏离个人同相位基线 → 生理压力信号（Oura 同口径）。升温扣分、降温轻微正向。
+  if (input.temp != null && Number.isFinite(input.temp)) {
+    const b = store.baselineFor('temp', phase);
+    if (b.source === 'phase') baselineSource = 'phase';
+    else if (b.source === 'global' && baselineSource === 'lit') baselineSource = 'global';
+    parts.push({ w: c.W_TEMP, v: scoreTemp(input.temp, b.value, c) });
+  }
 
   const wsum = parts.reduce((a, p) => a + p.w, 0);
   const rawReadiness = wsum > 0 ? parts.reduce((a, p) => a + p.w * p.v, 0) / wsum : 0;
@@ -439,16 +492,25 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
 export interface CurveConst extends AlgoConst {
   /** 持平基线时今日状态（S0 锚点） */
   BASE_CHARGE: number;
-  /** S0 三项权重（HRV / RHR / 睡眠） */
-  W_S0_H: number; W_S0_R: number; W_S0_S: number;
+  /** S0 四项权重（HRV / RHR / 睡眠 / 体温） */
+  W_S0_H: number; W_S0_R: number; W_S0_S: number; W_S0_T: number;
   /** 睡眠分参考值（持平锚点） */
   SLEEP_REF: number;
   /** 恢复增益 */
   K_REC_HRV: number; K_REC_REST: number; REC_CAP: number;
   /** 消耗系数 */
   K_DR_HR: number; K_DR_STEP: number; K_DR_EDA: number; K_DR_STRESS: number; DRN_CAP: number;
-  /** 睡眠 / 小睡强充电 */
-  RECHARGE_SLEEP: number; RECHARGE_NAP: number;
+  /** ★ v18.155：睡眠段每 30min 向「这一夜能恢复到的水位」靠拢的比例（一阶渐进）。
+   *  取代旧的 RECHARGE_SLEEP 常量充电 —— 见 accumulateWindow 头注。 */
+  K_SLEEP_CHARGE: number;
+  /** ★ v18.155：睡前水位 = 夜间曲线的起点（清醒十余小时后的典型低位）。
+   *  仅当它低于当日 seed 时启用，避免曲线在睡眠段里向下走。 */
+  SLEEP_ENTRY_LEVEL: number;
+  /** 小睡轻度充电 */
+  RECHARGE_NAP: number;
+  /** @deprecated v18.155 起睡眠段改用 K_SLEEP_CHARGE + sleepTarget，本常量不再参与曲线计算。
+   *  保留仅为兼容历史快照/外部引用，勿在新代码使用。 */
+  RECHARGE_SLEEP: number;
   /** 稳态回拉（equilibrium 随语境变化） */
   EQ_REST: number; EQ_ACTIVE: number; EQ_STRESS: number; K_HOME: number;
   /** HRV 偏移校正 */
@@ -464,11 +526,16 @@ export interface CurveConst extends AlgoConst {
 export const CURVE_DEFAULTS: CurveConst = {
   ...ALGO_DEFAULTS,
   BASE_CHARGE: 60,
-  W_S0_H: 0.4, W_S0_R: 0.25, W_S0_S: 0.35,
+  W_S0_H: 0.34, W_S0_R: 0.21, W_S0_S: 0.30, W_S0_T: 0.15,
   SLEEP_REF: 72,
   // 速率常数（初值已按目标弧线原则标定：醒~70/忙时≥45/晚休~62/睡眠充电；待 collector.log 回放精修）
   K_REC_HRV: 6, K_REC_REST: 3.5, REC_CAP: 6,
   K_DR_HR: 4, K_DR_STEP: 2.5, K_DR_EDA: 0.8, K_DR_STRESS: 1.5, DRN_CAP: 4,
+  // ★ v18.155 睡眠段标定：0.22/30min ⇒ 一觉（8h≈16 窗）能走完「睡前水位 → 恢复水位」全区间，
+  //   且从 45 起也只是渐近、不会像旧实现那样撞到 100。
+  //   SLEEP_ENTRY_LEVEL = 45：清醒十余小时后的典型低位，正好落「平稳」档下沿，
+  //   与 seed 的常见区间（50–80）拉开一段可见的回升幅度。
+  K_SLEEP_CHARGE: 0.22, SLEEP_ENTRY_LEVEL: 45,
   RECHARGE_SLEEP: 4, RECHARGE_NAP: 2,
   EQ_REST: 95, EQ_ACTIVE: 70, EQ_STRESS: 72, K_HOME: 0.05,
   HRV_OFFSET_GAIN: 4, HRV_OFFSET_CAP: 3,
@@ -508,6 +575,10 @@ export interface WindowSignals {
   asleep: boolean;
   /** 小睡态（轻度充电） */
   isNap: boolean;
+  /** ★ v18.155：睡眠段的收敛目标 = 当日晨间恢复度 seed（0–100）。
+   *  它已含昨夜睡眠/HRV/RHR，所以曲线在睡眠段爬向的高度天然反映「这一夜到底恢复得怎样」。
+   *  缺省 / null → 回落到旧行为（EQ_REST 常量目标）。 */
+  sleepTarget?: number | null;
 }
 
 export interface WindowResult {
@@ -540,20 +611,22 @@ export function computeSeed(opts: ComputeOpts, consts?: CurveConst): SeedResult 
   const phase = cycle.phase as PhaseBucket;
   const store = new BaselineStore(history, c);
 
-  let subH: number | null = null, subR: number | null = null, subS: number | null = null;
+  let subH: number | null = null, subR: number | null = null, subS: number | null = null, subT: number | null = null;
   if (input.hrv != null) { const b = store.baselineFor('hrv', phase); subH = scoreHrv(input.hrv, b.value, c); }
   if (input.rhr != null) { const b = store.baselineFor('rhr', phase); subR = scoreRhr(input.rhr, b.value, c); }
   if ((input.sleep.sleepTotal ?? 0) > 0) { subS = computeSleepScore(input.sleep, c); }
+  if (input.temp != null && Number.isFinite(input.temp)) { const b = store.baselineFor('temp', phase); subT = scoreTemp(input.temp, b.value, c); }
 
-  const subs = [subH, subR, subS].filter((x) => x != null);
+  const subs = [subH, subR, subS, subT].filter((x) => x != null);
   if (subs.length === 0) {
     return { value: null, wakeNorm: null, recoveryDelta: null, recoveryLabel: '校准中', rawReadiness: null, phaseBucket: phase };
   }
   const wH = subH != null ? c.W_S0_H : 0;
   const wR = subR != null ? c.W_S0_R : 0;
   const wS = subS != null ? c.W_S0_S : 0;
-  const wsum = wH + wR + wS;
-  const avg = (wH * (subH ?? 0) + wR * (subR ?? 0) + wS * (subS ?? 0)) / wsum;
+  const wT = subT != null ? c.W_S0_T : 0;
+  const wsum = wH + wR + wS + wT;
+  const avg = (wH * (subH ?? 0) + wR * (subR ?? 0) + wS * (subS ?? 0) + wT * (subT ?? 0)) / wsum;
   const value = clamp(avg - c.ANCHOR + c.BASE_CHARGE, 0, 100);
 
   // wakeNorm：历史 S0 代理
@@ -576,7 +649,8 @@ export function computeSeed(opts: ComputeOpts, consts?: CurveConst): SeedResult 
 
 /**
  * 单个 30 分钟窗口的累积：S(t) = clamp(S(t-1) + 恢复 − 消耗 + 稳态回拉, 0, 100)。
- * - 睡眠态 → 强充电；小睡态 → 轻度充电；
+ * - 睡眠态 → 向 sleepTarget（这一夜能恢复到的水位）一阶渐进，★ v18.155 起不再常量充电；
+ * - 小睡态 → 轻度充电；
  * - 清醒态：仅当 isRecovering（低活动+低应激+HRV 不差）才给恢复增益；
  * - equilibrium 随 isRecovering 闸门变化（放松久坐→95，活跃→70，焦虑久坐→70 或更低），
  *   避免"久坐焦虑"被稳态回拉错误拉高（spec §5.5）。
@@ -596,8 +670,16 @@ export function accumulateWindow(prev: number, sig: WindowSignals, dt: DaytimeBa
   let recovery = 0;
   let drain = 0;
 
+  // ★ v18.155（用户 2026-10-05 口径）：睡眠段不再「无条件充电到固定上限」。
+  //   旧实现：asleep → recovery = RECHARGE_SLEEP(4)，equilibrium = EQ_REST(95)
+  //   ⇒ 每窗 next = prev + 4 + (95 − prev) × 0.05，不动点解出 prev = 175（远超 100）
+  //   ⇒ 只要睡够 4~6 小时**必然封顶 100**，且整段**不读任何睡眠质量量**
+  //     （睡眠分 20 与 100 画出的是同一条曲线）。用户实测反馈正是
+  //     「睡眠恢复很一般，但 01:00–11:00 状态值一直顶在高位、趋势不对」。
+  //   现改为：向 sleepTarget（= 当日 seed，已含昨夜睡眠/HRV/RHR）一阶渐进，
+  //   充电量由下面的 homeo 项承担，recovery 保持 0 ⇒ 睡不好就停在你真能恢复到的水位。
   if (sig.asleep) {
-    recovery = c.RECHARGE_SLEEP;
+    // 睡眠段：不产生额外 recovery/drain，全部由 homeo 拉向 sleepTarget
   } else if (sig.isNap) {
     recovery = c.RECHARGE_NAP;
   } else if (isRecovering) {
@@ -617,10 +699,19 @@ export function accumulateWindow(prev: number, sig: WindowSignals, dt: DaytimeBa
   drain = Math.min(drain, c.DRN_CAP);
 
   const active = hrElev > 0.1 || steps > dt.stepBaseline * 0.3;
-  const equilibrium = sig.asleep || sig.isNap || isRecovering
-    ? c.EQ_REST
-    : active ? c.EQ_ACTIVE : c.EQ_STRESS;
-  const homeo = (equilibrium - prev) * c.K_HOME;
+  // ★ v18.155：睡眠段的稳态目标不是固定的 EQ_REST，而是「这一夜能恢复到的水位」sleepTarget。
+  //   缺失时（老快照/实时路径没喂）才回落到 EQ_REST，保证向后兼容。
+  const sleepTarget =
+    sig.asleep && sig.sleepTarget != null && Number.isFinite(sig.sleepTarget)
+      ? clamp(sig.sleepTarget, 0, 100)
+      : null;
+  const equilibrium = sleepTarget != null
+    ? sleepTarget
+    : sig.isNap || isRecovering
+      ? c.EQ_REST
+      : active ? c.EQ_ACTIVE : c.EQ_STRESS;
+  // 睡眠段用更快的收敛速率（一觉之内要走完整个水位区间），其余场景沿用 K_HOME。
+  const homeo = (equilibrium - prev) * (sleepTarget != null ? c.K_SLEEP_CHARGE : c.K_HOME);
 
   const next = clamp(prev + recovery - drain + homeo, 0, 100);
   return { next, recovery, drain, homeo, equilibrium, isRecovering };

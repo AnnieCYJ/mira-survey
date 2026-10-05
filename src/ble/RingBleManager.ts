@@ -4026,6 +4026,9 @@ class RingConnectionImpl {
         ? hrvRaw
         : null;
     const rhr = this.deriveRHR();
+    // ★ 2026-10-05：当日日均皮肤温纳入综合复合分（对齐 Oura 体温压力信号）。取今日 tempDaily；
+    //   不参与 hasTodayInput 守卫（温是日级均值、非实时新鲜度信号），有则参与、无则跳过该路。
+    const temp = typeof this.state.tempDaily[dayKey] === 'number' ? this.state.tempDaily[dayKey] : null;
     const ss = this.state.sleepSummaryDate === dayKey ? this.state.sleepSummary : null;
     // ★ v18.96：todaySleepTotal = 属于「今天」的睡眠（今日 sleepSummary）；与下面的历史回退严格区分，
     //   跨天清零判定只看它 + 今日 HRV/RHR。
@@ -4056,7 +4059,7 @@ class RingConnectionImpl {
     const sleep: TodayInput['sleep'] = hasTodayInput
       ? { sleepTotal, sleepDeep, getUp }
       : { sleepTotal: null, sleepDeep: null, getUp: null };
-    const input: TodayInput = { hrv, rhr, sleep };
+    const input: TodayInput = { hrv, rhr, sleep, temp };
     // 解锁被锁死的 null 种子：已有曲线、但其 seed 为 null、且当前已拿到有效输入（HRV/睡眠/静息心率任一）→ 强制重算。
     // 修复「当日首次 recompute 时数据尚未到达 → 种子锁死为 null，之后数据到了也不再解锁」导致今日状态全天空白。
     if (curve && curve.seed.value == null && hasTodayInput) {
@@ -4127,6 +4130,7 @@ class RingConnectionImpl {
       sleepDeep: sleep.sleepDeep,
       sleepRem: ss?.rem ?? null,
       getUp: sleep.getUp,
+      temp,
       fever: false, // TODO(spec §9)：由皮肤温阈值判定发烧日，发烧日不计入基线
       phase: cycle.phase as DailyRecord['phase'],
       rawReadiness: curve?.seed.rawReadiness ?? null,
@@ -4273,7 +4277,13 @@ class RingConnectionImpl {
         : null;
     const asleep = this.isAsleepNow(now);
     const isNap = !asleep && hrMean != null && hrMean < curve.baseline.hrRest * 0.95 && stepsDelta < 5 && this.isDaytime(now);
-    return { hrMean, stepsDelta, edaEvents, hrv, asleep, isNap };
+    // ★ v18.155：实时累积路径的睡眠段也要收敛到「这一夜能恢复到的水位」，
+    //   否则在线累积（这里）与离线重建（rebuildDayTimelineFromHealthStore）会走出两条不同的夜间曲线。
+    //   目标取当日 seed —— 它已经是用昨夜睡眠/HRV/RHR 算出来的晨间恢复度。
+    const sleepTarget = asleep && Number.isFinite(curve.seed.value as number)
+      ? (curve.seed.value as number)
+      : null;
+    return { hrMean, stepsDelta, edaEvents, hrv, asleep, isNap, sleepTarget };
   }
 
   /** EDA 应激事件计数：窗口内高于近期中位 30% 的采样点视为一次应激波峰（上限 8） */
@@ -4314,7 +4324,9 @@ class RingConnectionImpl {
 
   /** 佩戴中断软重置用：依据当前窗口情境估算一个粗略今日状态 */
   private spotBattery(sig: WindowSignals, baseline: DaytimeBaseline): number {
-    if (sig.asleep) return 95;
+    // ★ v18.155：睡眠情境下的快照值也用 sleepTarget（这一夜能恢复到的水位），
+    //   不再硬编码 95 —— 否则「睡眠中断连 2h」的软重置会在夜间凭空拉出一个 95。
+    if (sig.asleep) return clampN(sig.sleepTarget ?? 95, 0, 100);
     if (isRecoveringNow(sig, baseline, CURVE_DEFAULTS)) return 90;
     const active =
       (sig.hrMean != null && sig.hrMean > baseline.hrRest * 1.1) ||
@@ -4684,6 +4696,7 @@ class RingConnectionImpl {
       const input: TodayInput = {
         hrv: hrvOk,
         rhr: null,
+        temp: (this.state.tempDaily as any)?.[dk] ?? null,
         sleep: sl
           ? { sleepTotal: sl.total ?? null, sleepDeep: sl.deep ?? null, getUp: sl.getUp ?? null }
           : { sleepTotal: null, sleepDeep: null, getUp: null },
@@ -4838,7 +4851,16 @@ class RingConnectionImpl {
 
     // 5. 逐窗口生成 WindowSignals → accumulateWindow
     const points: CurvePoint[] = [];
-    let prev = seedValue;
+    // ★ v18.155（用户 2026-10-05）：修掉「seed 时序倒置」。
+    //   旧实现 `let prev = seedValue`：seed 是**晨间恢复度**（醒来那一刻才该出现的值），
+    //   却被放在 00:00 当曲线起点，睡眠段再从它往上充 ⇒ 用睡眠的「结果」当睡眠「开始」时的状态，
+    //   同一晚的恢复被计两次，图上 0 点直接印着起床后的数字。
+    //   现在：00:00 = 睡前水位（SLEEP_ENTRY_LEVEL），睡眠段渐进到 seed，
+    //   seed 落在它该在的位置（起床时刻），曲线在 wakeTime 处自然连续。
+    const hasSleepSeg = sleepStart != null && sleepEnd != null && sleepEnd > midnight;
+    let prev = hasSleepSeg
+      ? Math.min(CURVE_DEFAULTS.SLEEP_ENTRY_LEVEL, seedValue)
+      : seedValue;
     let cumSteps = 0; // 累计步数（模拟 curve.lastWindowSteps）
 
     for (let i = 0; i < POINTS_PER_DAY; i++) {
@@ -4877,12 +4899,19 @@ class RingConnectionImpl {
       const hrvWinMean = hrvArrWin.length ? hrvArrWin.reduce((a, p) => a + p.v, 0) / hrvArrWin.length : null;
       const isNap = !asleep && napHrMean != null && hrvWinMean != null && napHrMean < baseline.hrRest * 0.95 && stepsDelta < 5 && new Date(winStart).getHours() >= 8 && new Date(winStart).getHours() < 22;
 
-      const sig = { hrMean, stepsDelta, edaEvents, hrv, asleep, isNap };
+      // ★ v18.155：睡眠段收敛目标 = 当日 seed（见上方 prev 头注）；非睡眠窗传 null，不参与。
+      const sig = { hrMean, stepsDelta, edaEvents, hrv, asleep, isNap, sleepTarget: asleep ? seedValue : null };
 
       // 5f. accumulateWindow → next value
       let next: number;
       if (i === 0) {
-        next = prev; // 第一个点直接用 seed
+        // 00:00 = 睡前水位（hasSleepSeg 时）/ seed（无睡眠段时）
+        next = prev;
+      } else if (hasSleepSeg && sleepStart != null && winStart < sleepStart) {
+        // ★ v18.155：入睡前的窗口**冻结在睡前水位**，不推进。
+        //   否则深夜静息会被 isRecovering 判成恢复 → 曲线先升（45→49）再被睡眠段拉回 seed，
+        //   出现「睡前反而在涨」的假回升，与「入睡前是一天最低点」的直觉相反。
+        next = prev;
       } else {
         // 简化版：不用真实 spotBattery（需要 sleepTime/wakeTime），直接走 accumulateWindow
         const res = accumulateWindow(prev, sig, baseline, CURVE_DEFAULTS);
@@ -5380,6 +5409,9 @@ class RingConnectionImpl {
     // 全为空 → 这天没有可用基线料，不写（避免污染基线中位数）
     if (hrv == null && rhr == null && !(sleep && (sleep.total ?? 0) > 0)) return null;
 
+    // ④ 体温：当日日均皮肤温（tempDaily），作为复合分第四路输入（Oura 同口径压力信号）
+    const tempVal = (this.state.tempDaily as any)?.[dk] ?? null;
+
     return {
       date: dk,
       hrv,
@@ -5388,6 +5420,7 @@ class RingConnectionImpl {
       sleepDeep: sleep?.deep ?? null,
       sleepRem: sleep?.rem ?? null,
       getUp: sleep?.getUp ?? null,
+      temp: typeof tempVal === 'number' && Number.isFinite(tempVal) ? tempVal : null,
       fever: false,
       phase,
     } as DailyRecord;

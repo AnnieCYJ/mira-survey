@@ -51,10 +51,11 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 
 > 说明：认知准备度的**核心科学依据**（睡眠→次日认知）是可靠的——Lowe et al. 2017（61 项研究 meta，持续性注意 g=−0.409）、Wüst 2024（44 研究，只睡一晚即损害）。但 `cognitiveLoad.ts` 头部列出的若干"开源参考"文献需核实后再对外引用。
 
-### E. 睡眠
+### E. 综合今日状态（恢复就绪度）/ 睡眠
 
 | 模块 | 文件 | 功能 | 方法 | 引用来源 | 验证状态 |
 |------|------|------|------|----------|----------|
+| **综合今日状态（恢复就绪度复合分）** | `src/lib/dailyStatus.ts` | 融合 HRV / RHR / 睡眠 / **体温** → 单一 0–100 恢复就绪度；晨间 S0 锚点 + 全天 v2 充电/消耗曲线 | 晨间 S0 = 四路「相对个人同相位基线」加权（**HRV 0.34 / RHR 0.21 / 睡眠 0.30 / 体温 0.15**，合计 1.0）；日内曲线 = Garmin Body Battery 式充电/消耗；展示分 0–100 = 自身历史百分位 | **Oura Readiness**（公开方法论 support.ouraring.com：复合分 = 9 贡献因子，身体压力支柱 = HRV 平衡 + 静息心率 + 皮肤体温偏离个人基线 + 恢复指数）；**Fitbit Daily Readiness** / **WHOOP Recovery**（HRV+RHR+睡眠，相对个人基线，WHOOP HRV 权重 ~40–50%）；**Garmin Body Battery / Training Readiness**（充电/消耗范式）；**Banister Fitness-Fatigue 1975 → CTL/ATL/TSB**（就绪度 = 体能−疲劳，多日维度，τ 体能≈42d / 疲劳≈7d）；**RESTQ-Sport (Kellmann)**（恢复-应激构念效度背书）；⚠️ 原始输入 HRV/RHR 有 ECG 验证（Oura Gen4 CCC 0.99），但**所有厂商复合分闭源、缺独立验证**（2026 综述）→ 只作个人趋势线，不宣称绝对真值 | ✅ 方法论对齐业界公开口径；🟡 文献群体基线 TBD-1 待替换；体温路为 **2026-10-05 新增**（对齐 Oura 体温压力信号） |
 | 睡眠段充电模型 | `src/lib/dailyStatus.ts` | 睡眠段恢复度（不再无条件充到固定上限） | 按相位分桶基线（同相位个人→全局个人→文献群体）；冷启动用文献值 + ±1sd 映射 | 文献群体基线为**占位常量（TBD-1）**，注释标明"正式上线前应替换为已发表纵向研究数据" | ⚠️ 文献常量为占位，待替换 |
 | 睡眠评分 | `src/lib/sleepScore.ts` | 睡眠分（时长/深睡/起夜 + 清醒效率） | 多维绝对达标分（v2 已加入清醒效率维度） | 通用睡眠分期与评分框架 | ◽ 通用框架，无单一强引用 |
 | 睡眠基线 + 规律性 | `src/lib/sleepBaseline.ts` | 个人相对基线 + 规律性分 | 睡眠中点标准差；冷启动混合口径（≥5 天个人相对，<5 天绝对）；上限 96（100 罕见） | **Oura** 个人基线（"compared against your baseline"）；**Sleep Regularity Index**（中点 sd 标准法）；**Windred 2024 SLEEP**（UK Biobank n=60,977 死亡率五分位分组）；Oura "100s are designed to be rare" | ✅ 强依据 |
@@ -108,6 +109,12 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 ## 3. 引用文献总表（按出现频次 / 重要度）
 
 **已核实可信（支撑核心算法）：**
+- Oura Readiness 公开方法论（support.ouraring.com/hc/articles/360025589793 与 360057791533）— 复合分 = 9 贡献因子；身体压力支柱 = HRV 平衡 + 静息心率 + 皮肤体温偏离个人基线 + 恢复指数；体温偏离个人基线列为准备度核心压力信号
+- Fitbit Daily Readiness（fitbit.com/global/uk/technology/daily-readiness-score）— HRV + RHR + 睡眠，相对个人 7 天基线
+- WHOOP Recovery（whoop.com）— HRV(~40–50% 权重) + RHR(~25%) + 睡眠表现 + 睡眠规律性；个人 30–60 天基线
+- Garmin Body Battery / Training Readiness（garmin.com）— 充电/消耗范式；Training Readiness 融合 HRV + 睡眠 + 恢复时间 + 训练负荷平衡 + 应激 + 急性疲劳
+- Banister Fitness-Fatigue 模型 (Banister et al. 1975, Canad J Appl Sport Sci) → CTL/ATL/TSB — 就绪度 = 体能(τ≈42d) − 疲劳(τ≈7d)；现代训练负荷监测（TrainingPeaks PMC）的理论基石
+- RESTQ-Sport (Kellmann & Kallus, 2001) — 经验证的恢复-应激心理量表（双轴 × 19 子量表），为客观复合分提供构念效度
 - Psychoneuroendocrinology 2024 — Body Battery vs 晨起皮质醇 r=0.52（n=127）
 - Windred 2024, SLEEP — UK Biobank n=60,977 睡眠规律性/死亡率分组
 - Bosch et al. 2026, arXiv:2605.15756 (DLR) — 运动 vs 心理压力信号分解
@@ -120,6 +127,10 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 - Greco 2016 (cvxEDA) / Shaffer & Ginsberg 2017 / Iglewicz & Hoaglin 1993 — EDA/HRV 稳健统计
 - Balban 2023 (Cell Reports Medicine) / Seligman 2005 / Lieberman 2007 — 情绪/呼吸/积极心理学（科普+工具）
 - Majewska 1986 (Science) / Timby 2016 — ALLO–GABA 机制
+
+**复合分诚实边界（2026 综述，aifithub.io / inspiredbysports.com）：**
+- 原始输入（HRV、RHR）有 ECG 验证（Oura Gen4 CCC 0.99，WHOOP 0.94，Garmin 0.87），但 **WHOOP/Oura/Garmin 的复合分都是闭源、缺独立验证**；同一人不同设备读数可差 20+ 分（如 WHOOP 78% vs Garmin 42）——它们回答的是略不同的"就绪度"问题。
+- 结论：复合分**只作个人趋势线**，不宣称跨设备/绝对生理真值；档位与百分比一律相对用户自身历史（与 Mira 品牌诚实边界一致）。
 
 **存疑 / 待复核（集中在 `cognitiveLoad.ts` 头部引用）：**
 - Wellby (IEEE TAFFC 2026)、CogWatch (HardwareX 2024)、ChatPPG 2026、NeuroPlay 2024、ICFMR 2023、Task 2023、JBDM 2023 —— 先前技术评估判定其中若干"查无此文 / 张冠李戴"，**对外引用前必须逐条核实或替换**。

@@ -30,7 +30,7 @@ import { computeStressReport } from '../lib/stressAlgorithm';
 // ★ v18.132：情绪压力改多信号融合判定（分离运动/设备故障），替代单信号 EDA 事件计数
 import { computeEmotionalStress, LEVEL_LABEL, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
 import { computeCognitiveLoadReport, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogLevelLabel, cogBarRatio } from '../lib/cognitiveLoad';
-import { computeSleepPersonalized } from '../lib/sleepPersonalized';
+import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
@@ -243,7 +243,7 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
           () => onNav('emotion'),
           esReport?.stressScale ? esReport.stressScale.caption : undefined,
         )}
-        {subCard(IMG_COG, '脑力准备度', cognitive, '/100', () => onNav('cognitive'))}
+        {subCard(IMG_COG, '脑力准备度', cognitive, '/100', () => onNav('cognitive'), '当前剩余')}
         {subCard(IMG_ACTIVITY, '运动量', activity, '步', () => onNav('activity'))}
       </View>
     </View>
@@ -645,16 +645,13 @@ export default function TodayScreen() {
   //   `sportSessions` 在本作用域**后面才声明**（TS2448/TS2454），
   //   必须复用下方已算好的 `esReport`，否则要么编译不过、要么算出两份不一致的数据。
   //   （这个坑与 v18.133 那次「诊断加在死代码里」同源：作用域顺序必须先确认。）
-  // ★ v18.128 改回**脑力准备度**（晨起值 brainReserve，纯睡眠驱动，不用瞬时疲劳度）。
-  // 为什么换回来（用户判断：「脑力准备度通过睡眠算，这个是有科学依据的是吧？」——对）：
-  //   · 文献支撑强：Lowe et al. 2017（61 项研究 meta 分析）睡眠限制→认知总体 g=−0.383、
-  //     **持续性注意 g=−0.409**（受损最重）、执行功能 −0.324；Wüst 2024（44 研究）**只睡一晚**即可损害。
-  //   · 输入全是戒指实测睡眠（时长/深睡/睡眠债/起床相位），**不是反推**；
-  //   · **一天一个数**（晨起），不逐小时抖，不需要回答「此刻准不准」。
-  //   对比 v18.127 的瞬时疲劳度：那个是「HRV 掉多少→脑力剩多少」，无 meta 支撑、系数全拍。
-  // 口径：`brainReserve = (睡眠恢复×80 + 20 − 睡眠债×8)×0.7 + 节律相位×100×0.3`（见 computeMorningReadiness）。
-  // 诚实边界：系数仍是经验值，**量纲未校准**（不能说 72 分比 65 分「认知好 7%」）。后续用用户自报回归校准。
-  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainReserve != null ? String(r.brainReserve) : '—'; } catch { return '—'; } })();
+  // ★ 脑力准备度 = **当前剩余**（brainRemaining），随当天用脑实时下降（用户 2026-10-05 口径：「全天运脑，随着运脑会下降」）。
+  //   与 v18.128 的「晨起固定值 brainReserve」不同：这里展示的是此刻还剩多少认知能量，
+  //   早上接近储备、越用越低，更贴合「准备度」直觉，也与 Oura 的实时能量/准备度分拉开差异。
+  //   科学依据不变（睡眠→次日认知 meta：Lowe 2017 g=−0.383、持续性注意 −0.409；Wüst 2024 一晚即损），
+  //   只是把「一天一个数」改成「随昼夜能量线走」——储备仍由睡眠驱动，剩余是在储备上扣当天用脑。
+  //   诚实边界：系数仍是经验值，**量纲未校准**（不能说 72 比 65「认知好 7%」）。后续用用户自报回归校准。
+  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径）。
   // ★ v18.98（用户口径：对齐 Oura）：只认**昨晚**这一夜 ——
@@ -1151,12 +1148,10 @@ export default function TodayScreen() {
     if (recovery == null || recovery === '—') return undefined;
     const s = Number(recovery);
     if (!Number.isFinite(s)) return undefined;
-    if (sleepPers?.mode === 'relative') {
-      // 相对口径：50 = 和平时一样 ⇒ 档位围绕 50 而非 80
-      return s >= 62 ? '恢复较好' : s >= 45 ? '恢复一般' : '恢复偏弱';
-    }
-    // 绝对口径（基线不足 5 晚）：沿用旧的 80/60
-    return s >= 80 ? '恢复良好' : s >= 60 ? '恢复中' : '恢复偏弱';
+    // ★ v18.156：档位词收成唯一实现（`sleepRecoveryTag`），与「睡眠节律」卡 badge 同源。
+    //   此前 chip（58/42「高于平时」）与卡片（62/45「恢复较好」）各写一套，
+    //   同一个 61 在首页出现两种说法 —— 用户 2026-10-05 的困惑点正是这个。
+    return sleepRecoveryTag(s, sleepPers?.mode === 'relative' ? 'relative' : 'absolute');
   })();
   // ★ v18.128：档位按**晨起准备度剩余**判（与 chip 数值同一口径、同一个字段 brainReserve）。
   //   数值方向 = 准备度（高 = 更好），所以 ≥70 准备度高 / 40~70 准备度中 / <40 准备度低。
@@ -1281,7 +1276,10 @@ export default function TodayScreen() {
   //   断流就画空图表（中间一行「暂无数据」）+ 圆环下方分析写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」
 
   const metricChips: MindChipItem[] = [
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
+    // ★ v18.155：睡眠恢复 chip 的单位随口径切换。
+    //   相对口径的锚点是 50（= 和你平时一样），挂「/100」会被读成「睡眠只有 61 分」——
+    //   这正是 sleepScore.ts 头注明确警告过的误读。相对口径不显示单位，参照系交给下面的 tag。
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: sleepPers?.mode === 'relative' ? undefined : '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力准备度', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },

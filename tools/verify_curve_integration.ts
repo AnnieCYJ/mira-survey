@@ -32,6 +32,7 @@ function fakeHistory(): DailyRecord[] {
       sleepDeep: 90,
       sleepRem: 80,
       getUp: 1,
+      temp: 36.8,
       fever: false,
       phase: 'luteal',
       rawReadiness: 70,
@@ -43,7 +44,7 @@ function fakeHistory(): DailyRecord[] {
 function run() {
   const history = fakeHistory();
   const cycle: CycleInfo = computeCycle(null, new Date());
-  const input: TodayInput = { hrv: 55, rhr: 56, sleep: { sleepTotal: 460, sleepDeep: 95, getUp: 0 } };
+  const input: TodayInput = { hrv: 55, rhr: 56, temp: null, sleep: { sleepTotal: 460, sleepDeep: 95, getUp: 0 } };
   const baseline: DaytimeBaseline = deriveDaytimeBaseline(history, 'luteal', CURVE_DEFAULTS);
 
   // --- 复刻管理器：seed 只算一次 ---

@@ -32,7 +32,7 @@ const c = CURVE_DEFAULTS;
 // ── 1. computeSeed 在有数据时应返回 0–100 的电量 ──
 const cycle = computeCycle(null);
 const seedOpts: ComputeOpts = {
-  input: { hrv: 55, rhr: 58, sleep: { sleepTotal: 450, sleepDeep: 100, getUp: 1 } },
+  input: { hrv: 55, rhr: 58, temp: null, sleep: { sleepTotal:450, sleepDeep:100, getUp:1 } },
   history: [],
   cycle,
 };

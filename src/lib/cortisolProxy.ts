@@ -54,22 +54,28 @@ import {
 
 // ── 常量 ────────────────────────────────────────────────────────────────
 
-/** 权重（合计 1.0）。HRV 与 EDA 是最直接的两路交感证据，权重最高。 */
+/** 权重（合计 1.0）。HRV 与 EDA 是最直接的两路交感证据，权重最高。
+ *  ★ v-fix：移除 sleepDebt（原 0.08）——调用方从未传入 sleepDeficit，长期为死权重；
+ *    睡眠债对 HPA 的影响已在「晨起认知准备度」中体现，intraday proxy 不再重复计入。
+ *    原 5 路权重按 0.92→1.0 等比放大，分数口径与旧版一致。 */
 export const PROXY_WEIGHTS = {
-  hrv: 0.26,
-  eda: 0.24,
-  temp: 0.18,
-  rhr: 0.14,
+  hrv: 0.28,
+  eda: 0.26,
+  temp: 0.20,
+  rhr: 0.16,
   activity: 0.10,
-  sleepDebt: 0.08,
 } as const;
 
 /** 体温绝对参考：人体外周皮温正常带（℃）。偏离此带的幅度用于打分。 */
 const TEMP_REF_LOW = 35.4;
 const TEMP_REF_HIGH = 37.2;
 
-/** 皮电/GSR 绝对参考（μS 量级）：低于 20 视为极静息。 */
-const EDA_FLOOR = 20;
+/** 皮电/GSR 接入说明（重要）：App 经原生桥拿到的 `eda` 实际是 Veepoo GSR 的
+ *  `skin_moisture`（厂商归一化值，量程 1~99，**不是** μS 电导，详见 HK18 协议逆向）。
+ *  因此不再用「μS 量级绝对地板」假设，改为量程有效性判断：
+ *  越界（脱戴 / 接触不良 / 未初始化）即剔除；量程内则按个人基线做相对 z-score。 */
+const EDA_MIN = 1;   // skin_moisture 合法区间下限
+const EDA_MAX = 99;  // skin_moisture 合法区间上限
 
 /** 一个窗口（分钟）。与 App 内「全天 30min 曲线」一致。 */
 export const WINDOW_MIN = 30;
@@ -285,7 +291,7 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
 export function computeCortisolProxyDay(
   dk: string,
   baseline: ProxyBaseline,
-  opts?: { now?: number; sleepDeficit?: number | null },
+  opts?: { now?: number },
 ): { vals: (number | null)[]; counts: number[] } {
   const W = WINDOW_MIN * 60000;
   const [y, m, d] = dk.split('-').map((x) => parseInt(x, 10));
@@ -337,13 +343,14 @@ export function computeCortisolProxyDay(
       wsum += PROXY_WEIGHTS.hrv;
       physN++;
     }
-    // EDA：正相（皮电高 → 汗腺交感激活）
-    // ⚠ 尺度下限 2 μS：同上，MAD 过小会放大噪声。
+    // EDA：正相（皮肤湿度/皮电反应高 → 交感皮肤反应活跃）
+    // ⚠ 尺度下限 2（相对单位）：MAD 过小会放大噪声，必须达到最小离散度才纳入。
     const blEda = baseline.bySlot.eda[i] ?? baseline.eda;
     const scEda = baseline.scalesBySlot.eda[i] ?? null;
     if (edaWin != null && blEda != null && scEda != null && scEda >= 2) {
-      // 低于 EDA_FLOOR 视为极静息/未佩戴，不计入（否则无佩戴时段会变成噪声）
-      if (edaWin >= EDA_FLOOR) {
+      // 量程有效性：skin_moisture 合法区间 [1,99]，越界视为脱戴/接触不良，不计入
+      // （不再用绝对「地板」假设，避免把偏低但有效的读数整路剔除 → 解决 EDA 整路失效风险）
+      if (edaWin >= EDA_MIN && edaWin <= EDA_MAX) {
         raw += PROXY_WEIGHTS.eda * ((edaWin - blEda) / scEda);
         wsum += PROXY_WEIGHTS.eda;
         physN++;
@@ -381,14 +388,6 @@ export function computeCortisolProxyDay(
     raw += PROXY_WEIGHTS.activity * (-activity * 1.2);
     wsum += PROXY_WEIGHTS.activity;
 
-    // 睡眠债：晨间基线修正（深睡/REM 不足 → 次日 HPA 失调）。仅在 09:00 后生效
-    const hourOfDay = (wStart - midnight) / 3600000;
-    if (opts?.sleepDeficit != null && Number.isFinite(opts.sleepDeficit) && hourOfDay >= 9) {
-      // sleepDeficit: 0 = 睡眠充足，1 = 严重不足
-      raw += PROXY_WEIGHTS.sleepDebt * ((opts.sleepDeficit - 0.5) * 1.4);
-      wsum += PROXY_WEIGHTS.sleepDebt;
-    }
-
     // ★ 一路生理信号都没有 → 该窗口没有实测支撑 → null（不编造、不画虚线）
     if (physN === 0 || wsum <= 0) { vals.push(null); counts.push(0); continue; }
 
@@ -405,7 +404,7 @@ export function computeCortisolProxyDay(
 /** 当日 30 分钟活性序列（UI 入口）。 */
 export function buildCortisolProxyToday(
   baseline?: ProxyBaseline,
-  opts?: { now?: number; sleepDeficit?: number | null },
+  opts?: { now?: number },
 ): { vals: (number | null)[]; counts: number[]; real: boolean[]; baseline: ProxyBaseline } {
   const bl = baseline ?? buildCortisolProxyBaseline();
   const dk = hsDayKey(opts?.now ?? Date.now());
