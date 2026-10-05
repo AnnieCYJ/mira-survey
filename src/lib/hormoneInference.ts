@@ -121,7 +121,9 @@ export function inferHormones(
     .filter(p => p.temp != null)
     .map(p => ({ date: p.date, temp: p.temp! }));
 
-  const shift = detectThermalShift(tempSeries, { threshold: 0.12, minPoints: 10, minSpan: 14 });
+  // ★ 统一双相判定口径：与 cycleMath / TempBiphasicAnalysis / CycleDerivedMetrics 一致
+  //   (默认 0.15 / min12 / span16)，避免不同卡片对"是否排卵"给出分叉结论。
+  const shift = detectThermalShift(tempSeries);
 
   // 计算 cover - baseline 差值
   let deltaTemp = null as number | null;

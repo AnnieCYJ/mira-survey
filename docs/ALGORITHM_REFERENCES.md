@@ -62,6 +62,10 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 | 睡眠债 / 负荷 | `src/lib/sleepLoad.ts` | 睡眠债累积与清除 | SWA 清除曲线拟合 | **Borbély 1982 + Achermann 2004**（SWA 清除曲线）；**Arab 2024 meta**（social jetlag，就寝不规律） | ✅ 经典 + 近期 meta |
 | 睡眠个性化 | `src/lib/sleepPersonalized.ts` | 个性化睡眠参数 | 复用基线逻辑 | 同 sleepBaseline | ✅ |
 
+> **体温在 Mira 的双重角色（2026-10-05 厘清）：** 体温在代码库中被两路独立使用，目的相反，避免混淆：
+> 1. **复合分里的身体应变信号**（`dailyStatus.ts`，见上表"综合今日状态"）：取「今日体温 **偏离相位专属基线** 多少」。相位基线已吸收黄体期孕酮升温，故残差偏离 ≈ 真实身体负担（生病/恢复差/应激），**不是**周期位置标记。对齐 Oura Readiness 的 body-stress 支柱。
+> 2. **周期相位确认**（`cycleMath.ts` 的 `detectThermalShift`，见 F 节）：用 symptothermal 双相体温跳升 **确认排卵**、重切卵泡/黄体边界。这是独立的相位推断功能，详见 F 节。
+
 ### F. 周期 / 激素推断
 
 | 模块 | 文件 | 功能 | 方法 | 引用来源 | 验证状态 |
@@ -70,6 +74,9 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 | 周期派生指标 | `src/lib/cycleDerived.ts` | RHR/HRV 周期相位相关 | 相关性聚合 | 同上 + 1,004 名自然月经女性 meta（卵泡期→黄体期 HRV 显著下降） | ✅ |
 | 激素趋势 | `src/lib/hormoneTrend.ts` | 雌激素/孕酮趋势 | meta 趋势 + 症状体温法 | 1,004 女性 meta；排卵后孕酮→BBT 抬升 0.3–0.5°C（symptothermal method）+ RHR 升高 | ✅ |
 | 周期数学 | `src/lib/cycleMath.ts` | 经期/排卵期曲线 | 经典月经激素双峰模型 | 经典 menstrual hormone profile（雌激素双峰：排卵前主峰 + 黄体期次峰） | ✅ 经典模型 |
+| **BBT 双相体温检测（排卵确认）** | `src/lib/cycleMath.ts` `detectThermalShift` | 皮肤体温双相跳升检测，确认排卵、重切卵泡/黄体边界 | 稳健版 symptothermal（按皮肤体温放宽）：基线=前 6 低温日均值；跳升=连续 ≥3 天 ≥ 基线 + 0.15 且第 3 天 ≥ 基线 + 0.10 形成清晰台阶；排卵日 ≈ 跳升首日 −1；**统一口径：阈值 0.15 / 最少 12 点 / 跨度 ≥16 天**；`computeCycle` 内信任条件：跳升排卵在日历估计 ±9 天内且已发生（≤今天）才覆盖日历法 | **Symptothermal Method**（drip., Bloody Health Collective, GPLv3, F-Droid）；戒指皮肤体温方差大、振幅偏小，阈值/天数按皮肤体温放宽（README 明示"更准的方法如测基础体温"） | ✅ 已实现并全线接线；**2026-10-05 统一各调用点阈值**（原 `hormoneInference.ts` 用 0.12/10/14，已对齐 `cycleMath` 默认 0.15/12/16，消除"是否排卵"分叉结论） |
+
+> **相位推算诚实边界（与复合分同理）：** 相位主体按周期内位置推算（经期 > 排卵期窗口 > 黄体 > 卵泡），体温只在**数据充足且可信**时覆盖排卵日；数据不足（如刚佩戴几天）回退纯日历法（Ogino-Knaus），体温不生效。故"体温预测相位"实为"日历法打底 + 体温确认排卵"，非纯体温模型。
 
 ### G. 基线 / 标定基础设施
 
