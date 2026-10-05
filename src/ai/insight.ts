@@ -22,6 +22,8 @@ import { healthStore, dayKey, parseDayKey, type SleepSummary } from '../data/hea
 import { RingBle } from '../ble/RingBleManager';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { computeCognitiveLoadReport, cogLevelLabel, COG_LEVEL_HIGH } from '../lib/cognitiveLoad';
+// ★ 2026-10-05：AI 认知口径改「认知准备度」（与 UI 各处同源）
+import { computeReadinessSeries, readinessLevel, readinessLevelLabel, READY_LOW } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { postLog } from '../lib/logger';
@@ -178,6 +180,23 @@ warn|今日建议|今晚固定时间上床，下午三点后别碰咖啡。
 warn|异常数据分析|今天皮质醇偏高，身体从早到晚都绷着没松下来；深睡也比平时少，修复打了折扣。好在心率和情绪都平稳——问题集中在压力和睡眠这两件事上。
 warn|今日建议|今晚固定时间上床，下午三点后停咖啡；睡前留十分钟做几组慢呼吸，让身体真正松下来。`;
 
+/**
+ * ★ 2026-10-05 认知口径铁律（追加到每个 system prompt）。
+ *
+ * 为什么必须显式写进 prompt：端侧模型（1.5B）会按「分数高=严重」的常识去理解
+ * 「认知准备度 62」这类数字，写出「准备度偏高，该休息了」这种方向反了的结论。
+ * 光把数字换成准备度口径不够，**必须同时告诉模型方向**。
+ */
+const COG_SEMANTICS = `
+【认知准备度 · 口径（必读，勿反着理解）】
+- 「认知准备度」是**状态量**，不是疲劳/消耗量：**分数越高表示此刻越「转得动」**。
+- 正常形态：**上午高、傍晚低**。若数据呈现「上午低下午高」，说明是异常信号，值得指出。
+- 判「需要休息」的条件是准备度**偏低**（<40），不是偏高。
+- 数据里同时给出「此刻 / 全天均值 / 晨起 / 夜间低谷 / 最佳 / 需休息」六个读数时，
+  请用它们讲**一天里的起伏**（如「上午状态在线，傍晚明显回落」），不要只报一个平均数。
+- 没有实测的时段数据里不会出现，**不要**脑补未佩戴时段的分数。
+- 措辞用「转得动 / 状态在线 / 需要歇一会儿」，不要用「负荷」「消耗」这类反向词。`;
+
 const OVERVIEW_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造，也绝不堆数字。
 
 说话方式：像懂行的朋友在跟你聊天——先说你看到了什么（可以带一个真实数字），再用大白话解释为什么会这样，最后给一个做得到的动作。把术语翻译成人话（不说「交感」「负荷」「回落」，说「身体绷着」「降不下来」）。
@@ -190,7 +209,8 @@ const OVERVIEW_SYS = `你是 Mira，一位温和、专业的女性健康伴侣�
 - 每行严格 tone|标题|正文 三段，用「语气|标题|正文」分隔。
 - 异常用 warn，正常用 good。
 - 数值若引用必须与【用户健康数据】完全一致；不编造、不假设、不要 Markdown、不要 emoji、不要编号。
-- 只讲数据里出现的维度；不要复述本格式说明。`;
+- 只讲数据里出现的维度；不要复述本格式说明。
+${COG_SEMANTICS}`;
 
 const CYCLE_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据给出的【用户健康数据】做解读，绝不编造数据。
 输出要求（严格遵守）：
@@ -198,7 +218,7 @@ const CYCLE_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。�
 2. tone 只能是 good、warn、neutral 三者之一（表示积极 / 需注意 / 中性）。
 3. 标题不超过 10 个汉字；正文不超过 26 个汉字，用第二人称「你」，像懂行的朋友说话：说结论、说原因，把术语翻译成人话，别堆「负荷」「回落」这类词。
 4. 内容要围绕【当前生理周期阶段】展开：阶段生理特征 → 与你实测数据（HRV/体温/睡眠/情绪等）的关系 → 注意事项。三行正文里都要引用数据里的真实数值。
-${FORMAT_RULES}`;
+${FORMAT_RULES}${COG_SEMANTICS}`;
 
 const RECOVERY_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造。
 
@@ -213,7 +233,7 @@ const RECOVERY_SYS = `你是 Mira，一位温和、专业的女性健康伴侣�
 输出要求：
 - 每行严格 tone|标题|正文 三段，正文不超过 26 字。
 - 异常用 warn，正常用 good。禁止弱化处理皮质醇。
-${FORMAT_RULES}`;
+${FORMAT_RULES}${COG_SEMANTICS}`;
 
 // ── 推理 ───────────────────────────────────────────────────────────────────
 /**
@@ -543,12 +563,17 @@ export function buildRecoveryFactsForDay(dk: string): string {
   try {
     const g = computeCognitiveLoadReport(nowMs);
     if (g.sampleCount >= 2) {
-      const bits = [`脑力消耗 ${g.avgFatigue}/100`, `等级${cogLevelLabel(g.avgFatigue)}`, `疲劳 ${g.fatigueIndex}`];
-      if (g.peakLoadSpan) {
-        const p = `${String(g.peakLoadSpan.startHour).padStart(2, '0')}:00–${String(g.peakLoadSpan.endHour).padStart(2, '0')}:00`;
-        bits.push(`负荷高峰 ${p}`);
+      // ★ 准备度口径：分数高 = 状态好；峰 = 分数最高（与旧疲劳口径方向相反）
+      const ready = computeReadinessSeries(g, nowMs);
+      const bits: string[] = [];
+      if (ready.now != null) bits.push(`此刻 ${ready.now}/100（${readinessLevelLabel(ready.now)}）`);
+      if (ready.avg != null) bits.push(`全天均值 ${ready.avg}/100`);
+      if (ready.morning != null) bits.push(`晨起 ${ready.morning}`);
+      if (ready.nightLow != null) bits.push(`夜间低谷 ${ready.nightLow}`);
+      if (ready.peakHour != null && ready.troughHour != null) {
+        bits.push(`最佳 ${String(ready.peakHour).padStart(2, '0')}:00 / 需休息 ${String(ready.troughHour).padStart(2, '0')}:00`);
       }
-      lines.push(`• 脑力负荷：${bits.join('，')}`);
+      lines.push(`• 认知准备度：${bits.join('，')}`);
     }
   } catch {
     /* 忽略 */
@@ -596,17 +621,23 @@ function getStressToday(): any {
 }
 
 /** 脑力负荷（读取缓存的计算型结果，失败回退实时计算） */
+/**
+ * 今日认知状态（★ 准备度口径）。
+ * ⚠ 不再读 `healthStore.getAnalysis().cognitive` 里的 avgFatigue/fatigueIndex ——
+ *   那是旧疲劳口径（分数高=累），与现在 UI 的准备度（分数高=好）方向相反，
+ *   混用会让 AI 写出「准备度低所以要休息」这类结论。
+ */
 function getCognitiveToday(): any {
   try {
-    const c: any = (healthStore.getAnalysis(dayKey(Date.now())) as any)?.cognitive;
-    if (c) return c;
     const r = computeCognitiveLoadReport();
+    const ready = computeReadinessSeries(r);
     return {
-      loadScore: r.loadScore,
-      avgFatigue: r.avgFatigue,
-      fatigueIndex: r.fatigueIndex,
+      readyNow: ready.now,
+      readyAvg: ready.avg,
       recoveryCapacity: r.recoveryCapacity,
-      bestHour: r.bestSpan?.startHour ?? null,
+      sleepDebt: r.sleepDebt,
+      bestHour: ready.peakHour,
+      troughHour: ready.troughHour,
     };
   } catch {
     return null;
@@ -624,13 +655,16 @@ function physioState(): string | null {
   return null;
 }
 
-/** 恢复异常短语（恢复力 / 疲劳） */
+/**
+ * 恢复异常短语（恢复力 / 认知准备度）。
+ * ★ 准备度是「分数高=好」，所以判**偏低**才需要休息 —— 与旧疲劳判「偏高」相反。
+ */
 function recoveryState(): string | null {
   const g = getCognitiveToday();
   const rc = num(g?.recoveryCapacity);
-  const fi = num(g?.fatigueIndex);
+  const ready = num(g?.readyNow);
   if (rc != null && (rc <= 1 ? rc < 0.5 : rc < 50)) return '恢复力不足';
-  if (fi != null && fi > 20) return '疲劳堆积';
+  if (ready != null && ready < READY_LOW) return '认知准备度偏低';
   return null;
 }
 
@@ -639,11 +673,10 @@ function emotionState(): string | null {
   const s = getStressToday();
   const load = num(s?.emotionalLoad);
   const g = getCognitiveToday();
-  const cog = num(g?.avgFatigue);
+  const ready = num(g?.readyNow);
   if (load != null && Math.round(load) >= 60) return '情绪压力偏大';
-  if (cog != null && Math.round(cog) >= COG_LEVEL_HIGH) {
-    const lv = cogLevelLabel(cog);
-    return `脑力负荷${lv} 需安排休息`;
+  if (ready != null && ready < READY_LOW) {
+    return `认知准备度${readinessLevelLabel(ready)}，需安排休息`;
   }
   return null;
 }

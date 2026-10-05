@@ -4,7 +4,9 @@
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { computeCognitiveLoadReport, cogLevelLabel } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+// ★ 2026-10-05：AI 认知口径从「疲劳/负荷」改为「准备度」（与首页、洞察页、详情页同源）
+import { computeReadinessSeries, readinessLevel, readinessLevelLabel } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
 
@@ -292,29 +294,25 @@ function getAnalysisBlock(): string {
     }
   } catch {}
 
-  // Cognitive
+  // Cognitive —— ★ 认知准备度（不是疲劳）
   try {
-    const c = cached?.cognitive ?? (() => {
-      const r = computeCognitiveLoadReport();
-      return {
-        loadScore: r.loadScore, avgFatigue: r.avgFatigue, fatigueIndex: r.fatigueIndex,
-        peakHour: r.peakLoadSpan?.startHour ?? null,
-        bestHour: r.bestSpan?.startHour ?? null,
-        recoveryCapacity: r.recoveryCapacity,
-      };
-    })();
-    if (c) {
-      const bits: string[] = [];
-      kv(bits, '脑力消耗', c.avgFatigue, '/100', 0);
-      if (c.avgFatigue != null) bits.push(`等级${cogLevelLabel(c.avgFatigue)}`);
-      kv(bits, '疲劳指数', c.fatigueIndex);
-      // ★ 恢复力是 0–1 比值（见 cognitiveLoad.computeRecoveryCapacity = minWinMean / hrvBase），
-      //   必须 ×100 才是百分数。早期直接 fmt(0.98,'%',0) → 四舍五入成「1%」，
-      //   模型据此写出「恢复力1%」这种明显离谱的结论。
-      if (c.recoveryCapacity != null) kv(bits, '恢复力', c.recoveryCapacity * 100, '%', 0);
-      if (c.bestHour != null) bits.push(`最佳时段 ${String(Math.round(c.bestHour)).padStart(2, '0')}:00`);
-      if (c.peakHour != null) bits.push(`负荷峰值 ${String(Math.round(c.peakHour)).padStart(2, '0')}:00`);
-      if (bits.length) parts.push(`脑力与疲劳：${bits.join('，')}`);
+    const r = computeCognitiveLoadReport();
+    const ready = computeReadinessSeries(r);
+    const bits: string[] = [];
+    if (ready.now != null) {
+      bits.push(`此刻准备度 ${ready.now}/100（${readinessLevelLabel(ready.now)}）`);
+    }
+    if (ready.avg != null) bits.push(`全天均值 ${ready.avg}/100`);
+    if (ready.morning != null) bits.push(`晨起 ${ready.morning}`);
+    if (ready.nightLow != null) bits.push(`夜间低谷 ${ready.nightLow}`);
+    if (ready.peakHour != null) bits.push(`状态最佳 ${String(ready.peakHour).padStart(2, '0')}:00`);
+    if (ready.troughHour != null) bits.push(`需要休息 ${String(ready.troughHour).padStart(2, '0')}:00`);
+    // 恢复力是 0–1 比值（computeRecoveryCapacity = minWinMean / hrvBase），必须 ×100 才是百分数
+    if (r.recoveryCapacity != null) kv(bits, '恢复力', r.recoveryCapacity * 100, '%', 0);
+    if (r.sleepDebt != null && r.sleepDebt > 0.2) bits.push(`睡眠债 ${r.sleepDebt.toFixed(1)}h`);
+    if (bits.length) {
+      parts.push(`认知准备度：${bits.join('，')}。口径：分数越高表示此刻越「转得动」（非疲劳分，勿反向解读）；`
+        + '正常为上午高、傍晚低；与个人基线对比，无实测的时段不作数');
     }
   } catch {}
 

@@ -29,7 +29,7 @@ import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { buildNaturalPeriods, buildPrevNaturalPeriods } from '../lib/periods';
 // ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
-import { cogLevel, cogLevelLabel, computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 
 // ★「情绪洞察」统一视图：与洞察页「情绪压力」tab 共用同一实现，保证两处内容完全一致
 import EmotionInsightView, { StatCell } from '../components/EmotionInsightView';
@@ -38,7 +38,7 @@ import EmotionQuickRecord from '../components/EmotionQuickRecord';
 
 // ★ 认知准备度（2026-10-05）：详情页日/周/月/年统一改用准备度口径
 import ReadinessTrendChart, { readinessColor } from '../components/ReadinessTrendChart';
-import { computeReadinessSeries, readinessLevel } from '../lib/cognitiveReadiness';
+import { computeReadinessSeries, readinessLevel, readinessLevelLabel, READY_LOW } from '../lib/cognitiveReadiness';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -418,7 +418,6 @@ function CognitiveRangeView({ range, anchor }: { range: RangeKey; anchor: Date }
   const plotTop = 16, plotH = 120, xLabelH = 20;
   const chartH = plotTop + plotH + xLabelH;
   const step = (VW - AX_L - AX_R) / n;  // 每个周期格宽
-  const barW = Math.min(24, Math.max(4, step * 0.55));
   const cxOf = (i: number) => AX_L + i * step + step / 2;
   const yOf = (v: number) => plotTop + (1 - v / 100) * plotH;
 
@@ -798,34 +797,43 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
     );
   }
 
-  // ── 脑力消耗 ──
+  // ── 脑力消耗（认知准备度）──
   if (type === 'cognitive') {
-    // ★ 与卡片大数字 / 柱状图同源：avgFatigue + 统一三档
-    const avgFatigue = report?.avgFatigue;
-    const fatigueScore = report?.fatigueIndex;
-    const bestSpan = report?.bestSpan;
-    const bars = (report?.hourly ?? []).filter((h: any) => h.hasData);
-    const peakBar = bars.length > 0 ? bars.reduce((a: any, b: any) => (b.score > a.score ? b : a)) : null;
+    // ★ 与卡片大数字 / 趋势图同源：全部走 computeReadinessSeries（分数高 = 状态好）
+    const ready = report ? computeReadinessSeries(report) : null;
+    const readyNow = ready?.now ?? null;
+    const readyAvg = ready?.avg ?? null;
     const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
 
-    const firstBody = avgFatigue == null
-      ? '今日暂无脑力数据。'
-      : `今日脑力消耗 ${avgFatigue}，处于${cogLevelLabel(avgFatigue)}位，${cogLevel(avgFatigue) === 'high' ? '建议安排适当休息。' : cogLevel(avgFatigue) === 'mid' ? '可持续工作。' : '精力较充裕。'}`;
+    const firstBody = readyNow == null
+      ? '今日暂无脑力数据 · 连上戒指开启自动监测后开始生成。'
+      : `此刻认知准备度 ${readyNow}（${readinessLevelLabel(readyNow)}），`
+        + `全天均值 ${readyAvg ?? '—'}。`
+        + (ready!.morning != null && ready!.nightLow != null
+          ? `早上 ${ready!.morning}、夜间低谷 ${ready!.nightLow}，`
+            + (ready!.morning - ready!.nightLow >= 15 ? '白天到夜里明显回落，属正常节律。' : '昼夜落差不大，今天状态比较平稳。')
+          : '');
 
-    if (peakBar) {
-      rows.push({ tone: 'neutral', title: '疲劳高峰', body: `疲劳度在 ${String(peakBar.hour).padStart(2, '0')}:00 达到当日最高（${peakBar.score}），此时段适合安排轻量任务。` });
+    if (ready?.peakHour != null) {
+      rows.push({
+        tone: 'good', title: '高效时段',
+        body: `${String(ready.peakHour).padStart(2, '0')}:00–${String((ready.peakHour + 1) % 24).padStart(2, '0')}:00 准备度最高，适合安排深度工作。`,
+      });
     }
-    if (bestSpan) {
-      rows.push({ tone: 'good', title: '高效时段', body: `${String(bestSpan.startHour).padStart(2, '0')}:00–${String(bestSpan.endHour).padStart(2, '0')}:00 为今日脑力黄金时段，适合深度工作。` });
+    if (ready?.troughHour != null) {
+      rows.push({
+        tone: 'warn', title: '需要休息',
+        body: `${String(ready.troughHour).padStart(2, '0')}:00 前后准备度最低，此时段更适合轻量任务或休息。`,
+      });
     }
-    if (fatigueScore != null && fatigueScore >= 60) {
-      rows.push({ tone: 'warn', title: '疲劳提醒', body: `今日疲劳分 ${fatigueScore}，建议尽早休息。` });
+    if (readyNow != null && readyNow < READY_LOW) {
+      rows.push({ tone: 'warn', title: '状态提醒', body: `当前准备度 ${readyNow} 偏低，${report?.sleepDebt != null && report.sleepDebt > 0.2 ? `叠加 ${report.sleepDebt.toFixed(1)}h 睡眠债，` : ''}建议先恢复再安排高强度用脑。` });
     }
 
     return (
       <InsightBanner
         rows={[{ tone: 'neutral', title: '', body: firstBody }, ...rows]}
-        onMore={() => openChat('帮我分析脑力消耗情况')}
+        onMore={() => openChat('帮我分析今天的认知准备度')}
       />
     );
   }
