@@ -341,7 +341,12 @@ export function computeMorningReadiness(p: {
   const circAdj = p.wakeH != null
     ? clamp(50 + 50 * Math.sin(2 * Math.PI * (p.wakeH - p.peakH + 6) / 24), 0, 100) / 100
     : 0.5;
-  return Math.round(clamp(clamp(p.rec * 80 + 20 - p.debt * 8, 0, 100) * 0.7 + circAdj * 100 * 0.3, 0, 100));
+  // ★ 纯相对口径（2026-10-05 修正）：rec 0→1 线性映射 40→100；睡眠债每欠 1h −5 分；
+  //   节律相位 ±8 分。废弃旧的 `rec*80+20` 绝对↔相对切换（曾凭空掉 ~20 分）。
+  const base = 40 + 60 * clamp(p.rec, 0, 1);
+  const debtPenalty = clamp(p.debt, 0, 6) * 5;
+  const circShift = (circAdj - 0.5) * 16;
+  return Math.round(clamp(base - debtPenalty + circShift, 5, 100));
 }
 
 /**
@@ -952,12 +957,15 @@ function computeHourlyLoad(
   energyNow: number; initEnergy: number; excludedMin: { emotion: number; exercise: number };
 } {
   // ══════════════════════════════════════════════════════════════════════
-  // ★ v3: 认知疲劳度 — lex-fatigue 风格能量衰减模型
-  // 核心: 疲劳是累积过程, 用 ODE 离散化模拟能量衰减 + 恢复
-  // E(t+dt) = E(t) - fatigueDrive · dt + recoveryDrive · dt
-  // fatigue = 100 - E  (能量越低 = 疲劳越高)
+  // ★ 认知准备度能量衰减模型（2026-10-05 认知锚定重建）
+  // 核心: 能量 E(t) 从「晨起认知准备度」开局, 白天被**真实用脑**耗竭, 静养不耗。
+  //   E(t+dt) = E(t) - fatigueDrive · circSpeed · dt
+  //   fatigueDrive = BASELINE_DRIFT(极小被动开销) + arousalDrive(HRV↓+SNS↑, 已剔除运动/情绪)
+  //   准备度 = E（能量越高 = 准备度越高; 早上高、随用脑下降 → 与 Oura 身体恢复分拉开）
   // dt = 0.5h (半小时步长), 输出 48 个点
-  // 参考: IEEE 2026 Bi-LSTM 疲劳预测, lex-fatigue (MIT)
+  // 依据: HRV 副交感撤退 + 交感上升至交感主导在持续认知任务中方向一致
+  //      (IJMS 2026 脑疲劳生物标志物综述; Sensors 2026 认知负荷评估综述;
+  //       Backs & Seljos 1994 持续注意 HRV 抑制)。信号对负荷非特异 → 仅作慢变量 + 排除身体/情绪。
   // ══════════════════════════════════════════════════════════════════════
   const dayMs = dayStartMs(nowMs);
   const _todayKey = todayKey(nowMs);
@@ -1027,9 +1035,13 @@ function computeHourlyLoad(
   // ── 4. ODE 离散化: 48 个半小时步 ──
   // E(t) = 认知能量 (0-100), fatigue = 100 - E
   const DT = 0.5;  // 半小时
-  const ALPHA_HRV = 0.04;  // HRV 偏离 → 疲劳累积系数
-  const ALPHA_SNS = 0.03;  // SNS 偏离 → 疲劳累积系数
-  const ALPHA_AWAKE = 1.6; // 清醒期基础疲劳累积 (每 h)
+  // ★ 认知锚定衰减系数（2026-10-05 重建）：主轴=真实用脑，基线漂移极小
+  //   依据: HRV 副交感撤退 + 交感上升在持续认知任务方向一致(IJMS 2026/Sensors 2026 综述;
+  //        Backs & Seljos 1994); 该信号对负荷非特异, 故只作慢变量且排除运动/情绪窗口。
+  const BASELINE_DRIFT = 0.2;  // 清醒被动代谢/注意开销(每 h), 极小 → 静养/走神几乎不耗脑
+  const ALPHA_HRV = 0.12;      // HRV 偏离 → 用脑耗竭系数(放大, 使真实费脑成为主轴)
+  const ALPHA_SNS = 0.09;      // SNS 偏离 → 用脑耗竭系数
+  // 旧 ALPHA_AWAKE=1.6(纯时间衰减, 醒着≈3.2 分/h 硬掉)已废弃: 与用没用脑无关, 不是认知信号。
   // ★ 曲线是否铺满「清醒时段」由当天整体实测量决定：
   //   旧实现要求「该半小时内有实测样本」才算 hasData，戒指采样断续时曲线被打成碎片
   //   （实测只落在 1 个半小时 → 均值只由 1 小时决定 → 出现「平均疲劳度 8」这类无意义值）
@@ -1041,7 +1053,15 @@ function computeHourlyLoad(
   //   冒充实测。hasData 改回**逐时段判定**：该半小时真的有 HRV 采样才算，没采样的
   //   时段显示灰桩（MiniCognitiveBars NO_DATA）。「均值只由少数时段决定」= 诚实，不修。
 
-  const morningEnergy = clamp(sleepRec * 80 + 20, 20, 100); // 睡眠恢复决定的晨起能量上限
+  // ★ 晨起能量上限 = 与「早起认知准备度」同一公式（不再用 sleepRec*80+20 绝对映射），
+  //   并取 max(自身, 传入 initEnergy) 防止睡眠窗把开局能量错误压低。
+  const morningEnergy = clamp(
+    Math.max(
+      computeMorningReadiness({ rec: sleepRec, debt, peakH: acrophaseH, wakeH }),
+      opts?.initEnergy != null ? opts.initEnergy : -1,
+    ),
+    20, 100,
+  );
 
   // ── 3.5 窗口归因素材（只算脑）──
   const emotionEntries = getEntriesForDay(_today);
@@ -1111,10 +1131,9 @@ function computeHourlyLoad(
     if (isExercise) excludedMin.exercise += 30;
     else if (isEmotionEvent) excludedMin.emotion += 30;
 
-    // ── fatigueDrive: Process S —— 清醒期疲劳单调累积 ──
-    let fatigueDrive = 0;
-    fatigueDrive += ALPHA_AWAKE * debtAccel;  // 清醒基础累积 + 睡眠债加速（醒着就在用脑）
-    let arousalDrive = 0;                     // 唤醒偏离: 需归因后才能计入脑
+    // ── fatigueDrive: 认知锚定耗竭 —— 主轴=真实用脑(HRV↓+SNS↑), 基线漂移极小 ──
+    let fatigueDrive = BASELINE_DRIFT * debtAccel;   // 微小被动开销, 乘睡眠债加速
+    let arousalDrive = 0;                            // 唤醒偏离: 需归因后才算「脑」
     if (hrvMean != null && hrvBaseline > 0) {
       const hrvDrop = clamp((hrvBaseline - hrvMean) / hrvBaseline, 0, 1);
       arousalDrive += ALPHA_HRV * hrvDrop * 100;
@@ -1123,7 +1142,7 @@ function computeHourlyLoad(
       const snsRise = clamp((snsMean - snsBaseline) / snsBaseline, 0, 1);
       arousalDrive += ALPHA_SNS * snsRise * 100;
     }
-    // 归因裁决: 运动窗口全剔除; 情绪事件窗口全剔除; 其余视为认知投入, 全额计入
+    // 归因裁决: 运动/情绪窗口全剔除; 其余视为认知投入, 计入耗竭(非身体/非情绪的心力消耗)
     if (isExercise || isEmotionEvent) arousalDrive = 0;
     fatigueDrive += arousalDrive;
 
@@ -1140,7 +1159,7 @@ function computeHourlyLoad(
     half.push({ score: Math.round(100 - energy), hasData });
     // ── v18.127 瞬时疲劳度（状态量）──
     //   只用「唤醒偏离」 arousalDrive（HRV 掉 + SNS 升，归因裁决后），
-    //   **不含** ALPHA_AWAKE（清醒着就在用脑）**不含** debtAccel（睡眠债）**不做积分**。
+    //   **不含** BASELINE_DRIFT（被动开销）**不含** debtAccel（睡眠债）**不做积分**。
     //   ⇒ 平稳时段基本等高；只有真实偏离（HRV 掉/SNS 升）才凸起。
     //   归因被剔除的窗口（运动/情绪事件）arousalDrive 已置 0 → 瞬时也低，符合「不是脑力消耗」。
     const dead = Math.max(0, arousalDrive - INSTANT_DEADZONE * INSTANT_FULL);
