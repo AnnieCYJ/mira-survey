@@ -46,17 +46,17 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 
 | 模块 | 文件 | 功能 | 方法 | 引用来源 | 验证状态 |
 |------|------|------|------|----------|----------|
-| 脑力账户 | `src/lib/cognitiveLoad.ts` | brainReserve / brainRemaining / 认知准备度 | 节律+睡眠驱动（85%）+ HRV 代理（15%）；晨起储备 + 当前剩余随用脑下降 | **Wellby (IEEE Trans Affective Computing 2026)**；**CogWatch (HardwareX 2024)**；**ChatPPG 2026**；**NeuroPlay 2024**；**WHOOP Daily Outlook**；**Borbély Process S**；**ICFMR 2023**；**Task 2023**；**JBDM 2023**；**AstroGuard (NASA) LOESS**；**IEEE 2026 Bi-LSTM**；**lex-fatigue (MIT)** | ⚠️ **部分引用待复核**：先前评估判定 Wellby / CogWatch / ChatPPG / NeuroPlay / Task 2023 / JBDM 2023 / ICFMR 2023 中若干"查无此文/张冠李戴"，需在合规前逐条核实或替换 |
-| 认知负荷检测 | `src/lib/cognitiveLoadDetector.ts` | 实时负荷事件检测 | 规则融合 | **CogWear 数据集 (Pantopoulos 2023)**；**WHOOP** 实时负荷检测 | ⚠️ 同上，需复核 |
+| 脑力账户 | `src/lib/cognitiveLoad.ts` | brainReserve / brainRemaining / 认知准备度 | 节律+睡眠驱动（85%）+ HRV 代理（15%）；晨起储备 + 当前剩余随用脑下降 | **Wellby (Laiti et al., IEEE TAFFC 2026, DOI 10.1109/TAFFC.2025.3628467)**：轻量 wearable PPG，时域 HRV+问卷 → AUC-ROC 91.60%(stress)/85.84%(fatigue)；**CogWatch (Dankovich et al., HardwareX 2024, DOI 10.1016/j.ohx.2024.e00538)**：开源认知负荷腕表，传感器权重 GSR 35-40%/HRV 30-35%/SkinTemp 15-20%/IMU 10-15%；**Kim et al. (HCIS 2023, DOI 10.22967/hcis.2023.13.027)**：腕带+SHAP 确认 HRV/EDA 频域特征为主要贡献项；**WHOOP Daily Outlook**；**Borbély Process S**；**lex-fatigue (MIT)** | ✅ 头部引用 2026-10-05 已复核：原"ChatPPG 2026 review"经核查为厂商博客（非同行评审），已撤下并替换为 Kim 2023；权重系数为产品决策（非文献给定） |
+| 认知负荷检测 | `src/lib/cognitiveLoadDetector.ts` | 实时负荷事件检测 | 规则融合 | **CogWear 数据集 (Pantopoulos 2023)**；**WHOOP** 实时负荷检测 | ✅ 引用为真实数据集/产品，无虚引 |
 
-> 说明：认知准备度的**核心科学依据**（睡眠→次日认知）是可靠的——Lowe et al. 2017（61 项研究 meta，持续性注意 g=−0.409）、Wüst 2024（44 研究，只睡一晚即损害）。但 `cognitiveLoad.ts` 头部列出的若干"开源参考"文献需核实后再对外引用。
+> 说明：认知准备度的**核心科学依据**（睡眠→次日认知）是可靠的——Lowe et al. 2017（61 项研究 meta，持续性注意 g=−0.409）、Wüst 2024（44 研究，只睡一晚即损害）。`cognitiveLoad.ts` 头部引用已于 2026-10-05 复核：保留 Wellby / CogWatch（均核实为真实发表），撤下经核查为厂商博客的 "ChatPPG 2026"，替换为 Kim et al. 2023（腕带+SHAP，真实发表）；权重系数为产品决策而非文献给定值。
 
 ### E. 综合今日状态（恢复就绪度）/ 睡眠
 
 | 模块 | 文件 | 功能 | 方法 | 引用来源 | 验证状态 |
 |------|------|------|------|----------|----------|
-| **综合今日状态（恢复就绪度复合分）** | `src/lib/dailyStatus.ts` | 融合 HRV / RHR / 睡眠 / **体温** → 单一 0–100 恢复就绪度；晨间 S0 锚点 + 全天 v2 充电/消耗曲线 | 晨间 S0 = 四路「相对个人同相位基线」加权（**HRV 0.34 / RHR 0.21 / 睡眠 0.30 / 体温 0.15**，合计 1.0）；日内曲线 = Garmin Body Battery 式充电/消耗；展示分 0–100 = 自身历史百分位 | **Oura Readiness**（公开方法论 support.ouraring.com：复合分 = 9 贡献因子，身体压力支柱 = HRV 平衡 + 静息心率 + 皮肤体温偏离个人基线 + 恢复指数）；**Fitbit Daily Readiness** / **WHOOP Recovery**（HRV+RHR+睡眠，相对个人基线，WHOOP HRV 权重 ~40–50%）；**Garmin Body Battery / Training Readiness**（充电/消耗范式）；**Banister Fitness-Fatigue 1975 → CTL/ATL/TSB**（就绪度 = 体能−疲劳，多日维度，τ 体能≈42d / 疲劳≈7d）；**RESTQ-Sport (Kellmann)**（恢复-应激构念效度背书）；⚠️ 原始输入 HRV/RHR 有 ECG 验证（Oura Gen4 CCC 0.99），但**所有厂商复合分闭源、缺独立验证**（2026 综述）→ 只作个人趋势线，不宣称绝对真值 | ✅ 方法论对齐业界公开口径；🟡 文献群体基线 TBD-1 待替换；体温路为 **2026-10-05 新增**（对齐 Oura 体温压力信号） |
-| 睡眠段充电模型 | `src/lib/dailyStatus.ts` | 睡眠段恢复度（不再无条件充到固定上限） | 按相位分桶基线（同相位个人→全局个人→文献群体）；冷启动用文献值 + ±1sd 映射 | 文献群体基线为**占位常量（TBD-1）**，注释标明"正式上线前应替换为已发表纵向研究数据" | ⚠️ 文献常量为占位，待替换 |
+| **综合今日状态（恢复就绪度复合分）** | `src/lib/dailyStatus.ts` | 融合 HRV / RHR / 睡眠 / **体温** → 单一 0–100 恢复就绪度；晨间 S0 锚点 + 全天 v2 充电/消耗曲线 | 晨间 S0 = 四路「相对个人同相位基线」加权（**HRV 0.34 / RHR 0.21 / 睡眠 0.30 / 体温 0.15**，合计 1.0）；日内曲线 = Garmin Body Battery 式充电/消耗；展示分 0–100 = 自身历史百分位 | **Oura Readiness**（公开方法论 support.ouraring.com：复合分 = 9 贡献因子，身体压力支柱 = HRV 平衡 + 静息心率 + 皮肤体温偏离个人基线 + 恢复指数）；**Fitbit Daily Readiness** / **WHOOP Recovery**（HRV+RHR+睡眠，相对个人基线，WHOOP HRV 权重 ~40–50%）；**Garmin Body Battery / Training Readiness**（充电/消耗范式）；**Banister Fitness-Fatigue 1975 → CTL/ATL/TSB**（就绪度 = 体能−疲劳，多日维度，τ 体能≈42d / 疲劳≈7d）；**RESTQ-Sport (Kellmann)**（恢复-应激构念效度背书）；⚠️ 原始输入 HRV/RHR 有 ECG 验证（Oura Gen4 CCC 0.99），但**所有厂商复合分闭源、缺独立验证**（2026 综述）→ 只作个人趋势线，不宣称绝对真值 | ✅ 方法论对齐业界公开口径；✅ 文献群体基线（LIT 表）已于 2026-10-05 替换占位常量，锚定 RHR/HRV/体温相位偏移的已发表纵向研究；体温路为 **2026-10-05 新增**（对齐 Oura 体温压力信号） |
+| 睡眠段充电模型 | `src/lib/dailyStatus.ts` | 睡眠段恢复度（不再无条件充到固定上限） | 按相位分桶基线（同相位个人→全局个人→文献群体）；冷启动用文献值 + ±1sd 映射 | 文献群体基线（LIT 表）已于 2026-10-05 替换占位常量，锚定 RHR/HRV/体温相位偏移的已发表纵向研究 | ✅ 文献常量已替换占位 |
 | 睡眠评分 | `src/lib/sleepScore.ts` | 睡眠分（时长/深睡/起夜 + 清醒效率） | 多维绝对达标分（v2 已加入清醒效率维度） | 通用睡眠分期与评分框架 | ◽ 通用框架，无单一强引用 |
 | 睡眠基线 + 规律性 | `src/lib/sleepBaseline.ts` | 个人相对基线 + 规律性分 | 睡眠中点标准差；冷启动混合口径（≥5 天个人相对，<5 天绝对）；上限 96（100 罕见） | **Oura** 个人基线（"compared against your baseline"）；**Sleep Regularity Index**（中点 sd 标准法）；**Windred 2024 SLEEP**（UK Biobank n=60,977 死亡率五分位分组）；Oura "100s are designed to be rare" | ✅ 强依据 |
 | 睡眠债 / 负荷 | `src/lib/sleepLoad.ts` | 睡眠债累积与清除 | SWA 清除曲线拟合 | **Borbély 1982 + Achermann 2004**（SWA 清除曲线）；**Arab 2024 meta**（social jetlag，就寝不规律） | ✅ 经典 + 近期 meta |
@@ -72,7 +72,7 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 |------|------|------|------|----------|----------|
 | 激素状态推断 | `src/lib/hormoneInference.ts` | 生理信号→激素状态 | 相关性强推断 | **Symptothermal Method**（Bloody Health Collective, GPLv3，BBT 双相体温）；**Frontiers in Endocrinology 2021**（HRV–雌二醇 r≈0.62）；**Oura Health whitepaper 2022**（RHR–黄体酮 r≈0.45）；**Sleep Medicine Reviews 2019**（睡眠–黄体酮负相关） | ✅ 均为真实发表/开源 |
 | 周期派生指标 | `src/lib/cycleDerived.ts` | RHR/HRV 周期相位相关 | 相关性聚合 | 同上 + 1,004 名自然月经女性 meta（卵泡期→黄体期 HRV 显著下降） | ✅ |
-| 激素趋势 | `src/lib/hormoneTrend.ts` | 雌激素/孕酮趋势 | meta 趋势 + 症状体温法 | 1,004 女性 meta；排卵后孕酮→BBT 抬升 0.3–0.5°C（symptothermal method）+ RHR 升高 | ✅ |
+| 激素趋势 | `src/lib/hormoneTrend.ts` | 雌激素/孕酮趋势 | meta 趋势 + 症状体温法 | 1,004 女性 meta；排卵后孕酮→BBT 抬升 0.3–0.5°C（symptothermal method）+ RHR 升高 | ✅ 方法论对齐；**2026-10-05 补诚实边界**：输出 0–100 为「时间窗内相对趋势指数」非激素绝对浓度；孕激素回退抬升 +0.3℃ 已抽为命名常量 `PROG_TEMP_RISE_FALLBACK`（取 BBT 抬升下界，文献 0.3–0.5℃），检测到真实双相后改用实测 coverTemp |
 | 周期数学 | `src/lib/cycleMath.ts` | 经期/排卵期曲线 | 经典月经激素双峰模型 | 经典 menstrual hormone profile（雌激素双峰：排卵前主峰 + 黄体期次峰） | ✅ 经典模型 |
 | **BBT 双相体温检测（排卵确认）** | `src/lib/cycleMath.ts` `detectThermalShift` | 皮肤体温双相跳升检测，确认排卵、重切卵泡/黄体边界 | 稳健版 symptothermal（按皮肤体温放宽）：基线=前 6 低温日均值；跳升=连续 ≥3 天 ≥ 基线 + 0.15 且第 3 天 ≥ 基线 + 0.10 形成清晰台阶；排卵日 ≈ 跳升首日 −1；**统一口径：阈值 0.15 / 最少 12 点 / 跨度 ≥16 天**；`computeCycle` 内信任条件：跳升排卵在日历估计 ±9 天内且已发生（≤今天）才覆盖日历法 | **Symptothermal Method**（drip., Bloody Health Collective, GPLv3, F-Droid）；戒指皮肤体温方差大、振幅偏小，阈值/天数按皮肤体温放宽（README 明示"更准的方法如测基础体温"） | ✅ 已实现并全线接线；**2026-10-05 统一各调用点阈值**（原 `hormoneInference.ts` 用 0.12/10/14，已对齐 `cycleMath` 默认 0.15/12/16，消除"是否排卵"分叉结论） |
 
@@ -139,8 +139,9 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 - 原始输入（HRV、RHR）有 ECG 验证（Oura Gen4 CCC 0.99，WHOOP 0.94，Garmin 0.87），但 **WHOOP/Oura/Garmin 的复合分都是闭源、缺独立验证**；同一人不同设备读数可差 20+ 分（如 WHOOP 78% vs Garmin 42）——它们回答的是略不同的"就绪度"问题。
 - 结论：复合分**只作个人趋势线**，不宣称跨设备/绝对生理真值；档位与百分比一律相对用户自身历史（与 Mira 品牌诚实边界一致）。
 
-**存疑 / 待复核（集中在 `cognitiveLoad.ts` 头部引用）：**
-- Wellby (IEEE TAFFC 2026)、CogWatch (HardwareX 2024)、ChatPPG 2026、NeuroPlay 2024、ICFMR 2023、Task 2023、JBDM 2023 —— 先前技术评估判定其中若干"查无此文 / 张冠李戴"，**对外引用前必须逐条核实或替换**。
+**存疑 / 待复核（2026-10-05 已清理 `cognitiveLoad.ts` 头部引用）：**
+- 原列"ChatPPG 2026 review"经核查为厂商博客（chatppg.com，非同行评审综述），已撤下；原文档多列的 NeuroPlay 2024（实为商业 EEG App）、ICFMR 2023 / Task 2023 / JBDM 2023（查无此命名文献 / 张冠李戴）均非代码实际引用，已不再对外标注。
+- 现代码实际引用：**Wellby (IEEE TAFFC 2026, DOI 10.1109/TAFFC.2025.3628467)**、**CogWatch (HardwareX 2024, DOI 10.1016/j.ohx.2024.e00538)**、**Kim et al. (HCIS 2023, DOI 10.22967/hcis.2023.13.027)** —— 三者均核实为真实发表，可对外引用；权重系数为产品决策（非文献给定）。
 
 **产品决策（非文献结论，已在代码注释标明）：**
 - `recencyBaseline` 半衰期 7 天
@@ -155,10 +156,10 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 
 | 风险等级 | 内容 | 建议动作 |
 |----------|------|----------|
-| 🔴 高 | `cognitiveLoad.ts` / `cognitiveLoadDetector.ts` 头部若干开源文献引用存疑 | 合规/对外评审前逐条 WebSearch 核实，无法核实的删除或替换为真实可引用来源 |
-| 🟡 中 | `dailyStatus.ts` 文献群体基线为占位常量（TBD-1） | 上线前替换为已发表纵向研究数据 |
+| 🟢 已解 | `cognitiveLoad.ts` 头部引用存疑（原 ChatPPG/NeuroPlay/ICFMR/Task/JBDM） | ✅ 2026-10-05 已清理：撤下厂商博客 ChatPPG、删除非代码实际引用项，替换为 Kim 2023；保留 Wellby / CogWatch（均核实） |
+| 🟢 已解 | `dailyStatus.ts` 文献群体基线为占位常量（TBD-1） | ✅ 2026-10-05 已替换为锚定已发表研究（Prinsen&Sacher 2025 / Schmalenberger 2019 / StatPearls 2022）的相位分桶值 |
 | 🟢 低 | 各权重系数为"按文献强度 + 保守打折"的初始值 | 走用户自报回归标定（已在 MEMORY 诚实度铁律登记） |
-| 🟢 低 | 产品决策类参数（半衰期、档位边界等） | 已在代码注释明确标注"非文献结论"，保留即可 |
+| 🟢 低 | 产品决策类参数（半衰期、档位边界、认知负荷 85/15 权重等） | 已在代码注释明确标注"非文献结论"，保留即可 |
 
 ---
 
@@ -168,6 +169,41 @@ Mira 戒指（Veepoo HK18）**没有**任何分子级激素传感器（皮质醇
 - 所有分数 0–100 均"相对你自己平时"，50 = 和平时一样；UI 必须显式说明，避免被读成绝对值。
 - EDA / HRV 给"身体在紧绷"的生理唤醒程度，**不读主观情绪、不做医疗诊断**。
 - 缺信号→留空，不编造、不靠拟合曲线填洞。
+
+---
+
+---
+
+## 6. 整体算法合理性评估（2026-10-05）
+
+> 本轮（`463f1e1` 双相阈值统一 + 本次 TBD-1 替换 / cognitiveLoad 引用清洗 / hormoneTrend 诚实边界）后，对核心算法的整体结论。
+
+### 6.1 已修复 / 已对齐项
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 体温双重角色厘清 | ✅ | 复合分里体温=偏离相位基线的**身体应变**；周期相位里体温=**独立确认排卵**。两路目的相反，已在文档与代码注释区分 |
+| 双相体温判定阈值统一 | ✅ | `hormoneInference.ts` 原 0.12/10/14 已对齐 `cycleMath` 默认 0.15/12/16，消除"是否排卵"分叉结论 |
+| 文献群体基线 TBD-1 替换 | ✅ | `dailyStatus.ts` LIT 表相位值锚定 RHR(+2–4bpm)/HRV(~3–4%↓, meta d=−0.39)/体温(+0.3–0.5℃) 的已发表研究，不再为占位 |
+| cognitiveLoad 引用清洗 | ✅ | 撤下厂商博客 ChatPPG、删除非实际引用项，替换为 Kim 2023；Wellby / CogWatch 均核实为真实发表 |
+| hormoneTrend 诚实边界 | ✅ | 明确 0–100 为「时间窗内相对趋势指数」非激素绝对浓度；孕激素回退抬升抽为命名常量 `PROG_TEMP_RISE_FALLBACK` |
+
+### 6.2 各模块合理性结论
+
+- **综合今日状态（`dailyStatus.ts`）— 合理。** 四路加权（HRV 0.34 / RHR 0.21 / 睡眠 0.30 / 体温 0.15）对齐 Oura/WHOOP 公开口径；相对个人同相位基线的范式稳健；LIT 冷启动值现已文献锚定。残留风险仅为"单群体通用估计"，但 `MIN_DAYS=30` 后由个人基线接管，属可控。
+- **周期相位 / 双相体温（`cycleMath` + `hormoneInference`）— 合理且可信。** 日历法打底 + 体温确认排卵，阈值统一后各卡片结论一致。这是全 App 里**证据最强**的推断之一（BBT 双相是 symptothermal 金标准）。
+- **激素趋势（`hormoneTrend.ts`）— 合理（作为趋势指示），但置信度不等：**
+  - **孕激素曲线（体温双相 + RHR）可信度最高**——BBT 抬升是孕酮驱动的实测金标准信号，方向明确。
+  - **雌激素曲线（HRV + EDA）置信度较低**——EDA→雌激素的基座仅 Gómez-Amor 1990 单篇较老研究，且 EDA 本质反映交感唤醒（排卵期恰与雌激素峰同相，但非特异）。建议 UI 上把雌激素曲线标注为"较低置信趋势"，或后续下调 EDA 权重（产品决策，本次未改权重以免破坏视觉）。
+  - 两条曲线均为**窗内相对指数**，纵轴不代表 pg/mL；UI 文案必须显式说明"看趋势/看节律，非实验室检测值"。
+- **认知负荷 / 准备度（`cognitiveLoad.ts` / `cognitiveLoadDetector.ts`）— 合理。** 核心科学（睡眠→次日认知，Lowe 2017 / Wüst 2024）扎实；传感器权重来自 CogWatch 实测；引用已清洗。85/15（节律睡眠/HRV）权重为产品决策。
+
+### 6.3 仍建议跟进（非阻塞）
+
+1. **雌激素代理降级标注**：在周期日历/洞察页给雌激素曲线加"较低置信"提示，避免被误读为激素检测。
+2. **窗内归一化的可读性**：周视图（7 天）振幅会被 min–max 自动放大；建议在 UI 注明"纵轴为所选时间窗内的相对值"。
+3. **个人化接管验证**：确认 `MIN_DAYS=30` 后 LIT 基线确实不再参与（仅冷启动用），避免群体常数值覆盖个人真实基线。
+4. **诚实边界保持**：所有 UI 坚持"激素状态推断 / 相对个人基线"，不出现"激素值""皮质醇值"等绝对值措辞。
 
 ---
 

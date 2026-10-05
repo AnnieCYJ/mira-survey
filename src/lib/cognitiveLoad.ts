@@ -2,11 +2,13 @@
  * Cognitive Load & Fatigue Detection — 规则融合 (Rule-Based Fusion)
  * ------------------------------------------------------------------
  * 参考:
- *   - Wellby (IEEE Trans Affective Computing 2026)  轻量化 wearable PPG 管道
- *     只用时域 HRV + 基线问卷 → AUC-ROC 91.6% for stress, 85.84% for fatigue
- *   - CogWatch (HardwareX 2024)  开源认知负荷平台
- *     传感器权重: GSR 35-40% / HRV 30-35% / SkinTemp 15-20% / IMU 10-15%
- *   - ChatPPG 2026 review       HF 功率 & LF/HF 比对认知负荷最敏感
+ *   - Wellby (Laiti et al., IEEE Trans Affective Computing 2026, DOI 10.1109/TAFFC.2025.3628467)
+ *     轻量化 wearable PPG 管道：时域 HRV + 基线问卷 → AUC-ROC 91.60% (stress) / 85.84% (fatigue)
+ *   - CogWatch (Dankovich et al., HardwareX 2024, DOI 10.1016/j.ohx.2024.e00538)
+ *     开源认知负荷腕表平台；传感器权重: GSR 35-40% / HRV 30-35% / SkinTemp 15-20% / IMU 10-15%
+ *   - Kim et al. (HCIS 2023, DOI 10.22967/hcis.2023.13.027)
+ *     腕带传感器 + SHAP 特征归因的认知负荷识别：确认 HRV/EDA 频域特征为主要贡献项
+ *     （替代原"ChatPPG 2026 review"——该来源经核查为厂商博客而非同行评审综述，已撤下）
  *
  * 生理原理:
  *   - 认知负荷↑ → HRV↓ (RMSSD↓, 迷走抑制)

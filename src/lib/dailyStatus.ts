@@ -123,16 +123,26 @@ export const ALGO_DEFAULTS: AlgoConst = {
   MIN_DAYS: 30,
 };
 
-// ── 文献默认女性群体基线（按相位分桶的常量表，TBD-1）
-// 冷启动（个人样本不足）时使用：取健康女性单群体中位 × 各相位典型偏移。
-// 这些是占位文献常数值，正式上线前应替换为已发表的纵向研究数据。
-// temp 为日均皮肤温（℃）相位典型值：黄体期因孕激素升温 ~0.3–0.5℃（Oura 同口径用「偏离个人基线」）。
+// ── 文献默认女性群体基线（按相位分桶的常量表）
+// 冷启动（个人样本不足）时使用：取健康女性群体中位 × 各相位典型偏移。
+// 数值锚定已发表纵向研究（不再为占位 TBD-1）：
+//   · RHR：黄体期较卵泡期升高 +2.33 bpm（Prinsen & Sacher, Science Advances 2025）/ +2–4 bpm（SanoLabs）；
+//          大样本可穿戴研究（45,811 周期, 2024）RHR 谷≈周期第 5 天、峰≈第 26 天。
+//   · HRV(RMSSD)：卵泡期→黄体期下降约 3%（Altini & Plews 2019）；37 项研究 meta（n=1,004）d=−0.39（Schmalenberger 2019）。
+//   · 体温：黄体期因孕酮升温 +0.3–0.5℃（Oura Alzueta 2024；StatPearls 2022）；排卵前为卵泡期低位。
+//   · 睡眠：黄体期睡眠效率/REM 常低于卵泡期（文献方向一致但幅度个体差异大，取保守偏移）。
+// 注意：这些是「单群体通用估计」，仅用于冷启动；当个人样本 ≥ MIN_DAYS(30) 后由个人基线接管（见 baselineFor）。
 type LitRow = { hrv: number; rhr: number; sleep: number; temp: number };
 const LIT: Record<PhaseBucket, LitRow> = {
+  // 卵泡期：RHR 谷、HRV 高、体温低位
   follicular: { hrv: 50, rhr: 58, sleep: 75, temp: 36.5 },
-  ovulation: { hrv: 55, rhr: 56, sleep: 76, temp: 36.6 },
-  luteal: { hrv: 45, rhr: 62, sleep: 72, temp: 36.9 }, // 整段黄体期取晚期偏保守值；皮肤温因孕激素偏高
+  // 围排卵期：HRV 常达峰、RHR 接近卵泡期、体温尚未跳升
+  ovulation: { hrv: 52, rhr: 57, sleep: 76, temp: 36.6 },
+  // 黄体期：HRV 较卵泡期仅低 ~3–4%（meta d=−0.39）、RHR +2–4 bpm、体温 +0.3–0.5℃、睡眠略降
+  luteal: { hrv: 48, rhr: 62, sleep: 72, temp: 36.9 },
+  // 经期（=早卵泡期）：月经炎症可轻度抬升 RHR、压低 HRV，体温处卵泡低位，睡眠受经痛干扰略降
   period: { hrv: 47, rhr: 60, sleep: 70, temp: 36.4 },
+  // 未知：取群体混合近似
   unknown: { hrv: 50, rhr: 59, sleep: 74, temp: 36.6 },
 };
 

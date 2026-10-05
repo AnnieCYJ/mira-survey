@@ -9,6 +9,11 @@
  *   · 雌激素 —— 戒指实测 HRV（卵泡期较高）+ EDA 皮肤电导（排卵期升高），各自归一化后加权合成；
  *   · 孕激素 —— 戒指实测体温（BBT 双相，排卵后抬升）+ 静息心率（排卵后升高），加权合成。
  * 组合权重与 0–100 归一化是自研启发式；信号基座来自成熟方法/已发表研究（见周期日历页「方法与依据」）。
+ *
+ * ⚠️ 诚实边界：输出 0–100 是「所选时间窗内的相对趋势指数」，**不是**激素绝对浓度。
+ *   · 雌激素：HRV/EDA 在窗内 min–max 归一化 → 曲线形态反映相对起伏，纵轴不代表 pg/mL。
+ *   · 孕激素：体温/RHR 相对各自卵泡期基线归一化 → 排卵期后抬升至高位，但幅度为相对值。
+ *   这两条曲线用于「看趋势、看相位节律」，不应被读成实验室激素检测值。
  */
 import {
   computeCycle,
@@ -26,6 +31,13 @@ import type { RingState } from '../ble/RingBleManager';
 export type TrendRange = 'week' | 'month' | 'quarter';
 export const trendDays = (r: TrendRange): number => (r === 'week' ? 7 : r === 'quarter' ? 90 : 30);
 export const trendMinPts = (r: TrendRange): number => (r === 'week' ? 3 : r === 'quarter' ? 10 : 5);
+
+/**
+ * 孕激素回退抬升幅度（℃）：当尚未检测到双相、以「近期体温低位 + 此假设抬升」出趋势线时使用。
+ * 取 BBT 黄体期典型抬升的下界 0.3℃（文献报道 0.3–0.5℃，Oura Alzueta 2024；StatPearls 2022），属保守估计；
+ * 一旦 detectThermalShift 检测到真实双相，则改用实测 coverTemp，不再用此值。
+ */
+const PROG_TEMP_RISE_FALLBACK = 0.3;
 
 /** 取某日期的相位（带体温确认覆盖的 computeCycle） */
 export function phaseOfDay(log: CycleLog | null, date: Date, ring: RingState): CyclePhase | 'unknown' {
@@ -125,7 +137,7 @@ export function buildProgesteroneData(
     ? [...tempVals].sort((a, b) => a - b)[Math.floor(0.15 * (tempVals.length - 1))]
     : null;
   const baseT = shift ? shift.baseline : lowPct;
-  const coverT = shift ? shift.coverTemp : baseT != null ? baseT + 0.3 : null;
+  const coverT = shift ? shift.coverTemp : baseT != null ? baseT + PROG_TEMP_RISE_FALLBACK : null;
   const tempUsable = baseT != null && coverT != null && coverT - baseT > 0.05;
 
   // 静息心率：卵泡期 / 黄体期均值（真实）
