@@ -1,28 +1,23 @@
 /**
  * SleepMultiDimCompare —— 「多维度对比」表
  *
- * 对齐 preview/sleep-rhythm.html v9 原型：表头 `指标 | 当前 | 上周 | 上月 | 去年`，
- * 覆盖皮质醇整体水平、**皮质醇异常天数**、睡眠恢复分、平均睡眠时长、深睡占比、
- * 夜间静息心率、夜间 HRV。
+ * ★ 单参照期原则（用户明确要求）：**同量级比同量级**
+ *   周视图 → 本周 vs 上周；月视图 → 本月 vs 上月；年视图 → 本年 vs 去年。
+ *   绝不把「上周 / 上月 / 去年」三个口径并排列在每一行下面 —— 那样维度错位、
+ *   读起来也乱。只保留 1 个参照列，表头随 range 变。
  *
- * 着色规则：每个参照期按「相对当前是更优还是更差」染色（绿=更优 / 红=更差），
- * 方向由每个指标自己的 `dir` 决定（心率 / 异常天数越低越好）。
+ * 覆盖：皮质醇整体水平、**皮质醇异常天数**、睡眠恢复分、平均睡眠时长、深睡占比。
  *
- * ★ 诚实边界：任一格无数据一律显「—」（不插值、不编造）；某参照期整体无数据时
- *   提示「该周期无记录」，避免把空值误读成 0。
+ * 着色：参照期相对当前是更优（绿）还是更差（红），方向由每个指标自己的
+ * `dir` 决定（心率 / 异常天数越低越好）。数值本身始终可读，不靠颜色单独传达。
+ *
+ * ★ 诚实边界：任一格无数据显「—」，不插值不编造。
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 
-/** 参照期键：上周 / 上月 / 去年 */
-export type RefKey = 'lw' | 'lm' | 'ly';
-
-export const REF_LABEL: Record<RefKey, string> = { lw: '上周', lm: '上月', ly: '去年' };
-export const REF_ORDER: RefKey[] = ['lw', 'lm', 'ly'];
-
-/** 单个指标在四个窗口里的值；null = 无数据 */
 export interface MetricRow {
   key: string;
   label: string;
@@ -31,19 +26,24 @@ export interface MetricRow {
   /** 'high' = 越大越好；'low' = 越小越好 */
   dir: 'high' | 'low';
   cur: number | null;
-  refs: Record<RefKey, number | null>;
+  /** 上一同量级周期（周→上周 / 月→上月 / 年→去年） */
+  prev: number | null;
   /** 档位型指标（如皮质醇整体水平）：值映射为展示文案 + 是否为「好」 */
   band?: Record<string, { text: string; good: boolean }>;
 }
 
 interface Props {
   rows: MetricRow[];
+  /** 当前周期名，如「本周」 */
+  curLabel: string;
+  /** 参照周期名，如「上周」 */
+  prevLabel: string;
   /** 副标题：说明对照口径 */
   subtitle?: string;
 }
 
-export default function SleepMultiDimCompare({ rows, subtitle }: Props) {
-  const anyRefData = rows.some((r) => REF_ORDER.some((k) => r.refs[k] != null));
+export default function SleepMultiDimCompare({ rows, curLabel, prevLabel, subtitle }: Props) {
+  const anyPrev = rows.some((r) => r.prev != null);
 
   return (
     <View>
@@ -51,10 +51,8 @@ export default function SleepMultiDimCompare({ rows, subtitle }: Props) {
 
       <View style={styles.headerRow}>
         <Text style={[styles.headerCell, styles.colLabel]}>指标</Text>
-        <Text style={[styles.headerCell, styles.colNum]}>当前</Text>
-        {REF_ORDER.map((k) => (
-          <Text key={k} style={[styles.headerCell, styles.colNum]}>{REF_LABEL[k]}</Text>
-        ))}
+        <Text style={[styles.headerCell, styles.colNum]}>{curLabel}</Text>
+        <Text style={[styles.headerCell, styles.colNum]}>{prevLabel}</Text>
       </View>
 
       {rows.map((r, ri) => (
@@ -67,36 +65,40 @@ export default function SleepMultiDimCompare({ rows, subtitle }: Props) {
               <Text style={styles.curText}>{fmt(r.cur, r.unit)}</Text>
             )}
           </View>
-          {REF_ORDER.map((k) => {
-            const v = r.refs[k];
-            const tone = v == null || r.cur == null || r.band ? 'neutral' : toneOf(v, r.cur!, r.dir);
-            return (
-              <View key={k} style={styles.colNum}>
-                {r.band ? (
-                  <Pill band={r.band[String(v)]} />
-                ) : (
-                  <Text style={[styles.refText, tone === 'good' ? styles.good : tone === 'bad' ? styles.bad : null]}>
-                    {fmt(v, r.unit)}
-                  </Text>
-                )}
-              </View>
-            );
-          })}
+          <View style={styles.colNum}>
+            {r.band ? (
+              <Pill band={r.band[String(r.prev)]} />
+            ) : (
+              <Text
+                style={[
+                  styles.refText,
+                  r.prev == null || r.cur == null ? null
+                    : toneOf(r.prev, r.cur, r.dir) === 'good' ? styles.good
+                    : toneOf(r.prev, r.cur, r.dir) === 'bad' ? styles.bad : null,
+                ]}
+              >
+                {fmt(r.prev, r.unit)}
+              </Text>
+            )}
+          </View>
         </View>
       ))}
 
-      {/* 图例：颜色只是辅助，数值本身始终可读（不靠颜色单独传达信息） */}
-      <View style={styles.legendRow}>
-        <View style={styles.legendItem}>
-          <View style={[styles.dot, { backgroundColor: theme.colors.trendUp }]} />
-          <Text style={styles.legendText}>优于当前</Text>
+      {/* 图例：颜色只是辅助，数值本身始终可读 */}
+      {anyPrev ? (
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={[styles.dot, { backgroundColor: theme.colors.trendUp }]} />
+            <Text style={styles.legendText}>优于{curLabel}</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.dot, { backgroundColor: theme.colors.trendDown }]} />
+            <Text style={styles.legendText}>劣于{curLabel}</Text>
+          </View>
         </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.dot, { backgroundColor: theme.colors.trendDown }]} />
-          <Text style={styles.legendText}>劣于当前</Text>
-        </View>
-        {!anyRefData && <Text style={styles.legendText}>· 对照周期暂无记录</Text>}
-      </View>
+      ) : (
+        <Text style={styles.legendText}>· {prevLabel}暂无记录</Text>
+      )}
     </View>
   );
 }
@@ -135,7 +137,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.ui.borderSoft,
   },
   rowLast: { borderBottomWidth: 0 },
-  colLabel: { flex: 1.5, textAlign: 'left' },
+  colLabel: { flex: 1.7, textAlign: 'left' },
   colNum: { flex: 1, alignItems: 'center' },
   headerCell: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: theme.weight.semibold },
   labelCell: { fontSize: theme.fontSize.xs, color: theme.colors.textTitle, fontWeight: theme.weight.medium, paddingRight: 2 },

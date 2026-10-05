@@ -107,8 +107,7 @@ function windowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
   return { start: a, end: e };
 }
 /** 上一等长周期窗口（用于「环比上一周期」对比） */
-function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
-  if (range === 'week') {
+function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {  if (range === 'week') {
     const s = startOfWeek(anchor), e = endOfWeek(anchor);
     s.setDate(s.getDate() - 7); e.setDate(e.getDate() - 7);
     return { start: s, end: e };
@@ -128,6 +127,62 @@ function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date }
   const a = new Date(anchor); a.setDate(a.getDate() - 1); a.setHours(0, 0, 0, 0);
   const e = new Date(a); e.setHours(23, 59, 59, 999);
   return { start: a, end: e };
+}
+
+/** 一个时间窗口内的派生统计（多维度对比用） */
+interface Stats {
+  /** 窗口内有真实睡眠记录的天数 */
+  n: number;
+  /** 平均睡眠时长（分钟） */
+  durH: number | null;
+  /** 平均睡眠恢复分 0–100 */
+  score: number | null;
+  /** 平均深睡占比 % */
+  deepPct: number | null;
+  /** 皮质醇异常天数 */
+  abnDays: number;
+  /** 皮质醇整体水平档位 */
+  level: '正常' | '偏高' | '节律紊乱' | null;
+}
+
+/** 单日恢复分（0–100）：时长/深睡/效率/起夜四因子。缺数据返回 null。 */
+function scoreOfDay(rec: DayRec): number | null {
+  if (!(rec.total > 0)) return null;
+  const awake = (rec.awake ?? 0) + (rec.insomnia ?? 0);
+  const s = computeSleepScore({
+    sleepTotal: rec.total,
+    sleepDeep: rec.deep,
+    sleepAwake: awake > 0 ? awake : null,
+    getUp: rec.getUp ?? null,
+  });
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
+/** 统计 [start,end] 窗口；cortKind 由调用方注入（判「今天」依赖 anchor，故不做模块级缓存） */
+function statsOf(
+  recs: { key: string; date: Date; rec: DayRec }[],
+  start: Date,
+  end: Date,
+  cortKind: (dk: string) => CortAnomKind,
+): Stats {
+  const rs = recs.filter((r) => r.date.getTime() >= start.getTime() && r.date.getTime() <= end.getTime());
+  const recsOnly = rs.map((r) => r.rec).filter((r) => r.total > 0);
+  const scores = rs.map((r) => scoreOfDay(r.rec)).filter((v): v is number => v != null);
+  let abnDays = 0, anyHigh = false, anyDys = false;
+  for (const r of rs) {
+    const k = cortKind(r.key);
+    if (k !== 'normal') abnDays += 1;
+    if (k === 'high') anyHigh = true;
+    if (k === 'late') anyDys = true;
+  }
+  return {
+    n: recsOnly.length,
+    durH: meanOf(recsOnly.map((r) => r.total)),
+    score: scores.length ? scores.reduce((a, c) => a + c, 0) / scores.length : null,
+    deepPct: meanOf(recsOnly.map((r) => (r.total > 0 ? (r.deep / r.total) * 100 : null))),
+    abnDays,
+    level: anyDys ? '节律紊乱' : anyHigh ? '偏高' : recsOnly.length ? '正常' : null,
+  };
 }
 
 export default function SleepDetailScreen() {
@@ -314,75 +369,22 @@ export default function SleepDetailScreen() {
     };
   }, [sleepDaily, anchor, ring]);
 
-  /** 多维度对比：当前 vs 上周 / 上月 / 去年（皮质醇整体水平 + 异常天数 + 睡眠关键指标） */
+  /** 多维度对比：当前 vs **上一同量级周期**
+   *  ★ 周→上周 / 月→上月 / 年→去年（绝不把上周·上月·去年三个口径并列，维度会错位） */
   const cmpRows = useMemo<MetricRow[]>(() => {
     if (range === 'day') return [];
     const recs = toRecords(sleepDaily);
     if (recs.length === 0) return [];
 
-    /** 参照窗口：lw=上周同区间 / lm=上月同区间 / ly=去年同区间 */
-    const refWindow = (k: 'lw' | 'lm' | 'ly'): { start: Date; end: Date } | null => {
-      if (k === 'lw') return prevWindowOf(range, anchor);
-      const cur = windowOf(range, anchor);
-      if (k === 'lm') {
-        // 上月：保持当前日号，超界则取该月最后一天
-        const s = new Date(cur.start); s.setMonth(s.getMonth() - 1);
-        const e = new Date(cur.end); e.setMonth(e.getMonth() - 1);
-        return { start: s, end: e };
-      }
-      // 去年：整体 −1 年
-      const s = new Date(cur.start); s.setFullYear(s.getFullYear() - 1);
-      const e = new Date(cur.end); e.setFullYear(e.getFullYear() - 1);
-      return { start: s, end: e };
-    };
-
-    const inWin = (start: Date, end: Date) =>
-      recs.filter((r) => r.date.getTime() >= start.getTime() && r.date.getTime() <= end.getTime());
-
-    /** 一个窗口内的所有派生量 */
-    const statsOf = (start: Date, end: Date) => {
-      const rs = inWin(start, end);
-      const recsOnly = rs.map((r) => r.rec).filter((r) => r.total > 0);
-      const scores = rs.map((r) => scoreOfDay(r.rec)).filter((v): v is number => v != null);
-      // 皮质醇异常天数：逐日真实判定
-      let abnDays = 0;
-      let anyHigh = false, anyDys = false;
-      for (const r of rs) {
-        const c = cortKindOfDay(r.key);
-        if (c.abn) abnDays += 1;
-        if (c.kind === 'high') anyHigh = true;
-        if (c.kind === 'late') anyDys = true;
-      }
-      // 深睡占比取窗口内各天占比的均值
-      const deepP = meanOf(recsOnly.map((r) => (r.total > 0 ? (r.deep / r.total) * 100 : null)));
-      return {
-        n: recsOnly.length,
-        durH: meanOf(recsOnly.map((r) => r.total)),
-        score: scores.length ? scores.reduce((a, c) => a + c, 0) / scores.length : null,
-        deepPct: deepP,
-        abnDays,
-        anyAbn: abnDays > 0,
-        level: anyDys ? '节律紊乱' : anyHigh ? '偏高' : recsOnly.length ? '正常' : null,
-      };
-    };
-
     const cw = windowOf(range, anchor);
-    const cur = statsOf(cw.start, cw.end);
-    const wLw = refWindow('lw')!, wLm = refWindow('lm')!, wLy = refWindow('ly')!;
-    const refs = {
-      lw: statsOf(wLw.start, wLw.end),
-      lm: statsOf(wLm.start, wLm.end),
-      ly: statsOf(wLy.start, wLy.end),
-    };
-    const pick = <T,>(get: (s: ReturnType<typeof statsOf>) => T | null) => ({
-      cur: get(cur),
-      refs: { lw: get(refs.lw), lm: get(refs.lm), ly: get(refs.ly) } as Record<'lw' | 'lm' | 'ly', T | null>,
-    });
+    const cur = statsOf(recs, cw.start, cw.end, (dk) => cortKindOfDay(dk).kind);
+    const pw = prevWindowOf(range, anchor);   // 上一周 / 上月 / 去年
+    const prev = statsOf(recs, pw.start, pw.end, (dk) => cortKindOfDay(dk).kind);
+
+    const pick = <T,>(get: (s: Stats) => T | null) => ({ cur: get(cur), prev: get(prev) });
 
     const mk = (key: string, label: string, unit: string | undefined, dir: 'high' | 'low',
-                get: (s: ReturnType<typeof statsOf>) => number | null): MetricRow => ({
-      key, label, unit, dir, ...pick(get),
-    });
+                get: (s: Stats) => number | null): MetricRow => ({ key, label, unit, dir, ...pick(get) });
 
     const levelBand: MetricRow['band'] = {
       正常: { text: '正常', good: true },
@@ -394,7 +396,7 @@ export default function SleepDetailScreen() {
       {
         key: 'cortLevel', label: '皮质醇整体水平', dir: 'high', unit: undefined,
         cur: cur.level as unknown as number,
-        refs: { lw: refs.lw.level as unknown as number, lm: refs.lm.level as unknown as number, ly: refs.ly.level as unknown as number },
+        prev: prev.level as unknown as number,
         band: levelBand,
       },
       mk('cortAbn', '皮质醇异常天数', '天', 'low', (s) => (s.n > 0 ? s.abnDays : null)),
@@ -404,6 +406,11 @@ export default function SleepDetailScreen() {
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, sleepDaily, anchor, cortKindCache]);
+
+  /** 本周期 / 参照周期 的表头文案（随 range 变） */
+  const cmpLabels = range === 'week' ? { cur: '本周', prev: '上周' }
+    : range === 'month' ? { cur: '本月', prev: '上月' }
+    : { cur: '本年', prev: '去年' };
 
   const cortAbnDaysCur = useMemo(
     () => dualPoints.filter((p) => p.cortisolAbnormal).length,
@@ -503,17 +510,17 @@ export default function SleepDetailScreen() {
         dateLabel={cortSheet?.date ?? null}
       />
 
-      {/* ★ 多维度对比：当前 vs 上周 / 上月 / 去年（含皮质醇异常天数）—— 周/月/年显示 */}
+      {/* ★ 多维度对比：当前 vs 上一同量级周期（周→上周 / 月→上月 / 年→去年）—— 周/月/年显示 */}
       {range !== 'day' && cmpRows.length > 0 ? (
         <View style={styles.mCard}>
           <View style={styles.mHead}>
             <Text style={styles.mTitle}>多维度对比</Text>
-            <Text style={styles.mHeadSub}>
-              {range === 'week' ? '本周' : range === 'month' ? '本月' : '本年'} · 对照上周 / 上月 / 去年
-            </Text>
+            <Text style={styles.mHeadSub}>{cmpLabels.cur} vs {cmpLabels.prev}</Text>
           </View>
           <SleepMultiDimCompare
             rows={cmpRows}
+            curLabel={cmpLabels.cur}
+            prevLabel={cmpLabels.prev}
             subtitle={`皮质醇与关键指标 · 本区间共 ${cortAbnDaysCur} 天皮质醇异常`}
           />
         </View>

@@ -140,23 +140,37 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
             </Text>
           )}
 
-          {/* ③ 四比例 */}
-          <View style={styles.grid4}>
-            <Cell v={deepP != null ? `${deepP}%` : '—'} l="深睡占比" />
-            <Cell v={lightP != null ? `${lightP}%` : '—'} l="浅睡占比" />
-            <Cell v={remP != null ? `${remP}%` : '—'} l="REM 占比" />
-            <Cell v={effPct != null ? `${effPct}%` : '—'} l="睡眠效率" />
+          {/* ③ 睡眠结构 —— 一行式比例条（深睡/浅睡/REM 堆叠）+ 下方行式明细
+              ★ 不再并排四个数字格：那类「2×2 数字罗列」信息密度低、彼此无比较关系。 */}
+          {deepP != null ? (
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>睡眠结构</Text>
+              <View style={styles.propBar}>
+                <PropSeg w={deepP} color={mm.colors.purpleCore} />
+                <PropSeg w={lightP ?? 0} color={mm.colors.purpleMid} />
+                <PropSeg w={remP ?? 0} color={mm.colors.skyCore} />
+              </View>
+              <View style={styles.propLegend}>
+                <PropKey color={mm.colors.purpleCore} k="深睡" v={deepP} />
+                <PropKey color={mm.colors.purpleMid} k="浅睡" v={lightP} />
+                <PropKey color={mm.colors.skyCore} k="REM" v={remP} />
+              </View>
+            </View>
+          ) : null}
+
+          {/* ④ 作息与时机 —— 行式列表（标签左 · 数值右） */}
+          <View style={styles.block}>
+            <Text style={styles.groupTitle}>作息与时机</Text>
+            <Row name="睡眠效率" value={effPct != null ? `${effPct}%` : '—'} />
+            <Divider />
+            <Row name="入睡时刻" value={day?.sleepTime ?? '—'} />
+            <Divider />
+            <Row name="起床时刻" value={day?.wakeTime ?? (wakeMin != null ? fmtClock(wakeMin) : '—')} />
+            <Divider />
+            <Row name="夜间清醒" value={day?.getUp != null ? `${day.getUp} 次` : '—'} />
           </View>
 
-          {/* ④ 时机与规律 */}
-          <View style={styles.metaRow}>
-            <Meta v={bedMin != null ? `${bedMin}分` : '—'} l="入睡潜伏期" />
-            <Meta v={day?.getUp != null ? `${day.getUp} 次` : '—'} l="夜间清醒" />
-            <Meta v={wakeMin != null ? fmtClock(wakeMin) : '—'} l="起床时刻" />
-            <Meta v="—" l="作息规律" />
-          </View>
-
-          {/* ⑤ 睡眠生理信号 —— 嵌套子折叠，默认收起 */}
+          {/* ⑤ 睡眠生理信号 —— 嵌套子折叠，默认收起；展开后为行式列表 */}
           <View style={styles.subAcc}>
             <Pressable onPress={togglePhys} style={styles.subHead} accessibilityRole="button"
               accessibilityLabel={physOpen ? '收起睡眠生理信号' : '展开睡眠生理信号'}>
@@ -167,13 +181,18 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
             </Pressable>
 
             {physOpen ? (
-              <View style={styles.physGrid}>
-                <PhysCell v={fmtNum(phys.hr, 0)} u="bpm" l="睡眠静息心率" />
-                <PhysCell v={fmtNum(phys.hrv, 0)} u="ms" l="夜间 HRV（RMSSD）" />
-                <PhysCell v={fmtSigned(phys.tempDelta)} u="℃" l="体温偏离" />
-                <PhysCell v={fmtNum(phys.rr, 1)} u="/min" l="呼吸率" />
-                <PhysCell v={fmtNum(phys.spo2, 0)} u="%" l="夜间血氧" />
-                <PhysCell v={fmtNum(phys.recoveryIdx, 1)} u="bpm/h" l="恢复指数" />
+              <View style={{ marginTop: theme.space.xs }}>
+                <Row name="睡眠静息心率" value={fmtNum(phys.hr, 0)} unit="bpm" />
+                <Divider />
+                <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms" />
+                <Divider />
+                <Row name="体温偏离" value={fmtSigned(phys.tempDelta)} unit="℃" />
+                <Divider />
+                <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min" />
+                <Divider />
+                <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%" />
+                <Divider />
+                <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last />
               </View>
             ) : null}
           </View>
@@ -191,32 +210,35 @@ function LegendItem({ color, label }: { color: string; label: string }) {
     </View>
   );
 }
-function Cell({ v, l }: { v: string; l: string }) {
+/** 比例条中的一段（按百分比宽度） */
+function PropSeg({ w, color }: { w: number; color: string }) {
+  if (!(w > 0)) return null;
+  return <View style={{ flex: w, backgroundColor: color }} />;
+}
+/** 比例条下方的一个色标 + 名称 + 数值 */
+function PropKey({ color, k, v }: { color: string; k: string; v: number | null }) {
   return (
-    <View style={styles.cell4}>
-      <Text style={styles.cell4Val}>{v}</Text>
-      <Text style={styles.cell4Lab}>{l}</Text>
+    <View style={styles.propKeyItem}>
+      <View style={[styles.propDot, { backgroundColor: color }]} />
+      <Text style={styles.propKeyText}>{k}</Text>
+      <Text style={styles.propKeyVal}>{v != null ? `${v}%` : '—'}</Text>
     </View>
   );
 }
-function Meta({ v, l }: { v: string; l: string }) {
+/** 行式明细：标签左 · 数值右（Oura / Whoop 范式，替代并排数字格） */
+function Row({ name, value, unit, last }: { name: string; value: string; unit?: string; last?: boolean }) {
   return (
-    <View style={styles.metaItem}>
-      <Text style={styles.metaVal}>{v}</Text>
-      <Text style={styles.metaLab}>{l}</Text>
+    <View style={[styles.row, last && styles.rowLast]}>
+      <Text style={styles.rowName}>{name}</Text>
+      <View style={styles.rowValWrap}>
+        <Text style={styles.rowVal}>{value}</Text>
+        {unit ? <Text style={styles.rowUnit}>{unit}</Text> : null}
+      </View>
     </View>
   );
 }
-function PhysCell({ v, u, l }: { v: string; u: string; l: string }) {
-  return (
-    <View style={styles.physCell}>
-      <Text style={styles.physVal}>
-        {v}
-        <Text style={styles.physUnit}>{u}</Text>
-      </Text>
-      <Text style={styles.physLab}>{l}</Text>
-    </View>
-  );
+function Divider() {
+  return <View style={styles.divider} />;
 }
 
 function fmtDurCn(min: number): string {
@@ -261,29 +283,40 @@ const styles = StyleSheet.create({
   durUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: 6 },
   durNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, width: '100%', marginTop: 2 },
   durNone: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
-  blockTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.md },
+  blockTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.md, marginBottom: theme.space.xs },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.xs, lineHeight: 20 },
   // 图例
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md, marginTop: theme.space.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  // 四比例
-  grid4: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.md },
-  cell4: {
-    flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm,
-    paddingVertical: theme.space.sm, alignItems: 'center',
+  // 分组块
+  block: { marginTop: theme.space.md },
+  groupTitle: {
+    fontSize: theme.fontSize.micro, color: theme.colors.textSub,
+    marginTop: theme.space.md, marginBottom: theme.space.xs,
   },
-  cell4Val: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  cell4Lab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  // 时机
-  metaRow: {
-    flexDirection: 'row', marginTop: theme.space.md, paddingTop: theme.space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft,
+  // 睡眠结构比例条
+  propBar: {
+    flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden',
+    backgroundColor: theme.colors.cardBgSoft,
   },
-  metaItem: { flex: 1, alignItems: 'center' },
-  metaVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  metaLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  propLegend: { flexDirection: 'row', marginTop: theme.space.sm },
+  propKeyItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  propDot: { width: 8, height: 8, borderRadius: 4 },
+  propKeyText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  propKeyVal: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  // 行式明细
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: theme.space.sm,
+  },
+  rowLast: { paddingBottom: 0 },
+  rowName: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle },
+  rowValWrap: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  rowUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
   // 生理信号子折叠
   subAcc: {
     marginTop: theme.space.md, paddingTop: theme.space.sm,
@@ -291,12 +324,4 @@ const styles = StyleSheet.create({
   },
   subHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   subTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  physGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: theme.space.sm },
-  physCell: {
-    width: '48.5%', backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm,
-    padding: theme.space.sm,
-  },
-  physVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  physUnit: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular, color: theme.colors.textSub, marginLeft: 2 },
-  physLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
 });

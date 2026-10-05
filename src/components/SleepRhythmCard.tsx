@@ -91,35 +91,35 @@ export default function SleepRhythmCard({ dk, isToday }: Props) {
         <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={dk} />
       </View>
 
-      <View style={styles.grid}>
-        {/* 整体水平 —— 可点击，弹出当天异常说明 */}
-        <Pressable
+      {/* ★ 节律指标改为行式列表：前两项是主要判读对象（可点），后两项为参考量。
+          原设计是 2×2 数字格，四项之间无比较关系、并排罗列反而难读。 */}
+      <View style={styles.block}>
+        <Row
+          name="整体水平（vs 14 天基线）"
+          value={levelText}
+          tone={kind === 'normal' ? 'ok' : kind === 'late' ? 'bad' : 'warn'}
+          hint="点击查看说明"
           onPress={() => setSheetOpen(true)}
-          style={({ pressed }) => [styles.cell, pressed && { opacity: 0.6 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`皮质醇整体水平 ${levelText}，点击查看说明`}
-        >
-          <View style={styles.cellHeadRow}>
-            <Text style={[styles.cellVal, kind !== 'normal' && { color: kind === 'late' ? mm.colors.roseDeep : mm.colors.honeyDeep }]}>{levelText}</Text>
-            <Text style={styles.chevHint}>›</Text>
-          </View>
-          <Text style={styles.cellLab}>整体水平（vs 14 天基线）</Text>
-        </Pressable>
-
-        <View style={styles.cell}>
-          <Text style={styles.cellVal}>{Number.isFinite(co.acrophaseH) ? fmtClock(co.acrophaseH) : '—'}</Text>
-          <Text style={styles.cellLab}>全天峰值时刻（正常 06–10）</Text>
-        </View>
-
-        <View style={styles.cell}>
-          <Text style={[styles.cellVal, ampFlat && { color: mm.colors.honeyDeep }]}>{ampPct != null ? (ampFlat ? '偏平' : '正常') : '—'}</Text>
-          <Text style={styles.cellLab}>昼夜起伏幅度</Text>
-        </View>
-
-        <View style={styles.cell}>
-          <Text style={styles.cellVal}>{Number.isFinite(co.r2) ? `规律 ${Math.round(Math.max(0, Math.min(1, co.r2)) * 100)}%` : '—'}</Text>
-          <Text style={styles.cellLab}>节律模式（R² 拟合）</Text>
-        </View>
+        />
+        <Divider />
+        <Row
+          name="全天峰值时刻"
+          value={Number.isFinite(co.acrophaseH) ? fmtClock(co.acrophaseH) : '—'}
+          note="正常 06–10"
+        />
+        <Divider />
+        <Row
+          name="昼夜起伏幅度"
+          value={ampPct != null ? (ampFlat ? '偏平' : '正常') : '—'}
+          tone={ampFlat ? 'warn' : 'ok'}
+        />
+        <Divider />
+        <Row
+          name="节律模式"
+          value={Number.isFinite(co.r2) ? `规律 ${Math.round(Math.max(0, Math.min(1, co.r2)) * 100)}%` : '—'}
+          note="R² 拟合"
+          last
+        />
       </View>
 
       <Text style={styles.disclaimer}>
@@ -134,6 +134,41 @@ export default function SleepRhythmCard({ dk, isToday }: Props) {
       />
     </View>
   );
+}
+
+/** 行式指标：标签左 · 数值右（可带参考说明 / 点击提示） */
+function Row({
+  name, value, note, hint, tone, onPress, last,
+}: {
+  name: string; value: string; note?: string; hint?: string;
+  tone?: 'ok' | 'warn' | 'bad'; onPress?: () => void; last?: boolean;
+}) {
+  const valStyle = tone === 'ok' ? styles.rowValOk : tone === 'warn' ? styles.rowValWarn : tone === 'bad' ? styles.rowValBad : null;
+  const body = (
+    <View style={[styles.row, last && styles.rowLast]}>
+      <Text style={styles.rowName}>{name}</Text>
+      <View style={styles.rowRight}>
+        {note ? <Text style={styles.rowNote}>{note}</Text> : null}
+        <Text style={[styles.rowVal, valStyle]}>{value}</Text>
+        {hint ? <Text style={styles.rowHint}>›</Text> : null}
+      </View>
+    </View>
+  );
+  if (!onPress) return body;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      accessibilityRole="button"
+      accessibilityLabel={`${name} ${value}${hint ? '，' + hint : ''}`}
+    >
+      {body}
+    </Pressable>
+  );
+}
+
+function Divider() {
+  return <View style={styles.divider} />;
 }
 
 const styles = StyleSheet.create({
@@ -153,17 +188,22 @@ const styles = StyleSheet.create({
   chronoFlat: { backgroundColor: 'rgba(31,29,26,0.07)' },
   chronoText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold },
   chartTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.md },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: theme.space.md },
-  cell: {
-    width: '48.5%',
-    backgroundColor: theme.colors.cardBgSoft,
-    borderRadius: theme.radius.sm,
-    padding: theme.space.sm,
+  // 行式指标（替代原 2×2 数字格）
+  block: { marginTop: theme.space.md },
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: theme.space.sm,
   },
-  cellHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  cellVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  cellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  chevHint: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.accentText },
+  rowLast: { paddingBottom: 0 },
+  rowName: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle, flex: 1 },
+  rowRight: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  rowValOk: { color: mm.colors.limeDeep },
+  rowValWarn: { color: mm.colors.honeyDeep },
+  rowValBad: { color: mm.colors.roseDeep },
+  rowNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  rowHint: { fontSize: theme.fontSize.micro, color: theme.colors.accentText },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.sm, lineHeight: 20 },
   disclaimer: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.sm, opacity: 0.8 },
 });
