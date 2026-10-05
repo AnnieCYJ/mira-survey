@@ -203,12 +203,28 @@ export function monthRecordCount(year: number, month: number): number {
   return Object.keys(monthMoodMap(year, month)).length;
 }
 
-/** 新增一条记录（dk=今天本地日） */
-export function addEmotionEntry(mood: MoodKey, note?: string, events?: EventKey[], customEvents?: string[]): EmotionEntry {
+/**
+ * 新增一条记录。
+ *
+ * ★ atMs：记录时刻（epoch ms）。**不传 = 此刻**。
+ *   为什么开放这个参数：情绪往往「回想补记」——下午开会时情绪上来，
+ *   晚上才有空点开记录。写死 Date.now() 会把这类记录落到错误的时刻，
+ *   点阵图与事件时间线也就跟着指错位置。
+ *   ⚠ `dk` 始终由 atMs 推导 ⇒ 补记到昨天会正确写进昨天的日键，
+ *     「当天最新心情」等按日聚合的读取方无需改动。
+ */
+export function addEmotionEntry(
+  mood: MoodKey,
+  note?: string,
+  events?: EventKey[],
+  customEvents?: string[],
+  atMs?: number,
+): EmotionEntry {
+  const t = atMs != null && Number.isFinite(atMs) ? atMs : Date.now();
   const entry: EmotionEntry = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    dk: dayKey(Date.now()),
-    t: Date.now(),
+    id: `${t}-${Math.random().toString(36).slice(2, 7)}`,
+    dk: dayKey(t),
+    t,
     mood,
     note: note && note.trim() ? note.trim() : undefined,
     events: events && events.length > 0 ? events : undefined,

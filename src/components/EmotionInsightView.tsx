@@ -14,6 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import {
   computeStressReport,
@@ -23,8 +24,11 @@ import {
 } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { dayKey } from '../data/healthStore';
-import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, type EmotionEntry } from '../data/emotionLog';
+import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, type EmotionEntry } from '../data/emotionLog';
 import { HourHistogram } from './StressInsightCard';
+// ★ 心理压力全天趋势图（首页心理压力卡点进来 / 洞察页情绪 tab 共用本视图）
+import StressTrendChart, { stressPointsOf } from './StressTrendChart';
+import { computeEmotionalStress } from '../lib/emotionalStress';
 
 /** lucide 线性图标（stroke 1.8，统一栅格） */
 function Lucide({ name, size = 13, color }: { name: string; size?: number; color: string }) {
@@ -159,6 +163,55 @@ export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
   );
 }
 
+/**
+ * 记录事件时间线 —— 点阵图下方把「手动心情记录」按时刻列出来。
+ *
+ * 为什么需要：点阵图只有 15 分钟格子的**颜色**，看不出「当时发生了什么」。
+ * 用户在「记录此刻心情」里勾选的生活事件（工作/运动/饮食…）与备注，
+ * 只有在这里才可见 —— 否则记录里的关键信息等于白填。
+ *
+ * 只列手动记录（`EmotionEntry`），不列 EDA 自动采样事件：那不是用户填的，
+ * 列出来会变成 48 行噪音。
+ */
+function RecordEventTimeline({ entries }: { entries: EmotionEntry[] }) {
+  if (entries.length === 0) return null;
+  const sorted = [...entries].sort((a, b) => a.t - b.t);
+  return (
+    <View style={styles.recWrap}>
+      {sorted.map((e) => {
+        const d = new Date(e.t);
+        const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const tags = [
+          ...(e.events ?? []).map((k) => EVENT_LABEL[k] ?? k),
+          ...(e.customEvents ?? []),
+        ];
+        const moodColorHex = MOOD_COLOR[e.mood] ?? mm.colors.roseCore;
+        return (
+          <View key={e.id} style={styles.recRow}>
+            <View style={styles.recTimeCol}>
+              <View style={[styles.recDot, { backgroundColor: moodColorHex }]} />
+              <Text style={styles.recTime}>{hhmm}</Text>
+            </View>
+            <View style={styles.recBody}>
+              <Text style={styles.recMood}>{MOOD_LABEL[e.mood] ?? e.mood}</Text>
+              {tags.length > 0 && (
+                <View style={styles.recTags}>
+                  {tags.map((t) => (
+                    <View key={t} style={styles.recTag}>
+                      <Text style={styles.recTagText}>{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {e.note ? <Text style={styles.recNote}>{e.note}</Text> : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 /** 小分区标题（开口式） */
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
@@ -223,6 +276,22 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   }, [dk]);
 
   const report: StressReport = computeStressReport(reportNowMsForDay(anchorMs ?? Date.now()));
+  // ★ 心理压力趋势：与首页「心理压力」大数字读同一份 computeEmotionalStress 报告
+  const esReport = (() => {
+    try { return computeEmotionalStress(reportNowMsForDay(anchorMs ?? Date.now()), null); }
+    catch { return null; }
+  })();
+  const stressPts = stressPointsOf(esReport);
+  const stressScale = esReport?.stressScoreVisible ? esReport.stressScale : null;
+  // 「此刻」槽位：今天按当前时刻；历史日不画此刻线
+  const nowSlot = (anchorMs ?? Date.now()) ? (() => {
+    const t = reportNowMsForDay(anchorMs ?? Date.now());
+    const d = new Date(t);
+    const isToday = d.toDateString() === new Date().toDateString();
+    if (!isToday) return null;
+    const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return Math.max(0, Math.min(47, Math.floor((t - midnight) / 1800000)));
+  })() : null;
   const selfEvents = selfEntries.map(selfEntryToEvent);
   // 合并：手动记录 + EDA 采样，按时间升序；手动记录在同槽内优先展示（slotColor 取优先级）
   const allEvents = [...selfEvents, ...report.events].sort((a, b) => a.t - b.t);
@@ -238,6 +307,8 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
           <Text style={styles.emptyText}>
             还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
           </Text>
+          <SectionTitle>心理压力 · 全天趋势</SectionTitle>
+          <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} />
           <SectionTitle>全天情绪点阵</SectionTitle>
           <MoodDotMatrix events={[]} />
           <SectionTitle>情绪节律</SectionTitle>
@@ -285,11 +356,19 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   return (
     <Card padded={false}>
       <View style={styles.pad}>
+        {/* 心理压力 · 全天趋势（★ 折线，与首页心理压力大数字同源） */}
+        <SectionTitle>心理压力 · 全天趋势</SectionTitle>
+        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} />
+
         {/* 全天情绪点阵（上 0–12 / 下 12–24） */}
         <SectionTitle>全天情绪点阵</SectionTitle>
         <MoodDotMatrix events={allEvents} />
         {selfEvents.length > 0 && (
-          <Text style={styles.hint}>含手动心情记录 {selfEvents.length} 条（按记录时刻落在对应时段）</Text>
+          <>
+            <Text style={styles.hint}>含手动心情记录 {selfEvents.length} 条（按记录时刻落在对应时段）</Text>
+            {/* ★ 点阵图下方把记录内容摊开：时刻 + 心情 + 生活事件标签 + 备注 */}
+            <RecordEventTimeline entries={selfEntries} />
+          </>
         )}
         {eventCount === 0 && (
           <Text style={styles.hint}>今天还没有情绪事件采样 · 用页面底部的「记录此刻心情」记下第一笔</Text>
@@ -332,6 +411,22 @@ const styles = StyleSheet.create({
     marginTop: theme.space.lg,
     marginBottom: theme.sp(2),
   },
+
+  // 记录事件时间线（点阵图下方）
+  recWrap: { marginTop: theme.space.sm, gap: theme.sp(1.5) },
+  recRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1.5) },
+  recTimeCol: { flexDirection: 'row', alignItems: 'center', gap: 4, width: theme.sp(11) },
+  recDot: { width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(1) },
+  recTime: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontVariant: ['tabular-nums'] },
+  recBody: { flex: 1, paddingBottom: theme.sp(1.5), borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.ui.borderSoft },
+  recMood: { fontSize: theme.fontSize.xs, color: theme.colors.textTitle, fontWeight: theme.weight.medium as any },
+  recTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 },
+  recTag: {
+    paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBgSoft,
+  },
+  recTagText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  recNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 3 },
 
   // 全天情绪点阵容器
   matrixWrap: { width: '100%' },

@@ -48,6 +48,14 @@ const EVENT_ICON: Record<EventKey, IconName> = {
   travel: 'plane',
 };
 
+/** 补记时间偏移档（分钟）：负向偏移 = 往回找。覆盖「刚才 / 1h / 3h / 昨天此刻」四种真实场景 */
+const TIME_OFFSETS: { min: number; label: string }[] = [
+  { min: 30, label: '半小时前' },
+  { min: 60, label: '1 小时前' },
+  { min: 180, label: '3 小时前' },
+  { min: 1440, label: '昨天此刻' },
+];
+
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = Math.min(SCREEN_H * 0.8, 540);
 
@@ -62,6 +70,8 @@ export default function EmotionQuickRecord() {
   const [showAdd, setShowAdd] = useState(false);
   const [customPool, setCustomPool] = useState<string[]>([]);
   const [customSel, setCustomSel] = useState<string[]>([]);
+  // ★ 记录时刻：默认此刻，可改为「今天任意时刻」或「昨天同一时刻」（回想补记）
+  const [atOffsetMin, setAtOffsetMin] = useState<number | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 抽屉位移：offY（完全在屏幕下方）→ 0（停靠底部）
@@ -80,6 +90,7 @@ export default function EmotionQuickRecord() {
     setCustomText('');
     setShowAdd(false);
     setSaved(false);
+    setAtOffsetMin(null);   // 每次打开默认「此刻」
     setVisible(true);
     offY.setValue(SHEET_H);
     scrimOp.setValue(0);
@@ -182,9 +193,17 @@ export default function EmotionQuickRecord() {
     ]).start();
   }, [index, pop]);
 
+  /** 实际写入的时刻：atOffsetMin=null → 此刻；否则 = 此刻 - atOffsetMin 分钟 */
+  const recordAtMs = (): number => (atOffsetMin == null ? Date.now() : Date.now() - atOffsetMin * 60000);
+  const atHHMM = (() => {
+    const d = new Date(recordAtMs());
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  })();
+  const isBackfill = atOffsetMin != null && atOffsetMin > 0;
+
   const onRecord = () => {
     if (saved) return;
-    addEmotionEntry(mood, undefined, events, customSel.length > 0 ? customSel : undefined);
+    addEmotionEntry(mood, undefined, events, customSel.length > 0 ? customSel : undefined, recordAtMs());
     setSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => close(), 1300);
@@ -273,6 +292,27 @@ export default function EmotionQuickRecord() {
                 </View>
               </View>
 
+              {/* ★ 记录时刻：默认此刻，可回填「更早 / 1小时前 / 3小时前 / 昨天此刻」 */}
+              <Text style={styles.evTitle}>记录时刻</Text>
+              <View style={styles.timeRow}>
+                <Text style={[styles.timeChip, !isBackfill && styles.timeChipOn]} onPress={() => setAtOffsetMin(null)}>此刻</Text>
+                {TIME_OFFSETS.map((o) => {
+                  const sel = atOffsetMin === o.min;
+                  return (
+                    <Text
+                      key={o.min}
+                      style={[styles.timeChip, sel && styles.timeChipOn]}
+                      onPress={() => setAtOffsetMin(o.min)}
+                    >{o.label}</Text>
+                  );
+                })}
+              </View>
+              <Text style={styles.timeHint}>
+                将记录到 <Text style={styles.timeHintStrong}>{atHHMM}</Text>
+                {atOffsetMin != null && atOffsetMin >= 1440 ? '（昨天）' : ''}
+                {' · '}可在下方全天点阵里对照查看
+              </Text>
+
               {/* 带图标的生活事件多选（＋添加 放在出行旁边） */}
               <Text style={styles.evTitle}>发生了什么？（可选）</Text>
               <View style={styles.evGrid}>
@@ -351,7 +391,9 @@ export default function EmotionQuickRecord() {
                   end={{ x: 1, y: 1 }}
                   style={styles.recGrad}
                 >
-                  <Text style={styles.recText}>{saved ? '已记录 ✓' : '记录此刻'}</Text>
+                  <Text style={styles.recText}>
+                    {saved ? '已记录 ✓' : isBackfill ? `记录到 ${atHHMM}` : '记录此刻'}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -495,6 +537,27 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginBottom: theme.sp(2),
   },
+  // 记录时刻选择
+  timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), marginBottom: theme.sp(1.5) },
+  timeChip: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingHorizontal: theme.sp(2.5),
+    paddingVertical: theme.sp(1.25),
+    borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+  },
+  timeChipOn: {
+    color: mm.colors.purpleDeep,
+    backgroundColor: mm.colors.purpleSoft,
+    borderColor: mm.colors.purpleMid,
+    fontWeight: theme.weight.semibold as never,
+  },
+  timeHint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(3) },
+  timeHintStrong: { color: theme.colors.textTitle, fontWeight: theme.weight.semibold as never },
   addChip: {
     backgroundColor: mm.colors.purpleSoft,
     borderColor: mm.colors.purpleDeep,
