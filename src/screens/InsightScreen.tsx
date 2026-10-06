@@ -64,12 +64,8 @@ const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
 ];
 
 const RHYTHM_SUBS: { key: string; label: string }[] = [
-  { key: 'sleep', label: '睡眠' },
-  { key: 'body', label: '生理' },
-  { key: 'recover', label: '恢复节律' },
-  { key: 'mindCog', label: '认知' },
-  { key: 'sportRec', label: '运动' },
-  { key: 'emotion', label: '情绪' },
+  { key: 'recover', label: '皮质醇' },
+  { key: 'body', label: '雌/孕激素' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
@@ -146,7 +142,7 @@ export default function InsightScreen() {
   const [ring, setRing] = useState<RingState>(RingBle.getState());
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
-  const [subTab, setSubTab] = useState<string>('sleep'); // rhythm: sleep | body | mind  longevity: ecg | bp | sugar | bodycomp | basics
+  const [subTab, setSubTab] = useState<string>('recover'); // rhythm: recover(皮质醇) | body(雌/孕激素)
   // 当前 top tab 生效的子 tab 配置（hero/Segmented/UnderlineTabs 两个分支共用一套）
   const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : LONGEVITY_SUBS;
   const [tab, setTab] = useState<TabKey>('basics');
@@ -402,7 +398,7 @@ export default function InsightScreen() {
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
-          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'sleep' : 'ecg'); }}
+          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'recover' : 'ecg'); }}
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           style={styles.chipRow} contentContainerStyle={styles.chipContent}>
@@ -425,7 +421,7 @@ export default function InsightScreen() {
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
             ) : subTab === 'recover' ? (
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
-              <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+              <AllDayRecoveryCard title="昼夜节律" onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
             ) : subTab === 'mindCog' ? (
               // v18.3：认知 = 认知负荷（与首页「认知消耗」同源 computeCognitiveLoadReport；
               //   今天无采样时回退到最近有数据日，避免整卡空态）

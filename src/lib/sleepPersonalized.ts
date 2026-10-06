@@ -128,4 +128,25 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
   };
 }
 
+/**
+ * ★ v18.156：睡眠恢复的**档位词唯一实现**。
+ *
+ * 为什么必须收成一处（真机实锤）：同一个数在首页会同时出现在 chip 和「睡眠节律」卡 badge 上，
+ * 而两处各自写了一套阈值 —— chip 用 58/42、卡 badge 用 62/45，措辞也不同
+ * （「高于平时」vs「恢复较好」）⇒ 用户同屏看到「61 · 高于平时」和「61/100 · 恢复较好」，
+ * 既像两个指标，又把 61 读成「刚过及格线」（相对口径的锚点是 50，不是 60）。
+ *
+ * ⚠ 相对口径下**不要挂 `/100`**：50 = 和你平时一样，挂百分制必然被读成绝对分。
+ */
+export function sleepRecoveryTag(
+  score: number | null | undefined,
+  mode: 'relative' | 'absolute',
+): string | undefined {
+  if (score == null || !Number.isFinite(score)) return undefined;
+  if (mode === 'relative') {
+    return score >= 58 ? '高于平时' : score >= 42 ? '与平时持平' : '低于平时';
+  }
+  return score >= 80 ? '恢复良好' : score >= 60 ? '恢复中' : '恢复偏弱';
+}
+
 export { MIN_RELATIVE_DAYS, SLEEP_BASELINE_DAYS };

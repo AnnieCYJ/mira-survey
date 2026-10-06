@@ -1,5 +1,5 @@
 /**
- * AllDayRecoveryCard —— 首页「昼夜节律」卡片
+ * AllDayRecoveryCard —— 首页「睡眠节律」/ 洞察页「昼夜节律」卡（title 可配，默认「昼夜节律」）
  *
  * 结构：
  *   上半：睡眠恢复情况 + 皮质醇活性峰值（两枚指标块）
@@ -67,20 +67,16 @@ const PAD_B = 18;          // 底部留白：给时间轴 → 曲线可用振幅
  *   注：SPEC 里的「虚线目标线」无对应真实目标值，按数据铁律不上（不编造基线）。
  */
 
-/** ★ v18.98（对齐 Oura）：只认「昨晚」这一夜 —— 今天的睡眠摘要，或昨天那条但起床落在今早。
- *  旧实现「优先今天、其次昨天、有多少天算多少天」会让一堆旧归档被当成昨晚睡的，
- *  早上打开就冒出一个恢复分；现在拿不到昨晚睡眠 → 返回 null → UI 显示「—」。 */
+/** ★ v18.157（用户口径修正）：**只读今天（自然日）这一格**，不回退到昨天。
+ *  戒指按「起床日」归档睡眠（昨晚睡→今早醒，落在今天 key 下），所以读今天这一格即
+ *  「今天窗口有没有睡眠」的正确答案：
+ *    · 今早醒来有睡眠 → 今天 key 有数 → 正常展示昨夜睡眠；
+ *    · 今天窗口内没有睡眠（如白天打开、昨晚那条归档在昨天）→ 返回 null → UI 显「—」。
+ *  旧实现在今天为空时会回退读昨天、只要起床 <12:00 就当作「昨晚」，
+ *  把更早那晚（归档在昨天 key）的旧睡眠挪用到了今天窗口 —— 用户实锤不要这种行为。 */
 function latestSleep(): SleepSummary | null {
-  const isLastNight = (s: SleepSummary | null): boolean => {
-    if (!s || !((s.total ?? 0) > 0)) return false;
-    const up = typeof s.getUp === 'number' ? s.getUp : null;
-    if (up == null) return true;
-    return up < 12 * 60; // 起床在 12:00 前 ⇒ 昨晚睡到今早
-  };
   const t = healthStore.getSleep(dayKey(Date.now()));
-  if (isLastNight(t)) return t;
-  const y = healthStore.getSleep(dayKey(Date.now() - 86400000));
-  return isLastNight(y) ? y : null;
+  return t && (t.total ?? 0) > 0 ? t : null;
 }
 
 function fmtDur(min: number | null | undefined): string {
@@ -99,7 +95,7 @@ function fmtClock(hourFloat: number): string {
 /** （v18.64 移除 demoCurve 示意曲线：Mira 诚实数据铁律——没戴戒指就空态，不放「看起来像数据」的示意图） */
 
 
-export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string }) {
+export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp, title = '昼夜节律' }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string; title?: string }) {
   // ★ v18.53.2：bg 可传 butter（黄）；图标/强调色默认 lime，黄底时由调用方传 butter.fg
   const iconFg = iconFgProp ?? mm.chipBg.lime.fg;
   const ring = ringProp ?? useRingState();
@@ -174,7 +170,10 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   const baselineReady = proxy.baselineDays >= MIN_BASELINE_DAYS;
   const hasProxy = baselineReady && proxy.validCount >= 3;
   // 峰值时刻 = 实测活性最高的那一槽（不是拟合出来的）
-  const peakClock = dataStale || !hasProxy ? '—' : fmtClock(proxy.peakIdx / 2);
+  // ★ v18.157（用户口径）：皮质醇 tile 只跟**趋势图**同源 —— 图上画得出曲线（有效槽 ≥ MIN_TODAY_SLOTS）
+  //   才显峰值；图上没数据（不画曲线）时 tile 直接显「—」。不再绑「今天有没有睡眠」。
+  const cortReady = !dataStale && hasProxy && proxy.validCount >= MIN_TODAY_SLOTS;
+  const peakClock = cortReady ? fmtClock(proxy.peakIdx / 2) : '—';
   const recoveryWord = !hasProxy
     ? baselineReady ? '数据不足' : `建立基线中（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天）`
     : proxy.peakV >= 70
@@ -186,9 +185,9 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             : '节律平稳';
   const cortisolSub = dataStale
     ? '戒指暂无新数据'
-    : hasProxy
+    : cortReady
       ? `${proxy.ampPct != null ? `波动 ${proxy.ampPct}%` : '活性已建模'} · ${recoveryWord}`
-      : '佩戴后生成活性曲线';
+      : '暂无皮质醇数据';
 
   // ★ v18.156：档位词与 chip 走**同一个函数**（sleepPersonalized.sleepRecoveryTag）。
   //   此前这里自带一套 62/45 + 「恢复较好」措辞，而 chip 是 58/42 + 「高于平时」
@@ -243,7 +242,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             <View style={[styles.iconChip, onColor && { backgroundColor: mm.colors.cardBg }]}>
               <MindIcon name="leaf" size={theme.fs(17)} color={iconFg} />
             </View>
-            <Text style={styles.title}>睡眠节律</Text>
+            <Text style={styles.title}>{title}</Text>
           </View>
           <View style={styles.headRight}>
             <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mira 指标算法评估 · 皮质醇趋势 & 认知准备度</title>
+<style>
+  :root{
+    --ink:#1d2433; --muted:#5b6678; --line:#e4e8ef; --bg:#fff; --panel:#f7f9fc;
+    --ok:#1f9d72; --warn:#c98a16; --bad:#d24b4b; --teal:#0f8a8a; --lav:#5a5ec0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;color:var(--ink);background:#eef1f6;padding:28px}
+  .wrap{max-width:920px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:30px 34px;box-shadow:0 6px 28px rgba(20,30,60,.06)}
+  h1{font-size:23px;margin:0 0 4px}
+  h2{font-size:18px;margin:30px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  h3{font-size:15px;margin:18px 0 6px;color:var(--teal)}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  p{margin:8px 0}
+  code{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#234}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:left}
+  th{background:var(--panel);font-weight:600}
+  .ok{color:var(--ok);font-weight:600}
+  .warn{color:var(--warn);font-weight:600}
+  .bad{color:var(--bad);font-weight:600}
+  .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid}
+  .t-ok{color:var(--ok);border-color:#bfe9d6;background:#effaf4}
+  .t-warn{color:var(--warn);border-color:#f0dcae;background:#fdf6e7}
+  .t-bad{color:var(--bad);border-color:#f1c4c4;background:#fdeeee}
+  .note{background:#fff8ef;border:1px solid #f0dcae;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:13.5px}
+  .crit{background:#fdeeee;border:1px solid #f1c4c4;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:13.5px}
+  .good{background:#effaf4;border:1px solid #bfe9d6;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:13.5px}
+  ul{margin:8px 0 8px 2px;padding-left:20px}
+  li{margin:4px 0}
+  .src{color:var(--muted);font-size:12.5px}
+  .kv{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#234}
+  footer{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>皮质醇趋势 & 认知准备度 · 算法评估</h1>
+  <div class="sub">Mira · mira-app · 2026-10-05 评估（对照开源方案与文献）· 仅就科学性给出判断，不含未经验证的临床结论</div>
+
+  <h2>一句话结论</h2>
+  <table>
+    <tr><th>模块</th><th>首页趋势线实际用的</th><th>方法</th><th>开源/文献依据</th><th>结论</th></tr>
+    <tr>
+      <td><b>皮质醇活性（代理）</b><br><span class="src">cortisolProxy.ts</span></td>
+      <td>proxy：48 槽 z-score 合成</td>
+      <td>多模态加权 + 逐时段基线 + tanh</td>
+      <td>思路同 WHOOP/Garmin 多输入融合；稳健统计通用；但权重是启发式、未做回灌验证</td>
+      <td><span class="tag t-ok">结构 OK</span> <span class="tag t-warn">3 处须修</span></td>
+    </tr>
+    <tr>
+      <td><b>皮质醇节律（cosinor）</b><br><span class="src">cortisolRhythm.ts</span></td>
+      <td><b>不在趋势线</b>（仅详情页做状态判定）</td>
+      <td>标准单频 cosinor 最小二乘</td>
+      <td>CosinorPy / CortSineScore 同算法</td>
+      <td><span class="tag t-ok">数学正确</span> <span class="tag t-warn">概念须注意</span></td>
+    </tr>
+    <tr>
+      <td><b>认知准备度（脑力）</b><br><span class="src">cognitiveLoad.ts</span></td>
+      <td>—（独立指标）</td>
+      <td><span class="kv">0.7×(rec×80+20 − debt×8) + 0.3×sin节律</span></td>
+      <td><b>无</b>。本质是睡眠分 ×0.7 + 正弦 ×0.3，完全没用夜间 HRV/心率</td>
+      <td><span class="tag t-bad">不 OK，应重建</span></td>
+    </tr>
+  </table>
+
+  <div class="crit"><b>必须先讲清的一件事：</b> 你问"趋势图"和"节律推算"是不是一套。它们其实是<b>两套、用途不同</b>——
+  <br>· 首页睡眠节律卡那条曲线 = <b>proxy（推算）</b>：每个 30 分钟窗口由实测 HRV/EDA/体温/心率直接算，<b>没有 cosinor 拟合</b>（v18.116 已主动废弃 cosinor 补曲线）。
+  <br>· cosinor（节律）<b>不参与这条趋势线</b>，只在详情页做"持续偏高 / 节律紊乱"状态判定。
+  <br>所以下面分两块评：proxy 评"趋势图算得对不对"，cosinor 评"节律判定靠不靠谱"。</div>
+
+  <!-- ============ A ============ -->
+  <h2>A. 皮质醇趋势（proxy 推算）—— 结论：结构站得住，但有 3 处要修</h2>
+
+  <div class="good">
+  <b>设计上做得对的地方（这是优势，DD 时可以直接讲）：</b>
+  <ul>
+    <li><b>逐时段基线</b>（<span class="kv">cortisolProxy.ts:159-164</span>）：皮质醇有强昼夜节律，凌晨本就高。代码把一天切成 48 个 30 分钟槽，每个槽<b>跨天取同一时段的中位数</b>作基线——凌晨比你的凌晨、午后比你的午后。这避免了"凌晨永远被判偏高"。这是最正确的一步。</li>
+    <li><b>稳健统计</b>：用中位数 + MAD×1.4826（<span class="kv">:116-129</span>）而非标准差，对运动伪迹/漏检离群点稳健，是生理信号处理的标准做法。</li>
+    <li><b>近期加权基线</b>（<span class="kv">recencyBaseline</span>）：近 2–5 天权重更高，与 Oura/Garmin"rolling average weighted toward recent"一致。</li>
+    <li><b>基线不含今天</b>（<span class="kv">:188-189</span>）：防止今天的活动把自己的基线抬高、系统性低估偏离。</li>
+    <li><b>tanh 压缩</b>（<span class="kv">:397</span>）：单项极端信号不会把总分打爆。</li>
+    <li><b>缺测不编造</b>（<span class="kv">:392-393, :20-21</span>）：某窗口无生理信号 → 该槽 <span class="kv">null</span>，UI 留空。诚实，符合"不画虚线"的承诺。</li>
+    <li><b>方向符号有生理学依据</b>：HRV 反相（HRV↓=交感占优）、EDA/体温/心率正相、活动负相——与交感-副交感模型一致。</li>
+  </ul>
+  </div>
+
+  <div class="crit">
+  <b>要修 / 要知道的 3 处：</b>
+  <ul>
+    <li><b>① 权重是启发式，没有任何验证回归。</b> <span class="kv">PROXY_WEIGHTS</span>（<span class="kv">:58-65</span>）：hrv .26 / eda .24 / temp .18 / rhr .14 / activity .10 / sleepDebt .08。方向对，但"为什么是这些数"没有文献或数据支撑。对比之下 WHOOP/Garmin 的皮质醇/压力模型是<b>专有训练好的 ML</b>，不是简单加权 z 求和。→ 对外可讲"结构同 WHOOP/Garmin 多输入融合"，但<b>必须承认权重未经验证</b>。</li>
+    <li><b>② EDA 地板 <span class="kv">EDA_FLOOR=20</span> 可能让 EDA 整路失效。</b>（<span class="kv">:72, :346</span>）注释写"低于 20μS 视为极静息/未佩戴就不计入"。但手腕 GSR 的典型量程往往远低于 20μS（很多消费级腕部 EDA 在 0.1–5μS 量级）。<b>须用 Veepoo HK18 固件规范核对 EDA 单位与量程</b>——如果实测值普遍 <20，EDA 这一路（权重 .24，几乎最高）就永远不进模型，实际只剩 4 路甚至更少在算，但权重表还写着 6 路。这是最可能悄悄拉低可信度的坑。</li>
+    <li><b>③ sleepDebt 权重（.08）全项目从未传入参数，是死权重。</b>（<span class="kv">:386-390</span> 只在 <span class="kv">opts.sleepDeficit</span> 非空时生效，而全代码没有任何调用方传这个字段）。结果：有效权重被自动重归一，但文档写"合计 1.0"会误导。要么接上睡眠债输入，要么从权重表里删掉、把权重重新归一。<br>另外尺度下限（HRV 3ms / EDA 2μS / RHR 2bpm，<span class="kv">:335/344/375</span>）虽防止噪声放大，但对你这种佩戴稳定的个体，反而会把 1bpm 的正常波动放大成"激活"——属保守设计，需知晓。</li>
+  </ul>
+  </div>
+
+  <div class="note">
+  <b>你实际在趋势图上看的是什么（这点必须懂，否则会误读）：</b> 因为 proxy 用的是"逐时段基线"，曲线是<b>去趋势（de-trended）</b>的——它显示的是"<b>相对你自己同时段的基线，今天这一刻激活/承压了多少</b>"，<b>不是</b>生理上"晨高夜低"的绝对皮质醇曲线。所以你不会在图上看到"早上一条峰、半夜一条谷"的经典形状，这是<b>设计使然</b>，不是 bug。
+  <br>→ 如果你希望用户也能看到"我的昼夜节律长什么样"，正确做法是：把 48 槽<b>基线曲线</b>作为"正常节律"参考线画出来，再把今天的偏离叠上去。而不是拿去趋势的 proxy 值再套 cosinor。
+  </div>
+
+  <!-- ============ A2 ============ -->
+  <h2>A2. 皮质醇节律（cosinor）—— 数学正确，但概念上要小心</h2>
+  <p><span class="kv">fitCosinor</span>（<span class="kv">cortisolRhythm.ts:64-95</span>）是标准的<b>单频 cosinor 最小二乘回归</b>（y = MESOR + β·cos + γ·sin），与开源 <span class="kv">CosinorPy</span> 同算法，数学上没问题。它用在详情页的<b>状态判定</b>上：</p>
+  <ul>
+    <li>持续偏高：当日均值 &gt; 个人 14 天基线 P75（<span class="kv">:225-231</span>）—— 用<b>日均值</b>判断，这部分合理。</li>
+    <li>节律紊乱：振幅 &lt; 15% 日均 或 峰值不在 06–11 点（<span class="kv">:234-242</span>）—— 阈值偏启发式，但因为作用在代理值上，生理含义更松。</li>
+  </ul>
+  <div class="note"><b>概念坑（不影响趋势线，但影响"峰值在 X 点"这句话的可信度）：</b> cosinor 套在 <b>proxy 值</b>上（<span class="kv">:166</span> 对多日 pooling 的 proxy 拟合）。但 proxy 已经用逐时段基线去掉了昼夜分量，再在它上面拟合昼夜峰值，等于<b>对去趋势后的残差二次提取节律</b>——报出来的"峰值时刻"是残差结构，不是真实皮质醇峰值。建议：要么 cosinor 只用于"昼夜形状是否存在/是否紊乱"的判定（不报具体峰值时刻），要么改用原始（非去趋势）信号。好在<b>这条路径不在首页趋势线里</b>，趋势线本身干净。</div>
+
+  <!-- ============ B ============ -->
+  <h2>B. 认知准备度（脑力准备度）—— 结论：当前是"最弱形式"，但有成熟开源方案可重建</h2>
+
+  <div class="crit">
+  <b>当前实现（<span class="kv">cognitiveLoad.ts:333-343</span>）：</b>
+  <pre class="kv">computeMorningReadiness(p){
+  circAdj = clamp(50 + 50·sin(2π·(wakeH − peakH + 6)/24),0,100)/100  // 默认 0.5
+  return 0.7·(p.rec·80 + 20 − p.debt·8) + 0.3·(circAdj·100)
+}</pre>
+  其中 <span class="kv">rec = 睡眠恢复/100</span>。也就是说：<b>认知准备度 = 睡眠分 ×0.7 + 一条正弦 ×0.3 − 睡眠债惩罚</b>。
+  <ul>
+    <li>它<b>完全没有用夜间 HRV、静息心率、体温</b>这些真正代表"恢复/承压"的自主神经信号。</li>
+    <li>自带 P0-1 bug（你之前踩过的）：绝对口径下正常睡眠 rec≈0.75→80 分；相对口径下"和平时一样" rec=0.50→60 分。<b>戴满 5 晚那刻起，认知准备度整体凭空掉 14–20 分，而睡眠根本没变。</b></li>
+    <li>那条正弦（circAdj）中心在 50、权重 0.3，基本是个弱装饰项。</li>
+  </ul>
+  </div>
+
+  <div class="good">
+  <b>你的直觉是对的——认知准备度本来就该有成熟方案，而且开源/文献都很扎实：</b>
+  <h3>① 公开文献与方法（可引用）</h3>
+  <ul>
+    <li><b>Oura Readiness</b>（公开文档）：9 个贡献因子，每个都对<b>个人基线</b>比较——RHR、HRV Balance（14天 vs 3月）、体温偏移、Recovery Index、Sleep、Sleep Balance、Sleep Regularity、前日活动、活动平衡。复合权重专有，但<b>贡献因子的构成公开</b>（support.ouraring.com）。</li>
+    <li><b>Kubios HRV Readiness</b>：把当前静息 HRV 对 3 个月个人基线，用 PNS 指数（副交感）。方法公开、被 1800+ 高校使用。</li>
+    <li><b>WHOOP Recovery</b>：HRV(rMSSD) + RHR + 呼吸率 + 睡眠。</li>
+    <li><b>HRV4Training（Marco Altini, PhD）</b>：主张 readiness 就是 <b>HRV（RMSSD vs 基线）</b>，并<b>明确反对</b>把睡眠+活动+HRV 叠成一个分（会"双重惩罚"——睡差已体现在 HRV 上，再扣一次睡眠分是重复）。<b>这是重要反例</b>，提醒别简单线性叠加。</li>
+    <li>共同文献基底：HRV Task Force 1996、Plews/Buchheit 的 HRV-readiness、Lamberts 的 RHR drift、Gabbett ACWR、Stanley 等。</li>
+  </ul>
+  <h3>② 开源实现（可审计、可借鉴）</h3>
+  <ul>
+    <li><b>NOOP</b>（github.com/ayiskakov/noop）：Readiness 综合 HRV vs 基线(Plews/Buchheit) + RHR drift(Lamberts) + 睡眠呼吸率漂移 + 训练负荷平衡(Gabbett) + 单调(Foster) → Primed/Balanced/Strained/Run down，<b>每条都标了引用</b>。是最贴近你想法的透明实现。</li>
+    <li><b>zepp-health-analytics</b>：Recovery = HRV 0.6 + RHR 0.4（对基线 z-score），引 Garmin HRV Status / AI Endurance / HRV4Training。</li>
+    <li><b>google-health-mcp</b>：Readiness 启发式 HRV 45% + RHR 30% + 睡眠时长 25%（对基线），并明确标注"简单、可审计的启发式"。</li>
+    <li>底层工具（提供 HRV 指标，不含复合分）：<b>NeuroKit2</b>、Kubios Lite、HRV-analysis(Parisi)、pyhrv。</li>
+  </ul>
+  </div>
+
+  <div class="note">
+  <b>建议的重建方向（对齐文献 + 有开源参考，且顺带修掉 P0-1）：</b>
+  把认知准备度从"睡眠分 rescale"改成 <b>Oura/NOOP 式多贡献因子</b>——
+  <ul>
+    <li><b>主导信号 = 夜间 HRV（对 14d/3mo 基线）+ 静息心率偏移</b>（app 已经在算，直接复用）。这正是 Altini/Kubios 反复强调的"生理响应主信号"。</li>
+    <li>睡眠作为<b>其中一个</b>贡献因子（而非全部），权重参考 zepp 的 HRV 主导 + RHR + 睡眠时长结构。</li>
+    <li>遵循 Altini 的告诫：<b>不要</b>把"睡眠分"和"HRV"线性叠加导致双重惩罚——用 HRV 作为恢复主信号，睡眠只作补充上下文。</li>
+    <li>这样相对/绝对口径切换不再让分数凭空跳变（因为不再依赖睡眠分 ×80+20 这种刚性线性映射）。</li>
+  </ul>
+  </div>
+
+  <footer>
+  评估范围：皮质醇 proxy 推算 + cosinor 节律判定 + 认知准备度。全天状态趋势（自研曲线）按用户要求另议。所有"开源/文献支撑"结论基于公开文档与论文，本 app 的具体权重/复合公式尚未与金标准（唾液皮质醇、PSG、PSS 量表、认知任务电池）做过对照验证——这是下一步最该补的硬通货。
+  </footer>
+</div>
+</body>
+</html>

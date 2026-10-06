@@ -229,8 +229,15 @@ export default function StatusTrendDetailScreen() {
       }
       if (anchorKey === todayKey) {
         const anchorDayMs = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 0, 0, 0, 0).getTime();
+        // ★ 与首页「全天状态趋势」(TrendChart.todayStatusTimeline) 同口径：只取「今天」的点，
+        //   剔除混入 ring.statusTimeline 的历史/回填数据点 —— 否则首页为空、点进详情页却把旧曲线当成今天画出来。
+        const nowD = new Date();
         const tl = (ring.statusTimeline ?? [])
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
+          .filter((p) => {
+            const d = new Date(p.t);
+            return d.getFullYear() === nowD.getFullYear() && d.getMonth() === nowD.getMonth() && d.getDate() === nowD.getDate();
+          })
           .map((p) => ({ t: p.t, value: p.value }))
           .sort((a, b) => a.t - b.t);
         // ★ 展开为 48 个完整槽，gap 填 null → 折线自动断线

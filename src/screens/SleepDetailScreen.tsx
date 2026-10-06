@@ -189,7 +189,7 @@ export default function SleepDetailScreen() {
   const navigation = useNavigation<any>();
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
-  const [range, setRange] = useState<RangeKey>('week');
+  const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
   // ★ 皮质醇异常说明弹层（双轴图 icon 点击 / 节律卡「整体水平」点击 共用）
   const [cortSheet, setCortSheet] = useState<{ kind: CortAnomKind; date: string } | null>(null);
@@ -197,6 +197,15 @@ export default function SleepDetailScreen() {
   // ★ key 格式必须与 RingBleManager.dayKeyOf 一致 (YYYY-MM-DD 补零)，否则 sleepDaily map 永远匹配不上
   const dayKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  // ★ 睡眠日 = 自然日，与 RingBleManager.dayKeyOf 的归档口径严格一致：
+  //   戒指把每场睡眠按「起床日」归档（例：昨晚入睡 → 今早起床，落在 today 的 key 下），
+  //   因此白天打开「日」视图读 today，天然就能见到昨夜睡眠，无需任何 18:00 回溯。
+  //   若当日尚无归档（今天还没产生睡眠 / 未同步），各卡一律显示「暂无 / —」，
+  //   绝不把更早日期的旧睡眠挪用进来填充当前窗口（此前 18:00 回溯会误读上一晚的旧数据）。
+  const sleepDayKey = (anchor: Date): string => {
+    return dayKey(anchor);
+  };
 
   const sleepDaily = ring.sleepDaily ?? {};
 
@@ -206,7 +215,7 @@ export default function SleepDetailScreen() {
     const recs = toRecords(sleepDaily);
     if (recs.length === 0) return false;
     if (range === 'day') {
-      const dk = dayKey(anchor);
+      const dk = sleepDayKey(anchor);
       return recs.some((r) => r.key === dk);
     }
     const win = windowOf(range, anchor);
@@ -313,7 +322,7 @@ export default function SleepDetailScreen() {
 
   /** 日视图：hero 输入 + 14 天基线均值 */
   const dayHero = useMemo<{ input: HeroDayRec | null; baseline: number | null }>(() => {
-    const dk = dayKey(anchor);
+    const dk = sleepDayKey(anchor);
     const recs = toRecords(sleepDaily);
     const today = recs.find((r) => r.key === dk) ?? null;
     if (!today) return { input: null, baseline: null };
@@ -338,7 +347,7 @@ export default function SleepDetailScreen() {
 
   /** 日视图：睡眠分析卡 + 生理信号（全部真实归档字段） */
   const dayAnalysis = useMemo<{ day: DaySleepAnalysis | null; segs: SleepSegment[] | null; phys: DayPhys }>(() => {
-    const dk = dayKey(anchor);
+    const dk = sleepDayKey(anchor);
     const isLatest = !ring.sleepSummaryDate || ring.sleepSummaryDate === dk;
     const sum = sleepDaily[dk] ?? null;
     const segs = ring.sleepStagesDaily?.[dk] ?? (isLatest ? ring.sleepStages : null) ?? null;
@@ -461,7 +470,7 @@ export default function SleepDetailScreen() {
           />
 
           <SleepRhythmCard
-            dk={dayKey(anchor)}
+            dk={sleepDayKey(anchor)}
             isToday={dayKey(anchor) === healthDayKey(Date.now())}
           />
         </>

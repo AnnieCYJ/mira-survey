@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mira 指标算法架构梳理 · 2026-10-05</title>
+<style>
+  :root{
+    --ink:#1B1B22; --ink2:#54546A; --ink3:#8C8CA3;
+    --line:#E7E7EF; --line2:#F0F0F6; --bg:#FFFFFF; --surface:#F8F8FC;
+    --teal:#2FA39A; --lav:#7A6BD6; --pink:#DC6289; --lime:#7C9F3A;
+    --amber:#C08337; --red:#C0524A;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    font-size:15px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:56px 32px 96px}
+  h1{font-size:31px;line-height:1.3;margin:0 0 10px;letter-spacing:-.4px}
+  .sub{color:var(--ink3);font-size:14px;margin:0 0 4px}
+  h2{font-size:21px;margin:56px 0 8px;letter-spacing:-.2px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h2 .n{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;
+        background:var(--surface);border:1px solid var(--line);border-radius:7px;
+        font-size:13px;color:var(--ink2);margin-right:10px;vertical-align:2px;font-weight:600}
+  h3{font-size:16px;margin:30px 0 8px}
+  p{margin:9px 0}
+  code{background:var(--surface);border:1px solid var(--line2);border-radius:5px;
+       padding:1px 6px;font-size:13px;font-family:"SF Mono",Menlo,Consolas,monospace;color:#2C2C3A}
+  .lede{color:var(--ink2);font-size:15px;margin:0 0 34px}
+  .meta{display:flex;gap:22px;flex-wrap:wrap;color:var(--ink3);font-size:13px;
+        border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin:22px 0 0}
+  .meta b{color:var(--ink2);font-weight:600}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px}
+  th{text-align:left;font-weight:600;color:var(--ink2);background:var(--surface);
+     padding:9px 12px;border:1px solid var(--line);white-space:nowrap}
+  td{padding:9px 12px;border:1px solid var(--line);vertical-align:top}
+  tr:hover td{background:#FCFCFE}
+  .mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px}
+  .dim{color:var(--ink3)}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+
+  .pipe{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+        padding:22px 24px;margin:18px 0}
+  .step{display:flex;gap:14px;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:none;padding-bottom:0}
+  .step:first-child{padding-top:0}
+  .tag{flex:0 0 84px;font-size:11.5px;font-weight:600;letter-spacing:.4px;color:#fff;
+       border-radius:6px;height:22px;line-height:22px;text-align:center;margin-top:2px}
+  .t-in{background:#8C8CA3} .t-mid{background:var(--teal)} .t-out{background:var(--lav)} .t-gate{background:var(--amber)}
+  .step .body{flex:1;min-width:0}
+  .step .body b{font-weight:600}
+  .step .body .why{color:var(--ink3);font-size:13px;display:block;margin-top:2px}
+
+  .flag{border-left:3px solid var(--line);padding:2px 0 2px 14px;margin:12px 0}
+  .f0{border-color:var(--red)} .f1{border-color:var(--amber)} .f2{border-color:#C9C9D8}
+  .flag .h{font-weight:600;font-size:14.5px}
+  .flag .d{color:var(--ink2);font-size:13.5px;margin-top:3px}
+  .flag .fix{color:var(--ink3);font-size:13px;margin-top:5px}
+  .flag .fix b{color:var(--ink2)}
+  .sev{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;
+       margin-right:8px;vertical-align:2px;letter-spacing:.3px}
+  .s0{background:#FBEDEC;color:#A8403A} .s1{background:#FBF3E6;color:#96682A} .s2{background:#F1F1F6;color:#66667C}
+
+  .ok{background:#F1F7F1;border:1px solid #DCEADD;border-radius:10px;padding:14px 18px;margin:18px 0 0}
+  .ok .h{font-weight:600;font-size:14px;color:#3E6B3E;margin-bottom:4px}
+  .ok ul{margin:6px 0 0;padding-left:20px;color:var(--ink2);font-size:13.5px}
+  ul{padding-left:22px;margin:8px 0} li{margin:4px 0}
+  .matrix td{text-align:center;font-size:15px}
+  .matrix td:first-child,.matrix th:first-child{text-align:left;white-space:nowrap}
+  .y{color:var(--teal);font-weight:700} .n{color:#DADAE4}
+  .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}
+  .kpi div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .kpi .k{font-size:12px;color:var(--ink3);margin-bottom:3px}
+  .kpi .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .kpi .v small{font-size:12px;color:var(--ink3);font-weight:400}
+  footer{margin-top:70px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink3);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Mira 指标算法架构梳理</h1>
+  <p class="sub">睡眠恢复 · 脑力准备度 · 心理压力 · 皮质醇活性 · 全天状态趋势</p>
+  <div class="meta">
+    <span><b>范围</b> mira-app（Expo 51 / RN 0.74）· 纯前端 TS 算法层</span>
+    <span><b>梳理日期</b> 2026-10-05</span>
+    <span><b>代码基线</b> v18.156 工作区（未提交）</span>
+  </div>
+
+  <p class="lede">下面按「谁在用 → 数据从哪来 → 怎么算 → 输出什么 → 锚点在哪」拆开五条链路，最后给问题清单。所有常量都标了源码位置，可逐条复核。</p>
+
+  <h2><span class="n">1</span>一张表看懂五条链路</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>指标（UI 名）</th><th>唯一入口</th><th>主数据源</th>
+        <th>输出</th><th>锚点／口径</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>睡眠恢复</b><br><span class="dim">首页 chip / 睡眠节律卡 / 详情页</span></td>
+        <td class="mono">computeSleepPersonalized()</td>
+        <td>睡眠摘要（时长·深睡·效率·起夜）+ 14 天个人基线</td>
+        <td>0–100 整数</td>
+        <td><b>50 = 和你平时一样</b>（相对）<br><span class="dim">基线不足 5 晚退回绝对口径，锚点 100 = 达标</span></td>
+      </tr>
+      <tr>
+        <td><b>脑力准备度</b><br><span class="dim">首页 chip「脑力准备度」</span></td>
+        <td class="mono">computeCognitiveLoadReport()<br>.brainReserve</td>
+        <td>①睡眠恢复 ②7 天睡眠债 ③皮质醇节律相位 ④起床时刻</td>
+        <td>0–100 整数</td>
+        <td>绝对量。0.7×睡眠侧 + 0.3×节律相位</td>
+      </tr>
+      <tr>
+        <td><b>心理压力</b><br><span class="dim">首页 chip / 情绪详情页</span></td>
+        <td class="mono">computeEmotionalStress()<br>.stressScale.value</td>
+        <td>EDA · HRV · HR · 体温 · MET · 步数（逐 30min 槽）</td>
+        <td>0–100 整数</td>
+        <td><b>50 = 和你平时一样</b>（个人 14 天同时段分布的百分位）</td>
+      </tr>
+      <tr>
+        <td><b>皮质醇活性</b><br><span class="dim">睡眠节律卡（名称与曲线）</span></td>
+        <td class="mono">buildCortisolProxyToday()</td>
+        <td>HRV(反相) · EDA · 体温 · 静息心率 · 活动(负相) · 睡眠债</td>
+        <td>48 槽 × 0–100<br><span class="dim">缺信号 → null</span></td>
+        <td><b>50 = 和你平时一样</b>（相对个人基线）</td>
+      </tr>
+      <tr>
+        <td><b>全天状态趋势</b><br><span class="dim">首页圆环 + 圆环下折线</span></td>
+        <td class="mono">dailyStatus.accumulateWindow()<br>（RingBleManager 驱动）</td>
+        <td>逐 30min 窗口的 HR · 步数 · EDA 波峰 · HRV + 睡眠窗</td>
+        <td>S(t) 0–100 递推<br>+ 四档标签</td>
+        <td>绝对量。四档切点 <b>76 / 51 / 26</b></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>信号 → 指标 的对应关系</h3>
+  <p class="dim" style="font-size:13.5px;margin-top:-2px">同一批戒指信号被五条链路各自加工，这是「同一时刻不同页面数字打架」的结构性来源。</p>
+  <table class="matrix">
+    <thead>
+      <tr><th>原始信号</th><th>睡眠恢复</th><th>脑力准备度</th><th>心理压力</th><th>皮质醇活性</th><th>全天状态</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>HRV（RMSSD）</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td>EDA / 皮电</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td>心率 / 静息心率</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td>体温偏移</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td></tr>
+      <tr><td>步数 / MET</td><td class="n">—</td><td class="n">—</td><td class="y">✓（门控）</td><td class="y">✓（负相）</td><td class="y">✓</td></tr>
+      <tr><td>睡眠摘要</td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td><td class="y">✓（未接通）</td><td class="y">✓</td></tr>
+      <tr><td>周期相位</td><td class="n">—</td><td class="y">✓（相位基线）</td><td class="n">—</td><td class="n">—</td><td class="y">✓（相位基线）</td></tr>
+      <tr><td>用户自报</td><td class="n">—</td><td class="n">—</td><td class="y">✓（校准用）</td><td class="n">—</td><td class="n">—</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="n">2</span>睡眠恢复</h2>
+
+  <div class="pipe">
+    <div class="step">
+      <div class="tag t-in">取数</div>
+      <div class="body">
+        <b>只认「今晚这一觉」</b>
+        <span class="why"><code>findTonightSleep()</code> —— 今天的睡眠摘要，或昨天那条但起床时刻 &lt; 12:00（跨午夜记录常落前一日）。拿不到就是 null，UI 显「—」，不拿更早的存档冒充。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">基线</div>
+      <div class="body">
+        <b>近 14 天四维个人中心</b>
+        <span class="why"><code>buildSleepDimensionCenters()</code> —— 时长 / 深睡% / 效率 / 起夜次数，各取个人中位。<b>刻意排除今晚</b>，否则今天的表现会把自己基线拉高、偏离被系统性低估。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-gate">闸门</div>
+      <div class="body">
+        <b>基线 ≥ 5 晚才切相对口径</b>
+        <span class="why"><code>MIN_D = 5</code>。不足 → 走绝对口径（固定目标：时长 7.5–8.5h 满分、深睡 ≥20%、效率 ≥85%、起夜 3 次归零）。<b>⚠ 切口径那一刻分数会跳</b>，这是已知设计而非 bug。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">计分</div>
+      <div class="body">
+        <b>相对口径：每维算「离自己平时多远」</b>
+        <span class="why"><code>relNorm = clamp(0.5 + (今天/基线 − 1) × 0.5/tol)</code><br>
+        容差 tol：时长 10% · 深睡 25% · 效率 6 个百分点 · 起夜（仅当基线 ≥0.8 次才纳入）<br>
+        权重 <code>W_D .30 / W_DEEP .28 / W_EFF .22 / W_G .20</code>，缺项权重重归一。<br>
+        ⇒ 每项都等于基线 → 正好 <b>50 分</b>。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-out">输出</div>
+      <div class="body">
+        <b>score · mode · baselineDays · daysToReady · regularity</b>
+        <span class="why">档位词走 <code>sleepRecoveryTag()</code>：相对 58/42（高于平时 / 与平时持平 / 低于平时）；绝对 80/60。</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">3</span>脑力准备度</h2>
+
+  <div class="kpi">
+    <div><div class="k">公式主体</div><div class="v" style="font-size:14px">0.7×睡眠侧 + 0.3×节律相位</div></div>
+    <div><div class="k">睡眠侧</div><div class="v" style="font-size:14px">rec×80 + 20 − 债×8</div></div>
+    <div><div class="k">四档阈值</div><div class="v" style="font-size:14px">70 / 40</div></div>
+  </div>
+
+  <div class="pipe">
+    <div class="step">
+      <div class="tag t-in">取数</div>
+      <div class="body">
+        <b>rec（睡眠恢复 0–1）</b>
+        <span class="why">直接复用 <code>computeSleepPersonalized().score / 100</code>，与首页 chip 同源（v18.144 起统一）。没有「昨晚这一觉」→ rec = null → <code>brainReserve = null</code> → UI 显「—」（诚实空态）。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">睡眠债</div>
+      <div class="body">
+        <b>7 天指数衰减欠账</b>
+        <span class="why"><code>debt = Σ max(0, 8h − 当日时长) × exp(−d/5)</code>，d = 1..7。每欠 1 小时扣 8 分准备度。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">节律相位</div>
+      <div class="body">
+        <b>正弦波按起床时刻取相位分</b>
+        <span class="why"><code>circAdj = clamp(50 + 50·sin(2π(wakeH − peakH + 6)/24), 0, 100) / 100</code><br>peakH 来自 14 天皮质醇反推值的 cosinor 拟合峰值时刻（acrophase），取不到默认 8 点。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-out">输出</div>
+      <div class="body">
+        <b>brainReserve（晨间储备）→ 再经 ODE 消耗得到 brainRemaining</b>
+        <span class="why">逐时消耗用 <code>computeHourlyLoad()</code>：<code>E(t+dt) = E(t) − fatigueDrive·dt + recoveryDrive·dt</code>，30min 步长，全天 48 点。<code>brainUsed = reserve − remaining</code>。</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">4</span>心理压力</h2>
+
+  <div class="pipe">
+    <div class="step">
+      <div class="tag t-mid">基线</div>
+      <div class="body">
+        <b>14 天逐 30min 槽的稳健中心 + 尺度</b>
+        <span class="why">EDA / HRV / HR / 体温各自建「同时段」基线（皮质醇类节律指标必须同时段比较，否则凌晨会被白天样本判成异常）。中心 = 加权中位（半衰期 7 天，10–90% 截尾），尺度 = MAD×1.4826，退化时用 IQR 兜底。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-gate">门控 ①</div>
+      <div class="body">
+        <b>设备漂移检测</b>
+        <span class="why">今日 EDA 全天中位 vs 基线中位，稳健 z ≥ 4 → 判定接触不良，<b>只剔除 EDA 三路</b>（权重 0.52），剩下 HRV/HR/体温重归一后继续算。不整段清零。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-gate">门控 ②</div>
+      <div class="body">
+        <b>运动门控（4 层）</b>
+        <span class="why">L1 固件运动段 + L1b 运动后恢复期 + L2 MET/步数 + L3 心率残差 → 判为运动的槽<b>直接排除</b>，不参与压力判定。（运动会让 EDA/HR 同向变化，不排除就会把跑步读成高压。）</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">融合</div>
+      <div class="body">
+        <b>6 特征加权稳健 z</b>
+        <span class="why">每路：生理可信区间校验 → 稳健 z → <code>clamp(±2.5)</code> → × 权重 → 按权重和归一。<br>
+        权重 <code>皮电水平 .30 / HRV 下降 .22 / 心率上升 .16 / 皮电上升趋势 .14 / 体温偏移 .10 / 皮电波动度 .08</code>。<br>
+        参与特征 &lt; 2 的槽不给结论。<span class="dim">权重是「有文献方向依据的初始值」，不是拟合系数。</span></span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">映射</div>
+      <div class="body">
+        <b>z → 百分位（单边）</b>
+        <span class="why"><code>pct = 50 + 50·tanh(z/2)</code>。单边化的理由：压力只有「偏高」这一侧有意义，「远低于基线」不是信号。<br>
+        全天读数 = 所有参与判定槽（含平静槽）的百分位均值。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-gate">闸门 ③</div>
+      <div class="body">
+        <b>自报校准</b>
+        <span class="why">把用户自报的压力情绪与同时段生理分配对算相关系数 r。基线 &lt; 3 天 → 断开；r &lt; 0.2（已证明对你无效）→ 不给数字；其余情况<b>照出数字并标注未校准</b>。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-out">输出</div>
+      <div class="body">
+        <b>0–100 百分位 + 三档标签</b>
+        <span class="why">切点 <code>50 / 70</code> → 较低压力 / 中等压力 / 较高压力。另外输出信号完整度（权重和）用于降级提示。</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">5</span>皮质醇活性</h2>
+
+  <p>戒指没有皮质醇传感器，这一项是<b>反推的相对量</b>，不叫「皮质醇值」。业界同做法（Garmin 压力分 vs 唾液皮质醇 r = 0.29–0.71；Body Battery vs 晨起皮质醇 r = 0.52）。</p>
+
+  <table>
+    <thead><tr><th>信号</th><th class="num">权重</th><th>方向</th><th>生理依据</th></tr></thead>
+    <tbody>
+      <tr><td>HRV</td><td class="num">0.26</td><td>反相</td><td>迷走张力↓ → 交感占优 → HPA 轴激活</td></tr>
+      <tr><td>EDA / 皮电</td><td class="num">0.24</td><td>正相</td><td>汗腺受交感神经直接支配</td></tr>
+      <tr><td>体温偏移</td><td class="num">0.18</td><td>正相</td><td>下丘脑体温设定点上移 = 交感激活</td></tr>
+      <tr><td>静息心率偏移</td><td class="num">0.14</td><td>正相</td><td>交感激活 → 心率升高</td></tr>
+      <tr><td>活动强度</td><td class="num">0.10</td><td>负相</td><td>运动短期压制 HPA，需从总分中扣除</td></tr>
+      <tr><td>睡眠债</td><td class="num">0.08</td><td>正相</td><td>深睡不足 → 次日晨间 HPA 失调</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pipe">
+    <div class="step">
+      <div class="tag t-mid">基线</div>
+      <div class="body">
+        <b>近 14 天、不含今天、按 30min 槽</b>
+        <span class="why">每槽各信号取加权中位 + MAD 尺度。用 MAD 而非标准差，是为抗漏检与运动伪迹。基线不足 3 天 → UI 显「建立基线中」。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">合成</div>
+      <div class="body">
+        <b>z 加权合成 → tanh 压缩</b>
+        <span class="why"><code>raw = Σ(wᵢ·zᵢ) / Σwᵢ</code> → <code>v = 50 + 50·tanh(raw/2)</code>。<br>映射函数与「心理压力」刻意同一套（一个项目里所有 z→有界量必须一致）。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-gate">闸门</div>
+      <div class="body">
+        <b>缺信号 = null，不补形状</b>
+        <span class="why">某槽没有任一生理信号 → 该槽没有值，图上断开（间隔 &gt;1h 不连线）。<b>不做 cosinor 拟合、不画虚线</b>（早期版本用 14 天拟合曲线填补缺失，已废弃）。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-out">输出</div>
+      <div class="body">
+        <b>48 槽 0–100 + 每槽信号数</b>
+        <span class="why">卡上峰值时刻 = 实测活性最高那一槽（不是拟合峰值）；波动幅度 = (max − min) / 均值。</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">6</span>全天状态趋势（今日状态）</h2>
+
+  <p>这是一个<b>逐 30 分钟递推的状态量</b>，不是对某个生理量的直接映射。</p>
+
+  <p style="background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;font-family:'SF Mono',Menlo,monospace;font-size:13.5px;margin:16px 0">
+    S(t) = clamp( S(t−1) + recovery − drain + homeostasis, 0, 100 )
+  </p>
+
+  <table>
+    <thead><tr><th>项</th><th>取值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3"><b>recovery</b><br><span class="dim">恢复</span></td>
+          <td class="mono">K_REC_HRV × (HRV比−1) = 6/单位</td><td>HRV 高于期望才有增益</td></tr>
+      <tr><td class="mono">K_REC_REST × (1−HR抬升) = 3.5</td><td>静息恢复；EDA 高时打 4 折</td></tr>
+      <tr><td class="mono">上限 REC_CAP = 6</td><td>单窗口最多回 6 分</td></tr>
+
+      <tr><td rowspan="5"><b>drain</b><br><span class="dim">消耗</span></td>
+          <td class="mono">K_DR_HR × HR抬升 = 4</td><td>心率相对静息抬升比例</td></tr>
+      <tr><td class="mono">K_DR_STEP × 步数比 = 2.5</td><td>步数 / 期望 600 步每 30min</td></tr>
+      <tr><td class="mono">K_DR_EDA × EDA波峰数 = 0.8</td><td>窗口内皮电波峰计数（0–8）</td></tr>
+      <tr><td class="mono">K_DR_STRESS × 应激代理 = 1.5</td><td>EDA 满量程归一</td></tr>
+      <tr><td class="mono">上限 DRN_CAP = 4</td><td>单窗口最多掉 4 分</td></tr>
+
+      <tr><td rowspan="4"><b>equilibrium</b><br><span class="dim">稳态目标</span></td>
+          <td class="mono">EQ_REST = 95</td><td>放松 / 小睡时的回拉目标</td></tr>
+      <tr><td class="mono">EQ_ACTIVE = 70</td><td>活动时段</td></tr>
+      <tr><td class="mono">EQ_STRESS = 72</td><td>久坐焦虑时段</td></tr>
+      <tr><td class="mono">K_HOME = 0.05</td><td>每 30min 拉向目标 5% 的差距</td></tr>
+
+      <tr><td rowspan="2"><b>睡眠段</b><br><span class="dim">v18.155 新</span></td>
+          <td class="mono">K_SLEEP_CHARGE = 0.22</td><td>睡眠窗每 30min 拉向目标 22% 的差距</td></tr>
+      <tr><td class="mono">SLEEP_ENTRY_LEVEL = 45</td><td>睡前水位（曲线起点）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pipe">
+    <div class="step">
+      <div class="tag t-in">seed</div>
+      <div class="body">
+        <b>晨间种子 S0</b>
+        <span class="why"><code>computeSeed()</code> = clamp( 0.4×HRV分 + 0.25×RHR分 + 0.35×睡眠分 − 70 + 60, 0, 100 )<br>
+        HRV/RHR 各自对「同周期相位的历史中位」评分（相位差异被基线吸收，不做额外相位惩罚）。睡眠分用 <code>dailyStatus</code> 自己的 <code>computeSleepScore</code>（<b>绝对口径</b>）。<br>
+        wakeNorm = 历史 S0 中位，<code>recoveryDelta = S0 − wakeNorm</code>（±5 分内算「持平」）。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-mid">睡眠段</div>
+      <div class="body">
+        <b>向 seed 一阶渐进（v18.155 改动）</b>
+        <span class="why">旧实现是 <code>prev + 4 + (95−prev)×0.05</code>，不动点解出 175 ⇒ 睡够 6.5h 必然封顶 100，且整段不读任何睡眠质量量（睡眠分 20 与 100 画出同一条线）。<br>
+        改为 <code>prev + (seed − prev) × 0.22</code>：睡不好就停在真正能恢复到的水位。起点同时从 seed 改为睡前水位 45，seed 归位到起床时刻。</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="tag t-out">输出</div>
+      <div class="body">
+        <b>CurvePoint[] + 四档</b>
+        <span class="why">切点 <code>LEVEL_TOP 76 / LEVEL_MID 51 / LEVEL_LOW 26</code> → 充沛 / 平稳 / 偏低 / 不足。<br>
+        由 <code>realFlags</code> 区分「戒指真实采样点」与「回填补齐点」，首页折线只画真实点。</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">7</span>问题清单</h2>
+
+  <p class="lede" style="margin-bottom:22px">按「会不会让用户看到自相矛盾的数字」排序。P0 = 同屏矛盾或整体偏移，用户能直接看出来；P1 = 数值失真但不易直接察觉；P2 = 结构隐患。</p>
+
+  <div class="flag f0">
+    <div class="h"><span class="sev s0">P0</span>脑力准备度会因口径切换整体下移约 14 分</div>
+    <div class="d">
+      <code>computeMorningReadiness()</code> 里睡眠侧是 <code>rec×80 + 20</code>，其中 <code>rec</code> 取自「睡眠恢复/100」。<br>
+      绝对口径（基线 &lt; 5 晚）下，正常睡眠的 rec 约 <b>0.75</b> → 睡眠侧 80 分；<br>
+      相对口径（≥ 5 晚）下，和平时一样的 rec 是 <b>0.50</b> → 睡眠侧 60 分。<br>
+      ⇒ 戴满 5 晚之后，脑力准备度会<b>凭空掉 14 分</b>（20 × 0.7），而用户的睡眠并没有变差。
+    </div>
+    <div class="fix"><b>已定位</b>：同文件的 <code>loadScore</code> 计算里做了中性点补偿（<code>sleepRecoveryNeutral</code>），但 <code>morningReadiness</code> 这一路漏了。<b>修法</b>：把 rec 先归一到「相对中性点」再进公式，或让 morningReadiness 也接收 neutral。</div>
+  </div>
+
+  <div class="flag f0">
+    <div class="h"><span class="sev s0">P0</span>三套「应激」链路并存，同一时刻可以互相矛盾</div>
+    <div class="d">
+      现在有三份独立实现：<br>
+      ① <code>stressAlgorithm</code> —— 主源用固件 stress 等级（0–12 → 0–100），EDA 稳健 z 兜底（详情页在用）<br>
+      ② <code>emotionalStress</code> + <code>stressFeatures</code> —— 6 特征加权融合 → 百分位（首页 chip 在用）<br>
+      ③ <code>cortisolProxy</code> —— 6 路信号水平偏离 → 0–100（睡眠节律卡在用）<br>
+      三者基线窗口虽已统一到 14 天加权中心，但<b>特征层与权重完全不同</b>：②有「皮电上升趋势/波动度」而③有「活动/睡眠债」；对运动更是哲学相反——②把运动槽<b>排除</b>，③把活动当<b>负相扣减</b>。<br>
+      ⇒ 运动后可能出现「心理压力中等、皮质醇活性却很低」这类组合。
+    </div>
+    <div class="fix"><b>建议</b>：短期至少在 UI 上明确三者不是同一个量（现在三张卡都写着「相对你自己」）；中期收敛为共享特征层 + 各自映射。</div>
+  </div>
+
+  <div class="flag f0">
+    <div class="h"><span class="sev s0">P0</span>曲线 seed 的睡眠分与首页「睡眠恢复」不同源，且少一个维度</div>
+    <div class="d">
+      首页 chip 走 <code>computeSleepPersonalized</code>（<b>相对口径，四维</b>，含效率项）。<br>
+      曲线 seed 走 <code>dailyStatus.computeSeed</code> 内的 <code>computeSleepScore</code>（<b>绝对口径，SLEEP_REF=72</b>）。<br>
+      更细的一处：<code>RingBleManager</code> 构造 seed 输入时传的是 <code>{ sleepTotal, sleepDeep, getUp }</code>，<b>漏了 sleepAwake</b> ⇒ 效率项（权重 0.22）被整项剔除后权重重归一。<br>
+      ⇒ 首页 chip 算 4 个维度，曲线 seed 只算 3 个；两者不会同步变化。
+    </div>
+    <div class="fix"><b>修法</b>：seed 的睡眠项改为复用 <code>computeSleepPersonalized().score</code>，并补传 sleepAwake。注意 seed 是绝对量，接入相对分需要重新标定 W_S0_S 的语义。</div>
+  </div>
+
+  <div class="flag f1">
+    <div class="h"><span class="sev s1">P1</span>夜间睡眠目标（seed）与白天静息目标（95）倒挂 —— v18.155 改动的副作用</div>
+    <div class="d">
+      这次把睡眠段目标从固定 95 改成 seed（通常 50–80）之后：<br>
+      · 睡眠段：45 → seed，一觉最多收敛到 seed；<br>
+      · 白天静息：只要久坐放松（HR &lt; 静息×0.95、步数 &lt;5、EDA 低），就按 K_HOME=0.05 被拉向 <b>95</b>。<br>
+      ⇒ <b>白天在沙发上坐一小时的状态值，可能高于整夜睡眠后的值</b>，生理语义上讲不通。
+    </div>
+    <div class="fix"><b>建议</b>：把「静息恢复目标」也个人化 —— 最自然的是 <code>equilibrium_rest = seed</code>（白天静息只能回到今晨的水平，不超越）。这样曲线自洽且单调合理：夜间充到 seed，白天消耗后小幅回升到 seed 附近。</div>
+  </div>
+
+  <div class="flag f1">
+    <div class="h"><span class="sev s1">P1</span>皮质醇活性的「睡眠债」这一路从未接通</div>
+    <div class="d">
+      <code>cortisolProxy</code> 的权重表里 <code>sleepDebt: 0.08</code>，但取值依赖调用方传入 <code>opts.sleepDeficit</code>。全项目搜索，<b>没有任何调用方传过它</b>（<code>AllDayRecoveryCard</code> 调 <code>buildCortisolProxyToday(bl)</code> 时只传了基线）。<br>
+      ⇒ 权重 0.08 永远不参与，实际只有 5 路信号在工作，且注释里「六路信号」的说法与实现不符。
+    </div>
+    <div class="fix"><b>修法</b>：要么在调用处算好 sleepDeficit 传进去，要么把这一路从权重表移除并修正注释（不能两者都不做）。</div>
+  </div>
+
+  <div class="flag f1">
+    <div class="h"><span class="sev s1">P1</span>消耗项里 EDA 可以单项打满上限</div>
+    <div class="d">
+      <code>drain = K_DR_HR·HR抬升 + K_DR_STEP·步数比 + K_DR_EDA·EDA波峰 + K_DR_STRESS·应激代理</code>，最后 <code>min(drain, DRN_CAP=4)</code>。<br>
+      而 EDA 波峰数上限 8、K_DR_EDA = 0.8 ⇒ <b>EDA 单项最高 6.4，已超过 4 的封顶</b>。<br>
+      ⇒ 只要窗口内有 5 个以上皮电波峰，drain 恒为 4，心率/步数/HRV 的贡献被完全吞掉，看不出是谁在消耗。
+    </div>
+    <div class="fix"><b>修法</b>：各项先按自身量程归一再加权（现在是直接相加再截断），或提高 DRN_CAP 并调低各系数。</div>
+  </div>
+
+  <div class="flag f1">
+    <div class="h"><span class="sev s1">P1</span>历史曲线重建时 HRV 全天恒定</div>
+    <div class="d">
+      <code>rebuildDayTimelineFromHealthStore</code> 里 <code>const hrv = hrvDaily …</code> —— 每个窗口用同一个日均值。于是 <code>isRecoveringNow</code> 的 HRV 条件（<code>hrvRatio &gt; 0.9</code>）在整天恒定，<br>
+      ⇒ 「是否处于恢复态」实际只由心率/步数/EDA 决定，HRV 这一维在历史曲线上形同虚设。（实时路径读的是窗口内真实 HRV，两条路径口径不一致。）
+    </div>
+  </div>
+
+  <div class="flag f1">
+    <div class="h"><span class="sev s1">P1</span>基线成熟门槛不统一：5 晚 / 3 天 / 3 天</div>
+    <div class="d">
+      睡眠恢复要 <code>≥5</code> 晚才进相对口径；心理压力与皮质醇活性都是 <code>≥3</code> 天。同一个新用户，第 3–4 天会在首页看到「压力有数、睡眠还没数」。<br>不算错，但口径不一致会让人觉得成熟度是随机的。
+    </div>
+  </div>
+
+  <div class="flag f2">
+    <div class="h"><span class="sev s2">P2</span>「50 = 和平时一样」却标成「中等压力」</div>
+    <div class="d">
+      档位切点是 50 / 70，恰好把「和你平时完全一样」这个锚点划进「中等压力」档。<br>
+      用户看到「55 · 中等压力」会理解成「我今天压力中等」，实际含义是「我今天和平时一样」。这和睡眠恢复那个 61 被读成「刚及格」是同一类语义冲突。
+    </div>
+    <div class="fix"><b>可选</b>：档位名改成「低 / 与平时持平 / 高」三档（保持 50/70 切点），或把切点整体上移（如 55/75）让 50 落在低档。</div>
+  </div>
+
+  <div class="flag f2">
+    <div class="h"><span class="sev s2">P2</span>「心理压力是否显示数字」有两份闸门判断</div>
+    <div class="d">
+      <code>emotionalStress</code> 内部导出 <code>stressScoreVisible</code>（= 校准通过 && 有值），但 UI 没有用它 —— TodayScreen 自己又写了一遍 <code>calibration.level === 'invalid'</code> 的判断。两处逻辑目前一致，改一处漏一处就会分裂。
+    </div>
+  </div>
+
+  <div class="flag f2">
+    <div class="h"><span class="sev s2">P2</span>「睡眠恢复」档位词目前有 5 套写法</div>
+    <div class="d">
+      首页 chip、睡眠节律卡 badge、SleepCard 三处本轮已统一到 <code>sleepRecoveryTag()</code>。<br>
+      仍有两处独立：<code>EnergyDetailScreen</code> 用 <code>0.75/0.55/0.35</code>（措辞「恢复良好/一般/不足/严重不足」）、<code>RingBleManager</code> 头条用 seed 的 <code>recoveryLabel</code>（「优于平时/持平/差于平时」，走的是<b>另一个量</b>：S0 与历史 S0 中位之差）。
+    </div>
+  </div>
+
+  <div class="flag f2">
+    <div class="h"><span class="sev s2">P2</span>曲线起点 SLEEP_ENTRY_LEVEL = 45 是全局常量</div>
+    <div class="d">
+      睡前水位对所有人都是 45，而 seed 是个人化的。对「平时睡前就在 60」的人，曲线会在睡眠段向上爬；对「睡前 35」的人，曲线要先被抬到 45 —— 两种情况下睡眠段的形状都被这个常量塑形，而不是被真实恢复过程塑形。
+    </div>
+  </div>
+
+  <div class="flag f2">
+    <div class="h"><span class="sev s2">P2</span>冷启动文献基线是占位值</div>
+    <div class="d">
+      <code>dailyStatus.LIT</code> 那张按周期相位分桶的 HRV/RHR/睡眠群体基线，源码注释自陈「这些是占位文献常数值，正式上线前应替换为已发表的纵向研究数据」。冷启动用户的相位基线目前走的是这张表。
+    </div>
+  </div>
+
+  <h2><span class="n">8</span>本轮已改动</h2>
+  <div class="ok">
+    <div class="h">已完成并验证（tsc 全项目 44 个报错，全为 900–1900 行历史遗留，改动文件 0 报错）</div>
+    <ul>
+      <li>睡眠节律卡标题「昼夜节律」→「<b>睡眠节律</b>」（<code>AllDayRecoveryCard.tsx</code>）</li>
+      <li>删除卡片底部整行压力解读（色点 + 压力结论 + 趋势说明），保留「反推自 HRV·皮电·体温·心率」的数据来源说明（<code>AllDayRecoveryCard.tsx</code>）</li>
+      <li>睡眠恢复档位词收成唯一实现 <code>sleepPersonalized.sleepRecoveryTag()</code>，首页 chip / 节律卡 badge / SleepCard 三处同源；相对口径下不再挂 <code>/100</code></li>
+    </ul>
+  </div>
+
+  <footer>
+    源码位置：<span class="mono">src/lib/{sleepPersonalized, sleepScore, sleepBaseline, cognitiveLoad, stressAlgorithm, stressFeatures, emotionalStress, psychologicalStressScale, cortisolProxy, recencyBaseline, dailyStatus}.ts</span> ·
+    <span class="mono">src/ble/RingBleManager.ts</span> · <span class="mono">src/components/AllDayRecoveryCard.tsx</span> · <span class="mono">src/screens/TodayScreen.tsx</span>
+  </footer>
+
+</div>
+</body>
+</html>

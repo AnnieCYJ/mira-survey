@@ -1288,10 +1288,10 @@ export default function TodayScreen() {
     // ★ v18.155：睡眠恢复 chip 的单位随口径切换。
     //   相对口径的锚点是 50（= 和你平时一样），挂「/100」会被读成「睡眠只有 61 分」——
     //   这正是 sleepScore.ts 头注明确警告过的误读。相对口径不显示单位，参照系交给下面的 tag。
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: sleepPers?.mode === 'relative' ? undefined : '/100', tag: recTag, onPress: () => navigation.navigate('EmotionCognitiveDetail') },
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: sleepPers?.mode === 'relative' ? undefined : '/100', tag: recTag, onPress: () => navigation.navigate('SleepDetail') },
     { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力准备度', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    { key: 'period', icon: 'moon', tone: 'lav', label: '经期', value: status?.phaseLabel ?? '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
+    { key: 'period', icon: 'moon', tone: 'lav', label: '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', tag: status?.phaseLabel ?? undefined, moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
@@ -1532,11 +1532,13 @@ export default function TodayScreen() {
                    dataStale 与首页圆环同源（同一判据，不另设口径）。
                 ★ 2026-10-05：暂时隐藏（见文件顶部 SHOW_SLEEP_CARD），代码与 props 原样保留。 */}
             {SHOW_SLEEP_CARD ? (
-              <SleepCard dataStale={dataStale} onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+              <SleepCard dataStale={dataStale} onPress={() => navigation.navigate('SleepDetail')} />
             ) : null}
 
             {/* 最上面 = 全天恢复（★ v18.62 去彩底回白卡：颜色留给 lime chip/badge + 趋势曲线） */}
-            <AllDayRecoveryCard onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+            {/* ★ 2026-10-06：用户要求「睡眠节律」卡点进去 = 洞察页睡眠 tab「睡眠结构」卡点进去的
+                同一页（SleepDetail，昨天改的睡眠结构/节律详情），不再是昼夜节律/皮质醇页。 */}
+            <AllDayRecoveryCard title="睡眠节律" onPress={() => navigation.navigate('SleepDetail')} />
 
             {/* 中排：左高块 = 脑力（lime：24h 疲劳柱状图 + 预测/真实峰谷行）；右列 = 情绪 / 运动
                 ★ v18.68：去准备度（只在脑力消耗详情展示）；★ v18.126 标题「认知」→「脑力」（与顶部 chip 口径统一）
@@ -1616,6 +1618,7 @@ export default function TodayScreen() {
               chipBg={mm.chipBg.lav.bg}
               icon="moon"
               iconFg={mm.chipBg.lav.fg}
+              moonStyle={phaseMoon}
               title="经期"
               aside={status?.phaseLabel
                 ? `${status.phaseLabel}${status.dayInCycle != null ? ` · 第 ${status.dayInCycle} 天` : ''}`

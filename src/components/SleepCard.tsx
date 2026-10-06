@@ -3,7 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
-import { computeSleepPersonalized } from '../lib/sleepPersonalized';
+import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 import { healthStore } from '../data/healthStore';
 
 /**
@@ -102,10 +102,9 @@ const SleepCard = React.memo(function SleepCard({ dataStale = false, onPress }: 
   const reg = rep.regularity;
   const deepPct = s && s.total > 0 ? Math.round(((s.deep ?? 0) / s.total) * 100) : null;
 
-  // 恢复档位：⚠ 两套口径必须用各自的中性点（绝对 80/60、相对围绕 50）
-  const recoveryLabel = relative
-    ? (score >= 62 ? '恢复较好' : score >= 45 ? '恢复一般' : '恢复偏弱')
-    : (score >= 80 ? '恢复良好' : score >= 60 ? '恢复中' : '恢复偏弱');
+  // ★ v18.156：档位词统一走 `sleepRecoveryTag`（与首页 chip / 睡眠节律卡 badge 同源）。
+  //   此前这里自带 62/45 一套，而 chip 是 58/42 —— 同一张首页上「睡眠恢复」有四种说法。
+  const recoveryLabel = sleepRecoveryTag(score, relative ? 'relative' : 'absolute') ?? '—';
 
   // 进度条锚点：相对口径锚在 50（和平时一样），绝对口径锚在「7.5h 达标≈80」
   const anchorPct = relative ? 50 : 80;

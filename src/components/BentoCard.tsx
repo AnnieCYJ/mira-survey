@@ -12,6 +12,7 @@ import { View, Text, StyleSheet, Pressable, Animated, type StyleProp, type ViewS
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { MindIcon, type MindIconName } from './MindIcons';
+import { MoonDot, type MoonStyle } from './CycleMoonPhase';
 
 interface Props {
   /** 卡底色 —— ★ v18.62 全部白卡（用户：背景去掉，颜色留在图表和数据里），传 mm.colors.cardBg */
@@ -22,6 +23,8 @@ interface Props {
   icon: MindIconName;
   /** 图标色（传 mm.chipBg[tone].fg） */
   iconFg: string;
+  /** ★ v18.157：月相图标（经期卡用）——传入后白圆 chip 内改画 MoonDot，与首页圆环/经期 chip 同一套月相，保证「同一指标画出同一个图标」。不传则画普通 icon。 */
+  moonStyle?: MoonStyle;
   title: string;
   value?: string;
   unit?: string;
@@ -49,7 +52,7 @@ interface Props {
 }
 
 function BentoCardImpl({
-  bg, chipBg, icon, iconFg, title, value, unit, sub, statTop, aside, subLine, chart, foot, footLines, numTop, compact, style, onPress,
+  bg, chipBg, icon, iconFg, moonStyle, title, value, unit, sub, statTop, aside, subLine, chart, foot, footLines, numTop, compact, style, onPress,
 }: Props) {
   const pressScale = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
@@ -67,7 +70,9 @@ function BentoCardImpl({
         {/* 顶行：白圆图标 + 标题（+ aside 右标签 / 顶行大数字） */}
         <View style={styles.topRow}>
           <View style={[styles.chip, chipBg ? { backgroundColor: chipBg } : null, compact && styles.chipCompact]}>
-            <MindIcon name={icon} size={compact ? theme.fs(14) : theme.fs(17)} color={iconFg} />
+            {moonStyle != null
+              ? <MoonDot style={moonStyle} size={compact ? theme.fs(14) : theme.fs(17)} />
+              : <MindIcon name={icon} size={compact ? theme.fs(14) : theme.fs(17)} color={iconFg} />}
           </View>
           <View style={{ flexShrink: 1 }}>
             <Text style={[styles.ttl, compact && styles.ttlCompact]} numberOfLines={1}>{title}</Text>

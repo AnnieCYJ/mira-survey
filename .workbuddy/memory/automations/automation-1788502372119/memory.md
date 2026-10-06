@@ -71,3 +71,8 @@
 - 发现：工作区存在 29 项未提交改动（本地与 origin 0 领先）——新建压力/睡眠/皮质醇算法体系：10 个新 lib（emotionalStress 764 行、cortisolProxy、stressFeatures、motionGate、selfReportCalibration、psychologicalStressScale、sleepBaseline、cortisolChartGeom、recencyBaseline、sleepPersonalized，合计约 3600 行）+ SleepCard 组件；修改 15 个源文件（RingBleManager +457 行大增强、cognitiveLoad/sleepScore 算法扩展、TodayScreen/AllDayRecoveryCard/CortisolRhythmCard 等界面迭代、theme 加色）；automation 记忆文件待提交修改。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：先追加本条记录 → 执行 `git add -A` → commit ed48e76「新增压力/睡眠/皮质醇算法体系：情绪压力、压力特征、运动门控、自报校准、睡眠基线等 10 个 lib 与 SleepCard 组件；增强 BLE 管理层并迭代认知负荷、睡眠评分与今日/能量等界面」→ push 成功 37c32df..ed48e76（28 files, +5053/-431）。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-05 14:12（第十四次运行）
+- 发现：工作区 9 项未提交改动（本地与 origin 0 领先）——状态趋势详情页 v18.147–153 大改版（StatusTrendDetailScreen ±646 行：月视图周期相位带+PMS、周视图皮质醇异常图标、散点/折线口径对齐首页 TrendChart、四等级图例与 StressWatch 式详细分析、删除激素均值三宫格）；AllDayRecoveryCard 睡眠分统一个人基线口径（v18.146，修「圆环 52 / 节律卡 94」两把尺问题）+ badge 档位词同源 + COR-PROBE 日志移入 useMemo；cycleMath 修跨周期日期相位判定（按周期内位置取模，月视图相位带修复）；TodayScreen 隐藏睡眠卡（SHOW_SLEEP_CARD 开关、代码保留）、移除「运动消耗」chip（4 张排满一行）、间距收紧；EnergyBall 画布底部空带负 margin 收回（图例不再被顶出屏）；MindChips 条目 5→4；新增 _design_preview/ 两个趋势图设计 HTML；另含 10-04 记忆文件哈希回填。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：git add -A → commit 7d41442「状态趋势详情页大改版（v18.147–153）：图表叠加周期相位带/皮质醇异常图标、口径对齐首页趋势图与四等级图例；睡眠分统一个人基线口径、修跨周期相位判定、隐藏睡眠卡并移除运动消耗 chip」→ push 成功 ed48e76..7d41442（9 files, +1215/-148）。
+- 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。

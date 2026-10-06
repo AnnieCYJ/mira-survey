@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 指标算法 · 科学/开源依据评估</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d212b; --line:#2a2f3a;
+    --ink:#e8eaed; --sub:#9aa3b2; --faint:#6b7280;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --teal:#5e d4d8;
+    --teal:#5ee0d8; --purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;
+    line-height:1.65;padding:28px 20px 80px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 4px}
+  .meta{color:var(--faint);font-size:13px;margin-bottom:24px}
+  h2{font-size:18px;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:20px 0 8px;color:#cdd3de}
+  p{margin:10px 0;color:#d7dbe2;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:var(--card2);color:#cdd3de;font-weight:600}
+  td code{background:#0c0e12;padding:1px 6px;border-radius:5px;color:#9be3df;font-size:12px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .t-green{background:rgba(52,211,153,.14);color:var(--green)}
+  .t-amber{background:rgba(251,191,36,.14);color:var(--amber)}
+  .t-red{background:rgba(248,113,113,.14);color:var(--red)}
+  .t-teal{background:rgba(94,224,216,.14);color:var(--teal)}
+  .lede{font-size:14px;color:#e3e7ee}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:6px 0;font-size:14px;color:#d7dbe2}
+  .note{background:rgba(251,191,36,.07);border-left:3px solid var(--amber);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13px;color:#e8d9a8}
+  .danger{background:rgba(248,113,113,.08);border-left:3px solid var(--red);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13px;color:#f0c4c4}
+  .ok{background:rgba(52,211,153,.07);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13px;color:#bfe8d6}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  .kpi{font-size:13px;color:var(--sub)}
+  .kpi b{color:var(--ink);font-size:15px}
+  a{color:var(--teal)}
+  .pill{font-size:11px;color:var(--faint);border:1px solid var(--line);padding:1px 7px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Mira 指标算法 · 科学 / 开源依据评估</h1>
+<div class="meta">评估对象：mira-app（Expo/RN）· 睡眠恢复 / 脑力准备度 / 心理压力 / 皮质醇 / 全天状态曲线 · 2026-10-05</div>
+
+<div class="card">
+  <p class="lede"><b>一句话结论：</b>底层信号处理（Kalman 滤波、稳健 z-score、EDA 分解、cosinor 节律）确实站在成熟开源/文献之上，引用基本属实；但<b>所有复合打分层的权重都是启发式</b>，且 <code>cognitiveLoad.ts</code> 里至少 4 处引用查无此文或张冠李戴。<b>最该警惕的是两点：</b>① 把"皮质醇代理"直接标成"皮质醇"（戒指测不到激素）；② 脑力准备度引用了疑似编造的相关系数。</p>
+</div>
+
+<h2>一、引用核实清单（逐条查证）</h2>
+<p class="kpi">方法：对代码注释里点名的论文/库逐一检索，分 <span class="tag t-green">真实</span> / <span class="tag t-amber">真实但被泛化引用</span> / <span class="tag t-red">疑似编造/张冠李戴</span> 三档。</p>
+
+<table>
+<thead><tr><th style="width:30%">代码里声明的引用</th><th style="width:12%">核实</th><th>实情与说明</th></tr></thead>
+<tbody>
+<tr><td><code>KalmanJS</code> (MIT, wouterbulten)</td><td><span class="tag t-green">真实</span></td><td>真实 MIT 开源库，代码里实际 import 了本地 <code>kalman-filter</code> 副本。用法正确。</td></tr>
+<tr><td><code>cvxEDA</code> (Greco et al., 2016)</td><td><span class="tag t-amber">真实·思想借鉴</span></td><td>EDA 分解（tonic+phasic）金标准框架。代码注释明说"取其思想、用稳健统计替代凸优化求解器"——属合理改写，未照搬。</td></tr>
+<tr><td>Iglewicz &amp; Hoaglin (1993) modified z-score</td><td><span class="tag t-green">真实</span></td><td>稳健统计经典。公式 <code>0.6745·(x−median)/MAD</code> 正确实现。</td></tr>
+<tr><td>Shaffer &amp; Ginsberg (2017) HRV 综述</td><td><span class="tag t-green">真实</span></td><td>"An Overview of HRV Metrics and Norms"，HRV 领域高引综述。用于"HR↑+RMSSD↓→应激"的生理依据，引用得当。</td></tr>
+<tr><td><code>CosinorPy</code> (Mathias Fuchs, GitHub)</td><td><span class="tag t-green">真实 OSS</span></td><td>真实开源余弦节律拟合库。cortisolRhythm 用的单频 cosinor 最小二乘本身就是 Halberg 经典时间序列法，方法成立。</td></tr>
+<tr><td>Kalman-Normalized GSR (2025, Wiley)</td><td><span class="tag t-green">真实</span></td><td>Swetha &amp; Kiran, <i>Int. J. Telemedicine and Applications</i>, PMID:41036171。Kalman + 动态范围归一化做 GSR 压力，确实存在。引用属实。</td></tr>
+<tr><td>Firstbeat / Baevsky 应激指数</td><td><span class="tag t-green">真实</span></td><td>Baevsky 应激指数是有据可查的 HRV 指标；Firstbeat 是行业金标准（Garmin 在用，原理：RMSSD+呼吸率+HR，实验室 ECG 标定）。代码用其"原理"而非具体公式，合理。</td></tr>
+<tr><td>WHOOP / Oura / Garmin 睡眠·恢复目标值</td><td><span class="tag t-amber">真实·商业公开</span></td><td>睡眠效率≥85%、深睡占比等是厂商公开目标值，非同行评审方法论，但属行业共识区间。</td></tr>
+<tr><td>Borbély 双过程模型 / Yerkes-Dodson</td><td><span class="tag t-amber">真实·被简化</span></td><td>两者均为真实理论。但代码把"脑力账户 ODE 消耗"说成 Borbély 双过程，实际只是类比；Yerkes-Dodson 唤醒钟形曲线仅用于一个分档判断。</td></tr>
+<tr><td>YASA (raphaelvallat)</td><td><span class="tag t-amber">真实·但用不上</span></td><td>睡眠分期金标准 OSS，但它是 EEG/PSG 分期，戒指没有 EEG，本项目的睡眠评分实际是 actigraphy 式复合评分，并未用 YASA。</td></tr>
+<tr><td>CogWatch (HardwareX 2024)</td><td><span class="tag t-amber">真实·权重非其所出</span></td><td>Dankovich et al., <i>HardwareX</i> 19:e00538，真实开源。但它是一篇"开源腕表硬件平台"论文，<b>并未给出</b>注释里写的"GSR 35-40%/HRV 30-35%/SkinTemp 15-20%/IMU 10-15% 权重"——那组权重是本项目自定的，挂在 CogWatch 名下属过度归因。</td></tr>
+<tr><td>Wellby (IEEE TAFFC 2026)</td><td><span class="tag t-amber">真实·数值待核</span></td><td>真实论文（"Real-World Classification of Student Stress and Fatigue Using Wearable PPG"），用 PPG/HRV + 自报(PSS/PSQI)。注释写"AUC-ROC 91.6% stress / 85.84% fatigue"需回原文核对，摘要页未直接看到这两个数字。</td></tr>
+<tr><td><b>NeuroPlay 2024 (RMSSD→认知储备 r=0.71)</b></td><td><span class="tag t-red">疑似编造</span></td><td>查到的 NeuroPlay 是老年神经反馈 EEG 训练系统（Wiłkość-Dębczyńska 2024, <i>Human Technology</i>），与 RMSSD→认知储备无关，且根本不是该主题论文。<b>r=0.71 这个数字没有出处。</b></td></tr>
+<tr><td><b>Task 2023 (RMSSD→attention r=0.61)</b></td><td><span class="tag t-red">查无此文</span></td><td>无法检索到对应论文，相关系数归属疑似虚构。</td></tr>
+<tr><td><b>Executive Function &amp; HRV 综述 r=0.61</b></td><td><span class="tag t-red">模糊不可核</span></td><td>未给出作者/期刊，无法核实。</td></tr>
+<tr><td><b>JBDM 2023</b></td><td><span class="tag t-red">查无此文</span></td><td>缩写无对应可查文献。</td></tr>
+<tr><td><b>ICFMR 2023 元分析（皮质醇昼夜节律）</b></td><td><span class="tag t-red">查无此文</span></td><td>昼夜节律形态（晨峰/午后谷）本身有内分泌文献支持，但"ICFMR 2023"这个署名查不到，属虚构归因。</td></tr>
+<tr><td>ChatPPG 2026 review</td><td><span class="tag t-amber">真实站点·弱引用</span></td><td>ChatPPG 是真实科普/评测站点，"HF/LF 对认知负荷最敏感"属合理主张，但"2026 review"作为引用不严谨。</td></tr>
+</tbody>
+</table>
+
+<div class="danger"><b>诚信红线：</b><code>cognitiveLoad.ts</code> 文件头与函数注释里的 NeuroPlay/Tasks/JBDM/ICFMR 这 4 处——要么查无此文，要么张冠李戴。在融资材料或论文里若继续这样写，一旦被技术尽调（technical DD）抽查，会直接动摇整条算法线的可信度。<b>建议立即删除或替换成可核实的真实文献。</b></div>
+
+<h2>二、逐指标拆解</h2>
+
+<div class="card">
+<h3>① 心理压力 <span class="pill">stressAlgorithm.ts</span></h3>
+<table>
+<thead><tr><th style="width:24%">维度</th><th>评估</th></tr></thead>
+<tbody>
+<tr><td>基于开源代码？</td><td><span class="tag t-green">是</span> KalmanJS、cvxEDA 思想、modified z-score、hrv-stress-wearable 均真实且被正确引用。</td></tr>
+<tr><td>文献支持？</td><td><span class="tag t-green">强</span> Shaffer&amp;Ginsberg 2017、Kalman-Normalized GSR 2025(PMID:41036171)、Firstbeat/Baevsky 应激指数原理。</td></tr>
+<tr><td>但注意</td><td>① 主输入是 Veepoo SDK 私有 <code>stress(0-12)</code>，属<b>黑盒</b>，逻辑上"心理压力分"本质=基于 HRV+EDA 的自主神经唤醒度估计，并非心理学意义上的压力；② 7 因子 <code>emotionalLoad</code> 融合权重（×2.5/×2…）是<b>启发式</b>，非文献值。</td></tr>
+<tr><td>结论</td><td>信号处理方法扎实、可防御；但对外措辞要从"心理压力"降级为"自主神经唤醒/应激水平"，并说明主引擎来自厂商标定算法。</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>② 皮质醇节律 <span class="pill">cortisolRhythm.ts + cortisolProxy.ts</span></h3>
+<table>
+<thead><tr><th style="width:24%">维度</th><th>评估</th></tr></thead>
+<tbody>
+<tr><td>基于开源代码？</td><td><span class="tag t-green">是（方法层）</span> cosinor 拟合 = CosinorPy 同款，Halberg 经典法。</td></tr>
+<tr><td>文献支持？</td><td><span class="tag t-amber">部分</span> 节律形态有内分泌文献；但"ICFMR 2023"虚构，且 Proxy 的权重是启发式。</td></tr>
+<tr><td>最大问题</td><td><b>"皮质醇"是代理值，戒指测不到激素。</b>输入由 HRV+体温+EDA 反推。当前直接标"皮质醇"属于<b>名实不符</b>。</td></tr>
+<tr><td>结论</td><td>方法可防御，但必须改名——建议"皮质醇活性（反推）/ 应激节律指标"，并明确标注"非血液/唾液检测"。这是对外最该先改的诚信项之一。</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>③ 睡眠恢复 <span class="pill">sleepScore.ts + sleepPersonalized.ts</span></h3>
+<table>
+<thead><tr><th style="width:24%">维度</th><th>评估</th></tr></thead>
+<tbody>
+<tr><td>基于开源代码？</td><td><span class="tag t-amber">否（直接）</span> 用的是 actigraphy 式复合（时长/深睡/效率/起夜），<b>不是</b> YASA（YASA 需 EEG）。</td></tr>
+<tr><td>文献支持？</td><td><span class="tag t-amber">中等</span> 各分量阈值引 WHOOP/Oura 公开目标（商业共识，非同行评审）；权重 0.30/0.28/0.22/0.20 是经验值；相对基线个人化（锚点50=平时）是 Oura 同款思路。</td></tr>
+<tr><td>结论</td><td>合理、可防御，权重是经验值；<b>缺与 PSG 金标准的验证</b>。对外可说"对标 Oura/WHOOP 复合睡眠评分法"。</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>④ 脑力准备度 / 脑力值 / 专注力 / 决策力 <span class="pill">cognitiveLoad.ts</span></h3>
+<table>
+<thead><tr><th style="width:24%">维度</th><th>评估</th></tr></thead>
+<tbody>
+<tr><td>基于开源代码？</td><td><span class="tag t-red">否</span> 核心是"脑力账户 ODE 消耗模型"（类比 Borbély，但远非真实双过程）+ 多因子加权融合，自研。</td></tr>
+<tr><td>文献支持？</td><td><span class="tag t-red">弱/存疑</span> Borbély、Yerkes-Dodson 是真实理论但被大幅简化；引用的相关系数（r=0.71/0.61）<b>出处虚构或张冠李戴</b>。</td></tr>
+<tr><td>结论</td><td><b>最薄弱的一项。</b>建议二选一：A) 找真实验证过的 HRV-认知负荷相关性文献重做引用；B) 诚实改名为"脑力估算（基于睡眠+HRV+昼夜节律）"，并删除无法核实的引用。对外不要宣称"科学验证的认知指标"。</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>⑤ 全天状态趋势（今日状态曲线） <span class="pill">dailyStatus.ts</span></h3>
+<table>
+<thead><tr><th style="width:24%">维度</th><th>评估</th></tr></thead>
+<tbody>
+<tr><td>基于开源代码？</td><td><span class="tag t-red">否</span> 仅引用一份内部 spec 文档（docs/daily-status-algorithm-spec-v1.md），无外部 OSS/文献。</td></tr>
+<tr><td>文献支持？</td><td><span class="tag t-amber">弱</span> 相位专属基线 + 百分位归一化是合理工程做法；日内"稳态一阶衰减"(leaky integrator) 是合理动力学模型，但参数(K_HOME/RECHARGE/EQ_REST)是启发式（前一轮已发现并修复睡眠段封顶 bug）。</td></tr>
+<tr><td>结论</td><td>工程上自洽，但纯自研无外部背书。需文档化参数、明确"状态"=复合恢复就绪度而非医学指标。</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>三、总体定级</h2>
+<table>
+<thead><tr><th>指标</th><th>开源代码依据</th><th>文献依据</th><th>对外可防御度</th></tr></thead>
+<tbody>
+<tr><td>心理压力</td><td><span class="tag t-green">扎实</span></td><td><span class="tag t-green">强</span></td><td><span class="tag t-amber">高（需改措辞/披露黑盒）</span></td></tr>
+<tr><td>皮质醇节律</td><td><span class="tag t-green">方法扎实</span></td><td><span class="tag t-amber">中</span></td><td><span class="tag t-amber">中（须改名去"激素"标签）</span></td></tr>
+<tr><td>睡眠恢复</td><td><span class="tag t-amber">间接（actigraphy）</span></td><td><span class="tag t-amber">中</span></td><td><span class="tag t-green">高（对标 Oura/WHOOP）</span></td></tr>
+<tr><td>脑力准备度系</td><td><span class="tag t-red">自研</span></td><td><span class="tag t-red">弱/存疑</span></td><td><span class="tag t-red">低（须改引用或改名）</span></td></tr>
+<tr><td>全天状态曲线</td><td><span class="tag t-red">自研</span></td><td><span class="tag t-amber">弱</span></td><td><span class="tag t-amber">中（须文档化）</span></td></tr>
+</tbody>
+</table>
+
+<h2>四、给你的行动建议（按优先级）</h2>
+
+<div class="danger"><b>P0 · 立刻修诚信项（影响融资尽调）</b>
+<ul>
+<li>删除或替换 <code>cognitiveLoad.ts</code> 中 NeuroPlay / Task 2023 / Executive Function 综述 / JBDM 2023 / ICFMR 2023 这 5 处无法核实的引用；保留可核实的（CogWatch、Wellby、Yerkes-Dodson、Borbély）。</li>
+<li>把"皮质醇"相关对外表述改为"皮质醇活性（反推）/ 应激节律指标"，并标注"非血液检测"。</li>
+<li>"心理压力"降级为"自主神经唤醒/应激水平"，并披露主引擎依赖厂商 SDK。</li>
+</ul></div>
+
+<div class="note"><b>P1 · 增强可防御度</b>
+<ul>
+<li>脑力准备度系：要么接真实文献（HRV 与认知负荷的相关性研究近年不少，但普遍 r 在 0.3–0.5，远没有注释吹的 0.71），要么改名为"脑力估算"并去掉"科学验证"话术。</li>
+<li>睡眠恢复：补一句"复合评分法对标 Oura/WHOOP，权重为经验校准"，并规划一次与 PSG/睡眠手环的对比验证（哪怕小样本）。</li>
+<li>全天曲线：把参数表(K_HOME/RECHARGE/EQ_REST/SLEEP_ENTRY_LEVEL…)和"状态=复合恢复就绪度"写进 spec 文档，明确非医学指标。</li>
+</ul></div>
+
+<div class="ok"><b>P2 · 对外叙事可强调的"真依据"</b>
+<ul>
+<li>底层信号处理方法全部可点名：Kalman 滤波(MIT)、cvxEDA 思想(Greco 2016)、modified z-score(Iglewicz&amp;Hoaglin 1993)、cosinor 节律(Halberg/CosinorPy)、HRV 应激方向(Shaffer&amp;Ginsberg 2017)、Kalman-Normalized GSR(Wiley 2025, PMID:41036171)、Firstbeat/Baevsky 原理。</li>
+<li>个人化基线（相对你自己历史）的设计本身就是 Oura/WHOOP 同款成熟范式，可大方讲。</li>
+</ul></div>
+
+<div class="note"><b>最关键的一句话：</b>以上 5 个指标<b>没有一个做过与金标准（PSG 睡眠、唾液皮质醇、认知任务电池、PSS 主观量表）的对照验证</b>。这是当前对外最该补的硬通货——先有 1–2 个小样本验证，比堆引用更有说服力。方法是现成的：YASA 的 evaluation 模块(Menghini 2021 框架)就能跑"设备 vs PSG"的一致性分析。</div>
+
+</div>
+</body>
+</html>
