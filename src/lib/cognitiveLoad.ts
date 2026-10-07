@@ -152,6 +152,12 @@ export interface CognitiveLoadReport {
   circadianEnergy: number;
   /** 当前脑力余额 (0-100, = 100 − 当前疲劳度)；无睡眠记录 → null */
   brainRemaining: number | null;
+  /** ★ 2026-10-06：48 槽能量线（准备度唯一数据源，与圆环同源同粒度） */
+  energyHalfHourly?: { slot: number; value: number; hasData: boolean }[];
+  /** ★ 2026-10-06 A+C：今日已用脑量（真实累计消耗）。无睡眠时也有值 → UI 改显它而非杠 */
+  brainUsedToday?: number | null;
+  /** ★ 起点来源：measured=实测晨起 / avg14=14 天均值（无睡眠时借用） / none=无 */
+  readinessBaselineKind?: 'measured' | 'avg14' | 'none';
   /** 今日被剔除的非认知消耗分钟数（只算脑：情绪事件 / 运动窗口的唤醒偏离不计入脑力消耗） */
   brainExcluded: { emotion: number; exercise: number };
 }
@@ -332,6 +338,248 @@ function computeDecision(params: {
  * + 30% 节律相位分（起床时间落在个体化节律的什么位置）
  * 与 EnergyDetailScreen「早起认知准备度」是同一个数（该 UI 已改读本报告字段）。
  */
+/**
+ * ★ 2026-10-06（认知锚定 · B 方案）夜间自主神经（HRV + 静息心率）聚合与基线
+ *
+ * 为什么要换掉「睡眠分主导」：见 ALGORITHM_REFERENCES.md 与 2026-10-05 17:08 评估。
+ *  Oura 官方把准备度的 7 个贡献因子拆成「autonomic 4 个（HRV平衡/RHR/体温/恢复指数）
+ *  + 睡眠 1 个 + 活动 2 个」——autonomic 是主轴，睡眠只是辅助之一。
+ *  文献侧：Eur J Appl Physiol 2025（n=94）夜间 HRV 预测次日准备度 73% vs 早晨 HRV 51%；
+ *  睡眠医学 2024（n=127）前半夜 HRV 增幅 <15% 者次日功率输出差 12%；
+ *  Ann Intern Med/Sage：夜间副交感张力增幅是自发认知表现的唯一显著预测因子，
+ *  而「睡眠时长」在多项研究中未达统计显著。
+ *
+ * 口径（全部相对**个人 14 天基线**，锚点 = 和平时一样，不做绝对人群阈值）：
+ *   HRV  夜间均值 vs 14 天夜间均值 → zHRV（越高越好）
+ *   RHR  夜间最低心率 vs 14 天     → zRHR（越低越好，方向反转）
+ *   睡眠 时长/效率（相对个人需求与基线）→ zSleep（辅助，权重最小）
+ */
+
+/** 单夜自主神经快照（无数据 → null 字段） */
+export interface NightAutonomic {
+  /** 睡眠窗内 HRV 均值（RMSSD ms 量纲由戒指决定） */
+  hrvMean: number | null;
+  /** 睡眠窗内静息心率（取最低心率，Oura 口径） */
+  rhrMin: number | null;
+  /** 睡眠窗内样本数（过少则不可信） */
+  hrvSamples: number;
+}
+
+/**
+ * 取某个自然日的「睡眠窗内」HRV/静息心率。
+ * 睡眠窗优先用该日 SleepSummary 的 sleepTime/wakeTime；没有就用默认 23:00–07:00。
+ * 跨夜处理：入睡在 23 点前、起床在次日早晨 → 区间要跨天，用毫秒区间直接取。
+ */
+export function nightAutonomicOf(dayMs: number, sleepWindow: { bedHour: number; wakeHour: number } | null): NightAutonomic {
+  const empty: NightAutonomic = { hrvMean: null, rhrMin: null, hrvSamples: 0 };
+  const dayStart = dayStartMs(dayMs);
+  const bedH = sleepWindow?.bedHour ?? 23;
+  const wakeH = sleepWindow?.wakeHour ?? 7;
+  const s = dayStart + bedH * 3600000;
+  // 跨夜（bed > wake）→ 结束时间落到次日
+  const rawEnd = dayStart + wakeH * 3600000;
+  const e = wakeH <= bedH ? rawEnd + 86400000 : rawEnd;
+  if (!(e > s)) return empty;
+
+  const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, s, e, { maxPoints: 500 });
+  if (hrvPts.length === 0) return empty;
+  const hrvMean = hrvPts.reduce((a, p) => a + p.v, 0) / hrvPts.length;
+
+  // 静息心率：睡眠窗内最低心率（Oura 用夜间最低 RHR 作贡献因子）
+  const hrPts = healthStore.getTimeRange('hr' as MetricKey, s, e, { maxPoints: 500 });
+  const rhrMin = hrPts.length > 0 ? Math.min(...hrPts.map((p) => p.v)) : null;
+
+  return { hrvMean, rhrMin, hrvSamples: hrvPts.length };
+}
+
+/**
+ * 睡眠窗（某夜），供夜间聚合复用；无睡眠归档时用默认夜窗。
+ *
+ * ★ 2026-10-06 修正（真机 COG-NIGHT 日志实锤）：跨午夜睡眠（入睡 01:12 / 起床 10:38）
+ *   按「起床日」归档 —— 起床在今天 → SleepSummary 落在**今天**的 key；
+ *   但若起床在下午（起床 ≥ 12:00，判定为更旧的白天存档），该条会落在**昨天**的 key。
+ *   原实现只查当天 key → 后者取不到睡眠窗 → 退回默认 23:00–07:00 → 夜间 HRV 落空（n=0）→ zHRV 缺。
+ *   现在两处都查（今天 → 昨天），与 `sleepSourceDate` 的判定口径一致。
+ */
+function nightWindowOf(dayMs: number): { bedHour: number; wakeHour: number } | null {
+  const today = healthStore.getSleep(_dayKey(dayMs));
+  const pick = (sum: typeof today): { bedHour: number; wakeHour: number } | null => {
+    if (!sum || sum.total <= 0) return null;
+    const bedH = parseClockMinutes(sum.sleepTime);
+    const wakeH = parseClockMinutes(sum.wakeTime);
+    if (bedH != null && wakeH != null) {
+      return { bedHour: Math.floor(bedH / 60), wakeHour: Math.floor(wakeH / 60) };
+    }
+    if (sum.getUp > 0) {
+      return {
+        bedHour: Math.floor((sum.getUp - sum.total) / 60 + 24) % 24,
+        wakeHour: Math.floor(sum.getUp / 60),
+      };
+    }
+    return null;
+  };
+  return pick(today) ?? pick(healthStore.getSleep(dayKey(-1, dayMs)));
+}
+
+/**
+ * 夜间自主神经相对基线的偏离（z-score 口径）。
+ *  - zHRV > 0：昨夜 HRV 高于平时 → 恢复好（+）
+ *  - zRHR < 0：昨夜最低心率低于平时 → 恢复好（+）
+ *  - zSleep：时长/效率相对个人基线（辅助）
+ * 返回 { zHRV, zRHR, zSleep, nDays }；样本不足 → 对应项 null。
+ */
+export function nightAutonomicZ(nowMs: number): {
+  zHRV: number | null; zRHR: number | null; zSleep: number | null; nDays: number;
+  _dbg?: {
+    win: { bedHour: number; wakeHour: number } | null;
+    tonightHrv: number | null; tonightSamples: number; tonightRhr: number | null;
+    hrvHistN: number; rhrHistN: number; hrvHist: number[]; rhrHist: number[];
+  };
+} {
+  // 昨夜窗口（今天凌晨那一夜）
+  const win = nightWindowOf(nowMs) ?? { bedHour: 23, wakeHour: 7 };
+  const today = nightAutonomicOf(nowMs, win);
+
+  // 过去 14 天同口径基线
+  const hrvHist: number[] = [];
+  const rhrHist: number[] = [];
+  for (let i = 1; i <= DAYS_BACK; i++) {
+    const d = nowMs - i * 86400000;
+    const w = nightWindowOf(d) ?? { bedHour: 23, wakeHour: 7 };
+    const n = nightAutonomicOf(d, w);
+    if (n.hrvMean != null && n.hrvSamples >= 4) hrvHist.push(n.hrvMean);
+    if (n.rhrMin != null) rhrHist.push(n.rhrMin);
+  }
+
+  // z：用中位数 + MAD 估基线离散度（抗离群），与 cortisolProxy 同一套口径。
+  // ⚠ MAD 可能为 0（14 天里该指标几乎不变，如静息心率常年在 ±1bpm）→ 直接除会爆出
+  //   ±1e6 的假 z 值（真机实测 zRHR=-1000000）。故设下限：HRV/RHR 用各自的最小标准差。
+  const zOf = (cur: number | null, hist: number[], minSd: number): number | null => {
+    if (cur == null || hist.length < 3) return null;
+    const med = medianOf(hist);
+    const mad = medianOf(hist.map((v) => Math.abs(v - med)));
+    const sd = Math.max(minSd, mad * 1.4826);
+    // 再夹一道安全上限：单点离群不超过 ±4σ（z>4 视为异常，不让它主导分数）
+    return Math.max(-4, Math.min(4, (cur - med) / sd));
+  };
+
+  // 睡眠时长 z（辅助）：今夜睡眠总时长 vs 14 天平均
+  const durs: number[] = [];
+  let curDur: number | null = null;
+  for (let i = 0; i <= DAYS_BACK; i++) {
+    const d = nowMs - i * 86400000;
+    const s = healthStore.getSleep(_dayKey(d));
+    if (s && s.total > 0) {
+      if (i === 0) curDur = s.total;
+      else durs.push(s.total);
+    }
+  }
+
+  return {
+    // 最小标准差下限：HRV 以 ms 计（1ms）、RHR 以 bpm 计（1bpm）——量纲不同，不能共用同一 epsilon
+    zHRV: zOf(today.hrvMean, hrvHist, 1),      // 越高越好
+    zRHR: zOf(today.rhrMin, rhrHist, 1),        // 越低越好（方向在下面反转）
+    zSleep: zOf(curDur, durs, 10),               // 分钟
+    nDays: hrvHist.length,
+    // ★ 诊断用（供 __DEV__ 日志核对夜间取数为何为空）
+    _dbg: {
+      win,
+      tonightHrv: today.hrvMean, tonightSamples: today.hrvSamples, tonightRhr: today.rhrMin,
+      hrvHistN: hrvHist.length, rhrHistN: rhrHist.length,
+      hrvHist: hrvHist.slice(0, 5), rhrHist: rhrHist.slice(0, 5),
+    },
+  };
+}
+
+/**
+ * ★ 2026-10-06（A+C 方案，用户拍板）历史晨起准备度均值 —— 无睡眠时的曲线起点
+ *
+ * 背景：认知锚定 B 方案后，晨起起点吃「夜间 HRV/静息心率」，而这两项都取自睡眠窗。
+ *   ⇒ 当**今夜没有睡眠归档**时（没戴戒指/忘了戴），起点为 null → 储备/剩余/曲线全为 null，
+ *      首页与详情页只能显「—」。这虽诚实，但把「白天明明有真实用脑信号」也一起抹掉了。
+ *
+ * A 方案：无睡眠时用**过去 14 天各夜晨起准备度的均值**当起点（借一个稳定的起点），
+ *   让白天的真实耗竭（HRV↓+SNS↑）仍能画出曲线、算出「今日已用脑量」。
+ *   ⚠ 诚实标注：UI 需注明「起点为 14 天平均」，不得让用户误以为这是今晨实测值。
+ * C 方案：此时顶部数字改显**真实累计消耗**（起点 − 当前能量），而不是「剩余百分比」。
+ *
+ * 样本不足（<3 个有效夜）→ 返回 null，UI 显「—」，不猜。
+ */
+export function averageMorningReadiness(nowMs: number): number | null {
+  const vals: number[] = [];
+  for (let i = 0; i <= DAYS_BACK; i++) {
+    const d = nowMs - i * 86400000;
+    const w = nightWindowOf(d);
+    if (!w) continue;                                  // 该夜无睡眠归档 → 跳过
+    const n = nightAutonomicOf(d, w);
+    if (n.hrvMean == null || n.hrvSamples < 4) continue;
+    const z = nightAutonomicZ(d);
+    // 注意：nightAutonomicZ(d) 内部是「以 d 当天」的昨夜窗口，与此处 w 同口径，
+    // 若 z 缺失（HRV/RHR 都不足）则该夜不计入，避免用睡眠分把它顶上来。
+    if (z.zHRV == null && z.zRHR == null) continue;
+    const dur = healthStore.getSleep(_dayKey(d))?.total ?? null;
+    const debt = 0; // 历史睡眠债不重算（无逐日债务数据），保持起点可比
+    const r = computeMorningReadinessV2({
+      zHRV: z.zHRV, zRHR: z.zRHR, zSleep: dur != null && dur > 0 ? z.zSleep : null,
+      debt, peakH: 8, wakeH: w.wakeHour,
+    });
+    if (r != null) vals.push(r);
+  }
+  return vals.length >= 3 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+}
+
+function medianOf(arr: number[]): number {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/**
+ * ★ 认知锚定 · B 方案：晨起准备度新公式（B 方案，用户 2026-10-06 拍板）
+ *
+ * 相对个人基线的恢复度（锚点 50 = 和平时一样）：
+ *   recovery = 50 + 50 × tanh( 0.50·zHRV  +  0.30·(−zRHR)  +  0.20·zSleep )
+ * 睡眠债每欠 1h −5 分；节律相位 ±8 分。
+ *
+ * 权重依据：Oura 贡献因子 autonomic 占 4/7、睡眠 1/7；开源 health_dashboard
+ * HRV 40% / RHR 25% / 睡眠 35%（且全部转 z-score）。此处取 HRV 50 / RHR 30 / 睡眠 20
+ * —— 睡眠只保留 20% 作为辅助，符合"认知锚定"（睡眠只定水箱，不是曲线主轴）。
+ *
+ * ⚠ 任一必需项缺失 → 不编造，UI 显「—」（由调用方处理 null）。
+ */
+export function computeMorningReadinessV2(p: {
+  zHRV: number | null;
+  zRHR: number | null;
+  zSleep: number | null;
+  debt: number;         // 7 天睡眠债（小时）
+  peakH: number;        // 个体化皮质醇峰值时刻（小时）
+  wakeH: number | null; // 起床时间（小时，浮点）
+}): number | null {
+  // autonomic 主轴：HRV 越高越好、RHR 越低越好（方向反转）
+  const hrvPart = p.zHRV == null ? null : p.zHRV;
+  const rhrPart = p.zRHR == null ? null : -p.zRHR;   // 方向反转：低心率 = 恢复好
+  // 缺 HRV 时可用 RHR 顶上；两者都缺 → 返回 null（诚实空态，不拿睡眠分顶替）
+  if (hrvPart == null && rhrPart == null) return null;
+
+  const W_HRV = 0.5, W_RHR = 0.3, W_SLEEP = 0.2;
+  let acc = 0, wsum = 0;
+  if (hrvPart != null) { acc += W_HRV * hrvPart; wsum += W_HRV; }
+  if (rhrPart != null) { acc += W_RHR * rhrPart; wsum += W_RHR; }
+  if (p.zSleep != null) { acc += W_SLEEP * p.zSleep; wsum += W_SLEEP; }
+  if (wsum <= 0) return null;
+  // 缺失项按剩余权重归一化（不因为缺 HRV 就偷偷把 RHR 放大到 100%）
+  const weighted = acc / wsum;
+  const recovery = 50 + 50 * Math.tanh(weighted);
+
+  const circAdj = p.wakeH != null
+    ? clamp(50 + 50 * Math.sin(2 * Math.PI * (p.wakeH - p.peakH + 6) / 24), 0, 100) / 100
+    : 0.5;
+  const debtPenalty = clamp(p.debt, 0, 6) * 5;
+  const circShift = (circAdj - 0.5) * 16;
+  return Math.round(clamp(recovery - debtPenalty + circShift, 5, 100));
+}
+
 export function computeMorningReadiness(p: {
   rec: number;          // sleepRecovery 0-1
   debt: number;         // 7 天睡眠债（小时）
@@ -591,10 +839,30 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   const _wakeMin = _sleepPre?.wakeTime != null ? parseClockMinutes(_sleepPre.wakeTime) : null;
   // ★ v18.144：rec 为 null 时传中性点，**不要传 0**（0 会被算成「恢复极差」）。
   //   真正的「没有昨晚睡眠」由 `hasRecentSleep` 在 UI 层显「—」处理。
-  const morningReadiness = computeMorningReadiness({
-    rec: sleepRecovery ?? sleepRecoveryNeutral, debt: sleepDebt, peakH: _acrophase,
-    wakeH: _wakeMin != null ? _wakeMin / 60 : null,
+  // ★ 2026-10-06（认知锚定 B 方案，用户拍板）：晨起起点改为**夜间自主神经主轴**
+  //   （夜间 HRV 50% / 夜间静息心率 30% / 睡眠时长 20%，全部相对个人 14 天基线的 z-score）。
+  //   依据：Oura 贡献因子 autonomic 占 4/7、睡眠仅 1/7；Eur J Appl Physiol 2025 夜间 HRV
+  //   预测次日准备度 73% vs 早晨 51%；睡眠时长在多项认知研究未达统计显著。
+  //   夜间 autonomic 数据缺失 → 退回旧公式（睡眠分口径），保证不出现「无数据却给分」。
+  const _nightZ = nightAutonomicZ(nowMs);
+  const _morningV2 = computeMorningReadinessV2({
+    zHRV: _nightZ.zHRV, zRHR: _nightZ.zRHR, zSleep: _nightZ.zSleep,
+    debt: sleepDebt, peakH: _acrophase, wakeH: _wakeMin != null ? _wakeMin / 60 : null,
   });
+  // ★ A 方案兜底：今夜无睡眠 → V2 必为 null（夜间信号取自睡眠窗）→ 用 14 天各夜晨起准备度均值当起点。
+  //   这样白天真实的耗竭（HRV↓+SNS↑）仍能画曲线、算消耗量；UI 需标注"起点为 14 天平均"。
+  const _morningAvgBaseline = hasRecentSleep ? null : averageMorningReadiness(nowMs);
+  const morningReadiness = _morningV2
+    ?? _morningAvgBaseline
+    ?? computeMorningReadiness({
+      rec: sleepRecovery ?? sleepRecoveryNeutral, debt: sleepDebt, peakH: _acrophase,
+      wakeH: _wakeMin != null ? _wakeMin / 60 : null,
+    });
+  if (__DEV__) {
+    const d = (_nightZ as any)._dbg;
+    console.log(`[COG-ANCHOR] zHRV=${_nightZ.zHRV?.toFixed(2) ?? '—'} zRHR=${_nightZ.zRHR?.toFixed(2) ?? '—'} zSleep=${_nightZ.zSleep?.toFixed(2) ?? '—'} days=${_nightZ.nDays} v2=${_morningV2 ?? '—'} avg14=${_morningAvgBaseline ?? '—'} hasSleep=${hasRecentSleep} final=${morningReadiness}`);
+    if (d) console.log(`[COG-NIGHT] win=${JSON.stringify(d.win)} tonightHrv=${d.tonightHrv?.toFixed(1) ?? '—'} n=${d.tonightSamples} tonightRhr=${d.tonightRhr ?? '—'} hrvHistN=${d.hrvHistN} rhrHistN=${d.rhrHistN} hrvHist=[${d.hrvHist.map((v: number) => v.toFixed(0)).join(',')}] rhrHist=[${d.rhrHist.join(',')}]`);
+  }
   const hourlyRes = computeHourlyLoad(nowMs, { initEnergy: morningReadiness, acrophaseH: _acrophase });
   const hourly = hourlyRes.hourly;
   // ★ debug: 暴露 hourly 到 global
@@ -824,13 +1092,29 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   //   储备 = 早起认知准备度（sleepRecovery / sleepDebt / 节律相位）
   //   已用 = 储备 − 剩余；剩余 = 此刻能量（清醒+费脑扣款，情绪/运动窗口已剔除）
   //   疲劳度 = 100 − 剩余（逐时柱状图同源）
-  //   ★ v18.95 诚实守卫：无真实睡眠记录（hasRecentSleep，判定见步骤 B 处）→ 整条账户
-  //   （储备/已用/剩余）与睡眠主导的 mentalEnergy 返回 null，首页诚实显「—」。
+  // ★ v18.95 诚实守卫：无真实睡眠记录 → 「剩余百分比」返回 null（首页显「—」）。
+  // ★ 2026-10-06 A+C：但**今日已用脑量是真实的**（从 14 天平均起点到此刻的实测耗竭），
+  //   它不依赖今晨睡眠，由白天 HRV↓/SNS↑ 逐步累加得出 → 无睡眠时照常给出，不编造。
   const brainReserve: number | null = hasRecentSleep ? morningReadiness : null;
   const circadianEnergy = clamp(Math.round(
     50 + 50 * Math.sin(2 * Math.PI * (circadianHour - _acrophase + 6) / 24)
   ), 0, 100);
-  let brainRemaining: number | null = hasRecentSleep ? clamp(hourlyRes.energyNow, 0, 100) : null;
+  const _energyNowRaw = clamp(hourlyRes.energyNow, 0, 100);
+  // 起点为 14 天均值（无睡眠）时，"剩余"这个百分比概念不成立 → 仍给 null；
+  //   但能量线本身（hourlyRes.energyHalfHourly）是真实耗竭轨迹，UI 画曲线用。
+  let brainRemaining: number | null = hasRecentSleep ? _energyNowRaw : null;
+  /** ★ A+C：今日已用脑量（真实累计消耗）——无睡眠时也能算，UI 改显这个而非杠 */
+  const brainUsedToday: number | null = (() => {
+    if (hourlyRes.energyHalfHourly?.some((p) => p.hasData)) {
+      return clamp(Math.round(morningReadiness - _energyNowRaw), 0, 100);
+    }
+    return null;
+  })();
+  /** ★ 起点来源标注，供 UI 诚实说明（"起点为 14 天平均" vs 实测晨起） */
+  const readinessBaselineKind: 'measured' | 'avg14' | 'none' =
+    hasRecentSleep && _morningV2 != null ? 'measured'
+      : _morningAvgBaseline != null ? 'avg14'
+        : 'none';
   let brainUsed: number | null =
     brainReserve != null && brainRemaining != null ? clamp(brainReserve - brainRemaining, 0, 100) : null;
 
@@ -861,6 +1145,8 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     hourly,
     // ★ v18.127：瞬时疲劳度（状态量）——柱状图与 chip 档位改用它，累积量 hourly 保留给脑力账户
     hourlyInstant: hourlyRes.hourlyInstant,
+    // ★ 2026-10-06：48 槽能量线挂到 report，供 cognitiveReadiness 直接取用（准备度唯一数据源）
+    energyHalfHourly: hourlyRes.energyHalfHourly,
     avgFatigueInstant: (() => {
       const xs = hourlyRes.hourlyInstant.filter(h => h.hasData).map(h => h.score);
       return xs.length > 0 ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
@@ -904,6 +1190,8 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
     brainSleepDate: sleepSourceDate,
     circadianEnergy,
     brainRemaining,
+    brainUsedToday,
+    readinessBaselineKind,
     brainExcluded: hourlyRes.excludedMin,
   };
 
@@ -954,6 +1242,8 @@ function computeHourlyLoad(
   hourly: { hour: number; score: number; hasData: boolean }[];
   /** ★ v18.127 瞬时疲劳度（状态量） */
   hourlyInstant: { hour: number; score: number; hasData: boolean }[];
+  /** ★ 2026-10-06：48 个半小时槽的脑力能量线（准备度唯一数据源，与圆环同源） */
+  energyHalfHourly: { slot: number; value: number; hasData: boolean }[];
   energyNow: number; initEnergy: number; excludedMin: { emotion: number; exercise: number };
 } {
   // ══════════════════════════════════════════════════════════════════════
@@ -1089,6 +1379,9 @@ function computeHourlyLoad(
   //   取 1.4 作为满量程 → 轻微偏离只给小幅上升，不会轻易顶到高疲劳档。
   const INSTANT_FULL = 1.4;
   let energyAtNow = initEnergy; // 此刻的能量余额（用于脑力账户）
+  // ★ 2026-10-06（用户：所有指标统一 30 分钟一个点）：把整条能量线暴露出去，
+  //   供 cognitiveReadiness 直接使用 → 圆环 / 首页 chip / 详情页曲线 / 徽章 全部同源同粒度。
+  const energyHalf: { slot: number; value: number; hasData: boolean }[] = [];
 
   for (let step = 0; step < 48; step++) {
     const halfH = step * 0.5;
@@ -1101,6 +1394,7 @@ function computeHourlyLoad(
       //   对全天疲劳曲线的影响彻底抹掉
       energy = clamp(energy + 18 * DT, 0, morningEnergy);
       if (dayMs + step * 1800000 < nowMs) energyAtNow = energy;
+      energyHalf.push({ slot: step, value: Math.round(energy), hasData: false });
       half.push({ score: 0, hasData: false });
       halfInstant.push(0);
       continue;
@@ -1154,6 +1448,9 @@ function computeHourlyLoad(
     // ── ODE 更新 ──
     energy = clamp(energy - fatigueDrive * circSpeed * DT, 0, 100);
     if (!inFuture) energyAtNow = energy;
+    // ★ 2026-10-06（用户：所有指标统一 30 分钟一个点）：记录整条能量线，
+    //   供 cognitiveReadiness 直接用 → 圆环/首页chip/详情页曲线/徽章 全部同源同粒度。
+    energyHalf.push({ slot: step, value: Math.round(energy), hasData });
 
     // ── 计算疲劳度 = 100 - 能量（累积量）──
     half.push({ score: Math.round(100 - energy), hasData });
@@ -1195,7 +1492,11 @@ function computeHourlyLoad(
     }
     out.push({ hour: h, score, hasData: has });
   }
-  return { hourly: out, hourlyInstant: outInstant, energyNow: Math.round(energyAtNow), initEnergy: Math.round(initEnergy), excludedMin };
+  return {
+    hourly: out, hourlyInstant: outInstant,
+    energyHalfHourly: energyHalf,
+    energyNow: Math.round(energyAtNow), initEnergy: Math.round(initEnergy), excludedMin,
+  };
 }
 
 function computeRecoveryCapacity(nowMs: number): number | null {

@@ -29,6 +29,7 @@ import { HourHistogram } from './StressInsightCard';
 // ★ 心理压力全天趋势图（首页心理压力卡点进来 / 洞察页情绪 tab 共用本视图）
 import StressTrendChart, { stressPointsOf } from './StressTrendChart';
 import { computeEmotionalStress } from '../lib/emotionalStress';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 
 /** lucide 线性图标（stroke 1.8，统一栅格） */
 function Lucide({ name, size = 13, color }: { name: string; size?: number; color: string }) {
@@ -283,6 +284,11 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   })();
   const stressPts = stressPointsOf(esReport);
   const stressScale = esReport?.stressScoreVisible ? esReport.stressScale : null;
+  // ★ 睡眠窗：从 cognitive load report 拿
+  const sleepWindow = (() => {
+    try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs ?? Date.now())).sleepWindow ?? null; }
+    catch { return null; }
+  })();
   // 「此刻」槽位：今天按当前时刻；历史日不画此刻线
   const nowSlot = (anchorMs ?? Date.now()) ? (() => {
     const t = reportNowMsForDay(anchorMs ?? Date.now());
@@ -308,7 +314,7 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
           </Text>
           <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-          <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} />
+          <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={280} sleepWindow={sleepWindow} />
           <SectionTitle>全天情绪点阵</SectionTitle>
           <MoodDotMatrix events={[]} />
           <SectionTitle>情绪节律</SectionTitle>
@@ -358,7 +364,7 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
       <View style={styles.pad}>
         {/* 心理压力 · 全天趋势（★ 折线，与首页心理压力大数字同源） */}
         <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} />
+        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={280} sleepWindow={sleepWindow} />
 
         {/* 全天情绪点阵（上 0–12 / 下 12–24） */}
         <SectionTitle>全天情绪点阵</SectionTitle>

@@ -15,16 +15,16 @@
  * 诚实边界：无数据小时不插值、不连线（`runs` 按连续有值区段切分），图上留空。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Circle, Line, Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { READY_LOW, READY_HIGH, type ReadinessPoint } from '../lib/cognitiveReadiness';
 
 /** 准备度三档配色：分数高 = 状态好 = 绿（与疲劳档位方向相反） */
 const LEVELS = [
-  { min: READY_HIGH, color: theme.colors.success, label: '充足' },
-  { min: READY_LOW, color: theme.colors.warn, label: '中等' },
-  { min: -1, color: theme.colors.danger, label: '偏低' },
+  { min: READY_HIGH, color: theme.colors.success, label: '高', range: '高 >70' },
+  { min: READY_LOW, color: theme.colors.warn, label: '中', range: '中 40-70' },
+  { min: -1, color: theme.colors.danger, label: '低', range: '低 <40' },
 ];
 export function readinessColor(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return theme.colors.textSub;
@@ -44,27 +44,32 @@ interface Props {
 
 export default function ReadinessTrendChart({ points, sleepWindow, nowHour, caption, chartH }: Props) {
   const [measuredW, setMeasuredW] = React.useState(0);
-  const estW = Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2;
-  const Y_W = theme.sp(7);
-  const padL = Y_W + theme.sp(1);
-  const padR = theme.sp(3);
+  // ★ 2026-10-06（用户：左边纵坐标再往边一点）：padL 加大，0/100 刻度数字不挤曲线
+  const Y_W = theme.sp(8);
+  const padL = Y_W + theme.sp(2);
+  // ★ 2026-10-06（用户：图表两侧留白太多、显得又窄又小）：右侧只留「高/中/低」标注需要的宽度，
+  //   不再额外空一截；同时给图更大高度，让折线有振幅空间。
+  const padR = theme.sp(6);
   const padT = theme.sp(2);
   const padB = theme.sp(6);
-  const svgW = measuredW > padL + padR ? measuredW : estW;
+  // ★ 关键修复：measuredW 尚未上报时**不要**用 estW 顶替（那会让图先按窄屏宽渲染、显得小且居中）；
+  //   未测量到宽度时先不渲染 SVG，测到后按真实宽度画满整行 → 图自然变宽、贴齐卡片左右。
+  const svgW = measuredW > padL + padR ? measuredW : 0;
   const svgH = (chartH ?? theme.sp(50)) - theme.sp(2);
   const plotW = svgW - padL - padR;
   const plotH = svgH - padT - padB;
 
-  const N = 24;
-  const xAt = (h: number) => padL + (plotW * h) / N;
+  // ★ 2026-10-06（用户：所有指标统一 30 分钟一个点）：N 由 24 改为 48 个半小时槽
+  const N = 48;
+  const xAt = (slot: number) => padL + (plotW * slot) / N;
   const yAt = (v: number) => padT + plotH - (v / 100) * plotH;
 
   // ── 按连续有值区段切分（缺口处不连线） ──
   const runs: { idx: number[] }[] = [];
   {
     let cur: number[] = [];
-    for (let h = 0; h < N; h++) {
-      if (points[h]?.hasData) cur.push(h);
+    for (let s = 0; s < N; s++) {
+      if (points[s]?.hasData) cur.push(s);
       else { if (cur.length) runs.push({ idx: cur }); cur = []; }
     }
     if (cur.length) runs.push({ idx: cur });
@@ -85,6 +90,7 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
 
   // 档位边界虚线（40 / 70）
   const bounds = [READY_LOW, READY_HIGH];
+  // ★ 2026-10-06：N=48（半小时槽），X 轴主刻度每 4 小时 = 每 8 槽
   const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 24];
 
   return (
@@ -92,6 +98,7 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
       onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
       style={{ width: '100%' }}
     >
+      {svgW > 0 ? (
       <Svg width={svgW} height={svgH + theme.sp(2)}>
         <Defs>
           <SvgLinear id="readyArea" x1="0" y1="0" x2="0" y2="1">
@@ -100,21 +107,26 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
           </SvgLinear>
         </Defs>
 
+        {/* ★ 2026-10-06（用户口径）：纵轴 = 0-100，三档柔和背景带 + 右侧低/中/高标注
+            （脑力是连续量纲，色带只做背景分区、不给点染色；主视觉仍是 0-100 折线） */}
+        {[0, 1, 2].map((i) => {
+          const hi = i === 0 ? 100 : i === 1 ? READY_HIGH : READY_LOW;
+          const lo = i === 0 ? READY_HIGH : i === 1 ? READY_LOW : 0;
+          return (
+            <Rect key={'band' + i} x={padL} y={yAt(hi)} width={plotW} height={Math.max(0, yAt(lo) - yAt(hi))}
+              fill={LEVELS[i].color} opacity={0.07} />
+          );
+        })}
         {/* 0 基线 */}
         <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
-        {/* 档位边界虚线 */}
+        {/* 档位边界虚线（仅作 40/70 参考基准，不赋予三档配色语义） */}
         {bounds.map((v) => (
           <Path key={'b' + v} d={`M ${padL} ${yAt(v)} L ${padL + plotW} ${yAt(v)}`}
             stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
         ))}
-        {/* 档位文字（右侧） */}
-        {LEVELS.map((lv, i) => {
-          const v = i === 0 ? 85 : i === 1 ? 55 : 20;
-          return (
-            <SvgText key={'lb' + i} x={padL - theme.sp(1.5)} y={yAt(v) + 3} textAnchor="end"
-              fontSize={theme.fontSize.micro} fontWeight="600" fill={lv.color}>{lv.label}</SvgText>
-          );
-        })}
+        {/* 数值刻度锚点（0 / 100） */}
+        <SvgText key="y100" x={padL - theme.sp(1.5)} y={yAt(100) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>100</SvgText>
+        <SvgText key="y0" x={padL - theme.sp(1.5)} y={yAt(0) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>0</SvgText>
 
         {/* 睡眠遮罩 */}
         {sleepMask && sleepMask.eX > sleepMask.sX + 2 && (
@@ -140,19 +152,30 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
             fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.2} />
         ) : null)}
 
-        {/* 「此刻」竖线 + 定位点 */}
-        {nowHour != null && points[nowHour]?.hasData ? (
+        {/* 「此刻」竖线 + 定位点（nowHour 为钟点 0–23 → 换算成槽号 ×2） */}
+        {nowHour != null && points[nowHour * 2]?.hasData ? (
           <>
-            <Line x1={xAt(nowHour)} y1={padT} x2={xAt(nowHour)} y2={padT + plotH}
+            <Line x1={xAt(nowHour * 2)} y1={padT} x2={xAt(nowHour * 2)} y2={padT + plotH}
               stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="3 3" opacity={0.55} />
-            <Circle cx={xAt(nowHour)} cy={yAt(points[nowHour].score)} r={4}
+            <Circle cx={xAt(nowHour * 2)} cy={yAt(points[nowHour * 2].score)} r={4}
               fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.6} />
           </>
         ) : null}
 
-        {/* X 轴主刻度 */}
+        {/* 右侧档位标注：低(<40) / 中(40-70) / 高(>70) —— 纵轴 0-100 分区 */}
+        {[
+          { label: '高', v: (100 + READY_HIGH) / 2, color: theme.colors.success },
+          { label: '中', v: (READY_HIGH + READY_LOW) / 2, color: theme.colors.warn },
+          { label: '低', v: READY_LOW / 2, color: theme.colors.danger },
+        ].map((b) => (
+          <SvgText key={'lvl' + b.label} x={padL + plotW + theme.sp(1.5)} y={yAt(b.v) + 3}
+            textAnchor="start" fontSize={theme.fontSize.micro} fill={b.color} fontWeight="600">{b.label}</SvgText>
+        ))}
+
+        {/* X 轴主刻度（每 4 小时 = 每 8 槽；24 时 = 末端边界） */}
         {MAIN_HOURS.map((h) => {
-          const x = h === 24 ? padL + plotW : xAt(h);
+          const slot = h * 2;                       // 钟点 → 槽号
+          const x = h === 24 ? padL + plotW : xAt(slot);
           const align = h === 0 ? 'start' : h >= 24 ? 'end' : 'middle';
           return (
             <SvgText key={'tx' + h} x={x} y={padT + plotH + theme.sp(4)} textAnchor={align}
@@ -160,15 +183,11 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
           );
         })}
       </Svg>
+      ) : null}
 
-      {/* 档位图例 */}
+      {/* ★ 2026-10-06（用户口径）：图例改为中性文字说明 0-100 量纲与阈值参考，不再用彩色圆点渲染三档 */}
       <View style={styles.legendRow}>
-        {LEVELS.map((l) => (
-          <View key={l.label} style={styles.legendItem}>
-            <View style={[styles.dot, { backgroundColor: l.color }]} />
-            <Text style={styles.legendText}>{l.label}</Text>
-          </View>
-        ))}
+        <Text style={styles.legendText}>0–100 量纲 · {'<40'} 偏低 · 40–70 适中 · {'>70'} 充沛</Text>
       </View>
 
       {caption ? <Text style={styles.caption}>{caption}</Text> : null}

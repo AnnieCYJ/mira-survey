@@ -34,9 +34,9 @@ const LEVEL_MOOD_IDX: Record<string, MoodIndex> = {
 // 排列顺序按「月相规律」：满月↔全紫在对立位置（180°），上弦/下弦在两侧
 const HOME_PHASES: { key: PhaseKey; style: MoonStyle; label: string }[] = [
   { key: 'period', style: 'full', label: PHASE_LABEL.period },       // -90° 顶部 → 满月
-  { key: 'follicular', style: 'quarterR', label: PHASE_LABEL.follicular }, // 0°  右侧 → 上弦
+  { key: 'follicular', style: 'quarterR', label: PHASE_LABEL.follicular }, // 0°  右侧 → 黄底紫月牙
   { key: 'luteal', style: 'allPurple', label: PHASE_LABEL.luteal },        // 90° 底部 → 全紫（与满月对立）
-  { key: 'ovulation', style: 'quarterL', label: PHASE_LABEL.ovulation },   // 180° 左侧 → 下弦
+  { key: 'ovulation', style: 'quarterL', label: PHASE_LABEL.ovulation },   // 180° 左侧 → 紫底黄月牙
 ];
 // 当前经期象限标签 → PhaseKey
 const LABEL_TO_PHASE: Record<string, PhaseKey> = {

@@ -15,7 +15,7 @@ import Card from '../components/Card';
 import GlassCard from '../components/GlassCard';
 import Icon from '../components/Icon';
 import EnergyBall from '../components/EnergyBall';
-import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import SleepRhythmHomeCard from '../components/SleepRhythmHomeCard';
 import SleepCard from '../components/SleepCard';
 import { loadPeriodDays } from '../data/cycleLog';
 import MindChips, { type MindChipItem } from '../components/MindChips';
@@ -246,7 +246,14 @@ function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: '
           () => onNav('emotion'),
           esReport?.stressScale ? esReport.stressScale.caption : undefined,
         )}
-        {subCard(IMG_COG, '脑力准备度', cognitive, '/100', () => onNav('cognitive'), '当前剩余')}
+        {/* ★ 2026-10-06 A+C：无昨夜睡眠时 sublabel 改「今日已用脑」，避免与"剩余"口径混淆 */}
+        {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'),
+          (() => {
+            try {
+              const rep = computeCognitiveLoadReport();
+              return rep?.brainRemaining != null ? '当前剩余' : rep?.brainUsedToday != null ? '今日已用脑' : '当前剩余';
+            } catch { return '当前剩余'; }
+          })())}
         {subCard(IMG_ACTIVITY, '运动量', activity, '步', () => onNav('activity'))}
       </View>
     </View>
@@ -358,7 +365,8 @@ const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }:
 // ★ hour = 钟点 0–23（computeHourlyLoad 已收敛为 24 整点桶）；柱色与详情页大图、Hero 共用
 //   统一三档：低<40 绿 / 中 40–70 黄 / 高≥70 红（COG_LEVEL_LOW / COG_LEVEL_HIGH）
 // 无真实数据时的空骨架数据源（模块级常量，引用稳定不触发 memo 重绘）
-const COG_EMPTY_HOURLY = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
+// ★ 2026-10-06：准备度粒度统一为 30 分钟 → 48 槽
+const COG_EMPTY_HOURLY = Array.from({ length: 48 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
 const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, condensed }: { hourly: { hour: number; score: number; hasData?: boolean }[]; condensed?: boolean }) {
   // ★ 宽度 onLayout 实测：固定 168 会超出半宽卡片内框（横坐标「24」溢出卡片边界）
   const [measuredW, setMeasuredW] = React.useState(0);
@@ -654,29 +662,29 @@ export default function TodayScreen() {
   //   科学依据不变（睡眠→次日认知 meta：Lowe 2017 g=−0.383、持续性注意 −0.409；Wüst 2024 一晚即损），
   //   只是把「一天一个数」改成「随昼夜能量线走」——储备仍由睡眠驱动，剩余是在储备上扣当天用脑。
   //   诚实边界：系数仍是经验值，**量纲未校准**（不能说 72 比 65「认知好 7%」）。后续用用户自报回归校准。
-  const cognitive = (() => { try { if ((ring?.curveStatus as any)?.dataStale) return '—'; const r = computeCognitiveLoadReport(); return r?.brainRemaining != null ? String(r.brainRemaining) : '—'; } catch { return '—'; } })();
+  const cognitive = (() => {
+    try {
+      if ((ring?.curveStatus as any)?.dataStale) return '—';
+      const r = computeCognitiveLoadReport();
+      if (r?.brainRemaining != null) return String(r.brainRemaining);
+      // ★ 2026-10-06 A+C（用户）：无昨夜睡眠时「剩余百分比」不存在，但「今日已用脑量」是
+      //   白天实测 HRV↓/SNS↑ 累加的真实结果 → 显它而不是杠（tag 会切成「已用脑」）。
+      if (r?.brainUsedToday != null) return String(r.brainUsedToday);
+      return '—';
+    } catch { return '—'; }
+  })();
   const activity = (() => { try { const dk = dayKey(Date.now()); const s = ring?.stepDaily?.[dk]?.steps ?? 0; return s > 0 ? String(s) : '—'; } catch { return '—'; } })(); // 顶部 chip 备用：当日步数
   // 恢复 = 最近一晚睡眠评分 0-100（与「全天恢复」卡 AllDayRecoveryCard 同一取数口径）。
   // ★ v18.98（用户口径：对齐 Oura）：只认**昨晚**这一夜 ——
   //   今天的睡眠摘要，或昨天那条但起床时刻落在今早；再往前的旧归档一律不算（→ 显示「—」）。
-  //   同时不再写「昨 ·」溯源前缀：没有昨晚睡眠就是「—」，不是拿旧数 + 一行说明。
+  // ★ 2026-10-06（用户铁律：无今日睡眠即「—」，绝不挪用旧归档/昨日睡眠）：
+  //   **只认今日睡眠**（dayKey(now)，按起床日归档）。删除原「昨日回退」——
+  //   它会把任何历史晨间睡眠（含被错误归档到昨天的旧觉）当作今晚睡眠，
+  //   正是圆环上方「睡眠恢复」冒出 59 等旧分数的根源。
   const recoverySleep = (() => {
     try {
-      const upMin = (s: any): number | null => {
-        if (typeof s?.getUp === 'number') return s.getUp;
-        const m = /(\d{1,2}):(\d{2})/.exec(String(s?.wakeTime ?? ''));
-        return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-      };
-      const isLastNight = (s: any, allowYesterday: boolean): boolean => {
-        if (!s || !((s.total ?? 0) > 0)) return false;
-        if (!allowYesterday) return true;
-        const up = upMin(s);
-        return up == null || up < 12 * 60;
-      };
       const t = healthStore.getSleep(dayKey(Date.now()));
-      if (isLastNight(t, false)) return t;
-      const y = healthStore.getSleep(dayKey(Date.now() - 86400000));
-      return isLastNight(y, true) ? y : null;
+      return (t && (t.total ?? 0) > 0) ? t : null;
     } catch { return null; }
   })();
   // ★ v18.98（用户口径：对齐 Oura，且明确「不要写『昨』」）：
@@ -793,7 +801,47 @@ export default function TodayScreen() {
   // ★ 认知准备度序列（与上面同一数据源 hourlyInstant，仅做「反向映射 + 节律塑形」）
   //   computeReadinessSeries 内部已按 nowMs 缓存报告的 key，这里直接算即可，无需 useMemo。
   const cogReadiness = cogReport ? computeReadinessSeries(cogReport) : null;
-  const cogReadyLabel = readinessLevelLabel(cogReadiness?.now ?? null);
+  // ★ 2026-10-06（用户："大卡片还是显示状态中等"）：大卡 value 用档位文字，标签判断必须和
+  //   顶部 chip / 详情页同源（都用 brainRemaining），否则同一屏出现两个矛盾数字。
+  //   cogReadyLabel 仅在没有 brainRemaining 时才用（此时它读能量线，是唯一可用口径）。  // ★ 2026-10-07(用户："不要状态中等，要么跟圆环一样显示数字，要么显示消耗%")
+  // ★ 2026-10-07：首页大卡显示**今日脑力消耗%**（能量线从晨起到睡前的掉幅）
+  //   圆环仍然显示当前剩余准备度（两者口径不同，不矛盾）
+  const cogConsumptionPct = (() => {
+    if (!cogReport) return null;
+    const half = (cogReport as any).energyHalfHourly as { slot: number; value: number }[] | undefined;
+    if (!half || half.length === 0) return null;
+    const sleep = cogReport.sleepWindow ?? null;
+    const wakeHour = sleep?.wakeHour ?? 7;
+    const wakeSlot = Math.max(0, Math.floor(wakeHour * 2));
+    // morning: 起床后 1h 内 3 槽均值
+    const mSlots = half.filter((p) => p.slot >= wakeSlot && p.slot <= wakeSlot + 2);
+    const morning = mSlots.length ? mSlots.reduce((a, b) => a + b.value, 0) / mSlots.length : null;
+    // evening: 睡前槽 或 槽 46(23:00)
+    const bedHour = sleep?.bedHour ?? null;
+    const targetSlot = (bedHour != null && Number.isFinite(bedHour))
+      ? Math.max(0, Math.min(47, Math.floor(bedHour * 2) - 1))
+      : 46;
+    const eSlot = half.find((p) => p.slot === targetSlot) ?? half.find((p) => p.slot === 46);
+    const evening = eSlot?.value ?? null;
+    if (morning != null && evening != null && morning > 0) {
+      return Math.max(0, Math.round(((morning - evening) / morning) * 100));
+    }
+    // fallback: peak→trough
+    const awake = half.filter((p) => {
+      if (!sleep) return true;
+      const bedS = Math.floor((sleep.bedHour ?? 22) * 2);
+      const wakeS = Math.floor((sleep.wakeHour ?? 7) * 2);
+      return !(p.slot >= bedS || p.slot <= wakeS);
+    });
+    if (awake.length >= 2) {
+      const peak = awake.reduce((a, b) => (b.value > a.value ? b : a)).value;
+      const trough = awake.reduce((a, b) => (b.value < a.value ? b : a)).value;
+      if (peak > trough && peak > 0) return Math.round(((peak - trough) / peak) * 100);
+    }
+    return null;
+  })();
+  const cogCardValue = cogConsumptionPct != null ? String(cogConsumptionPct) : '—';
+  const cogCardSub = cogConsumptionPct != null ? '今日脑力消耗' : '暂无数据';
   // 近 7 天步数
   const weekSteps = (() => {
     const out: { dayKey: string; steps: number; date: Date }[] = [];
@@ -1093,11 +1141,9 @@ export default function TodayScreen() {
   const cognitiveSub = cogPeakBar
     ? `疲劳最高 ${pad2(cogPeakBar.hour)}:00`
     : `${cogLevelTxt}疲劳`;
-  // ★ v18.68 认知大卡峰谷行：默认展示「预测」峰谷（cortisol 节律 + 睡眠恢复预测）；
-  //   某端预测窗口已完全过去 → 改展示该端「真实」峰谷（已过去时段的实测小时柱；
-  //   峰=疲劳最低=状态最佳、谷=疲劳最高=状态最差，与预测同语义；实测不足 2 小时保留预测）
-  const cogPeakTrough = (() => {
-    if (!cogHasData) return null;
+  // ★ 2026-10-06（用户口径）：峰谷行**不再依赖 cogHasData**——节律预测（皮质醇昼夜模型）即使没有昨晚睡眠也能推算，
+  //   故「脑力峰值 / 脑力低谷」两行始终展示（无值显「—」），让卡片在断流/无睡眠时也是完整的「分 + 峰 + 谷」三行。
+  const cogPeakTroughLines = (() => {
     const f: any = (cogReport as any)?.forecast;
     const seg = (h: number) => `${pad2(h)}–${pad2((h + 1) % 24)}时`;
     // 真实峰谷：只取「已完全过去」的实测小时（h+1 点 ≤ 当前分钟），且至少 2 个实测小时才有峰谷意义
@@ -1105,17 +1151,25 @@ export default function TodayScreen() {
     // ★ 2026-10-05 改「准备度」后峰谷方向反转：准备度 **峰 = 分数最高（状态最好）**、
     //   谷 = 分数最低。旧疲劳口径是「峰 = 分数最低」，直接沿用会把最好/最差说反。
     const passed = (cogReport?.hourlyInstant ?? []).filter((h) => h.hasData && (h.hour + 1) * 60 <= curMin);
-    const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
-    const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
-    const part = (label: string, predHour: number | null | undefined, real: { hour: number } | null) => {
-      if (real) return `${label} ${seg(real.hour)}`;          // 预测窗已过 → 真实
-      if (predHour != null) return `${label} ${seg(predHour)}`;
-      return null;
-    };
-    const pk = part('峰', f?.peak?.hour, f?.peak?.hour != null && (f.peak.hour + 1) * 60 <= curMin ? realPeak : null);
-    const tr = part('谷', f?.trough?.hour, f?.trough?.hour != null && (f.trough.hour + 1) * 60 <= curMin ? realTrough : null);
-    const parts = [pk, tr].filter((s): s is string => s != null);
-    return parts.length > 0 ? parts.join(' · ') : null;
+    const realPeak = passed.length >= 2 ? passed.reduce((a, b) => (b.score <= a.score ? b : a)) : null;
+    const realTrough = passed.length >= 2 ? passed.reduce((a, b) => (b.score >= a.score ? b : a)) : null;
+    // 预测窗已完全过去 → 改用该端实测峰谷（同语义）；否则用节律预测值（无需睡眠即可得）
+    const peakHour = f?.peak?.hour != null
+      ? ((f.peak.hour + 1) * 60 <= curMin ? realPeak?.hour ?? f.peak.hour : f.peak.hour)
+      : null;
+    const troughHour = f?.trough?.hour != null
+      ? ((f.trough.hour + 1) * 60 <= curMin ? realTrough?.hour ?? f.trough.hour : f.trough.hour)
+      : null;
+    // ★ 2026-10-06（用户问"无睡眠时峰谷还要不要展示"）：**要展示**。
+    //   预测来自 `forecast`（皮质醇昼夜模型 + 昼夜相位），**不依赖睡眠归档**；
+    //   预测窗已过去的端点改用当天实测峰谷（≥2 个实测小时才有意义，否则留预测值）。
+    //   副标注「预测/实测」让用户知道这行的来源，不把预测当成实测。
+    const peakIsReal = f?.peak?.hour != null && (f.peak.hour + 1) * 60 <= curMin && realPeak != null;
+    const troughIsReal = f?.trough?.hour != null && (f.trough.hour + 1) * 60 <= curMin && realTrough != null;
+    return [
+      peakHour != null ? `脑力峰值 ${seg(peakHour)}${peakIsReal ? ' 实测' : ' 预测'}` : '脑力峰值 —',
+      troughHour != null ? `脑力低谷 ${seg(troughHour)}${troughIsReal ? ' 实测' : ' 预测'}` : '脑力低谷 —',
+    ];
   })();
   const stepKcalToday = (() => { try { return ring?.stepDaily?.[dkToday]?.calorie ?? 0; } catch { return 0; } })();
   const stepDistToday = (() => { try { return ring?.stepDaily?.[dkToday]?.distance ?? 0; } catch { return 0; } })();
@@ -1170,9 +1224,22 @@ export default function TodayScreen() {
   const cogTag = (() => {
     try {
       if ((ring?.curveStatus as any)?.dataStale) return undefined;
-      const reserve = computeCognitiveLoadReport()?.brainReserve;
-      if (reserve == null || !Number.isFinite(reserve)) return undefined;
-      return reserve >= COG_LEVEL_HIGH ? '准备度高' : reserve >= COG_LEVEL_LOW ? '准备度中' : '准备度低';
+      const rep = computeCognitiveLoadReport();
+      // ★ 2026-10-06（用户指正："圆环上面写 59，但显示准备度高，这肯定不对"）：
+      //   根因 —— chip 的**值**读 `brainRemaining`（此刻剩余），而**标签**读 `brainReserve`（晨起起点）。
+      //   两者不是同一个量：晨起 80、此刻用到 59 是完全正常的，但拿 80 去判档就出现「59 · 准备度高」。
+      //   ★ 铁律：**标签与数值必须取同一字段**（同源），否则用户永远会认为算错。
+      //   现在统一按「此刻剩余」判档。
+      const remain = rep?.brainRemaining;
+      if (remain == null || !Number.isFinite(remain)) {
+        // 无昨夜睡眠 → 顶部显「已用脑量」，tag 相应改成消耗口径
+        const used = rep?.brainUsedToday;
+        if (used != null && Number.isFinite(used)) {
+          return used >= 40 ? '已用脑 · 偏多' : '已用脑 · 正常';
+        }
+        return undefined;
+      }
+      return remain >= COG_LEVEL_HIGH ? '准备度高' : remain >= COG_LEVEL_LOW ? '准备度中' : '准备度低';
     } catch { return undefined; }
   })();
   // ★ v18.132：情绪压力（多信号融合）在 TodayScreen 侧再取一次，供 chip 小字用。
@@ -1289,8 +1356,8 @@ export default function TodayScreen() {
     //   相对口径的锚点是 50（= 和你平时一样），挂「/100」会被读成「睡眠只有 61 分」——
     //   这正是 sleepScore.ts 头注明确警告过的误读。相对口径不显示单位，参照系交给下面的 tag。
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: sleepPers?.mode === 'relative' ? undefined : '/100', tag: recTag, onPress: () => navigation.navigate('SleepDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力准备度', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
-    { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力消耗', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, unit: '/100', tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     { key: 'period', icon: 'moon', tone: 'lav', label: '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', tag: status?.phaseLabel ?? undefined, moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
@@ -1538,7 +1605,7 @@ export default function TodayScreen() {
             {/* 最上面 = 全天恢复（★ v18.62 去彩底回白卡：颜色留给 lime chip/badge + 趋势曲线） */}
             {/* ★ 2026-10-06：用户要求「睡眠节律」卡点进去 = 洞察页睡眠 tab「睡眠结构」卡点进去的
                 同一页（SleepDetail，昨天改的睡眠结构/节律详情），不再是昼夜节律/皮质醇页。 */}
-            <AllDayRecoveryCard title="睡眠节律" onPress={() => navigation.navigate('SleepDetail')} />
+            <SleepRhythmHomeCard onPress={() => navigation.navigate('SleepDetail')} />
 
             {/* 中排：左高块 = 脑力（lime：24h 疲劳柱状图 + 预测/真实峰谷行）；右列 = 情绪 / 运动
                 ★ v18.68：去准备度（只在脑力消耗详情展示）；★ v18.126 标题「认知」→「脑力」（与顶部 chip 口径统一）
@@ -1550,13 +1617,13 @@ export default function TodayScreen() {
                 chipBg={mm.chipBg.lime.bg}
                 icon="nodes"
                 iconFg={mm.chipBg.lime.fg}
-                title="脑力"
-                sub={cogHasData ? '此刻剩余脑力' : '暂无数据'}
-                value={cogHasData ? cogReadyLabel : '暂无数据'}
+                title="脑力消耗"
+                sub={cogCardSub}
+                value={cogCardValue != null && cogCardValue !== "—" ? cogCardValue + "%" : cogCardValue}
                 chart={cogReadiness
-                  ? <MiniReadinessTrend points={cogReadiness.points} />
+                  ? <View style={{ marginTop: 'auto', marginBottom: theme.sp(1.5) }}><MiniReadinessTrend points={cogReadiness.points} /></View>
                   : undefined}
-                foot={cogHasData ? (cogPeakTrough ?? undefined) : undefined}
+                footLines={cogPeakTroughLines}
                 style={{ width: '53%' }}
                 onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}
               />
@@ -1620,11 +1687,12 @@ export default function TodayScreen() {
               iconFg={mm.chipBg.lav.fg}
               moonStyle={phaseMoon}
               title="经期"
-              aside={status?.phaseLabel
-                ? `${status.phaseLabel}${status.dayInCycle != null ? ` · 第 ${status.dayInCycle} 天` : ''}`
-                : undefined}
-              chart={<PeriodDayCircles marked={periodMarks} />}
-              style={{ height: theme.sp(25), flexGrow: 0 }}
+              aside={status?.phaseLabel ?? undefined}
+              dayBadge={status?.dayInCycle ?? null}
+              dayBadgeBg={mm.colors.purpleDeep}
+              dayBadgeFg={'#FFFFFF'}
+              chart={<View style={{ marginTop: theme.sp(1.5) }}><PeriodDayCircles marked={periodMarks} /></View>}
+              style={{ height: theme.sp(28), flexGrow: 0 }}
               onPress={() => navigation.navigate('CycleCalendar')}
             />
           </View>
@@ -1899,12 +1967,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
-    // v16 统一 tab 样式：未选 = 中性灰浅底（与洞察页 Segmented/子 tab 同款，无描边）
-    backgroundColor: mm.colors.btnBusyBg,
+    // ★ 2026-10-06（用户口径）：无底色纯文字；未选无边框，选中只描边（lime）。
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
     marginHorizontal: theme.space.xs,
   },
   todayTabBtnOn: {
-    backgroundColor: mm.colors.limeSoft,
+    borderColor: mm.colors.limeMid,
   },
   todayTabLabel: {
     fontSize: theme.fontSize.sm,
@@ -1912,7 +1982,7 @@ const styles = StyleSheet.create({
     color: mm.colors.inkSoft,
   },
   todayTabLabelOn: {
-    color: mm.colors.limeDeep,
+    color: mm.colors.ink,
     fontWeight: theme.weight.semibold,
   },
 });

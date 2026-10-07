@@ -15,6 +15,11 @@ interface Props {
   ring?: any;
   rows?: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[];
   pending?: boolean;
+  /** ★ 2026-10-06：由洞察页综合「荷尔蒙节律 + 长期健康数据」算好的分析结论（已简化）。
+   *   传入后直接用，不再在卡内重复跑皮质醇逻辑；不传则回落卡内旧兜底。 */
+  analysisText?: string;
+  /** ★ 2026-10-06：卡片底部「建议」区的两条综合建议（最多展示 2 条）。 */
+  suggestions?: string[];
 }
 
 export default function HealthAgeCard({
@@ -24,6 +29,8 @@ export default function HealthAgeCard({
   ring,
   rows,
   pending,
+  analysisText,
+  suggestions,
 }: Props) {
   const delta = healthAge - actualAge;
   const isYounger = healthAge < actualAge;
@@ -63,7 +70,7 @@ export default function HealthAgeCard({
   const markerY = cy - R * Math.cos(dotAngle);
 
   // ═══ 皮质醇 + 经期分析 ═══
-  const analysisText = (() => {
+  const analysisTextFallback = (() => {
     if (pending) return 'AI 分析中...';
     if (rows && rows.length > 0) return rows[0].body;
     try {
@@ -97,10 +104,12 @@ export default function HealthAgeCard({
           ? '节律综合偏年轻，作息与活动节奏稳定。'
           : '节律偏高，近期睡眠债累积，建议优先保证作息。'
       }`;
-    } catch {
+    }     catch {
       return isYounger ? '节律综合偏年轻。' : '节律偏高，建议保证作息。';
     }
   })();
+  // ★ 2026-10-06：优先用洞察页算好的综合结论（荷尔蒙节律 + 长期健康数据），没有才用卡内旧兜底
+  const analysisTextResolved = analysisText ?? analysisTextFallback;
 
   return (
     <View style={styles.cardShell}>
@@ -174,12 +183,23 @@ export default function HealthAgeCard({
           </View>
         </View>
 
-        {/* ═══ AI 分析白卡片（渐变底上的独立白卡，SPEC「再下白卡」） ═══ */}
+        {/* ═══ AI 分析白卡片（渐变底上的独立白卡，SPEC「再下白卡」）
+            ★ 2026-10-06（用户：分析与建议不要两个框，合并在一个框里） ═══ */}
         <View style={styles.cardWrap}>
           <AiBadge label="AI 分析" />
           <Text style={styles.body} numberOfLines={4}>
-            {analysisText}
+            {analysisTextResolved}
           </Text>
+          {suggestions && suggestions.length > 0 ? (
+            <View style={styles.suggestInner}>
+              {suggestions.slice(0, 2).map((s, i) => (
+                <View style={styles.suggestItem} key={i}>
+                  <Text style={styles.suggestDot}>·</Text>
+                  <Text style={styles.suggestText}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       </ExpoLinearGradient>
     </View>
@@ -260,6 +280,48 @@ const styles = StyleSheet.create({
     paddingBottom: theme.sp(2.5),
   },
   body: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textBody,
+    lineHeight: theme.fontSize.sm * 1.5,
+  },
+  // ★ 2026-10-06：建议区（AI 分析下方的 2 条综合建议）
+  //   用户要求「分析和建议不要两个框，在一个框里」→ suggestWrap/suggestTitle 不再使用，
+  //   建议改为 suggestInner（渲染在 AI 分析白卡内部，与分析文案同框）。
+  suggestInner: {
+    marginTop: theme.sp(1.5),
+    paddingTop: theme.sp(1.5),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: mm.colors.cardBorder,
+  },
+  suggestWrap: {
+    marginHorizontal: theme.sp(3),
+    marginBottom: theme.sp(3),
+    backgroundColor: mm.colors.cardBg,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.sp(3),
+    paddingTop: theme.sp(2.5),
+    paddingBottom: theme.sp(2.5),
+  },
+  suggestTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.limeDeep,
+    marginBottom: theme.sp(1.5),
+  },
+  suggestItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: theme.sp(1),
+  },
+  suggestDot: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.bold,
+    color: mm.colors.limeMid,
+    marginRight: theme.sp(1),
+    lineHeight: theme.fontSize.sm * 1.5,
+  },
+  suggestText: {
+    flex: 1,
     fontSize: theme.fontSize.sm,
     color: theme.colors.textBody,
     lineHeight: theme.fontSize.sm * 1.5,

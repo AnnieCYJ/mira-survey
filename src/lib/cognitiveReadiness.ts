@@ -28,9 +28,9 @@ export function readinessLevelLabel(v: number | null | undefined): string {
   return v >= READY_HIGH ? '状态充足' : v >= READY_LOW ? '状态中等' : '需要休息';
 }
 
-/** 单点（全天曲线上的一个小时） */
+/** 单点（半小时槽上的准备度） */
 export interface ReadinessPoint {
-  /** 钟点 0–23 */
+  /** ★ 半小时槽号 0–47（0=00:00, 1=00:30, …, 47=23:30）。★ 2026-10-06 由「钟点 0–23」改为槽号，与心理压力图粒度统一 */
   hour: number;
   /** 准备度 0–100；hasData=false 时为 0（仅占位，不可解读） */
   score: number;
@@ -78,45 +78,68 @@ const CIRCADIAN_BY_HOUR: number[] = [
  */
 export function computeReadinessSeries(report?: CognitiveLoadReport, nowMs: number = Date.now()): ReadinessSeries {
   const rep = report ?? computeCognitiveLoadReport(nowMs);
-  const instant = rep.hourlyInstant ?? [];
 
   // 睡眠恢复因子（无昨晚睡眠 → null，UI 诚实显「—」）
   const rec = rep.sleepRecovery ?? null;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ★ 2026-10-06（用户：圆环 61、详情页 36 打架 → 口径必须唯一）：
+  //   旧实现 = `100 − fatigueInstant + 节律偏移`，是**从疲劳反推**的另一套公式，
+  //   与圆环/首页 chip 用的 `brainRemaining`（能量线当前值）完全是两把尺，
+  //   同一天能差 20~30 分。现在**直接用能量线本身**（`energyHalfHourly`）。
+  // ★ 粒度也统一为**每 30 分钟一个点**（48 槽），与心理压力图一致。
+  // ═══════════════════════════════════════════════════════════════════════
+  const half = (rep as any).energyHalfHourly as { slot: number; value: number; hasData: boolean }[] | undefined;
+
   const points: ReadinessPoint[] = [];
-  for (let h = 0; h < 24; h++) {
-    const raw = instant[h];
-    const has = !!raw?.hasData;
-    if (!has) {
-      points.push({ hour: h, score: 0, hasData: false });
-      continue;
+  if (half && half.length > 0) {
+    const bySlot = new Map<number, { value: number; hasData: boolean }>();
+    for (const p of half) bySlot.set(p.slot, { value: p.value, hasData: p.hasData });
+    for (let s = 0; s < 48; s++) {
+      const p = bySlot.get(s);
+      if (!p || !p.hasData) {
+        points.push({ hour: s, score: 0, hasData: false });
+      } else {
+        points.push({ hour: s, score: Math.max(0, Math.min(100, Math.round(p.value))), hasData: true });
+      }
     }
-    const shape = (CIRCADIAN_BY_HOUR[h] - 1) * 24;      // 晨 +~0 … 晚 −~7
-    const score = Math.max(0, Math.min(100, Math.round(100 - raw.score + shape)));
-    points.push({ hour: h, score, hasData: true });
+  } else {
+    // 兜底：报告未带能量线时退回整点换算（保证不崩、不空）
+    for (let h = 0; h < 24; h++) {
+      const raw = rep.hourlyInstant?.[h];
+      if (!raw?.hasData) {
+        points.push({ hour: h * 2, score: 0, hasData: false });
+        continue;
+      }
+      const shape = (CIRCADIAN_BY_HOUR[h] - 1) * 24;
+      points.push({ hour: h * 2, score: Math.max(0, Math.min(100, Math.round(100 - raw.score + shape))), hasData: true });
+    }
   }
 
   const valid = points.filter((p) => p.hasData);
   const avg = valid.length ? Math.round(valid.reduce((a, b) => a + b.score, 0) / valid.length) : null;
 
-  // 当前时刻：优先用 nowMs 所在小时；该小时无数据则退回最近的有数据小时
-  const curHour = new Date(nowMs).getHours();
-  let now: number | null = points[curHour]?.hasData ? points[curHour].score : null;
+  // ══ 以下全部按 48 个半小时槽计算（points[i].hour 现在是槽号，不是钟点）══
+
+  // 当前时刻：优先用 nowMs 所在半小时槽；该槽无数据则退回最近的有数据槽
+  const nowDate = new Date(nowMs);
+  const curSlot = Math.floor((nowDate.getHours() * 60 + nowDate.getMinutes()) / 30);
+  let now: number | null = points[curSlot]?.hasData ? points[curSlot].score : null;
   if (now == null) {
-    for (let d = 1; d <= 6 && now == null; d++) {
-      const cand = points[(curHour - d + 24) % 24];
+    for (let d = 1; d <= 12 && now == null; d++) {
+      const cand = points[(curSlot - d + 48) % 48];
       if (cand?.hasData) now = cand.score;
     }
   }
 
-  // 晨起段：起床后 1 小时（起床时刻未知时用 07–09 点近似）
+  // 晨起段：起床后 1 小时（起床时刻未知时用 07–09 点近似）—— 槽 = 钟点 × 2
   const wakeHour = rep.sleepWindow?.wakeHour ?? null;
-  const mStart = wakeHour != null ? Math.round(wakeHour) : 7;
-  const morningVals = [0, 1, 2].map((k) => points[(mStart + k) % 24]).filter((p) => p?.hasData).map((p) => p.score);
+  const mStart = (wakeHour != null ? Math.round(wakeHour) : 7) * 2;
+  const morningVals = [0, 1, 2].map((k) => points[(mStart + k) % 48]).filter((p) => p?.hasData).map((p) => p.score);
 
-  // 夜间低谷段：20–23 + 0–6 点
-  const nightHours = [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
-  const nightVals = nightHours.map((h) => points[h]).filter((p) => p?.hasData).map((p) => p.score);
+  // 夜间低谷段：20–23 点 + 0–6 点 → 槽 40..47 + 0..13
+  const nightSlots = [40, 41, 42, 43, 44, 45, 46, 47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+  const nightVals = nightSlots.map((s) => points[s]).filter((p) => p?.hasData).map((p) => p.score);
 
   const peak = valid.length ? valid.reduce((a, b) => (b.score > a.score ? b : a)) : null;
   const trough = valid.length ? valid.reduce((a, b) => (b.score < a.score ? b : a)) : null;
@@ -127,8 +150,9 @@ export function computeReadinessSeries(report?: CognitiveLoadReport, nowMs: numb
     now,
     morning: morningVals.length ? Math.round(morningVals.reduce((a, b) => a + b, 0) / morningVals.length) : null,
     nightLow: nightVals.length ? Math.round(nightVals.reduce((a, b) => a + b, 0) / nightVals.length) : null,
-    peakHour: peak?.hour ?? null,
-    troughHour: trough?.hour ?? null,
+    // 峰谷对外仍以「钟点」表达（UI 写"脑力峰值 H时"），槽号 ÷2 还原
+    peakHour: peak != null ? Math.floor(peak.hour / 2) : null,
+    troughHour: trough != null ? Math.floor(trough.hour / 2) : null,
     wakeHour,
     sleepRec: rec,
   };
@@ -145,6 +169,114 @@ export interface ReadinessRangePoint {
   label: string;
   /** 当天有数据小时的准备度均值；null = 当天无数据 */
   value: number | null;
+}
+
+/**
+ * ★ 2026-10-06（用户否决"准备度均值"）：一天准备度是早高晚低的波形，**均值 ≈ 中段水平**，
+ *   既不代表早上能干活的状态、也不代表晚上还剩多少，且**被睡眠时长污染**（睡 9h vs 6h 能差 10+ 分）。
+ *   用户真正要的是「今天用了多少脑」= 晨起起点 − 当日终值。
+ *
+ * 每日消耗量 = 起点（当日 00:00 能量线首值 / 晨起准备度）− 当日最后一个实测槽的能量。
+ * 无实测槽 → null（不猜）。**不受睡眠时长影响**（起点与终值同源）。
+ */
+export function dailyBrainConsumption(rep: CognitiveLoadReport | null | undefined): number | null {
+  if (!rep) return null;
+  const half = (rep as any).energyHalfHourly as { slot: number; value: number; hasData: boolean }[] | undefined;
+  if (!half || half.length === 0) return null;
+  const pts = half.filter((p) => p.hasData);
+  if (pts.length < 2) return null;
+  const first = pts[0].value;
+  const last = pts[pts.length - 1].value;
+  // 起点用晨起准备度（当日 00:00 的能量）更准；无则退回首个实测槽
+  const start = rep.brainReserve != null && Number.isFinite(rep.brainReserve) ? rep.brainReserve : first;
+  return Math.max(0, Math.round(start - last));
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+ * ★ 每日「真正用了多少脑」= 晨起准备度 − 睡前准备度（2026-10-07 用户定口径）
+ *
+ * 为什么不是别的：
+ *  - 全天均值 ≈ 中段水平，既不代表早上能干活、也不代表晚上剩多少，还被睡眠时长污染；
+ *  - 「疲劳度」单调递减不代表当天耗了多少；
+ *  - 只有「起点 − 终点」才是当天真实用掉的量。
+ * 单位是**点数**（0–100 刻度上的差值），不是百分比——这样不同日期之间可直接比较。
+ *
+ * 无昨天睡眠归档（拿不到起床/入睡时刻）→ 回退「当日峰 − 当日谷」，
+ * 并把 basis 标出来给 UI 诚实说明（不把估算伪装成实测）。
+ * ═══════════════════════════════════════════════════════════════════════ */
+export type DailyUsedBasis = 'sleep' | 'peakvalley';
+
+export interface DailyUsed {
+  /** 当天用掉的脑力（点数）；无数据 → null */
+  used: number | null;
+  /**
+   * ★ 2026-10-07（用户口径）：当天用掉的脑力占晨起储备的**百分比** —— UI 唯一主数字。
+   *   有睡眠 = (晨起 − 睡前) / 晨起 × 100；无睡眠 = (当日峰 − 当日谷) / 峰 × 100。
+   *   与首页「脑力消耗」卡片同一个算式（TodayScreen 的 cogConsumptionPct），两处必然一致。
+   */
+  usedPct: number | null;
+  /** 取数方式：sleep=有睡眠归档（最准）/ peakvalley=无睡眠，峰谷估算 */
+  basis: DailyUsedBasis | null;
+  /** 晨起准备度（起床后 1h 均值） */
+  morning: number | null;
+  /** 睡前准备度（入睡时刻前 1h 均值） */
+  preSleep: number | null;
+  /** 无睡眠回退时的峰 / 谷 */
+  peak: number | null;
+  valley: number | null;
+}
+
+/** 消耗百分比：(起点 − 终点) / 起点 × 100。起点 ≤ 0 时无意义 → null */
+function pctFrom(hi: number | null | undefined, lo: number | null | undefined): number | null {
+  if (hi == null || lo == null || !Number.isFinite(hi) || !Number.isFinite(lo)) return null;
+  if (hi <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round(((hi - lo) / hi) * 100)));
+}
+
+export function dailyBrainUsed(rep?: CognitiveLoadReport, nowMs: number = Date.now()): DailyUsed {
+  const EMPTY: DailyUsed = { used: null, usedPct: null, basis: null, morning: null, preSleep: null, peak: null, valley: null };
+  const r = rep ?? computeCognitiveLoadReport(nowMs);
+  if (!r) return EMPTY;
+  const series = computeReadinessSeries(r, nowMs);
+  const pts = series.points;                       // 48 槽，hour = 槽号 0–47
+  const sleep = (r as any).sleepWindow as { bedHour: number; wakeHour: number } | null | undefined;
+
+  const meanAt = (slots: number[]): number | null => {
+    const vals = slots
+      .map((s) => pts[((s % 48) + 48) % 48])
+      .filter((p) => p && p.hasData)
+      .map((p) => p.score);
+    if (vals.length === 0) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  };
+
+  // ① 有睡眠归档：起床后 1h 均值 → 入睡时刻前 1h 均值
+  if (sleep && Number.isFinite(sleep.wakeHour) && Number.isFinite(sleep.bedHour)) {
+    const ws = Math.max(0, Math.min(47, Math.round(sleep.wakeHour * 2)));
+    const bs = Math.max(0, Math.min(47, Math.round(sleep.bedHour * 2)));
+    const morning = meanAt([ws, ws + 1, ws + 2]);
+    const preSleep = meanAt([bs - 2, bs - 1, bs]);
+    if (morning != null && preSleep != null) {
+      return {
+        used: Math.max(0, morning - preSleep),
+        usedPct: pctFrom(morning, preSleep),
+        basis: 'sleep', morning, preSleep, peak: null, valley: null,
+      };
+    }
+  }
+
+  // ② 无睡眠归档：回退当日峰 − 当日谷（用户决策），不猜、不补睡眠窗
+  const valid = pts.filter((p) => p.hasData).map((p) => p.score);
+  if (valid.length >= 2) {
+    const peak = Math.max(...valid);
+    const valley = Math.min(...valid);
+    return {
+      used: Math.max(0, peak - valley),
+      usedPct: pctFrom(peak, valley),
+      basis: 'peakvalley', morning: null, preSleep: null, peak, valley,
+    };
+  }
+  return EMPTY;
 }
 
 export function aggregateReadinessByDay(

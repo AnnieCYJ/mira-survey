@@ -9,8 +9,8 @@
  *  - 年：每月均值（statusDaily 当月所有天的均值），一月一个点；
  *  - 全部使用真实数据，缺口断线 / 缺天留空，不编造；无数据区间诚实显示占位。
  */
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, type LayoutChangeEvent, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect, G, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
@@ -174,6 +174,20 @@ export default function StatusTrendDetailScreen() {
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
   const [range, setRange] = useState<RangeKey>('day');
+  // ★ chart fade transition: 旧图层 fadeOut → 新图层 fadeIn
+  const chartOpacity = useRef(new Animated.Value(1)).current;
+  const [renderKey, setRenderKey] = useState(0); // 强制新图层 mount
+  const prevRangeRef = useRef<RangeKey>('day');
+  useEffect(() => {
+    if (prevRangeRef.current === range) return;
+    prevRangeRef.current = range;
+    // fadeOut → 换 key → fadeIn
+    Animated.sequence([
+      Animated.timing(chartOpacity, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(chartOpacity, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+    setRenderKey((k) => k + 1);
+  }, [range]);
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
   // ★ tooltip 状态
@@ -234,6 +248,10 @@ export default function StatusTrendDetailScreen() {
         const nowD = new Date();
         const tl = (ring.statusTimeline ?? [])
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
+          // ★ 与首页 TrendChart 同口径：剔除 `fill:true` 的插值补点 ——
+          //   睡眠/断流期没有真实采样，healthStore 会补 fill 点；不过滤就会把空档连成曲线，
+          //   看着像「睡眠期间也有状态数据」。真实点之外一律断线（缺口 = 空白）。
+          .filter((p) => !(p as any).fill)
           .filter((p) => {
             const d = new Date(p.t);
             return d.getFullYear() === nowD.getFullYear() && d.getMonth() === nowD.getMonth() && d.getDate() === nowD.getDate();
@@ -261,6 +279,8 @@ export default function StatusTrendDetailScreen() {
         const anchorDayMs = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 0, 0, 0, 0).getTime();
         const tl = archived
           .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.t))
+          // ★ 同首页口径：剔除插值补点（历史归档同样只画真实采样，缺口断线不补值）
+          .filter((p) => !(p as any).fill)
           .map((p) => ({ t: p.t as number, value: p.value as number }))
           .sort((a, b) => a.t - b.t);
         // ★ 展开为 48 个完整槽，gap 填 null → 折线自动断线
@@ -767,6 +787,7 @@ export default function StatusTrendDetailScreen() {
             pointerEvents="box-none"
           >
             {w > 0 ? (
+              <Animated.View key={renderKey} style={{ opacity: chartOpacity }}>
               <Svg width={w} height={H}>
                 <Defs>
                   {/* 填充：竖向渐变，颜色取首/中/末点的等级色（与首页 TrendChart 同款口径） */}
@@ -907,6 +928,7 @@ export default function StatusTrendDetailScreen() {
                     })
                   : null}
               </Svg>
+              </Animated.View>
             ) : null}
             {/* ★ tooltip：点击显示白色详情框 */}
             {tip && w > 0 ? (() => {
@@ -975,6 +997,15 @@ export default function StatusTrendDetailScreen() {
               </View>
             </View>
           ) : null}
+
+          {/* ★ 2026-10-06（用户反馈）：图例下方加一个向下箭头，提示「下面还有内容，往下滑」，
+              否则用户以为图例就是页面底部。整页可滚动，详细分析在图例下方。 */}
+          <View style={styles.moreHint}>
+            <View style={{ transform: [{ rotate: '90deg' }] }}>
+              <Icon name="chevronRight" size={theme.fontSize.body} color={theme.colors.textSub} />
+            </View>
+            <Text style={styles.moreHintText}>下滑查看详细分析</Text>
+          </View>
         </View>
 
         {/* ★ 详细分析（StressWatch 范式：方块+数字，不写长段文字）
@@ -1080,9 +1111,11 @@ const styles = StyleSheet.create({
   },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.md },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
-  axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.space.xs },
+  axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.space.xs, paddingLeft: 34, paddingRight: 14 },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: theme.space.sm },
+  moreHint: { alignItems: 'center', justifyContent: 'center', marginTop: theme.space.md, gap: 2 },
+  moreHintText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 9, height: 9, borderRadius: 4.5 },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

@@ -35,7 +35,7 @@ import {
 } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
-import { dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
 import { useAiInsight } from '../hooks/useAiInsight';
@@ -43,6 +43,7 @@ import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
@@ -59,7 +60,7 @@ function formatValue(v: number | null): string {
 type TabKey = 'basics' | MetricKey;
 
 const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
-  { key: 'rhythm', label: '节律健康' },
+  { key: 'rhythm', label: '荷尔蒙节律健康' },
   { key: 'longevity', label: '长期健康' },
 ];
 
@@ -175,6 +176,62 @@ export default function InsightScreen() {
       return Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
     } catch { return 75; }
   }, [ring.daily['sleepScore']]);
+
+  /**
+   * ★ 2026-10-06（用户：身体年龄算法要「综合」荷尔蒙节律 + 长期健康数据，且 AI 分析太复杂 → 简化）：
+   *   身体年龄 = 实际年龄 + 活力调整：两个维度都健康 → 偏年轻；任一失衡 → 偏老。
+   *   分析结论与下方「建议」均由此综合生成，不再依赖冗长的 AI overview 原文。
+   */
+  const bodyAgeInsight = useMemo(() => {
+    const ACTUAL = 28;
+    // ① 荷尔蒙节律（皮质醇）是否健康 —— 直接读 healthStore 当日 intraday（RingState 上无此字段）
+    let hormonalLabel: string = '数据不足';
+    let hormonalHealthy = false;
+    try {
+      const samples = healthStore
+        .getIntraday('cortisol', dayKey(Date.now()))
+        .filter((p: any) => Number.isFinite(p.v) && p.v > 0)
+        .map((p: any, i: number) => ({ t: Number.isFinite(p.t) ? p.t : i * 3600 * 1000, v: p.v }));
+      if (samples.length >= 4) {
+        const a = analyzeCortisol(samples) as any;
+        const level: string = a?.status?.level ?? 'normal';
+        hormonalHealthy = level === 'normal';
+        hormonalLabel = level === 'dysregulated' ? '节律紊乱' : level === 'sustained_high' ? '持续偏高' : '节律平稳';
+      }
+    } catch { /* 保持数据不足 */ }
+    // ② 长期健康数据（综合 脑力/压力/睡眠 的 0–100 分）
+    const longTerm = overallScoreFromReport; // 0–100
+    const longTermHealthy = longTerm >= 65;
+    const longTermLabel = longTerm >= 80 ? '良好' : longTerm >= 65 ? '一般' : '偏弱';
+    // ③ 综合身体年龄：两维度都健康→偏年轻；任一失衡→偏老；长期分再微调 ±
+    let adj = 0;
+    if (hormonalHealthy && longTermHealthy) adj = -4.5;
+    else if (hormonalHealthy && !longTermHealthy) adj = -1.5;
+    else if (!hormonalHealthy && longTermHealthy) adj = 1.5;
+    else adj = 3.5;
+    adj += (65 - longTerm) / 20; // longTerm 80→-0.75，50→+0.75
+    const healthAge = Math.max(18, Math.round((ACTUAL + adj) * 10) / 10);
+    // ④ 简化分析文案（综合两个维度）
+    const hormonalClause = hormonalLabel === '数据不足'
+      ? '荷尔蒙节律暂缺数据'
+      : `荷尔蒙节律${hormonalLabel}${hormonalHealthy ? '，处于健康区间' : '，需关注作息'}`;
+    const longTermClause = `长期健康数据${longTermLabel}${longTermHealthy ? '，整体状态稳定' : '，建议优先改善睡眠与压力'}`;
+    const analysis = `${hormonalClause}；${longTermClause}。`;
+    // ⑤ 两条综合建议
+    const suggestions: string[] = [];
+    if (!hormonalHealthy && hormonalLabel !== '数据不足') {
+      suggestions.push('固定作息、避免熬夜，帮助皮质醇恢复昼夜节律。');
+    }
+    if (!longTermHealthy) {
+      suggestions.push('优先保证 7 小时以上睡眠并管理日间压力，长期指标会随之改善。');
+    }
+    if (suggestions.length < 2) {
+      suggestions.push(hormonalHealthy && longTermHealthy
+        ? '保持当前作息与运动节奏，身体年龄维持在较年轻水平。'
+        : '连续佩戴 7 天，指标会更稳定，建议后再评估。');
+    }
+    return { healthAge, analysis, suggestions: suggestions.slice(0, 2) };
+  }, [ring, overallScoreFromReport]);
 
   const insightRows = useMemo(
     () => resolveInsightRows('overview', aiOverview.rows),
@@ -388,27 +445,43 @@ export default function InsightScreen() {
 
         {/* ═══ hero + 顶 tab + 子 tab：两个 top tab 共用（目标稿六变体顶部是同一张 lime 大卡）═══ */}
         <HealthAgeCard
-          healthAge={22.6}
+          healthAge={bodyAgeInsight.healthAge}
           actualAge={28}
           overallScore={overallScoreFromReport}
           ring={ring}
           rows={insightRows}
           pending={aiOverview.loading}
+          analysisText={bodyAgeInsight.analysis}
+          suggestions={bodyAgeInsight.suggestions}
         />
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
           onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'recover' : 'ecg'); }}
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          style={styles.chipRow} contentContainerStyle={styles.chipContent}>
-          <UnderlineTabs
-            options={ACTIVE_SUBS.map(t => t.label)}
-            activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
-            onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
-            tone={topTab === 'rhythm' ? undefined : 'cy'}
-          />
-        </ScrollView>
+        {/* ★ 2026-10-06：节律健康仅 2 个 tab 时（large）——直接整屏等宽平铺，不套 ScrollView。
+            横向 ScrollView 内 flex:1 宽度在 Fabric 下偶尔失效，导致两个 tab 没撑满整屏。
+            其它 tab（ecg 等多项）仍走 ScrollView 横向滚动。 */}
+        {topTab === 'rhythm' ? (
+          <View style={{ width: '100%' }}>
+            <UnderlineTabs
+              options={ACTIVE_SUBS.map(t => t.label)}
+              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
+              onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
+              large
+            />
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            style={styles.chipRow} contentContainerStyle={styles.chipContent}>
+            <UnderlineTabs
+              options={ACTIVE_SUBS.map(t => t.label)}
+              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
+              onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
+              tone={'cy'}
+            />
+          </ScrollView>
+        )}
 
         {topTab === 'rhythm' ? (
           <>
@@ -421,7 +494,7 @@ export default function InsightScreen() {
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
             ) : subTab === 'recover' ? (
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
-              <AllDayRecoveryCard title="昼夜节律" onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+              <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
             ) : subTab === 'mindCog' ? (
               // v18.3：认知 = 认知负荷（与首页「认知消耗」同源 computeCognitiveLoadReport；
               //   今天无采样时回退到最近有数据日，避免整卡空态）
@@ -783,27 +856,27 @@ function UnderlineTabs({
   options,
   activeIndex,
   onChange,
+  large,
 }: {
   options: string[];
   activeIndex: number;
   onChange: (i: number) => void;
   tone?: 'lav' | 'cy';
+  large?: boolean;
 }) {
-  // v16 §1.7：所有胶囊选中态统一黄绿（soft 底 + deep 字），不再分 lavender/cyan（tone 仅为兼容保留）
-  const pair = { bg: mm.colors.limeSoft, fg: mm.colors.limeDeep };
+  // ★ 2026-10-06（用户口径，参考设计稿）：胶囊「无底色、纯文字」；选中态只让**描边**变色，不改底色。
+  //   ★ large（节律健康仅 2 个 tab）：等宽平铺、字更大、未选也保留浅描边 → 像并排的描边按钮。
   return (
-    <View style={styles.underlineWrap}>
+    <View style={[styles.underlineWrap, large && styles.underlineWrapLarge]}>
       {options.map((label, i) => {
         const isActive = i === activeIndex;
         return (
           <Pressable
             key={label}
             onPress={() => onChange(i)}
-            style={[styles.underlineBtn, isActive && { backgroundColor: pair.bg }]}
+            style={[styles.underlineBtn, large && styles.underlineBtnLarge, isActive && styles.underlineBtnOn]}
           >
-            <Text
-              style={[styles.underlineLabel, isActive && { color: pair.fg, fontWeight: theme.weight.semibold }]}
-            >
+            <Text style={[styles.underlineLabel, isActive && styles.underlineLabelOn]}>
               {label}
             </Text>
           </Pressable>
@@ -963,14 +1036,27 @@ const styles = StyleSheet.create({
   },
   segmentedLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold },
 
-  // v16 统一 tab 样式：未选 = 中性灰浅底（原透明），选中 limeSoft 由组件内注入
+  // ★ 2026-10-06（用户口径）：无底色纯文字；未选无边框，选中只描边（lime）。
   underlineWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1) },
+  underlineWrapLarge: { flexWrap: 'nowrap', width: '100%' },
   underlineBtn: {
     paddingHorizontal: theme.sp(2.5),
     paddingVertical: theme.sp(1.25),
     borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.btnBusyBg,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
+  underlineBtnLarge: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.sp(3),
+    paddingHorizontal: theme.sp(3),
+    borderColor: mm.colors.cardBorder,
+  },
+  underlineBtnOn: { borderColor: mm.colors.limeMid },
   underlineLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.inkSoft },
+  underlineLabelOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold },
 
 });

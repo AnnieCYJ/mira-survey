@@ -1,47 +1,32 @@
 /**
  * SleepRecoveryHero —— 日视图顶部「睡眠恢复分」主结论
  *
- * 对齐 preview/sleep-rhythm.html v9 原型（v9 已按用户要求**去掉分数上方的
- * 「睡眠恢复」标签**，只留大分数 + 右侧结论词 + 与个人基线的差值）。
- *
- * 位置：RangeSwitch **上方**，且**仅日视图**显示（与 App 内 EmotionCognitiveDetailScreen 同策略）。
- *
- * ★ 量纲说明（重要）：分数来自 lib/sleepScore 的 `computeSleepScore`，输出 0–100，
- *   是**恢复质量**口径（时长/深睡/效率/起夜四因子）。
- *   注意不要误用 `sleepDaily.score` —— 那是设备侧 0–4 原始分。
+ * ★ 2026-10-07（用户定口径：全 App 统一「个人相对分」）：
+ *   分数由 `computeSleepPersonalized` 产出（50 = 和平时一样），与首页圆环 chip /
+ *   睡眠节律卡 badge / SleepCard **同源**。此前这里用绝对分 `computeSleepScore`（100=达标），
+ *   于是同一标签「睡眠恢复」在首页显示 65、在详情页显示 97，用户不知道信哪个 —— 现统一。
+ *   ⚠ 相对口径下**不挂 /100**：50 才是「和平时一样」，挂百分制必然被读成「刚及格」。
  */
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import { computeSleepScore, type SleepScoreInput } from '../lib/sleepScore';
-import { sleepRecoveryTag } from '../lib/sleepPersonalized';
-
-export interface HeroDayRec extends SleepScoreInput {
-  /** 该日归档的分钟数（用于算深睡占比） */
-  totalMin: number;
-  deepMin: number;
-}
+import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
+// ★ 用与首页同源的「健康库刷新节拍」当依赖，睡眠记录到达后 hero 才会跟着刷新
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 
 interface Props {
-  /** 锚点日的睡眠评分输入（已由调用方组装好，缺数据时为 null） */
-  input: HeroDayRec | null;
-  /** 近 14 天（含锚点日）的分数均值，用于「高于/低于个人均值」 */
-  baseline: number | null;
+  /** 锚点日的毫秒时间戳：算「那一天的睡眠恢复分」（今天=此刻） */
+  anchorMs: number;
 }
 
-export default function SleepRecoveryHero({ input, baseline }: Props) {
-  const score = useMemo(() => {
-    if (!input) return null;
-    const s = computeSleepScore({
-      sleepTotal: input.sleepTotal,
-      sleepDeep: input.sleepDeep,
-      sleepAwake: input.sleepAwake,
-      getUp: input.getUp,
-    });
-    return Number.isFinite(s) && s > 0 ? s : null;
-  }, [input]);
+export default function SleepRecoveryHero({ anchorMs }: Props) {
+  const hsRefresh = useDebouncedHealthStoreRefresh(700);
+  const pers = useMemo(() => {
+    try { return computeSleepPersonalized(anchorMs); } catch { return null; }
+  }, [anchorMs, hsRefresh]);
 
+  const score = pers?.score ?? null;
   if (score == null) {
     return (
       <View style={styles.hero}>
@@ -54,26 +39,23 @@ export default function SleepRecoveryHero({ input, baseline }: Props) {
     );
   }
 
-  // 口径固定 absolute：单日分无法构成个人化基线，relative 需多日历史
-  const tag = sleepRecoveryTag(score, 'absolute') ?? '—';
-  const delta = baseline != null ? Math.round(score - baseline) : null;
+  const relative = pers!.mode === 'relative';
+  const tag = sleepRecoveryTag(score, pers!.mode) ?? '—';
+  const sub = relative
+    ? '对照你的个人基线 · 50 = 和平时一样'
+    : pers!.daysToReady > 0
+      ? `还需 ${pers!.daysToReady} 晚建立个人基线`
+      : '仍在用固定目标';
 
   return (
     <View style={styles.hero}>
       <Text style={styles.score}>
         {Math.round(score)}
-        <Text style={styles.scoreUnit}>/100</Text>
+        {relative ? null : <Text style={styles.scoreUnit}>/100</Text>}
       </Text>
       <View style={styles.rhs}>
         <Text style={styles.label}>{tag}</Text>
-        {delta != null ? (
-          <Text style={[styles.sub, delta > 0 ? styles.up : delta < 0 ? styles.down : null]}>
-            {delta > 0 ? `▲ ${delta}` : delta < 0 ? `▼ ${Math.abs(delta)}` : '→ 与 14 天均值持平'}
-            {delta !== 0 ? ' · 对比 14 天均值' : ''}
-          </Text>
-        ) : (
-          <Text style={styles.sub}>对比 14 天均值</Text>
-        )}
+        <Text style={styles.sub}>{sub}</Text>
       </View>
     </View>
   );
@@ -97,6 +79,4 @@ const styles = StyleSheet.create({
   rhs: { alignItems: 'flex-end', paddingBottom: 4 },
   label: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
   sub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  up: { color: theme.colors.trendUp },
-  down: { color: theme.colors.trendDown },
 });

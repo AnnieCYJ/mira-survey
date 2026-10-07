@@ -95,7 +95,7 @@ function fmtClock(hourFloat: number): string {
 /** （v18.64 移除 demoCurve 示意曲线：Mira 诚实数据铁律——没戴戒指就空态，不放「看起来像数据」的示意图） */
 
 
-export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp, title = '昼夜节律' }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string; title?: string }) {
+export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp, title = '昼夜节律', insightMode = false }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string; title?: string; insightMode?: boolean }) {
   // ★ v18.53.2：bg 可传 butter（黄）；图标/强调色默认 lime，黄底时由调用方传 butter.fg
   const iconFg = iconFgProp ?? mm.chipBg.lime.fg;
   const ring = ringProp ?? useRingState();
@@ -113,7 +113,11 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   //   同一标签「睡眠恢复」在圆环是 52、在节律卡是 94，用户以为算错了。
   const sleep = useMemo(() => latestSleep(), [ring.sleepDaily, Date.now() & 0]);
   const pers = useMemo(() => { try { return computeSleepPersonalized(); } catch { return null; } }, [ring.sleepDaily, Date.now() & 0]);
-  const sleepScore = !dataStale && pers && pers.score != null && Number.isFinite(pers.score) ? pers.score : null;
+  // ★ 2026-10-06（用户铁律：没有记录到睡眠 = 杠，绝不许编/算出一个分）：
+  //   此前 `pers.score` 来自**个人基线**（14 天平均锚点 50），即使今天窗口根本没睡眠归档也会算出一个分，
+  //   导致「睡眠恢复」在白天无睡眠时还挂着 59 之类的值 —— 用户实锤「不要瞎说，基于真实数据」。
+  //   现在强制把 `sleep != null`（今天该窗口确有睡眠归档）作为显分前提；无睡眠 → null → 整卡显「—」。
+  const sleepScore = !dataStale && sleep != null && pers && pers.score != null && Number.isFinite(pers.score) ? pers.score : null;
   const persRelative = pers?.mode === 'relative';
   // ★ v18.104：断流时空态要「连时长也不挂」—— 原来 sleepScore 置 null 后会退回 fmtDur(sleep.total)，
   //   等于把旧睡眠时长继续印在那里（用户实锤：圆环都空了这张卡还有数）。直接走「—」。
@@ -145,12 +149,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
     built.vals.forEach((v, i) => {
       if (v != null && v > peakV) { peakV = v; peakIdx = i; }
     });
-    // 波动幅度 = 有效槽的 (max−min)/中位 —— 相对量，不是激素浓度
-    const ampPct =
-      valid.length >= 3 && peakV > -Infinity
-        ? Math.round(((Math.max(...valid) - Math.min(...valid)) / (valid.reduce((a, b) => a + b, 0) / valid.length)) * 100)
-        : null;
-    const out = { ...built, validCount: valid.length, peakIdx, peakV, ampPct, baselineDays: bl.days };
+    const out = { ...built, validCount: valid.length, peakIdx, peakV, baselineDays: bl.days };
     // ★ COR-PROBE：诊断日志（离线重算对账用，仅 __DEV__）。核对命令：grep COR-PROBE /tmp/metro_8081.log
     //   输出：峰值槽/值、有效槽数、每槽「值(参与信号数)」压缩串、基线天数。
     //   ★ 必须留在 useMemo 内：原先写在组件体里，每次渲染都会重跑一次 map/join 并打印，
@@ -174,20 +173,105 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   //   才显峰值；图上没数据（不画曲线）时 tile 直接显「—」。不再绑「今天有没有睡眠」。
   const cortReady = !dataStale && hasProxy && proxy.validCount >= MIN_TODAY_SLOTS;
   const peakClock = cortReady ? fmtClock(proxy.peakIdx / 2) : '—';
-  const recoveryWord = !hasProxy
-    ? baselineReady ? '数据不足' : `建立基线中（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天）`
-    : proxy.peakV >= 70
-        ? '压力偏高'
-        : proxy.peakV <= 40
-          ? '放松良好'
-          : proxy.ampPct != null && proxy.ampPct >= 60
-            ? '波动偏大'
-            : '节律平稳';
+  // ★ 2026-10-06（用户要求：右侧 tile 由「皮质醇活性峰值」改为「作息类型」）：
+  //   作息类型由**皮质醇活性峰值时刻**推导（与 SleepRhythmCard.chronotypeOf 同口径）—— 峰值明显偏晚（>12 点）
+  //   偏晚型、明显偏早（<6 点）偏早型、否则常规作息；无真实数据（cortReady=false）→「—」。
+  //   这张卡的曲线已经承载「皮质醇昼夜趋势」，右侧 tile 不再重复显示峰值时刻，改为更有判读意义的作息类型。
+  const peakHourFloat = proxy.peakIdx >= 0 ? proxy.peakIdx / 2 : null;
+  // ★ 2026-10-06（用户铁律：没有睡眠数据 → 作息类型也不写值）：作息类型由皮质醇峰值推导，
+  //   但只有「今天确有睡眠归档」时才给结论；否则与左侧「睡眠恢复」一并显「—」，两枚指标块口径一致、不编造。
+  const chronoLabel = !cortReady || peakHourFloat == null || sleep == null
+    ? '—'
+    : peakHourFloat > 12
+      ? '晚睡型'
+      : peakHourFloat < 6
+        ? '早起型'
+        : '常规作息';
   const cortisolSub = dataStale
     ? '戒指暂无新数据'
-    : cortReady
-      ? `${proxy.ampPct != null ? `波动 ${proxy.ampPct}%` : '活性已建模'} · ${recoveryWord}`
-      : '暂无皮质醇数据';
+    : sleep == null
+      ? '暂无睡眠数据'
+      : !cortReady
+        ? '暂无皮质醇数据'
+        : `峰值 ${peakClock}`;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ★ 2026-10-06（洞察页专用，insightMode=true 时启用；首页那张完全不受影响）：
+  //   tile1「睡眠恢复」→「皮质醇活性」分值 + 峰值时间点（不编造，没数据显「—」）
+  //   tile2「作息类型」→ 皮质醇节律判读（节律正常 / 节律紊乱 / 皮质醇偏高 …）
+  // ═══════════════════════════════════════════════════════════════════════
+  /** 皮质醇活性均值（0-100，仅统计实测有效槽）；无数据 → null */
+  const cortAvg = useMemo(() => {
+    if (!cortReady) return null;
+    const v = proxy.vals.filter((x): x is number => x != null);
+    if (!v.length) return null;
+    return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
+  }, [cortReady, proxy.vals]);
+
+  /**
+   * 皮质醇节律判读（数据铁律：只依据实测槽，绝不编造）：
+   *  - 有效槽不足 → null（显「—」）
+   *  - 均值 ≥62 视为整体偏高 → 「皮质醇偏高」
+   *  - 昼夜振幅过小（峰值-谷值 < 12）→ 「节律紊乱」（全天平线，没有正常高低差）
+   *  - 峰值时刻异常（<5 点或 >23 点）→ 「节律紊乱」（峰值不在正常清醒时段）
+   *  - 其余 → 「节律正常」
+   */
+  const cortRhythmLabel = useMemo(() => {
+    if (!cortReady || proxy.peakIdx < 0) return null;
+    const v = proxy.vals.filter((x): x is number => x != null);
+    if (v.length < MIN_TODAY_SLOTS) return null;
+    const avg = v.reduce((a, b) => a + b, 0) / v.length;
+    const trough = Math.min(...v);
+    const amp = proxy.peakV - trough;
+    const peakH = proxy.peakIdx / 2;
+    if (avg >= 62) return '皮质醇偏高';
+    if (amp < 12) return '节律紊乱';
+    if (peakH < 5 || peakH > 23) return '节律紊乱';
+    return '节律正常';
+  }, [cortReady, proxy.vals, proxy.peakIdx, proxy.peakV]);
+
+  /**
+   * 峰值时间区间（真实实测推导，不编造）：
+   * 取「≥ 今日峰值 90% 且有实测」的连续槽段 → 显「HH:MM–HH:MM」；
+   * 只有一个槽 → 显该槽的半小时区间；无数据 → 「—」。
+   */
+  const peakWindowText = useMemo(() => {
+    if (!cortReady || proxy.peakIdx < 0) return null;
+    const thr = proxy.peakV * 0.9;
+    const near = (i: number) => i >= 0 && i < proxy.vals.length && proxy.vals[i] != null && proxy.vals[i] >= thr;
+    if (!near(proxy.peakIdx)) return null;
+    let s = proxy.peakIdx, e = proxy.peakIdx;
+    while (near(s - 1)) s--;
+    while (near(e + 1)) e++;
+    // 槽 i 覆盖 [i*30, i*30+30) 分钟 → 显区间更符合「几点到几点」
+    const m0 = s * 30, m1 = (e + 1) * 30;
+    const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return `${hhmm(m0)}–${hhmm(m1)}`;
+  }, [cortReady, proxy.vals, proxy.peakIdx, proxy.peakV]);
+
+  /** 判读依据说明（给 tile 副文案，一句话说清凭什么这么判） */
+  const cortRhythmSub = useMemo(() => {
+    if (!cortReady) return dataStale ? '戒指暂无新数据' : '暂无皮质醇数据';
+    const label = cortRhythmLabel;
+    if (!label) return '暂无皮质醇数据';
+    if (label === '皮质醇偏高') return `全天均值 ${cortAvg}/100 · 高于个人基线`;
+    if (label === '节律紊乱') return peakHourFloat != null && (peakHourFloat < 5 || peakHourFloat > 23)
+      ? `峰值 ${peakClock} · 偏离正常时段`
+      : '昼夜高低差不足 · 全天平线';
+    return peakWindowText ? `峰值时段 ${peakWindowText}` : '昼夜节律完整';
+  }, [cortReady, cortRhythmLabel, cortAvg, peakHourFloat, peakClock, peakWindowText, dataStale]);
+
+  /** 洞察页模式下的 tile1：皮质醇分值（不给"睡眠恢复"这个说不通的指标） */
+  const insightTile1Val = cortAvg != null ? String(cortAvg) : '—';
+  const insightTile1Unit = cortAvg != null ? '/100' : '';
+
+  const insightTile1Sub = dataStale
+    ? '戒指暂无新数据'
+    : !cortReady
+      ? '暂无皮质醇数据'
+      : peakWindowText
+        ? `峰值时段 ${peakWindowText}`
+        : '峰值 —';
 
   // ★ v18.156：档位词与 chip 走**同一个函数**（sleepPersonalized.sleepRecoveryTag）。
   //   此前这里自带一套 62/45 + 「恢复较好」措辞，而 chip 是 58/42 + 「高于平时」
@@ -252,35 +336,65 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
           </View>
         </View>
 
-        {/* 上半：睡眠恢复情况 / 皮质醇峰值 */}
+        {/* 上半：洞察页=皮质醇分值/峰值 + 皮质醇节律判读；首页=睡眠恢复 / 作息类型 */}
         <View style={styles.tiles}>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>睡眠恢复</Text>
-            <View style={styles.tileValRow}>
-              <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
-                {sleepValue}
-              </Text>
-              <Text style={styles.tileUnit}>{sleepUnit}</Text>
-            </View>
-            <Text style={styles.tileSub} numberOfLines={1}>
-              {sleepSub}
-            </Text>
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>皮质醇活性峰值</Text>
-            <View style={styles.tileValRow}>
-              <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
-                {peakClock}
-              </Text>
-              <Text style={styles.tileUnit}>点</Text>
-            </View>
-            <Text style={styles.tileSub} numberOfLines={1}>
-              {cortisolSub}
-            </Text>
-          </View>
+          {insightMode ? (
+            <>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>皮质醇活性</Text>
+                <View style={styles.tileValRow}>
+                  <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
+                    {insightTile1Val}
+                  </Text>
+                  <Text style={styles.tileUnit}>{insightTile1Unit}</Text>
+                </View>
+                <Text style={styles.tileSub} numberOfLines={1}>
+                  {insightTile1Sub}
+                </Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>皮质醇节律</Text>
+                <View style={styles.tileValRow}>
+                  <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
+                    {cortRhythmLabel ?? '—'}
+                  </Text>
+                </View>
+                <Text style={styles.tileSub} numberOfLines={1}>
+                  {cortRhythmSub}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>睡眠恢复</Text>
+                <View style={styles.tileValRow}>
+                  <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
+                    {sleepValue}
+                  </Text>
+                  <Text style={styles.tileUnit}>{sleepUnit}</Text>
+                </View>
+                <Text style={styles.tileSub} numberOfLines={1}>
+                  {sleepSub}
+                </Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>作息类型</Text>
+                <View style={styles.tileValRow}>
+                  <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
+                    {chronoLabel}
+                  </Text>
+                </View>
+                <Text style={styles.tileSub} numberOfLines={1}>
+                  {cortisolSub}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* 下半：皮质醇全天趋势（落在卡片渐变的深色区，曲线走白色） */}
+        <Text style={styles.chartCap}>皮质醇昼夜趋势</Text>
         <View style={styles.chartBox} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
           {W > 0 ? (
             <>
@@ -512,8 +626,10 @@ const styles = StyleSheet.create({
     color: mm.colors.inkSoft,
     marginTop: theme.sp(0.75),
   },
-  // 曲线区：★ v18.53 贴近上方文字（用户反馈：图表离上面的字太远），lg→sm
-  chartBox: { marginTop: theme.space.sm },
+  // 曲线区：★ 2026-10-06（用户反馈）：「皮质醇昼夜趋势」小标题要贴近图表、远离上方「睡眠恢复」两枚指标块
+  chartBox: { marginTop: theme.sp(0.5) },
+  // ★ 2026-10-06：曲线上方的小标题，明确这张图是「皮质醇昼夜趋势」（与右侧 tile 改成的「作息类型」分工：图看趋势、tile 看类型）
+  chartCap: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, marginTop: theme.space.sm, marginBottom: theme.sp(0.5) },
   // ★ v18.64 空态提示（盖在 SVG 上居中）
   emptyHint: {
     ...StyleSheet.absoluteFillObject,

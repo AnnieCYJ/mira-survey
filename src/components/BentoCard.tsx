@@ -33,6 +33,17 @@ interface Props {
   statTop?: string;
   /** 顶行右侧小标签（参考图 Activity 卡的「4 days streak」位） */
   aside?: string;
+  /** ★ 顶行右侧小标签底色（如经期「第 N 天」带彩底）；不传则灰字无底 */
+  asideBg?: string;
+  /** 小标签文字色（配合 asideBg） */
+  asideFg?: string;
+  /** ★ 2026-10-06：经期卡「第 N 天」的 N 单独高亮 —— 与 aside（相位名，灰字无底）分开，
+   *   让数字带彩底、相位名保持素净。传入后顶行右侧渲染「第 [彩底数字] 天」小药丸。 */
+  dayBadge?: number | null;
+  /** 数字药丸底色（如 lavender 软底） */
+  dayBadgeBg?: string;
+  /** 数字药丸文字色（深紫/白字） */
+  dayBadgeFg?: string;
   /** 标题行下方的独立整行小字（如运动卡「8,432 步 · 6.1 km」）——窄卡里不能塞 topRow，会截断。
    *  ★ v18.88 放宽为 ReactNode：运动卡要按运动类别上色（嵌套 Text 同排混色），
    *    string 仍可直接传，不影响其它调用点。 */
@@ -52,7 +63,7 @@ interface Props {
 }
 
 function BentoCardImpl({
-  bg, chipBg, icon, iconFg, moonStyle, title, value, unit, sub, statTop, aside, subLine, chart, foot, footLines, numTop, compact, style, onPress,
+  bg, chipBg, icon, iconFg, moonStyle, title, value, unit, sub, statTop, aside, asideBg, asideFg, dayBadge, dayBadgeBg, dayBadgeFg, subLine, chart, foot, footLines, numTop, compact, style, onPress,
 }: Props) {
   const pressScale = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
@@ -79,7 +90,20 @@ function BentoCardImpl({
             {!!sub && <Text style={styles.sub} numberOfLines={1}>{sub}</Text>}
           </View>
           {!!aside && (
-            <Text style={styles.aside} numberOfLines={1}>{aside}</Text>
+            asideBg ? (
+              <View style={[styles.asideChip, { backgroundColor: asideBg }]}>
+                <Text style={[styles.asideChipText, asideFg ? { color: asideFg } : null]} numberOfLines={1}>{aside}</Text>
+              </View>
+            ) : (
+              <Text style={styles.aside} numberOfLines={1}>{aside}</Text>
+            )
+          )}
+          {dayBadge != null && (
+            <View style={[styles.dayBadge, dayBadgeBg ? { backgroundColor: dayBadgeBg } : null]}>
+              <Text style={styles.dayBadgePre}>第</Text>
+              <Text style={[styles.dayBadgeNum, dayBadgeFg ? { color: dayBadgeFg } : null]}>{dayBadge}</Text>
+              <Text style={styles.dayBadgePost}>天</Text>
+            </View>
           )}
           {numTop && value != null ? (
             <View style={styles.numRowTop}>
@@ -186,6 +210,41 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     paddingLeft: theme.sp(2),
     fontSize: theme.fontSize.xs,
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkSoft,
+  },
+  asideChip: {
+    marginLeft: 'auto',
+    paddingHorizontal: theme.sp(1.5),
+    paddingVertical: theme.sp(0.5),
+    borderRadius: theme.radius.pill,
+  },
+  asideChipText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.weight.semibold,
+  },
+  // ★ 2026-10-06：经期卡「第 N 天」数字药丸（彩底 + 白字，区别于灰字相位名）
+  dayBadge: {
+    marginLeft: theme.sp(1.5),
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.sp(1.5),
+    paddingVertical: theme.sp(0.6),
+    borderRadius: theme.radius.pill,
+  },
+  dayBadgePre: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkSoft,
+  },
+  dayBadgeNum: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.weight.bold,
+    color: mm.colors.ink,
+    marginHorizontal: theme.sp(0.5),
+  },
+  dayBadgePost: {
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
     color: mm.colors.inkSoft,
   },

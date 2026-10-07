@@ -121,24 +121,33 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
           {/* ② 整夜分期图（置于时长之下） */}
           <Text style={styles.blockTitle}>整夜分期</Text>
           {segments && segments.length > 0 ? (
-            <View style={{ marginTop: theme.space.sm }}>
-              <SleepStageChart
-                segments={segments}
-                sleepTime={day?.sleepTime ?? null}
-                totalMinutes={total > 0 ? total : null}
-              />
-              <View style={styles.legend}>
-                <LegendItem color={mm.colors.purpleCore} label="深睡" />
-                <LegendItem color={mm.colors.purpleMid} label="浅睡" />
-                <LegendItem color={mm.colors.skyCore} label="REM" />
-                <LegendItem color={mm.colors.honeyCore} label="清醒" />
-              </View>
-            </View>
+            <SleepStageChart
+              segments={segments}
+              sleepTime={day?.sleepTime ?? null}
+              totalMinutes={total > 0 ? total : null}
+            />
           ) : (
+            /* ★ 2026-10-06（用户反馈）：日无数据时不要「完全空白」，给一张**灰色分期图占位**——
+               4 条泳道（深睡/浅睡/REM/清醒）以极淡的同色画出，让用户看到「分期图的样子」而非一片空。
+               不编造任何数值或分段。 */
+            <View style={styles.emptyStage}>
+              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleCore }]} /></View>
+              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleMid }]} /></View>
+              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.skyCore }]} /></View>
+              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.honeyCore }]} /></View>
+            </View>
+          )}
+          <View style={styles.legend}>
+            <LegendItem color={mm.colors.purpleCore} label="深睡" />
+            <LegendItem color={mm.colors.purpleMid} label="浅睡" />
+            <LegendItem color={mm.colors.skyCore} label="REM" />
+            <LegendItem color={mm.colors.honeyCore} label="清醒" />
+          </View>
+          {!(segments && segments.length > 0) ? (
             <Text style={styles.empty}>
               昨夜睡眠分期暂未同步。将戒指连接 App 后，后台会自动回填历史睡眠分期。
             </Text>
-          )}
+          ) : null}
 
           {/* ③ 睡眠结构 —— 一行式比例条（深睡/浅睡/REM 堆叠）+ 下方行式明细
               ★ 不再并排四个数字格：那类「2×2 数字罗列」信息密度低、彼此无比较关系。 */}
@@ -284,6 +293,10 @@ const styles = StyleSheet.create({
   durNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, width: '100%', marginTop: 2 },
   durNone: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
   blockTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.md, marginBottom: theme.space.xs },
+  // ★ 2026-10-06：日无数据的「灰色分期图」占位——4 条极淡泳道，不编造数值
+  emptyStage: { marginTop: theme.space.sm, gap: theme.sp(0.75) },
+  emptyLane: { height: theme.sp(4.5), justifyContent: 'center' },
+  emptyLaneBar: { height: theme.sp(2.5), borderRadius: 3, opacity: 0.13 },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.xs, lineHeight: 20 },
   // 图例
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md, marginTop: theme.space.sm },

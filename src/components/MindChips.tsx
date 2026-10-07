@@ -4,7 +4,7 @@
  * 取代原「四指标环」TodayMetricTiles 的展示位（组件文件保留，可随时回退）。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm, type MindChipTone } from '../theme/mindmate';
 import { MindIcon, type MindIconName } from './MindIcons';
@@ -26,19 +26,14 @@ export interface MindChipItem {
 }
 
 function MindChipsImpl({ items }: { items: MindChipItem[] }) {
-  // ★ v18.153：条目数由 5 → 4（首页去掉「运动消耗」），一行正好排满、不再需要横向滑动；
-  //   chipW 的算法不变（按 4 张算宽），若日后回到 5 条会自动溢出为「4 张 + 露第 5 张边」可滑动形态。
-  const { width: winW } = useWindowDimensions();
-  const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
+  // ★ 2026-10-06（用户反馈：4 个小卡左右间距不对称——「睡眠恢复」离左缘窄、「生理周期」离右缘宽）：
+  //   旧实现用 ScrollView + 手工算宽 `chipW = (avail - GAP*3)/4 - 3`，那个 `-3` 把每张卡缩窄 3pt，
+  //   4 张累计留下 12pt 余量，而 ScrollView 内容左对齐 → 全部余量堆在右侧，造成「最右卡离右边宽」的观感。
+  //   改为 **flex 均分行**：每张卡 `flex:1`、行间 `gap`，4 张严格均分整行宽，左右都贴边、间距完全对称。
+  //   flex 行天然按当前条目数均分，4 张/5 张都不再需要算宽度或横向滚动。
   const GAP = theme.sp(2);
-  const chipW = (avail - GAP * 3) / 4 - 3;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: GAP }}
-      decelerationRate="fast"
-    >
+    <View style={{ flexDirection: 'row', gap: GAP }}>
       {items.map((it) => {
         const cb = mm.chipBg[it.tone];
         return (
@@ -46,7 +41,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
             key={it.key}
             onPress={it.onPress}
             onPressIn={() => {}} // 视觉反馈交给 activeOpacity 类；chip 保持轻量
-            style={({ pressed }) => [styles.chip, { width: chipW }, pressed && { opacity: 0.82 }]}
+            style={({ pressed }) => [styles.chip, { flex: 1 }, pressed && { opacity: 0.82 }]}
             accessibilityRole="button"
             accessibilityLabel={`${it.label} ${it.value}`}
           >
@@ -74,7 +69,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
           </Pressable>
         );
       })}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -124,6 +119,19 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     marginLeft: 1,
+  },
+  // ★ 2026-10-06：经期「第 N 天」的数字彩底（deep lavender 底 + 白字）
+  dayPill: {
+    backgroundColor: mm.chipBg.lav.fg,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.sp(1.5),
+    paddingVertical: theme.sp(0.25),
+    marginHorizontal: theme.sp(0.5),
+  },
+  dayPillText: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.bold,
+    color: '#FFFFFF',
   },
   tag: {
     fontSize: theme.fontSize.micro,

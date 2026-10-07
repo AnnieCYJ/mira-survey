@@ -126,7 +126,15 @@ export interface PersonalizedSleepResult {
   /** 距进入个人化口径还差几天（relative 时为 0） */
   daysToReady: number;
   /** 各维度归一分（诊断用；absolute 模式下为 null） */
-  parts?: { key: string; w: number; v: number; today: number | null; base: number | null }[];
+  parts?: {
+    key: string;
+    w: number;
+    v: number;
+    /** 该维度走的口径：rel = 对比个人基线（50=和平时一样）/ abs = 基线不足，退回绝对目标（达标=1.0） */
+    src: 'rel' | 'abs';
+    today: number | null;
+    base: number | null;
+  }[];
 }
 
 /**
@@ -160,45 +168,57 @@ export function computePersonalizedSleepScore(
   const total = today.sleepTotal ?? 0;
   const parts: PersonalizedSleepResult['parts'] = [];
 
+  /* ═════════════════════════════════════════════════════════════════════
+   * ★ 2026-10-07（用户实锤「睡了 8h58m、深睡 2h30m，睡眠恢复只有 38 分」）：
+   *   **建不出个人基线的维度，退回该维度的绝对目标，绝不允许「丢维 + 权重放大」。**
+   *
+   *   原实现把「基线缺失」当成「维度不存在」直接跳过，再把剩下维度的权重归一化到 1。
+   *   实测当天：`centers.eff = null`（历史无 awake 记录）、`centers.getUp = 0`（从不夜醒，<0.8）
+   *   ⇒ 丢掉 42% 权重 ⇒ 剩下两维被放大 1.72 倍 ⇒
+   *      「时长比平时少 0.55%」+「深睡占比低 10.5%」两个微小偏差被放大成 38 分，
+   *      而昨晚效率 98.3%、零起夜这些**真实的好数据根本没进算**。
+   *
+   *   为什么退回绝对口径而不是按「中性 0.5」计：
+   *   中性等于假设「这个维度表现平平」——但 98.3% 的效率、0 次起夜明显不是平平，
+   *   按中性算等于把好数据抹掉。绝对目标（≥85%、≤3 次）本来就是这个维度的定义，
+   *   在个人基线还没攒够时用它，比丢弃更接近真实。
+   * ═══════════════════════════════════════════════════════════════════ */
+
   // ① 时长：相对自己的平均时长。tol=10% ⇒ 睡够 10% 拿满分、睡够 −10% 拿 0 分。
-  //   ⚠ 与绝对口径的差别：绝对口径对「比平时多睡」也给满分（7.5h+ 封顶），
-  //   这里给**超出部分不加分但不扣分**（ratio>1 时 clamp 到 1）—— 与 Oura 一致。
-  if (centers.total != null && centers.total > 0) {
-    parts.push({
-      key: 'duration', w: c.W_D,
-      v: relNorm(total, centers.total, 0.10),
-      today: total, base: centers.total,
-    });
+  {
+    const v = centers.total != null && centers.total > 0
+      ? relNorm(total, centers.total, 0.10)
+      // 绝对兜底：与 computeSleepScore 的时长项同口径
+      : total > c.TARGET_DURATION_MAX
+        ? clamp(1 - (total - c.TARGET_DURATION_MAX) / 300, 0.7, 1)
+        : clamp(total / c.TARGET_DURATION, 0, 1);
+    parts.push({ key: 'duration', w: c.W_D, v, src: centers.total != null && centers.total > 0 ? 'rel' : 'abs', today: total, base: centers.total });
   }
-  // ② 深睡占比
-  if (total > 0 && centers.deepPct != null && centers.deepPct > 0) {
+  // ② 深睡占比（tol 0.25 → 0.30：深睡占比的日常变异本来就大，
+  //    25% 的容差会把「比平时低 1 个 SD」直接判到接近 0 分，过严）
+  if (total > 0) {
     const deepPct = ((today.sleepDeep ?? 0) / total) * 100;
-    parts.push({
-      key: 'deep', w: c.W_DEEP,
-      v: relNorm(deepPct, centers.deepPct, 0.25),
-      today: deepPct, base: centers.deepPct,
-    });
+    const v = centers.deepPct != null && centers.deepPct > 0
+      ? relNorm(deepPct, centers.deepPct, 0.30)
+      : clamp(deepPct / c.TARGET_DEEP_PCT, 0, 1);
+    parts.push({ key: 'deep', w: c.W_DEEP, v, src: centers.deepPct != null && centers.deepPct > 0 ? 'rel' : 'abs', today: deepPct, base: centers.deepPct });
   }
-  // ③ 效率（与个人基线比；绝对目标是 85%，个人基线通常在 85% 上下，
-  //    所以这里 tol 用 0.06（±6 个百分点）比时长的 10% 更严）
-  if (today.sleepAwake != null && Number.isFinite(today.sleepAwake) && total > 0 && centers.eff != null && centers.eff > 0) {
+  // ③ 效率
+  if (today.sleepAwake != null && Number.isFinite(today.sleepAwake) && total > 0) {
     const eff = ((total - today.sleepAwake) / total) * 100;
-    parts.push({
-      key: 'eff', w: c.W_EFF,
-      v: relNorm(eff, centers.eff, 0.06),
-      today: eff, base: centers.eff,
-    });
+    const v = centers.eff != null && centers.eff > 0
+      ? relNorm(eff, centers.eff, 0.06)
+      : clamp(eff / (c.TARGET_EFFICIENCY * 100), 0, 1);
+    parts.push({ key: 'eff', w: c.W_EFF, v, src: centers.eff != null && centers.eff > 0 ? 'rel' : 'abs', today: eff, base: centers.eff });
   }
-  // ④ 起夜次数：个人基线可能是 0.5 次/晚，这时「相对」几乎无意义
-  //   ⇒ 只有基线 ≥0.8 次才纳入，否则起夜这个维度对「从不夜醒的人」完全失效。
-  //   （这是个真实缺陷：绝对口径下从不夜醒的人该项满分 1.0，纳入相对分反而被扣。）
-  if (today.getUp != null && Number.isFinite(today.getUp) && centers.getUp != null && centers.getUp >= 0.8) {
-    parts.push({
-      key: 'getup', w: c.W_G,
-      // 起夜越少越好 ⇒ 方向取反：today < base ⇒ 分数高
-      v: clamp(0.5 + ((centers.getUp - today.getUp) / centers.getUp) * 0.5, 0, 1),
-      today: today.getUp, base: centers.getUp,
-    });
+  // ④ 起夜
+  if (today.getUp != null && Number.isFinite(today.getUp)) {
+    const v = centers.getUp != null && centers.getUp >= 0.8
+      // 相对：起夜越少越好 ⇒ 方向取反
+      ? clamp(0.5 + ((centers.getUp - today.getUp) / centers.getUp) * 0.5, 0, 1)
+      // 绝对兜底：基线 <0.8 次（几乎不夜醒）时「相对」无意义
+      : clamp(1 - today.getUp / c.TARGET_GETUP, 0, 1);
+    parts.push({ key: 'getup', w: c.W_G, v, src: centers.getUp != null && centers.getUp >= 0.8 ? 'rel' : 'abs', today: today.getUp, base: centers.getUp });
   }
 
   if (!parts.length) {
@@ -211,6 +231,13 @@ export function computePersonalizedSleepScore(
   }
 
   const sumW = parts.reduce((a, p) => a + p.w, 0);
+  // ★ 2026-10-07 诊断：把每个维度的「今天值 / 基线 / 归一分 / 权重占比」全量打出来（临时）
+  if (__DEV__) {
+    console.log(
+      `[SLEEP-REL] parts=${parts.map((p) => `${p.key}:w${p.w}:${p.src}:today=${p.today ?? '—'}:base=${p.base ?? '—'}:v=${(p.v ?? 0).toFixed(3)}`).join(' | ')} ` +
+      `sumW=${sumW.toFixed(2)} score=${Math.round(clamp(100 * parts.reduce((a, p) => a + (p.w / sumW) * p.v, 0), 0, 100))}`
+    );
+  }
   // 相对口径的锚点：与个人基线一样 ⇒ 50 分（不是绝对口径的 100）。
   // ⚠ 这是最重要的口径变化：50 = 和你平时一样。UI 副标必须写清，
   //   否则用户会把 62 读成「睡眠 62 分」（绝对量）。

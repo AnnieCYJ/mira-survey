@@ -147,8 +147,16 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
   const [localLog, setLocalLog] = useState<CycleLog | null>(null);
   useEffect(() => { void loadCycleLog().then((l) => setLocalLog(l)); }, []);
 
-  /** ★自然日历周期：week=本周一~周日 / month=本月1号~月末 / year=今年1月~12月 */
-  const periods = useMemo(() => buildNaturalPeriods(range, anchorMs), [range, anchorMs]);
+  /** ★自然日历周期：week=本周一~周日 / month=本月1号~月末 / year=今年1月~12月
+   *  ★ 2026-10-07（用户实锤）：**横轴保持完整自然周期** ——
+   *    周=一~日 全部标出；月=1~月末；年=1~12月。
+   *    但周期内**未来的天不参与统计**（否则 reportNowMsForDay 会把未来日钳到「此刻」，
+   *    用今天的数据污染未来柱与汇总）。未来单元的 dayKeys 为空 → 现有的 isFuture 分支自然不画柱。 */
+  const periods = useMemo(() => {
+    const todayK = dayKey(Date.now());
+    return buildNaturalPeriods(range, anchorMs)
+      .map((u) => ({ ...u, dayKeys: u.dayKeys.filter((dk) => dk <= todayK) }));
+  }, [range, anchorMs]);
   const nUnits = periods.length;
 
   /** 汇总一组 dayKeys 的情绪事件 */
@@ -214,7 +222,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
   // ── 图表布局（onLayout 自适应卡片宽度，全部柱子塞进一屏）──
   const [viewW, setViewW] = useState(0);
   const [chartW, setChartW] = useState(0);
-  const AXIS_L = 26, AXIS_R = 4, PLOT_TOP = 40, PLOT_H = 148, BAND_H = 12;
+  const AXIS_L = 26, AXIS_R = 4, PLOT_TOP = 40, PLOT_H = 180, BAND_H = 12;
   const n = bars.length;
   const plotW = Math.max(60, viewW - AXIS_L - AXIS_R);
   const slot = plotW / Math.max(1, n);
@@ -409,14 +417,11 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
               {bars.map((b, i) => {
                 const x = AXIS_L + i * (barW + gap);
                 const y0 = plotBottom;
-                // ★ 整段未佩戴（无传感器数据）：斜纹占位，明确区别于「佩戴但平静」的小灰条
-                if (!b.worn) {
-                  return (
-                    <G key={`bar${i}`}>
-                      <Rect x={x} y={y0 - 11} width={barW} height={11} rx={2} fill="url(#hatchWear)" stroke="#C9C5BC" strokeWidth={0.6} strokeDasharray="2 2" />
-                    </G>
-                  );
-                }
+                // ★ 没有数据的 bar 直接跳过,不画任何占位
+                const isFuture = b.dayKeys.every((dk) => dk > dayKey(Date.now()));
+                if (isFuture) return null;
+                // ★ 未佩戴 + 0 事件 → 不画(没数据就不画,不搞占位)
+                if (!b.worn && b.total === 0) return null;
                 const inten = b.intensity;
                 const barH = inten > 0 ? Math.max(3, (inten / yMax) * PLOT_H) : 0;
                 const topKey = topKeyOf(b);

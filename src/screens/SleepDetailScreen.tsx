@@ -36,11 +36,11 @@ import SleepHormoneCorrelation from '../components/SleepHormoneCorrelation';
 // ── v9 原型移植：睡眠节律 / 睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
 import SleepRhythmCard from '../components/SleepRhythmCard';
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
-import SleepRecoveryHero, { type HeroDayRec } from '../components/SleepRecoveryHero';
+import SleepRecoveryHero from '../components/SleepRecoveryHero';
 import SleepDualAxisChart, { type DualPoint } from '../components/SleepDualAxisChart';
 import SleepMultiDimCompare, { type MetricRow } from '../components/SleepMultiDimCompare';
 import CortisolAnomalySheet, { type CortAnomKind } from '../components/CortisolAnomalySheet';
-import { computeSleepScore } from '../lib/sleepScore';
+import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { collectSamplesForDay } from '../components/CortisolRhythmCard';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { startOfWeek, endOfWeek } from '../lib/dateUtils';
@@ -87,24 +87,35 @@ function toRecords(sleepDaily: Record<string, SleepSummary>): { key: string; dat
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
-/** 当前区间窗口（周=自然周 / 月=自然月 / 年=整年 / 日=当天） */
+/**
+ * 当前区间窗口（周=自然周 / 月=自然月 / 年=整年 / 日=当天）
+ *
+ * ★ 2026-10-07（用户实锤：「未来的日期也画上了，这不瞎说吗」）：
+ *   **未来永远没有数据**，窗口右端必须截断到「此刻」。
+ *   原实现直接返回自然周/月/年的完整区间 —— 今天 10/7，周视图会把 10/8~10/11、
+ *   月视图会把 10/8~10/31、年视图会把今年剩下的所有日期都当成数据点铺到横轴上，
+ *   虽然柱子是空的，但横轴刻度、网格、统计分母全是未来的日子，视觉上就是「画上了」。
+ *   ⚠ 只截断**当前周期**：anchor 在过去时（翻日历看历史周/月/年）窗口本来就全在过去，不受影响。
+ */
 function windowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
-  if (range === 'week') return { start: startOfWeek(anchor), end: endOfWeek(anchor) };
+  const now = new Date();
+  const clampEnd = (e: Date): Date => (e.getTime() > now.getTime() ? now : e);
+  if (range === 'week') return { start: startOfWeek(anchor), end: clampEnd(endOfWeek(anchor)) };
   if (range === 'month') {
     const y = anchor.getFullYear(), m = anchor.getMonth();
     const s = new Date(y, m, 1);
     const e = new Date(y, m + 1, 0); e.setHours(23, 59, 59, 999);
-    return { start: s, end: e };
+    return { start: s, end: clampEnd(e) };
   }
   if (range === 'year') {
     const y = anchor.getFullYear();
     const s = new Date(y, 0, 1);
     const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
-    return { start: s, end: e };
+    return { start: s, end: clampEnd(e) };
   }
   const a = new Date(anchor); a.setHours(0, 0, 0, 0);
   const e = new Date(a); e.setHours(23, 59, 59, 999);
-  return { start: a, end: e };
+  return { start: a, end: clampEnd(e) };
 }
 /** 上一等长周期窗口（用于「环比上一周期」对比） */
 function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {  if (range === 'week') {
@@ -145,17 +156,14 @@ interface Stats {
   level: '正常' | '偏高' | '节律紊乱' | null;
 }
 
-/** 单日恢复分（0–100）：时长/深睡/效率/起夜四因子。缺数据返回 null。 */
-function scoreOfDay(rec: DayRec): number | null {
-  if (!(rec.total > 0)) return null;
-  const awake = (rec.awake ?? 0) + (rec.insomnia ?? 0);
-  const s = computeSleepScore({
-    sleepTotal: rec.total,
-    sleepDeep: rec.deep,
-    sleepAwake: awake > 0 ? awake : null,
-    getUp: rec.getUp ?? null,
-  });
-  return Number.isFinite(s) && s > 0 ? s : null;
+/**
+ * 单日「睡眠恢复分」（**个人相对口径**，50 = 和平时一样）。
+ * ★ 2026-10-07（用户定口径）：此前详情页用绝对分 computeSleepScore（100=达标），
+ *   与首页的个人相对分（50=平时）同屏出现两个数（首页 65 / 详情 97），用户不知道信哪个。
+ *   现全 App 统一走 `sleepRecoveryScoreForDay`（与首页圆环 chip / 睡眠节律卡 / SleepCard 同源）。
+ */
+function scoreOfDayMs(dayMs: number): number | null {
+  return sleepRecoveryScoreForDay(dayMs);
 }
 
 /** 统计 [start,end] 窗口；cortKind 由调用方注入（判「今天」依赖 anchor，故不做模块级缓存） */
@@ -167,7 +175,7 @@ function statsOf(
 ): Stats {
   const rs = recs.filter((r) => r.date.getTime() >= start.getTime() && r.date.getTime() <= end.getTime());
   const recsOnly = rs.map((r) => r.rec).filter((r) => r.total > 0);
-  const scores = rs.map((r) => scoreOfDay(r.rec)).filter((v): v is number => v != null);
+  const scores = rs.map((r) => scoreOfDayMs(r.date.getTime())).filter((v): v is number => v != null);
   let abnDays = 0, anyHigh = false, anyDys = false;
   for (const r of rs) {
     const k = cortKind(r.key);
@@ -243,18 +251,7 @@ export default function SleepDetailScreen() {
     return out;
   };
 
-  /** 一天的恢复分（0–100，computeSleepScore 口径）：时长/深睡/效率/起夜四因子 */
-  const scoreOfDay = (rec: DayRec): number | null => {
-    if (!(rec.total > 0)) return null;
-    const awake = (rec.awake ?? 0) + (rec.insomnia ?? 0);
-    const s = computeSleepScore({
-      sleepTotal: rec.total,
-      sleepDeep: rec.deep,
-      sleepAwake: awake > 0 ? awake : null,
-      getUp: rec.getUp ?? null,
-    });
-    return Number.isFinite(s) && s > 0 ? s : null;
-  };
+  // ★ 2026-10-07：删除组件内的绝对分 scoreOfDay —— 统一改用模块级 scoreOfDayMs（个人相对分）。
 
   /** 当前区间的取点序列（周=每天 / 月=每天 / 年=每月均值），供双轴图使用 */
   const dualPoints: DualPoint[] = useMemo(() => {
@@ -265,16 +262,21 @@ export default function SleepDetailScreen() {
 
     if (isYear) {
       // 年 = 12 个月的月内均值（对齐原型「年用月平均」）
+      // ★ 2026-10-07：**未来的月份不画**（同 windowOf 的截断口径）。
+      //   看今年时，10 月之后的月份还没发生，不该出现在横轴上。
       const y = anchor.getFullYear();
-      const buckets: { recs: DayRec[]; label: string; key: string }[] = [];
-      for (let m = 0; m < 12; m++) {
+      const nowY = new Date().getFullYear();
+      const nowM = new Date().getMonth();          // 0-based
+      const lastM = y === nowY ? nowM : (y < nowY ? 11 : -1);   // -1 ⇒ 整年都在未来（不画任何月）
+      const buckets: { entries: { date: Date; rec: DayRec }[]; label: string; key: string }[] = [];
+      for (let m = 0; m <= lastM; m++) {
         const prefix = `${y}-${String(m + 1).padStart(2, '0')}`;
         const inM = recs.filter((r) => dayKey(r.date).startsWith(prefix));
-        buckets.push({ recs: inM.map((r) => r.rec), label: `${m + 1}月`, key: prefix });
+        buckets.push({ entries: inM.map((r) => ({ date: r.date, rec: r.rec })), label: `${m + 1}月`, key: prefix });
       }
       return buckets.map((b) => {
-        const durMin = meanOf(b.recs.map((r) => (r.total > 0 ? r.total : null)));
-        const scores = b.recs.map(scoreOfDay).filter((v): v is number => v != null);
+        const durMin = meanOf(b.entries.map((e) => (e.rec.total > 0 ? e.rec.total : null)));
+        const scores = b.entries.map((e) => scoreOfDayMs(e.date.getTime())).filter((v): v is number => v != null);
         // 皮质醇：按该月逐日判定，天数 = 异常日占比折算（当月有记录的天数为分母）
         let abnDays = 0;
         for (const r of recs.filter((r) => dayKey(r.date).startsWith(b.key))) {
@@ -310,7 +312,7 @@ export default function SleepDetailScreen() {
           ? ['日', '一', '二', '三', '四', '五', '六'][cur.getDay()]
           : String(cur.getDate()),
         durationMin: rec && rec.total > 0 ? rec.total : null,
-        score: rec ? scoreOfDay(rec) : null,
+        score: rec ? scoreOfDayMs(cur.getTime()) : null,
         cortisolAbnormal: c.abn,
         cortisolKind: c.kind,
       });
@@ -319,31 +321,6 @@ export default function SleepDetailScreen() {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, sleepDaily, anchor, cortKindCache]);
-
-  /** 日视图：hero 输入 + 14 天基线均值 */
-  const dayHero = useMemo<{ input: HeroDayRec | null; baseline: number | null }>(() => {
-    const dk = sleepDayKey(anchor);
-    const recs = toRecords(sleepDaily);
-    const today = recs.find((r) => r.key === dk) ?? null;
-    if (!today) return { input: null, baseline: null };
-
-    const awake = (today.rec.awake ?? 0) + (today.rec.insomnia ?? 0);
-    const input: HeroDayRec = {
-      sleepTotal: today.rec.total,
-      sleepDeep: today.rec.deep,
-      sleepAwake: awake > 0 ? awake : null,
-      getUp: today.rec.getUp ?? null,
-      totalMin: today.rec.total,
-      deepMin: today.rec.deep,
-    };
-    // 近 14 天（含当天）有记录天的分数均值
-    const from = new Date(anchor); from.setDate(from.getDate() - 13);
-    const recent = recs
-      .filter((r) => r.date.getTime() >= from.getTime() && r.date.getTime() <= new Date(anchor).setHours(23, 59, 59, 999))
-      .map((r) => scoreOfDay(r.rec))
-      .filter((v): v is number => v != null);
-    return { input, baseline: recent.length ? recent.reduce((a, c) => a + c, 0) / recent.length : null };
-  }, [sleepDaily, anchor]);
 
   /** 日视图：睡眠分析卡 + 生理信号（全部真实归档字段） */
   const dayAnalysis = useMemo<{ day: DaySleepAnalysis | null; segs: SleepSegment[] | null; phys: DayPhys }>(() => {
@@ -452,7 +429,7 @@ export default function SleepDetailScreen() {
 
       {/* ★ 睡眠恢复分 hero：置于日周月年「上方」，且仅日视图显示（对齐原型 v9） */}
       {range === 'day' ? (
-        <SleepRecoveryHero input={dayHero.input} baseline={dayHero.baseline} />
+        <SleepRecoveryHero anchorMs={anchor.getTime()} />
       ) : null}
 
       <RangeSwitch value={range} onChange={setRange} />

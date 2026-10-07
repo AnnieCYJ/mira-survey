@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { READY_LOW, READY_HIGH, type ReadinessPoint } from '../lib/cognitiveReadiness';
 
@@ -26,17 +26,19 @@ const AXIS_H = 12;
 export default function MiniReadinessTrend({ points, condensed, height }: Props) {
   const [measuredW, setMeasuredW] = React.useState(0);
   const W = condensed ? 80 : measuredW;
-  const H = condensed ? 44 : (height ?? 44);
+  // ★ 2026-10-06（用户：纵坐标再高一点）：非紧凑默认高 44→54，让 0-100 折线的竖向更舒展
+  const H = condensed ? 44 : (height ?? 54);
   const CH = H - (condensed ? 0 : AXIS_H);
-  const N = 24;
+  // ★ 2026-10-06（用户：所有指标统一 30 分钟一个点）：24 → 48 个半小时槽
+  const N = 48;
   const anyData = points.some((p) => p.hasData);
 
   // 连续有值区段（缺口不连线、不插值）
   const runs: number[][] = [];
   {
     let cur: number[] = [];
-    for (let h = 0; h < N; h++) {
-      if (points[h]?.hasData) cur.push(h);
+    for (let s = 0; s < N; s++) {
+      if (points[s]?.hasData) cur.push(s);
       else { if (cur.length) runs.push(cur); cur = []; }
     }
     if (cur.length) runs.push(cur);
@@ -65,6 +67,18 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
             </SvgLinear>
           </Defs>
 
+          {/* ★ 2026-10-06（用户口径）：纵轴 = 0-100，加回高/中/低三档柔和背景带，
+              与详情页 ReadinessTrendChart 同源同阈值（40/70），首页与详情页视觉一致。
+              色带只做背景分区（opacity 0.07），主视觉仍是 0-100 折线。 */}
+          {[
+            { hi: 100, lo: READY_HIGH, color: theme.colors.success },
+            { hi: READY_HIGH, lo: READY_LOW, color: theme.colors.warn },
+            { hi: READY_LOW, lo: 0, color: theme.colors.danger },
+          ].map((b, i) => (
+            <Rect key={'mband' + i} x={0} y={yAt(b.hi)} width={W} height={Math.max(0, yAt(b.lo) - yAt(b.hi))}
+              fill={b.color} opacity={0.07} />
+          ))}
+
           {/* 档位边界（40 / 70）淡虚线 */}
           {[READY_LOW, READY_HIGH].map((v) => (
             <Path key={v} d={`M 0 ${yAt(v).toFixed(1)} L ${W} ${yAt(v).toFixed(1)}`}
@@ -85,11 +99,12 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
               fill={theme.colors.accentSolid} />
           ) : null)}
 
-          {/* X 轴刻度 */}
+          {/* X 轴刻度（每 6 小时 = 每 12 槽） */}
           {!condensed ? ticks.map((h) => {
             const eL = h === 0, eR = h === 24;
+            const slot = h * 2;
             return (
-              <SvgTextX key={h} x={eL ? 1 : eR ? W - 1 : xAt(h)} y={CH + AXIS_H - 2}
+              <SvgTextX key={h} x={eL ? 1 : eR ? W - 1 : xAt(slot)} y={CH + AXIS_H - 2}
                 anchor={eL ? 'start' : eR ? 'end' : 'middle'} label={String(h).padStart(2, '0')} />
             );
           }) : null}

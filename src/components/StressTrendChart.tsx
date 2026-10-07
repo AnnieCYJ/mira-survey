@@ -18,17 +18,16 @@
  *  - 全天无有效槽 → 显示「—」并说明原因，不放演示数据。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
+import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Line, Text as SvgText, Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
-import { mm } from '../theme/mindmate';
 import { percentileFromZ } from '../lib/psychologicalStressScale';
 import type { EmotionalStressReport, EmotionalStressSlot } from '../lib/emotionalStress';
 
-const LEVELS: Array<{ min: number; color: string; label: string }> = [
-  { min: 70, color: theme.colors.danger, label: '高' },
-  { min: 40, color: theme.colors.warn, label: '中' },
-  { min: -1, color: theme.colors.success, label: '低' },
+const LEVELS: Array<{ min: number; color: string; band: string; label: string }> = [
+  { min: 70, color: theme.colors.danger, band: theme.colors.dangerSoft, label: '高' },
+  { min: 40, color: '#B98A2E', band: 'rgba(240,196,110,0.16)', label: '中' },
+  { min: -1, color: theme.colors.success, band: theme.colors.successSoft, label: '低' },
 ];
 
 export function stressColorOf(v: number | null | undefined): string {
@@ -88,17 +87,21 @@ interface Props {
   /** 标注「此刻」竖线 */
   nowSlot?: number | null;
   chartH?: number;
+  /** 睡眠时段（灰色遮罩 + 「睡眠中」标签） */
+  sleepWindow?: { bedHour: number; wakeHour: number } | null;
 }
 
-export default function StressTrendChart({ points, scale, nowSlot, chartH }: Props) {
+export default function StressTrendChart({ points, scale, nowSlot, chartH, sleepWindow }: Props) {
   const [measuredW, setMeasuredW] = React.useState(0);
-  const estW = Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2;
-  const Y_W = theme.sp(7);
-  const padL = Y_W + theme.sp(1);
-  const padR = theme.sp(3);
-  const padT = theme.sp(2);
-  const padB = theme.sp(6);
-  const svgW = measuredW > padL + padR ? measuredW : estW;
+  // ★ 2026-10-07：pad 全面收窄 → plotW 变宽,横坐标更舒展
+  const Y_W = theme.sp(6);        // 从 8 → 6,0/100 刻度够用
+  const padL = Y_W + theme.sp(1); // sp(7) 原 sp(10)
+  const padR = theme.sp(7);       // 原 sp(11),右侧档位标签够用
+  const padT = theme.sp(1.5);
+  const padB = theme.sp(5);       // 原 sp(6)
+  // ★ 与 ReadinessTrendChart 同款修复：未测到宽度时不再用 estW 顶替（那会让图先按窄屏宽渲染、
+  //   显得小且居中）；测到真实宽度后画满整行 → 图自然变宽、贴齐卡片左右。
+  const svgW = measuredW > padL + padR ? measuredW : 0;
   const svgH = (chartH ?? theme.sp(44)) - theme.sp(2);
   const plotW = svgW - padL - padR;
   const plotH = svgH - padT - padB;
@@ -118,8 +121,21 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH }: Pro
     }
     if (cur.length) runs.push(cur);
   }
-  const lineOf = (idx: number[]) =>
-    idx.map((s, k) => `${k === 0 ? 'M' : 'L'} ${xAt(s).toFixed(1)} ${yAt(points.find((q) => q.slot === s)!.value).toFixed(1)}`).join(' ');
+  // ★ 折线平滑: Catmull-Rom spline → SVG cubic bezier
+  const smoothPath = (idx: number[]) => {
+    if (idx.length < 2) return '';
+    const pts = idx.map((s) => ({ x: xAt(s), y: yAt(points.find((q) => q.slot === s)!.value) }));
+    if (pts.length === 2) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} L ${pts[1].x.toFixed(1)} ${pts[1].y.toFixed(1)}`;
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return d;
+  };
+  const lineOf = (idx: number[]) => smoothPath(idx);
   const areaOf = (idx: number[]) =>
     `${lineOf(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${(padT + plotH).toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${(padT + plotH).toFixed(1)} Z`;
 
@@ -139,46 +155,64 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH }: Pro
         onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
         style={{ width: '100%' }}
       >
+        {svgW > 0 ? (
         <Svg width={svgW} height={svgH + theme.sp(2)}>
           <Defs>
             <SvgLinear id="stressArea" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor={mm.colors.roseCore} stopOpacity={0.24} />
-              <Stop offset="100%" stopColor={mm.colors.roseCore} stopOpacity={0.01} />
+              <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.22} />
+              <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.01} />
             </SvgLinear>
           </Defs>
 
-          {/* 0 基线 + 档位边界虚线 */}
+          {/* ★ 2026-10-06（用户口径）：纵轴 = 心理压力 0-100，三档柔和背景带 + 右侧低/中/高标注。
+              压力语义与准备度相反：低压力=绿(好) / 中=黄 / 高压力=红。 */}
+          {[0, 1, 2].map((i) => {
+            const hi = i === 0 ? 100 : i === 1 ? 70 : 40;
+            const lo = i === 0 ? 70 : i === 1 ? 40 : 0;
+            return (
+              <Rect key={'sband' + i} x={padL} y={yAt(hi)} width={plotW} height={Math.max(0, yAt(lo) - yAt(hi))}
+                fill={LEVELS[i].color} opacity={0.07} />
+            );
+          })}
+
+          {/* ★ 睡眠遮罩 */}
+          {sleepWindow ? (() => {
+            const bedS = Math.max(0, Math.min(47, Math.floor(sleepWindow.bedHour * 2)));
+            const wakeS = Math.max(0, Math.min(47, Math.floor(sleepWindow.wakeHour * 2)));
+            const sX = xAt(bedS);
+            const eX = xAt(Math.min(47, wakeS));
+            if (eX <= sX + 2) return null;
+            return (
+              <>
+                <Rect x={sX} y={padT} width={Math.max(1, eX - sX)} height={plotH} fill={theme.colors.ui.borderSoft} opacity={0.35} />
+                <SvgText x={(sX + eX) / 2} y={padT + theme.sp(3)} textAnchor="middle"
+                  fontSize={theme.fontSize.micro} fill={theme.colors.textSub} fontWeight="600">睡眠中</SvgText>
+              </>
+            );
+          })() : null}
+
+          {/* 0 基线 */}
           <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
+          {/* 40 / 70 档位边界（仅作参考基准，浅虚线，与认知准备度趋势图一致） */}
           {[40, 70].map((v) => (
             <Path key={v} d={`M ${padL} ${yAt(v)} L ${padL + plotW} ${yAt(v)}`}
               stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
           ))}
-          {/* 50 = 与平时持平（百分位锚点） */}
-          <Path d={`M ${padL} ${yAt(50)} L ${padL + plotW} ${yAt(50)}`}
-            stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="4 3" opacity={0.42} />
+          {/* 数值刻度锚点（0 / 100）—— 确认纵轴 0–100 尺度 */}
+          <SvgText key="y100" x={padL - theme.sp(1.5)} y={yAt(100) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>100</SvgText>
+          <SvgText key="y0" x={padL - theme.sp(1.5)} y={yAt(0) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>0</SvgText>
 
-          {/* 档位文字 */}
-          {LEVELS.map((lv, i) => {
-            const v = i === 0 ? 85 : i === 1 ? 55 : 20;
-            return (
-              <SvgText key={lv.label} x={padL - theme.sp(1.5)} y={yAt(v) + 3} textAnchor="end"
-                fontSize={theme.fontSize.micro} fontWeight="600" fill={lv.color}>{lv.label}</SvgText>
-            );
-          })}
-
-          {/* 面积 + 折线 */}
-          {runs.map((idx, i) => (
+          {/* 面积 + 折线：单一强调色，与认知准备度趋势图（脑力页）保持一致 */}
+          {runs.map((idx, i) => idx.length > 1 ? (
             <React.Fragment key={'r' + i}>
               <Path d={areaOf(idx)} fill="url(#stressArea)" />
-              <Path d={lineOf(idx)} fill="none" stroke={mm.colors.roseCore}
+              <Path d={lineOf(idx)} fill="none" stroke={theme.colors.accentSolid}
                 strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
             </React.Fragment>
+          ) : (
+            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points.find((q) => q.slot === idx[0])!.value)} r={2.6}
+              fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.2} />
           ))}
-          {/* 单点区段画点，否则不可见 */}
-          {runs.map((idx, i) => idx.length === 1 ? (
-            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points.find((q) => q.slot === idx[0])!.value)} r={2.4}
-              fill={mm.colors.roseCore} />
-          ) : null)}
 
           {/* 「此刻」竖线 */}
           {nowSlot != null && nowSlot >= 0 && nowSlot < N ? (
@@ -186,6 +220,15 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH }: Pro
               stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
           ) : null}
 
+          {/* 右侧档位标注：低压力 / 中压力 / 高压力（纵轴 0-100 分区） */}
+          {[
+            { label: '高压力', v: 85, color: theme.colors.danger },
+            { label: '中压力', v: 55, color: '#B98A2E' },
+            { label: '低压力', v: 20, color: theme.colors.success },
+          ].map((b) => (
+            <SvgText key={'slvl' + b.label} x={padL + plotW + theme.sp(1.5)} y={yAt(b.v) + 3}
+              textAnchor="start" fontSize={theme.fontSize.micro} fill={b.color} fontWeight="600">{b.label}</SvgText>
+          ))}
           {/* X 轴（每 3 小时） */}
           {MAIN_HOURS.map((h) => {
             const slot = h * 2;
@@ -197,20 +240,12 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH }: Pro
             );
           })}
         </Svg>
+        ) : null}
       </View>
 
-      {/* 档位图例 + 口径 */}
-      <View style={styles.legendRow}>
-        {LEVELS.map((l) => (
-          <View key={l.label} style={styles.legendItem}>
-            <View style={[styles.dot, { backgroundColor: l.color }]} />
-            <Text style={styles.legendText}>{l.label}</Text>
-          </View>
-        ))}
-      </View>
       <Text style={styles.caption}>
         {anyData
-          ? `纵轴 = 心理压力百分位（50 = 和你平时一样）· 每点 30 分钟；虚线为 50 基准${scale ? ' · ' + scale.caption : ''}`
+          ? `纵轴 = 心理压力 0–100（越高越紧张，50 为你的个人基线）· 每点 30 分钟${scale ? ' · ' + scale.caption : ''}`
           : '今天还没有可判定的时段 · 连上戒指开启自动监测后开始生成（约需 3 天建立个人基线）'}
       </Text>
     </View>
@@ -221,9 +256,5 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginBottom: theme.space.xs },
   scaleVal: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any },
   scaleUnit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  legendRow: { flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
-  dot: { width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(0.5) },
-  legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   caption: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: 16 },
 });

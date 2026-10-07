@@ -16,10 +16,12 @@
  */
 import React, { useRef, useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Easing, Dimensions, PanResponder, TextInput,
-  Keyboard, TouchableWithoutFeedback, ScrollView, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Easing, Dimensions, TextInput,
+  Keyboard, ScrollView, KeyboardAvoidingView, Platform,
+  type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { IconName } from './Icon';
 import MoodBlob from './MoodBlob';
@@ -56,8 +58,140 @@ const TIME_OFFSETS: { min: number; label: string }[] = [
   { min: 1440, label: '昨天此刻' },
 ];
 
+/**
+ * 顶部大号心情小团（表情居中）
+ *
+ * ★ 2026-10-07（用户实锤「上面那个表情一直在闪」）：
+ *   **必须定义在模块级**。之前它写在 EmotionQuickRecord 的 render 内部，
+ *   每次父组件重渲染都会产生一个**新的函数身份**，React 会把整个子树
+ *   卸载重挂 → MoodBlob 里的呼吸 / 两层蠕动交叉淡化三个 Animated.loop 被反复
+ *   从头启动，加上 pop 弹动反复重播 → 看起来就是「表情一直在闪」。
+ *   现在提到模块级 + React.memo，只有档位真正变化时才弹一下。
+ */
+function BlobBlock({ mood, index }: { mood: MoodKey; index: number }) {
+  const pop = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    pop.setValue(1);
+    const anim = Animated.sequence([
+      Animated.timing(pop, { toValue: 1.12, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pop, { toValue: 1, duration: 200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [index, pop]);
+  return (
+    <View style={styles.blobBlock}>
+      <Animated.View style={{ transform: [{ scale: pop }] }}>
+        <MoodBlob mood={mood} size={theme.sp(26)} variant={0} />
+      </Animated.View>
+      <Text style={styles.blobMood}>{MOOD_LABEL[mood]}</Text>
+    </View>
+  );
+}
+const MemoBlobBlock = React.memo(BlobBlock);
+
 const { height: SCREEN_H } = Dimensions.get('window');
-const SHEET_H = Math.min(SCREEN_H * 0.8, 540);
+// ★ 2026-10-07：抽屉加高（0.8→0.9 / 540→660）。“记录时刻”+时分滚轮一共约 320px，
+//   旧高度下滚轮恰好被挤到折叠线下方，用户反馈「没有显示时间选择器」。
+const SHEET_H = Math.min(SCREEN_H * 0.9, 660);
+
+/* ───────── 时间滚轮选择器（无第三方依赖：ScrollView + snapToInterval） ─────────
+ * 每行高 ITEM_H，可视 5 行 → 中心行就是选中项。
+ * 上下各垫 2 行空白（PAD_PAD），保证第 0 项也能滚到中心位。
+ * ───────────────────────────────────────────────────────────────────────── */
+const ITEM_H = theme.sp(10);          // 每行高度
+const VISIBLE = 5;                    // 可见行数（奇数，中间那行 = 选中）
+const WHEEL_PAD = ITEM_H * ((VISIBLE - 1) / 2);
+const WHEEL_H = ITEM_H * VISIBLE;
+
+/** 单列滚轮 */
+function WheelColumn({
+  values, fmt, value, onPick, unit,
+}: {
+  values: number[];
+  fmt: (v: number) => string;
+  value: number;
+  onPick: (v: number) => void;
+  unit: string;
+}) {
+  const initialIdx = Math.max(0, values.indexOf(value));
+  const [idx, setIdx] = useState(initialIdx);
+  const svRef = useRef<ScrollView>(null);
+  const laidOut = useRef(false);
+
+  // 外部改动（如切换今天/昨天重置）→ 滚回对应位置
+  useEffect(() => {
+    const i = Math.max(0, values.indexOf(value));
+    setIdx(i);
+    if (laidOut.current) svRef.current?.scrollTo({ y: i * ITEM_H, animated: false });
+  }, [value]);
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const i = Math.max(0, Math.min(values.length - 1, Math.round(y / ITEM_H)));
+    setIdx(i);
+    onPick(values[i]);
+  };
+
+  return (
+    <View style={{ height: WHEEL_H, flex: 1 }}>
+      <ScrollView
+        ref={svRef}
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_H}
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={onScrollEnd}
+        onScrollEndDrag={onScrollEnd}
+        onLayout={() => {
+          const i = Math.max(0, values.indexOf(value));
+          if (laidOut.current) return;
+          laidOut.current = true;
+          svRef.current?.scrollTo({ y: i * ITEM_H, animated: false });
+        }}
+        contentContainerStyle={{
+          paddingTop: WHEEL_PAD,
+          paddingBottom: WHEEL_PAD,
+        }}
+      >
+        {values.map((v, i) => {
+          const on = i === idx;
+          return (
+            <View key={v} style={styles.wheelItem}>
+              <Text
+                style={[
+                  styles.wheelText,
+                  on && styles.wheelTextOn,
+                  { opacity: on ? 1 : 0.28 + 0.42 * (1 - Math.min(1, Math.abs(i - idx) / 2)) },
+                ]}
+              >{fmt(v)}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+      {/* 中间高亮横条（纯装饰，不挡触摸） */}
+      <View style={styles.wheelHighlight} pointerEvents="none" />
+      <Text style={styles.wheelUnit}>{unit}</Text>
+    </View>
+  );
+}
+
+/** 时 + 分 双列滚轮（HOURS/MINUTES 放模块级：数组引用必须稳定，
+ *  否则 WheelColumn 里依赖 `values` 的 useEffect 每次渲染都会重跑并强制 scrollTo，跟用户滚动打架） */
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINUTES = Array.from({ length: 60 }, (_, i) => i);
+
+function TimeWheel({ hour, minute, onChange }: { hour: number; minute: number; onChange: (h: number, m: number) => void }) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    <View style={styles.wheelRow}>
+      <WheelColumn values={HOURS} value={hour} fmt={pad} unit="时" onPick={(h) => onChange(h, minute)} />
+      <View style={styles.wheelColon}><Text style={styles.wheelColonText}>:</Text></View>
+      <WheelColumn values={MINUTES} value={minute} fmt={pad} unit="分" onPick={(m) => onChange(hour, m)} />
+    </View>
+  );
+}
 
 export default function EmotionQuickRecord() {
   const insets = useSafeAreaInsets();
@@ -72,7 +206,42 @@ export default function EmotionQuickRecord() {
   const [customSel, setCustomSel] = useState<string[]>([]);
   // ★ 记录时刻：默认此刻，可改为「今天任意时刻」或「昨天同一时刻」（回想补记）
   const [atOffsetMin, setAtOffsetMin] = useState<number | null>(null);
+  const [atCustomMs, setAtCustomMs] = useState<number | null>(null);
+  // ★ 时间选择器的三个分量（今天/昨天 + 时 + 分）。atCustomMs 是唯一写入源，
+  //   这三个分量只是它的「显示形态」，改任何一个都立刻回写 atCustomMs。
+  const [pickDayOffset, setPickDayOffset] = useState<0 | 1>(0);
+  const [pickH, setPickH] = useState(() => new Date().getHours());
+  const [pickM, setPickM] = useState(() => new Date().getMinutes());
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ★ 主体滚动容器：点「选时刻」后把滚轮滚到可见区（否则滚轮在折叠线下，看着像「没反应」）
+  const bodyScrollRef = useRef<ScrollView>(null);
+  const revealWheel = () => setTimeout(() => bodyScrollRef.current?.scrollToEnd({ animated: true }), 60);
+
+  /** 把绝对时刻按「今天/昨天 + 时分」落地。dayOffset=1 → 昨天同一时刻 */
+  const commitAt = (dayOffset: 0 | 1, h: number, m: number) => {
+    const t = new Date();
+    t.setDate(t.getDate() - dayOffset);
+    t.setHours(h, m, 0, 0);
+    setPickDayOffset(dayOffset);
+    setPickH(h);
+    setPickM(m);
+    setAtCustomMs(t.getTime());
+  };
+
+  /** 点「选时刻」：以当前值（或此刻）初始化滚轮，再把当前所在的天对到「今天/昨天」桶上 */
+  const openWheel = () => {
+    const base = atCustomMs ?? Date.now();
+    const d = new Date(base);
+    const today0 = new Date();
+    today0.setHours(0, 0, 0, 0);
+    const off: 0 | 1 = base < today0.getTime() ? 1 : 0;
+    commitAt(off, d.getHours(), d.getMinutes());
+  };
+
+  /** 滚轮滚动：只改时分，日期保持当前桶 */
+  const applyWheel = (h: number, m: number) => commitAt(pickDayOffset, h, m);
+  /** 今天/昨天切换：保持时分不变 */
+  const changeDay = (off: 0 | 1) => commitAt(off, pickH, pickM);
 
   // 抽屉位移：offY（完全在屏幕下方）→ 0（停靠底部）
   const offY = useRef(new Animated.Value(SHEET_H)).current;
@@ -83,14 +252,13 @@ export default function EmotionQuickRecord() {
   // 打开时重置选择 + 播放进入动画
   const open = () => {
     setIndex(2);
-    indexRef.current = 2;
-    pos.setValue(0.5);
     setEvents([]);
     setCustomSel([]);
     setCustomText('');
     setShowAdd(false);
     setSaved(false);
     setAtOffsetMin(null);   // 每次打开默认「此刻」
+    setAtCustomMs(null);
     setVisible(true);
     offY.setValue(SHEET_H);
     scrimOp.setValue(0);
@@ -129,77 +297,21 @@ export default function EmotionQuickRecord() {
     setCustomSel((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   };
 
-  // ── 情绪滑条（复刻参考视频）：一颗半透明软胶囊光标贴轨滑动，全程只动一个原生动画值 ──
-  // 拖动路径零 React 状态更新：index 只在跨过档位阈值时由 pos 监听器触发一次 setState。
+  // ── 情绪滑条（React Native Community Slider, 原生丝滑） ──
   const [trackW, setTrackW] = useState(0);
-  const trackWRef = useRef(0); // ★ ref 持有宽度，避免 PanResponder 闭包捕获首帧 0 导致卡死
-  const THUMB_W = theme.sp(9);  // 软胶囊光标宽度（比档位间距大，滑过时"吞过"小点，参考视频同款）
-  const pos = useRef(new Animated.Value(0.5)).current; // 0..1 归一化位置（唯一动效真源）
-  const pop = useRef(new Animated.Value(1)).current;    // 切档时表情轻微弹一下
-  const indexRef = useRef(index);
-  indexRef.current = index;
-  const liveRatioRef = useRef(0.5); // 实时归一化位置（松手吸附用，避免依赖四舍五入后的 index 造成错位）
-
-  // 拖动中只 setValue（原生驱动）；跨档时才 setIndex → 最大程度消灭重渲闪烁
-  const setFromX = (x: number) => {
-    const w = trackWRef.current;
-    if (w <= 0) return;
-    pos.stopAnimation(); // 拖动时打断吸附动画，避免跳动
-    pos.setValue(Math.min(1, Math.max(0, x / w)));
-  };
-  // 点按（无拖拽）时让光标平滑滑到目标位置，而不是瞬移
-  const glideTo = (x: number) => {
-    const w = trackWRef.current;
-    if (w <= 0) return;
-    Animated.spring(pos, {
-      toValue: Math.min(1, Math.max(0, x / w)),
-      tension: 120, friction: 14, useNativeDriver: true,
-    }).start();
-  };
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => glideTo(e.nativeEvent.locationX),
-      onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
-      onPanResponderRelease: () => {
-        // 松手吸附到最近档（弹簧，丝滑收尾）
-        const nearest = Math.round(liveRatioRef.current * (MOODS.length - 1)) / (MOODS.length - 1);
-        Animated.spring(pos, {
-          toValue: nearest,
-          tension: 120, friction: 14, useNativeDriver: true,
-        }).start();
-      },
-    }),
-  ).current;
-  // pos 监听：仅在最近档位变化时更新 React 状态（blob/文字重渲，每划一次最多 4 次）
-  useEffect(() => {
-    const id = pos.addListener(({ value }) => {
-      liveRatioRef.current = value;
-      const next = Math.round(value * (MOODS.length - 1));
-      if (next !== indexRef.current) {
-        indexRef.current = next;
-        setIndex(next);
-      }
-    });
-    return () => pos.removeListener(id);
-  }, [pos]);
-  // 切档时表情轻轻弹一下
-  useEffect(() => {
-    pop.setValue(1);
-    Animated.sequence([
-      Animated.timing(pop, { toValue: 1.14, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pop, { toValue: 1, duration: 240, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]).start();
-  }, [index, pop]);
+  const sliderStep = 1 / (MOODS.length - 1);
 
   /** 实际写入的时刻：atOffsetMin=null → 此刻；否则 = 此刻 - atOffsetMin 分钟 */
-  const recordAtMs = (): number => (atOffsetMin == null ? Date.now() : Date.now() - atOffsetMin * 60000);
+  const recordAtMs = (): number => {
+    if (atCustomMs != null) return atCustomMs;
+    if (atOffsetMin != null) return Date.now() - atOffsetMin * 60000;
+    return Date.now();
+  };
   const atHHMM = (() => {
     const d = new Date(recordAtMs());
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   })();
-  const isBackfill = atOffsetMin != null && atOffsetMin > 0;
+  const isBackfill = (atOffsetMin != null && atOffsetMin > 0) || atCustomMs != null;
 
   const onRecord = () => {
     if (saved) return;
@@ -212,6 +324,7 @@ export default function EmotionQuickRecord() {
   return (
     <>
       {/* ── 悬浮按钮（明显、渐变胶囊 + 会动小团） ── */}
+      {!visible && (
       <View style={[styles.fab, { bottom: insets.bottom + theme.sp(8) }]}>
         <TouchableOpacity activeOpacity={0.92} onPress={open} style={styles.fabTouch}>
           <LinearGradient
@@ -226,6 +339,7 @@ export default function EmotionQuickRecord() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* ── 弹出卡片（Modal 底部抽屉） ── */}
       <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
@@ -249,68 +363,116 @@ export default function EmotionQuickRecord() {
               </TouchableOpacity>
             </View>
 
-            {/* 可滚动主体（点空白处收起键盘） */}
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            {/* 可滚动主体
+                ★ 2026-10-07：不能用 TouchableWithoutFeedback 包 ScrollView ——它会把监听手势抢走，
+                  抽屉滚不动 → 折叠线下的「记录时刻 / 时间选择器」永远看不到。改成按滚动收键盘。 */}
             <ScrollView
+              ref={bodyScrollRef}
               style={styles.bodyScroll}
               contentContainerStyle={styles.body}
               keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
+              onScrollBeginDrag={Keyboard.dismiss}
             >
               {/* 居中大号会动小团 + 当前心情文字（切档时轻微弹一下） */}
-              <View style={styles.blobBlock}>
-                <Animated.View style={{ transform: [{ scale: pop }] }}>
-                  <MoodBlob mood={mood} size={theme.sp(26)} variant={0} />
-                </Animated.View>
-                <Text style={styles.blobMood}>{MOOD_LABEL[mood]}</Text>
-              </View>
+              <MemoBlobBlock mood={mood} index={index} />
 
               {/* 情绪滑条（复刻参考视频）：细轨 + 小点 + 半透明软胶囊光标，无彩色填充条 */}
               <View style={styles.sliderBlock}>
-                <View
-                  style={styles.trackWrap}
-                  onLayout={(e) => { trackWRef.current = e.nativeEvent.layout.width; setTrackW(e.nativeEvent.layout.width); }}
-                  {...panResponder.panHandlers}
-                >
-                  <View style={styles.track} />
-                  {/* 5 个档位小点（参考视频：细轨上淡淡的档位点） */}
-                  {MOODS.map((m, i) => (
+                {/* 5 档小点 (自定义在 Slider 上方) */}
+                <View style={styles.tickRow} pointerEvents="none">
+                  {MOOD_ORDER.map((m, i) => (
                     <View
                       key={m}
-                      style={[styles.tick, { left: `${(i / (MOODS.length - 1)) * 100}%`, backgroundColor: MOOD_COLOR[m] }]}
+                      style={[
+                        styles.tickDot,
+                        index === i && styles.tickDotActive,
+                        { backgroundColor: MOOD_COLOR[m] },
+                      ]}
                     />
                   ))}
-                  {/* 软胶囊光标（半透明白，原生 transform 连续跟手，滑过时「吞过」小点） */}
-                  <Animated.View
-                    style={[
-                      styles.thumb,
-                      {
-                        transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(1, trackW - THUMB_W)] }) }],
-                      },
-                    ]}
-                  />
+                </View>
+                <Slider
+                  value={index / (MOODS.length - 1)}
+                  minimumValue={0}
+                  maximumValue={1}
+                  step={0}
+                  tapToSeek
+                  onValueChange={(v) => setIndex(Math.round(v * (MOODS.length - 1)))}
+                  minimumTrackTintColor={mm.colors.purpleDeep}
+                  maximumTrackTintColor={mm.colors.purpleSoft}
+                  thumbTintColor={'#FFFFFF'}
+                  style={{ width: '100%', height: 40 }}
+                />
+                {/* 档位标签 */}
+                <View style={styles.tickRow}>
+                  {MOOD_ORDER.map((m, i) => (
+                    <Text
+                      key={m}
+                      style={[
+                        styles.tickLabel,
+                        index === i && styles.tickLabelActive,
+                      ]}
+                    >{i === 0 ? '兴奋' : i === 4 ? '难过' : ''}</Text>
+                  ))}
                 </View>
               </View>
 
-              {/* ★ 记录时刻：默认此刻，可回填「更早 / 1小时前 / 3小时前 / 昨天此刻」 */}
+              {/* ★ 记录时刻：默认此刻，可选相对档位，也可以拉出时分滚轮挑一个具体时刻 */}
               <Text style={styles.evTitle}>记录时刻</Text>
+              {/* ★ 2026-10-07（用户截图实锤）：chips 必须用 TouchableOpacity + 内层 Text。
+                  旧写法把样式直接挂在 Text 上（含 overflow:'hidden' + 合并的选中/未选中样式），
+                  在 iOS 上会出现「占位但一字不画」的空白条 —— 这就是一直「没看见时间选择器」的真因。
+                  现改成同屏「工作/运动/饮食」一样的可见组合，并把容器样式与文字样式拆开。 */}
               <View style={styles.timeRow}>
-                <Text style={[styles.timeChip, !isBackfill && styles.timeChipOn]} onPress={() => setAtOffsetMin(null)}>此刻</Text>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => { setAtOffsetMin(null); setAtCustomMs(null); }}
+                  style={[styles.timeChip, !isBackfill && styles.timeChipOn]}>
+                  <Text style={[styles.timeChipText, !isBackfill && styles.timeChipTextOn]}>此刻</Text>
+                </TouchableOpacity>
                 {TIME_OFFSETS.map((o) => {
-                  const sel = atOffsetMin === o.min;
+                  const sel = atOffsetMin === o.min && atCustomMs == null;
                   return (
-                    <Text
+                    <TouchableOpacity
                       key={o.min}
+                      activeOpacity={0.85}
+                      onPress={() => { setAtOffsetMin(o.min); setAtCustomMs(null); }}
                       style={[styles.timeChip, sel && styles.timeChipOn]}
-                      onPress={() => setAtOffsetMin(o.min)}
-                    >{o.label}</Text>
+                    >
+                      <Text style={[styles.timeChipText, sel && styles.timeChipTextOn]}>{o.label}</Text>
+                    </TouchableOpacity>
                   );
                 })}
+                <TouchableOpacity activeOpacity={0.85} onPress={() => { setAtOffsetMin(null); openWheel(); revealWheel(); }}
+                  style={[styles.timeChip, atCustomMs != null && styles.timeChipOn]}>
+                  <Text style={[styles.timeChipText, atCustomMs != null && styles.timeChipTextOn]}>选时刻</Text>
+                </TouchableOpacity>
               </View>
+              {/* ★ 时间选择器：日期（今天/昨天）+ 时分滚轮 */}
+              {atCustomMs != null && (
+                <View style={styles.pickerWrap}>
+                  <View style={styles.dayToggle}>
+                    {[{ off: 0, label: '今天' }, { off: 1, label: '昨天' }].map((d) => {
+                      const on = pickDayOffset === d.off;
+                      return (
+                        <TouchableOpacity
+                          key={d.off}
+                          activeOpacity={0.8}
+                          onPress={() => changeDay(d.off as 0 | 1)}
+                          style={[styles.dayBtn, on && styles.dayBtnOn]}
+                        >
+                          <Text style={[styles.dayBtnText, on && styles.dayBtnTextOn]}>{d.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <TimeWheel hour={pickH} minute={pickM} onChange={applyWheel} />
+                </View>
+              )}
               <Text style={styles.timeHint}>
                 将记录到 <Text style={styles.timeHintStrong}>{atHHMM}</Text>
-                {atOffsetMin != null && atOffsetMin >= 1440 ? '（昨天）' : ''}
-                {' · '}可在下方全天点阵里对照查看
+                {atCustomMs != null
+                  ? `（${pickDayOffset === 1 ? '昨天' : '今天'}）`
+                  : atOffsetMin != null && atOffsetMin >= 1440 ? '（昨天）' : ''}
               </Text>
 
               {/* 带图标的生活事件多选（＋添加 放在出行旁边） */}
@@ -380,7 +542,6 @@ export default function EmotionQuickRecord() {
                 </View>
               )}
             </ScrollView>
-            </TouchableWithoutFeedback>
 
             {/* 底部记录按钮（钉在抽屉底） */}
             <View style={[styles.foot, { paddingBottom: insets.bottom + theme.sp(2) }]}>
@@ -478,7 +639,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   body: {
-    paddingBottom: theme.sp(3),
+    paddingTop: theme.sp(1),
+    paddingBottom: theme.sp(4),
   },
   blobBlock: {
     alignItems: 'center',
@@ -492,8 +654,70 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.5),
   },
   sliderBlock: {
-    marginBottom: theme.sp(3),
+    marginBottom: theme.sp(1.5),
   },
+  tickRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: theme.sp(1), marginBottom: theme.sp(0.5) },
+  tickDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: 999, opacity: 0.4 },
+  tickDotActive: { opacity: 1, transform: [{ scale: 1.2 }] },
+  tickLabel: { fontSize: theme.fs(10), color: mm.colors.inkSoft, textAlign: 'center', minWidth: 40 },
+  tickLabelActive: { color: mm.colors.purpleDeep, fontWeight: '700' as never },
+  customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(1.5), gap: theme.sp(2.5) },
+  customBtn: { paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1), borderRadius: theme.sp(4), backgroundColor: mm.colors.purpleSoft },
+  customBtnText: { fontSize: theme.fs(12), color: mm.colors.purpleDeep, fontWeight: '600' as never },
+  customNow: { fontSize: theme.fs(15), fontWeight: '700' as never, color: mm.colors.ink, fontVariant: ['tabular-nums'] },
+
+  /* ── 时间选择器 ── */
+  pickerWrap: {
+    marginTop: theme.sp(1.5),
+    backgroundColor: mm.colors.purpleSoft,
+    borderRadius: theme.radius.card,
+    paddingTop: theme.sp(1.5),
+    paddingBottom: theme.sp(1),
+  },
+  dayToggle: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: theme.colors.textWhite,
+    borderRadius: theme.radius.pill,
+    padding: 3,
+    marginBottom: theme.sp(0.5),
+  },
+  dayBtn: {
+    paddingHorizontal: theme.sp(3.5),
+    paddingVertical: theme.sp(1),
+    borderRadius: theme.radius.pill,
+  },
+  dayBtnOn: { backgroundColor: mm.colors.purpleDeep },
+  dayBtnText: { fontSize: theme.fs(12), color: mm.colors.inkSoft, fontWeight: '600' as never },
+  dayBtnTextOn: { color: theme.colors.textWhite },
+  wheelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  wheelItem: { height: ITEM_H, justifyContent: 'center', alignItems: 'center' },
+  wheelText: {
+    fontSize: theme.fs(20),
+    fontWeight: '600' as never,
+    color: mm.colors.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  wheelTextOn: { color: mm.colors.purpleDeep, fontWeight: '700' as never, fontSize: theme.fs(22) },
+  wheelHighlight: {
+    position: 'absolute',
+    left: theme.sp(1.5), right: theme.sp(1.5),
+    top: WHEEL_PAD,
+    height: ITEM_H,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.textWhite,
+    opacity: 0.75,
+  },
+  wheelUnit: {
+    position: 'absolute',
+    top: WHEEL_PAD - theme.sp(0.5),
+    right: theme.sp(3),
+    fontSize: theme.fs(10),
+    color: mm.colors.inkSoft,
+  },
+  wheelColon: { width: theme.sp(3), alignItems: 'center' },
+  wheelColonText: { fontSize: theme.fs(20), fontWeight: '700' as never, color: mm.colors.inkSoft, marginTop: -ITEM_H * 2 },
+
   trackWrap: {
     height: theme.sp(7),
     justifyContent: 'center',
@@ -539,21 +763,25 @@ const styles = StyleSheet.create({
   },
   // 记录时刻选择
   timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), marginBottom: theme.sp(1.5) },
+  // ★ 容器样式与文字样式必须拆开：选中/未选中的文字颜色要能独立覆盖
   timeChip: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textSub,
     backgroundColor: theme.colors.cardBgSoft,
     borderWidth: 1,
     borderColor: 'transparent',
     paddingHorizontal: theme.sp(2.5),
     paddingVertical: theme.sp(1.25),
     borderRadius: theme.radius.pill,
-    overflow: 'hidden',
+  },
+  timeChipText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
   },
   timeChipOn: {
-    color: mm.colors.purpleDeep,
     backgroundColor: mm.colors.purpleSoft,
     borderColor: mm.colors.purpleMid,
+  },
+  timeChipTextOn: {
+    color: mm.colors.purpleDeep,
     fontWeight: theme.weight.semibold as never,
   },
   timeHint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(3) },

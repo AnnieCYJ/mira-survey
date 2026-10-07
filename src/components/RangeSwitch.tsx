@@ -1,12 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { theme } from '../theme/theme';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 
 interface Props {
   value: RangeKey;
   onChange: (r: RangeKey) => void;
-  /** ★ 可选：排除哪些按钮（如排除 'day' 只留周月年） */
   exclude?: RangeKey[];
 }
 
@@ -14,22 +13,58 @@ const RANGES: RangeKey[] = ['day', 'week', 'month', 'year'];
 
 export default function RangeSwitch({ value, onChange, exclude }: Props) {
   const ranges = exclude ? RANGES.filter((r) => !exclude.includes(r)) : RANGES;
-  // 如果当前 value 被排除了，自动 fallback 到第一个可用的
   const effectiveValue = ranges.includes(value) ? value : ranges[0];
+
+  // ★ 方案: 每个 chip 自带 背景 pill + scale 动画, 不用 absolute 定位
+  // Fabric 架构对 absolute Animated.View 有 parentNode 问题
+  const animsRef = useRef<Record<string, { scale: Animated.Value; opacity: Animated.Value }>>({});
+  ranges.forEach((r) => {
+    if (!animsRef.current[r]) {
+      animsRef.current[r] = { scale: new Animated.Value(0.85), opacity: new Animated.Value(0) };
+    }
+  });
+
+  useEffect(() => {
+    Object.entries(animsRef.current).forEach(([k, a]) => {
+      const on = k === effectiveValue;
+      Animated.parallel([
+        Animated.spring(a.scale, {
+          toValue: on ? 1 : 0.85,
+          tension: 400, friction: 30, useNativeDriver: true,
+        }),
+        Animated.timing(a.opacity, {
+          toValue: on ? 1 : 0,
+          duration: on ? 160 : 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }, [effectiveValue]);
+
   return (
     <View style={styles.row}>
-      {ranges.map((r) => (
-        <TouchableOpacity
-          key={r}
-          activeOpacity={0.8}
-          style={[styles.chip, r === effectiveValue && styles.chipOn]}
-          onPress={() => {
-            if (r !== effectiveValue) onChange(r);
-          }}
-        >
-          <Text style={[styles.text, r === effectiveValue && styles.textOn]}>{RANGE_DEF[r].label}</Text>
-        </TouchableOpacity>
-      ))}
+      {ranges.map((r) => {
+        const on = r === effectiveValue;
+        const a = animsRef.current[r];
+        return (
+          <TouchableOpacity
+            key={r}
+            activeOpacity={0.7}
+            style={styles.chipWrap}
+            onPress={() => { if (!on) onChange(r); }}
+          >
+            {/* 背景 pill (Fabric 安全: 正常 child, 不 absolute) */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.pill,
+                { opacity: a.opacity, transform: [{ scale: a.scale }] },
+              ]}
+            />
+            <Text style={[styles.text, on && styles.textOn]}>{RANGE_DEF[r].label}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -38,15 +73,32 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     marginBottom: theme.space.md,
+    backgroundColor: 'transparent',
+    borderRadius: theme.radius.pill,
+    padding: 3,
   },
-  chip: {
+  chipWrap: {
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    marginRight: theme.space.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  chipOn: { backgroundColor: theme.colors.accentSolid },
-  text: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
+  pill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.accentSolid,
+    borderRadius: theme.radius.pill,
+    shadowColor: theme.colors.accentSolid,
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  text: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textSub,
+  },
   textOn: { color: theme.colors.textWhite },
 });

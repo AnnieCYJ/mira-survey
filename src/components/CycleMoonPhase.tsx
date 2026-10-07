@@ -29,8 +29,8 @@ const MOON_PURPLE = theme.colors.accent1; // 月相暗面 / 全紫色（与 phas
 /**
  * 四种月相样式（对应四个经期象限）。
  *  - full      满月：全黄            → 经期
- *  - quarterR  上弦月：右黄左紫带弧  → 卵泡期
- *  - quarterL  下弦月：左黄右紫带弧  → 排卵期
+ *  - quarterR  凸月：黄底 + 紫色细月牙(右) → 卵泡期
+ *  - quarterL  凸月：紫底 + 黄色细月牙(左) → 排卵期
  *  - allPurple 全紫色：全紫          → 黄体期
  */
 export type MoonStyle = 'full' | 'quarterR' | 'quarterL' | 'allPurple';
@@ -48,8 +48,8 @@ export function phaseToMoonStyle(phase: PhaseKey): MoonStyle {
 /**
  * 单个月相点（自包含 SVG，居中绘制），供首页圆环 / 其他视图复用，保证画法一致。
  *  - full      满月：全黄
- *  - quarterR  上弦月：右黄左紫（带弧）
- *  - quarterL  下弦月：左黄右紫（带弧）
+ *  - quarterR  凸月：黄底 + 紫色细月牙（右）
+ *  - quarterL  凸月：紫底 + 黄色细月牙（左）
  *  - allPurple 全紫
  */
 export function MoonDot({ style, size }: { style: MoonStyle; size: number }) {
@@ -71,17 +71,19 @@ export function MoonDot({ style, size }: { style: MoonStyle; size: number }) {
       </Svg>
     );
   }
+  // ★ 2026-10-06（用户最终口径）：两个紫黄点改画**清晰的月牙（凸月）**——
+  //   quarterR = 黄底 + 紫色月牙（右侧），即「黄色面积大、紫色是月牙」；
+  //   quarterL = 紫底 + 黄色月牙（左侧），即「紫色面积大、黄色是月牙」。
+  //   复用 moonPath：t 取 0.19(右月牙)/0.81(左月牙)——比之前的 0.12/0.88 更宽，
+  //   月牙面积更大、圆环上四个点看得更清（用户反馈 0.12 太细看不清）。
   const right = style === 'quarterR';
-  const outerSweep = right ? 1 : 0;
-  const innerSweep = right ? 0 : 1;
-  const rx = (r * 0.425).toFixed(2);
-  const litPath =
-    `M ${x} ${(c - r).toFixed(2)} A ${rr} ${rr} 0 0 ${outerSweep} ${x} ${(c + r).toFixed(2)} ` +
-    `A ${rx} ${rr} 0 0 ${innerSweep} ${x} ${(c - r).toFixed(2)} Z`;
+  const bg = right ? MOON_LIT : MOON_PURPLE;   // 底色（大面积）
+  const fg = right ? MOON_PURPLE : MOON_LIT;   // 月牙色（小面积）
+  const t = right ? 0.19 : 0.81;
   return (
     <Svg width={size} height={size}>
-      <Circle cx={c} cy={c} r={r} fill={MOON_PURPLE} />
-      <Path d={litPath} fill={MOON_LIT} />
+      <Circle cx={c} cy={c} r={r} fill={bg} />
+      <Path d={moonPath(c, c, r, t)} fill={fg} />
     </Svg>
   );
 }

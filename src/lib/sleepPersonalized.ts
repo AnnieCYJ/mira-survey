@@ -61,16 +61,13 @@ function toInput(s: SleepSummary, daysAgo: number): SleepBaselineInput {
  * 睡眠摘要常记在前一日（跨午夜），所以今天这条、或昨天那条且起床时刻落在今早，都算。
  * ⚠ 与 `cognitiveLoad.ts` 的 `sleepSourceDate` 同一口径，刻意保持一致。
  */
+// ★ 2026-10-06（用户铁律：无今日睡眠即「—」，绝不挪用旧归档/昨日睡眠）：
+//   **只认今日睡眠**（按起床日归档，今天起床那觉存在今日 key 下）。
+//   删除原「昨日回退」——它会把任何历史晨间睡眠（含被错误归档到昨天的旧觉）当作今晚睡眠，
+//   正是首页「睡眠恢复」冒出 59 等旧分数的根源。
 function findTonightSleep(nowMs: number): { s: SleepSummary; dk: string } | null {
   const today = healthStore.getSleep(hsDayKey(nowMs));
   if (today && (today.total ?? 0) > 0) return { s: today, dk: hsDayKey(nowMs) };
-  const yKey = hsDayKey(nowMs - 86400000);
-  const y = healthStore.getSleep(yKey);
-  if (y && (y.total ?? 0) > 0) {
-    // 起床小时 < 12 ⇒ 是今早起来的，算今晚这一觉
-    const wh = y.wakeHour;
-    if (wh != null && wh >= 0 && wh < 12) return { s: y, dk: yKey };
-  }
   return null;
 }
 
@@ -98,6 +95,17 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
   }
 
   const { centers, days, ready } = buildSleepDimensionCenters(history);
+
+  // ★ 2026-10-07 诊断：把「睡眠恢复分到底怎么算出来的」全量打出来（临时，取证后删除）
+  if (__DEV__) {
+    const tw = (tonight.s.awake ?? 0) + (tonight.s.insomnia ?? 0);
+    console.log(
+      `[SLEEP-SCORE] dk=${tonight.dk} total=${tonight.s.total} deep=${tonight.s.deep} ` +
+      `deepPct=${tonight.s.total ? (((tonight.s.deep ?? 0) / tonight.s.total) * 100).toFixed(1) : '—'} ` +
+      `awake=${tw} getUp=${tonight.s.getUp ?? '—'} histDays=${days} ready=${ready} | ` +
+      `centers=${JSON.stringify(centers)}`
+    );
+  }
 
   const awake = (tonight.s.awake ?? 0) + (tonight.s.insomnia ?? 0);
   const res: PersonalizedSleepResult = computePersonalizedSleepScore(
@@ -147,6 +155,17 @@ export function sleepRecoveryTag(
     return score >= 58 ? '高于平时' : score >= 42 ? '与平时持平' : '低于平时';
   }
   return score >= 80 ? '恢复良好' : score >= 60 ? '恢复中' : '恢复偏弱';
+}
+
+/** 单日「睡眠恢复分」唯一入口（个人相对口径；基线不足自动退回绝对口径）。
+ *  供详情页 hero / 周月年图表统一调用 —— 保证「睡眠恢复」在全 App 只有一把尺。 */
+export function sleepRecoveryScoreForDay(dayMs: number): number | null {
+  try {
+    const r = computeSleepPersonalized(dayMs);
+    return r.score != null && Number.isFinite(r.score) && r.score > 0 ? r.score : null;
+  } catch {
+    return null;
+  }
 }
 
 export { MIN_RELATIVE_DAYS, SLEEP_BASELINE_DAYS };
