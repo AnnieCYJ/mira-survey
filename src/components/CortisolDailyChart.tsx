@@ -14,7 +14,7 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, MIN_BASELINE_DAYS, type CortisolRhythmLabel } from '../lib/cortisolProxy';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { dayKey } from '../data/healthStore';
 
@@ -76,10 +76,14 @@ export default function CortisolDailyChart({
   showStatusChip = true,
   showInsights = true,
   insightRows,
+  flat = false,
 }: {
   anchorDayMs?: number;
   showStatusChip?: boolean;
   showInsights?: boolean;
+  /** ★ 2026-10-08（用户：把详情页里昼夜节律的去掉灰色背景）：flat=true 时「节律分析」4 格与「持续性」块不铺灰底，
+   *   走无底色纯文字块（仅昼夜节律详情页传，睡眠 tab 的 CortisolSleepSummary 不受影响）。 */
+  flat?: boolean;
   /** 替代静态「节律洞察」的 AI 分析行（与身体恢复页 AI 综合分析同源：皮质醇节律 + 今日建议）。传入则优先展示 AI。 */
   insightRows?: AiInsightRow[];
 } = {}) {
@@ -205,6 +209,59 @@ export default function CortisolDailyChart({
     return `${Math.round(cos.amplitude / cos.mesor * 100)}%`;
   };
 
+  // ★ 2026-10-08：当日「持续性」连续天数不再写死 0 —— 改从个人基线反推过去 14 天的真实节律结论，
+  //   与首页/趋势图/日历同一套 judgeCortisolRhythm 判定：今天若「偏高/紊乱」，再往前逐日累计连续天数。
+  const streak = useMemo(() => {
+    if (!isToday) return { high: r.highStreak, dys: r.dysStreak };
+    const DAY = 86400000;
+    const labelOfDay = (dayMs: number): CortisolRhythmLabel | null => {
+      try {
+        const pbl = buildCortisolProxyBaseline(14, dayMs + DAY - 1);
+        if (pbl.days < MIN_BASELINE_DAYS) return null;
+        const px = buildCortisolProxyToday(pbl, { now: dayMs });
+        const j = judgeCortisolRhythm(px.vals, px.real);
+        return j.ready && j.label ? j.label : null;
+      } catch { return null; }
+    };
+    const todayLabel = labelOfDay(Date.now());
+    let high = todayLabel === '皮质醇偏高' ? 1 : 0;
+    let dys = todayLabel === '节律紊乱' ? 1 : 0;
+    for (let i = 1; i <= 14; i++) {
+      const lbl = labelOfDay(Date.now() - i * DAY);
+      if (lbl == null) break;
+      if (todayLabel === '皮质醇偏高') { if (lbl === '皮质醇偏高') high++; else break; }
+      else if (todayLabel === '节律紊乱') { if (lbl === '节律紊乱') dys++; else break; }
+      else break;
+    }
+    return { high, dys };
+  }, [isToday, proxy, r.highStreak, r.dysStreak]);
+
+  // ★ 2026-10-08：作息类型从「实测峰值时段」推导（与峰值时刻同源），
+  //   只要当日有真实活性槽就必出值，不再依赖 cosinor.acrophaseH 是否为有限值（避免恒显「—」）。
+  //   峰值时刻 > 11 点=晚睡型 / < 6 点=早起型 / 其余=常规作息，与下方峰值时刻副文案阈值一致。
+  const peakHour = (() => {
+    if (isToday && proxy) {
+      let bi = -1;
+      let bv = -Infinity;
+      for (let i = 0; i < proxy.vals.length; i++) {
+        const v = proxy.vals[i];
+        if (proxy.real[i] && v != null && v > bv) {
+          bv = v;
+          bi = i;
+        }
+      }
+      if (bi >= 0) return bi / 2;
+    }
+    return r.cosinor.acrophaseH; // 历史日 / 兜底：cosinor 拟合峰值时刻
+  })();
+  const chrono = (() => {
+    if (!Number.isFinite(peakHour)) return { label: '—', sub: '—' };
+    const h = peakHour;
+    if (h > 11) return { label: '晚睡型', sub: '皮质醇夜高晨低，建议调整' };
+    if (h < 6) return { label: '早起型', sub: '皮质醇起得太早（早醒风险）' };
+    return { label: '常规作息', sub: '皮质醇晨高夜低（正常）' };
+  })();
+
   return (
     <Card>
       {/* 趋势图区域：可点击跳转详情 */}
@@ -213,101 +270,96 @@ export default function CortisolDailyChart({
           <Text style={styles.title}>{title}</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
         </View>
-        <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} />
+        {/* ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：flat=详情页 → 不画 Y 轴数值刻度 */}
+        <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} hideYAxis={flat} />
       </TouchableOpacity>
 
-      {/* ── 节律分析 ── */}
-      <View style={styles.divider} />
+      {/* ── 节律分析（flat=昼夜节律详情页：去掉灰底、改加描边外框，避免内容漂浮）── */}
+      <View style={flat ? [styles.rhythmFrame, styles.rhythmFrameOn] : styles.rhythmFrame}>
+        {!flat && <View style={styles.divider} />}
 
-      {/* 状态 + flags */}
-      <View style={styles.rhythmHead}>
-        <Text style={styles.rhythmTitle}>节律分析</Text>
-        {showStatusChip && (
-          <View style={[styles.levelChip, { backgroundColor: chipColor + '22' }]}>
-            <View style={[styles.levelDot, { backgroundColor: chipColor }]} />
-            <Text style={[styles.levelText, { color: chipColor }]}>{chipLabel}</Text>
+        {/* 状态 + flags */}
+        <View style={styles.rhythmHead}>
+          <Text style={styles.rhythmTitle}>节律分析</Text>
+          {showStatusChip && (
+            <View style={[styles.levelChip, { backgroundColor: chipColor + '22' }]}>
+              <View style={[styles.levelDot, { backgroundColor: chipColor }]} />
+              <Text style={[styles.levelText, { color: chipColor }]}>{chipLabel}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* 2×2 SumCell 摘要 */}
+        <View style={styles.summaryGrid}>
+          <SumCell
+            flat={flat}
+            label="整体压力水平"
+            value={hasCos ? cos.mesor.toFixed(1) : '—'}
+            sub={
+              hasCos && isToday && Number.isFinite(r.baseline.p75)
+                ? cos.mesor > r.baseline.p75 ? '高于个人基线 P75'
+                  : cos.mesor < r.baseline.p25 ? '低于个人基线 P25'
+                  : '在正常区间内'
+                : hasCos ? '单日均值' : '全天压力代理均值'
+            }
+          />
+          <SumCell
+            flat={flat}
+            label="峰值时刻"
+            value={fmtHour(cos.acrophaseH)}
+            sub={
+              Number.isFinite(cos.acrophaseH)
+                ? cos.acrophaseH >= 6 && cos.acrophaseH <= 11 ? '正常范围 06–11 点'
+                  : cos.acrophaseH < 6 ? '过早（早醒风险）'
+                  : '偏晚（夜猫子型）'
+                : '—'
+            }
+          />
+        </View>
+        <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
+          <SumCell
+            flat={flat}
+            label="昼夜波动幅度"
+            value={fmtAmpPct()}
+            sub={
+              hasCos
+                ? cos.amplitude < 0.15 * cos.mesor ? '节律扁平 ⚠️'
+                  : cos.amplitude >= 0.3 * cos.mesor ? '节律弹性好'
+                  : '适中'
+                : '—'
+            }
+          />
+          <SumCell
+            flat={flat}
+            label="作息类型"
+            value={chrono.label}
+            sub={chrono.sub}
+          />
+        </View>
+
+        {/* 持续性：偏高 / 紊乱 连续天数（仅「今日」视图有意义，需 14 天基线） */}
+        {isToday && (
+          <View style={[styles.persistenceCard, !flat && styles.persistenceCardSoft]}>
+            <Text style={styles.persistenceTitle}>持续性</Text>
+            <View style={styles.persistenceRow}>
+              <Text style={styles.persistenceLabel}>皮质醇偏高</Text>
+              <Text style={[styles.persistenceValue, { color: streak.high > 0 ? theme.colors.danger : theme.colors.textSub }]}>
+                {streak.high === 0 ? '近期稳定'
+                  : streak.high === 1 ? '今日偏高'
+                  : `已连续 ${streak.high} 天（含今天）`}
+              </Text>
+            </View>
+            <View style={[styles.persistenceRow, { marginTop: theme.sp(1) }]}>
+              <Text style={styles.persistenceLabel}>节律紊乱</Text>
+              <Text style={[styles.persistenceValue, { color: streak.dys > 0 ? theme.colors.stateTense : theme.colors.textSub }]}>
+                {streak.dys === 0 ? '近期稳定'
+                  : streak.dys === 1 ? '今日紊乱'
+                  : `已连续 ${streak.dys} 天（含今天）`}
+              </Text>
+            </View>
           </View>
         )}
       </View>
-
-      {/* 2×2 SumCell 摘要 */}
-      <View style={styles.summaryGrid}>
-        <SumCell
-          label="整体压力水平"
-          value={hasCos ? cos.mesor.toFixed(1) : '—'}
-          sub={
-            hasCos && isToday && Number.isFinite(r.baseline.p75)
-              ? cos.mesor > r.baseline.p75 ? '高于个人基线 P75'
-                : cos.mesor < r.baseline.p25 ? '低于个人基线 P25'
-                : '在正常区间内'
-              : hasCos ? '单日均值' : '全天压力代理均值'
-          }
-        />
-        <SumCell
-          label="峰值时刻"
-          value={fmtHour(cos.acrophaseH)}
-          sub={
-            Number.isFinite(cos.acrophaseH)
-              ? cos.acrophaseH >= 6 && cos.acrophaseH <= 11 ? '正常范围 06–11 点'
-                : cos.acrophaseH < 6 ? '过早（早醒风险）'
-                : '偏晚（夜猫子型）'
-              : '—'
-          }
-        />
-      </View>
-      <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
-        <SumCell
-          label="昼夜波动幅度"
-          value={fmtAmpPct()}
-          sub={
-            hasCos
-              ? cos.amplitude < 0.15 * cos.mesor ? '节律扁平 ⚠️'
-                : cos.amplitude >= 0.3 * cos.mesor ? '节律弹性好'
-                : '适中'
-              : '—'
-          }
-        />
-        <SumCell
-          label="作息类型"
-          value={
-            Number.isFinite(r.css)
-              ? r.css > 10 ? '早起型'
-                : Math.abs(r.css) < 10 ? '不明显'
-                : '晚睡型'
-              : '—'
-          }
-          sub={
-            Number.isFinite(r.css)
-              ? r.css > 10 ? '皮质醇晨高夜低（正常）'
-                : Math.abs(r.css) < 10 ? '昼夜无明显差异'
-                : '皮质醇夜高晨低，建议调整'
-              : '—'
-          }
-        />
-      </View>
-
-      {/* 持续性：偏高 / 紊乱 连续天数（仅「今日」视图有意义，需 14 天基线） */}
-      {isToday && (
-        <View style={styles.persistenceCard}>
-          <Text style={styles.persistenceTitle}>持续性</Text>
-          <View style={styles.persistenceRow}>
-            <Text style={styles.persistenceLabel}>皮质醇偏高</Text>
-            <Text style={[styles.persistenceValue, { color: r.highStreak > 0 ? theme.colors.danger : theme.colors.textSub }]}>
-              {r.highStreak === 0 ? '近期稳定'
-                : r.highStreak === 1 ? '今日偏高'
-                : `已连续 ${r.highStreak} 天（含今天）`}
-            </Text>
-          </View>
-          <View style={[styles.persistenceRow, { marginTop: theme.sp(1) }]}>
-            <Text style={styles.persistenceLabel}>节律紊乱</Text>
-            <Text style={[styles.persistenceValue, { color: r.dysStreak > 0 ? theme.colors.stateTense : theme.colors.textSub }]}>
-              {r.dysStreak === 0 ? '近期稳定'
-                : r.dysStreak === 1 ? '今日紊乱'
-                : `已连续 ${r.dysStreak} 天（含今天）`}
-            </Text>
-          </View>
-        </View>
-      )}
 
       {/* AI 分析：统一 AiAnalysis 外壳 + 大标题 + 小点建议 */}
       {(() => {
@@ -365,9 +417,9 @@ export function buildCortisolAiTitle(
 }
 
 /** SumCell —— 与 EmotionCognitiveDetailScreen 同款（导出供 CortisolSleepSummary 复用，样式单一来源） */
-export function SumCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function SumCell({ label, value, sub, flat = false }: { label: string; value: string; sub?: string; flat?: boolean }) {
   return (
-    <View style={styles.sumCell}>
+    <View style={[styles.sumCell, !flat && styles.sumCellSoft]}>
       <Text style={styles.sumLabel}>{label}</Text>
       <Text style={styles.sumValue}>{value}</Text>
       {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
@@ -388,7 +440,9 @@ const styles = StyleSheet.create({
 
   // SumCell
   summaryGrid: { flexDirection: 'row' },
-  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5) },
+  // ★ 2026-10-08（用户：把详情页里昼夜节律的去掉灰色背景）：底色拆出来，flat 时不铺
+  sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, marginHorizontal: theme.sp(0.5) },
+  sumCellSoft: { backgroundColor: theme.colors.cardBgSoft },
   sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
   sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
@@ -401,9 +455,21 @@ const styles = StyleSheet.create({
   streakText: { fontSize: theme.fontSize.sm, color: theme.colors.danger, marginTop: theme.sp(1.5), fontWeight: theme.weight.semibold as any },
 
   // 持续性卡片
-  persistenceCard: { backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.md, padding: theme.sp(2.5), marginTop: theme.sp(2) },
+  // ★ 2026-10-08：同上，flat 时不铺灰底
+  persistenceCard: { borderRadius: theme.radius.md, padding: theme.sp(2.5), marginTop: theme.sp(2) },
+  persistenceCardSoft: { backgroundColor: theme.colors.cardBgSoft },
   persistenceTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
   persistenceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   persistenceLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textBody },
   persistenceValue: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
+
+  // 节律分析外框（flat=昼夜节律详情页：去掉灰底后，用描边外框收口，避免内容漂浮）
+  rhythmFrame: { marginTop: theme.sp(3) },
+  rhythmFrameOn: {
+    marginTop: theme.sp(2),
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    padding: theme.sp(2.5),
+  },
 });

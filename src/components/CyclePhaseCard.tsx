@@ -24,8 +24,11 @@ import { computeCycle, parseDate, tempDailyToSeries, type CycleLog } from '../li
 import { loadCycleLog } from '../data/cycleLog';
 import { type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import CycleMoonPhase from './CycleMoonPhase';
+import Icon from './Icon';
 import PhaseInsightSection from './PhaseInsightSection';
 import PeriodRecordPanel from './PeriodRecordPanel';
+// ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里也加个 AI 分析，同样三行以内）
+import AiAnalysis, { AiResultRow } from './AiAnalysis';
 
 const FEMALE_STATE_LABEL: Record<number, string> = {
   0: '未设置',
@@ -42,6 +45,20 @@ function shortDate(s: string | null | undefined): string {
   if (!y || !m || !d) return s;
   return `${Number(m)}/${Number(d)}`;
 }
+
+/** ★ 2026-10-07（用户：「雌孕激素下面的 AI 分析去掉」）：先隐藏整块「本阶段身心特征」
+ *  （AI 分析结论行 + ● 建议）。代码保留，改回 true 即恢复。 */
+const SHOW_PHASE_INSIGHT: boolean = false;
+
+/** ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里面也加个 AI 分析，三行以内）：
+ *  只做相位层面的解读（戒指测不到雌激素/孕酮浓度，绝不编造具体激素值）。
+ *  依据：Clue 生理科普 + ACSM 运动与周期指南。 */
+const PHASE_BRIEF: Record<string, { name: string; tone: 'good' | 'warn' | 'neutral'; body: string }> = {
+  period: { name: '经期', tone: 'warn', body: '雌激素与孕酮处于低位，身体进入恢复模式，能量与运动表现偏低。建议降低训练强度、多做拉伸，并注意保暖与充足睡眠。' },
+  follicular: { name: '卵泡期', tone: 'good', body: '雌激素逐步回升、HRV 上升，精力与情绪持续变好，恢复能力增强。适合安排高强度训练、重要任务与新的计划。' },
+  ovulation: { name: '排卵期', tone: 'good', body: '雌激素达峰值、状态最佳，是运动与决策的黄金窗口。同时处于易孕期，如有避孕或备孕计划，需注意时间安排。' },
+  luteal: { name: '黄体期', tone: 'warn', body: '孕酮主导、体温升高，能量回落、恢复变慢，PMS 症状较易出现。建议降低训练强度、控制糖盐摄入，并保证睡眠。' },
+};
 
 export default function CyclePhaseCard({
   ring,
@@ -98,6 +115,9 @@ export default function CyclePhaseCard({
   // 留出少量呼吸空间并封顶 300，避免在较窄屏幕/横屏下溢出卡片。
   const ringSize = Math.min(Math.round(Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2 - 16), 300);
 
+  // ★ 2026-10-07：相位解读（三行以内）—— 无记录/未知相位时为 null，走引导文案
+  const phaseBrief = PHASE_BRIEF[info.phase] ?? null;
+
   return (
     <TouchableOpacity
       activeOpacity={onPress && !expanded ? 0.92 : 1}
@@ -107,33 +127,18 @@ export default function CyclePhaseCard({
       <View style={styles.card}>
       {/* ★ 月相 Hero：与周期日历页顶部同一组件——相位 / 第几天 / 距下次经期由月相环表达。
           尺寸按「卡片实际可用宽度」收窄（默认按屏宽算会溢出卡片内边距）。 */}
-      <CycleMoonPhase cycleInfo={info} log={effective} size={ringSize} height={Math.round(ringSize * 0.8)} />
-
-      {/* ★ 经期记录入口：月相环下方居中；点击内联展开日期 + 症状记录面板 */}
-      <View style={styles.recordCenter}>
-        <Text style={styles.recordHint}>
-          {effective?.lastPeriodStart ? `上次经期 ${effective.lastPeriodStart}` : '还没有经期记录'}
-        </Text>
-        <TouchableOpacity
-          style={styles.recordBtn}
-          onPress={(e) => {
-            e.stopPropagation?.();
-            setExpanded(true);
-          }}
-        >
-          {/* v10：主操作按钮统一 lime→粉 渐变 */}
-          <LinearGradient
-            colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.recordBtnGrad}
-          >
-            <Text style={styles.recordBtnText}>
-              {effective ? '记录 / 修改' : '记录经期'}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+      {/* ★ 2026-10-07：高度交给组件默认（0.84×size）—— 顶部已留净空，环顶部两点不再被裁 */}
+      <CycleMoonPhase cycleInfo={info} log={effective} size={ringSize} />
+      {/* ★ 2026-10-07（用户：洞察页「生理周期节律」卡片右上角加一个向右的箭头，表示可以点击） */}
+      <View style={styles.cardChevron} pointerEvents="none">
+        <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
       </View>
+
+      {/* ★ 2026-10-07（用户：「记录与修改」的按钮放在点击之后的经期详情页，就是那个圆环的下面）：
+          月相环下方的「记录 / 修改」入口已整体移走 —— 记录入口统一放在经期详情页
+          （screens/CycleCalendarScreen）的月相环正下方，本卡只保留月相 + 关键日期概览。
+          注：下方 Modal Sheet（expanded / PeriodRecordPanel）代码保留，日后要恢复卡片入口，
+          把上面这段 JSX 放回来即可。 */}
 
       {/* ★ 经期记录：从底部弹起的 Sheet */}
       <Modal visible={expanded} transparent animationType="slide" onRequestClose={() => setExpanded(false)}>
@@ -209,10 +214,24 @@ export default function CyclePhaseCard({
       {/* ★ 已按需求移除「雌激素 + 孕激素 双相趋势」图（HormoneDualTrend）
           —— 组件本身保留（HormoneDualTrend.tsx 未删除，便于随时恢复）。 */}
 
-      {/* ★ 本阶段身心特征（AI 分析外壳）— 参考 Clue/Flo 官方科普 + 临床研究 */}
-      {info.hasLog ? (
+      {/* ★ 2026-10-07（用户：「雌孕激素下面的 AI 分析去掉」）：整块「本阶段身心特征」
+          （AI 分析结论行 + ● 建议）先隐藏，由 SHOW_PHASE_INSIGHT 控制。 */}
+      {SHOW_PHASE_INSIGHT && info.hasLog ? (
         <PhaseInsightSection phase={info.phase} dayInCycle={info.dayInCycle ?? 0} ring={ring} cycleInfo={info} />
       ) : null}
+
+      {/* ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里面也加个 AI 分析，同样三行以内）：
+          仅相位结论 + 真实周期进度，数据不足时给引导语。 */}
+      <AiAnalysis>
+        <AiResultRow
+          tone={phaseBrief ? phaseBrief.tone : 'neutral'}
+          title={phaseBrief ? (info.hasLog ? `${phaseBrief.name} · 第 ${info.dayInCycle ?? 0} 天` : phaseBrief.name) : '周期数据不足'}
+        >
+          {phaseBrief
+            ? phaseBrief.body
+            : '还没有经期记录。记录一次经期开始日后，这里会根据当前周期相位，给出对应的身心状态与训练建议。'}
+        </AiResultRow>
+      </AiAnalysis>
       </View>
     </TouchableOpacity>
   );
@@ -226,6 +245,14 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card,
     padding: theme.space.cardPad,
     marginTop: theme.space.sm,
+  },
+
+  /** ★ 2026-10-07：卡片右上角的「可点击」箭头 */
+  cardChevron: {
+    position: 'absolute',
+    top: theme.sp(2),
+    right: theme.sp(2),
+    zIndex: 2,
   },
   recordCenter: {
     alignItems: 'center',

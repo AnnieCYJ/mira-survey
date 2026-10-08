@@ -143,20 +143,21 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
 
     return (
       <AiAnalysis
+      compact
         title={estroTitle}
         subtitle={phaseDay}
         advice={estroAdvice}
         foot={`基于戒指实测 HRV + EDA（皮肤电导）推算的 0–100 相对指数；戒指不直接测量雌激素，仅供了解自身趋势，不构成医学诊断。`}
       >
-        <AiResultRow tone={row1Tone} title="当前相位水平">
+        <AiResultRow compact tone={row1Tone} title="当前相位水平">
           最新（{md(last.date)}）推算指数 {last.value}，处于近 {windowDays} 天的{levelLabel}（区间 {r0(min)}–
           {r0(max)}）。{phaseExpect}
           {knownPhase && !consistent ? '；实测信号与相位不同步，可能受睡眠、运动或佩戴时长影响。' : ''}
         </AiResultRow>
-        <AiResultRow tone={peakTone} title="本窗口峰值">
+        <AiResultRow compact tone={peakTone} title="本窗口峰值">
           {peakText}
         </AiResultRow>
-        <AiResultRow tone="neutral" title="趋势方向">
+        <AiResultRow compact tone="neutral" title="趋势方向">
           近 {windowDays} 天整体呈{dir}
           {firstHalf != null && secondHalf != null ? `（前半段均值 ${r0(firstHalf)} → 后半段 ${r0(secondHalf)}）` : ''}。
           {trendTail}
@@ -270,18 +271,19 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
 
   return (
     <AiAnalysis
+      compact
       title={progTitle}
       subtitle={pPhaseDay}
       advice={progAdvice}
       foot="基于戒指实测体温（BBT 双相）与静息心率的抬升推算的 0–100 相对指数；戒指不直接测量孕酮，仅供了解自身趋势，不构成医学诊断。"
     >
-      <AiResultRow tone={lutealTone} title="黄体相判断">
+      <AiResultRow compact tone={lutealTone} title="黄体相判断">
         {lutealText}
       </AiResultRow>
-      <AiResultRow tone={curTone} title="当前水平">
+      <AiResultRow compact tone={curTone} title="当前水平">
         {curText}
       </AiResultRow>
-      <AiResultRow tone={refTone} title="与体温双相印证">
+      <AiResultRow compact tone={refTone} title="与体温双相印证">
         {refText}
       </AiResultRow>
     </AiAnalysis>

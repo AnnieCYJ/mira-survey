@@ -24,7 +24,6 @@ import BentoCard from '../components/BentoCard';
 import EmotionDots, { type MindMoodKey } from '../components/EmotionDots';
 import MindWave from '../components/MindWave';
 import TrendChart, { TrendAxis } from '../components/TrendChart';
-import TodayTimelineCard, { type TimelineItem } from '../components/TodayTimelineCard';
 import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 // ★ v18.132：情绪压力改多信号融合判定（分离运动/设备故障），替代单信号 EDA 事件计数
@@ -39,11 +38,11 @@ import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
-import { getAiInsight } from '../ai/insight';
 import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
 import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNarrative, type TodayScene } from '../lib/todayScene';
+import HomeSuggestionFloat from '../components/HomeSuggestionFloat';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
 
@@ -54,6 +53,11 @@ const memoryStore = new MemoryStore();
  *  改回 true 即恢复原样 —— 组件、props、数据口径都没有改动，只是不渲染。
  *  注意：这不影响「睡眠恢复」chip（第一屏）与 EmotionCognitiveDetail 详情页。 */
 const SHOW_SLEEP_CARD: boolean = false;
+
+/** ★ 第二屏（消耗与恢复节律）Bento 卡片总开关（2026-10-07）：用户要求「全天状态趋势下面的那些卡片先帮我隐藏」。
+ *  改回 true 即整组恢复 —— 各卡组件、props、数据口径均未改动，只是不渲染。
+ *  覆盖：睡眠节律 / 脑力消耗 / 心理压力 / 运动消耗 / 经期（含被 SHOW_SLEEP_CARD 单独控制的睡眠卡）。 */
+const SHOW_RHYTHM_CARDS: boolean = false;
 
 
 function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
@@ -618,7 +622,6 @@ export default function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
-  const [todayTab, setTodayTab] = useState<'rhythm' | 'diary'>('rhythm');
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -913,21 +916,6 @@ export default function TodayScreen() {
     return { isAsleep: inWindow && (h >= 22 || h < 7), isNap: inWindow && h >= 8 && h < 22 };
   })();
 
-  // AI 建议：每次进入首页都调 getAiInsight('today')，绕过 hook 缓存层
-  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    // 睡眠中不跑 AI，直接用硬文案
-    if (isAsleep) { setAiAdvice(null); return; }
-    setAiAdvice(null);
-    const timer = setTimeout(() => {
-      getAiInsight('today')
-        .then((t) => { if (!cancelled) setAiAdvice(t); })
-        .catch(() => { if (!cancelled) setAiAdvice(null); });
-    }, 600);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [phase, statusIdx, isAsleep, status?.value, status?.level]);
-
   const fallbackAdvice = buildSmartAdvice(phase, statusIdx, isNap);
 
   // ★ v18.37 场景建议引擎：圈内 = 短建议词（≤6 字），胶囊 = 具体解释（≤2 行）。
@@ -968,8 +956,6 @@ export default function TodayScreen() {
   const advice = isAsleep
     ? (phase === '经期' ? '经期睡眠中，安心休息助修复' : phase === '黄体期' ? '黄体期睡眠中，深睡稳情绪' : '睡眠恢复中，安心休息')
     : fallbackAdvice;
-  if (__DEV__) console.log(`[TodayAdvice] ai=${aiAdvice ?? 'null'} fallback=${fallbackAdvice} phase=${phase} idx=${statusIdx} scene=${scene?.key ?? 'none'}`);
-  const isAiText = false;  // 圆环下建议用规则更准（1.5B 模型搞不定时段优先级）
   const showPill = statusIdx != null || phaseKnown;
   // ★ 无场景触发时：胶囊 = 多因分析段（相位→雌/孕激素→皮质醇→睡眠，挂钩周期激素数据但不跳转）
   const causeNarrative = (() => {
@@ -1022,112 +1008,17 @@ export default function TodayScreen() {
     const m = Math.round(min % 60);
     return h > 0 ? `${h}小时${m > 0 ? `${m}分` : ''}` : `${m}分钟`;
   };
+  // timelineItems 构建已迁到 src/lib/buildTodayTimeline.ts
   const pad2 = (n: number) => String(n).padStart(2, '0');
-  const now0 = new Date();
-  const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const dateLabel = `${now0.getMonth() + 1}月${now0.getDate()}日 · ${WEEKDAYS[now0.getDay()]}`;
-  /** 当前时刻（当天分钟数）——凡是「还没发生的时段」一律不写死标签，回落到现在已经过到的位置 */
-  const curMin = now0.getHours() * 60 + now0.getMinutes();
-
-  // 排序键 = 当天分钟数（'全天'=-1 置顶，'现在'=1440 置底）
-  type DatedItem = TimelineItem & { k: number };
-  const dated: DatedItem[] = [];
-  const pushItem = (it: TimelineItem, k: number) => dated.push({ ...it, k });
-
-  // 1. 周期相位（当天背景事项，置顶）
-  const cs = ring.curveStatus;
-  if (cs?.hasLog && cs.phaseLabel) {
-    pushItem({
-      time: '全天',
-      color: theme.colors.accent1,
-      // ★ v18.48：全天事项标题只显示相位名（如"黄体期"），不再拼"第 N 天"
-      title: cs.phaseLabel,
-      sub: cs.phaseLabel === '黄体期' ? '激素回落，留意情绪与能量起伏' : cs.phaseLabel === '经期' ? '以温和舒缓为主，适合休息' : '激素节律影响今日状态节奏',
-    }, -1);
-  }
-  // 2. 起床（真实睡眠窗口）
-  // ★ v18.104：断流时这条只留「起床时刻」这个事实，睡眠评分/时长/深睡全部改空态文案 ——
-  //   不把 0:29 那次同步的昨夜睡眠当成今天早上刚测到的（与圆环/昼夜节律卡同一口径）。
-  if (todaySleep?.wakeTime) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(todaySleep.wakeTime.trim());
-    pushItem({
-      time: todaySleep.wakeTime,
-      color: theme.colors.stateTired,
-      title: dataStale ? '起床' : `起床 · 睡眠评分 ${todaySleep.score ?? '—'}`,
-      sub: dataStale
-        ? '戒指暂无新数据，昨夜睡眠明细暂不显示'
-        : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
-    }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
-  }
-  // 3. 情绪波动峰值事件
-  const evs = stressReport?.events ?? [];
-  const peakEvent = evs.length > 0 ? evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a)) : null;
-  if (peakEvent) {
-    pushItem({
-      time: `${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}`,
-      color: theme.colors.stateTense,
-      title: `情绪波动 ${evs.length} 次`,
-      sub: `峰值强度 ${Math.round(peakEvent.severity)} · 前后可安排 5 分钟呼吸调整`,
-    }, peakEvent.hour * 60 + peakEvent.minute);
-  }
-  // 4. 脑力消耗：数字与柱状图同源（avgFatigue）；高峰时刻取「已观测小时柱」最高点，不写未来时刻
-  if (cogReport?.avgFatigue != null) {
-    const barsPast = (cogReport.hourly ?? []).filter(h => h.hasData && h.hour * 60 <= curMin);
-    const peakBar = barsPast.length > 0 ? barsPast.reduce((a, b) => (b.score > a.score ? b : a)) : null;
-    pushItem({
-      time: peakBar ? `${pad2(peakBar.hour)}:00` : '今日',
-      color: theme.colors.stateTired,
-      title: `脑力消耗 ${cogReport.avgFatigue} · ${cogLevelLabel(cogReport.avgFatigue)}`,
-      sub: '高峰时段安排专注任务更高效',
-    }, peakBar ? peakBar.hour * 60 : curMin);
-  }
-  // 5. 活动量：累计步数——时间用「最后一次计步采样的真实时刻」，没有采样就不写时间标签
+  const nowDate = new Date();
+  const curMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   const dkToday = dayKey(Date.now());
   const stepsToday = ring?.stepDaily?.[dkToday]?.steps ?? 0;
-  if (stepsToday > 0) {
-    let lastStepMin: number | null = null;
-    try {
-      const pts = healthStore.getIntraday('steps' as any, dkToday) ?? [];
-      const last = pts.length > 0 ? pts[pts.length - 1] : null;
-      if (last && Number.isFinite(last.t)) {
-        const d = new Date(last.t);
-        const m = d.getHours() * 60 + d.getMinutes();
-        // 只信任「已经发生」的采样时刻，避免脏样本把条目推到未来
-        if (m <= curMin) lastStepMin = m;
-      }
-    } catch { lastStepMin = null; }
-    pushItem({
-      time: lastStepMin != null ? `${pad2(Math.floor(lastStepMin / 60))}:${pad2(lastStepMin % 60)}` : '今日',
-      color: theme.colors.stateCalm,
-      title: `活动 ${stepsToday} 步`,
-      sub: '保持轻量活动，助力晚间恢复',
-    }, lastStepMin ?? curMin);
-  }
-  // 6. AI 对话记录：★ 真实聊天记忆（MemoryStore），对话产生关键信息后即时刷新
-  const latestRecord = aiRecords[0];
-  if (latestRecord) {
-    const d = new Date(latestRecord.ts);
-    const themes = inferThemes(latestRecord.text);
-    const snippet = latestRecord.text.length > 30 ? `${latestRecord.text.slice(0, 30)}…` : latestRecord.text;
-    pushItem({
-      time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
-      color: theme.colors.accent2,
-      title: themes.length ? `AI 对话 · ${themes.join('/')}` : 'AI 对话 · 与 Mira',
-      sub: aiRecords.length > 1 ? `今日 ${aiRecords.length} 条记录 · ${snippet}` : snippet,
-    }, d.getHours() * 60 + d.getMinutes());
-  }
-  // 7. AI 今日洞察（异步生成，兜底用规则文案，置底）
-  pushItem({
-    time: '现在',
-    color: theme.colors.accent2,
-    title: 'AI 今日洞察',
-    sub: aiAdvice ?? narrative,
-  }, 24 * 60);
-
-  const timelineItems: TimelineItem[] = dated
-    .sort((a, b) => a.k - b.k)
-    .slice(0, 7)
-    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub }));
+  let peakEvent: any = null;
+  try {
+    const evs = computeStressReport()?.events ?? [];
+    peakEvent = evs.length > 0 ? evs.reduce((a, b) => (b.severity > a.severity ? b : a)) : null;
+  } catch { /* ignore */ }
 
   // 三张消耗卡的副标题：一律由真实数据推导，不写死「峰值集中在傍晚」「19 kcal」这类未发生或编造的结论
   const stressSub = peakEvent ? `峰值 ${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}` : '暂无压力事件';
@@ -1337,9 +1228,11 @@ export default function TodayScreen() {
    * ★ 顶部指标 chips（MindMate v10 Reskin）：白卡 chip = pastel 方块 icon + 灰标签 + 数值。
    * 数据与消耗卡**同源同口径**：恢复=睡眠评分、脑力=准备度（脑力账户剩余）、情绪=事件数、经期=当前相位。
    * 无数据显式传 '—'，不编数字。
-   * ★ v18.153：**移除「运动消耗」chip**（用户口径）——圆环上面那排只保留恢复/脑力/情绪/经期，
-   *   正好 4 张排满一行（不再有一条半截卡提示右滑）。运动消耗仍在第二屏
-   *   「消耗与恢复节律」的 Bento 卡里，数据与点击入口都没丢。
+   * ★ 2026-10-07（用户：「在心理压力旁边加一个运动的小卡片展示卡路里…它是可以左右滑动的」）：
+   *   按用户要求加回「运动」chip（置于「心理压力」右侧），主数字 = 当日卡路里 kcal，
+   *   与第二屏「运动消耗」Bento 卡**同源同口径**（固件识别运动段 totalCal 优先，
+   *   否则当日计步 calorie）。因条目变成 5 张 > 每屏 4 张，
+   *   MindChips 自动切为**横向滚动**，第 5 张可滑出。
    */
   // 经期卡：月相图标与圆环四个象限点同一套（经期=满月/卵泡=上弦/黄体=全紫/排卵=下弦）
   const PHASE_MOON: Record<string, 'full' | 'quarterR' | 'allPurple' | 'quarterL'> = {
@@ -1351,14 +1244,49 @@ export default function TodayScreen() {
   //   时效小字（口径还会和真实采样时刻 00:29 打架，看着像没用的东西）。
   //   断流就画空图表（中间一行「暂无数据」）+ 圆环下方分析写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」
 
+  // 运动 chip（v18.153 移除后于 2026-10-07 按用户要求加回）：主数字 = 卡路里 kcal，
+  // 与第二屏「运动消耗」Bento 卡同源（hasSportSessions / stepKcalToday 均为上方已声明）。
+  const actKcal = hasSportSessions
+    ? Math.round(sportKcalTotal)
+    : (activityHasData ? Math.round(stepKcalToday) : null);
+  const actChipValue = actKcal != null && actKcal > 0 ? String(actKcal) : '—';
+  // ★ 2026-10-07（用户：首页圆环上面的高中低不用展示）：原 CHIP_LEVEL_WORD / chipLevelWord（动态档位语缩写）
+  //   已整块移除 —— 睡眠恢复 / 脑力消耗 / 心理压力 三张 chip 不再渲染档位语，只保留数字与配色。
+  //   ★ 同日补充：运动消耗 chip 的「低/中/高」档位语也一并去掉（用户：「运动消耗就不显示低了」），
+  //   actTag 变量随之删除；阈值与数据口径不变。日后要恢复从 git 历史取回。
+
+  /**
+   * ★ 2026-10-07（用户：圆环上方「睡眠恢复/脑力消耗」这些数字按好坏上色）：
+   *   统一口径 —— 好 = 绿、差 = 粉、适中 = 默认墨色；运动/经期不上色。
+   *   这里直接用各 chip 自己已算出的档位词判方向（脑力 chip 数值 = 剩余准备度，高即好；
+   *   「已用脑 · 偏多」虽归为「高」但语义是差，故单独列表）。不改任何阈值与取数。
+   */
+  const CHIP_VALUE_TONE: Record<string, 'good' | 'mid' | 'bad'> = {
+    // 睡眠恢复（sleepRecoveryTag 全部输出）—— 高/恢复好 = 绿，低/偏弱 = 粉
+    高于平时: 'good', 恢复良好: 'good',
+    与平时持平: 'mid', 恢复中: 'mid',
+    低于平时: 'bad', 恢复偏弱: 'bad',
+    // 脑力：数值 = 此刻剩余准备度，高 = 好
+    准备度高: 'good',
+    准备度中: 'mid', '已用脑 · 正常': 'mid',
+    准备度低: 'bad', '已用脑 · 偏多': 'bad',
+    // 心理压力：高压 = 差（方向与上面相反）
+    偏低: 'good', 压力低: 'good',
+    适中: 'mid', 压力中: 'mid',
+    偏高: 'bad', 压力高: 'bad',
+  };
+  const chipValueTone = (t?: string): 'good' | 'mid' | 'bad' | undefined =>
+    t != null ? CHIP_VALUE_TONE[t] : undefined;
+
   const metricChips: MindChipItem[] = [
-    // ★ v18.155：睡眠恢复 chip 的单位随口径切换。
-    //   相对口径的锚点是 50（= 和你平时一样），挂「/100」会被读成「睡眠只有 61 分」——
-    //   这正是 sleepScore.ts 头注明确警告过的误读。相对口径不显示单位，参照系交给下面的 tag。
-    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: sleepPers?.mode === 'relative' ? undefined : '/100', tag: recTag, onPress: () => navigation.navigate('SleepDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力消耗', value: cognitive, unit: '/100', tag: cogTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
-    { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, unit: '/100', tag: emoTag, onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    { key: 'period', icon: 'moon', tone: 'lav', label: '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', tag: status?.phaseLabel ?? undefined, moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
+    // ★ 2026-10-07（用户：「睡眠恢复这个 66，也加上斜杠 100」）：本 chip 恒显「/100」，
+    //   不再随相对/绝对口径切换单位（v18.155 的随口径隐单位被用户否决，以显示一致性优先）。
+    { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: '/100', valueTone: chipValueTone(recTag), onPress: () => navigation.navigate('SleepDetail') },
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力消耗', value: cognitive, unit: '/100', valueTone: chipValueTone(cogTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, unit: '/100', valueTone: chipValueTone(emoTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
+    // ★ 2026-10-07 新增：运动（卡路里），tone=cyan（蓝：运动·心肺，与 mm.chipBg 语义一致）
+    { key: 'act', icon: 'flame', tone: 'cyan', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    { key: 'period', icon: 'moon', tone: 'lav', label: status?.phaseLabel && status.phaseLabel !== '未记录' ? status.phaseLabel : '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
@@ -1564,35 +1492,17 @@ export default function TodayScreen() {
           <Path d={panelArcD} fill={theme.colors.cardBg} />
         </Svg>
 
-            {/* 第一屏底部：向下滑动提示（避免用户以为下面是空的） */}
-            <View style={styles.snapHint}>
-              <View style={{ transform: [{ rotate: '90deg' }] }}>
-                <Icon name="chevronRight" size={theme.fontSize.card} color={theme.colors.textSub} />
-              </View>
-              <Text style={styles.snapHintText}>滑动查看 消耗与恢复节律</Text>
-            </View>
           </View>{/* /pageInner 第一屏 */}
         </View>{/* /pageSnap 第一屏 */}
 
         {/* ===== 第二屏：消耗与恢复节律 / 今日旅程（整屏，Tab 吸顶 + 屏内滚动） ===== */}
+        {SHOW_RHYTHM_CARDS ? (
         <View style={[styles.pageSnap, { height: dims.height }]}>
           <View style={[styles.pageInner, { paddingTop: insets.top + theme.space.md }]}>
-            <View style={styles.tabBarSticky}>
-              <TouchableOpacity onPress={() => setTodayTab('rhythm')}
-                style={[styles.todayTabBtn, todayTab === 'rhythm' && styles.todayTabBtnOn]}>
-                <Text style={[styles.todayTabLabel, todayTab === 'rhythm' && styles.todayTabLabelOn]}>消耗与恢复节律</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setTodayTab('diary')}
-                style={[styles.todayTabBtn, todayTab === 'diary' && styles.todayTabBtnOn]}>
-                <Text style={[styles.todayTabLabel, todayTab === 'diary' && styles.todayTabLabelOn]}>今日旅程</Text>
-              </TouchableOpacity>
-            </View>
             <ScrollView style={styles.page2Scroll} contentContainerStyle={{ paddingBottom: insets.bottom + theme.space.sm }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
 
-        {/* Tab 内容（v18.51 Bento 网格：参考用户 health metrics 风格——柔和彩底大圆角块 + 白圆 chip 图标 + 大数字）
-            ★ v18.53.2：恢复=黄(butter)、认知=绿(lime)（用户指定）；高度压缩保证第二屏所有卡完整展示在一屏 */}
-        {todayTab === 'rhythm' ? (
-          <View style={{ gap: theme.space.xs }}>
+        {/* 消耗与恢复节律 Bento 网格（原今日旅程 tab 已迁到工具页 MeditationScreen 最底部） */}
+        <View style={{ gap: theme.space.xs }}>
             {/* ★ v18.145 睡眠卡（新）：昨晚这一觉 = 分数 + 作息规律 + 入睡/起床/时长。
                 ⚠ 放在 AllDayRecoveryCard **之前**：那张是「全天节律曲线」，
                    这张是「昨晚具体事件」，用户先看具体的、再看趋势更符合阅读顺序。
@@ -1696,15 +1606,14 @@ export default function TodayScreen() {
               onPress={() => navigation.navigate('CycleCalendar')}
             />
           </View>
-        ) : (
-          <View style={styles.adviceWrap}>
-            <TodayTimelineCard title="今日日历" dateLabel={dateLabel} items={timelineItems} />
-          </View>
-        )}
             </ScrollView>{/* /page2Scroll 第二屏内容 */}
           </View>{/* /pageInner 第二屏 */}
-        </View>{/* /pageSnap 第二屏 */}
+        </View>
+        ) : null}
+        {/* /pageSnap 第二屏 */}
       </ScrollView>{/* /pager 整屏吸附 */}
+      {/* ★ 2026-10-07（用户）：首页底部悬浮 H1 好习惯确认卡（tab 栏上方，从下往上推出，一天最多一张） */}
+      <HomeSuggestionFloat />
     </View>
   );
 }

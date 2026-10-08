@@ -19,15 +19,34 @@ import Icon from './Icon';
 export type AiTone = 'good' | 'warn' | 'neutral';
 
 /** 结论行：左侧状态圆点（good=绿 / warn=橙 / neutral=灰）+ 标题 + 正文 */
-export function AiResultRow({ tone, title, children }: { tone: AiTone; title: string; children: ReactNode }) {
+export function AiResultRow({
+  tone,
+  title,
+  children,
+  compact = false,
+  bodyColor,
+}: {
+  tone: AiTone;
+  title: string;
+  children: ReactNode;
+  /** ★ 2026-10-07（用户：AI 分析太长了，缩小一点）：紧凑模式 —— 字号降一档、行距收紧、正文最多 2 行 */
+  compact?: boolean;
+  /** ★ 2026-10-08（用户：那些个节律分析，我不要灰色的）：正文色可覆写（传 theme.colors.textBody 等正文色）；不传保持灰色 textSub */
+  bodyColor?: string;
+}) {
   const dot =
     tone === 'good' ? theme.colors.success : tone === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, compact && styles.rowCompact]}>
       <View style={[styles.dot, { backgroundColor: dot }]} />
       <View style={styles.rowBody}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={styles.rowText}>{children}</Text>
+        <Text style={[styles.rowTitle, compact && styles.rowTitleCompact]}>{title}</Text>
+        <Text
+          style={[styles.rowText, compact && styles.rowTextCompact, bodyColor ? { color: bodyColor } : null]}
+          numberOfLines={compact ? 2 : undefined}
+        >
+          {children}
+        </Text>
       </View>
     </View>
   );
@@ -64,6 +83,7 @@ export default function AiAnalysis({
   title,
   subtitle,
   advice,
+  compact = false,
 }: {
   children: ReactNode;
   foot?: ReactNode;
@@ -71,22 +91,26 @@ export default function AiAnalysis({
   title?: string;
   subtitle?: string;
   advice?: string[];
+  /** ★ 2026-10-07（用户：AI 分析太长了，缩小一点）：紧凑模式 —— 标题/正文降字号、行距与间距收紧、正文截断到 2 行 */
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
       <AiBadge label={label} />
-      {title ? <Text style={styles.title}>{title}</Text> : null}
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {title ? <Text style={[styles.title, compact && styles.titleCompact]}>{title}</Text> : null}
+      {subtitle ? <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>{subtitle}</Text> : null}
       {children}
       {advice && advice.length > 0 ? (
-        <View style={styles.adviceBox}>
-          <Text style={styles.adviceTitle}>● 建议</Text>
+        <View style={[styles.adviceBox, compact && styles.adviceBoxCompact]}>
+          <Text style={[styles.adviceTitle, compact && styles.textCompact]}>● 建议</Text>
           {advice.map((t, i) => (
-            <Text key={i} style={styles.adviceItem}>· {t}</Text>
+            <Text key={i} style={[styles.adviceItem, compact && styles.textCompact]} numberOfLines={compact ? 2 : undefined}>· {t}</Text>
           ))}
         </View>
       ) : null}
-      {foot ? <Text style={styles.foot}>{foot}</Text> : null}
+      {foot ? (
+        <Text style={[styles.foot, compact && styles.textCompact]} numberOfLines={compact ? 2 : undefined}>{foot}</Text>
+      ) : null}
     </View>
   );
 }
@@ -161,4 +185,13 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
     opacity: 0.85,
   },
+  /* ★ 2026-10-07：紧凑模式（compact）—— 体验详情页的 AI 解读用 */
+  wrapCompact: { marginTop: theme.space.sm },
+  titleCompact: { fontSize: theme.fontSize.card, marginBottom: 0 },
+  subtitleCompact: { marginBottom: theme.sp(1) },
+  rowCompact: { marginBottom: theme.sp(0.75) },
+  rowTitleCompact: { fontSize: theme.fontSize.micro, marginBottom: 0 },
+  rowTextCompact: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.5 },
+  adviceBoxCompact: { marginTop: theme.space.xs },
+  textCompact: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.35 },
 });

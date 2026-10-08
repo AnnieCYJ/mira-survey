@@ -76,3 +76,8 @@
 - 发现：工作区 9 项未提交改动（本地与 origin 0 领先）——状态趋势详情页 v18.147–153 大改版（StatusTrendDetailScreen ±646 行：月视图周期相位带+PMS、周视图皮质醇异常图标、散点/折线口径对齐首页 TrendChart、四等级图例与 StressWatch 式详细分析、删除激素均值三宫格）；AllDayRecoveryCard 睡眠分统一个人基线口径（v18.146，修「圆环 52 / 节律卡 94」两把尺问题）+ badge 档位词同源 + COR-PROBE 日志移入 useMemo；cycleMath 修跨周期日期相位判定（按周期内位置取模，月视图相位带修复）；TodayScreen 隐藏睡眠卡（SHOW_SLEEP_CARD 开关、代码保留）、移除「运动消耗」chip（4 张排满一行）、间距收紧；EnergyBall 画布底部空带负 margin 收回（图例不再被顶出屏）；MindChips 条目 5→4；新增 _design_preview/ 两个趋势图设计 HTML；另含 10-04 记忆文件哈希回填。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：git add -A → commit 7d41442「状态趋势详情页大改版（v18.147–153）：图表叠加周期相位带/皮质醇异常图标、口径对齐首页趋势图与四等级图例；睡眠分统一个人基线口径、修跨周期相位判定、隐藏睡眠卡并移除运动消耗 chip」→ push 成功 ed48e76..7d41442（9 files, +1215/-148）。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-06 14:12（第十五次运行）
+- 发现：本地 master 领先 origin/master **5 个提交**；工作区 14 项未提交改动——新增 3 个 docs/ HTML（皮质醇认知准备度评审、指标算法架构、科学依据）+ 1 个 preview/sleep-rhythm.html；修改 10 个源文件（plugins/withMetroScheme.js、AllDayRecoveryCard/BentoCard/SleepCard 组件、sleepPersonalized lib、InsightScreen/SleepDetailScreen/StatusTrendDetailScreen/TodayScreen 屏幕）+ automation 记忆文件。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：执行 `git add -A`（14 文件，子模块无法暂存）→ commit c4849bf「迭代睡眠与洞察模块：新增皮质醇认知准备度评审、指标算法架构与科学依据文档；睡眠节律预览页；优化恢复卡、BentoCard、SleepCard、睡眠个性化基线及今日/洞察/趋势详情/睡眠详情多屏」→ push 成功 6e49f80..c4849bf（5 个积压提交 + 本次 1 个，共 6 个）。
+- 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。

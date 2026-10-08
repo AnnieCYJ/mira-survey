@@ -136,7 +136,9 @@ export function buildSmoothSeries(
   const hi = vals.length ? Math.max(...vals) : 1;
   const span = hi - lo || 1;
   // 两组数据（今日 / 14 天基线）先各自算范围，再由调用方取并集传回来 → 保证同一把尺
-  const yLo = opts?.yLo ?? lo - span * 0.18;
+  // ★ 2026-10-08：非负量（皮质醇活性）未显式给范围时，下限同样不跌破 0（避免 -7 刻度）
+  const yLoRaw = opts?.yLo ?? lo - span * 0.18;
+  const yLo = opts?.yLo != null ? yLoRaw : (lo >= 0 ? Math.max(0, yLoRaw) : yLoRaw);
   const yHi = opts?.yHi ?? hi + span * 0.18;
   const yOf = (v: number) => padT + chartH - ((v - yLo) / (yHi - yLo)) * chartH;
 
@@ -212,7 +214,10 @@ export function computeYRange(
   }
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { lo: 0, hi: 1 };
   const span = hi - lo || 1;
-  return { lo: lo - span * 0.18, hi: hi + span * 0.18 };
+  // ★ 2026-10-08（用户实锤：详情页 Y 轴出现 -7）：皮质醇活性是 0~100 的非负量，
+  //   18% 余量把下限推到 0 以下 → 底部刻度变负。数据本身全 >= 0 时把下限钳回 0。
+  const loPadded = lo - span * 0.18;
+  return { lo: lo >= 0 ? Math.max(0, loPadded) : loPadded, hi: hi + span * 0.18 };
 }
 
 /** 槽下标 → HH:MM（0 → 00:00，47 → 23:30） */

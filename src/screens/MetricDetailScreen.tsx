@@ -46,6 +46,11 @@ const PAD_B = 28;
 // Y 轴左侧留白（容纳刻度数字，HTML 渲染避免 SVG 横向拉伸变形）
 const Y_GUT = 34;
 
+// ★ 2026-10-08：相对 / 归一化指标（皮质醇活性 0~100、EDA、HRV、压力、疲劳、情绪、皮肤含水量）
+//   这类指标数值是「相对个人基线的活性」，没有绝对量纲意义，详情页不展示左侧数值 Y 轴
+//   （避免自动量程冒出 -7 之类无意义负刻度；曲线 / 参考线 / 统计 / tooltip 仍保留）。
+const RELATIVE_AXIS_KEYS = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
+
 const PHASE_BG: Record<string, string> = {
   period: 'rgba(224,123,107,0.16)',
   follicular: 'rgba(124,106,224,0.10)',
@@ -188,6 +193,10 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
 
   // 自适应 Y 轴量程：以当前视图实际数据为界，上下各留 12% 余量，曲线更饱满、刻度更接近真实值；
   // 单点/空数据时回退到指标的固定显示量程（series.yMin/yMax），避免退化或 NaN。
+  // ★ 2026-10-08：相对 / 归一化指标（皮质醇活性 0~100 等）不展示左侧数值 Y 轴（用户要求），
+  //   避免自动量程出现 -7 之类的无意义负刻度；曲线 / 参考线 / 统计 / tooltip 仍保留。
+  const hideYAxis = RELATIVE_AXIS_KEYS.has(params.key);
+
   const yBounds = useMemo(() => {
     const vals: number[] = [];
     const pts = series.tPoints;
@@ -199,13 +208,18 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
     if (!vals.length) return { lo: series.yMin, hi: series.yMax };
     const rawMin = Math.min(...vals);
     const rawMax = Math.max(...vals);
+    // ★ 2026-10-08：非负 / 归一化指标（cortisol/eda/hrv/...）的 Y 轴下限钳 0，
+    //   否则底部刻度会出现 -7 之类负值（用户实锤）。可负指标（如情绪 -10~10, yMin<0）不受影响。
+    //   ★ 本轮：相对 / 归一化指标（RELATIVE_AXIS_KEYS）无论 yMin 是否声明，一律下限 0（0~100 活性）。
+    const isRelative = RELATIVE_AXIS_KEYS.has(params.key);
+    const floor = isRelative ? 0 : (series.yMin != null && series.yMin >= 0 ? series.yMin : -Infinity);
     if (rawMin === rawMax) {
       const pad = Math.abs(rawMin) * 0.1 || 1;
-      return { lo: rawMin - pad, hi: rawMax + pad };
+      return { lo: Math.max(floor, rawMin - pad), hi: rawMax + pad };
     }
     const span = rawMax - rawMin;
     const pad = span * 0.12;
-    return { lo: rawMin - pad, hi: rawMax + pad };
+    return { lo: Math.max(floor, rawMin - pad), hi: rawMax + pad };
   }, [series.tPoints, series.points, series.yMin, series.yMax]);
   const yLo = yBounds.lo;
   const yHi = yBounds.hi;
@@ -362,7 +376,8 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
 
   // X 轴标签：连续时间轴按时间域出刻度（日=时分，周/月=月/日，今日末点标"现在"）
   // ★ 高频连续指标（cortisol/eda/hrv/stress/fatigue/emotion/skin）日视图 → 固定 0-24h 刻度
-  const KF_DAY_HOUR_AXIS = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
+  //   （与 RELATIVE_AXIS_KEYS 同源，统一相对/归一化指标集合）
+  const KF_DAY_HOUR_AXIS = RELATIVE_AXIS_KEYS;
   const axisLabels = useMemo(() => {
     if (range === 'day' && KF_DAY_HOUR_AXIS.has(params.key)) {
       return dayHourAxis();
@@ -434,9 +449,10 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             {/* Y 轴刻度：HTML 文字避免 SVG 横向拉伸变形；位置与参考线一一对应 */}
+            {/* ★ 2026-10-08：相对 / 归一化指标不展示数值 Y 轴（hideYAxis） */}
+            {hasData && !hideYAxis && (
             <View style={{ width: Y_GUT, height: H, position: 'relative' }}>
-                {hasData &&
-                [0, 1, 2, 3, 4].map((k) => {
+                {[0, 1, 2, 3, 4].map((k) => {
                   const gv = yLo + (yHi - yLo) * (1 - k / 4);
                   return (
                     <Text
@@ -456,6 +472,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                   );
                 })}
             </View>
+            )}
             <View
               style={{ flex: 1 }}
               onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}
@@ -561,7 +578,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           ) : null}
 
           {/* X 轴标签 */}
-          <View style={styles.axis}>
+          <View style={[styles.axis, { paddingLeft: hideYAxis ? PAD_L : Y_GUT }]}>
             {axisLabels.map((t, i) => (
               <Text key={i} style={styles.axisText}>
                 {t}

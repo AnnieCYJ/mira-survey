@@ -44,11 +44,14 @@ const VISIBLE = 3;
 const CARD_W = 248;  // v18.72：宽收回（288 太扁），高度靠 padding/行距撑 → 竖长条
 
 // pos=0 顶卡，pos=1 第二层（左倾），pos=2 第三层（右倾），pos=3 第四层（左倾）
-const SEED_ROTATE = [0, -12, 11, -10];       // 大角度正负交替
-const SEED_TX = [0, -48, 48, -32];        // 明显错落
-const SEED_TY = [0, 4, 12, 20];          // 层叠深度
-const SEED_SCALE = [1, 0.95, 0.90, 0.86];
-const SEED_OPACITY = [1, 0.92, 0.82, 0.70];
+// ★ 2026-10-08（用户：我要右图效果）→ 对齐参考图：
+//   前排正立 + 大投影；后排左右对镜倾斜、同层等高、外扩到接近屏幕边；
+//   后排**不再淡出**（参考图里后排是满色实卡，不是虚影），仅留一点点层次。
+const SEED_ROTATE = [0, -9, 9, -6];
+const SEED_TX = [0, -56, 56, -34];
+const SEED_TY = [0, 14, 14, 28];
+const SEED_SCALE = [1, 0.97, 0.97, 0.93];
+const SEED_OPACITY = [1, 1, 0.99, 0.96];
 const EXIT_THRESHOLD = 60;
 
 interface Props {
@@ -268,7 +271,8 @@ export default function TaskDeck({ tools, onComplete, onOpenArticle, onDoTask }:
           const txAnim = isTop ? Animated.add(pa.tx, dragX as any) : pa.tx;
           const tyBase = Animated.add(pa.ty, enterY as any);
           const tyAnim = isTop ? Animated.add(tyBase, dragY as any) : tyBase;
-          const scAnim = Animated.multiply(Animated.multiply(pa.sc, s.sc), enterSc as any);
+          // ★ 2026-10-08：pa.sc 已 spring 到 s.sc，这里不能再乘一次 s.sc（否则后排 = s.sc²，明显偏小）
+          const scAnim = Animated.multiply(pa.sc, enterSc as any);
 
           const rotStr = pa.rot.interpolate({ inputRange: [-90, 90], outputRange: ['-90deg', '90deg'] });
           const topRotStr = dragY.interpolate({ inputRange: [-80, 0, 80], outputRange: ['-6deg', '0deg', '4deg'] });
@@ -288,7 +292,7 @@ export default function TaskDeck({ tools, onComplete, onOpenArticle, onDoTask }:
               pointerEvents={isTop ? 'auto' : 'none'}
               onLayout={i === 0 ? (e: LayoutChangeEvent) => setBaseH(e.nativeEvent.layout.height) : undefined}
             >
-              <Card style={[styles.card, isTop && styles.cardTop]}>
+              <Card style={[styles.card, isTop ? styles.cardTop : styles.cardBack]}>
                 <View style={styles.headerRow}>
                   <LinearGradient
                     colors={TYPE_GRADIENTS[t.type] || [mm.colors.limeCore, mm.colors.limeMid]}
@@ -490,7 +494,10 @@ function FlipBack({ tool, onDetail, onDo, onClose }: {
 }
 
 const styles = StyleSheet.create({
-  deck: { marginBottom: theme.space.card, alignItems: 'center' },
+  // ★ 2026-10-07（用户：工具页顶部推荐卡「位置靠下一点、相对居中一些」）：
+  //   deck 高度 = stackH + 48（原末尾留白），卡片原本贴着顶部。现加 24pt 顶部留白，
+  //   使上下留白近似对称（48-24=24），牌堆向下移且在自身高度内居中；总高不变，不影响页面其余布局。
+  deck: { marginBottom: theme.space.card, alignItems: 'center', paddingTop: theme.sp(6) },
   stack: { position: 'relative', alignSelf: 'stretch' },
   cardWrap: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center' },
 
@@ -503,9 +510,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
     borderRadius: 28,
   },
+  // ★ 2026-10-08（用户参考图）：后排卡也要有接地投影，才不会「白卡贴白底」看不出层次
+  cardBack: {
+    shadowColor: mm.shadow.color, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12, shadowRadius: 16, elevation: 4,
+  },
   cardTop: {
-    shadowColor: '#8B7CF6', shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.20, shadowRadius: 36, elevation: 10,
+    // ★ 2026-10-08（用户参考图）：前排投影收敛一点，更接近参考图里柔和的悬浮感
+    shadowColor: '#8B7CF6', shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.16, shadowRadius: 30, elevation: 10,
   },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 22 },

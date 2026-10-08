@@ -31,6 +31,59 @@ import type { RingState } from '../ble/RingBleManager';
 export type TrendRange = 'week' | 'month' | 'quarter';
 export const trendDays = (r: TrendRange): number => (r === 'week' ? 7 : r === 'quarter' ? 90 : 30);
 export const trendMinPts = (r: TrendRange): number => (r === 'week' ? 3 : r === 'quarter' ? 10 : 5);
+/**
+ * 周期天轴（方案一 · 2026-10-07）——把趋势图横轴从「滚动 N 天」改为「周期第 1 天 → 第 N 天」。
+ * 用户原话：「现在目前是 9 月 8 号到 10 月 7 号。整个图表就会显示在最右边。这个合理吗？
+ *   我觉得可以按经期这一天开始算……你参考一下其他的生理周期 App 看看正宗的是怎么样来展示的。」
+ * 第 1 天 = 上次经期开始日（lastPeriodStart，即周期第 1 天），
+ * N = max(周期长度, 今天所在周期天)，上限 60（长期未更新记录时不至于让轴无限拉长）。
+ * 返回 null 表示没有经期记录，调用方退回原来的滚动窗口。
+ */
+export function cycleAxis(
+  log: CycleLog | null,
+  today: Date = new Date(),
+  cycle?: { start: string; days: number } | null,
+): { startMs: number; days: number; todayDay: number } | null {
+  const startStr = cycle?.start ?? log?.lastPeriodStart;
+  if (!startStr) return null;
+  const startMs = parseDate(startStr).getTime();
+  const t0 = new Date(today);
+  t0.setHours(0, 0, 0, 0);
+  const todayDay = Math.round((t0.getTime() - startMs) / 86_400_000) + 1;
+  // ★ 2026-10-07（用户：顶部改成「周期切换」后要能往前翻历史周期）：
+  //   显式指定周期时，轴长严格等于该周期天数；历史周期里 todayDay 会自然落在轴外，
+  //   调用方据此不画「今天」虚线。
+  if (cycle) {
+    const days = Math.min(60, Math.max(1, Math.round(cycle.days)));
+    return { startMs, days, todayDay };
+  }
+  const cycleLen = Math.max(20, Math.min(45, Math.round(log?.cycleLength || 28)));
+  const days = Math.min(60, Math.max(cycleLen, todayDay));
+  return { startMs, days, todayDay };
+}
+
+/**
+ * ★ 2026-10-07（周期切换）：把「所选窗口」翻译成「向 healthStore 回溯的天数 + 窗口起止」。
+ * win 为空时退回原来的滚动 N 天（周 7 / 月 30 / 季 90）。
+ * 回溯天数必须覆盖「今天 → 周期首日」，否则历史周期会取不到数据。
+ */
+function physioWindow(
+  range: TrendRange,
+  win?: { startMs: number; days: number } | null,
+): { physio: ReturnType<typeof collectDailyPhysio>; startMs: number; endMs: number } {
+  const t0 = new Date();
+  t0.setHours(0, 0, 0, 0);
+  if (win) {
+    const days = Math.max(1, Math.round(win.days));
+    const startMs = win.startMs;
+    const endMs = startMs + (days - 1) * 86_400_000;
+    const back = Math.max(7, Math.ceil((t0.getTime() - startMs) / 86_400_000) + 2);
+    return { physio: collectDailyPhysio(back), startMs, endMs };
+  }
+  const d = trendDays(range);
+  return { physio: collectDailyPhysio(d), startMs: t0.getTime() - (d - 1) * 86_400_000, endMs: t0.getTime() };
+}
+
 
 /**
  * 孕激素回退抬升幅度（℃）：当尚未检测到双相、以「近期体温低位 + 此假设抬升」出趋势线时使用。
@@ -61,10 +114,19 @@ export function phaseOfDay(log: CycleLog | null, date: Date, ring: RingState): C
 export function buildEstrogenData(
   ring: RingState,
   range: TrendRange,
+  win?: { startMs: number; days: number } | null,
 ): { real: { date: string; value: number }[] | null } {
-  const days = trendDays(range); // 周 7 / 月 30 / 季 90
-  const minPts = trendMinPts(range);
-  const physio = collectDailyPhysio(days);
+  // ★ 2026-10-07（用户：经期第 2 天已佩戴多日却整卡空白）：
+  //   横轴是「周期天锚定」——当前周期窗口 = 第 1 天 → 第 N 天，今天才第 2 天，
+  //   窗口内天然只有 1~2 个真实点，被「至少 minPts(5) 点才成线」判成不成线 ⇒ 空白。
+  //   规则改为：**周期窗口下只要有 ≥2 个真实点就画**（滚动窗口仍守 5 点门槛）。
+  const minPts = win ? 2 : trendMinPts(range);
+  const { physio: allPhysio, startMs, endMs } = physioWindow(range, win);
+  // 限定到所选窗口：历史周期时窗口落在过去，需按窗口过滤原始取数
+  const physio = allPhysio.filter((p) => {
+    const ms = parseDate(p.date).getTime();
+    return ms >= startMs && ms <= endMs;
+  });
 
   const hrvDays = physio.filter((p) => p.hrv != null) as { date: string; hrv: number }[];
   const edaDays = physio.filter((p) => p.eda != null) as { date: string; eda: number }[];
@@ -117,12 +179,11 @@ export function buildProgesteroneData(
   ring: RingState,
   cycleInfo: CycleInfo | null,
   range: TrendRange,
+  win?: { startMs: number; days: number } | null,
 ): { real: { date: string; value: number }[] | null } {
-  const days = trendDays(range); // 周 7 / 月 30 / 季 90
-  const today0 = new Date();
-  today0.setHours(0, 0, 0, 0);
-  const winEndMs = today0.getTime();
-  const winStartMs = winEndMs - (days - 1) * 86_400_000;
+  // ★ 2026-10-07（同雌激素）：周期窗口下只要有 ≥2 个真实点就画，滚动窗口仍守 minPts
+  const minPts = win ? 2 : trendMinPts(range);
+  const { physio, startMs: winStartMs, endMs: winEndMs } = physioWindow(range, win);
 
   // 体温双相：取基线/高位（真实）
   const allTemp = tempDailyToSeries(ring.tempDaily ?? {})
@@ -141,7 +202,6 @@ export function buildProgesteroneData(
   const tempUsable = baseT != null && coverT != null && coverT - baseT > 0.05;
 
   // 静息心率：卵泡期 / 黄体期均值（真实）
-  const physio = collectDailyPhysio(days);
   const ovMs = ovDate ? parseDate(ovDate).getTime() : null;
   let rhrFol: number | null = null;
   let rhrLut: number | null = null;
@@ -187,6 +247,6 @@ export function buildProgesteroneData(
     real.push({ date: `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`, value });
   }
 
-  if (real.length < trendMinPts(range)) return { real: null };
+  if (real.length < minPts) return { real: null };
   return { real };
 }

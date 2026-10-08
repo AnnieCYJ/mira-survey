@@ -123,25 +123,47 @@ interface Props {
    */
   size?: number;
   /**
-   * 覆盖容器高度（默认 = size，即正方形）。
-   * 在紧凑布局（如洞察页卡片）中可传更小值以减少环下方的留白（环仅占上方 ~75%）。
+   * 覆盖容器高度（默认 = 0.84 × size —— 刚好包住底部月牙，环下方不再留大片空白）。
+   * 需要更大留白时可显式传值。
    */
   height?: number;
+  /** ★ 2026-10-07（用户：点「上一个周期」也该显示圆环）：覆盖「当前日」高亮；不传则用 cycleInfo.dayInCycle */
+  activeDay?: number | null;
+  /** ★ 覆盖中央主标题（如历史周期显示日期区间）；不传则用「相位 第 N 天」 */
+  headLabel?: string;
+  /** ★ 覆盖中央副标题（如历史周期显示「共 N 天」）；不传则用距下次经期 */
+  subLabel?: string;
 }
 
-export default function CycleMoonPhase({ cycleInfo, log, onLogToday, size: sizeProp, height: heightProp }: Props) {
+export default function CycleMoonPhase({
+  cycleInfo,
+  log,
+  onLogToday,
+  size: sizeProp,
+  height: heightProp,
+  activeDay,
+  headLabel,
+  subLabel,
+}: Props) {
   const screenW = Dimensions.get('window').width;
   const size = sizeProp ?? Math.round(Math.min(screenW * 0.84, 350));
-  const h = heightProp ?? size;
+  const h = heightProp ?? Math.round(size * 0.84);
   const cx = size / 2;
-  const cy = size * 0.385;    // 月相环圆心
-  const ringR = size * 0.37;  // 环半径
+  // ★ 2026-10-07（用户：环最上面两个点看着像被遮掉了一小部分 → 整个圆环稍微往下一点，别压到上面的点）：
+  //   原来 环心 0.385 / 半径 0.37，最上面那个点的外缘会顶到画布 y<0，被裁掉约 2px。
+  //   现在整环下移 TOP_PAD、半径略收 1.5%：顶部净空 = 0.08·size（size 328 时约 26px，
+  //   月牙本体外缘约 19px、当前日光晕也在画布内），底部月牙外缘 ≈ 0.79·size，
+  //   与默认高度 0.84·size 匹配（方形画布下方那 ~70px 空白也随之收掉）。
+  const TOP_PAD = size * 0.05;       // 顶部净空（想让环再往下就加大这个值）
+  const cy = size * 0.385 + TOP_PAD; // 月相环圆心
+  const ringR = size * 0.355;        // 环半径
   const moonR = size * 0.118; // 中央月亮
   const MOON_UP = size * 0.082;   // 中央内容(月亮+文字+按钮)整体上移量（大幅上移避免压底部月牙）
   const moonCy = cy - MOON_UP;   // 内容中心：与环心解耦，避免压住底部月牙
 
   const cycleLen = Math.max(1, Math.round(log?.cycleLength || 28));
-  const day = cycleInfo?.dayInCycle ?? null;
+  // ★ 历史周期：调用方显式传 activeDay（该周期末日），不依赖 cycleInfo
+  const day = activeDay !== undefined ? activeDay : cycleInfo?.dayInCycle ?? null;
   const periodLen = log?.periodLength || 5;
   const lutealLen = log?.lutealLength || 14;
   const ovDay = Math.max(1, cycleLen - lutealLen);
@@ -221,12 +243,13 @@ export default function CycleMoonPhase({ cycleInfo, log, onLogToday, size: sizeP
           pointerEvents="box-none"
         >
           <Text style={styles.phaseLine}>
-            {day != null ? `${phaseText} 第 ${day} 天` : phaseText}
+            {headLabel ?? (day != null ? `${phaseText} 第 ${day} 天` : phaseText)}
           </Text>
           <Text style={styles.subLine}>
-            {cycleInfo?.daysToNextPeriod != null
-              ? `距下次经期约 ${cycleInfo.daysToNextPeriod} 天`
-              : `周期 ${cycleLen} 天`}
+            {subLabel ??
+              (cycleInfo?.daysToNextPeriod != null
+                ? `距下次经期约 ${cycleInfo.daysToNextPeriod} 天`
+                : `周期 ${cycleLen} 天`)}
           </Text>
           {onLogToday ? (
             <TouchableOpacity

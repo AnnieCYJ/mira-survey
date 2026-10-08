@@ -1,6 +1,7 @@
 // 健康数据快照：注入所有可获取的健康数据给 MiraAI
 // Token budget 控制：健康块总计 ≤ 800 token，留空间给 system prompt + 对话历史
 
+import { peekHabits } from '../data/habitSuggestions';
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import { computeStressReport } from '../lib/stressAlgorithm';
@@ -468,6 +469,17 @@ export function buildHealthSnapshot(): string {
   // ⑦ 历史趋势
   const trend = getTrendBlock();
   if (trend) blocks.push(`• 近7天趋势：${trend}`);
+
+  // ⑧ 用户已确认的好习惯（工具页「我的建议」清单）——让 Mira 的建议能引用用户自己的真实证据
+  const habits = peekHabits().habits;
+  if (habits.length) {
+    const top = [...habits].sort((a, b) => b.count - a.count || b.lastAt - a.lastAt).slice(0, 3);
+    blocks.push(
+      `• 用户已确认的好习惯：${top
+        .map((h) => `${h.action}（${h.metric}；已确认 ${h.count} 次）`)
+        .join('；')}`
+    );
+  }
 
   if (blocks.length === 0) return '';
   // 每块独占一行、以「• 块名：」开头：早期把多块用「；」串成一段，模型会把「皮质醇节律」

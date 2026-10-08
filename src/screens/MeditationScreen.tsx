@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
@@ -9,7 +9,6 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import TaskDeck from '../components/TaskDeck';
-import ListCard, { type ListItem } from '../components/ListCard';
 import { TOOL_GRID } from '../data/tasks';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
@@ -26,13 +25,11 @@ const TOOL_IMAGES: Record<string, number> = {
   '知识科普': require('../assets/card_learn.png'),
 };
 import { useAppState } from '../state/AppState';
+import TodayTimelineCard from '../components/TodayTimelineCard';
+import { buildTodayTimeline } from '../lib/buildTodayTimeline';
+import SuggestionCard from '../components/SuggestionCard';
+import { listHabits, undoHabit, type HabitEntry } from '../data/habitSuggestions';
 
-
-const RECENT: ListItem[] = [
-  { dot: theme.colors.accent1, title: '4-7-8 呼吸法', sub: '昨天 · 8 分钟', right: '已完成' },
-  { dot: theme.colors.accent2, title: '数字记忆广度训练', sub: '8 月 27 日 · 12 分钟', right: '已完成' },
-  { dot: theme.colors.stateCalm, title: '深度专注 50 分钟', sub: '8 月 26 日 · 50 分钟', right: '已完成' },
-];
 
 export default function MeditationScreen() {
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
@@ -41,6 +38,39 @@ export default function MeditationScreen() {
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
 
   const { tools, completeTask } = useAppState();
+
+  // ★ 2026-10-07（用户：牌堆下方加「改善工具箱 / 我的建议」两个 tab；留下的习惯放进「我的建议」）
+  const [tab, setTab] = useState<'tools' | 'mine'>('tools');
+  const [habits, setHabits] = useState<HabitEntry[]>([]);
+  const refreshHabits = useCallback(() => {
+    listHabits().then(setHabits).catch(() => {});
+  }, []);
+  useFocusEffect(useCallback(() => { refreshHabits(); }, [refreshHabits]));
+
+  // ★ 2026-10-08（用户：工具页中间 tab 与其他模块不一致）→ 统一为 App 通用分段控件
+  //   轨道 = 中性灰浅底（mm.colors.btnBusyBg），滑块 = limeSoft，选中字 = limeDeep（同洞察页 Segmented）
+  const [tabW, setTabW] = useState(0);
+  const tabAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(tabAnim, { toValue: tab === 'tools' ? 0 : 1, duration: 240, useNativeDriver: false }).start();
+  }, [tab, tabAnim]);
+  const tabItemW = Math.max(0, (tabW - theme.sp(2)) / 2);
+  const tabThumbLeft = tabAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [theme.sp(1), theme.sp(1) + tabItemW],
+  });
+
+  // 今日旅程卡片（从首页 TodayScreen 迁到工具页最底部）
+  const timelineCard = useMemo(() => {
+    let result;
+    try { result = buildTodayTimeline(); } catch { result = null; }
+    if (!result) return null;
+    return (
+      <View style={{ marginTop: theme.sp(3) }}>
+        <TodayTimelineCard title="今日旅程" dateLabel={result.dateLabel} items={result.items} />
+      </View>
+    );
+  }, []);
   type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
   const navigation = useNavigation<NavProp>();
 
@@ -130,43 +160,91 @@ export default function MeditationScreen() {
         <TaskDeck tools={tools} onComplete={handleComplete} onOpenArticle={openArticle} onDoTask={doTask} />
       )}
 
-      <View style={styles.grid}>
-        {TOOL_GRID.map((t) => (
-          <TouchableOpacity
-            key={t.name}
-            activeOpacity={0.88}
-            style={styles.gridCell}
-            onPress={() => {
-              // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪干预四方案（缓一缓/换个说法/动一动/记两笔）；其余 → 通用内容页
-              if (t.name === '稳定睡眠') navigation.navigate('Breathing');
-              if (t.name === '营养搭配') navigation.navigate('FoodScan'); // 进饮食首页（状态卡+相册+识别按钮），不再一进就弹相机
-              if (t.name === '情绪调节') navigation.navigate('EmotionIntervene');
-              if (t.name === '提升颜值') navigation.navigate('ToolTopic', { topic: 'glow' });
-              if (t.name === '运动建议') navigation.navigate('ToolTopic', { topic: 'sport' });
-              if (t.name === '知识科普') navigation.navigate('ToolTopic', { topic: 'learn' });
-            }}
-          >
-            <ImageBackground
-              source={TOOL_IMAGES[t.name]}
-              style={styles.toolCard}
-              imageStyle={{ borderRadius: theme.radius.md }}
-              resizeMode="cover"
-            >
-              {/* v18.15：参考「Pick your Plan」四宫格 —— 图铺满整卡，蒙层只轻轻提亮底部，灰字居中 */}
-              <LinearGradient
-                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.32)', 'rgba(255,255,255,0.86)']}
-                locations={[0, 0.5, 1]}
-                style={styles.toolMask}
-              />
-              <View style={styles.toolInner} pointerEvents="none">
-                <Text style={styles.toolName}>{t.name}</Text>
-              </View>
-            </ImageBackground>
-          </TouchableOpacity>
-        ))}
+      {/* ★ 2026-10-08（用户：工具页中间 tab 与其他模块不一致）→ 统一为 App 通用分段控件 */}
+      <View style={styles.segTrack} onLayout={(e) => setTabW(e.nativeEvent.layout.width)}>
+        <Animated.View style={[styles.segThumb, { width: tabItemW, left: tabThumbLeft }]} />
+        <TouchableOpacity
+          style={styles.segBtn}
+          activeOpacity={theme.press.opacity}
+          onPress={() => setTab('tools')}
+          accessibilityRole="button"
+          accessibilityState={{ selected: tab === 'tools' }}
+        >
+          <Text style={[styles.segLabel, tab === 'tools' && styles.segLabelOn]}>改善工具箱</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.segBtn}
+          activeOpacity={theme.press.opacity}
+          onPress={() => setTab('mine')}
+          accessibilityRole="button"
+          accessibilityState={{ selected: tab === 'mine' }}
+        >
+          <Text style={[styles.segLabel, tab === 'mine' && styles.segLabelOn]}>我的建议</Text>
+        </TouchableOpacity>
       </View>
 
-      <ListCard title="最近使用" items={RECENT} />
+      {tab === 'tools' ? (
+        <>
+        <View style={styles.grid}>
+          {TOOL_GRID.map((t) => (
+            <TouchableOpacity
+              key={t.name}
+              activeOpacity={0.88}
+              style={styles.gridCell}
+              onPress={() => {
+                // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪干预四方案（缓一缓/换个说法/动一动/记两笔）；其余 → 通用内容页
+                if (t.name === '稳定睡眠') navigation.navigate('Breathing');
+                if (t.name === '营养搭配') navigation.navigate('FoodScan'); // 进饮食首页（状态卡+相册+识别按钮），不再一进就弹相机
+                if (t.name === '情绪调节') navigation.navigate('EmotionIntervene');
+                if (t.name === '提升颜值') navigation.navigate('ToolTopic', { topic: 'glow' });
+                if (t.name === '运动建议') navigation.navigate('ToolTopic', { topic: 'sport' });
+                if (t.name === '知识科普') navigation.navigate('ToolTopic', { topic: 'learn' });
+              }}
+            >
+              <ImageBackground
+                source={TOOL_IMAGES[t.name]}
+                style={styles.toolCard}
+                imageStyle={{ borderRadius: theme.radius.md }}
+                resizeMode="cover"
+              >
+                {/* v18.15：参考「Pick your Plan」四宫格 —— 图铺满整卡，蒙层只轻轻提亮底部，灰字居中 */}
+                <LinearGradient
+                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.32)', 'rgba(255,255,255,0.86)']}
+                  locations={[0, 0.5, 1]}
+                  style={styles.toolMask}
+                />
+                <View style={styles.toolInner} pointerEvents="none">
+                  <Text style={styles.toolName}>{t.name}</Text>
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {timelineCard}
+
+        </>
+      ) : (
+        <View style={styles.mineWrap}>
+          {/* 「我的建议」= 用户确认有效的好习惯（读本机 store，按确认次数排序） */}
+          {habits.length === 0 ? (
+            <Text style={styles.emptyText}>还没有留下的建议。当 Mira 发现某个做法对你有效时，在首页确认一下，它就会出现在这里。</Text>
+          ) : (
+            habits.map((h) => (
+              <SuggestionCard
+                key={h.id}
+                id={h.id}
+                action={h.action}
+                metric={h.metric}
+                saved
+                onUndo={(id) => { undoHabit(id).then(refreshHabits); }}
+                style={styles.mineCard}
+              />
+            ))
+          )}
+        </View>
+      )}
+
       </ScreenContainer>
     </View>
   );
@@ -184,6 +262,41 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: mm.colors.inkSoft,
     marginBottom: theme.space.md,
+  },
+  // ★ 2026-10-08（用户：工具页中间 tab 与其他模块不一致）→ 与洞察页 Segmented 同款
+  segTrack: {
+    position: 'relative',
+    flexDirection: 'row',
+    backgroundColor: mm.colors.btnBusyBg,
+    borderRadius: theme.radius.pill,
+    padding: theme.sp(1),
+    marginTop: theme.space.sm,
+    marginBottom: theme.space.md,
+  },
+  segThumb: {
+    position: 'absolute',
+    top: theme.sp(1),
+    bottom: theme.sp(1),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.limeSoft,
+  },
+  segBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: theme.sp(8),
+    borderRadius: theme.radius.pill,
+  },
+  segLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.inkSoft },
+  segLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold },
+  mineWrap: { marginTop: theme.space.xs },
+  mineCard: { marginBottom: theme.space.sm },
+  emptyText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    lineHeight: theme.fs(21),
+    textAlign: 'center',
+    paddingVertical: theme.space.md,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -theme.sp(2) },
   gridCell: { width: '50%', padding: theme.sp(2) },

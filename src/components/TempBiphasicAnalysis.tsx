@@ -208,18 +208,19 @@ export default function TempBiphasicAnalysis({ ring, cycleInfo }: Props) {
 
   return (
     <AiAnalysis
+      compact
       title={bipTitle}
       subtitle={dayStr}
       advice={bipAdvice}
       foot="基于戒指真测皮肤温度与 symptothermal 开源算法推算，仅供参考，不构成医学诊断。"
     >
-      <AiResultRow tone={ovTone} title="确认排卵">
+      <AiResultRow compact tone={ovTone} title="确认排卵">
         {ovText}
       </AiResultRow>
-      <AiResultRow tone={lutTone} title="黄体功能">
+      <AiResultRow compact tone={lutTone} title="黄体功能">
         {lutText}
       </AiResultRow>
-      <AiResultRow tone={fertTone} title="联动受孕窗">
+      <AiResultRow compact tone={fertTone} title="联动受孕窗">
         {fertText}
       </AiResultRow>
     </AiAnalysis>

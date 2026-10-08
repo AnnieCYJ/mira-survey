@@ -9,6 +9,9 @@
  *   - 心情（😊 单选）
  *   - 身体症状（🤕 emoji 图标多选网格）
  *   - 「设为本次经期第一天」开关 → 展开周期长度步进，写入戒指设备
+ *   - 查看历史：按天累积的日记录列表（点某一天 = 回填到上面的表单继续编辑）。
+ *     ★ 2026-10-07（用户：经期记录本该每天一条 → 历史要存下来，并在记录页里能「查看历史」）。
+ *     数据本来就按天存在 periodLog.json（loadPeriodDays），这里只是补一个入口与列表。
  *
  * 数据：当日自感状态 → PeriodDayLog（本机沙盒）；经期开始日 → CycleLog + 戒指 female。
  * 全部走 design token，无裸值。
@@ -24,6 +27,7 @@ import {
 } from '../lib/cycleMath';
 import {
   loadPeriodDay,
+  loadPeriodDays,
   savePeriodDay,
   saveCycleLog,
   FLOW_LABEL,
@@ -59,6 +63,32 @@ export default function PeriodRecordPanel({
     female?.menstrualCircle ?? currentLog?.cycleLength ?? 28,
   );
   const [justSaved, setJustSaved] = useState(false);
+
+  // ★ 2026-10-07：历史记录（按天累积，最新在上）—— 只列出真的填过内容的那些天
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<PeriodDayLog[]>([]);
+  const refreshHistory = () => {
+    void loadPeriodDays().then((all) => {
+      const list = Object.values(all)
+        .filter((e) => e && (e.flow || e.pain || e.mood || (e.tags && e.tags.length)))
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+      setHistory(list);
+    });
+  };
+  useEffect(() => {
+    refreshHistory();
+  }, []);
+  const toggleHistory = () => {
+    setHistoryOpen((v) => {
+      if (!v) refreshHistory();
+      return !v;
+    });
+  };
+  /** 'YYYY-MM-DD' → 'M/D' */
+  const fmtDay = (k: string) => {
+    const [, m, d] = k.split('-');
+    return `${Number(m)}/${Number(d)}`;
+  };
 
   // 近 60 天日期 chip（可回填历史经期/症状）
   const chips: { key: string; label: string }[] = [];
@@ -119,11 +149,58 @@ export default function PeriodRecordPanel({
 
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1600);
+    refreshHistory(); // ★ 保存后历史列表立即跟上
     onSaved();
   };
 
   return (
     <View style={styles.panel}>
+      {/* ★ 2026-10-07（用户：记录页里加一个「查看历史」）—— 历史入口 + 列表 */}
+      <View style={styles.histRow}>
+        <Text style={styles.histLabel}>{history.length > 0 ? `已有 ${history.length} 天记录` : '暂无历史记录'}</Text>
+        <TouchableOpacity activeOpacity={0.8} onPress={toggleHistory}>
+          <Text style={styles.histLink}>{historyOpen ? '收起历史' : '查看历史 ›'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {historyOpen ? (
+        <View style={styles.histList}>
+          {history.length === 0 ? (
+            <Text style={styles.histEmpty}>还没有历史记录，保存一次就会出现。</Text>
+          ) : (
+            history.map((h) => {
+              const tags = (h.tags ?? [])
+                .map((t) => SYMPTOM_TAGS.find((s) => s.key === t)?.emoji ?? '')
+                .join('');
+              const moodEmoji = h.mood ? MOOD_OPTIONS.find((mo) => mo.key === h.mood)?.emoji ?? '' : '';
+              const line = [
+                h.flow ? `经量 ${FLOW_LABEL[h.flow]}` : '',
+                h.pain ? `疼痛 ${PAIN_LABEL[h.pain]}` : '',
+                moodEmoji,
+                tags,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <TouchableOpacity
+                  key={h.date}
+                  activeOpacity={0.75}
+                  style={styles.histItem}
+                  onPress={() => {
+                    setSelDate(h.date); // 回填到上面的表单继续编辑
+                    setHistoryOpen(false);
+                  }}
+                >
+                  <Text style={styles.histDate}>{fmtDay(h.date)}</Text>
+                  <Text style={styles.histTags} numberOfLines={1}>{line || '—'}</Text>
+                  <Text style={styles.histGo}>›</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+      ) : null}
+
       {/* 记录日期 */}
       <Text style={styles.sectionTitle}>记录日期</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
@@ -247,6 +324,16 @@ const styles = StyleSheet.create({
     padding: 0,
     marginTop: 0,
   },
+  /* ★ 2026-10-07：历史入口 + 列表（不铺灰底，用描边框区分） */
+  histRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.xs },
+  histLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  histLink: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid },
+  histList: { marginTop: theme.space.xs, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.sm },
+  histItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  histDate: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, minWidth: theme.sp(9) },
+  histTags: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  histGo: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  histEmpty: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, padding: theme.space.sm },
   sectionTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold as any,

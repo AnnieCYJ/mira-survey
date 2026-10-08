@@ -57,6 +57,11 @@ export function addInterventionEntry(kind: InterventionKind, detail: string): vo
   void persist();
 }
 
+/** 全部完成记录（同步快照；未 load 过则返回空）。供建议引擎统计「用户真实做过的行为」。 */
+export function allInterventionEntries(): InterventionEntry[] {
+  return cache ?? [];
+}
+
 /** 某类干预最近一条（无则 null）——用于「上次做到哪」类提示，不参与任何评分 */
 export function lastInterventionOf(kind: InterventionKind): InterventionEntry | null {
   if (!cache) return null;

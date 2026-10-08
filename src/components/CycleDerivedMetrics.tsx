@@ -12,8 +12,8 @@
  * 所有结果均为「基于可穿戴数据推算·非实测」。数据不足时对应 tile 显示「—」，
  * 底部给出引导文案（持续佩戴 / 多记录几次经期）。
  */
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { deriveCycleMetrics, type DerivedCycleMetrics } from '../lib/cycleDerived';
 import { parseDate, type CycleLog, type CycleInfo } from '../lib/cycleMath';
@@ -90,11 +90,29 @@ function relDays(d: number | null | undefined): string {
  * 关键日期单元格：小标签 / 值 / 副文，居中 —— 与 CyclePhaseCard 的「关键日期」范式一致
  * （label=micro/textSub、value=card/semibold/textTitle），保证同 App 同类信息同一种读法。
  */
-function KeyDateCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function KeyDateCell({
+  label,
+  value,
+  sub,
+  valueStyle,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  /** ★ 2026-10-07：长值（如易孕窗口的日期区间）可传更小的字号，配合单行避免折行 */
+  valueStyle?: object;
+}) {
   return (
     <View style={styles.keyDateCell}>
       <Text style={styles.keyDateK}>{label}</Text>
-      <Text style={styles.keyDateV}>{value}</Text>
+      <Text
+        style={[styles.keyDateV, valueStyle]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
+        {value}
+      </Text>
       {sub ? <Text style={styles.keyDateSub}>{sub}</Text> : null}
     </View>
   );
@@ -134,6 +152,14 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
 
   // 易孕窗口当前状态（基于距排卵天数：窗口 = 排卵前 5 天 ~ 排卵后 1 天）
   const dOv = cycleInfo?.daysToOvulation ?? null;
+  // ★ 2026-10-07：指标区（排卵置信度 / 黄体期长度 / 周期规律性 / 周期长度 / PMS / 受孕概率）默认收起
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // ★ 2026-10-07（用户：「底下那个双相体温需连续佩戴 ≥12 天才能识别，放到展开以后展示」）
+  //   这条属于「数据不足」提示，跟指标区放一起更合理；其余提示仍留在卡片底部。
+  const tempNote = m.notes.find((n) => n.includes('双相体温')) ?? null;
+  const restNotes = m.notes.filter((n) => !n.includes('双相体温'));
+
   const fertilityState =
     dOv == null
       ? ''
@@ -145,16 +171,16 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
 
   return (
     <View style={styles.card}>
+      {/* ★ 2026-10-07（用户：「周期健康指标旁边的基于可穿戴数据推算」这个去掉） */}
       <View style={styles.head}>
         <Text style={styles.title}>周期健康指标</Text>
-        <Text style={styles.badge}>基于可穿戴数据推算</Text>
       </View>
 
       {/* ★ 周期关键信息（放在指标之前）：预测经期 / 排卵日 / 易孕窗口——cycleInfo 已算出的确定值 */}
       {cycleInfo?.hasLog ? (
         <>
-          <Text style={styles.subTitle}>周期关键信息</Text>
-          <View style={styles.keyDateGrid}>
+          {/* ★ 2026-10-07（用户：去掉「周期关键信息」这几个字；预测经期 / 排卵日 / 易孕窗口写得有点太密 → 给它们一个外框） */}
+          <View style={[styles.keyDateGrid, styles.keyDateBox]}>
             <KeyDateCell
               label="预测经期"
               value={md(cycleInfo.nextPeriodDate)}
@@ -165,6 +191,8 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
               value={md(cycleInfo.ovulationDate)}
               sub={cycleInfo.tempConfirmed ? '体温已确认' : '日历推算'}
             />
+            {/* ★ 2026-10-07（用户：「易孕窗口已经分成两行了，整体这个排布优化一下」）：
+                日期区间比另外两格长 → 降到小一号字体 + 强制单行，不再折行 */}
             <KeyDateCell
               label="易孕窗口"
               value={
@@ -173,6 +201,7 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
                   : '—'
               }
               sub={fertilityState || '待推算'}
+              valueStyle={styles.keyDateVSmall}
             />
           </View>
           {cycleInfo.nextPeriodRange ? (
@@ -180,12 +209,19 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
               经期预测置信窗 {md(cycleInfo.nextPeriodRange[0])}–{md(cycleInfo.nextPeriodRange[1])}
             </Text>
           ) : null}
-          {/* 指标区存在时才画分隔线（否则空态文案会孤零零跟着一条线） */}
-          {hasAny ? <View style={styles.divider} /> : null}
+          {/* ★ 2026-10-07（用户：「展开更多指标上面那条横线不要有，不要分隔，只用留白」）——原来的分隔线已去掉 */}
         </>
       ) : null}
 
       {hasAny ? (
+        <>
+          {/* ★ 2026-10-07（用户：排卵置信度、周期长度这些可以加一个收起来，点击展开，默认收起） */}
+          <TouchableOpacity style={styles.moreRow} activeOpacity={0.8} onPress={() => setMoreOpen((v) => !v)}>
+            <Text style={styles.moreText}>{moreOpen ? '收起指标' : '展开更多指标'}</Text>
+            <Text style={styles.moreChev}>{moreOpen ? '⌃' : '⌄'}</Text>
+          </TouchableOpacity>
+          {moreOpen ? (
+        <>
         <View style={styles.grid}>
           {/* 左列 */}
           <View style={styles.col}>
@@ -261,15 +297,23 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
             />
           </View>
         </View>
+        {tempNote ? (
+          <View style={styles.notes}>
+            <Text style={styles.noteItem}>· {tempNote}</Text>
+          </View>
+        ) : null}
+        </>
+          ) : null}
+        </>
       ) : (
         <Text style={styles.empty}>
           持续佩戴戒指并记录经期后，这里会显示排卵置信度、双相体温、周期规律性、PMS 早筛等量化指标。
         </Text>
       )}
 
-      {m.notes.length > 0 ? (
+      {restNotes.length > 0 ? (
         <View style={styles.notes}>
-          {m.notes.map((n, i) => (
+          {restNotes.map((n, i) => (
             <Text key={i} style={styles.noteItem}>
               · {n}
             </Text>
@@ -290,18 +334,12 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.xs },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
-  badge: {
-    fontSize: theme.fontSize.micro,
-    color: theme.colors.textSub,
-    backgroundColor: theme.colors.accentSoft,
-    paddingHorizontal: theme.sp(2),
-    paddingVertical: theme.sp(1),
-    borderRadius: theme.radius.pill,
-  },
   grid: { flexDirection: 'row', gap: theme.space.xs },
   col: { flex: 1, gap: theme.space.xs },
+  // ★ 2026-10-07（用户：周期健康指标下面那几个灰块 —— 背景不喜欢，不要灰色背景）：
+  //   指标块不再铺浅紫底，改成「无底色」的纯文字块，与上方「周期关键信息」三列同一读法。
   tile: {
-    backgroundColor: theme.colors.accentSoft,
+    backgroundColor: 'transparent',
     borderRadius: theme.radius.sm,
     padding: theme.space.xs,
   },
@@ -320,7 +358,6 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.3,
   },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.6, color: theme.colors.textSub, paddingVertical: theme.space.md },
-  divider: { height: 1, backgroundColor: theme.colors.ui.borderSoft, marginTop: theme.space.sm },
   subTitle: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold as any,
@@ -328,7 +365,21 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.5),
   },
   /* 关键日期：与 CyclePhaseCard 的「关键日期」范式一致（居中 · 标签/值/副文，全 token） */
+  /* ★ 2026-10-07：「展开更多指标」开关行 */
+  moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(0.5), marginTop: theme.space.sm, paddingVertical: theme.space.xs },
+  moreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.semibold as any },
+  moreChev: { fontSize: theme.fontSize.sm, color: theme.colors.accentText },
   keyDateGrid: { flexDirection: 'row', marginTop: theme.sp(1) },
+  /* ★ 2026-10-07：三列关键日期的外框（原本只靠紧排的文字分隔，看着太密） */
+  keyDateBox: {
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.sm,
+    marginTop: theme.space.xs,
+    gap: theme.space.xs,
+  },
   keyDateCell: { flex: 1, alignItems: 'center', paddingHorizontal: theme.sp(0.5) },
   keyDateK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   keyDateV: {
@@ -338,6 +389,8 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(0.75),
   },
   keyDateSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },
+  /** ★ 2026-10-07：易孕窗口的长日期区间用小一号字号，保证单行 */
+  keyDateVSmall: { fontSize: theme.fontSize.sm },
   keyDateFoot: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
   notes: { marginTop: theme.space.xs, gap: theme.sp(0.5) },
   noteItem: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: theme.fontSize.micro * 1.3 },

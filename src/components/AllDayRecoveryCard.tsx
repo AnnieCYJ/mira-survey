@@ -38,11 +38,13 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import { MindIcon } from './MindIcons';
+// ★ 2026-10-07（用户：洞察页「昼夜节律」卡片里加一个约三行的 AI 分析）
+import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS, judgeCortisolRhythm } from '../lib/cortisolProxy';
 // ★ v18.146：睡眠分统一走「今天该显示哪个睡眠分」的唯一入口（与圆环 chip、SleepCard 同源），
 //   不再直接读旧落盘字段 sleep.score（绝对分），否则同一标签「睡眠恢复」会出现两把尺。
 import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
@@ -209,57 +211,30 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   }, [cortReady, proxy.vals]);
 
   /**
-   * 皮质醇节律判读（数据铁律：只依据实测槽，绝不编造）：
-   *  - 有效槽不足 → null（显「—」）
-   *  - 均值 ≥62 视为整体偏高 → 「皮质醇偏高」
-   *  - 昼夜振幅过小（峰值-谷值 < 12）→ 「节律紊乱」（全天平线，没有正常高低差）
-   *  - 峰值时刻异常（<5 点或 >23 点）→ 「节律紊乱」（峰值不在正常清醒时段）
-   *  - 其余 → 「节律正常」
+   * ★ 2026-10-08（用户实锤：洞察页这张卡判「节律紊乱」，点进详情页大字却写「节律正常」）：
+   *   判定收敛到 lib/cortisolProxy.judgeCortisolRhythm() —— 详情页 Hero 调**同一个函数**，
+   *   同一份 proxy 实测槽必得同一结论。这里不再自持一套阈值。
+   *   门槛由 6 槽降到 4 槽（MIN_RHYTHM_SLOTS）：白天有一半时段在测就能出结论，
+   *   不再动不动「数据不足」（用户：卡片自己节律的分析很多也没有分析出来）。
    */
-  const cortRhythmLabel = useMemo(() => {
-    if (!cortReady || proxy.peakIdx < 0) return null;
-    const v = proxy.vals.filter((x): x is number => x != null);
-    if (v.length < MIN_TODAY_SLOTS) return null;
-    const avg = v.reduce((a, b) => a + b, 0) / v.length;
-    const trough = Math.min(...v);
-    const amp = proxy.peakV - trough;
-    const peakH = proxy.peakIdx / 2;
-    if (avg >= 62) return '皮质醇偏高';
-    if (amp < 12) return '节律紊乱';
-    if (peakH < 5 || peakH > 23) return '节律紊乱';
-    return '节律正常';
-  }, [cortReady, proxy.vals, proxy.peakIdx, proxy.peakV]);
+  const judge = useMemo(() => judgeCortisolRhythm(proxy.vals, proxy.real), [proxy.vals, proxy.real]);
+  const cortRhythmLabel = dataStale ? null : judge.label;
 
   /**
    * 峰值时间区间（真实实测推导，不编造）：
    * 取「≥ 今日峰值 90% 且有实测」的连续槽段 → 显「HH:MM–HH:MM」；
    * 只有一个槽 → 显该槽的半小时区间；无数据 → 「—」。
    */
-  const peakWindowText = useMemo(() => {
-    if (!cortReady || proxy.peakIdx < 0) return null;
-    const thr = proxy.peakV * 0.9;
-    const near = (i: number) => i >= 0 && i < proxy.vals.length && proxy.vals[i] != null && proxy.vals[i] >= thr;
-    if (!near(proxy.peakIdx)) return null;
-    let s = proxy.peakIdx, e = proxy.peakIdx;
-    while (near(s - 1)) s--;
-    while (near(e + 1)) e++;
-    // 槽 i 覆盖 [i*30, i*30+30) 分钟 → 显区间更符合「几点到几点」
-    const m0 = s * 30, m1 = (e + 1) * 30;
-    const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-    return `${hhmm(m0)}–${hhmm(m1)}`;
-  }, [cortReady, proxy.vals, proxy.peakIdx, proxy.peakV]);
+  // ★ 2026-10-08：峰值时段直接取共用判定（judgeCortisolRhythm）的结果 ——
+  //   tile 副文案、AI 文案与详情页 Hero 全部同一份数据、同一套阈值，不再各算一遍。
+  const peakWindowText = judge.peakWindow;
 
   /** 判读依据说明（给 tile 副文案，一句话说清凭什么这么判） */
   const cortRhythmSub = useMemo(() => {
-    if (!cortReady) return dataStale ? '戒指暂无新数据' : '暂无皮质醇数据';
-    const label = cortRhythmLabel;
-    if (!label) return '暂无皮质醇数据';
-    if (label === '皮质醇偏高') return `全天均值 ${cortAvg}/100 · 高于个人基线`;
-    if (label === '节律紊乱') return peakHourFloat != null && (peakHourFloat < 5 || peakHourFloat > 23)
-      ? `峰值 ${peakClock} · 偏离正常时段`
-      : '昼夜高低差不足 · 全天平线';
-    return peakWindowText ? `峰值时段 ${peakWindowText}` : '昼夜节律完整';
-  }, [cortReady, cortRhythmLabel, cortAvg, peakHourFloat, peakClock, peakWindowText, dataStale]);
+    if (dataStale) return '戒指暂无新数据';
+    if (!judge.ready || !judge.label) return '暂无皮质醇数据';
+    return judge.sub;
+  }, [judge, dataStale]);
 
   /** 洞察页模式下的 tile1：皮质醇分值（不给"睡眠恢复"这个说不通的指标） */
   const insightTile1Val = cortAvg != null ? String(cortAvg) : '—';
@@ -317,6 +292,21 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   const g = buildSmoothSeries(series, realFlags, { W, H: CHART_H, padL: PAD_L, padR: PAD_R, padT: PAD_T, padB: PAD_B });
   const xOf = g.xOf;
 
+  /** ★ 2026-10-07（用户：洞察页「昼夜节律」卡片里加个 AI 分析，内容约三行、不要太多）：
+   *  结论全部取自本卡已算出的真实反推结果（均值 / 峰值时段 / 节律判读），不新增任何推测。 */
+  // ★ 2026-10-08：有节律结论（judge 出档）就写具体分析，不再要求「曲线能画出来(>=6 槽)」才算 ——
+  //   此前 gate 在 cortReady(>=6 槽) 上，实测槽只有 4~5 个时曲线不画、AI 分析也退回通用空话，
+  //   用户看到的就是「卡片自己节律的分析很多也没有分析出来」。现在与 tile 判定同门槛（>=4 槽）。
+  const cortAiBody = cortRhythmLabel != null
+    ? cortRhythmLabel === '皮质醇偏高'
+      ? `今天皮质醇活性全天均值 ${judge.avg}/100，整体高于你的个人基线。峰值时段 ${judge.peakWindow ?? judge.peakClock}，午后仍维持较高水平，建议减少咖啡因、安排短时放松，并尽量固定入睡时间。`
+      : cortRhythmLabel === '节律紊乱'
+        ? `今天皮质醇活性峰值出现在 ${judge.peakClock}，偏离正常清醒时段，昼夜高低差不足。这类节律常提示作息不规律或夜间压力偏大，建议固定起床时间、增加晨间光照，减少夜间屏幕与咖啡因。`
+        : `今天皮质醇活性全天均值 ${judge.avg}/100，峰值时段 ${judge.peakWindow ?? judge.peakClock}，昼夜高低节律完整。晨间自然抬升、夜间回落，说明作息与压力反应处在你的正常区间。`
+    : dataStale
+      ? '戒指暂无新数据，恢复信号同步后，这里会给出皮质醇昼夜节律的判读与建议。'
+      : '今天还没有足够的实测信号。戴上戒指后，这里会根据 HRV、皮电、体温与心率反推你的皮质醇活性，并给出昼夜节律判读与建议。';
+
   const body = (
     <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
       <View style={styles.inner}>
@@ -329,9 +319,13 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             <Text style={styles.title}>{title}</Text>
           </View>
           <View style={styles.headRight}>
-            <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>
-              <Text style={[styles.badgeText, onColor && { color: iconFg }]}>{badgeText}</Text>
-            </View>
+            {/* ★ 2026-10-07（用户：洞察页「昼夜节律」卡片去掉右上角「66 · 高于平时」）：
+                仅洞察页隐藏这枚睡眠恢复 badge，首页同名卡片保留。 */}
+            {insightMode ? null : (
+              <View style={[styles.badge, onColor && { backgroundColor: mm.colors.cardBg }]}>
+                <Text style={[styles.badgeText, onColor && { color: iconFg }]}>{badgeText}</Text>
+              </View>
+            )}
             <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
           </View>
         </View>
@@ -503,6 +497,21 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
             只保留数据来源说明——用户需要知道这个值不是直接测的激素浓度，而是从 4 项生理信号反推出来的。 */}
         {chartMode === 'today' && g.points.length > 0 ? (
           <Text style={styles.legendTx}>反推自 HRV · 皮电 · 体温 · 心率 · 非血液检测</Text>
+        ) : null}
+
+        {/* ★ 2026-10-07（用户：洞察页「昼夜节律」卡片里面加一个 AI 分析，约三行）：
+            仅洞察页（insightMode）出现，首页同名卡片不受影响。 */}
+        {insightMode ? (
+          <AiAnalysis>
+            {/* ★ 2026-10-08（用户：那些个节律分析，我不要灰色的）：正文改用正文色 token，不再走灰色 textSub */}
+            <AiResultRow
+              tone={cortRhythmLabel === '节律正常' ? 'good' : cortRhythmLabel ? 'warn' : 'neutral'}
+              title={cortRhythmLabel ?? '数据不足'}
+              bodyColor={theme.colors.textBody}
+            >
+              {cortAiBody}
+            </AiResultRow>
+          </AiAnalysis>
         ) : null}
       </View>
     </View>

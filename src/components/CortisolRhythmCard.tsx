@@ -16,7 +16,7 @@ import { parseClockMinutes } from '../lib/sleepTime';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import KalmanFilter from '../lib/kalman-filter';
 // ★ v18.123：今日曲线改用多模态反推的皮质醇活性（与首页昼夜节律卡同源）
-import { buildCortisolProxyBaseline, buildCortisolProxyToday } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolBaselineActivity } from '../lib/cortisolProxy';
 // ★ v18.125：与首页昼夜节律卡**共用同一套绘图几何**（用户：两处图不一样，看着难受）
 import { buildSmoothSeries, computeYRange, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
@@ -293,10 +293,11 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string }) {
+export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAxis = false }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string; /** ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：true 时不画左侧数值轴与网格刻度，绘图区吃满整宽 */ hideYAxis?: boolean }) {
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
   const H = 120;
-  const padL = 38, padR = 12, padT = 10, padB = 18;
+  // ★ 2026-10-08：隐藏 Y 轴时左侧不再留刻度数字的宽度，曲线整体左移吃满
+  const padL = hideYAxis ? 6 : 38, padR = 12, padT = 10, padB = 18;
   const SLOTS = CHART_SLOTS;
 
   // ★ 等宽度拿到后再渲染 SVG
@@ -329,20 +330,23 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
   const mainDayMs = Number.isFinite(mainStartMs) ? mainStartMs : Date.now();
   const mainLabel = isMainToday ? '今天' : `${new Date(mainDayMs).getMonth() + 1}/${new Date(mainDayMs).getDate()}`;
 
-  // 14 天基线 + cosinor 填补空：
-  //  今天视图：基线=近 14 天（含今天）聚合，只填到当前时刻；
-  //  历史日：基线=该日往前 14 天聚合，整天填满（不再是「今天往前 14 天」，各历史页基线也随日期变化）。
-  let baseline30 = isMainToday
-    ? aggregate30m(collectSamples())
-    : aggregate30m(collectSamplesForRange(mainDayMs - 13 * 86400000, mainDayMs));
-  const cos = r.cosinor;
-  const baseFillSlot = isMainToday ? currentSlot : SLOTS - 1;
-  if (fillGaps && Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && cos.amplitude > 0 && Number.isFinite(cos.acrophaseH)) {
-    const TWO_PI = Math.PI * 2;
-    for (let slot = 0; slot <= baseFillSlot; slot++) {
-      if (baseline30[slot] == null) {
-        const h = slot / 2;
-        baseline30[slot] = Math.max(0, +(cos.mesor + cos.amplitude * Math.cos(TWO_PI * (h - cos.acrophaseH) / 24)).toFixed(1));
+  // ★ 2026-10-08：今日基线改用「融合活性基线」（与今日线同口径 0~100），不再用原始 μg/L 均值——
+  //   之前两套量纲画一张图，基线被压底、今日线占满，看着错位（用户实锤）。
+  //   历史日仍用原始 μg/L 聚合（与历史主曲线同口径），并用该日 cosinor 补齐空槽。
+  let baseline30: (number | null)[];
+  if (isMainToday) {
+    baseline30 = buildCortisolBaselineActivity(14);
+  } else {
+    baseline30 = aggregate30m(collectSamplesForRange(mainDayMs - 13 * 86400000, mainDayMs));
+    const cos = r.cosinor;
+    const baseFillSlot = SLOTS - 1;
+    if (fillGaps && Number.isFinite(cos.mesor) && Number.isFinite(cos.amplitude) && cos.amplitude > 0 && Number.isFinite(cos.acrophaseH)) {
+      const TWO_PI = Math.PI * 2;
+      for (let slot = 0; slot <= baseFillSlot; slot++) {
+        if (baseline30[slot] == null) {
+          const h = slot / 2;
+          baseline30[slot] = Math.max(0, +(cos.mesor + cos.amplitude * Math.cos(TWO_PI * (h - cos.acrophaseH) / 24)).toFixed(1));
+        }
       }
     }
   }
@@ -444,8 +448,8 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk }: { r: 
           <Rect key={`s${i}`} x={sr.x} y={padT} width={Math.max(1, sr.w)} height={chartH} fill={theme.colors.ui.borderSoft + '33'} />
         ))}
 
-        {/* Y 轴网格 + 刻度 */}
-        {[0, 0.5, 1].map((p, i) => {
+        {/* Y 轴网格 + 刻度（★ 昼夜节律详情页 hideYAxis=true → 不画，避免出现 -7 之类刻度） */}
+        {!hideYAxis && [0, 0.5, 1].map((p, i) => {
           const val = yLo + p * yRange;
           const y = padT + chartH - p * chartH;
           return (

@@ -24,9 +24,11 @@ interface Props {
   rows?: InsightRow[];
   /** 端侧大模型是否正在生成中 */
   pending?: boolean;
+  /** ★ 2026-10-08（用户：那些个节律分析，我不要灰色的）：正文色可覆写（传 theme.colors.textBody）；不传保持灰色 textSub */
+  bodyColor?: string;
 }
 
-export default function InsightBanner({ onMore, title = null, subtitle, advice, text, rows, pending }: Props) {
+export default function InsightBanner({ onMore, title = null, subtitle, advice, text, rows, pending, bodyColor }: Props) {
   return (
     <Card>
       <AiBadge label="AI 综合分析" />
@@ -36,18 +38,18 @@ export default function InsightBanner({ onMore, title = null, subtitle, advice, 
       {rows && rows.length > 0 ? (
         <View style={{ marginTop: theme.sp(1) }}>
           {/* 第一段：纯段落，无点无标题 */}
-          <Text style={styles.firstParagraph}>{rows[0].body}</Text>
+          <Text style={[styles.firstParagraph, bodyColor ? { color: bodyColor } : null]}>{rows[0].body}</Text>
           {/* 其余段：AiResultRow（点 + 标题 + 正文）*/}
           {rows.slice(1).map((r, i) => (
-            <AiResultRow key={`${r.title}-${i}`} tone={r.tone} title={r.title}>
+            <AiResultRow key={`${r.title}-${i}`} tone={r.tone} title={r.title} bodyColor={bodyColor}>
               {r.body}
             </AiResultRow>
           ))}
         </View>
       ) : text ? (
-        <Text style={styles.text}>{text}</Text>
+        <Text style={[styles.text, bodyColor ? { color: bodyColor } : null]}>{text}</Text>
       ) : (
-        <Text style={styles.text}>
+        <Text style={[styles.text, bodyColor ? { color: bodyColor } : null]}>
           持续佩戴后，这里会结合你的 HRV、睡眠、体温与周期相位，生成属于你的综合分析。
         </Text>
       )}

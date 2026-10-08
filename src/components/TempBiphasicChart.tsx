@@ -16,6 +16,7 @@ import { theme } from '../theme/theme';
 import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { phaseBand, type PhaseKey } from '../lib/phaseColors';
 import PhaseLegend from './PhaseLegend';
+import { cycleAxis } from '../lib/hormoneTrend';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import type { TimePoint } from '../ble/RingBleManager';
 
@@ -36,6 +37,9 @@ interface Props {
   range: RangeKey;
   /** 是否绘制自带标题行（默认 true）。外层已提供卡片标题时传 false，避免双标题。 */
   showHeader?: boolean;
+  /** ★ 2026-10-07：跟随外层「周期切换」——指定周期首日与天数；不传则锚定当前周期 */
+  cycleStart?: string | null;
+  cycleDays?: number;
 }
 
 function daysInRange(range: RangeKey): number {
@@ -78,23 +82,45 @@ function buildDaySeries(tempHistory: TimePoint[] | undefined): {
 function buildDailySeries(
   tempDaily: Record<string, number>,
   log: CycleLog | null,
-  range: RangeKey
+  range: RangeKey,
+  cycleStart?: string | null,
+  cycleDays?: number
 ): {
   pts: { key: string; date: Date; v: number | null; phase: string }[];
   labelFirst: string;
   labelLast: string;
 } {
   const today = new Date();
-  const n = daysInRange(range);
+  today.setHours(0, 0, 0, 0);
   const seq: { key: string; date: Date; v: number | null; phase: string }[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - i);
-    const key = dayKey(d);
+  const push = (d: Date) => {
+    const dd = new Date(d);
+    dd.setHours(0, 0, 0, 0);
+    const key = dayKey(dd);
     const v = tempDaily[key];
-    const phase = computeCycle(log, d, { tempSeries: tempDailyToSeries(tempDaily), periodHistory: log?.history }).phase;
-    seq.push({ key, date: d, v: v != null && Number.isFinite(v) ? v : null, phase });
+    const phase = computeCycle(log, dd, { tempSeries: tempDailyToSeries(tempDaily), periodHistory: log?.history }).phase;
+    seq.push({ key, date: dd, v: v != null && Number.isFinite(v) ? v : null, phase });
+  };
+  // ★ 方案一（2026-10-07，用户：横轴要「按经期这一天开始算」）：
+  //   有经期记录时横轴改为「周期第 1 天 → 第 N 天」（第 1 天 = 上次经期开始日）；
+  //   没有记录时退回原来的「今天往前 N 天」滚动窗口。
+  // ★ 2026-10-07：外层「周期切换」指定了周期时，按该周期首日锚定横轴
+  const axis = cycleStart
+    ? cycleAxis(log, today, { start: cycleStart, days: cycleDays ?? daysInRange(range) })
+    : cycleAxis(log, today);
+  if (axis) {
+    for (let i = 0; i < axis.days; i++) {
+      const d = new Date(axis.startMs);
+      d.setDate(d.getDate() + i);
+      push(d);
+    }
+  } else {
+    const n = daysInRange(range);
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      push(d);
+    }
   }
   return {
     pts: seq,
@@ -103,7 +129,15 @@ function buildDailySeries(
   };
 }
 
-export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, showHeader = true }: Props) {
+export default function TempBiphasicChart({
+  tempDaily,
+  tempHistory,
+  log,
+  range,
+  showHeader = true,
+  cycleStart,
+  cycleDays,
+}: Props) {
   const isDay = range === 'day';
 
   const { pts, labelFirst, labelLast, validCount } = useMemo(() => {
@@ -111,9 +145,9 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, 
       const { pts: p, labelFirst: f, labelLast: l } = buildDaySeries(tempHistory);
       return { pts: p, labelFirst: f, labelLast: l, validCount: p.length };
     }
-    const { pts: p, labelFirst: f, labelLast: l } = buildDailySeries(tempDaily, log, range);
+    const { pts: p, labelFirst: f, labelLast: l } = buildDailySeries(tempDaily, log, range, cycleStart, cycleDays);
     return { pts: p, labelFirst: f, labelLast: l, validCount: p.filter((x) => x.v != null).length };
-  }, [tempDaily, tempHistory, log, range, isDay]);
+  }, [tempDaily, tempHistory, log, range, isDay, cycleStart, cycleDays]);
 
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -152,14 +186,16 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, 
   }
   if (cur) segments.push(cur);
 
-  if (validCount === 0) {
+  // ★ 2026-10-07（用户：没有数据也要把卵泡期 / 排卵期那些相位背景带上）：
+  //   周 / 月 / 年视图即使一个体温点都没有，也照常画出相位色带与参考网格，引导文案放到图下；
+  //   日视图是日内曲线（没有相位背景可言），保持原来的占位引导。
+  const noData = validCount === 0;
+  if (noData && isDay) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyTitle}>体温双相曲线</Text>
         <Text style={styles.emptyText}>
-          {isDay
-            ? '今日暂无体温数据。戒指会自动采集皮肤温度，佩戴一段时间后即可看到日内趋势。'
-            : '近段暂无日均体温数据。连续佩戴几天后，这里会自动画出体温曲线：经期偏低、排卵后明显升高。'}
+          今日暂无体温数据。戒指会自动采集皮肤温度，佩戴一段时间后即可看到日内趋势。
         </Text>
       </View>
     );
@@ -174,7 +210,31 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, 
       }
     : null;
 
-  const axisLabels = RANGE_DEF[range].axis;
+  // ★ 方案一：当前是否用「周期天轴」（有经期记录时为真）
+  const cycAxis = isDay
+    ? null
+    : cycleStart
+      ? cycleAxis(log, new Date(), { start: cycleStart, days: cycleDays ?? daysInRange(range) })
+      : cycleAxis(log, new Date());
+
+  // ★ 2026-10-07（用户：体温卡横轴是「1~30 号」，而雌/孕激素卡是 9/8–10/7，对不上）：
+  //   原因：RANGE_DEF[range].axis 是写死的「几号」（month）/ 「一~日」（week），
+  //   而实际窗口是「今天往前 N 天」。周 / 月改为按真实日期出标签（起点 / 中点 / 今天），与激素卡一致。
+  const axisLabels: string[] = (() => {
+    if (isDay || (range !== 'week' && range !== 'month')) return RANGE_DEF[range].axis;
+    // ★ 方案一：有经期记录时横轴出「周期第 N 天」（与激素趋势卡同一口径）
+    if (cycAxis) {
+      const nPts = pts.length;
+      return [0, 0.25, 0.5, 0.75, 1].map((f) => `第 ${Math.round(1 + (nPts - 1) * f)} 天`);
+    }
+    const dp = pts as { date: Date }[];
+    const fmt = (d?: Date) => (d ? `${d.getMonth() + 1}/${d.getDate()}` : '');
+    return [fmt(dp[0]?.date), fmt(dp[Math.floor((dp.length - 1) / 2)]?.date), fmt(dp[dp.length - 1]?.date)];
+  })();
+
+  // 今天标记：周期轴下今天落在「第 N 天」的位置，画一条虚线
+  const todayIdx = !isDay && cycAxis ? cycAxis.todayDay - 1 : -1;
+  const showTodayLine = todayIdx >= 0 && todayIdx <= pts.length - 1;
 
   return (
       <View style={styles.wrap}>
@@ -199,6 +259,19 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, 
               fill={phaseBand(p.phase as PhaseKey)}
             />
           ))}
+        {/* 今天 · 第 N 天：虚线标记（方案一） */}
+        {showTodayLine ? (
+          <Line
+            x1={xAtIndex(todayIdx)}
+            y1={PAD_T}
+            x2={xAtIndex(todayIdx)}
+            y2={PAD_T + plotH}
+            stroke={theme.colors.accentText}
+            strokeWidth={1.2}
+            strokeDasharray="4 4"
+            opacity={0.65}
+          />
+        ) : null}
         {/* 体温参考网格（36.0 / 36.5 / 37.0 / 37.5） */}
         {[36.0, 36.5, 37.0, 37.5].map((gv) => (
           <Line
@@ -240,11 +313,20 @@ export default function TempBiphasicChart({ tempDaily, tempHistory, log, range, 
           </>
         )}
       </Svg>
-      {validCount === 1 && (
+      {noData ? (
+        <Text style={styles.hintText}>
+          近段暂无日均体温数据。连续佩戴几天后，这里会自动画出体温曲线：经期偏低、排卵后明显升高。
+        </Text>
+      ) : validCount === 1 ? (
         <Text style={styles.hintText}>
           {isDay ? '已记录 1 个体温点，继续佩戴即可看到完整日内曲线。' : '已记录 1 天体温，再连续佩戴 2–3 天即可看到双相曲线。'}
         </Text>
-      )}
+      ) : null}
+      {showTodayLine && cycAxis ? (
+        <View style={styles.todayRow}>
+          <Text style={styles.todayText}>今天 · 第 {cycAxis.todayDay} 天</Text>
+        </View>
+      ) : null}
       <View style={styles.axisRow}>
         {axisLabels.map((t, i) => (
           <Text key={`${t}-${i}`} style={styles.axisText}>
@@ -262,6 +344,8 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 2 },
   title: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   range: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  todayRow: { alignItems: 'flex-end', marginTop: theme.sp(1), paddingHorizontal: 2 },
+  todayText: { fontSize: theme.fontSize.micro, color: theme.colors.accentText },
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingHorizontal: 2 },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   hintText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 6, paddingHorizontal: 2 },

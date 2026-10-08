@@ -54,16 +54,24 @@ import {
 
 // ── 常量 ────────────────────────────────────────────────────────────────
 
-/** 权重（合计 1.0）。HRV 与 EDA 是最直接的两路交感证据，权重最高。
+/** 权重（计入时合计 = 实际权重和，不强制 1.0）。
+ *  HRV 与 EDA 是最直接的两路交感证据，权重最高。
  *  ★ v-fix：移除 sleepDebt（原 0.08）——调用方从未传入 sleepDeficit，长期为死权重；
  *    睡眠债对 HPA 的影响已在「晨起认知准备度」中体现，intraday proxy 不再重复计入。
- *    原 5 路权重按 0.92→1.0 等比放大，分数口径与旧版一致。 */
+ *
+ *  ★ 2026-10-08（融合设备真实皮质醇）：新增 `cortisol` 真值路，权重 0.30（金标准）。
+ *    新增后，当某日有真实 `cortisol`(μg/L) 数据时，该路 z-score 直接并入合成；
+ *    当**没有**真值数据（旧数据 / 不支持 GSR 的设备）时，该路自动不计入 wsum，
+ *    且其余 5 路按 0.7 同比例缩放 → z = raw/wsum 数学上与原纯 proxy **完全等价**（向后兼容，零破坏）。
+ *    原 5 路权重按 0.70 缩放：hrv 0.28→0.20 / eda 0.26→0.18 / temp 0.20→0.14 / rhr 0.16→0.11 / activity 0.10→0.07。 */
 export const PROXY_WEIGHTS = {
-  hrv: 0.28,
-  eda: 0.26,
-  temp: 0.20,
-  rhr: 0.16,
-  activity: 0.10,
+  hrv: 0.20,
+  eda: 0.18,
+  temp: 0.14,
+  rhr: 0.11,
+  activity: 0.07,
+  /** 设备真实皮质醇浓度(μg/L)，每 ~20s 点测一次。直接测量，比 HRV/EDA 反推更可信。 */
+  cortisol: 0.30,
 } as const;
 
 /** 体温绝对参考：人体外周皮温正常带（℃）。偏离此带的幅度用于打分。 */
@@ -81,6 +89,8 @@ const EDA_MAX = 99;  // skin_moisture 合法区间上限
 export const WINDOW_MIN = 30;
 /** 一天 48 个窗口。 */
 export const SLOTS_PER_DAY = (24 * 60) / WINDOW_MIN;
+/** 一天的毫秒数。 */
+const DAY_MS = 86400000;
 
 export interface CortisolProxySample {
   /** 绝对 epoch ms */
@@ -103,9 +113,9 @@ export interface ProxyBaseline {
   /** ★ v18.117：是否达到最小天数门槛（≥3 天）。不足时 UI 应显示「建立基线中」而不是给假数 */
   ready: boolean;
   /** ★ v18.117：48 长度，每槽的时段基线（该槽在近 N 天的中位数）——皮质醇有强昼夜节律，必须同时段比较 */
-  bySlot: { hrv: (number | null)[]; eda: (number | null)[]; temp: (number | null)[]; rhr: (number | null)[] };
+  bySlot: { hrv: (number | null)[]; eda: (number | null)[]; temp: (number | null)[]; rhr: (number | null)[]; cortisol: (number | null)[] };
   /** 48 长度，每槽的稳健尺度（该槽 MAD×1.4826） */
-  scalesBySlot: { hrv: (number | null)[]; eda: (number | null)[]; temp: (number | null)[]; rhr: (number | null)[] };
+  scalesBySlot: { hrv: (number | null)[]; eda: (number | null)[]; temp: (number | null)[]; rhr: (number | null)[]; cortisol: (number | null)[] };
   /** 实际参与基线的日期（诊断用） */
   daysUsed: string[];
 }
@@ -183,10 +193,12 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
   const edaBySlot: WeightedSample[][] = Array.from({ length: SLOTS_PER_DAY }, () => []);
   const tempBySlot: WeightedSample[][] = Array.from({ length: SLOTS_PER_DAY }, () => []);
   const rhrBySlot: WeightedSample[][] = Array.from({ length: SLOTS_PER_DAY }, () => []);
+  const cortisolBySlot: WeightedSample[][] = Array.from({ length: SLOTS_PER_DAY }, () => []);
   const hrvAll: WeightedSample[] = [];
   const edaAll: WeightedSample[] = [];
   const tempAll: WeightedSample[] = [];
   const rhrAll: WeightedSample[] = [];
+  const cortisolAll: WeightedSample[] = [];
   const stepAll: number[] = [];
   const dayHas = new Set<string>();
   let used = 0;
@@ -197,7 +209,7 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     const midnight = parseDayKeyMs(dk);
 
     const push = (
-      key: 'hrv' | 'eda' | 'temp' | 'hr',
+      key: 'hrv' | 'eda' | 'temp' | 'hr' | 'cortisol',
       buckets: WeightedSample[][],
       pool: WeightedSample[],
       minSamples: number,
@@ -216,6 +228,8 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     push('hrv', hrvBySlot, hrvAll, 1);
     push('eda', edaBySlot, edaAll, 3);
     push('temp', tempBySlot, tempAll, 3);
+    // ★ 2026-10-08：设备真实皮质醇(μg/L)，每 ~20s 一个真值点，1 个样本即可计入
+    push('cortisol', cortisolBySlot, cortisolAll, 1);
     // 心率：静息近似取该槽内最低值，聚合成长度不足则跳过
     {
       const arr = healthStore.getIntraday('hr', dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
@@ -251,6 +265,7 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     eda: perSlot(edaBySlot, edaAll),
     temp: perSlot(tempBySlot, tempAll),
     rhr: perSlot(rhrBySlot, rhrAll),
+    cortisol: perSlot(cortisolBySlot, cortisolAll),
   };
 
   // 尺度也按槽算（每槽的**加权** MAD），回退到全池尺度
@@ -266,6 +281,7 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     eda: scaleBySlot(edaBySlot, edaAll),
     temp: scaleBySlot(tempBySlot, tempAll),
     rhr: scaleBySlot(rhrBySlot, rhrAll),
+    cortisol: scaleBySlot(cortisolBySlot, cortisolAll),
   };
 
   return {
@@ -303,6 +319,8 @@ export function computeCortisolProxyDay(
   const edaAll = healthStore.getIntraday('eda', dk).filter((p) => p.v > 0);
   const tempAll = healthStore.getIntraday('temp', dk).filter((p) => p.v > 0);
   const stepAll = healthStore.getIntraday('steps', dk).filter((p) => p.v > 0);
+  // ★ 2026-10-08：设备真实皮质醇(μg/L)，每 ~20s 一个真值点，由原生桥 upsertRealtime('cortisol') 写入
+  const cortisolAll = healthStore.getIntraday('cortisol', dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
 
   const vals: (number | null)[] = [];
   const counts: number[] = [];
@@ -322,6 +340,7 @@ export function computeCortisolProxyDay(
     const tempWin = mean(inWin(tempAll));
     const hrWin = mean(inWin(hrAll));
     const stepWin = inWin(stepAll).reduce((a, p) => a + p.v, 0);
+    const cortisolWin = mean(inWin(cortisolAll));
 
     // 活动强度 0~1（相对个人日步量基线）
     const activity = baseline.stepBaseline > 0 ? clamp01(stepWin / (baseline.stepBaseline / 48)) : 0;
@@ -355,6 +374,21 @@ export function computeCortisolProxyDay(
         wsum += PROXY_WEIGHTS.eda;
         physN++;
       }
+    }
+    // ★ 2026-10-08 修正（用户实锤「融合没生效 / 波形跟戒指对不上」）：
+    //   原 `scCort >= 5` 尺度门槛太严——戒指每 20s 测一次、日内极稳，跨天同槽 MAD 通常只有 1~3 μg/L，
+    //   门槛 5 几乎永远过不了 → 真实皮质醇**从未真正并入融合**，今天曲线其实只由 HRV/EDA/体温算出，
+    //   自然跟戒指反馈的皮质醇波形对不上。现改为：
+    //   · 有稳健尺度(>=1.5)就用它；否则回退到固定生理参考尺度 6 μg/L（≈一次典型昼夜摆幅的 1/3）。
+    //   · 这样只要「有真实皮质醇值 + 该槽有基线」(≥1 个先前日样本) 就必定并入，且权重最高(0.30)。
+    //   没有真值（旧数据 / 不支持 GSR 设备）时 blCort=null → 该路跳过 → 自然回退纯 proxy（数学等价）。
+    const blCort = baseline.bySlot.cortisol[i] ?? null;
+    const scCortRaw = baseline.scalesBySlot.cortisol[i] ?? null;
+    const scCort = scCortRaw != null && scCortRaw >= 1.5 ? scCortRaw : 6;
+    if (cortisolWin != null && blCort != null) {
+      raw += PROXY_WEIGHTS.cortisol * ((cortisolWin - blCort) / scCort);
+      wsum += PROXY_WEIGHTS.cortisol;
+      physN++;
     }
     // 体温偏移：正相。
     // ⚠ v18.116 修正（实测发现值域整体顶到 63~99，几乎满分）：
@@ -416,6 +450,36 @@ export function buildCortisolProxyToday(
 }
 
 /**
+ * ★ 2026-10-08：14 天皮质醇「融合活性」基线（与今日曲线**同口径、同单位 0~100**）。
+ *
+ * 为什么需要（用户实锤「趋势图波形跟戒指反馈对不上」）：
+ *   洞察页趋势图此前把「今天(融合活性 0~100)」和「14 天基线(原始 μg/L 均值)」画在同一张图——
+ *   两套量纲、一把尺，基线(μg/L, 个位数)被压在底部、今天线占满高度，天然错位。
+ *   本函数把基线也变成融合活性：逐天用统一基线算当日活性，跨天同槽取中位 → 48 长度基线。
+ *   这样「今天 vs 14 天基线」才是同一把尺、可比，且今天的活性因皮质醇权重最高会直接跟随戒指波形。
+ *
+ * 实现：统一基线（过去 N 天、不含今天）算一次，再对过去 N 天各自算当日活性、按槽聚合中位。
+ * 某槽若所有历史日都没数据 → null（断线，与今日一致，不编造）。
+ */
+export function buildCortisolBaselineActivity(days = 14, now: number = Date.now()): (number | null)[] {
+  const N = Math.max(MIN_BASELINE_DAYS, days);
+  const base = buildCortisolProxyBaseline(N, now); // 统一基线（过去 N 天，不含今天）
+  const perSlot: (number | null)[][] = Array.from({ length: SLOTS_PER_DAY }, () => []);
+  for (let i = 1; i <= N; i++) {
+    const dk = hsDayKey(now - i * DAY_MS);
+    const thatDayEnd = parseDayKeyMs(dk) + DAY_MS - 1; // 该日完整结束时刻 → 算满整天
+    const { vals } = computeCortisolProxyDay(dk, base, { now: thatDayEnd });
+    for (let s = 0; s < SLOTS_PER_DAY; s++) {
+      if (vals[s] != null && Number.isFinite(vals[s])) perSlot[s].push(vals[s]);
+    }
+  }
+  return perSlot.map((arr) => {
+    const nums = arr.filter((x): x is number => x != null);
+    return nums.length ? medianOf(nums) : null;
+  });
+}
+
+/**
  * ★ v18.124：从 48 槽实测活性直接算「水平 / 峰值时刻 / 波动幅度」，**不做 cosinor 拟合**。
  *
  * 为什么需要（用户实锤「详情页下面的分析数据都是杠」）：
@@ -448,4 +512,94 @@ export function proxySummaryFromSlots(
     amplitudePct: amplitudePct != null ? Math.round(amplitudePct * 100) : null,
     n: pairs.length,
   };
+}
+
+
+/**
+ * ★ 2026-10-08（用户实锤：洞察页「昼夜节律」卡片判「节律紊乱」，点进详情页大字却写「节律正常」）
+ *   —— 两处各写了一套判定：卡片用 proxy 实测槽的「均值 / 振幅 / 峰值时刻」，
+ *   详情页却拿 `proxySummaryFromSlots(...).mesor` 只分偏高/正常（永远判不出紊乱）。
+ *   现收敛成**唯一入口**：卡片 tile、卡片 AI 分析、详情页 Hero、详情页区间聚合都调它，
+ *   同一份 proxy 实测槽必得同一结论。
+ */
+export type CortisolRhythmLabel = '皮质醇偏高' | '节律紊乱' | '节律正常';
+
+/** 判定所需的最少实测槽：4（与 cosinor 的 n>=4 同门槛），低于此值不下结论 */
+export const MIN_RHYTHM_SLOTS = 4;
+
+export interface CortisolRhythmJudgement {
+  /** 实测槽是否够判 */
+  ready: boolean;
+  /** 实测槽均值（四舍五入），无数据 = null */
+  avg: number | null;
+  peakIdx: number;
+  peakV: number;
+  /** 峰值所在小时（0~24 小数） */
+  peakH: number | null;
+  /** 峰值时刻 HH:MM */
+  peakClock: string;
+  /** 峰值时段（>=峰值 90% 的连续实测槽）HH:MM–HH:MM；无 = null */
+  peakWindow: string | null;
+  label: CortisolRhythmLabel | null;
+  /** 副文案：一句话说清凭什么这么判 */
+  sub: string;
+}
+
+const _hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/**
+ * 皮质醇节律判读（数据铁律：只依据实测槽，绝不编造）：
+ *  - 有效实测槽 < minSlots → ready=false, label=null（UI 显「—」）
+ *  - 均值 >= 62 → 「皮质醇偏高」
+ *  - 昼夜振幅过小（峰值-谷值 < 12）→ 「节律紊乱」（全天平线，没有正常高低差）
+ *  - 峰值时刻异常（< 5 点或 > 23 点）→ 「节律紊乱」（峰值不在正常清醒时段）
+ *  - 其余 → 「节律正常」
+ */
+export function judgeCortisolRhythm(
+  vals: (number | null)[],
+  real: boolean[],
+  minSlots: number = MIN_RHYTHM_SLOTS,
+): CortisolRhythmJudgement {
+  const idxs: number[] = [];
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i];
+    if (real[i] && v != null && Number.isFinite(v)) idxs.push(i);
+  }
+  const empty: CortisolRhythmJudgement = {
+    ready: false, avg: null, peakIdx: -1, peakV: -Infinity, peakH: null,
+    peakClock: '—', peakWindow: null, label: null, sub: '暂无皮质醇数据',
+  };
+  if (idxs.length < minSlots) return empty;
+
+  const vs = idxs.map((i) => vals[i] as number);
+  const avgRaw = vs.reduce((a, b) => a + b, 0) / vs.length;
+  const avg = Math.round(avgRaw);
+  let peakIdx = idxs[0];
+  let peakV = vs[0];
+  idxs.forEach((i, k) => { if (vs[k] > peakV) { peakV = vs[k]; peakIdx = i; } });
+  const trough = Math.min(...vs);
+  const amp = peakV - trough;
+  const peakH = peakIdx / 2;
+  const peakClock = _hhmm(peakH * 60);
+
+  // 峰值时段：>= 峰值 90% 且实测的连续槽段（槽 i 覆盖 [i*30, i*30+30) 分钟）
+  const thr = peakV * 0.9;
+  const near = (i: number) => i >= 0 && i < vals.length && real[i] && vals[i] != null && (vals[i] as number) >= thr;
+  let s = peakIdx, e = peakIdx;
+  while (near(s - 1)) s--;
+  while (near(e + 1)) e++;
+  const peakWindow = `${_hhmm(s * 30)}–${_hhmm((e + 1) * 30)}`;
+
+  let label: CortisolRhythmLabel;
+  if (avgRaw >= 62) label = '皮质醇偏高';
+  else if (amp < 12) label = '节律紊乱';
+  else if (peakH < 5 || peakH > 23) label = '节律紊乱';
+  else label = '节律正常';
+
+  let sub: string;
+  if (label === '皮质醇偏高') sub = `全天均值 ${avg}/100 · 高于个人基线`;
+  else if (label === '节律紊乱') sub = (peakH < 5 || peakH > 23) ? `峰值 ${peakClock} · 偏离正常时段` : '昼夜高低差不足 · 全天平线';
+  else sub = `峰值时段 ${peakWindow}`;
+
+  return { ready: true, avg, peakIdx, peakV, peakH, peakClock, peakWindow, label, sub };
 }

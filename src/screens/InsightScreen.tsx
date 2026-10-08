@@ -64,9 +64,10 @@ const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
   { key: 'longevity', label: '长期健康' },
 ];
 
+// ★ 2026-10-07（用户：皮质醇 → 昼夜节律；雌/孕激素 → 生理周期节律）
 const RHYTHM_SUBS: { key: string; label: string }[] = [
-  { key: 'recover', label: '皮质醇' },
-  { key: 'body', label: '雌/孕激素' },
+  { key: 'recover', label: '昼夜节律' },
+  { key: 'body', label: '生理周期节律' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
@@ -85,6 +86,9 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'mind', label: METRICS.mind.name },
   { key: 'basics', label: '基础指标' },
 ];
+
+/** ★ 2026-10-07（用户：长期健康里面，AI 综合分析先隐藏）：改回 true 即恢复。 */
+const SHOW_LONGEVITY_AI: boolean = false;
 
 const CHANGES: ListItem[] = [
   { dot: theme.colors.stateCalm, title: 'HRV 基线 58 → 62 ms', sub: '连续 5 天高于个人基线' },
@@ -567,8 +571,8 @@ export default function InsightScreen() {
                 ))}
               </>
             )}
-            {/* AI 分析洞察：长期健康语义，固定在内容末尾 */}
-            <InsightBanner rows={insightRows} pending={aiOverview.loading} />
+            {/* ★ 2026-10-07（用户：长期健康里面，AI 综合分析先隐藏）：由 SHOW_LONGEVITY_AI 控制 */}
+            {SHOW_LONGEVITY_AI ? <InsightBanner rows={insightRows} pending={aiOverview.loading} /> : null}
           </>
         )}
       </View>

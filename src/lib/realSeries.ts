@@ -29,7 +29,12 @@ import {
 import { computeCycle, parseDate, type CycleLog } from './cycleMath';
 import { dateKeyOf, startOfWeek, addDays } from './dateUtils';
 import KalmanFilter from './kalman-filter';
-import { buildCortisolToday30 } from '../components/CortisolRhythmCard';
+// ★ 2026-10-08：详情页皮质醇「日」视图与洞察页昼夜节律卡同源——改用融合算法
+//   （HRV/EDA/体温/心率 z-score + 设备真实皮质醇真值，6 路加权 → 0~100 活性）。
+import {
+  buildCortisolProxyBaseline,
+  buildCortisolProxyToday,
+} from './cortisolProxy';
 
 export interface TimePt {
   t: number;
@@ -499,22 +504,27 @@ export function buildHistorySeries(
       return finalize([dv], def, false, `${def.name} ${anchorKey} 当日均值（按天归档，无逐时明细）`);
     }
 
-    // ★ 皮质醇今日 → 复用 TrendChart 今日紫色线的完整管线（buildCortisolToday30）
-    // 保证 MetricDetail 和 CortisolDailyChart 画的是完全相同的曲线
+    // ★ 2026-10-08：皮质醇今日 → 与洞察页昼夜节律卡**同一套融合算法**（buildCortisolProxyToday）。
+    //   旧实现 buildCortisolToday30 是「原始设备 μg/L 点测 + 14 天 cosinor 补形」，
+    //   与洞察页已切换的「多模态反推活性」是两套口径、数值不可比 → 这里统一成融合活性（0~100）。
+    //   有真实皮质醇真值时，该路以 0.30 权重并入合成；无真值时数学上退回纯 proxy，曲线不变（向后兼容）。
     if (hsKey === 'cortisol' && isTodayAnchor) {
-      const today30 = buildCortisolToday30();
+      const bl = buildCortisolProxyBaseline(14);
+      const px = buildCortisolProxyToday(bl);
       const nowMs = Date.now();
       const today0 = dayStartMs(nowMs);
       const tps2: { t: number; v: number }[] = [];
       for (let slot = 0; slot < 48; slot++) {
-        const v = today30[slot];
-        if (v != null && Number.isFinite(v)) {
+        const v = px.vals[slot];
+        // 仅画「实测/融合有值」的槽；未来时段（>now）与无值槽不画，保持诚实
+        if (slot * 2 <= new Date(nowMs).getHours() * 2 + (new Date(nowMs).getMinutes() >= 30 ? 1 : 0)
+            && v != null && Number.isFinite(v)) {
           const ts = today0 + slot * 1800000 + 900000; // 30min 槽中点
           tps2.push({ t: ts, v });
         }
       }
       if (tps2.length > 0) {
-        const note = `皮质醇今日节律趋势（30min 聚合，cosinor 填补已过去槽位）。`;
+        const note = `皮质醇今日节律趋势（多模态融合活性 0~100，含设备真实皮质醇真值）。`;
         return finalizeContinuous(tps2, start, end, def, false, note);
       }
     }

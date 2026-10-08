@@ -11,7 +11,6 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Polyline } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -28,7 +27,7 @@ import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { collectSamples, collectSamplesForDay, collectSamplesForRange } from '../components/CortisolRhythmCard';
 // ★ v18.124：皮质醇水平/峰值改用多模态反推的实测槽统计（与首页/趋势图同源）
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
 import { analyzeCortisol, type CortisolSample, type RhythmLevel } from '../lib/cortisolRhythm';
 import { type RangeKey } from '../data/metrics';
 import { type StressReport } from '../lib/stressAlgorithm';
@@ -139,6 +138,12 @@ function aggregateOverDays(days: Date[]): RangeAgg {
   const perDayMesor: (number | null)[] = [];
   const perDayPeak: (number | null)[] = [];
   const perDayMesors: { date: string; mesor: number }[] = [];
+  // ★ 2026-10-08（用户：你看一下周月年这个数据对不对）：把区间内各天的 48 槽实测活性按
+  //   「同一时段」平均，得到区间平均昼夜曲线，再交给与卡片/详情页 Hero **同一个**判定函数
+  //   （judgeCortisolRhythm）→ 区间也能判「节律紊乱 / 持续偏高 / 节律正常」。
+  //   此前 `cortisolStatus` 恒为 null：周/月/年既没有节律 chip，AI 分析行也永远不含「代谢」项。
+  const slotSum: number[] = new Array(48).fill(0);
+  const slotCnt: number[] = new Array(48).fill(0);
   for (const d of days) {
     try {
       const pbl = buildCortisolProxyBaseline(14, d.getTime() + DAY_MS - 1);
@@ -147,12 +152,24 @@ function aggregateOverDays(days: Date[]): RangeAgg {
       perDayMesor.push(s.mesor);
       perDayPeak.push(s.acrophaseH);
       if (s.mesor != null) perDayMesors.push({ date: dayKey(d.getTime()), mesor: s.mesor });
+      for (let i = 0; i < px.vals.length; i++) {
+        const v = px.vals[i];
+        if (px.real[i] && v != null && Number.isFinite(v)) { slotSum[i] += v; slotCnt[i]++; }
+      }
     } catch {
       perDayMesor.push(null);
       perDayPeak.push(null);
     }
   }
   perDayMesors.sort((a, b) => a.date.localeCompare(b.date));
+  const rAvgVals = slotSum.map((v, i) => (slotCnt[i] > 0 ? v / slotCnt[i] : null));
+  const rAvgReal = slotCnt.map((c) => c > 0);
+  const rJudge = judgeCortisolRhythm(rAvgVals, rAvgReal);
+  const rangeCortisolStatus: RhythmLevel | null =
+    rJudge.label === '皮质醇偏高' ? 'sustained_high'
+      : rJudge.label === '节律紊乱' ? 'dysregulated'
+        : rJudge.label === '节律正常' ? 'normal'
+          : null;
 
   return {
     days: days.length,
@@ -173,7 +190,7 @@ function aggregateOverDays(days: Date[]): RangeAgg {
     cortisolMesor: mean(perDayMesor),
     cortisolPeakH: mean(perDayPeak),
     cortisolCss: null,
-    cortisolStatus: null,
+    cortisolStatus: rangeCortisolStatus,
     cortisolDaily: perDayMesors,
   };
 }
@@ -195,9 +212,18 @@ function daysInMonth(monthStart: Date): Date[] {
 /** 把若干（月度）RangeAgg 再 mean 一次 = "年是月的平均" */
 function averageRangeAggs(monthly: RangeAgg[]): RangeAgg {
   const numMean = (sel: (a: RangeAgg) => number | null): number | null => mean(monthly.map(sel));
-  // cortisolStatus：取有值的最后一个（多数语义近似），无则 null
+  // ★ 2026-10-08：年视图的节律判定取 12 个月里出现次数最多的那个（并列时优先 紊乱 > 偏高 > 正常），
+  //   比原来「取最后一个月的」更贴近「这一年整体」的语义。
+  const statusRank: Record<RhythmLevel, number> = { normal: 1, sustained_high: 2, dysregulated: 3 };
+  const statusCount: Partial<Record<RhythmLevel, number>> = {};
+  for (const a of monthly) if (a.cortisolStatus != null) statusCount[a.cortisolStatus] = (statusCount[a.cortisolStatus] ?? 0) + 1;
   let status: RhythmLevel | null = null;
-  for (const a of monthly) if (a.cortisolStatus != null) status = a.cortisolStatus;
+  (Object.keys(statusCount) as RhythmLevel[]).forEach((k) => {
+    if (status == null) { status = k; return; }
+    const ck = statusCount[k] ?? 0;
+    const cs = statusCount[status as RhythmLevel] ?? 0;
+    if (ck > cs || (ck === cs && statusRank[k] > statusRank[status as RhythmLevel])) status = k;
+  });
   // days：UI 未强依赖精确值，取各月天数均值（代表"平均每月天数"）
   const daysAvg = monthly.length ? monthly.reduce((s, a) => s + a.days, 0) / monthly.length : 0;
   return {
@@ -294,35 +320,28 @@ export default function EmotionCognitiveDetailScreen() {
   // ★ v18.124：顶部大字也改用 proxy 实测口径（与趋势图、下面两个格子同源）。
   //   旧实现 `analyzeCortisol(collectSamples(), 14)` 读 cortisol intraday + cosinor 拟合 →
   //   样本稀疏时 todayLevel 恒 'normal'、洞察文案也不对。
+  // ★ 2026-10-08（用户实锤：洞察页那张卡判「节律紊乱」，点进详情页大字却写「节律正常」）：
+  //   大字改用与卡片**同一个**判定函数 judgeCortisolRhythm（同一份 proxy 实测槽）。
+  //   旧实现只按 mesor 分「偏高/正常」，永远判不出「节律紊乱」→ 与卡片是两个结论。
   const todayRhythm = useMemo(() => {
     try {
       const pbl = buildCortisolProxyBaseline(14);
       const px = buildCortisolProxyToday(pbl);
-      const sm = proxySummaryFromSlots(px.vals, px.real);
-      if (sm.mesor == null) {
-        return { level: 'normal' as const, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+      const j = judgeCortisolRhythm(px.vals, px.real);
+      if (!j.ready || !j.label) {
+        return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
       }
-      // 按实测水平给档位（阈值与首页「压力偏高/放松良好/节律平稳」一致：≥70 偏高、≤40 放松）
-      const level = sm.mesor >= 70 ? ('high' as const) : sm.mesor <= 40 ? ('normal' as const) : ('normal' as const);
-      const peakClock = `${String(Math.floor(sm.acrophaseH ?? 0)).padStart(2, '0')}:${(sm.acrophaseH ?? 0) % 1 >= 0.5 ? '30' : '00'}`;
-      const word = sm.mesor >= 70 ? '压力偏高' : sm.mesor <= 40 ? '放松良好' : '节律平稳';
-      const amp = sm.amplitudePct != null ? `波动 ${sm.amplitudePct}%` : '活性已建模';
-      return { level, firstInsight: `今日皮质醇活性平均 ${sm.mesor}（${amp}）· ${word}，峰值出现在 ${peakClock}。由心率变异性、皮电、体温与心率反推。` };
+      return {
+        label: j.label as string,
+        firstInsight: `今日皮质醇活性平均 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、皮电、体温与心率反推。`,
+      };
     } catch {
-      return { level: 'normal' as const, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+      return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
     }
     // 依赖 refreshKey：回填/实时数据到达后，顶部大字与节律卡同步刷新
   }, [refreshKey]);
-  /**
-   * 节律结论文案。颜色不再按状态区分——统一走主题 `textTitle`，
-   * 与情绪/脑力消耗详情页的 Hero 大字保持一致（形态异常另由节律卡的色块/日历承担）。
-   */
-  const RHYTHM_LABEL: Record<'normal' | 'high' | 'dysregulated', string> = {
-    normal: '节律正常',
-    high: '皮质醇偏高',
-    dysregulated: '节律紊乱',
-  };
-  const todayRhythmLabel = RHYTHM_LABEL[todayRhythm.level];
+  // 大字文案 = 卡片同款节律结论（无数据显「—」，与卡片 tile 一致）
+  const todayRhythmLabel = todayRhythm.label ?? '—';
 
   // ── AI 综合分析 ──
   // ★ 真实端侧大模型（MiraAI · Qwen2.5-1.5B）：与洞察页同通道（ai/insight.ts 'recovery' kind），
@@ -377,14 +396,6 @@ export default function EmotionCognitiveDetailScreen() {
       if (cur.sleepScore != null && cur.sleepScore < 70) {
         parts.push('平均睡眠评分偏低');
         titles.push('睡眠');
-      }
-      if (cur.emotionLoad != null && cur.emotionLoad >= 70) {
-        parts.push('平均情绪消耗偏高');
-        titles.push('情绪压力');
-      }
-      if (cur.cogLoad != null && cur.cogLoad >= 70) {
-        parts.push('平均脑力负荷偏高');
-        titles.push('情绪压力');
       }
     }
 
@@ -469,6 +480,7 @@ export default function EmotionCognitiveDetailScreen() {
           rows={aiBannerRows}
           pending={aiRecovery.loading}
           onMore={() => openChat('帮我详细分析今天的皮质醇节律')}
+          bodyColor={theme.colors.textBody}
         />
 
         {/* ── 内容 ── */}
@@ -570,7 +582,8 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
   const debtPrev = computeSleepLoad(sleepWindowEndingAt(prevD.getTime())).debtH;
   return (
     <>
-      <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} />
+      {/* ★ 2026-10-08（用户：把详情页里昼夜节律的去掉灰色背景）：flat 去掉「节律分析」4 格与「持续性」的灰底 */}
+      <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} flat />
 
       {/* ★ v18.123 用户要求：去掉「情绪消耗摘要」与「疲劳摘要」两张卡，只保留下面的睡眠恢复摘要。 */}
         {/* 睡眠恢复摘要 */}
@@ -588,17 +601,24 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
   );
 }
 
-// ── 节律日历：单日异常判定（dys 形态异常；今日额外含偏高）。模块级缓存，年视图 365 天只算一次 ──
+// ── 节律日历：单日异常判定（与首页「昼夜节律」卡同一入口：proxy 实测槽 + judgeCortisolRhythm）。
+//   节律紊乱 或（今日且皮质醇偏高）才判异常；基线不足（days < MIN_BASELINE_DAYS）判不出 → 视为正常（绿）。
+//   模块级缓存，年视图 365 天只算一次。──
 const dayAbnormalCache = new Map<string, boolean>();
-function dayAbnormal(dk: string, isToday: boolean): boolean {
-  const key = `${dk}|${isToday}`;
+function dayAbnormal(dayMs: number, isToday: boolean): boolean {
+  const key = `${dayMs}|${isToday}`;
   const hit = dayAbnormalCache.get(key);
   if (hit != null) return hit;
   let v = false;
-  const samples = collectSamplesForDay(dk);
-  if (samples.length >= 4) {
-    const r = analyzeCortisol(samples, isToday ? 14 : 1);
-    v = r.today.dys || (isToday && r.today.high);
+  try {
+    const pbl = buildCortisolProxyBaseline(14, dayMs);
+    if (pbl.days >= MIN_BASELINE_DAYS) {
+      const px = buildCortisolProxyToday(pbl, { now: dayMs });
+      const j = judgeCortisolRhythm(px.vals, px.real);
+      v = j.label === '节律紊乱' || (isToday && j.label === '皮质醇偏高');
+    }
+  } catch {
+    v = false;
   }
   dayAbnormalCache.set(key, v);
   return v;
@@ -629,7 +649,7 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
         const days = daysInMonth(m);
         const abnCount = days.filter((d) => {
           const dk = dayKey(d.getTime());
-          return dayAbnormal(dk, dk === todayDk);
+          return dayAbnormal(d.getTime() + DAY_MS - 1, dk === todayDk);
         }).length;
         return {
           key: `${m.getFullYear()}-${m.getMonth() + 1}`,
@@ -650,7 +670,7 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
       for (let i = 0; i < days.length; i += 7) {
         rows.push(days.slice(i, i + 7).map((d) => {
           const dk = dayKey(d.getTime());
-          return { key: dk, label: String(d.getDate()), abn: dayAbnormal(dk, dk === todayDk), isToday: dk === todayDk };
+          return { key: dk, label: String(d.getDate()), abn: dayAbnormal(d.getTime() + DAY_MS - 1, dk === todayDk), isToday: dk === todayDk };
         }));
       }
       return { mode: 'days', head, rows };
@@ -734,37 +754,15 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
             </View>
           )}
           <View style={styles.summaryGrid}>
-            <SumCell label="平均压力水平" value={cur.cortisolMesor != null ? cur.cortisolMesor.toFixed(1) : '—'} sub="区间日均值" bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
+            <SumCell label="平均压力水平" value={cur.cortisolMesor != null ? cur.cortisolMesor.toFixed(1) : '—'} bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
             <SumCell label="平均峰值时刻" value={cur.cortisolPeakH != null ? `${String(Math.round(cur.cortisolPeakH)).padStart(2, '0')}:00` : '—'} sub={cur.cortisolPeakH != null ? (cur.cortisolPeakH >= 6 && cur.cortisolPeakH <= 11 ? '正常 06–11' : cur.cortisolPeakH < 6 ? '过早' : '偏晚') : '—'} bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
           </View>
-          <MesorSparkline data={cur.cortisolDaily} />
         </View>
       </Card>
 
-      {/* 情绪消耗区间聚合 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>情绪消耗 · 区间均值</Text>
-          <View style={styles.summaryGrid}>
-            <SumCell label="平均情绪消耗" value={cur.emotionLoad != null ? `${cur.emotionLoad.toFixed(0)}/100` : '—'} sub={prev.emotionLoad != null && cur.emotionLoad != null ? `上期 ${fmtDelta(cur.emotionLoad - prev.emotionLoad)}` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-            <SumCell label="日均压力事件" value={cur.eventsPerDay != null ? `${cur.eventsPerDay.toFixed(1)} 次` : '—'} sub={prev.eventsPerDay != null && cur.eventsPerDay != null ? `上期 ${fmtDelta(cur.eventsPerDay - prev.eventsPerDay, 1)}` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-          </View>
-          <View style={[styles.summaryGrid, { marginTop: theme.sp(1) }]}>
-            <SumCell label="平均恢复" value={cur.recoverySec != null ? `${cur.recoverySec.toFixed(0)}s` : '—'} sub={prev.recoverySec != null && cur.recoverySec != null ? `上期 ${fmtDelta(cur.recoverySec - prev.recoverySec)}s` : '对比上一周期'} bg={MOD_BG.emotion.bg} fg={MOD_BG.emotion.fg} />
-          </View>
-        </View>
-      </Card>
-
-      {/* 脑力消耗区间聚合 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>脑力消耗 · 区间均值</Text>
-          <View style={styles.summaryGrid}>
-            <SumCell label="平均疲劳度" value={cur.cogLoad != null ? `${cur.cogLoad.toFixed(0)}/100` : '—'} sub={prev.cogLoad != null && cur.cogLoad != null ? `上期 ${fmtDelta(cur.cogLoad - prev.cogLoad)}` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-            <SumCell label="平均恢复能力" value={cur.cogRecovery != null ? `${cur.cogRecovery.toFixed(0)}/100` : '—'} sub={prev.cogRecovery != null && cur.cogRecovery != null ? `上期 ${fmtDelta(cur.cogRecovery - prev.cogRecovery)}` : '对比上一周期'} bg={MOD_BG.mind.bg} fg={MOD_BG.mind.fg} />
-          </View>
-        </View>
-      </Card>
+      {/* ★ 2026-10-08（用户：周月年也把情绪消耗和脑力消耗去掉）：
+          周/月/年视图删掉「情绪消耗区间均值」「脑力消耗区间均值」两张卡，
+          只保留皮质醇区间聚合 + 睡眠恢复区间聚合。 */}
 
       {/* 睡眠恢复区间聚合 */}
       <Card padded={false}>
@@ -852,29 +850,6 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
   );
 }
 
-/** 皮质醇日均值迷你折线 */
-function MesorSparkline({ data }: { data: { date: string; mesor: number }[] }) {
-  if (data.length < 2) return null;
-  const w = 300, h = 56, pad = 6;
-  const vals = data.map((d) => d.mesor);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = max - min || 1;
-  const pts = data.map((d, i) => {
-    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
-    const y = h - pad - ((d.mesor - min) / span) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return (
-    <View style={{ marginTop: theme.sp(2) }}>
-      <Text style={styles.sparkLabel}>区间每日均值</Text>
-      <Svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        {/* v18.21：折线改 accentSolid——与皮质醇主曲线(#7C6AE0)/「当前进度」语义同源，不再借用认知疲劳的蜜色 */}
-        <Polyline points={pts.join(' ')} fill="none" stroke={theme.colors.accentSolid} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      </Svg>
-    </View>
-  );
-}
-
 function SumCell({ label, value, sub, bg, fg }: { label: string; value: string; sub?: string; bg?: string; fg?: string }) {
   return (
     <View style={[styles.sumCell, bg ? { backgroundColor: bg } : null]}>
@@ -936,6 +911,4 @@ const styles = StyleSheet.create({
   calLegendText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   levelDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1) },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
-
-  sparkLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(1) },
 });
