@@ -4,6 +4,7 @@ import { Audio } from 'expo-av';
 import BreathingEngine, { BREATH_PATTERNS, BreathStyle } from './BreathingEngine';
 import { theme } from '../../theme/theme';
 import Icon from '../Icon';
+import { addInterventionEntry } from '../../data/interventionLog';
 
 interface Props {
   patternKey: keyof typeof BREATH_PATTERNS;
@@ -29,6 +30,9 @@ export default function BreathingPlayer({
         if (r <= 1) {
           setPlaying(false);
           timerRef.current && clearInterval(timerRef.current);
+          // ★ 二十改：完整做完一次呼吸才记录（中途退出不记）——
+          //   圆环下叙事的 AI 层用「最近做过的动作」做事实输入（如「刚做完放松呼吸」）
+          addInterventionEntry('breath', `${pattern.label} · 做完`);
           onClose?.();
           return 0;
         }

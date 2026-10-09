@@ -148,7 +148,7 @@ export default function MiraBot({ size, autoAnimate = true }: Props) {
   return (
     <View style={[styles.wrap, { width: botSize, height: botSize }]}>
       <TouchableOpacity
-        activeOpacity={0.9}
+        activeOpacity={0.7}
         onPress={handleTap}
         onLongPress={handleLongPress}
         delayLongPress={800}

@@ -326,7 +326,7 @@ export default function EmotionQuickRecord() {
       {/* ── 悬浮按钮（明显、渐变胶囊 + 会动小团） ── */}
       {!visible && (
       <View style={[styles.fab, { bottom: insets.bottom + theme.sp(8) }]}>
-        <TouchableOpacity activeOpacity={0.92} onPress={open} style={styles.fabTouch}>
+        <TouchableOpacity activeOpacity={0.7} onPress={open} style={styles.fabTouch}>
           <LinearGradient
             colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
             start={{ x: 0, y: 0 }}
@@ -425,7 +425,7 @@ export default function EmotionQuickRecord() {
                   在 iOS 上会出现「占位但一字不画」的空白条 —— 这就是一直「没看见时间选择器」的真因。
                   现改成同屏「工作/运动/饮食」一样的可见组合，并把容器样式与文字样式拆开。 */}
               <View style={styles.timeRow}>
-                <TouchableOpacity activeOpacity={0.85} onPress={() => { setAtOffsetMin(null); setAtCustomMs(null); }}
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { setAtOffsetMin(null); setAtCustomMs(null); }}
                   style={[styles.timeChip, !isBackfill && styles.timeChipOn]}>
                   <Text style={[styles.timeChipText, !isBackfill && styles.timeChipTextOn]}>此刻</Text>
                 </TouchableOpacity>
@@ -434,7 +434,7 @@ export default function EmotionQuickRecord() {
                   return (
                     <TouchableOpacity
                       key={o.min}
-                      activeOpacity={0.85}
+                      activeOpacity={0.7}
                       onPress={() => { setAtOffsetMin(o.min); setAtCustomMs(null); }}
                       style={[styles.timeChip, sel && styles.timeChipOn]}
                     >
@@ -442,7 +442,7 @@ export default function EmotionQuickRecord() {
                     </TouchableOpacity>
                   );
                 })}
-                <TouchableOpacity activeOpacity={0.85} onPress={() => { setAtOffsetMin(null); openWheel(); revealWheel(); }}
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { setAtOffsetMin(null); openWheel(); revealWheel(); }}
                   style={[styles.timeChip, atCustomMs != null && styles.timeChipOn]}>
                   <Text style={[styles.timeChipText, atCustomMs != null && styles.timeChipTextOn]}>选时刻</Text>
                 </TouchableOpacity>
@@ -456,7 +456,7 @@ export default function EmotionQuickRecord() {
                       return (
                         <TouchableOpacity
                           key={d.off}
-                          activeOpacity={0.8}
+                          activeOpacity={0.7}
                           onPress={() => changeDay(d.off as 0 | 1)}
                           style={[styles.dayBtn, on && styles.dayBtnOn]}
                         >
@@ -483,7 +483,7 @@ export default function EmotionQuickRecord() {
                   return (
                     <TouchableOpacity
                       key={ev}
-                      activeOpacity={0.85}
+                      activeOpacity={0.7}
                       onPress={() => toggleEvent(ev)}
                       style={[styles.evChip, sel && styles.evChipOn]}
                     >
@@ -497,7 +497,7 @@ export default function EmotionQuickRecord() {
                   );
                 })}
                 {/* ＋添加：点开输入自己的事件 */}
-                <TouchableOpacity activeOpacity={0.8} onPress={() => setShowAdd((v) => !v)} style={[styles.evChip, styles.addChip]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowAdd((v) => !v)} style={[styles.evChip, styles.addChip]}>
                   <Icon name="plus" size={theme.fs(14)} color={mm.colors.purpleDeep} />
                   <Text style={styles.addChipText}>添加</Text>
                 </TouchableOpacity>
@@ -517,7 +517,7 @@ export default function EmotionQuickRecord() {
                     onSubmitEditing={confirmCustom}
                     maxLength={20}
                   />
-                  <TouchableOpacity activeOpacity={0.85} onPress={confirmCustom} style={styles.addConfirm}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={confirmCustom} style={styles.addConfirm}>
                     <Text style={styles.addConfirmText}>添加</Text>
                   </TouchableOpacity>
                 </View>
@@ -531,7 +531,7 @@ export default function EmotionQuickRecord() {
                     return (
                       <TouchableOpacity
                         key={t}
-                        activeOpacity={0.85}
+                        activeOpacity={0.7}
                         onPress={() => toggleCustom(t)}
                         style={[styles.evChip, sel && styles.evChipOn]}
                       >
@@ -545,7 +545,7 @@ export default function EmotionQuickRecord() {
 
             {/* 底部记录按钮（钉在抽屉底） */}
             <View style={[styles.foot, { paddingBottom: insets.bottom + theme.sp(2) }]}>
-              <TouchableOpacity activeOpacity={0.92} onPress={onRecord} style={styles.recWrap}>
+              <TouchableOpacity activeOpacity={0.7} onPress={onRecord} style={styles.recWrap}>
                 <LinearGradient
                   colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                   start={{ x: 0, y: 0 }}

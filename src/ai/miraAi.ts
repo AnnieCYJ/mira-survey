@@ -43,11 +43,13 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
     ? `【上次聊到的延续】\n情绪：${ctxSnap.moodLabel}；话题：${ctxSnap.recentThemes.join('、')}；笔记：${ctxSnap.summary}`
     : '';
 
-  const health = buildHealthSnapshot();
-
-  // 健康快照只在用户问了相关问题时才注入（省一大块）
+  // 健康快照只在用户问了相关问题时才**计算并**注入：
+  // buildHealthSnapshot 要同步跑皮质醇 30 天 / 激素 60 天 / 压力 / 准备度等重计算（全在 JS 线程阻塞），
+  // 且占 ~800 token prefill。闲聊 / 情绪 / 一般建议问题根本用不到它，
+  // 此前无条件先计算再丢弃 = 每次对话白卡几秒 + 多吃 prefill。按需计算后这部分问题首字延迟大幅下降。
   const healthKeywords = ['睡眠', '心率', '压力', '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '疲劳', '指标', '数据', '健康'];
   const needsHealth = healthKeywords.some(k => userText.includes(k));
+  const health = needsHealth ? buildHealthSnapshot() : '';
 
   const messages: { role: string; content: string }[] = [
     { role: 'system', content: lightSystem },

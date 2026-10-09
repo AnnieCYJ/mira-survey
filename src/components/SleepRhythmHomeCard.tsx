@@ -423,7 +423,7 @@ export default function SleepRhythmHomeCard({ onPress, ring: ringProp, bg, iconF
 
   if (!onPress) return body;
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress}>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
       {body}
     </TouchableOpacity>
   );

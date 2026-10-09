@@ -379,7 +379,14 @@ function getTrendBlock(): string {
   return parts.length ? parts.join('；') : '';
 }
 
+// ★ 性能：健康快照计算极重（皮质醇 30 天 intraday / 激素 60 天 / 压力 / 准备度），且数据按天更新、变化慢。
+//   缓存 60s：同一会话内连续提问、或洞察页 AI 分析与聊天并发时，避免重复跑这几秒的同步重算（省 JS 线程）。
+let _healthSnapCache: { at: number; value: string } | null = null;
+const HEALTH_SNAP_TTL_MS = 60 * 1000;
+
 export function buildHealthSnapshot(): string {
+  const now = Date.now();
+  if (_healthSnapCache && now - _healthSnapCache.at < HEALTH_SNAP_TTL_MS) return _healthSnapCache.value;
   const st = RingBle.getState();
   const daily = st.daily || {};
   const blocks: string[] = [];
@@ -481,11 +488,15 @@ export function buildHealthSnapshot(): string {
     );
   }
 
-  if (blocks.length === 0) return '';
+  if (blocks.length === 0) {
+    _healthSnapCache = { at: Date.now(), value: '' };
+    return '';
+  }
   // 每块独占一行、以「• 块名：」开头：早期把多块用「；」串成一段，模型会把「皮质醇节律」
   // 和「情绪脑力」等块名当成正文一起复述成一大段。分块换行后模型更容易按块分行输出。
-  return (
+  const value =
     '【用户健康数据（仅作解读参考；不要逐条播报原始数字，要给出结论与建议）】\n' +
-    blocks.join('\n')
-  );
+    blocks.join('\n');
+  _healthSnapCache = { at: Date.now(), value };
+  return value;
 }

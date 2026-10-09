@@ -433,7 +433,7 @@ export default function FoodScanScreen() {
             <View style={[styles.scanBtnWrap, { paddingBottom: Math.max(theme.sp(2), Math.round(insets.bottom * 0.4)) }]}>
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                   style={hs.sciPill}
                   onPress={() => (navigation as any).navigate('ToolTopic', { topic: 'nutrition' })}
                   accessibilityRole="button"
@@ -441,7 +441,7 @@ export default function FoodScanScreen() {
                 >
                   <Text style={hs.sciPillText}>科普</Text>
                 </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }} onPress={() => pickImage(true)}>
+                <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={() => pickImage(true)}>
                   <LinearGradient
                     colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -557,7 +557,7 @@ export default function FoodScanScreen() {
             {!scanning && hasResult ? (
               <View style={[styles.scanBtnWrap, { paddingBottom: Math.max(theme.sp(2), Math.round(insets.bottom * 0.4)) }]}>
                 <View style={dt.ctaRow}>
-                  <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }} onPress={() => { void onSave(); }}>
+                  <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={() => { void onSave(); }}>
                     <LinearGradient
                       colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                       start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -568,7 +568,7 @@ export default function FoodScanScreen() {
                     </LinearGradient>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     style={dt.retakePill}
                     onPress={() => { setItems([]); setPicked(new Set()); pickImage(true); }}
                     accessibilityRole="button" accessibilityLabel="重拍"

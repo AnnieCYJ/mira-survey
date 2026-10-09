@@ -253,7 +253,7 @@ export default function CycleMoonPhase({
           </Text>
           {onLogToday ? (
             <TouchableOpacity
-              activeOpacity={0.85}
+              activeOpacity={0.7}
               onPress={onLogToday}
               style={[styles.logBtnCompact, { borderColor: accent }]}
             >

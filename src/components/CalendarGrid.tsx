@@ -101,7 +101,7 @@ export default function CalendarGrid({ year, month, tasks, onDayPress, dayRefs }
 
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.7}
         disabled={isEmpty}
         style={[baseCellStyle, isLast && { marginRight: 0 }, styles.cellOuter]}
         onPress={() => { toggleFlip(idx); onDayPress?.(day); }}

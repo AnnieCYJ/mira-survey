@@ -8,7 +8,9 @@ import * as FileSystem from 'expo-file-system';
 
 export type InterventionKind =
   | 'grounding' | 'reframe' | 'gratitude' | 'activate'
-  | 'compliment' | 'savoring' | 'future' | 'outdoor';
+  | 'compliment' | 'savoring' | 'future' | 'outdoor'
+  // ★ 二十改：呼吸冥想的完成记录也进来 —— 圆环下叙事的 AI 层需要「最近做过的动作」做事实输入
+  | 'breath' | 'meditate';
 
 export interface InterventionEntry {
   kind: InterventionKind;

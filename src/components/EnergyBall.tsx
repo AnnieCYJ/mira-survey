@@ -310,14 +310,14 @@ const styles = StyleSheet.create({
   statusValue: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.orbTextInkSub,
-    marginTop: 2,
+    marginTop: 8, // ★ 十六改：2 → 8（用户「状态良好和底下的状态值、更新于几点，位置稍微拉开一点点距离」）
     fontWeight: theme.weight.medium,
   },
   // ★ v18.118：状态值下方的「数据更新于 HH:MM」——比状态值更弱一级（信息层级：值 > 时效）
   updatedAt: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.orbTextInkFaint,
-    marginTop: 1,
+    marginTop: 2, // ★ 十六改：1 → 2（与状态值同排呼吸，间距主要由上一行拉开）
     fontWeight: theme.weight.regular,
   },
 });

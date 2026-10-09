@@ -5,8 +5,9 @@
  *   柱 = 睡眠时长（左纵轴「睡眠 h」）／ 折线 = 睡眠恢复分（右纵轴「恢复」0–100）
  *   · 去掉柱顶数值标签，改由左纵轴刻度读取；
  *   · 两条参考虚线：时长个人均值（左轴 · limeDeep）、恢复分个人基线（右轴 · ink）；
- *   · 皮质醇异常天叠「红底白!」icon（复刻 StatusTrendDetailScreen 的 #E2554E 标法），
- *     且**可点击** → 回调 onAnomalyPress 弹出该日皮质醇异常说明。
+ *   · 恢复分线为平滑曲线（Catmull-Rom → bezier，与 StressTrendChart 同款）；
+ *   · 皮质醇异常天在**当天恢复分数据点**上叠「红底白!」标记（#E2554E，复刻
+ *     StatusTrendDetailScreen 标法），且**可点击** → 回调 onAnomalyPress 弹出该日皮质醇异常说明。
  *
  * 数据全部来自真实归档（sleepDaily）与真实算法（computeSleepScore / analyzeCortisol），
  * 缺口留空不插值、不编造。
@@ -79,16 +80,30 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
   // X 轴标签：≤12 全画，>12 取 7 个等距
   const labelIdx = n <= 12 ? points.map((_, i) => i) : Array.from({ length: 7 }, (_, i) => Math.floor((i * (n - 1)) / 6));
 
-  // 折线 + 面积：按「连续有分数」的区段切分，断点自然断开（缺口不插值）
+  // 曲线 + 面积：按「连续有分数」的区段切分，断点自然断开（缺口不插值）。
+  // ★ 2026-10-08（用户口径）：恢复分线改平滑曲线 —— Catmull-Rom spline → SVG cubic bezier
+  //   （与 StressTrendChart 同款算法），不再是硬折线。
+  const smoothOf = (idx: number[]): string => {
+    if (idx.length < 2) return idx.length === 1 ? `M ${xAt(idx[0]).toFixed(1)} ${yScore(points[idx[0]].score!).toFixed(1)}` : '';
+    const pts = idx.map((i) => ({ x: xAt(i), y: yScore(points[i].score!) }));
+    if (pts.length === 2) {
+      return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} L ${pts[1].x.toFixed(1)} ${pts[1].y.toFixed(1)}`;
+    }
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const p0 = pts[Math.max(0, k - 1)], p1 = pts[k], p2 = pts[k + 1], p3 = pts[Math.min(pts.length - 1, k + 2)];
+      const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return d;
+  };
   const runs: { line: string; area: string }[] = [];
   {
     let idx: number[] = [];
     const flush = () => {
       if (idx.length === 0) return;
-      let line = '';
-      idx.forEach((i, k) => {
-        line += (k === 0 ? 'M ' : ' L ') + xAt(i).toFixed(1) + ' ' + yScore(points[i].score!).toFixed(1);
-      });
+      const line = smoothOf(idx);
       const area = `${line} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${PAD_T + ch} L ${xAt(idx[0]).toFixed(1)} ${PAD_T + ch} Z`;
       runs.push({ line, area });
       idx = [];
@@ -169,22 +184,24 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
                 fill={mm.colors.purpleCore} stroke={theme.colors.cardBg} strokeWidth={1.2} />
             ))}
 
-            {/* 皮质醇异常 icon：红底白「!」+ 虚线连到当天数据点（可点击） */}
+            {/* 皮质醇异常标记（可点击）。
+                ★ 2026-10-08（用户反馈「红点挤成一条」）：不再把所有「!」钉在顶部同一行 ——
+                月视图 30 天里相邻异常天的图标 + 虚线会糊成一条红带。
+                改为标记**落在当天的恢复分数据点上**，随曲线散开；
+                ★ 2026-10-09（用户反馈「不要长条、要圆」）：去掉白垫底圈，改成「红底 + 白描边」的干净圆点，
+                无白圈光晕、不被看成带把的长条。 */}
             {anomIdx.map((i) => {
-              const x = xAt(i);
-              const topY = PAD_T + 4;
               const p = points[i];
               const hasScore = p.score != null;
+              const cx = xAt(i);
+              const cy = hasScore ? yScore(p.score!) : PAD_T + 10;
               return (
                 <G key={`a${i}`} onPress={onAnomalyPress ? () => onAnomalyPress(p) : undefined}>
-                  {hasScore && (
-                    <Line x1={x} y1={topY + 9} x2={x} y2={yScore(p.score!)}
-                      stroke={CORT_COLOR} strokeWidth={1} strokeDasharray="3 3" opacity={0.55} />
-                  )}
                   {/* 透明大热区，方便手指点中 */}
-                  <Circle cx={x} cy={topY} r={14} fill="transparent" />
-                  <Circle cx={x} cy={topY} r={7.5} fill={CORT_COLOR} />
-                  <SvgTextX x={x} y={topY} />
+                  <Circle cx={cx} cy={cy} r={13} fill="transparent" />
+                  {/* 干净圆形标记：红底 + 白描边（无白垫底圈） */}
+                  <Circle cx={cx} cy={cy} r={5} fill={CORT_COLOR} stroke={theme.colors.cardBg} strokeWidth={1.5} />
+                  {hasScore ? <SvgTextX x={cx} y={cy} /> : null}
                 </G>
               );
             })}
@@ -230,12 +247,12 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
   );
 }
 
-/** 「!」字形用 Svg Text 手绘太啰嗦，这里内联一个极简的感叹号（两条线） */
+/** 「!」字形：极简感叹号（一竖一点），按 r=5 的红点尺寸调的比例 */
 function SvgTextX({ x, y }: { x: number; y: number }) {
   return (
     <G>
-      <Line x1={x} y1={y - 3.6} x2={x} y2={y + 0.6} stroke="#FFFFFF" strokeWidth={1.7} strokeLinecap="round" />
-      <Circle cx={x} cy={y + 3.4} r={1} fill="#FFFFFF" />
+      <Line x1={x} y1={y - 2.9} x2={x} y2={y + 0.3} stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" />
+      <Circle cx={x} cy={y + 2.7} r={0.9} fill="#FFFFFF" />
     </G>
   );
 }

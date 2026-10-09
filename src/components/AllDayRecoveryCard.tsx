@@ -198,18 +198,13 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
         : `峰值 ${peakClock}`;
 
   // ═══════════════════════════════════════════════════════════════════════
-  // ★ 2026-10-06（洞察页专用，insightMode=true 时启用；首页那张完全不受影响）：
-  //   tile1「睡眠恢复」→「皮质醇活性」分值 + 峰值时间点（不编造，没数据显「—」）
-  //   tile2「作息类型」→ 皮质醇节律判读（节律正常 / 节律紊乱 / 皮质醇偏高 …）
+  // ★ 2026-10-08（用户实锤：洞察页这张卡「皮质醇活性」分值看不懂；直接给结论）：
+  //   简化为两枚指标块 ——
+  //     tile1「峰值时段」：直接写实测峰值时段（几点到几点，HH:MM–HH:MM），不挂分值；
+  //     tile2「皮质醇节律」：只给判读结论（节律正常 / 皮质醇偏高 / 节律紊乱），
+  //       不再堆「凭什么这么判」的副文案。没数据走「—」+ 空态引导。
+  //   下方曲线（皮质醇昼夜趋势）与 AI 分析块保留。
   // ═══════════════════════════════════════════════════════════════════════
-  /** 皮质醇活性均值（0-100，仅统计实测有效槽）；无数据 → null */
-  const cortAvg = useMemo(() => {
-    if (!cortReady) return null;
-    const v = proxy.vals.filter((x): x is number => x != null);
-    if (!v.length) return null;
-    return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
-  }, [cortReady, proxy.vals]);
-
   /**
    * ★ 2026-10-08（用户实锤：洞察页这张卡判「节律紊乱」，点进详情页大字却写「节律正常」）：
    *   判定收敛到 lib/cortisolProxy.judgeCortisolRhythm() —— 详情页 Hero 调**同一个函数**，
@@ -229,24 +224,22 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   //   tile 副文案、AI 文案与详情页 Hero 全部同一份数据、同一套阈值，不再各算一遍。
   const peakWindowText = judge.peakWindow;
 
-  /** 判读依据说明（给 tile 副文案，一句话说清凭什么这么判） */
+  /** ★ 2026-10-08（用户：节律卡别堆副文案，给结论就行）：
+   *   节律判读副文案只保留空态/断流引导；有结论时不再写「凭什么这么判」的细枝末节。 */
   const cortRhythmSub = useMemo(() => {
     if (dataStale) return '戒指暂无新数据';
     if (!judge.ready || !judge.label) return '暂无皮质醇数据';
-    return judge.sub;
+    return '';
   }, [judge, dataStale]);
 
-  /** 洞察页模式下的 tile1：皮质醇分值（不给"睡眠恢复"这个说不通的指标） */
-  const insightTile1Val = cortAvg != null ? String(cortAvg) : '—';
-  const insightTile1Unit = cortAvg != null ? '/100' : '';
+  /** 洞察页模式下的 tile1：直接显示实测峰值时段（几点到几点），不再给「皮质醇活性」分值 */
+  const insightTile1Val = peakWindowText ?? '—';
 
   const insightTile1Sub = dataStale
     ? '戒指暂无新数据'
-    : !cortReady
+    : !judge.ready || !peakWindowText
       ? '暂无皮质醇数据'
-      : peakWindowText
-        ? `峰值时段 ${peakWindowText}`
-        : '峰值 —';
+      : '';
 
   // ★ v18.156：档位词与 chip 走**同一个函数**（sleepPersonalized.sleepRecoveryTag）。
   //   此前这里自带一套 62/45 + 「恢复较好」措辞，而 chip 是 58/42 + 「高于平时」
@@ -335,16 +328,17 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
           {insightMode ? (
             <>
               <View style={styles.tile}>
-                <Text style={styles.tileLabel}>皮质醇活性</Text>
+                <Text style={styles.tileLabel}>峰值时段</Text>
                 <View style={styles.tileValRow}>
                   <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
                     {insightTile1Val}
                   </Text>
-                  <Text style={styles.tileUnit}>{insightTile1Unit}</Text>
                 </View>
-                <Text style={styles.tileSub} numberOfLines={1}>
-                  {insightTile1Sub}
-                </Text>
+                {insightTile1Sub ? (
+                  <Text style={styles.tileSub} numberOfLines={1}>
+                    {insightTile1Sub}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.tile}>
                 <Text style={styles.tileLabel}>皮质醇节律</Text>
@@ -353,9 +347,11 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                     {cortRhythmLabel ?? '—'}
                   </Text>
                 </View>
-                <Text style={styles.tileSub} numberOfLines={1}>
-                  {cortRhythmSub}
-                </Text>
+                {cortRhythmSub ? (
+                  <Text style={styles.tileSub} numberOfLines={1}>
+                    {cortRhythmSub}
+                  </Text>
+                ) : null}
               </View>
             </>
           ) : (
@@ -519,7 +515,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
 
   if (!onPress) return body;
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress}>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
       {body}
     </TouchableOpacity>
   );

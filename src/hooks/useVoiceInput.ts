@@ -16,6 +16,8 @@ export interface UseVoiceInput {
   start: () => Promise<void>;
   stop: () => Promise<string>;
   isAvailable: boolean;
+  /** 同步读取最新转写（不经过 React state/批处理，松手分支用它拿最新值，避免时序竞态） */
+  peek: () => string;
 }
 
 export function useVoiceInput(): UseVoiceInput {
@@ -57,6 +59,10 @@ export function useVoiceInput(): UseVoiceInput {
         lastResultTs = now;
         const best = e?.value?.reduce((a: string, b: string) =>
           (b.length > a.length ? b : a), '') ?? '';
+        // ★ 同步写 ref：onSpeechResults 常与 onSpeechEnd 同帧触发，而 stop() 在 onSpeechEnd 里
+        //   用 transcriptRef.current resolve 最终转写；若只靠 useEffect 更新 ref，会读到旧空串。
+        //   所以这里先同步更新 ref，再排期 setTranscript（驱动 UI）。
+        if (best) transcriptRef.current = best;
         if (best && best !== transcriptRef.current) setTranscript(best);
       }),
 
@@ -69,7 +75,8 @@ export function useVoiceInput(): UseVoiceInput {
             partialTimer = setTimeout(() => {
               partialTimer = null;
               const last = arr[arr.length - 1];
-              if (last && last !== transcriptRef.current) {
+              if (last) {
+                transcriptRef.current = last; // ★ 同步写 ref（见 onSpeechResults 注释）
                 lastPartialTs = Date.now();
                 setTranscript(last);
               }
@@ -78,7 +85,8 @@ export function useVoiceInput(): UseVoiceInput {
           return;
         }
         const last = arr[arr.length - 1];
-        if (last && last !== transcriptRef.current) {
+        if (last) {
+          transcriptRef.current = last; // ★ 同步写 ref
           lastPartialTs = now;
           setTranscript(last);
         }
@@ -119,6 +127,7 @@ export function useVoiceInput(): UseVoiceInput {
     }
     setError(null);
     setTranscript('');
+    transcriptRef.current = ''; // ★ 同步清空，避免上一轮转写残留到本轮
     try {
       VoiceModule.startSpeech('zh-CN', (err: any) => {
         if (err) {
@@ -153,5 +162,5 @@ export function useVoiceInput(): UseVoiceInput {
     });
   }, []);
 
-  return { state, transcript, error, start, stop, isAvailable };
+  return { state, transcript, error, start, stop, isAvailable, peek: () => transcriptRef.current };
 }

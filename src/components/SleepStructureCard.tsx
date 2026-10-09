@@ -68,7 +68,7 @@ export default function SleepStructureCard({
 
   return (
     <TouchableOpacity
-      activeOpacity={onPress ? 0.92 : 1}
+      activeOpacity={onPress ? theme.press.opacity : 1}
       disabled={!onPress}
       onPress={onPress}
       style={[styles.card, theme.shadow.card]}

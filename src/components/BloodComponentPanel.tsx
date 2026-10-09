@@ -116,7 +116,7 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
           return (
             <TouchableOpacity
               key={it.key}
-              activeOpacity={0.92}
+              activeOpacity={0.7}
               style={[styles.item, { backgroundColor: tone.tint, borderColor: tone.soft }]}
               onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
             >

@@ -73,13 +73,13 @@ export default function PeriodLogCard({ onPress }: { onPress?: () => void }) {
         <Text style={styles.saved}>
           {savedAt ? `已保存 · ${(() => { const d = new Date(savedAt); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; })()}` : '尚未记录今日'}
         </Text>
-        <TouchableOpacity activeOpacity={0.8} onPress={save} style={styles.saveBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={save} style={styles.saveBtn}>
           <Text style={styles.saveBtnText}>保存</Text>
         </TouchableOpacity>
       </View>
 
       {onPress ? (
-        <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={styles.moreBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={styles.moreBtn}>
           <Text style={styles.moreText}>查看周期日历 →</Text>
         </TouchableOpacity>
       ) : null}

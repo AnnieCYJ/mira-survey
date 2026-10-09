@@ -225,35 +225,73 @@ export interface CauseCtx {
   cortisolRhythm: string;
   /** 最近一晚睡眠评分 0-100 */
   sleepScore: number | null;
+  /** ★ 十九改：圆环当前状态档（充沛/平稳/偏低/不足）——把实时分值缝进分析，消除「激素低位 vs 状态良好」的观感矛盾 */
+  level?: string | null;
 }
 
 const HORMONE_TXT: Record<string, string> = {
-  经期: '激素都在低位，能量情绪本来就在低点',
-  卵泡期: '雌激素爬升，恢复力在变强',
-  排卵期: '雌激素峰值，本月状态高点',
-  黄体期: '孕激素升高，能量天生易偏低',
+  // ★ 十九改（用户参考 ISHO 句式：「你可以说处于经期阶段，雌激素、孕激素落在低点，情绪怎么样」）：
+  //   每条 = 点名阶段 + 点名激素 + 什么状态；不再回避相位开头（用户明确要这个）。
+  经期: '处于经期，雌激素和孕激素都落在低点',
+  卵泡期: '卵泡期，雌激素正一天天往上走',
+  排卵期: '排卵期前后，雌激素到了本月高点',
+  黄体期: '黄体期，孕激素升高，身体容易倦',
 };
 
 export function buildCauseNarrative(c: CauseCtx): string {
-  // v18.41 胶囊限 1.5 行（用户口径）：最多 2 条原因、逐条压短；
-  // 正常的皮质醇节律和好睡眠不占字数，只报「异常/不足」这类真原因。
+  // 胶囊限 1.5 行：最多 2 条、逐条压短。
+  // ★ 十九改：句式 = 「阶段+激素事实」×「圆环当前状态」→
+  //   · 低相位（经期/黄体期）× 状态好 → 归因给「底子稳」，鼓励；
+  //   · 低相位 × 状态差 → 先接住（累很正常），有真实异常（皮质醇/睡眠）则点名原因；
+  //   · 高相位 × 状态好 → 顺势鼓励去用这份状态；高相位 × 状态差 → 提醒恢复没跟上。
+  //   两套系统不再各说各话：分析文案永远与圆环档位自洽。
   const parts: string[] = [];
   const known = c.phaseLabel !== '未记录' && HORMONE_TXT[c.phaseLabel] != null;
+  const good = c.level === '充沛' || c.level === '平稳';
+  const low = c.level === '偏低' || c.level === '不足';
+  const lowPhase = c.phaseLabel === '经期' || c.phaseLabel === '黄体期';
+  const cortLate = c.cortisolRhythm === '偏晚' && c.cortisolPeak !== '—';
+  const cortFlat = c.cortisolRhythm === '扁平';
+  const badSleep = c.sleepScore != null && c.sleepScore < 60;
+
   if (known) {
-    // ★ v18.49：分析文案不再以相位名开头（黄体期/卵泡期…已在经期卡体现，不重复强调）
-    parts.push(`${HORMONE_TXT[c.phaseLabel]}`);
+    parts.push(HORMONE_TXT[c.phaseLabel]);
+    if (good) {
+      parts.push(
+        lowPhase
+          ? '但身体底子稳，状态照样在线呀'
+          : '激素正给力，放心把想做的安排上',
+      );
+    } else if (low) {
+      if (cortLate) {
+        parts.push(`皮质醇高峰拖到 ${c.cortisolPeak}，上午会慢一些`);
+      } else if (cortFlat) {
+        parts.push('皮质醇曲线偏平，能量起不来');
+      } else if (badSleep) {
+        parts.push(`昨晚睡眠 ${Math.round(c.sleepScore!)} 分，恢复没跟上`);
+      } else {
+        parts.push(
+          lowPhase
+            ? '赶上激素低位，累很正常，对自己温柔点'
+            : '激素本该在上行，别硬撑，早点歇',
+        );
+      }
+    }
+  } else {
+    // 相位未记录：报真实异常（皮质醇/睡眠），与旧口径一致
+    if (cortLate) {
+      parts.push(`皮质醇高峰拖到 ${c.cortisolPeak}，上午进入状态慢`);
+    } else if (cortFlat) {
+      parts.push('皮质醇曲线偏平，一天里能量起不来');
+    }
+    if (badSleep) {
+      parts.push(`昨晚睡眠只有 ${Math.round(c.sleepScore!)} 分，恢复没跟上`);
+    }
   }
-  if (c.cortisolRhythm === '偏晚' && c.cortisolPeak !== '—') {
-    parts.push(`皮质醇晨峰 ${c.cortisolPeak} 偏晚`);
-  } else if (c.cortisolRhythm === '扁平') {
-    parts.push('皮质醇节律偏扁平');
-  }
-  if (c.sleepScore != null && c.sleepScore < 60) {
-    parts.push(`昨晚睡眠 ${Math.round(c.sleepScore)} 分，恢复不足`);
-  }
+
   if (parts.length === 0) {
     // 无相位也无异常 → 报唯一可说的好消息，一句话
-    return c.sleepScore != null ? `昨晚睡眠 ${Math.round(c.sleepScore)} 分，节律平稳。` : '';
+    return c.sleepScore != null ? `昨晚睡眠 ${Math.round(c.sleepScore)} 分，身体恢复得不错。` : '';
   }
   return parts.slice(0, 2).join('；') + '。';
 }

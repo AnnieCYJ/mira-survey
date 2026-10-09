@@ -106,7 +106,7 @@ function SegTabs({
         return (
           <TouchableOpacity
             key={o.key}
-            activeOpacity={0.75}
+            activeOpacity={0.7}
             onPress={() => {
               if (!on) onChange(o.key);
             }}
@@ -313,7 +313,7 @@ export default function CycleCalendarScreen() {
       <Text style={styles.recordHint}>
         {log?.lastPeriodStart ? `上次经期：${log.lastPeriodStart}` : '还没有经期记录'}
       </Text>
-      <TouchableOpacity style={styles.recordBtn} activeOpacity={0.85} onPress={openRecord}>
+      <TouchableOpacity style={styles.recordBtn} activeOpacity={0.7} onPress={openRecord}>
         {/* ★ 2026-10-07（用户：要用之前的渐变颜色）—— 沿用洞察页卡片那枚按钮的 lime→粉 渐变 */}
         <BgGradient
           colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
@@ -715,6 +715,11 @@ function TrendCard({
   return (
     <View style={styles.estCard}>
       {head}
+      {showToday ? (
+        <View style={[styles.todayRow, { marginBottom: theme.sp(1) }]}>
+          <Text style={styles.todayText}>今天 · 第 {todayCd} 天</Text>
+        </View>
+      ) : null}
       <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         <Defs>
           <LinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -747,11 +752,6 @@ function TrendCard({
           <Circle key={`pt-${i}`} cx={p.x} cy={p.y} r={2.4} fill={lineColor} />
         ))}
       </Svg>
-      {showToday ? (
-        <View style={styles.todayRow}>
-          <Text style={styles.todayText}>今天 · 第 {todayCd} 天</Text>
-        </View>
-      ) : null}
       <View style={styles.estAxis}>
         {axisLabels.map((cd, i) => (
           <Text key={`${cd}-${i}`} style={styles.estAxisText}>
@@ -814,7 +814,7 @@ function MonthGrid({
           const logged = periodDays[key];
           const isPeriodDay = ph === 'period' || !!(logged && logged.flow);
           return (
-            <TouchableOpacity key={key} activeOpacity={0.8} onPress={() => onPick(key)} style={styles.cell}>
+            <TouchableOpacity key={key} activeOpacity={0.7} onPress={() => onPick(key)} style={styles.cell}>
               <View
                 style={[
                   styles.dayBox,
@@ -909,7 +909,7 @@ function DaySheet({
           </View>
 
           <TouchableOpacity
-            activeOpacity={0.8}
+            activeOpacity={0.7}
             style={styles.saveBtn}
             onPress={() => {
               onSave({ date: dateKey, flow, pain });
@@ -1028,7 +1028,7 @@ const styles = StyleSheet.create({
   estAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(0.5) },
   estAxisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   /* ★ 方案一：今天虚线标记的文字（右对齐） */
-  todayRow: { alignItems: 'flex-end', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(0.5) },
+  todayRow: { alignItems: 'flex-start', paddingHorizontal: theme.sp(0.5) },
   todayText: { fontSize: theme.fontSize.micro, color: theme.colors.accentText },
   methodCard: {
     backgroundColor: theme.colors.cardBg,

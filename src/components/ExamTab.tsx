@@ -108,7 +108,7 @@ export default function ExamTab() {
                     key={s.v}
                     style={[styles.segBtn, sex === s.v && styles.segBtnOn]}
                     onPress={() => setSex(s.v)}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                   >
                     <Text style={[styles.segText, sex === s.v && styles.segTextOn]}>{s.label}</Text>
                   </TouchableOpacity>
@@ -116,7 +116,7 @@ export default function ExamTab() {
               </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.save} onPress={generate} disabled={saving} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.save} onPress={generate} disabled={saving} activeOpacity={0.7}>
             {/* v10：主按钮统一 lime→粉 渐变 */}
             <LinearGradient
               colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}

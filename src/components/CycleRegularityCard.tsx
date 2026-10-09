@@ -70,6 +70,21 @@ export default function CycleRegularityCard({
   const gradeColor = (g: string) =>
     g === '规律' ? theme.colors.accentSolid : g === '偏不规律' ? mm.colors.purpleMid : mm.colors.roseDeep;
 
+  /** 把「天」映射到 20–40 的标尺百分比（与区间条共用） */
+  const normPct = (d: number) => {
+    const c = Math.max(SCALE_MIN, Math.min(SCALE_MAX, d));
+    return ((c - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
+  };
+  /** 用大白话解释规律性档位（参考 Flo / Oura 的判读语气） */
+  const gradePlain = (g: string | null, min: number, max: number): string => {
+    if (g === '规律') return `你的周期大多落在 ${min}–${max} 天之间，比较稳定。`;
+    if (g === '偏不规律') return `你的周期长度有一定波动（${min}–${max} 天），多数女性也会有类似变化。`;
+    if (g === '不规律') return `你的周期长度波动较大（${min}–${max} 天），可以留意作息与压力是否稳定。`;
+    return '';
+  };
+  /** 是否整体落在正常区间 21–35 天 */
+  const inRange = data.min >= 21 && data.max <= 35;
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>周期规律性</Text>
@@ -82,54 +97,75 @@ export default function CycleRegularityCard({
         </Text>
       ) : (
         <>
-          {/* 概览：平均 / 波动 / 档位 */}
-          <View style={styles.sumRow}>
-            <View style={styles.sumCol}>
-              <Text style={styles.sumValue}>{Math.round(data.mean)}</Text>
-              <Text style={styles.sumLabel}>平均周期（天）</Text>
+          {/* ① 判读 Hero：档位徽章 + 一句大白话 */}
+          <View style={styles.hero}>
+            <View style={[styles.heroBadge, data.grade ? { backgroundColor: gradeColor(data.grade) } : null]}>
+              <Text style={styles.heroBadgeText}>{data.grade ?? '—'}</Text>
             </View>
-            <View style={styles.sumCol}>
-              <Text style={styles.sumValue}>±{data.std.toFixed(1)}</Text>
-              <Text style={styles.sumLabel}>波动（天）</Text>
+            <Text style={styles.heroText}>{gradePlain(data.grade, data.min, data.max)}</Text>
+          </View>
+
+          {/* ② 主指标：平均周期长度（大字）+ 正常区间参照 */}
+          <View style={styles.mainStat}>
+            <Text style={styles.mainValue}>{Math.round(data.mean)}</Text>
+            <Text style={styles.mainUnit}>天</Text>
+            <Text style={styles.mainLabel}>平均周期长度（正常区间 21–35 天）</Text>
+          </View>
+
+          {/* ③ 次级指标：波动 / 最短–最长 / 周期数 */}
+          <View style={styles.subRow}>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>±{data.std.toFixed(1)}</Text>
+              <Text style={styles.subLabel}>波动（天）</Text>
             </View>
-            <View style={styles.sumCol}>
-              <Text style={[styles.sumValue, data.grade ? { color: gradeColor(data.grade) } : null]}>
-                {data.grade ?? '—'}
-              </Text>
-              <Text style={styles.sumLabel}>规律性</Text>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>{data.min}–{data.max}</Text>
+              <Text style={styles.subLabel}>最短–最长（天）</Text>
+            </View>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>{data.n}</Text>
+              <Text style={styles.subLabel}>完整周期</Text>
             </View>
           </View>
 
-          <Text style={styles.subStat}>
-            最短 {data.min} 天 · 最长 {data.max} 天 · 共 {data.n} 个完整周期
+          {/* ④ 区间条：把你的 min–max 落在 20–40 标尺上，绿色=正常区间 */}
+          <View style={styles.rangeBox}>
+            <View style={styles.rangeTrack}>
+              <View style={[styles.rangeNormal, { left: `${normPct(21)}%`, width: `${normPct(35) - normPct(21)}%` }]} />
+              <View
+                style={[
+                  styles.rangeFill,
+                  { left: `${normPct(data.min)}%`, width: `${Math.max(normPct(data.max) - normPct(data.min), 2)}%` },
+                ]}
+              />
+              <Text style={styles.rangeBandLabel}>正常区间 21–35 天</Text>
+            </View>
+            <View style={styles.rangeScale}>
+              <Text style={styles.rangeScaleText}>20</Text>
+              <Text style={styles.rangeScaleText}>30</Text>
+              <Text style={styles.rangeScaleText}>40</Text>
+            </View>
+          </View>
+          <Text style={styles.rangeNote}>
+            你的周期长度 {data.min}–{data.max} 天，{inRange ? '处于正常区间' : '部分超出正常区间'}。
           </Text>
 
-          {/* 逐周期：起点 / 长度条 / 长度 / 晚·早 */}
+          {/* ⑤ 逐周期明细：日期 / 长度 / 准时·晚·早 */}
+          <Text style={styles.listTitle}>逐周期</Text>
           <View style={styles.list}>
             {data.recs.slice(0, MAX_ROWS).map((r) => {
               const dev = r.length - data.mean;
               const late = dev >= 0.75;
               const early = dev <= -0.75;
               const dt = parseDate(r.start);
-              const pct = Math.max(8, Math.min(100, ((r.length - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
               return (
                 <View key={r.start} style={styles.row}>
-                  <View style={styles.rowDateCol}>
-                    <Text style={styles.rowDate}>
-                      {dt.getMonth() + 1}月{dt.getDate()}日
-                    </Text>
-                    {r.symptomDays > 0 ? (
-                      <Text style={styles.rowSub}>症状 {r.symptomDays} 天</Text>
-                    ) : null}
-                  </View>
-                  <View style={styles.track}>
-                    <View style={[styles.fill, { width: `${pct}%` }]} />
-                  </View>
-                  <Text style={styles.rowLen}>{r.length}天</Text>
+                  <Text style={styles.rowDate}>{dt.getMonth() + 1}月{dt.getDate()}日</Text>
+                  <Text style={styles.rowLen}>{r.length} 天</Text>
                   <Text
                     style={[
                       styles.rowDev,
-                      late ? { color: mm.colors.roseDeep } : early ? { color: theme.colors.accentText } : null,
+                      late ? { color: mm.colors.roseDeep } : early ? { color: theme.colors.accentText } : { color: theme.colors.textSub },
                     ]}
                   >
                     {late ? `晚 ${Math.round(dev)} 天` : early ? `早 ${Math.round(-dev)} 天` : '准时'}
@@ -165,26 +201,57 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
-  sumRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  sumCol: { flex: 1, alignItems: 'center', gap: theme.sp(0.5) },
-  sumValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
-  sumLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  subStat: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  list: { gap: theme.sp(1.5) },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
-  rowDateCol: { width: theme.sp(20) },
-  rowDate: { fontSize: theme.fontSize.micro, color: theme.colors.textBody },
-  rowSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, opacity: 0.9 },
-  track: {
-    flex: 1,
-    height: theme.sp(2),
+  // ① 判读 Hero
+  hero: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
+  heroBadge: {
+    paddingHorizontal: theme.sp(3),
+    paddingVertical: theme.sp(1),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.emptyFill,
+  },
+  heroBadgeText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#fff' },
+  heroText: { flex: 1, fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.5, color: theme.colors.textBody },
+  // ② 主指标
+  mainStat: { alignItems: 'center', gap: theme.sp(0.5), marginTop: theme.sp(0.5) },
+  mainValue: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.h1 },
+  mainUnit: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginTop: -theme.sp(1) },
+  mainLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ③ 次级指标
+  subRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  subCol: { flex: 1, alignItems: 'center', gap: theme.sp(0.5) },
+  subValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
+  subLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ④ 区间条
+  rangeBox: { gap: theme.sp(0.75), marginTop: theme.sp(0.5) },
+  rangeTrack: {
+    position: 'relative',
+    height: theme.sp(6),
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.emptyFill,
     overflow: 'hidden',
   },
-  fill: { height: '100%', borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSolid },
-  rowLen: { width: theme.sp(9), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  rowDev: { width: theme.sp(14), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  rangeNormal: { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(120,190,120,0.30)' },
+  rangeFill: { position: 'absolute', top: 0, bottom: 0, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSolid },
+  rangeBandLabel: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 0,
+    bottom: 0,
+    textAlignVertical: 'center',
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    includeFontPadding: false,
+  },
+  rangeScale: { flexDirection: 'row', justifyContent: 'space-between' },
+  rangeScaleText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  rangeNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ⑤ 逐周期明细
+  listTitle: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  list: { gap: theme.sp(1.5) },
+  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  rowDate: { width: theme.sp(20), fontSize: theme.fontSize.micro, color: theme.colors.textBody },
+  rowLen: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textBody },
+  rowDev: { width: theme.sp(16), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   more: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   foot: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.6, color: theme.colors.textSub, opacity: 0.9 },
 });

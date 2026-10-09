@@ -29,8 +29,8 @@ const RIM_W = 2.5;
  * 全 App 唯一「五色环绕」元素：白雾遮罩 + 白底 pill + 五色流动外圈 + 紫 mic/波柱。
  */
 export default function VoiceQuickOverlay() {
-  const { visible, onReleaseRef } = useVoiceTrigger();
-  const { state, transcript, start, stop } = useVoiceInput();
+  const { visible, inlineMode, onReleaseRef, setLiveText } = useVoiceTrigger();
+  const { state, transcript, start, stop, peek } = useVoiceInput();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   // 外圈流动：0 → -PILL_W（一个周期），6s linear 循环
   const flowAnim = useRef(new Animated.Value(0)).current;
@@ -84,14 +84,27 @@ export default function VoiceQuickOverlay() {
       wavesRef.forEach((w) => w.setValue(0.9));
       if (startedRef.current) {
         startedRef.current = false;
-        const snapshot = transcript;
-        stop().then((t) => {
-          const finalText = (t || snapshot).trim();
-          console.log('[VoiceOverlay] final transcript:', finalText);
-          if (finalText && onReleaseRef.current) {
-            onReleaseRef.current(finalText);
-          }
-        });
+        // ★ 2026-10-08：松手**即刻跳转**，不再等识别器收尾。
+        //   旧实现 `stop().then(...)` 必须等原生 onSpeechEnd 才导航，而 useVoiceInput.stop()
+        //   有 800ms 兜底 —— 那段「手已松开、界面纹丝不动」的空等，就是「跳转太慢/不丝滑」的根因。
+        //   现在：stopSpeech 照常发出（录音立刻结束），但导航用**当下已有的实时转写**同步触发，
+        //   延迟只取决于松手这一刻本身；只有实时转写为空（极端情况）才退回等 stop() 的最终结果。
+        // ★ 2026-10-08 补丁：用 `peek()` 读同步 ref 的最新转写，而非 React state（state 在
+        //   onSpeechResults/onSpeechEnd 同帧触发时可能仍是旧空串）→ 根治「松手后转写为空、跳转没文字」。
+        const snapshot = (peek() || transcript || '').trim();
+        const done = stop().catch(() => peek() || ''); // 异步收尾，不阻塞跳转
+        if (snapshot) {
+          console.log('[VoiceOverlay] 松手即跳（用实时转写）:', snapshot);
+          if (onReleaseRef.current) onReleaseRef.current(snapshot);
+        } else {
+          done.then((t) => {
+            const finalText = (t || peek() || '').trim();
+            console.log('[VoiceOverlay] 兜底最终转写:', finalText);
+            // ★ 即便最终仍为空（识别彻底失败），也照常跳转 VoiceChat，避免「松手后毫无反应」的死局；
+            //   进入后用户可在 AI 页直接打字。
+            if (onReleaseRef.current) onReleaseRef.current(finalText);
+          });
+        }
       }
     }
 
@@ -102,8 +115,16 @@ export default function VoiceQuickOverlay() {
   const pillBottom = theme.layout.tabBarHeight + theme.sp(4) + 4;
   const isRecording = state === 'listening';
 
+  // ★ inlineMode（首页）：浮层不显示，实时转写改为推给常驻 AI 气泡（HomeAiBubble）显示。
+  //   松手后（visible=false）**保留**最后一句转写（不再清空），供 close() 写入 spokenText，
+  //   使「从 VoiceChat 返回首页」时气泡仍显示「你说的话」；下一次 open() 会主动清空 liveText。
+  useEffect(() => {
+    if (!inlineMode) return;
+    setLiveText(transcript || '');
+  }, [inlineMode, visible, transcript, setLiveText]);
+
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal visible={visible && !inlineMode} transparent animationType="fade" statusBarTranslucent>
       {/* v20 §9.9：遮罩 = 白雾（全稿白底系统，留灰块会发闷；白雾下五色才鲜亮） */}
       <View style={styles.mask} pointerEvents="none" />
 

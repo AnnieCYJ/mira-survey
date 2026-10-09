@@ -54,7 +54,7 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
   const fam = pastelFamilyFor(metric.key);
 
   return (
-    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
       <Card>
       {/* 顶部：名称 + 状态标签（无按钮，按钮统一置底） */}
       <View style={styles.top}>

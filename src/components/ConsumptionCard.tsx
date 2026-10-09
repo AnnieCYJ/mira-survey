@@ -226,7 +226,7 @@ export default function ConsumptionCard({
           {segs.map((s) => (
             <TouchableOpacity
               key={s.key}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
               disabled={!onNav}
               onPress={() => onNav?.(s.nav)}
               accessibilityRole="button"

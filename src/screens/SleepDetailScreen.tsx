@@ -20,7 +20,7 @@
  *     异常判定口径与 `EmotionCognitiveDetailScreen.dayAbnormal` 一致：
  *     今天用 14 天基线（可判偏高），历史日 baselineDays=1（偏高不可信，只判节律紊乱）。
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useDeferredValue } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -97,17 +97,17 @@ function toRecords(sleepDaily: Record<string, SleepSummary>): { key: string; dat
  *   虽然柱子是空的，但横轴刻度、网格、统计分母全是未来的日子，视觉上就是「画上了」。
  *   ⚠ 只截断**当前周期**：anchor 在过去时（翻日历看历史周/月/年）窗口本来就全在过去，不受影响。
  */
-function windowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
+function windowOf(dRange: RangeKey, anchor: Date): { start: Date; end: Date } {
   const now = new Date();
   const clampEnd = (e: Date): Date => (e.getTime() > now.getTime() ? now : e);
-  if (range === 'week') return { start: startOfWeek(anchor), end: clampEnd(endOfWeek(anchor)) };
-  if (range === 'month') {
+  if (dRange === 'week') return { start: startOfWeek(anchor), end: clampEnd(endOfWeek(anchor)) };
+  if (dRange === 'month') {
     const y = anchor.getFullYear(), m = anchor.getMonth();
     const s = new Date(y, m, 1);
     const e = new Date(y, m + 1, 0); e.setHours(23, 59, 59, 999);
     return { start: s, end: clampEnd(e) };
   }
-  if (range === 'year') {
+  if (dRange === 'year') {
     const y = anchor.getFullYear();
     const s = new Date(y, 0, 1);
     const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
@@ -118,18 +118,18 @@ function windowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {
   return { start: a, end: clampEnd(e) };
 }
 /** 上一等长周期窗口（用于「环比上一周期」对比） */
-function prevWindowOf(range: RangeKey, anchor: Date): { start: Date; end: Date } {  if (range === 'week') {
+function prevWindowOf(dRange: RangeKey, anchor: Date): { start: Date; end: Date } {  if (dRange === 'week') {
     const s = startOfWeek(anchor), e = endOfWeek(anchor);
     s.setDate(s.getDate() - 7); e.setDate(e.getDate() - 7);
     return { start: s, end: e };
   }
-  if (range === 'month') {
+  if (dRange === 'month') {
     const y = anchor.getFullYear(), m = anchor.getMonth();
     const s = new Date(y, m - 1, 1);
     const e = new Date(y, m, 0); e.setHours(23, 59, 59, 999);
     return { start: s, end: e };
   }
-  if (range === 'year') {
+  if (dRange === 'year') {
     const y = anchor.getFullYear() - 1;
     const s = new Date(y, 0, 1);
     const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
@@ -198,6 +198,9 @@ export default function SleepDetailScreen() {
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
   const [range, setRange] = useState<RangeKey>('day');
+  // ★ B4（2026-10-08）：range 的「延迟版」—— 切档时 chip 高亮即时（用 range），
+  //   重计算与图表用 dRange 稍后跟上，消除「点了要等一段」的体感。
+  const dRange = useDeferredValue(range);
   const [anchor, setAnchor] = useState<Date>(new Date());
   // ★ 皮质醇异常说明弹层（双轴图 icon 点击 / 节律卡「整体水平」点击 共用）
   const [cortSheet, setCortSheet] = useState<{ kind: CortAnomKind; date: string } | null>(null);
@@ -222,13 +225,13 @@ export default function SleepDetailScreen() {
   const hasData = useMemo(() => {
     const recs = toRecords(sleepDaily);
     if (recs.length === 0) return false;
-    if (range === 'day') {
+    if (dRange === 'day') {
       const dk = sleepDayKey(anchor);
       return recs.some((r) => r.key === dk);
     }
-    const win = windowOf(range, anchor);
+    const win = windowOf(dRange, anchor);
     return recs.some((r) => r.date.getTime() >= win.start.getTime() && r.date.getTime() <= win.end.getTime());
-  }, [range, sleepDaily, anchor]);
+  }, [dRange, sleepDaily, anchor]);
 
   /* ══════════════ v9 原型移植 · 以下全部接真实数据 ══════════════ */
 
@@ -255,10 +258,10 @@ export default function SleepDetailScreen() {
 
   /** 当前区间的取点序列（周=每天 / 月=每天 / 年=每月均值），供双轴图使用 */
   const dualPoints: DualPoint[] = useMemo(() => {
-    if (range === 'day') return [];
+    if (dRange === 'day') return [];
     const recs = toRecords(sleepDaily);
     const map = new Map(recs.map((r) => [dayKey(r.date), r.rec]));
-    const isYear = range === 'year';
+    const isYear = dRange === 'year';
 
     if (isYear) {
       // 年 = 12 个月的月内均值（对齐原型「年用月平均」）
@@ -298,7 +301,7 @@ export default function SleepDetailScreen() {
     }
 
     // 周 / 月：区间内每天一根
-    const win = windowOf(range, anchor);
+    const win = windowOf(dRange, anchor);
     const out: DualPoint[] = [];
     const cur = new Date(win.start); cur.setHours(0, 0, 0, 0);
     const end = new Date(win.end); end.setHours(0, 0, 0, 0);
@@ -308,7 +311,7 @@ export default function SleepDetailScreen() {
       const c = cortKindOfDay(dk);
       out.push({
         key: dk,
-        label: range === 'week'
+        label: dRange === 'week'
           ? ['日', '一', '二', '三', '四', '五', '六'][cur.getDay()]
           : String(cur.getDate()),
         durationMin: rec && rec.total > 0 ? rec.total : null,
@@ -320,7 +323,7 @@ export default function SleepDetailScreen() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, sleepDaily, anchor, cortKindCache]);
+  }, [dRange, sleepDaily, anchor, cortKindCache]);
 
   /** 日视图：睡眠分析卡 + 生理信号（全部真实归档字段） */
   const dayAnalysis = useMemo<{ day: DaySleepAnalysis | null; segs: SleepSegment[] | null; phys: DayPhys }>(() => {
@@ -358,13 +361,13 @@ export default function SleepDetailScreen() {
   /** 多维度对比：当前 vs **上一同量级周期**
    *  ★ 周→上周 / 月→上月 / 年→去年（绝不把上周·上月·去年三个口径并列，维度会错位） */
   const cmpRows = useMemo<MetricRow[]>(() => {
-    if (range === 'day') return [];
+    if (dRange === 'day') return [];
     const recs = toRecords(sleepDaily);
     if (recs.length === 0) return [];
 
-    const cw = windowOf(range, anchor);
+    const cw = windowOf(dRange, anchor);
     const cur = statsOf(recs, cw.start, cw.end, (dk) => cortKindOfDay(dk).kind);
-    const pw = prevWindowOf(range, anchor);   // 上一周 / 上月 / 去年
+    const pw = prevWindowOf(dRange, anchor);   // 上一周 / 上月 / 去年
     const prev = statsOf(recs, pw.start, pw.end, (dk) => cortKindOfDay(dk).kind);
 
     const pick = <T,>(get: (s: Stats) => T | null) => ({ cur: get(cur), prev: get(prev) });
@@ -391,11 +394,11 @@ export default function SleepDetailScreen() {
       mk('deep', '深睡占比', '%', 'high', (s) => s.deepPct),
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, sleepDaily, anchor, cortKindCache]);
+  }, [dRange, sleepDaily, anchor, cortKindCache]);
 
-  /** 本周期 / 参照周期 的表头文案（随 range 变） */
-  const cmpLabels = range === 'week' ? { cur: '本周', prev: '上周' }
-    : range === 'month' ? { cur: '本月', prev: '上月' }
+  /** 本周期 / 参照周期 的表头文案（随 dRange 变） */
+  const cmpLabels = dRange === 'week' ? { cur: '本周', prev: '上周' }
+    : dRange === 'month' ? { cur: '本月', prev: '上月' }
     : { cur: '本年', prev: '去年' };
 
   const cortAbnDaysCur = useMemo(
@@ -422,22 +425,22 @@ export default function SleepDetailScreen() {
           <Icon name="chevronLeft" size={22} color={mm.colors.ink} />
         </TouchableOpacity>
         <View style={styles.titleWrap}>
-          <Text style={styles.title}>睡眠节律</Text>
-          <Text style={styles.unit}>睡眠恢复 · 整夜分期 · 睡眠节律</Text>
+          <Text style={styles.title}>睡眠恢复</Text>
+          <Text style={styles.unit}>整夜分期 · 睡眠节律</Text>
         </View>
       </View>
 
-      {/* ★ 睡眠恢复分 hero：置于日周月年「上方」，且仅日视图显示（对齐原型 v9） */}
-      {range === 'day' ? (
-        <SleepRecoveryHero anchorMs={anchor.getTime()} />
-      ) : null}
+      {/* 日视图：睡眠恢复分主结论（SleepRecoveryHero，对齐原型 v9）。
+          周/月/年的区间均值改回图表卡头右上角（2026-10-09 用户反馈顶部读数空白，
+          回退到原先可用的卡头位置，保证一定有数值）。 */}
+      {dRange === 'day' ? <SleepRecoveryHero anchorMs={anchor.getTime()} /> : null}
 
       <RangeSwitch value={range} onChange={setRange} />
 
       {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
-      <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
+      <DateAnchorPicker value={anchor} onChange={setAnchor} range={dRange} />
 
-      {range === 'day' ? (
+      {dRange === 'day' ? (
         /* 日：睡眠分析（可折叠，含整夜分期 + 生理信号子折叠）+ 睡眠节律（皮质醇） */
         <>
           <SleepAnalysisCard
@@ -466,9 +469,10 @@ export default function SleepDetailScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.mTitle}>睡眠与恢复</Text>
                   <Text style={styles.cardSubLine}>
-                    {range === 'week' ? '近 7 天' : range === 'month' ? '近 30 天' : '近 12 月'} · 柱 = 睡眠时长 · 线 = 恢复分
+                    {dRange === 'week' ? '近 7 天' : dRange === 'month' ? '近 30 天' : '近 12 月'} · 柱 = 睡眠时长 · 线 = 恢复分
                   </Text>
                 </View>
+                {/* ★ 2026-10-09 回退：平均恢复分放回卡头右上角（顶部 hero 在你真机渲染空白） */}
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.dualAvgVal}>{avgScore != null ? String(Math.round(avgScore)) : '—'}</Text>
                   <Text style={styles.cardSubLine}>平均恢复分</Text>
@@ -497,7 +501,7 @@ export default function SleepDetailScreen() {
       />
 
       {/* ★ 多维度对比：当前 vs 上一同量级周期（周→上周 / 月→上月 / 年→去年）—— 周/月/年显示 */}
-      {range !== 'day' && cmpRows.length > 0 ? (
+      {dRange !== 'day' && cmpRows.length > 0 ? (
         <View style={styles.mCard}>
           <View style={styles.mHead}>
             <Text style={styles.mTitle}>多维度对比</Text>
@@ -513,7 +517,7 @@ export default function SleepDetailScreen() {
       ) : null}
 
       {/* 睡眠 × 周期阶段 × 皮质醇 观察关联（仅月视图展示） */}
-      {range === 'month' && (
+      {dRange === 'month' && (
         <View style={{ marginTop: theme.space.md }}>
           <SleepHormoneCorrelation ring={ring} />
         </View>
@@ -580,4 +584,20 @@ const styles = StyleSheet.create({
   cardSubLine: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
   dualAvgVal: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.accentSolid },
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
+  // ===== 周/月/年顶部「平均恢复分」hero（与日视图 SleepRecoveryHero 同款视觉） =====
+  heroAvg: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: theme.space.sm,
+    paddingHorizontal: 2,
+  },
+  heroAvgScore: {
+    fontSize: theme.fontSize.hero,
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.ink,
+    lineHeight: 48,
+  },
+  heroAvgLabel: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
+  heroAvgSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
 });

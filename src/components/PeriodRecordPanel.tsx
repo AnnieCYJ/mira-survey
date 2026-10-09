@@ -158,7 +158,7 @@ export default function PeriodRecordPanel({
       {/* ★ 2026-10-07（用户：记录页里加一个「查看历史」）—— 历史入口 + 列表 */}
       <View style={styles.histRow}>
         <Text style={styles.histLabel}>{history.length > 0 ? `已有 ${history.length} 天记录` : '暂无历史记录'}</Text>
-        <TouchableOpacity activeOpacity={0.8} onPress={toggleHistory}>
+        <TouchableOpacity activeOpacity={0.7} onPress={toggleHistory}>
           <Text style={styles.histLink}>{historyOpen ? '收起历史' : '查看历史 ›'}</Text>
         </TouchableOpacity>
       </View>
@@ -184,7 +184,7 @@ export default function PeriodRecordPanel({
               return (
                 <TouchableOpacity
                   key={h.date}
-                  activeOpacity={0.75}
+                  activeOpacity={0.7}
                   style={styles.histItem}
                   onPress={() => {
                     setSelDate(h.date); // 回填到上面的表单继续编辑
@@ -303,7 +303,7 @@ export default function PeriodRecordPanel({
       ) : null}
 
       {/* v21：保存 CTA=紫实底（周期域紫主控）；渐变层自带 padding，Touchable 只留裁切 */}
-      <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.7}>
         <LinearGradient
           colors={[mm.colors.purpleBtn, mm.colors.purpleBtn]}
           start={{ x: 0, y: 0 }}

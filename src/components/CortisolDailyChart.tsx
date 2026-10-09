@@ -265,7 +265,7 @@ export default function CortisolDailyChart({
   return (
     <Card>
       {/* 趋势图区域：可点击跳转详情 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={goDetail}>
+      <TouchableOpacity activeOpacity={0.7} onPress={goDetail}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
           <Text style={styles.title}>{title}</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>

@@ -92,7 +92,7 @@ function SuggestStrip({ questions, onPick }: { questions: string[]; onPick: (q: 
             key={q}
             style={styles.suggestChip}
             onPress={() => onPick(q)}
-            activeOpacity={0.75}
+            activeOpacity={0.7}
           >
             <Icon name="sparkle" size={theme.fs(13)} color={mm.colors.purpleDeep} strokeWidth={2.2} />
             <Text style={styles.suggestChipText} numberOfLines={1}>{q}</Text>
@@ -142,7 +142,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     prevVisible.current = visible;
   }, [visible, ringState]);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, opts?: { skipUserBubble?: boolean }) => {
     if (!text.trim() || isLoading) return;
     Keyboard.dismiss();
     const q = text.trim();
@@ -152,7 +152,11 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       .slice(-10)
       .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
-    setMessages((prev) => [...prev, { from: 'user', text: q }, { from: 'ai', text: '' }]);
+    // ★ 语音入口（长按 GROK → VoiceChat）已在挂载时把用户那句落进对话流，
+    //   这里跳过重复落用户气泡、只跑推理 → 转场期间不再重排、不再闪。
+    setMessages((prev) =>
+      opts?.skipUserBubble ? prev : [...prev, { from: 'user', text: q }, { from: 'ai', text: '' }],
+    );
     setInput('');
     setIsLoading(true);
 
@@ -215,11 +219,12 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     setMessages([]);
     setInput('');
     if (!initialQuestion) return;
-    // ★ 延后到页面转场动画结束（≈320ms）再发请求。
-    //   端侧大模型（Qwen2.5-1.5B）推理是重活，旧实现用 queueMicrotask 在**挂载瞬间**
-    //   就起跑，正好和 push 转场动画抢 JS/UI 线程 → 「跳到 AI 问答页特别卡」。
-    //   等动画走完再推理，转场就丝滑了（用户感知不到这 320ms，因为屏幕上已在播转场）。
-    const t = setTimeout(() => sendMessage(initialQuestion), 320);
+    // ★ 语音入口：挂载瞬间**先把用户说的那句落进对话流**（用户气泡 + 空 AI 占位）。
+    //   这样转场动画期间画面已经是「settled 的对话」，而不是在播 AiOrb 的 58 个粒子动画，
+    //   转场更稳、不抖（AiOrb 只在「真正空态（无初始问题）」时才渲染）。
+    //   推理仍延后到转场动画结束（≈320ms）再跑（端侧 Qwen2.5-1.5B 是重活，会和转场抢线程）。
+    setMessages([{ from: 'user', text: initialQuestion }, { from: 'ai', text: '' }]);
+    const t = setTimeout(() => sendMessage(initialQuestion, { skipUserBubble: true }), 320);
     return () => clearTimeout(t);
   }, [visible]);
 
@@ -325,7 +330,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
                     Keyboard.dismiss();
                     navigation.navigate(j.route as any, j.params as any);
                   }}
-                  activeOpacity={0.75}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.jumpChipText}>{j.label} →</Text>
                 </TouchableOpacity>
@@ -398,7 +403,10 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
             onChangeText={setInput}
             multiline
             maxLength={200}
-            autoFocus
+            // ★ 语音入口（initialQuestion 非空）不自动弹键盘：避免「卡片转场 + 键盘升起 + KeyboardAvoidingView 重排」
+            //   三重动画在转场期间叠在一起 → 整页发抖/卡。带问题来就直接用语音结果，无需立刻打字；
+            //   只有「空态进来（MiraAI 点击）」才自动聚焦输入框。
+            autoFocus={!initialQuestion}
             blurOnSubmit={false}
           />
           <TouchableOpacity

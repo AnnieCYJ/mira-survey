@@ -216,7 +216,7 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
       {hasAny ? (
         <>
           {/* ★ 2026-10-07（用户：排卵置信度、周期长度这些可以加一个收起来，点击展开，默认收起） */}
-          <TouchableOpacity style={styles.moreRow} activeOpacity={0.8} onPress={() => setMoreOpen((v) => !v)}>
+          <TouchableOpacity style={styles.moreRow} activeOpacity={0.7} onPress={() => setMoreOpen((v) => !v)}>
             <Text style={styles.moreText}>{moreOpen ? '收起指标' : '展开更多指标'}</Text>
             <Text style={styles.moreChev}>{moreOpen ? '⌃' : '⌄'}</Text>
           </TouchableOpacity>

@@ -42,7 +42,8 @@ import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
 import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNarrative, type TodayScene } from '../lib/todayScene';
-import HomeSuggestionFloat from '../components/HomeSuggestionFloat';
+import { narrSigOf, aiNarrativeFor, requestAiNarrative } from '../lib/aiNarrative';
+import HomeAiBubble from '../components/HomeAiBubble';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
 
@@ -59,210 +60,6 @@ const SHOW_SLEEP_CARD: boolean = false;
  *  覆盖：睡眠节律 / 脑力消耗 / 心理压力 / 运动消耗 / 经期（含被 SHOW_SLEEP_CARD 单独控制的睡眠卡）。 */
 const SHOW_RHYTHM_CARDS: boolean = false;
 
-
-function EnergyMiniCard({ title, subtitle, accent, icon, value, unit, onPress, image }: {
-  title: string; subtitle: string; accent: string; icon: import('../components/Icon').IconName; value: string; unit: string; onPress: () => void; image?: number;
-}) {
-  return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
-      <ImageBackground
-        source={image || require('../assets/card_stress.jpg')}
-        style={styles.energyMini}
-        imageStyle={styles.energyMiniImg}
-        resizeMode="cover"
-      >
-        {/* 底部渐变遮罩 */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)']}
-          style={styles.energyMiniOverlay}
-        />
-        <View style={styles.energyMiniLabel}>
-          <Text style={styles.energyMiniTitle} numberOfLines={1}>{title}</Text>
-          <View style={styles.energyMiniValRow}>
-            <Text style={styles.energyMiniVal}>{value}</Text>
-            <Text style={styles.energyMiniUnit}> {unit}</Text>
-          </View>
-        </View>
-      </ImageBackground>
-    </TouchableOpacity>
-  );
-}
-
-
-// ⚠️⚠️ **死代码，勿在此加逻辑或日志**（2026-10-03 实锤）
-// `grep -nE "EnergyRowData" src/screens/TodayScreen.tsx` 只有这一行定义处命中 ——
-// 它**从未被任何地方渲染**。v18.133 我把运动门控诊断加在这里，`grep 'MOTION-GATE'`
-// 连续两轮 0 条日志，白排查一轮。真渲染的是下面 ~1140 行处（同文件另一个组件作用域）。
-// 要改「顶部情绪压力」请去那里；要删这个组件请连同它的 esReport/stress/cognitive 一起删。
-function EnergyRowData({ ring, onNav, outerOnNav }: { ring: any; onNav: (type: 'emotion' | 'cognitive' | 'activity') => void; outerOnNav: () => void }) {
-  const _dk = (() => {
-    try {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    } catch { return ''; }
-  })();
-  // 情绪消耗 = 今日压力事件数
-  // ★ v18.132 情绪压力：值改为「今日程度 0-100」（由 EDA 相对个人基线的偏离换算），
-  //   不再显示「事件次数 19」—— 次数没有量纲意义，且 2026-10-03 设备漂 3 倍时全被误触发。
-  //   数据源 = computeEmotionalStress()（多信号融合：排除运动 / 设备故障）。
-  // ★ v18.133：把固件运动段传进去 —— 少了它，运动门控只剩 MET/步数两层，
-  //   「通勤走路」这类步数不多但确有活动的时段会被误判成情绪压力。
-  const esReport = (() => {
-    try {
-      return computeEmotionalStress(Date.now(), ring?.sportSessions ?? null);
-    } catch { return null; }
-  })();
-  // ★ v18.140 心理压力数字：**必须过自报校准闸门**。
-  //   `stressScoreVisible=false`（样本不足 / r 太低）⇒ 显「—」，只保留档位。
-  //   ⚠ 死代码里的这个组件不参与渲染，但保持与 ~1200 行处口径一致，避免以后误用。
-  const stress = (() => {
-    try {
-      if ((ring?.curveStatus as any)?.dataStale) return '—';
-      if (!esReport || esReport.deviceDrift) return '—';
-      if (esReport.baselineDays < ES_MIN_BASELINE_DAYS) return '—';
-      if (!esReport.stressScoreVisible) return '—';
-      return esReport.meanSeverity != null ? String(esReport.meanSeverity) : '—';
-    } catch { return '—'; }
-  })();
-  // 脑力消耗 = 全天平均疲劳度 (与柱状图同源, 0-100)
-  const cognitive = (() => {
-    try {
-      const r = computeCognitiveLoadReport();
-      return r?.avgFatigue != null ? String(r.avgFatigue) : '—';
-    } catch { return '—'; }
-  })();
-  // 运动消耗 = 今日步数
-  const activity = (() => {
-    try {
-      const dk = dayKey(Date.now());
-      const steps = ring?.stepDaily?.[dk]?.steps ?? 0;
-      return steps > 0 ? String(steps) : '—';
-    } catch { return '—'; }
-  })();
-
-  // 皮质醇峰值 + 恢复水平
-  const cortisolPeak = (() => {
-    try {
-      const samples = collectSamples();
-      const r = analyzeCortisol(samples, 14);
-      if (Number.isFinite(r.cosinor.acrophaseH)) {
-        const h = Math.round(r.cosinor.acrophaseH);
-        return `${String(h).padStart(2,'0')}:00`;
-      }
-      return '—';
-    } catch { return '—'; }
-  })();
-  const cortisolRecovery = (() => {
-    try {
-      const samples = collectSamples();
-      const r = analyzeCortisol(samples, 14);
-      if (r.css > 10) return '良好';
-      if (r.css < -10) return '偏晚';
-      if (Number.isFinite(r.cosinor.amplitude) && Number.isFinite(r.cosinor.mesor) && r.cosinor.amplitude < 0.15 * r.cosinor.mesor) return '扁平';
-      return '一般';
-    } catch { return '—'; }
-  })();
-
-  // 子卡（心理压力/脑力）——图片背景 + 底部白色渐变蒙层
-  // ★ v18.137：心理压力卡多一行**口径说明**（「相对你自己平时」）。
-  //   没有这一行，用户会把 62 读成「压力 62 分」（绝对量），而它其实是百分位。
-  //   `note` 为空则不占位（其它两张卡不受影响）。
-  const subCard = (
-    img: number, title: string, val: string, unit: string, onPress: () => void,
-    note?: string,
-  ) => (
-    <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={{ flex: 1 }}>
-      <View style={{
-        height: 130,
-        borderRadius: theme.radius.md,
-        overflow: 'hidden',
-      }}>
-        <ImageBackground source={img} style={{ height: '100%', width: '100%' }} resizeMode="cover">
-          {/* 底部白色蒙层：只盖下半部，保证文字可读 */}
-          <LinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.75)', '#FFFFFF']}
-            locations={[0.15, 0.45, 0.75, 1.0]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '95%' }}
-          />
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 10, paddingTop: 40 }}>
-            <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 2 }} numberOfLines={1}>{title}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.card, fontWeight: theme.weight.bold }} numberOfLines={1} adjustsFontSizeToFit>{val}</Text>
-              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginLeft: 3 }}>{unit}</Text>
-            </View>
-            {note ? (
-              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginTop: 1 }} numberOfLines={1}>{note}</Text>
-            ) : null}
-          </View>
-        </ImageBackground>
-      </View>
-    </TouchableOpacity>
-  );
-
-  return (
-    <View style={{ gap: theme.space.md, marginBottom: theme.space.md }}>
-      {/* ★ 身体恢复 —— 参考情绪消耗卡：完整图片做背景 + 左白色渐变蒙层 + 文字 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={outerOnNav}>
-        <Card padded={false} style={{ borderWidth: 0, shadowColor: "transparent", shadowOpacity: 0, elevation: 0 }}>
-          <ImageBackground source={IMG_RECOVERY} style={{ height: 132 }} resizeMode="cover">
-            {/* 白色蒙层：左纯白 → 右渐变透明，模糊过渡 */}
-            <LinearGradient
-              colors={[
-                '#FFFFFF',
-                'rgba(255,255,255,0.95)',
-                'rgba(255,255,255,0.85)',
-                'rgba(255,255,255,0.15)',
-                'rgba(255,255,255,0)',
-              ]}
-              locations={[0, 0.25, 0.5, 0.75, 1.0]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}
-            />
-            {/* 右上角跳转指示 */}
-            <Icon name="chevronRight" size={20} color={theme.colors.textTitle} style={{ position: 'absolute', top: 12, right: 12 }} />
-            {/* 文字叠在蒙层上 — 贴底部集中在白色区域，排版与 subCard 完全一致 */}
-            <View style={{ position: 'absolute', left: theme.space.cardPad, right: theme.space.md, bottom: 12, paddingTop: 40 }}>
-              {/* 顶部标题 */}
-              <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 6 }}>身体恢复</Text>
-              {/* 皮质醇峰值 — 单列竖排，与 subCard title+value+unit 排版一致 */}
-              <View style={{ marginTop: 2 }}>
-                <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium, marginBottom: 2 }} numberOfLines={1}>皮质醇峰值</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <Text style={{ color: theme.colors.textInk, fontSize: theme.fontSize.card, fontWeight: theme.weight.bold }} numberOfLines={1} adjustsFontSizeToFit>{cortisolPeak}</Text>
-                  <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs, marginLeft: 3 }}>点</Text>
-                </View>
-              </View>
-            </View>
-          </ImageBackground>
-        </Card>
-      </TouchableOpacity>
-
-      {/* ★ 心理压力 / 脑力准备度 / 运动量 —— 并排独立小卡
-          v18.137：情绪卡从「情绪消耗·次」改为「心理压力·0-100 百分位」。
-          旧标题的问题：①「消耗」没定义 ②单位「次」与 0-100 分数矛盾（用户反馈「看不懂」）
-          ③「心理压力」是 Oura/Garmin 在用的标准名。 */}
-      <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
-        {subCard(
-          IMG_EMOTION, '心理压力', stress, '',
-          () => onNav('emotion'),
-          esReport?.stressScale ? esReport.stressScale.caption : undefined,
-        )}
-        {/* ★ 2026-10-06 A+C：无昨夜睡眠时 sublabel 改「今日已用脑」，避免与"剩余"口径混淆 */}
-        {subCard(IMG_COG, '脑力消耗', cognitive, '/100', () => onNav('cognitive'),
-          (() => {
-            try {
-              const rep = computeCognitiveLoadReport();
-              return rep?.brainRemaining != null ? '当前剩余' : rep?.brainUsedToday != null ? '今日已用脑' : '当前剩余';
-            } catch { return '当前剩余'; }
-          })())}
-        {subCard(IMG_ACTIVITY, '运动量', activity, '步', () => onNav('activity'))}
-      </View>
-    </View>
-  );
-}
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
@@ -318,105 +115,6 @@ function buildSmartAdvice(phase: string, statusIdx: number | null, asleep: boole
 //   新增图表/卡片一律写在模块作用域，并用 React.memo 包裹。
 // ─────────────────────────────────────────────────────────────
 // 通用 mini chart 尺寸
-const MW=168, MH=88, AXIS_H=16, CH=MH-AXIS_H;
-
-// —— 情绪消耗：每小时压力事件数柱状图（柱高=次数，颜色=低/中/高三档）——
-//   ★ 为什么不用点阵：每小时在图上只有 7px 宽，3 个事件画 3 个点必然挤成一坨糊点，
-//     看上去像一块「小热力图」，与卡片上的「N 次」对不上。
-//     改成柱状后：柱高 = 该小时事件数，24 根柱高之和正好 = 卡片大数字（次数），两者同源。
-const MiniStressBars = React.memo(function MiniStressBars({ events, condensed }: { events: any[]; condensed?: boolean }) {
-  const W = condensed ? 80 : MW;
-  const H = condensed ? 44 : MH;
-  const AX = condensed ? 0 : AXIS_H;
-  const CH = H - AX;
-  const N=24, bw=W/N-1, CAP=5;              // CAP: 每小时 5 次事件 = 柱满高
-  const ev = (events ?? []).filter((e:any)=>e&&Number.isFinite(e.t));
-  const cnt = new Array(N).fill(0);
-  ev.forEach((e:any)=>{
-    const h = new Date(e.t).getHours();
-    if (h >= 0 && h < N) cnt[h] += 1;
-  });
-  const bars: any[] = [];
-  for (let h = 0; h < N; h++) {
-    if (cnt[h] === 0) continue;
-    const bh = Math.max(3, Math.min(1, cnt[h] / CAP) * CH);
-    // 颜色 = 该小时「事件数」低/中/高三档（与卡片数字同口径，不再用严重度色）
-    const col = cnt[h] >= 4 ? theme.colors.danger : cnt[h] >= 2 ? theme.colors.warn : theme.colors.success;
-    bars.push(<Rect key={'b'+h} x={h*(W/N)+0.5} y={CH-bh} width={bw} height={bh} rx={1.5} fill={col} />);
-  }
-  const peakH = cnt.indexOf(Math.max(...cnt));
-  const popX = peakH*(W/N)+bw/2;
-  // ★ NaN 防御：Math.max/min 遇 NaN 会原样传播，NaN 一旦进入 left/x 就是 native 红屏
-  //   （此前的 RNSVGText x=NaN / RCTView left=NaN 红屏即此路径）
-  const PopX = Number.isFinite(popX) ? Math.max(18, Math.min(W-36, popX-14)) : 0;
-  const ticks=[0,6,12,18,24];
-  return (
-    <View style={{ width: W, height: H }}>
-      <Svg width={W} height={H}>
-        {bars}
-        {!condensed && ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.55)">{String(h).padStart(2,'0')}</SvgText>); })}
-      </Svg>
-      {!condensed && ev.length>0 ? (
-        <View style={{ position:'absolute', left: PopX, top: -4, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.stateTense + '44' }}>
-          <Text style={{ fontSize:10, color: theme.colors.stateTense, fontWeight:'700' }}>{ev.length} 次</Text>
-        </View>
-      ):null}
-    </View>
-  );
-});
-
-// —— 脑力消耗：24h 柱状 + 横坐标 + 峰值 pop ——
-// ★ hour = 钟点 0–23（computeHourlyLoad 已收敛为 24 整点桶）；柱色与详情页大图、Hero 共用
-//   统一三档：低<40 绿 / 中 40–70 黄 / 高≥70 红（COG_LEVEL_LOW / COG_LEVEL_HIGH）
-// 无真实数据时的空骨架数据源（模块级常量，引用稳定不触发 memo 重绘）
-// ★ 2026-10-06：准备度粒度统一为 30 分钟 → 48 槽
-const COG_EMPTY_HOURLY = Array.from({ length: 48 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
-const MiniCognitiveBars = React.memo(function MiniCognitiveBars({ hourly, condensed }: { hourly: { hour: number; score: number; hasData?: boolean }[]; condensed?: boolean }) {
-  // ★ 宽度 onLayout 实测：固定 168 会超出半宽卡片内框（横坐标「24」溢出卡片边界）
-  const [measuredW, setMeasuredW] = React.useState(0);
-  const W = condensed ? 80 : measuredW;
-  const H = condensed ? 44 : MH;
-  const AX = condensed ? 0 : AXIS_H;
-  const CH = H - AX;
-  const N=24;
-  const rows = Array.from({length:N},(_,i)=>{ const b:any = hourly?.find((h:any)=>h.hour===i); return { v: b?.score ?? 0, has: !!b?.hasData }; });
-  const bw=W/N-1;
-  // ★ 峰值/最新值只取「有实测」的小时；睡眠段与未到时段的占位桩不算数据
-  const lastIdx = rows.map((r,i)=>({...r,i})).filter(x=>x.has).slice(-1)[0]?.i ?? 0;
-  const popVal = rows[lastIdx]?.v ?? 0;
-  const hasAny = rows.some(r=>r.has);
-  const popX = lastIdx*(W/N)+bw/2;
-  const PopX = Number.isFinite(popX) ? Math.max(18, Math.min(W-36, popX-14)) : 0;
-  const ticks=[0,6,12,18,24];
-  const barColor = (v:number)=> v>=COG_LEVEL_HIGH ? theme.colors.danger : v>=COG_LEVEL_LOW ? theme.colors.warn : theme.colors.success;
-  const NO_DATA = 'rgba(120,110,160,0.13)';   // 无实测时段(睡眠/未到) = 浅灰占位，不用彩色
-  return (
-    <View
-      onLayout={!condensed ? (e) => { const cw = e.nativeEvent.layout.width; if (cw > 0 && Math.abs(cw - measuredW) > 1) setMeasuredW(cw); } : undefined}
-      style={{ width: condensed ? 80 : '100%', height: H }}
-    >
-      {!condensed && W <= 0 ? null : (
-      <>
-      <Svg width={W} height={H}>
-        {/* ★ v18.129 柱高改**档位离散**（用户：只分低/中/高三个高度，同档等高）。
-            原先用 (r.v/100)*CH 连续映射 → 12/16/19 同属「低」档却画出三根不同高度，
-            视觉上像在说 19 比 12 累得多（同档内无此含义）。现在高度只由档位决定。 */}
-        {rows.map((r,i)=>{ const ratio=r.has?cogBarRatio(r.v):null;
-          const h=ratio==null?1.5:Math.max(2,ratio*CH), x=i*(W/N)+0.5, y=CH-h;
-          const col=r.has?barColor(r.v):NO_DATA; return <Rect key={'b'+i} x={x} y={y} width={bw} height={h} rx={1} fill={col} />; })}
-        {ticks.map(h=>{ const eL=h===0,eR=h===24; return (<SvgText key={'t'+h} x={eL?1:eR?W-1:h*(W/N)+bw/2} y={CH+AX-3} textAnchor={eL?'start':eR?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{String(h).padStart(2,'0')}</SvgText>); })}
-      </Svg>
-      {!condensed && hasAny && popVal>0 ? (
-        <View style={{ position:'absolute', left: PopX, top: -2, backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor: theme.colors.accentSolid + '33' }}>
-          <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{Math.round(popVal)}</Text>
-        </View>
-      ):null}
-      </>
-      )}
-    </View>
-  );
-});
-
 // —— v18.52 经期日期圈（参考图 Activity 卡的圆圈行）：最近 7 天，圈 = 日期数字。
 //   经期日（有 PeriodDayLog 自记）= lime 深色实心白字；今天 = 深色描边；其余白底。
 const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { marked: Record<string, true> }) {
@@ -446,159 +144,33 @@ const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { mark
   );
 });
 
-// —— 运动消耗：近 7 天步数曲线 + 横坐标(一二三四五六日) + 今日 pop ——
-// ★ 全零步数 = 无数据态：只画灰色虚线基线 + 横坐标（不画蓝色实曲线，不冒充数据）
-const MiniActivityCurve = React.memo(function MiniActivityCurve({ weekSteps, condensed }: { weekSteps: { dayKey: string; steps: number; date: Date }[]; condensed?: boolean }) {
-  const W = condensed ? 80 : MW;
-  const H = condensed ? 44 : MH;
-  const AX = condensed ? 0 : AXIS_H;
-  const CH = H - AX;
-  const series = weekSteps.slice(-7);
-  // ★ 防御：不足 7 天（新装/数据缺失）时按实际条数画，避免 pts[N-1] 为 undefined 直接崩溃
-  if (series.length < 2) return null;
-  const N = series.length, MON=['一','二','三','四','五','六','日'];
-  const steps = series.map(s=>s.steps);
-  const isEmpty = !steps.some(v=>v>0);
-  const max = Math.max(1,...steps);
-  const pts = steps.map((v,i)=>({x:(i/(N-1))*(W-8)+4, y:CH-(v/max)*CH*0.85-3}));
-  let p = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for(let i=0;i<N-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(N-1,i+2)]; p+=` C ${(p1.x+(p2.x-p0.x)*0.25).toFixed(1)} ${(p1.y+(p2.y-p0.y)*0.25).toFixed(1)}, ${(p2.x-(p3.x-p1.x)*0.25).toFixed(1)} ${(p2.y-(p3.y-p1.y)*0.25).toFixed(1)}, ${p2.x.toFixed(1)} ${pts[i+1].y.toFixed(1)}`; }
-  const area = p+` L ${pts[N-1].x.toFixed(1)} ${CH} L ${pts[0].x.toFixed(1)} ${CH} Z`;
-  const last = pts[N-1];
-  const PopX = Number.isFinite(last.x) ? Math.max(18, Math.min(MW-48, last.x-20)) : 0;
-  return (
-    <View style={{ width: W, height: H }}>
-      <Svg width={W} height={H}>
-        {!isEmpty && (
-          <Defs>
-            <SvgLinear id="actFill2" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#7EA6F8" stopOpacity={0.35} />
-              <Stop offset="100%" stopColor="#7EA6F8" stopOpacity={0.02} />
-            </SvgLinear>
-          </Defs>
-        )}
-        {isEmpty ? (
-          <Path d={`M ${pts[0].x.toFixed(1)} ${CH-3} L ${pts[N-1].x.toFixed(1)} ${CH-3}`} fill="none" stroke="rgba(120,110,160,0.35)" strokeWidth={1.5} strokeDasharray="4 4" />
-        ) : (
-          <>
-            <Path d={area} fill="url(#actFill2)" />
-            <Path d={p} fill="none" stroke="#7EA6F8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            {pts.map((pt,i)=>(<Circle key={'pt'+i} cx={pt.x} cy={pt.y} r={2.5} fill="#7EA6F8" />))}
-          </>
-        )}
-        {series.map((s,i)=>(<SvgText key={'t'+i} x={pts[i].x} y={CH+AX-3} textAnchor={i===0?'start':i===N-1?'end':'middle'} fontSize={8} fill="rgba(120,110,160,0.6)">{MON[s.date.getDay()===0?6:s.date.getDay()-1]}</SvgText>))}
-      </Svg>
-      {!condensed && !isEmpty && steps[N-1]>0 ? (
-        <View style={{ position:'absolute', left: PopX, top: Math.max(0,last.y-22), backgroundColor:'#fff', borderRadius:6, paddingHorizontal:6, paddingVertical:3, shadowColor:'rgba(0,0,0,0.12)', shadowOffset:{width:0,height:2}, shadowOpacity:1, shadowRadius:4, elevation:3, borderWidth:1, borderColor:'rgba(126,166,248,0.25)' }}>
-          <Text style={{ fontSize:10, color: theme.colors.stateTired, fontWeight:'700' }}>{steps[N-1]}</Text>
-        </View>
-      ):null}
-    </View>
-  );
-});
-
-const BigStatCard = React.memo(function BigStatCard({ title, value, unit, sub, trend, chartEl, gradientColors, onPress, height, layout }: any) {
-  const pressScale = useRef(new Animated.Value(1)).current;
-  const pressTo = (v: number) =>
-    Animated.timing(pressScale, { toValue: v, duration: theme.motion.instant, easing: theme.motion.easeStandard, useNativeDriver: true }).start();
-  const h = height ?? 150;
-  const isHorizontal = layout === 'horizontal';
-  const isBig = h >= 200;
-  const titleSize = isBig ? theme.fontSize.body : theme.fontSize.sm;
-  const padH = isBig ? theme.space.md : theme.space.sm;
-  const padV = isBig ? theme.space.sm : theme.space.xs;
-
-  if (isHorizontal) {
-    // ★ 横卡:left = title + 数字 + caption(weight 1), right = chartEl(weight ~0.7)
-    const numFont = h >= 110 ? 30 : 26;
-    const unitFont = h >= 110 ? theme.fontSize.sm : theme.fontSize.micro;
-    return (
-      <Pressable onPress={onPress} onPressIn={() => pressTo(theme.press.scaleCard)} onPressOut={() => pressTo(1)}
-        style={{ width: '100%' }} accessibilityRole="button" accessibilityLabel={`${title} ${value}${unit}`}>
-        <Animated.View style={{ transform: [{ scale: pressScale }] }}>
-          <GlassCard padded={false} style={{ height: h }}>
-            <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-            <View style={{ paddingHorizontal: padH, paddingVertical: padV, flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              {/* 左侧:title + 数字 + caption + trend */}
-              <View style={{ flex: 1, justifyContent: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ color: theme.colors.textInk, fontSize: titleSize, fontWeight: theme.weight.semibold }} numberOfLines={1}>{title}</Text>
-                  {trend ? (
-                    <Text style={{
-                      color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown),
-                      fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold,
-                      backgroundColor: trend.favorable ? theme.colors.successSoft : trend.dir === 'down' ? theme.colors.dangerSoft : 'transparent',
-                      paddingHorizontal: 6, paddingVertical: 1, borderRadius: theme.radius.pill,
-                    }}>
-                      {trend.dir === 'up' ? '↑' : trend.dir === 'down' ? '↓' : '—'} {trend.label}
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
-                  <Text style={{ color: theme.colors.textInk, fontSize: numFont, fontWeight: theme.weight.bold, lineHeight: numFont + 4 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-                  <Text style={{ color: theme.colors.textSub, fontSize: unitFont, marginLeft: 3 }}>{unit}</Text>
-                </View>
-                {!!sub && <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro, marginTop: 2 }} numberOfLines={1}>{sub}</Text>}
-              </View>
-              {/* 右侧:图 */}
-              {chartEl && <View style={{ width: '38%', alignItems: 'stretch', marginLeft: padH * 0.6 }}>{chartEl}</View>}
-            </View>
-          </GlassCard>
-        </Animated.View>
-      </Pressable>
-    );
-  }
-
-  /* 方案3 固定比例:title ~10% / 图 ~45% / gap / 数字 ~35% */
-  const chartAreaH = isBig ? 88 : 44;
-  const numAreaH = isBig ? 52 : 34;
-  return (
-    <Pressable onPress={onPress} onPressIn={() => pressTo(theme.press.scaleCard)} onPressOut={() => pressTo(1)}
-      style={{ width: '100%' }} accessibilityRole="button" accessibilityLabel={`${title} ${value}${unit}`}>
-      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
-        <GlassCard padded={false} style={{ height: h }}>
-          <LinearGradient colors={gradientColors} start={{ x: 0.5, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-          <View style={{ paddingHorizontal: padH, paddingTop: padV, paddingBottom: padV * 0.6, flexDirection: 'column' }}>
-            {/* 顶行:title + trend badge */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 22 }}>
-              <Text style={{ color: theme.colors.textInk, fontSize: titleSize, fontWeight: theme.weight.semibold }} numberOfLines={1}>{title}</Text>
-              {trend ? (
-                <Text style={{
-                  color: trend.dir === 'flat' ? theme.colors.textSub : (trend.favorable ? theme.colors.trendUp : theme.colors.trendDown),
-                  fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold,
-                  backgroundColor: trend.favorable ? theme.colors.successSoft : trend.dir === 'down' ? theme.colors.dangerSoft : 'transparent',
-                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: theme.radius.pill,
-                }}>
-                  {trend.dir === 'up' ? '↑' : trend.dir === 'down' ? '↓' : '—'} {trend.label}
-                </Text>
-              ) : null}
-            </View>
-            {/* 中间:图固定高 */}
-            {chartEl && <View style={{ height: chartAreaH, marginTop: isBig ? 6 : 4, alignItems: 'stretch' }}>{chartEl}</View>}
-            <View style={{ height: isBig ? 8 : 4 }} />
-            {/* 底部:数字区 */}
-            <View style={{ height: numAreaH, justifyContent: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                <Text style={{ color: theme.colors.textInk, fontSize: isBig ? 34 : 22, fontWeight: theme.weight.bold, lineHeight: isBig ? 38 : 26 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: isBig ? theme.fontSize.sm : theme.fontSize.micro, marginLeft: 3 }}>{unit}</Text>
-              </View>
-              {!!sub && <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro, marginTop: isBig ? 3 : 1 }} numberOfLines={1}>{sub}</Text>}
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-    </Pressable>
-  );
-});
-
 /**
- * ★ 全天状态面板底部圆弧的「羽化层」（2026-09-21）。
- * 目的：白面板与弧下紫雾之间原来是**几何硬切**（像素级突变），用户反馈「边缘过于清晰」。
- * 做法：把同一条弧路径**多层下移 + 逐层降 alpha** 叠在白、紫之间，硬边被摊成一条 ~12pt 的过渡带，
- *      形成「白 → 淡紫 → 主题紫」的自然弥散。
- * 为什么不用 SVG filter（高斯模糊）：react-native-svg 的 Filter 平台支持/性能都不稳，多路径叠加零风险。
- * 调参：层数（长度）、`dy` 步长（过渡带宽度）、`opacity` 区间（柔化强度）三处。
+ * ★ 2026-10-08 底部预留（用户：「输入框还被 Tab 压着」的根治项）
+ *
+ * 底部 Tab 栏是**绝对定位**的（见 CustomTabBar.styles.wrap）：
+ *   wrap 高 = tabBarHeight(56) + sp(4)(16) = 72，`bottom: 0` + `marginBottom: sp(2)(8)`
+ *   → 实际占据屏幕底部 **80pt**（卡片底边在 8pt、顶边在 64pt）。
+ *
+ * ★ 2026-10-08 三改（用户第二次反馈「还被 Tab 压着」，附真机照片）：
+ *   照片定标 1.66px/pt 后实测：气泡**尾巴尖**只在屏底之上 ~84pt → 离 Tab 卡片顶边仅 ~4pt，
+ *   等于贴着/被吃掉。根因不是预留数字，而是**第一屏自然内容比预留还高**：
+ *   minHeight(= 视口 − 88) 根本没生效（自然内容 ≈ 视口 − 80），marginTop:'auto' 吃不到余量，
+ *   气泡只能顺着内容堆叠落下去。所以只调预留数字没用 —— 必须**先把气泡变矮**（BUBBLE_H 120 → 100，
+ *   见 HomeAiBubble），让自然内容缩到预留线以内，本预留才真正开始定位气泡。
+ *
+ * BUBBLE_RESERVE（★ 十四改 92 → 88 = 80 + sp(2)(8)，用户：「卡片往下挪一点点，
+ * 让卡片下边和 Tab 的距离 = 上边和状态趋势图例的距离」）：
+ * 气泡（含 9pt 小尾巴）的**框底**固定落在屏幕底部之上 88pt → 尾巴尖离 Tab 卡片顶边 ≈8pt；
+ * 同时第一屏 minHeight 随之变小 → 气泡上方的 auto 空隙同步 +4pt，上下两段间距靠拢对称。
+ * 三个消费点必须同源（改这里三处一起变）：
+ *   ① 第一屏 pageInner 的 minHeight = dims.height − BUBBLE_RESERVE（把气泡顶到该位置）
+ *   ② 气泡容器 marginTop:'auto'（内容不足时用空白吃掉余量、把气泡压在底部）
+ *   ③ ScrollView contentContainer paddingBottom = BUBBLE_RESERVE
+ *      （内容超高时仍可滚动，且滚到底时气泡同样停在 Tab 上方，不会滑进 Tab 里）
  */
+const BUBBLE_RESERVE = theme.layout.tabBarHeight + theme.sp(4) + theme.sp(2) + theme.sp(2); // 88（十四改：92→88，下移 4pt 使上下间距对称）
+
+// ★ 首页白面板圆弧的羽化层（活代码引用，2026-10-08 死代码清理时误删已恢复）
 const ARC_FEATHER = Array.from({ length: 6 }, (_, i) => ({
   /** 越靠下（i 越小）下移越多、越淡 */
   dy: theme.sp(0.5) * (6 - i),
@@ -622,6 +194,12 @@ export default function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
+  // ★ 2026-10-08（用户：「进首页不需要上下滑动」）：首页一屏锁定。
+  //   量出第一屏内容的自然高度，若 ≤ 可视高度就彻底关掉滚动与回弹；
+  //   只有极窄屏/超长文案导致内容确实超高时，才退回可滚动（避免内容被裁掉）。
+  const [vp_H, setVpH] = useState(0);
+  const [canScroll, setCanScroll] = useState(false);
+  const homeContentHRef = useRef(0);
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -632,6 +210,13 @@ export default function TodayScreen() {
     return () => { alive = false; };
   }, []);
   const [ring, setRing] = useState(() => RingBle.getState());
+
+  // ★ B2（2026-10-08 交互优化）：无内部缓存算法的 memo key ——
+  //   healthVer = healthStore 版本（戒指数据写入时自增）、dayKeyStr = 当日日期、
+  //   esWindow = 30s 窗口（computeEmotionalStress 吃实时 EDA，与 cognitiveLoad 的 30s 缓存策略同款）。
+  const healthVer = healthStore.getVersion();
+  const dayKeyStr = dayKey(Date.now());
+  const esWindow = Math.floor(Date.now() / 30000);
 
   // ★ 今日日历数据源之二：今天与 Mira 的对话记录（MemoryStore）
   //   写入发生在 miraAi.ask 结束（memory.add）后 → 经 aiRecordBus 广播即时刷新；
@@ -702,7 +287,10 @@ export default function TodayScreen() {
   // ★ v18.144 改用「个人相对口径」（对比自己 14 天基线，Oura 同款）而非固定目标达标分。
   //   旧口径是绝对分（7.5h 满分 / 深睡 20% 满分），会出现「平时也睡 9h 却被轻扣」这类不合理。
   //   ⚠ dataStale 判定保持不变：断流时一律「—」，不许挂旧快照的数。
-  const sleepPers = (() => { try { return computeSleepPersonalized(); } catch { return null; } })();
+  // ★ B2（2026-10-08 交互优化）：包 memo（换天 / 数据版本变化才重算），此前每次渲染裸算
+  const sleepPers = React.useMemo(() => {
+    try { return computeSleepPersonalized(); } catch { return null; }
+  }, [healthVer, dayKeyStr]);
   const recovery =
     dataStale || !recoverySleep || sleepPers?.score == null
       ? '—'
@@ -882,7 +470,10 @@ export default function TodayScreen() {
   // 全天状态面板是「全宽」的（左右不留边），宽度 = 屏宽（桌面上限 maxWidth）
   const panelW = Math.min(width, theme.layout.maxWidth);
   // 面板底部圆弧高度（方案 A：两端上扬、中间最低）
-  const panelArcH = theme.sp(6); // 弧度高度更小, 图离边缘更近
+  // ★ 2026-10-08：sp(6)(24) → sp(2)(8)。首页已整体改成纯白底（见文件顶部「上白下紫分屏收起」），
+  //   这段圆弧是**白弧画在白底上 = 完全不可见**，纯占位 24pt 死高；收成 8pt 后
+  //   下方 AI 气泡整体上移 ≈16pt，视觉零变化（用户：「不要被底下 Tab 压到」）。
+  const panelArcH = theme.sp(2); // 弧度高度更小, 图离边缘更近
   // 圆弧路径：控制点 y = 1.335×arcH 时，曲线最低点正好落在 arcH
   // 弧下弥散紫的纵向长度（渐变由此高度从紫收到透明）
   const panelUnderH = theme.sp(50);
@@ -922,6 +513,10 @@ export default function TodayScreen() {
   //   优先级：睡眠窗口 > 睡前1h(个人入睡习惯-60min) > 情绪尖峰 > 晨间满电
   //           > 饭前低今日状态 > 久坐 > 午后低谷 > 傍晚收工；无场景 → 常规相位句。
   //   频控：每词每日 ≤3 次（多数 ≤1）+ 最短冷却，持久化跨重启（lib/todayScene）。
+  // ★ 二十改：近 1 小时压力事件数提前到场景引擎外计算 —— 场景引擎与叙事 AI 层共用同一事实
+  const stressRecent1h = (stressReport?.events ?? []).filter(
+    (e: any) => Number.isFinite(e.t) && e.t >= Date.now() - 3600e3,
+  ).length;
   const scene: TodayScene | null = (() => {
     try {
       const nowMs = Date.now();
@@ -929,7 +524,6 @@ export default function TodayScreen() {
       const stepsLast2h = stepsPts.length >= 2 ? Math.max(0, stepsPts[stepsPts.length - 1].v - stepsPts[0].v) : 0;
       const spo2Pts = healthStore.getTimeRange('spo2' as any, nowMs - 3 * 3600e3, nowMs, { maxPoints: 20 });
       const spo2Latest = spo2Pts.length > 0 ? spo2Pts[spo2Pts.length - 1].v : null;
-      const stressRecent1h = (stressReport?.events ?? []).filter((e: any) => Number.isFinite(e.t) && e.t >= nowMs - 3600e3).length;
       return evaluateTodayScene({
         now: nowMs,
         isAsleep,
@@ -958,38 +552,95 @@ export default function TodayScreen() {
     : fallbackAdvice;
   const showPill = statusIdx != null || phaseKnown;
   // ★ 无场景触发时：胶囊 = 多因分析段（相位→雌/孕激素→皮质醇→睡眠，挂钩周期激素数据但不跳转）
-  const causeNarrative = (() => {
+  // ★ B1（2026-10-08 交互优化）：皮质醇 14 天 cosinor 拟合提到 memo —— 原来在 causeNarrative
+  //   渲染路径里每次重跑 collectSamples+analyzeCortisol（无内部缓存，BLE 回填期 ~500ms 渲染一次）。
+  //   按「日期 + healthStore 版本」重算，与 cognitiveLoad 的缓存 key 同款思路。
+  const cortisolSummary = React.useMemo(() => {
     try {
-      // 皮质醇晨峰/节律（14 天 cosinor，与洞察页同一套拟合）
-      let cortisolPeak = '—';
-      let cortisolRhythm = '—';
       const samples = collectSamples();
       const cr = analyzeCortisol(samples, 14);
       if (cr && Number.isFinite(cr.cosinor?.acrophaseH)) {
-        cortisolPeak = `${String(Math.round(cr.cosinor.acrophaseH)).padStart(2, '0')}:00`;
-        if (cr.css > 10) cortisolRhythm = '良好';
-        else if (cr.css < -10) cortisolRhythm = '偏晚';
-        else if (Number.isFinite(cr.cosinor.amplitude) && Number.isFinite(cr.cosinor.mesor) && cr.cosinor.amplitude < 0.15 * cr.cosinor.mesor) cortisolRhythm = '扁平';
-        else cortisolRhythm = '一般';
+        const peak = `${String(Math.round(cr.cosinor.acrophaseH)).padStart(2, '0')}:00`;
+        let rhythm = '一般';
+        if (cr.css > 10) rhythm = '良好';
+        else if (cr.css < -10) rhythm = '偏晚';
+        else if (Number.isFinite(cr.cosinor.amplitude) && Number.isFinite(cr.cosinor.mesor) && cr.cosinor.amplitude < 0.15 * cr.cosinor.mesor) rhythm = '扁平';
+        return { peak, rhythm };
       }
+      return null;
+    } catch { return null; }
+  }, [healthVer, dayKeyStr]);
+  const causeNarrative = (() => {
+    try {
+      // 皮质醇晨峰/节律（14 天 cosinor，与洞察页同一套拟合）
+      // ★ B1：数值取上方 cortisolSummary（memo 化），本 IIFE 不再重复拟合。
       return buildCauseNarrative({
         phaseLabel: phase,
         dayInCycle: status?.dayInCycle ?? null,
         estrogenIndex: status?.estrogenIndex ?? null,
-        cortisolPeak,
-        cortisolRhythm,
+        cortisolPeak: cortisolSummary?.peak ?? '—',
+        cortisolRhythm: cortisolSummary?.rhythm ?? '—',
         sleepScore: recoverySleep && Number.isFinite(recoverySleep.score) ? recoverySleep.score : null,
+        // ★ 十九改：把圆环当前档位（充沛/平稳/偏低/不足）传给分析 —— 文案与圆环状态自洽
+        level: status?.level ?? null,
       });
     } catch { return ''; }
   })();
+  // ── ★ 二十改：圆环下叙事改为「AI 为主 + 模板兜底」（与建议卡同一套混合架构）──
+  //   事实输入：状态档+分值、周期相位、皮质醇晨峰/节律、昨晚睡眠分、近 1h 压力事件、
+  //   最近 3h 做完的动作（呼吸冥想/缓一缓…，由播放器完成时记录）。
+  //   模板（scene.explain / causeNarrative）秒出先显示；AI 到货（≤30s）校验签名没变再无声替换。
+  const narrSleepScore = recoverySleep && Number.isFinite(recoverySleep.score) ? recoverySleep.score : null;
+  const narrSig = narrSigOf({
+    level: status?.level ?? null,
+    value: status?.value ?? null,
+    phase,
+    cortisolPeak: cortisolSummary?.peak ?? '—',
+    cortisolRhythm: cortisolSummary?.rhythm ?? '—',
+    sleepScore: narrSleepScore,
+    stressRecent1h,
+    recentAction: null, // 模块内部取（需要 await 读干预日志），不进签名 —— 由状态分变化间接覆盖
+  });
+  const [aiNarr, setAiNarr] = useState<string | null>(null);
+  const narrSeqRef = useRef(0);
+  useEffect(() => {
+    if (dataStale) {
+      setAiNarr(null);
+      return;
+    }
+    const cached = aiNarrativeFor(narrSig);
+    if (cached) {
+      setAiNarr(cached); // 同签名重启/回页面：缓存秒出
+      return;
+    }
+    setAiNarr(null); // AI 未到 → 模板先在位（永不空）
+    const seq = ++narrSeqRef.current;
+    requestAiNarrative({
+      level: status?.level ?? null,
+      value: status?.value ?? null,
+      phase,
+      cortisolPeak: cortisolSummary?.peak ?? '—',
+      cortisolRhythm: cortisolSummary?.rhythm ?? '—',
+      sleepScore: narrSleepScore,
+      stressRecent1h,
+      recentAction: null,
+    })
+      .then((t) => {
+        if (seq === narrSeqRef.current && t) setAiNarr(t); // 签名已翻档的旧结果直接丢弃
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrSig, dataStale]);
+
   // ★ v18.109 断流即空态：戒指超过 3 小时没回传采样（dataStale）时，圆环下方不写任何相位/多因分析
   //   （旧实现会继续输出「孕激素升高，能量天生易偏低」这类周期文案，看着像今天有数据其实是推算的），
   //   统一写「暂无数据，请佩戴戒指。约半小时会更新最新数据。」，与 curveStatus.narrative 同口径。
+  //   ★ 二十改：显示优先级 = AI 叙事 > 场景解释 > 多因分析模板 > 兜底建议。
   const narrative = dataStale
     ? '暂无数据，请佩戴戒指。约半小时会更新最新数据。'
-    : scene
+    : aiNarr ?? (scene
       ? scene.explain
-      : causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析');
+      : causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析'));
 
   // ★ v18.96（审计 2-3）：全天状态趋势图只画**今天**的曲线点。
   //   旧实现直接把 ring.statusTimeline 整条传进 TrendChart（组件内无日期过滤），
@@ -1137,9 +788,11 @@ export default function TodayScreen() {
   //   （与 EnergyRowData 里的 esReport 属不同组件作用域，各自算；healthStore 有内部缓存，代价小）
   // ★ v18.133：同 EnergyRowData，必须传 sportSessions，否则两处算出来的 moving 槽数会不一致
   //   （chip 说「平稳」、下面卡片说有运动 ⇒ 用户看到的图就自相矛盾）。
-  const esReport = (() => {
+  // ★ B2（2026-10-08 交互优化）：computeEmotionalStress 无内部缓存，此前每次渲染重跑
+  //   （BLE 推送经 rAF 节流后仍 ~500ms 一次）；现在仅 sportSessions / 数据版本 / 30s 窗口变化才重算。
+  const esReport = React.useMemo(() => {
     try { return computeEmotionalStress(Date.now(), sportSessions); } catch { return null; }
-  })();
+  }, [sportSessions, healthVer, dayKeyStr, esWindow]);
   // ★ v18.141 心理压力 0-100 —— **显示，不再被校准闸门挡住**。
   //   ⚠⚠ v18.140 我加的 `stressScoreVisible` 闸门把数字全挡成「—」，
   //   但那时候**生理分其实算得出来**（41/42 槽、全天 55 分）。
@@ -1282,7 +935,11 @@ export default function TodayScreen() {
     // ★ 2026-10-07（用户：「睡眠恢复这个 66，也加上斜杠 100」）：本 chip 恒显「/100」，
     //   不再随相对/绝对口径切换单位（v18.155 的随口径隐单位被用户否决，以显示一致性优先）。
     { key: 'rec', icon: 'leaf', tone: 'lime', label: '睡眠恢复', value: recovery, unit: '/100', valueTone: chipValueTone(recTag), onPress: () => navigation.navigate('SleepDetail') },
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: '脑力消耗', value: cognitive, unit: '/100', valueTone: chipValueTone(cogTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    // ★ 2026-10-08（用户：圆环上面不是叫脑力准备度吗，怎么还是消耗）：chip 数值 = 此刻剩余准备度
+    //   （brainRemaining，高=好，与 cogTag「准备度高/中/低」同字段同向）→ 标签改「脑力准备度」。
+    //   例外：无昨夜睡眠时数值回落为「今日已用脑量」→ 标签同步切「今日用脑」，标签与数值必须同一口径
+    //   （v18.128 铁律：标签与数值取同一字段，否则用户永远觉得算错）。
+    { key: 'cog', icon: 'nodes', tone: 'lav', label: cogTag?.startsWith('已用脑') ? '今日用脑' : '脑力准备度', value: cognitive, unit: '/100', valueTone: chipValueTone(cogTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, unit: '/100', valueTone: chipValueTone(emoTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
     // ★ 2026-10-07 新增：运动（卡路里），tone=cyan（蓝：运动·心肺，与 mm.chipBg 语义一致）
     { key: 'act', icon: 'flame', tone: 'cyan', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
@@ -1389,20 +1046,45 @@ export default function TodayScreen() {
         colors={[theme.colors.textWhite, theme.colors.textWhite]}
         style={StyleSheet.absoluteFill}
       />
-      {/* ★ v18.50 整屏吸附翻页（Full-page Scroll Snap）：外层垂直分页 ScrollView，
-          每屏高度 = 屏幕高，snapToInterval 让滑动后自动吸附到下一屏顶部。 */}
+      {/* ★ v18.50 原整屏吸附翻页；2026-10-08 改自然滚动：第二屏（消费与恢复节律卡片）
+          已按用户要求隐藏（SHOW_RHYTHM_CARDS=false），首页只需把「圆环→chips→趋势图→AI 气泡」
+          作为连续内容流展示，故去掉 snapToInterval 强制吸附，首屏高度改为自然延伸。 */}
       <ScrollView
         style={styles.pagerScroll}
         contentContainerStyle={styles.pagerContent}
-        snapToInterval={dims.height}
-        snapToAlignment="start"
-        decelerationRate="fast"
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
+        bounces={false}
+        scrollEnabled={canScroll}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          setVpH(h);
+          setCanScroll(homeContentHRef.current > h + 6);
+        }}
+        onContentSizeChange={(_w, h) => {
+          homeContentHRef.current = h;
+          setCanScroll(h > vp_H + 6);
+        }}
       >
-        {/* ===== 第一屏：状态区（整屏） ===== */}
-        <View style={[styles.pageSnap, { height: dims.height }]}>
-          <View style={[styles.pageInner, { paddingTop: insets.top + theme.space.xl }]}>
+        {/* ===== 第一屏：状态区（高度自然延伸） ===== */}
+        <View style={styles.pageSnap}>
+          {/* ★ 2026-10-08：minHeight = 视口高 − BUBBLE_RESERVE，配合气泡外层 marginTop:'auto'
+              → 内容不足时气泡被顶到「Tab 栏上方」的固定位置（不再是靠 paddingBottom 猜位置）。
+              同时把 flex 显式钉死为「按内容定高（minHeight 兜底）」，避免 styles.pageInner 的
+              flex:1（flexBasis:0）在 ScrollView 这类不定高父容器里把高度算成 0 或撑满视口
+              —— 那样 marginTop:'auto' 会把气泡推到屏幕最底部（整块被 Tab 盖住）。 */}
+          <View
+            style={[
+              styles.pageInner,
+              {
+                paddingTop: insets.top + theme.space.lg,
+                minHeight: dims.height - BUBBLE_RESERVE,
+                flexGrow: 0,
+                flexShrink: 0,
+                flexBasis: 'auto',
+              },
+            ]}
+          >
             {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出） */}
             <View style={styles.head}>
               <Text style={styles.title}>Today</Text>
@@ -1419,8 +1101,9 @@ export default function TodayScreen() {
             · 数据与消耗卡同源同口径。
             · ★ v18.153 间距 md(16) → sm(12)：一屏纵向预算收紧（见 statusPanel 注释），
               给下方趋势图让出 4pt，图例才落在一屏内。
+            · ★ 2026-10-08 xs(8) → sp(1)(4)：再腾 4pt 给底部常驻 AI 气泡（不被 Tab 压到）。
             ───────────────────────────────────────────────────────────── */}
-        <View style={{ marginBottom: theme.space.sm }}>
+        <View style={{ marginBottom: theme.sp(1) }}>
           <MindChips items={metricChips} />
         </View>
 
@@ -1442,7 +1125,7 @@ export default function TodayScreen() {
             </View>
           </View>
 
-          <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('StatusTrendDetail')}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('StatusTrendDetail')}>
             {/* 玻璃小圆改为**绝对定位浮在图上** → 趋势图因此占满整宽、左右真正居中
                 （原来右侧留出 44pt 给按钮，会把图整体压左） */}
             <View style={styles.trendWrap}>
@@ -1475,7 +1158,7 @@ export default function TodayScreen() {
         <Svg
           width={panelW}
           height={panelArcH}
-          style={[styles.statusPanelArc, { marginBottom: theme.space.sm }]}
+          style={styles.statusPanelArc}
         >
 
           {/* ★ 羽化层（由下往上、由淡到浓）：把「白 ↔ 紫雾」的硬边摊成一条柔和过渡带 */}
@@ -1491,6 +1174,13 @@ export default function TodayScreen() {
           {/* 卡本体白弧（最后画，保证面板本体是纯白、不被羽化层影响） */}
           <Path d={panelArcD} fill={theme.colors.cardBg} />
         </Svg>
+
+        {/* ★ 2026-10-08：全天状态趋势图正下方的常驻 AI 对话气泡（样式 A：四色渐变描边 + 右下三角指向 GROK）。
+            marginTop:'auto' + 第一屏 minHeight（见上）→ 气泡恒定落在「Tab 栏上方」，不被 Tab 压到、
+            也不随建议态/录音态的文案长度上下跳。 */}
+        <View style={{ marginTop: 'auto' }}>
+          <HomeAiBubble navigation={navigation} status={ring?.curveStatus} />
+        </View>
 
           </View>{/* /pageInner 第一屏 */}
         </View>{/* /pageSnap 第一屏 */}
@@ -1612,8 +1302,6 @@ export default function TodayScreen() {
         ) : null}
         {/* /pageSnap 第二屏 */}
       </ScrollView>{/* /pager 整屏吸附 */}
-      {/* ★ 2026-10-07（用户）：首页底部悬浮 H1 好习惯确认卡（tab 栏上方，从下往上推出，一天最多一张） */}
-      <HomeSuggestionFloat />
     </View>
   );
 }
@@ -1622,7 +1310,13 @@ const styles = StyleSheet.create({
   page: { flex: 1, width: '100%' },
   // ★ v18.50 整屏吸附分页
   pagerScroll: { flex: 1, width: '100%' },
-  pagerContent: {},
+  // ★ 2026-10-08（用户：「输入框被底下 Tab 压着」）：
+  //   旧写法 paddingBottom = tabBarHeight + sp(11)(44) = 100 是**无效预留**——
+  //   第一屏内容比视口高、ScrollView 停在顶部时，padding 只在内容末尾加空白，
+  //   根本推不动上方元素，气泡照样压在 Tab 上（截图为证）。
+  //   现在改成三处同源的 BUBBLE_RESERVE（见文件上方常量注释）：
+  //   minHeight 顶位置 + marginTop:'auto' 吃余量 + paddingBottom 保证超高时滚到底也在 Tab 上方。
+  pagerContent: { paddingBottom: BUBBLE_RESERVE },
   pageSnap: { width: '100%', alignItems: 'center' },
   pageInner: {
     width: '100%',
@@ -1657,7 +1351,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.space.xl * 1.5,
+    // ★ 2026-10-08：xl*1.5(36) → sm(12)（首轮收紧），本轮再 sm(12) → xs(8)：
+    //   首页要「一屏不滚动 + 底部 AI 气泡不被 Tab 压」，纵向预算按 pt 抠。
+    marginBottom: theme.space.xs,
   },
   avatarName: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
@@ -1699,7 +1395,7 @@ const styles = StyleSheet.create({
   energyBallCol: { alignItems: 'center' },
   // ★ v18.50 修复：不要 flex:1——整屏吸附后 pageInner 是确定高度，flex:1（flexBasis=0）
   // 会让胶囊在自适应父容器里塌成 0 高，分析文字整句不可见。自动高度即可。
-  statusPill: { marginTop: theme.space.xs },
+  statusPill: { marginTop: 4 },
   // ★ v18.52 经期日期圈（PeriodDayCircles）
   pdRow: {
     flexDirection: 'row',
@@ -1778,7 +1474,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -theme.space.screen,
     marginTop: -1,
   },
-  trendWrap: { position: 'relative', marginTop: theme.space.xs },
+  trendWrap: { position: 'relative', marginTop: 0 },
   trendChevBtn: {
     position: 'absolute',
     right: 0,
@@ -1862,9 +1558,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     // 收紧：让底部圆弧离图表更近（原 12）
-    marginTop: theme.space.xs,
-    // ★ v18.153 再收 12 → 8：一屏预算（图例必须落在可视区内）
-    marginBottom: theme.space.xs,
+    marginTop: 4,
+    // ★ 2026-10-08：xs(8) → 4，一屏预算再收 4
+    marginBottom: 4,
     gap: theme.space.md,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center' },

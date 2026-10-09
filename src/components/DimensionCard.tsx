@@ -50,7 +50,7 @@ export default function DimensionCard({ metric, onPress }: Props) {
   );
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
       <Card>
         <View style={styles.top}>
           <Text style={styles.name}>{metric.name}</Text>

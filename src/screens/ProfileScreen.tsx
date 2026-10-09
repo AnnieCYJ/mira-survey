@@ -6,7 +6,6 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import CalendarGrid from '../components/CalendarGrid';
-import ProgressRing from '../components/ProgressRing';
 import Confetti from '../components/Confetti';
 import Icon from '../components/Icon';
 import RelaxCardDeck from '../components/RelaxCardDeck';
@@ -130,7 +129,6 @@ export default function ProfileScreen() {
     }
   }, [allDone, totalPlanned, celebration.visible, triggerCelebration]);
 
-  const completionRate = totalPlanned > 0 ? totalDone / totalPlanned : 0;
   const [relaxVisible, setRelaxVisible] = useState(false);
 
   return (
@@ -145,30 +143,7 @@ export default function ProfileScreen() {
           <Text style={styles.title}>Calendar</Text>
         </Animated.View>
 
-        <Card style={styles.statsCard}>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNum}>{totalDone}</Text>
-              <Text style={styles.statLabel}>已完成</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNum}>{totalPlanned}</Text>
-              <Text style={styles.statLabel}>计划任务</Text>
-            </View>
-            <View style={styles.statItem}>
-              {/* v16 §1.6：完成度 = 黄绿（唯一控件色/唯一绿） */}
-              <ProgressRing
-                progress={completionRate}
-                size={theme.fs(56)}
-                stroke={5}
-                color={mm.colors.limeCore}
-                track={mm.colors.emptyFill}
-              >
-                <Text style={styles.ringPct}>{Math.round(completionRate * 100)}%</Text>
-              </ProgressRing>
-            </View>
-          </View>
-        </Card>
+        {/* ★ 2026-10-08（用户）：原「已完成 / 计划任务 / 完成度%」统计卡整块移除 */}
 
         <Card>
           <View style={styles.calHead}>
@@ -246,20 +221,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
     marginBottom: theme.space.md,
-  },
-  statsCard: { marginBottom: theme.space.card },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  statItem: { alignItems: 'center' },
-  statNum: {
-    fontSize: theme.fontSize.h2,
-    fontWeight: theme.weight.medium,
-    color: theme.colors.textTitle,
-  },
-  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  ringPct: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.weight.bold,
-    color: mm.colors.limeDeep,
   },
   calHead: {
     flexDirection: 'row',

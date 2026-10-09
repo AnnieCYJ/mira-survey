@@ -189,7 +189,7 @@ export default function MeditationScreen() {
           {TOOL_GRID.map((t) => (
             <TouchableOpacity
               key={t.name}
-              activeOpacity={0.88}
+              activeOpacity={0.7}
               style={styles.gridCell}
               onPress={() => {
                 // 营养搭配/稳定睡眠 = 原模块不变；情绪调节 → 情绪干预四方案（缓一缓/换个说法/动一动/记两笔）；其余 → 通用内容页
@@ -236,8 +236,21 @@ export default function MeditationScreen() {
                 id={h.id}
                 action={h.action}
                 metric={h.metric}
+                headline={h.headline}
+                cta={h.cta}
                 saved
                 onUndo={(id) => { undoHabit(id).then(refreshHabits); }}
+                onOpen={
+                  h.cta
+                    ? () => {
+                        try {
+                          (navigation as any).navigate(h.cta!.screen, h.cta!.params);
+                        } catch {
+                          /* 导航失败静默 */
+                        }
+                      }
+                    : undefined
+                }
                 style={styles.mineCard}
               />
             ))

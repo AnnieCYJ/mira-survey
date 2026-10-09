@@ -27,6 +27,12 @@ export interface HabitEntry {
   action: string;
   /** 证据指标短语（且必须是真实信号改善），如 'HRV 回升 8%，深睡连着 3 天变好' */
   metric: string;
+  /** 建议原文（行动 / 状态型建议存这里；习惯确认型留空，渲染时回退 habitHeadline(action)） */
+  headline?: string;
+  /** 行动建议落地页：{ screen, params }（呼吸冥想 / 饮食记录 / 科普等） */
+  cta?: { screen: string; params?: Record<string, any> };
+  /** 建议种类：'action' 行动引导 / 'reflection' 观察反馈（仅用于「我的建议」卡片展示） */
+  kind?: 'action' | 'reflection';
   /** 用户确认「有用」的次数 */
   count: number;
   /** 首次确认时间戳（epoch ms） */
@@ -58,6 +64,12 @@ function normalize(j: any): HabitFile {
           id: String(h.id),
           action: String(h.action ?? ''),
           metric: String(h.metric ?? ''),
+          headline: typeof h.headline === 'string' ? h.headline : undefined,
+          cta:
+            h.cta && typeof h.cta === 'object'
+              ? { screen: String(h.cta.screen ?? ''), params: (h.cta as any).params }
+              : undefined,
+          kind: h.kind === 'action' || h.kind === 'reflection' ? h.kind : undefined,
           count: Number(h.count) || 1,
           firstAt,
           lastAt: Number(h.lastAt) || firstAt,
@@ -107,20 +119,41 @@ export function peekHabits(): HabitFile {
 
 /**
  * 确认「有用」：同一动作累加确认次数；首次确认时间只记一次。
+ * 可接受 headline / cta / kind —— 让行动型、状态型建议也能以「原文小卡片」形式存进「我的建议」。
  */
-export async function keepHabit(input: { id: string; action: string; metric: string }): Promise<HabitEntry> {
+export async function keepHabit(input: {
+  id: string;
+  action?: string;
+  metric?: string;
+  headline?: string;
+  cta?: { screen: string; params?: Record<string, any> };
+  kind?: 'action' | 'reflection';
+}): Promise<HabitEntry> {
   const f = await loadHabits();
   const now = Date.now();
   const exist = f.habits.find((h) => h.id === input.id);
   let entry: HabitEntry;
   if (exist) {
     exist.count += 1;
-    exist.action = input.action || exist.action;
-    exist.metric = input.metric || exist.metric;
+    if (input.action !== undefined) exist.action = input.action || exist.action;
+    if (input.metric !== undefined) exist.metric = input.metric || exist.metric;
+    if (input.headline !== undefined) exist.headline = input.headline;
+    if (input.cta) exist.cta = input.cta;
+    if (input.kind) exist.kind = input.kind;
     exist.lastAt = now;
     entry = exist;
   } else {
-    entry = { id: input.id, action: input.action, metric: input.metric, count: 1, firstAt: now, lastAt: now };
+    entry = {
+      id: input.id,
+      action: input.action ?? '',
+      metric: input.metric ?? '',
+      headline: input.headline,
+      cta: input.cta,
+      kind: input.kind,
+      count: 1,
+      firstAt: now,
+      lastAt: now,
+    };
     f.habits.push(entry);
   }
   // 确认即撤销冷却：用户改主意时不该还被「负反馈」压着
@@ -156,13 +189,15 @@ export async function listHabits(): Promise<HabitEntry[]> {
 }
 
 /**
- * 文案模板（产品定稿）：
- *   主句：我发现你通过{action}，状态有了改善
- *   证据：{metric}
- *   问句：可以和我聊聊你的感受吗？
+ * 文案模板（2026-10-08 十改：口径对齐 App 内 AI 的人设声线 —— character.ts 的 ENFP 闺蜜，
+ * 「句子短、有活力、爱用语气词（呀/哦/哎/啦）」，先接住感受再给建议；不夸大、不诊断）。
+ *   主句（★ 十三改，用户定稿「发现型」口径）：发现「{action}」之后，你的状态有变好哦
+ *   证据：{metric}（数字保持事实口径，不加修饰）
+ *   问句：今天过得怎么样呀？跟我说说～
+ * ★ 长度纪律：主句控制在 ~22 字内（首页气泡固定高 92、标题最多 2 行，过长会挤掉证据行）。
  */
 export function habitHeadline(action: string): string {
-  return `我发现你通过${action}，状态有了改善`;
+  return `发现「${action}」之后，你的状态有变好哦`;
 }
 
-export const HABIT_QUESTION = '可以和我聊聊你的感受吗？';
+export const HABIT_QUESTION = '今天过得怎么样呀？跟我说说～';

@@ -101,7 +101,7 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
             points={ready.points}
             sleepWindow={spans.sleep}
             nowHour={new Date(nowMs ?? Date.now()).getHours()}
-            caption="分数越高表示此刻越「转得动」；灰底为睡眠时段"
+            caption="线越高，那一刻脑子越转得动；灰底是睡眠时段"
           />
         </View>
 
@@ -114,7 +114,7 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
           </View>
         ) : (
           <Text style={[styles.emptyText, { marginTop: theme.sp(2) }]}>
-            连上戒指跑 2-3 轮自动监测后自动生成报告
+            戴上戒指自动跑几轮监测后，这里会长出你真实的准备度曲线
           </Text>
         )}
     </Card>

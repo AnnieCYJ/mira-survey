@@ -15,7 +15,7 @@ export default function RelaxCardDeck({ onPlayRelax }: Props) {
     <View style={styles.deck}>
       <Text style={styles.deckTitle}>集成就卡</Text>
       <View style={styles.cards}>
-        <TouchableOpacity activeOpacity={0.85} onPress={onPlayRelax}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onPlayRelax}>
           <Card style={styles.card} padded={false}>
             <Image source={relaxImage} style={styles.image} resizeMode="cover" />
             <View style={styles.labelWrap}>

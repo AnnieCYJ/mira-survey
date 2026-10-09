@@ -34,7 +34,7 @@ function HighlightMiniCard({
 }) {
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
+      activeOpacity={0.7}
       disabled={!onNav}
       onPress={() => onNav?.(seg.nav)}
       style={styles.card}

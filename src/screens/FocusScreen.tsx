@@ -92,7 +92,7 @@ function MoodChip({ label, mood }: { label: string; mood: string }) {
     <Animated.View style={{ opacity: fadeIn, transform: [{ scale }] }}>
       <TouchableOpacity
         style={styles.chip}
-        activeOpacity={0.6}
+        activeOpacity={0.7}
         onPress={() => {
           Animated.sequence([
             Animated.timing(scale, { toValue: 0.9, duration: 100, useNativeDriver: true }),

@@ -81,3 +81,13 @@
 - 发现：本地 master 领先 origin/master **5 个提交**；工作区 14 项未提交改动——新增 3 个 docs/ HTML（皮质醇认知准备度评审、指标算法架构、科学依据）+ 1 个 preview/sleep-rhythm.html；修改 10 个源文件（plugins/withMetroScheme.js、AllDayRecoveryCard/BentoCard/SleepCard 组件、sleepPersonalized lib、InsightScreen/SleepDetailScreen/StatusTrendDetailScreen/TodayScreen 屏幕）+ automation 记忆文件。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：执行 `git add -A`（14 文件，子模块无法暂存）→ commit c4849bf「迭代睡眠与洞察模块：新增皮质醇认知准备度评审、指标算法架构与科学依据文档；睡眠节律预览页；优化恢复卡、BentoCard、SleepCard、睡眠个性化基线及今日/洞察/趋势详情/睡眠详情多屏」→ push 成功 6e49f80..c4849bf（5 个积压提交 + 本次 1 个，共 6 个）。
 - 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-07 14:12（第十六次运行）
+- 发现：本地 master 领先 origin/master **1 个提交**（c657165 洞察页心理压力/脑力周月年横轴恢复自然周期；修记录心情时间选择器与表情闪动）；工作区存在大量未提交改动——**清理废弃 iOS 备份目录**（删除 ios-broken-20260830/ 与 ios-broken-3/ 两套完整 Xcode 工程备份，合计约 29K 行删除）+ **周期与洞察模块大迭代**：新增 10 个组件/文件（CycleRegularityCard、CycleYearReviewCard、HomeSuggestionFloat、SuggestionCard、SymptomPhaseMatrix、SymptomStatsPanel、habitSuggestions、buildTodayTimeline、suggestionEngine）+ MIRA_RING_SYNC_CONTRACT_V2.md 文档；修改 20 个源文件（覆盖 TodayScreen、CycleCalendarScreen、InsightScreen、MeditationScreen 等屏幕与 CortisolDailyChart、AllDayRecoveryCard、MindChips 等组件及 cortisolProxy、realSeries 等 lib）；automation 记忆文件待提交。
+- 处理：执行 `git add -A`（355 文件，+3744/-29034，子模块无法暂存）→ commit f37fca0「周期与洞察模块大迭代：新增周期规律性/年度回顾/症状矩阵/建议引擎组件，优化皮质醇图表与日历屏；清理废弃 ios-broken 备份目录」→ push 成功 c4849bf..f37fca0（1 个积压提交 + 本次 1 个，共 2 个）。
+- 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-09 14:12（第十七次运行）
+- 发现：本地与 origin/master 同步（0 领先）；工作区存在 69 项未提交改动——新增首页 AI 气泡（HomeAiBubble 组件 + preview/home-ai-bubble-preview.html）、AI 叙事与建议引擎（aiNarrative.ts、aiSuggestion.ts）、2 份交互评审/优化计划文档；删除 HomeSuggestionFloat.tsx（被 HomeAiBubble 替代）；修改 package.json/package-lock.json 及 62 个源文件（覆盖 AI 层 health/insight/miraAi、今日/洞察/日历/睡眠/能量/情绪干预/饮食/呼吸/专注等多屏，以及 RangeSwitch/SuggestionCard/SleepDualAxisChart/VoiceQuickOverlay 等组件）；automation 记忆文件（10-07 条目）待提交。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：执行 `git add -A`（69 文件，子模块无法暂存）→ commit（消息概括上述改动）→ push origin master。
+- 结果：待执行后回填。

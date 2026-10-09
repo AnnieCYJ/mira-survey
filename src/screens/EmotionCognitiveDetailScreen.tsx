@@ -379,11 +379,11 @@ export default function EmotionCognitiveDetailScreen() {
         }
       }
       if (dayData.stress?.emotionalLoad != null && dayData.stress.emotionalLoad >= 70) {
-        parts.push('当日情绪消耗偏高');
+        parts.push('当日情绪消耗不小');
         titles.push('情绪压力');
       }
       if (dayData.cog?.loadLevel === 'heavy') {
-        parts.push('当日脑力负荷偏高');
+        parts.push('当日用脑明显偏多');
         titles.push('情绪压力');
       }
     } else if (rangeData) {
@@ -401,14 +401,14 @@ export default function EmotionCognitiveDetailScreen() {
 
     const PRIORITY = ['代谢', '睡眠', '情绪压力', '恢复'];
     const verdictMap: Record<string, string> = {
-      代谢: '压力与恢复偏弱，注意休息。',
-      睡眠: '修复不够充分，今晚早点补觉。',
-      情绪压力: '主动减压，留点放松时间。',
-      恢复: '恢复力不足，今天多休息。',
+      代谢: '压力和恢复这两头都偏弱，这两天多让自己松一松。',
+      睡眠: '夜里的修复不太够，今晚早点躺下补一补。',
+      情绪压力: '情绪攒了不少，给自己留一段完全放空的时间。',
+      恢复: '恢复没跟上，今天就把自己当手机充电。',
     };
     let anomaly: SummaryRow;
     if (!parts.length) {
-      anomaly = { tone: 'good', title: '异常数据分析', body: '该区间各项指标都在正常范围内，整体平稳。' };
+      anomaly = { tone: 'good', title: '异常数据分析', body: '这段时间各项指标都在正常范围里，整体走得很稳。' };
     } else {
       const top = PRIORITY.find((t) => titles.includes(t)) ?? '代谢';
       anomaly = {
@@ -420,7 +420,7 @@ export default function EmotionCognitiveDetailScreen() {
     const advice: SummaryRow = {
       tone: parts.length ? 'warn' : 'good',
       title: '今日建议',
-      body: parts.length ? '保持规律作息，关注最突出的异常项。' : '状态平稳，保持现在的节奏即可。',
+      body: parts.length ? '作息尽量规律，优先照顾最突出的那件事。' : '状态平稳，照现在的节奏走就好。',
     };
     return [anomaly, advice];
   }, [range, dayData, rangeData, anchor, todayRhythm]);

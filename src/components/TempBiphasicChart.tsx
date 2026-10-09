@@ -246,6 +246,11 @@ export default function TempBiphasicChart({
             </Text>
           </View>
         )}
+        {showTodayLine && cycAxis ? (
+          <View style={styles.todayRow}>
+            <Text style={styles.todayText}>今天 · 第 {cycAxis.todayDay} 天</Text>
+          </View>
+        ) : null}
         <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {/* 周期阶段背景带（仅周/月/年有按日相位；日视图因是日内，不画阶段带） */}
         {!isDay &&
@@ -322,11 +327,6 @@ export default function TempBiphasicChart({
           {isDay ? '已记录 1 个体温点，继续佩戴即可看到完整日内曲线。' : '已记录 1 天体温，再连续佩戴 2–3 天即可看到双相曲线。'}
         </Text>
       ) : null}
-      {showTodayLine && cycAxis ? (
-        <View style={styles.todayRow}>
-          <Text style={styles.todayText}>今天 · 第 {cycAxis.todayDay} 天</Text>
-        </View>
-      ) : null}
       <View style={styles.axisRow}>
         {axisLabels.map((t, i) => (
           <Text key={`${t}-${i}`} style={styles.axisText}>
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 2 },
   title: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   range: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  todayRow: { alignItems: 'flex-end', marginTop: theme.sp(1), paddingHorizontal: 2 },
+  todayRow: { alignItems: 'flex-start', marginBottom: theme.sp(1), paddingHorizontal: 2 },
   todayText: { fontSize: theme.fontSize.micro, color: theme.colors.accentText },
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingHorizontal: 2 },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

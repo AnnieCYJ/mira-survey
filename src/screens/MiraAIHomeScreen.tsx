@@ -140,7 +140,7 @@ function MarqueeRow({
             key={`${q}-${i}`}
             style={[styles.qChip, { backgroundColor: bg }]}
             onPress={() => onPick(q)}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
             <Text style={[styles.qChipText, { color: fg }]}>{q}</Text>
           </TouchableOpacity>

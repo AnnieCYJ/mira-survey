@@ -135,7 +135,7 @@ export default function ConsumptionTilesCard({
             <TouchableOpacity
               key={t.key}
               style={styles.cell}
-              activeOpacity={0.88}
+              activeOpacity={0.7}
               disabled={!onNav}
               onPress={() => onNav?.(t.nav!)}
               accessibilityRole="button"

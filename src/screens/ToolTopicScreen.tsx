@@ -147,7 +147,7 @@ export default function ToolTopicScreen() {
           <View style={[ss.actionBar, { paddingBottom: Math.max(theme.sp(2), Math.round(insets.bottom * 0.4)) }]}>
             <View style={ss.actionRow}>
               <TouchableOpacity
-                activeOpacity={0.8}
+                activeOpacity={0.7}
                 style={ss.sciBtn}
                 onPress={() => navigation.navigate('ToolTopic', { topic: 'sportArticles' })}
                 accessibilityRole="button"
@@ -155,7 +155,7 @@ export default function ToolTopicScreen() {
               >
                 <Text style={ss.sciBtnText}>科普</Text>
               </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }} onPress={() => setPickerOpen(true)}>
+              <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={() => setPickerOpen(true)}>
                 <LinearGradient
                   colors={[mm.colors.btnGradFrom, mm.colors.limeSoft, mm.colors.btnGradTo]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -477,7 +477,7 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
                 return (
                   <TouchableOpacity
                     key={k.type}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     style={[ss.kindChip, active && ss.kindChipActive]}
                     onPress={() => setKind(k.type)}
                     accessibilityRole="button"
@@ -493,7 +493,7 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
               <Text style={ss.minuteLabel}>时长（分钟）</Text>
               <View style={ss.minuteStepper}>
                 <TouchableOpacity
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                   style={ss.minuteBtn}
                   onPress={() => setMinutes(String(Math.max(1, minutesNum - 5)))}
                   accessibilityRole="button"
@@ -503,7 +503,7 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
                 </TouchableOpacity>
                 <Text style={ss.minuteValue}>{minutesNum}</Text>
                 <TouchableOpacity
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                   style={ss.minuteBtn}
                   onPress={() => setMinutes(String(minutesNum + 5))}
                   accessibilityRole="button"
@@ -519,10 +519,10 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
             </Text>
 
             <View style={ss.pickerActionRow}>
-              <TouchableOpacity activeOpacity={0.8} style={ss.pickerCancel} onPress={() => setPickerOpen(false)} accessibilityRole="button">
+              <TouchableOpacity activeOpacity={0.7} style={ss.pickerCancel} onPress={() => setPickerOpen(false)} accessibilityRole="button">
                 <Text style={ss.pickerCancelText}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }} onPress={confirmRecord}>
+              <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={confirmRecord}>
                 <LinearGradient
                   colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}

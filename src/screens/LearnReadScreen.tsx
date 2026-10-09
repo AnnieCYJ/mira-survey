@@ -2,10 +2,11 @@
  * LearnReadScreen —— 知识科普 · 阅读详情页（v18.70）
  *
  * 参考图文阅读样式：顶部返回 + 插画封面 + 分类/时长眉行 + 标题 + 作者/日期
- * + 短段落正文 + 底部「和 Mira 聊聊这篇」（ChatSheet，真实功能）。
+ * + 短段落正文 + 参考出处。
+ * （★ 2026-10-08 用户：去掉底部「和 Mira 聊聊这篇」入口——读文章就是读文章，不再跳 AI。）
  * 文章数据：lib/learnArticles.ts（静态内容，无假数据）。
  */
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -13,7 +14,6 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
-import ChatSheet from '../components/ChatSheet';
 import { getLearnArticle, LEARN_AUTHOR } from '../lib/learnArticles';
 import { getGlowArticle } from '../lib/glowArticles';
 import { getEmotionArticle } from '../lib/emotionArticles';
@@ -41,7 +41,6 @@ export default function LearnReadScreen() {
   const navigation = useNavigation();
   const collection = route.params?.collection ?? 'learn';
   const article = GETTERS[collection](route.params?.articleId ?? '');
-  const [chatVisible, setChatVisible] = useState(false);
   // ★ 封面尺寸显式计算（v18.73）：width:'100%'+aspectRatio 在真机上没生效、
   //   Image 退回原始 1080×569 被屏幕裁成「满屏大图」。这里用窗口宽-边距直接给像素宽高。
   const winW = useWindowDimensions().width;
@@ -99,24 +98,8 @@ export default function LearnReadScreen() {
           </View>
         ) : null}
 
-        {/* 和 Mira 聊聊这篇（ChatSheet，真实功能） */}
-        <TouchableOpacity
-          activeOpacity={theme.press.opacity}
-          style={styles.chatRow}
-          onPress={() => setChatVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="和 Mira 聊聊这篇文章"
-        >
-          <Text style={styles.chatText}>和 Mira 聊聊这篇</Text>
-          <Icon name="arrowRight" size={theme.fs(15)} color={mm.chipBg.lav.fg} strokeWidth={2} />
-        </TouchableOpacity>
+        {/* （2026-10-08）原底部「和 Mira 聊聊这篇」入口已按用户要求移除 */}
       </ScreenContainer>
-
-      <ChatSheet
-        visible={chatVisible}
-        onClose={() => setChatVisible(false)}
-        initialQuestion={`我刚读完「${article.title}」，想和你聊聊它。`}
-      />
     </View>
   );
 }
@@ -200,23 +183,5 @@ const styles = StyleSheet.create({
     lineHeight: theme.fs(17),
     color: mm.colors.inkFaint,
     marginBottom: theme.sp(0.75),
-  },
-  chatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.cardBg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(3.5),
-    paddingHorizontal: theme.sp(4),
-    marginTop: theme.sp(1),
-    marginBottom: theme.space.xl,
-  },
-  chatText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.weight.semibold,
-    color: mm.chipBg.lav.fg,
   },
 });

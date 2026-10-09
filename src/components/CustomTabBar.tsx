@@ -215,11 +215,18 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     if (voiceStartTimer.current) clearTimeout(voiceStartTimer.current);
     voiceStartTimer.current = setTimeout(() => {
       voiceStartTimer.current = null; // 标记：已进入录音态
-      console.log('[CustomTabBar] 长按 bot → 打开录音');
-      open((text) => {
-        console.log('[CustomTabBar] onRelease 回调, text:', JSON.stringify(text));
-        doNavigate((text || '').trim());
-      });
+      // ★ 2026-10-08：在首页（Today）长按 → **不弹**「正在聆听…」浮层，
+      //   实时转写直接显示在趋势图下方的常驻 AI 气泡里（silent = inlineMode）；
+      //   其余页面保持原有底部浮层样式。
+      const onToday = state.routes[state.index]?.name === 'Today';
+      console.log('[CustomTabBar] 长按 bot → 打开录音', onToday ? '(就地/首页气泡)' : '(浮层)');
+      open(
+        (text) => {
+          console.log('[CustomTabBar] onRelease 回调, text:', JSON.stringify(text));
+          doNavigate((text || '').trim());
+        },
+        { silent: onToday },
+      );
     }, PRESS_HOLD_MS);
   };
 

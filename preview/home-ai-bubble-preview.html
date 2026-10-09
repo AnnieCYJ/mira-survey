@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 首页 AI 气泡对话框 · 方案预览</title>
+<style>
+  :root{
+    --purple:#9D8AF0; --purpleDeep:#6E58C8; --purpleBtn:#7766D7;
+    --rose:#F2A3C6; --roseDeep:#C9598A;
+    --sky:#7EA6F8; --lime:#D5E384; --limeDeep:#6E7A24; --honey:#F0C46E;
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --card:#FFFFFF; --border:rgba(31,29,26,.09); --warm:#F7F5F0;
+    --tabBg:#FFFFFF;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:#EDEAE5;font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:24px 12px 40px;}
+  h1{font-size:18px;color:var(--ink);margin:0 0 4px;font-weight:700;}
+  .sub{font-size:13px;color:var(--inkFaint);margin-bottom:18px;text-align:center;max-width:430px;line-height:1.5;}
+  .switch{display:flex;gap:8px;margin-bottom:18px;background:#fff;padding:6px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+  .switch button{border:none;background:transparent;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;color:var(--inkSoft);cursor:pointer;transition:.2s;}
+  .switch button.active{background:linear-gradient(135deg,var(--purple),var(--rose));color:#fff;}
+
+  .phone{width:390px;height:800px;background:linear-gradient(180deg,#F3F0EA,#EAE6DF);border-radius:44px;
+    border:10px solid #1d1b19;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+  .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#1d1b19;border-radius:0 0 16px 16px;z-index:30;}
+  .scroll{position:absolute;inset:0;overflow:hidden;}
+  /* ★ 整体上移：top 收紧 + 负位移，给底部常驻气泡让出空间 */
+  .content{position:absolute;left:0;right:0;top:20px;bottom:108px;padding:0 16px;
+    transition:transform .35s ease;transform:translateY(-12px);}
+
+  .title-row{display:flex;justify-content:space-between;align-items:center;margin:4px 2px 6px;}
+  .title-row .hi{font-size:17px;font-weight:700;color:var(--ink);}
+  .title-row .date{font-size:12px;color:var(--inkFaint);}
+
+  .ring-wrap{display:flex;flex-direction:column;align-items:center;margin:0 0 2px;}
+  .ring{position:relative;width:190px;height:190px;}
+  .ring svg{transform:rotate(-90deg);}
+  .ring .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ring .big{font-size:44px;font-weight:800;color:var(--ink);line-height:1;}
+  .ring .unit{font-size:14px;color:var(--inkFaint);margin-top:2px;}
+  .ring .cap{font-size:13px;color:var(--inkSoft);margin-top:6px;}
+
+  .chips{display:flex;gap:8px;margin:4px 0 6px;}
+  .chip{flex:1;background:#fff;border:1px solid var(--border);border-radius:12px;padding:7px 10px;display:flex;flex-direction:column;gap:1px;}
+  .chip .k{font-size:11px;color:var(--inkFaint);}
+  .chip .v{font-size:15px;font-weight:700;color:var(--ink);}
+
+  .trend{background:#fff;border:1px solid var(--border);border-radius:16px;padding:9px 12px 5px;margin-bottom:6px;}
+  .trend .h{font-size:12px;color:var(--inkSoft);font-weight:600;margin-bottom:3px;}
+  .trend svg{display:block;width:100%;height:62px;}
+
+  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:8px;}
+  .bento{background:#fff;border:1px solid var(--border);border-radius:16px;padding:11px;}
+  .bento .t{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:5px;display:flex;align-items:center;gap:6px;}
+  .bento .dot{width:8px;height:8px;border-radius:50%;}
+  .bento .val{font-size:21px;font-weight:800;color:var(--ink);}
+  .bento .sub{font-size:11px;color:var(--inkFaint);margin-top:2px;}
+
+  /* tab 栏：左卡片(flex) + 右端 Bot(GROK) */
+  .tabbar{position:absolute;left:14px;right:14px;bottom:14px;height:64px;background:var(--tabBg);
+    border:1px solid var(--border);border-radius:32px;display:flex;align-items:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);z-index:25;padding:0 6px;}
+  .tabbar .left{flex:1;display:flex;justify-content:space-around;align-items:center;}
+  .tabitem{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .tabitem .ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--inkFaint);}
+  .tabitem.on .ic{background:var(--lime);color:var(--ink);}
+  .tabitem .lb{font-size:9px;color:var(--inkFaint);}
+  .tabitem.on .lb{color:var(--ink);}
+  .bot{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#A98FE8,#C3B2D4);
+    display:flex;align-items:center;justify-content:center;position:relative;margin-bottom:22px;
+    box-shadow:0 6px 16px rgba(110,88,200,.4);}
+  .bot .eye{position:absolute;background:#fff;border-radius:6px;width:7px;height:22px;}
+  .bot .el{left:21px;top:18px;} .bot .er{right:21px;top:18px;}
+  .bot .smile{position:absolute;bottom:16px;width:18px;height:9px;border-bottom:3px solid #fff;border-radius:0 0 12px 12px;}
+
+  /* ===== 气泡通用（常驻，指向右下角 GROK） ===== */
+  .bubble-layer{position:absolute;left:14px;right:14px;z-index:24;
+    transition:opacity .3s, transform .3s;transform-origin:bottom right;}
+  .bubble{position:relative;background:#fff;border-radius:20px;padding:13px 15px;
+    display:flex;align-items:center;gap:11px;box-shadow:0 10px 30px rgba(0,0,0,.12);}
+  /* ★ 三角改指右下角 GROK（tab 栏右端的 Bot），不再指中央 */
+  .bubble .tail{position:absolute;bottom:-9px;right:42px;
+    width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;}
+
+  /* 方案A：渐变描边 + 说话波形（默认） */
+  .b-a .bubble{border:2.5px solid transparent;
+    background:linear-gradient(#fff,#fff) padding-box,
+              linear-gradient(120deg,var(--purple),var(--rose),var(--lime),var(--honey)) border-box;}
+  .b-a .tail{border-top:10px solid #fff;filter:drop-shadow(0 1px 0 var(--rose));}
+  .b-a .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#A98FE8,#C3B2D4);flex:none;position:relative;}
+  .b-a .avatar .e{position:absolute;background:#fff;border-radius:4px;width:5px;height:14px;top:12px;}
+  .b-a .avatar .el{left:11px;} .b-a .avatar .er{right:11px;}
+  .b-a .txt{flex:1;}
+  .b-a .txt .t1{font-size:13px;font-weight:600;color:var(--ink);line-height:1.35;}
+  .b-a .txt .t2{font-size:11px;color:var(--inkFaint);margin-top:3px;}
+  .wave{display:flex;align-items:center;gap:3px;height:26px;flex:none;}
+  .wave i{width:3px;background:linear-gradient(var(--purple),var(--rose));border-radius:2px;animation:bounce 1s infinite ease-in-out;}
+  .wave i:nth-child(1){animation-delay:0s} .wave i:nth-child(2){animation-delay:.15s}
+  .wave i:nth-child(3){animation-delay:.3s} .wave i:nth-child(4){animation-delay:.45s}
+  .wave i:nth-child(5){animation-delay:.6s}
+  @keyframes bounce{0%,100%{height:6px}50%{height:24px}}
+
+  /* 方案B：毛玻璃柔光 + 打字三点 */
+  .b-b .bubble{background:rgba(255,255,255,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1.5px solid rgba(157,138,240,.5);}
+  .b-b .tail{border-top:10px solid rgba(255,255,255,.85);}
+  .b-b .avatar{width:40px;height:40px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 35% 30%, #fff, #E7E1FB 70%, #C7B9F2);
+    border:1.5px solid rgba(157,138,240,.4);}
+  .b-b .txt{flex:1;}
+  .b-b .txt .t1{font-size:13px;color:var(--ink);line-height:1.4;}
+  .b-b .txt .t1 b{color:var(--purpleDeep);}
+  .dots{display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle;}
+  .dots i{width:5px;height:5px;border-radius:50%;background:var(--purple);animation:dot 1.2s infinite;}
+  .dots i:nth-child(2){animation-delay:.2s} .dots i:nth-child(3){animation-delay:.4s}
+  @keyframes dot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+
+  /* 方案C：胶囊带光晕 + 语音按钮 */
+  .b-c .bubble{border-radius:26px;background:#fff;border:2px solid transparent;
+    background:linear-gradient(#fff,#fff) padding-box,
+              linear-gradient(120deg,var(--sky),var(--purple),var(--rose)) border-box;
+    box-shadow:0 0 0 4px rgba(157,138,240,.12),0 12px 28px rgba(110,88,200,.18);}
+  .b-c .tail{border-top:10px solid #fff;}
+  .b-c .avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#A98FE8,#C3B2D4);flex:none;position:relative;}
+  .b-c .avatar .e{position:absolute;background:#fff;border-radius:4px;width:5px;height:15px;top:13px;}
+  .b-c .avatar .el{left:12px;} .b-c .avatar .er{right:12px;}
+  .b-c .txt{flex:1;}
+  .b-c .txt .t1{font-size:13px;font-weight:600;color:var(--ink);}
+  .b-c .txt .t2{font-size:11px;color:var(--inkFaint);margin-top:3px;}
+  .b-c .mic{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--purple),var(--rose));
+    flex:none;display:flex;align-items:center;justify-content:center;}
+
+  .hint{margin-top:14px;font-size:12px;color:var(--inkFaint);text-align:center;max-width:430px;line-height:1.7;}
+  .tag{display:inline-block;background:#fff;border:1px solid var(--border);border-radius:8px;padding:2px 8px;margin:0 2px;color:var(--inkSoft);font-size:11px;}
+</style>
+</head>
+<body>
+  <h1>Mira 首页 · 常驻 AI 对话气泡</h1>
+  <div class="sub">你已选 <b>方案 A</b>。气泡常驻在首页底部，小三角指向<b>右下角 GROK（Mira Bot）</b>；上方内容已整体上移留空间。点击可切换 B / C 对比。</div>
+  <div class="switch">
+    <button data-v="a" class="active">A · 渐变描边·说话波形</button>
+    <button data-v="b">B · 毛玻璃·打字</button>
+    <button data-v="c">C · 胶囊光晕·语音</button>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="scroll">
+      <div class="content">
+        <div class="title-row">
+          <div class="hi">下午好，Annie</div>
+          <div class="date">10月8日 周四</div>
+        </div>
+
+        <div class="ring-wrap">
+          <div class="ring">
+            <svg width="190" height="190" viewBox="0 0 200 200">
+              <circle cx="100" cy="100" r="86" fill="none" stroke="#EDEAE5" stroke-width="14"/>
+              <circle cx="100" cy="100" r="86" fill="none" stroke="url(#g)" stroke-width="14"
+                stroke-linecap="round" stroke-dasharray="540" stroke-dashoffset="160"/>
+              <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#F0C46E"/><stop offset="50%" stop-color="#9D8AF0"/>
+                <stop offset="100%" stop-color="#F2A3C6"/></linearGradient></defs>
+            </svg>
+            <div class="center">
+              <div class="big">72</div><div class="unit">今日状态</div>
+              <div class="cap">恢复良好 · 偏晚型</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chips">
+          <div class="chip"><span class="k">脑力消耗</span><span class="v">38%</span></div>
+          <div class="chip"><span class="k">心理压力</span><span class="v">中</span></div>
+          <div class="chip"><span class="k">运动</span><span class="v">210 kcal</span></div>
+        </div>
+
+        <div class="trend">
+          <div class="h">全天状态趋势</div>
+          <svg viewBox="0 0 320 62" preserveAspectRatio="none">
+            <path d="M0,44 C40,34 60,16 100,24 C140,32 160,10 200,20 C240,30 270,16 320,12"
+              fill="none" stroke="#9D8AF0" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,44 C40,34 60,16 100,24 C140,32 160,10 200,20 C240,30 270,16 320,12 L320,62 L0,62 Z"
+              fill="rgba(157,138,240,.12)"/>
+          </svg>
+        </div>
+
+        <div class="grid">
+          <div class="bento">
+            <div class="t"><span class="dot" style="background:var(--sky)"></span>睡眠节律</div>
+            <div class="val">86</div><div class="sub">深睡 1h52m · 规律</div>
+          </div>
+          <div class="bento">
+            <div class="t"><span class="dot" style="background:var(--purple)"></span>脑力</div>
+            <div class="val">准备度 高</div><div class="sub">峰值 15:00</div>
+          </div>
+          <div class="bento">
+            <div class="t"><span class="dot" style="background:var(--rose)"></span>心理压力</div>
+            <div class="val">中</div><div class="sub">午后偏高</div>
+          </div>
+          <div class="bento">
+            <div class="t"><span class="dot" style="background:var(--honey)"></span>经期</div>
+            <div class="val">黄体期</div><div class="sub">第 14 天</div>
+          </div>
+        </div>
+        <div style="height:6px"></div>
+      </div><!--/content-->
+
+      <!-- 气泡层 A（默认） -->
+      <div class="bubble-layer b-a" id="ba" style="bottom:86px;">
+        <div class="bubble">
+          <div class="avatar"><span class="e el"></span><span class="e er"></span></div>
+          <div class="txt">
+            <div class="t1">我注意到你今天的皮质醇波动偏晚，要聊聊今晚的放松节奏吗？</div>
+            <div class="t2">Mira 正在聆听 · 轻点气泡开始对话</div>
+          </div>
+          <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="tail"></div>
+        </div>
+      </div>
+
+      <!-- 气泡层 B -->
+      <div class="bubble-layer b-b hide" id="bb" style="bottom:86px;">
+        <div class="bubble">
+          <div class="avatar"></div>
+          <div class="txt">
+            <div class="t1">正在为你解读今日状态<b> · 恢复良好，但节律偏晚</b><span class="dots"><i></i><i></i><i></i></span></div>
+          </div>
+          <div class="tail"></div>
+        </div>
+      </div>
+
+      <!-- 气泡层 C -->
+      <div class="bubble-layer b-c hide" id="bc" style="bottom:86px;">
+        <div class="bubble">
+          <div class="avatar"><span class="e el"></span><span class="e er"></span></div>
+          <div class="txt">
+            <div class="t1">我正在听你说…</div>
+            <div class="t2">轻点气泡开始对话</div>
+          </div>
+          <div class="mic">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/></svg>
+          </div>
+          <div class="tail"></div>
+        </div>
+      </div>
+
+      <!-- tab 栏：右端为 GROK(Bot) -->
+      <div class="tabbar">
+        <div class="left">
+          <div class="tabitem on"><div class="ic">⌂</div><div class="lb">首页</div></div>
+          <div class="tabitem"><div class="ic">◔</div><div class="lb">洞察</div></div>
+          <div class="tabitem"><div class="ic">⚙</div><div class="lb">工具</div></div>
+          <div class="tabitem"><div class="ic">▦</div><div class="lb">日历</div></div>
+        </div>
+        <div class="bot"><span class="eye el"></span><span class="eye er"></span><span class="smile"></span></div>
+      </div>
+
+    </div><!--/scroll-->
+  </div><!--/phone-->
+
+  <div class="hint">
+    <span class="tag">整体上移</span> 圆环 / chips / 趋势图已上移，底部给常驻气泡留空间。<br/>
+    <span class="tag">三角指向右下角</span> GROK（tab 栏右端 Mira Bot 紫圆脸）—— 与你描述一致。<br/>
+    选定后我落地到 RN：首页底部悬浮 <span class="tag">HomeAiBubble</span>，复用 <span class="tag">HomeSuggestionFloat</span> 定位逻辑，三角 SVG 指向 GROK；不改变现有圆环/卡片/趋势图任何一行。
+  </div>
+
+<script>
+  const btns=document.querySelectorAll('.switch button');
+  const layers={a:document.getElementById('ba'),b:document.getElementById('bb'),c:document.getElementById('bc')};
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.classList.remove('active'));b.classList.add('active');
+    const v=b.dataset.v;
+    Object.entries(layers).forEach(([k,el])=>el.classList.toggle('hide',k!==v));
+  }));
+</script>
+</body>
+</html>

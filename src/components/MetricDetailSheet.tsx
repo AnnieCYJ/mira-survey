@@ -89,7 +89,7 @@ export default function MetricDetailSheet({ visible, metricKey, onClose }: Props
               key={r}
               style={[styles.rangeChip, r === range && styles.rangeChipOn]}
               onPress={() => setRange(r)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
               <Text style={[styles.rangeText, r === range && styles.rangeTextOn]}>
                 {RANGE_DEF[r].label}

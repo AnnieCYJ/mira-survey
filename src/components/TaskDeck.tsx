@@ -317,7 +317,7 @@ export default function TaskDeck({ tools, onComplete, onOpenArticle, onDoTask }:
                   style={[styles.btn, t.done && styles.btnDone]}
                   disabled={t.done}
                   onPress={() => handleComplete(t)}
-                  activeOpacity={0.85}
+                  activeOpacity={0.7}
                 >
                   {/* v18.77：行动按钮回归全 App 主按钮标准——btnGradFrom→btnGradTo 紫渐变 + 白字
                       （与洞察页 ECG / MiraAI 发送 / 设置页连接同款）；
@@ -469,7 +469,7 @@ function FlipBack({ tool, onDetail, onDo, onClose }: {
       <Text style={styles.flipSrc} numberOfLines={2}>出处 · {f.src}</Text>
       <View style={hasDo ? styles.flipBtnRow : undefined}>
         {hasDo ? (
-          <TouchableOpacity style={[styles.btn, styles.btnFull, styles.flipBtnHalf]} onPress={() => onDetail(tool)} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.btn, styles.btnFull, styles.flipBtnHalf]} onPress={() => onDetail(tool)} activeOpacity={0.7}>
             <View style={[styles.btnGrad, styles.btnGhostBg]}>
               <Text style={styles.btnTextDone}>查看详情</Text>
             </View>
@@ -478,7 +478,7 @@ function FlipBack({ tool, onDetail, onDo, onClose }: {
         <TouchableOpacity
           style={[styles.btn, styles.btnFull, hasDo && styles.flipBtnHalf]}
           onPress={() => (hasDo ? onDo!(tool) : onDetail(tool))}
-          activeOpacity={0.85}
+          activeOpacity={0.7}
         >
           <LinearGradient
             colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}

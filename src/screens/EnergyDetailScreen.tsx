@@ -279,7 +279,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           <Text style={[styles.chartTitle, { marginBottom: theme.sp(1.5) }]}>认知准备度 · 全天趋势</Text>
           <ReadinessTrendChart chartH={170} points={skeletonPoints} sleepWindow={null} />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            连上戒指跑 2-3 轮自动监测后，这里将展示你的真实认知准备度曲线
+            连上戒指自动跑几轮监测后，这里会长出你真实的准备度曲线
           </Text>
         </View>
       </Card>
@@ -297,9 +297,9 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             const used = report.brainUsed;
             const remain = report.brainRemaining;
             if (reserve == null || used == null || remain == null) return null;
-            const lv = remain >= 70 ? { text: '转得动', color: theme.colors.success, tip: '认知状态在线' }
-                     : remain >= 40 ? { text: '还剩一半', color: theme.colors.warn, tip: '注意节奏，重活放高峰' }
-                     : { text: '接近见底', color: theme.colors.danger, tip: '先恢复再投入' };
+            const lv = remain >= 70 ? { text: '转得动', color: theme.colors.success, tip: '脑子还转得动，状态在线' }
+                     : remain >= 40 ? { text: '还剩一半', color: theme.colors.warn, tip: '节奏放慢点，重活留给高峰段' }
+                     : { text: '接近见底', color: theme.colors.danger, tip: '先歇一会儿再上强度，硬撑效率反而低' };
             return (
               <View style={{ marginBottom: theme.sp(2), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: lv.color + '12', borderLeftWidth: 3, borderLeftColor: lv.color }}>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>当前剩余 · 估算</Text>
@@ -308,7 +308,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
                   <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, paddingBottom: 6 }}>/100 · {lv.text}</Text>
                 </View>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
-                  {lv.tip} · 早上储备 {reserve} · 已用 {used}（只算脑）
+                  {lv.tip} · 早上的储备是 {reserve}，到现在用掉 {used}（只算用脑的账）
                 </Text>
               </View>
             );
@@ -355,7 +355,7 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             nowHour={isToday ? new Date(reportNowMsForDay(anchorMs)).getHours() : null}
           />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            横轴为一天时间（0–24 时），灰底为睡眠时段；分数越高表示此刻越「转得动」
+            灰底是你的睡眠时段；线越高，说明那一刻脑子越「转得动」
           </Text>
         </View>
       </Card>
@@ -386,9 +386,9 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
           </View>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1.5) }}>
             {report.forecast?.rhythmR2 != null
-              ? (report.forecast.rhythmR2 >= 0.6 ? '节律稳定，预测准' : report.forecast.rhythmR2 >= 0.3 ? '节律一般，仅供参考' : '节律不稳定，预测不准')
-              : '需积累 7+ 天节律数据'}
-            {report.circadianPeakH != null ? ' · 个体化峰值 ' + fmtHM(report.circadianPeakH) : ''}
+              ? (report.forecast.rhythmR2 >= 0.6 ? '你的节律很稳，这两个时段基本准' : report.forecast.rhythmR2 >= 0.3 ? '节律还不够稳，这两个时段仅供参考' : '最近节律波动大，预测只能当个参考')
+              : '再连续戴几天（满 7 天），就能摸出你的节律'}
+            {report.circadianPeakH != null ? ' · 你的节律峰值大约在 ' + fmtHM(report.circadianPeakH) : ''}
           </Text>
         </View>
       </Card>
@@ -621,10 +621,10 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
             </View>
             <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1.5), lineHeight: 18 }}>
               {consumedDelta! > 0
-                ? `本周期每天多消耗 ${consumedDelta} 个百分点的脑力储备，负荷在上升，留意恢复是否跟上。`
+                ? `这个周期每天比上一个多用掉 ${consumedDelta} 个百分点的脑力，消耗在往上走，晚上记得把觉睡够。`
                 : consumedDelta! < 0
-                  ? `本周期每天少消耗 ${Math.abs(consumedDelta!)} 个百分点的脑力储备，节奏更从容。`
-                  : `本周期每天的脑力消耗与${prevLabel}基本持平。`}
+                  ? `这个周期每天比上一个省下 ${Math.abs(consumedDelta!)} 个百分点的脑力，节奏更从容了。`
+                  : `这个周期每天的脑力消耗和${prevLabel}差不多。`}
             </Text>
           </View>
         </Card>
@@ -832,7 +832,7 @@ function ActivityTile({ label, value, unit, color, onPress, last }: {
   label: string; value: string; unit: string; color: string; onPress: () => void; last?: boolean;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.6} onPress={onPress} style={[
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[
       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.space.md },
       last && { borderBottomLeftRadius: theme.radius.md, borderBottomRightRadius: theme.radius.md },
     ]}>
@@ -975,28 +975,27 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
     const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
 
     const firstBody = readyNow == null
-      ? '今日暂无脑力数据 · 连上戒指开启自动监测后开始生成。'
-      : `此刻认知准备度 ${readyNow}（${readinessLevelLabel(readyNow)}），`
-        + `全天均值 ${readyAvg ?? '—'}。`
+      ? '今天还没攒到脑力数据，戴上戒指自动跑几轮监测后就会长出来。'
+      : `此刻准备度 ${readyNow}（${readinessLevelLabel(readyNow)}），全天均值 ${readyAvg ?? '—'}。`
         + (ready!.morning != null && ready!.nightLow != null
-          ? `早上 ${ready!.morning}、夜间低谷 ${ready!.nightLow}，`
-            + (ready!.morning - ready!.nightLow >= 15 ? '白天到夜里明显回落，属正常节律。' : '昼夜落差不大，今天状态比较平稳。')
+          ? `早上出门时是 ${ready!.morning}、夜里低谷 ${ready!.nightLow}，`
+            + (ready!.morning - ready!.nightLow >= 15 ? '从早到晚慢慢回落，是正常的节律形状。' : '昼夜落差不大，今天状态走得比较平。')
           : '');
 
     if (ready?.peakHour != null) {
       rows.push({
         tone: 'good', title: '高效时段',
-        body: `${String(ready.peakHour).padStart(2, '0')}:00–${String((ready.peakHour + 1) % 24).padStart(2, '0')}:00 准备度最高，适合安排深度工作。`,
+        body: `${String(ready.peakHour).padStart(2, '0')}:00–${String((ready.peakHour + 1) % 24).padStart(2, '0')}:00 你的脑子最转得动，最难的事放这段最划算。`,
       });
     }
     if (ready?.troughHour != null) {
       rows.push({
         tone: 'warn', title: '需要休息',
-        body: `${String(ready.troughHour).padStart(2, '0')}:00 前后准备度最低，此时段更适合轻量任务或休息。`,
+        body: `${String(ready.troughHour).padStart(2, '0')}:00 前后状态会落到最低，这段留给自己歇一歇，或只做轻巧的事。`,
       });
     }
     if (readyNow != null && readyNow < READY_LOW) {
-      rows.push({ tone: 'warn', title: '状态提醒', body: `当前准备度 ${readyNow} 偏低，${report?.sleepDebt != null && report.sleepDebt > 0.2 ? `叠加 ${report.sleepDebt.toFixed(1)}h 睡眠债，` : ''}建议先恢复再安排高强度用脑。` });
+      rows.push({ tone: 'warn', title: '状态提醒', body: `此刻准备度只剩 ${readyNow}，${report?.sleepDebt != null && report.sleepDebt > 0.2 ? `身上还压着 ${report.sleepDebt.toFixed(1)} 小时的睡眠债，` : ''}先歇一会儿，别硬撑。` });
     }
 
     return (

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, ImageBackground, StatusBar, TouchableOpacity, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -48,8 +48,18 @@ const SLEEP_CARDS: ListItem[] = [
 
 export default function BreathingScreen() {
   const navigation = useNavigation<any>();
+  // ★ 十八改：支持深链直达具体练习 —— 首页建议卡「去呼吸」带 params.breath，
+  //   进入本页直接打开对应节奏的播放器（不再让用户在聚合页里自己找）。
+  const route = useRoute<{ key: string; name: string; params?: { breath?: PatternKey } }>();
   const [breathPlayer, setBreathPlayer] = useState<null | { patternKey: PatternKey; style: BreathStyle; duration: number }>(null);
   const [meditationTrack, setMeditationTrack] = useState<MeditationTrack | null>(null);
+
+  const breathParam = route.params?.breath;
+  useEffect(() => {
+    if (!breathParam) return;
+    const t = BREATH_TRACKS.find((x) => x.patternKey === breathParam);
+    if (t) setBreathPlayer({ patternKey: t.patternKey, style: t.style, duration: 5 });
+  }, [breathParam]);
 
   return (
     <View style={{ flex: 1 }}>

@@ -4,6 +4,7 @@ import { Audio } from 'expo-av';
 import { theme } from '../../theme/theme';
 import Icon from '../Icon';
 import type { MeditationTrack } from '../../data/meditation/tracks';
+import { addInterventionEntry } from '../../data/interventionLog';
 
 interface Props {
   track: MeditationTrack | null;
@@ -32,7 +33,11 @@ export default function MeditationPlayer({ track, onClose }: Props) {
         soundRef.current = s;
         if (mounted) {
           s.setOnPlaybackStatusUpdate((status: any) => {
-            if (status.isLoaded && status.didJustFinish) setPlaying(false);
+            if (status.isLoaded && status.didJustFinish) {
+              setPlaying(false);
+              // ★ 二十改：音频播完才记录（中途退出不记）——供叙事 AI 层引用「刚做完冥想」
+              addInterventionEntry('meditate', `${track.title} · 听完`);
+            }
             if (status.isLoaded && typeof status.positionMillis === 'number') {
               setPosition(status.positionMillis / 1000);
             }

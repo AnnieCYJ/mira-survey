@@ -215,24 +215,33 @@ export default function InsightScreen() {
     else adj = 3.5;
     adj += (65 - longTerm) / 20; // longTerm 80→-0.75，50→+0.75
     const healthAge = Math.max(18, Math.round((ACTUAL + adj) * 10) / 10);
-    // ④ 简化分析文案（综合两个维度）
-    const hormonalClause = hormonalLabel === '数据不足'
-      ? '荷尔蒙节律暂缺数据'
-      : `荷尔蒙节律${hormonalLabel}${hormonalHealthy ? '，处于健康区间' : '，需关注作息'}`;
-    const longTermClause = `长期健康数据${longTermLabel}${longTermHealthy ? '，整体状态稳定' : '，建议优先改善睡眠与压力'}`;
+    // ④ 简化分析文案（综合两个维度）——★ 2026-10-08（用户：按 ISHO 风格，先事实再人话）
+    let hormonalClause: string;
+    if (hormonalLabel === '数据不足') {
+      hormonalClause = '荷尔蒙节律的数据还没攒够，再戴几天会更准';
+    } else if (hormonalLabel === '节律平稳') {
+      hormonalClause = '皮质醇节律平稳，白天顶得住、夜里也降得下来';
+    } else if (hormonalLabel === '持续偏高') {
+      hormonalClause = '皮质醇持续偏高，身体这段时间一直绷着没真正松下来';
+    } else {
+      hormonalClause = '皮质醇节律紊乱，白天绷着、夜里也降不下来';
+    }
+    const longTermClause = longTermHealthy
+      ? `长期健康数据整体${longTermLabel}，状态稳得住`
+      : `长期健康数据偏弱，主要是睡眠和压力在拖`;
     const analysis = `${hormonalClause}；${longTermClause}。`;
     // ⑤ 两条综合建议
     const suggestions: string[] = [];
     if (!hormonalHealthy && hormonalLabel !== '数据不足') {
-      suggestions.push('固定作息、避免熬夜，帮助皮质醇恢复昼夜节律。');
+      suggestions.push('这两周把上床时间固定下来，少熬几晚，节律会慢慢自己回来。');
     }
     if (!longTermHealthy) {
-      suggestions.push('优先保证 7 小时以上睡眠并管理日间压力，长期指标会随之改善。');
+      suggestions.push('先把觉睡够（7 小时起步），白天压力别攒着，指标会跟着慢慢回来。');
     }
     if (suggestions.length < 2) {
       suggestions.push(hormonalHealthy && longTermHealthy
-        ? '保持当前作息与运动节奏，身体年龄维持在较年轻水平。'
-        : '连续佩戴 7 天，指标会更稳定，建议后再评估。');
+        ? '现在的作息和运动节奏很好，照这样保持就行。'
+        : '再连续戴 7 天，数据攒够了这份分析会准很多。');
     }
     return { healthAge, analysis, suggestions: suggestions.slice(0, 2) };
   }, [ring, overallScoreFromReport]);
@@ -506,7 +515,7 @@ export default function InsightScreen() {
             ) : subTab === 'emotion' ? (
               // v18.3：情绪 = 情绪洞察，点卡片进「情绪消耗」日/周/年详情页
               <>
-                <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
                   <EmotionInsightView />
                 </TouchableOpacity>
                 {/* 给底部悬浮「记录情绪」按钮留白，避免情绪洞察末尾被遮挡 */}
@@ -521,20 +530,20 @@ export default function InsightScreen() {
           <>
             {/* v18：心血管拆成「心电 / 血压」两个独立子 tab，各自全宽竖排 */}
             {subTab === 'ecg' ? (
-              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EcgDetail')}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EcgDetail')}>
                 <Card style={{ padding: theme.space.cardPadCompact }}>
                   <EcgCard ring={ring} onPress={() => {}} compactMode />
                 </Card>
               </TouchableOpacity>
             ) : subTab === 'bp' ? (
-              <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('BpDetail')}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('BpDetail')}>
                 <Card style={{ padding: theme.space.cardPadCompact }}>
                   <BpCard ring={ring} onPress={() => {}} />
                 </Card>
               </TouchableOpacity>
             ) : subTab === 'sugar' ? (
               <>
-                <TouchableOpacity activeOpacity={0.92} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
                   {/* v16：数据卡白底全宽，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
                   <Card style={{ padding: theme.sp(3) }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -605,7 +614,7 @@ const CogTabCard = React.memo(function CogTabCard({ ring, navigation }: { ring: 
     return { nowMs: undefined, note: undefined };
   }, [ring]);
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}>
+    <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'cognitive' })}>
       <CognitiveLoadCard nowMs={nowMs} note={note} />
     </TouchableOpacity>
   );
@@ -674,7 +683,7 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
     ['活动消耗', calorie > 0 ? String(calorie) : '—', 'kcal'],
   ];
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}>
+    <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}>
       <Card style={{ padding: theme.space.cardPadCompact }}>
         <Text style={styles.profTitle}>运动恢复</Text>
         <WeekStepsBars values={weekSteps} />

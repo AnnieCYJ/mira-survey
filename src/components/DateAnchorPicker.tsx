@@ -121,7 +121,7 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
         <TouchableOpacity style={styles.arrow} onPress={goPrev} hitSlop={8}>
           <Icon name="chevronLeft" size={theme.fs(20)} color={theme.colors.textTitle} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.center} onPress={openCalendar} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.center} onPress={openCalendar} activeOpacity={0.7}>
           <Icon name="calendar" size={theme.fs(15)} color={theme.colors.accentSolid} />
           <Text style={styles.centerText}>{formatLabel ? formatLabel(value) : centerLabel(value, range)}</Text>
         </TouchableOpacity>

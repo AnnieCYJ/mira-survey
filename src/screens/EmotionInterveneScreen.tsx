@@ -73,7 +73,7 @@ function CtaRow({ main, onMain, sub, onSub, foot }: {
   return (
     <View style={ei.ctaWrap}>
       <View style={ei.ctaRow}>
-        <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }} onPress={onMain} accessibilityRole="button" accessibilityLabel={main}>
+        <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={onMain} accessibilityRole="button" accessibilityLabel={main}>
           <LinearGradient
             colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -83,7 +83,7 @@ function CtaRow({ main, onMain, sub, onSub, foot }: {
           </LinearGradient>
         </TouchableOpacity>
         {sub ? (
-          <TouchableOpacity activeOpacity={0.8} style={ei.ctaGhost} onPress={onSub} accessibilityRole="button" accessibilityLabel={sub}>
+          <TouchableOpacity activeOpacity={0.7} style={ei.ctaGhost} onPress={onSub} accessibilityRole="button" accessibilityLabel={sub}>
             <Text style={ei.ctaGhostText}>{sub}</Text>
           </TouchableOpacity>
         ) : null}
@@ -222,7 +222,7 @@ export function EmotionInterveneHome() {
           return (
             <TouchableOpacity
               key={f.key}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               style={[ei.chip, on && ei.chipOn]}
               onPress={() => setFilter(f.key)}
               accessibilityRole="button"
@@ -645,7 +645,7 @@ export function EmotionActivate({ onClose }: { onClose: () => void }) {
           <View style={ei.walkBar}>
             <Text style={ei.walkLabel}>{doneWalk ? '刚才' : '现在'} <Text style={ei.walkTime}>{doneWalk ? '3 分钟' : walking ? mmss : '3 分钟'}</Text></Text>
             {!walking && !doneWalk ? (
-              <TouchableOpacity activeOpacity={0.8} style={ei.walkBtn} onPress={startWalk} accessibilityRole="button" accessibilityLabel="开始走">
+              <TouchableOpacity activeOpacity={0.7} style={ei.walkBtn} onPress={startWalk} accessibilityRole="button" accessibilityLabel="开始走">
                 <Text style={ei.walkBtnText}>开始走</Text>
               </TouchableOpacity>
             ) : walking ? (
@@ -691,7 +691,7 @@ export function EmotionActivate({ onClose }: { onClose: () => void }) {
               accessibilityLabel="跟 Mira AI 说"
             />
             <TouchableOpacity
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               style={ei.sayBtn}
               onPress={() => {
                 const q = say.trim();
@@ -839,7 +839,7 @@ export function EmotionSavoring({ onClose }: { onClose: () => void }) {
           {SAVOR_CHIPS.map((m) => (
             <TouchableOpacity
               key={m}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               style={[ei.svChip, picked === m && ei.svChipOn]}
               onPress={() => pick(m)}
               accessibilityRole="button"
@@ -849,7 +849,7 @@ export function EmotionSavoring({ onClose }: { onClose: () => void }) {
             </TouchableOpacity>
           ))}
           <TouchableOpacity
-            activeOpacity={0.8}
+            activeOpacity={0.7}
             style={[ei.svChip, editingCustom && ei.svChipOn]}
             onPress={() => { setEditingCustom(true); setPicked('__custom'); }}
             accessibilityRole="button"

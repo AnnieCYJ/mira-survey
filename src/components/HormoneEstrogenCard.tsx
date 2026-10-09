@@ -135,7 +135,7 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
 
   if (!effective) {
     return (
-      <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+      <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>雌激素曲线（周期建模）</Text>
           <Text style={styles.emptyText}>
@@ -196,7 +196,7 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
   })();
 
   return (
-    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
       <View style={styles.card}>
       <View style={styles.headRow}>
         <Text style={styles.title}>雌激素曲线（周期建模）</Text>

@@ -223,7 +223,7 @@ export default function BasicMetricCard({
       return d.trim();
     })();
     return (
-      <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+      <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
         <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
               标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次 */}
@@ -278,7 +278,7 @@ export default function BasicMetricCard({
   }
 
   return (
-    <TouchableOpacity activeOpacity={onPress ? 0.92 : 1} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
       <Card>
       {/* 顶部：名称 + 状态标签 + 手动测量按钮（与 DimensionCard 顶部节奏一致） */}
       <View style={styles.top}>

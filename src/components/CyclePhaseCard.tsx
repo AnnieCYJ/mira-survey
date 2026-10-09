@@ -120,7 +120,7 @@ export default function CyclePhaseCard({
 
   return (
     <TouchableOpacity
-      activeOpacity={onPress && !expanded ? 0.92 : 1}
+      activeOpacity={onPress && !expanded ? theme.press.opacity : 1}
       onPress={expanded ? undefined : onPress}
       disabled={expanded || !onPress}
     >

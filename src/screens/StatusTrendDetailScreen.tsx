@@ -9,7 +9,7 @@
  *  - 年：每月均值（statusDaily 当月所有天的均值），一月一个点；
  *  - 全部使用真实数据，缺口断线 / 缺天留空，不编造；无数据区间诚实显示占位。
  */
-import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect, useDeferredValue } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, type LayoutChangeEvent, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect, G, Text as SvgText } from 'react-native-svg';
@@ -174,20 +174,22 @@ export default function StatusTrendDetailScreen() {
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
   const [range, setRange] = useState<RangeKey>('day');
+  // ★ B4（2026-10-08）：range 的「延迟版」—— chip 高亮即时，重计算/图表稍后跟上。
+  const dRange = useDeferredValue(range);
   // ★ chart fade transition: 旧图层 fadeOut → 新图层 fadeIn
   const chartOpacity = useRef(new Animated.Value(1)).current;
   const [renderKey, setRenderKey] = useState(0); // 强制新图层 mount
   const prevRangeRef = useRef<RangeKey>('day');
   useEffect(() => {
-    if (prevRangeRef.current === range) return;
-    prevRangeRef.current = range;
-    // fadeOut → 换 key → fadeIn
+    if (prevRangeRef.current === dRange) return;
+    prevRangeRef.current = dRange;
+    // fadeOut → 换 key → fadeIn（★ B4：180/320 → token quick/base，图表更快到位）
     Animated.sequence([
-      Animated.timing(chartOpacity, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      Animated.timing(chartOpacity, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(chartOpacity, { toValue: 0, duration: theme.motion.quick, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(chartOpacity, { toValue: 1, duration: theme.motion.base, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
     setRenderKey((k) => k + 1);
-  }, [range]);
+  }, [dRange]);
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
   // ★ tooltip 状态
@@ -224,7 +226,7 @@ export default function StatusTrendDetailScreen() {
   const { pts, axisLabels, fixedAxis, current, firstReal, avg, hi, lo, hasData } = useMemo(() => {
     const anchorKey = dayKey(anchor.getTime());  // ★ 补零格式
 
-    if (range === 'day') {
+    if (dRange === 'day') {
       const todayKey = dayKey(Date.now());
       // ★ 诊断 log（仅 __DEV__）
       if (__DEV__) {
@@ -313,7 +315,7 @@ export default function StatusTrendDetailScreen() {
       };
     }
 
-    if (range === 'year') {
+    if (dRange === 'year') {
       const y = anchor.getFullYear();
       if (__DEV__) console.log('[STATUS-YEAR]', JSON.stringify({ year: y, statusDaily_all_keys: Object.keys(statusDaily ?? {}) }));
       const labels: string[] = [];
@@ -354,14 +356,14 @@ export default function StatusTrendDetailScreen() {
 
     // week（anchor 所在自然周 周一~周日）/ month（anchor 所在自然月）：每日均值。
     console.log('[STATUS-RANGE]', JSON.stringify({
-      range, anchorKey,
+      dRange, anchorKey,
       statusDaily_all: Object.fromEntries(
         Object.entries(statusDaily ?? {}).map(([k, v]) => [k, v?.toFixed(1) ?? null])
       ),
     }));
     const keys: string[] = [];
     const labels: string[] = [];
-    if (range === 'week') {
+    if (dRange === 'week') {
       const mon = startOfWeek(anchor);   // ★ 自然周（周一~周日）：用户口径，之前的实现是对的
       for (let i = 0; i < 7; i++) {
         const d = addDays(mon, i);
@@ -393,7 +395,7 @@ export default function StatusTrendDetailScreen() {
     });
     const points = values.map((v, i) => ({ x: values.length > 1 ? i / (values.length - 1) : 0.5, value: v }));
     // ★ 诊断日志（仅 __DEV__）：核对周视图「有没有数据 / 数据从哪来」，避免把「本来就没测」误判成渲染 bug。
-    if (__DEV__ && range === 'week') {
+    if (__DEV__ && dRange === 'week') {
       console.log('[STATUS-WEEK]', JSON.stringify({
         anchor: formatDate(anchor),
         weekKeys: keys,
@@ -415,7 +417,7 @@ export default function StatusTrendDetailScreen() {
       lo: minOf(values),
       hasData: values.some((v) => v != null),
     };
-  }, [range, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor]);
+  }, [dRange, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor]);
 
   const plotW = w - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -498,10 +500,10 @@ export default function StatusTrendDetailScreen() {
 
     // 与图表点对齐的日期 keys
     let dayKeys: string[] = [];
-    if (range === 'week') {
+    if (dRange === 'week') {
       const mon = startOfWeek(anchor);
       for (let i = 0; i < 7; i++) dayKeys.push(dayKey(addDays(mon, i).getTime()));
-    } else if (range === 'month') {
+    } else if (dRange === 'month') {
       const y = anchor.getFullYear();
       const m0 = anchor.getMonth();
       const dim = new Date(y, m0 + 1, 0).getDate();
@@ -517,7 +519,7 @@ export default function StatusTrendDetailScreen() {
     const leftOf = (i: number) => edge((i - 0.5) / (n - 1));
     const rightOf = (i: number) => edge((i + 0.5) / (n - 1));
 
-    if (range === 'month') {
+    if (dRange === 'month') {
       const tempSeries = Object.keys(ring.tempDaily ?? {}).length
         ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] }))
         : undefined;
@@ -548,7 +550,7 @@ export default function StatusTrendDetailScreen() {
           pStart = -1;
         }
       }
-    } else if (range === 'week') {
+    } else if (dRange === 'week') {
       // ★ 与节律卡同口径：个人基线 = 被查看这一周之前 14 天的皮质醇日均值（不含本周，避免当天自身抬高阈值）
       const mon = startOfWeek(anchor);
       const baseMeans: number[] = [];
@@ -568,7 +570,7 @@ export default function StatusTrendDetailScreen() {
         }
       }
     }
-    if (__DEV__ && range === 'week') {
+    if (__DEV__ && dRange === 'week') {
       console.log('[STATUS-WEEK-CORT]', JSON.stringify({
         anchor: formatDate(anchor),
         baseDays: cortBaseN,
@@ -578,7 +580,7 @@ export default function StatusTrendDetailScreen() {
       }));
     }
     return { bands, cort };
-  }, [w, plotW, range, anchor, ring.tempDaily, cycleLog, pts, plotH]);
+  }, [w, plotW, dRange, anchor, ring.tempDaily, cycleLog, pts, plotH]);
 
   const deltaPct =
     firstReal != null && current != null && firstReal !== 0
@@ -605,16 +607,16 @@ export default function StatusTrendDetailScreen() {
     let curKeys: string[] = [];
     let prevLabel = '上期';
     let baseLabel = '基线';
-    if (range === 'day') {
+    if (dRange === 'day') {
       const dk = dayKey(anchor.getTime());
       units = [{ label: '今日', value: valOf(dk) }];
       curKeys = [dk];
       prevLabel = '昨日'; baseLabel = '7天基线';
-    } else if (range === 'week') {
+    } else if (dRange === 'week') {
       const mon = startOfWeek(anchor);
       for (let i = 0; i < 7; i++) { const d = addDays(mon, i); curKeys.push(dayKey(d.getTime())); units.push({ label: fmtD(d), value: valOf(dayKey(d.getTime())) }); }
       prevLabel = '上周'; baseLabel = '30天基线';
-    } else if (range === 'month') {
+    } else if (dRange === 'month') {
       const y = anchor.getFullYear(); const m0 = anchor.getMonth();
       const dim = new Date(y, m0 + 1, 0).getDate();
       for (let day = 1; day <= dim; day++) { const d = new Date(y, m0, day); curKeys.push(dayKey(d.getTime())); units.push({ label: `${day}`, value: valOf(dayKey(d.getTime())) }); }
@@ -636,14 +638,14 @@ export default function StatusTrendDetailScreen() {
     // 上期（等长前一窗口）与基线窗口
     let prevKeys: string[] = [];
     let baseKeys: string[] = [];
-    if (range === 'day') {
+    if (dRange === 'day') {
       const y = new Date(anchor); y.setDate(y.getDate() - 1); prevKeys = [dayKey(y.getTime())];
       for (let i = 1; i <= 7; i++) { const d = new Date(anchor); d.setDate(d.getDate() - i); baseKeys.push(dayKey(d.getTime())); }
-    } else if (range === 'week') {
+    } else if (dRange === 'week') {
       const mon = startOfWeek(anchor); const s = new Date(mon); s.setDate(s.getDate() - 7);
       for (let i = 0; i < 7; i++) prevKeys.push(dayKey(addDays(s, i).getTime()));
       for (let i = 1; i <= 30; i++) { const d = new Date(mon); d.setDate(d.getDate() - i); baseKeys.push(dayKey(d.getTime())); }
-    } else if (range === 'month') {
+    } else if (dRange === 'month') {
       const end = new Date(anchor.getFullYear(), anchor.getMonth(), 0);
       const s = new Date(end); s.setDate(s.getDate() - (curKeys.length - 1));
       for (let i = 0; i < curKeys.length; i++) prevKeys.push(dayKey(addDays(s, i).getTime()));
@@ -653,7 +655,7 @@ export default function StatusTrendDetailScreen() {
 
     let vsPrev: number | null = null;
     let vsBase: number | null = null;
-    if (range === 'year') {
+    if (dRange === 'year') {
       const y = anchor.getFullYear();
       const prevMonths: (number | null)[] = []; for (let mo = 0; mo < 12; mo++) prevMonths.push(monthMean(statusDaily, y - 1, mo));
       const allMonths: (number | null)[] = []; for (let mo = 0; mo < 12; mo++) allMonths.push(monthMean(statusDaily, y, mo));
@@ -674,9 +676,9 @@ export default function StatusTrendDetailScreen() {
 
     return {
       best, worst, prevLabel, baseLabel, vsPrev, vsBase, prevDelta, baseDelta,
-      showBestWorst: range !== 'day',
+      showBestWorst: dRange !== 'day',
     };
-  }, [range, anchor, statusDaily, ring, avg]);
+  }, [dRange, anchor, statusDaily, ring, avg]);
 
   // 轴标签：固定（日=时间轴）则均匀排；否则取 ~7 个等距点
   const renderAxis = () => {
@@ -747,7 +749,7 @@ export default function StatusTrendDetailScreen() {
         <RangeSwitch value={range} onChange={setRange} />
 
         {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
-        <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
+        <DateAnchorPicker value={anchor} onChange={setAnchor} range={dRange} />
 
         {/* 趋势图 */}
         <View style={styles.chartCard}>
@@ -818,7 +820,7 @@ export default function StatusTrendDetailScreen() {
                     不是只标 PMS：一个月必然横跨多个相位，每个相位的连续段各有一条带 + 顶部相位色描边 + 相位名。
                     经前 PMS 是叠加在黄体期末段的暖橙段（额外一层）。
                     等级信息在月视图不再走背景，改由「每个点的等级色」表达（见下方散点）。 */}
-                {range === 'month'
+                {dRange === 'month'
                   ? chartOverlay.bands.map((b, i) => {
                       const x = Math.max(PAD_L, b.x0);
                       const wClip = Math.max(0, Math.min(PAD_L + plotW, b.x1) - x);
@@ -899,7 +901,7 @@ export default function StatusTrendDetailScreen() {
                     等级信息靠它表达（月视图背景已经让位给周期相位），所以不能统一成单色。
                     日视图 48 槽很密 → 小半径细描边；周/月/年较疏 → 大半径 + 白描边压住背景。 */}
                 {dots.map((d, i) => {
-                  const dense = range === 'day';
+                  const dense = dRange === 'day';
                   const isLast = i === dots.length - 1;
                   return (
                     <Circle
@@ -915,7 +917,7 @@ export default function StatusTrendDetailScreen() {
                 })}
 
                 {/* ★ 周视图：皮质醇异常图标（单档，红底白「!」），虚线连到当天的数据点 */}
-                {range === 'week'
+                {dRange === 'week'
                   ? chartOverlay.cort.map((c, i) => {
                       const topY = PAD_T + 8;
                       return (
@@ -954,7 +956,7 @@ export default function StatusTrendDetailScreen() {
           {!hasData ? (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyText}>
-                {range === 'day'
+                {dRange === 'day'
                   ? '今日状态曲线尚未生成，佩戴戒指并打开数据同步后将实时记录'
                   : '当前范围内暂无真实测量数据，开启数据同步并佩戴戒指后将逐日累积'}
               </Text>
@@ -974,7 +976,7 @@ export default function StatusTrendDetailScreen() {
             ))}
           </View>
 
-          {range === 'month' ? (
+          {dRange === 'month' ? (
             <View style={styles.legendRow}>
               {(['period', 'follicular', 'ovulation', 'luteal'] as PhaseKey[]).map((p) => (
                 <View key={p} style={styles.legendItem}>
@@ -989,7 +991,7 @@ export default function StatusTrendDetailScreen() {
             </View>
           ) : null}
 
-          {range === 'week' ? (
+          {dRange === 'week' ? (
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: CORT_COLOR }]} />
@@ -1014,7 +1016,7 @@ export default function StatusTrendDetailScreen() {
             （前两版把统计值沉到中间/最底，用户逐次纠正后定稿为「统计值在最上」。） */}
         <View style={styles.cmpHead}>
           <Text style={styles.cmpTitle}>详细分析</Text>
-          <Text style={styles.cmpSub}>{range === 'day' ? '今日' : range === 'week' ? '本周' : range === 'month' ? '本月' : '本年'}</Text>
+          <Text style={styles.cmpSub}>{dRange === 'day' ? '今日' : dRange === 'week' ? '本周' : dRange === 'month' ? '本月' : '本年'}</Text>
         </View>
 
         {/* 第一排：平均 / 最高 / 最低（本区间统计值，与上方曲线同源：pts 的有效点） */}
