@@ -67,7 +67,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
           pressed && styles.chipPressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`${it.label} ${it.value}`}
+        accessibilityLabel={`${it.label} ${it.value}${it.unit ?? ''}${it.tag ? `，${it.tag}` : ''}`}
       >
         <View style={[styles.iconSq, { backgroundColor: cb.bg }]}>
           {it.moonStyle != null
@@ -78,7 +78,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
           {it.label}
         </Text>
         <View style={styles.valueRow}>
-          <Text style={[styles.value, { color: valueColor }]} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={[styles.value, { color: valueColor }]}>
             {it.value}
           </Text>
           {it.unit != null && it.value !== '—' && (
@@ -86,7 +86,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
           )}
         </View>
         {it.tag != null && it.value !== '—' && (
-          <Text style={styles.tag} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+          <Text style={styles.tag} numberOfLines={1}>
             {it.tag}
           </Text>
         )}
@@ -116,6 +116,10 @@ export default React.memo(MindChipsImpl);
 
 const styles = StyleSheet.create({
   chip: {
+    // ★ 2026-10-10（用户：卡片高度太高、下边空白）：94 → 80 —— 内容实高约 73pt（icon 26 + 标签 + 数值
+    //   + 上下 padding），原 94 底部空出 ~20pt；80 保留 7pt 余量防标签换行裁切。
+    height: 80,
+    overflow: 'hidden',
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1,
     borderColor: mm.colors.chipBorder,
@@ -143,6 +147,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium,
     color: mm.colors.inkFaint,
     maxWidth: '100%',
+    textAlign: 'center',
   },
   value: {
     fontSize: theme.fontSize.xs,
@@ -154,8 +159,10 @@ const styles = StyleSheet.create({
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    flexWrap: 'nowrap',
     justifyContent: 'center',
     maxWidth: '100%',
+    textAlign: 'center',
     marginTop: 0,
   },
   unit: {
@@ -183,5 +190,6 @@ const styles = StyleSheet.create({
     color: mm.colors.inkFaint,
     marginTop: theme.sp(0.5),
     maxWidth: '100%',
+    textAlign: 'center',
   },
 });

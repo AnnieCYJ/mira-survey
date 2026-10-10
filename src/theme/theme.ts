@@ -374,8 +374,8 @@ export const press = {
 
 export const layout = {
   maxWidth: 500,
-  tabBarHeight: 56,
-  tabCenterSize: 56,
+  tabBarHeight: 48,
+  tabCenterSize: 48,
   moodWheelRatio: 0.72,
   /** 悬浮胶囊距屏幕底部的留白 */
   floatMargin: 0,

@@ -13,8 +13,9 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
-import Svg, { Rect, Text as SvgText, Line, Defs, LinearGradient, Stop, G, Polyline, Circle, Path } from 'react-native-svg';
+import Svg, { Rect, Text as SvgText, Line, G, Circle, Path } from 'react-native-svg';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -28,6 +29,7 @@ import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { buildNaturalPeriods, buildPrevNaturalPeriods } from '../lib/periods';
+import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 // ★ 统一三档（低<40 / 中40-70 / 高≥70）—— 与卡片大数字 avgFatigue、柱状图 LEVELS 同源
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 
@@ -63,6 +65,8 @@ export default function EnergyDetailScreen() {
   const meta = META[type];
   const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
+  // ★ 2026-10-09（psychological-stress-preview）：情绪页两个 tab —— 心理压力 / 情绪记录
+  const [emoTab, setEmoTab] = useState<'stress' | 'emotion'>('stress');
 
   // ★ 脑力消耗 周/月/年：先算**一份**区间行数据，Hero 的「平均消耗」与区间卡共用它。
   //   旧写法在这里又手抄了一遍统计循环（且 require 了不存在的 ../lib/sleepPhase），
@@ -117,31 +121,64 @@ export default function EnergyDetailScreen() {
           </View>
         </View>
 
-        {/* Hero —— 日/周/月/年的总体数据（2026-10-07 用户要求：每个页面都要有）
-            日 = 日均 · 周 = 周平均 · 月 = 月平均 · 年 = 年平均 */}
-        <HeroRow type={type} accent={meta.accent} anchor={anchor} ring={ring} range={range} rangeMeanConsumption={range !== 'day' ? meanCogConsumption : null} rangeMeanStress={meanStress} />
+        {/* ★ 2026-10-09（用户硬性要求）：**日/周/月/年切换上方不再放大数字**，
+            总体数据改为「时间选择器下方的一张卡」，与预览稿顺序一致（切换 → 选择器 → 数据卡 → 图表）。 */}
+        {/* ★ 2026-10-09（exercise-consumption-preview）：运动消耗同样有 日/周/月/年（原先被写死只留日） */}
+        <RangeSwitch value={range} onChange={setRange} />
+        <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
-        {/* RangeSwitch + DateAnchorPicker — activity 类型只保留日期选择器 */}
-        {type !== 'activity' && <RangeSwitch value={range} onChange={setRange} />}
-        <DateAnchorPicker value={anchor} onChange={setAnchor} range={type === 'activity' ? 'day' : range} />
+        {/* ★ 2026-10-09（psychological-stress-preview）：情绪详情页两个 tab —— 心理压力 / 情绪记录 */}
+        {type === 'emotion' && (
+          <View style={styles.tabRow}>
+            {(['stress', 'emotion'] as const).map((k) => {
+              const on = emoTab === k;
+              return (
+                <TouchableOpacity
+                  key={k}
+                  style={[styles.tab, on && styles.tabOn]}
+                  activeOpacity={0.8}
+                  onPress={() => setEmoTab(k)}
+                  accessibilityRole="button"
+                  accessibilityLabel={k === 'stress' ? '心理压力' : '情绪记录'}
+                >
+                  <Text style={[styles.tabText, on && styles.tabTextOn]}>
+                    {k === 'stress' ? '心理压力' : '情绪记录'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* 总体数据卡（原 Hero）——
+            ① 脑力日视图由下面的「认知准备度」卡承担，不重复显示；
+            ② ★ 2026-10-09（用户）：切到「情绪记录」tab 时不显示那个平均分（情绪不做评分） */}
+        {!(type === 'cognitive' && range === 'day') && !(type === 'emotion' && emoTab === 'emotion') && (
+          <Card padded={false}>
+            <View style={styles.pad}>
+              <HeroRow type={type} accent={meta.accent} anchor={anchor} ring={ring} range={range} rangeMeanConsumption={range !== 'day' ? meanCogConsumption : null} rangeMeanStress={meanStress} />
+            </View>
+          </Card>
+        )}
 
         {/* AI 分析：★ 2026-10-07（用户）脑力消耗 / 心理压力 详情页先隐藏，代码保留。
             要恢复：把 SHOW_AI_BANNER 改回 true（运动页本来就不显示）。 */}
         {SHOW_AI_BANNER && type !== 'activity' && <EnergyAiBanner type={type} ring={ring} openChat={openChat} anchor={anchor} />}
 
-        {/* ===== 内容：图在上，数据在下（按锚定日取数） ===== */}
-        {type === 'emotion' && range === 'day' && <EmotionInsightView anchorMs={anchor.getTime()} />}
+        {/* ===== 内容：图在上，数据在下（按锚定日取数） =====
+            ★ 2026-10-09：情绪页按 tab 分流（心理压力 = 趋势；情绪记录 = 点阵 + 分布） */}
+        {type === 'emotion' && range === 'day' && (
+          <EmotionInsightView anchorMs={anchor.getTime()} variant={emoTab === 'emotion' ? 'emotion' : 'stress'} />
+        )}
         {type === 'cognitive' && range === 'day' && <CognitiveDetail anchorMs={anchor.getTime()} />}
         {type === 'activity' && range === 'day' && <ActivityDetail ring={ring} navigation={navigation} anchor={anchor} />}
 
         {range !== 'day' && (type === 'emotion'
-          ? <>
-              {/* ★ 2026-10-07：心理压力 周/月/年 折线趋势 + 原有情绪分布/洞察 */}
-              <StressRangeView range={range} anchor={anchor} ring={ring} />
-              <EmotionRangeBars range={range} anchor={anchor} />
-            </>
+          ? emoTab === 'emotion'
+            ? <EmotionRangeBars range={range} anchor={anchor} />
+            : <StressRangeView range={range} anchor={anchor} ring={ring} />
           : type === 'activity'
-            ? <RangeTrendBars type={type} range={range} anchor={anchor} />
+            ? <RangeTrendBars type={type} range={range} anchor={anchor} ring={ring} />
             : <CognitiveRangeView range={range} anchor={anchor} rows={cogRangeRows ?? []} />)}
 
         {/* 给底部常驻「记录情绪」按钮留白，避免情绪洞察末尾（图例/分析卡）被遮挡 */}
@@ -162,6 +199,34 @@ export default function EnergyDetailScreen() {
 }
 
 /* ========== Hero ========== */
+/**
+ * ★ 2026-10-09（设计稿统一要求）：所有趋势曲线都是**平滑弧线**（Catmull-Rom → 三次贝塞尔），
+ *   不是折线。稿里 drawStress / drawStr / drawReadiness / drawCog 全部走 smooth()。
+ */
+function smoothLine(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length < 3) return 'M ' + pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ');
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** 当日运动会话（★ 真实数据：戒指 sportSessions，按 beginTime 的日期归到锚定日） */
+function daySportSessions(ring: any, dk: string): any[] {
+  const list = (ring?.sportSessions ?? []) as any[];
+  return list.filter((s) => typeof s?.beginTime === 'string' && s.beginTime.slice(0, 10) === dk);
+}
+
 function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rangeMeanStress }: { type: EnergyType; accent: string; anchor: Date; ring: any; range: RangeKey; rangeMeanConsumption?: number | null; rangeMeanStress?: number | null }) {
   // ★ 按「锚定日」取报告：今天=此刻；历史日=该日整天（传错会得到空区间/永远是今天）
   const reportMs = reportNowMsForDay(anchor.getTime());
@@ -180,11 +245,118 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
 
   if (type === 'activity') {
     const dk = dayKey(anchor.getTime());  // ★ 跟随日期选择器
-    const cal = Math.round(ring?.stepDaily?.[dk]?.calorie ?? 0);
+    const st = ring?.stepDaily?.[dk];
+    const cal = Math.round(st?.calorie ?? 0);
+    const prevCal = ring?.stepDaily?.[dayKey(anchor.getTime() - 86400000)]?.calorie ?? null;
+    // ★ 2026-10-09（exercise-consumption-preview .hero .ctx）：↑ / ↓ N% 较昨日（无昨日数据则不显示）
+    const delta = prevCal != null && prevCal > 0 ? Math.round(((cal - prevCal) / prevCal) * 100) : null;
+    const unitStyle = { fontSize: theme.fontSize.micro, color: theme.colors.textSub };
+
+    // ★ 2026-10-09（exercise-consumption-preview）：周 / 月 / 年 = 区间的**日均**（自然周期内的有效天）
+    if (range !== 'day') {
+      const todayK = dayKey(Date.now());
+      const periods = buildNaturalPeriods(range, anchor.getTime());
+      const days = (k: string[]) => (k ?? []).filter((x) => x <= todayK);
+      const curKeys = days((periods[periods.length - 1] as any)?.dayKeys ?? []);
+      const prevKeys = days((periods[periods.length - 2] as any)?.dayKeys ?? []);
+      const mean = (keys: string[], pick: (s: any) => number) => {
+        const vals = keys.map((k) => pick(ring?.stepDaily?.[k])).filter((v) => Number.isFinite(v) && (v as number) > 0);
+        return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
+      };
+      const curCal = mean(curKeys, (s) => s?.calorie ?? 0);
+      const prevCal = mean(prevKeys, (s) => s?.calorie ?? 0);
+      const curSteps = mean(curKeys, (s) => s?.steps ?? 0);
+      const curDist = mean(curKeys, (s) => s?.distance ?? 0);
+      // 运动时长：区间内 sportSessions 总时长 / 有效天数 = 日均分钟
+      const totalMin = ((ring?.sportSessions ?? []) as any[])
+        .filter((s) => curKeys.includes(String(s?.beginTime ?? '').slice(0, 10)))
+        .reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60;
+      const durMin = curKeys.length && totalMin > 0 ? Math.round(totalMin / curKeys.length) : null;
+      const rangeDelta = curCal != null && prevCal != null && prevCal > 0
+        ? Math.round(((curCal - prevCal) / prevCal) * 100)
+        : null;
+      const RL2: Record<RangeKey, string> = { day: '日均', week: '周', month: '月', year: '年' };
+      return (
+        <View>
+          <View style={styles.heroWrap}>
+            <View>
+              <Text style={[styles.heroVal, { color: mm.colors.honeyDeep }]}>
+                {curCal != null ? Math.round(curCal) : '—'}
+              </Text>
+              <Text style={styles.heroLab}>{RL2[range]}平均消耗 · kcal</Text>
+            </View>
+            {rangeDelta != null ? (
+              <Text style={[styles.heroCtx, { color: rangeDelta >= 0 ? theme.colors.success : theme.colors.danger }]}>
+                {rangeDelta >= 0 ? '↑' : '↓'} {Math.abs(rangeDelta)}% 较上{RL2[range] === '周' ? '周' : RL2[range] === '月' ? '月' : '年'}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>运动时长</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {durMin ?? '—'}{durMin != null ? <Text style={unitStyle}> 分</Text> : null}
+              </Text>
+              <Text style={styles.statSub}>日均</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>步数</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {curSteps != null ? (curSteps / 1000).toFixed(1) : '—'}{<Text style={unitStyle}> k</Text>}
+              </Text>
+              <Text style={styles.statSub}>日均</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>距离</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {curDist != null ? curDist.toFixed(1) : '—'}{<Text style={unitStyle}> km</Text>}
+              </Text>
+              <Text style={styles.statSub}>日均</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    const sess = daySportSessions(ring, dk);
+    const durMin = sess.length ? Math.round(sess.reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60) : null;
     return (
-      <View style={styles.hero}>
-        <Text style={styles.heroVal}>{cal}</Text>
-        <Text style={styles.heroUnit}>kcal</Text>
+      <View>
+        <View style={styles.heroWrap}>
+          <View>
+            <Text style={[styles.heroVal, { color: mm.colors.honeyDeep }]}>{cal}</Text>
+            <Text style={styles.heroLab}>今日消耗 · kcal</Text>
+          </View>
+          {delta != null ? (
+            <Text style={[styles.heroCtx, { color: delta >= 0 ? theme.colors.success : theme.colors.danger }]}>
+              {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% 较昨日
+            </Text>
+          ) : null}
+        </View>
+        {/* ★ 2026-10-09（exercise-consumption-preview .statRow）：运动时长 / 步数 / 距离 三格进 hero 卡 */}
+        <View style={styles.statGrid}>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>运动时长</Text>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {durMin ?? '—'}{durMin != null ? <Text style={unitStyle}> 分</Text> : null}
+            </Text>
+            <Text style={styles.statSub}>{sess.length ? `${sess.length} 次` : '—'}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>步数</Text>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {((st?.steps ?? 0) / 1000).toFixed(1)}{<Text style={unitStyle}> k</Text>}
+            </Text>
+            <Text style={styles.statSub}>含日常</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>距离</Text>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {(st?.distance ?? 0).toFixed(1)}{<Text style={unitStyle}> km</Text>}
+            </Text>
+            <Text style={styles.statSub}>运动</Text>
+          </View>
+        </View>
       </View>
     );
   }
@@ -219,7 +391,13 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             )}
           </>
         ) : (
-          <Text style={styles.heroVal}>—</Text>
+          /* ★ 2026-10-10（用户）：无数据保留单位与说明，数字「—」，整卡不许消失 */
+          <>
+            <Text style={[styles.heroVal, { color: mm.colors.ink }]}>—</Text>
+            <Text style={styles.heroUnit}>
+              {range === 'day' ? '% · 今日脑力消耗' : `% · ${RANGE_DEF[range].label}平均脑力消耗`}
+            </Text>
+          </>
         )}
       </View>
     );
@@ -235,17 +413,31 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
         : v >= 34 ? { t: '压力中等', c: theme.colors.warn }
           : { t: '压力偏低', c: theme.colors.success };
     return (
-      <View style={styles.hero}>
+      /* ★ 2026-10-09（psychological-stress-preview .hero）：大数字 + 右下状态语（压力中等）+ 下方标签 */
+      <View style={styles.heroWrap}>
         {v != null ? (
           <>
-            <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
-            <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]}</Text>
-            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
-              50 = 和你平时一样
-            </Text>
+            <View>
+              <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
+              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]}</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
+                50 = 和你平时一样
+              </Text>
+            </View>
+            <Text style={[styles.heroCtx, { color: band!.c }]}>{band!.t}</Text>
           </>
         ) : (
-          <Text style={styles.heroVal}>—</Text>
+          /* ★ 2026-10-10（用户）：无数据保留单位与基线说明，数字「—」 */
+          <>
+            <View>
+              <Text style={styles.heroVal}>—</Text>
+              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]}</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
+                50 = 和你平时一样
+              </Text>
+            </View>
+            <Text style={[styles.heroCtx, { color: theme.colors.textSub }]}>暂无数据</Text>
+          </>
         )}
       </View>
     );
@@ -266,134 +458,155 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
   // ★ 准备度序列：与 report 同源（同一小时是否有采样），只做反向映射 + 节律塑形
   const ready = computeReadinessSeries(report, reportNowMsForDay(anchorMs));
   const isToday = dayKey(reportNowMsForDay(anchorMs)) === dayKey(Date.now());
+  // ★ 2026-10-09（brain-readiness-preview）：趋势卡下方「详细数据」折叠，默认收起
+  const [cogDetailsOpen, setCogDetailsOpen] = useState(false);
 
   const hasData = report.sampleCount >= 2;
 
-  // 无真实数据 → 空骨架示意图：24 根空柱 + 三档坐标轴 + 「暂无数据」浮层（HourHistogram 内建），
-  // 不放演示数据——示意图只说明「这里会有图表」，不冒充任何真实值。
-  if (!hasData) {
-    const skeletonPoints = Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
-    return (
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={[styles.chartTitle, { marginBottom: theme.sp(1.5) }]}>认知准备度 · 全天趋势</Text>
-          <ReadinessTrendChart chartH={170} points={skeletonPoints} sleepWindow={null} />
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            连上戒指自动跑几轮监测后，这里会长出你真实的准备度曲线
-          </Text>
-        </View>
-      </Card>
-    );
-  }
+  // ★ 2026-10-10（用户）：没数据也不能把「认知准备度」整卡吞掉 ——
+  //   主卡照常渲染（大数字「—」、预测高峰/低谷「—」但标签与档位说明保留），
+  //   趋势图用空骨架（24 根空柱 + 三档轴，HourHistogram/ReadinessTrendChart 内建空态），
+  //   详细数据行全部「—」。不放演示数据——示意图只说明「这里会有图表」，不冒充任何真实值。
+  const trendPoints = hasData
+    ? ready.points
+    : Array.from({ length: 24 }, (_, h) => ({ hour: h, score: 0, hasData: false }));
+
+  const reserve = report.brainReserve;
+  const used = report.brainUsed;
+  const remain = report.brainRemaining;
+  // ★ 2026-10-09（brain-readiness-preview）：准备度三档（与 ReadinessTrendChart 同源阈值 40 / 70）
+  const band = remain == null
+    ? null
+    : remain >= 70
+      ? { text: '充沛', short: '还能冲一会', color: theme.colors.success }
+      : remain >= 40
+        ? { text: '中等', short: '还有一半', color: theme.colors.warn }
+        : { text: '偏低', short: '该歇会儿了', color: theme.colors.danger };
+  const rhythmNote = report.forecast?.rhythmR2 != null
+    ? (report.forecast.rhythmR2 >= 0.6 ? '节律稳，这两个时段基本准' : report.forecast.rhythmR2 >= 0.3 ? '节律还不够稳，这两个时段仅供参考' : '最近节律波动大，预测只能当个参考')
+    : '再连续戴几天（满 7 天），就能摸出你的节律';
 
   return (
     <>
-      {/* ① 顶部：认知准备度 + 预测高峰 / 低谷 */}
+      {/* ① 认知准备度（★ 2026-10-09 按 brain-readiness-preview 重做：
+            大数字 + 实际高峰/节律峰值 行 + 预测高峰/低谷 duo + 一句口径说明） */}
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={styles.cardTitle}>认知准备度</Text>
-          {(() => {
-            const reserve = report.brainReserve;
-            const used = report.brainUsed;
-            const remain = report.brainRemaining;
-            if (reserve == null || used == null || remain == null) return null;
-            const lv = remain >= 70 ? { text: '转得动', color: theme.colors.success, tip: '脑子还转得动，状态在线' }
-                     : remain >= 40 ? { text: '还剩一半', color: theme.colors.warn, tip: '节奏放慢点，重活留给高峰段' }
-                     : { text: '接近见底', color: theme.colors.danger, tip: '先歇一会儿再上强度，硬撑效率反而低' };
-            return (
-              <View style={{ marginBottom: theme.sp(2), padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: lv.color + '12', borderLeftWidth: 3, borderLeftColor: lv.color }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 4 }}>当前剩余 · 估算</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(1.5) }}>
-                  <Text style={{ fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, color: lv.color, lineHeight: theme.fontSize.hero }}>{remain}</Text>
-                  <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, paddingBottom: 6 }}>/100 · {lv.text}</Text>
-                </View>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 }}>
-                  {lv.tip} · 早上的储备是 {reserve}，到现在用掉 {used}（只算用脑的账）
-                </Text>
-              </View>
-            );
-          })()}
+          <View style={styles.ctitleRow}>
+            <Text style={styles.ctitle}>认知准备度</Text>
+            <Text style={styles.ctitleSmall}>{dayKeyOfLabel(anchorMs)}</Text>
+          </View>
 
-          <View style={{ flexDirection: 'row', gap: theme.sp(3) }}>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知高峰 · 预测</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
-                {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '--'}
-              </Text>
-              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                最适合烧脑
-              </Text>
+          <View style={styles.heroWrap}>
+            <View>
+              <Text style={[styles.heroBig, { color: band?.color ?? mm.colors.ink }]}>{remain ?? '—'}</Text>
+              <Text style={styles.heroLab}>/100 · 当前认知准备度</Text>
             </View>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.stateTense + '18' }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>认知低谷 · 预测</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.stateTense }}>
-                {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '--'}
+            <Text style={[styles.heroCtx, { color: band?.color ?? theme.colors.textSub }]}>
+              {band ? `${band.text} · ${band.short}` : '暂无数据'}
+            </Text>
+          </View>
+
+          {/* ★ 2026-10-09（用户）：不要多加的「实际高峰 / 节律峰值」两行，按稿只留 hero + duo + 说明 */}
+
+          <View style={styles.duoRow}>
+            <View style={[styles.duoCell, { backgroundColor: theme.colors.success + '1A' }]}>
+              <Text style={styles.duoLab}>认知高峰 · 预测</Text>
+              <Text
+                style={[styles.duoTime, { color: report.forecast?.peakSpan ? theme.colors.success : theme.colors.textSub }]}
+              >
+                {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '—'}
               </Text>
-              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                轻度任务 / 休息
+              <Text style={styles.duoSub}>最适合烧脑</Text>
+            </View>
+            <View style={[styles.duoCell, { backgroundColor: theme.colors.danger + '1A' }]}>
+              <Text style={styles.duoLab}>认知低谷 · 预测</Text>
+              <Text
+                style={[styles.duoTime, { color: report.forecast?.troughSpan ? theme.colors.danger : theme.colors.textSub }]}
+              >
+                {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '—'}
               </Text>
+              <Text style={styles.duoSub}>轻度任务 / 休息</Text>
             </View>
           </View>
+
+          <Text style={styles.axisNoteLeft}>
+            早上储备 {reserve ?? '—'}，现在用掉 {used ?? '—'} · {rhythmNote}
+          </Text>
         </View>
       </Card>
 
-      {/* ② 中间：认知准备度 · 全天趋势（★ 替换原「认知疲劳度」半小柱图）
-          柱状图 → 折线趋势：准备度是连续状态量（晨高晚低波形），柱图会把相邻两小时
-          切成互不相干的两根，看不出「上午走高、傍晚回落」这个关键形态。 */}
+      {/* ② 认知准备度 · 全天趋势（折线 + 三档带 + 图例 + 轴说明 + 「详细数据」折叠） */}
       <Card padded={false}>
         <View style={styles.pad}>
-          <View style={{ marginBottom: theme.sp(1) }}>
-            {/* ★ 2026-10-07：这里原本挂一个「状态充足/中等/需要休息」徽章，
-                它按 **当天准备度全天均值** 分档 —— 均值口径已被用户否决（早高晚低的波形，
-                均值既不代表早上能干活、也不代表晚上剩多少），且档位词看不出依据。已移除。 */}
-            <Text style={styles.cardTitle}>认知准备度 · 全天趋势</Text>
-          </View>
+          <Text style={styles.cardTitle}>认知准备度 · 全天趋势</Text>
+          {/* ★ 2026-10-10（用户）：日视图与周/月/年图等高 —— 周/月/年（CognitiveRangeView）已是 L 档 240，
+                日视图原先 180 差太多；详情页主趋势统一 L 档（chart-size-unified-spec 规则 1）。 */}
           <ReadinessTrendChart
-            chartH={180}
-            points={ready.points}
+            chartH={chart.h.l}
+            points={trendPoints}
             sleepWindow={report.sleepWindow ?? null}
             nowHour={isToday ? new Date(reportNowMsForDay(anchorMs)).getHours() : null}
           />
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-            灰底是你的睡眠时段；线越高，说明那一刻脑子越「转得动」
-          </Text>
-        </View>
-      </Card>
-
-      {/* ③ 底部：准备度最佳 / 最低时段（★ 原「实际疲劳时段」，峰谷语义随准备度反转） */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>准备度时段</Text>
-          <View style={{ flexDirection: 'row', gap: theme.sp(3) }}>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.limeSoft }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>状态最佳</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep }}>
-                {ready.peakHour != null ? `${String(ready.peakHour).padStart(2, '0')}:00` : '--'}
-              </Text>
-              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                最适合烧脑
-              </Text>
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.danger }]} />
+              <Text style={styles.legendText}>偏低</Text>
             </View>
-            <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: theme.colors.danger + '14' }}>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>需要休息</Text>
-              <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: theme.colors.danger }}>
-                {ready.troughHour != null ? `${String(ready.troughHour).padStart(2, '0')}:00` : '--'}
-              </Text>
-              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, marginTop: theme.sp(0.5) }}>
-                轻度任务 / 休息
-              </Text>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.warn }]} />
+              <Text style={styles.legendText}>适中</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: theme.colors.success }]} />
+              <Text style={styles.legendText}>充沛</Text>
             </View>
           </View>
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1.5) }}>
-            {report.forecast?.rhythmR2 != null
-              ? (report.forecast.rhythmR2 >= 0.6 ? '你的节律很稳，这两个时段基本准' : report.forecast.rhythmR2 >= 0.3 ? '节律还不够稳，这两个时段仅供参考' : '最近节律波动大，预测只能当个参考')
-              : '再连续戴几天（满 7 天），就能摸出你的节律'}
-            {report.circadianPeakH != null ? ' · 你的节律峰值大约在 ' + fmtHM(report.circadianPeakH) : ''}
+          <Text style={styles.axisNote}>
+            纵轴 = 准备度 0–100（越高越转得动）· 横轴 = 一天 24h · 夜间为睡眠，不展示数据
           </Text>
+
+          <TouchableOpacity
+            style={styles.mhRow}
+            activeOpacity={0.7}
+            onPress={() => setCogDetailsOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={cogDetailsOpen ? '收起详细数据' : '展开详细数据'}
+          >
+            <Text style={styles.mhLabel}>详细数据</Text>
+            <View style={[styles.mhChev, cogDetailsOpen && styles.mhChevOpen]} />
+          </TouchableOpacity>
+          {cogDetailsOpen ? (
+            <View style={styles.rowsBox}>
+              <View style={styles.rowItem}>
+                <Text style={styles.rowK}>高峰时段</Text>
+                <Text style={styles.rowV}>{ready.peakHour != null ? `${String(ready.peakHour).padStart(2, '0')}:00` : '—'}</Text>
+              </View>
+              <View style={styles.rowItem}>
+                <Text style={styles.rowK}>低谷时段</Text>
+                <Text style={styles.rowV}>{ready.troughHour != null ? `${String(ready.troughHour).padStart(2, '0')}:00` : '—'}</Text>
+              </View>
+              <View style={[styles.rowItem, styles.rowItemLast]}>
+                <Text style={styles.rowK}>周期性强度</Text>
+                <Text style={styles.rowV}>
+                  {report.forecast?.rhythmR2 != null ? Number(report.forecast.rhythmR2).toFixed(2) : '—'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Card>
     </>
   );
+}
+
+/** 「今天 / 10月9日」——卡片副标题用（brain-readiness-preview .ctitle small） */
+function dayKeyOfLabel(ms: number): string {
+  const d = new Date(ms);
+  const today = new Date();
+  return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+    ? '今天'
+    : `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
@@ -409,12 +622,12 @@ function buildPeriods(range: RangeKey, anchorMs: number): { label: string; dayKe
     .map((p) => ({ ...p, dayKeys: p.dayKeys.filter((dk) => dk <= todayK) }));
 }
 
-// 月视图 28~31 根柱太密：只标 1/5/10/15/20/25/30；周/年全标
+// 横轴刻度与 chartAxis 同源：月=1/5/10/15/20/25/30，年=1/3/5/7/9/11月，周全标
 function showXLabel(range: RangeKey, i: number, label: string): boolean {
-  if (range !== 'month') return true;
-  const num = Number(label);
-  if (Number.isNaN(num)) return true;
-  return num === 1 || num % 5 === 0;
+  if (range === 'week') return true;
+  if (range === 'month') return isMonthTickDay(Number(label));
+  if (range === 'year') return isYearTickMonth(i);
+  return true;
 }
 
 interface CogPeriodRow {
@@ -516,7 +729,8 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
   const VW = chartW > 0 ? chartW : 320;  // 真实卡片内宽（onLayout 前先给 320 兜底）
   const AX_L = 26, AX_R = 6;             // 左侧留纵轴刻度、右留边
   const plotTop = 16, xLabelH = 20;
-  const plotH = 280 - plotTop - xLabelH; // ★ 总高 280 = 日视图同高
+  // ★ 2026-10-10（规范）：总高 280 → L 档 240（装饰带 36 ≤ 50 预算）
+  const plotH = chart.h.l - plotTop - xLabelH;
   const chartH = plotTop + plotH + xLabelH;
   const step = (VW - AX_L - AX_R) / n;  // 每个周期格宽
   const cxOf = (i: number) => AX_L + i * step + step / 2;
@@ -542,10 +756,10 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
             <Text style={styles.chartTitle}>每日脑力消耗</Text>
             <View style={{ flexDirection: 'row', gap: theme.sp(2) }}>
               {(dominantPv
-                ? [['当日峰', mm.colors.limeMid], ['当日谷', theme.colors.accentSolid]]
-                : [['晨起', mm.colors.limeMid], ['睡前', theme.colors.accentSolid]]).map(([t, c]) => (
+                ? [['当日峰', mm.colors.limeMid], ['当日谷', mm.colors.purpleDeep]]
+                : [['晨起', mm.colors.limeMid], ['睡前', mm.colors.purpleDeep]]).map(([t, c]) => (
                 <View key={t as string} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) }}>
-                  <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: 2, backgroundColor: c as string }} />
+                  <View style={{ width: theme.sp(2.2), height: theme.sp(2.2), borderRadius: chart.barRadius, backgroundColor: c as string }} />
                   <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{t}</Text>
                 </View>
               ))}
@@ -558,8 +772,8 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
               return (
                 <G key={v}>
                   <Line x1={AX_L} y1={y} x2={VW - AX_R} y2={y}
-                    stroke={v === 0 ? theme.colors.cardBorder : theme.colors.cardBorder + '55'} strokeWidth={0.5}
-                    strokeDasharray={v === 0 ? undefined : '2 3'} />
+                    stroke={chart.grid} strokeWidth={chart.lw.grid}
+                    strokeDasharray={v === 0 ? undefined : chart.dash.grid} />
                   <SvgText x={AX_L - 4} y={y + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>{v}</SvgText>
                 </G>
               );
@@ -567,8 +781,8 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
             {/* 消耗区间柱：每周期一根，柱高 = 该周期的日均消耗点数
                 上沿 = 晨起准备度（无睡眠日时为当日峰），下沿 = 睡前准备度（无睡眠日时为当日谷） */}
             {rows.map((r, i) => {
-              const x = cxOf(i) - step * 0.25;
-              const bw = step * 0.5;
+              const x = cxOf(i) - step * 0.3;
+              const bw = step * 0.6;
               if (r.hi == null || r.lo == null) {
                 // ★ 无数据 / 未来周期（现在横轴保留完整自然周期，会出现今天之后的日子）：
                 //   不画任何占位元素（用户口径：没数据就不画，不给看着像有数据的假值）
@@ -579,9 +793,9 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
               return (
                 <G key={i}>
                   <Rect x={x} y={yTop} width={bw} height={Math.max(1.5, yBot - yTop)}
-                    fill={mm.colors.purpleCore} opacity={0.75} rx={1.5} />
-                  <Circle cx={cxOf(i)} cy={yTop} r={2.8} fill={mm.colors.limeMid} />
-                  <Circle cx={cxOf(i)} cy={yBot} r={2.8} fill={mm.colors.purpleDeep} />
+                    fill={mm.colors.purpleCore} rx={chart.barRadius} />
+                  <Circle cx={cxOf(i)} cy={yTop} r={chart.dot.radius} fill={mm.colors.limeMid} />
+                  <Circle cx={cxOf(i)} cy={yBot} r={chart.dot.radius} fill={mm.colors.purpleDeep} />
                 </G>
               );
             })}
@@ -605,21 +819,18 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
         <Card padded={false} style={{ marginTop: theme.sp(2) }}>
           <View style={styles.pad}>
             <Text style={styles.chartTitle}>对比{prevLabel}</Text>
-            <View style={{ flexDirection: 'row', gap: theme.sp(3), marginTop: theme.sp(1) }}>
-              <View style={{ flex: 1, padding: theme.sp(2), borderRadius: theme.radius.sm, backgroundColor: mm.colors.purpleSoft }}>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>平均消耗</Text>
-                <Text style={{ fontSize: theme.fontSize.orb, fontWeight: theme.weight.semibold as any, color: mm.colors.purpleDeep }}>
-                  {meanConsumed}<Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>% /天</Text>
+            {/* ★ 2026-10-09（brain-readiness-preview .cmpCard）：大数字 30 + 单位 + 右侧变化量 一行式 */}
+            <View style={styles.cmpCardRow}>
+              <Text style={styles.cmpBig}>{meanConsumed}</Text>
+              <Text style={styles.cmpUnit}>% /天</Text>
+              {consumedDelta != null && (
+                // ★ 方向：消耗得越少越从容 → 占比上升（更累）才是红的那个
+                <Text style={[styles.cmpDelta, { color: consumedDelta <= 0 ? theme.colors.success : theme.colors.danger }]}>
+                  {consumedDelta > 0 ? '↑' : consumedDelta < 0 ? '↓' : '→'} {Math.abs(consumedDelta)}
                 </Text>
-                {consumedDelta != null && (
-                  // ★ 方向：消耗得越少越从容 → 占比上升（更累）才是红的那个
-                  <Text style={{ fontSize: theme.fontSize.micro, color: consumedDelta <= 0 ? theme.colors.success : theme.colors.danger, marginTop: theme.sp(0.5) }}>
-                    {consumedDelta > 0 ? '↑' : consumedDelta < 0 ? '↓' : '→'} {Math.abs(consumedDelta)}pp vs {prevLabel}
-                  </Text>
-                )}
-              </View>
+              )}
             </View>
-            <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1.5), lineHeight: 18 }}>
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.fontSize.micro * 1.55 }}>
               {consumedDelta! > 0
                 ? `这个周期每天比上一个多用掉 ${consumedDelta} 个百分点的脑力，消耗在往上走，晚上记得把觉睡够。`
                 : consumedDelta! < 0
@@ -666,7 +877,8 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
   const AX_L = 26, AX_R = 16;            // 右留多一点：放「高/中/低」标注
   // ★ 几何与 `CognitiveRangeView` 完全一致（总高 280 = 日视图同高），否则两页图高不一致。
   const plotTop = 16, xLabelH = 20;
-  const plotH = 280 - plotTop - xLabelH;
+  // ★ 2026-10-10（规范）：总高 280 → L 档 240
+  const plotH = chart.h.l - plotTop - xLabelH;
   const chartH = plotTop + plotH + xLabelH;
   const step = (VW - AX_L - AX_R) / Math.max(1, n);
   const cxOf = (i: number) => AX_L + i * step + step / 2;
@@ -701,21 +913,22 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
         </View>
         <View style={{ width: '100%' }} onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
         <Svg viewBox={`0 0 ${VW} ${chartH}`} width={VW} height={chartH}>
-          {/* 三档背景带：低 <34 / 中 34–67 / 高 ≥67（与 StressTrendChart 同阈值） */}
+          {/* 三档背景带：★ 2026-10-09（psychological-stress-preview drawStr）阈值 40 / 70、
+              opacity 0.07 —— 与日视图 StressTrendChart 同源（原先 34/67、0.08，跟日视图对不上） */}
           {[
-            { hi: 100, lo: 67, color: theme.colors.danger },
-            { hi: 67, lo: 34, color: theme.colors.warn },
-            { hi: 34, lo: 0, color: theme.colors.success },
+            { hi: 100, lo: 70, color: theme.colors.danger },
+            { hi: 70, lo: 40, color: theme.colors.warn },
+            { hi: 40, lo: 0, color: theme.colors.success },
           ].map((b, i) => (
             <Rect key={'sband' + i} x={AX_L} y={yOf(b.hi)}
               width={VW - AX_L - AX_R} height={Math.max(0, yOf(b.lo) - yOf(b.hi))}
-              fill={b.color} opacity={0.08} />
+              fill={b.color} opacity={0.07} />
           ))}
           {[0, 25, 50, 75, 100].map((v) => (
             <G key={'sg' + v}>
               <Line x1={AX_L} y1={yOf(v)} x2={VW - AX_R} y2={yOf(v)}
-                stroke={v === 0 ? theme.colors.cardBorder : theme.colors.cardBorder + '55'}
-                strokeWidth={0.5} strokeDasharray={v === 0 ? undefined : '2 3'} />
+                stroke={chart.grid}
+                strokeWidth={chart.lw.grid} strokeDasharray={v === 0 ? undefined : chart.dash.grid} />
               <SvgText x={AX_L - 4} y={yOf(v) + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>{v}</SvgText>
             </G>
           ))}
@@ -729,9 +942,9 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
               textAnchor="start" fontSize={8.5} fill={b.color} fontWeight="600">{b.label}</SvgText>
           ))}
 
-          {/* 区间均值参考线 */}
+          {/* 区间均值参考线：★ 稿里虚线是 bad 色（#C9598A dashed，opacity 0.7） */}
           <Line x1={AX_L} y1={yOf(mean)} x2={VW - AX_R} y2={yOf(mean)}
-            stroke={mm.colors.roseCore} strokeWidth={1} strokeDasharray="4 3" opacity={0.55} />
+            stroke={theme.colors.danger} strokeWidth={chart.lw.ref} strokeDasharray="4 3" opacity={0.7} />
 
           {/* 折线：连续有值的段才连，缺口断开不插值 */}
           {(() => {
@@ -745,14 +958,15 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
             return segs.map((idx, i) => (
               <G key={'sseg' + i}>
                 {idx.length > 1 && (
-                  <Polyline
-                    points={idx.map((k) => `${cxOf(k).toFixed(1)},${yOf(rows[k].value!).toFixed(1)}`).join(' ')}
-                    fill="none" stroke={mm.colors.roseCore} strokeWidth={2.2}
+                  /* ★ 平滑弧线（稿 drawStr）：原为 Polyline 折线 */
+                  <Path
+                    d={smoothLine(idx.map((k) => ({ x: cxOf(k), y: yOf(rows[k].value!) })))}
+                    fill="none" stroke={theme.colors.accentSolid} strokeWidth={chart.lw.series}
                     strokeLinecap="round" strokeLinejoin="round" />
                 )}
                 {idx.map((k) => (
-                  <Circle key={'sp' + k} cx={cxOf(k)} cy={yOf(rows[k].value!)} r={2.6}
-                    fill={mm.colors.roseCore} stroke={theme.colors.cardBg} strokeWidth={1.2} />
+                  <Circle key={'sp' + k} cx={cxOf(k)} cy={yOf(rows[k].value!)} r={chart.dot.radius}
+                    fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
                 ))}
               </G>
             ));
@@ -806,20 +1020,38 @@ function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: a
         <ActivityTile label="活动消耗" value={fmtInt(Math.round(calorie))} unit="kcal" color={mm.colors.honeyDeep} last
           onPress={() => openDetail('calorie', '活动消耗', 'kcal', 0, Math.max(200, Math.ceil(calorie * 1.5)))} />
       </View>
-      <View style={styles.statGrid}>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>步数</Text>
-          <Text style={styles.statValue} numberOfLines={1}>{fmtInt(steps)}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>距离</Text>
-          <Text style={styles.statValue} numberOfLines={1}>{fmtKm(distance)} km</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>消耗</Text>
-          <Text style={styles.statValue} numberOfLines={1}>{Math.round(calorie)} kcal</Text>
-        </View>
-      </View>
+      {/* ★ 2026-10-09（exercise-consumption-preview「今日运动记录」）：
+            统计格已并入上方 hero 卡，这里只放真实运动会话列表（无记录时不渲染） */}
+      {(() => {
+        const sess = daySportSessions(ring, dk);
+        if (sess.length === 0) return null;
+        return (
+          <Card padded={false}>
+            <View style={styles.pad}>
+              <Text style={styles.cardTitle}>今日运动记录</Text>
+              {sess.map((s: any, i: number) => {
+                const mins = Math.round((s?.totalTime ?? 0) / 60);
+                const timeTxt = typeof s?.beginTime === 'string' ? s.beginTime.slice(11, 16) : '';
+                return (
+                  <View key={`${s?.beginTime ?? i}`} style={[styles.sessRow, i === sess.length - 1 && styles.sessRowLast]}>
+                    <View style={styles.sessIcon}>
+                      <Text style={styles.sessIconText}>{String(s?.typeName ?? '运').slice(0, 1)}</Text>
+                    </View>
+                    <View style={styles.sessMid}>
+                      <Text style={styles.sessName} numberOfLines={1}>{s?.typeName ?? '运动'}</Text>
+                      {timeTxt ? <Text style={styles.sessTime}>{timeTxt}</Text> : null}
+                    </View>
+                    <View style={styles.sessRight}>
+                      <Text style={styles.sessKcal}>{Math.round(s?.totalCal ?? 0)}</Text>
+                      <Text style={styles.sessKcalSub}>kcal · {mins} 分</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        );
+      })()}
       <Text style={styles.insightText}>
         今日步行 {fmtKm(distance)} km，活动消耗 {Math.round(calorie)} kcal。点击任一项查看历史趋势。
       </Text>
@@ -891,13 +1123,22 @@ const styles = StyleSheet.create({
   legendRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: theme.sp(2), gap: theme.space.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
   legendSwatch: { width: theme.sp(3), height: theme.sp(3), borderRadius: 2 },
-  legendText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
+  // ★ 2026-10-09（brain-readiness-preview .legend 11px）：图例回到 micro 档
+  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 
+  // ★ 2026-10-09（brain-readiness-preview .duo .cell）：预测高峰/低谷两格 = 圆角 11 + 内边距 10/11，
+  //   标签与副文 11px、时间值 18px·600（预览 .lab/.s 11px · .t 17px）
   peakRow: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.sp(2) },
-  peakChip: { flex: 1, padding: theme.space.sm, borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft },
-  peakLabel: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
-  peakTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, marginTop: 2 },
-  peakSub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: 2 },
+  peakChip: {
+    flex: 1,
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(2.75),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.cardBgSoft,
+  },
+  peakLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  peakTime: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, marginTop: 2, lineHeight: theme.fontSize.card * 1.1 },
+  peakSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
 
   reasonText: { fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, lineHeight: theme.fontSize.sm * 1.5 },
 
@@ -906,17 +1147,124 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: theme.colors.cardBorder, ...theme.shadow.card,
     paddingHorizontal: theme.space.cardPad,
   },
-  statGrid: { flexDirection: 'row' },
+  /* ★ 2026-10-09（用户：统一成首页 / 洞察页「昼夜节律 · 生理周期节律」那套 tab）：
+     **白底 + 外环描边** —— 未选中 = 极淡描边 + 灰字；选中 = 外环换成主色 + 浅色填充 + 深墨字。
+     与 CycleCalendarScreen 的 SegTabs(ring) / InsightScreen 的 UnderlineTabs(large) 同一语言。 */
+  tabRow: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
+  // 胶囊型：`borderRadius` 用 pill（全圆），**中间始终白色**，只有外环（描边）换色
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.sp(2.25),
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg,
+  },
+  tabOn: {
+    borderColor: mm.colors.limeMid,
+    backgroundColor: theme.colors.cardBg,
+  },
+  tabText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: mm.colors.inkSoft },
+  tabTextOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold as any },
+
+  /* ★ 2026-10-09（brain-readiness-preview 日视图）新增样式 */
+  ctitleRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1.5) },
+  ctitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  ctitleSmall: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: theme.sp(1.5) },
+  // .hero：大数字 46 + 左侧标签 11px + 右侧状态语 13px·600（预览 .big/.lab/.ctx）
+  // .hero padding：6px 4px 12px
+  heroWrap: {
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    paddingTop: theme.sp(1.5), paddingHorizontal: theme.sp(1), paddingBottom: theme.sp(3),
+  },
+  heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
+  heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+  // .rows / .row：margin-top 6px，13px 行，底线分隔，末行无底线
+  rowsBox: { marginTop: theme.sp(1.5) },
+  rowItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: theme.sp(2.25), borderBottomWidth: 1, borderBottomColor: theme.colors.ui.borderSoft,
+  },
+  rowItemLast: { borderBottomWidth: 0 },
+  rowK: { fontSize: theme.fontSize.xs, color: theme.colors.textInk },
+  rowV: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk },
+  rowVSmall: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular as any, color: theme.colors.textSub, marginLeft: theme.sp(1) },
+  // .duo：两块预测卡（圆角 11 · 内边距 10/11 · 标签/副文 11px · 时间 17px·600）
+  // .duo：gap 10px
+  duoRow: { flexDirection: 'row', gap: theme.sp(2.5), marginTop: theme.sp(1) },
+  duoCell: {
+    flex: 1,
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(2.75),
+    borderRadius: theme.radius.md,
+  },
+  duoLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75) },
+  // .duo .t = 17px·650（App 无 17 档 token，用 theme.fs(17) 精确对齐）
+  duoTime: { fontSize: theme.fs(17), fontWeight: theme.weight.semibold as any, lineHeight: theme.fs(17) * 1.1 },
+  duoSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.75) },
+  // .axisnote：10.5px；日视图卡内左对齐版本
+  axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },
+  axisNoteLeft: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.fontSize.micro * 1.4 },
+  // .mhRow：统一折叠头（左标签 + 右 chevron，浅底描边行）
+  mhRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.space.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+  },
+  mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
+  mhChev: {
+    width: theme.sp(2), height: theme.sp(2),
+    borderRightWidth: 1.6, borderBottomWidth: 1.6, borderColor: theme.colors.textSub,
+    transform: [{ rotate: '45deg' }], marginRight: theme.sp(0.75),
+  },
+  mhChevOpen: { transform: [{ rotate: '-135deg' }] },
+
+  // ★ 2026-10-09（brain-readiness-preview .cmpCard / .cmpNote）
+  cmpCardRow: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(2), marginTop: theme.sp(2) },
+  cmpBig: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid, lineHeight: theme.fontSize.stat },
+  cmpUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, paddingBottom: theme.sp(1.25) },
+  cmpDelta: { marginLeft: 'auto', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, paddingBottom: theme.sp(1.25) },
+
+  statGrid: { flexDirection: 'row', gap: theme.space.xs },
+  // ★ 2026-10-09（exercise/psychological-stress-preview .statRow .tile）：无底色描边小格
+  //   （radius 11 / 内边距 9·10 / 标签 11px / 值 15px·650），替代原先的浅底大号格
   statCell: {
-    flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1),
-    borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft,
-    marginHorizontal: theme.sp(0.5),
-    
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.sp(2.5),
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: 'transparent',
   },
   statSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
-  statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
-  statValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
+  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
+  statValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.body * 1.15, textAlign: 'center' },
   insightText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.55, paddingHorizontal: theme.space.xs },
+
+  // ★ 2026-10-09（exercise-consumption-preview .sess）：今日运动记录行
+  sessRow: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5),
+    paddingVertical: theme.sp(2.5), borderBottomWidth: 1, borderBottomColor: theme.colors.ui.borderSoft,
+  },
+  sessRowLast: { borderBottomWidth: 0 },
+  sessIcon: {
+    width: theme.sp(8.5), height: theme.sp(8.5), borderRadius: theme.radius.sm,
+    backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center',
+  },
+  sessIconText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: mm.colors.honeyDeep },
+  sessMid: { flex: 1 },
+  sessName: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk },
+  sessTime: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  sessRight: { alignItems: 'flex-end' },
+  sessKcal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: mm.colors.honeyDeep },
+  sessKcalSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 
   activityLabel: { fontSize: theme.fontSize.body, color: theme.colors.textInkSoft },
   activityValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any },
@@ -1010,9 +1358,11 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
 }
 
 /* ========== 跨天/周/月/年分析卡 ========== */
-function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: RangeKey; anchor: Date }) {
+function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range: RangeKey; anchor: Date; ring?: any }) {
   const anchorMs = anchor.getTime();
   const { axis } = RANGE_DEF[range];
+  // ★ 2026-10-09（exercise-consumption-preview）：区间视图「详细数据」折叠，默认收起
+  const [rangeDetailOpen, setRangeDetailOpen] = useState(false);
 
   const periods: { label: string; dayKeys: string[] }[] = (() => {
     // ★自然日历周期：周=本周一~周日 / 月=本月逐日(1号~月末) / 年=今年1月~12月
@@ -1035,8 +1385,10 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
             const rep = computeStressReport(midMs);
             if (rep?.sampleCount >= 2 && rep.emotionalLoad != null) { sum += rep.emotionalLoad; cnt++; }
           } else if (type === 'activity') {
-            const d = healthStore.getDay('steps' as any, dk);
-            if (d?.mean != null) { sum += Math.min(100, (d.mean / 8000) * 100); cnt++; }
+            // ★ 2026-10-09：与**日视图同源**读 `ring.stepDaily[dk].calorie`（真实 kcal）。
+            //   之前读 healthStore('calorie') 拿不到历史、还被归一化成 0–100 分数，导致周月年全 0。
+            const c = ring?.stepDaily?.[dk]?.calorie;
+            if (Number.isFinite(c) && (c as number) > 0) { sum += c as number; cnt++; }
           }
         } catch {}
       }
@@ -1055,6 +1407,10 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
   const validScores = scores.filter((s): s is number => s != null);
   const validPrev = prevScores.filter((s): s is number => s != null);
   const hasAny = validScores.length > 0;
+  /** 纵轴上限：压力/脑力固定 0–100；运动消耗按真实 kcal 自适应（向上取整到 50 的倍数） */
+  const yMax = type === 'activity' && hasAny
+    ? Math.max(1, Math.ceil((Math.max(...validScores) * 1.3) / 50) * 50)
+    : 100;
 
   const mean = hasAny ? Math.round(validScores.reduce((a,b)=>a+b,0) / validScores.length) : 0;
   const peak = hasAny ? Math.max(...validScores) : 0;
@@ -1067,21 +1423,12 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
   const delta = prevMean != null ? mean - prevMean : null;
   const deltaPct = prevMean != null && prevMean > 0 ? Math.round((delta! / prevMean) * 100) : null;
 
-  const gradId = (i: number) => `rbg-${type}-${range}-${i}`;
-  const stopsFor = (s: number | null) => {
-    if (s == null) return ['transparent', 'transparent'];
-    // 与 StressInsightCard.HourHistogram 档位语义一致:
-    //   低负荷/低疲劳 → success (绿, 好状态)
-    //   中负荷/中疲劳 → warn (黄, 一般)
-    //   高负荷/高疲劳 → stateEnergy (紫, 需注意)
-    let top: string, bot: string;
-    const TH_LOW  = type === 'emotion' ? 30 : 40;
-    const TH_HIGH = type === 'emotion' ? 60 : 65;
-    if (s < TH_LOW) { top = theme.colors.success;    bot = theme.colors.ui.successText; }
-    else if (s < TH_HIGH) { top = theme.colors.warn; bot = theme.colors.stateTense; }
-    else { top = mm.colors.honeyCore; bot = mm.colors.honeyDeep; } // v21：认知疲劳=蜜（中档 honeyDeep，与 fatigueLevels 同源）
-    return [top, bot];
-  };
+  // ★ 2026-10-10（bar-design-unified-spec 规则1/5）：柱色 = 语义→色相唯一入口，柱体一律平涂、禁渐变
+  //   cognitive 认知 → 紫 purpleCore；emotion 情绪 → 粉 roseCore；activity 运动 → 蓝 skyCore
+  const barFill = type === 'cognitive' ? mm.colors.purpleCore
+    : type === 'emotion' ? mm.colors.roseCore
+    : mm.colors.skyCore;
+  const refLine = type === 'activity' ? mm.colors.skyDeep : theme.colors.celebrateGrad[0];
 
   const lowerIsBetter = type === 'cognitive' || type === 'emotion';
   const trendBad = delta != null && ((lowerIsBetter && delta > 0) || (!lowerIsBetter && delta < 0));
@@ -1094,10 +1441,11 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
   const nP = periods.length;
   const AX_L2 = 30, AX_R2 = 6;
   const stepP = (VW - AX_L2 - AX_R2) / Math.max(1, nP);
-  const barW = Math.min(24, Math.max(3, stepP * 0.6));
-  const plotTop = theme.sp(4.5);    // 18
-  const plotH = theme.sp(37.5);     // 150
-  const chartH = plotTop + plotH + theme.sp(6.5); // +26
+  const barW = Math.min(24, Math.max(4, stepP * 0.6));
+  // ★ 2026-10-10（chart-size-unified-spec）：L 档 = 总高 240、绘图区净高 190、装饰带 ≤ 50
+  const plotTop = 18;
+  const plotH = chart.plot.l;       // 190
+  const chartH = chart.h.l;         // 240（原 194，且被 ×1.7 拉成 ≈330）
   const xOfP = (i: number) => AX_L2 + i * stepP + (stepP - barW) / 2;
   const cxOfP = (i: number) => AX_L2 + i * stepP + stepP / 2;
 
@@ -1119,54 +1467,48 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
           </View>
 
           <View style={{ position: 'relative' }}>
-            <Svg viewBox={`0 0 ${VW} ${chartH}`} width="100%" height={chartH * 1.7}>
-              <Defs>
-                {scores.map((s, i) => {
-                  const [t, b] = stopsFor(s);
-                  return (
-                    <LinearGradient key={i} id={gradId(i)} x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0%" stopColor={t} stopOpacity="1" />
-                      <Stop offset="100%" stopColor={b} stopOpacity="1" />
-                    </LinearGradient>
-                  );
-                })}
-              </Defs>
-
-              {/* Y 轴刻度 & 网格 — 始终渲染 */}
-              {[0, 25, 50, 75, 100].map(v => {
-                const y = plotTop + plotH - (v / 100) * plotH;
+            {/* ★ 规则 3：禁止非等比拉伸 —— height 必须等于 viewBox 高度（去掉 ×1.7） */}
+            <Svg viewBox={`0 0 ${VW} ${chartH}`} width="100%" height={chartH}>
+              {/* Y 轴刻度 & 网格 — 始终渲染（★ 运动页按 kcal 自适应 yMax，不再写死 0–100） */}
+              {[0, 0.25, 0.5, 0.75, 1].map(f => {
+                const v = f * yMax;
+                const y = plotTop + plotH - f * plotH;
                 return (
-                  <G key={`y${v}`}>
+                  <G key={`y${f}`}>
                     <SvgText x={AX_L2 - 4} y={y + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>
-                      {v}
+                      {Math.round(v)}
                     </SvgText>
-                    {v > 0 && v < 100 && (
+                    {f > 0 && f < 1 && (
                       <Line x1={AX_L2} y1={y} x2={VW - AX_R2} y2={y}
-                        stroke={theme.colors.cardBorder + '50'} strokeWidth={0.5} strokeDasharray="2 3" />
+                        stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
                     )}
                   </G>
                 );
               })}
 
-              {/* 50 分参考线 (加粗) */}
-              <Line x1={AX_L2} y1={plotTop + plotH - 50 / 100 * plotH}
-                    x2={VW - AX_R2} y2={plotTop + plotH - 50 / 100 * plotH}
-                    stroke={theme.colors.celebrateGrad[0]} strokeWidth={1.2} strokeDasharray="4 3" />
+              {/* 参考线：压力/脑力 = 50 分；运动 = 区间均值（稿里的虚线均值） */}
+              <Line x1={AX_L2} y1={plotTop + plotH - ((type === 'activity' && hasAny ? mean : 50) / yMax) * plotH}
+                    x2={VW - AX_R2} y2={plotTop + plotH - ((type === 'activity' && hasAny ? mean : 50) / yMax) * plotH}
+                    stroke={refLine}
+                    strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
 
               {/* 柱子 — 空数据画灰色 2px 底条 */}
               {scores.map((s, i) => {
-                const h = s != null ? Math.max(3, (s / 100) * plotH) : 0;
+                const h = s != null ? Math.max(3, (s / yMax) * plotH) : 0;
                 const x = xOfP(i);
                 const y = plotTop + plotH - h;
                 const isPeak = hasAny && s != null && s === peak;
                 return (
                   <G key={i}>
                     {s != null ? (
-                      <Rect x={x} y={y} width={barW} height={h} rx={theme.radius.sm} ry={theme.radius.sm}
-                            fill={`url(#${gradId(i)})`} />
+                      /* ★ 2026-10-10（bar-design-unified-spec 规则1/2/5）：平涂单色按语义取相
+                         （cognitive 紫 / emotion 粉 / activity 蓝），rx 统一 3，禁渐变 */
+                      <Rect x={x} y={y} width={barW} height={h} rx={chart.barRadius} ry={chart.barRadius}
+                            fill={barFill} />
                     ) : (
-                      <Rect x={x} y={plotTop + plotH - 2} width={barW} height={2} rx={theme.sp(0.25)} ry={theme.sp(0.25)}
-                            fill={theme.colors.cardBorder + '50'} />
+                      /* ★ 规则6：空数据统一态 = emptyFill 2pt 圆角1 opacity1 */
+                      <Rect x={x} y={plotTop + plotH - 2} width={barW} height={2} rx={1} ry={1}
+                            fill={mm.colors.emptyFill} />
                     )}
                     {s != null && nP <= 14 && (
                       <SvgText x={cxOfP(i)} y={y - theme.sp(1)} textAnchor="middle" fontSize={theme.fontSize.xs}
@@ -1179,7 +1521,7 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
                       <SvgText x={cxOfP(i)} y={y - theme.sp(1)} textAnchor="middle" fontSize={theme.fontSize.xs}
                                fontWeight="700" fill={theme.colors.celebrateGrad[0]}>▲</SvgText>
                     )}
-                    {(nP <= 14 || showXLabel(range, i, periods[i].label)) && (
+                    {showXLabel(range, i, periods[i].label) && (
                       <SvgText x={cxOfP(i)} y={chartH - theme.sp(1.5)} textAnchor="middle" fontSize={8.5} fill={theme.colors.textSub}>
                         {periods[i].label}
                       </SvgText>
@@ -1200,14 +1542,80 @@ function RangeTrendBars({ type, range, anchor }: { type: EnergyType; range: Rang
         </View>
       </Card>
 
-      {/* 卡 ② 统计指标网格 */}
-      {hasAny && (
+      {/* ★ 2026-10-10（用户）：运动详情页的「周期均值 / 峰值 / 低谷 / 波动度」与
+          「详细数据」合并到同一张卡里，不再分两张 */}
+      {type === 'activity' && hasAny && (
         <Card padded={false} style={{ marginTop: theme.sp(2) }}>
           <View style={styles.pad}>
             <View style={styles.statGrid}>
-              <StatCell label="周期均值" value={String(mean)} sub={type === 'activity' ? '' : '/ 100'} />
-              <StatCell label="峰值" value={String(peak)} sub={type === 'activity' ? '' : '/ 100'} valueColor={theme.colors.celebrateGrad[0]} />
-              <StatCell label="低谷" value={String(trough)} sub={type === 'activity' ? '' : '/ 100'} valueColor={theme.colors.success} />
+              <StatCell label="周期均值" value={String(mean)} sub="kcal" />
+              <StatCell label="峰值" value={String(peak)} sub="kcal" valueColor={theme.colors.celebrateGrad[0]} />
+              <StatCell label="低谷" value={String(trough)} sub="kcal" valueColor={theme.colors.success} />
+              <StatCell label="波动度" value={String(volatility)} sub="σ" />
+            </View>
+            <TouchableOpacity
+              style={styles.mhRow}
+              activeOpacity={0.7}
+              onPress={() => setRangeDetailOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={rangeDetailOpen ? '收起详细数据' : '展开详细数据'}
+            >
+              <Text style={styles.mhLabel}>详细数据</Text>
+              <View style={[styles.mhChev, rangeDetailOpen && styles.mhChevOpen]} />
+            </TouchableOpacity>
+            {rangeDetailOpen ? (
+              <View style={styles.rowsBox}>
+                {(() => {
+                  const allKeys = periods.flatMap((p) => p.dayKeys);
+                  const sess = ((ring?.sportSessions ?? []) as any[])
+                    .filter((s) => allKeys.includes(String(s?.beginTime ?? '').slice(0, 10)));
+                  const hrs = sess.map((s) => s?.averHeart).filter((v: any) => Number.isFinite(v) && v > 0);
+                  const top = allKeys
+                    .map((k) => ({ k, c: ring?.stepDaily?.[k]?.calorie ?? 0 }))
+                    .filter((x) => x.c > 0)
+                    .sort((a, b) => b.c - a.c)[0];
+                  const unit = { fontSize: theme.fontSize.micro, color: theme.colors.textSub };
+                  return (
+                    <>
+                      <View style={styles.rowItem}>
+                        <Text style={styles.rowK}>运动次数</Text>
+                        <Text style={styles.rowV}>{sess.length}<Text style={unit}> 次</Text></Text>
+                      </View>
+                      <View style={styles.rowItem}>
+                        <Text style={styles.rowK}>平均心率（运动时段）</Text>
+                        <Text style={styles.rowV}>
+                          {hrs.length ? Math.round(hrs.reduce((a: number, b: number) => a + b, 0) / hrs.length) : '—'}
+                          <Text style={unit}> bpm</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.rowItem}>
+                        <Text style={styles.rowK}>最长单次</Text>
+                        <Text style={styles.rowV}>
+                          {sess.length ? Math.round(Math.max(...sess.map((s) => s?.totalTime ?? 0)) / 60) : '—'}
+                          <Text style={unit}> 分</Text>
+                        </Text>
+                      </View>
+                      <View style={[styles.rowItem, styles.rowItemLast]}>
+                        <Text style={styles.rowK}>消耗最高日</Text>
+                        <Text style={styles.rowV}>{top ? top.k.slice(5).replace('-', '/') : '—'}</Text>
+                      </View>
+                    </>
+                  );
+                })()}
+              </View>
+            ) : null}
+          </View>
+        </Card>
+      )}
+
+      {/* 卡 ② 统计指标网格（★ 运动页已并入上面的「详细数据」卡，这里不再重复） */}
+      {hasAny && type !== 'activity' && (
+        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+          <View style={styles.pad}>
+            <View style={styles.statGrid}>
+              <StatCell label="周期均值" value={String(mean)} sub="/ 100" />
+              <StatCell label="峰值" value={String(peak)} sub="/ 100" valueColor={theme.colors.celebrateGrad[0]} />
+              <StatCell label="低谷" value={String(trough)} sub="/ 100" valueColor={theme.colors.success} />
               <StatCell label="波动度" value={String(volatility)} sub="σ" />
             </View>
           </View>

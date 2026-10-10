@@ -51,8 +51,8 @@ export default function SleepMultiDimCompare({ rows, curLabel, prevLabel, subtit
 
       <View style={styles.headerRow}>
         <Text style={[styles.headerCell, styles.colLabel]}>指标</Text>
-        <Text style={[styles.headerCell, styles.colNum]}>{curLabel}</Text>
-        <Text style={[styles.headerCell, styles.colNum]}>{prevLabel}</Text>
+        <Text style={[styles.headerCell, styles.colNum, { textAlign: 'center' }]}>{curLabel}</Text>
+        <Text style={[styles.headerCell, styles.colNum, { textAlign: 'center' }]}>{prevLabel}</Text>
       </View>
 
       {rows.map((r, ri) => (

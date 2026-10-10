@@ -13,6 +13,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { phaseBand, type PhaseKey } from '../lib/phaseColors';
 import PhaseLegend from './PhaseLegend';
@@ -21,7 +22,7 @@ import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import type { TimePoint } from '../ble/RingBleManager';
 
 const W = 680;
-const H = 200;
+const H = chart.h.m;     // ★ 规范：200 → M 档 180
 const PAD_L = 10;
 const PAD_R = 10;
 const PAD_T = 14;

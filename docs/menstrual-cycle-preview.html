@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 生理周期 · 节律（与原 App 经期页结构一致）</title>
+<style>
+  :root{
+    /* 经期四相配色（与 App lib/phaseColors 完全一致） */
+    --period:  #F6B3D0;  /* 经期：粉 */
+    --follic:  #C7B9F2;  /* 卵泡期：紫 */
+    --ovul:    #D5E384;  /* 排卵期：黄绿 */
+    --luteal:  #F0C46E;  /* 黄体期：黄 */
+    --moonlit: #F2C75C;  /* 月相亮面 */
+    --moondark:rgba(150,130,235,0.16);
+
+    --ink:#1F1D1A; --bg:#F5F4F1; --card:#FFFFFF;
+    --sub:#8A857D; --line:#ECEAE5; --soft:#FAFAF8;
+    --green:#6E7A24; --purple:#7C6AE0;
+    --t-fade:160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.5}
+
+  /* 顶部「周期 / 年」胶囊（对齐 App 的 SegTabs chip 变体：靠左、选中实心主色） */
+  .seg{display:inline-flex;background:#EDEBE7;border-radius:999px;padding:3px;margin:0 0 14px}
+  .seg button{border:0;background:transparent;font-size:13.5px;font-weight:600;color:var(--sub);
+    padding:7px 18px;border-radius:999px;cursor:pointer;transition:all var(--t-fade)}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+  /* 周期切换条（‹ 上一个周期 / 下一个周期 ›） */
+  .cyc{display:flex;align-items:center;justify-content:space-between;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;padding:11px 12px;margin-bottom:14px}
+  .cyc .nav{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--sub);cursor:pointer}
+  .cyc .nav .ar{font-size:16px;color:var(--ink)}
+  .cyc .nav.off{opacity:.35;pointer-events:none}
+  .cyc .ctr{flex:1;text-align:center}
+  .cyc .dt{font-size:13.5px;font-weight:600}
+  .cyc .dd{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .cyc .lk{font-size:10.5px;color:var(--purple);margin-top:2px;cursor:pointer}
+
+  /* 月相环（原样复刻 App CycleMoonPhase，不变） */
+  .ringWrap{display:flex;justify-content:center;margin:4px 0 2px}
+
+  /* 记录 / 修改 渐变胶囊 */
+  .rec{display:flex;flex-direction:column;align-items:center;margin:2px 0 16px}
+  .rec .hint{font-size:10.5px;color:var(--sub);margin-bottom:7px}
+  .recBtn{border-radius:999px;overflow:hidden;cursor:pointer}
+  .recGrad{padding:8px 26px;border-radius:999px;background:linear-gradient(135deg,#B7E08A,#F6B3D0);
+    color:#fff;font-size:12.5px;font-weight:600}
+
+  /* 圆环下方两个 tab（SegTabs ring 变体：无底色，选中描边变绿） */
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tab{flex:1;text-align:center;padding:10px 6px;border-radius:999px;border:1px solid var(--line);
+    background:transparent;font-size:13px;font-weight:500;color:#9A948C;cursor:pointer;transition:all var(--t-fade)}
+  .tab.on{border-color:var(--green);color:var(--ink);font-weight:600}
+
+  .card{background:var(--card);border-radius:18px;padding:14px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .ctitle{font-size:15px;font-weight:600;margin:0 0 4px}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:5px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:10.5px;color:var(--sub);margin:8px 2px 0}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+
+  .statRow{display:flex;gap:8px;margin-top:10px}
+  .tile{flex:1;border:1px solid var(--line);border-radius:11px;padding:9px 10px}
+  .tile .tl{font-size:10.5px;color:var(--sub);margin-bottom:3px}
+  .tile .tv{font-size:15px;font-weight:650}
+
+  .badge{display:inline-flex;align-items:center;background:rgba(110,122,36,.12);color:var(--green);
+    font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin:2px 6px 2px 0}
+  .badge.b2{background:rgba(124,106,224,.12);color:var(--purple)}
+
+  .ai{font-size:11.5px;line-height:1.6;color:var(--sub);margin-top:8px}
+  .ai b{color:var(--ink)}
+
+  .phaseTitle{font-size:11px;color:var(--sub);margin:2px 0 6px}
+  .method{border-top:1px solid var(--line);margin-top:4px;padding-top:10px}
+  .method .mt{font-size:13px;font-weight:600;margin-bottom:6px}
+  .method .mi{font-size:10.5px;color:var(--sub);line-height:1.55;margin-bottom:3px}
+  .method .mf{font-size:10.5px;color:var(--sub);opacity:.85;line-height:1.55;margin-top:4px}
+
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .foot b{color:var(--ink)}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  /* 关键日期三列（CycleDerivedMetrics） */
+  .kpi3{display:flex;border:1px solid var(--line);border-radius:11px;padding:11px 6px;margin-top:8px;gap:6px}
+  .kpiCell{flex:1;text-align:center}
+  .kpiK{font-size:10px;color:var(--sub)}
+  .kpiV{font-size:15px;font-weight:650;margin-top:5px}
+  .kpiSub{font-size:9.5px;color:var(--sub);margin-top:3px}
+  /* 统一折叠入口（对齐 App moreHead：左标签 + 右 chevron，浅底描边行） */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:var(--soft);border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .mhSec{margin-top:10px;animation:fade var(--t-fade) ease}
+
+  /* 周期规律性（CycleRegularityCard） */
+  .regHero{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .regBadge{background:var(--purple);color:#fff;font-size:12.5px;font-weight:600;padding:4px 12px;border-radius:999px}
+  .regText{font-size:11.5px;line-height:1.5;color:var(--ink);flex:1}
+  .regMain{text-align:center;margin-top:10px}
+  .regMain .v{font-size:32px;font-weight:700}
+  .regMain .u{font-size:14px;font-weight:600}
+  .regMain .l{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .regSub{display:flex;margin-top:10px}
+  .regSub .c{flex:1;text-align:center}
+  .regSub .v{font-size:15px;font-weight:700}
+  .regSub .l{font-size:9.5px;color:var(--sub);margin-top:2px}
+  .rangeBar{position:relative;height:22px;border-radius:999px;background:#F0EEEA;overflow:hidden;margin-top:10px}
+  .rangeNormal{position:absolute;top:0;bottom:0;background:rgba(120,190,120,.30)}
+  .rangeFill{position:absolute;top:0;bottom:0;border-radius:999px;background:var(--purple)}
+  .rangeBand{position:absolute;top:0;bottom:0;width:100%;font-size:9.5px;color:var(--sub);text-align:center;line-height:22px}
+  .rangeScale{display:flex;justify-content:space-between;font-size:9.5px;color:var(--sub);margin-top:3px}
+  .cycList{margin-top:10px}
+  .cycT{font-size:10.5px;font-weight:600;color:var(--sub);margin-bottom:4px}
+  .cycRow{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+  .cycDate{width:58px;font-size:11px;color:var(--ink)}
+  .cycLen{flex:1;font-size:11px;color:var(--ink)}
+  .cycDev{width:60px;text-align:right;font-size:11px}
+  .devLate{color:#C9598A}.devEarly{color:var(--purple)}.devOn{color:var(--sub)}
+
+  /* 症状统计（SymptomStatsPanel） */
+  .blkT{font-size:12.5px;font-weight:600;color:var(--ink);margin:10px 0 6px}
+  .freqRow{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .freqLabel{width:74px;font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .freqTrack{flex:1;height:9px;border-radius:999px;background:#F0EEEA;overflow:hidden}
+  .freqFill{height:100%;border-radius:999px;background:var(--purple)}
+  .freqVal{width:60px;text-align:right;font-size:10.5px;color:var(--sub)}
+  .distBar{display:flex;height:13px;border-radius:999px;overflow:hidden;background:#F0EEEA}
+  .distSeg{height:100%}
+  .distLegend{display:flex;flex-wrap:wrap;gap:9px;margin-top:7px}
+  .distItem{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--sub)}
+  .distItem i{width:9px;height:9px;border-radius:3px}
+
+  /* 症状×相位矩阵（SymptomPhaseMatrix） */
+  .mxHead{display:flex;align-items:flex-end;margin-top:8px}
+  .mxLabelCol{width:74px}
+  .mxCol{flex:1;text-align:center}
+  .mxColDot{width:8px;height:8px;border-radius:50%;margin:0 auto 3px}
+  .mxColT{font-size:9.5px;color:var(--sub)}
+  .mxRow{display:flex;align-items:center;margin-top:6px}
+  .mxLabel{width:74px;font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mxCellWrap{flex:1;padding:0 2px}
+  .mxCell{height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
+  .mxLegend{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:9px;font-size:9.5px;color:var(--sub)}
+  .mxSw{width:14px;height:9px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">生理周期 · 节律</h1>
+  <p class="sub">与 App 内「经期」详情页（CycleCalendarScreen）结构一致：顶部只有<b>周期 / 年</b> 两个视图，中间月相环为固定组件（环心相位与第几天不变），下方内容按 Design Token 重组，更清晰统一。</p>
+
+  <div class="seg" id="seg">
+    <button class="on" data-v="cycle">周期</button>
+    <button data-v="year">年</button>
+  </div>
+
+  <!-- 周期视图 -->
+  <div class="panel on" id="p-cycle">
+    <div class="cyc">
+      <div class="nav" id="prevCyc"><span class="ar">‹</span>上一个周期</div>
+      <div class="ctr">
+        <div class="dt" id="cycDate">9月28日</div>
+        <div class="dd">第 12 天 / 共 28 天</div>
+        <div class="lk">查看日历</div>
+      </div>
+      <div class="nav off">下一个周期<span class="ar">›</span></div>
+    </div>
+
+    <div class="ringWrap"><svg id="ring" viewBox="0 0 300 300" width="300" height="300"></svg></div>
+
+    <div class="rec">
+      <div class="hint">上次经期：9月28日</div>
+      <div class="recBtn"><div class="recGrad">记录 / 修改</div></div>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <div class="tab on" data-t="cycle">周期分析</div>
+      <div class="tab" data-t="hormone">激素节律分析</div>
+    </div>
+
+    <!-- 周期分析 -->
+    <div class="panel on" id="tc-cycle">
+      <div class="card">
+        <p class="ctitle">周期健康指标</p>
+        <div class="kpi3">
+          <div class="kpiCell"><div class="kpiK">预测经期</div><div class="kpiV">10/26</div><div class="kpiSub">还有 17 天</div></div>
+          <div class="kpiCell"><div class="kpiK">排卵日</div><div class="kpiV">10/12</div><div class="kpiSub">体温已确认</div></div>
+          <div class="kpiCell"><div class="kpiK">易孕窗口</div><div class="kpiV" style="font-size:12px">10/7–10/13</div><div class="kpiSub">排卵已过 3 天</div></div>
+        </div>
+        <div class="mhRow" onclick="toggleMH(this)" data-sec="moreIndicators"><span class="mhLabel">展开更多指标</span><span class="mhChev"></span></div>
+        <div class="mhSec" id="moreIndicators" style="display:none">
+          <div class="statRow">
+            <div class="tile"><div class="tl">排卵置信度</div><div class="tv">82%</div></div>
+            <div class="tile"><div class="tl">黄体期长度</div><div class="tv">14 天</div></div>
+            <div class="tile"><div class="tl">周期规律性</div><div class="tv">规律</div></div>
+          </div>
+          <div class="statRow" style="margin-top:8px">
+            <div class="tile"><div class="tl">周期长度</div><div class="tv">28 天</div></div>
+            <div class="tile"><div class="tl">PMS 早筛</div><div class="tv">偏低</div></div>
+            <div class="tile"><div class="tl">当前受孕概率</div><div class="tv">2%</div></div>
+          </div>
+          <p class="ai">持续佩戴戒指并记录经期后，这里显示排卵置信度、双相体温、周期规律性、PMS 早筛等量化指标。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="ctitle">周期规律性</p>
+        <div class="regHero">
+          <div class="regBadge">规律</div>
+          <div class="regText">你的周期大多落在 <b>27–30 天</b> 之间，比较稳定。</div>
+        </div>
+        <div class="regMain"><span class="v">28</span><span class="u"> 天</span><div class="l">平均周期长度（正常区间 21–35 天）</div></div>
+        <div class="regSub">
+          <div class="c"><div class="v">±1.3</div><div class="l">波动（天）</div></div>
+          <div class="c"><div class="v">27–30</div><div class="l">最短–最长</div></div>
+          <div class="c"><div class="v">6</div><div class="l">完整周期</div></div>
+        </div>
+        <div class="rangeBar">
+          <div class="rangeNormal" style="left:5%;width:70%"></div>
+          <div class="rangeFill" style="left:35%;width:15%"></div>
+          <div class="rangeBand">正常区间 21–35 天</div>
+        </div>
+        <div class="rangeScale"><span>20</span><span>30</span><span>40</span></div>
+        <p class="ai">你的周期长度 27–30 天，处于正常区间。</p>
+        <div class="mhRow" onclick="toggleMH(this)" data-sec="cycDetail"><span class="mhLabel">逐周期明细</span><span class="mhChev"></span></div>
+        <div class="mhSec" id="cycDetail" style="display:none">
+          <div class="cycList">
+            <div class="cycT">逐周期</div>
+            <div class="cycRow"><div class="cycDate">8/1</div><div class="cycLen">29 天</div><div class="cycDev devLate">晚 1 天</div></div>
+            <div class="cycRow"><div class="cycDate">7/4</div><div class="cycLen">28 天</div><div class="cycDev devOn">准时</div></div>
+            <div class="cycRow"><div class="cycDate">6/6</div><div class="cycLen">27 天</div><div class="cycDev devEarly">早 1 天</div></div>
+            <div class="cycRow"><div class="cycDate">5/9</div><div class="cycLen">30 天</div><div class="cycDev devLate">晚 2 天</div></div>
+            <div class="cycRow"><div class="cycDate">4/11</div><div class="cycLen">27 天</div><div class="cycDev devEarly">早 1 天</div></div>
+            <div class="cycRow"><div class="cycDate">3/14</div><div class="cycLen">28 天</div><div class="cycDev devOn">准时</div></div>
+          </div>
+          <p class="ai">正常周期 21–35 天；周期间波动大于 7 天通常视为不规律（ACOG）。「晚 / 早」是相对你自己的平均值，不构成医学诊断。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="ctitle">体温双相监测 <small>戒指实测 BBT</small></p>
+        <svg id="temp" viewBox="0 0 360 130" width="100%"></svg>
+        <div class="legend">
+          <span><i style="background:var(--period)"></i>经期</span>
+          <span><i style="background:var(--follic)"></i>卵泡期</span>
+          <span><i style="background:var(--ovul)"></i>排卵期</span>
+          <span><i style="background:var(--luteal)"></i>黄体期</span>
+        </div>
+        <p class="axisnote">排卵后基础体温升高约 0.3–0.5°C，呈典型双相</p>
+        <p class="ai">体温在排卵后稳定抬升，双相清晰，支持「已排卵」判断。</p>
+      </div>
+
+      <div class="card">
+        <p class="ctitle">症状统计 <small>基于本地记录</small></p>
+        <div class="blkT">最常记录的症状</div>
+        <div class="freqRow"><div class="freqLabel">⚡ 绞痛</div><div class="freqTrack"><div class="freqFill" style="width:31%"></div></div><div class="freqVal">6天 31%</div></div>
+        <div class="freqRow"><div class="freqLabel">🤱 胸胀</div><div class="freqTrack"><div class="freqFill" style="width:26%"></div></div><div class="freqVal">5天 26%</div></div>
+        <div class="freqRow"><div class="freqLabel">😴 疲劳</div><div class="freqTrack"><div class="freqFill" style="width:21%"></div></div><div class="freqVal">4天 21%</div></div>
+        <div class="freqRow"><div class="freqLabel">🤕 头痛</div><div class="freqTrack"><div class="freqFill" style="width:16%"></div></div><div class="freqVal">3天 16%</div></div>
+        <div class="freqRow"><div class="freqLabel">🦴 腰酸</div><div class="freqTrack"><div class="freqFill" style="width:16%"></div></div><div class="freqVal">3天 16%</div></div>
+        <div class="freqRow"><div class="freqLabel">🎈 腹胀</div><div class="freqTrack"><div class="freqFill" style="width:11%"></div></div><div class="freqVal">2天 11%</div></div>
+        <div class="freqRow"><div class="freqLabel">🌙 失眠</div><div class="freqTrack"><div class="freqFill" style="width:11%"></div></div><div class="freqVal">2天 11%</div></div>
+
+        <div class="mhRow" onclick="toggleMH(this)" data-sec="symptomFull"><span class="mhLabel">查看完整症状分布</span><span class="mhChev"></span></div>
+        <div class="mhSec" id="symptomFull" style="display:none">
+          <div class="blkT">经量分布</div>
+        <div class="distBar">
+          <div class="distSeg" style="flex:5;background:rgba(246,179,208,0.28)"></div>
+          <div class="distSeg" style="flex:25;background:rgba(246,179,208,0.46)"></div>
+          <div class="distSeg" style="flex:55;background:rgba(246,179,208,0.68)"></div>
+          <div class="distSeg" style="flex:15;background:rgba(246,179,208,0.92)"></div>
+        </div>
+        <div class="distLegend">
+          <div class="distItem"><i style="background:rgba(246,179,208,0.28)"></i>点滴 5%</div>
+          <div class="distItem"><i style="background:rgba(246,179,208,0.46)"></i>量少 25%</div>
+          <div class="distItem"><i style="background:rgba(246,179,208,0.68)"></i>正常 55%</div>
+          <div class="distItem"><i style="background:rgba(246,179,208,0.92)"></i>量多 15%</div>
+        </div>
+
+        <div class="blkT">疼痛程度分布</div>
+        <div class="distBar">
+          <div class="distSeg" style="flex:30;background:rgba(124,106,224,0.24)"></div>
+          <div class="distSeg" style="flex:40;background:rgba(124,106,224,0.46)"></div>
+          <div class="distSeg" style="flex:25;background:rgba(124,106,224,0.68)"></div>
+          <div class="distSeg" style="flex:5;background:rgba(124,106,224,0.92)"></div>
+        </div>
+        <div class="distLegend">
+          <div class="distItem"><i style="background:rgba(124,106,224,0.24)"></i>无痛 30%</div>
+          <div class="distItem"><i style="background:rgba(124,106,224,0.46)"></i>轻微 40%</div>
+          <div class="distItem"><i style="background:rgba(124,106,224,0.68)"></i>中度 25%</div>
+          <div class="distItem"><i style="background:rgba(124,106,224,0.92)"></i>严重 5%</div>
+        </div>
+          <div class="blkT" style="margin-top:12px">症状 × 相位分布</div>
+        <div class="mxHead">
+          <div class="mxLabelCol"></div>
+          <div class="mxCol"><div class="mxColDot" style="background:var(--period)"></div><div class="mxColT">经期</div></div>
+          <div class="mxCol"><div class="mxColDot" style="background:var(--follic)"></div><div class="mxColT">卵泡期</div></div>
+          <div class="mxCol"><div class="mxColDot" style="background:var(--ovul)"></div><div class="mxColT">排卵期</div></div>
+          <div class="mxCol"><div class="mxColDot" style="background:var(--luteal)"></div><div class="mxColT">黄体期</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">⚡ 绞痛</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:#4B3FA8;color:#fff">78</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">8</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:#FAFAF8"></div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">18</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🤱 胸胀</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">22</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">12</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">15</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">64</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">😴 疲劳</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">45</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">20</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">10</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">38</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🤕 头痛</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">40</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">15</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">8</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">35</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🦴 腰酸</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">55</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">12</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:#FAFAF8"></div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">25</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🎈 腹胀</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">30</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">18</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">22</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">40</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🌙 失眠</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">25</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">20</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">10</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">42</div></div>
+        </div>
+        <div class="mxRow"><div class="mxLabel">🔴 长痘</div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">15</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.16);color:#1F1D1A">18</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">35</div></div>
+          <div class="mxCellWrap"><div class="mxCell" style="background:rgba(124,106,224,0.34);color:#1F1D1A">52</div></div>
+        </div>
+        <div class="mxLegend"><span>低</span><div class="mxSw" style="background:rgba(124,106,224,0.16)"></div><div class="mxSw" style="background:rgba(124,106,224,0.34)"></div><div class="mxSw" style="background:#4B3FA8"></div><span>高</span><span style="margin-left:6px">格内数字 = 该阶段记录中出现该症状的天数占比</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 激素节律分析 -->
+    <div class="panel" id="tc-hormone">
+      <div class="card">
+        <p class="ctitle">雌激素波动 <small>HRV·EDA 推算</small></p>
+        <svg id="est" viewBox="0 0 360 130" width="100%"></svg>
+        <div class="legend">
+          <span><i style="background:var(--ovul)"></i>雌激素指数</span>
+          <span><i style="background:var(--follic)"></i>卵泡期</span>
+          <span><i style="background:var(--luteal)"></i>黄体期</span>
+        </div>
+        <p class="ai">基于 HRV（卵泡期较高）+ EDA 皮肤电导（排卵期升高）推算；排卵期达峰值。戒指不直接测量雌激素。</p>
+      </div>
+
+      <div class="card">
+        <p class="ctitle">孕激素波动 <small>体温推算</small></p>
+        <svg id="prog" viewBox="0 0 360 130" width="100%"></svg>
+        <div class="legend">
+          <span><i style="background:var(--purple)"></i>孕激素指数</span>
+          <span><i style="background:var(--ovul)"></i>排卵期</span>
+          <span><i style="background:var(--luteal)"></i>黄体期</span>
+        </div>
+        <p class="ai">排卵后孕酮升高推高基础体温与静息心率，据此合成趋势。戒指不直接测量孕酮。</p>
+      </div>
+    </div>
+
+    <div class="card method">
+      <div class="mt">方法与依据</div>
+      <div class="mi">· 排卵 / 相位：症状体温法 symptothermal（基础体温 BBT 双相）＋ 日历法</div>
+      <div class="mi">· 孕激素：黄体期基础体温升高（0.3–0.5°C）＋ 静息心率升高，均为孕酮驱动</div>
+      <div class="mi">· 雌激素：以 HRV（卵泡期较高）＋ EDA 皮肤电导（排卵期升高）推算</div>
+      <div class="mf">均为开源成熟方法或已发表研究支持的推算，戒指不直接测量激素，结果不构成医学诊断。</div>
+    </div>
+  </div>
+
+  <!-- 年视图 -->
+  <div class="panel" id="p-year">
+    <div class="card">
+      <p class="ctitle">年度回顾 <small>2026</small></p>
+      <div class="statRow">
+        <div class="tile"><div class="tl">周期数</div><div class="tv">12</div></div>
+        <div class="tile"><div class="tl">平均周期</div><div class="tv">27.8 天</div></div>
+        <div class="tile"><div class="tl">规律性</div><div class="tv">良好</div></div>
+      </div>
+      <div class="statRow" style="margin-top:8px">
+        <div class="tile"><div class="tl">经期天数</div><div class="tv">61 天</div></div>
+        <div class="tile"><div class="tl">记录覆盖</div><div class="tv">92%</div></div>
+        <div class="tile"><div class="tl">最长周期</div><div class="tv">31 天</div></div>
+      </div>
+      <p class="ai">全年周期长度稳定在 26–31 天，排卵期多落在周期第 13–15 天，节律清晰可预测。</p>
+    </div>
+    <div class="card">
+      <p class="ctitle">症状年度分布</p>
+      <div class="statRow">
+        <div class="tile"><div class="tl">经痛高发期</div><div class="tv">经期</div></div>
+        <div class="tile"><div class="tl">情绪低潮期</div><div class="tv">黄体后期</div></div>
+        <div class="tile"><div class="tl">状态最佳</div><div class="tv">排卵期</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════ 月相环（原样复刻 App CycleMoonPhase，参数固定：当前周期 第12天/共28天）════ */
+const PHASE_COLOR={period:'#F6B3D0',follicular:'#C7B9F2',ovulation:'#D5E384',luteal:'#F0C46E'};
+function moonPath(cx,cy,R,t){
+  const p=((t%1)+1)%1,waxing=p<0.5,k=Math.abs(Math.cos(Math.PI*2*p)),rx=Math.max(0.0001,R*k);
+  const os=waxing?1:0,cr=waxing?p<0.25:p>0.75,is=cr?os:1-os;
+  return `M ${cx.toFixed(2)} ${(cy-R).toFixed(2)} A ${R.toFixed(2)} ${R.toFixed(2)} 0 0 ${os} ${cx.toFixed(2)} ${(cy+R).toFixed(2)} A ${rx.toFixed(2)} ${R.toFixed(2)} 0 0 ${is} ${cx.toFixed(2)} ${(cy-R).toFixed(2)} Z`;
+}
+function phaseOfDay(d,periodLen,ovDay){
+  if(d<=periodLen)return 'period';
+  if(d>=ovDay-1&&d<=ovDay+1)return 'ovulation';
+  if(d>ovDay+1)return 'luteal';
+  return 'follicular';
+}
+function drawRing(){
+  const size=300,cx=size/2,TOP_PAD=size*0.05,cy=size*0.385+TOP_PAD,ringR=size*0.355,
+        moonR=size*0.118,MOON_UP=size*0.082,moCy=cy-MOON_UP;
+  const cycleLen=28,day=12,periodLen=5,lutealLen=14,ovDay=Math.max(1,cycleLen-lutealLen);
+  const lit='#F2C75C',dark='rgba(150,130,235,0.16)';
+  let s='';
+  // 环上每天月牙
+  for(let i=0;i<cycleLen;i++){
+    const d=i+1,t=d/cycleLen,ang=-Math.PI/2+(i/cycleLen)*Math.PI*2;
+    const x=cx+ringR*Math.cos(ang),y=cy+ringR*Math.sin(ang);
+    const phase=phaseOfDay(d,periodLen,ovDay),col=PHASE_COLOR[phase];
+    const r=size*0.022,active=d===day;
+    if(active)s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r*2).toFixed(1)}" fill="${col}" opacity="0.18"/>`;
+    const rr=(active?r*1.35:r).toFixed(1);
+    s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rr}" fill="${dark}" opacity="${active?1:0.82}"/>`;
+    s+=`<path d="${moonPath(x,y,active?r*1.35:r,t)}" fill="${col}" opacity="${active?1:0.82}"/>`;
+  }
+  // 中央月亮 + 光晕 + 文字
+  s+=`<circle cx="${cx.toFixed(1)}" cy="${moCy.toFixed(1)}" r="${(moonR*2.2).toFixed(1)}" fill="${lit}" opacity="0.12"/>`;
+  s+=`<circle cx="${cx.toFixed(1)}" cy="${moCy.toFixed(1)}" r="${moonR.toFixed(1)}" fill="${dark}"/>`;
+  s+=`<path d="${moonPath(cx,moCy,moonR,(day-1)/cycleLen)}" fill="${lit}"/>`;
+  const txtY=moCy+moonR+size*0.015;
+  s+=`<text x="${cx}" y="${(txtY+4).toFixed(1)}" text-anchor="middle" font-size="15" font-weight="600" fill="#1F1D1A">卵泡期 第 ${day} 天</text>`;
+  s+=`<text x="${cx}" y="${(txtY+24).toFixed(1)}" text-anchor="middle" font-size="11" fill="#8A857D">距下次经期约 16 天</text>`;
+  document.getElementById('ring').innerHTML=s;
+}
+
+/* ════ 阶段背景带 + 折线（体温 / 雌激素 / 孕激素 共用）════ */
+function phaseBand(phase){const a={period:0.14,follicular:0.14,ovulation:0.20,luteal:0.16};return PHASE_COLOR[phase];}
+function drawTrend(svgId,opt){
+  const W=360,H=130,L=10,R=10,T=12,B=22,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const N=28,ovDay=14;
+  const xAt=cd=>L+((cd-1)/(N-1))*pw;
+  const bands=[];
+  for(let cd=1;cd<=N;cd++){const ph2=phaseOfDay(cd,5,ovDay);const a=xAt(cd),b=cd<N?xAt(cd+1):L+pw;
+    const prev=bands[bands.length-1];
+    if(prev&&prev.c===ph2)prev.w+=Math.max(0,b-a);else bands.push({x:a,w:Math.max(0,b-a),c:ph2});}
+  let s='';
+  bands.forEach(b=>{s+=`<rect x="${b.x.toFixed(1)}" y="${T}" width="${b.w.toFixed(1)}" height="${ph}" fill="${PHASE_COLOR[b.c]}" opacity="${b.c==='ovulation'?0.20:0.14}"/>`;});
+  // 今天虚线
+  const todayCd=12;
+  s+=`<line x1="${xAt(todayCd).toFixed(1)}" y1="${T}" x2="${xAt(todayCd).toFixed(1)}" y2="${baseY}" stroke="#1F1D1A" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.55"/>`;
+  // 折线（正弦式相位曲线）
+  const col=opt.color,pts=[];
+  for(let cd=1;cd<=N;cd++){const prog=(cd-1)/(N-1);
+    const v=opt.low+(opt.high-opt.low)*(0.5-0.5*Math.cos(2*Math.PI*prog*opt.cycles+opt.phase));
+    pts.push({x:xAt(cd),y:T+(1-v)*ph});}
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6,c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;}
+  s+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linecap="round"/>`;
+  pts.forEach(p=>{s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.4" fill="${col}"/>`;});
+  document.getElementById(svgId).innerHTML=s;
+}
+
+/* ════ 折叠（统一）════ */
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+
+/* ════ 事件 ════ */
+drawRing();
+drawTrend('temp',{color:'#C9598A',low:0.15,high:0.95,cycles:1,phase:0.6});
+drawTrend('est',{color:'#D5E384',low:0.2,high:0.95,cycles:1,phase:1.2});
+drawTrend('prog',{color:'#7C6AE0',low:0.1,high:0.9,cycles:1,phase:0.2});
+
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{
+  const v=b.dataset.v;
+  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('p-cycle').classList.toggle('on',v==='cycle');
+  document.getElementById('p-year').classList.toggle('on',v==='year');
+});
+document.querySelectorAll('#tabs .tab').forEach(t=>t.onclick=()=>{
+  const v=t.dataset.t;
+  document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.getElementById('tc-cycle').classList.toggle('on',v==='cycle');
+  document.getElementById('tc-hormone').classList.toggle('on',v==='hormone');
+});
+</script>
+</body>
+</html>

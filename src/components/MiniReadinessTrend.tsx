@@ -12,7 +12,9 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { READY_LOW, READY_HIGH, type ReadinessPoint } from '../lib/cognitiveReadiness';
+import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 
 interface Props {
   points: ReadinessPoint[];
@@ -51,7 +53,7 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
   const areaOf = (idx: number[]) =>
     `${lineOf(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${CH.toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${CH.toFixed(1)} Z`;
 
-  const ticks = [0, 6, 12, 18, 24];
+  const ticks = DAY_HOUR_TICKS_COMPACT;
 
   return (
     <View
@@ -82,20 +84,20 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
           {/* 档位边界（40 / 70）淡虚线 */}
           {[READY_LOW, READY_HIGH].map((v) => (
             <Path key={v} d={`M 0 ${yAt(v).toFixed(1)} L ${W} ${yAt(v).toFixed(1)}`}
-              stroke={theme.colors.textSub + '22'} strokeWidth={0.8} strokeDasharray="2 3" />
+              stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
           ))}
 
           {/* 面积 + 折线 */}
           {runs.map((idx, i) => idx.length > 1 ? (
             <React.Fragment key={'r' + i}>
               <Path d={areaOf(idx)} fill="url(#miniReadyArea)" />
-              <Path d={lineOf(idx)} fill="none" stroke={theme.colors.accentSolid}
-                strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+              <Path d={lineOf(idx)} fill="none" stroke={chart.series.primary}
+                strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
             </React.Fragment>
           ) : null)}
           {/* 单点区段画点，否则该小时不可见 */}
           {runs.map((idx, i) => idx.length === 1 ? (
-            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points[idx[0]].score)} r={2}
+            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points[idx[0]].score)} r={chart.dot.radius}
               fill={theme.colors.accentSolid} />
           ) : null)}
 

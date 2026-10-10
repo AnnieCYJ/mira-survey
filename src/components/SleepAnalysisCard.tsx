@@ -1,12 +1,14 @@
 /**
- * SleepAnalysisCard —— 日视图「睡眠分析」可折叠卡
+ * SleepAnalysisCard —— 日视图「睡眠分析」卡
  *
- * 对齐 preview/sleep-rhythm.html v9 原型：
- *   ① 折叠头「睡眠分析」+ 副标题（入睡 · 起床时刻）—— 点按整行展开/收起；
- *   ② 展开态：总睡眠时长（大字）→ 整夜分期图（下沉 4 泳道，复用 SleepStageChart）
- *      → 四比例网格（深睡/浅睡/REM/效率）→ 时机与规律 → 睡眠生理信号。
- *   ③ 「睡眠生理信号」是**嵌套子折叠**，**默认收起**（唯一收起项），
- *      其余内容默认展开。
+ * 结构（2026-10-09 调整）：
+ *   ① 标题「睡眠分析」+ 副标题（入睡 · 起床时刻）；
+ *   ② 总睡眠时长（大字）；
+ *   ③ 整夜分期图（SleepStageChart，**常驻显示**，不再随折叠隐藏）；
+ *   ④ 「详细数据」折叠区（默认收起）：睡眠结构（比例条）+ 作息与时机 + 睡眠生理信号。
+ *
+ * ★ 调整原因（用户反馈）：分期图与曲线要始终可见，其下的明细数据可隐藏 / 展开，
+ *   不再用「整卡折叠」把图也一起收掉。
  *
  * 数据全部来自真实归档（sleepDaily / sleepStagesDaily / hrvDaily / hrDaily /
  * spo2Daily / tempDaily / rrDaily），缺口显「—」，不插值不编造。
@@ -61,16 +63,11 @@ interface Props {
 }
 
 export default function SleepAnalysisCard({ day, segments, phys }: Props) {
-  const [open, setOpen] = useState(true);
-  const [physOpen, setPhysOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const toggle = () => {
+  const toggleDetails = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpen((v) => !v);
-  };
-  const togglePhys = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setPhysOpen((v) => !v);
+    setDetailsOpen((v) => !v);
   };
 
   const total = day?.total ?? 0;
@@ -86,71 +83,64 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
 
   return (
     <View style={styles.card}>
-      {/* ── 折叠头 ── */}
-      <Pressable onPress={toggle} style={styles.head} accessibilityRole="button"
-        accessibilityLabel={open ? '收起睡眠分析' : '展开睡眠分析'}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>睡眠分析</Text>
-          <Text style={styles.sub}>
-            {day?.sleepTime && day?.wakeTime ? `昨夜 ${day.sleepTime} 入睡 · ${day.wakeTime} 起床` : '昨夜入睡 / 起床时刻暂无'}
-          </Text>
+      {/* ── 标题（静态，不折叠；分期图常驻） ── */}
+      <View style={styles.head}>
+        <Text style={styles.title}>睡眠分析</Text>
+      </View>
+
+      {/* ① 总时长（大字） */}
+      <View style={styles.durRow}>
+        {total > 0 ? (
+          <>
+            <Text style={styles.dur}>{fmtDurCn(total)}</Text>
+            <Text style={styles.durUnit}>总睡眠</Text>
+          </>
+        ) : (
+          <Text style={styles.durNone}>昨夜睡眠时长暂无</Text>
+        )}
+      </View>
+
+      {/* ② 整夜分期图（置于时长之下，常驻显示） */}
+      <Text style={styles.blockTitle}>整夜分期</Text>
+      {segments && segments.length > 0 ? (
+        <SleepStageChart
+          segments={segments}
+          sleepTime={day?.sleepTime ?? null}
+          totalMinutes={total > 0 ? total : null}
+        />
+      ) : (
+        /* 日无数据时不要「完全空白」，给一张灰色分期图占位（不编造数值）。 */
+        <View style={styles.emptyStage}>
+          <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleCore }]} /></View>
+          <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleMid }]} /></View>
+          <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.skyCore }]} /></View>
+          <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.honeyCore }]} /></View>
         </View>
-        <View style={[styles.chev, open && styles.chevOpen]}>
-          <Icon name="chevronRight" size={18} color={theme.colors.accentText} />
+      )}
+      <View style={styles.legend}>
+        <LegendItem color={mm.colors.purpleCore} label="深睡" />
+        <LegendItem color={mm.colors.purpleMid} label="浅睡" />
+        <LegendItem color={mm.colors.skyCore} label="REM" />
+        <LegendItem color={mm.colors.honeyCore} label="清醒" />
+      </View>
+      {!(segments && segments.length > 0) ? (
+        <Text style={styles.empty}>
+          昨夜睡眠分期暂未同步。将戒指连接 App 后，后台会自动回填历史睡眠分期。
+        </Text>
+      ) : null}
+
+      {/* ③ 详细数据（默认收起）：睡眠结构 + 作息与时机 + 生理信号 */}
+      <Pressable onPress={toggleDetails} style={styles.moreHead} accessibilityRole="button"
+        accessibilityLabel={detailsOpen ? '收起详细数据' : '展开详细数据'}>
+        <Text style={styles.moreTitle}>详细数据</Text>
+        <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
+          <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
         </View>
       </Pressable>
 
-      {open ? (
+      {detailsOpen ? (
         <View>
-          {/* ① 总时长（大字） */}
-          <View style={styles.durRow}>
-            {total > 0 ? (
-              <>
-                <Text style={styles.dur}>{fmtDurCn(total)}</Text>
-                <Text style={styles.durUnit}>总睡眠</Text>
-                <Text style={styles.durNote}>
-                  {effPct != null ? `效率 ${effPct}%` : '效率暂无'}
-                  {day?.getUp != null ? ` · 起夜 ${day.getUp} 次` : ''}
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.durNone}>昨夜睡眠时长暂无</Text>
-            )}
-          </View>
-
-          {/* ② 整夜分期图（置于时长之下） */}
-          <Text style={styles.blockTitle}>整夜分期</Text>
-          {segments && segments.length > 0 ? (
-            <SleepStageChart
-              segments={segments}
-              sleepTime={day?.sleepTime ?? null}
-              totalMinutes={total > 0 ? total : null}
-            />
-          ) : (
-            /* ★ 2026-10-06（用户反馈）：日无数据时不要「完全空白」，给一张**灰色分期图占位**——
-               4 条泳道（深睡/浅睡/REM/清醒）以极淡的同色画出，让用户看到「分期图的样子」而非一片空。
-               不编造任何数值或分段。 */
-            <View style={styles.emptyStage}>
-              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleCore }]} /></View>
-              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.purpleMid }]} /></View>
-              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.skyCore }]} /></View>
-              <View style={styles.emptyLane}><View style={[styles.emptyLaneBar, { backgroundColor: mm.colors.honeyCore }]} /></View>
-            </View>
-          )}
-          <View style={styles.legend}>
-            <LegendItem color={mm.colors.purpleCore} label="深睡" />
-            <LegendItem color={mm.colors.purpleMid} label="浅睡" />
-            <LegendItem color={mm.colors.skyCore} label="REM" />
-            <LegendItem color={mm.colors.honeyCore} label="清醒" />
-          </View>
-          {!(segments && segments.length > 0) ? (
-            <Text style={styles.empty}>
-              昨夜睡眠分期暂未同步。将戒指连接 App 后，后台会自动回填历史睡眠分期。
-            </Text>
-          ) : null}
-
-          {/* ③ 睡眠结构 —— 一行式比例条（深睡/浅睡/REM 堆叠）+ 下方行式明细
-              ★ 不再并排四个数字格：那类「2×2 数字罗列」信息密度低、彼此无比较关系。 */}
+          {/* 睡眠结构 —— 比例条（深睡/浅睡/REM 堆叠）+ 下方行式明细 */}
           {deepP != null ? (
             <View style={styles.block}>
               <Text style={styles.blockTitle}>睡眠结构</Text>
@@ -167,10 +157,10 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
             </View>
           ) : null}
 
-          {/* ④ 作息与时机 —— 行式列表（标签左 · 数值右） */}
+          {/* 作息与时机 —— 行式列表（标签左 · 数值右） */}
           <View style={styles.block}>
             <Text style={styles.groupTitle}>作息与时机</Text>
-            <Row name="睡眠效率" value={effPct != null ? `${effPct}%` : '—'} />
+            {effPct != null ? <Row name="睡眠效率" value={`${effPct}%`} /> : null}
             <Divider />
             <Row name="入睡时刻" value={day?.sleepTime ?? '—'} />
             <Divider />
@@ -179,31 +169,20 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
             <Row name="夜间清醒" value={day?.getUp != null ? `${day.getUp} 次` : '—'} />
           </View>
 
-          {/* ⑤ 睡眠生理信号 —— 嵌套子折叠，默认收起；展开后为行式列表 */}
-          <View style={styles.subAcc}>
-            <Pressable onPress={togglePhys} style={styles.subHead} accessibilityRole="button"
-              accessibilityLabel={physOpen ? '收起睡眠生理信号' : '展开睡眠生理信号'}>
-              <Text style={styles.subTitle}>睡眠生理信号</Text>
-              <View style={[styles.chev, physOpen && styles.chevOpen]}>
-                <Icon name="chevronRight" size={16} color={theme.colors.accentText} />
-              </View>
-            </Pressable>
-
-            {physOpen ? (
-              <View style={{ marginTop: theme.space.xs }}>
-                <Row name="睡眠静息心率" value={fmtNum(phys.hr, 0)} unit="bpm" />
-                <Divider />
-                <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms" />
-                <Divider />
-                <Row name="体温偏离" value={fmtSigned(phys.tempDelta)} unit="℃" />
-                <Divider />
-                <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min" />
-                <Divider />
-                <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%" />
-                <Divider />
-                <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last />
-              </View>
-            ) : null}
+          {/* 睡眠生理信号 —— 行式列表 */}
+          <View style={styles.block}>
+            <Text style={styles.groupTitle}>睡眠生理信号</Text>
+            <Row name="睡眠静息心率" value={fmtNum(phys.hr, 0)} unit="bpm" />
+            <Divider />
+            <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms" />
+            <Divider />
+            <Row name="体温偏离" value={fmtSigned(phys.tempDelta)} unit="℃" />
+            <Divider />
+            {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min" /> : null}
+            {phys.rr != null ? <Divider /> : null}
+            <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%" />
+            <Divider />
+            {phys.recoveryIdx != null ? <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last /> : null}
           </View>
         </View>
       ) : null}
@@ -274,6 +253,7 @@ function fmtSigned(v: number | null | undefined): string {
 
 const styles = StyleSheet.create({
   card: {
+    ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.card,
     borderWidth: 1,
@@ -283,17 +263,16 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
   chev: { transform: [{ rotate: '90deg' }], marginLeft: theme.space.sm },
   chevOpen: { transform: [{ rotate: '-90deg' }] },
-  // 时长
-  durRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.space.md },
-  dur: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.semibold, color: mm.colors.ink },
-  durUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: 6 },
-  durNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, width: '100%', marginTop: 2 },
+  // 时长（对齐 sleep-recovery-preview.html：总睡眠 22px / 单位 11px，同预览 .durRow2）
+  durRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.space.xs },
+  dur: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  durUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 6 },
   durNone: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
-  blockTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.md, marginBottom: theme.space.xs },
-  // ★ 2026-10-06：日无数据的「灰色分期图」占位——4 条极淡泳道，不编造数值
+  // ★ 2026-10-09（.blockTitle 11px）：块标题用 micro 档，对齐预览稿
+  blockTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.md, marginBottom: theme.space.xs },
+  // 日无数据的「灰色分期图」占位
   emptyStage: { marginTop: theme.space.sm, gap: theme.sp(0.75) },
   emptyLane: { height: theme.sp(4.5), justifyContent: 'center' },
   emptyLaneBar: { height: theme.sp(2.5), borderRadius: 3, opacity: 0.13 },
@@ -302,16 +281,27 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md, marginTop: theme.space.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // 「详细数据」折叠头（2026-10-09：对齐 sleep-recovery-preview.html 的整块按钮样式——
+  //   浅底描边胶囊，替代原纯文字行，与预览稿的「详细数据 ▾」入口一致）
+  moreHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.space.md,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+  },
+  moreTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold },
   // 分组块
   block: { marginTop: theme.space.md },
   groupTitle: {
     fontSize: theme.fontSize.micro, color: theme.colors.textSub,
     marginTop: theme.space.md, marginBottom: theme.space.xs,
   },
-  // 睡眠结构比例条
+  // 睡眠结构比例条（★ bar-design-unified-spec 规则2：横条 ≤10pt 一律 pill）
   propBar: {
-    flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden',
+    flexDirection: 'row', height: 10, borderRadius: theme.radius.pill, overflow: 'hidden',
     backgroundColor: theme.colors.cardBgSoft,
   },
   propLegend: { flexDirection: 'row', marginTop: theme.space.sm },
@@ -330,11 +320,4 @@ const styles = StyleSheet.create({
   rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   rowUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
-  // 生理信号子折叠
-  subAcc: {
-    marginTop: theme.space.md, paddingTop: theme.space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft,
-  },
-  subHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  subTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
 });

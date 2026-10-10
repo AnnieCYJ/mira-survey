@@ -1,8 +1,10 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import Icon, { type IconName } from './Icon';
 import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
 import Svg, { Circle, Defs, LinearGradient as SvgLg, Stop } from 'react-native-svg';
@@ -14,6 +16,7 @@ const TAB_ICON: Record<string, IconName> = {
   Profile: 'calendar',
   __voice__: 'orb',
 };
+const TAB_LABEL: Record<string, string> = { Today: '今日', Insight: '洞察', Meditation: '工具', Profile: '我的' };
 const VOICE_ROUTE = '__voice__'; // 虚拟路由, 不对应真实 tab
 const LEFT_ROUTES = ['Today', 'Insight', 'Meditation', 'Profile'];
 /** 真实存在但不渲染图标的 tab：MiraAI 由中间 bot 按钮触发进入 */
@@ -29,8 +32,8 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
   const blinkY = useRef(new Animated.Value(1)).current;
   // 笑眼过渡：0 = 竖眼, 1 = 笑眼
   const smile = useRef(new Animated.Value(0)).current;
-  const [smiling, setSmiling] = useState(false);
 
+  const reducedMotion = useReducedMotion();
   const SCALE = size / 200;
 
   // 眼参数（viewBox 200 坐标 × SCALE → 实际像素）
@@ -49,56 +52,47 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
   const straightEyeOpacity = smile.interpolate({ inputRange: [0, 0.4, 1], outputRange: [1, 0, 0] });
   const smileEyeOpacity = smile.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0, 1] });
 
-  // wander
   useEffect(() => {
+    lookX.setValue(0); lookY.setValue(0); blinkY.setValue(1); smile.setValue(0);
+    if (reducedMotion) return;
     let cancelled = false;
-    const WANDER_DUR = 380;        // 固定时长，保证速度一致
-    const WANDER_GAP = 140;        // 固定间隔
-    const AMP_X = 18 * SCALE;
-    const AMP_Y = 20 * SCALE;
+    let wanderTimer: ReturnType<typeof setTimeout> | undefined;
+    let blinkTimer: ReturnType<typeof setTimeout> | undefined;
+    let smileTimer: ReturnType<typeof setTimeout> | undefined;
     const wander = () => {
       if (cancelled) return;
-      const dir = Math.floor(Math.random() * 4); // 0=左上 1=右上 2=左下 3=右下
+      const dir = Math.floor(Math.random() * 4);
       Animated.parallel([
-        Animated.timing(lookX, { toValue: (dir === 0 || dir === 2 ? -1 : 1) * AMP_X, duration: WANDER_DUR, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(lookY, { toValue: (dir === 0 || dir === 1 ? -1 : 1) * AMP_Y, duration: WANDER_DUR, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]).start(() => setTimeout(wander, WANDER_GAP));
+        Animated.timing(lookX, { toValue: (dir < 2 ? -1 : 1) * 18 * SCALE, duration: theme.motion.slow, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(lookY, { toValue: (dir % 2 ? 1 : -1) * 20 * SCALE, duration: theme.motion.slow, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]).start(() => { if (!cancelled) wanderTimer = setTimeout(wander, 140); });
     };
-    wander();
-    return () => { cancelled = true; };
-  }, []);
-
-  // 眨眼（笑时不眨）
-  useEffect(() => {
-    let cancelled = false;
-    const schedule = () => {
-      const delay = 1800 + Math.random() * 2200;
-      const doBlink = () => {
-        if (cancelled || smiling) { schedule(); return; }
+    const blink = () => {
+      blinkTimer = setTimeout(() => {
+        if (cancelled) return;
         Animated.sequence([
-          Animated.timing(blinkY, { toValue: 0.05, duration: 55, useNativeDriver: true }),
-          Animated.timing(blinkY, { toValue: 1, duration: 55, useNativeDriver: true }),
-        ]).start(() => schedule());
-      };
-      setTimeout(doBlink, delay);
+          Animated.timing(blinkY, { toValue: 0.05, duration: theme.motion.instant / 2, useNativeDriver: true }),
+          Animated.timing(blinkY, { toValue: 1, duration: theme.motion.instant / 2, useNativeDriver: true }),
+        ]).start(() => { if (!cancelled) blink(); });
+      }, 1800 + Math.random() * 2200);
     };
-    schedule();
-    return () => { cancelled = true; };
-  }, [smiling]);
-
-  // 定时触发笑
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (smiling) return;
-      setSmiling(true);
-      Animated.timing(smile, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-      setTimeout(() => {
-        Animated.timing(smile, { toValue: 0, duration: 280, useNativeDriver: true }).start();
-        setSmiling(false);
-      }, 850);
-    }, 6000 + Math.random() * 4000);
-    return () => clearInterval(t);
-  }, [smiling]);
+    const grin = () => {
+      smileTimer = setTimeout(() => {
+        if (cancelled) return;
+        Animated.sequence([
+          Animated.timing(smile, { toValue: 1, duration: theme.motion.base, useNativeDriver: true }),
+          Animated.delay(850),
+          Animated.timing(smile, { toValue: 0, duration: theme.motion.slow, useNativeDriver: true }),
+        ]).start(() => { if (!cancelled) grin(); });
+      }, 6000 + Math.random() * 4000);
+    };
+    wander(); blink(); grin();
+    return () => {
+      cancelled = true;
+      clearTimeout(wanderTimer); clearTimeout(blinkTimer); clearTimeout(smileTimer);
+      lookX.stopAnimation(); lookY.stopAnimation(); blinkY.stopAnimation(); smile.stopAnimation();
+    };
+  }, [reducedMotion, SCALE, lookX, lookY, blinkY, smile]);
 
   return (
     <View style={{ width: size, height: size }}>
@@ -194,7 +188,12 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const { open, close } = useVoiceTrigger();
   const voiceStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressing = useRef(false);
-  const marginBottom = theme.sp(2);
+  const insets = useSafeAreaInsets();
+  // ★ 2026-10-10（用户：整体包括底下的 tab 往上挪一点点）：0 → 8 —— 悬浮 tab 胶囊不再贴死屏幕底。
+  const marginBottom = 8;
+  useEffect(() => () => {
+    if (voiceStartTimer.current) clearTimeout(voiceStartTimer.current);
+  }, []);
 
   // ★ 松手后 stop() 一解析出转写文本就立刻导航。
   //   旧实现把导航挂在 `setTimeout(..., 800)` 的兜底里 —— 等于**每次跳转前固定空等 800ms**，
@@ -257,8 +256,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     }
   };
 
-  const voiceIdx = -1; // 无对应 tab
-  const voiceFocused = false;
+  const voiceFocused = state.routes[state.index]?.name === 'MiraAI';
   const botSize = theme.layout.tabCenterSize;
 
   return (
@@ -273,14 +271,17 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               onPress={() => handlePress(route, focused)}
               style={styles.item}
               activeOpacity={theme.press.opacity}
-              accessibilityRole="button"
+              accessibilityRole="tab"
+              accessibilityLabel={TAB_LABEL[route.name] ?? route.name}
               accessibilityState={{ selected: focused }}
+              aria-selected={focused}
             >
               {/* v10 选中态：lime 圆底 + 深色 icon；未选 = inkFaint */}
+              {/* ★ 2026-10-10（用户）：去掉「今日/洞察/工具/我的」文字，只留图标；图标稍大（22→25） */}
               <View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }]}>
                 <Icon
                   name={TAB_ICON[route.name] ?? 'home'}
-                  size={theme.fs(22)}
+                  size={theme.fs(25)}
                   color={focused ? mm.colors.ink : mm.colors.inkFaint}
                   strokeWidth={2}
                 />
@@ -297,9 +298,14 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
         delayPressIn={0}
         delayPressOut={0}
         activeOpacity={theme.press.opacity}
-        style={[styles.botBtn, { width: botSize, height: botSize }]}
-        accessibilityRole="button"
-        accessibilityLabel="Mira Bot — 长按说话"
+        style={[styles.botBtn, { width: botSize, height: botSize }, voiceFocused && styles.botSelected]}
+        accessibilityRole="tab"
+        accessibilityLabel="Mira AI"
+        accessibilityHint="点击进入聊天，长按说话，松手结束"
+        accessibilityState={{ selected: voiceFocused }}
+        aria-selected={voiceFocused}
+        accessibilityActions={[{ name: 'activate', label: '打开 Mira AI 聊天' }]}
+        onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'activate') navigation.navigate('MiraAI'); }}
       >
         <AnimatedBotFace size={botSize} focused={voiceFocused} />
         {voiceFocused ? <View style={styles.voiceDot} /> : null}
@@ -317,7 +323,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    height: theme.layout.tabBarHeight + theme.sp(4),
+    height: theme.layout.tabBarHeight,
   },
   leftCard: {
     flex: 1,
@@ -335,11 +341,13 @@ const styles = StyleSheet.create({
     marginRight: theme.sp(2),
     ...theme.shadow.nav,
   },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
+  botSelected: { borderWidth: 2, borderColor: mm.colors.purpleDeep },
+  item: { minHeight: 48, flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
   // v10：选中项 = 42px lime 圆底（SPEC §2 #13），不再用小圆点
+  // ★ 2026-10-10：文字标签移除，圆底随之放大（24→30），icon 居中
   itemCircle: {
-    width: theme.fs(38),
-    height: theme.fs(38),
+    width: 30,
+    height: 30,
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

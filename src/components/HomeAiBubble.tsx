@@ -1,92 +1,8 @@
 /**
- * HomeAiBubble —— 首页「全天状态趋势图」正下方常驻的 AI 对话气泡。
- *
- * 四种状态（2026-10-08 用户定稿）：
- *  · 常态(idle)：一句话「可以和我聊聊你的感受吗？」（= HABIT_QUESTION），
- *    右侧 4 根波形轻声跳动。**没有建议时展示的就是这一句**。
- *    ★ 八改后这句**只属于 idle** —— 有具体建议时不再补这句话（已给出建议就不必再问）。
- *  · 录音态(rec)：长按右下角 GROK 时**不弹浮层**，实时转写显示在气泡里（紫字 + 跳动波形）=「正在听你说」；
- *    松手即带转写跳转 VoiceChat，**不再回退到占位文案**（见 spokenText）。
- *  · 已说(spoke)：松手跳转后 / 从 VoiceChat 返回首页时，气泡显示**刚才那句转写**（紫字），
- *    而不再重复问「可以和我聊聊你的状态吗？」，避免占位闪现。
- *  · 建议态(sugg)：suggestionEngine **跟随圆环状态点**（墙钟 :00/:30，与「更新于 16:30」同一节拍）
- *    按今日状态给一条建议/反馈（基于 curveStatus.level 中文四档 / 相位），
- *    气泡就地展开为一张建议卡（主句 + 可选证据行 + 留下/没啥感觉，★ 八改后**不再**带反馈问句），
- *    **不另弹浮卡**。
- *
- * ★ 固定尺寸（2026-10-08）：气泡高度恒为 BUBBLE_H，不论 idle / sugg 都不变；
- *   建议态内容（标题最多 1 行、证据 1 行、按钮紧凑）被约束在固定框内（overflow hidden），
- *   所以出现建议时**整框大小不再变化**。
- *   ★ 2026-10-08 二改：BUBBLE_H 136 → 120（用户「对话框太大了」），配合 TodayScreen 底部预留加大，
- *     整框（含 9pt 小尾巴）稳定落在底部 Tab 栏**上方**。
- *   ★ 2026-10-08 三改（本轮回合）：
- *     ① BUBBLE_H 120 → 100（用户「高度再小一点」）——同时这也让第一屏不再溢出视口，
- *        TodayScreen 的 BUBBLE_RESERVE 预留才真正生效（气泡不再贴住/被 Tab 压住）；
- *     ② 建议卡**去掉左上角的圆圈**（用户：「不用展示那个圆圈，浪费距离」）→ 标题独占整行、字号放大；
- *     ③ 两个反馈按钮改**统一样式：白底 + 黄绿(brand green)外环**（不再一个紫底填充、一个透明描边）；
- *     ④ 点任意按钮 → 就地显示「已留作你的专属建议」→ 2.4s 后**自动收回**，
- *        回到常态占位文案「可以和我聊聊你的感受吗？」（建议随之消失）。
- *
- * ★ 2026-10-08 八改（本轮回合，用户附图反馈）：
- *   ① 建议文字**口径对齐首页正文**：气泡内那句话改用与圆环下方灰字（TodayScreen.statusNarr）
- *      同一套字体 —— textSub(#5F5F74) + regular，不再用浓黑 semibold；证据行同族更小字。
- *   ② **有具体建议时不再补一句「可以和我聊聊你的感受吗？」**（用户：「这已经给出具体的建议了」
- *      → 该问句只属于 idle 占位态，建议态删掉 question 行）。
- *   ③ 反馈按钮改**选中态**：选中 = 黄绿框（limeMid），未选中 = 黑框（textInk）；
- *      默认「留下建议 / 去看看」为主选（绿框），点另一个立即换绿再执行动作（180ms 让选中可见）。
- *      ★ 十改已把「未选中 = 黑框」改掉（用户：外圈太重）——见下。
- *
- * ★ 2026-10-08 十改（本轮回合，用户附图反馈）：
- *   ① 建议语言**活泼化 + 对齐 App 内 AI 声线**（character.ts 的 ENFP 闺蜜：短句、有活力、
- *      语气词「呀/哦/哎/啦」、先接住感受再给建议）—— 改了三处文案源：
- *      · habitSuggestions.habitHeadline / HABIT_QUESTION（气泡 idle 占位 = 同一句）
- *      · suggestionEngine 的 TIPS（状态建议四档）+ 三条行动引导型主句
- *      · 本文件 LISTEN_TEXT（「正在聆听…」→「我在听呢，你慢慢说～」）与确认/收起两句
- *   ② 反馈按钮两态**对齐洞察页 Tab 的选中语言**（昼夜节律 / 生理周期节律那两个）：
- *      未选中 = 极淡描边（cardBorder）+ 透明底 + 灰字（inkSoft）；
- *      选中  = 黄绿描边（limeMid）+ 浅黄绿填充（limeSoft）+ 深墨字（ink）+ semibold。
- *      描边 1.5 → 1，去掉「外圈太重」的观感。
- *
- * ★ 2026-10-08 十一改（本轮回合，用户从 A/B/C 三版设计稿中选 A + C 按钮）：
- *   ① 建议卡改**布局 A**：左图标（工具页同款 Icon：Breathing→breath / ToolTopic→learn / FoodScan→food，
- *      观察型默认 sparkle，浅黄绿底 34×34 圆角块）+ 右文案（标题 + 证据行）。
- *   ② 按钮改 **C 款**：主动作 = 绿底 pill（limeMid + ink 半粗）在右；次动作 = 安静下划线文字链接在左。
- *      行动型主按钮=CTA（去呼吸›），观察型主按钮=留下建议。删除两按钮「选中/未选中」框（C 款无歧义）。
- *   ③ 外框渐变描边 1.8 → **1px**（用户选「渐变减到 1px」，消掉四角偏重 —— 根因是对角渐变四角落在不同色标）。
- *   整体高度仍锁定 BUBBLE_H(100)，字号 14.5/20 + 证据 11.5/15 + pill 高约 22，2 行标题也不出框。
- *
- * ★ 2026-10-08 十二改（用户对十一改的追加反馈）：
- *   ① 左图标放大并**换成改善工具页同款图片资产**（不再用线框 Icon）：46×46 圆角图，
- *      映射 = MeditationScreen.TOOL_IMAGES 同源 —— Breathing→card_meditation.jpg（呼吸冥想）/
- *      ToolTopic→card_learn.png（知识科普）/ FoodScan→card_food.jpg（营养搭配）；
- *      观察型按 action/headline 关键词（呼吸冥想睡→meditation、散步运动→activity、吃喝餐→food、
- *      科普读知识→learn），兜底 card_emotion.jpg。
- *   ② 按钮改**右侧竖排**：主动作（绿 pill）在上、次动作（下划线文字链接）在下 —— B 位 + C 款式。
- *   ③ BUBBLE_H 100 → **92**（用户「整个卡片高度再缩一点点」）。高度预算：76 可用 vs 内容最高 57，富余。
- *
- * ★ 2026-10-08 十三改（用户定稿的完整交互闭环）：
- *   ① **✕ 整个去掉**（用户：「其实并不需要这个叉号」）——关闭职责由「不感兴趣」承担。
- *   ② 按钮语言统一：主 = **胶囊绿 pill**（行动型 = CTA「去呼吸›」直跳工具页；其余 = 心 +「有用」）；
- *      次 = 「**不感兴趣**」文字链接 —— 点了**立刻 force 换一条新建议**（被否的进 30 天冷却），
- *      不再显示「那就不打扰你啦」的收起动画。
- *   ③ 新增**回访卡（fb 态）**：点 CTA 去做 → 返回首页时弹「刚呼吸完，有没有帮到你呀？」，
- *      心+「有用」→ keepHabit 存进工具页「我的建议」；「不感兴趣」→ 换一条。
- *   ④ 发现型文案：habitHeadline → 「发现「{action}」之后，你的状态有变好哦」+ 真实 metric；
- *      非行动型卡片补一句「感觉确实不错？」小灰字。
- *   ⑤ 引擎换卡判据：半小时槽 → **状态签名**（level|phase，见 suggestionEngine）——
- *      修掉「20:00 槽位一翻、一分钟内换两张卡」的问题；气泡 marginBottom → 0（整体下贴 Tab）。
- *
- * ★ 2026-10-08 十五改（混合方案落地，用户定稿「默认 AI 生成，断网/太慢用引擎兜底」）：
- *   取建议改三层：① 同状态签名已有 AI 卡（内存/磁盘缓存）→ 直接用；
- *   ② 引擎候选**立即**上卡（永不空屏）；③ 无缓存才后台调端侧模型（aiSuggestion.ts，
- *   runOnModel 串行队列 + 签名去重 key），到货校验「签名没变 + 不在回访卡」→ 无缝换上。
- *   AI 的 metric 只许原样引用真实证据短语（evidenceBits 白名单校验）、CTA 只许三工具页白名单。
- *   「不感兴趣」→ force 同时触发引擎换新 + AI 重生成（避开刚被否那条）。
- *
- * · 四色渐变描边（紫→粉→黄绿→黄）+ 白底；彩色只落在边框与波形上。
- * · 左侧不放 Bot 头像（用户要求去掉「左边的表情」）。
- * · 底部靠右一个「对话气泡小尾巴」——小而浅，只描两条斜边，自然指向右下角的 GROK。
- * · 轻点常态/已说气泡 → 进入 MiraAI 对话首页；录音态/建议态轻点不跳转。
+ * HomeAiBubble: inline voice state, evidence and actionable suggestions.
+ * Keep the original 84-point height ceiling so the whole homepage fits.
+ * Text stays inside a compact, viewport-budgeted frame.
+ * Collection confirms only after local persistence succeeds.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
@@ -99,13 +15,8 @@ import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngin
 import { requestAiSuggestion, aiCandidateFor, sigOf } from '../lib/aiSuggestion';
 import { keepHabit, dismissSuggestion, habitHeadline, HABIT_QUESTION } from '../data/habitSuggestions';
 import Icon from './Icon';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
-// ★ 固定气泡高度：idle / sugg 共用，大小从此不变（2026-10-08）。
-//   2026-10-08 二改：136 → 120（用户「对话框太大了」偏大反馈）。
-//   2026-10-08 三改：120 → 100（用户「高度再小一点」；同时让第一屏不再溢出视口，预留才生效）。
-/** ★ 十二改：左图直接用**改善工具页同一套图片资产**（MeditationScreen.TOOL_IMAGES 同源）：
- *  行动型按 cta.screen 映射（呼吸冥想→稳定睡眠图 / 读科普→知识科普图 / 记饮食→营养搭配图）；
- *  观察型（习惯确认）按 action/headline 关键词映射，兜底「情绪调节」图。 */
 const TOOL_THUMB: Record<string, number> = {
   Breathing: require('../assets/card_meditation.jpg'),
   ToolTopic: require('../assets/card_learn.png'),
@@ -128,7 +39,8 @@ function thumbFor(c: SuggestionCandidate): number {
   return THUMB_DEFAULT;
 }
 
-const BUBBLE_H = 84; // ★ 十七改：92 → 84（用户「卡片下边缘被 Tab 挡上了，高度稍微小一点」——矮 8pt 让下边缘离开 Tab）
+// Original maximum body height; small screens may use a shorter frame.
+const BUBBLE_H = 84;
 const TAIL_H = 9;   // 小尾巴向下延伸高度（刻意做小）
 const R = 16;       // 气泡圆角
 const TAIL_W = 16;  // 尾巴底边宽
@@ -159,8 +71,10 @@ function WaveBars({ active }: { active?: boolean }) {
   const v2 = useRef(new Animated.Value(0.35)).current;
   const v3 = useRef(new Animated.Value(0.35)).current;
   const bars = [v0, v1, v2, v3];
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) return;
     const loops = bars.map((v, i) => {
       const d = (active ? 260 : 360) + i * 80;
       return Animated.loop(
@@ -172,7 +86,7 @@ function WaveBars({ active }: { active?: boolean }) {
     });
     loops.forEach((a) => a.start());
     return () => loops.forEach((a) => a.stop());
-  }, [active]); // eslint-disable-line
+  }, [active, reducedMotion]); // eslint-disable-line
 
   return (
     <View style={styles.waveRow}>
@@ -183,8 +97,17 @@ function WaveBars({ active }: { active?: boolean }) {
   );
 }
 
-export default function HomeAiBubble({ navigation, status }: { navigation?: any; status?: any }) {
-  const [w, setW] = useState(0);
+export default function HomeAiBubble({ navigation, status, width, height = BUBBLE_H }: { navigation?: any; status?: any; width: number; height?: number }) {
+  const w = width;
+  const bubbleHeight = Math.min(BUBBLE_H, Math.max(76, height));
+  const [savingHabit, setSavingHabit] = useState(false);
+  const savingHabitRef = useRef(false);
+  const [saveError, setSaveError] = useState('');
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const { visible, inlineMode, liveText, spokenText, clearSpoken } = useVoiceTrigger();
 
   const listening = visible && inlineMode;
@@ -216,7 +139,8 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
 
   /** 统一上卡：id 没变不重设（避免无谓重渲染），并记下这张卡属于哪个签名 */
   const applyCand = (c: SuggestionCandidate | null, sig?: string) => {
-    if (!c || c.id === shownIdRef.current) return;
+    if (savingHabitRef.current || !c || c.id === shownIdRef.current) return;
+    setSaveError('');
     shownIdRef.current = c.id;
     shownSigRef.current = sig ?? sigOf(statusRef.current);
     setCand(c);
@@ -346,34 +270,26 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
     }, CONFIRM_MS);
   };
 
-  /** 有用（心）→ 存进「我的建议」卡片清单（含行动/状态型原文），并就地确认 */
-  const onKeep = () => {
-    if (!cand) return;
-    const saveId = cand.saveId ?? cand.id;
-    keepHabit({
-      id: saveId,
-      action: cand.action ?? '',
-      metric: cand.metric ?? '',
-      headline: cand.headline,
-      cta: cand.cta,
-      kind: cand.kind,
-    }).catch(() => {});
-    confirmThenReset(cand, '已收进你的专属建议啦');
+  const saveSuggestion = async (candidate: SuggestionCandidate | null) => {
+    if (!candidate || savingHabitRef.current) return;
+    savingHabitRef.current = true; setSavingHabit(true); setSaveError('');
+    try {
+      await keepHabit({
+        id: candidate.saveId ?? candidate.id,
+        action: candidate.action ?? '', metric: candidate.metric ?? '',
+        headline: candidate.headline, cta: candidate.cta, kind: candidate.kind,
+      });
+      if (mountedRef.current) confirmThenReset(candidate, '已收进你的专属建议啦');
+    } catch {
+      if (mountedRef.current) setSaveError('没有保存成功，请点「有用」重试');
+    } finally {
+      savingHabitRef.current = false;
+      if (mountedRef.current) setSavingHabit(false);
+    }
   };
-  /** 回访卡上的「有用」（心）→ 把刚才做的那个行动存进「我的建议」 */
-  const onKeepFb = () => {
-    const c = fb;
-    if (!c) return;
-    keepHabit({
-      id: c.saveId ?? c.id,
-      action: c.action ?? '',
-      metric: c.metric ?? '',
-      headline: c.headline,
-      cta: c.cta,
-      kind: c.kind,
-    }).catch(() => {});
-    confirmThenReset(c, '已收进你的专属建议啦');
-  };
+  const onKeep = () => { void saveSuggestion(cand); };
+  const onKeepFb = () => { void saveSuggestion(fb); };
+
   /**
    * ★ 十三改：不感兴趣 → **立刻换一条新建议**（force 重取；被否的进 30 天冷却不会马上回来）。
    *   池子空了（都被否/留存）→ 回落 idle 占位。不再显示「那就不打扰你啦」的收起动画。
@@ -381,6 +297,8 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
    *     这里只负责记下「刚被否的是哪条」——避免两套换卡代码并存、口径漂移。
    */
   const onDismiss = () => {
+    if (savingHabitRef.current) return;
+    setSaveError('');
     setFb(null);
     if (cand) {
       lastDismissedRef.current = { id: cand.saveId ?? cand.id, headline: cand.headline };
@@ -425,24 +343,26 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
   const b0 = tailCx - TAIL_W / 2;
   const b1 = tailCx + TAIL_W / 2;
   const tipX = tailCx + 4;
-  const tipY = BUBBLE_H + TAIL_H;
+  const tipY = bubbleHeight + TAIL_H;
 
   const bodyPath =
     w > R * 2
-      ? `M ${R} 0 H ${w - R} A ${R} ${R} 0 0 1 ${w} ${R} V ${BUBBLE_H - R} A ${R} ${R} 0 0 1 ${w - R} ${BUBBLE_H} H ${R} A ${R} ${R} 0 0 1 0 ${BUBBLE_H - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`
+      ? `M ${R} 0 H ${w - R} A ${R} ${R} 0 0 1 ${w} ${R} V ${bubbleHeight - R} A ${R} ${R} 0 0 1 ${w - R} ${bubbleHeight} H ${R} A ${R} ${R} 0 0 1 0 ${bubbleHeight - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`
       : '';
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { width: w }]}>
       <TouchableOpacity
         activeOpacity={mode === 'idle' || mode === 'spoke' ? 0.94 : 1}
         onPress={onPress}
         style={styles.touch}
-        onLayout={(e) => setW(e.nativeEvent.layout.width)}
+        accessible={mode === 'idle' || mode === 'spoke'}
+        accessibilityRole={mode === 'idle' || mode === 'spoke' ? 'button' : undefined}
+        accessibilityLabel={mode === 'idle' || mode === 'spoke' ? '打开 Mira AI 聊天' : undefined}
       >
         {/* 背景：渐变描边气泡 + 右下小尾巴（SVG 保证边框与尾巴同色同源） */}
         {w > 0 && bodyPath && (
-          <Svg style={StyleSheet.absoluteFill} width={w} height={BUBBLE_H + TAIL_H} viewBox={`0 0 ${w} ${BUBBLE_H + TAIL_H}`}>
+          <Svg style={StyleSheet.absoluteFill} width={w} height={bubbleHeight + TAIL_H} viewBox={`0 0 ${w} ${bubbleHeight + TAIL_H}`}>
             <Defs>
               <SvgLinear id="bubbleBorder" x1="0" y1="0" x2="1" y2="1">
                 <Stop offset="0" stopColor={mm.colors.purpleCore} />
@@ -453,7 +373,7 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
             </Defs>
             <Path d={bodyPath} fill={theme.colors.cardBg} stroke="url(#bubbleBorder)" strokeWidth={STROKE} />
             <Path
-              d={`M ${b0} ${BUBBLE_H - 1} L ${tipX} ${tipY} L ${b1} ${BUBBLE_H - 1}`}
+              d={`M ${b0} ${bubbleHeight - 1} L ${tipX} ${tipY} L ${b1} ${bubbleHeight - 1}`}
               fill={theme.colors.cardBg}
               stroke="url(#bubbleBorder)"
               strokeWidth={STROKE}
@@ -463,13 +383,13 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
           </Svg>
         )}
 
-        {/* ===== 内容层（固定高度，建议态 overflow hidden 不撑高） =====
+        {/* ===== 内容层：高度不超过原来的 84，长文案在框内限制行数 =====
             ★ 十三改：sugg（建议卡）与 fb（行动回来后的回访卡）共用同一套布局：
               左图（工具页同款资产）+ 中文案 + 右按钮竖排；✕ 整个去掉（用户：不需要）。
               按钮语言统一：主 = 胶囊绿 pill（行动型是 CTA「去呼吸›」，其余是 心+「有用」）；
               次 = 「不感兴趣」文字链接 —— 点了立刻换一条新建议（force 重取）。 */}
         {mode === 'sugg' || mode === 'fb' ? (
-          <View style={[styles.suggContent, { height: BUBBLE_H }]}>
+          <View style={[styles.suggContent, { height: bubbleHeight }]}>
             {kept ? (
               /* ── 确认态：点了「有用」→ 只显示这一行（带心），2.4s 后自动收回 idle ── */
               <View style={styles.keptRow}>
@@ -480,18 +400,19 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
               <View style={styles.suggBody}>
                 <Image source={thumb} style={styles.suggThumb} />
                 <View style={styles.suggText}>
-                  <Text style={styles.suggHeadline} numberOfLines={2} ellipsizeMode="tail">
+                  <Text style={styles.suggHeadline} numberOfLines={2}>
                     {mode === 'fb'
                       ? `刚${CTA_NAME[fb!.cta?.screen ?? ''] ?? '完成'}完，有没有帮到你呀？`
                       : cand!.headline ?? (cand!.action ? habitHeadline(cand!.action) : '')}
                   </Text>
                   {mode === 'sugg' && !!cand!.metric && (
-                    <Text style={styles.suggEvidence} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.suggEvidence} numberOfLines={1}>
                       {cand!.metric}
                     </Text>
                   )}
+                  {!!saveError && <Text accessibilityRole="alert" style={styles.saveError} numberOfLines={1}>{saveError}</Text>}
                   {/* 发现型（非行动引导）才补一句问句；行动型 CTA 本身就是问题，不再啰嗦 */}
-                  {mode === 'sugg' && cand!.kind !== 'action' && (
+                  {mode === 'sugg' && cand!.kind !== 'action' && !saveError && !cand!.metric && (
                     <Text style={styles.suggAsk}>感觉确实不错？</Text>
                   )}
                 </View>
@@ -500,6 +421,7 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
                   {mode === 'fb' ? (
                     <TouchableOpacity
                       onPress={() => onKeepFb()}
+                      disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                       activeOpacity={theme.press.opacity}
                       accessibilityRole="button"
                       accessibilityLabel="有用，收进我的建议"
@@ -507,12 +429,13 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
                     >
                       <View style={styles.pillRow}>
                         <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
-                        <Text style={styles.btnPillText}>有用</Text>
+                        <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : '有用'}</Text>
                       </View>
                     </TouchableOpacity>
                   ) : cand!.kind === 'action' ? (
                     <TouchableOpacity
                       onPress={() => onGoCta()}
+                      disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                       activeOpacity={theme.press.opacity}
                       accessibilityRole="button"
                       accessibilityLabel={cand!.cta?.label ?? '去看看'}
@@ -523,6 +446,7 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
                   ) : (
                     <TouchableOpacity
                       onPress={() => onKeep()}
+                      disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                       activeOpacity={theme.press.opacity}
                       accessibilityRole="button"
                       accessibilityLabel="有用，收进我的建议"
@@ -530,12 +454,13 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
                     >
                       <View style={styles.pillRow}>
                         <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
-                        <Text style={styles.btnPillText}>有用</Text>
+                        <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : '有用'}</Text>
                       </View>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
                     onPress={() => onDismiss()}
+                      disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                     activeOpacity={theme.press.opacity}
                     accessibilityRole="button"
                     accessibilityLabel="不感兴趣，换一个建议"
@@ -548,21 +473,21 @@ export default function HomeAiBubble({ navigation, status }: { navigation?: any;
             )}
           </View>
         ) : (
-          <View style={[styles.content, { height: BUBBLE_H }]}>
+          <View style={[styles.content, { height: bubbleHeight }]}>
             <View style={styles.textCol}>
               <Text
+                numberOfLines={2}
                 style={[
                   styles.titleText,
                   (listening || spoke) && styles.titleRecording,
                 ]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
+
               >
                 {mode === 'rec' || mode === 'idle' ? title : spokenText}
               </Text>
               {/* idle 占位下方小字提示：长按右下角 AI 图标可直接语音（用户 2026-10-08） */}
               {mode === 'idle' && (
-                <Text style={styles.idleHint} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={styles.idleHint} numberOfLines={1}>
                   长按右下角的 AI 图标，就能直接语音跟我聊
                 </Text>
               )}
@@ -584,6 +509,7 @@ const styles = StyleSheet.create({
   touch: {
     width: '100%',
     position: 'relative',
+    paddingBottom: TAIL_H,
   },
   content: {
     flexDirection: 'row',
@@ -627,8 +553,8 @@ const styles = StyleSheet.create({
   // ★ 全部收紧到固定框内：BUBBLE_H(100) − paddingVertical(8×2) = 84pt 可用高；
   //   常态（标题 1 行 + 问句 + 按钮）≈66pt；最坏（标题 2 行）≈84pt，正好不出框。
   suggContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     overflow: 'hidden',
     flexDirection: 'column',
   },
@@ -656,7 +582,7 @@ const styles = StyleSheet.create({
   },
   /** 证据行（如「HRV 回升 8%」）：同族更小灰字，比标题再退一档 */
   suggEvidence: {
-    fontSize: 11.5,
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.regular,
     color: mm.colors.inkFaint,
     lineHeight: 15,
@@ -664,8 +590,8 @@ const styles = StyleSheet.create({
   },
   // ★ 十二改：左图 = 改善工具页同款图片资产（46×46，比原 34 图标块明显大一号）
   suggThumb: {
-    width: 46,
-    height: 46,
+    width: 36,
+    height: 36,
     borderRadius: theme.radius.md,
     flexShrink: 0,
   },
@@ -676,6 +602,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   suggText: {
+    minWidth: 0,
     flex: 1,
     justifyContent: 'center',
   },
@@ -687,11 +614,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   // ★ 十三改：主按钮改**胶囊（椭圆）**、整体放大（用户：「去读按钮椭圆胶囊型，字大一点宽度大一点」）
+  saveError: { fontSize: theme.fontSize.xs, color: theme.colors.trendDown, marginTop: theme.sp(1) },
   btnPill: {
+    minHeight: 32, justifyContent: 'center',
     backgroundColor: mm.colors.limeMid,
     borderRadius: 999,
     paddingVertical: 7,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
   },
   btnPillText: {
     color: mm.colors.ink,
@@ -705,6 +634,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   btnLink: {
+    minHeight: 24, justifyContent: 'center',
     paddingVertical: 3,
   },
   btnLinkText: {

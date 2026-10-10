@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 昼夜节律 皮质醇趋势 日/周/月/年 UI 设计预览（修正版）</title>
+<style>
+  :root{
+    --primary:      #7C6AE0;  /* 主色 紫：仅用于「详情 ›」与对比 */
+    --cortisol:     #BCCB62;  /* 亮绿 limeMid：皮质醇 = 今日实线 + 14天基线虚线 同源绿 */
+    --cortisol-deep:#6E7A24;  /* 深绿：绿系文字 */
+    --anomaly:      #E2554E;  /* 异常 红 */
+    --warn:         #C8881E;  /* 紊乱 琥珀 */
+    --good:         #2E9E5B;  /* 正常 绿 */
+    --grid:         rgba(31,29,26,0.09);
+    --axis:         #6B6760;
+    --ink:          #1F1D1A;
+    --bg:           #F5F4F1;
+    --card:         #FFFFFF;
+    --sub:          #8A857D;
+    --line:         #ECEAE5;
+    --t-fade:       160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.55}
+
+  /* 顶部 Tab 切换器（与睡眠/脑力/压力预览同壳） */
+  .switch{display:flex;background:#EDEBE7;border-radius:12px;padding:3px;position:relative;margin:0 0 16px}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;flex:1;border:0;background:transparent;font-size:14px;
+    padding:8px 0;color:var(--sub);cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  .card{background:var(--card);border-radius:18px;padding:14px 14px 12px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  .ctitle{font-size:15px;font-weight:600;margin:0}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin:8px 2px 0}
+  .legend i{display:inline-block;width:14px;height:0;border-top-width:2.4px;border-top-style:solid;margin-right:5px;vertical-align:3px}
+  .legend i.dash{border-top-style:dashed}
+  .legend i.band{width:14px;height:10px;border:0;border-radius:2px;background:rgba(31,29,26,.08);vertical-align:0}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:6px;line-height:1.4}
+  svg{display:block;width:100%;height:auto}
+
+  .chead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .more{font-size:11px;color:var(--primary);font-weight:600}
+
+  /* 节律状态 chip（正常绿 / 偏高红 / 紊乱琥珀） */
+  .stChip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .stChip .dot{width:7px;height:7px;border-radius:50%}
+  .stChip.good{background:rgba(46,158,91,.12);color:#2E9E5B}
+  .stChip.good .dot{background:#2E9E5B}
+  .stChip.bad{background:rgba(226,85,78,.12);color:#E2554E}
+  .stChip.bad .dot{background:#E2554E}
+  .stChip.warn{background:rgba(200,136,30,.14);color:#B9831F}
+  .stChip.warn .dot{background:#C8881E}
+
+  /* 2×2 摘要（白底描边 + 亮绿左条，无灰底） */
+  .sumGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .sumCell2{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 11px;position:relative;overflow:hidden}
+  .sumCell2::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cortisol)}
+  .sumLabel{font-size:11px;color:var(--sub);margin-bottom:3px}
+  .sumValue{font-size:21px;font-weight:650;color:var(--ink);line-height:1.1}
+  .sumSub{font-size:10.5px;color:var(--sub);margin-top:3px;line-height:1.35}
+
+  .persistCard{border:1px solid var(--line);border-radius:12px;padding:11px;margin-top:10px}
+  .persistTitle{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+  .persistRow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+  .persistRow:last-child{border-bottom:0}
+  .persistLab{font-size:13px;color:var(--ink)}
+  .persistVal{font-size:13px;font-weight:600}
+
+  .aiCard{border:1px solid var(--line);border-radius:12px;padding:11px;margin-top:10px;background:#FBFBF9}
+  .aiTitle{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px}
+  .aiLine{font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:5px}
+
+  /* 周/月/年：节律日历（正常/异常） */
+  .calHead{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:2px 0 4px}
+  .calHead span{font-size:10px;color:var(--sub);text-align:center}
+  .cal{display:grid;gap:5px;margin-top:4px}
+  .cal.week,.cal.month{grid-template-columns:repeat(7,1fr)}
+  .cal.year{grid-template-columns:repeat(4,1fr)}
+  .calCell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:11px;font-weight:600}
+  .calCell.normal{background:#EAF0BE;color:#6E7A24}
+  .calCell.abn{background:rgba(226,85,78,.16);color:#E2554E}
+  .calCell.empty{background:transparent}
+  .calYearCell{padding:14px 0;border-radius:10px;font-size:12px;font-weight:600;text-align:center}
+  .calYearCell.normal{background:#EAF0BE;color:#6E7A24}
+  .calYearCell.abn{background:rgba(226,85,78,.16);color:#E2554E}
+
+  /* 节律小结（替换原「均值/相对水平」） */
+  .rhythmSum{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+  .rItem{background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 10px}
+  .rLab{font-size:10.5px;color:var(--sub);margin-bottom:3px}
+  .rVal{font-size:15px;font-weight:650;color:var(--ink);line-height:1.15}
+  .rVal small{font-size:10.5px;font-weight:400;color:var(--sub)}
+
+  .note{font-size:11px;color:var(--sub);line-height:1.6;margin-top:10px;border-top:1px solid var(--line);padding-top:9px}
+
+  /* 设计规范卡 */
+  .spec{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px;margin-top:6px}
+  .spec h3{font-size:14px;font-weight:650;margin:0 0 8px}
+  .spec h4{font-size:12.5px;font-weight:600;color:var(--ink);margin:12px 0 5px}
+  .spec ul{margin:0;padding-left:18px}
+  .spec li{font-size:11.5px;color:var(--ink);line-height:1.65;margin-bottom:4px}
+  .spec code{background:#F2F1ED;padding:1px 5px;border-radius:5px;font-size:11px;color:#5A4FB0}
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">昼夜节律 · 皮质醇趋势</h1>
+  <p class="sub">洞察页「昼夜节律」卡点进来后的<b>皮质醇趋势详情页</b>（<b>修正版</b>）。<br>
+  <b>核心原则：皮质醇看「波形节律是否正常」，<u>没有纵坐标、不做区间均值</u>。</b><br>
+  · 日视图 = 今日波形（绿实线）+ 14 天基线（绿虚线），无纵轴；<br>
+  · 周/月/年 = 节律日历（正常绿 / 异常红）+ 节律状态，<u>不显示「日均相对水平」之类均值</u>。<br>
+  本稿为设计预览，定稿后再整体搬进 App。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <!-- ════════ 日 ════════ -->
+  <div class="panel on" id="p-day">
+    <div class="card">
+      <div class="chead">
+        <p class="ctitle">今日皮质醇全天趋势</p>
+        <span class="more">详情 ›</span>
+      </div>
+      <svg id="svg-cort" viewBox="0 0 380 150"></svg>
+      <div class="legend">
+        <span><i></i>今日（绿实线）</span>
+        <span><i class="dash"></i>14 天基线（绿虚线）</span>
+        <span><i class="band"></i>睡眠时段</span>
+      </div>
+      <p class="axisnote">横轴 = 一天 24h（0/6/12/18/24）· 皮质醇看波形节律，<b>无纵坐标</b><br>绿实线=今天逐时活性，绿虚线=近 14 天同时段均值基线</p>
+    </div>
+
+    <div class="card">
+      <div class="chead">
+        <p class="ctitle">节律分析</p>
+        <span class="stChip good"><span class="dot"></span>节律正常</span>
+      </div>
+      <div class="sumGrid">
+        <div class="sumCell2">
+          <div class="sumLabel">整体压力水平</div>
+          <div class="sumValue">38.2</div>
+          <div class="sumSub">单日活性 · 在正常区间内</div>
+        </div>
+        <div class="sumCell2">
+          <div class="sumLabel">峰值时刻</div>
+          <div class="sumValue">08:10</div>
+          <div class="sumSub">正常范围 06–11 点</div>
+        </div>
+        <div class="sumCell2">
+          <div class="sumLabel">昼夜波动幅度</div>
+          <div class="sumValue">42%</div>
+          <div class="sumSub">晨高夜低弹性好</div>
+        </div>
+        <div class="sumCell2">
+          <div class="sumLabel">作息类型</div>
+          <div class="sumValue">常规作息</div>
+          <div class="sumSub">皮质醇晨高夜低（正常）</div>
+        </div>
+      </div>
+      <div class="persistCard">
+        <div class="persistTitle">持续性</div>
+        <div class="persistRow"><span class="persistLab">皮质醇偏高</span><span class="persistVal" style="color:var(--sub)">近期稳定</span></div>
+        <div class="persistRow"><span class="persistLab">节律紊乱</span><span class="persistVal" style="color:var(--sub)">近期稳定</span></div>
+      </div>
+      <div class="aiCard">
+        <div class="aiTitle">节律洞察</div>
+        <div class="aiLine">皮质醇晨峰正常爬升、入睡时正常回落，波形与 14 天基线贴合。</div>
+        <div class="aiLine">峰值出现在 08:10，未出现扁平或倒置，节律形态正常。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ 周 ════════ -->
+  <div class="panel" id="p-week">
+    <div class="card">
+      <div class="chead">
+        <p class="ctitle">皮质醇节律 <small>近 7 天</small></p>
+        <span class="stChip good"><span class="dot"></span>节律正常</span>
+      </div>
+      <div class="calHead"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="cal week" id="cal-week"></div>
+      <div class="rhythmSum">
+        <div class="rItem"><div class="rLab">异常天数</div><div class="rVal">1 <small>/ 7</small></div></div>
+        <div class="rItem"><div class="rLab">节律状态</div><div class="rVal" style="color:var(--good)">正常</div></div>
+        <div class="rItem"><div class="rLab">峰值时段</div><div class="rVal">06–11</div></div>
+      </div>
+      <p class="note">节律日历：<b style="color:var(--good)">绿=正常日</b>（晨高夜低波形完整），<b style="color:var(--anomaly)">红=异常日</b>（扁平/倒置/峰值错位）。皮质醇判断「是否正常」看的是每日波形，不取区间均值，故<u>无纵坐标、无日均相对水平</u>。</p>
+    </div>
+  </div>
+
+  <!-- ════════ 月 ════════ -->
+  <div class="panel" id="p-month">
+    <div class="card">
+      <div class="chead">
+        <p class="ctitle">皮质醇节律 <small>近 30 天</small></p>
+        <span class="stChip good"><span class="dot"></span>节律正常</span>
+      </div>
+      <div class="calHead"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+      <div class="cal month" id="cal-month"></div>
+      <div class="rhythmSum">
+        <div class="rItem"><div class="rLab">异常天数</div><div class="rVal">3 <small>/ 30</small></div></div>
+        <div class="rItem"><div class="rLab">节律状态</div><div class="rVal" style="color:var(--good)">正常</div></div>
+        <div class="rItem"><div class="rLab">峰值时段</div><div class="rVal">06–11</div></div>
+      </div>
+      <p class="note">月视图同样以「每日波形是否正常」着色，不做均值对比。异常日偏多（≥30%）时会自动升级为「持续偏高 / 紊乱」状态。</p>
+    </div>
+  </div>
+
+  <!-- ════════ 年 ════════ -->
+  <div class="panel" id="p-year">
+    <div class="card">
+      <div class="chead">
+        <p class="ctitle">皮质醇节律 <small>近 12 月</small></p>
+        <span class="stChip bad"><span class="dot"></span>持续偏高</span>
+      </div>
+      <div class="cal year" id="cal-year"></div>
+      <div class="rhythmSum">
+        <div class="rItem"><div class="rLab">异常月份</div><div class="rVal">3 <small>/ 12</small></div></div>
+        <div class="rItem"><div class="rLab">节律状态</div><div class="rVal" style="color:var(--anomaly)">持续偏高</div></div>
+        <div class="rItem"><div class="rLab">峰值时段</div><div class="rVal">偏晚</div></div>
+      </div>
+      <p class="note">年视图按月着色（绿=该月多数日正常，红=异常偏多）。节律状态由「异常月份占比」判定：正常 / 持续偏高（红）/ 节律紊乱（琥珀），<u>不显示年均相对水平</u>。</p>
+    </div>
+  </div>
+
+  <!-- ════════ UI 设计规范 / 组件清单 ════════ -->
+  <div class="spec">
+    <h3>UI 设计规范 · 组件清单（修正版）</h3>
+    <h4>1. 页面结构</h4>
+    <ul>
+      <li>顶部 <code>RangeSwitch</code>：日 / 周 / 月 / 年 四档，滑动药丸同壳。</li>
+      <li><b>日面板</b> = 全天趋势曲线卡（今日+14天基线，无纵轴）+ 节律分析卡（2×2 摘要 + 持续性 + AI 分析）。</li>
+      <li><b>周/月/年面板</b> = 节律日历（正常绿/异常红）+ 节律状态 chip + 节律小结（异常天数 / 状态 / 峰值时段）。<u>不出现均值、柱状图、纵坐标。</u></li>
+    </ul>
+
+    <h4>2. 组件与视觉规则</h4>
+    <ul>
+      <li><code>CortisolTrendChart</code>（日）：今日 = <b>绿实线</b>，14 天基线 = <b>绿虚线</b>（两者同源 <code>chart.series.cortisol = limeMid #BCCB62</code>，靠实/虚区分）；含睡眠阴影、峰值竖虚线+发光点+时刻标签；<b>无纵坐标</b>（<code>hideYAxis</code>）。</li>
+      <li><code>RhythmCalendar</code>（周/月/年）：逐日（周/月）或逐月（年）着色，<code>CAL_COLOR</code> 语义——正常 = limeSoft 底 + limeDeep 字，异常 = danger 柔和底 + danger 字；「今日」可加紫描边（accentSolid）。</li>
+      <li><code>StatusChip</code>：节律正常（绿）/ 持续偏高（红）/ 节律紊乱（琥珀），由异常日/月占比判定。</li>
+      <li>节律小结三格：<b>异常天数</b>（计数，非均值）/ <b>节律状态</b> / <b>峰值时段</b>（06–11 正常）。</li>
+      <li>折叠入口统一 <code>mhRow</code>（左标签 + 右 chevron 浅底描边行），与 App <code>moreHead</code> 1:1。</li>
+    </ul>
+
+    <h4>3. Design Token（强制）</h4>
+    <ul>
+      <li>皮质醇 = 亮绿 <code>#BCCB62</code>（今日实线 + 14天基线虚线同色）；深绿文字 <code>#6E7A24</code>；异常红 <code>#E2554E</code>；紊乱琥珀 <code>#C8881E</code>；正常绿 <code>#2E9E5B</code>。</li>
+      <li><b>铁律</b>：皮质醇页面<b>全程无纵坐标</b>；周月年<b>不做区间均值 / 无「相对水平」</b>，只看波形节律是否正常。</li>
+      <li>主色紫 <code>#7C6AE0</code> 仅用于「详情 ›」与「今日」描边，绝不上皮质醇曲线。</li>
+    </ul>
+
+    <h4>4. App 待同步点（预览定稿后搬入）</h4>
+    <ul>
+      <li>日视图：已还原 <code>variant="sleep"</code> 误删的 14 天基线（绿虚线）。</li>
+      <li>周/月/年 <code>RangeView</code>：去掉 <code>平均压力水平</code> / <code>平均峰值时刻</code> 两个均值 SumCell，改为节律日历 + 状态 chip + 节律小结（异常天数/状态/峰值时段）。</li>
+    </ul>
+  </div>
+
+  <p class="foot"><b>预览状态：</b>纯 HTML，未动 App 源码（除已还原的 <code>CortisolDailyChart</code> 日视图 14 天基线）。本稿为修正版——日保留 14 天基线、周月年改为节律是否正常视图，均不含纵坐标与均值。</p>
+</div>
+
+<script>
+const C = {
+  cortisol:'#BCCB62', cortisolDeep:'#6E7A24',
+  anomaly:'#E2554E', shadow:'rgba(31,29,26,0.08)'
+};
+function smooth(pts){
+  if(pts.length<3) return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+// 日：今日(绿实线) + 14天基线(绿虚线) + 睡眠阴影 + 峰值标记，无纵轴
+function drawCortisol(svg){
+  const W=380,H=150,L=14,R=14,T=14,B=22;
+  const pw=W-L-R, ph=H-T-B, baseY=T+ph;
+  const today=[28,22,18,16,15,22,35,60,90,98,85,70,55,48,46,44,45,50,54,52,47,44,40,34];
+  const base =[30,24,20,18,16,20,30,55,85,95,88,72,58,50,47,45,44,46,52,55,50,46,42,36];
+  const n=24;
+  const xAt=i=> L + pw*i/(n-1);
+  const yAt=v=> baseY - (v/100)*ph;
+  const pt=arr=>arr.map((v,i)=>({x:xAt(i),y:yAt(v)}));
+  let s='';
+  // 睡眠阴影 23:00–07:00
+  const xs=xAt(23), xe=xAt(23.99), x0=xAt(0), x7=xAt(7);
+  s+=`<rect x="${xs.toFixed(1)}" y="${T}" width="${(W-R-xs).toFixed(1)}" height="${ph}" fill="${C.shadow}"/>`;
+  s+=`<rect x="${x0.toFixed(1)}" y="${T}" width="${(x7-x0).toFixed(1)}" height="${ph}" fill="${C.shadow}"/>`;
+  // 14天基线（绿虚线）
+  s+=`<path d="${smooth(pt(base))}" fill="none" stroke="${C.cortisol}" stroke-width="1.6" stroke-dasharray="5,4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // 今日（绿实线）
+  s+=`<path d="${smooth(pt(today))}" fill="none" stroke="${C.cortisol}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // 峰值标记 ~08:10
+  const pk=8.17, px=xAt(pk), py=yAt(today[8]);
+  s+=`<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${px.toFixed(1)}" y2="${baseY}" stroke="${C.cortisolDeep}" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="3,3"/>`;
+  s+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4.2" fill="${C.cortisol}"/>`;
+  s+=`<text x="${Math.min(Math.max(px,L+16),W-R-16).toFixed(1)}" y="${(py-10).toFixed(1)}" font-size="10.5" font-weight="600" fill="${C.cortisolDeep}" text-anchor="middle">08:10</text>`;
+  // X 刻度
+  [0,6,12,18,24].forEach(h=>{ s+=`<text x="${xAt(h).toFixed(1)}" y="${baseY+14}" font-size="9" fill="${C.axis||'#6B6760'}" text-anchor="middle">${h}</text>`; });
+  svg.innerHTML=s;
+}
+const axisColor='#6B6760';
+
+// 周/月/年：节律日历（正常绿 / 异常红）
+function buildCalendar(elId, cells, kind){
+  const el=document.getElementById(elId);
+  if(kind==='year'){
+    el.innerHTML=cells.map(c=>`<div class="calYearCell ${c.abn?'abn':'normal'}">${c.label}</div>`).join('');
+  } else {
+    let html='';
+    (cells.prefix||[]).forEach(()=>html+=`<div class="calCell empty"></div>`);
+    html+=cells.days.map(d=>`<div class="calCell ${d.abn?'abn':'normal'}">${d.label}</div>`).join('');
+    el.innerHTML=html;
+  }
+}
+function genWeek(){return {days:[1,2,3,4,5,6,7].map(d=>({label:d,abn:d===5}))};}
+function genMonth(){
+  const days=[];for(let d=1;d<=30;d++)days.push({label:d,abn:[7,14,23].includes(d)});
+  return {prefix:[0],days}; // 当月 1 号从周二起（前缀 1 空）
+}
+function genYear(){return {kind:'year',cells:[
+  {label:'1月',abn:false},{label:'2月',abn:false},{label:'3月',abn:true},
+  {label:'4月',abn:false},{label:'5月',abn:false},{label:'6月',abn:false},
+  {label:'7月',abn:false},{label:'8月',abn:false},{label:'9月',abn:true},
+  {label:'10月',abn:false},{label:'11月',abn:true},{label:'12月',abn:false}
+]};}
+
+const chips=[...document.querySelectorAll('.chip')];
+const pill=document.getElementById('pill');
+function movePill(el){pill.style.width=el.offsetWidth+'px';pill.style.transform=`translateX(${el.offsetLeft-3}px)`;}
+function setRange(r){
+  chips.forEach(c=>c.classList.toggle('on',c.dataset.r===r));
+  movePill(chips.find(c=>c.dataset.r===r));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+r).classList.add('on');
+}
+chips.forEach(c=>c.addEventListener('click',()=>setRange(c.dataset.r)));
+
+// 初始化
+drawCortisol(document.getElementById('svg-cort'));
+buildCalendar('cal-week', genWeek(), 'week');
+buildCalendar('cal-month', genMonth(), 'month');
+buildCalendar('cal-year', genYear(), 'year');
+window.addEventListener('load',()=>movePill(chips[0]));
+movePill(chips[0]);
+</script>
+</body>
+</html>

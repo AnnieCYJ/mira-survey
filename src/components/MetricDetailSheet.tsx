@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart as chartToken } from '../theme/chart';
 import Sheet, { SheetHead } from './Sheet';
 import {
   genSeries,
@@ -109,10 +110,10 @@ export default function MetricDetailSheet({ visible, metricKey, onClose }: Props
                   </LinearGradient>
                 </Defs>
                 <Path d={chart.area} fill="url(#bigGrad)" />
-                <Path d={chart.d} fill="none" stroke={theme.colors.accentSolid} strokeWidth={2.6} strokeLinecap="round" />
+                <Path d={chart.d} fill="none" stroke={chartToken.series.primary} strokeWidth={chartToken.lw.series} strokeLinecap="round" />
                 {chart.pts.length <= 12 &&
                   chart.pts.map((p, i) => (
-                    <Circle key={i} cx={p.x} cy={p.y} r={3} fill={theme.colors.accentSolid} />
+                    <Circle key={i} cx={p.x} cy={p.y} r={chartToken.dot.radius} fill={chartToken.series.primary} />
                   ))}
               </Svg>
             ) : null}

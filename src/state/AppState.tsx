@@ -54,7 +54,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [celebration, setCelebration] = useState<CelebrationState>({
     visible: false,
   });
-  const [autoMonitor, setAutoMonitorState] = useState(false);
+  // ★ 2026-10-09（用户）：基础指标自动监测默认打开（此前默认 false，设置页开关显示 OFF 与实际采集不符）
+  const [autoMonitor, setAutoMonitorState] = useState(true);
   // 开关同时下发到原生桥：无论当前停在哪个页面，拨动「自动监测」都能可靠启动/停止戒指实时采集。
   // 之前只靠洞察页的 effect 在挂载时转发，若用户没进过洞察页，原生 monitorOn 永远是 false，数据不流。
   const setAutoMonitor = useCallback((v: boolean) => {

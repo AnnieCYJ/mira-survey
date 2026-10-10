@@ -17,6 +17,9 @@ export default function SettingsScreen() {
   useFocusEffect(
     React.useCallback(() => {
       setHsTick((t) => t + 1);
+      // ★ 2026-10-10：进入设置页自动尝试连回上次那台戒指（与 App 启动自动连同源），
+      //   不再需要手动点「连接」。已连 / 在连 / 在扫时 autoConnect 内部跳过。
+      RingBle.autoConnect();
     }, [])
   );
 

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 统一折叠组件</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --bg:#F5F4F1; --card:#FFFFFF; --sub:#8A857D;
+    --line:#ECEAE5; --purple:#7C6AE0; --soft:#FAFAF8; --t-fade:160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 18px;line-height:1.5}
+  .card{background:var(--card);border-radius:18px;padding:14px;margin-bottom:14px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .ctitle{font-size:15px;font-weight:600;margin:0 0 4px}
+  .note{font-size:11.5px;color:var(--sub);line-height:1.6;margin:0 0 12px}
+  .tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:#F1EEFB;color:var(--purple);margin-bottom:8px}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  /* ════════ 旧样式 A：moreBtn（sleep/brain/stress/exercise）════════ */
+  .oldA{margin-top:12px;width:100%;border:1px solid var(--line);background:#FAFAF8;
+    border-radius:10px;padding:9px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;text-align:center}
+
+  /* ════════ 旧样式 B：moreRow（menstrual 内联）════════ */
+  .oldB{text-align:center;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--purple);cursor:pointer}
+
+  /* ════════ 旧样式 C：collapseBtn（menstrual 胶囊）════════ */
+  .oldC{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:10px;
+    font-size:12px;font-weight:600;color:var(--purple);cursor:pointer;
+    border:1px solid var(--line);border-radius:999px;padding:8px;background:var(--soft)}
+  .oldC .ar{font-size:11px}
+
+  /* ════════ 统一样式：mhRow（对齐 App SleepAnalysisCard.moreHead）════════ */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:var(--soft);border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .mhSec{margin-top:8px;animation:fade var(--t-fade) ease}
+  .demoBody{font-size:12.5px;color:var(--sub);line-height:1.7}
+  .demoBody .row{display:flex;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--line)}
+  .demoBody .row:last-child{border-bottom:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">统一折叠组件</h1>
+  <p class="sub">预览里目前有 3 种不一致的"展开/收起"样式。统一为 <b>mhRow</b>（与 App 真实组件更一致）：左边标签、右边 chevron，浅底描边行，箭头随展开旋转。</p>
+
+  <div class="card">
+    <p class="ctitle">① 旧样式（不统一，待替换）</p>
+    <p class="note">A 满宽按钮居中字 / B 紫色裸文字 / C 紫色胶囊 + 旋转箭头——三处长得都不一样。</p>
+    <span class="tag">A · moreBtn（sleep / brain / stress / exercise）</span>
+    <div class="oldA">详细数据 ▾</div>
+    <span class="tag" style="margin-top:14px">B · moreRow（menstrual 内联）</span>
+    <div class="oldB">展开更多指标 ⌄</div>
+    <span class="tag" style="margin-top:14px">C · collapseBtn（menstrual 胶囊）</span>
+    <div class="oldC"><span>逐周期明细</span><span class="ar">▾</span></div>
+  </div>
+
+  <div class="card">
+    <p class="ctitle">② 统一后 · mhRow（点开看箭头旋转）</p>
+    <p class="note">同一组件，标签按上下文变化（详细数据 / 逐周期明细 / 查看完整症状分布）。默认收起，点击展开。</p>
+
+    <div class="mhRow" onclick="toggleMH(this)" data-sec="s1">
+      <span class="mhLabel">详细数据</span><span class="mhChev"></span>
+    </div>
+    <div class="mhSec" id="s1" style="display:none">
+      <div class="demoBody">
+        <div class="row"><span>睡眠效率</span><span>88%</span></div>
+        <div class="row"><span>夜间 HRV</span><span>68 ms</span></div>
+        <div class="row"><span>体温偏离</span><span>+0.2 ℃</span></div>
+      </div>
+    </div>
+
+    <div class="mhRow" onclick="toggleMH(this)" data-sec="s2">
+      <span class="mhLabel">逐周期明细</span><span class="mhChev"></span>
+    </div>
+    <div class="mhSec" id="s2" style="display:none">
+      <div class="demoBody">逐周期长度明细表（收进折叠，展开可见）。</div>
+    </div>
+
+    <div class="mhRow" onclick="toggleMH(this)" data-sec="s3">
+      <span class="mhLabel">查看完整症状分布</span><span class="mhChev"></span>
+    </div>
+    <div class="mhSec" id="s3" style="display:none">
+      <div class="demoBody">症状频率条形 + 经量/疼痛分段 + 症状 × 相位矩阵（收进折叠）。</div>
+    </div>
+
+    <div class="mhRow" onclick="toggleMH(this)" data-sec="s4">
+      <span class="mhLabel">展开更多指标</span><span class="mhChev"></span>
+    </div>
+    <div class="mhSec" id="s4" style="display:none">
+      <div class="demoBody">预测经期 / 排卵 / 易孕窗口等扩展指标。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="ctitle">③ 与 App 对应关系</p>
+    <p class="note">App 真实组件 <b>SleepAnalysisCard.moreHead</b> 已是同一形态：左标签「详细数据」+ 右 chevron（chevronRight 旋转）。HTML 预览统一到 mhRow 后，预览 ↔ App 1:1 一致。</p>
+  </div>
+</div>
+
+<script>
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+</script>
+</body>
+</html>

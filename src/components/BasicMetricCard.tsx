@@ -9,6 +9,7 @@ import {
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
@@ -159,7 +160,9 @@ export default function BasicMetricCard({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const h = theme.fs(84);
   const gid = `bm_${metric.key}`;
-  const tc = trendColorFor(metric.key); // v10 本卡趋势色
+  // 统一配色铁律：血氧(spo2)趋势线强制 skyCore 蓝（与血压/心电同源，修掉哈希随机色）
+  let tc = trendColorFor(metric.key);
+  if (metric.key === 'spo2') tc = mm.colors.skyCore;
   // 今日窗口内的实际最大/最小值，作为迷你趋势图的 Y 向参照（不画整条标尺，避免拥挤）
   const yStats = useMemo(() => {
     const ys = data.map((d) => d.v).filter((v) => Number.isFinite(v));
@@ -209,6 +212,9 @@ export default function BasicMetricCard({
   if (compact) {
     // v16：数据卡一律白底——pastel 家族只用于卡内 26px 图标方块（soft 底 + deep 图标）
     const fam = pastelFamilyFor(metric.key);
+    // 统一：血氧(spo2)图标方强制 sky 蓝家族，与血压/心电同源
+    const icBg = metric.key === 'spo2' ? mm.colors.skySoft : fam.chipBg;
+    const icFg = metric.key === 'spo2' ? mm.colors.skyDeep : fam.fg;
     const placeholderPath = (() => {
       if (!showTrend || w <= 0) return '';
       const pad = 4;
@@ -232,10 +238,10 @@ export default function BasicMetricCard({
               {metric.icon && (
                 <View style={{
                   width: 26, height: 26, borderRadius: mm.radius.iconSq,
-                  backgroundColor: fam.chipBg, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: icBg, alignItems: 'center', justifyContent: 'center',
                   marginRight: theme.sp(1),
                 }}>
-                  <Icon name={metric.icon} size={14} color={fam.fg} />
+                  <Icon name={metric.icon} size={14} color={icFg} />
                 </View>
               )}
               <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flexShrink: 1 }}>{metric.name}</Text>
@@ -263,15 +269,21 @@ export default function BasicMetricCard({
                       </LinearGradient>
                     </Defs>
                     <Path d={areaD} fill={`url(#${gid}_grad)`} />
-                    <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />
+                    <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />
                   </>
                 ) : (
-                  <Path d={placeholderPath} fill="none" stroke={tc} strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+                  <Path d={placeholderPath} fill="none" stroke={tc} strokeWidth={chart.lw.series} strokeLinecap="round" opacity={0.3} />
                 )}
               </Svg>
             ) : null}
           </View>
           )}
+
+          {/* ★ 统一底部入口（整卡可点进指标历史详情） */}
+          <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress} style={styles.enter}>
+            <Text style={styles.enterTxt}>查看趋势图</Text>
+            <Text style={styles.enterArr}>›</Text>
+          </TouchableOpacity>
         </Card>
       </TouchableOpacity>
     );
@@ -334,8 +346,8 @@ export default function BasicMetricCard({
                 </Defs>
                 {/* 与睡眠/激素卡片视觉同源：渐变面积 + 渐变曲线 + 末端白点；无数据则整张图留白 */}
                 {hasData && <Path d={areaD} fill={`url(#${gid}_grad)`} />}
-                {hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.4} strokeLinecap="round" />}
-                {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={tc} strokeWidth={2.4} />}
+                {hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />}
+                {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={tc} strokeWidth={chart.dot.stroke} />}
               </Svg>
             ) : null}
             {/* 今日窗口最大 / 最小值（Y 向参照，小字叠加在趋势图左上 / 左下） */}
@@ -486,4 +498,16 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginTop: theme.space.sm,
   },
+  // 统一底部入口
+  enter: {
+    marginTop: theme.sp(3),
+    paddingTop: theme.sp(2.5),
+    borderTopWidth: 1,
+    borderTopColor: mm.colors.chipBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  enterTxt: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  enterArr: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold, color: mm.colors.skyCore },
 });

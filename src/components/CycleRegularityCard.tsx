@@ -11,8 +11,8 @@
  * 判据参考 ACOG：正常周期 21–35 天，周期间波动 > 7 天通常视为不规律。
  * 全部为本机记录的统计，不编造；不足 1 个完整周期时给引导文案。
  */
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { addDays, daysBetween, parseDate } from '../lib/cycleMath';
@@ -85,6 +85,9 @@ export default function CycleRegularityCard({
   /** 是否整体落在正常区间 21–35 天 */
   const inRange = data.min >= 21 && data.max <= 35;
 
+  // ★ 2026-10-09（menstrual-cycle-preview）：逐周期明细默认收起，mhRow 展开后再显示
+  const [listOpen, setListOpen] = useState(false);
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>周期规律性</Text>
@@ -150,40 +153,53 @@ export default function CycleRegularityCard({
             你的周期长度 {data.min}–{data.max} 天，{inRange ? '处于正常区间' : '部分超出正常区间'}。
           </Text>
 
-          {/* ⑤ 逐周期明细：日期 / 长度 / 准时·晚·早 */}
-          <Text style={styles.listTitle}>逐周期</Text>
-          <View style={styles.list}>
-            {data.recs.slice(0, MAX_ROWS).map((r) => {
-              const dev = r.length - data.mean;
-              const late = dev >= 0.75;
-              const early = dev <= -0.75;
-              const dt = parseDate(r.start);
-              return (
-                <View key={r.start} style={styles.row}>
-                  <Text style={styles.rowDate}>{dt.getMonth() + 1}月{dt.getDate()}日</Text>
-                  <Text style={styles.rowLen}>{r.length} 天</Text>
-                  <Text
-                    style={[
-                      styles.rowDev,
-                      late ? { color: mm.colors.roseDeep } : early ? { color: theme.colors.accentText } : { color: theme.colors.textSub },
-                    ]}
-                  >
-                    {late ? `晚 ${Math.round(dev)} 天` : early ? `早 ${Math.round(-dev)} 天` : '准时'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-          {data.recs.length > MAX_ROWS ? (
-            <Text style={styles.more}>
-              仅显示最近 {MAX_ROWS} 个周期（共 {data.recs.length} 个）
-            </Text>
-          ) : null}
+          {/* ⑤ 逐周期明细（★ 2026-10-09 menstrual-cycle-preview：默认收起，mhRow 折叠头展开） */}
+          <TouchableOpacity
+            style={styles.mhRow}
+            activeOpacity={0.7}
+            onPress={() => setListOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={listOpen ? '收起逐周期明细' : '展开逐周期明细'}
+          >
+            <Text style={styles.mhLabel}>逐周期明细</Text>
+            <View style={[styles.mhChev, listOpen && styles.mhChevOpen]} />
+          </TouchableOpacity>
+          {listOpen ? (
+            <>
+              <View style={styles.list}>
+                {data.recs.slice(0, MAX_ROWS).map((r) => {
+                  const dev = r.length - data.mean;
+                  const late = dev >= 0.75;
+                  const early = dev <= -0.75;
+                  const dt = parseDate(r.start);
+                  return (
+                    <View key={r.start} style={styles.row}>
+                      <Text style={styles.rowDate}>{dt.getMonth() + 1}/{dt.getDate()}</Text>
+                      <Text style={styles.rowLen}>{r.length} 天</Text>
+                      <Text
+                        style={[
+                          styles.rowDev,
+                          late ? { color: mm.colors.roseDeep } : early ? { color: theme.colors.accentText } : { color: theme.colors.textSub },
+                        ]}
+                      >
+                        {late ? `晚 ${Math.round(dev)} 天` : early ? `早 ${Math.round(-dev)} 天` : '准时'}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              {data.recs.length > MAX_ROWS ? (
+                <Text style={styles.more}>
+                  仅显示最近 {MAX_ROWS} 个周期（共 {data.recs.length} 个）
+                </Text>
+              ) : null}
 
-          <Text style={styles.foot}>
-            正常周期 21–35 天；周期间波动大于 7 天通常视为不规律（ACOG）。「晚 / 早」是相对你自己的平均值，
-            不构成医学诊断。
-          </Text>
+              <Text style={styles.foot}>
+                正常周期 21–35 天；周期间波动大于 7 天通常视为不规律（ACOG）。「晚 / 早」是相对你自己的平均值，
+                不构成医学诊断。
+              </Text>
+            </>
+          ) : null}
         </>
       )}
     </View>
@@ -210,28 +226,33 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.emptyFill,
   },
   heroBadgeText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#fff' },
-  heroText: { flex: 1, fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.5, color: theme.colors.textBody },
+  // ★ 2026-10-09（menstrual-cycle-preview .regText 11.5px）：判读句用 xs 档
+  heroText: { flex: 1, fontSize: theme.fontSize.xs, lineHeight: theme.fontSize.xs * 1.5, color: theme.colors.textBody },
   // ② 主指标
   mainStat: { alignItems: 'center', gap: theme.sp(0.5), marginTop: theme.sp(0.5) },
-  mainValue: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.h1 },
+  // ★ 2026-10-09（menstrual-cycle-preview .regMain .v 32px）：主数值 32（fontSize.stat），不再用 h1 36
+  mainValue: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.stat },
   mainUnit: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginTop: -theme.sp(1) },
   mainLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   // ③ 次级指标
   subRow: { flexDirection: 'row', alignItems: 'flex-start' },
   subCol: { flex: 1, alignItems: 'center', gap: theme.sp(0.5) },
-  subValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
+  // ★ 2026-10-09（menstrual-cycle-preview .regSub .v 15px·700）
+  subValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   subLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   // ④ 区间条
   rangeBox: { gap: theme.sp(0.75), marginTop: theme.sp(0.5) },
   rangeTrack: {
     position: 'relative',
-    height: theme.sp(6),
+    height: theme.sp(5.5), // ★ 2026-10-09（.rangeBar 22px）
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.emptyFill,
     overflow: 'hidden',
   },
-  rangeNormal: { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(120,190,120,0.30)' },
-  rangeFill: { position: 'absolute', top: 0, bottom: 0, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSolid },
+  // ★ 2026-10-10（bar-design-unified-spec）：正常带 → limeSoft（旧绿 rgba(120,190,120) 已删除，不在五色板）；
+  //   填充 → roseCore（周期=粉，原 accentSolid 紫是认知色，越界）
+  rangeNormal: { position: 'absolute', top: 0, bottom: 0, backgroundColor: mm.colors.limeSoft },
+  rangeFill: { position: 'absolute', top: 0, bottom: 0, borderRadius: theme.radius.pill, backgroundColor: mm.colors.roseCore },
   rangeBandLabel: {
     position: 'absolute',
     alignSelf: 'center',
@@ -245,13 +266,41 @@ const styles = StyleSheet.create({
   rangeScale: { flexDirection: 'row', justifyContent: 'space-between' },
   rangeScaleText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   rangeNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  // ⑤ 逐周期明细
-  listTitle: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
-  list: { gap: theme.sp(1.5) },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
-  rowDate: { width: theme.sp(20), fontSize: theme.fontSize.micro, color: theme.colors.textBody },
+  // ⑤ 逐周期明细（★ 2026-10-09：mhRow 折叠头 + 描边分隔行，对齐 .mhRow/.cycRow）
+  mhRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.space.sm,
+  },
+  mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
+  mhChev: {
+    width: theme.sp(2),
+    height: theme.sp(2),
+    borderRightWidth: 1.6,
+    borderBottomWidth: 1.6,
+    borderColor: theme.colors.textSub,
+    transform: [{ rotate: '45deg' }],
+    marginRight: theme.sp(0.75),
+  },
+  mhChevOpen: { transform: [{ rotate: '-135deg' }] },
+  list: { gap: 0 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.xs,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.cardBorder,
+    paddingVertical: theme.sp(1.25),
+  },
+  rowDate: { width: theme.sp(14.5), fontSize: theme.fontSize.micro, color: theme.colors.textBody },
   rowLen: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textBody },
-  rowDev: { width: theme.sp(16), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  rowDev: { width: theme.sp(15), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   more: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   foot: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.6, color: theme.colors.textSub, opacity: 0.9 },
 });

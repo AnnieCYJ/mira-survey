@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { theme } from '../theme/theme';
 import { DEFAULT_MOOD, MOODS, type MoodIndex } from '../data/metrics';
 import { type CurveStatus } from '../lib/dailyStatus';
@@ -107,6 +108,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
 
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
   const halo = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
   // 轨道公转：整层绕中心缓慢旋转，让四个状态点像行星环绕
   const orbit = useRef(new Animated.Value(0)).current;
   const orbitRotate = orbit.interpolate({
@@ -115,6 +117,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   });
 
   useEffect(() => {
+    if (reducedMotion) { halo.setValue(0.45); orbit.setValue(0); return; }
     const ease = Easing.inOut(Easing.ease);
 
     // ★ 呼吸光晕走**原生驱动**：把「改圆的半径」改成「缩放一个固定半径的圆」——
@@ -153,7 +156,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       haloLoop.stop();
       orbitLoop.stop();
     };
-  }, [halo, orbit]);
+  }, [halo, orbit, reducedMotion]);
 
   // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散。
   // ★ 圆固定画在最大半径，用 scale 表达「呼吸」——映射与原实现等值：[ringR*0.45, ringR*1.6] → [0.28, 1]。

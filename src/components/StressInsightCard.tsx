@@ -9,12 +9,15 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 
 import {
   computeStressReport, levelText, formatPeakHour,
   type StressLevel, type StressEvent, type HourBucket, type ValenceLabel,
 } from '../lib/stressAlgorithm';
+import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 
 function valenceColor(label: ValenceLabel | null): string {
   switch (label) {
@@ -179,17 +182,18 @@ export function HourHistogram({ buckets, chartH }: { buckets: HourBucket[]; char
           const ratio = hasData ? Math.max(0.1, b.count / maxCount) : 0;
           const h = hasData ? Math.max(theme.sp(1), ratio * BAR_MAX_H) : 1;
           const intensity = b.maxSeverity;
+          // ★ 2026-10-10（bar-design-unified-spec 规则1/4/6）：压力=粉，三档 roseMid/Core/Deep；
+          //   空态 = emptyFill 2pt opacity1；透明度只剩 1（原 0.9/0.06 越界）
           const barColor =
-            intensity >= 70 ? theme.colors.danger :
-            intensity >= 40 ? theme.colors.stateTense :
-            intensity > 0 ? theme.colors.moodEnergy :
-            theme.colors.ui.white25;
+            intensity >= 70 ? mm.colors.roseDeep :
+            intensity >= 40 ? mm.colors.roseCore :
+            intensity > 0 ? mm.colors.roseMid :
+            mm.colors.emptyFill;
           return (
             <View key={b.hour} style={{
-              flex: 1, marginHorizontal: BAR_GAP, height: h,
+              flex: 1, marginHorizontal: BAR_GAP, height: hasData ? h : 2,
               backgroundColor: barColor,
-              opacity: hasData ? 0.9 : 0.06,
-              borderRadius: theme.sp(0.5),
+              borderRadius: chart.barRadius,
             }} />
           );
         })}
@@ -197,7 +201,7 @@ export function HourHistogram({ buckets, chartH }: { buckets: HourBucket[]; char
 
       {/* 时间轴刻度 00 / 06 / 12 / 18 / 24（末位 24 = 右缘，与认知图口径一致） */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5) }}>
-        {[0, 6, 12, 18, 24].map((h) => (
+        {DAY_HOUR_TICKS_COMPACT.map((h) => (
           <Text key={h} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
             {String(h).padStart(2, '0')}
           </Text>
@@ -206,9 +210,9 @@ export function HourHistogram({ buckets, chartH }: { buckets: HourBucket[]; char
 
       {/* 图例 */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: theme.sp(1.5) }}>
-        <Legend color={theme.colors.danger} label="高压 ≥70%" />
-        <Legend color={theme.colors.stateTense} label="中压 ≥40%" />
-        <Legend color={theme.colors.moodEnergy} label="低压" />
+        <Legend color={mm.colors.roseDeep} label="高压 ≥70%" />
+        <Legend color={mm.colors.roseCore} label="中压 ≥40%" />
+        <Legend color={mm.colors.roseMid} label="低压" />
       </View>
 
 

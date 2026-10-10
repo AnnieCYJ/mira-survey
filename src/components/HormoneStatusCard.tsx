@@ -279,8 +279,9 @@ const styles = StyleSheet.create({
   statusChip: { paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill },
   statusText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
 
-  scoreBar: { flexDirection: 'row', height: 6, backgroundColor: 'rgba(124,106,224,0.1)', borderRadius: 3, overflow: 'hidden', marginTop: theme.sp(0.5) },
-  scoreFill: { height: 6, borderRadius: 3 },
+  // ★ 2026-10-10（bar-design-unified-spec 规则2）：横条高 ≤10pt 一律 pill（原 3 = 半个条高）
+  scoreBar: { flexDirection: 'row', height: 6, backgroundColor: 'rgba(124,106,224,0.1)', borderRadius: theme.radius.pill, overflow: 'hidden', marginTop: theme.sp(0.5) },
+  scoreFill: { height: 6, borderRadius: theme.radius.pill },
   scoreNum: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.sp(1), gap: theme.sp(1) },

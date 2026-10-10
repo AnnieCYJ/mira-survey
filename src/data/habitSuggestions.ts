@@ -86,25 +86,42 @@ function normalize(j: any): HabitFile {
   return out;
 }
 
-/** 读取全部（首次读盘后常驻内存，避免每次进页面都读文件）。 */
-export async function loadHabits(): Promise<HabitFile> {
-  if (mem) return mem;
-  try {
-    const info = await FileSystem.getInfoAsync(PATH);
-    mem = info.exists ? normalize(JSON.parse(await FileSystem.readAsStringAsync(PATH))) : emptyFile();
-  } catch {
-    mem = emptyFile();
+let loading: Promise<HabitFile> | null = null;
+let writes: Promise<void> = Promise.resolve();
+
+function readHabits(): Promise<HabitFile> {
+  if (mem) return Promise.resolve(mem);
+  if (!loading) {
+    loading = (async () => {
+      const info = await FileSystem.getInfoAsync(PATH);
+      const file = info.exists ? normalize(JSON.parse(await FileSystem.readAsStringAsync(PATH))) : emptyFile();
+      mem = file;
+      return file;
+    })().finally(() => { loading = null; });
   }
-  return mem;
+  return loading;
 }
 
-async function persist(): Promise<void> {
-  if (!mem) return;
-  try {
-    await FileSystem.writeAsStringAsync(PATH, JSON.stringify(mem));
-  } catch {
-    /* 写盘失败静默：绝不阻塞 App */
-  }
+/** A failed read is a temporary empty view, never a replacement for stored habits. */
+export async function loadHabits(): Promise<HabitFile> {
+  try { return await readHabits(); } catch { return emptyFile(); }
+}
+
+/** Publish memory only after a successful, serialized write. Failed writes can be retried. */
+function updateHabits<T>(change: (file: HabitFile) => T): Promise<T> {
+  const update = writes.then(async () => {
+    const previous = await readHabits();
+    const next: HabitFile = {
+      habits: previous.habits.map(habit => ({ ...habit })),
+      dismissed: { ...previous.dismissed },
+    };
+    const result = change(next);
+    await FileSystem.writeAsStringAsync(PATH, JSON.stringify(next));
+    mem = next;
+    return result;
+  });
+  writes = update.then(() => {}, () => {});
+  return update;
 }
 
 /**
@@ -129,51 +146,47 @@ export async function keepHabit(input: {
   cta?: { screen: string; params?: Record<string, any> };
   kind?: 'action' | 'reflection';
 }): Promise<HabitEntry> {
-  const f = await loadHabits();
-  const now = Date.now();
-  const exist = f.habits.find((h) => h.id === input.id);
-  let entry: HabitEntry;
-  if (exist) {
-    exist.count += 1;
-    if (input.action !== undefined) exist.action = input.action || exist.action;
-    if (input.metric !== undefined) exist.metric = input.metric || exist.metric;
-    if (input.headline !== undefined) exist.headline = input.headline;
-    if (input.cta) exist.cta = input.cta;
-    if (input.kind) exist.kind = input.kind;
-    exist.lastAt = now;
-    entry = exist;
-  } else {
-    entry = {
-      id: input.id,
-      action: input.action ?? '',
-      metric: input.metric ?? '',
-      headline: input.headline,
-      cta: input.cta,
-      kind: input.kind,
-      count: 1,
-      firstAt: now,
-      lastAt: now,
-    };
-    f.habits.push(entry);
-  }
-  // 确认即撤销冷却：用户改主意时不该还被「负反馈」压着
-  delete f.dismissed[input.id];
-  await persist();
-  return entry;
+  return updateHabits(f => {
+    const now = Date.now();
+    const exist = f.habits.find((h) => h.id === input.id);
+    let entry: HabitEntry;
+    if (exist) {
+      exist.count += 1;
+      if (input.action !== undefined) exist.action = input.action || exist.action;
+      if (input.metric !== undefined) exist.metric = input.metric || exist.metric;
+      if (input.headline !== undefined) exist.headline = input.headline;
+      if (input.cta) exist.cta = input.cta;
+      if (input.kind) exist.kind = input.kind;
+      exist.lastAt = now;
+      entry = exist;
+    } else {
+      entry = {
+        id: input.id,
+        action: input.action ?? '',
+        metric: input.metric ?? '',
+        headline: input.headline,
+        cta: input.cta,
+        kind: input.kind,
+        count: 1,
+        firstAt: now,
+        lastAt: now,
+      };
+      f.habits.push(entry);
+    }
+    // 确认即撤销冷却：用户改主意时不该还被「负反馈」压着
+    delete f.dismissed[input.id];
+    return entry;
+  });
 }
 
 /** 撤销「留下」（误点 / 改主意）：移出清单。 */
 export async function undoHabit(id: string): Promise<void> {
-  const f = await loadHabits();
-  f.habits = f.habits.filter((h) => h.id !== id);
-  await persist();
+  await updateHabits(f => { f.habits = f.habits.filter(h => h.id !== id); });
 }
 
 /** 负反馈：记录「没啥感觉 / ✕」，该建议进入 30 天冷却。 */
 export async function dismissSuggestion(id: string): Promise<void> {
-  const f = await loadHabits();
-  f.dismissed[id] = Date.now();
-  await persist();
+  await updateHabits(f => { f.dismissed[id] = Date.now(); });
 }
 
 /** 是否在冷却期内（30 天内被否过）。 */

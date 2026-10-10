@@ -71,7 +71,7 @@ export default function App() {
         locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={styles.gradient}
       >
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
         <SafeAreaProvider>
           <AppStateProvider>
             <NavigationContainer theme={navTheme}>

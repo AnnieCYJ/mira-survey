@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>洞察页入口卡片 · 统一设计预览</title>
+<style>
+  :root{
+    --bg:#F5F4F1; --card:#FFFFFF; --line:rgba(31,29,26,0.09); --soft:#FAFAF8;
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --skyTint:#F0F4FE; --skySoft:#E3EBFE; --skyMid:#B9CCF9; --skyCore:#7EA6F8; --skyDeep:#4C74C9;
+    --ecgRed:#E5484D; --ecgRedSoft:rgba(229,72,77,0.14);
+    --limeFrom:#D5E384; --limeTo:#F6B3D0; --btnInk:#5F6B1F;
+    --ok:#2E9E5B; --okSoft:#E6F5EC;
+    --t-fade:160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink);padding:28px 16px 60px}
+  .wrap{max-width:440px;margin:0 auto}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px}
+  .sub{font-size:13px;color:var(--inkSoft);margin:0 0 22px;line-height:1.6}
+  .note{font-size:12px;color:var(--inkFaint);background:var(--soft);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;margin:0 0 22px;line-height:1.6}
+  .secTitle{font-size:13px;font-weight:600;color:var(--inkSoft);margin:26px 0 12px;
+    display:flex;align-items:center;gap:6px}
+  .secTitle::before{content:"";width:3px;height:13px;background:var(--skyCore);border-radius:2px}
+
+  /* 手机外框 */
+  .phone{background:#fff;border:1px solid var(--line);border-radius:26px;padding:14px;
+    box-shadow:0 6px 24px rgba(31,29,26,.08)}
+  .stack{display:flex;flex-direction:column;gap:12px}
+
+  /* ════ 统一入口卡片 ════ */
+  .ucard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px 16px}
+  .ucTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .ucId{display:flex;align-items:center;gap:9px;min-width:0}
+  .ic{width:26px;height:26px;border-radius:9px;background:var(--skySoft);
+    display:flex;align-items:center;justify-content:center;color:var(--skyDeep);flex:0 0 auto}
+  .ic svg{width:15px;height:15px}
+  .ucName{font-size:14px;font-weight:600;color:var(--ink)}
+  .ucTime{font-size:11px;color:var(--inkFaint);flex:0 0 auto;margin-left:8px}
+  /* 状态 pill（替代旧的时间文字，统一信号层级） */
+  .pill{font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px}
+  .pillLive{background:var(--okSoft);color:var(--ok)}
+  .pillOff{background:rgba(31,29,26,.06);color:var(--inkFaint)}
+
+  .ucVal{font-size:24px;font-weight:600;color:var(--ink);line-height:1}
+  .ucUnit{font-size:13px;color:var(--inkSoft);margin-left:5px;font-weight:400}
+  .ucRange{font-size:11px;color:var(--skyDeep);font-weight:600;margin-top:3px}
+
+  /* 血压：双行 */
+  .bpRows{margin-top:10px;border-top:1px solid var(--line);padding-top:9px;display:flex;flex-direction:column;gap:7px}
+  .bpRow{display:flex;align-items:center;justify-content:space-between}
+  .bpLab{font-size:12px;color:var(--inkSoft)}
+  .bpNum{font-size:17px;font-weight:600}
+  .bpSys{color:var(--skyCore)} .bpDia{color:var(--skyMid)}
+
+  /* 血氧：迷你趋势 */
+  .mini{margin-top:10px;height:46px}
+  .mini svg{width:100%;height:100%;display:block}
+
+  /* 心电：波形 + 3 指标 */
+  .ecgWave{margin-top:8px;height:42px;background:var(--skyTint);border-radius:10px;
+    display:flex;align-items:center;padding:0 6px;overflow:hidden}
+  .ecgWave svg{width:100%;height:34px}
+  .ecgGrid{display:flex;gap:8px;margin-top:10px}
+  .ecgCell{flex:1;background:var(--soft);border-radius:9px;padding:8px 4px;text-align:center}
+  .ecgCell .k{font-size:10.5px;color:var(--inkSoft)}
+  .ecgCell .v{font-size:15px;font-weight:600;color:var(--ink);margin-top:2px}
+  .ecgCell .u{font-size:10px;color:var(--inkFaint)}
+
+  /* 测量按钮（全 App 统一渐变） */
+  .btn{margin-top:11px;border-radius:12px;overflow:hidden;
+    background:linear-gradient(135deg,var(--limeFrom),var(--limeTo))}
+  .btnTxt{display:block;text-align:center;padding:10px;font-size:13px;font-weight:600;color:var(--btnInk)}
+
+  /* ════ 统一底部入口（关键：点卡片进趋势图） ════ */
+  .enter{display:flex;align-items:center;justify-content:space-between;margin-top:13px;
+    padding-top:11px;border-top:1px solid var(--line)}
+  .enterTxt{font-size:12px;font-weight:600;color:var(--skyDeep)}
+  .enterArr{font-size:13px;color:var(--skyCore)}
+  /* 心电 = 专业红（唯一用红的模块；波形/图标/入口/按钮同源） */
+  .ecg .ic{color:var(--ecgRed);background:var(--ecgRedSoft)}
+  .ecg .ecgWave{background:var(--ecgRedSoft)}
+  .ecg .ecgWave path{stroke:var(--ecgRed)}
+  .ecg .enterTxt{color:var(--ecgRed)}
+  .ecg .enterArr{color:var(--ecgRed)}
+  .ecg .btn{background:var(--ecgRed)}
+
+  /* 血氧改色前后对比 */
+  .cmp{display:flex;gap:12px}
+  .cmp>div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .cmp h4{margin:0 0 8px;font-size:12px;font-weight:600}
+  .cmp .old{color:var(--inkFaint)} .cmp .new{color:var(--skyDeep)}
+  .legend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--inkSoft);margin-top:6px}
+  .sw{width:12px;height:12px;border-radius:3px}
+  .oldLine{color:#C8A2D8}
+
+  /* 规范表 */
+  .spec{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:8px}
+  .spec table{width:100%;border-collapse:collapse;font-size:12px}
+  .spec th,.spec td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  .spec th{color:var(--inkSoft);font-weight:600;width:96px}
+  .spec td{color:var(--ink)}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:11px}
+
+  .mhRow{margin-top:14px;display:flex;align-items:center;justify-content:space-between;
+    background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+  .mhRow .lab{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhRow .ar{font-size:12px;color:var(--inkSoft);transition:transform var(--t-fade)}
+  .mhRow.open .ar{transform:rotate(180deg)}
+  .mhBody{margin-top:4px;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>洞察页入口卡片 · 统一设计预览</h1>
+  <p class="sub">血压 / 血氧 / 心电 三张入口卡，统一外壳、统一头部、统一蓝色家族、统一「查看趋势图 ›」入口。点卡片即进入对应的日/周/月/年趋势详情页。</p>
+  <div class="note">说明：「激素/技术指标」那块你说的是<strong>首页圆环下的「全天状态趋势图」</strong>（即 StatusTrend 详情页），它已是统一系统的参照模板，本次不改它。本次只统一洞察页里 血压 / 血氧 / 心电 这三张<strong>点进去才是趋势图</strong>的入口卡。</div>
+
+  <div class="secTitle">统一后 · 三张卡片（手机视图）</div>
+  <div class="phone"><div class="stack">
+
+    <!-- ① 血压 -->
+    <div class="ucard">
+      <div class="ucTop">
+        <div class="ucId">
+          <span class="ic"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 21s-7-4.5-9.5-9C1 9 2.5 5.5 6 5.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 16.5 12 21 12 21z"/></svg></span>
+          <span class="ucName">血压</span>
+        </div>
+        <span class="pill pillLive">实时</span>
+      </div>
+      <div class="ucVal">118<span class="ucUnit">/ 76 mmHg</span></div>
+      <div class="ucRange">正常 &lt;120 / &lt;80</div>
+      <div class="bpRows">
+        <div class="bpRow"><span class="bpLab">收缩压</span><span class="bpNum bpSys">118</span></div>
+        <div class="bpRow"><span class="bpLab">舒张压</span><span class="bpNum bpDia">76</span></div>
+      </div>
+      <div class="enter"><span class="enterTxt">查看趋势图</span><span class="enterArr">›</span></div>
+    </div>
+
+    <!-- ② 血氧 -->
+    <div class="ucard">
+      <div class="ucTop">
+        <div class="ucId">
+          <span class="ic"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg></span>
+          <span class="ucName">血氧</span>
+        </div>
+        <span class="pill pillLive">实时</span>
+      </div>
+      <div class="ucVal">98<span class="ucUnit">%</span></div>
+      <div class="ucRange">正常 95–100</div>
+      <div class="mini">
+        <svg viewBox="0 0 300 46" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="spG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.02"/>
+            </linearGradient>
+          </defs>
+          <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24 L300 46 L0 46 Z" fill="url(#spG)"/>
+          <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24" fill="none" stroke="#7EA6F8" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="enter"><span class="enterTxt">查看趋势图</span><span class="enterArr">›</span></div>
+    </div>
+
+    <!-- ③ 心电 -->
+    <div class="ucard ecg">
+      <div class="ucTop">
+        <div class="ucId">
+          <span class="ic"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2 12h5l2-6 4 12 3-9 2 3h4"/></svg></span>
+          <span class="ucName">心电图 ECG</span>
+        </div>
+        <span class="pill pillLive">已测</span>
+      </div>
+      <div class="ecgWave">
+        <svg viewBox="0 0 300 40" preserveAspectRatio="none">
+          <path d="M0 28 L40 28 L48 28 L54 20 L60 34 L66 10 L72 30 L80 28 L120 28 L128 28 L134 20 L140 34 L146 10 L152 30 L160 28 L210 28 L218 28 L224 20 L230 34 L236 10 L242 30 L250 28 L300 28"
+            fill="none" stroke="#7EA6F8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="ecgGrid">
+        <div class="ecgCell"><div class="k">心率</div><div class="v">72</div><div class="u">bpm</div></div>
+        <div class="ecgCell"><div class="k">HRV</div><div class="v">58</div><div class="u">ms</div></div>
+        <div class="ecgCell"><div class="k">呼吸</div><div class="v">15</div><div class="u">次/分</div></div>
+      </div>
+      <div class="btn"><span class="btnTxt">重新测量</span></div>
+      <div class="enter"><span class="enterTxt">查看趋势图</span><span class="enterArr">›</span></div>
+    </div>
+
+  </div></div>
+
+  <div class="secTitle">血氧改色修复 · 改前 vs 改后</div>
+  <div class="cmp">
+    <div>
+      <h4 class="old">改前（哈希随机色）</h4>
+      <svg viewBox="0 0 280 46" preserveAspectRatio="none" style="width:100%;height:46px">
+        <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24 L280 46 L0 46 Z" fill="#C8A2D8" fill-opacity="0.18"/>
+        <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24" fill="none" stroke="#C8A2D8" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <div class="legend"><span class="sw" style="background:#C8A2D8"></span><span class="oldLine">紫色（spo2 哈希命中粉/紫家族）</span></div>
+    </div>
+    <div>
+      <h4 class="new">改后（统一 sky 蓝）</h4>
+      <svg viewBox="0 0 280 46" preserveAspectRatio="none" style="width:100%;height:46px">
+        <defs><linearGradient id="spG2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7EA6F8" stop-opacity="0.30"/><stop offset="100%" stop-color="#7EA6F8" stop-opacity="0.02"/></linearGradient></defs>
+        <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24 L280 46 L0 46 Z" fill="url(#spG2)"/>
+        <path d="M0 26 C 18 26 26 24 40 25 C 60 26 70 22 90 24 C 120 26 140 20 170 23 C 200 25 220 19 250 22 C 280 24 290 23 300 24" fill="none" stroke="#7EA6F8" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <div class="legend"><span class="sw" style="background:#7EA6F8"></span><span>skyCore #7EA6F8（与血压同源；心电已独立为专业红）</span></div>
+    </div>
+  </div>
+
+  <div class="secTitle">统一卡片 · 设计规范</div>
+  <div class="spec">
+    <table>
+      <tr><th>卡片外壳</th><td>白底 <code>#FFFFFF</code> · 圆角 <code>18px</code> · <code>1px</code> 描边 <code>rgba(31,29,26,.09)</code> · padding 15–16px</td></tr>
+      <tr><th>头部</th><td>左侧 = 26px 圆角图标方（<span class="swatch" style="background:#E3EBFE"></span>skySoft 底 + <span class="swatch" style="background:#4C74C9"></span>skyDeep 图标）+ 名称（14px/600）；右侧 = 状态 pill（实时/已测/待接入）</td></tr>
+      <tr><th>主数值</th><td>24px/600 黑字 + 单位（13px/soft）；下方一行范围提示用 <span class="swatch" style="background:#4C74C9"></span>skyDeep</td></tr>
+      <tr><th>配色铁律</th><td>血压 / 血氧 归<strong>蓝（sky）家族</strong>：血压 收缩 skyCore、舒张 skyMid；血氧趋势线强制 skyCore（修掉哈希随机色）。<strong>心电是唯一用红的模块</strong>——波形 / 图标 / 入口 / 按钮全部 <span class="swatch" style="background:#E5484D"></span>ecgRed #E5484D（专业心电惯例，线必为红，与 anomaly 异常红 #E2554E 解耦）</td></tr>
+      <tr><th>心电专属</th><td>迷你波形 + 心率/HRV/呼吸 三格 + 「重新测量」按钮（全 App 统一渐变 <span class="swatch" style="background:#D5E384"></span>→<span class="swatch" style="background:#F6B3D0"></span>，字 <span class="swatch" style="background:#5F6B1F"></span>）</td></tr>
+      <tr><th>底部入口</th><td>全卡统一「查看趋势图 ›」行（<span class="swatch" style="background:#4C74C9"></span>skyDeep 字 + <span class="swatch" style="background:#7EA6F8"></span>skyCore 箭头），点卡片进日/周/月/年趋势详情</td></tr>
+      <tr><th>空态</th><td>无数据 → 图标 + 名称 + 「点击查看」+ 底部「查看趋势图 ›」保持不变，不显示数值</td></tr>
+    </table>
+  </div>
+
+  <div class="mhRow" onclick="toggleMH(this)"><span class="lab">展开 · App 组件落地对照</span><span class="ar">▾</span></div>
+  <div class="mhBody" style="display:none">
+    <div class="spec">
+      <table>
+        <tr><th>血压</th><td><code>BpCard.tsx</code>：头部加图标方+状态 pill；收缩/舒张两行保留（蓝）；底部加「查看趋势图 ›」</td></tr>
+        <tr><th>血氧</th><td><code>BasicMetricCard</code> 的 compact 分支：趋势线色由 <code>trendColorFor(key)</code> 改为固定 <code>skyCore</code>；头部已含图标方，仅统一状态 pill 文案</td></tr>
+        <tr><th>心电</th><td><code>EcgCard.tsx</code>：头部加图标方（替换纯文字标题）；波形/三格/测量按钮保留；底部加「查看趋势图 ›」</td></tr>
+        <tr><th>落地顺序</th><td>预览定稿 → 改三组件 → <code>tsc</code> 校验（基线 42 零新增）→ 真机杀 App 重开验证</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleMH(btn){const n=btn.nextElementSibling;const open=n.style.display!=='none';n.style.display=open?'none':'block';btn.classList.toggle('open',!open);}
+</script>
+</body>
+</html>

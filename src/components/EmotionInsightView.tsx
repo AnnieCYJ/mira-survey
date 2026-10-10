@@ -11,10 +11,11 @@
  * 模块「开口式分区」渲染（无灰底盒子），情绪分布作为本页重点，做成最大「全天情绪点阵(24×4)」。
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
 import Card from './Card';
 import {
   computeStressReport,
@@ -95,6 +96,32 @@ const MOOD_LABELS: { c: string; t: string }[] = [
 const colorToLabel = (c: string): string =>
   (MOOD_LABELS.find((m) => m.c === c)?.t) ?? '平静';
 
+/**
+ * ★ 2026-10-09（psychological-stress-preview .dots / MOOD 表）：**点阵专用配色**。
+ *   与堆叠柱（EmotionRangeBars）那套不同 —— 稿里点阵是
+ *   平静 #BCCB62(黄绿) / 愉悦·兴奋 #F0C46E(黄) / 压力·焦虑 #F2A3C6(粉) / 疲惫 #7EA6F8(蓝)
+ *   / 睡眠 #EAE7E2 / 无记录 #BDB7AE。
+ */
+const DOT_BY_MOOD: Record<string, string> = {
+  [COL_CALM]: '#BCCB62',
+  [COL_PLEASANT]: '#F0C46E',
+  [COL_EXCITED]: '#F0C46E',
+  [COL_STRESSED]: '#F2A3C6',
+  [COL_ANXIOUS]: '#F2A3C6',
+};
+const DOT_EMPTY = '#BDB7AE';
+const DOT_SLEEP = '#EAE7E2';
+/** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
+const DOT_LEGEND: { c: string; t: string }[] = [
+  { c: '#BCCB62', t: '平静' },
+  { c: '#F0C46E', t: '愉悦/兴奋' },
+  { c: '#F2A3C6', t: '压力/焦虑' },
+  { c: '#7EA6F8', t: '疲惫' },
+  { c: DOT_SLEEP, t: '睡眠' },
+  { c: DOT_EMPTY, t: '无记录' },
+];
+const dotColorOf = (e: any): string => DOT_BY_MOOD[moodColor(e)] ?? DOT_EMPTY;
+
 /** 5 档情绪 → emoji（HERO 展示用；无记录时用中性符号，绝不假装有主情绪） */
 const MOOD_EMOJI: Record<string, string> = {
   [COL_EXCITED]: '😆',
@@ -122,7 +149,8 @@ export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
   const slotColor = (evs: any[]): string | null => {
     if (!evs.length) return null;
     const neg = evs.find((e) => { const c = moodColor(e); return c === COL_ANXIOUS || c === COL_STRESSED; });
-    return moodColor(neg ?? evs[0]);
+    // ★ 点阵用点阵配色（不是堆叠柱那套）
+    return dotColorOf(neg ?? evs[0]);
   };
   const section = (hours: number[], labels: number[]) => (
     <View key={hours[0]} style={styles.hmSection}>
@@ -262,9 +290,27 @@ function selfEntryToEvent(e: EmotionEntry): StressEvent {
  * 可选 anchorMs：传则展示该「锚定日」的全天（历史日 23:59:59.999，今天=此刻）。
  * ★ 数据 = EDA 采样事件 + 用户手动心情记录（emotionLog，写入即经事件总线刷新）。
  */
-export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } = {}) {
+export default function EmotionInsightView({
+  anchorMs,
+  variant = 'both',
+}: {
+  anchorMs?: number;
+  /**
+   * ★ 2026-10-09（psychological-stress-preview）：情绪详情页分 **两个 tab**——
+   *   'stress' = 心理压力（全天趋势 + 图例 + 详细数据）；'emotion' = 情绪记录（点阵 + 今日记录 + 节律）。
+   *   洞察页不传 → 'both'（两块都显示，行为与原来一致）。
+   */
+  variant?: 'both' | 'stress' | 'emotion';
+} = {}) {
   const dk = dayKey(anchorMs ?? Date.now());
+  const showStress = variant !== 'emotion';
+  const showEmotion = variant !== 'stress';
   const [selfEntries, setSelfEntries] = useState<EmotionEntry[]>([]);
+  // ★ 2026-10-09（psychological-stress-preview）：趋势图下方「详细数据」折叠，默认收起
+  const [stressOpen, setStressOpen] = useState(false);
+  // ★ 2026-10-10（用户）：详情页日视图趋势与周/月/年（StressRangeView，L 档 240）等高 ——
+  //   心理压力主趋势统一 **L 档（240）**，不再用 M 档 180（chart-size-unified-spec：详情页主趋势 = L）
+  const chartH = chart.h.l;
 
   // 载入手动记录 + 订阅变更（「记录此刻心情」写入后 emit → 点阵/节律卡即时刷新）
   useEffect(() => {
@@ -304,7 +350,9 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   const hasData = report.sampleCount >= 5 || allEvents.length > 0;
 
   // ★ v18.106：无数据 ≠ 只丢一行小字（用户口径：「什么占位都没有就没了」）。
-  //   保留「空图表骨架」（点阵空槽网格）+ 两个结论瓷片写「—」+ 一行说明。
+  //   ★ 2026-10-10（用户）：空态也必须遵守 variant 分流 ——
+  //     心理压力 tab 只放全天趋势（空骨架），情绪记录 tab 只放点阵 + 节律；
+  //     不允许空态把两个 tab 的内容全塞进一张卡。
   if (!hasData) {
     return (
       <Card padded={false}>
@@ -313,15 +361,23 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
           <Text style={styles.emptyText}>
             还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
           </Text>
-          <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-          <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={280} sleepWindow={sleepWindow} />
-          <SectionTitle>全天情绪点阵</SectionTitle>
-          <MoodDotMatrix events={[]} />
-          <SectionTitle>情绪节律</SectionTitle>
-          <View style={styles.hmCardsRow}>
-            <SummaryTile icon="clock" label="情绪高峰" value="—" sub="消极最集中" valueColor={theme.colors.textSub} />
-            <SummaryTile icon="moon" label="情绪低谷" value="—" sub="情绪最舒缓" valueColor={theme.colors.textSub} />
-          </View>
+          {showStress && (
+            <>
+              <SectionTitle>心理压力 · 全天趋势</SectionTitle>
+              <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={chartH} sleepWindow={sleepWindow} />
+            </>
+          )}
+          {showEmotion && (
+            <>
+              <SectionTitle>全天情绪点阵</SectionTitle>
+              <MoodDotMatrix events={[]} />
+              <SectionTitle>情绪节律</SectionTitle>
+              <View style={styles.hmCardsRow}>
+                <SummaryTile icon="clock" label="情绪高峰" value="—" sub="消极最集中" valueColor={theme.colors.textSub} />
+                <SummaryTile icon="moon" label="情绪低谷" value="—" sub="情绪最舒缓" valueColor={theme.colors.textSub} />
+              </View>
+            </>
+          )}
         </View>
       </Card>
     );
@@ -362,13 +418,75 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
   return (
     <Card padded={false}>
       <View style={styles.pad}>
-        {/* 心理压力 · 全天趋势（★ 折线，与首页心理压力大数字同源） */}
+        {/* Tab「心理压力」：全天趋势（★ 折线，与首页心理压力大数字同源）
+            ★ 2026-10-09（psychological-stress-preview）：补三档图例 + 轴说明 + 「详细数据」折叠 */}
+        {showStress ? (
+          <>
         <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={280} sleepWindow={sleepWindow} />
+        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={chartH} sleepWindow={sleepWindow} />
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.danger }]} />
+            <Text style={styles.legendText}>高压力</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.warn }]} />
+            <Text style={styles.legendText}>中压力</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
+            <Text style={styles.legendText}>低压力</Text>
+          </View>
+        </View>
+        <Text style={styles.axisNote}>
+          纵轴 = 心理压力 0–100（越高越紧张，50 = 个人基线）· 横轴 = 一天 24h · 夜间为睡眠，不展示压力数据
+        </Text>
+        <TouchableOpacity
+          style={styles.mhRow}
+          activeOpacity={0.7}
+          onPress={() => setStressOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={stressOpen ? '收起详细数据' : '展开详细数据'}
+        >
+          <Text style={styles.mhLabel}>详细数据</Text>
+          <View style={[styles.mhChev, stressOpen && styles.mhChevOpen]} />
+        </TouchableOpacity>
+        {stressOpen ? (
+          <View style={styles.rowsBox}>
+            <View style={styles.rowItem}>
+              <Text style={styles.rowK}>压力事件次数</Text>
+              <Text style={styles.rowV}>
+                {eventCount}
+                <Text style={styles.rowVSmall}>次</Text>
+              </Text>
+            </View>
+            <View style={[styles.rowItem, styles.rowItemLast]}>
+              <Text style={styles.rowK}>峰值时段</Text>
+              <Text style={styles.rowV}>{peakRange}</Text>
+            </View>
+          </View>
+        ) : null}
+          </>
+        ) : null}
 
+        {/* Tab「情绪记录」：心情点阵 + 今日自报 + 情绪节律 */}
+        {showEmotion ? (
+          <>
         {/* 全天情绪点阵（上 0–12 / 下 12–24） */}
         <SectionTitle>全天情绪点阵</SectionTitle>
         <MoodDotMatrix events={allEvents} />
+        {/* ★ 2026-10-09（稿 .dotsCap）：点阵图例 + 口径说明 */}
+        <View style={styles.dotLegend}>
+          {DOT_LEGEND.map((m) => (
+            <View key={m.t} style={styles.dotLegendItem}>
+              <View style={[styles.dotLegendDot, { backgroundColor: m.c }]} />
+              <Text style={styles.dotLegendText}>{m.t}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={styles.dotsCap}>
+          每行 24 颗 = 一天（每颗 15 分钟），共 4 行。颜色即该时段心情。情绪为自报，Mira 不做情绪推断。
+        </Text>
         {selfEvents.length > 0 && (
           <>
             <Text style={styles.hint}>含手动心情记录 {selfEvents.length} 条（按记录时刻落在对应时段）</Text>
@@ -394,6 +512,8 @@ export default function EmotionInsightView({ anchorMs }: { anchorMs?: number } =
             情绪随周期波动属正常节律 · 周期为推算（日历 + 体温），不构成诊断。
           </Text>
         </View>
+          </>
+        ) : null}
       </View>
     </Card>
   );
@@ -437,9 +557,37 @@ const styles = StyleSheet.create({
   // 全天情绪点阵容器
   matrixWrap: { width: '100%' },
   matrixLegend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: theme.sp(2.5), gap: theme.space.sm },
+  legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(2), gap: theme.space.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) },
   legendDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25) },
-  legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  // ★ 2026-10-09（psychological-stress-preview .legend 11px）
+  legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 2026-10-09（psychological-stress-preview 新增）：轴说明 + 统一折叠头 + 行式明细
+  axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },
+  mhRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.space.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+  },
+  mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
+  mhChev: {
+    width: theme.sp(2), height: theme.sp(2),
+    borderRightWidth: 1.6, borderBottomWidth: 1.6, borderColor: theme.colors.textSub,
+    transform: [{ rotate: '45deg' }], marginRight: theme.sp(0.75),
+  },
+  mhChevOpen: { transform: [{ rotate: '-135deg' }] },
+  rowsBox: { marginTop: theme.sp(1.5) },
+  rowItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: theme.sp(2.25), borderBottomWidth: 1, borderBottomColor: theme.colors.ui.borderSoft,
+  },
+  rowItemLast: { borderBottomWidth: 0 },
+  rowK: { fontSize: theme.fontSize.xs, color: theme.colors.textInk },
+  rowV: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, color: theme.colors.textInk },
+  rowVSmall: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular as any, color: theme.colors.textSub, marginLeft: theme.sp(1) },
 
   // 全天情绪点阵：上 0–12 / 下 12–24 两段，每段 12 列(小时) × 4 行(15 分钟)
   hmSection: { marginBottom: theme.sp(2) },
@@ -447,7 +595,15 @@ const styles = StyleSheet.create({
   hmCol: { flex: 1, flexDirection: 'column' },
   hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
   hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
-  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'rgba(0,0,0,0.06)' },
+  // ★ 2026-10-09（稿 .dots 无记录色 #BDB7AE）
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: DOT_EMPTY },
+  // ★ 点阵图例（与格子同色）
+  dotLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(2) },
+  dotLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
+  dotLegendDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(1.25) },
+  dotLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 稿 .dotsCap 10.5px
+  dotsCap: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.fontSize.micro * 1.5 },
   hmAxis: { flex: 1, flexDirection: 'row', marginTop: theme.sp(0.5) },
   hmAxisText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 
@@ -471,16 +627,18 @@ const styles = StyleSheet.create({
   // 情绪高峰 / 低谷 双卡行
   hmCardsRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(1.5) },
 
-  // 兼容 EnergyDetailScreen 的 StatCell（维持原样）
+  // ★ 2026-10-09（psychological-stress-preview .statRow .tile）：与 EnergyDetailScreen 同为
+  //   无底色描边小格（radius 11 / 标签 11px / 值 15px·650）
   statCell: {
     flex: 1, alignItems: 'center',
-    paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1),
-    borderRadius: theme.radius.sm, backgroundColor: theme.colors.cardBgSoft, marginHorizontal: theme.sp(0.5),
+    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.sp(2.5),
+    borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    backgroundColor: 'transparent',
   },
-  statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
+  statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
   statValue: {
-    fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any,
-    color: theme.colors.textTitle, lineHeight: theme.fontSize.card * 1.2, textAlign: 'center',
+    fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any,
+    color: theme.colors.textTitle, lineHeight: theme.fontSize.body * 1.2, textAlign: 'center',
   },
   statSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 

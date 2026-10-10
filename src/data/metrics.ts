@@ -1,4 +1,5 @@
 // v16 五色系统：平静=黄绿mid（青退场）/ 元气=紫core（专注）/ 紧张=黄core / 疲惫=蓝core
+import { DAY_HOUR_TICKS, WEEK_ORDER, MONTH_TICK_DAYS, YEAR_TICK_MONTHS } from '../lib/chartAxis';
 export const STATE_COLOR = {
   calm: '#BCCB62',
   energy: '#9D8AF0',
@@ -443,11 +444,12 @@ export function signalsForDimension(dim: 'basics' | MetricKey): BasicMetricDef[]
 
 export type RangeKey = 'day' | 'week' | 'month' | 'year';
 
+/** 横轴刻度统一来自 lib/chartAxis（全 App 单一事实来源），此处只挂 n / label。 */
 export const RANGE_DEF: Record<RangeKey, { label: string; n: number; axis: string[] }> = {
-  day: { label: '日', n: 24, axis: ['0', '4', '8', '12', '16', '20', '24'] },
-  week: { label: '周', n: 7, axis: ['一', '二', '三', '四', '五', '六', '日'] },
-  month: { label: '月', n: 30, axis: ['1', '5', '10', '15', '20', '25', '30'] },
-  year: { label: '年', n: 12, axis: ['1月', '3月', '5月', '7月', '9月', '11月'] },
+  day: { label: '日', n: 24, axis: DAY_HOUR_TICKS.map((h) => String(h)) },
+  week: { label: '周', n: 7, axis: [...WEEK_ORDER] },
+  month: { label: '月', n: 30, axis: MONTH_TICK_DAYS.map((d) => String(d)) },
+  year: { label: '年', n: 12, axis: YEAR_TICK_MONTHS.map((m) => `${m}月`) },
 };
 
 export interface SeriesParam {

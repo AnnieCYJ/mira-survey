@@ -270,7 +270,9 @@ export default function CortisolDailyChart({
           <Text style={styles.title}>{title}</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
         </View>
-        {/* ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：flat=详情页 → 不画 Y 轴数值刻度 */}
+        {/* ★ 还原 2026-10-09 误改：昼夜节律详情页的皮质醇日视图保留「14 天基线」（绿色虚线），
+           不画纵坐标（flat=详情页 → hideYAxis=true，皮质醇看波形节律、无 Y 轴）。
+           用户明确要求：14 天基线别删。 */}
         <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} hideYAxis={flat} />
       </TouchableOpacity>
 

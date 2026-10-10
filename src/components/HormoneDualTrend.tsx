@@ -14,6 +14,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop, Circle } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { parseDate, type CycleInfo, type CycleLog } from '../lib/cycleMath';
 import { phaseBand, PHASE_COLOR } from '../lib/phaseColors';
 import { buildEstrogenData, buildProgesteroneData, phaseOfDay, type TrendRange } from '../lib/hormoneTrend';
@@ -52,7 +53,7 @@ export default function HormoneDualTrend({
   const prog = progData.real;
 
   const W = 680;
-  const H = 150;
+  const H = chart.h.m;   // ★ 规范：150 → M 档 180
   const PAD = 10;
   const plotW = W - PAD * 2;
   const plotH = H - PAD * 2;

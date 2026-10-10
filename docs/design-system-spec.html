@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira App · 统一设计系统规范（预览文档 + Design Token）</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --sub:#8A857D; --line:#ECEAE5; --bg:#F5F4F1; --card:#FFFFFF;
+    --soft:#FAFAF8; --grid:rgba(31,29,26,0.09); --axis:#6B6760; --t-fade:160ms;
+    --primary:#7C6AE0; --secondary:#BCCB62; --cortisol:#BCCB62; --anomaly:#E2554E;
+    --good:#2E9E5B; --warn:#C8881E; --act:#E0A23E;
+    --period:#F6B3D0; --follic:#C7B9F2; --ovul:#D5E384; --luteal:#F0C46E;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:880px;margin:0 auto;padding:28px 20px 80px;}
+  h1{font-size:24px;font-weight:680;margin:0 0 4px;letter-spacing:-.2px}
+  .lead{font-size:13.5px;color:var(--sub);line-height:1.7;margin:0 0 8px}
+  .meta{font-size:11.5px;color:var(--sub);margin-bottom:26px}
+  h2{font-size:18px;font-weight:640;margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:620;margin:20px 0 8px;color:var(--ink)}
+  p{font-size:13px;line-height:1.7;color:var(--ink)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:680px){.grid2,.grid3,.grid4{grid-template-columns:1fr 1fr}}
+  .tok{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .tok:last-child{border-bottom:0}
+  .sw{width:26px;height:26px;border-radius:7px;flex-shrink:0;border:1px solid rgba(0,0,0,.06)}
+  .sw.round{border-radius:999px}
+  .tk{font-size:12px}
+  .tk .k{font-weight:660;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .tk .v{color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .tk .d{color:var(--sub);font-size:11.5px;margin-top:1px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:640;color:var(--sub);font-size:11.5px;background:var(--soft)}
+  td code{background:#EFEDE8;padding:1px 5px;border-radius:5px;font-size:11.5px}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .pill{font-size:11px;padding:3px 10px;border-radius:999px;background:var(--soft);border:1px solid var(--line);color:var(--ink)}
+  .pill.p{background:rgba(124,106,224,.12);color:#5B4BB0;border-color:#D9D2F0}
+  .pill.s{background:rgba(188,203,98,.16);color:#5C7A1E;border-color:#DDE6B8}
+  .pill.a{background:rgba(224,162,62,.14);color:#9A6B1E;border-color:#F3E2C2}
+  .pill.r{background:rgba(226,85,78,.12);color:#C0392B;border-color:#F2CFCC}
+  .pill.g{background:rgba(46,158,91,.12);color:#237A46;border-color:#CDEBD8}
+  .note{font-size:12px;color:var(--sub);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.7;margin:10px 0}
+  .filelist{font-size:12.5px;line-height:2}
+  .filelist a{color:#5B4BB0;text-decoration:none;border-bottom:1px dotted #B9AEE8}
+  .filelist a:hover{color:#3d2f8a}
+  .mhrow{display:flex;align-items:center;justify-content:space-between;background:var(--soft);
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0;font-size:13px}
+  .mhrow .chev{color:var(--sub);font-size:11px;transition:transform var(--t-fade)}
+  .legendline{display:flex;align-items:center;gap:8px;font-size:12px;margin:6px 0}
+  .legendline i{width:22px;height:0;border-top-width:2.4px;border-top-style:solid}
+  .legendline i.dash{border-top-style:dashed}
+  .tag{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;background:rgba(124,106,224,.1);color:#5B4BB0;border:1px solid #D9D2F0;margin:2px 4px 2px 0}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+  .toc a{font-size:12px;color:#5B4BB0;text-decoration:none;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+  .toc a:hover{background:var(--soft)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mira App · 统一设计系统规范</h1>
+  <p class="lead">涵盖「睡眠恢复 / 脑力准备度 / 心理压力 / 运动消耗 / 经期 / 昼夜节律·皮质醇」6 份详情页 HTML 预览的<b>统一视觉外壳</b>与<b>完整 Design Token</b>。所有预览与 App 真机 1:1 对齐（预览是设计稿，App 据此落地）。</p>
+  <p class="meta">生成日期：2026-10-09 · 来源：<code>docs/*preview*.html</code> + <code>src/theme/chart.ts</code> · 统一折叠组件 <code>mhRow</code> = App <code>moreHead</code></p>
+
+  <div class="toc">
+    <a href="#shell">① 统一视觉外壳</a>
+    <a href="#token">② 完整 Design Token</a>
+    <a href="#pages">③ 各预览页规范</a>
+    <a href="#collapse">④ 折叠组件标准</a>
+    <a href="#files">⑤ 文件清单</a>
+  </div>
+
+  <!-- ───────── ① 外壳 ───────── -->
+  <h2 id="shell">① 统一视觉外壳（所有预览共用）</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>容器与卡片</h3>
+      <div class="tok"><span class="sw" style="background:#F5F4F1"></span><div class="tk"><div class="k">--bg #F5F4F1</div><div class="d">页面背景（暖灰白）</div></div></div>
+      <div class="tok"><span class="sw" style="background:#FFFFFF"></span><div class="tk"><div class="k">--card #FFFFFF</div><div class="d">卡片底</div></div></div>
+      <div class="tok"><span class="sw" style="background:#ECEAE5"></span><div class="tk"><div class="k">--line #ECEAE5</div><div class="d">卡片描边 / 分隔线</div></div></div>
+      <div class="tok"><span class="sw" style="background:#FAFAF8"></span><div class="tk"><div class="k">--soft #FAFAF8</div><div class="d">折叠软底 / 区块底</div></div></div>
+      <div class="tk" style="padding-top:6px"><div class="d">容器 <code>max-width:420px</code> · 内边距 <code>20px 14px 60px</code><br>卡片 <code>border-radius:18px</code> · <code>padding:14px</code> · 阴影 <code>0 1px 4px rgba(0,0,0,.05)</code> + <code>1px solid --line</code></div></div>
+    </div>
+    <div class="card">
+      <h3>文字与节奏</h3>
+      <div class="tok"><span class="sw" style="background:#1F1D1A"></span><div class="tk"><div class="k">--ink #1F1D1A</div><div class="d">主文字 / 大数字</div></div></div>
+      <div class="tok"><span class="sw" style="background:#8A857D"></span><div class="tk"><div class="k">--sub #8A857D</div><div class="d">次要文字 / 轴注 / 标签</div></div></div>
+      <div class="tok"><span class="sw" style="background:#6B6760"></span><div class="tk"><div class="k">--axis #6B6760</div><div class="d">坐标文字</div></div></div>
+      <div class="tok"><span class="sw round" style="background:rgba(31,29,26,.09)"></span><div class="tk"><div class="k">--grid rgba(31,29,26,.09)</div><div class="d">图表网格线</div></div></div>
+      <div class="tk" style="padding-top:6px"><div class="d">字体 <code>-apple-system,"PingFang SC","Helvetica Neue"</code><br>标题 <code>19px/650</code> · 卡片标题 <code>15px/600</code> · 正文 <code>12.5px</code> · 过渡 <code>--t-fade:160ms</code></div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>日/周/月/年 切换器（.switch）</h3>
+      <div class="pillrow"><span class="pill p">日</span><span class="pill p">周</span><span class="pill p">月</span><span class="pill p">年</span></div>
+      <div class="tok"><div class="tk"><div class="d">外壳 <code>bg:#EDEBE7 · radius:12px · padding:3px</code></div><div class="d">滑块 <code>.pill</code> 白底 <code>radius:9px</code> + 阴影，随选平移</div><div class="d">选项 <code>.chip</code> 14px，选中变 <code>--ink</code>，未选 <code>--sub</code></div></div></div>
+    </div>
+    <div class="card">
+      <h3>时间选择器（.picker，脑力/压力/运动用）</h3>
+      <div class="tok"><div class="tk"><div class="d">◀ / ▶ 箭头：36px 圆形，<code>1px --line</code> 描边白底</div><div class="d">中央胶囊：<code>1px --accent</code> 描边 + <code>--accentSoft</code> 底，含日历图标，<code>radius:999px</code></div><div class="d">对应 App 真实组件 <code>DateAnchorPicker</code></div></div></div>
+    </div>
+  </div>
+  <div class="note">经期页用「周期 / 年」两档胶囊（<code>.seg</code>，靠左、选中实心白底），<b>不是</b>日周月年切换器，且顶部月相环（<code>CycleMoonPhase</code>）不可改——这是用户铁律。</div>
+
+  <!-- ───────── ② Token ───────── -->
+  <h2 id="token">② 完整 Design Token 色板</h2>
+
+  <h3>A. 系列语义色（图表主曲线）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">primary #7C6AE0</div><div class="d">恢复分 / 心理压力 / 孕激素主曲线（紫）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">secondary #BCCB62</div><div class="d">睡眠时长 / 雌激素（亮绿 limeMid）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">cortisol #BCCB62</div><div class="d">皮质醇曲线（亮绿，用户 2026-10-09 指定不用墨色）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#E2554E"></span><div class="tk"><div class="k">anomaly #E2554E</div><div class="d">异常标记（红）</div></div></div>
+  </div>
+
+  <h3>B. 状态语义色（节律 / 健康状态 chip）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw round" style="background:#2E9E5B"></span><div class="tk"><div class="k">good #2E9E5B</div><div class="d">正常（绿）</div></div></div>
+    <div class="tok"><span class="sw round" style="background:#E2554E"></span><div class="tk"><div class="k">异常 #E2554E</div><div class="d">异常 / 偏高（红）</div></div></div>
+    <div class="tok"><span class="sw round" style="background:#C8881E"></span><div class="tk"><div class="k">warn #C8881E</div><div class="d">紊乱 / 偏高（琥珀）</div></div></div>
+    <div class="tok"><span class="sw round" style="background:#D69E2E"></span><div class="tk"><div class="k">#D69E2E</div><div class="d">节律偏平（琥珀，睡眠页用）</div></div></div>
+  </div>
+
+  <h3>C. 睡眠分期图（hypnogram，对齐 App token）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">deep #7C6AE0</div><div class="d">深睡（紫）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#B9AEE8"></span><div class="tk"><div class="k">light #B9AEE8</div><div class="d">浅睡（浅紫）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#6FB7E0"></span><div class="tk"><div class="k">rem #6FB7E0</div><div class="d">REM（蓝）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#E8B85C"></span><div class="tk"><div class="k">awake #E8B85C</div><div class="d">清醒（黄）</div></div></div>
+  </div>
+
+  <h3>D. 脑力准备度三档 + 时段点</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#C9598A"></span><div class="tk"><div class="k">bad #C9598A</div><div class="d">偏低 / 需休息（玫红）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#B98A2E"></span><div class="tk"><div class="k">mid #B98A2E</div><div class="d">中等（琥珀）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#6E7A24"></span><div class="tk"><div class="k">good #6E7A24</div><div class="d">充沛（深绿）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">hiDot #BCCB62</div><div class="d">晨起点（亮绿）</div></div></div>
+  </div>
+  <div class="grid4" style="margin-top:8px">
+    <div class="tok"><span class="sw" style="background:#9D8AF0"></span><div class="tk"><div class="k">bar #9D8AF0</div><div class="d">睡前柱（紫浅）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#6E58C8"></span><div class="tk"><div class="k">barLo #6E58C8</div><div class="d">睡前柱（紫深）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#EFEDFB"></span><div class="tk"><div class="k">accentSoft #EFEDFB</div><div class="d">紫系软底</div></div></div>
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">accent #7C6AE0</div><div class="d">紫主强调</div></div></div>
+  </div>
+
+  <h3>E. 心理压力 · 心情点阵图（7 态）+ 情绪分布（5 档）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">m-calm #BCCB62</div><div class="d">平静</div></div></div>
+    <div class="tok"><span class="sw" style="background:#F0C46E"></span><div class="tk"><div class="k">m-energy #F0C46E</div><div class="d">活力</div></div></div>
+    <div class="tok"><span class="sw" style="background:#9D8AF0"></span><div class="tk"><div class="k">m-focus #9D8AF0</div><div class="d">专注</div></div></div>
+    <div class="tok"><span class="sw" style="background:#F2A3C6"></span><div class="tk"><div class="k">m-stress #F2A3C6</div><div class="d">压力</div></div></div>
+  </div>
+  <div class="grid4" style="margin-top:8px">
+    <div class="tok"><span class="sw" style="background:#7EA6F8"></span><div class="tk"><div class="k">m-tired #7EA6F8</div><div class="d">疲惫</div></div></div>
+    <div class="tok"><span class="sw" style="background:#EAE7E2"></span><div class="tk"><div class="k">m-sleep #EAE7E2</div><div class="d">睡眠</div></div></div>
+    <div class="tok"><span class="sw" style="background:#BDB7AE"></span><div class="tk"><div class="k">m-none #BDB7AE</div><div class="d">无记录</div></div></div>
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">stress #7C6AE0</div><div class="d">压力主曲线（紫）</div></div></div>
+  </div>
+  <div class="grid4" style="margin-top:8px">
+    <div class="tok"><span class="sw" style="background:#7EA6F8"></span><div class="tk"><div class="k">e-ca #7EA6F8</div><div class="d">情绪分布·平静（蓝）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">e-pl #BCCB62</div><div class="d">愉悦（黄绿）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#F0C46E"></span><div class="tk"><div class="k">e-ex #F0C46E</div><div class="d">兴奋（黄）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#C9598A"></span><div class="tk"><div class="k">e-an #C9598A</div><div class="d">焦虑（珊瑚红）</div></div></div>
+  </div>
+
+  <h3>F. 运动消耗（能量 / 代谢语义 → 琥珀）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#E0A23E"></span><div class="tk"><div class="k">act #E0A23E</div><div class="d">主色（琥珀）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#FBF1DF"></span><div class="tk"><div class="k">actSoft #FBF1DF</div><div class="d">软底</div></div></div>
+    <div class="tok"><span class="sw" style="background:#B9802A"></span><div class="tk"><div class="k">actDeep #B9802A</div><div class="d">深琥珀（文字）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#E0A23E"></span><div class="tk"><div class="k">accent #E0A23E</div><div class="d">强调（时间选择器）</div></div></div>
+  </div>
+
+  <h3>G. 经期四相 + 月相</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#F6B3D0"></span><div class="tk"><div class="k">period #F6B3D0</div><div class="d">经期（粉）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#C7B9F2"></span><div class="tk"><div class="k">follic #C7B9F2</div><div class="d">卵泡期（紫）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#D5E384"></span><div class="tk"><div class="k">ovul #D5E384</div><div class="d">排卵期（黄绿）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#F0C46E"></span><div class="tk"><div class="k">luteal #F0C46E</div><div class="d">黄体期（黄）</div></div></div>
+  </div>
+  <div class="grid4" style="margin-top:8px">
+    <div class="tok"><span class="sw" style="background:#F2C75C"></span><div class="tk"><div class="k">moonlit #F2C75C</div><div class="d">月相亮面</div></div></div>
+    <div class="tok"><span class="sw" style="background:rgba(150,130,235,.16)"></span><div class="tk"><div class="k">moondark</div><div class="d">月相暗面 rgba(150,130,235,.16)</div></div></div>
+    <div class="tok"><span class="sw" style="background:#6E7A24"></span><div class="tk"><div class="k">green #6E7A24</div><div class="d">经期深绿文字</div></div></div>
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">purple #7C6AE0</div><div class="d">经期强调紫</div></div></div>
+  </div>
+
+  <h3>H. 昼夜节律·皮质醇（与睡眠同绿系）</h3>
+  <div class="grid4">
+    <div class="tok"><span class="sw" style="background:#BCCB62"></span><div class="tk"><div class="k">cortisol #BCCB62</div><div class="d">今日实线 + 14天基线虚线（同源绿）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#6E7A24"></span><div class="tk"><div class="k">cortisol-deep #6E7A24</div><div class="d">绿系文字</div></div></div>
+    <div class="tok"><span class="sw" style="background:#C8881E"></span><div class="tk"><div class="k">warn #C8881E</div><div class="d">紊乱（琥珀）</div></div></div>
+    <div class="tok"><span class="sw" style="background:#7C6AE0"></span><div class="tk"><div class="k">primary #7C6AE0</div><div class="d">仅「详情 ›」链接，绝不上曲线</div></div></div>
+  </div>
+
+  <div class="note"><b>图表统一参数铁律</b>（来自 <code>chart-token-preview.html</code>）：线宽 / 圆点 / 网格 / 坐标统一，杜绝「线宽 2.2/2.4/1.3/1.5/2.6 五套、圆点 2.5/3.2/4.2/6.5 五套」的散乱现状。皮质醇曲线<b>全程无纵坐标</b>、<b>不做均值</b>，周/月/年看波形节律与是否正常。</div>
+
+  <!-- ───────── ③ 各页 ───────── -->
+  <h2 id="pages">③ 各预览页规范</h2>
+  <table>
+    <thead><tr><th>页面</th><th>文件</th><th>Tab / 区间结构</th><th>主色</th><th>关键组件</th><th>App 对应</th></tr></thead>
+    <tbody>
+      <tr><td>睡眠恢复</td><td><code>sleep-recovery-preview.html</code></td><td>日 / 周 / 月 / 年</td><td>紫 + 亮绿</td><td>分期 hypnogram（深/浅/REM/清醒）、皮质醇曲线常驻、节律状态块、双轴图（周月年带坐标）、折叠 <code>mhRow</code></td><td><code>SleepStageChart</code> · <code>CortisolRhythmCard</code>(variant=sleep) · <code>SleepDualAxisChart</code> · <code>SleepAnalysisCard</code></td></tr>
+      <tr><td>脑力准备度</td><td><code>brain-readiness-preview.html</code></td><td>日 / 周 / 月 / 年（<b>无 Tab</b>）</td><td>紫</td><td>日=顶部框(准备度值+高峰/预测高峰低谷)+全天趋势图(睡眠段只显"睡眠中")；周月年=每日消耗区间柱+对比上期</td><td><code>ReadinessTrendChart</code> · <code>MetricDetailScreen</code></td></tr>
+      <tr><td>心理压力</td><td><code>psychological-stress-preview.html</code></td><td>日/周/月/年 + <b>双 Tab</b>（心理压力 / 情绪记录）</td><td>紫（非粉）</td><td>日=压力折线(睡眠段只显"睡眠中"不画图)；情绪 Tab=心情点阵图(4×24)+今日自报+分布堆叠柱+洞察；时间选择器</td><td><code>StressTrendChart</code> · <code>EmotionDots</code> · <code>EmotionRangeBars</code> · <code>DateAnchorPicker</code></td></tr>
+      <tr><td>运动消耗</td><td><code>exercise-consumption-preview.html</code></td><td>日 / 周 / 月 / 年（<b>含日</b>）</td><td>琥珀</td><td>日=24h 分布柱+今日运动记录；周月年=每日消耗柱+均值虚线+对比</td><td><code>MetricDetailScreen</code>（原 exclude day，已补日）</td></tr>
+      <tr><td>经期</td><td><code>menstrual-cycle-preview.html</code></td><td><b>周期 / 年</b> 两档（月相环不可改）</td><td>四相色</td><td>月相环(原样) + 周期健康指标 + 周期规律性(折叠) + 体温双相 + 症状统计(折叠) + 年=周期长度趋势</td><td><code>CycleCalendarScreen</code> · <code>CycleMoonPhase</code> · <code>CycleRegularityCard</code> · <code>SymptomStatsPanel</code></td></tr>
+      <tr><td>昼夜节律·皮质醇</td><td><code>circadian-cortisol-preview.html</code></td><td>日 / 周 / 月 / 年</td><td>亮绿</td><td>日=今日绿实线+14天基线绿虚线+睡眠阴影+峰值标记（<b>无纵轴</b>）；周月年=节律日历(正常绿/异常红)+状态chip+小结(异常天数/节律状态/峰值时段，<b>无均值</b>)</td><td><code>EmotionCognitiveDetailScreen</code> · <code>CortisolDailyChart</code> · <code>TrendChart</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────── ④ 折叠 ───────── -->
+  <h2 id="collapse">④ 折叠组件统一标准（mhRow = App moreHead）</h2>
+  <div class="card">
+    <div class="mhrow"><span>详细数据 / 逐周期明细 / 查看完整症状分布 / 展开更多指标</span><span class="chev">▾</span></div>
+    <p style="margin:10px 0 0;color:var(--sub)">点击展开后箭头旋转为 ▴（160ms 过渡）。<b>所有预览与 App 共用同一形态</b>：浅底描边行（<code>#FAFAF8</code> + <code>1px --line</code> + <code>radius:10px</code>），左侧标签 + 右侧 chevron，默认收起，标签文字不变。</p>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>已废除的旧样式（历史遗留，勿再用）</h3>
+      <div class="pillrow"><span class="pill">moreBtn 满宽居中按钮</span><span class="pill">moreRow 紫色裸文字</span><span class="pill">collapseBtn 紫色胶囊</span></div>
+      <p class="lead" style="margin:0">这三类在 2026-10-09 统一收敛为 <code>mhRow</code>，已在 5 份预览中替换。演示见 <code>collapse-unified-preview.html</code>。</p>
+    </div>
+    <div class="card">
+      <h3>横轴统一规范</h3>
+      <p class="lead" style="margin:0">周=周一→周日全标；月=固定刻度(1/5/10/15/20/25/月末)；年=固定刻度(1/3/6/9/12月)。单一事实来源 <code>src/lib/chartAxis.ts</code>。经期/周期类图表按「周期月/周/年」口径，<b>刻意不并入</b>自然周月年。详见 <code>axis-unified-preview.html</code>。</p>
+    </div>
+  </div>
+
+  <!-- ───────── ⑤ 文件 ───────── -->
+  <h2 id="files">⑤ 文件清单与访问</h2>
+  <div class="card">
+    <div class="filelist">
+      <div>📄 <a href="./design-system-spec.html">design-system-spec.html</a> · 本规范文档（汇总）</div>
+      <div>📄 <a href="./sleep-recovery-preview.html">sleep-recovery-preview.html</a> · 睡眠恢复 日/周/月/年</div>
+      <div>📄 <a href="./brain-readiness-preview.html">brain-readiness-preview.html</a> · 脑力准备度 日/周/月/年</div>
+      <div>📄 <a href="./psychological-stress-preview.html">psychological-stress-preview.html</a> · 心理压力 双Tab + 日/周/月/年</div>
+      <div>📄 <a href="./exercise-consumption-preview.html">exercise-consumption-preview.html</a> · 运动消耗 日/周/月/年</div>
+      <div>📄 <a href="./menstrual-cycle-preview.html">menstrual-cycle-preview.html</a> · 经期 周期/年（月相环不变）</div>
+      <div>📄 <a href="./circadian-cortisol-preview.html">circadian-cortisol-preview.html</a> · 昼夜节律·皮质醇 日/周/月/年</div>
+      <div>📄 <a href="./collapse-unified-preview.html">collapse-unified-preview.html</a> · 折叠组件统一演示</div>
+      <div>📄 <a href="./axis-unified-preview.html">axis-unified-preview.html</a> · 横轴统一规范</div>
+      <div>📄 <a href="./chart-token-preview.html">chart-token-preview.html</a> · 图表线宽/圆点/网格 token</div>
+    </div>
+  </div>
+  <div class="note">预览目录：<code>/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app/docs/</code>。本地预览需起 HTTP 服务（<code>python3 -m http.server</code>），因 HTML 内 SVG/JS 走相对路径。</div>
+</div>
+</body>
+</html>

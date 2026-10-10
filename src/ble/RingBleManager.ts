@@ -726,7 +726,10 @@ class NativeRingSource {
       //   onRealtime  → 实时单 metric（hr/spo2/temp/eda…）
       //   onBatch     → 离线批量回填（5min slots + 可选 daily 汇总）
       //   onState     → 连接/同步状态变化（status: connected|ready|syncing|error）
-      const V2_EVENTS = new Set<string>(['onLog', 'onRealtime', 'onBatch', 'onState']);
+      //   onEcg / onEcgProgress → ★ 2026-10-10 接通：ECG 实时测量结果/进度
+      //     （此前 V2 收敛时被排除在白名单外，handleEcg/handleEcgProgress 成了死代码——
+      //      「ECG 能测但结果永远不回来」的 JS 侧根因；原生侧 measure: 也没有 ecg 分支）
+      const V2_EVENTS = new Set<string>(['onLog', 'onRealtime', 'onBatch', 'onState', 'onEcg', 'onEcgProgress']);
       const reg = (name: string, fn: (...a: any[]) => void) => {
         if (!V2_EVENTS.has(name)) return;
         emitter.addListener(name, fn);
@@ -743,6 +746,10 @@ class NativeRingSource {
 
       // ── onState：状态统一（status=ready 触发增量 backfill；status=syncing 进度；backfillDone 更新锚点）──
       reg('onState', (raw: any) => this.handleStateV2(raw));
+
+      // ── ★ 2026-10-10：ECG 实时测量（事件链此前两头都断，见 V2_EVENTS 注释）──
+      reg('onEcg', (raw: any) => this.handleEcg(raw));
+      reg('onEcgProgress', (raw: any) => this.handleEcgProgress(raw));
       // 诊断：每 2s 打印 JS 侧实际收到的指标速率（按 key 分类），与原生 METRIC-RATE 对照，
       // 直接看出 hr/spo2/temp/eda/hrv/rr 各自到没到。
       setInterval(() => {
@@ -5334,6 +5341,16 @@ class RingConnectionImpl {
       postLog('RingBle', '[autoConnect] 3s 内未命中，结束');
     }, 3000);
     void this.startScan();
+  }
+
+  /**
+   * v18.112 公开封装：设置页聚焦 / App 启动都调它。已连 / 在连 / 在扫则跳过，避免重复发起扫描。
+   * 行为同 autoConnectOnLaunch（扫到上次那台设备就 connectToId）。
+   */
+  autoConnect(): void {
+    const st = this.getState();
+    if (st.status === 'connected' || st.status === 'connecting' || st.status === 'scanning') return;
+    this.autoConnectOnLaunch();
   }
 
   /**

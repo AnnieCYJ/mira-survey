@@ -13,24 +13,29 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Line, G, Text as SvgText, Defs, Path, Circle, Polyline, Pattern } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { buildNaturalPeriods, buildPrevNaturalPeriods } from '../lib/periods';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { dayKey, parseDayKey } from '../data/healthStore';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
+import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { computeCycle, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { PHASE_COLOR, type PhaseKey } from '../lib/phaseColors';
 
-/* ── 5 档情绪色（与 EmotionInsightView 同款 token）── */
-const COL_EXCITED = theme.colors.moodEnergy;   // 兴奋
-const COL_PLEASANT = theme.colors.moodGood;    // 愉悦
-const COL_CALM = theme.colors.stateTired;      // 平静
-const COL_STRESSED = theme.colors.stateEnergy; // 压力
-const COL_ANXIOUS = theme.colors.danger;       // 焦虑
+/* ── 5 档情绪色 ★ 2026-10-10（bar-design-unified-spec 方案B·效价双相，与点阵同源）──
+   正向（黄绿→黄）+ 负向（粉）：平静 limeMid / 愉悦 limeCore / 兴奋 honeyCore / 压力 roseCore / 焦虑 roseDeep
+   （原 theme.colors.state* 旧色板与 mm.colors.mood* 两套并存，「平静」错用运动蓝 —— 已统一） */
+const COL_EXCITED = mm.colors.honeyCore;   // 兴奋
+const COL_PLEASANT = mm.colors.limeCore;   // 愉悦
+const COL_CALM = mm.colors.limeMid;        // 平静
+const COL_STRESSED = mm.colors.roseCore;   // 压力
+const COL_ANXIOUS = mm.colors.roseDeep;    // 焦虑
 const PRIMARY = theme.colors.accentSolid;
-const PRE_PINK = '#EC9CC2';
+const PRE_PINK = mm.colors.roseMid;        // ★ 规范：#EC9CC2 硬编码 → roseMid #F6B3D0
 
 /** 堆叠顺序（底 → 顶）：平静 / 愉悦 / 兴奋 / 压力 / 焦虑 */
 const MOODS: { key: string; c: string; t: string }[] = [
@@ -86,22 +91,22 @@ function PhaseTrendChart({ data }: { data: { name: string; color: string; pos: n
         const valTxt = g === 0 ? '0' : (Number.isInteger(g) ? String(g) : g.toFixed(1));
         return (
           <G key={gi}>
-            <Line x1={L} y1={yOf(g)} x2={R} y2={yOf(g)} stroke={g === 0 ? '#E2DFD6' : '#EFEDE6'} strokeWidth={0.5} />
-            <SvgText x={L - 5} y={yOf(g) + 3} fontSize={9} fill="#9A968C" textAnchor="end">{valTxt}</SvgText>
+            <Line x1={L} y1={yOf(g)} x2={R} y2={yOf(g)} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
+            <SvgText x={L - 5} y={yOf(g) + 3} fontSize={9} fill={chart.axisText} textAnchor="end">{valTxt}</SvgText>
           </G>
         );
       })}
-      <Polyline points={negPts} fill="none" stroke={TREND_NEG} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
-      <Polyline points={posPts} fill="none" stroke={TREND_POS} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
+      <Polyline points={negPts} fill="none" stroke={TREND_NEG} strokeWidth={chart.lw.series} strokeLinejoin="round" strokeLinecap="round" />
+      <Polyline points={posPts} fill="none" stroke={TREND_POS} strokeWidth={chart.lw.series} strokeLinejoin="round" strokeLinecap="round" />
       {data.map((d, i) => (
         <G key={`neg${i}`}>
-          <Circle cx={xOf(i)} cy={yOf(d.neg)} r={3.4} fill={TREND_NEG} />
+          <Circle cx={xOf(i)} cy={yOf(d.neg)} r={chart.dot.radius} fill={TREND_NEG} />
           <SvgText x={xOf(i)} y={yOf(d.neg) + 13} fontSize={9} fill={TREND_NEG} textAnchor="middle">{d.neg.toFixed(1)}</SvgText>
         </G>
       ))}
       {data.map((d, i) => (
         <G key={`pos${i}`}>
-          <Circle cx={xOf(i)} cy={yOf(d.pos)} r={3.4} fill={TREND_POS} />
+          <Circle cx={xOf(i)} cy={yOf(d.pos)} r={chart.dot.radius} fill={TREND_POS} />
           <SvgText x={xOf(i)} y={yOf(d.pos) - 7} fontSize={9} fill={TREND_POS} textAnchor="middle">{d.pos.toFixed(1)}</SvgText>
         </G>
       ))}
@@ -216,7 +221,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
     if (b.phase === 'follicular') return PHASE_COLOR.follicular;
     if (b.phase === 'ovulation') return PHASE_COLOR.ovulation;
     if (b.phase === 'luteal') return PHASE_COLOR.luteal;
-    return '#E5E2F0';
+    return mm.colors.emptyFill;
   };
 
   // ── 图表布局（onLayout 自适应卡片宽度，全部柱子塞进一屏）──
@@ -226,7 +231,8 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
   const n = bars.length;
   const plotW = Math.max(60, viewW - AXIS_L - AXIS_R);
   const slot = plotW / Math.max(1, n);
-  const barW = Math.max(4, Math.min(range === 'week' ? 34 : range === 'year' ? 20 : 14, slot * 0.66));
+  // ★ 2026-10-10（bar-design-unified-spec 规则3）：柱宽全站统一 clamp(4, slot×0.6, 24)
+  const barW = Math.max(4, Math.min(24, slot * 0.6));
   const gap = Math.max(1.5, slot - barW);
   const plotBottom = PLOT_TOP + PLOT_H;
   const xLabelY = plotBottom + 15;
@@ -360,14 +366,9 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
     ? theme.colors.textSub
     : cmpShare.good ? theme.colors.trendUp : theme.colors.trendDown;
 
-  // 月视图横坐标抽稀
-  const showX = (i: number) => range === 'month' ? (i % 5 === 0 || i === bars.length - 1) : true;
+  // 月/年视图横坐标抽稀（与 chartAxis 同源：月=1/5/10/15/20/25/30，年=奇数月；周全标）
+  const showX = (i: number) => range === 'month' ? isMonthTickDay(i + 1) : range === 'year' ? isYearTickMonth(i) : true;
   const showCount = barW >= 13;
-  const topKeyOf = (b: Bar): string | null => {
-    let k: string | null = null;
-    MOODS.forEach((m) => { if ((b.counts[m.key] || 0) > 0) k = m.key; });
-    return k;
-  };
 
   const PILL_BG = '#F6B3D0';
 
@@ -387,8 +388,8 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
               <Defs>
                 {/* 未佩戴占位：斜纹填充，明确区别于「佩戴但情绪平稳」的灰条 */}
                 <Pattern id="hatchWear" patternUnits="userSpaceOnUse" width={6} height={6} patternTransform="rotate(45)">
-                  <Rect width={6} height={6} fill="#F1EFEA" />
-                  <Line x1={0} y1={0} x2={0} y2={6} stroke="#C9C5BC" strokeWidth={1.3} />
+                  <Rect width={6} height={6} fill={mm.colors.emptyFill} />
+                  <Line x1={0} y1={0} x2={0} y2={6} stroke={mm.colors.chipBorder} strokeWidth={1.3} />
                 </Pattern>
               </Defs>
               {[0, 0.5, 1].map((f) => {
@@ -397,7 +398,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
                 const valTxt = Number.isInteger(val) ? String(val) : val.toFixed(1);
                 return (
                   <G key={`g${f}`}>
-                    <Line x1={AXIS_L} y1={y} x2={viewW - AXIS_R} y2={y} stroke={theme.colors.cardBorder} strokeWidth={0.75} strokeDasharray="3 4" />
+                    <Line x1={AXIS_L} y1={y} x2={viewW - AXIS_R} y2={y} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
                     <SvgText x={AXIS_L - 5} y={y + 3.5} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>{valTxt}</SvgText>
                   </G>
                 );
@@ -406,10 +407,10 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
               {bars.map((b, i) => {
                 const x = AXIS_L + i * (barW + gap);
                 if (b.phase === 'period') {
-                  return <Rect key={`sh${i}`} x={x - 1.5} y={PLOT_TOP + 2} width={barW + 3} height={PLOT_H - 2} rx={4} fill={PHASE_COLOR.period} opacity={0.10} />;
+                  return <Rect key={`sh${i}`} x={x - 1.5} y={PLOT_TOP + 2} width={barW + 3} height={PLOT_H - 2} rx={4} fill={PHASE_COLOR.period} opacity={0.12} />;
                 }
                 if (b.isPre) {
-                  return <Rect key={`sh${i}`} x={x - 1.5} y={PLOT_TOP + 2} width={barW + 3} height={PLOT_H - 2} rx={4} fill={PRE_PINK} opacity={0.14} />;
+                  return <Rect key={`sh${i}`} x={x - 1.5} y={PLOT_TOP + 2} width={barW + 3} height={PLOT_H - 2} rx={4} fill={PRE_PINK} opacity={0.12} />;
                 }
                 return null;
               })}
@@ -424,7 +425,6 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
                 if (!b.worn && b.total === 0) return null;
                 const inten = b.intensity;
                 const barH = inten > 0 ? Math.max(3, (inten / yMax) * PLOT_H) : 0;
-                const topKey = topKeyOf(b);
                 let cursor = y0;
                 return (
                   <G key={`bar${i}`}>
@@ -434,10 +434,10 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
                         if (c === 0) return null;
                         const h = (c / b.total) * barH;
                         cursor -= h;
-                        return <Rect key={m.key} x={x} y={cursor} width={barW} height={h} fill={m.c} rx={m.key === topKey ? 2.5 : 0} />;
+                        return <Rect key={m.key} x={x} y={cursor} width={barW} height={h} fill={m.c} rx={chart.barRadius} />;
                       })
                     ) : (
-                      <Rect x={x} y={y0 - 2} width={barW} height={2} fill={theme.colors.cardBorder} opacity={0.5} />
+                      <Rect x={x} y={y0 - 2} width={barW} height={2} fill={mm.colors.emptyFill} />
                     )}
                     {inten > 0 && showCount && (
                       <SvgText x={x + barW / 2} y={y0 - barH - 4} textAnchor="middle" fontSize={theme.fontSize.micro} fontWeight="700" fill={theme.colors.textSub}>{inten.toFixed(1)}</SvgText>
@@ -454,7 +454,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
                 return (
                   <G key={`run${idx}`}>
                     <Rect x={px} y={PLOT_TOP - 26} width={w} height={16} rx={8} fill={r.kind === 'period' ? PHASE_COLOR.period : PRE_PINK} />
-                    <SvgText x={px + w / 2} y={PLOT_TOP - 26 + 11.5} textAnchor="middle" fontSize={10.5} fontWeight="700" fill="#8A3563">{txt}</SvgText>
+                    <SvgText x={px + w / 2} y={PLOT_TOP - 26 + 11.5} textAnchor="middle" fontSize={10.5} fontWeight="700" fill={mm.colors.roseDeep}>{txt}</SvgText>
                   </G>
                 );
               })}
@@ -469,7 +469,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
 
               {bars.map((b, i) => {
                 const x = AXIS_L + i * (barW + gap);
-                return <Rect key={`band${i}`} x={x} y={stripY} width={barW} height={BAND_H} fill={bandColor(b)} rx={2.5} />;
+                return <Rect key={`band${i}`} x={x} y={stripY} width={barW} height={BAND_H} fill={bandColor(b)} rx={chart.barRadius} />;
               })}
             </Svg>
             )}
@@ -631,8 +631,8 @@ const styles = StyleSheet.create({
   legendRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: theme.sp(2.5), gap: theme.space.sm },
   legendCaption: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginRight: theme.sp(0.5), fontWeight: '600' as any },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5) },
-  legendSwatch: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(0.75) },
-  legendSwatchHatch: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(0.75), backgroundColor: '#F1EFEA', borderWidth: 0.75, borderStyle: 'dashed', borderColor: '#C9C5BC' },
+  legendSwatch: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: chart.barRadius },
+  legendSwatchHatch: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: chart.barRadius, backgroundColor: mm.colors.emptyFill, borderWidth: 0.75, borderStyle: 'dashed', borderColor: mm.colors.chipBorder },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   hint: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.5, marginTop: theme.sp(1) },
   statRow: { flexDirection: 'row', gap: theme.space.sm },

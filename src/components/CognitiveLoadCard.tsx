@@ -2,6 +2,8 @@ import React from 'react';
 import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Rect, G, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
+import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogBarRatio } from '../lib/cognitiveLoad';
 // ★ 2026-10-05 改「认知准备度」：柱状图 → 趋势图，口径与首页/详情页同源
@@ -17,16 +19,17 @@ export function fmtRange(span: { startHour: number; endHour: number }): string {
 }
 
 // 与 HourHistogram 的 LEVELS、首页 MiniCognitiveBars、Hero chip 共用同一套配色：
-// 低(<40)=success 绿 / 中(40–70)=warn 黄 / 高(≥70)=danger 红
+// ★ 2026-10-10（bar-design-unified-spec 规则1）：认知=紫，同相三档递进
+// 低(<40)=purpleMid / 中(40–70)=purpleCore / 高(≥70)=purpleDeep（原绿→黄→粉跨三相，越界）
 export function loadColor(l: LoadLevel): string {
-  return l === 'heavy' ? theme.colors.danger
-    : l === 'moderate' ? theme.colors.warn
-    : theme.colors.success;
+  return l === 'heavy' ? mm.colors.purpleDeep
+    : l === 'moderate' ? mm.colors.purpleCore
+    : mm.colors.purpleMid;
 }
 export function fatigueColor(l: FatigueLevel): string {
-  return l === 'severe' ? theme.colors.danger
-    : l === 'moderate' ? theme.colors.warn
-    : theme.colors.success;
+  return l === 'severe' ? mm.colors.purpleDeep
+    : l === 'moderate' ? mm.colors.purpleCore
+    : mm.colors.purpleMid;
 }
 export function loadLabel(l: LoadLevel): string {
   return l === 'heavy' ? '高强度投入'
@@ -79,12 +82,13 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
 
   // ★ 2026-10-05：认知准备度序列（与下方趋势图、首页小卡、详情页曲线**同一份数据**）
   const ready = computeReadinessSeries(report, nowMs ?? Date.now());
-  // 准备度配色方向与旧疲劳相反：**分数高 = 状态好 = 绿**（旧疲劳是高=red）
+  // 准备度配色方向与旧疲劳相反：**分数高 = 状态好**
+  // ★ 2026-10-10（bar-design-unified-spec 规则1）：认知=紫，同相递进（低 mid → 高 deep）
   const cogColor = (v: number | null) =>
     v == null ? theme.colors.textTitle
-      : v >= READY_HIGH ? theme.colors.success
-      : v >= READY_LOW ? theme.colors.warn
-      : theme.colors.danger;
+      : v >= READY_HIGH ? mm.colors.purpleDeep
+      : v >= READY_LOW ? mm.colors.purpleCore
+      : mm.colors.purpleMid;
 
   return (
     <Card>
@@ -147,9 +151,9 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
   //   与 homepage MiniCognitiveBars / Hero chip 共用同一组阈值与配色
   // ═══════════════════════════════════════════════════════════
   const LEVELS = [
-    { max: COG_LEVEL_LOW,  color: theme.colors.success, label: '低' },
-    { max: COG_LEVEL_HIGH, color: theme.colors.warn,    label: '中' },
-    { max: 101,            color: theme.colors.danger,  label: '高' },
+    { max: COG_LEVEL_LOW,  color: mm.colors.purpleMid,  label: '低' },
+    { max: COG_LEVEL_HIGH, color: mm.colors.purpleCore, label: '中' },
+    { max: 101,            color: mm.colors.purpleDeep, label: '高' },
   ];
   const barColor = (v: number) => LEVELS.find(l => v < l.max)!.color;
 
@@ -215,13 +219,13 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         {/* ═══ Y 轴网格 (0 基线 + 档位边界虚线) + 档位文字 ═══ */}
         {/* 0 基线 (实线加粗) */}
         <Path d={`M ${padL} ${yFor(0)} L ${padL + plotW} ${yFor(0)}`}
-          stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
+          stroke={theme.colors.ui.borderSoft} strokeWidth={chart.lw.grid} />
         {/* 3 条网格虚线 (对齐档位边界) */}
         {[COG_LEVEL_LOW, COG_LEVEL_HIGH].map(v => (
           <Path key={'yg' + v}
             d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
             stroke={theme.colors.ui.borderSoft}
-            strokeWidth={0.8} strokeDasharray="3 3" />
+            strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
         ))}
         {/* 3 档 Y 轴文字 — 低/中/高, 颜色对应档位 */}
         {LEVELS.map((lv, i) => {
@@ -243,7 +247,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         {[COG_LEVEL_LOW, COG_LEVEL_HIGH].map(v => (
           <Path key={'g' + v}
             d={`M ${padL} ${yFor(v)} L ${padL + plotW} ${yFor(v)}`}
-            stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
+            stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
         ))}
 
         {/* ═══ 睡眠遮罩 ═══ */}
@@ -276,15 +280,15 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
              视觉上像在说 19 比 12 累得多 —— 同档内无此含义。 ═══ */}
         {rows.map(r => {
           const x = cx(r.hour) - barW / 2;
-          const c = r.hasData ? barColor(r.score) : theme.colors.ui.white25;
+          // ★ 2026-10-10（bar-design-unified-spec 规则2/6）：rx 统一 3；空槽 = emptyFill 2pt 圆角1 opacity1
+          const c = r.hasData ? barColor(r.score) : mm.colors.emptyFill;
           const ratio = r.hasData ? cogBarRatio(r.score) : null;
           const h = ratio == null ? theme.sp(0.5) : Math.max(theme.sp(0.5), ratio * plotH);
           const y = padT + plotH - h;
           return (
             <Rect key={'b' + r.hour}
               x={x} y={y} width={barW} height={h}
-              fill={c} rx={theme.sp(0.75)}
-              opacity={r.hasData ? 0.9 : 0.08} />
+              fill={c} rx={r.hasData ? chart.barRadius : 1} />
           );
         })}
 
@@ -301,7 +305,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
         {[2, 6, 10, 14, 18, 22].map(step => (
           <Path key={'txs' + step}
             d={`M ${cx(step)} ${padT + plotH} L ${cx(step)} ${padT + plotH + theme.sp(0.75)}`}
-            stroke={theme.colors.textSub} strokeWidth={0.5} opacity={0.4} />
+            stroke={theme.colors.textSub} strokeWidth={chart.lw.grid} opacity={0.4} />
         ))}
       </Svg>
 
@@ -309,7 +313,7 @@ export function HourHistogram({ hourly, peakSpan, bestSpan, sleepWindow, chartH 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) }}>
         {LEVELS.map(l => (
           <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
-            <View style={{ width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(0.5), backgroundColor: l.color, opacity: 0.85 }} />
+            <View style={{ width: theme.sp(2), height: theme.sp(2), borderRadius: chart.barRadius, backgroundColor: l.color }} />
             <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub }}>{l.label}</Text>
           </View>
         ))}

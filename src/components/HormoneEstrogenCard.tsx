@@ -12,6 +12,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Rect, Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import {
   computeCycle,
   dayKey,
@@ -26,7 +27,7 @@ import { RingBle, type FemaleInfo, type RingState } from '../ble/RingBleManager'
 import type { RangeKey } from '../data/metrics';
 
 const W = 680;
-const H = 210;
+const H = chart.h.m;     // ★ 规范：210 → M 档 180
 const PAD_L = 12;
 const PAD_R = 12;
 const PAD_T = 16;

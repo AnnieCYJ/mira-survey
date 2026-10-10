@@ -603,3 +603,48 @@ export function judgeCortisolRhythm(
 
   return { ready: true, avg, peakIdx, peakV, peakH, peakClock, peakWindow, label, sub };
 }
+
+// ── 单日皮质醇节律判读：跨页唯一入口（睡眠恢复页 & 洞察页昼夜节律详情页共用）──
+const dayRhythmForDayCache = new Map<string, { abn: boolean; kind: 'normal' | 'high' | 'late' }>();
+
+/**
+ * ★ 2026-10-10（统一睡眠恢复页与洞察页「皮质醇异常日」口径）：
+ *   单日判定唯一入口。睡眠恢复页（SleepDetailScreen）的周/月/年异常日标记与「异常天数」统计，
+ *   以及洞察页昼夜节律详情页（EmotionCognitiveDetailScreen）的节律日历，全部调它 ——
+ *   同一份 proxy 实测槽 + 同一套 judgeCortisolRhythm 阈值，两处异常天数必然逐位一致。
+ *
+ * 规则（与 judgeCortisolRhythm 完全同口径）：
+ *   · 基线不足 3 天（days < MIN_BASELINE_DAYS）→ 判不出 → 视为正常（不标异常）；
+ *   · 「节律紊乱」→ 异常（任何一天）；
+ *   · 「皮质醇偏高」→ 仅**今天**算异常（历史日偏高不可信，与洞察页节律日历一致）；
+ *   · 其余（节律正常）→ 正常。
+ */
+export function judgeCortisolRhythmForDay(
+  dk: string,
+  isToday: boolean,
+): { abn: boolean; kind: 'normal' | 'high' | 'late' } {
+  const key = `${dk}|${isToday}`;
+  const hit = dayRhythmForDayCache.get(key);
+  if (hit) return hit;
+  let out: { abn: boolean; kind: 'normal' | 'high' | 'late' } = { abn: false, kind: 'normal' };
+  try {
+    const dayMs = parseDayKeyMs(dk) + DAY_MS - 1; // 该日完整结束时刻 → 算满整天
+    const pbl = buildCortisolProxyBaseline(14, dayMs);
+    if (pbl.days >= MIN_BASELINE_DAYS) {
+      const px = buildCortisolProxyToday(pbl, { now: dayMs });
+      const j = judgeCortisolRhythm(px.vals, px.real);
+      if (j.label) {
+        const kind: 'normal' | 'high' | 'late' =
+          j.label === '皮质醇偏高' ? 'high' : j.label === '节律紊乱' ? 'late' : 'normal';
+        out = {
+          abn: j.label === '节律紊乱' || (isToday && j.label === '皮质醇偏高'),
+          kind,
+        };
+      }
+    }
+  } catch {
+    out = { abn: false, kind: 'normal' };
+  }
+  dayRhythmForDayCache.set(key, out);
+  return out;
+}

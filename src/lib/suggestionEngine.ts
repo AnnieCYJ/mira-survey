@@ -194,24 +194,15 @@ const ACTION_NAMES: Record<InterventionKind, string> = {
   meditate: '冥想',
 };
 
-/** 「习惯」门槛：做过 ≥2 次才算真实习惯，避免一次性的误报 */
-const MIN_BEHAVIOR_COUNT = 2;
-
-/** 用户真实做过、且达到习惯门槛的行为（取次数最多的一类）。 */
-function dominantBehavior(): { kind: InterventionKind; action: string } | null {
-  const counts = new Map<string, number>();
-  for (const e of allInterventionEntries()) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
-  let bestKind: string | null = null;
-  let bestN = 0;
-  for (const [k, n] of counts) {
-    if (n > bestN) {
-      bestKind = k;
-      bestN = n;
-    }
-  }
-  if (!bestKind || bestN < MIN_BEHAVIOR_COUNT) return null;
-  const kind = bestKind as InterventionKind;
-  return { kind, action: ACTION_NAMES[kind] ?? kind };
+/** 最近 3 小时内完成的动作（最近一条）；无则 null。
+ * ★ 2026-10-09（用户口径）：「HRV 回升 / 深睡变好」这类改善证据，只有刚做过某事、状态确有变化才配说；
+ *   不做无中生有的归因。故用「最近做过」，而非「一生累计 ≥2 次」（dominantBehavior 已废弃）。 */
+function recentBehavior(): { kind: InterventionKind; action: string } | null {
+  const nowMs = Date.now();
+  const recent = allInterventionEntries().filter((e) => nowMs - e.ts <= 3 * 3600e3);
+  if (!recent.length) return null;
+  const last = recent[recent.length - 1];
+  return { kind: last.kind, action: ACTION_NAMES[last.kind] ?? last.kind };
 }
 
 /**
@@ -221,6 +212,10 @@ function dominantBehavior(): { kind: InterventionKind; action: string } | null {
  */
 export function evidenceBits(): string[] {
   const now = Date.now();
+
+  // ★ 2026-10-09（用户口径）：没有近 3 小时做过的动作 → 不给任何「回升 / 变好」改善短语。
+  //   避免把自然波动或长期趋势误说成「你做了什么之后的效果」。只有刚做完某事、且确有改善才配说。
+  if (!recentBehavior()) return [];
 
   // ① 睡眠评分 / 深睡：近 3 天 vs 之前基线（14 天窗口）
   const scores = sleepScores(14);
@@ -265,8 +260,9 @@ function computeCandidates(): SuggestionCandidate[] {
   const bits = evidenceBits();
   if (!bits.length) return [];
 
-  // 动作必须来自用户真实做过的行为（不做没记录的动作）；做够门槛才算「习惯」
-  const beh = dominantBehavior();
+  // ★ 2026-10-09：动作名取「最近 3 小时刚做过的」（与 evidenceBits 同源同一道闸门）；
+  //   没做过就不出这张「发现型」卡，避免把没做过的动作和「回升」绑在一起说。
+  const beh = recentBehavior();
   if (!beh) return [];
 
   return [{ id: `iv-${beh.kind}`, action: beh.action, metric: bits.join('，') }];

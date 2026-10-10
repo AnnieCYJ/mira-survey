@@ -18,6 +18,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Circle, Line, Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { READY_LOW, READY_HIGH, type ReadinessPoint } from '../lib/cognitiveReadiness';
 
 /** 准备度三档配色：分数高 = 状态好 = 绿（与疲劳档位方向相反） */
@@ -102,8 +103,8 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
       <Svg width={svgW} height={svgH + theme.sp(2)}>
         <Defs>
           <SvgLinear id="readyArea" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.22} />
-            <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.01} />
+            <Stop offset="0%" stopColor={chart.series.primary} stopOpacity={0.22} />
+            <Stop offset="100%" stopColor={chart.series.primary} stopOpacity={0.01} />
           </SvgLinear>
         </Defs>
 
@@ -117,12 +118,12 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
               fill={LEVELS[i].color} opacity={0.07} />
           );
         })}
-        {/* 0 基线 */}
-        <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
-        {/* 档位边界虚线（仅作 40/70 参考基准，不赋予三档配色语义） */}
+        {/* 0 基线（网格 token：线宽 1 + 3 4 虚线） */}
+        <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
+        {/* 档位边界虚线（仅作 40/70 参考基准：参考虚线 token：线宽 1.3 + 5 4） */}
         {bounds.map((v) => (
           <Path key={'b' + v} d={`M ${padL} ${yAt(v)} L ${padL + plotW} ${yAt(v)}`}
-            stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
+            stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
         ))}
         {/* 数值刻度锚点（0 / 100） */}
         <SvgText key="y100" x={padL - theme.sp(1.5)} y={yAt(100) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>100</SvgText>
@@ -141,24 +142,24 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
         {runs.map((r, i) => r.idx.length > 1 ? (
           <React.Fragment key={'r' + i}>
             <Path d={areaOf(r.idx)} fill="url(#readyArea)" />
-            <Path d={lineOf(r.idx)} fill="none" stroke={theme.colors.accentSolid}
-              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+            <Path d={lineOf(r.idx)} fill="none" stroke={chart.series.primary}
+              strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
           </React.Fragment>
         ) : null)}
 
         {/* 单点区段（只有一个有值小时）画一个点，否则该小时会完全看不见 */}
         {runs.map((r, i) => r.idx.length === 1 ? (
-          <Circle key={'p' + i} cx={xAt(r.idx[0])} cy={yAt(points[r.idx[0]].score)} r={2.6}
-            fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.2} />
+          <Circle key={'p' + i} cx={xAt(r.idx[0])} cy={yAt(points[r.idx[0]].score)} r={chart.dot.radius}
+            fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
         ) : null)}
 
         {/* 「此刻」竖线 + 定位点（nowHour 为钟点 0–23 → 换算成槽号 ×2） */}
         {nowHour != null && points[nowHour * 2]?.hasData ? (
           <>
             <Line x1={xAt(nowHour * 2)} y1={padT} x2={xAt(nowHour * 2)} y2={padT + plotH}
-              stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="3 3" opacity={0.55} />
+              stroke={chart.series.primary} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} opacity={0.55} />
             <Circle cx={xAt(nowHour * 2)} cy={yAt(points[nowHour * 2].score)} r={4}
-              fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.6} />
+              fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
           </>
         ) : null}
 

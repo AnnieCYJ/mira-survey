@@ -141,7 +141,7 @@ const SYSTEM = [
   '4. 不说教、不下命令；除「可选证据」外不出现任何数字。',
   '示例一：状态=不足，相位=黄体期，证据=无 → {"headline":"今天钝钝的吧？别硬撑，早点休息呀","metric":"","cta":""}',
   '示例二：状态=偏低，相位=黄体期，证据=无 → {"headline":"状态有点低呀，做 3 分钟呼吸缓一缓","metric":"","cta":"Breathing"}',
-  '示例三：状态=平稳，相位=卵泡期，证据=HRV 回升 8% → {"headline":"状态挺稳的哦，去读篇小科普涨点知识呀","metric":"HRV 回升 8%","cta":"ToolTopic"}',
+  '示例三：状态=平稳，相位=卵泡期，证据=无 → {"headline":"状态挺稳的哦，去读篇小科普涨点知识呀","metric":"","cta":"LearnRead"}',
 ].join('\n');
 
 function buildUserPrompt(level: string, phase: string, bits: string[], avoidHeadline?: string): string {

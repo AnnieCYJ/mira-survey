@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>睡眠双轴图 · 横轴统一校验（满自然周期 vs 旧砍短）</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:#f5f5f7; margin:0; padding:20px; color:#1a1a1a; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#5f5f74; font-size:13px; margin:0 0 18px; }
+  .card { background:#fff; border-radius:14px; padding:16px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .card h2 { font-size:15px; margin:0 0 2px; }
+  .card .note { font-size:12px; color:#5f5f74; margin:0 0 10px; }
+  svg { width:100%; height:auto; display:block; }
+  .old { color:#c0392b; font-weight:600; }
+  .new { color:#2e7d32; font-weight:600; }
+</style>
+</head>
+<body>
+  <h1>睡眠双轴图 · 横轴统一校验</h1>
+  <p class="sub">今天 = 2026-10-09（周五）。<span class="old">旧版</span>把轴砍到今天 → 周只显示「一 二 三 四 五」、月只显示「1 5」；<span class="new">新版</span>画满整段自然周期，与其它图（血压/状态趋势/精力/指标/情绪）完全一致。</p>
+
+  <div class="card">
+    <h2>周视图 · 自然周（周一~周日，7 天）</h2>
+    <p class="note">新版：7 格全画，柱状只填有数据的 10/5–10/9（一~五），六日留空；横轴标签 = 一 二 三 四 五 六 日（全标）。</p>
+    <div id="plotW"></div>
+  </div>
+
+  <div class="card">
+    <h2>月视图 · 自然月（10/1–10/31，30 天）</h2>
+    <p class="note">新版：30 格全画，柱状只填 10/1–10/9（9 天），10 号之后留空；横轴刻度 = 1·5·10·15·20·25·30（与其它图同口径）。</p>
+    <div id="plotM"></div>
+  </div>
+
+  <div class="card">
+    <h2>年视图 · 自然年（1月–12月，12 个月）</h2>
+    <p class="note">新版：12 个月全画，1–10 月（含 10 月已有 9 天数据）填柱，11/12 月留空；横轴刻度 = 1月·3月·5月·7月·9月·11月。</p>
+    <div id="plotY"></div>
+  </div>
+
+<script>
+// —— 复刻 SleepDualAxisChart 的取点 + 标签逻辑（chartAxis 同源）——
+const W = 680, H = 240, PAD_L = 38, PAD_R = 10, PAD_T = 14, PAD_B = 34;
+const plotW = W - PAD_L - PAD_R;
+const yDur = (h) => PAD_T + (1 - h / 12) * (H - PAD_T - PAD_B);
+const yScore = (s) => PAD_T + (1 - s / 100) * (H - PAD_T - PAD_B);
+
+const WEEK = ['一','二','三','四','五','六','日'];
+const MONTH_TICKS = [1,5,10,15,20,25,30];
+const YEAR_TICKS = [0,2,4,6,8,10]; // 1月,3月,...,11月
+
+// 模拟"今天 10/9"的数据存在情况
+function makeData(kind){
+  if(kind==='week'){
+    const arr=[]; for(let i=0;i<7;i++){ const has=i<=4; arr.push({label:WEEK[i], dur:has?7+i*0.2:null, score:has?60+i*3:null}); } return arr;
+  }
+  if(kind==='month'){
+    const arr=[]; for(let i=0;i<30;i++){ const day=i+1; const isTick=MONTH_TICKS.includes(day); const has=day<=9; arr.push({label:isTick?String(day):'', dur:has?6.5+Math.random()*1.5:null, score:has?55+Math.random()*30:null}); } return arr;
+  }
+  // year
+  const arr=[]; for(let m=0;m<12;m++){ const isTick=YEAR_TICKS.includes(m); const has=m<=9; arr.push({label:isTick?`${m+1}月`:'', dur:has?7+Math.random():null, score:has?70+Math.random()*20:null}); } return arr;
+}
+
+function draw(containerId, data){
+  const n=data.length;
+  const xAt=(i)=>PAD_L+(i+0.5)*(plotW/n);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
+  // 横向网格
+  for(let g=0;g<=4;g++){ const y=PAD_T+g*(H-PAD_T-PAD_B)/4; svg+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="#eee" stroke-width="1"/>`; }
+  // 柱（时长）
+  const bw=plotW/n*0.6;
+  data.forEach((p,i)=>{ if(p.dur==null) return; const x=xAt(i)-bw/2; const y=yDur(p.dur); const h=(H-PAD_B)-y; svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="2" fill="#BCCB62"/>`; });
+  // 点（恢复分）
+  data.forEach((p,i)=>{ if(p.score==null) return; const x=xAt(i); const y=yScore(p.score); svg+=`<circle cx="${x}" cy="${y}" r="4" fill="#7E57C2"/>`; });
+  // 标签
+  data.forEach((p,i)=>{ if(!p.label) return; const x=xAt(i); svg+=`<text x="${x}" y="${H-14}" font-size="11" fill="#5F5F74" text-anchor="middle">${p.label}</text>`; });
+  svg+=`</svg>`;
+  document.getElementById(containerId).innerHTML=svg;
+}
+
+draw('plotW', makeData('week'));
+draw('plotM', makeData('month'));
+draw('plotY', makeData('year'));
+</script>
+</body>
+</html>

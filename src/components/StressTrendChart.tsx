@@ -21,6 +21,8 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Line, Text as SvgText, Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
+import { DAY_HOUR_TICKS } from '../lib/chartAxis';
 import { percentileFromZ } from '../lib/psychologicalStressScale';
 import type { EmotionalStressReport, EmotionalStressSlot } from '../lib/emotionalStress';
 
@@ -140,7 +142,9 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
     `${lineOf(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${(padT + plotH).toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${(padT + plotH).toFixed(1)} Z`;
 
   const anyData = points.some((p) => p.hasData);
-  const MAIN_HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+  // ★ 2026-10-09：日视图小时刻度统一走 chartAxis.DAY_HOUR_TICKS（每 4 小时），
+  //   与 ReadinessTrendChart / CognitiveLoadCard / RANGE_DEF 完全一致。
+  const MAIN_HOURS = [...DAY_HOUR_TICKS];
 
   return (
     <View>
@@ -159,8 +163,8 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
         <Svg width={svgW} height={svgH + theme.sp(2)}>
           <Defs>
             <SvgLinear id="stressArea" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor={theme.colors.accentSolid} stopOpacity={0.22} />
-              <Stop offset="100%" stopColor={theme.colors.accentSolid} stopOpacity={0.01} />
+              <Stop offset="0%" stopColor={chart.series.primary} stopOpacity={0.22} />
+              <Stop offset="100%" stopColor={chart.series.primary} stopOpacity={0.01} />
             </SvgLinear>
           </Defs>
 
@@ -191,33 +195,33 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
             );
           })() : null}
 
-          {/* 0 基线 */}
-          <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={theme.colors.ui.borderSoft} strokeWidth={1.2} />
-          {/* 40 / 70 档位边界（仅作参考基准，浅虚线，与认知准备度趋势图一致） */}
+          {/* 0 基线（网格线 token：线宽 1 + 3 4 虚线） */}
+          <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
+          {/* 40 / 70 档位边界（参考基准虚线 token：线宽 1.3 + 5 4 虚线） */}
           {[40, 70].map((v) => (
             <Path key={v} d={`M ${padL} ${yAt(v)} L ${padL + plotW} ${yAt(v)}`}
-              stroke={theme.colors.textSub + '30'} strokeWidth={1} strokeDasharray="3 3" />
+              stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
           ))}
           {/* 数值刻度锚点（0 / 100）—— 确认纵轴 0–100 尺度 */}
           <SvgText key="y100" x={padL - theme.sp(1.5)} y={yAt(100) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>100</SvgText>
           <SvgText key="y0" x={padL - theme.sp(1.5)} y={yAt(0) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>0</SvgText>
 
-          {/* 面积 + 折线：单一强调色，与认知准备度趋势图（脑力页）保持一致 */}
+          {/* 面积 + 折线：单一强调色（token primary），与认知准备度趋势图（脑力页）保持一致 */}
           {runs.map((idx, i) => idx.length > 1 ? (
             <React.Fragment key={'r' + i}>
               <Path d={areaOf(idx)} fill="url(#stressArea)" />
-              <Path d={lineOf(idx)} fill="none" stroke={theme.colors.accentSolid}
-                strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+              <Path d={lineOf(idx)} fill="none" stroke={chart.series.primary}
+                strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
             </React.Fragment>
           ) : (
-            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points.find((q) => q.slot === idx[0])!.value)} r={2.6}
-              fill={theme.colors.accentSolid} stroke={theme.colors.cardBg} strokeWidth={1.2} />
+            <Circle key={'p' + i} cx={xAt(idx[0])} cy={yAt(points.find((q) => q.slot === idx[0])!.value)} r={chart.dot.radius}
+              fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
           ))}
 
           {/* 「此刻」竖线 */}
           {nowSlot != null && nowSlot >= 0 && nowSlot < N ? (
             <Line x1={xAt(nowSlot)} y1={padT} x2={xAt(nowSlot)} y2={padT + plotH}
-              stroke={theme.colors.accentSolid} strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
+              stroke={chart.series.primary} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} opacity={0.5} />
           ) : null}
 
           {/* 右侧档位标注：低压力 / 中压力 / 高压力（纵轴 0-100 分区） */}

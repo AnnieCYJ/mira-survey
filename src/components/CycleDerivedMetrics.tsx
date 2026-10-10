@@ -27,45 +27,36 @@ interface Props {
   periodDays: Record<string, PeriodDayLog>;
 }
 
-type TileTone = 'purple' | 'teal' | 'green' | 'orange' | 'neutral';
-
 function buildTempSeries(ring: RingState) {
   const td = (ring.tempDaily ?? {}) as Record<string, number>;
   const keys = Object.keys(td);
   return keys.length ? keys.map((d) => ({ date: d, temp: td[d] })) : undefined;
 }
 
+/**
+ * ★ 2026-10-09（menstrual-cycle-preview.html 完全还原）：
+ *   指标块 = 无底色 + 1px 描边小格（.tile：border line / radius 11 / 值 15px·650·墨色）。
+ *   原先按 tone 上色的值统一改为墨色（预览稿里 6 个指标值全部同色）。
+ */
 function Tile({
   label,
   value,
   unit,
   sub,
-  tone,
   hasData = true,
 }: {
   label: string;
   value: string;
   unit?: string;
   sub?: string;
-  tone: TileTone;
   hasData?: boolean;
 }) {
-  const color =
-    tone === 'purple'
-      ? theme.colors.accentSolid
-      : tone === 'teal'
-      ? theme.colors.stateCalm
-      : tone === 'green'
-      ? theme.colors.success
-      : tone === 'orange'
-      ? theme.colors.stateTense
-      : theme.colors.textSub;
   return (
     <View style={[styles.tile, !hasData && styles.tileCompact]}>
       <Text style={styles.tileLabel}>{label}</Text>
       <View style={styles.tileValueRow}>
-        <Text style={[styles.tileValue, { color }, !hasData && styles.tileValueMuted]}>{value}</Text>
-        {unit ? <Text style={[styles.tileUnit, { color }]}>{unit}</Text> : null}
+        <Text style={[styles.tileValue, !hasData && styles.tileValueMuted]}>{value}</Text>
+        {unit ? <Text style={styles.tileUnit}>{unit}</Text> : null}
       </View>
       {sub ? <Text style={styles.tileSub}>{sub}</Text> : null}
     </View>
@@ -215,87 +206,86 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
 
       {hasAny ? (
         <>
-          {/* ★ 2026-10-07（用户：排卵置信度、周期长度这些可以加一个收起来，点击展开，默认收起） */}
-          <TouchableOpacity style={styles.moreRow} activeOpacity={0.7} onPress={() => setMoreOpen((v) => !v)}>
-            <Text style={styles.moreText}>{moreOpen ? '收起指标' : '展开更多指标'}</Text>
-            <Text style={styles.moreChev}>{moreOpen ? '⌃' : '⌄'}</Text>
+          {/* ★ 2026-10-07（用户：排卵置信度、周期长度这些可以加一个收起来，点击展开，默认收起）
+              ★ 2026-10-09（collapse-unified-preview）：折叠头统一为 mhRow（左标签 + 右 chevron，
+                  浅底描边行，对齐 SleepAnalysisCard.moreHead 与预览稿 .mhRow） */}
+          <TouchableOpacity
+            style={styles.mhRow}
+            activeOpacity={0.7}
+            onPress={() => setMoreOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={moreOpen ? '收起指标' : '展开更多指标'}
+          >
+            <Text style={styles.mhLabel}>展开更多指标</Text>
+            <View style={[styles.mhChev, moreOpen && styles.mhChevOpen]} />
           </TouchableOpacity>
           {moreOpen ? (
         <>
-        <View style={styles.grid}>
-          {/* 左列 */}
-          <View style={styles.col}>
-            <Tile
-              label="排卵置信度"
-              value={m.ovulationConfidence != null ? `${m.ovulationConfidence}` : '—'}
-              unit={m.ovulationConfidence != null ? '%' : undefined}
-              sub={m.ovulationBasis.join(' · ') || '日历推算'}
-              tone="purple"
-              hasData={m.ovulationConfidence != null}
-            />
-            <Tile
-              label="黄体期长度"
-              value={m.actualLutealLength != null ? `${m.actualLutealLength}` : '—'}
-              unit={m.actualLutealLength != null ? '天' : undefined}
-              sub={m.lutealMethod === '未知' ? '数据不足' : m.lutealMethod}
-              tone="teal"
-              hasData={m.actualLutealLength != null}
-            />
-            <Tile
-              label="周期规律性"
-              value={m.regularity.score != null ? m.regularity.label : '—'}
-              sub={
-                m.regularity.cv != null
-                  ? `CV ${m.regularity.cv} · 近 ${m.regularity.sampleN} 周期`
-                  : '记录 ≥2 次经期'
-              }
-              tone={m.regularity.score != null && m.regularity.score >= 70 ? 'green' : 'neutral'}
-              hasData={m.regularity.score != null}
-            />
-          </View>
-          {/* 右列 */}
-          <View style={styles.col}>
-            <Tile
-              label="周期长度"
-              value={`${m.actualCycleLength ?? log.cycleLength}`}
-              unit="天"
-              sub={
-                m.actualPeriodLength != null
-                  ? `经期 ${m.actualPeriodLength} 天 · 实测均值`
-                  : `经期约 ${log.periodLength} 天 · 按你的设置`
-              }
-              tone="purple"
-            />
-            <Tile
-              label="PMS 早筛"
-              value={
-                m.pmsIndex != null
-                  ? m.pmsRisk === 'high'
-                    ? '偏高'
-                    : m.pmsRisk === 'moderate'
-                    ? '中等'
-                    : '偏低'
-                  : '—'
-              }
-              sub={m.pmsIndex != null ? `指数 ${m.pmsIndex}` : '经前 7 天评估'}
-              tone={m.pmsRisk === 'high' ? 'orange' : m.pmsRisk === 'moderate' ? 'neutral' : 'green'}
-              hasData={m.pmsIndex != null}
-            />
-            <Tile
-              label="当前受孕概率"
-              value={m.fertilityProbability != null ? `${m.fertilityProbability}` : '—'}
-              unit={m.fertilityProbability != null ? '%' : undefined}
-              sub={
-                m.daysToOvulation != null
-                  ? m.daysToOvulation >= 0
-                    ? `距排卵 ${m.daysToOvulation} 天`
-                    : `排卵已过 ${-m.daysToOvulation} 天`
-                  : '—'
-              }
-              tone="teal"
-              hasData={m.fertilityProbability != null}
-            />
-          </View>
+        {/* ★ 2026-10-09（menstrual-cycle-preview）：展开区 = 两行 3 列描边小格（.statRow/.tile） */}
+        <View style={styles.statRow}>
+          <Tile
+            label="排卵置信度"
+            value={m.ovulationConfidence != null ? `${m.ovulationConfidence}` : '—'}
+            unit={m.ovulationConfidence != null ? '%' : undefined}
+            sub={m.ovulationBasis.join(' · ') || '日历推算'}
+            hasData={m.ovulationConfidence != null}
+          />
+          <Tile
+            label="黄体期长度"
+            value={m.actualLutealLength != null ? `${m.actualLutealLength}` : '—'}
+            unit={m.actualLutealLength != null ? '天' : undefined}
+            sub={m.lutealMethod === '未知' ? '数据不足' : m.lutealMethod}
+            hasData={m.actualLutealLength != null}
+          />
+          <Tile
+            label="周期规律性"
+            value={m.regularity.score != null ? m.regularity.label : '—'}
+            sub={
+              m.regularity.cv != null
+                ? `CV ${m.regularity.cv} · 近 ${m.regularity.sampleN} 周期`
+                : '记录 ≥2 次经期'
+            }
+            hasData={m.regularity.score != null}
+          />
+        </View>
+        <View style={[styles.statRow, styles.statRowGap]}>
+          <Tile
+            label="周期长度"
+            value={`${m.actualCycleLength ?? log.cycleLength}`}
+            unit="天"
+            sub={
+              m.actualPeriodLength != null
+                ? `经期 ${m.actualPeriodLength} 天 · 实测均值`
+                : `经期约 ${log.periodLength} 天 · 按你的设置`
+            }
+          />
+          <Tile
+            label="PMS 早筛"
+            value={
+              m.pmsIndex != null
+                ? m.pmsRisk === 'high'
+                  ? '偏高'
+                  : m.pmsRisk === 'moderate'
+                  ? '中等'
+                  : '偏低'
+                : '—'
+            }
+            sub={m.pmsIndex != null ? `指数 ${m.pmsIndex}` : '经前 7 天评估'}
+            hasData={m.pmsIndex != null}
+          />
+          <Tile
+            label="当前受孕概率"
+            value={m.fertilityProbability != null ? `${m.fertilityProbability}` : '—'}
+            unit={m.fertilityProbability != null ? '%' : undefined}
+            sub={
+              m.daysToOvulation != null
+                ? m.daysToOvulation >= 0
+                  ? `距排卵 ${m.daysToOvulation} 天`
+                  : `排卵已过 ${-m.daysToOvulation} 天`
+                : '—'
+            }
+            hasData={m.fertilityProbability != null}
+          />
         </View>
         {tempNote ? (
           <View style={styles.notes}>
@@ -334,23 +324,30 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.xs },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
-  grid: { flexDirection: 'row', gap: theme.space.xs },
-  col: { flex: 1, gap: theme.space.xs },
+  // ★ 2026-10-09（menstrual-cycle-preview）：展开区 = 3 列 statRow（第二行 marginTop 8）
+  statRow: { flexDirection: 'row', gap: theme.space.xs },
+  statRowGap: { marginTop: theme.space.xs },
   // ★ 2026-10-07（用户：周期健康指标下面那几个灰块 —— 背景不喜欢，不要灰色背景）：
-  //   指标块不再铺浅紫底，改成「无底色」的纯文字块，与上方「周期关键信息」三列同一读法。
+  //   指标块不再铺浅紫底。
+  // ★ 2026-10-09（menstrual-cycle-preview .tile）：无底色 + 1px 描边小格（radius 11 / 值 15px·650·墨色），
+  //   3 列同排，替代原先 2 列纯文字块。
   tile: {
+    flex: 1,
     backgroundColor: 'transparent',
-    borderRadius: theme.radius.sm,
-    padding: theme.space.xs,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.sp(2.5),
   },
   tileCompact: {
     paddingVertical: theme.sp(1.5),
   },
   tileLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) },
   tileValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.sp(0.5) },
-  tileValue: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold as any },
+  tileValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   tileValueMuted: { fontWeight: theme.weight.regular as any, opacity: 0.5 },
-  tileUnit: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any },
+  tileUnit: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any, color: theme.colors.textTitle },
   tileSub: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
@@ -365,16 +362,38 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.5),
   },
   /* 关键日期：与 CyclePhaseCard 的「关键日期」范式一致（居中 · 标签/值/副文，全 token） */
-  /* ★ 2026-10-07：「展开更多指标」开关行 */
-  moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(0.5), marginTop: theme.space.sm, paddingVertical: theme.space.xs },
-  moreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.semibold as any },
-  moreChev: { fontSize: theme.fontSize.sm, color: theme.colors.accentText },
+  /* ★ 2026-10-09（collapse-unified-preview .mhRow）：「展开更多指标」折叠头
+     （左标签 12.5px·600·墨 + 右 chevron，浅底描边行，对齐 SleepAnalysisCard.moreHead） */
+  mhRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.space.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.space.sm,
+  },
+  mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
+  mhChev: {
+    width: theme.sp(2),
+    height: theme.sp(2),
+    borderRightWidth: 1.6,
+    borderBottomWidth: 1.6,
+    borderColor: theme.colors.textSub,
+    transform: [{ rotate: '45deg' }],
+    marginRight: theme.sp(0.75),
+  },
+  mhChevOpen: { transform: [{ rotate: '-135deg' }] },
   keyDateGrid: { flexDirection: 'row', marginTop: theme.sp(1) },
-  /* ★ 2026-10-07：三列关键日期的外框（原本只靠紧排的文字分隔，看着太密） */
+  /* ★ 2026-10-07：三列关键日期的外框（原本只靠紧排的文字分隔，看着太密）
+     ★ 2026-10-09（menstrual-cycle-preview .kpi3）：圆角对齐 11（radius.md） */
   keyDateBox: {
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.md,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.sm,
     marginTop: theme.space.xs,
@@ -383,7 +402,7 @@ const styles = StyleSheet.create({
   keyDateCell: { flex: 1, alignItems: 'center', paddingHorizontal: theme.sp(0.5) },
   keyDateK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   keyDateV: {
-    fontSize: theme.fontSize.card,
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
     marginTop: theme.sp(0.75),

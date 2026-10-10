@@ -35,6 +35,8 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
+import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import { MindIcon } from './MindIcons';
@@ -406,7 +408,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                 y2={g.yBase}
                 stroke={mm.colors.ringTealDeep}
                 strokeOpacity={0.25}
-                strokeWidth={1}
+                strokeWidth={chart.lw.grid}
               />
 
               {/* 曲线下方填充 + 平滑曲线 */}
@@ -416,7 +418,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                   d={g.linePath}
                   fill="none"
                   stroke={mm.colors.ringTeal}
-                  strokeWidth={2.6}
+                  strokeWidth={chart.lw.series}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -424,7 +426,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
 
               {/* 孤立真实单点（真实但断开，画实心点让「测到了」可见） */}
               {g.singles.map((p, k) => (
-                <Circle key={`sg${k}`} cx={p.x} cy={p.y} r={3.2} fill={mm.colors.ringTeal} />
+                <Circle key={`sg${k}`} cx={p.x} cy={p.y} r={chart.dot.radius} fill={mm.colors.ringTeal} />
               ))}
 
               {/* 峰值：竖直虚线 + 发光圆点 + 时刻标签（★ v18.69 取真实样本最高点；空数据整块不渲染，防 NaN 进 SVG） */}
@@ -437,10 +439,10 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                     y2={g.yBase}
                     stroke={mm.colors.ringTealDeep}
                     strokeOpacity={0.42}
-                    strokeWidth={1}
-                    strokeDasharray="3,3"
+                    strokeWidth={chart.lw.ref}
+                    strokeDasharray={chart.dash.ref}
                   />
-                  <Circle cx={g.peakX} cy={g.peakY} r={4.2} fill={mm.colors.limeMid} />
+                  <Circle cx={g.peakX} cy={g.peakY} r={4.2} fill={chart.series.cortisol} />
                   <SvgText
                     x={Math.min(Math.max(g.peakX, PAD_L + 16), PAD_L + g.chartW - 16)}
                     y={Math.max(g.peakY - 12, 12)}
@@ -455,7 +457,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
               ) : null}
 
               {/* 时间轴 00 / 06 / 12 / 18 / 24（两端刻度改 start/end 锚点，贴边不截断） */}
-              {[0, 6, 12, 18, 24].map((h) => {
+              {DAY_HOUR_TICKS_COMPACT.map((h) => {
                 const slot = Math.min(h * 2, CHART_SLOTS - 1);
                 const edgeL = h === 0;
                 const edgeR = h === 24;

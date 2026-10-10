@@ -39,10 +39,14 @@ export default function SymptomPhaseMatrix({
   periodDays,
   log,
   ring,
+  embedded = false,
 }: {
   periodDays: Record<string, PeriodDayLog>;
   log: CycleLog | null;
   ring: RingState;
+  /** ★ 2026-10-09（menstrual-cycle-preview）：内嵌到「症状统计」折叠区时去掉卡片外壳与标题，
+      由父级 blockTitle 提供「症状 × 相位分布」；无数据时渲染 null */
+  embedded?: boolean;
 }) {
   const { rows, hasData } = useMemo(() => {
     const days = Object.values(periodDays);
@@ -66,9 +70,12 @@ export default function SymptomPhaseMatrix({
     return { rows, hasData };
   }, [periodDays, log, ring]);
 
+  // ★ 2026-10-09：embedded 模式 + 无数据 → 渲染 null（父级折叠区里不占位）
+  if (embedded && !hasData) return null;
+
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>症状 × 相位分布</Text>
+    <View style={embedded ? styles.embed : styles.card}>
+      {!embedded ? <Text style={styles.title}>症状 × 相位分布</Text> : null}
       {!hasData ? (
         <Text style={styles.empty}>
           记录几天身体症状后，这里会按经期 / 卵泡期 / 排卵期 / 黄体期汇总，帮你看出哪些症状偏爱哪个阶段。
@@ -134,6 +141,8 @@ const styles = StyleSheet.create({
     gap: theme.space.xs,
   },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  // ★ 2026-10-09：embedded 模式外壳（无卡片底/边框/内边距，仅保留内层 gap）
+  embed: { gap: theme.space.xs },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
   headRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: theme.sp(0.5) },
   labelCol: { width: theme.sp(20), justifyContent: 'center' },

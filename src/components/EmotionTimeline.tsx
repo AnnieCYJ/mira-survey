@@ -8,6 +8,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import Svg, { Path, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { dayKey, healthStore } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
 import type { EmotionLabel } from '../lib/emotionEngine';
@@ -218,8 +219,8 @@ export default function EmotionTimeline({
           const y = pad.t + innerH * (1 - v / 100);
           return (
             <React.Fragment key={v}>
-              <Rect x={pad.l} y={y} width={innerW} height={0.5} fill="#E5E0D6" opacity={0.5} />
-              <SvgText x={pad.l - 6} y={y + 3} fontSize={9} fill="#999" textAnchor="end">{v}</SvgText>
+              <Rect x={pad.l} y={y} width={innerW} height={0.5} fill={chart.grid} opacity={0.5} />
+              <SvgText x={pad.l - 6} y={y + 3} fontSize={9} fill={theme.colors.textSub} textAnchor="end">{v}</SvgText>
             </React.Fragment>
           );
         })}
@@ -231,7 +232,7 @@ export default function EmotionTimeline({
         ) : (
           <>
             <Path d={area} fill="url(#emoArea)" />
-            <Path d={path} stroke="#7C6AE0" strokeWidth={1.5} fill="none" />
+            <Path d={path} stroke={chart.series.primary} strokeWidth={chart.lw.ref} fill="none" />
 
             {pts.map((p, i) => {
               const color = LABEL_COLOR[(p.emotionLabel as EmotionLabel) ?? 'calm'] ?? '#7C6AE0';
@@ -258,7 +259,7 @@ export default function EmotionTimeline({
           const t = awakeStart + (awakeEnd - awakeStart) * frac;
           const x = pad.l + innerW * frac;
           return (
-            <SvgText key={i} x={x} y={height - 6} fontSize={9} fill="#999" textAnchor="middle">
+            <SvgText key={i} x={x} y={height - 6} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">
               {fmtHM(t)}
             </SvgText>
           );

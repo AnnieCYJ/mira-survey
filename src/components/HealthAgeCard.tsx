@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop, Path, Text as SvgText, G } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
@@ -9,9 +9,10 @@ import { AiBadge } from './AiAnalysis';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 
 interface Props {
-  healthAge?: number;
-  actualAge?: number;
-  overallScore?: number;
+  healthAge?: number | null;
+  actualAge?: number | null;
+  onEditProfile?: () => void;
+  overallScore?: number | null;
   ring?: any;
   rows?: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[];
   pending?: boolean;
@@ -23,19 +24,19 @@ interface Props {
 }
 
 export default function HealthAgeCard({
-  healthAge = 18,
-  actualAge = 22,
-  overallScore = 84,
+  healthAge = null,
+  actualAge = null,
+  overallScore = null,
+  onEditProfile,
   ring,
   rows,
   pending,
   analysisText,
   suggestions,
 }: Props) {
-  const delta = healthAge - actualAge;
-  const isYounger = healthAge < actualAge;
-  const deltaSign = delta >= 0 ? '+' : '';
-  const deltaStr = `${deltaSign}${delta.toFixed(1)}`;
+  const hasEstimate = healthAge != null && actualAge != null && Number.isFinite(healthAge) && Number.isFinite(actualAge);
+  const delta = hasEstimate ? healthAge! - actualAge! : 0;
+  const isYounger = hasEstimate && delta < 0;
   // v16 §4.2 #1：黄绿胶囊统一（#EAF0BE / #6E7A24），不再按年轻/衰老换色
   const pill = { bg: mm.colors.heroPillGreen, fg: mm.colors.limeDeep };
   // v16 端点圆点 = 黄绿 mid #BCCB62（好坏由数字与文案表达，不用红绿）
@@ -61,7 +62,7 @@ export default function HealthAgeCard({
   // 弧长（精确）：L = 2R·asin(halfChord/R)
   const halfAngle = halfChord > 0 ? Math.asin(halfChord / R) : 0;
   const totalLen = 2 * R * halfAngle;
-  const pct = Math.max(0, Math.min(100, overallScore)) / 100;
+  const pct = Math.max(0, Math.min(100, overallScore ?? 0)) / 100;
   const targetLen = totalLen * pct;
 
   // ═══ 进度终点圆点：θ 从 -halfAngle（左端）到 +halfAngle（右端），严格落在圆上 ═══
@@ -71,7 +72,7 @@ export default function HealthAgeCard({
 
   // ═══ 皮质醇 + 经期分析 ═══
   const analysisTextFallback = (() => {
-    if (pending) return 'AI 分析中...';
+    if (pending) return 'AI 分析中…';
     if (rows && rows.length > 0) return rows[0].body;
     try {
       const cortisol = ring?.intraday?.cortisol;
@@ -120,6 +121,12 @@ export default function HealthAgeCard({
         end={{ x: 0, y: 1 }}
         style={styles.heroGrad}
       >
+        {/* ★ 2026-10-10（用户）：「身体年龄」移到卡片左上角；去掉「参考估算」 */}
+        <View style={styles.topLabelRow}>
+          <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
+          <Text style={[styles.topLabel, { color: mm.colors.limeDeep }]}>身体年龄</Text>
+        </View>
+
         {/* ═══ SVG 弧（onLayout 实测宽度，viewBox 1:1，无拉伸变形） ═══ */}
         <View style={{ alignItems: 'center', paddingTop: theme.sp(1.5) }} onLayout={(e) => {
           const w = e.nativeEvent.layout.width;
@@ -166,28 +173,38 @@ export default function HealthAgeCard({
           </Svg>
           ) : null}
 
-          {/* ═══ 中央内容 (position: absolute 风格, 但用 View 布局) ═══ */}
-          <View style={[styles.centerContent, { marginTop: -VB_H + 82 }]} pointerEvents="none">
-            <View style={[styles.trendBadge, { backgroundColor: pill.bg }]}>
-              <Icon name={isYounger ? 'activity' : 'breath'}
-                size={theme.fontSize.sm} color={pill.fg} />
-              <Text style={[styles.trendText, { color: pill.fg }]}>
-                {isYounger ? '年轻' : '衰老'} {Math.abs(delta).toFixed(1)} 岁
+          {/* ═══ 中央内容：圆环下正中 — 大号「较实际年龄低 X 岁」
+              ★ 2026-10-10（用户）：5.3 岁放大居中；caption「较实际年龄低」字号加大；
+              不再用 pill；「参考估算」移除；参考 Apple Health Age 文案口径 ═══ */}
+          <View style={[styles.centerContent, { marginTop: -VB_H + 72 }]} pointerEvents="none">
+            {hasEstimate ? (
+              <>
+                <Text style={[styles.deltaCap, { color: pill.fg }]}>
+                  {delta === 0 ? '与实际年龄相近' : `较实际年龄${isYounger ? '低' : '高'}`}
+                </Text>
+                <Text style={[styles.deltaBig, { color: pill.fg }]}>
+                  {Math.abs(delta).toFixed(1)} 岁
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.deltaSub, { color: theme.colors.textSub }]}>
+                {actualAge == null ? '填写年龄后查看' : '数据积累中'}
               </Text>
-            </View>
-
-            <View style={styles.labelRow}>
-              <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
-              <Text style={[styles.labelText, { color: mm.colors.limeDeep }]}>身体年龄</Text>
-            </View>
+            )}
           </View>
         </View>
 
         {/* ═══ AI 分析白卡片（渐变底上的独立白卡，SPEC「再下白卡」）
             ★ 2026-10-06（用户：分析与建议不要两个框，合并在一个框里） ═══ */}
+        {actualAge == null && onEditProfile ? (
+          <TouchableOpacity onPress={onEditProfile} accessibilityRole="button" accessibilityLabel="填写身体档案"
+            style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: mm.colors.limeDeep, fontSize: theme.fontSize.body }}>填写身体档案 ›</Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={styles.cardWrap}>
           <AiBadge label="AI 分析" />
-          <Text style={styles.body} numberOfLines={4}>
+          <Text style={styles.body}>
             {analysisTextResolved}
           </Text>
           {suggestions && suggestions.length > 0 ? (
@@ -210,6 +227,36 @@ const styles = StyleSheet.create({
   centerContent: {
     alignItems: 'center',
     width: '100%',
+  },
+  // ★ 2026-10-10（用户）：「身体年龄」移到卡片左上角
+  topLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.sp(4),
+    paddingTop: theme.sp(2.5),
+    paddingBottom: theme.sp(0.5),
+  },
+  topLabel: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+    letterSpacing: 0.5,
+  },
+  // ★ 2026-10-10（用户）：圆环下正中大号 delta —— caption 加大、数字 40pt 居中
+  deltaCap: {
+    fontSize: theme.fontSize.body,        // 14，旧 pill 为 12
+    fontWeight: theme.weight.semibold,
+    marginBottom: theme.sp(0.5),
+  },
+  deltaBig: {
+    fontSize: 40,
+    fontWeight: '300',
+    letterSpacing: -1.5,
+    lineHeight: 44,
+    color: mm.colors.ink,
+  },
+  deltaSub: {
+    fontSize: theme.fontSize.card,
+    color: theme.colors.textSub,
   },
   scoreRow: {
     flexDirection: 'row',

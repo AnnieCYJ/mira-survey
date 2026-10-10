@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import Card from './Card';
 import type { MetricDef } from '../data/metrics';
 
@@ -80,8 +81,8 @@ export default function DimensionCard({ metric, onPress }: Props) {
                 </LinearGradient>
               </Defs>
               <Path d={area} fill="url(#sparkGrad)" />
-              <Path d={d} fill="none" stroke="url(#lineGrad)" strokeWidth={2.4} strokeLinecap="round" />
-              <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={theme.colors.accentSolid} strokeWidth={2.4} />
+              <Path d={d} fill="none" stroke="url(#lineGrad)" strokeWidth={chart.lw.series} strokeLinecap="round" />
+              <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={chart.series.primary} strokeWidth={chart.dot.stroke} />
             </Svg>
           ) : null}
         </View>

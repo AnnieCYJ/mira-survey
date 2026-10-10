@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira App · 柱状图样式与配色统一规范（审计 + 统一规则）</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --sub:#8A857D; --line:#ECEAE5; --bg:#F5F4F1; --card:#FFFFFF;
+    --soft:#FAFAF8;
+    --anomaly:#E2554E; --good:#2E9E5B; --warn:#C8881E;
+    /* 五色相 */
+    --purpleTint:#F4EDFC; --purpleSoft:#E7E1FB; --purpleMid:#C7B9F2; --purpleCore:#9D8AF0; --purpleDeep:#6E58C8;
+    --roseTint:#FDF0F6;   --roseSoft:#FCE7F0;   --roseMid:#F6B3D0;   --roseCore:#F2A3C6;   --roseDeep:#C9598A;
+    --skyTint:#F0F4FE;    --skySoft:#E3EBFE;    --skyMid:#B9CCF9;    --skyCore:#7EA6F8;    --skyDeep:#4C74C9;
+    --limeTint:#F6F7DC;   --limeSoft:#EAF0BE;   --limeCore:#D5E384;  --limeMid:#BCCB62;    --limeDeep:#6E7A24;
+    --honeyTint:#FDF7E9;  --honeySoft:#FBEFD6;  --honeyMid:#F3D49B;  --honeyCore:#F0C46E;  --honeyDeep:#B98A2E;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 20px 80px;}
+  h1{font-size:24px;font-weight:680;margin:0 0 4px;letter-spacing:-.2px}
+  .lead{font-size:13.5px;color:var(--sub);line-height:1.7;margin:0 0 8px}
+  .meta{font-size:11.5px;color:var(--sub);margin-bottom:26px}
+  h2{font-size:18px;font-weight:640;margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:620;margin:20px 0 8px}
+  p{font-size:13px;line-height:1.7}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:640;color:var(--sub);font-size:11.5px;background:var(--soft)}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:640;white-space:nowrap}
+  .t-bad{background:rgba(226,85,78,.12);color:var(--anomaly)}
+  .t-ok{background:rgba(46,158,91,.12);color:var(--good)}
+  .t-warn{background:rgba(200,136,30,.14);color:var(--warn)}
+  .t-info{background:rgba(124,106,224,.12);color:#6E58C8}
+  .verdict{background:rgba(226,85,78,.07);border:1px solid rgba(226,85,78,.25);border-radius:16px;padding:14px 16px;margin-bottom:16px}
+  .verdict b{color:var(--anomaly)}
+  .rule{font-size:12.5px;line-height:1.75;background:var(--soft);border-left:3px solid #6E58C8;padding:10px 14px;border-radius:0 10px 10px 0;margin:10px 0}
+  .rule.warn{border-left-color:var(--warn)}
+  .swatch{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:5px;border:1px solid rgba(31,29,26,.10)}
+  ul{font-size:12.5px;line-height:1.8;padding-left:18px;margin:6px 0}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:660}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:680px){.two{grid-template-columns:1fr}}
+  /* 柱状图对照演示 */
+  .demo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
+  @media(max-width:680px){.demo{grid-template-columns:1fr}}
+  .demoBox{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:14px 12px 10px}
+  .demoTitle{font-size:11.5px;font-weight:660;color:var(--sub);margin-bottom:10px;letter-spacing:.2px}
+  .bars{display:flex;align-items:flex-end;justify-content:space-between;height:96px;padding:0 4px}
+  .bars i{display:block;flex:0 0 auto;border-radius:3px}
+  .cap{font-size:11px;color:var(--sub);margin-top:8px;line-height:1.6}
+  .ok{color:var(--good);font-weight:640}
+  .bad{color:var(--anomaly);font-weight:640}
+  .palette{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
+  .pc{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .pc .row{height:34px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.18)}
+  .pc .lb{font-size:10px;color:var(--sub);text-align:center;padding:5px 2px;line-height:1.35}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>柱状图 · 样式与配色统一规范</h1>
+  <p class="lead">针对「柱状图的设计样式和颜色不统一、不在设计规范里」的专项审计，以及一套可直接落地的 Bar 规则。</p>
+  <p class="meta">审计范围：src/components · src/screens 全部柱状 / 条状元素（SVG &lt;Rect&gt; + View 横条）· 2026-10-09</p>
+
+  <div class="verdict">
+    <p style="margin:0"><b>结论：确实没统一，而且颜色这块比尺寸更严重。</b>
+    全站 <span class="num">17 处</span> 柱状/条状元素，圆角有 <span class="num">9 种</span>（1 / 1.5 / 2 / 2.4 / 2.5 / 3 / 4 / 5 / 9）、
+    宽度比例有 <span class="num">4 套</span>（slot×0.5 / ×0.6 / ×0.66 / flex:1）、
+    透明度有 <span class="num">5 档</span>（1 / 0.92 / 0.9 / 0.75 / 0.55）、空数据态有 <span class="num">5 种</span>画法。
+    更关键的是：<b>至少 6 处柱色不在五色规范里</b>——认知负荷柱用了「绿→黄→粉」，而规范里紫才是认知色。</p>
+  </div>
+
+  <h2>一、全量清单 · 17 处柱/条元素现状</h2>
+  <div class="card">
+    <table>
+      <tr>
+        <th style="width:22%">位置</th>
+        <th style="width:20%">当前颜色</th>
+        <th style="width:8%">圆角</th>
+        <th style="width:12%">宽度</th>
+        <th style="width:8%">透明度</th>
+        <th>判定</th>
+      </tr>
+
+      <tr>
+        <td class="mono">SleepDualAxisChart.tsx:158<br><span style="color:var(--sub)">睡眠时长柱</span></td>
+        <td><span class="swatch" style="background:#BCCB62"></span>limeMid #BCCB62</td>
+        <td class="mono">3</td>
+        <td class="mono">barW</td>
+        <td class="mono">0.92</td>
+        <td><span class="tag t-ok">色合规</span> 透明度 0.92 属多余，去掉</td>
+      </tr>
+
+      <tr>
+        <td class="mono">CognitiveLoadCard.tsx:285<br><span style="color:var(--sub)">24 根认知负荷柱</span></td>
+        <td><span class="swatch" style="background:#6E7A24"></span>success #6E7A24<br>
+            <span class="swatch" style="background:#F0C46E"></span>warn #F0C46E<br>
+            <span class="swatch" style="background:#C9598A"></span>danger #C9598A</td>
+        <td class="mono">3</td>
+        <td class="mono">barW</td>
+        <td class="mono">0.9 / 0.08</td>
+        <td><span class="tag t-bad">越界</span> 认知=紫，现为绿→黄→粉三色跳相</td>
+      </tr>
+
+      <tr>
+        <td class="mono">EnergyDetailScreen.tsx:1481<br><span style="color:var(--sub)">周/月/年得分柱</span></td>
+        <td>渐变：success→successText / warn→stateTense / honeyCore→honeyDeep</td>
+        <td class="mono">9</td>
+        <td class="mono">clamp(3–24,<br>step×0.6)</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">越界</span> 圆角 9 = radius.sm，柱被拉成药丸；渐变柱与认知卡的平涂柱不同款</td>
+      </tr>
+
+      <tr>
+        <td class="mono">EnergyDetailScreen.tsx:759<br><span style="color:var(--sub)">脑力消耗区间柱</span></td>
+        <td><span class="swatch" style="background:#9D8AF0"></span>purpleCore #9D8AF0</td>
+        <td class="mono">1.5</td>
+        <td class="mono">step×0.5</td>
+        <td class="mono">0.75</td>
+        <td><span class="tag t-warn">圆角偏小</span> 色合规（认知=紫）</td>
+      </tr>
+
+      <tr>
+        <td class="mono">InsightScreen.tsx:647<br><span style="color:var(--sub)">周步数柱</span></td>
+        <td><span class="swatch" style="background:#7EA6F8"></span>skyCore / <span class="swatch" style="background:#4C74C9"></span>skyDeep（今日）</td>
+        <td class="mono">2.5</td>
+        <td class="mono">max(6,<br>slot×0.5)</td>
+        <td class="mono">1 / 0.55</td>
+        <td><span class="tag t-ok">色合规</span> 非今日用 opacity 0.55 降饱和，应改用颜色深浅</td>
+      </tr>
+
+      <tr>
+        <td class="mono">CycleYearReviewCard.tsx:158/168<br><span style="color:var(--sub)">经期 / 症状双柱</span></td>
+        <td><span class="swatch" style="background:#F6B3D0"></span>roseMid + <span class="swatch" style="background:#7C6AE0"></span>accentSolid #7C6AE0</td>
+        <td class="mono">min(barW/2,6)</td>
+        <td class="mono">barW</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">越界</span> 症状用紫（认知色）；且一 mid 一 core 档位不齐</td>
+      </tr>
+
+      <tr>
+        <td class="mono">EmotionRangeBars.tsx:439<br><span style="color:var(--sub)">情绪堆叠柱</span></td>
+        <td><span class="swatch" style="background:#7EA6F8"></span>stateTired #7EA6F8 平静<br>
+            <span class="swatch" style="background:#BCCB62"></span>moodGood #BCCB62 愉悦<br>
+            <span class="swatch" style="background:#F0C46E"></span>moodEnergy #F0C46E 兴奋<br>
+            <span class="swatch" style="background:#9D8AF0"></span>stateEnergy #9D8AF0 压力<br>
+            <span class="swatch" style="background:#C9598A"></span>danger #C9598A 焦虑</td>
+        <td class="mono">2.5 / 0</td>
+        <td class="mono">clamp(4–34,<br>slot×0.66)</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">越界</span> 用的是 theme.colors.state* 旧色板，与 mm.colors.mood* 点阵色板是两套；「平静」用了蓝（运动色）</td>
+      </tr>
+
+      <tr>
+        <td class="mono">EmotionRangeBars.tsx:411/414/474<br><span style="color:var(--sub)">经期阴影 / 色带</span></td>
+        <td><span class="swatch" style="background:#EC9CC2"></span>#EC9CC2 硬编码<br><span class="swatch" style="background:#E5E2F0"></span>#E5E2F0 硬编码</td>
+        <td class="mono">4 / 2.5</td>
+        <td class="mono">barW+3</td>
+        <td class="mono">0.10 / 0.14</td>
+        <td><span class="tag t-bad">硬编码</span> 不在五色板内</td>
+      </tr>
+
+      <tr>
+        <td class="mono">SleepStageChart.tsx:124<br><span style="color:var(--sub)">睡眠分期段</span></td>
+        <td><span class="swatch" style="background:#9D8AF0"></span>purpleCore / <span class="swatch" style="background:#C7B9F2"></span>purpleMid / <span class="swatch" style="background:#7EA6F8"></span>skyCore / <span class="swatch" style="background:#F0C46E"></span>honeyCore</td>
+        <td class="mono">2.4</td>
+        <td class="mono">sw</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">越界</span> 睡眠结构跨紫/蓝/黄三相，应走黄绿相同相递进</td>
+      </tr>
+
+      <tr>
+        <td class="mono">StressInsightCard.tsx:186<br><span style="color:var(--sub)">24 根压力直方图</span></td>
+        <td>danger / stateTense / moodEnergy / white25</td>
+        <td class="mono">2</td>
+        <td class="mono">flex:1</td>
+        <td class="mono">0.9 / 0.06</td>
+        <td><span class="tag t-warn">半越界</span> 情绪=粉，现用黄/粉混；且与认知卡的柱高逻辑不是同一套</td>
+      </tr>
+
+      <tr>
+        <td class="mono">SymptomStatsPanel.tsx:114<br><span style="color:var(--sub)">症状频率条</span></td>
+        <td><span class="swatch" style="background:#7C6AE0"></span>accentSolid #7C6AE0</td>
+        <td class="mono">pill</td>
+        <td class="mono">% 宽度</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">越界</span> 症状属身体感受，应为粉 roseCore</td>
+      </tr>
+
+      <tr>
+        <td class="mono">SymptomStatsPanel.tsx:196<br><span style="color:var(--sub)">四档分布段</span></td>
+        <td>外部传入 s.color</td>
+        <td>无圆角</td>
+        <td class="mono">flex ratio</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-warn">未按档递进</span></td>
+      </tr>
+
+      <tr>
+        <td class="mono">CycleRegularityCard.tsx:252/253<br><span style="color:var(--sub)">周期长度条</span></td>
+        <td><span class="swatch" style="background:#7C6AE0"></span>accentSolid + <span class="swatch" style="background:rgba(120,190,120,.3)"></span>rgba(120,190,120,.30)</td>
+        <td class="mono">pill</td>
+        <td class="mono">% 宽度</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-bad">硬编码</span> rgba(120,190,120) 是已删除的旧绿，不在五色板</td>
+      </tr>
+
+      <tr>
+        <td class="mono">HormoneStatusCard.tsx:283<br><span style="color:var(--sub)">评分条</span></td>
+        <td>外部传入</td>
+        <td class="mono">3</td>
+        <td class="mono">% 宽度</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-warn">圆角 3 在 6pt 高的条上=半个高度</span></td>
+      </tr>
+
+      <tr>
+        <td class="mono">SleepAnalysisCard.tsx:304<br><span style="color:var(--sub)">睡眠结构比例条</span></td>
+        <td>外部传入</td>
+        <td class="mono">5</td>
+        <td class="mono">flex</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-warn">圆角 5 在 10pt 条上=pill，与 propDot 不一致</span></td>
+      </tr>
+
+      <tr>
+        <td class="mono">BloodComponentPanel.tsx:123<br><span style="color:var(--sub)">血液成分色条</span></td>
+        <td>ITEM_TONE：rose / sky / lime / purple / honey 五相 core</td>
+        <td>—</td>
+        <td>—</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-ok">唯一合规样板</span> 五项走五相，虽五色全开但各自语义正确</td>
+      </tr>
+
+      <tr>
+        <td class="mono">CortisolRhythmCard.tsx:612<br><span style="color:var(--sub)">图例 bar</span></td>
+        <td>外部</td>
+        <td class="mono">2</td>
+        <td class="mono">8</td>
+        <td class="mono">1</td>
+        <td><span class="tag t-warn">图例色块圆角 2 与柱体 3 不一致</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>二、六类问题 · 根因</h2>
+
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">① 颜色越界（最严重）</h3>
+      <p>柱色不是按「语义→色相」取，而是各组件自己写死或走 theme.colors 的旧语义 key。后果：<b>同一个"认知"语义，在认知卡是绿黄粉，在能量页是渐变绿黄蜜，在脑力区间柱又是紫</b>。</p>
+      <ul>
+        <li>认知负荷柱：<span class="bad">绿 #6E7A24 / 黄 #F0C46E / 粉 #C9598A</span>（应为紫三档）</li>
+        <li>睡眠分期：<span class="bad">紫 + 蓝 + 黄跨三相</span>（应为黄绿相同相递进 + 清醒用黄）</li>
+        <li>情绪堆叠：<span class="bad">theme.colors.state*</span> 与 mm.colors.mood* 两套情绪色板并存</li>
+        <li>症状条 / 周期条：<span class="bad">accentSolid 紫</span>（认知色被挪去表达身体）</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">② 圆角失控</h3>
+      <p><span class="num">9 种</span>圆角值：<span class="mono">1 / 1.5 / 2 / 2.4 / 2.5 / 3 / 4 / 5 / 9</span>。
+      最离谱的是 <span class="mono">EnergyDetailScreen</span> 写了 <span class="mono">rx={theme.radius.sm}</span> —— radius.sm 是 <b>卡片圆角 9</b>，被当成柱圆角用，柱高只有几十 pt 时整根被拉成胶囊。</p>
+      <p style="margin-bottom:0">还有 <span class="mono">SleepAnalysisCard</span> 比例条 borderRadius=5，但条高只有 10 —— 等于全圆，和它自己的图例点（4）不是一套。</p>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">③ 宽度比例四套</h3>
+      <p><span class="mono">slot×0.5</span>（周步数）、<span class="mono">step×0.6</span>（能量页）、<span class="mono">slot×0.66</span>（情绪堆叠）、<span class="mono">flex:1</span>（压力直方图）。同一个"7 天柱图"，在一页里宽窄差 30%。</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">④ 用透明度表达"重要程度"</h3>
+      <p>周步数非今日 <span class="mono">opacity 0.55</span>、睡眠柱 <span class="mono">0.92</span>、脑力区间柱 <span class="mono">0.75</span>。
+      <b>透明度会让柱子在白卡上发灰、对比度不可控</b>。规范应当用「同相深浅档」表达轻重，而不是降不透明度。</p>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">⑤ 空数据态五种画法</h3>
+      <ul style="margin:0">
+        <li>睡眠双轴：<b>不画</b></li>
+        <li>认知卡：白 25% 色、opacity 0.08、高 2pt</li>
+        <li>周步数：<span class="mono">rgba(120,110,160,.13)</span>、高 3pt</li>
+        <li>能量页：<span class="mono">cardBorder+'50'</span>、高 2pt</li>
+        <li>压力图：white25、opacity 0.06、高 1pt</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">⑥ 渐变 vs 平涂并存</h3>
+      <p>能量页周月年柱用 <span class="mono">LinearGradient</span>（每根柱一个 gradient id，14 根就是 14 个 defs），认知卡的同类柱却是平涂。
+      <b>同语义两种质感</b>，且渐变在窄柱上几乎看不出，只增加渲染开销。</p>
+    </div>
+  </div>
+
+  <h2>三、统一规则（Bar Spec）</h2>
+
+  <div class="rule">
+    <b>总原则：柱子的颜色由「数据语义」决定，不由「它在哪个文件」决定。</b>
+    同一语义在任何页面必须同色；同一张图内的多系列必须是「同相不同档」，禁止跨相拼色。
+  </div>
+
+  <h3>规则 1 · 语义 → 色相映射（唯一入口）</h3>
+  <div class="card">
+    <table>
+      <tr><th style="width:16%">语义</th><th style="width:14%">色相</th><th>柱子取档（低 → 高 / 轻 → 重）</th><th style="width:30%">适用</th></tr>
+      <tr><td>认知 / 脑力</td><td><span class="swatch" style="background:#9D8AF0"></span>紫 purple</td><td class="mono">purpleMid → purpleCore → purpleDeep</td><td>认知负荷、脑力消耗、专注度</td></tr>
+      <tr><td>情绪 / 压力 / 症状</td><td><span class="swatch" style="background:#F2A3C6"></span>粉 rose</td><td class="mono">roseSoft → roseMid → roseCore → roseDeep</td><td>情绪堆叠、压力直方图、症状频率</td></tr>
+      <tr><td>运动 / 心肺</td><td><span class="swatch" style="background:#7EA6F8"></span>蓝 sky</td><td class="mono">skySoft → skyMid → skyCore → skyDeep</td><td>步数、血压、血氧、运动消耗</td></tr>
+      <tr><td>睡眠 / 恢复 / 今日状态</td><td><span class="swatch" style="background:#BCCB62"></span>黄绿 lime</td><td class="mono">limeSoft → limeMid → limeCore → limeDeep</td><td>睡眠时长、睡眠分期、恢复分、完成度</td></tr>
+      <tr><td>代谢 / 能量 / 清醒</td><td><span class="swatch" style="background:#F0C46E"></span>黄 honey</td><td class="mono">honeySoft → honeyMid → honeyCore → honeyDeep</td><td>血糖、血脂分项、清醒段、黄体期</td></tr>
+      <tr><td>周期（经期）</td><td><span class="swatch" style="background:#F2A3C6"></span>粉 rose</td><td class="mono">roseMid → roseCore</td><td>经期柱、经期色带、周期长度</td></tr>
+      <tr><td>异常 / 心电</td><td><span class="swatch" style="background:#E5484D"></span>红</td><td class="mono">ecgRed #E5484D / anomaly #E2554E</td><td>心电波形（唯一红）、异常标记点</td></tr>
+      <tr><td>空 / 无数据</td><td>中性</td><td class="mono">mm.colors.emptyFill #F6F4F1</td><td>空柱底条、无数据占位</td></tr>
+    </table>
+    <p style="margin-bottom:0;margin-top:10px"><b>档位用法：</b>单系列柱 → 一律取 <span class="mono">core</span>；三档分级 → <span class="mono">mid / core / deep</span>；四档以上 → <span class="mono">soft / mid / core / deep</span>。
+    「今天 / 峰值」这类强调，用 <span class="mono">deep</span>，<b>不用 opacity</b>。</p>
+  </div>
+
+  <div class="demo">
+    <div class="demoBox">
+      <div class="demoTitle">现状 · 认知负荷柱（跨三色相）</div>
+      <div class="bars">
+        <i style="width:16px;height:26px;background:#6E7A24"></i>
+        <i style="width:16px;height:40px;background:#6E7A24"></i>
+        <i style="width:16px;height:58px;background:#F0C46E"></i>
+        <i style="width:16px;height:72px;background:#F0C46E"></i>
+        <i style="width:16px;height:84px;background:#C9598A"></i>
+        <i style="width:16px;height:70px;background:#C9598A"></i>
+        <i style="width:16px;height:36px;background:#6E7A24"></i>
+      </div>
+      <div class="cap"><span class="bad">✕</span> 绿 → 黄 → 粉：读起来像三种不同的指标，实际是同一条曲线的三个档位</div>
+    </div>
+    <div class="demoBox">
+      <div class="demoTitle">统一后 · 认知负荷柱（紫相同相递进）</div>
+      <div class="bars">
+        <i style="width:16px;height:26px;background:#C7B9F2"></i>
+        <i style="width:16px;height:40px;background:#C7B9F2"></i>
+        <i style="width:16px;height:58px;background:#9D8AF0"></i>
+        <i style="width:16px;height:72px;background:#9D8AF0"></i>
+        <i style="width:16px;height:84px;background:#6E58C8"></i>
+        <i style="width:16px;height:70px;background:#6E58C8"></i>
+        <i style="width:16px;height:36px;background:#C7B9F2"></i>
+      </div>
+      <div class="cap"><span class="ok">✓</span> 紫 = 认知；深浅 = 负荷高低，一眼是「同一件事的程度变化」</div>
+    </div>
+  </div>
+
+  <h3>规则 2 · 圆角：只留两个值</h3>
+  <div class="card">
+    <table>
+      <tr><th style="width:24%">元素</th><th style="width:16%">圆角</th><th>说明</th></tr>
+      <tr><td>竖柱 / 堆叠柱 / 区间柱（SVG）</td><td class="mono">3 pt</td><td>沿用 <span class="mono">chart.barRadius</span>。柱宽 ≥6 时视觉一致；不要用 radius.sm(9)、radius.md(11) 这类卡片圆角</td></tr>
+      <tr><td>横条 / 进度条 / 比例条（View）</td><td class="mono">pill（999）</td><td>条高 ≤10pt 时一律全圆，不要写 3 或 5</td></tr>
+      <tr><td>空数据底条</td><td class="mono">1 pt</td><td>2pt 高的底条，圆角 1 即可</td></tr>
+      <tr><td>图例色块</td><td class="mono">3 pt</td><td>与柱体同值，图例才能当"色卡"读</td></tr>
+    </table>
+    <div class="rule warn" style="margin-bottom:0">
+      <b>硬约束：</b>圆角不得超过柱宽的 1/2（否则变成胶囊）；也不得用 <span class="mono">theme.radius.card/md/sm</span> 这类为容器设计的圆角去修饰柱体。
+    </div>
+  </div>
+
+  <h3>规则 3 · 宽度与间距</h3>
+  <div class="card">
+    <div class="rule" style="margin-top:0">
+      柱宽 <span class="mono">barW = clamp(4, slot × 0.6, 24)</span>；间距 = 剩余空间均分。
+      即 <b>柱占槽位 60%</b>，全站统一，取消 0.5 / 0.66 / flex:1 三种写法。
+    </div>
+    <ul style="margin-bottom:0">
+      <li>柱数 ≤ 7：barW 取上限 24，居中排布，视觉更稳</li>
+      <li>柱数 8–31：barW = slot × 0.6</li>
+      <li>柱数 &gt; 31（如 24 小时 × 多天）：barW 取下限 4，间距 1</li>
+      <li>堆叠柱内各段<b>不留间隙</b>，缝隙由描边（1pt 白）分隔，不用 gap</li>
+    </ul>
+  </div>
+
+  <h3>规则 4 · 禁止用 opacity 表达轻重</h3>
+  <div class="card">
+    <p style="margin-top:0">柱体透明度<b>只允许两个值</b>：<span class="mono">1</span>（实心）与 <span class="mono">0.12</span>（背景带 / 相位阴影）。
+    其余一律用色相档位（soft/mid/core/deep）表达。需要"淡一点"的背景就取 tint/soft 档，不要给 core 色加 0.55。</p>
+    <ul style="margin-bottom:0">
+      <li>今日 / 峰值 → <span class="mono">deep</span> 档，不是 opacity 1 vs 0.55</li>
+      <li>睡眠阴影 / 相位带 → <span class="mono">soft/tint</span> 档，不是 opacity 0.92 / 0.10</li>
+    </ul>
+  </div>
+
+  <h3>规则 5 · 禁止柱体渐变</h3>
+  <div class="card">
+    <p style="margin:0">柱体一律<b>平涂单色</b>。取消 <span class="mono">EnergyDetailScreen</span> 里每根柱一个 <span class="mono">LinearGradient</span> 的写法
+    （14 根柱 = 14 个 defs，且在 6–24pt 宽的柱上看不出渐变，只增渲染成本）。
+    档位差异改用同相深浅档表达。</p>
+  </div>
+
+  <h3>规则 6 · 空数据统一态</h3>
+  <div class="card">
+    <p style="margin-top:0">无数据的槽位统一画：<b>2pt 高 · <span class="mono">emptyFill #F6F4F1</span> · 圆角 1</b> 的贴底细条，
+    opacity 1。全站取消「不画」/「白色 0.08」/「rgba(120,110,160,.13)」/「cardBorder+50」这四种写法。
+    例外：<b>未来日期</b>仍保持"不画"（用户既有口径：不给看着像有数据的假值）。</p>
+  </div>
+
+  <h2>四、逐文件迁移对照表</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:26%">文件</th><th style="width:30%">现在</th><th style="width:30%">改为</th><th style="width:14%">优先级</th></tr>
+
+      <tr>
+        <td class="mono">CognitiveLoadCard.tsx:150-155,285</td>
+        <td>LEVELS 色 = success/warn/danger</td>
+        <td>LEVELS 色 = <span class="mono">purpleMid / purpleCore / purpleDeep</span>；rx → 3；opacity 0.9 → 1</td>
+        <td><span class="tag t-bad">P0</span></td>
+      </tr>
+      <tr>
+        <td class="mono">EnergyDetailScreen.tsx:1386-1397,1481</td>
+        <td>每柱一个 LinearGradient；rx=9</td>
+        <td>删 gradient，平涂按 type 取相（cognitive→紫 / emotion→粉 / physical→蓝）；rx → 3</td>
+        <td><span class="tag t-bad">P0</span></td>
+      </tr>
+      <tr>
+        <td class="mono">EmotionRangeBars.tsx:30-44,439</td>
+        <td>theme.colors.state* / mood* 旧色板</td>
+        <td>统一到 <span class="mono">mm.colors.mood*</span>；或按粉相递进（见下方方案 B）；rx 统一 3（去掉「顶部 2.5 其余 0」）</td>
+        <td><span class="tag t-bad">P0</span></td>
+      </tr>
+      <tr>
+        <td class="mono">SleepStageChart.tsx:16-22</td>
+        <td>SLEEP_STAGE_META 跨紫/蓝/黄</td>
+        <td>深睡 limeDeep / 浅睡 limeMid / REM limeCore / 清醒 honeyCore / 失眠 honeyDeep；rx → 3</td>
+        <td><span class="tag t-bad">P0</span></td>
+      </tr>
+      <tr>
+        <td class="mono">CycleYearReviewCard.tsx:164,174</td>
+        <td>roseMid + accentSolid</td>
+        <td>经期 roseCore + 症状 roseMid（同相递进）；rx 统一 3（去掉 min(barW/2,6)）</td>
+        <td><span class="tag t-warn">P1</span></td>
+      </tr>
+      <tr>
+        <td class="mono">SymptomStatsPanel.tsx:114</td>
+        <td>accentSolid 紫</td>
+        <td><span class="mono">roseCore</span>；分布段四档改 roseSoft→roseDeep 递进</td>
+        <td><span class="tag t-warn">P1</span></td>
+      </tr>
+      <tr>
+        <td class="mono">CycleRegularityCard.tsx:252,253</td>
+        <td>rgba(120,190,120,.30) + accentSolid</td>
+        <td>正常带 → <span class="mono">limeSoft</span>；填充 → <span class="mono">roseCore</span></td>
+        <td><span class="tag t-warn">P1</span></td>
+      </tr>
+      <tr>
+        <td class="mono">StressInsightCard.tsx:183-193</td>
+        <td>danger/stateTense/moodEnergy/white25</td>
+        <td>粉相三档 <span class="mono">roseMid / roseCore / roseDeep</span>；空态 → emptyFill 2pt</td>
+        <td><span class="tag t-warn">P1</span></td>
+      </tr>
+      <tr>
+        <td class="mono">InsightScreen.tsx:638,647</td>
+        <td>opacity 0.92×0.55；rx 2.5</td>
+        <td>非今日 → <span class="mono">skyCore</span>，今日 → <span class="mono">skyDeep</span>，opacity 全 1；rx → 3；空态 → emptyFill 2pt</td>
+        <td><span class="tag t-info">P2</span></td>
+      </tr>
+      <tr>
+        <td class="mono">SleepDualAxisChart.tsx:158</td>
+        <td>opacity 0.92</td>
+        <td>opacity → 1（色已是 limeMid，合规）</td>
+        <td><span class="tag t-info">P2</span></td>
+      </tr>
+      <tr>
+        <td class="mono">EnergyDetailScreen.tsx:759</td>
+        <td>purpleCore opacity .75 rx 1.5</td>
+        <td>opacity → 1；rx → 3</td>
+        <td><span class="tag t-info">P2</span></td>
+      </tr>
+      <tr>
+        <td class="mono">HormoneStatusCard.tsx:283 / SleepAnalysisCard.tsx:304 / CortisolRhythmCard.tsx:612</td>
+        <td>圆角 3 / 5 / 2</td>
+        <td>横条 → pill；图例块 → 3</td>
+        <td><span class="tag t-info">P2</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>五、需要清理的硬编码色号</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:20%">色号</th><th style="width:34%">位置</th><th>替换为</th></tr>
+      <tr><td class="mono">#EC9CC2</td><td class="mono">EmotionRangeBars.tsx PRE_PINK</td><td><span class="mono">mm.colors.roseMid #F6B3D0</span></td></tr>
+      <tr><td class="mono">#E5E2F0</td><td class="mono">EmotionRangeBars.tsx bandColor fallback</td><td><span class="mono">mm.colors.emptyFill #F6F4F1</span></td></tr>
+      <tr><td class="mono">#8A3563</td><td class="mono">EmotionRangeBars.tsx:459 经期标签字</td><td><span class="mono">mm.colors.roseDeep #C9598A</span></td></tr>
+      <tr><td class="mono">#F1EFEA / #C9C5BC</td><td class="mono">EmotionRangeBars.tsx:392,637 斜纹底</td><td><span class="mono">mm.colors.emptyFill</span> / <span class="mono">mm.colors.chipBorder</span></td></tr>
+      <tr><td class="mono">rgba(120,190,120,.30)</td><td class="mono">CycleRegularityCard.tsx:252</td><td><span class="mono">mm.colors.limeSoft #EAF0BE</span></td></tr>
+      <tr><td class="mono">rgba(120,110,160,.13)<br>rgba(120,110,160,.6)</td><td class="mono">InsightScreen.tsx:638,653</td><td><span class="mono">mm.colors.emptyFill</span> / <span class="mono">mm.colors.inkFaint</span></td></tr>
+      <tr><td class="mono">#7EA6F8（直写）</td><td class="mono">HormoneCurveCard.tsx:248</td><td><span class="mono">mm.colors.skyCore</span></td></tr>
+      <tr><td class="mono">#E5E0D6 / #999</td><td class="mono">EmotionTimeline.tsx:222-223</td><td><span class="mono">chart.grid</span> / <span class="mono">theme.colors.textSub</span></td></tr>
+    </table>
+  </div>
+
+  <h2>六、两个待你拍板的选项</h2>
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0"><span class="tag t-info">推荐</span> 方案 A · 情绪堆叠柱走粉相递进</h3>
+      <div class="palette">
+        <div class="pc"><div class="row" style="background:#FDF0F6;color:#8A857D">平静</div><div class="lb">roseTint</div></div>
+        <div class="pc"><div class="row" style="background:#F6B3D0">愉悦</div><div class="lb">roseMid</div></div>
+        <div class="pc"><div class="row" style="background:#F2A3C6">兴奋</div><div class="lb">roseCore</div></div>
+        <div class="pc"><div class="row" style="background:#C9598A">压力</div><div class="lb">roseDeep</div></div>
+        <div class="pc"><div class="row" style="background:#6E58C8">焦虑</div><div class="lb">purpleDeep</div></div>
+      </div>
+      <p style="margin-bottom:0;margin-top:10px">严格按「粉=情绪」的 v16 铁律，与点阵 mm.colors.mood* 仍需二选一；
+      好处是全站情绪只有一个色相，代价是「平静/愉悦」区分度靠深浅。</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">方案 B · 沿用效价双相（现状修正版）</h3>
+      <div class="palette">
+        <div class="pc"><div class="row" style="background:#BCCB62">平静</div><div class="lb">limeMid</div></div>
+        <div class="pc"><div class="row" style="background:#D5E384">愉悦</div><div class="lb">limeCore</div></div>
+        <div class="pc"><div class="row" style="background:#F0C46E">兴奋</div><div class="lb">honeyCore</div></div>
+        <div class="pc"><div class="row" style="background:#F2A3C6">压力</div><div class="lb">roseCore</div></div>
+        <div class="pc"><div class="row" style="background:#C9598A">焦虑</div><div class="lb">roseDeep</div></div>
+      </div>
+      <p style="margin-bottom:0;margin-top:10px">正向（黄绿→黄）+ 负向（粉）双相，读情绪的"好/坏"更直觉，与点阵 6 色同源；
+      代价是一张图同时开两个色相，与「单屏色相 ≤4」仍兼容。</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <p style="margin:0"><b>落地顺序建议：</b>先做 P0 四条（认知柱改紫、能量页去渐变、情绪色板二选一、睡眠分期同相），
+    这四条改完，"颜色不在规范里"的问题基本清零；再做 P1/P2 的圆角、宽度、空态收敛。
+    本次只出规范，<b>未改动任何源码</b>（tsc 基线仍为 42）。</p>
+  </div>
+
+</div>
+</body>
+</html>

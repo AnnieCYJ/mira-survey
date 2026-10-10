@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 脑力准备度 · 日/周/月/年 UI（与睡眠恢复·心理压力同风格）</title>
+<style>
+  :root{
+    /* 脑力准备度 = App 真实主色：紫（accentSolid），三档带红/琥珀/绿（与 ReadinessTrendChart 同源） */
+    --primary:  #7C6AE0;
+    --bad:      #C9598A;  /* 偏低 / 需休息（玫红） */
+    --mid:      #B98A2E;  /* 中等（琥珀） */
+    --good:     #6E7A24;  /* 充沛（深绿） */
+    --hiDot:    #BCCB62;  /* 晨起（亮绿） */
+    --bar:      #9D8AF0;  /* 睡前（紫 light） */
+    --barLo:    #6E58C8;  /* 睡前（紫 deep） */
+
+    --grid:     rgba(31,29,26,0.09);
+    --axis:     #6B6760;
+    --ink:      #1F1D1A;
+    --bg:       #F5F4F1;
+    --card:     #FFFFFF;
+    --sub:      #8A857D;
+    --line:     #ECEAE5;
+    --accent:   #7C6AE0;
+    --accentSoft: #EFEDFB;
+    --t-fade:   160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.5}
+
+  /* ── 日/周/月/年 切换 ── */
+  .switch{display:flex;background:#EDEBE7;border-radius:12px;padding:3px;position:relative;margin:0 0 10px}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;flex:1;border:0;background:transparent;font-size:14px;
+    padding:8px 0;color:var(--sub);cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  /* ── 时间选择器（DateAnchorPicker 同款）── */
+  .picker{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .parrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--ink);cursor:pointer}
+  .pcenter{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--accent);background:var(--accentSoft);border-radius:999px;padding:9px 0;
+    font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+  .pcenter .cal{width:14px;height:14px;position:relative;display:inline-block}
+  .pcenter .cal:before{content:"";position:absolute;inset:0;border:1.6px solid var(--accent);border-radius:3px}
+  .pcenter .cal:after{content:"";position:absolute;left:3px;top:2px;width:1.6px;height:4px;background:var(--accent);border-radius:1px}
+
+  .card{background:var(--card);border-radius:18px;padding:14px 14px 12px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .ctitle{font-size:15px;font-weight:600;margin:0}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .blockTitle{font-size:11px;color:var(--sub);margin:14px 0 6px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin:8px 2px 0}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:4px}
+
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;padding:6px 4px 12px}
+  .hero .big{font-size:46px;font-weight:650;line-height:1}
+  .hero .ctx{font-size:13px;font-weight:600}
+  .hero .lab{font-size:11px;color:var(--sub);margin-top:4px}
+
+  .duo{display:flex;gap:10px}
+  .duo .cell{flex:1;border-radius:11px;padding:10px 11px}
+  .duo .lab{font-size:11px;color:var(--sub);margin-bottom:3px}
+  .duo .t{font-size:17px;font-weight:650;line-height:1.1}
+  .duo .s{font-size:11px;color:var(--sub);margin-top:3px}
+
+  svg{display:block;width:100%;height:auto}
+
+  /* 统一折叠入口（对齐 App moreHead） */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:#FAFAF8;border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .moreBody{margin-top:4px}
+  .rows{border-top:1px solid var(--line);margin-top:6px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--ink)}
+  .row .v{font-weight:600}
+  .row .v small{font-weight:400;color:var(--sub);margin-left:4px}
+
+  .chead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+  .avg{text-align:right}
+  .avg b{font-size:24px;font-weight:650;line-height:1}
+  .avg span{display:block;font-size:10.5px;color:var(--sub);margin-top:2px}
+
+  .cmpCard{display:flex;align-items:flex-end;gap:8px;margin-top:4px}
+  .cmpCard .big{font-size:30px;font-weight:650;line-height:1}
+  .cmpCard .unit{font-size:11px;color:var(--sub);padding-bottom:5px}
+  .cmpCard .delta{margin-left:auto;font-size:13px;font-weight:650}
+  .cmpNote{font-size:11px;color:var(--sub);line-height:1.55;margin-top:8px}
+
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .foot b{color:var(--ink)}
+
+  /* 日历弹窗 */
+  .calMask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:50}
+  .calMask.on{display:block}
+  .calSheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:14px 16px 24px}
+  .calSheetHead{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .calSheetHead .tt{font-size:14px;font-weight:600}
+  .calSheetHead .sm{font-size:13px;color:var(--sub)}
+  .calSheetHead .td{font-size:13px;font-weight:600;color:var(--accent)}
+  .calNav{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}
+  .calNav .ca{padding:6px 10px;font-size:16px;color:var(--ink);cursor:pointer}
+  .calNav .ct{font-size:14px;font-weight:600}
+  .calWeek{display:flex}
+  .calWeek div{flex:1;text-align:center;font-size:10px;color:var(--sub);padding:4px 0}
+  .calGrid{display:flex;flex-wrap:wrap}
+  .calGrid .c{width:14.285%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink);cursor:pointer}
+  .calGrid .c.dim{color:var(--sub)}
+  .calGrid .c.on{background:var(--accent);color:#fff;border-radius:8px;font-weight:600}
+  .calGrid .c.dis{color:rgba(138,138,168,.4);cursor:not-allowed}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">脑力准备度</h1>
+  <p class="sub">与「睡眠恢复」「心理压力」同一套设计语言。顶部「日/周/月/年」+ 时间选择器（◀ 📅 ▶ 步进，点中间弹日历）。日视图：顶部一个框展示认知准备度数值 + 高峰 + 预测高峰/低谷，下面为全天趋势图。所有图带纵横坐标。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <!-- 时间选择器 -->
+  <div class="picker">
+    <div class="parrow" id="prev">‹</div>
+    <div class="pcenter" id="pcenter"><span class="cal"></span><span id="plabel">—</span></div>
+    <div class="parrow" id="next">›</div>
+  </div>
+
+  <div id="content"></div>
+
+  <p class="foot"><b>设计要点（与睡眠恢复·心理压力同源）：</b>① 顶部「日/周/月/年」+ 时间选择器；② 脑力准备度无 Tab（与心理压力/情绪记录不同，认知记录不单独成页）；<b>日</b>：顶部框 = 认知准备度数值 + 实际高峰 + 预测高峰/低谷，下方 = 全天趋势图（紫主调，三档带红/琥珀/绿，夜间为睡眠不展示数据）；<b>周/月/年</b> = 每日脑力消耗区间柱 + 对比上周期。③ 认知为自报 + 生理估算，Mira 不做认知评分。</p>
+</div>
+
+<!-- 日历弹窗 -->
+<div class="calMask" id="calMask">
+  <div class="calSheet">
+    <div class="calSheetHead">
+      <span class="sm" id="calCancel">取消</span>
+      <span class="tt">选择日期</span>
+      <span class="td" id="calToday">今天</span>
+    </div>
+    <div class="calNav">
+      <div class="ca" id="calPrev">‹</div>
+      <div class="ct" id="calTitle">2026年9月</div>
+      <div class="ca" id="calNext">›</div>
+    </div>
+    <div class="calWeek"><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div></div>
+    <div class="calGrid" id="calGrid"></div>
+  </div>
+</div>
+
+<script>
+/* ════ 颜色 ════ */
+const C={primary:'#7C6AE0',bad:'#C9598A',mid:'#B98A2E',good:'#6E7A24',hiDot:'#BCCB62',bar:'#9D8AF0',barLo:'#6E58C8',grid:'rgba(31,29,26,0.09)',axis:'#6B6760',card:'#FFFFFF'};
+
+/* ════ 状态 ════ */
+const TODAY=new Date(2026,9,9); TODAY.setHours(0,0,0,0);
+let MIN=new Date(2025,0,1);
+let anchor=new Date(2026,8,3); anchor.setHours(0,0,0,0);
+let range='day';
+
+/* ════ 日期工具 ════ */
+function fmtDate(d){return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x;}
+function endOfWeek(d){const s=startOfWeek(d);const e=new Date(s);e.setDate(e.getDate()+6);return e;}
+function fmtLabel(d,r){
+  if(r==='day')return fmtDate(d);
+  if(r==='week')return `${fmtDate(startOfWeek(d))} – ${fmtDate(endOfWeek(d))}`;
+  if(r==='month')return `${d.getFullYear()}年${d.getMonth()+1}月`;
+  return `${d.getFullYear()}年`;
+}
+function stepA(d,r,dir){const x=new Date(d);
+  if(r==='day')x.setDate(x.getDate()+dir);
+  else if(r==='week')x.setDate(x.getDate()+dir*7);
+  else if(r==='month')x.setMonth(x.getMonth()+dir);
+  else x.setFullYear(x.getFullYear()+dir);
+  if(x>TODAY)x.setTime(TODAY.getTime()); if(x<MIN)x.setTime(MIN.getTime()); return x;}
+function clampD(d){if(d>TODAY)return new Date(TODAY);if(d<MIN)return new Date(MIN);return d;}
+
+/* ════ 平滑曲线 ════ */
+function smooth(pts){
+  if(pts.length<3)return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/* ════ 脑力·日：认知准备度全天趋势 ════ */
+function drawReadiness(svg){
+  const W=380,H=170,L=30,R=30,T=12,B=22,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const vals=[38,38,38,38,38,38,38,38,38,38,38,39,39,39,
+    55,68,78,82,80,76,72,68,64,60,57,54,
+    52,49,45,42,39,38];
+  const N=vals.length,xAt=s=>L+pw*s/(N-1),yAt=v=>baseY-(v/100)*ph;
+  let s='';
+  [[100,70,C.good],[70,40,C.mid],[40,0,C.bad]].forEach(b=>{const yT=yAt(b[0]),yB=yAt(b[1]);
+    s+=`<rect x="${L}" y="${yT.toFixed(1)}" width="${pw}" height="${(yB-yT).toFixed(1)}" fill="${b[2]}" opacity="0.07"/>`;});
+  s+=`<line x1="${L}" y1="${baseY}" x2="${W-R}" y2="${baseY}" stroke="${C.grid}" stroke-width="1.2"/>`;
+  [40,70].forEach(v=>{s+=`<line x1="${L}" y1="${yAt(v).toFixed(1)}" x2="${W-R}" y2="${yAt(v).toFixed(1)}" stroke="${C.axis}30" stroke-width="1" stroke-dasharray="3 3"/>`;});
+  s+=`<text x="${L-4}" y="${(yAt(100)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="${C.axis}">100</text>`;
+  s+=`<text x="${L-4}" y="${(yAt(0)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="${C.axis}">0</text>`;
+  // 睡眠时段：不展示曲线，仅显示「睡眠中」（与其他图表一致）
+  s+=`<rect x="${L}" y="${T}" width="${(xAt(13)-L).toFixed(1)}" height="${ph}" fill="${C.card}" opacity="0.62"/>`;
+  s+=`<text x="${(L+xAt(13))/2}" y="${(T+ph/2).toFixed(1)}" text-anchor="middle" font-size="12" fill="${C.axis}" font-weight="600">睡眠中</text>`;
+  const pts=vals.map((v,i)=>({x:xAt(i),y:yAt(v)}));
+  const run=pts.slice(14);
+  s+=`<path d="${smooth(run)} L ${run[run.length-1].x.toFixed(1)} ${baseY} L ${run[0].x.toFixed(1)} ${baseY} Z" fill="${C.primary}" opacity="0.10"/>`;
+  s+=`<path d="${smooth(run)}" fill="none" stroke="${C.primary}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  [{l:'充沛',v:85,c:C.good},{l:'适中',v:55,c:C.mid},{l:'偏低',v:20,c:C.bad}].forEach(b=>{
+    s+=`<text x="${W-R+4}" y="${(yAt(b.v)+3).toFixed(1)}" text-anchor="start" font-size="9" fill="${b.c}" font-weight="600">${b.l}</text>`;});
+  [0,3,6,9,12,15,18,21,24].forEach(h=>{const x=h===24?W-R:xAt(h*2);const al=h===0?'start':h>=24?'end':'middle';
+    s+=`<text x="${x.toFixed(1)}" y="${baseY+14}" text-anchor="${al}" font-size="9" fill="${C.axis}">${String(h).padStart(2,'0')}</text>`;});
+  svg.innerHTML=s;
+}
+
+/* ════ 脑力·周/月/年：每日脑力消耗区间柱 ════ */
+function drawCog(svg,opt){
+  const W=380,H=250,L=30,R=12,T=16,B=30,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const n=opt.rows.length,cxOf=i=>L+(n===1?pw/2:pw*i/(n-1)),yOf=v=>baseY-(v/100)*ph;
+  let s='';
+  [0,25,50,75,100].forEach(v=>{const y=yOf(v);
+    s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${C.grid}" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="${C.axis}">${v}</text>`;});
+  s+=`<text x="${L-4}" y="${T-5}" text-anchor="end" font-size="10" fill="${C.axis}">准备</text>`;
+  const bw=Math.min(20,Math.max(5,pw/n*0.42));
+  opt.rows.forEach((r,i)=>{
+    const x=cxOf(i)-bw/2,yT=yOf(r.hi),yB=yOf(r.lo);
+    s+=`<rect x="${x.toFixed(1)}" y="${yT.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,yB-yT).toFixed(1)}" rx="2.5" fill="${C.bar}" opacity="0.7"/>`;
+    s+=`<circle cx="${cxOf(i).toFixed(1)}" cy="${yT.toFixed(1)}" r="3" fill="${C.hiDot}"/>`;
+    s+=`<circle cx="${cxOf(i).toFixed(1)}" cy="${yB.toFixed(1)}" r="3" fill="${C.barLo}"/>`;
+  });
+  opt.labels.forEach((lab,i)=>{if(!lab)return;s+=`<text x="${cxOf(i).toFixed(1)}" y="${baseY+14}" text-anchor="middle" font-size="9" fill="${C.axis}">${lab}</text>`;});
+  svg.innerHTML=s;
+}
+function genCog(r){
+  if(r==='week'){const lab=['一','二','三','四','五','六','日'];
+    return {labels:lab,rows:lab.map((_,i)=>[{hi:82,lo:46},{hi:78,lo:42},{hi:85,lo:50},{hi:72,lo:40},{hi:80,lo:48},{hi:88,lo:54},{hi:84,lo:47}][i])};}
+  if(r==='month'){const labels=[];for(let d=1;d<=30;d++)labels.push(d%5===0||d===30?d:(d===1?'1':''));
+    const hi=[80,83,78,86,75,82,88,79,84,81,85,77,83,80,86,82,84,78,87,81,83,79,85,80,88,76,84,81,86,82];
+    const lo=[46,50,43,52,42,48,54,45,50,47,52,44,49,46,53,48,50,43,54,47,49,45,52,46,55,44,50,47,53,48];
+    return {labels,rows:hi.map((h,i)=>({hi:h,lo:lo[i]}))};}
+  const lab=['1','2','3','4','5','6','7','8','9','10','11','12'].map(m=>m+'月');
+  return {labels:lab,rows:lab.map((_,i)=>[{hi:79,lo:45},{hi:81,lo:47},{hi:84,lo:50},{hi:82,lo:48},{hi:86,lo:52},{hi:83,lo:49},{hi:85,lo:51},{hi:80,lo:46},{hi:82,lo:48},{hi:84,lo:50},{hi:81,lo:47},{hi:83,lo:49}][i])};
+}
+
+/* ════ 内容渲染 ════ */
+function render(){
+  document.getElementById('pill').style.width=document.querySelector('.chip.on').offsetWidth+'px';
+  document.getElementById('pill').style.transform=`translateX(${document.querySelector('.chip.on').offsetLeft-3}px)`;
+  document.getElementById('plabel').textContent=fmtLabel(anchor,range);
+  const c=document.getElementById('content');
+
+  if(range==='day'){
+    c.innerHTML=`
+    <div class="card">
+      <p class="ctitle">认知准备度 <small>今天</small></p>
+      <div class="hero"><div><div class="big" style="color:${C.primary}">58</div><div class="lab">/100 · 当前认知准备度</div></div>
+        <div class="ctx" style="color:${C.mid}">中等 · 还有一半</div></div>
+      <div class="rows" style="border-top:0;margin-top:0"><div class="row"><span class="k">实际高峰</span><span class="v">10:00 <small>78</small></span></div><div class="row"><span class="k">节律峰值</span><span class="v">10:30</span></div></div>
+      <div class="duo" style="margin-top:4px">
+        <div class="cell" style="background:rgba(110,122,36,.1)"><div class="lab">认知高峰 · 预测</div><div class="t" style="color:${C.good}">09:00-12:00</div><div class="s">最适合烧脑</div></div>
+        <div class="cell" style="background:rgba(201,89,138,.1)"><div class="lab">认知低谷 · 预测</div><div class="t" style="color:${C.bad}">21:00-23:00</div><div class="s">轻度任务 / 休息</div></div>
+      </div>
+      <p class="axisnote" style="text-align:left;margin-top:8px">早上储备 78，现在用掉 20 · 节律稳，这两个时段基本准</p>
+    </div>
+    <div class="card">
+      <p class="ctitle">认知准备度 · 全天趋势</p>
+      <svg viewBox="0 0 380 170" id="svg-readiness"></svg>
+      <div class="legend"><span><i style="background:${C.bad}"></i>偏低</span><span><i style="background:${C.mid}"></i>适中</span><span><i style="background:${C.good}"></i>充沛</span></div>
+      <p class="axisnote">纵轴 = 准备度 0–100（越高越转得动）· 横轴 = 一天 24h · 夜间为睡眠，不展示数据</p>
+      <div class="mhRow" onclick="toggleMH(this)" data-sec="dayMoreBody"><span class="mhLabel">详细数据</span><span class="mhChev"></span></div>
+      <div class="moreBody" id="dayMoreBody" style="display:none"><div class="rows">
+        <div class="row"><span class="k">高峰时段</span><span class="v">10:00</span></div>
+        <div class="row"><span class="k">低谷时段</span><span class="v">22:00</span></div>
+        <div class="row"><span class="k">周期性强度</span><span class="v">0.78</span></div>
+      </div></div>
+    </div>`;
+    drawReadiness(document.getElementById('svg-readiness'));
+  } else {
+    const d=genCog(range);const hv=['24','22','25'][range==='week'?0:range==='month'?1:2];
+    const cmp=[['↓ 3','比上周','good'],['↓ 3','比上月','good'],['↑ 1','比去年','bad']][range==='week'?0:range==='month'?1:2];
+    const peri=[['本周','本周每天比上周省下 3 个百分点脑力，节奏更从容了。'],['本月','本月每天比上月省下 3 个百分点脑力，整体更平稳。'],['今年','今年每天比去年同期多用掉 1 个百分点脑力，整体还算平稳。']][range==='week'?0:range==='month'?1:2];
+    c.innerHTML=`
+    <div class="card"><div class="hero"><div><div class="big" style="color:${C.mid}">${hv}</div><div class="lab">% · 脑力消耗${range==='year'?'年':range==='month'?'月':'周'}平均</div></div>
+      <div class="ctx" style="color:${cmp[2]==='good'?'var(--good)':'var(--bad)'}">${cmp[0]} ${cmp[1]}</div></div></div>
+    <div class="card"><div class="chead"><div><p class="ctitle">每日脑力消耗 <small>近${range==='year'?'12 月':range==='month'?'30 天':'7 天'}</small></p></div></div>
+      <svg viewBox="0 0 380 250" id="svg-cog"></svg>
+      <div class="legend"><span><i style="background:${C.hiDot}"></i>晨起</span><span><i style="background:${C.barLo}"></i>睡前</span></div>
+      <p class="axisnote">纵轴 = 准备度 0–100 · 每根柱 = 当天「晨起 − 睡前」 · 横轴 = ${range==='year'?'1月→12月':range==='month'?'当月日期':'周一→周日'}</p>
+    </div>
+    <div class="card"><p class="ctitle">对比上${range==='year'?'年':range==='month'?'月':'周'}</p>
+      <div class="cmpCard"><div class="big" style="color:${C.primary}">${hv}</div><div class="unit">% /天</div><div class="delta" style="color:${cmp[2]==='good'?'var(--good)':'var(--bad)'}">${cmp[0]}</div></div>
+      <p class="cmpNote">${peri[1]}</p>
+    </div>`;
+    drawCog(document.getElementById('svg-cog'),d);
+  }
+}
+
+/* 统一折叠 */
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+
+/* ════ 事件绑定 ════ */
+document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{range=ch.dataset.r;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===ch));render();});
+document.getElementById('prev').onclick=()=>{anchor=stepA(anchor,range,-1);render();};
+document.getElementById('next').onclick=()=>{anchor=stepA(anchor,range,1);render();};
+document.getElementById('pcenter').onclick=openCal;
+
+/* ════ 日历弹窗 ════ */
+let calY=anchor.getFullYear(),calM=anchor.getMonth()+1;
+function buildCal(){
+  document.getElementById('calTitle').textContent=`${calY}年${calM}月`;
+  const lead=(new Date(calY,calM-1,1).getDay()+6)%7;
+  const grid=[];const total=new Date(calY,calM,0).getDate();
+  for(let i=0;i<lead;i++)grid.push(null);
+  for(let d=1;d<=total;d++)grid.push(new Date(calY,calM-1,d));
+  while(grid.length%7!==0)grid.push(null);
+  document.getElementById('calGrid').innerHTML=grid.map(d=>{
+    if(!d)return `<div class="c"></div>`;
+    const dim=d.getMonth()+1!==calM;const dis=d>TODAY||d<MIN;const on=fmtDate(d)===fmtDate(anchor);
+    return `<div class="c${dim?' dim':''}${on?' on':''}${dis?' dis':''}" data-d="${d.getTime()}">${d.getDate()}</div>`;
+  }).join('');
+  document.querySelectorAll('#calGrid .c[data-d]').forEach(el=>el.onclick=()=>{if(el.classList.contains('dis'))return;
+    anchor=clampD(new Date(Number(el.dataset.d)));closeCal();render();});
+}
+function openCal(){calY=anchor.getFullYear();calM=anchor.getMonth()+1;buildCal();document.getElementById('calMask').classList.add('on');}
+function closeCal(){document.getElementById('calMask').classList.remove('on');}
+document.getElementById('calCancel').onclick=closeCal;
+document.getElementById('calMask').onclick=(e)=>{if(e.target.id==='calMask')closeCal();};
+document.getElementById('calToday').onclick=()=>{anchor=new Date(TODAY);closeCal();render();};
+document.getElementById('calPrev').onclick=()=>{const p=new Date(calY,calM-2,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+document.getElementById('calNext').onclick=()=>{const p=new Date(calY,calM,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+
+/* 初始化 */
+render();
+</script>
+</body>
+</html>

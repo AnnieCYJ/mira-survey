@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 图表设计系统 · 日/周/月/年统一 Token 预览</title>
+<style>
+  :root{
+    /* ════════════════ Chart Design Token ════════════════ */
+    /* 语义色槽（取代各组件散落的硬编码色） */
+    --series-primary:   #7C6AE0;  /* 主健康趋势：恢复分 / 心理压力 / 孕激素（紫 accentSolid） */
+    --series-secondary: #BCCB62;  /* 睡眠时长 / 雌激素（亮绿 limeMid，用户偏好，不用深墨绿 limeDeep） */
+    --series-cortisol:  #BCCB62;  /* 皮质醇曲线（亮绿，用户 2026-10-09：不要墨色） */
+    --anomaly:          #E2554E;  /* 异常标记（红） */
+    --grid:             rgba(31,29,26,0.08);  /* 网格线 */
+    --axis-text:        #8A857D;  /* 坐标轴文字 textSub */
+    --ref-faint:        rgba(31,29,26,0.32);  /* 参考虚线 */
+
+    /* 线宽（全图统一） */
+    --lw-series: 2.4;    /* 所有主曲线 */
+    --lw-ref:    1.3;    /* 参考虚线 */
+    --lw-grid:   1;      /* 网格 */
+
+    /* 圆点（全图统一） */
+    --dot:       3;      /* 数据圆点半径 */
+    --dot-anom:  6;      /* 异常点半径 */
+    --dot-stroke:2;      /* 异常点白描边 */
+
+    /* 圆角 / 留白 */
+    --bar-r:     3;      /* 柱图圆角 */
+    --pad-x:     14;
+    --pad-top:   14;
+    --pad-bot:   22;
+
+    /* 虚线 dash 模式（全图统一） */
+    --dash-grid: 3 4;
+    --dash-ref:  5 4;
+
+    /* 切换动效（对齐 theme.motion.quick = 160ms） */
+    --t-fade:    160ms;
+
+    /* 页面底色（白，照当前主题） */
+    --bg:    #F5F4F1;
+    --card:  #FFFFFF;
+    --ink:   #1F1D1A;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 56px;}
+  .h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0 0 4px}
+  .sub{font-size:13px;color:#8A857D;margin:0 0 20px;line-height:1.5}
+
+  /* ── RangeSwitch 统一样式 ── */
+  .switch{display:inline-flex;background:#EDEBE7;border-radius:12px;padding:3px;
+    position:relative;margin:0 0 22px;gap:0}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;border:0;background:transparent;font-size:14px;
+    padding:8px 18px;color:#8A857D;cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  .card{background:var(--card);border-radius:18px;padding:16px 14px 12px;margin-bottom:14px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);opacity:1;transition:opacity var(--t-fade)}
+  .card.fading{opacity:0}
+  .ctitle{font-size:15px;font-weight:600;margin:0 0 2px}
+  .cmeta{font-size:12px;color:#8A857D;margin:0 0 8px}
+  svg{display:block;width:100%;height:auto}
+
+  /* ── Token 面板 ── */
+  .tok{background:var(--card);border-radius:18px;padding:16px;margin-top:22px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05)}
+  .tok h3{font-size:14px;margin:0 0 12px;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .tcell{border:1px solid #ECEAE5;border-radius:12px;padding:10px 12px}
+  .tkey{font-size:11px;color:#8A857D;letter-spacing:.02em;text-transform:uppercase}
+  .tval{font-size:13px;font-weight:600;margin-top:3px}
+  .swatch{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#8A857D;margin:6px 2px 0}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  .note{font-size:12px;color:#8A857D;line-height:1.6;margin-top:14px;border-top:1px solid #ECEAE5;padding-top:12px}
+  .note b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">Mira 图表设计系统 · 统一 Token 预览</h1>
+  <p class="sub">点下方「日 / 周 / 月 / 年」切换，三张图会一起重绘。数据密度随区间变，但<b>线宽、圆点、颜色、网格、异常标记全部锁定同一套 token</b>——这就是你要的"标准"。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <!-- 双轴图：睡眠时长(柱) + 恢复分(曲线) -->
+  <div class="card" id="cardA">
+    <p class="ctitle">睡眠与恢复</p>
+    <p class="cmeta" id="metaA"></p>
+    <svg id="svgA" viewBox="0 0 360 200" preserveAspectRatio="none"></svg>
+    <div class="legend"><span><i style="background:var(--series-secondary)"></i>睡眠时长</span><span><i style="background:var(--series-primary)"></i>恢复分</span><span><i style="background:var(--anomaly)"></i>皮质醇异常</span></div>
+  </div>
+
+  <!-- 趋势曲线：心理压力 -->
+  <div class="card" id="cardB">
+    <p class="ctitle">心理压力趋势</p>
+    <p class="cmeta" id="metaB"></p>
+    <svg id="svgB" viewBox="0 0 360 180" preserveAspectRatio="none"></svg>
+  </div>
+
+  <!-- 皮质醇节律 -->
+  <div class="card" id="cardC">
+    <p class="ctitle">皮质醇节律</p>
+    <p class="cmeta" id="metaC"></p>
+    <svg id="svgC" viewBox="0 0 360 180" preserveAspectRatio="none"></svg>
+    <div class="legend"><span><i style="background:var(--series-cortisol)"></i>皮质醇</span><span><i style="background:var(--anomaly)"></i>异常点</span></div>
+  </div>
+
+  <!-- Token 面板 -->
+  <div class="tok">
+    <h3>Chart Design Token（拟落地到 theme/chart.ts）</h3>
+    <div class="grid">
+      <div class="tcell"><div class="tkey">series.primary</div><div class="tval"><span class="swatch" style="background:var(--series-primary)"></span>#7C6AE0</div></div>
+      <div class="tcell"><div class="tkey">series.secondary</div><div class="tval"><span class="swatch" style="background:var(--series-secondary)"></span>#BCCB62</div></div>
+      <div class="tcell"><div class="tkey">series.cortisol</div><div class="tval"><span class="swatch" style="background:var(--series-cortisol)"></span>#BCCB62</div></div>
+      <div class="tcell"><div class="tkey">anomaly</div><div class="tval"><span class="swatch" style="background:var(--anomaly)"></span>#E2554E</div></div>
+      <div class="tcell"><div class="tkey">lineWidth.series</div><div class="tval">2.4</div></div>
+      <div class="tcell"><div class="tkey">lineWidth.ref</div><div class="tval">1.3</div></div>
+      <div class="tcell"><div class="tkey">dot.radius</div><div class="tval">3</div></div>
+      <div class="tcell"><div class="tkey">dot.anomaly</div><div class="tval">6 · 白描边 2</div></div>
+      <div class="tcell"><div class="tkey">bar.radius</div><div class="tval">3</div></div>
+      <div class="tcell"><div class="tkey">dash.grid</div><div class="tval">3 4</div></div>
+      <div class="tcell"><div class="tkey">dash.ref</div><div class="tval">5 4</div></div>
+      <div class="tcell"><div class="tkey">motion.fade</div><div class="tval">160ms</div></div>
+    </div>
+    <p class="note"><b>解决的问题：</b>现状里线宽是 2.2/2.4/1.3/1.5/2.6 五套、圆点是 2.5/2.6/3.2/4.2/6.5 五套、颜色散落在 accentSolid / purpleCore / limeMid / ink / ringTeal / danger / #E2554E 七处——所以日周月年切着看"每个都乱、没标准"。本 token 把视觉语言收敛成 <b>4 个语义色槽 + 统一线宽/圆点/网格</b>，三张图（柱+曲线、趋势曲线、节律曲线）共用同一组变量。</p>
+  </div>
+</div>
+
+<script>
+const T = getComputedStyle(document.documentElement);
+const C = {
+  primary:  T.getPropertyValue('--series-primary').trim(),
+  secondary:T.getPropertyValue('--series-secondary').trim(),
+  cortisol: T.getPropertyValue('--series-cortisol').trim(),
+  anomaly:  T.getPropertyValue('--anomaly').trim(),
+  grid:     T.getPropertyValue('--grid').trim(),
+  axis:     T.getPropertyValue('--axis-text').trim(),
+  ref:      T.getPropertyValue('--ref-faint').trim(),
+  lwSeries: +T.getPropertyValue('--lw-series'),
+  lwRef:    +T.getPropertyValue('--lw-ref'),
+  dot:      +T.getPropertyValue('--dot'),
+  dotAnom:  +T.getPropertyValue('--dot-anom'),
+  dotStroke:+T.getPropertyValue('--dot-stroke'),
+  barR:     +T.getPropertyValue('--bar-r'),
+  padX:     +T.getPropertyValue('--pad-x'),
+  padTop:   +T.getPropertyValue('--pad-top'),
+  padBot:   +T.getPropertyValue('--pad-bot'),
+  dashGrid: T.getPropertyValue('--dash-grid').trim(),
+  dashRef:  T.getPropertyValue('--dash-ref').trim(),
+};
+
+// 伪随机但稳定的数据
+function rng(seed){let s=seed;return()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};}
+
+function rangeMeta(r){
+  return {day:'当天 · 单点',week:'近 7 天',month:'近 30 天',year:'近 12 月'}[r];
+}
+function n(r){return {day:1,week:7,month:30,year:12}[r];}
+
+// Catmull-Rom → 贝塞尔 平滑曲线（与 App 内 StressTrendChart 同算法）
+function smooth(pts){
+  if(pts.length<3) return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+// ── 双轴图：柱(睡眠时长) + 曲线(恢复分) + 异常红点 ──
+function drawDual(svg,r){
+  const W=360,H=200,pl=C.padX,pr=14,pt=C.padTop,pb=C.padBot;
+  const plotW=W-pl-pr, plotH=H-pt-pb, baseY=pt+plotH;
+  const cnt=n(r), rand=rng(r.length*97+13);
+  const anom=[]; for(let i=0;i<cnt;i++) if(rand()<0.12) anom.push(i);
+  const sleep=[], recov=[];
+  for(let i=0;i<cnt;i++){ sleep.push(6+rand()*3.2); recov.push(38+rand()*30); }
+  const xAt=i=> pl + (cnt===1?plotW/2:plotW*i/(cnt-1));
+  const ySleep=v=> baseY - (v/10)*plotH;          // 0-10h
+  const yRec=v=> baseY - ((v-20)/80)*plotH;        // 20-100 相对分
+  let s=`<defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${C.primary}" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="${C.primary}" stop-opacity="0.01"/></linearGradient></defs>`;
+  // 网格
+  for(let g=0;g<=3;g++){const y=pt+plotH*g/3;
+    s+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${C.grid}" stroke-width="1" stroke-dasharray="${C.dashGrid}"/>`;}
+  // 柱（睡眠时长，secondary）
+  const bw=Math.max(4, plotW/cnt*0.5);
+  sleep.forEach((v,i)=>{const x=xAt(i)-bw/2, y=ySleep(v), h=baseY-y;
+    s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,h).toFixed(1)}" rx="${C.barR}" fill="${C.secondary}" opacity="0.9"/>`;});
+  // 恢复分曲线（primary）
+  const rp=recov.map((v,i)=>({x:xAt(i),y:yRec(v)}));
+  s+=`<path d="${smooth(rp)} L ${xAt(cnt-1)} ${baseY} L ${xAt(0)} ${baseY} Z" fill="url(#gA)"/>`;
+  s+=`<path d="${smooth(rp)}" fill="none" stroke="${C.primary}" stroke-width="${C.lwSeries}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  rp.forEach(p=>{s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${C.dot}" fill="${C.primary}" stroke="#fff" stroke-width="1.2"/>`;});
+  // 异常红点（落在曲线上）
+  anom.forEach(i=>{const p=rp[i];
+    s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${C.dotAnom}" fill="${C.anomaly}" stroke="#fff" stroke-width="${C.dotStroke}"/>`;});
+  svg.innerHTML=s;
+}
+
+// ── 趋势曲线：心理压力（primary + 面积渐变）──
+function drawTrend(svg,r){
+  const W=360,H=180,pl=C.padX,pr=14,pt=C.padTop,pb=C.padBot;
+  const plotW=W-pl-pr, plotH=H-pt-pb, baseY=pt+plotH;
+  const cnt=n(r), rand=rng(r.length*53+7);
+  const vals=[]; for(let i=0;i<cnt;i++) vals.push(20+rand()*55);
+  const xAt=i=> pl + (cnt===1?plotW/2:plotW*i/(cnt-1));
+  const yAt=v=> baseY - (v/100)*plotH;
+  const pts=vals.map((v,i)=>({x:xAt(i),y:yAt(v)}));
+  let s=`<defs><linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${C.primary}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${C.primary}" stop-opacity="0.01"/></linearGradient></defs>`;
+  for(let g=0;g<=3;g++){const y=pt+plotH*g/3;
+    s+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${C.grid}" stroke-width="1" stroke-dasharray="${C.dashGrid}"/>`;}
+  // 基线参考（50，ref 色）
+  const yb=yAt(50);
+  s+=`<line x1="${pl}" y1="${yb}" x2="${W-pr}" y2="${yb}" stroke="${C.ref}" stroke-width="${C.lwRef}" stroke-dasharray="${C.dashRef}"/>`;
+  s+=`<path d="${smooth(pts)} L ${xAt(cnt-1)} ${baseY} L ${xAt(0)} ${baseY} Z" fill="url(#gB)"/>`;
+  s+=`<path d="${smooth(pts)}" fill="none" stroke="${C.primary}" stroke-width="${C.lwSeries}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  pts.forEach(p=>{s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${C.dot}" fill="${C.primary}" stroke="#fff" stroke-width="1.2"/>`;});
+  svg.innerHTML=s;
+}
+
+// ── 皮质醇节律：ink 曲线 + 异常红点 ──
+function drawCortisol(svg,r){
+  const W=360,H=180,pl=C.padX,pr=14,pt=C.padTop,pb=C.padBot;
+  const plotW=W-pl-pr, plotH=H-pt-pb, baseY=pt+plotH;
+  const cnt=n(r), rand=rng(r.length*31+3);
+  const vals=[]; for(let i=0;i<cnt;i++) vals.push(30+rand()*50);
+  const xAt=i=> pl + (cnt===1?plotW/2:plotW*i/(cnt-1));
+  const yAt=v=> baseY - (v/100)*plotH;
+  const pts=vals.map((v,i)=>({x:xAt(i),y:yAt(v)}));
+  const anom=[]; for(let i=0;i<cnt;i++) if(rand()<0.1) anom.push(i);
+  let s='';
+  for(let g=0;g<=3;g++){const y=pt+plotH*g/3;
+    s+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${C.grid}" stroke-width="1" stroke-dasharray="${C.dashGrid}"/>`;}
+  s+=`<path d="${smooth(pts)}" fill="none" stroke="${C.cortisol}" stroke-width="${C.lwSeries}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  pts.forEach((p,i)=>{ if(anom.includes(i)){
+      s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${C.dotAnom}" fill="${C.anomaly}" stroke="#fff" stroke-width="${C.dotStroke}"/>`;
+    } else {
+      s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${C.dot}" fill="${C.cortisol}"/>`;
+    }});
+  svg.innerHTML=s;
+}
+
+function render(r){
+  document.getElementById('metaA').textContent=rangeMeta(r)+' · 柱=睡眠时长 · 线=恢复分';
+  document.getElementById('metaB').textContent=rangeMeta(r)+' · 主趋势（紫）';
+  document.getElementById('metaC').textContent=rangeMeta(r)+' · 墨线 + 红异常点';
+  drawDual(document.getElementById('svgA'),r);
+  drawTrend(document.getElementById('svgB'),r);
+  drawCortisol(document.getElementById('svgC'),r);
+}
+
+// RangeSwitch 交互（统一样式 + 160ms 淡入）
+const chips=[...document.querySelectorAll('.chip')];
+const pill=document.getElementById('pill');
+function movePill(el){pill.style.width=el.offsetWidth+'px';pill.style.transform=`translateX(${el.offsetLeft-3}px)`;}
+function setRange(r){
+  chips.forEach(c=>c.classList.toggle('on',c.dataset.r===r));
+  movePill(chips.find(c=>c.dataset.r===r));
+  ['cardA','cardB','cardC'].forEach(id=>document.getElementById(id).classList.add('fading'));
+  setTimeout(()=>{render(r);['cardA','cardB','cardC'].forEach(id=>document.getElementById(id).classList.remove('fading'));},150);
+}
+chips.forEach(c=>c.addEventListener('click',()=>setRange(c.dataset.r)));
+window.addEventListener('load',()=>{movePill(chips[0]);render('day');});
+movePill(chips[0]);render('day');
+</script>
+</body>
+</html>

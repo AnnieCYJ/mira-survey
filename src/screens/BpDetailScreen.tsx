@@ -8,11 +8,13 @@ import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import { healthStore } from '../data/healthStore';
 import type { RangeKey } from '../data/metrics';
 import { dayStartMs } from '../data/healthStore';
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
+import { timeTickLabel } from '../lib/chartAxis';
 
 
 const H = 180;          // 图表高
@@ -22,9 +24,9 @@ const PAD_R = 6;
 const PAD_T = 10;
 const PAD_B = 22;
 
-// v16：血压=蓝图（收缩=蓝 core / 舒张=蓝 mid）
-const COL_SYS = '#7EA6F8';
-const COL_DIA = '#B9CCF9';
+// v16：血压=蓝图（收缩=蓝 core / 舒张=蓝 mid），统一走 Design Token
+const COL_SYS = mm.colors.skyCore;
+const COL_DIA = mm.colors.skyMid;
 
 type Pt = { t: number; v: number };
 
@@ -38,6 +40,13 @@ function avgOrNull(arr: Pt[] | null | undefined): number | null {
 function fmt(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return Math.round(v).toString();
+}
+
+/** 提取一个系列的全部数值（兼容日视图 tPoints 与周/月/年 points 两种结构） */
+function seriesVals(s: { points: (number | null)[]; tPoints: Pt[] }): number[] {
+  const fromPoints = s.points.filter((v): v is number => v != null && Number.isFinite(v));
+  const fromTP = s.tPoints.map((p) => p.v).filter((v): v is number => Number.isFinite(v));
+  return [...fromPoints, ...fromTP];
 }
 
 /** 构造双系列数据（复用 buildHistorySeries 的取数逻辑，两套 key 并行） */
@@ -83,7 +92,7 @@ function buildDual(
       const d = healthStore.getDay('bpDia', dk)?.mean ?? null;
       sysPts.push(s);
       diaPts.push(d);
-      axis.push(`${addDays(mon, i).getMonth() + 1}/${addDays(mon, i).getDate()}`);
+      axis.push(timeTickLabel({ range: 'week', weekday: addDays(mon, i).getDay() }));
     }
   } else if (range === 'month') {
     const y = anchor.getFullYear();
@@ -93,7 +102,7 @@ function buildDual(
       const dk = dateKeyOf(new Date(y, m0, day).getTime());
       sysPts.push(healthStore.getDay('bpSys', dk)?.mean ?? null);
       diaPts.push(healthStore.getDay('bpDia', dk)?.mean ?? null);
-      axis.push(`${day}`);
+      axis.push(timeTickLabel({ range: 'month', dayOfMonth: day }));
     }
   } else {
     const y = anchor.getFullYear();
@@ -109,7 +118,7 @@ function buildDual(
       }
       sysPts.push(sC > 0 ? sS / sC : null);
       diaPts.push(dC > 0 ? dS / dC : null);
-      axis.push(`${mo + 1}月`);
+      axis.push(timeTickLabel({ range: 'year', monthIndex: mo }));
     }
   }
 
@@ -206,6 +215,26 @@ export default function BpDetailScreen() {
   const [w, setW] = useState(0);
 
   const data = useMemo(() => buildDual(range, anchor), [range, anchor]);
+
+  // 上一周期锚点（用于「较上一周期」对比）
+  const prevAnchor = useMemo(() => {
+    const a = new Date(anchor);
+    if (range === 'day') a.setDate(a.getDate() - 1);
+    else if (range === 'week') a.setDate(a.getDate() - 7);
+    else if (range === 'month') a.setMonth(a.getMonth() - 1);
+    else a.setFullYear(a.getFullYear() - 1);
+    return a;
+  }, [anchor, range]);
+  const prev = useMemo(() => buildDual(range, prevAnchor), [range, prevAnchor]);
+
+  const sysVals = seriesVals(data.sys);
+  const diaVals = seriesVals(data.dia);
+  const minSys = sysVals.length ? Math.min(...sysVals) : null;
+  const maxSys = sysVals.length ? Math.max(...sysVals) : null;
+  const minDia = diaVals.length ? Math.min(...diaVals) : null;
+  const maxDia = diaVals.length ? Math.max(...diaVals) : null;
+  const dSys = data.avgSys != null && prev.avgSys != null ? data.avgSys - prev.avgSys : null;
+  const dDia = data.avgDia != null && prev.avgDia != null ? data.avgDia - prev.avgDia : null;
 
   const plotW = w - PAD_L - PAD_R;
   const yLo = data.yMin;
@@ -321,7 +350,7 @@ export default function BpDetailScreen() {
                 {/* 参考线 */}
                 {[yLo, (yLo + yHi) / 2, yHi].map((gv, i) => (
                   <Line key={`g-${i}`} x1={PAD_L} y1={yAt(gv)} x2={w - PAD_R} y2={yAt(gv)}
-                    stroke={theme.colors.ui?.borderSoft ?? 'rgba(0,0,0,0.08)'} strokeWidth={1} />
+                    stroke={theme.colors.ui?.borderSoft ?? 'rgba(0,0,0,0.08)'} strokeWidth={chart.lw.grid} />
                 ))}
 
                 {/* 每个测量时刻：一根竖线 从 舒张压（蓝，下） 到 收缩压（橙，上） */}
@@ -360,17 +389,17 @@ export default function BpDetailScreen() {
                       const yBot = Math.max(ySys, yDia);
                       children.push(
                         <Line key={`v-${i}`} x1={p.x} y1={yTop} x2={p.x} y2={yBot}
-                          stroke={theme.colors.textSub} strokeWidth={1.5} opacity={0.7} />
+                          stroke={theme.colors.textSub} strokeWidth={chart.lw.ref} opacity={0.7} />
                       );
                     }
                     if (hasDia) {
                       children.push(
-                        <Circle key={`d-${i}`} cx={p.x} cy={yAt(p.dia!)} r={4} fill={COL_DIA} />
+                        <Circle key={`d-${i}`} cx={p.x} cy={yAt(p.dia!)} r={chart.dot.radius} fill={COL_DIA} />
                       );
                     }
                     if (hasSys) {
                       children.push(
-                        <Circle key={`s-${i}`} cx={p.x} cy={yAt(p.sys!)} r={4} fill={COL_SYS} />
+                        <Circle key={`s-${i}`} cx={p.x} cy={yAt(p.sys!)} r={chart.dot.radius} fill={COL_SYS} />
                       );
                     }
                     return children;
@@ -381,10 +410,10 @@ export default function BpDetailScreen() {
           </View>
         </View>
 
-        {/* X 轴标签：日视图固定 0/4/8/12/16/20/24（今日末位显示「现在」），与曲线真实时间轴对齐 */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: Y_GUT, marginTop: 6 }}>
-          {(range === 'day' ? dayXAxis(isTodayAnchor) : data.sys.axis.filter((_, i) => i % Math.max(1, Math.ceil(data.sys.axis.length / 6)) === 0)).map((a, i) => (
-            <Text key={i} style={{ fontSize: 11, color: theme.colors.textSub }}>{a}</Text>
+        {/* X 轴标签：日视图走时间轴（space-between）；周/月/年每个柱位一槽、刻度居中，稀疏刻度与柱对齐 */}
+        <View style={{ flexDirection: 'row', justifyContent: range === 'day' ? 'space-between' : undefined, paddingLeft: Y_GUT, marginTop: 6 }}>
+          {(range === 'day' ? dayXAxis(isTodayAnchor) : data.sys.axis).map((a, i) => (
+            <Text key={i} style={{ fontSize: 11, color: theme.colors.textSub, flex: range === 'day' ? undefined : 1, textAlign: range === 'day' ? undefined : 'center' }}>{a}</Text>
           ))}
         </View>
 
@@ -395,24 +424,32 @@ export default function BpDetailScreen() {
         ) : null}
       </View>
 
-      {/* 统计：全天平均 / 最小值 / 最大值 */}
+      {/* ★ 统一「详细分析」块：平均 / 最高 / 最低 + 较上一周期对比 */}
       {hasData ? (
         <Card style={{ marginTop: 12 }}>
-          <View style={{ flexDirection: 'row' }}>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={styles.statLabel}>全天平均</Text>
-              <Text style={styles.statVal}>
-                <Text style={{ color: COL_SYS }}>{fmt(data.avgSys)}</Text>
-                <Text style={{ color: theme.colors.textSub }}>/</Text>
-                <Text style={{ color: COL_DIA }}>{fmt(data.avgDia)}</Text>
-              </Text>
+          <Text style={styles.detailTitle}>详细分析</Text>
+          <View style={styles.detailGrid}>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>平均</Text>
+              <Text style={styles.detailColVal}><Text style={{ color: COL_SYS }}>{fmt(data.avgSys)}</Text><Text style={{ color: theme.colors.textSub }}>/</Text><Text style={{ color: COL_DIA }}>{fmt(data.avgDia)}</Text></Text>
             </View>
-            <View style={{ width: 1, height: 40, backgroundColor: theme.colors.cardBorder }} />
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={styles.statLabel}>当前范围</Text>
-              <Text style={styles.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{range === 'day' ? '日' : range === 'week' ? '周' : range === 'month' ? '月' : '年'}</Text>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>最高</Text>
+              <Text style={styles.detailColVal}><Text style={{ color: COL_SYS }}>{fmt(maxSys)}</Text><Text style={{ color: theme.colors.textSub }}>/</Text><Text style={{ color: COL_DIA }}>{fmt(maxDia)}</Text></Text>
+            </View>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>最低</Text>
+              <Text style={styles.detailColVal}><Text style={{ color: COL_SYS }}>{fmt(minSys)}</Text><Text style={{ color: theme.colors.textSub }}>/</Text><Text style={{ color: COL_DIA }}>{fmt(minDia)}</Text></Text>
             </View>
           </View>
+          {dSys != null && (
+            <View style={styles.compareRow}>
+              <Text style={styles.compareLabel}>较上一周期</Text>
+              <Text style={styles.compareVal}>
+                收缩压 {dSys > 0 ? '↑' : dSys < 0 ? '↓' : '−'} {fmt(Math.abs(dSys))} · 舒张压 {dDia! > 0 ? '↑' : dDia! < 0 ? '↓' : '−'} {fmt(Math.abs(dDia!))} mmHg
+              </Text>
+            </View>
+          )}
         </Card>
       ) : null}
     </ScreenContainer>
@@ -445,4 +482,21 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, color: theme.colors.textSub },
   statLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 4 },
   statVal: { fontSize: 20, fontWeight: '700', color: theme.colors.textTitle },
+  // 详细分析块
+  detailTitle: { fontSize: 13, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: 10 },
+  detailGrid: { flexDirection: 'row' },
+  detailCol: { flex: 1, alignItems: 'center' },
+  detailColLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 4 },
+  detailColVal: { fontSize: 18, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
+  compareRow: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.cardBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compareLabel: { fontSize: 12, color: theme.colors.textSub },
+  compareVal: { fontSize: 12.5, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
 });

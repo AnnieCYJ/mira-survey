@@ -129,6 +129,7 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   chipWrap: {
+    flex: 1,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,

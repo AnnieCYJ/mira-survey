@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira App · 身体年龄详情页（月 / 年 · 统一 RangeSwitch + DateAnchorPicker）</title>
+<style>
+:root{
+  --ink:#1F1D1A; --sub:#8A857D; --faint:#BDB7AE; --line:#ECEAE5; --bg:#F5F4F1;
+  --pageWarm:#F7F5F0;
+  /* 全局控件色：紫（与 RangeSwitch / DateAnchorPicker token 一致）*/
+  --accent:#7C6AE0; --accentSoft:#F4EDFC; --accentBorder:#D9D2F0;
+  /* 身体年龄 数据色：黄绿 Lime */
+  --limeSoft:#EAF0BE; --limeMid:#BCCB62; --limeCore:#D5E384; --limeDeep:#6E7A24;
+  --pillBg:#EAF0BE; --pillFg:#6E7A24;
+  --ref:rgba(31,29,26,0.32);
+}
+*{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px;}
+h1{font-size:24px;font-weight:680;margin:0 0 4px;letter-spacing:-.2px}
+.lead{font-size:13.5px;color:var(--sub);line-height:1.7;margin:0 0 8px}
+.meta{font-size:11.5px;color:var(--sub);margin-bottom:24px}
+h2{font-size:18px;font-weight:640;margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:14px;font-weight:620;margin:18px 0 8px;color:var(--ink)}
+p{font-size:13px;line-height:1.7;color:var(--ink)}
+.note{font-size:12px;color:var(--sub);background:#FAFAF8;border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;line-height:1.7;margin:10px 0}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;
+  box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.tag{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;background:rgba(124,106,224,.1);
+  color:#5B4BB0;border:1px solid #D9D2F0;margin:2px 4px 2px 0}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:640;color:var(--sub);font-size:11.5px;background:#FAFAF8}
+
+/* ════ 手机外框 ════ */
+.phone{width:380px;margin:0 auto;background:var(--pageWarm);border:1px solid var(--line);border-radius:40px;padding:12px;
+  box-shadow:0 14px 34px -18px rgba(31,29,26,.18);position:relative;overflow:hidden}
+.screen{background:var(--pageWarm);border-radius:30px;overflow:hidden;min-height:760px;position:relative}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:10px 20px 4px;font-size:12px;font-weight:600}
+.header{display:flex;align-items:center;gap:10px;padding:6px 16px 4px}
+.header .back{width:30px;height:30px;border-radius:999px;background:#fff;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:16px}
+.header .title{font-size:17px;font-weight:640}
+
+/* ════ 顶部紧凑统计（取代 Hero 弧）════ */
+.stat{display:flex;align-items:flex-end;gap:14px;padding:6px 16px 2px}
+.stat .big{font-size:34px;font-weight:300;letter-spacing:-1.5px;line-height:1}
+.stat .big small{font-size:14px;font-weight:400;color:var(--sub);margin-left:3px}
+.stat .delta{margin-bottom:4px;background:var(--pillBg);color:var(--pillFg);font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:999px}
+.stat .sub{margin-bottom:5px;font-size:11.5px;color:var(--sub);margin-left:auto}
+
+/* ════ 身体年龄数值卡（时间选择器下方，与睡眠恢复 SleepRecoveryHero 同源）════ */
+.heroCard{display:flex;align-items:flex-end;justify-content:space-between;background:#fff;border:1px solid var(--line);
+  border-radius:18px;padding:16px 18px;margin:0 14px 14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.heroL{display:flex;flex-direction:column}
+.heroNum{font-size:34px;font-weight:300;letter-spacing:-1.5px;line-height:1.05;color:var(--ink)}
+.heroLab{font-size:11.5px;color:var(--sub);margin-top:4px}
+.heroCtx{font-size:13px;font-weight:600;color:var(--limeDeep);padding-bottom:4px}
+
+/* ════ RangeSwitch（紫 pill，与全局一致；exclude day/week → 月/年）════ */
+.seg{display:flex;gap:3px;margin:8px 16px 6px;background:transparent;border-radius:999px;padding:3px;position:relative}
+.seg .track{position:absolute;top:3px;bottom:3px;width:calc(50% - 3px);background:var(--accent);border-radius:999px;
+  box-shadow:0 1px 4px rgba(124,106,224,.32);transition:transform 180ms cubic-bezier(.2,.8,.2,1)}
+.seg button{flex:1;position:relative;z-index:1;border:0;background:transparent;font-size:13px;font-weight:600;
+  padding:9px 0;border-radius:999px;color:var(--sub);transition:color 160ms}
+.seg button.on{color:#fff}
+
+/* ════ DateAnchorPicker（时间选择器，紫 accent）════ */
+.stepper{display:flex;align-items:center;gap:10px;margin:2px 16px 8px}
+.stepper .arrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--ink);flex-shrink:0}
+.stepper .center{flex:1;flex-direction:row;display:flex;align-items:center;justify-content:center;gap:6px;
+  border:1px solid var(--accent);background:var(--accentSoft);border-radius:999px;padding:9px 0;
+  font-size:13px;font-weight:600;color:var(--ink)}
+.stepper .center .ci{color:var(--accent);font-size:14px}
+
+/* ════ 白卡 ════ */
+.panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin:0 14px 14px}
+.panel .ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.panel .ph .t{font-size:14px;font-weight:620}
+.panel .ph .m{font-size:11.5px;color:var(--sub)}
+.chartbox{width:100%;display:block}
+.legend{display:flex;gap:16px;margin-top:6px;font-size:11.5px;color:var(--sub)}
+.legend i{display:inline-block;width:20px;height:0;border-top-width:2.4px;border-top-style:solid;vertical-align:middle;margin-right:6px}
+.legend i.dash{border-top-style:dashed}
+
+/* ════ 对比 ════ */
+.cmpHead{display:flex;align-items:flex-end;gap:18px;margin:2px 0 12px}
+.cmpNum{display:flex;flex-direction:column}
+.cmpNum .lab{font-size:11px;color:var(--sub)}
+.cmpNum .v{font-size:28px;font-weight:300;letter-spacing:-1px;line-height:1.05}
+.cmpNum .v.g{color:var(--limeDeep)} .cmpNum .v.n{color:var(--ink)}
+.cmpDelta{margin-left:auto;background:var(--pillBg);color:var(--pillFg);font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px}
+.diverge{position:relative;height:32px;background:#FAFAF8;border-radius:999px;border:1px solid var(--line);margin:6px 0 4px}
+.diverge .actual{position:absolute;inset:0;border-radius:999px;background:linear-gradient(90deg,#ECEAE5,#E2DFD8)}
+.diverge .mark{position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:999px;background:var(--limeDeep)}
+.diverge .mlabel{position:absolute;top:-19px;transform:translateX(-50%);font-size:10.5px;color:var(--limeDeep);font-weight:600;white-space:nowrap}
+.diverge .alabel{position:absolute;top:7px;left:8px;font-size:10.5px;color:var(--sub)}
+.factor{display:flex;align-items:center;gap:10px;margin:11px 0}
+.factor .fname{width:64px;font-size:12px;flex-shrink:0}
+.factor .ftrack{flex:1;height:12px;background:#FAFAF8;border-radius:999px;overflow:hidden}
+.factor .fbar{height:100%;background:var(--limeCore);border-radius:999px}
+.factor .fval{width:42px;text-align:right;font-size:12px;font-weight:600;color:var(--limeDeep);flex-shrink:0}
+.cmpNote{font-size:11px;color:var(--sub);margin-top:10px;line-height:1.6}
+
+/* ════ 日历底 sheet ════ */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-top-left-radius:24px;border-top-right-radius:24px;
+  padding:10px 16px 24px;box-shadow:0 -8px 30px rgba(0,0,0,.12);transform:translateY(100%);transition:transform 220ms cubic-bezier(.2,.8,.2,1)}
+.sheet.show{transform:translateY(0)}
+.sheetHead{display:flex;align-items:center;justify-content:space-between;padding:6px 0 10px;border-bottom:1px solid var(--line)}
+.sheetHead .t{font-size:13px;font-weight:600}
+.sheetHead .x{font-size:13px;color:var(--sub)} .sheetHead .td{font-size:13px;font-weight:600;color:var(--accent)}
+.calNav{display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px}
+.calNav .y{font-size:13px;font-weight:600}
+.weekHead{display:flex}.weekHead span{flex:1;text-align:center;font-size:11px;color:var(--sub)}
+.grid{display:flex;flex-wrap:wrap;margin-top:4px}
+.cell{width:14.285%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;
+  border-radius:9px;position:relative}
+.cell.dim{color:var(--sub)} .cell.dis{color:rgba(138,138,168,.4)}
+.cell.on{background:var(--accent);color:#fff;font-weight:600}
+.mask{position:absolute;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity 220ms}
+.mask.show{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>身体年龄详情页 · 月 / 年（统一版）</h1>
+  <p class="lead">按统一设计规范重做：<b>去掉 Hero 弧</b>，进入即显示 <b>月 / 年</b> 趋势；分段控件与「时间选择器」严格复用全局组件 <code>RangeSwitch</code> + <code>DateAnchorPicker</code> 的视觉（紫色 <code>accentSolid</code> 高亮），与睡眠等详情页 1:1 一致。<b>月 / 年视图均在时间选择器下方放一张「身体年龄」数值卡</b>（与睡眠恢复 <code>SleepRecoveryHero</code> 同源），大数字 + 较实际年龄差，四视图一致。色相：数据用黄绿 Lime，全局控件用紫。</p>
+  <p class="meta">预览即设计稿 · 当前仅 HTML，未改 App 源码 · 可点击分段 / 箭头 / 中间日期交互</p>
+
+  <div class="note">
+    <b>与全局组件的对齐：</b><br>
+    ① <code>RangeSwitch</code>：用 <code>exclude=['day','week']</code> 只留 <b>月 / 年</b> 两档，选中 pill = <code>accentSolid #7C6AE0</code>（白字），与睡眠/状态等详情页完全相同；<br>
+    ② <code>DateAnchorPicker</code>：<code>◀ [日历] 2026年10月 ▶</code>，中间按钮紫描边 + 紫图标（<code>accentSoft</code> 底），点开日历底 sheet；<br>
+    ③ <b>数值卡</b>：置于时间选择器下方（月/年都显示），大数字 34pt（<code>theme.fontSize.hero</code> 同级）+ 标签 + 右下 delta 语（limeDeep），与 <code>SleepRecoveryHero</code> 同一卡片规格（白底 / 圆角 18 / 描边 1 / 内边距 cardPad），解决「月/年不显数字」；<br>
+    ④ 进入页不再画弧，数值由数值卡承载。
+  </div>
+
+  <!-- ════ 手机 ════ -->
+  <div class="phone">
+    <div class="screen" id="screen">
+      <div class="statusbar"><span>9:41</span><span>●●● 5G ▋100%</span></div>
+      <div class="header">
+        <div class="back">‹</div>
+        <div class="title">身体年龄</div>
+      </div>
+
+      <!-- RangeSwitch 月/年 -->
+      <div class="seg" id="seg">
+        <div class="track" id="segTrack"></div>
+        <button class="on" data-r="month">月</button>
+        <button data-r="year">年</button>
+      </div>
+
+      <!-- DateAnchorPicker -->
+      <div class="stepper">
+        <div class="arrow" id="prev">‹</div>
+        <div class="center" id="center"><span class="ci">▦</span><span id="anchorLabel">2026年10月</span></div>
+        <div class="arrow" id="next">›</div>
+      </div>
+
+      <!-- 身体年龄数值卡（时间选择器下方，月/年均显示，与睡眠恢复 Hero 同源） -->
+      <div class="heroCard">
+        <div class="heroL">
+          <div class="heroNum" id="heroNum">28.3</div>
+          <div class="heroLab" id="heroLab">身体年龄 · 近 30 天均值</div>
+        </div>
+        <div class="heroCtx" id="heroCtx">较实际年龄低 2.7 岁</div>
+      </div>
+
+      <!-- 趋势图 -->
+      <div class="panel">
+        <div class="ph"><div class="t">身体年龄趋势</div><div class="m" id="chartMeta">近 30 天 · 单位 岁</div></div>
+        <svg id="chart" class="chartbox" viewBox="0 0 320 240"></svg>
+        <div class="legend">
+          <span><i style="border-color:#BCCB62"></i>身体年龄</span>
+          <span><i class="dash" style="border-color:rgba(31,29,26,.32)"></i>实际年龄 31.0</span>
+        </div>
+      </div>
+
+      <!-- 对比 -->
+      <div class="panel">
+        <div class="ph"><div class="t" id="cmpTitle">与实际年龄对比</div></div>
+        <div class="cmpHead">
+          <div class="cmpNum"><span class="lab">身体年龄</span><span class="v g" id="cmpBody">28.3</span></div>
+          <div class="cmpNum"><span class="lab">实际年龄</span><span class="v n">31.0</span></div>
+          <div class="cmpDelta" id="cmpDelta">年轻 2.7 岁</div>
+        </div>
+        <div class="diverge">
+          <div class="actual"></div>
+          <div class="alabel">实际年龄</div>
+          <div class="mark" id="mark" style="left:14%"></div>
+          <div class="mlabel" id="mlabel" style="left:14%">身体年龄 28.3</div>
+        </div>
+        <div style="font-size:11.5px;color:var(--sub);margin:18px 0 2px" id="factorTitle">影响因素贡献（岁）</div>
+        <div id="factors"></div>
+        <div class="cmpNote">身体年龄 = 实际年龄 + 活力调整；综合睡眠恢复 / 运动心肺 / 代谢 / 节律压力估算，仅作健康参考，非医学诊断。</div>
+      </div>
+
+      <!-- 日历底 sheet -->
+      <div class="mask" id="mask"></div>
+      <div class="sheet" id="sheet">
+        <div class="sheetHead">
+          <span class="x" id="sheetCancel">取消</span>
+          <span class="t">选择日期</span>
+          <span class="td" id="sheetToday">今天</span>
+        </div>
+        <div class="calNav">
+          <span class="arrow" id="calPrev" style="width:30px;height:30px;border-radius:999px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center">‹</span>
+          <span class="y" id="calTitle">2026年10月</span>
+          <span class="arrow" id="calNext" style="width:30px;height:30px;border-radius:999px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center">›</span>
+        </div>
+        <div class="weekHead"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div class="grid" id="calGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>① 与统一设计规范的对照</h2>
+  <div class="card">
+    <h3>全局控件（紫 accentSolid，与睡眠/状态等详情页同源）</h3>
+    <table>
+      <tr><th>元素</th><th>本页实现</th><th>对齐组件</th></tr>
+      <tr><td>分段控件 月/年</td><td>紫 pill 高亮（accentSolid），白字选中</td><td><code>RangeSwitch</code> + <code>exclude=['day','week']</code></td></tr>
+      <tr><td>时间选择器</td><td>◀ [日历图标] 标签 ▶，中间紫描边 + 紫图标</td><td><code>DateAnchorPicker</code> 步进器</td></tr>
+      <tr><td>日历弹窗</td><td>底部 sheet，选中日紫填充（accentSolid）</td><td><code>DateAnchorPicker</code> Modal sheet</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>数据视觉（黄绿 Lime，身体年龄专属）</h3>
+    <table>
+      <tr><th>元素</th><th>色 / 尺寸</th><th>规则</th></tr>
+      <tr><td>趋势折线</td><td>limeMid #BCCB62 · 2.4pt</td><td>单系列取 core 档；L 档 240 图表</td></tr>
+      <tr><td>实际年龄参考</td><td>refFaint 虚线 5 4</td><td>中性，不与数据线抢色</td></tr>
+      <tr><td>因子横条</td><td>limeCore 平涂 · pill 圆角</td><td>bar-design：无渐变 / 无 opacity 层级</td></tr>
+      <tr><td>数值卡（时间选择器下）</td><td>白底卡 34pt 大数字 + 标签 + limeDeep delta 语</td><td>与 SleepRecoveryHero 同源；月/年都显示</td></tr>
+    </table>
+  </div>
+  <div class="note">
+    <b>App 落地要点：</b>新建 <code>HealthAgeDetailScreen.tsx</code>；数值卡复用新建 <code>HealthAgeHero</code>（与 <code>SleepRecoveryHero</code> 同规格：白底 / 圆角 18 / 描边 1 / 内边距 cardPad / 34pt 大数字），月/年都传入区间均值；分段用 <code>RangeSwitch exclude={['day','week']}</code>；时间选择器用 <code>DateAnchorPicker</code>（range 动态传入）；趋势复用 <code>TrendChart</code>；对比新建 <code>HealthAgeCompareCard</code>。入口接 InsightScreen 的 <code>HealthAgeCard</code>  onPress。所有 token 取自 <code>theme.mindmate.ts</code> / <code>theme.chart.ts</code>，tsc 基线维持 42。
+  </div>
+</div>
+
+<script>
+const accent='#7C6AE0', limeMid='#BCCB62', limeDeep='#6E7A24';
+let range='month';
+let anchor=new Date(2026,9,10); // 2026-10-10
+
+function fmtMonth(d){return d.getFullYear()+'年'+(d.getMonth()+1)+'月';}
+function fmtYear(d){return d.getFullYear()+'年';}
+function anchorLabel(){
+  return range==='month'?fmtMonth(anchor):fmtYear(anchor);
+}
+function addMonths(d,n){const x=new Date(d);x.setDate(1);x.setMonth(x.getMonth()+n);return x;}
+function addYears(d,n){return new Date(d.getFullYear()+n,d.getMonth(),1);}
+
+// 演示数据
+function monthSeries(anchor){
+  const y=anchor.getFullYear(), m=anchor.getMonth();
+  const days=new Date(y,m+1,0).getDate();
+  const arr=[];
+  for(let i=1;i<=days;i++){
+    // 10 月整体略降，含一个缺口
+    let base=29.0-(i/days)*0.8 + (Math.sin(i/3)*0.25);
+    if(i>=12&&i<=13) {arr.push(null);continue;}
+    arr.push(Math.round(base*10)/10);
+  }
+  return arr;
+}
+function yearSeries(anchor){
+  const y=anchor.getFullYear();
+  const arr=[];
+  for(let m=0;m<12;m++){
+    let base=30.4-(m/11)*2.1 + (Math.sin(m/2)*0.2);
+    arr.push(Math.round(base*10)/10);
+  }
+  return arr;
+}
+
+function renderChart(){
+  const svg=document.getElementById('chart');
+  const W=320,H=240,PAD_L=14,PAD_R=14,PAD_T=18,PAD_B=28;
+  const plotW=W-PAD_L-PAD_R, plotH=H-PAD_T-PAD_B;
+  const yMin=26,yMax=32;
+  const data= range==='month'?monthSeries(anchor):yearSeries(anchor);
+  const xAt=i=>PAD_L+(data.length<=1?plotW/2:plotW*i/(data.length-1));
+  const yAt=v=>PAD_T+plotH*(1-(v-yMin)/(yMax-yMin));
+  let s='';
+  [26,29,32].forEach(g=>{
+    const y=yAt(g);
+    s+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="rgba(31,29,26,0.09)" stroke-width="1"/>`;
+    s+=`<text x="${PAD_L}" y="${y-4}" font-size="9" fill="#BDB7AE">${g}</text>`;
+  });
+  const ry=yAt(31.0);
+  s+=`<line x1="${PAD_L}" y1="${ry}" x2="${W-PAD_R}" y2="${ry}" stroke="rgba(31,29,26,0.32)" stroke-width="1.3" stroke-dasharray="5 4"/>`;
+  // 折线（断线：null 断开）
+  let seg=[],started=false;
+  data.forEach((v,i)=>{
+    if(v==null){ if(seg.length>1) s+=pathFrom(seg,xAt,yAt); seg=[]; started=false; return; }
+    seg.push(i);
+  });
+  if(seg.length>1) s+=pathFrom(seg,xAt,yAt);
+  // 端点
+  let lastIdx=-1; for(let i=data.length-1;i>=0;i--){if(data[i]!=null){lastIdx=i;break;}}
+  if(lastIdx>=0){
+    const lx=xAt(lastIdx),ly=yAt(data[lastIdx]);
+    s+=`<circle cx="${lx}" cy="${ly}" r="4" fill="${limeMid}"/>`;
+    s+=`<circle cx="${lx-1.4}" cy="${ly-1.4}" r="1.6" fill="rgba(255,255,255,.6)"/>`;
+  }
+  // X 标签
+  const ticks=[0,Math.floor((data.length-1)/2),data.length-1];
+  const labTxt= range==='month'
+    ? [anchor.getMonth()+1+'/1', anchor.getMonth()+1+'/'+Math.floor(new Date(anchor.getFullYear(),anchor.getMonth()+1,0).getDate()/2), anchor.getMonth()+1+'/'+new Date(anchor.getFullYear(),anchor.getMonth()+1,0).getDate()]
+    : ['1月','6月','12月'];
+  ticks.forEach((i,k)=>{ s+=`<text x="${xAt(i)}" y="${H-10}" font-size="9" fill="#8A857D" text-anchor="middle">${labTxt[k]}</text>`; });
+  svg.innerHTML=s;
+}
+function pathFrom(idxs,xAt,yAt){
+  let d='';
+  idxs.forEach((i,k)=>{ d+=(k===0?'M':'L')+xAt(i).toFixed(1)+' '+yAt(dataVal(i)).toFixed(1)+' '; });
+  return `<path d="${d}" fill="none" stroke="${limeMid}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+}
+// 闭包里取 data
+let _data=[];
+function dataVal(i){return _data[i];}
+
+function renderFactors(){
+  const f = range==='month'
+    ? [['睡眠恢复',1.4,82],['运动心肺',0.8,47],['代谢',0.3,18],['节律压力',0.2,12]]
+    : [['睡眠恢复',1.2,90],['运动心肺',0.6,60],['代谢',0.2,30],['节律压力',0.1,10]];
+  document.getElementById('factors').innerHTML = f.map(([n,v,w])=>
+    `<div class="factor"><span class="fname">${n}</span><div class="ftrack"><div class="fbar" style="width:${w}%"></div></div><span class="fval">+${v}</span></div>`
+  ).join('');
+  document.getElementById('factorTitle').textContent = range==='month'?'影响因素贡献（岁）':'年度主要改善因素';
+  document.getElementById('cmpTitle').textContent = range==='month'?'与实际年龄对比':'年度变化';
+}
+
+function update(){
+  document.getElementById('anchorLabel').textContent=anchorLabel();
+  document.getElementById('chartMeta').textContent= range==='month'?'近 30 天 · 单位 岁':'近 12 个月 · 单位 岁';
+  // 分段高亮
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.r===range));
+  document.getElementById('segTrack').style.transform = range==='year'?'translateX(100%)':'translateX(0)';
+  _data = range==='month'?monthSeries(anchor):yearSeries(anchor);
+  // ★ 数值卡（时间选择器下方，与睡眠恢复 SleepRecoveryHero 同源）：月/年均显示当前身体年龄 + 较实际年龄差
+  const vals=_data.filter(v=>v!=null);
+  const avg = vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  const diff = avg!=null ? avg-31.0 : null;
+  document.getElementById('heroNum').textContent = avg!=null? avg.toFixed(1):'—';
+  document.getElementById('heroLab').textContent = range==='month'?'身体年龄 · 近 30 天均值':'身体年龄 · 近 12 个月均值';
+  document.getElementById('heroCtx').textContent = diff==null?'数据积累中'
+    : (Math.abs(diff)<0.05?'与实际年龄相近':`较实际年龄${diff<0?'低':'高'} ${Math.abs(diff).toFixed(1)} 岁`);
+  renderChart();
+  renderFactors();
+}
+
+// 分段点击
+document.querySelectorAll('#seg button').forEach(b=>{
+  b.onclick=()=>{ range=b.dataset.r; update(); };
+});
+// 箭头步进
+document.getElementById('prev').onclick=()=>{ anchor = range==='month'?addMonths(anchor,-1):addYears(anchor,-1); update(); };
+document.getElementById('next').onclick=()=>{ anchor = range==='month'?addMonths(anchor,1):addYears(anchor,1); update(); };
+
+// 日历
+const sheet=document.getElementById('sheet'), mask=document.getElementById('mask');
+function openCal(){ document.getElementById('calTitle').textContent=fmtMonth(anchor); buildGrid(); sheet.classList.add('show'); mask.classList.add('show'); }
+function closeCal(){ sheet.classList.remove('show'); mask.classList.remove('show'); }
+document.getElementById('center').onclick=openCal;
+document.getElementById('mask').onclick=closeCal;
+document.getElementById('sheetCancel').onclick=closeCal;
+document.getElementById('sheetToday').onclick=()=>{ anchor=new Date(2026,9,10); closeCal(); update(); };
+document.getElementById('calPrev').onclick=()=>{ const p=addMonths(anchor,-1); document.getElementById('calTitle').textContent=fmtMonth(p); buildGrid(p); };
+document.getElementById('calNext').onclick=()=>{ const p=addMonths(anchor,1); document.getElementById('calTitle').textContent=fmtMonth(p); buildGrid(p); };
+function buildGrid(viewDate){
+  const base= viewDate||anchor;
+  const y=base.getFullYear(), m=base.getMonth();
+  const first=new Date(y,m,1);
+  // 周一为一周起点
+  let off=(first.getDay()+6)%7;
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const cells=[];
+  for(let i=0;i<off;i++){ const d=new Date(y,m,1-i); cells.push({d,dim:true}); }
+  for(let i=1;i<=daysInMonth;i++){ cells.push({d:new Date(y,m,i),dim:false}); }
+  while(cells.length%7!==0) { const last=cells[cells.length-1].d; const nd=new Date(last.getFullYear(),last.getMonth(),last.getDate()+1); cells.push({d:nd,dim:true}); }
+  const sel=anchor.getTime();
+  document.getElementById('calGrid').innerHTML=cells.map(c=>{
+    const on=c.d.getTime()===sel?' on':'';
+    const dim=c.dim?' dim':'';
+    return `<div class="cell${on}${dim}" data-ts="${c.d.getTime()}">${c.d.getDate()}</div>`;
+  }).join('');
+  document.querySelectorAll('#calGrid .cell').forEach(el=>{
+    el.onclick=()=>{ anchor=new Date(Number(el.dataset.ts)); closeCal(); update(); };
+  });
+}
+
+update();
+</script>
+</body>
+</html>

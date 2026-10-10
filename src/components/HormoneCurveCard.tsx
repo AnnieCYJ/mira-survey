@@ -14,6 +14,7 @@ import React, { useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Svg, { Path, Circle, Rect, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
 import { theme } from "../theme/theme";
+import { mm } from "../theme/mindmate";
 import { modelEstrogenCurve, type CycleLog, type CycleInfo, type CyclePhase } from "../lib/cycleMath";
 import { healthStore } from "../data/healthStore";
 
@@ -228,8 +229,8 @@ export default function HormoneCurveCard({
       <Svg width={svgW} height={H}>
         <Defs>
           <LinearGradient id="e2Area" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#7EA6F8" stopOpacity="0.35" />
-            <Stop offset="100%" stopColor="#7EA6F8" stopOpacity="0.02" />
+            <Stop offset="0%" stopColor={mm.colors.skyCore} stopOpacity="0.35" />
+            <Stop offset="100%" stopColor={mm.colors.skyCore} stopOpacity="0.02" />
           </LinearGradient>
         </Defs>
         {phaseBands.map((b, i) => {
@@ -245,7 +246,7 @@ export default function HormoneCurveCard({
         })}
         <Rect x={xForDay(cycleLength)} y={PAD_T} width={0.8} height={innerH} fill={PHASE_BORDER.luteal} />
 
-        <Path d={d} fill="none" stroke="#7EA6F8" strokeWidth={enough ? 2.4 : 1.8} strokeOpacity={enough ? 1.0 : 0.75} />
+        <Path d={d} fill="none" stroke={mm.colors.skyCore} strokeWidth={enough ? 2.4 : 1.8} strokeOpacity={enough ? 1.0 : 0.75} />
         <Path d={d + ` L ${xForDay(cycleLength)} ${PAD_T + innerH} L ${xForDay(1)} ${PAD_T + innerH} Z`} fill="url(#e2Area)" />
 
         {(() => {

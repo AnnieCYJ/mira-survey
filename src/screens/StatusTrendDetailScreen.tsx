@@ -15,14 +15,17 @@ import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect, G, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
+import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
 import { type RangeKey } from '../data/metrics';
 import { startOfWeek, addDays, formatDate } from '../lib/dateUtils';
+import { timeTickLabel } from '../lib/chartAxis';
 import { MOODS } from '../data/metrics';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
 import { dayKey, healthStore } from '../data/healthStore';
@@ -31,8 +34,9 @@ import { loadCycleLog } from '../data/cycleLog';
 import { phaseBg, PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 
 
-const W = 680;
-const H = 240;
+// ★ 2026-10-10（用户「按现在的 design token」）：图表高度挂 token —— 详情页主趋势 = L 档
+//   （chart-size-unified-spec 规则 1）。日/周/月/年共用本图，天然等高；原裸写 const H = 240。
+const H = chart.h.l;
 /** ★ v18.151：PAD_L 14 → 34 —— 左侧要留出纵坐标刻度（0/50/100）的位置。
  *  所有 x 坐标都由 PAD_L / plotW 派生（plotW = w - PAD_L - PAD_R），所以调这一个常量即全局对齐。 */
 const PAD_L = 34;
@@ -45,7 +49,6 @@ const Y_MAX = 100;
 const Y_TICKS = [100, 50, 0];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEK_LABEL = ['日', '一', '二', '三', '四', '五', '六'];
 
 /** 皮质醇异常判定（★ 与全 App 唯一口径对齐，见 CortisolRhythmCard / lib/cortisolRhythm）：
  *  「当日皮质醇均值 > 个人近 14 天日均值的 P75」= 相对你自己偏高。
@@ -74,8 +77,9 @@ function cortisolDayMean(dk: string): number | null {
 const PMS_WINDOW = 7;
 /** 经前 PMS 暖色标记（柔和暖橙，区别于 4 相位，且不用红斜纹） */
 const PMS_COLOR = '#E8894A';
-/** 皮质醇异常图标色（单档）：红底白「!」，周视图顶部 + 图例共用 */
-const CORT_COLOR = '#E2554E';
+/** 皮质醇异常图标色（单档）：红底白「!」，周视图顶部 + 图例共用。
+ *  ★ 2026-10-10：token 化 —— 与全站异常色同源（chart.series.anomaly = #E2554E）。 */
+const CORT_COLOR = chart.anomaly;
 
 /** ★ 4 等级取色：任意数值 → 该点自己的等级色。
  *  与首页圆环/趋势图同源（curveLevel 的 index → MOODS 同索引），
@@ -321,7 +325,7 @@ export default function StatusTrendDetailScreen() {
       const labels: string[] = [];
       const values: (number | null)[] = [];
       for (let mo = 0; mo < 12; mo++) {
-        labels.push(`${mo + 1}月`);
+        labels.push(timeTickLabel({ range: 'year', monthIndex: mo }));
         // ★ monthMean 基础 + timelineByDay fallback
         const base = monthMean(statusDaily, y, mo);
         if (base != null) { values.push(base); continue; }
@@ -368,7 +372,7 @@ export default function StatusTrendDetailScreen() {
       for (let i = 0; i < 7; i++) {
         const d = addDays(mon, i);
         keys.push(dayKey(d.getTime()));  // ★ 用 dayKey() 补零格式
-        labels.push(WEEK_LABEL[d.getDay()]);
+        labels.push(timeTickLabel({ range: 'week', weekday: d.getDay() }));
       }
     } else {
       const y = anchor.getFullYear();
@@ -377,7 +381,7 @@ export default function StatusTrendDetailScreen() {
       for (let day = 1; day <= dim; day++) {
         const d = new Date(y, m0, day);
         keys.push(dayKey(d.getTime()));  // ★ 用 dayKey() 补零格式
-        labels.push(`${day}`);
+        labels.push(timeTickLabel({ range: 'month', dayOfMonth: day }));
       }
     }
     // ★ 3 层 fallback: statusDaily → statusTimelineByDay 均值 → 今日 timeline 均值（仅今天）
@@ -680,7 +684,7 @@ export default function StatusTrendDetailScreen() {
     };
   }, [dRange, anchor, statusDaily, ring, avg]);
 
-  // 轴标签：固定（日=时间轴）则均匀排；否则取 ~7 个等距点
+  // 轴标签：日视图固定时间轴（space-between）；周/月/年每个数据点一槽、刻度居中，稀疏刻度与柱对齐
   const renderAxis = () => {
     if (fixedAxis) {
       return DAY_AXIS.map((t, i) => (
@@ -689,19 +693,9 @@ export default function StatusTrendDetailScreen() {
         </Text>
       ));
     }
-    const arr = axisLabels;
-    if (arr.length <= 7) {
-      return arr.map((t, i) => (
-        <Text key={i} style={styles.axisText}>
-          {t}
-        </Text>
-      ));
-    }
-    const pick = 7;
-    const idxs = Array.from({ length: pick }, (_, i) => Math.floor((i * (arr.length - 1)) / (pick - 1)));
-    return idxs.map((i) => (
-      <Text key={i} style={styles.axisText}>
-        {arr[i]}
+    return axisLabels.map((t, i) => (
+      <Text key={i} style={[styles.axisText, { flex: 1, textAlign: 'center' }]}>
+        {t}
       </Text>
     ));
   };
@@ -734,22 +728,27 @@ export default function StatusTrendDetailScreen() {
           ) : null}
         </View>
 
-        {/* 当前值 */}
-        <View style={styles.hero}>
-          <Text style={styles.heroVal}>{fmtVal(current)}</Text>
-          <Text style={styles.heroUnit}>/ 100</Text>
-          {hasData && deltaPct !== 0 ? (
-            <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
-              {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
-            </Text>
-          ) : null}
-        </View>
-
         {/* 日 / 周 / 月 / 年 切换 */}
         <RangeSwitch value={range} onChange={setRange} />
 
         {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
         <DateAnchorPicker value={anchor} onChange={setAnchor} range={dRange} />
+
+        {/* ★ 2026-10-10（用户 10-09 硬性要求，此前本页漏改）：总体数据卡移到时间选择器**下方**，
+              切换上方不再放大数字 —— 与脑力/心理压力等详情页统一（切换 → 选择器 → 数据卡 → 图表） */}
+        <Card padded={false}>
+          <View style={styles.pad}>
+            <View style={styles.hero}>
+              <Text style={styles.heroVal}>{fmtVal(current)}</Text>
+              <Text style={styles.heroUnit}>/ 100</Text>
+              {hasData && deltaPct !== 0 ? (
+                <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
+                  {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </Card>
 
         {/* 趋势图 */}
         <View style={styles.chartCard}>
@@ -874,7 +873,7 @@ export default function StatusTrendDetailScreen() {
                       x2={PAD_L + plotW}
                       y2={yAt(gv)}
                       stroke={theme.colors.ui.borderSoft}
-                      strokeWidth={1}
+                      strokeWidth={chart.lw.grid}
                     />
                     <SvgText
                       x={PAD_L - 7}
@@ -888,13 +887,13 @@ export default function StatusTrendDetailScreen() {
                   </G>
                 ))}
                 {/* 纵轴轴线 */}
-                <Line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + plotH} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+                <Line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + plotH} stroke={theme.colors.ui.borderSoft} strokeWidth={chart.lw.grid} />
 
                 {areaD ? <Path d={areaD} fill="url(#std_grad)" /> : null}
                 {/* ★ 主折线：与首页「全天状态趋势」同款 —— 等级色横向渐变描边 2.5pt，
                     线本身随等级变色。不再压白底粗线、也不再统一单色。 */}
                 {lineD ? (
-                  <Path d={lineD} fill="none" stroke="url(#std_line)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={lineD} fill="none" stroke="url(#std_line)" strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
 
                 {/* ★ 散点：日/周/月/年每个点都画，颜色 = 该点自己的 4 等级色（moodFor）。
@@ -922,7 +921,7 @@ export default function StatusTrendDetailScreen() {
                       const topY = PAD_T + 8;
                       return (
                         <G key={`cort-${i}`}>
-                          <Line x1={c.x} y1={topY + 8} x2={c.x} y2={c.y} stroke={CORT_COLOR} strokeWidth={1} strokeDasharray="3,3" opacity={0.65} />
+                          <Line x1={c.x} y1={topY + 8} x2={c.x} y2={c.y} stroke={CORT_COLOR} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} opacity={0.65} />
                           <Circle cx={c.x} cy={topY} r={8} fill={CORT_COLOR} />
                           <SvgText x={c.x} y={topY + 3.5} fontSize={11} fontWeight="700" fill="#FFFFFF" textAnchor="middle">{'!'}</SvgText>
                         </G>
@@ -1085,6 +1084,7 @@ function lastNonNull(arr: (number | null)[]): number | null {
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
+  pad: { padding: theme.space.cardPad },
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: { padding: theme.space.xs, marginRight: theme.space.sm },
   headText: { flex: 1 },

@@ -27,7 +27,7 @@ import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { collectSamples, collectSamplesForDay, collectSamplesForRange } from '../components/CortisolRhythmCard';
 // ★ v18.124：皮质醇水平/峰值改用多模态反推的实测槽统计（与首页/趋势图同源）
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
 import { analyzeCortisol, type CortisolSample, type RhythmLevel } from '../lib/cortisolRhythm';
 import { type RangeKey } from '../data/metrics';
 import { type StressReport } from '../lib/stressAlgorithm';
@@ -40,14 +40,16 @@ const DAY_MS = 86400000;
 
 /**
  * v18.22 摘要格 pastel 底色（与首页 MindStatCard 角标同源，mm.chipBg）：
- *   情绪=粉 / 疲劳=紫 / 睡眠恢复=lime(恢复语义) / 皮质醇=主题紫(accentSoft+accentSolid，与主曲线同源)。
+ *   情绪=粉 / 疲劳=紫 / 睡眠恢复=lime(恢复语义) / 皮质醇=亮绿(对齐 chart.ts：cortisol=limeMid，与日视图曲线同源)。
+ *   ★ 2026-10-09（用户：日周月年都要跟 Design Token 一致）：皮质醇从主题紫 accentSoft/accentSolid 改为亮绿 lime 家族，
+ *     与日视图「皮质醇全天趋势」单条亮绿曲线(chart.series.cortisol)及 sleep-recovery 预览同源。
  * 不传 bg/fg 时回落 cardBgSoft 灰（仅无数据占位格用）。
  */
 const MOD_BG = {
   emotion: { bg: mm.chipBg.pink.bg, fg: mm.chipBg.pink.fg },
   mind: { bg: mm.chipBg.lav.bg, fg: mm.chipBg.lav.fg },
   sleep: { bg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
-  cortisol: { bg: theme.colors.accentSoft, fg: theme.colors.accentSolid },
+  cortisol: { bg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
 };
 
 interface DayData {
@@ -464,16 +466,17 @@ export default function EmotionCognitiveDetailScreen() {
           </View>
         </View>
 
+        {/* ★ 统一选择器：日/周/月/年 + 日期步进器（与情绪/脑力消耗详情页一致） */}
+        <RangeSwitch value={range} onChange={setRange} />
+        <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
+
         {/* 当日皮质醇节律结论（大字，仅日视图显示；周/月/年为区间聚合，无"今日"概念）
-            ★ 颜色/字重与情绪/脑力消耗详情页 Hero 完全一致：fontSize.hero + medium + textTitle */}
+            ★ 2026-10-09（用户）：**日/周/月/年上方不再放大字**，结论改到时间选择器下方 */}
         {range === 'day' && (
           <View style={styles.rhythmHero}>
             <Text style={styles.rhythmHeroVal}>{todayRhythmLabel}</Text>
           </View>
         )}
-        {/* ★ 统一选择器：日/周/月/年 + 日期步进器（与情绪/脑力消耗详情页一致） */}
-        <RangeSwitch value={range} onChange={setRange} />
-        <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
         {/* AI 综合分析（真实端侧 MiraAI 分点行；生成中 pending 提示，不合格/失败回落规则分点） */}
         <InsightBanner
@@ -601,27 +604,10 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
   );
 }
 
-// ── 节律日历：单日异常判定（与首页「昼夜节律」卡同一入口：proxy 实测槽 + judgeCortisolRhythm）。
-//   节律紊乱 或（今日且皮质醇偏高）才判异常；基线不足（days < MIN_BASELINE_DAYS）判不出 → 视为正常（绿）。
-//   模块级缓存，年视图 365 天只算一次。──
-const dayAbnormalCache = new Map<string, boolean>();
+// ── 节律日历：单日异常判定（★ 2026-10-10 收敛到与睡眠恢复页共用唯一入口 judgeCortisolRhythmForDay，
+//   保证两页异常天数逐位一致：proxy 实测槽 + judgeCortisolRhythm 同一套阈值）。──
 function dayAbnormal(dayMs: number, isToday: boolean): boolean {
-  const key = `${dayMs}|${isToday}`;
-  const hit = dayAbnormalCache.get(key);
-  if (hit != null) return hit;
-  let v = false;
-  try {
-    const pbl = buildCortisolProxyBaseline(14, dayMs);
-    if (pbl.days >= MIN_BASELINE_DAYS) {
-      const px = buildCortisolProxyToday(pbl, { now: dayMs });
-      const j = judgeCortisolRhythm(px.vals, px.real);
-      v = j.label === '节律紊乱' || (isToday && j.label === '皮质醇偏高');
-    }
-  } catch {
-    v = false;
-  }
-  dayAbnormalCache.set(key, v);
-  return v;
+  return judgeCortisolRhythmForDay(dayKey(dayMs), isToday).abn;
 }
 
 /**
@@ -730,7 +716,9 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
   );
 }
 
-/** 区间视图：聚合均值 + 对比上一周期 */
+/** 区间视图：★ 2026-10-10（design-system-spec / circadian-cortisol-preview「App 待同步点」）：
+ *  周/月/年**不做区间均值** —— 去掉「平均压力水平 / 平均峰值时刻」两张均值格，
+ *  改为节律小结三格（异常天数 / 节律状态 / 峰值时段）；异常天数与节律日历同源（dayAbnormal）。 */
 function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg; range: RangeKey; anchor: Date }) {
   const levelMeta: Record<RhythmLevel, { label: string; color: string }> = {
     normal: { label: '节律正常', color: mm.colors.limeDeep },
@@ -738,12 +726,31 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
     dysregulated: { label: '节律紊乱', color: mm.colors.honeyDeep },
   };
   const cMeta = cur.cortisolStatus ? levelMeta[cur.cortisolStatus] : null;
+  // 异常天数（年=异常月份）：与 RhythmCalendar 完全同一判定（dayAbnormal 模块级缓存，不重复算）
+  const abn = useMemo(() => {
+    const todayDk = dayKey(Date.now());
+    if (range === 'year') {
+      const months = eachDayInWindow('year', anchor);
+      let count = 0;
+      for (const m of months) {
+        const days = daysInMonth(m);
+        const c = days.filter((d) => dayAbnormal(d.getTime() + DAY_MS - 1, dayKey(d.getTime()) === todayDk)).length;
+        if (days.length > 0 && c / days.length >= 0.3) count += 1;
+      }
+      return { count, total: months.length };
+    }
+    const days = eachDayInWindow(range, anchor);
+    const count = days.filter((d) => dayAbnormal(d.getTime() + DAY_MS - 1, dayKey(d.getTime()) === todayDk)).length;
+    return { count, total: days.length };
+  }, [range, anchor]);
+  const peakH = cur.cortisolPeakH != null ? Math.round(cur.cortisolPeakH) : null;
+  const peakSub = peakH == null ? undefined : peakH >= 6 && peakH <= 11 ? '正常 06–11' : peakH < 6 ? '过早' : '偏晚';
   return (
     <>
       {/* 节律日历（周/月=按天，年=按月；异常=粉，正常=淡紫） */}
       <RhythmCalendar range={range} anchor={anchor} />
 
-      {/* 皮质醇区间聚合 */}
+      {/* 皮质醇节律小结（无均值）：异常天数 / 节律状态 / 峰值时段 */}
       <Card padded={false}>
         <View style={styles.pad}>
           <Text style={styles.cardTitle}>皮质醇 · {periodLabel(range, anchor)}</Text>
@@ -754,8 +761,27 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
             </View>
           )}
           <View style={styles.summaryGrid}>
-            <SumCell label="平均压力水平" value={cur.cortisolMesor != null ? cur.cortisolMesor.toFixed(1) : '—'} bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
-            <SumCell label="平均峰值时刻" value={cur.cortisolPeakH != null ? `${String(Math.round(cur.cortisolPeakH)).padStart(2, '0')}:00` : '—'} sub={cur.cortisolPeakH != null ? (cur.cortisolPeakH >= 6 && cur.cortisolPeakH <= 11 ? '正常 06–11' : cur.cortisolPeakH < 6 ? '过早' : '偏晚') : '—'} bg={MOD_BG.cortisol.bg} fg={MOD_BG.cortisol.fg} />
+            <SumCell
+              label={range === 'year' ? '异常月份' : '异常天数'}
+              value={String(abn.count)}
+              sub={`/ ${abn.total}`}
+              bg={MOD_BG.cortisol.bg}
+              fg={MOD_BG.cortisol.fg}
+            />
+            <SumCell
+              label="节律状态"
+              value={cMeta?.label ?? '—'}
+              sub={range === 'year' ? '按异常月占比' : '按异常日占比'}
+              bg={MOD_BG.cortisol.bg}
+              fg={cMeta?.color ?? MOD_BG.cortisol.fg}
+            />
+            <SumCell
+              label="峰值时段"
+              value={peakH != null ? `${String(peakH).padStart(2, '0')}:00` : '—'}
+              sub={peakSub}
+              bg={MOD_BG.cortisol.bg}
+              fg={MOD_BG.cortisol.fg}
+            />
           </View>
         </View>
       </Card>
@@ -883,8 +909,9 @@ const styles = StyleSheet.create({
   //   换成品牌紫的极浅底（accentSoft 系列），与皮质醇卡的紫调一致；
   //   文字色不变（textTitle/textSub 在浅紫上对比度更高，实测 AA 达标）。
   sumCell: { flex: 1, alignItems: 'center', paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(1), borderRadius: theme.radius.sm, backgroundColor: theme.colors.accentSoft, marginHorizontal: theme.sp(0.5) },
-  sumLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
-  sumValue: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.orb * 1.15, textAlign: 'center' },
+  // ★ 2026-10-09（circadian-cortisol-preview）：.sumLabel 11px / .sumValue 21px·650
+  sumLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75), textAlign: 'center' },
+  sumValue: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.h2 * 1.1, textAlign: 'center' },
   sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
   emptyHint: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
   compareRow: { flexDirection: 'row', marginTop: theme.sp(1) },

@@ -9,29 +9,29 @@
  * ★「整体水平」那格**可点击** → 弹出 CortisolAnomalySheet，明确指出当天皮质醇
  *   是偏高 / 节律偏平 / 峰值后移。
  *
- * 数据全部真实：collectSamplesForDay(dk) → analyzeCortisol（cosinor 拟合）。
+ * 数据全部真实，且与洞察页同源：`collectSamples()` → `analyzeCortisol(samples, 14)`，
  * 历史日不套用「偏高」判定（无 14 天基线不可信），与 RhythmCalendar 的口径一致。
  */
 import React, { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import { analyzeCortisol, fitCosinor } from '../lib/cortisolRhythm';
-import { collectSamplesForDay, TrendChart, getSleepWindow } from './CortisolRhythmCard';
+import Icon from './Icon';
+import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, judgeCortisolRhythm } from '../lib/cortisolProxy';
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
+import { collectSamples, TrendChart, getSleepWindow } from './CortisolRhythmCard';
 import CortisolAnomalySheet, { cortKindOf } from './CortisolAnomalySheet';
 
-/** 皮质醇 acrophase（峰值时刻）→ 作息类型。阈值对齐原型：>10 点偏晚，<6 点偏早 */
-function chronotypeOf(acrophaseH: number | null): { label: string; style: 'lark' | 'night' | 'flat' } | null {
-  if (acrophaseH == null || !Number.isFinite(acrophaseH)) return null;
-  if (acrophaseH > 10) return { label: `晚睡型 · 峰值 ${fmtClock(acrophaseH)}`, style: 'night' };
-  if (acrophaseH < 6) return { label: `早起型 · 峰值 ${fmtClock(acrophaseH)}`, style: 'lark' };
-  return { label: '常规作息', style: 'flat' };
-}
-function fmtClock(h: number): string {
-  const hh = Math.floor(h);
-  const mmv = Math.round((h - hh) * 60);
-  return `${String(hh).padStart(2, '0')}:${String(mmv).padStart(2, '0')}`;
-}
+/**
+ * ★ 2026-10-10（用户最终定调：睡眠恢复页的峰值必须和洞察页「昼夜节律」卡一模一样，
+ *   不要再各自算）：这里的峰值时刻 / 作息类型**不再用 14 天 cosinor 拟合 acrophase**
+ *   （那是拟合值，与洞察页「今日实测活性最高槽」必然对不上，如 13:38 vs 11 点多），
+ *   改由 lib/cortisolProxy 的 `judgeCortisolRhythm()` 产出 ——
+ *   与 AllDayRecoveryCard（洞察页「昼夜节律」卡 tile/AI 分析）逐字同源：
+ *   · 峰值时刻 = 今日 proxy 实测活性最高槽的时钟（不是拟合相位）；
+ *   · 作息类型按峰值小时判：>12 晚睡型 / <6 早起型 / 其余常规作息。
+ */
 
 interface Props {
   /** 锚点日（YYYY-MM-DD） */
@@ -40,18 +40,26 @@ interface Props {
   isToday: boolean;
 }
 
-export default function SleepRhythmCard({ dk, isToday }: Props) {
+export default function SleepRhythmCard({ dk }: Props) {
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
+  // ★ 2026-10-10（用户最终定调：睡眠节律卡的皮质醇数据必须和洞察页「一模一样」，不再各自算）：
+  //   曲线复用洞察页同款 `analyzeCortisol(collectSamples(), 14)`（同一份窗口、同一套算法、同一个 r）；
+  //   峰值时刻 / 作息类型改走洞察页「昼夜节律」卡（AllDayRecoveryCard）同款 **proxy 实测判定**：
+  //   `buildCortisolProxyBaseline(14)` → `buildCortisolProxyToday` → `judgeCortisolRhythm`。
+  //   两条口径都对齐洞察页后，睡眠恢复页与洞察页的曲线、峰值线、峰值时刻逐位一致。
+  const hsRefresh = useDebouncedHealthStoreRefresh(700);
   const data = useMemo(() => {
-    const samples = collectSamplesForDay(dk);
+    const samples = collectSamples();
     if (samples.length < 4) return null;
-    // ★ 与 EmotionCognitiveDetailScreen.dayAbnormal 同口径：历史日 baselineDays=1（不判偏高）
-    const r = analyzeCortisol(samples, isToday ? 14 : 1);
-    const co = fitCosinor(samples);
+    const r = analyzeCortisol(samples, 14);
     const kind = cortKindOf({ high: r.today.high, dys: r.today.dys });
-    return { r, kind, co, n: samples.length };
-  }, [dk, isToday]);
+    const bl = buildCortisolProxyBaseline(14);
+    const built = buildCortisolProxyToday(bl);
+    const judge = judgeCortisolRhythm(built.vals, built.real);
+    return { r, kind, n: samples.length, judge, baselineDays: bl.days };
+  }, [hsRefresh]);
 
   if (!data) {
     return (
@@ -64,8 +72,16 @@ export default function SleepRhythmCard({ dk, isToday }: Props) {
     );
   }
 
-  const { r, kind, co, n } = data;
-  const chrono = chronotypeOf(Number.isFinite(co.acrophaseH) ? co.acrophaseH : null);
+  const { r, kind, n, judge } = data;
+  const co = r.cosinor;
+  // ★ 2026-10-10：峰值时刻 / 作息类型 = 洞察页「昼夜节律」卡同款 proxy 实测判定（judgeCortisolRhythm），
+  //   不再用 14 天 cosinor 拟合 acrophase —— 拟合相位与实测最高槽天然不同（曾出现 13:38 对不上洞察页 11 点多）。
+  const cortReady = judge.ready;
+  const peakClock = cortReady ? judge.peakClock : '—';
+  const peakH = cortReady ? judge.peakH : null;
+  const chronoLabel = peakH == null ? '—' : peakH > 12 ? '晚睡型' : peakH < 6 ? '早起型' : '常规作息';
+  const chronoStyle: 'night' | 'lark' | 'flat' | null =
+    peakH == null ? null : peakH > 12 ? 'night' : peakH < 6 ? 'lark' : 'flat';
   const ampOk = Number.isFinite(co.amplitude) && co.amplitude > 0;
   // 昼夜起伏幅度：cosinor 振幅（相对中值的百分比），过低即节律偏平
   const ampPct = ampOk && co.mesor > 0 ? (co.amplitude / co.mesor) * 100 : null;
@@ -73,26 +89,44 @@ export default function SleepRhythmCard({ dk, isToday }: Props) {
   const levelText = kind === 'normal' ? '正常' : kind === 'high' ? '偏高' : kind === 'late' ? '节律紊乱' : '偏低';
   const sleepWindow = getSleepWindow(dk);
 
+  // ★ 2026-10-10：原「节律规律性状态」黄色框（rhythmStatus）按用户要求移除，
+  //   作息类型已下移到曲线下方（chronoTime），节律规律性改由「详细数据」内的
+  //   昼夜起伏幅度 / 节律模式（均取自 14 天 cosinor）承载。
+
   return (
     <View style={styles.card}>
       <View style={styles.headRow}>
         <Text style={styles.title}>睡眠节律</Text>
-        {chrono ? (
-          <View style={[styles.chrono, chrono.style === 'night' ? styles.chronoNight : chrono.style === 'lark' ? styles.chronoLark : styles.chronoFlat]}>
-            <Text style={[styles.chronoText, chrono.style === 'night' ? { color: mm.colors.honeyDeep } : chrono.style === 'lark' ? { color: mm.colors.limeDeep } : { color: mm.colors.inkSoft }]}>
-              {chrono.label}
-            </Text>
-          </View>
-        ) : null}
       </View>
+
+      {/* ★ 2026-10-10（用户：把「晚睡型 · 峰值」放到「睡眠节律」标题正下方，对齐睡眠分析「时长」的排版）：
+          作息类型(晚睡型/早起型/常规作息) + 峰值时刻，字号 h2 semibold ink；
+          数值取自洞察页「昼夜节律」卡同款 proxy 实测判定（judgeCortisolRhythm），两页逐位一致。 */}
+      {chronoStyle ? (
+        <View style={styles.chronoTimeRow}>
+          <Text style={styles.chronoTime}>{chronoLabel} · 峰值 {peakClock}</Text>
+        </View>
+      ) : null}
 
       <Text style={styles.chartTitle}>皮质醇节律趋势图</Text>
       <View style={{ marginTop: theme.space.xs }}>
-        <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={dk} />
+        {/* ★ 2026-10-10：睡眠恢复页这张皮质醇趋势图 = 洞察页同款 TrendChart（同一个 r、同一个组件，
+            峰值竖线走 gMain.peakIdx＝今日曲线真实最高点，与洞察页图逐位一致）。
+            撤掉上一版的 peakHourOverride —— 那会把峰值线钉在 14 天拟合相位上（曾落到 13:30 等
+            与洞察页不符的时刻），正是「图和字对不上、跨页对不上」的元凶。 */}
+        <TrendChart r={r} sleepWindow={sleepWindow} />
       </View>
 
-      {/* ★ 节律指标改为行式列表：前两项是主要判读对象（可点），后两项为参考量。
-          原设计是 2×2 数字格，四项之间无比较关系、并排罗列反而难读。 */}
+      {/* ★ 2026-10-09：曲线常驻显示，4 项指标收进「详细数据」（默认收起、可展开） */}
+      <Pressable onPress={() => { setDetailsOpen((v) => !v); }} style={styles.moreHead}
+        accessibilityRole="button" accessibilityLabel={detailsOpen ? '收起详细数据' : '展开详细数据'}>
+        <Text style={styles.moreTitle}>详细数据</Text>
+        <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
+          <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+        </View>
+      </Pressable>
+
+      {detailsOpen ? (
       <View style={styles.block}>
         <Row
           name="整体水平（vs 14 天基线）"
@@ -104,26 +138,27 @@ export default function SleepRhythmCard({ dk, isToday }: Props) {
         <Divider />
         <Row
           name="全天峰值时刻"
-          value={Number.isFinite(co.acrophaseH) ? fmtClock(co.acrophaseH) : '—'}
+          value={peakClock}
           note="正常 06–10"
         />
         <Divider />
         <Row
-          name="昼夜起伏幅度"
+          name="昼夜起伏"
           value={ampPct != null ? (ampFlat ? '偏平' : '正常') : '—'}
           tone={ampFlat ? 'warn' : 'ok'}
         />
         <Divider />
         <Row
-          name="节律模式"
-          value={Number.isFinite(co.r2) ? `规律 ${Math.round(Math.max(0, Math.min(1, co.r2)) * 100)}%` : '—'}
-          note="R² 拟合"
+          name="作息类型"
+          value={chronoLabel}
+          note="按峰值时段"
           last
         />
       </View>
+      ) : null}
 
       <Text style={styles.disclaimer}>
-        基于戒指压力代理值（非化验级皮质醇）· 当日样本 {n} 条 · 仅供参考
+        基于戒指压力代理值（非化验级皮质醇）· 近14天样本 {n} 条 · 仅供参考
       </Text>
 
       <CortisolAnomalySheet
@@ -173,6 +208,7 @@ function Divider() {
 
 const styles = StyleSheet.create({
   card: {
+    ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.card,
     borderWidth: 1,
@@ -182,12 +218,11 @@ const styles = StyleSheet.create({
   },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  chrono: { paddingHorizontal: theme.space.sm, paddingVertical: 3, borderRadius: theme.radius.pill },
-  chronoLark: { backgroundColor: mm.colors.limeSoft },
-  chronoNight: { backgroundColor: mm.colors.honeySoft },
-  chronoFlat: { backgroundColor: 'rgba(31,29,26,0.07)' },
-  chronoText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold },
   chartTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.md },
+  // ★ 2026-10-10：作息类型（晚睡型/早起型/常规作息）+ 峰值时刻，下移到曲线下方，
+  //   字号对齐睡眠分析「时长」（h2 semibold ink），与洞察页峰值时段同源。
+  chronoTimeRow: { marginTop: theme.space.sm },
+  chronoTime: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: mm.colors.ink },
   // 行式指标（替代原 2×2 数字格）
   block: { marginTop: theme.space.md },
   row: {
@@ -206,4 +241,16 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.sm, lineHeight: 20 },
   disclaimer: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.sm, opacity: 0.8 },
+  // 「详细数据」折叠头（2026-10-09：对齐 sleep-recovery-preview.html 的整块按钮样式）
+  moreHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.space.md,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+  },
+  moreTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold },
+  chev: { transform: [{ rotate: '90deg' }], marginLeft: theme.space.sm },
+  chevOpen: { transform: [{ rotate: '-90deg' }] },
 });

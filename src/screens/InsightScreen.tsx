@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText } from 'react-native-svg';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText, Line as SvgLine, Circle as SvgCircle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-import BpCard from '../components/BpCard';
 import EcgCard from '../components/EcgCard';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
 import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
 import InsightBanner from '../components/InsightBanner';
@@ -18,9 +18,10 @@ import ManualMetricCard from '../components/ManualMetricCard';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
+import { estimateHealthAge } from '../lib/healthAgeEstimate';
 import ExamTab from '../components/ExamTab';
+import { getLatestExamRecord } from '../data/examStore';
 import ChatSheet from '../components/ChatSheet';
-import BloodComponentPanel from '../components/BloodComponentPanel';
 import EmotionInsightView from '../components/EmotionInsightView';
 import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
@@ -60,14 +61,14 @@ function formatValue(v: number | null): string {
 type TabKey = 'basics' | MetricKey;
 
 const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
-  { key: 'rhythm', label: '荷尔蒙节律健康' },
-  { key: 'longevity', label: '长期健康' },
+  { key: 'rhythm', label: '睡眠与周期' },
+  { key: 'longevity', label: '身体指标' },
 ];
 
 // ★ 2026-10-07（用户：皮质醇 → 昼夜节律；雌/孕激素 → 生理周期节律）
 const RHYTHM_SUBS: { key: string; label: string }[] = [
-  { key: 'recover', label: '昼夜节律' },
-  { key: 'body', label: '生理周期节律' },
+  { key: 'recover', label: '睡眠与恢复' },
+  { key: 'body', label: '生理周期' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
@@ -136,6 +137,20 @@ export default function InsightScreen() {
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const navigation = useNavigation<any>();
+  const [actualAge, setActualAge] = useState<number | null>(null);
+  const profileRevision = useRef(0);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const revision = profileRevision.current;
+    const age = RingBle.getUserProfile()?.age;
+    setActualAge(age != null && Number.isInteger(age) && age >= 18 && age <= 120 ? age : null);
+    getLatestExamRecord().then(record => {
+      if (!active || revision !== profileRevision.current) return;
+      const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
+      setActualAge(value != null && Number.isInteger(value) && value >= 18 && value <= 120 ? value : null);
+    }).catch(() => { /* Keep the validated device profile when history is unavailable. */ });
+    return () => { active = false; };
+  }, []));
   const [chatVisible, setChatVisible] = useState(false);
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
   const openChat = (question: string) => {
@@ -173,13 +188,13 @@ export default function InsightScreen() {
       const stress = computeStressReport();
       const sleep = ring.daily['sleepScore'];
       const scores: number[] = [];
-      if (fatigue?.loadScore != null) scores.push(100 - fatigue.loadScore * 0.6);
-      if (stress?.emotionalLoad != null) scores.push(100 - stress.emotionalLoad * 0.5);
-      if (sleep != null) scores.push(sleep);
-      if (scores.length === 0) return 75;
+      if (fatigue?.sampleCount > 0 && fatigue.loadScore != null && Number.isFinite(fatigue.loadScore)) scores.push(100 - fatigue.loadScore * 0.6);
+      if (stress?.sampleCount > 0 && stress.emotionalLoad != null && Number.isFinite(stress.emotionalLoad)) scores.push(100 - stress.emotionalLoad * 0.5);
+      if (sleep != null && Number.isFinite(sleep) && sleep >= 0 && sleep <= 100) scores.push(sleep);
+      if (scores.length === 0) return null;
       return Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
-    } catch { return 75; }
-  }, [ring.daily['sleepScore']]);
+    } catch { return null; }
+  }, [ring]);
 
   /**
    * ★ 2026-10-06（用户：身体年龄算法要「综合」荷尔蒙节律 + 长期健康数据，且 AI 分析太复杂 → 简化）：
@@ -187,7 +202,7 @@ export default function InsightScreen() {
    *   分析结论与下方「建议」均由此综合生成，不再依赖冗长的 AI overview 原文。
    */
   const bodyAgeInsight = useMemo(() => {
-    const ACTUAL = 28;
+    const ACTUAL = actualAge;
     // ① 荷尔蒙节律（皮质醇）是否健康 —— 直接读 healthStore 当日 intraday（RingState 上无此字段）
     let hormonalLabel: string = '数据不足';
     let hormonalHealthy = false;
@@ -205,16 +220,9 @@ export default function InsightScreen() {
     } catch { /* 保持数据不足 */ }
     // ② 长期健康数据（综合 脑力/压力/睡眠 的 0–100 分）
     const longTerm = overallScoreFromReport; // 0–100
-    const longTermHealthy = longTerm >= 65;
-    const longTermLabel = longTerm >= 80 ? '良好' : longTerm >= 65 ? '一般' : '偏弱';
-    // ③ 综合身体年龄：两维度都健康→偏年轻；任一失衡→偏老；长期分再微调 ±
-    let adj = 0;
-    if (hormonalHealthy && longTermHealthy) adj = -4.5;
-    else if (hormonalHealthy && !longTermHealthy) adj = -1.5;
-    else if (!hormonalHealthy && longTermHealthy) adj = 1.5;
-    else adj = 3.5;
-    adj += (65 - longTerm) / 20; // longTerm 80→-0.75，50→+0.75
-    const healthAge = Math.max(18, Math.round((ACTUAL + adj) * 10) / 10);
+    const longTermHealthy = longTerm != null && longTerm >= 65;
+    const longTermLabel = longTerm == null ? '数据不足' : longTerm >= 80 ? '良好' : longTerm >= 65 ? '一般' : '偏弱';
+    const healthAge = estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
     // ④ 简化分析文案（综合两个维度）——★ 2026-10-08（用户：按 ISHO 风格，先事实再人话）
     let hormonalClause: string;
     if (hormonalLabel === '数据不足') {
@@ -226,7 +234,7 @@ export default function InsightScreen() {
     } else {
       hormonalClause = '皮质醇节律紊乱，白天绷着、夜里也降不下来';
     }
-    const longTermClause = longTermHealthy
+    const longTermClause = longTerm == null ? '睡眠和压力数据还没攒够，暂不计算综合评分' : longTermHealthy
       ? `长期健康数据整体${longTermLabel}，状态稳得住`
       : `长期健康数据偏弱，主要是睡眠和压力在拖`;
     const analysis = `${hormonalClause}；${longTermClause}。`;
@@ -235,7 +243,7 @@ export default function InsightScreen() {
     if (!hormonalHealthy && hormonalLabel !== '数据不足') {
       suggestions.push('这两周把上床时间固定下来，少熬几晚，节律会慢慢自己回来。');
     }
-    if (!longTermHealthy) {
+    if (longTerm != null && !longTermHealthy) {
       suggestions.push('先把觉睡够（7 小时起步），白天压力别攒着，指标会跟着慢慢回来。');
     }
     if (suggestions.length < 2) {
@@ -244,7 +252,7 @@ export default function InsightScreen() {
         : '再连续戴 7 天，数据攒够了这份分析会准很多。');
     }
     return { healthAge, analysis, suggestions: suggestions.slice(0, 2) };
-  }, [ring, overallScoreFromReport]);
+  }, [ring, overallScoreFromReport, actualAge]);
 
   const insightRows = useMemo(
     () => resolveInsightRows('overview', aiOverview.rows),
@@ -459,7 +467,8 @@ export default function InsightScreen() {
         {/* ═══ hero + 顶 tab + 子 tab：两个 top tab 共用（目标稿六变体顶部是同一张 lime 大卡）═══ */}
         <HealthAgeCard
           healthAge={bodyAgeInsight.healthAge}
-          actualAge={28}
+          actualAge={actualAge}
+          onEditProfile={() => { setTopTab('longevity'); setSubTab('bodycomp'); }}
           overallScore={overallScoreFromReport}
           ring={ring}
           rows={insightRows}
@@ -536,33 +545,22 @@ export default function InsightScreen() {
                 </Card>
               </TouchableOpacity>
             ) : subTab === 'bp' ? (
+              /* ★ 2026-10-10（用户）：血压 tab 整卡重做 = 最新值 + 「全天血压趋势」双曲线，
+                  与血糖卡同构；数据走 intraday bpSys/bpDia（与 BpDetail 详情页同源）。 */
               <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('BpDetail')}>
-                <Card style={{ padding: theme.space.cardPadCompact }}>
-                  <BpCard ring={ring} onPress={() => {}} />
-                </Card>
+                <BpTrendCard ring={ring} />
               </TouchableOpacity>
             ) : subTab === 'sugar' ? (
-              <>
-                <TouchableOpacity activeOpacity={0.7} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                  {/* v16：数据卡白底全宽，语义色只在角标（黄 soft 底 + 黄 deep 图标）与数值标签 */}
-                  <Card style={{ padding: theme.sp(3) }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
-                        <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
-                      </View>
-                      <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
-                    </View>
-                    <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>{formatValue(ring.daily.bloodSugar ?? null)}</Text>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 自动同步</Text>
-                  </Card>
-                </TouchableOpacity>
-                <Card style={{ padding: theme.space.cardPadCompact }}>
-                  <BloodComponentPanel ring={ring} onOpenDetail={openDetail} />
-                </Card>
-              </>
+              /* ★ 2026-10-10（用户）：血糖 tab 整卡重做 = 最新值 + 「全天血糖趋势」曲线。
+                  数据走 healthStore intraday 'glucose'（RingBle 把血糖增量写入 15 分钟槽，与指标详情页同源）——
+                  daily.bloodSugar 缺失时也能出值；无采样 → 空骨架 + 「—」，绝不画假曲线（空态铁律）。
+                  替换原「静态数字卡 + 血液成分面板」。 */
+              <TouchableOpacity activeOpacity={0.7} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
+                <SugarTrendCard ring={ring} />
+              </TouchableOpacity>
             ) : subTab === 'bodycomp' ? (
               // v18：一键体检 = 本地估算身体成分并持久化，独立成「身体成分」子 tab
-              <ExamTab />
+              <ExamTab onProfileSaved={age => { profileRevision.current += 1; setActualAge(age); }} />
             ) : (
               // basics
               <>
@@ -620,18 +618,256 @@ const CogTabCard = React.memo(function CogTabCard({ ring, navigation }: { ring: 
   );
 });
 
-/** v18.13：周步数柱状图 —— 7 根柱（一~日），今日高亮；全零=空骨架灰桩（不冒充数据）。宽度 onLayout 实测。 */
-const WeekStepsBars = React.memo(function WeekStepsBars({ values }: { values: number[] }) {
+/** Catmull-Rom → 三次贝塞尔平滑曲线（与全站「趋势=平滑弧线」口径一致，不画折线） */
+function smoothSpline(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length < 3) return 'M ' + pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ');
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** ★ 2026-10-10（用户）：血糖 tab 卡 = 最新值 + 「全天血糖趋势」。
+ *  数据 = healthStore intraday 'glucose'（RingBle 把血糖增量写入 15 分钟槽，与指标详情页同源）；
+ *  无采样 → 空骨架（虚线基线 + 「—」），绝不画假曲线（空态铁律）。视觉走 chart token（S 档 96）。 */
+const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any }) {
+  const hsVer = useHealthStoreVersion();
+  const pts = useMemo(() => {
+    try {
+      return healthStore
+        .getIntraday('glucose', dayKey(Date.now()))
+        .filter((p: any) => Number.isFinite(p?.v) && p.v > 0);
+    } catch { return []; }
+  }, [ring, hsVer]);
+  const last = pts.length > 0 ? pts[pts.length - 1] : null;
+  const latest = last != null ? last.v : ((ring?.daily?.bloodSugar as number | undefined) ?? null);
+
+  const [w, setW] = useState(0);
+  const H = chart.h.s;                      // ★ 规范：全宽卡内嵌趋势 = S 档 96
+  const PAD_L = 30, PAD_R = 10, PAD_T = 8, PAD_B = 16;
+  const plotW = Math.max(1, w - PAD_L - PAD_R);
+  const plotH = H - PAD_T - PAD_B;
+  const Y_MIN = 3, Y_MAX = 12;              // 与详情页血糖 y 轴同域（openDetail 3–12）
+  const yOf = (v: number) => PAD_T + (1 - (v - Y_MIN) / (Y_MAX - Y_MIN)) * plotH;
+  const midnight = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }, []);
+  const xOf = (t: number) => PAD_L + Math.max(0, Math.min(1, (t - midnight) / 86400000)) * plotW;
+  const curvePts = pts.map((p: any) => ({ x: xOf(p.t), y: yOf(p.v) }));
+  const lineD = smoothSpline(curvePts);
+  const Y_TICKS = [4, 7, 10];
+  const HOUR_TICKS = [0, 6, 12, 18, 24];    // 与 chartAxis 日刻度同源
+  const hasData = pts.length >= 2;
+
+  return (
+    <Card padded={false}>
+      <View style={{ padding: theme.space.cardPad }}>
+        {/* 头部：图标方 + 名称 + 右侧测量时间 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.honeySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+            <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
+          </View>
+          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+            {last != null ? formatRelativeTime(last.t) : '今日暂无采样'}
+          </Text>
+        </View>
+
+        {/* 大数字：intraday 最新 → daily 兜底 → 「—」；单位保留 */}
+        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
+          {formatValue(latest)}
+        </Text>
+        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 今日</Text>
+
+        {/* 全天趋势（S 档）：有数据画平滑曲线 + 末点；无数据画虚线基线骨架 */}
+        <View
+          onLayout={(e) => { const cw = e.nativeEvent.layout.width; if (cw > 0 && Math.abs(cw - w) > 1) setW(cw); }}
+        >
+          {w > 0 ? (
+            <Svg width={w} height={H}>
+              {Y_TICKS.map((v) => (
+                <SvgLine
+                  key={v}
+                  x1={PAD_L} y1={yOf(v)} x2={w - PAD_R} y2={yOf(v)}
+                  stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid}
+                />
+              ))}
+              {Y_TICKS.map((v) => (
+                <SvgText key={`t${v}`} x={PAD_L - 5} y={yOf(v) + 3} fontSize={8.5} fill={theme.colors.textSub} textAnchor="end">{v}</SvgText>
+              ))}
+              {hasData ? (
+                <>
+                  <SvgPath d={lineD} fill="none" stroke={mm.colors.honeyCore} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
+                  {last != null && (
+                    <SvgCircle
+                      cx={xOf(last.t)} cy={yOf(last.v)} r={chart.dot.radius}
+                      fill={mm.colors.honeyCore} stroke="#FFFFFF" strokeWidth={chart.dot.stroke}
+                    />
+                  )}
+                </>
+              ) : (
+                <SvgLine
+                  x1={PAD_L} y1={PAD_T + plotH / 2} x2={w - PAD_R} y2={PAD_T + plotH / 2}
+                  stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref}
+                />
+              )}
+              {HOUR_TICKS.map((h) => {
+                const x = PAD_L + (h / 24) * plotW;
+                return (
+                  <SvgText key={`h${h}`} x={Math.min(w - PAD_R, Math.max(PAD_L, x))} y={H - 3} fontSize={8.5} fill={theme.colors.textSub} textAnchor="middle">{h}</SvgText>
+                );
+              })}
+            </Svg>
+          ) : null}
+        </View>
+        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1) }}>
+          纵轴 = mmol/L · 横轴 = 一天 24h{hasData ? '' : ' · 暂无血糖采样'}
+        </Text>
+      </View>
+    </Card>
+  );
+});
+
+/** ★ 2026-10-10（用户）：血压卡重做 = 最新值 + 「全天血压趋势」双曲线（与血糖卡同构）。
+    数据走 healthStore intraday bpSys/bpDia（与 BpDetail 详情页完全同源，fillDailyMean 兜底）；
+    无采样 → 空骨架虚线基线 + 「—」，绝不画假曲线（空态铁律）。 */
+const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
+  const hsVer = useHealthStoreVersion();
+  const { sysPts, diaPts } = useMemo(() => {
+    try {
+      const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+      const now = Date.now();
+      return {
+        sysPts: healthStore.getTimeRange('bpSys', midnight.getTime(), now, { fillDailyMean: true, maxPoints: 240 }).filter((p: any) => Number.isFinite(p?.v) && p.v > 0),
+        diaPts: healthStore.getTimeRange('bpDia', midnight.getTime(), now, { fillDailyMean: true, maxPoints: 240 }).filter((p: any) => Number.isFinite(p?.v) && p.v > 0),
+      };
+    } catch { return { sysPts: [], diaPts: [] }; }
+  }, [ring, hsVer]);
+  const lastSys = sysPts.length > 0 ? sysPts[sysPts.length - 1] : null;
+  const lastDia = diaPts.length > 0 ? diaPts[diaPts.length - 1] : null;
+  const lastT = Math.max(lastSys?.t ?? 0, lastDia?.t ?? 0);
+  const hasData = sysPts.length >= 2 || diaPts.length >= 2;
+
+  const [w, setW] = useState(0);
+  const H = chart.h.s;                      // ★ 规范：全宽卡内嵌趋势 = S 档 96（与血糖卡等高）
+  const PAD_L = 30, PAD_R = 10, PAD_T = 8, PAD_B = 16;
+  const plotW = Math.max(1, w - PAD_L - PAD_R);
+  const plotH = H - PAD_T - PAD_B;
+  const Y_MIN = 40, Y_MAX = 160;            // mmHg 域（收缩 60–140 / 舒张 40–90 均在框内）
+  const yOf = (v: number) => PAD_T + (1 - (v - Y_MIN) / (Y_MAX - Y_MIN)) * plotH;
+  const midnight = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }, []);
+  const xOf = (t: number) => PAD_L + Math.max(0, Math.min(1, (t - midnight) / 86400000)) * plotW;
+  const sysD = smoothSpline(sysPts.map((p: any) => ({ x: xOf(p.t), y: yOf(p.v) })));
+  const diaD = smoothSpline(diaPts.map((p: any) => ({ x: xOf(p.t), y: yOf(p.v) })));
+  const Y_TICKS = [60, 100, 140];
+  const HOUR_TICKS = [0, 6, 12, 18, 24];    // 与 chartAxis 日刻度同源
+
+  return (
+    <Card padded={false}>
+      <View style={{ padding: theme.space.cardPad }}>
+        {/* 头部：图标方 + 名称 + 右侧测量时间 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.skySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+            <Icon name="drop" size={14} color={mm.colors.skyDeep} />
+          </View>
+          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+            {lastT > 0 ? formatRelativeTime(lastT) : '今日暂无测量'}
+          </Text>
+        </View>
+
+        {/* 大数字：收缩/舒张最新一对；单位保留 */}
+        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
+          {lastSys != null && lastDia != null ? `${Math.round(lastSys.v)}/${Math.round(lastDia.v)}` : '—'}
+        </Text>
+        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.skyDeep, marginTop: theme.sp(0.5) }}>mmHg · 今日</Text>
+
+        {/* 全天趋势（S 档）：收缩 skyCore / 舒张 skyMid 双平滑曲线 + 末点；无数据画虚线基线骨架 */}
+        <View
+          onLayout={(e) => { const cw = e.nativeEvent.layout.width; if (cw > 0 && Math.abs(cw - w) > 1) setW(cw); }}
+        >
+          {w > 0 ? (
+            <Svg width={w} height={H}>
+              {Y_TICKS.map((v) => (
+                <SvgLine
+                  key={v}
+                  x1={PAD_L} y1={yOf(v)} x2={w - PAD_R} y2={yOf(v)}
+                  stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid}
+                />
+              ))}
+              {Y_TICKS.map((v) => (
+                <SvgText key={`t${v}`} x={PAD_L - 5} y={yOf(v) + 3} fontSize={8.5} fill={theme.colors.textSub} textAnchor="end">{v}</SvgText>
+              ))}
+              {hasData ? (
+                <>
+                  <SvgPath d={sysD} fill="none" stroke={mm.colors.skyCore} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
+                  <SvgPath d={diaD} fill="none" stroke={mm.colors.skyMid} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
+                  {lastSys != null && (
+                    <SvgCircle cx={xOf(lastSys.t)} cy={yOf(lastSys.v)} r={chart.dot.radius}
+                      fill={mm.colors.skyCore} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
+                  )}
+                  {lastDia != null && (
+                    <SvgCircle cx={xOf(lastDia.t)} cy={yOf(lastDia.v)} r={chart.dot.radius}
+                      fill={mm.colors.skyMid} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
+                  )}
+                </>
+              ) : (
+                <SvgLine
+                  x1={PAD_L} y1={PAD_T + plotH / 2} x2={w - PAD_R} y2={PAD_T + plotH / 2}
+                  stroke={chart.refFaint} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref}
+                />
+              )}
+              {HOUR_TICKS.map((h) => {
+                const x = PAD_L + (h / 24) * plotW;
+                return (
+                  <SvgText key={`h${h}`} x={Math.min(w - PAD_R, Math.max(PAD_L, x))} y={H - 3} fontSize={8.5} fill={theme.colors.textSub} textAnchor="middle">{h}</SvgText>
+                );
+              })}
+            </Svg>
+          ) : null}
+        </View>
+
+        {/* 图例：收缩 / 舒张 */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.skyCore }} />
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>收缩压</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.skyMid }} />
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>舒张压</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(0.5) }}>
+          纵轴 = mmHg · 横轴 = 一天 24h{hasData ? '' : ' · 暂无血压采样'}
+        </Text>
+      </View>
+    </Card>
+  );
+});
+
+/** v18.13：周步数柱状图 —— 7 根柱（一~日），今日高亮；全零=空骨架灰桩（不冒充数据）。宽度 onLayout 实测。 */const WeekStepsBars = React.memo(function WeekStepsBars({ values }: { values: number[] }) {
   const [measuredW, setMeasuredW] = React.useState(0);
-  const H = 64, AX = 13, CH = H - AX;
+  const H = chart.h.xs, AX = 13, CH = H - AX;  // ★ 规范：XS 档 64
   const MON = ['一', '二', '三', '四', '五', '六', '日'];
   const N = values.length || 7;
   const empty = !values.some(v => v > 0);
   const max = Math.max(1, ...values);
   const slotW = measuredW / N;
-  const bw = Math.max(6, slotW * 0.5);
+  // ★ 2026-10-10（bar-design-unified-spec 规则3）：柱宽全站统一 clamp(4, slot×0.6, 24)
+  const bw = Math.min(24, Math.max(4, slotW * 0.6));
   const todayIdx = N - 1;
-  const EMPTY_COL = 'rgba(120,110,160,0.13)';
+  const EMPTY_COL = mm.colors.emptyFill;
   return (
     <View
       onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
@@ -640,17 +876,18 @@ const WeekStepsBars = React.memo(function WeekStepsBars({ values }: { values: nu
       {measuredW > 0 && (
         <Svg width={measuredW} height={H}>
           {values.map((v, i) => {
-            const bh = empty ? 3 : Math.max(3, (v / max) * CH * 0.92);
+            const bh = empty ? 2 : Math.max(3, (v / max) * CH * 0.92);
             const x = i * slotW + (slotW - bw) / 2;
             const y = CH - bh;
+            // ★ 规则4：今日=deep 档强调，非今日=core 档，透明度一律 1（原 0.55 越界）
             const col = empty ? EMPTY_COL : i === todayIdx ? mm.colors.skyDeep : mm.colors.skyCore;
-            return <SvgRect key={'wb' + i} x={x} y={y} width={bw} height={bh} rx={2.5} fill={col} opacity={empty ? 1 : i === todayIdx ? 1 : 0.55} />;
+            return <SvgRect key={'wb' + i} x={x} y={y} width={bw} height={bh} rx={empty ? 1 : chart.barRadius} fill={col} />;
           })}
           {MON.slice(0, N).map((d, i) => (
             <SvgText key={'wl' + i} x={i * slotW + slotW / 2} y={H - 2}
               textAnchor="middle" fontSize={9}
               fontWeight={i === todayIdx ? '700' : '500'}
-              fill={i === todayIdx ? mm.colors.skyDeep : 'rgba(120,110,160,0.6)'}>
+              fill={i === todayIdx ? mm.colors.skyDeep : mm.colors.inkFaint}>
               {d}
             </SvgText>
           ))}
@@ -708,7 +945,7 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
 function ecgWaveformPath(values: number[]): string {
   if (!values || values.length < 4) return '';
   const W = 320;
-  const H = 80;
+  const H = chart.h.xs;  // ★ 规范：XS 档 64（原 80，与同页 64 不一致）
   const pad = 8;
   let min = Math.min(...values);
   let max = Math.max(...values);

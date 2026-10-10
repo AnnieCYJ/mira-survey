@@ -13,8 +13,10 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop, Line } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
+import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
@@ -24,6 +26,7 @@ import { loadCycleLog } from '../data/cycleLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf } from '../lib/dateUtils';
+import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
@@ -90,6 +93,14 @@ function timeAxisLabels(range: RangeKey, tMin: number, tMax: number, isToday: bo
 /** ★ 皮质醇/EDA/HRV 等 24h 节律指标 → X 轴固定 0/6/12/18/24 小时刻度（和 CortisolDailyChart 完全一致） */
 function dayHourAxis(): string[] {
   return ['0', '6', '12', '18', '24'];
+}
+
+/** ★ 横轴刻度是否显示（与 chartAxis 同源）：周全标；月=1/5/10/15/20/25/30；年=奇数月 */
+function axisTickVisible(range: RangeKey, t: string): boolean {
+  if (range === 'week') return true;
+  if (range === 'month') { const n = Number(t); return !Number.isNaN(n) && isMonthTickDay(n); }
+  if (range === 'year') { const m = Number(t.replace('月', '')); return !Number.isNaN(m) && isYearTickMonth(m - 1); }
+  return true;
 }
 
 /** ECG 波形路径：原始 ADC/mV 点归一化到 320×120 视窗的折线。 */
@@ -169,7 +180,12 @@ export default function MetricDetailScreen() {
     [params.key, range, ring, cycleLog, anchor]
   );
 
-  const color = params.color || theme.colors.accentSolid;
+  // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)，其余回落 params.color / 主色紫
+  const color = (() => {
+    if (params.key === 'bloodSugar' || params.key === 'glucose') return mm.colors.honeyCore;
+    if (params.key === 'spo2') return mm.colors.skyCore;
+    return params.color || theme.colors.accentSolid;
+  })();
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
 const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'bodyComposition'];
@@ -386,12 +402,8 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
       return timeAxisLabels(range, tMin, tMax, isTodayAnchor);
     }
     if (series.axisOverride && series.axisOverride.length > 1) {
-      const arr = series.axisOverride;
-      const pick = 7;
-      const idxs = Array.from({ length: pick }, (_, i) => Math.floor((i * (arr.length - 1)) / (pick - 1)));
-      const labels = idxs.map((i) => arr[i]);
-      if (labels[labels.length - 1] !== arr[arr.length - 1]) labels.push(arr[arr.length - 1]);
-      return labels;
+      // ★ 直接渲染真实序列长度（1:1 对齐数据点）；稀疏刻度由 axisTickVisible 按 chartAxis 同源规则抽稀
+      return series.axisOverride;
     }
     return RANGE_DEF[range].axis;
   }, [useContinuous, tMin, tMax, range, isTodayAnchor, series.axisOverride]);
@@ -424,25 +436,30 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           ) : null}
         </View>
 
-        {/* 当前值（连续型指标） */}
-        {!isEcg && (
-          <View style={styles.hero}>
-            <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
-            {series.unit ? <Text style={styles.heroUnit}>{series.unit}</Text> : null}
-            {range !== 'day' && hasData ? <Text style={styles.heroTag}>区间平均</Text> : null}
-            {range === 'day' && hasData && deltaPct !== 0 && series.kind !== 'cycle' && (
-              <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
-                {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
-              </Text>
-            )}
-          </View>
-        )}
-
         {/* 日 / 周 / 月 / 年 切换 */}
         {!isEcg && <RangeSwitch value={range} onChange={setRange} exclude={isActivity ? ['day'] : undefined} />}
 
         {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
         {!isEcg && <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />}
+
+        {/* ★ 2026-10-10（用户 10-09 硬性要求，此前本页漏改）：总体数据卡移到时间选择器**下方**，
+              切换上方不再放大数字 —— 与状态趋势/脑力/心理压力详情页统一（切换 → 选择器 → 数据卡 → 图表） */}
+        {!isEcg && (
+          <Card padded={false}>
+            <View style={styles.pad}>
+              <View style={styles.hero}>
+                <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
+                {series.unit ? <Text style={styles.heroUnit}>{series.unit}</Text> : null}
+                {range !== 'day' && hasData ? <Text style={styles.heroTag}>区间平均</Text> : null}
+                {range === 'day' && hasData && deltaPct !== 0 && series.kind !== 'cycle' && (
+                  <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
+                    {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
+                  </Text>
+                )}
+              </View>
+            </View>
+          </Card>
+        )}
 
         {!isEcg && (
         <View style={styles.chartCard}>
@@ -502,7 +519,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                     <Stop offset="100%" stopColor={color} stopOpacity={0.02} />
                   </LinearGradient>
                   <LinearGradient id={`${gid}_line`} x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0%" stopColor={mm.colors.purpleCore} />
+                    <Stop offset="0%" stopColor={color} />
                     <Stop offset="100%" stopColor={color} />
                   </LinearGradient>
                 </Defs>
@@ -530,13 +547,13 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                     x2={W - PAD_R}
                     y2={yAt(gv)}
                     stroke={theme.colors.ui.borderSoft}
-                    strokeWidth={1}
+                    strokeWidth={chart.lw.grid}
                   />
                 ))}
 
                 {areaD ? <Path d={areaD} fill={`url(#${gid}_grad)`} /> : null}
                 {lineD ? (
-                  <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
                 {/* 数据点已去掉，改用点击 tooltip 展示详细数据 */}
               </Svg>
@@ -581,7 +598,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           <View style={[styles.axis, { paddingLeft: hideYAxis ? PAD_L : Y_GUT }]}>
             {axisLabels.map((t, i) => (
               <Text key={i} style={styles.axisText}>
-                {t}
+                {axisTickVisible(range, t) ? t : ''}
               </Text>
             ))}
           </View>
@@ -719,6 +736,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
+  pad: { padding: theme.space.cardPad },
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: {
     width: theme.sp(9),
@@ -739,9 +757,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.successSoft,
   },
   liveText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.success },
-  hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.sp(1) },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, color: '#FFFFFF' },
-  heroUnit: { fontSize: theme.fontSize.body, color: 'rgba(255,255,255,0.75)', marginLeft: theme.sp(2) },
+  hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
+  // ★ 2026-10-10：原 #FFFFFF 白字是给旧深色渐变头用的，v16 页面改全白底后大数字「白字白底」不可见；
+  //   数据卡挪到选择器下方的同时改为墨色（与状态趋势/脑力详情页同口径）。
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, color: mm.colors.ink },
+  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
   heroTag: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.space.md, alignSelf: 'center' },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
   up: { color: theme.colors.success },

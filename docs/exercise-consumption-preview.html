@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 运动消耗 · 日/周/月/年 UI（与睡眠恢复同风格）</title>
+<style>
+  :root{
+    /* 运动消耗 = 能量 / 代谢语义 → 琥珀（与「黄=能量·代谢」同源） */
+    --act:      #E0A23E;
+    --actSoft:  #FBF1DF;
+    --actDeep:  #B9802A;
+    --grid:     rgba(31,29,26,0.09);
+    --axis:     #6B6760;
+    --ink:      #1F1D1A;
+    --bg:       #F5F4F1;
+    --card:     #FFFFFF;
+    --sub:      #8A857D;
+    --line:     #ECEAE5;
+    --accent:   #E0A23E;
+    --accentSoft: #FBF1DF;
+    --t-fade:   160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.5}
+
+  /* ── 日/周/月/年 切换（运动类现在也加「日」视图）── */
+  .switch{display:flex;background:#EDEBE7;border-radius:12px;padding:3px;position:relative;margin:0 0 10px}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;flex:1;border:0;background:transparent;font-size:14px;
+    padding:8px 0;color:var(--sub);cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  .picker{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .parrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--ink);cursor:pointer}
+  .pcenter{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--accent);background:var(--accentSoft);border-radius:999px;padding:9px 0;
+    font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+  .pcenter .cal{width:14px;height:14px;position:relative;display:inline-block}
+  .pcenter .cal:before{content:"";position:absolute;inset:0;border:1.6px solid var(--accent);border-radius:3px}
+  .pcenter .cal:after{content:"";position:absolute;left:3px;top:2px;width:1.6px;height:4px;background:var(--accent);border-radius:1px}
+
+  .card{background:var(--card);border-radius:18px;padding:14px 14px 12px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .ctitle{font-size:15px;font-weight:600;margin:0}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .blockTitle{font-size:11px;color:var(--sub);margin:14px 0 6px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin:8px 2px 0}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:4px}
+
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;padding:6px 4px 12px}
+  .hero .big{font-size:46px;font-weight:650;line-height:1}
+  .hero .ctx{font-size:13px;font-weight:600}
+  .hero .lab{font-size:11px;color:var(--sub);margin-top:4px}
+
+  .statRow{display:flex;gap:8px;margin-bottom:8px}
+  .tile{flex:1;border:1px solid var(--line);border-radius:11px;padding:9px 10px;background:#fff}
+  .tile .tl{font-size:10.5px;color:var(--sub);margin-bottom:3px}
+  .tile .tv{font-size:16px;font-weight:650;line-height:1.1}
+  .tile .ts{font-size:10px;color:var(--sub);margin-top:3px}
+
+  svg{display:block;width:100%;height:auto}
+
+  /* 统一折叠入口（对齐 App moreHead） */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:#FAFAF8;border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .moreBody{margin-top:4px}
+  .rows{border-top:1px solid var(--line);margin-top:6px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--ink)}
+  .row .v{font-weight:600}
+  .row .v small{font-weight:400;color:var(--sub);margin-left:4px}
+
+  .chead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+  .avg{text-align:right}
+  .avg b{font-size:24px;font-weight:650;line-height:1}
+  .avg span{display:block;font-size:10.5px;color:var(--sub);margin-top:2px}
+
+  .cmpCard{display:flex;align-items:flex-end;gap:8px;margin-top:4px}
+  .cmpCard .big{font-size:30px;font-weight:650;line-height:1}
+  .cmpCard .unit{font-size:11px;color:var(--sub);padding-bottom:5px}
+  .cmpCard .delta{margin-left:auto;font-size:13px;font-weight:650}
+  .cmpNote{font-size:11px;color:var(--sub);line-height:1.55;margin-top:8px}
+
+  /* 今日运动记录 tile */
+  .sess{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+  .sess:last-child{border-bottom:0}
+  .sess .ic{width:34px;height:34px;border-radius:10px;background:var(--actSoft);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--actDeep)}
+  .sess .mid{flex:1}
+  .sess .nm{font-size:13px;font-weight:600}
+  .sess .tm{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .sess .kc{text-align:right}
+  .sess .kv{font-size:14px;font-weight:650;color:var(--actDeep)}
+  .sess .ks{font-size:10px;color:var(--sub);margin-top:2px}
+
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .foot b{color:var(--ink)}
+
+  .calMask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:50}
+  .calMask.on{display:block}
+  .calSheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:14px 16px 24px}
+  .calSheetHead{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .calSheetHead .tt{font-size:14px;font-weight:600}
+  .calSheetHead .sm{font-size:13px;color:var(--sub)}
+  .calSheetHead .td{font-size:13px;font-weight:600;color:var(--accent)}
+  .calNav{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}
+  .calNav .ca{padding:6px 10px;font-size:16px;color:var(--ink);cursor:pointer}
+  .calNav .ct{font-size:14px;font-weight:600}
+  .calWeek{display:flex}
+  .calWeek div{flex:1;text-align:center;font-size:10px;color:var(--sub);padding:4px 0}
+  .calGrid{display:flex;flex-wrap:wrap}
+  .calGrid .c{width:14.285%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink);cursor:pointer}
+  .calGrid .c.dim{color:var(--sub)}
+  .calGrid .c.on{background:var(--accent);color:#fff;border-radius:8px;font-weight:600}
+  .calGrid .c.dis{color:rgba(138,138,168,.4);cursor:not-allowed}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">运动消耗</h1>
+  <p class="sub">与「睡眠恢复」「脑力准备度」「心理压力」同一套设计语言。现在<b>日 / 周 / 月 / 年</b> 四档齐全——日视图展示当日消耗与日内分布。主色用能量语义的琥珀色。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <div class="picker">
+    <div class="parrow" id="prev">‹</div>
+    <div class="pcenter" id="pcenter"><span class="cal"></span><span id="plabel">—</span></div>
+    <div class="parrow" id="next">›</div>
+  </div>
+
+  <div id="content"></div>
+
+  <p class="foot"><b>设计要点（与睡眠恢复同源）：</b>① 顶部「日/周/月/年」+ 时间选择器；② 日视图=当日消耗 + 日内 24h 分布 + 今日运动记录；③ 周/月/年=每日消耗柱（kcal，单轴带刻度与横轴标签）+ 对比上周期；④ 配色取 Mira 能量语义：主色琥珀。数据为示例，口径对齐 App 的 <b>RingSportSession</b>（步数 / 距离 / 消耗 / 平均心率 / 时长）与 <b>healthStore</b>。</p>
+</div>
+
+<div class="calMask" id="calMask">
+  <div class="calSheet">
+    <div class="calSheetHead">
+      <span class="sm" id="calCancel">取消</span>
+      <span class="tt">选择日期</span>
+      <span class="td" id="calToday">今天</span>
+    </div>
+    <div class="calNav">
+      <div class="ca" id="calPrev">‹</div>
+      <div class="ct" id="calTitle">2026年9月</div>
+      <div class="ca" id="calNext">›</div>
+    </div>
+    <div class="calWeek"><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div></div>
+    <div class="calGrid" id="calGrid"></div>
+  </div>
+</div>
+
+<script>
+const ST={main:'#E0A23E',deep:'#B9802A',soft:'#FBF1DF',grid:'rgba(31,29,26,0.09)',axis:'#6B6760',card:'#FFFFFF'};
+
+const TODAY=new Date(2026,9,9); TODAY.setHours(0,0,0,0);
+let MIN=new Date(2025,0,1);
+let anchor=new Date(2026,9,9); anchor.setHours(0,0,0,0);
+let range='day';
+
+function fmtDate(d){return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x;}
+function endOfWeek(d){const s=startOfWeek(d);const e=new Date(s);e.setDate(e.getDate()+6);return e;}
+function fmtLabel(d,r){
+  if(r==='day')return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  if(r==='week')return `${fmtDate(startOfWeek(d))} – ${fmtDate(endOfWeek(d))}`;
+  if(r==='month')return `${d.getFullYear()}年${d.getMonth()+1}月`;
+  return `${d.getFullYear()}年`;
+}
+function stepA(d,r,dir){const x=new Date(d);
+  if(r==='day')x.setDate(x.getDate()+dir);
+  else if(r==='week')x.setDate(x.getDate()+dir*7);
+  else if(r==='month')x.setMonth(x.getMonth()+dir);
+  else x.setFullYear(x.getFullYear()+dir);
+  if(x>TODAY)x.setTime(TODAY.getTime()); if(x<MIN)x.setTime(MIN.getTime()); return x;}
+function clampD(d){if(d>TODAY)return new Date(TODAY);if(d<MIN)return new Date(MIN);return d;}
+
+function smooth(pts){
+  if(pts.length<3)return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+function genAct(r){
+  if(r==='week')return {labels:['一','二','三','四','五','六','日'],values:[210,0,340,280,420,510,150]};
+  if(r==='month'){const labels=[];for(let d=1;d<=30;d++)labels.push(d%5===0||d===30?d:(d===1?'1':''));
+    const base=[];for(let i=0;i<30;i++){const w=Math.sin(i/3)*0.5+0.5;base.push(Math.round(120+w*420));}
+    return {labels,values:base.map((v,i)=>((i%7===5||i%7===6)?v+120:v))};}
+  const labels=[];for(let m=1;m<=12;m++)labels.push(m+'月');
+  const vals=[];for(let i=0;i<12;i++){const w=Math.sin(i/2)*0.5+0.5;vals.push(Math.round((1800+w*2400)/10)*10);}
+  return {labels,values:vals};
+}
+/* 日内 24h 消耗（kcal）—— 大多数时段为 0，运动时段有峰 */
+function genDay(){
+  const v=new Array(24).fill(0);
+  // 08:30 晨跑 ~320, 12:30 快走 ~95, 19:00 瑜伽 ~140
+  for(let h=8;h<=9;h++)v[h]=Math.round(160*(1-Math.abs(h-8.6)/0.8));
+  for(let h=12;h<=13;h++)v[h]=Math.round(55*(1-Math.abs(h-12.5)/0.8));
+  for(let h=19;h<=20;h++)v[h]=Math.round(80*(1-Math.abs(h-19.2)/0.8));
+  return v;
+}
+
+function drawAct(svg,opt){
+  const W=380,H=250,L=34,R=12,T=16,B=30,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const n=opt.values.length,cxOf=i=>L+(n===1?pw/2:pw*i/(n-1));
+  const maxV=Math.max(1,Math.ceil(Math.max(...opt.values)/200)*200);
+  const yOf=v=>baseY-(v/maxV)*ph;
+  const mean=Math.round(opt.values.reduce((a,b)=>a+b,0)/n);
+  let s='';
+  for(let b=1;b<=4;b++){const yT=yOf(b*maxV/4),yB=yOf((b-1)*maxV/4);
+    s+=`<rect x="${L}" y="${yT.toFixed(1)}" width="${pw}" height="${(yB-yT).toFixed(1)}" fill="${ST.grid}" opacity="${0.04+b*0.015}"/>`;}
+  [0,0.25,0.5,0.75,1].forEach(f=>{const v=Math.round(maxV*f);const y=yOf(v);
+    s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${ST.grid}" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="${ST.deep}">${v}</text>`;});
+  s+=`<text x="${L-4}" y="${T-5}" text-anchor="end" font-size="10" fill="${ST.deep}">kcal</text>`;
+  s+=`<line x1="${L}" y1="${yOf(mean).toFixed(1)}" x2="${W-R}" y2="${yOf(mean).toFixed(1)}" stroke="${ST.deep}" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>`;
+  const slot=pw/n,barW=Math.max(4,Math.min(range==='week'?34:range==='year'?20:14,slot*0.62)),gap=Math.max(1.5,slot-barW);
+  opt.values.forEach((v,i)=>{const x=L+i*(barW+gap);const h=(v/maxV)*ph;
+    s+=`<rect x="${x.toFixed(1)}" y="${(baseY-h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${ST.main}" opacity="0.9"/>`;});
+  opt.labels.forEach((lab,i)=>{if(!lab)return;const x=L+i*(barW+gap)+barW/2;
+    s+=`<text x="${x.toFixed(1)}" y="${baseY+14}" text-anchor="middle" font-size="9" fill="${ST.axis}">${lab}</text>`;});
+  svg.innerHTML=s;
+}
+/* 日内 24h 柱状（横轴 0/6/12/18/24） */
+function drawDay(svg){
+  const W=380,H=220,L=34,R=12,T=14,B=26,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const v=genDay();
+  const maxV=Math.max(1,Math.ceil(Math.max(...v)/100)*100);
+  const yOf=val=>baseY-(val/maxV)*ph;
+  const slot=pw/24,barW=Math.max(3,slot*0.62),gap=Math.max(0.5,slot-barW);
+  let s='';
+  for(let b=1;b<=2;b++){const yT=yOf(b*maxV/2),yB=yOf((b-1)*maxV/2);
+    s+=`<rect x="${L}" y="${yT.toFixed(1)}" width="${pw}" height="${(yB-yT).toFixed(1)}" fill="${ST.grid}" opacity="${0.05+b*0.02}"/>`;}
+  [0,0.5,1].forEach(f=>{const val=Math.round(maxV*f);const y=yOf(val);
+    s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${ST.grid}" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="${ST.deep}">${val}</text>`;});
+  s+=`<text x="${L-4}" y="${T-3}" text-anchor="end" font-size="10" fill="${ST.deep}">kcal</text>`;
+  v.forEach((val,h)=>{const x=L+h*(barW+gap);const hh=Math.max(0,(val/maxV)*ph);
+    s+=`<rect x="${x.toFixed(1)}" y="${(baseY-hh).toFixed(1)}" width="${barW.toFixed(1)}" height="${hh.toFixed(1)}" rx="2" fill="${ST.main}" opacity="0.9"/>`;});
+  [0,6,12,18,24].forEach(h=>{const x=L+h*(barW+gap)+barW/2;
+    s+=`<text x="${x.toFixed(1)}" y="${baseY+13}" text-anchor="middle" font-size="9" fill="${ST.axis}">${h}</text>`;});
+  svg.innerHTML=s;
+}
+
+function render(){
+  document.getElementById('pill').style.width=document.querySelector('.chip.on').offsetWidth+'px';
+  document.getElementById('pill').style.transform=`translateX(${document.querySelector('.chip.on').offsetLeft-3}px)`;
+  document.getElementById('plabel').textContent=fmtLabel(anchor,range);
+  const c=document.getElementById('content');
+
+  if(range==='day'){
+    const sess=[['🏃','晨跑','08:30','320','38 分'],['🚶','快走','12:30','95','16 分'],['🧘','瑜伽','19:00','140','45 分']];
+    c.innerHTML=`
+      <div class="card">
+        <div class="hero"><div><div class="big" style="color:${ST.deep}">870</div><div class="lab">今日消耗 · kcal</div></div>
+          <div class="ctx" style="color:${'#6E7A24'}">↑ 14% 较昨日</div></div>
+        <div class="statRow">
+          <div class="tile"><div class="tl">运动时长</div><div class="tv">99<span style="font-size:11px;color:var(--sub)"> 分</span></div><div class="ts">3 次</div></div>
+          <div class="tile"><div class="tl">步数</div><div class="tv">9.2<span style="font-size:11px;color:var(--sub)"> k</span></div><div class="ts">含日常</div></div>
+          <div class="tile"><div class="tl">距离</div><div class="tv">7.1<span style="font-size:11px;color:var(--sub)"> km</span></div><div class="ts">运动</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <p class="ctitle">运动消耗 <small>日内分布</small></p>
+        <svg viewBox="0 0 380 220" id="svg-day"></svg>
+        <div class="legend"><span><i style="background:${ST.main}"></i>每小时消耗</span></div>
+        <p class="axisnote">纵轴 = 消耗 kcal · 横轴 = 0–24 时 · 无运动时段为 0</p>
+      </div>
+      <div class="card">
+        <p class="ctitle">今日运动记录</p>
+        ${sess.map(s=>`<div class="sess"><div class="ic">${s[0]}</div><div class="mid"><div class="nm">${s[1]}</div><div class="tm">${s[2]}</div></div><div class="kc"><div class="kv">${s[3]}</div><div class="ks">kcal · ${s[4]}</div></div></div>`).join('')}
+      </div>`;
+    drawDay(document.getElementById('svg-day'));
+    return;
+  }
+
+  const d=genAct(range);
+  const hv={week:273,month:248,year:2650}[range];
+  const cmp={week:['↑ 12','比上周','bad'],month:['↓ 8','比上月','good'],year:['↑ 6','比去年','bad']}[range];
+  const peri={week:'本周有 5 天有运动记录，周末消耗明显更高。',month:'本月运动天数 19 天，下旬更规律。',year:'今年月均消耗较去年略升，整体更活跃。'}[range];
+  const step={week:6800,month:6100,year:6500}[range];
+  const dist={week:5.2,month:4.8,year:5.0}[range];
+  const dur={week:54,month:49,year:52}[range];
+  c.innerHTML=`
+    <div class="card">
+      <div class="hero"><div><div class="big" style="color:${ST.deep}">${hv}</div><div class="lab">${range==='year'?'年':range==='month'?'月':'周'}平均消耗 · kcal</div></div>
+        <div class="ctx" style="color:${cmp[2]==='good'?'#6E7A24':'#C9598A'}">${cmp[0]} ${cmp[1]}</div></div>
+      <div class="statRow">
+        <div class="tile"><div class="tl">运动时长</div><div class="tv">${dur}<span style="font-size:11px;color:var(--sub)"> 分</span></div><div class="ts">区间累计</div></div>
+        <div class="tile"><div class="tl">步数</div><div class="tv">${(step/1000).toFixed(1)}<span style="font-size:11px;color:var(--sub)"> k</span></div><div class="ts">日均</div></div>
+        <div class="tile"><div class="tl">距离</div><div class="tv">${dist}<span style="font-size:11px;color:var(--sub)"> km</span></div><div class="ts">日均</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="chead"><div><p class="ctitle">运动消耗 <small>每日 kcal</small></p></div></div>
+      <svg viewBox="0 0 380 250" id="svg-act"></svg>
+      <div class="legend"><span><i style="background:${ST.main}"></i>每日消耗</span><span><i style="background:${ST.deep}"></i>区间均值</span></div>
+      <p class="axisnote">纵轴 = 消耗 kcal · 虚线 = 区间均值 ${hv} · 横轴 = ${range==='year'?'1月→12月':range==='month'?'当月日期':'周一→周日'}</p>
+      <div class="mhRow" onclick="toggleMH(this)" data-sec="dayMoreBody"><span class="mhLabel">详细数据</span><span class="mhChev"></span></div>
+      <div class="moreBody" id="dayMoreBody" style="display:none"><div class="rows">
+        <div class="row"><span class="k">运动次数</span><span class="v">${range==='year'?420:range==='month'?19:5} <small>次</small></span></div>
+        <div class="row"><span class="k">平均心率（运动时段）</span><span class="v">118 <small>bpm</small></span></div>
+        <div class="row"><span class="k">最长单次</span><span class="v">96 <small>分</small></span></div>
+        <div class="row"><span class="k">消耗最高日</span><span class="v">${range==='month'?'10 日':range==='year'?'8 月':'周六'}</span></div>
+      </div></div>
+    </div>
+    <div class="card"><p class="ctitle">对比上${range==='year'?'年':range==='month'?'月':'周'}</p>
+      <div class="cmpCard"><div class="big" style="color:${ST.deep}">${hv}</div><div class="unit">${range==='year'?'年':range==='month'?'月':'周'}平均 kcal</div><div class="delta" style="color:${cmp[2]==='good'?'#6E7A24':'#C9598A'}">${cmp[0]}</div></div>
+      <p class="cmpNote">${peri}</p>
+    </div>`;
+  drawAct(document.getElementById('svg-act'),d);
+}
+
+/* 统一折叠 */
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+
+document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{range=ch.dataset.r;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===ch));render();});
+document.getElementById('prev').onclick=()=>{anchor=stepA(anchor,range,-1);render();};
+document.getElementById('next').onclick=()=>{anchor=stepA(anchor,range,1);render();};
+document.getElementById('pcenter').onclick=openCal;
+
+let calY=anchor.getFullYear(),calM=anchor.getMonth()+1;
+function buildCal(){
+  document.getElementById('calTitle').textContent=`${calY}年${calM}月`;
+  const first=new Date(calY,calM-1,1);const lead=(first.getDay()+6)%7;
+  const grid=[];const total=new Date(calY,calM,0).getDate();
+  for(let i=0;i<lead;i++)grid.push(null);
+  for(let d=1;d<=total;d++)grid.push(new Date(calY,calM-1,d));
+  while(grid.length%7!==0)grid.push(null);
+  document.getElementById('calGrid').innerHTML=grid.map(d=>{
+    if(!d)return `<div class="c"></div>`;
+    const dim=d.getMonth()+1!==calM;const dis=d>TODAY||d<MIN;const on=fmtDate(d)===fmtDate(anchor);
+    return `<div class="c${dim?' dim':''}${on?' on':''}${dis?' dis':''}" data-d="${d.getTime()}">${d.getDate()}</div>`;
+  }).join('');
+  document.querySelectorAll('#calGrid .c[data-d]').forEach(el=>el.onclick=()=>{if(el.classList.contains('dis'))return;
+    anchor=clampD(new Date(Number(el.dataset.d)));closeCal();render();});
+}
+function openCal(){calY=anchor.getFullYear();calM=anchor.getMonth()+1;buildCal();document.getElementById('calMask').classList.add('on');}
+function closeCal(){document.getElementById('calMask').classList.remove('on');}
+document.getElementById('calCancel').onclick=closeCal;
+document.getElementById('calMask').onclick=(e)=>{if(e.target.id==='calMask')closeCal();};
+document.getElementById('calToday').onclick=()=>{anchor=new Date(TODAY);closeCal();render();};
+document.getElementById('calPrev').onclick=()=>{const p=new Date(calY,calM-2,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+document.getElementById('calNext').onclick=()=>{const p=new Date(calY,calM,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+
+render();
+</script>
+</body>
+</html>

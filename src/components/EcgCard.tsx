@@ -69,21 +69,28 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
 
   return (
     <View style={compactMode ? {} : styles.card}>
-      {/* 头部 */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <Text style={styles.title}>心电图 ECG</Text>
-        {latest ? (
-          <Text style={styles.time}>
-            {(() => {
-              const diff = Math.floor((Date.now() - latest.ts) / 60000);
-              if (diff < 1) return '刚刚';
-              if (diff < 60) return `${diff}分钟前`;
-              return `${Math.floor(diff / 60)}小时前`;
-            })()}
+      {/* ★ 统一头部：图标方 + 名称 + 状态 pill */}
+      <View style={styles.ucTop}>
+        <View style={styles.ucId}>
+          <View style={styles.ic}>
+            <Svg width={15} height={15} viewBox="0 0 24 24">
+              <Path
+                d="M2 12h5l2-6 4 12 3-9 2 3h4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
+          <Text style={styles.ucName}>心电图 ECG</Text>
+        </View>
+        <View style={[styles.pill, latest ? styles.pillLive : styles.pillOff]}>
+          <Text style={[styles.pillText, latest ? styles.pillTextLive : styles.pillTextOff]}>
+            {latest ? '已测' : '待接入'}
           </Text>
-        ) : (
-          <Text style={styles.time}>尚未测量</Text>
-        )}
+        </View>
       </View>
 
       {/* 迷你波形 / 占位 */}
@@ -92,9 +99,9 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           <Svg width="100%" height={36} viewBox="0 0 160 32" preserveAspectRatio="none">
             <Defs>
               <LinearGradient id="ecgMini" x1="0" y1="0" x2="1" y2="0">
-                {/* v16 §4.2 #8：ECG = 蓝 core（心电归蓝·心肺族，青已删除） */}
-                <Stop offset="0%" stopColor={mm.colors.skyCore} stopOpacity={0.45} />
-                <Stop offset="100%" stopColor={mm.colors.skyCore} stopOpacity={1} />
+                {/* 心电波形 = 专业红（ecgRed）；线必为红，不与 anomaly 异常语义混用 */}
+                <Stop offset="0%" stopColor={mm.colors.ecgRed} stopOpacity={0.45} />
+                <Stop offset="100%" stopColor={mm.colors.ecgRed} stopOpacity={1} />
               </LinearGradient>
             </Defs>
             <Path d={miniWaveform(latest.waveform)} fill="none" stroke="url(#ecgMini)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
@@ -155,6 +162,12 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           </ExpoLinearGradient>
         </TouchableOpacity>
       )}
+
+      {/* ★ 统一底部入口（整卡可点进趋势详情；此处为统一视觉入口） */}
+      <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={styles.enter}>
+        <Text style={styles.enterTxt}>查看趋势图</Text>
+        <Text style={styles.enterArr}>›</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -168,6 +181,38 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
+  // 统一头部
+  ucTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  ucId: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: 1 },
+  ic: {
+    width: 26,
+    height: 26,
+    borderRadius: mm.radius.iconSq,
+    backgroundColor: mm.colors.ecgRedSoft,
+    color: mm.colors.ecgRed,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
+  },
+  ucName: { fontSize: 14, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  pill: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill, alignSelf: 'flex-start' },
+  pillLive: { backgroundColor: theme.colors.successSoft },
+  pillOff: { backgroundColor: theme.colors.ui.offTrack },
+  pillText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold },
+  pillTextLive: { color: theme.colors.success },
+  pillTextOff: { color: theme.colors.textSub },
+  // 统一底部入口
+  enter: {
+    marginTop: 13,
+    paddingTop: 11,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.cardBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  enterTxt: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.ecgRed },
+  enterArr: { fontSize: 13, fontWeight: theme.weight.bold, color: mm.colors.ecgRed },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   waveBox: {

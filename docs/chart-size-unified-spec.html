@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira App · 图表/卡片尺寸统一规范（审计 + 统一规则）</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --sub:#8A857D; --line:#ECEAE5; --bg:#F5F4F1; --card:#FFFFFF;
+    --soft:#FAFAF8; --grid:rgba(31,29,26,0.09); --axis:#6B6760;
+    --primary:#7C6AE0; --cortisol:#BCCB62; --anomaly:#E2554E;
+    --good:#2E9E5B; --warn:#C8881E; --sky:#7EA6F8; --skyDeep:#4C74C9;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:28px 20px 80px;}
+  h1{font-size:24px;font-weight:680;margin:0 0 4px;letter-spacing:-.2px}
+  .lead{font-size:13.5px;color:var(--sub);line-height:1.7;margin:0 0 8px}
+  .meta{font-size:11.5px;color:var(--sub);margin-bottom:26px}
+  h2{font-size:18px;font-weight:640;margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:620;margin:20px 0 8px}
+  p{font-size:13px;line-height:1.7}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:640;color:var(--sub);font-size:11.5px;background:var(--soft)}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:640}
+  .t-bad{background:rgba(226,85,78,.12);color:var(--anomaly)}
+  .t-ok{background:rgba(46,158,91,.12);color:var(--good)}
+  .t-warn{background:rgba(200,136,30,.14);color:var(--warn)}
+  .t-info{background:rgba(124,106,224,.12);color:var(--primary)}
+  .verdict{background:rgba(226,85,78,.07);border:1px solid rgba(226,85,78,.25);border-radius:16px;padding:14px 16px;margin-bottom:16px}
+  .verdict b{color:var(--anomaly)}
+  /* 档位可视化 */
+  .tiers{display:flex;align-items:flex-end;gap:18px;padding:18px 6px 6px;background:var(--soft);border:1px solid var(--line);border-radius:14px}
+  .tier{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+  .bar{width:100%;border-radius:8px 8px 4px 4px;background:var(--primary);opacity:.85;display:flex;align-items:flex-start;justify-content:center;padding-top:6px;color:#fff;font-size:11px;font-weight:660}
+  .bar.xs{background:#C3BCDA}.bar.s{background:#A99CE8}.bar.m{background:#8B7CE4}.bar.l{background:var(--primary)}
+  .tl{font-size:12px;font-weight:660;margin-top:8px}
+  .ts{font-size:10.5px;color:var(--sub);margin-top:2px;text-align:center;line-height:1.5}
+  .rule{font-size:12.5px;line-height:1.75;background:var(--soft);border-left:3px solid var(--primary);padding:10px 14px;border-radius:0 10px 10px 0;margin:10px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:680px){.two{grid-template-columns:1fr}}
+  ul{font-size:12.5px;line-height:1.8;padding-left:18px;margin:6px 0}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:660}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>图表 / 卡片尺寸统一规范</h1>
+  <p class="lead">针对「情绪页面的图和睡眠页面的图大小不一致」的专项审计，以及一套可直接落地的统一尺寸规则。</p>
+  <p class="meta">审计范围：src/components · src/screens 全部 SVG 图表与卡片容器 · 2026-10-09</p>
+
+  <div class="verdict">
+    <p style="margin:0"><b>结论：确实没有统一。</b>全站共有 <span class="num">16 种</span>不同的图表高度（64 / 72 / 80 / 96 / 120 / 150 / 170 / 180 / 198 / 200 / 210 / 240 / 280 / 330 / 360 / 380），
+    而且<b>同一个组件内部</b>也存在两套高度。你看到的三处差异，全部能被这张表复现。</p>
+  </div>
+
+  <h2>一、你发现的三处差异 · 逐条定位</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:26%">你观察到的现象</th><th style="width:30%">对应文件</th><th style="width:16%">实际数值</th><th>说明</th></tr>
+      <tr>
+        <td><b>睡眠页面的图「好大」</b></td>
+        <td class="mono">SleepDualAxisChart.tsx</td>
+        <td><span class="tag t-bad">H = 380</span></td>
+        <td>全站最高的一张图。它把「轴标题带 44 + X 轴标签带 40」共 84pt 的装饰高度算进总高，比同类详情页图多出约 140pt。</td>
+      </tr>
+      <tr>
+        <td><b>情绪页面「这个图有点小」</b></td>
+        <td class="mono">EmotionInsightView.tsx</td>
+        <td><span class="tag t-warn">chartH = 170</span></td>
+        <td>情绪洞察卡用的是 170，比详情页同主题的图矮一大截。</td>
+      </tr>
+      <tr>
+        <td><b>情绪页面「那个图挺大的」</b></td>
+        <td class="mono">EnergyDetailScreen.tsx</td>
+        <td><span class="tag t-bad">280 / ≈330</span></td>
+        <td>同一页里两张图：主趋势 280；另一张 <span class="mono">chartH=194</span> 却被渲染成 <span class="mono">height={chartH * 1.7} ≈ 330</span>——被强行拉伸 1.7 倍。</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>二、全站图表高度审计（现状）</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:30%">组件 / 页面</th><th style="width:32%">文件</th><th style="width:14%">当前高度</th><th>层级</th></tr>
+      <tr><td>睡眠双轴图</td><td class="mono">SleepDualAxisChart.tsx</td><td class="num">380</td><td>详情·双轴</td></tr>
+      <tr><td>睡眠详情容器</td><td class="mono">SleepDetailScreen.tsx</td><td class="num">360 (minHeight)</td><td>容器</td></tr>
+      <tr><td>情绪详情 · 周期柱图</td><td class="mono">EnergyDetailScreen.tsx</td><td class="num">≈330（×1.7 拉伸）</td><td>详情</td></tr>
+      <tr><td>消耗分析图</td><td class="mono">ConsumptionAnalyticsCard.tsx</td><td class="num">280</td><td>分析图</td></tr>
+      <tr><td>情绪详情 · 主趋势</td><td class="mono">EnergyDetailScreen.tsx</td><td class="num">280</td><td>详情·主图</td></tr>
+      <tr><td>指标详情</td><td class="mono">MetricDetailScreen.tsx</td><td class="num">240</td><td>详情</td></tr>
+      <tr><td>状态趋势详情</td><td class="mono">StatusTrendDetailScreen.tsx</td><td class="num">240</td><td>详情</td></tr>
+      <tr><td>雌激素卡</td><td class="mono">HormoneEstrogenCard.tsx</td><td class="num">210</td><td>卡</td></tr>
+      <tr><td>体温双相图</td><td class="mono">TempBiphasicChart.tsx</td><td class="num">200</td><td>图</td></tr>
+      <tr><td>情绪区间条</td><td class="mono">EmotionRangeBars.tsx</td><td class="num">198 / 180</td><td>卡（两套）</td></tr>
+      <tr><td>血压详情</td><td class="mono">BpDetailScreen.tsx</td><td class="num">180</td><td>详情</td></tr>
+      <tr><td>睡眠激素相关</td><td class="mono">SleepHormoneCorrelation.tsx</td><td class="num">180</td><td>图</td></tr>
+      <tr><td>情绪洞察卡</td><td class="mono">EmotionInsightView.tsx</td><td class="num">170</td><td>卡</td></tr>
+      <tr><td>准备度趋势</td><td class="mono">ReadinessTrendChart.tsx</td><td class="num">170 / 180</td><td>卡（两套）</td></tr>
+      <tr><td>周期年回顾 / 激素双趋势</td><td class="mono">CycleYearReviewCard · HormoneDualTrend</td><td class="num">150</td><td>卡</td></tr>
+      <tr><td>皮质醇节律卡</td><td class="mono">CortisolRhythmCard.tsx</td><td class="num">72 与 120</td><td>卡（自相矛盾）</td></tr>
+      <tr><td>昼夜节律 / 睡眠节律卡</td><td class="mono">AllDayRecoveryCard · SleepRhythmHomeCard</td><td class="num">96</td><td>卡</td></tr>
+      <tr><td>洞察页迷你图</td><td class="mono">InsightScreen.tsx</td><td class="num">64 与 80</td><td>迷你（两套）</td></tr>
+      <tr><td>今日状态</td><td class="mono">DailyStatusCard.tsx</td><td class="num">64</td><td>迷你</td></tr>
+    </table>
+  </div>
+
+  <h2>三、根因（4 条）</h2>
+  <div class="card">
+    <ul>
+      <li><b>没有共享的图表高度 token。</b>20+ 处各自写死 <span class="mono">const H = …</span> / <span class="mono">const CHART_H = …</span>，谁都不引用谁。</li>
+      <li><b>同一组件内部两套高度。</b>CortisolRhythmCard 同时有 72 和 120；InsightScreen 同时有 64 和 80；EmotionRangeBars 同时有 198 和 180。</li>
+      <li><b>SVG 渲染高度 ≠ viewBox 高度，造成非等比拉伸。</b>EnergyDetailScreen 用 <span class="mono">viewBox={0 0 VW 194}</span> 配 <span class="mono">height={chartH * 1.7}</span>，实际渲染 330——同页两图比例彻底失真。</li>
+      <li><b>装饰高度没有被单列。</b>睡眠双轴图把轴标题带(44)+X轴标签带(40)塞进总高，导致「总高 380」看起来是别的图的 2 倍。</li>
+    </ul>
+  </div>
+
+  <h2>四、统一规则（核心产出）</h2>
+
+  <h3>规则 1 · 图表高度只分 4 档</h3>
+  <div class="rule">
+    <b>原则：图表高度只由「信息层级」决定，不由「它在哪个页面」决定。</b>
+    同一层级的图，无论在首页、洞察页还是详情页，必须等高。
+  </div>
+  <div class="card">
+    <div class="tiers">
+      <div class="tier">
+        <div class="bar xs" style="height:64px">64</div>
+        <div class="tl">XS · 迷你</div>
+        <div class="ts">双列小卡趋势<br/>今日状态条</div>
+      </div>
+      <div class="tier">
+        <div class="bar s" style="height:96px">96</div>
+        <div class="tl">S · 卡片</div>
+        <div class="ts">全宽卡内嵌趋势<br/>节律类卡片</div>
+      </div>
+      <div class="tier">
+        <div class="bar m" style="height:180px">180</div>
+        <div class="tl">M · 详情标准</div>
+        <div class="ts">单指标<br/>日/周/月/年详情</div>
+      </div>
+      <div class="tier">
+        <div class="bar l" style="height:240px">240</div>
+        <div class="tl">L · 详情主图</div>
+        <div class="ts">详情页主趋势<br/>双轴 / 组合图</div>
+      </div>
+    </div>
+    <table style="margin-top:14px">
+      <tr><th style="width:12%">档位</th><th style="width:22%">建议 token</th><th style="width:14%">总高</th><th style="width:16%">绘图区净高</th><th>适用场景（唯一判定标准）</th></tr>
+      <tr><td><b>XS</b></td><td class="mono">chart.h.xs</td><td class="num">64</td><td class="num">44</td><td>洞察页双列瀑布流小卡、基础指标卡、今日状态条</td></tr>
+      <tr><td><b>S</b></td><td class="mono">chart.h.s</td><td class="num">96</td><td class="num">70</td><td>首页 / 洞察页<b>全宽卡内嵌</b>的趋势（昼夜节律、睡眠节律、皮质醇节律）</td></tr>
+      <tr><td><b>M</b></td><td class="mono">chart.h.m</td><td class="num">180</td><td class="num">140</td><td>详情页<b>单指标</b>日/周/月/年趋势（血压、血氧、血糖、激素、体温双相、情绪区间条）</td></tr>
+      <tr><td><b>L</b></td><td class="mono">chart.h.l</td><td class="num">240</td><td class="num">190</td><td>详情页<b>主趋势图</b>与双轴/柱线组合图（指标详情、状态趋势、能量/情绪主图、睡眠双轴）</td></tr>
+    </table>
+  </div>
+
+  <h3>规则 2 · 装饰高度从总高里剥离</h3>
+  <div class="rule">
+    轴标题带、X 轴标签带、图例带属于<b>图表外框</b>，不再是「想加多少加多少」。每档固定预算：
+    <b>XS/S 卡内图 ≤ 24pt</b>，<b>M/L 详情图 ≤ 50pt</b>。
+    睡眠双轴图当前 84pt 的装饰高度严重超标 → 必须收紧（PAD_T 44→32、PAD_B 40→28），而不是靠把总高堆到 380 来解决。
+  </div>
+
+  <h3>规则 3 · 禁止非等比拉伸</h3>
+  <div class="rule">
+    SVG 的 <span class="mono">height</span> 必须等于 <span class="mono">viewBox</span> 的高度（1:1）。
+    <b>禁止</b> <span class="mono">height={chartH * 1.7}</span> 这类写法。想要更高，就改档位（换 token），不要乘系数。
+  </div>
+
+  <h3>规则 4 · 卡片内边距只允许 2 级、圆角只允许 3 级</h3>
+  <div class="card">
+    <table>
+      <tr><th style="width:22%">类别</th><th style="width:30%">允许值</th><th>说明</th></tr>
+      <tr><td>卡片内边距</td><td class="num">cardPad = 20<br/>cardPadCompact = 12</td><td>标准卡 20；紧凑卡 12。<b>不允许第三级</b>——当前 BasicMetricCard 紧凑卡用 <span class="mono">theme.sp(3.5)=14</span>，属违规，需改回 12。</td></tr>
+      <tr><td>圆角</td><td class="num">card = 14<br/>md = 11 / sm = 9</td><td>外层容器卡 14；卡内块 11；小元素（图标方、chip）9。</td></tr>
+      <tr><td>图标方</td><td class="num">26 × 26</td><td>统一尺寸 + <span class="mono">radius.iconSq</span>，已统一，保持不变。</td></tr>
+    </table>
+  </div>
+
+  <h2>五、迁移对照表（现状 → 目标）</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:34%">文件</th><th style="width:16%">现状</th><th style="width:16%">目标</th><th>动作</th></tr>
+      <tr><td class="mono">SleepDualAxisChart.tsx</td><td class="num">380</td><td class="num">240 <span class="tag t-ok">L</span></td><td><b>重点</b>：收紧 PAD_T 44→32、PAD_B 40→28，总高降 37%</td></tr>
+      <tr><td class="mono">EnergyDetailScreen.tsx（周期柱）</td><td class="num">≈330</td><td class="num">240 <span class="tag t-ok">L</span></td><td><b>去掉 ×1.7 拉伸</b>，按 L 档重设 plotH</td></tr>
+      <tr><td class="mono">EnergyDetailScreen.tsx（主趋势）</td><td class="num">280</td><td class="num">240 <span class="tag t-ok">L</span></td><td>降 40</td></tr>
+      <tr><td class="mono">ConsumptionAnalyticsCard.tsx</td><td class="num">280</td><td class="num">240 <span class="tag t-ok">L</span></td><td>降 40</td></tr>
+      <tr><td class="mono">MetricDetailScreen.tsx</td><td class="num">240</td><td class="num">240 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">StatusTrendDetailScreen.tsx</td><td class="num">240</td><td class="num">240 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">HormoneEstrogenCard.tsx</td><td class="num">210</td><td class="num">180 <span class="tag t-info">M</span></td><td>降 30</td></tr>
+      <tr><td class="mono">TempBiphasicChart.tsx</td><td class="num">200</td><td class="num">180 <span class="tag t-info">M</span></td><td>降 20</td></tr>
+      <tr><td class="mono">EmotionRangeBars.tsx</td><td class="num">198 / 180</td><td class="num">180 <span class="tag t-info">M</span></td><td>内部两套 → 合并为 180</td></tr>
+      <tr><td class="mono">BpDetailScreen.tsx</td><td class="num">180</td><td class="num">180 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">SleepHormoneCorrelation.tsx</td><td class="num">180</td><td class="num">180 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">EmotionInsightView.tsx</td><td class="num">170</td><td class="num">180 <span class="tag t-info">M</span></td><td>升 10，与详情页同档</td></tr>
+      <tr><td class="mono">CycleYearReviewCard / HormoneDualTrend</td><td class="num">150</td><td class="num">180 <span class="tag t-info">M</span></td><td>升 30</td></tr>
+      <tr><td class="mono">CortisolRhythmCard.tsx</td><td class="num">72 与 120</td><td class="num">96 <span class="tag t-info">S</span></td><td>内部两套 → 合并为 96</td></tr>
+      <tr><td class="mono">AllDayRecoveryCard / SleepRhythmHomeCard</td><td class="num">96</td><td class="num">96 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">InsightScreen.tsx</td><td class="num">64 与 80</td><td class="num">64 <span class="tag t-info">XS</span></td><td>内部两套 → 合并为 64</td></tr>
+      <tr><td class="mono">DailyStatusCard.tsx</td><td class="num">64</td><td class="num">64 <span class="tag t-ok">✓</span></td><td>已合规</td></tr>
+      <tr><td class="mono">BasicMetricCard.tsx（紧凑卡）</td><td class="num">padding 14</td><td class="num">12</td><td>违规第三级内边距 → 改 cardPadCompact</td></tr>
+    </table>
+    <p style="margin-top:12px;font-size:12.5px;color:var(--sub)">
+      迁移后：<b>16 种高度 → 4 种</b>（64 / 96 / 180 / 240），卡片内边距 3 种 → 2 种。
+    </p>
+  </div>
+
+  <h2>六、落地建议 · 分三步</h2>
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">Step 1 · 建 token</h3>
+      <p style="font-size:12.5px;margin:0">在 <span class="mono">src/theme/chart.ts</span> 增加高度档位与装饰预算：
+      <span class="mono">h:{xs:64,s:96,m:180,l:240}</span>、<span class="mono">chrome:{card:24,detail:50}</span>。</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Step 2 · 修 3 个重灾区</h3>
+      <p style="font-size:12.5px;margin:0">① 睡眠双轴 380→240（收紧装饰带）② 情绪详情 ×1.7 拉伸去掉 ③ CortisolRhythmCard / InsightScreen 内部两套合并。</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Step 3 · 全量换 token</h3>
+      <p style="font-size:12.5px;margin:0">把剩余 15 处硬编码 H 换成对应档位 token，跑 tsc（基线 42）确认零新增。</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">验收</h3>
+      <p style="font-size:12.5px;margin:0">情绪页与睡眠页同层级图并排截图应等高；App 内不再出现 <span class="mono">* 1.7</span> 类拉伸系数。</p>
+    </div>
+  </div>
+
+  <p class="meta" style="margin-top:30px">本文件为<b>规范文档</b>，尚未改动 App 源码。确认后按 Step 1→3 落地。</p>
+
+</div>
+</body>
+</html>

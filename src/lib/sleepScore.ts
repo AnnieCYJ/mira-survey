@@ -39,14 +39,14 @@ export interface SleepScoreConst {
 }
 
 export const SLEEP_SCORE_DEFAULTS: SleepScoreConst = {
-  TARGET_DURATION: 450,      // 7.5h
-  TARGET_DURATION_MAX: 510,  // 8.5h：超过即线性轻扣（防"睡够 9h 就满分"）
-  TARGET_DEEP_PCT: 20,       // 深睡 ≥20%
+  TARGET_DURATION: 420,      // 7.5h
+  TARGET_DURATION_MAX: 540,  // 8.5h：超过即线性轻扣（防"睡够 9h 就满分"）
+  TARGET_DEEP_PCT: 18,       // 深睡 ≥20%
   TARGET_GETUP: 3,           // 起夜平滑：每次约扣 7 分（原为 0/1 悬崖）
   TARGET_EFFICIENCY: 0.85,   // 效率 ≥85%（WHOOP 目标）
-  W_D: 0.30,
-  W_DEEP: 0.28,
-  W_EFF: 0.22,
+  W_D: 0.35,
+  W_DEEP: 0.20,
+  W_EFF: 0.25,
   W_G: 0.20,
 };
 

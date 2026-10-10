@@ -503,8 +503,11 @@ export default function CycleCalendarScreen() {
                 </View>
                 {/* ★ 方案二 / 三（2026-10-07，用户：「这里面生理周期的很多统计呀、症状的一些个比方说统计啊什么的都挺丰富的」）：
                     用本地真实记录做「症状统计」与「症状 × 相位分布」两面板 */}
-                <SymptomStatsPanel periodDays={periodDays} />
-                <SymptomPhaseMatrix periodDays={periodDays} log={log} ring={ring} />
+                {/* ★ 2026-10-09（menstrual-cycle-preview）：症状×相位分布内嵌进「症状统计」的
+                    「查看完整症状分布」折叠区（embedded 模式），不再单独成卡 */}
+                <SymptomStatsPanel periodDays={periodDays}>
+                  <SymptomPhaseMatrix periodDays={periodDays} log={log} ring={ring} embedded />
+                </SymptomStatsPanel>
               </>
             ) : (
               <>

@@ -4,16 +4,18 @@
 
 > 应用显示名：`miraringfashion` · iOS Bundle Id / Android package：`com.miraringfashion.app`
 
-## 快速开始（Expo Go，不用 Xcode）
+## 快速开始
+
+项目包含原生 BLE、语音与本地 AI 模块，完整功能需要开发构建或 Xcode / Android Studio，Expo Go 无法提供这些模块。
 
 ```bash
 npm install
-npm start          # 启动 Metro
-# 终端按 i 开 iOS 模拟器（需本机装了 Xcode 才有模拟器）/ a 开 Android 模拟器
-npm run typecheck  # TypeScript 校验
+npm start
+npm run ios       # iOS 开发构建
+npm run android   # Android 开发构建
+npm run typecheck
+node --test scripts/test-uiux.cjs  # 表单与本地收藏回归测试
 ```
-
-真机调试：安装 **Expo Go**，扫描终端里的二维码。
 
 ## 在 Xcode 里原生运行（推荐真机/模拟器）
 
@@ -48,31 +50,36 @@ cd ios && pod install && open miraringfashion.xcworkspace
 
 ## 目录结构
 
-```
+```text
 mira-app/
-├── App.tsx                      入口：SafeArea → AppState → Navigation → 渐变背景
-├── app.json                     iOS bundleId / Android package / 权限声明
-└── src/
-    ├── theme/theme.ts           设计系统（颜色 / 间距 / 字号 / 阴影 / 动效 / 布局）
-    ├── data/
-    │   ├── metrics.ts           指标定义、趋势脚本、日周月年序列生成器
-    │   ├── tasks.ts             任务类型、工具宫格、日历初始数据
-    │   └── chat.ts              AI 关键词路由回复库
-    ├── state/AppState.tsx       全局 Context：任务 / 工具 / 待办 / 庆祝态
-    ├── navigation/              BottomTabNavigator（自定义 TabBar）
-    ├── components/              18 个通用组件
-    └── screens/                 Today / Insight / Focus / Meditation / Profile
+├── App.tsx                  应用入口、全局状态、语音与导航
+├── src/
+│   ├── theme/               共享颜色、布局、动效与图表变量
+│   ├── screens/             主页面与指标、周期、工具详情
+│   ├── components/          指标卡、图表、表单、弹层、AI 建议
+│   ├── navigation/          底部导航与原生详情页导航
+│   ├── ble/                 戒指连接与同步
+│   ├── data/                健康数据、周期记录与本地存储
+│   ├── lib/                 评分算法、建议逻辑与档案校验
+│   ├── ai/、hooks/          本地 AI、语音与状态订阅
+│   └── assets/              内容图片、音频与视频
+├── ios/、android/           原生工程
+├── docs/                    设计规范、算法与改动记录
+├── preview/                 历史 HTML 设计预览
+└── scripts/                 运行、导出与回归检查
 ```
 
-## 五个 Tab
+## 主导航
 
-| Tab | 内容 |
+| 入口 | 内容 |
 | --- | --- |
-| Today | 能量球（四象限心情打卡）、全天状态趋势、今日建议 |
-| Insight | AI 综合分析横幅、五维指标切换、指标详情面板（日/周/月/年） |
-| Focus | Mira AI 对话入口、Orb 点阵动画、预置问题 |
-| Meditation | 任务卡组（上滑切换）、工具宫格、最近使用 |
-| Profile | 月历任务追踪、完成率进度环、全部完成彩带庆祝 |
+| 今日 | 今日状态、五项指标、状态趋势与 AI 建议 |
+| 洞察 | 睡眠与周期、身体指标、参考估算及详细分析 |
+| 工具 | 情绪调节、呼吸、冥想、营养与科普、我的建议 |
+| 我的 | 日历与任务记录 |
+| Mira AI | 点击进入聊天，长按说话，松手结束 |
+
+主导航以 `src/navigation/BottomTabNavigator.tsx` 为准；HTML 预览是历史方案，不代表当前原生界面。
 
 ## 平台差异处理
 
@@ -91,7 +98,10 @@ mira-app/
 5. `chat.ts` 中「累/疲劳」规则包含 `sleep`/`睡眠`，导致所有睡眠问题都被疲劳话术拦截 → 独立出「入睡/深睡/失眠」规则。
 6. `CalendarGrid` 从 `AppState` 导入常量形成循环依赖隐患 → 改为直接从 `data/tasks` 导入。
 
-## 接真实数据
+## 健康数据与设计变量
 
-所有数据集中在 `src/data/` 三个文件，替换为 API 返回即可，组件层无需改动。
-设计变量集中在 `src/theme/theme.ts`，改色只改这一处。
+戒指同步由 `src/ble/` 管理，健康数据存储与衍生指标分别位于 `src/data/`、`src/lib/`。身体成分和身体年龄展示为参考估算；年龄缺失、节律或综合数据不足时不生成身体年龄差值。
+
+基础变量位于 `src/theme/theme.ts`，五色系统位于 `src/theme/mindmate.ts`，图表变量位于 `src/theme/chart.ts`。修改颜色时应检查实际文字与背景的组合。
+
+本轮优化与验证记录见 `docs/uiux-optimization-2026-10-10.md`。

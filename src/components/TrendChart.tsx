@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { MOODS, TREND_AXIS } from '../data/metrics';
 import { curveLevel, CURVE_DEFAULTS, isSameDay, type CurvePoint } from '../lib/dailyStatus';
+import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -148,10 +150,10 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
         <Svg width={width} height={height}>
           {[25, 50, 75].map((v) => {
             const y = baseY - (baseY - padTop) * (v / 100);
-            return <Line key={v} x1={padX} y1={y} x2={width - padX} y2={y} stroke={theme.colors.cardBorder} strokeWidth={0.75} strokeDasharray="3 4" />;
+            return <Line key={v} x1={padX} y1={y} x2={width - padX} y2={y} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />;
           })}
-          <Line x1={padX} y1={baseY} x2={width - padX} y2={baseY} stroke={theme.colors.cardBorder} strokeWidth={1} />
-          {[0, 6, 12, 18, 24].map((h) => (
+          <Line x1={padX} y1={baseY} x2={width - padX} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
+          {DAY_HOUR_TICKS_COMPACT.map((h) => (
             <SvgText key={h} x={padX + innerW * (h / 24)} y={baseY + 12} fontSize={9} fill={theme.colors.textSub} textAnchor={h === 0 ? 'start' : h === 24 ? 'end' : 'middle'}>
               {String(h).padStart(2, '0')}
             </SvgText>
@@ -189,7 +191,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
             看着像「今天一直有数据」）。单点的段没有 path，只有下面的圆点。 */}
         {fillPaths.map((d, i) => <Path key={`fill${i}`} d={d} fill="url(#trendFill)" />)}
         {segPaths.map((d, i) => (
-          <Path key={`seg${i}`} d={d} fill="none" stroke="url(#trendStroke)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          <Path key={`seg${i}`} d={d} fill="none" stroke="url(#trendStroke)" strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
         ))}
         {/* 单点段（例如只在 00:29 采过一次）：只画点，不画任何线 */}
         {pts.length === 1 ? (

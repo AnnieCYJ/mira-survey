@@ -13,12 +13,13 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
 import { daysBetween, parseDate } from '../lib/cycleMath';
 import type { PeriodDayLog } from '../data/cycleLog';
 
 /** 柱图画布（viewBox 单位，外层按宽度自适应缩放） */
 const W = 680;
-const H = 150;
+const H = chart.h.m;     // ★ 规范：150 → M 档 180
 const PAD_L = 6;
 const PAD_R = 6;
 const PAD_T = 10;
@@ -151,7 +152,8 @@ export default function CycleYearReviewCard({
                 const base = H - PAD_B;
                 const pv = (m.period / data.maxV) * chartH;
                 const sv = (m.symptom / data.maxV) * chartH;
-                const r = Math.min(barW / 2, 6);
+                // ★ 2026-10-10（bar-design-unified-spec）：rx 统一 3（去掉 min(barW/2,6)）
+                const r = chart.barRadius;
                 return (
                   <React.Fragment key={i}>
                     {m.period > 0 ? (
@@ -161,7 +163,7 @@ export default function CycleYearReviewCard({
                         width={barW}
                         height={Math.max(2, pv)}
                         rx={r}
-                        fill={mm.colors.roseMid}
+                        fill={mm.colors.roseCore}
                       />
                     ) : null}
                     {m.symptom > 0 ? (
@@ -171,7 +173,7 @@ export default function CycleYearReviewCard({
                         width={barW}
                         height={Math.max(2, sv)}
                         rx={r}
-                        fill={theme.colors.accentSolid}
+                        fill={mm.colors.roseMid}
                       />
                     ) : null}
                   </React.Fragment>
@@ -190,11 +192,11 @@ export default function CycleYearReviewCard({
           {/* 图例 */}
           <View style={styles.legend}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: mm.colors.roseMid }]} />
+              <View style={[styles.legendDot, { backgroundColor: mm.colors.roseCore }]} />
               <Text style={styles.legendText}>经期天数</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.colors.accentSolid }]} />
+              <View style={[styles.legendDot, { backgroundColor: mm.colors.roseMid }]} />
               <Text style={styles.legendText}>记症状天数</Text>
             </View>
           </View>
@@ -225,8 +227,18 @@ const styles = StyleSheet.create({
   navTextOff: { color: theme.colors.textSub, opacity: 0.35 },
   navYear: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
-  sumRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  sumCol: { flex: 1, alignItems: 'center', gap: theme.sp(0.5) },
+  sumRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.xs },
+  // ★ 2026-10-09（menstrual-cycle-preview 年视图 .tile）：概览列 = 无底色描边小格（radius 11）
+  sumCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: theme.sp(0.5),
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.sp(1),
+  },
   sumValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   sumLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   subStat: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

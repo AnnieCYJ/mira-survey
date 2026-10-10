@@ -9,8 +9,8 @@
  *   ③ 疼痛程度分布 —— 无痛 / 轻微 / 中度 / 严重 四档占比，分段条用主紫分档表达。
  * 全部来自用户自填数据；无数据时给引导文案，不编造。
  */
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import {
@@ -22,20 +22,33 @@ import {
   type PainLevel,
 } from '../data/cycleLog';
 
-/** #rrggbb + alpha → rgba()（与 lib/phaseColors.phaseBg 同款做法，避免在组件里写裸色值） */
-function withAlpha(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
 const FLOW_STEPS: FlowLevel[] = ['spotting', 'light', 'normal', 'heavy'];
-const FLOW_ALPHA = [0.28, 0.46, 0.68, 0.92];
 const PAIN_STEPS: PainLevel[] = ['none', 'mild', 'moderate', 'severe'];
-const PAIN_ALPHA = [0.24, 0.46, 0.68, 0.92];
+// ★ 2026-10-10（bar-design-unified-spec 规则1/4）：症状=粉，四档用 roseSoft→roseDeep 同相递进
+//   取代「基色 + alpha 渐变」（透明度只允许 1 / 0.12，轻重用色相档位表达）
+const ROSE_TIERS = ['roseSoft', 'roseMid', 'roseCore', 'roseDeep'] as const;
+const TIER_COLOR = {
+  roseSoft: mm.colors.roseSoft,
+  roseMid: mm.colors.roseMid,
+  roseCore: mm.colors.roseCore,
+  roseDeep: mm.colors.roseDeep,
+} as const;
 
-export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<string, PeriodDayLog> }) {
+/**
+ * ★ 2026-10-09（menstrual-cycle-preview.html 完全还原）：
+ *   高频症状常驻；经量分布 / 疼痛程度分布 / 症状×相位分布（children 内嵌，embedded 模式）
+ *   收进「查看完整症状分布」mhRow 折叠区（默认收起，对齐 .mhRow/.mhSec）。
+ */
+export default function SymptomStatsPanel({
+  periodDays,
+  children,
+}: {
+  periodDays: Record<string, PeriodDayLog>;
+  /** 内嵌到折叠区的内容（SymptomPhaseMatrix embedded 模式） */
+  children?: React.ReactNode;
+}) {
+  // ★ 2026-10-09：完整症状分布折叠区，默认收起
+  const [fullOpen, setFullOpen] = useState(false);
   const stats = useMemo(() => {
     const days = Object.values(periodDays);
     const tagDays = days.filter((d) => (d.tags ?? []).length > 0);
@@ -53,7 +66,8 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
     const flow = FLOW_STEPS.map((f, i) => ({
       key: f,
       label: FLOW_LABEL[f],
-      alpha: FLOW_ALPHA[i],
+      alpha: 1,
+      tierColor: TIER_COLOR[ROSE_TIERS[i]],
       ratio: flowTotal ? flowDays.filter((d) => d.flow === f).length / flowTotal : 0,
     }));
 
@@ -62,7 +76,8 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
     const pain = PAIN_STEPS.map((p, i) => ({
       key: p,
       label: PAIN_LABEL[p],
-      alpha: PAIN_ALPHA[i],
+      alpha: 1,
+      tierColor: TIER_COLOR[ROSE_TIERS[i]],
       ratio: painTotal ? painDays.filter((d) => d.pain === p).length / painTotal : 0,
     }));
 
@@ -97,7 +112,7 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
                         styles.freqFill,
                         {
                           width: `${Math.max(4, Math.round(x.ratio * 100))}%`,
-                          backgroundColor: theme.colors.accentSolid,
+                          backgroundColor: mm.colors.roseCore,
                         },
                       ]}
                     />
@@ -110,6 +125,19 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
             </View>
           )}
 
+          {/* ★ 2026-10-09（menstrual-cycle-preview）：完整分布默认收起，mhRow 折叠头 */}
+          <TouchableOpacity
+            style={styles.mhRow}
+            activeOpacity={0.7}
+            onPress={() => setFullOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={fullOpen ? '收起完整症状分布' : '展开完整症状分布'}
+          >
+            <Text style={styles.mhLabel}>查看完整症状分布</Text>
+            <View style={[styles.mhChev, fullOpen && styles.mhChevOpen]} />
+          </TouchableOpacity>
+          {fullOpen ? (
+            <>
           {/* ② 经量分布 */}
           <Text style={styles.blockTitle}>经量分布</Text>
           {stats.flowTotal === 0 ? (
@@ -120,7 +148,7 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
                 key: x.key,
                 label: x.label,
                 ratio: x.ratio,
-                color: withAlpha(mm.colors.roseMid, x.alpha),
+                color: x.tierColor,
               }))}
             />
           )}
@@ -135,10 +163,20 @@ export default function SymptomStatsPanel({ periodDays }: { periodDays: Record<s
                 key: x.key,
                 label: x.label,
                 ratio: x.ratio,
-                color: withAlpha(theme.colors.accentSolid, x.alpha),
+                color: x.tierColor,
               }))}
             />
           )}
+
+          {/* ④ 症状 × 相位分布（menstrual-cycle-preview：同在折叠区内，embedded 模式） */}
+          {children ? (
+            <>
+              <Text style={styles.blockTitle}>症状 × 相位分布</Text>
+              {children}
+            </>
+          ) : null}
+            </>
+          ) : null}
         </>
       )}
     </View>
@@ -196,13 +234,36 @@ const styles = StyleSheet.create({
   freqLabel: { width: theme.sp(20), fontSize: theme.fontSize.micro, color: theme.colors.textBody },
   freqTrack: {
     flex: 1,
-    height: theme.sp(2),
+    height: theme.sp(2.25), // ★ 2026-10-09（.freqTrack 9px）
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.emptyFill,
     overflow: 'hidden',
   },
   freqFill: { height: '100%', borderRadius: theme.radius.pill },
   freqValue: { width: theme.sp(18), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 2026-10-09（collapse-unified-preview .mhRow）：「查看完整症状分布」折叠头
+  mhRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.sp(2.25),
+    paddingHorizontal: theme.space.sm,
+  },
+  mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
+  mhChev: {
+    width: theme.sp(2),
+    height: theme.sp(2),
+    borderRightWidth: 1.6,
+    borderBottomWidth: 1.6,
+    borderColor: theme.colors.textSub,
+    transform: [{ rotate: '45deg' }],
+    marginRight: theme.sp(0.75),
+  },
+  mhChevOpen: { transform: [{ rotate: '-135deg' }] },
   distBar: {
     flexDirection: 'row',
     height: theme.sp(3),

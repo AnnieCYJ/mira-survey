@@ -40,6 +40,8 @@ export interface SleepPersonalizedReport {
   regularity: RegularityResult;
   /** 数据来源日（用于文案「昨晚」/ 日期） */
   sourceDayKey: string | null;
+  /** 可用于恢复分的夜间生理信号比例 */
+  physiologyCoverage: number;
 }
 
 /** 从 SleepSummary 抽成基线需要的最小字段。 */
@@ -81,7 +83,7 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
     return {
       score: null, mode: 'absolute', baselineDays: 0, daysToReady: MIN_RELATIVE_DAYS,
       regularity: { score: null, midSdMin: null, wakeSdMin: null, bedSdMin: null, days: 0 },
-      sourceDayKey: null,
+      sourceDayKey: null, physiologyCoverage: 0,
     };
   }
 
@@ -126,13 +128,40 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
     toInput(tonight.s, 0),
   ]);
 
+  // 生理恢复修正：个人基线 z-score，参考公开的 HRV/RHR/呼吸率恢复模型。
+  // 缺失信号不扣分；只在至少两个信号可用时参与，避免把“没有数据”当成低恢复。
+  const metricDefs = [
+    { key: 'hrv' as const, higher: true },
+    { key: 'hr' as const, higher: false },
+    { key: 'rr' as const, higher: false },
+    { key: 'temp' as const, higher: false },
+  ];
+  const physScores: number[] = [];
+  for (const m of metricDefs) {
+    const xs = healthStore.getMetricDailyMeans(m.key, 31);
+    if (xs.length < 2) continue;
+    const today = xs[0];
+    const hist = xs.slice(1);
+    const mean = hist.reduce((a, v) => a + v, 0) / hist.length;
+    const variance = hist.reduce((a, v) => a + (v - mean) ** 2, 0) / Math.max(1, hist.length - 1);
+    const sd = Math.max(Math.sqrt(variance), m.key === 'hrv' ? 3 : m.key === 'rr' ? 0.5 : 1);
+    const z = (today - mean) / sd * (m.higher ? 1 : -1);
+    // 每 1 SD 约 16.6 分，限制单项影响，避免异常读数主导总分。
+    physScores.push(Math.max(0, Math.min(100, 50 + z * 16.6)));
+  }
+  const physiologyCoverage = physScores.length / metricDefs.length;
+  const score = physScores.length >= 2
+    ? Math.round(res.score * 0.70 + (physScores.reduce((a, v) => a + v, 0) / physScores.length) * 0.30)
+    : res.score;
+
   return {
-    score: res.score,
+    score,
     mode: res.mode,
     baselineDays: res.baselineDays,
     daysToReady: res.daysToReady,
     regularity: reg,
     sourceDayKey: tonight.dk,
+    physiologyCoverage,
   };
 }
 

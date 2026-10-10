@@ -144,31 +144,7 @@ const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { mark
   );
 });
 
-/**
- * ★ 2026-10-08 底部预留（用户：「输入框还被 Tab 压着」的根治项）
- *
- * 底部 Tab 栏是**绝对定位**的（见 CustomTabBar.styles.wrap）：
- *   wrap 高 = tabBarHeight(56) + sp(4)(16) = 72，`bottom: 0` + `marginBottom: sp(2)(8)`
- *   → 实际占据屏幕底部 **80pt**（卡片底边在 8pt、顶边在 64pt）。
- *
- * ★ 2026-10-08 三改（用户第二次反馈「还被 Tab 压着」，附真机照片）：
- *   照片定标 1.66px/pt 后实测：气泡**尾巴尖**只在屏底之上 ~84pt → 离 Tab 卡片顶边仅 ~4pt，
- *   等于贴着/被吃掉。根因不是预留数字，而是**第一屏自然内容比预留还高**：
- *   minHeight(= 视口 − 88) 根本没生效（自然内容 ≈ 视口 − 80），marginTop:'auto' 吃不到余量，
- *   气泡只能顺着内容堆叠落下去。所以只调预留数字没用 —— 必须**先把气泡变矮**（BUBBLE_H 120 → 100，
- *   见 HomeAiBubble），让自然内容缩到预留线以内，本预留才真正开始定位气泡。
- *
- * BUBBLE_RESERVE（★ 十四改 92 → 88 = 80 + sp(2)(8)，用户：「卡片往下挪一点点，
- * 让卡片下边和 Tab 的距离 = 上边和状态趋势图例的距离」）：
- * 气泡（含 9pt 小尾巴）的**框底**固定落在屏幕底部之上 88pt → 尾巴尖离 Tab 卡片顶边 ≈8pt；
- * 同时第一屏 minHeight 随之变小 → 气泡上方的 auto 空隙同步 +4pt，上下两段间距靠拢对称。
- * 三个消费点必须同源（改这里三处一起变）：
- *   ① 第一屏 pageInner 的 minHeight = dims.height − BUBBLE_RESERVE（把气泡顶到该位置）
- *   ② 气泡容器 marginTop:'auto'（内容不足时用空白吃掉余量、把气泡压在底部）
- *   ③ ScrollView contentContainer paddingBottom = BUBBLE_RESERVE
- *      （内容超高时仍可滚动，且滚到底时气泡同样停在 Tab 上方，不会滑进 Tab 里）
- */
-const BUBBLE_RESERVE = theme.layout.tabBarHeight + theme.sp(4) + theme.sp(2) + theme.sp(2); // 88（十四改：92→88，下移 4pt 使上下间距对称）
+// Bottom clearance is derived from the tab bar and live safe-area insets below.
 
 // ★ 首页白面板圆弧的羽化层（活代码引用，2026-10-08 死代码清理时误删已恢复）
 const ARC_FEATHER = Array.from({ length: 6 }, (_, i) => ({
@@ -192,6 +168,9 @@ export default function TodayScreen() {
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const dims = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // ★ 2026-10-10（CustomTabBar marginBottom 0→8 同步）：tab 胶囊抬离屏幕底 8pt，气泡预留跟着 +8，
+  //   保持「气泡恒在 Tab 上方」的间距不变（少加会把气泡和 tab 的间隙吃掉）。
+  const bottomReserve = theme.layout.tabBarHeight + Math.max(insets.bottom, theme.sp(2)) + theme.sp(2) + 8;
   const navigation = useNavigation<any>();
   const [chartW, setChartW] = useState(0);
   // ★ 2026-10-08（用户：「进首页不需要上下滑动」）：首页一屏锁定。
@@ -200,6 +179,13 @@ export default function TodayScreen() {
   const [vp_H, setVpH] = useState(0);
   const [canScroll, setCanScroll] = useState(false);
   const homeContentHRef = useRef(0);
+  const [sectionHeights, setSectionHeights] = useState({ head: 36, chips: 94, narrative: 48, trend: 158 });
+  const measureSection = (key: keyof typeof sectionHeights) => (event: import('react-native').LayoutChangeEvent) => {
+    const h = Math.ceil(event.nativeEvent.layout.height);
+    setSectionHeights(prev => prev[key] === h ? prev : { ...prev, [key]: h });
+  };
+  const viewHeight = vp_H || dims.height;
+  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 76 : 84;
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -1051,7 +1037,7 @@ export default function TodayScreen() {
           作为连续内容流展示，故去掉 snapToInterval 强制吸附，首屏高度改为自然延伸。 */}
       <ScrollView
         style={styles.pagerScroll}
-        contentContainerStyle={styles.pagerContent}
+        contentContainerStyle={[styles.pagerContent, { paddingBottom: bottomReserve }]}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         bounces={false}
@@ -1068,7 +1054,7 @@ export default function TodayScreen() {
       >
         {/* ===== 第一屏：状态区（高度自然延伸） ===== */}
         <View style={styles.pageSnap}>
-          {/* ★ 2026-10-08：minHeight = 视口高 − BUBBLE_RESERVE，配合气泡外层 marginTop:'auto'
+          {/* ★ 2026-10-08：minHeight = 实际视口高 − 安全区与导航预留，配合气泡外层 marginTop:'auto'
               → 内容不足时气泡被顶到「Tab 栏上方」的固定位置（不再是靠 paddingBottom 猜位置）。
               同时把 flex 显式钉死为「按内容定高（minHeight 兜底）」，避免 styles.pageInner 的
               flex:1（flexBasis:0）在 ScrollView 这类不定高父容器里把高度算成 0 或撑满视口
@@ -1077,8 +1063,8 @@ export default function TodayScreen() {
             style={[
               styles.pageInner,
               {
-                paddingTop: insets.top + theme.space.lg,
-                minHeight: dims.height - BUBBLE_RESERVE,
+                paddingTop: insets.top + 12,
+                minHeight: Math.max(0, (vp_H || dims.height) - bottomReserve),
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: 'auto',
@@ -1086,7 +1072,7 @@ export default function TodayScreen() {
             ]}
           >
             {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出） */}
-            <View style={styles.head}>
+            <View style={styles.head} onLayout={measureSection('head')}>
               <Text style={styles.title}>Today</Text>
               <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
@@ -1103,7 +1089,7 @@ export default function TodayScreen() {
               给下方趋势图让出 4pt，图例才落在一屏内。
             · ★ 2026-10-08 xs(8) → sp(1)(4)：再腾 4pt 给底部常驻 AI 气泡（不被 Tab 压到）。
             ───────────────────────────────────────────────────────────── */}
-        <View style={{ marginBottom: theme.sp(1) }}>
+        <View style={{ marginBottom: theme.sp(1) }} onLayout={measureSection('chips')}>
           <MindChips items={metricChips} />
         </View>
 
@@ -1119,13 +1105,13 @@ export default function TodayScreen() {
             <View style={styles.energyBallCol}>
               <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
             </View>
-            <View style={styles.statusPill}>
+            <View style={styles.statusPill} onLayout={measureSection('narrative')}>
               {/* v18.41 胶囊限 1.5 行：源头已压短（多因分析≤2条/逐句精简），此处兜底防溢出 */}
-              <Text style={styles.statusNarr} numberOfLines={2} ellipsizeMode="tail">{narrative}</Text>
+              <Text style={styles.statusNarr} numberOfLines={2}>{narrative}</Text>
             </View>
           </View>
 
-          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('StatusTrendDetail')}>
+          <TouchableOpacity onLayout={measureSection('trend')} activeOpacity={0.7} onPress={() => navigation.navigate('StatusTrendDetail')}>
             {/* 玻璃小圆改为**绝对定位浮在图上** → 趋势图因此占满整宽、左右真正居中
                 （原来右侧留出 44pt 给按钮，会把图整体压左） */}
             <View style={styles.trendWrap}>
@@ -1178,8 +1164,8 @@ export default function TodayScreen() {
         {/* ★ 2026-10-08：全天状态趋势图正下方的常驻 AI 对话气泡（样式 A：四色渐变描边 + 右下三角指向 GROK）。
             marginTop:'auto' + 第一屏 minHeight（见上）→ 气泡恒定落在「Tab 栏上方」，不被 Tab 压到、
             也不随建议态/录音态的文案长度上下跳。 */}
-        <View style={{ marginTop: 'auto' }}>
-          <HomeAiBubble navigation={navigation} status={ring?.curveStatus} />
+        <View style={{ marginTop: 'auto', marginBottom: bottomReserve, paddingTop: 0, alignItems: 'center' }}>
+          <HomeAiBubble navigation={navigation} status={ring?.curveStatus} height={bubbleHeight} width={Math.max(0, Math.min(dims.width, theme.layout.maxWidth) - theme.space.screen * 2 - 16)} />
         </View>
 
           </View>{/* /pageInner 第一屏 */}
@@ -1242,13 +1228,7 @@ export default function TodayScreen() {
                   // ★ v18.141：`sub` 写档位 + 校准提示（原来只有 `unit`）。
                   title="心理压力"
                   value={stressValue}
-                  sub={(() => {
-                    try {
-                      const b = esReport?.stressScale?.bandLabel;
-                      const n = stressNote;
-                      return n ? `${b ?? ''}·${n}` : b;
-                    } catch { return undefined; }
-                  })()}
+                  sub={undefined}
                   unit=""
                   chart={<EmotionDots slots={emotionDots48} columns={12} dotSize={theme.fs(5.5)} gap={theme.fs(2.25)} tight />}
                   compact
@@ -1314,9 +1294,9 @@ const styles = StyleSheet.create({
   //   旧写法 paddingBottom = tabBarHeight + sp(11)(44) = 100 是**无效预留**——
   //   第一屏内容比视口高、ScrollView 停在顶部时，padding 只在内容末尾加空白，
   //   根本推不动上方元素，气泡照样压在 Tab 上（截图为证）。
-  //   现在改成三处同源的 BUBBLE_RESERVE（见文件上方常量注释）：
+  //   现在使用实际安全区计算 bottomReserve：
   //   minHeight 顶位置 + marginTop:'auto' 吃余量 + paddingBottom 保证超高时滚到底也在 Tab 上方。
-  pagerContent: { paddingBottom: BUBBLE_RESERVE },
+  pagerContent: {},
   pageSnap: { width: '100%', alignItems: 'center' },
   pageInner: {
     width: '100%',

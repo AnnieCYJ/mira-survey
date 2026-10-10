@@ -3,7 +3,7 @@
  *
  * ★ v9 结构（对齐 preview/sleep-rhythm.html 原型，2026-10-05）：
  *   - 标题「睡眠节律」+ 副标题「睡眠恢复 · 整夜分期 · 睡眠节律」；
- *   - 顶部「睡眠恢复分」hero（仅日视图，置于日/周/月/年选择器**上方**，分数上方无标签）；
+ *   - 「睡眠恢复分」卡片（日=当日分 / 周·月·年=区间均值），**统一置于时间选择器下方**，四视图一致；
  *   - 日：睡眠分析卡（可折叠：总时长 → 整夜分期 → 四比例 → 时机；睡眠生理信号为
  *     **默认收起的嵌套子折叠**）+ 睡眠节律卡（皮质醇节律趋势图 + 4 格指标，
  *     「整体水平」格可点击 → 皮质醇异常说明弹层）；
@@ -32,17 +32,16 @@ import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
-import SleepHormoneCorrelation from '../components/SleepHormoneCorrelation';
 // ── v9 原型移植：睡眠节律 / 睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
 import SleepRhythmCard from '../components/SleepRhythmCard';
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
 import SleepRecoveryHero from '../components/SleepRecoveryHero';
 import SleepDualAxisChart, { type DualPoint } from '../components/SleepDualAxisChart';
+import { timeTickLabel, type TimeRange } from '../lib/chartAxis';
 import SleepMultiDimCompare, { type MetricRow } from '../components/SleepMultiDimCompare';
 import CortisolAnomalySheet, { type CortAnomKind } from '../components/CortisolAnomalySheet';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
-import { collectSamplesForDay } from '../components/CortisolRhythmCard';
-import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { judgeCortisolRhythmForDay } from '../lib/cortisolProxy';
 import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey as healthDayKey } from '../data/healthStore';
@@ -90,32 +89,31 @@ function toRecords(sleepDaily: Record<string, SleepSummary>): { key: string; dat
 /**
  * 当前区间窗口（周=自然周 / 月=自然月 / 年=整年 / 日=当天）
  *
- * ★ 2026-10-07（用户实锤：「未来的日期也画上了，这不瞎说吗」）：
- *   **未来永远没有数据**，窗口右端必须截断到「此刻」。
- *   原实现直接返回自然周/月/年的完整区间 —— 今天 10/7，周视图会把 10/8~10/11、
- *   月视图会把 10/8~10/31、年视图会把今年剩下的所有日期都当成数据点铺到横轴上，
- *   虽然柱子是空的，但横轴刻度、网格、统计分母全是未来的日子，视觉上就是「画上了」。
- *   ⚠ 只截断**当前周期**：anchor 在过去时（翻日历看历史周/月/年）窗口本来就全在过去，不受影响。
+ * ★ 2026-10-09（用户口径：横轴 = 自然的周 / 月 / 年，**所有图统一**）：
+ *   返回**完整自然周期**，不再截断到「此刻」。
+ *   - 周 = 周一~周日（7 天）、月 = 1 号~月末（28~31 天）、年 = 1 月~12 月（12 个月）。
+ *   - 未来日/月无真实数据 → 轴上留**空槽**（不画柱/点），与 Bp / StatusTrend / Energy /
+ *     Metric / EmotionRange 完全一致，横轴永远是一整段自然周期，刻度对齐不漂移。
+ *   - 「画上未来」的担忧（2026-10-07）已消解：未来槽为 null，绝不伪造数据；统计分母
+ *     由 statsOf 只取有真实记录的天（recsOnly），未来日天然不计入，不会被污染。
  */
 function windowOf(dRange: RangeKey, anchor: Date): { start: Date; end: Date } {
-  const now = new Date();
-  const clampEnd = (e: Date): Date => (e.getTime() > now.getTime() ? now : e);
-  if (dRange === 'week') return { start: startOfWeek(anchor), end: clampEnd(endOfWeek(anchor)) };
+  if (dRange === 'week') return { start: startOfWeek(anchor), end: endOfWeek(anchor) };
   if (dRange === 'month') {
     const y = anchor.getFullYear(), m = anchor.getMonth();
     const s = new Date(y, m, 1);
     const e = new Date(y, m + 1, 0); e.setHours(23, 59, 59, 999);
-    return { start: s, end: clampEnd(e) };
+    return { start: s, end: e };
   }
   if (dRange === 'year') {
     const y = anchor.getFullYear();
     const s = new Date(y, 0, 1);
     const e = new Date(y, 11, 31); e.setHours(23, 59, 59, 999);
-    return { start: s, end: clampEnd(e) };
+    return { start: s, end: e };
   }
   const a = new Date(anchor); a.setHours(0, 0, 0, 0);
   const e = new Date(a); e.setHours(23, 59, 59, 999);
-  return { start: a, end: clampEnd(e) };
+  return { start: a, end: e };
 }
 /** 上一等长周期窗口（用于「环比上一周期」对比） */
 function prevWindowOf(dRange: RangeKey, anchor: Date): { start: Date; end: Date } {  if (dRange === 'week') {
@@ -178,6 +176,8 @@ function statsOf(
   const scores = rs.map((r) => scoreOfDayMs(r.date.getTime())).filter((v): v is number => v != null);
   let abnDays = 0, anyHigh = false, anyDys = false;
   for (const r of rs) {
+    // ★ 2026-10-10：仅统计「有睡眠数据」的当天 —— 没睡的那天不计入皮质醇异常日/整体水平
+    if (r.rec.total <= 0) continue;
     const k = cortKind(r.key);
     if (k !== 'normal') abnDays += 1;
     if (k === 'high') anyHigh = true;
@@ -235,21 +235,15 @@ export default function SleepDetailScreen() {
 
   /* ══════════════ v9 原型移植 · 以下全部接真实数据 ══════════════ */
 
-  /** 单日皮质醇异常判定（模块级缓存：周/月/年切 anchor 时避免重复拟合 cosinor）
-   *  口径与 EmotionCognitiveDetailScreen.dayAbnormal 完全一致：
-   *  今天用 14 天基线（可判偏高），历史日 baselineDays=1（偏高不可信，只判节律紊乱）。 */
+  /** 单日皮质醇异常判定（★ 2026-10-10 统一到与洞察页昼夜节律详情页同一入口：
+   *   judgeCortisolRhythmForDay —— 同一份 proxy 实测槽 + 同一套阈值，两页异常天数逐位一致）。 */
   const cortKindCache = useMemo(() => new Map<string, { abn: boolean; kind: CortAnomKind }>(), []);
   const cortKindOfDay = (dk: string): { abn: boolean; kind: CortAnomKind } => {
     const isToday = dk === healthDayKey(Date.now());
     const hit = cortKindCache.get(dk);
     if (hit) return hit;
-    let out = { abn: false, kind: 'normal' as CortAnomKind };
-    const samples = collectSamplesForDay(dk);
-    if (samples.length >= 4) {
-      const r = analyzeCortisol(samples, isToday ? 14 : 1);
-      const kind: CortAnomKind = r.today.dys ? 'late' : r.today.high ? 'high' : 'normal';
-      out = { abn: r.today.dys || r.today.high, kind };
-    }
+    const r = judgeCortisolRhythmForDay(dk, isToday);
+    const out = { abn: r.abn, kind: r.kind as CortAnomKind };
     cortKindCache.set(dk, out);
     return out;
   };
@@ -269,13 +263,12 @@ export default function SleepDetailScreen() {
       //   看今年时，10 月之后的月份还没发生，不该出现在横轴上。
       const y = anchor.getFullYear();
       const nowY = new Date().getFullYear();
-      const nowM = new Date().getMonth();          // 0-based
-      const lastM = y === nowY ? nowM : (y < nowY ? 11 : -1);   // -1 ⇒ 整年都在未来（不画任何月）
-      const buckets: { entries: { date: Date; rec: DayRec }[]; label: string; key: string }[] = [];
+      const lastM = y <= nowY ? 11 : -1;   // 当前年/历史年都画满 12 个月（未来年不画）
+      const buckets: { entries: { date: Date; rec: DayRec }[]; label: string; key: string; m: number }[] = [];
       for (let m = 0; m <= lastM; m++) {
         const prefix = `${y}-${String(m + 1).padStart(2, '0')}`;
         const inM = recs.filter((r) => dayKey(r.date).startsWith(prefix));
-        buckets.push({ entries: inM.map((r) => ({ date: r.date, rec: r.rec })), label: `${m + 1}月`, key: prefix });
+        buckets.push({ entries: inM.map((r) => ({ date: r.date, rec: r.rec })), label: '', key: prefix, m });
       }
       return buckets.map((b) => {
         const durMin = meanOf(b.entries.map((e) => (e.rec.total > 0 ? e.rec.total : null)));
@@ -291,7 +284,7 @@ export default function SleepDetailScreen() {
           .filter((k) => k !== 'normal');
         return {
           key: b.key,
-          label: b.label,
+          label: timeTickLabel({ range: 'year', monthIndex: b.m }),
           durationMin: durMin,
           score: scores.length ? scores.reduce((a, c) => a + c, 0) / scores.length : null,
           cortisolAbnormal: anyAbn,
@@ -311,19 +304,39 @@ export default function SleepDetailScreen() {
       const c = cortKindOfDay(dk);
       out.push({
         key: dk,
-        label: dRange === 'week'
-          ? ['日', '一', '二', '三', '四', '五', '六'][cur.getDay()]
-          : String(cur.getDate()),
+        label: '',                       // ★ 统一由 chartAxis 规范回填（下面 forEach）
         durationMin: rec && rec.total > 0 ? rec.total : null,
         score: rec ? scoreOfDayMs(cur.getTime()) : null,
-        cortisolAbnormal: c.abn,
-        cortisolKind: c.kind,
+        // ★ 2026-10-10：当天没有睡眠数据 → 不标皮质醇异常日（睡眠恢复页只统计「有睡眠的当天」）
+        cortisolAbnormal: rec && rec.total > 0 ? c.abn : false,
+        cortisolKind: rec && rec.total > 0 ? c.kind : 'normal',
       });
       cur.setDate(cur.getDate() + 1);
     }
+    // ★ 横轴刻度统一走 chartAxis（= 全 App RANGE_DEF 口径）：周 = 一…日；月 = 1/5/10/…/30
+    out.forEach((p) => {
+      const d = new Date(`${p.key}T00:00:00`);
+      p.label = timeTickLabel({
+        range: dRange as TimeRange,
+        weekday: d.getDay(),
+        dayOfMonth: d.getDate(),
+      });
+    });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dRange, sleepDaily, anchor, cortKindCache]);
+
+  /** 卡片副标题：自然周期 + 实际日期范围（本周 10/5–10/11 / 2026年10月 / 2026年）——
+   *  对齐横轴的自然周 / 自然月 / 自然年口径，不再写「近 7 天 / 近 30 天 / 近 12 月」。 */
+  const periodSub = useMemo(() => {
+    const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    if (dRange === 'week') {
+      const wd = windowOf('week', anchor);
+      return `本周 · ${md(wd.start)}–${md(wd.end)}`;
+    }
+    if (dRange === 'month') return `${anchor.getFullYear()}年${anchor.getMonth() + 1}月`;
+    return `${anchor.getFullYear()}年`;
+  }, [dRange, anchor]);
 
   /** 日视图：睡眠分析卡 + 生理信号（全部真实归档字段） */
   const dayAnalysis = useMemo<{ day: DaySleepAnalysis | null; segs: SleepSegment[] | null; phys: DayPhys }>(() => {
@@ -406,12 +419,6 @@ export default function SleepDetailScreen() {
     [dualPoints],
   );
 
-  /** 卡头右上角：区间平均恢复分 */
-  const avgScore = useMemo(() => {
-    const v = dualPoints.map((p) => p.score).filter((x): x is number => x != null);
-    return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null;
-  }, [dualPoints]);
-
   return (
     <View style={{ flex: 1 }}>
       {/* v16：详情页全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
@@ -430,15 +437,15 @@ export default function SleepDetailScreen() {
         </View>
       </View>
 
-      {/* 日视图：睡眠恢复分主结论（SleepRecoveryHero，对齐原型 v9）。
-          周/月/年的区间均值改回图表卡头右上角（2026-10-09 用户反馈顶部读数空白，
-          回退到原先可用的卡头位置，保证一定有数值）。 */}
-      {dRange === 'day' ? <SleepRecoveryHero anchorMs={anchor.getTime()} /> : null}
-
       <RangeSwitch value={range} onChange={setRange} />
 
       {/* 日期步进器：选任意日期，日/周/月/年 以该日期为基准，按当前单位左右步进 */}
       <DateAnchorPicker value={anchor} onChange={setAnchor} range={dRange} />
+
+      {/* ★ 睡眠恢复分卡片：仅日视图显示（置于选择器下方）；周/月/年已在双轴图里以「恢复分曲线」呈现，不再重复显示总分数 */}
+      {dRange === 'day' ? (
+        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分（个人相对 · 50 = 平时）" />
+      ) : null}
 
       {dRange === 'day' ? (
         /* 日：睡眠分析（可折叠，含整夜分期 + 生理信号子折叠）+ 睡眠节律（皮质醇） */
@@ -469,13 +476,8 @@ export default function SleepDetailScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.mTitle}>睡眠与恢复</Text>
                   <Text style={styles.cardSubLine}>
-                    {dRange === 'week' ? '近 7 天' : dRange === 'month' ? '近 30 天' : '近 12 月'} · 柱 = 睡眠时长 · 线 = 恢复分
+                    {periodSub} · 柱 = 睡眠时长 · 线 = 恢复分
                   </Text>
-                </View>
-                {/* ★ 2026-10-09 回退：平均恢复分放回卡头右上角（顶部 hero 在你真机渲染空白） */}
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.dualAvgVal}>{avgScore != null ? String(Math.round(avgScore)) : '—'}</Text>
-                  <Text style={styles.cardSubLine}>平均恢复分</Text>
                 </View>
               </View>
 
@@ -515,13 +517,8 @@ export default function SleepDetailScreen() {
           />
         </View>
       ) : null}
-
-      {/* 睡眠 × 周期阶段 × 皮质醇 观察关联（仅月视图展示） */}
-      {dRange === 'month' && (
-        <View style={{ marginTop: theme.space.md }}>
-          <SleepHormoneCorrelation ring={ring} />
-        </View>
-      )}
+      {/* ★ 2026-10-09（用户：预览里没有这张卡）：移除月视图「睡眠·激素节律关联」，
+          周/月/年 = 双轴图卡 + 多维度对比卡，与 sleep-recovery-preview.html 严格一致。 */}
 
     </ScreenContainer>
     </View>
@@ -533,11 +530,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginBottom: theme.space.md },
   back: { padding: theme.sp(1), marginLeft: -theme.sp(1) },
   titleWrap: { flexDirection: 'column' },
-  title: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink },
+  // ★ 2026-10-10（用户）：详情页标题统一 h2 —— 其他详情页（脑力/情绪/指标/状态趋势）都是 h2，
+  //   只有睡眠恢复用了 h1 显得特别大。
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   chartCard: {
+    ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.sm,
@@ -548,8 +548,9 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center', lineHeight: 22 },
   // ===== 指标行式对比卡（参考 Oura/Whoop） =====
   mCard: {
+    ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.cardPad,
@@ -582,22 +583,5 @@ const styles = StyleSheet.create({
   // ===== v9 原型：双轴图卡头 / 说明行 =====
   dualHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   cardSubLine: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
-  dualAvgVal: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.accentSolid },
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
-  // ===== 周/月/年顶部「平均恢复分」hero（与日视图 SleepRecoveryHero 同款视觉） =====
-  heroAvg: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
-    paddingHorizontal: 2,
-  },
-  heroAvgScore: {
-    fontSize: theme.fontSize.hero,
-    fontWeight: theme.weight.semibold,
-    color: mm.colors.ink,
-    lineHeight: 48,
-  },
-  heroAvgLabel: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
-  heroAvgSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
 });

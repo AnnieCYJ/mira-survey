@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 睡眠恢复 日/周/月/年 UI 设计（带坐标轴 + 分行分期图 + 皮质醇曲线）</title>
+<style>
+  :root{
+    --primary:  #7C6AE0;  /* 恢复分（紫） */
+    --secondary:#BCCB62;  /* 睡眠时长（亮绿） */
+    --secondary-dark:#5C7A1E; /* 左轴刻度（深绿，保证白底可读） */
+    --anomaly:  #E2554E;  /* 异常（红，仅图例示例用） */
+    --grid:     rgba(31,29,26,0.09);
+    --axis:     #6B6760;
+    --ink:      #1F1D1A;
+    --bg:       #F5F4F1;
+    --card:     #FFFFFF;
+    --sub:      #8A857D;
+    --line:     #ECEAE5;
+    --t-fade:   160ms;
+    /* 分期图色（深睡/浅睡/REM/清醒），对齐 App token */
+    --stage-deep:  #7C6AE0;
+    --stage-light: #B9AEE8;
+    --stage-rem:   #6FB7E0;
+    --stage-awake: #E8B85C;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.5}
+
+  .switch{display:flex;background:#EDEBE7;border-radius:12px;padding:3px;position:relative;margin:0 0 16px}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;flex:1;border:0;background:transparent;font-size:14px;
+    padding:8px 0;color:var(--sub);cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  .card{background:var(--card);border-radius:18px;padding:14px 14px 12px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  .ctitle{font-size:15px;font-weight:600;margin:0}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .blockTitle{font-size:11px;color:var(--sub);margin:14px 0 6px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin:6px 2px 0}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:4px}
+
+  /* 日 hero */
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;padding:6px 4px 12px}
+  .hero .big{font-size:46px;font-weight:650;line-height:1;color:var(--ink)}
+  .hero .ctx{font-size:13px;font-weight:600;color:var(--secondary-dark)}
+  .hero .lab{font-size:11px;color:var(--sub);margin-top:4px}
+
+  .durRow2{display:flex;align-items:baseline;gap:8px;margin:2px 0 2px}
+  .durRow2 b{font-size:22px;font-weight:650;color:var(--ink)}
+  .durRow2 span{font-size:11.5px;color:var(--sub)}
+
+  /* 分期图：分行带（hypnogram） */
+  .hypnoWrap{margin-top:4px}
+  svg{display:block;width:100%;height:auto}
+
+  /* 比例条 */
+  .propBar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);margin-top:4px}
+  .propKeys{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--sub)}
+  .propKeys i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+  /* 统一折叠入口（对齐 App moreHead：左标签 + 右 chevron，浅底描边行） */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:#FAFAF8;border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .moreBody{margin-top:8px;animation:fade var(--t-fade) ease}
+
+  .rows{border-top:1px solid var(--line);margin-top:6px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--ink)}
+  .row .v{font-weight:600}
+  .row .v small{font-weight:400;color:var(--sub);margin-left:4px}
+
+  .tag{font-size:10.5px;padding:1px 6px;border-radius:6px;font-weight:600}
+  .tag.g{background:rgba(46,158,91,.12);color:#2E9E5B}
+
+  /* 节律状态块（规律 / 偏平 / 欠规律 / 暂无法评估） */
+  .rhythmStatus{display:flex;align-items:center;gap:9px;margin-top:10px;padding:9px 10px;border-radius:11px;background:rgba(46,158,91,.09);border:1px solid rgba(46,158,91,.2)}
+  .rhythmStatus.warn{background:rgba(214,158,46,.1);border-color:rgba(214,158,46,.28)}
+  .rhythmStatus.flat{background:#F2F1ED;border-color:var(--line)}
+  .rDot{width:9px;height:9px;border-radius:50%;background:#2E9E5B;flex-shrink:0}
+  .rhythmStatus.warn .rDot{background:#D69E2E}
+  .rhythmStatus.flat .rDot{background:var(--sub)}
+  .rText{flex:1}
+  .rTitle{font-size:13px;font-weight:600;color:#2E9E5B}
+  .rhythmStatus.warn .rTitle{color:#B9831F}
+  .rhythmStatus.flat .rTitle{color:var(--ink)}
+  .rNote{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.4}
+
+  /* 周/月/年 卡头 */
+  .chead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+  .avg{text-align:right}
+  .avg b{font-size:24px;font-weight:650;color:var(--primary);line-height:1}
+  .avg span{display:block;font-size:10.5px;color:var(--sub);margin-top:2px}
+
+  .cmp{margin-top:4px}
+  .cmp th,.cmp td{font-size:12px;text-align:right;padding:8px 4px;border-bottom:1px solid var(--line)}
+  .cmp th{color:var(--sub);font-weight:500}
+  .cmp td:first-child,.cmp th:first-child{text-align:left;color:var(--ink)}
+  .cmp .delta{font-weight:600}
+  .up{color:#2E9E5B}.flat{color:var(--sub)}
+
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .foot b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">睡眠恢复 · 日 / 周 / 月 / 年</h1>
+  <p class="sub">点下方切换。日视图含<b>整夜分期图（分行带）+ 皮质醇节律曲线</b>；周/月/年含双轴图。所有图都带纵横坐标，且下方明细都可折叠。本稿为设计预览，定稿后整体搬进 App 代码。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <!-- ════════ 日 ════════ -->
+  <div class="panel on" id="p-day">
+    <div class="card">
+      <div class="hero">
+        <div>
+          <div class="big">72</div>
+          <div class="lab">睡眠恢复分（个人相对 · 50 = 平时）</div>
+        </div>
+        <div class="ctx">比平时好 ↑</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="ctitle">睡眠分析 <small>昨夜</small></p>
+      <div class="durRow2"><b>7h12m</b><span>总睡眠 · 效率 88% · 起夜 1 次</span></div>
+
+      <p class="blockTitle">整夜分期</p>
+      <div class="hypnoWrap">
+        <svg id="svg-hypno" viewBox="0 0 380 120"></svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--stage-deep)"></i>深睡</span>
+        <span><i style="background:var(--stage-light)"></i>浅睡</span>
+        <span><i style="background:var(--stage-rem)"></i>REM</span>
+        <span><i style="background:var(--stage-awake)"></i>清醒</span>
+      </div>
+
+      <div class="mhRow" onclick="toggleMH(this)" data-sec="dayMoreBody"><span class="mhLabel">详细数据</span><span class="mhChev"></span></div>
+      <div class="moreBody" id="dayMoreBody" style="display:none">
+        <p class="blockTitle">睡眠结构</p>
+        <div class="propBar">
+          <span style="flex:23;background:var(--stage-deep)"></span>
+          <span style="flex:54;background:var(--stage-light)"></span>
+          <span style="flex:23;background:var(--stage-rem)"></span>
+        </div>
+        <div class="propKeys">
+          <span><i style="background:var(--stage-deep)"></i>深睡 23%</span>
+          <span><i style="background:var(--stage-light)"></i>浅睡 54%</span>
+          <span><i style="background:var(--stage-rem)"></i>REM 23%</span>
+        </div>
+        <div class="rows">
+          <div class="row"><span class="k">睡眠效率</span><span class="v">88%</span></div>
+          <div class="row"><span class="k">入睡时刻</span><span class="v">23:18</span></div>
+          <div class="row"><span class="k">起床时刻</span><span class="v">06:40</span></div>
+          <div class="row"><span class="k">夜间清醒</span><span class="v">1 次</span></div>
+          <div class="row"><span class="k">睡眠静息心率</span><span class="v">52 <small>bpm</small></span></div>
+          <div class="row"><span class="k">夜间 HRV</span><span class="v">68 <small>ms</small></span></div>
+          <div class="row"><span class="k">体温偏离</span><span class="v">+0.2 <small>℃</small></span></div>
+          <div class="row"><span class="k">呼吸率</span><span class="v">14.2 <small>/min</small></span></div>
+          <div class="row"><span class="k">夜间血氧</span><span class="v">96 <small>%</small></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="ctitle">睡眠节律 <small>皮质醇</small></p>
+      <p class="blockTitle">皮质醇节律趋势图</p>
+      <svg id="svg-cort" viewBox="0 0 380 150"></svg>
+      <div class="legend"><span><i style="background:var(--secondary)"></i>皮质醇（亮绿）</span></div>
+      <p class="axisnote">横轴：一天 24h · 纵轴：皮质醇相对水平（夜低晨高）</p>
+
+      <div class="rhythmStatus">
+        <span class="rDot"></span>
+        <div class="rText">
+          <div class="rTitle">皮质醇节律规律</div>
+          <div class="rNote">昼夜起伏明显 · 峰值约 07:42 · 与作息吻合</div>
+        </div>
+      </div>
+
+      <div class="mhRow" onclick="toggleMH(this)" data-sec="rhythmMoreBody"><span class="mhLabel">详细数据</span><span class="mhChev"></span></div>
+      <div class="moreBody" id="rhythmMoreBody" style="display:none">
+        <div class="rows">
+          <div class="row"><span class="k">整体水平</span><span class="v"><span class="tag g">正常</span></span></div>
+          <div class="row"><span class="k">全天峰值时刻</span><span class="v">07:42</span></div>
+          <div class="row"><span class="k">昼夜起伏幅度</span><span class="v">正常</span></div>
+          <div class="row"><span class="k">节律模式</span><span class="v">规律 86%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ 周 / 月 / 年 ════════ -->
+  <div class="panel" id="p-week">
+    <div class="card">
+      <div class="chead"><div><p class="ctitle">睡眠与恢复 <small>近 7 天</small></p></div><div class="avg"><b>68</b><span>平均恢复分</span></div></div>
+      <svg id="svg-week" viewBox="0 0 380 250"></svg>
+      <div class="legend"><span><i style="background:var(--secondary)"></i>睡眠时长（左轴 h）</span><span><i style="background:var(--primary)"></i>恢复分（右轴）</span></div>
+      <p class="axisnote">左轴：睡眠时长（小时） · 右轴：恢复分（0–100） · 横轴：周一→周日</p>
+    </div>
+    <div class="card">
+      <p class="ctitle">多维度对比 <small>本周 vs 上周</small></p>
+      <table class="cmp" style="width:100%;border-collapse:collapse"><thead><tr><th>指标</th><th>本周</th><th>上周</th><th>变化</th></tr></thead><tbody id="cmp-week"></tbody></table>
+    </div>
+  </div>
+  <div class="panel" id="p-month">
+    <div class="card">
+      <div class="chead"><div><p class="ctitle">睡眠与恢复 <small>近 30 天</small></p></div><div class="avg"><b>71</b><span>平均恢复分</span></div></div>
+      <svg id="svg-month" viewBox="0 0 380 250"></svg>
+      <div class="legend"><span><i style="background:var(--secondary)"></i>睡眠时长（左轴 h）</span><span><i style="background:var(--primary)"></i>恢复分（右轴）</span></div>
+      <p class="axisnote">左轴：睡眠时长（小时） · 右轴：恢复分（0–100） · 横轴：当月日期</p>
+    </div>
+    <div class="card">
+      <p class="ctitle">多维度对比 <small>本月 vs 上月</small></p>
+      <table class="cmp" style="width:100%;border-collapse:collapse"><thead><tr><th>指标</th><th>本月</th><th>上月</th><th>变化</th></tr></thead><tbody id="cmp-month"></tbody></table>
+    </div>
+  </div>
+  <div class="panel" id="p-year">
+    <div class="card">
+      <div class="chead"><div><p class="ctitle">睡眠与恢复 <small>近 12 月</small></p></div><div class="avg"><b>66</b><span>平均恢复分</span></div></div>
+      <svg id="svg-year" viewBox="0 0 380 250"></svg>
+      <div class="legend"><span><i style="background:var(--secondary)"></i>睡眠时长（左轴 h）</span><span><i style="background:var(--primary)"></i>恢复分（右轴）</span></div>
+      <p class="axisnote">左轴：睡眠时长（小时） · 右轴：恢复分（0–100） · 横轴：1月→12月</p>
+    </div>
+    <div class="card">
+      <p class="ctitle">多维度对比 <small>本年 vs 去年</small></p>
+      <table class="cmp" style="width:100%;border-collapse:collapse"><thead><tr><th>指标</th><th>本年</th><th>去年</th><th>变化</th></tr></thead><tbody id="cmp-year"></tbody></table>
+    </div>
+  </div>
+
+  <p class="foot"><b>设计要点：</b>① 日视图含<b>整夜分期图</b>（分行带：清醒/REM/浅睡/深睡，每种一色）+ <b>皮质醇节律曲线</b>（亮绿，夜低晨高）；② 分期图与曲线<b>常驻显示</b>，其下明细收进「详细数据 ▾」默认收起、可展开；③ 周/月/年统一双轴图（绿柱=时长·紫线=恢复分）带纵横坐标，<b>皮质醇不标异常</b>；④ 左轴刻度加深加大并带 h 单位，保证可读；⑤ 全 App 锁同一套 Chart Token。</p>
+</div>
+
+<script>
+const C = {primary:'#7C6AE0',secondary:'#BCCB62',secondaryDark:'#5C7A1E',anomaly:'#E2554E',grid:'rgba(31,29,26,0.09)',axis:'#6B6760',card:'#FFFFFF'};
+const STAGE = {deep:'#7C6AE0',light:'#B9AEE8',rem:'#6FB7E0',awake:'#E8B85C'};
+function smooth(pts){
+  if(pts.length<3) return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+// ── 日视图：整夜分期（分行带 hypnogram）──
+// 行（顶→底）：0 清醒 / 1 REM / 2 浅睡 / 3 深睡
+function drawHypno(svg){
+  const W=380,H=120,L=10,R=10,T=6,B=20;
+  const pw=W-L-R, ch=H-T-B, rows=4, rowH=ch/rows, barH=rowH*0.74;
+  // 段：f0 入睡时刻 23:18(=1398min)，总时长 442min → 结束 06:40
+  const startMin=1398, totalMin=442;
+  const segs=[
+    {f:0.00,t:0.06,k:'light'},{f:0.06,t:0.12,k:'deep'},{f:0.12,t:0.20,k:'light'},
+    {f:0.20,t:0.27,k:'rem'},{f:0.27,t:0.40,k:'deep'},{f:0.40,t:0.62,k:'light'},
+    {f:0.62,t:0.70,k:'rem'},{f:0.70,t:0.74,k:'awake'},{f:0.74,t:0.85,k:'light'},
+    {f:0.85,t:0.92,k:'rem'},{f:0.92,t:1.00,k:'light'}
+  ];
+  const xAt=f=> L + f*pw;
+  const rowY=k=> T + k*rowH;                 // k=行号(顶0)
+  const colorOf=k=> k==='deep'?STAGE.deep : k==='light'?STAGE.light : k==='rem'?STAGE.rem : STAGE.awake;
+  const rowOf=k=> k==='awake'?0 : k==='rem'?1 : k==='light'?2 : 3;
+  let s='';
+  segs.forEach(seg=>{
+    const x=xAt(seg.f), w=Math.max(2,(seg.t-seg.f)*pw)-1;
+    const y=rowY(rowOf(seg.k)) + (rowH-barH)/2;
+    s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${barH.toFixed(1)}" rx="2.5" fill="${colorOf(seg.k)}"/>`;
+  });
+  // 左行标签（阶段名）
+  const names=[['清醒','awake'],['REM','rem'],['浅睡','light'],['深睡','deep']];
+  names.forEach((nm,ri)=>{
+    const y=rowY(ri)+rowH/2+3.5;
+    s+=`<text x="${L-2}" y="${y.toFixed(1)}" font-size="9" fill="${C.axis}" text-anchor="end">${nm[0]}</text>`;
+  });
+  // 横轴时刻：23:18 起点；整点 00:00 02:00 04:00 06:40
+  const ticks=[
+    {f:0,lab:'23:18'},{f:(1440-startMin)/totalMin,lab:'00:00'},
+    {f:(1560-startMin)/totalMin,lab:'02:00'},{f:(1680-startMin)/totalMin,lab:'04:00'},
+    {f:1,lab:'06:40'}
+  ];
+  ticks.forEach(t=>{ s+=`<text x="${xAt(t.f).toFixed(1)}" y="${H-7}" font-size="9" fill="${C.axis}" text-anchor="${t.f===0?'start':t.f===1?'end':'middle'}">${t.lab}</text>`; });
+  svg.innerHTML=s;
+}
+
+// 皮质醇曲线（亮绿）：夜低晨高 —— 不标异常
+function drawCortisol(svg){
+  const W=380,H=150,L=10,R=10,T=14,B=22;
+  const pw=W-L-R, ph=H-T-B, baseY=T+ph;
+  const vals=[28,22,18,16,18,26,46,82,92,84,70,56,49,45,43,41,40,42,46,50,48,44,40,34];
+  const n=vals.length;
+  const xAt=i=> L + pw*i/(n-1);
+  const yAt=v=> baseY - (v/100)*ph;
+  const pts=vals.map((v,i)=>({x:xAt(i),y:yAt(v)}));
+  let s='';
+  s+=`<path d="${smooth(pts)} L ${xAt(n-1)} ${baseY} L ${xAt(0)} ${baseY} Z" fill="${C.secondary}" opacity="0.12"/>`;
+  s+=`<path d="${smooth(pts)}" fill="none" stroke="${C.secondary}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  [0,6,12,18,23].forEach(h=>{ s+=`<text x="${xAt(h).toFixed(1)}" y="${baseY+14}" font-size="9" fill="${C.axis}" text-anchor="middle">${String(h).padStart(2,'0')}:00</text>`; });
+  svg.innerHTML=s;
+}
+
+// ── 双轴图（带纵横坐标，皮质醇不标异常）──
+function drawDual(svg, opt){
+  const W=380,H=250,L=46,R=40,T=16,B=34;
+  const pw=W-L-R, ph=H-T-B, baseY=T+ph;
+  const cnt=opt.labels.length;
+  const xAt=i=> L + (cnt===1?pw/2:pw*i/(cnt-1));
+  const yDur=v=> baseY - (v/8)*ph;
+  const ySc=v=> baseY - (v/100)*ph;
+  let s='';
+  for(let g=0;g<=4;g++){const y=T+ph*g/4; s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="${C.grid}" stroke-width="1" stroke-dasharray="3 4"/>`;}
+  // 左轴：睡眠时长（小时）—— 深绿 + 大字号 + h 单位
+  [0,2,4,6,8].forEach(h=>{const y=yDur(h);
+    s+=`<text x="${L-7}" y="${y+3.8}" font-size="10.5" fill="${C.secondaryDark}" text-anchor="end">${h}h</text>`;
+    s+=`<line x1="${L-3}" y1="${y}" x2="${L}" y2="${y}" stroke="${C.secondaryDark}" stroke-width="1"/>`;});
+  // 右轴：恢复分（0–100）
+  [0,20,40,60,80,100].forEach(v=>{const y=ySc(v); s+=`<text x="${W-R+7}" y="${y+3.8}" font-size="10.5" fill="${C.primary}" text-anchor="start">${v}</text>`;});
+  s+=`<text x="${L-7}" y="${T-5}" font-size="10" fill="${C.axis}" text-anchor="end">睡眠h</text>`;
+  s+=`<text x="${W-R+7}" y="${T-5}" font-size="10" fill="${C.axis}" text-anchor="start">恢复分</text>`;
+  const bw=Math.max(3, pw/cnt*0.5);
+  opt.dur.forEach((v,i)=>{ if(v==null) return; const x=xAt(i)-bw/2, y=yDur(v), h=baseY-y; s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,h).toFixed(1)}" rx="2.5" fill="${C.secondary}" opacity="0.92"/>`;});
+  const rp=opt.score.map((v,i)=>({x:xAt(i),y:ySc(v),v}));
+  const valid=rp.filter(p=>p.v!=null);
+  if(valid.length){
+    let area=`${smooth(valid)} L ${valid[valid.length-1].x} ${baseY} L ${valid[0].x} ${baseY} Z`;
+    s+=`<path d="${area}" fill="${C.primary}" opacity="0.10"/>`;
+    s+=`<path d="${smooth(valid)}" fill="none" stroke="${C.primary}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    valid.forEach(p=>{ s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${C.primary}" stroke="${C.card}" stroke-width="1.5"/>`; });
+  }
+  opt.labels.forEach((lab,i)=>{ s+=`<text x="${xAt(i).toFixed(1)}" y="${baseY+14}" font-size="9" fill="${C.axis}" text-anchor="middle">${lab}</text>`;});
+  svg.innerHTML=s;
+}
+function genRange(r){
+  if(r==='week'){const lab=['一','二','三','四','五','六','日'];
+    return {labels:lab,dur:lab.map((_,i)=>[7.0,6.4,7.3,5.9,6.8,8.1,7.6][i]),score:lab.map((_,i)=>[64,58,70,52,66,74,72][i])};}
+  if(r==='month'){const labels=[];for(let d=1;d<=30;d++)labels.push(d%5===0||d===30?d:(d===1?'1':''));
+    const dv=[6.8,7.1,6.5,7.4,6.2,7.0,7.6,6.4,7.2,6.9,7.5,6.1,7.0,6.7,7.3,6.8,7.1,6.5,7.4,6.9,7.0,6.6,7.2,6.8,7.5,6.3,7.1,6.9,7.4,7.0];
+    const sv=[62,68,55,72,58,66,74,60,70,64,73,57,68,63,71,62,69,58,73,65,67,60,72,63,75,56,68,64,71,66];
+    const dur=[],score=[];for(let d=1;d<=30;d++){dur.push(dv[d-1]);score.push(sv[d-1]);}
+    return {labels,dur,score};}
+  const lab=['1','2','3','4','5','6','7','8','9','10','11','12'].map(m=>m+'月');
+  return {labels:lab,dur:lab.map((_,i)=>[7.0,6.8,7.2,7.1,7.4,7.0,7.3,6.9,7.1,7.2,6.8,7.0][i]),score:lab.map((_,i)=>[60,63,66,64,70,68,71,67,69,72,70,66][i])};
+}
+function fillCmp(id,rows){document.getElementById(id).innerHTML=rows.map(r=>{
+  const dCls=r.dir==='up'?'up':'flat';
+  const dTxt=r.dir==='up'?'↑':'—';
+  return `<tr><td>${r.k}</td><td>${r.cur}</td><td>${r.prev}</td><td class="delta ${dCls}">${dTxt}${r.delta??''}</td></tr>`;}).join('');}
+function render(r){
+  if(r==='day') return;
+  const data=genRange(r);
+  drawDual(document.getElementById('svg-'+r),data);
+  fillCmp('cmp-'+r,[
+    {k:'睡眠恢复分',cur:String(data.score[0]),prev:String(data.score[0]-4),dir:'up',delta:'4'},
+    {k:'平均睡眠时长',cur:'7.1h',prev:'6.8h',dir:'up',delta:'0.3h'},
+    {k:'深睡占比',cur:'23%',prev:'21%',dir:'up',delta:'2%'},
+  ]);
+}
+
+// 统一折叠
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+
+const chips=[...document.querySelectorAll('.chip')];
+const pill=document.getElementById('pill');
+function movePill(el){pill.style.width=el.offsetWidth+'px';pill.style.transform=`translateX(${el.offsetLeft-3}px)`;}
+function setRange(r){
+  chips.forEach(c=>c.classList.toggle('on',c.dataset.r===r));
+  movePill(chips.find(c=>c.dataset.r===r));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+r).classList.add('on');
+  render(r);
+}
+chips.forEach(c=>c.addEventListener('click',()=>setRange(c.dataset.r)));
+window.addEventListener('load',()=>{movePill(chips[0]);drawHypno(document.getElementById('svg-hypno'));drawCortisol(document.getElementById('svg-cort'));render('week');render('month');render('year');});
+movePill(chips[0]);drawHypno(document.getElementById('svg-hypno'));drawCortisol(document.getElementById('svg-cort'));
+</script>
+</body>
+</html>

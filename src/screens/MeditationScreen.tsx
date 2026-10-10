@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Image, Animated, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect, CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -239,7 +239,7 @@ export default function MeditationScreen() {
                 headline={h.headline}
                 cta={h.cta}
                 saved
-                onUndo={(id) => { undoHabit(id).then(refreshHabits); }}
+                onUndo={(id) => { undoHabit(id).then(refreshHabits).catch(() => Alert.alert('未能移除建议', '建议仍然保留，请稍后重试。')); }}
                 onOpen={
                   h.cta
                     ? () => {

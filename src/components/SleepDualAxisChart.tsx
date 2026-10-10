@@ -1,34 +1,40 @@
 /**
  * SleepDualAxisChart —— 周 / 月 / 年「睡眠与恢复」双纵轴图
  *
- * 对齐 preview/sleep-rhythm.html v9 原型：
- *   柱 = 睡眠时长（左纵轴「睡眠 h」）／ 折线 = 睡眠恢复分（右纵轴「恢复」0–100）
- *   · 去掉柱顶数值标签，改由左纵轴刻度读取；
- *   · 两条参考虚线：时长个人均值（左轴 · limeDeep）、恢复分个人基线（右轴 · ink）；
- *   · 恢复分线为平滑曲线（Catmull-Rom → bezier，与 StressTrendChart 同款）；
- *   · 皮质醇异常天在**当天恢复分数据点**上叠「红底白!」标记（#E2554E，复刻
- *     StatusTrendDetailScreen 标法），且**可点击** → 回调 onAnomalyPress 弹出该日皮质醇异常说明。
+ * ★ 2026-10-09：1:1 对齐设计稿 docs/sleep-recovery-preview.html（用户：预览什么样 App 就什么样）：
+ *   - 轴标题「睡眠h / 恢复分」独立在刻度上方，不与刻度重叠；
+ *   - 无参考虚线（预览没有）；
+ *   - 恢复分面积 = 淡紫平涂 opacity 0.10（非重渐变）；
+ *   - 柱 = 亮绿（左轴 h）、线 = 紫（右轴 0–100），平滑曲线 Catmull-Rom；
+ *   - 皮质醇异常以**红点**标记（用户 2026-10-09 要求在周/月/年显示；点按红点开说明弹层）。
  *
- * 数据全部来自真实归档（sleepDaily）与真实算法（computeSleepScore / analyzeCortisol），
- * 缺口留空不插值、不编造。
+ * ★ 2026-10-09 二次修正（用户反馈「点被挤了 + 横坐标不对」）：
+ *   1) 几何：viewBox 宽度与实测容器宽 **1:1**（不再固定 680 配 preserveAspectRatio="none"）。
+ *      旧写法把 680 宽横向压缩到 ~330px，圆点被拉成扁椭圆、柱宽也失真。
+ *   2) 横轴标签：按实测文字宽居中（旧版 translateX:-50 是 **50dp 像素**，把每个标签整体左移
+ *      50px → 与柱子错位；而 RN 0.74 的 transform 又不接受 "-50%" 百分比——传字符串会直接抛
+ *      Render Error；固定宽盒又会互相压，故改为 onLayout 实测宽度反推 left）。
+ *   3) 刻度密度走 chartAxis 统一规范（周=全标一…日 / 月=1号+每5天+末日 / 年=每3个月+末月）。
+ *
+ * 数据全部来自真实归档（sleepDaily）与真实算法，缺口留空不插值、不编造。
  */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
-import Svg, { Rect, Line, Circle, Path, Defs, LinearGradient, Stop, G } from 'react-native-svg';
+import Svg, { Rect, Circle, Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
-import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
 
-const W = 680;                 // viewBox 宽（与现有 SleepDetailScreen 一致）
-const H = 340;                 // 绘图区高
-const PAD_L = 6;
-const PAD_R = 6;
-const PAD_T = 26;              // 顶部留白（给 icon）
-const PAD_B = 8;
-const Y_GUT_L = 34;            // 左侧 Y 轴刻度列宽（HTML Text）
-const Y_GUT_R = 30;            // 右侧 Y 轴刻度列宽
-
-/** 恢复分异常 icon 的颜色（与 App 内 StatusTrendDetailScreen / 周期状态趋势同源） */
-const CORT_COLOR = '#E2554E';
+const FALLBACK_W = 680;        // 未测到宽度前的兜底 viewBox 宽
+// ★ 2026-10-10（chart-size-unified-spec）：L 档（详情主图 / 双轴），总高 240（原 380）
+const H = chart.h.l;           // 总高（含轴标题带 + X 轴标签带）
+// 左右留白 ≥ 半个最大柱宽（barW 上限 34），首个/末个柱子不被裁切
+const PAD_L = 20;
+const PAD_R = 20;
+// ★ 2026-10-10（规则 2：装饰带预算 ≤ 50pt，原 44+40=84 严重超标）
+const PAD_T = 32;              // 顶部：轴标题带（独立于刻度，不重叠）
+const PAD_B = 28;              // 底部：X 轴标签带
+const Y_GUT_L = 44;            // 左侧 Y 轴刻度列宽（RN Text）
+const Y_GUT_R = 40;            // 右侧 Y 轴刻度列宽
 
 export interface DualPoint {
   /** 日键 YYYY-MM-DD */
@@ -39,9 +45,9 @@ export interface DualPoint {
   durationMin: number | null;
   /** 睡眠恢复分 0–100；null = 缺口 */
   score: number | null;
-  /** 该天皮质醇是否异常（真实判定）；用于叠 icon */
+  /** 该天皮质醇是否异常（真实判定）；周/月/年图上以红点标记 */
   cortisolAbnormal: boolean;
-  /** 异常类型，供弹层区分「偏高 / 偏平 / 后移」 */
+  /** 异常类型，供外部弹层使用 */
   cortisolKind: 'high' | 'flat' | 'late' | 'normal';
 }
 
@@ -49,40 +55,40 @@ interface Props {
   points: DualPoint[];
   /** 左轴上限（小时）；不传按数据自动取整到 2h 步进 */
   durMaxHours?: number;
+  /** 皮质醇异常红点点击 → 打开说明弹层 */
   onAnomalyPress?: (p: DualPoint) => void;
 }
 
 export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress }: Props) {
   const [w, setW] = useState(0);
+  // X 轴标签实测宽度（用于精确居中，避免固定盒互相压 / transform 不收百分比）
+  const [labelW, setLabelW] = useState<Record<number, number>>({});
+  // ★ 视图宽 = 实测容器宽（1:1，杜绝横向压扁）；未测到前用兜底宽占位。
+  const W = w > 0 ? w : FALLBACK_W;
   const n = Math.max(points.length, 1);
   const cw = W - PAD_L - PAD_R;
   const ch = H - PAD_T - PAD_B;
 
   // ── 纵轴量程 ──
   const durVals = points.map((p) => (p.durationMin != null ? p.durationMin / 60 : null)).filter((v): v is number => v != null);
-  const scoreVals = points.map((p) => p.score).filter((v): v is number => v != null);
   const durMax = durMaxHours ?? Math.max(4, Math.ceil((Math.max(...(durVals.length ? durVals : [0]), 1) * 1.15) / 2) * 2);
-  const durAvg = durVals.length ? durVals.reduce((a, b) => a + b, 0) / durVals.length : null;
-  const scoreBase = scoreVals.length ? scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length : null;
 
   const yDur = (h: number) => PAD_T + ch * (1 - Math.max(0, Math.min(1, h / durMax)));
   const yScore = (v: number) => PAD_T + ch * (1 - Math.max(0, Math.min(1, v / 100)));
   const xAt = (i: number) => (n <= 1 ? PAD_L + cw / 2 : PAD_L + (i / (n - 1)) * cw);
   const slot = cw / n;
-  const barW = Math.max(2.5, Math.min(24, slot * 0.5));
+  const barW = Math.max(3, Math.min(34, slot * 0.5));
 
-  // 左轴刻度：每 2h
+  // 左轴刻度：每 2h（0h/2h/…/8h，深绿 + h 单位，同预览）
   const lTicks: number[] = [];
   for (let h = 0; h <= durMax + 0.001; h += 2) lTicks.push(h);
   // 右轴刻度：0/20/40/60/80/100
   const rTicks = [0, 20, 40, 60, 80, 100];
 
-  // X 轴标签：≤12 全画，>12 取 7 个等距
-  const labelIdx = n <= 12 ? points.map((_, i) => i) : Array.from({ length: 7 }, (_, i) => Math.floor((i * (n - 1)) / 6));
+  // X 轴标签：由数据点自带（父级按 chartAxis 规范填好，'' = 该点不标）
+  const labelPoints = points.map((p, i) => ({ i, text: p.label })).filter((s) => !!s.text);
 
-  // 曲线 + 面积：按「连续有分数」的区段切分，断点自然断开（缺口不插值）。
-  // ★ 2026-10-08（用户口径）：恢复分线改平滑曲线 —— Catmull-Rom spline → SVG cubic bezier
-  //   （与 StressTrendChart 同款算法），不再是硬折线。
+  // 平滑曲线（Catmull-Rom → bezier），缺口断开不插值
   const smoothOf = (idx: number[]): string => {
     if (idx.length < 2) return idx.length === 1 ? `M ${xAt(idx[0]).toFixed(1)} ${yScore(points[idx[0]].score!).toFixed(1)}` : '';
     const pts = idx.map((i) => ({ x: xAt(i), y: yScore(points[i].score!) }));
@@ -112,169 +118,147 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
     flush();
   }
 
-  const anomIdx = points.map((p, i) => (p.cortisolAbnormal ? i : -1)).filter((i) => i >= 0);
-
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
   return (
     <View>
       <View style={styles.row}>
-        {/* ── 左轴：睡眠时长（小时） ── */}
+        {/* ── 左轴：睡眠时长（小时）—— 标题独立在上方，刻度深绿 + h 单位 ── */}
         <View style={{ width: Y_GUT_L, height: H }}>
+          <Text style={[styles.axisTitle, { top: 8, right: 6 }]}>睡眠h</Text>
           {lTicks.map((h) => {
             const y = yDur(h);
             return (
-              <Text key={`l${h}`} style={[styles.yText, { top: Math.max(0, y - 7), right: 4, color: mm.colors.limeDeep }]}>
-                {h}
+              <Text key={`l${h}`} style={[styles.yText, { top: Math.max(0, y - 7), right: 6, color: chart.axis.left }]}>
+                {h}h
               </Text>
             );
           })}
-          <Text style={[styles.axisTitle, { top: 4, right: 4 }]}>睡眠h</Text>
         </View>
 
         {/* ── 绘图区 ── */}
         <View style={{ flex: 1 }} onLayout={onLayout}>
-          <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-            <Defs>
-              <LinearGradient id="dualArea" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={mm.colors.purpleCore} stopOpacity={0.16} />
-                <Stop offset="100%" stopColor={mm.colors.purpleCore} stopOpacity={0} />
-              </LinearGradient>
-            </Defs>
-
-            {/* 水平网格 */}
+          <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`}>
+            {/* 水平网格（虚线，同预览 3 4） */}
             {lTicks.map((h) => (
-              <Line key={`g${h}`} x1={PAD_L} y1={yDur(h)} x2={W - PAD_R} y2={yDur(h)}
-                stroke={theme.colors.ui.borderSoft} strokeWidth={1} strokeDasharray="3 4" />
+              <Path key={`g${h}`}
+                d={`M ${PAD_L} ${yDur(h)} H ${W - PAD_R}`}
+                stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
             ))}
 
-            {/* 参考虚线：时长个人均值（左轴） */}
-            {durAvg != null && durAvg > 0 && (
-              <Line x1={PAD_L} y1={yDur(durAvg)} x2={W - PAD_R} y2={yDur(durAvg)}
-                stroke={mm.colors.limeDeep} strokeWidth={1.3} strokeDasharray="5 4" opacity={0.55} />
-            )}
-            {/* 参考虚线：恢复分个人基线（右轴） */}
-            {scoreBase != null && (
-              <Line x1={PAD_L} y1={yScore(scoreBase)} x2={W - PAD_R} y2={yScore(scoreBase)}
-                stroke={mm.colors.ink} strokeWidth={1.3} strokeDasharray="5 4" opacity={0.32} />
-            )}
-
-            {/* 恢复分面积（先画，置于柱之下，避免染绿柱） */}
+            {/* 恢复分面积：淡紫平涂 0.10（预览定稿，非重渐变） */}
             {runs.map((r, i) => (
-              <Path key={`ar${i}`} d={r.area} fill="url(#dualArea)" />
+              <Path key={`ar${i}`} d={r.area} fill={chart.series.primary} opacity={0.1} />
             ))}
 
-            {/* 柱：睡眠时长（左轴） */}
+            {/* 柱：睡眠时长（左轴 · 亮绿） */}
             {points.map((p, i) => {
               if (p.durationMin == null || !(p.durationMin > 0)) return null;
               const y = yDur(p.durationMin / 60);
               return (
                 <Rect key={`b${i}`} x={xAt(i) - barW / 2} y={y} width={barW}
-                  height={Math.max(2, PAD_T + ch - y)} rx={3} fill={mm.colors.limeMid} />
+                  height={Math.max(2, PAD_T + ch - y)} rx={chart.barRadius} fill={chart.series.secondary} />
               );
             })}
 
-            {/* 折线：恢复分（右轴） */}
+            {/* 折线：恢复分（右轴 · 紫，平滑） */}
             {runs.map((r, i) => (
-              <Path key={`l${i}`} d={r.line} fill="none" stroke={mm.colors.purpleCore}
-                strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+              <Path key={`l${i}`} d={r.line} fill="none" stroke={chart.series.primary}
+                strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
             ))}
             {points.map((p, i) => p.score == null ? null : (
-              <Circle key={`d${i}`} cx={xAt(i)} cy={yScore(p.score)} r={2.6}
-                fill={mm.colors.purpleCore} stroke={theme.colors.cardBg} strokeWidth={1.2} />
+              <Circle key={`d${i}`} cx={xAt(i)} cy={yScore(p.score)} r={chart.dot.radius}
+                fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
             ))}
 
-            {/* 皮质醇异常标记（可点击）。
-                ★ 2026-10-08（用户反馈「红点挤成一条」）：不再把所有「!」钉在顶部同一行 ——
-                月视图 30 天里相邻异常天的图标 + 虚线会糊成一条红带。
-                改为标记**落在当天的恢复分数据点上**，随曲线散开；
-                ★ 2026-10-09（用户反馈「不要长条、要圆」）：去掉白垫底圈，改成「红底 + 白描边」的干净圆点，
-                无白圈光晕、不被看成带把的长条。 */}
-            {anomIdx.map((i) => {
-              const p = points[i];
-              const hasScore = p.score != null;
-              const cx = xAt(i);
-              const cy = hasScore ? yScore(p.score!) : PAD_T + 10;
+            {/* 皮质醇异常：红色圆点标记（周/月/年，用户要求显示在恢复分趋势线上；点按开说明弹层）。
+                落在恢复分曲线该点位置，圆点覆盖紫点，白圈衬底更醒目；无恢复分时回退到柱顶。 */}
+            {points.map((p, i) => {
+              if (!p.cortisolAbnormal) return null;
+              const yDot = p.score != null
+                ? yScore(p.score)
+                : ((p.durationMin != null && p.durationMin > 0) ? yDur(p.durationMin / 60) : PAD_T + ch * 0.25);
               return (
-                <G key={`a${i}`} onPress={onAnomalyPress ? () => onAnomalyPress(p) : undefined}>
-                  {/* 透明大热区，方便手指点中 */}
-                  <Circle cx={cx} cy={cy} r={13} fill="transparent" />
-                  {/* 干净圆形标记：红底 + 白描边（无白垫底圈） */}
-                  <Circle cx={cx} cy={cy} r={5} fill={CORT_COLOR} stroke={theme.colors.cardBg} strokeWidth={1.5} />
-                  {hasScore ? <SvgTextX x={cx} y={cy} /> : null}
-                </G>
+                <Circle key={`ca${i}`} cx={xAt(i)} cy={yDot} r={chart.dot.anomaly}
+                  fill={theme.colors.danger} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke}
+                  onPress={() => onAnomalyPress?.(p)} />
               );
             })}
+
           </Svg>
+          {/* X 轴标签：RN Text；按数据点 xAt 居中。宽度由 onLayout 实测（RN 0.74 的 transform
+              不接受 "-50%" 百分比、固定宽盒又会互相压），因此用真实宽度反推 left 并夹在容器内。 */}
+          <View style={[styles.xAxisWrap, { width: w }]}>
+            {w > 0 && labelPoints.map(({ i, text }) => {
+              const tw = labelW[i] ?? 0;
+              const cx = xAt(i);
+              let left = tw > 0 ? cx - tw / 2 : cx;
+              if (left < 0) left = 0;
+              if (tw > 0 && left + tw > w) left = Math.max(0, w - tw);
+              return (
+                <Text
+                  key={`x${i}`}
+                  onLayout={(e) => {
+                    const lw = e.nativeEvent.layout.width;
+                    setLabelW((m) => (m[i] === lw ? m : { ...m, [i]: lw }));
+                  }}
+                  style={[styles.xLabel, { left, opacity: tw > 0 ? 1 : 0 }]}
+                >
+                  {text}
+                </Text>
+              );
+            })}
+          </View>
         </View>
 
-        {/* ── 右轴：睡眠恢复分 ── */}
+        {/* ── 右轴：睡眠恢复分 0–100 —— 标题独立在上方 ── */}
         <View style={{ width: Y_GUT_R, height: H }}>
+          <Text style={[styles.axisTitle, { top: 8, left: 5 }]}>恢复分</Text>
           {rTicks.map((v) => {
             const y = yScore(v);
             return (
-              <Text key={`r${v}`} style={[styles.yText, { top: Math.max(0, y - 7), left: 3, color: mm.colors.purpleDeep }]}>
+              <Text key={`r${v}`} style={[styles.yText, { top: Math.max(0, y - 7), left: 5, color: chart.axis.right }]}>
                 {v}
               </Text>
             );
           })}
-          <Text style={[styles.axisTitle, { top: 4, left: 3 }]}>恢复</Text>
         </View>
       </View>
 
-      {/* X 轴标签 */}
-      <View style={[styles.xRow, { marginLeft: Y_GUT_L, marginRight: Y_GUT_R }]}>
-        {labelIdx.map((i) => (
-          <Text key={`x${i}`} style={styles.xText}>{points[i]?.label ?? ''}</Text>
-        ))}
-      </View>
-
-      {/* 图例 */}
+      {/* 图例（同预览两项） */}
       <View style={styles.legendRow}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendBar, { backgroundColor: mm.colors.limeMid }]} />
+          <View style={[styles.legendBar, { backgroundColor: chart.series.secondary }]} />
           <Text style={styles.legendText}>睡眠时长（左轴 h）</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendBar, { backgroundColor: mm.colors.purpleCore, height: 2.5 }]} />
+          <View style={[styles.legendBar, { backgroundColor: chart.series.primary, height: 2.5 }]} />
           <Text style={styles.legendText}>恢复分（右轴）</Text>
         </View>
-        {anomIdx.length > 0 && (
-          <PressableLegend />
-        )}
+        <View style={styles.legendItem}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.danger }} />
+          <Text style={styles.legendText}>皮质醇异常日</Text>
+        </View>
       </View>
-    </View>
-  );
-}
-
-/** 「!」字形：极简感叹号（一竖一点），按 r=5 的红点尺寸调的比例 */
-function SvgTextX({ x, y }: { x: number; y: number }) {
-  return (
-    <G>
-      <Line x1={x} y1={y - 2.9} x2={x} y2={y + 0.3} stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" />
-      <Circle cx={x} cy={y + 2.7} r={0.9} fill="#FFFFFF" />
-    </G>
-  );
-}
-
-function PressableLegend() {
-  return (
-    <View style={styles.legendItem}>
-      <View style={styles.anomDot} />
-      <Text style={styles.legendText}>皮质醇异常</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  yText: { position: 'absolute', fontSize: theme.fontSize.micro, textAlign: 'right' },
-  axisTitle: { position: 'absolute', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  xRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.space.xs },
-  xText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center' },
+  yText: { position: 'absolute', fontSize: 13, textAlign: 'right' },
+  axisTitle: { position: 'absolute', fontSize: 12, color: theme.colors.textSub },
+  // X 轴标签容器：与绘图区等宽，标签按数据点 xAt 比例绝对定位、水平居中
+  xAxisWrap: { height: 18, position: 'relative', marginTop: 2 },
+  xLabel: {
+    position: 'absolute',
+    top: 0,
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
   legendRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: theme.space.md, marginTop: theme.space.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
   legendBar: { width: 18, height: 8, borderRadius: 2 },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  anomDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: CORT_COLOR },
 });

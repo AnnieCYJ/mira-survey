@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 心理压力 / 情绪记录 · 日/周/月/年 UI（与睡眠恢复同风格）</title>
+<style>
+  :root{
+    /* 心理压力 = App 真实主色：紫（accentSolid），三档带红/琥珀/绿（与 StressTrendChart 同源） */
+    --stress:   #7C6AE0;  /* 主曲线（紫） */
+    --bad:      #C9598A;  /* 高压力（rose coral / danger） */
+    --mid:      #B98A2E;  /* 中压力（琥珀） */
+    --good:     #6E7A24;  /* 低压力（深绿，好） */
+    /* 心情点阵图配色（mm.colors.mood*） */
+    --m-calm:   #BCCB62;
+    --m-energy: #F0C46E;
+    --m-focus:  #9D8AF0;
+    --m-stress: #F2A3C6;
+    --m-tired:  #7EA6F8;
+    --m-sleep:  #EAE7E2;
+    --m-none:   #BDB7AE;
+    /* 情绪分布堆叠柱 5 档（EmotionRangeBars） */
+    --e-ca: #7EA6F8;  /* 平静=蓝 */
+    --e-pl: #BCCB62;  /* 愉悦=黄绿 */
+    --e-ex: #F0C46E;  /* 兴奋=黄 */
+    --e-st: #9D8AF0;  /* 压力=紫 */
+    --e-an: #C9598A;  /* 焦虑=珊瑚红 */
+
+    --grid:     rgba(31,29,26,0.09);
+    --axis:     #6B6760;
+    --ink:      #1F1D1A;
+    --bg:       #F5F4F1;
+    --card:     #FFFFFF;
+    --sub:      #8A857D;
+    --line:     #ECEAE5;
+    --accent:   #7C6AE0;
+    --accentSoft: #EFEDFB;
+    --t-fade:   160ms;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;}
+  .wrap{max-width:420px;margin:0 auto;padding:20px 14px 60px;}
+  .h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;line-height:1.5}
+
+  /* ── 日/周/月/年 切换 ── */
+  .switch{display:flex;background:#EDEBE7;border-radius:12px;padding:3px;position:relative;margin:0 0 10px}
+  .pill{position:absolute;top:3px;bottom:3px;background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform var(--t-fade) cubic-bezier(.2,.8,.2,1),width var(--t-fade) cubic-bezier(.2,.8,.2,1)}
+  .chip{position:relative;z-index:1;flex:1;border:0;background:transparent;font-size:14px;
+    padding:8px 0;color:var(--sub);cursor:pointer;font-weight:550;transition:color var(--t-fade)}
+  .chip.on{color:var(--ink)}
+
+  /* ── 时间选择器（DateAnchorPicker 同款）── */
+  .picker{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .parrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--ink);cursor:pointer}
+  .pcenter{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--accent);background:var(--accentSoft);border-radius:999px;padding:9px 0;
+    font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+  .pcenter .cal{width:14px;height:14px;position:relative;display:inline-block}
+  .pcenter .cal:before{content:"";position:absolute;inset:0;border:1.6px solid var(--accent);border-radius:3px}
+  .pcenter .cal:after{content:"";position:absolute;left:3px;top:2px;width:1.6px;height:4px;background:var(--accent);border-radius:1px}
+
+  /* ── Tab（心理压力 / 情绪记录）── */
+  .tabs{display:flex;gap:8px;margin:0 0 14px}
+  .tab{flex:1;text-align:center;padding:10px 0;border-radius:12px;font-size:14px;font-weight:600;
+    border:1px solid var(--line);background:#fff;color:var(--sub);cursor:pointer;transition:all var(--t-fade)}
+  .tab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+
+  .card{background:var(--card);border-radius:18px;padding:14px 14px 12px;margin-bottom:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--line)}
+  .ctitle{font-size:15px;font-weight:600;margin:0}
+  .ctitle small{font-size:11px;color:var(--sub);font-weight:400;margin-left:6px}
+  .blockTitle{font-size:11px;color:var(--sub);margin:14px 0 6px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin:8px 2px 0}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .axisnote{font-size:10.5px;color:var(--sub);text-align:center;margin-top:4px}
+
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;padding:6px 4px 12px}
+  .hero .big{font-size:46px;font-weight:650;line-height:1}
+  .hero .ctx{font-size:13px;font-weight:600}
+  .hero .lab{font-size:11px;color:var(--sub);margin-top:4px}
+
+  .duo{display:flex;gap:10px}
+  .duo .cell{flex:1;border-radius:11px;padding:10px 11px}
+  .duo .lab{font-size:11px;color:var(--sub);margin-bottom:3px}
+  .duo .t{font-size:17px;font-weight:650;line-height:1.1}
+  .duo .s{font-size:11px;color:var(--sub);margin-top:3px}
+
+  svg{display:block;width:100%;height:auto}
+
+  /* 统一折叠入口（对齐 App moreHead） */
+  .mhRow{display:flex;align-items:center;justify-content:space-between;
+    margin-top:10px;background:#FAFAF8;border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;cursor:pointer;transition:background var(--t-fade)}
+  .mhRow:active{background:#F2F1ED}
+  .mhLabel{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .mhChev{width:8px;height:8px;border-right:1.6px solid var(--sub);border-bottom:1.6px solid var(--sub);
+    transform:rotate(45deg);transition:transform var(--t-fade);margin-right:3px}
+  .mhRow.open .mhChev{transform:rotate(-135deg)}
+  .moreBody{margin-top:4px}
+  .rows{border-top:1px solid var(--line);margin-top:6px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--ink)}
+  .row .v{font-weight:600}
+  .row .v small{font-weight:400;color:var(--sub);margin-left:4px}
+
+  .chead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+  .avg{text-align:right}
+  .avg b{font-size:24px;font-weight:650;line-height:1}
+  .avg span{display:block;font-size:10.5px;color:var(--sub);margin-top:2px}
+
+  .cmpCard{display:flex;align-items:flex-end;gap:8px;margin-top:4px}
+  .cmpCard .big{font-size:30px;font-weight:650;line-height:1}
+  .cmpCard .unit{font-size:11px;color:var(--sub);padding-bottom:5px}
+  .cmpCard .delta{margin-left:auto;font-size:13px;font-weight:650}
+  .cmpNote{font-size:11px;color:var(--sub);line-height:1.55;margin-top:8px}
+
+  /* 心情点阵图（EmotionDots 4×24） */
+  .dots{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:10px}
+  .dots .d{aspect-ratio:1;border-radius:50%}
+  .dotsCap{font-size:10.5px;color:var(--sub);margin-top:8px;line-height:1.5}
+
+  /* 今日情绪记录卡（EmotionLogCard 同款） */
+  .emoHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .emoHead .t{font-size:15px;font-weight:600}
+  .emoPlus{width:22px;height:22px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .blobs{display:flex;gap:8px;margin-bottom:10px}
+  .blob{width:30px;height:30px;border-radius:50%}
+  .emoRow{display:flex;align-items:center;gap:10px}
+  .emoRow .blob2{width:42px;height:42px;border-radius:50%}
+  .emoLabel{font-size:15px;font-weight:600}
+  .emoTime{font-size:11px;color:var(--sub)}
+  .emoNote{font-size:12px;color:var(--sub);margin-top:2px}
+
+  /* 情绪统计小格（MiniTile） */
+  .statRow{display:flex;gap:8px;margin-bottom:8px}
+  .tile{flex:1;border:1px solid var(--line);border-radius:11px;padding:9px 10px;background:#fff}
+  .tile .tl{font-size:10.5px;color:var(--sub);margin-bottom:3px}
+  .tile .tv{font-size:15px;font-weight:650;line-height:1.1}
+  .tile .ts{font-size:10px;color:var(--sub);margin-top:3px}
+
+  .foot{font-size:11px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .foot b{color:var(--ink)}
+
+  /* 日历弹窗 */
+  .calMask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:50}
+  .calMask.on{display:block}
+  .calSheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:14px 16px 24px}
+  .calSheetHead{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .calSheetHead .tt{font-size:14px;font-weight:600}
+  .calSheetHead .sm{font-size:13px;color:var(--sub)}
+  .calSheetHead .td{font-size:13px;font-weight:600;color:var(--accent)}
+  .calNav{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}
+  .calNav .ca{padding:6px 10px;font-size:16px;color:var(--ink);cursor:pointer}
+  .calNav .ct{font-size:14px;font-weight:600}
+  .calWeek{display:flex}
+  .calWeek div{flex:1;text-align:center;font-size:10px;color:var(--sub);padding:4px 0}
+  .calGrid{display:flex;flex-wrap:wrap}
+  .calGrid .c{width:14.285%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink);cursor:pointer}
+  .calGrid .c.dim{color:var(--sub)}
+  .calGrid .c.on{background:var(--accent);color:#fff;border-radius:8px;font-weight:600}
+  .calGrid .c.dis{color:rgba(138,138,168,.4);cursor:not-allowed}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade var(--t-fade) ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="h1">心理压力</h1>
+  <p class="sub">与「睡眠恢复」「脑力准备度」同一套设计语言。下方两个 Tab：<b>心理压力</b>（全天/区间趋势）与 <b>情绪记录</b>（心情点阵图 + 情绪分布统计）。所有图带纵横坐标。</p>
+
+  <div class="switch" id="switch">
+    <span class="pill" id="pill"></span>
+    <button class="chip on" data-r="day">日</button>
+    <button class="chip" data-r="week">周</button>
+    <button class="chip" data-r="month">月</button>
+    <button class="chip" data-r="year">年</button>
+  </div>
+
+  <!-- 时间选择器 -->
+  <div class="picker">
+    <div class="parrow" id="prev">‹</div>
+    <div class="pcenter" id="pcenter"><span class="cal"></span><span id="plabel">—</span></div>
+    <div class="parrow" id="next">›</div>
+  </div>
+
+  <!-- Tab -->
+  <div class="tabs" id="tabs">
+    <div class="tab on" data-t="stress">心理压力</div>
+    <div class="tab" data-t="emotion">情绪记录</div>
+  </div>
+
+  <div id="content"></div>
+
+  <p class="foot"><b>设计要点（与睡眠恢复同源）：</b>① 顶部「日/周/月/年」+ 时间选择器（◀ 📅 ▶ 步进，点中间弹日历）；② 两个 Tab 共享同一区间选择；<b>心理压力</b>：主色紫（App 真实色 accentSolid），三档带红/琥珀/绿，日=全天趋势折线，周月年=区间趋势+对比；<b>情绪记录</b>：日=心情点阵图（4×24，EmotionDots 同款）+ 今日自报，周月年=情绪分布堆叠柱（EmotionRangeBars 同款）+ 情绪洞察统计。③ 情绪为自报，Mira 不做情绪推断/评分。</p>
+</div>
+
+<!-- 日历弹窗 -->
+<div class="calMask" id="calMask">
+  <div class="calSheet">
+    <div class="calSheetHead">
+      <span class="sm" id="calCancel">取消</span>
+      <span class="tt">选择日期</span>
+      <span class="td" id="calToday">今天</span>
+    </div>
+    <div class="calNav">
+      <div class="ca" id="calPrev">‹</div>
+      <div class="ct" id="calTitle">2026年9月</div>
+      <div class="ca" id="calNext">›</div>
+    </div>
+    <div class="calWeek"><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div></div>
+    <div class="calGrid" id="calGrid"></div>
+  </div>
+</div>
+
+<script>
+/* ════ 颜色 ════ */
+const ST={main:'#7C6AE0',bad:'#C9598A',mid:'#B98A2E',good:'#6E7A24',grid:'rgba(31,29,26,0.09)',axis:'#6B6760',card:'#FFFFFF'};
+const MOOD={calm:'#BCCB62',energy:'#F0C46E',focus:'#9D8AF0',stress:'#F2A3C6',tired:'#7EA6F8',sleep:'#EAE7E2',none:'#BDB7AE'};
+const EMO={ca:'#7EA6F8',pl:'#BCCB62',ex:'#F0C46E',st:'#9D8AF0',an:'#C9598A'};
+const EMO_ORDER=[['ca','平静'],['pl','愉悦'],['ex','兴奋'],['st','压力'],['an','焦虑']];
+
+/* ════ 状态 ════ */
+const TODAY=new Date(2026,9,9); TODAY.setHours(0,0,0,0);
+let MIN=new Date(2025,0,1);
+let anchor=new Date(2026,8,3); anchor.setHours(0,0,0,0);
+let range='day';
+let tab='stress';
+
+/* ════ 日期工具 ════ */
+function fmtDate(d){return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x;}
+function endOfWeek(d){const s=startOfWeek(d);const e=new Date(s);e.setDate(e.getDate()+6);return e;}
+function fmtLabel(d,r){
+  if(r==='day')return fmtDate(d);
+  if(r==='week')return `${fmtDate(startOfWeek(d))} – ${fmtDate(endOfWeek(d))}`;
+  if(r==='month')return `${d.getFullYear()}年${d.getMonth()+1}月`;
+  return `${d.getFullYear()}年`;
+}
+function stepA(d,r,dir){const x=new Date(d);
+  if(r==='day')x.setDate(x.getDate()+dir);
+  else if(r==='week')x.setDate(x.getDate()+dir*7);
+  else if(r==='month')x.setMonth(x.getMonth()+dir);
+  else x.setFullYear(x.getFullYear()+dir);
+  if(x>TODAY)x.setTime(TODAY.getTime()); if(x<MIN)x.setTime(MIN.getTime()); return x;}
+function clampD(d){if(d>TODAY)return new Date(TODAY);if(d<MIN)return new Date(MIN);return d;}
+
+/* ════ 平滑曲线 ════ */
+function smooth(pts){
+  if(pts.length<3)return 'M '+pts.map(p=>p.x+' '+p.y).join(' L ');
+  let d='M '+pts[0].x+' '+pts[0].y;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/* ════ 心理压力·日 趋势 ════ */
+function drawStress(svg){
+  const W=380,H=170,L=30,R=30,T=12,B=22,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const vals=[30,29,28,28,29,30,31,40,46,52,55,58,60,62,64,66,60,55,52,50,48,45,42,38,34,32,30];
+  const N=vals.length,xAt=s=>L+pw*s/(N-1),yAt=v=>baseY-(v/100)*ph;
+  let s='';
+  [[100,70,ST.bad],[70,40,ST.mid],[40,0,ST.good]].forEach(b=>{const yT=yAt(b[0]),yB=yAt(b[1]);
+    s+=`<rect x="${L}" y="${yT.toFixed(1)}" width="${pw}" height="${(yB-yT).toFixed(1)}" fill="${b[2]}" opacity="0.07"/>`;});
+  s+=`<line x1="${L}" y1="${baseY}" x2="${W-R}" y2="${baseY}" stroke="${ST.grid}" stroke-width="1.2"/>`;
+  [40,70].forEach(v=>{s+=`<line x1="${L}" y1="${yAt(v).toFixed(1)}" x2="${W-R}" y2="${yAt(v).toFixed(1)}" stroke="${ST.axis}30" stroke-width="1" stroke-dasharray="3 3"/>`;});
+  s+=`<text x="${L-4}" y="${(yAt(100)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="${ST.axis}">100</text>`;
+  s+=`<text x="${L-4}" y="${(yAt(0)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="${ST.axis}">0</text>`;
+  // 睡眠时段：不展示压力曲线，仅显示「睡眠中」
+  [[0,7],[25,26]].forEach(([a,b])=>{const x0=xAt(a),x1=xAt(b),cx=(x0+x1)/2;
+    s+=`<rect x="${x0.toFixed(1)}" y="${T}" width="${(x1-x0).toFixed(1)}" height="${ph}" fill="${ST.card}" opacity="0.62"/>`;
+    s+=`<text x="${cx.toFixed(1)}" y="${(T+ph/2).toFixed(1)}" text-anchor="middle" font-size="12" fill="${ST.axis}" font-weight="600">睡眠中</text>`;});
+  const awake=vals.map((v,i)=>({x:xAt(i),y:yAt(v)})).filter((_,i)=>i>7&&i<25);
+  s+=`<path d="${smooth(awake)} L ${awake[awake.length-1].x.toFixed(1)} ${baseY} L ${awake[0].x.toFixed(1)} ${baseY} Z" fill="${ST.main}" opacity="0.10"/>`;
+  s+=`<path d="${smooth(awake)}" fill="none" stroke="${ST.main}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  [{l:'高压力',v:85,c:ST.bad},{l:'中压力',v:55,c:ST.mid},{l:'低压力',v:20,c:ST.good}].forEach(b=>{
+    s+=`<text x="${W-R+4}" y="${(yAt(b.v)+3).toFixed(1)}" text-anchor="start" font-size="9" fill="${b.c}" font-weight="600">${b.l}</text>`;});
+  [0,3,6,9,12,15,18,21,24].forEach(h=>{const x=h===24?W-R:xAt(h*2);const al=h===0?'start':h>=24?'end':'middle';
+    s+=`<text x="${x.toFixed(1)}" y="${baseY+14}" text-anchor="${al}" font-size="9" fill="${ST.axis}">${String(h).padStart(2,'0')}</text>`;});
+  svg.innerHTML=s;
+}
+
+/* ════ 心理压力·周/月/年 趋势 ════ */
+function drawStr(svg,opt){
+  const W=380,H=250,L=30,R=12,T=16,B=30,pw=W-L-R,ph=H-T-B,baseY=T+ph;
+  const n=opt.values.length,cxOf=i=>L+(n===1?pw/2:pw*i/(n-1)),yOf=v=>baseY-(v/100)*ph;
+  const mean=Math.round(opt.values.reduce((a,b)=>a+b,0)/n);
+  let s='';
+  [[100,70,ST.bad],[70,40,ST.mid],[40,0,ST.good]].forEach(b=>{const yT=yOf(b[0]),yB=yOf(b[1]);
+    s+=`<rect x="${L}" y="${yT.toFixed(1)}" width="${pw}" height="${(yB-yT).toFixed(1)}" fill="${b[2]}" opacity="0.07"/>`;});
+  [0,25,50,75,100].forEach(v=>{const y=yOf(v);
+    s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${ST.grid}" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="${ST.axis}">${v}</text>`;});
+  s+=`<text x="${L-4}" y="${T-5}" text-anchor="end" font-size="10" fill="${ST.axis}">压力</text>`;
+  s+=`<line x1="${L}" y1="${yOf(mean).toFixed(1)}" x2="${W-R}" y2="${yOf(mean).toFixed(1)}" stroke="${ST.bad}" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>`;
+  const pts=opt.values.map((v,i)=>({x:cxOf(i),y:yOf(v),v}));const valid=pts.filter(p=>p.v!=null);
+  if(valid.length){s+=`<path d="${smooth(valid)}" fill="none" stroke="${ST.main}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    valid.forEach(p=>{s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${ST.main}" stroke="${ST.card}" stroke-width="1.5"/>`;});}
+  opt.labels.forEach((lab,i)=>{if(!lab)return;s+=`<text x="${cxOf(i).toFixed(1)}" y="${baseY+14}" text-anchor="middle" font-size="9" fill="${ST.axis}">${lab}</text>`;});
+  svg.innerHTML=s;
+}
+function genStr(r){
+  if(r==='week')return {labels:['一','二','三','四','五','六','日'],values:[38,42,45,40,52,48,44]};
+  if(r==='month'){const labels=[];for(let d=1;d<=30;d++)labels.push(d%5===0||d===30?d:(d===1?'1':''));
+    return {labels,values:[40,43,46,50,44,42,48,55,52,47,45,50,58,53,49,46,44,51,60,54,48,45,50,47,52,44,46,49,53,48]};}
+  return {labels:['1','2','3','4','5','6','7','8','9','10','11','12'].map(m=>m+'月'),values:[46,44,50,48,45,42,40,43,41,45,44,43]};
+}
+
+/* ════ 心情点阵图（4×24，EmotionDots 同款）════ */
+function genDots(){
+  // 96 槽：夜=睡眠/无数据，白天按心情起伏
+  const seq=[];
+  for(let i=0;i<14;i++)seq.push('sleep');        // 0:00-7:00
+  seq.push('none');                               // 7:00
+  for(let i=0;i<6;i++)seq.push('calm');           // 7:30-10:00
+  seq.push('energy','energy','calm');             // 10:30-12:00
+  seq.push('focus','focus','calm');               // 12:30-14:00
+  seq.push('stress','stress','calm');             // 14:30-16:00 小高峰
+  seq.push('tired','calm');                       // 16:30-17:30
+  seq.push('energy','calm','calm');               // 18:00-19:30
+  seq.push('stress');                             // 20:00
+  seq.push('calm','calm','calm','none');          // 20:30-22:30
+  while(seq.length<96)seq.push('sleep');
+  return seq.slice(0,96);
+}
+function dotsHTML(){
+  const seq=genDots();
+  const cells=seq.map(k=>`<div class="d" style="background:${MOOD[k]||MOOD.none}"></div>`).join('');
+  return `<div class="dots">${cells}</div>`+
+    `<p class="dotsCap">每行 24 颗 = 一天（每颗 15 分钟），共 4 行。颜色即该时段心情：平静/愉悦/兴奋/压力/焦虑/疲惫/睡眠。情绪为自报，Mira 不做情绪推断。</p>`;
+}
+
+/* ════ 今日情绪记录（EmotionLogCard 同款）════ */
+function todayEmoHTML(){
+  const blobs=EMO_ORDER.map(([k,t])=>`<div class="blob" style="background:${MOOD[t==='压力'?'stress':t==='焦虑'?'stress':t==='平静'?'calm':t==='愉悦'?'energy':t==='兴奋'?'energy':'tired']}" title="${t}"></div>`).join('');
+  return `<div class="card">
+    <div class="emoHead"><span class="t">今日情绪记录</span><span class="emoPlus" style="background:rgba(124,106,224,.13);color:#7C6AE0">+</span></div>
+    <div class="blobs">${blobs}</div>
+    <div class="emoRow">
+      <div class="blob2" style="background:#F0C46E"></div>
+      <div style="flex:1"><div style="display:flex;align-items:center;gap:6px"><span class="emoLabel">平静</span><span class="emoTime">14:30 记录</span></div>
+      <div class="emoNote">开了个不错的会，状态稳住了</div></div>
+      <div style="font-size:20px;color:var(--sub)">›</div>
+    </div>
+  </div>`;
+}
+
+/* ════ 情绪分布堆叠柱（EmotionRangeBars 同款）════ */
+function genEmotion(r){
+  if(r==='week')return {labels:['一','二','三','四','五','六','日'],bars:[
+    {ca:3,pl:2,ex:0,st:1,an:0},{ca:2,pl:3,ex:1,st:1,an:0},{ca:4,pl:1,ex:0,st:0,an:1},{ca:2,pl:2,ex:1,st:2,an:0},
+    {ca:1,pl:2,ex:1,st:3,an:1},{ca:3,pl:3,ex:0,st:1,an:0},{ca:4,pl:2,ex:1,st:0,an:0}]};
+  if(r==='month'){const labels=[];for(let d=1;d<=30;d++)labels.push(d%5===0||d===30?d:(d===1?'1':''));
+    const bars=[];for(let i=0;i<30;i++){const w=Math.sin(i/3)*0.5+0.5;
+      bars.push({ca:Math.round(2+w*2),pl:Math.round(1+w*2),ex:i%7===0?1:0,st:Math.round(w*3),an:i>20?1:0});}
+    return {labels,bars};}
+  const labels=[];for(let m=1;m<=12;m++)labels.push(m+'月');
+  const bars=[];for(let i=0;i<12;i++){const w=Math.sin(i/2)*0.5+0.5;
+    bars.push({ca:Math.round(18+w*8),pl:Math.round(10+w*6),ex:Math.round(w*3),st:Math.round(w*10),an:Math.round(w*3)});}
+  return {labels,bars};
+}
+function drawEmotionBars(svg,opt){
+  const W=380,H=230,L=26,R=6,T=40,pw=W-L-R,ph=180,baseY=T+ph,BAND_H=12;
+  const n=opt.bars.length,slot=pw/n,barW=Math.max(4,Math.min(range==='week'?34:range==='year'?20:14,slot*0.66)),gap=Math.max(1.5,slot-barW);
+  const maxTot=Math.max(1,...opt.bars.map(b=>b.ca+b.pl+b.ex+b.st+b.an));
+  const yMax=Math.max(1,Math.ceil(maxTot*1.3/5)*5);
+  const yOf=v=>baseY-(v/yMax)*ph;
+  let s='';
+  [0,0.5,1].forEach(f=>{const y=T+ph-f*ph;const val=f===0?0:f===0.5?yMax/2:yMax;const vt=Number.isInteger(val)?val:val.toFixed(0);
+    s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${ST.grid}" stroke-width="0.75" stroke-dasharray="3 4"/>`;
+    s+=`<text x="${L-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="9.5" fill="${ST.axis}">${vt}</text>`;});
+  s+=`<text x="${L-4}" y="${T-6}" text-anchor="end" font-size="9" fill="${ST.axis}">事件</text>`;
+  opt.bars.forEach((b,i)=>{
+    const x=L+i*(barW+gap);const tot=b.ca+b.pl+b.ex+b.st+b.an;let cur=baseY;
+    EMO_ORDER.forEach(([k])=>{const c=b[k];if(c<=0)return;const h=(c/yMax)*ph;cur-=h;
+      const isTop=EMO_ORDER.findIndex(([k2])=>k2===k)===EMO_ORDER.length-1 || (EMO_ORDER.slice(EMO_ORDER.findIndex(([k2])=>k2===k)+1).every(([k2])=>b[k2]<=0));
+      s+=`<rect x="${x.toFixed(1)}" y="${cur.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${EMO[k]}" rx="${isTop?2.5:0}"/>`;});
+    // 周期色带
+    const inPeriod=(i%4===0);const pre=(i%4===1);
+    s+=`<rect x="${x.toFixed(1)}" y="${(baseY+8).toFixed(1)}" width="${barW.toFixed(1)}" height="${BAND_H}" fill="${inPeriod?'#F2C0D6':pre?'#EC9CC2':(i%4===2?'#D9E8C8':'#E7E1F5')}" rx="2.5"/>`;
+  });
+  opt.labels.forEach((lab,i)=>{if(!lab)return;const x=L+i*(barW+gap)+barW/2;
+    s+=`<text x="${x.toFixed(1)}" y="${(baseY+8+BAND_H+12).toFixed(1)}" text-anchor="middle" font-size="9" fill="${ST.axis}">${lab}</text>`;});
+  svg.innerHTML=s;
+}
+
+/* ════ 内容渲染 ════ */
+function render(){
+  // 头部
+  document.getElementById('pill').style.width=document.querySelector('.chip.on').offsetWidth+'px';
+  document.getElementById('pill').style.transform=`translateX(${document.querySelector('.chip.on').offsetLeft-3}px)`;
+  document.getElementById('plabel').textContent=fmtLabel(anchor,range);
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.t===tab));
+  const c=document.getElementById('content');
+
+  if(tab==='stress'){
+    if(range==='day'){
+      c.innerHTML=`
+      <div class="card">
+        <div class="hero"><div><div class="big" style="color:${ST.mid}">42</div><div class="lab">/100 · 心理压力日均</div></div>
+          <div class="ctx" style="color:${ST.mid}">压力中等</div></div>
+        <p class="axisnote" style="text-align:left;margin-top:-4px">50 = 和你平时一样</p>
+      </div>
+      <div class="card">
+        <p class="ctitle">心理压力 · 全天趋势</p>
+        <svg viewBox="0 0 380 170" id="svg-stress"></svg>
+        <div class="legend"><span><i style="background:${ST.bad}"></i>高压力</span><span><i style="background:${ST.mid}"></i>中压力</span><span><i style="background:${ST.good}"></i>低压力</span></div>
+        <p class="axisnote">纵轴 = 心理压力 0–100（越高越紧张，50 = 个人基线）· 横轴 = 一天 24h · 夜间为睡眠，不展示压力数据</p>
+        <div class="mhRow" onclick="toggleMH(this)" data-sec="dayMoreBody"><span class="mhLabel">详细数据</span><span class="mhChev"></span></div>
+        <div class="moreBody" id="dayMoreBody" style="display:none"><div class="rows">
+          <div class="row"><span class="k">压力事件次数</span><span class="v">4 <small>次</small></span></div>
+          <div class="row"><span class="k">峰值时段</span><span class="v">15:00</span></div>
+          <div class="row"><span class="k">平均恢复速度</span><span class="v">98 <small>秒</small></span></div>
+        </div></div>
+      </div>
+      <div class="card">
+        <p class="ctitle">压力时段</p>
+        <div class="duo">
+          <div class="cell" style="background:rgba(201,89,138,.1)"><div class="lab">压力最高</div><div class="t" style="color:${ST.bad}">15:00</div><div class="s">66 · 看下发生了什么</div></div>
+          <div class="cell" style="background:rgba(110,122,36,.1)"><div class="lab">压力最低</div><div class="t" style="color:${ST.good}">03:00</div><div class="s">27 · 睡得稳</div></div>
+        </div>
+        <p class="axisnote" style="margin-top:8px;text-align:left">今日共 4 次压力事件，整体处于中等压力区间。</p>
+      </div>`;
+      drawStress(document.getElementById('svg-stress'));
+    } else {
+      const d=genStr(range);const hv=['44','48','43'][range==='week'?0:range==='month'?1:2];
+      const cmp=[['↑ 3','比上周','bad'],['↑ 3','比上月','bad'],['↓ 3','比去年','good']][range==='week'?0:range==='month'?1:2];
+      const peri=[['本周','本周压力负荷较上周上升 3 个百分点，建议关注高压力时段。'],['本月','本月压力负荷较上月上升 3 个百分点，月中有一周明显偏高。'],['今年','今年压力负荷较去年同期下降 3 个百分点，整体更平稳了。']][range==='week'?0:range==='month'?1:2];
+      c.innerHTML=`
+      <div class="card"><div class="hero"><div><div class="big" style="color:${ST.mid}">${hv}</div><div class="lab">/100 · 心理压力${range==='year'?'年':range==='month'?'月':'周'}平均</div></div>
+        <div class="ctx" style="color:${cmp[2]==='good'?'var(--good)':'var(--bad)'}">${cmp[0]} ${cmp[1]}</div></div></div>
+      <div class="card"><div class="chead"><div><p class="ctitle">心理压力 · 趋势 <small>近${range==='year'?'12 月':range==='month'?'30 天':'7 天'}</small></p></div></div>
+        <svg viewBox="0 0 380 250" id="svg-str"></svg>
+        <div class="legend"><span><i style="background:${ST.bad}"></i>高 ≥70</span><span><i style="background:${ST.mid}"></i>中 40–70</span><span><i style="background:${ST.good}"></i>低 &lt;40</span></div>
+        <p class="axisnote">纵轴 = 心理压力 0–100 · 虚线 = 区间平均 ${hv} · 横轴 = ${range==='year'?'1月→12月':range==='month'?'当月日期':'周一→周日'}</p>
+      </div>
+      <div class="card"><p class="ctitle">对比上${range==='year'?'年':range==='month'?'月':'周'}</p>
+        <div class="cmpCard"><div class="big" style="color:${ST.mid}">${hv}</div><div class="unit">${range==='year'?'年':range==='month'?'月':'周'}平均</div><div class="delta" style="color:${cmp[2]==='good'?'var(--good)':'var(--bad)'}">${cmp[0]}</div></div>
+        <p class="cmpNote">${peri[1]}</p>
+      </div>`;
+      drawStr(document.getElementById('svg-str'),d);
+    }
+  } else { // emotion
+    if(range==='day'){
+      c.innerHTML=`
+      <div class="card"><p class="ctitle">心情点阵图 <small>今天</small></p>${dotsHTML()}</div>
+      ${todayEmoHTML()}`;
+    } else {
+      const d=genEmotion(range);
+      const neg={week:1,month:9,year:30}[range];
+      const tot={week:25,month:140,year:480}[range];
+      c.innerHTML=`
+      <div class="card"><p class="ctitle">情绪分布 <small>${range==='year'?'每月一根柱':'每天一根柱'} · 柱高=每佩戴小时事件数</small></p>
+        <svg viewBox="0 0 380 230" id="svg-emo"></svg>
+        <div class="legend">${EMO_ORDER.map(([k,t])=>`<span><i style="background:${EMO[k]}"></i>${t}</span>`).join('')}<span><i style="background:repeating-linear-gradient(45deg,#F1EFEA,#F1EFEA 2px,#C9C5BC 2px,#C9C5BC 3px)"></i>未佩戴</span></div>
+        <p class="axisnote">柱高按佩戴时长归一化，不同佩戴时长的天可横向比较；横轴下方色带 = 生理周期（经期/经前/卵泡/黄体）。</p>
+      </div>
+      <div class="card"><p class="ctitle">情绪洞察</p>
+        <p class="blockTitle" style="margin-top:0">数据洞察</p>
+        <div class="statRow"><div class="tile"><div class="tl">高峰时段</div><div class="tv" style="color:var(--bad)">周二</div><div class="ts">消极最集中</div></div>
+          <div class="tile"><div class="tl">最轻松时段</div><div class="tv" style="color:var(--good)">周日</div><div class="ts">情绪最舒缓</div></div></div>
+        <div class="statRow"><div class="tile"><div class="tl">消极占比</div><div class="tv" style="color:var(--bad)">${neg}%</div><div class="ts">本区间</div></div>
+          <div class="tile"><div class="tl">日均事件</div><div class="tv">${range==='year'?'40':'4.7'}</div><div class="ts">次 / 天</div></div></div>
+        <div class="statRow"><div class="tile"><div class="tl">总记录</div><div class="tv">${tot}</div><div class="ts">次</div></div>
+          <div class="tile"><div class="tl">跟上期对比</div><div class="tv" style="color:var(--good)">↓ 2%</div><div class="ts">消极占比改善</div></div></div>
+        <p class="axisnote" style="text-align:left;margin-top:8px">周期为推算（日历 + 体温），仅帮助观察身体节律与情绪的关联，不构成诊断。</p>
+      </div>`;
+      drawEmotionBars(document.getElementById('svg-emo'),d);
+    }
+  }
+}
+
+/* 统一折叠 */
+function toggleMH(el){
+  const open=el.classList.toggle('open');
+  const sec=document.getElementById(el.dataset.sec);
+  if(sec) sec.style.display=open?'block':'none';
+}
+
+/* ════ 事件绑定 ════ */
+document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{range=ch.dataset.r;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===ch));render();});
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{tab=t.dataset.t;render();});
+document.getElementById('prev').onclick=()=>{anchor=stepA(anchor,range,-1);render();};
+document.getElementById('next').onclick=()=>{anchor=stepA(anchor,range,1);render();};
+document.getElementById('pcenter').onclick=openCal;
+
+/* ════ 日历弹窗 ════ */
+let calY=anchor.getFullYear(),calM=anchor.getMonth()+1;
+function buildCal(){
+  document.getElementById('calTitle').textContent=`${calY}年${calM}月`;
+  const first=new Date(calY,calM-1,1);const lead=(first.getDay()+6)%7;
+  const days=[];for(let i=0;i<lead;i++){const d=new Date(calY,calM-1,1-i);d.setDate(d.getDate()-lead+i);}
+  const grid=[];const total=new Date(calY,calM,0).getDate();
+  for(let i=0;i<lead;i++)grid.push(null);
+  for(let d=1;d<=total;d++)grid.push(new Date(calY,calM-1,d));
+  while(grid.length%7!==0)grid.push(null);
+  const WEEK=['日','一','二','三','四','五','六'];
+  document.getElementById('calGrid').innerHTML=grid.map(d=>{
+    if(!d)return `<div class="c"></div>`;
+    const dim=d.getMonth()+1!==calM;const dis=d>TODAY||d<MIN;const on=fmtDate(d)===fmtDate(anchor);
+    return `<div class="c${dim?' dim':''}${on?' on':''}${dis?' dis':''}" data-d="${d.getTime()}">${d.getDate()}</div>`;
+  }).join('');
+  document.querySelectorAll('#calGrid .c[data-d]').forEach(el=>el.onclick=()=>{if(el.classList.contains('dis'))return;
+    anchor=clampD(new Date(Number(el.dataset.d)));closeCal();render();});
+}
+function openCal(){calY=anchor.getFullYear();calM=anchor.getMonth()+1;buildCal();document.getElementById('calMask').classList.add('on');}
+function closeCal(){document.getElementById('calMask').classList.remove('on');}
+document.getElementById('calCancel').onclick=closeCal;
+document.getElementById('calMask').onclick=(e)=>{if(e.target.id==='calMask')closeCal();};
+document.getElementById('calToday').onclick=()=>{anchor=new Date(TODAY);closeCal();render();};
+document.getElementById('calPrev').onclick=()=>{const p=new Date(calY,calM-2,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+document.getElementById('calNext').onclick=()=>{const p=new Date(calY,calM,1);calY=p.getFullYear();calM=p.getMonth()+1;buildCal();};
+
+/* 初始化 */
+render();
+</script>
+</body>
+</html>

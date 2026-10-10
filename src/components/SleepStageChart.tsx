@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import { parseClockMinutes } from '../lib/sleepTime';
 import type { SleepSegment } from '../ble/RingBleManager';
@@ -10,13 +11,15 @@ import type { SleepSegment } from '../ble/RingBleManager';
  *  0=深睡 1=浅睡 2=REM 3=失眠 4=清醒（KH18 固件通常只返回 0/1/2/4）。
  *  每个阶段占独立水平带（row），行高和行间距都压小，形成参考图那种密集分层。
  */
-// v16 reskin（2026-09-24）：分期改四色系统（SPEC §3 睡眠分期 4 类，失眠并入「清醒·夜间醒来」）——
-// 深睡=紫 core / 浅睡=紫 mid / REM=蓝 core / 失眠·清醒=黄 core（honey，与「能量·代谢」同源）。
+// v16 reskin（2026-09-24）：分期改四色系统（SPEC §3 睡眠分期 4 类，失眠并入「清醒·夜间醒来」）。
+// ★ 2026-10-10（用户，覆盖 bar-spec P0 ④）：整夜分期图必须与「睡眠分析」卡下方图例同色
+//   （深睡=紫 core / 浅睡=紫 mid / REM=蓝 skyCore / 清醒=黄 honeyCore）——图例是基准，图跟图例走：
+//   深睡 purpleCore / 浅睡 purpleMid / REM skyCore / 清醒 honeyCore / 失眠 honeyDeep。
 export const SLEEP_STAGE_META: Record<number, { label: string; color: string; row: number }> = {
-  0: { label: '深睡', color: mm.colors.purpleCore, row: 0 },   // 最底行，紫矮条
-  1: { label: '浅睡', color: mm.colors.purpleMid, row: 1 },    // 紫中条（同族深浅档）
-  2: { label: 'REM', color: mm.colors.skyCore, row: 2 },       // 蓝高条
-  3: { label: '失眠', color: mm.colors.honeyCore, row: 3 },    // 并入清醒·夜间醒来（黄）
+  0: { label: '深睡', color: mm.colors.purpleCore, row: 0 },   // 最底行（最深档）
+  1: { label: '浅睡', color: mm.colors.purpleMid, row: 1 },    // 中档
+  2: { label: 'REM', color: mm.colors.skyCore, row: 2 },       // 亮档
+  3: { label: '失眠', color: mm.colors.honeyDeep, row: 3 },    // 清醒·夜间醒来（黄，深档示警）
   4: { label: '清醒', color: mm.colors.honeyCore, row: 3 },    // 最顶行，黄小条
 };
 
@@ -127,7 +130,7 @@ export default function SleepStageChart({
               width={sw}
               height={BAR_H}
               fill={meta.color}
-              rx={theme.sp(0.6)}
+              rx={chart.barRadius}
             />
           );
         })}
@@ -140,8 +143,8 @@ export default function SleepStageChart({
             y1={chartH + theme.sp(0.5)}
             x2={t.x}
             y2={chartH + theme.sp(2)}
-            stroke={theme.colors.textSub}
-            strokeWidth={1}
+            stroke={chart.axisText}
+            strokeWidth={chart.lw.grid}
             opacity={0.45}
           />
         ))}

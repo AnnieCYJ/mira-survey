@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>横轴统一规范 · 自然周/月/年</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --sub:#5C574F; --line:#E4E1DA; --card:#fff; --accent:#7C6AE0; --green:#BCCB62;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;background:#F6F5F1;color:var(--ink);padding:28px 20px 48px;}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px;}
+  .sub{color:var(--sub);font-size:13px;margin:0 0 22px;line-height:1.6;}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px 14px;margin-bottom:18px;max-width:760px;}
+  .panel h2{font-size:15px;margin:0 0 2px;font-weight:600;}
+  .panel .desc{color:var(--sub);font-size:12px;margin:0 0 14px;}
+  .plot{position:relative;height:120px;border-bottom:1px solid var(--line);margin:0 0 6px;}
+  .bar{position:absolute;bottom:0;width:14px;background:linear-gradient(180deg,var(--green),#DDE6B8);border-radius:4px 4px 0 0;}
+  .axis{position:relative;height:20px;}
+  .slot{position:absolute;transform:translateX(-50%);font-size:11px;color:var(--sub);text-align:center;white-space:nowrap;}
+  .tag{display:inline-block;font-size:11px;color:var(--accent);border:1px solid #D9D2F0;background:#F4F2FB;border-radius:999px;padding:2px 9px;margin:2px 6px 2px 0;}
+  .foot{color:var(--sub);font-size:12px;line-height:1.7;max-width:760px;}
+  code{background:#EFEDE8;padding:1px 5px;border-radius:5px;font-size:12px;}
+</style>
+</head>
+<body>
+  <h1>全 App 横轴统一规范（自然周 / 自然月 / 自然年）</h1>
+  <p class="sub">单一事实来源：<code>src/lib/chartAxis.ts</code> → 与 <code>data/metrics.ts</code> 的 <code>RANGE_DEF</code> 同源派生。<br/>
+  经期 / 周期类图表（体温双相、激素双相、雌激素曲线、睡眠·激素关联）按「周期月 / 周 / 年」口径，<b>刻意不并入</b>自然周月年，保持原样。</p>
+
+  <div class="panel">
+    <h2>① 周视图 · 自然周</h2>
+    <p class="desc">周一 → 周日，7 天全标：<span id="weektags"></span></p>
+    <div class="plot" id="weekPlot"></div>
+    <div class="axis" id="weekAxis"></div>
+  </div>
+
+  <div class="panel">
+    <h2>② 月视图 · 自然月</h2>
+    <p class="desc">固定刻度：<span id="monthtags"></span>（其它日期不标，避免拥挤）</p>
+    <div class="plot" id="monthPlot"></div>
+    <div class="axis" id="monthAxis"></div>
+  </div>
+
+  <div class="panel">
+    <h2>③ 年视图 · 自然年</h2>
+    <p class="desc">固定刻度：<span id="yeartags"></span></p>
+    <div class="plot" id="yearPlot"></div>
+    <div class="axis" id="yearAxis"></div>
+  </div>
+
+  <p class="foot">
+    <b>已并入统一的图表：</b>睡眠恢复双轴图（SleepDualAxisChart）、血压（BpDetailScreen）、状态趋势（StatusTrendDetailScreen）、指标详情（MetricDetailScreen）、精力（EnergyDetailScreen）。<br/>
+    <b>日视图小时轴</b>统一引用 <code>DAY_HOUR_TICKS_COMPACT = [0,6,12,18,24]</code>（CortisolRhythmCard / SleepRhythmHomeCard / MiniReadinessTrend / AllDayRecoveryCard / StressInsightCard / TrendChart）。
+  </p>
+
+<script>
+  // —— 与 src/lib/chartAxis.ts 完全一致的派生逻辑 ——
+  const WEEKDAY_SHORT = ['日','一','二','三','四','五','六'];
+  const MONTH_TICK_DAYS = [1,5,10,15,20,25,30];
+  const YEAR_TICK_MONTHS = [1,3,5,7,9,11];
+  function isMonthTickDay(d){return MONTH_TICK_DAYS.includes(d);}
+  function isYearTickMonth(m){return YEAR_TICK_MONTHS.includes(m+1);}
+  function timeTickLabel(range, o){
+    if(range==='week') return WEEKDAY_SHORT[o.weekday ?? 0] ?? '';
+    if(range==='month') return isMonthTickDay(o.dayOfMonth) ? String(o.dayOfMonth) : '';
+    if(range==='year') return isYearTickMonth(o.monthIndex) ? (o.monthIndex+1)+'月' : '';
+    return '';
+  }
+
+  function render(range, n, opt){
+    const plot = document.getElementById(range+'Plot');
+    const axis = document.getElementById(range+'Axis');
+    plot.innerHTML=''; axis.innerHTML='';
+    for(let i=0;i<n;i++){
+      const x = n<=1 ? 50 : (i/(n-1))*100;
+      const h = 30 + Math.round(Math.random()*70);
+      const b=document.createElement('div'); b.className='bar';
+      b.style.left = x+'%'; b.style.transform='translateX(-50%)'; b.style.height=h+'px';
+      plot.appendChild(b);
+      const label = timeTickLabel(range, range==='week' ? {weekday:(i+1)%7} : range==='month' ? {dayOfMonth:i+1} : {monthIndex:i});
+      if(label){
+        const s=document.createElement('div'); s.className='slot'; s.style.left=x+'%'; s.textContent=label;
+        axis.appendChild(s);
+      }
+    }
+    // tags
+    const tags = document.getElementById(range+'tags');
+    tags.innerHTML='';
+    for(let i=0;i<n;i++){
+      const label = timeTickLabel(range, range==='week' ? {weekday:(i+1)%7} : range==='month' ? {dayOfMonth:i+1} : {monthIndex:i});
+      if(label){const t=document.createElement('span'); t.className='tag'; t.textContent=label; tags.appendChild(t);}
+    }
+  }
+  render('week', 7);
+  render('month', 31);
+  render('year', 12);
+</script>
+</body>
+</html>

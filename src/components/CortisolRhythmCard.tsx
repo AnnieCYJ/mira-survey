@@ -10,18 +10,20 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Svg, { Path, Rect, Circle, Defs, LinearGradient, Stop, Line, G, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
 import Card from './Card';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import KalmanFilter from '../lib/kalman-filter';
+import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 // ★ v18.123：今日曲线改用多模态反推的皮质醇活性（与首页昼夜节律卡同源）
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolBaselineActivity } from '../lib/cortisolProxy';
 // ★ v18.125：与首页昼夜节律卡**共用同一套绘图几何**（用户：两处图不一样，看着难受）
 import { buildSmoothSeries, computeYRange, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
 const LEVEL_META: Record<string, { label: string; color: string }> = {
-  normal: { label: '节律正常', color: mm.colors.ink },
+  normal: { label: '节律正常', color: chart.series.cortisol },
   sustained_high: { label: '持续偏高', color: theme.colors.danger },
   dysregulated: { label: '节律紊乱', color: '#FFFFFF' },
 };
@@ -167,6 +169,8 @@ export default function CortisolRhythmCard() {
 
       <CortisolBars r={r} sleepWindow={sleepWindow} />
 
+      {/* ★ 2026-10-10：睡眠节律卡与洞察页共用同一张 TrendChart（同一个 r），峰值线统一走
+          gMain.peakIdx（今日曲线真实最高点，永不在未来），两页逐位一致。 */}
       <TrendChart r={r} sleepWindow={sleepWindow} />
 
       <RhythmSummary r={r} />
@@ -221,7 +225,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
 
   // 把 hourlyMean 画成折线图（带正常范围色带）
   const CHART_W = 320;
-  const CHART_H = 72;
+  const CHART_H = chart.h.s - chart.chrome.card;  // ★ 规范：S 档 96 − 装饰 24 = 72（原写死 72）
   const pad = 4;
   const xOf = (h: number) => pad + (CHART_W - pad * 2) * (h / 23);
   const yOf = (v: number) => pad + (CHART_H - pad * 2) * (1 - Math.max(0, Math.min(1, (v - lo) / span)));
@@ -249,7 +253,7 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
     <View>
       <Svg width={CHART_W} height={CHART_H + 24} style={{ alignSelf: 'center' }}>
         {/* 正常范围色带 */}
-        {bandPath ? <Path d={bandPath} fill="#1F1D1A22" /> : null}
+        {bandPath ? <Path d={bandPath} fill={chart.series.cortisol + '22'} /> : null}
         {/* 睡眠时段灰色遮罩 */}
         {(() => {
           const rects = [];
@@ -264,19 +268,19 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
         })()}
         {/* 分段彩色折线 */}
         {segments.map((sg, i) => (
-          <Path key={'seg'+i} d={sg.d} stroke={sg.color} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <Path key={'seg'+i} d={sg.d} stroke={sg.color} strokeWidth={chart.lw.series} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         ))}
         {/* 数据点 */}
         {valid.map((p, i) => {
           const asleep = isAsleep(p.h);
           const inBand = !asleep && p.v >= r.baseline.p25 && p.v <= r.baseline.p75;
-          const color = inBand ? mm.colors.ink : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
-          return <Circle key={i} cx={xOf(p.h)} cy={yOf(p.v)} r={2.5} fill={color} />;
+          const color = inBand ? chart.series.cortisol : asleep ? theme.colors.ui.borderSoft : theme.colors.danger;
+          return <Circle key={i} cx={xOf(p.h)} cy={yOf(p.v)} r={chart.dot.radius} fill={color} />;
         })}
       </Svg>
       {/* 时间轴 */}
       <View style={styles.timeAxis}>
-        {[0, 6, 12, 18, 24].map((h) => (
+        {DAY_HOUR_TICKS_COMPACT.map((h) => (
           <Text key={h} style={styles.timeAxisLabel}>{h % 24}</Text>
         ))}
       </View>
@@ -293,9 +297,17 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAxis = false }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string; /** ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：true 时不画左侧数值轴与网格刻度，绘图区吃满整宽 */ hideYAxis?: boolean }) {
+export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAxis = false, variant, peakHourOverride }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string; /** ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：true 时不画左侧数值轴与网格刻度，绘图区吃满整宽 */ hideYAxis?: boolean; /** ★ 2026-10-09：睡眠恢复详情页「睡眠节律」卡用 sleep 变体 = 单条亮绿曲线，与 sleep-recovery-preview.html 一致；不画 14 天基线/峰值点/睡眠阴影 */ variant?: 'sleep'; /** ★ 2026-10-10：强制峰值竖线落在指定小时（覆盖自动检测）。睡眠节律卡用来让曲线峰值线对齐 14 天节律峰值，与文字/洞察页同源 */ peakHourOverride?: number }) {
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
-  const H = 120;
+  const H = chart.h.s;  // ★ 规范：S 档 96（原 120，与上方 72 自相矛盾）
+  // ★ 2026-10-09：sleep 变体（睡眠节律卡）= 单条亮绿曲线，匹配预览；
+  //   insight 变体（默认）= 青色今日线 + 绿色虚线基线 + 峰值点 + 睡眠阴影。
+  const isSleep = variant === 'sleep';
+  // ★ 2026-10-10（design-system-spec 铁律 H：皮质醇 = 亮绿 #BCCB62，今日实线 + 14天基线虚线同源绿）：
+  //   今日线从 ringTeal(青蓝) 改回 chart.series.cortisol(亮绿)，与基线同色、靠实/虚区分，
+  //   对齐昼夜节律设计稿与洞察页皮质醇卡 token（青蓝不在皮质醇色板内，属设计前遗留；
+  //   且此前「今日线青蓝 + 峰值绿点」本身就自相矛盾）。
+  const lineColor = chart.series.cortisol;
   // ★ 2026-10-08：隐藏 Y 轴时左侧不再留刻度数字的宽度，曲线整体左移吃满
   const padL = hideYAxis ? 6 : 38, padR = 12, padT = 10, padB = 18;
   const SLOTS = CHART_SLOTS;
@@ -400,10 +412,9 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
   //   用「真实槽=有聚合值的槽」构造，gapSlots 放大到 4（2 小时）避免基线被切太碎。
   const baseReal: boolean[] = baseline30.map((v) => v != null);
   // 先取「今日 + 14 天基线」的并集 Y 范围，再让两条线都用这一把尺
-  const yr = computeYRange([
-    { values: main30, real: todayReal },
-    { values: baseline30, real: baseReal },
-  ]);
+  const yr = computeYRange(isSleep
+    ? [{ values: main30, real: todayReal }]
+    : [{ values: main30, real: todayReal }, { values: baseline30, real: baseReal }]);
   const gMain = buildSmoothSeries(main30, todayReal, { W, H, padL, padR, padT, padB }, { yLo: yr.lo, yHi: yr.hi });
   const gBase = buildSmoothSeries(baseline30, baseReal, { W, H, padL, padR, padT, padB }, { gapSlots: 4, yLo: yr.lo, yHi: yr.hi });
   const yLo = yr.lo;
@@ -437,14 +448,14 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
         {/* ★ 首页同款：今日曲线下渐变面积 */}
         <Defs>
           <LinearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={mm.colors.ringTeal} stopOpacity="0.34" />
-            <Stop offset="100%" stopColor={mm.colors.ringTeal} stopOpacity="0.02" />
+            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.34" />
+            <Stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
           </LinearGradient>
         </Defs>
         {gMain.areaPath ? <Path d={gMain.areaPath} fill="url(#trendArea)" /> : null}
 
-        {/* 睡眠阴影 */}
-        {sleepRects.map((sr, i) => (
+        {/* 睡眠阴影（★ sleep 变体不画，与预览一致） */}
+        {!isSleep && sleepRects.map((sr, i) => (
           <Rect key={`s${i}`} x={sr.x} y={padT} width={Math.max(1, sr.w)} height={chartH} fill={theme.colors.ui.borderSoft + '33'} />
         ))}
 
@@ -454,58 +465,73 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
           const y = padT + chartH - p * chartH;
           return (
             <G key={i}>
-              <Line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke={theme.colors.ui.borderSoft} strokeWidth={1} strokeDasharray="3,3" />
+              <Line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
               <SvgText x={padL - 4} y={y + 3} fontSize={9} fill={theme.colors.textSub} textAnchor="end">{val.toFixed(0)}</SvgText>
             </G>
           );
         })}
 
         {/* X 轴底线 */}
-        <Line x1={padL} y1={padT + chartH} x2={padL + chartW} y2={padT + chartH} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+        <Line x1={padL} y1={padT + chartH} x2={padL + chartW} y2={padT + chartH} stroke={chart.grid} strokeWidth={chart.lw.grid} />
 
-        {/* 基线 (14天, 绿虚线) */}
-        {basePath ? (
-          <Path d={basePath} stroke={mm.colors.ink} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5,4" />
+        {/* 基线 (14天, 绿虚线) —— ★ sleep 变体不画 */}
+        {!isSleep && basePath ? (
+          <Path d={basePath} stroke={chart.series.cortisol} strokeWidth={chart.lw.ref} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={chart.dash.ref} />
         ) : null}
         {/* ★ v18.125：14 天基线不再逐点画小圆（用户要「平滑」）——
             折线已由共用模块平滑成曲线，散点只会让它看起来噪。 */}
 
-        {/* 今天（★ v18.65 与首页同款：ringTeal 实线 2.6pt 圆头，不再用紫线+逐点圆） */}
+        {/* 今天（★ sleep 变体用亮绿；insight 变体用 ringTeal 实线 2.6pt 圆头） */}
         {todayPath ? (
-          <Path d={todayPath} stroke={mm.colors.ringTeal} strokeWidth={2.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={todayPath} stroke={lineColor} strokeWidth={chart.lw.series} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         ) : null}
 
-        {/* ★ v18.125 与首页对齐：孤立真实单点画实心点（真实但断开，画了才知道「测到了」） */}
-        {gMain.singles.map((p, k) => (
-          <Circle key={'sg' + k} cx={p.x} cy={p.y} r={3.2} fill={mm.colors.ringTeal} />
+        {/* ★ v18.125 与首页对齐：孤立真实单点画实心点（真实但断开，画了才知道「测到了」）—— ★ sleep 变体不画 */}
+        {!isSleep && gMain.singles.map((p, k) => (
+          <Circle key={'sg' + k} cx={p.x} cy={p.y} r={chart.dot.radius} fill={lineColor} />
         ))}
 
-        {/* ★ v18.125 与首页对齐：峰值竖虚线 + 发光圆点 + 时刻标签 */}
-        {gMain.peakIdx >= 0 ? (
-          <>
-            <Line
-              x1={gMain.peakX}
-              y1={gMain.peakY}
-              x2={gMain.peakX}
-              y2={gMain.yBase}
-              stroke={mm.colors.ringTealDeep}
-              strokeOpacity={0.42}
-              strokeWidth={1}
-              strokeDasharray="3,3"
-            />
-            <Circle cx={gMain.peakX} cy={gMain.peakY} r={4.2} fill={mm.colors.limeMid} />
-            <SvgText
-              x={Math.min(Math.max(gMain.peakX, padL + 16), padL + chartW - 16)}
-              y={Math.max(gMain.peakY - 12, 12)}
-              fontSize={11}
-              fontWeight="600"
-              fill={mm.colors.ringTealDeep}
-              textAnchor="middle"
-            >
-              {slotToClock(gMain.peakIdx)}
-            </SvgText>
-          </>
-        ) : null}
+        {/* ★ v18.125 与首页对齐：峰值竖虚线 + 发光圆点 + 时刻标签 —— sleep 变体也画
+            （2026-10-10 用户要求：睡眠节律卡的皮质醇曲线也要标峰值竖线，参考洞察页）。
+            peakHourOverride 存在时，峰值线落在指定小时（= 14 天节律峰值），与上方文字/洞察页同源；
+            否则自动取主曲线最高真实点。 */}
+        {(() => {
+          const ovSlot =
+            peakHourOverride != null && Number.isFinite(peakHourOverride)
+              ? Math.round(peakHourOverride * 2)
+              : gMain.peakIdx;
+          if (ovSlot < 0) return null;
+          const ovX = xOfSlot(ovSlot);
+          const ovV = main30[ovSlot];
+          const ovY = ovV != null && Number.isFinite(ovV) ? yOf(ovV) : padT + chartH / 2;
+          return (
+            <>
+              <Line
+                x1={ovX}
+                y1={ovY}
+                x2={ovX}
+                y2={gMain.yBase}
+                stroke={mm.colors.limeDeep}
+                strokeOpacity={0.45}
+                strokeWidth={chart.lw.ref}
+                strokeDasharray={chart.dash.ref}
+              />
+              {ovV != null && Number.isFinite(ovV) ? (
+                <Circle cx={ovX} cy={ovY} r={4.2} fill={isSleep ? mm.colors.ink : mm.colors.limeMid} />
+              ) : null}
+              <SvgText
+                x={Math.min(Math.max(ovX, padL + 16), padL + chartW - 16)}
+                y={Math.max(ovY - 12, 12)}
+                fontSize={11}
+                fontWeight="600"
+                fill={mm.colors.limeDeep}
+                textAnchor="middle"
+              >
+                {slotToClock(ovSlot)}
+              </SvgText>
+            </>
+          );
+        })()}
 
         {/* X 时间刻度 0/6/12/18/24 */}
         {[0, 6, 12, 18, 24].map((h) => {
@@ -519,14 +545,27 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
       {/* ★ v18.125 图例：用真实线段样式（View 画线）而不是「- -」「—」字符 ——
           字符字形与实际 strokeDasharray 观感不一致，线宽/虚线间距都对不上。 */}
       <View style={styles.trendLegend}>
-        <View style={styles.trendLegendItem}>
-          <View style={[styles.trendLegendDash, { borderColor: mm.colors.ink }]} />
-          <Text style={styles.trendLegendTx}>14 天基线</Text>
-        </View>
-        <View style={styles.trendLegendItem}>
-          <View style={[styles.trendLegendLine, { backgroundColor: mm.colors.ringTeal }]} />
-          <Text style={styles.trendLegendTx}>{mainLabel}</Text>
-        </View>
+        {isSleep ? (
+          <View style={styles.trendLegendItem}>
+            <View style={[styles.trendLegendLine, { backgroundColor: chart.series.cortisol }]} />
+            <Text style={styles.trendLegendTx}>皮质醇（亮绿）</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.trendLegendItem}>
+              <View style={[styles.trendLegendLine, { backgroundColor: chart.series.cortisol }]} />
+              <Text style={styles.trendLegendTx}>{mainLabel}</Text>
+            </View>
+            <View style={styles.trendLegendItem}>
+              <View style={[styles.trendLegendDash, { borderColor: chart.series.cortisol }]} />
+              <Text style={styles.trendLegendTx}>14 天基线</Text>
+            </View>
+            <View style={styles.trendLegendItem}>
+              <View style={styles.trendLegendBand} />
+              <Text style={styles.trendLegendTx}>睡眠时段</Text>
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -541,7 +580,7 @@ function RhythmSummary({ r }: { r: CortisolRhythmResult }) {
   const ampRatio = amp > 0 && mesor > 0 ? amp / mesor : 0;  // 相对波动比例
 
   // 日均值: 高/正常/低
-  let levelText = '正常', levelColor: string = mm.colors.ink;
+  let levelText = '正常', levelColor: string = chart.series.cortisol;
   if (Number.isFinite(p25) && Number.isFinite(p75)) {
     if (mesor > p75) { levelText = '偏高'; levelColor = theme.colors.stateTense; }
     else if (mesor < p25) { levelText = '偏低'; levelColor = theme.colors.stateTense; }
@@ -587,7 +626,8 @@ const styles = StyleSheet.create({
   trendLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(2), marginTop: theme.sp(0.5) },
   trendLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.8) },
   trendLegendLine: { width: theme.sp(3), height: 2.6, borderRadius: 1.3 },
-  trendLegendDash: { width: theme.sp(3), height: 0, borderTopWidth: 1.5, borderStyle: 'dashed' },
+  trendLegendDash: { width: theme.sp(3), height: 1.5, borderRadius: 0.75, backgroundColor: 'rgba(31,29,26,0.35)' }, // ★ Fabric 不支持 dashed border（红条警告），改实线短杠
+  trendLegendBand: { width: theme.sp(3), height: theme.sp(1.6), borderRadius: 1, backgroundColor: theme.colors.ui.borderSoft }, // ★ 睡眠时段阴影色块（与图内 sleepRects 同源）
   trendLegendTx: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
@@ -595,7 +635,7 @@ const styles = StyleSheet.create({
   levelDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
   bars: { flexDirection: 'row', alignItems: 'flex-end', height: 72, justifyContent: 'space-between', marginTop: theme.sp(0.5) },
-  bar: { width: 8, borderRadius: 2 },
+  bar: { width: 8, borderRadius: chart.barRadius },
   timeAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: 2 },
   timeAxisLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   chartCap: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), textAlign: 'center' },

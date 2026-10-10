@@ -30,11 +30,13 @@ export const mm = {
     limeTint: '#F6F7DC', limeSoft: '#EAF0BE', limeMid: '#BCCB62', limeCore: '#D5E384', limeDeep: '#6E7A24',
     // 黄 Honey = 元气 / 能量 / 代谢（点阵元气格 · 血糖 · 清醒段 · 黄体期段）
     honeyTint: '#FDF7E9', honeySoft: '#FBEFD6', honeyMid: '#F3D49B', honeyCore: '#F0C46E', honeyDeep: '#B98A2E',
+    // 红 ECG = 专业心电波形（线必为红，生理监测惯例；与 anomaly #E2554E 异常语义解耦，勿混用）
+    ecgRed: '#E5484D', ecgRedSoft: 'rgba(229,72,77,0.14)',
 
     /* ── 文字（中性）── */
     ink: '#1F1D1A',
     inkSoft: '#5C574F',
-    inkFaint: '#9C968C',
+    inkFaint: '#706A61', // Secondary text remains readable on light surfaces.
     emptyFill: '#F6F4F1',
     sleepDot: '#EAE7E2', // 点阵「睡眠」格
 

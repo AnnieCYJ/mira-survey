@@ -90,8 +90,9 @@ export default function EcgDetailScreen() {
             <Svg width="100%" height={72} viewBox="0 0 320 72" preserveAspectRatio="none" style={{ marginTop: 10 }}>
               <Defs>
                 <LinearGradient id="ecgLatest" x1="0" y1="0" x2="1" y2="0">
-                  <Stop offset="0%" stopColor={mm.colors.skyCore} stopOpacity={0.5} />
-                  <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={1} />
+                  {/* 心电波形 = 专业红（ecgRed）；线必为红 */}
+                  <Stop offset="0%" stopColor={mm.colors.ecgRed} stopOpacity={0.5} />
+                  <Stop offset="100%" stopColor={mm.colors.ecgRed} stopOpacity={1} />
                 </LinearGradient>
               </Defs>
               <Path d={wavePath(latest.waveform, 320, 72)} fill="none" stroke="url(#ecgLatest)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
@@ -148,7 +149,7 @@ export default function EcgDetailScreen() {
               </View>
               {r.waveform && r.waveform.length > 0 ? (
                 <Svg width="100%" height={44} viewBox="0 0 160 44" preserveAspectRatio="none">
-                  <Path d={wavePath(r.waveform, 160, 44)} fill="none" stroke={mm.colors.skyDeep} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                  <Path d={wavePath(r.waveform, 160, 44)} fill="none" stroke={mm.colors.ecgRed} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
                 </Svg>
               ) : null}
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: theme.radius.md,
-    backgroundColor: mm.colors.skyDeep, // v16：ECG=心肺=sky；白字对比 5.0
+    backgroundColor: mm.colors.ecgRed, // 心电主按钮 = 专业红（与波形同源；白字对比 ≥5.0）
     marginBottom: 16,
   },
   btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
