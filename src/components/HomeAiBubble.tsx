@@ -588,10 +588,10 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     marginTop: 2,
   },
-  // ★ 十二改：左图 = 改善工具页同款图片资产（46×46，比原 34 图标块明显大一号）
+  // ★ 十二改：左图 = 改善工具页同款图片资产；2026-10-10（用户：首页最下气泡卡左图稍放大）36 → 48
   suggThumb: {
-    width: 36,
-    height: 36,
+    width: 48,
+    height: 48,
     borderRadius: theme.radius.md,
     flexShrink: 0,
   },

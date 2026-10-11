@@ -11,13 +11,44 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { LinearGradient } from 'expo-linear-gradient';
 import Card from './Card';
+import Icon from './Icon';
 import { validateProfile } from '../lib/profileForm';
 import { RingBle } from '../ble/RingBleManager';
 import {
   getLatestExamRecord,
+  countExamRecords,
   type Sex,
   type ExamRecord,
+  type BodyMetric,
+  type MetricStatus,
 } from '../data/examStore';
+
+/** 卡片头栏优先展示的 6 项身体成分结果（其余在「历史」页按次展开）。 */
+const HEADLINE_KEYS = [
+  'bmi',
+  'bodyFatPercentage',
+  'muscleMass',
+  'boneMass',
+  'waterContent',
+  'basalMetabolicRate',
+];
+const STATUS_TEXT: Record<MetricStatus, string> = {
+  low: '偏低',
+  normal: '正常',
+  high: '偏高',
+  info: '',
+};
+const STATUS_COLOR: Record<MetricStatus, string> = {
+  low: theme.colors.warn,
+  normal: theme.colors.success,
+  high: theme.colors.danger,
+  info: theme.colors.textSub,
+};
+function fmtDateShort(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: number) => void }) {
   const navigation = useNavigation<any>();
@@ -27,6 +58,7 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
   const [age, setAge] = useState(saved ? String(saved.age) : '');
   const [sex, setSex] = useState<Sex>(saved ? (saved.sex === 1 ? 'male' : 'female') : 'female');
   const [latest, setLatest] = useState<ExamRecord | null>(null);
+  const [count, setCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const touchedRef = useRef(false);
@@ -43,9 +75,10 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
 
   useEffect(() => {
     let mounted = true;
-    getLatestExamRecord().then(rec => {
+    Promise.all([getLatestExamRecord(), countExamRecords()]).then(([rec, n]) => {
       if (!mounted) return;
       setLatest(rec);
+      setCount(n);
       if (rec && !touchedRef.current) {
         setWeight(String(rec.inputs.weight)); setHeight(String(rec.inputs.height));
         setAge(String(rec.inputs.age)); setSex(rec.inputs.sex); setEditing(false);
@@ -171,37 +204,53 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
         </>
       ) : (
         <>
-          <TouchableOpacity onPress={() => { touchedRef.current = true; setEditing(true); setError(''); }}
-            style={styles.viewReport} accessibilityRole="button" accessibilityLabel="修改身体档案">
-            <Text style={styles.viewReportText}>修改档案</Text>
+          {/* 已测过：直接展示「最近一次测量结果」，整卡可点 → 历史（几次测量）。 */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('BodyCompositionHistory')}
+            accessibilityRole="button"
+            accessibilityLabel="查看身体成分历史"
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.dateSub}>最近一次 · {latest ? fmtDateShort(latest.createdAt) : '—'}</Text>
+              <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+            </View>
+            <View style={styles.resultGrid}>
+              {(latest ? HEADLINE_KEYS : []).map((k) => {
+                const m: BodyMetric | undefined = latest!.metrics.find((x) => x.key === k);
+                if (!m) return null;
+                return (
+                  <View style={styles.metricCell} key={k}>
+                    <Text style={styles.metricName}>{m.name}</Text>
+                    <View style={styles.metricValRow}>
+                      <Text style={[styles.metricVal, { color: m.status === 'info' ? theme.colors.textTitle : STATUS_COLOR[m.status] }]} numberOfLines={1}>{m.value.toFixed(m.decimals)}</Text>
+                      {m.unit ? <Text style={styles.metricUnit}>{m.unit}</Text> : null}
+                    </View>
+                    {m.status !== 'info' ? (
+                      <View style={[styles.pill, { backgroundColor: STATUS_COLOR[m.status] + '22' }]}>
+                        <Text style={[styles.pillText, { color: STATUS_COLOR[m.status] }]}>{STATUS_TEXT[m.status]}</Text>
+                      </View>
+                    ) : m.range !== '—' ? (
+                      <Text style={styles.metricRange}>{m.range}</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={styles.historyHint}>
+              查看全部 {count > 0 ? count : ''} 次测量 ›
+            </Text>
           </TouchableOpacity>
-          {/* 保存成功后才展示摘要。 */}
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryVal}>{latest?.inputs.weight}</Text>
-              <Text style={styles.summaryUnit}>kg</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryVal}>{latest?.inputs.height}</Text>
-              <Text style={styles.summaryUnit}>cm</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryVal}>{latest?.inputs.age}</Text>
-              <Text style={styles.summaryUnit}>岁</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryVal}>{sexText}</Text>
-            </View>
-          </View>
-          {latest && latest.metrics.length > 0 && (
-            <TouchableOpacity
-              style={styles.viewReport}
-              onPress={() => navigation.navigate('BodyCompositionHistory')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewReportText}>查看报告 ›</Text>
-            </TouchableOpacity>
-          )}
+          {/* 修改档案：次级动作，不再占据卡片主视觉。 */}
+          <TouchableOpacity
+            onPress={() => { touchedRef.current = true; setEditing(true); setError(''); }}
+            style={styles.editLink}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="修改身体档案"
+          >
+            <Text style={styles.editLinkText}>修改档案</Text>
+          </TouchableOpacity>
         </>
       )}
     </Card>
@@ -261,35 +310,57 @@ const styles = StyleSheet.create({
   },
   saveText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
 
-  // 摘要模式（紧凑）
-  summaryRow: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.cardBgSoft,
-    borderRadius: theme.radius.sm,
-    paddingVertical: theme.sp(1.5),
-    paddingHorizontal: theme.sp(1),
-    marginBottom: theme.sp(1),
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  summaryVal: {
-    fontSize: theme.fontSize.body,
-    fontWeight: theme.weight.semibold,
-    color: theme.colors.textTitle,
-  },
-  summaryUnit: {
+  // 结果模式（最近一次测量）
+  dateSub: {
     fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
-    marginLeft: 2,
+    marginBottom: theme.sp(1),
   },
-  viewReport: {
+  resultGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.space.sm,
+  },
+  metricCell: {
+    flexBasis: '46%',
+    flexGrow: 1,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+    minHeight: theme.sp(22),
+    justifyContent: 'center',
+  },
+  metricName: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  metricValRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  metricVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  metricUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  pill: {
+    alignSelf: 'flex-start',
+    marginTop: theme.sp(1),
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.sp(2.5),
+    paddingVertical: 2,
+  },
+  pillText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold },
+  metricRange: {
+    marginTop: theme.sp(1),
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+  },
+  historyHint: {
+    marginTop: theme.sp(1.5),
+    fontSize: theme.fontSize.micro,
+    color: mm.colors.lavenderDeep,
+    fontWeight: theme.weight.medium,
+  },
+  editLink: {
     alignItems: 'center',
-    minHeight: 48, justifyContent: 'center',
+    minHeight: 44, justifyContent: 'center',
     paddingVertical: theme.sp(0.75),
+    marginTop: theme.space.sm,
   },
-  viewReportText: { fontSize: theme.fontSize.micro, color: mm.colors.lavenderDeep, fontWeight: theme.weight.medium },
+  editLinkText: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, fontWeight: theme.weight.medium },
 });

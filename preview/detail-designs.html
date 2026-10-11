@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>展开详情页 · 设计方案 A / B / C</title>
+<style>
+  :root{
+    --card-bg:#FFFFFF;
+    --card-border:#E8E6F2;
+    --ink:#2A2840;
+    --ink-faint:#9A98B5;
+    --text-sub:#8A88A8;
+    --success:#6E7A24;
+    --danger:#C9598A;
+    --warn:#F0C46E;
+    --lav:#7C6AE0;
+    --lav-soft:#F1EEFC;
+    --mint:#6FCFB4;
+    --mint-soft:#E7F6F0;
+    --lime:#9FB23A;
+    --page:#F4F3FA;
+    --r:22px;
+    --r-sm:14px;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+    background:var(--page);
+    color:var(--ink);
+    padding:40px 20px 64px;
+  }
+  .pagehead{max-width:1080px;margin:0 auto 28px;}
+  .pagehead h1{font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:.2px;}
+  .pagehead p{font-size:14px;color:var(--text-sub);margin:0;line-height:1.6;}
+  .row{
+    display:flex;gap:26px;justify-content:center;align-items:flex-start;
+    flex-wrap:wrap;max-width:1120px;margin:0 auto;
+  }
+  .col{flex:0 0 auto;width:330px;}
+  .tag{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:13px;font-weight:600;color:var(--lav);
+    background:var(--lav-soft);border-radius:999px;
+    padding:5px 12px;margin-bottom:12px;
+  }
+  .cap{font-size:12.5px;color:var(--text-sub);line-height:1.55;margin:12px 2px 0;min-height:54px;}
+  /* phone */
+  .phone{
+    width:330px;height:700px;background:var(--card-bg);
+    border-radius:38px;border:1px solid var(--card-border);
+    box-shadow:0 18px 48px rgba(42,40,64,.10);
+    overflow:hidden;position:relative;display:flex;flex-direction:column;
+  }
+  .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:120px;height:24px;background:#1c1b29;border-radius:999px;z-index:5;}
+  .screen{padding:52px 20px 22px;height:100%;overflow:hidden;display:flex;flex-direction:column;gap:14px;}
+  /* header */
+  .head{display:flex;align-items:center;gap:10px;}
+  .back{width:34px;height:34px;border-radius:50%;background:var(--lav-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .head-text{flex:1;min-width:0;}
+  .title{font-size:18px;font-weight:700;line-height:1.2;}
+  .sub{font-size:12px;color:var(--text-sub);margin-top:1px;}
+  .live{font-size:11px;font-weight:600;color:var(--success);background:var(--mint-soft);padding:4px 10px;border-radius:999px;white-space:nowrap;}
+  /* segmented */
+  .seg{display:flex;background:#F2F0F9;border-radius:999px;padding:4px;}
+  .seg button{flex:1;border:0;background:transparent;font-size:13px;font-weight:600;color:var(--text-sub);padding:8px 0;border-radius:999px;font-family:inherit;cursor:default;}
+  .seg button.on{background:var(--card-bg);color:var(--lav);box-shadow:0 2px 6px rgba(42,40,64,.10);}
+  /* date picker */
+  .date{display:flex;align-items:center;justify-content:space-between;background:#FAF9FE;border:1px solid var(--card-border);border-radius:999px;padding:8px 14px;}
+  .date .d{font-size:13px;font-weight:600;color:var(--ink);}
+  .date .nav{color:var(--ink-faint);font-size:16px;font-weight:700;}
+  /* hero */
+  .hero{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--r);padding:18px 18px 16px;}
+  .hero .big{display:flex;align-items:baseline;gap:6px;}
+  .hero .val{font-size:46px;font-weight:700;letter-spacing:-1px;line-height:1;}
+  .hero .unit{font-size:15px;color:var(--text-sub);}
+  .hero .meta{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;}
+  .hero .tag2{font-size:11px;color:var(--text-sub);background:#F2F0F9;padding:3px 9px;border-radius:999px;}
+  .hero .delta{font-size:12px;font-weight:600;}
+  .delta.down{color:var(--success);}
+  .delta.up{color:var(--danger);}
+  /* chart card */
+  .chart{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--r);padding:14px 12px 10px;}
+  .chart svg{display:block;width:100%;height:auto;}
+  .yaxis{position:relative;}
+  .ylab{position:absolute;right:4px;font-size:9px;color:var(--ink-faint);}
+  .xaxis{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-faint);padding:4px 2px 0;}
+  /* stats */
+  .stats{display:flex;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--r);overflow:hidden;}
+  .stats .c{flex:1;padding:13px 6px;text-align:center;border-right:1px solid var(--card-border);}
+  .stats .c:last-child{border-right:0;}
+  .stats .l{font-size:11px;color:var(--text-sub);margin-bottom:5px;}
+  .stats .v{font-size:18px;font-weight:700;}
+  /* note */
+  .note{border-radius:var(--r-sm);padding:13px 14px;font-size:12.5px;line-height:1.6;color:var(--ink);}
+
+  /* ===== VARIANT B : Soft Glow ===== */
+  .b .hero{border:0;background:linear-gradient(135deg,#FBFAFF 0%,var(--lav-soft) 100%);}
+  .b .val{color:var(--lav);}
+  .b .chart{border:0;background:linear-gradient(180deg,#FFFFFF 0%,#F7F5FE 100%);position:relative;}
+  .b .glow{position:absolute;left:50%;top:30%;width:190px;height:120px;transform:translate(-50%,-50%);background:radial-gradient(closest-side,rgba(124,106,224,.22),transparent);filter:blur(6px);}
+  .b .seg{background:var(--lav);}
+  .b .seg button{color:rgba(255,255,255,.8);}
+  .b .seg button.on{color:var(--lav);}
+  .b .note{background:var(--mint-soft);}
+  .b .stats{border:0;background:var(--lav-soft);}
+  .b .stats .c{border-right-color:rgba(255,255,255,.6);}
+
+  /* ===== VARIANT C : Editorial ===== */
+  .c .screen{gap:16px;}
+  .c .hero{border:0;padding:6px 4px 0;}
+  .c .val{font-size:54px;color:var(--lav);}
+  .c .chart{border:0;border-top:1px solid var(--card-border);border-radius:0;padding:16px 4px 8px;}
+  .c .xaxis{padding-left:0;padding-right:0;}
+  .c .stats{border:0;border-top:1px solid var(--card-border);border-radius:0;}
+  .c .stats .c{border-right:0;padding:14px 4px;text-align:left;}
+  .c .note{background:transparent;padding:0 4px;color:var(--text-sub);border-left:3px solid var(--lav);border-radius:0;padding-left:12px;}
+  .c .seg{background:transparent;border:1px solid var(--card-border);}
+  .c .seg button.on{background:var(--lav);color:#fff;box-shadow:none;}
+</style>
+</head>
+<body>
+  <div class="pagehead">
+    <h1>展开详情页 · 设计方案（去灰 · 白底）</h1>
+    <p>洞察页卡片点击进入的「指标历史详情」全屏页。以下三版均沿用 Mira Design Token（白卡 / 描边 #E8E6F2 / 状态色 success·danger·warn），去掉灰色背景，供团队投票后 1:1 落地到 RN。</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ============ A : Calm Clean ============ -->
+    <div class="col">
+      <span class="tag">A · Calm Clean</span>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen a">
+          <div class="head">
+            <div class="back">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="#7C6AE0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="head-text">
+              <div class="title">静息心率</div>
+              <div class="sub">bpm</div>
+            </div>
+            <div class="live">真实数据</div>
+          </div>
+
+          <div class="seg">
+            <button>日</button><button class="on">周</button><button>月</button><button>年</button>
+          </div>
+
+          <div class="date">
+            <span class="nav">‹</span>
+            <span class="d">10月8日 · 当周</span>
+            <span class="nav">›</span>
+          </div>
+
+          <div class="hero">
+            <div class="big"><span class="val" style="color:var(--ink)">62</span><span class="unit">bpm</span></div>
+            <div class="meta">
+              <span class="tag2">区间平均</span>
+              <span class="delta down">↓ 5% · 较区间首点</span>
+            </div>
+          </div>
+
+          <div class="chart">
+            <svg viewBox="0 0 296 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#7C6AE0" stop-opacity="0.28"/>
+                  <stop offset="100%" stop-color="#7C6AE0" stop-opacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <line x1="8" y1="34" x2="288" y2="34" stroke="#EDEAF6" stroke-width="1"/>
+              <line x1="8" y1="74" x2="288" y2="74" stroke="#EDEAF6" stroke-width="1"/>
+              <line x1="8" y1="114" x2="288" y2="114" stroke="#EDEAF6" stroke-width="1"/>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64 L288 124 L8 124 Z" fill="url(#gA)"/>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="288" cy="64" r="4.5" fill="#fff" stroke="#7C6AE0" stroke-width="2.4"/>
+            </svg>
+            <div class="xaxis"><span>周一</span><span>周三</span><span>周五</span><span>周日</span></div>
+          </div>
+
+          <div class="stats">
+            <div class="c"><div class="l">平均</div><div class="v">60</div></div>
+            <div class="c"><div class="l">最高</div><div class="v">68</div></div>
+            <div class="c"><div class="l">最低</div><div class="v">54</div></div>
+          </div>
+
+          <div class="note" style="background:var(--lav-soft)">本周静息心率整体平稳，略低于上周均值。规律作息与放松训练有助于维持低位区间。</div>
+        </div>
+      </div>
+      <p class="cap"><b>A 极简白卡</b>：最接近现状的精炼版——白卡+细描边，lavender 强调。结构不变、去灰、层次更干净。</p>
+    </div>
+
+    <!-- ============ B : Soft Glow ============ -->
+    <div class="col">
+      <span class="tag">B · Soft Glow</span>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen b">
+          <div class="head">
+            <div class="back">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="#7C6AE0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="head-text">
+              <div class="title">静息心率</div>
+              <div class="sub">bpm</div>
+            </div>
+            <div class="live">真实数据</div>
+          </div>
+
+          <div class="seg">
+            <button>日</button><button class="on">周</button><button>月</button><button>年</button>
+          </div>
+
+          <div class="date">
+            <span class="nav">‹</span>
+            <span class="d">10月8日 · 当周</span>
+            <span class="nav">›</span>
+          </div>
+
+          <div class="hero">
+            <div class="big"><span class="val">62</span><span class="unit">bpm</span></div>
+            <div class="meta">
+              <span class="tag2">区间平均</span>
+              <span class="delta down">↓ 5% · 较区间首点</span>
+            </div>
+          </div>
+
+          <div class="chart">
+            <div class="glow"></div>
+            <svg viewBox="0 0 296 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#7C6AE0" stop-opacity="0.34"/>
+                  <stop offset="100%" stop-color="#7C6AE0" stop-opacity="0.03"/>
+                </linearGradient>
+              </defs>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64 L288 124 L8 124 Z" fill="url(#gB)"/>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64" fill="none" stroke="#7C6AE0" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="288" cy="64" r="5" fill="#fff" stroke="#7C6AE0" stroke-width="2.6"/>
+            </svg>
+            <div class="xaxis"><span>周一</span><span>周三</span><span>周五</span><span>周日</span></div>
+          </div>
+
+          <div class="stats">
+            <div class="c"><div class="l">平均</div><div class="v">60</div></div>
+            <div class="c"><div class="l">最高</div><div class="v">68</div></div>
+            <div class="c"><div class="l">最低</div><div class="v">54</div></div>
+          </div>
+
+          <div class="note">本周静息心率整体平稳，略低于上周均值。规律作息与放松训练有助于维持低位区间。</div>
+        </div>
+      </div>
+      <p class="cap"><b>B 柔光</b>：英雄数字与图表带 lavender 柔光晕，段控为实心紫，更"活"、更有品牌温度。</p>
+    </div>
+
+    <!-- ============ C : Editorial ============ -->
+    <div class="col">
+      <span class="tag">C · Editorial</span>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen c">
+          <div class="head">
+            <div class="back">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="#7C6AE0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="head-text">
+              <div class="title">静息心率</div>
+              <div class="sub">bpm</div>
+            </div>
+            <div class="live">真实数据</div>
+          </div>
+
+          <div class="seg">
+            <button>日</button><button class="on">周</button><button>月</button><button>年</button>
+          </div>
+
+          <div class="date">
+            <span class="nav">‹</span>
+            <span class="d">10月8日 · 当周</span>
+            <span class="nav">›</span>
+          </div>
+
+          <div class="hero">
+            <div class="big"><span class="val">62</span><span class="unit">bpm</span></div>
+            <div class="meta">
+              <span class="tag2">区间平均</span>
+              <span class="delta down">↓ 5% · 较区间首点</span>
+            </div>
+          </div>
+
+          <div class="chart">
+            <svg viewBox="0 0 296 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="gC" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#7C6AE0" stop-opacity="0.22"/>
+                  <stop offset="100%" stop-color="#7C6AE0" stop-opacity="0.03"/>
+                </linearGradient>
+              </defs>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64 L288 124 L8 124 Z" fill="url(#gC)"/>
+              <path d="M8 92 C 40 78,56 104,82 84 S 132 60,160 76 S 224 48,288 64" fill="none" stroke="#7C6AE0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="xaxis"><span>周一</span><span>周三</span><span>周五</span><span>周日</span></div>
+          </div>
+
+          <div class="stats">
+            <div class="c"><div class="l">平均</div><div class="v">60</div></div>
+            <div class="c"><div class="l">最高</div><div class="v">68</div></div>
+            <div class="c"><div class="l">最低</div><div class="v">54</div></div>
+          </div>
+
+          <div class="note">本周静息心率整体平稳，略低于上周均值。规律作息与放松训练有助于维持低位区间。</div>
+        </div>
+      </div>
+      <p class="cap"><b>C 编辑式</b>：去卡片描边、大留白、左对齐英雄值，仅靠细分割线分区。最克制、最"杂志感"。</p>
+    </div>
+
+  </div>
+</body>
+</html>

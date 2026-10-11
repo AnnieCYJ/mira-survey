@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
+import Icon from './Icon';
 import { mm } from '../theme/mindmate';
 import SleepStageChart, { SLEEP_STAGE_META } from './SleepStageChart';
 import { formatSleepClockText } from '../lib/sleepTime';
@@ -78,9 +79,12 @@ export default function SleepStructureCard({
           <Text style={styles.title}>睡眠结构</Text>
           <Text style={styles.sub}>{dataStale ? '戒指暂无新数据' : '昨夜整夜分期'}</Text>
         </View>
-        <View style={styles.totalWrap}>
-          <Text style={styles.total}>{shownTotal > 0 ? fmtDuration(shownTotal) : '—'}</Text>
-          <Text style={styles.totalLabel}>总睡眠</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+          <View style={styles.totalWrap}>
+            <Text style={styles.total}>{shownTotal > 0 ? fmtDuration(shownTotal) : '—'}</Text>
+            <Text style={styles.totalLabel}>总睡眠</Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
         </View>
       </View>
 

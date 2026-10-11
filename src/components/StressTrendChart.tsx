@@ -112,13 +112,23 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
   const xAt = (slot: number) => padL + (plotW * slot) / N;
   const yAt = (v: number) => padT + plotH - (v / 100) * plotH;
 
-  // 连续有值区段（运动槽/缺口断开，不插值）
+  // ★ 2026-10-10（用户：睡眠中不展示心理压力）：睡眠窗内的槽不参与连线 ——
+  //   曲线在睡眠时段**真正断开**（不再只是盖一层灰色遮罩），与「夜间为睡眠，不展示压力数据」口径一致。
+  const inSleep = (slot: number): boolean => {
+    if (!sleepWindow) return false;
+    const bedS = Math.max(0, Math.min(47, Math.floor(sleepWindow.bedHour * 2)));
+    const wakeS = Math.max(0, Math.min(47, Math.floor(sleepWindow.wakeHour * 2)));
+    if (bedS === wakeS) return false;
+    if (bedS < wakeS) return slot >= bedS && slot <= wakeS;
+    return slot >= bedS || slot <= wakeS; // 跨午夜
+  };
+  // 连续有值区段（运动槽/缺口/睡眠窗 断开，不插值）
   const runs: number[][] = [];
   {
     let cur: number[] = [];
     for (let s = 0; s < N; s++) {
       const p = points.find((q) => q.slot === s);
-      if (p?.hasData) cur.push(s);
+      if (p?.hasData && !inSleep(s)) cur.push(s);
       else { if (cur.length) runs.push(cur); cur = []; }
     }
     if (cur.length) runs.push(cur);

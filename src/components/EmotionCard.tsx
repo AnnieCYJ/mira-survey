@@ -10,7 +10,8 @@ import Card from './Card';
 
 import EmotionTimeline, { EmotionLegend } from './EmotionTimeline';
 import { getEmotionHistory } from '../ble/RingBleManager';
-import { healthStore, type MetricKey } from '../data/healthStore';
+import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, type MoodKey } from '../data/emotionLog';
+import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import type { EmotionLabel } from '../lib/emotionEngine';
 
 // ── 情绪 → token 颜色映射 (复用 theme 已有 token, 不造新色) ──
@@ -80,6 +81,9 @@ interface Props {
 }
 
 const SP = theme.sp;
+const moodArousal: Partial<Record<MoodKey, number>> = { excited: 72, happy: 48, calm: 24, stressed: 78, sad: 58 };
+const moodValence: Partial<Record<MoodKey, number>> = { excited: 85, happy: 65, calm: 10, stressed: -55, sad: -75 };
+const moodLabel: Partial<Record<MoodKey, EmotionLabel>> = { excited: 'focused', happy: 'focused', calm: 'calm', stressed: 'stressed', sad: 'depleted' };
 
 export default function EmotionCard({ ring, onPress }: Props) {
   const e = ring.emotion;
@@ -88,10 +92,23 @@ export default function EmotionCard({ ring, onPress }: Props) {
   // 时间线历史
   const [history, setHistory] = useState<ReturnType<typeof getEmotionHistory>>([]);
   useEffect(() => {
-    const refresh = () => setHistory(getEmotionHistory());
+    let alive = true;
+    const refresh = () => {
+      const dk = dayKey(Date.now());
+      const inferred = getEmotionHistory().map((x) => ({ ...x, source: 'device' as const }));
+      const manual = getEntriesForDay(dk).map((x) => ({
+        t: x.t,
+        arousalScore: moodArousal[x.mood] ?? 50,
+        valenceScore: moodValence[x.mood] ?? 0,
+        emotionLabel: moodLabel[x.mood] ?? 'calm',
+        source: 'manual' as const,
+      }));
+      if (alive) setHistory([...inferred, ...manual].sort((a, b) => a.t - b.t));
+    };
+    void ensureEmotionLogLoaded().then(refresh);
     refresh();
-    const t = setInterval(refresh, 3000);
-    return () => clearInterval(t);
+    const off = onEmotionLog(refresh);
+    return () => { alive = false; off(); };
   }, []);
 
   if (!e) return <EmotionEmptyState cardW={cardW} />;

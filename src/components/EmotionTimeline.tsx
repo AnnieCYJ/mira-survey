@@ -20,6 +20,8 @@ const LABEL_COLOR: Record<EmotionLabel, string> = {
   bored:    '#95A5A6',
   depleted: '#8B5A2B',
 };
+const SLEEP_COLOR = '#A99BD6';
+const SLEEP_FILL = '#EDE9F8';
 
 const LABEL_EMOJI: Record<EmotionLabel, string> = {
   focused:  '🎯',
@@ -34,6 +36,7 @@ interface HistoryPt {
   arousalScore: number;
   valenceScore: number;
   emotionLabel: string;
+  source?: 'device' | 'manual' | 'sleep';
 }
 
 interface Props {
@@ -162,6 +165,7 @@ export default function EmotionTimeline({
   width,
   height = 140,
 }: Props) {
+  const sleepSummary = healthStore.getSleep(dayKey(Date.now()));
   const pad = { l: 36, r: 8, t: 12, b: 24 };
   const innerW = Math.max(1, width - pad.l - pad.r);
   const innerH = Math.max(1, height - pad.t - pad.b);
@@ -172,13 +176,29 @@ export default function EmotionTimeline({
     const today0 = new Date(dNow.getFullYear(), dNow.getMonth(), dNow.getDate()).getTime();
 
     const aw = getTodayAwakeWindow(now);
-    const awakeStart = today0 + aw.wakeHour * 3600_000;
-    const awakeEnd = (aw.bedHour >= 24 ? today0 + 24 * 3600_000 : today0 + aw.bedHour * 3600_000);
-
-    const visible = history
-      .filter(p => p.t >= awakeStart && p.t <= Math.min(awakeEnd, now))
-      .filter(p => isAwake(p.t, aw.wakeHour, aw.bedHour))
-      .sort((a, b) => a.t - b.t);
+    const awakeStart = today0;
+    const awakeEnd = today0 + 24 * 3600_000;
+    const sleep = healthStore.getSleep(dayKey(now));
+    const parse = (s?: string | null) => { const m = parseClockMinutes(s); return m == null ? null : m; };
+    const bed = parse(sleep?.sleepTime);
+    const wake = parse(sleep?.wakeTime);
+    const sleepPts: HistoryPt[] = [];
+    if (bed != null && wake != null && sleep?.total && sleep.total > 0) {
+      const start = bed > wake ? bed - 1440 : bed;
+      const end = bed > wake ? wake : wake;
+      for (let m = Math.max(0, start); m <= Math.min(1440, end); m += 30) {
+        sleepPts.push({ t: today0 + m * 60000, arousalScore: 8, valenceScore: 0, emotionLabel: 'sleep', source: 'sleep' });
+      }
+    }
+    // 同一半小时槽内，手动记录优先于设备记录；睡眠点只填补没有情绪记录的槽。
+    const all = [...history.filter(p => p.t >= today0 && p.t <= Math.min(awakeEnd, now)), ...sleepPts];
+    const buckets = new Map<number, HistoryPt>();
+    for (const p of all.sort((a, b) => a.t - b.t)) {
+      const slot = Math.floor((p.t - today0) / (30 * 60000));
+      const prev = buckets.get(slot);
+      if (!prev || p.source === 'manual' || (prev.source === 'sleep' && p.source !== 'sleep')) buckets.set(slot, p);
+    }
+    const visible = Array.from(buckets.values()).sort((a, b) => a.t - b.t);
 
     if (visible.length === 0) {
       return { pts: [] as any[], path: '', area: '', awakeStart, awakeEnd };
@@ -235,9 +255,10 @@ export default function EmotionTimeline({
             <Path d={path} stroke={chart.series.primary} strokeWidth={chart.lw.ref} fill="none" />
 
             {pts.map((p, i) => {
-              const color = LABEL_COLOR[(p.emotionLabel as EmotionLabel) ?? 'calm'] ?? '#7C6AE0';
-              const r = 2.5 + (p.arousalScore / 100) * 2.5;
-              return <Circle key={i} cx={p.x} cy={p.y} r={r} fill={color} />;
+              const isSleep = p.source === 'sleep' || p.emotionLabel === 'sleep';
+              const color = isSleep ? SLEEP_COLOR : (LABEL_COLOR[(p.emotionLabel as EmotionLabel) ?? 'calm'] ?? '#7C6AE0');
+              const r = isSleep ? 3.5 : 2.5 + (p.arousalScore / 100) * 2.5;
+              return <Circle key={i} cx={p.x} cy={p.y} r={r} fill={isSleep ? SLEEP_FILL : color} stroke={isSleep ? color : undefined} strokeWidth={isSleep ? 1.5 : undefined} />;
             })}
 
             {pts.length > 0 && (() => {
@@ -265,6 +286,9 @@ export default function EmotionTimeline({
           );
         })}
       </Svg>
+      {sleepSummary && sleepSummary.total > 0 ? (
+        <Text style={styles.sleepNote}>睡眠 {sleepSummary.sleepTime ?? '—'}–{sleepSummary.wakeTime ?? '—'} · 睡眠时段不计入情绪点</Text>
+      ) : null}
     </View>
   );
 }
@@ -285,6 +309,10 @@ export function EmotionLegend() {
           <Text style={styles.legendText}>{it.name}</Text>
         </View>
       ))}
+      <View style={styles.legendItem}>
+        <View style={[styles.legendDot, { backgroundColor: SLEEP_FILL, borderColor: SLEEP_COLOR, borderWidth: 1.5 }]} />
+        <Text style={styles.legendText}>睡眠</Text>
+      </View>
     </View>
   );
 }
@@ -294,4 +322,5 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 14, marginBottom: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   legendText: { fontSize: 11, color: '#666' },
+  sleepNote: { fontSize: 10, color: '#7C6AE0', marginTop: 2 },
 });

@@ -44,7 +44,8 @@ import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { judgeCortisolRhythmForDay } from '../lib/cortisolProxy';
 import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
-import { dayKey as healthDayKey } from '../data/healthStore';
+import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
+import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 
 
 interface DayRec {
@@ -344,8 +345,21 @@ export default function SleepDetailScreen() {
     const isLatest = !ring.sleepSummaryDate || ring.sleepSummaryDate === dk;
     const sum = sleepDaily[dk] ?? null;
     const segs = ring.sleepStagesDaily?.[dk] ?? (isLatest ? ring.sleepStages : null) ?? null;
+    // ★ 2026-10-10：夜间 HRV 逐样本序列（分期图第二层用）。
+    //   只读 healthStore.intraday（纯 HRV）——`ring.history.hrv` 混了由 RR 间期展开的 BPM 值，不能用。
+    const hrvIntraday = healthStore.getIntraday('hrv', dk);
+    // ★ 2026-10-10（修 bug）：原来把**绝对体温**（℃36.5）塞进名为 tempDelta 的字段，
+    //   UI 标签却写「体温偏离」→ 显示成「+36.5℃ 体温偏离」。现在 tempDelta 走真正的
+    //   「相对个人基线的偏离」，另给 tempAbs 兜底；基线未建立时只显示绝对值并改标签。
+    const tempAbs = ring.tempDaily?.[dk] ?? null;
+    const tempDev = (() => {
+      if (tempAbs == null) return null;
+      const bl = buildTempBaseline({ endDayKey: dk });
+      if (!bl.ready) return null;
+      return tempDeviationSummary(tempDeviationSeries(dk, bl).dev).avg;
+    })();
     if (!sum) {
-      return { day: null, segs, phys: { hr: ring.hrDaily?.[dk] ?? null, hrv: ring.hrvDaily?.[dk] ?? null, tempDelta: ring.tempDaily?.[dk] ?? null, rr: ring.rrDaily?.[dk] ?? null, spo2: ring.spo2Daily?.[dk] ?? null, recoveryIdx: null } };
+      return { day: null, segs, phys: { hr: ring.hrDaily?.[dk] ?? null, hrv: ring.hrvDaily?.[dk] ?? null, tempDelta: tempDev, tempAbs, rr: ring.rrDaily?.[dk] ?? null, spo2: ring.spo2Daily?.[dk] ?? null, recoveryIdx: null, hrvIntraday } };
     }
     const awakeMin = (sum.awake ?? 0) + (sum.insomnia ?? 0);
     return {
@@ -363,10 +377,12 @@ export default function SleepDetailScreen() {
       phys: {
         hr: ring.hrDaily?.[dk] ?? null,
         hrv: ring.hrvDaily?.[dk] ?? null,
-        tempDelta: ring.tempDaily?.[dk] ?? null,
+        tempDelta: tempDev,
+        tempAbs,
         rr: ring.rrDaily?.[dk] ?? null,
         spo2: ring.spo2Daily?.[dk] ?? null,
         recoveryIdx: null,
+        hrvIntraday,
       },
     };
   }, [sleepDaily, anchor, ring]);
@@ -444,7 +460,7 @@ export default function SleepDetailScreen() {
 
       {/* ★ 睡眠恢复分卡片：仅日视图显示（置于选择器下方）；周/月/年已在双轴图里以「恢复分曲线」呈现，不再重复显示总分数 */}
       {dRange === 'day' ? (
-        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分（个人相对 · 50 = 平时）" />
+        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分（个人基线映射）" />
       ) : null}
 
       {dRange === 'day' ? (
@@ -460,6 +476,13 @@ export default function SleepDetailScreen() {
             dk={sleepDayKey(anchor)}
             isToday={dayKey(anchor) === healthDayKey(Date.now())}
           />
+
+          <View style={styles.scoreLegend} accessibilityRole="text">
+            <Text style={styles.scoreLegendTitle}>睡眠恢复分怎么看</Text>
+            <Text style={styles.scoreLegendText}>75 分：接近个人平时　·　82 分以上：明显好于平时</Text>
+            <Text style={styles.scoreLegendText}>68–81 分：轻度偏低　·　45–67 分：恢复偏低</Text>
+            <Text style={styles.scoreLegendNote}>这是基于个人滚动基线的趋势分，不是医学诊断分。</Text>
+          </View>
         </>
       ) : (
         /* 周 / 月 / 年：睡眠与恢复双纵轴图（柱=时长 · 线=恢复分 · 异常 icon 可点击） */
@@ -584,4 +607,12 @@ const styles = StyleSheet.create({
   dualHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   cardSubLine: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
+  scoreLegend: {
+    marginTop: theme.space.sm, marginBottom: theme.space.lg, padding: theme.space.sm,
+    borderRadius: theme.radius.md, backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+  },
+  scoreLegendTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
+  scoreLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
+  scoreLegendNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18, marginTop: theme.sp(1) },
 });

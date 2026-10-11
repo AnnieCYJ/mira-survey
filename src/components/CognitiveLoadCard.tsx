@@ -5,6 +5,7 @@ import { theme } from '../theme/theme';
 import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
+import Icon from './Icon';
 import { computeCognitiveLoadReport, type LoadLevel, type FatigueLevel, levelLabel, COG_LEVEL_LOW, COG_LEVEL_HIGH, cogBarRatio } from '../lib/cognitiveLoad';
 // ★ 2026-10-05 改「认知准备度」：柱状图 → 趋势图，口径与首页/详情页同源
 import { computeReadinessSeries, readinessLevel, readinessLevelLabel, READY_LOW, READY_HIGH } from '../lib/cognitiveReadiness';
@@ -93,9 +94,12 @@ export default function CognitiveLoadCard({ nowMs, note }: { nowMs?: number; not
   return (
     <Card>
         {/* ── 头部 ── */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
-          <Text style={styles.title}>认知准备度</Text>
-          {note ? <Text style={styles.noteText}>{note}</Text> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.sp(1.5) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) }}>
+            <Text style={styles.title}>认知准备度</Text>
+            {note ? <Text style={styles.noteText}>{note}</Text> : null}
+          </View>
+          <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
         </View>
 
         {/* ── 全天趋势图（★ 折线+面积，替换原 24 根柱） ── */}

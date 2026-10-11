@@ -90,14 +90,42 @@ export default function PeriodRecordPanel({
     return `${Number(m)}/${Number(d)}`;
   };
 
-  // 近 60 天日期 chip（可回填历史经期/症状）
-  const chips: { key: string; label: string }[] = [];
-  const t = new Date();
-  for (let i = 59; i >= 0; i--) {
-    const d = new Date(t);
-    d.setDate(d.getDate() - i);
-    chips.push({ key: dayKey(d), label: `${d.getMonth() + 1}/${d.getDate()}` });
-  }
+  // ★ 2026-10-10（用户：日期选择默认今天、参考经期 App 做月份日历选择器）：
+  //   默认定位到已选日期所在月；可前后翻月（最多 24 个月前 / 不超当前月），未来日禁用。
+  const now = new Date();
+  const [viewY, setViewY] = useState(selDate ? new Date(selDate + 'T00:00:00').getFullYear() : now.getFullYear());
+  const [viewM, setViewM] = useState(selDate ? new Date(selDate + 'T00:00:00').getMonth() : now.getMonth());
+  const monthLabel = `${viewY}年${viewM + 1}月`;
+  const canPrev = viewY * 12 + viewM > now.getFullYear() * 12 + now.getMonth() - 24;
+  const canNext = viewY < now.getFullYear() || (viewY === now.getFullYear() && viewM < now.getMonth());
+  const goPrev = () => {
+    if (!canPrev) return;
+    if (viewM === 0) { setViewY(viewY - 1); setViewM(11); } else setViewM(viewM - 1);
+  };
+  const goNext = () => {
+    if (!canNext) return;
+    if (viewM === 11) { setViewY(viewY + 1); setViewM(0); } else setViewM(viewM + 1);
+  };
+  const monthCells: (number | null)[] = (() => {
+    const first = new Date(viewY, viewM, 1).getDay();
+    const lead = (first + 6) % 7;
+    const total = new Date(viewY, viewM + 1, 0).getDate();
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= total; d++) cells.push(d);
+    // ★ 2026-10-10（用户：日历与经量之间大片空白）：不再补尾部空格子——
+    //   空格子会在 flexWrap 里多占整行高度，就是把网格下方撑出一块空白的原因。
+    return cells;
+  })();
+  const isFuture = (day: number) => {
+    if (viewY !== now.getFullYear()) return viewY > now.getFullYear();
+    if (viewM !== now.getMonth()) return viewM > now.getMonth();
+    return day > now.getDate();
+  };
+  const pickDay = (day: number) => {
+    if (isFuture(day)) return;
+    setSelDate(dayKey(new Date(viewY, viewM, day)));
+  };
 
   // 切换日期 → 载入该日已有记录用于回填
   useEffect(() => {
@@ -201,19 +229,42 @@ export default function PeriodRecordPanel({
         </View>
       ) : null}
 
-      {/* 记录日期 */}
+      {/* ★ 2026-10-10（用户）：记录日期改用月份日历选择器（默认今天、可翻月、未来日禁用） */}
       <Text style={styles.sectionTitle}>记录日期</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-        {chips.map((c) => (
-          <TouchableOpacity
-            key={c.key}
-            style={[styles.dateChip, selDate === c.key && styles.dateChipOn]}
-            onPress={() => setSelDate(c.key)}
-          >
-            <Text style={[styles.chipText, selDate === c.key && styles.chipTextOn]}>{c.label}</Text>
-          </TouchableOpacity>
+      <View style={styles.calHead}>
+        <TouchableOpacity style={styles.calNav} activeOpacity={0.6} disabled={!canPrev} onPress={goPrev}>
+          <Text style={[styles.calNavTxt, !canPrev && styles.calNavOff]}>‹</Text>
+        </TouchableOpacity>
+        <Text style={styles.calMonth}>{monthLabel}</Text>
+        <TouchableOpacity style={styles.calNav} activeOpacity={0.6} disabled={!canNext} onPress={goNext}>
+          <Text style={[styles.calNavTxt, !canNext && styles.calNavOff]}>›</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.calWeekRow}>
+        {['一', '二', '三', '四', '五', '六', '日'].map((w, i) => (
+          <Text key={w} style={[styles.calWeek, i >= 5 && styles.calWeekWE]}>{w}</Text>
         ))}
-      </ScrollView>
+      </View>
+      <View style={styles.calGrid}>
+        {monthCells.map((d, i) => {
+          if (d == null) return <View key={i} style={styles.calCell} />;
+          const k = dayKey(new Date(viewY, viewM, d));
+          const on = k === selDate;
+          const future = isFuture(d);
+          const isT = d === now.getDate() && viewY === now.getFullYear() && viewM === now.getMonth();
+          return (
+            <TouchableOpacity
+              key={i}
+              activeOpacity={0.6}
+              disabled={future}
+              style={[styles.calCell, on && styles.calCellOn, isT && styles.calCellToday]}
+              onPress={() => pickDay(d)}
+            >
+              <Text style={[styles.calDay, on && styles.calDayOn, future && styles.calDayOff, isT && styles.calDayToday]}>{d}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {/* 经量 */}
       <Text style={styles.sectionTitle}>经量 💧</Text>
@@ -352,6 +403,30 @@ const styles = StyleSheet.create({
   dateChipOn: { backgroundColor: theme.colors.accentSolid }, // v21：周期域选中=紫实底
   chipText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft },
   chipTextOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
+  // ★ 2026-10-10（用户：月份日历选择器，参考 Clue/Flo/美柚）
+  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },
+  calNav: { width: theme.sp(7), height: theme.sp(7), alignItems: 'center', justifyContent: 'center' },
+  calNavTxt: { fontSize: theme.fontSize.card, color: theme.colors.textTitle, fontWeight: theme.weight.semibold as any },
+  calNavOff: { color: theme.colors.cardBorder },
+  calMonth: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  calWeekRow: { flexDirection: 'row', marginBottom: theme.sp(0.75) },
+  calWeek: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
+  calWeekWE: { color: mm.colors.limeDeep },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  // ★ 2026-10-10（用户：日历下方空白 + "今天"数字下沉）：
+  //   1) 行高显式固定 sp(9)=36，不再用 aspectRatio（百分比宽 + aspectRatio 在 iOS flexWrap 里行高计算不稳，会撑出空行）；
+  //   2) 所有格子统一透明边框（今天只换描边色），内容盒一致、数字基线齐平。
+  calCell: {
+    width: '14.2857%', height: theme.sp(9), alignItems: 'center', justifyContent: 'center',
+    borderRadius: theme.radius.sm,
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  calCellOn: { backgroundColor: mm.colors.limeMid },
+  calCellToday: { borderColor: mm.colors.limeDeep },
+  calDay: { fontSize: theme.fontSize.xs, lineHeight: 18, color: theme.colors.textBody },
+  calDayOn: { color: '#3E4A18', fontWeight: theme.weight.bold as any },
+  calDayToday: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
+  calDayOff: { color: theme.colors.cardBorder },
 
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   pill: {

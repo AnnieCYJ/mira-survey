@@ -1,7 +1,7 @@
 /**
  * EmotionCognitiveDetailScreen —— 昼夜节律详情页（首页/洞察页「昼夜节律」卡点入，v18.96 由「全天恢复」更名；与情绪/脑力消耗详情页统一骨架）
  *
- * 结构：返回头 → Hero(周期标题) → RangeSwitch(日/周/月/年) → DateAnchorPicker → InsightBanner(AI综合) → 内容
+ * 结构：返回头 → RangeSwitch(日/周/月/年) → DateAnchorPicker → 节律状态 Hero（白底描边卡）→ 内容（日=全天趋势+节律分析 / 周月年=节律日历+小结）→ 底部 AI 分析
  *   · 日：锚定日的全天看板（皮质醇全天趋势 + 情绪/脑力/睡眠摘要 + 相比前一天），与之前一致
  *   · 周/月/年：区间内逐日聚合（均值 + 对比上一等长周期），皮质醇用窗口样本做 cosinor 拟合
  *
@@ -16,12 +16,9 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import Card from '../components/Card';
-import CortisolDailyChart, { buildRhythmInsights } from '../components/CortisolDailyChart';
-import { useAiInsight } from '../hooks/useAiInsight';
+import CortisolDailyChart from '../components/CortisolDailyChart';
+import { chart } from '../theme/chart';
 import { useDebouncedHealthStoreRefresh, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
-import { buildRecoveryFallbackRows, resolveInsightRows } from '../ai/insight';
-import InsightBanner from '../components/InsightBanner';
-import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
@@ -51,6 +48,82 @@ const MOD_BG = {
   sleep: { bg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
   cortisol: { bg: mm.chipBg.lime.bg, fg: mm.chipBg.lime.fg },
 };
+
+/**
+ * 节律状态 → 语义色（与睡眠详情页 levelMeta / 节律日历 CAL_COLOR 同源）。
+ * 正常=limeDeep 绿 / 偏高=danger 红 / 紊乱=honeyDeep 琥珀。
+ */
+const RHYTHM_STATUS_COLOR: Record<string, string> = {
+  节律正常: mm.colors.limeDeep,
+  皮质醇偏高: theme.colors.danger,
+  节律紊乱: mm.colors.honeyDeep,
+  normal: mm.colors.limeDeep,
+  sustained_high: theme.colors.danger,
+  dysregulated: mm.colors.honeyDeep,
+};
+const RANGE_STATUS_LABEL: Record<RhythmLevel, string> = {
+  normal: '节律正常',
+  sustained_high: '持续偏高',
+  dysregulated: '节律紊乱',
+};
+
+/**
+ * 节律状态 Hero —— **统一置于时间选择器下方**，与睡眠/运动/情绪详情页的 Hero 卡片同一骨架
+ * （白底 + cardBorder 描边 + radius.card + shadow.card + cardPad），不再把结论做成顶部大字或 AI banner。
+ * 日：大字=今日节律结论（节律正常 / 皮质醇偏高 / 节律紊乱）；
+ * 周/月/年：大字=区间节律状态（正常 / 持续偏高 / 节律紊乱）。
+ */
+function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPeakSub, dayChrono }: {
+  range: RangeKey;
+  dayLabel: string;
+  rangeStatus: RhythmLevel | null;
+  rangeLabel: string;
+  /** ★ 2026-10-10（用户）：日视图顶部状态卡下展示「峰值时刻 + 作息类型」；仅日视图有意义 */
+  dayPeakH: number | null;
+  dayPeakSub: string;
+  dayChrono: { label: string; sub: string };
+}) {
+  // ★ 2026-10-10（用户）：顶部状态卡保留，但样式对齐「脑力消耗详情页·认知准备度」卡
+  //   （ctitle 标题 + heroWrap 大数字左/上下文右），统一用 Design Token（此前 heroBig 写死 32 属违规）。
+  const big = range === 'day' ? (dayLabel ?? '—') : (rangeStatus ? RANGE_STATUS_LABEL[rangeStatus] : '—');
+  const color = RHYTHM_STATUS_COLOR[big] ?? RHYTHM_STATUS_COLOR[rangeStatus ?? 'normal'] ?? mm.colors.ink;
+  const lab = range === 'day' ? '今日节律结论' : '区间节律结论';
+  const ctx = range === 'day' ? '今天' : rangeLabel;
+  // ★ 2026-10-10（用户）：日视图峰值时刻格式化 HH:MM（与节律分析卡 fmtHour 同源）
+  const fmtHM = (h: number | null) => {
+    if (h == null || !Number.isFinite(h)) return '—';
+    const hour = Math.floor(h);
+    const min = Math.round((h - hour) * 60);
+    return `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  };
+  return (
+    <View style={styles.heroCard}>
+      <Text style={styles.ctitle}>皮质醇昼夜节律</Text>
+      <View style={styles.heroWrap}>
+        <View>
+          <Text style={[styles.heroBig, { color }]}>{big}</Text>
+          <Text style={styles.heroLab}>{lab}</Text>
+        </View>
+        <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
+      </View>
+      {/* ★ 2026-10-10（用户）：峰值时刻 + 作息类型，样式对标脑力消耗日视图「认知准备度」duoRow */}
+      {range === 'day' ? (
+        <View style={styles.duoRow}>
+          <View style={[styles.duoCell, { backgroundColor: mm.colors.limeSoft }]}>
+            <Text style={styles.duoLab}>峰值时刻</Text>
+            <Text style={styles.duoTime}>{fmtHM(dayPeakH)}</Text>
+            <Text style={styles.duoSub}>{dayPeakSub}</Text>
+          </View>
+          <View style={[styles.duoCell, { backgroundColor: theme.colors.cardBgSoft }]}>
+            <Text style={styles.duoLab}>作息类型</Text>
+            <Text style={styles.duoTime}>{dayChrono.label}</Text>
+            <Text style={styles.duoSub}>{dayChrono.sub}</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 interface DayData {
   D: Date;
@@ -331,115 +404,36 @@ export default function EmotionCognitiveDetailScreen() {
       const px = buildCortisolProxyToday(pbl);
       const j = judgeCortisolRhythm(px.vals, px.real);
       if (!j.ready || !j.label) {
-        return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+        return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
       }
+      // ★ 2026-10-10（用户：顶部状态卡下显示「峰值时刻 + 作息类型」，与趋势图/节律分析卡同源）
+      const sum = proxySummaryFromSlots(px.vals, px.real);
+      const peakH = Number.isFinite(sum.acrophaseH) ? sum.acrophaseH : null;
+      const peakSub = peakH == null ? '—'
+        : peakH >= 6 && peakH <= 11 ? '正常范围 06–11 点'
+          : peakH < 6 ? '过早（早醒风险）'
+            : '偏晚（夜猫子型）';
+      const chrono = (() => {
+        if (peakH == null) return { label: '—', sub: '—' };
+        if (peakH > 11) return { label: '晚睡型', sub: '皮质醇夜高晨低，建议调整' };
+        if (peakH < 6) return { label: '早起型', sub: '皮质醇起得太早（早醒风险）' };
+        return { label: '常规作息', sub: '皮质醇晨高夜低（正常）' };
+      })();
       return {
         label: j.label as string,
         firstInsight: `今日皮质醇活性平均 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、皮电、体温与心率反推。`,
+        peakH, peakSub, chrono,
       };
     } catch {
-      return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。' };
+      return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
     }
     // 依赖 refreshKey：回填/实时数据到达后，顶部大字与节律卡同步刷新
   }, [refreshKey]);
   // 大字文案 = 卡片同款节律结论（无数据显「—」，与卡片 tile 一致）
   const todayRhythmLabel = todayRhythm.label ?? '—';
 
-  // ── AI 综合分析 ──
-  // ★ 真实端侧大模型（MiraAI · Qwen2.5-1.5B）：与洞察页同通道（ai/insight.ts 'recovery' kind），
-  //   输出分点行 tone|标题|正文（皮质醇节律→情绪→脑力→睡眠），带落盘缓存与静默降级。
-  //   ★ 跟随锚定日：历史日按「该日事实串」生成（aiDayArg=该日 dk），不再固定用今天的数据。
-  const anchorDk = dayKey(anchor.getTime());
-  const aiDayArg = anchorDk === dayKey(Date.now()) ? undefined : anchorDk;
-  const aiRecovery = useAiInsight('recovery', aiDayArg);
-
-  // 「查看更多分析」→ 拉起端侧聊天，带入今日皮质醇追问
-  const [chatVisible, setChatVisible] = useState(false);
-  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
-  const openChat = (question: string) => {
-    setChatQuestion(question);
-    setChatVisible(true);
-  };
-
-  /** 规则兜底：与 AI 行同构的 2 点分点（异常数据分析 + 今日建议），全区间一致、不铺陈。 */
-  const aiFallbackRows = useMemo<SummaryRow[]>(() => {
-    const parts: string[] = [];
-    const titles: string[] = [];
-
-    if (range === 'day') {
-      const { D } = dayData;
-      const isToday = dayKey(D.getTime()) === dayKey(Date.now());
-      // 今日：直接复用与洞察页共用的兜底（首行=皮质醇节律 + 今日建议，2 点）
-      if (isToday) return buildRecoveryFallbackRows() as SummaryRow[];
-      // 历史日：无 14 天基线，偏高不可信，只看当日曲线形态 + 情绪/脑力
-      const rSamples = collectSamplesForDay(dayKey(D.getTime()));
-      if (rSamples.length >= 4) {
-        const rr = analyzeCortisol(rSamples, 1);
-        if (rr.today.dys || rr.today.high) {
-          parts.push(rr.today.dys ? '当日皮质醇节律紊乱' : '当日皮质醇节律偏高');
-          titles.push('代谢');
-        }
-      }
-      if (dayData.stress?.emotionalLoad != null && dayData.stress.emotionalLoad >= 70) {
-        parts.push('当日情绪消耗不小');
-        titles.push('情绪压力');
-      }
-      if (dayData.cog?.loadLevel === 'heavy') {
-        parts.push('当日用脑明显偏多');
-        titles.push('情绪压力');
-      }
-    } else if (rangeData) {
-      const { cur } = rangeData;
-      const st = cur.cortisolStatus;
-      if (st && st !== 'normal') {
-        parts.push(st === 'dysregulated' ? '区间内皮质醇节律紊乱' : '区间内皮质醇持续偏高');
-        titles.push('代谢');
-      }
-      if (cur.sleepScore != null && cur.sleepScore < 70) {
-        parts.push('平均睡眠评分偏低');
-        titles.push('睡眠');
-      }
-    }
-
-    const PRIORITY = ['代谢', '睡眠', '情绪压力', '恢复'];
-    const verdictMap: Record<string, string> = {
-      代谢: '压力和恢复这两头都偏弱，这两天多让自己松一松。',
-      睡眠: '夜里的修复不太够，今晚早点躺下补一补。',
-      情绪压力: '情绪攒了不少，给自己留一段完全放空的时间。',
-      恢复: '恢复没跟上，今天就把自己当手机充电。',
-    };
-    let anomaly: SummaryRow;
-    if (!parts.length) {
-      anomaly = { tone: 'good', title: '异常数据分析', body: '这段时间各项指标都在正常范围里，整体走得很稳。' };
-    } else {
-      const top = PRIORITY.find((t) => titles.includes(t)) ?? '代谢';
-      anomaly = {
-        tone: 'warn',
-        title: '异常数据分析',
-        body: parts.slice(0, 3).join('、') + '，' + (verdictMap[top] ?? '注意调整恢复。'),
-      };
-    }
-    const advice: SummaryRow = {
-      tone: parts.length ? 'warn' : 'good',
-      title: '今日建议',
-      body: parts.length ? '作息尽量规律，优先照顾最突出的那件事。' : '状态平稳，照现在的节奏走就好。',
-    };
-    return [anomaly, advice];
-  }, [range, dayData, rangeData, anchor, todayRhythm]);
-
-  /**
-   * 「AI 综合分析」最终展示行。
-   *  - day：走 resolveInsightRows —— AI 行不满足质量门禁（<3 行 / 有超长行 / 首行不是皮质醇节律）
-   *    时**整段回落**规则分点，满足时与规则分点合流。这样无论如何都是分点、首行都是皮质醇节律。
-   *  - 周/月/年：AI 只产出「今日」视角的 recovery 分析，与区间聚合口径不符，直接用区间规则分点。
-   */
-  const aiBannerRows = useMemo<SummaryRow[]>(
-    // 历史日：把该日 dk 传进去，规则兜底也按该日（AI 行同样来自该日事实）
-    () => (range === 'day' ? resolveInsightRows('recovery', aiRecovery.rows, aiDayArg) : aiFallbackRows),
-    // 依赖 text（字符串，身份稳定）而非 rows（每次渲染新数组），避免每帧重算 14 天节律
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [range, aiRecovery.text, aiFallbackRows, aiDayArg]
-  );
+  // ★ 2026-10-10（用户）：按预览昼夜节律·皮质醇页，移除全部 AI 分析（底部 AI 块、端侧兜底、聊天入口）。
+  //   预览日面板 = 趋势卡 + 节律分析卡；周月年 = 节律日历 + 节律小结，均无 AI 分析块。
 
   return (
     <>
@@ -470,20 +464,15 @@ export default function EmotionCognitiveDetailScreen() {
         <RangeSwitch value={range} onChange={setRange} />
         <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
-        {/* 当日皮质醇节律结论（大字，仅日视图显示；周/月/年为区间聚合，无"今日"概念）
-            ★ 2026-10-09（用户）：**日/周/月/年上方不再放大字**，结论改到时间选择器下方 */}
-        {range === 'day' && (
-          <View style={styles.rhythmHero}>
-            <Text style={styles.rhythmHeroVal}>{todayRhythmLabel}</Text>
-          </View>
-        )}
-
-        {/* AI 综合分析（真实端侧 MiraAI 分点行；生成中 pending 提示，不合格/失败回落规则分点） */}
-        <InsightBanner
-          rows={aiBannerRows}
-          pending={aiRecovery.loading}
-          onMore={() => openChat('帮我详细分析今天的皮质醇节律')}
-          bodyColor={theme.colors.textBody}
+        {/* 节律状态 Hero（统一置于时间选择器下方，与睡眠/运动/情绪详情页一致） */}
+        <RhythmHero
+          range={range}
+          dayLabel={todayRhythmLabel}
+          rangeStatus={rangeData ? rangeData.cur.cortisolStatus : null}
+          rangeLabel={rangeData ? periodLabel(range, anchor) : ''}
+          dayPeakH={todayRhythm.peakH}
+          dayPeakSub={todayRhythm.peakSub}
+          dayChrono={todayRhythm.chrono}
         />
 
         {/* ── 内容 ── */}
@@ -495,11 +484,6 @@ export default function EmotionCognitiveDetailScreen() {
       </View>
     </ScreenContainer>
     </View>
-    <ChatSheet
-      visible={chatVisible}
-      onClose={() => setChatVisible(false)}
-      initialQuestion={chatQuestion}
-    />
     </>
   );
 }
@@ -584,23 +568,9 @@ function DayView({ data, anchorDayMs }: { data: DayData; anchorDayMs: number }) 
   const debt = computeSleepLoad(sleepWindowEndingAt(anchorDayMs)).debtH;
   const debtPrev = computeSleepLoad(sleepWindowEndingAt(prevD.getTime())).debtH;
   return (
-    <>
-      {/* ★ 2026-10-08（用户：把详情页里昼夜节律的去掉灰色背景）：flat 去掉「节律分析」4 格与「持续性」的灰底 */}
-      <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} flat />
-
-      {/* ★ v18.123 用户要求：去掉「情绪消耗摘要」与「疲劳摘要」两张卡，只保留下面的睡眠恢复摘要。 */}
-        {/* 睡眠恢复摘要 */}
-        <Card padded={false}>
-          <View style={styles.pad}>
-            <Text style={[styles.cardTitle, { fontSize: theme.fontSize.card, marginBottom: theme.sp(1.5) }]}>睡眠恢复摘要</Text>
-            <View style={styles.metricRow}>
-              <MetricMini label="睡眠负债" value={debt > 0 ? `${debt.toFixed(1)}` : '0.0'} todayN={debt > 0 ? Math.round(debt * 10) / 10 : 0} prevN={debtPrev > 0 ? Math.round(debtPrev * 10) / 10 : 0} unit="h" goodWhen="down" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-              <MetricMini label="睡眠恢复度" value={sl?.score != null ? String(sl.score) : '—'} todayN={sl?.score ?? null} prevN={slPrev?.score ?? null} goodWhen="up" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-              <MetricMini label="睡眠时长" value={sl && sl.total ? `${(sl.total / 60).toFixed(1)}h` : '—'} todayN={sl ? Math.round(sl.total / 60 * 10) / 10 : null} prevN={slPrev ? Math.round(slPrev.total / 60 * 10) / 10 : null} unit="h" goodWhen="up" bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-            </View>
-          </View>
-        </Card>
-    </>
+    // ★ 2026-10-10（用户：按预览昼夜节律·皮质醇 日面板）：趋势图与节律分析拆成两张独立卡，
+    //   不渲染 AI 分析；预览无「睡眠恢复摘要」卡，故移除。
+    <CortisolDailyChart anchorDayMs={anchorDayMs} showStatusChip={false} showInsights={false} flat asTwoCards chartHeight={chart.h.m} />
   );
 }
 
@@ -623,8 +593,6 @@ const CAL_COLOR = {
 
 type CalCell = { key: string; label: string; abn: boolean; isToday: boolean };
 type CalData = { mode: 'year' | 'days'; head?: string[]; rows: CalCell[][] };
-/** AI 综合分析分点行（AI 生成行与规则兜底行同构，均由 InsightBanner rows 渲染） */
-type SummaryRow = { tone: 'good' | 'warn' | 'neutral'; title: string; body: string };
 
 /** 周/月：按天 7 列日历；年：12 月格。正常=limeSoft，异常=danger 柔和底（v18.21 语义色规范） */
 function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
@@ -786,20 +754,8 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
         </View>
       </Card>
 
-      {/* ★ 2026-10-08（用户：周月年也把情绪消耗和脑力消耗去掉）：
-          周/月/年视图删掉「情绪消耗区间均值」「脑力消耗区间均值」两张卡，
-          只保留皮质醇区间聚合 + 睡眠恢复区间聚合。 */}
-
-      {/* 睡眠恢复区间聚合 */}
-      <Card padded={false}>
-        <View style={styles.pad}>
-          <Text style={styles.cardTitle}>睡眠恢复 · 区间均值</Text>
-          <View style={styles.summaryGrid}>
-            <SumCell label="平均睡眠负载" value={cur.sleepLoad != null ? `${cur.sleepLoad.toFixed(0)}` : '—'} sub={prev.sleepLoad != null && cur.sleepLoad != null ? `上期 ${fmtDelta(cur.sleepLoad - prev.sleepLoad)}` : '对比上一周期'} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-            <SumCell label="平均睡眠评分" value={cur.sleepScore != null ? `${cur.sleepScore.toFixed(0)}` : '—'} sub={prev.sleepScore != null && cur.sleepScore != null ? `上期 ${fmtDelta(cur.sleepScore - prev.sleepScore)}` : '对比上一周期'} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-          </View>
-        </View>
-      </Card>
+      {/* ★ 2026-10-10（用户：按预览昼夜节律·皮质醇页，周月年不做区间均值 / 无睡眠恢复卡）：
+          仅保留节律日历 + 节律小结（异常天数 / 状态 / 峰值时段）。 */}
     </>
   );
 }
@@ -896,9 +852,30 @@ const styles = StyleSheet.create({
   // ★ 与情绪/脑力消耗详情页（EnergyDetailScreen）完全一致：标题 textTitle + 副标题 sub
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
   sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  rhythmHero: { marginTop: theme.sp(1), marginBottom: theme.sp(1) },
-  // 大字结论：与另两页 Hero 同款（hero 字号 + medium + textTitle；不再用状态色）
-  rhythmHeroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
+  // ★ 2026-10-10：节律状态 Hero（与睡眠/运动/情绪详情页 Hero 同一骨架：白底 + 描边 + 圆角 + 阴影）
+  heroCard: {
+    ...theme.shadow.card,
+    backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    padding: theme.space.cardPad,
+    marginBottom: theme.space.md,
+  },
+  // 对标 EnergyDetailScreen「认知准备度」卡 .ctitle（15·600·textTitle）+ 下方留白
+  ctitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
+  // 对标 .heroWrap：左大数字/标签，右上下文，两端对齐
+  heroWrap: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  // 对标 .big：46pt（hero token），状态着色
+  heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
+  heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+  // ★ 2026-10-10（用户）：峰值时刻 + 作息类型，对标脑力消耗「认知准备度」.duo 双格（圆角 11 · 内边距 · 标签/副文 11px · 时间 17px·600）
+  duoRow: { flexDirection: 'row', gap: theme.sp(2.5), marginTop: theme.sp(2) },
+  duoCell: { flex: 1, paddingVertical: theme.sp(2.5), paddingHorizontal: theme.sp(2.75), borderRadius: theme.radius.md },
+  duoLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75) },
+  duoTime: { fontSize: theme.fs(17), fontWeight: theme.weight.semibold as any, lineHeight: theme.fs(17) * 1.1, color: theme.colors.textTitle },
+  duoSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.75), lineHeight: theme.fontSize.micro * 1.4 },
 
   pad,
   metricRow: { flexDirection: 'row', gap: theme.sp(1.5) },

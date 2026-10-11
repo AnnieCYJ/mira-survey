@@ -281,7 +281,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               <View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }]}>
                 <Icon
                   name={TAB_ICON[route.name] ?? 'home'}
-                  size={theme.fs(25)}
+                  size={theme.fs(26)}
                   color={focused ? mm.colors.ink : mm.colors.inkFaint}
                   strokeWidth={2}
                 />
@@ -344,10 +344,10 @@ const styles = StyleSheet.create({
   botSelected: { borderWidth: 2, borderColor: mm.colors.purpleDeep },
   item: { minHeight: 48, flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
   // v10：选中项 = 42px lime 圆底（SPEC §2 #13），不再用小圆点
-  // ★ 2026-10-10：文字标签移除，圆底随之放大（24→30），icon 居中
+  // ★ 2026-10-10：文字标签移除，圆底随之放大（24→30→36，用户："绿色背景圈大一点"），icon 居中
   itemCircle: {
-    width: 30,
-    height: 30,
+    width: 36,
+    height: 36,
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

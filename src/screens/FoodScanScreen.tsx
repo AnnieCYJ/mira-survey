@@ -3,7 +3,6 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -13,6 +12,7 @@ import { mm } from '../theme/mindmate';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import MiraTag from '../components/MiraTag';
+import { ArcGauge } from '../components/ArcGauge';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import {
   recognizeMeal, loadFoodLogs, saveFoodLog, deleteFoodLog,
@@ -587,34 +587,18 @@ export default function FoodScanScreen() {
 
 /* ══════════════════ 通用小组件 ══════════════════ */
 
-/** 卡路里环（SPEC §3.2 放大版）：150×150、r=65、线宽 11；弧 = 已摄入/目标，轨道 surface-2 */
+/** 卡路里弧（★ 2026-10-11 改：整圈圆环 → 宽扁大弧，样式对齐身体年龄）：弧 = 已摄入/目标，轨道 emptyFill。
+ *  内容不变：中央仍是「kcal / target kcal」。 */
 function CalorieRing({ kcal, pct, targetKcal }: {
   kcal: number; pct: number; targetKcal: number;
 }) {
-  const size = 150;
-  const stroke = 11;
-  const r = 65;
-  const cx = size / 2;
-  const circ = 2 * Math.PI * r; // ≈333.01
-  const clamped = Math.max(0, Math.min(100, pct));
-  const dash = circ * (clamped / 100);
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
-        <Circle cx={cx} cy={cx} r={r} stroke={mm.colors.emptyFill} strokeWidth={stroke} fill="none" />
-        <Circle
-          cx={cx} cy={cx} r={r}
-          stroke={mm.colors.honeyCore} strokeWidth={stroke} fill="none"
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ}`}
-          transform={`rotate(-90 ${cx} ${cx})`}
-        />
-      </Svg>
+    <ArcGauge pct={pct} color={mm.colors.honeyCore}>
       <View style={{ alignItems: 'center' }}>
         <Text style={mc.ringKcal}>{kcal.toLocaleString('en-US')}</Text>
         <Text style={mc.ringTarget}>/ {targetKcal} kcal</Text>
       </View>
-    </View>
+    </ArcGauge>
   );
 }
 

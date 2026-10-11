@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 日历页 · 日/月 Tab + 今日旅程 UI 预览</title>
+<style>
+  /* ── Mira Design Tokens（对齐 src/theme）── */
+  :root {
+    --bg-top: #B5A9F2; --bg-mid: #DED9FB; --bg-bottom: #F7F5FE;
+    --accent-solid: #7C6AE0; --accent-text: #6153AF;
+    --purple-core: #9D8AF0; --purple-soft: #E7E1FB;
+    --lime-soft: #EAF0BE; --lime-mid: #BCCB62; --lime-deep: #6E7A24;
+    --rose-core: #F2A3C6; --rose-soft: #FCE7F0; --rose-deep: #C9598A;
+    --honey-core: #F0C46E; --honey-soft: #FBEFD6; --honey-deep: #B98A2E;
+    --ink: #1F1D1A; --ink-soft: #5C574F; --ink-faint: #706A61;
+    --card-bg: #FFFFFF; --card-border: rgba(31,29,26,0.09);
+    --card-shadow: 0 14px 34px -18px rgba(31,29,26,.14);
+    --r-card: 24px; --r-md: 11px; --r-sm: 9px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    background: #EFECFA; padding: 40px 24px 64px; color: var(--ink);
+  }
+  .stage { display: flex; gap: 56px; justify-content: center; flex-wrap: wrap; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .caption { font-size: 13px; color: #6B6480; max-width: 340px; text-align: center; line-height: 1.5; }
+  .caption b { color: var(--ink); }
+
+  /* ── 手机框 ── */
+  .phone {
+    width: 390px; height: 812px; border-radius: 47px; overflow: hidden; position: relative;
+    background: #FFFFFF;
+    box-shadow: 0 30px 60px -20px rgba(70,58,110,.35), 0 0 0 10px #1F1D1A;
+    flex-shrink: 0;
+  }
+  .statusbar { display: flex; justify-content: space-between; padding: 16px 28px 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .page { padding: 10px 20px 0; height: 100%; display: flex; flex-direction: column; }
+  .page-title { font-size: 22px; font-weight: 700; color: var(--ink); margin: 10px 2px 0; }
+  .page-sub { font-size: 11px; color: var(--ink-faint); margin: 4px 2px 0; }
+
+  /* ── 日/月 分段 Tab ── */
+  .seg { display: flex; background: rgba(255,255,255,0.92); border-radius: 999px; padding: 4px; margin-top: 14px; box-shadow: var(--card-shadow); }
+  .seg-item { flex: 1; text-align: center; padding: 9px 0; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+  .seg-item.on-day { background: var(--lime-soft); color: var(--lime-deep); }
+  .seg-item.on-month { background: var(--purple-soft); color: #6E58C8; }
+
+  /* ── 旅程区 ── */
+  .journey-wrap { position: relative; flex: 1; margin-top: 12px; }
+  .journey-svg { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); }
+
+  /* 日期气泡 */
+  .date-bubble {
+    position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2;
+    width: 76px; height: 76px; border-radius: 50%;
+    background: linear-gradient(135deg, #9D8AF0, #7C6AE0);
+    color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 10px 22px -8px rgba(124,106,224,.55); border: 3px solid rgba(255,255,255,0.9);
+  }
+  .date-bubble .d { font-size: 15px; font-weight: 700; line-height: 1.2; }
+  .date-bubble .w { font-size: 10px; opacity: .9; margin-top: 1px; }
+
+  /* 白卡通用 */
+  .jcard {
+    position: absolute; width: 152px; background: var(--card-bg);
+    border: 1px solid var(--card-border); border-radius: var(--r-card);
+    box-shadow: var(--card-shadow); padding: 13px 14px 11px; z-index: 2;
+  }
+  .jcard.left { left: 0; } .jcard.right { right: 0; }
+  .jhead { display: flex; align-items: center; gap: 8px; }
+  .jicon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .jtitle { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+  .jsub { font-size: 10.5px; color: var(--ink-faint); margin-top: 5px; }
+  .jbadge {
+    display: inline-block; margin-top: 7px; padding: 2.5px 8px; border-radius: 999px;
+    font-size: 9.5px; font-weight: 600; background: var(--lime-soft); color: var(--lime-deep);
+  }
+  .jtime { font-size: 10px; color: var(--ink-faint); margin-top: 7px; }
+
+  /* 日记卡 */
+  .diary-body { font-size: 12.5px; line-height: 1.55; color: var(--ink); margin-top: 8px; }
+  .mood-row { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 10.5px; color: var(--ink-soft); }
+  .diary-foot { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 10px; color: var(--ink-faint); }
+
+  /* 照片卡 */
+  .photo-card { padding: 0; overflow: hidden; }
+  .photo {
+    height: 128px; border-radius: 23px 23px 0 0;
+    background:
+      radial-gradient(120% 60% at 50% 100%, #F6B3D0 0%, rgba(246,179,208,0) 55%),
+      linear-gradient(180deg, #FDF7E9 0%, #F3D49B 42%, #F2A3C6 78%, #E58FB4 100%);
+    position: relative;
+  }
+  .photo::after { /* 太阳 */
+    content: ""; position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    width: 34px; height: 34px; border-radius: 50%;
+    background: radial-gradient(circle, #FFF7E4 0%, #F6C26B 70%);
+    box-shadow: 0 0 18px 6px rgba(246,194,107,.55);
+  }
+  .photo-cap { padding: 9px 13px 10px; display: flex; align-items: center; justify-content: space-between; }
+  .photo-cap .t { font-size: 12px; font-weight: 600; }
+  .photo-cap .tm { font-size: 10px; color: var(--ink-faint); display: flex; align-items: center; gap: 3px; }
+
+  /* 底部汇总条 */
+  .sumbar {
+    position: absolute; left: 16px; right: 16px; bottom: 26px; z-index: 3;
+    background: rgba(255,255,255,0.96); border-radius: 999px; box-shadow: var(--card-shadow);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; font-size: 11.5px; color: var(--ink-soft);
+  }
+  .sumbar b { color: var(--ink); font-weight: 700; }
+  .sumbar .more { color: var(--accent-text); font-weight: 600; white-space: nowrap; margin-left: 8px; }
+
+  /* ── 月视图 ── */
+  .month-card {
+    margin-top: 14px; background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: var(--r-card); box-shadow: var(--card-shadow); padding: 16px 16px 14px;
+  }
+  .month-nav { display: flex; align-items: center; justify-content: center; gap: 18px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .month-nav .nav-btn { color: var(--ink-faint); font-size: 16px; }
+  .week-row { display: flex; margin-top: 12px; }
+  .week-row span { flex: 1; text-align: center; font-size: 10px; color: var(--ink-faint); }
+  .week-row span.we { color: var(--lime-deep); }
+  .grid { display: flex; flex-wrap: wrap; margin-top: 4px; }
+  .cell { width: 14.2857%; height: 44px; display: flex; align-items: center; justify-content: center; position: relative; }
+  .cell .n { font-size: 12.5px; color: var(--ink); z-index: 1; }
+  .cell.dim .n { color: rgba(31,29,26,0.24); }
+  .cell.period::before { content: ""; position: absolute; inset: 5px 4px; border-radius: 999px; background: var(--rose-soft); }
+  .cell.period .n { color: var(--rose-deep); font-weight: 600; }
+  .cell.fertile::before { content: ""; position: absolute; inset: 5px 4px; border-radius: 999px; background: var(--purple-soft); }
+  .cell.fertile .n { color: #6E58C8; font-weight: 600; }
+  .cell.today::before { content: ""; position: absolute; inset: 4px 3px; border-radius: 999px; background: var(--lime-mid); }
+  .cell.today .n { color: #3E4A18; font-weight: 700; }
+  .legend { display: flex; gap: 14px; margin-top: 12px; justify-content: center; }
+  .legend i { display: flex; align-items: center; gap: 5px; font-style: normal; font-size: 10px; color: var(--ink-faint); }
+  .legend .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .phase-strip {
+    margin-top: 14px; background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: var(--r-card); box-shadow: var(--card-shadow); padding: 13px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .phase-strip .k { font-size: 10.5px; color: var(--ink-faint); }
+  .phase-strip .v { font-size: 13.5px; font-weight: 700; margin-top: 2px; }
+  .phase-strip .v small { font-size: 10px; font-weight: 500; color: var(--ink-faint); margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ═══════════ 手机 1：日 Tab · 今日旅程 ═══════════ -->
+  <div class="col">
+    <div class="phone">
+      <div class="statusbar"><span>21:41</span><span>📶 5G 🔋</span></div>
+      <div class="page">
+        <div class="page-title">日历</div>
+        <div class="page-sub">看见每一天的痕迹</div>
+
+        <div class="seg">
+          <div class="seg-item on-day">日</div>
+          <div class="seg-item">月</div>
+        </div>
+
+        <div class="journey-wrap">
+          <!-- 中央曲线 -->
+          <svg class="journey-svg" width="44" height="640" viewBox="0 0 44 640" fill="none">
+            <defs>
+              <linearGradient id="curveGrad" x1="22" y1="0" x2="22" y2="640" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#9D8AF0"/><stop offset="0.45" stop-color="#F2A3C6"/><stop offset="1" stop-color="#BCCB62"/>
+              </linearGradient>
+            </defs>
+            <path d="M22 8 C 38 70, 6 130, 22 190 C 38 250, 6 310, 22 370 C 38 430, 6 490, 22 550 C 30 585, 14 615, 22 636"
+                  stroke="url(#curveGrad)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="22" cy="196" r="4.5" fill="#9D8AF0" stroke="#fff" stroke-width="2"/>
+            <circle cx="22" cy="330" r="4.5" fill="#F2A3C6" stroke="#fff" stroke-width="2"/>
+            <circle cx="22" cy="452" r="4.5" fill="#F0C46E" stroke="#fff" stroke-width="2"/>
+            <circle cx="22" cy="560" r="4.5" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+          </svg>
+
+          <!-- 日期气泡 -->
+          <div class="date-bubble"><span class="d">10月10日</span><span class="w">周六</span></div>
+
+          <!-- 左：打卡 1 -->
+          <div class="jcard left" style="top: 120px;">
+            <div class="jhead">
+              <div class="jicon" style="background: var(--lime-soft);">🏃‍♀️</div>
+              <div class="jtitle">晨跑 30 分钟</div>
+            </div>
+            <div class="jsub">连续第 4 天</div>
+            <span class="jbadge">今天打卡 1 次</span>
+            <div class="jtime">07:10</div>
+          </div>
+
+          <!-- 右：日记 -->
+          <div class="jcard right" style="top: 218px;">
+            <div class="jhead">
+              <div class="jicon" style="background: var(--purple-soft);">📝</div>
+              <div class="jtitle">日记</div>
+            </div>
+            <div class="diary-body">清晨去海边看日出。浪花一层层铺上沙滩，今天的风很轻，心情也很轻。</div>
+            <div class="mood-row">😊 开心</div>
+            <div class="diary-foot">✍️ 写于 08:05</div>
+          </div>
+
+          <!-- 左：打卡 2 -->
+          <div class="jcard left" style="top: 322px;">
+            <div class="jhead">
+              <div class="jicon" style="background: var(--honey-soft);">💧</div>
+              <div class="jtitle">喝够八杯水</div>
+            </div>
+            <div class="jsub">连续第 6 天</div>
+            <span class="jbadge">今天打卡 1 次</span>
+            <div class="jtime">08:16</div>
+          </div>
+
+          <!-- 右：照片卡 -->
+          <div class="jcard right photo-card" style="top: 428px;">
+            <div class="photo"></div>
+            <div class="photo-cap">
+              <span class="t">海边的日出</span>
+              <span class="tm">📷 8:12</span>
+            </div>
+          </div>
+
+          <!-- 汇总条 -->
+          <div class="sumbar">
+            <span>今日共 <b>3</b> 项：打卡 2 次 · 日记 1 篇 · 照片 1 张</span>
+            <span class="more">查看全部 ›</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>日 Tab · 今日旅程</b>：中央渐变曲线（紫→粉→黄绿 = 认知→情绪→恢复）串起当天的事件流；左打卡、右日记/照片，底部汇总当天全部记录。数据全部来自用户自报。</div>
+  </div>
+
+  <!-- ═══════════ 手机 2：月 Tab（现有月历） ═══════════ -->
+  <div class="col">
+    <div class="phone">
+      <div class="statusbar"><span>21:41</span><span>📶 5G 🔋</span></div>
+      <div class="page">
+        <div class="page-title">日历</div>
+        <div class="page-sub">看见每一天的痕迹</div>
+
+        <div class="seg">
+          <div class="seg-item">日</div>
+          <div class="seg-item on-month">月</div>
+        </div>
+
+        <div class="month-card">
+          <div class="month-nav"><span class="nav-btn">‹</span>2026年10月<span class="nav-btn">›</span></div>
+          <div class="week-row">
+            <span class="we">一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="we">六</span><span class="we">日</span>
+          </div>
+          <div class="grid">
+            <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            <div class="cell"><span class="n">1</span></div><div class="cell period"><span class="n">2</span></div>
+            <div class="cell period"><span class="n">3</span></div><div class="cell period"><span class="n">4</span></div>
+            <div class="cell period"><span class="n">5</span></div><div class="cell period"><span class="n">6</span></div>
+            <div class="cell"><span class="n">7</span></div><div class="cell"><span class="n">8</span></div>
+            <div class="cell fertile"><span class="n">9</span></div><div class="cell today"><span class="n">10</span></div>
+            <div class="cell"><span class="n">11</span></div><div class="cell"><span class="n">12</span></div>
+            <div class="cell"><span class="n">13</span></div><div class="cell"><span class="n">14</span></div>
+            <div class="cell"><span class="n">15</span></div><div class="cell"><span class="n">16</span></div>
+            <div class="cell"><span class="n">17</span></div><div class="cell"><span class="n">18</span></div>
+            <div class="cell"><span class="n">19</span></div><div class="cell"><span class="n">20</span></div>
+            <div class="cell"><span class="n">21</span></div><div class="cell"><span class="n">22</span></div>
+            <div class="cell"><span class="n">23</span></div><div class="cell"><span class="n">24</span></div>
+            <div class="cell"><span class="n">25</span></div><div class="cell"><span class="n">26</span></div>
+            <div class="cell"><span class="n">27</span></div><div class="cell"><span class="n">28</span></div>
+            <div class="cell"><span class="n">29</span></div><div class="cell"><span class="n">30</span></div>
+            <div class="cell"><span class="n">31</span></div>
+          </div>
+          <div class="legend">
+            <i><span class="dot" style="background: var(--rose-mid,#F6B3D0);"></span>经期</i>
+            <i><span class="dot" style="background: var(--purple-soft);"></span>易孕期</i>
+            <i><span class="dot" style="background: var(--lime-mid);"></span>今天</i>
+          </div>
+        </div>
+
+        <div class="phase-strip">
+          <div><div class="k">周期第</div><div class="v">22 天</div></div>
+          <div><div class="k">当前阶段</div><div class="v">黄体期</div></div>
+          <div><div class="k">下次经期预测</div><div class="v">11月2日<small>±2天</small></div></div>
+        </div>
+
+        <div class="phase-strip" style="opacity:.55;">
+          <div><div class="k">本月记录</div><div class="v">18 天</div></div>
+          <div><div class="k">打卡</div><div class="v">26 次</div></div>
+          <div><div class="k">日记</div><div class="v">9 篇</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>月 Tab · 现有月历</b>：保持现有月历+周期信息，仅把入口统一进「日 / 月」两个 Tab；原顶部日历 icon 与月相环入口收进月视图。</div>
+  </div>
+
+</div>
+</body>
+</html>

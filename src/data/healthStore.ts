@@ -123,6 +123,15 @@ export interface MetricStore {
   daily: Record<string, DayMetric>;       // dayKey -> 日聚合
   intraday: Record<string, TimePoint[]>;  // dayKey -> 当天逐样本（按 t 升序）
   manualMeasurements?: ManualMeasurement[];
+  /**
+   * ★ 2026-10-10：**推算日标记** dayKey → 1。
+   * `lib/offlineEstimates.ts` 会把「当日实测 stress」线性映射成历史日的
+   * cortisol / eda / sns / emotion / skin / fatigue intraday。这些值与实测值
+   * **混在同一个 intraday 桶里、无法从数值区分**，所以必须在这里留一个来源标记，
+   * UI 才能诚实地区分「实测」与「由压力换算」。
+   * 快照恢复走 `this.stores[k] = incoming` 整体替换，本字段自动随快照持久化。
+   */
+  derivedDays?: Record<string, 1>;
 }
 
 export interface SleepSummary {
@@ -177,6 +186,24 @@ export interface AnalysisSnapshot {
     css: number;
     status: 'normal' | 'sustained_high' | 'dysregulated';
     sustainedHighStreak: number;
+  };
+  /**
+   * ★ 2026-10-10（用户：「洞察页身体年龄最好一天最多有一次变化，不能老变」）：
+   * 当日**冻结**的身体年龄快照。当天算出一次后即钉死，全天复用，
+   * 不管实时数据怎么抖，卡片数字都不跳；跨天自动重算。
+   * 存在这里（而非内存变量）是为了**重启 App 后当天仍是同一个值**。
+   */
+  healthAge?: {
+    /** 身体年龄（岁） */
+    healthAge: number;
+    /** 当时的实际年龄（岁），用于回看口径 */
+    actualAge: number | null;
+    /** 差值（岁）：负 = 比实际年龄年轻 */
+    delta: number | null;
+    /** 冻结时的健康综合分（0–100），弧长与它绑定，一起冻结才不会跳 */
+    overallScore: number | null;
+    /** 冻结时间戳 */
+    frozenAt: number;
   };
   emotion?: {
     label: string;
@@ -352,13 +379,19 @@ export class HealthStore {
   }
 
   // ── 写入：backfill 逐样本（历史日曲线） ──────────────────────────────────
-  upsertBackfillSamples(key: MetricKey, dayKeyRaw: string, samples: TimePoint[]): void {
+  upsertBackfillSamples(key: MetricKey, dayKeyRaw: string, samples: TimePoint[], opts?: { derived?: boolean }): void {
     const store = this.safeStore(key);
     if (!store) return;
     const dk = normalizeDayKey(dayKeyRaw);
     if (dk === dayKeyRaw && Number.isNaN(parseDayKey(dk))) return; // 非法 key 丢弃
     if (!samples || samples.length === 0) return;
     store.intraday[dk] = mergeIntraday(store.intraday[dk], samples);
+    // ★ 2026-10-10：标记该日为「由 stress 换算的推算日」（见 MetricStore.derivedDays）。
+    //   只增不减 —— 推算过一次就永远是推算，不允许后来被当成实测。
+    if (opts?.derived) {
+      if (!store.derivedDays) store.derivedDays = {};
+      store.derivedDays[dk] = 1;
+    }
     const prev = store.daily[dk];
     // 合并后始终从完整明细重算，避免分片长度较小时漏掉回填更新；实时明细会保留并标记 mixed。
     store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
@@ -497,6 +530,15 @@ export class HealthStore {
     if (!store) return [];
     const dk = normalizeDayKey(dayKeyRaw);
     return store.intraday[dk] ?? [];
+  }
+  /**
+   * ★ 2026-10-10：该日的 intraday 是否为「由 stress 线性换算的推算值」。
+   * 用于 UI 诚实标注（皮质醇更严格：推算日一律不出曲线，只走空态）。
+   */
+  isDerivedDay(key: MetricKey, dayKeyRaw: string): boolean {
+    const store = this.safeStore(key);
+    if (!store?.derivedDays) return false;
+    return store.derivedDays[normalizeDayKey(dayKeyRaw)] === 1;
   }
   /** 区间趋势：返回 [fromDay..toDay]（含端点，按日）的日均值数组。 */
   getSeries(key: MetricKey, fromDayRaw: string, toDayRaw: string): (number | null)[] {
@@ -891,6 +933,15 @@ export class HealthStore {
       else if (d && d.mean != null && !Number.isNaN(d.mean)) out.push(d.mean);
     }
     return out;
+  }
+
+
+  /** 按明确日期读取单日指标，避免最近有数据的一天冒充今天。 */
+  getMetricDailyMean(metric: MetricKey, dateKey: string): number | null {
+    const d = this.stores[metric]?.daily?.[normalizeDayKey(dateKey)];
+    if (!d) return null;
+    const v = d.last ?? d.mean;
+    return v != null && Number.isFinite(v) ? v : null;
   }
 
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */

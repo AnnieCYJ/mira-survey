@@ -12,6 +12,8 @@ interface Props {
   healthAge?: number | null;
   actualAge?: number | null;
   onEditProfile?: () => void;
+  /** ★ 2026-10-10（用户）：点卡片进身体年龄详情页；仅在有估算值时生效（无年龄时不劫持「填写身体档案」CTA）。 */
+  onPress?: () => void;
   overallScore?: number | null;
   ring?: any;
   rows?: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[];
@@ -28,6 +30,7 @@ export default function HealthAgeCard({
   actualAge = null,
   overallScore = null,
   onEditProfile,
+  onPress,
   ring,
   rows,
   pending,
@@ -37,10 +40,41 @@ export default function HealthAgeCard({
   const hasEstimate = healthAge != null && actualAge != null && Number.isFinite(healthAge) && Number.isFinite(actualAge);
   const delta = hasEstimate ? healthAge! - actualAge! : 0;
   const isYounger = hasEstimate && delta < 0;
-  // v16 §4.2 #1：黄绿胶囊统一（#EAF0BE / #6E7A24），不再按年轻/衰老换色
-  const pill = { bg: mm.colors.heroPillGreen, fg: mm.colors.limeDeep };
-  // v16 端点圆点 = 黄绿 mid #BCCB62（好坏由数字与文案表达，不用红绿）
-  const markerColor = mm.colors.limeMid;
+  /** 与实际年龄相近（|Δ| < 0.5 岁）时既不算低也不算高 → 中性 */
+  const isFlat = hasEstimate && Math.abs(delta) < 0.5;
+
+  /**
+   * ★ 2026-10-10（用户：「比实际年龄高了是不是应该变成粉色？这个逻辑是什么样的」）
+   *
+   * 改前的逻辑：**颜色恒定黄绿，完全不随身体年龄变化**
+   * （旧注释写死「v16 §4.2 #1：黄绿胶囊统一，不再按年轻/衰老换色」）。
+   * 结果是「低 5.4 岁」和「高 5.4 岁」长得一模一样，视觉上完全没有反馈。
+   *
+   * 改后的语义色（只表达**方向和量级**，不做诊断、不做奖惩）：
+   *   比实际年龄**低**（年轻）→ 黄绿系 lime（现状的主色，代表状态好）
+   *   比实际年龄**高**（偏高）→ 粉色系 rose（中性提示「偏高」，不是红色警告）
+   *   与实际年龄**相近**（|Δ|<0.5）→ 中性墨色系，不染色
+   * 为什么用粉不用红：Mira 品牌铁律规避「监测/预警/诊断」口吻；
+   * 红=危险/告警，粉=「这个数字比基准线高」，语气是陈述而非警告。
+   */
+  const tone = isFlat ? 'flat' : isYounger ? 'young' : 'high';
+  const PALETTE = {
+    young: {
+      gradFrom: mm.colors.limeSoft, gradMid: mm.colors.limeCore, gradTo: mm.colors.limeMid,
+      marker: mm.colors.limeMid, fg: mm.colors.limeDeep,
+    },
+    high: {
+      gradFrom: mm.colors.roseTint, gradMid: mm.colors.roseCore, gradTo: mm.colors.roseDeep,
+      marker: mm.colors.roseCore, fg: mm.colors.roseDeep,
+    },
+    flat: {
+      gradFrom: mm.colors.inkFaint, gradMid: mm.colors.inkSoft, gradTo: mm.colors.inkSoft,
+      marker: mm.colors.inkSoft, fg: theme.colors.textSub,
+    },
+  } as const;
+  const pal = PALETTE[tone];
+  const pill = { bg: mm.colors.heroPillGreen, fg: pal.fg };
+  const markerColor = pal.marker;
 
   // ═══ 扁平大弧：端点 (EDGE,END_Y)→(W-EDGE,END_Y)，圆心在画布下方 ═══
   // ★ 2026-09-27 重写几何：旧实现端点/半径/圆心三者不自洽（asin 用 R=220 但真实过弦圆心
@@ -51,6 +85,8 @@ export default function HealthAgeCard({
   const END_Y = 95;
   const EDGE = 5;
   const [W, setW] = React.useState(0);
+  // ★ 2026-10-10（用户）：弧上圆点「沿弧跑到位」的入场动画——animPct 0→1，按角度驱动进度弧与圆点
+  const [animPct, setAnimPct] = React.useState(0);
   const halfChord = W > 0 ? (W - EDGE * 2) / 2 : 0;
   // R 下限：保证弧顶 (cy-R) 不低于 stroke/2（弧顶不被画布裁掉）；再取参考稿扁平度
   const RMin = halfChord > 0 ? (halfChord * halfChord + (END_Y - stroke / 2) * (END_Y - stroke / 2)) / (2 * (END_Y - stroke / 2)) : 220;
@@ -63,12 +99,30 @@ export default function HealthAgeCard({
   const halfAngle = halfChord > 0 ? Math.asin(halfChord / R) : 0;
   const totalLen = 2 * R * halfAngle;
   const pct = Math.max(0, Math.min(100, overallScore ?? 0)) / 100;
-  const targetLen = totalLen * pct;
+  // ★ 动画进度：entrance 时从 0 涨到目标 pct（圆点沿弧运动、进度弧生长）
+  const effPct = animPct * pct;
+  const targetLen = totalLen * effPct;
 
   // ═══ 进度终点圆点：θ 从 -halfAngle（左端）到 +halfAngle（右端），严格落在圆上 ═══
-  const dotAngle = -halfAngle + halfAngle * 2 * pct;
+  const dotAngle = -halfAngle + halfAngle * 2 * effPct;
   const markerX = cx + R * Math.sin(dotAngle);
   const markerY = cy - R * Math.cos(dotAngle);
+
+  // ★ 入场动画：overallScore 变化时，圆点沿弧从起点跑到目标位（easeOutCubic）
+  React.useEffect(() => {
+    let raf = 0;
+    let start = 0;
+    const dur = 900;
+    const step = (ts: number) => {
+      if (!start) start = ts;
+      const t = Math.min(1, (ts - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setAnimPct(eased);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [pct]);
 
   // ═══ 皮质醇 + 经期分析 ═══
   const analysisTextFallback = (() => {
@@ -113,7 +167,11 @@ export default function HealthAgeCard({
   const analysisTextResolved = analysisText ?? analysisTextFallback;
 
   return (
-    <View style={styles.cardShell}>
+    <TouchableOpacity
+      activeOpacity={onPress && actualAge != null ? 0.7 : 1}
+      onPress={onPress && actualAge != null ? onPress : undefined}
+      style={styles.cardShell}
+    >
       {/* v16 §4.2 #1：浅黄绿渐变卡底（#F8FAE8→#FDFEF7），弧线画在其上 */}
       <ExpoLinearGradient
         colors={[mm.colors.heroGradFrom, mm.colors.heroGradTo]}
@@ -122,9 +180,12 @@ export default function HealthAgeCard({
         style={styles.heroGrad}
       >
         {/* ★ 2026-10-10（用户）：「身体年龄」移到卡片左上角；去掉「参考估算」 */}
-        <View style={styles.topLabelRow}>
-          <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
-          <Text style={[styles.topLabel, { color: mm.colors.limeDeep }]}>身体年龄</Text>
+        <View style={[styles.topLabelRow, { justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
+            <Text style={[styles.topLabel, { color: mm.colors.limeDeep }]}>身体年龄</Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={mm.colors.limeDeep} />
         </View>
 
         {/* ═══ SVG 弧（onLayout 实测宽度，viewBox 1:1，无拉伸变形） ═══ */}
@@ -135,11 +196,11 @@ export default function HealthAgeCard({
           {W > 0 ? (
           <Svg width={W} height={VB_H} viewBox={`0 0 ${W} ${VB_H}`}>
             <Defs>
-              {/* v16 §4.2 #1：进度弧黄绿阶 soft→core→mid（#EAF0BE→#D5E384→#BCCB62） */}
+              {/* ★ 2026-10-10（用户）：进度弧渐变随「低/高」换色 —— 低=黄绿、高=粉、相近=中性墨 */}
               <LinearGradient id="haRing" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor={mm.colors.limeSoft} />
-                <Stop offset="50%" stopColor={mm.colors.limeCore} />
-                <Stop offset="100%" stopColor={mm.colors.limeMid} />
+                <Stop offset="0%" stopColor={pal.gradFrom} />
+                <Stop offset="50%" stopColor={pal.gradMid} />
+                <Stop offset="100%" stopColor={pal.gradTo} />
               </LinearGradient>
             </Defs>
 
@@ -219,7 +280,7 @@ export default function HealthAgeCard({
           ) : null}
         </View>
       </ExpoLinearGradient>
-    </View>
+    </TouchableOpacity>
   );
 }
 

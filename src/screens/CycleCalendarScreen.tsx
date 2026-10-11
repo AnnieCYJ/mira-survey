@@ -346,6 +346,16 @@ export default function CycleCalendarScreen() {
           </TouchableOpacity>
           {/* ★ 2026-10-07（用户：上边一写生理周期、节律） */}
           <Text style={styles.title}>生理周期 · 节律</Text>
+          {/* ★ 2026-10-10（用户：去掉顶部「查看详情」开关 → 右上角日历 icon，点击看日历 / 收回月相环） */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setShowCal((v) => !v)}
+            style={[styles.calBtn, showCal && styles.calBtnOn]}
+            accessibilityRole="button"
+            accessibilityLabel={showCal ? '返回月相环' : '查看日历'}
+          >
+            <Icon name="calendar" size={theme.fs(20)} color={showCal ? mm.colors.limeMid : mm.colors.ink} strokeWidth={2} />
+          </TouchableOpacity>
         </View>
 
         {/* ★ 2026-10-07（用户：顶部加「周期 / 年」两个 tab；点「年」整页只显示年度内容，否则太乱） */}
@@ -401,9 +411,6 @@ export default function CycleCalendarScreen() {
                   {selDate ? `${selDate.getMonth() + 1}月${selDate.getDate()}日` : '—'}
                 </Text>
                 <Text style={styles.cycleDay}>第 {labelDay} 天 / 共 {labelTotal} 天</Text>
-                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowCal((v) => !v)}>
-                  <Text style={styles.cycleLink}>{showCal ? '收起日历' : '查看日历'}</Text>
-                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -1018,7 +1025,16 @@ const styles = StyleSheet.create({
   cycleCenter: { flex: 1, alignItems: 'center' },
   cycleDate: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   cycleDay: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
-  cycleLink: { fontSize: theme.fontSize.micro, color: theme.colors.accentText, marginTop: theme.sp(0.5) },
+  // ★ 2026-10-10（用户：右上角日历 icon 按钮，替代顶部「查看详情」开关；激活态描边转亮绿）
+  calBtn: {
+    width: theme.sp(9), height: theme.sp(9),
+    borderRadius: theme.radius.pill,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+    marginLeft: theme.space.sm,
+  },
+  calBtnOn: { borderColor: mm.colors.limeMid },
 
   emptyBox: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, padding: theme.space.lg, borderWidth: 1, borderColor: theme.colors.cardBorder },
   emptyTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },

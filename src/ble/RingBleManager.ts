@@ -139,6 +139,9 @@ function hsKeyFor(signalKey: string): HSMetricKey | null {
     case 'steps': case 'distance': case 'calorie':
     case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
     case 'bpSys': case 'bpDia':
+    // ★ 2026-10-10：`sns` 是原生真实 emit key，加进直通名单（否则 hk=null → intraday 不落库）。
+    //   `snsActivation` 保留为历史别名，向后兼容。
+    case 'sns':
       return signalKey as HSMetricKey;
     case 'snsActivation': return 'sns';
     case 'bloodSugar': return 'glucose';

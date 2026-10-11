@@ -63,6 +63,19 @@ function Tile({
   );
 }
 
+/** ★ 2026-10-10（用户：展开更多指标 → 纵向列表，不要方块/表格元素）：左标签 + 右值/副文 */
+function MetricRow({ k, v, s }: { k: string; v: string; s?: string }) {
+  return (
+    <View style={styles.metricRow}>
+      <Text style={styles.metricK}>{k}</Text>
+      <View style={styles.metricR}>
+        <Text style={styles.metricV}>{v}</Text>
+        {s ? <Text style={styles.metricS}>{s}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
 /** 'YYYY-M-D' → 「M/D」（与日历 chip / 图表轴标签同格式）；空值给「—」 */
 const md = (s: string | null | undefined): string => {
   if (!s) return '—';
@@ -220,79 +233,16 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
             <View style={[styles.mhChev, moreOpen && styles.mhChevOpen]} />
           </TouchableOpacity>
           {moreOpen ? (
-        <>
-        {/* ★ 2026-10-09（menstrual-cycle-preview）：展开区 = 两行 3 列描边小格（.statRow/.tile） */}
-        <View style={styles.statRow}>
-          <Tile
-            label="排卵置信度"
-            value={m.ovulationConfidence != null ? `${m.ovulationConfidence}` : '—'}
-            unit={m.ovulationConfidence != null ? '%' : undefined}
-            sub={m.ovulationBasis.join(' · ') || '日历推算'}
-            hasData={m.ovulationConfidence != null}
-          />
-          <Tile
-            label="黄体期长度"
-            value={m.actualLutealLength != null ? `${m.actualLutealLength}` : '—'}
-            unit={m.actualLutealLength != null ? '天' : undefined}
-            sub={m.lutealMethod === '未知' ? '数据不足' : m.lutealMethod}
-            hasData={m.actualLutealLength != null}
-          />
-          <Tile
-            label="周期规律性"
-            value={m.regularity.score != null ? m.regularity.label : '—'}
-            sub={
-              m.regularity.cv != null
-                ? `CV ${m.regularity.cv} · 近 ${m.regularity.sampleN} 周期`
-                : '记录 ≥2 次经期'
-            }
-            hasData={m.regularity.score != null}
-          />
-        </View>
-        <View style={[styles.statRow, styles.statRowGap]}>
-          <Tile
-            label="周期长度"
-            value={`${m.actualCycleLength ?? log.cycleLength}`}
-            unit="天"
-            sub={
-              m.actualPeriodLength != null
-                ? `经期 ${m.actualPeriodLength} 天 · 实测均值`
-                : `经期约 ${log.periodLength} 天 · 按你的设置`
-            }
-          />
-          <Tile
-            label="PMS 早筛"
-            value={
-              m.pmsIndex != null
-                ? m.pmsRisk === 'high'
-                  ? '偏高'
-                  : m.pmsRisk === 'moderate'
-                  ? '中等'
-                  : '偏低'
-                : '—'
-            }
-            sub={m.pmsIndex != null ? `指数 ${m.pmsIndex}` : '经前 7 天评估'}
-            hasData={m.pmsIndex != null}
-          />
-          <Tile
-            label="当前受孕概率"
-            value={m.fertilityProbability != null ? `${m.fertilityProbability}` : '—'}
-            unit={m.fertilityProbability != null ? '%' : undefined}
-            sub={
-              m.daysToOvulation != null
-                ? m.daysToOvulation >= 0
-                  ? `距排卵 ${m.daysToOvulation} 天`
-                  : `排卵已过 ${-m.daysToOvulation} 天`
-                : '—'
-            }
-            hasData={m.fertilityProbability != null}
-          />
-        </View>
-        {tempNote ? (
-          <View style={styles.notes}>
-            <Text style={styles.noteItem}>· {tempNote}</Text>
-          </View>
-        ) : null}
-        </>
+            <View style={styles.metricList}>
+              {/* ★ 2026-10-10（用户：展开区不要方块/表格元素 → 改为纵向 label·value 列表，与昼夜节律·查看详情列表同款） */}
+              <MetricRow k="排卵置信度" v={m.ovulationConfidence != null ? `${m.ovulationConfidence}%` : '—'} s={m.ovulationBasis.join(' · ') || '日历推算'} />
+              <MetricRow k="黄体期长度" v={m.actualLutealLength != null ? `${m.actualLutealLength} 天` : '—'} s={m.lutealMethod === '未知' ? '数据不足' : m.lutealMethod} />
+              <MetricRow k="周期规律性" v={m.regularity.score != null ? m.regularity.label : '—'} s={m.regularity.cv != null ? `CV ${m.regularity.cv} · 近 ${m.regularity.sampleN} 周期` : '记录 ≥2 次经期'} />
+              <MetricRow k="周期长度" v={`${m.actualCycleLength ?? log.cycleLength} 天`} s={m.actualPeriodLength != null ? `经期 ${m.actualPeriodLength} 天 · 实测均值` : `经期约 ${log.periodLength} 天 · 按你的设置`} />
+              <MetricRow k="PMS 早筛" v={m.pmsIndex != null ? (m.pmsRisk === 'high' ? '偏高' : m.pmsRisk === 'moderate' ? '中等' : '偏低') : '—'} s={m.pmsIndex != null ? `指数 ${m.pmsIndex}` : '经前 7 天评估'} />
+              <MetricRow k="当前受孕概率" v={m.fertilityProbability != null ? `${m.fertilityProbability}%` : '—'} s={m.daysToOvulation != null ? (m.daysToOvulation >= 0 ? `距排卵 ${m.daysToOvulation} 天` : `排卵已过 ${-m.daysToOvulation} 天`) : '—'} />
+              {tempNote ? <Text style={styles.noteItem}>· {tempNote}</Text> : null}
+            </View>
           ) : null}
         </>
       ) : (
@@ -362,19 +312,15 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.5),
   },
   /* 关键日期：与 CyclePhaseCard 的「关键日期」范式一致（居中 · 标签/值/副文，全 token） */
-  /* ★ 2026-10-09（collapse-unified-preview .mhRow）：「展开更多指标」折叠头
-     （左标签 12.5px·600·墨 + 右 chevron，浅底描边行，对齐 SleepAnalysisCard.moreHead） */
+  /* ★ 2026-10-10（用户：全 App 折叠头统一去灰底）：无灰底无方框，
+     仅顶部发丝线 + 左标签（textInk） + 右 chevron，对齐 SleepRhythmCard.moreHead（G 样式） */
   mhRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: theme.space.sm,
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
     paddingVertical: theme.sp(2.25),
-    paddingHorizontal: theme.space.sm,
+    paddingHorizontal: 0,
   },
   mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
   mhChev: {
@@ -413,4 +359,14 @@ const styles = StyleSheet.create({
   keyDateFoot: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
   notes: { marginTop: theme.space.xs, gap: theme.sp(0.5) },
   noteItem: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: theme.fontSize.micro * 1.3 },
+  // ★ 2026-10-10（用户：展开更多指标纵向列表，无方块/无表格/无横线，只留白分隔）
+  metricList: { marginTop: theme.space.sm },
+  metricRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: theme.sp(2.25),
+  },
+  metricK: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, flexShrink: 1, marginRight: theme.sp(2) },
+  metricR: { alignItems: 'flex-end', flexShrink: 0 },
+  metricV: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  metricS: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'right', lineHeight: theme.fontSize.micro * 1.4 },
 });

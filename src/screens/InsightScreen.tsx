@@ -113,14 +113,20 @@ const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol', 'stress', 
 const showTrendFor = (key: string) => !SHORT_METRIC_KEYS.has(key);
 
 /**
- * 把卡片按「估高」贪心分配到两列：**每次放进当前最矮的一列**。
+ * 把卡片按「估高」贪心分配到两列：**每次放进当前最矮的一列**，复刻「错落有致」的瀑布流
+ * （RN 没有原生 masonry；两列各自竖向堆叠 + 让总高接近，行与行天然不对齐正是参考稿的观感）。
  *
- * 为什么这样做：参考稿左侧是「错落有致」的瀑布流 —— 两列各自竖向堆叠、卡片高度不一，
- * 行与行天然不对齐。RN 没有原生 masonry，但只要把卡片交给两个独立的列容器，
- * 再让两列总高尽量接近（避免一条长一条短），就能得到同样的错落观感；
- * 而原来的 flexWrap 网格会因为每行等高而显得呆板。
+ * ★ 2026-10-10（用户：「最后那个交感神经活跃度要紧放在皮肤含水量的下面，你看中间空了很多」）：
+ *   贪心只认「当前最矮的一列」，**既不能指定列位、也不能保证两张卡的相邻关系**。
+ *   所以加第三参 `afterOf`：贪心分完之后，把指定卡**挪到锚点卡的紧后面（同一列）**。
+ *   「先钉住再贪心」是错的 —— 钉住的卡会被放���列首，反而跑到最上面；这里必须用「贪心后搬家」。
  */
-function splitColumnsBalanced<T>(items: T[], estH: (it: T) => number): [T[], T[]] {
+function splitColumnsBalanced<T>(
+  items: T[],
+  estH: (it: T) => number,
+  keyOf: (it: T) => string,
+  afterOf?: (it: T) => string | null,
+): [T[], T[]] {
   const cols: [T[], T[]] = [[], []];
   const sum = [0, 0];
   for (const it of items) {
@@ -128,8 +134,47 @@ function splitColumnsBalanced<T>(items: T[], estH: (it: T) => number): [T[], T[]
     cols[i].push(it);
     sum[i] += estH(it);
   }
+  if (!afterOf) return cols;
+
+  // 「搬家」：把 afterOf(it) 指定的卡，挪到 keyOf 锚点卡的紧后面（同一列）
+  const all = cols[0].concat(cols[1]);
+  for (const it of all) {
+    const anchorKey = afterOf(it);
+    if (!anchorKey) continue;
+    const selfKey = keyOf(it);
+    if (anchorKey === selfKey) continue;
+    // 找锚点与自己在两列中的位置
+    let aIdx = -1;
+    let aCol = -1;
+    let sIdx = -1;
+    let sCol = -1;
+    for (let c = 0; c < 2; c++) {
+      const ai = cols[c].findIndex((x) => keyOf(x) === anchorKey);
+      if (ai >= 0 && aIdx < 0) { aIdx = ai; aCol = c; }
+      const si = cols[c].findIndex((x) => keyOf(x) === selfKey);
+      if (si >= 0 && sIdx < 0) { sIdx = si; sCol = c; }
+    }
+    if (aIdx < 0 || sIdx < 0) continue;                    // 锚点不在本页 → 不动
+    if (sCol === aCol && sIdx === aIdx + 1) continue;       // 已经紧挨着 → 不动
+    cols[sCol].splice(sIdx, 1);
+    sum[sCol] -= estH(it);
+    const insertAt = aCol === sCol && sIdx < aIdx ? aIdx : aIdx + 1;
+    cols[aCol].splice(insertAt, 0, it);
+    sum[aCol] += estH(it);
+  }
   return cols;
 }
+
+/**
+ * ★ 2026-10-10（用户指定布局）：需要**指定紧邻关系**的基础指标卡。
+ * 贪心分栏无法保证两张卡相邻；这里声明「sns（交感神经活跃）要紧跟在 skin（皮肤含水量）
+ * 之后、且同一列」，由 `splitColumnsBalanced` 在贪心分完之后执行搬家。
+ */
+const PIN_AFTER: Record<string, string> = {
+  sns: 'skin',
+};
+
+import { resolveDailyHealthAge } from '../lib/dailyHealthAge';
 
 export default function InsightScreen() {
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
@@ -196,6 +241,7 @@ export default function InsightScreen() {
     } catch { return null; }
   }, [ring]);
 
+
   /**
    * ★ 2026-10-06（用户：身体年龄算法要「综合」荷尔蒙节律 + 长期健康数据，且 AI 分析太复杂 → 简化）：
    *   身体年龄 = 实际年龄 + 活力调整：两个维度都健康 → 偏年轻；任一失衡 → 偏老。
@@ -222,7 +268,22 @@ export default function InsightScreen() {
     const longTerm = overallScoreFromReport; // 0–100
     const longTermHealthy = longTerm != null && longTerm >= 65;
     const longTermLabel = longTerm == null ? '数据不足' : longTerm >= 80 ? '良好' : longTerm >= 65 ? '一般' : '偏弱';
-    const healthAge = estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
+
+    /**
+     * ★ 2026-10-10（用户：「洞察页身体年龄一天最多变一次，不能老变」）：
+     *   用 `resolveDailyHealthAge` 把「身体年龄 + 综合分」一起按天冻结。
+     *   当天首次算出即钉死，之后整天复用 —— 无论戒指轮询/回填怎么刷新输入，
+     *   卡片上的数字和圆弧都不会再跳；跨天自动重算。
+     *   综合分必须一起冻结：圆弧长度 = 综合分，只冻数字会变成「数字不动、弧一直在跑」。
+     */
+    const frozenRec = resolveDailyHealthAge(() => ({
+      healthAge: estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足'),
+      actualAge: ACTUAL ?? null,
+      overallScore: longTerm,
+    })).value;
+    const healthAge = frozenRec?.healthAge ?? estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
+    // 弧长用冻结的综合分（与冻结的身体年龄同一份快照 → 数字与弧永远同步）
+    const arcScore = frozenRec?.overallScore ?? longTerm;
     // ④ 简化分析文案（综合两个维度）——★ 2026-10-08（用户：按 ISHO 风格，先事实再人话）
     let hormonalClause: string;
     if (hormonalLabel === '数据不足') {
@@ -251,7 +312,7 @@ export default function InsightScreen() {
         ? '现在的作息和运动节奏很好，照这样保持就行。'
         : '再连续戴 7 天，数据攒够了这份分析会准很多。');
     }
-    return { healthAge, analysis, suggestions: suggestions.slice(0, 2) };
+    return { healthAge, arcScore, analysis, suggestions: suggestions.slice(0, 2) };
   }, [ring, overallScoreFromReport, actualAge]);
 
   const insightRows = useMemo(
@@ -364,7 +425,7 @@ export default function InsightScreen() {
     const raw = getTodaySeries(key);
     const lastT = raw.length ? raw[raw.length - 1].t : null;
     // 实时信号半小时聚合（只有 render 时才算）
-    const _HALF = ['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','bpSys','bpDia'];
+    const _HALF = ['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','sns','bpSys','bpDia'];
     let hist = raw;
     if (_HALF.includes(key) && raw.length > 0) {
       const halfMs = 30 * 60 * 1000;
@@ -397,16 +458,18 @@ export default function InsightScreen() {
   //   两列卡片高度交错 → 行不对齐，复刻参考稿左侧的「错落有致」。
   const basicsGroups = useMemo(() => {
     const estH = (m: BasicMetricDef) => (showTrendFor(m.key) ? 2 : 1);
-    const groups: { section?: string; items: BasicMetricDef[] }[] = [];
-    for (const m of basicsSignals) {
-      const last = groups[groups.length - 1];
-      if (last && last.section === m.section) last.items.push(m);
-      else groups.push({ section: m.section, items: [m] });
-    }
-    return groups.map((g) => ({
-      section: g.section,
-      columns: splitColumnsBalanced(g.items, estH),
-    }));
+    // ★ 2026-10-10（用户指定）：交感神经活跃卡必须**紧贴在皮肤含水量下面**（同一列）。
+    const afterOf = (m: BasicMetricDef) => PIN_AFTER[m.key] ?? null;
+    // ★ 2026-10-10（用户：「中间空了很多，上面那些卡片紧凑一点排列」）：
+    //   原来按 `section` 把基础指标拆成**多个分组**，每组各渲染一对列，
+    //   组与组之间会留出一整段空白（照片里 皮肤含水量 与 交感神经 中间那道空隙）。
+    //   基础指标本身没有分组语义（section 皆为空），故**合并成单一分组**，
+    //   11 张卡进同一对列 → 整体紧凑、底部两列自然对齐。
+    return [{
+      section: basicsSignals.find((m) => !!m.section)?.section ?? '',
+      items: basicsSignals,
+      columns: splitColumnsBalanced(basicsSignals, estH, (m) => m.key, afterOf),
+    }];
   }, [basicsSignals]);
 
   /** 渲染单张基础指标卡（原网格内的卡片逻辑抽出，供左右两列复用）。 */
@@ -468,8 +531,9 @@ export default function InsightScreen() {
         <HealthAgeCard
           healthAge={bodyAgeInsight.healthAge}
           actualAge={actualAge}
+          onPress={() => navigation.navigate('HealthAgeDetail')}
           onEditProfile={() => { setTopTab('longevity'); setSubTab('bodycomp'); }}
-          overallScore={overallScoreFromReport}
+          overallScore={bodyAgeInsight.arcScore ?? overallScoreFromReport}
           ring={ring}
           rows={insightRows}
           pending={aiOverview.loading}
@@ -525,7 +589,10 @@ export default function InsightScreen() {
               // v18.3：情绪 = 情绪洞察，点卡片进「情绪消耗」日/周/年详情页
               <>
                 <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
-                  <EmotionInsightView />
+                  <View style={{ position: 'relative' }}>
+                    <EmotionInsightView />
+                    <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} style={{ position: 'absolute', top: theme.sp(4), right: theme.sp(4) }} />
+                  </View>
                 </TouchableOpacity>
                 {/* 给底部悬浮「记录情绪」按钮留白，避免情绪洞察末尾被遮挡 */}
                 <View style={{ height: 120 }} />
@@ -677,10 +744,13 @@ const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any 
           </View>
           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
-            {last != null ? formatRelativeTime(last.t) : '今日暂无采样'}
-          </Text>
-        </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+                {last != null ? formatRelativeTime(last.t) : '今日暂无采样'}
+              </Text>
+              <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+            </View>
+          </View>
 
         {/* 大数字：intraday 最新 → daily 兜底 → 「—」；单位保留 */}
         <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
@@ -781,10 +851,13 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           </View>
           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
-            {lastT > 0 ? formatRelativeTime(lastT) : '今日暂无测量'}
-          </Text>
-        </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+                {lastT > 0 ? formatRelativeTime(lastT) : '今日暂无测量'}
+              </Text>
+              <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+            </View>
+          </View>
 
         {/* 大数字：收缩/舒张最新一对；单位保留 */}
         <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
@@ -922,7 +995,10 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'activity' })}>
       <Card style={{ padding: theme.space.cardPadCompact }}>
-        <Text style={styles.profTitle}>运动恢复</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.profTitle}>运动恢复</Text>
+          <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+        </View>
         <WeekStepsBars values={weekSteps} />
         <View style={{ marginTop: theme.sp(1.5), gap: theme.sp(1) }}>
           {rows.map(([label, val, unit]) => (
@@ -1149,8 +1225,10 @@ const styles = StyleSheet.create({
   chipContent: { paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1) },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2.5), alignItems: 'stretch' },
   // 双列瀑布流：两列等宽、各自竖向堆叠（配 gap），卡片高度不一 → 错落有致
-  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(2.5) },
-  masonryCol: { flex: 1, gap: theme.sp(2.5) },
+  // ★ 2026-10-10（用户：「上面那些卡片紧凑一点排列」）：列间距与卡间距统一收到 sp(2)，
+  //   配合「单一分组」消除组间空白，整页明显更紧凑。
+  masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(2) },
+  masonryCol: { flex: 1, gap: theme.sp(2) },
   emptyNote: {
     fontSize: theme.fontSize.micro,
     lineHeight: theme.fontSize.micro * 1.7,

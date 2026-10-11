@@ -39,9 +39,9 @@ export interface SleepScoreConst {
 }
 
 export const SLEEP_SCORE_DEFAULTS: SleepScoreConst = {
-  TARGET_DURATION: 420,      // 7.5h
+  TARGET_DURATION: 420,      // 7h（更适配早起型与个体差异）
   TARGET_DURATION_MAX: 540,  // 8.5h：超过即线性轻扣（防"睡够 9h 就满分"）
-  TARGET_DEEP_PCT: 18,       // 深睡 ≥20%
+  TARGET_DEEP_PCT: 18,       // 深睡 ≥18%
   TARGET_GETUP: 3,           // 起夜平滑：每次约扣 7 分（原为 0/1 悬崖）
   TARGET_EFFICIENCY: 0.85,   // 效率 ≥85%（WHOOP 目标）
   W_D: 0.35,
@@ -238,12 +238,12 @@ export function computePersonalizedSleepScore(
       `sumW=${sumW.toFixed(2)} score=${Math.round(clamp(100 * parts.reduce((a, p) => a + (p.w / sumW) * p.v, 0), 0, 100))}`
     );
   }
-  // 相对口径的锚点：与个人基线一样 ⇒ 50 分（不是绝对口径的 100）。
-  // ⚠ 这是最重要的口径变化：50 = 和你平时一样。UI 副标必须写清，
-  //   否则用户会把 62 读成「睡眠 62 分」（绝对量）。
-  const v = 100 * parts.reduce((a, p) => a + (p.w / sumW) * p.v, 0);
+  // 内部相对分仍以 50 表示个人基线；展示分映射到质量分区间。
+  // 这样“平时”不会被用户误读为及格线：基线约 75，优秀睡眠进入 85–100。
+  const relative = 100 * parts.reduce((a, p) => a + (p.w / sumW) * p.v, 0);
+  const mapped = clamp(75 + (relative - 50) * 0.6, 45, 100);
   return {
-    score: Math.round(clamp(v, 0, 100)),
+    score: Math.round(mapped),
     mode: 'relative',
     baselineDays,
     daysToReady: 0,

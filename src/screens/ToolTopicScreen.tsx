@@ -10,7 +10,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, ImageBackground, TouchableOpacity, Image, Modal, type ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { useNavigation, useRoute, CompositeNavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -21,6 +20,7 @@ import ScreenContainer from '../components/ScreenContainer';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
 import MiraTag from '../components/MiraTag';
+import { ArcGauge } from '../components/ArcGauge';
 import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import {
@@ -541,32 +541,30 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
 
 /* ── V3 展示组件（SPEC §2.2–2.5）────────────────────────────── */
 
-/** 强度环：5 等分段弧（r=60 / 线宽 11 / 每段 61 单位 ≈58°），当前相位段亮色，其余 surface-2 */
+/**
+ * ★ 2026-10-11（用户：「运动建议最上面的环不要做成环，做成身体年龄那种弧形」）：
+ * 原来的整圈 5 段环 → 宽扁大弧（ArcGauge，几何对齐身体年龄）。
+ * 内容不变：中央仍是档位名 + 副标（gearName / gearSub），颜色仍是当前相位的 ringColor。
+ *
+ * 弧的填充比例 = 当前档位的「强度档序」映射（5 档：恢复→平稳→燃脂→黄金窗口→巅峰），
+ * 让弧长和"今天练多狠"对应，而不是原来的"5 段里只亮 1 段"。仅视觉映射，不改动任何数据。
+ */
+const GEAR_FRACTION: Record<string, number> = {
+  恢复: 0.2,
+  平稳: 0.4,
+  燃脂: 0.55,
+  黄金窗口: 0.8,
+  巅峰: 1.0,
+};
 function IntensityRing({ color, gearName, gearSub }: { color: string; gearName: string; gearSub: string }) {
-  const size = 150;
-  const r = 60;
-  const sw = 11;
-  const c = 2 * Math.PI * r; // ≈376.99
-  const dash = 61;
+  const pct = (GEAR_FRACTION[gearName] ?? 0.6) * 100;
   return (
-    <View style={sp2.ringBox}>
-      <Svg width={size} height={size}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Circle
-            key={i}
-            cx={size / 2} cy={size / 2} r={r}
-            stroke={i === 0 ? color : mm.colors.emptyFill}
-            strokeWidth={sw} fill="none" strokeLinecap="round"
-            strokeDasharray={`${dash} ${c - dash}`}
-            transform={`rotate(${-90 + i * 72} ${size / 2} ${size / 2})`}
-          />
-        ))}
-      </Svg>
+    <ArcGauge pct={pct} color={color}>
       <View style={sp2.ringCenter} pointerEvents="none">
         <Text style={sp2.ringGear}>{gearName}</Text>
         <Text style={sp2.ringGearSub}>{gearSub}</Text>
       </View>
-    </View>
+    </ArcGauge>
   );
 }
 

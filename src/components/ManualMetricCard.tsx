@@ -66,10 +66,13 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
           )}
           <Text style={[styles.name, { color: mm.colors.ink }]}>{metric.name}</Text>
         </View>
-        <View style={[styles.tag, live ? styles.tagLive : styles.tagOff]}>
-          <Text style={[styles.tagText, live ? styles.tagTextLive : styles.tagTextOff]}>
-            {live ? '已测量' : '待测量'}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+          <View style={[styles.tag, live ? styles.tagLive : styles.tagOff]}>
+            <Text style={[styles.tagText, live ? styles.tagTextLive : styles.tagTextOff]}>
+              {live ? '已测量' : '待测量'}
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
         </View>
       </View>
 

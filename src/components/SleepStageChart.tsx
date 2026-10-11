@@ -27,6 +27,9 @@ const ROW_H = theme.sp(4.5);       // 行带高度 ≈18
 const BAR_H = theme.sp(2.5);       // 行内矩形高度 ≈10（短于行高，形成呼吸感）
 const ROW_GAP = theme.sp(0.75);    // 行间距 ≈3（密集）
 const AXIS_H = theme.sp(5);        // 时间轴
+// ★ 2026-10-10：HRV 第二层（Oura 的「上分期 / 下 HRV」双层结构）
+const HRV_BAND_H = theme.sp(7);    // HRV 层总高（含上下留白）
+const HRV_BAR_H = theme.sp(5);     // HRV 柱区高度
 
 /**
  * 时间轴起点（自 0 点分钟数）。
@@ -49,18 +52,30 @@ export default function SleepStageChart({
   segments,
   sleepTime,
   totalMinutes,
+  hrvLayer,
+  bedTimeMs,
 }: {
   segments: SleepSegment[];
   sleepTime?: string | null;
   /** 横轴基准（分钟）—— 传卡片标题同源的「总睡眠时长」；缺省则回落到分期段跨度 */
   totalMinutes?: number | null;
+  /**
+   * ★ 2026-10-10（用户：心率变异性分「睡眠阶段 / 日间」两个展示）：夜间 HRV 作为**第二层**
+   * 画在分期条下面，与分期共用同一个 `x(min)` 映射 —— 这是 Oura 的结构（上分期 / 下 HRV），
+   * 两者时间轴天然对齐，能直接看出「HRV 高点落在哪个分期」。
+   * 数据传**绝对时间戳**（`{t: epochMs, v: ms}`），本组件按入睡时刻换算成相对分钟。
+   */
+  hrvLayer?: { t: number; v: number }[] | null;
+  /** hrvLayer 的参考起点（入睡时刻，epoch ms）。缺省则用 sleepTime 解析 */
+  bedTimeMs?: number | null;
 }) {
   const { width: winW } = useWindowDimensions();
   const padX = theme.space.screen + theme.space.cardPad;
   const W = Math.max(200, winW - padX * 2);
   const rows = [0, 1, 2, 3];
   const chartH = rows.length * ROW_H + (rows.length - 1) * ROW_GAP;
-  const H = chartH + AXIS_H;
+  const showHrv = !!(hrvLayer && hrvLayer.length > 0);
+  const H = chartH + (showHrv ? HRV_BAND_H : 0) + AXIS_H;
   const segSpan = segments && segments.length > 0
     ? segments[segments.length - 1].end
     : 0;
@@ -110,6 +125,62 @@ export default function SleepStageChart({
 
   const gap = 0.5; // 段间极小间隙
 
+  /**
+   * HRV 第二层：把绝对时间戳的 HRV 序列按 5 分钟分桶（Oura 的rMSSD 也是 5 分钟一点），
+   * 再映射到与分期同一个 `x(relMin)`—— 缺数据的槽不画（不插值）。
+   */
+  const hrvGeom = (() => {
+    if (!showHrv || !hrvLayer) return null;
+    const bed = bedTimeMs != null ? bedTimeMs : (startAbs != null ? startAbs * 60_000 : null);
+    if (bed == null) return null;
+    const slotMs = 5 * 60_000;
+    const slotCount = Math.max(1, Math.ceil((totalMin * 60_000) / slotMs));
+    const sum = new Array(slotCount).fill(0);
+    const cnt = new Array(slotCount).fill(0);
+    for (const p of hrvLayer) {
+      if (!Number.isFinite(p.v) || p.v <= 0) continue;
+      const s = Math.floor((p.t - bed) / slotMs);
+      if (s < 0 || s >= slotCount) continue;
+      sum[s] += p.v;
+      cnt[s] += 1;
+    }
+    let hi = 0;
+    for (let i = 0; i < slotCount; i++) if (cnt[i] > 0 && sum[i] / cnt[i] > hi) hi = sum[i] / cnt[i];
+    const top = hi > 0 ? hi * 1.15 : 1;
+    const bandTop = chartH + theme.sp(1);
+    const baseY = bandTop + HRV_BAR_H;
+    const slotW = totalMin > 0 ? (W / ((totalMin * 60_000) / slotMs)) : W / slotCount;
+    const barW = Math.max(0.8, Math.min(chart.bar.maxWidth, slotW * chart.bar.slotRatio));
+    const bars: React.ReactNode[] = [];
+    for (let i = 0; i < slotCount; i++) {
+      if (cnt[i] === 0) continue;                       // 缺口不画、不插值
+      const v = sum[i] / cnt[i];
+      const h = Math.max(chart.bar.minHeight, (v / top) * HRV_BAR_H);
+      const relMin = (i * slotMs) / 60_000;
+      bars.push(
+        <Rect key={`h${i}`} x={x(relMin) + gap / 2} y={baseY - h} width={barW}
+          height={h} rx={Math.min(chart.bar.radius, barW / 2)}
+          fill={mm.colors.roseDeep} opacity={chart.bar.opacity.solid} />,
+      );
+    }
+    return {
+      bars,
+      base: (
+        <Line x1={0} y1={baseY} x2={W} y2={baseY} stroke={chart.grid}
+          strokeWidth={chart.lw.grid} />
+      ),
+      label: (
+        <>
+          <SvgText x={0} y={bandTop + theme.sp(2.4)} fontSize={theme.fontSize.micro}
+            fill={theme.colors.textSub}>HRV</SvgText>
+          <SvgText x={W} y={bandTop + theme.sp(2.4)} fontSize={theme.fontSize.micro}
+            fill={theme.colors.textSub} textAnchor="end">{`${Math.round(top)} ms`}</SvgText>
+        </>
+      ),
+      offset: chartH + HRV_BAND_H,
+    };
+  })();
+
   return (
     <View>
       <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
@@ -135,14 +206,23 @@ export default function SleepStageChart({
           );
         })}
 
+        {/* ★ 2026-10-10：HRV 第二层（与分期共用同一条 x 轴 → 能直接对照「HRV 高点落在哪个分期」） */}
+        {hrvGeom ? (
+          <>
+            {hrvGeom.label}
+            {hrvGeom.base}
+            {hrvGeom.bars}
+          </>
+        ) : null}
+
         {/* 时间轴竖线 */}
         {ticks.map((t, i) => (
           <Line
             key={`tick-${i}`}
             x1={t.x}
-            y1={chartH + theme.sp(0.5)}
+            y1={chartH + (hrvGeom ? hrvGeom.offset : 0) + theme.sp(0.5)}
             x2={t.x}
-            y2={chartH + theme.sp(2)}
+            y2={chartH + (hrvGeom ? hrvGeom.offset : 0) + theme.sp(2)}
             stroke={chart.axisText}
             strokeWidth={chart.lw.grid}
             opacity={0.45}

@@ -42,6 +42,7 @@ import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import ReadinessTrendChart, { readinessColor } from '../components/ReadinessTrendChart';
 import { computeReadinessSeries, readinessLevelLabel, READY_LOW, dailyBrainUsed } from '../lib/cognitiveReadiness';
 import { buildStressRangeSeries, rangeStressMean } from '../lib/stressDaily';
+import { todaySportLogs } from '../lib/sportLog';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -53,7 +54,7 @@ interface RouteParams { type: EnergyType; }
 const SHOW_AI_BANNER = false;
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
-  emotion:   { name: '情绪洞察', accent: mm.colors.roseCore,    sub: '情绪消耗 + 唤醒分' }, // v16：情绪=Rose（旧 stateTense=honey 语义不符）
+  emotion:   { name: '心理压力', accent: mm.colors.roseCore,    sub: '心理压力 · 全天与区间趋势' },
   cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '认知准备度 · 全天与区间趋势' },
   activity:  { name: '运动消耗', accent: mm.colors.skyCore,  sub: '步数 · 距离 · 活动消耗' },
 };
@@ -227,6 +228,82 @@ function daySportSessions(ring: any, dk: string): any[] {
   return list.filter((s) => typeof s?.beginTime === 'string' && s.beginTime.slice(0, 10) === dk);
 }
 
+/**
+ * ★ 2026-10-10（用户）：运动时长 / 运动时心率 的真实来源兜底。
+ *   优先级：① 戒指固件自动识别的运动段（sportSessions）→ ② 用户在运动工具页手动记录（sportLog）
+ *   → ③ 都没有时，从**当日真实心率 intraday** 推导「活跃分钟 / 运动时心率」（绝不编造运动记录）。
+ *   返回 null 表示该日确实无任何运动信号（应显示「—」，不造假）。
+ */
+function dayExercise(ring: any, dk: string): { minutes: number | null; avgHr: number | null; source: 'ring' | 'manual' | 'hr' | 'steps' | null; count: number } {
+  const ringSess = daySportSessions(ring, dk);
+  const manual = (todaySportLogs(dk) ?? []) as any[];
+  const sessMin =
+    ringSess.reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60 +
+    manual.reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60;
+  const hrVals = ringSess.map((s: any) => s?.averHeart).filter((v: any) => Number.isFinite(v) && v > 0);
+  const count = ringSess.length + manual.length;
+  if (sessMin > 0) {
+    return {
+      minutes: Math.round(sessMin),
+      avgHr: hrVals.length ? Math.round(hrVals.reduce((a: number, b: number) => a + b, 0) / hrVals.length) : null,
+      source: ringSess.length ? 'ring' : 'manual',
+      count,
+    };
+  }
+  // ③ 兜底：真实心率 intraday 推导活跃分钟 + 运动时心率
+  try {
+    const hrPts = (healthStore.getIntraday('hr', dk) as any[]).filter((p: any) => Number.isFinite(p?.v) && p.v > 30 && p.v < 220);
+    if (hrPts.length >= 30) {
+      const vals = hrPts.map((p: any) => p.v);
+      const resting = Math.min(...vals);
+      const thr = Math.max(resting + 25, 90); // 活跃阈值：静息 +25 且不低于 90
+      const active = vals.filter((v: number) => v >= thr);
+      if (active.length > 0) {
+        const spanMin = (hrPts[hrPts.length - 1].t - hrPts[0].t) / 60000;
+        const frac = active.length / vals.length;
+        const minutes = spanMin > 0 ? Math.round(spanMin * frac) : Math.round(active.length / 6);
+        return { minutes: Math.max(1, minutes), avgHr: Math.round(active.reduce((a: number, b: number) => a + b, 0) / active.length), source: 'hr', count };
+      }
+    }
+    // ④ 步数兜底：无任何运动信号但有步数/卡路里时，按步数估算活跃分钟（诚实估算，标注「步数估算」）
+    const st = ring?.stepDaily?.[dk];
+    const steps = st?.steps ?? 0;
+    if (steps > 500) {
+      const estMin = Math.max(1, Math.min(180, Math.round(steps / 120)));
+      const meanHr = hrPts.length ? Math.round(hrPts.reduce((a: number, b: any) => a + b.v, 0) / hrPts.length) : null;
+      return { minutes: estMin, avgHr: meanHr, source: 'steps', count };
+    }
+  } catch { /* 无数据 */ }
+  return { minutes: null, avgHr: null, source: null, count };
+}
+
+/** ★ 2026-10-10（用户）：区间（周/月/年）运动聚合——逐日 dayExercise 再汇总，日均分钟 + 平均心率 + 次数 + 最长单次 + 消耗最高日。 */
+function aggregateExercise(ring: any, dayKeys: string[]): {
+  minutes: number | null; avgHr: number | null; count: number; maxSingleMin: number | null; topCalDay: { k: string; c: number } | null;
+} {
+  let totalMin = 0, hrSum = 0, hrDays = 0, count = 0, maxSingle = 0;
+  let top: { k: string; c: number } | null = null;
+  for (const k of dayKeys) {
+    const ex = dayExercise(ring, k);
+    if (ex.minutes != null) totalMin += ex.minutes;
+    if (ex.avgHr != null) { hrSum += ex.avgHr; hrDays += 1; }
+    count += ex.count;
+    const ringSess = daySportSessions(ring, k);
+    const manual = (todaySportLogs(k) ?? []) as any[];
+    maxSingle = Math.max(maxSingle, ...ringSess.map((s: any) => (s?.totalTime ?? 0) / 60), ...manual.map((s: any) => (s?.totalTime ?? 0) / 60));
+    const c = ring?.stepDaily?.[k]?.calorie ?? 0;
+    if (c > 0 && (!top || c > top.c)) top = { k, c };
+  }
+  const days = dayKeys.length || 1;
+  return {
+    minutes: totalMin > 0 ? Math.round(totalMin / days) : null,
+    avgHr: hrDays > 0 ? Math.round(hrSum / hrDays) : null,
+    count,
+    maxSingleMin: maxSingle > 0 ? Math.round(maxSingle) : null,
+    topCalDay: top,
+  };
+}
+
 function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rangeMeanStress }: { type: EnergyType; accent: string; anchor: Date; ring: any; range: RangeKey; rangeMeanConsumption?: number | null; rangeMeanStress?: number | null }) {
   // ★ 按「锚定日」取报告：今天=此刻；历史日=该日整天（传错会得到空区间/永远是今天）
   const reportMs = reportNowMsForDay(anchor.getTime());
@@ -255,10 +332,16 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
     // ★ 2026-10-09（exercise-consumption-preview）：周 / 月 / 年 = 区间的**日均**（自然周期内的有效天）
     if (range !== 'day') {
       const todayK = dayKey(Date.now());
-      const periods = buildNaturalPeriods(range, anchor.getTime());
-      const days = (k: string[]) => (k ?? []).filter((x) => x <= todayK);
-      const curKeys = days((periods[periods.length - 1] as any)?.dayKeys ?? []);
-      const prevKeys = days((periods[periods.length - 2] as any)?.dayKeys ?? []);
+      // ★ 2026-10-10（用户·bug）：buildNaturalPeriods 返回的是**当前自然周期内的每一天**（周=7 天 / 月=逐日 / 年=12 个月），
+      //   旧实现误取「最后一个子周期」（周=周日 / 月=月末 / 年=12 月），再与今天比较过滤 → 未来日全被滤掉 → curKeys 为空
+      //   → Hero 卡的 消耗/步数/距离/运动时长 全「—」（而趋势图逐日取数，所以图有柱、卡没数）。
+      //   正确做法：把当前自然周期的所有 dayKey 摊平，再截到「不晚于今天」。
+      const curKeys = buildNaturalPeriods(range, anchor.getTime())
+        .flatMap((p) => p.dayKeys)
+        .filter((x) => x <= todayK);
+      const prevKeys = buildPrevNaturalPeriods(range, anchor.getTime())
+        .flatMap((p) => p.dayKeys)
+        .filter((x) => x <= todayK);
       const mean = (keys: string[], pick: (s: any) => number) => {
         const vals = keys.map((k) => pick(ring?.stepDaily?.[k])).filter((v) => Number.isFinite(v) && (v as number) > 0);
         return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
@@ -267,11 +350,9 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       const prevCal = mean(prevKeys, (s) => s?.calorie ?? 0);
       const curSteps = mean(curKeys, (s) => s?.steps ?? 0);
       const curDist = mean(curKeys, (s) => s?.distance ?? 0);
-      // 运动时长：区间内 sportSessions 总时长 / 有效天数 = 日均分钟
-      const totalMin = ((ring?.sportSessions ?? []) as any[])
-        .filter((s) => curKeys.includes(String(s?.beginTime ?? '').slice(0, 10)))
-        .reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60;
-      const durMin = curKeys.length && totalMin > 0 ? Math.round(totalMin / curKeys.length) : null;
+      // 运动时长：区间内逐日 dayExercise 汇总 → 日均分钟（含手动记录 + 心率兜底）
+      const agg = aggregateExercise(ring, curKeys);
+      const durMin = agg.minutes;
       const rangeDelta = curCal != null && prevCal != null && prevCal > 0
         ? Math.round(((curCal - prevCal) / prevCal) * 100)
         : null;
@@ -318,8 +399,9 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       );
     }
 
-    const sess = daySportSessions(ring, dk);
-    const durMin = sess.length ? Math.round(sess.reduce((a: number, s: any) => a + (s?.totalTime ?? 0), 0) / 60) : null;
+    const ex = dayExercise(ring, dk);
+    const durMin = ex.minutes;
+    const sessCount = ex.count;
     return (
       <View>
         <View style={styles.heroWrap}>
@@ -340,7 +422,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             <Text style={styles.statValue} numberOfLines={1}>
               {durMin ?? '—'}{durMin != null ? <Text style={unitStyle}> 分</Text> : null}
             </Text>
-            <Text style={styles.statSub}>{sess.length ? `${sess.length} 次` : '—'}</Text>
+            <Text style={styles.statSub}>{sessCount > 0 ? `${sessCount} 次` : (ex.source === 'hr' ? '心率估算' : ex.source === 'steps' ? '步数估算' : '—')}</Text>
           </View>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>步数</Text>
@@ -419,10 +501,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
           <>
             <View>
               <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
-              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]}</Text>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
-                50 = 和你平时一样
-              </Text>
+              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]} · 50=平时</Text>
             </View>
             <Text style={[styles.heroCtx, { color: band!.c }]}>{band!.t}</Text>
           </>
@@ -431,10 +510,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
           <>
             <View>
               <Text style={styles.heroVal}>—</Text>
-              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]}</Text>
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
-                50 = 和你平时一样
-              </Text>
+              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]} · 50=平时</Text>
             </View>
             <Text style={[styles.heroCtx, { color: theme.colors.textSub }]}>暂无数据</Text>
           </>
@@ -574,7 +650,10 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             accessibilityLabel={cogDetailsOpen ? '收起详细数据' : '展开详细数据'}
           >
             <Text style={styles.mhLabel}>详细数据</Text>
-            <View style={[styles.mhChev, cogDetailsOpen && styles.mhChevOpen]} />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.mhCount}>3 项</Text>
+              <View style={[styles.mhChev, cogDetailsOpen && styles.mhChevOpen]} />
+            </View>
           </TouchableOpacity>
           {cogDetailsOpen ? (
             <View style={styles.rowsBox}>
@@ -1173,10 +1252,11 @@ const styles = StyleSheet.create({
   ctitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   ctitleSmall: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: theme.sp(1.5) },
   // .hero：大数字 46 + 左侧标签 11px + 右侧状态语 13px·600（预览 .big/.lab/.ctx）
-  // .hero padding：6px 4px 12px
+  // ★ 2026-10-10（用户）：去掉 heroWrap 额外的上下 padding（外层 pad 已是 cardPad），
+  //   与睡眠详情页 SleepRecoveryHero 同口径，避免心理压力 Hero 比其它详情页 Hero 高太多。
   heroWrap: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingTop: theme.sp(1.5), paddingHorizontal: theme.sp(1), paddingBottom: theme.sp(3),
+    paddingVertical: 0, paddingHorizontal: 0,
   },
   heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
@@ -1207,14 +1287,19 @@ const styles = StyleSheet.create({
   // .axisnote：10.5px；日视图卡内左对齐版本
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },
   axisNoteLeft: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.fontSize.micro * 1.4 },
-  // .mhRow：统一折叠头（左标签 + 右 chevron，浅底描边行）
+  // ★ 2026-10-10（用户选 G · 数量提示 pill）：去掉灰底描边盒，改为扁平行（顶部发丝线分隔）
+  //   + 右侧「N 项」浅底 pill + chevron（pill 与 App 选中态同语言）
   mhRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: theme.space.sm,
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1, borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: 0,
+  },
+  mhCount: {
+    fontSize: theme.fontSize.micro, color: mm.colors.limeDeep,
+    backgroundColor: mm.colors.limeSoft,
+    paddingVertical: theme.sp(0.5), paddingHorizontal: theme.sp(1.5),
+    borderRadius: theme.radius.pill, fontWeight: theme.weight.semibold as any,
+    marginRight: theme.sp(2),
   },
   mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
   mhChev: {
@@ -1561,43 +1646,40 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
               accessibilityLabel={rangeDetailOpen ? '收起详细数据' : '展开详细数据'}
             >
               <Text style={styles.mhLabel}>详细数据</Text>
-              <View style={[styles.mhChev, rangeDetailOpen && styles.mhChevOpen]} />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.mhCount}>4 项</Text>
+                <View style={[styles.mhChev, rangeDetailOpen && styles.mhChevOpen]} />
+              </View>
             </TouchableOpacity>
             {rangeDetailOpen ? (
               <View style={styles.rowsBox}>
                 {(() => {
-                  const allKeys = periods.flatMap((p) => p.dayKeys);
-                  const sess = ((ring?.sportSessions ?? []) as any[])
-                    .filter((s) => allKeys.includes(String(s?.beginTime ?? '').slice(0, 10)));
-                  const hrs = sess.map((s) => s?.averHeart).filter((v: any) => Number.isFinite(v) && v > 0);
-                  const top = allKeys
-                    .map((k) => ({ k, c: ring?.stepDaily?.[k]?.calorie ?? 0 }))
-                    .filter((x) => x.c > 0)
-                    .sort((a, b) => b.c - a.c)[0];
+                  const allKeys = periods.flatMap((p) => p.dayKeys).filter((x) => x <= dayKey(Date.now()));
+                  const agg = aggregateExercise(ring, allKeys);
                   const unit = { fontSize: theme.fontSize.micro, color: theme.colors.textSub };
                   return (
                     <>
                       <View style={styles.rowItem}>
                         <Text style={styles.rowK}>运动次数</Text>
-                        <Text style={styles.rowV}>{sess.length}<Text style={unit}> 次</Text></Text>
+                        <Text style={styles.rowV}>{agg.count > 0 ? agg.count : '—'}<Text style={unit}> 次</Text></Text>
                       </View>
                       <View style={styles.rowItem}>
                         <Text style={styles.rowK}>平均心率（运动时段）</Text>
                         <Text style={styles.rowV}>
-                          {hrs.length ? Math.round(hrs.reduce((a: number, b: number) => a + b, 0) / hrs.length) : '—'}
+                          {agg.avgHr != null ? agg.avgHr : '—'}
                           <Text style={unit}> bpm</Text>
                         </Text>
                       </View>
                       <View style={styles.rowItem}>
                         <Text style={styles.rowK}>最长单次</Text>
                         <Text style={styles.rowV}>
-                          {sess.length ? Math.round(Math.max(...sess.map((s) => s?.totalTime ?? 0)) / 60) : '—'}
+                          {agg.maxSingleMin != null ? agg.maxSingleMin : '—'}
                           <Text style={unit}> 分</Text>
                         </Text>
                       </View>
                       <View style={[styles.rowItem, styles.rowItemLast]}>
                         <Text style={styles.rowK}>消耗最高日</Text>
-                        <Text style={styles.rowV}>{top ? top.k.slice(5).replace('-', '/') : '—'}</Text>
+                        <Text style={styles.rowV}>{agg.topCalDay ? agg.topCalDay.k.slice(5).replace('-', '/') : '—'}</Text>
                       </View>
                     </>
                   );

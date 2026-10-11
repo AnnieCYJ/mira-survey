@@ -12,6 +12,7 @@ import RelaxCardDeck from '../components/RelaxCardDeck';
 import RelaxVideoPlayer from '../components/RelaxVideoPlayer';
 import { useAppState, PLAN_PER_DAY } from '../state/AppState';
 import { CAL_YEAR, CAL_MONTH } from '../data/tasks';
+import JourneyDayView from '../components/JourneyDayView';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CONFETTI_MS = 3000; // 礼花时长
@@ -131,6 +132,9 @@ export default function ProfileScreen() {
 
   const [relaxVisible, setRelaxVisible] = useState(false);
 
+  // ★ 2026-10-10（用户：Calendar 页顶部加「日 / 月」两个 tab）—— 日 = 今日旅程（曲线流，从工具页迁入）；月 = 原月历 + 集成就卡
+  const [mainTab, setMainTab] = useState<'day' | 'month'>('day');
+
   return (
     <View style={styles.root}>
       {/* v10：日历页背景全白（与首页/洞察页同款处理） */}
@@ -142,6 +146,33 @@ export default function ProfileScreen() {
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Calendar</Text>
         </Animated.View>
+
+        {/* ★ 2026-10-10（用户）：「日 / 月」分段 Tab（选中 = limeSoft 底 + limeDeep 字，App 通用分段语言） */}
+        <View style={styles.seg}>
+          {([
+            { key: 'day', label: '日' },
+            { key: 'month', label: '月' },
+          ] as const).map((o) => {
+            const on = o.key === mainTab;
+            return (
+              <TouchableOpacity
+                key={o.key}
+                activeOpacity={0.7}
+                onPress={() => setMainTab(o.key)}
+                style={[styles.segItem, on && styles.segItemOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={[styles.segText, on && styles.segTextOn]}>{o.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {mainTab === 'day' ? (
+          <JourneyDayView />
+        ) : (
+        <>
 
         {/* ★ 2026-10-08（用户）：原「已完成 / 计划任务 / 完成度%」统计卡整块移除 */}
 
@@ -164,6 +195,8 @@ export default function ProfileScreen() {
         </Card>
 
         <RelaxCardDeck onPlayRelax={() => setRelaxVisible(true)} />
+        </>
+        )}
       </ScreenContainer>
 
       <Confetti visible={celebration.visible} duration={3000} count={120} />
@@ -222,6 +255,27 @@ const styles = StyleSheet.create({
     color: mm.colors.ink,
     marginBottom: theme.space.md,
   },
+  // ★ 2026-10-10（用户）：「日 / 月」分段 Tab —— 轨道 btnBusyBg / 选中 limeSoft+limeDeep（App 通用分段语言）
+  seg: {
+    flexDirection: 'row',
+    backgroundColor: mm.colors.btnBusyBg,
+    borderRadius: theme.radius.pill,
+    padding: theme.sp(1),
+    marginBottom: theme.space.md,
+  },
+  segItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: theme.sp(2),
+    borderRadius: theme.radius.pill,
+  },
+  segItemOn: { backgroundColor: mm.colors.limeSoft },
+  segText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold as never,
+    color: theme.colors.textSub,
+  },
+  segTextOn: { color: mm.colors.limeDeep },
   calHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

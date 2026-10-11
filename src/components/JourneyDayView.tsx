@@ -1,0 +1,308 @@
+/**
+ * JourneyDayView —— Calendar 页「日」Tab · 今日旅程（曲线流）
+ * ★ 2026-10-10（用户，方案 A + 补充）：顶部 14 天日期条横滑——
+ *   选中那天**自动滚动居中 + 紫底变色**，中央渐变曲线**从选中格正下方引出**、
+ *   向下延伸，左右交替白卡挂两侧；曲线加粗（4.5）+ 卡片收窄（50%）保证线明显可见。
+ *   数据 = buildTodayTimeline(date)（真实生理数据 + 用户自报，无 AI，品牌铁律）。
+ *
+ * ⚠️ 布局采用**固定行高 + 逐点生成 SVG 路径**（见 docs/design-tokens.md §10.9，禁 aspectRatio）。
+ */
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import Svg, { Path, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
+import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
+import { buildTodayTimeline } from '../lib/buildTodayTimeline';
+import { healthStore, dayKey } from '../data/healthStore';
+import { RingBle } from '../ble/RingBleManager';
+import type { TimelineItem } from './TodayTimelineCard';
+
+const ROW_H = theme.sp(26);          // 每行 104：卡片区高
+const CURVE_TOP = theme.sp(2);       // 曲线起点与日期条的间距 8
+const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
+const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
+const STRIP_DAYS = 14;               // 日期条：今天往前 14 天（升序，今天在最右）
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const CELL_W = theme.sp(11);         // 日期格 44
+const CELL_GAP = theme.sp(2);        // 格间距 8
+
+/** #RRGGBB 与白混合（做图标方块的浅底） */
+function mixWhite(hex: string, ratio: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#F6F4F1';
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - ratio) + 255 * ratio);
+  const g = Math.round(((n >> 8) & 255) * (1 - ratio) + 255 * ratio);
+  const b = Math.round((n & 255) * (1 - ratio) + 255 * ratio);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** 兜底 emoji */
+function emojiFor(title: string): string {
+  if (/起床|睡眠/.test(title)) return '☀️';
+  if (/情绪/.test(title)) return '💗';
+  if (/脑力/.test(title)) return '🧠';
+  if (/步|活动/.test(title)) return '🏃‍♀️';
+  if (/对话/.test(title)) return '💬';
+  if (/洞察/.test(title)) return '✨';
+  return '🌸';
+}
+
+/** 该日是否有旅程数据（睡眠 / 步数），用于日期条小圆点 */
+function hasDayData(d: Date): boolean {
+  try {
+    const dk = dayKey(d.getTime());
+    if (healthStore.getSleep(dk)) return true;
+    const steps = (RingBle.getState()?.stepDaily as any)?.[dk]?.steps ?? 0;
+    return steps > 0;
+  } catch { return false; }
+}
+
+/**
+ * ★ S 型蛇形曲线（对齐序日参考图）：**从第一个卡片的节点开始**（用户 23:20：
+ *   "线的头就从第一个卡片那个点开始"，不再从日期条引出长线），到最后一个节点结束。
+ *   节点左右小幅交替（±DOT_AMP）贴卡片内缘，Catmull-Rom → 贝塞尔平滑样条。
+ */
+function buildWavePath(height: number, count: number): string {
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const x = 22 + (i % 2 === 0 ? -DOT_AMP : DOT_AMP); // 左卡 → 节点偏左；右卡 → 偏右
+    pts.push({ x, y: CURVE_TOP + i * ROW_H + ROW_H / 2 });
+  }
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
+export default function JourneyDayView() {
+  // 日期条：今天往前 14 天（升序，今天在最右）
+  const days = useMemo(() => {
+    const today = new Date();
+    const arr: Date[] = [];
+    for (let i = STRIP_DAYS - 1; i >= 0; i--) {
+      arr.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i));
+    }
+    return arr;
+  }, []);
+
+  const [selDate, setSelDate] = useState<Date>(() => {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  });
+
+  const stripRef = useRef<ScrollView>(null);
+  const stripW = useRef(0);
+  const initialScrollDone = useRef(false);
+
+  // ★ 选中格居中：条宽测量后 + 每次选择后都滚到中间
+  const centerSel = useCallback((date: Date, animated: boolean) => {
+    const idx = days.findIndex((d) => sameDay(d, date));
+    if (idx < 0 || stripW.current <= 0) return;
+    const target = idx * (CELL_W + CELL_GAP) + CELL_W / 2 - stripW.current / 2;
+    stripRef.current?.scrollTo({ x: Math.max(0, target), animated });
+  }, [days]);
+
+  useEffect(() => {
+    if (!initialScrollDone.current && stripW.current > 0) {
+      initialScrollDone.current = true;
+      centerSel(selDate, false);
+    }
+  }, [selDate, centerSel]);
+
+  const result = useMemo(() => {
+    try { return buildTodayTimeline(undefined, selDate); } catch { return null; }
+  }, [selDate]);
+
+  const items: TimelineItem[] = result?.items ?? [];
+  const totalH = CURVE_TOP + Math.max(items.length, 1) * ROW_H;
+  const wavePath = buildWavePath(totalH, items.length);
+  const isSelToday = sameDay(selDate, new Date());
+
+  return (
+    <View style={styles.wrap}>
+      {/* ── 方案 A：日期条（选中格居中 + 紫底变色；有记录的日带点；今天绿描边）── */}
+      <View style={styles.stripWrap}>
+        <ScrollView
+          ref={stripRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stripContent}
+          onLayout={(e) => {
+            stripW.current = e.nativeEvent.layout.width;
+            if (!initialScrollDone.current) centerSel(selDate, false);
+          }}
+        >
+          {days.map((d) => {
+            const sel = sameDay(d, selDate);
+            const today = sameDay(d, new Date());
+            const has = hasDayData(d);
+            return (
+              <TouchableOpacity
+                key={d.getTime()}
+                activeOpacity={0.7}
+                onPress={() => { setSelDate(d); centerSel(d, true); }}
+              >
+                <View style={[styles.cell, sel && styles.cellSel, today && !sel && styles.cellToday]}>
+                  <Text style={[styles.cellW, sel && styles.cellWSel]}>{WEEKDAYS[d.getDay()]}</Text>
+                  <Text style={[styles.cellN, sel && styles.cellNSel]}>{d.getDate()}</Text>
+                  {has ? <View style={[styles.cellDot, sel && styles.cellDotSel]} /> : <View style={styles.cellDotNone} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ── */}
+      {items.length === 0 ? (
+        <View style={[styles.empty, { marginTop: theme.sp(3) }]}>
+          <Text style={styles.emptyTitle}>{isSelToday ? '今天还没有记录' : '这一天还没有记录'}</Text>
+          <Text style={styles.emptyText}>打卡、写日记或戴上戒指走一走，这一天就会在这里留下痕迹。</Text>
+        </View>
+      ) : (
+        <>
+          {/* ★ 只有 ≥2 条记录才画曲线（1 个点无曲线；空 d 的 Path 会让 SVG 把渐变整块渲染成色块） */}
+          {items.length >= 2 && (
+            <Svg width={44} height={totalH} style={styles.curve} pointerEvents="none">
+              <Defs>
+                <SvgGrad id="journeyGrad" x1="22" y1="0" x2="22" y2={totalH} gradientUnits="userSpaceOnUse">
+                  <Stop offset="0" stopColor={mm.colors.purpleCore} />
+                  <Stop offset="0.5" stopColor={mm.colors.roseCore} />
+                  <Stop offset="1" stopColor={mm.colors.limeMid} />
+                </SvgGrad>
+              </Defs>
+              <Path d={wavePath} stroke="url(#journeyGrad)" strokeWidth={4.5} strokeLinecap="round" fill="none" />
+            </Svg>
+          )}
+
+          {/* 事件行：左右交替，节点圆点贴卡片内缘、落在曲线上 */}
+          <View style={{ height: items.length * ROW_H }}>
+            {items.map((it, i) => {
+              const left = i % 2 === 0;
+              const dotOff = left ? -DOT_AMP : DOT_AMP;
+              return (
+                <View key={`${it.time}-${i}`} style={styles.row}>
+                  <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
+                  <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
+                    <View style={styles.cardHead}>
+                      <View style={[styles.icon, { backgroundColor: mixWhite(it.color, 0.82) }]}>
+                        <Text style={styles.iconTxt}>{it.emoji ?? emojiFor(it.title)}</Text>
+                      </View>
+                      <Text style={styles.cardTitle} numberOfLines={2}>{it.title}</Text>
+                    </View>
+                    {!!it.sub && <Text style={styles.cardSub} numberOfLines={2}>{it.sub}</Text>}
+                    <Text style={styles.cardTime}>{it.time}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* 汇总条 */}
+          <View style={styles.sumBar}>
+            <Text style={styles.sumText} numberOfLines={1}>
+              {isSelToday ? '今日' : `${selDate.getMonth() + 1}月${selDate.getDate()}日`}共{' '}
+              <Text style={styles.sumNum}>{items.length}</Text> 条记录
+              {items.length > 1 ? ` · 从 ${items[0].time} 到 ${items[items.length - 1].time}` : ''}
+            </Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { position: 'relative', marginTop: theme.sp(1) },
+
+  /* 日期条 */
+  stripWrap: { marginBottom: theme.sp(1) },
+  stripContent: { alignItems: 'center', paddingHorizontal: theme.sp(1) },
+  cell: {
+    width: CELL_W, height: theme.sp(14), marginHorizontal: CELL_GAP / 2,
+    borderRadius: theme.radius.md, backgroundColor: 'rgba(31,29,26,0.04)',
+    alignItems: 'center', justifyContent: 'center', gap: 1,
+  },
+  cellSel: { backgroundColor: mm.colors.purpleCore },
+  cellToday: { borderWidth: 1.5, borderColor: mm.colors.limeMid },
+  cellW: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint },
+  cellWSel: { color: 'rgba(255,255,255,0.85)' },
+  cellN: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  cellNSel: { color: theme.colors.textWhite },
+  cellDot: { width: theme.sp(1.25), height: theme.sp(1.25), borderRadius: theme.sp(0.625), backgroundColor: mm.colors.limeMid },
+  cellDotSel: { backgroundColor: theme.colors.textWhite },
+  cellDotNone: { width: theme.sp(1.25), height: theme.sp(1.25) },
+
+  /* 曲线与行 */
+  curve: { position: 'absolute', top: 0, left: '50%', marginLeft: -22 },
+  row: {
+    width: '100%', height: ROW_H, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', position: 'relative',
+  },
+  dot: {
+    position: 'absolute', left: '50%', top: '50%',
+    width: theme.sp(3), height: theme.sp(3), marginLeft: -theme.sp(1.5), marginTop: -theme.sp(1.5),
+    borderRadius: theme.sp(1.5), borderWidth: 2.5, borderColor: theme.colors.cardBg, zIndex: 1,
+  },
+  card: {
+    backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card, padding: theme.space.cardPadCompact,
+    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: mm.shadow.height },
+    elevation: mm.shadow.elevation,
+    zIndex: 2,
+  },
+  cardL: { marginRight: 'auto' },
+  cardR: { marginLeft: 'auto' },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
+  icon: {
+    width: theme.sp(7.5), height: theme.sp(7.5), borderRadius: mm.radius.iconSq,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconTxt: { fontSize: theme.fs(15) },
+  cardTitle: {
+    flex: 1, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never,
+    color: mm.colors.ink, lineHeight: theme.fontSize.sm * 1.3,
+  },
+  cardSub: {
+    fontSize: theme.fontSize.micro, color: mm.colors.inkFaint,
+    lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(1.25),
+  },
+  cardTime: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint, marginTop: theme.sp(1.5) },
+
+  sumBar: {
+    marginTop: theme.sp(2), backgroundColor: mm.colors.cardBg,
+    borderWidth: 1, borderColor: mm.colors.cardBorder, borderRadius: theme.radius.pill,
+    paddingVertical: theme.sp(2.5), paddingHorizontal: theme.sp(5),
+    alignSelf: 'center', maxWidth: '100%',
+    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity * 0.7,
+    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: mm.shadow.height }, elevation: 2,
+  },
+  sumText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, textAlign: 'center' },
+  sumNum: { fontWeight: theme.weight.bold as never, color: mm.colors.ink },
+
+  empty: {
+    backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card, padding: theme.space.cardPad, alignItems: 'center',
+  },
+  emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  emptyText: {
+    fontSize: theme.fontSize.sm, color: mm.colors.inkFaint,
+    textAlign: 'center', marginTop: theme.sp(1.5), lineHeight: theme.fontSize.sm * 1.5,
+  },
+});

@@ -29,6 +29,10 @@ import { dateKeyOf } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../components/charts/AllDayBarsChart';
+import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
+import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
+import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 
 interface Params {
   key: string;
@@ -62,9 +66,79 @@ const PHASE_BG: Record<string, string> = {
   unknown: 'rgba(138,138,168,0.05)',
 };
 
+/**
+ * ★ 2026-10-10（用户拍板）：日视图走「全天柱状小条」的六项指标规格。
+ *
+ * `binMin`  一律 5 分钟/点（与心率同口径，Oura 5 分钟增量）
+ * `bands`   [低档上限, 中档上限] → 柱色按档位分（低=浅灰 / 中=黄 / 高=红）
+ *           压力/疲劳/情绪是「状态型」指标，没有睡眠/活动之分，用档位色比三段色贴切
+ * `measuredOnly` true = **只展示实测**；推算日走空态（当前只有皮质醇）
+ * `nightFirst`    true = 以夜间为主（血氧：Oura 白天不测，白天没数据就留白）
+ * `sourceNote`    图表下方的数据来源说明
+ */
+const DAY_BAR_SPECS: Record<string, {
+  key: HSMetricKey;
+  binMin?: number;
+  bands?: [number, number];
+  measuredOnly?: boolean;
+  nightFirst?: boolean;
+  sourceNote?: string;
+}> = {
+  stress: {
+    key: 'stress',
+    bands: [30, 55],
+    sourceNote: '每根柱 = 5 分钟平均压力值，按档位分色（低 / 中 / 高）。',
+  },
+  spo2: {
+    key: 'spo2',
+    nightFirst: true,
+    sourceNote: '每根柱 = 5 分钟平均血氧。血氧主要在睡眠时段测量，白天没有数据就留白，不画假线。',
+  },
+  eda: {
+    key: 'eda',
+    sourceNote: '每根柱 = 5 分钟平均皮电反应。皮肤电反映交感神经活动，事件时段会明显抬高。',
+  },
+  fatigue: {
+    key: 'fatigue',
+    bands: [30, 55],
+    sourceNote: '每根柱 = 5 分钟平均疲劳度，按档位分色。',
+  },
+  emotion: {
+    key: 'emotion',
+    bands: [2, 3],
+    sourceNote: '每根柱 = 5 分钟情绪评估值（-10～10）。',
+  },
+  cortisol: {
+    key: 'cortisol',
+    measuredOnly: true,
+    sourceNote: '每根柱 = 5 分钟平均皮质醇。仅展示戒指实测值。',
+  },
+  skin: {
+    key: 'skin',
+    bands: [40, 65],
+    sourceNote: '每根柱 = 5 分钟平均皮肤含水量，按档位分色（偏干 / 适中 / 润泽）。',
+  },
+  sns: {
+    key: 'sns',
+    bands: [30, 55],
+    sourceNote: '每根柱 = 5 分钟平均交感神经活跃度，按档位分色。与皮电互为印证。',
+  },
+};
+
 function fmtVal(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+/** "HH:mm" / "HH:mm:ss" → 当天该钟点的绝对 ms；解析失败返回 null */
+function parseClockMs(s: string | null | undefined, dayStart: number): number | null {
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(s.trim());
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return dayStart + hh * 3600_000 + mm * 60_000;
 }
 
 /** Y 轴刻度数字：整数不带小数，小数保留 1 位并去尾零。 */
@@ -132,6 +206,8 @@ export default function MetricDetailScreen() {
   // 默认打开「日」视图：洞察页卡片今日段已与日视图同源同频，点卡片直接落到对得上的今日趋势。
   const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
+  // ★ 2026-10-10（用户）：HRV 日视图分「夜间 / 日间」两段展示（见下方 hrvDay 注释）
+  const [hrvPart, setHrvPart] = useState<'night' | 'day'>('night');
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
   const [w, setW] = useState(0);
   // ★ tooltip 状态：点击图表时显示的白色详情框
@@ -186,6 +262,169 @@ export default function MetricDetailScreen() {
     if (params.key === 'spo2') return mm.colors.skyCore;
     return params.color || theme.colors.accentSolid;
   })();
+
+  /* ══════════════════════════════════════════════════════════════
+   * ★ 2026-10-10（用户：心率详情页对齐 Oura 全天柱状小条）
+   *
+   * Oura 24h 心率图的结构：X 轴每 30 分钟一条刻度线（division），格内 6 根 5 分钟小柱，
+   * 白天心率数据本身也是 5 分钟一点。288 根柱连成平滑线就是噪点，所以必须是柱状。
+   *
+   * 数据**不走 buildHistorySeries**：那条链路内部 `maxPoints:480` 会做等间隔 stride 抽稀
+   * （真实一天约 1000~2000 点），尖峰会被抽掉。这里直接读 healthStore 的当日逐样本，
+   * 自己分桶成 288 个 5 分钟槽（binByMinutes 保留空槽 = null，不插值）。
+   * ══════════════════════════════════════════════════════════════ */
+  const isHrDayBars = !isEcg && range === 'day' && params.key === 'hr';
+  const hrBars = useMemo(() => {
+    if (!isHrDayBars) return null;
+    const anchorMs = anchor.getTime();
+    const dk = dateKeyOf(anchorMs);
+    const dayStart = dayStartOf(anchorMs);
+    const buckets = binByMinutes(healthStore.getIntraday('hr', dk), 5, { dayStartMs: dayStart });
+
+    // 睡眠窗口：入睡/起床小时（跨零点时 wake < bed）
+    const sl = healthStore.getSleep(dk);
+    let bedMs: number | null = null;
+    let wakeMs: number | null = null;
+    if (sl?.bedHour != null && sl?.wakeHour != null) {
+      bedMs = dayStart + sl.bedHour * 3600_000;
+      wakeMs = dayStart + sl.wakeHour * 3600_000;
+      if (wakeMs <= bedMs) wakeMs += 86_400_000;          // 跨零点
+    }
+
+    // 运动段：戒指自动识别 / 手动记录的运动区间 → 柱色用「活动」
+    const sessions = ring.sportSessions ?? [];
+    const sportRanges: [number, number][] = [];
+    for (const s of sessions) {
+      const b = parseClockMs(s.beginTime, dayStart);
+      const e = parseClockMs(s.endTime, dayStart);
+      if (b == null || e == null) continue;
+      sportRanges.push([b, e > b ? e : b + 3600_000]);
+    }
+
+    return { buckets, dayStart, bedMs, wakeMs, sportRanges };
+  }, [isHrDayBars, anchor, ring.sportSessions]);
+
+  const hrSegmentOf = useMemo(() => {
+    if (!hrBars) return undefined;
+    const { bedMs, wakeMs, sportRanges } = hrBars;
+    return (t: number): DayBarSegment => {
+      if (bedMs != null && wakeMs != null && t >= bedMs && t <= wakeMs) return 'sleep';
+      for (const [b, e] of sportRanges) if (t >= b && t <= e) return 'active';
+      return 'awake';
+    };
+  }, [hrBars]);
+
+  /* ══════════════════════════════════════════════════════════════
+   * ★ 2026-10-10（用户：体温对齐 Oura —— 偏离个人基线，不报绝对体温）
+   *
+   * Oura 官方口径：`temperature_deviation` = 偏离个人基线的度数，±0.5℃ 常提示免疫反应 /
+   * 压力 / **黄体期上移**。我们按 30 分钟槽建个人基线（见 lib/tempBaseline.ts），
+   * Y 轴画**偏离量 Δ℃**，绝对值只在标题行给一个，避免 Y 轴冒出 35~38 这种无信息量刻度。
+   * ══════════════════════════════════════════════════════════════ */
+  const isTempDay = !isEcg && range === 'day' && params.key === 'temp';
+  const tempDay = useMemo(() => {
+    if (!isTempDay) return null;
+    const dk = dateKeyOf(anchor.getTime());
+    const baseline = buildTempBaseline({ endDayKey: dk });
+    const { dev, abs } = tempDeviationSeries(dk, baseline);
+    return { dev, abs, baseline, summary: tempDeviationSummary(dev) };
+  }, [isTempDay, anchor]);
+
+  /* ══════════════════════════════════════════════════════════════
+   * ★ 2026-10-10（用户拍板）：血氧 / 压力 / EDA / 疲劳 / 情绪 / 皮质醇 六项的日视图。
+   *
+   * 关键约束（来自 `lib/offlineEstimates.ts` 的数据真相）：
+   *   历史日的 cortisol / fatigue / emotion / eda / skin 都是**当日实测 stress 的线性换算**
+   *   （cortisol=stress×1.6+20、fatigue=stress×1.2、emotion=stress 分档只有 {2,3,4}）。
+   *   所以：
+   *   ① **皮质醇只展示实测**（用户明确要求）——推算日一律走空态，不画线、不用压力顶替。
+   *      理由：皮质醇有教科书级昼夜节律（CAR），画一条「看起来很科学的」激素曲线，
+   *      实际是压力分换算，这是最容易被当成临床结论误引的指标。
+   *   ② 其余五项正常展示，但**必须标注数据来源**（今天实测 / 历史推算）。
+   *   ③ 压力/疲劳/情绪是「状态型」指标 → 用 `colorOf` 按档位分色，不用睡眠/活动三段色。
+   *   ④ 血氧以夜间为主（Oura 白天不测）；白天真有数据就照实画，没有就留白。
+   * ══════════════════════════════════════════════════════════════ */
+  const spec = DAY_BAR_SPECS[params.key];
+  const isSpecDay = !isEcg && range === 'day' && !!spec;
+  const specDay = useMemo(() => {
+    if (!isSpecDay || !spec) return null;
+    const dk = dateKeyOf(anchor.getTime());
+    const dayStart = dayStartOf(anchor.getTime());
+    const derived = healthStore.isDerivedDay(spec.key as HSMetricKey, dk);
+    // 皮质醇：推算日不出曲线（空态）
+    if (spec.measuredOnly && derived) return { blocked: true as const, dk, derived, buckets: null };
+    const pts = healthStore.getIntraday(spec.key as HSMetricKey, dk);
+    const buckets = binByMinutes(pts, spec.binMin ?? 5, { dayStartMs: dayStart });
+    const filled = bucketFilledCount(buckets);
+    return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length };
+  }, [isSpecDay, spec, anchor]);
+
+  // 状态型指标的分档配色（低/中/高）
+  const specColorOf = useMemo(() => {
+    if (!spec?.bands) return undefined;
+    const [lo, hi] = spec.bands;
+    return (v: number) => (v <= lo ? mm.colors.inkFaint : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
+  }, [spec]);
+  const isHrvDay = !isEcg && range === 'day' && params.key === 'hrv';
+
+  /**
+   * ★ 睡眠窗口**独立计算**，只依赖 anchor —— 绝不依赖 `hrvPart`。
+   *
+   * 2026-10-10 用户实锤的 bug：「点了日间就再也点不回夜间」。
+   * 根因是自引用状态：原来睡眠窗口跟 `hrvDay` 算在**同一个 memo**里，而这个 memo 又依赖
+   * `hrvPart`。切到「日间」时走的是日间分支 → 返回的 `window` 是 `null` →
+   * 「夜间」按钮的 `disabled={hrvDay.window == null}` 变成 true → 自己把按钮禁用了，
+   * 再也点不回来。拆开后「夜间可不可点」只由当天有没有睡眠时刻决定，与当前选中项无关。
+   */
+  const hrvSleepWindow = useMemo(() => {
+    if (!isHrvDay) return null;
+    const dk = dateKeyOf(anchor.getTime());
+    const dayStart = dayStartOf(anchor.getTime());
+    const sl = healthStore.getSleep(dk);
+    if (sl?.bedHour == null || sl?.wakeHour == null) return null;
+    const bedMs = dayStart + sl.bedHour * 3600_000;
+    let wakeMs = dayStart + sl.wakeHour * 3600_000;
+    if (wakeMs <= bedMs) wakeMs += 86_400_000;                // 跨零点
+    return wakeMs > bedMs ? ([bedMs, wakeMs] as [number, number]) : null;
+  }, [isHrvDay, anchor]);
+
+  const hrvNightAvailable = hrvSleepWindow != null;
+
+  const hrvDay = useMemo(() => {
+    if (!isHrvDay) return null;
+    const dk = dateKeyOf(anchor.getTime());
+    const dayStart = dayStartOf(anchor.getTime());
+    const pts = healthStore.getIntraday('hrv', dk);
+    const win = hrvSleepWindow;
+
+    if (hrvPart === 'night' && win) {
+      const [bedMs, wakeMs] = win;
+      const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (5 * 60_000)));
+      const buckets = binByMinutes(pts, 5, { dayStartMs: bedMs, slotCount });
+      const ticks: { frac: number; label: string }[] = [];
+      const stepMs = 2 * 3600_000;
+      const first = Math.ceil(bedMs / stepMs) * stepMs;
+      for (let t = first; t <= wakeMs; t += stepMs) {
+        const d = new Date(t);
+        ticks.push({
+          frac: (t - bedMs) / (wakeMs - bedMs),
+          label: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+        });
+      }
+      return { buckets, t0: bedMs, spanMs: wakeMs - bedMs, ticks, muted: undefined, window: win };
+    }
+
+    // 日间视图：全天轴，睡眠段静默（趋势线在静默区断开，见 AllDayBarsChart 分段逻辑）
+    const buckets = binByMinutes(pts, 5, { dayStartMs: dayStart });
+    return {
+      buckets,
+      t0: dayStart,
+      spanMs: 86_400_000,
+      ticks: undefined,
+      muted: win ? ([[win[0], Math.min(win[1], dayStart + 86_400_000)]] as [number, number][]) : undefined,
+      window: win,
+    };
+  }, [isHrvDay, anchor, hrvPart, hrvSleepWindow]);
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
 const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'bodyComposition'];
@@ -199,6 +438,20 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
   const manualList: ManualMeasurement[] = showManualList
     ? healthStore.getManualMeasurements(manualHsKeyMap[params.key] ?? params.key as HSMetricKey).slice(0, 30)
     : [];
+  // EDA 测试诊断：只在开发包的 EDA 详情页展示，帮助核对点测频率，不作为用户指标。
+  const edaDiagnostics = useMemo(() => {
+    if (!__DEV__ || params.key !== 'eda') return null;
+    const end = Date.now();
+    const points = healthStore.getTimeRange('eda', end - 30 * 60 * 1000, end, { maxPoints: 5000 });
+    const times = points.map((p) => p.t).sort((a, b) => a - b);
+    const gaps = times.slice(1).map((t, i) => t - times[i]).filter((g) => g > 0);
+    const medianGap = gaps.length ? gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : null;
+    return {
+      count: points.length,
+      medianGapMin: medianGap != null ? medianGap / 60000 : null,
+      latestMin: times.length ? (end - times[times.length - 1]) / 60000 : null,
+    };
+  }, [params.key, ring, range, anchor]);
   // ★ DEBUG: 详情页收到的参数和数据
   const gid = `md_${params.key}`;
 
@@ -461,7 +714,137 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           </Card>
         )}
 
-        {!isEcg && (
+        {/* ★ 2026-10-10（用户）：心率日视图 = Oura 风格全天柱状小条（5 分钟一点 / 30 分钟一格刻度） */}
+        {isHrDayBars && hrBars ? (
+          <View style={styles.chartCard}>
+            <AllDayBarsChart
+              buckets={hrBars.buckets}
+              dayStartMs={hrBars.dayStart}
+              segmentOf={hrSegmentOf}
+              height={chart.plot.l}
+            />
+            <DayBarsLegend />
+            <Text style={styles.chartNote}>
+              每根柱 = 5 分钟平均心率，横轴每 30 分钟一条刻度线。数据缺失的时段留白，不做插值。
+            </Text>
+          </View>
+        ) : null}
+
+        {/* ★ 2026-10-10（用户）：体温日视图 = 偏离个人基线的昼夜节律（Oura 口径） */}
+        {isTempDay && tempDay ? (
+          <View style={styles.chartCard}>
+            <View style={styles.tempHeadRow}>
+              <Text style={styles.tempHeadLab}>相对个人基线</Text>
+              <Text style={styles.tempHeadVal}>
+                {tempDay.summary.avg != null
+                  ? `${tempDay.summary.avg > 0 ? '+' : ''}${tempDay.summary.avg.toFixed(2)}℃`
+                  : '—'}
+              </Text>
+              <Text style={styles.tempHeadHint}>
+                {tempDay.summary.maxUp != null
+                  ? `峰值 +${tempDay.summary.maxUp.toFixed(2)}℃`
+                  : ''}
+                {tempDay.summary.maxDown != null
+                  ? `　最低 ${tempDay.summary.maxDown.toFixed(2)}℃`
+                  : ''}
+              </Text>
+            </View>
+            <TempCircadianChart dev={tempDay.dev} baseline={tempDay.baseline} />
+            <TempBaselineLegend />
+            <Text style={styles.chartNote}>
+              体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，
+              曲线形状才有意义（黄体期通常整体上移约 +0.3℃）。
+            </Text>
+          </View>
+        ) : null}
+
+        {/* ★ 2026-10-10（用户）：HRV 日视图 = 夜间 / 日间 分两段展示（Oura 口径：HRV 的意义集中在睡眠期） */}
+        {isHrvDay && hrvDay ? (
+          <View style={styles.chartCard}>
+            <View style={styles.partRow}>
+              {(['night', 'day'] as const).map((p) => {
+                const on = hrvPart === p;
+                // ★ 2026-10-10：可点性只看「当天有没有睡眠时刻」，与当前选中项无关
+                const disabled = p === 'night' && !hrvNightAvailable;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    disabled={disabled}
+                    onPress={() => setHrvPart(p)}
+                    style={[styles.partBtn, on && styles.partBtnOn, disabled && styles.partBtnOff]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.partBtnText, on && styles.partBtnTextOn]}>
+                      {p === 'night' ? '夜间（睡眠期）' : '日间'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {hrvPart === 'night' && !hrvNightAvailable ? (
+              <Text style={styles.chartNote}>昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段。</Text>
+            ) : hrvDay?.buckets ? (
+              <>
+                <AllDayBarsChart
+                  buckets={hrvDay.buckets}
+                  dayStartMs={hrvDay.t0}
+                  spanMs={hrvDay.spanMs}
+                  tickLabels={hrvDay.ticks}
+                  mutedRanges={hrvDay.muted}
+                  yMin={0}
+                  segmentOf={hrvPart === 'night' ? () => 'sleep' : () => 'awake'}
+                  height={chart.plot.l}
+                />
+                <DayBarsLegend showMean={false} />
+                <Text style={styles.chartNote}>
+                  {hrvPart === 'night'
+                    ? '每根柱 = 5 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。'
+                    : '每根柱 = 5 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。'}
+                </Text>
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ★ 2026-10-10（用户拍板）：血氧 / 压力 / EDA / 疲劳 / 情绪 / 皮质醇 —— 全天柱状小条 */}
+        {isSpecDay && spec && specDay ? (
+          <View style={styles.chartCard}>
+            <View style={styles.partRow}>
+              <Text style={styles.specLab}>{DAY_BAR_SPECS[params.key]?.bands
+                ? '全天 · 按档位分色'
+                : '全天 · 每 5 分钟一点'}</Text>
+              <Text style={styles.specCount}>
+                {specDay.blocked ? '无实测数据'
+                  : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
+              </Text>
+            </View>
+            {specDay.blocked ? (
+              <Text style={styles.chartNote}>
+                当日皮质醇为推算值（由压力值换算），按产品口径**不展示**——皮质醇有明确的昼夜节律
+                与临床阈值，用换算值画曲线会被误当成实测结论。这一天没有戒指实测数据。
+              </Text>
+            ) : (
+              <>
+                <AllDayBarsChart
+                  buckets={specDay.buckets ?? []}
+                  dayStartMs={dayStartOf(anchor.getTime())}
+                  segmentOf={spec!.nightFirst ? hrSegmentOf : undefined}
+                  colorOf={specColorOf}
+                  yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
+                  height={chart.plot.l}
+                />
+                <DayBarsLegend showMean={false} />
+                <Text style={styles.chartNote}>
+                  {spec!.sourceNote}
+                  {specDay.derived ? '（当日历史数据为推算值）' : ''}
+                </Text>
+              </>
+            )}
+          </View>
+        ) : null}
+
+        {!isEcg && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && (
         <View style={styles.chartCard}>
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -728,6 +1111,14 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
             ) : null}
           </View>
         ) : null}
+        {edaDiagnostics ? (
+          <View style={styles.debugFoot}>
+            <Text style={styles.debugTitle}>测试信息 · EDA（最近 30 分钟）</Text>
+            <Text style={styles.debugText}>
+              样本 {edaDiagnostics.count} 条 · 中位间隔 {edaDiagnostics.medianGapMin != null ? `${edaDiagnostics.medianGapMin.toFixed(1)} 分钟` : '—'} · 最近样本 {edaDiagnostics.latestMin != null ? `${edaDiagnostics.latestMin.toFixed(1)} 分钟前` : '—'}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </ScreenContainer>
     </View>
@@ -773,27 +1164,87 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.cardBorder,
     padding: theme.space.sm,
   },
+  /** ★ 2026-10-10：图表下方一句口径说明（柱状小条/偏离基线等新图形的读图须知） */
+  chartNote: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    marginTop: theme.sp(2),
+    lineHeight: theme.fontSize.micro * 1.6,
+  },
+  /** ★ 2026-10-10：体温偏离图顶部一行（相对基线的均值 + 峰谷） */
+  tempHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: theme.sp(1),
+    gap: theme.sp(2),
+  },
+  tempHeadLab: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  tempHeadVal: {
+    fontSize: theme.fontSize.h2,
+    fontWeight: theme.weight.medium as any,
+    color: mm.colors.roseDeep,
+  },
+  tempHeadHint: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  /** ★ 2026-10-10：HRV 夜间 / 日间 分段控件（对齐洞察页 Tab 的选中语言） */
+  partRow: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.sp(2) },
+  partBtn: {
+    paddingHorizontal: theme.sp(3),
+    paddingVertical: theme.sp(1.25),
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: 'transparent',
+  },
+  partBtnOn: { backgroundColor: mm.colors.limeSoft, borderColor: mm.colors.limeMid },
+  partBtnOff: { opacity: 0.4 },
+  partBtnText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
+  partBtnTextOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold as any },
+  /** ★ 2026-10-10：柱状小条卡顶部的口径标签 / 有效数据计数 */
+  specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
+  specCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingLeft: Y_GUT },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  statGrid: { flexDirection: 'row' },
+  /**
+   * ★ 2026-10-10（用户：「详情页下面的平均/最高/最低加个框，跟其他模块保持一致」）：
+   * 原来三格是 `rgba(255,255,255,0.6)` 半透明白底 —— 页面本身是白的，等于没有边界，
+   * 所以看起来"没框"。改为与全站卡片同一套规格：`cardBg` 实底 + 1px `cardBorder` 描边
+   * + `radius.md` 圆角（对齐 components/Card.tsx 的白卡规格）。
+   */
+  statGrid: {
+    flexDirection: 'row',
+    gap: theme.sp(2),
+    marginTop: theme.sp(1),
+  },
   statCell: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    marginHorizontal: theme.sp(1),
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(1),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
   statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
-  statValue: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  statValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   note: {
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.7,
     color: theme.colors.textSub,
     marginTop: theme.space.sm,
   },
+  debugFoot: {
+    marginTop: theme.space.md,
+    padding: theme.space.sm,
+    borderRadius: theme.radius.sm,
+    backgroundColor: 'rgba(120, 100, 220, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(120, 100, 220, 0.14)',
+  },
+  debugTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: theme.weight.semibold },
+  debugText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.5 },
   ecgDetail: { gap: theme.space.sm, marginTop: theme.space.sm },
   ecgTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
   ecgChart: {

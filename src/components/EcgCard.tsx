@@ -5,6 +5,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import Icon from './Icon';
 
 interface Props {
   ring: RingState;
@@ -86,10 +87,13 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           </View>
           <Text style={styles.ucName}>心电图 ECG</Text>
         </View>
-        <View style={[styles.pill, latest ? styles.pillLive : styles.pillOff]}>
-          <Text style={[styles.pillText, latest ? styles.pillTextLive : styles.pillTextOff]}>
-            {latest ? '已测' : '待接入'}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
+          <View style={[styles.pill, latest ? styles.pillLive : styles.pillOff]}>
+            <Text style={[styles.pillText, latest ? styles.pillTextLive : styles.pillTextOff]}>
+              {latest ? '已测' : '待接入'}
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
         </View>
       </View>
 
@@ -163,11 +167,6 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
         </TouchableOpacity>
       )}
 
-      {/* ★ 统一底部入口（整卡可点进趋势详情；此处为统一视觉入口） */}
-      <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={styles.enter}>
-        <Text style={styles.enterTxt}>查看趋势图</Text>
-        <Text style={styles.enterArr}>›</Text>
-      </TouchableOpacity>
     </View>
   );
 }

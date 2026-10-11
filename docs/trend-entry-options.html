@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>全天状态趋势图 · 详情入口设计方案对比</title>
+<style>
+  :root {
+    --white: #FFFFFF;
+    --page: #FFFFFF;
+    --cardBorder: #E8E6F2;
+    --ink: #1A1A1A;
+    --sub: #5F5F74;
+    --accent: #7C6AE0;
+    --accentText: #6153AF;
+    --accentSoft: rgba(124,106,224,0.12);
+    --limeMid: #BCCB62;
+    --limeSoft: #EAF0BE;
+    --limeDeep: #6E7A24;
+    --skyCore: #7FB4E8;
+    --purpleCore: #9B8AE8;
+    --roseCore: #E8909B;
+    --honeyCore: #E8B96A;
+    --neutralBg: rgba(138,138,168,0.16);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 32px 60px;
+    background: #F4F3F8;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .page-head { max-width: 1560px; margin: 0 auto 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.4px; }
+  .lede { font-size: 14px; color: var(--sub); line-height: 1.7; max-width: 900px; }
+  .lede b { color: var(--ink); }
+  .diag {
+    margin-top: 16px; padding: 14px 16px; border-radius: 12px;
+    background: #FFF8E8; border: 1px solid #F0DFB8; font-size: 13px; line-height: 1.75; color: #6B5A2E;
+  }
+  .diag code { background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  .row {
+    display: flex; gap: 28px; align-items: flex-start;
+    overflow-x: auto; padding: 8px 4px 28px; max-width: 1560px; margin: 0 auto;
+  }
+
+  .opt { flex: 0 0 auto; width: 330px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    padding: 4px 10px; border-radius: 20px; margin-bottom: 10px;
+  }
+  .badge.now { background: var(--neutralBg); color: #55557A; }
+  .badge.rec { background: var(--limeSoft); color: var(--limeDeep); }
+  .badge.alt { background: var(--accentSoft); color: var(--accentText); }
+
+  .phone {
+    width: 330px; height: 560px; border-radius: 40px; overflow: hidden; position: relative;
+    background: var(--white);
+    box-shadow: 0 24px 50px -18px rgba(70,58,110,.28), 0 0 0 9px #1F1D1A;
+    flex-shrink: 0;
+  }
+  .statusbar { display: flex; justify-content: space-between; padding: 14px 24px 0; font-size: 11px; font-weight: 600; color: var(--ink); }
+  .page-title { font-size: 21px; font-weight: 600; color: var(--ink); margin: 12px 20px 0; }
+
+  .panel { padding: 10px 20px 0; }
+  .ballwrap { align-items: center; }
+  .pill {
+    margin: 8px 6px 0; padding: 10px 14px; border-radius: 14px;
+    background: #F7F6FC; font-size: 11.5px; line-height: 1.6; color: var(--sub); text-align: center;
+  }
+  .trendwrap { position: relative; margin-top: 8px; }
+  .axis { display: flex; justify-content: space-between; padding: 4px 2px 0; font-size: 9.5px; color: var(--sub); }
+  .legend { display: flex; gap: 10px; justify-content: center; margin-top: 10px; font-size: 10px; color: var(--sub); align-items: center; }
+  .lgdot { width: 7px; height: 7px; border-radius: 4px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+
+  /* ---- 各方案入口 ---- */
+  .entry-ring { position: absolute; right: -4px; top: 50%; margin-top: -16px; }
+  .chev-circle {
+    width: 32px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .glass { background: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 2px 8px rgba(80,60,140,0.12); }
+  .solid-soft { background: #F1EFFB; border: 1px solid var(--cardBorder); }
+  .solid-accent { background: var(--accent); }
+  .solid-ink { background: var(--ink); }
+  .solid-white-b { background: #FFFFFF; border: 1px solid var(--cardBorder); box-shadow: 0 2px 8px rgba(80,60,140,0.10); }
+
+  .txtlink {
+    position: absolute; right: 0; top: -2px; display: flex; align-items: center; gap: 2px;
+    font-size: 12.5px; font-weight: 600; color: var(--accentText);
+  }
+  .cap-pill {
+    position: absolute; right: 0; bottom: -6px; display: flex; align-items: center; gap: 4px;
+    padding: 7px 12px; border-radius: 20px; background: var(--accent);
+    font-size: 11.5px; font-weight: 600; color: #fff;
+    box-shadow: 0 3px 10px rgba(124,106,224,0.30);
+  }
+  .footrow { display: flex; justify-content: flex-end; margin-top: 10px; padding-right: 2px; }
+  .footlink { display: flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 600; color: var(--accentText); }
+  .footlink-box {
+    display: flex; align-items: center; gap: 3px; padding: 6px 12px; border-radius: 20px;
+    background: var(--accent); font-size: 12px; font-weight: 600; color: #fff;
+  }
+
+  .meta { margin-top: 14px; font-size: 12.5px; line-height: 1.75; color: var(--sub); }
+  .meta .t { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+  .meta ul { margin: 6px 0 0; padding-left: 16px; }
+  .meta li { margin-bottom: 2px; }
+  .verdict { margin-top: 8px; font-weight: 600; }
+  .v-good { color: #3F7A4F; }
+  .v-mid { color: #B07820; }
+  .v-bad { color: #B0524B; }
+
+  .compare { max-width: 1560px; margin: 10px auto 0; background: #fff; border-radius: 16px; padding: 22px 24px; box-shadow: 0 8px 24px -14px rgba(70,58,110,.2); }
+  .compare h2 { font-size: 17px; margin: 0 0 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--cardBorder); vertical-align: top; }
+  th { color: var(--sub); font-weight: 600; font-size: 11.5px; letter-spacing: .3px; }
+  td b { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>主页 · 全天状态趋势图「进入周/月/年」入口方案</h1>
+  <p class="lede">
+    现状：趋势图右侧一个 <b>32pt 玻璃感小圆</b>，内嵌 15pt 细线右箭头。问题是这套半透明白玻璃材质
+    是给<b>紫渐变背景</b>设计的，而它浮在<b>纯白卡片</b>上 → 圆底边界消失，视觉重量不足，扫一眼容易漏。
+    下面 4 个方案同样位置（图表右侧），只改「长什么样」。
+  </p>
+  <div class="diag">
+    <b>无障碍口径</b>：图标类按钮 WCAG 对「非文本对比度」要求 ≥ 3:1。
+    现状 <code>#55557A on #FFFFFF</code> 约 7.3:1（图标本身达标），但<b>圆底与卡底对比 ≈ 1.05:1</b>，
+    等于没有形状边界 → 感知上「没有按钮」。所以核心不是改图标颜色，是<b>给按钮一个能看见的形状</b>。
+  </div>
+</div>
+
+<div class="row">
+
+  <!-- ===== 0 现状 ===== -->
+  <div class="opt">
+    <div class="badge now">现状</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <div class="ballwrap">
+          <svg width="150" height="150" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <div class="trendwrap">
+          <svg width="290" height="96" viewBox="0 0 290 96" style="display:block">
+            <line x1="0" y1="24" x2="290" y2="24" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="48" x2="290" y2="48" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 58 C 30 44, 46 40, 62 30 S 96 30, 112 40 S 148 60, 168 46 S 206 30, 226 42 S 262 62, 284 52"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="30" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="40" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="46" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="42" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div class="entry-ring">
+            <div class="chev-circle glass">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#55557A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">玻璃圆底 + 细灰箭头</div>
+      半透明白圆浮在白卡上，边界 ≈ 不可见；箭头 15pt／细线。视觉重量最轻，容易漏。
+      <div class="verdict v-bad">✕ 问题方案</div>
+    </div>
+  </div>
+
+  <!-- ===== A ===== -->
+  <div class="opt">
+    <div class="badge alt">方案 A</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <div class="ballwrap">
+          <svg width="150" height="150" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <div class="trendwrap">
+          <svg width="290" height="96" viewBox="0 0 290 96" style="display:block">
+            <line x1="0" y1="24" x2="290" y2="24" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="48" x2="290" y2="48" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 58 C 30 44, 46 40, 62 30 S 96 30, 112 40 S 148 60, 168 46 S 206 30, 226 42 S 262 62, 284 52"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="30" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="40" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="46" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="42" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div class="entry-ring">
+            <div class="chev-circle solid-soft">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E0"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">浅紫实底圆 + 加粗紫箭头</div>
+      保留「右上角小圆」的位置和尺寸感，只换材质：<code>#F1EFFB</code> 实底 + <code>cardBorder</code> 描边，
+      箭头 15→18pt、加粗到 2.4、升到 <code>accentSolid</code>。
+      <ul>
+        <li>✓ 改动最小，一个样式块搞定</li>
+        <li>✓ 不占额外空间、不挡图表</li>
+        <li>△ 仍是纯图标，语义靠猜</li>
+      </ul>
+      <div class="verdict v-mid">～ 稳妥保守派</div>
+    </div>
+  </div>
+
+  <!-- ===== B ===== -->
+  <div class="opt">
+    <div class="badge rec">方案 B（推荐）</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <div class="ballwrap">
+          <svg width="150" height="150" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <div class="trendwrap">
+          <svg width="290" height="96" viewBox="0 0 290 96" style="display:block">
+            <line x1="0" y1="24" x2="290" y2="24" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="48" x2="290" y2="48" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 58 C 30 44, 46 40, 62 30 S 96 30, 112 40 S 148 60, 168 46 S 206 30, 226 42 S 262 62, 284 52"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="30" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="40" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="46" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="42" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div class="footrow">
+            <span class="footlink">查看周月年
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图表下方一行文字链「查看周月年 ›」</div>
+      放弃纯图标，改成<b>文字 + 箭头</b>，右对齐放在时间轴上方（图表区右下角）。
+      用 <code>accentText #6153AF</code>／13px／semibold（token 里已认证白卡 6.27:1）。
+      <ul>
+        <li>✓ 百分之百看得见，语义零歧义</li>
+        <li>✓ 无障碍天然达标（有文字标签，可朗读）</li>
+        <li>✓ 不遮挡图表任何像素</li>
+        <li>△ 多占一行高度（约 20pt）</li>
+      </ul>
+      <div class="verdict v-good">✓ 最推荐：可发现性最高</div>
+    </div>
+  </div>
+
+  <!-- ===== C ===== -->
+  <div class="opt">
+    <div class="badge alt">方案 C</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <div class="ballwrap">
+          <svg width="150" height="150" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <div class="trendwrap">
+          <svg width="290" height="96" viewBox="0 0 290 96" style="display:block">
+            <line x1="0" y1="24" x2="290" y2="24" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="48" x2="290" y2="48" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 58 C 30 44, 46 40, 62 30 S 96 30, 112 40 S 148 60, 168 46 S 206 30, 226 42 S 262 62, 284 52"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="30" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="40" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="46" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="42" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div class="entry-ring" style="right:0; bottom:-8px; top:auto; margin:0;">
+            <span class="footlink-box">周月年
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">右下角实心胶囊「周月年 ›」</div>
+      实心 <code>accentSolid</code> 胶囊 + 白字白箭头，压在图表右下角，带紫投影。
+      <ul>
+        <li>✓ 视觉重量最大，绝对不会漏</li>
+        <li>✓ 与「脑力消耗」等卡的操作按钮语言一致</li>
+        <li>△ 实心紫在白卡上比较跳，会抢图表注意力</li>
+        <li>△ 可能遮住曲线末端</li>
+      </ul>
+      <div class="verdict v-mid">～ 强提示，但压图</div>
+    </div>
+  </div>
+
+  <!-- ===== D ===== -->
+  <div class="opt">
+    <div class="badge alt">方案 D</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <div class="ballwrap">
+          <svg width="150" height="150" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <div class="trendwrap">
+          <svg width="290" height="96" viewBox="0 0 290 96" style="display:block">
+            <line x1="0" y1="24" x2="290" y2="24" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="48" x2="290" y2="48" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 58 C 30 44, 46 40, 62 30 S 96 30, 112 40 S 148 60, 168 46 S 206 30, 226 42 S 262 62, 284 52"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="30" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="40" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="46" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="42" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div class="entry-ring" style="right:0; top:50%; margin-top:-13px;">
+            <div class="chev-circle solid-white-b" style="width:30px;height:30px;border-radius:15px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">白底描边圆 + 深墨箭头</div>
+      把玻璃圆换成<b>白底 + cardBorder 细描边</b>，箭头升到 <code>textInk</code>（13.6:1）。
+      <ul>
+        <li>✓ 最克制，几乎不抢图表</li>
+        <li>✓ 描边在白卡上可辨</li>
+        <li>△ 视觉重量仍偏低</li>
+      </ul>
+      <div class="verdict v-mid">～ 极简，但改善有限</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="compare">
+  <h2>横向对比</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:13%">方案</th>
+        <th style="width:26%">做法</th>
+        <th style="width:15%">可发现性</th>
+        <th style="width:23%">优点</th>
+        <th>短板</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>现状</b></td>
+        <td>半透明白玻璃圆 + 15pt 细灰箭头</td>
+        <td class="v-bad">低</td>
+        <td>—</td>
+        <td>圆底与白卡对比 ≈1.05:1，形同没有按钮</td>
+      </tr>
+      <tr>
+        <td><b>A</b></td>
+        <td><code>#F1EFFB</code> 浅紫实底圆 + <code>cardBorder</code> 描边，箭头 18pt／2.4 粗／<code>accentSolid</code></td>
+        <td class="v-mid">中</td>
+        <td>改动最小、不占空间、一眼是个"圆按钮"</td>
+        <td>仍是纯图标，语义靠猜</td>
+      </tr>
+      <tr>
+        <td><b>B（推荐）</b></td>
+        <td>图表下方右对齐文字链「查看周月年 ›」，<code>accentText</code>／13px／600</td>
+        <td class="v-good">高</td>
+        <td>语义零歧义、无障碍天然达标、不遮图</td>
+        <td>多占约 20pt 高度</td>
+      </tr>
+      <tr>
+        <td><b>C</b></td>
+        <td>右下角实心紫胶囊「周月年 ›」+ 白箭头</td>
+        <td class="v-good">最高</td>
+        <td>视觉重量最大，与其他卡操作按钮语言一致</td>
+        <td>实心紫跳动、可能压住曲线末端</td>
+      </tr>
+      <tr>
+        <td><b>D</b></td>
+        <td>白底 + 细描边圆，箭头升到 <code>textInk</code></td>
+        <td class="v-mid">中低</td>
+        <td>最克制、符合白卡语言</td>
+        <td>改善幅度有限</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

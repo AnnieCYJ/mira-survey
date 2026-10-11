@@ -13,8 +13,6 @@ import { chart } from '../theme/chart';
 import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
-import { TREND_AXIS } from '../data/metrics';
-import { formatRelativeTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
 
 // 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
@@ -41,6 +39,45 @@ function fmtMini(v: number): string {
   if (!Number.isFinite(v)) return '';
   const r = Math.round(v * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+/**
+ * ★ 2026-10-10（用户）：今日横轴窗口**全局统一为「0:00 → 现在」**。
+ *
+ * 原来固定 0:00→24:00，于是每张卡画多长取决于「最后一条样本落在几点」：
+ * 心率/血氧有样本到 19:00 → 线铺到右边；皮质醇最后一条在 11:32 → 线只到中间，
+ * 视觉上就是「有的展示到现在、有的展示 24 小时」，横坐标完全不统一。
+ *
+ * 现在所有基础指标卡共用同一个「今日 0:00 → 现在」窗口：曲线一律从左端画到右端，
+ * 轴右端统一写「现在 HH:mm」，一眼就知道数据到哪儿为止。
+ * 距午夜不足 2h 时窗口太短没有意义，退回 0:00→24:00。
+ */
+const MIN_SPAN_MS = 2 * 3600_000;
+function todayWindow(now = Date.now()): { start: number; end: number; left: string; right: string } {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const start = d.getTime();
+  const full = start + 86_400_000;
+  const end = now - start < MIN_SPAN_MS ? full : now;
+  const hm = (t: number) => {
+    const x = new Date(t);
+    return `${x.getHours()}:${String(x.getMinutes()).padStart(2, '0')}`;
+  };
+  return { start, end, left: '0:00', right: end >= full ? '24:00' : `现在 ${hm(now)}` };
+}
+
+/**
+ * ★ 2026-10-10（用户）：卡片右上角时间戳统一口径。
+ * 原来超过 1 小时就直接显示「11:32」，看不出「数据停在 11:32」还是「11:32 刚测的」——
+ * 19 点看皮质醇写着 11:32 就像坏了。加「截至」前缀明确是数据截止时间。
+ */
+function staleTag(ts: number | null | undefined): string {
+  if (ts == null || !Number.isFinite(ts) || ts <= 0) return '尚未测量';
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  const d = new Date(ts);
+  return `截至 ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function buildDayPath(
@@ -74,9 +111,10 @@ function buildDayPath(
   };
   const pts = clean.map((p) => ({ x: xOf(p.t), y: yOf(p.v), t: p.t }));
 
-  // 断线阈值与 MetricDetailScreen 连续曲线一致（36h）：单日跨度内永不触发，今日点始终连成一条。
-  const GAP_MS = 30 * 60 * 1000; // 断线阈值 30min
-  console.log(`[BMC] clean=${clean.length} GAP=30min first=${new Date(clean[0]?.t ?? 0).toISOString().slice(11,16)} last=${new Date(clean[clean.length-1]?.t ?? 0).toISOString().slice(11,16)}`);
+  // 断线阈值 60min：聚合粒度是 30min/点，相邻两个有数据的槽位间隔本来就 ≥30min，
+  // 旧阈值 30min 会让「刚好差几秒到 30 分钟」的相邻点被误判成断线 → 曲线被切成一节一节（用户说的"看着乱"）。
+  // 60min 恰好容许一个空槽（60min 采样、30min 一格）而不会误断。
+  const GAP_MS = 60 * 60 * 1000;
   let lineD = '';
   let areaD = '';
   let seg: { x: number; y: number }[] = [];
@@ -97,12 +135,7 @@ function buildDayPath(
     seg = [];
   };
   for (let i = 0; i < pts.length; i++) {
-    if (i > 0) {
-      const gapMs = pts[i].t - pts[i - 1].t;
-      const gapMin = gapMs / 60000;
-      if (gapMin > 5) console.log(`[BMC-GAP] i=${i} gap=${gapMin.toFixed(1)}min flush=${gapMs > GAP_MS ? 'YES' : 'no'}`);
-      if (gapMs > GAP_MS) flushSeg();
-    }
+    if (i > 0 && pts[i].t - pts[i - 1].t > GAP_MS) flushSeg();
     seg.push({ x: pts[i].x, y: pts[i].y });
   }
   flushSeg();
@@ -179,19 +212,14 @@ export default function BasicMetricCard({
     const pad = (rawMax - rawMin) * 0.12;
     return { lo: rawMin - pad, hi: rawMax + pad };
   }, [data]);
-  // 卡片今日趋势与历史页面日视图同源于 healthStore 今日窗口（数据由父组件经 getTodaySeries 传入）；
-  // 固定今日 0:00–24:00 窗口，不再做“今日不足扩多日”的回退，保证与详情页日视图逐点一致。
+  // ★ 2026-10-10（用户）：今日窗口统一「0:00 → 现在」（原来固定 0:00→24:00，
+  // 每张卡的线画多长取决于「最后一条样本在几点」→ 横轴看着不统一）。
+  const axis = todayWindow();
   const { lineD, areaD, last, hasData } = useMemo(() => {
-    const ds = (() => {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    })();
-    const de = ds + DAY_MS;
     const yLo = yBounds?.lo ?? metric.yMin;
     const yHi = yBounds?.hi ?? metric.yMax;
-    return buildDayPath(data, w, h, ds, de, yLo, yHi);
-  }, [data, w, h, yBounds, metric.yMin, metric.yMax]);
+    return buildDayPath(data, w, h, axis.start, axis.end, yLo, yHi);
+  }, [data, w, h, yBounds, metric.yMin, metric.yMax, axis.start, axis.end]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -232,9 +260,13 @@ export default function BasicMetricCard({
       <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
         <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
-              标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次 */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: theme.sp(1) }}>
+              标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次
+              ★ 2026-10-10（用户：「好多名称 title 没展示全，心率变异性、皮肤含水量、交感神经都被截断」）：
+              原来「相对时间 + 右箭头」和标题挤在同一行，两者都flexShrink，
+              标题先被压到只剩 3 个字（「心率变…」「皮肤含…」「交感神…」）。
+              现在**标题独占一行**（右侧只留箭头），相对时间下移到「数值」那一行右端。*/}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(2) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: theme.sp(1) }}>
               {metric.icon && (
                 <View style={{
                   width: 26, height: 26, borderRadius: mm.radius.iconSq,
@@ -244,13 +276,14 @@ export default function BasicMetricCard({
                   <Icon name={metric.icon} size={14} color={icFg} />
                 </View>
               )}
-              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flexShrink: 1 }}>{metric.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flex: 1 }}>{metric.name}</Text>
             </View>
-            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint }}>{formatRelativeTime(measureTime)}</Text>
+            <Icon name="chevronRight" size={14} color={mm.colors.inkFaint} />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink }}>{value}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, flexShrink: 1 }}>{value}</Text>
             <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
+            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{staleTag(measureTime)}</Text>
           </View>
           {showTrend && (
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
@@ -276,14 +309,15 @@ export default function BasicMetricCard({
                 )}
               </Svg>
             ) : null}
+            {/* ★ 2026-10-10（用户）：横轴口径全卡统一 —— 左「0:00」右「现在 HH:mm」，
+                所有基础指标卡同一套，不再一个画到中午一个画到整天。 */}
+            <View style={styles.axisRow}>
+              <Text style={styles.axisText}>{axis.left}</Text>
+              <Text style={styles.axisText}>{axis.right}</Text>
+            </View>
           </View>
           )}
 
-          {/* ★ 统一底部入口（整卡可点进指标历史详情） */}
-          <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress} style={styles.enter}>
-            <Text style={styles.enterTxt}>查看趋势图</Text>
-            <Text style={styles.enterArr}>›</Text>
-          </TouchableOpacity>
         </Card>
       </TouchableOpacity>
     );
@@ -323,7 +357,7 @@ export default function BasicMetricCard({
       <View style={styles.main}>
         <Text style={styles.val}>{value}</Text>
         <Text style={styles.unit}>{metric.unit}</Text>
-        <Text style={styles.measuredAt}>{formatRelativeTime(measureTime)}</Text>
+        <Text style={styles.measuredAt}>{staleTag(measureTime)}</Text>
       </View>
 
       <Text style={styles.range}>{metric.range}</Text>
@@ -362,11 +396,10 @@ export default function BasicMetricCard({
               </>
             ) : null}
           </View>
-          {/* 全天时间轴刻度：0/6/12/18/24 时（仅轻量文字，无轴线，与 Today 页「全天状态趋势」同源） */}
+          {/* ★ 2026-10-10（用户）：横轴与洞察页紧凑卡同口径 —— 左 0:00 / 右「现在 HH:mm」（原为固定 0/4/8…24时） */}
           <View style={styles.axisLabels}>
-            {TREND_AXIS.map((label) => (
-              <Text key={label} style={styles.axisLabel}>{label}</Text>
-            ))}
+            <Text style={styles.axisLabel}>{axis.left}</Text>
+            <Text style={styles.axisLabel}>{axis.right}</Text>
           </View>
         </View>
       ) : (
@@ -456,6 +489,17 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   chartWrap: { marginTop: theme.space.sm, marginBottom: theme.space.sm },
+  // ★ 2026-10-10（用户）：横轴统一为「左 0:00 / 右 现在 HH:mm」，紧凑卡与整卡同源
+  axisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  axisText: {
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    opacity: 0.75,
+  },
   axisLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -498,16 +542,4 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginTop: theme.space.sm,
   },
-  // 统一底部入口
-  enter: {
-    marginTop: theme.sp(3),
-    paddingTop: theme.sp(2.5),
-    borderTopWidth: 1,
-    borderTopColor: mm.colors.chipBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  enterTxt: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
-  enterArr: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold, color: mm.colors.skyCore },
 });

@@ -24,7 +24,7 @@ import {
   type StressEvent,
 } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
-import { dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
 import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, type EmotionEntry } from '../data/emotionLog';
 import { HourHistogram } from './StressInsightCard';
 // ★ 心理压力全天趋势图（首页心理压力卡点进来 / 洞察页情绪 tab 共用本视图）
@@ -103,24 +103,50 @@ const colorToLabel = (c: string): string =>
  *   / 睡眠 #EAE7E2 / 无记录 #BDB7AE。
  */
 const DOT_BY_MOOD: Record<string, string> = {
-  [COL_CALM]: '#BCCB62',
-  [COL_PLEASANT]: '#F0C46E',
-  [COL_EXCITED]: '#F0C46E',
-  [COL_STRESSED]: '#F2A3C6',
-  [COL_ANXIOUS]: '#F2A3C6',
+  [COL_CALM]: '#B8C86A',
+  [COL_PLEASANT]: '#F2C35E',
+  [COL_EXCITED]: '#F39A62',
+  [COL_STRESSED]: '#D58AAE',
+  [COL_ANXIOUS]: '#C9789F',
 };
 const DOT_EMPTY = '#BDB7AE';
 const DOT_SLEEP = '#EAE7E2';
 /** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
 const DOT_LEGEND: { c: string; t: string }[] = [
-  { c: '#BCCB62', t: '平静' },
-  { c: '#F0C46E', t: '愉悦/兴奋' },
-  { c: '#F2A3C6', t: '压力/焦虑' },
-  { c: '#7EA6F8', t: '疲惫' },
+  { c: '#F39A62', t: '兴奋' },
+  { c: '#F2C35E', t: '开心' },
+  { c: '#B8C86A', t: '平静' },
+  { c: '#D58AAE', t: '压力' },
+  { c: '#7EA6F8', t: '难过' },
   { c: DOT_SLEEP, t: '睡眠' },
-  { c: DOT_EMPTY, t: '无记录' },
 ];
 const dotColorOf = (e: any): string => DOT_BY_MOOD[moodColor(e)] ?? DOT_EMPTY;
+
+/**
+ * ★ 2026-10-10（用户）：戒指 SDK 原生 emotionLevel(−10~10) 日均值 → 情绪方向标签。
+ *   ★ 复用 stressAlgorithm.ts:571-601 的**同一基底映射**（emotionNow×10 → ±20 阈值）：
+ *      score ≥ 20 → positive / ≤ −20 → negative / 否则 neutral。
+ *   不直接出 5 档色，而是交给下方 moodColor() —— 与事件日点阵完全同一套颜色逻辑，
+ *   保证「戒指回填点」和「EDA 事件点」「手动记录点」颜色口径一致、不另起一套。
+ *   无戒指值返回 null。
+ */
+const ringValenceLabel = (v: number | null): 'positive' | 'negative' | 'neutral' | null => {
+  if (v == null || !Number.isFinite(v)) return null;
+  const score = v * 10; // ★ 与算法一致：emotionLevel[-10,10] → [-100,100]
+  if (score >= 20) return 'positive';
+  if (score <= -20) return 'negative';
+  return 'neutral';
+};
+
+/** 设备 emotionLevel(-10~10) → 与手动记录一致的五档情绪。 */
+const ringEmotionDot = (v: number | null): string | null => {
+  if (v == null || !Number.isFinite(v)) return null;
+  if (v >= 6) return '#F39A62';       // 兴奋
+  if (v >= 2) return '#F2C35E';       // 开心
+  if (v > -2) return '#B8C86A';       // 平静
+  if (v > -6) return '#D58AAE';       // 压力
+  return '#7EA6F8';                   // 难过
+};
 
 /** 5 档情绪 → emoji（HERO 展示用；无记录时用中性符号，绝不假装有主情绪） */
 const MOOD_EMOJI: Record<string, string> = {
@@ -136,7 +162,7 @@ const MOOD_EMOJI: Record<string, string> = {
  * 每个格子 = 一个 15 分钟时段，有记录则按情绪色绘实心圆点，无记录淡灰占位。
  * 横轴标注 12 / 24 边界（无纵轴）。
  */
-export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
+export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null }: { events: StressEvent[]; fallbackMood?: string | null; sleepWindow?: { bedHour: number; wakeHour: number } | null }) {
   // 分桶：bySlot[hour][slot] = 该 15 分钟时段内的事件
   const bySlot: any[][][] = Array.from({ length: 24 }, () => [[], [], [], []]);
   for (const e of events) {
@@ -148,6 +174,15 @@ export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
   }
   const slotColor = (evs: any[]): string | null => {
     if (!evs.length) return null;
+    const manual = evs.find((e) => e.isManual);
+    if (manual) {
+      if (manual.manualMood === 'excited') return '#F39A62';
+      if (manual.manualMood === 'happy') return '#F2C35E';
+      if (manual.manualMood === 'calm') return '#B8C86A';
+      if (manual.manualMood === 'stressed') return '#D58AAE';
+      if (manual.manualMood === 'sad') return '#7EA6F8';
+      return dotColorOf(manual);
+    }
     const neg = evs.find((e) => { const c = moodColor(e); return c === COL_ANXIOUS || c === COL_STRESSED; });
     // ★ 点阵用点阵配色（不是堆叠柱那套）
     return dotColorOf(neg ?? evs[0]);
@@ -159,9 +194,25 @@ export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
           <View key={h} style={styles.hmCol}>
             {[0, 1, 2, 3].map((s) => {
               const c = slotColor(bySlot[h][s]);
+              const hour = h + s / 4;
+              const now = new Date();
+              const isTodaySlotPast = h < now.getHours() || (h === now.getHours() && s <= Math.floor(now.getMinutes() / 15));
+              const inSleep = !!sleepWindow && (sleepWindow.bedHour > sleepWindow.wakeHour
+                ? (hour >= sleepWindow.bedHour || hour < sleepWindow.wakeHour)
+                : (hour >= sleepWindow.bedHour && hour < sleepWindow.wakeHour));
+              // 空槽且当天无手动记录 → 戒指情绪回填（半透明，明确标参考、不冒充手动）
+              const useFallback = !c && !!fallbackMood && isTodaySlotPast;
               return (
                 <View key={s} style={styles.hmSlot}>
-                  {c ? <View style={[styles.hmDot, { backgroundColor: c }]} /> : <View style={styles.hmDotEmpty} />}
+                  {c ? (
+                    <View style={[styles.hmDot, { backgroundColor: c }]} />
+                  ) : inSleep ? (
+                    <View style={[styles.hmDot, styles.sleepDot]}><Text style={styles.sleepGlyph}>☾</Text></View>
+                  ) : useFallback ? (
+                    <View style={[styles.hmDot, { backgroundColor: fallbackMood, opacity: 0.4 }]} />
+                  ) : (
+                    <View style={styles.hmDotEmpty} />
+                  )}
                 </View>
               );
             })}
@@ -179,15 +230,6 @@ export function MoodDotMatrix({ events }: { events: StressEvent[] }) {
     <View style={styles.matrixWrap}>
       {section([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 3, 6, 9, 12])}
       {section([12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23], [12, 15, 18, 21, 24])}
-      {/* 5 档情绪图例 */}
-      <View style={styles.matrixLegend}>
-        {MOOD_LABELS.map(({ c, t }) => (
-          <View key={t} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: c }]} />
-            <Text style={styles.legendText}>{t}</Text>
-          </View>
-        ))}
-      </View>
     </View>
   );
 }
@@ -282,6 +324,8 @@ function selfEntryToEvent(e: EmotionEntry): StressEvent {
     level: 'mid',
     recoverySec: null,
     valenceLabel: valence,
+    isManual: true,
+    manualMood: e.mood,
   } as unknown as StressEvent;
 }
 
@@ -305,6 +349,15 @@ export default function EmotionInsightView({
   const dk = dayKey(anchorMs ?? Date.now());
   const showStress = variant !== 'emotion';
   const showEmotion = variant !== 'stress';
+
+  // ★ 2026-10-10（用户）：戒指客观情绪参考 —— SDK 原生 emotionLevel(−10~10) 每日均值，
+  //   作为「心理情绪记录」的客观参考，明确标注为参考、不做评分（Mira 以用户自报为主）。
+  const ringEmotion = healthStore.getDay('emotion', dk)?.mean ?? null;
+  const ringEmotionLabel = ringEmotion == null ? '—' : ringEmotion >= 4 ? '偏积极' : ringEmotion <= -4 ? '偏消极' : '平稳';
+  const ringEmotionColor = ringEmotion == null ? theme.colors.textSub
+    : ringEmotion >= 4 ? theme.colors.success
+    : ringEmotion <= -4 ? theme.colors.danger
+    : theme.colors.textSub;
   const [selfEntries, setSelfEntries] = useState<EmotionEntry[]>([]);
   // ★ 2026-10-09（psychological-stress-preview）：趋势图下方「详细数据」折叠，默认收起
   const [stressOpen, setStressOpen] = useState(false);
@@ -347,6 +400,12 @@ export default function EmotionInsightView({
   const selfEvents = selfEntries.map(selfEntryToEvent);
   // 合并：手动记录 + EDA 采样，按时间升序；手动记录在同槽内优先展示（slotColor 取优先级）
   const allEvents = [...selfEvents, ...report.events].sort((a, b) => a.t - b.t);
+  // ★ 2026-10-10（用户）：当天「没有手动心情记录」时，用戒指情绪(−10~10)按现有映射回填点阵空槽。
+  //   —— 复用 ringValenceLabel（emotionNow×10 → ±20 阈值）+ 现有 moodColor()，与事件日点阵同一套色。
+  //   —— 当天有手动记录 → 以手动为主、不回填（用户一记即切回；onEmotionLog 订阅即时刷新）。
+  const ringFallbackMood = selfEntries.length === 0 && ringEmotion != null
+    ? ringEmotionDot(ringEmotion)
+    : null;
   const hasData = report.sampleCount >= 5 || allEvents.length > 0;
 
   // ★ v18.106：无数据 ≠ 只丢一行小字（用户口径：「什么占位都没有就没了」）。
@@ -357,7 +416,7 @@ export default function EmotionInsightView({
     return (
       <Card padded={false}>
         <View style={styles.pad}>
-          <Text style={styles.title}>情绪洞察</Text>
+          <Text style={styles.title}>{variant === 'stress' ? '心理压力' : '情绪记录'}</Text>
           <Text style={styles.emptyText}>
             还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
           </Text>
@@ -370,7 +429,7 @@ export default function EmotionInsightView({
           {showEmotion && (
             <>
               <SectionTitle>全天情绪点阵</SectionTitle>
-              <MoodDotMatrix events={[]} />
+              <MoodDotMatrix events={[]} fallbackMood={ringFallbackMood} />
               <SectionTitle>情绪节律</SectionTitle>
               <View style={styles.hmCardsRow}>
                 <SummaryTile icon="clock" label="情绪高峰" value="—" sub="消极最集中" valueColor={theme.colors.textSub} />
@@ -449,7 +508,10 @@ export default function EmotionInsightView({
           accessibilityLabel={stressOpen ? '收起详细数据' : '展开详细数据'}
         >
           <Text style={styles.mhLabel}>详细数据</Text>
-          <View style={[styles.mhChev, stressOpen && styles.mhChevOpen]} />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.mhCount}>2 项</Text>
+            <View style={[styles.mhChev, stressOpen && styles.mhChevOpen]} />
+          </View>
         </TouchableOpacity>
         {stressOpen ? (
           <View style={styles.rowsBox}>
@@ -474,7 +536,7 @@ export default function EmotionInsightView({
           <>
         {/* 全天情绪点阵（上 0–12 / 下 12–24） */}
         <SectionTitle>全天情绪点阵</SectionTitle>
-        <MoodDotMatrix events={allEvents} />
+        <MoodDotMatrix events={allEvents} fallbackMood={ringFallbackMood} sleepWindow={sleepWindow} />
         {/* ★ 2026-10-09（稿 .dotsCap）：点阵图例 + 口径说明 */}
         <View style={styles.dotLegend}>
           {DOT_LEGEND.map((m) => (
@@ -484,20 +546,6 @@ export default function EmotionInsightView({
             </View>
           ))}
         </View>
-        <Text style={styles.dotsCap}>
-          每行 24 颗 = 一天（每颗 15 分钟），共 4 行。颜色即该时段心情。情绪为自报，Mira 不做情绪推断。
-        </Text>
-        {selfEvents.length > 0 && (
-          <>
-            <Text style={styles.hint}>含手动心情记录 {selfEvents.length} 条（按记录时刻落在对应时段）</Text>
-            {/* ★ 点阵图下方把记录内容摊开：时刻 + 心情 + 生活事件标签 + 备注 */}
-            <RecordEventTimeline entries={selfEntries} />
-          </>
-        )}
-        {eventCount === 0 && (
-          <Text style={styles.hint}>今天还没有情绪事件采样 · 用页面底部的「记录此刻心情」记下第一笔</Text>
-        )}
-
         {/* 情绪高峰 / 低谷（时段结论） */}
         <SectionTitle>情绪节律</SectionTitle>
         <View style={styles.hmCardsRow}>
@@ -564,13 +612,18 @@ const styles = StyleSheet.create({
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   // ★ 2026-10-09（psychological-stress-preview 新增）：轴说明 + 统一折叠头 + 行式明细
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },
+  // ★ 2026-10-10（用户选 G · 数量提示 pill）：去灰底描边盒，扁平行 + 顶部发丝线 + 右侧「N 项」pill
   mhRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',     justifyContent: 'space-between',
     marginTop: theme.space.sm,
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1, borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+    paddingVertical: theme.sp(2.25), paddingHorizontal: 0,
+  },
+  mhCount: {
+    fontSize: theme.fontSize.micro, color: mm.colors.limeDeep,
+    backgroundColor: mm.colors.limeSoft,
+    paddingVertical: theme.sp(0.5), paddingHorizontal: theme.sp(1.5),
+    borderRadius: theme.radius.pill, fontWeight: theme.weight.semibold as any,
+    marginRight: theme.sp(2),
   },
   mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
   mhChev: {
@@ -595,6 +648,8 @@ const styles = StyleSheet.create({
   hmCol: { flex: 1, flexDirection: 'column' },
   hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
   hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
+  sleepDot: { backgroundColor: '#E8E1F7', borderWidth: 1, borderColor: '#A99BD6', alignItems: 'center', justifyContent: 'center' },
+  sleepGlyph: { fontSize: 8, lineHeight: 10, color: '#806FB5' },
   // ★ 2026-10-09（稿 .dots 无记录色 #BDB7AE）
   hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: DOT_EMPTY },
   // ★ 点阵图例（与格子同色）
@@ -643,4 +698,17 @@ const styles = StyleSheet.create({
   statSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.5, marginTop: theme.sp(1) },
+
+  // ★ 2026-10-10（用户）：戒指客观情绪参考卡 —— 明确「参考、非评分」，不与用户自报冲突
+  ringRefCard: {
+    marginTop: theme.sp(2), padding: theme.sp(2),
+    borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg,
+  },
+  ringRefHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1), marginBottom: theme.sp(1.5) },
+  ringRefTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
+  ringRefBody: { flexDirection: 'row', alignItems: 'baseline', gap: theme.sp(1.5) },
+  ringRefValue: { fontSize: theme.sp(5.5), fontWeight: theme.weight.semibold as any, lineHeight: theme.sp(7) },
+  ringRefLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textTitle },
+  ringRefNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.45 },
 });

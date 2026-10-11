@@ -27,6 +27,29 @@ export const DAY_HOUR_TICKS = [0, 4, 8, 12, 16, 20, 24] as const;
 /** 日视图小时刻度（首页紧凑小卡，每 6 小时，避免窄卡标签拥挤） */
 export const DAY_HOUR_TICKS_COMPACT = [0, 6, 12, 18, 24] as const;
 
+/**
+ * ★ 2026-10-10（用户：心率详情页对齐 Oura 全天柱状小条）：**日视图次刻度线的间隔（分钟）**。
+ *
+ * Oura 的 24h 心率图结构是「每 30 分钟一条刻度线（division），格内含 6 根 5 分钟的小柱」。
+ * 注意区分两层：
+ *   - **标签层**（有文字）：每 4 小时 → DAY_HOUR_TICKS
+ *   - **刻度线层**（无文字的竖线）：每 30 分钟 → 本常量
+ * 本常量只管刻度线，不改 timeTickLabel 的标签口径。
+ */
+export const DAY_MINOR_TICK_MINUTES = 30 as const;
+
+/**
+ * 日视图次刻度线的钟点列表（0.5 / 1 / 1.5 … 23.5）。
+ * 供「全天柱状小条」画每 30 分钟一条细竖线用；末端 24:00 只画线不画标签。
+ */
+export function dayMinorTickHours(minutes: number = DAY_MINOR_TICK_MINUTES): number[] {
+  const stepH = minutes / 60;
+  const out: number[] = [];
+  for (let h = 0; h < 24; h += stepH) out.push(Math.round(h * 1000) / 1000);
+  out.push(24);
+  return out;
+}
+
 /** 月视图固定刻度日号 */
 export const MONTH_TICK_DAYS = [1, 5, 10, 15, 20, 25, 30] as const;
 

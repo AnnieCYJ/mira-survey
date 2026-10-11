@@ -91,3 +91,8 @@
 - 发现：本地与 origin/master 同步（0 领先）；工作区存在 69 项未提交改动——新增首页 AI 气泡（HomeAiBubble 组件 + preview/home-ai-bubble-preview.html）、AI 叙事与建议引擎（aiNarrative.ts、aiSuggestion.ts）、2 份交互评审/优化计划文档；删除 HomeSuggestionFloat.tsx（被 HomeAiBubble 替代）；修改 package.json/package-lock.json 及 62 个源文件（覆盖 AI 层 health/insight/miraAi、今日/洞察/日历/睡眠/能量/情绪干预/饮食/呼吸/专注等多屏，以及 RangeSwitch/SuggestionCard/SleepDualAxisChart/VoiceQuickOverlay 等组件）；automation 记忆文件（10-07 条目）待提交。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：执行 `git add -A`（74 文件，子模块无法暂存）→ commit ffe7415「新增首页 AI 气泡与 AI 叙事建议引擎，补充交互评审及优化计划文档，重构多屏组件」→ push 成功 f37fca0..ffe7415（+3063/-1258）。
 - 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-10 14:12（第十八次运行）
+- 发现：本地与 origin/master 同步（0 领先）；工作区存在 94 项未提交改动——67 个修改文件 + 27 个新增文件（含 16 份 docs/ 预览 HTML、design-system-spec.html、uiux-optimization-2026-10-10.md、chart.ts 主题、chartAxis.ts/healthAgeEstimate.ts/profileForm.ts lib、useReducedMotion hook、test-uiux.cjs 脚本等）。核心迭代内容：首页 AI 气泡/建议卡重构（HomeAiBubble、aiNarrative、aiSuggestion、SuggestionCard）、图表体系统一（坐标轴/Bar/Token 规范，chartAxis.ts + chart.ts + 16 份预览 HTML）、洞察页卡片与指标对齐（InsightScreen + 多组件）、睡眠/压力/皮质醇/生理年龄多屏优化（SleepDetailScreen、CortisolRhythmCard、StressInsightCard、HealthAgeCard 等）、App.tsx 导航调整、README 更新。automation 记忆文件（10-09 条目）待提交。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：执行 `git add -A`（94 文件，子模块无法暂存）→ commit 2287b9d「v18.154–18.16x 全链路迭代：首页 AI 气泡/建议卡重构、图表体系统一（坐标轴/Bar/Token 规范）、洞察页卡片与指标对齐、睡眠/压力/皮质醇/生理年龄多屏优化，新增 design-system-spec 与 16 份预览 HTML」→ push 成功 ffe7415..2287b9d（+9120/-1757）。
+- 结果：master 与 origin/master 完全同步。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 脏改动维持既有决策：不动、仅报告。

@@ -54,6 +54,12 @@ function hsKeyFor(signalKey: string): HSMetricKey {
     case 'steps': case 'distance': case 'calorie':
     case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
     case 'bpSys': case 'bpDia':
+    // ★ 2026-10-10（用户实锤「洞察页基础指标里有两个交感神经卡，左下那个不显示数据」）：
+    //   原生 emit 的真实 key就是 **`sns`**（洞察页 `ring.daily['sns']` 能取到值），
+    //   而展示层旧卡用的 `snsActivation` 只是历史别名 → hsKeyFor 映射到 'sns'，
+    //   于是 `ring.daily['snsActivation']` 恒不存在 → 那张卡永远显示「—」。
+    //   现在把 `sns` 加进直通名单，展示层与数据层用同一个 key。
+    case 'sns':
       return signalKey as HSMetricKey;
     case 'snsActivation': return 'sns';
     case 'bloodSugar': return 'glucose';

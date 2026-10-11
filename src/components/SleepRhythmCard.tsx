@@ -121,8 +121,11 @@ export default function SleepRhythmCard({ dk }: Props) {
       <Pressable onPress={() => { setDetailsOpen((v) => !v); }} style={styles.moreHead}
         accessibilityRole="button" accessibilityLabel={detailsOpen ? '收起详细数据' : '展开详细数据'}>
         <Text style={styles.moreTitle}>详细数据</Text>
-        <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
-          <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={styles.moreCount}><Text style={styles.moreCountText}>4 项</Text></View>
+          <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
+            <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+          </View>
         </View>
       </Pressable>
 
@@ -241,16 +244,19 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.sm, lineHeight: 20 },
   disclaimer: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.sm, opacity: 0.8 },
-  // 「详细数据」折叠头（2026-10-09：对齐 sleep-recovery-preview.html 的整块按钮样式）
+  // 「详细数据」折叠头（2026-10-10：改 G 样式——扁平行 + 顶部发丝线，去掉灰底描边盒）
   moreHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: theme.space.md,
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1, borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+    paddingTop: theme.sp(2.25), paddingHorizontal: 0,
   },
-  moreTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold },
+  moreCount: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: mm.colors.limeSoft, borderRadius: theme.radius.pill,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  moreCountText: { fontSize: 12, fontWeight: '600', color: mm.colors.limeDeep },
+  moreTitle: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.semibold },
   chev: { transform: [{ rotate: '90deg' }], marginLeft: theme.space.sm },
   chevOpen: { transform: [{ rotate: '-90deg' }] },
 });

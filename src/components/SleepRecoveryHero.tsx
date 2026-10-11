@@ -36,7 +36,7 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
   const score = value != null ? value : (pers?.score ?? null);
   const resolvedCtx = ctx != null ? ctx
     : pers ? (pers.mode === 'relative'
-        ? (score != null ? (score >= 56 ? '比平时好 ↑' : score <= 44 ? '比平时吃力 ↓' : '和平时差不多 —') : null)
+        ? (score != null ? (score >= 82 ? '比平时好 ↑' : score <= 68 ? '比平时吃力 ↓' : '和平时差不多 —') : null)
         : (pers.daysToReady > 0 ? `还需 ${pers.daysToReady} 晚建立基线` : '按固定目标评估'))
     : null;
 

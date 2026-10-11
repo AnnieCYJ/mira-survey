@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>睡眠分析 · 「详细数据」折叠头设计方案</title>
+<style>
+  :root{
+    --card-bg:#FFFFFF;
+    --card-border:#E8E6F2;
+    --card-soft:#F7F6FC;        /* 现有灰底（待去除） */
+    --ink:#2A2840;
+    --ink-faint:#9A98B5;
+    --text-sub:#8A88A8;
+    --lav:#7C6AE0;
+    --lav-soft:#F1EEFC;
+    --page:#F4F3FA;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+    background:var(--page);color:var(--ink);padding:38px 18px 60px;}
+  .head{max-width:1060px;margin:0 auto 8px;}
+  .head h1{font-size:21px;font-weight:700;margin:0 0 6px;}
+  .head p{font-size:13.5px;color:var(--text-sub);margin:0;line-height:1.6;}
+  .note{font-size:12.5px;color:var(--lav);background:var(--lav-soft);border-radius:10px;padding:9px 12px;max-width:1060px;margin:14px auto 26px;line-height:1.6;}
+  .row{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;max-width:1060px;margin:0 auto;}
+  .col{width:300px;}
+  .tag{display:inline-block;font-size:12.5px;font-weight:600;color:var(--lav);background:var(--lav-soft);border-radius:999px;padding:4px 11px;margin-bottom:10px;}
+  .cap{font-size:12px;color:var(--text-sub);line-height:1.55;margin:11px 2px 0;min-height:48px;}
+
+  /* 卡片片段（睡眠分析下半部） */
+  .card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(42,40,64,.07);}
+  .blockTitle{font-size:11px;color:var(--text-sub);margin-top:4px;margin-bottom:8px;}
+  .stage{display:flex;height:14px;border-radius:7px;overflow:hidden;}
+  .stage i{flex:1;display:block;}
+  .legend{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap;}
+  .legend span{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-sub);}
+  .legend b{width:9px;height:9px;border-radius:5px;display:inline-block;}
+
+  /* ===== 折叠头：A 纯文字行（无底色） ===== */
+  .tog{display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding:11px 2px;border-top:1px solid var(--card-border);}
+  .tog .txt{font-size:13px;font-weight:600;color:var(--ink);}
+  .tog .arr{color:var(--ink-faint);}
+
+  /* ===== 折叠头：B 白底描边胶囊（去灰版） ===== */
+  .tog-b{display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:var(--card-bg);
+    border:1px solid var(--card-border);border-radius:12px;padding:11px 13px;}
+  .tog-b .txt{font-size:13px;font-weight:600;color:var(--ink);}
+  .tog-b .arr{color:var(--ink-faint);}
+
+  /* ===== 折叠头：C 浅紫柔底 ===== */
+  .tog-c{display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:var(--lav-soft);
+    border-radius:12px;padding:11px 13px;}
+  .tog-c .txt{font-size:13px;font-weight:600;color:var(--lav);}
+  .tog-c .arr{color:var(--lav);}
+
+  /* 展开预览（去灰：比例条轨道用极浅紫代替灰） */
+  .peek{margin-top:12px;}
+  .group{font-size:11px;color:var(--text-sub);margin:12px 0 4px;}
+  .row2{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F0EEF7;}
+  .row2:last-child{border-bottom:0;}
+  .row2 .n{font-size:13px;color:var(--ink);}
+  .row2 .v{font-size:13px;font-weight:600;color:var(--ink);}
+  .propbar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--lav-soft);margin-top:4px;}
+  .propbar i{flex:1;display:block;}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>睡眠分析卡 · 「详细数据」折叠头 · 设计方案</h1>
+    <p>目标元素：睡眠分析卡内「详细数据 ▾」可展开入口（当前灰底卡片）。以下三版均去灰，展开区比例条轨道也由灰改为极浅紫，整体与 Mira Token 一致。点为向下箭头，整块可点。</p>
+  </div>
+  <div class="note">当前实现：<code>moreHead</code> 用 <code>cardBgSoft #F7F6FC</code> 灰底；展开区 <code>propBar</code> 轨道同为灰底。本稿三方案均移除灰底。</div>
+
+  <div class="row">
+
+    <!-- A -->
+    <div class="col">
+      <span class="tag">A · 纯文字行</span>
+      <div class="card">
+        <div class="blockTitle">整夜分期</div>
+        <div class="stage"><i style="background:#7C6AE0;flex:3"></i><i style="background:#A99BE8;flex:5"></i><i style="background:#6FB7D6;flex:2"></i><i style="background:#F0C46E;flex:1"></i></div>
+        <div class="legend"><span><b style="background:#7C6AE0"></b>深睡</span><span><b style="background:#A99BE8"></b>浅睡</span><span><b style="background:#6FB7D6"></b>REM</span><span><b style="background:#F0C46E"></b>清醒</span></div>
+
+        <div class="tog">
+          <span class="txt">详细数据</span>
+          <span class="arr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#9A98B5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </div>
+
+        <div class="peek">
+          <div class="group">作息与时机</div>
+          <div class="row2"><span class="n">睡眠效率</span><span class="v">92%</span></div>
+          <div class="row2"><span class="n">入睡时刻</span><span class="v">23:18</span></div>
+        </div>
+      </div>
+      <p class="cap"><b>A 纯文字行（无底色）</b>：仅一条细分隔线 + 文字 + 下箭头，最克制，靠箭头暗示可展开，零灰。</p>
+    </div>
+
+    <!-- B -->
+    <div class="col">
+      <span class="tag">B · 白底描边胶囊</span>
+      <div class="card">
+        <div class="blockTitle">整夜分期</div>
+        <div class="stage"><i style="background:#7C6AE0;flex:3"></i><i style="background:#A99BE8;flex:5"></i><i style="background:#6FB7D6;flex:2"></i><i style="background:#F0C46E;flex:1"></i></div>
+        <div class="legend"><span><b style="background:#7C6AE0"></b>深睡</span><span><b style="background:#A99BE8"></b>浅睡</span><span><b style="background:#6FB7D6"></b>REM</span><span><b style="background:#F0C46E"></b>清醒</span></div>
+
+        <div class="tog-b">
+          <span class="txt">详细数据</span>
+          <span class="arr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#9A98B5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </div>
+
+        <div class="peek">
+          <div class="group">作息与时机</div>
+          <div class="row2"><span class="n">睡眠效率</span><span class="v">92%</span></div>
+          <div class="row2"><span class="n">入睡时刻</span><span class="v">23:18</span></div>
+        </div>
+      </div>
+      <p class="cap"><b>B 白底描边胶囊</b>：保留原胶囊形态，但灰底换白底 + 细描边，可点性不变、去灰。</p>
+    </div>
+
+    <!-- C -->
+    <div class="col">
+      <span class="tag">C · 浅紫柔底</span>
+      <div class="card">
+        <div class="blockTitle">整夜分期</div>
+        <div class="stage"><i style="background:#7C6AE0;flex:3"></i><i style="background:#A99BE8;flex:5"></i><i style="background:#6FB7D6;flex:2"></i><i style="background:#F0C46E;flex:1"></i></div>
+        <div class="legend"><span><b style="background:#7C6AE0"></b>深睡</span><span><b style="background:#A99BE8"></b>浅睡</span><span><b style="background:#6FB7D6"></b>REM</span><span><b style="background:#F0C46E"></b>清醒</span></div>
+
+        <div class="tog-c">
+          <span class="txt">详细数据</span>
+          <span class="arr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#7C6AE0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </div>
+
+        <div class="peek">
+          <div class="group">作息与时机</div>
+          <div class="row2"><span class="n">睡眠效率</span><span class="v">92%</span></div>
+          <div class="row2"><span class="n">入睡时刻</span><span class="v">23:18</span></div>
+        </div>
+      </div>
+      <p class="cap"><b>C 浅紫柔底</b>：lavender 浅底 + 同色文字与箭头，品牌感最强、可点性最明确，整块去灰。</p>
+    </div>
+
+  </div>
+</body>
+</html>

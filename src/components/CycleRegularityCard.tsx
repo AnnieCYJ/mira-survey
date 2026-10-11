@@ -100,13 +100,17 @@ export default function CycleRegularityCard({
         </Text>
       ) : (
         <>
-          {/* ① 判读 Hero：档位徽章 + 一句大白话 */}
-          <View style={styles.hero}>
-            <View style={[styles.heroBadge, data.grade ? { backgroundColor: gradeColor(data.grade) } : null]}>
-              <Text style={styles.heroBadgeText}>{data.grade ?? '—'}</Text>
+          {/* ① 判读 Hero：档位徽章 + 一句大白话
+              ★ 2026-10-10（用户：规律性没算出来时左下那个灰色圆块没用 → 去掉）：
+              grade 为 null（不足 2 个完整周期）时整行不渲染，不再出现空灰胶囊 */}
+          {data.grade ? (
+            <View style={styles.hero}>
+              <View style={[styles.heroBadge, { backgroundColor: gradeColor(data.grade) }]}>
+                <Text style={styles.heroBadgeText}>{data.grade}</Text>
+              </View>
+              <Text style={styles.heroText}>{gradePlain(data.grade, data.min, data.max)}</Text>
             </View>
-            <Text style={styles.heroText}>{gradePlain(data.grade, data.min, data.max)}</Text>
-          </View>
+          ) : null}
 
           {/* ② 主指标：平均周期长度（大字）+ 正常区间参照 */}
           <View style={styles.mainStat}>
@@ -153,53 +157,7 @@ export default function CycleRegularityCard({
             你的周期长度 {data.min}–{data.max} 天，{inRange ? '处于正常区间' : '部分超出正常区间'}。
           </Text>
 
-          {/* ⑤ 逐周期明细（★ 2026-10-09 menstrual-cycle-preview：默认收起，mhRow 折叠头展开） */}
-          <TouchableOpacity
-            style={styles.mhRow}
-            activeOpacity={0.7}
-            onPress={() => setListOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel={listOpen ? '收起逐周期明细' : '展开逐周期明细'}
-          >
-            <Text style={styles.mhLabel}>逐周期明细</Text>
-            <View style={[styles.mhChev, listOpen && styles.mhChevOpen]} />
-          </TouchableOpacity>
-          {listOpen ? (
-            <>
-              <View style={styles.list}>
-                {data.recs.slice(0, MAX_ROWS).map((r) => {
-                  const dev = r.length - data.mean;
-                  const late = dev >= 0.75;
-                  const early = dev <= -0.75;
-                  const dt = parseDate(r.start);
-                  return (
-                    <View key={r.start} style={styles.row}>
-                      <Text style={styles.rowDate}>{dt.getMonth() + 1}/{dt.getDate()}</Text>
-                      <Text style={styles.rowLen}>{r.length} 天</Text>
-                      <Text
-                        style={[
-                          styles.rowDev,
-                          late ? { color: mm.colors.roseDeep } : early ? { color: theme.colors.accentText } : { color: theme.colors.textSub },
-                        ]}
-                      >
-                        {late ? `晚 ${Math.round(dev)} 天` : early ? `早 ${Math.round(-dev)} 天` : '准时'}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-              {data.recs.length > MAX_ROWS ? (
-                <Text style={styles.more}>
-                  仅显示最近 {MAX_ROWS} 个周期（共 {data.recs.length} 个）
-                </Text>
-              ) : null}
-
-              <Text style={styles.foot}>
-                正常周期 21–35 天；周期间波动大于 7 天通常视为不规律（ACOG）。「晚 / 早」是相对你自己的平均值，
-                不构成医学诊断。
-              </Text>
-            </>
-          ) : null}
+          {/* ★ 2026-10-10（用户：逐周期明细无实际意义 → 整段移除，不再提供该展开区 */}
         </>
       )}
     </View>
@@ -266,17 +224,14 @@ const styles = StyleSheet.create({
   rangeScale: { flexDirection: 'row', justifyContent: 'space-between' },
   rangeScaleText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   rangeNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  // ⑤ 逐周期明细（★ 2026-10-09：mhRow 折叠头 + 描边分隔行，对齐 .mhRow/.cycRow）
+  // ⑤ 逐周期明细（★ 2026-10-10：灰底折叠头统一去掉 → 无灰底无方框，仅顶部发丝线 + 左标签 + 右 chevron）
   mhRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
+    marginTop: theme.space.sm,
     paddingVertical: theme.sp(2.25),
-    paddingHorizontal: theme.space.sm,
+    paddingHorizontal: 0,
   },
   mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
   mhChev: {

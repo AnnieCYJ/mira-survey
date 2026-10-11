@@ -297,9 +297,9 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
  * 蓝实线 = 今天逐样本原始数据
  * 灰色阴影 = 睡眠时段
  */
-export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAxis = false, variant, peakHourOverride }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string; /** ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：true 时不画左侧数值轴与网格刻度，绘图区吃满整宽 */ hideYAxis?: boolean; /** ★ 2026-10-09：睡眠恢复详情页「睡眠节律」卡用 sleep 变体 = 单条亮绿曲线，与 sleep-recovery-preview.html 一致；不画 14 天基线/峰值点/睡眠阴影 */ variant?: 'sleep'; /** ★ 2026-10-10：强制峰值竖线落在指定小时（覆盖自动检测）。睡眠节律卡用来让曲线峰值线对齐 14 天节律峰值，与文字/洞察页同源 */ peakHourOverride?: number }) {
+export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAxis = false, variant, peakHourOverride, height }: { r: CortisolRhythmResult; sleepWindow?: { bedHour: number; wakeHour: number } | null; fillGaps?: boolean; mainDayDk?: string; /** ★ 2026-10-08（用户：昼夜节律详情页不该展示纵坐标）：true 时不画左侧数值轴与网格刻度，绘图区吃满整宽 */ hideYAxis?: boolean; /** ★ 2026-10-09：睡眠恢复详情页「睡眠节律」卡用 sleep 变体 = 单条亮绿曲线，与 sleep-recovery-preview.html 一致；不画 14 天基线/峰值点/睡眠阴影 */ variant?: 'sleep'; /** ★ 2026-10-10：强制峰值竖线落在指定小时（覆盖自动检测）。睡眠节律卡用来让曲线峰值线对齐 14 天节律峰值，与文字/洞察页同源 */ peakHourOverride?: number; /** ★ 2026-10-10（用户：昼夜节律详情页图太小）：覆盖默认 chart.h.s 绘图高度（详情页传 chart.h.m 放大到详情单指标档） */ height?: number }) {
   const [W, setW] = React.useState(0);  // ★ 等 onLayout 拿真实宽度
-  const H = chart.h.s;  // ★ 规范：S 档 96（原 120，与上方 72 自相矛盾）
+  const H = height ?? chart.h.s;  // ★ 规范：S 档 96（原 120，与上方 72 自相矛盾）；详情页可传 chart.h.m 放大
   // ★ 2026-10-09：sleep 变体（睡眠节律卡）= 单条亮绿曲线，匹配预览；
   //   insight 变体（默认）= 青色今日线 + 绿色虚线基线 + 峰值点 + 睡眠阴影。
   const isSleep = variant === 'sleep';

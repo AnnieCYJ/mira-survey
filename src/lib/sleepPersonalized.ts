@@ -138,10 +138,15 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
   ];
   const physScores: number[] = [];
   for (const m of metricDefs) {
-    const xs = healthStore.getMetricDailyMeans(m.key, 31);
-    if (xs.length < 2) continue;
-    const today = xs[0];
-    const hist = xs.slice(1);
+    const values: number[] = [];
+    for (let daysAgo = 0; daysAgo <= 30; daysAgo++) {
+      const dk = hsDayKey(nowMs - daysAgo * 86400000);
+      const v = healthStore.getMetricDailyMean(m.key, dk);
+      if (v != null) values.push(v);
+    }
+    if (values.length < 2) continue;
+    const today = values[0];
+    const hist = values.slice(1);
     const mean = hist.reduce((a, v) => a + v, 0) / hist.length;
     const variance = hist.reduce((a, v) => a + (v - mean) ** 2, 0) / Math.max(1, hist.length - 1);
     const sd = Math.max(Math.sqrt(variance), m.key === 'hrv' ? 3 : m.key === 'rr' ? 0.5 : 1);
@@ -150,9 +155,15 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
     physScores.push(Math.max(0, Math.min(100, 50 + z * 16.6)));
   }
   const physiologyCoverage = physScores.length / metricDefs.length;
-  const score = physScores.length >= 2
+  let score = physScores.length >= 2
     ? Math.round(res.score * 0.70 + (physScores.reduce((a, v) => a + v, 0) / physScores.length) * 0.30)
     : res.score;
+  // 保护规则：睡够且效率良好时，单一深睡估算误差不能把恢复分压到红色区间。
+  // 这是“核心睡眠达标下限”，不是把分数硬抬到满分。
+  const coreTotalOk = (tonight.s.total ?? 0) >= 420;
+  const coreAwake = (tonight.s.awake ?? 0) + (tonight.s.insomnia ?? 0);
+  const coreEffOk = coreAwake <= 0 || coreAwake / Math.max(1, tonight.s.total ?? 1) <= 0.15;
+  if (coreTotalOk && coreEffOk) score = Math.max(score, 60);
 
   return {
     score,
@@ -181,7 +192,7 @@ export function sleepRecoveryTag(
 ): string | undefined {
   if (score == null || !Number.isFinite(score)) return undefined;
   if (mode === 'relative') {
-    return score >= 58 ? '高于平时' : score >= 42 ? '与平时持平' : '低于平时';
+    return score >= 82 ? '高于平时' : score >= 68 ? '与平时持平' : '低于平时';
   }
   return score >= 80 ? '恢复良好' : score >= 60 ? '恢复中' : '恢复偏弱';
 }

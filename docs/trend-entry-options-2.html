@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>趋势图入口「上移」方案 · 第二轮</title>
+<style>
+  :root {
+    --cardBorder: #E8E6F2;
+    --ink: #1A1A1A;
+    --sub: #5F5F74;
+    --accent: #7C6AE0;
+    --accentText: #6153AF;
+    --accentSoft: rgba(124,106,224,0.12);
+    --limeMid: #BCCB62;
+    --limeSoft: #EAF0BE;
+    --limeDeep: #6E7A24;
+    --skyCore: #7FB4E8;
+    --purpleCore: #9B8AE8;
+    --roseCore: #E8909B;
+    --honeyCore: #E8B96A;
+    --neutralBg: rgba(138,138,168,0.16);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 32px 60px;
+    background: #F4F3F8;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); -webkit-font-smoothing: antialiased;
+  }
+  .page-head { max-width: 1560px; margin: 0 auto 26px; }
+  h1 { font-size: 25px; margin: 0 0 6px; letter-spacing: -0.4px; }
+  .lede { font-size: 13.5px; color: var(--sub); line-height: 1.75; max-width: 920px; }
+  .lede b { color: var(--ink); }
+  .note {
+    margin-top: 14px; padding: 13px 16px; border-radius: 12px;
+    background: #EEF4FF; border: 1px solid #CFDDF5; font-size: 12.5px; line-height: 1.75; color: #3A4E6B;
+  }
+
+  .row {
+    display: flex; gap: 26px; align-items: flex-start;
+    overflow-x: auto; padding: 8px 4px 26px; max-width: 1560px; margin: 0 auto;
+  }
+  .opt { flex: 0 0 auto; width: 330px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    padding: 4px 10px; border-radius: 20px; margin-bottom: 10px;
+  }
+  .badge.rec { background: var(--limeSoft); color: var(--limeDeep); }
+  .badge.alt { background: var(--accentSoft); color: var(--accentText); }
+  .badge.low { background: var(--neutralBg); color: #55557A; }
+
+  .phone {
+    width: 330px; height: 545px; border-radius: 40px; overflow: hidden; position: relative;
+    background: #FFFFFF;
+    box-shadow: 0 24px 50px -18px rgba(70,58,110,.28), 0 0 0 9px #1F1D1A;
+  }
+  .statusbar { display:flex; justify-content:space-between; padding:14px 24px 0; font-size:11px; font-weight:600; color:var(--ink); }
+  .page-title { font-size:21px; font-weight:600; color:var(--ink); margin:12px 20px 0; }
+
+  .chips { display:flex; gap:6px; padding:10px 20px 0; }
+  .chip {
+    flex:1; height:34; border-radius:10px; background:#F7F6FC; border:1px solid var(--cardBorder);
+    display:flex; align-items:center; justify-content:center; gap:4px; font-size:9.5px; color:var(--sub);
+  }
+  .chip i { width:8px; height:8px; border-radius:2px; display:inline-block; }
+
+  .panel { padding: 10px 20px 0; }
+  .pill {
+    margin: 8px 6px 0; padding:10px 14px; border-radius:14px;
+    background:#F7F6FC; font-size:11.5px; line-height:1.6; color:var(--sub); text-align:center;
+  }
+  .axis { display:flex; justify-content:space-between; padding:4px 2px 0; font-size:9.5px; color:var(--sub); }
+  .legend { display:flex; gap:10px; justify-content:center; margin-top:10px; font-size:10px; color:var(--sub); align-items:center; }
+  .lgdot { width:7px; height:7px; border-radius:4px; display:inline-block; margin-right:4px; vertical-align:middle; }
+
+  /* 入口区虚线框（仅预览标注用） */
+  .zone {
+    border: 1.5px dashed rgba(124,106,224,.45); border-radius: 12px;
+    padding: 6px 8px; margin-top: 10px;
+  }
+
+  .head-row { display:flex; align-items:center; justify-content:space-between; }
+  .head-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .head-sub { font-size: 10px; color: var(--sub); margin-left: 6px; font-weight: 400; }
+
+  .txtlink {
+    display:flex; align-items:center; gap:2px;
+    font-size:12.5px; font-weight:600; color:var(--accentText);
+  }
+  .cap-pill-soft {
+    display:flex; align-items:center; gap:5px; padding:6px 12px; border-radius:20px;
+    background:#F1EFFB; border:1px solid var(--cardBorder);
+    font-size:11.5px; font-weight:600; color:var(--accentText);
+  }
+  .cap-pill-solid {
+    display:flex; align-items:center; gap:4px; padding:7px 12px; border-radius:20px;
+    background:var(--accent); font-size:11.5px; font-weight:600; color:#fff;
+    box-shadow:0 3px 10px rgba(124,106,224,.3);
+  }
+  .chev-ring {
+    width:30px; height:30px; border-radius:15px; background:#FFFFFF;
+    border:1px solid var(--cardBorder); display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 8px rgba(80,60,140,.10);
+  }
+  .seg { display:flex; gap:4px; background:#F4F3FA; border-radius:14px; padding:3px; }
+  .seg span { padding:5px 11px; border-radius:11px; font-size:11px; color:var(--sub); font-weight:500; }
+  .seg span.on { background:#FFFFFF; color:var(--accentText); font-weight:600; box-shadow:0 1px 4px rgba(80,60,140,.12); }
+
+  .meta { margin-top:13px; font-size:12.5px; line-height:1.75; color:var(--sub); }
+  .meta .t { font-size:14px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+  .meta ul { margin:6px 0 0; padding-left:16px; }
+  .meta li { margin-bottom:2px; }
+  .verdict { margin-top:8px; font-weight:600; }
+  .v-good { color:#3F7A4F; }
+  .v-mid  { color:#B07820; }
+  .v-bad  { color:#B0524B; }
+
+  .compare { max-width:1560px; margin:6px auto 0; background:#fff; border-radius:16px; padding:22px 24px 8px; box-shadow:0 8px 24px -14px rgba(70,58,110,.2); }
+  .compare h2 { font-size:16.5px; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:18px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--cardBorder); vertical-align:top; }
+  th { color:var(--sub); font-weight:600; font-size:11.5px; letter-spacing:.3px; }
+  td b { color:var(--ink); }
+  code { background:rgba(0,0,0,.05); padding:1px 5px; border-radius:4px; font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>入口「上移到趋势图上方」· 第二轮方案</h1>
+  <p class="lede">
+    这一轮全部把入口放在<b>趋势图上方</b>。上方现在是「能量球 → 叙述胶囊」，
+    与趋势图之间没有标题行 —— 所以「上移」本质上是<b>给这张图补一个卡头</b>，
+    入口挂在卡头右侧。好处是彻底不压曲线；代价是首页第一屏<b>纵向要多吃约 24pt</b>。
+  </p>
+  <div class="note">
+    <b>空间账</b>：首页第一屏是纵向吸附的（<code>pageSnap</code> / <code>pageInner</code>），
+    圆环、胶囊、趋势图、时间轴、图例刚好排满。加一行卡头后，需要把
+    <code>EnergyBall</code> 的 size 系数 0.70 下调约 0.03～0.04，或从
+    <code>statusPill</code> 的 marginTop 再收 4pt 来补。
+    这两个旋钮都在文件里标注过，动之前先看注释。
+  </div>
+</div>
+
+<div class="row">
+
+  <!-- ===== E ===== -->
+  <div class="opt">
+    <div class="badge rec">方案 E（推荐）</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="chips">
+        <div class="chip"><i style="background:#D9D2F8"></i>状态</div>
+        <div class="chip"><i style="background:#EAF0BE"></i>睡眠</div>
+        <div class="chip"><i style="background:#FCE3E6"></i>情绪</div>
+        <div class="chip"><i style="background:#FBEBC8"></i>活动</div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <svg width="140" height="140" viewBox="0 0 120 120" style="display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <!-- 卡头：左标题 + 右文字链 -->
+        <div class="zone" style="padding:0;border:none">
+          <div class="head-row" style="margin-top:12px;padding:0 2px">
+            <span class="head-title">全天状态趋势</span>
+            <span class="txtlink">查看周月年
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        <div style="margin-top:6px">
+          <svg width="290" height="92" viewBox="0 0 290 92" style="display:block">
+            <line x1="0" y1="23" x2="290" y2="23" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="46" x2="290" y2="46" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="69" x2="290" y2="69" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 56 C 30 42, 46 38, 62 28 S 96 28, 112 38 S 148 58, 168 44 S 206 28, 226 40 S 262 60, 284 50"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="28" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="38" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="44" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="40" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图上方加卡头：左「全天状态趋势」+ 右「查看周月年 ›」</div>
+      新增一行卡头（≈24pt），左侧补上这张图一直缺的标题，右侧文字链用
+      <code>accentText</code>／12.5px／600。整行仍是卡的一部分，点哪都能进。
+      <ul>
+        <li>✓ 语义最清楚，和全 App「左标签 + 右箭头」折叠头语言完全一致</li>
+        <li>✓ 完全不压曲线任何像素</li>
+        <li>✓ 顺手补了这张图没有标题的问题</li>
+        <li>△ 一屏要多 24pt，需动 EnergyBall 系数或胶囊间距补</li>
+      </ul>
+      <div class="verdict v-good">✓ 推荐：清楚 + 语言统一</div>
+    </div>
+  </div>
+
+  <!-- ===== F ===== -->
+  <div class="opt">
+    <div class="badge alt">方案 F</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="chips">
+        <div class="chip"><i style="background:#D9D2F8"></i>状态</div>
+        <div class="chip"><i style="background:#EAF0BE"></i>睡眠</div>
+        <div class="chip"><i style="background:#FCE3E6"></i>情绪</div>
+        <div class="chip"><i style="background:#FBEBC8"></i>活动</div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <svg width="140" height="140" viewBox="0 0 120 120" style="display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <!-- 右上角外挂浅底胶囊，与图顶部齐平 -->
+        <div class="zone" style="border:none;padding:0;margin-top:10px;display:flex;justify-content:flex-end">
+          <span class="cap-pill-soft">周月年
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </div>
+
+        <div style="margin-top:2px">
+          <svg width="290" height="92" viewBox="0 0 290 92" style="display:block">
+            <line x1="0" y1="23" x2="290" y2="23" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="46" x2="290" y2="46" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="69" x2="290" y2="69" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 56 C 30 42, 46 38, 62 28 S 96 28, 112 38 S 148 58, 168 44 S 206 28, 226 40 S 262 60, 284 50"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="28" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="38" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="44" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="40" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">右上角外挂浅底描边胶囊「周月年 ›」</div>
+      保留「图右侧小按钮」的位置感，但<b>从垂直居中挪到图上边缘外侧</b>，
+      底色换 <code>#F1EFFB</code> + <code>cardBorder</code> 描边（比实心紫 C 克制）。
+      <ul>
+        <li>✓ 几乎不吃额外高度（胶囊与图顶对齐）</li>
+        <li>✓ 挪到顶部后不再压曲线峰值</li>
+        <li>△ 短词「周月年」需要一秒理解</li>
+      </ul>
+      <div class="verdict v-mid">～ 省空间，但要一点理解成本</div>
+    </div>
+  </div>
+
+  <!-- ===== G ===== -->
+  <div class="opt">
+    <div class="badge alt">方案 G</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="chips">
+        <div class="chip"><i style="background:#D9D2F8"></i>状态</div>
+        <div class="chip"><i style="background:#EAF0BE"></i>睡眠</div>
+        <div class="chip"><i style="background:#FCE3E6"></i>情绪</div>
+        <div class="chip"><i style="background:#FBEBC8"></i>活动</div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <svg width="140" height="140" viewBox="0 0 120 120" style="display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <!-- 图上方右侧：四连 chip，直达对应周期 -->
+        <div class="zone" style="border:none;padding:0;margin-top:10px;display:flex;justify-content:flex-end">
+          <div class="seg">
+            <span class="on">日</span><span>周</span><span>月</span><span>年</span>
+          </div>
+        </div>
+
+        <div style="margin-top:2px">
+          <svg width="290" height="92" viewBox="0 0 290 92" style="display:block">
+            <line x1="0" y1="23" x2="290" y2="23" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="46" x2="290" y2="46" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="69" x2="290" y2="69" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 56 C 30 42, 46 38, 62 28 S 96 28, 112 38 S 148 58, 168 44 S 206 28, 226 40 S 262 60, 284 50"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="28" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="38" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="44" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="40" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图上方右侧：「日 周 月 年」四连 chip，点了直达</div>
+      不做「先进详情再切 tab」的绕路 —— 在首页直接选周期，点「周」就落在详情页的周 tab。
+      用的是 App 里现成的 <code>SegTabs variant="chip"</code>。
+      <ul>
+        <li>✓ 路径最短，一次点击到位</li>
+        <li>✓ 顺带把"这里能看历史"这件事明示出来</li>
+        <li>△ 占宽度（约 175pt），左边放不下标题了</li>
+        <li>△ 与详情页里的 tab 语义重复，两处要同步</li>
+      </ul>
+      <div class="verdict v-mid">～ 效率最高，但重复了详情页 tab</div>
+    </div>
+  </div>
+
+  <!-- ===== H ===== -->
+  <div class="opt">
+    <div class="badge low">方案 H</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="chips">
+        <div class="chip"><i style="background:#D9D2F8"></i>状态</div>
+        <div class="chip"><i style="background:#EAF0BE"></i>睡眠</div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <svg width="140" height="140" viewBox="0 0 120 120" style="display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="217 289" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-size="19" font-weight="600" fill="#1A1A1A">平稳</text>
+            <text x="60" y="75" text-anchor="middle" font-size="11" fill="#5F5F74">状态指数 72</text>
+          </svg>
+        </div>
+        <div class="pill">昨晚睡得偏短，上午状态平稳，午后有轻微回落</div>
+
+        <!-- 图上方左侧标题 + 右侧圆形箭头按钮（对称卡头） -->
+        <div class="zone" style="border:none;padding:0;margin-top:12px">
+          <div class="head-row" style="padding:0 2px">
+            <span class="head-title">全天状态趋势<span class="head-sub">今天</span></span>
+            <span class="chev-ring">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        <div style="margin-top:2px">
+          <svg width="290" height="92" viewBox="0 0 290 92" style="display:block">
+            <line x1="0" y1="23" x2="290" y2="23" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="46" x2="290" y2="46" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <line x1="0" y1="69" x2="290" y2="69" stroke="rgba(120,120,180,0.08)" stroke-width="1"/>
+            <path d="M8 56 C 30 42, 46 38, 62 28 S 96 28, 112 38 S 148 58, 168 44 S 206 28, 226 40 S 262 60, 284 50"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="62" cy="28" r="3.4" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="112" cy="38" r="3.4" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="168" cy="44" r="3.4" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="226" cy="40" r="3.4" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图上方左侧标题「全天状态趋势 · 今天」+ 右侧圆形箭头按钮</div>
+      E 的变体：右侧不放文字，仍是<b>圆形箭头按钮</b>（30pt，白底 + <code>cardBorder</code> 描边 + 深墨箭头），
+      但位置从「图内垂直居中」挪到「图上方卡头右端」。
+      <ul>
+        <li>✓ 有标题 + 有按钮形状，两全</li>
+        <li>✓ 完全离开图表区域</li>
+        <li>△ 比 E 多占一点高度；仍是纯图标语义</li>
+      </ul>
+      <div class="verdict v-mid">～ 折中：有形状、有标题</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="compare">
+  <h2>位置维度：入口放哪儿</h2>
+  <table>
+    <thead>
+      <tr><th style="width:16%">位置</th><th style="width:30%">方案</th><th style="width:27%">优点</th><th>代价 / 风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>图内右侧</b><br>（现状）</td>
+        <td>A / D</td>
+        <td>零额外高度，紧贴数据，视线不离开图</td>
+        <td>压曲线；白底上圆底隐形（这是现在的问题根源）</td>
+      </tr>
+      <tr>
+        <td><b>图上方</b><br>（本轮）</td>
+        <td>E / F / G / H</td>
+        <td>完全不遮图；符合「先标题后内容」的阅读顺序；能给图补上缺失的标题</td>
+        <td>第一屏多吃 20–26pt，需下调 EnergyBall 系数或收胶囊间距来补</td>
+      </tr>
+      <tr>
+        <td><b>图下方</b></td>
+        <td>上一轮 B</td>
+        <td>不遮图；可和时间轴同行右对齐，几乎不占高</td>
+        <td>在视觉层级上属于"图注"，点击意图偏弱</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>形态维度：入口长什么样</h2>
+  <table>
+    <thead>
+      <tr><th style="width:16%">形态</th><th style="width:22%">方案</th><th style="width:24%">可发现性</th><th>适配场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>纯图标</b></td><td>A / D / H</td><td>中</td><td>空间紧、用户已形成习惯之后</td></tr>
+      <tr><td><b>文字 + 箭头</b></td><td>E / B</td><td class="v-good">高</td><td>入口语义需要被明确理解时（当前情况）</td></tr>
+      <tr><td><b>短词胶囊</b></td><td>F / C</td><td>高</td><td>想要"按钮感"但不想要长文案</td></tr>
+      <tr><td><b>周期 chip 组</b></td><td>G</td><td class="v-good">最高</td><td>希望一步直达、少一层跳转</td></tr>
+    </tbody>
+  </table>
+
+  <h2>四个「上方」方案速览</h2>
+  <table>
+    <thead>
+      <tr><th style="width:10%">方案</th><th style="width:30%">图上方长什么样</th><th style="width:20%">额外占高</th><th>一句话判断</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>E</b></td><td>左「全天状态趋势」标题 + 右「查看周月年 ›」</td><td>≈ 24pt</td><td class="v-good">最推荐 —— 清楚，且与全 App 折叠头语言一致</td></tr>
+      <tr><td><b>F</b></td><td>右上角浅底描边胶囊「周月年 ›」</td><td>≈ 0（与图顶齐平）</td><td>想省高度就选它，但要接受一秒理解成本</td></tr>
+      <tr><td><b>G</b></td><td>右上角「日 周 月 年」四连 chip</td><td>≈ 24pt</td><td>效率最高，代价是和详情页 tab 重复</td></tr>
+      <tr><td><b>H</b></td><td>左标题「全天状态趋势 · 今天」+ 右圆形箭头按钮</td><td>≈ 26pt</td><td>又要标题又要按钮形状时的折中</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

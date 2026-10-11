@@ -64,18 +64,20 @@ export function estimateOfflineMetricsForDay(dayKey: string, todayKey: string): 
     // ②′ 逐样本 stress 推算（真实全天形状，优先）。
     const fromStress = deriveFromStress(key, dayKey);
     if (fromStress.length > 0) {
-      healthStore.upsertBackfillSamples(k, dayKey, fromStress);
+      // ★ 2026-10-10：打上「推算日」标记（healthStore.MetricStore.derivedDays）。
+      //   皮质醇 UI 用它决定「推算日一律不出曲线」，其余指标用它标注数据来源。
+      healthStore.upsertBackfillSamples(k, dayKey, fromStress, { derived: true });
       filled++;
       continue;
     }
 
-    // ③ 退化兜底：有真实日聚合值 → 提升为正午单点（真实测值降采样，非推算）。
+    // ③退化兜底：有真实日聚合值 → 提升为正午单点（真实测值降采样，非推算）。
     const d = healthStore.getDay(k, dayKey);
     const dailyVal = d?.last ?? d?.mean;
     if (typeof dailyVal === 'number' && dailyVal > 0) {
       const start = parseDayKey(dayKey);
       const noon = Number.isFinite(start) ? start + 12 * 3600000 : Date.now();
-      healthStore.upsertBackfillSamples(k, dayKey, [{ t: noon, v: dailyVal }]);
+      healthStore.upsertBackfillSamples(k, dayKey, [{ t: noon, v: dailyVal }], { derived: true });
       filled++;
     }
   }

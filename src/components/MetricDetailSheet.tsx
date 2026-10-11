@@ -182,14 +182,21 @@ const styles = StyleSheet.create({
   },
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2) },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  statGrid: { flexDirection: 'row', marginBottom: theme.space.md },
+  /**
+   * ★ 2026-10-10（用户：「平均/最高/最低加个框，跟其他模块保持一致」）：
+   * 原来是 `rgba(255,255,255,0.6)` 半透明白底，在白底 sheet 上等于没有边界。
+   * 与 `MetricDetailScreen.statCell` 同步改成全站白卡规格（实底 + 1px 描边 + radius.md）。
+   */
+  statGrid: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.space.md },
   statCell: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    marginHorizontal: theme.sp(1),
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(1),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
   statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
   statValue: {

@@ -88,18 +88,15 @@ th{font-weight:640;color:var(--sub);font-size:11.5px;background:#FAFAF8}
 .legend i{display:inline-block;width:20px;height:0;border-top-width:2.4px;border-top-style:solid;vertical-align:middle;margin-right:6px}
 .legend i.dash{border-top-style:dashed}
 
-/* ════ 对比 ════ */
-.cmpHead{display:flex;align-items:flex-end;gap:18px;margin:2px 0 12px}
-.cmpNum{display:flex;flex-direction:column}
-.cmpNum .lab{font-size:11px;color:var(--sub)}
-.cmpNum .v{font-size:28px;font-weight:300;letter-spacing:-1px;line-height:1.05}
-.cmpNum .v.g{color:var(--limeDeep)} .cmpNum .v.n{color:var(--ink)}
-.cmpDelta{margin-left:auto;background:var(--pillBg);color:var(--pillFg);font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px}
-.diverge{position:relative;height:32px;background:#FAFAF8;border-radius:999px;border:1px solid var(--line);margin:6px 0 4px}
-.diverge .actual{position:absolute;inset:0;border-radius:999px;background:linear-gradient(90deg,#ECEAE5,#E2DFD8)}
-.diverge .mark{position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:999px;background:var(--limeDeep)}
-.diverge .mlabel{position:absolute;top:-19px;transform:translateX(-50%);font-size:10.5px;color:var(--limeDeep);font-weight:600;white-space:nowrap}
-.diverge .alabel{position:absolute;top:7px;left:8px;font-size:10.5px;color:var(--sub)}
+/* ════ 对比（干净版：去掉难看的渐变比例尺，仅留数字 + delta）════ */
+.cmpRow{display:flex;justify-content:space-between;align-items:flex-end;margin:2px 0 10px}
+.cmpStat{display:flex;flex-direction:column}
+.cmpStat .lab{font-size:11px;color:var(--sub);margin-bottom:2px}
+.cmpStat .num{font-size:30px;font-weight:300;letter-spacing:-1px;line-height:1.04}
+.cmpStat .num.g{color:var(--limeDeep)} .cmpStat .num.n{color:var(--ink)}
+.cmpStat .num small{font-size:13px;font-weight:400;color:var(--sub);margin-left:2px}
+.cmpDeltaWide{display:inline-flex;align-items:center;gap:6px;background:var(--pillBg);color:var(--pillFg);font-size:13px;font-weight:600;padding:6px 14px;border-radius:999px}
+.cmpDeltaWide .arr{font-size:11px;font-weight:700;line-height:1}
 .factor{display:flex;align-items:center;gap:10px;margin:11px 0}
 .factor .fname{width:64px;font-size:12px;flex-shrink:0}
 .factor .ftrack{flex:1;height:12px;background:#FAFAF8;border-radius:999px;overflow:hidden}
@@ -182,21 +179,15 @@ th{font-weight:640;color:var(--sub);font-size:11.5px;background:#FAFAF8}
         </div>
       </div>
 
-      <!-- 对比 -->
+      <!-- 对比（干净版：数字 + delta 胶囊，无渐变比例尺） -->
       <div class="panel">
         <div class="ph"><div class="t" id="cmpTitle">与实际年龄对比</div></div>
-        <div class="cmpHead">
-          <div class="cmpNum"><span class="lab">身体年龄</span><span class="v g" id="cmpBody">28.3</span></div>
-          <div class="cmpNum"><span class="lab">实际年龄</span><span class="v n">31.0</span></div>
-          <div class="cmpDelta" id="cmpDelta">年轻 2.7 岁</div>
+        <div class="cmpRow">
+          <div class="cmpStat"><span class="lab">身体年龄</span><span class="num g" id="cmpBody">28.3<small> 岁</small></span></div>
+          <div class="cmpStat" style="align-items:flex-end"><span class="lab">实际年龄</span><span class="num n">31.0<small> 岁</small></span></div>
         </div>
-        <div class="diverge">
-          <div class="actual"></div>
-          <div class="alabel">实际年龄</div>
-          <div class="mark" id="mark" style="left:14%"></div>
-          <div class="mlabel" id="mlabel" style="left:14%">身体年龄 28.3</div>
-        </div>
-        <div style="font-size:11.5px;color:var(--sub);margin:18px 0 2px" id="factorTitle">影响因素贡献（岁）</div>
+        <div class="cmpDeltaWide"><span class="arr" id="cmpArr">↓</span><span id="cmpDelta">年轻 2.7 岁</span></div>
+        <div style="font-size:11.5px;color:var(--sub);margin:16px 0 2px" id="factorTitle">影响因素贡献（岁）</div>
         <div id="factors"></div>
         <div class="cmpNote">身体年龄 = 实际年龄 + 活力调整；综合睡眠恢复 / 运动心肺 / 代谢 / 节律压力估算，仅作健康参考，非医学诊断。</div>
       </div>

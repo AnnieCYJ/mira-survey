@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 工具页 · 改善工具箱 / 我的建议 改版探索</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --ink-soft:#5C574F; --ink-faint:#706A61;
+    --card:#FFFFFF; --border:rgba(31,29,26,0.09); --busy:rgba(31,29,26,0.06);
+    --lime-soft:#EAF0BE; --lime-mid:#BCCB62; --lime-deep:#6E7A24; --lime-tint:#F6F7DC; --lime-core:#D5E384;
+    --rose-soft:#FCE7F0; --rose-mid:#F6B3D0; --rose-deep:#C9598A; --rose-tint:#FDF0F6; --rose-core:#F2A3C6;
+    --sky-soft:#E3EBFE; --sky-mid:#B9CCF9; --sky-deep:#4C74C9; --sky-tint:#F0F4FE; --sky-core:#7EA6F8;
+    --purple-soft:#E7E1FB; --purple-mid:#C7B9F2; --purple-deep:#6E58C8; --purple-tint:#F4EDFC; --purple-core:#9D8AF0;
+    --honey-soft:#FBEFD6; --honey-mid:#F3D49B; --honey-deep:#B98A2E; --honey-tint:#FDF7E9; --honey-core:#F0C46E;
+    --r-card:16px; --r-sm:12px; --r-pill:999px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{font-family:var(--font);background:#F3F1EC;color:var(--ink);padding:34px 22px 60px;}
+  .wrap{max-width:1340px;margin:0 auto;}
+  header.page{margin-bottom:8px;}
+  h1{font-size:26px;font-weight:600;letter-spacing:-0.4px;}
+  .sub{color:var(--ink-soft);font-size:14px;line-height:1.6;margin-top:6px;max-width:880px;}
+  .note{margin-top:14px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;font-size:13px;line-height:1.7;color:var(--ink-soft);}
+  .note b{color:var(--ink);font-weight:600;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}
+  .chip{font-size:12px;padding:6px 12px;border-radius:var(--r-pill);background:#fff;border:1px solid var(--border);color:var(--ink-soft);}
+  .chip b{color:var(--ink);font-weight:600;}
+
+  .grid-row{display:flex;flex-wrap:wrap;gap:26px;margin-top:30px;align-items:flex-start;}
+  .col{flex:1 1 300px;min-width:280px;max-width:340px;}
+  .cap{margin-top:14px;}
+  .cap .t{font-size:15px;font-weight:600;}
+  .cap .rec{display:inline-block;margin-left:8px;font-size:11px;font-weight:600;color:var(--lime-deep);background:var(--lime-soft);padding:2px 9px;border-radius:var(--r-pill);}
+  .cap .d{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin-top:5px;}
+  .cap .ref{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+
+  /* ---- phone frame ---- */
+  .phone{background:#fff;border-radius:40px;padding:10px;box-shadow:0 14px 44px rgba(31,29,26,0.14);border:1px solid rgba(31,29,26,0.06);}
+  .screen{background:#fff;border-radius:32px;overflow:hidden;padding:16px 16px 20px;height:600px;display:flex;flex-direction:column;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-soft);font-weight:600;padding:2px 4px 8px;}
+  .statusbar .bat{width:22px;height:11px;border:1.4px solid var(--ink-soft);border-radius:3px;position:relative;}
+  .statusbar .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-soft);border-radius:1px;}
+  .statusbar .bat::before{content:"";position:absolute;left:1px;top:1px;bottom:1px;width:14px;background:var(--ink-soft);border-radius:1px;}
+  .hd{padding:6px 2px 0;}
+  .hd .t1{font-size:27px;font-weight:500;letter-spacing:-0.6px;color:var(--ink);}
+  .hd .t2{font-size:12.5px;color:var(--ink-soft);margin-top:3px;}
+
+  .seg{display:flex;background:var(--busy);border-radius:var(--r-pill);padding:4px;margin:14px 0 12px;position:relative;}
+  .seg .th{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:var(--lime-soft);border-radius:var(--r-pill);}
+  .seg .sb{flex:1;text-align:center;font-size:12.5px;font-weight:500;color:var(--ink-soft);padding:7px 0;z-index:1;}
+  .seg .sb.on{color:var(--lime-deep);font-weight:600;}
+
+  .content{flex:1;overflow:hidden;}
+  .grid2{display:flex;flex-wrap:wrap;gap:10px;}
+  .cell{width:calc(50% - 5px);}
+
+  /* scheme A: image cards */
+  .imgcard{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:1/1.22;box-shadow:0 3px 10px rgba(31,29,26,0.08);}
+  .imgcard .mask{position:absolute;left:0;right:0;bottom:0;height:64%;background:linear-gradient(to top,rgba(255,255,255,0.92),rgba(255,255,255,0.18),rgba(255,255,255,0));border-bottom-left-radius:14px;border-bottom-right-radius:14px;}
+  .imgcard .nm{position:absolute;bottom:11px;left:0;right:0;text-align:center;font-size:13px;font-weight:500;color:var(--ink-soft);}
+
+  /* scheme B: tint tiles */
+  .tile{background:var(--c-tint);border-radius:20px;padding:13px 13px 15px;display:flex;flex-direction:column;min-height:118px;}
+  .tile .ic{width:42px;height:42px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:23px;box-shadow:0 2px 6px rgba(31,29,26,0.07);}
+  .tile .nm{font-size:15px;font-weight:500;color:var(--ink);margin-top:11px;}
+  .tile .cp{font-size:11px;color:var(--ink-faint);margin-top:3px;line-height:1.4;}
+
+  /* scheme C: grouped list */
+  .grp{margin-bottom:6px;}
+  .grp-h{display:flex;align-items:center;gap:7px;margin:12px 2px 7px;}
+  .grp-h .ge{font-size:15px;}
+  .grp-h .gd{font-size:13px;font-weight:600;color:var(--c-deep);}
+  .grp-h .gc{font-size:11px;color:var(--ink-faint);margin-left:auto;}
+  .row{display:flex;align-items:center;gap:11px;padding:10px 4px;border-bottom:1px solid rgba(31,29,26,0.06);}
+  .row:last-child{border-bottom:none;}
+  .row .ric{width:40px;height:40px;border-radius:12px;background:var(--c-soft);display:flex;align-items:center;justify-content:center;font-size:21px;flex:none;}
+  .row .rnm{font-size:14px;font-weight:500;color:var(--ink);}
+  .row .rcp{font-size:11px;color:var(--ink-faint);margin-top:2px;}
+  .row .chev{margin-left:auto;color:var(--ink-faint);font-size:16px;}
+
+  /* scheme D: spotlight + scroll */
+  .spot{border-radius:18px;padding:16px;display:flex;flex-direction:column;}
+  .spot .se{font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--c-deep);}
+  .spot .se2{font-size:30px;margin:8px 0 4px;}
+  .spot .sn{font-size:18px;font-weight:600;color:var(--ink);}
+  .spot .sc{font-size:12px;color:var(--ink-soft);margin-top:3px;line-height:1.5;}
+  .spot .sbtn{align-self:flex-start;margin-top:12px;background:var(--c-deep);color:#fff;font-size:12.5px;font-weight:600;padding:8px 18px;border-radius:var(--r-pill);}
+  .sr-label{font-size:11px;color:var(--ink-faint);margin:14px 2px 8px;}
+  .sr{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;}
+  .sr .mini{flex:none;width:90px;background:var(--c-tint);border-radius:16px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;}
+  .sr .mini .me{font-size:24px;}
+  .sr .mini .mn{font-size:12px;font-weight:500;color:var(--ink);margin-top:7px;}
+
+  /* ---- 我的建议 section ---- */
+  .sec-title{font-size:19px;font-weight:600;margin:46px 0 4px;}
+  .sec-sub{font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:18px;max-width:900px;}
+  .sg-row{display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;}
+  .sg{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;width:300px;position:relative;}
+  .sg::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;background:var(--lime-mid);border-radius:2px;}
+  .sg .sh{font-size:14.5px;font-weight:600;color:var(--ink);padding-left:8px;}
+  .sg .sev{font-size:11.5px;color:var(--ink-faint);margin-top:5px;padding-left:8px;line-height:1.5;}
+  .sg .sf{display:flex;align-items:center;gap:10px;margin-top:11px;padding-left:8px;}
+  .sg .tag{font-size:11px;font-weight:600;color:var(--lime-deep);background:var(--lime-soft);padding:3px 10px;border-radius:var(--r-pill);}
+  .sg .undo{font-size:12px;color:var(--ink-faint);margin-left:auto;}
+  .sg-alt{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;width:300px;}
+  .sg-alt .ah{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px;}
+  .board{display:flex;flex-wrap:wrap;gap:8px;}
+  .board .bc{font-size:12px;font-weight:500;color:var(--c-deep);background:var(--c-tint);border:1px solid var(--c-soft);padding:7px 12px;border-radius:var(--r-pill);}
+  .board .bc small{display:block;font-size:10px;color:var(--ink-faint);font-weight:400;margin-top:1px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Mira 工具页改版探索</h1>
+    <div class="sub">
+      顶部「每日推荐牌堆」已按你的要求隐藏（首页气泡已经承担建议入口，牌堆冗余）。下面是「改善工具箱（六宫格）」+「我的建议」的四种 UI 范式，全部用 Mira 现有设计 token 还原。
+      你想往哪个方向走，或要我把某一种直接落到代码里，告诉我即可。
+    </div>
+    <div class="legend">
+      <span class="chip"><b>参考来源</b></span>
+      <span class="chip">A · App Store 分类卡 / AstroWind</span>
+      <span class="chip">B · iOS 主屏磁贴 / Notion</span>
+      <span class="chip">C · Linear 分区编辑（推荐）</span>
+      <span class="chip">D · Apple Fitness 摘要 / Stripe</span>
+    </div>
+  </header>
+
+  <div class="note">
+    <b>核心判断：</b>六个工具天然落在 Mira 的三条产品主线上 —— <b>身体活力 / 情绪压力 / 周期节律</b>。
+    当前 2×3 平铺看不出这条主线，而方案 C 把它们按维度分组，既更贴合 Mira「多维交叉」的叙事，也顺手解决了「六个图标摆一起找不到重点」的问题。
+    无图方案 B 还顺带解决了照片带来的包体和加载问题。
+  </div>
+
+  <div class="grid-row" id="phones"></div>
+
+  <div class="sec-title">「我的建议」卡片处理</div>
+  <div class="sec-sub">
+    首页气泡里被你点「有用」的建议会沉淀到这里。四个方案的网格不同，但「我的建议」建议<b>统一用同一张白卡底</b>（下方左），避免两套视觉语言打架；
+    如果你想要更轻的呈现，也可以换成「看板 / 时间线」式的小胶囊（下方右）。
+  </div>
+  <div class="sg-row" id="sugs"></div>
+</div>
+
+<script>
+  const PAL = {
+    rose:{soft:'#FCE7F0',mid:'#F6B3D0',deep:'#C9598A',tint:'#FDF0F6'},
+    purple:{soft:'#E7E1FB',mid:'#C7B9F2',deep:'#6E58C8',tint:'#F4EDFC'},
+    honey:{soft:'#FBEFD6',mid:'#F3D49B',deep:'#B98A2E',tint:'#FDF7E9'},
+    sky:{soft:'#E3EBFE',mid:'#B9CCF9',deep:'#4C74C9',tint:'#F0F4FE'},
+    lime:{soft:'#EAF0BE',mid:'#BCCB62',deep:'#6E7A24',tint:'#F6F7DC'},
+  };
+  const TOOLS = [
+    {n:'情绪调节', e:'💗', t:'rose',  c:'缓一缓，换个状态'},
+    {n:'提升颜值', e:'✨', t:'purple',c:'跟着周期养气色'},
+    {n:'营养搭配', e:'🍱', t:'honey', c:'吃对，激素更稳'},
+    {n:'运动建议', e:'🏃', t:'sky',   c:'今天怎么动'},
+    {n:'稳定睡眠', e:'🌙', t:'lime',  c:'睡好，恢复更快'},
+    {n:'知识科普', e:'📚', t:'purple',c:'读懂你的身体'},
+  ];
+  const phoneHead = `
+    <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
+    <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
+    <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>`;
+
+  // Scheme A — image cards (current language, refined)
+  function schemeA(){
+    const cells = TOOLS.map(t=>{
+      const p = PAL[t.t];
+      return `<div class="cell"><div class="imgcard" style="background:linear-gradient(150deg,${p.tint},${p.soft} 58%,${p.mid});">
+        <div class="mask"></div><div class="nm">${t.n}</div></div></div>`;
+    }).join('');
+    return `<div class="content"><div class="grid2">${cells}</div></div>`;
+  }
+  // Scheme B — tint tiles (no photos)
+  function schemeB(){
+    const cells = TOOLS.map(t=>{
+      const p = PAL[t.t];
+      return `<div class="cell"><div class="tile" style="--c-tint:${p.tint}">
+        <div class="ic">${t.e}</div><div class="nm">${t.n}</div><div class="cp">${t.c}</div></div></div>`;
+    }).join('');
+    return `<div class="content"><div class="grid2">${cells}</div></div>`;
+  }
+  // Scheme C — grouped by Mira's 3 dimensions
+  function schemeC(){
+    const groups = [
+      {d:'身体活力', e:'🌿', t:'lime',  items:['运动建议','营养搭配','稳定睡眠']},
+      {d:'情绪压力', e:'🫧', t:'rose',  items:['情绪调节']},
+      {d:'周期节律', e:'🌸', t:'purple',items:['提升颜值','知识科普']},
+    ];
+    let html='<div class="content">';
+    groups.forEach(g=>{
+      const p=PAL[g.t];
+      html += `<div class="grp" style="--c-soft:${p.soft};--c-deep:${p.deep};">
+        <div class="grp-h"><span class="ge">${g.e}</span><span class="gd">${g.d}</span><span class="gc">${g.items.length} 项</span></div>`;
+      g.items.forEach(name=>{
+        const tool = TOOLS.find(x=>x.n===name);
+        html += `<div class="row"><div class="ric">${tool.e}</div>
+          <div><div class="rnm">${name}</div><div class="rcp">${tool.c}</div></div>
+          <div class="chev">›</div></div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div>`;
+    return html;
+  }
+  // Scheme D — spotlight + horizontal scroll
+  function schemeD(){
+    const feat = TOOLS.find(t=>t.n==='运动建议');
+    const rest = TOOLS.filter(t=>t.n!=='运动建议');
+    const p = PAL[feat.t];
+    const minis = rest.map(t=>{
+      const pp=PAL[t.t];
+      return `<div class="mini" style="--c-tint:${pp.tint}"><div class="me">${t.e}</div><div class="mn">${t.n}</div></div>`;
+    }).join('');
+    return `<div class="content">
+      <div class="spot" style="background:linear-gradient(135deg,${p.tint},${p.soft});--c-deep:${p.deep};">
+        <div class="se">今日推荐</div><div class="se2">${feat.e}</div>
+        <div class="sn">${feat.n}</div><div class="sc">今天状态不错，动一动正合适</div>
+        <div class="sbtn">去试试</div>
+      </div>
+      <div class="sr-label">更多工具</div>
+      <div class="sr">${minis}</div>
+    </div>`;
+  }
+
+  const phones = [
+    {cap:'A · 图文宫格（现款精修）', rec:false, ref:'参考 App Store 分类卡 / AstroWind',
+     d:'保留你现在的「图铺满 + 底部蒙层 + 名称」语言，只收紧间距与圆角。改动最小、最稳，但照片仍是包体/加载负担。', body:schemeA()},
+    {cap:'B · 柔色磁贴（无图）', rec:false, ref:'参考 iOS 主屏磁贴 / Notion',
+     d:'去掉照片，每张用「柔色底 + 白底图标 + 名称 + 一句说明」。更轻、更快、不依赖图库，信息密度更高。', body:schemeB()},
+    {cap:'C · 三维分组（推荐）', rec:true, ref:'参考 Linear 分区编辑',
+     d:'按 Mira 三条主线（身体活力 / 情绪压力 / 周期节律）分组，把六个工具讲成「一套体系」而不是六个散图标。最贴合产品叙事。', body:schemeC()},
+    {cap:'D · 焦点 + 列表', rec:false, ref:'参考 Apple Fitness 摘要 / Stripe',
+     d:'顶部一张「今日推荐」大卡突出当天重点，其余工具进横向滑动小卡。强调「今天该做什么」，但六工具被拆成主次。', body:schemeD()},
+  ];
+
+  document.getElementById('phones').innerHTML = phones.map(p=>`
+    <div class="col">
+      <div class="phone"><div class="screen">${phoneHead}${p.body}</div></div>
+      <div class="cap"><div class="t">${p.cap}${p.rec?'<span class="rec">推荐</span>':''}</div>
+        <div class="d">${p.d}</div><div class="ref">${p.ref}</div></div>
+    </div>`).join('');
+
+  // 我的建议 cards
+  const sugs = [
+    {h:'睡前 4-7-8 呼吸', ev:'深睡连着 3 天变好', t:'lime'},
+    {h:'记录今天的心情', ev:'HRV 回升 8%', t:'rose'},
+  ];
+  const cardHTML = sugs.map(s=>`<div class="sg">
+      <div class="sh">${s.h}</div>
+      <div class="sev">${s.ev}</div>
+      <div class="sf"><span class="tag">已留存</span><span class="undo">撤销</span></div>
+    </div>`).join('');
+  const altHTML = `<div class="sg-alt"><div class="ah">替代：看板 / 时间线小胶囊</div>
+      <div class="board">
+        <span class="bc" style="--c-tint:${PAL.lime.tint};--c-soft:${PAL.lime.soft};--c-deep:${PAL.lime.deep};">睡前呼吸<small>深睡↑3天</small></span>
+        <span class="bc" style="--c-tint:${PAL.rose.tint};--c-soft:${PAL.rose.soft};--c-deep:${PAL.rose.deep};">记心情<small>HRV↑8%</small></span>
+        <span class="bc" style="--c-tint:${PAL.sky.tint};--c-soft:${PAL.sky.soft};--c-deep:${PAL.sky.deep};">散步<small>今天已完成</small></span>
+      </div></div>`;
+  document.getElementById('sugs').innerHTML = cardHTML + altHTML;
+</script>
+</body>
+</html>

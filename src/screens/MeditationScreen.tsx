@@ -16,6 +16,11 @@ import { RingBle } from '../ble/RingBleManager';
 import { buildToolCtx, recommendTools, markRecDone, initRecDone } from '../lib/toolRecommend';
 
 
+// ★ 2026-10-11（用户：首页气泡已含建议，工具页顶部牌堆冗余 → 先隐藏）。
+//   留这个开关，回头想恢复顶部牌堆，改成 true 即可，无需动结构。
+const SHOW_TOP_DECK = false;
+
+
 const TOOL_IMAGES: Record<string, number> = {
   '情绪调节': require('../assets/card_emotion.jpg'),
   '提升颜值': require('../assets/card_recovery.jpg'),
@@ -25,8 +30,6 @@ const TOOL_IMAGES: Record<string, number> = {
   '知识科普': require('../assets/card_learn.png'),
 };
 import { useAppState } from '../state/AppState';
-import TodayTimelineCard from '../components/TodayTimelineCard';
-import { buildTodayTimeline } from '../lib/buildTodayTimeline';
 import SuggestionCard from '../components/SuggestionCard';
 import { listHabits, undoHabit, type HabitEntry } from '../data/habitSuggestions';
 
@@ -60,17 +63,7 @@ export default function MeditationScreen() {
     outputRange: [theme.sp(1), theme.sp(1) + tabItemW],
   });
 
-  // 今日旅程卡片（从首页 TodayScreen 迁到工具页最底部）
-  const timelineCard = useMemo(() => {
-    let result;
-    try { result = buildTodayTimeline(); } catch { result = null; }
-    if (!result) return null;
-    return (
-      <View style={{ marginTop: theme.sp(3) }}>
-        <TodayTimelineCard title="今日旅程" dateLabel={result.dateLabel} items={result.items} />
-      </View>
-    );
-  }, []);
+  // ★ 2026-10-10（用户）：今日旅程已迁到日历页「日」Tab（JourneyDayView 曲线流），工具页不再显示。
   type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
   const navigation = useNavigation<NavProp>();
 
@@ -153,12 +146,12 @@ export default function MeditationScreen() {
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
         </Animated.View>
 
-      {/* v18.39：顶部牌堆 = 每日数据驱动的三张推荐卡（原固定任务废弃）；v18.88 点卡片翻面看科普，查看详情跳阅读页 */}
-      {dailyTools.length > 0 ? (
+      {/* ★ 2026-10-11（用户：首页气泡已含建议，工具页顶部牌堆冗余 → 先隐藏，可经 SHOW_TOP_DECK 一键恢复） */}
+      {SHOW_TOP_DECK && (dailyTools.length > 0 ? (
         <TaskDeck tools={dailyTools} onComplete={handleComplete} onOpenArticle={openArticle} onDoTask={doTask} />
       ) : (
         <TaskDeck tools={tools} onComplete={handleComplete} onOpenArticle={openArticle} onDoTask={doTask} />
-      )}
+      ))}
 
       {/* ★ 2026-10-08（用户：工具页中间 tab 与其他模块不一致）→ 统一为 App 通用分段控件 */}
       <View style={styles.segTrack} onLayout={(e) => setTabW(e.nativeEvent.layout.width)}>
@@ -220,8 +213,6 @@ export default function MeditationScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
-        {timelineCard}
 
         </>
       ) : (

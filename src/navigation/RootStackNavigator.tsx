@@ -16,6 +16,7 @@ import StatusTrendDetailScreen from '../screens/StatusTrendDetailScreen';
 import SleepDetailScreen from '../screens/SleepDetailScreen';
 import BpDetailScreen from '../screens/BpDetailScreen';
 import EcgDetailScreen from '../screens/EcgDetailScreen';
+import HealthAgeDetailScreen from '../screens/HealthAgeDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
 import BreathingScreen from '../screens/BreathingScreen';
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   EcgDetail: undefined;
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
+  HealthAgeDetail: undefined;
   EmotionLog: undefined;
   EmotionIntervene: undefined;
   Breathing: undefined;
@@ -117,6 +119,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="EmotionCognitiveDetail"
         component={EmotionCognitiveDetailScreen}
+        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+      />
+      <Stack.Screen
+        name="HealthAgeDetail"
+        component={HealthAgeDetailScreen}
         options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
       />
       <Stack.Screen

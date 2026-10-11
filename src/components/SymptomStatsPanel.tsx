@@ -241,17 +241,14 @@ const styles = StyleSheet.create({
   },
   freqFill: { height: '100%', borderRadius: theme.radius.pill },
   freqValue: { width: theme.sp(18), textAlign: 'right', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  // ★ 2026-10-09（collapse-unified-preview .mhRow）：「查看完整症状分布」折叠头
+  // ★ 2026-10-10（用户：灰底折叠头统一去掉 → 无灰底无方框，仅顶部发丝线 + 左标签 + 右 chevron）
   mhRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
+    marginTop: theme.space.sm,
     paddingVertical: theme.sp(2.25),
-    paddingHorizontal: theme.space.sm,
+    paddingHorizontal: 0,
   },
   mhLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold as any },
   mhChev: {

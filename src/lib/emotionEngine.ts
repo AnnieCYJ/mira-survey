@@ -155,6 +155,8 @@ export function computeEmotionSnapshot(nowMs = Date.now(), cycleOverride?: Cycle
   const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, today, nowMs, { maxPoints: 500 });
   const snsPts = healthStore.getTimeRange('sns' as MetricKey, today, nowMs, { maxPoints: 500 });
   const hrPts = healthStore.getTimeRange('hr' as MetricKey, today, nowMs, { maxPoints: 500 });
+  // 设备原生 emotionLevel：协议值域约 -10～+10，作为情绪方向主输入。
+  const emotionPts = healthStore.getTimeRange('emotion' as MetricKey, today, nowMs, { maxPoints: 120 });
 
   const hasHrv = hrvPts.length >= 1;
   const arousalSrcs = [edaPts.length, snsPts.length, hrPts.length].filter(n => n >= 1).length;
@@ -171,6 +173,7 @@ export function computeEmotionSnapshot(nowMs = Date.now(), cycleOverride?: Cycle
   const hrvNow = hrvPts.length > 0 ? hrvPts[hrvPts.length - 1].v : null;
   const snsNow = snsPts.length > 0 ? snsPts[snsPts.length - 1].v : null;
   const hrNow = hrPts.length > 0 ? hrPts[hrPts.length - 1].v : null;
+  const deviceEmotionNow = emotionPts.length > 0 ? clamp(emotionPts[emotionPts.length - 1].v, -10, 10) : null;
 
   const edaNorm = edaNow != null ? personalNorm(edaNow, edaRange) : null;
   const hrvNorm = hrvNow != null ? personalNorm(hrvNow, hrvRange) : null;
@@ -203,7 +206,10 @@ export function computeEmotionSnapshot(nowMs = Date.now(), cycleOverride?: Cycle
   // === VALENCE (Threat-Challenge) ===
   const hrvPreservation = hrvNorm ?? 0;
   let valenceScore: number;
-  if (arousalScore > 60) {
+  if (deviceEmotionNow != null) {
+    // 原生情绪值决定正负方向；HRV/EDA 只决定唤醒度和标签细分。
+    valenceScore = deviceEmotionNow * 10;
+  } else if (arousalScore > 60) {
     // High arousal: Challenge (+) vs Threat (-) determined by RMSSD
     valenceScore = hrvPreservation * 100;
   } else {
@@ -215,8 +221,8 @@ export function computeEmotionSnapshot(nowMs = Date.now(), cycleOverride?: Cycle
   let label: EmotionLabel;
   let reason: string;
   if (arousalScore > 55) {
-    if (valenceScore > 20) { label = 'focused'; reason = '身体紧绷但心态积极 — 心流状态'; }
-    else { label = 'stressed'; reason = '身体紧绷且心率变乱 — 感到威胁'; }
+    if (valenceScore > 20) { label = 'focused'; reason = deviceEmotionNow != null ? `设备情绪 +${deviceEmotionNow.toFixed(0)} · 高唤醒积极状态` : '身体紧绷但心态积极 — 心流状态'; }
+    else { label = 'stressed'; reason = deviceEmotionNow != null ? `设备情绪 ${deviceEmotionNow.toFixed(0)} · 高唤醒负向状态` : '身体紧绷且心率变乱 — 感到威胁'; }
   } else if (arousalScore < 35) {
     if (hrvNorm != null && hrvNorm > 0.3) { label = 'calm'; reason = '身体放松 + 心率稳定 — 恢复中'; }
     else if (valenceScore < -30) { label = 'depleted'; reason = '身体放松但心率变乱 — 疲劳积累'; }

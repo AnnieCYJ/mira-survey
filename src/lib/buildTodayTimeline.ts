@@ -33,11 +33,21 @@ export interface TimelineExtras {
   aiAdvice?: TimelineItem | null;
 }
 
-/** 构建同步部分（条目 1–5），AI 相关由调用方通过 extras 注入 */
-export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
-  const now0 = new Date();
+/** 构建同步部分（条目 1–5），AI 相关由调用方通过 extras 注入
+ *  ★ 2026-10-10（用户：日 Tab 选历史日期）：新增可选 date 参数——
+ *    睡眠/步数按天从 healthStore / ring.stepDaily 取；
+ *    相位/情绪波动/脑力依赖当日实时报告，仅今天生成（历史日跳过，不做回溯臆测）。
+ */
+export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): TimelineResult {
+  const now0 = date ?? new Date();
+  const T0 = new Date();
+  const isToday =
+    now0.getFullYear() === T0.getFullYear() &&
+    now0.getMonth() === T0.getMonth() &&
+    now0.getDate() === T0.getDate();
   const curMin = now0.getHours() * 60 + now0.getMinutes();
   const dateLabel = `${now0.getMonth() + 1}月${now0.getDate()}日 · ${WEEKDAYS[now0.getDay()]}`;
+  const dayKeySel = dayKey(now0.getTime());
 
   const ring = RingBle.getState();
   const dataStale = (ring?.curveStatus as any)?.dataStale === true;
@@ -45,13 +55,14 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
   const dated: (TimelineItem & { k: number })[] = [];
   const pushItem = (it: TimelineItem, k: number) => dated.push({ ...it, k });
 
-  // 1. 周期相位
+  // 1. 周期相位（依赖当日实时报告，仅今天生成）
   const cs = ring?.curveStatus;
-  if (cs?.hasLog && cs.phaseLabel) {
+  if (isToday && cs?.hasLog && cs.phaseLabel) {
     pushItem({
       time: '全天',
       color: theme.colors.accent1,
       title: cs.phaseLabel,
+      emoji: '🌸',
       sub: cs.phaseLabel === '黄体期'
         ? '激素回落，留意情绪与能量起伏'
         : cs.phaseLabel === '经期'
@@ -60,22 +71,24 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
     }, -1);
   }
 
-  // 2. 起床
-  const todaySleep = healthStore.getSleep(dayKey(Date.now()));
+  // 2. 起床（历史日也能取到当天的睡眠）
+  const todaySleep = healthStore.getSleep(dayKeySel);
   if (todaySleep?.wakeTime) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(todaySleep.wakeTime.trim());
     pushItem({
       time: todaySleep.wakeTime,
       color: theme.colors.stateTired,
       title: dataStale ? '起床' : `起床 · 睡眠评分 ${todaySleep.score ?? '\u2014'}`,
+      emoji: '☀️',
       sub: dataStale
         ? '戒指暂无新数据，昨夜睡眠明细暂不显示'
         : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
     }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
 
-  // 3. 情绪波动峰值
+  // 3. 情绪波动峰值（仅今天）
   try {
+    if (!isToday) throw new Error('skip');
     const evs = computeStressReport()?.events ?? [];
     const peakEvent = evs.length > 0 ? evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a)) : null;
     if (peakEvent) {
@@ -83,13 +96,15 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
         time: `${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}`,
         color: theme.colors.stateTense,
         title: `情绪波动 ${evs.length} 次`,
+      emoji: '💗',
         sub: `峰值强度 ${Math.round(peakEvent.severity)} \u00b7 前后可安排 5 分钟呼吸调整`,
       }, peakEvent.hour * 60 + peakEvent.minute);
     }
   } catch { /* ignore */ }
 
-  // 4. 脑力消耗
+  // 4. 脑力消耗（仅今天）
   try {
+    if (!isToday) throw new Error('skip');
     const cogReport = computeCognitiveLoadReport();
     if (cogReport?.avgFatigue != null) {
       const barsPast = (cogReport.hourly ?? []).filter((h: any) => h.hasData && h.hour * 60 <= curMin);
@@ -98,13 +113,14 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
         time: peakBar ? `${pad2(peakBar.hour)}:00` : '今日',
         color: theme.colors.stateTired,
         title: `脑力消耗 ${cogReport.avgFatigue} \u00b7 ${cogLevelLabel(cogReport.avgFatigue)}`,
+      emoji: '🧠',
         sub: '高峰时段安排专注任务更高效',
       }, peakBar ? peakBar.hour * 60 : curMin);
     }
   } catch { /* ignore */ }
 
-  // 5. 步数
-  const dkToday = dayKey(Date.now());
+  // 5. 步数（历史日也能取到）
+  const dkToday = dayKeySel;
   const stepsToday = ring?.stepDaily?.[dkToday]?.steps ?? 0;
   if (stepsToday > 0) {
     let lastStepMin: number | null = null;
@@ -121,6 +137,7 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
       time: lastStepMin != null ? `${pad2(Math.floor(lastStepMin / 60))}:${pad2(lastStepMin % 60)}` : '今日',
       color: theme.colors.stateCalm,
       title: `活动 ${stepsToday} 步`,
+      emoji: '🏃‍♀️',
       sub: '保持轻量活动，助力晚间恢复',
     }, lastStepMin ?? curMin);
   }
@@ -139,7 +156,7 @@ export function buildTodayTimeline(extras?: TimelineExtras): TimelineResult {
   const items: TimelineItem[] = dated
     .sort((a, b) => a.k - b.k)
     .slice(0, 7)
-    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub }));
+    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub, emoji: it.emoji }));
 
   return { dateLabel, items };
 }

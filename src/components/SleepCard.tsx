@@ -107,7 +107,7 @@ const SleepCard = React.memo(function SleepCard({ dataStale = false, onPress }: 
   const recoveryLabel = sleepRecoveryTag(score, relative ? 'relative' : 'absolute') ?? '—';
 
   // 进度条锚点：相对口径锚在 50（和平时一样），绝对口径锚在「7.5h 达标≈80」
-  const anchorPct = relative ? 50 : 80;
+  const anchorPct = relative ? 75 : 80;
 
   return (
     <Pressable

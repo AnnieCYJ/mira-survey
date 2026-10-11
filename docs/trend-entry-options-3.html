@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>趋势图入口 · 第三轮：晚上 23:20 曲线铺满时的遮挡验证</title>
+<style>
+  :root {
+    --cardBorder:#E8E6F2; --ink:#1A1A1A; --sub:#5F5F74;
+    --accent:#7C6AE0; --accentText:#6153AF; --accentSoft:rgba(124,106,224,0.12);
+    --limeMid:#BCCB62; --limeSoft:#EAF0BE; --limeDeep:#6E7A24;
+    --skyCore:#7FB4E8; --purpleCore:#9B8AE8; --roseCore:#E8909B; --honeyCore:#E8B96A;
+    --neutralBg:rgba(138,138,168,0.16);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:40px 32px 60px; background:#F4F3F8; color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page-head { max-width:1560px; margin:0 auto 24px; }
+  h1 { font-size:25px; margin:0 0 8px; letter-spacing:-0.4px; }
+  .lede { font-size:13.5px; color:var(--sub); line-height:1.75; max-width:930px; }
+  .lede b { color:var(--ink); }
+  .alert {
+    margin-top:14px; padding:14px 16px; border-radius:12px;
+    background:#FFF1F0; border:1px solid #F3C9C5; font-size:12.5px; line-height:1.8; color:#8C3A34;
+  }
+  .alert code { background:rgba(0,0,0,.05); padding:1px 5px; border-radius:4px; font-size:11.5px; }
+  .okbox {
+    margin-top:10px; padding:13px 16px; border-radius:12px;
+    background:#EFF8F1; border:1px solid #C6E3CE; font-size:12.5px; line-height:1.8; color:#2F5C3C;
+  }
+
+  .stamp {
+    display:inline-block; font-size:11px; font-weight:700; letter-spacing:.3px;
+    padding:4px 10px; border-radius:6px; background:var(--ink); color:#fff; margin-bottom:10px;
+  }
+  .row { display:flex; gap:26px; align-items:flex-start; overflow-x:auto; padding:8px 4px 26px; max-width:1560px; margin:0 auto; }
+  .opt { flex:0 0 auto; width:320px; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.4px; padding:4px 10px; border-radius:20px; margin-bottom:9px; }
+  .badge.bad { background:#FBDDDB; color:#B0524B; }
+  .badge.rec { background:var(--limeSoft); color:var(--limeDeep); }
+  .badge.alt { background:var(--accentSoft); color:var(--accentText); }
+
+  .phone {
+    width:320px; height:520px; border-radius:38px; overflow:hidden; position:relative;
+    background:#FFFFFF; box-shadow:0 24px 50px -18px rgba(70,58,110,.28), 0 0 0 9px #1F1D1A;
+  }
+  .statusbar { display:flex; justify-content:space-between; padding:13px 22px 0; font-size:11px; font-weight:600; color:var(--ink); }
+  .page-title { font-size:20px; font-weight:600; color:var(--ink); margin:10px 18px 0; }
+  .panel { padding:8px 18px 0; }
+  .pill { margin:7px 4px 0; padding:9px 13px; border-radius:13px; background:#F7F6FC; font-size:11px; line-height:1.6; color:var(--sub); text-align:center; }
+  .axis { display:flex; justify-content:space-between; padding:4px 2px 0; font-size:9.5px; color:var(--sub); }
+  .legend { display:flex; gap:9px; align-items:center; margin-top:9px; font-size:10px; color:var(--sub); }
+
+  .lgdot { width:7px; height:7px; border-radius:4px; display:inline-block; margin-right:4px; vertical-align:middle; }
+  .chartbox { position:relative; margin-top:8px; }
+  .entry-ring { position:absolute; right:-4px; top:50%; margin-top:-16px; }
+  .chev-circle { width:32px; height:32px; border-radius:16px; display:flex; align-items:center; justify-content:center; }
+  .glass { background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.7); box-shadow:0 2px 8px rgba(80,60,140,0.12); }
+  .solid-soft { background:#F1EFFB; border:1px solid var(--cardBorder); }
+  .cap-pill-solid {
+    position:absolute; right:0; bottom:-8px; display:flex; align-items:center; gap:4px;
+    padding:7px 12px; border-radius:20px; background:var(--accent); font-size:11.5px; font-weight:600; color:#fff;
+    box-shadow:0 3px 10px rgba(124,106,224,.3);
+  }
+  .head-row { display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding:0 2px; }
+  .head-title { font-size:12.5px; font-weight:600; color:var(--ink); }
+  .txtlink { display:flex; align-items:center; gap:2px; font-size:12px; font-weight:600; color:var(--accentText); }
+  .legend-row { display:flex; align-items:center; justify-content:space-between; margin-top:9px; }
+  .footrow { display:flex; justify-content:flex-end; margin-top:8px; }
+
+  .meta { margin-top:12px; font-size:12.5px; line-height:1.7; color:var(--sub); }
+  .meta .t { font-size:13.5px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+  .meta ul { margin:6px 0 0; padding-left:16px; }
+  .meta li { margin-bottom:2px; }
+  .verdict { margin-top:7px; font-weight:600; }
+  .v-good{color:#3F7A4F;} .v-mid{color:#B07820;} .v-bad{color:#B0524B;}
+
+  .compare { max-width:1560px; margin:4px auto 0; background:#fff; border-radius:16px; padding:22px 24px 8px; box-shadow:0 8px 24px -14px rgba(70,58,110,.2); }
+  .compare h2 { font-size:16.5px; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:18px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--cardBorder); vertical-align:top; }
+  th { color:var(--sub); font-weight:600; font-size:11.5px; letter-spacing:.3px; }
+  td b { color:var(--ink); }
+  code { background:rgba(0,0,0,.05); padding:1px 5px; border-radius:4px; font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>第三轮 · 晚上 23:20「曲线铺满」时的遮挡验证</h1>
+  <div class="stamp">场景固定：23:20 · 今日曲线已铺到右端</div>
+  <p class="lede">
+    本轮所有手机都渲染<b>同一时刻（23:20）</b>：曲线从 0 点一路画到最右侧，最新数据点落在 x≈284 的位置。
+    谁压住了那个点，一眼就能看出来。
+  </p>
+  <div class="alert">
+    <b>结论先说</b>：只要入口在<b>绘图区内部右侧</b>，就必然遮挡当日最新数据 —— 这不是"概率问题"，
+    是每天 20:00 之后必然发生。现状按钮是 <code>position:absolute; right:0</code>，
+    我第一轮给的 A（浅紫圆）和 C（实心胶囊）同样压在绘图区上，<b>全部作废</b>。
+  </div>
+  <div class="okbox">
+    <b>剩下唯一安全区</b>：绘图区之外 —— 也就是<b>趋势图上方（卡头）</b>或<b>趋势图下方（图注区）</b>。
+    下面 3 个正解方案都在这两个区域里，任何时刻都不会碰数据。
+  </div>
+</div>
+
+<div class="row">
+
+  <!-- 反例 1：现状 -->
+  <div class="opt">
+    <div class="badge bad">✕ 现状 · 遮挡</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <div class="chartbox">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <!-- 最新点 23:20 -->
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+          <!-- 遮挡高亮 -->
+          <div style="position:absolute;right:-8px;top:50%;margin-top:-19px;width:44px;height:38px;border-radius:8px;border:2px solid #D9534F;background:rgba(217,83,79,.10)"></div>
+          <div class="entry-ring">
+            <div class="chev-circle glass">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#55557A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend" style="justify-content:center">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">玻璃圆浮在图上 · 压住 23:20 的点</div>
+      红框就是被盖住的最新数据（23:20 的当前状态点 + 虚线圈）。
+      <div class="verdict v-bad">✕ 每天 20:00 后必挡</div>
+    </div>
+  </div>
+
+  <!-- 反例 2：A -->
+  <div class="opt">
+    <div class="badge bad">✕ 方案 A · 同样遮挡</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <div class="chartbox">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+          <div style="position:absolute;right:-8px;top:50%;margin-top:-19px;width:44px;height:38px;border-radius:8px;border:2px solid #D9534F;background:rgba(217,83,79,.10)"></div>
+          <div class="entry-ring">
+            <div class="chev-circle solid-soft">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C6AE0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend" style="justify-content:center">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">把圆做得再清楚也没用</div>
+      A 只解决了"看得见"，位置仍在绘图区右端 —— 看得越清楚，<b>挡得越明显</b>。
+      <div class="verdict v-bad">✕ 位置错，不是样式错</div>
+    </div>
+  </div>
+
+  <!-- 反例 3：C -->
+  <div class="opt">
+    <div class="badge bad">✕ 方案 C · 挡得最狠</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <div class="chartbox">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+          <div style="position:absolute;right:-8px;bottom:-12px;width:86px;height:34px;border-radius:8px;border:2px solid #D9534F;background:rgba(217,83,79,.10)"></div>
+          <span class="cap-pill-solid">周月年
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend" style="justify-content:center">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">实心胶囊体积最大 → 盖掉一整段末端曲线</div>
+      视觉重量最大的方案，恰恰是遮挡最严重的。
+      <div class="verdict v-bad">✕ 遮挡面积最大</div>
+    </div>
+  </div>
+
+  <!-- 正解 1：P1 -->
+  <div class="opt">
+    <div class="badge rec">✓ P1（推荐）· 图注行右端</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <div class="chartbox">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <!-- 图注行：图例居左 + 右端文字链 -->
+        <div class="legend-row">
+          <div class="legend" style="margin-top:0">
+            <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+            <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+            <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          </div>
+          <span class="txtlink">查看周月年
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图例改居左，右端放「查看周月年 ›」</div>
+      入口与图例<b>同一行</b>（图例本来就在绘图区外），<b>零额外高度</b>，
+      任何时刻都不碰曲线。文字链用 <code>accentText</code>／12px／600，与灰色图例文字自然分层。
+      <ul>
+        <li>✓ 完全不遮挡，23:20 数据点完整</li>
+        <li>✓ 不吃首页第一屏高度（最省）</li>
+        <li>✓ 语义明确，无障碍可朗读</li>
+        <li>△ 图例从居中改居左，视觉上略有变化</li>
+      </ul>
+      <div class="verdict v-good">✓ 推荐：零成本 + 零遮挡</div>
+    </div>
+  </div>
+
+  <!-- 正解 2：P2 -->
+  <div class="opt">
+    <div class="badge alt">✓ P2 · 图上方卡头</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <!-- 卡头 -->
+        <div class="head-row">
+          <span class="head-title">全天状态趋势</span>
+          <span class="txtlink">查看周月年
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </div>
+        <div class="chartbox" style="margin-top:4px">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+        </div>
+        <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="legend" style="justify-content:center">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">图上方加卡头：左标题 + 右文字链</div>
+      即上一轮的 E。给这张一直没标题的图补上「全天状态趋势」，
+      入口挂右侧 —— 完全离开绘图区。
+      <ul>
+        <li>✓ 不遮挡；顺手补了缺失的标题</li>
+        <li>✓ 与全 App「左标签 + 右箭头」折叠头语言一致</li>
+        <li>△ 第一屏多吃约 24pt，需下调 EnergyBall 系数补</li>
+      </ul>
+      <div class="verdict v-good">✓ 不遮挡，但要付高度</div>
+    </div>
+  </div>
+
+  <!-- 正解 3：P3 -->
+  <div class="opt">
+    <div class="badge alt">✓ P3 · 时间轴行右端</div>
+    <div class="phone">
+      <div class="statusbar"><span>23:20</span><span>●●● ⌾</span></div>
+      <div class="page-title">Today</div>
+      <div class="panel">
+        <svg width="130" height="130" viewBox="0 0 120 120" style="display:block;margin:0 auto">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#EFEDF8" stroke-width="11"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#9B8AE8" stroke-width="11"
+                  stroke-linecap="round" stroke-dasharray="240 289" transform="rotate(-90 60 60)"/>
+          <text x="60" y="57" text-anchor="middle" font-size="18" font-weight="600" fill="#1A1A1A">偏低</text>
+          <text x="60" y="75" text-anchor="middle" font-size="10.5" fill="#5F5F74">状态指数 58</text>
+        </svg>
+        <div class="pill">今天下午后段持续走低，晚上没有明显回升</div>
+        <div class="chartbox">
+          <svg width="284" height="88" viewBox="0 0 284 88" style="display:block">
+            <line x1="0" y1="22" x2="284" y2="22" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="44" x2="284" y2="44" stroke="rgba(120,120,180,0.08)"/>
+            <line x1="0" y1="66" x2="284" y2="66" stroke="rgba(120,120,180,0.08)"/>
+            <path d="M6 30 C 34 26, 52 34, 74 30 S 112 24, 134 34 S 172 44, 192 40 S 226 52, 250 58 L 284 62"
+                  fill="none" stroke="#9B8AE8" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="74" cy="30" r="3.2" fill="#7FB4E8" stroke="#fff" stroke-width="2"/>
+            <circle cx="134" cy="34" r="3.2" fill="#BCCB62" stroke="#fff" stroke-width="2"/>
+            <circle cx="192" cy="40" r="3.2" fill="#E8B96A" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="58" r="3.2" fill="#E8909B" stroke="#fff" stroke-width="2"/>
+            <circle cx="284" cy="62" r="5" fill="#9B8AE8" stroke="#fff" stroke-width="2.2"/>
+            <circle cx="284" cy="62" r="10" fill="none" stroke="#E8909B" stroke-width="1.4" stroke-dasharray="3 3"/>
+          </svg>
+        </div>
+        <div class="axis" style="position:relative;height:18px">
+          <span>0</span><span>6</span><span>12</span><span>18</span>
+          <span style="display:flex;align-items:center;gap:3px;font-size:11.5px;font-weight:600;color:#6153AF">
+            查看周月年
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6153AF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </div>
+        <div class="legend" style="justify-content:center">
+          <span><i class="lgdot" style="background:#7FB4E8"></i>睡眠</span>
+          <span><i class="lgdot" style="background:#BCCB62"></i>状态</span>
+          <span><i class="lgdot" style="background:#E8B96A"></i>活动</span>
+          <span><i class="lgdot" style="background:#E8909B"></i>情绪</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="t">把时间轴末位「24」换成文字链</div>
+      时间轴本来就是 <code>0 / 6 / 12 / 18 / 24</code> 一行，
+      把最右端的「24」位置让给「查看周月年 ›」—— 复用现成的一行，<b>零额外高度</b>。
+      <ul>
+        <li>✓ 零额外高度、零遮挡</li>
+        <li>✕ 代价：丢掉「24」这个刻度（末端无刻度参照）</li>
+      </ul>
+      <div class="verdict v-mid">～ 省高度，但牺牲刻度</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="compare">
+  <h2>23:20 场景下的遮挡验收</h2>
+  <table>
+    <thead>
+      <tr><th style="width:18%">方案</th><th style="width:24%">入口位置</th><th style="width:20%">是否遮挡最新数据</th><th>结论</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>现状</b></td><td>绘图区内 · 垂直居中右端</td><td class="v-bad">遮挡（盖住 23:20 点）</td><td>每天 20:00 后必发</td></tr>
+      <tr><td><b>A</b></td><td>绘图区内 · 垂直居中右端</td><td class="v-bad">遮挡（同样位置）</td><td>只改样式不改位置，无效</td></tr>
+      <tr><td><b>C</b></td><td>绘图区内 · 右下角</td><td class="v-bad">遮挡面积最大</td><td>体积越大挡得越多</td></tr>
+      <tr><td><b>P1</b></td><td>绘图区外 · 图注行右端</td><td class="v-good">不遮挡</td><td class="v-good"><b>推荐</b>：零高度成本 + 语义清楚</td></tr>
+      <tr><td><b>P2</b></td><td>绘图区外 · 图上方卡头</td><td class="v-good">不遮挡</td><td>推荐，但需付约 24pt 高度</td></tr>
+      <tr><td><b>P3</b></td><td>绘图区外 · 时间轴行右端</td><td class="v-good">不遮挡</td><td>零高度，但要丢掉「24」刻度</td></tr>
+    </tbody>
+  </table>
+
+  <h2>为什么"右侧留空"也不是好办法</h2>
+  <table>
+    <thead><tr><th style="width:22%">做法</th><th style="width:30%">效果</th><th>问题</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>绘图区右侧留 44pt</b><br>（最初的实现）</td>
+        <td>按钮不压数据</td>
+        <td>曲线被压缩到左侧 240pt，24 小时的时间轴不成比例，凌晨和深夜的数据挤在一起；代码注释里明确写了"会把图整体压左"，当初就是为此才改成浮在图上</td>
+      </tr>
+      <tr>
+        <td><b>入口移出绘图区</b><br>（P1 / P2 / P3）</td>
+        <td>数据完整，图占满整宽</td>
+        <td>P2 需要补高度；P1 / P3 零成本</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

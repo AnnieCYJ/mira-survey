@@ -246,11 +246,13 @@ function computeMentalEnergy(params: {
 }): number | null {
   const circ = circadianWeight(params.circadianHour);
   // 节律+睡眠主导
+  // 脑力准备度：睡眠后的自主神经状态为主，固定昼夜曲线只做小修正。
+  // 脑力消耗仍由 hourlyRes / loadEvent 独立累计，两者不混成一个分数。
   const term =
     0.40 * params.sleepRecoveryFactor +
-    0.35 * circ +
+    0.05 * circ +
     0.15 * (1 - params.cumulativeLoad / 100) +
-    0.10 * (params.hrvNow != null && params.hrvBaseline != null && params.hrvBaseline > 0
+    0.40 * (params.hrvNow != null && params.hrvBaseline != null && params.hrvBaseline > 0
       ? clamp(params.hrvNow / params.hrvBaseline, 0.4, 1.6) : 0.7);
   return Math.round(clamp(term * 100, 0, 100));
 }

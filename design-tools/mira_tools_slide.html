@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 工具箱 · 弹簧手势滑动（Apple 流体交互）</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --ink-soft:#5C574F; --ink-faint:#706A61;
+    --card:#FFFFFF; --border:rgba(31,29,26,0.09); --busy:rgba(31,29,26,0.06);
+    --lime-soft:#EAF0BE; --lime-mid:#BCCB62; --lime-deep:#6E7A24; --lime-tint:#F6F7DC;
+    --rose-soft:#FCE7F0; --rose-mid:#F6B3D0; --rose-deep:#C9598A; --rose-tint:#FDF0F6;
+    --sky-soft:#E3EBFE; --sky-mid:#B9CCF9; --sky-deep:#4C74C9; --sky-tint:#F0F4FE;
+    --purple-soft:#E7E1FB; --purple-mid:#C7B9F2; --purple-deep:#6E58C8; --purple-tint:#F4EDFC;
+    --honey-soft:#FBEFD6; --honey-mid:#F3D49B; --honey-deep:#B98A2E; --honey-tint:#FDF7E9;
+    --r-card:16px; --r-pill:999px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{font-family:var(--font);background:#EDEAE3;color:var(--ink);padding:34px 22px 70px;}
+  .wrap{max-width:1360px;margin:0 auto;}
+  header.page{margin-bottom:6px;}
+  h1{font-size:26px;font-weight:600;letter-spacing:-0.4px;}
+  .sub{color:var(--ink-soft);font-size:14px;line-height:1.65;margin-top:6px;max-width:940px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}
+  .chip{font-size:12px;padding:6px 12px;border-radius:var(--r-pill);background:#fff;border:1px solid var(--border);color:var(--ink-soft);}
+  .chip b{color:var(--ink);font-weight:600;}
+
+  .grid-row{display:flex;flex-wrap:wrap;gap:26px;margin-top:30px;align-items:flex-start;}
+  .col{flex:1 1 300px;min-width:280px;max-width:340px;}
+  .cap{margin-top:14px;}
+  .cap .t{font-size:15px;font-weight:600;}
+  .cap .rec{display:inline-block;margin-left:8px;font-size:11px;font-weight:600;color:var(--lime-deep);background:var(--lime-soft);padding:2px 9px;border-radius:var(--r-pill);}
+  .cap .d{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin-top:5px;}
+  .cap .ref{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+
+  .phone{background:#fff;border-radius:40px;padding:10px;box-shadow:0 18px 56px rgba(31,29,26,0.18);border:1px solid rgba(31,29,26,0.06);}
+  .screen{background:#FBFAF7;border-radius:32px;overflow:hidden;padding:16px 16px 18px;height:640px;display:flex;flex-direction:column;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-soft);font-weight:600;padding:2px 4px 8px;}
+  .statusbar .bat{width:22px;height:11px;border:1.4px solid var(--ink-soft);border-radius:3px;position:relative;}
+  .statusbar .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-soft);border-radius:1px;}
+  .statusbar .bat::before{content:"";position:absolute;left:1px;top:1px;bottom:1px;width:14px;background:var(--ink-soft);border-radius:1px;}
+  .hd{padding:6px 2px 0;}
+  .hd .t1{font-size:27px;font-weight:500;letter-spacing:-0.6px;color:var(--ink);}
+  .hd .t2{font-size:12.5px;color:var(--ink-soft);margin-top:3px;}
+  .seg{display:flex;background:var(--busy);border-radius:var(--r-pill);padding:4px;margin:14px 0 8px;position:relative;}
+  .seg .th{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:var(--lime-soft);border-radius:var(--r-pill);}
+  .seg .sb{flex:1;text-align:center;font-size:12.5px;font-weight:500;color:var(--ink-soft);padding:7px 0;z-index:1;}
+  .seg .sb.on{color:var(--lime-deep);font-weight:600;}
+  .content{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;}
+
+  .hint{font-size:11px;color:var(--ink-faint);text-align:center;margin:2px 0 8px;letter-spacing:0.3px;}
+
+  /* 弹簧手势容器：overflow hidden，靠 transform 平移（非原生滚动） */
+  .spring{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;}
+  .spring:active{cursor:grabbing;}
+  .track{display:flex;will-change:transform;}
+  .track > *{flex:none;}
+
+  /* P1 Peek 卡 */
+  .peek .pc{width:82%;margin:0 2.4%;border-radius:24px;padding:20px;min-height:330px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 12px 34px rgba(31,29,26,0.16);will-change:transform;}
+  .peek .pce{font-size:52px;}
+  .peek .pcn{font-size:21px;font-weight:600;color:var(--ink);}
+  .peek .pcc{font-size:13px;color:var(--ink-soft);margin-top:5px;line-height:1.5;}
+  .peek .pcbtn{align-self:flex-start;margin-top:14px;font-size:12.5px;font-weight:600;color:var(--ink);background:rgba(255,255,255,0.55);padding:8px 18px;border-radius:var(--r-pill);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:14px;}
+  .dots i{width:7px;height:7px;border-radius:4px;background:rgba(31,29,26,0.16);transition:width .3s,background .3s;}
+  .dots i.on{width:22px;background:var(--ink);}
+
+  /* P2 Story 整屏 */
+  .prog{display:flex;gap:5px;padding:0 4px;margin:8px 0 10px;}
+  .prog i{flex:1;height:3px;border-radius:2px;background:rgba(31,29,26,0.12);overflow:hidden;}
+  .prog i b{display:block;height:100%;width:0;background:var(--ink-soft);}
+  .story .sv{width:100%;padding:26px 22px;display:flex;flex-direction:column;justify-content:center;color:#fff;height:360px;}
+  .story .sve{font-size:60px;margin-bottom:14px;}
+  .story .svn{font-size:24px;font-weight:600;}
+  .story .svc{font-size:13.5px;opacity:0.92;margin-top:7px;line-height:1.55;max-width:82%;}
+  .story .svbtn{margin-top:18px;align-self:flex-start;font-size:13px;font-weight:600;color:var(--ink);background:rgba(255,255,255,0.92);padding:9px 22px;border-radius:var(--r-pill);}
+
+  /* P3 大卡 + 紧凑图标选择：上方大卡展示选中工具，下方只 icon（柔色圆角块）+ 小名 */
+  .sr-label{font-size:11px;color:var(--ink-faint);margin:16px 2px 8px;}
+  .hero{border-radius:24px;padding:22px;min-height:232px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 12px 34px rgba(31,29,26,0.16);transition:transform .42s cubic-bezier(.2,.85,.25,1),opacity .42s cubic-bezier(.2,.85,.25,1);}
+  .hero.swap{opacity:0;transform:translateY(10px) scale(.98);}
+  .hero .he{font-size:48px;}
+  .hero .hn{font-size:22px;font-weight:600;color:var(--ink);}
+  .hero .hc{font-size:13px;color:var(--ink-soft);margin-top:6px;line-height:1.5;}
+  .hero .hbtn{align-self:flex-start;margin-top:14px;font-size:12.5px;font-weight:600;color:var(--ink);background:rgba(255,255,255,0.55);padding:8px 18px;border-radius:var(--r-pill);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+  .film-grid{display:flex;flex-wrap:wrap;gap:16px 10px;margin-top:4px;}
+  .film-grid .fm{width:calc((100% - 20px)/3);flex:0 0 calc((100% - 20px)/3);display:flex;flex-direction:column;align-items:center;text-align:center;background:transparent;border:none;cursor:pointer;transition:transform .16s;}
+  .film-grid .fm:active{transform:scale(.9);}
+  .film-grid .fmi{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:7px;transition:box-shadow .2s;}
+  .film-grid .fm.on .fmi{box-shadow:0 0 0 2px var(--ink);}
+  .film-grid .fme{font-size:30px;line-height:1;}
+  .film-grid .fmn{font-size:11px;font-weight:500;color:var(--ink-soft);line-height:1.3;}
+  .film-grid .fm.on .fmn{color:var(--ink);font-weight:600;}
+
+  /* 我的建议（手机内 tab 内容）：竖向白卡列表，左侧色条 */
+  .suglist{display:flex;flex-direction:column;gap:9px;margin-top:2px;}
+  .sugcard{background:#fff;border:1px solid var(--border);border-radius:14px;padding:11px 14px;position:relative;overflow:hidden;display:flex;align-items:center;}
+  .sugcard .sbar{position:absolute;left:0;top:0;bottom:0;width:4px;}
+  .sugcard .sbody{padding-left:8px;}
+  .sugcard .sh{font-size:14px;font-weight:600;color:var(--ink);}
+  .sugcard .sev{font-size:11.5px;color:var(--ink-faint);margin-top:3px;line-height:1.45;}
+
+  /* P4 卡片栈 */
+  .deck .dk{width:80%;margin:0 3%;border-radius:26px;min-height:340px;padding:22px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 14px 38px rgba(31,29,26,0.18);will-change:transform;}
+  .deck .dke{font-size:54px;}
+  .deck .dkn{font-size:22px;font-weight:600;color:var(--ink);}
+  .deck .dkc{font-size:13px;color:var(--ink-soft);margin-top:6px;line-height:1.5;}
+  .deck .dkbtn{align-self:flex-start;margin-top:14px;font-size:12.5px;font-weight:600;color:var(--ink);background:rgba(255,255,255,0.55);padding:8px 18px;border-radius:var(--r-pill);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+
+  /* 我的建议 横滑条 */
+  .sec-title{font-size:19px;font-weight:600;margin:48px 0 4px;}
+  .sec-sub{font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:16px;max-width:940px;}
+  .sstrip .scard{width:248px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px 16px;position:relative;overflow:hidden;margin:0 7px;}
+  .sstrip .sbar{position:absolute;left:0;top:0;bottom:0;width:4px;}
+  .sstrip .sh{font-size:14.5px;font-weight:600;color:var(--ink);padding-left:6px;}
+  .sstrip .sev{font-size:11.5px;color:var(--ink-faint);margin-top:5px;padding-left:6px;line-height:1.5;}
+
+  footer{margin-top:44px;font-size:12px;color:var(--ink-faint);line-height:1.75;max-width:940px;}
+  footer b{color:var(--ink-soft);}
+  @media (prefers-reduced-motion: reduce){
+    .film-grid .fm{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Mira 工具箱 · 弹簧手势滑动（Apple 流体交互）</h1>
+    <div class="sub">
+      上一版是 CSS scroll-snap 的"假滑"。这版换成<b>真物理引擎</b>：手指 1:1 跟手、松手按原始速度做动量投射并弹簧吸附到最近卡片、到边界有橡胶缓冲、按下即时缩放反馈、动画随时可打断。
+      四个范式 + 「我的建议」条全部接入。顶部牌堆维持隐藏。
+    </div>
+    <div class="legend">
+      <span class="chip"><b>物理参数</b></span>
+      <span class="chip">弹簧 stiffness 100 / damping 0.8（轻扫带微弹）</span>
+      <span class="chip">点按阻尼 1.0（干净无弹）</span>
+      <span class="chip">动量投射 decel 0.998</span>
+      <span class="chip">橡胶边界系数 0.55</span>
+    </div>
+  </header>
+
+  <div class="grid-row" id="phones"></div>
+
+  <div class="sec-title">「我的建议」· 两种呈现（任选）</div>
+  <div class="sec-sub">手机内已作为第二个 tab：点顶部「我的建议」即切到竖向建议列表（左色条白卡）。下面这条是同内容的弹簧横滑备选，和工具箱手势语言统一。</div>
+  <div class="sstrip spring" id="sugs"><div class="track" id="sugsTrack"></div></div>
+
+  <footer>
+    <b>Apple 流体交互八项已落地：</b>① 按下即反馈（抓取卡即时缩放）② 拖拽 1:1 跟手 ③ 动画随时可打断（从当前实时位置重开弹簧）④ 用弹簧而非固定时长 ⑤ 松手移交原始速度、动量投射算吸附点 ⑥ 边界橡胶缓冲而非硬截断 ⑦ 入场出场对称 ⑧ 减弱动效（prefers-reduced-motion）降级为即时。
+    <br><br>
+    四个范式：<b>P1 Peek 卡流</b>（最主流、六工具同权，推荐落地）<b>P3 大卡 + 紧凑图标选择</b>（上方大卡展示选中工具、点下方 icon 弹簧切换，下方只 icon + 小名、2×3 全部可见不滑，同样推荐）。P2 故事分页沉浸感强、P4 卡片栈纵深感强。
+    「我的建议」按现有 IA 保留为第二个 tab：点顶部 seg 切换，竖向左色条白卡列表；也可做成同套弹簧横滑（见下方）。
+    要我把 P3 + 我的建议 tab 直接写进 <code>MeditationScreen</code> 就说一声。
+  </footer>
+</div>
+
+<script>
+  const PAL = {
+    rose:{soft:'#FCE7F0',mid:'#F6B3D0',deep:'#C9598A',tint:'#FDF0F6'},
+    purple:{soft:'#E7E1FB',mid:'#C7B9F2',deep:'#6E58C8',tint:'#F4EDFC'},
+    honey:{soft:'#FBEFD6',mid:'#F3D49B',deep:'#B98A2E',tint:'#FDF7E9'},
+    sky:{soft:'#E3EBFE',mid:'#B9CCF9',deep:'#4C74C9',tint:'#F0F4FE'},
+    lime:{soft:'#EAF0BE',mid:'#BCCB62',deep:'#6E7A24',tint:'#F6F7DC'},
+  };
+  const TOOLS = [
+    {n:'情绪调节', e:'💗', t:'rose',  c:'缓一缓，换个状态'},
+    {n:'提升颜值', e:'✨', t:'purple',c:'跟着周期养气色'},
+    {n:'营养搭配', e:'🍱', t:'honey', c:'吃对，激素更稳'},
+    {n:'运动建议', e:'🏃', t:'sky',   c:'今天怎么动'},
+    {n:'稳定睡眠', e:'🌙', t:'lime',  c:'睡好，恢复更快'},
+    {n:'知识科普', e:'📚', t:'purple',c:'读懂你的身体'},
+  ];
+  const SUGS = [
+    {h:'睡前 4-7-8 呼吸',ev:'深睡连着 3 天变好',t:'lime'},
+    {h:'记录今天的心情',ev:'HRV 回升 8%',t:'rose'},
+    {h:'傍晚散步 20 分钟',ev:'今天已完成',t:'sky'},
+    {h:'午后少喝咖啡',ev:'入睡更快',t:'honey'},
+    {h:'跟练卵巢保养',ev:'周期第 12 天正合适',t:'purple'},
+  ];
+  function sugPanel(){
+    const list=SUGS.map(s=>`<div class="sugcard">
+      <div class="sbar" style="background:${PAL[s.t].mid}"></div>
+      <div class="sbody"><div class="sh">${s.h}</div><div class="sev">${s.ev}</div></div></div>`).join('');
+    return `<div class="content"><div class="sr-label">为你沉淀的建议 · 点开看看</div>
+      <div class="suglist">${list}</div></div>`;
+  }
+  const phoneHead = `
+    <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
+    <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
+    <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>`;
+
+  function grad(t){const p=PAL[t];return `linear-gradient(150deg,${p.tint},${p.soft} 60%,${p.mid})`;}
+
+  // ===== 弹簧手势引擎 =====
+  class SpringSnap{
+    constructor(viewport){
+      this.vp=viewport;
+      this.track=viewport.querySelector('.track')||viewport;
+      this.cards=[...this.track.children];
+      this.pos=0; this.vel=0; this.target=0; this.animating=false;
+      this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+      this.onSettle=null; this.onUpdate=null;
+      this._measure();
+      this._bind();
+      this._apply(0);
+      window.addEventListener('resize',()=>{this._measure();this.goTo(this._index(),0);});
+      requestAnimationFrame(()=>{this._measure();this._apply(this.pos);});
+    }
+    _measure(){
+      this.step = this.cards.length>1 ? this.cards[1].offsetLeft-this.cards[0].offsetLeft : this.vp.clientWidth;
+      this.maxPos = -(this.cards.length-1)*this.step;
+    }
+    _index(p=this.pos){let best=0,bd=1e9;this.cards.forEach((c,i)=>{const t=-i*this.step;const d=Math.abs(t-p);if(d<bd){bd=d;best=i;}});return best;}
+    _apply(p){this.pos=p;this.track.style.transform=`translate3d(${p}px,0,0)`;if(this.onUpdate)this.onUpdate(this.pos);}
+    _rubber(o){const d=0.55;return (1-1/(o*d+1))/d;}
+    _project(v){const decel=0.998;return (v/1000)*decel/(1-decel);}
+    goTo(i,vel=0){
+      i=Math.max(0,Math.min(this.cards.length-1,i));
+      this.target=-i*this.step;
+      if(this.reduced){this._apply(this.target);this.onSettle&&this.onSettle(i);return;}
+      this.vel=vel; this._start();
+    }
+    _start(){
+      if(this.animating)return; this.animating=true;
+      let last=performance.now();
+      const k=100, d=Math.abs(this.vel)>200?16:20; // 轻扫带微弹；点按干净
+      const tick=(now)=>{
+        let dt=(now-last)/1000; last=now; if(dt>0.064)dt=0.064;
+        const Fs=-k*(this.pos-this.target), Fd=-d*this.vel;
+        this.vel+=(Fs+Fd)*dt; this.pos+=this.vel*dt;
+        if(Math.abs(this.pos-this.target)<0.15 && Math.abs(this.vel)<0.15){
+          this._apply(this.target); this.vel=0; this.animating=false;
+          this.onSettle&&this.onSettle(this._index());
+          return;
+        }
+        this._apply(this.pos); requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+    _bind(){
+      let dragging=false,sx=0,sp=0,lx=0,lt=0,card=null;
+      const down=(e)=>{
+        if(this.animating)this.animating=false;
+        dragging=true; const pt=e.touches?e.touches[0]:e;
+        sx=pt.clientX; sp=this.pos; lx=pt.clientX; lt=performance.now(); this.vel=0;
+        card=this.cards[this._index()]; if(card)card.style.transition='transform .14s';
+        window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+        window.addEventListener('pointercancel',up);
+      };
+      const move=(e)=>{
+        if(!dragging)return; const pt=e.touches?e.touches[0]:e;
+        let np=sp+(pt.clientX-sx);
+        if(np>0)np=this._rubber(np); else if(np<this.maxPos)np=this.maxPos-this._rubber(this.maxPos-np);
+        this._apply(np);
+        const now=performance.now(),dt=(now-lt)/1000;
+        if(dt>0)this.vel=(pt.clientX-lx)/dt; lx=pt.clientX; lt=now;
+        if(card)card.style.transform='scale(0.955)';
+      };
+      const up=(e)=>{
+        if(!dragging)return; dragging=false;
+        window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up);
+        window.removeEventListener('pointercancel',up);
+        const proj=this._project(this.vel);
+        const idx=this._index(this.pos+proj);
+        if(card){card.style.transition='';card.style.transform='';}
+        this.goTo(idx,this.vel);
+      };
+      this.vp.addEventListener('pointerdown',down);
+      // 滚轮横向翻页（桌面预览友好）
+      this.vp.addEventListener('wheel',(e)=>{
+        if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){e.preventDefault();this.goTo(this._index()+(e.deltaX>0?1:-1));}
+      },{passive:false});
+    }
+  }
+
+  // ===== 各范式 DOM =====
+  function p1(){
+    const cards=TOOLS.map(t=>`<div class="pc" style="background:${grad(t.t)}">
+      <div class="pce">${t.e}</div><div><div class="pcn">${t.n}</div>
+      <div class="pcc">${t.c}</div><div class="pcbtn">打开 ›</div></div></div>`).join('');
+    return `<div class="content"><div class="hint">← 拖 / 滑 / 滚轮 浏览 ${TOOLS.length} 个工具 →</div>
+      <div class="peek spring"><div class="track">${cards}</div></div><div class="dots"></div></div>`;
+  }
+  function p2(){
+    const sv=TOOLS.map(t=>`<div class="sv" style="background:linear-gradient(160deg,${PAL[t.t].deep},${PAL[t.t].mid})">
+      <div class="sve">${t.e}</div><div class="svn">${t.n}</div>
+      <div class="svc">${t.c}</div><div class="svbtn">进入</div></div>`).join('');
+    const prog=`<div class="prog">${TOOLS.map(()=>'<i><b></b></i>').join('')}</div>`;
+    return `<div class="content">${prog}<div class="story spring"><div class="track">${sv}</div></div></div>`;
+  }
+  function p3(){
+    const film=TOOLS.map((t,i)=>`<div class="fm" data-i="${i}">
+      <div class="fmi" style="background:${PAL[t.t].tint}"><span class="fme">${t.e}</span></div>
+      <div class="fmn">${t.n}</div></div>`).join('');
+    return `<div class="content">
+      <div class="hero" id="hero"></div>
+      <div class="sr-label">6 个工具 · 只 icon + 小名，点选切换上方大卡（全部可见，不滑）</div>
+      <div class="film-grid">${film}</div></div>`;
+  }
+  function p4(){
+    const cards=TOOLS.map(t=>`<div class="dk" style="background:${grad(t.t)}">
+      <div class="dke">${t.e}</div><div><div class="dkn">${t.n}</div>
+      <div class="dkc">${t.c}</div><div class="dkbtn">打开 ›</div></div></div>`).join('');
+    return `<div class="content"><div class="hint">← 拖 / 滑翻卡片，居中卡放大 →</div>
+      <div class="deck spring"><div class="track">${cards}</div></div></div>`;
+  }
+  const phones=[
+    {cap:'P1 · 横向卡流（Peek）',rec:true,ref:'Apple Fitness+ / Spotify',d:'大卡横滑，右侧露下一张边，底部圆点随弹簧吸附高亮。六工具同权、最主流。',body:p1()},
+    {cap:'P2 · 故事分页',rec:false,ref:'Instagram Stories',d:'整屏滑动切换，顶部进度条按位置实时填充。沉浸感最强。',body:p2()},
+    {cap:'P3 · 大卡 + 紧凑图标选择',rec:true,ref:'Apple Music 现在播放 / iOS 网格',d:'上方大卡展示选中的工具、点下方 icon 即弹簧切换；下方只 icon（柔色圆角块）+ 小名，2×3 紧凑铺开、全部可见、不滑。按下即时缩放反馈。',body:p3()},
+    {cap:'P4 · 卡片栈',rec:false,ref:'App Store Today',d:'层叠卡片，居中卡放大、两侧缩小变淡，有纵深。',body:p4()},
+  ];
+  document.getElementById('phones').innerHTML=phones.map(p=>`
+    <div class="col"><div class="phone"><div class="screen">${phoneHead}
+      <div class="tab-tools">${p.body}</div>
+      <div class="tab-sugs" hidden>${sugPanel()}</div>
+    </div></div>
+    <div class="cap"><div class="t">${p.cap}${p.rec?'<span class="rec">推荐</span>':''}</div>
+    <div class="d">${p.d}</div><div class="ref">${p.ref}</div></div></div>`).join('');
+
+  // seg 切换：改善工具箱 / 我的建议（两 tab 并列，点 seg 互切）
+  document.querySelectorAll('.seg').forEach(seg=>{
+    const sbs=[...seg.querySelectorAll('.sb')];
+    const screen=seg.closest('.screen');
+    const tools=screen.querySelector('.tab-tools');
+    const sugs=screen.querySelector('.tab-sugs');
+    sbs.forEach((sb,i)=>sb.addEventListener('click',()=>{
+      sbs.forEach((x,j)=>x.classList.toggle('on',j===i));
+      seg.querySelector('.th').style.transform = i===0 ? 'translateX(0)' : 'translateX(100%)';
+      tools.hidden = i!==0; sugs.hidden = i!==1;
+    }));
+  });
+
+  // P1 dots
+  document.querySelectorAll('.peek').forEach(pk=>{
+    const ss=new SpringSnap(pk);
+    const dots=pk.parentElement.querySelector('.dots');
+    TOOLS.forEach((_,i)=>{const d=document.createElement('i');if(i===0)d.classList.add('on');dots.appendChild(d);});
+    ss.onSettle=i=>{[...dots.children].forEach((d,j)=>d.classList.toggle('on',j===i));};
+  });
+  // P2 progress
+  document.querySelectorAll('.story').forEach(st=>{
+    const ss=new SpringSnap(st);
+    const bars=[...st.parentElement.querySelectorAll('.prog i b')];
+    ss.onUpdate=pos=>{const f=-pos/ss.step;bars.forEach((b,i)=>{b.style.width=(Math.max(0,Math.min(1,f-i))*100)+'%';});};
+  });
+  // P3 大卡 + 紧凑图标选择：点 icon → 上方大卡弹簧淡入切换；icon 本身点选高亮
+  document.querySelectorAll('.film-grid').forEach(fm=>{
+    const hero=fm.parentElement.querySelector('.hero');
+    const items=[...fm.children];
+    const setHero=i=>{const t=TOOLS[i];hero.classList.add('swap');
+      setTimeout(()=>{hero.style.background=grad(t.t);
+        hero.innerHTML=`<div class="he">${t.e}</div><div><div class="hn">${t.n}</div><div class="hc">${t.c}</div><div class="hbtn">打开 ›</div></div>`;
+        hero.classList.remove('swap');},180);
+      items.forEach((it,j)=>it.classList.toggle('on',j===i));};
+    items.forEach((it,i)=>it.addEventListener('click',()=>setHero(i)));
+    setHero(0);
+  });
+  // P4 deck center scale
+  document.querySelectorAll('.deck').forEach(dk=>{
+    const ss=new SpringSnap(dk);
+    ss.onUpdate=pos=>{const vc=ss.vp.clientWidth/2;
+      ss.cards.forEach(c=>{const cc=c.offsetLeft+c.offsetWidth/2+pos;const d=Math.abs(cc-vc);
+        const k=Math.min(d/(ss.step*1.5),1);c.style.transform=`scale(${1-k*0.14})`;c.style.opacity=(1-k*0.5).toFixed(2);});};
+  });
+  // 我的建议 横滑条（备选呈现：同一份建议也可做成弹簧横滑，和工具箱语言统一）
+  document.getElementById('sugsTrack').innerHTML=SUGS.map(s=>`<div class="scard">
+    <div class="sbar" style="background:${PAL[s.t].mid}"></div>
+    <div class="sh">${s.h}</div><div class="sev">${s.ev}</div></div>`).join('');
+  new SpringSnap(document.getElementById('sugs'));
+</script>
+</body>
+</html>

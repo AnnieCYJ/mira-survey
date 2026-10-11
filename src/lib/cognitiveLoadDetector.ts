@@ -24,6 +24,9 @@ export interface CognitiveLoadEvent {
   severity: 'low' | 'medium' | 'high';
   /** 建议 */
   suggestion: string;
+  /** EDA 仅作辅助证据；样本不足时不参与触发。 */
+  edaSamples?: number;
+  edaMedianGapMin?: number;
 }
 
 export interface LoadDetectorConfig {
@@ -59,6 +62,7 @@ export function detectCognitiveLoad(
 
   const hrvPts = healthStore.getTimeRange('hrv' as MetricKey, winStart, nowMs, { maxPoints: 60 });
   const snsPts = healthStore.getTimeRange('sns' as MetricKey, winStart, nowMs, { maxPoints: 60 });
+  const edaPts = healthStore.getTimeRange('eda' as MetricKey, winStart, nowMs, { maxPoints: 5000 });
 
   if (hrvPts.length < 5 || snsPts.length < 5) return null;
   if (hrvBaseline <= 0 || snsBaseline <= 0) return null;
@@ -89,6 +93,12 @@ export function detectCognitiveLoad(
     snsDev: Math.round(snsDev * 100) / 100,
     severity,
     suggestion,
+    edaSamples: edaPts.length,
+    edaMedianGapMin: (() => {
+      const ts = edaPts.map((p) => p.t).sort((a, b) => a - b);
+      const gaps = ts.slice(1).map((t, i) => t - ts[i]).filter((g) => g > 0).sort((a, b) => a - b);
+      return gaps.length ? Math.round((gaps[Math.floor(gaps.length / 2)] / 60000) * 10) / 10 : undefined;
+    })(),
   };
 }
 

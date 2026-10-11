@@ -47,12 +47,24 @@ export interface DayPhys {
   hrv?: number | null;
   /** 体温偏离 ℃ */
   tempDelta?: number | null;
+  /**
+   * 绝对体温 ℃。仅在个人基线未建立、算不出偏离时作为兜底展示（标签会改成「体温」，
+   * 不能把绝对值当「偏离」显示——那会让36.5℃ 显示成「+36.5℃ 体温偏离」）。
+   */
+  tempAbs?: number | null;
   /** 呼吸率 /min */
   rr?: number | null;
   /** 夜间血氧 % */
   spo2?: number | null;
   /** 恢复指数 bpm/h */
   recoveryIdx?: number | null;
+  /**
+   * ★ 2026-10-10（用户：心率变异性分「睡眠阶段 / 日间」两个展示）：
+   * 夜间 HRV 逐样本序列（绝对时间戳），作为分期图下面的第二层。
+   * 由 `SleepDetailScreen` 从 `healthStore.getIntraday('hrv', dk)` 取，
+   * 不用 `ring.history.hrv`（那条混了由 RR 间期展开的 BPM 值）。
+   */
+  hrvIntraday?: { t: number; v: number }[] | null;
 }
 
 interface Props {
@@ -64,6 +76,17 @@ interface Props {
 
 export default function SleepAnalysisCard({ day, segments, phys }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  /** 入睡时刻的绝对 ms（给 HRV 第二层做 x 轴参考）；拿不到就null */
+  const bedTimeMs = (() => {
+    const st = day?.sleepTime;
+    if (!st) return null;
+    const m = /(\d{1,2}):(\d{2})/.exec(st);
+    if (!m) return null;
+    const d = new Date();
+    d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    return d.getTime();
+  })();
 
   const toggleDetails = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -107,6 +130,8 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
           segments={segments}
           sleepTime={day?.sleepTime ?? null}
           totalMinutes={total > 0 ? total : null}
+          hrvLayer={phys?.hrvIntraday ?? null}
+          bedTimeMs={bedTimeMs}
         />
       ) : (
         /* 日无数据时不要「完全空白」，给一张灰色分期图占位（不编造数值）。 */
@@ -133,8 +158,11 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
       <Pressable onPress={toggleDetails} style={styles.moreHead} accessibilityRole="button"
         accessibilityLabel={detailsOpen ? '收起详细数据' : '展开详细数据'}>
         <Text style={styles.moreTitle}>详细数据</Text>
-        <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
-          <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={styles.moreCount}><Text style={styles.moreCountText}>8 项</Text></View>
+          <View style={[styles.chev, detailsOpen && styles.chevOpen]}>
+            <Icon name="chevronRight" size={16} color={theme.colors.textSub} />
+          </View>
         </View>
       </Pressable>
 
@@ -176,7 +204,13 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
             <Divider />
             <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms" />
             <Divider />
-            <Row name="体温偏离" value={fmtSigned(phys.tempDelta)} unit="℃" />
+            {/* ★ 2026-10-10（修 bug）：优先显示「相对个人基线的偏离」；基线未建立时退回绝对体温，
+                且标签同步改成「体温」—— 绝不把 36.5℃ 当成「偏离 +36.5℃」显示。 */}
+            {phys.tempDelta != null
+              ? <Row name="体温偏离（相对基线）" value={fmtSigned(phys.tempDelta)} unit="℃" />
+              : phys.tempAbs != null
+              ? <Row name="体温（建立基线后可看偏离）" value={fmtNum(phys.tempAbs, 1)} unit="℃" />
+              : <Row name="体温偏离（相对基线）" value="—" unit="℃" />}
             <Divider />
             {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min" /> : null}
             {phys.rr != null ? <Divider /> : null}
@@ -287,12 +321,15 @@ const styles = StyleSheet.create({
   moreHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: theme.space.md,
-    backgroundColor: theme.colors.cardBgSoft,
-    borderWidth: 1, borderColor: theme.colors.cardBorder,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(2.25), paddingHorizontal: theme.space.sm,
+    paddingTop: theme.sp(2.25), paddingHorizontal: 0,
   },
-  moreTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: theme.weight.semibold },
+  moreCount: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: mm.colors.limeSoft, borderRadius: theme.radius.pill,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  moreCountText: { fontSize: 12, fontWeight: '600', color: mm.colors.limeDeep },
+  moreTitle: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.semibold },
   // 分组块
   block: { marginTop: theme.space.md },
   groupTitle: {

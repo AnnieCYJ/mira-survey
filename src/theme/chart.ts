@@ -32,6 +32,34 @@ export const chart = {
   lw: { series: 2.4, ref: 1.3, grid: 1 },
   dot: { radius: 3, anomaly: 6, stroke: 2 },
   barRadius: 3,
+  /**
+   * ★ 2026-10-10（用户：心率详情页对齐 Oura 全天柱状小条）：柱状视觉统一 token。
+   *   规范来源 docs/bar-design-unified-spec.html 规则 2/3/4/6 ——
+   *   规则 2 圆角统一 barRadius；规则 3 柱宽 =clamp(min, 槽宽× slotRatio, max)；
+   *   规则 4 透明度只允许 1 / 0.12（不许用 opacity 表达轻重）；
+   *   规则 6 空槽 = emptyFill + emptyH + emptyRadius。
+   *   `barRadius` 保留作兼容别名，旧组件不必一次改完。
+   */
+  bar: {
+    radius: 3,
+    /** 柱宽 = clamp(minWidth, 槽宽 × slotRatio, maxWidth) */
+    minWidth: 4,
+    maxWidth: 24,
+    slotRatio: 0.6,
+    /** 有值柱最小高度（px） */
+    minHeight: 2,
+    /** 空槽桩高度 / 圆角 */
+    emptyH: 2,
+    emptyRadius: 1,
+    /** 唯一允许的两档透明度 */
+    opacity: { solid: 1, faint: 0.12 } as const,
+  },
+  /** 全天柱状小条的语义分段色（Oura 24h 心率图口径：睡眠 / 清醒 / 活动） */
+  dayBarSegment: {
+    sleep: mm.colors.skyCore,
+    awake: mm.colors.purpleCore,
+    active: mm.colors.honeyCore,
+  },
   dash: { grid: '3 4', ref: '5 4' },
   motion: { fade: 160 },
   /**

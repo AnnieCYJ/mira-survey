@@ -515,7 +515,7 @@ export default function EmotionRangeBars({ range, anchor }: { range: RangeKey; a
       <Card padded={false} style={{ marginTop: theme.sp(2) }}>
         <View style={styles.pad}>
           <View style={styles.headRow}>
-            <Text style={styles.chartTitle}>情绪洞察</Text>
+            <Text style={styles.chartTitle}>情绪记录</Text>
             {hasCycleLog && range !== 'week' && <View style={styles.badge}><Text style={styles.badgeText}>周期洞察</Text></View>}
           </View>
 

@@ -16,6 +16,8 @@ export interface TimelineItem {
   color: string;
   title: string;
   sub?: string;
+  /** ★ 2026-10-10（日历页「日」Tab 曲线旅程 JourneyDayView）：条目图标 emoji，由 push 站点按语义给 */
+  emoji?: string;
 }
 
 interface Props {

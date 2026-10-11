@@ -181,8 +181,9 @@ export const BASIC_METRICS: BasicMetricDef[] = [
       36.9, 37.0, 36.9, 36.8, 36.7, 36.6, 36.5, 36.5, 36.4, 36.4, 36.3, 36.4,
     ],
     live: true,
-    note: '皮肤温度随周期激素波动，排卵期后略升。',
-    freq: '单次测量 · 约每 20 秒',
+    note: '皮肤温度随周期激素波动，排卵期后略升。详情页看的是「相对个人基线的偏离」，不是绝对值。',
+    // ★ 2026-10-10：原写「单次测量 · 约每 20 秒」与真实链路不符（healthStore cadence = 每 5 分钟）
+    freq: '自动每 5 分钟 · 手动按需',
     yMin: 35,
     yMax: 38.5,
   },
@@ -321,6 +322,19 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
     value: '—', unit: 'μg/L', range: '正常 ~50–250（晨高夜低）', data: [], live: false, hideMeasure: true,
     note: '压力激素皮质醇浓度，随昼夜节律波动（晨高夜低）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 500,
   },
+  {
+    // ★ 2026-10-10（用户实锤：「洞察页基础指标里有两个交感神经卡片，左下那个还不显示数据」）
+    //   根因：`EXTENDED_SIGNALS` 里已有一张交感神经卡（key `snsActivation`），上一轮我又按
+    //   「没有 BasicMetricDef」的判断补了一张 `sns` → 洞察页出现两张同义卡。
+    //   而旧那张显示「—」是因为 **key 不对**：原生 emit 的是 `sns`
+    //   （`RingBleManager:834/931` 里 `sns: 'sns'`、`RingBleManager:143` 有 `snsActivation → sns` 的反向映射），
+    //   `InsightScreen.renderBasicsCard` 读的是 `ring.daily[m.key]`，`ring.daily['snsActivation']` 不存在 → 恒为「—」。
+    //   正解：保留这一张，把 key 改成真实数据桶 `sns`，并让 `hsKeyFor('sns')` 仍命中同一份数据。
+    //   （不再新建第二张卡，避免重复。）
+    key: 'sns', name: '交感神经活跃', icon: 'activity', dimension: 'basics',
+    value: '—', unit: '', range: '1–99，越高越兴奋', data: [], live: false,
+    note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '',
+  },
 ];
 
 /** 基础指标 tab 下的「扩展」卡片：均来自 SDK 健康一览（healthGlance）模型，
@@ -351,11 +365,11 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
     value: '—', unit: '', range: '0 正常 · 1 轻度 · 2 重度', data: [], live: false,
     note: '健康一览自动评估的抑郁风险等级（0–2）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 2, hideMeasure: true, section: '',
   },
-  {
-    key: 'snsActivation', name: '交感神经活跃度', icon: 'activity', dimension: 'basics',
-    value: '—', unit: '', range: '1–99，越高越兴奋', data: [], live: false,
-    note: '健康一览自动评估的交感神经活跃度，与压力、唤醒相关（不再并入压力显示）。', freq: '健康一览自动同步', yMin: 1, yMax: 99, hideMeasure: true, section: '',
-  },
+  // ★ 2026-10-10：这里原来有一张 `key: 'snsActivation'` 的交感神经卡，**已删除**。
+  //   洞察页基础指标会按 `dimension:'basics'` 合并 BASIC_METRICS + EXTENDED_SIGNALS + BASICS_EXTRA_SIGNALS，
+  //   两张同义卡会同时出现（用户实锤「有两个交感神经的卡片」）。
+  //   唯一保留的实现在 `EXTENDED_SIGNALS`（`key: 'sns'`）—— 那是原生真实 emit key，
+  //   `ring.daily['sns']` 能取到值；旧卡的 `snsActivation` 只是历史别名，取不到值恒显示「—」。
   // —— 光电血压（实时测量，HK18 硬件支持）——
   {
     key: 'bpSys', name: '收缩压（光电）', icon: 'heart', dimension: 'basics',
