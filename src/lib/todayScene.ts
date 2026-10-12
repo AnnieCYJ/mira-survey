@@ -179,7 +179,7 @@ export function evaluateTodayScene(ctx: SceneCtx): TodayScene | null {
   // 5. 饭前电量低：10:30-12 / 16:30-18 且偏低/不足
   const preMeal = inRange(h, 10.5, 12) || inRange(h, 16.5, 18);
   if (preMeal && low && ok('preMealLow')) {
-    return { key: 'preMealLow', word: '先吃点好的', explain: '血糖在低位，脑子先欠着——这顿吃好，下午才转得动' };
+    return { key: 'preMealLow', word: '饭前记一下', explain: '快到饭点了，拍张照片记下这一餐，之后能看出饮食和状态的关系' };
   }
 
   // 6. 久坐：清醒时段（8-22）近 2h 步数 <100；血氧只在偏低时才提（正常时不占字数）

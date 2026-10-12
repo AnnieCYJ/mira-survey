@@ -1073,7 +1073,7 @@ export default function TodayScreen() {
           >
             {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出） */}
             <View style={styles.head} onLayout={measureSection('head')}>
-              <Text style={styles.title}>Today</Text>
+              <Text style={styles.title}>今日状态</Text>
               <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLetter}>K</Text>
@@ -1098,7 +1098,7 @@ export default function TodayScreen() {
             · 上/左/右不留边界：负 margin 抵消 ScreenContainer 的 24pt 内边距实现全宽铺满，
               且与页面上半部分的纯白底同色 → 接缝不可见，读起来是「一个整体、同一份数据」。
             · 只在最下方用一段**向上圆弧**收边（两端上扬、中间最低），呼应圆环的圆形。
-            · 无标题文字（原来也没有）；箭头改成玻璃感小圆按钮，放在趋势图右侧，不突兀。
+            · ★ 2026-10-11：新增标题「全天状态趋势图」（左对齐，紧贴其右小箭头），箭头从浮在图上的玻璃圆改为标题旁 chevron；标题用「③ 左对齐·轻量·字小点」：13px / 常规 / 灰，避免深黑加粗显得像贴上去的标签。
             ───────────────────────────────────────────────────────────── */}
         <View style={styles.statusPanel}>
           <View style={styles.energyWrap}>
@@ -1112,16 +1112,16 @@ export default function TodayScreen() {
           </View>
 
           <TouchableOpacity onLayout={measureSection('trend')} activeOpacity={0.7} onPress={() => navigation.navigate('StatusTrendDetail')}>
-            {/* 玻璃小圆改为**绝对定位浮在图上** → 趋势图因此占满整宽、左右真正居中
-                （原来右侧留出 44pt 给按钮，会把图整体压左） */}
+            {/* ★ 2026-10-11：去掉「全天状态趋势图」标题（与整屏居中节奏割裂、显突兀），
+                仅保留趋势图右上角的小箭头作为「可进详情」的弱暗示；整块由外层 TouchableOpacity 接管点击。 */}
             <View style={styles.trendWrap}>
               <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
                 {/* ★ v18.105：全天状态趋势图也要「断流即空」——旧实现把今天所有点连成一条平滑线，
                     0:29 之后没再戴戒指，曲线却一路铺到现在（用户：中间都应该是空的）。 */}
                 {chartW > 0 ? <TrendChart width={chartW} timeline={todayStatusTimeline} stale={dataStale} /> : null}
               </View>
-              <View style={styles.trendChevBtn} pointerEvents="none">
-                <Icon name="chevronRight" size={theme.fontSize.body} color={theme.colors.ui.chipText} />
+              <View style={styles.trendChevCorner} pointerEvents="none">
+                <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} />
               </View>
             </View>
             {chartW > 0 ? <TrendAxis width={chartW} /> : null}
@@ -1331,9 +1331,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    // ★ 2026-10-08：xl*1.5(36) → sm(12)（首轮收紧），本轮再 sm(12) → xs(8)：
-    //   首页要「一屏不滚动 + 底部 AI 气泡不被 Tab 压」，纵向预算按 pt 抠。
-    marginBottom: theme.space.xs,
+    // ★ 2026-10-11（用户：顶头与下方 chips 排有点挤）：xs(8) → lg(20)，
+    //   给「今日状态」标题与下方睡眠恢复/脑力准备度 chips 留出更舒展的呼吸间距。
+    marginBottom: theme.space.lg,
   },
   avatarName: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
@@ -1455,25 +1455,20 @@ const styles = StyleSheet.create({
     marginTop: -1,
   },
   trendWrap: { position: 'relative', marginTop: 0 },
-  trendChevBtn: {
+  // ★ 2026-10-11：趋势图右上角的小箭头（弱暗示「可进详情」）。
+  //   半透明白圆 + 极淡描边，层级轻、不抢图；pointerEvents:none 让点击落到外层 TouchableOpacity。
+  trendChevCorner: {
     position: 'absolute',
-    right: 0,
-    top: '50%',
-    marginTop: -theme.sp(4),
-    width: theme.sp(8),
-    height: theme.sp(8),
-    borderRadius: theme.radius.pill,
+    top: 2,
+    right: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    // 玻璃感：沿用 App 的 glassMorph 语言（半透明白 + 白色高光描边 + 柔紫投影）
-    backgroundColor: theme.colors.ui.glassBg,
+    backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1,
-    borderColor: theme.colors.ui.glassBorder,
-    shadowColor: theme.colors.ui.glassShadow,
-    shadowOffset: { width: 0, height: theme.sp(0.5) },
-    shadowOpacity: 1,
-    shadowRadius: theme.sp(2),
-    elevation: 2,
+    borderColor: 'rgba(31,29,26,0.08)',
   },
 
   energyCol: {

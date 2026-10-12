@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Mira 工具箱 · P3 / P4 可滑动真实稿</title>
+<title>Mira 工具箱 · 工具选择 Tab 3 方案对比</title>
 <style>
   :root{
     --ink:#1F1D1A; --ink-soft:#5C574F; --ink-faint:#706A61;
@@ -15,32 +15,33 @@
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
   img{ -webkit-user-drag:none; user-drag:none; -webkit-user-select:none; user-select:none; pointer-events:none; }
   body{font-family:var(--font);background:#EDEAE3;color:var(--ink);padding:34px 22px 70px;}
-  .wrap{max-width:900px;margin:0 auto;}
-  header.page{margin-bottom:8px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  header.page{margin-bottom:6px;}
   h1{font-size:24px;font-weight:600;letter-spacing:-0.4px;}
-  .sub{color:var(--ink-soft);font-size:13.5px;line-height:1.65;margin-top:6px;max-width:780px;}
+  .sub{color:var(--ink-soft);font-size:13.5px;line-height:1.65;margin-top:6px;max-width:880px;}
   .tip{color:var(--lime-deep);font-size:13px;font-weight:600;margin-top:8px;}
 
-  .grid-row{display:flex;flex-wrap:wrap;gap:40px;margin-top:26px;align-items:flex-start;justify-content:center;}
-  .col{max-width:360px;}
-  .cap{margin-top:14px;}
+  .grid-row{display:flex;flex-wrap:wrap;gap:34px 40px;margin-top:26px;align-items:flex-start;justify-content:center;}
+  .col{width:340px;}
+  .cap{margin-top:12px;}
   .cap .t{font-size:15px;font-weight:600;}
+  .cap .tag{display:inline-block;font-size:11px;font-weight:600;color:var(--lime-deep);background:var(--lime-soft);
+    border-radius:6px;padding:2px 8px;margin-right:6px;vertical-align:1px;}
   .cap .d{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin-top:5px;}
 
   .phone{background:#fff;border-radius:42px;padding:10px;box-shadow:0 18px 56px rgba(31,29,26,0.18);border:1px solid rgba(31,29,26,0.06);}
-  .screen{background:#FFFFFF;border-radius:33px;overflow:hidden;padding:16px 16px 18px;height:716px;display:flex;flex-direction:column;}
-  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-soft);font-weight:600;padding:2px 4px 8px;}
+  .screen{background:#FFFFFF;border-radius:33px;overflow:hidden;padding:14px 16px 8px;height:716px;display:flex;flex-direction:column;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-soft);font-weight:600;padding:2px 4px 6px;}
   .statusbar .bat{width:22px;height:11px;border:1.4px solid var(--ink-soft);border-radius:3px;position:relative;}
   .statusbar .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-soft);border-radius:1px;}
   .statusbar .bat::before{content:"";position:absolute;left:1px;top:1px;bottom:1px;width:14px;background:var(--ink-soft);border-radius:1px;}
-  .hd{padding:6px 2px 0;}
-  .hd .t1{font-size:27px;font-weight:500;letter-spacing:-0.6px;color:var(--ink);}
-  .hd .t2{font-size:12.5px;color:var(--ink-soft);margin-top:3px;}
-  .seg{display:flex;background:var(--busy);border-radius:var(--r-pill);padding:4px;margin:14px 0 12px;position:relative;}
+  .hd{padding:4px 2px 0;}
+  .hd .t1{font-size:25px;font-weight:500;letter-spacing:-0.6px;color:var(--ink);}
+  .hd .t2{font-size:12px;color:var(--ink-soft);margin-top:3px;}
+  .seg{display:flex;background:var(--busy);border-radius:var(--r-pill);padding:4px;margin:12px 0 10px;position:relative;}
   .seg .th{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:var(--lime-soft);border-radius:var(--r-pill);transition:transform .26s cubic-bezier(.2,.85,.25,1);}
   .seg .sb{flex:1;text-align:center;font-size:12.5px;font-weight:500;color:var(--ink-soft);padding:8px 0;z-index:1;transition:color .2s;}
   .seg .sb.on{color:var(--lime-deep);font-weight:600;}
-  .content{flex:1;display:flex;flex-direction:column;min-height:0;}
 
   /* 工具卡通用：图铺满 + 底部白渐变蒙层 + 灰字居中（与工具页同款） */
   .tcard{position:relative;overflow:hidden;background:#EFEDE8;}
@@ -48,86 +49,148 @@
   .tcard .mask{position:absolute;left:0;right:0;bottom:0;height:62%;pointer-events:none;
     background:linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.32) 50%, rgba(255,255,255,0.86) 100%);}
   .tcard .nm{position:absolute;left:0;right:0;bottom:13px;text-align:center;font-weight:500;color:var(--ink-soft);}
+  .hint{font-size:11px;color:var(--ink-faint);text-align:center;margin:4px 0 8px;letter-spacing:.3px;}
 
-  .hint{font-size:11px;color:var(--ink-faint);text-align:center;margin:6px 0 4px;letter-spacing:.3px;}
+  .content{flex:1;display:flex;flex-direction:column;min-height:0;}
 
-  /* ===== P3：可滑大图 hero + 2×3 同步缩略图 ===== */
-  .hero-spring{flex:1;overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;}
+  /* ===== 通用工具选择 Tabstrip（三种位置变体共用按钮 .ts） ===== */
+  .tabstrip{display:flex;align-items:center;gap:2px;background:var(--busy);border-radius:var(--r-pill);padding:6px;}
+  .ts{flex:1;display:flex;align-items:center;justify-content:center;border:0;background:none;padding:0;cursor:pointer;
+    height:46px;-webkit-tap-highlight-color:transparent;}
+  .ts .ic{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    color:var(--ink-soft);opacity:.55;transition:transform .24s cubic-bezier(.2,.85,.25,1),background .24s,color .24s,opacity .24s,box-shadow .24s;}
+  .ts .ic svg{width:20px;height:20px;display:block;}
+  .ts:active .ic{transform:scale(.86);}
+  .ts.on .ic{background:var(--ink);color:#fff;opacity:1;transform:scale(1.06);box-shadow:0 6px 16px rgba(31,29,26,0.28);}
+
+  /* V2 顶部 icon+文字 chip：覆盖 .tabstrip */
+  .tabstrip.chips{background:transparent;padding:0;gap:4px;justify-content:space-between;}
+  .ts.chip{flex:1;flex-direction:column;height:auto;gap:4px;padding:2px 0;}
+  .ts.chip .ic{width:34px;height:34px;border-radius:50%;background:var(--busy);color:var(--ink-soft);opacity:1;}
+  .ts.chip .lb{font-size:10px;color:var(--ink-faint);font-weight:500;line-height:1;letter-spacing:.2px;}
+  .ts.chip.on .ic{background:var(--lime-soft);color:var(--lime-deep);box-shadow:inset 0 0 0 1.5px var(--lime-mid);}
+  .ts.chip.on .lb{color:var(--ink);font-weight:600;}
+
+  /* V3 大图下沿悬浮药丸：覆盖 .tabstrip（叠在图上，半透明） */
+  .tabstrip.float{align-self:stretch;margin-top:-46px;margin-left:14px;margin-right:14px;z-index:6;
+    background:rgba(255,255,255,0.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 8px 22px rgba(31,29,26,0.18);}
+
+  /* ===== P3 大图 hero ===== */
+  .hero-spring{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;}
   .hero-spring:active{cursor:grabbing;}
   .hero-track{display:flex;width:100%;will-change:transform;}
-  .hc{width:100%;flex:none;height:368px;border-radius:20px;position:relative;background:#EFEDE8;
+  .hc{width:100%;flex:none;height:360px;border-radius:20px;position:relative;background:#EFEDE8;
     box-shadow:0 14px 34px rgba(31,29,26,0.16);}
   .hc .nm{font-size:19px;bottom:18px;}
   .hc .cap2{position:absolute;left:0;right:0;bottom:41px;text-align:center;font-size:12px;color:var(--ink-faint);font-weight:500;}
 
-  /* ===== P3 底部：Tab 图标条（一排圆形单色 icon，六个全显） ===== */
-  .toolbar{margin-top:18px;display:flex;align-items:center;gap:2px;background:var(--busy);
-    border-radius:var(--r-pill);padding:6px;}
-  .tb{flex:1;display:flex;align-items:center;justify-content:center;background:none;border:0;padding:0;
-    cursor:pointer;height:48px;-webkit-tap-highlight-color:transparent;}
-  .tb .ic{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    color:var(--ink-soft);opacity:.6;transition:transform .24s cubic-bezier(.2,.85,.25,1),background .24s,color .24s,opacity .24s,box-shadow .24s;}
-  .tb .ic svg{width:21px;height:21px;display:block;}
-  .tb:active .ic{transform:scale(.88);}
-  .tb.on .ic{background:var(--ink);color:#fff;opacity:1;transform:scale(1.08);
-    box-shadow:0 7px 18px rgba(31,29,26,0.30);}
-
-  /* ===== P4：可连续拖滑的照片卡片栈 ===== */
+  /* ===== P4 卡片栈 ===== */
   .stack-spring{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;}
   .stack-spring:active{cursor:grabbing;}
-  .stack-track{position:relative;height:392px;will-change:transform;}
-  .k{position:absolute;top:8px;left:50%;width:230px;height:330px;border-radius:24px;overflow:hidden;background:#EFEDE8;
+  .stack-track{position:relative;height:330px;will-change:transform;}
+  .k{position:absolute;top:6px;left:50%;width:230px;height:300px;border-radius:24px;overflow:hidden;background:#EFEDE8;
     box-shadow:0 16px 40px rgba(31,29,26,0.20);transform-origin:center center;will-change:transform;}
   .k .nm{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:16px;font-weight:600;color:var(--ink-soft);}
   .k .cap2{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:11px;color:var(--ink-faint);font-weight:500;padding:0 18px;}
-  .dots{display:flex;gap:6px;justify-content:center;margin-top:16px;}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:14px;}
   .dots i{width:7px;height:7px;border-radius:4px;background:rgba(31,29,26,0.16);transition:width .3s,background .3s;}
   .dots i.on{width:22px;background:var(--ink);}
+
+  /* ===== 底部真实主 Tab Bar（示意：证明工具选择 tab 不抢主导航位） ===== */
+  .hometab{display:flex;align-items:flex-start;justify-content:space-around;margin:6px -16px -8px;padding:8px 6px 4px;
+    border-top:1px solid rgba(31,29,26,0.07);}
+  .ht{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--ink-faint);width:56px;}
+  .ht .hi{width:23px;height:23px;color:var(--ink-faint);display:flex;align-items:center;justify-content:center;}
+  .ht .hi svg{width:21px;height:21px;display:block;}
+  .ht.on{color:var(--lime-deep);}
+  .ht.on .hi{color:var(--lime-deep);}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="page">
-    <h1>Mira 工具箱 · P3 / P4（可滑动真实稿）</h1>
-    <div class="sub">用你现在工具页的 6 张真实照片 + 工具页同款样式（图铺满 + 底部白渐变 + 灰字居中）。两个手机都能在浏览器里<b>真拖真滑</b>：P3 左右滑大图、下方缩略图同步高亮；P4 拖着连续翻卡片栈、松手惯性吸附。</div>
-    <div class="tip">提示：在手机上左右拖 / 滑；电脑上可用鼠标拖，或方向滚轮 / 方向键翻页。</div>
+    <h1>Mira 工具箱 · 工具选择 Tab 的 3 种位置方案</h1>
+    <div class="sub">真实 App 里工具页本身就在底部主 Tab Bar（首页 / 洞察 / 工具 / 我）上 —— 所以工具选择的小 icon 条<b>不能放页面最底部</b>，否则和主 Tab Bar 撞。下面每个手机底部都画了真实主 Tab Bar（「工具」高亮），三个方案都把工具选择 tab 移到<b>顶部 / 大图内侧</b>，互不抢位。全部用你工具页现有的 6 张真实照片 + 同款图片样式。</div>
+    <div class="tip">交互：手机上左右拖 / 滑；电脑上鼠标拖，或滚轮 / 方向键翻页。点上方任意 icon 也能直接切。</div>
   </header>
 
   <div class="grid-row">
-    <!-- P3 -->
+    <!-- V1 · 顶部分段药丸 + 大图 -->
     <div class="col">
-      <div class="phone" id="p3">
+      <div class="phone">
         <div class="screen">
           <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
           <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
           <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>
           <div class="content">
-            <div class="hint">← 左右拖 / 滑 切换工具 →</div>
-            <div class="hero-spring" id="heroSpring"><div class="hero-track" id="heroTrack"></div></div>
-            <div class="toolbar" id="toolbar"></div>
+            <div class="hint">工具选择 Tab · 顶部灰药丸分段</div>
+            <div class="tabstrip top" data-variant="top"></div>
+            <div class="hero-spring"><div class="hero-track"></div></div>
           </div>
+          <div class="hometab" data-home></div>
         </div>
       </div>
-      <div class="cap"><div class="t">P3 · 大图 + 底部 Tab 图标条</div>
-        <div class="d">上面一张大图（视觉重点，左右拖/滑切换），下面一排 6 个圆形单色 icon，像 Tab 栏一样六个全摆得下；点哪个 icon，上面大图就弹簧切到哪个，当前项用深色实心圆标出。</div></div>
+      <div class="cap"><div class="t"><span class="tag">V1</span>顶部分段药丸 + 大图</div>
+        <div class="d">工具 icon 条在大图正上方，灰药丸底；选中项=深色实心圆 + 放大投影。离底部主 Tab Bar 最远，零冲突。</div></div>
     </div>
 
-    <!-- P4 -->
+    <!-- V2 · 顶部 icon+文字 chip + 大图 -->
     <div class="col">
-      <div class="phone" id="p4">
+      <div class="phone">
         <div class="screen">
           <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
           <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
           <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>
           <div class="content">
-            <div class="hint">← 拖 / 滑翻照片卡片栈 →</div>
+            <div class="hint">工具选择 Tab · 顶部 icon + 文字 chip</div>
+            <div class="tabstrip chips" data-variant="chips"></div>
+            <div class="hero-spring"><div class="hero-track"></div></div>
+          </div>
+          <div class="hometab" data-home></div>
+        </div>
+      </div>
+      <div class="cap"><div class="t"><span class="tag">V2</span>顶部 icon+文字 chip + 大图</div>
+        <div class="d">圆形 icon + 下方 10px 小名的 chip 条，6 个全显；选中项=亮绿填充 + 描边（和 App 选中态一致）。信息比纯 icon 多一点。</div></div>
+    </div>
+
+    <!-- V3 · 大图下沿悬浮药丸 + 大图 -->
+    <div class="col">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
+          <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
+          <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>
+          <div class="content">
+            <div class="hint">工具选择 Tab · 大图下沿悬浮药丸</div>
+            <div class="hero-spring"><div class="hero-track"></div></div>
+            <div class="tabstrip float" data-variant="top"></div>
+          </div>
+          <div class="hometab" data-home></div>
+        </div>
+      </div>
+      <div class="cap"><div class="t"><span class="tag">V3</span>大图下沿悬浮药丸 + 大图</div>
+        <div class="d">半透明白药丸浮在大图底部边缘，像「长」在图上，不占额外高度；选中=深色实心圆。视觉重点仍是大图。</div></div>
+    </div>
+
+    <!-- P4 卡片栈 + V1 顶部分段 -->
+    <div class="col">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
+          <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
+          <div class="seg"><div class="th"></div><div class="sb on">改善工具箱</div><div class="sb">我的建议</div></div>
+          <div class="content">
+            <div class="hint">P4 卡片栈 + 顶部灰药丸分段 Tab</div>
+            <div class="tabstrip top" data-variant="top" data-for="p4"></div>
             <div class="stack-spring" id="stackSpring"><div class="stack-track" id="stackTrack"></div></div>
             <div class="dots" id="dots"></div>
           </div>
+          <div class="hometab" data-home></div>
         </div>
       </div>
-      <div class="cap"><div class="t">P4 · 可滑照片卡片栈</div>
-        <div class="d">真实照片层叠卡片，连续拖动翻页、松手按惯性吸附到最近一张；居中放大、两侧缩小变淡，底部圆点指示位置。</div></div>
+      <div class="cap"><div class="t"><span class="tag">P4</span>照片卡片栈 + 顶部 Tab</div>
+        <div class="d">P4 卡片栈（拖着连续翻、松手吸附）同样配顶部工具选择 tab：左右滑卡片或点 icon 都能切，底部圆点同步。</div></div>
     </div>
   </div>
 </div>
@@ -143,7 +206,6 @@ const TOOLS=[
 ];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ---------- P3：大图横向滑 + 底部 Tab 图标条同步 ---------- */
 const SVG=(d,extra='')=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
   stroke-linecap="round" stroke-linejoin="round">${d}${extra}</svg>`;
 const ICONS=[
@@ -154,13 +216,14 @@ const ICONS=[
   SVG('<path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/>'),                                                                                              // 稳定睡眠
   SVG('<path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2z"/><path d="M12 6.7v12.1"/>'),                        // 知识科普
 ];
-const heroTrack=document.getElementById('heroTrack');
-const toolbar=document.getElementById('toolbar');
-heroTrack.innerHTML=TOOLS.map(t=>`<div class="hc tcard"><img src="${t.img}" alt=""/>
-  <div class="mask"></div><div class="cap2">${t.c}</div><div class="nm">${t.n}</div></div>`).join('');
-toolbar.innerHTML=TOOLS.map((t,i)=>`<button class="tb${i===0?' on':''}" data-i="${i}" aria-label="${t.n}" title="${t.n}"><span class="ic">${ICONS[i]}</span></button>`).join('');
-const fms=[...toolbar.children];
+const HOME_SVG={
+  home:SVG('<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/>'),
+  insight:SVG('<path d="M4 19V5"/><path d="M4 15l5-5 4 3 7-7"/>'),
+  tools:SVG('<path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15l-1.8-4.2L5.5 9l4.7-1.3z"/><path d="M18 15l.8 2.1L21 18l-2.2.9L18 21l-.8-2.1L15 18l2.2-.9z"/>'),
+  me:SVG('<circle cx="12" cy="8" r="3.6"/><path d="M5.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/>'),
+};
 
+/* ---------- 弹簧吸附引擎（大图 hero 复用） ---------- */
 class Snap{
   constructor(vp){
     this.vp=vp; this.track=vp.querySelector('.hero-track'); this.cards=[...this.track.children];
@@ -177,14 +240,14 @@ class Snap{
   goTo(i,vel=0){i=Math.max(0,Math.min(this.cards.length-1,i));this.target=-i*this.step;
     if(reduce){this._apply(this.target);this.onSettle&&this.onSettle(i);return;}
     this.vel=vel;this._start();}
-  _start(){if(this.anim)return;this.anim=true;let last=performance.now();
+  _start(){if(this.anim)return;this.anim=true;const gen=++this._gen;let last=performance.now();
     const k=100,d=Math.abs(this.vel)>200?16:20;
-    const tick=(now)=>{let dt=(now-last)/1000;last=now;if(dt>0.064)dt=0.064;
+    const tick=(now)=>{if(gen!==this._gen)return;let dt=(now-last)/1000;last=now;if(dt>0.064)dt=0.064;
       const Fs=-k*(this.pos-this.target),Fd=-d*this.vel;this.vel+=(Fs+Fd)*dt;this.pos+=this.vel*dt;
       if(Math.abs(this.pos-this.target)<0.15&&Math.abs(this.vel)<0.15){this._apply(this.target);this.vel=0;this.anim=false;this.onSettle&&this.onSettle(this._idx());return;}
       this._apply(this.pos);requestAnimationFrame(tick);};requestAnimationFrame(tick);}
   _bind(){let drag=false,sx=0,sp=0,lx=0,lt=0;
-    const down=(e)=>{if(this.anim)this.anim=false;drag=true;const pt=e.touches?e.touches[0]:e;sx=pt.clientX;sp=this.pos;lx=pt.clientX;lt=performance.now();this.vel=0;
+    const down=(e)=>{this._gen++;this.anim=false;drag=true;const pt=e.touches?e.touches[0]:e;sx=pt.clientX;sp=this.pos;lx=pt.clientX;lt=performance.now();this.vel=0;
       window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);};
     const move=(e)=>{if(!drag)return;const pt=e.touches?e.touches[0]:e;let np=sp+(pt.clientX-sx);
       if(np>0)np=this._rubber(np);else if(np<this.max)np=this.max-this._rubber(this.max-np);this._apply(np);
@@ -195,43 +258,61 @@ class Snap{
     this.vp.addEventListener('wheel',(e)=>{if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){e.preventDefault();this.goTo(this._idx()+(e.deltaX>0?1:-1));}},{passive:false});
   }
 }
-const heroSS=new Snap(document.getElementById('heroSpring'));
-heroSS.onSettle=(i)=>{fms.forEach((f,j)=>f.classList.toggle('on',j===i));};
-heroSS.onUpdate=(p)=>{const i=heroSS._idx(p);fms.forEach((f,j)=>f.classList.toggle('on',j===i));};
-fms.forEach(f=>f.addEventListener('click',()=>heroSS.goTo(+f.dataset.i)));
 
-/* ---------- P4：连续拖滑 coverflow ---------- */
+/* ---------- 填充 + 绑定一个大图手机 ---------- */
+function setupHero(screen){
+  const vp=screen.querySelector('.hero-spring');
+  const track=screen.querySelector('.hero-track');
+  const strip=screen.querySelector('.tabstrip');
+  const variant=strip.dataset.variant;
+  track.innerHTML=TOOLS.map(t=>`<div class="hc tcard"><img src="${t.img}" alt=""/>
+    <div class="mask"></div><div class="cap2">${t.c}</div><div class="nm">${t.n}</div></div>`).join('');
+  strip.innerHTML=TOOLS.map((t,i)=>`<button class="ts${variant==='chips'?' chip':''}${i===0?' on':''}" data-i="${i}" aria-label="${t.n}" title="${t.n}"><span class="ic">${ICONS[i]}</span>${variant==='chips'?`<span class="lb">${t.n}</span>`:''}</button>`).join('');
+  const ts=[...strip.children];
+  const ss=new Snap(vp);
+  const sync=(i)=>ts.forEach((b,j)=>b.classList.toggle('on',j===i));
+  ss.onSettle=sync; ss.onUpdate=(p)=>sync(ss._idx(p));
+  ts.forEach(b=>b.addEventListener('click',()=>ss.goTo(+b.dataset.i)));
+  return ss;
+}
+document.querySelectorAll('.screen').forEach(s=>{ if(s.querySelector('.hero-spring')) setupHero(s); });
+
+/* ---------- P4：连续拖滑 coverflow + 顶部 tab 同步 ---------- */
 const stackTrack=document.getElementById('stackTrack');
 const dots=document.getElementById('dots');
+const p4strip=document.querySelector('[data-for="p4"]');
 const OFF=74, SCL=0.14, DIM=0.32, N=TOOLS.length;
 stackTrack.innerHTML=TOOLS.map((t,i)=>`<div class="k" data-i="${i}"><img src="${t.img}" alt=""/>
   <div class="mask"></div><div class="cap2">${t.c}</div><div class="nm">${t.n}</div></div>`).join('');
 dots.innerHTML=TOOLS.map((_,i)=>`<i class="${i===0?'on':''}"></i>`).join('');
+p4strip.innerHTML=TOOLS.map((t,i)=>`<button class="ts${i===0?' on':''}" data-i="${i}" aria-label="${t.n}" title="${t.n}"><span class="ic">${ICONS[i]}</span></button>`).join('');
 const cards=[...stackTrack.children];
 const dotEls=[...dots.children];
-let pos=0, vel=0, target=0, animP=false;
+const p4ts=[...p4strip.children];
+let pos=0, vel=0, target=0, animP=false, genP=0;
 function renderP4(){
   cards.forEach((c,i)=>{const d=i-pos;const ad=Math.abs(d);
     const x=d*OFF, s=Math.max(0.5,1-ad*SCL), o=Math.max(0.08,1-ad*DIM), z=20-Math.round(ad);
     c.style.transform=`translateX(calc(-50% + ${x}px)) scale(${s})`;
     c.style.opacity=o.toFixed(2);c.style.zIndex=z;c.style.pointerEvents=ad<1.2?'auto':'none';});
   const near=Math.round(pos);dotEls.forEach((d,j)=>d.classList.toggle('on',j===near));
+  p4ts.forEach((b,j)=>b.classList.toggle('on',j===near));
 }
 function projP4(v){const decel=0.998;return (v/1000)*decel/(1-decel);}
 function settleP4(){target=Math.max(0,Math.min(N-1,Math.round(pos)));
   if(reduce){pos=target;renderP4();return;}
-  animP=true;let last=performance.now();const k=110,d=18;
-  const tick=(now)=>{let dt=(now-last)/1000;last=now;if(dt>0.064)dt=0.064;
+  animP=true;const gen=++genP;let last=performance.now();const k=110,d=18;
+  const tick=(now)=>{if(gen!==genP)return;let dt=(now-last)/1000;last=now;if(dt>0.064)dt=0.064;
     const Fs=-k*(pos-target),Fd=-d*vel;vel+=(Fs+Fd)*dt;pos+=vel*dt;
     if(Math.abs(pos-target)<0.004&&Math.abs(vel)<0.02){pos=target;renderP4();animP=false;return;}
     renderP4();requestAnimationFrame(tick);};requestAnimationFrame(tick);}
 const vp4=document.getElementById('stackSpring');
 let drag4=false,sx4=0,sp4=0,lx4=0,lt4=0;
 function rubber(o){const d=0.55;return (1-1/(o*d+1))/d;}
-function down4(e){if(animP)animP=false;drag4=true;const pt=e.touches?e.touches[0]:e;sx4=pt.clientX;sp4=pos;lx4=pt.clientX;lt4=performance.now();vel=0;
+function down4(e){genP++;animP=false;drag4=true;const pt=e.touches?e.touches[0]:e;sx4=pt.clientX;sp4=pos;lx4=pt.clientX;lt4=performance.now();vel=0;
   window.addEventListener('pointermove',move4);window.addEventListener('pointerup',up4);window.addEventListener('pointercancel',up4);}
 function move4(e){if(!drag4)return;const pt=e.touches?e.touches[0]:e;let np=sp4-(pt.clientX-sx4)/OFF;
-  if(np<0)np=-rubber(-np); else if(np>N-1)np=(N-1)+rubber(np-(N-1)); // 两端橡胶阻尼
+  if(np<0)np=-rubber(-np); else if(np>N-1)np=(N-1)+rubber(np-(N-1));
   pos=np;renderP4();
   const now=performance.now(),dt=(now-lt4)/1000;if(dt>0)vel=-(pt.clientX-lx4)/dt/OFF;lx4=pt.clientX;lt4=now;}
 function up4(){if(!drag4)return;drag4=false;window.removeEventListener('pointermove',move4);window.removeEventListener('pointerup',up4);window.removeEventListener('pointercancel',up4);
@@ -239,8 +320,15 @@ function up4(){if(!drag4)return;drag4=false;window.removeEventListener('pointerm
 vp4.addEventListener('pointerdown',down4);
 vp4.addEventListener('wheel',(e)=>{if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){e.preventDefault();pos=Math.max(0,Math.min(N-1,Math.round(pos)+(e.deltaX>0?1:-1)));settleP4();}},{passive:false});
 renderP4();
+p4ts.forEach(b=>b.addEventListener('click',()=>{pos=+b.dataset.i;settleP4();}));
 
-/* ---------- seg 切换（我的建议为占位，保持 IA 一致） ---------- */
+/* ---------- 底部主 Tab Bar（示意） ---------- */
+document.querySelectorAll('[data-home]').forEach(bar=>{
+  bar.innerHTML=['home','insight','tools','me'].map((k,i)=>
+    `<div class="ht${k==='tools'?' on':''}"><span class="hi">${HOME_SVG[k]}</span><span>${k==='home'?'首页':k==='insight'?'洞察':k==='tools'?'工具':'我'}</span></div>`).join('');
+});
+
+/* ---------- seg 切换（保持 IA 一致） ---------- */
 document.querySelectorAll('.seg').forEach(seg=>{
   const sbs=[...seg.querySelectorAll('.sb')];
   sbs.forEach((sb,i)=>sb.addEventListener('click',()=>{sbs.forEach((x,j)=>x.classList.toggle('on',j===i));

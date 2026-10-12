@@ -470,6 +470,7 @@ export default function SleepDetailScreen() {
             day={dayAnalysis.day}
             segments={dayAnalysis.segs}
             phys={dayAnalysis.phys}
+            onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
           />
 
           <SleepRhythmCard

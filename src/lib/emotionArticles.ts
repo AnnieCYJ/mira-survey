@@ -11,6 +11,7 @@ import type { LearnArticle } from './learnArticles';
 export const EMOTION_ARTICLES: LearnArticle[] = [
   {
     id: 'threeGood',
+    method: { why: '睡前把注意力从反复回放的压力切回当天真实发生的好事。', steps: ['写下三件小事。', '每件补一句“它为什么会发生”。', '连续记录一周，再回看哪类事情最能让你放松。'], observe: '观察睡前情绪、入睡和第二天精神状态的变化。' },
     eyebrow: '情绪调节',
     minutes: 3,
     title: '三件好事：被验证最多的幸福练习',
@@ -45,6 +46,7 @@ export const EMOTION_ARTICLES: LearnArticle[] = [
   },
   {
     id: 'sigh',
+    method: { why: '情绪上行或生理唤醒偏高时，先用短呼吸把节奏降下来。', steps: ['两次短吸，接一次更长的呼气，做 3 轮。', '完成后记录当下情绪和身体紧绷程度。', '如果舒服，再把它放进固定的睡前或工作间隙。'], observe: '比较练习前后的情绪、心率和压力变化，找到最适合你的时间。' },
     eyebrow: '情绪调节',
     minutes: 3,
     title: '生理性叹息：最快的降温开关',

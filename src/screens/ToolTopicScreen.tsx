@@ -251,6 +251,8 @@ function LearnSection({ phase, navigation }: { phase: string; navigation: TopicN
           : `当前 ${phase} · 内容跟着你的周期阶段更新`}
       </Text>
 
+      <RhythmMethodStrip phase={phase} navigation={navigation} />
+
       {/* 列表区标题 */}
       <View style={ls.secHead}>
         <Text style={ls.secTitle}>为你现在的阶段挑的</Text>
@@ -276,6 +278,47 @@ function LearnSection({ phase, navigation }: { phase: string; navigation: TopicN
         </TouchableOpacity>
       ))}
       <View style={{ height: theme.space.xl }} />
+    </>
+  );
+}
+
+/** 把节律理论拆成可执行的三张图文卡：先解释窗口，再给一个动作。 */
+function RhythmMethodStrip({ phase, navigation }: { phase: string; navigation: TopicNav }) {
+  const cards = [
+    { id: 'cortisol', title: '晨光校准', text: '起床后见光，让白天的节律先站稳。', tone: '晨间节律' },
+    { id: phase === '黄体期' || phase === '经期' ? 'progesterone' : 'estrogen', title: phase === '黄体期' || phase === '经期' ? '给恢复留空间' : '把难事放在上行段', text: phase === '黄体期' || phase === '经期' ? '减少并列任务，先把睡眠和恢复稳住。' : '把需要创造力的事放在精力上行时段。', tone: '周期节律' },
+    { id: 'dopamine', title: '先难后易', text: '把最需要专注的事放在脑力上行时段。', tone: '脑力节律' },
+  ];
+  return (
+    <>
+      <View style={ls.methodHead}>
+        <Text style={ls.secTitle}>今天可以这样做</Text>
+        <Text style={ls.methodHint}>按你的节律挑一件</Text>
+      </View>
+      <View style={ls.methodRow}>
+        {cards.map((card) => {
+          const article = getLearnArticle(card.id);
+          return (
+            <TouchableOpacity
+              key={card.id}
+              activeOpacity={theme.press.opacity}
+              style={ls.methodCard}
+              onPress={() => navigation.navigate('LearnRead', { articleId: article.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`${card.title}，${card.text}`}
+            >
+              <ImageBackground source={article.cover} style={ls.methodImage} imageStyle={{ borderRadius: theme.radius.md }} resizeMode="cover">
+                <View style={ls.methodShade} />
+                <View style={ls.methodCopy}>
+                  <Text style={ls.methodTone}>{card.tone}</Text>
+                  <Text style={ls.methodTitle} numberOfLines={1}>{card.title}</Text>
+                  <Text style={ls.methodText} numberOfLines={2}>{card.text}</Text>
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </>
   );
 }
@@ -451,7 +494,7 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
   return (
     <>
       {/* ① 今日状态分析（环 + stat3 + 理由；按反馈不显示顶部「为什么今天这么动」标签，内容保留） */}
-      <SportAnalysisCard plan={plan} brief={brief} statusLine={statusLine} />
+      <SportAnalysisCard plan={plan} brief={brief} statusLine={statusLine} sleepScore={sleepSel?.score ?? null} sleepTotalMin={sleepSel?.total ?? null} />
       <View style={{ height: theme.space.md }} />
 
       {/* ② 今天推荐 · 三选二（建议在后） */}
@@ -592,10 +635,12 @@ function AdvRow({ tag, tagBg, tagFg, text, last }: { tag: string; tagBg: string;
 }
 
 /** 卡1「为什么今天这么动」：环 + stat3 + 理由×2 */
-function SportAnalysisCard({ plan, brief, statusLine }: {
+function SportAnalysisCard({ plan, brief, statusLine, sleepScore, sleepTotalMin }: {
   plan: ReturnType<typeof buildTodayWorkout>;
   brief: ReturnType<typeof buildSportBrief>;
   statusLine: string;
+  sleepScore: number | null;
+  sleepTotalMin: number | null;
 }) {
   const z = plan.targetZone;
   const hrText = z.min > 0 ? `${z.min}–${z.max}` : `≤ ${z.max}`;
@@ -604,19 +649,27 @@ function SportAnalysisCard({ plan, brief, statusLine }: {
       : plan.intensity === 'moderate' ? '能说话'
         : plan.intensity === 'recovery' ? '轻松'
           : '待同步';
+  const conclusion =
+    plan.intensity === 'intense' ? '今天适合短时发力' :
+    plan.intensity === 'moderate' ? '今天适合保持节奏' :
+    plan.intensity === 'recovery' ? '今天适合温和恢复' : '今天先等数据同步';
   return (
-    <View style={sp2.card}>
-      <IntensityRing color={brief.ringColor} gearName={brief.gearName} gearSub={brief.gearSub} />
+    <>
+      <View style={sp2.heroRing}>
+        <IntensityRing color={brief.ringColor} gearName={brief.gearName} gearSub={brief.gearSub} />
+      </View>
+      <View style={sp2.card}>
+      <View style={sp2.conclusion}>
+        <Text style={sp2.conclusionTitle}>{conclusion}</Text>
+        <Text style={sp2.conclusionSub}>睡眠恢复不错，适合中低强度。{brief.reason} · {statusLine}</Text>
+      </View>
       <View style={sp2.stat3}>
-        <StatTile tint={mm.colors.skyTint} dot={mm.colors.skyCore} label="心率" value={hrText} />
-        <StatTile tint={mm.colors.limeTint} dot={mm.colors.limeMid} label="体感" value={feelText} />
-        <StatTile tint={mm.colors.honeyTint} dot={mm.colors.honeyCore} label="时段" value={brief.slotClock} />
+        <StatTile tint={mm.colors.skyTint} dot={mm.colors.skyCore} label="恢复" value={sleepScore != null ? `${Math.round(sleepScore)}` : "—"} />
+        <StatTile tint={mm.colors.honeyTint} dot={mm.colors.honeyCore} label="睡眠" value={sleepTotalMin != null ? `${Math.floor(sleepTotalMin / 60)}h${String(sleepTotalMin % 60).padStart(2, "0")}` : "—"} />
+        <StatTile tint={mm.colors.roseTint} dot={mm.colors.roseCore} label="建议强度" value={brief.gearName === "恢复" ? "低" : brief.gearName === "平稳" ? "中低" : "中"} />
       </View>
-      <View style={sp2.advList}>
-        <AdvRow tag="周期" tagBg={mm.colors.purpleSoft} tagFg={mm.colors.purpleDeep} text={brief.reason} />
-        <AdvRow tag="状态" tagBg={mm.colors.roseSoft} tagFg={mm.colors.roseDeep} text={statusLine} last />
       </View>
-    </View>
+    </>
   );
 }
 
@@ -630,27 +683,27 @@ const REC_TAG_COLORS = [
 /** 卡2「今天推荐 · 三选二」：推荐条目×3 + 依据行（固定文案） */
 function SportRecCard({ brief }: { brief: ReturnType<typeof buildSportBrief> }) {
   return (
-    <View style={sp2.card}>
-      <View style={sp2.recHead}>
-        <MiraTag label="今天推荐" />
-        <Text style={sp2.recHeadSub}>三选二</Text>
+    <View>
+      <View style={sp2.sectionHead}>
+        <Text style={sp2.sectionTitle}>今天适合做什么</Text>
+        <Text style={sp2.sectionLink}>选一个开始</Text>
       </View>
       {brief.recs.map((r, i) => {
         const t = REC_TAG_COLORS[i % REC_TAG_COLORS.length];
-        const last = i === brief.recs.length - 1;
         return (
-          <View key={`${r.name}-${i}`} style={[sp2.recRow, !last && sp2.advRowLine]}>
-            <View style={[sp2.advTag, { backgroundColor: t.bg }]}>
-              <Text style={[sp2.advTagText, { color: t.fg }]}>{r.name}</Text>
+          <View key={`${r.name}-${i}`} style={sp2.workoutCard}>
+            <View style={[sp2.workoutIcon, { backgroundColor: t.bg }]}><Text style={[sp2.workoutIconText, { color: t.fg }]}>{i === 0 ? '↗' : i === 1 ? '◒' : '✦'}</Text></View>
+            <View style={sp2.workoutBody}>
+              <Text style={sp2.workoutName}>{r.name}</Text>
+              <Text style={sp2.workoutMeta}>{r.minutes} 分钟 · {r.timeLabel}</Text>
+              <Text style={sp2.workoutWhy}>{r.why}</Text>
             </View>
-            <View style={sp2.recBody}>
-              <Text style={sp2.recMain}>{r.minutes} 分钟 · {r.timeLabel}</Text>
-              <Text style={sp2.recWhy}>{r.why}</Text>
-            </View>
+            <TouchableOpacity style={sp2.startButton} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={`开始记录${r.name}`}>
+              <Text style={sp2.startButtonText}>开始记录</Text>
+            </TouchableOpacity>
           </View>
         );
       })}
-      <Text style={sp2.sourceLine}>方案依据：斯坦福 Stacy Sims 周期同步训练法</Text>
     </View>
   );
 }
@@ -863,6 +916,21 @@ const ls = StyleSheet.create({
     marginTop: theme.sp(2.5),
     marginBottom: theme.space.lg,
   },
+  methodHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: theme.sp(2),
+  },
+  methodHint: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
+  methodRow: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.space.lg },
+  methodCard: { flex: 1, minWidth: 0 },
+  methodImage: { height: theme.sp(31), justifyContent: 'flex-end', overflow: 'hidden' },
+  methodShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,24,42,0.22)' },
+  methodCopy: { padding: theme.sp(2) },
+  methodTone: { color: 'rgba(255,255,255,0.82)', fontSize: theme.fontSize.micro, marginBottom: theme.sp(0.5) },
+  methodTitle: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, marginBottom: theme.sp(0.5) },
+  methodText: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.micro, lineHeight: theme.fs(15) },
   secHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -1099,7 +1167,7 @@ const ss = StyleSheet.create({
   recordGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(3.5), borderRadius: theme.radius.pill },
   recordBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
   recWrap: {
-    backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)',
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact,
   },
   secHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: theme.sp(2) },
@@ -1113,7 +1181,7 @@ const ss = StyleSheet.create({
   },
   secSumText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft },
   wkCard: {
-    backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)',
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(3),
   },
   wkHead: { flexDirection: 'row', alignItems: 'center' },
@@ -1155,7 +1223,7 @@ const ss = StyleSheet.create({
 
   /* ── 记录运动 · 运动种类选择面板（v18.87）──────────────── */
   pickerWrap: {
-    backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)',
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(1),
   },
   pickerTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(2) },
@@ -1206,11 +1274,27 @@ const ss = StyleSheet.create({
 const sp2 = StyleSheet.create({
   /* 白卡通用 */
   card: {
-    backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)',
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact,
   },
+  heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: -theme.sp(3) },
+  conclusion: { marginBottom: theme.sp(1), alignItems: 'flex-start' },
+  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, textAlign: 'left' },
+  conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkFaint, textAlign: 'left' },
   kickerWrap: { marginBottom: theme.sp(1.5) },
   /* 推荐卡头部：主标签(MiraTag) + 小字说明，对齐饮食页层级 */
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) },
+  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  sectionLink: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkFaint },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)', borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
+  workoutIcon: { width: theme.sp(12), height: theme.sp(12), borderRadius: theme.sp(4), alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(2.5) },
+  workoutIconText: { fontSize: theme.fs(27), fontWeight: '500' as never },
+  workoutBody: { flex: 1, minWidth: 0 },
+  workoutName: { fontSize: theme.fontSize.card, lineHeight: theme.fs(23), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  workoutMeta: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkSoft, marginTop: 2 },
+  workoutWhy: { fontSize: theme.fontSize.micro, lineHeight: theme.fs(16), color: mm.colors.inkFaint, marginTop: 2 },
+  startButton: { backgroundColor: mm.colors.limeMid, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1.75) },
+  startButtonText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
   recHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), marginBottom: theme.sp(1.5) },
   recHeadSub: { fontSize: theme.fontSize.sm, fontWeight: '600' as never, color: mm.colors.inkFaint },
 
@@ -1222,11 +1306,11 @@ const sp2 = StyleSheet.create({
   ringGearSub: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, color: mm.colors.inkFaint, marginTop: theme.sp(0.75) },
 
   /* stat3 三格：环下方 10px，3 列 gap 8，tint 底（SPEC §2.3） */
-  stat3: { flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(2.5) },
-  statTile: { flex: 1, borderRadius: theme.sp(3), paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(2.25) },
+  stat3: { flexDirection: 'row', gap: theme.sp(1.5), marginTop: theme.sp(2) },
+  statTile: { flex: 1, borderRadius: theme.sp(3), paddingHorizontal: theme.sp(1.75), paddingVertical: theme.sp(1.75) },
   statDot: { width: theme.sp(1.75), height: theme.sp(1.75), borderRadius: theme.radius.pill, marginBottom: theme.sp(1.25) },
-  statLabel: { fontSize: theme.fontSize.sm, fontWeight: '800' as never, color: mm.colors.ink },
-  statValue: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, color: mm.colors.inkFaint, marginTop: 1 },
+  statLabel: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, color: mm.colors.inkSoft },
+  statValue: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, marginTop: 2 },
 
   /* 理由行（adv）：tag 胶囊 soft 底 deep 字 + 正文，行间细分隔线（SPEC §2.4） */
   advList: { marginTop: theme.sp(1.5) },

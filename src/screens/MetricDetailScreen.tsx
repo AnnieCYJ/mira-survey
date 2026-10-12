@@ -23,6 +23,7 @@ import Icon from '../components/Icon';
 import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
+import { moodFromEmotionLevel, MOOD_COLOR } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf } from '../lib/dateUtils';
@@ -80,6 +81,10 @@ const DAY_BAR_SPECS: Record<string, {
   key: HSMetricKey;
   binMin?: number;
   bands?: [number, number];
+  /** 自定义分色（优先于 bands）。情绪这类双向指标用：负=偏低 / 0 附近=平稳 / 正=积极 */
+  colorOf?: (v: number) => string;
+  /** 图表左上角的小标签；不给则按 bands 有无自动选 */
+  barLabel?: string;
   measuredOnly?: boolean;
   nightFirst?: boolean;
   sourceNote?: string;
@@ -105,8 +110,18 @@ const DAY_BAR_SPECS: Record<string, {
   },
   emotion: {
     key: 'emotion',
-    bands: [2, 3],
-    sourceNote: '每根柱 = 5 分钟情绪评估值（-10～10）。',
+    // ★ 2026-10-12（用户给定设备侧参考色卡）：-10～10 按设备**五档**分色，并一一映射到
+    //   「情绪记录」的五档标签（唯一映射源 moodFromEmotionLevel / EMOTION_LEVEL_BANDS）：
+    //     EMO −10~−7 → 难过 · 低落 −7~−3 → 压力 · 稳定 −3~4 → 平静
+    //     · 高涨 4~7 → 开心 · 激动 7~10 → 兴奋
+    //   （原实现先误抄压力/疲劳的 bands[2,3]，后误压成三段；现按设备真值五档 + 情绪记录标签。）
+    barLabel: '全天 · 五档情绪',
+    colorOf: (v: number) => {
+      const m = moodFromEmotionLevel(v);
+      return m ? (MOOD_COLOR[m] ?? mm.colors.inkFaint) : mm.colors.inkFaint;
+    },
+    sourceNote:
+      '每根柱 = 5 分钟情绪评估值（−10～10）。五档：平静 −3~4 · 开心 4~7 · 兴奋 7~10 · 压力 −7~−3 · 难过 −10~−7。',
   },
   cortisol: {
     key: 'cortisol',
@@ -359,8 +374,9 @@ export default function MetricDetailScreen() {
     return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length };
   }, [isSpecDay, spec, anchor]);
 
-  // 状态型指标的分档配色（低/中/高）
+  // 状态型指标的分档配色：优先 spec 自定义（情绪按方向），否则低/中/高三档
   const specColorOf = useMemo(() => {
+    if (spec?.colorOf) return spec.colorOf;
     if (!spec?.bands) return undefined;
     const [lo, hi] = spec.bands;
     return (v: number) => (v <= lo ? mm.colors.inkFaint : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
@@ -479,8 +495,10 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
     const rawMax = Math.max(...vals);
     // ★ 2026-10-08：非负 / 归一化指标（cortisol/eda/hrv/...）的 Y 轴下限钳 0，
     //   否则底部刻度会出现 -7 之类负值（用户实锤）。可负指标（如情绪 -10~10, yMin<0）不受影响。
-    //   ★ 本轮：相对 / 归一化指标（RELATIVE_AXIS_KEYS）无论 yMin 是否声明，一律下限 0（0~100 活性）。
-    const isRelative = RELATIVE_AXIS_KEYS.has(params.key);
+    //   ★ 2026-10-12：emotion 虽在 RELATIVE_AXIS_KEYS（不显示数值轴），但它是**双向**指标
+    //   （-10~10），一律钳 0 会把负值曲线整段切掉 → 排除出钳 0 名单。
+    //   ★ 本轮：相对 / 归一化指标（RELATIVE_AXIS_KEYS）除情绪外一律下限 0（0~100 活性）。
+    const isRelative = RELATIVE_AXIS_KEYS.has(params.key) && params.key !== 'emotion';
     const floor = isRelative ? 0 : (series.yMin != null && series.yMin >= 0 ? series.yMin : -Infinity);
     if (rawMin === rawMax) {
       const pad = Math.abs(rawMin) * 0.1 || 1;
@@ -811,9 +829,8 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         {isSpecDay && spec && specDay ? (
           <View style={styles.chartCard}>
             <View style={styles.partRow}>
-              <Text style={styles.specLab}>{DAY_BAR_SPECS[params.key]?.bands
-                ? '全天 · 按档位分色'
-                : '全天 · 每 5 分钟一点'}</Text>
+              <Text style={styles.specLab}>{DAY_BAR_SPECS[params.key]?.barLabel
+                ?? (DAY_BAR_SPECS[params.key]?.bands ? '全天 · 按档位分色' : '全天 · 每 5 分钟一点')}</Text>
               <Text style={styles.specCount}>
                 {specDay.blocked ? '无实测数据'
                   : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
@@ -834,7 +851,19 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                   yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
                   height={chart.plot.l}
                 />
-                <DayBarsLegend showMean={false} />
+                {/* ★ 2026-10-12（用户拍板：统一成 平静/开心/兴奋/压力/难过）—— 情绪图例 = 「情绪记录」
+                    点阵的同一套五档顺序（DOT_LEGEND），色值一律取 MOOD_COLOR，跨页完全一致。
+                    睡眠/清醒/活动是心率类图的分段（segmentOf），情绪是状态型指标不用那套。 */}
+                <DayBarsLegend
+                  showMean={false}
+                  items={params.key === 'emotion' ? [
+                    { color: MOOD_COLOR.calm, label: '平静' },
+                    { color: MOOD_COLOR.happy, label: '开心' },
+                    { color: MOOD_COLOR.excited, label: '兴奋' },
+                    { color: MOOD_COLOR.stressed, label: '压力' },
+                    { color: MOOD_COLOR.sad, label: '难过' },
+                  ] : undefined}
+                />
                 <Text style={styles.chartNote}>
                   {spec!.sourceNote}
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}

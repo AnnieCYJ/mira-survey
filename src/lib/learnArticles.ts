@@ -20,6 +20,8 @@ export interface LearnArticle {
   paragraphs: string[];
   /** 参考出处（v18.86：荷尔蒙系列文章附真实文献；可选，有则渲染「参考出处」块） */
   sources?: string[];
+  /** 可执行方法，与说明正文分开展示。 */
+  method?: { why: string; steps: string[]; observe: string };
 }
 
 export const LEARN_AUTHOR = 'Mira 编辑部';
@@ -27,6 +29,7 @@ export const LEARN_AUTHOR = 'Mira 编辑部';
 export const LEARN_ARTICLES: LearnArticle[] = [
   {
     id: 'levers',
+    method: {"why": "先选一个容易重复的小行动，比一次调整所有习惯更方便看出自己的反应。", "steps": ["从晨光、规律睡眠、放松呼吸或适量活动中选一项。", "保持其他安排尽量稳定，记录实际完成的时间。", "完成后反馈有帮助或没感觉，下一次按自己的体验调整。"], "observe": "观察同类日子的睡眠、压力和主观精力，逐步找到适合自己的方法。"},
     eyebrow: '本周主题',
     minutes: 5,
     title: '平衡激素的四根杠杆：光 · 睡 · 压 · 动',
@@ -80,6 +83,7 @@ export const LEARN_ARTICLES: LearnArticle[] = [
   },
   {
     id: 'cortisol',
+    method: {"why": "固定起床和晨间光照，是调整昼夜节律可以先做的一步。", "steps": ["起床后到户外接触自然光，阴天也可以；不要直视太阳。", "从容易坚持的短时户外活动开始，尽量维持相近的起床时间。", "晚上逐步调暗灯光，给睡前留一段安静时间。"], "observe": "记录见光和起床时间，连续比较入睡、醒来精神及节律峰值时间；不把单日变化当作方法效果。"},
     eyebrow: '压力与节律',
     minutes: 3,
     title: '皮质醇的晨峰意义',
@@ -182,6 +186,7 @@ export const LEARN_ARTICLES: LearnArticle[] = [
   },
   {
     id: 'hormSleep',
+    method: { why: '黄体后段或经前睡眠容易变浅，先把睡前节奏固定下来。', steps: ['睡前逐步降低灯光和信息刺激。', '做一段轻柔呼吸或放松练习。', '记录入睡时间、夜间醒来和起床精神。'], observe: '比较同一周期阶段的睡眠和恢复变化，找到对你最有效的睡前安排。' },
     eyebrow: '激素 × 睡眠',
     minutes: 4,
     title: '为什么经前一周睡得特别差',

@@ -419,7 +419,7 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
       hasLog: cycle.hasLog,
       baselineSource: 'lit',
       hasData: false,
-      narrative: cycle.hasLog ? '今日佩戴数据不足，暂无法评估恢复状态' : '记录经期并连续佩戴几天后，开启今日状态评估',
+      narrative: cycle.hasLog ? '今天先看到一部分恢复信号，继续佩戴后我会帮你把状态看得更准' : '记录经期并连续佩戴几天，我会逐渐帮你看出自己的状态规律',
     };
   }
 

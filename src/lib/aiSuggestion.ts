@@ -23,18 +23,18 @@
  */
 import * as FileSystem from 'expo-file-system';
 import { runOnModel } from '../ai/model';
-import { evidenceBits, pickReadTarget, type SuggestionCandidate } from './suggestionEngine';
+import { evidenceBits, pickReadTarget, sceneBucket, type SuggestionCandidate } from './suggestionEngine';
 
 const STORE_PATH = (FileSystem.documentDirectory ?? '') + 'mira_ai_suggestion.json';
 /** 整体超时（★ 十六改 45s → 60s，用户：「31 分给出来问题不大，但时间太长就不行」——
  *  即状态更新后最多等 1 分钟，等不到就上引擎卡；超时后模型若稍后完成，结果进缓存、下次可用） */
 const GEN_TIMEOUT_MS = 60_000;
 
-/** 状态签名（与 suggestionEngine.stateSig 同口径；那边是私有实现，这里保持一字不差） */
+/** 状态签名（与 suggestionEngine 同口径，包含饭前/睡前场景边界） */
 export function sigOf(cs?: any): string {
   const level = typeof cs?.level === 'string' ? cs.level : '';
   const phase = typeof cs?.phaseLabel === 'string' ? cs.phaseLabel : '';
-  return `${level}|${phase}`;
+  return `${level}|${phase}|${sceneBucket()}`;
 }
 
 // ── 缓存：内存 Map（sig → 候选） + 磁盘单条（最近一次生成），重启同签名秒出 AI 卡 ──

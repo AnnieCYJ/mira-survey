@@ -89,7 +89,7 @@ interface Props {
   /** 标注「此刻」竖线 */
   nowSlot?: number | null;
   chartH?: number;
-  /** 睡眠时段（灰色遮罩 + 「睡眠中」标签） */
+  /** 睡眠时段：仅用于让曲线在睡眠窗内断开（不插值、不画夜间压力），不再绘制灰色遮罩 */
   sleepWindow?: { bedHour: number; wakeHour: number } | null;
 }
 
@@ -188,22 +188,6 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
                 fill={LEVELS[i].color} opacity={0.07} />
             );
           })}
-
-          {/* ★ 睡眠遮罩 */}
-          {sleepWindow ? (() => {
-            const bedS = Math.max(0, Math.min(47, Math.floor(sleepWindow.bedHour * 2)));
-            const wakeS = Math.max(0, Math.min(47, Math.floor(sleepWindow.wakeHour * 2)));
-            const sX = xAt(bedS);
-            const eX = xAt(Math.min(47, wakeS));
-            if (eX <= sX + 2) return null;
-            return (
-              <>
-                <Rect x={sX} y={padT} width={Math.max(1, eX - sX)} height={plotH} fill={theme.colors.ui.borderSoft} opacity={0.35} />
-                <SvgText x={(sX + eX) / 2} y={padT + theme.sp(3)} textAnchor="middle"
-                  fontSize={theme.fontSize.micro} fill={theme.colors.textSub} fontWeight="600">睡眠中</SvgText>
-              </>
-            );
-          })() : null}
 
           {/* 0 基线（网格线 token：线宽 1 + 3 4 虚线） */}
           <Path d={`M ${padL} ${yAt(0)} L ${padL + plotW} ${yAt(0)}`} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />

@@ -67,14 +67,25 @@ export interface DayPhys {
   hrvIntraday?: { t: number; v: number }[] | null;
 }
 
+export interface MetricJump {
+  key: string;
+  name: string;
+  unit: string;
+  yMin: number;
+  yMax: number;
+}
+
 interface Props {
   day: DaySleepAnalysis | null;
   /** 该日分期段（无数据时为 null → 显占位） */
   segments: SleepSegment[] | null;
   phys: DayPhys;
+  /** ★ 2026-10-12（用户）：生理信号行点击跳转洞察页基础指标详情页。
+   *   传 null 则不显示箭头、不可点击。 */
+  onOpenMetric?: (m: MetricJump) => void;
 }
 
-export default function SleepAnalysisCard({ day, segments, phys }: Props) {
+export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   /** 入睡时刻的绝对 ms（给 HRV 第二层做 x 轴参考）；拿不到就null */
@@ -125,12 +136,13 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
 
       {/* ② 整夜分期图（置于时长之下，常驻显示） */}
       <Text style={styles.blockTitle}>整夜分期</Text>
+      {/* ★ 2026-10-12（用户）：去掉分期图下方的 HRV 柱状图——hrvLayer 传 null */}
       {segments && segments.length > 0 ? (
         <SleepStageChart
           segments={segments}
           sleepTime={day?.sleepTime ?? null}
           totalMinutes={total > 0 ? total : null}
-          hrvLayer={phys?.hrvIntraday ?? null}
+          hrvLayer={null}
           bedTimeMs={bedTimeMs}
         />
       ) : (
@@ -200,21 +212,35 @@ export default function SleepAnalysisCard({ day, segments, phys }: Props) {
           {/* 睡眠生理信号 —— 行式列表 */}
           <View style={styles.block}>
             <Text style={styles.groupTitle}>睡眠生理信号</Text>
-            <Row name="睡眠静息心率" value={fmtNum(phys.hr, 0)} unit="bpm" />
+            <Row name="睡眠静息心率" value={fmtNum(phys.hr, 0)} unit="bpm"
+              metric={{ key: 'hr', name: '心率', unit: 'bpm', yMin: 40, yMax: 180 }}
+              onPress={onOpenMetric ? () => onOpenMetric({ key: 'hr', name: '心率', unit: 'bpm', yMin: 40, yMax: 180 }) : undefined} />
             <Divider />
-            <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms" />
+            <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms"
+              metric={{ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }}
+              onPress={onOpenMetric ? () => onOpenMetric({ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }) : undefined} />
             <Divider />
             {/* ★ 2026-10-10（修 bug）：优先显示「相对个人基线的偏离」；基线未建立时退回绝对体温，
                 且标签同步改成「体温」—— 绝不把 36.5℃ 当成「偏离 +36.5℃」显示。 */}
             {phys.tempDelta != null
-              ? <Row name="体温偏离（相对基线）" value={fmtSigned(phys.tempDelta)} unit="℃" />
+              ? <Row name="体温偏离（相对基线）" value={fmtSigned(phys.tempDelta)} unit="℃"
+                  metric={{ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }}
+                  onPress={onOpenMetric ? () => onOpenMetric({ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }) : undefined} />
               : phys.tempAbs != null
-              ? <Row name="体温（建立基线后可看偏离）" value={fmtNum(phys.tempAbs, 1)} unit="℃" />
-              : <Row name="体温偏离（相对基线）" value="—" unit="℃" />}
+              ? <Row name="体温（建立基线后可看偏离）" value={fmtNum(phys.tempAbs, 1)} unit="℃"
+                  metric={{ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }}
+                  onPress={onOpenMetric ? () => onOpenMetric({ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }) : undefined} />
+              : <Row name="体温偏离（相对基线）" value="—" unit="℃"
+                  metric={{ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }}
+                  onPress={onOpenMetric ? () => onOpenMetric({ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }) : undefined} />}
             <Divider />
-            {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min" /> : null}
+            {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min"
+              metric={{ key: 'rr', name: '呼吸率', unit: '次/分', yMin: 5, yMax: 40 }}
+              onPress={onOpenMetric ? () => onOpenMetric({ key: 'rr', name: '呼吸率', unit: '次/分', yMin: 5, yMax: 40 }) : undefined} /> : null}
             {phys.rr != null ? <Divider /> : null}
-            <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%" />
+            <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%"
+              metric={{ key: 'spo2', name: '血氧', unit: '%', yMin: 80, yMax: 100 }}
+              onPress={onOpenMetric ? () => onOpenMetric({ key: 'spo2', name: '血氧', unit: '%', yMin: 80, yMax: 100 }) : undefined} />
             <Divider />
             {phys.recoveryIdx != null ? <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last /> : null}
           </View>
@@ -247,17 +273,32 @@ function PropKey({ color, k, v }: { color: string; k: string; v: number | null }
     </View>
   );
 }
-/** 行式明细：标签左 · 数值右（Oura / Whoop 范式，替代并排数字格） */
-function Row({ name, value, unit, last }: { name: string; value: string; unit?: string; last?: boolean }) {
-  return (
+/** 行式明细：标签左 · 数值右（Oura / Whoop 范式，替代并排数字格）。
+ *  ★ 2026-10-12：onPress 非空时右侧显示向右箭头，整行可点击跳转详情页。 */
+function Row({ name, value, unit, last, onPress, metric }: {
+  name: string;
+  value: string;
+  unit?: string;
+  last?: boolean;
+  onPress?: () => void;
+  metric?: MetricJump;
+}) {
+  const showArrow = onPress != null && metric != null;
+  const content = (
     <View style={[styles.row, last && styles.rowLast]}>
       <Text style={styles.rowName}>{name}</Text>
       <View style={styles.rowValWrap}>
         <Text style={styles.rowVal}>{value}</Text>
         {unit ? <Text style={styles.rowUnit}>{unit}</Text> : null}
+        {showArrow ? <Icon name="chevronRight" size={15} color={theme.colors.textSub} style={styles.rowArrow} /> : null}
       </View>
     </View>
   );
+  return showArrow ? (
+    <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
+      {content}
+    </Pressable>
+  ) : content;
 }
 function Divider() {
   return <View style={styles.divider} />;
@@ -356,5 +397,6 @@ const styles = StyleSheet.create({
   rowValWrap: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   rowUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  rowArrow: { marginLeft: 4 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.ui.borderSoft },
 });

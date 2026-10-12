@@ -256,13 +256,22 @@ function mergeRealtime(prev: TimePoint[] | undefined, incoming: TimePoint): Time
   return Array.from(map.values()).sort((a, b) => a.t - b.t);
 }
 
+/**
+ * ★ 带符号指标：值域本身含负数，0/负数是有效测量值（不是原生 SDK 占位符）。
+ *   - emotion：戒指原生情绪等级 [-10, 10]，负值=消极/低落，必须保留；否则情绪点阵与
+ *     日均值只会看到「开心/兴奋」，丢光压力/难过（见 2026-10-12 修复）。
+ */
+const SIGNED_METRICS = new Set<string>(['emotion']);
+
 function recomputeDaily(
   intraday: TimePoint[],
   prevDaily: DayMetric | undefined,
   source: Source,
+  key?: string,
 ): DayMetric {
-  // ★ 过滤 0/负数：生理指标不可能为 0（0 是原生 SDK 的占位符/无测量标记）
-  const clean = intraday.filter((p) => Number.isFinite(p.v) && p.v > 0);
+  // ★ 生理指标 0/负数=原生 SDK 占位符（无测量）；emotion 等带符号指标例外，0/负是有效值。
+  const signed = key ? SIGNED_METRICS.has(key) : false;
+  const clean = intraday.filter((p) => Number.isFinite(p.v) && (signed || p.v > 0));
   const vals = clean.map((p) => p.v);
   const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   const min = vals.length ? Math.min(...vals) : null;
@@ -373,7 +382,7 @@ export class HealthStore {
     if (!store) return;
     const arr = mergeRealtime(store.intraday[dk], point);
     store.intraday[dk] = arr;
-    store.daily[dk] = recomputeDaily(arr, store.daily[dk], 'realtime');
+    store.daily[dk] = recomputeDaily(arr, store.daily[dk], 'realtime', key);
     this.lastUpdated[key] = ts;
     this.notify();
   }
@@ -394,7 +403,7 @@ export class HealthStore {
     }
     const prev = store.daily[dk];
     // 合并后始终从完整明细重算，避免分片长度较小时漏掉回填更新；实时明细会保留并标记 mixed。
-    store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill');
+    store.daily[dk] = recomputeDaily(store.intraday[dk], prev, 'backfill', key);
     // ★ v18.96：lastUpdated 记「数据本身的时间戳」（取本批样本最新 t），不是 Date.now()。
     //   否则回填 30 天历史也会把 lastUpdated 刷成「现在」，新鲜度判断（freshnessReport、
     //   RingBleManager 的 hrvFreshToday 等）会把历史数据误认为刚采到的。
@@ -416,7 +425,7 @@ export class HealthStore {
     const prev = store.daily[dk];
     const intraday = store.intraday[dk];
     if (intraday && intraday.length > 0) {
-      store.daily[dk] = recomputeDaily(intraday, prev, 'backfill');
+      store.daily[dk] = recomputeDaily(intraday, prev, 'backfill', key);
     } else if (!prev || prev.source === 'backfill') {
       store.daily[dk] = {
         mean: v, min: v, max: v, last: v, samples: 1,

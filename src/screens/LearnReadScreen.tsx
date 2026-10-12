@@ -88,6 +88,18 @@ export default function LearnReadScreen() {
           <Text key={i} style={styles.para}>{p}</Text>
         ))}
 
+        {article.method ? (
+          <View style={styles.sourcesBox}>
+            <Text style={styles.sourcesTitle}>把方法用起来</Text>
+            <Text style={styles.para}>{article.method.why}</Text>
+            {article.method.steps.map((step, i) => (
+              <Text key={i} style={styles.sourceItem}>{i + 1}. {step}</Text>
+            ))}
+            <Text style={styles.sourcesTitle}>记录后看什么</Text>
+            <Text style={styles.sourceItem}>{article.method.observe}</Text>
+          </View>
+        ) : null}
+
         {/* 参考出处（v18.86：附真实文献的文章显示） */}
         {article.sources && article.sources.length > 0 ? (
           <View style={styles.sourcesBox}>

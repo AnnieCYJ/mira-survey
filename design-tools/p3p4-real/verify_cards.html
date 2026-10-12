@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>工具页卡片 · 换图后比例核对</title>
+<style>
+  :root{--ink:#1F1D1A;--ink-soft:#5C574F;--ink-faint:#9C968C;--lime-soft:#EAF0BE;--lime-deep:#6E7A24;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;background:#fff;color:var(--ink);padding:30px 24px 60px;}
+  h1{font-size:17px;font-weight:700;letter-spacing:.2px;}
+  .sub{margin-top:6px;font-size:12px;line-height:1.6;color:var(--ink-soft);max-width:900px;}
+  .row{display:flex;flex-wrap:wrap;gap:26px;margin-top:26px;}
+  .item{width:214px;}
+  .k{position:relative;width:214px;height:268px;border-radius:22px;overflow:hidden;background:#fff;
+     box-shadow:0 10px 26px rgba(31,29,26,0.10),0 1px 3px rgba(31,29,26,0.06);}
+  .k::before{content:'';position:absolute;inset:-12%;background:var(--bg) center/cover no-repeat;filter:blur(18px);z-index:0;}
+  .k::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,.18);z-index:1;}
+  .k > img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;z-index:2;}
+  .k.fit::before,.k.fit::after{display:none;}
+  .k.fit > img{object-fit:cover;}
+  .sug{background:linear-gradient(140deg,var(--lime-soft) 0%,#F1E8F2 55%,#E6EFF7 100%);
+       display:flex;align-items:center;justify-content:center;}
+  .sug span{width:62px;height:62px;border-radius:50%;background:#fff;color:var(--lime-deep);
+       font-weight:700;font-size:26px;display:flex;align-items:center;justify-content:center;}
+  .nm{margin-top:10px;font-size:14px;font-weight:600;text-align:center;}
+  .st{margin-top:3px;font-size:10.5px;text-align:center;color:var(--ink-faint);line-height:1.4;}
+  .st b{color:var(--lime-deep);font-weight:600;}
+</style>
+</head>
+<body>
+<h1>工具页 · 换图后卡片比例核对（卡片 214×268 = 4:5）</h1>
+<div class="sub">
+  规则：图片自身比例与卡片（4:5）相差 ≤10% → <b>整图铺满，不裁主体、无底色</b>；相差较大 → 暂时用「同图模糊铺底 + 完整不裁切」，这类图需要换成 4:5 竖图（或我来扩图）。
+</div>
+<div class="row" id="row"></div>
+<script>
+const TOOLS=[
+  {n:'情绪调节',img:'card_emotion.jpg',   fit:0},
+  {n:'提升颜值',img:'card_recovery.jpg',  fit:0},
+  {n:'营养搭配',img:'card_food.jpg',      fit:0},
+  {n:'运动建议',img:'card_activity.jpg',  fit:1},
+  {n:'稳定睡眠',img:'card_meditation.jpg',fit:0},
+  {n:'知识科普',img:'card_learn.png',     fit:0},
+  {n:'我的建议',sug:1}
+];
+function ratio(src){
+  return new Promise(res=>{const i=new Image();i.onload=()=>res(i.naturalWidth/i.naturalHeight);i.onerror=()=>res(0);i.src=src;});
+}
+(async()=>{
+  const row=document.getElementById('row');
+  for(const t of TOOLS){
+    const el=document.createElement('div'); el.className='item';
+    if(t.sug){
+      el.innerHTML=`<div class="k sug"><span>M</span></div><div class="nm">${t.n}</div>
+        <div class="st">渐变卡 · 第 7 张</div>`;
+    }else{
+      const r=await ratio(t.img);
+      el.innerHTML=`<div class="k${t.fit?' fit':''}" style="--bg:url('${t.img}')"><img src="${t.img}" alt=""/></div>
+        <div class="nm">${t.n}</div>
+        <div class="st">${r.toFixed(3)} · ${t.fit?'<b>铺满，不裁</b>':'模糊铺底 / 待换图'}</div>`;
+    }
+    row.appendChild(el);
+  }
+})();
+</script>
+</body>
+</html>

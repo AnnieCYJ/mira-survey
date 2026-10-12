@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>我收藏的建议 · 三版布局</title>
+<style>
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body {
+    margin: 0; background: #f4f4f2; color: #1F1D1A;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 28px 12px 48px;
+  }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #9C968C; margin: 0 0 24px; }
+  .wrap { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; }
+  .phone {
+    width: 300px; background: #fff; border-radius: 38px; padding: 14px 14px 22px;
+    box-shadow: 0 18px 50px rgba(31,29,26,0.14); border: 1px solid rgba(31,29,26,0.06);
+  }
+  .notch { width: 120px; height: 22px; background: #1F1D1A; border-radius: 0 0 16px 16px; margin: 0 auto 14px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 4px 12px; }
+  .head b { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .head span { font-size: 12px; color: #9C968C; }
+  .tag { font-size: 11px; color: #6E7A24; font-weight: 600; margin: 2px 4px 14px; letter-spacing: 0.3px; }
+
+  /* 通用卡片 */
+  .card {
+    background: #fff; border: 1px solid rgba(31,29,26,0.07); border-radius: 16px;
+    padding: 10px 12px; margin: 0 4px 12px;
+    box-shadow: 0 4px 10px rgba(31,29,26,0.05);
+  }
+  .thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background:#eee; }
+  .t1 { font-size: 14px; font-weight: 600; color: #1F1D1A; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t2 { font-size: 12px; color: #5C574F; line-height: 15px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t3 { font-size: 11px; color: #9C968C; line-height: 13px; margin-top: 3px; }
+  .pill {
+    display: inline-flex; align-items: center; background: #EDE7FB; color: #6B4EFF;
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  }
+
+  /* A：图左·文右·按钮在文下方右对齐 */
+  .vA .row { display: flex; align-items: center; gap: 12px; }
+  .vA .col { flex: 1; min-width: 0; }
+  .vA .foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+  /* B：图左·文右·按钮整卡底部通栏居中 */
+  .vB .row { display: flex; align-items: center; gap: 12px; }
+  .vB .col { flex: 1; min-width: 0; }
+  .vB .foot { display: flex; justify-content: center; margin-top: 10px; }
+  .vB .pill { width: 100%; justify-content: center; }
+
+  /* C：图左·文字右上·按钮右下角（绝对定位） */
+  .vC .card { position: relative; }
+  .vC .row { display: flex; align-items: flex-start; gap: 12px; }
+  .vC .col { flex: 1; min-width: 0; }
+  .vC .foot { position: absolute; right: 12px; bottom: 10px; }
+
+  .label { text-align: center; font-size: 12px; font-weight: 600; color: #1F1D1A; margin: 4px 0 2px; }
+  .note { text-align: center; font-size: 11px; color: #9C968C; margin: 0 0 6px; line-height: 15px; }
+</style>
+</head>
+<body>
+  <h1>「我收藏的建议」卡片 · 三版布局</h1>
+  <p class="sub">都是：左边图 · 右边文字 · 按钮在下面。你看哪个顺眼，我落到代码里。</p>
+
+  <div class="wrap">
+    <!-- A -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="head"><b>我收藏的建议</b><span>共 6 条 ›</span></div>
+      <p class="tag">A · 按钮在文字下方、右对齐（最扁）</p>
+      <div class="card vA">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_meditation.jpg" />
+          <div class="col">
+            <div class="t1">下午容易累，来段呼吸</div>
+            <div class="t2">确认有帮助 3 次 · 压力偏高</div>
+            <div class="t3">最近一次：今天 14:30</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+      <div class="card vA">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_food.jpg" />
+          <div class="col">
+            <div class="t1">晚饭少油一点更舒服</div>
+            <div class="t2">确认有帮助 2 次 · 肠胃偏胀</div>
+            <div class="t3">最近一次：昨天 19:10</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+    </div>
+
+    <!-- B -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="head"><b>我收藏的建议</b><span>共 6 条 ›</span></div>
+      <p class="tag">B · 按钮整卡底部通栏（最清楚）</p>
+      <div class="card vB">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_meditation.jpg" />
+          <div class="col">
+            <div class="t1">下午容易累，来段呼吸</div>
+            <div class="t2">确认有帮助 3 次 · 压力偏高</div>
+            <div class="t3">最近一次：今天 14:30</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+      <div class="card vB">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_food.jpg" />
+          <div class="col">
+            <div class="t1">晚饭少油一点更舒服</div>
+            <div class="t2">确认有帮助 2 次 · 肠胃偏胀</div>
+            <div class="t3">最近一次：昨天 19:10</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+    </div>
+
+    <!-- C -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="head"><b>我收藏的建议</b><span>共 6 条 ›</span></div>
+      <p class="tag">C · 图占左·文字右上·按钮右下角</p>
+      <div class="card vC">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_meditation.jpg" />
+          <div class="col">
+            <div class="t1">下午容易累，来段呼吸</div>
+            <div class="t2">确认有帮助 3 次 · 压力偏高</div>
+            <div class="t3">最近一次：今天 14:30</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+      <div class="card vC">
+        <div class="row">
+          <img class="thumb" src="/src/assets/card_food.jpg" />
+          <div class="col">
+            <div class="t1">晚饭少油一点更舒服</div>
+            <div class="t2">确认有帮助 2 次 · 肠胃偏胀</div>
+            <div class="t3">最近一次：昨天 19:10</div>
+          </div>
+        </div>
+        <div class="foot"><span class="pill">再做一次</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

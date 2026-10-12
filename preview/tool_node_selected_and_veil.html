@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>顶部 icon 选中态候选 + 蒙层压深</title>
+<style>
+  :root{--ink:#1F1D1A}
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:#F2F0ED;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;padding:24px;line-height:1.5}
+  h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .lead{font-size:13px;color:#5C574F;margin:0 0 18px;max-width:900px}
+  h2{font-size:15px;margin:26px 0 10px;font-weight:600;padding-left:10px;border-left:3px solid #BCCB62}
+  .row{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .cap{font-size:12px;color:#9C968C;margin-bottom:8px;text-align:center}
+  .cap b{color:var(--ink);font-weight:600}
+  .phone{width:390px;background:#fff;border-radius:24px;padding:14px 0;box-shadow:0 10px 30px rgba(31,29,26,.14);overflow:hidden}
+  .screen{padding:0 24px}
+  .h1{font-size:26px;font-weight:500;margin-bottom:2px}
+  .h2{font-size:12px;color:#5C574F;margin-bottom:10px}
+  .strip{width:342px;background:#fff;border-radius:18px;padding:10px 14px;box-shadow:0 4px 14px rgba(31,29,26,.08)}
+  .nodeRow{position:relative;height:44px;display:flex;align-items:center;justify-content:space-between}
+  .nodeRow .line{position:absolute;left:17px;right:17px;top:21.25px;height:1.5px;background:rgba(31,29,26,.18)}
+  .node{position:relative;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+  .node .glyph{display:flex}
+  .node.off .glyph{opacity:.55}
+  .carousel{position:relative;width:390px;overflow:hidden}
+  .card{position:absolute;overflow:hidden;background:#EDE9E3}
+  .bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .frost{position:absolute;left:0;right:0;bottom:0;overflow:hidden}
+  .frost .sl{position:absolute;left:0;right:0;overflow:hidden}
+  .frost .sl img{position:absolute;left:0;right:0;width:100%;object-fit:cover;filter:blur(18px)}
+  .frost .veil{position:absolute;inset:0}
+  .body{position:relative;padding:0 16px 16px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+  .kicker{font-size:10px;font-weight:500;color:rgba(255,255,255,.82);text-shadow:0 1px 4px rgba(0,0,0,.5);margin-bottom:3px}
+  .title{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.2px;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+  .tip{margin-top:4px;font-size:12.5px;line-height:17px;color:rgba(255,255,255,.94);text-shadow:0 1px 4px rgba(0,0,0,.48)}
+  .meta{margin-top:6px;font-size:10px;color:rgba(255,255,255,.8);text-shadow:0 1px 4px rgba(0,0,0,.48)}
+  .saved{margin:12px 24px 0;height:76px;border:1px solid rgba(31,29,26,.07);border-radius:16px;background:#fff;
+         display:flex;align-items:center;padding:0 12px;gap:12px}
+  .saved .th{width:56px;height:56px;border-radius:10px;background:#EDE9E3;flex:0 0 auto}
+  .saved .b1{font-size:13px;font-weight:600}
+  .saved .b2{font-size:11px;color:#5C574F;margin-top:3px}
+  .saved .b3{font-size:10px;color:#9C968C;margin-top:3px}
+  .info{font-size:11px;color:#5C574F;text-align:center;margin-top:8px}
+  .info b{color:var(--ink)}
+  .note{font-size:12px;color:#5C574F;margin-top:12px;max-width:880px}
+</style>
+</head>
+<body>
+
+<h1>两处调整</h1>
+<p class="lead">① 顶部 icon 的选中态：去掉绿边，给你四版候选　② 蒙层压深，白字能看清（下面三张卡对比三种深度）</p>
+
+<h2>① 选中态四版候选（第一个是「情绪调节」被选中）</h2>
+<div class="row" id="nodes"></div>
+
+<h2>② 蒙层深度（顶透明 → 底）</h2>
+<div class="row" id="veils"></div>
+
+<script>
+const TONES=[
+  {bg:'#FCE7F0',fg:'#C9598A',d:'M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z'},
+  {bg:'#E7E1FB',fg:'#6E58C8',d:'M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5zM18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z'},
+  {bg:'#EAF0BE',fg:'#6E7A24',d:'M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8'},
+  {bg:'#E3EBFE',fg:'#4C74C9',d:'M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z'},
+  {bg:'#E7E1FB',fg:'#6E58C8',d:'M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z'},
+  {bg:'#FBEFD6',fg:'#B98A2E',d:'M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2zM12 6.7v12.1'},
+];
+const g=(t,c,s)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${t.d}"/></svg>`;
+
+function nodeRow(mode){
+  return '<div class="line"></div>'+TONES.map((t,i)=>{
+    const on = i===0;
+    let style=`background:${t.bg};`, extra='', glyph=g(t,t.fg,16), wrapStart='', wrapEnd='';
+    if(mode==='A'){                       // 实心深底 + 白图标 + 放大 + 投影（已落地到代码）
+      if(on){ style=`background:${t.fg};transform:scale(1.12);box-shadow:0 4px 8px rgba(31,29,26,.18)`; glyph=g(t,'#fff',16); }
+    } else if(mode==='B'){                // 下方小圆点
+      if(on){ extra=`<span style="position:absolute;bottom:-7px;width:4px;height:4px;border-radius:2px;background:${t.fg}"></span>`; }
+    } else if(mode==='C'){                // 白色外圈 + 浮起
+      if(on){ style=`background:${t.bg};transform:scale(1.10);border:2.5px solid #fff;box-shadow:0 3px 8px rgba(31,29,26,.22)`; }
+    } else if(mode==='D'){                // 只放大 + 底色加深（不用强色）
+      if(on){ style=`background:${t.fg}33;transform:scale(1.14)`; }
+    }
+    const cls = on ? 'node' : 'node off';
+    return `<div class="${cls}" style="${style}">${on&&mode!=='A'?g(t,t.fg,16):glyph}${extra}</div>`;
+  }).join('');
+}
+const NODES_DESC={
+  A:['A · 实心深底 + 白图标 + 放大 + 投影','已落地到代码；不用任何描边，颜色本身就是区分度'],
+  B:['B · 节点下面一颗小圆点','最克制：icon 完全不变，只在下方点一颗'],
+  C:['C · 白色外圈浮起','浅底不变，给选中加一圈白边 + 投影，像抬起来'],
+  D:['D · 只放大 + 底色加深','底色用同色调的浅饱和版，放大最明显'],
+};
+document.getElementById('nodes').innerHTML = ['A','B','C','D'].map(m=>
+  `<div><div class="cap"><b>${NODES_DESC[m][0]}</b></div>
+   <div class="strip"><div class="nodeRow">${nodeRow(m)}</div></div>
+   <div class="info">${NODES_DESC[m][1]}</div></div>`).join('');
+
+/* ── 蒙层深度对比 ── */
+const SW=390,GAP=4,CORNER=16,SIDE=0.86,R=26,RATIO=.8,STEPS=12;
+const PEEK=(CORNER+GAP+(1-SIDE)*(SW/2))/(1+(1-SIDE));
+const CARD_W=Math.round(SW-PEEK*2),CARD_H=Math.round(CARD_W/RATIO),FROST_H=Math.round(CARD_H*0.44);
+const alpha=i=>Math.pow((i+.5)/STEPS,1.25);
+const IMG='/src/assets/tool_emotion.jpg';
+function frost(dark,wht){
+  let s='';
+  for(let k=STEPS-1;k>=0;k--){
+    const i=STEPS-1-k;
+    s+=`<div class="sl" style="height:${FROST_H/STEPS+.5}px;bottom:${k*FROST_H/STEPS}px;opacity:${alpha(i).toFixed(3)}"><img src="${IMG}" style="position:absolute;height:${CARD_H}px;bottom:${-(k*FROST_H/STEPS)}px"></div>`;
+  }
+  const w=`linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,${wht*.3}) 28%,rgba(255,255,255,${wht*.8}) 68%,rgba(255,255,255,${wht}))`;
+  const d=`linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,${dark*.32}) 28%,rgba(0,0,0,${dark*.72}) 68%,rgba(0,0,0,${dark}))`;
+  return `<div class="frost" style="height:${FROST_H}px">${s}<div class="veil" style="background:${w}"></div><div class="veil" style="background:${d}"></div></div>`;
+}
+function card(dark,wht){
+  return `<div class="card" style="left:0;width:${CARD_W}px;height:${CARD_H}px;border-radius:${R}px;position:relative">
+    <img class="bgimg" src="${IMG}">${frost(dark,wht)}
+    <div class="body"><div class="kicker">情绪调节 · 黄体期 · 第 24 天</div>
+      <div class="title">今日情绪波动 3 次</div>
+      <div class="tip">黄体期容易闷，今天多留点喘息给自己。</div>
+      <div class="meta">4 段冥想 · 3 个呼吸练习</div></div></div>`;
+}
+document.getElementById('veils').innerHTML = [
+  [0.34,0.42,'改前 · 底 0.34（偏亮，白字发虚）'],
+  [0.50,0.30,'改后 · 底 0.50（已落地）'],
+  [0.58,0.24,'再深一档 · 底 0.58'],
+].map(([d,w,label])=>
+  `<div><div class="cap"><b>${label}</b></div>
+   <div style="width:${CARD_W}px;border-radius:${R}px;overflow:hidden;box-shadow:0 8px 20px rgba(31,29,26,.14)">${card(d,w)}</div></div>`
+).join('');
+</script>
+</body>
+</html>

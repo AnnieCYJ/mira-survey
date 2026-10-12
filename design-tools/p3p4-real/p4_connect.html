@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 工具箱 · P4 + 连接式 Tab + 卡片说明区</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --ink-soft:#5C574F; --ink-faint:#8A847A; --ink-hair:rgba(31,29,26,0.13);
+    --busy:rgba(31,29,26,0.06);
+    --lime-soft:#EAF0BE; --lime-mid:#BCCB62; --lime-deep:#6E7A24;
+    --r-pill:999px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  img{ -webkit-user-drag:none; user-drag:none; -webkit-user-select:none; user-select:none; pointer-events:none; }
+  body{font-family:var(--font);background:#FFFFFF;color:var(--ink);padding:34px 22px 70px;}
+  .wrap{max-width:820px;margin:0 auto;}
+  h1{font-size:24px;font-weight:600;letter-spacing:-0.4px;}
+  .sub{color:var(--ink-soft);font-size:13.5px;line-height:1.65;margin-top:6px;}
+  .tip{color:var(--lime-deep);font-size:13px;font-weight:600;margin-top:8px;}
+
+  .grid-row{display:flex;flex-wrap:wrap;gap:38px;margin-top:26px;align-items:flex-start;justify-content:center;}
+  .col{width:340px;}
+  .cap-l{margin-top:12px;}
+  .cap-l .t{font-size:15px;font-weight:600;}
+  .cap-l .tag{display:inline-block;font-size:11px;font-weight:600;color:var(--lime-deep);background:var(--lime-soft);
+    border-radius:6px;padding:2px 8px;margin-right:6px;vertical-align:1px;}
+  .cap-l .d{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin-top:5px;}
+
+  .phone{background:#fff;border-radius:42px;padding:10px;box-shadow:0 18px 56px rgba(31,29,26,0.18);border:1px solid rgba(31,29,26,0.06);}
+  .screen{background:#FFFFFF;border-radius:33px;overflow:hidden;padding:14px 16px 8px;height:716px;display:flex;flex-direction:column;position:relative;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-soft);font-weight:600;padding:2px 4px 6px;}
+  .statusbar .bat{width:22px;height:11px;border:1.4px solid var(--ink-soft);border-radius:3px;position:relative;}
+  .statusbar .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-soft);border-radius:1px;}
+  .statusbar .bat::before{content:"";position:absolute;left:1px;top:1px;bottom:1px;width:14px;background:var(--ink-soft);border-radius:1px;}
+  .hd{padding:2px 2px 0;}
+  .hd .t1{font-size:25px;font-weight:500;letter-spacing:-0.6px;color:var(--ink);}
+  .hd .t2{font-size:12px;color:var(--ink-soft);margin-top:3px;}
+  .content{flex:1;display:flex;flex-direction:column;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;justify-content:center;}
+
+  /* ================= 连接式工具选择 Tab（线 + 节点，非胶囊） ================= */
+  .tabline{position:relative;display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 8px;margin-top:4px;}
+  .tabline::before{content:"";position:absolute;left:24px;right:24px;top:50%;height:1.5px;
+    background:linear-gradient(90deg,transparent,rgba(31,29,26,0.22) 5%,rgba(31,29,26,0.22) 95%,transparent);z-index:0;}
+  .tln{position:relative;z-index:1;width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid var(--ink-hair);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-faint);
+    transition:transform .24s cubic-bezier(.2,.85,.25,1),background .24s,color .24s,box-shadow .24s,border-color .24s;}
+  .tln svg{width:17px;height:17px;display:block;}
+  .tln:active{transform:scale(.9);}
+  .tln.on{background:var(--ink);border-color:var(--ink);color:#fff;transform:scale(1.06);box-shadow:0 6px 16px rgba(31,29,26,0.26);}
+
+  /* ================= P4 卡片栈（纯图，无蒙层文字） ================= */
+  .stack-spring{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;margin-top:2px;}
+  .stack-spring:active{cursor:grabbing;}
+  .stack-track{position:relative;height:282px;will-change:transform;}
+  .k{position:absolute;top:6px;left:50%;width:214px;height:268px;border-radius:22px;overflow:hidden;background:#fff;
+    box-shadow:0 10px 26px rgba(31,29,26,0.10),0 1px 3px rgba(31,29,26,0.06);transform-origin:center center;will-change:transform;cursor:pointer;}
+  .k:not(.sug-img)::before{content:'';position:absolute;inset:-12%;background:var(--bg,transparent) center/cover no-repeat;filter:blur(18px);z-index:0;}
+  .k:not(.sug-img)::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.18);z-index:1;}
+  .k > img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;z-index:2;}
+  /* 比例与卡片一致（±10%）的图：整图铺满（cover 只裁极边缘），不要模糊底 */
+  .k.fit::before,.k.fit::after{display:none;}
+  .k.fit > img{object-fit:cover;}
+  /* 第 7 张「我的建议」大卡：柔和 Mira 色卡，无照片 */
+  .k.sug-img{background:linear-gradient(140deg,var(--lime-soft) 0%,#F1E8F2 55%,#E6EFF7 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;}
+  .sug-ava-big{width:62px;height:62px;border-radius:50%;background:#fff;color:var(--lime-deep);font-weight:700;font-size:25px;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(31,29,26,0.12);}
+  .sug-cap-big{font-size:14px;color:var(--ink-soft);font-weight:500;}
+
+  /* ================= 卡片下方说明区（对齐参考截图排版） ================= */
+  .caption{text-align:center;padding:22px 14px 0;min-height:96px;}
+  .capbox{transition:opacity .2s;}
+  .cap-name{font-size:19px;font-weight:600;letter-spacing:-0.3px;color:var(--ink);line-height:1.3;}
+  .cap-desc{margin-top:8px;font-size:14.5px;font-weight:400;color:var(--ink-soft);line-height:1.5;}
+  .cap-meta{margin-top:9px;font-size:12.5px;font-weight:400;color:var(--ink-faint);letter-spacing:.2px;}
+  /* 第 7 张「我的建议」卡片的说明区（建议清单） */
+  .cap-sug{margin-top:14px;display:none;flex-direction:column;text-align:left;}
+  .capbox.sug .cap-desc,.capbox.sug .cap-meta{display:none;}
+  .capbox.sug .cap-sug{display:flex;}
+  .csug-item{display:flex;align-items:flex-start;gap:9px;padding:11px 2px;}
+  .csug-item + .csug-item{border-top:1px solid rgba(31,29,26,0.06);}
+  .csug-dot{width:7px;height:7px;border-radius:50%;background:var(--lime-mid);margin-top:6px;flex:none;}
+  .csug-b{flex:1;min-width:0;}
+  .csug-t{font-size:14.5px;font-weight:600;color:var(--ink);}
+  .csug-d{font-size:12.5px;color:var(--ink-soft);margin-top:2px;line-height:1.45;}
+
+  /* ================= 我的建议 卡片 + 列表 ================= */
+  .sug-section{margin-top:20px;}
+  .sug-card{background:#fff;border:1px solid rgba(31,29,26,0.07);border-radius:20px;padding:15px 16px 6px;box-shadow:0 6px 20px rgba(31,29,26,0.05);}
+  .sug-hd{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .sug-ava{width:34px;height:34px;border-radius:50%;background:var(--lime-soft);color:var(--lime-deep);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex:none;}
+  .sug-card-t{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.2px;}
+  .sug-card-s{font-size:12px;color:var(--ink-faint);margin-top:1px;}
+  .sug-list{display:flex;flex-direction:column;}
+  .sug-item{display:flex;align-items:flex-start;gap:10px;padding:12px 2px;}
+  .sug-item + .sug-item{border-top:1px solid rgba(31,29,26,0.06);}
+  .sug-dot{width:7px;height:7px;border-radius:50%;background:var(--lime-mid);margin-top:6px;flex:none;}
+  .sug-body{flex:1;min-width:0;}
+  .sug-t{font-size:14.5px;font-weight:600;color:var(--ink);}
+  .sug-d{font-size:12.5px;color:var(--ink-soft);margin-top:2px;line-height:1.45;}
+  .sug-arrow{margin-left:auto;color:var(--ink-faint);display:flex;align-items:center;}
+  .sug-arrow svg{width:16px;height:16px;display:block;}
+
+  /* ================= 底部真实主 Tab Bar（示意） ================= */
+  .hometab{display:flex;align-items:flex-start;justify-content:space-around;margin:8px -16px -8px;padding:8px 6px 4px;border-top:1px solid rgba(31,29,26,0.07);}
+  .ht{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--ink-faint);width:56px;}
+  .ht .hi{width:23px;height:23px;color:var(--ink-faint);display:flex;align-items:center;justify-content:center;}
+  .ht .hi svg{width:21px;height:21px;display:block;}
+  .ht.on{color:var(--lime-deep);} .ht.on .hi{color:var(--lime-deep);}
+
+  /* 点击卡片「进入」轻提示 */
+  .toast{position:absolute;left:50%;transform:translateX(-50%) translateY(10px);bottom:72px;
+    background:rgba(31,29,26,0.9);color:#fff;font-size:13px;font-weight:500;padding:10px 18px;border-radius:14px;
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:6;white-space:nowrap;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* ================= 右侧：3 个 Tab 变体对照（mini 条） ================= */
+  .variants{display:flex;flex-direction:column;gap:22px;}
+  .vcard{background:#fff;border-radius:20px;padding:16px 18px 15px;border:1px solid rgba(31,29,26,0.06);box-shadow:0 6px 20px rgba(31,29,26,0.06);}
+  .vcard .vt{font-size:13px;font-weight:600;color:var(--ink);}
+  .vcard .vd{font-size:11.5px;color:var(--ink-faint);line-height:1.55;margin-top:3px;margin-bottom:12px;}
+  .mini{position:relative;display:flex;align-items:center;justify-content:space-between;height:46px;padding:0 4px;}
+  .mini::before{content:"";position:absolute;left:22px;right:22px;top:50%;height:1.5px;
+    background:linear-gradient(90deg,transparent,rgba(31,29,26,0.22) 5%,rgba(31,29,26,0.22) 95%,transparent);z-index:0;}
+  .mn{position:relative;z-index:1;width:32px;height:32px;border-radius:50%;background:#fff;border:1px solid var(--ink-hair);
+    display:flex;align-items:center;justify-content:center;color:var(--ink-faint);}
+  .mn svg{width:16px;height:16px;display:block;}
+  .mn.on{background:var(--ink);border-color:var(--ink);color:#fff;transform:scale(1.06);box-shadow:0 5px 13px rgba(31,29,26,0.24);}
+  .mini.dots-only .mn{width:12px;height:12px;border:0;background:rgba(31,29,26,0.18);}
+  .mini.dots-only .mn svg{display:none;}
+  .mini.dots-only .mn.on{width:14px;height:14px;background:var(--ink);box-shadow:0 4px 10px rgba(31,29,26,0.3);}
+  .minilabel{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:10.5px;font-weight:600;color:var(--ink);white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mira 工具箱 · P4 + 连接式 Tab + 卡片说明区</h1>
+  <div class="sub">按你定的方向：工具选择是底部<b>一排连接着的圆形图标（一条贯穿细线串起来）</b>，共 7 个——情绪调节 / 提升颜值 / 营养搭配 / 运动建议 / 稳定睡眠 / 知识科普 / <b>我的建议</b>；每张工具都是<b>一样大的卡片</b>，卡片下方是文字说明。点任意图标或左右滑卡片都能切，「我的建议」本身就是第 7 张大卡片，里面放 Mira 今天的建议清单。</div>
+  <div class="tip">交互：手机上左右拖 / 滑卡片；电脑上鼠标拖，或滚轮 / 方向键翻页；点线上任意节点也能直接切。</div>
+
+  <div class="grid-row">
+    <!-- 主手机 -->
+    <div class="col">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="bat"></span></div>
+          <div class="hd"><div class="t1">Tools</div><div class="t2">小的改变积累起来也很了不起</div></div>
+          <div class="content">
+            <div class="tabline" id="tabline"></div>
+            <div class="stack-spring" id="stackSpring"><div class="stack-track" id="stackTrack"></div></div>
+            <div class="caption" id="caption">
+              <div class="capbox">
+                <div class="cap-name"></div>
+                <div class="cap-desc"></div>
+                <div class="cap-meta"></div>
+                <div class="cap-sug" id="capSug"></div>
+              </div>
+            </div>
+          </div>
+          <div class="hometab" data-home></div>
+          <div class="toast" id="toast"></div>
+        </div>
+      </div>
+      <div class="cap-l"><div class="t"><span class="tag">P4</span>卡片栈 + 连接式 Tab + 说明区</div>
+        <div class="d">卡片=纯图（无蒙层字），说明全在下方；tab=贯穿细线上的节点，选中=深墨实心圆。拖卡片或点节点都能切，说明区跟着淡入更新。</div></div>
+    </div>
+
+    <!-- 右侧 3 个 tab 变体 -->
+    <div class="col" style="width:380px;">
+      <div class="variants">
+        <div class="vcard">
+          <div class="vt">变体 A · 纯点线</div>
+          <div class="vd">最简。线上一串小圆点，选中点=深墨实心、略大。没有图标，极轻。</div>
+          <div class="mini dots-only" data-mini="dots">
+            <span class="mn"></span><span class="mn"></span><span class="mn on"></span><span class="mn"></span><span class="mn"></span><span class="mn"></span>
+          </div>
+        </div>
+        <div class="vcard">
+          <div class="vt">变体 B · 线 + 图标节点（主手机用这个）</div>
+          <div class="vd">线穿过 6 个圆形图标节点，选中=深墨实心圆 + 白图标。可辨识与「连接感」兼顾。</div>
+          <div class="mini" data-mini="icons">
+            <span class="mn"></span><span class="mn"></span><span class="mn on"></span><span class="mn"></span><span class="mn"></span><span class="mn"></span>
+          </div>
+        </div>
+        <div class="vcard">
+          <div class="vt">变体 C · 线 + 图标 + 选中项小字标签</div>
+          <div class="vd">同 B，但当前项在节点上方浮出一个 10.5px 小字（工具名），像步骤标签。</div>
+          <div class="mini" data-mini="label">
+            <span class="mn"></span><span class="mn"></span><span class="mn on"></span><span class="mn"></span><span class="mn"></span><span class="mn"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOOLS=[
+  {n:'情绪调节',img:'card_emotion.jpg',   d:'缓一缓，把紧绷的情绪松下来。', m:'4 段冥想 · 3 个呼吸练习', cta:'开始练习'},
+  {n:'提升颜值',img:'card_recovery.jpg',  d:'跟着周期养气色，状态更稳。',   m:'5 个护肤提醒 · 周期建议', cta:'查看建议'},
+  {n:'营养搭配',img:'card_food.jpg',      d:'吃对，激素稳，能量也更平稳。', m:'6 份食谱 · 经期饮食指南', cta:'看今日食谱'},
+  {n:'运动建议',img:'card_activity.jpg',  d:'今天怎么动，看身体状态。',     m:'4 类运动 · 按周期推荐',   cta:'看今日方案',fit:1},
+  {n:'稳定睡眠',img:'card_meditation.jpg',d:'睡好，恢复更快，状态更稳。',   m:'3 段助眠音 · 睡眠回顾',   cta:'播放助眠'},
+  {n:'知识科普',img:'card_learn.png',     d:'读懂身体的每个变化。',         m:'12 篇科普 · 每周更新',    cta:'阅读'},
+  {n:'我的建议',special:'sug'},
+];
+const SUGS=[
+  {t:'试试 4-7-8 呼吸',d:'睡前两次，让身体慢慢松下来。'},
+  {t:'菜里多些深绿蔬菜',d:'经期前容易累，补点镁和钾。'},
+  {t:'闹钟调早 10 分钟',d:'留点时间给自己，别一睁眼就赶。'},
+  {t:'记一句此刻心情',d:'一句话就好，过阵子回看会懂自己。'},
+];
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SVG=(d,extra='')=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+  stroke-linecap="round" stroke-linejoin="round">${d}${extra}</svg>`;
+const ICONS=[
+  SVG('<path d="M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/>'),
+  SVG('<path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5z"/><path d="M18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/>'),
+  SVG('<path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4"/><path d="M9.3 11.1V20.6"/><path d="M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/>'),
+  SVG('<path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/>'),
+  SVG('<path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/>'),
+  SVG('<path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2z"/><path d="M12 6.7v12.1"/>'),
+  SVG('<path d="M5 5.4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H10.5L7.6 18v-4H7a2 2 0 0 1-2-2z"/>'),
+];
+const CHV=SVG('<path d="M9 5l6 7-6 7"/>');
+const HOME_SVG={
+  home:SVG('<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/>'),
+  insight:SVG('<path d="M4 19V5"/><path d="M4 15l5-5 4 3 7-7"/>'),
+  tools:SVG('<path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15l-1.8-4.2L5.5 9l4.7-1.3z"/><path d="M18 15l.8 2.1L21 18l-2.2.9L18 21l-.8-2.1L15 18l2.2-.9z"/>'),
+  me:SVG('<circle cx="12" cy="8" r="3.6"/><path d="M5.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/>'),
+};
+
+document.querySelectorAll('[data-home]').forEach(bar=>{
+  bar.innerHTML=['home','insight','tools','me'].map(k=>
+    `<div class="ht${k==='tools'?' on':''}"><span class="hi">${HOME_SVG[k]}</span><span>${k==='home'?'首页':k==='insight'?'洞察':k==='tools'?'工具':'我'}</span></div>`).join('');
+});
+
+/* ---------- 连接式 tabline ---------- */
+const tabline=document.getElementById('tabline');
+tabline.innerHTML=TOOLS.map((t,i)=>`<button class="tln${i===0?' on':''}" data-i="${i}" aria-label="${t.n}" title="${t.n}">${ICONS[i]}</button>`).join('');
+const tlns=[...tabline.children];
+
+/* ---------- 卡片栈 ---------- */
+const stackTrack=document.getElementById('stackTrack');
+const capName=document.querySelector('.cap-name'), capDesc=document.querySelector('.cap-desc'),
+      capMeta=document.querySelector('.cap-meta'), capbox=document.querySelector('.capbox'), capSug=document.getElementById('capSug');
+const toast=document.getElementById('toast');
+let toastT, capSugBuilt=false;
+function enterTool(i){const t=TOOLS[i];toast.textContent='进入「'+t.n+'」';toast.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('show'),1100);}
+const OFF=246, N=TOOLS.length;
+stackTrack.innerHTML=TOOLS.map((t,i)=>{
+  if(t.special==='sug'){
+    return `<div class="k sug-img" data-i="${i}"><div class="sug-ava-big">M</div><div class="sug-cap-big">Mira 今天想跟你说几句</div></div>`;
+  }
+  return `<div class="k${t.fit?' fit':''}" style="--bg:url('${t.img}')" data-i="${i}"><img src="${t.img}" alt=""/></div>`;
+}).join('');
+const cards=[...stackTrack.children];
+let pos=0, vel=0, target=0, animP=false, genP=0, lastCap=-1;
+
+function updateCaption(i){
+  const idx=Math.max(0,Math.min(N-1,i));
+  if(idx===lastCap) return; lastCap=idx;
+  const t=TOOLS[idx];
+  if(t.special==='sug'){
+    capbox.classList.add('sug');
+    capName.textContent=t.n;
+    if(!capSugBuilt){ capSug.innerHTML=SUGS.map(s=>`<div class="csug-item"><span class="csug-dot"></span>
+      <div class="csug-b"><div class="csug-t">${s.t}</div><div class="csug-d">${s.d}</div></div></div>`).join(''); capSugBuilt=true; }
+  } else {
+    capbox.classList.remove('sug');
+    capName.textContent=t.n; capDesc.textContent=t.d; capMeta.textContent=t.m;
+  }
+  if(!reduce){ capbox.animate([{opacity:0,transform:'translateY(5px)'},{opacity:1,transform:'none'}],
+    {duration:280,easing:'cubic-bezier(.2,.85,.25,1)'}); }
+}
+function renderP4(){
+  cards.forEach((c,i)=>{const d=i-pos;const x=d*OFF;
+    c.style.transform=`translateX(calc(-50% + ${x}px))`;
+    c.style.opacity='1';c.style.zIndex=100-Math.round(Math.abs(d));
+    c.style.pointerEvents=Math.abs(d)<0.5?'auto':'none';});
+  const near=Math.round(pos);
+  tlns.forEach((b,j)=>b.classList.toggle('on',j===near));
+  updateCaption(near);
+}
+function projP4(v){const decel=0.998;return (v/1000)*decel/(1-decel);}
+function settleP4(){target=Math.max(0,Math.min(N-1,Math.round(pos)));
+  if(reduce){pos=target;renderP4();return;}
+  animP=true;const gen=++genP;let last=performance.now();const k=110,d=18;
+  const tick=(now)=>{if(gen!==genP)return;let dt=(now-last)/1000;last=now;if(dt>0.064)dt=0.064;
+    const Fs=-k*(pos-target),Fd=-d*vel;vel+=(Fs+Fd)*dt;pos+=vel*dt;
+    if(Math.abs(pos-target)<0.004&&Math.abs(vel)<0.02){pos=target;renderP4();animP=false;return;}
+    renderP4();requestAnimationFrame(tick);};requestAnimationFrame(tick);}
+const vp4=document.getElementById('stackSpring');
+let drag4=false,sx4=0,sy4=0,sp4=0,lx4=0,lt4=0,tapMoved=false;
+function rubber(o){const d=0.55;return (1-1/(o*d+1))/d;}
+function down4(e){genP++;animP=false;drag4=true;const pt=e.touches?e.touches[0]:e;sx4=pt.clientX;sy4=pt.clientY;sp4=pos;lx4=pt.clientX;lt4=performance.now();vel=0;tapMoved=false;
+  window.addEventListener('pointermove',move4);window.addEventListener('pointerup',up4);window.addEventListener('pointercancel',up4);}
+function move4(e){if(!drag4)return;const pt=e.touches?e.touches[0]:e;let np=sp4-(pt.clientX-sx4)/OFF;
+  if(Math.abs(pt.clientX-sx4)>6||Math.abs(pt.clientY-sy4)>6)tapMoved=true;
+  if(np<0)np=-rubber(-np); else if(np>N-1)np=(N-1)+rubber(np-(N-1));
+  pos=np;renderP4();
+  const now=performance.now(),dt=(now-lt4)/1000;if(dt>0)vel=-(pt.clientX-lx4)/dt/OFF;lx4=pt.clientX;lt4=now;}
+function up4(){if(!drag4)return;drag4=false;window.removeEventListener('pointermove',move4);window.removeEventListener('pointerup',up4);window.removeEventListener('pointercancel',up4);
+  const proj=projP4(vel);pos=Math.max(-0.6,Math.min(N-1+0.6,pos+proj));settleP4();
+  if(!tapMoved) enterTool(Math.round(pos));}
+vp4.addEventListener('pointerdown',down4);
+vp4.addEventListener('wheel',(e)=>{if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){e.preventDefault();pos=Math.max(0,Math.min(N-1,Math.round(pos)+(e.deltaX>0?1:-1)));settleP4();}},{passive:false});
+tlns.forEach(b=>b.addEventListener('click',()=>{pos=+b.dataset.i;settleP4();}));
+renderP4();
+
+/* ---------- 右侧 mini 变体：填充图标 / 标签 ---------- */
+document.querySelectorAll('[data-mini]').forEach(m=>{
+  const kind=m.dataset.mini;
+  [...m.querySelectorAll('.mn')].forEach((el,i)=>{ if(kind!=='dots'){ el.innerHTML=ICONS[i]; } });
+  if(kind==='label'){ const on=[...m.children].find(c=>c.classList.contains('on'));
+    const lb=document.createElement('span'); lb.className='minilabel'; lb.textContent=TOOLS[2].n; on.appendChild(lb); }
+});
+</script>
+</body>
+</html>

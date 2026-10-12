@@ -30,7 +30,9 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
   // ★ 人设与知识锚点分开发：
   //   lightSystem 只装人设（压缩控首字延迟）；世界书按关键词命中单独成一条 system。
   //   旧实现把 companion 拼进 system 后一起 slice(0,400)，世界书知识从来没真正送到过模型。
-  const lightSystem = CHARACTER.system_prompt.slice(0, 400);
+  // 不截断统一协议：后半段包含“先接住感受、再看健康数据、不要编造或诊断”等硬规则。
+  // 世界书仍按关键词单独注入，避免把专业边界截掉后只剩人设语气。
+  const lightSystem = CHARACTER.system_prompt;
   const companion = buildCompanionInjection(recentText);
 
   const recalls = await memory.recall(userText, 2);

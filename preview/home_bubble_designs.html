@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 首页气泡 · 背景 / 悬浮玻璃卡 设计稿</title>
+<style>
+  :root{
+    --bgTop:#B5A9F2; --bgMid:#DED9FB; --bgBottom:#F7F5FE;
+    --purpleCore:#9D8AF0; --purpleSoft:#E7E1FB; --purpleTint:#F4EDFC; --purpleBtn:#7766D7;
+    --rose:#F2A3C6; --lime:#BCCB62; --limeSoft:#EAF0BE; --honey:#F0C46E;
+    --ink:#1A1A1A; --textSub:#5F5F74; --inkFaint:#706A61;
+    --tabBg:rgba(250,250,254,0.96); --cardBorder:rgba(31,29,26,0.09);
+    --glassBg:rgba(255,255,255,0.55); --glassBorder:rgba(255,255,255,0.7); --glassShadow:rgba(80,60,140,0.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,sans-serif;
+    background:#EFEAFB; color:#2b2740; padding:32px 16px 64px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:1080px;margin:0 auto;}
+  h1{font-size:24px;font-weight:700;letter-spacing:.3px;color:#2b2740;}
+  .sub{margin-top:8px;font-size:14px;line-height:1.6;color:#5a5470;max-width:760px;}
+  .note{margin-top:10px;font-size:13px;line-height:1.7;color:#6e6886;background:#fff;border:1px solid #e7e1fb;border-radius:12px;padding:12px 14px;}
+  .note b{color:#5b4fc0;}
+
+  .group-title{margin:34px 0 6px;font-size:16px;font-weight:700;color:#3a3360;display:flex;align-items:center;gap:8px;}
+  .group-title .tag{font-size:11px;font-weight:600;color:#7c6ae0;background:#ece7fb;border-radius:999px;padding:3px 9px;}
+  .group-desc{font-size:13px;color:#6e6886;margin-bottom:18px;line-height:1.6;}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+  @media(max-width:880px){.grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:#fff;border:1px solid #e7e1fb;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .card.ref{outline:2px solid #c7b9f2;}
+  .card h3{font-size:14px;font-weight:700;color:#2b2740;}
+  .card .desc{font-size:12px;line-height:1.55;color:#6e6886;}
+  .card .pros{font-size:11.5px;line-height:1.5;color:#4a8a6f;background:#f0f7ee;border-radius:8px;padding:7px 9px;}
+  .card .cons{font-size:11.5px;line-height:1.5;color:#b06a4a;background:#fbf0e9;border-radius:8px;padding:7px 9px;}
+
+  /* ---- phone scene (home bottom) ---- 真实首页：整页白底（紫渐变仅顶部化入一瞬） ---- */
+  .scene{
+    position:relative;width:100%;aspect-ratio:300/360;border-radius:26px;overflow:hidden;
+    background:#FFFFFF;
+    box-shadow:0 10px 26px rgba(80,60,140,.18);
+  }
+  /* 顶部状态面板（白卡）与白页同色，仅以一道极淡阴影暗示其上还有内容 */
+  .panelHint{position:absolute;top:0;left:0;right:0;height:64px;
+    background:#FFFFFF;box-shadow:0 10px 18px -14px rgba(31,29,26,.18);}
+  /* floating tab bar */
+  .tabbar{position:absolute;left:12px;right:12px;bottom:8px;height:48px;display:flex;align-items:center;gap:8px;}
+  .tabPill{flex:1;height:48px;background:var(--tabBg);border:1px solid var(--cardBorder);border-radius:999px;
+    display:flex;align-items:center;justify-content:space-around;box-shadow:0 -4px 30px rgba(130,120,180,.18);}
+  .tabIcon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--inkFaint);}
+  .botBtn{width:48px;height:48px;border-radius:999px;background:linear-gradient(135deg,#A98FE8,#9D8AF0);
+    display:flex;align-items:center;justify-content:center;box-shadow:0 16px 30px -12px rgba(157,138,240,.6);}
+  .botFace{position:relative;width:26px;height:26px;}
+  .botEye{position:absolute;background:#fff;border-radius:6px;}
+  .botEye.l{left:4px;top:7px;width:4px;height:12px;}
+  .botEye.r{right:4px;top:7px;width:4px;height:12px;}
+
+  /* ---- bubble (shared content) ---- */
+  .bubbleWrap{position:absolute;left:20px;right:20px;bottom:74px;}
+  .bubble{display:flex;align-items:center;gap:10px;padding:14px 16px;position:relative;}
+  .b-text{flex:1;min-width:0;}
+  .b-title{font-size:14.5px;font-weight:400;color:var(--textSub);line-height:1.35;}
+  .b-hint{font-size:11px;color:var(--inkFaint);margin-top:3px;line-height:1.4;}
+  .b-wave{display:flex;align-items:center;gap:3px;padding-right:2px;}
+  .b-wave i{width:3px;height:18px;border-radius:2px;background:var(--purpleCore);display:block;}
+
+  /* tail */
+  .tail{position:absolute;width:15px;height:15px;right:18px;bottom:-6px;transform:rotate(45deg);border-bottom-right-radius:3px;}
+
+  /* ===== A1 baseline ===== */
+  .bub-a1{background:linear-gradient(135deg,var(--purpleCore),var(--rose),var(--lime),var(--honey));border-radius:18px;padding:1.5px;}
+  .bub-a1 .bubble{background:#fff;border-radius:16px;}
+  .bub-a1 .tail{background:var(--purpleCore);}
+
+  /* ===== A2 soft tint + single hairline ===== */
+  .bub-a2 .bubble{background:var(--purpleTint);border:1px solid rgba(157,138,240,.45);border-radius:18px;}
+  .bub-a2 .tail{background:var(--purpleTint);border-right:1px solid rgba(157,138,240,.45);border-bottom:1px solid rgba(157,138,240,.45);}
+
+  /* ===== A3 single purple stroke ===== */
+  .bub-a3 .bubble{background:#fff;border:1.5px solid var(--purpleCore);border-radius:18px;}
+  .bub-a3 .tail{background:#fff;border-right:1.5px solid var(--purpleCore);border-bottom:1.5px solid var(--purpleCore);}
+
+  /* ===== A4 frosted glass（白页上需加微染+细描边才能读出来） ===== */
+  .bub-a4 .bubble{background:rgba(255,255,255,.82);border:1px solid rgba(31,29,26,.07);border-radius:18px;
+    box-shadow:0 8px 22px rgba(80,60,140,.14);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+  .bub-a4 .tail{background:rgba(255,255,255,.82);border-right:1px solid rgba(31,29,26,.07);border-bottom:1px solid rgba(31,29,26,.07);}
+
+  /* ===== A5 soft gradient fill ===== */
+  .bub-a5 .bubble{background:linear-gradient(180deg,var(--purpleSoft),#FFFFFF);border:1px solid rgba(157,138,240,.25);border-radius:18px;}
+  .bub-a5 .tail{background:var(--purpleSoft);border-right:1px solid rgba(157,138,240,.25);border-bottom:1px solid rgba(157,138,240,.25);}
+
+  /* ===== A6 inverted (purple fill + white text) ===== */
+  .bub-a6 .bubble{background:linear-gradient(135deg,var(--purpleBtn),var(--purpleCore));border-radius:18px;box-shadow:0 10px 22px rgba(118,102,215,.35);}
+  .bub-a6 .b-title{color:#fff;}
+  .bub-a6 .b-hint{color:rgba(255,255,255,.82);}
+  .bub-a6 .b-wave i{background:#fff;}
+  .bub-a6 .tail{background:var(--purpleBtn);}
+
+  /* ===== B1 floating glass（白页上需加微染+细描边） ===== */
+  .bub-b1 .bubble{background:rgba(255,255,255,.82);border:1px solid rgba(31,29,26,.07);border-radius:20px;
+    box-shadow:0 12px 30px rgba(80,60,140,.16);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+  .bub-b1{position:absolute;left:26px;right:26px;bottom:86px;}
+
+  /* ===== B2 floating + collapse affordance ===== */
+  .bub-b2 .bubble{background:rgba(255,255,255,.82);border:1px solid rgba(31,29,26,.07);border-radius:20px;
+    box-shadow:0 12px 30px rgba(80,60,140,.16);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+  .bub-b2{position:absolute;left:26px;right:26px;bottom:86px;}
+  .collapse{position:absolute;right:10px;top:10px;width:22px;height:22px;border-radius:999px;background:#fff;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(80,60,140,.18);}
+  .collapse svg{width:12px;height:12px;}
+  .miniCap{position:absolute;left:26px;right:26px;bottom:18px;font-size:10px;color:#6e6886;text-align:center;}
+
+  .reco{margin-top:30px;background:#fff;border:1px solid #e7e1fb;border-radius:16px;padding:18px 20px;}
+  .reco h3{font-size:16px;font-weight:700;color:#3a3360;margin-bottom:8px;}
+  .reco p{font-size:13.5px;line-height:1.75;color:#4a4460;margin-bottom:8px;}
+  .reco .pick{background:#f1ecff;border:1px solid #d9ccfb;border-radius:10px;padding:10px 12px;font-size:13px;color:#4a3aa0;}
+  .footer{margin-top:24px;font-size:11.5px;color:#9a93ad;text-align:center;}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Mira 首页气泡 · 改版设计探索</h1>
+  <p class="sub">
+    现状：整页白底，气泡是「白底 + 四色渐变描边 + 右下尾巴」的对话泡，<b>常驻贴底</b>在悬浮 Tab 栏正上方。
+    你感觉有点奇怪——大概率来自两点：① 永久贴底却带着「对话泡尾巴」，语义上像一条没头没尾的聊天消息；
+    ② 四色彩虹描边与整屏克制的紫+黄绿体系不太协调；③ 白底气泡压在白页上，全靠那圈彩虹描边撑形状，反而更显花。
+    下面先给「气泡」换几种底色/描边（保留形状与位置），再给一版 Whoop 风的「悬浮玻璃卡」。
+  </p>
+
+  <!-- 现状参考 -->
+  <div class="group-title"><span class="tag">参考</span> 现状（baseline）</div>
+  <div class="grid">
+    <div class="card ref">
+      <h3>① 现状 · 白底 + 四色渐变描边 + 尾巴</h3>
+      <div class="scene" id="scene-ref"></div>
+      <div class="desc">当前线上版本。彩虹描边 + 尾巴 = 强烈的「聊天气泡」暗示，但它是常驻的、并不指向谁。</div>
+      <div class="cons">彩虹描边偏花；白底压在白页上对比弱；尾巴语义尴尬。</div>
+    </div>
+  </div>
+
+  <!-- Group A -->
+  <div class="group-title"><span class="tag">A 组</span> 只换背景/底色（保留「贴底 + 气泡尾巴」的位置与形状）</div>
+  <div class="group-desc">最小改动方案：不动结构，只调填充与描边，看哪种底最顺眼。</div>
+  <div class="grid" id="grid-a"></div>
+
+  <!-- Group B -->
+  <div class="group-title"><span class="tag">B 组</span> Whoop 风 · 悬浮玻璃卡（重做形态）</div>
+  <div class="group-desc">不再「贴底对话泡」，改成浮在页面上、四周留白、柔和投影的磨砂玻璃卡；可去掉尾巴，更像一块「Mira 的建议卡」而非聊天消息。B2 进一步做成「可收起」。</div>
+  <div class="grid" id="grid-b"></div>
+
+  <div class="reco">
+    <h3>我的判断与建议</h3>
+      <p>
+        <b>先说结论：我更推荐 B 组的「悬浮玻璃卡」方向，而不是继续在 A 组里给对话泡找底色。</b>
+        原因有三：① 永久贴底 + 尾巴的「聊天气泡」语义本身就有点拧——它不指向任何人，却一直张着嘴；
+        ② 去掉尾巴、改成磨砂玻璃卡后，正好接住 App 既有的 GlassCard 语言（消耗卡/概览卡同款），整屏视觉更统一；
+        ③ 白页上「白卡 + 彩虹边」其实最显乱；换成四周留白、柔和投影的玻璃卡，层次和呼吸感都更好。
+      </p>
+    <p>
+      但「常驻」与否要权衡：常驻贴底 = 功能永远在场、用户零学习成本；完全可收起 = 干净但容易把入口藏掉。
+      所以不建议做成「默认收起的小胶囊」，而是 <b>默认悬浮玻璃卡常驻、右上角给一个轻量的收起入口</b>（即 B2 的思路，但收起应是用户主动、而非默认）。
+      这样既消除了「奇怪的对话泡」观感，又不牺牲触达。
+    </p>
+    <p class="pick">
+      若你暂时不想动结构、只想先缓解「奇怪」感：A 组里 <b>A2（浅紫柔底 + 单色细线）</b> 或 <b>A4（玻璃磨砂）</b> 是最稳的过渡——
+      去掉彩虹描边、把白底换成和紫底同族的浅紫，对比与协调会立刻改善。尾巴可一并去掉。
+    </p>
+  </div>
+
+  <div class="footer">Mira Design · 首页气泡改版探索稿 · 渲染基于真实首页底部上下文（整页白底 + 悬浮 Tab 栏 + 紫 Mira bot）</div>
+</div>
+
+<script>
+  function tabBar(){
+    return `<div class="tabbar">
+      <div class="tabPill">
+        <div class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7M5 10v9h14v-9"/></svg></div>
+        <div class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V11M10 19V5M16 19V13M21 19V9"/></svg></div>
+        <div class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></div>
+        <div class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+      </div>
+      <div class="botBtn"><div class="botFace"><span class="botEye l"></span><span class="botEye r"></span></div></div>
+    </div>`;
+  }
+
+  function bubble(cls, extra=''){
+    return `<div class="bubbleWrap ${cls}">
+      <div class="bubble">
+        ${extra}
+        <div class="b-text">
+          <div class="b-title">今天过得怎么样呀？跟我说说～</div>
+          <div class="b-hint">长按右下角的 AI 图标，就能直接语音跟我聊</div>
+        </div>
+        <div class="b-wave"><i></i><i></i><i></i><i></i></div>
+        <span class="tail"></span>
+      </div>
+    </div>`;
+  }
+
+  function scene(inner){
+    return `<div class="scene"><div class="panelHint"></div>${inner}${tabBar()}</div>`;
+  }
+
+  // 现状
+  document.getElementById('scene-ref').outerHTML = scene(bubble('bub-a1'));
+
+  // A 组
+  const groupA = [
+    { cls:'bub-a2', name:'② 浅紫柔底 + 单色细线', desc:'填充改成和紫底同族的浅紫（purpleTint），描边从彩虹换成紫色细线。', pros:'更柔和、和紫底融为一体；对比比纯白强。', cons:'仍是白卡体系，未脱离「对话泡」语义。' },
+    { cls:'bub-a3', name:'③ 单色品牌紫描边', desc:'白底 + 1.5px 品牌紫描边，去掉四色彩虹。', pros:'克制、最「Mira」；改动最小。', cons:'白底在近白紫底上仍偏糊。' },
+    { cls:'bub-a4', name:'④ 玻璃磨砂', desc:'半透明白 + 细描边 + 柔和紫投影（白页上加了微染才能读出来），复用 App 既有 GlassCard 语言。', pros:'通透有层次；和消耗卡/概览卡同一套语言。', cons:'白页上纯玻璃会糊，需微染+细描边。' },
+    { cls:'bub-a5', name:'⑤ 柔渐变底', desc:'紫柔渐变填充（purpleSoft→白），无硬描边，仅 1px 浅边框。', pros:'像一块柔光卡，温柔不抢戏。', cons:'渐变太浅时边界依旧弱。' },
+    { cls:'bub-a6', name:'⑥ 反白实底（紫）', desc:'紫渐变实底 + 白字，变成「Mira 说」hero 卡。', pros:'最强存在感、完全不糊；像功能亮点而非聊天。', cons:'常驻紫块可能过重；与克制体系略冲突。' },
+  ];
+  document.getElementById('grid-a').innerHTML = groupA.map(v=>`
+    <div class="card">
+      <h3>${v.name}</h3>
+      ${scene(bubble(v.cls))}
+      <div class="desc">${v.desc}</div>
+      <div class="pros">✓ ${v.pros}</div>
+      <div class="cons">✗ ${v.cons}</div>
+    </div>`).join('');
+
+  // B 组
+  const groupB = [
+    { cls:'bub-b1', name:'⑦ 悬浮玻璃卡（无尾巴）', desc:'去掉气泡尾巴，改成四周留白、柔和投影的磨砂玻璃卡，浮在 Tab 栏上方。', pros:'消除「对话泡」尴尬语义；与 GlassCard 统一；更有层次与呼吸感。', cons:'从「贴底」变「悬浮」，需重新处理与 Tab 栏的间距。' },
+    { cls:'bub-b2', name:'⑧ 悬浮卡 + 可收起', desc:'在 ⑦ 基础上，右上角加收起入口（点一下收成右下角小 Mira 胶囊），可悬浮也可收起。', pros:'最符合你「不是常驻、可悬浮可收起」的设想；干净且不丢入口。', cons:'多一套收起/展开状态与动效；默认仍建议常驻。' },
+  ];
+  const b2extra = `<div class="collapse"><svg viewBox="0 0 24 24" fill="none" stroke="#6e6886" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div>`;
+  document.getElementById('grid-b').innerHTML = groupB.map((v,i)=>`
+    <div class="card">
+      <h3>${v.name}</h3>
+      ${scene(i===1 ? bubble(v.cls, b2extra) : bubble(v.cls))}
+      ${i===1?'<div class="miniCap">收起后 → 右下角小 Mira 胶囊</div>':''}
+      <div class="desc">${v.desc}</div>
+      <div class="pros">✓ ${v.pros}</div>
+      <div class="cons">✗ ${v.cons}</div>
+    </div>`).join('');
+</script>
+</body>
+</html>

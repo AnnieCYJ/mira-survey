@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>工具页卡面文案 · 改前 / 改后</title>
+<style>
+  :root{
+    --cw: 300px;
+    --ch: 375px;              /* 卡片 4:5 */
+    --fade-h: 150px;          /* 渐隐区 = 卡高 × 0.40（更小） */
+    --plain: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0; padding: 44px 40px 60px;
+    background: #FFFFFF;
+    font-family: var(--plain);
+  }
+  h1{ font-size: 18px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.2px; }
+  .sub{ font-size: 13px; color: #5C574F; margin: 0 0 30px; }
+
+  .cols{ display: flex; gap: 56px; align-items: flex-start; flex-wrap: wrap; }
+  .col > h2{
+    font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+    color: #9C968C; margin: 0 0 16px;
+  }
+  .col.now > h2{ color: #6E7A24; }
+  .row{ display: flex; gap: 22px; }
+
+  .card{
+    position: relative; width: var(--cw); height: var(--ch);
+    border-radius: 20px; overflow: hidden; background: #F6F4F1;
+    box-shadow: 0 8px 18px rgba(31,29,26,.08);
+  }
+  .card > img.base{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+  /* ── 改前：圆角磨砂玻璃卡 + 深墨字 + 4 行（含卵泡期第 N 天） ── */
+  .old-glass{ position: absolute; left: 10px; right: 10px; bottom: 10px; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,.6); box-shadow: 0 4px 14px rgba(31,29,26,.12); }
+  .old-glass .blurlayer{ position: absolute; left: -10px; right: -10px; bottom: -10px; height: calc(var(--ch) - 20px); overflow: hidden; }
+  .old-glass .blurlayer img{ position: absolute; left: 0; bottom: 0; width: calc(var(--cw) - 20px); height: calc(var(--ch) - 20px); object-fit: cover; filter: blur(7px); }
+  .old-glass .tint{ position: absolute; inset: 0; background: linear-gradient(rgba(255,255,255,.34), rgba(255,255,255,.62)); }
+  .old-glass .txt{ position: relative; padding: 15px 16px; text-align: center; }
+  .old-name{ font-size: 18px; font-weight: 600; letter-spacing: -0.3px; color:#1F1D1A; }
+  .old-phase{ margin-top: 5px; font-size: 11px; font-weight: 500; color:#6E7A24; }
+  .old-desc{ margin-top: 7px; font-size: 14px; line-height: 1.45; color:#5C574F; }
+  .old-meta{ margin-top: 7px; font-size: 11px; color:#9C968C; }
+
+  /* ── 改后：无边界渐隐 + 白字（淡、小）+ 三行（无阶段行） ── */
+  .fade{ position: absolute; left: 0; right: 0; bottom: 0; height: var(--fade-h); }
+  .fade .l{ position: absolute; left: 0; right: 0; bottom: 0; overflow: hidden; }
+  .fade .l img{ position: absolute; left: 0; bottom: 0; width: 100%; height: var(--ch); object-fit: cover; }
+  .fade .l1{ height: 173px; } .fade .l1 img{ filter: blur(1.6px); }
+  .fade .l2{ height: 101px; } .fade .l2 img{ filter: blur(4px); }
+  .fade .l3{ height: 52px;  } .fade .l3 img{ filter: blur(8px); }
+  .fade .mist{ position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,0) 0%, rgba(0,0,0,.2) 30%, rgba(0,0,0,.46) 70%, rgba(0,0,0,.58) 100%); }
+  .fade .txt{ position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 16px; display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+  .new-title{ font-size: 16px; font-weight: 600; color: rgba(255,255,255,.96); letter-spacing: -0.2px; text-shadow: 0 1px 3px rgba(0,0,0,.30); }
+  .new-tip{ margin-top: 5px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,.84); text-shadow: 0 1px 3px rgba(0,0,0,.28); }
+  .new-meta{ margin-top: 3px; font-size: 11px; letter-spacing: .2px; color: rgba(255,255,255,.62); text-shadow: 0 1px 3px rgba(0,0,0,.28); }
+
+  .note{ margin-top: 34px; font-size: 12px; color: #9C968C; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+  <h1>工具页卡面文案 · 改前 / 改后</h1>
+  <p class="sub">卡片尺寸、图片、位置未动；只改卡面文案区与文字颜色。</p>
+
+  <div class="cols">
+
+    <div class="col">
+      <h2>改前 · 圆角玻璃卡 + 深墨字</h2>
+      <div class="row">
+        <div class="card">
+          <img class="base" src="../src/assets/tool_emotion.jpg" alt="" />
+          <div class="old-glass">
+            <div class="blurlayer"><img src="../src/assets/tool_emotion.jpg" alt="" /></div>
+            <div class="tint"></div>
+            <div class="txt">
+              <div class="old-name">情绪调节</div>
+              <div class="old-phase">经期 · 周期第 12 天</div>
+              <div class="old-desc">身体在过经期，脾气容易炸，今天多给自己一点耐心。</div>
+              <div class="old-meta">4 段冥想 · 3 个呼吸练习</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <img class="base" src="../src/assets/tool_food.jpg" alt="" />
+          <div class="old-glass">
+            <div class="blurlayer"><img src="../src/assets/tool_food.jpg" alt="" /></div>
+            <div class="tint"></div>
+            <div class="txt">
+              <div class="old-name">营养搭配</div>
+              <div class="old-phase">黄体期 · 周期第 24 天</div>
+              <div class="old-desc">黄体期馋得快，复合碳水 + 蛋白稳住它。</div>
+              <div class="old-meta">6 份食谱 · 经期饮食指南</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col now">
+      <h2>改后 · 越往下越模糊 + 白字（淡、小）</h2>
+      <div class="row">
+        <div class="card">
+          <img class="base" src="../src/assets/tool_emotion.jpg" alt="" />
+          <div class="fade">
+            <div class="l l1"><img src="../src/assets/tool_emotion.jpg" alt="" /></div>
+            <div class="l l2"><img src="../src/assets/tool_emotion.jpg" alt="" /></div>
+            <div class="l l3"><img src="../src/assets/tool_emotion.jpg" alt="" /></div>
+            <div class="mist"></div>
+            <div class="txt">
+              <div class="new-title">情绪调节</div>
+              <div class="new-tip">身体在过经期，脾气容易炸，今天多给自己一点耐心。</div>
+              <div class="new-meta">4 段冥想 · 3 个呼吸练习</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <img class="base" src="../src/assets/tool_food.jpg" alt="" />
+          <div class="fade">
+            <div class="l l1"><img src="../src/assets/tool_food.jpg" alt="" /></div>
+            <div class="l l2"><img src="../src/assets/tool_food.jpg" alt="" /></div>
+            <div class="l l3"><img src="../src/assets/tool_food.jpg" alt="" /></div>
+            <div class="mist"></div>
+            <div class="txt">
+              <div class="new-title">营养搭配</div>
+              <div class="new-tip">黄体期馋得快，复合碳水 + 蛋白稳住它。</div>
+              <div class="new-meta">6 份食谱 · 经期饮食指南</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="note">
+    改后（右列）：
+    · 不再写「卵泡期 · 周期第 N 天」阶段行，回到「工具名 + 今日怎么用（每日微文案）+ 资源数」；<br />
+    · 文字改白色、淡、小（16 / 13 / 11），带轻投影，不再用刺眼的深墨字；<br />
+    · 文字下方不再是白雾、而是「顶透明 → 底半透明黑」的暗化渐变，把模糊接缝吃掉同时托住白字；
+    文案块高度从 44% 缩到 40%，图露更多。
+  </p>
+
+</body>
+</html>

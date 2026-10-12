@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>旅程曲线对齐 + 工具页卡片宽度统一</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --card:#FFFFFF; --border:rgba(31,29,26,0.09);
+    --purple:#8B7BF0; --rose:#EE8FA8; --lime:#BCCB62;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:#F2F0ED;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+       padding:28px;line-height:1.5}
+  h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .lead{font-size:13px;color:var(--inkSoft);margin:0 0 22px}
+  h2{font-size:15px;margin:30px 0 12px;font-weight:600;
+     padding-left:10px;border-left:3px solid var(--lime)}
+  .row{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+  .col{flex:0 0 auto}
+  .cap{font-size:12px;color:var(--inkFaint);margin-bottom:8px;text-align:center}
+  .cap b{color:var(--ink);font-weight:600}
+  .bad{color:#C2504B}
+
+  /* ── 手机框 ── */
+  .phone{width:342px;background:#fff;border-radius:22px;padding:14px 0;
+         box-shadow:0 8px 26px rgba(31,29,26,.13)}
+  .screen{padding:0 24px}   /* theme.space.screen = 24 */
+
+  /* ── 日期条 ── */
+  .strip{display:flex;gap:8px;margin-bottom:4px}
+  .cell{width:44px;height:56px;border-radius:10px;background:rgba(31,29,26,.04);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:0 0 auto}
+  .cell.sel{background:var(--purple)}
+  .cell.w{font-size:10px;color:var(--inkFaint)}
+  .cell.sel .w{color:rgba(255,255,255,.85)}
+  .cell.n{font-size:14px;font-weight:600}
+  .cell.sel .n{color:#fff}
+  .cell .dot{width:5px;height:5px;border-radius:2.5px;background:var(--lime)}
+  .cell.sel .dot{background:#fff}
+
+  /* ── 行 ── */
+  .rows{position:relative;width:100%}
+  .rowline{position:relative;height:104px;display:flex;align-items:center}
+  .dot{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;
+       border-radius:6px;border:2.5px solid #fff;z-index:3}
+  .card{position:relative;width:46%;background:var(--card);border:1px solid var(--border);
+        border-radius:14px;padding:12px;z-index:2;
+        box-shadow:0 2px 8px rgba(31,29,26,.06)}
+  .card.l{margin-right:auto}
+  .card.r{margin-left:auto}
+  .ch{display:flex;align-items:center;gap:8px}
+  .ico{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+  .t{font-size:13px;font-weight:600;line-height:1.3}
+  .s{font-size:10px;color:var(--inkFaint);margin-top:5px;line-height:1.4}
+  .tm{font-size:9px;color:var(--inkFaint);margin-top:6px}
+  svg.curve{position:absolute;top:0;left:50%;margin-left:-22px;z-index:1}
+
+  /* ── 工具页宽度对比 ── */
+  .toolwrap{width:342px;background:#fff;border-radius:22px;padding:14px 24px;
+            box-shadow:0 8px 26px rgba(31,29,26,.13)}
+  .toolcard{width:100%;border-radius:16px;background:#EDE9E3;border:1px solid rgba(31,29,26,.08);
+            display:flex;align-items:flex-end;justify-content:center;font-size:12px;color:#8A8378;
+            padding-bottom:10px;overflow:hidden;position:relative}
+  .toolcard .sz{background:rgba(255,255,255,.86);border-radius:8px;padding:3px 8px;margin-bottom:8px}
+  .guide{position:absolute;top:0;bottom:0;width:1px;background:repeating-linear-gradient(180deg,#C2504B 0 4px,transparent 4px 8px)}
+  .guide.l{left:-24px}.guide.r{right:-24px}
+  .chips{display:flex;gap:8px;margin-bottom:10px}
+  .chip{flex:1;height:74px;border:1px solid var(--border);border-radius:14px;background:#fff;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+  .chip.on{border-color:var(--lime);background:#EAF0BE}
+  .chip .bi{width:26px;height:26px;border-radius:8px}
+  .chip .lb{font-size:9px;color:var(--inkFaint)}
+  .saved{margin-top:10px;height:76px;border:1px solid rgba(31,29,26,.07);border-radius:16px;background:#fff;
+         display:flex;align-items:center;padding:0 12px;gap:12px}
+  .saved .th{width:56px;height:56px;border-radius:10px;background:#EDE9E3;flex:0 0 auto}
+  .saved .ln{flex:1}
+  .saved .b1{font-size:13px;font-weight:600}
+  .saved .b2{font-size:11px;color:var(--inkSoft);margin-top:3px}
+  .saved .b3{font-size:10px;color:var(--inkFaint);margin-top:3px}
+  .note{font-size:12px;color:var(--inkSoft);margin-top:10px;max-width:700px}
+</style>
+</head>
+<body>
+
+<h1>两处对齐修正</h1>
+<p class="lead">① 日历页「日」Tab 的旅程曲线：端点要严格落在两端圆点上　② 工具页卡片 / 收藏建议：左右边距与其它页面统一为 24</p>
+
+<h2>① 旅程曲线（改前 / 改后）</h2>
+<div class="row">
+  <div class="col">
+    <div class="cap"><b class="bad">改前</b> · 曲线整体比圆点高半行（52px），头尾都没落在点上</div>
+    <div class="phone">
+      <div class="screen">
+        <div class="strip">
+          <div class="cell"><span class="w">六</span><span class="n">9</span><span class="dot"></span></div>
+          <div class="cell"><span class="w">日</span><span class="n">10</span><span class="dot"></span></div>
+          <div class="cell sel"><span class="w">一</span><span class="n">11</span><span class="dot"></span></div>
+          <div class="cell"><span class="w">二</span><span class="n">12</span><span class="dot"></span></div>
+        </div>
+        <div class="rows" id="rowsBad">
+          <svg class="curve" width="44" height="416" viewBox="0 0 44 416">
+            <defs>
+              <linearGradient id="gBad" x1="22" y1="0" x2="22" y2="416" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8B7BF0"/><stop offset=".5" stop-color="#EE8FA8"/><stop offset="1" stop-color="#BCCB62"/>
+              </linearGradient>
+            </defs>
+            <!-- 旧算法：y = CURVE_TOP(8) + i*104 + 52 → 0号点在 60，比行中心 112 高 52 -->
+            <path id="pBad" fill="none" stroke="url(#gBad)" stroke-width="4.5" stroke-linecap="round"/>
+          </svg>
+          <div class="rowline"><div class="dot" style="background:#8B7BF0;margin-left:-15px"></div>
+            <div class="card l"><div class="ch"><div class="ico" style="background:#EDE9F9">🌸</div><div class="t">卵泡期</div></div>
+              <div class="s">激素节律影响今日状态节奏</div><div class="tm">全天</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#E8A87C;margin-left:3px"></div>
+            <div class="card r"><div class="ch"><div class="ico" style="background:#F7EFE6">☀️</div><div class="t">起床 · 睡眠评分 82</div></div>
+              <div class="s">睡眠 7h12m · 深睡 1h40m</div><div class="tm">07:12</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#EE8FA8;margin-left:-15px"></div>
+            <div class="card l"><div class="ch"><div class="ico" style="background:#FBEAEE">💗</div><div class="t">情绪波动 3 次</div></div>
+              <div class="s">峰值强度 62 · 前后可安排 5 分钟呼吸调整</div><div class="tm">14:20</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#7FA8C9;margin-left:3px"></div>
+            <div class="card r"><div class="ch"><div class="ico" style="background:#E9F1F7">🧠</div><div class="t">脑力消耗 41 · 适中</div></div>
+              <div class="s">高峰时段安排专注任务更高效</div><div class="tm">16:00</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>改后</b> · 从「卵泡期」旁边的点 → 连到「脑力消耗」左边的点</div>
+    <div class="phone">
+      <div class="screen">
+        <div class="strip">
+          <div class="cell"><span class="w">六</span><span class="n">9</span><span class="dot"></span></div>
+          <div class="cell"><span class="w">日</span><span class="n">10</span><span class="dot"></span></div>
+          <div class="cell sel"><span class="w">一</span><span class="n">11</span><span class="dot"></span></div>
+          <div class="cell"><span class="w">二</span><span class="n">12</span><span class="dot"></span></div>
+        </div>
+        <div class="rows" id="rowsGood">
+          <svg class="curve" width="44" height="416" viewBox="0 0 44 416">
+            <defs>
+              <linearGradient id="gGood" x1="22" y1="0" x2="22" y2="416" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8B7BF0"/><stop offset=".5" stop-color="#EE8FA8"/><stop offset="1" stop-color="#BCCB62"/>
+              </linearGradient>
+            </defs>
+            <!-- 新算法：SVG 挂在行容器内 top:0 → y = i*104 + 52，与行中心重合 -->
+            <path id="pGood" fill="none" stroke="url(#gGood)" stroke-width="4.5" stroke-linecap="round"/>
+          </svg>
+          <div class="rowline"><div class="dot" style="background:#8B7BF0;margin-left:-15px"></div>
+            <div class="card l"><div class="ch"><div class="ico" style="background:#EDE9F9">🌸</div><div class="t">卵泡期</div></div>
+              <div class="s">激素节律影响今日状态节奏</div><div class="tm">全天</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#E8A87C;margin-left:3px"></div>
+            <div class="card r"><div class="ch"><div class="ico" style="background:#F7EFE6">☀️</div><div class="t">起床 · 睡眠评分 82</div></div>
+              <div class="s">睡眠 7h12m · 深睡 1h40m</div><div class="tm">07:12</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#EE8FA8;margin-left:-15px"></div>
+            <div class="card l"><div class="ch"><div class="ico" style="background:#FBEAEE">💗</div><div class="t">情绪波动 3 次</div></div>
+              <div class="s">峰值强度 62 · 前后可安排 5 分钟呼吸调整</div><div class="tm">14:20</div></div></div>
+          <div class="rowline"><div class="dot" style="background:#7FA8C9;margin-left:3px"></div>
+            <div class="card r"><div class="ch"><div class="ico" style="background:#E9F1F7">🧠</div><div class="t">脑力消耗 41 · 适中</div></div>
+              <div class="s">高峰时段安排专注任务更高效</div><div class="tm">16:00</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>② 工具页卡片 &amp; 收藏建议宽度（改前 / 改后）</h2>
+<div class="row">
+  <div class="col">
+    <div class="cap"><b class="bad">改前</b> · 额外再内缩 26 → 左右共 50，比其它页面窄 52</div>
+    <div class="toolwrap">
+      <div class="chips">
+        <div class="chip on"><div class="bi" style="background:#F6E7EE"></div><div class="lb">情绪调节</div></div>
+        <div class="chip"><div class="bi" style="background:#EDE9F9"></div><div class="lb">提升颜值</div></div>
+        <div class="chip"><div class="bi" style="background:#F6F7DC"></div><div class="lb">营养搭配</div></div>
+        <div class="chip"><div class="bi" style="background:#E6F0F7"></div><div class="lb">运动建议</div></div>
+      </div>
+      <div class="toolcard" style="height:362px">
+        <div class="guide l"></div><div class="guide r"></div>
+        <span class="sz">290 × 362</span>
+      </div>
+      <div class="saved">
+        <div class="th"></div>
+        <div class="ln"><div class="b1">睡前 5 分钟呼吸</div><div class="b2">确认有帮助 3 次 · HRV 偏低</div><div class="b3">最近一次：今天 22:10</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>改后</b> · 与其它页面一致：左右各 24</div>
+    <div class="toolwrap">
+      <div class="chips">
+        <div class="chip on"><div class="bi" style="background:#F6E7EE"></div><div class="lb">情绪调节</div></div>
+        <div class="chip"><div class="bi" style="background:#EDE9F9"></div><div class="lb">提升颜值</div></div>
+        <div class="chip"><div class="bi" style="background:#F6F7DC"></div><div class="lb">营养搭配</div></div>
+        <div class="chip"><div class="bi" style="background:#E6F0F7"></div><div class="lb">运动建议</div></div>
+      </div>
+      <div class="toolcard" style="height:427px">
+        <div class="guide l"></div><div class="guide r"></div>
+        <span class="sz">342 × 427</span>
+      </div>
+      <div class="saved">
+        <div class="th"></div>
+        <div class="ln"><div class="b1">睡前 5 分钟呼吸</div><div class="b2">确认有帮助 3 次 · HRV 偏低</div><div class="b3">最近一次：今天 22:10</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">红色虚线 = 页面内容边界（左右各 24）。改后工具卡与收藏建议卡片都顶到这条边，与首页 / 洞察页 / 日历页完全一致；卡片比例仍是 4:5，所以变宽的同时高度同步变大。</p>
+
+<script>
+  // 与 RN 端同一套 Catmull-Rom → 贝塞尔样条，仅 y 起点不同（验证两种算法）
+  const ROW_H=104, AMP=9;
+  function wave(yOff){
+    const pts=[];
+    for(let i=0;i<4;i++) pts.push({x:22+(i%2===0?-AMP:AMP), y:yOff+i*ROW_H+ROW_H/2});
+    let d=`M ${pts[0].x} ${pts[0].y}`;
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[i-1]??pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]??p2;
+      const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+      const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+      d+=` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x} ${p2.y}`;
+    }
+    return d;
+  }
+  // 改前：SVG 挂在含日期条的 wrap 上（top:0），用手算 CURVE_TOP=8 补偿
+  //   → 曲线第 i 点在 wrap 坐标 8+104i+52，行圆点却在 60+104i+52，差 -52
+  document.getElementById('pBad').setAttribute('d', wave(8-60));
+  // 改后：SVG 挂在行容器内 top:0，y = i*ROW_H + ROW_H/2
+  document.getElementById('pGood').setAttribute('d', wave(0));
+</script>
+</body>
+</html>

@@ -963,13 +963,18 @@ class NativeRingSource {
     if (slots.length > 0) {
 
       // 统一解析函数：从 slots 里按 key 提取 [{t, v}]
+      // ★ 带符号指标：emotion 值域 [-10,10] 含负数（消极/低落），0/负是有效值，
+      //   不能用「生理指标 0/负=占位符」的守卫砍掉，否则情绪点阵只剩开心/兴奋。
+      const SIGNED_HKEYS = new Set<string>(['emotion']);
       const extract = (nativeKey: string): Array<{ t: number; v: number }> => {
         const hsKey = METRIC_MAP[nativeKey];
         if (!hsKey) return [];
+        const signed = SIGNED_HKEYS.has(hsKey);
         const out: Array<{ t: number; v: number }> = [];
         for (const s of slots) {
           const v = num(s?.[nativeKey]);
-          if (v == null || !Number.isFinite(v) || v <= 0) continue;
+          if (v == null || !Number.isFinite(v)) continue;
+          if (!signed && v <= 0) continue;  // 生理指标 0/负=占位符；emotion 等带符号指标保留
           const t = parseSampleTs(date, s?.time ?? s?.t ?? '');
           if (t == null) continue;
           out.push({ t, v });

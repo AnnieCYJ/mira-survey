@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
@@ -45,6 +45,10 @@ const TAIL_H = 9;   // 小尾巴向下延伸高度（刻意做小）
 const R = 16;       // 气泡圆角
 const TAIL_W = 16;  // 尾巴底边宽
 const STROKE = 1; // 描边粗细（用户选「渐变减到 1px」，消掉四角偏重）
+// ★ v1012a · 玻璃磨砂气泡：半透明白底 + 中性淡描边 + 柔和投影，取代原四色彩虹描边。
+//   白底上真正的 blur 无意义（背景即纯白），玻璃感靠「半透明 + 细描边 + 投影」立住。
+const GLASS_FILL = 'rgba(255,255,255,0.82)';
+const GLASS_BORDER = 'rgba(31,29,26,0.14)';
 // 轮询兜底：每 30s 检查一次半小时槽位是否已跨过（正常由「圆环状态点刷新」即时触发，见下方 effect）
 const REFRESH_MS = 30 * 1000;
 // 「已留作你的专属建议」停留时长：到点自动收回常态占位（用户：之后建议就没了，回到那句话）
@@ -270,16 +274,20 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     }, CONFIRM_MS);
   };
 
-  const saveSuggestion = async (candidate: SuggestionCandidate | null) => {
+  const saveSuggestion = async (candidate: SuggestionCandidate | null, persist = true) => {
     if (!candidate || savingHabitRef.current) return;
     savingHabitRef.current = true; setSavingHabit(true); setSaveError('');
     try {
-      await keepHabit({
-        id: candidate.saveId ?? candidate.id,
-        action: candidate.action ?? '', metric: candidate.metric ?? '',
-        headline: candidate.headline, cta: candidate.cta, kind: candidate.kind,
-      });
-      if (mountedRef.current) confirmThenReset(candidate, '已收进你的专属建议啦');
+      if (persist) {
+        await keepHabit({
+          id: candidate.saveId ?? candidate.id,
+          action: candidate.action ?? '', metric: candidate.metric ?? '',
+          headline: candidate.headline, cta: candidate.cta, kind: candidate.kind,
+        });
+      }
+      if (mountedRef.current) {
+        confirmThenReset(candidate, persist ? '已收进你的专属建议啦' : '收到，我会调整后面的判断');
+      }
     } catch {
       if (mountedRef.current) setSaveError('没有保存成功，请点「有用」重试');
     } finally {
@@ -287,8 +295,9 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
       if (mountedRef.current) setSavingHabit(false);
     }
   };
-  const onKeep = () => { void saveSuggestion(cand); };
-  const onKeepFb = () => { void saveSuggestion(fb); };
+  // 观察/分析卡的认可只用于校准，不进入工具页；只有行动完成后的回访才保存为有效方法。
+  const onKeep = () => { void saveSuggestion(cand, !cand?.noPersist); };
+  const onKeepFb = () => { void saveSuggestion(fb, true); };
 
   /**
    * ★ 十三改：不感兴趣 → **立刻换一条新建议**（force 重取；被否的进 30 天冷却不会马上回来）。
@@ -363,19 +372,11 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
         {/* 背景：渐变描边气泡 + 右下小尾巴（SVG 保证边框与尾巴同色同源） */}
         {w > 0 && bodyPath && (
           <Svg style={StyleSheet.absoluteFill} width={w} height={bubbleHeight + TAIL_H} viewBox={`0 0 ${w} ${bubbleHeight + TAIL_H}`}>
-            <Defs>
-              <SvgLinear id="bubbleBorder" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor={mm.colors.purpleCore} />
-                <Stop offset="0.4" stopColor={mm.colors.roseCore} />
-                <Stop offset="0.72" stopColor={mm.colors.limeMid} />
-                <Stop offset="1" stopColor={mm.colors.honeyCore} />
-              </SvgLinear>
-            </Defs>
-            <Path d={bodyPath} fill={theme.colors.cardBg} stroke="url(#bubbleBorder)" strokeWidth={STROKE} />
+            <Path d={bodyPath} fill={GLASS_FILL} stroke={GLASS_BORDER} strokeWidth={STROKE} />
             <Path
               d={`M ${b0} ${bubbleHeight - 1} L ${tipX} ${tipY} L ${b1} ${bubbleHeight - 1}`}
-              fill={theme.colors.cardBg}
-              stroke="url(#bubbleBorder)"
+              fill={GLASS_FILL}
+              stroke={GLASS_BORDER}
               strokeWidth={STROKE}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -449,12 +450,12 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                       disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                       activeOpacity={theme.press.opacity}
                       accessibilityRole="button"
-                      accessibilityLabel="有用，收进我的建议"
+                      accessibilityLabel={cand!.noPersist ? '说得准，校准分析' : '有用，收进我的建议'}
                       style={styles.btnPill}
                     >
                       <View style={styles.pillRow}>
                         <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
-                        <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : '有用'}</Text>
+                        <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : cand!.noPersist ? '说得准' : '有用'}</Text>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -463,10 +464,10 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                       disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                     activeOpacity={theme.press.opacity}
                     accessibilityRole="button"
-                    accessibilityLabel="不感兴趣，换一个建议"
+                    accessibilityLabel={mode === 'fb' ? '没感觉' : cand!.kind === 'action' ? '先不用' : '不太像'}
                     style={styles.btnLink}
                   >
-                    <Text style={styles.btnLinkText}>不感兴趣</Text>
+                    <Text style={styles.btnLinkText}>{mode === 'fb' ? '没感觉' : cand!.kind === 'action' ? '先不用' : '不太像'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -510,6 +511,13 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
     paddingBottom: TAIL_H,
+    borderRadius: R, // 让投影是圆角矩形，贴合气泡外形
+    // ★ v1012a 玻璃磨砂：柔和投影，使半透明卡片在白页上「浮」起来
+    shadowColor: '#1F1D1A',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
   content: {
     flexDirection: 'row',

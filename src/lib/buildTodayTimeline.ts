@@ -9,7 +9,6 @@ import { theme } from '../theme/theme';
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore';
 import { computeStressReport } from './stressAlgorithm';
-import { computeCognitiveLoadReport, cogLevelLabel } from './cognitiveLoad';
 import type { TimelineItem } from '../components/TodayTimelineCard';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -19,6 +18,11 @@ function fmtMin(min: number | null | undefined): string {
   const h = Math.floor(min / 60);
   const m = Math.round(min % 60);
   return h > 0 ? `${h}小时${m > 0 ? `${m}分` : ''}` : `${m}分钟`;
+}
+/** "HH:mm" → 小时（小数）；解析不了返回 null */
+function parseClockH(s: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim());
+  return m ? Number(m[1]) + Number(m[2]) / 60 : null;
 }
 
 export interface TimelineResult {
@@ -63,11 +67,12 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
       color: theme.colors.accent1,
       title: cs.phaseLabel,
       emoji: '🌸',
-      sub: cs.phaseLabel === '黄体期'
-        ? '激素回落，留意情绪与能量起伏'
-        : cs.phaseLabel === '经期'
-          ? '以温和舒缓为主，适合休息'
-          : '激素节律影响今日状态节奏',
+      sub:
+        cs.phaseLabel === '经期' ? '身体在经期，慢慢来就好'
+        : cs.phaseLabel === '卵泡期' ? '新周期刚开始，状态在往上走'
+        : cs.phaseLabel === '排卵期' ? '排卵期，精力和心情都不错'
+        : cs.phaseLabel === '黄体期' ? '激素在回落，情绪体力容易波动'
+        : '激素节律稳稳的，今天状态不错',
     }, -1);
   }
 
@@ -81,7 +86,7 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
       title: dataStale ? '起床' : `起床 · 睡眠评分 ${todaySleep.score ?? '\u2014'}`,
       emoji: '☀️',
       sub: dataStale
-        ? '戒指暂无新数据，昨夜睡眠明细暂不显示'
+        ? '昨晚的睡眠还没同步，细节稍后能看到'
         : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
     }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
@@ -89,7 +94,14 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
   // 3. 情绪波动峰值（仅今天）
   try {
     if (!isToday) throw new Error('skip');
-    const evs = computeStressReport()?.events ?? [];
+    // ★ 2026-10-12（用户：睡眠阶段不记录情绪）—— 睡眠窗内的 EDA 事件不计入：
+    //   旅程里的"情绪波动 N 次"只数清醒时段（与详情页点阵/节律同口径）。
+    const bedH = parseClockH(todaySleep?.sleepTime);
+    const wakeH = parseClockH(todaySleep?.wakeTime);
+    const inSleep = (hour: number) => bedH != null && wakeH != null
+      && (bedH > wakeH ? (hour >= bedH || hour < wakeH) : (hour >= bedH && hour < wakeH));
+    const evs = (computeStressReport()?.events ?? [])
+      .filter((e: any) => !inSleep((e.hour ?? 0) + (e.minute ?? 0) / 60));
     const peakEvent = evs.length > 0 ? evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a)) : null;
     if (peakEvent) {
       pushItem({
@@ -97,29 +109,14 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
         color: theme.colors.stateTense,
         title: `情绪波动 ${evs.length} 次`,
       emoji: '💗',
-        sub: `峰值强度 ${Math.round(peakEvent.severity)} \u00b7 前后可安排 5 分钟呼吸调整`,
+        sub: `峰值强度 ${Math.round(peakEvent.severity)} \u00b7 起伏大时，试试 5 分钟深呼吸`,
       }, peakEvent.hour * 60 + peakEvent.minute);
     }
   } catch { /* ignore */ }
 
-  // 4. 脑力消耗（仅今天）
-  try {
-    if (!isToday) throw new Error('skip');
-    const cogReport = computeCognitiveLoadReport();
-    if (cogReport?.avgFatigue != null) {
-      const barsPast = (cogReport.hourly ?? []).filter((h: any) => h.hasData && h.hour * 60 <= curMin);
-      const peakBar = barsPast.length > 0 ? barsPast.reduce((a: any, b: any) => (b.score > a.score ? b : a)) : null;
-      pushItem({
-        time: peakBar ? `${pad2(peakBar.hour)}:00` : '今日',
-        color: theme.colors.stateTired,
-        title: `脑力消耗 ${cogReport.avgFatigue} \u00b7 ${cogLevelLabel(cogReport.avgFatigue)}`,
-      emoji: '🧠',
-        sub: '高峰时段安排专注任务更高效',
-      }, peakBar ? peakBar.hour * 60 : curMin);
-    }
-  } catch { /* ignore */ }
+  // 4. 脑力消耗条目已移除（★ 2026-10-12 用户：旅程里不显示脑力准备度/脑力消耗）
 
-  // 5. 步数（历史日也能取到）
+  // 4. 步数（历史日也能取到）
   const dkToday = dayKeySel;
   const stepsToday = ring?.stepDaily?.[dkToday]?.steps ?? 0;
   if (stepsToday > 0) {
@@ -138,18 +135,18 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
       color: theme.colors.stateCalm,
       title: `活动 ${stepsToday} 步`,
       emoji: '🏃‍♀️',
-      sub: '保持轻量活动，助力晚间恢复',
+      sub: '今天走动了，都记在这里',
     }, lastStepMin ?? curMin);
   }
 
-  // 6. AI 对话（调用方从 SQLite listSince 拿到后注入）
+  // 5. AI 对话（调用方从 SQLite listSince 拿到后注入）
   const chat = extras?.aiChat;
   if (chat) {
     const mm = chat.time.match(/(\d{1,2}):(\d{2})/);
     pushItem(chat, mm ? Number(mm[1]) * 60 + Number(mm[2]) : curMin);
   }
 
-  // 7. AI 洞察（调用方从 getAiInsight + buildCauseNarrative 拿到后注入）
+  // 6. AI 洞察（调用方从 getAiInsight + buildCauseNarrative 拿到后注入）
   const advice = extras?.aiAdvice;
   if (advice) pushItem(advice, 24 * 60);
 

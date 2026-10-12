@@ -202,7 +202,8 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   // ═══════════════════════════════════════════════════════════════════════
   // ★ 2026-10-08（用户实锤：洞察页这张卡「皮质醇活性」分值看不懂；直接给结论）：
   //   简化为两枚指标块 ——
-  //     tile1「峰值时段」：直接写实测峰值时段（几点到几点，HH:MM–HH:MM），不挂分值；
+  //     tile1「峰值时刻」：大数字 = 实测峰值时刻（HH:MM，与详情页/SleepRhythmCard 同源），
+  //       90% 峰值窗口宽于单槽时降级为副文案「峰值时段 HH:MM–HH:MM」；不挂分值；
   //     tile2「皮质醇节律」：只给判读结论（节律正常 / 皮质醇偏高 / 节律紊乱），
   //       不再堆「凭什么这么判」的副文案。没数据走「—」+ 空态引导。
   //   下方曲线（皮质醇昼夜趋势）与 AI 分析块保留。
@@ -234,14 +235,31 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
     return '';
   }, [judge, dataStale]);
 
-  /** 洞察页模式下的 tile1：直接显示实测峰值时段（几点到几点），不再给「皮质醇活性」分值 */
-  const insightTile1Val = peakWindowText ?? '—';
+  /** 洞察页模式下的 tile1：大数字 = 实测峰值时刻（HH:MM），不再给「皮质醇活性」分值
+   *   ★ 2026-10-12（用户实锤：洞察页写「6 点到 11 点」、详情页写「8 点」，两个数对不上）：
+   *   根因 = 这里大数字用的是 judge.peakWindow（≥ 峰值 90% 的连续槽段），
+   *   而详情页 RhythmHero / SleepRhythmCard「全天峰值时刻」用的是 judge.peakClock（实测最高那一槽）。
+   *   清晨曲线平坦时，90% 阈值会把整个上午都圈进来 → 窗口涨到 5 小时，与详情页天然不一致。
+   *   现收敛：大数字与两处详情页**同源**（judge.peakClock），90% 窗口降级成副文案。 */
+  const insightTile1Val = judge.ready ? judge.peakClock : '—';
+
+  /** 峰值时段副文案：只有窗口宽于单槽（>30min）才显示，否则留空（不堆副文案） */
+  const windowWide = (() => {
+    if (!peakWindowText) return false;
+    const [a, b] = peakWindowText.split('–').map((s) => {
+      const [h, m] = s.split(':').map(Number);
+      return (h ?? 0) * 60 + (m ?? 0);
+    });
+    return b - a > 30;
+  })();
 
   const insightTile1Sub = dataStale
     ? '戒指暂无新数据'
-    : !judge.ready || !peakWindowText
+    : !judge.ready
       ? '暂无皮质醇数据'
-      : '';
+      : windowWide
+        ? `峰值时段 ${peakWindowText}`
+        : '';
 
   // ★ v18.156：档位词与 chip 走**同一个函数**（sleepPersonalized.sleepRecoveryTag）。
   //   此前这里自带一套 62/45 + 「恢复较好」措辞，而 chip 是 58/42 + 「高于平时」
@@ -300,7 +318,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
         : `今天皮质醇活性全天均值 ${judge.avg}/100，峰值时段 ${judge.peakWindow ?? judge.peakClock}，昼夜高低节律完整。晨间自然抬升、夜间回落，说明作息与压力反应处在你的正常区间。`
     : dataStale
       ? '戒指暂无新数据，恢复信号同步后，这里会给出皮质醇昼夜节律的判读与建议。'
-      : '今天还没有足够的实测信号。戴上戒指后，这里会根据 HRV、皮电、体温与心率反推你的皮质醇活性，并给出昼夜节律判读与建议。';
+      : '今天先看到一些基础变化，继续戴着戒指记录，等节律更完整后我会帮你看趋势。';
 
   const body = (
     <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
@@ -330,7 +348,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
           {insightMode ? (
             <>
               <View style={styles.tile}>
-                <Text style={styles.tileLabel}>峰值时段</Text>
+                <Text style={styles.tileLabel}>峰值时刻</Text>
                 <View style={styles.tileValRow}>
                   <Text style={styles.tileVal} numberOfLines={1} adjustsFontSizeToFit>
                     {insightTile1Val}

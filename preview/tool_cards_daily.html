@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tools · 每日微文案预览（方案 A）</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --limeDeep:#6E7A24; --limeSoft:#EAF0BE; --cardBorder:rgba(31,29,26,0.09);
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:#F4F2EE;color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 20px 60px;}
+  h1{font-size:26px;font-weight:600;letter-spacing:-0.5px;margin:0 0 4px;}
+  .sub{color:var(--inkSoft);font-size:14px;margin:0 0 20px;line-height:22px;}
+
+  .panel{background:#fff;border:1px solid var(--cardBorder);border-radius:16px;
+    padding:16px 18px;display:flex;flex-wrap:wrap;gap:18px 26px;align-items:flex-end;margin-bottom:26px;}
+  .ctrl{display:flex;flex-direction:column;gap:6px;}
+  .ctrl label{font-size:12px;color:var(--inkFaint);letter-spacing:.3px;}
+  .seg{display:inline-flex;background:#F1EFEA;border-radius:11px;padding:3px;gap:2px;}
+  .seg button{border:0;background:transparent;padding:7px 12px;border-radius:9px;font-size:13px;
+    color:var(--inkSoft);cursor:pointer;font-weight:500;font-family:inherit;}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  input[type=number],input[type=date]{border:1px solid var(--cardBorder);border-radius:9px;
+    padding:7px 10px;font-size:13px;color:var(--ink);background:#fff;font-family:inherit;}
+  .adv{margin-left:auto;}
+  .adv button{border:1px solid var(--cardBorder);background:#fff;border-radius:10px;
+    padding:9px 14px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit;}
+  .adv button:active{transform:translateY(1px);}
+  .note{font-size:12px;color:var(--inkFaint);margin:2px 0 0;}
+  .nowbar{font-size:12px;color:var(--inkFaint);width:100%;margin-top:2px;}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+  @media(max-width:560px){.grid{grid-template-columns:1fr;}}
+  .card{background:#fff;border:1px solid var(--cardBorder);border-radius:22px;overflow:hidden;
+    box-shadow:0 8px 22px rgba(31,29,26,.07);}
+  .imgbox{width:100%;aspect-ratio:4/5;background:#EDEAE4;overflow:hidden;}
+  .imgbox img{width:100%;height:100%;object-fit:cover;display:block;}
+  .cap{padding:14px 16px 18px;text-align:center;}
+  .name{font-size:18px;font-weight:600;letter-spacing:-.3px;}
+  .phase{margin-top:5px;font-size:12px;font-weight:600;color:var(--limeDeep);letter-spacing:.3px;min-height:16px;}
+  .tip{margin-top:8px;font-size:14px;line-height:22px;color:var(--inkSoft);min-height:44px;}
+  .meta{margin-top:6px;font-size:11px;color:var(--inkFaint);letter-spacing:.2px;}
+  .foot{margin-top:30px;font-size:12px;color:var(--inkFaint);line-height:20px;}
+  .pill{display:inline-block;background:var(--limeSoft);color:var(--limeDeep);border-radius:999px;
+    padding:2px 9px;font-size:11px;font-weight:600;margin-left:6px;vertical-align:middle;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tools · 每日微文案<span class="pill">方案 A</span></h1>
+  <p class="sub">图固定（一眼认功能），但每张卡每天多一行「像 Mira 在给建议」的微文案 —— 按周期阶段 + 日期轮换，每天不一样。</p>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>周期阶段</label>
+      <div class="seg" id="phaseSeg">
+        <button data-p="经期">经期</button>
+        <button data-p="卵泡期">卵泡期</button>
+        <button data-p="排卵期">排卵期</button>
+        <button data-p="黄体期">黄体期</button>
+        <button data-p="未记录" class="on">未记录</button>
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>周期第几天</label>
+      <input type="number" id="dayInCycle" value="12" min="1" max="35" style="width:90px" />
+    </div>
+    <div class="ctrl">
+      <label>日期（看「每天不一样」）</label>
+      <input type="date" id="datePick" value="2026-10-11" />
+    </div>
+    <div class="adv">
+      <button id="nextDay">下一天 ▶</button>
+      <p class="note">同一阶段内相邻两天文案也会轮换</p>
+    </div>
+    <div class="nowbar" id="nowbar"></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="foot">
+    说明：本页是 UI 预览，文案逻辑与 App 内 <code>src/lib/toolTips.ts</code> 完全一致（阶段分桶 + 日期 hash 轮换）。<br/>
+    真机因 Expo Go SDK 不兼容暂无法热更预览，所以先用网页看版。点「下一天」可验证「每天不一样」；切阶段可看周期建议如何变。<br/>
+    改动文件：新增 <code>src/lib/toolTips.ts</code>，<code>MeditationScreen.tsx</code> 卡片说明区加阶段行 + 每日微文案（版本戳 v1011g）。
+  </p>
+</div>
+
+<script>
+// ── 与 src/lib/toolTips.ts 完全一致的文案池（前端预览副本）──
+const TIP_POOL = {
+  情绪调节:{
+    经期:['经期激素起浪，情绪也跟着晃——十分钟先松开它。','身体在过经期，脾气容易炸，今天多给自己一点耐心。'],
+    卵泡期:['这周状态往上走，趁情绪轻快把难事处理了。','卵泡期能量在涨，给心情也排一个松档。'],
+    排卵期:['能量在高位，今天状态轻快——把堵心事聊开。','排卵期情绪亮，适合把攒的事一口气清掉。'],
+    黄体期:['黄体期容易闷，今天多留点喘息给自己。','经前这几天情绪本就敏感，先照顾好自己。'],
+    default:['今天花十分钟，把紧绷的情绪松下来。','心里有点堵？先缓一缓，再回来扛事。']
+  },
+  提升颜值:{
+    经期:['经期气色容易垮，今天多睡半小时比精华管用。','经期皮肤在低位，少折腾、多补水就对了。'],
+    卵泡期:['雌激素走高、供血好，这周是上妆最服帖的窗口。','卵泡期气色在爬坡，护肤做加法最划算。'],
+    排卵期:['排卵期气色最亮，重要场合往这几天排。','皮肤今天在发光，出门前简单打底就够。'],
+    黄体期:['黄体期出油变多，护肤品今天做减法。','经前皮肤爱闹，清爽为主、别叠太多层。'],
+    default:['睡好是气色第一课，今晚同一时间上床。','今天少一杯奶茶，多一份好气色。']
+  },
+  营养搭配:{
+    经期:['经期铁流失快，这餐把红肉或深绿叶菜安排上。','经期补铁正当时，拍一餐看看搭配。'],
+    卵泡期:['这周代谢轻快，多吃点蛋白也不怕。','卵泡期胃口稳，趁机把饮食节奏调好。'],
+    排卵期:['排卵期血糖波动大，复合碳水别断。','今天能量高，正适合拍一餐记录好搭配。'],
+    黄体期:['黄体期馋得快，复合碳水+蛋白稳住它。','经前容易嘴馋，拍一餐看清楚再吃。'],
+    default:['饭点前后记一餐最准，拍一张看比例。','不用算卡路里，拍一餐看看搭配就够。']
+  },
+  运动建议:{
+    经期:['经期不冲强度，慢走十五分钟把身体带活。','经期练轻一点，拉伸和慢走刚刚好。'],
+    卵泡期:['卵泡期恢复快，可以上点强度了。','这周身体在回升，训练加量正合适。'],
+    排卵期:['排卵期状态顶，今天可以冲一组新目标。','能量在峰值，把最难的训练放今天。'],
+    黄体期:['黄体期恢复慢，换拉伸慢走、练轻是攒劲。','经前减载不是退步，今天慢走就好。'],
+    default:['今天还没动？快走十五分钟把状态唤醒。','挑还有精力的时候，快走一圈就够。']
+  },
+  稳定睡眠:{
+    经期:['经期睡不沉，今晚提前半小时关灯。','经期身体累，睡前呼吸帮你沉下来。'],
+    卵泡期:['这周睡眠在恢复期，抓住节奏早点睡。','卵泡期睡得稳，今晚别熬断它。'],
+    排卵期:['排卵期精力旺，更要把睡前仪式守住。','今天状态好，别让熬夜偷走明天的劲。'],
+    黄体期:['黄体期体温高、入睡难，睡前呼吸刚好对症。','经前睡眠容易差，今晚提前放松。'],
+    default:['睡好，恢复更快，状态更稳。','关灯前几轮呼吸，给身体一个该睡的信号。']
+  },
+  知识科普:{
+    经期:['经期为什么这么累？今天读一篇就懂。','想读懂身体的经期信号，从这页开始。'],
+    卵泡期:['雌激素这周在涨，聊聊它对情绪的影响。','卵泡期脑子好使，趁机读懂身体。'],
+    排卵期:['排卵期身体在说什么？三分钟看完。','想搞懂自己的周期曲线？今天正好。'],
+    黄体期:['经前为什么情绪起伏大？这篇说清楚了。','黄体期波动有来路，读一篇就安心。'],
+    default:['读懂身体的每个变化，从今天一篇开始。','每周更新，今天挑一篇读懂自己。']
+  }
+};
+const META = {
+  情绪调节:'4 段冥想 · 3 个呼吸练习',
+  提升颜值:'5 个护肤提醒 · 周期建议',
+  营养搭配:'6 份食谱 · 经期饮食指南',
+  运动建议:'4 类运动 · 按周期推荐',
+  稳定睡眠:'3 段助眠音 · 睡眠回顾',
+  知识科普:'12 篇科普 · 每周更新'
+};
+const KEYS = Object.keys(TIP_POOL);
+const IMG = {
+  情绪调节:'assets/tool_emotion.jpg', 提升颜值:'assets/tool_recovery.jpg',
+  营养搭配:'assets/tool_food.jpg',     运动建议:'assets/tool_activity.jpg',
+  稳定睡眠:'assets/tool_sleep.jpg',    知识科普:'assets/tool_learn.jpg'
+};
+
+function dayHash(seed){let h=2166136261;for(let i=0;i<seed.length;i++){h^=seed.charCodeAt(i);h=Math.imul(h,16777619);}return Math.abs(h%9973);}
+function phaseBucket(p){return ['经期','卵泡期','排卵期','黄体期'].includes(p)?p:'default';}
+function getToolDailyTip(key,ctx){
+  const pool=TIP_POOL[key]; if(!pool) return '';
+  const arr=pool[phaseBucket(ctx.phase)]||pool.default;
+  return arr[dayHash(ctx.now+'|'+key)%arr.length];
+}
+function getToolPhaseLine(ctx){
+  if(!ctx.phase||ctx.phase==='未记录') return '';
+  if(ctx.dayInCycle!=null&&ctx.dayInCycle>0) return ctx.phase+' · 周期第 '+ctx.dayInCycle+' 天';
+  return ctx.phase;
+}
+
+// ── 状态 ──
+const state={ phase:'未记录', day:12, now:'2026-10-11' };
+function render(){
+  const ctx={ phase:state.phase, dayInCycle:parseInt(state.day,10)||0, now:state.now };
+  const grid=document.getElementById('grid'); grid.innerHTML='';
+  for(const key of KEYS){
+    const ph=getToolPhaseLine(ctx);
+    const tip=getToolDailyTip(key,ctx);
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML=
+      '<div class="imgbox"><img src="'+IMG[key]+'" alt="'+key+'"/></div>'+
+      '<div class="cap">'+
+        '<div class="name">'+key+'</div>'+
+        '<div class="phase">'+ph+'</div>'+
+        '<div class="tip">'+tip+'</div>'+
+        '<div class="meta">'+(META[key]||'')+'</div>'+
+      '</div>';
+    grid.appendChild(card);
+  }
+  document.getElementById('nowbar').textContent=
+    '当前预览：阶段='+state.phase+' · 周期第 '+state.day+' 天 · 日期='+state.now+
+    '（图中文案与阶段/日期联动）';
+}
+
+// ── 交互 ──
+document.getElementById('phaseSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.phase=b.dataset.p;
+  [...document.querySelectorAll('#phaseSeg button')].forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+document.getElementById('dayInCycle').addEventListener('input',e=>{ state.day=e.target.value; render(); });
+document.getElementById('datePick').addEventListener('change',e=>{ state.now=e.target.value; render(); });
+document.getElementById('nextDay').addEventListener('click',()=>{
+  const d=new Date(state.now+'T00:00:00'); d.setDate(d.getDate()+1);
+  state.now=d.toISOString().slice(0,10);
+  state.day=Math.min(35,(parseInt(state.day,10)||0)+1);
+  document.getElementById('datePick').value=state.now;
+  document.getElementById('dayInCycle').value=state.day;
+  render();
+});
+render();
+</script>
+</body>
+</html>

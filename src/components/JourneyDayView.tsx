@@ -18,7 +18,6 @@ import { RingBle } from '../ble/RingBleManager';
 import type { TimelineItem } from './TodayTimelineCard';
 
 const ROW_H = theme.sp(26);          // 每行 104：卡片区高
-const CURVE_TOP = theme.sp(2);       // 曲线起点与日期条的间距 8
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
 const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
 const STRIP_DAYS = 14;               // 日期条：今天往前 14 天（升序，今天在最右）
@@ -66,12 +65,19 @@ function hasDayData(d: Date): boolean {
  * ★ S 型蛇形曲线（对齐序日参考图）：**从第一个卡片的节点开始**（用户 23:20：
  *   "线的头就从第一个卡片那个点开始"，不再从日期条引出长线），到最后一个节点结束。
  *   节点左右小幅交替（±DOT_AMP）贴卡片内缘，Catmull-Rom → 贝塞尔平滑样条。
+ *
+ * ★ 2026-10-12（用户：「线要从卵泡期旁边那个点连到脑力消耗左边那个点」）——
+ *   坐标系改为**与行容器同源**：SVG 现在挂在行容器内部（top:0），y 直接取
+ *   「第 i 行垂直中心 = i*ROW_H + ROW_H/2」，与 styles.dot 的 top:'50%' 完全重合。
+ *   旧实现把 SVG 绝对定位在含日期条的 wrap 上、再用 CURVE_TOP 手算偏移，
+ *   结果整条曲线比圆点高了整整半行（日期条 60 − CURVE_TOP 8 = 52 = ROW_H/2），
+ *   头尾都对不上两端的点。
  */
 function buildWavePath(height: number, count: number): string {
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i < count; i++) {
     const x = 22 + (i % 2 === 0 ? -DOT_AMP : DOT_AMP); // 左卡 → 节点偏左；右卡 → 偏右
-    pts.push({ x, y: CURVE_TOP + i * ROW_H + ROW_H / 2 });
+    pts.push({ x, y: i * ROW_H + ROW_H / 2 });
   }
   if (pts.length < 2) return '';
   let d = `M ${pts[0].x} ${pts[0].y}`;
@@ -129,7 +135,7 @@ export default function JourneyDayView() {
   }, [selDate]);
 
   const items: TimelineItem[] = result?.items ?? [];
-  const totalH = CURVE_TOP + Math.max(items.length, 1) * ROW_H;
+  const totalH = Math.max(items.length, 1) * ROW_H;
   const wavePath = buildWavePath(totalH, items.length);
   const isSelToday = sameDay(selDate, new Date());
 
@@ -176,6 +182,9 @@ export default function JourneyDayView() {
         </View>
       ) : (
         <>
+          {/* ★ 2026-10-12：曲线与行共用同一个容器（曲线 top:0 定位在行区内），
+              这样曲线端点与圆点严格重合——从第一条记录的点连到最后一条记录的点。 */}
+          <View style={[styles.rows, { height: items.length * ROW_H }]}>
           {/* ★ 只有 ≥2 条记录才画曲线（1 个点无曲线；空 d 的 Path 会让 SVG 把渐变整块渲染成色块） */}
           {items.length >= 2 && (
             <Svg width={44} height={totalH} style={styles.curve} pointerEvents="none">
@@ -191,7 +200,6 @@ export default function JourneyDayView() {
           )}
 
           {/* 事件行：左右交替，节点圆点贴卡片内缘、落在曲线上 */}
-          <View style={{ height: items.length * ROW_H }}>
             {items.map((it, i) => {
               const left = i % 2 === 0;
               const dotOff = left ? -DOT_AMP : DOT_AMP;
@@ -249,6 +257,8 @@ const styles = StyleSheet.create({
   cellDotNone: { width: theme.sp(1.25), height: theme.sp(1.25) },
 
   /* 曲线与行 */
+  // ★ 2026-10-12：曲线与行同容器（曲线以本容器 top:0 定位），保证端点与圆点重合
+  rows: { position: 'relative', width: '100%' },
   curve: { position: 'absolute', top: 0, left: '50%', marginLeft: -22 },
   row: {
     width: '100%', height: ROW_H, flexDirection: 'row', alignItems: 'center',

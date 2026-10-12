@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>工具卡面 v4：单层磨砂蒙层（无按钮）+ 两侧缩小的圆角露边</title>
+<style>
+  :root{--ink:#1F1D1A;--lime:#BCCB62}
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:#F2F0ED;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;padding:24px;line-height:1.5}
+  h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .lead{font-size:13px;color:#5C574F;margin:0 0 20px;max-width:900px}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  .cap{font-size:12px;color:#9C968C;margin-bottom:8px;text-align:center}
+  .cap b{color:var(--ink);font-weight:600}
+
+  .phone{width:390px;background:#fff;border-radius:24px;padding:14px 0;box-shadow:0 10px 30px rgba(31,29,26,.14);overflow:hidden}
+  .screen{padding:0 24px}
+  .h1{font-size:26px;font-weight:500;margin-bottom:2px}
+  .h2{font-size:12px;color:#5C574F;margin-bottom:10px}
+  .nodeRow{position:relative;height:44px;display:flex;align-items:center;justify-content:space-between;margin:2px 0 12px}
+  .nodeRow .line{position:absolute;left:17px;right:17px;top:21.25px;height:1.5px;background:rgba(31,29,26,.18)}
+  .node{position:relative;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+  .node.off{opacity:.62}
+  .node.on{border:2px solid var(--lime);transform:scale(1.08)}
+
+  .carousel{position:relative;width:390px;overflow:hidden}
+  .card{position:absolute;overflow:hidden;background:#EDE9E3}
+  .bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .frost{position:absolute;left:0;right:0;bottom:0;overflow:hidden}
+  .frost img{position:absolute;left:0;right:0;bottom:0;width:100%;object-fit:cover}
+  .frost .veil{position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.14) 28%,rgba(255,255,255,.30) 68%,rgba(255,255,255,.40))}
+  .body{position:relative;padding:0 16px 16px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+  .kicker{font-size:10px;font-weight:500;color:rgba(255,255,255,.76);text-shadow:0 1px 4px rgba(0,0,0,.42);margin-bottom:3px}
+  .title{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.2px;text-shadow:0 1px 4px rgba(0,0,0,.42)}
+  .tip{margin-top:4px;font-size:12.5px;line-height:17px;color:rgba(255,255,255,.9);text-shadow:0 1px 4px rgba(0,0,0,.40)}
+  .meta{margin-top:6px;font-size:10px;color:rgba(255,255,255,.72);text-shadow:0 1px 4px rgba(0,0,0,.40)}
+
+  .saved{margin:12px 24px 0;height:76px;border:1px solid rgba(31,29,26,.07);border-radius:16px;background:#fff;
+         display:flex;align-items:center;padding:0 12px;gap:12px}
+  .saved .th{width:56px;height:56px;border-radius:10px;background:#EDE9E3;flex:0 0 auto}
+  .saved .b1{font-size:13px;font-weight:600}
+  .saved .b2{font-size:11px;color:#5C574F;margin-top:3px}
+  .saved .b3{font-size:10px;color:#9C968C;margin-top:3px}
+  .mark{position:absolute;top:6px;bottom:6px;width:1px;background:#C2504B;opacity:.75}
+  .tag{position:absolute;top:2px;font-size:10px;color:#C2504B}
+  .info{font-size:11px;color:#5C574F;text-align:center;margin-top:8px}
+  .info b{color:var(--ink)}
+  .note{font-size:12px;color:#5C574F;margin-top:14px;max-width:860px}
+  .note code{background:#EAE7E2;border-radius:4px;padding:1px 4px}
+</style>
+</head>
+<body>
+
+<h1>工具卡面 v4</h1>
+<p class="lead">① 蒙层改成<b>单层</b>（一个模糊半径铺满整片，不再有三层台阶）　② 去掉「试一试」按钮　③ 两侧卡片<b>整体缩小</b>，屏边露出的是它的<b>一个圆角</b>，不再是一条平着的竖边</p>
+<div class="row" id="row"></div>
+
+<p class="note">几何：屏宽 390、两侧缩 <code>SIDE_SCALE = 0.86</code>、想露 <code>CORNER = 16</code>、卡间距 <code>GAP = 4</code> → 反解出 <code>PEEK ≈ 41.5</code>、中间卡 <b>307 × 384</b>（比上一版 350 小一圈，和参考图那种"两边各留一个角"的比例一致）。缩放由横滑位移驱动（原生驱动），滑动过程中是连续的，不是切换时才变。</p>
+
+<script>
+const SW = 390, GAP = 4, CORNER = 16, SIDE = 0.86, R = 26, RATIO = 0.8;
+const PEEK = (CORNER + GAP + (1-SIDE)*(SW/2)) / (1 + (1-SIDE));
+const CARD_W = Math.round(SW - PEEK*2), CARD_H = Math.round(CARD_W/RATIO), PAGE = CARD_W + GAP;
+const FROST_H = Math.round(CARD_H*0.44), FROST_BLUR = 18;
+
+const NODES = [
+  ['#FCE7F0','#C9598A','M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z'],
+  ['#E7E1FB','#6E58C8','M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5zM18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z'],
+  ['#EAF0BE','#6E7A24','M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8'],
+  ['#E3EBFE','#4C74C9','M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z'],
+  ['#E7E1FB','#6E58C8','M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z'],
+  ['#FBEFD6','#B98A2E','M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2zM12 6.7v12.1'],
+];
+function nodeRow(){return '<div class="nodeRow"><div class="line"></div>'+
+  NODES.map((n,i)=>`<div class="node ${i===0?'on':'off'}" style="background:${n[0]}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${n[1]}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${n[2]}"/></svg></div>`).join('')+'</div>';}
+
+function card(img, c, x, scaled){
+  const t = scaled ? `transform:scale(${SIDE});filter:brightness(.94)` : '';
+  return `<div class="card" style="left:${x}px;width:${CARD_W}px;height:${CARD_H}px;border-radius:${R}px;${t}">
+    <img class="bgimg" src="${img}">
+    ${c ? `<div class="frost" style="height:${FROST_H}px">
+        <img src="${img}" style="height:${CARD_H}px;filter:blur(${FROST_BLUR}px)">
+        <div class="veil"></div></div>
+      <div class="body">
+        <div class="kicker">${c.kicker}</div>
+        <div class="title">${c.title}</div>
+        <div class="tip">${c.tip}</div>
+        <div class="meta">${c.meta}</div>
+      </div>` : ''}
+  </div>`;
+}
+
+const CARDS = {
+  emotion:{ img:'/src/assets/tool_emotion.jpg', kicker:'情绪调节 · 黄体期 · 第 24 天',
+    title:'今日情绪波动 3 次', tip:'黄体期容易闷，今天多留点喘息给自己。', meta:'4 段冥想 · 3 个呼吸练习' },
+  sleep:{ img:'/src/assets/tool_sleep.jpg', kicker:'稳定睡眠 · 黄体期 · 第 24 天',
+    title:'昨晚睡眠 82', tip:'黄体期体温高、入睡难，睡前呼吸刚好对症。', meta:'3 段助眠音 · 睡眠回顾' },
+  sport:{ img:'/src/assets/tool_activity.jpg', kicker:'运动建议 · 黄体期 · 第 24 天',
+    title:'今日 6240 步', tip:'黄体期恢复慢，换拉伸慢走、练轻是攒劲。', meta:'4 类运动 · 按周期推荐' },
+};
+const IMG = { emotion:'/src/assets/tool_emotion.jpg', sleep:'/src/assets/tool_sleep.jpg',
+              sport:'/src/assets/tool_activity.jpg', learn:'/src/assets/tool_learn.jpg',
+              recovery:'/src/assets/tool_recovery.jpg' };
+
+function phone(centerKey, leftImg, rightImg, label){
+  const c1 = PEEK, c0 = PEEK - PAGE, c2 = PEEK + PAGE;
+  return `<div>
+    <div class="cap"><b>${label}</b></div>
+    <div class="phone">
+      <div class="screen"><div class="h1">Tools</div><div class="h2">小的改变积累起来也很了不起</div>${nodeRow()}</div>
+      <div class="carousel" style="height:${CARD_H}px">
+        ${card(leftImg, null, c0, true)}
+        ${card(rightImg, null, c2, true)}
+        ${card(CARDS[centerKey].img, CARDS[centerKey], c1, false)}
+        <div class="mark" style="left:0"></div><div class="mark" style="left:${SW-1}px"></div>
+      </div>
+      <div class="saved"><div class="th"></div>
+        <div><div class="b1">睡前 5 分钟呼吸</div><div class="b2">确认有帮助 3 次 · HRV 偏低</div><div class="b3">最近一次：今天 22:10</div></div>
+      </div>
+    </div>
+    <div class="info">露出圆角 <b>${CORNER}px</b> · 中间卡 <b>${CARD_W}×${CARD_H}</b></div>
+  </div>`;
+}
+
+document.getElementById('row').innerHTML =
+  phone('emotion', IMG.learn, IMG.recovery, '情绪调节（当前选中）') +
+  phone('sleep', IMG.emotion, IMG.sport, '滑到「稳定睡眠」') +
+  phone('sport', IMG.sleep, IMG.emotion, '滑到「运动建议」');
+</script>
+</body>
+</html>

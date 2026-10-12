@@ -62,7 +62,7 @@ export default function StressInsightCard() {
       <Card>
         <Text style={styles.emptyTitle}>压力洞察</Text>
         <Text style={styles.emptyText}>
-          还没有足够的 EDA 数据。连上戒指后开启自动监测，约 30 分钟后开始生成个人基线。
+          我先看到一部分身体信号，继续戴着戒指一会儿，我会帮你看清今天的变化。
         </Text>
       </Card>
     );

@@ -66,6 +66,7 @@ export const NUTRITION_ARTICLES: LearnArticle[] = [
   },
   {
     id: 'cravings',
+    method: {"why": "有些人在经前食欲增加，先把正餐吃规律，再观察自己的节律。", "steps": ["正餐保留主食、蛋白质和蔬菜，避免用跳餐抵消食欲。", "饿时安排一份适合自己的加餐。", "拍照记下餐食，同时记录饥饿感和心情。"], "observe": "比较经前相似日子的食欲、饱腹感和精力；不要仅凭一餐推断荷尔蒙变化。"},
     eyebrow: '食欲与周期',
     minutes: 4,
     title: '经前想吃甜的，不是你的错',

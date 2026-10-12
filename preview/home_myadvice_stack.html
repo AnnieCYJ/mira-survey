@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>我的建议 · 叠卡设计</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --line:rgba(31,29,26,0.09); --lineSoft:rgba(31,29,26,0.06);
+    --limeSoft:#EAF0BE; --limeMid:#BCCB62; --limeDeep:#6E7A24;
+    --purple:#7C6CF0; --purpleSoft:#EDE9FB;
+    --cream:#FBF3D9; --pink:#FBE9EF; --sky:#E7F0F7;
+    --page:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#F1F0EE; padding:36px 20px 60px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    color:var(--ink);
+  }
+  .head{max-width:1180px;margin:0 auto 26px;}
+  .head h1{font-size:21px;font-weight:600;margin:0 0 8px;letter-spacing:-.3px;}
+  .head p{margin:0;font-size:13.5px;line-height:1.7;color:var(--inkSoft);max-width:820px;}
+  .head .ref{color:var(--inkFaint);font-size:12.5px;}
+  .scenes{display:flex;flex-wrap:wrap;gap:34px;justify-content:center;align-items:flex-start;max-width:1180px;margin:0 auto;}
+  .col{display:flex;flex-direction:column;align-items:center;gap:12px;}
+  .cap{font-size:12.5px;color:var(--inkSoft);text-align:center;max-width:300px;line-height:1.6;}
+  .cap b{color:var(--ink);}
+
+  /* phone frame */
+  .phone{
+    width:320px;height:660px;border-radius:34px;overflow:hidden;position:relative;
+    background:var(--page);box-shadow:0 18px 44px rgba(40,30,70,.16);border:1px solid rgba(31,29,26,0.05);
+    display:flex;flex-direction:column;
+  }
+  .status{height:30px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:11px;color:var(--ink);font-weight:600;}
+  .status .dots{display:flex;gap:3px;}
+  .status .dots i{width:3px;height:3px;border-radius:50%;background:var(--ink);opacity:.75;}
+  .screen{flex:1 1 auto;padding:6px 20px 0;overflow:hidden;position:relative;}
+
+  /* header */
+  .tTitle{font-size:27px;font-weight:600;letter-spacing:-.5px;margin-top:4px;}
+  .tSub{font-size:12.5px;color:var(--inkSoft);margin-top:3px;}
+
+  /* icon tabline */
+  .tabline{position:relative;margin:16px 0 12px;height:34px;display:flex;align-items:center;justify-content:space-between;}
+  .tabline .ln{position:absolute;left:16px;right:16px;top:50%;height:1.5px;background:rgba(31,29,26,.18);}
+  .tabline .nd{position:relative;width:30px;height:30px;border-radius:50%;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;}
+  .tabline .nd svg{width:16px;height:16px;stroke:var(--inkFaint);}
+  .tabline .nd.on{background:var(--ink);border-color:var(--ink);transform:scale(1.06);}
+  .tabline .nd.on svg{stroke:#fff;}
+
+  /* ===================== 我的建议 叠卡 ===================== */
+  .advWrap{position:relative;margin-bottom:14px;}
+  .advHead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
+  .advHead .t{font-size:16px;font-weight:600;letter-spacing:-.2px;}
+  .advHead .n{font-size:12px;color:var(--inkFaint);}
+
+  .deck{position:relative;height:190px;}
+  .stackCard{
+    position:absolute;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:18px;
+    padding:13px 14px;display:flex;align-items:center;gap:12px;
+    box-shadow:0 6px 18px rgba(40,30,70,.07);
+  }
+  /* 背后两张：往上错落 + 微缩，像一叠卡 */
+  .stackCard.c3{top:-14px;transform:scale(.925);opacity:.5;z-index:1;}
+  .stackCard.c2{top:14px;transform:scale(.962);opacity:.82;z-index:2;}
+  .stackCard.c1{top:42px;z-index:3;box-shadow:0 10px 26px rgba(40,30,70,.12);}
+
+  .ic{flex:0 0 auto;width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;}
+  .ic svg{width:21px;height:21px;stroke:var(--ink);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .ic.p{background:var(--purpleSoft);} .ic.p svg{stroke:var(--purple);}
+  .ic.c{background:var(--cream);}      .ic.c svg{stroke:#B08A1E;}
+  .ic.k{background:var(--pink);}       .ic.k svg{stroke:#D0698C;}
+  .ic.s{background:var(--sky);}        .ic.s svg{stroke:#4E86B8;}
+
+  .cb{flex:1 1 auto;min-width:0;}
+  .cb .h{font-size:15px;font-weight:600;letter-spacing:-.2px;line-height:1.25;}
+  .cb .m{font-size:12px;color:var(--inkSoft);margin-top:4px;line-height:1.45;}
+  .pill{flex:0 0 auto;background:#DCE7A0;color:#5C671C;font-size:12.5px;font-weight:600;
+    padding:8px 14px;border-radius:999px;white-space:nowrap;}
+
+  /* “查看全部” 提示 */
+  .seeAll{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--inkFaint);}
+  .seeAll .chev{font-size:14px;}
+
+  /* ===================== 工具卡横滑 ===================== */
+  .carousel{display:flex;gap:12px;margin-top:2px;}
+  .toolCard{flex:0 0 auto;width:200px;height:250px;border-radius:20px;overflow:hidden;position:relative;
+    box-shadow:0 8px 20px rgba(40,30,70,.10);}
+  .toolCard .img{position:absolute;inset:0;background:linear-gradient(150deg,#EAD9C6,#D8C3A5 55%,#C9B393);}
+  .toolCard .img.b{background:linear-gradient(150deg,#CFE0EA,#A9C6D6);}
+  .toolCard .gl{position:absolute;left:0;right:0;bottom:0;padding:12px 14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,.94));border-top:1px solid rgba(255,255,255,.6);}
+  .toolCard .gl .n{font-size:15px;font-weight:600;}
+  .toolCard .gl .d{font-size:11.5px;color:var(--inkSoft);margin-top:3px;line-height:1.4;}
+
+  /* tab bar */
+  .tabbar{flex:0 0 auto;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 26px 8px;position:relative;}
+  .tabbar .tp{position:absolute;left:50%;transform:translateX(-50%);top:2px;display:flex;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:8px 16px;gap:18px;box-shadow:0 8px 20px rgba(40,30,70,.10);}
+  .tabbar svg{width:20px;height:20px;stroke:var(--inkFaint);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .bot{width:42px;height:42px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;color:#fff;
+    font-weight:700;font-size:15px;box-shadow:0 8px 18px rgba(124,108,240,.4);}
+  .tabbar .spacer{width:42px;height:42px;}
+  .tabbar .tp svg.on{stroke:var(--purple);}
+
+  /* ===================== 放大态（全屏 sheet） ===================== */
+  .sheet{position:absolute;inset:0;background:#fff;display:flex;flex-direction:column;z-index:9;}
+  .sheet .sh{padding:14px 20px 12px;border-bottom:1px solid var(--lineSoft);display:flex;align-items:center;justify-content:space-between;}
+  .sheet .sh .t{font-size:18px;font-weight:600;letter-spacing:-.3px;}
+  .sheet .sh .sub{font-size:12px;color:var(--inkFaint);margin-top:3px;}
+  .sheet .sh .x{width:30px;height:30px;border-radius:50%;background:#F2F1EF;display:flex;align-items:center;justify-content:center;color:var(--inkSoft);font-size:15px;}
+  .sheet .list{padding:12px 16px 20px;overflow:auto;display:flex;flex-direction:column;gap:10px;}
+  .row{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px 14px;display:flex;align-items:center;gap:12px;
+    box-shadow:0 4px 12px rgba(40,30,70,.05);}
+  .row .rm{margin-left:2px;font-size:11.5px;color:var(--inkFaint);}
+  .rowwrap{display:flex;align-items:center;gap:6px;}
+  .rowwrap .row{flex:1 1 auto;}
+
+  .tag{display:inline-block;font-size:11px;color:var(--limeDeep);font-weight:600;background:var(--limeSoft);
+    padding:2px 8px;border-radius:999px;margin-bottom:6px;}
+
+  .note{max-width:1180px;margin:36px auto 0;background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px 24px;}
+  .note h3{margin:0 0 10px;font-size:15px;}
+  .note ul{margin:0;padding-left:18px;font-size:13px;line-height:1.85;color:var(--inkSoft);}
+  .note b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>工具页 · 「我的建议」改成叠卡</h1>
+  <p>
+    把「我的建议」从横滑卡里那第 7 张 + 卡片下方的一长条清单，改成<b>一叠卡</b>（最近 3 条叠在一起、新的在最前），
+    点一下<b>放大</b>成全屏清单看全部。卡面沿用你桌面参考图（<span class="ref">截屏2026-10-11 21.41.53.png</span>）的语义：
+    左侧柔和色圆角图标块 + 标题 + 一行说明 + 右侧药丸。
+  </p>
+</div>
+
+<div class="scenes">
+
+  <!-- 场景一：叠卡放在工具卡横滑上面 -->
+  <div class="col">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+      <div class="screen">
+        <div class="tTitle">Tools</div>
+        <div class="tSub">小的改变积累起来也很了不起</div>
+
+        <div class="tabline">
+          <div class="ln"></div>
+          <div class="nd on"><svg viewBox="0 0 24 24"><path d="M12 20.6S3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M5 5.4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H10.5L7.6 18v-4H7a2 2 0 0 1-2-2z"/></svg></div>
+        </div>
+
+        <div class="advWrap">
+          <div class="advHead">
+            <span class="t">我的建议</span>
+            <span class="n">共 7 条 · 最近 3 条</span>
+          </div>
+          <div class="deck">
+            <div class="stackCard c3">
+              <div class="ic k"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div>
+              <div class="cb"><div class="h">把咖啡挪到上午</div><div class="m">下午 2 点后不喝咖啡</div></div>
+            </div>
+            <div class="stackCard c2">
+              <div class="ic s"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg></div>
+              <div class="cb"><div class="h">午后走 10 分钟</div><div class="m">午饭后散步，下午状态更稳</div></div>
+            </div>
+            <div class="stackCard c1">
+              <div class="ic p"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M9 8h6M9 12h6"/></svg></div>
+              <div class="cb"><div class="h">睡前 20 分钟放下手机</div><div class="m">连续 3 天睡前屏幕时间下降</div></div>
+              <div class="pill">去做</div>
+            </div>
+          </div>
+          <div class="seeAll"><span>展开看全部 7 条</span><span class="chev">›</span></div>
+        </div>
+
+        <div class="carousel">
+          <div class="toolCard">
+            <div class="img"></div>
+            <div class="gl"><div class="n">营养搭配</div><div class="d">吃对，激素稳，能量也更平稳</div></div>
+          </div>
+          <div class="toolCard">
+            <div class="img b"></div>
+            <div class="gl"><div class="n">稳定睡眠</div><div class="d">睡好，恢复更快，状态更稳</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tp">
+          <svg viewBox="0 0 24 24" class="on"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 13.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M12 3.5l2.4 6.1 6.1 2.4-6.1 2.4L12 20.5l-2.4-6.1L3.5 12l6.1-2.4z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+        </div>
+        <div class="spacer"></div>
+        <div class="bot">M</div>
+      </div>
+    </div>
+    <div class="cap"><b>方案 A（推荐）· 叠卡放在工具卡横滑上方</b><br/>进入工具页先看到「我的建议」一叠卡，下面才是工具卡横滑。新的建议叠在最前。</div>
+  </div>
+
+  <!-- 场景二：放大态 -->
+  <div class="col">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+      <div class="screen">
+        <div class="tTitle">Tools</div>
+        <div class="tSub">小的改变积累起来也很了不起</div>
+        <div class="tabline">
+          <div class="ln"></div>
+          <div class="nd on"><svg viewBox="0 0 24 24"><path d="M12 20.6S3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M5 5.4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H10.5L7.6 18v-4H7a2 2 0 0 1-2-2z"/></svg></div>
+        </div>
+        <div style="opacity:.28;pointer-events:none">
+          <div class="advHead"><span class="t">我的建议</span><span class="n">共 7 条</span></div>
+          <div style="height:120px;border:1px dashed var(--line);border-radius:16px;"></div>
+        </div>
+
+        <!-- 放大 sheet -->
+        <div class="sheet">
+          <div class="sh">
+            <div>
+              <div class="t">我的建议</div>
+              <div class="sub">共 7 条 · 都是你确认过有用的</div>
+            </div>
+            <div class="x">✕</div>
+          </div>
+          <div class="list">
+            <div class="rowwrap">
+              <div class="row">
+                <div class="ic p"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M9 8h6M9 12h6"/></svg></div>
+                <div class="cb"><div class="h">睡前 20 分钟放下手机</div><div class="m">连续 3 天睡前屏幕时间下降</div></div>
+                <div class="pill">去做</div>
+              </div>
+            </div>
+            <div class="rowwrap">
+              <div class="row">
+                <div class="ic s"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg></div>
+                <div class="cb"><div class="h">午后走 10 分钟</div><div class="m">午饭后散步，下午状态更稳</div></div>
+                <div class="pill">去做</div>
+              </div>
+            </div>
+            <div class="rowwrap">
+              <div class="row">
+                <div class="ic k"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div>
+                <div class="cb"><div class="h">把咖啡挪到上午</div><div class="m">下午 2 点后不喝咖啡，入睡更快</div></div>
+                <div class="pill">去做</div>
+              </div>
+            </div>
+            <div class="rowwrap">
+              <div class="row">
+                <div class="ic c"><svg viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="3.2"/></svg></div>
+                <div class="cb"><div class="h">早上晒太阳 10 分钟</div><div class="m">帮助稳定生物钟，白天更有精神</div></div>
+                <div class="pill">去做</div>
+              </div>
+            </div>
+            <div class="rowwrap">
+              <div class="row">
+                <div class="ic s"><svg viewBox="0 0 24 24"><path d="M4 16V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 10h8"/></svg></div>
+                <div class="cb"><div class="h">午餐加一份深色蔬菜</div><div class="m">下午犯困明显减少</div></div>
+                <div class="pill">去做</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tp">
+          <svg viewBox="0 0 24 24" class="on"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 13.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M12 3.5l2.4 6.1 6.1 2.4-6.1 2.4L12 20.5l-2.4-6.1L3.5 12l6.1-2.4z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+        </div>
+        <div class="spacer"></div>
+        <div class="bot">M</div>
+      </div>
+    </div>
+    <div class="cap"><b>放大态 · 点叠卡后</b><br/>全屏清单铺开全部建议，每条可「去做 / 移除」。滑到顶或用右上角关闭回叠卡。</div>
+  </div>
+
+  <!-- 场景三：备选位置（放在图标条上方） -->
+  <div class="col">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+      <div class="screen">
+        <div class="tTitle">Tools</div>
+        <div class="tSub">小的改变积累起来也很了不起</div>
+
+        <div class="advWrap" style="margin-top:14px;">
+          <div class="advHead"><span class="t">我的建议</span><span class="n">共 7 条 · 最近 3 条</span></div>
+          <div class="deck" style="height:176px;">
+            <div class="stackCard c3" style="top:-12px;">
+              <div class="ic k"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div>
+              <div class="cb"><div class="h">把咖啡挪到上午</div><div class="m">下午 2 点后不喝咖啡</div></div>
+            </div>
+            <div class="stackCard c2" style="top:12px;">
+              <div class="ic s"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg></div>
+              <div class="cb"><div class="h">午后走 10 分钟</div><div class="m">午饭后散步，下午状态更稳</div></div>
+            </div>
+            <div class="stackCard c1" style="top:38px;">
+              <div class="ic p"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M9 8h6M9 12h6"/></svg></div>
+              <div class="cb"><div class="h">睡前 20 分钟放下手机</div><div class="m">连续 3 天睡前屏幕时间下降</div></div>
+              <div class="pill">去做</div>
+            </div>
+          </div>
+          <div class="seeAll"><span>展开看全部 7 条</span><span class="chev">›</span></div>
+        </div>
+
+        <div class="tabline">
+          <div class="ln"></div>
+          <div class="nd on"><svg viewBox="0 0 24 24"><path d="M12 20.6S3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2z"/></svg></div>
+          <div class="nd"><svg viewBox="0 0 24 24"><path d="M5 5.4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H10.5L7.6 18v-4H7a2 2 0 0 1-2-2z"/></svg></div>
+        </div>
+
+        <div class="carousel" style="margin-top:12px;">
+          <div class="toolCard" style="width:184px;height:230px;">
+            <div class="img"></div>
+            <div class="gl"><div class="n">营养搭配</div><div class="d">吃对，激素稳，能量也更平稳</div></div>
+          </div>
+          <div class="toolCard" style="width:184px;height:230px;">
+            <div class="img b"></div>
+            <div class="gl"><div class="n">稳定睡眠</div><div class="d">睡好，恢复更快，状态更稳</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tp">
+          <svg viewBox="0 0 24 24" class="on"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 13.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M12 3.5l2.4 6.1 6.1 2.4-6.1 2.4L12 20.5l-2.4-6.1L3.5 12l6.1-2.4z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+        </div>
+        <div class="spacer"></div>
+        <div class="bot">M</div>
+      </div>
+    </div>
+    <div class="cap"><b>方案 B · 叠卡放在图标条上方</b><br/>「我的建议」提到页面最上，工具图标条和工具卡都在它下面。层级更突出，但会把工具选择往下压。</div>
+  </div>
+
+</div>
+
+<div class="note">
+  <h3>设计说明</h3>
+  <ul>
+    <li><b>叠卡</b>：默认只露最近 3 条，新的在最前（最完整），后面两张往上错落 + 微缩 + 降透明，读起来是一叠卡。</li>
+    <li><b>卡面</b>：照你参考图 —— 左侧柔和色圆角图标块（紫/蓝/粉/奶油轮换）+ 标题 + 一行说明，右侧一个「去做」药丸（浅黄绿）。</li>
+    <li><b>点击放大</b>：点叠卡 → 全屏清单铺开全部（截图里第 2 屏），每条可「去做 / 移除」；右上角 ✕ 收回。</li>
+    <li><b>数量</b>：标题右侧标「共 N 条 · 最近 3 条」，让「很多条」一眼可见。</li>
+    <li><b>待你定</b>：① 放方案 A（工具卡上方）还是 B（图标条上方）；② 叠卡是否要能左右滑换「最新 3 条」；③ 药丸文案「去做」还是「开始」。</li>
+  </ul>
+</div>
+
+</body>
+</html>

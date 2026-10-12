@@ -20,6 +20,9 @@ const LABEL_COLOR: Record<EmotionLabel, string> = {
   bored:    '#95A5A6',
   depleted: '#8B5A2B',
 };
+// ★ 睡眠点（保留）：睡眠时段就画这组紫色空心点，代表"在睡觉"。
+//   ★ 2026-10-12（用户：睡眠时间就应该展示这个睡眠点，不应该有情绪的那些标识）——
+//     睡眠点不再被设备推断的情绪点覆盖（见下方桶优先级），睡眠段只出现睡眠点。
 const SLEEP_COLOR = '#A99BD6';
 const SLEEP_FILL = '#EDE9F8';
 
@@ -182,6 +185,7 @@ export default function EmotionTimeline({
     const parse = (s?: string | null) => { const m = parseClockMinutes(s); return m == null ? null : m; };
     const bed = parse(sleep?.sleepTime);
     const wake = parse(sleep?.wakeTime);
+    // ★ 睡眠点（保留，用户 2026-10-12 口径）：睡眠时段铺一排紫色空心点。
     const sleepPts: HistoryPt[] = [];
     if (bed != null && wake != null && sleep?.total && sleep.total > 0) {
       const start = bed > wake ? bed - 1440 : bed;
@@ -190,13 +194,19 @@ export default function EmotionTimeline({
         sleepPts.push({ t: today0 + m * 60000, arousalScore: 8, valenceScore: 0, emotionLabel: 'sleep', source: 'sleep' });
       }
     }
-    // 同一半小时槽内，手动记录优先于设备记录；睡眠点只填补没有情绪记录的槽。
+    // 同一半小时槽内，手动记录优先于设备记录。
     const all = [...history.filter(p => p.t >= today0 && p.t <= Math.min(awakeEnd, now)), ...sleepPts];
     const buckets = new Map<number, HistoryPt>();
     for (const p of all.sort((a, b) => a.t - b.t)) {
       const slot = Math.floor((p.t - today0) / (30 * 60000));
       const prev = buckets.get(slot);
-      if (!prev || p.source === 'manual' || (prev.source === 'sleep' && p.source !== 'sleep')) buckets.set(slot, p);
+      // ★ 2026-10-12（用户：睡眠时间就应该展示睡眠点，不应该有情绪的那些标识）——
+      //   槽位优先级：手动记录 > 睡眠点 > 设备情绪点。
+      //   睡眠时段内设备推断的情绪点一律让位给睡眠点（不再出现"睡着了还有情绪脸"）；
+      //   手动记录仍优先（自报优先，哪怕填在夜里）。
+      if (!prev) { buckets.set(slot, p); continue; }
+      if (p.source === 'manual') { buckets.set(slot, p); continue; }
+      if (prev.source !== 'sleep' && p.source === 'sleep') buckets.set(slot, p);
     }
     const visible = Array.from(buckets.values()).sort((a, b) => a.t - b.t);
 

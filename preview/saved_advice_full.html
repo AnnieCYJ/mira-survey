@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>我收藏的建议 · 新卡尺寸 + 完整页面</title>
+<style>
+  :root{
+    --plain: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    --ink: #1F1D1A; --ink-soft: #5C574F; --ink-faint: #9C968C;
+    --line: rgba(31,29,26,.07);
+  }
+  *{ box-sizing: border-box; }
+  body{ margin:0; padding:40px; background:#FFFFFF; font-family:var(--plain); color:var(--ink); }
+  h1{ font-size:18px; font-weight:600; margin:0 0 6px; }
+  .sub{ font-size:13px; color:var(--ink-soft); margin:0 0 28px; }
+
+  .section{ margin-bottom: 44px; }
+  .section > h2{ font-size:12px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--ink-faint); margin:0 0 14px; }
+
+  /* ── 新收藏卡（更小、图大 56、字小） ── */
+  .deck{ width: 320px; }
+  .deckHead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+  .deckTitle{ font-size:17px; font-weight:600; letter-spacing:-.3px; }
+  .deckMore{ font-size:13px; font-weight:500; color:var(--ink-faint); }
+  .card{
+    width: 290px; min-height: 104px;
+    background:#FFFFFF; border-radius:18px; border:1px solid var(--line);
+    padding:15px 16px; box-shadow:0 4px 10px rgba(31,29,26,.05);
+    display:flex; flex-direction:column;
+  }
+  .cardRow{ flex:1; display:flex; align-items:center; }
+  .thumb{ width:56px; height:56px; border-radius:12px; margin-right:13px; flex-shrink:0; object-fit:cover; background:#eee; }
+  .col{ flex:1; min-width:0; }
+  .cTitle{ font-size:15px; font-weight:600; letter-spacing:-.3px; line-height:21px; }
+  .cDesc{ margin-top:3px; font-size:13.5px; color:var(--ink-soft); line-height:18px; }
+  .cTime{ margin-top:3px; font-size:11px; color:var(--ink-faint); line-height:15px; }
+  .cFooter{ margin-top:auto; padding-top:9px; }
+  .pill{ display:inline-block; background:#EFE9F7; border-radius:999px; padding:6px 13px; font-size:15px; font-weight:600; color:#7A4FD0; }
+
+  /* ── 完整页面（全屏示意） ── */
+  .phone{ width: 390px; height: 760px; border:1px solid #E3E0DA; border-radius:30px; overflow:hidden; background:#FFFFFF; display:flex; flex-direction:column; }
+  .fullHead{ display:flex; align-items:center; height:52px; padding:0 14px; border-bottom:1px solid rgba(31,29,26,.09); }
+  .fullBack{ font-size:15px; color:var(--ink-soft); }
+  .fullTitle{ flex:1; text-align:center; font-size:17px; font-weight:600; letter-spacing:-.3px; }
+  .fullCount{ font-size:13px; color:var(--ink-faint); margin-left:9px; }
+  .fullScroll{ flex:1; overflow:auto; padding:14px 16px 32px; }
+  .sRow{ display:flex; align-items:flex-start; background:#FFFFFF; border:1px solid rgba(31,29,26,.09); border-radius:18px; padding:14px 13px; margin-bottom:10px; }
+  .sText{ flex:1; min-width:0; }
+  .sTitle{ font-size:15px; font-weight:600; }
+  .sDesc{ font-size:13px; color:var(--ink-soft); margin-top:3px; line-height:18px; }
+  .sTime{ font-size:11px; color:var(--ink-faint); margin-top:4px; }
+  .sRight{ display:flex; flex-direction:column; align-items:flex-end; margin-left:9px; }
+  .sPill{ background:#EFE9F7; border-radius:999px; padding:6px 13px; font-size:13px; font-weight:600; color:#7A4FD0; }
+  .sRemove{ margin-top:9px; font-size:13px; color:var(--ink-faint); }
+
+  .note{ margin-top:30px; font-size:12px; color:var(--ink-faint); line-height:1.7; }
+</style>
+</head>
+<body>
+
+  <h1>我收藏的建议 · 新卡尺寸 + 完整页面</h1>
+  <p class="sub">收藏区整体下移；卡片更小更矮、图更大（56）、字更小；点「共 N 条 ›」进入完整页面。</p>
+
+  <div class="section">
+    <h2>卡面（更小 · 图大 · 字小）</h2>
+    <div class="deck">
+      <div class="deckHead">
+        <div class="deckTitle">我收藏的建议</div>
+        <div class="deckMore">共 3 条 ›</div>
+      </div>
+      <div class="card">
+        <div class="cardRow">
+          <img class="thumb" src="../src/assets/card_meditation.jpg" alt="" />
+          <div class="col">
+            <div class="cTitle">今天脾气有点炸，先松开它</div>
+            <div class="cDesc">确认有帮助 3 次 · 压力偏高</div>
+            <div class="cTime">最近一次：今天 21:14</div>
+          </div>
+        </div>
+        <div class="cFooter"><span class="pill">再做一次</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>完整页面（点「共 3 条 ›」进入）</h2>
+    <div class="phone">
+      <div class="fullHead">
+        <div class="fullBack">‹ 返回</div>
+        <div class="fullTitle">我收藏的建议</div>
+        <div class="fullCount">共 3 条</div>
+      </div>
+      <div class="fullScroll">
+        <div class="sRow">
+          <img class="thumb" src="../src/assets/card_meditation.jpg" alt="" />
+          <div class="sText">
+            <div class="sTitle">今天脾气有点炸，先松开它</div>
+            <div class="sDesc">确认有帮助 3 次 · 压力偏高</div>
+            <div class="sTime">最近一次：今天 21:14</div>
+          </div>
+          <div class="sRight">
+            <div class="sPill">再做一次</div>
+            <div class="sRemove">移除</div>
+          </div>
+        </div>
+        <div class="sRow">
+          <img class="thumb" src="../src/assets/card_food.jpg" alt="" />
+          <div class="sText">
+            <div class="sTitle">经期补铁，这餐安排红肉</div>
+            <div class="sDesc">确认有帮助 2 次 · 经期第 2 天</div>
+            <div class="sTime">最近一次：昨天 12:40</div>
+          </div>
+          <div class="sRight">
+            <div class="sPill">再做一次</div>
+            <div class="sRemove">移除</div>
+          </div>
+        </div>
+        <div class="sRow">
+          <img class="thumb" src="../src/assets/card_learn.png" alt="" />
+          <div class="sText">
+            <div class="sTitle">读懂黄体期的情绪起伏</div>
+            <div class="sDesc">确认有帮助 1 次</div>
+            <div class="sTime">最近一次：10月9日 09:02</div>
+          </div>
+          <div class="sRight">
+            <div class="sPill">再做一次</div>
+            <div class="sRemove">移除</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    改动文件：<code>src/components/SavedAdviceDeck.tsx</code>。<br />
+    · 收藏区 <code>marginTop</code> 由 8pt 提到 24pt（整体下移）；<br />
+    · 卡片高度 120 → 104，单卡更窄（PEEK 40 → 48），左图 48 → 56，标题 16 → 15、描述 15 → 13.5、时间 13 → 11；<br />
+    · 「共 N 条 ›」点击改为打开全屏页面（占满整屏、可滚动、带返回），不再弹底部 sheet；卡片本身点按仍弹底部 sheet 看全部。
+  </p>
+
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>首页 · 全天状态趋势图 标题处理（真实页面上下文）</title>
+<style>
+  :root{
+    --ink:#1A1A1A; --inkSub:#5F5F74; --inkFaint:#9C968C;
+    --purple:#7B6CD9; --limeDeep:#6E7A24; --limeMid:#BCCB62; --limeSoft:#EAF0BE;
+    --border:rgba(31,29,26,0.09);
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:#EFEDE9;color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:30px 22px 70px;}
+  h1{font-size:25px;font-weight:600;letter-spacing:-.5px;margin:0 0 6px;}
+  .sub{color:var(--inkSub);font-size:14px;margin:0 0 8px;line-height:22px;}
+  .sub b{color:var(--ink);}
+  .warn{background:#FFF7E6;border:1px solid #F0D9A8;color:#8A6A1F;border-radius:12px;
+    padding:10px 14px;font-size:13px;line-height:20px;margin:14px 0 26px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:26px;}
+  .col{display:flex;flex-direction:column;gap:10px;}
+  .phone{background:#fff;border:1px solid var(--border);border-radius:34px;overflow:hidden;
+    box-shadow:0 12px 34px rgba(31,29,26,.10);}
+  /* 顶部极淡暖紫渐晕，呼应 App 根渐变 */
+  .screen{padding:0 0 16px;background:
+    radial-gradient(120% 42% at 50% 0%, #F6F2FB 0%, rgba(246,242,251,0) 62%), #fff;}
+  .topbar{display:flex;justify-content:space-between;font-size:12px;color:var(--inkFaint);
+    padding:12px 22px 6px;font-weight:600;letter-spacing:.2px;}
+  .head{display:flex;justify-content:space-between;align-items:center;padding:2px 22px 0;margin-bottom:16px;}
+  .head .title{font-size:26px;font-weight:700;letter-spacing:-.6px;}
+  .avatarName{display:flex;align-items:center;gap:8px;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:#F0EAD9;display:flex;align-items:center;
+    justify-content:center;font-size:13px;color:#7A7263;font-weight:700;}
+  .avatarName .name{font-size:14px;color:var(--inkSub);}
+  .chips{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:0 22px;margin-bottom:20px;}
+  .chip{background:#FAF9F6;border:1px solid var(--border);border-radius:14px;padding:9px 6px 8px;text-align:center;}
+  .chip .ic{width:9px;height:9px;border-radius:50%;margin:0 auto 6px;opacity:.55;}
+  .chip .l{font-size:10px;color:var(--inkFaint);line-height:12px;white-space:nowrap;}
+  .chip .v{font-size:15px;font-weight:700;margin-top:4px;}
+  .chip .v small{font-size:9px;font-weight:500;color:var(--inkFaint);}
+  /* 大圆环居中 */
+  .ringWrap{display:flex;justify-content:center;margin:4px 0 16px;}
+  .narr{padding:0 34px;text-align:center;font-size:14.5px;line-height:22px;color:var(--inkSub);}
+  .titleRow{padding:0 22px;}
+  /* ── 标题处理的四个版本 ── */
+  .t-lead{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-.2px;}
+  .t-quiet{font-size:14px;font-weight:500;color:var(--inkSub);letter-spacing:0;}
+  .t-center{display:flex;align-items:center;justify-content:center;gap:5px;margin:14px 0 8px;}
+  .t-left{display:flex;align-items:center;gap:6px;margin:14px 0 8px;}
+  .t-divider{display:flex;align-items:center;justify-content:center;gap:12px;margin:16px 0 10px;padding:0 22px;}
+  .t-divider .line{flex:1;height:1px;background:rgba(31,29,26,0.10);max-width:64px;}
+  .chev{color:var(--inkFaint);font-size:15px;line-height:1;transform:translateY(-1px);}
+  .chartBlock{padding:0 12px;}
+  .chart{width:100%;height:104px;display:block;}
+  .badgeRow{position:relative;height:0;}
+  .badge{position:absolute;right:20px;top:-72px;background:#E9EDC9;color:#5F6A1E;
+    border-radius:9px;padding:4px 8px;font-size:10px;line-height:13px;font-weight:600;text-align:center;}
+  .badge b{display:block;font-size:11px;}
+  .axis{display:flex;justify-content:space-between;padding:2px 22px 0;font-size:11px;color:var(--inkFaint);}
+  .legend{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin:11px 0 14px;padding:0 22px;}
+  .leg{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--inkSub);}
+  .dot{width:9px;height:9px;border-radius:50%;}
+  .bubbleWrap{padding:0 22px;}
+  .bubble{background:linear-gradient(120deg,#F6F2FF,#ECF7F1,#FFF5EC,#FDEEF5);border:1px solid rgba(123,108,217,.14);
+    border-radius:18px;padding:13px 15px;font-size:13px;color:var(--inkSub);line-height:20px;position:relative;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .bubble .txt{flex:1;}
+  .go{background:var(--limeMid);color:#3F4713;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;white-space:nowrap;}
+  .no{color:var(--inkFaint);font-size:12px;text-decoration:underline;white-space:nowrap;}
+  .bubble:after{content:"";position:absolute;left:26px;bottom:-7px;width:14px;height:14px;background:#FDEEF5;
+    transform:rotate(45deg);border-radius:3px;}
+  .caption{background:#fff;border-top:1px solid var(--border);padding:13px 18px 16px;}
+  .caption .nm{font-size:15px;font-weight:700;margin:0 0 5px;display:flex;align-items:center;gap:8px;}
+  .caption .nm .tag{font-size:11px;font-weight:700;color:#fff;background:var(--limeDeep);border-radius:999px;padding:2px 9px;}
+  .caption .nm .tag.x{background:#C0392B;}
+  .caption .ds{font-size:12.5px;color:var(--inkSub);line-height:19px;margin:0;}
+  .foot{margin-top:30px;font-size:12px;color:var(--inkFaint);line-height:20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>全天状态趋势图 · 标题处理（真实首页上下文）</h1>
+  <p class="sub">这次按<b>真机首页的真实排布</b>画：圆环大且居中、说明文案居中、图例居中、底部 AI 气泡。
+  问题就在——这一屏<b>从上到下全是居中的</b>，唯一左对齐 + 深黑加粗的标题会立刻"跳出来"，显得突兀。</p>
+  <div class="warn">下方第一张 = 你现在真机上的效果（左对齐 + 深黑 semibold），后三张是我按真实排布重做的处理，都在同一真实上下文里，直接对比看哪个不突兀。</div>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="foot">
+    配色/字号对齐 App 设计 token（ink #1A1A1A / inkSub #5F5F74 / lime #6E7A24 / 圆环紫 #7B6CD9）。
+    选定哪版我就写进 <code>src/screens/TodayScreen.tsx</code>。箭头都仍「紧贴这几个字的旁边」，只是把整体语气调得跟这一屏协调。
+  </p>
+</div>
+
+<script>
+// ── 大圆环（近似 App EnergyBall：外圈淡、内圈渐变、四点分布、中央文案）──
+function ringSVG(){
+  const R=94, C=104;
+  return `<svg viewBox="0 0 ${C*2} ${C*2}" width="208" height="208">
+    <defs>
+      <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#D9D2F4"/><stop offset="1" stop-color="#8E7CE0"/>
+      </linearGradient>
+      <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+        <stop offset="55%" stop-color="#F3EFFC" stop-opacity="0"/><stop offset="100%" stop-color="#F3EFFC" stop-opacity=".9"/>
+      </radialGradient>
+    </defs>
+    <circle cx="${C}" cy="${C}" r="${R+16}" fill="url(#halo)"/>
+    <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="#ECEAF6" stroke-width="9"/>
+    <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="url(#rg)" stroke-width="9"
+      stroke-linecap="round" stroke-dasharray="420 200" stroke-dashoffset="-30" transform="rotate(-90 ${C} ${C})"/>
+    <circle cx="${C+Math.cos(-0.4)*R}" cy="${C+Math.sin(-0.4)*R}" r="7" fill="#B7AEF0" opacity=".85"/>
+    <circle cx="${C+Math.cos(2.0)*R}" cy="${C+Math.sin(2.0)*R}" r="7" fill="#C9C0F3" opacity=".8"/>
+    <circle cx="${C+Math.cos(3.4)*R}" cy="${C+Math.sin(3.4)*R}" r="6" fill="#D6CFF6" opacity=".8"/>
+    <circle cx="${C+Math.cos(5.0)*R}" cy="${C+Math.sin(5.0)*R}" r="6" fill="#B7AEF0" opacity=".7"/>
+    <text x="${C}" y="${C-2}" text-anchor="middle" font-size="25" font-weight="700" fill="#1A1A1A">元气满满</text>
+    <text x="${C}" y="${C+22}" text-anchor="middle" font-size="12" fill="#9C968C">状态值：90</text>
+    <text x="${C}" y="${C+38}" text-anchor="middle" font-size="11" fill="#B4AEA6">更新于 20:00</text>
+  </svg>`;
+}
+// ── 趋势曲线（近似全天状态 + 高亮徽标）──
+function chartSVG(){
+  return `<svg class="chart" viewBox="0 0 360 104" preserveAspectRatio="none">
+    <defs><linearGradient id="ca" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C9BEF2" stop-opacity=".30"/><stop offset="1" stop-color="#C9BEF2" stop-opacity="0"/></linearGradient></defs>
+    <path d="M0,74 C26,70 44,52 70,50 C96,48 112,66 140,64 C168,62 182,42 208,40 C234,38 250,58 276,56 C302,54 320,50 340,50 C350,50 356,49 360,48 L360,104 L0,104 Z" fill="url(#ca)"/>
+    <path d="M0,74 C26,70 44,52 70,50 C96,48 112,66 140,64 C168,62 182,42 208,40 C234,38 250,58 276,56 C302,54 320,50 340,50 C350,50 356,49 360,48"
+      fill="none" stroke="#9E96C9" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="340" cy="50" r="4.5" fill="#8E7CE0" stroke="#fff" stroke-width="2"/>
+  </svg>`;
+}
+const LEG = [['#8E7CE0','元气满满'],['#5BB38A','状态良好'],['#9C96C4','平平静静'],['#D9A24B','休息一下']];
+const CHIPS = [
+  ['#8FBF7A','睡眠恢复','69','/100'],
+  ['#8E7CE0','脑力准备度','70','/100'],
+  ['#E38BA6','心理压力','45','/100'],
+  ['#7FB7D9','运动消耗','9','kcal'],
+];
+const NARR = '卵泡期充沛状态，晨峰皮质醇节律良好，睡眠良好，无压力事件，继续保…';
+
+// ── 四种标题处理 ──
+const VARIANTS = [
+  { id:'now', bad:true,
+    name:'现状（真机效果）· 左对齐 + 深黑 semibold',
+    desc:'就是你现在看到的样子：左对齐、#1A1A1A 深黑 600 字重，紧贴在居中灰字下面。因为整屏其余部分全部居中，它单独"跳"出来，所以突兀。',
+    title(){ return `<div class="titleRow"><div class="t-left"><span class="t-lead">全天状态趋势图</span><span class="chev">›</span></div></div>`; } },
+  { id:'A', rec:true,
+    name:'① 居中 · 轻量（推荐）',
+    desc:'标题改为居中、降为 #5F5F74 灰、14px medium，箭头紧贴其右。和上面居中的说明、下面居中的图例同一节奏 → 读起来像"这张图的标注"，不再突兀，也仍明确"可点进详情"。',
+    title(){ return `<div class="titleRow"><div class="t-center"><span class="t-quiet">全天状态趋势图</span><span class="chev" style="font-size:14px">›</span></div></div>`; } },
+  { id:'B',
+    name:'② 居中 · 两侧细分隔线',
+    desc:'居中标签，左右各一条极淡短横线（hairline）夹住，形成一条"分区线"。安静但有结构感，把"圆环结论"和"趋势图"明确分成两段；箭头紧贴文字右侧。',
+    title(){ return `<div class="t-divider"><span class="line"></span><span class="t-quiet" style="display:inline-flex;align-items:center;gap:5px">全天状态趋势图<span class="chev" style="font-size:14px">›</span></span><span class="line"></span></div>`; } },
+  { id:'C',
+    name:'③ 左对齐 · 轻量',
+    desc:'如果你仍想保持左对齐：把字重从 600 降到 500、颜色改灰、字号略收，并与上方说明拉开间距。比现状柔和很多，但因为整屏居中，仍会有一点"偏"的感觉（不如 ①② 顺）。',
+    title(){ return `<div class="titleRow"><div class="t-left" style="margin:18px 0 10px"><span class="t-quiet">全天状态趋势图</span><span class="chev" style="font-size:14px">›</span></div></div>`; } },
+];
+
+function phone(v){
+  const chips = CHIPS.map(c=>`<div class="chip">
+      <div class="ic" style="background:${c[0]}"></div>
+      <div class="l">${c[1]}</div>
+      <div class="v">${c[2]}<small>${c[3]}</small></div>
+    </div>`).join('');
+  const legend = LEG.map(l=>`<span class="leg"><span class="dot" style="background:${l[0]}"></span>${l[1]}</span>`).join('');
+  return `<div class="col">
+    <div class="phone">
+      <div class="screen">
+        <div class="topbar"><span>20:25</span><span>▮▮▮  ⌾  Wi-Fi  84%</span></div>
+        <div class="head">
+          <span class="title">今日状态</span>
+          <span class="avatarName"><span class="avatar">K</span><span class="name">Kristina</span></span>
+        </div>
+        <div class="chips">${chips}</div>
+        <div class="ringWrap">${ringSVG()}</div>
+        <div class="narr">${NARR}</div>
+        ${v.title()}
+        <div class="chartBlock">
+          <div class="badgeRow"><div class="badge">元气满满 <b>90 · 20:00</b></div></div>
+          ${chartSVG()}
+        </div>
+        <div class="axis"><span>0时</span><span>4时</span><span>8时</span><span>12时</span><span>16时</span><span>20时</span><span>24时</span></div>
+        <div class="legend">${legend}</div>
+        <div class="bubbleWrap">
+          <div class="bubble">
+            <span class="txt">状态很充足哦，去查查卵泡发育情况吧</span>
+            <span class="go">去读</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <p class="nm">${v.name}${v.bad?'<span class="tag x">现状</span>':(v.rec?'<span class="tag">推荐</span>':'')}</p>
+        <p class="ds">${v.desc}</p>
+      </div>
+    </div>
+  </div>`;
+}
+document.getElementById('grid').innerHTML = VARIANTS.map(phone).join('');
+</script>
+</body>
+</html>

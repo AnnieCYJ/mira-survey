@@ -18,16 +18,17 @@ import { dayKey } from './healthStore';
 /** 12 档情绪 → theme token 色（唯一映射，UI 层统一引用）：
  *  亮色系=积极（moodEnergy/moodGood/rose/honey/sky），沉色系=低落（state/danger/purple/灰紫） */
 export const MOOD_COLOR: Record<MoodKey, string> = {
-  excited: theme.colors.moodEnergy,
-  happy: theme.colors.moodGood,
+  // Keep the selector, matrix faces, and legend on one shared palette.
+  excited: '#F39A62',
+  happy: '#F2C35E',
   love: mm.colors.roseCore,
   grateful: mm.colors.honeyDeep,
   pleasant: mm.colors.skyCore,
-  calm: theme.colors.stateTired,
+  calm: '#B8C86A',
   tired: mm.colors.limeDeep,
-  stressed: theme.colors.stateEnergy,
+  stressed: '#D58AAE',
   anxious: theme.colors.danger,
-  sad: mm.colors.purpleDeep,
+  sad: '#7EA6F8',
   angry: theme.colors.stateTense,
   lonely: theme.colors.textNavIdle,
 };
@@ -110,6 +111,36 @@ export const MOOD_EMOJI: Record<MoodKey, string> = {
   angry: '😠',
   lonely: '😔',
 };
+
+/**
+ * ★ 2026-10-12（用户给定设备侧参考色卡）—— 戒指 SDK 原生 emotionLevel(−10~10) 的**五段**划分。
+ *
+ *   设备侧（vendored）命名与区间：
+ *     EMO −10~−7 · 低落 −7~−3 · 稳定 −3~4 · 高涨 4~7 · 激动 7~10
+ *
+ *   映射到「情绪记录」五档（按 valence 序 + 同色相一一对应）：
+ *     EMO→难过 · 低落→压力 · 稳定→平静 · 高涨→开心 · 激动→兴奋
+ *
+ *   —— 这是**唯一映射源**：情绪记录点阵（EmotionInsightView）与基础指标·情绪详情页
+ *      （MetricDetailScreen）都从这里取，避免两处口径漂移。
+ */
+export const EMOTION_LEVEL_BANDS: { min: number; max: number; ref: string; mood: MoodKey }[] = [
+  { min: -10, max: -7, ref: 'EMO', mood: 'sad' },
+  { min: -7, max: -3, ref: '低落', mood: 'stressed' },
+  { min: -3, max: 4, ref: '稳定', mood: 'calm' },
+  { min: 4, max: 7, ref: '高涨', mood: 'happy' },
+  { min: 7, max: 10, ref: '激动', mood: 'excited' },
+];
+
+/** 设备 emotionLevel(−10~10) → 情绪记录五档 key（无值返回 null）。 */
+export function moodFromEmotionLevel(v: number | null | undefined): MoodKey | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  if (v >= 7) return 'excited';    // 激动
+  if (v >= 4) return 'happy';      // 高涨
+  if (v >= -3) return 'calm';      // 稳定
+  if (v >= -7) return 'stressed';  // 低落
+  return 'sad';                    // EMO
+}
 
 // ── 事件总线 ──────────────────────────────────────────────────────────────
 type Listener = () => void;

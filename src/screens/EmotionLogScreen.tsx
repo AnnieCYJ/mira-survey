@@ -30,6 +30,7 @@ import {
 } from '../data/emotionLog';
 import { dayKey } from '../data/healthStore';
 import { EMOTION_ARTICLES } from '../lib/emotionArticles';
+import EmotionFaceIcon from '../components/EmotionFaceIcon';
 
 /* ── v18.82 情绪调节的方法 · 文章版块（模块级：珠雨重渲染不重建） ── */
 function EmotionArticlesSection() {
@@ -244,14 +245,9 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
                   strokeWidth={isSel ? 2.4 : 1}
                   opacity={isSel ? 1 : 0.92}
                 />
-                <SvgText
-                  x={x} y={y + b.r * 0.38}
-                  fontSize={b.r * 1.05}
-                  textAnchor="middle"
-                  pointerEvents="none"
-                >
-                  {MOOD_EMOJI[b.mood]}
-                </SvgText>
+                <G x={x - b.r} y={y - b.r} pointerEvents="none">
+                  <EmotionFaceIcon mood={b.mood} color={c} size={b.r * 2} />
+                </G>
               </G>
             );
           })}

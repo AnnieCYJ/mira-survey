@@ -14,6 +14,7 @@ export const SPORT_HERO_ID = 'cycletraining';
 export const SPORT_ARTICLES: LearnArticle[] = [
   {
     id: 'cycletraining',
+    method: {"why": "周期是安排训练的背景，今天的睡眠、恢复和主观疲劳共同决定负荷。", "steps": ["开始前看今天的恢复状态，并问自己是否疲劳或疼痛。", "感觉良好时按原计划训练；疲劳明显时减少负荷或换成轻活动。", "记下运动类型、时长和训练后的感受。"], "observe": "比较次日恢复、睡眠和同一周期阶段的体验，逐步形成个人训练节奏。"},
     eyebrow: '本周主题',
     minutes: 5,
     title: '跟着周期练：四个阶段的运动地图',

@@ -53,11 +53,19 @@ function anchorTs(cs?: any): number {
   return Date.now();
 }
 
-/** 状态签名：状态档 + 周期相位。两者都没变 → 视为「状态没变」，保留当前卡片。 */
+/** 当前生活场景：只在饭前/睡前边界切换，不按每个半小时强制换卡。 */
+export function sceneBucket(now = new Date()): 'preMeal' | 'bedtime' | 'daytime' {
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (h >= 10.5 && h < 12 || h >= 16.5 && h < 18) return 'preMeal';
+  if (h >= 21 || h < 6) return 'bedtime';
+  return 'daytime';
+}
+
+/** 状态签名：状态档 + 周期相位 + 当前生活场景。场景边界变化时才重新评估建议。 */
 function stateSig(cs?: any): string {
   const level = typeof cs?.level === 'string' ? cs.level : '';
   const phase = typeof cs?.phaseLabel === 'string' ? cs.phaseLabel : '';
-  return `${level}|${phase}`;
+  return `${level}|${phase}|${sceneBucket()}`;
 }
 
 async function loadShown(): Promise<void> {
@@ -358,6 +366,10 @@ export function pickReadTarget(phase?: string): { articleId: string; short: stri
 function buildActionCandidates(cs: any, slot: number): SuggestionCandidate[] {
   const level: string | null | undefined = cs?.level;
   const out: SuggestionCandidate[] = [];
+  const now = new Date();
+  const scene = sceneBucket(now);
+  const preMeal = scene === 'preMeal';
+  const bedtime = scene === 'bedtime';
 
   // 状态偏低 / 不足 → 指定一种呼吸练习（温和放松，不要求「必须做」）
   if (level === '偏低' || level === '不足') {
@@ -379,23 +391,23 @@ function buildActionCandidates(cs: any, slot: number): SuggestionCandidate[] {
 
   // 读一篇科普：按周期相位直达具体文章（LearnRead 详情页，不再经过 ToolTopic 聚合页）
   const r = pickReadTarget(cs?.phaseLabel);
-  out.push({
+  if (bedtime) out.push({
     id: `act-read-${slot}`,
     saveId: `act-read-${r.articleId}`,
     kind: 'action',
-    headline: `读读《${r.short}》呀，几分钟就好`,
+    headline: `睡前读读《${r.short}》呀，几分钟就好`,
     question: '有疑问随时问我',
     cta: { label: '去读 ›', screen: 'LearnRead', params: { articleId: r.articleId, collection: 'learn' } },
     noPersist: true,
   });
 
   // 记录饮食（any 状态；FoodScan 本身就是直达拍摄页，无需深链）
-  out.push({
+  if (preMeal) out.push({
     id: `act-diet-${slot}`,
     saveId: 'act-diet',
     kind: 'action',
-    headline: '今天吃了啥呀？顺手记一下，我帮你看看搭配',
-    question: '拍一张或写几句都行',
+    headline: '快到饭点了，顺手拍张照记一下这一餐',
+    question: '之后我帮你看看饮食和状态的关系',
     cta: { label: '去记录 ›', screen: 'FoodScan' },
     noPersist: true,
   });

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>首页 · 全天状态趋势图 标题/箭头 位置样式</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --limeDeep:#6E7A24; --limeMid:#BCCB62; --limeSoft:#EAF0BE; --cardBorder:rgba(31,29,26,0.09);
+    --purple:#7B6CD9; --purpleSoft:#EFEBFB;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:#EFEDE9;color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1100px;margin:0 auto;padding:30px 22px 70px;}
+  h1{font-size:25px;font-weight:600;letter-spacing:-.5px;margin:0 0 4px;}
+  .sub{color:var(--inkSoft);font-size:14px;margin:0 0 26px;line-height:22px;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:26px;}
+  @media(max-width:720px){.grid{grid-template-columns:1fr;}}
+  .phone{background:#fff;border:1px solid var(--cardBorder);border-radius:30px;overflow:hidden;
+    box-shadow:0 10px 30px rgba(31,29,26,.08);}
+  .screen{padding:14px 18px 22px;}
+  .topbar{display:flex;justify-content:space-between;font-size:12px;color:var(--inkFaint);padding:2px 2px 8px;}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+  .head .title{font-size:23px;font-weight:500;letter-spacing:-.3px;}
+  .avatarName{display:flex;align-items:center;gap:8px;}
+  .avatar{width:30px;height:30px;border-radius:50%;background:#F0EAD9;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--inkSoft);font-weight:600;}
+  .avatarName .name{font-size:14px;color:var(--inkSoft);}
+  .chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:22px;}
+  .chip{background:#FAF9F6;border:1px solid var(--cardBorder);border-radius:13px;padding:9px 8px;text-align:center;}
+  .chip .v{font-size:16px;font-weight:600;}
+  .chip .l{font-size:10px;color:var(--inkFaint);margin-top:3px;line-height:13px;}
+  .ringRow{display:flex;align-items:center;gap:16px;margin-bottom:14px;}
+  .ring{flex:0 0 auto;}
+  .pill{flex:1;background:#FAF9F6;border:1px solid var(--cardBorder);border-radius:14px;padding:11px 13px;
+    font-size:13px;color:var(--inkSoft);line-height:19px;min-height:60px;display:flex;align-items:center;}
+  .titleBlock{display:flex;align-items:center;margin:6px 2px 12px;}
+  .tt{font-size:15px;font-weight:600;letter-spacing:-.2px;color:var(--ink);}
+  .chev{display:flex;align-items:center;justify-content:center;}
+  .chev.small{width:22px;height:22px;border-radius:50%;background:#F2F0EA;color:var(--inkSoft);font-size:13px;}
+  .chev.glass{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.7);border:1px solid var(--cardBorder);
+    box-shadow:0 2px 6px rgba(0,0,0,.06);color:var(--inkSoft);font-size:16px;}
+  .chevbox{margin-left:8px;}
+  .chart{width:100%;height:96px;display:block;}
+  .legend{display:flex;gap:16px;margin:10px 2px 14px;flex-wrap:wrap;}
+  .leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--inkSoft);}
+  .dot{width:9px;height:9px;border-radius:50%;}
+  .bubble{background:linear-gradient(120deg,#F3F0FF,#EAF6F0,#FFF4EC,#FDEFF4);border-radius:18px;padding:13px 15px;
+    font-size:13px;color:var(--inkSoft);line-height:20px;position:relative;}
+  .bubble:after{content:"";position:absolute;right:22px;bottom:-7px;width:14px;height:14px;background:#FDEFF4;
+    transform:rotate(45deg);border-radius:3px;}
+  .cap{background:#fff;border:1px solid var(--cardBorder);border-radius:0 0 30px 30px;padding:14px 18px 18px;}
+  .cap .opt{font-size:15px;font-weight:600;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+  .cap .opt .tag{font-size:11px;font-weight:700;color:#fff;background:var(--limeDeep);border-radius:999px;padding:2px 9px;}
+  .cap .desc{font-size:12.5px;color:var(--inkSoft);line-height:19px;margin:0;}
+  .rec{color:var(--limeDeep);font-weight:600;}
+  .foot{margin-top:28px;font-size:12px;color:var(--inkFaint);line-height:20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>全天状态趋势图 · 标题 & 箭头位置样式</h1>
+  <p class="sub">首页整页上下文（今日状态 → chips → 圆环 → 趋势图 → 图例）。箭头都按你要求「紧贴这几个字的旁边」。
+  四版差异只在<b>标题的对齐方式</b>与<b>箭头的摆放位置</b>，下方各有说明，标 ★ 是我推荐的一版。</p>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="foot">
+    说明：本页是 UI 看版，配色/字号对齐 App 设计 token（ink #1F1D1A / lime #6E7A24 / 圆环紫 #7B6CD9）。
+    真机因 Expo Go SDK 不兼容暂无法热更，所以先用网页比对位置。选定后我把对应版式写进
+    <code>src/screens/TodayScreen.tsx</code> 的标题块（目前标题块是空的，只画了趋势图 + 浮在图上的玻璃箭头）。
+  </p>
+</div>
+
+<script>
+// ── 通用：圆环 SVG（近似 App EnergyBall）──
+function ringSVG(){
+  return `<svg class="ring" width="118" height="118" viewBox="0 0 118 118">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9C8FF0"/><stop offset="1" stop-color="#6E5FD0"/></linearGradient></defs>
+    <circle cx="59" cy="59" r="50" fill="none" stroke="#ECEAF6" stroke-width="11"/>
+    <circle cx="59" cy="59" r="50" fill="none" stroke="url(#g)" stroke-width="11"
+      stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="120" transform="rotate(-90 59 59)"/>
+    <text x="59" y="56" text-anchor="middle" font-size="30" font-weight="600" fill="#1F1D1A">62</text>
+    <text x="59" y="74" text-anchor="middle" font-size="11" fill="#9C968C">状态平稳</text>
+  </svg>`;
+}
+// ── 通用：趋势图 SVG（近似全天状态曲线 + 图例底色）──
+function chartSVG(){
+  return `<svg class="chart" viewBox="0 0 340 96" preserveAspectRatio="none">
+    <defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C9BEF2" stop-opacity=".35"/><stop offset="1" stop-color="#C9BEF2" stop-opacity="0"/></linearGradient></defs>
+    <path d="M0,70 C30,64 50,40 80,38 C110,36 130,58 160,56 C190,54 205,30 235,28 C265,26 285,48 310,46 C325,45 335,42 340,42 L340,96 L0,96 Z" fill="url(#a)"/>
+    <path d="M0,70 C30,64 50,40 80,38 C110,36 130,58 160,56 C190,54 205,30 235,28 C265,26 285,48 310,46 C325,45 335,42 340,42"
+      fill="none" stroke="#7B6CD9" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="80" cy="38" r="3" fill="#7B6CD9"/><circle cx="235" cy="28" r="3" fill="#7B6CD9"/>
+  </svg>`;
+}
+const LEG2 = [['#7B6CD9','充沛'],['#5BB38A','平静'],['#C9A24B','偏低'],['#E2554E','压力']];
+
+// ── 各版式定义 ──
+const variants = [
+  { id:'A', name:'A · 左标题 + 行内小箭头（紧贴标题右侧）', rec:true,
+    desc:'标题靠左，箭头是一个小圆点「›」紧贴标题右边（同一行、间距 8pt）。最克制、最像「这块图的标题」，信息层级干净。★推荐：阅读动线最短、最不抢图。',
+    render(){
+      return `<div class="titleBlock">
+        <span class="tt">全天状态趋势图</span>
+        <span class="chevbox"><span class="chev small">›</span></span>
+      </div>${chartSVG()}`;
+    }},
+  { id:'B', name:'B · 左标题 + 整行右端玻璃箭头', rec:false,
+    desc:'标题靠左，箭头放在整行最右端（玻璃圆按钮，和现在浮在图上的那个同款）。整行都可点，暗示「点这行进详情」。比 A 更强调「可进入」。',
+    render(){
+      return `<div class="titleBlock" style="justify-content:space-between">
+        <span class="tt">全天状态趋势图</span>
+        <span class="chev glass">›</span>
+      </div>${chartSVG()}`;
+    }},
+  { id:'C', name:'C · 居中标题 + 居中箭头', rec:false,
+    desc:'标题与箭头整体居中（箭头仍贴在标题右侧）。对称、安静，但和首页其它左对齐元素（今日状态/圆环）节奏不一致，略显独立。',
+    render(){
+      return `<div class="titleBlock" style="justify-content:center">
+        <span class="tt">全天状态趋势图</span>
+        <span class="chevbox"><span class="chev small">›</span></span>
+      </div>${chartSVG()}`;
+    }},
+  { id:'D', name:'D · 胶囊标签标题（标题+箭头包在浅绿胶囊里）', rec:false,
+    desc:'把「全天状态趋势图 ›」整体包进一个 limeSoft 浅绿胶囊（圆角标签），像 section chip。识别度最高、最「功能化」，但视觉重量比纯文字大，下方图表会显得更被「框住」。',
+    render(){
+      return `<div class="titleBlock">
+        <span style="display:inline-flex;align-items:center;gap:8px;background:var(--limeSoft);color:var(--limeDeep);
+          border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600;">
+          全天状态趋势图 <span class="chev small" style="background:#fff;color:var(--limeDeep)">›</span>
+        </span>
+      </div>${chartSVG()}`;
+    }},
+];
+
+function phone(v){
+  const chips = [
+    ['66','睡眠恢复'],['59','脑力准备度'],['3','情绪压力'],['卵泡期','经期']
+  ].map(c=>`<div class="chip"><div class="v">${c[0]}</div><div class="l">${c[1]}</div></div>`).join('');
+  const legend = LEG2.map(l=>`<span class="leg"><span class="dot" style="background:${l[0]}"></span>${l[1]}</span>`).join('');
+  return `<div class="phone">
+    <div class="screen">
+      <div class="topbar"><span>9:41</span><span>● ● ●  Wi-Fi  100%</span></div>
+      <div class="head">
+        <span class="title">今日状态</span>
+        <span class="avatarName"><span class="avatar">K</span><span class="name">Kristina</span></span>
+      </div>
+      <div class="chips">${chips}</div>
+      <div class="ringRow">${ringSVG()}
+        <div class="pill">激素晨峰刚过，状态平稳。下午两点后容易走低，记得留点喘息。</div>
+      </div>
+      ${v.render()}
+      <div class="legend">${legend}</div>
+      <div class="bubble">今天整体平稳～下午别硬扛，累了就用两分钟呼吸松一下 🌿</div>
+    </div>
+    <div class="cap">
+      <p class="opt">${v.name}${v.rec?'<span class="tag">推荐</span>':''}</p>
+      <p class="desc">${v.desc}</p>
+    </div>
+  </div>`;
+}
+
+document.getElementById('grid').innerHTML = variants.map(phone).join('');
+</script>
+</body>
+</html>

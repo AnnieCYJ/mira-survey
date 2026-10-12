@@ -149,11 +149,12 @@ function computeStressReportUncached(nowMs: number): StressReport {
   const dayStart = dayStartMs(nowMs);
 
   // ★ 优先用 EDA 原始值；Veepoo SDK 回的是 stress 等级（0~12 整数），fallback 到 stress key
-  // worn = 任意序列有数据（filled 序列在「有日均、无逐样本」的日子也会补正午点 → 比 unfilled 更稳）
-  let edaRaw = healthStore.getTimeRange('eda', dayStart, nowMs, { fillDailyMean: true, maxPoints: 480 });
+  // 压力事件、斜率和最近 30 分钟分数只能使用逐样本数据。
+  // 日均值不是逐时证据，不能补成一个“正午点”来制造全天压力数据。
+  let edaRaw = healthStore.getTimeRange('eda', dayStart, nowMs, { fillDailyMean: false, maxPoints: 480 });
   let worn = edaRaw.length > 0;
   if (edaRaw.length === 0) {
-    edaRaw = healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: true, maxPoints: 480 });
+    edaRaw = healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: false, maxPoints: 480 });
     worn = edaRaw.length > 0;
   }
   if (edaRaw.length === 0) {

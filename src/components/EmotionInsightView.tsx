@@ -25,12 +25,13 @@ import {
 } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { healthStore, dayKey } from '../data/healthStore';
-import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, type EmotionEntry } from '../data/emotionLog';
+import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, moodFromEmotionLevel, type EmotionEntry } from '../data/emotionLog';
 import { HourHistogram } from './StressInsightCard';
 // ★ 心理压力全天趋势图（首页心理压力卡点进来 / 洞察页情绪 tab 共用本视图）
 import StressTrendChart, { stressPointsOf } from './StressTrendChart';
 import { computeEmotionalStress } from '../lib/emotionalStress';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import EmotionFaceIcon, { type EmotionFaceMood } from './EmotionFaceIcon';
 
 /** lucide 线性图标（stroke 1.8，统一栅格） */
 function Lucide({ name, size = 13, color }: { name: string; size?: number; color: string }) {
@@ -112,15 +113,29 @@ const DOT_BY_MOOD: Record<string, string> = {
 const DOT_EMPTY = '#BDB7AE';
 const DOT_SLEEP = '#EAE7E2';
 /** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
-const DOT_LEGEND: { c: string; t: string }[] = [
-  { c: '#F39A62', t: '兴奋' },
-  { c: '#F2C35E', t: '开心' },
-  { c: '#B8C86A', t: '平静' },
-  { c: '#D58AAE', t: '压力' },
-  { c: '#7EA6F8', t: '难过' },
+const DOT_LEGEND: { c: string; t: string; mood?: EmotionFaceMood }[] = [
+  { c: '#B8C86A', t: '平静', mood: 'calm' },
+  { c: '#F2C35E', t: '开心', mood: 'happy' },
+  { c: '#F39A62', t: '兴奋', mood: 'excited' },
+  { c: '#D58AAE', t: '压力', mood: 'stressed' },
+  { c: '#7EA6F8', t: '难过', mood: 'sad' },
   { c: DOT_SLEEP, t: '睡眠' },
 ];
 const dotColorOf = (e: any): string => DOT_BY_MOOD[moodColor(e)] ?? DOT_EMPTY;
+const faceMoodOf = (e: any): EmotionFaceMood => {
+  if (e?.manualMood === 'excited' || e?.manualMood === 'happy' || e?.manualMood === 'calm' || e?.manualMood === 'stressed' || e?.manualMood === 'sad') return e.manualMood;
+  if (Number.isFinite(e?.emotionLevel)) return faceMoodFromColor(ringEmotionDot(e.emotionLevel));
+  if (e?.valenceLabel === 'positive') return (e?.severity ?? 0) > 50 ? 'excited' : 'happy';
+  if (e?.valenceLabel === 'negative') return (e?.severity ?? 0) > 60 ? 'sad' : 'stressed';
+  return 'calm';
+};
+const faceMoodFromColor = (c: string | null): EmotionFaceMood => {
+  if (c === '#F39A62') return 'excited';
+  if (c === '#F2C35E') return 'happy';
+  if (c === '#D58AAE') return 'stressed';
+  if (c === '#7EA6F8') return 'sad';
+  return 'calm';
+};
 
 /**
  * ★ 2026-10-10（用户）：戒指 SDK 原生 emotionLevel(−10~10) 日均值 → 情绪方向标签。
@@ -138,14 +153,16 @@ const ringValenceLabel = (v: number | null): 'positive' | 'negative' | 'neutral'
   return 'neutral';
 };
 
-/** 设备 emotionLevel(-10~10) → 与手动记录一致的五档情绪。 */
+/**
+ * 设备 emotionLevel(-10~10) → 与手动记录一致的五档情绪色。
+ * ★ 2026-10-12（用户给定设备参考色卡）：分段阈值改为设备侧五档
+ *   EMO −10~−7 / 低落 −7~−3 / 稳定 −3~4 / 高涨 4~7 / 激动 7~10，
+ *   统一走 `moodFromEmotionLevel`（唯一映射源）；色值取 MOOD_COLOR，
+ *   与点阵其它来源（手动记录 / EDA 事件）完全同色，不再各写一套 hex。
+ */
 const ringEmotionDot = (v: number | null): string | null => {
-  if (v == null || !Number.isFinite(v)) return null;
-  if (v >= 6) return '#F39A62';       // 兴奋
-  if (v >= 2) return '#F2C35E';       // 开心
-  if (v > -2) return '#B8C86A';       // 平静
-  if (v > -6) return '#D58AAE';       // 压力
-  return '#7EA6F8';                   // 难过
+  const m = moodFromEmotionLevel(v);
+  return m ? (MOOD_COLOR[m] ?? null) : null;
 };
 
 /** 5 档情绪 → emoji（HERO 展示用；无记录时用中性符号，绝不假装有主情绪） */
@@ -170,6 +187,15 @@ export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null 
     const d = new Date(e.t);
     const h = d.getHours();
     const slot = Math.min(3, Math.floor(d.getMinutes() / 15));
+    // ★ 2026-10-12（用户：睡眠阶段不记录情绪）—— 睡眠窗内的**设备采样**不入桶，
+    //   该格走下面的 inSleep 分支绘 ☾；用户手动记录除外（自报优先）。
+    if (!(e as any).isManual && sleepWindow) {
+      const hour = h + slot / 4;
+      const inSleep = sleepWindow.bedHour > sleepWindow.wakeHour
+        ? (hour >= sleepWindow.bedHour || hour < sleepWindow.wakeHour)
+        : (hour >= sleepWindow.bedHour && hour < sleepWindow.wakeHour);
+      if (inSleep) continue;
+    }
     bySlot[h][slot].push(e);
   }
   const slotColor = (evs: any[]): string | null => {
@@ -183,6 +209,8 @@ export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null 
       if (manual.manualMood === 'sad') return '#7EA6F8';
       return dotColorOf(manual);
     }
+    const ring = evs.find((e) => Number.isFinite(e?.emotionLevel));
+    if (ring) return ringEmotionDot(ring.emotionLevel);
     const neg = evs.find((e) => { const c = moodColor(e); return c === COL_ANXIOUS || c === COL_STRESSED; });
     // ★ 点阵用点阵配色（不是堆叠柱那套）
     return dotColorOf(neg ?? evs[0]);
@@ -194,6 +222,7 @@ export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null 
           <View key={h} style={styles.hmCol}>
             {[0, 1, 2, 3].map((s) => {
               const c = slotColor(bySlot[h][s]);
+              const face = bySlot[h][s].length ? faceMoodOf(bySlot[h][s].find((e: any) => e.isManual) ?? bySlot[h][s][0]) : 'calm';
               const hour = h + s / 4;
               const now = new Date();
               const isTodaySlotPast = h < now.getHours() || (h === now.getHours() && s <= Math.floor(now.getMinutes() / 15));
@@ -205,11 +234,11 @@ export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null 
               return (
                 <View key={s} style={styles.hmSlot}>
                   {c ? (
-                    <View style={[styles.hmDot, { backgroundColor: c }]} />
+                    <EmotionFaceIcon mood={face} color={c} size={DOT_SIZE + 4} />
                   ) : inSleep ? (
                     <View style={[styles.hmDot, styles.sleepDot]}><Text style={styles.sleepGlyph}>☾</Text></View>
                   ) : useFallback ? (
-                    <View style={[styles.hmDot, { backgroundColor: fallbackMood, opacity: 0.4 }]} />
+                    <EmotionFaceIcon mood={faceMoodFromColor(fallbackMood)} color={fallbackMood!} size={DOT_SIZE + 4} />
                   ) : (
                     <View style={styles.hmDotEmpty} />
                   )}
@@ -398,14 +427,36 @@ export default function EmotionInsightView({
     return Math.max(0, Math.min(47, Math.floor((t - midnight) / 1800000)));
   })() : null;
   const selfEvents = selfEntries.map(selfEntryToEvent);
+  // 戒指情绪原始逐点数据来自 healthStore 的 intraday 桶（基础指标页也读这里）。
+  // 逐点合并，不能只读 daily.mean，否则点阵会看起来没有戒指数据。
+  const ringIntradayEvents = healthStore.getIntraday('emotion', dk).map((p) => ({
+    t: p.t,
+    hour: new Date(p.t).getHours(),
+    minute: new Date(p.t).getMinutes(),
+    emotionLevel: p.v,
+    valenceLabel: 'neutral',
+    severity: Math.abs(p.v) * 10,
+    isRingEmotion: true,
+  } as any));
   // 合并：手动记录 + EDA 采样，按时间升序；手动记录在同槽内优先展示（slotColor 取优先级）
-  const allEvents = [...selfEvents, ...report.events].sort((a, b) => a.t - b.t);
-  // ★ 2026-10-10（用户）：当天「没有手动心情记录」时，用戒指情绪(−10~10)按现有映射回填点阵空槽。
-  //   —— 复用 ringValenceLabel（emotionNow×10 → ±20 阈值）+ 现有 moodColor()，与事件日点阵同一套色。
-  //   —— 当天有手动记录 → 以手动为主、不回填（用户一记即切回；onEmotionLog 订阅即时刷新）。
-  const ringFallbackMood = selfEntries.length === 0 && ringEmotion != null
-    ? ringEmotionDot(ringEmotion)
-    : null;
+  // ★ 2026-10-12（用户铁律：睡眠阶段不记录情绪）—— 落在睡眠窗内的**设备推断**情绪点
+  //   （戒指 emotionLevel 采样 + EDA 压力事件）一律剔除：点阵图 / 情绪节律峰谷 /
+  //   「压力事件次数」从此只数清醒时段。用户手动记录保留（自报优先，哪怕填在夜里）。
+  const inSleepWindow = (t: number): boolean => {
+    if (!sleepWindow || !Number.isFinite(t)) return false;
+    const d = new Date(t);
+    const hour = d.getHours() + d.getMinutes() / 60;
+    const { bedHour, wakeHour } = sleepWindow;
+    return bedHour > wakeHour
+      ? (hour >= bedHour || hour < wakeHour)
+      : (hour >= bedHour && hour < wakeHour);
+  };
+  const allEvents = [...selfEvents, ...report.events, ...ringIntradayEvents]
+    .filter((e) => e.isManual || !inSleepWindow(e.t))
+    .sort((a, b) => a.t - b.t);
+  // 设备情绪只在对应采样时段落点，不能把一次反馈复制到全天。
+  // 没有采样的格子保持空圈；手动记录只覆盖自己的时间槽。
+  const ringFallbackMood = null;
   const hasData = report.sampleCount >= 5 || allEvents.length > 0;
 
   // ★ v18.106：无数据 ≠ 只丢一行小字（用户口径：「什么占位都没有就没了」）。
@@ -418,7 +469,7 @@ export default function EmotionInsightView({
         <View style={styles.pad}>
           <Text style={styles.title}>{variant === 'stress' ? '心理压力' : '情绪记录'}</Text>
           <Text style={styles.emptyText}>
-            还没有足够的情绪数据 · 时间轴为「无事件」占位（不计入统计）。连上戒指开启自动监测，约 30 分钟后开始生成个人基线。
+            我先看到一部分情绪变化，继续戴着戒指记录一会儿，我会帮你把规律补起来。
           </Text>
           {showStress && (
             <>
@@ -541,7 +592,7 @@ export default function EmotionInsightView({
         <View style={styles.dotLegend}>
           {DOT_LEGEND.map((m) => (
             <View key={m.t} style={styles.dotLegendItem}>
-              <View style={[styles.dotLegendDot, { backgroundColor: m.c }]} />
+              {m.mood ? <EmotionFaceIcon mood={m.mood} color={m.c} size={18} /> : <View style={[styles.dotLegendDot, { backgroundColor: m.c }]} />} 
               <Text style={styles.dotLegendText}>{m.t}</Text>
             </View>
           ))}
@@ -651,7 +702,8 @@ const styles = StyleSheet.create({
   sleepDot: { backgroundColor: '#E8E1F7', borderWidth: 1, borderColor: '#A99BD6', alignItems: 'center', justifyContent: 'center' },
   sleepGlyph: { fontSize: 8, lineHeight: 10, color: '#806FB5' },
   // ★ 2026-10-09（稿 .dots 无记录色 #BDB7AE）
-  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: DOT_EMPTY },
+  // 无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#DCD8E5', borderStyle: 'dashed' },
   // ★ 点阵图例（与格子同色）
   dotLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(2) },
   dotLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },

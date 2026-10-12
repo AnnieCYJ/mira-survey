@@ -368,16 +368,23 @@ export default function FoodScanScreen() {
                 {selDate === todayKey ? (
                   <View style={hs.aiWrap}>
                     <View style={hs.aiSep} />
-                    <MiraTag label="MIRA AI · 今日建议" style={hs.aiTag} />
 
+                    <View style={hs.conclusion}>
+                      <Text style={hs.conclusionTitle}>今天适合稳住能量</Text>
+                      <Text style={hs.conclusionSub}>均衡吃、少刺激，给下午和晚上的状态留出余地。</Text>
+                    </View>
                     {/* 状态胶囊：你处于 X · 皮质醇 · 今天状态（有数据才出，不编） */}
                     <View style={hs.statusTags}>
                       <View style={[hs.statusPill, { backgroundColor: mm.colors.purpleSoft }]}>
-                        <Text style={[hs.statusPillText, { color: mm.colors.purpleDeep }]}>你处于 {PHASE_LABEL[phase]}</Text>
+                        <Text style={[hs.statusPillText, { color: mm.colors.purpleDeep }]}>{PHASE_LABEL[phase]}</Text>
                       </View>
                       {(() => {
                         const c = hormoneSnap?.cortisol;
-                        if (!c?.ready) return null;
+                        if (!c?.ready) return (
+                          <View style={[hs.statusPill, { backgroundColor: mm.colors.skySoft }]}>
+                            <Text style={[hs.statusPillText, { color: mm.colors.skyDeep }]} numberOfLines={1}>皮质醇待同步</Text>
+                          </View>
+                        );
                         let bg: string = mm.colors.limeSoft, fg: string = mm.colors.limeDeep, t: string = '皮质醇平稳';
                         if (c.level === 'high') { bg = mm.colors.roseSoft; fg = mm.colors.roseDeep; t = '皮质醇偏高'; }
                         else if (c.level === 'dysregulated') { bg = mm.colors.honeySoft; fg = mm.colors.honeyDeep; t = '皮质醇节律略乱'; }
@@ -387,28 +394,21 @@ export default function FoodScanScreen() {
                           </View>
                         );
                       })()}
-                      {todayStatusScore != null ? (
-                        <View style={[hs.statusPill, { backgroundColor: mm.colors.honeySoft }]}>
-                          <Text style={[hs.statusPillText, { color: mm.colors.honeyDeep }]}>今天状态 {todayStatusScore}</Text>
-                        </View>
-                      ) : null}
+                      <View style={[hs.statusPill, { backgroundColor: mm.colors.honeySoft }]}>
+                        <Text style={[hs.statusPillText, { color: mm.colors.honeyDeep }]} numberOfLines={1}>今天状态 {todayStatusScore ?? '待同步'}</Text>
+                      </View>
                     </View>
 
-                    <MiraTag label="推荐多吃" size="sm" tone="lime" style={hs.focusTag} />
-                    <View style={hs.focusChips}>
-                      {target.focus.map((f) => (
-                        <View key={f} style={hs.focusChip}>
-                          <Text style={hs.focusChipText}>{f}</Text>
-                        </View>
-                      ))}
+                    <View style={hs.adviceGrid}>
+                      <View style={[hs.adviceCard, hs.adviceEat]}>
+                        <Text style={hs.adviceCardTitle}>✦ 推荐多吃</Text>
+                        {target.focus.map((f) => <Text key={f} style={hs.adviceLine}>{f}</Text>)}
+                      </View>
+                      <View style={[hs.adviceCard, hs.adviceAvoid]}>
+                        <Text style={[hs.adviceCardTitle, hs.adviceAvoidTitle]}>↓ 先少碰</Text>
+                        {target.avoid.length > 0 ? target.avoid.map((f) => <Text key={f} style={hs.adviceLine}>{f}</Text>) : <Text style={hs.adviceLine}>减少高糖和过度刺激</Text>}
+                      </View>
                     </View>
-
-                    {target.avoid.length > 0 ? (
-                      <>
-                        <MiraTag label="先少碰" size="sm" tone="honey" style={hs.avoidTag} />
-                        <Text style={hs.avoidList}>{target.avoid.join('、')}</Text>
-                      </>
-                    ) : null}
                   </View>
                 ) : null}
               </Card>
@@ -864,12 +864,22 @@ const hs = StyleSheet.create({
   aiWrap: { marginTop: theme.sp(2) },
   aiSep: { borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.08)', marginBottom: theme.sp(3) },
   aiTag: { marginBottom: theme.sp(3) },
+  conclusion: { marginBottom: theme.sp(2), alignItems: 'flex-start' },
+  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: mm.colors.inkFaint },
   /* 状态胶囊行：你处于 X · 皮质醇 · 今天状态 */
-  statusTags: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5) },
-  statusPill: { borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.75), paddingVertical: theme.sp(1.25) },
-  statusPillText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, lineHeight: theme.fs(17) },
+  statusTags: { flexDirection: 'row', flexWrap: 'nowrap', gap: theme.sp(1) },
+  statusPill: { flex: 1, minWidth: 0, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(1.25), alignItems: 'center' },
+  statusPillText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, lineHeight: theme.fs(17), textAlign: 'center' },
   focusTag: { marginTop: theme.sp(3), marginBottom: theme.sp(1.5) },
   avoidTag: { marginTop: theme.sp(3), marginBottom: theme.sp(1.5) },
+  adviceGrid: { flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(3) },
+  adviceCard: { flex: 1, minWidth: 0, borderRadius: theme.sp(4), padding: theme.sp(3) },
+  adviceEat: { backgroundColor: mm.colors.limeTint },
+  adviceAvoid: { backgroundColor: mm.colors.honeyTint },
+  adviceCardTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: mm.colors.limeDeep, marginBottom: theme.sp(1.5) },
+  adviceAvoidTitle: { color: mm.colors.honeyDeep },
+  adviceLine: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(18), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
   /* 餐次卡（SPEC §3.5） */
   mealTitle: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, marginBottom: theme.sp(1) },
   emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },

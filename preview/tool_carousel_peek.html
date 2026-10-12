@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>工具页大卡片翻页 · 露边宽度对比</title>
+<style>
+  :root{--ink:#1F1D1A;--lime:#BCCB62}
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:#F2F0ED;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;padding:24px;line-height:1.5}
+  h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .lead{font-size:13px;color:#5C574F;margin:0 0 20px;max-width:900px}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  .cap{font-size:12px;color:#9C968C;margin-bottom:8px;text-align:center}
+  .cap b{color:var(--ink);font-weight:600}
+  .bad{color:#C2504B}
+
+  .phone{width:390px;background:#fff;border-radius:24px;padding:14px 0;box-shadow:0 10px 30px rgba(31,29,26,.14);overflow:hidden}
+  .screen{padding:0 24px}
+  .h1{font-size:26px;font-weight:500;margin-bottom:2px}
+  .h2{font-size:12px;color:#5C574F;margin-bottom:10px}
+
+  .nodeRow{position:relative;height:44px;display:flex;align-items:center;justify-content:space-between;margin:2px 0 12px}
+  .nodeRow .line{position:absolute;left:17px;right:17px;top:21.25px;height:1.5px;background:rgba(31,29,26,.18)}
+  .node{position:relative;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+  .node.off{opacity:.62}
+  .node.on{border:2px solid var(--lime);transform:scale(1.08)}
+
+  .carousel{position:relative;width:390px;overflow:hidden}
+  .card{position:absolute;border-radius:16px;overflow:hidden;background:#EDE9E3}
+  .card>img.bg{width:100%;height:100%;object-fit:cover;display:block}
+
+  .glass{position:absolute;left:10px;right:10px;bottom:10px;border-radius:16px;overflow:hidden;
+         border:1px solid rgba(255,255,255,.28);box-shadow:0 6px 16px rgba(31,29,26,.16)}
+  .glass .blur{position:absolute;left:-10px;top:-10px;filter:blur(14px);transform:scale(1.1)}
+  .glass .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.10),rgba(0,0,0,.30) 50%,rgba(0,0,0,.46))}
+  .glass .inner{position:relative;padding:13px 15px}
+  .gTitle{font-size:17px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .gSub{margin-top:2px;font-size:11px;color:rgba(255,255,255,.72);line-height:15px;text-shadow:0 1px 3px rgba(0,0,0,.26)}
+  .gDiv{margin:9px 0;height:1px;background:rgba(255,255,255,.24)}
+  .gCells{display:flex}
+  .gCell{flex:1;display:flex;align-items:center}
+  .gBadge{width:28px;height:28px;border-radius:14px;background:rgba(255,255,255,.18);
+          border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;margin-right:7px;flex:0 0 auto}
+  .gLab{font-size:9px;color:rgba(255,255,255,.66)}
+  .gVal{margin-top:1px;font-size:13px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.26)}
+
+  .saved{margin:12px 24px 0;height:76px;border:1px solid rgba(31,29,26,.07);border-radius:16px;background:#fff;
+         display:flex;align-items:center;padding:0 12px;gap:12px}
+  .saved .th{width:56px;height:56px;border-radius:10px;background:#EDE9E3;flex:0 0 auto}
+  .saved .b1{font-size:13px;font-weight:600}
+  .saved .b2{font-size:11px;color:#5C574F;margin-top:3px}
+  .saved .b3{font-size:10px;color:#9C968C;margin-top:3px}
+
+  .mark{position:absolute;top:6px;bottom:6px;width:1px;background:#C2504B;opacity:.75}
+  .tag{position:absolute;top:2px;font-size:10px;color:#C2504B;white-space:nowrap}
+  .badgeInfo{font-size:11px;color:#5C574F;text-align:center;margin-top:8px}
+  .badgeInfo b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<h1>工具页「大卡片翻页」· 露边宽度三档</h1>
+<p class="lead">中间一张大卡居中，前后两张从屏幕两边露出来。差别只在露出多少 —— 按参考图实测约 40。红线 = 屏边。</p>
+<div class="row" id="row"></div>
+
+<script>
+const NODES = [
+  ['#FCE7F0','#C9598A','M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z'],
+  ['#E7E1FB','#6E58C8','M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5zM18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z'],
+  ['#EAF0BE','#6E7A24','M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8'],
+  ['#E3EBFE','#4C74C9','M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z'],
+  ['#E7E1FB','#6E58C8','M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z'],
+  ['#FBEFD6','#B98A2E','M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2zM12 6.7v12.1'],
+];
+const ICON_DOC = 'M6.6 3.8h7.2l3.6 3.6v12.8H6.6zM13.8 3.8v3.6h3.6M9.4 12.6h6M9.4 15.8h3.8';
+const ICON_TIME = 'M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4zM12 7.8V12l3 1.8';
+const SW = 390;
+
+function nodeRow(){
+  return '<div class="nodeRow"><div class="line"></div>' + NODES.map((n,i)=>
+    `<div class="node ${i===0?'on':'off'}" style="background:${n[0]}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${n[1]}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${n[2]}"/></svg></div>`
+  ).join('') + '</div>';
+}
+
+function cardImg(src, w, h){ return `<img class="bg" src="${src}" style="width:${w}px;height:${h}px" />`; }
+
+function glass(w,h){
+  return `<div class="glass">
+    <img class="blur" src="/src/assets/tool_emotion.jpg" style="width:${w}px;height:${h}px" />
+    <div class="scrim"></div>
+    <div class="inner">
+      <div class="gTitle">情绪调节</div>
+      <div class="gSub">黄体期容易闷，今天多留点喘息给自己。</div>
+      <div class="gDiv"></div>
+      <div class="gCells">
+        <div class="gCell"><div class="gBadge"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.95)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_DOC}"/></svg></div>
+          <div><div class="gLab">包含内容</div><div class="gVal">4 段冥想</div></div></div>
+        <div class="gCell"><div class="gBadge"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.95)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_TIME}"/></svg></div>
+          <div><div class="gLab">还有</div><div class="gVal">3 个呼吸练习</div></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* peek = 实际露出宽度；gap 固定 4；卡宽 = 屏宽 − 2×(peek+gap) */
+function phone(peek, label, cls){
+  const g = 4, p = peek + g, C = SW - 2*p, h = Math.round(C/0.8);
+  const PAGE = C + g;
+  const c0 = p - C - g, c1 = p, c2 = SW - p + g;
+  return `<div>
+    <div class="cap"><b class="${cls||''}">${label}</b></div>
+    <div class="phone">
+      <div class="screen"><div class="h1">Tools</div><div class="h2">小的改变积累起来也很了不起</div>${nodeRow()}</div>
+      <div class="carousel" style="height:${h}px">
+        <div class="card" style="left:${c0}px;width:${C}px;height:${h}px;filter:brightness(.94)">${cardImg('/src/assets/tool_learn.jpg',C,h)}</div>
+        <div class="card" style="left:${c2}px;width:${C}px;height:${h}px;filter:brightness(.94)">${cardImg('/src/assets/tool_recovery.jpg',C,h)}</div>
+        <div class="card" style="left:${c1}px;width:${C}px;height:${h}px">${cardImg('/src/assets/tool_emotion.jpg',C,h)}${glass(C,h)}</div>
+        <div class="mark" style="left:0"></div><div class="mark" style="left:${SW-1}px"></div>
+      </div>
+      <div class="saved"><div class="th"></div>
+        <div><div class="b1">睡前 5 分钟呼吸</div><div class="b2">确认有帮助 3 次 · HRV 偏低</div><div class="b3">最近一次：今天 22:10</div></div>
+      </div>
+    </div>
+    <div class="badgeInfo">露出 <b>${peek}px</b> · 中间卡 <b>${C}×${h}</b></div>
+  </div>`;
+}
+
+document.getElementById('row').innerHTML =
+  phone(16, '上一版 · 露 16（太含蓄）', 'bad') +
+  phone(32, 'A · 露 32') +
+  phone(40, 'B · 露 40（对齐参考图）');
+</script>
+</body>
+</html>

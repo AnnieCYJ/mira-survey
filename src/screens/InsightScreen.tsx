@@ -61,14 +61,14 @@ function formatValue(v: number | null): string {
 type TabKey = 'basics' | MetricKey;
 
 const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
-  { key: 'rhythm', label: '睡眠与周期' },
+  { key: 'rhythm', label: '荷尔蒙节律' },
   { key: 'longevity', label: '身体指标' },
 ];
 
-// ★ 2026-10-07（用户：皮质醇 → 昼夜节律；雌/孕激素 → 生理周期节律）
+// ★ 2026-10-07（用户：皮质醇 → 昼夜节律；雌/孕激素 → 生理周期节律）——2026-10-12 落地到 label
 const RHYTHM_SUBS: { key: string; label: string }[] = [
-  { key: 'recover', label: '睡眠与恢复' },
-  { key: 'body', label: '生理周期' },
+  { key: 'recover', label: '昼夜节律' },
+  { key: 'body', label: '生理周期节律' },
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [

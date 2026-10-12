@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>营养搭配卡 & 收藏卡 改版预览</title>
+<style>
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body { margin:0; background:#fff; font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; color:#1F1D1A; padding:28px 18px 60px; }
+  h1 { font-size:18px; letter-spacing:-.3px; margin:0 0 4px; }
+  .sub { font-size:13px; color:#5C574F; margin:0 0 26px; }
+  .sec { margin:0 0 38px; }
+  .sec h2 { font-size:15px; margin:0 0 14px; color:#1F1D1A; }
+  .row { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .cell { width:240px; }
+  .lbl { font-size:12px; color:#9C968C; margin:8px 0 0; }
+  /* 工具卡 4:5 */
+  .tool { width:240px; height:300px; border-radius:20px; overflow:hidden; position:relative; background:#F6F4F1; box-shadow:0 8px 18px rgba(31,29,26,.08); }
+  .tool img { width:100%; height:100%; object-fit:cover; display:block; }
+  .tool .cap { position:absolute; left:0; right:0; bottom:0; padding:14px 16px; color:#fff;
+    background:linear-gradient(to top, rgba(0,0,0,.58), rgba(0,0,0,.2) 60%, rgba(0,0,0,0)); }
+  .tool .cap .t { font-size:15px; font-weight:600; }
+  .tool .cap .d { font-size:12px; opacity:.85; margin-top:2px; }
+  .tool .cap .m { font-size:11px; opacity:.7; margin-top:4px; }
+  .bad { position:absolute; top:8px; left:8px; background:#E2554E; color:#fff; font-size:11px; padding:3px 8px; border-radius:8px; }
+
+  /* 收藏卡 */
+  .deck { width:340px; }
+  .deckH { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .deckH .ti { font-size:16px; font-weight:600; }
+  .deckH .co { font-size:12px; color:#9C968C; }
+  .card { display:flex; align-items:center; background:#fff; border:1px solid rgba(31,29,26,.07); border-radius:18px;
+    padding:10px 14px; box-shadow:0 4px 10px rgba(31,29,26,.05); }
+  .thumb { width:64px; height:64px; border-radius:12px; flex-shrink:0; object-fit:cover; margin-right:12px; background:#F6F4F1; }
+  .col { flex:1; min-width:0; }
+  .col .ti { font-size:15px; font-weight:600; line-height:20px; }
+  .col .de { font-size:13px; color:#5C574F; margin-top:2px; }
+  .col .tm { font-size:11px; color:#9C968C; margin-top:3px; }
+  .pill { flex-shrink:0; margin-left:10px; background:#F1ECFB; color:#6B4FD0; font-size:12px; font-weight:600;
+    padding:7px 13px; border-radius:999px; }
+  .note { font-size:12px; color:#9C968C; margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <h1>营养搭配卡 · 修复预览</h1>
+  <p class="sub">顶部白边裁掉前 / 后对比（其余 5 张卡无此问题，未动）。</p>
+
+  <div class="sec">
+    <h2>① 工具页「营养搭配」大卡</h2>
+    <div class="row">
+      <div class="cell">
+        <div class="tool">
+          <span class="bad">改前：顶部缺一块</span>
+          <img src="food_before.jpg" />
+          <div class="cap"><div class="t">营养搭配</div><div class="d">吃对，激素稳，能量也更平稳。</div><div class="m">6 份食谱 · 经期饮食指南</div></div>
+        </div>
+        <p class="lbl">改前：顶部约 9% 是纯白留白，看着像缺了一块</p>
+      </div>
+      <div class="cell">
+        <div class="tool">
+          <img src="/src/assets/tool_food.jpg" />
+          <div class="cap"><div class="t">营养搭配</div><div class="d">吃对，激素稳，能量也更平稳。</div><div class="m">6 份食谱 · 经期饮食指南</div></div>
+        </div>
+        <p class="lbl">改后：白边裁掉，食物图顶到卡片上沿</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>② 「我收藏的建议」卡片（新布局）</h2>
+    <div class="deck">
+      <div class="deckH"><span class="ti">我收藏的建议</span><span class="co">共 3 条 ›</span></div>
+      <div class="card">
+        <img class="thumb" src="/src/assets/card_food.jpg" />
+        <div class="col">
+          <div class="ti">发现「换着吃点温热的」之后，你的状态有变好哦</div>
+          <div class="de">确认有帮助 3 次 · HRV 回升 8%</div>
+          <div class="tm">最近一次：今天 14:30</div>
+        </div>
+        <div class="pill">再做一次</div>
+      </div>
+      <p class="note">· 图放大 56→64，卡片高 104→92，整体更矮更紧凑<br/>·「再做一次」移到卡片最右侧（垂直居中），点它直接跳转，不再弹底部清单</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -256,16 +256,28 @@ export default function AllDayBarsChart({
   );
 }
 
-/** 全天柱状小条的图例（三色分段 + 均值线），供各页面复用同一套文案与色 */
-export function DayBarsLegend({ showMean = true }: { showMean?: boolean }) {
-  const items: { color: string; label: string; kind: 'bar' | 'line' }[] = [
-    { color: chart.dayBarSegment.sleep, label: '睡眠', kind: 'bar' },
-    { color: chart.dayBarSegment.awake, label: '清醒', kind: 'bar' },
-    { color: chart.dayBarSegment.active, label: '活动', kind: 'bar' },
+/**
+ * 全天柱状小条的图例。
+ *
+ * 默认三色分段（睡眠/清醒/活动，供 HR / 血氧 / HRV 等用 `segmentOf` 的图使用）；
+ * `items` 可传自定义项（情绪这类「状态型」图用 colorOf 按方向分色，图例也要跟着换，
+ * 否则图例写「睡眠/清醒/活动」而柱子按情绪方向着色，用户完全对不上 —— 用户 2026-10-12 实锤）。
+ */
+export function DayBarsLegend({
+  showMean = true,
+  items,
+}: {
+  showMean?: boolean;
+  items?: { color: string; label: string }[];
+}) {
+  const its: { color: string; label: string }[] = items ?? [
+    { color: chart.dayBarSegment.sleep, label: '睡眠' },
+    { color: chart.dayBarSegment.awake, label: '清醒' },
+    { color: chart.dayBarSegment.active, label: '活动' },
   ];
   return (
     <View style={styles.legend}>
-      {items.map((it) => (
+      {its.map((it) => (
         <View key={it.label} style={styles.legendItem}>
           <View style={[styles.legendSwatch, { backgroundColor: it.color }]} />
           <Text style={styles.legendText}>{it.label}</Text>
