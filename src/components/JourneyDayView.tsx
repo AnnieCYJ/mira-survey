@@ -1,6 +1,12 @@
 /**
- * JourneyDayView —— Calendar 页「日」Tab · 今日旅程（曲线流）
- * ★ 2026-10-10（用户，方案 A + 补充）：顶部 14 天日期条横滑——
+ * JourneyDayView —— 单日旅程（曲线流）
+ *
+ * 使用位置：
+ *   · ★ 2026-10-12 起：Calendar 月历**点某一天 → 下抽屉**（DayDrawer）里展示那一天；
+ *     Calendar 页顶部原「日 / 月」tab 已移除。
+ *   · 不传 `date` 时锚点 = 今天（等同旧的「今日旅程」行为）。
+ *
+ * ★ 2026-10-10（用户，方案 A + 补充）：顶部日期条横滑——
  *   选中那天**自动滚动居中 + 紫底变色**，中央渐变曲线**从选中格正下方引出**、
  *   向下延伸，左右交替白卡挂两侧；曲线加粗（4.5）+ 卡片收窄（50%）保证线明显可见。
  *   数据 = buildTodayTimeline(date)（真实生理数据 + 用户自报，无 AI，品牌铁律）。
@@ -20,7 +26,8 @@ import type { TimelineItem } from './TodayTimelineCard';
 const ROW_H = theme.sp(26);          // 每行 104：卡片区高
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
 const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
-const STRIP_DAYS = 14;               // 日期条：今天往前 14 天（升序，今天在最右）
+const STRIP_BACK = 9;                // 日期条：锚点前 9 天
+const STRIP_FWD = 4;                 // 日期条：锚点后 4 天（并裁剪到今天）
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const CELL_W = theme.sp(11);         // 日期格 44
 const CELL_GAP = theme.sp(2);        // 格间距 8
@@ -95,21 +102,31 @@ function buildWavePath(height: number, count: number): string {
   return d;
 }
 
-export default function JourneyDayView() {
-  // 日期条：今天往前 14 天（升序，今天在最右）
+/**
+ * ★ 2026-10-12（用户）：支持从月历点某一天打开 —— 传 `date` 即以该日为锚点
+ *   （日期条窗口跟着那天走、选中那天居中），不传则等同旧行为（锚点=今天）。
+ */
+export default function JourneyDayView({ date }: { date?: Date } = {}) {
+  const anchor = useMemo(() => {
+    const d = date ?? new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }, [date]);
+
+  // 日期条：锚点前 9 天 ~ 后 4 天（升序；不展示未来，故裁剪到今天）。
+  // 锚点=今天时窗口正好是「今天往前 14 天」，与旧实现完全一致。
   const days = useMemo(() => {
-    const today = new Date();
+    const t = new Date();
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
     const arr: Date[] = [];
-    for (let i = STRIP_DAYS - 1; i >= 0; i--) {
-      arr.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i));
+    for (let i = -STRIP_BACK; i <= STRIP_FWD; i++) {
+      const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + i);
+      if (d.getTime() > today.getTime()) continue;
+      arr.push(d);
     }
     return arr;
-  }, []);
+  }, [anchor]);
 
-  const [selDate, setSelDate] = useState<Date>(() => {
-    const t = new Date();
-    return new Date(t.getFullYear(), t.getMonth(), t.getDate());
-  });
+  const [selDate, setSelDate] = useState<Date>(anchor);
 
   const stripRef = useRef<ScrollView>(null);
   const stripW = useRef(0);
@@ -129,6 +146,16 @@ export default function JourneyDayView() {
       centerSel(selDate, false);
     }
   }, [selDate, centerSel]);
+
+  // ★ 2026-10-12：锚点变化（月历换了另一天打开）→ 选中日同步 + 重新居中
+  useEffect(() => {
+    setSelDate(anchor);
+    initialScrollDone.current = false;
+    if (stripW.current > 0) {
+      initialScrollDone.current = true;
+      centerSel(anchor, false);
+    }
+  }, [anchor, centerSel]);
 
   const result = useMemo(() => {
     try { return buildTodayTimeline(undefined, selDate); } catch { return null; }
@@ -228,6 +255,11 @@ export default function JourneyDayView() {
               <Text style={styles.sumNum}>{items.length}</Text> 条记录
               {items.length > 1 ? ` · 从 ${items[0].time} 到 ${items[items.length - 1].time}` : ''}
             </Text>
+            {items.length >= 2 && (
+              <Text style={styles.valueText} numberOfLines={2}>
+                当天先记录「{items[0].title}」，之后又出现「{items[items.length - 1].title}」；这是一条可继续观察的变化线索。
+              </Text>
+            )}
           </View>
         </>
       )}
@@ -302,6 +334,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center', maxWidth: '100%',
     shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity * 0.7,
     shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: mm.shadow.height }, elevation: 2,
+  },
+  valueText: {
+    marginTop: theme.sp(1.25), fontSize: theme.fontSize.micro, lineHeight: theme.fs(16),
+    color: mm.colors.inkFaint, textAlign: 'center',
   },
   sumText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, textAlign: 'center' },
   sumNum: { fontWeight: theme.weight.bold as never, color: mm.colors.ink },

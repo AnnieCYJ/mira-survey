@@ -19,7 +19,7 @@
  * 否则用户会以为 App 出 bug。**这条比算法本身重要。**
  */
 
-import { healthStore, dayKey as hsDayKey, type SleepSummary } from '../data/healthStore';
+import { healthStore, dayKey as hsDayKey, parseDayKey, type SleepSummary } from '../data/healthStore';
 import { computePersonalizedSleepScore, type PersonalizedSleepResult } from './sleepScore';
 import {
   buildSleepDimensionCenters, computeSleepRegularity,
@@ -76,8 +76,34 @@ function findTonightSleep(nowMs: number): { s: SleepSummary; dk: string } | null
 /**
  * 主入口：算「今晚的睡眠恢复分 + 规律性」。
  * @param nowMs 当前时间（默认 Date.now）
+ *
+ * ★ 2026-10-13（用户：「为啥不是像 Oura/WHOOP 醒来就定了？因为睡眠时间已经定了啊」）
+ *    —— **醒来即定稿**。原「醒后 90 分钟才冻」是我自己加的保险（防 SDK 分批回传掀翻分数），
+ *    想当然且正是「白天分数还在变」的体感来源，已删除。Oura/WHOOP 敢醒来即定，
+ *    是因为窗口一关、输入（时长/分期/HRV/静息心率）全部封闭；这里同理。
+ *    · 定稿条件：`now ≥ 当天 wakeTime`（窗口已关）+ `deep > 0`（分期数据已到账，
+ *      防锁到分批回传的半截数据）+ 夜间主睡眠窗（total ≥ 150min 且 wakeHour < 12，
+ *      防白天小睡把当天定稿值覆盖掉）。三条同时满足才冻结；分期没到账就继续实时算，
+ *      下次调用到齐即冻 —— 正常情况（会话一次性带回）醒来第一次调用就定稿。
+ *    · 快照持久化在 `healthStore.analysis[dk].sleepRecovery`（按天、重启不丢）；
+ *    · 历史日（周/月/年图表逐日调用）读同一快照，零漂移。
  */
 export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPersonalizedReport {
+  const dk = hsDayKey(nowMs);
+  // ① 已定稿 ⇒ 直接返回快照：当天后续同步再怎么补写睡眠明细，分数都不动
+  const snap = healthStore.getAnalysis(dk)?.sleepRecovery;
+  if (snap) {
+    return {
+      score: snap.score,
+      mode: snap.mode,
+      baselineDays: snap.baselineDays,
+      daysToReady: snap.daysToReady,
+      regularity: snap.regularity,
+      sourceDayKey: snap.sourceDayKey,
+      physiologyCoverage: snap.physiologyCoverage,
+    };
+  }
+
   const tonight = findTonightSleep(nowMs);
   if (!tonight) {
     return {
@@ -141,7 +167,10 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
     const values: number[] = [];
     for (let daysAgo = 0; daysAgo <= 30; daysAgo++) {
       const dk = hsDayKey(nowMs - daysAgo * 86400000);
-      const v = healthStore.getMetricDailyMean(m.key, dk);
+      // ★ 2026-10-12：只看那一觉的睡眠时段生理，不取整日均值 ——
+      //   今天早上醒来后，夜间读数不再增加 ⇒ 当天恢复分稳定，不再随白天累积而漂移。
+      const sleep = daysAgo === 0 ? tonight.s : healthStore.getSleep(dk);
+      const v = healthStore.getSleepWindowMetricMean(m.key, dk, sleep?.bedHour, sleep?.wakeHour);
       if (v != null) values.push(v);
     }
     if (values.length < 2) continue;
@@ -165,7 +194,8 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
   const coreEffOk = coreAwake <= 0 || coreAwake / Math.max(1, tonight.s.total ?? 1) <= 0.15;
   if (coreTotalOk && coreEffOk) score = Math.max(score, 60);
 
-  return {
+  // ── 定稿：这一觉的窗口已关闭（now ≥ 当天 wakeTime）⇒ 冻结当天 report ──
+  const report: SleepPersonalizedReport = {
     score,
     mode: res.mode,
     baselineDays: res.baselineDays,
@@ -174,6 +204,18 @@ export function computeSleepPersonalized(nowMs: number = Date.now()): SleepPerso
     sourceDayKey: tonight.dk,
     physiologyCoverage,
   };
+  const wakeHour = tonight.s.wakeHour;
+  if (wakeHour != null && Number.isFinite(wakeHour)) {
+    const wakeAbs = parseDayKey(dk) + wakeHour * 3_600_000;
+    // 夜间主睡眠窗才定稿：时长 ≥ 2.5h 且中午前醒 —— 白天小睡不覆盖当天定稿值
+    const isNightWindow = (tonight.s.total ?? 0) >= 150 && wakeHour < 12;
+    // 分期数据已到账才定稿：防 SDK 分批回传时锁到「有时长没分期」的半截数据
+    const stagesSynced = (tonight.s.deep ?? 0) > 0;
+    if (isNightWindow && stagesSynced && nowMs >= wakeAbs) {
+      healthStore.saveAnalysis(dk, 'sleepRecovery', { ...report, frozenAt: Date.now() });
+    }
+  }
+  return report;
 }
 
 /**

@@ -24,6 +24,19 @@ export interface AskOptions {
   onError?: (e: Error) => void;
 }
 
+/** ★ 2026-10-12（用户深夜被问「早上好」）：模型没有时间感知，全靠训练先验猜问候，
+ *  必须在 prompt 里注入真实当前时间。问候/提到早晚一律以本块为准。 */
+export function buildTimeBlock(now: Date = new Date()): string {
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const hh = now.getHours();
+  const mm = now.getMinutes();
+  const hhmm = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const period =
+    hh < 5 ? '凌晨' : hh < 8 ? '早上' : hh < 12 ? '上午' : hh < 13 ? '中午'
+    : hh < 18 ? '下午' : hh < 23 ? '晚上' : '深夜';
+  return `【当前时间】\n现在是 ${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日 星期${weekdays[now.getDay()]} ${hhmm}（${period}）。`;
+}
+
 /** 主入口：问 Mira 一句，流式返回 */
 export async function ask(userText: string, opts: AskOptions = {}): Promise<string> {
   const recentText = [userText, ...(opts.history || []).map((m) => m.content)].join('\n');
@@ -54,6 +67,8 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
   const health = needsHealth ? buildHealthSnapshot() : '';
 
   const messages: { role: string; content: string }[] = [
+    // ★ 时间放最前面：问候/早晚判断的唯一事实来源（2026-10-12 修「早上好」bug）
+    { role: 'system', content: buildTimeBlock() },
     { role: 'system', content: lightSystem },
     ...(companion ? [{ role: 'system', content: companion }] : []),
     ...(memBlock ? [{ role: 'system', content: memBlock }] : []),

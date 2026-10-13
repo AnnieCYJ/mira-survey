@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>月度发现 · B 视觉 + A 洞察（合并稿）· 2026-10-12 19:07</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#706A61;
+    --card:#FFFFFF; --line:rgba(31,29,26,0.09); --empty:#F6F4F1;
+    --lavS:#E7E1FB; --pinkS:#FCE7F0; --skyS:#E3EBFE; --limeS:#EAF0BE; --butterS:#FBEFD6;
+    --lavD:#6E58C8; --pinkD:#C9598A; --skyD:#4C74C9; --limeD:#6E7A24; --butterD:#B98A2E;
+    --lavC:#9D8AF0; --limeM:#BCCB62; --limeC:#D5E384;
+    --radius:14px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;background:#ECE8E2;padding:0 0 56px;color:var(--ink);}
+  .pageHead{max-width:460px;margin:0 auto;padding:24px 18px 4px;}
+  .pageHead h1{font-size:21px;margin:0 0 8px;letter-spacing:-.4px;}
+  .pageHead p{margin:0 0 6px;font-size:12.5px;line-height:1.8;color:var(--inkSoft);}
+  .pageHead .q{border-left:3px solid var(--lavC);padding-left:10px;color:var(--ink);}
+
+  .phone{width:396px;max-width:calc(100% - 24px);margin:14px auto 0;background:#F7F5FE;border-radius:34px;overflow:hidden;box-shadow:0 18px 50px rgba(31,29,26,.18);border:1px solid rgba(255,255,255,.5);}
+  .screen{padding:16px 16px 26px;background:linear-gradient(180deg,#EDEAFB 0%,#F4F1FE 38%,#F7F5FE 100%);}
+  .ptitle{font-size:30px;font-weight:600;color:var(--ink);letter-spacing:-.6px;margin:2px 0 14px;}
+
+  .stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;}
+  .sarrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--ink);box-shadow:0 1px 4px rgba(31,29,26,.08);}
+  .scenter{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--lavD);background:var(--lavS);border-radius:999px;padding:9px 0;}
+  .scenterText{font-size:15px;font-weight:700;color:var(--ink);}
+  .scal{width:14px;height:14px;border-radius:4px;background:var(--lavD);opacity:.55;}
+
+  .hero{padding:0 2px;margin:0 0 14px;}
+  .hero .hHead{font-size:17px;font-weight:700;letter-spacing:-.3px;color:var(--ink);}
+  .hero .hSub{font-size:13px;line-height:18px;margin-top:6px;color:var(--inkSoft);}
+
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px;}
+  .dow span{text-align:center;font-size:11px;color:var(--inkFaint);font-weight:600;}
+  .grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+  .cell{aspect-ratio:1/1.32;border-radius:11px;position:relative;padding:2px;}
+  .cell.today{background:var(--butterS);}
+  .cellnum{font-size:10px;color:var(--inkFaint);font-weight:600;position:absolute;top:4px;left:5px;line-height:1;}
+  .cell.today .cellnum{color:var(--butterD);font-weight:800;}
+  .stack{position:absolute;inset:14px 3px 4px;display:flex;align-items:center;justify-content:center;}
+  .ph{position:absolute;width:40px;height:40px;border-radius:8px;object-fit:cover;box-shadow:0 1px 3px rgba(0,0,0,.18);border:1.5px solid #fff;}
+  .ph.a{transform:rotate(-8deg) translate(-4px,-2px);z-index:1;}
+  .ph.b{transform:rotate(4deg) translate(1px,1px);z-index:2;}
+  .ph.c{transform:rotate(-3deg) translate(5px,-1px);z-index:3;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-top:12px;box-shadow:0 4px 16px rgba(80,60,140,.05);}
+  .chead{display:flex;align-items:center;gap:8px;margin-bottom:13px;}
+  .chead .ic{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;}
+  .chead .ct{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.3px;}
+  .cnote{font-size:11px;color:var(--inkFaint);margin-top:12px;line-height:1.6;}
+
+  /* ─ B 时间指纹热力 ─ */
+  .hm{display:grid;grid-template-columns:52px repeat(7,1fr);gap:4px;align-items:center;}
+  .hmLab{font-size:10px;color:var(--inkFaint);text-align:right;padding-right:4px;font-weight:600;line-height:1.25;}
+  .hmDow{font-size:10px;color:var(--inkFaint);text-align:center;font-weight:600;margin-bottom:1px;}
+  .hmCell{aspect-ratio:1/1;border-radius:5px;background:var(--empty);}
+  .hmLegend{display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:9px;}
+  .hmLegend span{font-size:10px;color:var(--inkFaint);}
+  .hmLegend i{width:11px;height:11px;border-radius:3.5px;display:block;}
+  .hmBig{margin-top:14px;}
+  .hmBigNum{font-size:26px;font-weight:800;letter-spacing:-.7px;line-height:30px;}
+  .hmBigNum i{font-style:normal;font-size:13px;font-weight:600;color:var(--inkSoft);margin-left:3px;}
+  .hmBigLab{font-size:12px;color:var(--inkSoft);margin-top:3px;}
+
+  /* ─ C 节奏点阵 ─ */
+  .rstrip{display:grid;grid-template-columns:repeat(31,1fr);gap:2.5px;}
+  .rsCell{aspect-ratio:1;border-radius:3px;background:var(--empty);}
+  .rsAxis{display:grid;grid-template-columns:repeat(31,1fr);gap:2.5px;margin-top:5px;}
+  .rsAxis span{font-size:8.5px;color:var(--inkFaint);text-align:center;}
+  .rsMore{display:flex;align-items:center;gap:6px;justify-content:space-between;margin-top:11px;}
+  .rsMore b{font-size:12px;color:var(--ink);font-weight:700;}
+  .rsStat{display:flex;gap:8px;margin-top:13px;}
+  .rsBox{flex:1;border-radius:11px;padding:10px 11px;}
+  .rsBoxNum{font-size:21px;font-weight:800;letter-spacing:-.6px;line-height:24px;}
+  .rsBoxNum i{font-style:normal;font-size:11px;font-weight:600;color:var(--inkSoft);margin-left:2px;}
+  .rsBoxLab{font-size:10.5px;color:var(--inkSoft);margin-top:3px;line-height:1.4;}
+
+  /* ─ 洞察发现（icon + 文字，直接显示，无 Mira 包装）─ */
+  .findCard .obs:first-child{margin-top:0;}
+  .obs{margin-top:14px;display:flex;gap:9px;}
+  .obsIco{width:26px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+  .obsBody{flex:1;min-width:0;}
+  .obsText{font-size:13.5px;line-height:20.5px;color:var(--inkSoft);}
+  .obsText b{color:var(--ink);font-weight:700;}
+  .obsChip{display:inline-block;font-size:10.5px;font-weight:600;border-radius:999px;padding:2.5px 8px;margin-top:6px;}
+
+  /* ─ 你做过多少次（习惯卡：你做过多少次什么）─ */
+  .habRow{display:flex;gap:11px;padding:13px 0;border-top:1px solid var(--line);}
+  .habRow:first-of-type{border-top:none;padding-top:2px;}
+  .habIco{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .habBody{flex:1;min-width:0;}
+  .habName{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-.2px;}
+  .habSub{font-size:11.5px;color:var(--inkSoft);margin-top:2px;line-height:1.45;}
+  .habBar{height:5px;border-radius:3px;background:var(--empty);margin-top:8px;overflow:hidden;}
+  .habFill{height:5px;border-radius:3px;}
+  .habBottom{font-size:10.5px;color:var(--inkFaint);margin-top:7px;}
+  .habRight{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;flex-shrink:0;margin-left:6px;}
+  .habNum{font-size:23px;font-weight:800;letter-spacing:-.6px;line-height:24px;color:var(--ink);}
+  .habUnit{font-size:11px;color:var(--inkSoft);font-weight:600;margin-top:1px;}
+</style>
+</head>
+<body>
+
+<div class="pageHead">
+  <h1>月度发现 · 合并稿（B 视觉 + A 洞察，去掉 Mira 包装）</h1>
+  <p class="q">「不用 Mira 的观察了，下边直接显示那个 icon 和它后边那个话就行了，就连着 44 这个标识『你的记录出现在夜间』；再往下，就是那些直接的内容 —— 你做过多少次什么。」</p>
+  <p>单屏预览：<b>时间指纹热力</b>（B 方块 + 表 + 44% 主数字）→ 紧接着直接显示 <b>icon + 文字洞察</b>（不再套「Mira 的观察」外壳）→ 最下方 <b>你做过多少次</b> 习惯卡（你做过多少次什么）。数字为示例占位，真机按本机记录实时算。</p>
+</div>
+
+<div class="phone"><div class="screen">
+  <div class="ptitle">Calendar</div>
+  <div class="stepper"><div class="sarrow">‹</div><div class="scenter"><span class="scal"></span><span class="scenterText">2026年8月</span></div><div class="sarrow">›</div></div>
+  <div class="hero"><div class="hHead">稳步向上的一个月</div><div class="hSub">你留下了 23 天记录，这个月一直挺稳的。</div></div>
+  <div class="dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+  <div class="grid7" id="cal"></div>
+
+  <!-- ══ B · 时间指纹热力（方块 + 表 + 图例 + 主数字）══ -->
+  <div class="card">
+    <div class="chead"><span class="ic" style="background:#E7E1FB"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span class="ct">你的时间指纹</span></div>
+    <div class="hm" id="hmGrid"></div>
+    <div class="hmLegend">
+      <span>少</span><i style="background:#F6F7DC"></i><i style="background:#D5E384"></i><i style="background:#BCCB62"></i><i style="background:#6E7A24"></i><span>多</span>
+    </div>
+    <div class="hmBig">
+      <div class="hmBigNum" style="color:#6E58C8">44<i>%</i></div>
+      <div class="hmBigLab">你的记录出现在夜间 21–24 点</div>
+    </div>
+    <div class="cnote">色深 = 那个时段做了多少次 · 按小时和星期把你的记录铺开看</div>
+  </div>
+
+  <!-- ══ 洞察发现（icon + 文字，直接显示；紧接着 44% 标识，无 Mira 包装）══ -->
+  <div class="card findCard">
+    <div class="obs">
+      <div class="obsIco" style="background:#E7E1FB"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+      <div class="obsBody">
+        <div class="obsText">你做过的呼吸练习几乎都在晚上 —— <b>18 次里有 15 次在 22 点以后</b>。那大概是你一天里真正安静下来的时刻。</div>
+        <div class="obsChip" style="background:#E7E1FB;color:#6E58C8">夜间 22:00–24:00 · 15 / 18 次</div>
+      </div>
+    </div>
+
+    <div class="obs">
+      <div class="obsIco" style="background:#EAF0BE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+      <div class="obsBody">
+        <div class="obsText">认真记饮食的那 <b>21 天</b>，你的深睡平均 <b>23%</b>；没记的那 <b>10 天</b>平均 <b>19%</b>。我不下结论，但这个差别挺明显的。</div>
+        <div class="obsChip" style="background:#EAF0BE;color:#6E7A24">记饮食 21 天 · 没记 10 天</div>
+      </div>
+    </div>
+
+    <div class="obs">
+      <div class="obsIco" style="background:#E3EBFE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4C74C9" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v4h4"/></svg></div>
+      <div class="obsBody">
+        <div class="obsText">8 月 10 日到 14 日，你的睡前呼吸<b>连着 5 天没断过</b> —— 那几天都是工作日。一到周末就断了，这不是你的错呀。</div>
+        <div class="obsChip" style="background:#E3EBFE;color:#4C74C9">最长连续 5 天 · 8/10–8/14</div>
+      </div>
+    </div>
+
+    <div class="obs">
+      <div class="obsIco" style="background:#FBEFD6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 5-7 4 5"/></svg></div>
+      <div class="obsBody">
+        <div class="obsText">深睡占比从月初的 <b>18%</b> 走到月末的 <b>24%</b>。数字不大，但方向很清楚。</div>
+        <div class="obsChip" style="background:#FBEFD6;color:#B98A2E">+6 个百分点 · 月度最高 27%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 你做过多少次（习惯卡：你做过多少次什么）══ -->
+  <div class="card">
+    <div class="chead"><span class="ic" style="background:#EAF0BE"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span class="ct">你做过多少次</span></div>
+
+    <div class="habRow">
+      <div class="habIco" style="background:#EAF0BE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h12"/></svg></div>
+      <div class="habBody">
+        <div class="habName">记录饮食</div>
+        <div class="habSub">血糖波动收窄了，午后没那么困</div>
+        <div class="habBar"><div class="habFill" style="width:100%;background:#6E7A24"></div></div>
+        <div class="habBottom">8/2 起 · 最近 8/29 · 平均每周 5.3 次</div>
+      </div>
+      <div class="habRight"><div class="habNum">21</div><div class="habUnit">次</div></div>
+    </div>
+
+    <div class="habRow">
+      <div class="habIco" style="background:#E7E1FB"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+      <div class="habBody">
+        <div class="habName">睡前呼吸</div>
+        <div class="habSub">深睡连着 3 天变好，睡得沉了些</div>
+        <div class="habBar"><div class="habFill" style="width:86%;background:#6E58C8"></div></div>
+        <div class="habBottom">8/4 起 · 最近 8/28 · 平均每周 4.5 次</div>
+      </div>
+      <div class="habRight"><div class="habNum">18</div><div class="habUnit">次</div></div>
+    </div>
+
+    <div class="habRow">
+      <div class="habIco" style="background:#E3EBFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C74C9" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+      <div class="habBody">
+        <div class="habName">读文章</div>
+        <div class="habSub">HRV 回升 8%，晚上刷手机少了</div>
+        <div class="habBar"><div class="habFill" style="width:57%;background:#4C74C9"></div></div>
+        <div class="habBottom">8/3 起 · 最近 8/27 · 平均每周 1.8 篇</div>
+      </div>
+      <div class="habRight"><div class="habNum">12</div><div class="habUnit">篇</div></div>
+    </div>
+  </div>
+</div></div>
+
+<script>
+  // ── 月历（2026年8月，周一起始）──
+  const CAL_YEAR=2026, CAL_MONTH=7, TODAY_DAY=29;
+  const CELLS = [
+    {d:1,m:[]},{d:2,m:[]},{d:3,m:['card_meditation','card_food']},{d:4,m:['card_food']},
+    {d:5,m:[]},{d:6,m:['card_activity','card_meditation']},{d:7,m:['card_emotion']},
+    {d:8,m:['card_food','card_activity','card_meditation']},{d:9,m:['card_relax']},{d:10,m:['card_meditation','card_food']},
+    {d:11,m:[]},{d:12,m:['card_activity']},{d:13,m:['card_food','card_emotion']},{d:14,m:['card_meditation','card_food','card_activity']},
+    {d:15,m:['card_relax']},{d:16,m:[]},{d:17,m:['card_food']},{d:18,m:['card_meditation','card_activity']},
+    {d:19,m:['card_emotion','card_food']},{d:20,m:['card_meditation']},{d:21,m:['card_activity','card_food','card_relax']},{d:22,m:['card_food']},
+    {d:23,m:['card_meditation','card_emotion']},{d:24,m:[]},{d:25,m:['card_activity']},{d:26,m:['card_food','card_meditation','card_relax']},
+    {d:27,m:['card_food']},{d:28,m:['card_emotion']},{d:29,m:['card_meditation','card_activity']},{d:30,m:['card_food']},
+    {d:31,m:['card_relax','card_meditation']}
+  ];
+  const ORDER=['a','b','c'];
+  (function(){
+    const g=document.getElementById('cal'); if(!g) return;
+    const lead=((new Date(CAL_YEAR,CAL_MONTH,1).getDay())+6)%7;
+    for(let i=0;i<lead;i++){const e=document.createElement('div');e.className='cell';g.appendChild(e);}
+    CELLS.forEach(c=>{
+      const e=document.createElement('div');
+      e.className='cell'+(c.d===TODAY_DAY?' today':'');
+      const num=document.createElement('div');num.className='cellnum';num.textContent=c.d;e.appendChild(num);
+      if(c.m.length){
+        const st=document.createElement('div');st.className='stack';
+        c.m.slice(0,3).forEach((img,i)=>{
+          const p=document.createElement('img');p.className='ph '+ORDER[i];
+          p.src='src/assets/'+img+'.jpg';
+          st.appendChild(p);
+        });
+        e.appendChild(st);
+      }
+      g.appendChild(e);
+    });
+  })();
+
+  // ── B 时间指纹热力（4 时段 × 7 天；值 = 该时段该天的记录次数；周末为 0）──
+  const HOURS=[
+    {lab:'清晨<br>5–9',  v:[0,0,1,0,1,0,0]},
+    {lab:'白天<br>9–18', v:[3,2,3,2,4,0,0]},
+    {lab:'傍晚<br>18–21',v:[2,3,2,2,3,0,0]},
+    {lab:'夜间<br>21–1', v:[4,3,5,4,6,0,0]}
+  ];
+  const LEV=['#F6F7DC','#D5E384','#BCCB62','#6E7A24'];
+  function level(n){ if(n<=0) return null; if(n<=1) return LEV[0]; if(n<=2) return LEV[1]; if(n<=4) return LEV[2]; return LEV[3]; }
+  (function(){
+    const g=document.getElementById('hmGrid'); if(!g) return;
+    const head=document.createElement('div'); head.className='hmLab'; g.appendChild(head);
+    ['一','二','三','四','五','六','日'].forEach(d=>{
+      const s=document.createElement('div'); s.className='hmDow'; s.textContent=d; g.appendChild(s);
+    });
+    HOURS.forEach(h=>{
+      const l=document.createElement('div'); l.className='hmLab'; l.innerHTML=h.lab; g.appendChild(l);
+      h.v.forEach(n=>{
+        const c=document.createElement('div'); c.className='hmCell';
+        const col=level(n); if(col) c.style.background=col;
+        g.appendChild(c);
+      });
+    });
+  })();
+</script>
+</body>
+</html>

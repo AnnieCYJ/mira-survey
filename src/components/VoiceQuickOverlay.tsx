@@ -5,7 +5,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
+import { useVoiceTriggerApi, useVoiceTriggerLive } from '../hooks/useVoiceTrigger';
 
 const SCREEN_W = Dimensions.get('window').width;
 // v20 §4.7：高 58px、radius pill
@@ -29,7 +29,10 @@ const RIM_W = 2.5;
  * 全 App 唯一「五色环绕」元素：白雾遮罩 + 白底 pill + 五色流动外圈 + 紫 mic/波柱。
  */
 export default function VoiceQuickOverlay() {
-  const { visible, inlineMode, onReleaseRef, setLiveText } = useVoiceTrigger();
+  // ★ 2026-10-12：直播态（visible/inlineMode/setLiveText）走 live context，
+  //   onReleaseRef 走稳定 API context——浮层自己就是转写展示者，订阅 live 正合适。
+  const { visible, inlineMode, setLiveText } = useVoiceTriggerLive();
+  const { onReleaseRef } = useVoiceTriggerApi();
   const { state, transcript, start, stop, peek } = useVoiceInput();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   // 外圈流动：0 → -PILL_W（一个周期），6s linear 循环

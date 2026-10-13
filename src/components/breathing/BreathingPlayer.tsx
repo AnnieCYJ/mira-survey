@@ -1,21 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Easing, ImageBackground, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ImageBackground, SafeAreaView } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Audio } from 'expo-av';
-import BreathingEngine, { BREATH_PATTERNS, BreathStyle } from './BreathingEngine';
+import BreathingEngine, { BREATH_PATTERNS } from './BreathingEngine';
 import { theme } from '../../theme/theme';
 import Icon from '../Icon';
 import { addInterventionEntry } from '../../data/interventionLog';
 
 interface Props {
   patternKey: keyof typeof BREATH_PATTERNS;
-  style?: BreathStyle;
   duration?: number;
   audioUri?: string;
   onClose?: () => void;
 }
 
 export default function BreathingPlayer({
-  patternKey, style = 'orb', duration = 0, audioUri, onClose,
+  patternKey, duration = 0, audioUri, onClose,
 }: Props) {
   const pattern = BREATH_PATTERNS[patternKey];
   const [playing, setPlaying] = useState(false);
@@ -51,14 +51,15 @@ export default function BreathingPlayer({
     } catch (e) { console.warn('音频加载失败:', e); }
   };
 
-  const handlePlay = async () => {
-    if (!soundRef.current) await loadAudio();
-    setPlaying(true);
-    await soundRef.current?.playAsync();
-  };
-  const handlePause = async () => {
-    setPlaying(false);
-    await soundRef.current?.pauseAsync();
+  const handleToggle = async () => {
+    if (playing) {
+      setPlaying(false);
+      await soundRef.current?.pauseAsync();
+    } else {
+      if (!soundRef.current) await loadAudio();
+      setPlaying(true);
+      await soundRef.current?.playAsync();
+    }
   };
 
   const formatTime = (s: number) => {
@@ -71,12 +72,21 @@ export default function BreathingPlayer({
   return (
     <View style={styles.root}>
     <ImageBackground
-      source={pattern.bg ?? require('../../assets/breathing/bg_box.jpg')}
+      source={pattern.bg ?? require('../../assets/breathing/bg_box_v2.jpg')}
       style={styles.fullScreen}
       imageStyle={{ resizeMode: 'cover' }}
     >
-      {/* 暗化层 */}
-      <View style={styles.overlay} />
+      {/* 压暗渐变层：顶部/底部加重，让白环与白字在任何照片上都可读 */}
+      <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="bgShade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#0A0A14" stopOpacity={patternKey === 'sleep' ? 0.42 : 0.28} />
+            <Stop offset="0.45" stopColor="#0A0A14" stopOpacity={patternKey === 'sleep' ? 0.18 : 0.10} />
+            <Stop offset="1" stopColor="#0A0A14" stopOpacity={patternKey === 'sleep' ? 0.48 : 0.34} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgShade)" />
+      </Svg>
 
       {/* 关闭按钮 —— SafeAreaView 外层 */}
       <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}>
@@ -92,7 +102,7 @@ export default function BreathingPlayer({
 
         {/* 呼吸引擎 */}
         <View style={styles.engineWrap}>
-          <BreathingEngine pattern={pattern} style={style} isPlaying={playing || duration === 0} size={220} />
+          <BreathingEngine pattern={pattern} isPlaying={playing || duration === 0} size={220} />
         </View>
 
         {/* 时长 */}
@@ -103,13 +113,10 @@ export default function BreathingPlayer({
           <Text style={styles.timer}>{totalSec}s 循环</Text>
         )}
 
-        {/* 控制 */}
+        {/* 控制（开始/暂停合并为一个开关） */}
         <View style={styles.controls}>
-          <Pressable onPress={handlePlay} style={({ pressed }) => [styles.playBtn, pressed && { opacity: 0.8 }]}>
-            <Icon name="play" size={24} color="#fff" />
-          </Pressable>
-          <Pressable onPress={handlePause} style={({ pressed }) => [styles.pauseBtn, pressed && { opacity: 0.8 }]}>
-            <Icon name="pause" size={22} color="#fff" />
+          <Pressable onPress={handleToggle} style={({ pressed }) => [styles.playBtn, pressed && { opacity: 0.8 }]}>
+            <Icon name={playing ? 'pause' : 'play'} size={24} color="#fff" />
           </Pressable>
         </View>
       </SafeAreaView>
@@ -124,7 +131,6 @@ const styles = StyleSheet.create({
     flex: 1, width: '100%', height: '100%',
   },
   safe: { flex: 1, paddingHorizontal: theme.space.card, paddingTop: 60, paddingBottom: 40 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
   closeBtn: {
     position: 'absolute', top: 50, right: theme.space.card,
     width: 36, height: 36, borderRadius: 18,
@@ -140,18 +146,12 @@ const styles = StyleSheet.create({
     color: '#fff', textAlign: 'center', marginBottom: theme.space.md,
     textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 6,
   },
-  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', zIndex: 10, gap: theme.space.lg },
+  controls: { justifyContent: 'center', alignItems: 'center', zIndex: 10 },
   playBtn: {
-    width: 68, height: 68, borderRadius: 34,
-    backgroundColor: theme.colors.accentSolid,
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 6 }, shadowRadius: 12, elevation: 4,
-  },
-  pauseBtn: {
-    marginLeft: theme.space.lg,
-    width: 52, height: 52, borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
-    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, elevation: 4,
   },
 });

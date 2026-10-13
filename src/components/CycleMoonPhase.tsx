@@ -133,6 +133,9 @@ interface Props {
   headLabel?: string;
   /** ★ 覆盖中央副标题（如历史周期显示「共 N 天」）；不传则用距下次经期 */
   subLabel?: string;
+  /** ★ 2026-10-12（用户：洞察页环缩到 220 后，环内文字显大）：compact 模式缩小中央文字，
+   *  供 InsightScreen·CyclePhaseCard（小环）使用；周期日历页（大环 350）不传，保持原大小。 */
+  compact?: boolean;
 }
 
 export default function CycleMoonPhase({
@@ -144,6 +147,7 @@ export default function CycleMoonPhase({
   activeDay,
   headLabel,
   subLabel,
+  compact,
 }: Props) {
   const screenW = Dimensions.get('window').width;
   const size = sizeProp ?? Math.round(Math.min(screenW * 0.84, 350));
@@ -242,10 +246,10 @@ export default function CycleMoonPhase({
           style={[styles.contentCol, { top: moonCy + moonR + size * 0.015 }]}
           pointerEvents="box-none"
         >
-          <Text style={styles.phaseLine}>
+          <Text style={[styles.phaseLine, compact && styles.phaseLineCompact]}>
             {headLabel ?? (day != null ? `${phaseText} 第 ${day} 天` : phaseText)}
           </Text>
-          <Text style={styles.subLine}>
+          <Text style={[styles.subLine, compact && styles.subLineCompact]}>
             {subLabel ??
               (cycleInfo?.daysToNextPeriod != null
                 ? `距下次经期约 ${cycleInfo.daysToNextPeriod} 天`
@@ -287,6 +291,9 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     fontSize: theme.fontSize.xs,
   },
+  /* ★ 2026-10-12：compact（小环）模式——中央文字整体降一档，避免 220 环里显得拥挤 */
+  phaseLineCompact: { fontSize: theme.fontSize.sm, letterSpacing: 0.2 },
+  subLineCompact: { fontSize: theme.fontSize.micro, marginTop: theme.sp(2) },
   logBtnCompact: {
     marginTop: theme.sp(4),
     paddingHorizontal: theme.sp(6),

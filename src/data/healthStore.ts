@@ -205,6 +205,22 @@ export interface AnalysisSnapshot {
     /** 冻结时间戳 */
     frozenAt: number;
   };
+  /**
+   * ★ 2026-10-13（用户：「为啥不是像 Oura/WHOOP 醒来就定了？因为睡眠时间已经定了啊」）：
+   * 睡眠恢复分的**定稿快照**。这一觉的窗口一关（过了当天 wakeTime、且分期数据已到账）
+   * 即冻结，当天后续 BLE 同步再补写睡眠明细也不翻动 —— Oura/WHOOP「醒来即定稿」同一心智。
+   * 持久化在此（而非内存变量）⇒ 重启 App 后当天仍是同一个值。
+   */
+  sleepRecovery?: {
+    score: number | null;
+    mode: 'relative' | 'absolute';
+    baselineDays: number;
+    daysToReady: number;
+    regularity: { score: number | null; midSdMin: number | null; wakeSdMin: number | null; bedSdMin: number | null; days: number };
+    sourceDayKey: string | null;
+    physiologyCoverage: number;
+    frozenAt: number;
+  };
   emotion?: {
     label: string;
     valence: number | null;
@@ -951,6 +967,40 @@ export class HealthStore {
     if (!d) return null;
     const v = d.last ?? d.mean;
     return v != null && Number.isFinite(v) ? v : null;
+  }
+
+  /**
+   * ★ 2026-10-12：取某指标在「该日睡眠时段」内的均值（入睡→起床，可跨午夜）。
+   *
+   * 为什么需要：睡眠恢复分的生理修正项原先读 `getMetricDailyMean`（= 当天**整日**均值，
+   * 含白天走动时累积的 HRV/RHR/体温读数）。于是「今天」的恢复分随白天样本增多而一直漂，
+   * 与「早上醒来、这觉睡完、恢复分就该定了」的预期相悖。
+   *
+   * 这里只取**那一觉夜里的生理**（入睡小时→起床小时，跨午夜时同时取起床日与前一日夜间段），
+   * 这觉定下来后夜间读数不再增加 ⇒ 当天恢复分稳定。无 bedHour/wakeHour 或夜间无读数时，
+   * 退回整日均值，避免把「没数据」读成 0。
+   */
+  getSleepWindowMetricMean(
+    metric: MetricKey,
+    dateKey: string,
+    bedHour?: number | null,
+    wakeHour?: number | null,
+  ): number | null {
+    const dk = normalizeDayKey(dateKey);
+    if (bedHour == null || wakeHour == null) return this.getMetricDailyMean(metric, dk);
+    const prevDk = dayKey(parseDayKey(dk) - 86400000);
+    const inWin = (h: number) =>
+      bedHour <= wakeHour ? (h >= bedHour && h < wakeHour) : (h >= bedHour || h < wakeHour);
+    const vals: number[] = [];
+    for (const pd of [dk, prevDk]) {
+      for (const p of this.getIntraday(metric, pd)) {
+        if (!Number.isFinite(p.v) || p.v <= 0) continue; // 0/负 = 原生占位符
+        if (inWin(new Date(p.t).getHours())) vals.push(p.v);
+      }
+    }
+    if (!vals.length) return this.getMetricDailyMean(metric, dk);
+    const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return Number.isFinite(m) ? m : null;
   }
 
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */

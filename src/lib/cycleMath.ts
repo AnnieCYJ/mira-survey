@@ -38,6 +38,7 @@ export function parseDate(s: string): Date {
 /** 生成与 RingBleManager.dayKeyOf 同款的 key：'YYYY-M-D'（无前导零） */
 // ★ 统一用 healthStore.dayKey 补零格式
 import { dayKey as _dayKey } from '../data/healthStore';
+import type { PeriodDayLog } from '../data/cycleLog';
 export function dayKey(d: Date | number): string {
   const ts = typeof d === 'number' ? d : d.getTime();
   return _dayKey(ts);
@@ -98,6 +99,15 @@ export interface CycleInfo {
   nextPeriodRange?: [string, string] | null;
   /** 当前周期日的雌激素指数（0–100，建模估算，非实测；无记录为 null） */
   estrogenIndex?: number | null;
+  /**
+   * ★ 2026-10-12：当前查询日所在「经期」的真实区间与来源。
+   * periodActive = 查询日是否处于经期；periodSource = 'flow'（经量中断收口）/ 'explicit'
+   * （用户点过结束）/ 'calendar'（无经量记录时退回日历天数）/ 'none'。
+   */
+  periodActive?: boolean;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  periodSource?: 'flow' | 'explicit' | 'calendar' | 'none';
 }
 
 export interface CycleComputeOpts {
@@ -105,6 +115,12 @@ export interface CycleComputeOpts {
   tempSeries?: TempPoint[];
   /** 历史经期开始日（旧→新），用于 Periodical 式统计预测 */
   periodHistory?: string[];
+  /**
+   * ★ 2026-10-12：每日真实经量 / 经期结束标记（按日期索引）。
+   * 传入后，「经期」判定改用真实经量推导的区间（见 derivePeriodRuns），不再只看日历天数。
+   * 排卵期 / 下次经期等仍走日历推算（戒指测不了，必须由日历估）。
+   */
+  periodDays?: Record<string, PeriodDayLog>;
 }
 
 const PHASE_LABEL: Record<CyclePhase, string> = {
@@ -169,6 +185,64 @@ export function tempDailyToSeries(tempDaily: Record<string, number>): TempPoint[
   return Object.keys(tempDaily)
     .map((d) => ({ date: d, temp: tempDaily[d] }))
     .filter((p) => typeof p.temp === 'number' && Number.isFinite(p.temp));
+}
+
+/**
+ * ★ 2026-10-12：从每日真实经量记录推导「经期区间」runs。
+ *
+ * 规则（贴合用户心智：「经量没有了 = 经期结束」，不必单独记录结束）：
+ *  - 一段经期 = 连续有经量的日子（日期相差恰 1 天）；
+ *  - 某天带 `periodEnd` 标记（用户主动点「结束经期」）→ 该段在该天**强制收口**（含当天）；
+ *  - 经量中断（出现无经量的一天）自然收口上一段，下一段需重新连续经量才会开启。
+ *
+ * 仅含 `periodEnd` 但无经量的日子**不**单独成段（避免孤立 1 天），它只在连到上一段经量时收口。
+ * 返回按开始日升序的区间列表。
+ */
+export function derivePeriodRuns(periodDays: Record<string, PeriodDayLog>): {
+  start: string;
+  end: string;
+  source: 'flow' | 'explicit';
+}[] {
+  const entries = Object.values(periodDays)
+    .filter((e) => e && e.flow)
+    .map((e) => ({ date: e.date, periodEnd: !!e.periodEnd }))
+    .sort((a, b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());
+  const runs: { start: string; end: string; source: 'flow' | 'explicit' }[] = [];
+  let cur: { start: string; end: string; explicit: boolean } | null = null;
+  const pushCur = () => {
+    if (cur) runs.push({ start: cur.start, end: cur.end, source: cur.explicit ? 'explicit' : 'flow' });
+  };
+  for (const e of entries) {
+    const consecutive = cur != null && daysBetween(cur.end, e.date) === 1;
+    if (cur && consecutive) {
+      cur.end = e.date;
+      if (e.periodEnd) {
+        cur.explicit = true;
+        pushCur();
+        cur = null;
+      }
+    } else {
+      pushCur();
+      cur = { start: e.date, end: e.date, explicit: e.periodEnd };
+      if (e.periodEnd) {
+        pushCur();
+        cur = null;
+      }
+    }
+  }
+  pushCur();
+  return runs;
+}
+
+/** 查询日是否落在某个经期区间内，返回该区间（无则 null）。 */
+export function findPeriodRun(
+  runs: { start: string; end: string; source: 'flow' | 'explicit' }[],
+  date: string,
+): { start: string; end: string; source: 'flow' | 'explicit' } | null {
+  for (const r of runs) {
+    if (daysBetween(r.start, date) >= 0 && daysBetween(date, r.end) >= 0) return r;
+  }
+  return null;
 }
 
 export function computeCycle(
@@ -263,11 +337,41 @@ export function computeCycle(
   //   跨周期的历史/未来日期回到正确相位（日历标记、体温双相图、激素卡同样受益）。
   const offWrap = ((offset % cycleLength) + cycleLength) % cycleLength; // 0-based，= dayInCycle - 1
   const offOv = ((daysBetween(log.lastPeriodStart, ovulationDate) % cycleLength) + cycleLength) % cycleLength;
+
+  // ★ 2026-10-12：真实经量驱动的经期区间（仅当传入 periodDays 且查询日 ≤ 实际今天才生效）
+  let periodActive = false;
+  let periodStart: string | null = null;
+  let periodEnd: string | null = null;
+  let periodSource: CycleInfo['periodSource'] = 'calendar';
+  const realNowKey = dayKey(new Date());
+  const recorded = daysBetween(tKey, realNowKey) >= 0; // 查询日 ≤ 今天（已发生，可用真实数据）
+  const runs = opts.periodDays ? derivePeriodRuns(opts.periodDays) : [];
+  const runForToday = runs.length && recorded ? findPeriodRun(runs, tKey) : null;
+  if (runForToday) {
+    periodActive = true;
+    periodStart = runForToday.start;
+    periodEnd = runForToday.end;
+    periodSource = runForToday.source;
+  } else if (runs.length && recorded) {
+    // 有经量记录、查询日不在任何段内（且 ≤ 今天）→ 经期已结束/未开始，按真实数据判为非经期
+    periodSource = 'flow';
+  }
+
   let phase: CyclePhase;
-  if (offWrap < periodLen) phase = 'period';
-  else if (Math.abs(offWrap - offOv) <= 2) phase = 'ovulation';
-  else if (offWrap > offOv) phase = 'luteal';
-  else phase = 'follicular';
+  if (periodActive) {
+    phase = 'period';
+  } else if (runs.length && recorded) {
+    // 真实数据已覆盖该日：跳过日历经期分支，只用非经期相位（经期已收口）
+    if (Math.abs(offWrap - offOv) <= 2) phase = 'ovulation';
+    else if (offWrap > offOv) phase = 'luteal';
+    else phase = 'follicular';
+  } else {
+    // 无经量记录 / 查询日为未来 → 仍走日历（含经期）推算
+    if (offWrap < periodLen) phase = 'period';
+    else if (Math.abs(offWrap - offOv) <= 2) phase = 'ovulation';
+    else if (offWrap > offOv) phase = 'luteal';
+    else phase = 'follicular';
+  }
 
   // 下次经期：从 lastPeriodStart 累加 cycleLength 直到落在今天之后
   let next = log.lastPeriodStart;
@@ -297,6 +401,10 @@ export function computeCycle(
     cycleLengthStd,
     nextPeriodRange,
     estrogenIndex,
+    periodActive,
+    periodStart,
+    periodEnd,
+    periodSource,
   };
 }
 
@@ -423,6 +531,55 @@ export function estrogenAt(pts: EstrogenPoint[], dayInCycle: number | null): num
   const day = Math.min(pts.length, Math.max(1, dayInCycle));
   const p = pts.find((x) => x.day === day);
   return p ? p.value : null;
+}
+
+/** 取某周期日的孕激素指数；dayInCycle 越界则夹取边界；无数据返回 null */
+export function progesteroneAt(pts: HormonePoint[], dayInCycle: number | null): number | null {
+  if (dayInCycle == null || pts.length === 0) return null;
+  const day = Math.min(pts.length, Math.max(1, dayInCycle));
+  const p = pts.find((x) => x.day === day);
+  return p ? p.value : null;
+}
+
+/**
+ * ★ 当前周期日的建模激素概览（**非实测**，戒指测不到雌激素/孕酮浓度）。
+ *   返回雌激素 / 孕激素的 0–100 建模指数，以及相对前一日的趋势（升/降/平）。
+ *   仅用于帮助用户理解「阶段背景」，绝不展示为真实浓度值。
+ *   无有效周期记录（log 缺失 / dayInCycle 为空）时全部返回 null。
+ */
+export function hormoneLevelsAtDay(
+  log: CycleLog | null,
+  dayInCycle: number | null,
+): {
+  estrogen: number | null;
+  progesterone: number | null;
+  estrogenTrend: 'up' | 'down' | 'flat' | null;
+  progesteroneTrend: 'up' | 'down' | 'flat' | null;
+} {
+  const none = { estrogen: null, progesterone: null, estrogenTrend: null, progesteroneTrend: null };
+  if (!log || !log.lastPeriodStart || dayInCycle == null) return none;
+  const cycleLength = Math.max(20, Math.min(45, Math.round(log.cycleLength || 28)));
+  const luteal = Math.max(9, Math.min(20, Math.round(log.lutealLength || 14)));
+  const periodLen = Math.max(2, Math.min(10, Math.round(log.periodLength || 5)));
+  const ovulationDay = cycleLength - luteal;
+  const estCurve = modelEstrogenCurve({ cycleLength, ovulationDay, periodLength: periodLen });
+  const progCurve = modelProgesteroneCurve({ cycleLength, ovulationDay, periodLength: periodLen });
+  const est = estrogenAt(estCurve, dayInCycle);
+  const prog = progesteroneAt(progCurve, dayInCycle);
+  const estPrev = estrogenAt(estCurve, dayInCycle - 1);
+  const progPrev = progesteroneAt(progCurve, dayInCycle - 1);
+  const trend = (cur: number | null, prev: number | null): 'up' | 'down' | 'flat' | null => {
+    if (cur == null || prev == null) return null;
+    if (cur - prev > 3) return 'up';
+    if (cur - prev < -3) return 'down';
+    return 'flat';
+  };
+  return {
+    estrogen: est,
+    progesterone: prog,
+    estrogenTrend: trend(est, estPrev),
+    progesteroneTrend: trend(prog, progPrev),
+  };
 }
 
 /**

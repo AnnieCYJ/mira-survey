@@ -10,10 +10,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
+import { useVoiceTriggerLive } from '../hooks/useVoiceTrigger';
 import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine';
 import { requestAiSuggestion, aiCandidateFor, sigOf } from '../lib/aiSuggestion';
 import { keepHabit, dismissSuggestion, habitHeadline, HABIT_QUESTION } from '../data/habitSuggestions';
+import { recordAnalysisFeedback } from '../data/analysisFeedback';
 import Icon from './Icon';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 
@@ -112,7 +113,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  const { visible, inlineMode, liveText, spokenText, clearSpoken } = useVoiceTrigger();
+  // ★ 2026-10-12：只订阅高频直播态（转写推进只重渲染本气泡，不波及 tab 栏/其他卡片）
+  const { visible, inlineMode, liveText, spokenText, clearSpoken } = useVoiceTriggerLive();
 
   const listening = visible && inlineMode;
   const title = listening ? liveText.trim() || LISTEN_TEXT : IDLE_TEXT;
@@ -125,6 +127,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
   // ★ 十三改：回访卡（fb）—— 用户点 CTA 去做（呼吸/读科普/记饮食）后返回首页时弹出，
   //   问「有没有帮到你」：有用（心）→ 存进工具页「我的建议」；不感兴趣 → 换一条新建议。
   const [fb, setFb] = useState<SuggestionCandidate | null>(null);
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
   const pendingCtaRef = useRef<SuggestionCandidate | null>(null);
   const shownIdRef = useRef<string | null>(null);
   const statusRef = useRef<any>(status);
@@ -296,7 +299,18 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     }
   };
   // 观察/分析卡的认可只用于校准，不进入工具页；只有行动完成后的回访才保存为有效方法。
-  const onKeep = () => { void saveSuggestion(cand, !cand?.noPersist); };
+  const onKeep = () => {
+    if (cand?.noPersist) void recordAnalysisFeedback(cand.id, 'accurate');
+    void saveSuggestion(cand, !cand?.noPersist);
+  };
+  const chooseCalibration = (value: 'accurate' | 'inaccurate' | 'partial') => {
+    if (!cand) return;
+    void recordAnalysisFeedback(cand.id, value);
+    setCalibrationOpen(false);
+    setCand(null);
+    clearSpoken();
+    refresh(true);
+  };
   const onKeepFb = () => { void saveSuggestion(fb, true); };
 
   /**
@@ -310,6 +324,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     setSaveError('');
     setFb(null);
     if (cand) {
+      if (cand.noPersist) void recordAnalysisFeedback(cand.id, 'inaccurate');
       lastDismissedRef.current = { id: cand.saveId ?? cand.id, headline: cand.headline };
       dismissSuggestion(cand.saveId ?? cand.id).catch(() => {});
       setCand(null);
@@ -459,8 +474,14 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                       </View>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity
-                    onPress={() => onDismiss()}
+                  {cand!.noPersist && calibrationOpen ? (
+                    <View style={styles.calibrationChoices}>
+                      <TouchableOpacity onPress={() => chooseCalibration('partial')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>部分像</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => chooseCalibration('inaccurate')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>不太像</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => chooseCalibration('inaccurate')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>说反了</Text></TouchableOpacity>
+                    </View>
+                  ) : <TouchableOpacity
+                    onPress={() => cand!.noPersist ? setCalibrationOpen(true) : onDismiss()}
                       disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                     activeOpacity={theme.press.opacity}
                     accessibilityRole="button"
@@ -468,7 +489,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                     style={styles.btnLink}
                   >
                     <Text style={styles.btnLinkText}>{mode === 'fb' ? '没感觉' : cand!.kind === 'action' ? '先不用' : '不太像'}</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity>}
                 </View>
               </View>
             )}
@@ -651,6 +672,8 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.regular,
     textDecorationLine: 'underline',
   },
+  calibrationChoices: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
+  calibrationChoice: { minHeight: 24, justifyContent: 'center', paddingVertical: 3 },
   keptRow: {
     flex: 1,
     flexDirection: 'row',

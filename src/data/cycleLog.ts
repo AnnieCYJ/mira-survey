@@ -85,6 +85,8 @@ export interface PeriodDayLog {
   date: string;
   flow: FlowLevel;
   pain: PainLevel;
+  /** ★ 2026-10-12：用户主动标记「经期结束于该日」→ 该日强制收口当前经期段 */
+  periodEnd?: boolean;
   mood?: string;
   /** 身体症状标签键集合（见 SYMPTOM_TAGS），如 'headache' / 'fatigue' */
   tags?: string[];
@@ -156,6 +158,7 @@ export async function loadPeriodDays(): Promise<Record<string, PeriodDayLog>> {
         date: e.date,
         flow: (e.flow as FlowLevel) ?? '',
         pain: (e.pain as PainLevel) ?? '',
+        periodEnd: e.periodEnd === true ? true : undefined,
         mood: typeof e.mood === 'string' ? e.mood : undefined,
         tags: Array.isArray(e.tags) ? e.tags.map(String) : undefined,
         note: typeof e.note === 'string' ? e.note : undefined,

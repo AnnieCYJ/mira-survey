@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useState, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, useRef, useState } from 'react';
 
 export interface VoiceOpenOptions {
   /**
@@ -8,7 +8,24 @@ export interface VoiceOpenOptions {
   silent?: boolean;
 }
 
-interface VoiceTriggerValue {
+/**
+ * ★ 2026-10-12（用户：点 GROK / 语音 / 跳转 AI 页都特别卡）：
+ * context 拆成两个——
+ *  · VoiceTriggerApi（open/close/onReleaseRef/clearSpoken）：**引用永远稳定**，
+ *    给 CustomTabBar 等只触发录音、不展示转写的组件订阅；
+ *  · VoiceTriggerLive（visible/inlineMode/liveText/spokenText/setLiveText）：
+ *    随录音态**高频变化**，只给真正展示转写的组件（HomeAiBubble / VoiceQuickOverlay）订阅。
+ * 旧实现合成一个 context：liveText 每 250ms 变一次 → 所有 consumer（含整个
+ * CustomTabBar：笑脸动画 + 5 个 tab）全量重渲染，叠加端侧模型推理直接卡成幻灯片。
+ */
+interface VoiceTriggerApi {
+  open: (onRelease: (text: string) => void, opts?: VoiceOpenOptions) => void;
+  close: () => void;
+  clearSpoken: () => void;
+  onReleaseRef: React.MutableRefObject<((text: string) => void) | null>;
+}
+
+interface VoiceTriggerLive {
   visible: boolean;
   /** 本次录音是否为「就地显示」模式（不弹浮层，由常驻气泡消费 liveText） */
   inlineMode: boolean;
@@ -29,13 +46,10 @@ interface VoiceTriggerValue {
    * 语音转写，气泡会继续显示那句话而不是占位文案，故在收回时显式清掉。
    */
   clearSpoken: () => void;
-  /** 由浮层松手后调用，把转写文字传出去 */
-  onReleaseRef: React.MutableRefObject<((text: string) => void) | null>;
-  open: (onRelease: (text: string) => void, opts?: VoiceOpenOptions) => void;
-  close: () => void;
 }
 
-const VoiceTriggerContext = createContext<VoiceTriggerValue | null>(null);
+const VoiceTriggerApiContext = createContext<VoiceTriggerApi | null>(null);
+const VoiceTriggerLiveContext = createContext<VoiceTriggerLive | null>(null);
 
 export function VoiceTriggerProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
@@ -52,27 +66,55 @@ export function VoiceTriggerProvider({ children }: { children: React.ReactNode }
     setVisible(true);
   }, []);
 
+  // liveText 的 ref 镜像：close 不能依赖 liveText（否则 api 引用每 250ms 就变，
+  // 拆 context 的意义就没了）——松手时经 ref 读最新值，语义完全一致。
+  const liveTextRef = useRef('');
+  liveTextRef.current = liveText;
+
   const close = useCallback(() => {
     // ★ 保留最终转写到 spokenText：松手瞬间先让气泡显示「你说的话」，再跳转（不再回退占位文案）
-    setSpokenText((prev) => (liveText && liveText.trim() ? liveText.trim() : prev));
+    const cur = liveTextRef.current;
+    setSpokenText((prev) => (cur && cur.trim() ? cur.trim() : prev));
     setVisible(false);
     setLiveText('');
-  }, [liveText]);
+  }, []);
 
   // 清空保留的最终转写（首页建议卡收回时调用 → 气泡回到常态占位）
   const clearSpoken = useCallback(() => setSpokenText(''), []);
 
+  // 稳定 API：引用不变 → 只订阅它的组件（CustomTabBar）永不因转写推进而重渲染
+  const api = useMemo<VoiceTriggerApi>(
+    () => ({ open, close, clearSpoken, onReleaseRef }),
+    [open, close, clearSpoken],
+  );
+  // 高频直播态：只给真正渲染转写的组件订阅
+  const live = useMemo<VoiceTriggerLive>(
+    () => ({ visible, inlineMode, liveText, setLiveText, spokenText, clearSpoken }),
+    [visible, inlineMode, liveText, spokenText, clearSpoken],
+  );
+
   return (
-    <VoiceTriggerContext.Provider
-      value={{ visible, inlineMode, liveText, setLiveText, spokenText, clearSpoken, onReleaseRef, open, close }}
-    >
-      {children}
-    </VoiceTriggerContext.Provider>
+    <VoiceTriggerApiContext.Provider value={api}>
+      <VoiceTriggerLiveContext.Provider value={live}>{children}</VoiceTriggerLiveContext.Provider>
+    </VoiceTriggerApiContext.Provider>
   );
 }
 
-export function useVoiceTrigger(): VoiceTriggerValue {
-  const ctx = useContext(VoiceTriggerContext);
-  if (!ctx) throw new Error('useVoiceTrigger must be inside VoiceTriggerProvider');
+/** 只拿稳定 API（open/close/…）——订阅它不会因录音转写推进而重渲染 */
+export function useVoiceTriggerApi(): VoiceTriggerApi {
+  const ctx = useContext(VoiceTriggerApiContext);
+  if (!ctx) throw new Error('useVoiceTriggerApi must be inside VoiceTriggerProvider');
   return ctx;
+}
+
+/** 拿高频直播态（visible/liveText/spokenText/…）——仅展示转写的组件用 */
+export function useVoiceTriggerLive(): VoiceTriggerLive {
+  const ctx = useContext(VoiceTriggerLiveContext);
+  if (!ctx) throw new Error('useVoiceTriggerLive must be inside VoiceTriggerProvider');
+  return ctx;
+}
+
+/** 兼容入口：同时拿 API + 直播态（等价旧 useVoiceTrigger 全量返回） */
+export function useVoiceTrigger(): VoiceTriggerApi & VoiceTriggerLive {
+  return { ...useVoiceTriggerApi(), ...useVoiceTriggerLive() };
 }

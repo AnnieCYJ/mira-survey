@@ -22,7 +22,7 @@ import {
   estrogenForDate,
   type CycleLog,
 } from '../lib/cycleMath';
-import { loadCycleLog } from '../data/cycleLog';
+import { loadCycleLog, loadPeriodDays, type PeriodDayLog } from '../data/cycleLog';
 import { RingBle, type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import type { RangeKey } from '../data/metrics';
 
@@ -63,14 +63,14 @@ interface Props {
   onPress?: () => void;
 }
 
-function buildYearSeries(log: CycleLog | null): { date: Date; value: number | null; phase: string }[] {
+function buildYearSeries(log: CycleLog | null, periodDays: Record<string, PeriodDayLog>): { date: Date; value: number | null; phase: string }[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const pts: { date: Date; value: number | null; phase: string }[] = [];
   for (let i = 364; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const info = computeCycle(log, d, { tempSeries: [], periodHistory: log?.history });
+    const info = computeCycle(log, d, { tempSeries: [], periodHistory: log?.history, periodDays });
     pts.push({ date: d, value: estrogenForDate(log, d), phase: info.phase });
   }
   return pts;
@@ -78,9 +78,11 @@ function buildYearSeries(log: CycleLog | null): { date: Date; value: number | nu
 
 export default function HormoneEstrogenCard({ ring, female, range, onPress }: Props) {
   const [localLog, setLocalLog] = useState<CycleLog | null>(null);
+  const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
 
   useEffect(() => {
     void loadCycleLog().then((l) => setLocalLog(l));
+    void loadPeriodDays().then((pd) => setPeriodDays(pd));
   }, []);
 
   // effective log：本地 log ∪ 戒指 female，取 lastPeriodStart 更晚的那条
@@ -118,8 +120,8 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
   const dayInCycle =
     effective && cs && cs.hasLog && cs.dayInCycle != null
       ? cs.dayInCycle
-      : computeCycle(effective, new Date()).dayInCycle;
-  const currentPhase = effective && dayInCycle != null ? computeCycle(effective, new Date()).phase : 'unknown';
+      : computeCycle(effective, new Date(), { periodDays }).dayInCycle;
+  const currentPhase = effective && dayInCycle != null ? computeCycle(effective, new Date(), { periodDays }).phase : 'unknown';
 
   // 当前周期曲线（日/周/月共用）
   const curve = useMemo(
@@ -132,7 +134,7 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
   const currentValue = estrogenAt(curve, dayInCycle);
 
   // 年度曲线：365 天 modeled 序列
-  const yearSeries = useMemo(() => (effective ? buildYearSeries(effective) : []), [effective]);
+  const yearSeries = useMemo(() => (effective ? buildYearSeries(effective, periodDays) : []), [effective, periodDays]);
 
   if (!effective) {
     return (

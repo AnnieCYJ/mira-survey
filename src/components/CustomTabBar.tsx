@@ -6,7 +6,7 @@ import { mm } from '../theme/mindmate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import Icon, { type IconName } from './Icon';
-import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
+import { useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
 import Svg, { Circle, Defs, LinearGradient as SvgLg, Stop } from 'react-native-svg';
 
 const TAB_ICON: Record<string, IconName> = {
@@ -185,7 +185,8 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
 }
 
 export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
-  const { open, close } = useVoiceTrigger();
+  // ★ 2026-10-12：只订阅稳定 API（录音转写每 250ms 推进不再重渲染整个 tab 栏）
+  const { open, close } = useVoiceTriggerApi();
   const voiceStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressing = useRef(false);
   const insets = useSafeAreaInsets();

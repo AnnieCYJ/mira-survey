@@ -288,8 +288,13 @@ function Row({ name, value, unit, last, onPress, metric }: {
     <View style={[styles.row, last && styles.rowLast]}>
       <Text style={styles.rowName}>{name}</Text>
       <View style={styles.rowValWrap}>
-        <Text style={styles.rowVal}>{value}</Text>
-        {unit ? <Text style={styles.rowUnit}>{unit}</Text> : null}
+        {/* ★ 2026-10-13（用户：数字和右侧箭头不在一个水平）：拆两层——
+            数字/单位之间按基线对齐（单位小字贴大数字底），箭头无文字基线、
+            单独垂直居中。原来整层都 baseline，Icon 会掉到底部对齐而错开。 */}
+        <View style={styles.rowValText}>
+          <Text style={styles.rowVal}>{value}</Text>
+          {unit ? <Text style={styles.rowUnit}>{unit}</Text> : null}
+        </View>
         {showArrow ? <Icon name="chevronRight" size={15} color={theme.colors.textSub} style={styles.rowArrow} /> : null}
       </View>
     </View>
@@ -394,7 +399,8 @@ const styles = StyleSheet.create({
   },
   rowLast: { paddingBottom: 0 },
   rowName: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle },
-  rowValWrap: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  rowValWrap: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  rowValText: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   rowUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   rowArrow: { marginLeft: 4 },

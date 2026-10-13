@@ -32,11 +32,39 @@ import { dayKey } from '../data/healthStore';
 import { EMOTION_ARTICLES } from '../lib/emotionArticles';
 import EmotionFaceIcon from '../components/EmotionFaceIcon';
 
+function faceMood(mood: MoodKey): 'excited' | 'happy' | 'calm' | 'stressed' | 'sad' {
+  if (mood === 'excited') return 'excited';
+  if (mood === 'happy' || mood === 'love' || mood === 'grateful' || mood === 'pleasant') return 'happy';
+  if (mood === 'stressed' || mood === 'anxious' || mood === 'angry') return 'stressed';
+  if (mood === 'sad' || mood === 'lonely') return 'sad';
+  return 'calm';
+}
+
 /* ── v18.82 情绪调节的方法 · 文章版块（模块级：珠雨重渲染不重建） ── */
 function EmotionArticlesSection() {
   const navigation = useNavigation<any>();
   return (
     <View style={eas.wrap}>
+      <View style={eas.methodHead}>
+        <Text style={eas.secTitle}>今天可以先做一件事</Text>
+        <Text style={eas.secCount}>按当前感受挑一个</Text>
+      </View>
+      <View style={eas.methodRow}>
+        {EMOTION_ARTICLES.slice(0, 2).map((a) => (
+          <TouchableOpacity
+            key={`method-${a.id}`}
+            activeOpacity={theme.press.opacity}
+            style={eas.methodCard}
+            onPress={() => navigation.navigate('LearnRead', { articleId: a.id, collection: 'emotion' })}
+            accessibilityRole="button"
+            accessibilityLabel={`开始 ${a.title}`}
+          >
+            <Image source={a.cover} style={eas.methodImage} resizeMode="cover" />
+            <Text style={eas.methodTitle} numberOfLines={2}>{a.shortTitle ?? a.title}</Text>
+            <Text style={eas.methodLink}>开始 →</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <View style={eas.secHead}>
         <Text style={eas.secTitle}>情绪调节的方法</Text>
         <Text style={eas.secCount}>{EMOTION_ARTICLES.length} 篇</Text>
@@ -72,6 +100,12 @@ const eas = StyleSheet.create({
   },
   secTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink },
   secCount: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
+  methodHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: theme.sp(2) },
+  methodRow: { flexDirection: 'row', gap: theme.sp(2), marginBottom: theme.space.lg },
+  methodCard: { flex: 1, backgroundColor: mm.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: mm.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact },
+  methodImage: { width: '100%', height: theme.sp(18), borderRadius: theme.radius.sm, marginBottom: theme.sp(1.5), backgroundColor: theme.colors.cardBgSoft },
+  methodTitle: { color: mm.colors.ink, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, lineHeight: theme.fs(19) },
+  methodLink: { color: mm.colors.purpleCore, fontSize: theme.fontSize.xs, marginTop: theme.sp(1) },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -246,7 +280,7 @@ function EmotionBeadRain({ selected, onSelect }: { selected: MoodKey | null; onS
                   opacity={isSel ? 1 : 0.92}
                 />
                 <G x={x - b.r} y={y - b.r} pointerEvents="none">
-                  <EmotionFaceIcon mood={b.mood} color={c} size={b.r * 2} />
+                  <EmotionFaceIcon mood={faceMood(b.mood)} color={c} size={b.r * 2} />
                 </G>
               </G>
             );

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>呼吸界面 · 玻璃背景 × 5 种模式</title>
+<style>
+  :root{ --ink:#1F1D1A; --sub:#5F5F74; --line:rgba(31,29,26,.09); }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Segoe UI",sans-serif;background:#F2F1F6;color:var(--ink);min-height:100vh}
+  .head{max-width:1480px;margin:0 auto;padding:40px 28px 6px}
+  .head h1{font-size:24px;font-weight:700}
+  .head p{margin-top:10px;font-size:13.5px;color:var(--sub);line-height:1.7;max-width:880px}
+  .head .tag{display:inline-block;font-size:11px;font-weight:600;color:#6A55D8;background:#EFEBFA;border-radius:999px;padding:3px 10px;margin-right:8px;vertical-align:2px}
+  .grid{max-width:1480px;margin:0 auto;padding:26px 28px 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:44px 30px}
+  .cell{display:flex;flex-direction:column;align-items:center}
+  .cap{width:300px;margin-top:20px}
+  .cap h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .cap h3 .no{width:20px;height:20px;border-radius:6px;background:var(--ink);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .cap p{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:7px}
+  .cap .fit{margin-top:7px;font-size:11.5px;color:#6A55D8;font-weight:600}
+
+  .phone{position:relative;width:300px;height:640px;border-radius:46px;background:#0E0E12;flex:none;
+    box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(20,18,40,.32)}
+  .island{position:absolute;top:13px;left:50%;transform:translateX(-50%);width:84px;height:21px;border-radius:11px;background:#16161A;z-index:60}
+  .scr{position:absolute;inset:7px;border-radius:40px;overflow:hidden;display:flex;flex-direction:column}
+
+  .sbar{display:flex;justify-content:space-between;align-items:center;padding:15px 24px 0;font-size:12px;font-weight:600;color:#fff;position:relative;z-index:20}
+  .toprow{display:flex;justify-content:space-between;align-items:center;padding:14px 20px 0;position:relative;z-index:20}
+  .xbtn{width:32px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.16);color:rgba(255,255,255,.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .pat{font-size:11px;font-weight:600;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.16);color:rgba(255,255,255,.9);letter-spacing:.02em;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+  .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10}
+  .ringWrap{position:relative;width:220px;height:220px;display:flex;align-items:center;justify-content:center}
+  .halo{position:absolute;width:190px;height:190px;border-radius:95px;animation:breathe 16s cubic-bezier(.45,0,.55,1) infinite}
+  .rings{width:220px;height:220px;animation:breathe 16s cubic-bezier(.45,0,.55,1) infinite}
+  .ringTxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ph{font-size:24px;font-weight:600;letter-spacing:.14em;text-indent:.14em;color:#fff}
+  .cd{margin-top:7px;font-size:12.5px;color:rgba(255,255,255,.65);font-variant-numeric:tabular-nums;letter-spacing:.06em}
+  .cyc{margin-top:18px;font-size:11.5px;color:rgba(255,255,255,.55);letter-spacing:.08em}
+
+  .bottom{padding:0 20px 30px;display:flex;flex-direction:column;align-items:center;gap:16px;position:relative;z-index:20}
+  .glassBtn{width:60px;height:60px;border-radius:30px;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.32);color:#fff;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 12px 28px rgba(0,0,0,.18)}
+  .ghost{font-size:12.5px;color:rgba(255,255,255,.6);letter-spacing:.1em}
+
+  @keyframes breathe{0%{transform:scale(.80)}25%,50%{transform:scale(1)}75%,100%{transform:scale(.80)}}
+
+  /* ── 5 种玻璃背景（每种模式一个色相 + 毛玻璃叠层）── */
+  .g-box{background:
+    radial-gradient(90% 60% at 20% 12%, rgba(167,155,245,.55), transparent 60%),
+    radial-gradient(80% 55% at 85% 80%, rgba(124,106,224,.50), transparent 62%),
+    linear-gradient(160deg,#3A3350 0%,#26213B 55%,#1B1830 100%)}
+  .g-calm{background:
+    radial-gradient(90% 60% at 18% 15%, rgba(126,214,190,.50), transparent 60%),
+    radial-gradient(80% 55% at 85% 82%, rgba(58,166,148,.48), transparent 62%),
+    linear-gradient(160deg,#23383A 0%,#1B2C30 55%,#132224 100%)}
+  .g-energize{background:
+    radial-gradient(90% 60% at 20% 14%, rgba(255,196,120,.52), transparent 60%),
+    radial-gradient(80% 55% at 85% 80%, rgba(240,140,80,.46), transparent 62%),
+    linear-gradient(160deg,#463427 0%,#33281E 55%,#241C15 100%)}
+  .g-sleep{background:
+    radial-gradient(90% 60% at 22% 16%, rgba(120,140,220,.42), transparent 60%),
+    radial-gradient(80% 55% at 82% 82%, rgba(70,80,160,.44), transparent 62%),
+    linear-gradient(160deg,#1E2242 0%,#161930 55%,#0E1024 100%)}
+  .g-stress{background:
+    radial-gradient(90% 60% at 20% 14%, rgba(240,150,180,.48), transparent 60%),
+    radial-gradient(80% 55% at 85% 80%, rgba(200,110,150,.44), transparent 62%),
+    linear-gradient(160deg,#3E2A38 0%,#2E1F2A 55%,#221620 100%)}
+  /* 玻璃噪点/磨砂层 */
+  .scr::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:rgba(255,255,255,.03);backdrop-filter:blur(0px)}
+  .blob{position:absolute;border-radius:50%;filter:blur(2px);opacity:.5;pointer-events:none}
+  .arcGlow{filter:drop-shadow(0 0 7px rgba(255,255,255,.45))}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="tag">玻璃背景</span>呼吸界面 · 5 种模式各自一张</h1>
+  <p>同一种「磨砂玻璃」语言（半透明叠层 + 模糊光斑 + 玻璃拟态按钮），但每种模式一个色相：箱式雾紫、放松青绿、提神暖橙、睡前深蓝、抗压力玫红——进界面一眼知道自己练的是什么。中间统一用一条细环 + 相位词，动画为实时模拟（箱式 4-4-4-4，16 秒一循环）。</p>
+</div>
+
+<div class="grid">
+
+  <div class="cell">
+    <div class="phone"><div class="island"></div>
+      <div class="scr g-box">
+        <div class="blob" style="width:130px;height:130px;left:-40px;top:120px;background:rgba(167,155,245,.10)"></div>
+        <div class="blob" style="width:90px;height:90px;right:-25px;bottom:180px;background:rgba(124,106,224,.10)"></div>
+        <div class="sbar"><span>9:41</span><svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg></div>
+        <div class="toprow">
+          <div class="xbtn"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="pat">箱式呼吸 · 4-4-4-4</div>
+        </div>
+        <div class="stage">
+          <div class="ringWrap">
+            <div class="halo" style="background:radial-gradient(closest-side,rgba(167,155,245,.28),transparent)"></div>
+            <svg class="rings arcGlow" viewBox="0 0 220 220" fill="none">
+              <circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.18)" stroke-width="2"/>
+              <circle class="arc" cx="110" cy="110" r="96" stroke="#fff" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 110 110)"/>
+            </svg>
+            <div class="ringTxt"><div class="ph">吸气</div><div class="cd">4 秒</div></div>
+          </div>
+          <div class="cyc">第 3 轮 · 已静心 1 分 12 秒</div>
+        </div>
+        <div class="bottom">
+          <div class="glassBtn"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="4.5" width="3.2" height="11" rx="1.6"/><rect x="11.3" y="4.5" width="3.2" height="11" rx="1.6"/></svg></div>
+          <div class="ghost">结 束</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">
+      <h3><span class="no">1</span>箱式呼吸 · 雾紫</h3>
+      <p>4-4-4-4 平衡自主神经。雾紫玻璃底，白色细环在低饱和紫上最清楚。</p>
+      <div class="fit">专注 / 工作间隙</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="phone"><div class="island"></div>
+      <div class="scr g-calm">
+        <div class="blob" style="width:120px;height:120px;left:-35px;bottom:140px;background:rgba(126,214,190,.10)"></div>
+        <div class="blob" style="width:80px;height:80px;right:-20px;top:160px;background:rgba(58,166,148,.10)"></div>
+        <div class="sbar"><span>9:41</span><svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg></div>
+        <div class="toprow">
+          <div class="xbtn"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="pat">放松呼吸 · 4-2-6</div>
+        </div>
+        <div class="stage">
+          <div class="ringWrap">
+            <div class="halo" style="background:radial-gradient(closest-side,rgba(126,214,190,.26),transparent)"></div>
+            <svg class="rings arcGlow" viewBox="0 0 220 220" fill="none">
+              <circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.18)" stroke-width="2"/>
+              <circle class="arc" cx="110" cy="110" r="96" stroke="#fff" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 110 110)"/>
+            </svg>
+            <div class="ringTxt"><div class="ph">吸气</div><div class="cd">4 秒</div></div>
+          </div>
+          <div class="cyc">第 3 轮 · 已静心 1 分 12 秒</div>
+        </div>
+        <div class="bottom">
+          <div class="glassBtn"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="4.5" width="3.2" height="11" rx="1.6"/><rect x="11.3" y="4.5" width="3.2" height="11" rx="1.6"/></svg></div>
+          <div class="ghost">结 束</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">
+      <h3><span class="no">2</span>放松呼吸 · 青绿</h3>
+      <p>4-2-6 延长呼气、激活副交感。青绿玻璃底，冷色调压心率。</p>
+      <div class="fit">情绪紧张 / 饭后</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="phone"><div class="island"></div>
+      <div class="scr g-energize">
+        <div class="blob" style="width:125px;height:125px;right:-35px;top:130px;background:rgba(255,196,120,.10)"></div>
+        <div class="blob" style="width:85px;height:85px;left:-20px;bottom:170px;background:rgba(240,140,80,.10)"></div>
+        <div class="sbar"><span>9:41</span><svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg></div>
+        <div class="toprow">
+          <div class="xbtn"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="pat">提神呼吸 · 6-2</div>
+        </div>
+        <div class="stage">
+          <div class="ringWrap">
+            <div class="halo" style="background:radial-gradient(closest-side,rgba(255,196,120,.26),transparent)"></div>
+            <svg class="rings arcGlow" viewBox="0 0 220 220" fill="none">
+              <circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.20)" stroke-width="2"/>
+              <circle class="arc" cx="110" cy="110" r="96" stroke="#fff" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 110 110)"/>
+            </svg>
+            <div class="ringTxt"><div class="ph">吸气</div><div class="cd">6 秒</div></div>
+          </div>
+          <div class="cyc">第 3 轮 · 已静心 1 分 12 秒</div>
+        </div>
+        <div class="bottom">
+          <div class="glassBtn"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="4.5" width="3.2" height="11" rx="1.6"/><rect x="11.3" y="4.5" width="3.2" height="11" rx="1.6"/></svg></div>
+          <div class="ghost">结 束</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">
+      <h3><span class="no">3</span>提神呼吸 · 暖橙</h3>
+      <p>6-2 延长吸气、激活交感。暖橙玻璃底，一眼清醒。</p>
+      <div class="fit">午后犯困 / 运动前</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="phone"><div class="island"></div>
+      <div class="scr g-sleep">
+        <div class="blob" style="width:120px;height:120px;left:-30px;top:150px;background:rgba(120,140,220,.09)"></div>
+        <div class="blob" style="width:95px;height:95px;right:-25px;bottom:150px;background:rgba(70,80,160,.09)"></div>
+        <div class="sbar"><span>23:47</span><svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg></div>
+        <div class="toprow">
+          <div class="xbtn"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="pat">睡前呼吸 · 4-7-8</div>
+        </div>
+        <div class="stage">
+          <div class="ringWrap">
+            <div class="halo" style="background:radial-gradient(closest-side,rgba(120,140,220,.24),transparent)"></div>
+            <svg class="rings arcGlow" viewBox="0 0 220 220" fill="none">
+              <circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.14)" stroke-width="2"/>
+              <circle class="arc" cx="110" cy="110" r="96" stroke="#fff" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 110 110)"/>
+            </svg>
+            <div class="ringTxt"><div class="ph">吸气</div><div class="cd">4 秒</div></div>
+          </div>
+          <div class="cyc">第 2 轮 · 今晚做完去睡</div>
+        </div>
+        <div class="bottom">
+          <div class="glassBtn"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="4.5" width="3.2" height="11" rx="1.6"/><rect x="11.3" y="4.5" width="3.2" height="11" rx="1.6"/></svg></div>
+          <div class="ghost">结 束</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">
+      <h3><span class="no">4</span>睡前呼吸 · 深蓝</h3>
+      <p>4-7-8 经典助眠。最暗的一张玻璃底，亮度压到最低不扰眠。</p>
+      <div class="fit">睡前 / 夜间专属</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="phone"><div class="island"></div>
+      <div class="scr g-stress">
+        <div class="blob" style="width:125px;height:125px;left:-35px;top:130px;background:rgba(240,150,180,.09)"></div>
+        <div class="blob" style="width:85px;height:85px;right:-20px;bottom:170px;background:rgba(200,110,150,.09)"></div>
+        <div class="sbar"><span>9:41</span><svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg></div>
+        <div class="toprow">
+          <div class="xbtn"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="pat">抗压呼吸 · 4-4-4-4</div>
+        </div>
+        <div class="stage">
+          <div class="ringWrap">
+            <div class="halo" style="background:radial-gradient(closest-side,rgba(240,150,180,.26),transparent)"></div>
+            <svg class="rings arcGlow" viewBox="0 0 220 220" fill="none">
+              <circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.18)" stroke-width="2"/>
+              <circle class="arc" cx="110" cy="110" r="96" stroke="#fff" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 110 110)"/>
+            </svg>
+            <div class="ringTxt"><div class="ph">吸气</div><div class="cd">4 秒</div></div>
+          </div>
+          <div class="cyc">第 3 轮 · 已静心 1 分 12 秒</div>
+        </div>
+        <div class="bottom">
+          <div class="glassBtn"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="4.5" width="3.2" height="11" rx="1.6"/><rect x="11.3" y="4.5" width="3.2" height="11" rx="1.6"/></svg></div>
+          <div class="ghost">结 束</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">
+      <h3><span class="no">5</span>抗压呼吸 · 玫红</h3>
+      <p>4-4-4-4 稳定心率变异性。玫红玻璃底，比紫色多一点「被安抚」的温度。</p>
+      <div class="fit">高压 / 情绪上头时</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var PH=['吸气','屏息','呼气','屏息'], CYCLE=16, SEG=4, t0=Date.now();
+  function tick(){
+    var el=((Date.now()-t0)/1000)%CYCLE;
+    var i=Math.min(3,Math.floor(el/SEG));
+    var rem=SEG-Math.floor(el%SEG);
+    document.querySelectorAll('.scr').forEach(function(s){
+      var ph=s.querySelector('.ph'), cd=s.querySelector('.cd');
+      if(ph&&ph.textContent!==PH[i])ph.textContent=PH[i];
+      if(cd)cd.textContent=rem+' 秒';
+      var arc=s.querySelector('.arc');
+      if(arc){var C=2*Math.PI*96;arc.style.strokeDasharray=C;arc.style.strokeDashoffset=C*(1-el/CYCLE);}
+    });
+    requestAnimationFrame(tick);
+  }
+  tick();
+</script>
+
+</body>
+</html>

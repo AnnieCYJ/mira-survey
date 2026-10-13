@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
-import { theme } from '../../theme/theme';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 // ——— 呼吸模式预设 ———
 export interface BreathPattern {
@@ -16,19 +15,17 @@ export interface BreathPattern {
 }
 
 export const BREATH_PATTERNS: Record<string, BreathPattern> = {
-  box:     { name: 'box',     label: '箱式呼吸', inhale: 4, hold1: 4, exhale: 4, hold2: 4, description: '4-4-4-4，平衡自主神经', bg: require('../../assets/breathing/bg_box.jpg') },
-  calm:    { name: 'calm',    label: '放松呼吸', inhale: 4, hold1: 2, exhale: 6, hold2: 0, description: '4-2-6，延长呼气激活副交感', bg: require('../../assets/breathing/bg_calm.jpg') },
-  energize:{ name: 'energize',label: '提神呼吸', inhale: 6, hold1: 0, exhale: 2, hold2: 0, description: '6-2，延长吸气激活交感', bg: require('../../assets/breathing/bg_energize.jpg') },
-  sleep:   { name: 'sleep',   label: '睡前呼吸', inhale: 4, hold1: 7, exhale: 8, hold2: 0, description: '4-7-8，经典助眠', bg: require('../../assets/breathing/bg_sleep.jpg') },
-  stress:  { name: 'stress',  label: '抗压呼吸', inhale: 4, hold1: 4, exhale: 4, hold2: 4, description: '4-4-4-4，稳定心率变异性', bg: require('../../assets/breathing/bg_stress.jpg') },
+  box:     { name: 'box',     label: '箱式呼吸', inhale: 4, hold1: 4, exhale: 4, hold2: 4, description: '4-4-4-4，平衡自主神经', bg: require('../../assets/breathing/bg_box_v2.jpg') },
+  calm:    { name: 'calm',    label: '放松呼吸', inhale: 4, hold1: 2, exhale: 6, hold2: 0, description: '4-2-6，延长呼气激活副交感', bg: require('../../assets/breathing/bg_calm_v2.jpg') },
+  energize:{ name: 'energize',label: '提神呼吸', inhale: 6, hold1: 0, exhale: 2, hold2: 0, description: '6-2，延长吸气激活交感', bg: require('../../assets/breathing/bg_energize_v2.jpg') },
+  sleep:   { name: 'sleep',   label: '睡前呼吸', inhale: 4, hold1: 7, exhale: 8, hold2: 0, description: '4-7-8，经典助眠', bg: require('../../assets/breathing/bg_sleep_v2.jpg') },
+  stress:  { name: 'stress',  label: '抗压呼吸', inhale: 4, hold1: 4, exhale: 4, hold2: 4, description: '4-4-4-4，稳定心率变异性', bg: require('../../assets/breathing/bg_stress_v2.jpg') },
 };
 
-export type BreathStyle = 'orb' | 'ring' | 'wave' | 'watch';
 export type BreathPhase = 'idle' | 'inhale' | 'hold1' | 'exhale' | 'hold2';
 
 export interface BreathingEngineProps {
   pattern: BreathPattern;
-  style?: BreathStyle;
   size?: number;
   isPlaying: boolean;
   onPhaseChange?: (phase: BreathPhase) => void;
@@ -50,27 +47,39 @@ const PHASE_LABELS: Record<BreathPhase, string> = {
   idle: '准备', inhale: '吸气', hold1: '屏息', exhale: '呼气', hold2: '屏息',
 };
 
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// 中心视觉：白色双环（底环 + 整轮进度弧）+ 呼吸缩放光晕 + 白字（相位/秒数/轮次）
 export default function BreathingEngine({
-  pattern, style = 'orb', size = 280, isPlaying, onPhaseChange,
+  pattern, size = 220, isPlaying, onPhaseChange, onComplete,
 }: BreathingEngineProps) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.55)).current;   // 光晕呼吸 0.55 → 1
+  const arc = useRef(new Animated.Value(0)).current;        // 整轮进度 0 → 1
   const [phase, setPhase] = useState<BreathPhase>('idle');
+  const [remaining, setRemaining] = useState(0);
   const [cycles, setCycles] = useState(0);
 
   useEffect(() => {
     if (!isPlaying) {
-      progress.stopAnimation();
+      scale.stopAnimation();
+      arc.stopAnimation();
       setPhase('idle');
       return;
     }
     const phases = buildSequence(pattern);
+    const totalSec = phases.reduce((s, p) => s + p.duration, 0);
     let idx = 0;
     let count = 0;
+    let dead = false;
+    let tick: ReturnType<typeof setInterval> | null = null;
+    const clearTick = () => { if (tick) { clearInterval(tick); tick = null; } };
 
     const runPhase = () => {
+      if (dead) return;
       if (idx >= phases.length) {
         count++;
         setCycles(count);
+        onComplete?.(count);
         idx = 0;
         runPhase();
         return;
@@ -78,136 +87,101 @@ export default function BreathingEngine({
       const p = phases[idx];
       setPhase(p.phase);
       onPhaseChange?.(p.phase);
-      Animated.timing(progress, {
-        toValue: idx / phases.length,
-        duration: p.duration * 1000,
-        easing: p.phase === 'inhale' ? Easing.out(Easing.sin)
-               : p.phase === 'exhale' ? Easing.in(Easing.sin)
-               : Easing.linear,
-        useNativeDriver: true,
-      }).start(() => { idx++; runPhase(); });
+      setRemaining(p.duration);
+      clearTick();
+      tick = setInterval(() => setRemaining((r) => (r > 1 ? r - 1 : r)), 1000);
+      // 吸气放大、呼气缩小；屏息保持当前大小
+      if (p.phase === 'inhale' || p.phase === 'exhale') {
+        Animated.timing(scale, {
+          toValue: p.phase === 'inhale' ? 1 : 0.55,
+          duration: p.duration * 1000,
+          easing: p.phase === 'inhale' ? Easing.out(Easing.sin) : Easing.in(Easing.sin),
+          useNativeDriver: true,
+        }).start();
+      }
     };
+
+    // 整轮进度弧：走完一轮自动归零重画
+    const runArc = () => {
+      if (dead) return;
+      arc.setValue(0);
+      Animated.timing(arc, {
+        toValue: 1,
+        duration: totalSec * 1000,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }).start(runArc);
+    };
+    runArc();
     runPhase();
-    return () => progress.stopAnimation();
+
+    return () => {
+      dead = true;
+      clearTick();
+      scale.stopAnimation();
+      arc.stopAnimation();
+    };
   }, [isPlaying, pattern]);
 
-  const inhaleScale = progress.interpolate({
-    inputRange: [0, 0.25, 0.5, 0.75, 1],
-    outputRange: [0.55, 1, 1, 0.55, 0.55],
-  });
+  const r = size * 0.436;               // 96 / 220
+  const C = 2 * Math.PI * r;
+  const dashOffset = arc.interpolate({ inputRange: [0, 1], outputRange: [C, 0] });
+  const cx = size / 2, cy = size / 2;
 
-  return (
-    <View style={[styles.wrap, { width: size, height: size }]}>
-      {renderStyle(style, size, inhaleScale, phase)}
-      <View style={styles.labelLayer}>
-        <Text style={styles.phaseLabel}>{PHASE_LABELS[phase]}</Text>
-        <Text style={styles.cycleLabel}>第 {cycles + 1} 轮</Text>
-      </View>
-    </View>
-  );
-}
-
-function renderStyle(style: BreathStyle, size: number, scale: Animated.Value, phase: BreathPhase) {
-  switch (style) {
-    case 'orb':   return <OrbS size={size} scale={scale} />;
-    case 'ring':  return <RingS size={size} scale={scale} phase={phase} />;
-    case 'wave':  return <WaveS size={size} scale={scale} />;
-    case 'watch': return <WatchS size={size} scale={scale} />;
-  }
-}
-
-// Orb — 多层呼吸球
-function OrbS({ size, scale }: { size: number; scale: Animated.Value }) {
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {[0, 60, 120, 180, 240, 300].map((deg, i) => (
-        <Animated.View key={i} style={{
-          position: 'absolute', width: size * 0.85, height: size * 0.85,
-          borderRadius: size * 0.425,
-          backgroundColor: i % 2 === 0 ? 'rgba(124,106,224,0.18)' : 'rgba(126,166,248,0.18)',
-          transform: [{ rotate: deg + 'deg' }, { scale }],
-        }} />
-      ))}
+      {/* 呼吸光晕（随吸气放大 / 呼气缩小） */}
       <Animated.View style={{
-        position: 'absolute', width: size * 0.5, height: size * 0.5,
-        borderRadius: size * 0.25, backgroundColor: theme.colors.accentSolid,
-        opacity: 0.35, transform: [{ scale: Animated.add(scale, 0.35) }],
-      }} />
-    </View>
-  );
-}
-
-// Ring — 环形呼吸
-function RingS({ size, scale, phase }: { size: number; scale: Animated.Value; phase: BreathPhase }) {
-  const color = phase === 'inhale' ? theme.colors.moodGood
-               : phase === 'exhale' ? theme.colors.moodRest
-               : theme.colors.accent1;
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{
-        width: size * 0.5, height: size * 0.5, borderRadius: size * 0.25,
-        backgroundColor: 'transparent', borderWidth: 4,
-        borderColor: color, opacity: Animated.add(scale, 0.3) as any,
+        position: 'absolute', width: size * 0.86, height: size * 0.86,
         transform: [{ scale }],
-      }} />
-      <Animated.View style={{
-        position: 'absolute', width: size * 0.3, height: size * 0.3,
-        borderRadius: size * 0.15, backgroundColor: theme.colors.accentSolid,
-        opacity: 0.2, transform: [{ scale: Animated.add(scale, 0.5) }],
-      }} />
-    </View>
-  );
-}
+      }}>
+        <Svg width={size * 0.86} height={size * 0.86} viewBox={`0 0 ${size} ${size}`}>
+          <Defs>
+            <RadialGradient id="breathHalo" cx="50%" cy="50%" r="50%">
+              <Stop offset="0" stopColor="#fff" stopOpacity="0.16" />
+              <Stop offset="0.6" stopColor="#fff" stopOpacity="0.07" />
+              <Stop offset="1" stopColor="#fff" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={size / 2} cy={size / 2} r={size * 0.45} fill="url(#breathHalo)" />
+        </Svg>
+      </Animated.View>
 
-// Wave — 条形波浪
-function WaveS({ size, scale }: { size: number; scale: Animated.Value }) {
-  const bars = 16;
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: size * 0.55, gap: 4 }}>
-        {Array.from({ length: bars }).map((_, i) => {
-          const phaseShift = Math.sin((i / bars) * Math.PI * 2);
-          const localScale = Animated.add(Animated.multiply(Animated.add(scale, phaseShift), 0.5), 0.3);
-          return (
-            <Animated.View key={i} style={{
-              width: 6, height: 40, borderRadius: 3,
-              backgroundColor: theme.colors.accentSolid,
-              transform: [{ scaleY: localScale }],
-              opacity: Animated.add(Animated.multiply(scale, 0.3), 0.4) as any,
-            }} />
-          );
-        })}
+      {/* 白色双环：底环 + 整轮进度弧 */}
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={StyleSheet.absoluteFill}>
+        <Circle cx={cx} cy={cy} r={r} stroke="rgba(255,255,255,0.35)" strokeWidth={2} fill="none" />
+        <AnimatedCircle
+          cx={cx} cy={cy} r={r}
+          stroke="#fff" strokeWidth={2.5} fill="none" strokeLinecap="round"
+          strokeDasharray={`${C} ${C}`}
+          strokeDashoffset={dashOffset}
+          transform={`rotate(-90 ${cx} ${cy})`}
+        />
+      </Svg>
+
+      {/* 中央文字 */}
+      <View style={styles.center}>
+        <Text style={styles.phase}>{PHASE_LABELS[phase]}</Text>
+        {remaining > 0 && <Text style={styles.count}>{remaining} 秒</Text>}
       </View>
-    </View>
-  );
-}
-
-// Watch — Apple Watch 风格旋转圆
-function WatchS({ size, scale }: { size: number; scale: Animated.Value }) {
-  const items = 8;
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {Array.from({ length: items }).map((_, i) => {
-        const rotation = scale.interpolate({
-          inputRange: [0, 1],
-          outputRange: [i * (360/items) + 'deg', (i * (360/items) + 180) + 'deg'],
-        });
-        const translateX = scale.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, size * 0.12, 0] });
-        return (
-          <Animated.View key={i} style={{
-            position: 'absolute', width: size * 0.55, height: size * 0.55,
-            borderRadius: size * 0.275, backgroundColor: theme.colors.accentSolid,
-            opacity: 0.12, transform: [{ rotate: rotation }, { translateX }, { translateY: translateX }],
-          }} />
-        );
-      })}
+      <Text style={styles.cycles}>第 {cycles + 1} 轮</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', justifyContent: 'center' },
-  labelLayer: { position: 'absolute', alignItems: 'center' },
-  phaseLabel: { fontSize: 22, fontWeight: '600', color: theme.colors.textBody },
-  cycleLabel: { marginTop: 4, fontSize: 13, color: theme.colors.textSub },
+  center: { position: 'absolute', alignItems: 'center' },
+  phase: {
+    fontSize: 22, fontWeight: '600', color: '#fff', letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
+  },
+  count: {
+    marginTop: 6, fontSize: 13, color: 'rgba(255,255,255,0.82)',
+    fontVariant: ['tabular-nums'],
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+  },
+  cycles: {
+    position: 'absolute', bottom: -6, fontSize: 11.5, color: 'rgba(255,255,255,0.7)', letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+  },
 });

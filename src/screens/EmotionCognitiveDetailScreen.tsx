@@ -32,6 +32,10 @@ import { type CognitiveLoadReport } from '../lib/cognitiveLoad';
 import { reportNowMsForDay, reportNowMsForPrevDay } from '../lib/dayAnchor';
 import { computeSleepLoad, SLEEP_LOAD_LABEL, type SleepLoadDay } from '../lib/sleepLoad';
 import { formatSleepClockText, isLateBedtime } from '../lib/sleepTime';
+// ★ 2026-10-13：恢复分统一走 computeSleepPersonalized / sleepRecoveryTag（与首页 chip /
+//   睡眠详情页 / 认知负荷同一把尺）——不再读 sl.score（戒指每次同步重写的绝对分，
+//   正是「睡眠恢复分数一直变」的根源；且与全 App 的个人相对口径不一致）。
+import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 
 const DAY_MS = 86400000;
 
@@ -764,12 +768,16 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
  * 睡眠恢复卡片（日视图）：**睡眠负载** + **恢复**。
  *  - 睡眠负载：参考成熟算法（WHOOP 睡眠债 / Apple 就寝一致性 / Oura Timing / Fitbit·Garmin 碎片化与阶段质量），
  *    见 `lib/sleepLoad.ts`；窗口 = 该日及此前共 14 天。越高越「欠账」。
- *  - 恢复：当晚睡眠质量分（`lib/sleepScore.ts`：时长达成 / 深睡结构 / 起夜）。
+ *  - 恢复：当晚睡眠恢复分（`lib/sleepPersonalized.ts`：个人相对口径，醒来即定稿；
+ *    与首页 chip / 睡眠详情页 / 认知负荷同一把尺。50 = 和平时一样，勿读成百分制及格线）。
  *  - 晚睡归入「睡眠负载」（时机维度），不再和恢复分重复计分。
  */
 function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthStore.getSleep>; slPrev: ReturnType<typeof healthStore.getSleep>; anchorDayMs: number }) {
   // ★ hooks 不能放在下面 early-return 之后（hook 必须无条件调用）
   const load = useMemo(() => computeSleepLoad(sleepWindowEndingAt(anchorDayMs)), [anchorDayMs, sl]);
+  // ★ 2026-10-13：恢复分走统一入口（醒来即定稿的快照口径），与全 App 同一把尺
+  const pers = useMemo(() => { try { return computeSleepPersonalized(anchorDayMs); } catch { return null; } }, [anchorDayMs, sl]);
+  const persPrev = useMemo(() => { try { return computeSleepPersonalized(anchorDayMs - 86400000); } catch { return null; } }, [anchorDayMs, slPrev]);
 
   if (!sl || sl.total <= 0) {
     return (
@@ -783,14 +791,8 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
   }
   const totalH = sl.total / 60;
   const prevH = slPrev && slPrev.total > 0 ? slPrev.total / 60 : null;
-  const scoreD = (sl.score ?? 0) - (slPrev?.score ?? 0);
-  const scoreLabel =
-    sl.score == null ? '—'
-    : sl.score >= 90 ? '恢复优秀'
-    : sl.score >= 80 ? '恢复良好'
-    : sl.score >= 70 ? '恢复正常'
-    : sl.score >= 55 ? '恢复偏慢'
-    : '需改善';
+  const scoreD = (pers?.score ?? 0) - (persPrev?.score ?? 0);
+  const scoreLabel = sleepRecoveryTag(pers?.score ?? null, pers?.mode ?? 'absolute') ?? '—';
   const debtTxt = load.debtH >= 0.1 ? ` · 欠 ${load.debtH.toFixed(1)}h` : '';
   // ★ 展示前归一为 "HH:mm" 并处理跨天（唯一实现见 lib/sleepTime.formatSleepClockText）：
   //   `healthStore.getSleep(dk).sleepTime` 存的是完整 datetime（真机实测 "2026-09-18 01:38"），
@@ -803,7 +805,7 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
         <Text style={styles.cardTitle}>睡眠恢复摘要</Text>
         <View style={styles.summaryGrid}>
           <SumCell label="睡眠负载(0–100)" value={String(load.load)} sub={`${SLEEP_LOAD_LABEL[load.level]}${debtTxt}`} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
-          <SumCell label="恢复" value={sl.score != null ? String(sl.score) : '—'} sub={scoreLabel} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
+          <SumCell label="恢复" value={pers?.score != null ? String(pers.score) : '—'} sub={scoreLabel} bg={MOD_BG.sleep.bg} fg={MOD_BG.sleep.fg} />
         </View>
         {(clock.bed || clock.wake) && (
           <Text style={styles.sleepMeta}>
@@ -819,7 +821,7 @@ function SleepCard({ sl, slPrev, anchorDayMs }: { sl: ReturnType<typeof healthSt
                 if (prevH != null && Math.abs(totalH - prevH) >= 0.1) {
                   parts.push(`时长${totalH > prevH ? '增' : '减'} ${Math.abs(totalH - prevH).toFixed(1)}h`);
                 }
-                if (sl.score != null && slPrev?.score != null && Math.abs(scoreD) >= 3) {
+                if (pers?.score != null && persPrev?.score != null && Math.abs(scoreD) >= 3) {
                   parts.push(`评分 ${scoreD >= 0 ? '+' : ''}${scoreD}`);
                 }
                 return parts.length > 0 ? parts.join(' ') : '基本持平';

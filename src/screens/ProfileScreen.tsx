@@ -12,7 +12,7 @@ import RelaxCardDeck from '../components/RelaxCardDeck';
 import RelaxVideoPlayer from '../components/RelaxVideoPlayer';
 import { useAppState, PLAN_PER_DAY } from '../state/AppState';
 import { CAL_YEAR, CAL_MONTH } from '../data/tasks';
-import JourneyDayView from '../components/JourneyDayView';
+import MonthDiscoveryView from '../components/MonthDiscoveryView';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CONFETTI_MS = 3000; // 礼花时长
@@ -22,7 +22,11 @@ const FADE_MS = 420; // 落点后整体淡出时长
 
 const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
-export default function ProfileScreen() {
+// ★ 2026-10-12（用户）：月视图改版（方案 A：卡片堆叠月历 + 本月的变化）。
+//   true = 走新版 MonthDiscoveryView；false = 走旧版（CalendarGrid + RelaxCardDeck，代码保留不删）。
+const USE_MONTH_DISCOVERY = true;
+
+export default function ProfileScreen({ navigation }: any) {
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -132,8 +136,8 @@ export default function ProfileScreen() {
 
   const [relaxVisible, setRelaxVisible] = useState(false);
 
-  // ★ 2026-10-10（用户：Calendar 页顶部加「日 / 月」两个 tab）—— 日 = 今日旅程（曲线流，从工具页迁入）；月 = 原月历 + 集成就卡
-  const [mainTab, setMainTab] = useState<'day' | 'month'>('day');
+  // ★ 2026-10-12（用户）：「日 / 月」tab 已移除，Calendar 页固定「月」视图；
+  //   「日」旅程视图改由点月历日期 → 下抽屉（DayDrawer）弹出。
 
   return (
     <View style={styles.root}>
@@ -147,32 +151,15 @@ export default function ProfileScreen() {
           <Text style={styles.title}>Calendar</Text>
         </Animated.View>
 
-        {/* ★ 2026-10-10（用户）：「日 / 月」分段 Tab（选中 = limeSoft 底 + limeDeep 字，App 通用分段语言） */}
-        <View style={styles.seg}>
-          {([
-            { key: 'day', label: '日' },
-            { key: 'month', label: '月' },
-          ] as const).map((o) => {
-            const on = o.key === mainTab;
-            return (
-              <TouchableOpacity
-                key={o.key}
-                activeOpacity={0.7}
-                onPress={() => setMainTab(o.key)}
-                style={[styles.segItem, on && styles.segItemOn]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-              >
-                <Text style={[styles.segText, on && styles.segTextOn]}>{o.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {mainTab === 'day' ? (
-          <JourneyDayView />
+        {/* ★ 2026-10-12（用户）：「去掉日和月表上面那个选 tab 吧，只保留月」——
+            顶部的「日 / 月」分段器整块移除，Calendar 页固定为「月」视图；
+            「日」视图改为点月历上的某一天 → 下抽屉弹出（见 MonthDiscoveryView / DayDrawer）。 */}
+        {USE_MONTH_DISCOVERY ? (
+          /* ★ 2026-10-12（用户）：月视图改版方案 A —— 卡片堆叠月历 + 规律总结 */
+          <MonthDiscoveryView tasks={tasks} />
         ) : (
         <>
+        {/* 旧版（CalendarGrid + RelaxCardDeck；仅 USE_MONTH_DISCOVERY = false 时启用，代码保留不删） */}
 
         {/* ★ 2026-10-08（用户）：原「已完成 / 计划任务 / 完成度%」统计卡整块移除 */}
 
@@ -255,27 +242,6 @@ const styles = StyleSheet.create({
     color: mm.colors.ink,
     marginBottom: theme.space.md,
   },
-  // ★ 2026-10-10（用户）：「日 / 月」分段 Tab —— 轨道 btnBusyBg / 选中 limeSoft+limeDeep（App 通用分段语言）
-  seg: {
-    flexDirection: 'row',
-    backgroundColor: mm.colors.btnBusyBg,
-    borderRadius: theme.radius.pill,
-    padding: theme.sp(1),
-    marginBottom: theme.space.md,
-  },
-  segItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: theme.sp(2),
-    borderRadius: theme.radius.pill,
-  },
-  segItemOn: { backgroundColor: mm.colors.limeSoft },
-  segText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.weight.semibold as never,
-    color: theme.colors.textSub,
-  },
-  segTextOn: { color: mm.colors.limeDeep },
   calHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

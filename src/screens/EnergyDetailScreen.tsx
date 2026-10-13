@@ -43,6 +43,11 @@ import ReadinessTrendChart, { readinessColor } from '../components/ReadinessTren
 import { computeReadinessSeries, readinessLevelLabel, READY_LOW, dailyBrainUsed } from '../lib/cognitiveReadiness';
 import { buildStressRangeSeries, rangeStressMean } from '../lib/stressDaily';
 import { todaySportLogs } from '../lib/sportLog';
+// ★ 2026-10-12：运动消耗·日视图「今日运动建议」——按当前周期相位给处方
+import { buildWorkoutAdvice, buildPhaseAnalysis } from '../lib/phaseAdvice';
+// ★ 2026-10-12：与工具页「运动建议」共用引擎，抽真实处方字段上卡（单一事实来源）
+import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
+import { collectWorkoutInput } from '../lib/workoutInput';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -87,6 +92,28 @@ export default function EnergyDetailScreen() {
   const openChat = (q: string) => { setChatQuestion(q); setChatVisible(true); };
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
+
+  // ★ 2026-10-12（用户）：运动消耗·日视图「今日运动建议」——按当前周期相位给处方（与 CyclePhaseCard 同源相位）。
+  //   无经期记录（phaseLabel='未记录'）时返回引导语；绝不编造激素/数据。
+  const phaseLabel = (ring as any)?.curveStatus?.phaseLabel ?? '未记录';
+  const phaseKnown = phaseLabel !== '未记录';
+  const workoutAdvice = buildWorkoutAdvice(phaseLabel);
+  // ★ 2026-10-12：与工具页「运动建议」共用 collectWorkoutInput + buildTodayWorkout，
+  //   抽真实处方（目标/强度/主项/时长）到卡片；无数据（dataDriven=false）时退回引导文案。
+  const workoutPlan = useMemo(
+    () => (type === 'activity' ? buildTodayWorkout(collectWorkoutInput(ring, Date.now())) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [type, ring]
+  );
+  const sportBrief = workoutPlan ? buildSportBrief(phaseLabel, workoutPlan.timeSlot) : null;
+  // ★ 2026-10-12（用户：「加上你处于什么，比方说经期的什么时候或者什么状态，适宜练什么样的运动，
+  //   这一小段分析，不要太多字」）：真实相位 + 周期天 + 今日状态 → 一小段处境分析；未记录经期为 null。
+  const curveStatus = (ring as any)?.curveStatus;
+  const phaseAnalysis = buildPhaseAnalysis(
+    phaseLabel,
+    curveStatus?.dayInCycle ?? null,
+    curveStatus?.value ?? null,
+  );
 
   // ★ 心理压力 Hero 的日/周/月/年均值（2026-10-07）
   //   与下面的折线图共用 lib/stressDaily 的同一个函数，保证「上面的数字」和「下面的图」不会打架。
@@ -160,6 +187,54 @@ export default function EnergyDetailScreen() {
               <HeroRow type={type} accent={meta.accent} anchor={anchor} ring={ring} range={range} rangeMeanConsumption={range !== 'day' ? meanCogConsumption : null} rangeMeanStress={meanStress} />
             </View>
           </Card>
+        )}
+
+        {/* ★ 2026-10-12（用户）：运动消耗·日视图——Hero「整体卡路里」卡下方的「今日运动建议」，
+            按当前周期相位给处方；周/月/年不显示（建议天然是「今日」口径）。
+            ★ 整卡可点 → 跳工具页「运动建议」（ToolTopic/sport，进入后自动滚到方案卡）。 */}
+        {type === 'activity' && range === 'day' && (
+          <TouchableOpacity
+            style={styles.waCard}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('ToolTopic', { topic: 'sport' })}
+            accessibilityRole="button"
+            accessibilityLabel="查看今日运动方案"
+          >
+            <View style={styles.waHead}>
+              <Icon name="run" size={18} color={mm.chipBg.cyan.fg} />
+              <Text style={styles.waTitle}>今日运动建议</Text>
+              {phaseKnown ? (
+                <View style={styles.waPhase}>
+                  <Text style={styles.waPhaseText}>{phaseLabel}</Text>
+                </View>
+              ) : null}
+              <View style={{ marginLeft: phaseKnown ? theme.sp(1.5) : 'auto' }}>
+                <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+              </View>
+            </View>
+            <Text style={styles.waHeadline}>
+              {workoutPlan?.dataDriven ? workoutPlan.headline : workoutAdvice.headline}
+            </Text>
+            {phaseAnalysis ? <Text style={styles.waAnalysis}>{phaseAnalysis}</Text> : null}
+            {workoutPlan?.dataDriven ? (
+              <View style={styles.waStats}>
+                <View style={styles.waStat}>
+                  <Text style={styles.waStatK}>强度</Text>
+                  <Text style={styles.waStatV}>{sportBrief?.gearName ?? '—'}</Text>
+                </View>
+                <View style={styles.waStat}>
+                  <Text style={styles.waStatK}>主项</Text>
+                  <Text style={styles.waStatV}>{workoutPlan.primaryName}</Text>
+                </View>
+                <View style={styles.waStat}>
+                  <Text style={styles.waStatK}>时长</Text>
+                  <Text style={styles.waStatV}>{workoutPlan.totalMinutes} 分钟</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.waDetail}>{workoutAdvice.detail}</Text>
+            )}
+          </TouchableOpacity>
         )}
 
         {/* AI 分析：★ 2026-10-07（用户）脑力消耗 / 心理压力 详情页先隐藏，代码保留。
@@ -405,9 +480,11 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
     return (
       <View>
         <View style={styles.heroWrap}>
-          <View>
+          {/* ★ 2026-10-12（用户：「27 旁边写卡路里，去掉下面那个今日消耗 · kcal」）：
+              单位并入大数字旁（基线对齐），原下方 heroLab「今日消耗 · kcal」标签行删除。 */}
+          <View style={styles.heroNumRow}>
             <Text style={[styles.heroVal, { color: mm.colors.honeyDeep }]}>{cal}</Text>
-            <Text style={styles.heroLab}>今日消耗 · kcal</Text>
+            <Text style={styles.heroUnit}>卡路里</Text>
           </View>
           {delta != null ? (
             <Text style={[styles.heroCtx, { color: delta >= 0 ? theme.colors.success : theme.colors.danger }]}>
@@ -1076,29 +1153,16 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
 function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: any; anchor: Date }) {
   const dk = dayKey(anchor.getTime());  // ★ 跟随日期选择器
   const step = ring?.stepDaily?.[dk];
-  const steps = step?.steps ?? 0;
   const distance = step?.distance ?? 0;
   const calorie = step?.calorie ?? 0;
 
-  const fmtInt = (n: number) => n.toLocaleString('zh-CN');
   const fmtKm = (km: number) => (km >= 10 ? km.toFixed(1) : km.toFixed(2));
-
-  const openDetail = (key: string, name: string, unit: string, yMin: number, yMax: number) => {
-    navigation.navigate('MetricDetail', { key, name, unit, yMin, yMax });
-  };
 
   return (
     <>
-      <View style={styles.chartCard}>
-        <ActivityTile label="步数" value={fmtInt(steps)} unit="步" color={mm.colors.skyDeep}
-          onPress={() => openDetail('steps', '步数', '步', 0, Math.max(10000, Math.ceil(steps * 1.2)))} />
-        <View style={{ height: 1, backgroundColor: theme.colors.ui.borderSoft }} />
-        <ActivityTile label="步行距离" value={fmtKm(distance)} unit="km" color={mm.colors.skyDeep}
-          onPress={() => openDetail('distance', '步行距离', 'km', 0, Math.max(5, Math.ceil(distance * 1.5)))} />
-        <View style={{ height: 1, backgroundColor: theme.colors.ui.borderSoft }} />
-        <ActivityTile label="活动消耗" value={fmtInt(Math.round(calorie))} unit="kcal" color={mm.colors.honeyDeep} last
-          onPress={() => openDetail('calorie', '活动消耗', 'kcal', 0, Math.max(200, Math.ceil(calorie * 1.5)))} />
-      </View>
+      {/* ★ 2026-10-12（用户：「去掉运动消耗里面最下面的步数、步行距离和运动活动消耗」）：
+          三行入口整体移除，只保留今日运动记录列表与一句事实说明。
+          ActivityTile 组件保留（下方），日后要恢复把 chartCard 三行放回来即可。 */}
       {/* ★ 2026-10-09（exercise-consumption-preview「今日运动记录」）：
             统计格已并入上方 hero 卡，这里只放真实运动会话列表（无记录时不渲染） */}
       {(() => {
@@ -1132,13 +1196,15 @@ function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: a
         );
       })()}
       <Text style={styles.insightText}>
-        今日步行 {fmtKm(distance)} km，活动消耗 {Math.round(calorie)} kcal。点击任一项查看历史趋势。
+        今日步行 {fmtKm(distance)} km，活动消耗 {Math.round(calorie)} kcal。
       </Text>
     </>
   );
 }
 
 
+/* ★ 2026-10-12（用户）：三行入口（步数/步行距离/活动消耗）已从日视图移除，
+   本组件暂时无引用；保留以便恢复（把 ActivityDetail 里的 chartCard 三行放回即可）。 */
 function ActivityTile({ label, value, unit, color, onPress, last }: {
   label: string; value: string; unit: string; color: string; onPress: () => void; last?: boolean;
 }) {
@@ -1258,9 +1324,69 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
     paddingVertical: 0, paddingHorizontal: 0,
   },
+  /* ★ 2026-10-12（用户：「27 旁边写卡路里」）：大数字 + 单位基线对齐一行 */
+  heroNumRow: { flexDirection: 'row', alignItems: 'baseline' },
   heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+  /* ★ 2026-10-12 运动消耗·日视图「今日运动建议」卡 */
+  waCard: {
+    backgroundColor: theme.colors.cardBg,
+    borderColor: theme.colors.cardBorder,
+    borderWidth: 1,
+    borderRadius: theme.radius.card,
+    padding: theme.space.cardPad,
+    marginTop: theme.space.sm,
+  },
+  waHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1.5) },
+  waTitle: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.medium,
+    color: theme.colors.textTitle,
+    marginLeft: theme.sp(1.5),
+  },
+  waPhase: {
+    marginLeft: 'auto',
+    backgroundColor: mm.chipBg.cyan.bg,
+    paddingHorizontal: theme.sp(2.5),
+    paddingVertical: theme.sp(0.75),
+    borderRadius: theme.radius.pill,
+  },
+  waPhaseText: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.semibold as never,
+    color: mm.chipBg.cyan.fg,
+  },
+  waHeadline: {
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textInk,
+    marginBottom: theme.sp(0.75),
+  },
+  waDetail: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    lineHeight: 20,
+  },
+  /* ★ 2026-10-12：处境分析一小段（相位 + 第几天 + 今日状态 → 适宜什么运动） */
+  waAnalysis: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textBody,
+    lineHeight: theme.fontSize.xs * 1.5,
+    marginTop: theme.sp(1),
+  },
+  waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(2) },
+  waStat: {
+    flex: 1,
+    backgroundColor: mm.colors.skyTint,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.sp(1.5),
+    paddingHorizontal: theme.space.xs,
+    alignItems: 'center',
+  },
+  waStatK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) },
+  waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  /* ★ 2026-10-12（用户：「较昨日上升125%，可以字大一点」）：xs(13) → body(15) */
+  heroCtx: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
   // .rows / .row：margin-top 6px，13px 行，底线分隔，末行无底线
   rowsBox: { marginTop: theme.sp(1.5) },
   rowItem: {

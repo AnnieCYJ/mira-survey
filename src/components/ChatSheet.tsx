@@ -114,6 +114,25 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   const inputRef = useRef<TextInput>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
+  // ★ 2026-10-12（用户：点 GROK / 语音 / 跳 AI 页都特别卡）：端侧 Qwen 流式输出时
+  //   onToken 每 ~80ms 回调一次，旧实现每个 token 都全量 map 消息数组 + scrollToEnd(animated)，
+  //   10–15s 生成期持续掉帧。改为 token 先进缓冲区、100ms 合并 flush 一次，滚动改无动画。
+  const tokenBufRef = useRef('');
+  const tokenFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushTokens = useCallback(() => {
+    tokenFlushTimerRef.current = null;
+    const buf = tokenBufRef.current;
+    if (!buf) return;
+    tokenBufRef.current = '';
+    setMessages((prev) => {
+      const idx = prev.length - 1;
+      return prev.map((m, i) => (i === idx ? { ...m, text: m.text + buf } : m));
+    });
+    scrollRef.current?.scrollToEnd({ animated: false });
+  }, []);
+  useEffect(() => () => {
+    if (tokenFlushTimerRef.current) clearTimeout(tokenFlushTimerRef.current);
+  }, []);
   const { addToolTask, ttsOn, setTtsOn } = useAppState();
   const { speak, stop } = useSpeech();
   // ttsOn 经全局共享；用 ref 避免 sendMessage 闭包拿到旧值（sendMessage 未把 ttsOn 列入依赖）
@@ -146,6 +165,12 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     if (!text.trim() || isLoading) return;
     Keyboard.dismiss();
     const q = text.trim();
+    // ★ 2026-10-12：新回合先清掉上一轮可能残留的 token 缓冲与未执行的 flush
+    tokenBufRef.current = '';
+    if (tokenFlushTimerRef.current) {
+      clearTimeout(tokenFlushTimerRef.current);
+      tokenFlushTimerRef.current = null;
+    }
 
     const history: ChatHistoryItem[] = messagesRef.current
       .filter((m) => m.text && m.text.length > 0)
@@ -162,11 +187,11 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
 
     const onToken = (tok: string) => {
       if (!tok) return;
-      setMessages((prev) => {
-        const idx = prev.length - 1;
-        return prev.map((m, i) => (i === idx ? { ...m, text: m.text + tok } : m));
-      });
-      scrollRef.current?.scrollToEnd({ animated: true });
+      // ★ 2026-10-12：token 进缓冲区，100ms 合并 flush（见 tokenBufRef 注释）
+      tokenBufRef.current += tok;
+      if (!tokenFlushTimerRef.current) {
+        tokenFlushTimerRef.current = setTimeout(flushTokens, 100);
+      }
     };
 
     const attachTask = (task?: AiTask) => {
@@ -190,13 +215,24 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       await ask(q, {
         history,
         onToken,
-        // ★ 回复完整后播报（仅当喇叭开启）：流式逐字播会断句错乱，必须等全文到齐
-        onDone: (full) => { if (ttsOnRef.current && full) speak(full); },
+        // ★ 回复完整后播报（仅当喇叭开启）：流式逐字播会断句错乱，必须等全文到齐。
+        //   ★ 2026-10-12：onDone 前先把缓冲区里未 flush 的 token 落进消息，再播报。
+        onDone: (full) => {
+          flushTokens();
+          if (ttsOnRef.current && full) speak(full);
+        },
       });
       attachTask(pickReply(q).task);
       attachJumps(pickJumps(q));
     } catch (e) {
       console.warn('[ChatSheet] MiraAI 出错，回退模板:', e);
+      // ★ 2026-10-12：清掉流式残留缓冲——fallback 直接覆盖整条 text，
+      //   若 buffer 里还有未 flush 的 token，稍后 flush 会拼到兜底文案后面。
+      tokenBufRef.current = '';
+      if (tokenFlushTimerRef.current) {
+        clearTimeout(tokenFlushTimerRef.current);
+        tokenFlushTimerRef.current = null;
+      }
       const fb = pickReply(q);
       setMessages((prev) => {
         const idx = prev.length - 1;
@@ -207,7 +243,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, addToolTask]);
+  }, [isLoading, addToolTask, flushTokens]);
 
   // ★ v18.78 onPick 经 ref 转发保持引用稳定 → SuggestStrip 的 memo 不因 isLoading 变化而失效
   const sendRef = useRef(sendMessage);

@@ -1,6 +1,6 @@
 // 冥想音频素材 — CC0 / Public Domain
-// 白/粉/棕噪声由 Python 生成；细雨/海浪来自 archive.org
-// 背景图 AI 生成（流体艺术风格）
+// 白/粉/棕噪声由 Python 生成；细雨/海浪为 sfxmint.com CC0 正版循环音（2026-10-13 替换 archive.org 坏文件）
+// 背景图 v2 = Unsplash 真实自然风景（2026-10-13 替换 AI 流体图）
 
 export type MeditationType = 'whitenoise' | 'pinknoise' | 'brownnoise' | 'nature' | 'guided' | 'music';
 
@@ -14,7 +14,6 @@ export interface MeditationTrack {
   bg: number;        // require() 全屏背景图
   thumb: number;     // require() 卡片缩略图
   loop: boolean;
-  accent: string;    // 强调色
 }
 
 export const MEDITATION_TRACKS: MeditationTrack[] = [
@@ -25,10 +24,9 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
     type: 'whitenoise',
     duration: 0,
     uri: require('../../assets/meditation/whitenoise.wav'),
-    bg: require('../../assets/meditation/thumb_whitenoise.jpg'),
-    thumb: require('../../assets/meditation/thumb_whitenoise.jpg'),
+    bg: require('../../assets/meditation/bg_whitenoise_v2.jpg'),
+    thumb: require('../../assets/meditation/thumb_whitenoise_v2.jpg'),
     loop: true,
-    accent: '#A78BFA',
   },
   {
     id: 'pinknoise',
@@ -37,10 +35,9 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
     type: 'pinknoise',
     duration: 0,
     uri: require('../../assets/meditation/pinknoise.wav'),
-    bg: require('../../assets/meditation/thumb_pinknoise.jpg'),
-    thumb: require('../../assets/meditation/thumb_pinknoise.jpg'),
+    bg: require('../../assets/meditation/bg_pinknoise_v2.jpg'),
+    thumb: require('../../assets/meditation/thumb_pinknoise_v2.jpg'),
     loop: true,
-    accent: '#F472B6',
   },
   {
     id: 'brownnoise',
@@ -49,10 +46,9 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
     type: 'brownnoise',
     duration: 0,
     uri: require('../../assets/meditation/brownnoise.wav'),
-    bg: require('../../assets/meditation/thumb_brownnoise.jpg'),
-    thumb: require('../../assets/meditation/thumb_brownnoise.jpg'),
+    bg: require('../../assets/meditation/bg_brownnoise_v2.jpg'),
+    thumb: require('../../assets/meditation/thumb_brownnoise_v2.jpg'),
     loop: true,
-    accent: '#7C6AE0',
   },
   {
     id: 'rain',
@@ -60,11 +56,10 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
     subtitle: '雨天氛围 · 平静心绪',
     type: 'nature',
     duration: 0,
-    uri: require('../../assets/meditation/rain.mp3'),
-    bg: require('../../assets/meditation/thumb_rain.jpg'),
-    thumb: require('../../assets/meditation/thumb_rain.jpg'),
+    uri: require('../../assets/meditation/rain_v2.mp3'),
+    bg: require('../../assets/meditation/bg_rain_v2.jpg'),
+    thumb: require('../../assets/meditation/thumb_rain_v2.jpg'),
     loop: true,
-    accent: '#60A5FA',
   },
   {
     id: 'waves',
@@ -72,10 +67,9 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
     subtitle: '潮汐节奏 · 深度放松',
     type: 'nature',
     duration: 0,
-    uri: require('../../assets/meditation/waves.mp3'),
-    bg: require('../../assets/meditation/thumb_waves.jpg'),
-    thumb: require('../../assets/meditation/thumb_waves.jpg'),
+    uri: require('../../assets/meditation/waves_v2.mp3'),
+    bg: require('../../assets/meditation/bg_waves_v2.jpg'),
+    thumb: require('../../assets/meditation/thumb_waves_v2.jpg'),
     loop: true,
-    accent: '#34D399',
   },
 ];

@@ -202,8 +202,9 @@ export default function CycleCalendarScreen() {
         ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] }))
         : undefined,
       periodHistory: log.history,
+      periodDays,
     });
-  }, [log, ring.tempDaily]);
+  }, [log, ring.tempDaily, periodDays]);
 
   /**
    * ★ 2026-10-07（周期切换）：周期列表（新 → 旧），index 0 = 当前周期。来源：
@@ -669,6 +670,11 @@ function TrendCard({
   const axisN = axis ? axis.days : winDays;
   const xAtCd = (cd: number) => PAD + ((cd - 1) / Math.max(1, axisN - 1)) * plotW;
   const cdOfDate = (date: string) => Math.round((parseDate(date).getTime() - axisStartMs) / 86_400_000) + 1;
+  // ★ 2026-10-12（用户：横坐标「上面是第几天，下面是那个日期」）：周期天 → 真实日期（M/D）
+  const dateOfCd = (cd: number) => {
+    const dt = new Date(axisStartMs + (cd - 1) * 86_400_000);
+    return `${dt.getMonth() + 1}/${dt.getDate()}`;
+  };
 
   // 相位背景带：逐日判相位、同色相邻合并、铺满整轴（无数据也画）
   const bands: { x: number; w: number; color: string }[] = [];
@@ -762,11 +768,13 @@ function TrendCard({
           <Circle key={`pt-${i}`} cx={p.x} cy={p.y} r={2.4} fill={lineColor} />
         ))}
       </Svg>
+      {/* ★ 2026-10-12（用户）：横坐标双行——上「第 N 天」/ 下该周期天对应的真实日期 */}
       <View style={styles.estAxis}>
         {axisLabels.map((cd, i) => (
-          <Text key={`${cd}-${i}`} style={styles.estAxisText}>
-            第 {cd} 天
-          </Text>
+          <View key={`${cd}-${i}`} style={styles.estAxisCol}>
+            <Text style={styles.estAxisText}>第 {cd} 天</Text>
+            <Text style={styles.estAxisDate}>{dateOfCd(cd)}</Text>
+          </View>
         ))}
       </View>
       {/* 四相标记：与体温双相图共用同一套图例，同一相位到处同色 */}
@@ -800,7 +808,7 @@ function MonthGrid({
   const lead = first.getDay(); // 0=Sun
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const todayKey = dayKey(new Date());
-  const info = log ? computeCycle(log, new Date(), { tempSeries: Object.keys(ring.tempDaily ?? {}).length ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] })) : undefined, periodHistory: log.history }) : null;
+  const info = log ? computeCycle(log, new Date(), { tempSeries: Object.keys(ring.tempDaily ?? {}).length ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] })) : undefined, periodHistory: log.history, periodDays }) : null;
   const nextPeriodKey = info?.nextPeriodDate ?? null;
 
   const cells: (Date | null)[] = [];
@@ -869,12 +877,14 @@ function DaySheet({
 }) {
   const [flow, setFlow] = useState<FlowLevel>('');
   const [pain, setPain] = useState<PainLevel>('');
+  const [periodEnd, setPeriodEnd] = useState(false);
 
   useEffect(() => {
     if (!dateKey) return;
     const cur = periodDays[dateKey];
     setFlow(cur?.flow ?? '');
     setPain(cur?.pain ?? '');
+    setPeriodEnd(!!cur?.periodEnd);
   }, [dateKey, periodDays]);
 
   if (!dateKey) return null;
@@ -920,9 +930,19 @@ function DaySheet({
 
           <TouchableOpacity
             activeOpacity={0.7}
+            onPress={() => setPeriodEnd((v) => !v)}
+            style={[styles.endBtn, periodEnd && styles.endBtnOn]}
+          >
+            <Text style={[styles.endBtnText, periodEnd && styles.endBtnTextOn]}>
+              {periodEnd ? '已标记：经期结束于该日 ✓' : '经期已结束？点此标记结束'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.7}
             style={styles.saveBtn}
             onPress={() => {
-              onSave({ date: dateKey, flow, pain });
+              onSave({ date: dateKey, flow, pain, periodEnd: periodEnd || undefined });
               onClose();
             }}
           >
@@ -1046,6 +1066,9 @@ const styles = StyleSheet.create({
   estNote: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.6, color: theme.colors.textSub, marginTop: theme.sp(1) },
   estAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(0.5) },
   estAxisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  /* ★ 2026-10-12：横坐标第二行（周期天对应的真实日期） */
+  estAxisCol: { alignItems: 'center' },
+  estAxisDate: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   /* ★ 方案一：今天虚线标记的文字（右对齐） */
   todayRow: { alignItems: 'flex-start', paddingHorizontal: theme.sp(0.5) },
   todayText: { fontSize: theme.fontSize.micro, color: theme.colors.accentText },
@@ -1105,4 +1128,8 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
   cancelBtn: { marginTop: theme.sp(2.5), alignItems: 'center', paddingVertical: theme.sp(3) },
   cancelBtnText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
+  endBtn: { marginTop: theme.space.md, alignItems: 'center', paddingVertical: theme.sp(2.5), borderRadius: theme.radius.md, backgroundColor: 'rgba(124,106,224,0.12)' },
+  endBtnOn: { backgroundColor: mm.colors.limeMid },
+  endBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textSub },
+  endBtnTextOn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: '#1F1D1A' },
 });

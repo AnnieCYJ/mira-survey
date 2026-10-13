@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>月度发现 · 「AI 洞察」4 方案对比 · 2026-10-12 21:45</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#706A61;
+    --card:#FFFFFF; --line:rgba(31,29,26,0.09); --empty:#F6F4F1;
+    --lavS:#E7E1FB; --pinkS:#FCE7F0; --skyS:#E3EBFE; --limeS:#EAF0BE; --butterS:#FBEFD6;
+    --lavD:#6E58C8; --pinkD:#C9598A; --skyD:#4C74C9; --limeD:#6E7A24; --butterD:#B98A2E;
+    --lavC:#9D8AF0; --limeM:#BCCB62; --limeC:#D5E384;
+    --radius:14px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;background:#ECE8E2;padding:0 0 56px;color:var(--ink);}
+
+  .pageHead{max-width:980px;margin:0 auto;padding:26px 18px 6px;}
+  .pageHead h1{font-size:22px;margin:0 0 10px;letter-spacing:-.4px;}
+  .pageHead p{margin:0 0 8px;font-size:13px;line-height:1.8;color:var(--inkSoft);}
+  .pageHead code{background:rgba(31,29,26,.06);padding:1px 5px;border-radius:5px;font-size:12px;}
+  .pageHead .q{border-left:3px solid var(--lavC);padding-left:10px;color:var(--ink);}
+
+  .gridwrap{max-width:980px;margin:0 auto;padding:10px 18px;display:flex;flex-wrap:wrap;gap:26px;justify-content:center;}
+  .opt{width:384px;flex:0 0 auto;}
+  .optTag{display:flex;align-items:center;gap:8px;margin:0 0 4px;}
+  .badge{width:24px;height:24px;border-radius:8px;background:var(--ink);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+  .optName{font-size:15px;font-weight:700;letter-spacing:-.2px;}
+  .rec{font-size:11px;font-weight:700;color:var(--limeD);background:var(--limeS);border-radius:999px;padding:2px 8px;}
+  .optSub{font-size:12px;color:var(--inkSoft);margin:0 0 5px;}
+  .optWhy{font-size:11.5px;line-height:1.7;color:var(--inkSoft);margin:0 2px 9px;background:rgba(255,255,255,.7);border-radius:10px;padding:7px 10px;border:1px solid var(--line);}
+  .optNote{font-size:12px;line-height:1.7;color:var(--inkSoft);margin:10px 2px 0;}
+  .optNote b{color:var(--ink);}
+
+  .phone{width:384px;background:#F7F5FE;border-radius:34px;overflow:hidden;box-shadow:0 18px 50px rgba(31,29,26,.18);border:1px solid rgba(255,255,255,.5);}
+  .screen{padding:16px 16px 24px;background:linear-gradient(180deg,#EDEAFB 0%,#F4F1FE 38%,#F7F5FE 100%);}
+  .ptitle{font-size:30px;font-weight:600;color:var(--ink);letter-spacing:-.6px;margin:2px 0 14px;}
+
+  .stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;}
+  .sarrow{width:36px;height:36px;border-radius:999px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--ink);box-shadow:0 1px 4px rgba(31,29,26,.08);}
+  .scenter{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--lavD);background:var(--lavS);border-radius:999px;padding:9px 0;}
+  .scenterText{font-size:15px;font-weight:700;color:var(--ink);}
+  .scal{width:14px;height:14px;border-radius:4px;background:var(--lavD);opacity:.55;}
+
+  .hero{padding:0 2px;margin:0 0 14px;}
+  .hero .hHead{font-size:17px;font-weight:700;letter-spacing:-.3px;color:var(--ink);}
+  .hero .hSub{font-size:13px;line-height:18px;margin-top:6px;color:var(--inkSoft);}
+
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px;}
+  .dow span{text-align:center;font-size:11px;color:var(--inkFaint);font-weight:600;}
+  .grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+  .cell{aspect-ratio:1/1.32;border-radius:11px;position:relative;padding:2px;}
+  .cell.today{background:var(--butterS);}
+  .cellnum{font-size:10px;color:var(--inkFaint);font-weight:600;position:absolute;top:4px;left:5px;line-height:1;}
+  .cell.today .cellnum{color:var(--butterD);font-weight:800;}
+  .stack{position:absolute;inset:14px 3px 4px;display:flex;align-items:center;justify-content:center;}
+  .ph{position:absolute;width:40px;height:40px;border-radius:8px;object-fit:cover;box-shadow:0 1px 3px rgba(0,0,0,.18);border:1.5px solid #fff;}
+  .ph.a{transform:rotate(-8deg) translate(-4px,-2px);z-index:1;}
+  .ph.b{transform:rotate(4deg) translate(1px,1px);z-index:2;}
+  .ph.c{transform:rotate(-3deg) translate(5px,-1px);z-index:3;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-top:12px;box-shadow:0 4px 16px rgba(80,60,140,.05);}
+  .chead{display:flex;align-items:center;gap:8px;margin-bottom:13px;}
+  .chead .ic{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;}
+  .chead .ct{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.3px;}
+  .cnote{font-size:11px;color:var(--inkFaint);margin-top:12px;line-height:1.6;}
+
+  /* ══════════ A · Mira 的月度观察（AI 手记） ══════════ */
+  .aiHead{display:flex;align-items:center;gap:9px;}
+  .orb{width:28px;height:28px;border-radius:10px;background:linear-gradient(135deg,#B9A9F5 0%,#9D8AF0 60%,#7EA6F8 100%);position:relative;flex-shrink:0;box-shadow:0 4px 12px -3px rgba(157,138,240,.7);}
+  .orb::after{content:"";position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:999px;background:#fff;opacity:.9;box-shadow:0 0 8px 2px rgba(255,255,255,.6);}
+  .aiFrom{font-size:14px;font-weight:700;letter-spacing:-.2px;}
+  .aiWhen{font-size:10.5px;color:var(--inkFaint);margin-top:1px;}
+  .aiLead{font-size:13.5px;line-height:21px;color:var(--inkSoft);margin:11px 0 0;}
+  .obs{margin-top:14px;display:flex;gap:9px;}
+  .obsIco{width:26px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+  .obsBody{flex:1;min-width:0;}
+  .obsText{font-size:13.5px;line-height:20.5px;color:var(--inkSoft);}
+  .obsText b{color:var(--ink);font-weight:700;}
+  .obsChip{display:inline-block;font-size:10.5px;font-weight:600;border-radius:999px;padding:2.5px 8px;margin-top:6px;}
+  .aiOut{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);}
+  .aiOutText{font-size:13.5px;line-height:21px;color:var(--ink);}
+  .persona{display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:var(--lavS);border-radius:999px;padding:5px 11px;}
+  .persona span{font-size:12px;font-weight:700;color:var(--lavD);}
+
+  /* ══════════ B · 时间指纹热力 ══════════ */
+  .hm{display:grid;grid-template-columns:52px repeat(7,1fr);gap:4px;align-items:center;}
+  .hmLab{font-size:10px;color:var(--inkFaint);text-align:right;padding-right:4px;font-weight:600;line-height:1.25;}
+  .hmDow{font-size:10px;color:var(--inkFaint);text-align:center;font-weight:600;margin-bottom:1px;}
+  .hmCell{aspect-ratio:1/1;border-radius:5px;background:var(--empty);}
+  .hmLegend{display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:9px;}
+  .hmLegend span{font-size:10px;color:var(--inkFaint);}
+  .hmLegend i{width:11px;height:11px;border-radius:3.5px;display:block;}
+  .hmBig{margin-top:14px;}
+  .hmBigNum{font-size:26px;font-weight:800;letter-spacing:-.7px;line-height:30px;}
+  .hmBigNum i{font-style:normal;font-size:13px;font-weight:600;color:var(--inkSoft);margin-left:3px;}
+  .hmBigLab{font-size:12px;color:var(--inkSoft);margin-top:3px;}
+  .ins{margin-top:14px;padding-top:13px;border-top:1px solid var(--line);}
+  .insRow{display:flex;gap:9px;align-items:flex-start;margin-top:11px;}
+  .insRow:first-child{margin-top:0;}
+  .insDot{width:20px;height:20px;border-radius:999px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;}
+  .insText{flex:1;font-size:13px;line-height:20px;color:var(--inkSoft);}
+  .insText b{color:var(--ink);font-weight:700;}
+
+  /* ══════════ C · 节奏地图点阵 ══════════ */
+  .rstrip{display:grid;grid-template-columns:repeat(31,1fr);gap:2.5px;}
+  .rsCell{aspect-ratio:1;border-radius:3px;background:var(--empty);}
+  .rsAxis{display:grid;grid-template-columns:repeat(31,1fr);gap:2.5px;margin-top:5px;}
+  .rsAxis span{font-size:8.5px;color:var(--inkFaint);text-align:center;}
+  .rsMore{display:flex;align-items:center;gap:6px;justify-content:space-between;margin-top:11px;}
+  .rsMore b{font-size:12px;color:var(--ink);font-weight:700;}
+  .rsStat{display:flex;gap:8px;margin-top:13px;}
+  .rsBox{flex:1;border-radius:11px;padding:10px 11px;}
+  .rsBoxNum{font-size:21px;font-weight:800;letter-spacing:-.6px;line-height:24px;}
+  .rsBoxNum i{font-style:normal;font-size:11px;font-weight:600;color:var(--inkSoft);margin-left:2px;}
+  .rsBoxLab{font-size:10.5px;color:var(--inkSoft);margin-top:3px;line-height:1.4;}
+
+  /* ══════════ D · 月初 vs 月末 ══════════ */
+  .vs{display:flex;align-items:center;gap:9px;}
+  .vsCol{flex:1;border-radius:12px;padding:11px 12px;}
+  .vsCol.a{background:#F4F2FE;}
+  .vsCol.b{background:#F3F8E9;}
+  .vsHead{font-size:10.5px;font-weight:700;color:var(--inkSoft);letter-spacing:.2px;}
+  .vsNum{font-size:23px;font-weight:800;letter-spacing:-.7px;line-height:27px;margin-top:5px;}
+  .vsNum i{font-style:normal;font-size:11px;font-weight:600;color:var(--inkSoft);margin-left:2px;}
+  .vsLab{font-size:11px;color:var(--inkSoft);margin-top:2px;}
+  .vsMid{font-size:16px;color:var(--inkFaint);font-weight:700;}
+  .vsRow{margin-top:19px;}
+  .vsRow:first-of-type{margin-top:0;}
+  .vsBarWrap{display:flex;align-items:center;gap:8px;margin-top:5px;}
+  .vsBar{flex:1;height:6px;border-radius:3px;background:var(--empty);overflow:hidden;}
+  .vsFill{height:6px;border-radius:3px;}
+  .vsDelta{font-size:11px;font-weight:800;width:52px;text-align:right;flex-shrink:0;}
+  .grow{margin-top:15px;border-radius:12px;padding:12px 13px;background:var(--limeS);}
+  .growTxt{font-size:13px;line-height:20px;color:#5A6420;}
+  .growTxt b{font-weight:800;}
+
+  .note{width:920px;max-width:calc(100% - 36px);margin:26px auto 0;font-size:12.5px;line-height:1.8;color:var(--inkSoft);background:#fff;border-radius:16px;padding:16px 18px;border:1px solid var(--line);}
+  .note b{color:var(--ink);}
+  .note table{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;}
+  .note th,.note td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .note th{color:var(--ink);font-weight:700;background:rgba(31,29,26,.03);}
+  .ok{color:var(--limeD);font-weight:700;}
+  .warn{color:var(--butterD);font-weight:700;}
+</style>
+</head>
+<body>
+
+<div class="pageHead">
+  <h1>「月度发现」· 4 个「AI 洞察」方案</h1>
+  <p class="q">「我希望可以根据用户的一些交互各种情况，能够挖掘出来用户的一些个习惯、一些个改变，激励他逐渐变好。现在感觉很平淡，并没有那种 AI 挖掘他的一些生活习惯、很懂他的意思。」</p>
+  <p>所以这一版不是换排版，是换<b>内容生成方式</b>：从「把记录数一遍」升级成「<b>找出你没注意到的模式，再用 Mira 的口吻说给你听</b>」。
+     4 个方案都建立在一批<b>真能算出来的信号</b>上（见页底数据表）：你在<b>什么时候</b>做、<b>哪几天</b>做、<b>连着做了多少天</b>、<b>做了之后身体有什么变化</b>、<b>这半个月比上个月好了多少</b>。</p>
+  <p>月历以上的部分（时间选择器 / 稳步向上的一个月 / 月历）4 个方案完全一致，<b>只有下面两块卡在变</b>。数字都是示例占位，真机按你本机记录实时算。</p>
+</div>
+
+<div class="gridwrap">
+
+  <!-- ══════════════════ A ══════════════════ -->
+  <div class="opt">
+    <div class="optTag"><span class="badge">A</span><span class="optName">Mira 的月度观察</span><span class="rec">最「懂我」</span></div>
+    <div class="optSub">AI 以第一人称写一段观察，配真实证据</div>
+    <div class="optWhy"><b>核心</b>：不再以「数据」为主角，以 <b>Mira 的视角</b>为主角 —— 「我一直在看你的记录，有几件事想跟你说」。每条观察都有一个具体锚点（哪个时刻 / 哪一天 / 连了多少天），最后给一个「身份标签」收尾。</div>
+    <div class="phone"><div class="screen">
+      <div class="ptitle">Calendar</div>
+      <div class="stepper"><div class="sarrow">‹</div><div class="scenter"><span class="scal"></span><span class="scenterText">2026年8月</span></div><div class="sarrow">›</div></div>
+      <div class="hero"><div class="hHead">稳步向上的一个月</div><div class="hSub">你留下了 23 天记录，3 件小事正在变成习惯。</div></div>
+      <div class="dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="grid7" id="calA"></div>
+
+      <div class="card">
+        <div class="aiHead">
+          <div class="orb"></div>
+          <div>
+            <div class="aiFrom">Mira 的观察</div>
+            <div class="aiWhen">8 月 1 日 — 8 月 31 日 · 共 23 天有记录</div>
+          </div>
+        </div>
+        <div class="aiLead">这个月我一直看着你的记录，有几件事想跟你说说呀。</div>
+
+        <div class="obs">
+          <div class="obsIco" style="background:#E7E1FB"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+          <div class="obsBody">
+            <div class="obsText">你做过的呼吸练习几乎都在晚上 —— <b>18 次里有 15 次在 22 点以后</b>。那大概是你一天里真正安静下来的时刻。</div>
+            <div class="obsChip" style="background:#E7E1FB;color:#6E58C8">夜间 22:00–24:00 · 15 / 18 次</div>
+          </div>
+        </div>
+
+        <div class="obs">
+          <div class="obsIco" style="background:#EAF0BE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+          <div class="obsBody">
+            <div class="obsText">认真记饮食的那 <b>21 天</b>，你的深睡平均 <b>23%</b>；没记的那 <b>10 天</b>平均 <b>19%</b>。我不下结论，但这个差别挺明显的。</div>
+            <div class="obsChip" style="background:#EAF0BE;color:#6E7A24">记饮食 21 天 · 没记 10 天</div>
+          </div>
+        </div>
+
+        <div class="obs">
+          <div class="obsIco" style="background:#E3EBFE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4C74C9" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v4h4"/></svg></div>
+          <div class="obsBody">
+            <div class="obsText">8 月 10 日到 14 日，你的睡前呼吸<b>连着 5 天没断过</b> —— 那几天都是工作日。一到周末就断了，这不是你的错呀。</div>
+            <div class="obsChip" style="background:#E3EBFE;color:#4C74C9">最长连续 5 天 · 8/10–8/14</div>
+          </div>
+        </div>
+
+        <div class="obs">
+          <div class="obsIco" style="background:#FBEFD6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 5-7 4 5"/></svg></div>
+          <div class="obsBody">
+            <div class="obsText">深睡占比从月初的 <b>18%</b> 走到月末的 <b>24%</b>。数字不大，但方向很清楚。</div>
+            <div class="obsChip" style="background:#FBEFD6;color:#B98A2E">+6 个百分点 · 月度最高 27%</div>
+          </div>
+        </div>
+
+        <div class="aiOut">
+          <div class="aiOutText">你不用变成另一个人呀，只是把自己照顾得更好了一点。</div>
+          <div class="persona"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg><span>8 月的你 · 夜间呼吸者</span></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="optNote"><b>优点</b>：最像「有人在看着你、记得你」，身份标签会让人想保住它（「我是夜间呼吸者」）。<br><b>代价</b>：这版偏向叙述，一眼看不出「这个月一共做了多少」的总量感；卡片高度最大。</div>
+  </div>
+
+  <!-- ══════════════════ B ══════════════════ -->
+  <div class="opt">
+    <div class="optTag"><span class="badge">B</span><span class="optName">时间指纹</span><span class="rec">最「挖掘」</span></div>
+    <div class="optSub">周内 × 时段热力图，AI 读出你的节奏形状</div>
+    <div class="optWhy"><b>核心</b>：图表本身就在说「AI 把你的行为拆开了看」。热力格一眼看出你的记录<b>集中在哪些时段、哪几天</b>，底下 AI 用三句话把图形翻译成人话，还包含一句「<b>不用勉强早起</b>」这种站在你这边的判断。</div>
+    <div class="phone"><div class="screen">
+      <div class="ptitle">Calendar</div>
+      <div class="stepper"><div class="sarrow">‹</div><div class="scenter"><span class="scal"></span><span class="scenterText">2026年8月</span></div><div class="sarrow">›</div></div>
+      <div class="hero"><div class="hHead">稳步向上的一个月</div><div class="hSub">你留下了 23 天记录，3 件小事正在变成习惯。</div></div>
+      <div class="dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="grid7" id="calB"></div>
+
+      <div class="card">
+        <div class="chead"><span class="ic" style="background:#E7E1FB"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span class="ct">你的时间指纹</span></div>
+        <div class="hm" id="hmGrid"></div>
+        <div class="hmLegend">
+          <span>少</span><i style="background:#F6F7DC"></i><i style="background:#D5E384"></i><i style="background:#BCCB62"></i><i style="background:#6E7A24"></i><span>多</span>
+        </div>
+        <div class="hmBig">
+          <div class="hmBigNum" style="color:#6E58C8">44<i>%</i></div>
+          <div class="hmBigLab">你的记录出现在夜间 21–24 点</div>
+        </div>
+        <div class="ins">
+          <div class="insRow"><div class="insDot" style="background:#E7E1FB"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+            <div class="insText"><b>夜里 21 到 24 点</b>是你最活跃的窗口，快一半的记录都落在里面。</div></div>
+          <div class="insRow"><div class="insDot" style="background:#EAF0BE"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.4" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 9h18"/></svg></div>
+            <div class="insText"><b>周三和周五</b>是你做得最多的两天，加起来 <b>25 次</b> —— 像是给自己排好的节奏。</div></div>
+          <div class="insRow"><div class="insDot" style="background:#FBEFD6"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a5 5 0 0 0-10 0"/><path d="M12 3v3M4.2 7.2l2.1 2.1M2 14h2M20 14h2M17.7 9.3l2.1-2.1"/></svg></div>
+            <div class="insText">清晨那行几乎是空的，周末两列也是 —— 不用勉强早起，<b>你的节奏本来就在晚上</b>。</div></div>
+        </div>
+        <div class="cnote">色深 = 那个时段做了多少次 · 按小时和星期把你的记录铺开看</div>
+      </div>
+    </div></div>
+    <div class="optNote"><b>优点</b>：信息密度最高，「被看懂了」的感觉最强；一句「不用勉强早起」就是很懂人的表达。<br><b>代价</b>：热力图需要 2 秒读图；数据太薄（比如只记了几天）时图形会空，需要回退到文字。</div>
+  </div>
+
+  <!-- ══════════════════ C ══════════════════ -->
+  <div class="opt">
+    <div class="optTag"><span class="badge">C</span><span class="optName">这个月的节奏地图</span></div>
+    <div class="optSub">一整个月一格格铺开，AI 指出三个关键节点</div>
+    <div class="optWhy"><b>核心</b>：把整月压力/坚持程度画成一条「气候带」——满格的日子一眼可见。AI 不去夸平均，而是<b>点名三个具体节点</b>：最好的一天、最长的一段、以及后半月的整体抬升。适合「我想看到自己在变好」的心态。</div>
+    <div class="phone"><div class="screen">
+      <div class="ptitle">Calendar</div>
+      <div class="stepper"><div class="sarrow">‹</div><div class="scenter"><span class="scal"></span><span class="scenterText">2026年8月</span></div><div class="sarrow">›</div></div>
+      <div class="hero"><div class="hHead">稳步向上的一个月</div><div class="hSub">你留下了 23 天记录，3 件小事正在变成习惯。</div></div>
+      <div class="dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="grid7" id="calC"></div>
+
+      <div class="card">
+        <div class="chead"><span class="ic" style="background:#EAF0BE"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 5-7 4 5"/></svg></span><span class="ct">这个月的节奏</span></div>
+        <div class="rstrip" id="rsStrip"></div>
+        <div class="rsAxis"><span>1</span><span></span><span></span><span></span><span>5</span><span></span><span></span><span></span><span></span><span>10</span><span></span><span></span><span></span><span></span><span>15</span><span></span><span></span><span></span><span></span><span>20</span><span></span><span></span><span></span><span></span><span>25</span><span></span><span></span><span></span><span></span><span>30</span><span></span></div>
+        <div class="rsMore"><b>颜色越深 = 那天做得越多</b><span style="font-size:10.5px;color:var(--inkFaint)">有记录 23 天 · 空白 8 天</span></div>
+
+        <div class="rsStat">
+          <div class="rsBox" style="background:#FBEFD6">
+            <div class="rsBoxNum" style="color:#B98A2E">8/21</div>
+            <div class="rsBoxLab">你做得最多的一天<br>饮食 · 运动 · 呼吸 · 冥想 4 件全做</div>
+          </div>
+          <div class="rsBox" style="background:#E3EBFE">
+            <div class="rsBoxNum" style="color:#4C74C9">5<i>天</i></div>
+            <div class="rsBoxLab">最长连着没断的一段<br>8/10 – 8/14 · 全是工作日</div>
+          </div>
+        </div>
+
+        <div class="ins" style="margin-top:14px">
+          <div class="insRow"><div class="insDot" style="background:#EAF0BE"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-6 4 4 7-9"/></svg></div>
+            <div class="insText">后半个月比前半个月多做了 <b>7 次</b> —— 你不是一开始就猛，是慢慢提速的。</div></div>
+          <div class="insRow"><div class="insDot" style="background:#E7E1FB"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E58C8" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+            <div class="insText">你断掉的那 8 天，<b>一天不落全在周末</b> —— 工作日你稳得住，一到休息日反而忘。要不要给周末单独设个提醒呀？</div></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="optNote"><b>优点</b>：一眼看到「努力是连续的」，空白天也有信息（周末容易忘 → 有可执行建议）。<br><b>代价</b>：点阵需要色阶说明；且「做得多少」目前只能按当天记录条数算，不是真实的精力强度。</div>
+  </div>
+
+  <!-- ══════════════════ D ══════════════════ -->
+  <div class="opt">
+    <div class="optTag"><span class="badge">D</span><span class="optName">半个月前的我 vs 现在的我</span><span class="rec">最激励</span></div>
+    <div class="optSub">前后对照，明明白白看到自己变了</div>
+    <div class="optWhy"><b>核心</b>：人最容易被打动的是<b>对比</b>，不是绝对数。把月末两周和月初两周并排放，三个指标都往上走 —— 这就是「你在变好」最直接的证据。AI 落在最后一句：「中间差的不是决心，是习惯。」</div>
+    <div class="phone"><div class="screen">
+      <div class="ptitle">Calendar</div>
+      <div class="stepper"><div class="sarrow">‹</div><div class="scenter"><span class="scal"></span><span class="scenterText">2026年8月</span></div><div class="sarrow">›</div></div>
+      <div class="hero"><div class="hHead">稳步向上的一个月</div><div class="hSub">你留下了 23 天记录，3 件小事正在变成习惯。</div></div>
+      <div class="dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="grid7" id="calD"></div>
+
+      <div class="card">
+        <div class="chead"><span class="ic" style="background:#E3EBFE"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4C74C9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V9M10 18V5M16 18v-6M22 18h-3"/></svg></span><span class="ct">这半个月，你变了</span></div>
+
+        <div class="vs">
+          <div class="vsCol a"><div class="vsHead">月初两周 · 8/1–8/14</div><div class="vsNum" style="color:#6E58C8">3.5<i>天/周</i></div><div class="vsLab">每周有记录的天数</div></div>
+          <div class="vsMid">→</div>
+          <div class="vsCol b"><div class="vsHead">月末两周 · 8/16–8/29</div><div class="vsNum" style="color:#6E7A24">5.5<i>天/周</i></div><div class="vsLab">每周有记录的天数</div></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--inkFaint);margin-top:9px;display:flex;gap:12px;">
+          <span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:#C7B9F2;margin-right:4px;"></i>上排 = 月初两周</span>
+          <span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:#BCCB62;margin-right:4px;"></i>下排 = 月末两周</span>
+        </div>
+
+        <div class="vsRow" style="margin-top:16px">
+          <div class="vsBarWrap"><div class="vsBar"><div class="vsFill" style="width:67%;background:#C7B9F2"></div></div><div class="vsDelta" style="color:var(--inkFaint)">18%</div></div>
+          <div class="vsBarWrap" style="margin-top:3px"><div class="vsBar"><div class="vsFill" style="width:89%;background:#BCCB62"></div></div><div class="vsDelta" style="color:var(--limeD)">24%</div></div>
+          <div class="vsLab" style="margin-top:6px;font-size:11.5px">深睡占比 <b style="color:#6E7A24">+6 个百分点</b></div>
+        </div>
+
+        <div class="vsRow">
+          <div class="vsBarWrap"><div class="vsBar"><div class="vsFill" style="width:42%;background:#C7B9F2"></div></div><div class="vsDelta" style="color:var(--inkFaint)">5 次</div></div>
+          <div class="vsBarWrap" style="margin-top:3px"><div class="vsBar"><div class="vsFill" style="width:100%;background:#BCCB62"></div></div><div class="vsDelta" style="color:var(--limeD)">12 次</div></div>
+          <div class="vsLab" style="margin-top:6px;font-size:11.5px">睡前呼吸 <b style="color:#6E7A24">+7 次</b></div>
+        </div>
+
+        <div class="vsRow">
+          <div class="vsBarWrap"><div class="vsBar"><div class="vsFill" style="width:54%;background:#C7B9F2"></div></div><div class="vsDelta" style="color:var(--inkFaint)">7 天</div></div>
+          <div class="vsBarWrap" style="margin-top:3px"><div class="vsBar"><div class="vsFill" style="width:92%;background:#BCCB62"></div></div><div class="vsDelta" style="color:var(--limeD)">12 天</div></div>
+          <div class="vsLab" style="margin-top:6px;font-size:11.5px">记录饮食 <b style="color:#6E7A24">+5 天</b></div>
+        </div>
+
+        <div class="grow">
+          <div class="growTxt">三样都在往上走，而且不是某一天突然发力，是<b>平均每周都比上周多一点</b>。中间差的不是决心，是习惯。</div>
+        </div>
+        <div class="cnote">对照口径：最后 14 天 vs 最初 14 天，按「每周」折算，避免天数不等造成的错觉</div>
+      </div>
+    </div></div>
+    <div class="optNote"><b>优点</b>：激励感最强，「我确实在变好」不用别人说，自己看得到；折算成「每周」很公平。<br><b>代价</b>：只在月中之后做才有意义（月初看会几乎全空）；需要有足够睡眠数据，否则那一条回退成「—」。</div>
+  </div>
+
+</div>
+
+<div class="note">
+  <b>这四个方案的数字，真机上真能算出来吗？</b> 能 —— 都只用你现在已经在存的数据。逐条对照：<br>
+  <table>
+    <tr><th>洞察</th><th>数据来源</th><th>能不能算</th></tr>
+    <tr><td>「18 次里 15 次在 22 点后」</td><td>interventionLog / foodLog / sportLog 每条都有时间戳</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「周三和周五最多，25 次」</td><td>同上，按星期几 × 时段分桶</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「记饮食的天深睡 23%，没记的 19%」</td><td>healthStore 每天深睡占比 × 当天有没有饮食记录</td><td class="ok">✅ 能（两组各需 ≥3 天，否则不显示）</td></tr>
+    <tr><td>「最长连续 5 天」</td><td>有记录的天数集合，跑一遍最长连续段</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「后半月比前半月多 7 次」</td><td>按月内前后两段分别计数</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「8/21 是做得最多的一天」</td><td>当天记录条数取最大值</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「夜间呼吸者」这个身份标签</td><td>由主导时段 + 主导习惯两类信号组合命名（规则生成，不编造）</td><td class="ok">✅ 能</td></tr>
+    <tr><td>「空的 8 天全在周末」</td><td>空白天的星期分布</td><td class="ok">✅ 能（≥4 个空白天才说）</td></tr>
+    <tr><td>「月初两周 vs 月末两周」</td><td>同一个月内前后各 14 天分组，按周折算</td><td class="ok">✅ 能（≥10 个有记录天才显示）</td></tr>
+  </table>
+  <b>还能再挖的交互信号</b>（你提到「各种交互情况」，这些也都在本机存着，后面可以接进来说）：
+  点过「不感兴趣」的建议（<code>dismissed</code>，能看出你会被哪类建议打扰）、完成的冥想时长、首页泡泡里回过的「有没有帮到你」、收藏的文章。
+  <br><br>
+  <b>口径纪律</b>：所有带「因为…所以…」的因果话都不说，只给「这些天 A、那些天 B」的事实对照；样本不足就降级成更保守的一句话或「—」，绝不编。
+</div>
+
+<script>
+  // ── 月历（2026年8月，周一起始）──
+  const CAL_YEAR=2026, CAL_MONTH=7, TODAY_DAY=29;
+  const CELLS = [
+    {d:1,m:[]},{d:2,m:[]},{d:3,m:['card_meditation','card_food']},{d:4,m:['card_food']},
+    {d:5,m:[]},{d:6,m:['card_activity','card_meditation']},{d:7,m:['card_emotion']},
+    {d:8,m:['card_food','card_activity','card_meditation']},{d:9,m:['card_relax']},{d:10,m:['card_meditation','card_food']},
+    {d:11,m:[]},{d:12,m:['card_activity']},{d:13,m:['card_food','card_emotion']},{d:14,m:['card_meditation','card_food','card_activity']},
+    {d:15,m:['card_relax']},{d:16,m:[]},{d:17,m:['card_food']},{d:18,m:['card_meditation','card_activity']},
+    {d:19,m:['card_emotion','card_food']},{d:20,m:['card_meditation']},{d:21,m:['card_activity','card_food','card_relax']},{d:22,m:['card_food']},
+    {d:23,m:['card_meditation','card_emotion']},{d:24,m:[]},{d:25,m:['card_activity']},{d:26,m:['card_food','card_meditation','card_relax']},
+    {d:27,m:['card_food']},{d:28,m:['card_emotion']},{d:29,m:['card_meditation','card_activity']},{d:30,m:['card_food']},
+    {d:31,m:['card_relax','card_meditation']}
+  ];
+  const ORDER=['a','b','c'];
+  function renderCal(id){
+    const g=document.getElementById(id); if(!g) return;
+    const lead=((new Date(CAL_YEAR,CAL_MONTH,1).getDay())+6)%7;
+    for(let i=0;i<lead;i++){const e=document.createElement('div');e.className='cell';g.appendChild(e);}
+    CELLS.forEach(c=>{
+      const e=document.createElement('div');
+      e.className='cell'+(c.d===TODAY_DAY?' today':'');
+      const num=document.createElement('div');num.className='cellnum';num.textContent=c.d;e.appendChild(num);
+      if(c.m.length){
+        const st=document.createElement('div');st.className='stack';
+        c.m.slice(0,3).forEach((img,i)=>{
+          const p=document.createElement('img');p.className='ph '+ORDER[i];
+          p.src='src/assets/'+img+(img==='card_learn'?'.png':'.jpg');
+          st.appendChild(p);
+        });
+        e.appendChild(st);
+      }
+      g.appendChild(e);
+    });
+  }
+  ['calA','calB','calC','calD'].forEach(renderCal);
+
+  // ── B 时间指纹热力（4 时段 × 7 天；值 = 该时段该天的记录次数；周末为 0）──
+  const HOURS=[
+    {lab:'清晨<br>5–9',  v:[0,0,1,0,1,0,0]},
+    {lab:'白天<br>9–18', v:[3,2,3,2,4,0,0]},
+    {lab:'傍晚<br>18–21',v:[2,3,2,2,3,0,0]},
+    {lab:'夜间<br>21–1', v:[4,3,5,4,6,0,0]}
+  ];
+  const LEV=['#F6F7DC','#D5E384','#BCCB62','#6E7A24'];
+  function level(n){ if(n<=0) return null; if(n<=1) return LEV[0]; if(n<=2) return LEV[1]; if(n<=4) return LEV[2]; return LEV[3]; }
+  (function(){
+    const g=document.getElementById('hmGrid'); if(!g) return;
+    const head=document.createElement('div'); head.className='hmLab'; g.appendChild(head);
+    ['一','二','三','四','五','六','日'].forEach(d=>{
+      const s=document.createElement('div'); s.className='hmDow'; s.textContent=d; g.appendChild(s);
+    });
+    HOURS.forEach(h=>{
+      const l=document.createElement('div'); l.className='hmLab'; l.innerHTML=h.lab; g.appendChild(l);
+      h.v.forEach(n=>{
+        const c=document.createElement('div'); c.className='hmCell';
+        const col=level(n); if(col) c.style.background=col;
+        g.appendChild(c);
+      });
+    });
+  })();
+
+  // ── C 节奏地图（1–31 日；值 = 当天记录条数；周末全空，共 23 天有记录）──
+  (function(){
+    const g=document.getElementById('rsStrip'); if(!g) return;
+    const V=[0,0,2,1,3,2,1,  0,0,2,3,2,3,2,  0,0,1,2,3,2,4,  0,0,2,3,2,3,1,  2,1,2];
+    V.forEach(n=>{
+      const c=document.createElement('div'); c.className='rsCell';
+      const col=level(n); if(col) c.style.background=col;
+      g.appendChild(c);
+    });
+  })();
+</script>
+</body>
+</html>

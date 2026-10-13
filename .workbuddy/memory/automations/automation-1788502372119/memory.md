@@ -101,3 +101,8 @@
 - 发现：本地与 origin/master 同步（0 领先）；工作区存在 91 项未提交改动——64 个修改文件 + 27 个新增文件。核心迭代：新增 HealthAgeDetailScreen 健康年龄详情页、JourneyDayView 旅程日视图、ArcGauge 弧形仪表盘、charts/ 目录（AllDayBarsChart/TempCircadianChart）、dailyHealthAge/smoothPath/tempBaseline/timeBuckets 4 个 lib；MetricDetailScreen 大幅扩展（±465 行），CortisolDailyChart（±353）、EmotionCognitiveDetailScreen（±293）、EnergyDetailScreen（±166）、InsightScreen（±142）、ProfileScreen（+54）等多屏迭代；新增 design-tools/、ui-review/、多份预览 HTML 与设计 token 文档；automation 记忆文件（10-10 条目）待提交。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：执行 `git add -A`（91 文件，子模块无法暂存）→ commit 5afd4c5「新增健康年龄详情、旅程日与弧形仪表盘组件，优化指标详情/皮质醇/情绪认知/能量/洞察多屏及图表规范」→ push 成功 2287b9d..5afd4c5（+9171/-878）。
 - 结果：master 与 origin/master 完全同步。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-12 14:12（第二十次运行）
+- 发现：本地与 origin/master 同步（0 领先）；工作区 93 项未提交改动——工具卡图资体系：新增 toolImageData.ts + 6 张 tool_*.jpg、preview/assets/ 6 张、SavedAdviceDeck 组件、EmotionFaceIcon 组件、toolTips lib；替换 4 张卡片图并删除 *_old 备份；修改 35 个源文件（TodayScreen/InsightScreen/FoodScanScreen/MetricDetailScreen/SleepDetailScreen 等多屏 + stressAlgorithm/suggestionEngine/todayScene 等 lib）+ 16 份 preview HTML + design-tools/p3p4-real 迭代（含 _orig 原图、多版 tool_cards_v1011 截图、verify_cards）；automation 记忆文件待提交。子模块仍为已知 -dirty。
+- 处理：git add -A（93 文件，子模块无法暂存）→ commit 1757c63「工具卡图资与设计稿迭代：新增工具卡图库 toolImageData 与 6 张卡片图、保存建议卡 SavedAdviceDeck 与情绪表情组件，更新首页 AI 气泡/压力/情绪/睡眠等多屏及预览 HTML」→ push 成功 5afd4c5..1757c63（+4859/-674）。
+- 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。

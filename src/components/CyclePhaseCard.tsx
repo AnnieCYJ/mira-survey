@@ -21,7 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { computeCycle, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
-import { loadCycleLog } from '../data/cycleLog';
+import { loadCycleLog, loadPeriodDays, type PeriodDayLog } from '../data/cycleLog';
 import { type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import CycleMoonPhase from './CycleMoonPhase';
 import Icon from './Icon';
@@ -29,6 +29,9 @@ import PhaseInsightSection from './PhaseInsightSection';
 import PeriodRecordPanel from './PeriodRecordPanel';
 // ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里也加个 AI 分析，同样三行以内）
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
+// ★ 2026-10-12（用户：「雌激素孕激素不要写文字，就画趋势图」）：
+//   恢复 HormoneDualTrend 双相趋势图，以 embedded 模式嵌入本卡（AI 分析上方）。
+import HormoneDualTrend from './HormoneDualTrend';
 
 const FEMALE_STATE_LABEL: Record<number, string> = {
   0: '未设置',
@@ -52,12 +55,30 @@ const SHOW_PHASE_INSIGHT: boolean = false;
 
 /** ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里面也加个 AI 分析，三行以内）：
  *  只做相位层面的解读（戒指测不到雌激素/孕酮浓度，绝不编造具体激素值）。
+ *  ★ 2026-10-12（用户：「下面的 AI 分析，内容可以稍微多一点」）：每相扩为两句——
+ *  第一句讲当前身体处于什么状态，第二句给一个具体可做的建议，仍控制在三行以内。
  *  依据：Clue 生理科普 + ACSM 运动与周期指南。 */
 const PHASE_BRIEF: Record<string, { name: string; tone: 'good' | 'warn' | 'neutral'; body: string }> = {
-  period: { name: '经期', tone: 'warn', body: '雌激素与孕酮处于低位，身体进入恢复模式，能量与运动表现偏低。建议降低训练强度、多做拉伸，并注意保暖与充足睡眠。' },
-  follicular: { name: '卵泡期', tone: 'good', body: '雌激素逐步回升、HRV 上升，精力与情绪持续变好，恢复能力增强。适合安排高强度训练、重要任务与新的计划。' },
-  ovulation: { name: '排卵期', tone: 'good', body: '雌激素达峰值、状态最佳，是运动与决策的黄金窗口。同时处于易孕期，如有避孕或备孕计划，需注意时间安排。' },
-  luteal: { name: '黄体期', tone: 'warn', body: '孕酮主导、体温升高，能量回落、恢复变慢，PMS 症状较易出现。建议降低训练强度、控制糖盐摄入，并保证睡眠。' },
+  period: {
+    name: '经期',
+    tone: 'warn',
+    body: '雌激素与孕酮处于低位，身体进入恢复模式，能量与运动表现偏低，也更容易累。建议降低训练强度、多做拉伸和散步，注意保暖，睡前少看屏幕、把睡眠补足。',
+  },
+  follicular: {
+    name: '卵泡期',
+    tone: 'good',
+    body: '雌激素逐步回升、HRV 上升，精力与情绪持续变好，恢复能力增强。适合安排高强度训练、重要任务与新的计划，想启动的习惯放在这时候最容易坚持。',
+  },
+  ovulation: {
+    name: '排卵期',
+    tone: 'good',
+    body: '雌激素达峰值、状态最佳，是运动与决策的黄金窗口，反应和耐力都在线。想冲力量 PR 或处理难任务就选这两天，同时处于易孕期，如有避孕或备孕计划需注意时间安排。',
+  },
+  luteal: {
+    name: '黄体期',
+    tone: 'warn',
+    body: '孕酮主导、体温升高，能量回落、恢复变慢，PMS 症状较易出现，别用前两周的标准要求自己。建议把高强度换成中等强度有氧，控制糖盐摄入，保证睡眠，重要决定尽量避开经前一周。',
+  },
 };
 
 export default function CyclePhaseCard({
@@ -70,10 +91,12 @@ export default function CyclePhaseCard({
   onPress?: () => void;
 }) {
   const [log, setLog] = useState<CycleLog | null>(null);
+  const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     void loadCycleLog().then((l) => setLog(l));
+    void loadPeriodDays().then((pd) => setPeriodDays(pd));
   }, []);
 
   // 面板保存后：重载本地经期主记录，刷新月相环相位 / 关键日期
@@ -105,6 +128,7 @@ export default function CyclePhaseCard({
   const info = computeCycle(effective, new Date(), {
     tempSeries: tempDailyToSeries(ring.tempDaily ?? {}),
     periodHistory: effective?.history,
+    periodDays,
   });
 
   // 戒指真实回传的生理期状态
@@ -112,8 +136,8 @@ export default function CyclePhaseCard({
   const stateLabel = female ? FEMALE_STATE_LABEL[female.state] ?? '未知' : null;
 
   // 月相环尺寸：卡片内可用宽度 = 屏宽 − 屏幕左右留白(space.screen) − 卡片内边距(cardPad×2)。
-  // 留出少量呼吸空间并封顶 300，避免在较窄屏幕/横屏下溢出卡片。
-  const ringSize = Math.min(Math.round(Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2 - 16), 300);
+  // ★ 2026-10-12（用户：「月相圆环小一点」）：封顶由 300 收到 220，整体明显缩小但仍清晰。
+  const ringSize = Math.min(Math.round(Dimensions.get('window').width - theme.space.screen * 2 - theme.space.cardPad * 2 - 16), 220);
 
   // ★ 2026-10-07：相位解读（三行以内）—— 无记录/未知相位时为 null，走引导文案
   const phaseBrief = PHASE_BRIEF[info.phase] ?? null;
@@ -126,9 +150,9 @@ export default function CyclePhaseCard({
     >
       <View style={styles.card}>
       {/* ★ 月相 Hero：与周期日历页顶部同一组件——相位 / 第几天 / 距下次经期由月相环表达。
-          尺寸按「卡片实际可用宽度」收窄（默认按屏宽算会溢出卡片内边距）。 */}
-      {/* ★ 2026-10-07：高度交给组件默认（0.84×size）—— 顶部已留净空，环顶部两点不再被裁 */}
-      <CycleMoonPhase cycleInfo={info} log={effective} size={ringSize} />
+          尺寸按「卡片实际可用宽度」收窄（默认按屏宽算会溢出卡片内边距）。
+          ★ 2026-10-12（用户：环缩小后「里面的字小一点」）：compact 模式，中央文字降一档。 */}
+      <CycleMoonPhase cycleInfo={info} log={effective} size={ringSize} compact />
       {/* ★ 2026-10-07（用户：洞察页「生理周期节律」卡片右上角加一个向右的箭头，表示可以点击） */}
       <View style={styles.cardChevron} pointerEvents="none">
         <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
@@ -211,8 +235,10 @@ export default function CyclePhaseCard({
         </View>
       ) : null}
 
-      {/* ★ 已按需求移除「雌激素 + 孕激素 双相趋势」图（HormoneDualTrend）
-          —— 组件本身保留（HormoneDualTrend.tsx 未删除，便于随时恢复）。 */}
+      {/* ★ 2026-10-12（用户：「雌激素孕激素不要写文字，就画趋势图」+「只展示雌激素，孕激素先不展示」）：
+          置于 AI 分析上方；embedded 嵌入本卡（无独立外壳），onlyEstrogen 只画雌激素一条线
+          （HRV·EDA 推算，戒指不直接测量激素，组件标题右侧自带「推算 · 非实测」口径）。 */}
+      <HormoneDualTrend embedded onlyEstrogen ring={ring} cycleInfo={info} log={effective} />
 
       {/* ★ 2026-10-07（用户：「雌孕激素下面的 AI 分析去掉」）：整块「本阶段身心特征」
           （AI 分析结论行 + ● 建议）先隐藏，由 SHOW_PHASE_INSIGHT 控制。 */}

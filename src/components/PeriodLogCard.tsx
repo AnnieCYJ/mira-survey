@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { dayKey } from '../lib/cycleMath';
 import {
   loadPeriodDay,
@@ -26,6 +27,7 @@ export default function PeriodLogCard({ onPress }: { onPress?: () => void }) {
   const todayKey = dayKey(new Date());
   const [flow, setFlow] = useState<FlowLevel>('');
   const [pain, setPain] = useState<PainLevel>('');
+  const [periodEnd, setPeriodEnd] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
@@ -33,13 +35,14 @@ export default function PeriodLogCard({ onPress }: { onPress?: () => void }) {
       if (d) {
         setFlow(d.flow ?? '');
         setPain(d.pain ?? '');
+        setPeriodEnd(!!d.periodEnd);
         setSavedAt(d.updatedAt ?? null);
       }
     });
   }, [todayKey]);
 
   const save = async () => {
-    const entry: PeriodDayLog = { date: todayKey, flow, pain, updatedAt: Date.now() };
+    const entry: PeriodDayLog = { date: todayKey, flow, pain, periodEnd: periodEnd || undefined, updatedAt: Date.now() };
     await savePeriodDay(entry);
     setSavedAt(entry.updatedAt!);
   };
@@ -68,6 +71,16 @@ export default function PeriodLogCard({ onPress }: { onPress?: () => void }) {
           </TouchableOpacity>
         ))}
       </View>
+
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => setPeriodEnd((v) => !v)}
+        style={[styles.endBtn, periodEnd && styles.endBtnOn]}
+      >
+        <Text style={[styles.endBtnText, periodEnd && styles.endBtnTextOn]}>
+          {periodEnd ? '已标记：经期结束于今天 ✓' : '经期已结束？点此标记结束'}
+        </Text>
+      </TouchableOpacity>
 
       <View style={styles.footRow}>
         <Text style={styles.saved}>
@@ -106,6 +119,13 @@ const styles = StyleSheet.create({
   chipText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   chipTextOn: { color: '#fff', fontWeight: theme.weight.semibold as any },
   footRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.md },
+  endBtn: {
+    marginTop: theme.space.sm, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(124,106,224,0.10)', alignSelf: 'flex-start',
+  },
+  endBtnOn: { backgroundColor: mm.colors.limeMid },
+  endBtnText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
+  endBtnTextOn: { color: '#1F1D1A', fontWeight: theme.weight.semibold as any },
   saved: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   saveBtn: { paddingHorizontal: 20, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSoft },
   saveBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid },

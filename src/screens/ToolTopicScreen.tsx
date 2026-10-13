@@ -34,6 +34,7 @@ import {
   formatClock, formatDistance, formatPace, paceOf, sportTimeLabel,
 } from '../lib/sportVisual';
 import { buildTodayWorkout, buildSportBrief, sportStatusReason } from '../lib/todayWorkout';
+import { collectWorkoutInput } from '../lib/workoutInput';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { dateKeyOf } from '../lib/foodAi';
 import { loadLastViewDate, saveLastViewDate } from '../lib/lastViewDate';
@@ -323,6 +324,48 @@ function RhythmMethodStrip({ phase, navigation }: { phase: string; navigation: T
   );
 }
 
+function TopicMethodStrip({
+  title,
+  hint,
+  cards,
+  navigation,
+}: {
+  title: string;
+  hint: string;
+  cards: Array<{ id: string; title: string; text: string; tone: string; cover: any; collection: 'emotion' | 'sport' | 'learn' | 'glow' | 'nutrition' }>;
+  navigation: TopicNav;
+}) {
+  return (
+    <>
+      <View style={ls.methodHead}>
+        <Text style={ls.secTitle}>{title}</Text>
+        <Text style={ls.methodHint}>{hint}</Text>
+      </View>
+      <View style={ls.methodRow}>
+        {cards.map((card) => (
+          <TouchableOpacity
+            key={card.id}
+            activeOpacity={theme.press.opacity}
+            style={ls.methodCard}
+            onPress={() => navigation.navigate('LearnRead', { articleId: card.id, collection: card.collection })}
+            accessibilityRole="button"
+            accessibilityLabel={`${card.title}，${card.text}`}
+          >
+            <ImageBackground source={card.cover} style={ls.methodImage} imageStyle={{ borderRadius: theme.radius.md }} resizeMode="cover">
+              <View style={ls.methodShade} />
+              <View style={ls.methodCopy}>
+                <Text style={ls.methodTone}>{card.tone}</Text>
+                <Text style={ls.methodTitle} numberOfLines={1}>{card.title}</Text>
+                <Text style={ls.methodText} numberOfLines={2}>{card.text}</Text>
+              </View>
+            </ImageBackground>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  );
+}
+
 /* ── 提升颜值 · 图文版块（v18.79）────────────────────────
  * 与知识科普完全同构（hero 插画卡 + 文章列表卡，复用 ls 样式）。
  * 内容：斯坦福皮肤科共识 + 明星极简护肤路线（glowArticles.ts，静态无假数据）。
@@ -407,14 +450,11 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
   const sk = dayKey(dayTs);
 
   /* ── 按所选日期取真实数据（缺项静默降级，不编数字）── */
+  // ★ v18.98：睡眠只取「昨晚」，不标注来源日期（用户口径：不要写「昨」，没有就是「—」）。
   const sleepSel = (() => {
     try { return healthStore.getSleep(sk) ?? (isToday ? healthStore.getSleep(dayKey(dayTs - 86400000)) : null); }
     catch { return null; }
   })();
-  // ★ v18.98：睡眠只取「昨晚」，不标注来源日期（用户口径：不要写「昨」，没有就是「—」）。
-  const steps = (() => { try { return ring?.stepDaily?.[sk]?.steps ?? 0; } catch { return 0; } })();
-  // HRV 只有当天能读（固件限制），历史日不编
-  const hrv = isToday ? (() => { try { return ring?.hrvDaily?.[sk] ?? null; } catch { return null; } })() : null;
   const cortisolLabel = (() => {
     try {
       const samples = (healthStore.getIntraday?.('cortisol', sk) ?? []) as { t: number; v: number }[];
@@ -426,37 +466,10 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
       return null;
     }
   })();
-  const recentAvg = (daily: Record<string, number> | undefined, days: number): number | null => {
-    if (!daily) return null;
-    const keys = Object.keys(daily).sort().slice(-days - 1, -1); // 不含今天
-    const nums = keys.map((k) => daily[k]).filter((v) => Number.isFinite(v) && v > 0);
-    if (!nums.length) return null;
-    return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
-  };
-  const statusAvg = (() => { try { return recentAvg(ring?.statusDaily, 7); } catch { return null; } })();
-  const hrvAvg = (() => { try { return recentAvg(ring?.hrvDaily, 7); } catch { return null; } })();
-  const todayTimeline = (() => {
-    if (!isToday) return null;
-    const list = (ring?.statusTimeline ?? []) as { t?: number; value?: number }[] | null;
-    if (!list?.length) return null;
-    const pts = list.filter((p) => p && p.t != null && (p.t as number) >= startOfToday && Number.isFinite(p.value));
-    return pts.length ? (pts as { t: number; value: number }[]) : null;
-  })();
-
   const phase = ring?.curveStatus?.phaseLabel ?? '未记录';
-  const plan = buildTodayWorkout({
-    phase,
-    value: ring?.curveStatus?.value ?? null,
-    statusAvg,
-    sleepScore: sleepSel && Number.isFinite(sleepSel.score) ? Math.round(sleepSel.score) : null,
-    now: isToday ? Date.now() : startOfSel + 12 * 3600 * 1000, // 历史日取正午做代表时刻
-    sleepTotalMin: sleepSel?.total ?? null,
-    sleepDeepMin: sleepSel?.deep ?? null,
-    hrv, hrvAvg, steps,
-    dayInCycle: isToday ? (ring?.curveStatus?.dayInCycle ?? null) : null,
-    timeline: todayTimeline,
-    cortisolLabel,
-  });
+  // ★ 2026-10-12：运动建议采数与「运动消耗」详情页的「今日运动建议」卡共用同一 helper
+  //   （collectWorkoutInput）——单一事实来源，保证工具页与卡片给出的处方完全一致，点进去不打架。
+  const plan = buildTodayWorkout(collectWorkoutInput(ring, dayTs));
   const brief = buildSportBrief(phase, plan.timeSlot);
   const statusLine = sportStatusReason({
     sleepTotalMin: sleepSel?.total ?? null,
@@ -1050,6 +1063,16 @@ function NutritionSection({ navigation }: { navigation: TopicNav }) {
 
       <Text style={ls.phaseTip}>真实可查的营养科学，吃对了激素才稳。</Text>
 
+      <TopicMethodStrip
+        title="今天可以这样吃"
+        hint="按节律挑一件"
+        navigation={navigation}
+        cards={[
+          { id: 'cravings', title: '稳住餐后精力', text: '先吃蛋白质和纤维，再安排主食。', tone: '血糖节律', cover: getNutritionArticle('cravings').cover, collection: 'nutrition' },
+          { id: 'proteinhormone', title: '给周期补对燃料', text: '根据阶段调整碳水和脂肪，不用硬扛。', tone: '周期营养', cover: getNutritionArticle('proteinhormone').cover, collection: 'nutrition' },
+        ]}
+      />
+
       <View style={ls.secHead}>
         <Text style={ls.secTitle}>饮食营养科普</Text>
         <Text style={ls.secCount}>{articles.length} 篇</Text>
@@ -1109,6 +1132,16 @@ function SportArticlesSection({ navigation }: { navigation: TopicNav }) {
       </TouchableOpacity>
 
       <Text style={ls.phaseTip}>周期阶段 × 荷尔蒙，给你可执行的训练节奏。</Text>
+
+      <TopicMethodStrip
+        title="今天怎么动"
+        hint="看周期，也看恢复"
+        navigation={navigation}
+        cards={[
+          { id: 'cycletraining', title: '把强度放对时段', text: '上行段挑战，恢复段保留余量。', tone: '训练节律', cover: getSportArticle('cycletraining').cover, collection: 'sport' },
+          { id: 'lutealtrain', title: '经前给恢复留空间', text: '保持频率，降低单次强度和并列任务。', tone: '黄体期', cover: getSportArticle('lutealtrain').cover, collection: 'sport' },
+        ]}
+      />
 
       <View style={ls.secHead}>
         <Text style={ls.secTitle}>运动科普</Text>
