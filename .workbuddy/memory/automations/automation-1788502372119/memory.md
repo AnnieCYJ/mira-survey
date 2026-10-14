@@ -111,3 +111,9 @@
 - 发现：本地与 origin/master 同步（0 领先）；工作区 66 项未提交改动——呼吸/冥想图资 v2 全套替换（5 张呼吸 bg + 5 张 thumb、5 张冥想 bg/thumb、rain_v2/waves_v2 mp3 新音轨）、新增月相发现视图 MonthDiscoveryView + DayDrawer 组件、phaseAdvice/workoutInput/analysisFeedback lib、5 个预览 HTML（breathing-redesign/glass/nature、month-discovery-*）与 preview-nature/ 5 张配图；修改 30 个源文件（BreathingEngine/Player、MeditationPlayer、CycleMoonPhase/CyclePhaseCard、HomeAiBubble、HormoneDualTrend/EstrogenCard、JourneyDayView、cycleMath、sleepPersonalized、健康与周期多屏等）+ automation 记忆文件。子模块仍为已知 -dirty。
 - 处理：git add -A（66 文件，子模块无法暂存）→ commit 5aa537e「呼吸与冥想模块迭代：替换呼吸/冥想背景图 v2 与新音轨，新增月相发现视图 MonthDiscoveryView/DayDrawer 与相位建议、运动输入 lib，更新周期/睡眠/情绪等多屏组件及呼吸再设计预览 HTML」→ push 成功 1757c63..5aa537e（+4206/-592）。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-14 14:12（第二十二次运行）
+- 发现：本地与 origin/master 同步（0 领先）；工作区 65 项未提交改动——冥想音轨替换（删 rain/rain_v2，新增 rain_v4.mp3）、新增 FadeInImage/TabFade 组件与 analysisFacts/timePhase lib；修改 30+ 源文件（breathing 引擎/播放器、MeditationPlayer、HomeAiBubble、MonthDiscoveryView、SavedAdviceDeck、TodayScreen/InsightScreen/CycleCalendarScreen 及 ai 层/cognitiveLoad/cortisolProxy/suggestionEngine 等）；新增 preview-glass/（7 文件）与 preview-tools/（12 文件）设计稿目录；另出现未跟踪 hermes-engine/（54MB Hermes 引擎构建产物头文件）与 .last_build_configuration（Xcode 构建配置）。
+- 关键决策：hermes-engine/（54MB）与 .last_build_configuration 属构建产物，按 build/build_fresh 先例加入 .gitignore 而非提交。
+- 处理：git add -A（65 文件，子模块无法暂存）→ commit c515851「迭代呼吸/冥想与工具卡设计：替换冥想音轨为 rain_v4、新增 FadeInImage/TabFade 组件与 analysisFacts/timePhase lib，更新首页 AI 气泡、月相发现与多屏；新增 preview-glass/preview-tools 设计稿并 ignore hermes-engine 构建产物」→ push 成功 5aa537e..c515851（+3842/-3226）。
+- 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
