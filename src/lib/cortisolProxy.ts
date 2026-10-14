@@ -183,7 +183,16 @@ function parseDayKeyMs(dk: string): number {
  */
 export const MIN_BASELINE_DAYS = 3;
 
+// ★ 2026-10-14：基线按「窗口天数|当日 dayKey」缓存（过去日期的 intraday 不可变 → 缓存安全）。
+//   修复洞察页/昼夜节律详情页反复重扫 14 天 intraday 导致的进页卡顿：同一份基线只算一次，
+//   后续刷新（每 ~700ms）与再次进入页面直接命中缓存。
+const _baselineCache = new Map<string, ProxyBaseline>();
+const _BASELINE_CACHE_MAX = 8;
+
 export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()): ProxyBaseline {
+  const _bkey = `${days}|${hsDayKey(now)}`;
+  const _cached = _baselineCache.get(_bkey);
+  if (_cached) return _cached;
   const N = Math.max(MIN_BASELINE_DAYS, days);
   // ★ v18.143：桶内存 `WeightedSample`（带 daysAgo）而不是裸 number，
   //   中心估计量改「截尾加权均值」—— 近 2–5 天的数据权重更高。
@@ -284,7 +293,7 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     cortisol: scaleBySlot(cortisolBySlot, cortisolAll),
   };
 
-  return {
+  const _result: ProxyBaseline = {
     hrv: weightedCenter(hrvAll),
     eda: weightedCenter(edaAll),
     temp: weightedCenter(tempAll),
@@ -296,6 +305,13 @@ export function buildCortisolProxyBaseline(days = 14, now: number = Date.now()):
     scalesBySlot,
     daysUsed: Array.from(dayHas).sort(),
   };
+  _baselineCache.set(_bkey, _result);
+  // 简单 FIFO：超出上限时删除最早插入的键（Map 保留插入顺序）
+  if (_baselineCache.size > _BASELINE_CACHE_MAX) {
+    const _first = _baselineCache.keys().next().value;
+    if (_first !== undefined) _baselineCache.delete(_first);
+  }
+  return _result;
 }
 
 // ── 核心：反推全天皮质醇活性 ────────────────────────────────────────────

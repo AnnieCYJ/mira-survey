@@ -687,16 +687,32 @@ function computeForecast(
 }
 
 // ★ 结果缓存：同 (日期, healthStore 版本, 30s 窗) 内直接命中（与 stressAlgorithm 同款）。
-let _cogReportCache: { key: string; val: CognitiveLoadReport } | null = null;
+//   ★ 2026-10-14 修复：原为单槽缓存，10-13 / 10-14 两个日期会互相冲掉 → 永远 miss →
+//     每次 render 重算 + 打 `[COG-V2]` 大 JSON，dev 模式下刷屏拖慢 UI。改为有界 Map，
+//     不同天 / 30s 桶各自命中，不再互相挤占。
+const _cogReportCache = new Map<string, CognitiveLoadReport>();
+const COG_CACHE_MAX = 24;
 
 export function computeCognitiveLoadReport(nowMs = Date.now()): CognitiveLoadReport {
   const key = `${todayKey(nowMs)}|${healthStore.getVersion()}|${Math.floor(nowMs / 30000)}`;
-  const c = _cogReportCache;
-  if (c && c.key === key) return c.val;
+  const hit = _cogReportCache.get(key);
+  if (hit) return hit;
   const val = computeCognitiveLoadReportUncached(nowMs);
-  _cogReportCache = { key, val };
+  _cogReportCache.set(key, val);
+  if (_cogReportCache.size > COG_CACHE_MAX) {
+    const oldest = _cogReportCache.keys().next().value;
+    if (oldest !== undefined) _cogReportCache.delete(oldest);
+  }
   return val;
 }
+
+/**
+ * ★ 诊断日志开关（2026-10-14）。
+ * 默认关闭：这些 `[COG-*]` / `[COR-*]` 是离线重算对账用的 dev 诊断日志，会在 dev 模式下
+ * 每 ~1s 刷一条大 JSON，过 JS 桥发给 Metro + 真机，直接拖慢 UI（真机卡顿主因之一）。
+ * 需要时打开：在任意入口执行 `globalThis.__MILE_COG_LOG = true`。
+ */
+const COG_DEV_LOG = (globalThis as any).__MILE_COG_LOG === true;
 
 function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport {
   const today = todayKey(nowMs);
@@ -860,7 +876,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
       rec: sleepRecovery ?? sleepRecoveryNeutral, debt: sleepDebt, peakH: _acrophase,
       wakeH: _wakeMin != null ? _wakeMin / 60 : null,
     });
-  if (__DEV__) {
+  if (__DEV__ && COG_DEV_LOG) {
     const d = (_nightZ as any)._dbg;
     console.log(`[COG-ANCHOR] zHRV=${_nightZ.zHRV?.toFixed(2) ?? '—'} zRHR=${_nightZ.zRHR?.toFixed(2) ?? '—'} zSleep=${_nightZ.zSleep?.toFixed(2) ?? '—'} days=${_nightZ.nDays} v2=${_morningV2 ?? '—'} avg14=${_morningAvgBaseline ?? '—'} hasSleep=${hasRecentSleep} final=${morningReadiness}`);
     if (d) console.log(`[COG-NIGHT] win=${JSON.stringify(d.win)} tonightHrv=${d.tonightHrv?.toFixed(1) ?? '—'} n=${d.tonightSamples} tonightRhr=${d.tonightRhr ?? '—'} hrvHistN=${d.hrvHistN} rhrHistN=${d.rhrHistN} hrvHist=[${d.hrvHist.map((v: number) => v.toFixed(0)).join(',')}] rhrHist=[${d.rhrHist.join(',')}]`);
@@ -1198,7 +1214,7 @@ function computeCognitiveLoadReportUncached(nowMs: number): CognitiveLoadReport 
   };
 
   try {
-    if (__DEV__) console.log('[COG-V2]', JSON.stringify({
+    if (__DEV__ && COG_DEV_LOG) console.log('[COG-V2]', JSON.stringify({
       hrvNow, hrvBaseline, snsNow, snsBaseline,
       mentalEnergy, focusScore, decisionScore,
       peakHour: forecast?.peak?.hour, peakEnergy: forecast?.peak?.energy,

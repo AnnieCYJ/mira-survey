@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具页重设计 · 3 版方案</title>
+<style>
+  :root{ --ink:#1F1D1A; --sub:#5F5F74; --faint:#9C968C; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Segoe UI",sans-serif;background:#F2F1F6;color:var(--ink);min-height:100vh}
+  .head{max-width:1480px;margin:0 auto;padding:40px 28px 6px}
+  .head h1{font-size:24px;font-weight:700}
+  .head p{margin-top:10px;font-size:13.5px;color:var(--sub);line-height:1.7;max-width:880px}
+  .head .tag{display:inline-block;font-size:11px;font-weight:600;color:#3E7C59;background:#E3F2E9;border-radius:999px;padding:3px 10px;margin-right:8px;vertical-align:2px}
+  .grid{max-width:1480px;margin:0 auto;padding:26px 28px 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:44px 30px}
+  .cell{display:flex;flex-direction:column;align-items:center}
+  .cap{width:300px;margin-top:20px}
+  .cap h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .cap h3 .no{width:20px;height:20px;border-radius:6px;background:var(--ink);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .cap p{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:7px}
+  .cap .pro{margin-top:7px;font-size:11.5px;line-height:1.7}
+  .cap .pro b{color:#3E7C59;font-weight:600}
+  .cap .con{margin-top:3px;font-size:11.5px;line-height:1.7;color:#B04A3E}
+  .cap .con b{color:#B04A3E;font-weight:600}
+
+  .phone{position:relative;width:300px;height:640px;border-radius:46px;background:#fff;flex:none;
+    box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(20,18,40,.32)}
+  .scr{position:absolute;inset:7px;border-radius:40px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:14px 22px 0;font-size:11px;font-weight:600;color:var(--ink);position:relative;z-index:20}
+  .body{flex:1;padding:8px 20px 0;position:relative;z-index:10;display:flex;flex-direction:column;min-height:0}
+
+  .ptitle{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:.01em}
+  .psub{font-size:12px;color:var(--sub);margin-top:3px;margin-bottom:14px}
+
+  /* ── 磨砂文案蒙层（三版卡片共用）── */
+  .glass{position:absolute;left:0;right:0;bottom:0;padding:12px 12px 11px;
+    background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.14) 30%,rgba(0,0,0,.34) 66%,rgba(0,0,0,.50) 100%)}
+  .g-kick{font-size:8.5px;color:rgba(255,255,255,.85);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-state{font-size:12.5px;font-weight:600;color:#fff;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(0,0,0,.3)}
+  .g-tip{font-size:9.5px;color:rgba(255,255,255,.88);margin-top:2px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .g-meta{font-size:8px;color:rgba(255,255,255,.62);margin-top:3px}
+
+  /* ═══ A 版：无 tab · 小卡横滑 + 页码点 ═══ */
+  .a-stage{position:relative;height:308px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .a-card{position:absolute;width:238px;height:298px;border-radius:22px;overflow:hidden;
+    box-shadow:0 14px 34px rgba(20,18,40,.20);background-size:cover;background-position:center}
+  .a-card.mid{z-index:3}
+  .a-card.side{transform:scale(.86);opacity:.9;z-index:2}
+  .a-dots{display:flex;justify-content:center;gap:5px;margin-top:2px}
+  .a-dots i{width:5px;height:5px;border-radius:3px;background:rgba(31,29,26,.18)}
+  .a-dots i.on{width:14px;background:var(--ink)}
+  .a-deck{margin-top:12px;background:#F6F4F1;border-radius:14px;padding:10px 12px}
+  .a-deck .row{display:flex;align-items:center;gap:8px}
+  .a-deck .sw{width:26px;height:26px;border-radius:9px;background:#EAF0BE;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .a-deck .t{font-size:11px;font-weight:600;color:var(--ink)}
+  .a-deck .s{font-size:9px;color:var(--faint);margin-top:1px}
+  .a-deck .arr{margin-left:auto;font-size:11px;color:var(--faint)}
+
+  /* ═══ B 版：迷你文字分段 ═══ */
+  .b-seg{display:flex;gap:3px;background:#F1F0F4;border-radius:15px;padding:3px;margin:0 0 12px}
+  .b-seg .it{flex:1;text-align:center;font-size:9.5px;font-weight:500;color:var(--sub);padding:5px 2px;border-radius:12px;white-space:nowrap;overflow:hidden}
+  .b-seg .it.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 2px 6px rgba(20,18,40,.10)}
+  .b-stage{position:relative;height:330px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .b-card{position:absolute;width:252px;height:315px;border-radius:22px;overflow:hidden;
+    box-shadow:0 14px 34px rgba(20,18,40,.20);background-size:cover;background-position:center}
+  .b-card.mid{z-index:3}
+  .b-card.side{transform:scale(.90);opacity:.92;z-index:2}
+  .b-deck{margin-top:12px;background:#F6F4F1;border-radius:14px;padding:10px 12px}
+
+  /* ═══ C 版：2×3 网格 ═══ */
+  .c-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .c-card{position:relative;height:198px;border-radius:18px;overflow:hidden;background-size:cover;background-position:center;
+    box-shadow:0 8px 22px rgba(20,18,40,.14)}
+  .c-card .glass{padding:9px 9px 8px}
+  .c-card .g-state{font-size:11px}
+  .c-card .g-tip{font-size:8.5px;-webkit-line-clamp:1}
+  .c-foot{margin-top:10px;text-align:center;font-size:9px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="tag">工具页重设计</span>去掉顶部图标 tab · 滑动换样式 · 整体缩小</h1>
+  <p>当前工具页（底部「冥想」tab）结构：标题 → <b>细线串 6 个 pastel 圆形图标节点（34px）</b> → 全出血横滑大图卡（中间卡约 307px 宽 × 384px 高）→ 收藏建议。三版分别解决「tab 噪音 / 切换功能保留 / 一屏看全」。真机按此稿落地。</p>
+</div>
+
+<div class="grid">
+
+  <!-- ═══ A 版 ═══ -->
+  <div class="cell">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="body">
+        <div class="ptitle">Tools</div>
+        <div class="psub">小的改变积累起来也很了不起</div>
+
+        <!-- A：无 tab，直接横滑 -->
+        <div class="a-stage">
+          <div class="a-card side" style="left:-70px;background-image:url('tool_recovery.jpg')">
+            <div class="glass"><div class="g-kick">提升颜值 · 卵泡期 · 第 9 天</div><div class="g-state">昨晚睡眠 82</div></div>
+          </div>
+          <div class="a-card mid" style="background-image:url('tool_emotion.jpg')">
+            <div class="glass">
+              <div class="g-kick">情绪调节 · 黄体期 · 第 24 天</div>
+              <div class="g-state">今日情绪波动 3 次</div>
+              <div class="g-tip">缓一缓，把紧绷的情绪松下来。</div>
+              <div class="g-meta">4 段冥想 · 3 个呼吸练习</div>
+            </div>
+          </div>
+          <div class="a-card side" style="right:-70px;background-image:url('tool_food.jpg')">
+            <div class="glass"><div class="g-kick">营养搭配 · 黄体期 · 第 24 天</div><div class="g-state">今日三餐已记 2 次</div></div>
+          </div>
+        </div>
+        <div class="a-dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+
+        <div class="a-deck">
+          <div class="row">
+            <div class="sw">🧘</div>
+            <div><div class="t">睡前放松呼吸</div><div class="s">4-7-8 · 昨晚收藏</div></div>
+            <div class="arr">›</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">A</span>去 tab · 小卡横滑 + 页码点</h3>
+      <p>彻底删掉顶部图标节点行，省下的空间让给卡片和收藏区。卡片从 307px 缩到 <b>238px</b>（屏占比 61%→），两侧邻卡缩到 0.86 只露一个圆角；底部加一排页码小点（当前项拉长为胶囊），滑动位置一眼可见。</p>
+      <p class="pro"><b>+</b> 页面最干净，tab 噪音归零；页码点不抢视觉</p>
+      <p class="con"><b>−</b> 切换工具必须靠滑，不能一键直达</p>
+    </div>
+  </div>
+
+  <!-- ═══ B 版 ═══ -->
+  <div class="cell">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="body">
+        <div class="ptitle">Tools</div>
+        <div class="psub">小的改变积累起来也很了不起</div>
+
+        <!-- B：迷你文字 segmented -->
+        <div class="b-seg">
+          <div class="it on">情绪</div><div class="it">颜值</div><div class="it">营养</div>
+          <div class="it">运动</div><div class="it">睡眠</div><div class="it">科普</div>
+        </div>
+
+        <div class="b-stage">
+          <div class="b-card side" style="left:-90px;background-image:url('tool_activity.jpg')">
+            <div class="glass"><div class="g-kick">运动建议 · 黄体期 · 第 24 天</div><div class="g-state">今日步数 6,240</div></div>
+          </div>
+          <div class="b-card mid" style="background-image:url('tool_emotion.jpg')">
+            <div class="glass">
+              <div class="g-kick">情绪调节 · 黄体期 · 第 24 天</div>
+              <div class="g-state">今日情绪波动 3 次</div>
+              <div class="g-tip">缓一缓，把紧绷的情绪松下来。</div>
+              <div class="g-meta">4 段冥想 · 3 个呼吸练习</div>
+            </div>
+          </div>
+          <div class="b-card side" style="right:-90px;background-image:url('tool_sleep.jpg')">
+            <div class="glass"><div class="g-kick">稳定睡眠 · 黄体期 · 第 24 天</div><div class="g-state">昨晚睡眠 82</div></div>
+          </div>
+        </div>
+
+        <div class="b-deck a-deck">
+          <div class="row">
+            <div class="sw">🧘</div>
+            <div><div class="t">睡前放松呼吸</div><div class="s">4-7-8 · 昨晚收藏</div></div>
+            <div class="arr">›</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">B</span>tab 换迷你文字分段</h3>
+      <p>保留一键切换，图标节点行换成 <b>iOS 风格迷你 segmented</b>：高 30px 浅灰槽 + 白底选中胶囊，文字 9.5px，整体只有原来 tab 行的 1/2 高。卡片缩到 <b>252px</b>，仍露邻卡圆角保持滑动感。</p>
+      <p class="pro"><b>+</b> 功能不丢；文字比图标更好认；原生感强</p>
+      <p class="con"><b>−</b> 仍占一行；6 个词在窄屏略挤</p>
+    </div>
+  </div>
+
+  <!-- ═══ C 版 ═══ -->
+  <div class="cell">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="body">
+        <div class="ptitle">Tools</div>
+        <div class="psub">小的改变积累起来也很了不起</div>
+
+        <!-- C：2×3 网格，无 tab 无滑动 -->
+        <div class="c-grid">
+          <div class="c-card" style="background-image:url('tool_emotion.jpg')">
+            <div class="glass">
+              <div class="g-kick">情绪调节 · 第 24 天</div>
+              <div class="g-state">情绪波动 3 次</div>
+              <div class="g-tip">缓一缓，把紧绷的情绪松下来。</div>
+            </div>
+          </div>
+          <div class="c-card" style="background-image:url('tool_recovery.jpg')">
+            <div class="glass">
+              <div class="g-kick">提升颜值 · 第 24 天</div>
+              <div class="g-state">昨晚睡眠 82</div>
+              <div class="g-tip">跟着周期养气色。</div>
+            </div>
+          </div>
+          <div class="c-card" style="background-image:url('tool_food.jpg')">
+            <div class="glass">
+              <div class="g-kick">营养搭配 · 第 24 天</div>
+              <div class="g-state">三餐已记 2 次</div>
+              <div class="g-tip">吃对，激素稳。</div>
+            </div>
+          </div>
+          <div class="c-card" style="background-image:url('tool_activity.jpg')">
+            <div class="glass">
+              <div class="g-kick">运动建议 · 第 24 天</div>
+              <div class="g-state">今日步数 6,240</div>
+              <div class="g-tip">今天怎么动，看身体状态。</div>
+            </div>
+          </div>
+          <div class="c-card" style="background-image:url('tool_sleep.jpg')">
+            <div class="glass">
+              <div class="g-kick">稳定睡眠 · 第 24 天</div>
+              <div class="g-state">昨晚睡眠 82</div>
+              <div class="g-tip">睡好，恢复更快。</div>
+            </div>
+          </div>
+          <div class="c-card" style="background-image:url('tool_learn.jpg')">
+            <div class="glass">
+              <div class="g-kick">知识科普 · 第 24 天</div>
+              <div class="g-state">12 篇 · 每周更新</div>
+              <div class="g-tip">读懂身体的每个变化。</div>
+            </div>
+          </div>
+        </div>
+        <div class="c-foot">6 个工具一屏看全 · 点头像直接进</div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">C</span>无 tab 无滑动 · 2×3 网格</h3>
+      <p>最激进的一版：横滑整个拿掉，6 个工具变成 <b>2 列 × 3 行小卡</b>（单卡 161px 宽，4:5 比例 201px 高），磨砂文案压缩成 3 行。一屏看全所有工具，点哪进哪。</p>
+      <p class="pro"><b>+</b> 零滑动零 tab，密度最高，选择成本最低</p>
+      <p class="con"><b>−</b> 失去大图的沉浸感和「翻卡」探索乐趣</p>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

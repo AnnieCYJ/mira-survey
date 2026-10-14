@@ -30,6 +30,8 @@ export interface BreathingEngineProps {
   isPlaying: boolean;
   onPhaseChange?: (phase: BreathPhase) => void;
   onComplete?: (cycles: number) => void;
+  /** 是否在圆心下方显示「第 N 轮」——播放器改为显示「第 N / 共 M 轮」时关掉，避免重复 */
+  showCycles?: boolean;
 }
 
 interface PhaseInfo { phase: BreathPhase; duration: number; label: string; }
@@ -51,7 +53,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 // 中心视觉：白色双环（底环 + 整轮进度弧）+ 呼吸缩放光晕 + 白字（相位/秒数/轮次）
 export default function BreathingEngine({
-  pattern, size = 220, isPlaying, onPhaseChange, onComplete,
+  pattern, size = 220, isPlaying, onPhaseChange, onComplete, showCycles = true,
 }: BreathingEngineProps) {
   const scale = useRef(new Animated.Value(0.55)).current;   // 光晕呼吸 0.55 → 1
   const arc = useRef(new Animated.Value(0)).current;        // 整轮进度 0 → 1
@@ -72,7 +74,11 @@ export default function BreathingEngine({
     let count = 0;
     let dead = false;
     let tick: ReturnType<typeof setInterval> | null = null;
-    const clearTick = () => { if (tick) { clearInterval(tick); tick = null; } };
+    let adv: ReturnType<typeof setTimeout> | null = null;
+    const clearTimers = () => {
+      if (tick) { clearInterval(tick); tick = null; }
+      if (adv) { clearTimeout(adv); adv = null; }
+    };
 
     const runPhase = () => {
       if (dead) return;
@@ -88,7 +94,8 @@ export default function BreathingEngine({
       setPhase(p.phase);
       onPhaseChange?.(p.phase);
       setRemaining(p.duration);
-      clearTick();
+      clearTimers();
+      // 秒数倒数（仅展示用）
       tick = setInterval(() => setRemaining((r) => (r > 1 ? r - 1 : r)), 1000);
       // 吸气放大、呼气缩小；屏息保持当前大小
       if (p.phase === 'inhale' || p.phase === 'exhale') {
@@ -99,6 +106,12 @@ export default function BreathingEngine({
           useNativeDriver: true,
         }).start();
       }
+      // ★ 修复：到点进入下一阶段（此前缺少阶段推进，4-7-8 只显示吸气、屏息/呼气永远不出现）
+      adv = setTimeout(() => {
+        if (dead) return;
+        idx++;
+        runPhase();
+      }, p.duration * 1000);
     };
 
     // 整轮进度弧：走完一轮自动归零重画
@@ -117,7 +130,7 @@ export default function BreathingEngine({
 
     return () => {
       dead = true;
-      clearTick();
+      clearTimers();
       scale.stopAnimation();
       arc.stopAnimation();
     };
@@ -164,7 +177,7 @@ export default function BreathingEngine({
         <Text style={styles.phase}>{PHASE_LABELS[phase]}</Text>
         {remaining > 0 && <Text style={styles.count}>{remaining} 秒</Text>}
       </View>
-      <Text style={styles.cycles}>第 {cycles + 1} 轮</Text>
+      {showCycles && <Text style={styles.cycles}>第 {cycles + 1} 轮</Text>}
     </View>
   );
 }

@@ -57,6 +57,7 @@ import {
 } from '../lib/cycleMath';
 import { phaseOfDay, cycleAxis, buildEstrogenData, buildProgesteroneData, trendDays, type TrendRange } from '../lib/hormoneTrend';
 import { loadCycleLog, loadPeriodDays, savePeriodDay, saveCycleLog, FLOW_LABEL, PAIN_LABEL, type FlowLevel, type PainLevel, type PeriodDayLog } from '../data/cycleLog';
+import { allInterventionEntries, ensureInterventionLogLoaded } from '../data/interventionLog';
 import { PHASE_COLOR, PHASE_LABEL, phaseBg, phaseBand } from '../lib/phaseColors';
 import CycleMoonPhase from '../components/CycleMoonPhase';
 import CycleDerivedMetrics from '../components/CycleDerivedMetrics';
@@ -174,9 +175,13 @@ export default function CycleCalendarScreen() {
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>('cycle');
   const [selected, setSelected] = useState<string | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
+  // ★ 2026-10-13：今日练习卡（呼吸/冥想完成记录）数据源
+  const [practiceTick, setPracticeTick] = useState(0);
   useEffect(() => {
     void loadCycleLog().then(setLocalLog);
     void loadPeriodDays().then(setPeriodDays);
+    // 确保干预记录已落盘加载，再触发一次重算
+    void ensureInterventionLogLoaded().then(() => setPracticeTick((t) => t + 1));
   }, []);
 
   const log = mergeCycleLog(ring, localLog);
@@ -271,6 +276,19 @@ export default function CycleCalendarScreen() {
     return out;
   }, [selStart, cycleLen]);
 
+  // ★ 2026-10-13：今日练习卡 —— 读今天完成的呼吸/冥想记录（与首页播放器完成卡同源）
+  const formatHM = (ts: number) => {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const todayPractices = useMemo(() => {
+    const todayStr = dayKey(new Date());
+    return allInterventionEntries()
+      .filter((e) => (e.kind === 'breath' || e.kind === 'meditate') && dayKey(new Date(e.ts)) === todayStr)
+      .slice(-8)
+      .reverse();
+  }, [practiceTick]);
+
   // 历史周期的月相环：把 log 换成该周期的首日与长度，环上圆点即按该周期天数铺开
   const ringLog = useMemo(() => {
     if (!log) return null;
@@ -335,7 +353,7 @@ export default function CycleCalendarScreen() {
         colors={[theme.colors.textWhite, theme.colors.textWhite]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer topFadeColor={theme.colors.textWhite} innerStyle={styles.pageWide}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
@@ -388,6 +406,32 @@ export default function CycleCalendarScreen() {
           </>
         ) : (
           <>
+            {/* ★ 2026-10-13：今日练习 —— 今天做过的呼吸/冥想完成记录（含前后状态变化），与首页完成卡同源 */}
+            {todayPractices.length > 0 && (
+              <View style={styles.practiceCard}>
+                <View style={styles.practiceHead}>
+                  <Text style={styles.practiceTitle}>今日练习</Text>
+                  <Text style={styles.practiceCount}>{todayPractices.length} 次</Text>
+                </View>
+                {todayPractices.map((e, i) => (
+                  <View key={i} style={styles.practiceRow}>
+                    <View style={[styles.practiceDot, { backgroundColor: e.kind === 'meditate' ? mm.colors.purpleCore : mm.colors.limeMid }]} />
+                    <View style={styles.practiceBody}>
+                      <Text style={styles.practiceName}>{e.detail}</Text>
+                      <Text style={styles.practiceState}>
+                        {e.stateBefore && e.stateAfter && e.stateBefore !== e.stateAfter
+                          ? `状态 ${e.stateBefore} → ${e.stateAfter}`
+                          : e.valueBefore != null && e.valueAfter != null && e.valueBefore !== e.valueAfter
+                            ? `状态值 ${e.valueBefore} → ${e.valueAfter}`
+                            : '状态慢慢松下来'}
+                      </Text>
+                    </View>
+                    <Text style={styles.practiceTime}>{formatHM(e.ts)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* ★ 2026-10-07：顶部「周期切换」—— ‹ 上一个周期 / 下一个周期 ›（对齐 Clue / Flo / Oura） */}
             <View style={styles.cycleSwitch}>
               <TouchableOpacity
@@ -1057,6 +1101,17 @@ const styles = StyleSheet.create({
   calBtnOn: { borderColor: mm.colors.limeMid },
 
   emptyBox: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, padding: theme.space.lg, borderWidth: 1, borderColor: theme.colors.cardBorder },
+  // ★ 2026-10-13：今日练习卡（呼吸/冥想完成记录）
+  practiceCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.space.sm },
+  practiceHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) },
+  practiceTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  practiceCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  practiceRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), paddingVertical: theme.sp(1) },
+  practiceDot: { width: 8, height: 8, borderRadius: 4 },
+  practiceBody: { flex: 1 },
+  practiceName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textBody },
+  practiceState: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  practiceTime: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   emptyTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
   emptyText: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
 
@@ -1098,17 +1153,20 @@ const styles = StyleSheet.create({
   /* minHeight: 0 + flexShrink: 1 —— 让 ScrollView 在封顶高度的 Sheet 里真正可滚动（不会把底部按钮顶出屏幕） */
   recordSheetBody: { marginTop: theme.space.xs, flexShrink: 1, minHeight: 0 },
 
-  monthCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.space.sm },
-  weekRow: { flexDirection: 'row', marginBottom: theme.sp(1) },
-  weekText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 2026-10-13（用户：日历格子大一点）：本页横向留白收窄，让月历网格占更宽，格子整体变大
+  pageWide: { paddingHorizontal: theme.sp(2) },
+  monthCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.sp(2) },
+  weekRow: { flexDirection: 'row', marginBottom: theme.sp(1.5) },
+  weekText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, padding: theme.sp(0.75), aspectRatio: 1 },
+  cell: { width: `${100 / 7}%`, padding: theme.sp(0.5), aspectRatio: 1 },
   dayBox: { flex: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dayToday: { borderWidth: 2, borderColor: theme.colors.accentSolid }, // v21：本页紫主控（周期语义域）
   dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, },
-  dayNum: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
-  dayDot: { position: 'absolute', bottom: 4, width: 5, height: 5, borderRadius: 2.5 },
-  dayRing: { position: 'absolute', top: 3, right: 3, width: 7, height: 7, borderRadius: 4, borderWidth: 2 },
+  // ★ 2026-10-13（用户：图也大一点）：日期数字 + 经期点 + 排卵环同步放大
+  dayNum: { fontSize: theme.fs(16), fontWeight: theme.weight.semibold as any },
+  dayDot: { position: 'absolute', bottom: 5, width: 7, height: 7, borderRadius: 3.5 },
+  dayRing: { position: 'absolute', top: 4, right: 4, width: 9, height: 9, borderRadius: 4.5, borderWidth: 2 },
 
   sheetMask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
   sheet: { backgroundColor: theme.colors.cardBgStrong, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, padding: theme.space.cardPad, paddingBottom: theme.space.xl },

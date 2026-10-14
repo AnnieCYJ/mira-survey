@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具页 · H2 版（扇形展开 + 指示点）</title>
+<style>
+  :root{ --ink:#1F1D1A; --sub:#5F5F74; --faint:#9C968C; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Segoe UI",sans-serif;background:#F2F1F6;color:var(--ink);min-height:100vh}
+  .head{max-width:1480px;margin:0 auto;padding:40px 28px 6px}
+  .head h1{font-size:24px;font-weight:700}
+  .head p{margin-top:10px;font-size:13.5px;color:var(--sub);line-height:1.7;max-width:880px}
+  .head .tag{display:inline-block;font-size:11px;font-weight:600;color:#3E7C59;background:#E3F2E9;border-radius:999px;padding:3px 10px;margin-right:8px;vertical-align:2px}
+  .head ul{margin:12px 0 0 18px;font-size:13px;color:var(--sub);line-height:2}
+  .head li b{color:var(--ink)}
+  .stage{max-width:1480px;margin:26px auto 60px;padding:0 28px;display:flex;gap:48px;align-items:flex-start;flex-wrap:wrap}
+
+  .phone{position:relative;width:300px;height:640px;border-radius:46px;background:#fff;flex:none;
+    box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(20,18,40,.32)}
+  .scr{position:absolute;inset:7px;border-radius:40px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:14px 22px 0;font-size:11px;font-weight:600;color:var(--ink);position:relative;z-index:20}
+  .body{flex:1;padding:8px 20px 0;position:relative;z-index:10;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+
+  .ptitle{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:.01em}
+  .psub{font-size:12px;color:var(--sub);margin-top:3px;margin-bottom:14px}
+
+  /* ── 磨砂文案蒙层 ── */
+  .glass{position:absolute;left:0;right:0;bottom:0;padding:12px 13px 12px;
+    background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.14) 30%,rgba(0,0,0,.34) 66%,rgba(0,0,0,.50) 100%)}
+  .g-kick{font-size:8.5px;color:rgba(255,255,255,.85);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-state{font-size:13px;font-weight:600;color:#fff;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(0,0,0,.3)}
+  .g-tip{font-size:9.5px;color:rgba(255,255,255,.88);margin-top:2px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .g-meta{font-size:8px;color:rgba(255,255,255,.62);margin-top:3px}
+
+  /* ── 大卡恢复原尺寸：中卡 ≈ 内容宽 92%，4:5，两侧邻卡缩 0.86 露圆角 ── */
+  .tools-stage{position:relative;height:300px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .t-card{position:absolute;width:234px;height:293px;border-radius:22px;overflow:hidden;
+    box-shadow:0 14px 32px rgba(20,18,40,.20);background-size:cover;background-position:center}
+  .t-card.mid{z-index:3}
+  /* 扇形展开：邻卡外移 + 绕底部向外倾 10°，铺满屏幕两侧不再留白 */
+  .t-card.side{transform:scale(.84) rotate(-10deg);transform-origin:bottom center;opacity:.97;z-index:2}
+  .t-card.side.r{transform:scale(.84) rotate(10deg)}
+  .t-card.side .g-state{font-size:11px}
+  .t-card.side .g-tip{display:none}
+  .dots{display:flex;justify-content:center;gap:5px;margin-top:2px}
+  .dots i{width:5px;height:5px;border-radius:3px;background:rgba(31,29,26,.18)}
+  .dots i.on{width:14px;background:#1F1D1A}
+
+  /* ── 收藏建议：竖排 ── */
+  .deck{margin-top:14px;flex:1;display:flex;flex-direction:column;min-height:0}
+  .deck-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+  .deck-title{font-size:13px;font-weight:600;color:var(--ink)}
+  .deck-all{font-size:10px;color:var(--faint)}
+  .deck-list{display:flex;flex-direction:column;gap:8px;overflow:hidden}
+  .adv{background:#fff;border-radius:14px;padding:9px 10px;display:flex;gap:9px;align-items:center;
+    box-shadow:0 1px 2px rgba(20,18,40,.04),0 6px 18px rgba(20,18,40,.06)}
+  .adv img{width:38px;height:38px;border-radius:10px;object-fit:cover;flex:none}
+  .adv .col{flex:1;min-width:0}
+  .adv .t{font-size:11.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adv .e{font-size:8.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adv .l{font-size:8.5px;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adv .again{flex:none;font-size:9.5px;font-weight:600;color:#6A4FB6;background:#EFEBFA;border-radius:999px;padding:5px 10px}
+
+  .notes{width:300px;flex:none}
+  .notes h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .notes h3 .no{width:20px;height:20px;border-radius:6px;background:var(--ink);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .notes p{font-size:12.5px;color:var(--sub);line-height:1.8;margin-top:10px}
+  .notes .pro{margin-top:10px;font-size:11.5px;line-height:1.7;color:#3E7C59;font-weight:600}
+  .notes .con{font-size:11.5px;line-height:1.7;color:#B04A3E}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="tag">H2 版</span>扇形展开邻卡 + 6 点指示器</h1>
+  <p>H 版的两处修订：<b>① 两侧邻卡改「扇形展开」</b>——邻卡整体外移、绕底部向外倾 10°，像扇子一样铺开，不再缩在中间让屏幕两边留白；<b>② 卡片下方加 6 个指示点</b>（当前项拉长为胶囊），一眼知道共 6 张、滑到第几张。其余保持：大卡原尺寸、去 tab、收藏竖排。</p>
+  <ul>
+    <li><b>去掉顶部 tab 行</b>——图标节点 + 贯穿细线整行删除；</li>
+    <li><b>收藏建议竖排</b>——横滑卡改纵向列表，一屏 2–3 条，右上「共 N 条 ›」看全部。</li>
+  </ul>
+</div>
+
+<div class="stage">
+
+  <div class="phone"><div class="scr">
+    <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+    <div class="body">
+      <div class="ptitle">Tools</div>
+      <div class="psub">小的改变积累起来也很了不起</div>
+
+      <!-- 无 tab；大卡原尺寸，两侧邻卡露圆角 -->
+      <div class="tools-stage">
+        <div class="t-card side" style="left:-118px;background-image:url('tool_recovery.jpg')">
+          <div class="glass"><div class="g-kick">提升颜值</div><div class="g-state">睡眠 82</div></div>
+        </div>
+        <div class="t-card mid" style="background-image:url('tool_emotion.jpg')">
+          <div class="glass">
+            <div class="g-kick">情绪调节 · 黄体期 · 第 24 天</div>
+            <div class="g-state">今日情绪波动 3 次</div>
+            <div class="g-tip">缓一缓，把紧绷的情绪松下来。</div>
+            <div class="g-meta">4 段冥想 · 3 个呼吸练习</div>
+          </div>
+        </div>
+        <div class="t-card side r" style="right:-118px;background-image:url('tool_food.jpg')">
+          <div class="glass"><div class="g-kick">营养搭配</div><div class="g-state">三餐已记 2 次</div></div>
+        </div>
+      </div>
+      <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+
+      <!-- 收藏建议：竖排列表 -->
+      <div class="deck">
+        <div class="deck-head">
+          <div class="deck-title">我收藏的建议</div>
+          <div class="deck-all">共 3 条 ›</div>
+        </div>
+        <div class="deck-list">
+          <div class="adv">
+            <img src="card_meditation.jpg" alt="">
+            <div class="col">
+              <div class="t">睡前做一轮 4-7-8 呼吸</div>
+              <div class="e">确认有帮助 3 次 · 昨晚睡眠 82</div>
+              <div class="l">最近一次：昨天 23:12</div>
+            </div>
+            <div class="again">再做一次</div>
+          </div>
+          <div class="adv">
+            <img src="card_food.jpg" alt="">
+            <div class="col">
+              <div class="t">晚餐加一份深绿蔬菜</div>
+              <div class="e">确认有帮助 2 次 · 今日三餐已记 2 次</div>
+              <div class="l">最近一次：今天 12:40</div>
+            </div>
+            <div class="again">再做一次</div>
+          </div>
+          <div class="adv">
+            <img src="card_learn.png" alt="">
+            <div class="col">
+              <div class="t">读一篇黄体期科普</div>
+              <div class="e">确认有帮助 1 次 · 周期第 24 天</div>
+              <div class="l">最近一次：昨天 21:05</div>
+            </div>
+            <div class="again">再做一次</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="notes">
+    <h3><span class="no">H2</span>两处修订</h3>
+    <p><b>扇形展开</b>：左右邻卡从「缩 0.86 贴在中卡旁」改为整体外移 + 绕底部中心向外倾 10°（左卡逆时针、右卡顺时针）。扇子铺开后屏幕两侧不再空白，邻卡的边和翘角都能看到，滑动时还有立体扇形的律动感。</p>
+    <p><b>6 点指示器</b>：卡片下方一排小点，当前项拉长为 14px 胶囊（墨色），未选中为 18% 墨。共 6 张图、滑到第几张，一眼可读。</p>
+    <p><b>其余同 H</b>：大卡原尺寸（4:5 不裁切）、无 tab、收藏竖排。</p>
+    <p class="pro">+ 两边空白被扇形卡填满；6 点补上「原来 tab 行」的位置感职责</p>
+    <p class="con">− 扇形倾角是静态示意；落地时滑动过程中邻卡角度会随 scrollX 连续变化（RN interpolate 实现，效果更顺）</p>
+  </div>
+
+</div>
+
+</body>
+</html>

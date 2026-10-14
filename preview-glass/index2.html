@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 首页 · 日出弧形版</title>
+<style>
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  html,body{margin:0;height:100%;}
+  body{background:#e9ecf1;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:28px;}
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .caption{color:#7d8798;font-size:12px;letter-spacing:.04em;}
+
+  .phone{position:relative;width:390px;height:844px;border-radius:47px;overflow:hidden;background:#0b1220;
+    box-shadow:0 30px 70px rgba(30,45,70,.30);}
+  .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 42%;}
+  .scrim{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,
+      rgba(18,26,42,.34) 0%, rgba(18,26,42,.10) 22%, rgba(16,22,36,.06) 40%,
+      rgba(12,18,30,.42) 58%, rgba(9,13,22,.72) 78%, rgba(7,10,18,.86) 100%);}
+
+  .screen{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;padding:0 22px;}
+
+  /* 状态栏 */
+  .statusbar{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 6px;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 6px rgba(10,18,32,.4);}
+  .sb-right{display:flex;align-items:center;gap:5px;}
+  .sb-ico{width:16px;height:11px;display:block;opacity:.95}
+
+  /* 头部 */
+  .head{padding:4px 2px 0;}
+  .ring-dot{width:26px;height:26px;margin-bottom:12px;}
+  .greet{color:rgba(255,255,255,.82);font-size:13px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(10,18,32,.45);}
+  .name{color:#fff;font-size:30px;font-weight:640;letter-spacing:.02em;margin-top:5px;text-shadow:0 2px 16px rgba(10,18,32,.5);}
+  .tag{color:rgba(255,255,255,.72);font-size:12.5px;margin-top:7px;text-shadow:0 1px 8px rgba(10,18,32,.45);}
+
+  /* 光弧（中部 hover 手部） */
+  .arcwrap{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);width:430px;height:430px;z-index:1;pointer-events:none;}
+  .sun{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);width:430px;height:430px;z-index:0;pointer-events:none;
+    background:radial-gradient(circle at 78% 22%, rgba(255,246,226,.55), rgba(255,240,214,.12) 22%, rgba(255,240,214,0) 46%);}
+
+  /* 玻璃卡通用 */
+  .glass{
+    background:linear-gradient(150deg, rgba(255,255,255,.17), rgba(255,255,255,.07));
+    backdrop-filter:blur(24px) saturate(120%);
+    -webkit-backdrop-filter:blur(24px) saturate(120%);
+    border:1px solid rgba(255,255,255,.22);
+    border-top-color:rgba(255,255,255,.38);
+    box-shadow:0 12px 34px rgba(6,10,20,.28), inset 0 1px 0 rgba(255,255,255,.28);
+    border-radius:24px;
+  }
+
+  /* 底部内容 */
+  .bottom{margin-top:auto;display:flex;flex-direction:column;gap:12px;padding-bottom:14px;}
+
+  /* Readiness 卡 */
+  .rd{padding:17px 18px 15px;}
+  .rd-lbl{color:rgba(255,255,255,.78);font-size:12.5px;letter-spacing:.02em;}
+  .rd-row{display:flex;align-items:baseline;gap:9px;margin-top:8px;}
+  .rd-big{color:#fff;font-size:40px;font-weight:650;line-height:1;letter-spacing:.01em;}
+  .rd-tag{color:rgba(255,255,255,.82);font-size:14px;}
+  .rd-bar{height:6px;border-radius:99px;background:rgba(255,255,255,.18);margin-top:14px;overflow:hidden;}
+  .rd-bar > i{display:block;height:100%;width:88%;border-radius:99px;background:linear-gradient(90deg,rgba(255,255,255,.6),#fff);}
+  .rd-scale{display:flex;justify-content:space-between;color:rgba(255,255,255,.55);font-size:10.5px;margin-top:7px;}
+
+  /* 活动卡 */
+  .act{padding:16px 18px 14px;}
+  .act-top{display:flex;align-items:flex-start;justify-content:space-between;}
+  .act-t1{color:#fff;font-size:15px;font-weight:600;letter-spacing:.01em;}
+  .act-t2{color:rgba(255,255,255,.6);font-size:11.5px;margin-top:4px;}
+  .act-pct{color:#fff;font-size:22px;font-weight:650;}
+  .act-row{display:flex;align-items:flex-end;justify-content:space-between;margin-top:14px;gap:10px;}
+  .stats{display:flex;gap:26px;}
+  .stat{display:flex;flex-direction:column;gap:5px;}
+  .stat .k{display:flex;align-items:center;gap:4px;color:rgba(255,255,255,.6);font-size:11px;}
+  .stat .v{color:#fff;font-size:16px;font-weight:640;letter-spacing:.01em;}
+  .spark{width:96px;height:34px;flex:0 0 auto;align-self:flex-end;}
+
+  /* 底部 tab */
+  .tabbar{display:flex;align-items:center;justify-content:space-between;padding:11px 10px;border-radius:24px;}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(255,255,255,.55);font-size:10.5px;letter-spacing:.02em;}
+  .tab.on{color:#fff;}
+  .tab svg{opacity:.85;}
+  .tab.on svg{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="phone">
+    <img class="bg" src="bg2.jpg" alt="">
+    <div class="scrim"></div>
+
+    <!-- 光弧 + 光晕 -->
+    <div class="sun"></div>
+    <svg class="arcwrap" viewBox="0 0 430 430" fill="none">
+      <circle cx="215" cy="215" r="196" stroke="rgba(255,255,255,.42)" stroke-width="1.2"/>
+      <circle cx="215" cy="215" r="196" stroke="rgba(255,255,255,.9)" stroke-width="1.6"
+              stroke-linecap="round" stroke-dasharray="1230" stroke-dashoffset="1090"
+              transform="rotate(-90 215 215)"/>
+      <circle cx="368" cy="99" r="6.5" fill="#fff" style="filter:drop-shadow(0 0 12px rgba(255,246,226,.95))"/>
+    </svg>
+
+    <div class="screen">
+      <!-- 状态栏 -->
+      <div class="statusbar">
+        <span>07:24</span>
+        <div class="sb-right">
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#fff"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#fff"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#fff"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#fff" opacity=".45"/></svg>
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><path d="M1 4.2C3.2 2.3 6 1.3 9 1.3s5.8 1 8 2.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M4 7C5.4 5.9 7.1 5.3 9 5.3s3.6.6 5 1.7" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="10" r="1.5" fill="#fff"/></svg>
+          <svg class="sb-ico" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="20" height="11" rx="3" stroke="#fff" opacity=".6"/><rect x="2" y="2" width="15" height="8" rx="1.6" fill="#fff"/><rect x="22" y="4" width="1.6" height="4" rx="0.8" fill="#fff" opacity=".6"/></svg>
+        </div>
+      </div>
+
+      <!-- 头部 -->
+      <div class="head">
+        <svg class="ring-dot" viewBox="0 0 26 26" fill="none">
+          <circle cx="13" cy="13" r="10" stroke="rgba(255,255,255,.28)" stroke-width="2.4"/>
+          <circle cx="13" cy="13" r="10" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="63" stroke-dashoffset="17" transform="rotate(-90 13 13)"/>
+        </svg>
+        <div class="greet">早上好</div>
+        <div class="name">平稳在线</div>
+        <div class="tag">10月13日 周二 · 黄体期第 22 天</div>
+      </div>
+
+      <!-- 底部卡片 + tab -->
+      <div class="bottom">
+        <div class="glass rd">
+          <div class="rd-lbl">今日准备度</div>
+          <div class="rd-row"><span class="rd-big">88</span><span class="rd-tag">良好</span></div>
+          <div class="rd-bar"><i></i></div>
+          <div class="rd-scale"><span>0</span><span>100</span></div>
+        </div>
+
+        <div class="glass act">
+          <div class="act-top">
+            <div>
+              <div class="act-t1">今日活动</div>
+              <div class="act-t2">进行中</div>
+            </div>
+            <div class="act-pct">75%</div>
+          </div>
+          <div class="act-row">
+            <div class="stats">
+              <div class="stat">
+                <span class="k"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 14s-4-2.6-4-5.6C4 6.4 5.8 5 7.4 5c.9 0 1.7.5 2.1 1.2C9.9 5.5 10.7 5 11.6 5 13.2 5 15 6.4 15 8.4 15 11.4 11 14 11 14" stroke="#fff" stroke-width="1.1" stroke-linejoin="round" opacity=".8"/></svg>步数</span>
+                <span class="v">7,684</span>
+              </div>
+              <div class="stat">
+                <span class="k"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8.5 1.5 3 8.6h3.6L6.2 14.5 12 7.2H8.2L8.5 1.5z" stroke="#fff" stroke-width="1.1" stroke-linejoin="round" opacity=".8"/></svg>消耗</span>
+                <span class="v">420</span>
+              </div>
+              <div class="stat">
+                <span class="k"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="#fff" stroke-width="1.1" opacity=".8"/><path d="M8 4.6V8l2.2 1.6" stroke="#fff" stroke-width="1.1" stroke-linecap="round" opacity=".8"/></svg>活动</span>
+                <span class="v">56 分</span>
+              </div>
+            </div>
+            <svg class="spark" viewBox="0 0 96 34" preserveAspectRatio="none">
+              <path d="M2,28 L16,24 L30,26 L44,17 L58,20 L72,11 L96,7" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>
+              <circle cx="96" cy="7" r="2.6" fill="#fff"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="glass tabbar">
+          <div class="tab on">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1v-8.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            首页
+          </div>
+          <div class="tab">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="15" rx="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 9.5h17M8 4.5v-2M16 4.5v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            场景
+          </div>
+          <div class="tab">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 20s-6.4-3.8-6.4-8.4C5.6 8.9 8 7 10.4 7c1.2 0 2.3.6 3 1.5.7-.9 1.8-1.5 3-1.5C18.8 7 21.2 8.9 21.2 11.6 21.2 16.2 14.8 20 14.8 20" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" transform="translate(-1.4 0)"/></svg>
+            健康
+          </div>
+          <div class="tab">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2.8l1.9 5.4 5.4 1.9-5.4 1.9L12 17.4l-1.9-5.4-5.4-1.9 5.4-1.9L12 2.8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="18.6" cy="18.4" r="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+            AI
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Mira · 首页 · 日出弧形版（干净竖版底图 + 磨砂卡）</div>
+</div>
+</body>
+</html>

@@ -25,6 +25,9 @@ export default function BottomTabNavigator() {
       screenOptions={{
         headerShown: false,
         sceneContainerStyle: { backgroundColor: 'transparent' },
+        // ★ 2026-10-14 回退：恢复 lazy:true（访问时才挂载），避免 5 个重页面在
+        //   离线数据加载前就全部挂载 → 切到首页时趋势图/卡片要等数据回填才显示。
+        //   freezeOnBlur 仍冻结后台页，省资源且不卸载（不会丢失已渲染状态）。
         lazy: true,
         freezeOnBlur: true,
       }}

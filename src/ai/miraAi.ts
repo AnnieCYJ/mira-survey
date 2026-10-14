@@ -62,7 +62,13 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
   // buildHealthSnapshot 要同步跑皮质醇 30 天 / 激素 60 天 / 压力 / 准备度等重计算（全在 JS 线程阻塞），
   // 且占 ~800 token prefill。闲聊 / 情绪 / 一般建议问题根本用不到它，
   // 此前无条件先计算再丢弃 = 每次对话白卡几秒 + 多吃 prefill。按需计算后这部分问题首字延迟大幅下降。
-  const healthKeywords = ['睡眠', '心率', '压力', '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '疲劳', '指标', '数据', '健康'];
+  // ★ 2026-10-13：放宽触发词，覆盖自然口语问法（"我状态怎么样""昨晚怎么样""今天累不累"
+  //   旧列表只认字面健康词，问"状态/恢复/精力/休息"等反而拉不到数据、只能凭空聊）。
+  const healthKeywords = [
+    '睡眠', '睡', '心率', '压力', '状态', '恢复', '精力', '休息', '累', '疲劳',
+    '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '指标',
+    '数据', '健康', '情绪', '心情', '气色', '运动', '锻炼', '饮食', '营养', '皮肤',
+  ];
   const needsHealth = healthKeywords.some(k => userText.includes(k));
   const health = needsHealth ? buildHealthSnapshot() : '';
 

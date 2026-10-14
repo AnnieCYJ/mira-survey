@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 首页 · 浮空大弧 + 背景趋势 + 仅建议磨砂</title>
+<style>
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  html,body{margin:0;height:100%;}
+  body{background:#cdd3dc;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:28px;}
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .caption{color:#6f7889;font-size:12px;letter-spacing:.04em;max-width:430px;text-align:center;line-height:1.55;}
+
+  .phone{position:relative;width:390px;height:844px;border-radius:47px;overflow:hidden;background:#0b1220;
+    box-shadow:0 30px 70px rgba(30,45,70,.34);}
+  .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 42%;}
+  /* 顶部/底部压暗保字，中段几乎不压 → 露出戒指和手 */
+  .scrim{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,
+      rgba(16,24,40,.34) 0%, rgba(16,24,40,.12) 15%, rgba(14,20,34,0) 34%,
+      rgba(12,18,30,.04) 56%, rgba(9,13,22,.52) 80%, rgba(7,10,18,.84) 100%);}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(110% 50% at 76% 12%, rgba(255,244,222,.38), rgba(255,240,214,.09) 30%, rgba(255,240,214,0) 54%);}
+
+  .screen{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;padding:0 22px;}
+
+  /* 状态栏 */
+  .statusbar{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 6px;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 6px rgba(10,18,32,.5);}
+  .sb-right{display:flex;align-items:center;gap:5px;}
+  .sb-ico{width:16px;height:11px;display:block;opacity:.95}
+
+  /* 顶部：直接压背景（无卡） */
+  .top{padding:2px 2px 0;}
+  .top .ringdot{width:24px;height:24px;margin-bottom:12px;}
+  .top .greet{color:rgba(255,255,255,.82);font-size:13px;letter-spacing:.02em;text-shadow:0 1px 10px rgba(10,18,32,.55);}
+  .top .ttl{color:#fff;font-size:27px;font-weight:640;letter-spacing:.01em;margin-top:4px;text-shadow:0 2px 16px rgba(10,18,32,.6);}
+  .top .tag{color:rgba(255,255,255,.72);font-size:12.5px;margin-top:6px;text-shadow:0 1px 10px rgba(10,18,32,.55);}
+
+  /* 迷你指标：纯文字（无环），横向滚动，抬头对齐原版 App */
+  .chips{display:flex;gap:24px;margin-top:16px;padding:0 2px;overflow-x:auto;flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{display:flex;flex-direction:column;gap:3px;flex:0 0 auto;white-space:nowrap;}
+  .chip .k{color:rgba(255,255,255,.72);font-size:11.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(10,18,32,.55);}
+  .chip .v{color:#fff;font-size:18px;font-weight:660;line-height:1.1;text-shadow:0 1px 8px rgba(10,18,32,.55);}
+  .chip .u{font-size:11px;font-weight:500;color:rgba(255,255,255,.7);margin-left:2px;}
+
+  /* 中间：大弧，浮在背景上，弧上标数字 + 状态 */
+  .arczone{position:relative;flex:1;min-height:300px;display:flex;align-items:center;justify-content:center;}
+  .arcbox{position:relative;width:364px;height:236px;}
+  .arczone svg.arc{width:364px;height:236px;}
+  .arccenter{position:absolute;left:0;right:0;top:74px;text-align:center;pointer-events:none;}
+  .arccenter .lbl{color:rgba(255,255,255,.78);font-size:12px;letter-spacing:.06em;text-shadow:0 1px 10px rgba(10,18,32,.55);}
+  .arccenter .word{color:#fff;font-size:46px;font-weight:680;line-height:1;margin-top:10px;text-shadow:0 3px 24px rgba(10,18,32,.5);}
+  .arccenter .big{color:rgba(255,255,255,.9);font-size:16px;font-weight:560;margin-top:11px;text-shadow:0 1px 10px rgba(10,18,32,.5);}
+
+  /* 全天状态趋势：背景轻微模糊（柔化手部），不写标题字，与下方卡片拉开距离 */
+  .trend{position:relative;padding:16px 16px 13px;border-radius:20px;margin-bottom:20px;
+    background:rgba(255,255,255,.10);backdrop-filter:blur(14px) saturate(120%);
+    -webkit-backdrop-filter:blur(14px) saturate(120%);}
+  .trend svg.chart{display:block;margin-top:2px;width:100%;height:84px;}
+  .legend{display:flex;gap:14px;margin-top:11px;flex-wrap:wrap;}
+  .lg{display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.82);font-size:11px;text-shadow:0 1px 6px rgba(10,18,32,.5);}
+  .lg i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  /* 底部 AI 泡泡建议卡：唯一磨砂卡 */
+  .glass{
+    background:linear-gradient(150deg, rgba(255,255,255,.18), rgba(255,255,255,.07));
+    backdrop-filter:blur(22px) saturate(120%);
+    -webkit-backdrop-filter:blur(22px) saturate(120%);
+    border:1px solid rgba(255,255,255,.22);
+    border-top-color:rgba(255,255,255,.36);
+    box-shadow:0 12px 30px rgba(6,10,20,.28), inset 0 1px 0 rgba(255,255,255,.26);
+    border-radius:22px;
+  }
+  .bubble{margin-top:auto;margin-bottom:10px;padding:14px 16px;border-radius:22px;display:flex;gap:11px;align-items:flex-start;}
+  .mark{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.92);
+    display:flex;align-items:center;justify-content:center;color:#7a6a4a;font-weight:700;font-size:14px;box-shadow:0 2px 8px rgba(10,18,32,.25);}
+  .bub-body{flex:1;min-width:0;}
+  .bub-tag{color:rgba(255,255,255,.6);font-size:10.5px;letter-spacing:.06em;margin-bottom:5px;}
+  .bub-text{color:#fff;font-size:13.5px;line-height:1.55;}
+  .bub-cta{display:inline-block;margin-top:9px;padding:6px 13px;border-radius:99px;
+    background:rgba(255,255,255,.20);border:1px solid rgba(255,255,255,.30);color:#fff;font-size:12px;font-weight:500;}
+
+  /* 底部 tab：极淡深色浮条（非磨砂白卡） */
+  .tabbar{display:flex;align-items:center;justify-content:space-between;padding:10px 8px;border-radius:22px;margin-bottom:8px;
+    background:rgba(10,14,22,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:rgba(255,255,255,.55);font-size:10px;letter-spacing:.02em;text-shadow:0 1px 6px rgba(10,18,32,.5);}
+  .tab.on{color:#fff;}
+  .tab svg{opacity:.85;}
+  .tab.on svg{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="phone">
+    <img class="bg" src="bg2.jpg" alt="">
+    <div class="scrim"></div>
+    <div class="glow"></div>
+
+    <div class="screen">
+      <!-- 状态栏 -->
+      <div class="statusbar">
+        <span>07:24</span>
+        <div class="sb-right">
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#fff"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#fff"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#fff"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#fff" opacity=".45"/></svg>
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><path d="M1 4.2C3.2 2.3 6 1.3 9 1.3s5.8 1 8 2.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M4 7C5.4 5.9 7.1 5.3 9 5.3s3.6.6 5 1.7" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="10" r="1.5" fill="#fff"/></svg>
+          <svg class="sb-ico" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="20" height="11" rx="3" stroke="#fff" opacity=".6"/><rect x="2" y="2" width="15" height="8" rx="1.6" fill="#fff"/><rect x="22" y="4" width="1.6" height="4" rx="0.8" fill="#fff" opacity=".6"/></svg>
+        </div>
+      </div>
+
+      <!-- 顶部：直接压背景（无卡） -->
+      <div class="top">
+        <svg class="ringdot" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.30)" stroke-width="2"/>
+          <circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-dasharray="57" stroke-dashoffset="16" transform="rotate(-90 12 12)"/>
+        </svg>
+        <div class="greet">早上好，Kristina</div>
+        <div class="ttl">今日状态</div>
+        <div class="tag">10月13日 周二 · 黄体期第 22 天</div>
+      </div>
+
+      <!-- 迷你指标（纯文字，无环，横向滚动，抬头对齐原版 App） -->
+      <div class="chips">
+        <div class="chip"><span class="k">睡眠恢复</span><span class="v">73<span class="u">/100</span></span></div>
+        <div class="chip"><span class="k">脑力准备度</span><span class="v">68<span class="u">/100</span></span></div>
+        <div class="chip"><span class="k">心理压力</span><span class="v">41<span class="u">/100</span></span></div>
+        <div class="chip"><span class="k">运动消耗</span><span class="v">320<span class="u">kcal</span></span></div>
+        <div class="chip"><span class="k">生理周期</span><span class="v">第 22 天</span></div>
+      </div>
+
+      <!-- 中间：大弧，弧上标数字 + 状态 -->
+      <div class="arczone">
+        <div class="arcbox">
+          <svg class="arc" viewBox="0 0 364 236" fill="none">
+            <circle cx="182" cy="180" r="152" stroke="rgba(255,255,255,.09)" stroke-width="1"/>
+            <path d="M30 180 A152 152 0 0 1 334 180" stroke="rgba(255,255,255,.20)" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M30 180 A152 152 0 0 1 334 180" stroke="#fff" stroke-width="2.6" stroke-linecap="round"
+                  stroke-dasharray="477.5" stroke-dashoffset="133.7"
+                  style="filter:drop-shadow(0 0 7px rgba(255,255,255,.55))"/>
+            <circle cx="279" cy="65" r="6" fill="#fff" style="filter:drop-shadow(0 0 16px rgba(255,246,226,.95))"/>
+          </svg>
+          <div class="arccenter">
+            <div class="lbl">今日准备度</div>
+            <div class="word">平平静静</div>
+            <div class="big">76</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 全天状态趋势：背景轻微模糊，无标题字 -->
+      <div class="trend">
+        <svg class="chart" viewBox="0 0 320 96" preserveAspectRatio="none">
+          <line x1="6" y1="60" x2="314" y2="60" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
+          <path d="M6 64 L52 58 L96 50 L140 56 L184 44 L228 62 L272 52 L314 48" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          <circle cx="52" cy="58" r="4" fill="#9fb4c9"/>
+          <circle cx="96" cy="50" r="4" fill="#e0b15e"/>
+          <circle cx="140" cy="56" r="4" fill="#9fc9a3"/>
+          <circle cx="184" cy="44" r="4" fill="#9fb4c9"/>
+          <circle cx="228" cy="62" r="4" fill="#c9a3a8"/>
+          <circle cx="272" cy="52" r="4" fill="#9fc9a3"/>
+          <circle cx="314" cy="48" r="4" fill="#9fb4c9"/>
+        </svg>
+        <div class="legend">
+          <span class="lg"><i style="background:#e0b15e"></i>元气满满</span>
+          <span class="lg"><i style="background:#9fc9a3"></i>状态良好</span>
+          <span class="lg"><i style="background:#9fb4c9"></i>平平静静</span>
+          <span class="lg"><i style="background:#c9a3a8"></i>休息一下</span>
+        </div>
+      </div>
+
+      <!-- 底部 AI 泡泡建议卡：唯一磨砂卡 -->
+      <div class="glass bubble">
+        <div class="mark">M</div>
+        <div class="bub-body">
+          <div class="bub-tag">MIRA · AI 建议</div>
+          <div class="bub-text">上午精神不错，午后可以走两步、晒晒太阳，整个人会松快些。</div>
+          <span class="bub-cta">试试 2 分钟呼吸</span>
+        </div>
+      </div>
+
+      <!-- 底部 tab：极淡深色浮条 -->
+      <div class="tabbar">
+        <div class="tab on">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1v-8.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          首页
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="15" rx="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 9.5h17M8 4.5v-2M16 4.5v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          场景
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 20s-6.4-3.8-6.4-8.4C5.6 8.9 8 7 10.4 7c1.2 0 2.3.6 3 1.5.7-.9 1.8-1.5 3-1.5C18.8 7 21.2 8.9 21.2 11.6 21.2 16.2 14.8 20 14.8 20" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" transform="translate(-1.4 0)"/></svg>
+          健康
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2.8l1.9 5.4 5.4 1.9-5.4 1.9L12 17.4l-1.9-5.4-5.4-1.9 5.4-1.9L12 2.8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="18.6" cy="18.4" r="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          AI
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Mira · 首页 · 顶部抬头对齐原版 App（睡眠恢复/脑力准备度/心理压力/运动消耗/生理周期，纯文字无环、横向滚动）· 中央弧改大状态词「平平静静」+ 小数字 · 趋势图例同步四态（元气满满/状态良好/平平静静/休息一下）· 仅底部 AI 建议为磨砂卡。</div>
+</div>
+</body>
+</html>

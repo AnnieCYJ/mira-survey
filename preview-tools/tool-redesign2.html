@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具页重设计 · 第二弹（Oura / Calm 参考）</title>
+<style>
+  :root{ --ink:#1F1D1A; --sub:#5F5F74; --faint:#9C968C; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Segoe UI",sans-serif;background:#F2F1F6;color:var(--ink);min-height:100vh}
+  .head{max-width:1480px;margin:0 auto;padding:40px 28px 6px}
+  .head h1{font-size:24px;font-weight:700}
+  .head p{margin-top:10px;font-size:13.5px;color:var(--sub);line-height:1.7;max-width:880px}
+  .head .tag{display:inline-block;font-size:11px;font-weight:600;color:#3E7C59;background:#E3F2E9;border-radius:999px;padding:3px 10px;margin-right:8px;vertical-align:2px}
+  .grid{max-width:1480px;margin:0 auto;padding:26px 28px 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:44px 30px}
+  .cell{display:flex;flex-direction:column;align-items:center}
+  .cap{width:300px;margin-top:20px}
+  .cap h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .cap h3 .no{width:20px;height:20px;border-radius:6px;background:var(--ink);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .cap p{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:7px}
+  .cap .pro{margin-top:7px;font-size:11.5px;line-height:1.7}
+  .cap .pro b{color:#3E7C59;font-weight:600}
+  .cap .con{margin-top:3px;font-size:11.5px;line-height:1.7;color:#B04A3E}
+  .cap .con b{color:#B04A3E;font-weight:600}
+
+  .phone{position:relative;width:300px;height:640px;border-radius:46px;background:#fff;flex:none;
+    box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(20,18,40,.32)}
+  .scr{position:absolute;inset:7px;border-radius:40px;overflow:hidden;display:flex;flex-direction:column}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:14px 22px 0;font-size:11px;font-weight:600;position:relative;z-index:20}
+  .body{flex:1;padding:8px 20px 0;position:relative;z-index:10;display:flex;flex-direction:column;min-height:0}
+
+  /* ═══ D 版 · Oura 极简数据风 ═══ */
+  .d .scr{background:#FAFAF8}
+  .d .statusbar{color:#1A1A1A}
+  .d-kicker{font-size:10px;font-weight:600;letter-spacing:.22em;color:#8A867E;margin-top:6px}
+  .d-title{font-size:24px;font-weight:500;color:#1A1A1A;margin-top:5px;letter-spacing:-.01em}
+  .d-summary{margin-top:16px;background:#fff;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:16px;
+    box-shadow:0 1px 2px rgba(20,18,40,.04),0 8px 24px rgba(20,18,40,.06)}
+  .d-ring{width:64px;height:64px;border-radius:50%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:conic-gradient(#1A1A1A 0 82%, #ECEAE4 82% 100%)}
+  .d-ring .in{width:48px;height:48px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .d-ring .v{font-size:17px;font-weight:600;color:#1A1A1A;line-height:1}
+  .d-ring .l{font-size:7px;color:#8A867E;margin-top:2px}
+  .d-metrics{flex:1;display:flex;flex-direction:column;gap:7px}
+  .d-metric{display:flex;align-items:baseline;gap:6px}
+  .d-metric .n{font-size:11px;color:#8A867E;width:30px;flex:none}
+  .d-metric .bar{flex:1;height:3px;border-radius:2px;background:#ECEAE4;position:relative;overflow:hidden}
+  .d-metric .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#1A1A1A}
+  .d-metric .v{font-size:11px;font-weight:600;color:#1A1A1A;width:26px;text-align:right;flex:none}
+  .d-list{margin-top:18px;flex:1;display:flex;flex-direction:column}
+  .d-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #F0EEE9}
+  .d-row:last-child{border-bottom:none}
+  .d-row img{width:42px;height:42px;border-radius:12px;object-fit:cover;flex:none}
+  .d-row .t{font-size:13.5px;font-weight:500;color:#1A1A1A}
+  .d-row .s{font-size:10.5px;color:#8A867E;margin-top:2px}
+  .d-row .arr{margin-left:auto;font-size:13px;color:#C9C5BD}
+
+  /* ═══ E 版 · Calm 午夜蓝 ═══ */
+  .e .scr{background:linear-gradient(180deg,#0E1B3D 0%,#16264F 55%,#1D3160 100%)}
+  .e .statusbar{color:rgba(255,255,255,.9)}
+  .e-kicker{font-size:9.5px;font-weight:600;letter-spacing:.24em;color:rgba(255,255,255,.45);margin-top:8px}
+  .e-title{font-family:Georgia,"Songti SC","Noto Serif SC",serif;font-size:22px;font-weight:400;color:#fff;margin-top:7px;letter-spacing:.01em}
+  .e-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:6px}
+  .e-card{position:absolute;width:246px;height:352px;border-radius:26px;overflow:hidden;background-size:cover;background-position:center;
+    box-shadow:0 24px 48px rgba(4,8,24,.5)}
+  .e-card.mid{z-index:3}
+  .e-card.side{transform:scale(.88);opacity:.85;z-index:2}
+  .e-cap{position:absolute;left:0;right:0;bottom:0;padding:16px 15px 15px;
+    background:linear-gradient(180deg,rgba(6,10,28,0) 0%,rgba(6,10,28,.42) 45%,rgba(6,10,28,.78) 100%)}
+  .e-cap .t{font-family:Georgia,"Songti SC","Noto Serif SC",serif;font-size:16px;color:#fff}
+  .e-cap .s{font-size:9.5px;color:rgba(255,255,255,.72);margin-top:4px;line-height:1.5}
+  .e-cap .k{font-size:8px;color:rgba(255,255,255,.5);letter-spacing:.14em;margin-bottom:5px}
+  .e-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 4px}
+  .e-dots i{width:5px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)}
+  .e-dots i.on{width:14px;background:rgba(255,255,255,.85)}
+
+  /* ═══ F 版 · 深色墨夜网格 ═══ */
+  .f .scr{background:#101013}
+  .f .statusbar{color:rgba(255,255,255,.85)}
+  .f-kicker{font-size:10px;color:rgba(255,255,255,.42);margin-top:8px;letter-spacing:.06em}
+  .f-title{font-size:19px;font-weight:600;color:#fff;margin-top:5px;letter-spacing:-.01em}
+  .f-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+  .f-card{position:relative;height:176px;border-radius:16px;overflow:hidden;background-size:cover;background-position:center;
+    box-shadow:0 10px 24px rgba(0,0,0,.35)}
+  .f-card .cap{position:absolute;left:0;right:0;bottom:0;padding:9px 9px 8px;
+    background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.34) 60%,rgba(0,0,0,.62))}
+  .f-card .t{font-size:11.5px;font-weight:600;color:#fff}
+  .f-card .s{font-size:8.5px;color:rgba(255,255,255,.66);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .f-foot{margin-top:11px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:9px;color:rgba(255,255,255,.38);letter-spacing:.08em}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="tag">第二弹 · 风格参考</span>工具页 · Oura 极简 / Calm 午夜蓝 / 深墨夜色</h1>
+  <p>第一弹三版（A/B/C）都是「浅色 + 横滑/网格」的延续改法。这一弹彻底换设计语言：<b>D = Oura</b>（暖白、hairline 列表、数据摘要环）、<b>E = Calm</b>（午夜蓝渐变、serif 大标题、大场景卡）、<b>F = 深墨夜色</b>（近黑底、小网格、高对比白字）。三版均无 tab，均可选区或混搭后落地。</p>
+</div>
+
+<div class="grid">
+
+  <!-- ═══ D 版 · Oura ═══ -->
+  <div class="cell d">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="body">
+        <div class="d-kicker">TOOLS</div>
+        <div class="d-title">今日</div>
+
+        <div class="d-summary">
+          <div class="d-ring"><div class="in"><div class="v">82</div><div class="l">准备度</div></div></div>
+          <div class="d-metrics">
+            <div class="d-metric"><span class="n">睡眠</span><span class="bar"><i style="width:82%"></i></span><span class="v">82</span></div>
+            <div class="d-metric"><span class="n">恢复</span><span class="bar"><i style="width:71%"></i></span><span class="v">71</span></div>
+            <div class="d-metric"><span class="n">活动</span><span class="bar"><i style="width:58%"></i></span><span class="v">58</span></div>
+          </div>
+        </div>
+
+        <div class="d-list">
+          <div class="d-row">
+            <img src="tool_emotion.jpg" alt="">
+            <div><div class="t">情绪调节</div><div class="s">今日情绪波动 3 次 · 4 段冥想</div></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="d-row">
+            <img src="tool_recovery.jpg" alt="">
+            <div><div class="t">提升颜值</div><div class="s">昨晚睡眠 82 · 周期建议</div></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="d-row">
+            <img src="tool_food.jpg" alt="">
+            <div><div class="t">营养搭配</div><div class="s">三餐已记 2 次 · 6 份食谱</div></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="d-row">
+            <img src="tool_activity.jpg" alt="">
+            <div><div class="t">运动建议</div><div class="s">今日步数 6,240 · 按周期推荐</div></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="d-row">
+            <img src="tool_sleep.jpg" alt="">
+            <div><div class="t">稳定睡眠</div><div class="s">3 段助眠音 · 睡眠回顾</div></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="d-row">
+            <img src="tool_learn.jpg" alt="">
+            <div><div class="t">知识科普</div><div class="s">12 篇 · 每周更新</div></div>
+            <div class="arr">›</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">D</span>Oura 极简数据风</h3>
+      <p>暖白底 + 一行 <b>数据摘要</b>（准备度环 + 睡眠/恢复/活动三条 hairline 指标），下面 6 行工具列表：42px 小缩略图 + 名称 + 一行真实状态数据，hairline 分隔、右侧 › 。无 tab 无横滑，全部一屏直达。</p>
+      <p class="pro"><b>+</b> 信息密度高、数据感强、和 Mira 的「身体数据」定位最贴；实现最简单</p>
+      <p class="con"><b>−</b> 图片沦为 42px 小图，失去工具卡视觉冲击力</p>
+    </div>
+  </div>
+
+  <!-- ═══ E 版 · Calm ═══ -->
+  <div class="cell e">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>23:47</span><span>●●●</span></div>
+      <div class="body">
+        <div class="e-kicker">GOOD EVENING</div>
+        <div class="e-title">今晚想放松什么？</div>
+
+        <div class="e-stage">
+          <div class="e-card side" style="left:-84px;background-image:url('tool_sleep.jpg')">
+            <div class="e-cap"><div class="k">SLEEP</div><div class="t">稳定睡眠</div><div class="s">3 段助眠音</div></div>
+          </div>
+          <div class="e-card mid" style="background-image:url('tool_emotion.jpg')">
+            <div class="e-cap">
+              <div class="k">EMOTION · 黄体期第 24 天</div>
+              <div class="t">情绪调节</div>
+              <div class="s">今日情绪波动 3 次，缓一缓，把紧绷的情绪松下来。</div>
+            </div>
+          </div>
+          <div class="e-card side" style="right:-84px;background-image:url('tool_recovery.jpg')">
+            <div class="e-cap"><div class="k">GLOW</div><div class="t">提升颜值</div><div class="s">跟着周期养气色</div></div>
+          </div>
+        </div>
+        <div class="e-dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">E</span>Calm 午夜蓝 · serif 大场景卡</h3>
+      <p>深夜蓝渐变底 + <b>serif 大标题</b>「今晚想放松什么？」+ 问候语按时间变（早上好/下午好/晚上好）。中央横滑大场景卡（246px 宽，图 + 底部深色渐变 + serif 工具名 + 一句状态文案），页码点白色低透明度。无 tab，滑动即浏览。</p>
+      <p class="pro"><b>+</b> 情绪价值最高，和「冥想/呼吸」的工具属性最契合；serif 差异化明显</p>
+      <p class="con"><b>−</b> 深色底与 App 其他浅色页反差大，需要做深色模式配套</p>
+    </div>
+  </div>
+
+  <!-- ═══ F 版 · 深墨夜色 ═══ -->
+  <div class="cell f">
+    <div class="phone"><div class="scr">
+      <div class="statusbar"><span>23:47</span><span>●●●</span></div>
+      <div class="body">
+        <div class="f-kicker">晚上好 · 黄体期第 24 天</div>
+        <div class="f-title">今晚的工具</div>
+
+        <div class="f-grid">
+          <div class="f-card" style="background-image:url('tool_emotion.jpg')">
+            <div class="cap"><div class="t">情绪调节</div><div class="s">情绪波动 3 次</div></div>
+          </div>
+          <div class="f-card" style="background-image:url('tool_sleep.jpg')">
+            <div class="cap"><div class="t">稳定睡眠</div><div class="s">昨晚睡眠 82</div></div>
+          </div>
+          <div class="f-card" style="background-image:url('tool_food.jpg')">
+            <div class="cap"><div class="t">营养搭配</div><div class="s">三餐已记 2 次</div></div>
+          </div>
+          <div class="f-card" style="background-image:url('tool_activity.jpg')">
+            <div class="cap"><div class="t">运动建议</div><div class="s">步数 6,240</div></div>
+          </div>
+          <div class="f-card" style="background-image:url('tool_recovery.jpg')">
+            <div class="cap"><div class="t">提升颜值</div><div class="s">卵泡期 · 第 9 天</div></div>
+          </div>
+          <div class="f-card" style="background-image:url('tool_learn.jpg')">
+            <div class="cap"><div class="t">知识科普</div><div class="s">12 篇 · 每周更新</div></div>
+          </div>
+        </div>
+
+        <div class="f-foot">6 个工具 · 按你的周期排序</div>
+      </div>
+    </div></div>
+    <div class="cap">
+      <h3><span class="no">F</span>深墨夜色 · 高对比网格</h3>
+      <p>近黑底（#101013）+ 2×3 场景小卡（176px 高、圆角 16、图 + 底部深渐变 + 白字两行）。深色让风景图的色彩更跳，白字对比度拉满；「按周期排序」的小字给网格一个推荐逻辑。</p>
+      <p class="pro"><b>+</b> 夜景氛围感强，适合睡前场景；网格一屏看全</p>
+      <p class="con"><b>−</b> 与浅色 App 主体的衔接需要过渡（如仅冥想/夜间入口用深色）</p>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

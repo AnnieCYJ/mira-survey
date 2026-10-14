@@ -24,6 +24,8 @@ import {
   allInterventionEntries,
   type InterventionKind,
 } from '../data/interventionLog';
+import { dayPhase } from './timePhase';
+import { peekAnalysisFeedback } from '../data/analysisFeedback';
 
 const PATH = (FileSystem.documentDirectory ?? '') + 'mira_suggestion_float.json';
 const DAY_MS = 86400000; // 睡眠/HRV 等「近 N 天」窗口计算用
@@ -53,19 +55,25 @@ function anchorTs(cs?: any): number {
   return Date.now();
 }
 
-/** 当前生活场景：只在饭前/睡前边界切换，不按每个半小时强制换卡。 */
+/**
+ * ★ 2026-10-13：时段锚点统一改用 `dayPhase`（lib/timePhase）。
+ *   旧 `sceneBucket` 只分 饭前/睡前/白天 三档，颗粒度太粗——白天一整天都归「daytime」，
+ *   导致建议几乎不随真实作息轮转。现在直接复用与「圆环叙事」同一套 6 时段，
+ *   保证**叙事与气泡建议在同一时段讲同一件事**。
+ *   原函数保留为向后兼容的薄封装（仍返回 coarse 三档，供外部仅关心饭前/睡前的调用）。
+ */
 export function sceneBucket(now = new Date()): 'preMeal' | 'bedtime' | 'daytime' {
-  const h = now.getHours() + now.getMinutes() / 60;
-  if (h >= 10.5 && h < 12 || h >= 16.5 && h < 18) return 'preMeal';
-  if (h >= 21 || h < 6) return 'bedtime';
+  const p = dayPhase(now);
+  if (p === 'preNoon') return 'preMeal';
+  if (p === 'bedtime') return 'bedtime';
   return 'daytime';
 }
 
-/** 状态签名：状态档 + 周期相位 + 当前生活场景。场景边界变化时才重新评估建议。 */
+/** 状态签名：状态档 + 周期相位 + 当前时段（6 档）。时段边界变化时才重新评估建议。 */
 function stateSig(cs?: any): string {
   const level = typeof cs?.level === 'string' ? cs.level : '';
   const phase = typeof cs?.phaseLabel === 'string' ? cs.phaseLabel : '';
-  return `${level}|${phase}|${sceneBucket()}`;
+  return `${level}|${phase}|${dayPhase()}`;
 }
 
 async function loadShown(): Promise<void> {
@@ -336,14 +344,13 @@ function buildStatusCandidate(cs: any, slot: number): SuggestionCandidate | null
  * 深链目标选择器 —— 引擎与 AI 层共用同一套事实源，保证「文案说的 = 跳到的」。
  */
 
-/** 按状态档 + 时段挑具体的呼吸练习（不足/深夜 → 4-7-8 睡前呼吸；其余 → 4-2-6 放松呼吸） */
+/** 按状态档 + 时段挑具体的呼吸练习（不足/睡前 → 4-7-8 睡前呼吸；其余 → 4-2-6 放松呼吸） */
 export function pickBreathTarget(level?: string | null): {
   patternKey: 'box' | 'calm' | 'energize' | 'sleep' | 'stress';
   name: string;
   rhythm: string;
 } {
-  const h = new Date().getHours();
-  if (level === '不足' || h >= 21 || h < 5) return { patternKey: 'sleep', name: '睡前呼吸', rhythm: '4-7-8' };
+  if (level === '不足' || dayPhase() === 'bedtime') return { patternKey: 'sleep', name: '睡前呼吸', rhythm: '4-7-8' };
   return { patternKey: 'calm', name: '放松呼吸', rhythm: '4-2-6' };
 }
 
@@ -367,8 +374,8 @@ function buildActionCandidates(cs: any, slot: number): SuggestionCandidate[] {
   const level: string | null | undefined = cs?.level;
   const out: SuggestionCandidate[] = [];
   const now = new Date();
-  const scene = sceneBucket(now);
-  const preMeal = scene === 'preMeal';
+  const scene = dayPhase(now);
+  const preMeal = scene === 'preNoon';
   const bedtime = scene === 'bedtime';
 
   // 状态偏低 / 不足 → 指定一种呼吸练习（温和放松，不要求「必须做」）
@@ -466,6 +473,15 @@ export async function pickSuggestion(
     await markShown(sig, ''); // 池子空了：记下签名，气泡回落 idle，等状态变化再试
     return null;
   }
+  // 第一阶段个性化：只用用户对同类分析的认可度调整顺序，不改变任何阈值。
+  const feedback = peekAnalysisFeedback();
+  const feedbackScore = (c: SuggestionCandidate) => {
+    const key = c.saveId ?? c.id;
+    return feedback
+      .filter((f) => f.id === key || f.id === c.id)
+      .reduce((sum, f) => sum + (f.value === 'accurate' ? 1 : -1), 0);
+  };
+  pool.sort((a, b) => feedbackScore(b) - feedbackScore(a));
   // 按槽位页码稳定取一条；force 换新时避开刚被否/刚展示过的那条
   let pick = Math.abs(slot) % pool.length;
   if (pool.length > 1 && pool[pick].id === lastId) pick = (pick + 1) % pool.length;

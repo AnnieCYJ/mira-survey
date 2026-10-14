@@ -13,6 +13,8 @@ interface Props {
   scrollRef?: React.Ref<ScrollView> | null;
   compactTop?: boolean;
   style?: ViewStyle;
+  /** ★ 覆盖 inner（内容容器）的样式——主要用来调整本页横向留白（如把日历页留白收窄让网格更宽）。默认不传 = 与原行为完全一致。 */
+  innerStyle?: ViewStyle;
   contentStyle?: ViewStyle;
   withGradient?: boolean;
   /**
@@ -43,6 +45,7 @@ export default function ScreenContainer({
   children,
   scrollRef,
   compactTop = false,
+  innerStyle,
   style,
   contentStyle,
   withGradient = false,
@@ -89,7 +92,7 @@ export default function ScreenContainer({
           useNativeDriver: true,
         })}
       >
-        <View style={[styles.inner, stretchInner && styles.innerStretch]}>{children}</View>
+        <View style={[styles.inner, stretchInner && styles.innerStretch, innerStyle]}>{children}</View>
       </Animated.ScrollView>
 
       {topFadeColor ? (

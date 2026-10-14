@@ -9,7 +9,7 @@ import { useNavigation, useFocusEffect, CompositeNavigationProp } from '@react-n
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
-import { mm, type MindChipTone } from '../theme/mindmate';
+import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import SavedAdviceDeck from '../components/SavedAdviceDeck';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -176,13 +176,41 @@ const SIDE_SCALE = 0.86;
 /** 两侧想露出的圆角宽度（视觉上真正能看到的部分，不是内边距） */
 const CORNER = 16;
 
-/** 第 i 张卡的缩放：落到自己的吸附位时 = 1，往左右各挪一页 = SIDE_SCALE（原生驱动，滑动连续） */
-function cardScale(scrollX: Animated.Value, i: number, page: number) {
-  return scrollX.interpolate({
+/* ★ H2 版（2026-10-13 用户定稿）：扇形展开 —— 中卡最大最正（scale 1 / 0°），
+   两侧邻卡整体外移 + 绕底部中心向外倾 10°（左邻逆时针、右邻顺时针）。
+   三通道全部随 scrollX 连续插值，滑动过程扇子开合：
+     · scale：     1 ↔ SIDE_SCALE
+     · rotate：    0deg ↔ ±10deg（scrollX 小 = 卡在右 = 右倾 +10deg）
+     · translateX：0 ↔ ±cardW×0.30（邻卡外移，铺满屏幕两侧不再留白）
+   绕底部旋转的写法：transform 数组里先 translateY(+h/2) → rotate → translateY(−h/2)。
+   ⚠️ zIndex 必须按 |i−active| 动态给（外移后邻卡与中卡重叠区大，否则晚渲染的邻卡会盖住中卡）。 */
+function cardFan(scrollX: Animated.Value, i: number, page: number, cardW: number, cardH: number) {
+  const scale = scrollX.interpolate({
     inputRange: [(i - 1) * page, i * page, (i + 1) * page],
     outputRange: [SIDE_SCALE, 1, SIDE_SCALE],
     extrapolate: 'clamp',
   });
+  const rotate = scrollX.interpolate({
+    inputRange: [(i - 1) * page, i * page, (i + 1) * page],
+    outputRange: ['10deg', '0deg', '-10deg'],
+    extrapolate: 'clamp',
+  });
+  const shift = Math.round(cardH / 2);
+  return {
+    transform: [
+      {
+        translateX: scrollX.interpolate({
+          inputRange: [(i - 1) * page, i * page, (i + 1) * page],
+          outputRange: [cardW * 0.30, 0, -cardW * 0.30],
+          extrapolate: 'clamp',
+        }),
+      },
+      { translateY: shift },
+      { rotate },
+      { translateY: -shift },
+      { scale },
+    ],
+  };
 }
 
 /* ★ 2026-10-11（用户定稿 P4，2026-10-11 方案 B 修正）：工具 = 一排连接式圆形图标（贯穿细线串起来），共 6 个；
@@ -220,71 +248,6 @@ function ToolIcon({ path, size, color }: { path: string; size: number; color: st
     </Svg>
   );
 }
-
-/* ★ 2026-10-12（用户：工具页顶部 tab 与首页「睡眠恢复/脑力准备度」chip 同款样式）：
-   每个工具分配一个 pastel 方块底色调，与 MindChips 的 chipBg 语义一致
-   （情绪=粉 / 颜值=紫 / 营养=黄绿 / 运动=蓝 / 睡眠=紫 / 科普=黄）。 */
-const TOOL_TONES: MindChipTone[] = ['pink', 'lav', 'lime', 'cyan', 'lav', 'butter'];
-
-/* ★ 2026-10-12（用户定稿）：工具切换 = **一条贯穿细线串起 6 个 pastel 图标节点**。
-   要的：图标（沿用 chip 版的 pastel 方块图标）+ 连接线。
-   不要的：外头的白卡框、图标下面的文字标签。
-   节点等距铺满内容宽，细线只连到首尾节点的圆心（左右各内缩半个节点）。
-   选中 = 底色压深一档 + 放大 1.12（D 版，不反色不描边）；未选中 = 浅底 + 图标降到 0.55。 */
-const NODE = theme.sp(8.5);     // 节点直径 34（与旧版连接式 tab 同尺寸）
-
-/** ★ 2026-10-12（用户选 D 版）：选中 = **只放大 + 底色加深（不反色）**。
-    chipBg 只有浅底/深字两档，这里把浅底往同色相的深色调压 ~35% 得到中间档；
-    结果仍是不透明实色 —— 节点必须挡住底下的贯穿细线（半透明会透线）。 */
-function deepen(hexA: string, hexB: string, t: number): string {
-  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const [a, b] = [p(hexA), p(hexB)];
-  return `#${a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
-}
-
-function ToolNodeRow({
-  items, active, onSelect, width,
-}: {
-  items: { key: string; label: string; icon: string; tone: MindChipTone }[];
-  active: number;
-  onSelect: (i: number) => void;
-  width: number;
-}) {
-  return (
-    <View style={[styles.nodeRow, { width }]}>
-      {/* 贯穿细线：从第一个节点的圆心连到最后一个节点的圆心 */}
-      <View style={[styles.nodeLine, { left: NODE / 2, right: NODE / 2 }]} />
-      {items.map((it, i) => {
-        const on = i === active;
-        const cb = mm.chipBg[it.tone];
-        return (
-          <Pressable
-            key={it.key}
-            onPress={() => onSelect(i)}
-            style={({ pressed }) => [
-              styles.node,
-              // ⚠️ 节点底必须**不透明**：整块降 opacity 会让贯穿细线透出来（像线穿过 icon）。
-              //    未选中 = 浅 pastel 底 + 图标调淡；选中 = 底色压深一档 + 放大，图标不反色。
-              {
-                backgroundColor: on ? deepen(cb.bg, cb.fg, 0.35) : cb.bg,
-                transform: [{ scale: on ? 1.12 : 1 }],
-              },
-              pressed && styles.nodePressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: on }}
-            accessibilityLabel={it.label}
-          >
-            <View style={{ opacity: on ? 1 : 0.55 }}>
-              <ToolIcon path={it.icon} size={theme.fs(16)} color={cb.fg} />
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 
 export default function MeditationScreen() {
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
@@ -378,14 +341,6 @@ export default function MeditationScreen() {
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
         </Animated.View>
 
-      {/* ★ 2026-10-12（用户定稿）：工具切换 = 细线串起的 pastel 图标节点（无白卡框、无文字标签） */}
-      <ToolNodeRow
-        items={TOOLS.map((t, i) => ({ key: t.key, label: t.key, icon: ICON_PATHS[i], tone: TOOL_TONES[i] }))}
-        active={active}
-        onSelect={goTo}
-        width={contentW}
-      />
-
       {/* ★ 纯图横滑卡片：全出血 + 左右各露出邻卡的一个圆角（点中间卡片进入对应功能页） */}
       <View style={[styles.carouselWrap, { width: bleedW, marginHorizontal: -theme.space.screen }]}>
         <Animated.ScrollView
@@ -413,7 +368,9 @@ export default function MeditationScreen() {
               style={{
                 width: cardW,
                 marginRight: GAP,
-                transform: [{ scale: cardScale(scrollX, i, PAGE) }],
+                // 扇形三通道 + 动态层级（中卡永远在最上）
+                ...cardFan(scrollX, i, PAGE, cardW, cardH),
+                zIndex: N - Math.abs(i - active),
               }}
             >
               <TouchableOpacity
@@ -434,7 +391,15 @@ export default function MeditationScreen() {
         </Animated.ScrollView>
       </View>
 
-      {/* ★ 2026-10-11 用户：收藏建议移到页面底部（图标条 / 工具卡下方） */}
+      {/* ★ H2 版：tab 行删除后，用一排小点补上「共 6 张 / 滑到第几张」的位置感。
+         当前项拉长为胶囊（墨色），未选中 = 18% 淡墨；点不可点（滑动即切换）。 */}
+      <View style={styles.dots}>
+        {TOOLS.map((_, i) => (
+          <View key={i} style={[styles.dot, i === active && styles.dotOn]} />
+        ))}
+      </View>
+
+      {/* ★ 2026-10-11 用户：收藏建议移到页面底部（工具卡下方） */}
       <SavedAdviceDeck
         habits={habits}
         width={contentW}
@@ -451,6 +416,13 @@ export default function MeditationScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ★ H2 版：6 点指示器（当前项 = 墨色胶囊）
+  dots: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    gap: theme.sp(1.5), marginTop: theme.sp(2.5),
+  },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(31,29,26,0.18)' },
+  dotOn: { width: 14, backgroundColor: mm.colors.ink },
   page: { flex: 1 },
   title: {
     fontSize: theme.fontSize.h1,
@@ -461,38 +433,11 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: theme.fontSize.sm,
     color: mm.colors.inkSoft,
-    marginBottom: theme.space.md,
-  },
-  // ★ 工具切换：贯穿细线 + pastel 图标节点（无白卡框、无文字标签）
-  nodeRow: {
-    position: 'relative',
-    height: theme.sp(11),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    alignSelf: 'center',
-    marginTop: theme.space.xs,
-    marginBottom: theme.space.sm,
+    marginBottom: theme.space.lg,
   },
   // 细线：left/right 由调用方按 NODE/2 传入（只连到首尾节点圆心）
-  nodeLine: {
-    position: 'absolute',
-    top: theme.sp(11) / 2 - 0.75,
-    height: 1.5,
-    backgroundColor: 'rgba(31,29,26,0.18)',
-  },
-  node: {
-    width: NODE,
-    height: NODE,
-    borderRadius: theme.fs(mm.radius.iconSq),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   /* ★ 2026-10-12（用户选 D 版）：选中态不描边、不反色 ——
      底色由浅 pastel 压深一档（deepen()）+ 放大 1.12，图标保持原深色。 */
-  nodePressed: {
-    opacity: 0.9,
-  },
   // ★ 纯图横滑卡片
   carouselWrap: {
     alignSelf: 'center',

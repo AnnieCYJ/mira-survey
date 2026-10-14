@@ -30,18 +30,14 @@ function thumbForHabit(h: HabitEntry): any {
   return THUMB_DEFAULT;
 }
 
-/* ★ 2026-10-11 用户定稿：「我收藏的建议」横滑卡。
-   置于工具页底部（图标条 / 工具卡下方）：
+/* ★ 2026-10-13 用户定稿（H2 版）：「我收藏的建议」竖排列表。
+   置于工具页底部（工具卡下方）：
    - 顶部标题「我收藏的建议」+ 右侧「共 N 条 ›」；
-   - 卡片一屏一张、可左右滑（最多 3 张，右侧露出下一张的边缘）；用户要求再小一点；
-   - 每条建议左侧加小图（复用首页泡泡同款 card_* 缩略图，按 cta 屏幕映射 + 文本兜底），
-     右列为标题 +「确认有帮助 N 次 · {证据}」+「最近一次：…」，底部紫色「再做一次」药丸；
-   - 卡片底色改干净白卡、弱化投影（去掉之前的灰块感）；点卡片 → 底部弹出清单看全部，每条可「再做一次 / 移除」。 */
+   - ★ 从「一屏一张横滑」改为竖排：每条一行（左小图 + 标题 + 证据 + 最近一次 + 右侧「再做一次」药丸），
+     一屏 2-3 条全可见；点卡片 → 底部弹出清单看全部，每条可「再做一次 / 移除」。 */
 
-const MAX_VISIBLE = 3;          // 一屏最多露出 3 张（可滑动查看）
-const PEEK = 48;                // 右侧留给「下一张」的露出宽度
-const GAP = 12;                 // 卡间距
-const CARD_MIN_H = 76;          // 卡片最小高度（用户：要更扁、高度再减小）
+const MAX_VISIBLE = 3;          // 竖排一屏最多展示 3 条（其余进「共 N 条 ›」）
+const CARD_MIN_H = 76;          // 卡片最小高度（竖排单行：左图 + 中文 + 右药丸）
 const MAX_SHEET_H = Dimensions.get('window').height * 0.82;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -82,27 +78,14 @@ export default function SavedAdviceDeck({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [fullList, setFullList] = useState(false);   // ★ 2026-10-11（用户）：「共 N 条」→ 打开完整页面
-  const [page, setPage] = useState(0);
-  const pageRef = useRef(0);
 
   const W = width ?? Dimensions.get('window').width - 52;
-  const CARD_W = Math.max(120, W - PEEK);
-  const SNAP = CARD_W + GAP;
 
   const go = (h: HabitEntry) => {
     if (h.cta && h.cta.screen) {
       try { navigation.navigate(h.cta.screen, h.cta.params); } catch { /* 静默 */ }
     }
   };
-
-  const onScroll = useCallback((e: any) => {
-    const x = e.nativeEvent.contentOffset.x;
-    const idx = Math.max(0, Math.round(x / (SNAP || 1)));
-    if (idx !== pageRef.current) {
-      pageRef.current = idx;
-      setPage(idx);
-    }
-  }, [SNAP]);
 
   // ★ 空态：仍占一个卡位，给清晰引导（不整块消失）
   if (habits.length === 0) {
@@ -111,7 +94,7 @@ export default function SavedAdviceDeck({
         <View style={styles.deckHeader}>
           <Text style={styles.deckTitle}>我收藏的建议</Text>
         </View>
-        <View style={[styles.card, styles.emptyCard, { width: CARD_W }]}>
+        <View style={[styles.card, styles.emptyCard]}>
           <Text style={styles.emptyText}>还没有收藏的建议</Text>
           <Text style={styles.emptyHint}>在首页确认 Mira 的建议后，会收在这里。</Text>
         </View>
@@ -130,50 +113,36 @@ export default function SavedAdviceDeck({
         </TouchableOpacity>
       </View>
 
-      {/* ★ 横滑大卡：一屏一张，最多 3 张，右侧露出下一张边缘提示可滑 */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={SNAP}
-        decelerationRate="fast"
-        disableIntervalMomentum
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-        contentContainerStyle={{ paddingRight: GAP }}
-      >
-        {stack.map((h) => {
-          return (
-            <TouchableOpacity
-              key={h.id}
-              activeOpacity={0.97}
-              style={[styles.card, { width: CARD_W, marginRight: GAP }]}
-              onPress={() => setExpanded(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`${adviceTitle(h)}，点按查看全部收藏建议`}
-            >
-              <View style={styles.cardTop}>
-                <Image source={thumbForHabit(h)} style={styles.cardThumb} />
-                <View style={styles.cardCol}>
-                  <Text style={styles.cTitle} numberOfLines={1}>{adviceTitle(h)}</Text>
-                  <Text style={styles.cDesc} numberOfLines={1}>{adviceEvidence(h)}</Text>
-                  <Text style={styles.cTime} numberOfLines={1}>最近一次：{lastSeenLabel(h.lastAt)}</Text>
-                </View>
+      {/* ★ H2 版（2026-10-13 用户定稿）：横滑改竖排 —— 左小图 + 中文 + 右侧「再做一次」药丸，
+         一屏 2-3 条全可见，不用左右滑；更多进「共 N 条 ›」 */}
+      <View style={styles.advList}>
+        {stack.map((h) => (
+          <TouchableOpacity
+            key={h.id}
+            activeOpacity={0.97}
+            style={styles.card}
+            onPress={() => setExpanded(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${adviceTitle(h)}，点按查看全部收藏建议`}
+          >
+            <View style={styles.cardTop}>
+              <Image source={thumbForHabit(h)} style={styles.cardThumb} />
+              <View style={styles.cardCol}>
+                <Text style={styles.cTitle} numberOfLines={1}>{adviceTitle(h)}</Text>
+                <Text style={styles.cDesc} numberOfLines={1}>{adviceEvidence(h)}</Text>
+                <Text style={styles.cTime} numberOfLines={1}>最近一次：{lastSeenLabel(h.lastAt)}</Text>
               </View>
-              <View style={styles.cardFoot}>
-                <TouchableOpacity
-                  style={styles.pill}
-                  activeOpacity={theme.press.opacity}
-                  onPress={(e: any) => { e.stopPropagation(); go(h); }}
-                >
-                  <Text style={styles.pillText}>再做一次</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ★ 2026-10-12（用户：把那排像进度条的东西去掉）—— 页码指示点已移除 */}
+              <TouchableOpacity
+                style={styles.pill}
+                activeOpacity={theme.press.opacity}
+                onPress={(e: any) => { e.stopPropagation(); go(h); }}
+              >
+                <Text style={styles.pillText}>再做一次</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* ★ 展开态：底部弹出全部清单 */}
       <Modal visible={expanded} transparent animationType="slide" onRequestClose={() => setExpanded(false)}>
@@ -276,7 +245,8 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, fontWeight: theme.weight.medium,
   },
 
-  // ★ 横滑卡（再小一点；底色改干净白卡、弱化投影，去掉之前的灰块感；左图右文 + 右侧药丸）
+  // ★ H2 版：竖排卡（底色干净白卡、弱化投影；左图 + 中文 + 右侧药丸单行）
+  advList: { gap: theme.sp(2) },
   card: {
     minHeight: CARD_MIN_H,
     backgroundColor: '#FFFFFF',
@@ -290,9 +260,6 @@ const styles = StyleSheet.create({
   // ★ 上排：图左 + 文右（A 版：按钮在文字下方右对齐）
   cardTop: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-  },
-  cardFoot: {
-    flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.sp(2),
   },
   cardThumb: {
     width: 56, height: 56, borderRadius: theme.radius.md,

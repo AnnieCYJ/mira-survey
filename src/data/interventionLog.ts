@@ -18,6 +18,14 @@ export interface InterventionEntry {
   ts: number;
   /** 一句话摘要（如：缓一缓·5 步走完 / 换个说法·「…」→「…」） */
   detail: string;
+  // ★ 2026-10-13（呼吸/冥想完成卡 + 周期日历「今日练习」）：记录前后状态，
+  //   供完成卡与日历卡展示「状态变化」。诚实口径：只存戒指真实状态，不编、不做评分。
+  stateBefore?: string | null;
+  stateAfter?: string | null;
+  valueBefore?: number | null;
+  valueAfter?: number | null;
+  /** 练习时长（分钟，box/sleep 等定时模式有值；音频单曲无） */
+  minutes?: number | null;
 }
 
 interface Store {
@@ -56,6 +64,35 @@ export async function ensureInterventionLogLoaded(): Promise<void> {
 export function addInterventionEntry(kind: InterventionKind, detail: string): void {
   if (!cache) cache = [];
   cache.push({ kind, ts: Date.now(), detail });
+  void persist();
+}
+
+/**
+ * ★ 2026-10-13：呼吸/冥想完成 —— 除摘要外额外记录前后状态（真实戒指数据），
+ * 供完成卡「状态变化」与周期日历「今日练习」卡展示。分钟为定时模式时长。
+ */
+export function addBreathCompletion(
+  kind: 'breath' | 'meditate',
+  detail: string,
+  meta?: {
+    stateBefore?: string | null;
+    stateAfter?: string | null;
+    valueBefore?: number | null;
+    valueAfter?: number | null;
+    minutes?: number | null;
+  },
+): void {
+  if (!cache) cache = [];
+  cache.push({
+    kind,
+    ts: Date.now(),
+    detail,
+    stateBefore: meta?.stateBefore ?? null,
+    stateAfter: meta?.stateAfter ?? null,
+    valueBefore: meta?.valueBefore ?? null,
+    valueAfter: meta?.valueAfter ?? null,
+    minutes: meta?.minutes ?? null,
+  });
   void persist();
 }
 

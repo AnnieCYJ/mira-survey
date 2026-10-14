@@ -3,18 +3,77 @@ import { View, Text, StyleSheet, Pressable, ImageBackground, SafeAreaView } from
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Audio } from 'expo-av';
 import { theme } from '../../theme/theme';
+import { mm } from '../../theme/mindmate';
 import Icon from '../Icon';
 import type { MeditationTrack } from '../../data/meditation/tracks';
-import { addInterventionEntry } from '../../data/interventionLog';
+import { useRingState } from '../../hooks/useRingState';
+import Confetti from '../../components/Confetti';
+import { addBreathCompletion } from '../../data/interventionLog';
 
 interface Props {
   track: MeditationTrack | null;
   onClose: () => void;
 }
 
+// ★ 2026-10-13：诚实口径的「状态变化」文案（与呼吸播放器同款）
+function stateChangeLine(
+  before?: string | null,
+  after?: string | null,
+  beforeV?: number | null,
+  afterV?: number | null,
+): string {
+  if (!before && !after) return '这一程听完，身体会慢慢松下来。';
+  if (before && after && before !== after) {
+    return `状态从「${before}」到了「${after}」，松快了些。`;
+  }
+  if (beforeV != null && afterV != null) {
+    if (afterV >= beforeV + 2) return `状态值从 ${beforeV} 升到 ${afterV}，精神好一点了。`;
+    if (afterV <= beforeV - 2) return `状态值从 ${beforeV} 落到 ${afterV}，紧绷感少了些。`;
+  }
+  return `这一程听完，当下还是「${before ?? after}」，慢慢松下来。`;
+}
+
 export default function MeditationPlayer({ track, onClose }: Props) {
   const [playing, setPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ★ 2026-10-13：进入即快照当前状态，完成时再取一次做前后对比
+  const ring = useRingState();
+  const beforeRef = useRef<{ level: string | null; value: number | null } | null>(null);
+  if (beforeRef.current === null && track && ring?.curveStatus) {
+    beforeRef.current = {
+      level: ring.curveStatus.level ?? null,
+      value: typeof ring.curveStatus.value === 'number' ? ring.curveStatus.value : null,
+    };
+  }
+
+  const [done, setDone] = useState(false);
+  const [doneSummary, setDoneSummary] = useState('');
+  const [doneTitle, setDoneTitle] = useState('');
+
+  const handleComplete = () => {
+    const after = ring.curveStatus;
+    const b = beforeRef.current ?? { level: null, value: null };
+    const aLevel = after?.level ?? null;
+    const aVal = typeof after?.value === 'number' ? after.value : null;
+    const summary = stateChangeLine(b.level, aLevel, b.value, aVal);
+    addBreathCompletion('meditate', `${track?.title ?? '冥想'} · 听完`, {
+      stateBefore: b.level,
+      stateAfter: aLevel,
+      valueBefore: b.value,
+      valueAfter: aVal,
+      minutes: null,
+    });
+    setDoneTitle(track?.title ?? '冥想');
+    setDoneSummary(summary);
+    setDone(true);
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => {
+      setDone(false);
+      onClose?.();
+    }, 2800);
+  };
 
   useEffect(() => {
     if (!track) return;
@@ -34,8 +93,8 @@ export default function MeditationPlayer({ track, onClose }: Props) {
           s.setOnPlaybackStatusUpdate((status: any) => {
             if (status.isLoaded && status.didJustFinish) {
               setPlaying(false);
-              // ★ 二十改：音频播完才记录（中途退出不记）——供叙事 AI 层引用「刚做完冥想」
-              addInterventionEntry('meditate', `${track.title} · 听完`);
+              // ★ 二十改 + 2026-10-13：音频播完才记录（中途退出不记）；改为弹完成卡 + 撒花，再关闭
+              handleComplete();
             }
           });
           await s.playAsync();
@@ -52,6 +111,10 @@ export default function MeditationPlayer({ track, onClose }: Props) {
       soundRef.current = null;
     };
   }, [track?.id]);
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
 
   const handleToggle = async () => {
     const s = soundRef.current;
@@ -108,6 +171,18 @@ export default function MeditationPlayer({ track, onClose }: Props) {
           </View>
         </SafeAreaView>
       </ImageBackground>
+
+      {/* ★ 2026-10-13：完成卡 + 撒花（听完才出现，2.8s 后自动关闭） */}
+      {done && (
+        <View style={styles.doneOverlay} pointerEvents="none">
+          <Confetti visible duration={2600} count={90} />
+          <View style={styles.doneCard}>
+            <View style={styles.doneBadge}><Text style={styles.doneCheck}>✓</Text></View>
+            <Text style={styles.doneTitle}>完成 · {doneTitle}</Text>
+            <Text style={styles.doneLine}>{doneSummary}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -146,4 +221,19 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16,
     elevation: 4,
   },
+  // ★ 完成卡 + 撒花
+  doneOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 1002, alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' },
+  doneCard: {
+    width: '82%', maxWidth: 320,
+    backgroundColor: 'rgba(20,18,28,0.82)',
+    borderRadius: 22, paddingVertical: 26, paddingHorizontal: 22, alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 10 }, shadowRadius: 24, elevation: 10,
+  },
+  doneBadge: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: mm.colors.limeMid, alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+  },
+  doneCheck: { color: '#1F1D1A', fontSize: 30, fontWeight: '700' },
+  doneTitle: { color: '#fff', fontSize: 19, fontWeight: '600' as any, textAlign: 'center' },
+  doneLine: { color: 'rgba(255,255,255,0.92)', fontSize: 15, lineHeight: 22, marginTop: 12, textAlign: 'center' },
 });

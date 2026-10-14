@@ -158,7 +158,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
     //   输出：峰值槽/值、有效槽数、每槽「值(参与信号数)」压缩串、基线天数。
     //   ★ 必须留在 useMemo 内：原先写在组件体里，每次渲染都会重跑一次 map/join 并打印，
     //     刷屏之外还把 render 路径变成 I/O 路径（真机掉帧排查时会误导定位）。
-    if (__DEV__ && !dataStale) {
+    if (__DEV__ && !dataStale && (globalThis as any).__MILE_COG_LOG === true) {
       const row = built.vals
         .map((v, i) => (v == null ? null : `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}=${v.toFixed(0)}(n${built.counts[i]})`))
         .filter(Boolean)

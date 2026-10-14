@@ -15,7 +15,7 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, MIN_BASELINE_DAYS, type CortisolRhythmLabel } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS, type CortisolRhythmLabel } from '../lib/cortisolProxy';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { dayKey } from '../data/healthStore';
 
@@ -215,13 +215,14 @@ export default function CortisolDailyChart({
   const streak = useMemo(() => {
     if (!isToday) return { high: r.highStreak, dys: r.dysStreak };
     const DAY = 86400000;
+    // ★ 2026-10-14：改走模块级缓存的 judgeCortisolRhythmForDay（与节律日历同一入口），
+    //   过去日期的基线判定结果缓存复用，消除「详情页每次刷新重算 14 天基线」的卡顿。
     const labelOfDay = (dayMs: number): CortisolRhythmLabel | null => {
       try {
-        const pbl = buildCortisolProxyBaseline(14, dayMs + DAY - 1);
-        if (pbl.days < MIN_BASELINE_DAYS) return null;
-        const px = buildCortisolProxyToday(pbl, { now: dayMs });
-        const j = judgeCortisolRhythm(px.vals, px.real);
-        return j.ready && j.label ? j.label : null;
+        const dk = dayKey(dayMs);
+        const j = judgeCortisolRhythmForDay(dk, dayKey(Date.now()) === dk);
+        const map: Record<string, CortisolRhythmLabel> = { normal: '节律正常', high: '皮质醇偏高', late: '节律紊乱' };
+        return map[j.kind];
       } catch { return null; }
     };
     const todayLabel = labelOfDay(Date.now());

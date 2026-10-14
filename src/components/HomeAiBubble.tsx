@@ -4,13 +4,13 @@
  * Text stays inside a compact, viewport-budgeted frame.
  * Collection confirms only after local persistence succeeds.
  */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import { useVoiceTriggerLive } from '../hooks/useVoiceTrigger';
+import { useVoiceTriggerLive, useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
 import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine';
 import { requestAiSuggestion, aiCandidateFor, sigOf } from '../lib/aiSuggestion';
 import { keepHabit, dismissSuggestion, habitHeadline, HABIT_QUESTION } from '../data/habitSuggestions';
@@ -102,6 +102,61 @@ function WaveBars({ active }: { active?: boolean }) {
   );
 }
 
+// ★ 性能隔离：常驻气泡的 idle/rec/spoke 文案**自己订阅**语音直播态，
+//   父组件 HomeAiBubble 不再订阅 liveText —— 否则录音时每 250ms 一次转写推进
+//   会让整块气泡（含 SVG 路径 / 左图 / 按钮）全量重渲染，叠加 ASR 推理直接卡成幻灯片。
+const BubbleIdleContent = memo(function BubbleIdleContent({ height }: { height?: number }) {
+  const { visible, inlineMode, liveText, spokenText } = useVoiceTriggerLive();
+  const listening = visible && inlineMode;
+  const title = listening ? liveText.trim() || LISTEN_TEXT : IDLE_TEXT;
+  const spoke = !listening && !!spokenText.trim();
+  const displayText = listening ? title : spoke ? spokenText : IDLE_TEXT;
+  const showHint = !listening && !spoke;
+  // ★ 2026-10-14：idle 文案容器补 height（与建议卡一致）→ 文字在气泡内垂直居中，
+  //   不再因为内容比气泡背景矮而顶在上方（用户：「文字都偏上」）。
+  return (
+    <View style={[styles.content, height ? { height } : null]}>
+      <View style={styles.textCol}>
+        <Text
+          numberOfLines={2}
+          style={[styles.titleText, (listening || spoke) && styles.titleRecording]}
+        >
+          {displayText}
+        </Text>
+        {showHint && (
+          <Text style={styles.idleHint} numberOfLines={1}>
+            长按右下角的 AI 图标，就能直接语音跟我聊
+          </Text>
+        )}
+      </View>
+      {!spoke ? <WaveBars active={listening} /> : null}
+    </View>
+  );
+});
+
+// ★ 2026-10-14：首页常驻气泡的「录音中」浮层（与 idle 文案隔离，避免每 250ms 转写推进重渲染整块气泡）。
+//   关键修复：首页**正在显示建议卡**(hasCard) 时，长按右下 GROK 触发的就地录音（inlineMode）
+//   原本被建议卡盖住、且浮层在首页被刻意抑制 → 用户「长按没反应、语音输入没在了」。
+//   现在录音态在此独立叶子渲染并覆盖在气泡之上，保证**任何状态**下长按都能看到「正在聆听…」。
+const VoiceListeningView = memo(function VoiceListeningView() {
+  const { visible, inlineMode, liveText } = useVoiceTriggerLive();
+  if (!(visible && inlineMode)) return null;
+  const text = (liveText || '').trim();
+  return (
+    <View style={styles.listeningOverlay} pointerEvents="none">
+      <View style={styles.textCol}>
+        <Text style={styles.listeningText} numberOfLines={2}>
+          {text || LISTEN_TEXT}
+        </Text>
+      </View>
+      <WaveBars active />
+    </View>
+  );
+});
+
+// ★ 2026-10-14：按用户要求**移除打字机**——直接用「滑出卡片」入场动画显示完整文字，
+//   不再逐字推进（避免任何情况下观感卡顿）。入场见下方 enterAnim（右下展开 + 淡入）。
+
 export default function HomeAiBubble({ navigation, status, width, height = BUBBLE_H }: { navigation?: any; status?: any; width: number; height?: number }) {
   const w = width;
   const bubbleHeight = Math.min(BUBBLE_H, Math.max(76, height));
@@ -113,11 +168,10 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  // ★ 2026-10-12：只订阅高频直播态（转写推进只重渲染本气泡，不波及 tab 栏/其他卡片）
-  const { visible, inlineMode, liveText, spokenText, clearSpoken } = useVoiceTriggerLive();
-
-  const listening = visible && inlineMode;
-  const title = listening ? liveText.trim() || LISTEN_TEXT : IDLE_TEXT;
+  // ★ 性能：父组件只拿「稳定 API」（clearSpoken 等），不再订阅 liveText ——
+  //   否则录音时每 250ms 转写推进会让整块气泡全量重渲染。idle/rec/spoke 文案已抽到
+  //   BubbleIdleContent 叶子组件自行订阅（见上方）。
+  const { clearSpoken } = useVoiceTriggerApi();
 
   // 今日建议（每 30 分钟一条；基于今日状态生成；停留首页时靠轮询刷新）
   const [cand, setCand] = useState<SuggestionCandidate | null>(null);
@@ -127,7 +181,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
   // ★ 十三改：回访卡（fb）—— 用户点 CTA 去做（呼吸/读科普/记饮食）后返回首页时弹出，
   //   问「有没有帮到你」：有用（心）→ 存进工具页「我的建议」；不感兴趣 → 换一条新建议。
   const [fb, setFb] = useState<SuggestionCandidate | null>(null);
-  const [calibrationOpen, setCalibrationOpen] = useState(false);
   const pendingCtaRef = useRef<SuggestionCandidate | null>(null);
   const shownIdRef = useRef<string | null>(null);
   const statusRef = useRef<any>(status);
@@ -303,14 +356,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     if (cand?.noPersist) void recordAnalysisFeedback(cand.id, 'accurate');
     void saveSuggestion(cand, !cand?.noPersist);
   };
-  const chooseCalibration = (value: 'accurate' | 'inaccurate' | 'partial') => {
-    if (!cand) return;
-    void recordAnalysisFeedback(cand.id, value);
-    setCalibrationOpen(false);
-    setCand(null);
-    clearSpoken();
-    refresh(true);
-  };
   const onKeepFb = () => { void saveSuggestion(fb, true); };
 
   /**
@@ -345,16 +390,40 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     clearSpoken();
   };
 
-  const spoke = !listening && !cand && !fb && !!spokenText.trim();
-  const mode: BubbleMode = fb ? 'fb' : listening ? 'rec' : cand ? 'sugg' : spoke ? 'spoke' : 'idle';
+  const hasCard = !!(fb || cand);
 
   // ★ 十二改：左图取改善工具页同款图片资产（行动型按 cta.screen 映射，观察型按关键词映射）
   const activeCard = fb ?? cand;
   const thumb = activeCard ? thumbFor(activeCard) : THUMB_DEFAULT;
 
+  // ★ 丝滑化：建议卡「从右下展开」入场（不动 SVG 尾巴，只动内容层）。
+  //   入场用 useNativeDriver 跑原生线程，不占 JS 线程；打字机已按用户要求移除，直接显示完整文字。
+  const enterAnim = useRef(new Animated.Value(0)).current;
+  const reducedMotionBubble = useReducedMotion();
+  const headlineText = useMemo(() => {
+    if (fb) return `刚${CTA_NAME[fb?.cta?.screen ?? ''] ?? '完成'}完，有没有帮到你呀？`;
+    return (cand?.headline ?? (cand?.action ? habitHeadline(cand.action) : '')) ?? '';
+  }, [fb, cand]);
+
+  // 入场：出现建议卡（hasCard）且标题变化时重放；减少动效则直接全显
+  useEffect(() => {
+    if (!hasCard) return;
+    if (reducedMotionBubble) {
+      enterAnim.setValue(1);
+      return;
+    }
+    enterAnim.setValue(0);
+    Animated.timing(enterAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [hasCard, headlineText, reducedMotionBubble, enterAnim]);
+
+  const enterOpacity = enterAnim;
+  const enterScale = enterAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] });
+  const enterShiftX = enterAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+  const enterShiftY = enterAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+
   const onPress = () => {
-    // 录音态/建议态：轻点不跳转，避免打断识别或误触
-    if (mode !== 'idle' && mode !== 'spoke') return;
+    // 有卡（建议/回访）时轻点不跳转，避免误触
+    if (hasCard) return;
     try {
       navigation?.navigate('MiraAI');
     } catch {
@@ -377,12 +446,12 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
   return (
     <View style={[styles.wrap, { width: w }]}>
       <TouchableOpacity
-        activeOpacity={mode === 'idle' || mode === 'spoke' ? 0.94 : 1}
+        activeOpacity={hasCard ? 1 : 0.94}
         onPress={onPress}
         style={styles.touch}
-        accessible={mode === 'idle' || mode === 'spoke'}
-        accessibilityRole={mode === 'idle' || mode === 'spoke' ? 'button' : undefined}
-        accessibilityLabel={mode === 'idle' || mode === 'spoke' ? '打开 Mira AI 聊天' : undefined}
+        accessible={!hasCard}
+        accessibilityRole={!hasCard ? 'button' : undefined}
+        accessibilityLabel={!hasCard ? '打开 Mira AI 聊天' : undefined}
       >
         {/* 背景：渐变描边气泡 + 右下小尾巴（SVG 保证边框与尾巴同色同源） */}
         {w > 0 && bodyPath && (
@@ -404,8 +473,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
               左图（工具页同款资产）+ 中文案 + 右按钮竖排；✕ 整个去掉（用户：不需要）。
               按钮语言统一：主 = 胶囊绿 pill（行动型是 CTA「去呼吸›」，其余是 心+「有用」）；
               次 = 「不感兴趣」文字链接 —— 点了立刻换一条新建议（force 重取）。 */}
-        {mode === 'sugg' || mode === 'fb' ? (
-          <View style={[styles.suggContent, { height: bubbleHeight }]}>
+        {hasCard ? (
+          <Animated.View style={[styles.suggContent, { height: bubbleHeight, opacity: enterOpacity, transform: [{ translateX: enterShiftX }, { translateY: enterShiftY }, { scale: enterScale }] }]}>
             {kept ? (
               /* ── 确认态：点了「有用」→ 只显示这一行（带心），2.4s 后自动收回 idle ── */
               <View style={styles.keptRow}>
@@ -416,25 +485,21 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
               <View style={styles.suggBody}>
                 <Image source={thumb} style={styles.suggThumb} />
                 <View style={styles.suggText}>
-                  <Text style={styles.suggHeadline} numberOfLines={2}>
-                    {mode === 'fb'
-                      ? `刚${CTA_NAME[fb!.cta?.screen ?? ''] ?? '完成'}完，有没有帮到你呀？`
-                      : cand!.headline ?? (cand!.action ? habitHeadline(cand!.action) : '')}
-                  </Text>
-                  {mode === 'sugg' && !!cand!.metric && (
+                  <Text style={styles.suggHeadline} numberOfLines={2}>{headlineText}</Text>
+                  {hasCard && !!cand?.metric && (
                     <Text style={styles.suggEvidence} numberOfLines={1}>
-                      {cand!.metric}
+                      {cand.metric}
                     </Text>
                   )}
                   {!!saveError && <Text accessibilityRole="alert" style={styles.saveError} numberOfLines={1}>{saveError}</Text>}
                   {/* 发现型（非行动引导）才补一句问句；行动型 CTA 本身就是问题，不再啰嗦 */}
-                  {mode === 'sugg' && cand!.kind !== 'action' && !saveError && !cand!.metric && (
+                  {hasCard && cand?.kind !== 'action' && !saveError && !cand?.metric && (
                     <Text style={styles.suggAsk}>感觉确实不错？</Text>
                   )}
                 </View>
                 {/* 按钮竖排贴右：主（胶囊）在上、次「不感兴趣」在下 */}
                 <View style={styles.suggBtnCol}>
-                  {mode === 'fb' ? (
+                  {fb ? (
                     <TouchableOpacity
                       onPress={() => onKeepFb()}
                       disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
@@ -474,49 +539,28 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                       </View>
                     </TouchableOpacity>
                   )}
-                  {cand!.noPersist && calibrationOpen ? (
-                    <View style={styles.calibrationChoices}>
-                      <TouchableOpacity onPress={() => chooseCalibration('partial')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>部分像</Text></TouchableOpacity>
-                      <TouchableOpacity onPress={() => chooseCalibration('inaccurate')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>不太像</Text></TouchableOpacity>
-                      <TouchableOpacity onPress={() => chooseCalibration('inaccurate')} style={styles.calibrationChoice}><Text style={styles.btnLinkText}>说反了</Text></TouchableOpacity>
-                    </View>
-                  ) : <TouchableOpacity
-                    onPress={() => cand!.noPersist ? setCalibrationOpen(true) : onDismiss()}
+                  {/* ★ 修复（2026-10-13）：fb 回访卡模式下 cand 为 null，这里若直接写 cand!.noPersist
+                      会在渲染期崩溃（RedBox: Cannot read property 'noPersist' of null）。
+                      校准区块只对 sugg 的「观察/分析卡」有意义，故加 mode 前置条件 + 全部可选链。 */}
+                  <TouchableOpacity
+                    onPress={() => onDismiss()}
                       disabled={savingHabit} aria-disabled={savingHabit} aria-busy={savingHabit} accessibilityState={{ disabled: savingHabit, busy: savingHabit }}
                     activeOpacity={theme.press.opacity}
                     accessibilityRole="button"
-                    accessibilityLabel={mode === 'fb' ? '没感觉' : cand!.kind === 'action' ? '先不用' : '不太像'}
+                    accessibilityLabel={fb ? '没感觉' : cand?.kind === 'action' ? '先不用' : '不太像'}
                     style={styles.btnLink}
                   >
-                    <Text style={styles.btnLinkText}>{mode === 'fb' ? '没感觉' : cand!.kind === 'action' ? '先不用' : '不太像'}</Text>
-                  </TouchableOpacity>}
+                    <Text style={styles.btnLinkText}>{fb ? '没感觉' : cand?.kind === 'action' ? '先不用' : '不太像'}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
-          </View>
+          </Animated.View>
         ) : (
-          <View style={[styles.content, { height: bubbleHeight }]}>
-            <View style={styles.textCol}>
-              <Text
-                numberOfLines={2}
-                style={[
-                  styles.titleText,
-                  (listening || spoke) && styles.titleRecording,
-                ]}
-
-              >
-                {mode === 'rec' || mode === 'idle' ? title : spokenText}
-              </Text>
-              {/* idle 占位下方小字提示：长按右下角 AI 图标可直接语音（用户 2026-10-08） */}
-              {mode === 'idle' && (
-                <Text style={styles.idleHint} numberOfLines={1}>
-                  长按右下角的 AI 图标，就能直接语音跟我聊
-                </Text>
-              )}
-            </View>
-            {mode === 'idle' || mode === 'rec' ? <WaveBars active={listening} /> : null}
-          </View>
+          <BubbleIdleContent height={bubbleHeight} />
         )}
+        {/* ★ 录音态浮层：覆盖在气泡之上，保证有建议卡时也看得见「正在聆听…」 */}
+        <VoiceListeningView />
       </TouchableOpacity>
     </View>
   );
@@ -576,6 +620,27 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 2,
     backgroundColor: mm.colors.purpleCore,
+  },
+  // ★ 2026-10-14：录音态浮层（覆盖在气泡内容之上；半透明白底与气泡同源，盖住下层的建议卡）
+  listeningOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: TAIL_H,
+    backgroundColor: GLASS_FILL,
+    borderRadius: R,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    gap: 10,
+  },
+  listeningText: {
+    flex: 1,
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.semibold,
+    color: mm.colors.purpleDeep,
+    lineHeight: theme.fontSize.body * 1.35,
   },
 
   // ── 建议态（就地展开的好习惯确认 / 状态建议卡） ──
@@ -672,8 +737,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.regular,
     textDecorationLine: 'underline',
   },
-  calibrationChoices: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
-  calibrationChoice: { minHeight: 24, justifyContent: 'center', paddingVertical: 3 },
   keptRow: {
     flex: 1,
     flexDirection: 'row',

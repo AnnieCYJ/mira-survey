@@ -30,10 +30,13 @@
  * ★ 旧月视图代码（CalendarGrid + RelaxCardDeck）原样保留，由 ProfileScreen 的
  *   USE_MONTH_DISCOVERY 开关控制隐藏/显示，不删除。
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Image, Dimensions, TouchableOpacity,
+  View, Text, StyleSheet, Image, Dimensions, TouchableOpacity, Animated, Easing,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import { useReducedMotion } from '../hooks/useReducedMotion';
+import FadeInImage from './FadeInImage';
 import { theme } from '../theme/theme';
 import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
@@ -185,12 +188,12 @@ function computeMonthStats(data: MonthData, curY: number, curM: number) {
 const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 const GOLD = '#F0C46E';
 const TODAY_BG = '#FBEFD6';
-/** 照片卡微旋转角（对齐预览稿 .ph.a/.b/.c = -9 / 4 / -2） */
-const PH_ROT = [-8, 4, -3];
+/** 照片卡微旋转角（对齐预览稿 .ph.a/.b/.c = -9 / 4 / -2，但加大以便小格子也能看出堆叠层次） */
+const PH_ROT = [-11, 7, -5];
 const PH_OFF = [
-  { x: -3, y: -2 },
-  { x: 1, y: 1 },
-  { x: 4, y: -1 },
+  { x: -7, y: -6 },
+  { x: 2, y: 2 },
+  { x: 8, y: -3 },
 ];
 const GAP = theme.sp(1.5);
 const COLS = 7;
@@ -225,6 +228,54 @@ function habitDisplay(h: HabitEntry): { name: string; unit: string; icon: string
   return { name: '一个小习惯', unit: '次', icon: 'check' };
 }
 
+/**
+ * 单张照片卡（堆叠中的一层）。playId 变化 / 首次挂载时，按 delay 错峰做 scale + 淡入，
+ * 形成「一张张叠上来」的堆叠感；reduce motion 时直接显示。
+ */
+function StackPhoto({ img, rot, off, zIndex, photoSize, delay, playId, reduced }: {
+  img: any;
+  rot: number;
+  off: { x: number; y: number };
+  zIndex: number;
+  photoSize: number;
+  delay: number;
+  playId: number;
+  reduced: boolean;
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduced) {
+      t.setValue(1);
+      return;
+    }
+    t.setValue(0);
+    Animated.timing(t, { toValue: 1, duration: 340, delay, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }).start();
+  }, [playId, reduced, t, delay]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  return (
+    <Animated.View
+      style={[
+        styles.photoCard,
+        {
+          width: photoSize,
+          height: photoSize,
+          zIndex,
+          opacity,
+          transform: [
+            { rotate: `${rot}deg` },
+            { translateX: off.x },
+            { translateY: off.y },
+            { scale },
+          ],
+        },
+      ]}
+    >
+      <FadeInImage source={img} style={styles.photoImg} resizeMode="cover" duration={220} />
+    </Animated.View>
+  );
+}
+
 export default function MonthDiscoveryView({
   tasks,
 }: {
@@ -234,6 +285,14 @@ export default function MonthDiscoveryView({
   const [cellW, setCellW] = useState(40);
   // ★ 2026-10-12（用户）：点某个日期 → 下抽屉弹出「原先日的那种」旅程视图（中间曲线 + 两侧活动卡片）
   const [drawerDate, setDrawerDate] = useState<Date | null>(null);
+
+  // ★ 丝滑化：切到日历页时，月历照片卡错峰「堆叠展开」；focused 变化重放
+  const calendarFocused = useIsFocused();
+  const calendarReduced = useReducedMotion();
+  const [photoPlayId, setPhotoPlayId] = useState(0);
+  useEffect(() => {
+    if (calendarFocused) setPhotoPlayId((p) => p + 1);
+  }, [calendarFocused]);
 
   // ★ 时间选择器：与详情页一致，复用共享 DateAnchorPicker（range=month）。
   //   ★ 2026-10-12（用户）：默认锚定**当前最新月份**（realNow），不要跳到演示月（8 月）；
@@ -524,9 +583,10 @@ export default function MonthDiscoveryView({
 
   /** 单元格：预览稿口径 aspect 1 : 1.32（2026-10-12 用户「格子稍微大一点」）；透明底（无灰框），仅今天蜜黄 */
   const cellH = cellW * 1.32;
-  const photo = Math.max(20, cellW * 0.92);
+  // ★ 2026-10-14：照片占格宽比例 0.92 → 0.95，让格内图片更饱满（堆叠错位/旋转仍保留层次感）
+  const photo = Math.max(22, cellW * 0.95);
 
-  const renderCell = (day: number, colIdx: number) => {
+  const renderCell = (day: number, colIdx: number, rowIdx: number) => {
     // ★ 只有真实存在的日（day > 0）才可能是「今天」。空槽 day = -1，而非当前月时 todayDay 也是 -1，
     //   若只写 day === todayDay，则所有空槽都会被判成「今天」→ 染上蜜黄底方框
     //   （用户 2026-10-12 截图发现的「一二三四五那些空的时间怎么有背景框」根因）。必须加 day > 0。
@@ -534,6 +594,10 @@ export default function MonthDiscoveryView({
     const recs = day > 0 ? recordsByDay[day] ?? [] : [];
     const show = recs.slice(0, 3);
     const extra = recs.length - show.length;
+
+    // ★ 2026-10-14：满出血后，最左/最右列的照片若仍带负/正 x 偏移会贴边被屏幕切掉；
+    //   把两端列的 x 偏移收进格内（首列 ≥ 2，末列 ≤ -2），堆叠层次保留、贴边照片完整可见。
+    const clampX = (x: number) => (colIdx === 0 ? Math.max(x, 2) : colIdx === COLS - 1 ? Math.min(x, -2) : x);
 
     return (
       <TouchableOpacity
@@ -552,26 +616,23 @@ export default function MonthDiscoveryView({
 
         {recs.length > 0 ? (
           <View style={styles.stackWrap} pointerEvents="none">
-            {show.map((r, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.photoCard,
-                  {
-                    width: photo,
-                    height: photo,
-                    transform: [
-                      { rotate: `${PH_ROT[i]}deg` },
-                      { translateX: PH_OFF[i].x },
-                      { translateY: PH_OFF[i].y },
-                    ],
-                    zIndex: show.length - i,
-                  },
-                ]}
-              >
-                <Image source={r.img} style={styles.photoImg} resizeMode="cover" />
-              </View>
-            ))}
+            {show.map((r, i) => {
+              // 错峰延迟：按 cell 全局位置 + 卡内叠放顺序，形成从左上到右下的「堆叠展开」波
+              const cellDelay = Math.min((rowIdx * 7 + colIdx) * 18, 700);
+              return (
+                <StackPhoto
+                  key={i}
+                  img={r.img}
+                  rot={PH_ROT[i]}
+                  off={{ x: clampX(PH_OFF[i].x), y: PH_OFF[i].y }}
+                  zIndex={show.length - i}
+                  photoSize={photo}
+                  delay={cellDelay + i * 70}
+                  playId={photoPlayId}
+                  reduced={calendarReduced}
+                />
+              );
+            })}
             {extra > 0 ? (
               <View style={styles.plusBadge}>
                 <Text style={styles.plusText}>+{extra}</Text>
@@ -605,8 +666,9 @@ export default function MonthDiscoveryView({
         </View>
       ) : null}
 
-      {/* ★ 中：照片卡堆叠月历（透明无框，对齐预览稿） */}
-      <Card style={styles.calCard}>
+      {/* ★ 中：照片卡堆叠月历（透明无框，对齐预览稿）
+          ★ 2026-10-14：padded={false} 去掉卡片默认 20px 左右内边距 → 网格更宽、格子与照片都更大 */}
+      <Card style={styles.calCard} padded={false}>
         <View style={styles.weekRow}>
           {WEEK_LABELS.map((w, i) => (
             <Text key={w} style={[styles.weekLabel, i >= 5 && styles.weekLabelWE, i === 6 && { marginRight: 0 }]}>
@@ -617,7 +679,7 @@ export default function MonthDiscoveryView({
         <View style={styles.grid} onLayout={onGridLayout}>
           {rows.map((row, ri) => (
             <View key={ri} style={styles.row}>
-              {row.map((day, ci) => renderCell(day, ci))}
+              {row.map((day, ci) => renderCell(day, ci, ri))}
             </View>
           ))}
         </View>
@@ -772,7 +834,13 @@ const styles = StyleSheet.create({
   // 根容器：卡片之间留白（对齐截图卡片间距）
   root: { gap: theme.sp(3) },
   // 日历外层：透明、无边框、无阴影 —— 等同预览稿里浮在页面上的日历
-  calCard: { backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0, elevation: 0 },
+  // ★ 2026-10-14：① marginHorizontal:-space.screen 让日历**整块满出血**（取消页面两侧 24px 白边），
+  //   最左列照片不再被卡片 overflow 切掉、整张可见；② overflow:visible + borderRadius:0
+  //   （透明卡本就无框，放开裁切避免圆角把贴边照片拐角切掉）。
+  calCard: {
+    backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0, elevation: 0,
+    marginHorizontal: -theme.space.screen, overflow: 'visible', borderRadius: 0,
+  },
   weekRow: { flexDirection: 'row', marginBottom: theme.sp(1) },
   weekLabel: {
     flex: 1, marginRight: GAP, textAlign: 'center', fontSize: theme.fontSize.micro,
@@ -785,14 +853,15 @@ const styles = StyleSheet.create({
   cell: {
     flex: 1, borderRadius: theme.radius.sm, padding: 2, alignItems: 'center', justifyContent: 'flex-start',
   },
+  // ★ 2026-10-14：日期数字改绝对定位 + zIndex 5，永远压在照片之上（照片下移后也不被盖住）
   dayNum: {
+    position: 'absolute', top: 3, left: 4, zIndex: 5,
     fontSize: 10, fontWeight: theme.weight.medium as any, color: theme.colors.textSub,
-    alignSelf: 'flex-start', marginLeft: 2, marginTop: 2,
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any },
 
-  // 照片堆叠区（对齐预览 .stack inset 13px 4px 4px）
-  stackWrap: { position: 'absolute', top: 12, left: 1, right: 1, bottom: 2, alignItems: 'center', justifyContent: 'center' },
+  // 照片堆叠区（对齐预览 .stack）：★ 2026-10-14 top 12 → 18，整摞照片下移，给左上角日期数字让位
+  stackWrap: { position: 'absolute', top: 18, left: 1, right: 1, bottom: 2, alignItems: 'center', justifyContent: 'center' },
   // 单张照片卡（对齐预览 .ph：正方 + 白描边 1.5 + 圆角 7 + 投影）
   photoCard: {
     position: 'absolute', borderRadius: 7, borderWidth: 1.5, borderColor: '#fff',

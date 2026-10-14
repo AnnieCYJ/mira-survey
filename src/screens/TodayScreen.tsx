@@ -43,6 +43,7 @@ import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
 import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNarrative, type TodayScene } from '../lib/todayScene';
 import { narrSigOf, aiNarrativeFor, requestAiNarrative } from '../lib/aiNarrative';
+import { dayPhase } from '../lib/timePhase';
 import HomeAiBubble from '../components/HomeAiBubble';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
@@ -378,6 +379,10 @@ export default function TodayScreen() {
   // ★ 认知准备度序列（与上面同一数据源 hourlyInstant，仅做「反向映射 + 节律塑形」）
   //   computeReadinessSeries 内部已按 nowMs 缓存报告的 key，这里直接算即可，无需 useMemo。
   const cogReadiness = cogReport ? computeReadinessSeries(cogReport) : null;
+  // ★ 2026-10-13：脑力准备度（此刻剩余）与预测高峰小时 —— 喂给圆环下叙事的「上午」时段用，
+  //   让 Mira 能讲「现在脑力挺好 + 高峰在几点 + 难活放这时」；数字全部真实、绝不编。
+  const readinessNow = (() => { try { return cogReport?.brainRemaining ?? null; } catch { return null; } })();
+  const readinessPeakHour = (() => { try { return (cogReport as any)?.forecast?.peak?.hour ?? null; } catch { return null; } })();
   // ★ 2026-10-06（用户："大卡片还是显示状态中等"）：大卡 value 用档位文字，标签判断必须和
   //   顶部 chip / 详情页同源（都用 brainRemaining），否则同一屏出现两个矛盾数字。
   //   cogReadyLabel 仅在没有 brainRemaining 时才用（此时它读能量线，是唯一可用口径）。  // ★ 2026-10-07(用户："不要状态中等，要么跟圆环一样显示数字，要么显示消耗%")
@@ -586,6 +591,9 @@ export default function TodayScreen() {
     sleepScore: narrSleepScore,
     stressRecent1h,
     recentAction: null, // 模块内部取（需要 await 读干预日志），不进签名 —— 由状态分变化间接覆盖
+    timePhase: dayPhase(),
+    readinessNow,
+    readinessPeakHour,
   });
   const [aiNarr, setAiNarr] = useState<string | null>(null);
   const narrSeqRef = useRef(0);
@@ -610,6 +618,9 @@ export default function TodayScreen() {
       sleepScore: narrSleepScore,
       stressRecent1h,
       recentAction: null,
+      timePhase: dayPhase(),
+      readinessNow,
+      readinessPeakHour,
     })
       .then((t) => {
         if (seq === narrSeqRef.current && t) setAiNarr(t); // 签名已翻档的旧结果直接丢弃
@@ -1041,7 +1052,9 @@ export default function TodayScreen() {
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         bounces={false}
-        scrollEnabled={canScroll}
+        // ★ 2026-10-13（用户：去掉首屏可以往下滑——第二屏内容已隐藏 SHOW_RHYTHM_CARDS=false，
+        //   向下滑只露出空白）：仅当真有第二屏(pagable)且内容超高时才允许滚动，否则锁死。
+        scrollEnabled={SHOW_RHYTHM_CARDS ? canScroll : false}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           setVpH(h);
@@ -1437,6 +1450,9 @@ const styles = StyleSheet.create({
     // ★ v18.49：保留 A 的 16px/居中/留白28，但降浓——常规字重 + 柔和灰，不再浓黑
     fontSize: 16,
     lineHeight: 24,
+    // ★ 2026-10-13（用户：保证圆环下面恒为两行文字）：锁死两行高，
+    //   文案为 1 行或 AI 缓存未刷新时也保留两行占位，下方趋势图位置不随文案长度跳动。
+    minHeight: 48,
     color: theme.colors.textSub,
     fontWeight: theme.weight.regular,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）

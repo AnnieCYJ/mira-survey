@@ -10,6 +10,7 @@ import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeReadinessSeries, readinessLevel, readinessLevelLabel } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
+import { factsForAgent } from '../lib/analysisFacts';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -437,6 +438,13 @@ export function buildHealthSnapshot(): string {
   const timeLabel = h >= 6 && h < 12 ? '上午' : h >= 12 && h < 18 ? '下午' : h >= 18 && h < 22 ? '傍晚' : '深夜';
   blocks.push(`• 当前时段：${timeLabel}(${h}:00)`);
   if (rt.length) blocks.push(`• 今日实时：${rt.join('，')}`);
+
+  // 统一事实层摘要：给模型明确来源、样本量和质量，避免把缺失值当成 0。
+  const facts = factsForAgent();
+  const observed = facts.filter((f) => f.quality !== 'missing');
+  if (observed.length) {
+    blocks.push(`• 事实质量：${observed.map((f) => `${f.metric}=${f.source}/${f.sampleCount}样本/${f.quality}`).join('，')}`);
+  }
 
   // ② 代谢血液指标（「代谢」tab 真实展示的数据，与下方皮质醇节律分属不同维度）
   //    ★ 早期事实串只有总胆固醇/血糖/梅脱，模型分析「代谢」时拿不到血脂四项细节，

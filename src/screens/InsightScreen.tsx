@@ -44,7 +44,7 @@ import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
-import { analyzeCortisol } from '../lib/cortisolRhythm';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, judgeCortisolRhythm } from '../lib/cortisolProxy';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
@@ -187,13 +187,20 @@ export default function InsightScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     const revision = profileRevision.current;
-    const age = RingBle.getUserProfile()?.age;
-    setActualAge(age != null && Number.isInteger(age) && age >= 18 && age <= 120 ? age : null);
+    // ★ 2026-10-14：演示兜底——模拟/演示数据下未录入身体档案时，给一个可展示的演示年龄，
+    //   使身体年龄卡片能正常出值；真实用户经 ExamTab 填写后会被覆盖（不动离线数据加载逻辑）。
+    const DEMO_PROFILE_AGE = 30;
+    const clampAge = (a: number | null | undefined) =>
+      a != null && Number.isInteger(a) && a >= 18 && a <= 120 ? a : null;
+    const devAge = RingBle.getUserProfile()?.age;
+    setActualAge(clampAge(devAge));
     getLatestExamRecord().then(record => {
       if (!active || revision !== profileRevision.current) return;
       const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
-      setActualAge(value != null && Number.isInteger(value) && value >= 18 && value <= 120 ? value : null);
-    }).catch(() => { /* Keep the validated device profile when history is unavailable. */ });
+      setActualAge(clampAge(value) ?? DEMO_PROFILE_AGE);
+    }).catch(() => {
+      setActualAge(clampAge(RingBle.getUserProfile()?.age) ?? DEMO_PROFILE_AGE);
+    });
     return () => { active = false; };
   }, []));
   const [chatVisible, setChatVisible] = useState(false);
@@ -253,15 +260,20 @@ export default function InsightScreen() {
     let hormonalLabel: string = '数据不足';
     let hormonalHealthy = false;
     try {
-      const samples = healthStore
-        .getIntraday('cortisol', dayKey(Date.now()))
-        .filter((p: any) => Number.isFinite(p.v) && p.v > 0)
-        .map((p: any, i: number) => ({ t: Number.isFinite(p.t) ? p.t : i * 3600 * 1000, v: p.v }));
-      if (samples.length >= 4) {
-        const a = analyzeCortisol(samples) as any;
-        const level: string = a?.status?.level ?? 'normal';
-        hormonalHealthy = level === 'normal';
-        hormonalLabel = level === 'dysregulated' ? '节律紊乱' : level === 'sustained_high' ? '持续偏高' : '节律平稳';
+      // ★ 2026-10-14：与「昼夜节律」卡片/详情页统一走 proxy 实测活性 + judgeCortisolRhythm，
+      //   不再用旧 cosinor（analyzeCortisol 读 cortisol intraday 拟合），否则身体年龄文案会与卡片/详情页结论打架。
+      const pbl = buildCortisolProxyBaseline(14);
+      // ★ 2026-10-14：必须基于「最近一个有完整数据的日」判节律，不能死磕今天。
+      //   今天实时融合活性往往只过了部分时段、未来槽为空 → 有效槽数不够 → judge 退回空 → 文案变「数据不足」。
+      //   取 pbl.daysUsed 的最后一天（升序排列，即最近有数据日，通常是昨天），与昼夜节律卡片/详情页同口径。
+      const _usedDays = pbl.daysUsed;
+      const _recentDk = _usedDays.length ? _usedDays[_usedDays.length - 1] : null;
+      const _recentMs = _recentDk ? new Date(`${_recentDk}T00:00:00`).getTime() : Date.now();
+      const px = buildCortisolProxyToday(pbl, { now: _recentMs });
+      const j = judgeCortisolRhythm(px.vals, px.real);
+      if (j.label) {
+        hormonalHealthy = j.label === '节律正常';
+        hormonalLabel = j.label === '节律紊乱' ? '节律紊乱' : j.label === '皮质醇偏高' ? '持续偏高' : '节律平稳';
       }
     } catch { /* 保持数据不足 */ }
     // ② 长期健康数据（综合 脑力/压力/睡眠 的 0–100 分）

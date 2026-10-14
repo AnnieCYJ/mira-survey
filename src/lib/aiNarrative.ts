@@ -18,6 +18,7 @@
 import * as FileSystem from 'expo-file-system';
 import { runOnModel } from '../ai/model';
 import { ensureInterventionLogLoaded, allInterventionEntries, type InterventionKind } from '../data/interventionLog';
+import { dayPhase, DAY_PHASE_META, padHour, type DayPhase } from './timePhase';
 
 const STORE_PATH = (FileSystem.documentDirectory ?? '') + 'mira_ai_narrative.json';
 /** 整体超时：模板已在位，AI 迟到也不阻塞 UI；稍后完成仍落缓存 */
@@ -41,13 +42,22 @@ export interface NarrCtx {
   stressRecent1h: number;
   /** 最近 3 小时内完成的动作（如「呼吸冥想」「缓一缓」），无则 null */
   recentAction: string | null;
+  /** ★ 2026-10-13：当前时段（决定叙事聚焦点，且进签名——跨时段即重生成，杜绝隔时段错配） */
+  timePhase: DayPhase;
+  /** 当前脑力准备度 %（lateMorning 讲「现在脑力挺好」用；无则 null，不编） */
+  readinessNow: number | null;
+  /** 预测脑力高峰小时（lateMorning 讲「把难任务放这时」用；无则 null，不编） */
+  readinessPeakHour: number | null;
 }
 
-/** 叙事签名：任一输入变化 → 重新生成 */
+/** 叙事签名：任一输入变化 → 重新生成。
+ *  ★ 2026-10-13：把 `timePhase` 纳入签名——时段翻页即重算，
+ *    早上生成的「睡眠恢复」不会在深夜被当成当下分析显示（用户反馈的「时间对不上」根因）。
+ *  · readiness 相关数据**不进签名**（它随用脑分钟级波动，进签名会触发无意义重算/闪烁）。 */
 export function narrSigOf(c: NarrCtx): string {
   const sleepB = c.sleepScore == null ? '' : c.sleepScore >= 60 ? 'sleepOk' : 'sleepLow';
   const stressB = c.stressRecent1h >= 3 ? 'hi' : c.stressRecent1h >= 1 ? 'some' : 'no';
-  return [c.level ?? '', c.phase, c.cortisolRhythm, sleepB, stressB, c.recentAction ?? ''].join('|');
+  return [c.level ?? '', c.phase, c.cortisolRhythm, sleepB, stressB, c.timePhase, c.recentAction ?? ''].join('|');
 }
 
 // ── 缓存：内存 Map（sig → 文案） + 磁盘单条 ──
@@ -105,20 +115,31 @@ async function recentActionLabel(): Promise<string | null> {
 
 // ── Prompt（为 Qwen2.5-1.5B 小模型写的：指令极短、示例锚定格式与声线） ──
 const SYSTEM = [
-  '你是 Mira，用户的 AI 健康闺蜜：说话短、温暖、鼓励人；不是医生，不下诊断，绝不编造数据。',
-  '任务：为首页圆环下面写一句状态解读。只输出这一句话本身，不要引号、不要解释、不要 emoji、不要 markdown：',
-  '规则：',
-  '1. 一句话，10 到 38 个字；',
-  '2. 必须用上「给定信息」里至少一个具体事实（周期阶段/激素/皮质醇/睡眠/当前状态/刚做完的动作）；',
-  '3. 只能用给定信息里出现过的数字，没给的数字一律不写；',
-  '4. 状态好但相位不利 → 归因给身体底子稳，鼓励；状态差 → 先接住感受，再轻轻给个方向；',
-  '5. 说人话，像闺蜜发来的消息，不要「检测到」「数据显示」这类机器词。',
-  '示例一：状态=良好，相位=经期 → 经期激素虽然在低点，但你底子稳，状态照样在线呀。',
-  '示例二：状态=偏低，相位=黄体期，睡眠=52分 → 黄体期激素压着能量，昨晚又没睡够，对自己温柔点。',
-  '示例三：状态=平稳，相位=卵泡期，刚做完=呼吸冥想 → 刚做完呼吸冥想，状态稳稳的，继续保持这个节奏哦。',
+  '你是 Mira，用户的 AI 健康闺蜜。说话像跟朋友复盘今天：平实、具体、有温度；不喊口号、不夸张、不下诊断、绝不编造数据。',
+  '任务：为首页圆环下面写一句状态解读（就是 App 上圆环下那行分析）。只输出这一句话本身，不要引号、不要解释、不要 emoji、不要 markdown、不要分行：',
+  '写法（学 ISHO / Oura 那种「人能看懂」的感觉）：',
+  '1. 先讲一个**具体事实**——优先带真实数字或时刻（如「昨晚从 1:13 睡到 7:10」「睡眠 82 分」「脑力 78%」），再用一句人话解释它的意思；',
+  '2. 就一句话，10 到 40 个字；',
+  '3. 只能用「给定信息」里出现过的数字，没给的数字一律不写；某项数据缺失就换一个有的讲，别硬提、别猜；',
+  '4. 平实口语，像微信里发来的消息；不要「检测到 / 数据显示 / 建议您」这类机器腔，也不要堆夸张的褒义词；',
+  '5. 状态好但相位不利 → 归因给身体底子稳，鼓励；状态差 → 先接住感受，再轻轻给个方向。',
+  '★ 时间感知（最重要）：以【当前时段】为唯一依据，绝不写与时段矛盾的内容——',
+  '  晚上不要讲「早起/晨间/上午」的事，早晨不要讲「睡前/护肤/今晚」的事。',
+  '  各时段该聚焦什么：',
+  '  · 早晨：昨晚睡眠恢复得怎么样（带睡眠分/时长）+ 今天一整天的能量基调；',
+  '  · 上午：现在的脑力准备度 + 预测的高峰时段，把难的任务放到高峰做；',
+  '  · 临近中午：这顿饭的营养，结合周期阶段给一句饮食小提示；',
+  '  · 午后：当前状态，若有压力或消耗偏大就说一下，以及雌激素/孕激素的变化；',
+  '  · 傍晚：收工放松、轻量休息；',
+  '  · 睡前：护肤休息、怎么睡好，睡好明天能量才稳。',
+  '示例一（早晨，睡眠82分）→ 昨晚这一觉挺完整、拿到 82 分，今天能量在线，放心往前冲呀。',
+  '示例二（上午，脑力78%，高峰14:00）→ 现在脑子挺清楚，难啃的活趁下午两点前搞定最划算。',
+  '示例三（午后，状态偏低，黄体期）→ 黄体期下午容易发沉，刚才要是挺累，就先喘口气再继续。',
+  '示例四（睡前）→ 这一天到这儿啦，收拾收拾早点躺平，明天才更有力气折腾呀。',
 ].join('\n');
 
 function buildUserPrompt(c: NarrCtx): string {
+  const meta = DAY_PHASE_META[c.timePhase];
   return [
     `当前状态：${c.level ?? '暂无'}${c.value != null ? `（${Math.round(c.value)} 分）` : ''}`,
     `周期阶段：${c.phase || '未记录'}`,
@@ -126,8 +147,22 @@ function buildUserPrompt(c: NarrCtx): string {
     `昨晚睡眠：${c.sleepScore != null ? `${Math.round(c.sleepScore)} 分` : '暂无数据'}`,
     `近 1 小时压力事件：${c.stressRecent1h} 次`,
     `刚做完的动作：${c.recentAction ?? '无'}`,
+    `当前时段：${meta.label}（应聚焦：${meta.focus}）`,
+    `脑力准备度：${c.readinessNow != null ? `${Math.round(c.readinessNow)}%` : '暂无'}（预测高峰 ${c.readinessPeakHour != null ? padHour(c.readinessPeakHour) : '暂无'}）`,
     '只输出一句话：',
   ].join('\n');
+}
+
+/** ★ 2026-10-13：人话护栏 —— 小模型偶发生造词 / 命令腔 / 乱码，命中即丢弃、退回模板 */
+const UNNATURAL: RegExp[] = [
+  /美容肌|美肌|护肤肌/, // 生造美容词（用户实锤「多睡半小时美容肌」）
+  /要睡觉|去睡觉|快去睡|赶紧睡|快睡|睡觉哦|去睡哦/, // 催睡命令腔
+  /你该|你应该|必须|一定要|赶紧去/, // 说教命令
+  /\uFFFD|[\uD800-\uDFFF]/, // 乱码 / 孤立代理对
+];
+function looksNatural(text: string): boolean {
+  for (const re of UNNATURAL) if (re.test(text)) return false;
+  return true;
 }
 
 /** 校验模型输出：8–44 字、单行、无 JSON/引号残留。不合法 → null（模板兜底在位） */
@@ -144,6 +179,7 @@ function parseNarrative(raw: string): string | null {
   if (!text) return null;
   if (text.length < 8 || text.length > 44) return null;
   if (/[<>]/.test(text)) return null;
+  if (!looksNatural(text)) return null; // 生造词/命令腔/乱码 → 丢弃，走模板
   return text;
 }
 
@@ -175,7 +211,7 @@ export async function requestAiNarrative(ctx: NarrCtx): Promise<string | null> {
                 { role: 'user', content: buildUserPrompt(full) },
               ],
               n_predict: 70,
-              temperature: 0.85,
+              temperature: 0.6, // ★ 2026-10-13：0.85→0.6，小模型高温易乱造词（用户实锤「美容肌」）
               top_p: 0.9,
               stop: ['<|im_end|>', 'User:', '用户：'],
             },

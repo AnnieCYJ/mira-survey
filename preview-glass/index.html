@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 首页 · 磨砂玻璃提案</title>
+<style>
+  :root{
+    --glass-hi: rgba(255,255,255,.30);
+    --glass-lo: rgba(255,255,255,.12);
+    --glass-brd: rgba(255,255,255,.55);
+    --glass-brd-soft: rgba(255,255,255,.32);
+    --t1:#ffffff;
+    --t2:rgba(255,255,255,.80);
+    --t3:rgba(255,255,255,.58);
+    --shadow: 0 12px 34px rgba(38,56,88,.16), inset 0 1px 0 rgba(255,255,255,.55);
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:#e9ecf1;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    padding:28px;
+  }
+  .wrap{display:flex; flex-direction:column; align-items:center; gap:14px;}
+  .caption{color:#7d8798; font-size:12px; letter-spacing:.04em;}
+
+  /* ── 手机框 ── */
+  .phone{
+    position:relative; width:390px; height:844px; border-radius:47px; overflow:hidden;
+    box-shadow:0 30px 70px rgba(30,45,70,.28), 0 2px 0 rgba(255,255,255,.6) inset;
+    background:#0b1220;
+    isolation:isolate;
+  }
+  .bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 38%;}
+  /* 顶部/底部柔和蒙层：保证文字可读，但不下重手，保留通透感 */
+  .scrim{position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(180deg, rgba(232,240,250,.42) 0%, rgba(232,240,250,.06) 26%, rgba(20,32,52,0) 46%, rgba(22,34,56,.30) 74%, rgba(18,28,48,.52) 100%);
+  }
+  .screen{position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:0 20px;}
+
+  /* ── 状态栏 ── */
+  .statusbar{height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 8px; color:var(--t1); font-size:14px; font-weight:600; text-shadow:0 1px 6px rgba(20,34,58,.35);}
+  .sb-right{display:flex; align-items:center; gap:5px;}
+  .sb-ico{width:16px;height:11px;display:block;opacity:.95}
+
+  /* ── 头部 ── */
+  .head{padding:6px 4px 2px;}
+  .head .hi{color:var(--t1); font-size:25px; font-weight:650; letter-spacing:.01em; text-shadow:0 2px 14px rgba(24,40,66,.4);}
+  .head .sub{color:var(--t2); font-size:12.5px; margin-top:5px; text-shadow:0 1px 8px rgba(24,40,66,.35);}
+
+  /* ── 通用玻璃卡 ── */
+  .glass{
+    background:linear-gradient(150deg, var(--glass-hi), var(--glass-lo));
+    backdrop-filter:blur(26px) saturate(125%);
+    -webkit-backdrop-filter:blur(26px) saturate(125%);
+    border:1px solid var(--glass-brd-soft);
+    border-top-color:var(--glass-brd);
+    box-shadow:var(--shadow);
+    border-radius:26px;
+  }
+
+  /* ── 圆环 ── */
+  .ringwrap{display:flex; flex-direction:column; align-items:center; margin-top:12px;}
+  .ring{position:relative; width:232px; height:232px;}
+  .ring .halo{position:absolute; inset:-6%; border-radius:50%;
+    background:radial-gradient(circle at 50% 46%, rgba(255,255,255,.30), rgba(255,255,255,0) 68%);}
+  .ring svg{position:relative; display:block;}
+  .ring .center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;}
+  .ring .word{color:var(--t1); font-size:37px; font-weight:650; letter-spacing:.06em; text-shadow:0 2px 18px rgba(20,34,58,.45);}
+  .ring .val{color:var(--t2); font-size:12px; letter-spacing:.08em;}
+  .ringcap{color:var(--t2); font-size:12px; margin-top:2px; letter-spacing:.03em; text-shadow:0 1px 8px rgba(24,40,66,.35);}
+
+  /* ── AI 分析两行 ── */
+  .ai{margin-top:16px; padding:0 6px; display:flex; gap:9px; align-items:flex-start;}
+  .ai .spark{flex:0 0 auto; margin-top:3px; opacity:.9;}
+  .ai .txt{color:var(--t1); font-size:13.5px; line-height:1.62; text-shadow:0 1px 10px rgba(20,34,58,.42);}
+
+  /* ── 卡片区 ── */
+  .cards{display:flex; flex-direction:column; gap:12px; margin-top:16px;}
+  .row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .card{padding:15px 16px 14px;}
+  .card .lbl{color:var(--t2); font-size:12px; display:flex; align-items:center; gap:5px;}
+  .card .big{color:var(--t1); font-size:27px; font-weight:650; margin-top:7px; line-height:1; letter-spacing:.01em;}
+  .card .big small{font-size:12px; font-weight:500; color:var(--t2); margin-left:3px;}
+  .card .note{color:var(--t3); font-size:11.5px; margin-top:7px;}
+  .sparkline{margin-top:9px; display:block; width:100%; height:26px;}
+
+  /* 认知准备度整行卡 */
+  .wide{padding:15px 16px 15px;}
+  .wide .top{display:flex; align-items:baseline; justify-content:space-between;}
+  .bar{height:7px; border-radius:99px; background:rgba(255,255,255,.22); margin-top:12px; overflow:hidden; box-shadow:inset 0 1px 2px rgba(20,34,58,.12);}
+  .bar > i{display:block; height:100%; width:76%; border-radius:99px;
+    background:linear-gradient(90deg, rgba(255,255,255,.72), rgba(255,255,255,.98));}
+  .barscale{display:flex; justify-content:space-between; color:var(--t3); font-size:10.5px; margin-top:7px;}
+
+  /* ── 建议卡 ── */
+  .sugg{padding:15px 16px; display:flex; align-items:center; gap:12px;}
+  .sugg .ico{flex:0 0 auto; width:38px; height:38px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.20); border:1px solid rgba(255,255,255,.4);}
+  .sugg .body{flex:1; min-width:0;}
+  .sugg .h{color:var(--t1); font-size:13.5px; font-weight:560; letter-spacing:.01em; text-shadow:0 1px 8px rgba(20,34,58,.35);}
+  .sugg .s{color:var(--t3); font-size:11.5px; margin-top:4px;}
+  .pill{flex:0 0 auto; padding:9px 15px; border-radius:99px; color:#243043; font-size:12.5px; font-weight:650;
+    background:rgba(255,255,255,.90); box-shadow:0 6px 18px rgba(24,40,66,.22); border:1px solid rgba(255,255,255,.7);}
+
+  /* ── 底部 tab ── */
+  .tabwrap{margin-top:auto; padding-bottom:16px;}
+  .tabbar{display:flex; align-items:center; justify-content:space-between; padding:10px 8px; border-radius:26px;}
+  .tab{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; color:var(--t3); font-size:10.5px; letter-spacing:.02em;}
+  .tab.on{color:var(--t1);}
+  .tab svg{opacity:.85;}
+  .tab.on svg{opacity:1;}
+  .fab{flex:0 0 auto; width:46px; height:46px; border-radius:15px; display:flex; align-items:center; justify-content:center; margin:0 2px;
+    background:linear-gradient(150deg, rgba(255,255,255,.42), rgba(255,255,255,.22));
+    border:1px solid rgba(255,255,255,.6); box-shadow:var(--shadow);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="phone">
+    <img class="bg" src="bg.jpg" alt="">
+    <div class="scrim"></div>
+
+    <div class="screen">
+      <!-- 状态栏 -->
+      <div class="statusbar">
+        <span>22:05</span>
+        <div class="sb-right">
+          <!-- 信号 -->
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#fff"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#fff"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#fff"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#fff" opacity=".45"/></svg>
+          <!-- wifi -->
+          <svg class="sb-ico" viewBox="0 0 18 12" fill="none"><path d="M1 4.2C3.2 2.3 6 1.3 9 1.3s5.8 1 8 2.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M4 7C5.4 5.9 7.1 5.3 9 5.3s3.6.6 5 1.7" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="10" r="1.5" fill="#fff"/></svg>
+          <!-- battery -->
+          <svg class="sb-ico" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="20" height="11" rx="3" stroke="#fff" opacity=".6"/><rect x="2" y="2" width="15" height="8" rx="1.6" fill="#fff"/><rect x="22" y="4" width="1.6" height="4" rx="0.8" fill="#fff" opacity=".6"/></svg>
+        </div>
+      </div>
+
+      <!-- 头部 -->
+      <div class="head">
+        <div class="hi">晚上好</div>
+        <div class="sub">10月13日 周二 · 黄体期第 22 天</div>
+      </div>
+
+      <!-- 圆环 -->
+      <div class="ringwrap">
+        <div class="ring">
+          <div class="halo"></div>
+          <svg width="232" height="232" viewBox="0 0 232 232">
+            <defs>
+              <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity=".72"/>
+              </linearGradient>
+            </defs>
+            <circle cx="116" cy="116" r="96" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="11"/>
+            <circle cx="116" cy="116" r="96" fill="none" stroke="url(#arc)" stroke-width="11" stroke-linecap="round"
+                    stroke-dasharray="603" stroke-dashoffset="145" transform="rotate(-90 116 116)"/>
+          </svg>
+          <div class="center">
+            <div class="word">平稳</div>
+            <div class="val">今日状态 76</div>
+          </div>
+        </div>
+        <div class="ringcap">精力在回升 · 适合把重心放回手头的事</div>
+      </div>
+
+      <!-- AI 分析两行 -->
+      <div class="ai">
+        <svg class="spark" width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <path d="M8 1.2l1.5 4.3L13.8 7 9.5 8.5 8 12.8 6.5 8.5 2.2 7l4.3-1.5L8 1.2z" fill="#fff" opacity=".92"/>
+        </svg>
+        <div class="txt">昨晚睡了 7 小时 42 分、拿到 82 分，深睡占了 22%，恢复得扎实；今天激素在低位，节奏放慢点反而更稳。</div>
+      </div>
+
+      <!-- 卡片区 -->
+      <div class="cards">
+        <div class="row">
+          <div class="glass card">
+            <div class="lbl">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 6.5A4.5 4.5 0 0 0 4.6 5H3v5h1.6A4.5 4.5 0 0 0 13 8.5v-2z" stroke="#fff" stroke-width="1.2" stroke-linejoin="round" opacity=".85"/><path d="M3 10.5v2M5 11v1.6M7 11v1.6" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity=".7"/></svg>
+              睡眠
+            </div>
+            <div class="big">82<small>分</small></div>
+            <svg class="sparkline" viewBox="0 0 120 26" preserveAspectRatio="none">
+              <path d="M0,20 L14,17 L28,19 L42,10 L56,13 L70,7 L84,11 L98,6 L120,8" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="note">深睡 22% · 7h42m</div>
+          </div>
+          <div class="glass card">
+            <div class="lbl">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 9h3l1.5-4L9 11l1.5-3H14" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/></svg>
+              恢复力
+            </div>
+            <div class="big">48<small>ms</small></div>
+            <svg class="sparkline" viewBox="0 0 120 26" preserveAspectRatio="none">
+              <path d="M0,12 L18,14 L36,9 L54,11 L72,6 L90,9 L120,5" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="note">较上周 <span style="opacity:.95">+6ms</span></div>
+          </div>
+        </div>
+
+        <div class="glass wide">
+          <div class="top">
+            <div class="lbl">脑力准备度</div>
+            <div class="big" style="margin-top:0;font-size:23px;">76<small>/100</small></div>
+          </div>
+          <div class="bar"><i></i></div>
+          <div class="barscale"><span>傍晚</span><span>此刻</span><span>高峰 14:00</span></div>
+        </div>
+
+        <div class="glass sugg">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <path d="M10 2.6c-3.2 0-5.6 2.2-5.6 5.1 0 1.7.8 3 1.9 3.9.5.4.8.9.8 1.5v.4h5.8v-.4c0-.6.3-1.1.8-1.5 1.1-.9 1.9-2.2 1.9-3.9 0-2.9-2.4-5.1-5.6-5.1z" stroke="#fff" stroke-width="1.25" stroke-linejoin="round" opacity=".95"/>
+              <path d="M8 15h4" stroke="#fff" stroke-width="1.25" stroke-linecap="round" opacity=".8"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="h">激素在低位，晚上做点轻松的事就好</div>
+            <div class="s">睡前读两页 · 10 分钟</div>
+          </div>
+          <div class="pill">去读 ›</div>
+        </div>
+      </div>
+
+      <!-- 底部 tab -->
+      <div class="tabwrap">
+        <div class="glass tabbar">
+          <div class="tab on">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1v-8.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            今日
+          </div>
+          <div class="tab">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M12 19V5M19 19v-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            数据
+          </div>
+          <div class="fab">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="tab">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            工具
+          </div>
+          <div class="tab">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.5" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 19c.6-3 3.3-4.6 6.5-4.6s5.9 1.6 6.5 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            我的
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Mira · 首页 · 磨砂玻璃提案（照片底 + 全白淡色）</div>
+</div>
+</body>
+</html>

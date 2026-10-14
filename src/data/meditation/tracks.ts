@@ -1,5 +1,5 @@
 // 冥想音频素材 — CC0 / Public Domain
-// 白/粉/棕噪声由 Python 生成；细雨/海浪为 sfxmint.com CC0 正版循环音（2026-10-13 替换 archive.org 坏文件）
+// 白/粉/棕/细雨由 Python 合成（无缝循环）；海浪为 sfxmint.com CC0 循环音（2026-10-13 替换 archive.org 坏文件）
 // 背景图 v2 = Unsplash 真实自然风景（2026-10-13 替换 AI 流体图）
 
 export type MeditationType = 'whitenoise' | 'pinknoise' | 'brownnoise' | 'nature' | 'guided' | 'music';
@@ -53,10 +53,10 @@ export const MEDITATION_TRACKS: MeditationTrack[] = [
   {
     id: 'rain',
     title: '细雨',
-    subtitle: '雨天氛围 · 平静心绪',
+    subtitle: '细雨淋沥 · 平静心绪',
     type: 'nature',
     duration: 0,
-    uri: require('../../assets/meditation/rain_v2.mp3'),
+    uri: require('../../assets/meditation/rain_v4.mp3'),
     bg: require('../../assets/meditation/bg_rain_v2.jpg'),
     thumb: require('../../assets/meditation/thumb_rain_v2.jpg'),
     loop: true,

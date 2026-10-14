@@ -184,11 +184,47 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
   );
 }
 
+// ★ 丝滑化：左侧 tab 选中项加 spring pop 缩放（选中放大一点，切走回弹），让选中标更"活"
+function TabItem({ route, focused, onPress }: { route: any; focused: boolean; onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.spring(scale, { toValue: focused ? 1.12 : 1, friction: 5, tension: 220, useNativeDriver: true }).start();
+  }, [focused, scale]);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.item}
+      activeOpacity={theme.press.opacity}
+      accessibilityRole="tab"
+      accessibilityLabel={TAB_LABEL[route.name] ?? route.name}
+      accessibilityState={{ selected: focused }}
+      aria-selected={focused}
+    >
+      {/* v10 选中态：lime 圆底 + 深色 icon；未选 = inkFaint */}
+      {/* ★ 2026-10-10（用户）：去掉「今日/洞察/工具/我的」文字，只留图标；图标稍大（22→25） */}
+      <Animated.View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }, { transform: [{ scale }] }]}>
+        <Icon
+          name={TAB_ICON[route.name] ?? 'home'}
+          size={theme.fs(26)}
+          color={focused ? mm.colors.ink : mm.colors.inkFaint}
+          strokeWidth={2}
+        />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
 export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   // ★ 2026-10-12：只订阅稳定 API（录音转写每 250ms 推进不再重渲染整个 tab 栏）
   const { open, close } = useVoiceTriggerApi();
   const voiceStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressing = useRef(false);
+  // ★ 丝滑化：bot 按钮按压缩放反馈（长按 / 单击都给触觉缩放，松手弹回）
+  const botScale = useRef(new Animated.Value(1)).current;
+  const pressBotIn = () =>
+    Animated.spring(botScale, { toValue: 0.9, friction: 4, tension: 200, useNativeDriver: true }).start();
+  const pressBotOut = () =>
+    Animated.spring(botScale, { toValue: 1, friction: 5, tension: 200, useNativeDriver: true }).start();
   const insets = useSafeAreaInsets();
   // ★ 2026-10-10（用户：整体包括底下的 tab 往上挪一点点）：0 → 8 —— 悬浮 tab 胶囊不再贴死屏幕底。
   const marginBottom = 8;
@@ -212,6 +248,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const PRESS_HOLD_MS = 220;
   const handleVoicePressIn = () => {
     isLongPressing.current = true;
+    pressBotIn();
     if (voiceStartTimer.current) clearTimeout(voiceStartTimer.current);
     voiceStartTimer.current = setTimeout(() => {
       voiceStartTimer.current = null; // 标记：已进入录音态
@@ -233,6 +270,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const handleVoicePressOut = () => {
     if (!isLongPressing.current) return;
     isLongPressing.current = false;
+    pressBotOut();
     if (voiceStartTimer.current) {
       // 未到长按阈值 = 单击 → 切到 MiraAI 首页 tab（tab 栏保持可见，与设计稿一致）
       clearTimeout(voiceStartTimer.current);
@@ -267,27 +305,12 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           if (route.name === VOICE_ROUTE || HIDDEN_ROUTES.includes(route.name)) return null;
           const focused = state.index === idx;
           return (
-            <TouchableOpacity
+            <TabItem
               key={route.key}
+              route={route}
+              focused={focused}
               onPress={() => handlePress(route, focused)}
-              style={styles.item}
-              activeOpacity={theme.press.opacity}
-              accessibilityRole="tab"
-              accessibilityLabel={TAB_LABEL[route.name] ?? route.name}
-              accessibilityState={{ selected: focused }}
-              aria-selected={focused}
-            >
-              {/* v10 选中态：lime 圆底 + 深色 icon；未选 = inkFaint */}
-              {/* ★ 2026-10-10（用户）：去掉「今日/洞察/工具/我的」文字，只留图标；图标稍大（22→25） */}
-              <View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }]}>
-                <Icon
-                  name={TAB_ICON[route.name] ?? 'home'}
-                  size={theme.fs(26)}
-                  color={focused ? mm.colors.ink : mm.colors.inkFaint}
-                  strokeWidth={2}
-                />
-              </View>
-            </TouchableOpacity>
+            />
           );
         })}
       </View>
@@ -308,8 +331,10 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
         accessibilityActions={[{ name: 'activate', label: '打开 Mira AI 聊天' }]}
         onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'activate') navigation.navigate('MiraAI'); }}
       >
-        <AnimatedBotFace size={botSize} focused={voiceFocused} />
-        {voiceFocused ? <View style={styles.voiceDot} /> : null}
+        <Animated.View style={{ transform: [{ scale: botScale }] }}>
+          <AnimatedBotFace size={botSize} focused={voiceFocused} />
+          {voiceFocused ? <View style={styles.voiceDot} /> : null}
+        </Animated.View>
       </TouchableOpacity>
     </View>
   );

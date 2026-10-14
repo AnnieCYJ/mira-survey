@@ -23,18 +23,19 @@
  */
 import * as FileSystem from 'expo-file-system';
 import { runOnModel } from '../ai/model';
-import { evidenceBits, pickReadTarget, sceneBucket, type SuggestionCandidate } from './suggestionEngine';
+import { evidenceBits, pickReadTarget, type SuggestionCandidate } from './suggestionEngine';
+import { dayPhase, DAY_PHASE_META, type DayPhase } from './timePhase';
 
 const STORE_PATH = (FileSystem.documentDirectory ?? '') + 'mira_ai_suggestion.json';
 /** 整体超时（★ 十六改 45s → 60s，用户：「31 分给出来问题不大，但时间太长就不行」——
  *  即状态更新后最多等 1 分钟，等不到就上引擎卡；超时后模型若稍后完成，结果进缓存、下次可用） */
 const GEN_TIMEOUT_MS = 60_000;
 
-/** 状态签名（与 suggestionEngine 同口径，包含饭前/睡前场景边界） */
+/** 状态签名（与 suggestionEngine 同口径，包含时段边界——跨时段即重新评估建议） */
 export function sigOf(cs?: any): string {
   const level = typeof cs?.level === 'string' ? cs.level : '';
   const phase = typeof cs?.phaseLabel === 'string' ? cs.phaseLabel : '';
-  return `${level}|${phase}|${sceneBucket()}`;
+  return `${level}|${phase}|${dayPhase()}`;
 }
 
 // ── 缓存：内存 Map（sig → 候选） + 磁盘单条（最近一次生成），重启同签名秒出 AI 卡 ──
@@ -88,6 +89,19 @@ function djb2(s: string): string {
   return (h >>> 0).toString(36);
 }
 
+/** ★ 2026-10-13：人话护栏 —— 小模型偶发生造词 / 命令腔 / 乱码，命中即丢弃、退回引擎自然卡。
+ *  用户实锤：「今晚要睡觉哦，多睡半小时美容肌」不是人话。 */
+const UNNATURAL: RegExp[] = [
+  /美容肌|美肌|护肤肌/, // 生造美容词
+  /要睡觉|去睡觉|快去睡|赶紧睡|快睡|睡觉哦|去睡哦/, // 催睡命令腔
+  /你该|你应该|必须|一定要|赶紧去/, // 说教命令
+  /\uFFFD|[\uD800-\uDFFF]/, // 乱码 / 孤立代理对
+];
+function looksNatural(text: string): boolean {
+  for (const re of UNNATURAL) if (re.test(text)) return false;
+  return true;
+}
+
 /**
  * 解析模型输出 → 校验成合法候选。任何一步不合法都返回 null（引擎兜底已在位，不强求）。
  * 宽松取第一段 {...}：小模型偶发 markdown 代码块包裹 / 前后废话，都能兜住。
@@ -106,6 +120,8 @@ function parseAiJson(raw: string, allowedBits: string[]): SuggestionCandidate | 
   const headline = typeof o.headline === 'string' ? o.headline.trim().replace(/^["'「]|["'」]$/g, '') : '';
   // 长度纪律（★ 十七改澄清）：4–8 字限制属**圆环中央状态词**；建议卡 headline 仍是 AI 语气完整句（4–24 字）
   if (headline.length < 4 || headline.length > 24) return null;
+  // ★ 2026-10-13：人话护栏 —— 生造词/命令腔/乱码直接丢弃，退回引擎自然卡
+  if (!looksNatural(headline)) return null;
 
   // 诚实口径：metric 只能原样取自真实证据短语，否则一律丢弃
   const metricRaw = typeof o.metric === 'string' ? o.metric.trim() : '';
@@ -139,15 +155,29 @@ const SYSTEM = [
   '2. metric 只能原样抄「可选证据」里的一条，没有就填空字符串；',
   '3. cta 只能填 Breathing / BreathingSleep / LearnRead / FoodScan 之一，不需要跳转就填空字符串；',
   '4. 不说教、不下命令；除「可选证据」外不出现任何数字。',
-  '示例一：状态=不足，相位=黄体期，证据=无 → {"headline":"今天钝钝的吧？别硬撑，早点休息呀","metric":"","cta":""}',
-  '示例二：状态=偏低，相位=黄体期，证据=无 → {"headline":"状态有点低呀，做 3 分钟呼吸缓一缓","metric":"","cta":"Breathing"}',
-  '示例三：状态=平稳，相位=卵泡期，证据=无 → {"headline":"状态挺稳的哦，去读篇小科普涨点知识呀","metric":"","cta":"LearnRead"}',
+  '5. 像真人闺蜜发微信：口语、有温度、不端着；严禁生造词（不要写「美容肌」这类词，用「皮肤/气色」等日常说法）。',
+  '6. 严禁命令式说教：不要写「你要X哦」「今晚要睡觉哦」这种居高临下的话，用「一起/可以/要不要」的陪伴口吻。',
+  '7. 睡前只讲放松/轻读/明天会更好，不要催人「去睡觉」（对方可能已躺下）；不要写「美容/护肤」推销感的话。',
+  '★ 时间感知（最重要）：与【当前时段】呼应，绝不写与时段矛盾的内容——',
+  '  晚上不讲「早起/上午」的事，早晨不讲「睡前/护肤」的事。各时段建议倾向：',
+  '  · 早晨 → 睡眠恢复/今日能量（可 LearnRead 科普）；',
+  '  · 上午 → 脑力在线，把难活趁高峰做（可 LearnRead）；',
+  '  · 临近中午 → 引导记这一餐（cta: FoodScan）；',
+  '  · 午后 → 状态/压力/激素变化，累了就呼吸（cta: Breathing）；',
+  '  · 傍晚 → 收工放松、轻量休息；',
+  '  · 睡前 → 读篇科普或睡前呼吸（cta: LearnRead / BreathingSleep）。',
+  '示例一：状态=不足，相位=黄体期，时段=睡前 → {"headline":"今天累啦，做个睡前呼吸放空吧","metric":"","cta":"BreathingSleep"}',
+  '示例二：状态=偏低，相位=黄体期，时段=午后 → {"headline":"午后有点沉，3 分钟呼吸缓一缓呀","metric":"","cta":"Breathing"}',
+  '示例三：状态=平稳，相位=卵泡期，时段=临近中午 → {"headline":"快吃饭啦，拍张照记一下这餐呗","metric":"","cta":"FoodScan"}',
 ].join('\n');
 
 function buildUserPrompt(level: string, phase: string, bits: string[], avoidHeadline?: string): string {
+  const tp = dayPhase();
+  const meta = DAY_PHASE_META[tp];
   return [
     `今日状态：${level}`,
     `周期相位：${phase || '未记录'}`,
+    `当前时段：${meta.label}（建议倾向：${meta.focus}）`,
     `可选证据：${bits.length ? bits.join('；') : '无'}`,
     avoidHeadline ? `刚给过这条建议（换一个角度）：${avoidHeadline}` : '',
     '只输出一行 JSON：',
@@ -192,7 +222,7 @@ export async function requestAiSuggestion(
                 { role: 'user', content: buildUserPrompt(level, phase, bits, opts?.avoidHeadline) },
               ],
               n_predict: 80,
-              temperature: 0.9,
+              temperature: 0.55, // ★ 2026-10-13：0.9→0.55，小模型高温易乱造词/说教腔（用户实锤「美容肌」）
               top_p: 0.9,
               stop: ['<|im_end|>', 'User:', '用户：'],
             },
