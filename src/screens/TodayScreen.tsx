@@ -23,8 +23,6 @@ import MindStatCard from '../components/MindStatCard';
 import BentoCard from '../components/BentoCard';
 import EmotionDots, { type MindMoodKey } from '../components/EmotionDots';
 import MindWave from '../components/MindWave';
-import TrendChart, { TrendAxis } from '../components/TrendChart';
-import { MOODS } from '../data/metrics';
 import { computeStressReport } from '../lib/stressAlgorithm';
 // ★ v18.132：情绪压力改多信号融合判定（分离运动/设备故障），替代单信号 EDA 事件计数
 import { computeEmotionalStress, LEVEL_LABEL, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
@@ -61,15 +59,6 @@ const SHOW_SLEEP_CARD: boolean = false;
  *  覆盖：睡眠节律 / 脑力消耗 / 心理压力 / 运动消耗 / 经期（含被 SHOW_SLEEP_CARD 单独控制的睡眠卡）。 */
 const SHOW_RHYTHM_CARDS: boolean = false;
 
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
-    </View>
-  );
-}
 
 // 智能建议：结合经期相位 + 能量等级 + **时段** → 双分句短句
 // ★ 时段优先：晚(18-22)/深夜(22-6) 一律休息导向，不管相位和能量等级
@@ -173,7 +162,6 @@ export default function TodayScreen() {
   //   保持「气泡恒在 Tab 上方」的间距不变（少加会把气泡和 tab 的间隙吃掉）。
   const bottomReserve = theme.layout.tabBarHeight + Math.max(insets.bottom, theme.sp(2)) + theme.sp(2) + 8;
   const navigation = useNavigation<any>();
-  const [chartW, setChartW] = useState(0);
   // ★ 2026-10-08（用户：「进首页不需要上下滑动」）：首页一屏锁定。
   //   量出第一屏内容的自然高度，若 ≤ 可视高度就彻底关掉滚动与回弹；
   //   只有极窄屏/超长文案导致内容确实超高时，才退回可滚动（避免内容被裁掉）。
@@ -186,7 +174,12 @@ export default function TodayScreen() {
     setSectionHeights(prev => prev[key] === h ? prev : { ...prev, [key]: h });
   };
   const viewHeight = vp_H || dims.height;
-  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 76 : 84;
+  // ★ 2026-10-15：用户「卡片稍高一点、分析内容多一点」→ 112→138（小屏 100→122），
+  //   给「最多 3 行分析 + 建议卡」留出舒展高度、不裁切。
+  // ★ 2026-10-15（v2）：海景拟态气泡 + 建议 1~2 条 → 138→208（小屏 122→184）。
+  // ★ 2026-10-15（V4 暮色深玻璃）：气泡加标题行 + 2 条建议行 → 208→224（小屏 184→200）；
+  //   同步 EnergyBall 0.78→0.74 收回 ~16pt，保一屏不滑动。
+  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 200 : 224;
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -639,16 +632,6 @@ export default function TodayScreen() {
       ? scene.explain
       : causeNarrative || (showPill ? advice : '佩戴并连续记录后，为你生成今日状态分析'));
 
-  // ★ v18.96（审计 2-3）：全天状态趋势图只画**今天**的曲线点。
-  //   旧实现直接把 ring.statusTimeline 整条传进 TrendChart（组件内无日期过滤），
-  //   与 DailyStatusCard / EnergyBall 的当日口径不一致 → 跨天时会画出昨天的曲线。
-  const todayStatusTimeline = (ring.statusTimeline ?? []).filter((p: any) => {
-    if (!Number.isFinite(p?.t)) return false;
-    const d = new Date(p.t);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  });
-
   // ★ 今日日历：把「真实生理数据」+「与 Mira 的对话记录」按一天的时间顺序编排（约 6~7 条）
   const fmtMin = (min: number | null | undefined): string => {
     if (min == null || !Number.isFinite(min) || min <= 0) return '—';
@@ -1095,16 +1078,11 @@ export default function TodayScreen() {
               </TouchableOpacity>
             </View>
 
-        {/* ─────────────────────────────────────────────────────────────
-            ★ 顶部指标 chips（MindMate v10）：白卡 chip + pastel 方块 icon。
-            · 数据与消耗卡同源同口径。
-            · ★ v18.153 间距 md(16) → sm(12)：一屏纵向预算收紧（见 statusPanel 注释），
-              给下方趋势图让出 4pt，图例才落在一屏内。
-            · ★ 2026-10-08 xs(8) → sp(1)(4)：再腾 4pt 给底部常驻 AI 气泡（不被 Tab 压到）。
-            ───────────────────────────────────────────────────────────── */}
-        <View style={{ marginBottom: theme.sp(1) }} onLayout={measureSection('chips')}>
-          <MindChips items={metricChips} />
-        </View>
+            {/* ★ 2026-10-15：弹性呼吸位 —— 与圆弧下方的另一处弹性位等分剩余高度，
+                让「圆环白卡」在标题与底部气泡之间均匀分布，不再被挤在顶部、底部留大空。 */}
+            <View style={{ flexGrow: 1, flexBasis: 0 }} />
+
+        {/* ★ 方案B（2026-10-14）：顶部指标 chips 已下移至圆环下方，见 statusPanel 内插入点 */}
 
         {/* ─────────────────────────────────────────────────────────────
             ★ 全天状态面板（2026-09-21）：圆环 + 全天状态趋势 = **同一块全宽白面**。
@@ -1118,32 +1096,13 @@ export default function TodayScreen() {
             <View style={styles.energyBallCol}>
               <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
             </View>
-            <View style={styles.statusPill} onLayout={measureSection('narrative')}>
-              {/* v18.41 胶囊限 1.5 行：源头已压短（多因分析≤2条/逐句精简），此处兜底防溢出 */}
-              <Text style={styles.statusNarr} numberOfLines={2}>{narrative}</Text>
-            </View>
           </View>
 
-          <TouchableOpacity onLayout={measureSection('trend')} activeOpacity={0.7} onPress={() => navigation.navigate('StatusTrendDetail')}>
-            {/* ★ 2026-10-11：去掉「全天状态趋势图」标题（与整屏居中节奏割裂、显突兀），
-                仅保留趋势图右上角的小箭头作为「可进详情」的弱暗示；整块由外层 TouchableOpacity 接管点击。 */}
-            <View style={styles.trendWrap}>
-              <View onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
-                {/* ★ v18.105：全天状态趋势图也要「断流即空」——旧实现把今天所有点连成一条平滑线，
-                    0:29 之后没再戴戒指，曲线却一路铺到现在（用户：中间都应该是空的）。 */}
-                {chartW > 0 ? <TrendChart width={chartW} timeline={todayStatusTimeline} stale={dataStale} /> : null}
-              </View>
-              <View style={styles.trendChevCorner} pointerEvents="none">
-                <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} />
-              </View>
-            </View>
-            {chartW > 0 ? <TrendAxis width={chartW} /> : null}
-            <View style={styles.legend}>
-              {MOODS.map((m) => (
-                <LegendDot key={m.key} color={m.color} label={m.label} />
-              ))}
-            </View>
-          </TouchableOpacity>
+          {/* ★ 2026-10-15：移除全天状态趋势图（用户要求）。顶部指标 chips 紧贴圆环下方，
+              圆环→chips 间距由 energyWrap.marginBottom 控制，白面上下留白由 statusPanel padding 控制。 */}
+          <View style={{ marginBottom: 0 }} onLayout={measureSection('chips')}>
+            <MindChips items={metricChips} />
+          </View>
         </View>
 
         {/* 面板底部「向上圆弧」收边：独立一层全宽 SVG。
@@ -1174,11 +1133,13 @@ export default function TodayScreen() {
           <Path d={panelArcD} fill={theme.colors.cardBg} />
         </Svg>
 
-        {/* ★ 2026-10-08：全天状态趋势图正下方的常驻 AI 对话气泡（样式 A：四色渐变描边 + 右下三角指向 GROK）。
-            marginTop:'auto' + 第一屏 minHeight（见上）→ 气泡恒定落在「Tab 栏上方」，不被 Tab 压到、
-            也不随建议态/录音态的文案长度上下跳。 */}
-        <View style={{ marginTop: 'auto', marginBottom: bottomReserve, paddingTop: 0, alignItems: 'center' }}>
-          <HomeAiBubble navigation={navigation} status={ring?.curveStatus} height={bubbleHeight} width={Math.max(0, Math.min(dims.width, theme.layout.maxWidth) - theme.space.screen * 2 - 16)} />
+        {/* ★ 2026-10-15：白卡与圆弧下方的常驻 AI 对话气泡（玻璃磨砂 + 右下小尾巴指向 GROK）。
+            气泡恒定落在「Tab 栏上方」（marginBottom = bottomReserve），不被 Tab 压到、也不随
+            建议态/录音态文案长度上下跳；它与标题下方各有一个等权弹性位，等分剩余高度 →
+            内容整体居中、上下留白对称（不再把空白全堆在底部）。 */}
+        <View style={{ flexGrow: 1, flexBasis: 0 }} />
+        <View style={{ marginBottom: bottomReserve, paddingTop: 0, alignItems: 'center' }}>
+          <HomeAiBubble navigation={navigation} status={ring?.curveStatus} height={bubbleHeight} width={Math.max(0, Math.min(dims.width, theme.layout.maxWidth) - theme.space.screen * 2 - 8)} analysis={narrative} />
         </View>
 
           </View>{/* /pageInner 第一屏 */}
@@ -1384,7 +1345,7 @@ const styles = StyleSheet.create({
    *   ⚠ 若还要更多空间，下一个旋钮是 EnergyBall 的 size 系数 0.70（环视觉会一起变小），
    *     不要再来动这里的间距。
    */
-  energyWrap: { marginBottom: 0, alignItems: 'center' },
+  energyWrap: { marginBottom: theme.space.md, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
   // ★ v18.50 修复：不要 flex:1——整屏吸附后 pageInner 是确定高度，flex:1（flexBasis=0）
   // 会让胶囊在自适应父容器里塌成 0 高，分析文字整句不可见。自动高度即可。
@@ -1464,6 +1425,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBg,
     marginHorizontal: -theme.space.screen,
     paddingHorizontal: theme.space.screen,
+    // ★ 2026-10-15：圆环与 chips 在白面内上下留白，避免贴边、读起来更舒展
+    paddingTop: theme.space.lg,
+    paddingBottom: theme.space.lg,
   },
   // marginBottom 补回原来 trendCard 的 marginBottom(space.lg)：否则下一张「全天恢复」卡会贴着圆弧
   statusPanelArc: {

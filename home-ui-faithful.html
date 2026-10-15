@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 今日状态 · 现状 vs 方案A / 方案B（按真实组件渲染）</title>
+<style>
+  :root{
+    --textInk:#1A1A1A; --textSub:#5F5F74; --orbInk:#2E2A3A; --orbSub:#6B6480; --orbFaint:#453F5A;
+    --inkSoft:#5C574F; --inkFaint:#706A61;
+    --limeMid:#BCCB62; --limeDeep:#6E7A24; --limeSoft:#EAF0BE; --limeTint:#F6F7DC;
+    --purple:#9D8AF0; --purpleDeep:#6E58C8; --fabFrom:#A98FE8; --fabTo:#9D8AF0;
+    --rose:#C9598A; --sky:#4C74C9; --butter:#B98A2E; --butterBg:#FBEFD6;
+    --mEnergy:#F0C46E; --mGood:#BCCB62; --mNeutral:#9D8AF0; --mRest:#F2A3C6;
+    --lavBg:#E7E1FB; --pinkBg:#FCE7F0; --cyanBg:#E3EBFE;
+    --cardBorder:rgba(31,29,26,0.09);
+    --glassFill:rgba(255,255,255,0.82); --glassBorder:rgba(31,29,26,0.14);
+    --tabBg:rgba(255,255,255,0.96);
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:#eceae9; font-family:var(--font); color:var(--textInk); -webkit-font-smoothing:antialiased; padding:30px 14px 46px;}
+  .head-title{text-align:center; margin-bottom:24px;}
+  .head-title h1{font-size:20px; font-weight:600; color:#3a3550;}
+  .head-title p{font-size:13px; color:#6b6480; margin-top:7px; max-width:760px; margin-left:auto; margin-right:auto; line-height:1.55;}
+  .row{display:flex; flex-wrap:wrap; gap:28px; justify-content:center; align-items:flex-start;}
+  .col{display:flex; flex-direction:column; align-items:center; gap:11px;}
+  .tag{font-size:14px; font-weight:600; color:#3a3550; letter-spacing:.3px;}
+  .tag small{display:block; font-size:11.5px; font-weight:400; color:#8a83a6; margin-top:3px; max-width:300px; text-align:center; line-height:1.45;}
+
+  /* 手机外框 */
+  .phone{width:360px; height:780px; background:#fff; border-radius:46px; position:relative;
+    box-shadow:0 30px 60px -25px rgba(70,58,110,.45), 0 0 0 11px #15131c, 0 0 0 13px #2a2733; overflow:hidden;}
+  .statusbar{height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 26px; font-size:13px; font-weight:600; color:#1A1A1A;}
+  .statusbar .right{display:flex; gap:6px; align-items:center;}
+  .screen{position:absolute; top:46px; left:0; right:0; bottom:0; background:#fff; display:flex; flex-direction:column; overflow:hidden;}
+  .scroll{flex:1; overflow:hidden; display:flex; flex-direction:column;}
+  .inner{padding:14px 24px 0;}
+
+  /* 头部 */
+  .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
+  .title{font-size:34px; font-weight:500; color:var(--textInk); letter-spacing:.5px;}
+  .who{display:flex; align-items:center;}
+  .who .ava{width:36px; height:36px; border-radius:50%; background:rgba(157,138,240,.16); border:1px solid rgba(157,138,240,.55); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; margin-right:10px; color:var(--textInk);}
+  .who .nm{font-size:15px; font-weight:500; color:var(--textInk);}
+
+  /* 顶部小卡 chips */
+  .chips{display:flex; gap:8px; overflow:hidden; margin-bottom:10px;}
+  .chip{width:64px; height:82px; flex:0 0 auto; background:#fff; border:1px solid var(--cardBorder); border-radius:16px;
+    display:flex; flex-direction:column; align-items:center; padding:9px 4px 6px;}
+  .chip .ico{width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; margin-bottom:7px;}
+  .chip .ico svg{width:14px; height:14px;}
+  .chip .lab{font-size:11px; font-weight:500; color:var(--inkFaint); text-align:center; line-height:1.15;}
+  .chip .val{font-size:13px; font-weight:700; color:var(--textInk); display:flex; align-items:baseline; gap:1px; margin-top:2px;}
+  .chip .val .u{font-size:11px; font-weight:500; color:var(--inkFaint);}
+  .chip .tag2{font-size:11px; font-weight:500; color:var(--inkFaint); margin-top:1px;}
+
+  /* 状态面板（白卡，干净白底，无紫雾） */
+  .panel{background:#fff; margin:0 -24px; padding:6px 24px 0; position:relative;}
+  .ringWrap{display:flex; flex-direction:column; align-items:center;}
+  .pill2{margin-top:6px; min-height:46px; text-align:center; padding:0 26px; font-size:16px; line-height:24px; color:var(--textSub); font-weight:400;}
+
+  /* 趋势图 */
+  .trendWrap{position:relative; margin-top:4px;}
+  .trendBox{display:flex; align-items:flex-end; gap:2px; height:46px; padding:0 2px;}
+  .tbar{flex:1; border-radius:3px 3px 0 0;}
+  .tbar.future{opacity:.4;}
+  .chev{position:absolute; top:2px; right:2px; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.72); border:1px solid rgba(31,29,26,.08); display:flex; align-items:center; justify-content:center; color:var(--textSub); font-size:14px;}
+  .axis{display:flex; justify-content:space-between; padding:4px 6px 0; font-size:11px; color:var(--textSub);}
+  .legend{display:flex; justify-content:center; flex-wrap:wrap; gap:16px; margin:8px 0 6px;}
+  .legend .li{display:flex; align-items:center; font-size:11px; color:var(--textSub);}
+  .legend .dot{width:10px; height:10px; border-radius:50%; margin-right:5px;}
+
+  /* 玻璃气泡（真实：半透明白底 + 1px 中性描边 + 右下小尾巴） */
+  .bubbleZone{margin-top:auto; padding:0 24px 20px; display:flex; justify-content:center;}
+  .bubble{position:relative; width:296px; overflow:visible;}
+  .bubble.tall{width:296px;}
+  .bub-svg{position:absolute; left:0; top:0; overflow:visible;}
+  .bub-content{position:relative; display:flex; align-items:center; padding:14px 16px; gap:10px; z-index:1;}
+  .bub-content.tall{padding:16px 16px; flex-direction:column; align-items:stretch;}
+  .bub-text{flex:1; display:flex; flex-direction:column; justify-content:center;}
+  .bub-title{font-size:15px; font-weight:600; color:var(--textInk); line-height:1.35;}
+  .bub-hint{font-size:11px; color:var(--inkFaint); margin-top:6px; line-height:1.4;}
+  .wave{display:flex; align-items:center; gap:4px;}
+  .wave i{width:3px; height:20px; border-radius:2px; background:var(--purple); display:inline-block;}
+  /* 建议卡 */
+  .bub-analysis{font-size:14.5px; color:var(--textSub); line-height:21px; margin-bottom:10px;}
+  .bub-sugg{display:flex; align-items:center; gap:10px;}
+  .bub-thumb{width:48px; height:48px; border-radius:11px; flex:0 0 auto; object-fit:cover; background:#eee;}
+  .bub-suggtext{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center;}
+  .bub-head{font-size:14.5px; color:var(--textSub); line-height:20px;}
+  .bub-evi{font-size:11px; color:var(--inkFaint); margin-top:2px;}
+  .bub-btns{display:flex; flex-direction:column; align-items:center; gap:4px; flex:0 0 auto;}
+  .pill{min-height:32px; display:flex; align-items:center; justify-content:center; background:var(--limeMid); border-radius:999px; padding:7px 12px; color:#1F1D1A; font-size:13px; font-weight:600;}
+  .link{font-size:13px; color:var(--inkSoft); text-decoration:underline; padding:3px 0;}
+
+  /* 底部 tab 栏（真实：左悬浮胶囊 + 右下 Mira 紫脸） */
+  .tabbar{position:absolute; left:16px; right:16px; bottom:8px; height:48px; display:flex; align-items:flex-end; justify-content:space-between; z-index:5;}
+  .leftCard{flex:1; height:48px; display:flex; align-items:center; justify-content:space-around;
+    background:var(--tabBg); border:1px solid var(--cardBorder); border-radius:999px; padding:0 8px; margin-right:12px;
+    box-shadow:0 6px 20px -8px rgba(110,88,200,.28);}
+  .tab{width:36px; height:36px; border-radius:999px; display:flex; align-items:center; justify-content:center;}
+  .tab.sel{background:var(--limeMid);}
+  .tab svg{width:22px; height:22px;}
+  .bot{width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 10px 22px -8px rgba(157,138,240,.7);}
+  .bot svg{width:48px; height:48px;}
+</style>
+</head>
+<body>
+  <div class="head-title">
+    <h1>Mira · 今日状态页 UI 对比</h1>
+    <p>左＝你现在的真机页面（按真实组件渲染）；中＝方案 A（去趋势图，分析＋建议合进更大的气泡）；右＝方案 B（圆环置顶、小卡挪到环下、上方状态句＋分析＋建议并进更高的气泡）。三套都用同一套真实 Mira 设计 token：玻璃气泡已加高、右下小尾巴实出（指向 Grok / Mira 紫脸）、悬浮胶囊 tab 栏，没有另起样式。</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ===================== 现状（真实页面） ===================== -->
+    <div class="col">
+      <div class="tag">现状 · 真机当前版<small>圆环 + 上方小卡 + 全天状态趋势图 + 常驻 AI 气泡（占位）+ 悬浮胶囊 tab 栏</small></div>
+      <div class="phone">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+              <div class="chips">
+                <div class="chip"><div class="ico" style="background:var(--limeSoft)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--limeDeep)" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div><div class="lab">睡眠恢复</div><div class="val">82<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="var(--lavFg)" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div><div class="lab">脑力准备度</div><div class="val">64<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--pinkBg)"><svg viewBox="0 0 24 24" fill="var(--rose)"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div><div class="lab">心理压力</div><div class="val" style="color:var(--rose)">38<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--cyanBg)"><svg viewBox="0 0 24 24" fill="var(--sky)"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div><div class="lab">运动消耗</div><div class="val">320<span class="u">kcal</span></div></div>
+                <div class="chip" style="width:14px;"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg></div><div class="lab">生理周期</div><div class="val">第12天</div></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="ringWrap">
+                <svg class="ringSvg" width="279" height="279" viewBox="0 0 279 279">
+                  <defs>
+                    <radialGradient id="auraNow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity="0"/><stop offset="46%" stop-color="var(--mGood)" stop-opacity="0"/>
+                      <stop offset="60%" stop-color="var(--mGood)" stop-opacity=".14"/><stop offset="74%" stop-color="var(--mGood)" stop-opacity=".40"/>
+                      <stop offset="86%" stop-color="var(--mGood)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                    <radialGradient id="glowNow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity=".86"/><stop offset="38%" stop-color="var(--mGood)" stop-opacity=".54"/>
+                      <stop offset="70%" stop-color="var(--mGood)" stop-opacity=".16"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="139.5" cy="139.5" r="139.5" fill="url(#auraNow)"/>
+                  <circle cx="139.5" cy="139.5" r="91.9" stroke="var(--mGood)" stroke-width="2.8" fill="none" opacity=".92"/>
+                  <circle cx="139.5" cy="139.5" r="147" fill="url(#glowNow)"/>
+                  <g>
+                    <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="231.4" cy="139.5" r="9" fill="var(--butterBg)" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="139.5" cy="231.4" r="12" fill="var(--mNeutral)" stroke="var(--mNeutral)" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(157,138,240,.85))"/>
+                    <circle cx="47.6" cy="139.5" r="9" fill="var(--mNeutral)" stroke="var(--butter)" stroke-width="2"/>
+                  </g>
+                  <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="var(--orbInk)" style="text-shadow:0 1px 10px rgba(255,255,255,.55)">状态良好</text>
+                  <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="var(--orbSub)">状态值：72</text>
+                  <text x="139.5" y="174" text-anchor="middle" font-size="11" font-weight="400" fill="var(--orbFaint)">更新于 16:30</text>
+                </svg>
+              </div>
+              <div class="pill2">今天整体节奏平稳，白天状态在线，夜里也降得下来。</div>
+
+              <div class="trendWrap">
+                <div class="chev">›</div>
+                <div class="trendBox" id="trendNow"></div>
+              </div>
+              <div class="axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+              <div class="legend">
+                <div class="li"><span class="dot" style="background:var(--mEnergy)"></span>元气满满</div>
+                <div class="li"><span class="dot" style="background:var(--mGood)"></span>状态良好</div>
+                <div class="li"><span class="dot" style="background:var(--mNeutral)"></span>平平静静</div>
+                <div class="li"><span class="dot" style="background:var(--mRest)"></span>休息一下</div>
+              </div>
+            </div>
+
+            <!-- 玻璃气泡：占位（带右下小尾巴） -->
+            <div class="bubbleZone">
+              <div class="bubble">
+                <svg class="bub-svg" width="296" height="106" viewBox="0 0 296 106">
+                  <path d="M18 0 H278 A18 18 0 0 1 296 18 V70 A18 18 0 0 1 278 88 H18 A18 18 0 0 1 0 70 V18 A18 18 0 0 1 18 0 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1"/>
+                  <path d="M238 88 L282 106 L272 88 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div class="bub-content" style="min-height:88px">
+                  <div class="bub-text">
+                    <div class="bub-title">今天过得怎么样，跟我说说</div>
+                    <div class="bub-hint">长按右下角的 AI 图标，就能直接语音跟我聊</div>
+                  </div>
+                  <div class="wave"><i style="height:11px"></i><i style="height:18px"></i><i style="height:14px"></i><i style="height:20px"></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 悬浮胶囊 tab 栏 -->
+          <div class="tabbar">
+            <div class="leftCard">
+              <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6m14-6 0 0"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+            </div>
+            <div class="bot">
+              <svg viewBox="0 0 48 48">
+                <defs><linearGradient id="botNow" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                <circle cx="24" cy="24" r="24" fill="url(#botNow)"/>
+                <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 方案 A ===================== -->
+    <div class="col">
+      <div class="tag">方案 A · 去趋势图<small>圆环 + 小卡不动；删掉全天状态趋势图；圆环下方分析行已删除（已并入底部卡片）；底部卡片上移</small></div>
+      <div class="phone">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+              <div class="chips">
+                <div class="chip"><div class="ico" style="background:var(--limeSoft)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--limeDeep)" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div><div class="lab">睡眠恢复</div><div class="val">82<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="var(--lavFg)" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div><div class="lab">脑力准备度</div><div class="val">64<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--pinkBg)"><svg viewBox="0 0 24 24" fill="var(--rose)"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div><div class="lab">心理压力</div><div class="val" style="color:var(--rose)">38<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--cyanBg)"><svg viewBox="0 0 24 24" fill="var(--sky)"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div><div class="lab">运动消耗</div><div class="val">320<span class="u">kcal</span></div></div>
+                <div class="chip" style="width:14px;"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg></div><div class="lab">生理周期</div><div class="val">第12天</div></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="ringWrap">
+                <svg class="ringSvg" width="279" height="279" viewBox="0 0 279 279">
+                  <defs>
+                    <radialGradient id="auraA" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity="0"/><stop offset="46%" stop-color="var(--mGood)" stop-opacity="0"/>
+                      <stop offset="60%" stop-color="var(--mGood)" stop-opacity=".14"/><stop offset="74%" stop-color="var(--mGood)" stop-opacity=".40"/>
+                      <stop offset="86%" stop-color="var(--mGood)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                    <radialGradient id="glowA" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity=".86"/><stop offset="38%" stop-color="var(--mGood)" stop-opacity=".54"/>
+                      <stop offset="70%" stop-color="var(--mGood)" stop-opacity=".16"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="139.5" cy="139.5" r="139.5" fill="url(#auraA)"/>
+                  <circle cx="139.5" cy="139.5" r="91.9" stroke="var(--mGood)" stroke-width="2.8" fill="none" opacity=".92"/>
+                  <circle cx="139.5" cy="139.5" r="147" fill="url(#glowA)"/>
+                  <g>
+                    <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="231.4" cy="139.5" r="9" fill="var(--butterBg)" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="139.5" cy="231.4" r="12" fill="var(--mNeutral)" stroke="var(--mNeutral)" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(157,138,240,.85))"/>
+                    <circle cx="47.6" cy="139.5" r="9" fill="var(--mNeutral)" stroke="var(--butter)" stroke-width="2"/>
+                  </g>
+                  <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="var(--orbInk)" style="text-shadow:0 1px 10px rgba(255,255,255,.55)">状态良好</text>
+                  <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="var(--orbSub)">状态值：72</text>
+                  <text x="139.5" y="174" text-anchor="middle" font-size="11" font-weight="400" fill="var(--orbFaint)">更新于 16:30</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 方案A：更大的气泡 = 分析 + 建议 同框（圆环下方分析行已删除，已并入卡片） -->
+            <div class="bubbleZone" style="margin-top:16px">
+              <div class="bubble tall">
+                <svg class="bub-svg" width="296" height="144" viewBox="0 0 296 144">
+                  <path d="M18 0 H278 A18 18 0 0 1 296 18 V108 A18 18 0 0 1 278 126 H18 A18 18 0 0 1 0 108 V18 A18 18 0 0 1 18 0 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1"/>
+                  <path d="M238 126 L282 144 L272 126 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div class="bub-content tall" style="min-height:126px">
+                  <div class="bub-analysis">今天整体节奏平稳，白天状态在线，夜里也降得下来。</div>
+                  <div class="bub-sugg">
+                    <img class="bub-thumb" src="http://127.0.0.1:8765/src/assets/card_meditation.jpg"/>
+                    <div class="bub-suggtext">
+                      <div class="bub-head">下午会议前有点紧绷，花 3 分钟呼吸松一下吧</div>
+                      <div class="bub-evi">HRV 回升 8%</div>
+                    </div>
+                    <div class="bub-btns">
+                      <div class="pill">去呼吸 ›</div>
+                      <div class="link">不太像</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="leftCard">
+              <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6m14-6 0 0"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+            </div>
+            <div class="bot">
+              <svg viewBox="0 0 48 48">
+                <defs><linearGradient id="botA" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                <circle cx="24" cy="24" r="24" fill="url(#botA)"/>
+                <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 方案 B ===================== -->
+    <div class="col">
+      <div class="tag">方案 B · 圆环置顶<small>圆环最上 → 小卡挪到环下 → 上方状态句 ＋ 分析 ＋ 建议 全部并进更高的气泡</small></div>
+      <div class="phone">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+            </div>
+
+            <!-- 方案B：圆环置顶 -->
+            <div class="panel" style="padding-top:2px;">
+              <div class="ringWrap">
+                <svg class="ringSvg" width="279" height="279" viewBox="0 0 279 279">
+                  <defs>
+                    <radialGradient id="auraB" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity="0"/><stop offset="46%" stop-color="var(--mGood)" stop-opacity="0"/>
+                      <stop offset="60%" stop-color="var(--mGood)" stop-opacity=".14"/><stop offset="74%" stop-color="var(--mGood)" stop-opacity=".40"/>
+                      <stop offset="86%" stop-color="var(--mGood)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                    <radialGradient id="glowB" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity=".86"/><stop offset="38%" stop-color="var(--mGood)" stop-opacity=".54"/>
+                      <stop offset="70%" stop-color="var(--mGood)" stop-opacity=".16"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="139.5" cy="139.5" r="139.5" fill="url(#auraB)"/>
+                  <circle cx="139.5" cy="139.5" r="91.9" stroke="var(--mGood)" stroke-width="2.8" fill="none" opacity=".92"/>
+                  <circle cx="139.5" cy="139.5" r="147" fill="url(#glowB)"/>
+                  <g>
+                    <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="231.4" cy="139.5" r="9" fill="var(--butterBg)" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="139.5" cy="231.4" r="12" fill="var(--mNeutral)" stroke="var(--mNeutral)" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(157,138,240,.85))"/>
+                    <circle cx="47.6" cy="139.5" r="9" fill="var(--mNeutral)" stroke="var(--butter)" stroke-width="2"/>
+                  </g>
+                  <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="var(--orbInk)" style="text-shadow:0 1px 10px rgba(255,255,255,.55)">状态良好</text>
+                  <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="var(--orbSub)">状态值：72</text>
+                  <text x="139.5" y="174" text-anchor="middle" font-size="11" font-weight="400" fill="var(--orbFaint)">更新于 16:30</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 方案B：小卡挪到环下 -->
+            <div class="inner" style="padding-top:6px;">
+              <div class="chips" style="margin-bottom:6px;">
+                <div class="chip"><div class="ico" style="background:var(--limeSoft)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--limeDeep)" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div><div class="lab">睡眠恢复</div><div class="val">82<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="var(--lavFg)" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div><div class="lab">脑力准备度</div><div class="val">64<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--pinkBg)"><svg viewBox="0 0 24 24" fill="var(--rose)"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div><div class="lab">心理压力</div><div class="val" style="color:var(--rose)">38<span class="u">/100</span></div></div>
+                <div class="chip"><div class="ico" style="background:var(--cyanBg)"><svg viewBox="0 0 24 24" fill="var(--sky)"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div><div class="lab">运动消耗</div><div class="val">320<span class="u">kcal</span></div></div>
+                <div class="chip" style="width:14px;"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg></div><div class="lab">生理周期</div><div class="val">第12天</div></div>
+              </div>
+            </div>
+
+            <!-- 方案B：更高的气泡 = 上方状态句 + 分析 + 建议（卡片上移，消除中间空白） -->
+            <div class="bubbleZone" style="margin-top:16px">
+              <div class="bubble tall">
+                <svg class="bub-svg" width="296" height="156" viewBox="0 0 296 156">
+                  <path d="M18 0 H278 A18 18 0 0 1 296 18 V120 A18 18 0 0 1 278 138 H18 A18 18 0 0 1 0 120 V18 A18 18 0 0 1 18 0 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1"/>
+                  <path d="M238 138 L282 156 L272 138 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div class="bub-content tall" style="min-height:138px">
+                  <div class="bub-analysis">状态良好，今天整体节奏平稳，白天状态在线，夜里也降得下来。</div>
+                  <div class="bub-sugg">
+                    <img class="bub-thumb" src="http://127.0.0.1:8765/src/assets/card_meditation.jpg"/>
+                    <div class="bub-suggtext">
+                      <div class="bub-head">下午会议前有点紧绷，花 3 分钟呼吸松一下吧</div>
+                      <div class="bub-evi">HRV 回升 8%</div>
+                    </div>
+                    <div class="bub-btns">
+                      <div class="pill">去呼吸 ›</div>
+                      <div class="link">不太像</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="leftCard">
+              <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6m14-6 0 0"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+            </div>
+            <div class="bot">
+              <svg viewBox="0 0 48 48">
+                <defs><linearGradient id="botB" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                <circle cx="24" cy="24" r="24" fill="url(#botB)"/>
+                <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  (function(){
+    var colors=['#F0C46E','#BCCB62','#9D8AF0','#F2A3C6'];
+    var seq=[0,0,1,1,1,1,2,2,1,1,1,0,0,1,1,2,2,3,3,1,1,1,1,1];
+    var box=document.getElementById('trendNow');
+    if(!box) return;
+    var n=seq.length;
+    for(var i=0;i<n;i++){
+      var b=document.createElement('div');
+      b.className='tbar'+(i>=17?' future':'');
+      b.style.background=colors[seq[i]];
+      b.style.height=(14+(i%5)*5)+'px';
+      box.appendChild(b);
+    }
+  })();
+</script>
+</body>
+</html>

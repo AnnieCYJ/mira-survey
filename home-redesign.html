@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 今日状态 · 内容展示重设计（方案 A / 方案 B，可混搭）</title>
+<style>
+  :root{
+    --textInk:#1A1A1A; --textSub:#5F5F74; --orbInk:#2E2A3A; --orbSub:#6B6480; --orbFaint:#453F5A;
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --limeMid:#BCCB62; --limeDeep:#6E7A24; --limeSoft:#EAF0BE; --limeTint:#F6F7DC;
+    --purple:#9D8AF0; --purpleDeep:#6E58C8; --fabFrom:#A98FE8;
+    --rose:#C9598A; --roseDeep:#B14B7E; --sky:#4C74C9; --butter:#B98A2E; --butterBg:#FBEFD6;
+    --mEnergy:#F0C46E; --mGood:#BCCB62; --mNeutral:#9D8AF0; --mRest:#F2A3C6;
+    --lavBg:#E7E1FB; --lavFg:#7A68D9; --pinkBg:#FCE7F0; --cyanBg:#E3EBFE; --cyanFg:#4C74C9;
+    --success:#7FA65A; --cardBorder:rgba(31,29,26,0.09);
+    --glassFill:rgba(255,255,255,0.82); --glassBorder:rgba(31,29,26,0.14);
+    --tabBg:rgba(255,255,255,0.96);
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:#eceae9; font-family:var(--font); color:var(--textInk); -webkit-font-smoothing:antialiased; padding:30px 14px 46px;}
+  .head-title{text-align:center; margin-bottom:24px;}
+  .head-title h1{font-size:20px; font-weight:600; color:#3a3550;}
+  .head-title p{font-size:13px; color:#6b6480; margin-top:7px; max-width:780px; margin-left:auto; margin-right:auto; line-height:1.55;}
+  .row{display:flex; flex-wrap:wrap; gap:28px; justify-content:center; align-items:flex-start;}
+  .col{display:flex; flex-direction:column; align-items:center; gap:11px;}
+  .tag{font-size:14px; font-weight:600; color:#3a3550; letter-spacing:.3px;}
+  .tag small{display:block; font-size:11.5px; font-weight:400; color:#8a83a6; margin-top:3px; max-width:310px; text-align:center; line-height:1.45;}
+
+  .phone{width:360px; height:780px; background:#fff; border-radius:46px; position:relative;
+    box-shadow:0 30px 60px -25px rgba(70,58,110,.45), 0 0 0 11px #15131c, 0 0 0 13px #2a2733; overflow:hidden;}
+  .statusbar{height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 26px; font-size:13px; font-weight:600; color:#1A1A1A;}
+  .statusbar .right{display:flex; gap:6px; align-items:center;}
+  .screen{position:absolute; top:46px; left:0; right:0; bottom:0; background:#fff; display:flex; flex-direction:column; overflow:hidden;}
+  .scroll{flex:1; overflow:hidden; display:flex; flex-direction:column;}
+  .inner{padding:14px 24px 0;}
+
+  .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .title{font-size:34px; font-weight:500; color:var(--textInk); letter-spacing:.5px;}
+  .who{display:flex; align-items:center;}
+  .who .ava{width:36px; height:36px; border-radius:50%; background:rgba(157,138,240,.16); border:1px solid rgba(157,138,240,.55); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; margin-right:10px; color:var(--textInk);}
+  .who .nm{font-size:15px; font-weight:500; color:var(--textInk);}
+
+  /* ── 方案 A：细进度条 chips（保持 4 张一行 + 周期卡露边可滑） ── */
+  .chipsA{display:flex; gap:8px; overflow:hidden; margin-bottom:12px;}
+  .chipA{width:64px; height:94px; flex:0 0 auto; background:#fff; border:1px solid var(--cardBorder); border-radius:16px;
+    display:flex; flex-direction:column; align-items:center; padding:9px 4px 8px;}
+  .chipA .ico{width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; margin-bottom:6px;}
+  .chipA .ico svg{width:14px; height:14px;}
+  .chipA .lab{font-size:11px; font-weight:500; color:var(--inkFaint); text-align:center; line-height:1.15;}
+  .chipA .val{font-size:15px; font-weight:700; color:var(--ink); display:flex; align-items:baseline; gap:1px; margin-top:2px;}
+  .chipA .val .u{font-size:10px; font-weight:500; color:var(--inkFaint);}
+  .chipA .bar{width:44px; height:3px; border-radius:2px; background:rgba(31,29,26,.08); margin-top:6px; overflow:hidden;}
+  .chipA .bar i{display:block; height:100%; border-radius:2px;}
+  .chipA .peek{width:14px;}
+
+  /* ── 方案 B：2×2 横排大卡 + 生理周期细条 ── */
+  .gridB{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .chipB{display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--cardBorder); border-radius:16px; padding:12px 12px; height:80px;}
+  .chipB .ico{width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex:0 0 auto;}
+  .chipB .ico svg{width:17px; height:17px;}
+  .chipB .col{flex:1; min-width:0;}
+  .chipB .lab{font-size:11px; font-weight:500; color:var(--inkFaint); line-height:1.15;}
+  .chipB .val{font-size:18px; font-weight:700; color:var(--ink); display:flex; align-items:baseline; gap:2px; margin-top:1px;}
+  .chipB .val .u{font-size:10.5px; font-weight:500; color:var(--inkFaint);}
+  .chipB .tg{font-size:10.5px; font-weight:500; margin-top:1px;}
+  .periodRow{display:flex; align-items:center; gap:9px; background:#fff; border:1px solid var(--cardBorder); border-radius:999px; padding:9px 14px; margin-bottom:12px;}
+  .periodRow .ptxt{flex:1; font-size:12.5px; color:var(--ink); font-weight:500;}
+  .periodRow .psub{font-size:11px; color:var(--inkFaint); font-weight:400;}
+  .periodRow .chev{color:var(--inkFaint); font-size:15px;}
+
+  .panel{background:#fff; margin:0 -24px; padding:2px 24px 0; position:relative;}
+  .ringWrap{display:flex; flex-direction:column; align-items:center;}
+
+  /* ── 玻璃气泡（公共） ── */
+  .bubbleZone{margin-top:auto; padding:0 24px 20px; display:flex; justify-content:center;}
+  .bubble{position:relative; width:296px; overflow:visible;}
+  .bub-svg{position:absolute; left:0; top:0; overflow:visible;}
+  .bub-content{position:relative; z-index:1; padding:14px 16px 14px;}
+
+  /* 方案 A：Mira 对话感 —— 紫脸 + 一句话 + 依据 + CTA */
+  .chatRow{display:flex; gap:10px; align-items:flex-start;}
+  .miraAva{width:34px; height:34px; border-radius:50%; flex:0 0 auto; box-shadow:0 4px 10px -3px rgba(157,138,240,.55);}
+  .chatTxt{flex:1; font-size:14.5px; color:var(--ink); line-height:21px; font-weight:500; padding-top:5px;}
+  .chatMeta{display:flex; align-items:center; margin-top:10px; padding-left:44px; gap:10px;}
+  .evi{font-size:11px; color:var(--inkFaint); flex:1; line-height:1.4;}
+  .pill{min-height:30px; display:inline-flex; align-items:center; justify-content:center; background:var(--limeMid); border-radius:999px; padding:6px 13px; color:var(--ink); font-size:13px; font-weight:600; flex:0 0 auto;}
+  .link{font-size:12px; color:var(--inkSoft); text-decoration:underline; flex:0 0 auto;}
+
+  /* 方案 B：分层卡 —— 分析一行 + 分隔线 + 建议行（图+文+按钮） */
+  .layerAna{font-size:14px; color:var(--textSub); line-height:20px; padding:0 2px;}
+  .layerDiv{height:1px; background:var(--cardBorder); margin:10px 2px;}
+  .suggRow{display:flex; align-items:center; gap:10px;}
+  .suggThumb{width:46px; height:46px; border-radius:11px; flex:0 0 auto; object-fit:cover; background:#eee;}
+  .suggTxt{flex:1; min-width:0;}
+  .suggHead{font-size:14px; color:var(--ink); font-weight:600; line-height:19px;}
+  .suggEvi{font-size:11px; color:var(--inkFaint); margin-top:2px;}
+  .suggBtns{display:flex; flex-direction:column; align-items:center; gap:3px; flex:0 0 auto;}
+
+  /* 悬浮胶囊 tab 栏 */
+  .tabbar{position:absolute; left:16px; right:16px; bottom:8px; height:48px; display:flex; align-items:flex-end; justify-content:space-between; z-index:5;}
+  .leftCard{flex:1; height:48px; display:flex; align-items:center; justify-content:space-around;
+    background:var(--tabBg); border:1px solid var(--cardBorder); border-radius:999px; padding:0 8px; margin-right:12px;
+    box-shadow:0 6px 20px -8px rgba(110,88,200,.28);}
+  .tab{width:36px; height:36px; border-radius:999px; display:flex; align-items:center; justify-content:center;}
+  .tab.sel{background:var(--limeMid);}
+  .tab svg{width:22px; height:22px;}
+  .bot{width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 10px 22px -8px rgba(157,138,240,.7);}
+  .bot svg{width:48px; height:48px;}
+</style>
+</head>
+<body>
+  <div class="head-title">
+    <h1>Mira · 今日状态内容展示重设计</h1>
+    <p>页面结构不变：圆环（上）→ 指标卡（中）→ AI 气泡（恒定贴 Tab 上方，右下小尾巴指向 Mira）。两个方向各是一套完整设计，<b>chips 与气泡也可以交叉混搭</b>。数据口径全部来自现有组件：睡眠恢复 82/100（恢复良好）、脑力准备度 64/100、心理压力 38/100、运动消耗 320 kcal、卵泡期第 12 天。</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ===================== 方案 A ===================== -->
+    <div class="col">
+      <div class="tag">方案 A · 轻进度条 + Mira 对话气泡<small>chips 加一条 3px 细进度条（颜色按好坏：绿/紫/粉），数值一眼看出高低；气泡改成 Mira 说话的口吻——紫脸头像 + 一句话（分析+建议合一句）+ 数据依据 + 呼吸按钮</small></div>
+      <div class="phone">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+              <!-- 方案A chips：icon + 标签 + 数值 + 细进度条 -->
+              <div class="chipsA">
+                <div class="chipA"><div class="ico" style="background:var(--limeSoft)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--limeDeep)" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div><div class="lab">睡眠恢复</div><div class="val" style="color:var(--success)">82<span class="u">/100</span></div><div class="bar"><i style="width:82%;background:var(--limeMid)"></i></div></div>
+                <div class="chipA"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="var(--lavFg)" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div><div class="lab">脑力准备度</div><div class="val">64<span class="u">/100</span></div><div class="bar"><i style="width:64%;background:var(--purple)"></i></div></div>
+                <div class="chipA"><div class="ico" style="background:var(--pinkBg)"><svg viewBox="0 0 24 24" fill="var(--rose)"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div><div class="lab">心理压力</div><div class="val" style="color:var(--success)">38<span class="u">/100</span></div><div class="bar"><i style="width:38%;background:var(--limeMid)"></i></div></div>
+                <div class="chipA"><div class="ico" style="background:var(--cyanBg)"><svg viewBox="0 0 24 24" fill="var(--sky)"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div><div class="lab">运动消耗</div><div class="val">320<span class="u">kcal</span></div><div class="bar"><i style="width:52%;background:var(--sky)"></i></div></div>
+                <div class="chipA peek"><div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg></div><div class="lab">周期</div><div class="val" style="font-size:11px;">第12天</div></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="ringWrap">
+                <svg width="279" height="279" viewBox="0 0 279 279">
+                  <defs>
+                    <radialGradient id="auraA" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity="0"/><stop offset="46%" stop-color="var(--mGood)" stop-opacity="0"/>
+                      <stop offset="60%" stop-color="var(--mGood)" stop-opacity=".14"/><stop offset="74%" stop-color="var(--mGood)" stop-opacity=".40"/>
+                      <stop offset="86%" stop-color="var(--mGood)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                    <radialGradient id="glowA" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity=".86"/><stop offset="38%" stop-color="var(--mGood)" stop-opacity=".54"/>
+                      <stop offset="70%" stop-color="var(--mGood)" stop-opacity=".16"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="139.5" cy="139.5" r="139.5" fill="url(#auraA)"/>
+                  <circle cx="139.5" cy="139.5" r="91.9" stroke="var(--mGood)" stroke-width="2.8" fill="none" opacity=".92"/>
+                  <circle cx="139.5" cy="139.5" r="147" fill="url(#glowA)"/>
+                  <g>
+                    <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="231.4" cy="139.5" r="9" fill="var(--butterBg)" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="139.5" cy="231.4" r="12" fill="var(--mNeutral)" stroke="var(--mNeutral)" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(157,138,240,.85))"/>
+                    <circle cx="47.6" cy="139.5" r="9" fill="var(--mNeutral)" stroke="var(--butter)" stroke-width="2"/>
+                  </g>
+                  <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="var(--orbInk)">状态良好</text>
+                  <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="var(--orbSub)">状态值：72</text>
+                  <text x="139.5" y="174" text-anchor="middle" font-size="11" font-weight="400" fill="var(--orbFaint)">更新于 16:30</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 方案A 气泡：Mira 对话感 -->
+            <div class="bubbleZone">
+              <div class="bubble">
+                <svg class="bub-svg" width="296" height="158" viewBox="0 0 296 158">
+                  <path d="M18 0 H278 A18 18 0 0 1 296 18 V122 A18 18 0 0 1 278 140 H18 A18 18 0 0 1 0 122 V18 A18 18 0 0 1 18 0 Z" fill="var(--glassFill)" stroke="var(--glassBorder)" stroke-width="1"/>
+                  <path d="M238 140 L282 158 L272 140 Z" fill="var(--glassFill)" stroke="var(--glassBorder)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div class="bub-content" style="min-height:140px">
+                  <div class="chatRow">
+                    <svg class="miraAva" viewBox="0 0 48 48">
+                      <defs><linearGradient id="miraAvaG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                      <circle cx="24" cy="24" r="24" fill="url(#miraAvaG)"/>
+                      <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                      <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                    </svg>
+                    <div class="chatTxt">恢复得不错呀，82 分比平时还高一点。下午开会前要是有点紧绷，花 3 分钟呼吸松一下？</div>
+                  </div>
+                  <div class="chatMeta">
+                    <div class="evi">睡眠恢复 82 · HRV 回升 8%</div>
+                    <div class="pill">去呼吸 ›</div>
+                    <div class="link">不太像</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="leftCard">
+              <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6m14-6 0 0"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+            </div>
+            <div class="bot">
+              <svg viewBox="0 0 48 48">
+                <defs><linearGradient id="botA" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                <circle cx="24" cy="24" r="24" fill="url(#botA)"/>
+                <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 方案 B ===================== -->
+    <div class="col">
+      <div class="tag">方案 B · 2×2 大卡 + 分层建议气泡<small>指标升成 2×2 横排卡：图标 + 数值放大 + 档位语（恢复良好/压力低）全回来；生理周期单独成一条细胶囊。气泡分两层：上分析、下建议（图 + 标题 + 依据 + 按钮），信息更完整</small></div>
+      <div class="phone">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="ringWrap">
+                <svg width="279" height="279" viewBox="0 0 279 279">
+                  <defs>
+                    <radialGradient id="auraB" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity="0"/><stop offset="46%" stop-color="var(--mGood)" stop-opacity="0"/>
+                      <stop offset="60%" stop-color="var(--mGood)" stop-opacity=".14"/><stop offset="74%" stop-color="var(--mGood)" stop-opacity=".40"/>
+                      <stop offset="86%" stop-color="var(--mGood)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                    <radialGradient id="glowB" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="var(--mGood)" stop-opacity=".86"/><stop offset="38%" stop-color="var(--mGood)" stop-opacity=".54"/>
+                      <stop offset="70%" stop-color="var(--mGood)" stop-opacity=".16"/><stop offset="100%" stop-color="var(--mGood)" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="139.5" cy="139.5" r="139.5" fill="url(#auraB)"/>
+                  <circle cx="139.5" cy="139.5" r="91.9" stroke="var(--mGood)" stroke-width="2.8" fill="none" opacity=".92"/>
+                  <circle cx="139.5" cy="139.5" r="147" fill="url(#glowB)"/>
+                  <g>
+                    <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="231.4" cy="139.5" r="9" fill="var(--butterBg)" stroke="var(--mNeutral)" stroke-width="2"/>
+                    <circle cx="139.5" cy="231.4" r="12" fill="var(--mNeutral)" stroke="var(--mNeutral)" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(157,138,240,.85))"/>
+                    <circle cx="47.6" cy="139.5" r="9" fill="var(--mNeutral)" stroke="var(--butter)" stroke-width="2"/>
+                  </g>
+                  <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="var(--orbInk)">状态良好</text>
+                  <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="var(--orbSub)">状态值：72</text>
+                  <text x="139.5" y="174" text-anchor="middle" font-size="11" font-weight="400" fill="var(--orbFaint)">更新于 16:30</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 方案B：2×2 大卡 + 周期细条 -->
+            <div class="inner" style="padding-top:8px;">
+              <div class="gridB">
+                <div class="chipB">
+                  <div class="ico" style="background:var(--limeSoft)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--limeDeep)" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div>
+                  <div class="col"><div class="lab">睡眠恢复</div><div class="val" style="color:var(--success)">82<span class="u">/100</span></div><div class="tg" style="color:var(--success)">恢复良好</div></div>
+                </div>
+                <div class="chipB">
+                  <div class="ico" style="background:var(--lavBg)"><svg viewBox="0 0 24 24" fill="var(--lavFg)"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="var(--lavFg)" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div>
+                  <div class="col"><div class="lab">脑力准备度</div><div class="val">64<span class="u">/100</span></div><div class="tg" style="color:var(--inkFaint)">准备度中</div></div>
+                </div>
+                <div class="chipB">
+                  <div class="ico" style="background:var(--pinkBg)"><svg viewBox="0 0 24 24" fill="var(--rose)"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div>
+                  <div class="col"><div class="lab">心理压力</div><div class="val" style="color:var(--success)">38<span class="u">/100</span></div><div class="tg" style="color:var(--success)">压力低</div></div>
+                </div>
+                <div class="chipB">
+                  <div class="ico" style="background:var(--cyanBg)"><svg viewBox="0 0 24 24" fill="var(--sky)"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div>
+                  <div class="col"><div class="lab">运动消耗</div><div class="val">320<span class="u">kcal</span></div><div class="tg" style="color:var(--inkFaint)">步数 6,420</div></div>
+                </div>
+              </div>
+              <div class="periodRow">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--lavFg)"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg>
+                <div class="ptxt">卵泡期 · 第 12 天 <span class="psub">· 周期记录中</span></div>
+                <div class="chev">›</div>
+              </div>
+            </div>
+
+            <!-- 方案B 气泡：分层（分析 / 建议） -->
+            <div class="bubbleZone">
+              <div class="bubble">
+                <svg class="bub-svg" width="296" height="176" viewBox="0 0 296 176">
+                  <path d="M18 0 H278 A18 18 0 0 1 296 18 V140 A18 18 0 0 1 278 158 H18 A18 18 0 0 1 0 140 V18 A18 18 0 0 1 18 0 Z" fill="var(--glassFill)" stroke="var(--glassBorder)" stroke-width="1"/>
+                  <path d="M238 158 L282 176 L272 158 Z" fill="var(--glassFill)" stroke="var(--glassBorder)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div class="bub-content" style="min-height:158px">
+                  <div class="layerAna">今天整体节奏平稳，白天状态在线，夜里也降得下来。</div>
+                  <div class="layerDiv"></div>
+                  <div class="suggRow">
+                    <img class="suggThumb" src="http://127.0.0.1:8765/src/assets/card_meditation.jpg"/>
+                    <div class="suggTxt">
+                      <div class="suggHead">下午会议前有点紧绷，花 3 分钟呼吸松一下吧</div>
+                      <div class="suggEvi">睡眠恢复 82 · HRV 回升 8%</div>
+                    </div>
+                    <div class="suggBtns">
+                      <div class="pill">去呼吸 ›</div>
+                      <div class="link">不太像</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="leftCard">
+              <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6m14-6 0 0"/></svg></div>
+              <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="var(--inkFaint)" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+            </div>
+            <div class="bot">
+              <svg viewBox="0 0 48 48">
+                <defs><linearGradient id="botB" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#A98FE8"/><stop offset="100%" stop-color="#9D8AF0"/></linearGradient></defs>
+                <circle cx="24" cy="24" r="24" fill="url(#botB)"/>
+                <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+                <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -52,7 +52,10 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const avail = Math.min(winW, theme.layout.maxWidth) - theme.space.screen * 2;
   // ★ 2026-09-29：圆环略收（0.74→0.70 / 1.32→1.28）——此前面板被圆环撑太高，
   //   下方趋势图压到底部 tab 栏。收 ~7% 换图表上移 ~28pt，视觉几乎无感。
-  const size = avail * 0.70;
+  // ★ 2026-10-15：首页移除趋势图后圆环下方空出空间，用户要求「圆环稍大一点」→ 0.70 → 0.78。
+  // ★ 2026-10-15（V4）：底部气泡改「暮色深玻璃 + 标题行 + 2 建议」后实高 ~224，圆环回收 0.78 → 0.74
+  //   换 ~16pt 给气泡（一屏不滑动铁律），环本体视觉几乎无感。
+  const size = avail * 0.74;
   const svgSize = size * 1.28;
   const c = svgSize / 2;
   const ringR = (size / 2) * 0.843;

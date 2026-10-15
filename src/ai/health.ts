@@ -10,7 +10,7 @@ import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeReadinessSeries, readinessLevel, readinessLevelLabel } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
-import { factsForAgent } from '../lib/analysisFacts';
+import { factsForDay } from '../lib/analysisFacts';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -395,11 +395,23 @@ export function buildHealthSnapshot(): string {
   // ① 今日实时
   const rt: string[] = [];
   const add = (label: string, v: string | null) => { if (v) rt.push(`${label}=${v}`); };
-  add('心率', fmt(daily['hr'], 'bpm'));
-  add('血氧', fmt(daily['spo2'], '%'));
-  add('HRV', fmt(daily['hrv'], 'ms'));
-  add('体温', fmt(daily['temp'], '℃'));
-  add('皮电', fmt(daily['eda']));
+  const basicMetrics: Array<{ key: MetricKey; label: string; unit: string }> = [
+    { key: 'hr', label: '心率', unit: 'bpm' },
+    { key: 'spo2', label: '血氧', unit: '%' },
+    { key: 'hrv', label: 'HRV', unit: 'ms' },
+    { key: 'temp', label: '体温', unit: '℃' },
+    { key: 'eda', label: '皮电', unit: '' },
+    { key: 'stress', label: '压力', unit: '' },
+  ];
+  const facts = factsForDay(basicMetrics.map((m) => m.key), new Date(now));
+  const sourceLabels = { measured: '设备记录', self_reported: '用户记录', derived: '推算', snapshot: '缓存', unknown: '来源未确认' };
+  const basicLines = facts.flatMap((fact, index) => {
+    if (fact.quality === 'missing' || typeof fact.value !== 'number' || !Number.isFinite(fact.value)) return [];
+    const meta = basicMetrics[index];
+    return [`${meta.label}日汇总=${fmt(fact.value, meta.unit)}（${fact.date}；${sourceLabels[fact.source]}；${fact.sampleCount}个样本；覆盖质量待确认）`];
+  });
+  if (basicLines.length) blocks.push(`• 基础指标：${basicLines.join('，')}`);
+  blocks.push('• 解读规则：日汇总不代表当前值或全天连续监测；推算和来源未确认的记录不能称为实测；缺少的指标不补零、不推测。');
   add('步数', fmt(daily['steps']));
   // 睡眠：优先取 healthStore 的分钟级明细。
   // ★ RingBle.daily 里 sleepTotal 是「分钟」、而 sleepDeep/sleepRem 是「百分比」，
@@ -427,7 +439,6 @@ export function buildHealthSnapshot(): string {
     add('REM占比', fmt(daily['sleepRem'], '%', 0));
     add('睡眠评分', fmt(daily['sleepScore']));
   }
-  add('压力', fmt(daily['stress']));
   const tl = st.statusTimeline || [];
   if (tl.length) {
     const last = tl[tl.length - 1];
@@ -437,14 +448,7 @@ export function buildHealthSnapshot(): string {
   const h = new Date().getHours();
   const timeLabel = h >= 6 && h < 12 ? '上午' : h >= 12 && h < 18 ? '下午' : h >= 18 && h < 22 ? '傍晚' : '深夜';
   blocks.push(`• 当前时段：${timeLabel}(${h}:00)`);
-  if (rt.length) blocks.push(`• 今日实时：${rt.join('，')}`);
-
-  // 统一事实层摘要：给模型明确来源、样本量和质量，避免把缺失值当成 0。
-  const facts = factsForAgent();
-  const observed = facts.filter((f) => f.quality !== 'missing');
-  if (observed.length) {
-    blocks.push(`• 事实质量：${observed.map((f) => `${f.metric}=${f.source}/${f.sampleCount}样本/${f.quality}`).join('，')}`);
-  }
+  if (rt.length) blocks.push(`• 睡眠与活动摘要：${rt.join('，')}`);
 
   // ② 代谢血液指标（「代谢」tab 真实展示的数据，与下方皮质醇节律分属不同维度）
   //    ★ 早期事实串只有总胆固醇/血糖/梅脱，模型分析「代谢」时拿不到血脂四项细节，

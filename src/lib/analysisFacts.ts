@@ -1,6 +1,6 @@
 import { dayKey, healthStore, type MetricKey, type Source, type TimePoint } from '../data/healthStore';
 
-export type FactSource = 'measured' | 'self_reported' | 'derived' | 'snapshot';
+export type FactSource = 'measured' | 'self_reported' | 'derived' | 'snapshot' | 'unknown';
 export type FactQuality = 'good' | 'limited' | 'missing';
 
 export interface FactWindow { start: number; end: number; }
@@ -16,16 +16,22 @@ export interface AnalysisFact {
   algorithmVersion?: string;
 }
 
-function sourceOf(source: Source | undefined, derived: boolean): FactSource {
+function sourceOf(source: Source | undefined, derived: boolean, metric: MetricKey, dk: string): FactSource {
   if (derived) return 'derived';
-  if (source === 'manual') return 'self_reported';
-  if (source === 'backfill' || source === 'realtime' || source === 'mixed') return 'measured';
-  return 'snapshot';
+  if (source === 'manual') {
+    const records = healthStore.getManualMeasurements(metric).filter((p) => dayKey(p.t) === dk);
+    if (records.length && records.every((p) => p.source === 'healthGlance' || p.source === 'backfill')) return 'measured';
+    if (records.length && records.every((p) => p.source === 'manual')) return 'self_reported';
+  }
+  if (source === 'backfill' || source === 'realtime') return 'measured';
+  // Mixed buckets and unspecified provenance cannot establish a single source.
+  return 'unknown';
 }
 
 function qualityOf(samples: number, value: number | null): FactQuality {
-  if (value == null || samples === 0) return 'missing';
-  return samples >= 3 ? 'good' : 'limited';
+  if (value == null || !Number.isFinite(value) || samples <= 0) return 'missing';
+  // Sample count alone does not establish coverage or measurement quality.
+  return 'limited';
 }
 
 function dayWindow(dk: string): FactWindow {
@@ -43,7 +49,7 @@ export function factForDay(metric: MetricKey, date: Date = new Date()): Analysis
     window: dayWindow(dk),
     metric,
     value,
-    source: sourceOf(day?.source, healthStore.isDerivedDay(metric, dk)),
+    source: sourceOf(day?.source, healthStore.isDerivedDay(metric, dk), metric, dk),
     sampleCount: day?.samples ?? points.length,
     quality: qualityOf(day?.samples ?? points.length, value),
     algorithmVersion: healthStore.isDerivedDay(metric, dk) ? 'offline-estimate-v1' : undefined,
@@ -65,7 +71,7 @@ export function intradayFact(metric: MetricKey, date: Date = new Date()): Analys
     window: { start: first, end: last },
     metric,
     value,
-    source: sourceOf(healthStore.getDay(metric, dk)?.source, healthStore.isDerivedDay(metric, dk)),
+    source: sourceOf(healthStore.getDay(metric, dk)?.source, healthStore.isDerivedDay(metric, dk), metric, dk),
     sampleCount: points.length,
     quality: qualityOf(points.length, value),
     algorithmVersion: healthStore.isDerivedDay(metric, dk) ? 'offline-estimate-v1' : undefined,

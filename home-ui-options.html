@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 首页两套 UI 方案</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#9C968C;
+    --textInk:#1A1A1A; --textSub:#5F5F74;
+    --limeMid:#BCCB62; --limeSoft:#EAF0BE; --limeDeep:#6E7A24;
+    --purpleCore:#8B6FC4; --purpleDeep:#5B3E99;
+    --pink:#E7A6B8; --cyan:#8FD0D6; --lav:#C9B8E8;
+    --cardBorder:rgba(31,29,26,0.10);
+    --glass:rgba(255,255,255,0.82);
+    --glassBorder:rgba(31,29,26,0.14);
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  body{
+    margin:0; background:#ECEAE6; color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+    padding:28px 16px 48px;
+  }
+  h1{font-size:20px; font-weight:700; text-align:center; margin:0 0 4px; color:var(--ink);}
+  .sub{font-size:13px; color:var(--inkSoft); text-align:center; margin:0 0 26px; line-height:1.6;}
+  .row{display:flex; gap:26px; justify-content:center; flex-wrap:wrap; align-items:flex-start;}
+  .col{display:flex; flex-direction:column; align-items:center; gap:10px;}
+  .tag{font-size:13px; font-weight:600; color:var(--ink);}
+  .tag small{display:block; font-weight:400; color:var(--inkSoft); font-size:11.5px; margin-top:3px; max-width:300px; text-align:center; line-height:1.5;}
+
+  /* iPhone 13 frame: 390 x 844 */
+  .phone{
+    width:390px; height:844px; background:#fff; border-radius:46px;
+    border:12px solid #15130F; position:relative; overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.28);
+  }
+  .notch{position:absolute; top:0; left:50%; transform:translateX(-50%);
+    width:150px; height:30px; background:#15130F; border-radius:0 0 18px 18px; z-index:30;}
+  .screen{position:absolute; inset:0; display:flex; flex-direction:column; padding:54px 22px 0;}
+  .screen::-webkit-scrollbar{display:none;}
+
+  .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .head .title{font-size:22px; font-weight:700; color:var(--ink);}
+  .avatarRow{display:flex; align-items:center; gap:7px;}
+  .avatar{width:30px; height:30px; border-radius:50%; background:var(--lav); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;}
+  .avatarRow .name{font-size:14px; color:var(--inkSoft); font-weight:500;}
+
+  /* chips */
+  .chips{display:flex; gap:9px; margin-bottom:14px;}
+  .chip{flex:1; background:#fff; border:1px solid var(--cardBorder); border-radius:14px;
+    padding:9px 8px; display:flex; flex-direction:column; gap:5px;}
+  .chip .ic{width:22px; height:22px; border-radius:6px;}
+  .chip .lab{font-size:10.5px; color:var(--inkFaint);}
+  .chip .val{font-size:14px; font-weight:700; color:var(--ink); line-height:1;}
+  .chip .val span{font-size:10px; font-weight:600; color:var(--inkSoft); margin-left:1px;}
+
+  /* ring area */
+  .ringArea{display:flex; flex-direction:column; align-items:center; margin:6px 0 4px;}
+  .ringWrap{position:relative; width:200px; height:200px;}
+  .ringCenter{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .ringWord{font-size:30px; font-weight:700; color:var(--ink);}
+  .ringSub{font-size:12px; color:var(--inkFaint); margin-top:2px;}
+
+  /* side narrative (only A keeps a tiny one beside ring) */
+  .ringRow{display:flex; align-items:center; gap:14px; justify-content:center;}
+  .sideNarr{font-size:12.5px; color:var(--textSub); line-height:1.55; max-width:120px;}
+
+  /* tall bottom frame (B) */
+  .frame{margin-top:auto; background:var(--glass); border:1px solid var(--glassBorder);
+    border-radius:18px; box-shadow:0 6px 18px rgba(31,29,26,.12);
+    padding:16px 15px; position:relative; margin-bottom:18px;}
+  .frame .narr{font-size:13px; color:var(--inkSoft); line-height:1.6; margin-bottom:8px;
+    border-left:3px solid var(--lav); padding-left:9px;}
+  .frame .analy{font-size:13px; color:var(--textSub); line-height:1.65; margin-bottom:12px;
+    border-left:3px solid var(--limeMid); padding-left:9px;}
+
+  /* bubble (A) */
+  .bubble{margin-top:auto; background:var(--glass); border:1px solid var(--glassBorder);
+    border-radius:16px; box-shadow:0 6px 18px rgba(31,29,26,.12);
+    padding:14px; position:relative; margin-bottom:18px;}
+  .bubble .analy{font-size:13px; color:var(--textSub); line-height:1.62; margin-bottom:10px;
+    border-left:3px solid var(--limeMid); padding-left:9px;}
+  .bubble .body{display:flex; align-items:center; gap:11px;}
+  .thumb{width:52px; height:52px; border-radius:12px; flex-shrink:0;
+    background:linear-gradient(135deg,#D8E6C0,#BCCB62);}
+  .sugg{flex:1; min-width:0;}
+  .sugg .h{font-size:14px; color:var(--textInk); font-weight:600; line-height:1.4; margin-bottom:5px;}
+  .sugg .e{font-size:11.5px; color:var(--inkFaint); line-height:1.4;}
+  .btns{display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0;}
+  .pill{background:var(--limeMid); color:var(--ink); font-size:13px; font-weight:700;
+    border-radius:999px; padding:8px 13px; white-space:nowrap;}
+  .link{font-size:13px; color:var(--inkSoft); text-decoration:underline;}
+
+  .removed{margin-top:auto; color:var(--inkFaint); font-size:12px; text-align:center;
+    border:1px dashed var(--cardBorder); border-radius:14px; padding:14px; margin-bottom:18px;
+    background:rgba(31,29,26,.03);}
+  .legend{font-size:11.5px; color:var(--inkSoft); text-align:center; margin-top:6px; line-height:1.5;}
+</style>
+</head>
+<body>
+  <h1>Mira 首页 · 两套 UI 方案对比</h1>
+  <p class="sub">按现有 Mira 设计语言（墨色 / 黄绿 / lime 控件色 / 玻璃气泡）画的预览稿。<br/>两套都去掉了「全天状态趋势图」，并把「分析 + 建议」合并到同一个底部框。</p>
+
+  <div class="row">
+    <!-- ============ 方案 A ============ -->
+    <div class="col">
+      <div class="tag">方案 A<small>圆环 + 上方小卡不变；去掉趋势图；底部气泡放大，分析 + 建议同框。</small></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="head">
+            <div class="title">今日状态</div>
+            <div class="avatarRow"><div class="avatar">K</div><div class="name">Kristina</div></div>
+          </div>
+
+          <!-- 小卡片（圆环上方，不变） -->
+          <div class="chips">
+            <div class="chip"><div class="ic" style="background:#EAF0BE"></div><div class="lab">睡眠恢复</div><div class="val">96</div></div>
+            <div class="chip"><div class="ic" style="background:#D9CCF0"></div><div class="lab">脑力准备度</div><div class="val">78<span>%</span></div></div>
+            <div class="chip"><div class="ic" style="background:#F2CBD6"></div><div class="lab">心理压力</div><div class="val">中</div></div>
+            <div class="chip"><div class="ic" style="background:#CFE7EA"></div><div class="lab">运动</div><div class="val">320<span>kcal</span></div></div>
+          </div>
+
+          <!-- 圆环（含左侧极简状态句，分析已下移到底部） -->
+          <div class="ringRow" style="margin:8px 0 4px;">
+            <div class="ringWrap">
+              <svg width="200" height="200" viewBox="0 0 200 200">
+                <defs>
+                  <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#BCCB62"/><stop offset="100%" stop-color="#8B6FC4"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="100" cy="100" r="86" fill="none" stroke="#EFEDE8" stroke-width="14"/>
+                <circle cx="100" cy="100" r="86" fill="none" stroke="url(#gA)" stroke-width="14"
+                  stroke-linecap="round" stroke-dasharray="540" stroke-dashoffset="135"
+                  transform="rotate(-90 100 100)"/>
+              </svg>
+              <div class="ringCenter">
+                <div class="ringWord">平稳</div>
+                <div class="ringSub">今天状态</div>
+              </div>
+            </div>
+            <div class="sideNarr">体力恢复得不错，下午状态稳。</div>
+          </div>
+
+          <!-- 趋势图：已去掉 -->
+
+          <!-- 放大后的底部气泡：分析 + 建议同框 -->
+          <div class="bubble">
+            <div class="analy">傍晚后皮质醇降得慢，睡得有点浅；夜里深睡占比偏低。</div>
+            <div class="body">
+              <div class="thumb"></div>
+              <div class="sugg">
+                <div class="h">睡前做 4-7-8 呼吸，帮身体切换到放松模式。</div>
+                <div class="e">基于今晚皮质醇节律</div>
+              </div>
+              <div class="btns">
+                <div class="pill">去呼吸 ›</div>
+                <div class="link">不感兴趣</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend">A：圆环周边基本不动，重点是底部把「分析」和「建议」合成一张大卡。</div>
+    </div>
+
+    <!-- ============ 方案 B ============ -->
+    <div class="col">
+      <div class="tag">方案 B<small>圆环挪到最上；小卡片移到圆环下面；原「圆环上两句话」也并进底部更高的框（分析＋建议＋状态句）。</small></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="head">
+            <div class="title">今日状态</div>
+            <div class="avatarRow"><div class="avatar">K</div><div class="name">Kristina</div></div>
+          </div>
+
+          <!-- 圆环（最上） -->
+          <div class="ringArea" style="margin-top:6px;">
+            <div class="ringWrap">
+              <svg width="200" height="200" viewBox="0 0 200 200">
+                <circle cx="100" cy="100" r="86" fill="none" stroke="#EFEDE8" stroke-width="14"/>
+                <circle cx="100" cy="100" r="86" fill="none" stroke="url(#gA)" stroke-width="14"
+                  stroke-linecap="round" stroke-dasharray="540" stroke-dashoffset="135"
+                  transform="rotate(-90 100 100)"/>
+              </svg>
+              <div class="ringCenter">
+                <div class="ringWord">平稳</div>
+                <div class="ringSub">今天状态</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 小卡片（移到圆环下面） -->
+          <div class="chips" style="margin-top:6px;">
+            <div class="chip"><div class="ic" style="background:#EAF0BE"></div><div class="lab">睡眠恢复</div><div class="val">96</div></div>
+            <div class="chip"><div class="ic" style="background:#D9CCF0"></div><div class="lab">脑力准备度</div><div class="val">78<span>%</span></div></div>
+            <div class="chip"><div class="ic" style="background:#F2CBD6"></div><div class="lab">心理压力</div><div class="val">中</div></div>
+            <div class="chip"><div class="ic" style="background:#CFE7EA"></div><div class="lab">运动</div><div class="val">320<span>kcal</span></div></div>
+          </div>
+
+          <!-- 趋势图：已去掉 -->
+
+          <!-- 更高的底部框：状态句 + 分析 + 建议 全部合在一起 -->
+          <div class="frame">
+            <div class="narr">下午精力还行，傍晚后开始往下走。</div>
+            <div class="analy">夜里皮质醇降得慢，深睡占比偏低，整体偏浅睡。明天上午脑力会稍微吃紧，重要的事尽量往前排。</div>
+            <div class="body" style="display:flex; align-items:center; gap:11px;">
+              <div class="thumb"></div>
+              <div class="sugg">
+                <div class="h">睡前做 4-7-8 呼吸，帮身体切换到放松模式。</div>
+                <div class="e">基于今晚皮质醇节律</div>
+              </div>
+              <div class="btns">
+                <div class="pill">去呼吸 ›</div>
+                <div class="link">不感兴趣</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend">B：纵向节奏更顺（圆环→小卡→整块解读），底部框更高，状态句/分析/建议一目了然。</div>
+    </div>
+  </div>
+</body>
+</html>

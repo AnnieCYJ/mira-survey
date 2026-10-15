@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>首页气泡 · 真拟态玻璃 4 版对比</title>
+<style>
+  :root{
+    --ink:#1A1A1A; --sub:#5F5F74; --faint:#9C968C;
+    --limeMid:#BCCB62; --limeDeep:#6E7A24;
+    --lav-bg:#E7E1FB; --lav-fg:#6E58C8; --cyan-bg:#E3EBFE; --cyan-fg:#4C74C9;
+    --limeSoft:#EAF0BE; --butter-bg:#FBEFD6; --butter-fg:#B98A2E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"SF Pro SC","PingFang SC",sans-serif;background:#E4E2DD;display:flex;gap:30px;justify-content:center;padding:36px 18px;flex-wrap:wrap}
+  .col{width:330px}
+  .col h2{font-size:14.5px;color:#1A1A1A;text-align:center;font-weight:600}
+  .col .sub{font-size:11.5px;color:#5F5F74;text-align:center;margin:4px 0 13px;line-height:1.5}
+  .phone{width:326px;height:706px;border-radius:46px;border:8px solid #131311;position:relative;overflow:hidden}
+  /* 页底：风景图 + 顶部白色渐凉（保证头部可读），白卡浮在图上 */
+  .bgSea{background:linear-gradient(180deg, rgba(255,255,255,.88) 0%, rgba(255,255,255,.62) 26%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 62%), url('/src/assets/bg_sea_wave.jpg') center 62%/cover no-repeat}
+  .bgBeach{background:linear-gradient(180deg, rgba(255,255,255,.88) 0%, rgba(255,255,255,.62) 26%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 62%), url('/src/assets/bg_beach_aerial.jpg') center 62%/cover no-repeat}
+  .bgLake{background:linear-gradient(180deg, rgba(255,255,255,.88) 0%, rgba(255,255,255,.62) 26%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 62%), url('/src/assets/bg_lake_mist.jpg') center 62%/cover no-repeat}
+  .bgDusk{background:linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,.58) 24%, rgba(40,38,60,.30) 48%, rgba(28,26,44,.62) 72%, rgba(24,22,40,.78) 100%), url('/src/assets/bg_sea_wave.jpg') center 70%/cover no-repeat}
+  .pad{padding:0 20px;position:relative;z-index:2}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-top:16px}
+  .headTitle{font-size:30px;font-weight:500;color:var(--ink);letter-spacing:.5px}
+  .avatarName{display:flex;align-items:center;gap:8px}
+  .avatar{width:36px;height:36px;border-radius:999px;background:rgba(157,138,240,0.16);border:1px solid rgba(110,88,200,0.35);
+    display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--lav-fg)}
+  .nameText{font-size:15px;font-weight:500;color:var(--sub)}
+  .panelWrap{margin:0 -20px;position:relative;z-index:2}
+  .panel{background:#fff;padding:20px 20px 18px;box-shadow:0 14px 34px -18px rgba(31,29,26,.14)}
+  .ringZone{display:flex;justify-content:center;margin-bottom:16px}
+  .ring{position:relative;width:250px;height:250px}
+  .ring svg{position:absolute;inset:0}
+  .ringCenter{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ringLabel{font-size:28px;font-weight:600;color:var(--ink);text-shadow:0 1px 10px rgba(255,255,255,.55)}
+  .ringVal{font-size:11px;color:#6E6890;margin-top:8px;font-weight:500}
+  .ringUpd{font-size:11px;color:#8E8AA6;margin-top:2px}
+  .moon{position:absolute;width:14px;height:14px;border-radius:50%}
+  .moon.full{background:#F5EFDD;box-shadow:inset -4px -1px 0 rgba(110,88,200,.55),0 1px 4px rgba(31,29,26,.18)}
+  .moon.qr{background:#F5D98B;box-shadow:inset 5px 0 0 rgba(110,88,200,.9)}
+  .moon.ql{background:#6E58C8;box-shadow:inset -5px 0 0 #F5D98B}
+  .moon.all{background:#6E58C8}
+  .chips{display:flex;gap:8px}
+  .chip{flex:1;height:80px;background:#fff;border:1px solid rgba(31,29,26,.09);border-radius:14px;
+    padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+  .iconSq{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:3px;font-size:13px}
+  .chipLabel{font-size:11px;font-weight:500;color:var(--faint)}
+  .chipValRow{display:flex;align-items:baseline;margin-top:1px}
+  .chipVal{font-size:14px;font-weight:700;color:var(--ink)}
+  .chipVal.good{color:var(--limeDeep)}
+  .chipUnit{font-size:11px;font-weight:500;color:var(--faint);margin-left:1px}
+  .chipTag{font-size:11px;font-weight:500;color:var(--faint);margin-top:1px}
+  .chip.peek{margin-right:-2px}
+  .peekEdge{width:12px;flex:none}
+  .arc{display:block;width:100%;height:26px}
+
+  /* ═══════════ 玻璃气泡通用：真拟态（backdrop-filter） ═══════════ */
+  .bubbleZone{padding:0 10px;margin-top:16px;position:relative;z-index:2}
+  .glass{position:relative;border-radius:24px;overflow:visible;
+    background:rgba(255,255,255,.30);
+    -webkit-backdrop-filter:blur(22px) saturate(1.6);
+    backdrop-filter:blur(22px) saturate(1.6);
+    border:1px solid rgba(255,255,255,.55);
+    box-shadow:0 10px 34px rgba(31,29,26,.20), inset 0 1px 0 rgba(255,255,255,.55)}
+  .glass .tail{position:absolute;right:28px;bottom:-11px;width:20px;height:13px;
+    background:rgba(255,255,255,.42);
+    -webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);
+    clip-path:polygon(0 0,100% 0,62% 100%)}
+  .gIn{padding:16px 18px 15px}
+  /* 标题行（参考图：头像 + 标题 + 角标） */
+  .gHead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .gHead .ava{width:34px;height:34px;border-radius:999px;background:linear-gradient(135deg,#9D8AF0,#7B68D8);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none;
+    box-shadow:0 4px 10px rgba(123,104,216,.35)}
+  .gHead .tt{flex:1;min-width:0}
+  .gHead .tt .t1{font-size:16.5px;font-weight:600;color:var(--ink);line-height:1.2;text-shadow:0 1px 8px rgba(255,255,255,.9)}
+  .gHead .tt .t2{font-size:11px;color:#6E6890;margin-top:2px;text-shadow:0 1px 8px rgba(255,255,255,.9)}
+  .gHead .mark{width:30px;height:30px;border-radius:999px;background:rgba(255,255,255,.5);
+    border:1px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink);flex:none}
+  /* 列表行（参考图：序号 + 文案 + 计数） */
+  .gRow{display:flex;align-items:center;gap:11px;padding:9px 0}
+  .gRow + .gRow{border-top:1px solid rgba(255,255,255,.45)}
+  .gRow .no{width:22px;height:22px;border-radius:999px;background:rgba(255,255,255,.55);
+    border:1px solid rgba(255,255,255,.75);font-size:10px;font-weight:700;color:#4A4660;
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .gRow .tx{flex:1;min-width:0}
+  .gRow .tx .h{font-size:13.5px;font-weight:500;color:var(--ink);text-shadow:0 1px 8px rgba(255,255,255,.9)}
+  .gRow .tx .d{font-size:10.5px;color:#5A5670;margin-top:1px;text-shadow:0 1px 8px rgba(255,255,255,.9)}
+  .gRow .go{font-size:11px;font-weight:600;color:#3F4A12;background:rgba(188,203,98,.85);
+    border-radius:999px;padding:4px 10px;flex:none;box-shadow:0 2px 6px rgba(110,122,36,.2)}
+  /* 底部小圆图组（参考图左下角） */
+  .gThumbs{display:flex;gap:8px;margin-top:12px}
+  .gThumbs img{width:34px;height:34px;border-radius:999px;object-fit:cover;border:2px solid rgba(255,255,255,.75);
+    box-shadow:0 3px 8px rgba(31,29,26,.18)}
+  .gThumbs .more{width:34px;height:34px;border-radius:999px;background:rgba(255,255,255,.55);
+    border:2px solid rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;
+    font-size:12px;color:#4A4660;font-weight:600}
+  /* V2 轻透：无嵌套底，纯文字+分隔线 */
+  .glass.light{background:rgba(255,255,255,.22)}
+  .glass.light .tail{background:rgba(255,255,255,.30)}
+  .v2analysis{font-size:14px;line-height:21px;color:#26232E;text-shadow:0 1px 10px rgba(255,255,255,.95);margin-bottom:10px}
+  .v2analysis b{font-weight:700}
+  /* V3 暖光 */
+  .glass.warm{background:rgba(255,252,246,.34);border-color:rgba(255,255,255,.6)}
+  .glass.warm .tail{background:rgba(255,250,240,.45)}
+  /* V4 暮色深玻璃 */
+  .glass.dark{background:rgba(24,22,40,.42);border-color:rgba(255,255,255,.22);
+    box-shadow:0 10px 34px rgba(10,8,24,.35), inset 0 1px 0 rgba(255,255,255,.14)}
+  .glass.dark .tail{background:rgba(30,28,48,.55)}
+  .glass.dark .gHead .tt .t1,.glass.dark .gRow .tx .h{color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.35)}
+  .glass.dark .gHead .tt .t2,.glass.dark .gRow .tx .d{color:rgba(255,255,255,.72);text-shadow:0 1px 10px rgba(0,0,0,.35)}
+  .glass.dark .gRow + .gRow{border-top-color:rgba(255,255,255,.16)}
+  .glass.dark .gRow .no{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.28);color:#fff}
+  .glass.dark .mark{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.26);color:#fff}
+
+  .tabbar{position:absolute;left:14px;right:14px;bottom:14px;height:58px;border-radius:999px;z-index:3;
+    background:rgba(255,255,255,.86);backdrop-filter:blur(14px);border:1px solid rgba(31,29,26,.09);
+    box-shadow:0 8px 22px rgba(31,29,26,.10);display:flex;align-items:center;justify-content:space-around}
+  .tabbar span{font-size:18px;color:#B4B0C4}
+  .tabbar .on{color:var(--ink)}
+  .miraDot{position:absolute;right:22px;bottom:82px;width:38px;height:38px;border-radius:999px;z-index:3;
+    background:linear-gradient(135deg,#9D8AF0,#7B68D8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;
+    box-shadow:0 10px 22px -8px rgba(157,138,240,.6)}
+  .foot{width:100%;text-align:center;font-size:12px;color:#5F5F74;line-height:1.8;margin-top:6px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ V1 参考图同款：海浪 + 通山玻璃卡（标题行+列表行+小圆图） ═══════════ -->
+<div class="col">
+  <h2>V1 · 参考图同款（海浪）</h2>
+  <p class="sub">白卡浮在风景上，气泡＝高通透玻璃卡<br>标题行 + 序号列表 + 左下小圆图组</p>
+  <div class="phone bgSea">
+    <div class="pad">
+      <div class="head">
+        <div class="headTitle">今日状态</div>
+        <div class="avatarName"><div class="avatar">K</div><div class="nameText">Kristina</div></div>
+      </div>
+    </div>
+    <div class="panelWrap">
+      <div class="panel">
+        <div class="ringZone">
+          <div class="ring">
+            <svg width="250" height="250" viewBox="0 0 250 250">
+              <defs><radialGradient id="a1" cx="50%" cy="50%" r="50%">
+                <stop offset="46%" stop-color="#8B7BD8" stop-opacity="0"/><stop offset="60%" stop-color="#8B7BD8" stop-opacity="0.14"/>
+                <stop offset="74%" stop-color="#8B7BD8" stop-opacity="0.40"/><stop offset="100%" stop-color="#8B7BD8" stop-opacity="0"/>
+              </radialGradient></defs>
+              <circle cx="125" cy="125" r="125" fill="url(#a1)"/>
+              <circle cx="125" cy="125" r="105" stroke="#8B7BD8" stroke-width="2.8" fill="none" opacity="0.92"/>
+            </svg>
+            <div class="moon full" style="left:118px;top:8px"></div><div class="moon qr" style="left:228px;top:118px"></div>
+            <div class="moon all" style="left:118px;top:228px"></div><div class="moon ql" style="left:8px;top:118px"></div>
+            <div class="ringCenter"><div class="ringLabel">状态良好</div><div class="ringVal">状态值：82</div><div class="ringUpd">更新于 11:30</div></div>
+          </div>
+        </div>
+        <div class="chips">
+          <div class="chip"><div class="iconSq" style="background:var(--limeSoft)">🌙</div><div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--lav-bg)">🧠</div><div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--cyan-bg)">💓</div><div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div></div>
+          <div class="chip peek"><div class="iconSq" style="background:var(--butter-bg)">🔥</div><div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div></div>
+          <div class="peekEdge"></div>
+        </div>
+      </div>
+      <svg class="arc" viewBox="0 0 326 26" preserveAspectRatio="none"><path d="M0 0 H326 V8 C258 24 68 24 0 8 Z" fill="#fff"/></svg>
+    </div>
+    <div class="bubbleZone">
+      <div class="glass">
+        <div class="gIn">
+          <div class="gHead">
+            <div class="ava">✦</div>
+            <div class="tt"><div class="t1">今天很适合松松劲儿</div><div class="t2">恢复 82 · HRV 回升 8%</div></div>
+            <div class="mark">♡</div>
+          </div>
+          <div class="gRow"><div class="no">01</div><div class="tx"><div class="h">3 分钟呼吸放松</div><div class="d">开会前把心率平一下</div></div><div class="go">去呼吸</div></div>
+          <div class="gRow"><div class="no">02</div><div class="tx"><div class="h">傍晚正念散步</div><div class="d">承接今天的好状态</div></div><div class="go">去冥想</div></div>
+          <div class="gThumbs">
+            <img src="/src/assets/card_relax.jpg" alt=""><img src="/src/assets/card_meditation.jpg" alt=""><img src="/src/assets/card_activity.jpg" alt=""><div class="more">+5</div>
+          </div>
+        </div>
+        <div class="tail"></div>
+      </div>
+    </div>
+    <div class="miraDot">✦</div>
+    <div class="tabbar"><span class="on">◉</span><span>♡</span><span>▦</span><span>⚙</span></div>
+  </div>
+</div>
+
+<!-- ═══════════ V2 轻透玻璃：海滩 + 极简（分析直浮 + 分隔线建议行） ═══════════ -->
+<div class="col">
+  <h2>V2 · 轻透极简（海滩）</h2>
+  <p class="sub">玻璃更透（22% 白），分析文字直接浮在玻璃上<br>建议行只用细分隔线，最安静的一版</p>
+  <div class="phone bgBeach">
+    <div class="pad">
+      <div class="head">
+        <div class="headTitle">今日状态</div>
+        <div class="avatarName"><div class="avatar">K</div><div class="nameText">Kristina</div></div>
+      </div>
+    </div>
+    <div class="panelWrap">
+      <div class="panel">
+        <div class="ringZone">
+          <div class="ring">
+            <svg width="250" height="250" viewBox="0 0 250 250">
+              <circle cx="125" cy="125" r="125" fill="url(#a1)"/>
+              <circle cx="125" cy="125" r="105" stroke="#8B7BD8" stroke-width="2.8" fill="none" opacity="0.92"/>
+            </svg>
+            <div class="moon full" style="left:118px;top:8px"></div><div class="moon qr" style="left:228px;top:118px"></div>
+            <div class="moon all" style="left:118px;top:228px"></div><div class="moon ql" style="left:8px;top:118px"></div>
+            <div class="ringCenter"><div class="ringLabel">状态良好</div><div class="ringVal">状态值：82</div><div class="ringUpd">更新于 11:30</div></div>
+          </div>
+        </div>
+        <div class="chips">
+          <div class="chip"><div class="iconSq" style="background:var(--limeSoft)">🌙</div><div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--lav-bg)">🧠</div><div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--cyan-bg)">💓</div><div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div></div>
+          <div class="chip peek"><div class="iconSq" style="background:var(--butter-bg)">🔥</div><div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div></div>
+          <div class="peekEdge"></div>
+        </div>
+      </div>
+      <svg class="arc" viewBox="0 0 326 26" preserveAspectRatio="none"><path d="M0 0 H326 V8 C258 24 68 24 0 8 Z" fill="#fff"/></svg>
+    </div>
+    <div class="bubbleZone">
+      <div class="glass light">
+        <div class="gIn">
+          <div class="v2analysis">恢复得不错呀，<b>82 分</b>比平时还高一点，HRV 也在回升。压力也低，身体今天挺松的～</div>
+          <div class="gRow" style="border-top:1px solid rgba(255,255,255,.45)">
+            <img src="/src/assets/card_relax.jpg" alt="" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.7)">
+            <div class="tx"><div class="h">3 分钟呼吸放松</div><div class="d">开会前把心率平一下</div></div>
+            <div class="go">去呼吸</div>
+          </div>
+          <div class="gRow">
+            <img src="/src/assets/card_meditation.jpg" alt="" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.7)">
+            <div class="tx"><div class="h">傍晚正念散步</div><div class="d">承接今天的好状态</div></div>
+            <div class="go">去冥想</div>
+          </div>
+        </div>
+        <div class="tail"></div>
+      </div>
+    </div>
+    <div class="miraDot">✦</div>
+    <div class="tabbar"><span class="on">◉</span><span>♡</span><span>▦</span><span>⚙</span></div>
+  </div>
+</div>
+
+<!-- ═══════════ V3 暖光玻璃：晨雾湖面 + 胶囊建议 ═══════════ -->
+<div class="col">
+  <h2>V3 · 暖光晨雾（湖面）</h2>
+  <p class="sub">暖白玻璃 + 湖面晨雾背景，建议做成小胶囊横排<br>最柔和的一版</p>
+  <div class="phone bgLake">
+    <div class="pad">
+      <div class="head">
+        <div class="headTitle">今日状态</div>
+        <div class="avatarName"><div class="avatar">K</div><div class="nameText">Kristina</div></div>
+      </div>
+    </div>
+    <div class="panelWrap">
+      <div class="panel">
+        <div class="ringZone">
+          <div class="ring">
+            <svg width="250" height="250" viewBox="0 0 250 250">
+              <circle cx="125" cy="125" r="125" fill="url(#a1)"/>
+              <circle cx="125" cy="125" r="105" stroke="#8B7BD8" stroke-width="2.8" fill="none" opacity="0.92"/>
+            </svg>
+            <div class="moon full" style="left:118px;top:8px"></div><div class="moon qr" style="left:228px;top:118px"></div>
+            <div class="moon all" style="left:118px;top:228px"></div><div class="moon ql" style="left:8px;top:118px"></div>
+            <div class="ringCenter"><div class="ringLabel">状态良好</div><div class="ringVal">状态值：82</div><div class="ringUpd">更新于 11:30</div></div>
+          </div>
+        </div>
+        <div class="chips">
+          <div class="chip"><div class="iconSq" style="background:var(--limeSoft)">🌙</div><div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--lav-bg)">🧠</div><div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--cyan-bg)">💓</div><div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div></div>
+          <div class="chip peek"><div class="iconSq" style="background:var(--butter-bg)">🔥</div><div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div></div>
+          <div class="peekEdge"></div>
+        </div>
+      </div>
+      <svg class="arc" viewBox="0 0 326 26" preserveAspectRatio="none"><path d="M0 0 H326 V8 C258 24 68 24 0 8 Z" fill="#fff"/></svg>
+    </div>
+    <div class="bubbleZone">
+      <div class="glass warm">
+        <div class="gIn">
+          <div class="gHead">
+            <div class="ava">✦</div>
+            <div class="tt"><div class="t1">身体今天挺松的</div><div class="t2">恢复 82 · 压力 38 · 别浪费好状态</div></div>
+          </div>
+          <div class="v2analysis" style="margin-bottom:12px">下午要是开会前有点紧绷，别硬撑，给自己留个缓冲～</div>
+          <div style="display:flex;gap:8px">
+            <div class="go" style="flex:1;text-align:center;padding:8px 0;font-size:12px">🌬 去呼吸 3 分钟</div>
+            <div class="go" style="flex:1;text-align:center;padding:8px 0;font-size:12px;background:rgba(255,255,255,.6);color:#4A4660">🧘 去冥想</div>
+          </div>
+        </div>
+        <div class="tail"></div>
+      </div>
+    </div>
+    <div class="miraDot">✦</div>
+    <div class="tabbar"><span class="on">◉</span><span>♡</span><span>▦</span><span>⚙</span></div>
+  </div>
+</div>
+
+<!-- ═══════════ V4 暮色深玻璃：黄昏海浪 + 白字 ═══════════ -->
+<div class="col">
+  <h2>V4 · 暮色深玻璃（黄昏）</h2>
+  <p class="sub">页面底部压暗，气泡用深色玻璃 + 白字<br>对比最强、最像参考图氛围的一版</p>
+  <div class="phone bgDusk">
+    <div class="pad">
+      <div class="head">
+        <div class="headTitle">今日状态</div>
+        <div class="avatarName"><div class="avatar">K</div><div class="nameText">Kristina</div></div>
+      </div>
+    </div>
+    <div class="panelWrap">
+      <div class="panel">
+        <div class="ringZone">
+          <div class="ring">
+            <svg width="250" height="250" viewBox="0 0 250 250">
+              <circle cx="125" cy="125" r="125" fill="url(#a1)"/>
+              <circle cx="125" cy="125" r="105" stroke="#8B7BD8" stroke-width="2.8" fill="none" opacity="0.92"/>
+            </svg>
+            <div class="moon full" style="left:118px;top:8px"></div><div class="moon qr" style="left:228px;top:118px"></div>
+            <div class="moon all" style="left:118px;top:228px"></div><div class="moon ql" style="left:8px;top:118px"></div>
+            <div class="ringCenter"><div class="ringLabel">状态良好</div><div class="ringVal">状态值：82</div><div class="ringUpd">更新于 11:30</div></div>
+          </div>
+        </div>
+        <div class="chips">
+          <div class="chip"><div class="iconSq" style="background:var(--limeSoft)">🌙</div><div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--lav-bg)">🧠</div><div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div></div>
+          <div class="chip"><div class="iconSq" style="background:var(--cyan-bg)">💓</div><div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div></div>
+          <div class="chip peek"><div class="iconSq" style="background:var(--butter-bg)">🔥</div><div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div></div>
+          <div class="peekEdge"></div>
+        </div>
+      </div>
+      <svg class="arc" viewBox="0 0 326 26" preserveAspectRatio="none"><path d="M0 0 H326 V8 C258 24 68 24 0 8 Z" fill="#fff"/></svg>
+    </div>
+    <div class="bubbleZone">
+      <div class="glass dark">
+        <div class="gIn">
+          <div class="gHead">
+            <div class="ava">✦</div>
+            <div class="tt"><div class="t1">今天很适合松松劲儿</div><div class="t2">恢复 82 · HRV 回升 8%</div></div>
+            <div class="mark">♡</div>
+          </div>
+          <div class="gRow"><div class="no">01</div><div class="tx"><div class="h">3 分钟呼吸放松</div><div class="d">开会前把心率平一下</div></div><div class="go">去呼吸</div></div>
+          <div class="gRow"><div class="no">02</div><div class="tx"><div class="h">傍晚正念散步</div><div class="d">承接今天的好状态</div></div><div class="go">去冥想</div></div>
+          <div class="gThumbs">
+            <img src="/src/assets/card_relax.jpg" alt=""><img src="/src/assets/card_meditation.jpg" alt=""><img src="/src/assets/card_activity.jpg" alt=""><div class="more">+5</div>
+          </div>
+        </div>
+        <div class="tail"></div>
+      </div>
+    </div>
+    <div class="miraDot">✦</div>
+    <div class="tabbar"><span class="on">◉</span><span>♡</span><span>▦</span><span>⚙</span></div>
+  </div>
+</div>
+
+<div class="foot">
+  四版都是<b>真·拟态玻璃</b>：背景风景图清晰透出，卡片用 backdrop-filter 把背后的图糊掉 + 高透明白色 + 亮边，文字浮在玻璃上。<br>
+  结构完全没动（头部 / 圆环 / 白卡 / 小卡 / Tab 都是你现在的 UI），只是「气泡 + 页面底部背景」换了风景 + 玻璃。<br>
+  你选一版（或告诉我混搭哪些元素），我再落到真机 —— 真机 RN 0.74 没有 backdrop-filter，会用「模糊版背景图 + 白叠层」逼近同一效果。
+</div>
+
+</body>
+</html>
