@@ -5,9 +5,9 @@
  * Collection confirms only after local persistence succeeds.
  */
 import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Image, ImageBackground } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { useVoiceTriggerLive, useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
@@ -29,27 +29,20 @@ const THUMB_ACT = require('../assets/card_activity.jpg');
 const THUMB_FOOD = require('../assets/card_food.jpg');
 const THUMB_LEARN = require('../assets/card_learn.png');
 const THUMB_DEFAULT = require('../assets/card_emotion.jpg');
-// ★ 2026-10-15：卡内自然海景拟态玻璃气泡（用户参考图定稿）—— 海滩风光图（天空 + 底部海浪）打底，
-//   轻模糊保风光可辨 + 暮色压暗渐变 + 深色拟态玻璃层（V4 暮色款），文字浮在图上。
-//   RN 0.74 无 backdrop-filter，磨砂感由图本身高斯模糊（8px，轻于旧版 22，风光要看得见）+ 半透明叠层合成。
-const SEA_BG = require('../assets/bg_sea_nature.jpg');
-// V4 暮色深玻璃三件套：暮色压暗渐变（上浅下深）+ 深玻璃层 + 亮边/尾巴
-const SEA_DIM_TOP = 'rgba(24,22,40,0.10)';
-const SEA_DIM_BOTTOM = 'rgba(24,22,40,0.42)';
-const DARK_GLASS = 'rgba(26,24,42,0.40)';
-const GLASS_BORDER_DARK = 'rgba(255,255,255,0.28)';
-const TAIL_FILL_DARK = 'rgba(30,28,48,0.55)';
-// 深玻璃上的文字色系：白主字 + 半白次字 + 深色柔光投影（保证压暗图上可读）
-const TXT_ON_GLASS = '#FFFFFF';
-const TXT_ON_GLASS_SUB = 'rgba(255,255,255,0.72)';
-const TXT_ON_GLASS_FAINT = 'rgba(255,255,255,0.85)';
+// ★ 2026-10-15 晚：恢复「原先白玻璃磨砂气泡」样式（去掉海景背景，卡片即白玻璃）
+const GLASS_FILL = 'rgba(255,255,255,0.82)';     // 白玻璃填充（半透明白，原白玻璃气泡同款）
+const GLASS_BORDER = 'rgba(31,29,26,0.14)';       // 浅描边（同原版）
+// 白玻璃上的深色文字色系（保证浅底可读）
+const TXT_ON_GLASS = '#2E2A3A';                    // 深主字
+const TXT_ON_GLASS_SUB = 'rgba(74,70,96,0.80)';    // 次字
+const TXT_ON_GLASS_FAINT = 'rgba(74,70,96,0.55)';  // 弱字
 const GLASS_TEXT_SHADOW = {
-  textShadowColor: 'rgba(0,0,0,0.35)',
-  textShadowOffset: { width: 0, height: 1 },
-  textShadowRadius: 10,
+  textShadowColor: 'transparent',
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 0,
 };
-// V4 浅色 pills（深玻璃上的行动按钮）
-const PILL_LIGHT_BG = 'rgba(255,255,255,0.85)';
+// 白玻璃上的行动 pills（深字保证可读）
+const PILL_LIGHT_BG = '#FFFFFF';
 const PILL_LIGHT_TEXT = '#2C2A3E';
 
 function thumbFor(c: SuggestionCandidate): number {
@@ -75,7 +68,7 @@ const STROKE = 1; // 描边粗细（用户选「渐变减到 1px」，消掉四�
 // ★ v1012a · 玻璃磨砂气泡：半透明白底 + 中性淡描边 + 柔和投影，取代原四色彩虹描边。
 //   白底上真正的 blur 无意义（背景即纯白），玻璃感靠「半透明 + 细描边 + 投影」立住。
 // ★ 2026-10-15（V4）：改暮色深玻璃后白底常量（GLASS_FILL）已无人使用，移除；
-//   现行色系统一走文件头 DARK_GLASS / GLASS_BORDER_DARK / TAIL_FILL_DARK。
+//   现行色系统一走文件头 GLASS_FILL / GLASS_BORDER。
 // 轮询兜底：每 30s 检查一次半小时槽位是否已跨过（正常由「圆环状态点刷新」即时触发，见下方 effect）
 const REFRESH_MS = 30 * 1000;
 // 「已留作你的专属建议」停留时长：到点自动收回常态占位（用户：之后建议就没了，回到那句话）
@@ -532,37 +525,19 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
         accessibilityRole={!hasCard ? 'button' : undefined}
         accessibilityLabel={!hasCard ? '打开 Mira AI 聊天' : undefined}
       >
-        {/* 背景：卡内暮色海浪图 + 压暗渐变 + 深色拟态玻璃层（V4，用户 2026-10-15 参考图定稿） */}
+        {/* 背景：白玻璃磨砂填充（恢复原先气泡样式，去掉海景） */}
         {w > 0 && (
-          <ImageBackground
-            source={SEA_BG}
-            style={[StyleSheet.absoluteFill, { borderRadius: R }]}
-            imageStyle={{ borderRadius: R }}
-            resizeMode="cover"
-          >
-            {/* 暮色压暗：图上叠一层上浅下深渐变（只覆盖气泡本体，不含尾巴） */}
-            <Svg style={StyleSheet.absoluteFill} width={w} height={bubbleHeight} viewBox={`0 0 ${w} ${bubbleHeight}`}>
-              <Defs>
-                <SvgLinearGradient id="bubbleSeaDim" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={SEA_DIM_TOP} />
-                  <Stop offset="100%" stopColor={SEA_DIM_BOTTOM} />
-                </SvgLinearGradient>
-              </Defs>
-              <Rect x="0" y="0" width={w} height={bubbleHeight} rx={R} ry={R} fill="url(#bubbleSeaDim)" />
-            </Svg>
-            {/* 深色拟态玻璃层（RN 无 backdrop-filter，用半透明深色叠层合成磨砂） */}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: DARK_GLASS, borderRadius: R }]} />
-          </ImageBackground>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: GLASS_FILL, borderRadius: R }]} />
         )}
 
         {/* 气泡描边 + 右下小尾巴（SVG 保证边框与尾巴同色同源；本体已由海景+玻璃层填充，path 只描边） */}
         {w > 0 && bodyPath && (
           <Svg style={StyleSheet.absoluteFill} width={w} height={bubbleHeight + TAIL_H} viewBox={`0 0 ${w} ${bubbleHeight + TAIL_H}`}>
-            <Path d={bodyPath} fill="none" stroke={GLASS_BORDER_DARK} strokeWidth={STROKE} />
+            <Path d={bodyPath} fill="none" stroke={GLASS_BORDER} strokeWidth={STROKE} />
             <Path
               d={`M ${b0} ${bubbleHeight - 1} L ${tipX} ${tipY} L ${b1} ${bubbleHeight - 1}`}
-              fill={TAIL_FILL_DARK}
-              stroke={GLASS_BORDER_DARK}
+              fill={GLASS_FILL}
+              stroke={GLASS_BORDER}
               strokeWidth={STROKE}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -834,7 +809,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: TAIL_H,
-    backgroundColor: DARK_GLASS,
+    backgroundColor: GLASS_FILL,
     borderRadius: R,
     flexDirection: 'row',
     alignItems: 'center',

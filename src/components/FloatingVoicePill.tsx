@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Dimensions 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import Icon from './Icon';
+import { LinearGradient } from 'expo-linear-gradient';
+import { mm } from '../theme/mindmate';
 
 const SCREEN_W = Dimensions.get('window').width;
 const PILL_H = 52;
@@ -68,7 +70,14 @@ export default function FloatingVoicePill({ onClose, onMicPress }: Props) {
 
         {/* Pill 本体 */}
         <View style={styles.pill}>
-          {/* 向内光晕层 (边框发光) */}
+          {/* 渐变填充：洞察页「生理周期节律」按钮同款（青柠→粉，135°） */}
+          <LinearGradient
+            colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          {/* 边框发光（白边，配亮渐变） */}
           <View style={styles.innerGlow} />
 
           {/* 内容 */}
@@ -77,7 +86,7 @@ export default function FloatingVoicePill({ onClose, onMicPress }: Props) {
             <Icon
               name="mic"
               size={theme.fs(26)}
-              color="#C4B5FD"
+              color={theme.colors.textInkSoft}
               strokeWidth={2}
             />
 
@@ -86,7 +95,7 @@ export default function FloatingVoicePill({ onClose, onMicPress }: Props) {
               <Text style={styles.hint}>
                 {recording ? '正在聆听…' : '准备中…'}
               </Text>
-              <Text style={[styles.transcript, text && styles.transcriptHasText]} numberOfLines={1}>
+              <Text style={[styles.transcript, text ? styles.transcriptHasText : undefined]} numberOfLines={1}>
                 {text || (recording ? '松开发送' : '')}
               </Text>
             </View>
@@ -139,12 +148,11 @@ const styles = StyleSheet.create({
     elevation: 14,
   },
 
-  // ★ 向内光晕：borderWidth + 深底 + 亮紫边框 = 边框发光
+  // ★ 向内光晕：仅白边（填充已由上方 LinearGradient 承担）
   innerGlow: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#120E2A',
     borderWidth: 3,
-    borderColor: '#9D8AF0',
+    borderColor: 'rgba(255,255,255,0.6)',
     borderRadius: theme.radius.pill,
   },
 
@@ -161,12 +169,12 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium,
-    color: '#E8E0FF',
+    color: theme.colors.textInk,
   },
   transcript: {
     marginTop: 1,
     fontSize: theme.fontSize.xs,
-    color: 'rgba(232,224,255,0.55)',
+    color: 'rgba(46,42,58,0.6)',
     opacity: 0.7,
   },
   transcriptHasText: {
@@ -175,5 +183,5 @@ const styles = StyleSheet.create({
   },
 
   waves: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  waveBar: { width: 3, borderRadius: 2, backgroundColor: '#9D8AF0', opacity: 0.85 },
+  waveBar: { width: 3, borderRadius: 2, backgroundColor: 'rgba(74,70,96,0.55)', opacity: 0.9 },
 });

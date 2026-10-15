@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground, Animated, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Rect, Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -36,6 +35,7 @@ import { healthStore, dayKey } from '../data/healthStore'
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
+import { MOODS } from '../data/metrics';
 import { MemoryStore } from '../ai/memory';
 import { inferThemes } from '../ai/miraAi';
 import { onAiRecord } from '../lib/aiRecordBus';
@@ -43,6 +43,7 @@ import { evaluateTodayScene, markSceneShown, initTodaySceneCounter, buildCauseNa
 import { narrSigOf, aiNarrativeFor, requestAiNarrative } from '../lib/aiNarrative';
 import { dayPhase } from '../lib/timePhase';
 import HomeAiBubble from '../components/HomeAiBubble';
+import PhaseLegend from '../components/PhaseLegend';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
 
@@ -136,13 +137,6 @@ const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { mark
 
 // Bottom clearance is derived from the tab bar and live safe-area insets below.
 
-// ★ 首页白面板圆弧的羽化层（活代码引用，2026-10-08 死代码清理时误删已恢复）
-const ARC_FEATHER = Array.from({ length: 6 }, (_, i) => ({
-  /** 越靠下（i 越小）下移越多、越淡 */
-  dy: theme.sp(0.5) * (6 - i),
-  opacity: 0.12 + (i / 5) * 0.66,
-}));
-
 export default function TodayScreen() {
   const { width } = useWindowDimensions();
 
@@ -176,10 +170,9 @@ export default function TodayScreen() {
   const viewHeight = vp_H || dims.height;
   // ★ 2026-10-15：用户「卡片稍高一点、分析内容多一点」→ 112→138（小屏 100→122），
   //   给「最多 3 行分析 + 建议卡」留出舒展高度、不裁切。
-  // ★ 2026-10-15（v2）：海景拟态气泡 + 建议 1~2 条 → 138→208（小屏 122→184）。
-  // ★ 2026-10-15（V4 暮色深玻璃）：气泡加标题行 + 2 条建议行 → 208→224（小屏 184→200）；
-  //   同步 EnergyBall 0.78→0.74 收回 ~16pt，保一屏不滑动。
-  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 200 : 224;
+  // ★ 2026-10-15（V1 定稿）：气泡回到白玻璃款（海景图/深玻璃/标题行全部移除），
+  //   分析≤3行 + 建议1~2条 → 用户 2026-10-15 晚：加高（170 / 小屏 150）
+  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 150 : 170;
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -451,18 +444,9 @@ export default function TodayScreen() {
   }, []);
   const cardWidth =
     Math.min(width, theme.layout.maxWidth) - theme.space.screen * 2 - theme.space.cardPad * 2;
-  // 全天状态面板是「全宽」的（左右不留边），宽度 = 屏宽（桌面上限 maxWidth）
-  const panelW = Math.min(width, theme.layout.maxWidth);
-  // 面板底部圆弧高度（方案 A：两端上扬、中间最低）
-  // ★ 2026-10-08：sp(6)(24) → sp(2)(8)。首页已整体改成纯白底（见文件顶部「上白下紫分屏收起」），
-  //   这段圆弧是**白弧画在白底上 = 完全不可见**，纯占位 24pt 死高；收成 8pt 后
-  //   下方 AI 气泡整体上移 ≈16pt，视觉零变化（用户：「不要被底下 Tab 压到」）。
-  const panelArcH = theme.sp(2); // 弧度高度更小, 图离边缘更近
-  // 圆弧路径：控制点 y = 1.335×arcH 时，曲线最低点正好落在 arcH
-  // 弧下弥散紫的纵向长度（渐变由此高度从紫收到透明）
-  const panelUnderH = theme.sp(50);
-  const panelArcR = theme.radius.card * 2; // 弧度更大
-  const panelArcD = `M0,0 H${panelW} V${(panelArcH - panelArcR).toFixed(1)} A${panelArcR},${panelArcR} 0 0 1 ${(panelW - panelArcR).toFixed(1)},${panelArcH} H${panelArcR} A${panelArcR},${panelArcR} 0 0 1 0,${(panelArcH - panelArcR).toFixed(1)} V0 Z`;
+  // ★ V1（2026-10-15 用户定稿）：全宽白面板 + 底部圆弧整体移除——
+  //   圆环直承浅灰页面底色，白只剩 chips / 气泡两层；原 panelW / panelArcH /
+  //   panelUnderH / panelArcR / panelArcD / ARC_FEATHER 随之删除（无白面需要过渡）。
 
   // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
   const status = ring.curveStatus;
@@ -919,11 +903,13 @@ export default function TodayScreen() {
     //   （brainRemaining，高=好，与 cogTag「准备度高/中/低」同字段同向）→ 标签改「脑力准备度」。
     //   例外：无昨夜睡眠时数值回落为「今日已用脑量」→ 标签同步切「今日用脑」，标签与数值必须同一口径
     //   （v18.128 铁律：标签与数值取同一字段，否则用户永远觉得算错）。
-    { key: 'cog', icon: 'nodes', tone: 'lav', label: cogTag?.startsWith('已用脑') ? '今日用脑' : '脑力准备度', value: cognitive, unit: '/100', valueTone: chipValueTone(cogTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
+    { key: 'cog', icon: 'nodes', tone: 'cyan', label: cogTag?.startsWith('已用脑') ? '今日用脑' : '脑力准备度', value: cognitive, unit: '/100', valueTone: chipValueTone(cogTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'cognitive' }) },
     { key: 'emo', icon: 'heart', tone: 'pink', label: '心理压力', value: stressValue, unit: '/100', valueTone: chipValueTone(emoTag), onPress: () => navigation.navigate('EnergyDetail', { type: 'emotion' }) },
-    // ★ 2026-10-07 新增：运动（卡路里），tone=cyan（蓝：运动·心肺，与 mm.chipBg 语义一致）
-    { key: 'act', icon: 'flame', tone: 'cyan', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
-    { key: 'period', icon: 'moon', tone: 'lav', label: status?.phaseLabel && status.phaseLabel !== '未记录' ? status.phaseLabel : '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
+    // ★ 2026-10-07 新增：运动（卡路里）。★ 2026-10-15（V1 去紫）：tone cyan→butter（黄：消耗/代谢），
+    //   避免与脑力准备度的蓝块相邻撞色；mm.chipBg 语义：butter=黄（代谢）与卡路里消耗同向。
+    { key: 'act', icon: 'flame', tone: 'butter', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
+    // ★ 2026-10-15（V1 去紫）：周期卡 tone lav(紫)→cyan(蓝)
+    { key: 'period', icon: 'moon', tone: 'cyan', label: status?.phaseLabel && status.phaseLabel !== '未记录' ? status.phaseLabel : '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
@@ -1082,7 +1068,7 @@ export default function TodayScreen() {
                 让「圆环白卡」在标题与底部气泡之间均匀分布，不再被挤在顶部、底部留大空。 */}
             <View style={{ flexGrow: 1, flexBasis: 0 }} />
 
-        {/* ★ 方案B（2026-10-14）：顶部指标 chips 已下移至圆环下方，见 statusPanel 内插入点 */}
+        {/* ★ V1（2026-10-15）：顶部指标 chips 在圆环下方（白面板已拆，直承浅灰底） */}
 
         {/* ─────────────────────────────────────────────────────────────
             ★ 全天状态面板（2026-09-21）：圆环 + 全天状态趋势 = **同一块全宽白面**。
@@ -1091,54 +1077,64 @@ export default function TodayScreen() {
             · 只在最下方用一段**向上圆弧**收边（两端上扬、中间最低），呼应圆环的圆形。
             · ★ 2026-10-11：新增标题「全天状态趋势图」（左对齐，紧贴其右小箭头），箭头从浮在图上的玻璃圆改为标题旁 chevron；标题用「③ 左对齐·轻量·字小点」：13px / 常规 / 灰，避免深黑加粗显得像贴上去的标签。
             ───────────────────────────────────────────────────────────── */}
-        <View style={styles.statusPanel}>
-          <View style={styles.energyWrap}>
-            <View style={styles.energyBallCol}>
+        {/* ─────────────────────────────────────────────────────────────
+            ★ V1（2026-10-15 用户定稿）：圆环直承浅灰页面底色，**全宽白面板拆除**。
+            · 页面底色 = 浅灰 #F5F5F7（theme bgGradStops，去紫）；白只剩 chips / 气泡两层；
+            · 圆环 → chips 间距 16pt（energyWrap.marginBottom），chips 各自独立白卡；
+            · 原「全宽白面 + 底部微笑弧 + 羽化」整体移除（没有白面需要过渡）。
+            ───────────────────────────────────────────────────────────── */}
+        <View style={styles.energyWrap}>
+          <View style={styles.energyRingWrap}>
+            {/* ★ 2026-10-15（用户）：圆环整体可点 → 跳「全天状态趋势」日/周/月/年详情 */}
+            <TouchableOpacity
+              style={styles.energyBallCol}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="查看全天状态趋势详情"
+              onPress={() => navigation.navigate('StatusTrendDetail')}
+            >
               <EnergyBall status={ring.curveStatus} centerLabelOverride={scene?.word ?? (isAsleep ? '睡眠恢复中' : undefined)} />
-            </View>
-          </View>
-
-          {/* ★ 2026-10-15：移除全天状态趋势图（用户要求）。顶部指标 chips 紧贴圆环下方，
-              圆环→chips 间距由 energyWrap.marginBottom 控制，白面上下留白由 statusPanel padding 控制。 */}
-          <View style={{ marginBottom: 0 }} onLayout={measureSection('chips')}>
-            <MindChips items={metricChips} />
+            </TouchableOpacity>
+            {/* ★ 圆环右侧小箭头：与圆环同目标，点击也跳详情；绝对定位于环右、垂直居中 */}
+            <TouchableOpacity
+              style={styles.ringChevron}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="查看全天状态趋势详情"
+              onPress={() => navigation.navigate('StatusTrendDetail')}
+            >
+              <Icon name="chevronRight" size={theme.fs(22)} color={theme.colors.textSub} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* 面板底部「向上圆弧」收边：独立一层全宽 SVG。
-            曲线 M(0,0)→H(W,0)→C 回到 (0,0)，控制点 y = 1.335×arcH 时最低点正好落在 arcH。
-
-            ★ 2026-09-21 修正三点（用户反馈）：
-            ① 弧下的弥散紫改用 **页面本来的主题紫 `colors.bgTop`**（不再是偏蓝的 periwinkle）——
-               它与 App 根渐变顶部同源，所以弧下的紫和页面底色是同一支紫，衔接自然。
-            ② **去掉圆弧的「紫色柔边」两层描边**：不再有那一圈人工描边。
-            ③ **弧线边缘羽化**（下同）：白与紫之间不再是几何硬切，用 `ARC_FEATHER` 多层白弧摊成过渡带。 */}
-        <Svg
-          width={panelW}
-          height={panelArcH}
-          style={styles.statusPanelArc}
-        >
-
-          {/* ★ 羽化层（由下往上、由淡到浓）：把「白 ↔ 紫雾」的硬边摊成一条柔和过渡带 */}
-          {ARC_FEATHER.map((f, i) => (
-            <Path
-              key={i}
-              d={panelArcD}
-              fill={theme.colors.cardBg}
-              opacity={f.opacity}
-              transform={`translate(0, ${f.dy})`}
-            />
+        {/* ★ 2026-10-15（用户）：圆环下方图例 —— 与「全天状态趋势」详情页图例同源（MOODS 四等级：
+            元气满满/状态良好/平平静静/休息一下），解释圆环弧点颜色含义 */}
+        <View style={styles.ringLegendRow}>
+          {MOODS.map((m) => (
+            <View key={m.key} style={styles.ringLegendItem}>
+              <View style={[styles.ringLegendDot, { backgroundColor: m.color }]} />
+              <Text style={styles.ringLegendText}>{m.label}</Text>
+            </View>
           ))}
-          {/* 卡本体白弧（最后画，保证面板本体是纯白、不被羽化层影响） */}
-          <Path d={panelArcD} fill={theme.colors.cardBg} />
-        </Svg>
+        </View>
 
-        {/* ★ 2026-10-15：白卡与圆弧下方的常驻 AI 对话气泡（玻璃磨砂 + 右下小尾巴指向 GROK）。
-            气泡恒定落在「Tab 栏上方」（marginBottom = bottomReserve），不被 Tab 压到、也不随
+        {/* ★ 2026-10-15 晚：经期四相图例（与洞察页 / 日历 / 环上月相点同源，解释环上四个相位） */}
+        <View style={{ alignItems: 'center' }}>
+          <PhaseLegend />
+        </View>
+
+        {/* ★ V1：指标 chips 紧贴圆环下方、各自独立白卡（第 5 张露边提示可横滑） */}
+        <View style={{ marginBottom: 0, marginTop: theme.space.md }} onLayout={measureSection('chips')}>
+          <MindChips items={metricChips} />
+        </View>
+
+        {/* ★ V1（2026-10-15）：常驻 AI 对话气泡（白玻璃磨砂 + 右下小尾巴）。
+            气泡恒定落在「Tab 栏上方」（marginBottom = 0，贴 Tab 上沿），不被 Tab 压到、也不随
             建议态/录音态文案长度上下跳；它与标题下方各有一个等权弹性位，等分剩余高度 →
             内容整体居中、上下留白对称（不再把空白全堆在底部）。 */}
         <View style={{ flexGrow: 1, flexBasis: 0 }} />
-        <View style={{ marginBottom: bottomReserve, paddingTop: 0, alignItems: 'center' }}>
+        <View style={{ marginBottom: 0, paddingTop: 0, alignItems: 'center' }}>
           <HomeAiBubble navigation={navigation} status={ring?.curveStatus} height={bubbleHeight} width={Math.max(0, Math.min(dims.width, theme.layout.maxWidth) - theme.space.screen * 2 - 8)} analysis={narrative} />
         </View>
 
@@ -1347,6 +1343,23 @@ const styles = StyleSheet.create({
    */
   energyWrap: { marginBottom: theme.space.md, alignItems: 'center' },
   energyBallCol: { alignItems: 'center' },
+  // ★ 圆环图例：与 StatusTrendDetail 图例同款（9pt 圆点 + micro 灰字），紧凑单行不挤一屏
+  ringLegendRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginTop: 2, marginBottom: theme.space.xs },
+  ringLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ringLegendDot: { width: 9, height: 9, borderRadius: 4.5 },
+  ringLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 2026-10-15（用户）：圆环 + 右侧箭头 的相对容器；圆环保持屏幕居中，箭头绝对定位于环右、垂直居中，
+  //   不挤占环本体，也不破坏「一屏不滑动」的纵向预算（箭头在环右侧空带内，高度随环自适应）。
+  energyRingWrap: { position: 'relative', alignItems: 'center' },
+  ringChevron: {
+    position: 'absolute',
+    right: -16,
+    top: 0,
+    bottom: 0,
+    width: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // ★ v18.50 修复：不要 flex:1——整屏吸附后 pageInner 是确定高度，flex:1（flexBasis=0）
   // 会让胶囊在自适应父容器里塌成 0 高，分析文字整句不可见。自动高度即可。
   statusPill: { marginTop: 4 },
@@ -1420,20 +1433,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 28,
   },
-  // ★ 全天状态面板：全宽白面（负 margin 抵消 ScreenContainer 的 24pt 内边距）
-  statusPanel: {
-    backgroundColor: theme.colors.cardBg,
-    marginHorizontal: -theme.space.screen,
-    paddingHorizontal: theme.space.screen,
-    // ★ 2026-10-15：圆环与 chips 在白面内上下留白，避免贴边、读起来更舒展
-    paddingTop: theme.space.lg,
-    paddingBottom: theme.space.lg,
-  },
-  // marginBottom 补回原来 trendCard 的 marginBottom(space.lg)：否则下一张「全天恢复」卡会贴着圆弧
-  statusPanelArc: {
-    marginHorizontal: -theme.space.screen,
-    marginTop: -1,
-  },
+  // ★ V1（2026-10-15）：全宽白面板（statusPanel）与底部圆弧（statusPanelArc）已整体移除；
+  //   圆环直承浅灰页面底色；「圆环 → chips」16pt 间距与居中由下方 energyWrap 负责。
   trendWrap: { position: 'relative', marginTop: 0 },
   // ★ 2026-10-11：趋势图右上角的小箭头（弱暗示「可进详情」）。
   //   半透明白圆 + 极淡描边，层级轻、不抢图；pointerEvents:none 让点击落到外层 TouchableOpacity。
