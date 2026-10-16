@@ -482,7 +482,10 @@ export default function CycleCalendarScreen() {
               /* ★ 2026-10-07（用户：去掉圆环中间那个「＋ 记录」）：环心只留相位 / 距经期文字；
                  记录入口统一用环下方那枚「记录 / 修改」渐变按钮。
                  历史周期（cycleInfo 传 null + activeDay = 周期末日）环心改显日期区间与总天数。 */
+              /* ★ 2026-10-16（用户：「日历上面的图片稍微小一点点」）：月相环显式缩一档
+                 —— 默认 min(屏宽×0.84, 350)=328，改 304（约 −7%），高度 0.84×size 自动跟随 276→255 */
               <CycleMoonPhase
+                size={304}
                 cycleInfo={isCurrentCycle ? cycleInfo : null}
                 log={ringLog}
                 activeDay={isCurrentCycle ? undefined : cycleLen}

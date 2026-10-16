@@ -787,7 +787,8 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
 
   return (
     <View>
-      <Text style={styles.sectionLabel}>血液成分 · 健康一览自动同步</Text>
+      {/* ★ 2026-10-16（用户：去掉「健康一览自动同步」副标，只留分区名） */}
+      <Text style={styles.sectionLabel}>血液成分</Text>
       <Text style={subHead}>尿酸</Text>
       <View style={grid}>{uricItems.map((it) => renderChip(it, true))}</View>
       {/* ★ 2026-10-16（续 4）：四张血脂小卡外面包一个框，右上角箭头 → 进入血脂详情（内含日/周/月/年趋势图） */}
