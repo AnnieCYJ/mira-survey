@@ -49,7 +49,10 @@ const LABEL_TO_PHASE: Record<string, PhaseKey> = {
 
 /* ─────────────────────────────────────────────────────────────
  * ★ 2026-10-16：圆环内部「能量水波」（首页圆环里面水流动）
- * · 保留：外圈光晕 / 状态色环描边 / 中央柔光（2026-10-16 起静态）/ 四月相点公转 / 中央文字
+ * · 保留：外圈光晕 / 状态色环描边 / 四月相点公转 / 中央文字
+ * · ★ 2026-10-16（用户：「圆环中间的文字背景的颜色也去掉」）：中央弥散彩色柔光层**整体移除**——
+ *   文字直接坐在水波之上（水色为状态色高比混合浅色，深色文字 + 白色柔影即可读）；
+ *   该层此前的「呼吸」已在同日早些时候改为静态，现连颜色一并去掉。
  * · 新增：环内浅水底色 + 双层正弦波无缝横移 + 水面呼吸升降 + 气泡上浮 + 玻璃体积
  * · 水色由状态色（ringColor）派生，四等级自动同色
  * · ★ 回退开关：把 WATER_RING_ENABLED 改 false 即恢复纯光晕圆环（其余代码不动）
@@ -143,8 +146,6 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
 
-  // 中央柔光：★ 2026-10-16（用户：去掉圆环中间的呼吸）起改为静态（effect 里固定 0.45），不再脉动
-  const halo = useRef(new Animated.Value(0)).current;
   const reducedMotion = useReducedMotion();
   // 轨道公转：整层绕中心缓慢旋转，让四个状态点像行星环绕
   const orbit = useRef(new Animated.Value(0)).current;
@@ -207,9 +208,8 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   );
 
   useEffect(() => {
-    // ★ 2026-10-16（用户：去掉圆环中间的呼吸）：中央弥散光晕改为**静态**（不再脉动），
-    //   固定取 reducedMotion 降级档 0.45（小范围柔光）；月相点公转与水波动画不受影响。
-    halo.setValue(0.45);
+    // ★ 2026-10-16（用户：「圆环中间的文字背景的颜色也去掉」）：中央弥散彩色柔光层已整体移除，
+    //   不再有 halo 状态需要初始化；月相点公转与水波动画不受影响。
 
     if (reducedMotion) {
       orbit.setValue(0);
@@ -286,20 +286,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     };
     // 注意：water / riseVals 不进 deps —— water 仅随 ringR/ringColor 变（波长只依赖 ringR，稳定），
     // riseVals 每渲染都是新数组（放进去会害得循环被反复重启）。与原 effect 口径保持一致。
-  }, [halo, orbit, reducedMotion]);
-
-  // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散。
-  // ★ 圆固定画在最大半径，用 scale 表达「呼吸」——映射与原实现等值：[ringR*0.45, ringR*1.6] → [0.28, 1]。
-  //   渐变是相对圆的包围盒定义的（r="50%"），所以缩放后视觉等价。
-  const GLOW_MAX_R = ringR * 1.6;
-  const glowScale = halo.interpolate({
-    inputRange: [0, 1],
-    outputRange: [(ringR * 0.45) / GLOW_MAX_R, 1],
-  });
-  const glowOpacity = halo.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.6, 0.96],
-  });
+  }, [orbit, reducedMotion]);
 
   // 四个经期象限月相点：均匀分布在环上，当前所处相位稍大 + 光晕
   // 大小与原来 4 个心情色点一致（约 sp(3.5)），不大不小刚好
@@ -367,7 +354,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
         {/* 四个状态点所在的环：跟随情绪色切换；无数据时统一紫色 */}
         <Circle cx={c} cy={c} r={ringR} stroke={ringColor} strokeWidth={2.8} fill="none" opacity={0.92} />
 
-        {/* ── 能量水波（2026-10-16）：环内水体，裁剪进圆环；中央光晕/月相点/文字层不变 ── */}
+        {/* ── 能量水波（2026-10-16）：环内水体，裁剪进圆环；月相点/文字层不变 ── */}
         {WATER_RING_ENABLED ? (
           <G clipPath="url(#waterClip)">
             {/* 浅水底色（整环有水体质感） */}
@@ -394,28 +381,10 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
         ) : null}
       </Svg>
 
-      {/* 中央弥散彩色柔光：独立图层（★ 2026-10-16 起静态，不再呼吸脉动）。
-          固定画在最大半径，靠 scale 表达大小；渐变 r="50%" 相对包围盒，缩放后视觉等价。
-          key 强制按颜色重挂，避免渐变缓存。 */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          { opacity: glowOpacity, transform: [{ scale: glowScale }] },
-        ]}
-      >
-        <Svg width={svgSize} height={svgSize}>
-          <Defs>
-            <RadialGradient key={ringColor} id="moodGlow" cx="50%" cy="50%" r="50%">
-              <Stop offset="0%" stopColor={ringColor} stopOpacity="0.86" />
-              <Stop offset="38%" stopColor={ringColor} stopOpacity="0.54" />
-              <Stop offset="70%" stopColor={ringColor} stopOpacity="0.16" />
-              <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={c} cy={c} r={GLOW_MAX_R} fill="url(#moodGlow)" />
-        </Svg>
-      </Animated.View>
+      {/* ★ 2026-10-16（用户：「圆环中间的文字背景的颜色也去掉」）：原「中央弥散彩色柔光」独立图层
+          （moodGlow RadialGradient + halo 呼吸/静态缩放）已整体移除 —— 它是圆环中间文字背后的
+          彩色底色。移除后中央文字直接坐在水波上；如日后想恢复，从 git 历史取回该 Animated.View
+          与 halo/glowScale/glowOpacity 三段即可（水波层之上、轨道层之下的原位置）。 */}
 
       {/* 轨道层：四个状态点像行星一样绕中心缓慢公转（中心文字不转） */}
       <Animated.View

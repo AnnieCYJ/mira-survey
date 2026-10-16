@@ -34,7 +34,7 @@
   .avatarName .nm{font-size:14px;font-weight:500;color:var(--ink)}
 
   /* ---------- 能量水波圆环（EnergyBall 改造） ---------- */
-  .ringWrap{position:relative;width:324px;height:301px;margin:2px auto 0}
+  .ringWrap{position:relative;width:324px;height:301px;margin:0 auto 0}
   .ringSvg{width:324px;height:324px;display:block;position:relative;z-index:2}
   .ringTxt{position:absolute;left:0;right:0;top:0;bottom:23px;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5;pointer-events:none;transform:translateY(-8px)}
   .ringLabel{font-size:28px;font-weight:600;color:var(--ink);text-shadow:0 1px 10px rgba(255,255,255,.55)}
@@ -68,8 +68,8 @@
   .phaseItem{display:flex;align-items:center;gap:5px}
   .phaseLab{font-size:11px;color:var(--sub)}
 
-  /* ---------- 指标 chips（还原，横向滑动） ---------- */
-  .chipsScroll{margin-top:16px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  /* ---------- 指标 chips（★ 2026-10-16：用户「小卡片展示到圆环的上面」→ 移到标题下方、圆环上方） ---------- */
+  .chipsScroll{margin-top:0;margin-bottom:16px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .chipsScroll::-webkit-scrollbar{display:none}
   .chip{flex:none;width:88px;height:80px;background:#FFFFFF;border-radius:14px;border:1px solid #F0EEF4;box-shadow:0 6px 16px rgba(46,42,58,.06);padding:8px 9px;display:flex;flex-direction:column}
   .iconSq{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:5px}
@@ -78,15 +78,15 @@
   .chipVal{font-size:17px;font-weight:700;letter-spacing:-.01em}
   .chipUnit{font-size:10px;color:#9A94A6;font-weight:500}
 
-  /* ---------- AI 气泡（还原：白玻璃 + 右下尾巴） ---------- */
+  /* ---------- AI 气泡（还原：白玻璃 + 右下尾巴；★ 2026-10-16 高度减小一点，贴 Tab 上方） ---------- */
   .bubbleWrap{margin-top:16px;position:relative}
-  .bubble{background:rgba(255,255,255,.88);border:1px solid rgba(31,29,26,.14);border-radius:20px;padding:14px 16px 12px;box-shadow:0 14px 34px rgba(46,42,58,.10);position:relative}
+  .bubble{background:rgba(255,255,255,.88);border:1px solid rgba(31,29,26,.14);border-radius:20px;padding:11px 16px 10px;box-shadow:0 14px 34px rgba(46,42,58,.10);position:relative}
   .bubble::after{content:"";position:absolute;right:34px;bottom:-9px;width:18px;height:18px;background:rgba(255,255,255,.88);border-right:1px solid rgba(31,29,26,.14);border-bottom:1px solid rgba(31,29,26,.14);transform:rotate(45deg);border-radius:0 0 4px 0}
   .analysisText{font-size:13px;line-height:1.65;color:var(--ink)}
-  .eyebrowRow{display:flex;align-items:center;gap:6px;margin-top:10px}
+  .eyebrowRow{display:flex;align-items:center;gap:6px;margin-top:8px}
   .eyebrowDot{width:12px;height:12px;border-radius:6px;background:linear-gradient(90deg,#9D8AF0,#F6B3D0,#D5E384)}
   .eyebrow{font-size:11px;font-weight:600;color:var(--sub);letter-spacing:.02em}
-  .suggRow{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(31,29,26,.07)}
+  .suggRow{display:flex;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(31,29,26,.07)}
   .suggThumb{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#EAF0BE,#D5E384);flex:none}
   .suggHead{font-size:12.5px;font-weight:600;line-height:1.4}
   .suggEvid{font-size:11px;color:var(--sub);margin-top:2px}
@@ -126,7 +126,7 @@
 <div class="head">
   <span class="tag">首页圆环 · 效果提案</span>
   <h1>今日状态圆环 → 里面水流动</h1>
-  <p>首页按 App <b>1:1 还原</b>：标题与头像、四等级图例、周期图例、指标 chips、AI 气泡、底部 Tab 栏——全部与原页一致。<b>唯一改动在圆环内部</b>：弥散光晕换成「半碗状态水」——双层正弦波持续无缝横移、水面随 8 秒呼吸节律缓缓升降（吸气涨 / 呼气落），微粒气泡上浮渐隐；水色跟随当前状态色（本页演示「状态良好」= 青柠水）。动效为实时预览，纯 CSS / SVG，RN 端可用 react-native-svg 1:1 复刻。</p>
+  <p>首页按 App <b>1:1 还原</b>：标题与头像、四等级图例、周期图例、指标 chips、AI 气泡、底部 Tab 栏——全部与原页一致。<b>改动一：圆环内部</b>——弥散光晕换成「半碗状态水」：双层正弦波持续无缝横移、水面随 8 秒呼吸节律缓缓升降（吸气涨 / 呼气落），微粒气泡上浮渐隐；水色跟随当前状态色（本页演示「状态良好」= 青柠水），圆环中间的彩色柔光底色已去掉、文字直接坐在水面上。<b>改动二：排版</b>——五个指标 chips 移到圆环上方（标题下方），AI 气泡高度减小一点、贴在 Tab 栏上方。动效为实时预览，纯 CSS / SVG，RN 端可用 react-native-svg 1:1 复刻。</p>
 </div>
 
 <div class="stage">
@@ -146,6 +146,35 @@
           <div class="nm">Kristina</div>
         </div>
         <div class="pageTitle">今日状态</div>
+      </div>
+
+      <!-- ★ 2026-10-16（用户：「下面的小卡片展示到圆环的上面」）：指标 chips 移到标题下方、圆环上方 -->
+      <div class="chipsScroll">
+        <div class="chip">
+          <div class="iconSq" style="background:#EAF0BE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg></div>
+          <div class="chipLab">睡眠恢复</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">66</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3E4614" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="19" r="3"/><circle cx="12" cy="12" r="3"/><path d="M12 12l6-5M12 12l-6 5"/></svg></div>
+          <div class="chipLab">脑力准备度</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">82</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#FCE7F0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9598A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+          <div class="chipLab">心理压力</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#C9598A">34</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#FBEFD6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></svg></div>
+          <div class="chipLab">运动消耗</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#B98A2E">420</div><div class="chipUnit">kcal</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3E4614"><path d="M12 2a10 10 0 1 0 10 10A7 7 0 0 1 12 2Z"/></svg></div>
+          <div class="chipLab">生理周期</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614;font-size:13px">第 21 天</div></div>
+        </div>
       </div>
 
       <!-- ===== 能量水波圆环（EnergyBall：外壳/月相点/中央文字不变，内部改水） ===== -->
@@ -185,12 +214,6 @@
               <stop offset="0%" stop-color="#6E7A24" stop-opacity=".20"/>
               <stop offset="100%" stop-color="#6E7A24" stop-opacity="0"/>
             </radialGradient>
-            <radialGradient id="moodGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#BCCB62" stop-opacity="0.86"/>
-              <stop offset="38%" stop-color="#BCCB62" stop-opacity="0.54"/>
-              <stop offset="70%" stop-color="#BCCB62" stop-opacity="0.16"/>
-              <stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
-            </radialGradient>
             <clipPath id="ringClip"><circle cx="162" cy="162" r="106.6"/></clipPath>
           </defs>
 
@@ -214,8 +237,8 @@
             <ellipse cx="162" cy="300" rx="150" ry="66" fill="url(#shadeG)"/>
           </g>
 
-          <!-- 中央柔光：★ 2026-10-16（用户：去掉圆环中间的呼吸）起静态，位于水的上层（与 App 图层一致） -->
-          <circle cx="162" cy="162" r="48" fill="url(#moodGlow)" opacity="0.6"/>
+          <!-- ★ 2026-10-16（用户：「圆环中间的文字背景的颜色也去掉」）：原「中央柔光」静态圆已移除 ——
+               它是文字背后的彩色底色；移除后中央文字直接坐在水波上（与 App 的 EnergyBall 一致） -->
         </svg>
 
         <!-- 中央文字（原样保留） -->
@@ -240,36 +263,9 @@
       <!-- 周期四相图例（还原） -->
       <div class="phases" id="phaseLegend"></div>
 
-      <!-- 指标 chips（还原） -->
-      <div class="chipsScroll">
-        <div class="chip">
-          <div class="iconSq" style="background:#EAF0BE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg></div>
-          <div class="chipLab">睡眠恢复</div>
-          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">66</div><div class="chipUnit">/100</div></div>
-        </div>
-        <div class="chip">
-          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3E4614" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="19" r="3"/><circle cx="12" cy="12" r="3"/><path d="M12 12l6-5M12 12l-6 5"/></svg></div>
-          <div class="chipLab">脑力准备度</div>
-          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">82</div><div class="chipUnit">/100</div></div>
-        </div>
-        <div class="chip">
-          <div class="iconSq" style="background:#FCE7F0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9598A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
-          <div class="chipLab">心理压力</div>
-          <div class="chipValRow"><div class="chipVal" style="color:#C9598A">34</div><div class="chipUnit">/100</div></div>
-        </div>
-        <div class="chip">
-          <div class="iconSq" style="background:#FBEFD6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></svg></div>
-          <div class="chipLab">运动消耗</div>
-          <div class="chipValRow"><div class="chipVal" style="color:#B98A2E">420</div><div class="chipUnit">kcal</div></div>
-        </div>
-        <div class="chip">
-          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3E4614"><path d="M12 2a10 10 0 1 0 10 10A7 7 0 0 1 12 2Z"/></svg></div>
-          <div class="chipLab">生理周期</div>
-          <div class="chipValRow"><div class="chipVal" style="color:#3E4614;font-size:13px">第 21 天</div></div>
-        </div>
-      </div>
+      <!-- ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「chips 在图例之后」块删除 -->
 
-      <!-- AI 气泡（还原：白玻璃 + 右下尾巴） -->
+      <!-- AI 气泡（还原：白玻璃 + 右下尾巴；★ 2026-10-16 高度减小一点，贴 Tab 上方） -->
       <div class="bubbleWrap">
         <div class="bubble">
           <div class="analysisText">昨晚深睡占比 23%，今天状态整体平稳。下午能量略有回落，适合把需要专注的事往前放。</div>
@@ -320,10 +316,10 @@
   <div class="kicker">DIFF · 改动点</div>
   <h2>只动了圆环里面</h2>
   <div class="noteGrid">
-    <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影；中央柔光改为静态（不再脉动）。</p></div></div>
+    <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影；圆环中间的彩色柔光底色去掉（用户：文字背景的颜色也去掉），中央文字直接坐在水面上。</p></div></div>
     <div class="noteItem"><span class="no">02</span><div><b>改：水色跟随状态</b><p>水色不写死：状态良好 = 青柠（本页演示）；元气满满 = 蜜黄、平平静静 = 紫、休息一下 = 粉，与圆环描边 / 光晕同色同源。</p></div></div>
     <div class="noteItem"><span class="no">03</span><div><b>没改：圆环外壳</b><p>外圈光晕、状态色环描边、四个月相点（32s 公转、当前相位放大 + 暖光晕）、中央「状态值 / 更新于」文字，全部与原实现一致。</p></div></div>
-    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>账号行（K / Kristina）在标题上方、标题下移（2026-10-16 起的新头部结构），四等级图例、周期四相图例、五个指标 chips、AI 气泡（白玻璃 + 尾巴 + 今日建议）、底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>账号行（K / Kristina）在标题上方、标题下移（2026-10-16 起的新头部结构）；五个指标 chips 按 2026-10-16 用户要求移到<b>标题下方、圆环上方</b>；AI 气泡（白玻璃 + 尾巴 + 今日建议）高度减小一点、恒定贴在 Tab 栏上方；底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
   </div>
 </div>
 

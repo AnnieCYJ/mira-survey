@@ -172,7 +172,11 @@ export default function TodayScreen() {
   //   给「最多 3 行分析 + 建议卡」留出舒展高度、不裁切。
   // ★ 2026-10-15（V1 定稿）：气泡回到白玻璃款（海景图/深玻璃/标题行全部移除），
   //   分析≤3行 + 建议1~2条 → 用户 2026-10-15 晚：加高（170 / 小屏 150）
-  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 150 : 170;
+  // ★ 2026-10-16（用户：「AI分析的卡片高度减小一点，保证在下面的tab上面」）：170/150 → 150/136。
+  //   背景：390×844 档按 170 算，一屏纵向预算差 ~14pt，气泡底会越过 Tab 上沿（环 + 两条图例 +
+  //   chips 上移后余量更紧）——收 20pt 换回余量，气泡恒定贴在 Tab 上方。
+  //   内容下限仍在框内：3 行分析(60) + 间距(8) + 占位两行(40) + 内边距(20) ≈ 133 ≤ 136。
+  const bubbleHeight = viewHeight - insets.top - insets.bottom < 620 ? 136 : 150;
   // ★ v18.52 经期日期圈：真实自记经期日（PeriodDayLog 按日期 key），最近 7 天圈行用
   const [periodMarks, setPeriodMarks] = useState<Record<string, true>>({});
   useEffect(() => {
@@ -1065,6 +1069,14 @@ export default function TodayScreen() {
               <Text style={[styles.title, { marginTop: theme.space.sm }]}>今日状态</Text>
             </View>
 
+            {/* ★ 2026-10-16（用户：「下面的小卡片展示到圆环的上面」）：指标 chips 从圆环下方
+                （PhaseLegend 之后）移回标题下方、圆环上方 —— 与 2026-10-15 V1 之前的排布一致，
+                head 的 marginBottom lg 正是当年为「标题与 chips 的呼吸间距」留的量（2026-10-11 用户原话）。
+                chips 各自独立白卡，第 5 张露边提示可横滑；marginBottom md = chips 与圆环的间距。 */}
+            <View style={{ marginBottom: theme.space.md }} onLayout={measureSection('chips')}>
+              <MindChips items={metricChips} />
+            </View>
+
             {/* ★ 2026-10-15：弹性呼吸位 —— 与圆弧下方的另一处弹性位等分剩余高度，
                 让「圆环白卡」在标题与底部气泡之间均匀分布，不再被挤在顶部、底部留大空。 */}
             <View style={{ flexGrow: 1, flexBasis: 0 }} />
@@ -1125,10 +1137,7 @@ export default function TodayScreen() {
           <PhaseLegend />
         </View>
 
-        {/* ★ V1：指标 chips 紧贴圆环下方、各自独立白卡（第 5 张露边提示可横滑） */}
-        <View style={{ marginBottom: 0, marginTop: theme.space.md }} onLayout={measureSection('chips')}>
-          <MindChips items={metricChips} />
-        </View>
+        {/* ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「V1：chips 紧贴圆环下方」块删除 */}
 
         {/* ★ V1（2026-10-15）：常驻 AI 对话气泡（白玻璃磨砂 + 右下小尾巴）。
             气泡恒定落在「Tab 栏上方」（marginBottom = 0，贴 Tab 上沿），不被 Tab 压到、也不随
