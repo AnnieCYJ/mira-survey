@@ -26,9 +26,9 @@
   /* 状态栏 */
   .sbar{display:flex;justify-content:space-between;align-items:center;padding:17px 8px 0;font-size:13px;font-weight:600;color:var(--ink);position:relative;z-index:20}
 
-  /* 头部：今日状态 + 头像 */
-  .headRow{display:flex;justify-content:space-between;align-items:center;margin-top:14px;position:relative;z-index:20}
-  .pageTitle{font-size:26px;font-weight:700;letter-spacing:.01em}
+  /* 头部：★ 2026-10-16 账号行（K / Kristina）移到标题上方，标题随之下移（均左对齐） */
+  .headRow{display:flex;flex-direction:column;align-items:flex-start;margin-top:14px;position:relative;z-index:20}
+  .pageTitle{font-size:26px;font-weight:700;letter-spacing:.01em;margin-top:12px}
   .avatarName{display:flex;align-items:center;gap:8px}
   .avatar{width:30px;height:30px;border-radius:15px;background:var(--limeCore);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#3E4614}
   .avatarName .nm{font-size:14px;font-weight:500;color:var(--ink)}
@@ -51,7 +51,6 @@
   @keyframes drift2{from{transform:translateX(0)}to{transform:translateX(-205px)}}
   @keyframes bob{0%,100%{transform:translateY(6px)}50%{transform:translateY(-6px)}}
   @keyframes rise{0%{transform:translateY(6px);opacity:0}14%{opacity:.9}80%{opacity:.45}100%{transform:translateY(-52px);opacity:0}}
-  @keyframes haloPulse{0%,100%{transform:scale(.94);opacity:.62}50%{transform:scale(1.04);opacity:.94}}
   .w1{animation:drift 6.4s linear infinite}
   .w2{animation:drift2 9.8s linear infinite}
   .bobG{animation:bob 8s cubic-bezier(.45,0,.55,1) infinite}
@@ -59,7 +58,6 @@
   .bub.b2{animation-duration:5s;animation-delay:1.2s}
   .bub.b3{animation-duration:4.4s;animation-delay:2.4s}
   .bub.b4{animation-duration:6s;animation-delay:.6s}
-  .haloG{animation:haloPulse 6.4s cubic-bezier(.45,0,.55,1) infinite;transform-origin:162px 162px}
 
   /* ---------- 圆环下图例（还原） ---------- */
   .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;margin-top:10px}
@@ -141,13 +139,13 @@
         <svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg>
       </div>
 
-      <!-- 头部 -->
+      <!-- 头部（账号在上、标题在下） -->
       <div class="headRow">
-        <div class="pageTitle">今日状态</div>
         <div class="avatarName">
           <div class="avatar">K</div>
           <div class="nm">Kristina</div>
         </div>
+        <div class="pageTitle">今日状态</div>
       </div>
 
       <!-- ===== 能量水波圆环（EnergyBall：外壳/月相点/中央文字不变，内部改水） ===== -->
@@ -200,11 +198,6 @@
           <circle cx="162" cy="162" r="162" fill="url(#aura)"/>
           <circle cx="162" cy="162" r="106.6" stroke="#BCCB62" stroke-width="2.8" fill="none" opacity="0.92"/>
 
-          <!-- 环内：中央呼吸光晕（原样保留，垫在水下） -->
-          <g class="haloG">
-            <circle cx="162" cy="162" r="170.6" fill="url(#moodGlow)"/>
-          </g>
-
           <!-- 环内：水体（裁剪进圆环） -->
           <g clip-path="url(#ringClip)">
             <circle cx="162" cy="162" r="106.6" fill="url(#bowlG)"/>
@@ -220,6 +213,9 @@
             <ellipse cx="162" cy="58" rx="128" ry="62" fill="url(#glossG)"/>
             <ellipse cx="162" cy="300" rx="150" ry="66" fill="url(#shadeG)"/>
           </g>
+
+          <!-- 中央柔光：★ 2026-10-16（用户：去掉圆环中间的呼吸）起静态，位于水的上层（与 App 图层一致） -->
+          <circle cx="162" cy="162" r="48" fill="url(#moodGlow)" opacity="0.6"/>
         </svg>
 
         <!-- 中央文字（原样保留） -->
@@ -324,10 +320,10 @@
   <div class="kicker">DIFF · 改动点</div>
   <h2>只动了圆环里面</h2>
   <div class="noteGrid">
-    <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>原「中央弥散光晕」保留为背景，新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影。</p></div></div>
+    <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影；中央柔光改为静态（不再脉动）。</p></div></div>
     <div class="noteItem"><span class="no">02</span><div><b>改：水色跟随状态</b><p>水色不写死：状态良好 = 青柠（本页演示）；元气满满 = 蜜黄、平平静静 = 紫、休息一下 = 粉，与圆环描边 / 光晕同色同源。</p></div></div>
     <div class="noteItem"><span class="no">03</span><div><b>没改：圆环外壳</b><p>外圈光晕、状态色环描边、四个月相点（32s 公转、当前相位放大 + 暖光晕）、中央「状态值 / 更新于」文字，全部与原实现一致。</p></div></div>
-    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>标题与头像、四等级图例、周期四相图例、五个指标 chips、AI 气泡（白玻璃 + 尾巴 + 今日建议）、底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>账号行（K / Kristina）在标题上方、标题下移（2026-10-16 起的新头部结构），四等级图例、周期四相图例、五个指标 chips、AI 气泡（白玻璃 + 尾巴 + 今日建议）、底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
   </div>
 </div>
 

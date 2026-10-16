@@ -49,7 +49,7 @@ const LABEL_TO_PHASE: Record<string, PhaseKey> = {
 
 /* ─────────────────────────────────────────────────────────────
  * ★ 2026-10-16：圆环内部「能量水波」（首页圆环里面水流动）
- * · 保留：外圈光晕 / 状态色环描边 / 中央呼吸光晕 / 四月相点公转 / 中央文字
+ * · 保留：外圈光晕 / 状态色环描边 / 中央柔光（2026-10-16 起静态）/ 四月相点公转 / 中央文字
  * · 新增：环内浅水底色 + 双层正弦波无缝横移 + 水面呼吸升降 + 气泡上浮 + 玻璃体积
  * · 水色由状态色（ringColor）派生，四等级自动同色
  * · ★ 回退开关：把 WATER_RING_ENABLED 改 false 即恢复纯光晕圆环（其余代码不动）
@@ -143,7 +143,7 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
 
-  // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
+  // 中央柔光：★ 2026-10-16（用户：去掉圆环中间的呼吸）起改为静态（effect 里固定 0.45），不再脉动
   const halo = useRef(new Animated.Value(0)).current;
   const reducedMotion = useReducedMotion();
   // 轨道公转：整层绕中心缓慢旋转，让四个状态点像行星环绕
@@ -207,8 +207,11 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
   );
 
   useEffect(() => {
+    // ★ 2026-10-16（用户：去掉圆环中间的呼吸）：中央弥散光晕改为**静态**（不再脉动），
+    //   固定取 reducedMotion 降级档 0.45（小范围柔光）；月相点公转与水波动画不受影响。
+    halo.setValue(0.45);
+
     if (reducedMotion) {
-      halo.setValue(0.45);
       orbit.setValue(0);
       // 水波静态降级：水面停在低位、气泡隐藏（不做循环）
       drift1.setValue(0);
@@ -221,27 +224,6 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       return;
     }
     const ease = Easing.inOut(Easing.ease);
-
-    // ★ 呼吸光晕走**原生驱动**：把「改圆的半径」改成「缩放一个固定半径的圆」——
-    //   半径驱动的是 SVG 属性（只能 JS 线程），而 scale/opacity 是 View 样式（可原生驱动）。
-    //   原来是 useNativeDriver:false 的常驻循环，首页挂着就一直占 JS 线程，与滚动争资源。
-    const haloLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(halo, {
-          toValue: 1,
-          duration: theme.motion.breath.halo / 2,
-          easing: ease,
-          useNativeDriver: true,
-        }),
-        Animated.timing(halo, {
-          toValue: 0,
-          duration: theme.motion.breath.halo / 2,
-          easing: ease,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    haloLoop.start();
 
     // 行星环绕：整体匀速公转（约 32 秒一圈，缓慢移动）
     const orbitLoop = Animated.loop(
@@ -296,7 +278,6 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     }
 
     return () => {
-      haloLoop.stop();
       orbitLoop.stop();
       drift1Loop.stop();
       drift2Loop.stop();
@@ -413,8 +394,8 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
         ) : null}
       </Svg>
 
-      {/* 中央弥散彩色呼吸光晕：独立图层，整层 scale/opacity → 可走原生驱动。
-          固定画在最大半径，靠 scale 呼吸；渐变 r="50%" 相对包围盒，缩放后视觉等价。
+      {/* 中央弥散彩色柔光：独立图层（★ 2026-10-16 起静态，不再呼吸脉动）。
+          固定画在最大半径，靠 scale 表达大小；渐变 r="50%" 相对包围盒，缩放后视觉等价。
           key 强制按颜色重挂，避免渐变缓存。 */}
       <Animated.View
         pointerEvents="none"

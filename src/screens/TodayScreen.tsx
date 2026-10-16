@@ -1053,15 +1053,16 @@ export default function TodayScreen() {
               },
             ]}
           >
-            {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出） */}
+            {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出）
+                ★ 2026-10-16（用户）：账号行（K / Kristina）移到「今日状态」标题上方，标题随之下移 */}
             <View style={styles.head} onLayout={measureSection('head')}>
-              <Text style={styles.title}>今日状态</Text>
               <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLetter}>K</Text>
                 </View>
                 <Text style={styles.name}>Kristina</Text>
               </TouchableOpacity>
+              <Text style={[styles.title, { marginTop: theme.space.sm }]}>今日状态</Text>
             </View>
 
             {/* ★ 2026-10-15：弹性呼吸位 —— 与圆弧下方的另一处弹性位等分剩余高度，
@@ -1298,9 +1299,10 @@ const styles = StyleSheet.create({
   },
   page2Scroll: { flex: 1, width: '100%' },
   head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    // ★ 2026-10-16（用户：账号 Kristina 放到「今日状态」上面 + 标题往下一点）：
+    //   单行（标题左 / 账号右）→ 上下堆叠（账号行在上、标题在下，均左对齐）。
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     // ★ 2026-10-11（用户：顶头与下方 chips 排有点挤）：xs(8) → lg(20)，
     //   给「今日状态」标题与下方睡眠恢复/脑力准备度 chips 留出更舒展的呼吸间距。
     marginBottom: theme.space.lg,
