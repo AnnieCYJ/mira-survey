@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mira 首页 · 海岸背景 + 玻璃卡片 + 半圆环（效果提案）</title>
+<title>Mira 首页 · 海岸背景 + 玻璃卡片 + 半圆白弧（效果提案）</title>
 <style>
   :root{
     --w92:rgba(255,255,255,.92); --w70:rgba(255,255,255,.70); --w55:rgba(255,255,255,.55); --w40:rgba(255,255,255,.40);
@@ -46,8 +46,8 @@
   .avatar{width:30px;height:30px;border-radius:15px;background:var(--limeCore);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#3E4614}
   .avatarName .nm{font-size:14px;font-weight:500;color:#FFFFFF}
 
-  /* ---------- 指标 chips：Oura 式玻璃小卡 ---------- */
-  .chipsScroll{margin-top:12px;margin-bottom:8px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  /* ---------- 指标 chips：Oura 式玻璃小卡（2026-10-16 起移到半圆弧下方） ---------- */
+  .chipsScroll{margin-top:14px;margin-bottom:8px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .chipsScroll::-webkit-scrollbar{display:none}
   .chip{flex:none;width:88px;height:78px;background:var(--glass);border:1px solid var(--glassBrd);border-radius:16px;box-shadow:0 10px 26px rgba(6,8,20,.30),inset 0 1px 0 rgba(255,255,255,.22);backdrop-filter:blur(20px) saturate(1.35);-webkit-backdrop-filter:blur(20px) saturate(1.35);padding:8px 9px;display:flex;flex-direction:column}
   .iconSq{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:5px}
@@ -63,22 +63,11 @@
   .ringLabel{font-size:24px;font-weight:600;color:#FFFFFF;text-shadow:0 2px 14px rgba(8,10,22,.55)}
   .ringValue{font-size:12.5px;color:var(--w70);margin-top:5px;font-weight:500;text-shadow:0 1px 10px rgba(8,10,22,.6)}
   .ringUpdated{font-size:12.5px;color:var(--w55);margin-top:2px;font-weight:400;text-shadow:0 1px 10px rgba(8,10,22,.6)}
-  /* 月相点：直接钉在半圆轨上（半圆场景不做 32s 公转——转出弧外；当前相位放大 + 暖光晕） */
+  /* 月相点：直接钉在半圆轨上（半圆场景不做 32s 公转——转出弧外；当前相位放大 + 白光晕） */
   .moonDot{position:absolute;border-radius:50%;z-index:4}
-  .moonDot.cur{box-shadow:0 0 16px rgba(240,196,110,.9)}
+  .moonDot.cur{box-shadow:0 0 16px rgba(255,255,255,.9)}
 
-  /* 水波：双波层无缝横移 + 呼吸升降 + 气泡上浮 */
-  @keyframes drift{from{transform:translateX(0)}to{transform:translateX(-150px)}}
-  @keyframes drift2{from{transform:translateX(0)}to{transform:translateX(-196px)}}
-  @keyframes bob{0%,100%{transform:translateY(4px)}50%{transform:translateY(-4px)}}
-  @keyframes rise{0%{transform:translateY(6px);opacity:0}14%{opacity:.9}80%{opacity:.45}100%{transform:translateY(-48px);opacity:0}}
-  .w1{animation:drift 6.4s linear infinite}
-  .w2{animation:drift2 9.8s linear infinite}
-  .bobG{animation:bob 8s cubic-bezier(.45,0,.55,1) infinite}
-  .bub{animation:rise 3.8s ease-in infinite}
-  .bub.b2{animation-duration:5s;animation-delay:1.2s}
-  .bub.b3{animation-duration:4.4s;animation-delay:2.4s}
-  .bub.b4{animation-duration:6s;animation-delay:.6s}
+  /* 水波动画已移除（2026-10-16：弧改白色、弧内去水，参考 Oura） */
 
   /* ---------- 圆环下图例（一行：四等级 + 当前相位） ---------- */
   .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:10px}
@@ -138,7 +127,7 @@
 <div class="head">
   <span class="tag">首页风格 · 效果提案</span>
   <h1>海岸背景 + 玻璃卡片 + 半圆环</h1>
-  <p>沿用 Mira 首页全部信息结构（账号行 / 标题 / 五个指标 chips / 状态圆环 / 一行图例 / AI 分析卡 / Tab 栏），<b>换三层皮</b>：① 背景用你提供的海岸黄昏照片（cover 裁切，上下加渐变压暗保可读性）；② 所有卡片改 <b>Oura 式透明玻璃</b>（半透明磨砂 + 细白描边 + 内高光），文字转白；③ 中间圆环改<b>半圆</b>——Oura 式半圆进度轨（状态色渐变弧 + 轨道底 + 底部柔光反射），碗内保留「状态水」：双正弦波无缝横移、水面呼吸升降、气泡上浮，水色跟随当前状态（本页演示「状态良好」= 青柠水）。当前相位 = 卵泡期。动效为实时预览，纯 CSS / SVG。</p>
+  <p>沿用 Mira 首页全部信息结构（账号行 / 标题 / 五个指标 chips / 状态圆环 / 一行图例 / AI 分析卡 / Tab 栏），<b>换三层皮</b>：① 背景用你提供的海岸黄昏照片（cover 裁切，上下加渐变压暗保可读性）；② 所有卡片改 <b>Oura 式透明玻璃</b>（半透明磨砂 + 细白描边 + 内高光），文字转白；③ 中间圆环改<b>半圆</b>——Oura 式<b>白色进度弧</b>（白弧 72% + 低透明度白轨道 + 白色外侧柔光 + 底部桌面反射），弧内的「状态水」整体去掉，中央文字直接坐在背景照片上（白字 + 暗色柔影）。当前相位 = 卵泡期。动效为实时预览，纯 CSS / SVG。</p>
 </div>
 
 <div class="stage">
@@ -165,7 +154,46 @@
         <div class="pageTitle">今日状态</div>
       </div>
 
-      <!-- 指标 chips：玻璃小卡 -->
+      <!-- ===== 半圆环（Oura 式白色进度弧，弧内无水） ===== -->
+      <div class="ringWrap">
+        <svg class="ringSvg" viewBox="0 0 324 224" aria-label="今日状态半圆环 · Oura 白弧">
+          <defs>
+            <!-- 进度弧渐变（白色：Oura 式） -->
+            <linearGradient id="arcG" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#FFFFFF"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,.86)"/>
+            </linearGradient>
+            <!-- 半圆底部柔光（桌面反射，白色） -->
+            <radialGradient id="glowG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".16"/>
+              <stop offset="60%" stop-color="#FFFFFF" stop-opacity=".05"/>
+              <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- 底部柔光 -->
+          <ellipse cx="162" cy="186" rx="158" ry="18" fill="url(#glowG)"/>
+
+          <!-- 半圆轨道底（白） -->
+          <path d="M 26 180 A 136 136 0 0 1 298 180" stroke="rgba(255,255,255,.20)" stroke-width="14" fill="none" stroke-linecap="round"/>
+          <!-- 进度弧外侧柔光（白） -->
+          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="#FFFFFF" stroke-width="22" fill="none" stroke-linecap="round" opacity=".16"/>
+          <!-- 进度弧（72%，白弧） -->
+          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="url(#arcG)" stroke-width="14" fill="none" stroke-linecap="round"/>
+        </svg>
+
+        <!-- 中央文字（白字 + 暗柔影，直接坐在背景上） -->
+        <div class="ringTxt">
+          <div class="ringLabel">状态良好</div>
+          <div class="ringValue">状态值：72</div>
+          <div class="ringUpdated">更新于 16:30</div>
+        </div>
+
+        <!-- 月相点：钉在半圆轨上（左=排卵 左上=经期 右上=黄体 右=卵泡[当前]） -->
+        <div id="moonLayer"></div>
+      </div>
+
+      <!-- 指标 chips：玻璃小卡（2026-10-16 用户要求：从圆环上方移到半圆弧下方） -->
       <div class="chipsScroll">
         <div class="chip">
           <div class="iconSq" style="background:rgba(234,240,190,.20)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D5E384" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg></div>
@@ -192,72 +220,6 @@
           <div class="chipLab">生理周期</div>
           <div class="chipValRow"><div class="chipVal" style="font-size:13px">第 21 天</div></div>
         </div>
-      </div>
-
-      <!-- ===== 半圆环（Oura 式半圆进度轨 + 碗内状态水） ===== -->
-      <div class="ringWrap">
-        <svg class="ringSvg" viewBox="0 0 324 224" aria-label="今日状态半圆环 · 水流动">
-          <defs>
-            <!-- 进度弧渐变（状态色：青柠） -->
-            <linearGradient id="arcG" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#D5E384"/>
-              <stop offset="100%" stop-color="#BCCB62"/>
-            </linearGradient>
-            <!-- 半圆底部柔光（桌面反射） -->
-            <radialGradient id="glowG" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#BCCB62" stop-opacity=".22"/>
-              <stop offset="60%" stop-color="#BCCB62" stop-opacity=".07"/>
-              <stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
-            </radialGradient>
-            <!-- 水体渐变（水面 → 水底） -->
-            <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#D9E78C"/>
-              <stop offset="60%" stop-color="#C2D06E"/>
-              <stop offset="100%" stop-color="#A9B84F"/>
-            </linearGradient>
-            <radialGradient id="glossG" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".55"/>
-              <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
-            </radialGradient>
-            <!-- 碗内裁剪（半圆） -->
-            <clipPath id="bowlClip"><path d="M 33 180 A 129 129 0 0 1 291 180 Z"/></clipPath>
-          </defs>
-
-          <!-- 底部柔光 -->
-          <ellipse cx="162" cy="186" rx="158" ry="18" fill="url(#glowG)"/>
-
-          <!-- 半圆轨道底 -->
-          <path d="M 26 180 A 136 136 0 0 1 298 180" stroke="rgba(255,255,255,.16)" stroke-width="14" fill="none" stroke-linecap="round"/>
-          <!-- 进度弧外侧柔光 -->
-          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="#D5E384" stroke-width="22" fill="none" stroke-linecap="round" opacity=".14"/>
-          <!-- 进度弧（72%） -->
-          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="url(#arcG)" stroke-width="14" fill="none" stroke-linecap="round"/>
-
-          <!-- 碗内：状态水（裁剪进半圆） -->
-          <g clip-path="url(#bowlClip)">
-            <path d="M 33 180 A 129 129 0 0 1 291 180 Z" fill="rgba(255,255,255,.05)"/>
-            <g class="bobG">
-              <path id="w2" class="w2" fill="#B9CB6E" opacity=".75"/>
-              <path id="w1" class="w1" fill="url(#waterG)"/>
-              <path id="w1c" class="w1" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.5"/>
-              <circle class="bub" cx="96" cy="176" r="2.6" fill="#FFFFFF"/>
-              <circle class="bub b2" cx="140" cy="178" r="3.2" fill="#FFFFFF"/>
-              <circle class="bub b3" cx="190" cy="174" r="2" fill="#FFFFFF"/>
-              <circle class="bub b4" cx="224" cy="178" r="2.8" fill="#FFFFFF"/>
-            </g>
-            <ellipse cx="120" cy="86" rx="72" ry="30" fill="url(#glossG)"/>
-          </g>
-        </svg>
-
-        <!-- 中央文字（坐在水面上方） -->
-        <div class="ringTxt">
-          <div class="ringLabel">状态良好</div>
-          <div class="ringValue">状态值：72</div>
-          <div class="ringUpdated">更新于 16:30</div>
-        </div>
-
-        <!-- 月相点：钉在半圆轨上（左=排卵 左上=经期 右上=黄体 右=卵泡[当前]） -->
-        <div id="moonLayer"></div>
       </div>
 
       <!-- 一行图例：四等级 + 当前相位 -->
@@ -324,29 +286,15 @@
   <div class="noteGrid">
     <div class="noteItem"><span class="no">01</span><div><b>改：背景 = 海岸黄昏</b><p>整屏铺你提供的海岸照片（cover 裁切、视线中心略偏上保住地平线）；顶部 300px / 底部 340px 两段渐变压暗——保状态栏、标题、Tab 栏可读，同时淡化原图右下角「AI 生成」水印；Tab 栏本身也是磨砂玻璃，水印基本被盖住。</p></div></div>
     <div class="noteItem"><span class="no">02</span><div><b>改：Oura 式透明玻璃卡片</b><p>指标 chips 与 AI 分析卡改为半透明磨砂（backdrop blur 20~26px + 细白描边 + 内高光 + 外投影），文字转白、次要文字 70%/55% 白；CTA 保留青柠渐变。玻璃质感在真机截图/录屏里最明显，HTML 预览已尽量还原。</p></div></div>
-    <div class="noteItem"><span class="no">03</span><div><b>改：圆环 → 半圆</b><p>参考 Oura：半圆进度轨（状态色渐变弧 72% + 白色轨道底 + 外侧柔光 + 底部桌面反射）；碗内保留 Mira 的「状态水」——双正弦波无缝横移、8s 呼吸升降、气泡上浮，水色跟随状态色；四月相点钉在弧上（左=排卵 / 左上=经期 / 右上=黄体 / 右=卵泡[当前，放大 + 光晕]）——半圆场景不再 32s 公转（会转出弧外）。</p></div></div>
-    <div class="noteItem"><span class="no">04</span><div><b>没改：信息与排布</b><p>账号行在标题上方、五个指标 chips 在圆环上方、图例一行（四等级 + 当前相位）、AI 分析卡贴在 Tab 栏上方、底部 Tab 栏（仅图标 + 中央渐变球）——全部与当前 App 首页一致；仅配色/材质/圆环形状随本提案走深色玻璃风。</p></div></div>
+    <div class="noteItem"><span class="no">03</span><div><b>改：圆环 → 半圆白弧</b><p>参考 Oura：进度弧改为<b>白色</b>（白色渐变弧 72% + 低透明度白轨道底 + 白色外侧柔光 + 底部桌面反射）；弧内的「状态水」整体去掉（2026-10-16 用户要求），中央白字直接坐在背景照片上（白字 + 暗色柔影）；四月相点钉在弧上保留彩色（左=排卵 / 左上=经期 / 右上=黄体 / 右=卵泡[当前，放大 + 白光晕]）——半圆场景不做 32s 公转（会转出弧外）。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>改：chips 位置</b><p>五个指标 chips 从圆环<b>上方</b>移到<b>半圆弧下方</b>（2026-10-16 用户要求）——圆环更贴近标题，指标卡挨着图例；其余排布（账号行在上 / 标题在下 / 图例一行 / AI 卡贴 Tab / 底部 Tab 栏）与当前 App 首页一致。</p></div></div>
   </div>
 </div>
 
-<div class="foot"><b>落地路径</b>：纯 CSS / SVG + 一张背景图；RN 端半圆用 react-native-svg 的 Arc 路径（A 指令）+ Animated 驱动水波，玻璃卡片用 expo-blur（BlurView）透出下层背景图，压暗用 LinearGradient 两层。本页为效果预览，无交互。</div>
+<div class="foot"><b>落地路径</b>：纯 CSS / SVG + 一张背景图；RN 端半圆用 react-native-svg 的 Arc 路径（A 指令），玻璃卡片用 expo-blur（BlurView）透出下层背景图，压暗用 LinearGradient 两层。本页为效果预览，无交互。</div>
 
 <script>
 (function(){
-  // ── 正弦波路径：宽 648 = 2×画布宽，位移一个波长即无缝循环 ──
-  function wave(amp, wl, phase, base){
-    var w = 648, d = 'M0 ' + base;
-    for (var x = 0; x <= w; x += 3){
-      var y = base + amp * Math.sin((x / wl) * Math.PI * 2 + phase);
-      d += ' L' + x.toFixed(1) + ' ' + y.toFixed(2);
-    }
-    d += ' L' + w + ' 224 L0 224 Z';
-    return d;
-  }
-  document.getElementById('w1').setAttribute('d', wave(5, 150, 0, 146));
-  document.getElementById('w1c').setAttribute('d', wave(5, 150, 0, 146).replace(' L648 224 L0 224 Z', ''));
-  document.getElementById('w2').setAttribute('d', wave(7, 196, 2.4, 152));
-
   // ── 月相点（与 MoonDot 同源：full / quarterR / allPurple / quarterL） ──
   var MOON_LIT = '#F2C75C', MOON_PURPLE = '#9D8AF0';
   function moonPath(cx, cy, R, t){
