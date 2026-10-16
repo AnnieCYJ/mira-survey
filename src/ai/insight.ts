@@ -154,6 +154,14 @@ function buildFacts(): { facts: string; sig: string } {
   } catch {
     facts = '';
   }
+  // 端侧小模型上下文有限；洞察只需要当前事实摘要，不应把完整聊天/知识块一并塞入。
+  // 保留开头（当前时段、基础指标、睡眠）和末尾（趋势、周期、已确认方法）。
+  const MAX_FACT_CHARS = 5200;
+  if (facts.length > MAX_FACT_CHARS) {
+    const head = facts.slice(0, 3600);
+    const tail = facts.slice(-1400);
+    facts = `${head}\n• 事实摘要已按上下文预算压缩。\n${tail}`;
+  }
   return { facts, sig: simpleHash(facts) };
 }
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Line, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -39,6 +39,31 @@ function EcgGrid({ W, H }: { W: number; H: number }) {
     lines.push(<Line key={`h${y}`} x1={0} y1={y} x2={W} y2={y} stroke={mm.colors.ecgRed} strokeOpacity={isMajor ? 0.22 : 0.08} strokeWidth={1} />);
   }
   return <>{lines}</>;
+}
+
+/** 心电波形「不压缩」查看器：按自然横向比例铺开（PX_PER_SAMPLE 像素/采样点），超出屏幕宽度时用横向滚动看全部；
+ *  点击可放大到全屏。竖向按本段 min/max 自适应高度，避免压扁形态。 */
+const PX_PER_SAMPLE = 0.7;
+function EcgScrollTrace({ waveform, height = 150, color = mm.colors.ecgRed, onTap }: { waveform: number[]; height?: number; color?: string; onTap?: () => void }) {
+  const W = Math.max(320, waveform.length * PX_PER_SAMPLE);
+  const Inner = (
+    <Svg width={W} height={height} viewBox={`0 0 ${W} ${height}`}>
+      <EcgGrid W={W} H={height} />
+      {waveform.length > 4 ? (
+        <Path d={wavePath(waveform, W, height)} fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+      ) : null}
+    </Svg>
+  );
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator
+      contentContainerStyle={{ paddingVertical: 4 }}
+      style={{ backgroundColor: 'rgba(255,240,243,0.6)', borderRadius: 8 }}
+    >
+      {onTap ? <TouchableOpacity activeOpacity={0.9} onPress={onTap}>{Inner}</TouchableOpacity> : Inner}
+    </ScrollView>
+  );
 }
 
 function fmtDateTime(ts: number): string {
@@ -129,10 +154,21 @@ export default function EcgDetailScreen() {
   const ring = useRingState();
   const [measuring, setMeasuring] = useState(false);
   const [tab, setTab] = useState<'metrics' | 'risk'>('metrics');
+  const [zoom, setZoom] = useState(false);
+  const liveWave = ring.ecgLiveWaveform;
+  const zoomH = Math.round(Dimensions.get('window').height * 0.55);
 
   useEffect(() => {
-    if (measuring && ring.ecg) setMeasuring(false);
-  }, [measuring, ring.ecg]);
+    // 成功（ecg 落库）或失败/超时（ecgError 写入）都回到空闲态，避免按钮永久卡在「测量中」
+    if (measuring && (ring.ecg || ring.ecgError)) setMeasuring(false);
+  }, [measuring, ring.ecg, ring.ecgError]);
+
+  // ★ 2026-10-16：测量超时兜底（与 EcgCard 一致）：120s 内无结果则 abort + 写 ecgError
+  useEffect(() => {
+    if (!measuring) return;
+    const id = setTimeout(() => RingBle.abortEcg(), 120000);
+    return () => clearTimeout(id);
+  }, [measuring]);
 
   const measureEcg = useCallback(() => {
     if (measuring) return;
@@ -147,6 +183,7 @@ export default function EcgDetailScreen() {
 
   const history = ring.ecgHistory ?? [];
   const latest = history.length > 0 ? history[0] : null;
+  const fullW = Math.max(320, (latest?.waveform?.length ?? 0) * PX_PER_SAMPLE);
   const a: EcgAnalysis | undefined = latest?.analysis;
 
   // 医学指标（参考区间中性描述）
@@ -185,25 +222,34 @@ export default function EcgDetailScreen() {
           </View>
         </View>
 
-        {/* 最新一次：心电图（医学网格） */}
+        {/* 最新一次：心电图（不压缩 · 横向滚动看全部） */}
         {latest ? (
           <View style={styles.latestBox}>
             <View style={styles.latestTop}>
               <Text style={styles.latestTime}>最新一次 · {fmtDateTime(latest.ts)}</Text>
-              <Text style={styles.scaleTag}>25 mm/s · 10 mm/mV</Text>
+              <Text style={styles.scaleTag}>不压缩 · 左右滑动</Text>
             </View>
-            <Svg width="100%" height={120} viewBox="0 0 320 120" preserveAspectRatio="none" style={{ marginTop: 8, backgroundColor: 'rgba(255,240,243,0.6)', borderRadius: 8 }}>
-              <EcgGrid W={320} H={120} />
-              <Defs>
-                <LinearGradient id="ecgLatest" x1="0" y1="0" x2="1" y2="0">
-                  <Stop offset="0%" stopColor={mm.colors.ecgRed} stopOpacity={0.6} />
-                  <Stop offset="100%" stopColor={mm.colors.ecgRed} stopOpacity={1} />
-                </LinearGradient>
-              </Defs>
-              {latest.waveform && latest.waveform.length > 0 ? (
-                <Path d={wavePath(latest.waveform, 320, 120)} fill="none" stroke="url(#ecgLatest)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-              ) : null}
-            </Svg>
+            <EcgScrollTrace waveform={latest.waveform} height={150} onTap={() => setZoom(true)} />
+            <TouchableOpacity style={styles.zoomBtn} activeOpacity={0.7} onPress={() => setZoom(true)}>
+              <Text style={styles.zoomBtnText}>⤢ 全屏查看完整波形</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* 测量过程中：实时波形（不压缩 · 随采集滚动） */}
+        {measuring ? (
+          <View style={styles.liveBox}>
+            <View style={styles.latestTop}>
+              <Text style={styles.latestTime}>测量中实时波形</Text>
+              <Text style={styles.scaleTag}>{liveWave && liveWave.length > 4 ? '采集中 · 滚动查看' : '正在启动…'}</Text>
+            </View>
+            {liveWave && liveWave.length > 4 ? (
+              <EcgScrollTrace waveform={liveWave} height={120} color={mm.colors.ecgRed} />
+            ) : (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>正在采集波形，请保持手指接触电极…</Text>
+              </View>
+            )}
           </View>
         ) : null}
 
@@ -221,6 +267,13 @@ export default function EcgDetailScreen() {
             <Text style={styles.btnLabel}>{latest ? '重新测量心电图' : '开始心电图测量'}</Text>
           </TouchableOpacity>
         )}
+
+        {/* ★ 2026-10-16：ECG 最近失败原因常驻显示（导联脱落/设备忙/无效读数/超时） */}
+        {ring.ecgError ? (
+          <View style={styles.ecgErrBox}>
+            <Text style={styles.ecgErrText}>{ring.ecgError}</Text>
+          </View>
+        ) : null}
 
         {/* 分段：医学指标 / 风险分析 */}
         {latest?.analysis ? (
@@ -285,6 +338,31 @@ export default function EcgDetailScreen() {
             ))}
           </ScrollView>
         )}
+
+        {/* 全屏放大查看：完整波形，不压缩，横向滚动 */}
+        <Modal visible={zoom} transparent animationType="fade" onRequestClose={() => setZoom(false)}>
+          <View style={styles.zoomMask}>
+            <View style={styles.zoomBar}>
+              <Text style={styles.zoomTitle}>心电图 · 完整波形</Text>
+              <TouchableOpacity onPress={() => setZoom(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={styles.zoomClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {latest ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ paddingVertical: 10 }}>
+                <Svg width={fullW} height={zoomH} viewBox={`0 0 ${fullW} ${zoomH}`}>
+                  <EcgGrid W={fullW} H={zoomH} />
+                  {latest.waveform && latest.waveform.length > 4 ? (
+                    <Path d={wavePath(latest.waveform, fullW, zoomH)} fill="none" stroke={mm.colors.ecgRed} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                  ) : null}
+                </Svg>
+              </ScrollView>
+            ) : (
+              <View style={styles.emptyBox}><Text style={styles.emptyText}>暂无波形数据</Text></View>
+            )}
+            <Text style={styles.zoomHint}>← 左右滑动查看全部 · 波形不压缩 →</Text>
+          </View>
+        </Modal>
       </ScreenContainer>
     </View>
   );
@@ -307,6 +385,55 @@ const styles = StyleSheet.create({
   latestTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   latestTime: { fontSize: 13, color: theme.colors.textSub },
   scaleTag: { fontSize: 10, color: mm.colors.ecgRed, fontWeight: '600' },
+
+  liveBox: {
+    backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    padding: 14,
+    marginBottom: 12,
+  },
+
+  ecgErrBox: {
+    marginTop: 10,
+    paddingVertical: theme.sp(1.5),
+    paddingHorizontal: theme.sp(2),
+    backgroundColor: theme.colors.dangerSoft ?? 'rgba(229,57,53,0.10)',
+    borderRadius: theme.radius.sm,
+  },
+  ecgErrText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.danger ?? '#e53935',
+    lineHeight: 18,
+  },
+
+  zoomBtn: {
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: theme.radius.sm,
+    backgroundColor: 'rgba(229,80,138,0.1)',
+  },
+  zoomBtnText: { fontSize: 12, fontWeight: '600', color: mm.colors.ecgRed },
+
+  zoomMask: {
+    flex: 1,
+    backgroundColor: 'rgba(20,14,18,0.92)',
+    paddingTop: 48,
+    paddingBottom: 32,
+  },
+  zoomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    marginBottom: 12,
+  },
+  zoomTitle: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
+  zoomClose: { fontSize: 22, color: '#FFFFFF', fontWeight: '500' },
+  zoomHint: { fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
 
   btn: {
     alignItems: 'center',

@@ -122,3 +122,8 @@
 - 关键决策：hermes-engine/（54MB）与 .last_build_configuration 属构建产物，按 build/build_fresh 先例加入 .gitignore 而非提交。
 - 处理：git add -A（65 文件，子模块无法暂存）→ commit c515851「迭代呼吸/冥想与工具卡设计：替换冥想音轨为 rain_v4、新增 FadeInImage/TabFade 组件与 analysisFacts/timePhase lib，更新首页 AI 气泡、月相发现与多屏；新增 preview-glass/preview-tools 设计稿并 ignore hermes-engine 构建产物」→ push 成功 5aa537e..c515851（+3842/-3226）。
 - 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-16 14:12（第二十四次运行）
+- 发现：本地 master 领先 origin/master **1 个提交**；工作区 24 项未提交改动——修改 19 个源文件（MetricDetailScreen ±637 行、EcgDetailScreen ±361 行、BpDetailScreen ±158 行、RingBleManager +190 行、HomeAiBubble ±220 行，及 theme/mindmate.ts、App.tsx、analysisFacts/tempBaseline/healthAgeEstimate 等 lib）+ 新增 5 个文件（home-gray-bg.html、preview/assets/sea-dusk.jpg、preview/bubble-variants.html、preview/ecg-detail.html、preview/glass-home.html）。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
+- 处理：执行 `git add -A`（24 文件，子模块无法暂存）→ commit c45e252「迭代指标详情、血压/心电页及 BLE 管理层」→ push 成功 a9d83eb..c45e252。
+- 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。

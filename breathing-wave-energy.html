@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>今日状态圆环 · 里面水流动（首页还原预览）</title>
+<style>
+  :root{--ink:#2E2A3A;--sub:#5F5F74;--line:#E7E4EE;--lime:#BCCB62;--limeCore:#D5E384;--limeSoft:#EAF0BE;--limeDeep:#6E7A24}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;background:#F4F3F7;color:var(--ink);min-height:100vh}
+
+  /* ---------- 提案页头 ---------- */
+  .head{max-width:760px;margin:0 auto;padding:46px 28px 4px;text-align:left}
+  .tag{display:inline-block;font-size:11px;font-weight:600;color:#5F6B1E;background:#F0F4DC;border-radius:999px;padding:3px 11px;letter-spacing:.04em}
+  .head h1{font-size:25px;font-weight:700;margin-top:14px;letter-spacing:.01em}
+  .head p{margin-top:12px;font-size:13.5px;color:var(--sub);line-height:1.85}
+  .head p b{color:var(--ink)}
+
+  .stage{display:flex;justify-content:center;padding:34px 16px 8px}
+
+  /* ---------- 手机框（iPhone 14 比例 390×844） ---------- */
+  .phone{position:relative;width:390px;height:844px;border-radius:54px;background:#0E0E12;flex:none;box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(20,18,40,.28)}
+  .island{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:92px;height:22px;border-radius:11px;background:#16161A;z-index:60}
+  .scr{position:absolute;inset:7px;border-radius:48px;overflow:hidden;display:flex;flex-direction:column;background:#FFFFFF;padding:0 24px}
+
+  /* 状态栏 */
+  .sbar{display:flex;justify-content:space-between;align-items:center;padding:17px 8px 0;font-size:13px;font-weight:600;color:var(--ink);position:relative;z-index:20}
+
+  /* 头部：今日状态 + 头像 */
+  .headRow{display:flex;justify-content:space-between;align-items:center;margin-top:14px;position:relative;z-index:20}
+  .pageTitle{font-size:26px;font-weight:700;letter-spacing:.01em}
+  .avatarName{display:flex;align-items:center;gap:8px}
+  .avatar{width:30px;height:30px;border-radius:15px;background:var(--limeCore);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#3E4614}
+  .avatarName .nm{font-size:14px;font-weight:500;color:var(--ink)}
+
+  /* ---------- 能量水波圆环（EnergyBall 改造） ---------- */
+  .ringWrap{position:relative;width:324px;height:301px;margin:2px auto 0}
+  .ringSvg{width:324px;height:324px;display:block;position:relative;z-index:2}
+  .ringTxt{position:absolute;left:0;right:0;top:0;bottom:23px;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5;pointer-events:none;transform:translateY(-8px)}
+  .ringLabel{font-size:28px;font-weight:600;color:var(--ink);text-shadow:0 1px 10px rgba(255,255,255,.55)}
+  .ringValue{font-size:13px;color:#6B6480;margin-top:8px;font-weight:500;text-shadow:0 1px 8px rgba(255,255,255,.6)}
+  .ringUpdated{font-size:13px;color:#453F5A;margin-top:2px;font-weight:400;text-shadow:0 1px 8px rgba(255,255,255,.6)}
+  /* 月相点轨道：整层 32s 公转（当前相位稍大 + 暖光晕） */
+  .orbit{position:absolute;inset:0;z-index:4;animation:orbit 32s linear infinite}
+  .moonDot{position:absolute;border-radius:50%}
+  .moonDot.cur{box-shadow:0 0 14px rgba(240,196,110,.85)}
+  @keyframes orbit{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+  /* 水波：双波层无缝横移 + 呼吸升降 + 气泡上浮 */
+  @keyframes drift{from{transform:translateX(0)}to{transform:translateX(-162px)}}
+  @keyframes drift2{from{transform:translateX(0)}to{transform:translateX(-205px)}}
+  @keyframes bob{0%,100%{transform:translateY(6px)}50%{transform:translateY(-6px)}}
+  @keyframes rise{0%{transform:translateY(6px);opacity:0}14%{opacity:.9}80%{opacity:.45}100%{transform:translateY(-52px);opacity:0}}
+  @keyframes haloPulse{0%,100%{transform:scale(.94);opacity:.62}50%{transform:scale(1.04);opacity:.94}}
+  .w1{animation:drift 6.4s linear infinite}
+  .w2{animation:drift2 9.8s linear infinite}
+  .bobG{animation:bob 8s cubic-bezier(.45,0,.55,1) infinite}
+  .bub{animation:rise 3.8s ease-in infinite}
+  .bub.b2{animation-duration:5s;animation-delay:1.2s}
+  .bub.b3{animation-duration:4.4s;animation-delay:2.4s}
+  .bub.b4{animation-duration:6s;animation-delay:.6s}
+  .haloG{animation:haloPulse 6.4s cubic-bezier(.45,0,.55,1) infinite;transform-origin:162px 162px}
+
+  /* ---------- 圆环下图例（还原） ---------- */
+  .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;margin-top:10px}
+  .moodItem{display:flex;align-items:center;gap:5px}
+  .moodDot{width:8px;height:8px;border-radius:4px}
+  .moodLab{font-size:11px;color:var(--sub)}
+  .phases{display:flex;justify-content:center;flex-wrap:wrap;gap:16px;margin-top:8px}
+  .phaseItem{display:flex;align-items:center;gap:5px}
+  .phaseLab{font-size:11px;color:var(--sub)}
+
+  /* ---------- 指标 chips（还原，横向滑动） ---------- */
+  .chipsScroll{margin-top:16px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .chipsScroll::-webkit-scrollbar{display:none}
+  .chip{flex:none;width:88px;height:80px;background:#FFFFFF;border-radius:14px;border:1px solid #F0EEF4;box-shadow:0 6px 16px rgba(46,42,58,.06);padding:8px 9px;display:flex;flex-direction:column}
+  .iconSq{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:5px}
+  .chipLab{font-size:11px;color:var(--sub);white-space:nowrap}
+  .chipValRow{display:flex;align-items:baseline;gap:2px;margin-top:auto}
+  .chipVal{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .chipUnit{font-size:10px;color:#9A94A6;font-weight:500}
+
+  /* ---------- AI 气泡（还原：白玻璃 + 右下尾巴） ---------- */
+  .bubbleWrap{margin-top:16px;position:relative}
+  .bubble{background:rgba(255,255,255,.88);border:1px solid rgba(31,29,26,.14);border-radius:20px;padding:14px 16px 12px;box-shadow:0 14px 34px rgba(46,42,58,.10);position:relative}
+  .bubble::after{content:"";position:absolute;right:34px;bottom:-9px;width:18px;height:18px;background:rgba(255,255,255,.88);border-right:1px solid rgba(31,29,26,.14);border-bottom:1px solid rgba(31,29,26,.14);transform:rotate(45deg);border-radius:0 0 4px 0}
+  .analysisText{font-size:13px;line-height:1.65;color:var(--ink)}
+  .eyebrowRow{display:flex;align-items:center;gap:6px;margin-top:10px}
+  .eyebrowDot{width:12px;height:12px;border-radius:6px;background:linear-gradient(90deg,#9D8AF0,#F6B3D0,#D5E384)}
+  .eyebrow{font-size:11px;font-weight:600;color:var(--sub);letter-spacing:.02em}
+  .suggRow{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(31,29,26,.07)}
+  .suggThumb{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#EAF0BE,#D5E384);flex:none}
+  .suggHead{font-size:12.5px;font-weight:600;line-height:1.4}
+  .suggEvid{font-size:11px;color:var(--sub);margin-top:2px}
+  .ctaPill{margin-left:auto;flex:none;background:var(--limeCore);color:#3E4614;font-size:11px;font-weight:700;border-radius:999px;padding:6px 12px}
+
+  /* ---------- Tab 栏（还原：仅图标 + 中央渐变球） ---------- */
+  .tabbar{margin-top:auto;border-top:1px solid #EFEDF3;background:#FFFFFF;display:flex;justify-content:space-around;align-items:flex-end;padding:10px 18px 8px;position:relative;z-index:20}
+  .tabItem{width:44px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  .tabCircle{width:34px;height:34px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#B9B4C4}
+  .tabItem.focused .tabCircle{background:var(--limeCore);color:#2E2A3A}
+  .tabDot{width:3px;height:3px;border-radius:2px;background:transparent}
+  .tabItem.focused .tabDot{background:var(--limeDeep)}
+  .tabCenterWrap{width:56px;display:flex;justify-content:center}
+  .tabCenter{width:44px;height:44px;border-radius:22px;background:linear-gradient(135deg,#C6D84B,#F58AB8);display:flex;align-items:center;justify-content:center;transform:translateY(-12px);box-shadow:0 10px 22px rgba(200,120,150,.35)}
+  .homeIndicator{width:118px;height:5px;border-radius:3px;background:rgba(42,36,32,.28);margin:0 auto 8px;position:relative;z-index:20}
+
+  /* ---------- 页尾机制说明 ---------- */
+  .notes{max-width:760px;margin:0 auto;padding:34px 28px 10px}
+  .kicker{font-size:10.5px;font-weight:600;letter-spacing:.22em;color:#5F6B1E}
+  .notes h2{font-size:18px;font-weight:700;margin-top:10px}
+  .noteGrid{display:grid;grid-template-columns:1fr 1fr;gap:0 36px;margin-top:18px}
+  .noteItem{padding:13px 0;border-top:1px solid var(--line);display:flex;gap:12px}
+  .noteItem .no{font-size:11px;font-weight:700;color:#C9C2D4;padding-top:2px}
+  .noteItem b{font-size:13.5px;font-weight:700;display:block}
+  .noteItem p{font-size:12px;color:var(--sub);line-height:1.7;margin-top:3px}
+  .foot{max-width:760px;margin:0 auto;padding:22px 28px 54px;font-size:12px;color:#8A8496;line-height:1.8}
+  .foot b{color:var(--ink)}
+
+  @media (max-width:900px){
+    .noteGrid{grid-template-columns:1fr}
+    .stage{padding-top:26px}
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <span class="tag">首页圆环 · 效果提案</span>
+  <h1>今日状态圆环 → 里面水流动</h1>
+  <p>首页按 App <b>1:1 还原</b>：标题与头像、四等级图例、周期图例、指标 chips、AI 气泡、底部 Tab 栏——全部与原页一致。<b>唯一改动在圆环内部</b>：弥散光晕换成「半碗状态水」——双层正弦波持续无缝横移、水面随 8 秒呼吸节律缓缓升降（吸气涨 / 呼气落），微粒气泡上浮渐隐；水色跟随当前状态色（本页演示「状态良好」= 青柠水）。动效为实时预览，纯 CSS / SVG，RN 端可用 react-native-svg 1:1 复刻。</p>
+</div>
+
+<div class="stage">
+  <!-- ============ 手机：Mira 首页（圆环改为水流动） ============ -->
+  <div class="phone">
+    <div class="island"></div>
+    <div class="scr">
+      <div class="sbar">
+        <span>9:41</span>
+        <svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg>
+      </div>
+
+      <!-- 头部 -->
+      <div class="headRow">
+        <div class="pageTitle">今日状态</div>
+        <div class="avatarName">
+          <div class="avatar">K</div>
+          <div class="nm">Kristina</div>
+        </div>
+      </div>
+
+      <!-- ===== 能量水波圆环（EnergyBall：外壳/月相点/中央文字不变，内部改水） ===== -->
+      <div class="ringWrap">
+        <svg class="ringSvg" viewBox="0 0 324 324" aria-label="今日状态圆环 · 水流动">
+          <defs>
+            <!-- 外圈光晕（跟随状态色，原 EnergyBall aura） -->
+            <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#BCCB62" stop-opacity="0"/>
+              <stop offset="46%" stop-color="#BCCB62" stop-opacity="0"/>
+              <stop offset="60%" stop-color="#BCCB62" stop-opacity="0.14"/>
+              <stop offset="74%" stop-color="#BCCB62" stop-opacity="0.40"/>
+              <stop offset="86%" stop-color="#BCCB62" stop-opacity="0.22"/>
+              <stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
+            </radialGradient>
+            <!-- 环内水体底色（浅水质感） -->
+            <radialGradient id="bowlG" cx="38%" cy="26%" r="85%">
+              <stop offset="0%" stop-color="#FCFFF0"/>
+              <stop offset="58%" stop-color="#F4F7DE"/>
+              <stop offset="100%" stop-color="#EAEECC"/>
+            </radialGradient>
+            <!-- 深水渐变（水面 → 水底，底部加深拉出深度） -->
+            <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#D9E78C"/>
+              <stop offset="60%" stop-color="#C2D06E"/>
+              <stop offset="100%" stop-color="#A9B84F"/>
+            </linearGradient>
+            <linearGradient id="waterG2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#EAF0BE"/>
+              <stop offset="100%" stop-color="#CBD98A"/>
+            </linearGradient>
+            <radialGradient id="glossG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".9"/>
+              <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="shadeG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#6E7A24" stop-opacity=".20"/>
+              <stop offset="100%" stop-color="#6E7A24" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="moodGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#BCCB62" stop-opacity="0.86"/>
+              <stop offset="38%" stop-color="#BCCB62" stop-opacity="0.54"/>
+              <stop offset="70%" stop-color="#BCCB62" stop-opacity="0.16"/>
+              <stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
+            </radialGradient>
+            <clipPath id="ringClip"><circle cx="162" cy="162" r="106.6"/></clipPath>
+          </defs>
+
+          <!-- 外圈光晕 + 环本体（原样保留） -->
+          <circle cx="162" cy="162" r="162" fill="url(#aura)"/>
+          <circle cx="162" cy="162" r="106.6" stroke="#BCCB62" stroke-width="2.8" fill="none" opacity="0.92"/>
+
+          <!-- 环内：中央呼吸光晕（原样保留，垫在水下） -->
+          <g class="haloG">
+            <circle cx="162" cy="162" r="170.6" fill="url(#moodGlow)"/>
+          </g>
+
+          <!-- 环内：水体（裁剪进圆环） -->
+          <g clip-path="url(#ringClip)">
+            <circle cx="162" cy="162" r="106.6" fill="url(#bowlG)"/>
+            <g class="bobG">
+              <path id="w2" class="w2" fill="url(#waterG2)" opacity=".78"/>
+              <path id="w1" class="w1" fill="url(#waterG)"/>
+              <path id="w1c" class="w1" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.6"/>
+              <circle class="bub" cx="104" cy="238" r="2.6" fill="#FFFFFF"/>
+              <circle class="bub b2" cx="162" cy="244" r="3.2" fill="#FFFFFF"/>
+              <circle class="bub b3" cx="216" cy="236" r="2" fill="#FFFFFF"/>
+              <circle class="bub b4" cx="238" cy="246" r="2.8" fill="#FFFFFF"/>
+            </g>
+            <ellipse cx="162" cy="58" rx="128" ry="62" fill="url(#glossG)"/>
+            <ellipse cx="162" cy="300" rx="150" ry="66" fill="url(#shadeG)"/>
+          </g>
+        </svg>
+
+        <!-- 中央文字（原样保留） -->
+        <div class="ringTxt">
+          <div class="ringLabel">状态良好</div>
+          <div class="ringValue">状态值：72</div>
+          <div class="ringUpdated">更新于 16:30</div>
+        </div>
+
+        <!-- 月相点轨道（原样保留：四相位点 32s 公转，当前相位放大 + 光晕） -->
+        <div class="orbit" id="orbit"></div>
+      </div>
+
+      <!-- 四等级图例（还原） -->
+      <div class="moods">
+        <div class="moodItem"><div class="moodDot" style="background:#F0C46E"></div><div class="moodLab">元气满满</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#BCCB62"></div><div class="moodLab">状态良好</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#9D8AF0"></div><div class="moodLab">平平静静</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#F2A3C6"></div><div class="moodLab">休息一下</div></div>
+      </div>
+
+      <!-- 周期四相图例（还原） -->
+      <div class="phases" id="phaseLegend"></div>
+
+      <!-- 指标 chips（还原） -->
+      <div class="chipsScroll">
+        <div class="chip">
+          <div class="iconSq" style="background:#EAF0BE"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg></div>
+          <div class="chipLab">睡眠恢复</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">66</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3E4614" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="19" r="3"/><circle cx="12" cy="12" r="3"/><path d="M12 12l6-5M12 12l-6 5"/></svg></div>
+          <div class="chipLab">脑力准备度</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614">82</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#FCE7F0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9598A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+          <div class="chipLab">心理压力</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#C9598A">34</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#FBEFD6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B98A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></svg></div>
+          <div class="chipLab">运动消耗</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#B98A2E">420</div><div class="chipUnit">kcal</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:#D5E384"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3E4614"><path d="M12 2a10 10 0 1 0 10 10A7 7 0 0 1 12 2Z"/></svg></div>
+          <div class="chipLab">生理周期</div>
+          <div class="chipValRow"><div class="chipVal" style="color:#3E4614;font-size:13px">第 21 天</div></div>
+        </div>
+      </div>
+
+      <!-- AI 气泡（还原：白玻璃 + 右下尾巴） -->
+      <div class="bubbleWrap">
+        <div class="bubble">
+          <div class="analysisText">昨晚深睡占比 23%，今天状态整体平稳。下午能量略有回落，适合把需要专注的事往前放。</div>
+          <div class="eyebrowRow">
+            <div class="eyebrowDot"></div>
+            <div class="eyebrow">今日建议</div>
+          </div>
+          <div class="suggRow">
+            <div class="suggThumb"></div>
+            <div>
+              <div class="suggHead">睡前读读书呀，几分钟就好</div>
+              <div class="suggEvid">· 昨晚深睡占比 23%</div>
+            </div>
+            <div class="ctaPill">去呼吸 ›</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 栏（还原：仅图标 + 中央渐变球） -->
+      <div class="tabbar">
+        <div class="tabItem focused">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-8"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabCenterWrap">
+          <div class="tabCenter"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+      </div>
+      <div class="homeIndicator"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 改了什么 / 没改什么 ============ -->
+<div class="notes">
+  <div class="kicker">DIFF · 改动点</div>
+  <h2>只动了圆环里面</h2>
+  <div class="noteGrid">
+    <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>原「中央弥散光晕」保留为背景，新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影。</p></div></div>
+    <div class="noteItem"><span class="no">02</span><div><b>改：水色跟随状态</b><p>水色不写死：状态良好 = 青柠（本页演示）；元气满满 = 蜜黄、平平静静 = 紫、休息一下 = 粉，与圆环描边 / 光晕同色同源。</p></div></div>
+    <div class="noteItem"><span class="no">03</span><div><b>没改：圆环外壳</b><p>外圈光晕、状态色环描边、四个月相点（32s 公转、当前相位放大 + 暖光晕）、中央「状态值 / 更新于」文字，全部与原实现一致。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>标题与头像、四等级图例、周期四相图例、五个指标 chips、AI 气泡（白玻璃 + 尾巴 + 今日建议）、底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
+  </div>
+</div>
+
+<div class="foot"><b>落地路径</b>：纯 CSS / SVG、零外部请求；RN 端用 react-native-svg 的 Path + Animated（useNativeDriver 驱动 translateX / translateY）按同一套正弦参数复刻，水色由 MOODS[level].color 派生。参考设计来自你提供的截图（仅效果预览，本页无交互）。</div>
+
+<script>
+(function(){
+  // ── 正弦波路径：宽 648 = 2×画布宽，位移一个波长即无缝循环 ──
+  function wave(amp, wl, phase, base, open){
+    var w = 648, d = 'M0 ' + base;
+    for (var x = 0; x <= w; x += 3){
+      var y = base + amp * Math.sin((x / wl) * Math.PI * 2 + phase);
+      d += ' L' + x.toFixed(1) + ' ' + y.toFixed(2);
+    }
+    if (!open) d += ' L' + w + ' 324 L0 324 Z';
+    return d;
+  }
+  document.getElementById('w1').setAttribute('d', wave(6, 162, 0, 192, false));
+  document.getElementById('w1c').setAttribute('d', wave(6, 162, 0, 192, true));
+  document.getElementById('w2').setAttribute('d', wave(8, 205, 2.4, 202, false));
+
+  // ── 月相点（与 MoonDot 同源：full / quarterR / allPurple / quarterL） ──
+  var MOON_LIT = '#F2C75C', MOON_PURPLE = '#9D8AF0';
+  function moonPath(cx, cy, R, t){
+    var p = ((t % 1) + 1) % 1;
+    var waxing = p < 0.5;
+    var k = Math.abs(Math.cos(Math.PI * 2 * p));
+    var rx = Math.max(0.0001, R * k);
+    var outerSweep = waxing ? 1 : 0;
+    var crescent = waxing ? p < 0.25 : p > 0.75;
+    var innerSweep = crescent ? outerSweep : 1 - outerSweep;
+    return 'M ' + cx.toFixed(2) + ' ' + (cy - R).toFixed(2) +
+      ' A ' + R.toFixed(2) + ' ' + R.toFixed(2) + ' 0 0 ' + outerSweep + ' ' + cx.toFixed(2) + ' ' + (cy + R).toFixed(2) +
+      ' A ' + rx.toFixed(2) + ' ' + R.toFixed(2) + ' 0 0 ' + innerSweep + ' ' + cx.toFixed(2) + ' ' + (cy - R).toFixed(2) + ' Z';
+  }
+  function moonSvg(style, size){
+    var c = size / 2, r = size * 0.46;
+    var inner = '';
+    if (style === 'full') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_LIT + '"/>';
+    else if (style === 'allPurple') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_PURPLE + '"/>';
+    else if (style === 'quarterR') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_LIT + '"/><path d="' + moonPath(c, c, r, 0.19) + '" fill="' + MOON_PURPLE + '"/>';
+    else inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_PURPLE + '"/><path d="' + moonPath(c, c, r, 0.81) + '" fill="' + MOON_LIT + '"/>';
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' + inner + '</svg>';
+  }
+
+  // 环上四月相点：顶=经期(full) 右=卵泡(quarterR) 底=黄体(allPurple) 左=排卵(quarterL)；当前相位=黄体期
+  var ringR = 106.6, cxy = 162;
+  var PHASES = [
+    { key: 'period', style: 'full', label: '经期' },
+    { key: 'follicular', style: 'quarterR', label: '卵泡期' },
+    { key: 'luteal', style: 'allPurple', label: '黄体期', cur: true },
+    { key: 'ovulation', style: 'quarterL', label: '排卵期' },
+  ];
+  var orbit = document.getElementById('orbit');
+  var html = '';
+  PHASES.forEach(function(p, i){
+    var ang = (-90 + i * 90) * Math.PI / 180;
+    var x = cxy + ringR * Math.cos(ang);
+    var y = cxy + ringR * Math.sin(ang);
+    var size = p.cur ? 16.5 : 12.3;
+    html += '<div class="moonDot' + (p.cur ? ' cur' : '') + '" style="left:' + (x - size / 2).toFixed(1) + 'px;top:' + (y - size / 2).toFixed(1) + 'px;width:' + size + 'px;height:' + size + 'px">' + moonSvg(p.style, size) + '</div>';
+  });
+  orbit.innerHTML = html;
+
+  // 周期四相图例（与 PhaseLegend 同源）
+  var legend = document.getElementById('phaseLegend');
+  var lh = '';
+  PHASES.forEach(function(p){
+    lh += '<div class="phaseItem">' + moonSvg(p.style, 10) + '<div class="phaseLab">' + p.label + '</div></div>';
+  });
+  legend.innerHTML = lh;
+})();
+</script>
+
+</body>
+</html>

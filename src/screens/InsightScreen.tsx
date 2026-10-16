@@ -76,6 +76,7 @@ const LONGEVITY_SUBS: { key: string; label: string }[] = [
   { key: 'bp', label: '血压' },
   { key: 'sugar', label: '血糖' },
   { key: 'bodycomp', label: '身体成分' },
+  { key: 'bloodcomp', label: '血液成分' },
   { key: 'basics', label: '基础指标' },
 ];
 
@@ -640,6 +641,9 @@ export default function InsightScreen() {
             ) : subTab === 'bodycomp' ? (
               // v18：一键体检 = 本地估算身体成分并持久化，独立成「身体成分」子 tab
               <ExamTab onProfileSaved={age => { profileRevision.current += 1; setActualAge(age); }} />
+            ) : subTab === 'bloodcomp' ? (
+              // ★ 2026-10-16（用户）：血液成分 = 尿酸 + 血脂四项，紧邻「身体成分」的独立子 tab
+              <BloodPanelTab onOpenDetail={openDetail} />
             ) : (
               // basics
               <>
@@ -674,6 +678,136 @@ export default function InsightScreen() {
   </>
   );
 }
+
+/** ★ 2026-10-16（用户）：血液成分 tab 卡 = 尿酸 + 血脂四项（TC/TG/HDL/LDL）。
+ *  数据口径与 MetricDetailScreen 的 UaReferenceCard / LipidOverviewCard 完全一致：
+ *  - 尿酸：0–90 偏低 / 90–360 正常 / 360–1000 偏高（µmol/L）
+ *  - 血脂：各自理想上限（TC<5.2 / TG<1.7 / LDL<3.4，越高越差；HDL>1.0，越高越好）
+ *  整卡可点进各指标详情页（尿酸走 key 'ua'，血脂走各自 key）。 */
+const BLOOD_PANEL: {
+  key: string; name: string; unit: string; yMin: number; yMax: number;
+  decimals: number;
+  status: (v: number) => { tone: 'good' | 'warn' | 'neutral'; label: string };
+  rangeText: string;
+}[] = [
+  {
+    key: 'ua', name: '尿酸', unit: 'μmol/L', yMin: 50, yMax: 600, decimals: 0,
+    status: (v) => v < 90 ? { tone: 'neutral', label: '偏低' } : v <= 360 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
+    rangeText: '偏低 0–90 / 正常 90–360 / 偏高 360–1000 µmol/L',
+  },
+  {
+    key: 'cholesterol', name: '总胆固醇', unit: 'mmol/L', yMin: 0, yMax: 10, decimals: 2,
+    status: (v) => v <= 5.2 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
+    rangeText: '理想 < 5.2 mmol/L',
+  },
+  {
+    key: 'triglyceride', name: '甘油三酯', unit: 'mmol/L', yMin: 0, yMax: 6, decimals: 2,
+    status: (v) => v <= 1.7 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
+    rangeText: '理想 < 1.7 mmol/L',
+  },
+  {
+    key: 'hdl', name: '高密度脂蛋白', unit: 'mmol/L', yMin: 0, yMax: 3, decimals: 2,
+    status: (v) => v >= 1.0 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏低' },
+    rangeText: '理想 > 1.0 mmol/L',
+  },
+  {
+    key: 'ldl', name: '低密度脂蛋白', unit: 'mmol/L', yMin: 0, yMax: 6, decimals: 2,
+    status: (v) => v <= 3.4 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
+    rangeText: '理想 < 3.4 mmol/L',
+  },
+];
+
+const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOpenDetail: (key: string, name: string, unit: string, yMin: number, yMax: number) => void }) {
+  const hsVer = useHealthStoreVersion();
+  const dk = dayKey(Date.now());
+  const getLatest = useCallback((k: string): number | null => {
+    try {
+      const pts = healthStore.getIntraday(k as any, dk);
+      return pts.length ? pts[pts.length - 1].v : null;
+    } catch { return null; }
+  }, [dk, hsVer]);
+
+  // ★ 2026-10-16（续）：仿「身体成分」小卡片样式（2 列网格 + 圆角小卡），而非整行大卡。
+  const chipBase: any = {
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+    justifyContent: 'center',
+    minHeight: theme.sp(22),
+  };
+  // ★ 2026-10-16（续 4）：血脂四张小卡共用的外框
+  const lipidGroup: any = {
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.md,
+    paddingBottom: theme.space.sm,
+  };
+  const renderChip = (it: (typeof BLOOD_PANEL)[number], wide?: boolean) => {
+    const v = getLatest(it.key);
+    const st = v == null ? null : it.status(v);
+    const toneColor = st == null ? theme.colors.textSub
+      : st.tone === 'good' ? theme.colors.success
+      : st.tone === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
+    return (
+      <TouchableOpacity
+        key={it.key}
+        activeOpacity={0.7}
+        onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
+        style={[
+          chipBase,
+          { flexBasis: wide ? '100%' : '46%', flexGrow: 1, marginBottom: theme.space.sm },
+        ]}
+      >
+        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>{it.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle }}>
+            {v == null ? '—' : v.toFixed(it.decimals)}
+          </Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{it.unit}</Text>
+        </View>
+        {st ? (
+          <View style={{ alignSelf: 'flex-start', marginTop: theme.sp(1), borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: 2, backgroundColor: toneColor + '22' }}>
+            <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: toneColor }}>{st.label}</Text>
+          </View>
+        ) : (
+          <Text style={{ marginTop: theme.sp(1), fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{it.rangeText}</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+  const grid = { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.space.sm };
+
+  const uricItems = BLOOD_PANEL.filter((it) => it.key === 'ua');
+  const lipidItems = BLOOD_PANEL.filter((it) => it.key !== 'ua');
+  const subHead = { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginTop: theme.sp(3), marginBottom: theme.sp(1.5) };
+
+  return (
+    <View>
+      <Text style={styles.sectionLabel}>血液成分 · 健康一览自动同步</Text>
+      <Text style={subHead}>尿酸</Text>
+      <View style={grid}>{uricItems.map((it) => renderChip(it, true))}</View>
+      {/* ★ 2026-10-16（续 4）：四张血脂小卡外面包一个框，右上角箭头 → 进入血脂详情（内含日/周/月/年趋势图） */}
+      <View style={[lipidGroup, { marginTop: theme.sp(3) }]}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onOpenDetail('cholesterol', '血脂', 'mmol/L', 0, 10)}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.md, paddingTop: theme.space.sm }}
+        >
+          <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink }}>血脂</Text>
+          <Text style={{ fontSize: theme.fontSize.stat, color: theme.colors.textSub, lineHeight: theme.sp(6) }}>›</Text>
+        </TouchableOpacity>
+        <View style={[grid, { paddingHorizontal: theme.space.md, paddingTop: theme.space.sm }]}>
+          {lipidItems.map((it) => renderChip(it))}
+        </View>
+      </View>
+      <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.sp(5) }}>参考区间仅供参考，不替代医学检测。数据来自戒指健康一览自动评估，需连接戒指完成一次测量后更新。</Text>
+    </View>
+  );
+});
 
 /** v18.3：认知 tab 卡 —— 与首页「认知消耗」同源（computeCognitiveLoadReport）。
  *  今天采样不足时回退到最近有数据日（≤6 天前），note 标注展示的是哪天；整卡可点进认知消耗详情。 */

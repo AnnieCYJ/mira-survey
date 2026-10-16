@@ -37,6 +37,7 @@ import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '..
 import AiAnalysis, { AiResultRow, AiBadge } from '../components/AiAnalysis';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
+import LipidTrendCard from '../components/LipidTrendCard';
 
 interface Params {
   key: string;
@@ -237,6 +238,8 @@ export default function MetricDetailScreen() {
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
   const openChat = useCallback((q: string) => { setChatQuestion(q); setChatVisible(true); }, []);
   const isEcg = params.key === 'ecg';
+  // ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（LipidTrendCard），替换通用单指标图
+  const isLipid = ['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key);
   // ★ 运动类指标（步数/距离/消耗）不支持日视图，排除 'day' 按钮
   const ACTIVITY_KEYS = ['steps', 'distance', 'calorie'] as const;
   const isActivity = ACTIVITY_KEYS.includes(params.key as any);
@@ -908,7 +911,10 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           </View>
         ) : null}
 
-        {!isEcg && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && (
+        {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
+        {isLipid ? <LipidTrendCard range={range} anchor={anchor} /> : null}
+
+        {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && (
         <View style={styles.chartCard}>
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -1052,8 +1058,8 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         </View>
         )}
 
-        {/* 统计：平均 / 最高 / 最低 */}
-        {!isEcg && (
+        {/* 统计：平均 / 最高 / 最低（血脂四项页由上方 LipidTrendCard + LipidOverviewCard 承担，不显示单指标统计） */}
+        {!isEcg && !isLipid && (
           <View style={styles.statGrid}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均</Text>
@@ -1070,8 +1076,8 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           </View>
         )}
 
-        {/* 解读 */}
-        {!isEcg && series.note ? <Text style={styles.note}>{series.note}</Text> : null}
+        {/* 解读（血脂四项页用自己的解读卡，不显示单指标 note） */}
+        {!isEcg && !isLipid && series.note ? <Text style={styles.note}>{series.note}</Text> : null}
 
         {/* 历史测量列表（手动测量类指标才显示，按时间倒序） */}
         {showManualList && (
@@ -1179,13 +1185,15 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         {params.key === 'spo2' ? <OxygenApneaSection /> : null}
         {/* ★ 2026-10-16：HRV 页——Lorenz 散点 + RR 间期时域分析（读设备 RR 历史，进入页面自动拉取） */}
         {params.key === 'hrv' ? <HrvLorenzSection /> : null}
-        {/* ★ 2026-10-16：血糖页——测量类型 / 风险等级 / 参考区间（戒指健康一览回传） */}
-        {params.key === 'glucose' ? <GlucoseSummaryCard /> : null}
+        {/* ★ 2026-10-16：血糖页——测量类型 / 风险等级 / 参考区间（戒指健康一览回传）。
+            注意：洞察页传入的 key 是 'bloodSugar'，需同时命中。 */}
+        {params.key === 'glucose' || params.key === 'bloodSugar' ? <GlucoseSummaryCard /> : null}
         {/* ★ 2026-10-16：心率页——心率区间（MHR 五段环）+ 规则 AI 分析 */}
         {params.key === 'hr' ? <HrZoneSection anchor={anchor} openChat={openChat} /> : null}
         {/* ★ 2026-10-16：尿酸页——参考区间条 + 分级 + 规则 AI 分析 */}
         {params.key === 'ua' ? <UaReferenceCard anchor={anchor} openChat={openChat} /> : null}
-        {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析 */}
+        {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析。
+            注意：四项同图的「日/周/月/年」趋势卡（LipidTrendCard）已作为主图渲染在页面顶部（续 6）。 */}
         {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidOverviewCard anchor={anchor} openChat={openChat} /> : null}
         {edaDiagnostics ? (
           <View style={styles.debugFoot}>
@@ -1211,6 +1219,39 @@ const GLUCOSE_LEVELS: { [k: number]: { label: string; color: string } } = {
   3: { label: '高风险', color: mm.colors.roseDeep },
 };
 
+/* ★ 2026-10-16（续 4）：血糖参考带（仿健康 App）——偏低/正常/偏高三段彩色条 + 当日最小/最大值 */
+const GLUCOSE_BANDS = [
+  { label: '空腹/\n餐前', lo: 3.9, hi: 6.1 },
+  { label: '餐后 1 小时', lo: 6.7, hi: 9.4 },
+  { label: '餐后 2 小时', lo: 4.4, hi: 7.8 },
+];
+const GLUCOSE_AXIS_MAX = 15;
+
+function GlucoseRefBand({ label, lo, hi }: { label: string; lo: number; hi: number }) {
+  const lowW = (lo / GLUCOSE_AXIS_MAX) * 100;
+  const okW = ((hi - lo) / GLUCOSE_AXIS_MAX) * 100;
+  const cLow = mm.colors.skyCore;
+  const cOk = theme.colors.success;
+  const cHigh = mm.colors.honeyCore;
+  return (
+    <View style={{ marginTop: theme.sp(2.5) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ width: 74, fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: theme.sp(4.5) }}>{label}</Text>
+        <View style={{ flex: 1, height: 8, borderRadius: 4, flexDirection: 'row', overflow: 'hidden' }}>
+          <View style={{ width: `${lowW}%`, backgroundColor: cLow }} />
+          <View style={{ width: `${okW}%`, backgroundColor: cOk }} />
+          <View style={{ flex: 1, backgroundColor: cHigh }} />
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', marginLeft: 74, marginTop: 3 }}>
+        <Text style={{ width: `${lowW}%`, fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{lo}</Text>
+        <Text style={{ width: `${okW}%`, fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{hi}</Text>
+        <Text style={{ flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right' }}>{GLUCOSE_AXIS_MAX}</Text>
+      </View>
+    </View>
+  );
+}
+
 function GlucoseSummaryCard() {
   const ring = useRingState();
   void ring; // 数据走 healthStore 最新值（实时/回填均落库）
@@ -1219,11 +1260,24 @@ function GlucoseSummaryCard() {
   const tLevel = latestVal('glucoseLevel', dk);
   const tTypeLabel = tType != null ? (GLUCOSE_TYPES[tType] ?? `类型 ${tType}`) : '—';
   const level = tLevel != null ? (GLUCOSE_LEVELS[tLevel] ?? null) : null;
+  // 当日最小/最大血糖
+  const dayPts = (() => { try { return healthStore.getIntraday('glucose' as any, dk); } catch { return []; } })();
+  const vals = dayPts.map((p: any) => p.v).filter((v: number) => Number.isFinite(v));
+  const gMin = vals.length ? Math.min(...vals) : null;
+  const gMax = vals.length ? Math.max(...vals) : null;
 
   return (
     <Card>
       <Text style={styles.ecgTitle}>血糖概览</Text>
       <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>最小值</Text>
+          <Text style={[styles.statValue, { fontSize: theme.fontSize.body }]}>{gMin != null ? gMin.toFixed(2) : '—'} <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>mmol/L</Text></Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>最大值</Text>
+          <Text style={[styles.statValue, { fontSize: theme.fontSize.body }]}>{gMax != null ? gMax.toFixed(2) : '—'} <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>mmol/L</Text></Text>
+        </View>
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>最近测量类型</Text>
           <Text style={[styles.statValue, { fontSize: theme.fontSize.body }]}>{tTypeLabel}</Text>
@@ -1233,7 +1287,20 @@ function GlucoseSummaryCard() {
           <Text style={[styles.statValue, { color: level?.color, fontSize: theme.fontSize.body }]}>{level?.label ?? '—'}</Text>
         </View>
       </View>
-      <Text style={styles.note}>参考区间：空腹血糖 3.9–6.1 mmol/L；餐后 2 小时 &lt; 7.8 mmol/L。数值仅供参考，不替代医学检测。</Text>
+      {/* ★ 参考区间三段彩色带（偏低/正常/偏高） */}
+      <View style={{ marginTop: theme.sp(3) }}>
+        <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) }}>参考</Text>
+        <View style={{ flexDirection: 'row', gap: theme.sp(4), marginBottom: theme.sp(1), paddingLeft: 74 }}>
+          {([['偏低', mm.colors.skyCore], ['正常', theme.colors.success], ['偏高', mm.colors.honeyCore]] as const).map(([t, c]) => (
+            <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{t}</Text>
+            </View>
+          ))}
+        </View>
+        {GLUCOSE_BANDS.map((b) => <GlucoseRefBand key={b.label} label={b.label} lo={b.lo} hi={b.hi} />)}
+      </View>
+      <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
     </Card>
   );
 }
@@ -1479,13 +1546,16 @@ function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: str
 
 /* ★ 2026-10-16：血脂详情页——血脂四项汇总（TC / TG / HDL / LDL）+ 参考区间 + 分级 */
 const LIPID_ITEMS = [
-  { key: 'cholesterol', name: '总胆固醇', unit: 'mmol/L', hi: 5.2, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
-  { key: 'triglyceride', name: '甘油三酯', unit: 'mmol/L', hi: 1.7, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
-  { key: 'hdl', name: '高密度脂蛋白', unit: 'mmol/L', lo: 1.0, lowerBetter: false, lowLabel: '偏低', highLabel: '正常' },
-  { key: 'ldl', name: '低密度脂蛋白', unit: 'mmol/L', hi: 3.4, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
+  { key: 'cholesterol', name: '总胆固醇', short: 'TC', unit: 'mmol/L', hi: 5.2, scaleMax: 10, lowerBetter: true, color: mm.colors.roseCore, lowLabel: '正常', highLabel: '偏高' },
+  { key: 'triglyceride', name: '甘油三酯', short: 'TG', unit: 'mmol/L', hi: 1.7, scaleMax: 6, lowerBetter: true, color: mm.colors.skyCore, lowLabel: '正常', highLabel: '偏高' },
+  { key: 'hdl', name: '高密度脂蛋白', short: 'HDL', unit: 'mmol/L', lo: 1.0, scaleMax: 3, lowerBetter: false, color: mm.colors.limeMid, lowLabel: '偏低', highLabel: '正常' },
+  { key: 'ldl', name: '低密度脂蛋白', short: 'LDL', unit: 'mmol/L', hi: 3.4, scaleMax: 6, lowerBetter: true, color: mm.colors.honeyCore, lowLabel: '正常', highLabel: '偏高' },
 ] as const;
 
 function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  // ★ 2026-10-16（续）：四个脂蛋白画到「同一张图」——共享 0–10 mmol/L 坐标轴，不同颜色代表不同指标，
+  //   这样 TC/TG/HDL/LDL 可直接横向对比，而不是各自独立量程的小条。
+  const AXIS_MAX = 10;
   const dk = dateKeyOf(anchor.getTime());
   const data = LIPID_ITEMS.map((it) => {
     const v = latestVal(it.key, dk);
@@ -1500,7 +1570,13 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
         else { status = 'warn'; label = it.lowLabel; }
       }
     }
-    return { ...it, v, status, label };
+    // 理想区间在【共享坐标轴】上的起止百分比（绿色带）
+    const bandStart = it.lowerBetter ? 0 : (it.lo ?? 0);
+    const bandEnd = it.lowerBetter ? it.hi : AXIS_MAX;
+    const bandStartPct = (bandStart / AXIS_MAX) * 100;
+    const bandWidthPct = ((bandEnd - bandStart) / AXIS_MAX) * 100;
+    const valPct = v != null ? Math.max(0, Math.min(100, (v / AXIS_MAX) * 100)) : null;
+    return { ...it, v, status, label, bandStartPct, bandWidthPct, valPct };
   });
 
   const abnormal = data.filter((d) => d.status === 'warn').length;
@@ -1522,37 +1598,84 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
   const dotColor = (s: string) =>
     s === 'good' ? theme.colors.success : s === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
 
+  // 共享坐标轴刻度（0–10 mmol/L）
+  const TICKS = [0, 2, 4, 6, 8, 10];
+
   return (
     <>
       <Card>
-        <Text style={styles.ecgTitle}>血脂四项</Text>
-        <View style={{ marginTop: theme.sp(1) }}>
-          {data.map((d) => (
-            <View
-              key={d.key}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: theme.sp(2.5),
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.cardBorder,
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textTitle, fontWeight: theme.weight.medium as any }}>{d.name}</Text>
-                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 }}>
-                  参考理想 {d.lowerBetter ? `< ${d.hi}` : `≥ ${d.lo}`} {d.unit}
-                </Text>
-              </View>
-              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, width: 70, textAlign: 'right' }}>
+        <Text style={styles.ecgTitle}>血脂四项总览</Text>
+        <Text style={[styles.note, { marginTop: theme.sp(1), marginBottom: theme.sp(3) }]}>
+          TC / TG / HDL / LDL 同尺度对比（0–10 mmol/L）· 不同颜色代表不同指标
+        </Text>
+        {data.map((d) => (
+          <View key={d.key} style={{ marginBottom: theme.sp(3) }}>
+            {/* 指标名 + 数值 + 状态 */}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: d.color, marginRight: 6 }} />
+              <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle }}>{d.name}</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: d.color, marginLeft: 6 }}>{d.short}</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle }}>
                 {d.v != null ? d.v.toFixed(2) : '—'}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, width: 60, justifyContent: 'flex-end' }}>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginLeft: 4 }}>{d.unit}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 10, width: 56, justifyContent: 'flex-end' }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor(d.status) }} />
                 <Text style={{ fontSize: theme.fontSize.micro, color: dotColor(d.status) }}>{d.label}</Text>
               </View>
             </View>
+            {/* 同尺度轨道：灰底 + 绿色理想带 + 彩色实测点（全部以 0–10 mmol/L 为基准，可直接对比） */}
+            <View style={{ height: 12, borderRadius: 6, backgroundColor: '#ECECEC', position: 'relative' }}>
+              <View
+                style={{
+                  position: 'absolute',
+                  left: `${d.bandStartPct}%`,
+                  width: `${d.bandWidthPct}%`,
+                  top: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(76,175,80,0.22)',
+                  borderRadius: 6,
+                }}
+              />
+              {d.valPct != null ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: `${d.valPct}%`,
+                    top: -3,
+                    width: 6,
+                    height: 18,
+                    borderRadius: 3,
+                    backgroundColor: d.color,
+                    borderWidth: 1.5,
+                    borderColor: '#FFFFFF',
+                    transform: [{ translateX: -3 }],
+                  }}
+                />
+              ) : null}
+            </View>
+          </View>
+        ))}
+        {/* 共享坐标轴刻度（0–10 mmol/L）：明确这是「一张图、同一把尺」 */}
+        <View style={{ flexDirection: 'row', marginTop: theme.sp(1), marginBottom: theme.sp(2) }}>
+          {TICKS.map((t) => (
+            <Text
+              key={t}
+              style={{
+                flex: 1,
+                textAlign: 'center',
+                fontSize: theme.fontSize.micro,
+                color: theme.colors.textSub,
+              }}
+            >
+              {t}
+            </Text>
           ))}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
+          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: 'rgba(76,175,80,0.35)', marginRight: 6 }} />
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>绿色带 = 理想区间 · 彩色竖条 = 你今日的实测值</Text>
         </View>
         <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
       </Card>

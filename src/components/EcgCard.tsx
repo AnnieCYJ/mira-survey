@@ -13,18 +13,28 @@ interface Props {
   compactMode?: boolean;
 }
 
-/** ECG 波形路径：原始 ADC 点归一化到 160×32 视窗的迷你折线。 */
+/** ECG 波形路径：取一段能清楚展示几个心动周期的代表窗口（避免整条长轨迹压进 160 像素挤成一团），
+ *  再下采样到 ~150 点，归一化到 160×32 视窗。展示「部分心电的样子」，PQRST 清晰不糊。 */
 function miniWaveform(values: number[]): string {
   if (!values || values.length < 4) return '';
   const W = 160, H = 32;
+  const TARGET = 150;       // 最终点数：约 1 点/像素，波形清晰
+  const WINDOW = 1400;      // 单次最多取约 1400 点（约数秒），足以看出形态，又不挤
+  let arr = values;
+  if (values.length > WINDOW) {
+    const start = Math.floor((values.length - WINDOW) / 2); // 取中间一段，避开起止静息/噪声
+    arr = values.slice(start, start + WINDOW);
+  }
+  const n = Math.min(TARGET, arr.length);
+  const stride = arr.length / n;
   let mn = Infinity, mx = -Infinity;
-  for (const v of values) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  for (let i = 0; i < n; i++) { const v = arr[Math.floor(i * stride)]; if (v < mn) mn = v; if (v > mx) mx = v; }
   const span = mx - mn || 1;
-  const step = W / values.length;
   let d = '';
-  for (let i = 0; i < values.length; i++) {
-    const x = i * step;
-    const y = H - ((values[i] - mn) / span) * H * 0.85 - H * 0.075;
+  for (let i = 0; i < n; i++) {
+    const v = arr[Math.floor(i * stride)];
+    const x = (i / (n - 1)) * W;
+    const y = H - ((v - mn) / span) * H * 0.85 - H * 0.075;
     d += (i === 0 ? 'M ' : 'L ') + `${x.toFixed(1)} ${y.toFixed(1)} `;
   }
   return d;
@@ -54,6 +64,24 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
     return () => clearInterval(id);
   }, [isMeasuring]);
   const displayProgress = isMeasuring ? Math.max(progress, anim) : progress;
+
+  // ★ 2026-10-16：设备能力门禁——ecgType=0 表示当前戒指固件不支持 ECG，提前告知而非盲目测量后卡死
+  const ecgType = ring.deviceCapabilities?.ecgType;
+  const ecgUnsupported = ecgType === 0;
+
+  // ★ 2026-10-16：测量超时兜底——原生无回包时 UI 会永久停在「测量中」；
+  //   120s 内未出结果则主动 abort（停测 + 清进度 + 写 ecgError），并提示用户重试。
+  //   注：HK18 固件 ECG 进度长期停在低位才跳完成，故超时设得较宽松，避免误杀正常长测量。
+  useEffect(() => {
+    if (!isMeasuring) return;
+    const id = setTimeout(() => {
+      RingBle.abortEcg();
+      if (typeof Alert !== 'undefined') {
+        Alert.alert('ECG 测量超时', '测量未在预期时间内完成，已自动结束。请确认戒指电极与手指接触良好（心电图需双电极接触），或稍后重试。');
+      }
+    }, 120000);
+    return () => clearTimeout(id);
+  }, [isMeasuring]);
 
   const measureEcg = useCallback(() => {
     if (isMeasuring) return; // 正在测，忽略重复点击
@@ -153,6 +181,11 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.btnLabel}>处理结果中…</Text>
         </View>
+      ) : ecgUnsupported ? (
+        // 状态 3b：设备不支持 ECG → 禁用按钮 + 提示（ecgType=0）
+        <View style={[styles.btn, { backgroundColor: theme.colors.ui.offTrack }]}>
+          <Text style={[styles.btnLabelGrad, { color: theme.colors.textSub }]}>当前设备不支持 ECG 测量</Text>
+        </View>
       ) : (
         // 状态 3：空闲 → v10 渐变按钮（lime→粉，全 app 按钮统一）
         <TouchableOpacity activeOpacity={0.7} onPress={measureEcg} style={styles.btn}>
@@ -166,6 +199,13 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
           </ExpoLinearGradient>
         </TouchableOpacity>
       )}
+
+      {/* ★ 2026-10-16：ECG 最近失败原因常驻显示（导联脱落/设备忙/无效读数/超时），便于看到原因 */}
+      {ring.ecgError ? (
+        <View style={styles.errBox}>
+          <Text style={styles.errText}>{ring.ecgError}</Text>
+        </View>
+      ) : null}
 
     </View>
   );
@@ -259,5 +299,17 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: theme.colors.textWhite,
     borderRadius: theme.sp(0.5),
+  },
+  errBox: {
+    marginTop: 10,
+    paddingVertical: theme.sp(1.5),
+    paddingHorizontal: theme.sp(2),
+    backgroundColor: theme.colors.dangerSoft ?? 'rgba(229,57,53,0.10)',
+    borderRadius: theme.radius.sm,
+  },
+  errText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.danger ?? '#e53935',
+    lineHeight: 18,
   },
 });

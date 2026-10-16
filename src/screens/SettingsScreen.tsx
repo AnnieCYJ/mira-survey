@@ -90,6 +90,10 @@ export default function SettingsScreen() {
     ecgHistory: [],
     lastUploadedAt: null,
     ecgProgress: null,
+    ecgLiveWaveform: null,
+    ecgError: null,
+    oxygenAnalysis: null,
+    rrAnalysis: null,
     emotion: null,
   });
 
