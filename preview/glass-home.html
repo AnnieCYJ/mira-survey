@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 首页 · 海景白环 · 玻璃卡预览</title>
+<style>
+  :root{
+    --ink:#2C2A3E;
+    --ink-soft:rgba(44,42,62,.62);
+    --ink-faint:rgba(44,42,62,.45);
+    --lav:#9D8AF0;
+    --pink:#F58AB8;
+    --lime:#C6D84B;
+    --glass:rgba(255,255,255,.58);
+    --glass-strong:rgba(255,255,255,.72);
+    --glass-border:rgba(255,255,255,.65);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    background:#0E1220;
+    font-family:-apple-system,"PingFang SC","SF Pro Text",sans-serif;
+    padding:28px 0;gap:36px;
+  }
+  .phone{
+    position:relative;width:390px;height:844px;border-radius:54px;
+    overflow:hidden;flex-shrink:0;
+    box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 10px #14161f,0 0 0 12px #2a2d3a;
+  }
+  .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  /* 顶部与底部轻压暗，保证白玻璃上的文字对比 */
+  .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,14,30,.18) 0%,rgba(10,14,30,0) 22%,rgba(10,14,30,0) 60%,rgba(10,14,30,.30) 100%);}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;padding:64px 22px 0;}
+
+  /* ---- 顶部问候 ---- */
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;}
+  .hello .date{font-size:12px;letter-spacing:.12em;color:rgba(255,255,255,.75);font-weight:500;}
+  .hello h1{font-size:24px;font-weight:700;color:#fff;margin-top:5px;text-shadow:0 1px 12px rgba(0,0,0,.25);}
+  .hello p{font-size:13px;color:rgba(255,255,255,.85);margin-top:4px;text-shadow:0 1px 8px rgba(0,0,0,.2);}
+  .avatar{width:38px;height:38px;border-radius:50%;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;font-size:17px;}
+
+  /* ---- 白色能量圆环 ---- */
+  .ring-wrap{display:flex;flex-direction:column;align-items:center;margin-top:26px;position:relative;}
+  .ring-box{position:relative;width:236px;height:236px;cursor:pointer;}
+  .ring-box svg{width:100%;height:100%;filter:drop-shadow(0 6px 24px rgba(255,255,255,.22));}
+  .ring-center{position:absolute;left:0;right:0;top:60px;bottom:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ring-center .score{font-size:52px;font-weight:200;color:#fff;line-height:1;letter-spacing:-.02em;text-shadow:0 2px 18px rgba(0,0,0,.28);}
+  .ring-center .state{font-size:13px;font-weight:600;color:rgba(255,255,255,.92);margin-top:7px;letter-spacing:.06em;}
+  .ring-center .sub{font-size:11px;color:rgba(255,255,255,.62);margin-top:3px;}
+  .ring-arrow{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;}
+
+  /* ---- 图例（月相图案）---- */
+  .legend{display:flex;gap:18px;margin-top:20px;justify-content:center;}
+  .legend .item{display:flex;align-items:center;gap:7px;}
+  .legend .name{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.88);text-shadow:0 1px 6px rgba(0,0,0,.3);}
+  .moon{width:15px;height:15px;border-radius:50%;position:relative;overflow:hidden;flex-shrink:0;box-shadow:0 0 0 1.5px rgba(255,255,255,.35);}
+  .moon.full{background:var(--pink);}
+  .moon.qr{background:var(--lav);}
+  .moon.qr::after{content:'';position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.85);clip-path:inset(0 50% 0 0);}
+  .moon.ql{background:var(--lime);}
+  .moon.ql::after{content:'';position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.85);clip-path:inset(0 0 0 50%);}
+
+  /* ---- 玻璃卡（Calm / Oura 风）---- */
+  .card{
+    margin-top:auto;margin-bottom:96px;
+    background:var(--glass);
+    backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
+    border:1px solid var(--glass-border);
+    border-radius:28px;
+    padding:18px 18px 16px;
+    box-shadow:0 18px 40px rgba(10,16,40,.28), inset 0 1px 0 rgba(255,255,255,.75);
+    position:relative;
+  }
+  .card::after{ /* 气泡尾巴 */
+    content:'';position:absolute;right:34px;bottom:-9px;width:20px;height:20px;
+    background:var(--glass);border-right:1px solid var(--glass-border);border-bottom:1px solid var(--glass-border);
+    transform:rotate(45deg);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  }
+  .eyebrow{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+  .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--lav),var(--pink),var(--lime));}
+  .eyebrow span{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--ink-faint);}
+  .headline{font-size:14.5px;font-weight:500;color:var(--ink);line-height:1.5;}
+  .evidence{font-size:12px;color:var(--ink-soft);margin-top:7px;}
+  .ask{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}
+  .row{display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:12px;border-top:1px solid rgba(44,42,62,.10);}
+  .cta{
+    border:none;cursor:pointer;border-radius:999px;padding:9px 26px;
+    font-size:14px;font-weight:600;color:#fff;letter-spacing:.02em;
+    background:linear-gradient(90deg,var(--lime),var(--pink));
+    box-shadow:0 4px 14px rgba(245,138,184,.38);
+    font-family:inherit;
+  }
+  .dismiss{background:none;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--ink-faint);}
+  .thumb{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 4px 12px rgba(10,16,40,.22);flex-shrink:0;}
+
+  /* ---- Tab 栏 ---- */
+  .tabbar{
+    position:absolute;left:0;right:0;bottom:0;height:82px;
+    background:rgba(20,24,40,.55);
+    backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4);
+    border-top:1px solid rgba(255,255,255,.14);
+    display:flex;align-items:flex-start;justify-content:space-around;padding-top:12px;
+  }
+  .tab{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:rgba(255,255,255,.55);}
+  .tab.on{color:#fff;}
+  .tab .ic{font-size:19px;line-height:1;}
+  .fab{
+    position:absolute;right:24px;bottom:98px;width:56px;height:56px;border-radius:50%;
+    background:linear-gradient(135deg,var(--lime),var(--pink));
+    display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;
+    box-shadow:0 10px 26px rgba(245,138,184,.45);
+  }
+  .home-indicator{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.85);}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <img class="bg" src="assets/sea-dusk.jpg" alt="海景">
+  <div class="veil"></div>
+  <div class="screen">
+
+    <!-- 顶部问候 -->
+    <div class="topbar">
+      <div class="hello">
+        <div class="date">10月16日 · 周五</div>
+        <h1>早上好，Annie</h1>
+        <p>卵泡期 · 精力在回升</p>
+      </div>
+      <div class="avatar">🌙</div>
+    </div>
+
+    <!-- 白色能量圆环 -->
+    <div class="ring-wrap">
+      <div class="ring-box">
+        <svg viewBox="0 0 236 236">
+          <defs>
+            <linearGradient id="arc" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#FFFFFF"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,.55)"/>
+            </linearGradient>
+          </defs>
+          <!-- 底半环（上半圆） -->
+          <path d="M18 128 A100 100 0 0 1 218 128" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="13" stroke-linecap="round"/>
+          <!-- 进度半环（约 72%，半圆周长 ≈ 314） -->
+          <path d="M18 128 A100 100 0 0 1 218 128" fill="none" stroke="url(#arc)" stroke-width="13"
+                stroke-linecap="round" stroke-dasharray="226.2 314.2"/>
+          <!-- 四相位刻点（沿半环均布：180°/120°/60°/0°） -->
+          <g fill="rgba(255,255,255,.45)">
+            <circle cx="18"  cy="128" r="3.4"/>
+            <circle cx="68"  cy="41.4" r="3.4"/>
+            <circle cx="168" cy="41.4" r="3.4"/>
+            <circle cx="218" cy="128" r="3.4"/>
+          </g>
+        </svg>
+        <div class="ring-center">
+          <div class="score">72</div>
+          <div class="state">状态不错</div>
+          <div class="sub">较近 7 天均值 +6</div>
+        </div>
+        <div class="ring-arrow">›</div>
+      </div>
+
+      <!-- 图例：月相图案 -->
+      <div class="legend">
+        <div class="item"><div class="moon full"></div><span class="name">经期</span></div>
+        <div class="item"><div class="moon qr"></div><span class="name">卵泡期</span></div>
+        <div class="item"><div class="moon ql"></div><span class="name">黄体期</span></div>
+        <div class="item"><div class="moon full" style="background:var(--lav)"></div><span class="name">排卵期</span></div>
+      </div>
+    </div>
+
+    <!-- 玻璃建议卡 -->
+    <div class="card">
+      <div class="eyebrow"><div class="dot"></div><span>今日建议</span></div>
+      <div style="display:flex;gap:13px;align-items:center;">
+        <img class="thumb" src="assets/tool_recovery.jpg" alt="">
+        <div style="flex:1;">
+          <div class="headline">下午 3 点后试试 10 分钟散步，帮你把皮质醇降下来</div>
+          <div class="evidence">· 情绪压力 · 连续 2 天偏高</div>
+          <div class="ask">感觉确实不错？</div>
+        </div>
+      </div>
+      <div class="row">
+        <button class="cta">去试试 ›</button>
+        <button class="dismiss">先不用</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="fab">🎙</div>
+  <div class="tabbar">
+    <div class="tab on"><div class="ic">◉</div>今天</div>
+    <div class="tab"><div class="ic">☾</div>周期</div>
+    <div class="tab"><div class="ic">✦</div>洞察</div>
+    <div class="tab"><div class="ic">♡</div>我的</div>
+  </div>
+  <div class="home-indicator"></div>
+</div>
+
+</body>
+</html>

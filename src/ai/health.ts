@@ -10,7 +10,7 @@ import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeReadinessSeries, readinessLevel, readinessLevelLabel } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
-import { factsForDay } from '../lib/analysisFacts';
+import { factsForDay, sleepFactForDay } from '../lib/analysisFacts';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -438,6 +438,10 @@ export function buildHealthSnapshot(): string {
     add('深睡占比', fmt(daily['sleepDeep'], '%', 0));
     add('REM占比', fmt(daily['sleepRem'], '%', 0));
     add('睡眠评分', fmt(daily['sleepScore']));
+  }
+  const sleepFact = sleepFactForDay(new Date(now));
+  if (sleepFact.quality !== 'missing') {
+    blocks.push(`• 睡眠事实：${sleepFact.date}；睡眠评分 ${sleepFact.value}；${sleepFact.source}；${sleepFact.sampleCount} 条夜间摘要`);
   }
   const tl = st.statusTimeline || [];
   if (tl.length) {

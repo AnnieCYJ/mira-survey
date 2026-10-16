@@ -135,7 +135,7 @@ const CORE_KEYS: MetricKey[] = ['hr', 'spo2', 'temp', 'eda', 'hrv', 'rr'];
  */
 function hsKeyFor(signalKey: string): HSMetricKey | null {
   switch (signalKey) {
-    case 'hr': case 'spo2': case 'temp': case 'eda': case 'hrv': case 'rr':
+    case 'hr': case 'spo2': case 'temp': case 'skinTemp': case 'eda': case 'hrv': case 'rr':
     case 'steps': case 'distance': case 'calorie':
     case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
     case 'bpSys': case 'bpDia':
@@ -154,6 +154,10 @@ function hsKeyFor(signalKey: string): HSMetricKey | null {
     case 'uricAcid':
     case 'ua':
       return 'ua';
+    // ★ 2026-10-16：协议补齐——血糖类型/等级、抑郁风险（key 修正后原生 emit depressionRisk）
+    case 'glucoseType': case 'glucoseLevel': case 'depressionRisk':
+    case 'ppgSys': case 'ppgDia': // 血压细分：光电血压（气囊值走 bpSys/bpDia）
+      return signalKey as HSMetricKey;
     default:
       // 宽松兜底：未知 key 先 cast 试试，healthStore.safeStore 会校验合法性返回 null
       return signalKey as HSMetricKey; // 未知/未映射指标不要硬 cast，避免 healthStore 里 store 未定义崩溃
@@ -193,6 +197,52 @@ export interface RingDeviceInfo {
   name: string;
   rssi: number | null;
   recommended?: boolean;
+}
+
+/** ★ 2026-10-16：血氧呼吸暂停（OSAHS）分析——原生 triggerOxygenAnalysis 读取设备血氧历史后解析回传。 */
+export interface OxygenAnalysis {
+  osahsResult: -1 | 0 | 1 | 2 | 3;  // -1 无结果 / 0 正常 / 1 轻度 / 2 中度 / 3 重度
+  osahsResultDes: string;           // 结果本地化描述
+  aveOxygen: number;                // 平均血氧 %
+  minOxygen: number;                // 最低血氧 %
+  aveRespRate: number;              // 平均呼吸率
+  minRespRate: number;
+  maxRespRate: number;
+  aveLowOxygenTime: number;         // 低氧时间（平均/最大）
+  maxLowOxygenTime: number;
+  aveCardiacLoad: number;           // 心脏负荷（平均/最大/最小）
+  maxCardiacLoad: number;
+  minCardiacLoad: number;
+  aveSleepActivity: number;         // 睡眠活动（平均）
+  freqTimes: string[];              // 呼吸暂停频现时段
+  freqVals: number[];               // 频现时段对应次数
+  ts: number;
+}
+
+/** ★ 2026-10-16：HRV Lorenz 散点——原生 readRrAnalysis 读取 RR 间期历史后回传。 */
+export interface RrAnalysis {
+  rr: number[];                     // RR 间期数组（ms，已过滤 200~2000 生理区间）
+  lorentz: { x: number; y: number }[]; // Lorenz 散点（x=前一个RR, y=后一个RR）
+  ts: number;
+}
+
+/** 由 RR 间期数组计算时域 HRV：SDNN / RMSSD / PNN50 / 平均心率（供 Lorenz 详情页展示）。 */
+export function computeRrHrv(rr: number[]): { sdnn: number; rmssd: number; pnn50: number; meanHr: number } | null {
+  if (!rr || rr.length < 10) return null;
+  const n = rr.length;
+  const mean = rr.reduce((a, b) => a + b, 0) / n;
+  const sdnn = Math.sqrt(rr.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
+  let rmss = 0, cnt50 = 0, cnt = 0;
+  for (let i = 1; i < n; i++) {
+    const d = rr[i] - rr[i - 1];
+    rmss += d * d;
+    if (Math.abs(d) > 50) cnt50++;
+    cnt++;
+  }
+  const rmssd = Math.sqrt(rmss / Math.max(1, cnt));
+  const pnn50 = cnt > 0 ? (cnt50 / cnt) * 100 : 0;
+  const meanHr = mean > 0 ? Math.round(60000 / mean) : 0;
+  return { sdnn: Math.round(sdnn * 10) / 10, rmssd: Math.round(rmssd * 10) / 10, pnn50: Math.round(pnn50 * 10) / 10, meanHr };
 }
 
 export interface RingMetrics {
@@ -318,6 +368,10 @@ export interface RingState {
   deviceCapabilities: { ecgType: number; funcAssessmentType: number; healthGlanceType: number; supportManualTestType: number } | null;
   /** ECG 实时测量进度（原生 onEcgProgress 回传）：progress=0~100，hr=当前心率（测量中）。非持久化，仅测量期间有效。 */
   ecgProgress: { progress: number; hr?: number } | null;
+  /** ★ 2026-10-16：血氧呼吸暂停分析结果（triggerOxygenAnalysis）。null = 未读取/读取失败。 */
+  oxygenAnalysis: OxygenAnalysis | null;
+  /** ★ 2026-10-16：HRV Lorenz 散点 + RR 间期（readRrAnalysis）。null = 未读取/读取失败。 */
+  rrAnalysis: RrAnalysis | null;
   /** healthStore 数据版本计数器：healthStore 写入时递增，让只订阅 RingState 的页面也能感知到数据变化并刷新。 */
   dataVersion: number;
 }
@@ -338,15 +392,36 @@ export interface SyncProgress {
   phase: string;
 }
 type MetricEvent = { key: string; value: number; unit: string; ts: number };
-/** 单次 ECG 实时测量读数（HK18 硬件支持）。filterSignals 为波形原始 ADC 点，原生已截断到合理长度。 */
+/** ECG 多诊断报告（来源：Veepoo SDK resultReportWithModel，设备返回，非本地测算）。
+ *  风险指数均为 [1,99] 区间；医学指标含 SDK 乘倍（×100 / ×10）的原始整数，展示时需换算。 */
+export interface EcgAnalysis {
+  arrhythmiaRisk?: number;     // 心律失常 [1,99]
+  stressIndex?: number;        // 精神压力 [1,99]
+  fatigueIndex?: number;       // 疲劳 [1,99]
+  myocarditisRisk?: number;    // 心肌炎 [1,99]
+  chdRisk?: number;            // 冠心病 [1,99]
+  angiosclerosisRisk?: number; // 血管硬化 [1,99]
+  qrsTime?: number;            // QRS 时限 ms
+  qrsAmp?: number;             // QRS 振幅 mv×100
+  stMeanAmp?: number;          // ST 段振幅 mv×100（[-5,10] 正常）
+  pwvMeanVal?: number;         // PWV 均值 m/s×10（>150 异常）
+  sdnn?: number;               // SDNN ms（(141±39)）
+  rmssd?: number;              // RMSSD ms（(27±12)）
+  qtc?: number;                // QTc（本地 Bazett 计算：aveQT/√RR）ms
+  riskParamArr?: (string | number)[]; // 32 种疾病风险等级
+}
+
+/** 单次 ECG 实时测量读数（HK18 硬件支持）。waveform 为原生 convertToMvWithValue 转换后的 mV 值，用于绘制心电波形。 */
 export interface EcgReading {
   aveHeart: number;
   aveHrv: number;
   aveResRate: number;
   aveQT: number;
   avePWV: number;
-  /** 波形点（归一化前的原始 ADC / mV 值），用于绘制迷你心电图 */
+  /** 波形点（已转 mV，单位 0.1mV），用于绘制迷你心电图 */
   waveform: number[];
+  /** 多诊断报告（可能为 undefined：设备未返回 / 不支持） */
+  analysis?: EcgAnalysis;
   ts: number;
 }
 type StateListener = (s: RingState) => void;
@@ -753,6 +828,9 @@ class NativeRingSource {
       // ── ★ 2026-10-10：ECG 实时测量（事件链此前两头都断，见 V2_EVENTS 注释）──
       reg('onEcg', (raw: any) => this.handleEcg(raw));
       reg('onEcgProgress', (raw: any) => this.handleEcgProgress(raw));
+      // ★ 2026-10-16：呼吸暂停分析 + HRV Lorenz 散点（设备历史库读取，事件名与原生 emit 对应）
+      reg('onOxygenAnalysis', (raw: any) => this.handleOxygenAnalysis(raw));
+      reg('onRrAnalysis', (raw: any) => this.handleRrAnalysis(raw));
       // 诊断：每 2s 打印 JS 侧实际收到的指标速率（按 key 分类），与原生 METRIC-RATE 对照，
       // 直接看出 hr/spo2/temp/eda/hrv/rr 各自到没到。
       setInterval(() => {
@@ -888,7 +966,7 @@ class NativeRingSource {
       // ★ 触发派生指标重算（去抖 500ms，同一 dayKey 多次写入合并一次）
       scheduleRecompute(dayKey(ts));
       // ★ 诊断日志：关键指标到了没
-      if (['cortisol','sns','emotion','skin','fatigue','hrv','stress','cholesterol','triglyceride','hdl','ldl','ua','glucose','bpSys','bpDia'].includes(metric)) {
+      if (['cortisol','sns','emotion','skin','fatigue','hrv','stress','cholesterol','triglyceride','hdl','ldl','ua','glucose','temp','skinTemp','bpSys','bpDia','ppgSys','ppgDia','glucoseType','glucoseLevel','depressionRisk'].includes(metric)) {
         const _dk = (() => {
           const d = new Date(ts);
           return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1573,16 +1651,27 @@ class NativeRingSource {
     aveQT?: number;
     avePWV?: number;
     waveform?: number[];
+    analysis?: EcgAnalysis;
   }) => {
     try {
       if (!raw || typeof raw.aveHeart !== 'number' || !Number.isFinite(raw.aveHeart)) return;
+      const aveHeart = num(raw.aveHeart) ?? 0;
+      // ★ QTc 本地计算（Bazett）：QTc = QT / √(RR_s)，RR_s = 60 / 心率
+      const analysis: EcgAnalysis | undefined =
+        raw.analysis && typeof raw.analysis === 'object' ? { ...raw.analysis } : undefined;
+      const aveQT = num(raw.aveQT) ?? 0;
+      if (analysis && aveHeart > 0 && aveQT > 0) {
+        const rrS = 60 / aveHeart;
+        analysis.qtc = aveQT / Math.sqrt(rrS);
+      }
       const reading: EcgReading = {
-        aveHeart: num(raw.aveHeart) ?? 0,
+        aveHeart,
         aveHrv: num(raw.aveHrv) ?? 0,
         aveResRate: num(raw.aveResRate) ?? 0,
-        aveQT: num(raw.aveQT) ?? 0,
+        aveQT,
         avePWV: num(raw.avePWV) ?? 0,
         waveform: Array.isArray(raw.waveform) ? raw.waveform.filter((v) => Number.isFinite(Number(v))).map((v) => Number(v)) : [],
+        analysis,
         ts: Date.now(),
       };
       // 追加到历史数组（最多保留 30 次）
@@ -1621,8 +1710,59 @@ class NativeRingSource {
   };
 
   /** 历史日 ECG 回填：原生 backfill 按日读离线 ECG，带 dateKey 回传，落库到 ecgDaily + extDaily[date]['ecg'] + rrDaily[date]。 */
-  private handleEcgDay = (raw: {
-    date?: string;
+  /** ★ 2026-10-16：呼吸暂停分析结果落地（原生 onOxygenAnalysis） */
+  private handleOxygenAnalysis = (raw: any) => {
+    try {
+      if (!raw) return;
+      if (raw.error) {
+        postLog('O2-ANALYSIS', ` ${String(raw.error)}`);
+        this.push({ oxygenAnalysis: null });
+        return;
+      }
+      const analysis: OxygenAnalysis = {
+        osahsResult: (num(raw.osahsResult) ?? -1) as OxygenAnalysis['osahsResult'],
+        osahsResultDes: String(raw.osahsResultDes ?? ''),
+        aveOxygen: num(raw.aveOxygen) ?? 0,
+        minOxygen: num(raw.minOxygen) ?? 0,
+        aveRespRate: num(raw.aveRespRate) ?? 0,
+        minRespRate: num(raw.minRespRate) ?? 0,
+        maxRespRate: num(raw.maxRespRate) ?? 0,
+        aveLowOxygenTime: num(raw.aveLowOxygenTime) ?? 0,
+        maxLowOxygenTime: num(raw.maxLowOxygenTime) ?? 0,
+        aveCardiacLoad: num(raw.aveCardiacLoad) ?? 0,
+        maxCardiacLoad: num(raw.maxCardiacLoad) ?? 0,
+        minCardiacLoad: num(raw.minCardiacLoad) ?? 0,
+        aveSleepActivity: num(raw.aveSleepActivity) ?? 0,
+        freqTimes: Array.isArray(raw.freqTimes) ? raw.freqTimes.map(String) : [],
+        freqVals: Array.isArray(raw.freqVals) ? raw.freqVals.map((v: any) => num(v) ?? 0) : [],
+        ts: num(raw.ts) ?? Date.now(),
+      };
+      postLog('O2-ANALYSIS', ` ✅ osahs=${analysis.osahsResult} aveO2=${analysis.aveOxygen} minO2=${analysis.minOxygen}`);
+      this.push({ oxygenAnalysis: analysis });
+    } catch { /* 单事件失败不中断 */ }
+  };
+
+  /** ★ 2026-10-16：RR 间期 / Lorenz 散点落地（原生 onRrAnalysis） */
+  private handleRrAnalysis = (raw: any) => {
+    try {
+      if (!raw) return;
+      if (raw.error) {
+        postLog('RR-ANALYSIS', ` ${String(raw.error)}`);
+        this.push({ rrAnalysis: null });
+        return;
+      }
+      const rr = Array.isArray(raw.rr) ? raw.rr.map((v: any) => num(v) ?? 0).filter((v: number) => v > 0) : [];
+      const lorentz = Array.isArray(raw.lorentz)
+        ? raw.lorentz
+            .map((p: any) => ({ x: num(p?.x) ?? 0, y: num(p?.y) ?? 0 }))
+            .filter((p: { x: number; y: number }) => p.x > 0 && p.y > 0)
+        : [];
+      postLog('RR-ANALYSIS', ` ✅ rr=${rr.length} lorentz=${lorentz.length}`);
+      this.push({ rrAnalysis: { rr, lorentz, ts: num(raw.ts) ?? Date.now() } });
+    } catch { /* 单事件失败不中断 */ }
+  };
+
+  private handleEcgDay = (raw: {    date?: string;
     ts?: number;
     aveHeart?: number;
     aveHrv?: number;
@@ -1630,20 +1770,31 @@ class NativeRingSource {
     aveQT?: number;
     avePWV?: number;
     waveform?: number[];
+    analysis?: EcgAnalysis;
   }) => {
     try {
       if (!raw || !raw.date || typeof raw.aveHeart !== 'number' || !Number.isFinite(raw.aveHeart) || raw.aveHeart <= 0) return;
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
+      const aveHeart = num(raw.aveHeart) ?? 0;
+      // QTc 本地计算（Bazett）
+      const analysis: EcgAnalysis | undefined =
+        raw.analysis && typeof raw.analysis === 'object' ? { ...raw.analysis } : undefined;
+      const aveQT = num(raw.aveQT) ?? 0;
+      if (analysis && aveHeart > 0 && aveQT > 0) {
+        const rrS = 60 / aveHeart;
+        analysis.qtc = aveQT / Math.sqrt(rrS);
+      }
       const reading: EcgReading = {
-        aveHeart: num(raw.aveHeart) ?? 0,
+        aveHeart,
         aveHrv: num(raw.aveHrv) ?? 0,
         aveResRate: num(raw.aveResRate) ?? 0,
-        aveQT: num(raw.aveQT) ?? 0,
+        aveQT,
         avePWV: num(raw.avePWV) ?? 0,
         waveform: Array.isArray(raw.waveform)
           ? raw.waveform.filter((v) => Number.isFinite(Number(v))).map((v) => Number(v))
           : [],
+        analysis,
         ts: typeof raw.ts === 'number' ? raw.ts : Date.now(),
       };
       const curEcg = this.getState().ecgDaily;
@@ -2624,6 +2775,14 @@ steps点数=${reshaped.steps?.length ?? 0}`,
   backfill() { VeepooNative?.backfill?.(); }
   /** 离线恢复：先 veepooSdkStartReadDeviceAllData 从戒指 flash 重拉最新离线数据，再逐日回填。 */
   recoverOffline() { VeepooNative?.recoverOffline?.(); }
+  /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
+  async triggerOxygenAnalysis(): Promise<void> {
+    try { await VeepooNative?.triggerOxygenAnalysis?.(); } catch { /* 静默 */ }
+  }
+  /** ★ 2026-10-16：触发 HRV Lorenz 散点读取——原生读 RR 间期历史 → Lorenz 散点。结果经 onRrAnalysis 事件写入 RingState.rrAnalysis。 */
+  async readRrAnalysis(): Promise<void> {
+    try { await VeepooNative?.readRrAnalysis?.(); } catch { /* 静默 */ }
+  }
 
   /**
    * 把「数据同步」开关推给原生：唯一控制 backfill 的来源（调试卡片不再参与控制）。
@@ -2958,6 +3117,8 @@ class RingConnectionImpl {
     ecgHistory: [],
     lastUploadedAt: null,
     ecgProgress: null,
+    oxygenAnalysis: null,
+    rrAnalysis: null,
     dataVersion: 0,
   };
   private native: NativeRingSource;
@@ -3015,6 +3176,15 @@ class RingConnectionImpl {
   // 扩展指标（血糖/血脂/尿酸/压力/疲劳/情绪/皮肤/皮质醇等）的 15 分钟时间槽，
   // 与核心指标同宽（SLOT_MS），让这些原本只存"最新 1 点"的信号也能画出全天趋势曲线。
   private extBuckets: Record<string, Map<number, { sum: number; count: number; last: number }>> = {};
+
+  /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
+  async triggerOxygenAnalysis(): Promise<void> {
+    try { await VeepooNative?.triggerOxygenAnalysis?.(); } catch { /* 静默 */ }
+  }
+  /** ★ 2026-10-16：触发 HRV Lorenz 散点读取——原生读 RR 间期历史 → Lorenz 散点。结果经 onRrAnalysis 事件写入 RingState.rrAnalysis。 */
+  async readRrAnalysis(): Promise<void> {
+    try { await VeepooNative?.readRrAnalysis?.(); } catch { /* 静默 */ }
+  }
 
   /** 跨天则清空所有槽，并把 dayStart 指向今天 0 点 */
   private ensureDay(ts: number) {

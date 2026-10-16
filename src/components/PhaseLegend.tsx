@@ -7,14 +7,25 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
-import { PHASE_COLOR, PHASE_LABEL, PHASE_ORDER } from '../lib/phaseColors';
+import { PHASE_COLOR, PHASE_LABEL, PHASE_ORDER, type PhaseKey } from '../lib/phaseColors';
+import { MoonDot, type MoonStyle } from './CycleMoonPhase';
+
+// ★ 2026-10-15：图例色块换成对应相位的月相图案（与首页圆环上的四相位月相同源）
+const PHASE_MOON: Partial<Record<PhaseKey, MoonStyle>> = {
+  period: 'full',
+  follicular: 'quarterR',
+  luteal: 'allPurple',
+  ovulation: 'quarterL',
+};
 
 export default function PhaseLegend() {
   return (
     <View style={styles.legend}>
       {PHASE_ORDER.map((p) => (
         <View key={p} style={styles.item}>
-          <View style={[styles.dot, { backgroundColor: PHASE_COLOR[p] }]} />
+          <View style={styles.dot}>
+            <MoonDot style={PHASE_MOON[p] ?? 'full'} size={theme.sp(2.5)} />
+          </View>
           <Text style={styles.text}>{PHASE_LABEL[p]}</Text>
         </View>
       ))}

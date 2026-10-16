@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECG 详情页预览 · 网格波形 + 分析</title>
+<style>
+  :root{
+    --ink:#2C2A3E; --ink-soft:#6b6880; --ink-faint:#9a96ab;
+    --ecg:#E5484D; --lav:#9D8AF0; --pink:#F58AB8;
+    --card:#fff; --border:rgba(44,42,62,.10);
+    --green:#3FB984; --amber:#E8A23D; --blue:#5AA9E6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0E1220;font-family:-apple-system,"PingFang SC",sans-serif;gap:36px;padding:28px 0;}
+  .phone{position:relative;width:390px;height:844px;border-radius:54px;overflow:hidden;flex-shrink:0;
+    box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 10px #14161f,0 0 0 12px #2a2d3a;}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;padding:60px 20px 30px;background:#fff;overflow-y:auto;}
+  .head{display:flex;align-items:center;margin-bottom:14px;}
+  .back{width:34px;height:34px;border-radius:17px;background:rgba(0,0,0,.05);display:flex;align-items:center;justify-content:center;font-size:20px;margin-right:8px;}
+  .title{font-size:20px;font-weight:700;color:var(--ink);}
+  .sub{font-size:12px;color:var(--ink-faint);margin-top:2px;}
+  .latest{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px;}
+  .ltop{display:flex;justify-content:space-between;align-items:center;}
+  .ltime{font-size:13px;color:var(--ink-soft);}
+  .scale{font-size:10px;color:var(--ecg);font-weight:600;}
+  .ecgwrap{margin-top:8px;border-radius:8px;overflow:hidden;background:rgba(255,240,243,.6);}
+  .btn{background:var(--ecg);color:#fff;text-align:center;padding:12px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:16px;}
+  .seg{display:flex;background:rgba(157,138,240,.12);border-radius:12px;padding:4px;margin-bottom:12px;}
+  .seg button{flex:1;border:none;background:none;padding:9px;border-radius:9px;font-size:13px;font-weight:600;color:var(--ink-soft);font-family:inherit;cursor:pointer;}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 6px rgba(0,0,0,.06);}
+  .grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .cell{width:31%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;}
+  .cl-top{display:flex;justify-content:space-between;align-items:center;}
+  .clab{font-size:11px;color:var(--ink-soft);}
+  .dot{width:7px;height:7px;border-radius:4px;}
+  .cval{font-size:17px;font-weight:700;color:var(--ink);margin:3px 0;}
+  .cval span{font-size:10px;font-weight:500;color:var(--ink-soft);}
+  .cref{font-size:9.5px;color:var(--ink-faint);}
+  .riskbox{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;}
+  .rhint{font-size:10.5px;color:var(--ink-faint);text-align:center;margin:4px 0 12px;}
+  .rrow{margin-bottom:12px;}
+  .rhead{display:flex;justify-content:space-between;margin-bottom:5px;}
+  .rname{font-size:13px;font-weight:600;color:var(--ink);}
+  .rval{font-size:13px;font-weight:700;}
+  .rtrack{height:7px;background:rgba(157,138,240,.14);border-radius:4px;overflow:hidden;}
+  .rfill{height:100%;border-radius:4px;}
+  .disc{font-size:10.5px;color:var(--ink-faint);line-height:15px;margin:10px 0;}
+  .sect{font-size:15px;font-weight:600;color:var(--ink);margin:4px 0 8px;}
+  .hist{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;}
+  .htop{display:flex;justify-content:space-between;}
+  .ht{font-size:12px;font-weight:600;color:var(--ink);}
+  .hr{font-size:11px;color:var(--ink-faint);}
+  .hstat{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+  .hstat b{font-size:12px;color:var(--ink);}
+  .home-indicator{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(0,0,0,.3);}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="screen">
+    <div class="head">
+      <div class="back">‹</div>
+      <div><div class="title">心电图</div><div class="sub">HK18 ECG 硬件</div></div>
+    </div>
+
+    <div class="latest">
+      <div class="ltop"><div class="ltime">最新一次 · 2026/10/16 09:42</div><div class="scale">25 mm/s · 10 mm/mV</div></div>
+      <div class="ecgwrap"><canvas id="ecg" width="640" height="240" style="width:100%;height:130px;display:block"></canvas></div>
+    </div>
+
+    <div class="btn">重新测量心电图</div>
+
+    <div class="seg">
+      <button class="on" onclick="switchTab('metrics',this)">医学指标</button>
+      <button onclick="switchTab('risk',this)">风险分析</button>
+    </div>
+
+    <div id="metrics" class="grid"></div>
+
+    <div id="risk" style="display:none">
+      <div class="riskbox">
+        <div id="radar"></div>
+        <div class="rhint">数值为设备评估参考（0–99，越靠外强度越高）</div>
+        <div id="bars"></div>
+      </div>
+    </div>
+
+    <div class="disc">以上数据来自戒指硬件评估，仅作健康参考，不构成医疗诊断建议。如有不适请咨询专业医生。</div>
+
+    <div class="sect">历史测量 · 3 次</div>
+    <div class="hist"><div class="htop"><div class="ht">2026/10/16 09:42</div><div class="hr">刚刚</div></div>
+      <canvas class="mini" width="320" height="88" style="width:100%;height:48px;display:block;margin-top:4px"></canvas>
+      <div class="hstat">心率 <b>78</b> bpm · HRV <b>42</b> ms · 呼吸 <b>15</b></div></div>
+    <div class="hist"><div class="htop"><div class="ht">2026/10/15 21:10</div><div class="hr">12 小时前</div></div>
+      <div class="hstat">心率 <b>72</b> bpm · HRV <b>48</b> ms · 呼吸 <b>14</b></div></div>
+  </div>
+  <div class="home-indicator"></div>
+</div>
+
+<script>
+// 生成一段真实形态的 PQRST 心电波形（mV 量级）
+function makeEcg(nCycles, ptsPerBeat){
+  const out=[]; const f=(t)=>{
+    // t in [0,1) within one beat
+    let v=0;
+    const g=(c,w,a)=>a*Math.exp(-((t-c)**2)/(2*w*w));
+    v+=g(0.16,0.022,0.12);   // P
+    v+=g(0.27,0.008,-0.10);  // Q
+    v+=g(0.30,0.010,1.10);   // R
+    v+=g(0.33,0.010,-0.28);  // S
+    v+=g(0.52,0.035,0.30);   // T
+    return v;
+  };
+  for(let c=0;c<nCycles;c++)for(let i=0;i<ptsPerBeat;i++)out.push(f(i/ptsPerBeat));
+  return out;
+}
+function drawEcg(canvas, data, h){
+  const ctx=canvas.getContext('2d'); const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  // 网格
+  ctx.strokeStyle='rgba(229,72,77,0.10)';ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=10){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<=H;y+=10){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.strokeStyle='rgba(229,72,77,0.22)';
+  for(let x=0;x<=W;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<=H;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // 波形（基线在 58% 高度，R 向上）
+  const base=H*0.62, amp=H*0.42;
+  ctx.strokeStyle='#E5484D';ctx.lineWidth=2;ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let i=0;i<data.length;i++){
+    const x=(i/(data.length-1))*W; const y=base-data[i]*amp;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+const ecg=makeEcg(4,120);
+drawEcg(document.getElementById('ecg'),ecg,240);
+document.querySelectorAll('.mini').forEach(c=>drawEcg(c,makeEcg(2,80),88));
+
+// 医学指标（mock）
+const metrics=[
+  {l:'平均心率',v:'78',u:'bpm',r:'60–100',s:'normal'},
+  {l:'HRV',v:'42',u:'ms',r:'通常 20–100',s:null},
+  {l:'SDNN',v:'128',u:'ms',r:'102–180',s:'normal'},
+  {l:'RMSSD',v:'34',u:'ms',r:'15–39',s:'normal'},
+  {l:'QTc',v:'421',u:'ms',r:'女 <460',s:'normal'},
+  {l:'QRS 时限',v:'92',u:'ms',r:'60–100',s:'normal'},
+  {l:'QRS 振幅',v:'1.02',u:'mV',r:'0.5–1.5',s:'normal'},
+  {l:'ST 段',v:'0.04',u:'mV',r:'−0.05–0.10',s:'normal'},
+  {l:'PWV',v:'12.3',u:'m/s',r:'6–20',s:'normal'},
+];
+const scolor={normal:'#3FB984',high:'#E8A23D',low:'#5AA9E6'};
+document.getElementById('metrics').innerHTML=metrics.map(m=>`
+  <div class="cell"><div class="cl-top"><div class="clab">${m.l}</div>${m.s?`<div class="dot" style="background:${scolor[m.s]}"></div>`:''}</div>
+  <div class="cval">${m.v}<span> ${m.u}</span></div><div class="cref">参考 ${m.r}</div></div>`).join('');
+
+// 风险分析（mock，六轴）
+const risks=[
+  {l:'心律失常',v:18},{l:'精神压力',v:52},{l:'疲劳',v:61},
+  {l:'心肌炎',v:12},{l:'冠心病',v:22},{l:'血管硬化',v:34},
+];
+const rcolor=(v)=>v>75?'#E8A23D':v>50?'#9D8AF0':'#3FB984';
+document.getElementById('bars').innerHTML=risks.map(r=>`
+  <div class="rrow"><div class="rhead"><div class="rname">${r.l}</div><div class="rval" style="color:${rcolor(r.v)}">${r.v}</div></div>
+  <div class="rtrack"><div class="rfill" style="width:${(r.v/99)*100}%;background:${rcolor(r.v)}"></div></div></div>`).join('');
+
+// 雷达图
+function radar(){
+  const size=220,cx=110,cy=110,R=88,n=risks.length;
+  const pt=(i,r)=>{const a=-Math.PI/2+i/n*Math.PI*2;return[x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r];};
+  let s=`<svg width="100%" height="${size}" viewBox="0 0 ${size} ${size}">`;
+  [0.25,0.5,0.75,1].forEach(f=>{const r=f*R;let d='M '+pt(0,r).join(',')+' ';for(let k=0;k<n;k++)d+='L '+pt(k,r).join(',')+' ';d+='Z';s+=`<path d="${d}" fill="none" stroke="rgba(157,138,240,.25)" stroke-width="1"/>`;});
+  risks.forEach((_,i)=>{const p=pt(i,R);s+=`<line x1="${cx}" y1="${cy}" x2="${p[0]}" y2="${p[1]}" stroke="rgba(157,138,240,.3)" stroke-width="1"/>`;});
+  const vals=risks.map((d,i)=>pt(i,Math.min(1,d.v/99)*R));
+  let vd='M '+vals[0].join(',')+' ';for(let k=1;k<n;k++)vd+='L '+vals[k].join(',')+' ';vd+='Z';
+  s+=`<path d="${vd}" fill="rgba(245,138,184,.28)" stroke="#F58AB8" stroke-width="2" stroke-linejoin="round"/>`;
+  risks.forEach((d,i)=>{const p=vals[i];s+=`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#F58AB8"/>`;const lp=pt(i,R+14);s+=`<text x="${lp[0]}" y="${lp[1]}" font-size="10" fill="#6b6880" text-anchor="middle">${d.l}</text>`;});
+  s+='</svg>';document.getElementById('radar').innerHTML=s;
+}
+radar();
+
+function switchTab(which,btn){
+  document.getElementById('metrics').style.display=which==='metrics'?'flex':'none';
+  document.getElementById('risk').style.display=which==='risk'?'block':'none';
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+</script>
+</body>
+</html>

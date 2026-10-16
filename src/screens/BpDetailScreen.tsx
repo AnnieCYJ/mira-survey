@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
+import InsightBanner from '../components/InsightBanner';
+import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { theme } from '../theme/theme';
@@ -214,6 +216,11 @@ export default function BpDetailScreen() {
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
 
+  // ★ 2026-10-16：血压详情页内 AI 问答入口（与精力/情绪详情页同款 ChatSheet）
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = useCallback((q: string) => { setChatQuestion(q); setChatVisible(true); }, []);
+
   const data = useMemo(() => buildDual(range, anchor), [range, anchor]);
 
   // 上一周期锚点（用于「较上一周期」对比）
@@ -244,6 +251,16 @@ export default function BpDetailScreen() {
   const sysHasData = (data.sys.points.some((v) => v != null) || data.sys.tPoints.length > 0);
   const diaHasData = (data.dia.points.some((v) => v != null) || data.dia.tPoints.length > 0);
   const hasData = sysHasData || diaHasData;
+
+  // ★ 2026-10-16：取某指标当天最新一次读数（光电/气囊血压细分卡用）
+  const latestVal = (k: 'ppgSys' | 'ppgDia' | 'bpSys' | 'bpDia'): number | null => {
+    try {
+      const pts = healthStore.getIntraday(k, dateKeyOf(Date.now()));
+      return pts.length ? pts[pts.length - 1].v : null;
+    } catch {
+      return null;
+    }
+  };
 
   // 日视图固定以全天 0~24h 为时间轴，测量点按真实时间落位，避免单点被缩到最右侧
   const isTodayAnchor = dateKeyOf(anchor.getTime()) === dateKeyOf(Date.now());
@@ -452,9 +469,148 @@ export default function BpDetailScreen() {
           )}
         </Card>
       ) : null}
+
+      {/* ★ 2026-10-16：血压细分——光电血压（PPG，无气囊戒指默认）vs 气囊血压（带气囊机型） */}
+      {hasData ? (
+        <Card style={{ marginTop: 12 }}>
+          <Text style={styles.detailTitle}>测量方式细分</Text>
+          <View style={styles.detailGrid}>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>光电血压（PPG）</Text>
+              <Text style={styles.detailColVal}>
+                <Text style={{ color: COL_SYS }}>{fmt(latestVal('ppgSys'))}</Text>
+                <Text style={{ color: theme.colors.textSub }}>/</Text>
+                <Text style={{ color: COL_DIA }}>{fmt(latestVal('ppgDia'))}</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: 12 }}> mmHg</Text>
+              </Text>
+            </View>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>气囊血压</Text>
+              <Text style={styles.detailColVal}>
+                <Text style={{ color: COL_SYS }}>{fmt(latestVal('bpSys'))}</Text>
+                <Text style={{ color: theme.colors.textSub }}>/</Text>
+                <Text style={{ color: COL_DIA }}>{fmt(latestVal('bpDia'))}</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: 12 }}> mmHg</Text>
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.compareLabel, { marginTop: 10 }]}>
+            读数优先采用气囊血压；无气囊机型（如本款）以光电血压（PPG）为准，数值含估测成分。
+          </Text>
+        </Card>
+      ) : null}
+
+      {/* ★ 2026-10-16：血压分级（WHO/ISH 六档）+ 规则 AI 解读 */}
+      {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
     </ScreenContainer>
+    <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </View>
   );
+}
+
+/* ★ 2026-10-16：血压分级（WHO/ISH 六档）
+ * 按收缩压 / 舒张压中较高的等级定级（取两者中更重的一档）。 */
+const BP_TIERS = [
+  { stage: 1, name: '理想血压', sLo: 0, sHi: 120, dLo: 0, dHi: 80, color: mm.colors.limeMid, note: '血压理想，继续保持规律作息与运动。' },
+  { stage: 2, name: '正常血压', sLo: 120, sHi: 130, dLo: 80, dHi: 85, color: mm.colors.limeCore, note: '血压正常，建议保持当前生活方式。' },
+  { stage: 3, name: '正常高值', sLo: 130, sHi: 140, dLo: 85, dHi: 90, color: mm.colors.honeyCore, note: '处于正常高值，注意减盐、规律运动，定期监测。' },
+  { stage: 4, name: '高血压 1 级', sLo: 140, sHi: 160, dLo: 90, dHi: 100, color: mm.colors.roseMid, note: '轻度升高，建议改善生活方式并咨询医生。' },
+  { stage: 5, name: '高血压 2 级', sLo: 160, sHi: 180, dLo: 100, dHi: 110, color: mm.colors.roseDeep, note: '明显升高，建议尽早就医评估。' },
+  { stage: 6, name: '高血压 3 级', sLo: 180, sHi: 999, dLo: 110, dHi: 999, color: mm.colors.roseDeep, note: '显著升高，请及时就医。' },
+] as const;
+
+function bpStageOf(s: number, d: number): number {
+  const sStage = s >= 180 ? 6 : s >= 160 ? 5 : s >= 140 ? 4 : s >= 130 ? 3 : s >= 120 ? 2 : 1;
+  const dStage = d >= 110 ? 6 : d >= 100 ? 5 : d >= 90 ? 4 : d >= 85 ? 3 : d >= 80 ? 2 : 1;
+  return Math.max(sStage, dStage);
+}
+
+function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | null; diaAvg: number | null; openChat: (q: string) => void }) {
+  const s = sysAvg ?? latestValLocal('bpSys');
+  const d = diaAvg ?? latestValLocal('bpDia');
+  const has = s != null && d != null;
+  const stage = has ? bpStageOf(s, d) : 0;
+  const tier = has ? BP_TIERS[stage - 1] : null;
+
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        has
+          ? `当前血压约 ${Math.round(s!)}/${Math.round(d!)} mmHg，评级为「${tier?.name}」。`
+          : '今日暂无足够血压数据，连接戒指完成一次测量后查看分级。',
+    },
+  ];
+  if (has && tier) {
+    if (stage >= 4) rows.push({ tone: 'warn', title: '关注', body: tier.note });
+    else if (stage === 3) rows.push({ tone: 'neutral', title: '提示', body: tier.note });
+    else rows.push({ tone: 'good', title: '良好', body: tier.note });
+  }
+  rows.push({ tone: 'neutral', title: '建议', body: '定期监测、减盐限酒、规律有氧；分级仅作参考，诊断请遵医嘱。' });
+
+  return (
+    <>
+      <Card style={{ marginTop: 12 }}>
+        <Text style={styles.detailTitle}>血压分级（WHO/ISH）</Text>
+        {has ? (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 10 }}>
+              <Text style={{ fontSize: 26, fontWeight: '700', color: tier?.color }}>
+                {Math.round(s!)}/{Math.round(d!)}
+              </Text>
+              <Text style={{ fontSize: 13, color: theme.colors.textSub, marginLeft: 6 }}>mmHg</Text>
+              <View style={{ flex: 1 }} />
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: tier?.color, opacity: 0.18 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: tier?.color }}>{tier?.name}</Text>
+              </View>
+            </View>
+            {/* 六档水平条：当前档高亮 */}
+            <View style={{ flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden' }}>
+              {BP_TIERS.map((t) => (
+                <View
+                  key={t.stage}
+                  style={{ flex: 1, backgroundColor: t.color, opacity: t.stage === stage ? 1 : 0.35 }}
+                />
+              ))}
+            </View>
+            <View style={{ height: 0, position: 'relative', marginTop: 2 }}>
+              <View
+                style={{
+                  position: 'absolute',
+                  left: `${((stage - 1) / (BP_TIERS.length - 1)) * 100}%`,
+                  top: -6,
+                  width: 3,
+                  height: 20,
+                  backgroundColor: mm.colors.ink,
+                  borderRadius: 2,
+                  transform: [{ translateX: -1.5 }],
+                }}
+              />
+            </View>
+            <Text style={{ fontSize: 12, color: theme.colors.textSub, marginTop: 10, lineHeight: 18 }}>
+              {tier?.name}：{tier?.note}
+            </Text>
+          </>
+        ) : (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>当前范围内暂无血压数据。</Text>
+          </View>
+        )}
+      </Card>
+      <InsightBanner title="血压解读" rows={rows} onMore={() => openChat('帮我分析今天的血压')} />
+    </>
+  );
+}
+
+/** 取某指标当天最新一次读数（兜底：avg 为 null 时用最新值） */
+function latestValLocal(k: 'bpSys' | 'bpDia'): number | null {
+  try {
+    const pts = healthStore.getIntraday(k, dateKeyOf(Date.now()));
+    return pts.length ? pts[pts.length - 1].v : null;
+  } catch {
+    return null;
+  }
 }
 
 const styles = StyleSheet.create({

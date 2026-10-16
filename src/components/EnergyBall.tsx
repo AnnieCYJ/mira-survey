@@ -13,7 +13,7 @@ import { theme } from '../theme/theme';
 import { DEFAULT_MOOD, MOODS, type MoodIndex } from '../data/metrics';
 import { type CurveStatus } from '../lib/dailyStatus';
 import { MoonDot, type MoonStyle } from './CycleMoonPhase';
-import { PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
+import { PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 
 
 interface Props {
@@ -105,14 +105,9 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     return `${hh}:${mm}`;
   })();
 
-  // 当前所处经期象限（来自今日状态预测）；无数据时为 null（仅用于环上高亮，中央相位文字已移除）
+  // 当前所处经期象限（来自今日状态预测）；无数据时为 null（仅用于环上高亮）
   const currentPhase: PhaseKey | null =
     status?.phaseLabel != null ? LABEL_TO_PHASE[status.phaseLabel] ?? null : null;
-  // 当前经期相位对应的月相样式（用于环中央放大展示，与环上四相位月相点同源）
-  const phaseMoonStyle: MoonStyle =
-    currentPhase != null
-      ? (HOME_PHASES.find((p) => p.key === currentPhase)?.style ?? 'full')
-      : 'full';
 
   // 呼吸光晕：只作用于中间弥散的彩色，不缩放文字
   const halo = useRef(new Animated.Value(0)).current;
@@ -273,13 +268,6 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
       </Animated.View>
 
       <View style={styles.center} pointerEvents="none">
-        {/* ★ 2026-10-15 晚：环中央放大显示当前经期相位月相 + 相位名（如「卵泡期」），与环上四相位月相点同源 */}
-        {currentPhase && (
-          <View style={styles.phaseInCenter}>
-            <MoonDot style={phaseMoonStyle} size={theme.sp(13)} />
-            <Text style={[styles.phaseCenterLabel, { color: PHASE_COLOR[currentPhase] }]}>{PHASE_LABEL[currentPhase]}</Text>
-          </View>
-        )}
         <Text style={[styles.label, !hasData && styles.emptyLabel]}>{centerLabel}</Text>
         {statusValue != null && <Text style={styles.statusValue}>状态值：{statusValue}</Text>}
         {/* ★ v18.118：状态值下方显示「数据更新于 HH:MM」。
@@ -339,15 +327,4 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.regular,
   },
   // ★ 2026-10-15 晚：环中央经期相位块（放大的月相 + 相位名）
-  phaseInCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.sp(1.25),
-    marginBottom: theme.sp(0.5),
-  },
-  phaseCenterLabel: {
-    fontSize: theme.fs(15),
-    fontWeight: theme.weight.semibold,
-  },
 });

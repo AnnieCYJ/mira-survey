@@ -57,7 +57,7 @@ const navTheme = {
 };
 
 const styles = StyleSheet.create({
-  // 实色兜底：即使渐变组件偶发不渲染，也是紫色而非灰白
+  // 实色兜底：即使渐变组件偶发不渲染，也是浅灰 #F5F5F7（2026-10-15 用户定稿 V1 去紫，原紫渐变已改浅灰）
   root: { flex: 1, backgroundColor: theme.colors.bgTop },
   // 渐变用绝对定位铺满，不依赖 flex 链，Web / 原生都稳
   gradient: { ...StyleSheet.absoluteFillObject },

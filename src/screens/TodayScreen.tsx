@@ -1134,7 +1134,7 @@ export default function TodayScreen() {
             建议态/录音态文案长度上下跳；它与标题下方各有一个等权弹性位，等分剩余高度 →
             内容整体居中、上下留白对称（不再把空白全堆在底部）。 */}
         <View style={{ flexGrow: 1, flexBasis: 0 }} />
-        <View style={{ marginBottom: 0, paddingTop: 0, alignItems: 'center' }}>
+        <View style={{ marginTop: theme.space.lg, marginBottom: -theme.sp(1.5), paddingTop: 0, alignItems: 'center' }}>
           <HomeAiBubble navigation={navigation} status={ring?.curveStatus} height={bubbleHeight} width={Math.max(0, Math.min(dims.width, theme.layout.maxWidth) - theme.space.screen * 2 - 8)} analysis={narrative} />
         </View>
 

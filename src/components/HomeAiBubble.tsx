@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from '
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { useVoiceTriggerLive, useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
@@ -44,6 +45,8 @@ const GLASS_TEXT_SHADOW = {
 // 白玻璃上的行动 pills（深字保证可读）
 const PILL_LIGHT_BG = '#FFFFFF';
 const PILL_LIGHT_TEXT = '#2C2A3E';
+// ★ 2026-10-16：GROK 渐变（青柠绿 → 粉），用于 CTA 主按钮填充，比白底 pills 更跳
+const GROK_GRAD: [string, string] = ['#C6D84B', '#F58AB8'];
 
 function thumbFor(c: SuggestionCandidate): number {
   if (c.cta && TOOL_THUMB[c.cta.screen]) return TOOL_THUMB[c.cta.screen];
@@ -121,25 +124,8 @@ function WaveBars({ active }: { active?: boolean }) {
   );
 }
 
-// ★ 2026-10-15（V4）：玻璃卡标题行（参考图 Trip to Hawaii 同款）—— Mira 紫脸头像 + 标题 + 依据小字 + ♡ 角标。
-const BubbleTitleRow = memo(function BubbleTitleRow({ subtitle }: { subtitle?: string }) {
-  return (
-    <View style={styles.gHead}>
-      <View style={styles.gHeadAva}>
-        <Text style={styles.gHeadAvaText}>✦</Text>
-      </View>
-      <View style={styles.gHeadTt}>
-        <Text style={styles.gHeadT1}>Mira 的今日观察</Text>
-        {subtitle ? (
-          <Text style={styles.gHeadT2} numberOfLines={1}>{subtitle}</Text>
-        ) : null}
-      </View>
-      <View style={styles.gHeadMark}>
-        <Icon name="heart" size={13} color={TXT_ON_GLASS} />
-      </View>
-    </View>
-  );
-});
+// ★ 2026-10-15（V4）：玻璃卡标题行已移除（用户：去掉「Mira 的今日观察」+ 紫头像 + ♡ 角标）；
+//   气泡不再有头像标题行，直接以「分析文案 + 建议」呈现。
 
 // ★ 性能隔离：常驻气泡的 idle/rec/spoke 文案**自己订阅**语音直播态，
 //   父组件 HomeAiBubble 不再订阅 liveText —— 否则录音时每 250ms 一次转写推进
@@ -156,7 +142,6 @@ const BubbleIdleContent = memo(function BubbleIdleContent({ height, analysis }: 
   // ★ V4（2026-10-15）：标题行置顶（参考图结构），分析次之，占位文案与声波收尾。
   return (
     <View style={[styles.content, height ? { height } : null]}>
-      <BubbleTitleRow />
       {analysis ? (
         <Text style={styles.analysisText} numberOfLines={3}>{analysis}</Text>
       ) : null}
@@ -225,10 +210,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
 
   // 今日建议（每 30 分钟一条；基于今日状态生成；停留首页时靠轮询刷新）
   const [cand, setCand] = useState<SuggestionCandidate | null>(null);
-  // ★ 2026-10-15：第二条建议（用户「下面 1~2 个建议」）——引擎候选池里再取一条不同 id 的，
-  //   只作展示、不改换卡铁律（非 force 主流程不变；这里用一次性 force 取，取完即弃副作用可接受：
-  //   markShown 只影响「同签名非 force 返回 null → 保留当前卡」，正是我们要的行为）。
-  const [cand2, setCand2] = useState<SuggestionCandidate | null>(null);
   const [kept, setKept] = useState(false);
   // ★ 十改：确认/收起两句也换成 Mira 的口气（原「已留作你的专属建议 / 先不打扰你了」偏公文腔）
   const [keptMsg, setKeptMsg] = useState('已收进你的专属建议啦');
@@ -258,20 +239,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     shownIdRef.current = c.id;
     shownSigRef.current = sig ?? sigOf(statusRef.current);
     setCand(c);
-    setCand2(null); // 换主卡 → 第二条先清空，由 fetchSecond 异步补
     setKept(false);
-  };
-
-  /** 第二条建议：引擎候选池里再取一条（避开主卡 id）；主卡已换/被否 → 丢弃结果 */
-  const fetchSecond = (cs: any, primaryId: string) => {
-    pickSuggestion(cs, { force: true })
-      .then((s) => {
-        if (!s || s.id === primaryId || s.saveId === primaryId) { setCand2(null); return; }
-        // 主卡已被换掉（用户操作/状态跨档）→ 第二条不硬上屏
-        if (fbRef.current || candRef.current?.id !== primaryId) { setCand2(null); return; }
-        setCand2(s);
-      })
-      .catch(() => { setCand2(null); });
   };
 
   /**
@@ -297,7 +265,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
       pickSuggestion(cs, { force: true })
         .then((e) => {
           if (fbRef.current) return;
-          if (e) { applyCand(e, sig); fetchSecond(cs, e.id); }
+          if (e) { applyCand(e, sig); }
           else setCand(null); // 池子空 → idle（AI 若稍后生成成功，下一轮轮询会补上）
         })
         .catch(() => {});
@@ -325,7 +293,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
           pickSuggestion(statusRef.current)
             .then((e) => {
               if (fbRef.current || candRef.current) return;
-              if (e) { applyCand(e, sig); fetchSecond(statusRef.current, e.id); }
+              if (e) { applyCand(e, sig); }
               else setCand(null);
             })
             .catch(() => {});
@@ -392,7 +360,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
       hideTimerRef.current = null;
       setKept(false);
       setCand(null);      // 建议消失 → 回落到 idle 占位
-      setCand2(null);     // 第二条建议一并收回
       setFb(null);        // 回访卡同样收掉
       clearSpoken();      // 同时清掉上一轮语音转写，确保显示的是占位那句话而不是残话
     }, CONFIRM_MS);
@@ -441,7 +408,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
       lastDismissedRef.current = { id: cand.saveId ?? cand.id, headline: cand.headline };
       dismissSuggestion(cand.saveId ?? cand.id).catch(() => {});
       setCand(null);
-      setCand2(null);
     }
     clearSpoken();
     refresh(true);
@@ -463,10 +429,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
 
   // ★ 十二改：左图取改善工具页同款图片资产（行动型按 cta.screen 映射，观察型按关键词映射）
   const activeCard = fb ?? cand;
-  // ★ 2026-10-15：建议行列表（用户「下面 1~2 个建议」）—— 回访卡只一条；否则主建议 + 第二条
-  const suggestionRows: SuggestionCandidate[] = fb
-    ? [fb]
-    : ([cand, cand2].filter(Boolean) as SuggestionCandidate[]);
+  // ★ 2026-10-15 末：用户要求只展示一条建议 → 回访卡一条、否则仅主建议
+  const suggestionRows: SuggestionCandidate[] = fb ? [fb] : (cand ? [cand] : []);
 
   // ★ 丝滑化：建议卡「从右下展开」入场（不动 SVG 尾巴，只动内容层）。
   //   入场用 useNativeDriver 跑原生线程，不占 JS 线程；打字机已按用户要求移除，直接显示完整文字。
@@ -525,15 +489,12 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
         accessibilityRole={!hasCard ? 'button' : undefined}
         accessibilityLabel={!hasCard ? '打开 Mira AI 聊天' : undefined}
       >
-        {/* 背景：白玻璃磨砂填充（恢复原先气泡样式，去掉海景） */}
-        {w > 0 && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: GLASS_FILL, borderRadius: R }]} />
-        )}
+        {/* 气泡白玻璃背景：本体由下方 SVG path 填充（半透明白底 rgba(255,255,255,0.82) + 浅描边） */}
 
-        {/* 气泡描边 + 右下小尾巴（SVG 保证边框与尾巴同色同源；本体已由海景+玻璃层填充，path 只描边） */}
+        {/* 气泡描边 + 右下小尾巴（SVG 保证边框与尾巴同色同源；本体填充白玻璃） */}
         {w > 0 && bodyPath && (
           <Svg style={StyleSheet.absoluteFill} width={w} height={bubbleHeight + TAIL_H} viewBox={`0 0 ${w} ${bubbleHeight + TAIL_H}`}>
-            <Path d={bodyPath} fill="none" stroke={GLASS_BORDER} strokeWidth={STROKE} />
+            <Path d={bodyPath} fill={GLASS_FILL} stroke={GLASS_BORDER} strokeWidth={STROKE} />
             <Path
               d={`M ${b0} ${bubbleHeight - 1} L ${tipX} ${tipY} L ${b1} ${bubbleHeight - 1}`}
               fill={GLASS_FILL}
@@ -552,8 +513,6 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
               次 = 「不感兴趣」文字链接 —— 点了立刻换一条新建议（force 重取）。 */}
         {hasCard ? (
           <Animated.View style={[styles.suggContent, { height: bubbleHeight, opacity: enterOpacity, transform: [{ translateX: enterShiftX }, { translateY: enterShiftY }, { scale: enterScale }] }]}>
-            {/* ★ V4（2026-10-15）：参考图标题行置顶；依据小字取当前卡的证据短语（真实数据） */}
-            <BubbleTitleRow subtitle={(fb ?? cand)?.metric} />
             {analysis ? <Text style={styles.analysisText} numberOfLines={3}>{analysis}</Text> : null}
             {kept ? (
               /* ── 确认态：点了「有用」→ 只显示这一行（带心），2.4s 后自动收回 idle ── */
@@ -562,21 +521,26 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                 <Text style={styles.keptText}>{keptMsg}</Text>
               </View>
             ) : (
-              /* ── 建议行列表：主建议 + （可选）第二条建议；行间细分隔线 ── */
-              suggestionRows.map((row, i) => {
+              <>
+                {/* ★ 2026-10-15 晚：去掉头像标题行后，用轻量小标签标识建议区（渐变圆点 + 文字，替代「Mira 的今日观察」） */}
+                <View style={styles.suggEyebrowRow}>
+                  <LinearGradient colors={['#9D8AF0', '#F6B3D0', '#D5E384']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.suggEyebrowDot} />
+                  <Text style={styles.suggEyebrow}>今日建议</Text>
+                </View>
+                {/* ── 建议行列表：主建议 + （可选）第二条建议；行间细分隔线 ── */}
+                {suggestionRows.map((row, i) => {
                 const isFb = !!fb && row.id === fb.id;
-                const isSecond = !isFb && i > 0;
                 const rowHeadline = isFb
                   ? `刚${CTA_NAME[row.cta?.screen ?? ''] ?? '完成'}完，有没有帮到你呀？`
                   : (row.headline ?? (row.action ? habitHeadline(row.action) : ''));
                 return (
-                  <View key={row.id} style={[styles.suggBody, i > 0 && styles.suggBodyGap]}>
+                  <View key={row.id} style={styles.suggBody}>
                     <Image source={thumbFor(row)} style={styles.suggThumb} />
                     <View style={styles.suggText}>
                       <Text style={styles.suggHeadline} numberOfLines={2}>{rowHeadline}</Text>
                       {!!row.metric && (
                         <Text style={styles.suggEvidence} numberOfLines={1}>
-                          {row.metric}
+                          {`· ${row.metric}`}
                         </Text>
                       )}
                       {row.kind !== 'action' && !row.metric && !saveError && (
@@ -584,33 +548,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                       )}
                     </View>
                     <View style={styles.suggBtnCol}>
-                      {isSecond ? (
-                        /* 第二条：只做轻量操作（去行动 / 有用），链接仅本席隐藏 */
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (row.cta) {
-                              pendingCtaRef.current = row;
-                              try { navigation?.navigate(row.cta.screen, row.cta.params); } catch { /* 静默 */ }
-                            } else {
-                              void saveSuggestion(row, true);
-                            }
-                            setCand2(null);
-                          }}
-                          activeOpacity={theme.press.opacity}
-                          accessibilityRole="button"
-                          accessibilityLabel={row.cta?.label ?? '去看看'}
-                          style={styles.btnPill}
-                        >
-                          {row.cta ? (
-                            <Text style={styles.btnPillText}>{row.cta.label ?? '去看看 ›'}</Text>
-                          ) : (
-                            <View style={styles.pillRow}>
-                              <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
-                              <Text style={styles.btnPillText}>有用</Text>
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      ) : isFb ? (
+                      {isFb ? (
                         <TouchableOpacity
                           onPress={() => onKeepFb()}
                           disabled={savingHabit}
@@ -631,9 +569,15 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                           activeOpacity={theme.press.opacity}
                           accessibilityRole="button"
                           accessibilityLabel={cand!.cta?.label ?? '去看看'}
-                          style={styles.btnPill}
+                          style={[styles.btnPill, styles.btnPillGrad]}
                         >
-                          <Text style={styles.btnPillText}>{cand!.cta?.label ?? '去看看 ›'}</Text>
+                          <LinearGradient
+                            colors={GROK_GRAD}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={StyleSheet.absoluteFill}
+                          />
+                          <Text style={styles.btnPillGradText}>{cand!.cta?.label ?? '去看看 ›'}</Text>
                         </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
@@ -651,7 +595,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        onPress={() => { if (isSecond) { setCand2(null); return; } onDismiss(); }}
+                        onPress={() => onDismiss()}
                         disabled={savingHabit}
                         activeOpacity={theme.press.opacity}
                         accessibilityRole="button"
@@ -663,7 +607,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                     </View>
                   </View>
                 );
-              })
+              })}
+              </>
             )}
           </Animated.View>
         ) : (
@@ -682,13 +627,20 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0, // ★ 十三改：气泡整体往下贴一点，落在 Tab 栏正上方（用户「位置稍微往下一点点」）
   },
+  // （顶部品牌渐变细条 accentStrip 已移除：气泡改回白玻璃背景，见上方 LinearGradient 删除）
   touch: {
     width: '100%',
     position: 'relative',
     paddingBottom: TAIL_H,
     borderRadius: R,
-    // ★ 2026-10-15（V4）：暮色深玻璃浮在页面上。投影已去掉——用户反馈「卡片背面还有一个灰色的」：
-    //   圆角投影（y+6 / 0.22）在照片背景上看着像背后斜贴了一张灰卡。玻璃卡靠描边+玻璃层分层，不需要投影。
+    // ★ 2026-10-15 末：白卡重新加柔和立体投影（用户要「卡片立体一点」）。
+    //   此前 V4 的 0.22 重灰投影被去掉（像背后斜贴灰卡）；这版大幅降低不透明度 + 加大模糊半径，
+    //   只留一层轻悬浮感，不出现硬灰边。
+    shadowColor: '#2E2A3A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 6,
   },
   content: {
     flexDirection: 'column',
@@ -698,61 +650,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
   },
-  // ── V4 玻璃卡标题行（参考图：头像 + 标题 + 依据 + ♡ 角标） ──
-  gHead: {
+  // ── 建议区轻量小标签（替代已移除的「Mira 的今日观察」头像标题行） ──
+  suggEyebrowRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
+    gap: 7,
+    marginTop: 10,
+    marginBottom: 5,
   },
-  gHeadAva: {
-    width: 34,
-    height: 34,
+  suggEyebrowDot: {
+    width: 7,
+    height: 7,
     borderRadius: 999,
-    backgroundColor: mm.colors.purpleCore,
-    alignItems: 'center',
-    justifyContent: 'center',
     flexShrink: 0,
-    shadowColor: '#7B68D8',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
-  gHeadAvaText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: theme.weight.semibold,
-  },
-  gHeadTt: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-  },
-  gHeadT1: {
-    fontSize: 15,
-    fontWeight: theme.weight.semibold,
-    color: TXT_ON_GLASS,
-    lineHeight: 20,
-    ...GLASS_TEXT_SHADOW,
-  },
-  gHeadT2: {
+  suggEyebrow: {
     fontSize: 11,
-    fontWeight: theme.weight.regular,
+    fontWeight: theme.weight.semibold,
     color: TXT_ON_GLASS_SUB,
-    marginTop: 2,
+    letterSpacing: 2,
     ...GLASS_TEXT_SHADOW,
-  },
-  gHeadMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   idleRow: {
     flexDirection: 'row',
@@ -772,7 +689,8 @@ const styles = StyleSheet.create({
     ...GLASS_TEXT_SHADOW,
   },
   titleRecording: {
-    color: '#D9CCFF',
+    // ★ 白玻璃底上改深紫，保证可见（原浅薰衣草在白底不可见）
+    color: '#6B5BC9',
   },
   idleHint: {
     fontSize: theme.fontSize.micro,
@@ -800,7 +718,8 @@ const styles = StyleSheet.create({
     width: 3,
     height: 20,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    // ★ 白玻璃底上改品牌紫，保证可见（原白底白条在白卡上不可见）
+    backgroundColor: 'rgba(157,138,240,0.65)',
   },
   // ★ 2026-10-14：录音态浮层（覆盖在气泡内容之上；深玻璃底与气泡同源，盖住下层的建议卡）
   listeningOverlay: {
@@ -850,14 +769,11 @@ const styles = StyleSheet.create({
    *   字号取 body 级 15（statusNarr 是 16 居中大段，气泡宽度有限，取同级不取同值）。
    */
   suggHeadline: {
-    // ★ 十八改：删掉残留的 flex:1 —— 它是早先「标题+✕ 同排」布局的遗产，✕ 删掉后
-    //   headline 被塞进 suggText 竖排列，flex:1 让 Text 撑满列高、文字默认顶格渲染
-    //   → 用户看到「文字跑到上面去了」。删掉后由 suggText 的 justifyContent:'center' 接管垂直居中。
+    // ★ 2026-10-15 末：用户要求建议字体不要加粗 → 改 regular（400），与上方分析叙述一致。
     fontSize: 14.5,
     fontWeight: theme.weight.regular,
     color: TXT_ON_GLASS,
-    lineHeight: 20,
-    // ★ 2026-10-15：V4 暮色深玻璃上垫深色柔光，保证图上文字可读
+    lineHeight: 21,
     ...GLASS_TEXT_SHADOW,
   },
   /** 证据行（如「HRV 回升 8%」）：同族更小灰字，比标题再退一档 */
@@ -881,10 +797,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  /** 第二条建议与第一条之间的分隔（细分隔线 + 呼吸位） */
+  /** 第二条建议与第一条之间的分隔（细分隔线 + 呼吸位；浅渐变卡上用深色细分隔线） */
   suggBodyGap: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.18)',
+    borderTopColor: 'rgba(31,29,26,0.10)',
     marginTop: 6,
     paddingTop: 10,
   },
@@ -913,6 +829,18 @@ const styles = StyleSheet.create({
   btnPillText: {
     color: PILL_LIGHT_TEXT,
     fontSize: 13,
+    fontWeight: theme.weight.semibold,
+  },
+  // ★ 2026-10-16：GROK 渐变主按钮（CTA）。容器去白底、开圆角裁剪，由内层 LinearGradient 填充；
+  //   覆写 paddingHorizontal 让按钮更宽（用户：按钮再宽一点）
+  btnPillGrad: {
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+    paddingHorizontal: 24,
+  },
+  btnPillGradText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: theme.weight.semibold,
   },
   /** 心 + 「有用」横排（回访卡 / 发现型的主按钮） */

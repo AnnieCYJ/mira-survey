@@ -485,6 +485,9 @@ export default function EmotionCognitiveDetailScreen() {
         ) : rangeData ? (
           <RangeView cur={rangeData.cur} prev={rangeData.prev} range={range} anchor={anchor} />
         ) : null}
+
+        {/* ★ 2026-10-16：抑郁风险（戒指健康一览 / GSR 回传；key 修正为 depressionRisk 后落库） */}
+        <DepressionRiskCard />
       </View>
     </ScreenContainer>
     </View>
@@ -841,6 +844,49 @@ function SumCell({ label, value, sub, bg, fg }: { label: string; value: string; 
       <Text style={styles.sumValue}>{value}</Text>
       {sub ? <Text style={styles.sumSub}>{sub}</Text> : null}
     </View>
+  );
+}
+
+/* ★ 2026-10-16：抑郁风险卡（情绪/认知详情页新增，复用现有 cardTitle/summaryGrid/SumCell 口径）。
+ * 数据：戒指健康一览或 GSR 回传的 depressionRisk（[0,2]，0 低 / 1 中 / 2 高），经 key 修正后落 healthStore。 */
+const DEPRESSION_RISK_LEVELS: { [k: number]: { label: string; sub: string; bg: string; fg: string } } = {
+  0: { label: '低风险', sub: '当前未见明显风险信号', bg: theme.colors.accentSoft, fg: mm.colors.ink },
+  1: { label: '中风险', sub: '建议关注情绪状态', bg: mm.colors.honeySoft, fg: mm.colors.ink },
+  2: { label: '高风险', sub: '建议寻求专业帮助', bg: mm.colors.roseSoft, fg: mm.colors.ink },
+};
+
+function DepressionRiskCard() {
+  const dk = dayKey(Date.now());
+  let level: number | null = null;
+  try {
+    const pts = healthStore.getIntraday('depressionRisk', dk);
+    if (pts.length) {
+      const raw = Math.round(pts[pts.length - 1].v);
+      level = raw >= 0 && raw <= 2 ? raw : null;
+    }
+  } catch { /* 静默 */ }
+  return (
+    <Card padded={false}>
+      <View style={styles.pad}>
+        <Text style={styles.cardTitle}>抑郁风险</Text>
+        {level == null ? (
+          <Text style={styles.sumSub}>暂无戒指测量数据。连接戒指并完成健康一览 / 压力测量后展示。</Text>
+        ) : (
+          <>
+            <View style={styles.summaryGrid}>
+              <SumCell
+                label="风险等级"
+                value={DEPRESSION_RISK_LEVELS[level].label}
+                sub={DEPRESSION_RISK_LEVELS[level].sub}
+                bg={DEPRESSION_RISK_LEVELS[level].bg}
+                fg={DEPRESSION_RISK_LEVELS[level].fg}
+              />
+            </View>
+            <Text style={styles.sumSub}>数据来自戒指测量，仅供参考，不构成医学诊断。</Text>
+          </>
+        )}
+      </View>
+    </Card>
   );
 }
 

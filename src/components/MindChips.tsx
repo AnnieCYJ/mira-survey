@@ -128,6 +128,13 @@ const styles = StyleSheet.create({
     paddingBottom: theme.sp(1.5),
     paddingHorizontal: theme.sp(1),
     alignItems: 'center',
+    // ★ 2026-10-15（V1 定稿）：全宽白面板已拆，chips 直承浅灰页面 → 补轻投影让白卡浮出
+    //   （opacity 0.06 极轻：小卡不显脏，只与灰底分层）
+    shadowColor: '#1F1D1A',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   /** 按下反馈：整体轻缩 + 略降透——chip 本身就小，缩幅取 0.96 刚好“按得动，但不跳” */
   chipPressed: {

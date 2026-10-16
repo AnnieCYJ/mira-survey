@@ -81,3 +81,19 @@ export function intradayFact(metric: MetricKey, date: Date = new Date()): Analys
 export function factsForAgent(date: Date = new Date()): AnalysisFact[] {
   return factsForDay(['hr', 'hrv', 'eda', 'sns', 'emotion', 'temp', 'rr', 'glucose', 'bpSys', 'bpDia'], date);
 }
+
+export function sleepFactForDay(date: Date = new Date()): AnalysisFact {
+  const dk = dayKey(date.getTime());
+  const sleep = healthStore.getSleep(dk);
+  const hasSleep = !!sleep && Number.isFinite(sleep.total) && sleep.total > 0;
+  return {
+    date: dk,
+    window: dayWindow(dk),
+    metric: 'sleep',
+    value: hasSleep ? sleep!.score : null,
+    source: hasSleep ? 'measured' : 'unknown',
+    sampleCount: hasSleep ? 1 : 0,
+    quality: hasSleep ? 'limited' : 'missing',
+    algorithmVersion: hasSleep ? 'sleep-summary-v1' : undefined,
+  };
+}

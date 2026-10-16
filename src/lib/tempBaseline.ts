@@ -53,8 +53,9 @@ function median(xs: number[]): number {
  * 构建个人体温基线。
  * @param endDayKey 截止日（默认今天）。基线**不含**当天，避免今天的数据把自己的基线拉高。
  */
-export function buildTempBaseline(opts?: { days?: number; endDayKey?: string }): TempBaseline {
+export function buildTempBaseline(opts?: { days?: number; endDayKey?: string; metricKey?: 'temp' | 'skinTemp' }): TempBaseline {
   const daysWanted = opts?.days ?? TEMP_BASELINE_DAYS;
+  const metricKey = opts?.metricKey ?? 'temp';
   const all = healthStore.allDayKeys();
   const endKey = opts?.endDayKey ?? dayKey(Date.now());
   const endIdx = all.indexOf(endKey);
@@ -67,7 +68,7 @@ export function buildTempBaseline(opts?: { days?: number; endDayKey?: string }):
   for (const dk of picked) {
     const base = parseDayKey(dk);
     if (!Number.isFinite(base)) continue;
-    const buckets = binByMinutes(healthStore.getIntraday('temp', dk), TEMP_SLOT_MIN, {
+    const buckets = binByMinutes(healthStore.getIntraday(metricKey, dk), TEMP_SLOT_MIN, {
       dayStartMs: dayStartOf(base),
       slotCount: TEMP_SLOTS,
     });
@@ -112,10 +113,11 @@ export function tempSlotDeviation(
 export function tempDeviationSeries(
   dayKeyRaw: string,
   baseline: TempBaseline,
+  metricKey: 'temp' | 'skinTemp' = 'temp',
 ): { dev: (number | null)[]; abs: (number | null)[] } {
   const base = parseDayKey(dayKeyRaw);
   const start = Number.isFinite(base) ? dayStartOf(base) : dayStartOf(Date.now());
-  const buckets = binByMinutes(healthStore.getIntraday('temp', dayKeyRaw), TEMP_SLOT_MIN, {
+  const buckets = binByMinutes(healthStore.getIntraday(metricKey, dayKeyRaw), TEMP_SLOT_MIN, {
     dayStartMs: start,
     slotCount: TEMP_SLOTS,
   });

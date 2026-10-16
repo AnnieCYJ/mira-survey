@@ -100,8 +100,9 @@ export const mm = {
 
     /* ── 底栏 ── */
     tabBg: 'rgba(255,255,255,0.96)',
-    fabFrom: '#A98FE8',        // 紫渐变 FAB（SPEC §4.1 #13 保留紫色系）
-    fabTo: '#9D8AF0',          // 旧 #C3B2D4 → purpleCore（legacyMap）
+    // ★ 2026-10-15（用户定稿 V1 去紫）：右下 Mira 脸由紫渐变改墨色（#3A3644→#2E2A3A）
+    fabFrom: '#3A3644',
+    fabTo: '#2E2A3A',
   },
 
   radius: {
@@ -131,7 +132,8 @@ export const mm = {
 
   /** 底栏 AI FAB 紫色光晕：CSS `0 16px 30px -12px rgba(157,138,240,.6)` 的 RN 拆解 */
   fabShadow: {
-    color: '#9D8AF0',
+    // ★ 2026-10-15（用户定稿 V1 去紫）：Mira 脸投影由紫改中性墨
+    color: '#1F1D1A',
     opacity: 0.6,
     height: 16,
     radius: 15,

@@ -18,12 +18,14 @@ import { Dimensions, Easing } from 'react-native';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const colors = {
-  bgTop: '#B5A9F2',
-  bgTopAlt: '#B0A6F0',
-  bgMid: '#DED9FB',
-  bgMidAlt: '#ECEAFB',
-  bgBottom: '#F7F5FE',
-  bgGradStops: ['#B5A9F2', '#CFC8F7', '#E6E3FB', '#F7F5FE'] as const,
+  // ★ 2026-10-15（用户定稿 V1）：页面底色由「紫渐变」改为**统一浅灰 #F5F5F7**（去紫）。
+  //   白卡/白气泡/白 chips 浮在浅灰上出层次；渐变四站同色 = 纯色底（保留渐变结构不动其它代码）。
+  bgTop: '#F5F5F7',
+  bgTopAlt: '#F0F0F3',
+  bgMid: '#F5F5F7',
+  bgMidAlt: '#F0F0F3',
+  bgBottom: '#F5F5F7',
+  bgGradStops: ['#F5F5F7', '#F5F5F7', '#F5F5F7', '#F5F5F7'] as const,
   bgGradLocs: [0, 0.34, 0.64, 1] as const,
   accent1: '#9D8AF0',
   accent2: '#7EA6F8',
@@ -79,8 +81,9 @@ export const colors = {
   textInk: '#1A1A1A',
   textInkSoft: '#4A4660',
   ringOnLight: 'rgba(157,138,240,0.55)',
-  avatarBgLight: 'rgba(157,138,240,0.16)',
-  avatarBorderLight: 'rgba(157,138,240,0.55)',
+  // ★ 2026-10-15（用户定稿 V1 去紫）：头像浅色底/描边由淡紫改中性墨
+  avatarBgLight: 'rgba(31,29,26,0.06)',
+  avatarBorderLight: 'rgba(31,29,26,0.18)',
   orbTextInk: '#2E2A3A',
   orbTextInkSub: '#6B6480',
   /** ★ v18.118：用于「更新于 HH:MM」这类时效信息。比 orbTextInk 弱一档（信息层级：值 > 时效），

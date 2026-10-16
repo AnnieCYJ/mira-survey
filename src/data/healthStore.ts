@@ -86,14 +86,19 @@ export type MetricKey =
   | 'steps' | 'distance' | 'calorie'
   | 'stress' | 'fatigue' | 'sns' | 'met'
   | 'bpSys' | 'bpDia' | 'ppgSys' | 'ppgDia' | 'glucose' | 'lipid' | 'ua' | 'skin' | 'emotion' | 'cortisol'
-  | 'triglyceride' | 'hdl' | 'ldl' | 'cholesterol';
+  | 'triglyceride' | 'hdl' | 'ldl' | 'cholesterol'
+  // ★ 2026-10-16：协议补齐——血糖测量类型/风险等级（1/2/3 低中高）、抑郁风险（[0,2]）
+  | 'glucoseType' | 'glucoseLevel' | 'depressionRisk'
+  // ★ 2026-10-16：皮肤温度（orgTemperature 原始体温读数），与体温（temp）区分做双 tab
+  | 'skinTemp';
 
 export const ALL_METRIC_KEYS: MetricKey[] = [
-  'hr', 'hrv', 'spo2', 'temp', 'eda', 'rr',
+  'hr', 'hrv', 'spo2', 'temp', 'skinTemp', 'eda', 'rr',
   'steps', 'distance', 'calorie',
   'stress', 'fatigue', 'sns', 'met',
   'bpSys', 'bpDia', 'ppgSys', 'ppgDia', 'glucose', 'lipid', 'ua', 'skin', 'emotion', 'cortisol',
   'triglyceride', 'hdl', 'ldl', 'cholesterol',
+  'glucoseType', 'glucoseLevel', 'depressionRisk',
 ];
 
 export type Source = 'realtime' | 'backfill' | 'manual' | 'mixed';

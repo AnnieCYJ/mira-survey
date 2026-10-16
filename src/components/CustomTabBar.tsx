@@ -96,12 +96,12 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
 
   return (
     <View style={{ width: size, height: size }}>
-      {/* 身体 —— v10 紫渐变（#A98FE8→#C3B2D4, 135°） */}
+      {/* 身体 —— ★ 2026-10-15：改洞察页「生理周期节律」按钮同款渐变（青柠→粉），原墨色渐变改掉 */}
       <Svg viewBox="0 0 200 200" width={size} height={size}>
         <Defs>
           <SvgLg id="tabBotBody" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor={mm.colors.fabFrom} />
-            <Stop offset="100%" stopColor={mm.colors.fabTo} />
+            <Stop offset="0%" stopColor="#C6D84B" />
+            <Stop offset="100%" stopColor="#F58AB8" />
           </SvgLg>
         </Defs>
         <Circle cx={100} cy={100} r={82} fill="url(#tabBotBody)" />
@@ -367,7 +367,8 @@ const styles = StyleSheet.create({
     marginRight: theme.sp(2),
     ...theme.shadow.nav,
   },
-  botSelected: { borderWidth: 2, borderColor: mm.colors.purpleDeep },
+  // ★ 2026-10-15（用户定稿 V1 去紫）：选中描边由 purpleDeep 改墨色
+  botSelected: { borderWidth: 2, borderColor: mm.colors.ink },
   item: { minHeight: 48, flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
   // v10：选中项 = 42px lime 圆底（SPEC §2 #13），不再用小圆点
   // ★ 2026-10-10：文字标签移除，圆底随之放大（24→30→36，用户："绿色背景圈大一点"），icon 居中
@@ -383,11 +384,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.layout.tabBarHeight / 2 - theme.layout.tabCenterSize / 2,
-    shadowColor: mm.fabShadow.color,
-    shadowOpacity: mm.fabShadow.opacity,
-    shadowRadius: mm.fabShadow.radius,
-    shadowOffset: { width: 0, height: mm.fabShadow.height },
-    elevation: mm.fabShadow.elevation,
+    // ★ 2026-10-15：去掉黑色投影（用户：背景黑阴影去掉）
+    shadowOpacity: 0,
+    elevation: 0,
   },
   voiceDot: {
     position: 'absolute',

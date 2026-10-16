@@ -20,7 +20,7 @@ import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
+import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import { moodFromEmotionLevel, MOOD_COLOR } from '../data/emotionLog';
@@ -34,6 +34,9 @@ import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../component
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
+import AiAnalysis, { AiResultRow, AiBadge } from '../components/AiAnalysis';
+import InsightBanner from '../components/InsightBanner';
+import ChatSheet from '../components/ChatSheet';
 
 interface Params {
   key: string;
@@ -223,10 +226,16 @@ export default function MetricDetailScreen() {
   const [anchor, setAnchor] = useState<Date>(new Date());
   // ★ 2026-10-10（用户）：HRV 日视图分「夜间 / 日间」两段展示（见下方 hrvDay 注释）
   const [hrvPart, setHrvPart] = useState<'night' | 'day'>('night');
+  // ★ 2026-10-16：体温详情页双 tab —— 体温（temp）/ 皮肤温度（skinTemp，orgTemperature 原始体温）
+  const [tempSignal, setTempSignal] = useState<'temp' | 'skinTemp'>('temp');
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
   const [w, setW] = useState(0);
   // ★ tooltip 状态：点击图表时显示的白色详情框
   const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
+  // ★ 2026-10-16：详情页内 AI 问答入口（与精力/情绪详情页同款 ChatSheet 侧滑面板）
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const openChat = useCallback((q: string) => { setChatQuestion(q); setChatVisible(true); }, []);
   const isEcg = params.key === 'ecg';
   // ★ 运动类指标（步数/距离/消耗）不支持日视图，排除 'day' 按钮
   const ACTIVITY_KEYS = ['steps', 'distance', 'calorie'] as const;
@@ -340,10 +349,11 @@ export default function MetricDetailScreen() {
   const tempDay = useMemo(() => {
     if (!isTempDay) return null;
     const dk = dateKeyOf(anchor.getTime());
-    const baseline = buildTempBaseline({ endDayKey: dk });
-    const { dev, abs } = tempDeviationSeries(dk, baseline);
+    // ★ 2026-10-16：双 tab —— 体温 / 皮肤温度，基线按各自信号独立构建
+    const baseline = buildTempBaseline({ endDayKey: dk, metricKey: tempSignal });
+    const { dev, abs } = tempDeviationSeries(dk, baseline, tempSignal);
     return { dev, abs, baseline, summary: tempDeviationSummary(dev) };
-  }, [isTempDay, anchor]);
+  }, [isTempDay, anchor, tempSignal]);
 
   /* ══════════════════════════════════════════════════════════════
    * ★ 2026-10-10（用户拍板）：血氧 / 压力 / EDA / 疲劳 / 情绪 / 皮质醇 六项的日视图。
@@ -750,9 +760,31 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
 
         {/* ★ 2026-10-10（用户）：体温日视图 = 偏离个人基线的昼夜节律（Oura 口径） */}
         {isTempDay && tempDay ? (
+          <>
           <View style={styles.chartCard}>
+            {/* ★ 2026-10-16：体温 / 皮肤温度 双 tab */}
+            <View style={styles.partRow}>
+              {(['temp', 'skinTemp'] as const).map((sig) => {
+                const on = tempSignal === sig;
+                return (
+                  <TouchableOpacity
+                    key={sig}
+                    onPress={() => setTempSignal(sig)}
+                    style={[styles.partBtn, on && styles.partBtnOn]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.partBtnText, on && styles.partBtnTextOn]}>
+                      {sig === 'temp' ? '体温' : '皮肤温度'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <View style={styles.tempHeadRow}>
-              <Text style={styles.tempHeadLab}>相对个人基线</Text>
+              <Text style={styles.tempHeadLab}>
+                {tempSignal === 'skinTemp' ? '皮肤温度·相对个人基线' : '相对个人基线'}
+              </Text>
               <Text style={styles.tempHeadVal}>
                 {tempDay.summary.avg != null
                   ? `${tempDay.summary.avg > 0 ? '+' : ''}${tempDay.summary.avg.toFixed(2)}℃`
@@ -770,10 +802,13 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
             <TempCircadianChart dev={tempDay.dev} baseline={tempDay.baseline} />
             <TempBaselineLegend />
             <Text style={styles.chartNote}>
-              体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，
-              曲线形状才有意义（黄体期通常整体上移约 +0.3℃）。
+              {tempSignal === 'skinTemp'
+                ? '皮肤温度按「相对你自己的基线」显示，不是绝对温度——皮肤温噪声更大、受环境干扰更明显，曲线形状才有意义。'
+                : '体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，曲线形状才有意义（黄体期通常整体上移约 +0.3℃）。'}
             </Text>
           </View>
+          <TempAiCard tempDay={tempDay} tempSignal={tempSignal} openChat={openChat} />
+          </>
         ) : null}
 
         {/* ★ 2026-10-10（用户）：HRV 日视图 = 夜间 / 日间 分两段展示（Oura 口径：HRV 的意义集中在睡眠期） */}
@@ -1140,6 +1175,18 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
             ) : null}
           </View>
         ) : null}
+        {/* ★ 2026-10-16：血氧页——呼吸暂停（OSAHS）分析（读设备血氧历史，进入页面自动拉取） */}
+        {params.key === 'spo2' ? <OxygenApneaSection /> : null}
+        {/* ★ 2026-10-16：HRV 页——Lorenz 散点 + RR 间期时域分析（读设备 RR 历史，进入页面自动拉取） */}
+        {params.key === 'hrv' ? <HrvLorenzSection /> : null}
+        {/* ★ 2026-10-16：血糖页——测量类型 / 风险等级 / 参考区间（戒指健康一览回传） */}
+        {params.key === 'glucose' ? <GlucoseSummaryCard /> : null}
+        {/* ★ 2026-10-16：心率页——心率区间（MHR 五段环）+ 规则 AI 分析 */}
+        {params.key === 'hr' ? <HrZoneSection anchor={anchor} openChat={openChat} /> : null}
+        {/* ★ 2026-10-16：尿酸页——参考区间条 + 分级 + 规则 AI 分析 */}
+        {params.key === 'ua' ? <UaReferenceCard anchor={anchor} openChat={openChat} /> : null}
+        {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析 */}
+        {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidOverviewCard anchor={anchor} openChat={openChat} /> : null}
         {edaDiagnostics ? (
           <View style={styles.debugFoot}>
             <Text style={styles.debugTitle}>测试信息 · EDA（最近 30 分钟）</Text>
@@ -1149,8 +1196,584 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
           </View>
         ) : null}
       </View>
+      <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </ScreenContainer>
     </View>
+  );
+}
+
+/* ★ 2026-10-16：血糖详情页——测量类型 / 风险等级 / 参考区间
+ * 数据来自戒指健康一览（原生已回传 glucoseType / glucoseLevel）。参考区间按临床常规给出，仅展示。 */
+const GLUCOSE_TYPES: { [k: number]: string } = { 1: '空腹', 2: '餐后 1 小时', 3: '餐后 2 小时' };
+const GLUCOSE_LEVELS: { [k: number]: { label: string; color: string } } = {
+  1: { label: '低风险', color: mm.colors.skyDeep },
+  2: { label: '中风险', color: mm.colors.honeyCore },
+  3: { label: '高风险', color: mm.colors.roseDeep },
+};
+
+function GlucoseSummaryCard() {
+  const ring = useRingState();
+  void ring; // 数据走 healthStore 最新值（实时/回填均落库）
+  const dk = dateKeyOf(Date.now());
+  const tType = latestVal('glucoseType', dk);
+  const tLevel = latestVal('glucoseLevel', dk);
+  const tTypeLabel = tType != null ? (GLUCOSE_TYPES[tType] ?? `类型 ${tType}`) : '—';
+  const level = tLevel != null ? (GLUCOSE_LEVELS[tLevel] ?? null) : null;
+
+  return (
+    <Card>
+      <Text style={styles.ecgTitle}>血糖概览</Text>
+      <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>最近测量类型</Text>
+          <Text style={[styles.statValue, { fontSize: theme.fontSize.body }]}>{tTypeLabel}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>风险等级</Text>
+          <Text style={[styles.statValue, { color: level?.color, fontSize: theme.fontSize.body }]}>{level?.label ?? '—'}</Text>
+        </View>
+      </View>
+      <Text style={styles.note}>参考区间：空腹血糖 3.9–6.1 mmol/L；餐后 2 小时 &lt; 7.8 mmol/L。数值仅供参考，不替代医学检测。</Text>
+    </Card>
+  );
+}
+
+function latestVal(key: string, dk: string): number | null {
+  try {
+    const pts = healthStore.getIntraday(key as any, dk);
+    if (!pts.length) return null;
+    return pts[pts.length - 1].v;
+  } catch {
+    return null;
+  }
+}
+
+/* ★ 2026-10-16：心率详情页——心率区间（MHR 五段环）
+ * MHR = 211 − 0.64 × 年龄（Tanaka 公式，适用于成年人）。
+ * 按最大心率百分比划分 5 个训练区间，统计当天各区间停留时长 + 静息 / 峰值。 */
+const HR_ZONES = [
+  { key: 'z1', name: '热身', lo: 50, hi: 60, color: mm.colors.skyCore },
+  { key: 'z2', name: '燃脂', lo: 60, hi: 70, color: mm.colors.limeMid },
+  { key: 'z3', name: '有氧', lo: 70, hi: 80, color: mm.colors.honeyCore },
+  { key: 'z4', name: '无氧', lo: 80, hi: 90, color: mm.colors.roseMid },
+  { key: 'z5', name: '极限', lo: 90, hi: 100, color: mm.colors.roseDeep },
+] as const;
+
+function fmtDur(min: number): string {
+  if (!Number.isFinite(min) || min <= 0) return '0m';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h${m}m` : `${m}m`;
+}
+
+function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const age = RingBle.getUserProfile()?.age ?? 30;
+  const mhr = Math.round(211 - 0.64 * age);
+
+  const { zones, resting, peak, activeTotal } = useMemo(() => {
+    let pts: { t: number; v: number }[] = [];
+    try { pts = healthStore.getIntraday('hr', dk); } catch { pts = []; }
+    pts = pts
+      .filter((p) => Number.isFinite(p.v) && p.v > 30 && p.v < 240)
+      .sort((a, b) => a.t - b.t);
+    const dur = [0, 0, 0, 0, 0];
+    let rest = 0, active = 0, pk = 0, sum = 0, cnt = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const gap = (pts[i].t - pts[i - 1].t) / 60000;
+      if (gap <= 0 || gap > 30) continue; // 断连 / 异常间隔跳过
+      const v = pts[i].v;
+      const pct = (v / mhr) * 100;
+      if (v > pk) pk = v;
+      sum += v; cnt++;
+      let zi = -1;
+      if (pct >= 90) zi = 4;
+      else if (pct >= 80) zi = 3;
+      else if (pct >= 70) zi = 2;
+      else if (pct >= 60) zi = 1;
+      else if (pct >= 50) zi = 0;
+      if (zi >= 0) { dur[zi] += gap; active += gap; } else { rest += gap; }
+    }
+    const restVals = pts.filter((p) => (p.v / mhr) * 100 < 50).map((p) => p.v);
+    const restingAvg = restVals.length ? restVals.reduce((a, b) => a + b, 0) / restVals.length : null;
+    return { zones: dur, resting: restingAvg, peak: pk || null, activeTotal: active };
+  }, [dk, mhr]);
+
+  const R = 52, SW = 16, D = (R + SW) * 2, C = 2 * Math.PI * R;
+  let acc = 0;
+  const arcs = HR_ZONES.map((z, i) => {
+    const frac = activeTotal > 0 ? zones[i] / activeTotal : 0;
+    const len = frac * C;
+    const el = (
+      <Circle
+        key={z.key}
+        cx={R + SW}
+        cy={R + SW}
+        r={R}
+        fill="none"
+        stroke={z.color}
+        strokeWidth={SW}
+        strokeDasharray={`${len} ${C - len}`}
+        strokeDashoffset={-acc}
+        strokeLinecap="butt"
+        transform={`rotate(-90 ${R + SW} ${R + SW})`}
+      />
+    );
+    acc += len;
+    return el;
+  });
+
+  const cardioActive = zones[1] + zones[2] + zones[3] + zones[4];
+  const cardioFrac = activeTotal > 0 ? cardioActive / activeTotal : 0;
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body: `今日心率峰值 ${peak != null ? Math.round(peak) : '—'} bpm（约 ${peak ? Math.round((peak / mhr) * 100) : 0}% MHR），静息约 ${resting != null ? Math.round(resting) : '—'} bpm。`,
+    },
+  ];
+  if (activeTotal > 0) {
+    rows.push({
+      tone: cardioFrac > 0.2 ? 'good' : 'neutral',
+      title: '中高强度',
+      body: `燃脂 / 有氧 / 无氧区间累计 ${fmtDur(cardioActive)}，占活动时长约 ${Math.round(cardioFrac * 100)}%。`,
+    });
+  }
+  rows.push({
+    tone: 'neutral',
+    title: '建议',
+    body: '结合当天活动与睡眠维持规律有氧；若静息心率持续偏高，注意恢复是否充足。',
+  });
+
+  return (
+    <>
+      <Card>
+        <Text style={styles.ecgTitle}>心率区间</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(4) }}>
+          <View style={{ width: D, height: D, position: 'relative' }}>
+            <Svg width={D} height={D} viewBox={`0 0 ${D} ${D}`}>
+              <Circle cx={R + SW} cy={R + SW} r={R} fill="none" stroke={theme.colors.ui.offTrack} strokeWidth={SW} />
+              {arcs}
+            </Svg>
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 22, fontWeight: '700', color: mm.colors.ink }}>{Math.round(activeTotal)}</Text>
+              <Text style={{ fontSize: 11, color: theme.colors.textSub }}>活动分钟</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, gap: theme.sp(1) }}>
+            <Text style={styles.statLabel}>最大心率（MHR）</Text>
+            <Text style={[styles.statValue, { fontSize: theme.fontSize.card }]}>
+              {mhr}
+              <Text style={styles.statLabel}> bpm</Text>
+            </Text>
+            <Text style={styles.note}>基于 {age} 岁 · 公式 211 − 0.64 × 年龄</Text>
+          </View>
+        </View>
+        <View style={{ marginTop: theme.sp(3), gap: theme.sp(1.5) }}>
+          {HR_ZONES.map((z, i) => {
+            const lo = Math.round((z.lo / 100) * mhr);
+            const hi = Math.round((z.hi / 100) * mhr);
+            const dur = zones[i];
+            const pct = activeTotal > 0 ? Math.round((dur / activeTotal) * 100) : 0;
+            return (
+              <View key={z.key} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: z.color }} />
+                <Text style={{ flex: 1, fontSize: theme.fontSize.sm, color: theme.colors.textTitle }}>{z.name}</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{lo}–{hi} bpm</Text>
+                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textTitle, width: 52, textAlign: 'right' }}>{fmtDur(dur)}</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, width: 36, textAlign: 'right' }}>{pct}%</Text>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={styles.note}>区间按最大心率百分比划分（50 / 60 / 70 / 80 / 90%）。仅供参考，运动强度因人而异。</Text>
+      </Card>
+      <InsightBanner title="心率解读" rows={rows} onMore={() => openChat('帮我分析今天的心率区间和运动负荷')} />
+    </>
+  );
+}
+
+/* ★ 2026-10-16：尿酸详情页——参考区间条（低 0–90 / 正常 90–360 / 高 360–1000 µmol/L）+ 分级 */
+const UA_MAX = 1000;
+const UA_TIERS = [
+  { key: 'low', name: '偏低', lo: 0, hi: 90, color: mm.colors.skyCore },
+  { key: 'normal', name: '正常', lo: 90, hi: 360, color: mm.colors.limeMid },
+  { key: 'high', name: '偏高', lo: 360, hi: UA_MAX, color: mm.colors.roseDeep },
+] as const;
+
+function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const val = latestVal('ua', dk);
+  const tier = val == null ? null : val < 90 ? UA_TIERS[0] : val < 360 ? UA_TIERS[1] : UA_TIERS[2];
+  const markerPct = val == null ? 0 : Math.max(0, Math.min(100, (Math.min(val, UA_MAX) / UA_MAX) * 100));
+
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        val == null
+          ? '今日暂无尿酸读数，连接戒指完成一次健康一览后查看。'
+          : `当前读数 ${Math.round(val)} µmol/L，处于「${tier?.name}」区间。`,
+    },
+  ];
+  if (val != null && tier) {
+    if (tier.key === 'high')
+      rows.push({ tone: 'warn', title: '偏高提示', body: '尿酸偏高与饮食、代谢相关，建议减少高嘌呤食物、多饮水，长期偏高请咨询医生。' });
+    else if (tier.key === 'low')
+      rows.push({ tone: 'neutral', title: '偏低', body: '尿酸偏低通常无临床意义，可能与饮食清淡有关。' });
+    else rows.push({ tone: 'good', title: '正常', body: '尿酸处于常规参考区间内，继续保持均衡饮食。' });
+  }
+
+  return (
+    <>
+      <Card>
+        <Text style={styles.ecgTitle}>尿酸参考区间</Text>
+        {val == null ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>当前范围内暂无尿酸数据。</Text>
+          </View>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(3) }}>
+              <Text style={styles.statLabel}>当前</Text>
+              <Text style={[styles.statValue, { fontSize: theme.fontSize.card, color: tier?.color }]}>
+                {Math.round(val)}
+                <Text style={styles.statLabel}> µmol/L · {tier?.name}</Text>
+              </Text>
+            </View>
+            <View style={{ position: 'relative' }}>
+              <View style={{ height: 14, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
+                {UA_TIERS.map((t) => (
+                  <View key={t.key} style={{ flex: t.hi - t.lo, backgroundColor: t.color, opacity: 0.85 }} />
+                ))}
+              </View>
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -5,
+                  bottom: -5,
+                  left: `${markerPct}%`,
+                  width: 3,
+                  backgroundColor: mm.colors.ink,
+                  borderRadius: 2,
+                  transform: [{ translateX: -1.5 }],
+                }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(1) }}>
+              {UA_TIERS.map((t) => (
+                <Text key={t.key} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
+                  {t.name} {t.lo}–{t.hi === UA_MAX ? '1000+' : t.hi}
+                </Text>
+              ))}
+            </View>
+          </>
+        )}
+        <Text style={styles.note}>参考区间：偏低 0–90 / 正常 90–360 / 偏高 360–1000 µmol/L。仅供参考，不替代医学检测。</Text>
+      </Card>
+      <InsightBanner title="尿酸解读" rows={rows} onMore={() => openChat('帮我分析尿酸水平')} />
+    </>
+  );
+}
+
+/* ★ 2026-10-16：血脂详情页——血脂四项汇总（TC / TG / HDL / LDL）+ 参考区间 + 分级 */
+const LIPID_ITEMS = [
+  { key: 'cholesterol', name: '总胆固醇', unit: 'mmol/L', hi: 5.2, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
+  { key: 'triglyceride', name: '甘油三酯', unit: 'mmol/L', hi: 1.7, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
+  { key: 'hdl', name: '高密度脂蛋白', unit: 'mmol/L', lo: 1.0, lowerBetter: false, lowLabel: '偏低', highLabel: '正常' },
+  { key: 'ldl', name: '低密度脂蛋白', unit: 'mmol/L', hi: 3.4, lowerBetter: true, lowLabel: '正常', highLabel: '偏高' },
+] as const;
+
+function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const data = LIPID_ITEMS.map((it) => {
+    const v = latestVal(it.key, dk);
+    let status: 'good' | 'warn' | 'neutral' = 'neutral';
+    let label = '—';
+    if (v != null) {
+      if (it.lowerBetter) {
+        if (v <= it.hi) { status = 'good'; label = it.lowLabel; }
+        else { status = 'warn'; label = it.highLabel; }
+      } else {
+        if (v >= (it.lo ?? 0)) { status = 'good'; label = it.highLabel; }
+        else { status = 'warn'; label = it.lowLabel; }
+      }
+    }
+    return { ...it, v, status, label };
+  });
+
+  const abnormal = data.filter((d) => d.status === 'warn').length;
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        abnormal > 0
+          ? `今日血脂四项中 ${abnormal} 项超出理想范围，建议结合饮食与运动改善，并定期复查。`
+          : '今日血脂四项均处于理想范围内，继续保持。',
+    },
+  ];
+  if (abnormal > 0) {
+    rows.push({ tone: 'warn', title: '提示', body: '单项偏高不代表疾病，受近期饮食、空腹状态影响较大；持续异常请咨询医生。' });
+  }
+  rows.push({ tone: 'neutral', title: '建议', body: '减少饱和脂肪与精制糖、增加膳食纤维，规律有氧有助于血脂管理。' });
+
+  const dotColor = (s: string) =>
+    s === 'good' ? theme.colors.success : s === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
+
+  return (
+    <>
+      <Card>
+        <Text style={styles.ecgTitle}>血脂四项</Text>
+        <View style={{ marginTop: theme.sp(1) }}>
+          {data.map((d) => (
+            <View
+              key={d.key}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: theme.sp(2.5),
+                borderBottomWidth: 1,
+                borderBottomColor: theme.colors.cardBorder,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textTitle, fontWeight: theme.weight.medium as any }}>{d.name}</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 }}>
+                  参考理想 {d.lowerBetter ? `< ${d.hi}` : `≥ ${d.lo}`} {d.unit}
+                </Text>
+              </View>
+              <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, width: 70, textAlign: 'right' }}>
+                {d.v != null ? d.v.toFixed(2) : '—'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, width: 60, justifyContent: 'flex-end' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor(d.status) }} />
+                <Text style={{ fontSize: theme.fontSize.micro, color: dotColor(d.status) }}>{d.label}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
+      </Card>
+      <InsightBanner title="血脂解读" rows={rows} onMore={() => openChat('帮我分析血脂四项')} />
+    </>
+  );
+}
+
+/* ★ 2026-10-16：体温详情页——规则 AI 解读（偏离个人基线趋势） */
+function TempAiCard({
+  tempDay,
+  tempSignal,
+  openChat,
+}: {
+  tempDay: { summary: { avg: number | null; maxUp: number | null; maxDown: number | null } };
+  tempSignal: 'temp' | 'skinTemp';
+  openChat: (q: string) => void;
+}) {
+  const avg = tempDay?.summary?.avg;
+  const sigName = tempSignal === 'skinTemp' ? '皮肤温度' : '体温';
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        avg != null
+          ? `今日${sigName}相对个人基线${avg > 0 ? '偏高' : '偏低'}约 ${Math.abs(avg).toFixed(2)}℃。`
+          : `今日${sigName}数据不足，暂无法评估基线偏离。`,
+    },
+  ];
+  if (avg != null) {
+    rows.push({
+      tone: avg > 0.3 ? 'warn' : 'neutral',
+      title: '趋势',
+      body:
+        avg > 0.3
+          ? '整体高于基线，可能处于黄体期或近期活动 / 环境升温；若伴随不适请留意。'
+          : avg < -0.3
+          ? '整体低于基线，注意保暖与休息。'
+          : '围绕基线小幅波动，属正常昼夜节律。',
+    });
+  }
+  rows.push({ tone: 'neutral', title: '建议', body: '体温仅是参考信号，结合经期记录与睡眠更完整；持续异常请就医。' });
+  return (
+    <InsightBanner
+      title={`${sigName}解读`}
+      rows={rows}
+      onMore={() => openChat(`帮我分析今天的${sigName}变化`)}
+    />
+  );
+}
+
+/* ★ 2026-10-16：血氧详情页——呼吸暂停（OSAHS）分析
+ * 数据来自戒指血氧历史（原生 triggerOxygenAnalysis 读取设备库 → VPOxygenAnalysisModel 解析）。
+ * 设计对齐 MetricDetail 现有卡片：外层 Card + ecgTitle 口径标题 + statGrid/statCell 统计格 + note 免责说明。 */
+const OSAHS_LEVELS: { [k: number]: { label: string; color: string } } = {
+  [-1]: { label: '暂无结果', color: theme.colors.textSub },
+  0: { label: '正常', color: mm.colors.skyDeep },
+  1: { label: '轻度', color: mm.colors.honeyCore },
+  2: { label: '中度', color: mm.colors.roseMid },
+  3: { label: '重度', color: mm.colors.roseDeep },
+};
+
+function OxygenApneaSection() {
+  const ring = useRingState();
+  const [loading, setLoading] = useState(false);
+  const a = ring.oxygenAnalysis;
+  const osahs = a ? (OSAHS_LEVELS[a.osahsResult] ?? OSAHS_LEVELS[-1]) : null;
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try { await RingBle.triggerOxygenAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
+  }, []);
+  useEffect(() => { void reload(); }, [reload]);
+
+  return (
+    <Card>
+      <Text style={styles.ecgTitle}>呼吸暂停分析</Text>
+      {!a && !loading ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>当天暂无血氧数据，请先佩戴一段时间或测量血氧后再查看。</Text>
+        </View>
+      ) : !a && loading ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>正在读取戒指血氧历史…</Text>
+        </View>
+      ) : a ? (
+        <>
+          <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>平均血氧</Text>
+              <Text style={[styles.statValue, { color: mm.colors.skyDeep }]}>{a.aveOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>最低血氧</Text>
+              <Text style={[styles.statValue, { color: a.minOxygen > 0 && a.minOxygen < 90 ? mm.colors.roseMid : theme.colors.textTitle }]}>{a.minOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>呼吸暂停</Text>
+              <Text style={[styles.statValue, { color: osahs?.color, fontSize: theme.fontSize.body }]}>{osahs?.label ?? '—'}</Text>
+            </View>
+          </View>
+          <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>呼吸率（均）</Text>
+              <Text style={styles.statValue}>{a.aveRespRate || '—'}<Text style={styles.statLabel}> 次/分</Text></Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>低氧时间（均）</Text>
+              <Text style={styles.statValue}>{a.aveLowOxygenTime || '—'}<Text style={styles.statLabel}> s</Text></Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>心脏负荷（均）</Text>
+              <Text style={styles.statValue}>{a.aveCardiacLoad || '—'}</Text>
+            </View>
+          </View>
+          {a.freqTimes.length > 0 ? (
+            <View style={styles.note}>
+              <Text style={styles.note}>呼吸暂停频现时段：{a.freqTimes.join('、')}</Text>
+            </View>
+          ) : null}
+          <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
+            <Text style={styles.ecgBtnLabel}>重新读取</Text>
+          </TouchableOpacity>
+          <Text style={styles.note}>数据来自戒指血氧历史，仅供参考，不作为睡眠呼吸暂停综合征诊断依据。</Text>
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
+/* ★ 2026-10-16：HRV 详情页——Lorenz 散点（RR 间期相位图）+ 时域 HRV
+ * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。 */
+function HrvLorenzSection() {
+  const ring = useRingState();
+  const [loading, setLoading] = useState(false);
+  const r = ring.rrAnalysis;
+  const hrv = r ? computeRrHrv(r.rr) : null;
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try { await RingBle.readRrAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
+  }, []);
+  useEffect(() => { void reload(); }, [reload]);
+
+  // Lorenz 散点缩放
+  const SIZE = 240, PAD = 28;
+  let scatter: string[] = [];
+  if (r && r.lorentz.length) {
+    const xs = r.lorentz.map((p) => p.x), ys = r.lorentz.map((p) => p.y);
+    const mn = Math.max(0, Math.min(...xs, ...ys) - 50);
+    const mx = Math.max(...xs, ...ys) + 50;
+    const sx = (v: number) => PAD + ((v - mn) / (mx - mn || 1)) * (SIZE - PAD * 2);
+    scatter = r.lorentz.map((p) => `M ${sx(p.x).toFixed(1)} ${sx(p.y).toFixed(1)} l 0.1 0.1`);
+  }
+
+  return (
+    <Card>
+      <Text style={styles.ecgTitle}>HRV 相位图（Lorenz）</Text>
+      {!r && !loading ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>当天暂无 RR 间期数据，请先佩戴一段时间后再查看。</Text>
+        </View>
+      ) : !r && loading ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>正在读取戒指心率变异性历史…</Text>
+        </View>
+      ) : r ? (
+        <>
+          <View style={styles.chartCard}>
+            {scatter.length ? (
+              <Svg width="100%" height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet">
+                <Defs>
+                  <LinearGradient id="lorenzDot" x1="0" y1="0" x2="1" y2="1">
+                    <Stop offset="0%" stopColor={mm.colors.limeMid} stopOpacity={0.9} />
+                    <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={0.9} />
+                  </LinearGradient>
+                </Defs>
+                {[0.25, 0.5, 0.75].map((g, i) => (
+                  <Line key={`gx${i}`} x1={PAD} y1={PAD + g * (SIZE - PAD * 2)} x2={SIZE - PAD} y2={PAD + g * (SIZE - PAD * 2)} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+                ))}
+                {[0.25, 0.5, 0.75].map((g, i) => (
+                  <Line key={`gy${i}`} x1={PAD + g * (SIZE - PAD * 2)} y1={PAD} x2={PAD + g * (SIZE - PAD * 2)} y2={SIZE - PAD} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+                ))}
+                {scatter.map((d, i) => (
+                  <Path key={i} d={d} stroke="url(#lorenzDot)" strokeWidth={2.4} strokeLinecap="round" />
+                ))}
+              </Svg>
+            ) : (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>数据量不足以绘制相位图。</Text>
+              </View>
+            )}
+          </View>
+          {hrv ? (
+            <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>SDNN</Text>
+                <Text style={styles.statValue}>{hrv.sdnn}<Text style={styles.statLabel}> ms</Text></Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>RMSSD</Text>
+                <Text style={styles.statValue}>{hrv.rmssd}<Text style={styles.statLabel}> ms</Text></Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>pNN50</Text>
+                <Text style={styles.statValue}>{hrv.pnn50}<Text style={styles.statLabel}> %</Text></Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>平均心率</Text>
+                <Text style={styles.statValue}>{hrv.meanHr}<Text style={styles.statLabel}> bpm</Text></Text>
+              </View>
+            </View>
+          ) : null}
+          <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
+            <Text style={styles.ecgBtnLabel}>重新读取</Text>
+          </TouchableOpacity>
+          <Text style={styles.note}>Lorenz 散点反映相邻心跳间期的相关性，点云越集中提示心率变异性越低。数据仅供参考。</Text>
+        </>
+      ) : null}
+    </Card>
   );
 }
 

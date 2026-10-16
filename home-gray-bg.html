@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mira 今日状态 · 拆白面板方案预览（浅灰 #F5F5F7 · 无紫）</title>
+<style>
+  :root{
+    --textInk:#1A1A1A; --textSub:#5F5F74; --orbInk:#2E2A3A; --orbSub:#6B6480; --orbFaint:#453F5A;
+    --inkSoft:#5C574F; --inkFaint:#706A61;
+    --limeMid:#BCCB62; --limeDeep:#6E7A24;
+    --cardBorder:rgba(31,29,26,0.09); --chipBorder:rgba(31,29,26,0.10);
+    --tabBg:rgba(255,255,255,0.96);
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:#ECECEF; font-family:var(--font); color:var(--textInk); -webkit-font-smoothing:antialiased; padding:30px 14px 46px;}
+  .head-title{text-align:center; margin-bottom:24px;}
+  .head-title h1{font-size:20px; font-weight:600; color:#2E2A3A;}
+  .head-title p{font-size:13px; color:#5F5F74; margin-top:7px; max-width:760px; margin-left:auto; margin-right:auto; line-height:1.7;}
+  .head-title b{color:#1A1A1A;}
+  .row{display:flex; flex-wrap:wrap; gap:28px; justify-content:center; align-items:flex-start;}
+  .col{display:flex; flex-direction:column; align-items:center; gap:11px;}
+  .tag{font-size:14px; font-weight:600; color:#2E2A3A; letter-spacing:.3px; text-align:center;}
+  .tag small{display:block; font-size:11.5px; font-weight:400; color:#706A61; margin-top:3px; max-width:340px; text-align:center; line-height:1.5;}
+  .swatch{display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid rgba(31,29,26,.16);}
+
+  /* 手机外框 */
+  .phone{width:360px; height:780px; border-radius:46px; position:relative;
+    box-shadow:0 30px 60px -25px rgba(31,29,26,.40), 0 0 0 11px #1c1b20, 0 0 0 13px #33323a; overflow:hidden;}
+  .statusbar{height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 26px; font-size:13px; font-weight:600; color:#1A1A1A; position:relative; z-index:6;}
+  .statusbar .right{display:flex; gap:6px; align-items:center;}
+  .screen{position:absolute; top:46px; left:0; right:0; bottom:0; display:flex; flex-direction:column; overflow:hidden;}
+  .scroll{flex:1; display:flex; flex-direction:column; overflow:hidden;}
+  .inner{padding:14px 24px 0; position:relative; z-index:2;}
+
+  /* 头部 */
+  .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
+  .title{font-size:34px; font-weight:500; color:var(--textInk); letter-spacing:.5px;}
+  .who{display:flex; align-items:center;}
+  .who .ava{width:36px; height:36px; border-radius:50%; background:rgba(31,29,26,.06); border:1px solid rgba(31,29,26,.18); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; margin-right:10px; color:var(--textInk);}
+  .who .nm{font-size:15px; font-weight:500; color:var(--textInk);}
+
+  /* V1：圆环直承浅灰底；V2：圆环坐居中圆角白卡（四周露灰边） */
+  .ringWrap{display:flex; flex-direction:column; align-items:center; margin-top:6px;}
+  .panelCard{width:328px; margin:6px auto 0; background:#fff; border-radius:26px; padding:12px 24px 6px;
+    box-shadow:0 8px 24px -14px rgba(31,29,26,.18);}
+
+  /* 小卡 chips（真实 MindChips：80 高白卡 + pastel 图标 + 数值按好坏上色 + 第 5 张露边） */
+  .chips{display:flex; gap:8px; margin-top:18px;}
+  .chip{flex:1; height:80px; background:#fff; border:1px solid var(--chipBorder); border-radius:16px;
+    display:flex; flex-direction:column; align-items:center; padding:8px 4px 6px; overflow:hidden;
+    box-shadow:0 4px 14px -10px rgba(31,29,26,.16);}
+  .chip.peek{flex:0 0 20px; padding:8px 0 6px;}
+  .chip .ico{width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; margin-bottom:6px;}
+  .chip .ico svg{width:14px; height:14px;}
+  .chip .lab{font-size:11px; font-weight:500; color:var(--inkFaint); text-align:center; line-height:1.15; white-space:nowrap;}
+  .chip .val{font-size:13px; font-weight:700; color:var(--textInk); display:flex; align-items:baseline; gap:1px; margin-top:3px;}
+  .chip .val .u{font-size:11px; font-weight:500; color:var(--inkFaint);}
+
+  /* 玻璃气泡（真实：半透明白底 + 1px 中性描边 + 右下小尾巴 + 柔和投影） */
+  .bubbleZone{margin-top:auto; padding:0 28px 72px; display:flex; justify-content:center; position:relative; z-index:2;}
+  .bubble{position:relative; width:304px; overflow:visible; filter:drop-shadow(0 5px 12px rgba(31,29,26,.12));}
+  .bub-svg{position:absolute; left:0; top:0; overflow:visible;}
+  .bub-content{position:relative; padding:10px 16px; z-index:1;}
+  .bub-analysis{font-size:14.5px; color:var(--textSub); line-height:21px; margin-bottom:10px;}
+  .bub-sugg{display:flex; align-items:center; gap:10px;}
+  .bub-thumb{width:48px; height:48px; border-radius:11px; flex:0 0 auto; object-fit:cover; background:#eee;}
+  .bub-suggtext{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center;}
+  .bub-head{font-size:14.5px; color:var(--textSub); line-height:20px;}
+  .bub-evi{font-size:11px; color:var(--inkFaint); margin-top:2px;}
+  .bub-btns{display:flex; flex-direction:column; align-items:center; gap:4px; flex:0 0 auto;}
+  .pill{min-height:32px; display:flex; align-items:center; justify-content:center; background:var(--limeMid); border-radius:999px; padding:7px 12px; color:#1F1D1A; font-size:13px; font-weight:600;}
+  .link{font-size:13px; color:var(--inkSoft); text-decoration:underline; padding:3px 0;}
+
+  /* 底部 tab 栏（悬浮胶囊 + 右下 Mira 脸[墨色]) */
+  .tabbar{position:absolute; left:16px; right:16px; bottom:8px; height:48px; display:flex; align-items:flex-end; justify-content:space-between; z-index:5;}
+  .leftCard{flex:1; height:48px; display:flex; align-items:center; justify-content:space-around;
+    background:var(--tabBg); border:1px solid var(--cardBorder); border-radius:999px; padding:0 8px; margin-right:12px;
+    box-shadow:0 6px 20px -8px rgba(31,29,26,.22);}
+  .tab{width:36px; height:36px; border-radius:999px; display:flex; align-items:center; justify-content:center;}
+  .tab.sel{background:var(--limeMid);}
+  .tab svg{width:22px; height:22px;}
+  .bot{width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 10px 22px -8px rgba(31,29,26,.45);}
+  .bot svg{width:48px; height:48px;}
+</style>
+</head>
+<body>
+  <div class="head-title">
+    <h1>Mira 今日状态 · 拆掉大白面板：两个方案</h1>
+    <p>原来的<b>全宽白面板</b>（圆环 + 小卡包在一大块纯白里）拆掉。两屏页面底色都是浅灰 <b>#F5F5F7</b>、无紫，唯一区别是<b>圆环怎么承托</b>；四个小卡两屏都独立成白卡，不再有大片白面。纯预览稿，未改 APP 代码。</p>
+  </div>
+
+  <div class="row" id="row"></div>
+
+<script>
+(function(){
+  /* ─── 圆环（真实 EnergyBall：aura + 2.8 描边环 + 四月相点 + 中央状态） ─── */
+  function ring(){
+    return `
+    <svg width="279" height="279" viewBox="0 0 279 279">
+      <defs>
+        <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#BCCB62" stop-opacity="0"/><stop offset="46%" stop-color="#BCCB62" stop-opacity="0"/>
+          <stop offset="60%" stop-color="#BCCB62" stop-opacity=".14"/><stop offset="74%" stop-color="#BCCB62" stop-opacity=".40"/>
+          <stop offset="86%" stop-color="#BCCB62" stop-opacity=".22"/><stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#BCCB62" stop-opacity=".86"/><stop offset="38%" stop-color="#BCCB62" stop-opacity=".54"/>
+          <stop offset="70%" stop-color="#BCCB62" stop-opacity=".16"/><stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="139.5" cy="139.5" r="139.5" fill="url(#aura)"/>
+      <circle cx="139.5" cy="139.5" r="91.9" stroke="#BCCB62" stroke-width="2.8" fill="none" opacity=".92"/>
+      <circle cx="139.5" cy="139.5" r="147" fill="url(#glow)"/>
+      <g>
+        <circle cx="139.5" cy="47.6" r="9" fill="#fff" stroke="#5F5F74" stroke-width="2"/>
+        <circle cx="231.4" cy="139.5" r="9" fill="#FBEFD6" stroke="#5F5F74" stroke-width="2"/>
+        <circle cx="139.5" cy="231.4" r="12" fill="#6E7A24" stroke="#5F5F74" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(110,122,36,.55))"/>
+        <circle cx="47.6" cy="139.5" r="9" fill="#BCCB62" stroke="#5F5F74" stroke-width="2"/>
+      </g>
+      <text x="139.5" y="134" text-anchor="middle" font-size="28" font-weight="600" fill="#2E2A3A">状态良好</text>
+      <text x="139.5" y="158" text-anchor="middle" font-size="11" font-weight="500" fill="#6B6480">状态值：82</text>
+      <text x="139.5" y="174" text-anchor="middle" font-size="11" fill="#453F5A">更新于 11:30</text>
+    </svg>`;
+  }
+
+  /* ─── 小卡（真实 MindChips 口径：数值按好坏上色，好=#6E7A24 / 其余墨色） ─── */
+  function chips(){
+    return `<div class="chips">
+      <div class="chip">
+        <div class="ico" style="background:#EAF0BE"><svg viewBox="0 0 24 24" fill="none" stroke="#6E7A24" stroke-width="1.7"><path d="M5 19C5 11 11 4 19 4C19 13 13 19 5 19Z"/><path d="M5 19C9 15 13 11 17 7"/></svg></div>
+        <div class="lab">睡眠恢复</div>
+        <div class="val"><span style="color:#6E7A24">82</span><span class="u">/100</span></div>
+      </div>
+      <div class="chip">
+        <div class="ico" style="background:#E3EBFE"><svg viewBox="0 0 24 24" fill="#4C74C9"><circle cx="6" cy="7" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path stroke="#4C74C9" stroke-width="1.4" d="M7.5 8.5 11 15M16.5 8.5 13 15M8 7h8"/></svg></div>
+        <div class="lab">脑力准备度</div>
+        <div class="val"><span style="color:#1F1D1A">64</span><span class="u">/100</span></div>
+      </div>
+      <div class="chip">
+        <div class="ico" style="background:#FCE7F0"><svg viewBox="0 0 24 24" fill="#C9598A"><path d="M12 21C5 14 3 10 6 7C8 5 11 6 12 9C13 6 16 5 18 7C21 10 19 14 12 21Z"/></svg></div>
+        <div class="lab">心理压力</div>
+        <div class="val"><span style="color:#6E7A24">38</span><span class="u">/100</span></div>
+      </div>
+      <div class="chip">
+        <div class="ico" style="background:#FBEFD6"><svg viewBox="0 0 24 24" fill="#B98A2E"><path d="M12 2C14 8 18 9 16 15C16 19 13 21 12 21C9 21 8 18 9 16C7 13 8 8 12 2Z"/></svg></div>
+        <div class="lab">运动消耗</div>
+        <div class="val"><span style="color:#1F1D1A">320</span><span class="u">kcal</span></div>
+      </div>
+      <div class="chip peek">
+        <div class="ico" style="background:#E3EBFE"><svg viewBox="0 0 24 24" fill="#4C74C9"><path d="M16 3A9 9 0 1 0 16 21A7 7 0 1 1 16 3Z"/></svg></div>
+        <div class="lab">生理周期</div>
+        <div class="val"><span style="color:#1F1D1A">第12天</span></div>
+      </div>
+    </div>`;
+  }
+
+  /* ─── 玻璃气泡（白玻璃 + 分析 + 建议卡 + 右下小尾巴） ─── */
+  function bubble(){
+    return `
+    <div class="bubbleZone">
+      <div class="bubble">
+        <svg class="bub-svg" width="304" height="150" viewBox="0 0 304 150">
+          <path d="M16 0 H288 A16 16 0 0 1 304 16 V116 A16 16 0 0 1 288 132 H16 A16 16 0 0 1 0 116 V16 A16 16 0 0 1 16 0 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1"/>
+          <path d="M246 131 L290 150 L280 131 Z" fill="rgba(255,255,255,0.82)" stroke="rgba(31,29,26,0.14)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+        <div class="bub-content">
+          <div class="bub-analysis">今天整体节奏平稳，白天状态在线，夜里也降得下来。</div>
+          <div class="bub-sugg">
+            <img class="bub-thumb" src="http://127.0.0.1:8765/src/assets/card_relax.jpg"/>
+            <div class="bub-suggtext">
+              <div class="bub-head">下午会议前有点紧绷，花 3 分钟呼吸松一下</div>
+              <div class="bub-evi">HRV 回升 8%</div>
+            </div>
+            <div class="bub-btns">
+              <div class="pill">去呼吸 ›</div>
+              <div class="link">不太像</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /* ─── 底部 tab 栏（悬浮胶囊 + Mira 脸[墨色]） ─── */
+  function tabbar(){
+    return `
+    <div class="tabbar">
+      <div class="leftCard">
+        <div class="tab sel"><svg viewBox="0 0 24 24" fill="none" stroke="#1F1D1A" stroke-width="2"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2"><path d="M14 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-4 4-6 6"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="#706A61" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 9h16M8 3v4m8-4v4"/></svg></div>
+      </div>
+      <div class="bot">
+        <svg viewBox="0 0 48 48">
+          <defs><linearGradient id="botg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3A3644"/><stop offset="100%" stop-color="#2E2A3A"/></linearGradient></defs>
+          <circle cx="24" cy="24" r="24" fill="url(#botg)"/>
+          <rect x="15.8" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+          <rect x="29.3" y="18.7" width="2.9" height="10.6" rx="1.4" fill="#fff"/>
+        </svg>
+      </div>
+    </div>`;
+  }
+
+  function phone(ringHtml, label, sub){
+    return `
+    <div class="col">
+      <div class="tag">${label}<small>${sub}</small></div>
+      <div class="phone" style="background:#F5F5F7">
+        <div class="statusbar"><span>16:30</span><span class="right">5G ▮▮▮ 82%</span></div>
+        <div class="screen">
+          <div class="scroll">
+            <div class="inner">
+              <div class="head">
+                <div class="title">今日状态</div>
+                <div class="who"><div class="ava">K</div><div class="nm">Kristina</div></div>
+              </div>
+            </div>
+            ${ringHtml}
+            ${chips()}
+          </div>
+          ${bubble()}
+          ${tabbar()}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('row').innerHTML =
+    phone(`<div class="ringWrap">${ring()}</div>`,
+          '<span class="swatch" style="background:#F5F5F7"></span>V1 · 圆环直承灰底',
+          '白面板全拆：圆环直接坐在浅灰页面上，四个小卡各自独立成白卡；大白面没有了，页面最透气') +
+    phone(`<div class="panelCard">${ring()}</div>`,
+          '<span class="swatch" style="background:#fff"></span>V2 · 圆角白卡承圆环',
+          '白面收缩成居中的圆角大卡（四周露出灰边），小卡仍在卡外独立成白卡；圆环有承托、白面可控');
+})();
+</script>
+</body>
+</html>
