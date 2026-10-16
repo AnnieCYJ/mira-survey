@@ -3,6 +3,12 @@
  *
  * 唯一实现：体温双相曲线、激素趋势卡（雌激素 / 孕激素）、日历网格共用，
  * 保证「同一相位到处同色」且样式一致。色值取自 lib/phaseColors（token）。
+ *
+ * ★ 2026-10-16（用户：「两行有点多，能不能就展示一行，只展示当下的相位，其他的不展示」）：
+ *   新增可选 `current` prop ——
+ *   · 传 PhaseKey  → 只渲染该相位一项（单行，首页圆环下方用）；
+ *   · 传 null      → 未记录，整条隐藏；
+ *   · 不传         → 维持四相全量原样（体温/激素/日历等消费方零改动）。
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -18,10 +24,13 @@ const PHASE_MOON: Partial<Record<PhaseKey, MoonStyle>> = {
   ovulation: 'quarterL',
 };
 
-export default function PhaseLegend() {
+export default function PhaseLegend({ current }: { current?: PhaseKey | null }) {
+  // current 未传 → 四相全量（原行为，其他页面不受影响）
+  if (current === null) return null; // 未记录：不渲染
+  const items: PhaseKey[] = current ? [current] : PHASE_ORDER;
   return (
     <View style={styles.legend}>
-      {PHASE_ORDER.map((p) => (
+      {items.map((p) => (
         <View key={p} style={styles.item}>
           <View style={styles.dot}>
             <MoonDot style={PHASE_MOON[p] ?? 'full'} size={theme.sp(2.5)} />

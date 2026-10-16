@@ -44,6 +44,7 @@ import { narrSigOf, aiNarrativeFor, requestAiNarrative } from '../lib/aiNarrativ
 import { dayPhase } from '../lib/timePhase';
 import HomeAiBubble from '../components/HomeAiBubble';
 import PhaseLegend from '../components/PhaseLegend';
+import type { PhaseKey } from '../lib/phaseColors';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
 
@@ -457,6 +458,15 @@ export default function TodayScreen() {
   const statusIdx = status && status.value != null ? curveLevel(status.value, CURVE_DEFAULTS).index : null;
   const phase = status?.phaseLabel ?? '未记录';
   const phaseKnown = phase !== '未记录';
+  // ★ 2026-10-16（用户：「图例两行有点多，能不能就展示一行，只展示当下的这个处于，
+  //   比方说处于卵泡期只展示这个卵泡期，其他的不展示」）：圆环下方经期图例
+  //   由「四相全量（两行）」改为「只留当前相位（一行）」。
+  //   phaseLabel 是中文标签 → 这里映射到 PhaseKey；未记录 → null（PhaseLegend 整条隐藏）。
+  const PHASE_LABEL_TO_KEY: Record<string, PhaseKey> = {
+    经期: 'period', 卵泡期: 'follicular', 排卵期: 'ovulation', 黄体期: 'luteal',
+  };
+  const currentPhaseKey: PhaseKey | null =
+    status?.phaseLabel != null ? PHASE_LABEL_TO_KEY[status.phaseLabel] ?? null : null;
   // ★ 真实睡眠检测：用最近一次 healthStore 中记录的睡眠窗口（sleepTime / wakeTime HH:mm）
   //   healthStore 里存的是「今天结束的那次睡眠」，跨午夜睡眠（23:30 → 07:00）正常工作。
   const todaySleep = healthStore.getSleep(dayKey(Date.now()));
@@ -1132,9 +1142,9 @@ export default function TodayScreen() {
           ))}
         </View>
 
-        {/* ★ 2026-10-15 晚：经期四相图例（与洞察页 / 日历 / 环上月相点同源，解释环上四个相位） */}
+        {/* ★ 2026-10-16（用户：图例只展示当前相位、一行）：四相图例 → 仅当前相位一项（未记录则隐藏） */}
         <View style={{ alignItems: 'center' }}>
-          <PhaseLegend />
+          <PhaseLegend current={currentPhaseKey} />
         </View>
 
         {/* ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「V1：chips 紧贴圆环下方」块删除 */}

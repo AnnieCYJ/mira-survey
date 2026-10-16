@@ -260,7 +260,7 @@
         <div class="moodItem"><div class="moodDot" style="background:#F2A3C6"></div><div class="moodLab">休息一下</div></div>
       </div>
 
-      <!-- 周期四相图例（还原） -->
+      <!-- 周期图例（2026-10-16 起：只展示当前相位，单行） -->
       <div class="phases" id="phaseLegend"></div>
 
       <!-- ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「chips 在图例之后」块删除 -->
@@ -319,7 +319,7 @@
     <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影；圆环中间的彩色柔光底色去掉（用户：文字背景的颜色也去掉），中央文字直接坐在水面上。</p></div></div>
     <div class="noteItem"><span class="no">02</span><div><b>改：水色跟随状态</b><p>水色不写死：状态良好 = 青柠（本页演示）；元气满满 = 蜜黄、平平静静 = 紫、休息一下 = 粉，与圆环描边 / 光晕同色同源。</p></div></div>
     <div class="noteItem"><span class="no">03</span><div><b>没改：圆环外壳</b><p>外圈光晕、状态色环描边、四个月相点（32s 公转、当前相位放大 + 暖光晕）、中央「状态值 / 更新于」文字，全部与原实现一致。</p></div></div>
-    <div class="noteItem"><span class="no">04</span><div><b>没改：首页其余</b><p>账号行（K / Kristina）在标题上方、标题下移（2026-10-16 起的新头部结构）；五个指标 chips 按 2026-10-16 用户要求移到<b>标题下方、圆环上方</b>；AI 气泡（白玻璃 + 尾巴 + 今日建议）高度减小一点、恒定贴在 Tab 栏上方；底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>改：首页其余（2026-10-16）</b><p>账号行（K / Kristina）在标题上方、标题下移；五个指标 chips 移到<b>标题下方、圆环上方</b>；AI 气泡高度减小、恒定贴在 Tab 栏上方；圆环下方周期图例由「四相两行」改为<b>只展示当前相位（单行，本页演示黄体期）</b>；底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
   </div>
 </div>
 
@@ -384,13 +384,12 @@
   });
   orbit.innerHTML = html;
 
-  // 周期四相图例（与 PhaseLegend 同源）
+  // 周期图例（与 PhaseLegend 同源）★ 2026-10-16（用户：只展示当前相位、一行）：四相 → 仅当前项
   var legend = document.getElementById('phaseLegend');
-  var lh = '';
-  PHASES.forEach(function(p){
-    lh += '<div class="phaseItem">' + moonSvg(p.style, 10) + '<div class="phaseLab">' + p.label + '</div></div>';
-  });
-  legend.innerHTML = lh;
+  var cur = PHASES.filter(function(p){ return p.cur; })[0];
+  legend.innerHTML = cur
+    ? '<div class="phaseItem">' + moonSvg(cur.style, 10) + '<div class="phaseLab">' + cur.label + '</div></div>'
+    : '';
 })();
 </script>
 
