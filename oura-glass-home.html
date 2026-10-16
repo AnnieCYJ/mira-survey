@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira 首页 · 海岸背景 + 玻璃卡片 + 半圆环（效果提案）</title>
+<style>
+  :root{
+    --w92:rgba(255,255,255,.92); --w70:rgba(255,255,255,.70); --w55:rgba(255,255,255,.55); --w40:rgba(255,255,255,.40);
+    --glass:linear-gradient(165deg,rgba(255,255,255,.15),rgba(255,255,255,.055));
+    --glassBrd:rgba(255,255,255,.20);
+    --lime:#BCCB62; --limeCore:#D5E384; --honey:#F0C46E; --purple:#9D8AF0; --rose:#F2A3C6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;background:#0E1018;color:var(--w92);min-height:100vh}
+
+  /* ---------- 提案页头（深色） ---------- */
+  .head{max-width:760px;margin:0 auto;padding:46px 28px 4px;text-align:left}
+  .tag{display:inline-block;font-size:11px;font-weight:600;color:#D5E384;background:rgba(213,227,132,.12);border:1px solid rgba(213,227,132,.25);border-radius:999px;padding:3px 11px;letter-spacing:.04em}
+  .head h1{font-size:25px;font-weight:700;margin-top:14px;letter-spacing:.01em;color:#FFFFFF}
+  .head p{margin-top:12px;font-size:13.5px;color:var(--w70);line-height:1.85}
+  .head p b{color:#FFFFFF}
+
+  .stage{display:flex;justify-content:center;padding:34px 16px 8px}
+
+  /* ---------- 手机框（iPhone 14 比例 390×844） ---------- */
+  .phone{position:relative;width:390px;height:844px;border-radius:54px;background:#0E0E12;flex:none;box-shadow:0 0 0 11px #16161A,0 0 0 13px #34343D,0 30px 70px rgba(8,6,20,.55)}
+  .island{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:92px;height:22px;border-radius:11px;background:#16161A;z-index:60}
+  .scr{position:absolute;inset:7px;border-radius:48px;overflow:hidden;display:flex;flex-direction:column;background:#12141F;padding:0 24px}
+  /* 内容层统一抬到背景之上（须写在 .bgImg/.scrim 之前，避免同特异性后者覆盖 absolute） */
+  .scr>*{position:relative;z-index:2}
+
+  /* ---------- 背景：海岸黄昏（用户提供图，cover 裁切） ---------- */
+  .bgImg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 32%;z-index:0}
+  /* 上下渐变压暗：保状态栏/标题/Tab 可读，并淡化原图右下角水印 */
+  .scrimT{position:absolute;left:0;right:0;top:0;height:300px;background:linear-gradient(180deg,rgba(8,10,22,.66),rgba(8,10,22,.20) 55%,rgba(8,10,22,0));z-index:1;pointer-events:none}
+  .scrimB{position:absolute;left:0;right:0;bottom:0;height:340px;background:linear-gradient(0deg,rgba(8,10,22,.80),rgba(8,10,22,.34) 34%,rgba(8,10,22,0));z-index:1;pointer-events:none}
+
+  /* 状态栏 */
+  .sbar{display:flex;justify-content:space-between;align-items:center;padding:17px 8px 0;font-size:13px;font-weight:600;color:#FFFFFF}
+
+  /* 头部：账号行在上、标题在下（与 App 首页一致） */
+  .headRow{display:flex;flex-direction:column;align-items:flex-start;margin-top:10px}
+  .pageTitle{font-size:26px;font-weight:700;letter-spacing:.01em;margin-top:10px;color:#FFFFFF}
+  .avatarName{display:flex;align-items:center;gap:8px}
+  .avatar{width:30px;height:30px;border-radius:15px;background:var(--limeCore);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#3E4614}
+  .avatarName .nm{font-size:14px;font-weight:500;color:#FFFFFF}
+
+  /* ---------- 指标 chips：Oura 式玻璃小卡 ---------- */
+  .chipsScroll{margin-top:12px;margin-bottom:8px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .chipsScroll::-webkit-scrollbar{display:none}
+  .chip{flex:none;width:88px;height:78px;background:var(--glass);border:1px solid var(--glassBrd);border-radius:16px;box-shadow:0 10px 26px rgba(6,8,20,.30),inset 0 1px 0 rgba(255,255,255,.22);backdrop-filter:blur(20px) saturate(1.35);-webkit-backdrop-filter:blur(20px) saturate(1.35);padding:8px 9px;display:flex;flex-direction:column}
+  .iconSq{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:5px}
+  .chipLab{font-size:11px;color:var(--w70);white-space:nowrap}
+  .chipValRow{display:flex;align-items:baseline;gap:2px;margin-top:auto}
+  .chipVal{font-size:17px;font-weight:700;letter-spacing:-.01em;color:#FFFFFF}
+  .chipUnit{font-size:10px;color:var(--w55);font-weight:500}
+
+  /* ---------- 半圆环（Oura 式半圆进度轨 + 碗内状态水） ---------- */
+  .ringWrap{position:relative;width:324px;height:224px;margin:10px auto 0}
+  .ringSvg{width:324px;height:224px;display:block;position:relative;z-index:2}
+  .ringTxt{position:absolute;left:0;right:0;top:62px;display:flex;flex-direction:column;align-items:center;z-index:5;pointer-events:none}
+  .ringLabel{font-size:24px;font-weight:600;color:#FFFFFF;text-shadow:0 2px 14px rgba(8,10,22,.55)}
+  .ringValue{font-size:12.5px;color:var(--w70);margin-top:5px;font-weight:500;text-shadow:0 1px 10px rgba(8,10,22,.6)}
+  .ringUpdated{font-size:12.5px;color:var(--w55);margin-top:2px;font-weight:400;text-shadow:0 1px 10px rgba(8,10,22,.6)}
+  /* 月相点：直接钉在半圆轨上（半圆场景不做 32s 公转——转出弧外；当前相位放大 + 暖光晕） */
+  .moonDot{position:absolute;border-radius:50%;z-index:4}
+  .moonDot.cur{box-shadow:0 0 16px rgba(240,196,110,.9)}
+
+  /* 水波：双波层无缝横移 + 呼吸升降 + 气泡上浮 */
+  @keyframes drift{from{transform:translateX(0)}to{transform:translateX(-150px)}}
+  @keyframes drift2{from{transform:translateX(0)}to{transform:translateX(-196px)}}
+  @keyframes bob{0%,100%{transform:translateY(4px)}50%{transform:translateY(-4px)}}
+  @keyframes rise{0%{transform:translateY(6px);opacity:0}14%{opacity:.9}80%{opacity:.45}100%{transform:translateY(-48px);opacity:0}}
+  .w1{animation:drift 6.4s linear infinite}
+  .w2{animation:drift2 9.8s linear infinite}
+  .bobG{animation:bob 8s cubic-bezier(.45,0,.55,1) infinite}
+  .bub{animation:rise 3.8s ease-in infinite}
+  .bub.b2{animation-duration:5s;animation-delay:1.2s}
+  .bub.b3{animation-duration:4.4s;animation-delay:2.4s}
+  .bub.b4{animation-duration:6s;animation-delay:.6s}
+
+  /* ---------- 圆环下图例（一行：四等级 + 当前相位） ---------- */
+  .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:10px}
+  .moodItem{display:flex;align-items:center;gap:5px}
+  .moodDot{width:8px;height:8px;border-radius:4px;box-shadow:0 0 8px rgba(255,255,255,.25)}
+  .moodLab{font-size:11px;color:var(--w70)}
+  .phases{display:inline-flex;align-items:center;margin-top:0}
+  .phaseItem{display:flex;align-items:center;gap:5px}
+  .phaseLab{font-size:11px;color:var(--w70)}
+
+  /* ---------- AI 分析卡：Oura 式透明玻璃 ---------- */
+  .spacer{flex-grow:1}
+  .bubbleWrap{margin-bottom:6px;position:relative}
+  .bubble{background:var(--glass);border:1px solid var(--glassBrd);border-radius:22px;padding:13px 16px 11px;box-shadow:0 18px 44px rgba(5,8,20,.42),inset 0 1px 0 rgba(255,255,255,.24);backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);position:relative}
+  .bubble::after{content:"";position:absolute;right:34px;bottom:-9px;width:18px;height:18px;background:rgba(255,255,255,.13);border-right:1px solid var(--glassBrd);border-bottom:1px solid var(--glassBrd);transform:rotate(45deg);border-radius:0 0 4px 0;backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
+  .analysisText{font-size:13px;line-height:1.65;color:var(--w92)}
+  .eyebrowRow{display:flex;align-items:center;gap:6px;margin-top:9px}
+  .eyebrowDot{width:12px;height:12px;border-radius:6px;background:linear-gradient(90deg,#9D8AF0,#F6B3D0,#D5E384)}
+  .eyebrow{font-size:11px;font-weight:600;color:var(--w70);letter-spacing:.02em}
+  .suggRow{display:flex;align-items:center;gap:10px;margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.12)}
+  .suggThumb{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#EAF0BE,#D5E384);flex:none}
+  .suggHead{font-size:12.5px;font-weight:600;line-height:1.4;color:#FFFFFF}
+  .suggEvid{font-size:11px;color:var(--w55);margin-top:2px}
+  .ctaPill{margin-left:auto;flex:none;background:linear-gradient(135deg,#D5E384,#BCCB62);color:#3E4614;font-size:11px;font-weight:700;border-radius:999px;padding:6px 12px}
+
+  /* ---------- Tab 栏：玻璃磨砂 ---------- */
+  .tabbar{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);background:rgba(14,16,28,.42);backdrop-filter:blur(26px) saturate(1.3);-webkit-backdrop-filter:blur(26px) saturate(1.3);display:flex;justify-content:space-around;align-items:flex-end;padding:10px 18px 8px;position:relative;z-index:20}
+  .tabItem{width:44px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  .tabCircle{width:34px;height:34px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:var(--w55)}
+  .tabItem.focused .tabCircle{background:rgba(213,227,132,.92);color:#2E2A3A}
+  .tabDot{width:3px;height:3px;border-radius:2px;background:transparent}
+  .tabItem.focused .tabDot{background:#D5E384}
+  .tabCenterWrap{width:56px;display:flex;justify-content:center}
+  .tabCenter{width:44px;height:44px;border-radius:22px;background:linear-gradient(135deg,#C6D84B,#F58AB8);display:flex;align-items:center;justify-content:center;transform:translateY(-12px);box-shadow:0 10px 22px rgba(200,120,150,.35)}
+  .homeIndicator{width:118px;height:5px;border-radius:3px;background:rgba(255,255,255,.32);margin:0 auto 8px;position:relative;z-index:20}
+
+  /* ---------- 页尾机制说明（深色） ---------- */
+  .notes{max-width:760px;margin:0 auto;padding:34px 28px 10px}
+  .kicker{font-size:10.5px;font-weight:600;letter-spacing:.22em;color:#D5E384}
+  .notes h2{font-size:18px;font-weight:700;margin-top:10px;color:#FFFFFF}
+  .noteGrid{display:grid;grid-template-columns:1fr 1fr;gap:0 36px;margin-top:18px}
+  .noteItem{padding:13px 0;border-top:1px solid rgba(255,255,255,.12);display:flex;gap:12px}
+  .noteItem .no{font-size:11px;font-weight:700;color:rgba(255,255,255,.35);padding-top:2px}
+  .noteItem b{font-size:13.5px;font-weight:700;display:block;color:#FFFFFF}
+  .noteItem p{font-size:12px;color:var(--w70);line-height:1.7;margin-top:3px}
+  .foot{max-width:760px;margin:0 auto;padding:22px 28px 54px;font-size:12px;color:var(--w55);line-height:1.8}
+  .foot b{color:#FFFFFF}
+
+  @media (max-width:900px){
+    .noteGrid{grid-template-columns:1fr}
+    .stage{padding-top:26px}
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <span class="tag">首页风格 · 效果提案</span>
+  <h1>海岸背景 + 玻璃卡片 + 半圆环</h1>
+  <p>沿用 Mira 首页全部信息结构（账号行 / 标题 / 五个指标 chips / 状态圆环 / 一行图例 / AI 分析卡 / Tab 栏），<b>换三层皮</b>：① 背景用你提供的海岸黄昏照片（cover 裁切，上下加渐变压暗保可读性）；② 所有卡片改 <b>Oura 式透明玻璃</b>（半透明磨砂 + 细白描边 + 内高光），文字转白；③ 中间圆环改<b>半圆</b>——Oura 式半圆进度轨（状态色渐变弧 + 轨道底 + 底部柔光反射），碗内保留「状态水」：双正弦波无缝横移、水面呼吸升降、气泡上浮，水色跟随当前状态（本页演示「状态良好」= 青柠水）。当前相位 = 卵泡期。动效为实时预览，纯 CSS / SVG。</p>
+</div>
+
+<div class="stage">
+  <!-- ============ 手机：Mira 首页（海岸背景 / 玻璃卡 / 半圆环） ============ -->
+  <div class="phone">
+    <div class="island"></div>
+    <div class="scr">
+      <!-- 背景图 + 上下渐变压暗 -->
+      <img class="bgImg" src="oura-home-bg.jpg" alt="">
+      <div class="scrimT"></div>
+      <div class="scrimB"></div>
+
+      <div class="sbar">
+        <span>9:41</span>
+        <svg width="68" height="12" viewBox="0 0 68 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><rect x="52" y="2" width="14" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="54" y="4" width="9" height="4" rx="1"/><rect x="67" y="4.5" width="1.5" height="3" rx=".75"/></svg>
+      </div>
+
+      <!-- 头部（账号在上、标题在下） -->
+      <div class="headRow">
+        <div class="avatarName">
+          <div class="avatar">K</div>
+          <div class="nm">Kristina</div>
+        </div>
+        <div class="pageTitle">今日状态</div>
+      </div>
+
+      <!-- 指标 chips：玻璃小卡 -->
+      <div class="chipsScroll">
+        <div class="chip">
+          <div class="iconSq" style="background:rgba(234,240,190,.20)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D5E384" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg></div>
+          <div class="chipLab">睡眠恢复</div>
+          <div class="chipValRow"><div class="chipVal">66</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:rgba(213,227,132,.20)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D5E384" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="19" r="3"/><circle cx="12" cy="12" r="3"/><path d="M12 12l6-5M12 12l-6 5"/></svg></div>
+          <div class="chipLab">脑力准备度</div>
+          <div class="chipValRow"><div class="chipVal">82</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:rgba(246,179,208,.20)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F6B3D0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+          <div class="chipLab">心理压力</div>
+          <div class="chipValRow"><div class="chipVal">34</div><div class="chipUnit">/100</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:rgba(240,196,110,.20)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F0C46E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></svg></div>
+          <div class="chipLab">运动消耗</div>
+          <div class="chipValRow"><div class="chipVal">420</div><div class="chipUnit">kcal</div></div>
+        </div>
+        <div class="chip">
+          <div class="iconSq" style="background:rgba(157,138,240,.22)"><svg width="14" height="14" viewBox="0 0 24 24" fill="#C7B9F2"><path d="M12 2a10 10 0 1 0 10 10A7 7 0 0 1 12 2Z"/></svg></div>
+          <div class="chipLab">生理周期</div>
+          <div class="chipValRow"><div class="chipVal" style="font-size:13px">第 21 天</div></div>
+        </div>
+      </div>
+
+      <!-- ===== 半圆环（Oura 式半圆进度轨 + 碗内状态水） ===== -->
+      <div class="ringWrap">
+        <svg class="ringSvg" viewBox="0 0 324 224" aria-label="今日状态半圆环 · 水流动">
+          <defs>
+            <!-- 进度弧渐变（状态色：青柠） -->
+            <linearGradient id="arcG" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#D5E384"/>
+              <stop offset="100%" stop-color="#BCCB62"/>
+            </linearGradient>
+            <!-- 半圆底部柔光（桌面反射） -->
+            <radialGradient id="glowG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#BCCB62" stop-opacity=".22"/>
+              <stop offset="60%" stop-color="#BCCB62" stop-opacity=".07"/>
+              <stop offset="100%" stop-color="#BCCB62" stop-opacity="0"/>
+            </radialGradient>
+            <!-- 水体渐变（水面 → 水底） -->
+            <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#D9E78C"/>
+              <stop offset="60%" stop-color="#C2D06E"/>
+              <stop offset="100%" stop-color="#A9B84F"/>
+            </linearGradient>
+            <radialGradient id="glossG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".55"/>
+              <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+            </radialGradient>
+            <!-- 碗内裁剪（半圆） -->
+            <clipPath id="bowlClip"><path d="M 33 180 A 129 129 0 0 1 291 180 Z"/></clipPath>
+          </defs>
+
+          <!-- 底部柔光 -->
+          <ellipse cx="162" cy="186" rx="158" ry="18" fill="url(#glowG)"/>
+
+          <!-- 半圆轨道底 -->
+          <path d="M 26 180 A 136 136 0 0 1 298 180" stroke="rgba(255,255,255,.16)" stroke-width="14" fill="none" stroke-linecap="round"/>
+          <!-- 进度弧外侧柔光 -->
+          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="#D5E384" stroke-width="22" fill="none" stroke-linecap="round" opacity=".14"/>
+          <!-- 进度弧（72%） -->
+          <path d="M 26 180 A 136 136 0 0 1 248.6 75.1" stroke="url(#arcG)" stroke-width="14" fill="none" stroke-linecap="round"/>
+
+          <!-- 碗内：状态水（裁剪进半圆） -->
+          <g clip-path="url(#bowlClip)">
+            <path d="M 33 180 A 129 129 0 0 1 291 180 Z" fill="rgba(255,255,255,.05)"/>
+            <g class="bobG">
+              <path id="w2" class="w2" fill="#B9CB6E" opacity=".75"/>
+              <path id="w1" class="w1" fill="url(#waterG)"/>
+              <path id="w1c" class="w1" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.5"/>
+              <circle class="bub" cx="96" cy="176" r="2.6" fill="#FFFFFF"/>
+              <circle class="bub b2" cx="140" cy="178" r="3.2" fill="#FFFFFF"/>
+              <circle class="bub b3" cx="190" cy="174" r="2" fill="#FFFFFF"/>
+              <circle class="bub b4" cx="224" cy="178" r="2.8" fill="#FFFFFF"/>
+            </g>
+            <ellipse cx="120" cy="86" rx="72" ry="30" fill="url(#glossG)"/>
+          </g>
+        </svg>
+
+        <!-- 中央文字（坐在水面上方） -->
+        <div class="ringTxt">
+          <div class="ringLabel">状态良好</div>
+          <div class="ringValue">状态值：72</div>
+          <div class="ringUpdated">更新于 16:30</div>
+        </div>
+
+        <!-- 月相点：钉在半圆轨上（左=排卵 左上=经期 右上=黄体 右=卵泡[当前]） -->
+        <div id="moonLayer"></div>
+      </div>
+
+      <!-- 一行图例：四等级 + 当前相位 -->
+      <div class="moods">
+        <div class="moodItem"><div class="moodDot" style="background:#F0C46E"></div><div class="moodLab">元气满满</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#BCCB62"></div><div class="moodLab">状态良好</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#9D8AF0"></div><div class="moodLab">平平静静</div></div>
+        <div class="moodItem"><div class="moodDot" style="background:#F2A3C6"></div><div class="moodLab">休息一下</div></div>
+        <div class="phases" id="phaseLegend"></div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <!-- AI 分析卡：玻璃磨砂 -->
+      <div class="bubbleWrap">
+        <div class="bubble">
+          <div class="analysisText">昨晚深睡占比 23%，今天状态整体平稳。下午能量略有回落，适合把需要专注的事往前放。</div>
+          <div class="eyebrowRow">
+            <div class="eyebrowDot"></div>
+            <div class="eyebrow">今日建议</div>
+          </div>
+          <div class="suggRow">
+            <div class="suggThumb"></div>
+            <div>
+              <div class="suggHead">睡前读读书呀，几分钟就好</div>
+              <div class="suggEvid">· 昨晚深睡占比 23%</div>
+            </div>
+            <div class="ctaPill">去呼吸 ›</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 栏：玻璃磨砂 -->
+      <div class="tabbar">
+        <div class="tabItem focused">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-8"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabCenterWrap">
+          <div class="tabCenter"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+        <div class="tabItem">
+          <div class="tabCircle"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5"/></svg></div>
+          <div class="tabDot"></div>
+        </div>
+      </div>
+      <div class="homeIndicator"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 改了什么 ============ -->
+<div class="notes">
+  <div class="kicker">DIFF · 改动点</div>
+  <h2>信息结构不动，换三层皮</h2>
+  <div class="noteGrid">
+    <div class="noteItem"><span class="no">01</span><div><b>改：背景 = 海岸黄昏</b><p>整屏铺你提供的海岸照片（cover 裁切、视线中心略偏上保住地平线）；顶部 300px / 底部 340px 两段渐变压暗——保状态栏、标题、Tab 栏可读，同时淡化原图右下角「AI 生成」水印；Tab 栏本身也是磨砂玻璃，水印基本被盖住。</p></div></div>
+    <div class="noteItem"><span class="no">02</span><div><b>改：Oura 式透明玻璃卡片</b><p>指标 chips 与 AI 分析卡改为半透明磨砂（backdrop blur 20~26px + 细白描边 + 内高光 + 外投影），文字转白、次要文字 70%/55% 白；CTA 保留青柠渐变。玻璃质感在真机截图/录屏里最明显，HTML 预览已尽量还原。</p></div></div>
+    <div class="noteItem"><span class="no">03</span><div><b>改：圆环 → 半圆</b><p>参考 Oura：半圆进度轨（状态色渐变弧 72% + 白色轨道底 + 外侧柔光 + 底部桌面反射）；碗内保留 Mira 的「状态水」——双正弦波无缝横移、8s 呼吸升降、气泡上浮，水色跟随状态色；四月相点钉在弧上（左=排卵 / 左上=经期 / 右上=黄体 / 右=卵泡[当前，放大 + 光晕]）——半圆场景不再 32s 公转（会转出弧外）。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>没改：信息与排布</b><p>账号行在标题上方、五个指标 chips 在圆环上方、图例一行（四等级 + 当前相位）、AI 分析卡贴在 Tab 栏上方、底部 Tab 栏（仅图标 + 中央渐变球）——全部与当前 App 首页一致；仅配色/材质/圆环形状随本提案走深色玻璃风。</p></div></div>
+  </div>
+</div>
+
+<div class="foot"><b>落地路径</b>：纯 CSS / SVG + 一张背景图；RN 端半圆用 react-native-svg 的 Arc 路径（A 指令）+ Animated 驱动水波，玻璃卡片用 expo-blur（BlurView）透出下层背景图，压暗用 LinearGradient 两层。本页为效果预览，无交互。</div>
+
+<script>
+(function(){
+  // ── 正弦波路径：宽 648 = 2×画布宽，位移一个波长即无缝循环 ──
+  function wave(amp, wl, phase, base){
+    var w = 648, d = 'M0 ' + base;
+    for (var x = 0; x <= w; x += 3){
+      var y = base + amp * Math.sin((x / wl) * Math.PI * 2 + phase);
+      d += ' L' + x.toFixed(1) + ' ' + y.toFixed(2);
+    }
+    d += ' L' + w + ' 224 L0 224 Z';
+    return d;
+  }
+  document.getElementById('w1').setAttribute('d', wave(5, 150, 0, 146));
+  document.getElementById('w1c').setAttribute('d', wave(5, 150, 0, 146).replace(' L648 224 L0 224 Z', ''));
+  document.getElementById('w2').setAttribute('d', wave(7, 196, 2.4, 152));
+
+  // ── 月相点（与 MoonDot 同源：full / quarterR / allPurple / quarterL） ──
+  var MOON_LIT = '#F2C75C', MOON_PURPLE = '#9D8AF0';
+  function moonPath(cx, cy, R, t){
+    var p = ((t % 1) + 1) % 1;
+    var waxing = p < 0.5;
+    var k = Math.abs(Math.cos(Math.PI * 2 * p));
+    var rx = Math.max(0.0001, R * k);
+    var outerSweep = waxing ? 1 : 0;
+    var crescent = waxing ? p < 0.25 : p > 0.75;
+    var innerSweep = crescent ? outerSweep : 1 - outerSweep;
+    return 'M ' + cx.toFixed(2) + ' ' + (cy - R).toFixed(2) +
+      ' A ' + R.toFixed(2) + ' ' + R.toFixed(2) + ' 0 0 ' + outerSweep + ' ' + cx.toFixed(2) + ' ' + (cy + R).toFixed(2) +
+      ' A ' + rx.toFixed(2) + ' ' + R.toFixed(2) + ' 0 0 ' + innerSweep + ' ' + cx.toFixed(2) + ' ' + (cy - R).toFixed(2) + ' Z';
+  }
+  function moonSvg(style, size){
+    var c = size / 2, r = size * 0.46;
+    var inner = '';
+    if (style === 'full') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_LIT + '"/>';
+    else if (style === 'allPurple') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_PURPLE + '"/>';
+    else if (style === 'quarterR') inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_LIT + '"/><path d="' + moonPath(c, c, r, 0.19) + '" fill="' + MOON_PURPLE + '"/>';
+    else inner = '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="' + MOON_PURPLE + '"/><path d="' + moonPath(c, c, r, 0.81) + '" fill="' + MOON_LIT + '"/>';
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' + inner + '</svg>';
+  }
+
+  // 半圆轨上四月相点：左=排卵(quarterL) 左上=经期(full) 右上=黄体(allPurple) 右=卵泡(quarterR[当前])
+  var PHASES = [
+    { style: 'quarterL', label: '排卵期', x: 26,  y: 180 },
+    { style: 'full',     label: '经期',   x: 94,  y: 62.2 },
+    { style: 'allPurple',label: '黄体期', x: 230, y: 62.2 },
+    { style: 'quarterR', label: '卵泡期', x: 298, y: 180, cur: true },
+  ];
+  var layer = document.getElementById('moonLayer');
+  var html = '';
+  PHASES.forEach(function(p){
+    var size = p.cur ? 16 : 11;
+    html += '<div class="moonDot' + (p.cur ? ' cur' : '') + '" style="left:' + (p.x - size / 2).toFixed(1) + 'px;top:' + (p.y - size / 2).toFixed(1) + 'px;width:' + size + 'px;height:' + size + 'px">' + moonSvg(p.style, size) + '</div>';
+  });
+  layer.innerHTML = html;
+
+  // 图例只展示当前相位（与 App 一致）
+  var legend = document.getElementById('phaseLegend');
+  var cur = PHASES.filter(function(p){ return p.cur; })[0];
+  legend.innerHTML = cur
+    ? '<div class="phaseItem">' + moonSvg(cur.style, 10) + '<div class="phaseLab">' + cur.label + '</div></div>'
+    : '';
+})();
+</script>
+
+</body>
+</html>
