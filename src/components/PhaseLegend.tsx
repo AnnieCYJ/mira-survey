@@ -9,6 +9,9 @@
  *   · 传 PhaseKey  → 只渲染该相位一项（单行，首页圆环下方用）；
  *   · 传 null      → 未记录，整条隐藏；
  *   · 不传         → 维持四相全量原样（体温/激素/日历等消费方零改动）。
+ * ★ 2026-10-16（用户：「卵泡期能不能和元气满满、状态良好那些放在同一行」）：
+ *   新增 `inline` prop —— 去掉自身 marginTop/padding，作为一项嵌进父级图例行
+ *   （与相邻项的间距由父级 gap 统一给）。
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -24,14 +27,14 @@ const PHASE_MOON: Partial<Record<PhaseKey, MoonStyle>> = {
   ovulation: 'quarterL',
 };
 
-export default function PhaseLegend({ current }: { current?: PhaseKey | null }) {
+export default function PhaseLegend({ current, inline }: { current?: PhaseKey | null; inline?: boolean }) {
   // current 未传 → 四相全量（原行为，其他页面不受影响）
   if (current === null) return null; // 未记录：不渲染
   const items: PhaseKey[] = current ? [current] : PHASE_ORDER;
   return (
-    <View style={styles.legend}>
+    <View style={[styles.legend, inline && styles.legendInline]}>
       {items.map((p) => (
-        <View key={p} style={styles.item}>
+        <View key={p} style={[styles.item, inline && styles.itemInline]}>
           <View style={styles.dot}>
             <MoonDot style={PHASE_MOON[p] ?? 'full'} size={theme.sp(2.5)} />
           </View>
@@ -45,6 +48,9 @@ export default function PhaseLegend({ current }: { current?: PhaseKey | null }) 
 const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.xs, paddingHorizontal: 2 },
   item: { flexDirection: 'row', alignItems: 'center', marginRight: theme.sp(3.5), marginTop: theme.sp(1) },
+  // ★ inline 模式（首页与 MOODS 图例同行）：自身不带来往外边距，间距由父级 gap 统一给
+  legendInline: { marginTop: 0, paddingHorizontal: 0, flexWrap: 'nowrap' },
+  itemInline: { marginRight: 0, marginTop: 0 },
   dot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.sp(0.75), marginRight: theme.sp(1.25) },
   text: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
 });

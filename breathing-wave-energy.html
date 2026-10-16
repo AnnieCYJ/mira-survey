@@ -60,11 +60,12 @@
   .bub.b4{animation-duration:6s;animation-delay:.6s}
 
   /* ---------- 圆环下图例（还原） ---------- */
-  .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;margin-top:10px}
+  /* ★ 2026-10-16：当前相位项并入本行后总宽 ≈316px，gap 14→10 保证在 328px 内容区内不换行 */
+  .moods{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:10px}
   .moodItem{display:flex;align-items:center;gap:5px}
   .moodDot{width:8px;height:8px;border-radius:4px}
   .moodLab{font-size:11px;color:var(--sub)}
-  .phases{display:flex;justify-content:center;flex-wrap:wrap;gap:16px;margin-top:8px}
+  .phases{display:inline-flex;align-items:center;margin-top:0}
   .phaseItem{display:flex;align-items:center;gap:5px}
   .phaseLab{font-size:11px;color:var(--sub)}
 
@@ -252,16 +253,15 @@
         <div class="orbit" id="orbit"></div>
       </div>
 
-      <!-- 四等级图例（还原） -->
+      <!-- 四等级图例（还原） ★ 2026-10-16（用户：「卵泡期能不能和元气满满、状态良好那些放在同一行」）：
+           当前相位图例（只展示当前相位）并入本行末尾，间距沿用父级 gap -->
       <div class="moods">
         <div class="moodItem"><div class="moodDot" style="background:#F0C46E"></div><div class="moodLab">元气满满</div></div>
         <div class="moodItem"><div class="moodDot" style="background:#BCCB62"></div><div class="moodLab">状态良好</div></div>
         <div class="moodItem"><div class="moodDot" style="background:#9D8AF0"></div><div class="moodLab">平平静静</div></div>
         <div class="moodItem"><div class="moodDot" style="background:#F2A3C6"></div><div class="moodLab">休息一下</div></div>
+        <div class="phases" id="phaseLegend"></div>
       </div>
-
-      <!-- 周期图例（2026-10-16 起：只展示当前相位，单行） -->
-      <div class="phases" id="phaseLegend"></div>
 
       <!-- ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「chips 在图例之后」块删除 -->
 
@@ -319,7 +319,7 @@
     <div class="noteItem"><span class="no">01</span><div><b>改：环内水体</b><p>新增浅水底色 + 双层正弦波（波长 162 / 205、振幅 6 / 8、6.4s / 9.8s 无缝横移）+ 水面呼吸升降 ±6px / 8s + 4 颗气泡错峰上浮 + 玻璃高光与底部体积阴影；圆环中间的彩色柔光底色去掉（用户：文字背景的颜色也去掉），中央文字直接坐在水面上。</p></div></div>
     <div class="noteItem"><span class="no">02</span><div><b>改：水色跟随状态</b><p>水色不写死：状态良好 = 青柠（本页演示）；元气满满 = 蜜黄、平平静静 = 紫、休息一下 = 粉，与圆环描边 / 光晕同色同源。</p></div></div>
     <div class="noteItem"><span class="no">03</span><div><b>没改：圆环外壳</b><p>外圈光晕、状态色环描边、四个月相点（32s 公转、当前相位放大 + 暖光晕）、中央「状态值 / 更新于」文字，全部与原实现一致。</p></div></div>
-    <div class="noteItem"><span class="no">04</span><div><b>改：首页其余（2026-10-16）</b><p>账号行（K / Kristina）在标题上方、标题下移；五个指标 chips 移到<b>标题下方、圆环上方</b>；AI 气泡高度减小、恒定贴在 Tab 栏上方；圆环下方周期图例由「四相两行」改为<b>只展示当前相位（单行，本页演示黄体期）</b>；底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
+    <div class="noteItem"><span class="no">04</span><div><b>改：首页其余（2026-10-16）</b><p>账号行（K / Kristina）在标题上方、标题下移；五个指标 chips 移到<b>标题下方、圆环上方</b>；AI 气泡高度减小、恒定贴在 Tab 栏上方；圆环下方周期图例由「四相两行」改为<b>只展示当前相位、并与四等级图例同一行</b>（本页演示黄体期）；底部 Tab 栏（仅图标 + 中央渐变球）均按原页还原。</p></div></div>
   </div>
 </div>
 

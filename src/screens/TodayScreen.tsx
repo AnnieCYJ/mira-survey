@@ -1132,7 +1132,9 @@ export default function TodayScreen() {
         </View>
 
         {/* ★ 2026-10-15（用户）：圆环下方图例 —— 与「全天状态趋势」详情页图例同源（MOODS 四等级：
-            元气满满/状态良好/平平静静/休息一下），解释圆环弧点颜色含义 */}
+            元气满满/状态良好/平平静静/休息一下），解释圆环弧点颜色含义。
+            ★ 2026-10-16（用户：「卵泡期能不能和元气满满、状态良好那些放在同一行」）：
+            当前相位图例（inline）并入同一行末尾，间距沿用父级 gap 12；未记录时不渲染。 */}
         <View style={styles.ringLegendRow}>
           {MOODS.map((m) => (
             <View key={m.key} style={styles.ringLegendItem}>
@@ -1140,11 +1142,7 @@ export default function TodayScreen() {
               <Text style={styles.ringLegendText}>{m.label}</Text>
             </View>
           ))}
-        </View>
-
-        {/* ★ 2026-10-16（用户：图例只展示当前相位、一行）：四相图例 → 仅当前相位一项（未记录则隐藏） */}
-        <View style={{ alignItems: 'center' }}>
-          <PhaseLegend current={currentPhaseKey} />
+          <PhaseLegend current={currentPhaseKey} inline />
         </View>
 
         {/* ★ 2026-10-16：指标 chips 已移到标题下方（圆环上方）——原「V1：chips 紧贴圆环下方」块删除 */}

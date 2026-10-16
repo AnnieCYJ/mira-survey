@@ -254,6 +254,8 @@ export default function MetricDetailScreen() {
   const _ecgIsDone = _ecgProg != null && _ecgProgress >= 100;
   // 打开「历史日」且当前指标无数据时的自动补拉状态
   const [backfilling, setBackfilling] = useState(false);
+  // ★ 2026-10-16（用户：「血脂详情页的历史测量记录默认收起来」）：历史测量列表默认折叠，点头标题展开
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const requestedForRef = useRef<string | null>(null);
   // 锚点是否为「今天」之外：只有历史日才需要（且值得）自动触发 backfill
   const anchorKey = dateKeyOf(anchor.getTime());
@@ -1079,53 +1081,71 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         {/* 解读（血脂四项页用自己的解读卡，不显示单指标 note） */}
         {!isEcg && !isLipid && series.note ? <Text style={styles.note}>{series.note}</Text> : null}
 
-        {/* 历史测量列表（手动测量类指标才显示，按时间倒序） */}
+        {/* 历史测量列表（手动测量类指标才显示，按时间倒序）
+            ★ 2026-10-16（用户：「血脂详情页的历史测量记录默认收起来」）：改为可折叠区块，默认收起，
+            点头标题展开/收起；收起时不占列表高度，让四项趋势主图更靠上。 */}
         {showManualList && (
           <View style={{ marginTop: theme.space.md }}>
-            <Text style={{
-              fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold,
-              color: theme.colors.textTitle, marginBottom: theme.space.sm,
-            }}>历史测量记录</Text>
-            {manualList.length === 0 ? (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setHistoryExpanded((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: historyExpanded }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: historyExpanded && manualList.length > 0 ? theme.space.sm : 0,
+              }}
+            >
               <Text style={{
-                fontSize: theme.fontSize.sm, color: theme.colors.textSub,
-                fontStyle: 'italic',
-              }}>
-                还没有测量记录。点击下方「一键血液成分测量」获取首次读数。
-              </Text>
-            ) : (
-              manualList.map((m, i) => {
-                const d = new Date(m.t);
-                const hh = String(d.getHours()).padStart(2, '0');
-                const mm = String(d.getMinutes()).padStart(2, '0');
-                const dateLabel = `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`;
-                const valStr = params.key === 'uricAcid' ? m.v.toFixed(1) : m.v.toFixed(2);
-                return (
-                  <View key={`${m.t}-${i}`} style={{
-                    flexDirection: 'row', alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: theme.space.sm,
-                    paddingHorizontal: theme.space.md,
-                    backgroundColor: i === 0 ? theme.colors.accentSoft : 'transparent',
-                    borderRadius: theme.radius.sm,
-                    marginBottom: theme.sp(1),
-                  }}>
-                    <Text style={{
-                      fontSize: theme.fontSize.sm, color: theme.colors.textSub,
-                    }}>{dateLabel}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold,
+                color: theme.colors.textTitle,
+              }}>历史测量记录{manualList.length > 0 ? `（${manualList.length}）` : ''}</Text>
+              <View style={{ transform: [{ rotate: historyExpanded ? '90deg' : '0deg' }] }}>
+                <Icon name="chevronRight" size={theme.fs(18)} color={theme.colors.textSub} />
+              </View>
+            </TouchableOpacity>
+            {historyExpanded && (
+              manualList.length === 0 ? (
+                <Text style={{
+                  fontSize: theme.fontSize.sm, color: theme.colors.textSub,
+                  fontStyle: 'italic',
+                }}>
+                  还没有测量记录。点击下方「一键血液成分测量」获取首次读数。
+                </Text>
+              ) : (
+                manualList.map((m, i) => {
+                  const d = new Date(m.t);
+                  const hh = String(d.getHours()).padStart(2, '0');
+                  const mm2 = String(d.getMinutes()).padStart(2, '0');
+                  const dateLabel = `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm2}`;
+                  const valStr = params.key === 'uricAcid' ? m.v.toFixed(1) : m.v.toFixed(2);
+                  return (
+                    <View key={`${m.t}-${i}`} style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: theme.space.sm,
+                      paddingHorizontal: theme.space.md,
+                      backgroundColor: i === 0 ? theme.colors.accentSoft : 'transparent',
+                      borderRadius: theme.radius.sm,
+                      marginBottom: theme.sp(1),
+                    }}>
                       <Text style={{
-                        fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold,
-                        color: theme.colors.textTitle,
-                      }}>{valStr}</Text>
-                      <Text style={{
-                        fontSize: theme.fontSize.micro, color: theme.colors.textSub,
-                        marginLeft: theme.sp(1),
-                      }}>{params.unit}</Text>
+                        fontSize: theme.fontSize.sm, color: theme.colors.textSub,
+                      }}>{dateLabel}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                        <Text style={{
+                          fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold,
+                          color: theme.colors.textTitle,
+                        }}>{valStr}</Text>
+                        <Text style={{
+                          fontSize: theme.fontSize.micro, color: theme.colors.textSub,
+                          marginLeft: theme.sp(1),
+                        }}>{params.unit}</Text>
+                      </View>
                     </View>
-                  </View>
-                );
-              })
+                  );
+                })
+              )
             )}
           </View>
         )}
