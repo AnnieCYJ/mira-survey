@@ -393,6 +393,14 @@ export function buildHistorySeries(
 ): HistoryResult {
   if (key === 'cycle') return buildCycleSeries(cycleLog, ring, range, anchor);
 
+  // ★ 2026-10-16（用户实锤「尿酸详情页日周月年没有数据」）：
+  //   洞察页血液面板以 UI 别名 'ua' 打开详情页（BloodComponentPanel 入口则用 'uricAcid'），
+  //   而指标定义表 / MANUAL_KEYS_SET 的规范 key 是 'uricAcid'（hsKeyFor 才映射到数据层 'ua'）。
+  //   旧代码把 'ua' 直接喂给 resolveDef → 三张定义表都查不到 → emptyResult('未找到该指标定义')，
+  //   manual 分支也不命中（集合里是 'uricAcid'）→ 日/周/月/年四个视图全部无数据。
+  //   入口统一归一为 'uricAcid'，与 hsKeyFor('uricAcid') → 'ua' 形成闭环。
+  if (key === 'ua') key = 'uricAcid';
+
   const def = resolveDef(key);
   if (!def) return emptyResult(key, '未找到该指标定义');
 

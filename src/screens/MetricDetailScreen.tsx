@@ -458,12 +458,13 @@ export default function MetricDetailScreen() {
   }, [isHrvDay, anchor, hrvPart, hrvSleepWindow]);
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
-const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'bodyComposition'];
+  // ★ 2026-10-16：尿酸两个入口 key 都收——洞察页传 'ua'，BloodComponentPanel 传 'uricAcid'
+  const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid', 'ua', 'bodyComposition'];
   const showManualList = MANUAL_KEYS.includes(params.key);
   const manualHsKeyMap: Record<string, HSMetricKey> = {
     triglyceride: 'triglyceride', hdl: 'hdl', ldl: 'ldl',
     cholesterol: 'cholesterol', bloodFat: 'cholesterol',
-    uricAcid: 'ua', bloodSugar: 'glucose', glucose: 'glucose',
+    uricAcid: 'ua', ua: 'ua', bloodSugar: 'glucose', glucose: 'glucose',
     bpSys: 'bpSys', bpDia: 'bpDia',
   };
   const manualList: ManualMeasurement[] = showManualList
@@ -1118,7 +1119,7 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
                   const hh = String(d.getHours()).padStart(2, '0');
                   const mm2 = String(d.getMinutes()).padStart(2, '0');
                   const dateLabel = `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm2}`;
-                  const valStr = params.key === 'uricAcid' ? m.v.toFixed(1) : m.v.toFixed(2);
+                  const valStr = params.key === 'uricAcid' || params.key === 'ua' ? m.v.toFixed(1) : m.v.toFixed(2);
                   return (
                     <View key={`${m.t}-${i}`} style={{
                       flexDirection: 'row', alignItems: 'center',
@@ -1210,8 +1211,9 @@ const MANUAL_KEYS = ['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'u
         {params.key === 'glucose' || params.key === 'bloodSugar' ? <GlucoseSummaryCard /> : null}
         {/* ★ 2026-10-16：心率页——心率区间（MHR 五段环）+ 规则 AI 分析 */}
         {params.key === 'hr' ? <HrZoneSection anchor={anchor} openChat={openChat} /> : null}
-        {/* ★ 2026-10-16：尿酸页——参考区间条 + 分级 + 规则 AI 分析 */}
-        {params.key === 'ua' ? <UaReferenceCard anchor={anchor} openChat={openChat} /> : null}
+        {/* ★ 2026-10-16：尿酸页——参考区间条 + 分级 + 规则 AI 分析。
+            两个入口 key 都命中：洞察页 'ua' / BloodComponentPanel 'uricAcid' */}
+        {params.key === 'ua' || params.key === 'uricAcid' ? <UaReferenceCard anchor={anchor} openChat={openChat} /> : null}
         {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析。
             注意：四项同图的「日/周/月/年」趋势卡（LipidTrendCard）已作为主图渲染在页面顶部（续 6）。 */}
         {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidOverviewCard anchor={anchor} openChat={openChat} /> : null}
