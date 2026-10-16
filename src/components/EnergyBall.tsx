@@ -7,7 +7,7 @@ import {
   Text,
   useWindowDimensions,
 } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, RadialGradient, Stop, Path, Ellipse, ClipPath, LinearGradient, G } from 'react-native-svg';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { theme } from '../theme/theme';
 import { DEFAULT_MOOD, MOODS, type MoodIndex } from '../data/metrics';
@@ -46,6 +46,40 @@ const LABEL_TO_PHASE: Record<string, PhaseKey> = {
   排卵期: 'ovulation',
   黄体期: 'luteal',
 };
+
+/* ─────────────────────────────────────────────────────────────
+ * ★ 2026-10-16：圆环内部「能量水波」（首页圆环里面水流动）
+ * · 保留：外圈光晕 / 状态色环描边 / 中央呼吸光晕 / 四月相点公转 / 中央文字
+ * · 新增：环内浅水底色 + 双层正弦波无缝横移 + 水面呼吸升降 + 气泡上浮 + 玻璃体积
+ * · 水色由状态色（ringColor）派生，四等级自动同色
+ * · ★ 回退开关：把 WATER_RING_ENABLED 改 false 即恢复纯光晕圆环（其余代码不动）
+ *   （亦可 git checkout eefe0c8 -- src/components/EnergyBall.tsx 回到改造前）
+ * ───────────────────────────────────────────────────────────── */
+const WATER_RING_ENABLED = true;
+
+const AnimatedG = Animated.createAnimatedComponent(G);
+
+/** hex 混色：t=0 → a，t=1 → b（用于从状态色派生水色） */
+function mixHex(a: string, b: string, t: number): string {
+  const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
+  const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
+  const m = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+  return `#${m.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * 无缝正弦波路径：宽 = 2×画布宽，横向位移一个波长即循环（零跳变）。
+ * open=true 只取水面线（画白色高光描边用）。
+ */
+function wavePathD(amp: number, wl: number, phase: number, base: number, width: number, bottom: number, open: boolean): string {
+  let d = `M0 ${base.toFixed(2)}`;
+  for (let x = 0; x <= width; x += 3) {
+    const y = base + amp * Math.sin((x / wl) * Math.PI * 2 + phase);
+    d += ` L${x.toFixed(1)} ${y.toFixed(2)}`;
+  }
+  if (!open) d += ` L${width.toFixed(1)} ${bottom.toFixed(1)} L0 ${bottom.toFixed(1)} Z`;
+  return d;
+}
 
 export default function EnergyBall({ status, centerLabelOverride }: Props) {
   const { width: winW } = useWindowDimensions();
@@ -119,8 +153,73 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     outputRange: ['0deg', '360deg'],
   });
 
+  // ── 能量水波动效（2026-10-16）：全部 native driver，UI 线程运行 ──
+  // 几何按 ringR 比例缩放（与预览稿 breathing-wave-energy.html 同一套参数）
+  const drift1 = useRef(new Animated.Value(0)).current;   // 前层波横移 0 → -wl1
+  const drift2 = useRef(new Animated.Value(0)).current;   // 后层波横移 0 → -wl2
+  const bob = useRef(new Animated.Value(0)).current;      // 水面呼吸 0(低) → 1(高)
+  const rise1 = useRef(new Animated.Value(0)).current;    // 气泡 1..4 上浮进度
+  const rise2 = useRef(new Animated.Value(0)).current;
+  const rise3 = useRef(new Animated.Value(0)).current;
+  const rise4 = useRef(new Animated.Value(0)).current;
+
+  const water = useMemo(() => {
+    const s = ringR; // 以环半径为比例尺
+    const surf1 = c + s * 0.28;   // 前层波水面（环中心下方 28% 环半径）
+    const surf2 = c + s * 0.375;  // 后层波水面（更低更缓）
+    const bottom = c + s * 1.25;  // 路径收底（裁剪圈外即可）
+    const pathW = svgSize * 2;    // 2×画布宽，位移一个波长无缝循环
+    return {
+      wl1: s * 1.52,
+      wl2: s * 1.92,
+      bobAmp: s * 0.056,
+      riseH: s * 0.49,
+      d1: wavePathD(s * 0.056, s * 1.52, 0, surf1, pathW, bottom, false),
+      d1c: wavePathD(s * 0.056, s * 1.52, 0, surf1, pathW, bottom, true),
+      d2: wavePathD(s * 0.075, s * 1.92, 2.4, surf2, pathW, bottom, false),
+      bubs: [
+        { x: c - s * 0.54, y: c + s * 0.72, r: s * 0.024, dur: 3800, delay: 0 },
+        { x: c, y: c + s * 0.72, r: s * 0.03, dur: 5000, delay: 1200 },
+        { x: c + s * 0.51, y: c + s * 0.7, r: s * 0.019, dur: 4400, delay: 2400 },
+        { x: c + s * 0.71, y: c + s * 0.73, r: s * 0.026, dur: 6000, delay: 600 },
+      ],
+      gloss: { cx: c, cy: c - s * 0.98, rx: s * 1.2, ry: s * 0.58 },
+      shade: { cx: c, cy: c + s * 1.3, rx: s * 1.41, ry: s * 0.62 },
+      colors: {
+        bowlTop: mixHex(ringColor, '#FFFFFF', 0.92),
+        bowlMid: mixHex(ringColor, '#FFFFFF', 0.85),
+        bowlBot: mixHex(ringColor, '#FFFFFF', 0.78),
+        wTop: mixHex(ringColor, '#FFFFFF', 0.45),
+        wMid: mixHex(ringColor, '#FFFFFF', 0.15),
+        wBot: mixHex(ringColor, '#000000', 0.1),
+        w2Top: mixHex(ringColor, '#FFFFFF', 0.62),
+        w2Bot: mixHex(ringColor, '#FFFFFF', 0.38),
+      },
+    };
+  }, [c, ringR, svgSize, ringColor]);
+
+  const riseVals = [rise1, rise2, rise3, rise4];
+  const riseYs = riseVals.map((v) =>
+    v.interpolate({ inputRange: [0, 1], outputRange: [water.bobAmp, water.bobAmp - water.riseH] })
+  );
+  const riseOps = riseVals.map((v) =>
+    v.interpolate({ inputRange: [0, 0.14, 0.8, 1], outputRange: [0, 0.9, 0.45, 0] })
+  );
+
   useEffect(() => {
-    if (reducedMotion) { halo.setValue(0.45); orbit.setValue(0); return; }
+    if (reducedMotion) {
+      halo.setValue(0.45);
+      orbit.setValue(0);
+      // 水波静态降级：水面停在低位、气泡隐藏（不做循环）
+      drift1.setValue(0);
+      drift2.setValue(0);
+      bob.setValue(0);
+      rise1.setValue(0);
+      rise2.setValue(0);
+      rise3.setValue(0);
+      rise4.setValue(0);
+      return;
+    }
     const ease = Easing.inOut(Easing.ease);
 
     // ★ 呼吸光晕走**原生驱动**：把「改圆的半径」改成「缩放一个固定半径的圆」——
@@ -155,10 +254,57 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
     );
     orbitLoop.start();
 
+    // ── 能量水波（2026-10-16）：双波层无缝横移 + 水面呼吸升降 + 气泡错峰上浮 ──
+    const drift1Loop = Animated.loop(
+      Animated.timing(drift1, {
+        toValue: -water.wl1, // 位移恰为一个波长 → 循环零跳变
+        duration: 6400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const drift2Loop = Animated.loop(
+      Animated.timing(drift2, {
+        toValue: -water.wl2,
+        duration: 9800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const bobLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: 4000, easing: ease, useNativeDriver: true }), // 吸气涨
+        Animated.timing(bob, { toValue: 0, duration: 4000, easing: ease, useNativeDriver: true }), // 呼气落
+      ])
+    );
+    const bubLoops = riseVals.map((v, i) =>
+      Animated.loop(
+        Animated.timing(v, {
+          toValue: 1,
+          duration: water.bubs[i].dur,
+          delay: water.bubs[i].delay,
+          easing: Easing.in(Easing.sin),
+          useNativeDriver: true,
+        })
+      )
+    );
+    if (WATER_RING_ENABLED) {
+      drift1Loop.start();
+      drift2Loop.start();
+      bobLoop.start();
+      bubLoops.forEach((l) => l.start());
+    }
+
     return () => {
       haloLoop.stop();
       orbitLoop.stop();
+      drift1Loop.stop();
+      drift2Loop.stop();
+      bobLoop.stop();
+      bubLoops.forEach((l) => l.stop());
     };
+    // 注意：water / riseVals 不进 deps —— water 仅随 ringR/ringColor 变（波长只依赖 ringR，稳定），
+    // riseVals 每渲染都是新数组（放进去会害得循环被反复重启）。与原 effect 口径保持一致。
   }, [halo, orbit, reducedMotion]);
 
   // 中间彩色光晕：半径与透明度一起呼吸，范围明显更大、更弥散。
@@ -204,11 +350,67 @@ export default function EnergyBall({ status, centerLabelOverride }: Props) {
             <Stop offset="86%" stopColor={ringColor} stopOpacity="0.22" />
             <Stop offset="100%" stopColor={ringColor} stopOpacity="0" />
           </RadialGradient>
+          {/* ── 能量水波渐变（2026-10-16）：颜色由状态色派生，随等级自动切换 ── */}
+          {WATER_RING_ENABLED ? (
+            <>
+              <ClipPath key="waterClip" id="waterClip">
+                <Circle cx={c} cy={c} r={ringR} />
+              </ClipPath>
+              <RadialGradient key={`bowl-${ringColor}`} id="bowlGrad" cx="38%" cy="26%" r="85%">
+                <Stop offset="0%" stopColor={water.colors.bowlTop} />
+                <Stop offset="58%" stopColor={water.colors.bowlMid} />
+                <Stop offset="100%" stopColor={water.colors.bowlBot} />
+              </RadialGradient>
+              <LinearGradient key={`wg-${ringColor}`} id="waterGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={water.colors.wTop} />
+                <Stop offset="60%" stopColor={water.colors.wMid} />
+                <Stop offset="100%" stopColor={water.colors.wBot} />
+              </LinearGradient>
+              <LinearGradient key={`wg2-${ringColor}`} id="waterGrad2" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={water.colors.w2Top} />
+                <Stop offset="100%" stopColor={water.colors.w2Bot} />
+              </LinearGradient>
+              <RadialGradient id="waterGloss" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+                <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="waterShade" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor="#000000" stopOpacity="0.1" />
+                <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+              </RadialGradient>
+            </>
+          ) : null}
         </Defs>
 
         <Circle cx={c} cy={c} r={svgSize / 2} fill="url(#aura)" />
         {/* 四个状态点所在的环：跟随情绪色切换；无数据时统一紫色 */}
         <Circle cx={c} cy={c} r={ringR} stroke={ringColor} strokeWidth={2.8} fill="none" opacity={0.92} />
+
+        {/* ── 能量水波（2026-10-16）：环内水体，裁剪进圆环；中央光晕/月相点/文字层不变 ── */}
+        {WATER_RING_ENABLED ? (
+          <G clipPath="url(#waterClip)">
+            {/* 浅水底色（整环有水体质感） */}
+            <Circle cx={c} cy={c} r={ringR} fill="url(#bowlGrad)" />
+            {/* 后层波：更低更缓，拉出水的深度 */}
+            <AnimatedG transform={[{ translateX: drift2 }, { translateY: bob }]}>
+              <Path d={water.d2} fill="url(#waterGrad2)" opacity={0.78} />
+            </AnimatedG>
+            {/* 前层波 + 水面白色高光 */}
+            <AnimatedG transform={[{ translateX: drift1 }, { translateY: bob }]}>
+              <Path d={water.d1} fill="url(#waterGrad)" />
+              <Path d={water.d1c} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth={1.6} />
+            </AnimatedG>
+            {/* 气泡：错峰上浮渐隐 */}
+            {water.bubs.map((b, i) => (
+              <AnimatedG key={`bub-${i}`} transform={[{ translateY: riseYs[i] }]} opacity={riseOps[i]}>
+                <Circle cx={b.x} cy={b.y} r={b.r} fill="#FFFFFF" />
+              </AnimatedG>
+            ))}
+            {/* 玻璃高光 + 底部体积阴影 */}
+            <Ellipse cx={water.gloss.cx} cy={water.gloss.cy} rx={water.gloss.rx} ry={water.gloss.ry} fill="url(#waterGloss)" />
+            <Ellipse cx={water.shade.cx} cy={water.shade.cy} rx={water.shade.rx} ry={water.shade.ry} fill="url(#waterShade)" />
+          </G>
+        ) : null}
       </Svg>
 
       {/* 中央弥散彩色呼吸光晕：独立图层，整层 scale/opacity → 可走原生驱动。
