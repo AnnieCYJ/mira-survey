@@ -704,10 +704,11 @@ export default function StatusTrendDetailScreen() {
     <View style={{ flex: 1 }}>
       {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
       <BgGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer topFadeColor={theme.colors.bgTop}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>

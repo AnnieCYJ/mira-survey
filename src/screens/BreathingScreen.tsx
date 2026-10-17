@@ -64,10 +64,11 @@ export default function BreathingScreen() {
     <View style={{ flex: 1 }}>
       {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
       {/* v16：白底 */}
       <StatusBar barStyle="dark-content" />
 

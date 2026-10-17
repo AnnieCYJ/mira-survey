@@ -373,10 +373,11 @@ export default function BpDetailScreen() {
     <View style={{ flex: 1 }}>
       {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
       <BgGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
           <Text style={{ fontSize: 20 }}>‹</Text>
@@ -821,14 +822,14 @@ const styles = StyleSheet.create({
   modalInput: {
     borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 18, color: theme.colors.textTitle,
-    textAlign: 'center', backgroundColor: '#FAFAFA',
+    textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.10)',
   },
   modalSlash: { fontSize: 22, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
   modalErr: { fontSize: 12, color: mm.colors.roseDeep, marginTop: 10 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   modalBtn: {
     paddingHorizontal: 18, paddingVertical: 9, borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },
   modalBtnText: { fontSize: 14, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },

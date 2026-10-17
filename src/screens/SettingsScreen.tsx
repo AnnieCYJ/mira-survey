@@ -232,7 +232,8 @@ export default function SettingsScreen() {
     <View style={styles.root}>
       {/* v10：设置页背景全白（与首页/洞察页/日历页同款），原紫渐变收起 */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
       <ScreenContainer>

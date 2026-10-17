@@ -108,7 +108,8 @@ export default function ToolTopicScreen() {
   if (topic === 'sport') {
     return (
       <View style={styles.page}>
-        <LinearGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
         <View style={[styles.col, { paddingTop: theme.space.xl + insets.top }]}>
           <Animated.ScrollView
             ref={scrollRef}
@@ -174,8 +175,9 @@ export default function ToolTopicScreen() {
 
   return (
     <View style={styles.page}>
-      <LinearGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
-      <ScreenContainer scrollY={scrollY} scrollRef={scrollRef} topFadeColor={theme.colors.textWhite}>
+      <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
+      <ScreenContainer scrollY={scrollY} scrollRef={scrollRef} topFadeColor={theme.colors.bgTop}>
         {/* 返回按钮 */}
         {/* 头部：返回圈 + 标题同行（与呼吸冥想页同款） */}
         <View style={styles.head}>

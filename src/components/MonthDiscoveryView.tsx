@@ -581,8 +581,8 @@ export default function MonthDiscoveryView({
     setCellW(w);
   };
 
-  /** 单元格：预览稿口径 aspect 1 : 1.32（2026-10-12 用户「格子稍微大一点」）；透明底（无灰框），仅今天蜜黄 */
-  const cellH = cellW * 1.32;
+  /** 单元格：预览稿口径 aspect 1 : 1.18（2026-10-17 用户「日历卡片再小一点」：1.32 → 1.18）；透明底（无灰框），仅今天蜜黄 */
+  const cellH = cellW * 1.18;
   // ★ 2026-10-14：照片占格宽比例 0.92 → 0.95，让格内图片更饱满（堆叠错位/旋转仍保留层次感）
   const photo = Math.max(22, cellW * 0.95);
 

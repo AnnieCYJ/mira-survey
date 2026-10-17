@@ -67,7 +67,7 @@ export default function CalmWaveHome() {
   // ★ mira-ocean：视频+深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
-    return () => StatusBar.setBarStyle('dark-content', true);
+    return () => StatusBar.setBarStyle('light-content', true);
   }, []));
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
@@ -165,6 +165,10 @@ export default function CalmWaveHome() {
             <Text style={s.gUpd}>更新于 11:30</Text>
           </View>
         </View>
+        {/* ★ mira-ocean（2026-10-17 用户）：今日状态 = 可进详情，环旁加向右箭头提示 */}
+        <Svg width={13} height={22} viewBox="0 0 13 22" style={{ marginLeft: 2 }}>
+          <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
       </TouchableOpacity>
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
@@ -243,7 +247,9 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   gauge: { width: 270, height: 144 },
   gaugeCenter: {

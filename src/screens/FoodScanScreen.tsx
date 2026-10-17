@@ -293,7 +293,8 @@ export default function FoodScanScreen() {
 
   return (
     <View style={styles.page}>
-      <LinearGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
       {/* 固定列结构：头部 + 内容（自己滚）+ 底栏（钉死屏幕底）。
        *  不再包 ScreenContainer——它自带外层 ScrollView，底栏会被外层滚动拖着走，永远钉不住。 */}
       <View style={[styles.col, { paddingTop: theme.space.screen + insets.top }]}>

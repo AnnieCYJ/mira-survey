@@ -163,7 +163,7 @@ export default function MiraAIHomeScreen() {
   // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
-    return () => StatusBar.setBarStyle('dark-content', true);
+    return () => StatusBar.setBarStyle('light-content', true);
   }, []));
 
   const k = questionKey(ringState);

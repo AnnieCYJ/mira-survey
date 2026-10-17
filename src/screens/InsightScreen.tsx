@@ -182,7 +182,7 @@ export default function InsightScreen() {
   //   （其余白底 tab 尚未 ocean 化，不能全局改 App.tsx 的 StatusBar）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
-    return () => StatusBar.setBarStyle('dark-content', true);
+    return () => StatusBar.setBarStyle('light-content', true);
   }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;

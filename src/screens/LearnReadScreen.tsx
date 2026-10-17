@@ -49,8 +49,9 @@ export default function LearnReadScreen() {
 
   return (
     <View style={styles.page}>
-      <LinearGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
-      <ScreenContainer topFadeColor={theme.colors.textWhite}>
+      <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
+      <ScreenContainer topFadeColor={theme.colors.bgTop}>
         {/* 顶部返回 + 居中标题 */}
         <View style={styles.head}>
           <TouchableOpacity

@@ -210,8 +210,9 @@ export default function EcgDetailScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <BgGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
-      <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
+      <BgGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
+      <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
         <View style={styles.head}>
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
             <Text style={{ fontSize: 20 }}>‹</Text>
