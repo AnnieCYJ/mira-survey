@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Animated, ScrollView, Pressable,
-  useWindowDimensions,
+  useWindowDimensions, StatusBar,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -250,6 +250,11 @@ function ToolIcon({ path, size, color }: { path: string; size: number; color: st
 }
 
 export default function MeditationScreen() {
+  // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('dark-content', true);
+  }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -330,12 +335,13 @@ export default function MeditationScreen() {
 
   return (
     <View style={styles.page}>
-      {/* 工具页背景全白（与首页/洞察页/日历页同款） */}
+      {/* ★ mira-ocean（2026-10-17）：工具页背景由白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Tools</Text>
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
@@ -421,7 +427,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     gap: theme.sp(1.5), marginTop: theme.sp(2.5),
   },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(31,29,26,0.18)' },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.25)' },
   dotOn: { width: 14, backgroundColor: mm.colors.ink },
   page: { flex: 1 },
   title: {

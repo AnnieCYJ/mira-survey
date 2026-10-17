@@ -15,7 +15,7 @@
  * 点击问题 / 发送文字 → push VoiceChat（ChatSheet）带初始问题进入对话（语音输入走 tab bar 长按 bot）。
  * 跑马灯在页面失焦（跳转到问答页时）自动暂停，转场更顺、不空转。
  */
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,9 +24,10 @@ import {
   ScrollView,
   TextInput,
   Animated,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -159,6 +160,12 @@ export default function MiraAIHomeScreen() {
   const { stop } = useSpeech();
   const [draft, setDraft] = useState('');
 
+  // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('dark-content', true);
+  }, []));
+
   const k = questionKey(ringState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rows = useMemo(() => generateQuestions(ringState, 4), [k]);
@@ -188,7 +195,13 @@ export default function MiraAIHomeScreen() {
 
   return (
     <View style={styles.root}>
-      {/* v16：整页白底（同首页/洞察页），AI 语义紫只保留在光球上 */}
+      {/* ★ mira-ocean（2026-10-17）：整页由白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
+      <LinearGradient
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
 
       {/* 顶部：左对齐标题 + 1.3 徽章 / 副标题；右上喇叭。无返回键 */}
       <View style={[styles.header, { paddingTop: insets.top + theme.sp(2) }]}>
@@ -291,7 +304,8 @@ export default function MiraAIHomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    // ★ mira-ocean：底色由根渐变铺（见 render 顶部 LinearGradient），此处留深蓝紫兜底
+    backgroundColor: '#2B3564',
   },
   // —— 顶部 header（白底 + 墨字）——
   header: {

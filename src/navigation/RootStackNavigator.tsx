@@ -2,9 +2,10 @@ import React from 'react';
 // ★ 2026-10-08 交互优化（A2）：JS createStackNavigator → createNativeStackNavigator。
 //   转场与侧滑返回由 iOS 原生驱动，不再跑 JS interpolator（CardStyleInterpolators 在
 //   native stack 下不可用，默认转场即原生横滑，且更跟手）。
-// ★ 同步配合 A1：所有推入页由 transparent 改为不透明白底（theme.colors.cardBg）——
+// ★ 同步配合 A1：所有推入页由 transparent 改为不透明实底——
 //   转场期间不再合成背后 1971 行的 TodayScreen（VoiceChat 此前已验证该改法「更丝滑」）。
-//   ★ 2026-10-08（用户口径）：当前主题为白底，不用根渐变紫——不透明底色一律 cardBg 纯白。
+//   ★ mira-ocean（2026-10-17）：主题由白底改深海，不透明底色由 cardBg 改 bgBottom 深蓝紫实底，
+//   页面内部卡片走玻璃 token（mm.colors.cardBg = 白 13%），转场不合成下层、深底统一。
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { theme } from '../theme/theme';
 import BottomTabNavigator from './BottomTabNavigator';
@@ -83,64 +84,64 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="MetricDetail"
         component={MetricDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="CycleCalendar"
         component={CycleCalendarScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="StatusTrendDetail"
         component={StatusTrendDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="BodyCompositionHistory"
         component={BodyCompositionHistoryScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
-      <Stack.Screen name="SleepDetail" component={SleepDetailScreen} options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }} />
+      <Stack.Screen name="SleepDetail" component={SleepDetailScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
       <Stack.Screen
         name="EcgDetail"
         component={EcgDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="BpDetail"
         component={BpDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="EnergyDetail"
         component={EnergyDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="EmotionCognitiveDetail"
         component={EmotionCognitiveDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="HealthAgeDetail"
         component={HealthAgeDetailScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="EmotionLog"
         component={EmotionLogScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       {/* 情绪干预四方案（工具页「情绪调节」入口）：该屏 ScreenContainer 自带 cardBg 实底 */}
       <Stack.Screen
         name="EmotionIntervene"
         component={EmotionInterveneHome}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="Breathing"
         component={BreathingScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       {/* FoodScan 自铺 textWhite 实底渐变（不包 ScreenContainer，底栏要钉住） */}
       <Stack.Screen
@@ -151,14 +152,14 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="ToolTopic"
         component={ToolTopicScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="LearnRead"
         component={LearnReadScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ contentStyle: { backgroundColor: theme.colors.cardBg } }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
     </Stack.Navigator>
   );
 }

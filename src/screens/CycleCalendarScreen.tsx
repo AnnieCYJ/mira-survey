@@ -348,12 +348,13 @@ export default function CycleCalendarScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
+      {/* ★ mira-ocean（2026-10-17）：由全白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
       <BgGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer topFadeColor={theme.colors.textWhite} innerStyle={styles.pageWide}>
+    <ScreenContainer topFadeColor={theme.colors.bgTop} innerStyle={styles.pageWide}>
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
