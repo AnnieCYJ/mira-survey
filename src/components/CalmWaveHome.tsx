@@ -74,9 +74,11 @@ export default function CalmWaveHome() {
   // chips：2×3 网格（单卡宽 = (屏宽 − 左右留白 − 2×gap) / 3）
   const chipW = (width - 32 - 2 * CHIP_GAP) / 3;
   const chipsH = CHIP_H * 2 + CHIP_GAP;
-  // 半圆环贴 chips 下缘；AI 卡让出 tab 栏（透明玻璃 56 高 + 20 间距）
+  // 半圆环贴 chips 下缘；AI 卡贴在真 tab 上方
   const gaugeTop = transitionY - 10 + chipsH + 12;
-  const aiBottom = insets.bottom + 112; // ★ 2026-10-17 用户：分析/建议卡再往下放
+  // ★ 2026-10-17 用户：建议卡就在 tab 上方（tab 胶囊顶 = insets.bottom + 56，再留 12 间距）。
+  //   注意：absolute 定位 bottom 值越大卡片越高——上一轮 76→112 是改反了方向。
+  const aiBottom = insets.bottom + 68;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
