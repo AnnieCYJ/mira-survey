@@ -9,7 +9,7 @@
     --ink:#FFFFFF; --sub:rgba(255,255,255,.72); --faint:rgba(255,255,255,.55);
     --limeMid:#BCCB62; --limeCore:#D5E384; --limeDeep:#3F4A12;
     --glassBg:rgba(255,255,255,.13); --glassBd:rgba(255,255,255,.28);
-    --deep:#0D3A5A;
+    --deep:#2B546F;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,"SF Pro SC","PingFang SC",sans-serif;background:#0B1E2E;
@@ -23,31 +23,28 @@
   /* ═══ 全屏海浪视频（Calm 式） ═══ */
   .wave{position:absolute;inset:0;z-index:0}
   .wave video{width:100%;height:100%;object-fit:cover;display:block}
-  /* 渐变：海浪清晰占上 1/3，34% 起完全沉入纯深蓝底（下方不再透出海浪），过渡柔和 */
+  /* 渐变：海浪清晰占上 1/3，34% 起完全沉入 Calm 式钢蓝底（下方不再透出海浪），过渡柔和 */
   .fade{position:absolute;inset:0;z-index:1;pointer-events:none;
-    background:linear-gradient(180deg, rgba(13,58,90,0) 0%, rgba(13,58,90,0) 14%, rgba(13,58,90,.42) 24%, rgba(10,44,68,.92) 30%, #0A2C44 34%, #0A2C44 100%)}
+    background:linear-gradient(180deg, rgba(43,84,111,0) 0%, rgba(43,84,111,0) 14%, rgba(43,84,111,.42) 24%, rgba(36,72,96,.92) 30%, #2B546F 34%, #2B546F 100%)}
 
   .pad{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;padding:0 16px}
 
-  /* ═══ 顶部：头像 / Logo / 铃铛（浮在视频上） ═══ */
+  /* ═══ 顶部：用户账户 / 今日状态 / 设置（浮在海浪上，Calm 式） ═══ */
   .head{display:flex;align-items:center;justify-content:space-between;padding-top:16px}
   .hIcon{width:38px;height:38px;border-radius:999px;background:rgba(255,255,255,.18);
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.30);
-    display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff}
-  .logo{font-family:"Snell Roundhand","Brush Script MT",cursive;font-size:27px;color:#fff;
-    text-shadow:0 1px 12px rgba(10,44,68,.35);letter-spacing:1px}
-  .avatar{width:38px;height:38px;border-radius:999px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);
-    display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#fff;
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+    display:flex;align-items:center;justify-content:center;color:#fff}
+  .hIcon svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .titleC{font-size:17px;font-weight:600;color:#fff;text-shadow:0 1px 12px rgba(20,44,64,.4);letter-spacing:.5px}
 
-  /* ═══ 白色半圆环（纯蓝色背景内，海浪下方） ═══ */
-  .contentZone{margin-top:246px;display:flex;flex-direction:column}
-  .gaugeZone{display:flex;justify-content:center;margin-bottom:10px}
-  .gauge{position:relative;width:210px;height:110px}
+  /* ═══ 渐变区（Calm 钢蓝底）：chips 在上 → 半圆环居中 → AI 卡沉底 ═══ */
+  .contentZone{margin-top:184px;display:flex;flex-direction:column;gap:11px;padding-bottom:92px}
+  .gaugeZone{display:flex;justify-content:center;margin:2px 0}
+  .gauge{position:relative;width:206px;height:110px}
   .gauge svg{position:absolute;inset:0;overflow:visible}
   .gaugeCenter{position:absolute;left:0;right:0;bottom:-6px;display:flex;flex-direction:column;align-items:center}
-  .gLabel{font-size:25px;font-weight:600;color:#fff;text-shadow:0 2px 14px rgba(10,44,68,.45)}
-  .gVal{font-size:11px;color:var(--sub);margin-top:6px;font-weight:500}
+  .gBig{font-size:34px;font-weight:700;color:#fff;line-height:1;text-shadow:0 2px 14px rgba(20,44,64,.45)}
+  .gLabel{font-size:12px;color:var(--sub);margin-top:5px;font-weight:500}
   .gUpd{font-size:10.5px;color:var(--faint);margin-top:2px}
 
   /* ═══ Oura 式透明玻璃通用 ═══ */
@@ -56,15 +53,8 @@
     box-shadow:0 14px 34px -18px rgba(4,24,40,.5), inset 0 1px 0 rgba(255,255,255,.28)}
 
   /* ═══ Oura 式小卡片（细线 SVG 图标 + 指标色圆底） ═══ */
-  .cardsZone{margin-top:auto;display:flex;flex-direction:column;gap:11px;padding-bottom:92px}
   .chips{display:flex;gap:9px}
-  .chip{flex:1;height:92px;border-radius:18px;padding:10px 6px 8px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
-  .iconDot{width:32px;height:32px;border-radius:999px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
-  .iconDot svg{width:17px;height:17px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-  .dotSleep{background:rgba(146,126,240,.34)}
-  .dotReady{background:rgba(108,150,244,.34)}
-  .dotStress{background:rgba(240,132,110,.32)}
-  .dotAct{background:rgba(244,158,96,.32)}
+  .chip{flex:1;height:76px;border-radius:18px;padding:11px 6px 9px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
   .chipLabel{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.2px}
   .chipValRow{display:flex;align-items:baseline;margin-top:3px}
   .chipVal{font-size:17px;font-weight:700;color:#fff}
@@ -73,7 +63,7 @@
   .chipTag{font-size:9.5px;color:var(--faint);margin-top:2px;opacity:.85}
 
   /* ═══ AI 分析（Oura 配色：深板岩玻璃 + 长春花蓝点缀） ═══ */
-  .aiCard{padding:12px 15px 11px;background:rgba(9,28,48,.52);border:1px solid rgba(255,255,255,.17);
+  .aiCard{margin-top:auto;padding:12px 15px 11px;background:rgba(9,28,48,.52);border:1px solid rgba(255,255,255,.17);
     backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);
     box-shadow:0 14px 34px -18px rgba(3,16,30,.6), inset 0 1px 0 rgba(255,255,255,.16)}
   .aiHead{display:flex;align-items:center;gap:9px;margin-bottom:6px}
@@ -118,56 +108,54 @@
     <div class="fade"></div>
 
     <div class="pad">
-      <!-- 渐变区：半圆环 + chips + AI 分析（视频上不放任何文字/浮层） -->
+      <!-- 顶部：用户账户 / 今日状态 / 设置 -->
+      <div class="head">
+        <div class="hIcon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+        <div class="titleC">今日状态</div>
+        <div class="hIcon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/></svg></div>
+      </div>
+
+      <!-- 渐变区：chips 在上 → 半圆环居中 → AI 卡沉底 -->
       <div class="contentZone">
-        <!-- 白色半圆环（坐落蓝色渐变内） -->
+        <div class="chips">
+          <div class="chip glass">
+            <div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div>
+          </div>
+          <div class="chip glass">
+            <div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div>
+          </div>
+          <div class="chip glass">
+            <div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div>
+          </div>
+          <div class="chip glass">
+            <div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div>
+          </div>
+        </div>
+
+        <!-- 白色半圆环（渐变中部） -->
         <div class="gaugeZone">
           <div class="gauge">
             <svg viewBox="0 0 240 128">
-              <!-- 轨道：半圆弧 -->
+              <!-- 轨道：细半圆弧 -->
               <path d="M 20 120 A 100 100 0 0 1 220 120" fill="none"
-                    stroke="rgba(255,255,255,.32)" stroke-width="7" stroke-linecap="round"/>
-              <!-- 进度：82% -->
+                    stroke="rgba(255,255,255,.22)" stroke-width="5" stroke-linecap="round"/>
+              <!-- 进度：82%（Oura 式细弧） -->
               <path d="M 20 120 A 100 100 0 0 1 220 120" fill="none"
-                    stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"
+                    stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"
                     stroke-dasharray="258 314"/>
-              <!-- 月相点：满月在弧顶 -->
-              <circle cx="120" cy="20" r="7" fill="#F5EFDD" stroke="rgba(255,255,255,.6)" stroke-width="1.5"/>
+              <!-- 进度末端白点 + 光晕 -->
+              <circle cx="204.4" cy="66.4" r="9" fill="rgba(255,255,255,.20)"/>
+              <circle cx="204.4" cy="66.4" r="4.5" fill="#FFFFFF"/>
             </svg>
             <div class="gaugeCenter">
+              <div class="gBig">82</div>
               <div class="gLabel">状态良好</div>
-              <div class="gVal">状态值：82</div>
               <div class="gUpd">更新于 11:30</div>
             </div>
           </div>
         </div>
 
-        <div class="cardsZone">
-          <div class="chips">
-            <div class="chip glass">
-              <div class="iconDot dotSleep"><svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg></div>
-              <div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div>
-            </div>
-            <div class="chip glass">
-              <div class="iconDot dotReady"><svg viewBox="0 0 24 24"><path d="M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z"/><path d="M9.5 13.5 11 12l1.5 1.5L14 12"/></svg></div>
-              <div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div>
-            </div>
-            <div class="chip glass">
-              <div class="iconDot dotStress"><svg viewBox="0 0 24 24"><path d="M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6"/></svg></div>
-              <div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div>
-            </div>
-            <div class="chip glass">
-              <div class="iconDot dotAct"><svg viewBox="0 0 24 24"><path d="M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z"/><path d="M8 17.5h8M9.5 20.5h5"/></svg></div>
-              <div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div>
-            </div>
-          </div>
-
         <div class="aiCard glass">
-          <div class="aiHead">
-            <div class="ava">✦</div>
-            <div class="tt">Mira 分析</div>
-            <div class="mark">›</div>
-          </div>
           <div class="analysis">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
           <div class="sug">
             <img class="th" src="/src/assets/card_relax.jpg" alt="">
@@ -175,7 +163,6 @@
             <div class="go">去呼吸 ›</div>
           </div>
         </div>
-      </div>
       </div>
     </div>
 
