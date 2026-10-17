@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 血压/血糖 15分钟分桶柱状预览</title>
+<style>
+  :root{
+    --ink:#1F1D1A; --inkSoft:#5C574F; --inkFaint:#706A61; --textSub:#5F5F74;
+    --emptyFill:#F6F4F1; --grid:rgba(120,120,180,0.10); --cardBg:#FFFFFF;
+    --roseCore:#F2A3C6; --roseDeep:#C9598A; --purpleCore:#9D8AF0; --honeyCore:#F0C46E;
+    --skyCore:#7EA6F8; --success:#5FB98A; --bg:#EFEBE6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Segoe UI",Roboto,sans-serif;
+    color:var(--ink); display:flex; justify-content:center; padding:28px 12px;
+  }
+  .phone{ width:380px; background:#FBFAF8; border-radius:34px; padding:14px;
+    box-shadow:0 18px 50px rgba(40,30,50,.18); border:1px solid rgba(0,0,0,.04); }
+  .card{ background:var(--cardBg); border-radius:22px; padding:16px 14px 14px;
+    box-shadow:0 6px 18px rgba(40,30,50,.06); margin-bottom:14px; }
+  .card-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
+  .metric-title{ font-size:17px; font-weight:700; letter-spacing:.2px; }
+  .metric-sub{ font-size:11.5px; color:var(--textSub); }
+  .latest{ font-size:12px; color:var(--inkSoft); margin-top:1px; }
+  .latest b{ color:var(--ink); font-size:13px; }
+  .toggle{ display:inline-flex; background:#F1EEE9; border-radius:11px; padding:3px; margin:10px 0 4px; gap:2px; }
+  .toggle button{ border:0; background:transparent; font-size:11.5px; color:var(--inkFaint);
+    padding:5px 11px; border-radius:9px; cursor:pointer; font-weight:600; }
+  .toggle button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.10); }
+  .legend{ display:flex; flex-wrap:wrap; gap:14px 16px; margin-top:8px; font-size:11px; color:var(--inkSoft); }
+  .legend i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  .legend .ln{ width:16px; height:2px; border-radius:1px; margin-right:6px; vertical-align:3px; background:var(--ink); }
+  .note{ font-size:11px; color:var(--textSub); line-height:1.55; margin-top:10px;
+    background:#FAF8F5; border-radius:10px; padding:9px 11px; }
+  .note b{ color:var(--ink); }
+  svg{ display:block; width:100%; height:auto; }
+  .foot{ text-align:center; font-size:10.5px; color:var(--inkFaint); margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="phone" id="phone"></div>
+
+<script>
+// ---------- 颜色 ----------
+const C = {
+  ink:'#1F1D1A', inkFaint:'#706A61', textSub:'#5F5F74', emptyFill:'#F6F4F1',
+  grid:'rgba(120,120,180,0.10)', cardBg:'#FFFFFF',
+  roseCore:'#F2A3C6', purpleCore:'#9D8AF0', honeyCore:'#F0C46E',
+  skyCore:'#7EA6F8', success:'#5FB98A'
+};
+
+// ---------- 确定性随机（稳定预览） ----------
+let _seed = 1234567;
+function rnd(){ _seed = (_seed*1103515245 + 12345) & 0x7fffffff; return _seed/0x7fffffff; }
+function noise(a,b){ return a + (b-a)*rnd(); }
+
+// ---------- 生成 96 个 15 分钟槽的 mock 数据 ----------
+const NOW_MIN = 18*60+30; // 「现在」= 18:30，之后的槽视为未来不画
+function makeBP(){
+  const slots=[];
+  for(let i=0;i<96;i++){
+    const m=i*15;
+    if(m>NOW_MIN){ slots.push({t:m,sys:null,dia:null}); continue; }
+    // 夜间(0-6,22-24)偏低，白天偏高；约 18% 无测量
+    const night = (m<6*60)||(m>=22*60);
+    const baseSys = night?112:126, baseDia = night?70:80;
+    const nulled = rnd()<0.16;
+    if(nulled){ slots.push({t:m,sys:null,dia:null}); continue; }
+    slots.push({ t:m, sys: noise(baseSys-6,baseSys+9), dia: noise(baseDia-4,baseDia+6) });
+  }
+  return slots;
+}
+function makeGLU(){
+  const slots=[];
+  const spike=(m)=>{ // 三餐前后抬升
+    const near=(c)=>Math.abs(m-c)<=45;
+    let v=5.0;
+    if(near(8*60)) v=7.9; else if(near(12*60+30)) v=7.3;
+    else if(near(18*60+30)) v=7.6;
+    if(m>=23*60||m<6*60) v=4.9;
+    return v;
+  };
+  for(let i=0;i<96;i++){
+    const m=i*15;
+    if(m>NOW_MIN){ slots.push({t:m,v:null}); continue; }
+    const nulled = rnd()<0.14;
+    if(nulled){ slots.push({t:m,v:null}); continue; }
+    slots.push({ t:m, v: Math.max(3.8, spike(m)+noise(-0.4,0.4)) });
+  }
+  return slots;
+}
+
+// ---------- 工具 ----------
+function niceTicks(lo,hi,maxCount=5){
+  const STEPS=[1,2,5,10,20,25,50,100,200,250,500,1000];
+  const range=Math.max(1e-6,hi-lo);
+  const cnt=(s)=>Math.floor(range/s)+1;
+  let step=STEPS[STEPS.length-1];
+  for(const c of STEPS){ if(cnt(c)<=maxCount){step=c;break;} }
+  const out=[]; for(let v=Math.ceil(lo);v<=hi;v+=step) out.push(v); return out;
+}
+function fmtClock(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
+function smoothPath(pts){
+  if(pts.length<2) return '';
+  let d='M '+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
+    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+    d+=' C '+c1x.toFixed(1)+' '+c1y.toFixed(1)+' '+c2x.toFixed(1)+' '+c2y.toFixed(1)+' '+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
+  }
+  return d;
+}
+
+// ---------- 核心：渲染一个 24h 图表 ----------
+function renderChart(opts){
+  const {kind, title, sub, slots, yMin, yMax, series, bands, note, mode, spots} = opts;
+  const W=352, PAD_L=30, PAD_R=12, PAD_T=14, AXIS_H=20, plotH=190;
+  const H=PAD_T+plotH+AXIS_H;
+  const plotW=W-PAD_L-PAD_R, baseY=PAD_T+plotH, t0=0, span=24*60;
+  const xAt=(m)=>PAD_L+(plotW*m)/span;
+  const yAt=(v)=>PAD_T+plotH*(1-(v-yMin)/(yMax-yMin));
+
+  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  // 参考带（血糖）
+  if(bands){
+    for(const b of bands){
+      const y1=yAt(b.hi), y2=yAt(b.lo);
+      svg+=`<rect x="${PAD_L}" y="${y1}" width="${plotW}" height="${Math.max(0,y2-y1)}" fill="${b.color}" opacity="0.12"/>`;
+    }
+  }
+  // 30 分钟次刻度（无文字）
+  for(let m=0;m<=24*60;m+=30){
+    if(m%60===0) continue;
+    const x=xAt(m);
+    svg+=`<line x1="${x}" y1="${PAD_T}" x2="${x}" y2="${baseY}" stroke="${C.grid}" stroke-width="1" opacity="0.5"/>`;
+  }
+  // 整点主刻度 + 文字
+  for(let h=0;h<=24;h+=2){
+    const x=xAt(h*60);
+    const anchor = h===0?'start':(h===24?'end':'middle');
+    svg+=`<line x1="${x}" y1="${PAD_T}" x2="${x}" y2="${baseY}" stroke="${C.grid}" stroke-width="1"/>`;
+    svg+=`<text x="${x}" y="${H-5}" font-size="9.5" fill="${C.textSub}" text-anchor="${anchor}">${h}:00</text>`;
+  }
+  // Y 轴刻度
+  for(const g of niceTicks(yMin,yMax)){
+    const y=yAt(g); if(y<PAD_T-1||y>baseY+1) continue;
+    svg+=`<text x="${PAD_L-5}" y="${y+3}" font-size="9.5" fill="${C.textSub}" text-anchor="end">${g}</text>`;
+  }
+  svg+=`<line x1="${PAD_L}" y1="${baseY}" x2="${PAD_L+plotW}" y2="${baseY}" stroke="${C.grid}" stroke-width="1"/>`;
+
+  if(mode==='bar'){
+    const slotW=plotW/96;
+    const barW=Math.max(2, Math.min(24, slotW*0.6));
+    let meanPts=[];
+    for(const s of slots){
+      if(s.t>NOW_MIN) continue;
+      const isNull = series.every(se=> s[se.key]==null);
+      const x=xAt(s.t)-barW/2;
+      if(isNull){
+        svg+=`<rect x="${x}" y="${baseY-2}" width="${barW}" height="2" rx="1" fill="${C.emptyFill}"/>`;
+        continue;
+      }
+      // 画每个 series（BP 两根并排）
+      const n=series.length, inner=(barW- (n>1? (n-1)*1.5:0))/n;
+      series.forEach((se,idx)=>{
+        const v=s[se.key]; if(v==null) return;
+        const bx=x+(idx*(inner+1.5));
+        const y=yAt(v);
+        svg+=`<rect x="${bx}" y="${y}" width="${inner}" height="${Math.max(2,baseY-y)}" rx="2" fill="${se.color}"/>`;
+      });
+    }
+    // 均值线（取第一个 series 的均值）
+    const se0=series[0].key;
+    const vals=slots.filter(s=>s.t<=NOW_MIN && s[se0]!=null).map(s=>s[se0]);
+    const mean=vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
+    // 趋势：每段 15 分钟均值
+    let seg=[]; const mp=[];
+    for(let i=0;i<96;i+=4){ // ~24 段
+      const win=slots.slice(i,i+4).filter(s=>s.t<=NOW_MIN&&s[se0]!=null);
+      if(!win.length){ if(seg.length>=2) mp.push(seg); seg=[]; continue; }
+      const avg=win.reduce((a,b)=>a+b[se0],0)/win.length;
+      seg.push({x:xAt(win[0].t),y:yAt(avg)});
+    }
+    if(seg.length>=2) mp.push(seg);
+    if(mp.length){
+      mp.forEach(p=>{
+        const d=smoothPath(p);
+        svg+=`<path d="${d}" fill="none" stroke="${C.cardBg}" stroke-width="${2.4+2.4}" stroke-linejoin="round" stroke-linecap="round"/>`;
+        svg+=`<path d="${d}" fill="none" stroke="${C.ink}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+      });
+    }
+  } else if(mode==='pro'){
+    // 逐次读数折线（建议）—— 点测类指标的专用展示
+    series.forEach(se=>{
+      const pts=(spots||[]).filter(p=>p[se.key]!=null).map(p=>({x:xAt(p.t),y:yAt(p[se.key])}));
+      if(pts.length>=2){
+        let d='M '+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
+        for(let i=1;i<pts.length;i++) d+=' L '+pts[i].x.toFixed(1)+' '+pts[i].y.toFixed(1);
+        svg+=`<path d="${d}" fill="none" stroke="${se.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/>`;
+      }
+      pts.forEach(p=> svg+=`<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="${C.cardBg}" stroke="${se.color}" stroke-width="2.4"/>`);
+    });
+  } else {
+    // 连续折线模式（现状）
+    series.forEach(se=>{
+      const pts=slots.filter(s=>s.t<=NOW_MIN && s[se.key]!=null).map(s=>({x:xAt(s.t),y:yAt(s[se.key])}));
+      if(pts.length<2) return;
+      const d=smoothPath(pts);
+      svg+=`<path d="${d}" fill="none" stroke="${se.color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" opacity="0.92"/>`;
+      pts.forEach(p=> svg+=`<circle cx="${p.x}" cy="${p.y}" r="2.1" fill="${se.color}"/>`);
+    });
+  }
+  svg+='</svg>';
+
+  // 卡头
+  let html=`<div class="card" data-k="${kind}">`;
+  html+=`<div class="card-head"><div class="metric-title">${title}</div><div class="metric-sub">${sub}</div></div>`;
+  html+=`<div class="latest">${opts.latest}</div>`;
+  html+=`<div class="toggle" data-k="${kind}">`
+      + `<button data-m="bar" class="${mode==='bar'?'on':''}">15分钟柱状（不推荐）</button>`
+      + `<button data-m="line" class="${mode==='line'?'on':''}">连续折线（现状）</button>`;
+  if(spots) html+=`<button data-m="pro" class="${mode==='pro'?'on':''}">逐次读数（建议）</button>`;
+  html+=`</div>`;
+  html+=svg;
+  html+=`<div class="legend">`;
+  series.forEach(se=> html+=`<span><i style="background:${se.color}"></i>${se.label}</span>`);
+  if(mode==='bar') html+=`<span><span class="ln"></span>全天均值</span>`;
+  html+=`</div>`;
+  if(bands){
+    html+=`<div class="legend">`;
+    bands.forEach(b=> html+=`<span><i style="background:${b.color};opacity:.5"></i>${b.label}</span>`);
+    html+=`</div>`;
+  }
+  html+=`<div class="note">${note}</div>`;
+  html+=`</div>`;
+  return html;
+}
+
+// ---------- 构建页面 ----------
+const bp=makeBP(), glu=makeGLU();
+const bpLatest = (()=>{ for(let i=95;i>=0;i--){ if(bp[i].sys!=null) return bp[i]; } return null; })();
+const gluLatest= (()=>{ for(let i=95;i>=0;i--){ if(glu[i].v!=null) return glu[i]; } return null; })();
+
+const sections=[
+  {
+    kind:'bp',
+    title:'血压', sub:'收缩压 / 舒张压 · 日',
+    latest:`最新 <b>${bpLatest? Math.round(bpLatest.sys):'—'}/${bpLatest? Math.round(bpLatest.dia):'—'}</b> mmHg（${bpLatest?fmtClock(bpLatest.t):'—'}）`,
+    slots:bp, yMin:55, yMax:160, mode:'pro',
+    series:[
+      {key:'sys',label:'收缩压',color:C.roseCore},
+      {key:'dia',label:'舒张压',color:C.purpleCore},
+    ],
+    bands:[
+      {label:'正常 <120',lo:55,hi:120,color:C.success},
+      {label:'升高 120–139',lo:120,hi:140,color:C.honeyCore},
+      {label:'偏高 ≥140',lo:140,hi:160,color:C.roseCore},
+    ],
+    spots:[
+      {t:7*60+30,sys:118,dia:76},
+      {t:9*60+15,sys:126,dia:82},
+      {t:12*60+40,sys:132,dia:85},
+      {t:15*60+20,sys:124,dia:80},
+      {t:18*60+45,sys:135,dia:88},
+      {t:21*60+10,sys:122,dia:78},
+    ],
+    note:'<b>建议（逐次读数折线）：</b>血压是点测（一天几次），不是连续信号——15 分钟分桶取平均在临床上没意义，密集柱状也稀疏奇怪。专业做法：收缩压/舒张压各一条折线 + 圆点标记逐次读数，背景按高血压分级阴影（正常/升高/偏高），与 Apple 健康、Withings、Omron 血压计 App 一致。 <b>对比：</b>「15分钟柱状」为不推荐提案，「连续折线」为现状（稀疏点测连成片线）。'
+  },
+  {
+    kind:'glu',
+    title:'血糖', sub:'mmol/L · 日',
+    latest:`最新 <b>${gluLatest? gluLatest.v.toFixed(1):'—'}</b> mmol/L（${gluLatest?fmtClock(gluLatest.t):'—'}）`,
+    slots:glu, yMin:3.5, yMax:15, mode:'bar',
+    series:[ {key:'v',label:'血糖',color:C.honeyCore} ],
+    bands:[
+      {label:'偏低',lo:3.5,hi:3.9,color:C.skyCore},
+      {label:'正常',lo:3.9,hi:6.1,color:C.success},
+      {label:'偏高',lo:6.1,hi:15,color:C.honeyCore},
+    ],
+    note:'<b>提案：</b>全天 96 个 15 分钟槽单根琥珀柱，背景按血糖参考带着色(蓝=偏低/绿=正常/黄=偏高)。无测量槽画灰桩，未来时段不画，墨色均值线叠加。 <b>现状：</b>连续折线（采样密度已改为15分钟，但仍是连片线）。'
+  },
+];
+
+const phone=document.getElementById('phone');
+phone.innerHTML = sections.map(s=>renderChart(s)).join('')
+  + `<div class="foot">Mira 预览 · 15分钟分桶柱状 vs 连续折线 · 数据均为 mock</div>`;
+
+// 切换
+phone.addEventListener('click',(e)=>{
+  const btn=e.target.closest('.toggle button'); if(!btn) return;
+  const k=btn.parentElement.getAttribute('data-k');
+  const m=btn.getAttribute('data-m');
+  const sec=sections.find(s=>s.kind===k); sec.mode=m;
+  // 重渲染该卡
+  const card=phone.querySelector(`.card[data-k="${k}"]`);
+  card.outerHTML = renderChart(sec);
+});
+</script>
+</body>
+</html>

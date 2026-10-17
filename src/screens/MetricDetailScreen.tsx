@@ -215,6 +215,122 @@ function ecgWaveformPath(values: number[]): string {
     .join(' ');
 }
 
+/* ★ 2026-10-17（用户：压力周月年对齐 Oura —— 分色柱而非连续折线）：
+ * 状态型（分档）指标在周 / 月 / 年视图，改为「逐桶分色柱」：每个时间桶（周=天 / 月=天 / 年=月）
+ * 一根柱，按该桶均值所属档位取色 —— 与日视图 5 分钟分色柱**共用同一套档位配色**
+ * （低=灰 inkFaint / 中=琥珀 honeyCore / 高=粉 roseDeep），形态与语义从日贯穿到年，消除折线断层。
+ * 柱高基于指标固定量程（默认 0–100），与日视图同尺度。 */
+function RangeBarsChart({
+  points, labels, range, colorOf, yMin, yMax, unit, valueFmt, showYAxis, emptyText,
+}: {
+  points: (number | null)[];
+  labels: string[];
+  range: RangeKey;
+  colorOf: (v: number) => string | undefined;
+  yMin: number;
+  yMax: number;
+  unit?: string;
+  valueFmt: (v: number) => string;
+  showYAxis: boolean;
+  emptyText: string;
+}) {
+  const [w, setW] = useState(0);
+  const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const yLo = yMin;
+  const yHi = yMax;
+  const yAt = (v: number) => {
+    const c = Math.max(yLo, Math.min(yHi, Number.isFinite(v) ? v : yLo));
+    return PAD_T + (1 - (c - yLo) / (yHi - yLo || 1)) * plotH;
+  };
+  const n = points.length;
+  const hasData = points.some((p) => p != null);
+  const slotW = n > 0 ? plotW / n : plotW;
+  const barW = Math.max(2, slotW * 0.5);
+  const barX = (i: number) => PAD_L + (i + 0.5) * slotW - barW / 2;
+  const baseY = yAt(yLo);
+  const wScale = W / Math.max(w, 1);
+  const yTicks = [yLo, (yLo + yHi) / 2, yHi];
+  const onTouch = (e: any) => {
+    if (n === 0 || w === 0) return;
+    const svgX = e.nativeEvent.locationX * wScale;
+    let best = -1; let bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const cx = PAD_L + (i + 0.5) * slotW;
+      const d = Math.abs(cx - svgX);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const v = points[best];
+    if (v == null) { setTip(null); return; }
+    setTip({ x: barX(best) + barW / 2, y: yAt(v), label: labels[best] ?? '', value: valueFmt(v), color: colorOf(v) ?? mm.colors.ink });
+  };
+  return (
+    <View style={styles.chartCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+        {showYAxis && hasData ? (
+          <View style={{ width: Y_GUT, height: H, position: 'relative' }}>
+            {yTicks.map((gv, k) => (
+              <Text key={`y-${k}`} style={{ position: 'absolute', top: Math.max(0, yAt(gv) - 7), right: 3, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right' }}>
+                {fmtYAxis(gv)}{k === 0 && unit ? ` ${unit}` : ''}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        <View
+          style={{ flex: 1 }}
+          onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}
+          onTouchStart={onTouch}
+          onTouchEnd={() => setTimeout(() => setTip(null), 2000)}
+          pointerEvents="box-none"
+        >
+          {w > 0 ? (
+            <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+              {yTicks.map((gv, i) => (
+                <Line key={`g-${i}`} x1={PAD_L} y1={yAt(gv)} x2={W - PAD_R} y2={yAt(gv)} stroke={theme.colors.ui.borderSoft} strokeWidth={chart.lw.grid} />
+              ))}
+              {points.map((v, i) => {
+                if (v == null) return null;
+                const x = barX(i);
+                const y = yAt(v);
+                const h = Math.max(1, baseY - y);
+                return <Rect key={`b-${i}`} x={x} y={y} width={barW} height={h} rx={2} fill={colorOf(v) ?? mm.colors.ink} />;
+              })}
+            </Svg>
+          ) : null}
+          {tip && w > 0 ? (() => {
+            const TW = 96, TH = 56;
+            let tipX = tip.x - TW / 2;
+            if (tipX < 4) tipX = 4;
+            if (tipX + TW > w - 4) tipX = w - 4 - TW;
+            const tipY = Math.max(0, tip.y - TH - 12);
+            const triX = tip.x - 8;
+            return (
+              <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
+                <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 11, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label || '数值'}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
+                </View>
+                <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
+              </View>
+            );
+          })() : null}
+        </View>
+      </View>
+      {!hasData ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>{emptyText}</Text>
+        </View>
+      ) : null}
+      <View style={[styles.axis, { paddingLeft: showYAxis ? Y_GUT : PAD_L }]}>
+        {labels.map((t, i) => (
+          <Text key={i} style={styles.axisText}>{axisTickVisible(range, t) ? t : ''}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function MetricDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -376,6 +492,8 @@ export default function MetricDetailScreen() {
    * ══════════════════════════════════════════════════════════════ */
   const spec = DAY_BAR_SPECS[params.key];
   const isSpecDay = !isEcg && range === 'day' && !!spec;
+  // ★ 2026-10-17：分档（状态型）指标在周/月/年视图 → 逐桶分色柱（替代通用折线）
+  const isSpecRange = !isEcg && !!spec?.bands && range !== 'day';
   const specDay = useMemo(() => {
     if (!isSpecDay || !spec) return null;
     const dk = dateKeyOf(anchor.getTime());
@@ -396,6 +514,20 @@ export default function MetricDetailScreen() {
     const [lo, hi] = spec.bands;
     return (v: number) => (v <= lo ? mm.colors.inkFaint : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
   }, [spec]);
+  // ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张时长 / 恢复时长」汇总）：日视图按档位把有数据的桶折算成小时。
+  //   每桶 = binMin 分钟（默认 5）；v<lo=放松（恢复），v>hi=紧张。
+  const specZoneHours = useMemo(() => {
+    if (!specDay || specDay.blocked || !spec?.bands) return null;
+    const [lo, hi] = spec.bands;
+    const BIN = spec.binMin ?? 5;
+    let relaxMin = 0, stressMin = 0;
+    for (const b of specDay.buckets ?? []) {
+      if (b.v == null) continue;
+      if (b.v < lo) relaxMin += BIN;
+      else if (b.v > hi) stressMin += BIN;
+    }
+    return { relax: relaxMin / 60, stress: stressMin / 60 };
+  }, [specDay, spec]);
   const isHrvDay = !isEcg && range === 'day' && params.key === 'hrv';
 
   /**
@@ -909,15 +1041,46 @@ export default function MetricDetailScreen() {
                   {spec!.sourceNote}
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}
                 </Text>
+                {/* ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张 / 恢复时长」汇总）：
+                    按档位把有数据的桶折算成小时，与日视图同套档位配色（低=灰 / 高=粉）。 */}
+                {specZoneHours && (specZoneHours.relax > 0 || specZoneHours.stress > 0) ? (
+                  <View style={styles.zoneSummary}>
+                    <View style={styles.zoneItem}>
+                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.inkFaint }]} />
+                      <Text style={styles.zoneText}>放松 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.relax.toFixed(1)}h</Text></Text>
+                    </View>
+                    <View style={styles.zoneItem}>
+                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.roseDeep }]} />
+                      <Text style={styles.zoneText}>紧张 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.stress.toFixed(1)}h</Text></Text>
+                    </View>
+                  </View>
+                ) : null}
               </>
             )}
           </View>
         ) : null}
 
+        {/* ★ 2026-10-17（用户：压力周月年对齐 Oura —— 分色柱而非连续折线）：
+            分档（状态型）指标在周/月/年视图，逐桶分色柱，与日视图同套档位配色与语义。 */}
+        {isSpecRange && spec ? (
+          <RangeBarsChart
+            points={series.points}
+            labels={axisLabels}
+            range={range}
+            colorOf={specColorOf}
+            yMin={params.yMin ?? 0}
+            yMax={params.yMax ?? 100}
+            unit={series.unit}
+            valueFmt={fmtVal}
+            showYAxis={!hideYAxis}
+            emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+          />
+        ) : null}
+
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
         {isLipid ? <LipidTrendCard range={range} anchor={anchor} /> : null}
 
-        {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && (
+        {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && !isSpecRange && (
         <View style={styles.chartCard}>
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -1999,6 +2162,11 @@ const styles = StyleSheet.create({
   /** ★ 2026-10-10：柱状小条卡顶部的口径标签 / 有效数据计数 */
   specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
   specCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  // ★ 2026-10-17：日视图「紧张 / 放松时长」汇总（对齐 Oura）
+  zoneSummary: { flexDirection: 'row', gap: theme.sp(18), marginTop: theme.sp(12), alignItems: 'center' },
+  zoneItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(6) },
+  zoneDot: { width: theme.sp(8), height: theme.sp(8), borderRadius: theme.sp(4) },
+  zoneText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingLeft: Y_GUT },

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>首页 chips 预览 · 身体负荷</title>
+<style>
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body { margin:0; background:#EDEDF0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+  .phone { width:390px; margin:24px auto; background:#F5F5F7; border-radius:44px; padding:0 0 0 0; box-shadow:0 20px 60px -20px rgba(0,0,0,.25); overflow:hidden; }
+  .statusbar { height:44px; }
+  .head { padding:18px 20px 4px; }
+  .head h1 { font-size:20px; font-weight:700; color:#2B2926; margin:0; }
+  .head p { font-size:13px; color:#8A8782; margin:2px 0 0; }
+  .chipswrap { padding:8px 16px 4px; }
+  .row { display:flex; gap:8px; }
+  .chip { flex:1 1 0; min-width:78px; height:80px; background:#FFFFFF; border:1px solid #ECEAE5; border-radius:16px;
+          padding:8px 4px 6px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+          box-shadow:0 2px 6px rgba(31,29,26,.06); position:relative; }
+  .chip.new { outline:2px dashed #C9598A; outline-offset:1px; }
+  .ico { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; margin-bottom:3px; }
+  .lab { font-size:11px; font-weight:600; color:#9A968F; text-align:center; }
+  .val { font-size:15px; font-weight:800; color:#2B2926; margin-top:1px; }
+  .val.good { color:#6E7A24; }
+  .val.bad { color:#C9598A; }
+  .unit { font-size:11px; font-weight:600; color:#9A968F; margin-left:1px; }
+  .tag { font-size:10px; color:#9A968F; margin-top:1px; }
+  .note { font-size:12px; color:#8A8782; padding:10px 20px 18px; line-height:1.5; }
+  .note b { color:#2B2926; }
+  .pill { display:inline-block; background:#FCE7F0; color:#C9598A; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:700; }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="statusbar"></div>
+    <div class="head">
+      <h1>今日状态</h1>
+      <p>2026-10-17 · 卵泡期 第 12 天</p>
+    </div>
+    <div class="chipswrap">
+      <div class="row">
+        <!-- 睡眠恢复 -->
+        <div class="chip">
+          <div class="ico" style="background:#EAF0BE;color:#6E7A24;">🌿</div>
+          <div class="lab">睡眠恢复</div>
+          <div class="val good">72<span class="unit">/100</span></div>
+        </div>
+        <!-- 脑力准备度 -->
+        <div class="chip">
+          <div class="ico" style="background:#E3EBFE;color:#4C74C9;">◇</div>
+          <div class="lab">脑力准备度</div>
+          <div class="val">64<span class="unit">/100</span></div>
+        </div>
+        <!-- 心理压力 -->
+        <div class="chip">
+          <div class="ico" style="background:#FCE7F0;color:#C9598A;">♥</div>
+          <div class="lab">心理压力</div>
+          <div class="val">58<span class="unit">/100</span></div>
+        </div>
+        <!-- 运动消耗 -->
+        <div class="chip">
+          <div class="ico" style="background:#FBEFD6;color:#B98A2E;">🔥</div>
+          <div class="lab">运动消耗</div>
+          <div class="val">320<span class="unit">kcal</span></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <!-- 生理周期 -->
+        <div class="chip">
+          <div class="ico" style="background:#E3EBFE;color:#4C74C9;">🌙</div>
+          <div class="lab">卵泡期</div>
+          <div class="val">第 12 天</div>
+        </div>
+        <!-- ★ 新增：身体负荷 -->
+        <div class="chip new">
+          <div class="ico" style="background:#FCE7F0;color:#C9598A;">⚡</div>
+          <div class="lab">身体负荷</div>
+          <div class="val">47<span class="unit">/100</span></div>
+        </div>
+        <!-- 占位：第 3 张露边提示可横滑 -->
+        <div class="chip" style="border-style:dashed;opacity:.5;">
+          <div class="ico" style="background:#EEE;color:#BBB;">+</div>
+          <div class="lab">滑动查看</div>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      <span class="pill">新</span> <b>身体负荷</b>（⚡）已加入圆环上方 chips 行末尾：<br/>
+      · 数据 = 洞察页「压力洞察」卡同源的 <b>emotionalLoad（0–100 总消耗）</b>，与首页「心理压力」（相对自己平时的百分位）是两个不同指标。<br/>
+      · 配色复用粉（与心理压力同属负荷家族），放在第 6 张、不贴着心理压力，避免撞色误读。<br/>
+      · 数字按好坏上色：&lt;30 绿(轻松) / &lt;55 墨(适中) / ≥55 粉(偏重·过载)。<br/>
+      · 点按进入情绪压力详情页。
+    </div>
+  </div>
+</body>
+</html>

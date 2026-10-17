@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -210,6 +210,56 @@ function dayXAxis(isToday: boolean): string[] {
   return ['0', '4', '8', '12', '16', '20', isToday ? '现在' : '24'];
 }
 
+/** 晨晚窗口（本地小时，含起点不含终点） */
+const AM_RANGE: [number, number] = [6, 12];   // 06:00–11:59
+const PM_RANGE: [number, number] = [18, 22];  // 18:00–21:59
+
+/** 取范围内覆盖的每一天（Date 数组），用于跨天聚合晨晚读数 */
+function daysForRange(range: RangeKey, anchor: Date): Date[] {
+  if (range === 'day') return [new Date(anchor)];
+  if (range === 'week') {
+    const mon = startOfWeek(anchor);
+    return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  }
+  if (range === 'month') {
+    const y = anchor.getFullYear(), m = anchor.getMonth();
+    const dim = new Date(y, m + 1, 0).getDate();
+    return Array.from({ length: dim }, (_, d) => new Date(y, m, d + 1));
+  }
+  const y = anchor.getFullYear();
+  const out: Date[] = [];
+  for (let mo = 0; mo < 12; mo++) {
+    const dim = new Date(y, mo + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) out.push(new Date(y, mo, d));
+  }
+  return out;
+}
+
+export type AmpmAvg = { sys: number | null; dia: number | null; n: number };
+
+/** 晨晚血压汇总：按本地小时把同时含收缩/舒张的读数分入晨间/晚间窗口，取均值与次数 */
+function ampmSummary(range: RangeKey, anchor: Date): { morning: AmpmAvg; evening: AmpmAvg } {
+  let mS = 0, mD = 0, mN = 0, eS = 0, eD = 0, eN = 0;
+  for (const day of daysForRange(range, anchor)) {
+    const dk = dateKeyOf(day.getTime());
+    const s = healthStore.getIntraday('bpSys', dk);
+    const d = healthStore.getIntraday('bpDia', dk);
+    const sMap = new Map(s.map((p) => [p.t, p.v]));
+    const dMap = new Map(d.map((p) => [p.t, p.v]));
+    const tsAll = new Set<number>([...s.map((p) => p.t), ...d.map((p) => p.t)]);
+    for (const t of tsAll) {
+      const sv = sMap.get(t), dv = dMap.get(t);
+      if (sv == null || dv == null || !Number.isFinite(sv) || !Number.isFinite(dv)) continue;
+      const hr = new Date(t).getHours();
+      if (hr >= AM_RANGE[0] && hr < AM_RANGE[1]) { mS += sv; mD += dv; mN++; }
+      else if (hr >= PM_RANGE[0] && hr < PM_RANGE[1]) { eS += sv; eD += dv; eN++; }
+    }
+  }
+  const mk = (s: number, d: number, n: number): AmpmAvg =>
+    n ? { sys: s / n, dia: d / n, n } : { sys: null, dia: null, n: 0 };
+  return { morning: mk(mS, mD, mN), evening: mk(eS, eD, eN) };
+}
+
 export default function BpDetailScreen() {
   const navigation = useNavigation<any>();
   const [range, setRange] = useState<RangeKey>('day');
@@ -221,7 +271,15 @@ export default function BpDetailScreen() {
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
   const openChat = useCallback((q: string) => { setChatQuestion(q); setChatVisible(true); }, []);
 
-  const data = useMemo(() => buildDual(range, anchor), [range, anchor]);
+  // ★ 2026-10-17：录入（手动添加读数）弹窗状态 + 刷新计数（手动写入后强制重算）
+  const [entryVisible, setEntryVisible] = useState(false);
+  const [sysIn, setSysIn] = useState('');
+  const [diaIn, setDiaIn] = useState('');
+  const [timeIn, setTimeIn] = useState('');
+  const [entryErr, setEntryErr] = useState('');
+  const [nonce, setNonce] = useState(0);
+
+  const data = useMemo(() => buildDual(range, anchor), [range, anchor, nonce]);
 
   // 上一周期锚点（用于「较上一周期」对比）
   const prevAnchor = useMemo(() => {
@@ -232,7 +290,10 @@ export default function BpDetailScreen() {
     else a.setFullYear(a.getFullYear() - 1);
     return a;
   }, [anchor, range]);
-  const prev = useMemo(() => buildDual(range, prevAnchor), [range, prevAnchor]);
+  const prev = useMemo(() => buildDual(range, prevAnchor), [range, prevAnchor, nonce]);
+
+  // ★ 2026-10-17：晨晚血压汇总（随数据变化重算）
+  const ampm = useMemo(() => ampmSummary(range, anchor), [range, anchor, nonce]);
 
   const sysVals = seriesVals(data.sys);
   const diaVals = seriesVals(data.dia);
@@ -285,6 +346,29 @@ export default function BpDetailScreen() {
     }
   }
 
+  // ★ 2026-10-17：保存手动录入的血压读数（写入 intraday，使其出现在趋势图并更新日均）
+  const saveEntry = () => {
+    const sys = parseInt(sysIn, 10);
+    const dia = parseInt(diaIn, 10);
+    if (!Number.isFinite(sys) || sys < 50 || sys > 300) { setEntryErr('收缩压请填 50–300 的整数'); return; }
+    if (!Number.isFinite(dia) || dia < 30 || dia > 200) { setEntryErr('舒张压请填 30–200 的整数'); return; }
+    if (dia >= sys) { setEntryErr('舒张压应小于收缩压'); return; }
+    let hh = new Date().getHours(), mm = new Date().getMinutes();
+    const tStr = timeIn.trim();
+    if (tStr) {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(tStr);
+      if (!m) { setEntryErr('时间格式应为 HH:mm，如 08:30'); return; }
+      hh = Number(m[1]); mm = Number(m[2]);
+      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { setEntryErr('时间超出范围'); return; }
+    }
+    const base = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), hh, mm, 0, 0);
+    const ts = base.getTime();
+    healthStore.upsertRealtime('bpSys', { t: ts, v: sys }, ts);
+    healthStore.upsertRealtime('bpDia', { t: ts, v: dia }, ts);
+    setEntryVisible(false); setSysIn(''); setDiaIn(''); setTimeIn(''); setEntryErr('');
+    setNonce((n) => n + 1);
+  };
+
   return (
     <View style={{ flex: 1 }}>
       {/* v16：全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
@@ -301,6 +385,9 @@ export default function BpDetailScreen() {
           <Text style={styles.title}>血压</Text>
           <Text style={styles.sub}>收缩压 / 舒张压 · {anchor.toLocaleDateString('zh-CN')}</Text>
         </View>
+        <TouchableOpacity style={styles.entryBtn} onPress={() => setEntryVisible(true)}>
+          <Text style={styles.entryBtnText}>＋ 录入</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Hero：平均值 sys/dia */}
@@ -436,10 +523,30 @@ export default function BpDetailScreen() {
 
         {!hasData ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>当前范围内暂无血压数据。连接戒指后点击下方「快速测量」获取读数。</Text>
+            <Text style={styles.emptyText}>当前范围内暂无血压数据。点击右上角「录入」手动添加读数，或连接戒指后测量获取读数。</Text>
           </View>
         ) : null}
       </View>
+
+      {/* ★ 2026-10-17：晨晚血压汇总（Omron / SmartBP 同款 AM/PM 均值） */}
+      {hasData ? (
+        <Card style={{ marginTop: 12 }}>
+          <Text style={styles.detailTitle}>晨晚血压汇总</Text>
+          <View style={styles.detailGrid}>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>晨间 06–12 时</Text>
+              <Text style={styles.detailColVal}><Text style={{ color: COL_SYS }}>{fmt(ampm.morning.sys)}</Text><Text style={{ color: theme.colors.textSub }}>/</Text><Text style={{ color: COL_DIA }}>{fmt(ampm.morning.dia)}</Text></Text>
+              <Text style={styles.detailColLabel}>{ampm.morning.n ? `${ampm.morning.n} 次` : '暂无读数'}</Text>
+            </View>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailColLabel}>晚间 18–22 时</Text>
+              <Text style={styles.detailColVal}><Text style={{ color: COL_SYS }}>{fmt(ampm.evening.sys)}</Text><Text style={{ color: theme.colors.textSub }}>/</Text><Text style={{ color: COL_DIA }}>{fmt(ampm.evening.dia)}</Text></Text>
+              <Text style={styles.detailColLabel}>{ampm.evening.n ? `${ampm.evening.n} 次` : '暂无读数'}</Text>
+            </View>
+          </View>
+          <Text style={[styles.compareLabel, { marginTop: 10 }]}>晨/晚各取该时段收缩压与舒张压均值；仅统计同时含收缩、舒张读数的测量。</Text>
+        </Card>
+      ) : null}
 
       {/* ★ 统一「详细分析」块：平均 / 最高 / 最低 + 较上一周期对比 */}
       {hasData ? (
@@ -503,6 +610,43 @@ export default function BpDetailScreen() {
       {/* ★ 2026-10-16：血压分级（WHO/ISH 六档）+ 规则 AI 解读 */}
       {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
     </ScreenContainer>
+
+    {/* ★ 2026-10-17：手动录入血压弹窗 */}
+    <Modal visible={entryVisible} transparent animationType="fade" onRequestClose={() => { setEntryVisible(false); setEntryErr(''); }}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>录入血压</Text>
+          <Text style={styles.modalHint}>为「{anchor.toLocaleDateString('zh-CN')}」添加一次读数，将显示在趋势图中。</Text>
+          <View style={styles.modalInputRow}>
+            <View style={styles.modalInputWrap}>
+              <Text style={styles.modalInputLabel}>收缩压</Text>
+              <TextInput style={styles.modalInput} keyboardType="number-pad" placeholder="120" maxLength={3}
+                value={sysIn} onChangeText={setSysIn} />
+            </View>
+            <Text style={styles.modalSlash}>/</Text>
+            <View style={styles.modalInputWrap}>
+              <Text style={styles.modalInputLabel}>舒张压</Text>
+              <TextInput style={styles.modalInput} keyboardType="number-pad" placeholder="80" maxLength={3}
+                value={diaIn} onChangeText={setDiaIn} />
+            </View>
+          </View>
+          <View style={styles.modalInputWrap}>
+            <Text style={styles.modalInputLabel}>时间（可选 · HH:mm · 留空=现在）</Text>
+            <TextInput style={styles.modalInput} keyboardType="numbers-and-punctuation" placeholder="现在" maxLength={5}
+              value={timeIn} onChangeText={setTimeIn} />
+          </View>
+          {entryErr ? <Text style={styles.modalErr}>{entryErr}</Text> : null}
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.modalBtn} onPress={() => { setEntryVisible(false); setEntryErr(''); }}>
+              <Text style={styles.modalBtnText}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={saveEntry}>
+              <Text style={[styles.modalBtnText, { color: '#fff' }]}>保存</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
     <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </View>
   );
@@ -655,4 +799,37 @@ const styles = StyleSheet.create({
   },
   compareLabel: { fontSize: 12, color: theme.colors.textSub },
   compareVal: { fontSize: 12.5, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  // ★ 2026-10-17：录入按钮 + 录入弹窗样式
+  entryBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14,
+    backgroundColor: mm.colors.skySoft, marginLeft: 8,
+  },
+  entryBtnText: { fontSize: 13, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalCard: {
+    width: '100%', maxWidth: 340, backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.md, padding: 18,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
+  },
+  modalTitle: { fontSize: 17, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
+  modalHint: { fontSize: 12, color: theme.colors.textSub, marginTop: 6, lineHeight: 17 },
+  modalInputRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 14 },
+  modalInputWrap: { flex: 1 },
+  modalInputLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 6 },
+  modalInput: {
+    borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 18, color: theme.colors.textTitle,
+    textAlign: 'center', backgroundColor: '#FAFAFA',
+  },
+  modalSlash: { fontSize: 22, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
+  modalErr: { fontSize: 12, color: mm.colors.roseDeep, marginTop: 10 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
+  modalBtn: {
+    paddingHorizontal: 18, paddingVertical: 9, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },
+  modalBtnText: { fontSize: 14, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
 });

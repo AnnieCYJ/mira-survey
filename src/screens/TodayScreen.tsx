@@ -909,6 +909,22 @@ export default function TodayScreen() {
   const chipValueTone = (t?: string): 'good' | 'mid' | 'bad' | undefined =>
     t != null ? CHIP_VALUE_TONE[t] : undefined;
 
+  // ★ 2026-10-17（用户：「身体负荷 = 洞察页面基础指标的压力指标，不是心理压力那个」）：
+  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备/健康一览同步的
+  //   实时压力信号 `ring.metrics['stress']`（0–100，越高越紧张），回落读 `ring.daily['stress']`。
+  //   它 ≠ StressInsightCard 的 emotionalLoad（那个是派生总消耗），也 ≠ 「心理压力」chip 的
+  //   emotionalStress 百分位（50=和平时差不多）。三者是三个不同口径，这里严格对齐基础指标压力卡。
+  const bodyLoad =
+    ((ring.metrics as Record<string, number | null>)['stress']
+      ?? ring.daily['stress']
+      ?? null) as number | null;
+  const loadValue = bodyLoad != null ? String(bodyLoad) : '—';
+  const loadTone: 'good' | 'mid' | 'bad' | undefined =
+    bodyLoad == null ? undefined
+    : bodyLoad < 30 ? 'good'   // 轻松
+    : bodyLoad < 55 ? 'mid'    // 适中
+    : 'bad';                  // 偏重 / 过载
+
   const metricChips: MindChipItem[] = [
     // ★ 2026-10-07（用户：「睡眠恢复这个 66，也加上斜杠 100」）：本 chip 恒显「/100」，
     //   不再随相对/绝对口径切换单位（v18.155 的随口径隐单位被用户否决，以显示一致性优先）。
@@ -924,6 +940,10 @@ export default function TodayScreen() {
     { key: 'act', icon: 'flame', tone: 'butter', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
     // ★ 2026-10-15（V1 去紫）：周期卡 tone lav(紫)→cyan(蓝)
     { key: 'period', icon: 'moon', tone: 'cyan', label: status?.phaseLabel && status.phaseLabel !== '未记录' ? status.phaseLabel : '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
+    // ★ 2026-10-17 新增「身体负荷」：取洞察页「基础指标」压力卡同源 —— `ring.metrics['stress']`
+    //   （0–100，越高越紧张）。点按去向与基础指标压力卡一致 → stress 指标详情页（MetricDetail），
+    //   而非「心理压力」的情绪压力详情页（EnergyDetail emotion）。tone 复用 pink，置于数组末位。
+    { key: 'load', icon: 'bolt', tone: 'pink', label: '身体负荷', value: loadValue, unit: loadValue !== '—' ? '/100' : undefined, valueTone: loadTone, onPress: () => navigation.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */

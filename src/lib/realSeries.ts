@@ -384,6 +384,30 @@ export function getTodaySeries(metricKey: string): TimePt[] {
 // 血糖/血压 等戒指有 intraday 连续信号，走下面通用链路
 const MANUAL_KEYS_SET = new Set(['triglyceride', 'hdl', 'ldl', 'cholesterol', 'bloodFat', 'uricAcid']);
 
+// ★ 2026-10-17 初版曾把 bpSys/bpDia 也纳入 15 分钟分桶；
+//   但血压是点测信号（一天几次读数），按 15 分钟平均在临床上无意义，且主流健康 App 均不这么做
+//   （Apple 健康 / Withings / Omron 都是逐次读数折线）。故血压已移出，仅保留 glucose：
+//   血糖若为 CGM（连续血糖监测）是真·连续信号，每几分钟一点，15 分钟窗口聚合合理。
+const DAY_BIN_15MIN = new Set(['glucose']);
+
+/** 把日内连续点按 15 分钟窗口聚合：每个窗口只保留一点（窗口内均值，时间戳取窗口内最新样本）。 */
+function binTo15Min(tps: TimePt[], dayStart: number): TimePt[] {
+  if (tps.length === 0) return tps;
+  const BUCKET = 15 * 60 * 1000;
+  const map = new Map<number, { sum: number; cnt: number; lastT: number }>();
+  for (const p of tps) {
+    const slot = Math.floor((p.t - dayStart) / BUCKET);
+    const cur = map.get(slot) ?? { sum: 0, cnt: 0, lastT: p.t };
+    cur.sum += p.v;
+    cur.cnt += 1;
+    cur.lastT = p.t; // 取窗口内最新样本的真实时间戳
+    map.set(slot, cur);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, agg]) => ({ t: agg.lastT, v: agg.sum / agg.cnt }));
+}
+
 export function buildHistorySeries(
   key: string,
   range: RangeKey,
@@ -499,6 +523,11 @@ export function buildHistorySeries(
     let tps = healthStore.getTimeRange(hsKey, start, dataEnd, { fillDailyMean: true, maxPoints: 480 });
     // ★ 过滤原生 SDK 占位符 0 值（生理指标不可能为 0）
     tps = tps.filter(p => Number.isFinite(p.v) && p.v > 0);
+    // ★ 2026-10-17：仅 glucose（CGM 连续信号）日视图按 15 分钟窗口聚合；
+    //   血压(bpSys/bpDia) 已移出——点测信号走 BpDetailScreen 的逐次读数折线，不做分桶。
+    if (DAY_BIN_15MIN.has(hsKey)) {
+      tps = binTo15Min(tps, start);
+    }
     console.log(`[REAL-SERIES-DAY] key=${key} hsKey=${hsKey} anchorKey=${anchorKey} isToday=${isTodayAnchor} tps=${tps.length} start=${start} end=${end}`);
     // ★ DEBUG: 打印 tps 首尾值和分布
     const _first3 = tps.slice(0,3).map(p=>`${p.t%86400000}s=${p.v?.toFixed?.(2)??p.v}`);
