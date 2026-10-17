@@ -357,9 +357,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     height: theme.layout.tabBarHeight,
-    backgroundColor: mm.colors.tabBg,
+    // ★ Calm 式透明玻璃胶囊（2026-10-17 预览）：原 rgba(255,255,255,0.96) 实底改半透玻璃。
+    //   回退：改回 mm.colors.tabBg / mm.colors.cardBorder。
+    backgroundColor: 'rgba(255,255,255,0.22)',
     borderWidth: 1,
-    borderColor: mm.colors.cardBorder,
+    borderColor: 'rgba(255,255,255,0.38)',
     // ★ 必须用 pill：高度 = tabBarHeight(56)，pill(999) 会解析成半高 28 → 完整胶囊。
     //   原先写 radius.card 时 card 恰好是 28 才碰巧是胶囊；2026-09-20 把 card 收紧到 14 后就退化成圆角矩形了。
     borderRadius: theme.radius.pill,

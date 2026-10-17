@@ -113,7 +113,7 @@ export default function CalmWaveHome() {
       </View>
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
-      <View style={[s.aiCard, { bottom: insets.bottom + 92 }]}>
+      <View style={[s.aiCard, { bottom: insets.bottom + 88 }]}>
         <Text style={s.analysis}>
           恢复得不错，<Text style={s.hl}>82 分</Text>比平时高一点，压力也低，别浪费今天的好状态～
         </Text>
@@ -190,7 +190,7 @@ const s = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  gauge: { width: 240, height: 128 },
+  gauge: { width: 270, height: 144 },
   gaugeCenter: {
     position: 'absolute',
     left: 0,
@@ -198,7 +198,7 @@ const s = StyleSheet.create({
     bottom: -6,
     alignItems: 'center',
   },
-  gBig: { fontSize: 40, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gBig: { fontSize: 46, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   gLabel: { fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 5, fontWeight: '500' },
   gUpd: { fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
 
@@ -207,27 +207,27 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    padding: 14,
-    paddingBottom: 13,
-    paddingHorizontal: 16,
+    padding: 16,
+    paddingBottom: 15,
+    paddingHorizontal: 17,
     borderRadius: 20,
     backgroundColor: 'rgba(9,28,48,0.52)',
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.92)', marginBottom: 10 },
+  analysis: { fontSize: 15, lineHeight: 22, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.14)',
   },
-  sugThumb: { width: 44, height: 44, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  sugH: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  sugD: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
-  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  goTxt: { fontSize: 12.5, fontWeight: '600', color: '#101C33' },
+  sugThumb: { width: 50, height: 50, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  sugH: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  sugD: { fontSize: 12.5, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
+  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 6 },
+  goTxt: { fontSize: 13, fontWeight: '600', color: '#101C33' },
 });
