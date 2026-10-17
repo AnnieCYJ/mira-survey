@@ -67,32 +67,44 @@ const CHIP_H = 78;
 // 注：icon 为白色细线 SVG（Oura 式），无圆底
 
 /**
- * 花瓣形（水滴瓣）SVG path：96×78 画布，上圆头、下尖尾（参考元意空间玻璃拟态）。
- * 尖尾朝下 → 卡片旋转后尖尾呈辐射状指向环心，出花簇感。
+ * 花瓣形（圆角三角瓣）SVG path：96×78 画布，尖尾在上（-90°）、宽底边在下。
+ * 参考元意空间：每瓣是三边弧线的圆角三角形，尖尾指向圆心成辐射花簇。
+ * ★ 2026-10-18 第十九轮起两轮形状迭代：水滴（上圆下尖）→ 圆角三角（用户："三角形，看不到吗"）。
+ *   每瓣尖尾朝向由 petalRot 单独控制（见 PETALS），与卡片文字倾角 rot 解耦。
  */
-const PETAL_PATH =
-  'M48 1 C71 1 91 19 91 39 C91 57 69 71 48 77 C27 71 5 57 5 39 C5 19 25 1 48 1 Z';
+const PETAL_PATH = 'M48 2 Q26 24 8 70 Q48 88 88 70 Q70 24 48 2 Z';
 
 /**
- * 花瓣簇坐标（卡中心，相对半圆环圆心 (屏心中点, gaugeTop+120)）+ 切向旋转角。
+ * 花瓣 Svg 的 viewBox：以花瓣几何中心 (48,39) 为画布中心，四周留旋转余量。
+ * 165/195° 旋转时矩形外接 = 96·cos15 + 78·sin15 ≈ 113×101，故画布 113×103（负偏移居中）。
+ * Svg 元素按百分比放大（117.7%×132%）+ 负 left/top 使其中心与卡中心重合，
+ * 旋转绕 Svg 中心 = 绕花瓣中心，花瓣不偏心、不飞出卡框。
+ */
+const PETAL_VB_X = -8.5;
+const PETAL_VB_Y = -12.5;
+const PETAL_VB_W = 113;
+const PETAL_VB_H = 103;
+
+/**
+ * 花瓣簇坐标（卡中心，相对半圆环圆心 (屏心中点, gaugeTop+120)）。
+ * rot = 卡片（含文字）倾角；petalRot = 花瓣形状内部旋转（尖尾指向圆心，与文字倾角解耦）。
  * 环 240×128（R=100）；卡 96×78（半宽 48 / 半高 39）。数组顺序 = z 序（后者压前者）：
  *   肩瓣（±34°）→ 上排瓣（±18°）→ 顶心瓣（0°）。
- * ★ 2026-10-18 第十八轮（用户参考元意空间玻璃拟态花瓣）：参考图花瓣为明显倾斜的
- *   胶囊玻璃瓣，散布围绕中心——故加大切向旋转（肩 29→34、上排 12→18）、
- *   圆角 16→22 出胶囊感、上排瓣外移 4px 增强错落。
+ * petalRot 推导：尖尾初始朝上（-90°），要旋到指向圆心的方向角 α，
+ *   petalRot = α + 90° − rot（α = atan2(−dy, −dx)，圆心在卡片正下方系）。
  * 各瓣相对圆心：
- *   睡眠恢复 (0, -152)      顶心瓣：贴环顶（底 427 vs 环顶 440）
- *   压力水平 (-76.4, -229)  上左瓣 / 活动消耗 (76.4, -229) 上右瓣：高悬，底 354
- *   生理周期 (-126.4, -108) 左肩瓣 / 身体负荷 (126.4, -108) 右肩瓣：底 471，
- *     环在 x=屏心∓126 处已降到 y≈478，不碰卡底；旋转后内下角离圆心 ≈117（余 17）
- * 相邻瓣经旋转后角区错开不相交；瓣内文字均在安全区（旋转不扫到）。
+ *   睡眠恢复 (0, -152)      顶心瓣：贴环顶（底 427 vs 环顶 440），petalRot 180（尖朝下正指圆心）
+ *   压力水平 (-76.4, -218)  上左瓣 / 活动消耗 (76.4, -218) 上右瓣：高悬，petalRot 180
+ *   生理周期 (-126.4, -108) 左肩瓣 / 身体负荷 (126.4, -108) 右肩瓣：petalRot 165/195
+ *     （卡片倾角 ±34° 的补偿量），尖尾对准右下/左下圆心方向
+ * 相邻瓣经旋转后角区错开不相交；瓣内文字集中在宽底边侧（安全区）。
  */
-const PETALS: Record<string, { dx: number; dy: number; rot: number }> = {
-  '生理周期': { dx: -126.4, dy: -108, rot: -34 },
-  '身体负荷': { dx: 126.4, dy: -108, rot: 34 },
-  '压力水平': { dx: -76.4, dy: -229, rot: -18 },
-  '活动消耗': { dx: 76.4, dy: -229, rot: 18 },
-  '睡眠恢复': { dx: 0, dy: -152, rot: 0 },
+const PETALS: Record<string, { dx: number; dy: number; rot: number; petalRot: number }> = {
+  '生理周期': { dx: -126.4, dy: -108, rot: -34, petalRot: 165 },
+  '身体负荷': { dx: 126.4, dy: -108, rot: 34, petalRot: 195 },
+  '压力水平': { dx: -76.4, dy: -218, rot: -18, petalRot: 180 },
+  '活动消耗': { dx: 76.4, dy: -218, rot: 18, petalRot: 180 },
+  '睡眠恢复': { dx: 0, dy: -152, rot: 0, petalRot: 180 },
 };
 
 export default function CalmWaveHome() {
@@ -215,8 +227,20 @@ export default function CalmWaveHome() {
             accessibilityLabel={`${c.label} ${c.value}`}
             onPress={() => c.go(navigation)}
           >
-            {/* 花瓣形背景（SVG 水滴瓣：玻璃填充 + 白描边；绝对定位铺满，随卡旋转） */}
-            <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 96 78">
+            {/* 花瓣形背景（SVG 圆角三角瓣：玻璃填充 + 白描边）。
+                viewBox 以花瓣中心为中心并留旋转余量；Svg 百分比放大 + 负偏移使中心对齐卡心，
+                petalRot 绕该中心旋转 → 尖尾指向圆心且不偏心、不飞出卡框。 */}
+            <Svg
+              style={{
+                position: 'absolute',
+                width: `${(PETAL_VB_W / 96) * 100}%`,
+                height: `${(PETAL_VB_H / 78) * 100}%`,
+                left: `${(PETAL_VB_X / 96) * 100}%`,
+                top: `${(PETAL_VB_Y / 78) * 100}%`,
+                transform: [{ rotate: `${p.petalRot}deg` }],
+              }}
+              viewBox={`${PETAL_VB_X} ${PETAL_VB_Y} ${PETAL_VB_W} ${PETAL_VB_H}`}
+            >
               <Path d={PETAL_PATH} fill={GLASS_BG} stroke={GLASS_BD} strokeWidth={1} />
             </Svg>
             <View style={s.chipIcon}>{c.icon}</View>
@@ -272,10 +296,11 @@ const s = StyleSheet.create({
   },
   titleC: { fontSize: 17, fontWeight: '600', color: '#fff', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12 },
 
-  // 花瓣卡（水滴瓣形状由 SVG PETAL_PATH 绘制；此处只留布局与排版）
+  // 花瓣卡（水滴瓣形状由 SVG PETAL_PATH 绘制；此处只留布局与排版）。
+  // paddingBottom 偏大 → 文字整体上移，落入花瓣宽区（三角瓣下部收窄不放文字）。
   chip: {
-    paddingTop: 5,
-    paddingBottom: 4,
+    paddingTop: 4,
+    paddingBottom: 10,
     paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
