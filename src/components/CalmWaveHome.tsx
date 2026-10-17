@@ -20,16 +20,23 @@ const GLASS_BG = 'rgba(255,255,255,0.13)';
 const GLASS_BD = 'rgba(255,255,255,0.28)';
 const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
 
-type Chip = { label: string; value: string; unit?: string; tag: string; good?: boolean };
+type Chip = { label: string; value: string; unit?: string; tag: string; good?: boolean; icon: JSX.Element };
+const lineIcon = (d: string | string[]) => (
+  <Svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    {(Array.isArray(d) ? d : [d]).map((p, i) => <Path key={i} d={p} />)}
+  </Svg>
+);
 const CHIPS: Chip[] = [
-  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true },
-  { label: '脑力准备度', value: '64', tag: '准备度中' },
-  { label: '压力水平', value: '38', tag: '压力偏低', good: true },
-  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%' },
+  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z') },
+  { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']) },
+  { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6') },
+  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']) },
 ];
 
-const CHIP_H = 76;
+const CHIP_H = 92;
 const CHIP_GAP = 9;
+
+// 注：icon 为白色细线 SVG（Oura 式），无圆底
 
 export default function CalmWaveHome() {
   const { height } = useWindowDimensions();
@@ -74,9 +81,10 @@ export default function CalmWaveHome() {
       </View>
 
       {/* chips：贴渐变交界线下方 */}
-      <View style={[s.chips, { top: transitionY + 6 }]}>
+      <View style={[s.chips, { top: transitionY - 10 }]}>
         {CHIPS.map((c) => (
           <View key={c.label} style={s.chip}>
+            <View style={s.chipIcon}>{c.icon}</View>
             <Text style={s.chipLabel}>{c.label}</Text>
             <View style={s.chipValRow}>
               <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
@@ -105,7 +113,7 @@ export default function CalmWaveHome() {
       </View>
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
-      <View style={[s.aiCard, { bottom: insets.bottom + 68 }]}>
+      <View style={[s.aiCard, { bottom: insets.bottom + 92 }]}>
         <Text style={s.analysis}>
           恢复得不错，<Text style={s.hl}>82 分</Text>比平时高一点，压力也低，别浪费今天的好状态～
         </Text>
@@ -167,6 +175,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  chipIcon: { marginBottom: 4 },
   chipLabel: { fontSize: 10.5, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.2 },
   chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
   chipVal: { fontSize: 17, fontWeight: '700', color: '#fff' },
@@ -181,7 +190,7 @@ const s = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  gauge: { width: 206, height: 110 },
+  gauge: { width: 240, height: 128 },
   gaugeCenter: {
     position: 'absolute',
     left: 0,
@@ -189,7 +198,7 @@ const s = StyleSheet.create({
     bottom: -6,
     alignItems: 'center',
   },
-  gBig: { fontSize: 34, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gBig: { fontSize: 40, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   gLabel: { fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 5, fontWeight: '500' },
   gUpd: { fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
 
@@ -198,15 +207,15 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    padding: 12,
-    paddingBottom: 11,
-    paddingHorizontal: 15,
+    padding: 14,
+    paddingBottom: 13,
+    paddingHorizontal: 16,
     borderRadius: 20,
     backgroundColor: 'rgba(9,28,48,0.52)',
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 12.5, lineHeight: 18, color: 'rgba(255,255,255,0.92)', marginBottom: 8 },
+  analysis: { fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.92)', marginBottom: 10 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
@@ -216,9 +225,9 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.14)',
   },
-  sugThumb: { width: 36, height: 36, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  sugH: { fontSize: 12.5, fontWeight: '600', color: '#fff' },
-  sugD: { fontSize: 10.5, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
-  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  goTxt: { fontSize: 11, fontWeight: '600', color: '#101C33' },
+  sugThumb: { width: 44, height: 44, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  sugH: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  sugD: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
+  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  goTxt: { fontSize: 12.5, fontWeight: '600', color: '#101C33' },
 });

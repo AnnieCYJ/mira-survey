@@ -38,12 +38,12 @@
   .titleC{font-size:17px;font-weight:600;color:#fff;text-shadow:0 1px 12px rgba(20,44,64,.4);letter-spacing:.5px}
 
   /* ═══ 渐变区（Calm 钢蓝底）：chips 在上 → 半圆环居中 → AI 卡沉底 ═══ */
-  .contentZone{margin-top:184px;display:flex;flex-direction:column;gap:11px;padding-bottom:92px}
+  .contentZone{margin-top:170px;display:flex;flex-direction:column;gap:12px;padding-bottom:118px}
   .gaugeZone{display:flex;justify-content:center;margin:2px 0}
-  .gauge{position:relative;width:206px;height:110px}
+  .gauge{position:relative;width:240px;height:128px}
   .gauge svg{position:absolute;inset:0;overflow:visible}
   .gaugeCenter{position:absolute;left:0;right:0;bottom:-6px;display:flex;flex-direction:column;align-items:center}
-  .gBig{font-size:34px;font-weight:700;color:#fff;line-height:1;text-shadow:0 2px 14px rgba(20,44,64,.45)}
+  .gBig{font-size:40px;font-weight:700;color:#fff;line-height:1;text-shadow:0 2px 14px rgba(20,44,64,.45)}
   .gLabel{font-size:12px;color:var(--sub);margin-top:5px;font-weight:500}
   .gUpd{font-size:10.5px;color:var(--faint);margin-top:2px}
 
@@ -54,7 +54,9 @@
 
   /* ═══ Oura 式小卡片（细线 SVG 图标 + 指标色圆底） ═══ */
   .chips{display:flex;gap:9px}
-  .chip{flex:1;height:76px;border-radius:18px;padding:11px 6px 9px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+  .chip{flex:1;height:94px;border-radius:18px;padding:11px 6px 9px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+  .chipIcon{height:19px;margin-bottom:4px}
+  .chipIcon svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .chipLabel{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.2px}
   .chipValRow{display:flex;align-items:baseline;margin-top:3px}
   .chipVal{font-size:17px;font-weight:700;color:#fff}
@@ -72,14 +74,14 @@
   .aiHead .tt{flex:1;font-size:14px;font-weight:600;color:#fff}
   .aiHead .mark{width:25px;height:25px;border-radius:999px;background:rgba(255,255,255,.10);
     border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,.85);flex:none}
-  .analysis{font-size:12.5px;line-height:18px;color:rgba(255,255,255,.92);margin-bottom:8px}
+  .analysis{font-size:14px;line-height:20px;color:rgba(255,255,255,.92);margin-bottom:8px}
   .analysis b{font-weight:700;color:#BFCBFF}
   .sug{display:flex;align-items:center;gap:10px;padding:8px 0 1px;border-top:1px solid rgba(255,255,255,.14)}
-  .sug img.th{width:36px;height:36px;border-radius:11px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.35)}
+  .sug img.th{width:44px;height:44px;border-radius:13px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.35)}
   .sug .tx{flex:1;min-width:0}
-  .sug .tx .h{font-size:12.5px;font-weight:600;color:#fff}
-  .sug .tx .d{font-size:10.5px;color:rgba(255,255,255,.65);margin-top:1px}
-  .sug .go{font-size:11px;font-weight:600;color:#101C33;background:rgba(160,178,255,.95);
+  .sug .tx .h{font-size:14px;font-weight:600;color:#fff}
+  .sug .tx .d{font-size:12px;color:rgba(255,255,255,.65);margin-top:1px}
+  .sug .go{font-size:12.5px;font-weight:600;color:#101C33;background:rgba(160,178,255,.95);
     border-radius:999px;padding:4px 10px;flex:none}
 
   /* ═══ 底部悬浮玻璃 Tab（Calm 式胶囊） ═══ */
@@ -119,16 +121,16 @@
       <div class="contentZone">
         <div class="chips">
           <div class="chip glass">
-            <div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div>
+            <div class="chipIcon"><svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg></div><div class="chipLabel">睡眠恢复</div><div class="chipValRow"><span class="chipVal good">82</span></div><div class="chipTag">恢复良好</div>
           </div>
           <div class="chip glass">
-            <div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div>
+            <div class="chipIcon"><svg viewBox="0 0 24 24"><path d="M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z"/><path d="M9.5 13.5 11 12l1.5 1.5L14 12"/></svg></div><div class="chipLabel">脑力准备度</div><div class="chipValRow"><span class="chipVal">64</span></div><div class="chipTag">准备度中</div>
           </div>
           <div class="chip glass">
-            <div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div>
+            <div class="chipIcon"><svg viewBox="0 0 24 24"><path d="M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6"/></svg></div><div class="chipLabel">压力水平</div><div class="chipValRow"><span class="chipVal good">38</span></div><div class="chipTag">压力偏低</div>
           </div>
           <div class="chip glass">
-            <div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div>
+            <div class="chipIcon"><svg viewBox="0 0 24 24"><path d="M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z"/><path d="M8 17.5h8M9.5 20.5h5"/></svg></div><div class="chipLabel">活动消耗</div><div class="chipValRow"><span class="chipVal">320</span><span class="chipUnit">kcal</span></div><div class="chipTag">达成55%</div>
           </div>
         </div>
 
