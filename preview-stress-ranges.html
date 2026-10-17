@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>压力详情页 · 日/周/月/年 对齐 Oura（预览）</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --card:#FFFFFF; --border:#EBE7E1; --ink:#2B2823; --sub:#8A847A;
+    --low:#BCCB62; --mid:#F0C46E; --high:#C9598A; --grid:#ECE8E2;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  body{margin:0; background:#F6F4F0; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif; color:var(--ink);}
+  .wrap{max-width:440px; margin:0 auto; padding:20px 16px 60px;}
+  .top{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+  .back{font-size:22px; color:var(--ink);}
+  .title{font-size:20px; font-weight:700;}
+  .live{margin-left:auto; font-size:11px; color:#3a8a4a; background:#E8F4EC; padding:3px 8px; border-radius:8px;}
+  .seg{display:flex; gap:6px; margin:14px 0;}
+  .seg button{flex:1; padding:8px 0; border:1px solid var(--border); background:#fff; border-radius:12px; font-size:13px; color:var(--sub);}
+  .seg button.on{background:var(--ink); color:#fff; border-color:var(--ink);}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:16px;}
+  .hero{display:flex; align-items:baseline; gap:8px; margin-bottom:12px;}
+  .heroVal{font-size:34px; font-weight:700;}
+  .heroUnit{font-size:14px; color:var(--sub);}
+  .heroTag{font-size:12px; color:var(--sub); margin-left:auto;}
+  .axisLab{font-size:12px; color:var(--sub); font-weight:600; margin-bottom:6px;}
+  svg{display:block; width:100%; height:auto;}
+  .xaxis{display:flex; justify-content:space-between; font-size:10px; color:var(--sub); margin-top:6px;}
+  .zone{display:flex; gap:18px; margin-top:14px; align-items:center;}
+  .zoneItem{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--sub);}
+  .dot{width:8px; height:8px; border-radius:4px;}
+  .note{font-size:11px; color:var(--sub); margin-top:12px; line-height:1.5;}
+  .legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--sub);}
+  .legend i{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:middle;}
+  .partRow{display:flex; gap:8px; margin:12px 0 4px;}
+  .partBtn{padding:6px 16px; border:1px solid var(--border); background:#fff; border-radius:999px; font-size:13px; color:var(--sub);}
+  .partBtn.on{background:#EEF3D9; border-color:var(--low); color:var(--ink); font-weight:600;}
+  .statGrid{display:flex; gap:8px; margin-top:14px;}
+  .statCell{flex:1; text-align:center; padding:12px 6px; border-radius:14px; background:#FBFAF8; border:1px solid var(--border);}
+  .statLab{font-size:11px; color:var(--sub); margin-bottom:4px;}
+  .statVal{font-size:18px; font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="back">‹</span>
+    <span class="title">压力</span>
+    <span class="live">真实数据</span>
+  </div>
+
+  <div class="seg">
+    <button data-r="day">日</button>
+    <button data-r="week" class="on">周</button>
+    <button data-r="month">月</button>
+    <button data-r="year">年</button>
+  </div>
+
+  <!-- 日视图 -->
+  <section class="card" data-view="day" style="display:none">
+    <div class="hero"><span class="heroVal">52</span><span class="heroUnit">/100</span><span class="heroTag">当日最新</span></div>
+    <div class="axisLab">全天 · 按档位分色</div>
+    <div class="partRow" id="dayPart">
+      <button class="partBtn on" data-p="day">日间</button>
+      <button class="partBtn" data-p="night">夜间</button>
+    </div>
+    <div id="dayChart"></div>
+    <div class="legend"><span><i style="background:var(--low)"></i>放松 &lt;30</span><span><i style="background:var(--mid)"></i>适中 30–55</span><span><i style="background:var(--high)"></i>紧张 &gt;55</span></div>
+    <div class="zone" id="dayZone">
+      <div class="zoneItem"><span class="dot" style="background:var(--low)"></span>放松 <b>7.1h</b></div>
+      <div class="zoneItem"><span class="dot" style="background:var(--high)"></span>紧张 <b>2.6h</b></div>
+    </div>
+    <div class="note" id="dayNote">仅显示 07:00–23:00 日间压力，夜间时段已隐藏。每根柱 = 5 分钟平均压力，按档位分色。</div>
+    <div class="statGrid" id="dayStats">
+      <div class="statCell"><div class="statLab">定性</div><div class="statVal" style="color:var(--mid)">平衡日</div></div>
+      <div class="statCell"><div class="statLab">平均压力</div><div class="statVal">46</div></div>
+      <div class="statCell"><div class="statLab">峰值压力</div><div class="statVal" style="color:var(--high)">78</div></div>
+    </div>
+    <div class="statGrid" id="dayDur">
+      <div class="statCell"><div class="statLab">放松时长</div><div class="statVal" style="color:var(--low)">7.1h</div></div>
+      <div class="statCell"><div class="statLab">平衡时长</div><div class="statVal" style="color:var(--mid)">6.3h</div></div>
+      <div class="statCell"><div class="statLab">紧张时长</div><div class="statVal" style="color:var(--high)">2.6h</div></div>
+    </div>
+  </section>
+
+  <!-- 周/月/年：逐桶分色柱 -->
+  <section class="card" data-view="week">
+    <div class="hero"><span class="heroVal">48</span><span class="heroUnit">/100</span><span class="heroTag">区间平均</span></div>
+    <div class="axisLab">本周 · 逐日分色（与日视图同套档位色）</div>
+    <div id="weekChart"></div>
+    <div class="legend"><span><i style="background:var(--low)"></i>放松</span><span><i style="background:var(--mid)"></i>适中</span><span><i style="background:var(--high)"></i>紧张</span></div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">主导档位</div><div class="statVal" style="color:var(--mid)">平衡</div></div>
+      <div class="statCell"><div class="statLab">紧张占比</div><div class="statVal" style="color:var(--high)">31%</div></div>
+      <div class="statCell"><div class="statLab">平均压力</div><div class="statVal" style="color:var(--ink)">48</div></div>
+    </div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">等级</div><div class="statVal" style="color:var(--low)">稳健</div></div>
+      <div class="statCell"><div class="statLab">综合评分</div><div class="statVal" style="color:var(--ink)">62</div></div>
+      <div class="statCell"><div class="statLab">夜间平均</div><div class="statVal" style="color:var(--ink)">33</div></div>
+    </div>
+    <div class="note">恢复力（近 14 天综合）：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</div>
+  </section>
+
+  <section class="card" data-view="month" style="display:none">
+    <div class="hero"><span class="heroVal">51</span><span class="heroUnit">/100</span><span class="heroTag">区间平均</span></div>
+    <div class="axisLab">本月 · 逐日分色</div>
+    <div id="monthChart"></div>
+    <div class="legend"><span><i style="background:var(--low)"></i>放松</span><span><i style="background:var(--mid)"></i>适中</span><span><i style="background:var(--high)"></i>紧张</span></div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">主导档位</div><div class="statVal" style="color:var(--low)">放松</div></div>
+      <div class="statCell"><div class="statLab">紧张占比</div><div class="statVal" style="color:var(--high)">22%</div></div>
+      <div class="statCell"><div class="statLab">平均压力</div><div class="statVal" style="color:var(--ink)">51</div></div>
+    </div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">等级</div><div class="statVal" style="color:var(--low)">稳健</div></div>
+      <div class="statCell"><div class="statLab">综合评分</div><div class="statVal" style="color:var(--ink)">62</div></div>
+      <div class="statCell"><div class="statLab">夜间平均</div><div class="statVal" style="color:var(--ink)">33</div></div>
+    </div>
+    <div class="note">恢复力（近 14 天综合）：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</div>
+  </section>
+
+  <section class="card" data-view="year" style="display:none">
+    <div class="hero"><span class="heroVal">49</span><span class="heroUnit">/100</span><span class="heroTag">年度均值</span></div>
+    <div class="axisLab">本年 · 逐月分色</div>
+    <div id="yearChart"></div>
+    <div class="legend"><span><i style="background:var(--low)"></i>放松</span><span><i style="background:var(--mid)"></i>适中</span><span><i style="background:var(--high)"></i>紧张</span></div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">主导档位</div><div class="statVal" style="color:var(--mid)">平衡</div></div>
+      <div class="statCell"><div class="statLab">紧张占比</div><div class="statVal" style="color:var(--high)">28%</div></div>
+      <div class="statCell"><div class="statLab">平均压力</div><div class="statVal" style="color:var(--ink)">49</div></div>
+    </div>
+    <div class="statGrid">
+      <div class="statCell"><div class="statLab">等级</div><div class="statVal" style="color:var(--low)">稳健</div></div>
+      <div class="statCell"><div class="statLab">综合评分</div><div class="statVal" style="color:var(--ink)">62</div></div>
+      <div class="statCell"><div class="statLab">夜间平均</div><div class="statVal" style="color:var(--ink)">33</div></div>
+    </div>
+    <div class="note">恢复力（近 14 天综合）：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</div>
+  </section>
+
+  <div class="note" style="text-align:center; color:#a9a399;">预览稿 · 颜色与 Mira App 档位色完全一致（low=#BCCB62 绿 / mid=#F0C46E 琥珀 / high=#C9598A 粉）。日视图底部「放松/紧张时长」对齐 Oura Daytime Stress 的时长汇总；各视图下方新增「压力分析」数据卡片（当日定性 / 主导档位 / 紧张占比 / 平均压力）。</div>
+</div>
+
+<script>
+const COL = { low:'#BCCB62', mid:'#F0C46E', high:'#C9598A' };
+function band(v){ return v==null?null : v<30?'low' : v<=55?'mid' : 'high'; }
+function colorOf(v){ const b=band(v); return b?COL[b]:'#BCCB62'; }
+
+// 生成 mock 数据
+function genDay(){
+  const n=288, arr=[];
+  for(let i=0;i<n;i++){
+    const h=i/12;
+    let base=38 + 14*Math.sin((h-9)/24*Math.PI*2); // 白天偏高
+    if(h<7||h>23) base=26; // 夜间放松
+    base += (Math.random()-0.5)*10;
+    if(h>13&&h<15) base+=18; // 午后高峰
+    arr.push(Math.max(8, Math.min(95, Math.round(base))));
+  }
+  return arr;
+}
+function genSeries(n, base, amp, seed){
+  const arr=[];
+  for(let i=0;i<n;i++){
+    const v=base + amp*Math.sin(i/ (n/3) *Math.PI*2 + seed) + (Math.random()-0.5)*12;
+    arr.push(Math.max(10, Math.min(95, Math.round(v))));
+  }
+  return arr;
+}
+const DAY=genDay();
+const WEEK=genSeries(7,48,16,0.5);
+const MONTH=genSeries(30,51,20,1.2);
+const YEAR=genSeries(12,49,10,0.3);
+
+function barsSVG(values, opts){
+  const W=408,H=200,PADL=14,PADR=14,PADT=18,PADB=28;
+  const plotW=W-PADL-PADR, plotH=H-PADT-PADB;
+  const yLo=0,yHi=100;
+  const yAt=v=> PADT + (1-(Math.max(yLo,Math.min(yHi,v))-yLo)/(yHi-yLo))*plotH;
+  const n=values.length;
+  const slotW=plotW/n, barW=Math.max(2, slotW*0.5);
+  const baseY=yAt(0);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  [0,50,100].forEach(gv=>{
+    svg+=`<line x1="${PADL}" y1="${yAt(gv)}" x2="${W-PADR}" y2="${yAt(gv)}" stroke="#ECE8E2" stroke-width="1"/>`;
+  });
+  values.forEach((v,i)=>{
+    if(v==null) return;
+    const x=PADL+(i+0.5)*slotW-barW/2, y=yAt(v), h=Math.max(1,baseY-y);
+    svg+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${colorOf(v)}"/>`;
+  });
+  svg+=`</svg>`;
+  return svg;
+}
+
+document.getElementById('weekChart').innerHTML = barsSVG(WEEK);
+document.getElementById('monthChart').innerHTML = barsSVG(MONTH);
+document.getElementById('yearChart').innerHTML = barsSVG(YEAR);
+
+// 日视图：按 日间 / 夜间 分段
+function isDayHour(h){ return h>=7 && h<23; }
+function renderDay(part){
+  const vals = DAY.map((v,i)=>{ const h=i/12; const inPart = isDayHour(h); return ((part==='day')===inPart) ? v : null; });
+  document.getElementById('dayChart').innerHTML = barsSVG(vals);
+  let sum=0,cnt=0,peak=0,relaxMin=0,midMin=0,stressMin=0;
+  DAY.forEach((v,i)=>{ const h=i/12; const inPart=isDayHour(h); if((part==='day')!==inPart) return; cnt++; sum+=v; if(v>peak)peak=v; const b=band(v); if(b==='low')relaxMin+=5; else if(b==='high')stressMin+=5; else midMin+=5; });
+  const avg=cnt?sum/cnt:0;
+  const qual= avg<30?'放松日':avg>55?'紧张日':'平衡日';
+  const qcol= avg<30?'var(--low)':avg>55?'var(--high)':'var(--mid)';
+  document.getElementById('dayZone').innerHTML =
+    `<div class="zoneItem"><span class="dot" style="background:var(--low)"></span>放松 <b>${(relaxMin/60).toFixed(1)}h</b></div>`+
+    `<div class="zoneItem"><span class="dot" style="background:var(--high)"></span>紧张 <b>${(stressMin/60).toFixed(1)}h</b></div>`;
+  document.getElementById('dayNote').textContent = part==='night'
+    ? '仅显示 23:00–07:00 夜间压力，日间时段已隐藏。每根柱 = 5 分钟平均压力，按档位分色。'
+    : '仅显示 07:00–23:00 日间压力，夜间时段已隐藏。每根柱 = 5 分钟平均压力，按档位分色。';
+  document.getElementById('dayStats').innerHTML =
+    `<div class="statCell"><div class="statLab">定性</div><div class="statVal" style="color:${qcol}">${qual}</div></div>`+
+    `<div class="statCell"><div class="statLab">平均压力</div><div class="statVal">${Math.round(avg)}</div></div>`+
+    `<div class="statCell"><div class="statLab">峰值压力</div><div class="statVal" style="color:var(--high)">${Math.round(peak)}</div></div>`;
+  document.getElementById('dayDur').innerHTML =
+    `<div class="statCell"><div class="statLab">放松时长</div><div class="statVal" style="color:var(--low)">${(relaxMin/60).toFixed(1)}h</div></div>`+
+    `<div class="statCell"><div class="statLab">平衡时长</div><div class="statVal" style="color:var(--mid)">${(midMin/60).toFixed(1)}h</div></div>`+
+    `<div class="statCell"><div class="statLab">紧张时长</div><div class="statVal" style="color:var(--high)">${(stressMin/60).toFixed(1)}h</div></div>`;
+}
+renderDay('day');
+
+// 日间 / 夜间 tab 切换
+const dayPart=document.getElementById('dayPart');
+dayPart.addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const p=b.dataset.p;
+  dayPart.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+  renderDay(p);
+});
+
+// 日 / 周 / 月 / 年 切换
+const seg=document.querySelector('.seg');
+seg.addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const r=b.dataset.r;
+  seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('[data-view]').forEach(s=> s.style.display = s.dataset.view===r?'block':'none');
+});
+</script>
+</body>
+</html>

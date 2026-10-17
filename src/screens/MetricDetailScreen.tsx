@@ -26,7 +26,7 @@ import { loadCycleLog } from '../data/cycleLog';
 import { moodFromEmotionLevel, MOOD_COLOR } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
-import { dateKeyOf } from '../lib/dateUtils';
+import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
@@ -148,6 +148,102 @@ function fmtVal(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
+
+/**
+ * ★ 2026-10-17：压力「状态型」指标的派生分析——单日聚合（与 specZoneHours / StressInsightCard / StressStatCards 共用）。
+ * 按 5 分钟档位统计三档时长（低=放松 / 中=平衡 / 高=紧张），与 DAY_BAR_SPECS.stress.bands 同源。
+ * 返回纯数值，颜色由调用方按主题色映射，便于「数据卡片」与「AI 文字解读」两处复用同一口径。
+ */
+const STRESS_BANDS: [number, number] = (DAY_BAR_SPECS.stress?.bands as [number, number]) ?? [30, 55];
+// 日间 / 夜间窗口（本地小时）：日间 07:00–22:59，夜间 23:00–06:59。
+const isDaytime = (ts: number) => {
+  const h = new Date(ts).getHours();
+  return h >= 7 && h < 23;
+};
+export type StressDayPart = {
+  avg: number | null;
+  peak: number | null;
+  relaxH: number;
+  stressH: number;
+  totalMin: number;
+};
+function stressDaySummary(dk: string, dayStartTs: number) {
+  const buckets = binByMinutes(healthStore.getIntraday('stress', dk), 5, { dayStartMs: dayStartTs });
+  let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, peak = 0;
+  let dayRelaxMin = 0, dayMidMin = 0, dayStressMin = 0, daySum = 0, dayCnt = 0, dayPeak = 0;
+  let nightRelaxMin = 0, nightMidMin = 0, nightStressMin = 0, nightSum = 0, nightCnt = 0, nightPeak = 0;
+  for (const b of buckets) {
+    if (b.v == null) continue;
+    const day = isDaytime(b.t);
+    sum += b.v; cnt += 1;
+    if (b.v > peak) peak = b.v;
+    if (b.v < STRESS_BANDS[0]) {
+      relaxMin += 5; if (day) dayRelaxMin += 5; else nightRelaxMin += 5;
+    } else if (b.v > STRESS_BANDS[1]) {
+      stressMin += 5; if (day) dayStressMin += 5; else nightStressMin += 5;
+    } else {
+      midMin += 5; if (day) dayMidMin += 5; else nightMidMin += 5;
+    }
+    if (day) { daySum += b.v; dayCnt += 1; if (b.v > dayPeak) dayPeak = b.v; }
+    else { nightSum += b.v; nightCnt += 1; if (b.v > nightPeak) nightPeak = b.v; }
+  }
+  const part = (relaxH: number, stressH: number, midH: number, avg: number | null, pk: number | null): StressDayPart => ({
+    avg, peak: pk, relaxH, stressH, totalMin: relaxH * 60 + stressH * 60 + midH * 60,
+  });
+  return {
+    hasData: cnt > 0,
+    avg: cnt > 0 ? sum / cnt : null,
+    peak: cnt > 0 ? peak : null,
+    relaxH: relaxMin / 60,
+    midH: midMin / 60,
+    stressH: stressMin / 60,
+    day: part(dayRelaxMin / 60, dayStressMin / 60, dayMidMin / 60, dayCnt > 0 ? daySum / dayCnt : null, dayCnt > 0 ? dayPeak : null),
+    night: part(nightRelaxMin / 60, nightStressMin / 60, nightMidMin / 60, nightCnt > 0 ? nightSum / nightCnt : null, nightCnt > 0 ? nightPeak : null),
+  };
+}
+
+/**
+ * ★ 2026-10-17（用户补充：恢复力要加上）：Mira 恢复力——近 14 天滚动综合（对齐 Oura Resilience 口径）。
+ * 以压力信号为主：夜间压力越低 = 恢复越好（权重 0.6），日间放松占比越高 = 承压越稳（权重 0.4）。
+ * 不做认知评分，仅作身体承压/恢复状态的平实呈现。返回 0–100 评分 + 5 档等级。
+ */
+function stressResilience(anchor: Date): { score: number; level: string; nightAvg: number; relaxRatio: number; days: number } | null {
+  let nightSum = 0, nightCnt = 0, relaxSum = 0, relaxCnt = 0, days = 0;
+  for (let i = 0; i < 14; i++) {
+    const d = addDays(anchor, -i);
+    const ds = stressDaySummary(dateKeyOf(d.getTime()), dayStartOf(d.getTime()));
+    if (!ds.hasData) continue;
+    days += 1;
+    if (ds.night.avg != null) { nightSum += ds.night.avg; nightCnt += 1; }
+    if (ds.day.totalMin > 0) { relaxSum += (ds.day.relaxH * 60) / ds.day.totalMin; relaxCnt += 1; }
+  }
+  if (days === 0) return null;
+  const nightAvg = nightCnt > 0 ? nightSum / nightCnt : 50;
+  const relaxRatio = relaxCnt > 0 ? relaxSum / relaxCnt : 0.5;
+  const score = Math.max(0, Math.min(100, Math.round(0.6 * (100 - nightAvg) + 0.4 * (relaxRatio * 100))));
+  const level = score >= 80 ? '卓越' : score >= 65 ? '强健' : score >= 50 ? '稳健' : score >= 35 ? '一般' : '受限';
+  return { score, level, nightAvg: Math.round(nightAvg), relaxRatio, days };
+}
+
+/** 取 range 覆盖的自然日 dateKey 列表（周=当周 7 天 / 月=当月 / 年=当年） */
+function rangeDayKeys(anchor: Date, range: RangeKey): string[] {
+  const out: string[] = [];
+  if (range === 'week') {
+    const mon = startOfWeek(anchor);
+    for (let i = 0; i < 7; i++) out.push(dateKeyOf(addDays(mon, i).getTime()));
+  } else if (range === 'month') {
+    const y = anchor.getFullYear(), m = anchor.getMonth(), dim = new Date(y, m + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) out.push(dateKeyOf(new Date(y, m, d).getTime()));
+  } else {
+    const y = anchor.getFullYear();
+    for (let mo = 0; mo < 12; mo++) {
+      const dim = new Date(y, mo + 1, 0).getDate();
+      for (let d = 1; d <= dim; d++) out.push(dateKeyOf(new Date(y, mo, d).getTime()));
+    }
+  }
+  return out;
+}
+
 
 /** "HH:mm" / "HH:mm:ss" → 当天该钟点的绝对 ms；解析失败返回 null */
 function parseClockMs(s: string | null | undefined, dayStart: number): number | null {
@@ -343,6 +439,9 @@ export default function MetricDetailScreen() {
   const [anchor, setAnchor] = useState<Date>(new Date());
   // ★ 2026-10-10（用户）：HRV 日视图分「夜间 / 日间」两段展示（见下方 hrvDay 注释）
   const [hrvPart, setHrvPart] = useState<'night' | 'day'>('night');
+  // ★ 2026-10-17（用户：日夜参考心率，做个 tab 区分就行）：压力日视图分「日间 / 夜间」两段，
+  //   与 HRV 同套 partRow 控件 + mutedRanges 静音非选中段。默认日间（压力主故事在白天）。
+  const [stressPart, setStressPart] = useState<'day' | 'night'>('day');
   // ★ 2026-10-16：体温详情页双 tab —— 体温（temp）/ 皮肤温度（skinTemp，orgTemperature 原始体温）
   const [tempSignal, setTempSignal] = useState<'temp' | 'skinTemp'>('temp');
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
@@ -507,12 +606,14 @@ export default function MetricDetailScreen() {
     return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length };
   }, [isSpecDay, spec, anchor]);
 
-  // 状态型指标的分档配色：优先 spec 自定义（情绪按方向），否则低/中/高三档
+  // 状态型指标的分档配色：优先 spec 自定义（情绪按方向），否则低/中/高三档。
+  // 始终返回一个函数（即便 spec 无 bands/colorOf 也回退到默认三档），避免调用处类型歧义。
   const specColorOf = useMemo(() => {
     if (spec?.colorOf) return spec.colorOf;
-    if (!spec?.bands) return undefined;
-    const [lo, hi] = spec.bands;
-    return (v: number) => (v <= lo ? mm.colors.inkFaint : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
+    const [lo, hi] = spec?.bands ?? [30, 55];
+    // ★ 2026-10-17（用户：灰柱不好看）：低档（放松/恢复）由灰 inkFaint 改为主题绿 limeMid，
+    //   与 App「睡眠恢复」同语义；中=琥珀 honeyCore、高=粉 roseDeep 不变。三档均为主题色。
+    return (v: number) => (v <= lo ? mm.colors.limeMid : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
   }, [spec]);
   // ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张时长 / 恢复时长」汇总）：日视图按档位把有数据的桶折算成小时。
   //   每桶 = binMin 分钟（默认 5）；v<lo=放松（恢复），v>hi=紧张。
@@ -520,14 +621,27 @@ export default function MetricDetailScreen() {
     if (!specDay || specDay.blocked || !spec?.bands) return null;
     const [lo, hi] = spec.bands;
     const BIN = spec.binMin ?? 5;
+    // ★ 2026-10-17（用户：日夜参考心率做 tab 区分）：zoneSummary 跟随 stressPart 分日夜
+    const inPart = (t: number) => {
+      const h = new Date(t).getHours();
+      return stressPart === 'day' ? h >= 7 && h < 23 : h < 7 || h >= 23;
+    };
     let relaxMin = 0, stressMin = 0;
     for (const b of specDay.buckets ?? []) {
-      if (b.v == null) continue;
+      if (b.v == null || !inPart(b.t)) continue;
       if (b.v < lo) relaxMin += BIN;
       else if (b.v > hi) stressMin += BIN;
     }
     return { relax: relaxMin / 60, stress: stressMin / 60 };
-  }, [specDay, spec]);
+  }, [specDay, spec, stressPart]);
+  // ★ 2026-10-17（用户：日夜参考心率做 tab）：按 stressPart 静音非选中段（日间=07:00–23:00，夜间=23:00–07:00）
+  const stressMutedRanges = useMemo<[number, number][]>(() => {
+    const s = dayStartOf(anchor.getTime());
+    const H7 = 7 * 3_600_000, H23 = 23 * 3_600_000, D = 86_400_000;
+    return stressPart === 'day'
+      ? [[s, s + H7], [s + H23, s + D]]
+      : [[s + H7, s + H23]];
+  }, [anchor, stressPart]);
   const isHrvDay = !isEcg && range === 'day' && params.key === 'hrv';
 
   /**
@@ -1009,6 +1123,25 @@ export default function MetricDetailScreen() {
                   : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
               </Text>
             </View>
+            {/* ★ 2026-10-17（用户：日夜参考心率，做个 tab 区分就行）：压力日视图 日间/夜间 分段控件 */}
+            <View style={styles.partRow}>
+              {(['day', 'night'] as const).map((p) => {
+                const on = stressPart === p;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setStressPart(p)}
+                    style={[styles.partBtn, on && styles.partBtnOn]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.partBtnText, on && styles.partBtnTextOn]}>
+                      {p === 'day' ? '日间' : '夜间'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             {specDay.blocked ? (
               <Text style={styles.chartNote}>
                 当日皮质醇为推算值（由压力值换算），按产品口径**不展示**——皮质醇有明确的昼夜节律
@@ -1021,6 +1154,7 @@ export default function MetricDetailScreen() {
                   dayStartMs={dayStartOf(anchor.getTime())}
                   segmentOf={spec!.nightFirst ? hrSegmentOf : undefined}
                   colorOf={specColorOf}
+                  mutedRanges={stressMutedRanges}
                   yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
                   height={chart.plot.l}
                 />
@@ -1040,13 +1174,16 @@ export default function MetricDetailScreen() {
                 <Text style={styles.chartNote}>
                   {spec!.sourceNote}
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}
+                  {stressPart === 'night'
+                    ? ' 当前为夜间视图（23:00–07:00），日间时段已隐藏。'
+                    : ' 当前为日间视图（07:00–23:00），夜间时段已隐藏。'}
                 </Text>
                 {/* ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张 / 恢复时长」汇总）：
                     按档位把有数据的桶折算成小时，与日视图同套档位配色（低=灰 / 高=粉）。 */}
                 {specZoneHours && (specZoneHours.relax > 0 || specZoneHours.stress > 0) ? (
                   <View style={styles.zoneSummary}>
                     <View style={styles.zoneItem}>
-                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.inkFaint }]} />
+                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.limeMid }]} />
                       <Text style={styles.zoneText}>放松 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.relax.toFixed(1)}h</Text></Text>
                     </View>
                     <View style={styles.zoneItem}>
@@ -1075,6 +1212,11 @@ export default function MetricDetailScreen() {
             showYAxis={!hideYAxis}
             emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
           />
+        ) : null}
+
+        {/* ★ 2026-10-17：压力——分析「数据卡片」嵌在日/周/月/年详情里（图表下方），与 AI 文字解读并行 */}
+        {params.key === 'stress' && (isSpecDay || isSpecRange) ? (
+          <StressStatCards anchor={anchor} range={range} part={stressPart} />
         ) : null}
 
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
@@ -1380,6 +1522,8 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析。
             注意：四项同图的「日/周/月/年」趋势卡（LipidTrendCard）已作为主图渲染在页面顶部（续 6）。 */}
         {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidOverviewCard anchor={anchor} openChat={openChat} /> : null}
+        {/* ★ 2026-10-17：压力页——Mira 式规则解读层（当日定性 / 今日放松紧张时长 / 本周主导档位 + 紧张占比） */}
+        {params.key === 'stress' ? <StressInsightCard anchor={anchor} openChat={openChat} /> : null}
         {edaDiagnostics ? (
           <View style={styles.debugFoot}>
             <Text style={styles.debugTitle}>测试信息 · EDA（最近 30 分钟）</Text>
@@ -1866,6 +2010,299 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
       </Card>
       <InsightBanner title="血脂解读" rows={rows} onMore={() => openChat('帮我分析血脂四项')} />
     </>
+  );
+}
+
+/* ★ 2026-10-17：压力详情页——Mira 式规则解读层（对齐 Oura Daytime Stress 的分析语义，但保持 Mira 口径）
+ * 从压力真数据派生：当日定性（放松日 / 平衡日 / 紧张日）、今日放松·紧张时长、本周主导档位与紧张占比。
+ * 配色与全局一致：低档=主题绿 limeMid（放松）、中档=琥珀 honeyCore、高档=粉 roseDeep（紧张）。
+ * 注意：stress 与 emotionalStress / emotionalLoad 并非同一指标——此处只用基础指标压力（与「身体负荷」chip 同源）。 */
+function StressInsightCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  // 单日压力聚合：委托给模块级 stressDaySummary（与 StressStatCards 同源口径）
+  const dayStress = useCallback((dk: string, dayStartTs: number) => stressDaySummary(dk, dayStartTs), []);
+
+  const today = useMemo(() => dayStress(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())), [anchor, dayStress]);
+
+  // 本周（anchor 所在自然周，周一~周日）跨天聚合，求主导档位与紧张占比
+  const week = useMemo(() => {
+    const mon = startOfWeek(anchor);
+    let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(mon, i);
+      const dk = dateKeyOf(d.getTime());
+      const r = dayStress(dk, dayStartOf(d.getTime()));
+      if (!r.hasData) continue;
+      daysWithData += 1;
+      relaxMin += r.relaxH * 60;
+      midMin += r.midH * 60;
+      stressMin += r.stressH * 60;
+      if (r.avg != null) { sum += r.avg; cnt += 1; }
+    }
+    const totalMin = relaxMin + midMin + stressMin;
+    const dominant: '放松' | '平衡' | '紧张' =
+      stressMin >= relaxMin && stressMin >= midMin ? '紧张' : relaxMin >= midMin ? '放松' : '平衡';
+    return {
+      daysWithData,
+      avg: cnt > 0 ? sum / cnt : null,
+      stressPct: totalMin > 0 ? Math.round((stressMin / totalMin) * 100) : 0,
+      dominant,
+    };
+  }, [anchor, dayStress]);
+
+  // 恢复力（近 14 天），与 StressStatCards 同源
+  const resilience = useMemo(() => stressResilience(anchor), [anchor]);
+
+  const qualOf = (avg: number | null): '放松日' | '平衡日' | '紧张日' | null => {
+    if (avg == null) return null;
+    if (avg < STRESS_BANDS[0]) return '放松日';
+    if (avg > STRESS_BANDS[1]) return '紧张日';
+    return '平衡日';
+  };
+
+  const todayQual = qualOf(today.avg);
+  const toneOfToday = todayQual === '放松日' ? 'good' : todayQual === '紧张日' ? 'warn' : 'neutral';
+
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
+
+  // 第一段：当日定性（纯段落）
+  if (today.hasData && today.avg != null) {
+    rows.push({
+      tone: 'neutral',
+      title: '',
+      body: `今日压力均值为 ${Math.round(today.avg)}（0–100），整体属于「${todayQual}」。`,
+    });
+  } else {
+    rows.push({
+      tone: 'neutral',
+      title: '',
+      body: '今日压力数据不足，暂无法评估当日节奏。持续佩戴后，这里会结合你的真实压力曲线生成解读。',
+    });
+  }
+
+  // 今日放松 / 紧张时长
+  if (today.hasData) {
+    rows.push({
+      tone: toneOfToday,
+      title: '今日节奏',
+      body: `放松时段约 ${today.relaxH.toFixed(1)}h、紧张时段约 ${today.stressH.toFixed(1)}h（按 5 分钟档位统计，未佩戴时段不计入）。`,
+    });
+  }
+
+  // 本周主导档位 + 紧张占比
+  if (week.daysWithData > 0) {
+    rows.push({
+      tone: 'neutral',
+      title: '本周主导',
+      body: `本周 ${week.daysWithData} 天有数据，主导档位为「${week.dominant}」，紧张占比约 ${week.stressPct}%。`,
+    });
+  } else {
+    rows.push({
+      tone: 'neutral',
+      title: '本周主导',
+      body: '本周暂无足够压力数据，无法判断主导档位与紧张占比。',
+    });
+  }
+
+  // 恢复力（近 14 天综合，与图下数据卡同源）
+  if (resilience) {
+    rows.push({
+      tone: resilience.level === '受限' || resilience.level === '一般' ? 'warn' : 'good',
+      title: '恢复力',
+      body: `近 ${resilience.days} 天综合恢复力为「${resilience.level}」（评分 ${resilience.score}）。夜间压力越低、日间放松越多，恢复力越强。`,
+    });
+  }
+
+  // 建议（按当日状态给平实提示，不做认知反馈 / 评分）
+  let adviceBody = '压力随活动、睡眠与周期相位波动属正常；留意连续多日紧张占比偏高时，主动安排休息。';
+  if (todayQual === '紧张日') {
+    adviceBody = '今天紧张时段偏多，可留意呼吸节奏与休息间隙；压力随活动、睡眠与周期相位自然波动。';
+  } else if (todayQual === '放松日') {
+    adviceBody = '今天整体放松，保持规律作息即可；压力随活动、睡眠与周期相位自然波动。';
+  }
+  rows.push({ tone: 'neutral', title: '建议', body: adviceBody });
+
+  return (
+    <InsightBanner
+      title="压力解读"
+      rows={rows}
+      onMore={() => openChat('帮我分析今天的压力水平和本周趋势，结合放松与紧张时段给出调节建议')}
+    />
+  );
+}
+
+/* ★ 2026-10-17（用户：① 分析以数据卡片嵌在日/周/月/年详情图下；② 日夜参考心率用 tab 区分；③ 恢复力要加上）：
+ * - 日视图：顶部「日间/夜间」tab 切换，图与卡均跟随选中段；卡片 = 定性 + 平均 + 峰值 + 时长分布（放松/平衡/紧张）。
+ * - 周/月/年：主导档位 + 紧张占比 + 平均压力（覆盖范围内有数据的自然日聚合）。
+ * - 恢复力（近 14 天，对齐 Oura Resilience，压力信号为主）独立卡片，日/周/月/年均展示。
+ * 色值与全局一致：低档=主题绿 limeMid（放松）/ 中档=琥珀 honeyCore / 高档=粉 roseDeep（紧张）。 */
+function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKey; part: 'day' | 'night' }) {
+  const C = { relax: mm.colors.limeMid, mid: mm.colors.honeyCore, stress: mm.colors.roseDeep };
+
+  const today = useMemo(
+    () => stressDaySummary(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())),
+    [anchor],
+  );
+
+  // 周 / 月 / 年：覆盖范围内所有自然日聚合，求主导档位与紧张占比
+  const agg = useMemo(() => {
+    if (range === 'day') return null;
+    let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
+    for (const dk of rangeDayKeys(anchor, range)) {
+      const r = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
+      if (!r.hasData) continue;
+      daysWithData += 1;
+      relaxMin += r.relaxH * 60; midMin += r.midH * 60; stressMin += r.stressH * 60;
+      if (r.avg != null) { sum += r.avg; cnt += 1; }
+    }
+    const totalMin = relaxMin + midMin + stressMin;
+    const dominant: '放松' | '平衡' | '紧张' =
+      stressMin >= relaxMin && stressMin >= midMin ? '紧张' : relaxMin >= midMin ? '放松' : '平衡';
+    return {
+      daysWithData,
+      avg: cnt > 0 ? sum / cnt : null,
+      stressPct: totalMin > 0 ? Math.round((stressMin / totalMin) * 100) : 0,
+      dominant,
+    };
+  }, [anchor, range]);
+
+  // 恢复力（近 14 天滚动，与 Oura Resilience 口径对齐；压力信号为主）
+  const resilience = useMemo(() => stressResilience(anchor), [anchor]);
+
+  const qualOf = (avg: number | null): '放松日' | '平衡日' | '紧张日' | null => {
+    if (avg == null) return null;
+    if (avg < STRESS_BANDS[0]) return '放松日';
+    if (avg > STRESS_BANDS[1]) return '紧张日';
+    return '平衡日';
+  };
+  const fmtH = (h: number) => `${h.toFixed(1)}h`;
+  const dash = (v: number | null, suffix = '') => (v != null ? `${Math.round(v)}${suffix}` : '—');
+  const resColor = (lvl: string) =>
+    lvl === '卓越' || lvl === '强健' ? C.relax : lvl === '稳健' ? C.mid : C.stress;
+  const partName = part === 'day' ? '日间' : '夜间';
+
+  if (range === 'day') {
+    if (!today.hasData) {
+      return (
+        <Card>
+          <Text style={styles.specLab}>今日压力分析</Text>
+          <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
+        </Card>
+      );
+    }
+    const sel = part === 'day' ? today.day : today.night;
+    const partHasData = sel.totalMin > 0;
+    const qColor =
+      sel.avg != null
+        ? sel.avg < STRESS_BANDS[0]
+          ? C.relax
+          : sel.avg > STRESS_BANDS[1]
+          ? C.stress
+          : C.mid
+        : theme.colors.textSub;
+    const midH = Math.max(0, sel.totalMin / 60 - sel.relaxH - sel.stressH);
+    return (
+      <View>
+        {/* 卡片 1：选中段总览 */}
+        <Card>
+          <Text style={styles.specLab}>{partName}压力分析</Text>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>定性</Text>
+              <Text style={[styles.statValue, { color: qColor }]}>{qualOf(sel.avg)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>平均压力</Text>
+              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{dash(sel.avg)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>峰值压力</Text>
+              <Text style={[styles.statValue, { color: C.stress }]}>{dash(sel.peak)}</Text>
+            </View>
+          </View>
+          {!partHasData ? (
+            <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
+          ) : null}
+        </Card>
+        {/* 卡片 2：选中段时长分布 */}
+        <Card>
+          <Text style={styles.specLab}>时长分布（{partName}）</Text>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>放松时长</Text>
+              <Text style={[styles.statValue, { color: C.relax }]}>{fmtH(sel.relaxH)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>平衡时长</Text>
+              <Text style={[styles.statValue, { color: C.mid }]}>{fmtH(midH)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>紧张时长</Text>
+              <Text style={[styles.statValue, { color: C.stress }]}>{fmtH(sel.stressH)}</Text>
+            </View>
+          </View>
+        </Card>
+      </View>
+    );
+  }
+
+  // 周 / 月 / 年
+  const w = agg;
+  const dColor =
+    w && w.daysWithData > 0
+      ? w.dominant === '紧张'
+        ? C.stress
+        : w.dominant === '放松'
+        ? C.relax
+        : C.mid
+      : theme.colors.textSub;
+  const rangeLabel = range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
+  return (
+    <View>
+      {/* 卡片 1：区间总览 */}
+      <Card>
+        <Text style={styles.specLab}>{rangeLabel}压力分析</Text>
+        <View style={styles.statGrid}>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>主导档位</Text>
+            <Text style={[styles.statValue, { color: dColor }]}>{w && w.daysWithData > 0 ? w.dominant : '—'}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>紧张占比</Text>
+            <Text style={[styles.statValue, { color: C.stress }]}>{w ? `${w.stressPct}%` : '—'}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>平均压力</Text>
+            <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>
+              {w && w.avg != null ? String(Math.round(w.avg)) : '—'}
+            </Text>
+          </View>
+        </View>
+      </Card>
+      {/* 卡片 2：恢复力（近 14 天） */}
+      {resilience ? (
+        <Card>
+          <Text style={styles.specLab}>恢复力（近 14 天）</Text>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>等级</Text>
+              <Text style={[styles.statValue, { color: resColor(resilience.level) }]}>{resilience.level}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>综合评分</Text>
+              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.score}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>夜间平均</Text>
+              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.nightAvg}</Text>
+            </View>
+          </View>
+          <Text style={styles.note}>基于近 {resilience.days} 天压力信号：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</Text>
+        </Card>
+      ) : null}
+      {w && w.daysWithData === 0 ? (
+        <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
+      ) : null}
+    </View>
   );
 }
 
