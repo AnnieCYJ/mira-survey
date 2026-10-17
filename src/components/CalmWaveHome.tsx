@@ -6,6 +6,9 @@
  * 纯静态预览数据，不接健康数据；
  * 预览开关在 BottomTabNavigator（USE_CALM_WAVE_HOME），改回 false 即恢复原 TodayScreen。
  *
+ * ★ 2026-10-17 第十七轮（用户："没看到花瓣啊"）：上版 2+3 排布仍像网格 → 重排为
+ *   切向旋转的真正花簇：肩瓣 ±29°、上排瓣 ±12°、顶心瓣 0° 围绕环心；环 270→240（R=100）
+ *   给花瓣让位；卡 96×78 紧凑四行；z 序 = 数组序（肩→上排→顶心）。
  * ★ 2026-10-17 第十六轮（用户）：隐藏「脑力准备度」，余 5 张卡改花瓣状围绕半圆环
  *   （参考用户提供的玻璃拟态花瓣簇截图）。
  * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身体负荷」两张卡（与白底版 6 卡对齐）；
@@ -45,42 +48,42 @@ type Chip = {
   go: (nav: NavProp) => void;
 };
 const lineIcon = (d: string | string[]) => (
-  <Svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
     {(Array.isArray(d) ? d : [d]).map((p, i) => <Path key={i} d={p} />)}
   </Svg>
 );
 const CHIPS: Chip[] = [
-  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
-  { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
-  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
   { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
+  { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
+  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
+  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
   // 「脑力准备度」按用户要求隐藏（2026-10-17 改花瓣布局只留 5 张）；要恢复：取消下行注释
   // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
-const CHIP_W = 100;
-const CHIP_H = 88;
+const CHIP_W = 96;
+const CHIP_H = 78;
 // 注：icon 为白色细线 SVG（Oura 式），无圆底
 
 /**
- * 花瓣簇坐标（卡中心，相对 gaugeTop；x 相对屏宽中点）。
- * 几何约束：半圆环 R=112、环顶在 gaugeTop+23；卡 100×88（半宽 50 / 半高 44）。
- *   睡眠恢复 (0, -32)    顶心瓣：底 +12，距环顶 23 余 11
- *   压力水平 (-65, -124) 上左瓣 / 活动消耗 (65, -124) 上右瓣：底 -81，高悬
- *   生理周期 (-120, -20) 左肩瓣 / 身体负荷 (120, -20) 右肩瓣：底 +24，
- *     环在 x=屏心∓120 处已降到 y≈48，不碰卡底
- * 相邻瓣 x 重叠区均由 ≥88 的纵向间距错开（92/104），角区不相交；
- * 花瓣渲染在半圆环之后（同层后画=在上），肩瓣压到环触摸区也能正常点击。
+ * 花瓣簇坐标（卡中心，相对半圆环圆心 (屏心中点, gaugeTop+120)）+ 切向旋转角。
+ * 环 240×128（R=100）；卡 96×78（半宽 48 / 半高 39）。数组顺序 = z 序（后者压前者）：
+ *   肩瓣（±29°）→ 上排瓣（±12°）→ 顶心瓣（0°）。
+ * 各瓣相对圆心：
+ *   睡眠恢复 (0, -152)      顶心瓣：贴环顶（底 427 vs 环顶 440）
+ *   压力水平 (-72.4, -225)  上左瓣 / 活动消耗 (72.4, -225) 上右瓣：高悬，底 354
+ *   生理周期 (-126.4, -108) 左肩瓣 / 身体负荷 (126.4, -108) 右肩瓣：底 471，
+ *     环在 x=屏心∓126 处已降到 y≈478，不碰卡底；旋转后内下角离圆心 ≈117（余 17）
+ * 相邻瓣经旋转后角区错开不相交；瓣内文字均在安全区（旋转不扫到）。
  */
-const PETALS: Record<string, { dx: number; dy: number }> = {
-  '生理周期': { dx: -120, dy: -20 },
-  '压力水平': { dx: -65, dy: -124 },
-  '睡眠恢复': { dx: 0, dy: -32 },
-  '活动消耗': { dx: 65, dy: -124 },
-  '身体负荷': { dx: 120, dy: -20 },
+const PETALS: Record<string, { dx: number; dy: number; rot: number }> = {
+  '生理周期': { dx: -126.4, dy: -108, rot: -29 },
+  '身体负荷': { dx: 126.4, dy: -108, rot: 29 },
+  '压力水平': { dx: -72.4, dy: -225, rot: -12 },
+  '活动消耗': { dx: 72.4, dy: -225, rot: 12 },
+  '睡眠恢复': { dx: 0, dy: -152, rot: 0 },
 };
-const FAN_TOP = -167; // 花瓣簇顶（相对 gaugeTop）= 上排瓣顶
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -97,13 +100,15 @@ export default function CalmWaveHome() {
   // 注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
   const aiBottom = insets.bottom + 68;
   const aiCardH = 148; // AI 卡近似高（两行分析 + 建议行 + 内边距）
-  // 花瓣布局：簇顶对齐交界线下方 22px（与旧网格顶一致）；短屏时整体上移，
-  // 防止环底（gaugeTop+144）撞上 AI 卡顶（height - aiBottom - aiCardH）
-  const fanS = Math.min(1, (width - 32) / 340); // 窄屏（<390pt）等比收缩花瓣
+  // 花瓣布局：环心 cy = gaugeTop+120；上排瓣顶（cy-225-39）对齐交界线下方 11px；
+  // 短屏时整体上移，防止环底（cy）撞上 AI 卡顶（height - aiBottom - aiCardH）
+  const fanS = Math.min(1, (width - 32) / 375); // 窄屏等比收缩（含旋转角外扩量）
   const gaugeTop = Math.min(
-    transitionY - 22 - FAN_TOP,
-    height - aiBottom - aiCardH - 12 - 144,
+    transitionY + 133,
+    height - aiBottom - aiCardH - 12 - 120,
   );
+  const ringCx = width / 2;
+  const ringCy = gaugeTop + 120; // 半圆环圆心（弧两端所在高度）
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -177,8 +182,8 @@ export default function CalmWaveHome() {
         </Svg>
       </TouchableOpacity>
 
-      {/* 花瓣簇：5 张卡围绕半圆环（绝对定位，坐标见 PETALS 注释；每张可点进对应详情页）。
-          渲染在半圆环之后 = 画在上层，肩瓣压住环触摸区也能正常点击。 */}
+      {/* 花瓣簇：5 张卡围绕半圆环（绝对定位+切向旋转，坐标见 PETALS 注释；每张可点进对应详情页）。
+          渲染在半圆环之后 = 画在上层；数组顺序即 z 序（肩瓣→上排瓣→顶心瓣）。 */}
       {CHIPS.map((c) => {
         const p = PETALS[c.label];
         if (!p) return null;
@@ -191,8 +196,9 @@ export default function CalmWaveHome() {
                 width: CHIP_W * fanS,
                 height: CHIP_H,
                 position: 'absolute',
-                left: width / 2 + p.dx * fanS - (CHIP_W * fanS) / 2,
-                top: gaugeTop + p.dy - CHIP_H / 2,
+                left: ringCx + p.dx * fanS - (CHIP_W * fanS) / 2,
+                top: ringCy + p.dy - CHIP_H / 2,
+                transform: [{ rotate: `${p.rot}deg` }],
               },
             ]}
             activeOpacity={0.7}
@@ -252,11 +258,11 @@ const s = StyleSheet.create({
   },
   titleC: { fontSize: 17, fontWeight: '600', color: '#fff', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12 },
 
-  // 花瓣卡（Oura 式玻璃矮卡：icon + label + 值 + tag；绝对定位由 PETALS 给出）
+  // 花瓣卡（Oura 式玻璃卡：icon + label + 值 + tag；绝对定位+旋转由 PETALS 给出）
   chip: {
     borderRadius: 16,
-    paddingTop: 9,
-    paddingBottom: 7,
+    paddingTop: 5,
+    paddingBottom: 4,
     paddingHorizontal: 2,
     backgroundColor: GLASS_BG,
     borderColor: GLASS_BD,
@@ -264,15 +270,15 @@ const s = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  chipIcon: { marginBottom: 2 },
-  chipLabel: { fontSize: 10.5, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.2 },
-  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
+  chipIcon: { marginBottom: 1 },
+  chipLabel: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.2 },
+  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 1.5 },
   chipVal: { fontSize: 17, fontWeight: '700', color: '#fff' },
   chipValGood: { color: '#D5E384' },
   chipUnit: { fontSize: 10, color: 'rgba(255,255,255,0.55)', marginLeft: 1 },
-  chipTag: { fontSize: 9.5, color: 'rgba(255,255,255,0.47)', marginTop: 2 },
+  chipTag: { fontSize: 10, color: 'rgba(255,255,255,0.47)', marginTop: 1 },
 
-  // 半圆环
+  // 半圆环（240×128，R=100；viewBox 1:1，弧两端在 y=120）
   gaugeZone: {
     position: 'absolute',
     left: 0,
@@ -281,12 +287,12 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gauge: { width: 270, height: 144 },
+  gauge: { width: 240, height: 128 },
   gaugeCenter: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -6,
+    bottom: 7,
     alignItems: 'center',
   },
   gBig: { fontSize: 46, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
