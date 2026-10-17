@@ -249,11 +249,12 @@ const styles = StyleSheet.create({
   advList: { gap: theme.sp(2) },
   card: {
     minHeight: CARD_MIN_H,
-    backgroundColor: '#FFFFFF',
+    // ★ mira-ocean（2026-10-17）：白卡 → 深海玻璃（白 13% + 白 14% 细边）
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: 'rgba(31,29,26,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
     paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(3.5),
-    shadowColor: '#1F1D1A',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
@@ -312,7 +313,7 @@ const styles = StyleSheet.create({
   },
   sheetGrab: {
     width: theme.sp(11), height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(31,29,26,0.14)', alignSelf: 'center', marginBottom: theme.sp(3),
+    backgroundColor: 'rgba(255,255,255,0.24)', alignSelf: 'center', marginBottom: theme.sp(3), // ★ mira-ocean：白阶
   },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(3) },
   sheetTitle: {
@@ -328,7 +329,7 @@ const styles = StyleSheet.create({
 
   sRow: {
     flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.cardBg, // ★ mira-ocean：白 → 深海玻璃
     borderRadius: theme.radius.card, borderWidth: 1, borderColor: mm.colors.cardBorder,
     paddingVertical: theme.sp(3), paddingHorizontal: theme.sp(3), marginBottom: theme.sp(2),
   },
@@ -355,7 +356,7 @@ const styles = StyleSheet.create({
   sRemoveText: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
 
   // ★ 完整页面（「共 N 条」点开，全屏）
-  fullPage: { flex: 1, backgroundColor: '#FFFFFF' },
+  fullPage: { flex: 1, backgroundColor: theme.colors.bgBottom }, // ★ mira-ocean：白 → 深蓝紫实底
   fullHead: {
     flexDirection: 'row', alignItems: 'center', height: 52,
     paddingHorizontal: theme.sp(3),
