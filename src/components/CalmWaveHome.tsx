@@ -2,10 +2,12 @@
  * Calm 式海浪首页（真机预览版 · 2026-10-17）
  * 结构对齐根目录 home-calm-wave.html：
  *   上 1/3 海浪视频（已用 ffmpeg 裁掉内嵌 UI）→ 蓝→蓝紫渐变 →
- *   chips（2×3 网格，可点击进详情）→ Oura 式细弧半圆环（可点击）→ AI 分析卡沉底。
+ *   花瓣簇（5 张玻璃卡围绕半圆环，可点击进详情）→ Oura 式细弧半圆环（可点击）→ AI 分析卡沉底。
  * 纯静态预览数据，不接健康数据；
  * 预览开关在 BottomTabNavigator（USE_CALM_WAVE_HOME），改回 false 即恢复原 TodayScreen。
  *
+ * ★ 2026-10-17 第十六轮（用户）：隐藏「脑力准备度」，余 5 张卡改花瓣状围绕半圆环
+ *   （参考用户提供的玻璃拟态花瓣簇截图）。
  * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身体负荷」两张卡（与白底版 6 卡对齐）；
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
@@ -49,16 +51,36 @@ const lineIcon = (d: string | string[]) => (
 );
 const CHIPS: Chip[] = [
   { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
-  { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
   { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
   { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
   { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
+  // 「脑力准备度」按用户要求隐藏（2026-10-17 改花瓣布局只留 5 张）；要恢复：取消下行注释
+  // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
-const CHIP_H = 74;
-const CHIP_GAP = 8;
+const CHIP_W = 100;
+const CHIP_H = 88;
 // 注：icon 为白色细线 SVG（Oura 式），无圆底
+
+/**
+ * 花瓣簇坐标（卡中心，相对 gaugeTop；x 相对屏宽中点）。
+ * 几何约束：半圆环 R=112、环顶在 gaugeTop+23；卡 100×88（半宽 50 / 半高 44）。
+ *   睡眠恢复 (0, -32)    顶心瓣：底 +12，距环顶 23 余 11
+ *   压力水平 (-65, -124) 上左瓣 / 活动消耗 (65, -124) 上右瓣：底 -81，高悬
+ *   生理周期 (-120, -20) 左肩瓣 / 身体负荷 (120, -20) 右肩瓣：底 +24，
+ *     环在 x=屏心∓120 处已降到 y≈48，不碰卡底
+ * 相邻瓣 x 重叠区均由 ≥88 的纵向间距错开（92/104），角区不相交；
+ * 花瓣渲染在半圆环之后（同层后画=在上），肩瓣压到环触摸区也能正常点击。
+ */
+const PETALS: Record<string, { dx: number; dy: number }> = {
+  '生理周期': { dx: -120, dy: -20 },
+  '压力水平': { dx: -65, dy: -124 },
+  '睡眠恢复': { dx: 0, dy: -32 },
+  '活动消耗': { dx: 65, dy: -124 },
+  '身体负荷': { dx: 120, dy: -20 },
+};
+const FAN_TOP = -167; // 花瓣簇顶（相对 gaugeTop）= 上排瓣顶
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -71,14 +93,17 @@ export default function CalmWaveHome() {
   }, []));
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
-  // chips：2×3 网格（单卡宽 = (屏宽 − 左右留白 − 2×gap) / 3）
-  const chipW = (width - 32 - 2 * CHIP_GAP) / 3;
-  const chipsH = CHIP_H * 2 + CHIP_GAP;
-  // 半圆环贴 chips 下缘；AI 卡贴在真 tab 上方
-  const gaugeTop = transitionY - 10 + chipsH + 12;
-  // ★ 2026-10-17 用户：建议卡就在 tab 上方（tab 胶囊顶 = insets.bottom + 56，再留 12 间距）。
-  //   注意：absolute 定位 bottom 值越大卡片越高——上一轮 76→112 是改反了方向。
+  // AI 卡贴在真 tab 上方（tab 胶囊顶 = insets.bottom + 56，再留 12 间距）。
+  // 注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
   const aiBottom = insets.bottom + 68;
+  const aiCardH = 148; // AI 卡近似高（两行分析 + 建议行 + 内边距）
+  // 花瓣布局：簇顶对齐交界线下方 22px（与旧网格顶一致）；短屏时整体上移，
+  // 防止环底（gaugeTop+144）撞上 AI 卡顶（height - aiBottom - aiCardH）
+  const fanS = Math.min(1, (width - 32) / 340); // 窄屏（<390pt）等比收缩花瓣
+  const gaugeTop = Math.min(
+    transitionY - 22 - FAN_TOP,
+    height - aiBottom - aiCardH - 12 - 144,
+  );
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -126,27 +151,6 @@ export default function CalmWaveHome() {
         </TouchableOpacity>
       </View>
 
-      {/* chips：2×3 网格贴渐变交界线下方，每张可点进对应详情页 */}
-      <View style={[s.chips, { top: transitionY - 10 }]}>
-        {CHIPS.map((c) => (
-          <TouchableOpacity
-            key={c.label}
-            style={[s.chip, { width: chipW }]}
-            activeOpacity={0.7}
-            accessibilityLabel={`${c.label} ${c.value}`}
-            onPress={() => c.go(navigation)}
-          >
-            <View style={s.chipIcon}>{c.icon}</View>
-            <Text style={s.chipLabel}>{c.label}</Text>
-            <View style={s.chipValRow}>
-              <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
-              {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
-            </View>
-            <Text style={s.chipTag}>{c.tag}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       {/* Oura 式细弧半圆环（进度末端白点 + 光晕，中心大数字；整环可点 → 全天状态趋势） */}
       <TouchableOpacity
         style={[s.gaugeZone, { top: gaugeTop }]}
@@ -172,6 +176,39 @@ export default function CalmWaveHome() {
           <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
       </TouchableOpacity>
+
+      {/* 花瓣簇：5 张卡围绕半圆环（绝对定位，坐标见 PETALS 注释；每张可点进对应详情页）。
+          渲染在半圆环之后 = 画在上层，肩瓣压住环触摸区也能正常点击。 */}
+      {CHIPS.map((c) => {
+        const p = PETALS[c.label];
+        if (!p) return null;
+        return (
+          <TouchableOpacity
+            key={c.label}
+            style={[
+              s.chip,
+              {
+                width: CHIP_W * fanS,
+                height: CHIP_H,
+                position: 'absolute',
+                left: width / 2 + p.dx * fanS - (CHIP_W * fanS) / 2,
+                top: gaugeTop + p.dy - CHIP_H / 2,
+              },
+            ]}
+            activeOpacity={0.7}
+            accessibilityLabel={`${c.label} ${c.value}`}
+            onPress={() => c.go(navigation)}
+          >
+            <View style={s.chipIcon}>{c.icon}</View>
+            <Text style={s.chipLabel}>{c.label}</Text>
+            <View style={s.chipValRow}>
+              <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
+              {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
+            </View>
+            <Text style={s.chipTag}>{c.tag}</Text>
+          </TouchableOpacity>
+        );
+      })}
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
@@ -215,17 +252,8 @@ const s = StyleSheet.create({
   },
   titleC: { fontSize: 17, fontWeight: '600', color: '#fff', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12 },
 
-  // chips（2×3 网格，Oura 式玻璃矮卡：icon + label + 值 + tag）
-  chips: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: CHIP_GAP,
-  },
+  // 花瓣卡（Oura 式玻璃矮卡：icon + label + 值 + tag；绝对定位由 PETALS 给出）
   chip: {
-    height: CHIP_H,
     borderRadius: 16,
     paddingTop: 9,
     paddingBottom: 7,
