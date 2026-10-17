@@ -2,6 +2,9 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import CustomTabBar from '../components/CustomTabBar';
 import TodayScreen from '../screens/TodayScreen';
+// ★ Calm 式海浪首页真机预览（2026-10-17）：改回 false 即恢复原 TodayScreen
+import CalmWaveHome from '../components/CalmWaveHome';
+const USE_CALM_WAVE_HOME = true;
 import InsightScreen from '../screens/InsightScreen';
 import MeditationScreen from '../screens/MeditationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -32,7 +35,7 @@ export default function BottomTabNavigator() {
         freezeOnBlur: true,
       }}
     >
-      <Tab.Screen name="Today" component={TodayScreen} />
+      <Tab.Screen name="Today" component={USE_CALM_WAVE_HOME ? CalmWaveHome : TodayScreen} />
       <Tab.Screen name="Insight" component={InsightScreen} />
       <Tab.Screen name="Meditation" component={MeditationScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

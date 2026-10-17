@@ -9,7 +9,7 @@
     --ink:#FFFFFF; --sub:rgba(255,255,255,.72); --faint:rgba(255,255,255,.55);
     --limeMid:#BCCB62; --limeCore:#D5E384; --limeDeep:#3F4A12;
     --glassBg:rgba(255,255,255,.13); --glassBd:rgba(255,255,255,.28);
-    --deep:#2B546F;
+    --deep:#2B3564;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,"SF Pro SC","PingFang SC",sans-serif;background:#0B1E2E;
@@ -23,9 +23,9 @@
   /* ═══ 全屏海浪视频（Calm 式） ═══ */
   .wave{position:absolute;inset:0;z-index:0}
   .wave video{width:100%;height:100%;object-fit:cover;display:block}
-  /* 渐变：海浪清晰占上 1/3，34% 起完全沉入 Calm 式钢蓝底（下方不再透出海浪），过渡柔和 */
+  /* 渐变：海浪清晰占上 1/3，之后沉入 Calm 式深蓝→蓝紫底（下方不再透出海浪） */
   .fade{position:absolute;inset:0;z-index:1;pointer-events:none;
-    background:linear-gradient(180deg, rgba(43,84,111,0) 0%, rgba(43,84,111,0) 14%, rgba(43,84,111,.42) 24%, rgba(36,72,96,.92) 30%, #2B546F 34%, #2B546F 100%)}
+    background:linear-gradient(180deg, rgba(62,98,122,0) 0%, rgba(62,98,122,0) 14%, rgba(52,88,116,.45) 24%, rgba(38,62,96,.94) 31%, #2A4470 40%, #2B3564 100%)}
 
   .pad{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;padding:0 16px}
 
