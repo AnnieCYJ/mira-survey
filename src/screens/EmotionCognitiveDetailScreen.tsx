@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
   calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   calCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   calMonthCell: { flex: 1, aspectRatio: 1.5, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
-  calCellToday: { borderWidth: 2, borderColor: theme.colors.accentSolid },
+  calCellToday: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：紫 → 白
   calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any },
   calCellEmpty: { flex: 1 },
   calTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -76,7 +76,7 @@ export default function CalmWaveHome() {
   const chipsH = CHIP_H * 2 + CHIP_GAP;
   // 半圆环贴 chips 下缘；AI 卡让出 tab 栏（透明玻璃 56 高 + 20 间距）
   const gaugeTop = transitionY - 10 + chipsH + 12;
-  const aiBottom = insets.bottom + 76;
+  const aiBottom = insets.bottom + 112; // ★ 2026-10-17 用户：分析/建议卡再往下放
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>

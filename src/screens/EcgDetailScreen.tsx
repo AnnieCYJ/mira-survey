@@ -446,11 +446,13 @@ const styles = StyleSheet.create({
   },
   btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
 
-  segment: { flexDirection: 'row', backgroundColor: 'rgba(157,138,240,0.12)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
+  // ★ mira-ocean（2026-10-17）：淡紫轨道 → 玻璃白
+  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.sm },
   segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   segTxt: { fontSize: 13, fontWeight: '600', color: theme.colors.textSub },
-  segTxtOn: { color: theme.colors.textTitle },
+  // ★ mira-ocean：白 pill 上选中文字 → 深蓝（原 textTitle 已随主题变白，白底白字）
+  segTxtOn: { color: '#2A4470' },
 
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metricCell: {

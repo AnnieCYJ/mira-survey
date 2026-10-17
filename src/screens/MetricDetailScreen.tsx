@@ -1432,7 +1432,8 @@ export default function MetricDetailScreen() {
                       justifyContent: 'space-between',
                       paddingVertical: theme.space.sm,
                       paddingHorizontal: theme.space.md,
-                      backgroundColor: i === 0 ? theme.colors.accentSoft : 'transparent',
+                      // ★ mira-ocean（2026-10-17）：淡紫 → 玻璃白
+                      backgroundColor: i === 0 ? 'rgba(255,255,255,0.10)' : 'transparent',
                       borderRadius: theme.radius.sm,
                       marginBottom: theme.sp(1),
                     }}>

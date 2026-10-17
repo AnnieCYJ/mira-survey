@@ -122,7 +122,7 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
           <Icon name="chevronLeft" size={theme.fs(20)} color={theme.colors.textTitle} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.center} onPress={openCalendar} activeOpacity={0.7}>
-          <Icon name="calendar" size={theme.fs(15)} color={theme.colors.accentSolid} />
+          <Icon name="calendar" size={theme.fs(15)} color="rgba(255,255,255,0.85)" />
           <Text style={styles.centerText}>{formatLabel ? formatLabel(value) : centerLabel(value, range)}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.arrow} onPress={goNext} hitSlop={8}>
@@ -235,9 +235,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: theme.space.xs,
+    // ★ mira-ocean（2026-10-17 用户）：紫边/紫底 → 白边/玻璃底
     borderWidth: 1,
-    borderColor: theme.colors.accentSolid,
-    backgroundColor: theme.colors.accentSoft,
+    borderColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderRadius: theme.radius.pill,
     paddingVertical: theme.sp(1.5),
   },
@@ -269,7 +270,7 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   sheetTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
-  todayBtn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.accentSolid },
+  todayBtn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: '#FFFFFF' }, // ★ mira-ocean：紫 → 白
   calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.md },
   calArrow: { padding: theme.sp(1) },
   calTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
@@ -277,9 +278,10 @@ const styles = StyleSheet.create({
   weekHeadCell: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.xs },
   cell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  cellOn: { backgroundColor: theme.colors.accentSolid, borderRadius: theme.radius.sm },
+  // ★ mira-ocean（2026-10-17）：选中日紫底 → 白底 + 深蓝字
+  cellOn: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: theme.radius.sm },
   cellText: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle },
   cellDim: { color: theme.colors.textSub },
-  cellTextOn: { color: '#fff', fontWeight: theme.weight.semibold },
+  cellTextOn: { color: '#2A4470', fontWeight: theme.weight.semibold }, // ★ mira-ocean：白底深字
   cellDis: { color: 'rgba(138,138,168,0.4)' },
 });

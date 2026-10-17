@@ -139,9 +139,10 @@ const styles = StyleSheet.create({
   },
   pill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.accentSolid,
+    // ★ mira-ocean（2026-10-17 用户「日周月年按钮变紫改白」）：选中 pill 紫 → 近白
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: theme.radius.pill,
-    shadowColor: theme.colors.accentSolid,
+    shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
@@ -154,5 +155,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold,
     color: theme.colors.textSub,
   },
-  textOn: { color: theme.colors.textWhite },
+  // ★ mira-ocean：白 pill 上的选中文字改深蓝（原白字白底不可见）
+  textOn: { color: '#2A4470' },
 });
