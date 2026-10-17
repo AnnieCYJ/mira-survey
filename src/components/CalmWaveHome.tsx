@@ -67,6 +67,13 @@ const CHIP_H = 78;
 // 注：icon 为白色细线 SVG（Oura 式），无圆底
 
 /**
+ * 花瓣形（水滴瓣）SVG path：96×78 画布，上圆头、下尖尾（参考元意空间玻璃拟态）。
+ * 尖尾朝下 → 卡片旋转后尖尾呈辐射状指向环心，出花簇感。
+ */
+const PETAL_PATH =
+  'M48 1 C71 1 91 19 91 39 C91 57 69 71 48 77 C27 71 5 57 5 39 C5 19 25 1 48 1 Z';
+
+/**
  * 花瓣簇坐标（卡中心，相对半圆环圆心 (屏心中点, gaugeTop+120)）+ 切向旋转角。
  * 环 240×128（R=100）；卡 96×78（半宽 48 / 半高 39）。数组顺序 = z 序（后者压前者）：
  *   肩瓣（±34°）→ 上排瓣（±18°）→ 顶心瓣（0°）。
@@ -208,6 +215,10 @@ export default function CalmWaveHome() {
             accessibilityLabel={`${c.label} ${c.value}`}
             onPress={() => c.go(navigation)}
           >
+            {/* 花瓣形背景（SVG 水滴瓣：玻璃填充 + 白描边；绝对定位铺满，随卡旋转） */}
+            <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 96 78">
+              <Path d={PETAL_PATH} fill={GLASS_BG} stroke={GLASS_BD} strokeWidth={1} />
+            </Svg>
             <View style={s.chipIcon}>{c.icon}</View>
             <Text style={s.chipLabel}>{c.label}</Text>
             <View style={s.chipValRow}>
@@ -261,17 +272,13 @@ const s = StyleSheet.create({
   },
   titleC: { fontSize: 17, fontWeight: '600', color: '#fff', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12 },
 
-  // 花瓣卡（参考元意空间：胶囊玻璃瓣，圆角 22 出胶囊感）
+  // 花瓣卡（水滴瓣形状由 SVG PETAL_PATH 绘制；此处只留布局与排版）
   chip: {
-    borderRadius: 22,
     paddingTop: 5,
     paddingBottom: 4,
     paddingHorizontal: 2,
-    backgroundColor: GLASS_BG,
-    borderColor: GLASS_BD,
-    borderWidth: 1,
     alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: 'center',
   },
   chipIcon: { marginBottom: 1 },
   chipLabel: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.2 },
