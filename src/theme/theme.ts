@@ -18,15 +18,16 @@ import { Dimensions, Easing } from 'react-native';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const colors = {
-  // ★ 2026-10-15（用户定稿 V1）：页面底色由「紫渐变」改为**统一浅灰 #F5F5F7**（去紫）。
-  //   白卡/白气泡/白 chips 浮在浅灰上出层次；渐变四站同色 = 纯色底（保留渐变结构不动其它代码）。
-  bgTop: '#F5F5F7',
-  bgTopAlt: '#F0F0F3',
-  bgMid: '#F5F5F7',
-  bgMidAlt: '#F0F0F3',
-  bgBottom: '#F5F5F7',
-  bgGradStops: ['#F5F5F7', '#F5F5F7', '#F5F5F7', '#F5F5F7'] as const,
-  bgGradLocs: [0, 0.34, 0.64, 1] as const,
+  // ★★★ mira-ocean 分支（2026-10-17）：白底设计存档于 mira-ios（tag v-mira-ios-white）。
+  //   本分支页面底色改为 Calm 式深海渐变：钢蓝 #3E627A（顶）→ #2A4470 → 深蓝紫 #2B3564（底）。
+  //   真相源在 src/theme/ocean.ts；此处按同值内联，保持旧调用点零改动。
+  bgTop: '#3E627A',
+  bgTopAlt: '#3A5E76',
+  bgMid: '#2A4470',
+  bgMidAlt: '#2A4470',
+  bgBottom: '#2B3564',
+  bgGradStops: ['#3E627A', '#2A4470', '#2B3564'] as const,
+  bgGradLocs: [0, 0.42, 1] as const,
   accent1: '#9D8AF0',
   accent2: '#7EA6F8',
   /**
@@ -36,10 +37,11 @@ export const colors = {
   accentSolid: '#7C6AE0',
   /**
    * accentText —— 用**小字**呈现的强调色（卡片日期、强调标签等）。
-   * = accentSolid 压深到 78%；实测 白卡 6.27 / 玻璃卡 5.82 / 玻璃卡下层 4.55，全部达标 AA。
+   * ★ mira-ocean（2026-10-17）：深底上紫 78% 不可读 → 改长春花蓝 #BFCBFF（Oura 式点缀色，
+   *   深蓝紫底上对比 ≈7.4，达标 AA）。
    */
-  accentText: '#6153AF',
-  accentSoft: 'rgba(124,106,224,0.12)',
+  accentText: '#BFCBFF',
+  accentSoft: 'rgba(160,178,255,0.16)',
   /**
    * 紫色渐变卡（血压 / 血糖）的两端 —— 由深到浅：from 左上、to 右下。
    * ★ 2026-09-20 第四版（用户定稿方向）：**紫底 + 白字**，但紫要落在 design token 的量级
@@ -63,44 +65,46 @@ export const colors = {
   textWhite: '#FFFFFF',
   textWhite80: 'rgba(255,255,255,0.82)',
   textWhite70: 'rgba(255,255,255,0.70)',
-  textTitle: '#6C5647',
-  textBody: '#4A4A5C',
+  // ★ mira-ocean（2026-10-17）：文字层级整体改白阶（深蓝紫底）。原白底深色字存档于 mira-ios。
+  textTitle: '#FFFFFF',
+  textBody: 'rgba(255,255,255,0.82)',
   /**
-   * textSub —— 次级文字。★ 2026-09-20 按 WCAG 实算重新定值：
-   * 原 #8A8AA8 在任何底上都不达 4.5（白卡 3.34 / 玻璃卡 2.44 / 色晕卡 2.61），却在 69 个文件用了 382 处。
-   * 现值 #5F5F74 = 压深到 69%，是「最浅但仍全部达标」的解：白卡 6.20 / 玻璃卡 4.52~5.75 / 色晕卡 4.83~5.34。
-   * 层次感靠字号与字重区分，不要再往回调浅。
+   * textSub —— 次级文字。★ mira-ocean：白 62%，深蓝紫底（#2B3564）上对比 ≈4.9，达标 AA。
    */
-  textSub: '#5F5F74',
-  /** tab 未选中标签：原 #A6A3C2 在胶囊底上仅 2.32 → 压深到 69%，实测 4.53 */
-  textNavIdle: '#737086',
-  textNavOn: '#6C5FB5',
-  /** 指标涨跌（仅用于文字；配对 ↑/↓ 图标以保证不只靠颜色传达） */
-  trendUp: '#0A6F4D',
-  trendDown: '#B13232',
-  textInk: '#1A1A1A',
-  textInkSoft: '#4A4660',
-  ringOnLight: 'rgba(157,138,240,0.55)',
-  // ★ 2026-10-15（用户定稿 V1 去紫）：头像浅色底/描边由淡紫改中性墨
-  avatarBgLight: 'rgba(31,29,26,0.06)',
-  avatarBorderLight: 'rgba(31,29,26,0.18)',
-  orbTextInk: '#2E2A3A',
-  orbTextInkSub: '#6B6480',
+  textSub: 'rgba(255,255,255,0.62)',
+  /** tab 未选中标签：白 55%；选中改长春花蓝 */
+  textNavIdle: 'rgba(255,255,255,0.55)',
+  textNavOn: '#BFCBFF',
+  /** 指标涨跌（仅用于文字；配对 ↑/↓ 图标以保证不只靠颜色传达）——深底改亮档 */
+  trendUp: '#BCCB62',
+  trendDown: '#F2A3C6',
+  textInk: '#FFFFFF',
+  textInkSoft: 'rgba(255,255,255,0.78)',
+  ringOnLight: 'rgba(191,203,255,0.55)',
+  // ★ mira-ocean：头像浅色底/描边改白阶玻璃
+  avatarBgLight: 'rgba(255,255,255,0.14)',
+  avatarBorderLight: 'rgba(255,255,255,0.22)',
+  orbTextInk: '#FFFFFF',
+  orbTextInkSub: 'rgba(255,255,255,0.72)',
   /** ★ v18.118：用于「更新于 HH:MM」这类时效信息。比 orbTextInk 弱一档（信息层级：值 > 时效），
    *  但仍保持 WCAG AA：圆环中心背景是浅紫玻璃渐变（#F7F5FE~#B5A9F2），
    *  本色在**最深的 #B5A9F2 上仍有 4.70:1**（AA 阈值 4.5），全区间 4.70~10.4:1。
    *  （注：既有的 orbTextInkSub #6B6480 在深端只有 2.64:1，是历史遗留，不在本次改动范围。） */
-  orbTextInkFaint: '#453F5A',
-  cardBg: '#FFFFFF',
-  cardBgSoft: '#F7F6FC',
-  cardBgStrong: '#FFFFFF',
-  cardBorder: '#E8E6F2',
-  cardBorder2: 'rgba(255,255,255,0.18)',
-  // v16：success/危险色只做文字与标记（好坏由数字与文案表达），青→黄绿 deep
-  success: '#6E7A24',
-  successSoft: 'rgba(188,203,98,0.18)',
-  danger: '#C9598A', // v21：珊瑚第六色相清零 → roseDeep（疲劳三档 high 同源）
-  dangerSoft: 'rgba(224,123,107,0.14)',
+  orbTextInkFaint: 'rgba(255,255,255,0.55)',
+  // ★ mira-ocean（2026-10-17）：卡面 token 全部改玻璃（白 13% 底 + 白 22~28% 细边），
+  //   与 CalmWaveHome chips 同款；原白卡 #FFFFFF + #E8E6F2 存档于 mira-ios。
+  cardBg: 'rgba(255,255,255,0.13)',
+  cardBgSoft: 'rgba(255,255,255,0.08)',
+  cardBgStrong: 'rgba(255,255,255,0.16)',
+  cardBorder: 'rgba(255,255,255,0.22)',
+  cardBorder2: 'rgba(255,255,255,0.28)',
+  // v16：success/危险色只做文字与标记（好坏由数字与文案表达）
+  // ★ mira-ocean：success 改亮档（深底上作文字/色块可读）；需要「白字按钮底」的场合
+  //   （如 EcgCard 处理中态）请用 mm.colors.limeDeep，见该组件内联注释。
+  success: '#9BD37E',
+  successSoft: 'rgba(155,211,126,0.18)',
+  danger: '#F2A3C6', // v21：珊瑚第六色相清零 → roseDeep（疲劳三档 high 同源）
+  dangerSoft: 'rgba(242,163,198,0.18)',
   warn: '#F0C46E',
   overlay: 'rgba(70,58,110,0.30)',
   celebrateGrad: ['#F3D49B', '#F6B3D0'] as const,
@@ -112,9 +116,9 @@ export const colors = {
    * 亮度饱和度对齐参考稿实测档位（S45~50 / L92~94，参考稿实测绿卡 #E7F6ED、粉卡 #F7EAEA），
    * 保证卡上深色文字对比度 ≥5.7。
    */
-  cardGlowEmotion: '#F5E8E0',
-  cardGlowBrain: '#E0F1F5',
-  cardGlowSport: '#E0E2F5',
+  cardGlowEmotion: 'rgba(242,163,198,0.20)',
+  cardGlowBrain: 'rgba(157,138,240,0.22)',
+  cardGlowSport: 'rgba(126,166,248,0.22)',
 
   /**
    * ★ 首页顶部四张小卡（认知 / 情绪 / 运动 / 恢复）的底色 —— 2026-09-22 新增。
@@ -128,10 +132,10 @@ export const colors = {
    * 对比度实测（脚本实算，全部达标）：textInk 13.6~15.2 / textSub 4.87~5.43；
    * 与纯白底的可辨度 1.145~1.279（>1.12 才看得出是「一块色」）。
    */
-  tileCog: '#E4E1F8',
-  tileEmo: '#F8E6EC',
-  tileAct: '#DFE9F9',
-  tileRec: '#F6EFE0',
+  tileCog: 'rgba(157,138,240,0.22)',
+  tileEmo: 'rgba(242,163,198,0.20)',
+  tileAct: 'rgba(126,166,248,0.22)',
+  tileRec: 'rgba(213,227,132,0.18)',
 
   /**
    * ★ 四张指标环（2026-09-22 第三版定稿）的**底轨**色。
@@ -140,15 +144,15 @@ export const colors = {
    *   情绪负荷   = moodRest · 运动消耗 = stateTired · 恢复程度 = stateCalm
    * 底轨 = textInk(#1A1A1A) 的 10% 透明度，白底上是「淡淡一圈」。
    */
-  tileRingTrack: 'rgba(26,26,26,0.10)',
+  tileRingTrack: 'rgba(255,255,255,0.14)',
 
   /**
    * ui — 语义化界面令牌（从各组件收敛的高频裸值，值与原组件一致，UI 零变化）。
    * 新增界面元素请优先复用以下 token，避免再次散落裸值。
    */
   ui: {
-    /** 悬浮 tab 胶囊背景 */
-    tabBar: 'rgba(250,250,254,0.96)',
+    /** 悬浮 tab 胶囊背景（★ mira-ocean：Calm 式半透玻璃） */
+    tabBar: 'rgba(255,255,255,0.22)',
     /** 视频/弹层黑色遮罩（深/中/浅） */
     scrim: 'rgba(0,0,0,0.45)',
     scrimMid: 'rgba(0,0,0,0.35)',
@@ -158,55 +162,44 @@ export const colors = {
     white25: 'rgba(255,255,255,0.25)',
 
     /**
-     * ★ 全天状态面板「下缘弥散」的暖色（2026-09-21 由用户指定：改用「恢复卡片那种淡淡的黄」）。
-     * 取值 = `AllDayRecoveryCard` 渐变里最暖的那一档「奶油米色」，两处引用同一个 token（唯一真相源）。
-     * ⚠️ 注意它**接近白色**（与纯白对比仅 ~1.16）：叠在紫底上会形成一条暖色带，
-     *    但滚到页面的白色区域时边界会变得很弱（这是「淡黄弥散」的固有代价）。
+     * ★ mira-ocean（2026-10-17）：全天状态面板「下缘弥散」的暖色在深底上改为
+     *   长春花蓝晕（与点缀色同源）；原奶油米 #F5EEDD 存档于 mira-ios。
      */
-    hazeWarm: '#F5EEDD',
+    hazeWarm: 'rgba(160,178,255,0.14)',
+    panelHaze: 'rgba(160,178,255,0.18)',
     /**
-     * ★ 面板下缘弥散**实际使用**的颜色（2026-09-21）。
-     * = `hazeWarm` 加深一档（同一个暖黄压深），原因：
-     *   `hazeWarm`(#F5EEDD) 与纯白对比仅 ~1.16 → 叠在白面板下缘时**边界几乎不可见**，
-     *   导致「弧口方向随滚动翻转」这个效果完全看不出来（已实测对照）。
-     *   加深后与白有可感知差异，弧的形状变化才能被看见，同时仍是「淡淡的黄」。
-     * ⚠️ 与 `hazeWarm` 分开是有意的：`hazeWarm` 是恢复卡渐变的档位色，改它会连带动那张卡。
+     * ★ mira-ocean：全天状态面板由「半透明白 72%」改深海玻璃（白 10%），
+     *   白弧同步改白阶，保证面板与弧在深底上浑然一体。
      */
-    panelHaze: '#EDE4CB',
-    /**
-     * ★ 全天状态面板（顶部）与白弧的底色（2026-09-21 用户「上面卡片更通透一点」）。
-     * 半透明白：页面渐变微微透出来，面板从「实心白块」变成「通透玻璃面」；
-     * 白弧用同一色，保证面板与弧浑然一体（弧是画在大卡背景图之上的）。
-     */
-    panelGlass: 'rgba(255,255,255,0.72)',
+    panelGlass: 'rgba(255,255,255,0.10)',
     white55: 'rgba(255,255,255,0.55)',
     white72: 'rgba(255,255,255,0.72)',
     white92: 'rgba(255,255,255,0.92)',
     /** 主题色半透明 */
-    accentSoft20: 'rgba(124,106,224,0.2)',
-    /** 开关未选轨道 / 次按钮浅底 */
-    offTrack: 'rgba(120,120,140,0.28)',
-    /** 拟态玻璃卡：半透明白底 / 高光描边 / 柔和紫投影（首页消耗卡、概览卡同款） */
-    glassBg: 'rgba(255,255,255,0.55)',
-    glassBorder: 'rgba(255,255,255,0.7)',
-    glassShadow: 'rgba(80,60,140,0.12)',
-    /** 成功态文字色 */
-    successText: '#3F9E85',
-    /** 身体恢复页节律大字·正常/偏高（浅紫渐变上清晰可读）；紊乱用首页圆环粉 moodRest */
-    rhythmGood: '#1E8E5A',
-    rhythmWarn: '#C2571A',
-    /** 节律日历「正常日」淡紫底（异常日用首页圆环粉 moodRest） */
-    rhythmCalm: '#D9D2F8',
+    accentSoft20: 'rgba(160,178,255,0.20)',
+    /** 开关未选轨道 / 次按钮浅底（深底改白阶） */
+    offTrack: 'rgba(255,255,255,0.14)',
+    /** 拟态玻璃卡：深海玻璃（白 13% 底 + 白 28% 高光描边 + 黑投影） */
+    glassBg: 'rgba(255,255,255,0.13)',
+    glassBorder: 'rgba(255,255,255,0.28)',
+    glassShadow: 'rgba(0,0,0,0.28)',
+    /** 成功态文字色（深底亮档） */
+    successText: '#9BD37E',
+    /** 身体恢复页节律大字·正常/偏高（深底亮档）；紊乱用首页圆环粉 moodRest */
+    rhythmGood: '#8FD6A4',
+    rhythmWarn: '#F5B97E',
+    /** 节律日历「正常日」淡紫底（深底改紫玻璃） */
+    rhythmCalm: 'rgba(157,138,240,0.22)',
     /** 卡片 chip 文字 / 渐变副色 */
-    chipText: '#55557A',
-    chipGradEnd: '#6E86E8',
+    chipText: 'rgba(255,255,255,0.72)',
+    chipGradEnd: '#8FA6F0',
     /** 中性徽章底色（如「AI 分析」等次级标签 chip） */
-    chipNeutralBg: 'rgba(138,138,168,0.16)',
+    chipNeutralBg: 'rgba(255,255,255,0.14)',
     /** 阴影用纯黑 / 深紫 */
     shadowBlack: '#000',
     shadowDeep: '#463A6E',
-    /** 列表细分隔线 */
-    borderSoft: 'rgba(120,120,180,0.08)',
+    /** 列表细分隔线（深底改白阶） */
+    borderSoft: 'rgba(255,255,255,0.10)',
     /** 播放角标：深色遮罩 + 半透明白 */
     playScrim: 'rgba(0,0,0,0.42)',
     playBadge: 'rgba(255,255,255,0.10)',

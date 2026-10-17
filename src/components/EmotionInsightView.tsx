@@ -110,8 +110,8 @@ const DOT_BY_MOOD: Record<string, string> = {
   [COL_STRESSED]: '#D58AAE',
   [COL_ANXIOUS]: '#C9789F',
 };
-const DOT_EMPTY = '#BDB7AE';
-const DOT_SLEEP = '#EAE7E2';
+const DOT_EMPTY = 'rgba(255,255,255,0.25)';   // ★ mira-ocean：深底白阶（原 #BDB7AE）
+const DOT_SLEEP = 'rgba(255,255,255,0.35)';   // ★ mira-ocean：深底白阶（原 #EAE7E2）
 /** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
 const DOT_LEGEND: { c: string; t: string; mood?: EmotionFaceMood }[] = [
   { c: '#B8C86A', t: '平静', mood: 'calm' },
@@ -699,11 +699,12 @@ const styles = StyleSheet.create({
   hmCol: { flex: 1, flexDirection: 'column' },
   hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
   hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
-  sleepDot: { backgroundColor: '#E8E1F7', borderWidth: 1, borderColor: '#A99BD6', alignItems: 'center', justifyContent: 'center' },
-  sleepGlyph: { fontSize: 8, lineHeight: 10, color: '#806FB5' },
-  // ★ 2026-10-09（稿 .dots 无记录色 #BDB7AE）
-  // 无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
-  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#DCD8E5', borderStyle: 'dashed' },
+  // ★ mira-ocean（2026-10-17）：睡眠格改白阶玻璃（原浅紫 #E8E1F7 在深底上发闷）
+  sleepDot: { backgroundColor: 'rgba(255,255,255,0.30)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.50)', alignItems: 'center', justifyContent: 'center' },
+  sleepGlyph: { fontSize: 8, lineHeight: 10, color: 'rgba(255,255,255,0.75)' },
+  // ★ 2026-10-09（稿 .dots 无记录色）无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
+  // ★ mira-ocean：虚线轮廓改白阶。
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderStyle: 'dashed' },
   // ★ 点阵图例（与格子同色）
   dotLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(2) },
   dotLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },

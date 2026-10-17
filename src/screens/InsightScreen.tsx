@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions, StatusBar } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText, Line as SvgLine, Circle as SvgCircle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -178,6 +178,12 @@ const PIN_AFTER: Record<string, string> = {
 import { resolveDailyHealthAge } from '../lib/dailyHealthAge';
 
 export default function InsightScreen() {
+  // ★ mira-ocean（2026-10-17）：深底页面 → 聚焦时状态栏改亮图标，失焦恢复深色
+  //   （其余白底 tab 尚未 ocean 化，不能全局改 App.tsx 的 StatusBar）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('dark-content', true);
+  }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -526,13 +532,14 @@ export default function InsightScreen() {
 
   return (
     <>
-    {/* v10 reskin：页面全白底（与 Today 同款做法），盖住 App 根渐变 */}
+    {/* ★ mira-ocean（2026-10-17）：页面由全白底改深海渐变（与 App 根渐变同源 bgGradStops） */}
     <View style={{ flex: 1 }}>
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
       <View style={styles.stack}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Insights</Text>

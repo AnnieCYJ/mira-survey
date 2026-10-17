@@ -7,10 +7,12 @@
  * 预览开关在 BottomTabNavigator（USE_CALM_WAVE_HOME），改回 false 即恢复原 TodayScreen。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Image, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
@@ -41,6 +43,11 @@ const CHIP_GAP = 9;
 export default function CalmWaveHome() {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // ★ mira-ocean：视频+深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('dark-content', true);
+  }, []));
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
 

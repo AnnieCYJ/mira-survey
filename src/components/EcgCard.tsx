@@ -177,7 +177,8 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
         </TouchableOpacity>
       ) : isDone ? (
         // 状态 2：刚完成（100%）→ 短暂过渡态，等 ring.ecg 写入
-        <View style={[styles.btn, { backgroundColor: theme.colors.success || '#22c55e' }]}>
+        // ★ mira-ocean（2026-10-17）：success 已改亮档文字色，按钮底改用 limeDeep（白字可读）
+        <View style={[styles.btn, { backgroundColor: mm.colors.limeDeep }]}>
           <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.btnLabel}>处理结果中…</Text>
         </View>
