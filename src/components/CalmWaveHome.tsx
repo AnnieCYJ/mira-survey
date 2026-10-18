@@ -24,7 +24,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 
@@ -41,6 +41,27 @@ const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
 const HEAD_INK = 'rgba(16,36,58,0.88)';
 // AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
 const AI_CARD_BG = 'rgba(9,28,48,0.52)';
+// ★ 2026-10-18：扁平浅弧双弧配色——外白弧=恢复分，内金弧=周期天数（Oura 香槟金）
+const GOLD = '#d6c283';
+
+// ★ 2026-10-18：扁平浅弧几何（用户选 Oura 风格双弧、去月相）。超大半径 R=300 的浅弧——
+//   弦 330（x 30→360）、端点 y=150、弧顶仅比两端高 ≈50px（与 design/oura-flat-arc.html 一致）。
+//   φ∈[-ARC_HALF, +ARC_HALF]，0=弧顶；sweep≈66.7°（浅弧）。外弧 R=300、内弧 R=274。
+const ARC_R = 300;
+const ARC_CX = 195;
+const ARC_HALFC = 165;
+const ARC_Y0 = 150;
+const ARC_RI = ARC_R - 26;
+const ARC_SWEEP = 2 * Math.asin(ARC_HALFC / ARC_R);
+const ARC_HALF = ARC_SWEEP / 2;
+function arcPt(phi: number, Rr: number) {
+  return { x: ARC_CX + Rr * Math.sin(phi), y: ARC_Y0 + ARC_R * Math.cos(ARC_HALF) - Rr * Math.cos(phi) };
+}
+function arcPath(f0: number, f1: number, Rr: number) {
+  const a = arcPt(f0, Rr);
+  const b = arcPt(f1, Rr);
+  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${Rr} ${Rr} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+}
 // 海浪声音开关的存储 key（与 SettingsScreen 共用）
 const WAVE_SOUND_KEY = 'waveSound';
 
@@ -77,9 +98,9 @@ const CHIPS: Chip[] = [
 const CHIP_W = 84;
 const CHIP_H = 96;
 const CHIP_GAP = 8;
-// 半圆环尺寸（viewBox 1:1；弧两端在 y=140，圆心 (140,140)，R=140−23.3=116.7）
+// 半圆环尺寸（旧；已弃用为扁平浅弧）——保留 GAUGE_H 仅作下方 clamp 的块高估算
 const GAUGE_W = 280;
-const GAUGE_H = 150;
+const GAUGE_H = 210; // ★ 2026-10-18：扁平浅弧块（弧 154 + 标题/描述 ≈54）估算高，用于短屏钳位
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -136,6 +157,10 @@ export default function CalmWaveHome() {
   //   注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
   const aiBottom = insets.bottom + 32;
   const aiCardH = 164; // AI 卡近似高（两行分析 + 建议行 + 内边距；字号放大后 +16）
+  // 扁平浅弧端点 / 进度尖端坐标（供 SVG Circle 定位）
+  const tipR = arcPt(-ARC_HALF + ARC_SWEEP * (82 / 100), ARC_R);
+  const lEnd = arcPt(-ARC_HALF, ARC_R);
+  const rEnd = arcPt(ARC_HALF, ARC_R);
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
   //   短屏时整体上移，防环底撞 AI 卡顶。
   // ★ 第二十五轮：标题+卡行整体再上移 12px（用户："连着下面的卡片位置整体再往上移一点"）。
@@ -204,30 +229,46 @@ export default function CalmWaveHome() {
           ★ 第三十一轮：再上移 12px（-50→-62；用户："今日状态位置再往上放一点"）。 */}
       <Text style={[s.cardTitle, { top: chipRowTop - 62 }]}>今日状态</Text>
 
-      {/* Oura 式细弧半圆环（进度末端白点 + 光晕，中心大数字；整环可点 → 全天状态趋势） */}
+      {/* 扁平浅弧双弧（Oura 风格，去月相）——外白弧=恢复分、内金弧=周期天数；整区可点 → 全天状态趋势。
+          ★ 2026-10-18 用户拍板：用双弧样式、不要月相标识（design/oura-dual-arc-nomoon.html A 版）。 */}
       <TouchableOpacity
         style={[s.gaugeZone, { top: gaugeTop }]}
         activeOpacity={0.85}
         accessibilityLabel="查看全天状态趋势详情"
         onPress={() => navigation.navigate('StatusTrendDetail')}
       >
-        <View style={s.gauge}>
-          <Svg width="100%" height="100%" viewBox="0 0 280 150">
-            <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={6} strokeLinecap="round" />
-            <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="#FFFFFF" strokeWidth={6} strokeLinecap="round" strokeDasharray="301.4 366.6" />
-            <Circle cx={238.9} cy={78.0} r={10.5} fill="rgba(255,255,255,0.20)" />
-            <Circle cx={238.9} cy={78.0} r={5.2} fill="#FFFFFF" />
+        <View style={s.arcWrap}>
+          <Svg width={350} height={154} viewBox="0 0 390 172">
+            {/* 外弧轨道 */}
+            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
+            {/* 外弧进度（白） */}
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (82 / 100), ARC_R)} fill="none" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" />
+            {/* 内弧轨道（金） */}
+            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_RI)} fill="none" stroke="rgba(214,194,131,0.28)" strokeWidth={2.5} strokeLinecap="round" />
+            {/* 内弧进度（金） */}
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (14 / 28), ARC_RI)} fill="none" stroke={GOLD} strokeWidth={2.5} strokeLinecap="round" />
+            {/* 外弧进度端点白点 */}
+            <Circle cx={tipR.x} cy={tipR.y} r={4.5} fill="#FFFFFF" />
+            {/* 端点刻度 0 / 100 */}
+            <SvgText x={lEnd.x - 4} y={lEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">0</SvgText>
+            <SvgText x={rEnd.x - 16} y={rEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">100</SvgText>
           </Svg>
-          <View style={s.gaugeCenter}>
+          {/* 大数字 + 小标签落在浅弧的凹面正中（Oura 式：数字在弧下方居中） */}
+          <View style={s.arcText} pointerEvents="none">
             <Text style={s.gBig}>82</Text>
-            <Text style={s.gLabel}>状态良好</Text>
-            <Text style={s.gUpd}>更新于 11:30</Text>
+            <Text style={s.gSub}>恢复状态</Text>
           </View>
         </View>
-        {/* ★ mira-ocean（2026-10-17 用户）：今日状态 = 可进详情，环旁加向右箭头提示 */}
-        <Svg width={16} height={26} viewBox="0 0 13 22" style={{ marginLeft: 3 }}>
-          <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-        </Svg>
+        {/* 弧下方：大标题 + 描述（Oura 结构）；右侧小箭头提示可进详情 */}
+        <View style={s.gaugeInfo}>
+          <View style={s.gTitleRow}>
+            <Text style={s.gTitle}>稳步提升</Text>
+            <Svg width={13} height={22} viewBox="0 0 13 22">
+              <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </View>
+          <Text style={s.gDesc}>恢复优秀 · 周期第 14 天</Text>
+        </View>
       </TouchableOpacity>
 
       {/* 指标卡行：横向滑动（★ 2026-10-18 用户："卡片展示四个，最后一个滑动可看"）。
@@ -379,32 +420,39 @@ const s = StyleSheet.create({
   chipUnit: { fontSize: 10.5, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
   chipTag: { fontSize: 10.5, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
 
-  // 半圆环（280×150，R=116.7；viewBox 1:1，弧两端在 y=140）
+  // 扁平浅弧双弧区（Oura 风格，去月相）：整区居中、可点
   gaugeZone: {
     position: 'absolute',
     left: 0,
     right: 0,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  gauge: { width: GAUGE_W, height: GAUGE_H },
-  gaugeCenter: {
+  // 弧包裹：宽 350、裁掉 viewBox 底部空白（y>172），相对定位以叠放大数字
+  arcWrap: {
+    position: 'relative',
+    width: 350,
+    height: 154,
+    alignSelf: 'center',
+  },
+  // 大数字 + 小标签：落在浅弧凹面正中（弧顶下方、端点之间）
+  arcText: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -20,
+    top: 86,
     alignItems: 'center',
   },
-  // ★ 2026-10-18 第二十六轮（用户："82/状态良好/更新于整体字往下一点，拉开点距离，现在挤到一起"）：
-  //   gaugeCenter bottom 9→2 整体下移；三行间距全部拉开。
-  // ★ 第二十八轮（用户："82 状态良好离圆弧太近了，这个位置往下一点"）：bottom 2→-8，
-  //   文字组整体再下移 10px，拉开 82 顶端与弧顶的距离；半圆弧底部开口无横线，
-  //   文字微超出环容器底不碰弧（弧底端点在左右两侧 x=23.3/256.7）。
-  // ★ 第二十九轮（用户："还离弧太近，再往下一点"）：-8→-20（再下移 12px）。
-  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', marginBottom: 10, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 9, fontWeight: '500' },
-  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
+  gBig: { fontSize: 50, fontWeight: '700', color: '#fff', letterSpacing: -1.5, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gSub: { fontSize: 12, color: 'rgba(255,255,255,0.55)', letterSpacing: 3, fontWeight: '500', marginTop: 4 },
+  // 弧下文字块：大标题 + 描述
+  gaugeInfo: {
+    alignItems: 'center',
+    marginTop: 2,
+    paddingHorizontal: 40,
+  },
+  gTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gTitle: { fontSize: 24, fontWeight: '400', color: '#fff', letterSpacing: 0.5 },
+  gDesc: { fontSize: 13.5, fontWeight: '300', color: 'rgba(255,255,255,0.65)', marginTop: 10, lineHeight: 20, textAlign: 'center' },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {
