@@ -100,7 +100,7 @@ const CHIP_H = 96;
 const CHIP_GAP = 8;
 // 半圆环尺寸（旧；已弃用为扁平浅弧）——保留 GAUGE_H 仅作下方 clamp 的块高估算
 const GAUGE_W = 280;
-const GAUGE_H = 210; // ★ 2026-10-18：扁平浅弧块（弧 154 + 标题/描述 ≈54）估算高，用于短屏钳位
+const GAUGE_H = 188; // ★ 2026-10-18：扁平浅弧块（弧 68 + 状态词/82/周期 ≈114）估算高，用于短屏钳位
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -161,6 +161,15 @@ export default function CalmWaveHome() {
   const tipR = arcPt(-ARC_HALF + ARC_SWEEP * (82 / 100), ARC_R);
   const lEnd = arcPt(-ARC_HALF, ARC_R);
   const rEnd = arcPt(ARC_HALF, ARC_R);
+  // ★ 第三十四轮：白底版「今日状态」四档词（DailyStatusCard 同源）：
+  //   元气满满 ≥76 / 状态良好 51–75 / 平平静静 26–50 / 休息一下 0–25，颜色与圆环同源
+  const RECOVERY = 82;
+  const mood = RECOVERY >= 76 ? { label: '元气满满', color: '#F0C46E' }
+    : RECOVERY >= 51 ? { label: '状态良好', color: '#BCCB62' }
+    : RECOVERY >= 26 ? { label: '平平静静', color: '#9D8AF0' }
+    : { label: '休息一下', color: '#9DA7B5' };
+  const moodLabel = mood.label;
+  const moodColor = mood.color;
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
   //   短屏时整体上移，防环底撞 AI 卡顶。
   // ★ 第二十五轮：标题+卡行整体再上移 12px（用户："连着下面的卡片位置整体再往上移一点"）。
@@ -172,7 +181,7 @@ export default function CalmWaveHome() {
   //   长屏复算（852 高）：环底距 AI 卡顶 ≈53px 安全；短屏走下方 Math.min 钳位不受影响。
   const chipRowTop = transitionY - 16;
   const gaugeTop = Math.min(
-    chipRowTop + CHIP_H + 24,
+    chipRowTop + CHIP_H + 4,
     height - aiBottom - aiCardH - 12 - GAUGE_H,
   );
 
@@ -238,7 +247,8 @@ export default function CalmWaveHome() {
         onPress={() => navigation.navigate('StatusTrendDetail')}
       >
         <View style={s.arcWrap}>
-          <Svg width={350} height={154} viewBox="0 0 390 172">
+          {/* 只裁弧本体：viewBox y 从 96 起（弧顶 100.5 上留 4.5 余量），裁掉上方 ~90px 空白 */}
+          <Svg width={350} height={68} viewBox="0 96 390 76">
             {/* 外弧轨道 */}
             <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
             {/* 外弧进度（白） */}
@@ -253,21 +263,20 @@ export default function CalmWaveHome() {
             <SvgText x={lEnd.x - 4} y={lEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">0</SvgText>
             <SvgText x={rEnd.x - 16} y={rEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">100</SvgText>
           </Svg>
-          {/* 大数字 + 小标签落在浅弧的凹面正中（Oura 式：数字在弧下方居中） */}
-          <View style={s.arcText} pointerEvents="none">
-            <Text style={s.gBig}>82</Text>
-            <Text style={s.gSub}>恢复状态</Text>
-          </View>
         </View>
-        {/* 弧下方：大标题 + 描述（Oura 结构）；右侧小箭头提示可进详情 */}
+        {/* 弧下方（Oura 结构 + 白底版状态词）：状态档位词 → 82 → 周期。
+            ★ 第三十四轮（用户）：圆弧下写状态词（白底版四档：元气满满/状态良好/平平静静/休息一下，
+            按 82 分→元气满满，颜色与圆环同源），下面写 82，下面只留「周期第 14 天」；
+            去掉「恢复状态」「恢复优秀」；整块上提（离卡行更近）。 */}
         <View style={s.gaugeInfo}>
-          <View style={s.gTitleRow}>
-            <Text style={s.gTitle}>稳步提升</Text>
+          <View style={s.gMoodRow}>
+            <Text style={[s.gMood, { color: moodColor }]}>{moodLabel}</Text>
             <Svg width={13} height={22} viewBox="0 0 13 22">
               <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </View>
-          <Text style={s.gDesc}>恢复优秀 · 周期第 14 天</Text>
+          <Text style={[s.gBig, { color: moodColor }]}>82</Text>
+          <Text style={s.gDesc}>周期第 14 天</Text>
         </View>
       </TouchableOpacity>
 
@@ -427,32 +436,19 @@ const s = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  // 弧包裹：宽 350、裁掉 viewBox 底部空白（y>172），相对定位以叠放大数字
+  // 弧包裹：宽 350、只裁弧本体（viewBox y 96-172 → 高 76，缩放后 68）
   arcWrap: {
-    position: 'relative',
-    width: 350,
-    height: 154,
     alignSelf: 'center',
   },
-  // 大数字 + 小标签：落在浅弧凹面正中（弧顶下方、端点之间）
-  arcText: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 86,
-    alignItems: 'center',
-  },
-  gBig: { fontSize: 50, fontWeight: '700', color: '#fff', letterSpacing: -1.5, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gSub: { fontSize: 12, color: 'rgba(255,255,255,0.55)', letterSpacing: 3, fontWeight: '500', marginTop: 4 },
-  // 弧下文字块：大标题 + 描述
+  // 弧下文字块：状态词 → 82 → 周期（全部顺排，不叠字）
   gaugeInfo: {
     alignItems: 'center',
-    marginTop: 2,
-    paddingHorizontal: 40,
+    marginTop: 4,
   },
-  gTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  gTitle: { fontSize: 24, fontWeight: '400', color: '#fff', letterSpacing: 0.5 },
-  gDesc: { fontSize: 13.5, fontWeight: '300', color: 'rgba(255,255,255,0.65)', marginTop: 10, lineHeight: 20, textAlign: 'center' },
+  gMoodRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5 },
+  gBig: { fontSize: 58, fontWeight: '700', letterSpacing: -1.5, marginTop: 4, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gDesc: { fontSize: 13.5, fontWeight: '300', color: 'rgba(255,255,255,0.65)', marginTop: 8, lineHeight: 20, textAlign: 'center' },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {
