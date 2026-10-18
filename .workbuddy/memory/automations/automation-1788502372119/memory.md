@@ -127,3 +127,8 @@
 - 发现：本地 master 领先 origin/master **1 个提交**；工作区 24 项未提交改动——修改 19 个源文件（MetricDetailScreen ±637 行、EcgDetailScreen ±361 行、BpDetailScreen ±158 行、RingBleManager +190 行、HomeAiBubble ±220 行，及 theme/mindmate.ts、App.tsx、analysisFacts/tempBaseline/healthAgeEstimate 等 lib）+ 新增 5 个文件（home-gray-bg.html、preview/assets/sea-dusk.jpg、preview/bubble-variants.html、preview/ecg-detail.html、preview/glass-home.html）。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：执行 `git add -A`（24 文件，子模块无法暂存）→ commit c45e252「迭代指标详情、血压/心电页及 BLE 管理层」→ push 成功 a9d83eb..c45e252。
 - 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-17 14:12（第二十五次运行）
+- 发现：本地 master 领先 origin/master **10 个提交**（血压/血糖/ECG 趋势、首页水波圆环、Oura 式玻璃卡片提案、周期图例调整等系列）；工作区 5 个修改文件（realSeries.ts、BpDetailScreen ±185、MetricDetailScreen ±170、TodayScreen）+ 2 个新预览 HTML（preview-15min-bars、preview-chips-bodyload）。子模块仍为已知 -dirty。
+- 处理：git add -A（6 文件，+799/-5，子模块无法暂存）→ commit c97a9fb「迭代血压/指标详情页与今日页，新增 15 分钟柱状图与身体负荷 chips 预览稿」→ push 成功 c45e252..c97a9fb（10 个积压提交 + 本次 1 个，共 11 个）。
+- 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
