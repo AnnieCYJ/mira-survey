@@ -15,7 +15,7 @@
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
 import React from 'react';
-import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,7 +50,7 @@ type Chip = {
   go: (nav: NavProp) => void;
 };
 const lineIcon = (d: string | string[]) => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
     {(Array.isArray(d) ? d : [d]).map((p, i) => <Path key={i} d={p} />)}
   </Svg>
 );
@@ -64,16 +64,16 @@ const CHIPS: Chip[] = [
   // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
-// ★ 2026-10-18 第二十二轮（用户）：花瓣（四轮迭代：圆角矩形→水滴→尖角三角→圆角三角）
-//   最终改回方卡，5 张横排一行贴在弧上方（用户："圆弧上面的那几个卡片还是做成方的吧，排成一行"）。
-//   历史花瓣资产：PETAL_PATH / PETAL_VB_* / PETALS（圆角三角瓣 + petalRot 辐射朝向）已删除，
-//   如需恢复可从 git 历史取回（a07525c / 06d2f83）。
-const CHIP_W = 66;
-const CHIP_H = 76;
-const CHIP_GAP = 6;
-// 一行 5 张：总宽 5×66+4×6=354（390 屏居中，左右余 18）；卡中心 dy=-150，
-// 卡底 = ringCy-112，环顶 = ringCy-100，余 12 不碰环
-const CHIP_ROW_DY = -150;
+// ★ 2026-10-18 第二十三轮（用户："卡片展示四个，最后一个滑动可看；整体字太小"）：
+//   一行 5 张改横向 ScrollView——首屏露出 4 张（84×96 大卡大字），第 5 张滑动可见；
+//   卡行从弧上方移到海浪/深色交界线下方（过渡区）；环 240→280、中心字 46→58；
+//   AI 建议卡字号同步放大。花瓣历史资产见 git a07525c。
+const CHIP_W = 84;
+const CHIP_H = 96;
+const CHIP_GAP = 8;
+// 半圆环尺寸（viewBox 1:1；弧两端在 y=140，圆心 (140,140)，R=140−23.3=116.7）
+const GAUGE_W = 280;
+const GAUGE_H = 150;
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -90,18 +90,14 @@ export default function CalmWaveHome() {
   // 注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
   // ★ 2026-10-18 用户：建议卡再靠下 → 68 改 52（比 tab 顶再低 16px）。
   const aiBottom = insets.bottom + 52;
-  const aiCardH = 148; // AI 卡近似高（两行分析 + 建议行 + 内边距）
-  // 方卡一行布局：环心 cy = gaugeTop+120；卡行总宽 354 居中；
-  // 短屏时整体等比收缩，防止环底（cy）撞上 AI 卡顶（height - aiBottom - aiCardH）
-  const rowTotalW = CHIPS.length * CHIP_W + (CHIPS.length - 1) * CHIP_GAP;
-  const fanS = Math.min(1, (width - 32) / rowTotalW); // 窄屏（<386pt）等比收缩卡行
+  const aiCardH = 164; // AI 卡近似高（两行分析 + 建议行 + 内边距；字号放大后 +16）
+  // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
+  //   环在卡行下方 14px；短屏时整体上移，防环底撞 AI 卡顶
+  const chipRowTop = transitionY + 6;
   const gaugeTop = Math.min(
-    transitionY + 133,
-    height - aiBottom - aiCardH - 12 - 120,
+    chipRowTop + CHIP_H + 14,
+    height - aiBottom - aiCardH - 12 - GAUGE_H,
   );
-  const ringCx = width / 2;
-  const ringCy = gaugeTop + 120; // 半圆环圆心（弧两端所在高度）
-  const chipRowX = ringCx - (rowTotalW * fanS) / 2; // 卡行左缘
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -160,11 +156,11 @@ export default function CalmWaveHome() {
         onPress={() => navigation.navigate('StatusTrendDetail')}
       >
         <View style={s.gauge}>
-          <Svg width="100%" height="100%" viewBox="0 0 240 128">
-            <Path d="M 20 120 A 100 100 0 0 1 220 120" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={5} strokeLinecap="round" />
-            <Path d="M 20 120 A 100 100 0 0 1 220 120" fill="none" stroke="#FFFFFF" strokeWidth={5} strokeLinecap="round" strokeDasharray="258 314" />
-            <Circle cx={204.4} cy={66.4} r={9} fill="rgba(255,255,255,0.20)" />
-            <Circle cx={204.4} cy={66.4} r={4.5} fill="#FFFFFF" />
+          <Svg width="100%" height="100%" viewBox="0 0 280 150">
+            <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={6} strokeLinecap="round" />
+            <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="#FFFFFF" strokeWidth={6} strokeLinecap="round" strokeDasharray="301.4 366.6" />
+            <Circle cx={238.9} cy={78.0} r={10.5} fill="rgba(255,255,255,0.20)" />
+            <Circle cx={238.9} cy={78.0} r={5.2} fill="#FFFFFF" />
           </Svg>
           <View style={s.gaugeCenter}>
             <Text style={s.gBig}>82</Text>
@@ -173,38 +169,49 @@ export default function CalmWaveHome() {
           </View>
         </View>
         {/* ★ mira-ocean（2026-10-17 用户）：今日状态 = 可进详情，环旁加向右箭头提示 */}
-        <Svg width={13} height={22} viewBox="0 0 13 22" style={{ marginLeft: 2 }}>
+        <Svg width={16} height={26} viewBox="0 0 13 22" style={{ marginLeft: 3 }}>
           <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
       </TouchableOpacity>
 
-      {/* 指标卡一行：5 张方卡横排贴弧上方（★ 2026-10-18 用户：花瓣改回方卡、排成一行）。
-          卡 66×76、间距 6、总宽 354 居中于屏心；数组顺序 = 左→右。每张可点进对应详情页。 */}
-      {CHIPS.map((c, i) => (
-        <TouchableOpacity
-          key={c.label}
-          style={[
-            s.chip,
-            {
-              width: CHIP_W * fanS,
-              position: 'absolute',
-              left: chipRowX + i * (CHIP_W + CHIP_GAP) * fanS,
-              top: ringCy + CHIP_ROW_DY - CHIP_H / 2,
-            },
-          ]}
-          activeOpacity={0.7}
-          accessibilityLabel={`${c.label} ${c.value}`}
-          onPress={() => c.go(navigation)}
+      {/* 指标卡行：横向滑动（★ 2026-10-18 用户："卡片展示四个，最后一个滑动可看"）。
+          首屏 4 张 84×96 大卡（大字），第 5 张滑动可见；snapToInterval 逐张吸附；
+          位置在海浪/深色交界线正下方（过渡区深色渐变带上）。每张可点进对应详情页。 */}
+      <View style={[s.chipRowZone, { top: chipRowTop, height: CHIP_H }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={CHIP_W + CHIP_GAP}
+          decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 16, gap: CHIP_GAP }}
         >
-          <View style={s.chipIcon}>{c.icon}</View>
-          <Text style={s.chipLabel}>{c.label}</Text>
-          <View style={s.chipValRow}>
-            <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
-            {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
-          </View>
-          <Text style={s.chipTag}>{c.tag}</Text>
-        </TouchableOpacity>
-      ))}
+          {CHIPS.map((c) => (
+            <TouchableOpacity
+              key={c.label}
+              style={[s.chip, { width: CHIP_W }]}
+              activeOpacity={0.7}
+              accessibilityLabel={`${c.label} ${c.value}`}
+              onPress={() => c.go(navigation)}
+            >
+              <View style={s.chipIcon}>{c.icon}</View>
+              <Text style={s.chipLabel}>{c.label}</Text>
+              <View style={s.chipValRow}>
+                <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
+                {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
+              </View>
+              <Text style={s.chipTag}>{c.tag}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
+        <LinearGradient
+          colors={['rgba(42,68,112,0)', 'rgba(42,68,112,0.92)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={s.chipFade}
+          pointerEvents="none"
+        />
+      </View>
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
@@ -249,28 +256,40 @@ const s = StyleSheet.create({
   },
   titleC: { fontSize: 21, fontWeight: '700', color: HEAD_INK, letterSpacing: 0.5, marginTop: 9, textShadowColor: 'rgba(255,255,255,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 
-  // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；66×76 小字号适配一行 5 张）
+  // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；84×96 大字版，横向滑动 4+1）
+  chipRowZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  chipFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 26,
+  },
   chip: {
     height: CHIP_H,
-    borderRadius: 14,
-    paddingTop: 7,
-    paddingBottom: 6,
-    paddingHorizontal: 1,
+    borderRadius: 16,
+    paddingTop: 9,
+    paddingBottom: 8,
+    paddingHorizontal: 2,
     backgroundColor: GLASS_BG,
     borderColor: GLASS_BD,
     borderWidth: 1,
     alignItems: 'center',
     overflow: 'hidden',
   },
-  chipIcon: { marginBottom: 2 },
-  chipLabel: { fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.1 },
-  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 2 },
-  chipVal: { fontSize: 12.5, fontWeight: '700', color: '#fff' },
+  chipIcon: { marginBottom: 3 },
+  chipLabel: { fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
+  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
+  chipVal: { fontSize: 20, fontWeight: '700', color: '#fff' },
   chipValGood: { color: '#D5E384' },
-  chipUnit: { fontSize: 7.5, color: 'rgba(255,255,255,0.55)', marginLeft: 1 },
-  chipTag: { fontSize: 8, color: 'rgba(255,255,255,0.47)', marginTop: 2 },
+  chipUnit: { fontSize: 10.5, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
+  chipTag: { fontSize: 10.5, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
 
-  // 半圆环（240×128，R=100；viewBox 1:1，弧两端在 y=120）
+  // 半圆环（280×150，R=116.7；viewBox 1:1，弧两端在 y=140）
   gaugeZone: {
     position: 'absolute',
     left: 0,
@@ -279,17 +298,17 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gauge: { width: 240, height: 128 },
+  gauge: { width: GAUGE_W, height: GAUGE_H },
   gaugeCenter: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 7,
+    bottom: 9,
     alignItems: 'center',
   },
-  gBig: { fontSize: 46, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gLabel: { fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 5, fontWeight: '500' },
-  gUpd: { fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 6, fontWeight: '500' },
+  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）
   aiCard: {
@@ -304,19 +323,19 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 15, lineHeight: 22, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
+  analysis: { fontSize: 16.5, lineHeight: 24, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingTop: 8,
+    gap: 13,
+    paddingTop: 9,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.14)',
   },
-  sugThumb: { width: 50, height: 50, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  sugH: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  sugD: { fontSize: 12.5, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
-  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 6 },
-  goTxt: { fontSize: 13, fontWeight: '600', color: '#101C33' },
+  sugThumb: { width: 56, height: 56, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  sugH: { fontSize: 17, fontWeight: '600', color: '#fff' },
+  sugD: { fontSize: 14, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 15, paddingVertical: 7 },
+  goTxt: { fontSize: 14.5, fontWeight: '600', color: '#101C33' },
 });
