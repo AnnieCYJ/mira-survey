@@ -137,11 +137,14 @@ export default function CalmWaveHome() {
   const aiBottom = insets.bottom + 32;
   const aiCardH = 164; // AI 卡近似高（两行分析 + 建议行 + 内边距；字号放大后 +16）
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
-  //   环在卡行下方 14px；短屏时整体上移，防环底撞 AI 卡顶。
+  //   短屏时整体上移，防环底撞 AI 卡顶。
   // ★ 第二十五轮：标题+卡行整体再上移 12px（用户："连着下面的卡片位置整体再往上移一点"）。
-  const chipRowTop = transitionY - 6;
+  // ★ 第二十七轮：用户"卡行靠上、离弧太近，要往下"——chipRowTop 下移 8px（-6→+2），
+  //   且环与卡行的间距 14→24（gaugeTop 派生同步 +10），拉开卡行与弧顶的呼吸感。
+  //   长屏复算（852 高）：环底距 AI 卡顶 ≈35px 仍安全；短屏走下方 Math.min 钳位不受影响。
+  const chipRowTop = transitionY + 2;
   const gaugeTop = Math.min(
-    chipRowTop + CHIP_H + 14,
+    chipRowTop + CHIP_H + 24,
     height - aiBottom - aiCardH - 12 - GAUGE_H,
   );
 
@@ -261,9 +264,10 @@ export default function CalmWaveHome() {
         />
       </View>
 
-      {/* AI 分析卡：沉底（避开真 tab 栏）★ 2026-10-18 第二十六轮（用户）：
-          改语音气泡——右下角小尾巴指向卡外的 AI 头像（营造"AI 在说话"感，
-          参考 Grok 对话界面：头像在气泡尾巴末端）。 */}
+      {/* AI 分析卡：沉底（避开真 tab 栏）★ 2026-10-18 第二十六→二十七轮（用户）：
+          改语音气泡——右下角逐出白版同款圆角小尾巴（尖朝右下，参考 5b22460
+          白玻璃气泡 HomeAiBubble：底边两点汇聚成尖 + strokeLinejoin/cap round）。
+          第二十七轮：去掉骑角的紫色圆环头像（用户："不是要那个东西"），尾巴即终点。 */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
         <Text style={s.analysis}>
           恢复得不错，<Text style={s.hl}>82 分</Text>比平时高一点，压力也低，别浪费今天的好状态～
@@ -278,22 +282,25 @@ export default function CalmWaveHome() {
             <Text style={s.goTxt}>去呼吸 ›</Text>
           </View>
         </View>
-        {/* 气泡尾巴：直角三角形从卡右下角逐出，尖角指向右下方 AI 头像。
-            right/bottom -8 → Svg 占卡右下角往右下 22×22；path (0,0)→(22,22)→(0,22)。
-            ★ 第二十六轮几何：尖角 (卡右缘+8, 卡底边+8) 精确落在 40px 头像的右下角顶点。 */}
-        <Svg width={22} height={22} style={{ position: 'absolute', right: -8, bottom: -8 }} pointerEvents="none">
-          <Path d="M0 0 L22 22 L0 22 Z" fill={AI_CARD_BG} />
-        </Svg>
-      </View>
-
-      {/* AI 头像：骑在建议卡右下角（上半叠卡内），气泡尾巴尖指向其右下角。
-          几何：40px、right 4、bottom aiBottom-8 → 底缘距屏底 aiBottom-8+40... 即
-          头像底缘 = 屏底-(aiBottom-8)，与 tab 胶囊顶（距屏底 56）留 ≥2px，不压 tab；
-          与卡底边重叠 32px，视觉「骑角」；尾巴尖 = (卡右缘+8, 卡底边+8) 落在头像右下顶点。 */}
-      <View style={[s.aiAvatar, { bottom: aiBottom - 8 }]} pointerEvents="none">
-        <Svg width={20} height={20} viewBox="0 0 24 24">
-          <Path d="M12 2.2 L13.9 8.6 L20.3 10.5 L13.9 12.4 L12 18.8 L10.1 12.4 L3.7 10.5 L10.1 8.6 Z" fill="#0B1E33" />
-          <Path d="M12 6.4 L12.9 9.6 L16 10.5 L12.9 11.4 L12 14.6 L11.1 11.4 L8 10.5 L11.1 9.6 Z" fill="#BFCBFF" />
+        {/* 气泡尾巴：白版（5b22460 HomeAiBubble）同款几何——
+           卡底边两点 (b0,b1) 汇聚到下方尖端 tip，strokeLinejoin/cap=round 出圆角尖；
+           Svg 60×12、right:16 bottom:-9 → 顶缘 y=0..3 在卡内被底边盖住，y=3 即卡底边，
+           尖伸出卡外 9px；tip 略右偏（相对 b0b1 中点 +2）指向右下。 */}
+        <Svg
+          width={60}
+          height={12}
+          viewBox="0 0 60 12"
+          style={{ position: 'absolute', right: 16, bottom: -9 }}
+          pointerEvents="none"
+        >
+          <Path
+            d="M16 3 L36 12 L32 3"
+            fill={AI_CARD_BG}
+            stroke={AI_CARD_BG}
+            strokeWidth={1}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
         </Svg>
       </View>
     </View>
@@ -402,24 +409,6 @@ const s = StyleSheet.create({
     backgroundColor: AI_CARD_BG,
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
-  },
-  // AI 头像（语音气泡尾巴指向的目标）：长春花蓝圆底 + 双层 spark 图标 + 白描边
-  aiAvatar: {
-    position: 'absolute',
-    right: 4,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(160,178,255,0.95)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
   },
   analysis: { fontSize: 16.5, lineHeight: 24, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
