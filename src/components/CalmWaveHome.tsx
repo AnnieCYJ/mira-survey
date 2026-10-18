@@ -199,8 +199,9 @@ export default function CalmWaveHome() {
 
       {/* 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方。
           位置在渐变 94% 不透明深色线（0.31×height）附近，白字可读。
-          ★ 第二十六轮：字号 25→28、位置再往上 8px（用户："字大一些，位置再往上一点"）。 */}
-      <Text style={[s.cardTitle, { top: chipRowTop - 38 }]}>今日状态</Text>
+          ★ 第二十六轮：字号 25→28、位置再往上 8px（用户："字大一些，位置再往上一点"）。
+          ★ 第三十轮：仅标题再上移 12px（-38→-50，卡行不动；用户："今日状态这几个字位置再往上"）。 */}
+      <Text style={[s.cardTitle, { top: chipRowTop - 50 }]}>今日状态</Text>
 
       {/* Oura 式细弧半圆环（进度末端白点 + 光晕，中心大数字；整环可点 → 全天状态趋势） */}
       <TouchableOpacity
