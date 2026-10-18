@@ -143,8 +143,9 @@ export default function CalmWaveHome() {
   //   且环与卡行的间距 14→24（gaugeTop 派生同步 +10），拉开卡行与弧顶的呼吸感。
   // ★ 第二十八轮：用户看到间距拉开后反馈"今日状态和卡片再往上移一些"——chipRowTop
   //   +2→-8（再上移 10px，与第二十六轮持平略高），与弧的间距保持 24 不变。
-  //   长屏复算（852 高）：环底距 AI 卡顶 ≈45px 安全；短屏走下方 Math.min 钳位不受影响。
-  const chipRowTop = transitionY - 8;
+  // ★ 第二十九轮：用户"上移不太明显，再往上一点"——-8→-16（再上移 8px）。
+  //   长屏复算（852 高）：环底距 AI 卡顶 ≈53px 安全；短屏走下方 Math.min 钳位不受影响。
+  const chipRowTop = transitionY - 16;
   const gaugeTop = Math.min(
     chipRowTop + CHIP_H + 24,
     height - aiBottom - aiCardH - 12 - GAUGE_H,
@@ -171,7 +172,7 @@ export default function CalmWaveHome() {
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
           ★ 2026-10-18 用户：「今日状态」白色标题从头栏移到指标卡行上方（见下方 cardTitle）。 */}
-      <View style={[s.head, { paddingTop: insets.top + 18 }]}>
+      <View style={[s.head, { paddingTop: insets.top + 30 }]}>
         <TouchableOpacity
           style={s.hIcon}
           activeOpacity={0.7}
@@ -390,7 +391,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -8,
+    bottom: -20,
     alignItems: 'center',
   },
   // ★ 2026-10-18 第二十六轮（用户："82/状态良好/更新于整体字往下一点，拉开点距离，现在挤到一起"）：
@@ -398,6 +399,7 @@ const s = StyleSheet.create({
   // ★ 第二十八轮（用户："82 状态良好离圆弧太近了，这个位置往下一点"）：bottom 2→-8，
   //   文字组整体再下移 10px，拉开 82 顶端与弧顶的距离；半圆弧底部开口无横线，
   //   文字微超出环容器底不碰弧（弧底端点在左右两侧 x=23.3/256.7）。
+  // ★ 第二十九轮（用户："还离弧太近，再往下一点"）：-8→-20（再下移 12px）。
   gBig: { fontSize: 58, fontWeight: '700', color: '#fff', marginBottom: 10, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 9, fontWeight: '500' },
   gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
