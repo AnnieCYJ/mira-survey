@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>圆弧 × 月相 · 4 款样式提案（Mira 首页）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#101826; font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; color:#E8EEF7; padding:28px 24px 60px; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:0.5px; }
+  .sub { font-size:13px; color:rgba(232,238,247,0.55); margin-top:6px; line-height:1.7; }
+  .sub b { color:#F2C75C; font-weight:600; }
+  .sub i { color:#B9A6F5; font-style:normal; font-weight:600; }
+
+  /* 顶部控制条 */
+  .ctrl { position:sticky; top:0; z-index:10; background:rgba(16,24,38,0.92); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:14px 18px; margin:16px 0 26px;
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .ctrl label { font-size:13px; color:rgba(232,238,247,0.75); }
+  .ctrl input[type=range] { width:260px; accent-color:#F2C75C; }
+  .dayBox { font-size:15px; font-weight:700; color:#F2C75C; min-width:86px; }
+  .phaseBox { font-size:13px; color:#B9A6F5; font-weight:600; }
+  .hint { font-size:12px; color:rgba(232,238,247,0.4); }
+
+  .grid { display:grid; grid-template-columns:repeat(2, 410px); gap:28px; justify-content:center; }
+  .proposal { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:20px; padding:18px 18px 20px; }
+  .pTag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:1px; color:#0F1B2E; background:#F2C75C; border-radius:6px; padding:3px 8px; }
+  .pTitle { font-size:16px; font-weight:700; margin-top:10px; }
+  .pDesc { font-size:12px; color:rgba(232,238,247,0.5); margin-top:6px; line-height:1.7; min-height:56px; }
+
+  /* ===== 手机框（复用首页 mock 骨架） ===== */
+  .phone { position:relative; width:390px; height:760px; overflow:hidden; border-radius:34px; margin:14px auto 0;
+    background:linear-gradient(180deg,#3E627A 0%,#3E627A 12%,rgba(52,88,116,0.5) 22%,rgba(38,62,96,0.94) 29%,#2A4470 38%,#2B3564 100%);
+    border:1px solid rgba(255,255,255,0.12); }
+  .wave { position:absolute; left:0; right:0; top:0; height:215px;
+    background:linear-gradient(180deg,#7FB2C4 0%,#5E93A8 45%,#4A7B96 100%); }
+  .wave::before { content:""; position:absolute; left:-60px; top:-40px; width:260px; height:200px; border-radius:50%; background:rgba(255,255,255,0.22); filter:blur(38px); }
+  .wave::after { content:""; position:absolute; right:-40px; top:50px; width:220px; height:170px; border-radius:50%; background:rgba(220,245,255,0.28); filter:blur(42px); }
+  .head { position:absolute; left:0; right:0; top:70px; display:flex; align-items:flex-start; justify-content:space-between; padding:0 16px; }
+  .hIcon { width:34px; height:34px; border-radius:17px; background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.75); display:flex; align-items:center; justify-content:center; }
+  .titleT { position:absolute; left:16px; top:196px; font-size:26px; font-weight:700; color:#fff; letter-spacing:0.5px; text-shadow:0 1px 10px rgba(20,44,64,0.65); }
+  .chipRow { position:absolute; left:0; right:0; top:258px; height:74px; display:flex; gap:7px; padding:0 16px; }
+  .chip { width:81px; height:74px; border-radius:14px; background:rgba(255,255,255,0.13); border:1px solid rgba(255,255,255,0.28);
+    display:flex; flex-direction:column; align-items:center; padding-top:8px; flex:none; }
+  .chipL { font-size:10px; color:rgba(255,255,255,0.62); }
+  .chipV { font-size:18px; font-weight:700; color:#fff; margin-top:2px; }
+  .chipV.g { color:#D5E384; }
+  .chipT { font-size:9.5px; color:rgba(255,255,255,0.5); margin-top:2px; }
+  .ringZone { position:absolute; left:0; right:0; top:348px; height:170px; }
+  .aiCard { position:absolute; left:16px; right:16px; bottom:66px; border-radius:20px; background:rgba(9,28,48,0.52);
+    border:1px solid rgba(255,255,255,0.17); padding:14px 16px 13px; }
+  .aiTxt { font-size:14px; line-height:21px; color:rgba(255,255,255,0.92); }
+  .aiTxt b { color:#BFCBFF; }
+  .aiSug { display:flex; align-items:center; gap:11px; padding-top:9px; margin-top:9px; border-top:1px solid rgba(255,255,255,0.14); }
+  .aiThumb { width:44px; height:44px; border-radius:13px; background:linear-gradient(135deg,#8FB8D8,#5E7FB8); border:1px solid rgba(255,255,255,0.35); }
+  .aiSugT { font-size:14px; font-weight:600; color:#fff; }
+  .aiSugD { font-size:11.5px; color:rgba(255,255,255,0.65); margin-top:2px; }
+  .aiGo { margin-left:auto; background:rgba(160,178,255,0.95); border-radius:999px; padding:6px 13px; font-size:12.5px; font-weight:600; color:#101C33; }
+  .tab { position:absolute; left:16px; right:16px; bottom:8px; height:48px; border-radius:28px;
+    background:rgba(255,255,255,0.22); border:1px solid rgba(255,255,255,0.38); display:flex; align-items:center; justify-content:space-around; }
+  .tabDot { width:8px; height:8px; border-radius:4px; background:rgba(255,255,255,0.55); }
+  .tabDot.on { background:#fff; }
+  .tabBot { width:34px; height:34px; border-radius:17px; background:rgba(255,255,255,0.85); }
+
+  /* 图例（D 方案） */
+  .legend { position:absolute; left:0; right:0; top:516px; display:flex; justify-content:center; gap:16px; }
+  .lgItem { display:flex; align-items:center; gap:5px; font-size:10.5px; color:rgba(255,255,255,0.65); }
+  .lgLine { width:14px; height:3px; border-radius:2px; }
+  .lgDot { width:8px; height:8px; border-radius:50%; }
+  @media (max-width:900px){ .grid{ grid-template-columns:410px; } }
+</style>
+</head>
+<body>
+
+<h1>圆弧 × 月相 · 首页圆环样式提案</h1>
+<p class="sub">
+  把弧末端的「进度光点」与上一版白底首页的 <b>月相体系</b>（moonPath 两段弧画法 + 黄 <b>#F2C75C</b> / 紫 <i>#9D8AF0</i> 四象限口径）结合，出 4 款。
+  拖动下方滑块切换 <b>周期第 N 天</b>（月相相位 t = N/28），实时看每款的效果——第 14 天即满月。
+</p>
+
+<div class="ctrl">
+  <label>周期天数</label>
+  <input type="range" id="daySlider" min="1" max="28" value="14">
+  <div class="dayBox" id="dayBox">第 14 天</div>
+  <div class="phaseBox" id="phaseBox">黄体期</div>
+  <div class="hint">月相：<span id="moonName">满月</span>（t=0.50）</div>
+</div>
+
+<div class="grid">
+
+  <!-- ============ 方案 A：月相端点 ============ -->
+  <div class="proposal">
+    <span class="pTag">方案 A</span>
+    <div class="pTitle">月相端点 · 进度点变月相盘</div>
+    <div class="pDesc">最小改动：弧末端（82% 处）的双层圆点替换为月相盘 + 双层光晕，月相亮面随手周期天数变化。环中央 82 文字布局完全不变。</div>
+    <div class="phone">
+      <div class="wave"></div>
+      <div class="head">
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6"/></svg></div>
+      </div>
+      <div class="titleT">今日状态</div>
+      <div class="chipRow">
+        <div class="chip"><div class="chipL">情绪</div><div class="chipV g">38</div><div class="chipT">情绪平稳</div></div>
+        <div class="chip"><div class="chipL">生理周期</div><div class="chipV g">第14天</div><div class="chipT">黄体期</div></div>
+        <div class="chip"><div class="chipL">睡眠恢复</div><div class="chipV g">82</div><div class="chipT">恢复良好</div></div>
+        <div class="chip"><div class="chipL">活动消耗</div><div class="chipV">320</div><div class="chipT">达成55%</div></div>
+      </div>
+      <div class="ringZone" id="ringA"></div>
+      <div class="aiCard">
+        <div class="aiTxt">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
+        <div class="aiSug"><div class="aiThumb"></div><div><div class="aiSugT">3 分钟呼吸放松</div><div class="aiSugD">开会前把心率平一下</div></div><div class="aiGo">去呼吸 ›</div></div>
+      </div>
+      <div class="tab"><div class="tabDot on"></div><div class="tabDot"></div><div class="tabBot"></div><div class="tabDot"></div><div class="tabDot"></div></div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 B：月相刻度环 ============ -->
+  <div class="proposal">
+    <span class="pTag">方案 B</span>
+    <div class="pTitle">月相刻度环 · 弧上四象限</div>
+    <div class="pDesc">还原白版首页的四个月相刻度点，均分排在半弧上：右端卵泡（黄底紫月牙）/ 右上排卵（紫底黄月牙）/ 顶经期（满月黄）/ 左端黄体（全紫）。当前相位放大 + 光晕高亮，末端保留 82% 白进度点。</div>
+    <div class="phone">
+      <div class="wave"></div>
+      <div class="head">
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6"/></svg></div>
+      </div>
+      <div class="titleT">今日状态</div>
+      <div class="chipRow">
+        <div class="chip"><div class="chipL">情绪</div><div class="chipV g">38</div><div class="chipT">情绪平稳</div></div>
+        <div class="chip"><div class="chipL">生理周期</div><div class="chipV g">第14天</div><div class="chipT">黄体期</div></div>
+        <div class="chip"><div class="chipL">睡眠恢复</div><div class="chipV g">82</div><div class="chipT">恢复良好</div></div>
+        <div class="chip"><div class="chipL">活动消耗</div><div class="chipV">320</div><div class="chipT">达成55%</div></div>
+      </div>
+      <div class="ringZone" id="ringB"></div>
+      <div class="aiCard">
+        <div class="aiTxt">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
+        <div class="aiSug"><div class="aiThumb"></div><div><div class="aiSugT">3 分钟呼吸放松</div><div class="aiSugD">开会前把心率平一下</div></div><div class="aiGo">去呼吸 ›</div></div>
+      </div>
+      <div class="tab"><div class="tabDot on"></div><div class="tabDot"></div><div class="tabBot"></div><div class="tabDot"></div><div class="tabDot"></div></div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 C：中央月相大盘 ============ -->
+  <div class="proposal">
+    <span class="pTag">方案 C</span>
+    <div class="pTitle">中央月相 · 白版 CycleMoonPhase 风格</div>
+    <div class="pDesc">最接近上一版白底首页：环中央放放大月相盘（带光晕渐变）+ 相位名，82 分降级为月相上方小字。半弧与进度弧保留，末端退化为普通小点。</div>
+    <div class="phone">
+      <div class="wave"></div>
+      <div class="head">
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6"/></svg></div>
+      </div>
+      <div class="titleT">今日状态</div>
+      <div class="chipRow">
+        <div class="chip"><div class="chipL">情绪</div><div class="chipV g">38</div><div class="chipT">情绪平稳</div></div>
+        <div class="chip"><div class="chipL">生理周期</div><div class="chipV g">第14天</div><div class="chipT">黄体期</div></div>
+        <div class="chip"><div class="chipL">睡眠恢复</div><div class="chipV g">82</div><div class="chipT">恢复良好</div></div>
+        <div class="chip"><div class="chipL">活动消耗</div><div class="chipV">320</div><div class="chipT">达成55%</div></div>
+      </div>
+      <div class="ringZone" id="ringC"></div>
+      <div class="aiCard">
+        <div class="aiTxt">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
+        <div class="aiSug"><div class="aiThumb"></div><div><div class="aiSugT">3 分钟呼吸放松</div><div class="aiSugD">开会前把心率平一下</div></div><div class="aiGo">去呼吸 ›</div></div>
+      </div>
+      <div class="tab"><div class="tabDot on"></div><div class="tabDot"></div><div class="tabBot"></div><div class="tabDot"></div><div class="tabDot"></div></div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 D：双弧双编码 ============ -->
+  <div class="proposal">
+    <span class="pTag">方案 D</span>
+    <div class="pTitle">双弧 · 恢复分 × 周期天数</div>
+    <div class="pDesc">符合 Mira「多层交叉关联」的产品哲学：外白弧 = 今日恢复分 82%，内金弧 = 周期第 N 天/28（第14天=50%），内弧末端嵌月相盘。两条弧各自独立可读，附图例。</div>
+    <div class="phone">
+      <div class="wave"></div>
+      <div class="head">
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+        <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6"/></svg></div>
+      </div>
+      <div class="titleT">今日状态</div>
+      <div class="chipRow">
+        <div class="chip"><div class="chipL">情绪</div><div class="chipV g">38</div><div class="chipT">情绪平稳</div></div>
+        <div class="chip"><div class="chipL">生理周期</div><div class="chipV g">第14天</div><div class="chipT">黄体期</div></div>
+        <div class="chip"><div class="chipL">睡眠恢复</div><div class="chipV g">82</div><div class="chipT">恢复良好</div></div>
+        <div class="chip"><div class="chipL">活动消耗</div><div class="chipV">320</div><div class="chipT">达成55%</div></div>
+      </div>
+      <div class="ringZone" id="ringD"></div>
+      <div class="legend">
+        <div class="lgItem"><div class="lgLine" style="background:#fff"></div>恢复分 82%</div>
+        <div class="lgItem"><div class="lgLine" style="background:#F2C75C"></div>周期 <span id="lgDay">14</span>/28</div>
+        <div class="lgItem"><div class="lgDot" style="background:#F2C75C"></div>月相</div>
+      </div>
+      <div class="aiCard">
+        <div class="aiTxt">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
+        <div class="aiSug"><div class="aiThumb"></div><div><div class="aiSugT">3 分钟呼吸放松</div><div class="aiSugD">开会前把心率平一下</div></div><div class="aiGo">去呼吸 ›</div></div>
+      </div>
+      <div class="tab"><div class="tabDot on"></div><div class="tabDot"></div><div class="tabBot"></div><div class="tabDot"></div><div class="tabDot"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ===== 白版 moonPath 端口（CycleMoonPhase.tsx，t=相位 0..1：0新月/0.25上弦/0.5满月/0.75下弦） ===== */
+function moonPath(cx, cy, R, t) {
+  const p = ((t % 1) + 1) % 1;
+  const waxing = p < 0.5;
+  const k = Math.abs(Math.cos(Math.PI * 2 * p));
+  const rx = Math.max(0.0001, R * k);
+  const outerSweep = waxing ? 1 : 0;
+  const crescent = waxing ? p < 0.25 : p > 0.75;
+  const innerSweep = crescent ? outerSweep : 1 - outerSweep;
+  return `M ${cx.toFixed(2)} ${(cy - R).toFixed(2)} A ${R.toFixed(2)} ${R.toFixed(2)} 0 0 ${outerSweep} ${cx.toFixed(2)} ${(cy + R).toFixed(2)} A ${rx.toFixed(2)} ${R.toFixed(2)} 0 0 ${innerSweep} ${cx.toFixed(2)} ${(cy - R).toFixed(2)} Z`;
+}
+const LIT = '#F2C75C', PUR = '#9D8AF0', DARK = 'rgba(10,22,40,0.88)';
+
+/* 深海版月相盘：暗面深蓝底 + 亮面黄（fillAll=true 时整盘同色，用于象限点） */
+function moonDisc(cx, cy, R, t, opts = {}) {
+  const glow = opts.glow !== false;
+  let g = '';
+  if (glow) {
+    g += `<circle cx="${cx}" cy="${cy}" r="${R * 2.1}" fill="${LIT}" opacity="0.14"/>`;
+    g += `<circle cx="${cx}" cy="${cy}" r="${R * 1.5}" fill="${LIT}" opacity="0.2"/>`;
+  }
+  if (opts.solid) return g + `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${opts.solid}"/>`;
+  return g + `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${DARK}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
+    `<path d="${moonPath(cx, cy, R - 0.8, t)}" fill="${LIT}"/>`;
+}
+
+/* 半弧常量（与 RN 版一致）：R=116.7 圆心(140,140)，82% 末端(238.9,78)。
+   注：弧几何为 280 宽坐标系，SVG 为 390 宽——用 <g transform="translate(55,0)"> 包住，使弧在 390 内居中。 */
+const ARC_R = 116.7, CX = 140, CY = 140;
+const ARC_LEN = Math.PI * ARC_R; // 366.6
+const TIP = { x: 238.9, y: 78 }; // 82% 末端
+
+function arcPath(r) {
+  return `M ${(CX - r).toFixed(1)} ${CY} A ${r} ${r} 0 0 1 ${(CX + r).toFixed(1)} ${CY}`;
+}
+function baseArc(pct, color, width, r) {
+  const len = Math.PI * r * pct;
+  return `<path d="${arcPath(r)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${len} ${Math.PI * r}"/>`;
+}
+const bgArc = baseArc(1, 'rgba(255,255,255,0.22)', 6, ARC_R);
+const fgArc = baseArc(0.82, '#FFFFFF', 6, ARC_R);
+
+/* 环内文字组（82/状态良好/更新于）——A/B/D 共用 */
+function gaugeText(top) {
+  return `<text x="${CX}" y="${top}" text-anchor="middle" font-size="52" font-weight="700" fill="#fff" style="text-shadow:0 2px 14px rgba(20,44,64,0.45)">82</text>
+  <text x="${CX}" y="${top + 22}" text-anchor="middle" font-size="13.5" fill="rgba(255,255,255,0.72)">状态良好</text>
+  <text x="${CX}" y="${top + 40}" text-anchor="middle" font-size="12" fill="rgba(255,255,255,0.55)">更新于 11:30</text>`;
+}
+const chev = `<path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(283,66)"/>`;
+
+/* ===== 方案 A：末端进度点 → 月相盘 ===== */
+function renderA(t) {
+  document.getElementById('ringA').innerHTML =
+    `<svg width="390" height="170" viewBox="0 0 390 170"><g transform="translate(55,0)">
+      ${bgArc}${fgArc}
+      ${gaugeText(112)}
+      ${moonDisc(TIP.x, TIP.y, 11, t)}
+      ${chev}
+    </g></svg>`;
+}
+
+/* ===== 方案 B：弧上四月相刻度点（白版四象限），当前相位高亮 ===== */
+const QUAD = [
+  { key: 'follicular', deg: 0,   style: 'quarterR', label: '卵泡' },   // 右端：黄底+右紫月牙
+  { key: 'ovulation',  deg: 45,  style: 'quarterL', label: '排卵' },   // 右上：紫底+左黄月牙
+  { key: 'period',     deg: 90,  style: 'full',     label: '经期' },   // 顶：满月黄
+  { key: 'luteal',     deg: 135, style: 'allPurple',label: '黄体' },   // 左上：全紫
+];
+function quadPos(deg) { // deg：自右端逆时针（0=右端，90=顶）
+  const rad = deg * Math.PI / 180;
+  return { x: CX + ARC_R * Math.cos(rad), y: CY - ARC_R * Math.sin(rad) };
+}
+function renderB(t, day) {
+  const cur = day <= 5 ? 'period' : day <= 13 ? 'follicular' : 'luteal';
+  let dots = '';
+  for (const q of QUAD) {
+    const p = quadPos(q.deg);
+    const on = q.key === cur;
+    const r = on ? 9 : 7;
+    if (on) dots += `<circle cx="${p.x}" cy="${p.y}" r="${r * 2.0}" fill="${q.style === 'full' ? LIT : PUR}" opacity="0.2"/>`;
+    if (q.style === 'full') dots += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${LIT}"/>`;
+    else if (q.style === 'allPurple') dots += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${PUR}"/>`;
+    else if (q.style === 'quarterR') dots += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${LIT}"/><path d="${moonPath(p.x, p.y, r - 0.6, 0.19)}" fill="${PUR}"/>`;
+    else dots += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${PUR}"/><path d="${moonPath(p.x, p.y, r - 0.6, 0.81)}" fill="${LIT}"/>`;
+  }
+  document.getElementById('ringB').innerHTML =
+    `<svg width="390" height="170" viewBox="0 0 390 170"><g transform="translate(55,0)">
+      ${bgArc}${fgArc}
+      ${gaugeText(112)}
+      ${dots}
+      <circle cx="${TIP.x}" cy="${TIP.y}" r="5.2" fill="#fff"/>
+      ${chev}
+    </g></svg>`;
+}
+
+/* ===== 方案 C：中央大月相 + 相位名，82 降级小字 ===== */
+function renderC(t, day) {
+  const phase = day <= 5 ? '经期' : day <= 13 ? '卵泡期' : '黄体期';
+  document.getElementById('ringC').innerHTML =
+    `<svg width="390" height="170" viewBox="0 0 390 170"><g transform="translate(55,0)">
+      ${bgArc}${fgArc}
+      <text x="${CX}" y="58" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">82</text>
+      <text x="${CX}" y="74" text-anchor="middle" font-size="10.5" fill="rgba(255,255,255,0.55)">状态良好 · 更新于 11:30</text>
+      ${moonDisc(CX, 112, 24, t)}
+      <text x="${CX}" y="156" text-anchor="middle" font-size="12" font-weight="600" fill="#B9A6F5">${phase} · 第${day}天</text>
+      <circle cx="${TIP.x}" cy="${TIP.y}" r="4.5" fill="#fff"/>
+      ${chev}
+    </g></svg>`;
+}
+
+/* ===== 方案 D：双弧（外白 82% / 内金 day/28）+ 内弧末端月相 ===== */
+function renderD(t, day) {
+  const pct = day / 28;
+  const ir = ARC_R - 9;
+  const inner = baseArc(pct, LIT, 4, ir);
+  // 内弧末端角度：从左端 180° 走到 pct（day/28）
+  const deg = 180 - pct * 180;
+  const rad = deg * Math.PI / 180;
+  const tip = { x: CX + ir * Math.cos(rad), y: CY - ir * Math.sin(rad) };
+  document.getElementById('ringD').innerHTML =
+    `<svg width="390" height="170" viewBox="0 0 390 170"><g transform="translate(55,0)">
+      ${bgArc}${fgArc}${inner}
+      ${gaugeText(112)}
+      ${moonDisc(tip.x, tip.y, 10, t, { glow: true })}
+      <circle cx="${TIP.x}" cy="${TIP.y}" r="5.2" fill="#fff"/>
+      ${chev}
+    </g></svg>`;
+  document.getElementById('lgDay').textContent = day;
+}
+
+/* ===== 滑块联动 ===== */
+const MOON_NAMES = ['新月','娥眉月','上弦','盈凸月','满月','亏凸月','下弦','残月'];
+function moonName(t) { return MOON_NAMES[Math.round(t * 8) % 8]; }
+function renderAll(day) {
+  const t = day / 28;
+  renderA(t); renderB(t, day); renderC(t, day); renderD(t, day);
+  document.getElementById('dayBox').textContent = `第 ${day} 天`;
+  document.getElementById('phaseBox').textContent = day <= 5 ? '经期' : day <= 13 ? '卵泡期' : '黄体期';
+  document.getElementById('moonName').textContent = `${moonName(t)}（t=${t.toFixed(2)}）`;
+}
+document.getElementById('daySlider').addEventListener('input', (e) => renderAll(+e.target.value));
+renderAll(14);
+</script>
+</body>
+</html>
