@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mira × Oura 扁平浅弧提案</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a0a;color:#fff;font-family:'Inter',-apple-system,'PingFang SC','Helvetica Neue',sans-serif;
+       padding:40px 24px 64px;-webkit-font-smoothing:antialiased}
+  h1{font-weight:300;font-size:30px;letter-spacing:-1px;margin-bottom:6px}
+  .sub{color:#8a8a8a;font-size:14px;font-weight:300;margin-bottom:34px;max-width:720px;line-height:1.6}
+  .sub b{color:#cfcfcf;font-weight:500}
+  .grid{display:grid;grid-template-columns:repeat(2,390px);gap:30px;justify-content:center}
+  @media(max-width:880px){.grid{grid-template-columns:390px}}
+  .phone{width:390px;height:780px;background:#000;border-radius:44px;position:relative;overflow:hidden;
+         border:1px solid #1c1c1c;box-shadow:0 30px 60px rgba(0,0,0,0.6)}
+  .tag{position:absolute;top:14px;left:16px;z-index:5;font-size:11px;font-weight:500;
+       letter-spacing:0.14em;text-transform:uppercase;color:#d6c283}
+  .cap{position:absolute;bottom:56px;left:0;right:0;text-align:center;font-size:12px;
+       color:#8a8a8a;font-weight:300;padding:0 24px;line-height:1.5}
+  .cap b{color:#cfcfcf;font-weight:500}
+  .obar{position:absolute;top:0;left:0;right:0;height:78px;display:flex;align-items:center;
+        justify-content:space-between;padding:34px 22px 0;z-index:4}
+  .oword{font-size:19px;font-weight:300;letter-spacing:1px;color:#fff}
+  .oico{width:30px;height:30px;border-radius:50%;border:1px solid #2a2a2a;display:flex;
+        align-items:center;justify-content:center;color:#9a9a9a;font-size:13px}
+  .sliders{position:absolute;bottom:16px;left:18px;right:18px;display:flex;gap:18px}
+  .sliders label{flex:1;font-size:10px;color:#6a6a6a;text-transform:uppercase;letter-spacing:0.1em}
+  .sliders input{width:100%;margin-top:4px;accent-color:#d6c283}
+</style>
+</head>
+<body>
+  <h1>Mira × Oura 扁平浅弧提案</h1>
+  <div class="sub">对照小红书 Oura 截图重做：弧是<b>超大半径（R≈300）的扁平浅弧</b>——细白描边、近全屏宽、弧顶只比两端高 ~50px，两端有刻度小字（0 / 100），弧上小刻度点，大数字在弧下方居中 + 大标题 + 描述 + 按钮。月相仍用白版四象限画法，滑块 1–28 天联动。</div>
+  <div class="grid">
+    <div class="phone"><div class="tag">V1 · 忠实复刻</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div id="p1" style="position:absolute;top:96px;left:0;right:0"></div><div class="sliders"><label>周期 day <input id="s1" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s1b" type="range" min="40" max="100" value="82"></label></div><div class="cap">完全按截图形态：白细弧 + 端点刻度 0/100 + 弧上 5 个刻度点 + 进度尖端<b>月相盘</b>；弧下 82 →「恢复状态」→ 大标题「稳步提升」→ 描述 → 了解更多按钮。</div></div>
+
+    <div class="phone"><div class="tag">V2 · 刻度点=月相</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div id="p2" style="position:absolute;top:96px;left:0;right:0"></div><div class="sliders"><label>周期 day <input id="s2" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s2b" type="range" min="40" max="100" value="82"></label></div><div class="cap">把截图的刻度点换成<b>四个月相</b>（黄体/经期/卵泡/排卵，白版首页同款），当前相位放大发光；进度尖端仍是小月相标记。</div></div>
+
+    <div class="phone"><div class="tag">V3 · 双弧双编码</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div id="p3" style="position:absolute;top:96px;left:0;right:0"></div><div class="sliders"><label>周期 day <input id="s3" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s3b" type="range" min="40" max="100" value="82"></label></div><div class="cap">你之前选的<b>方案 D 双编码</b>套进扁平浅弧：外白弧=恢复 82，内金弧=周期天数（day/28），内弧尖端嵌月相盘，两条弧各自独立可读。</div></div>
+  </div>
+
+<script>
+const GOLD='#d6c283', PURPLE='#9c7ed9', TRACK='#262626', MUTED='#8a8a8a', LIT='#F2C75C', DARKP='#9D8AF0';
+
+// ---- 月相：白版四象限画法（只用验证过的形状） ----
+function moonPath(cx,cy,R,t){
+  const a=Math.cos(Math.PI*t), sx=(cx+R*a).toFixed(2), ex=(cx-R*a).toFixed(2), y1=(cy-R).toFixed(2), y2=(cy+R).toFixed(2), r=R.toFixed(2), ra=(R*Math.abs(a)).toFixed(2);
+  if(t<=0.5) return `M ${sx} ${y1} A ${r} ${r} 0 0 0 ${sx} ${y2} A ${ra} ${r} 0 0 1 ${ex} ${y1} Z`;
+  return `M ${sx} ${y1} A ${r} ${r} 0 0 1 ${sx} ${y2} A ${ra} ${r} 0 0 0 ${ex} ${y1} Z`;
+}
+function moonDisc(cx,cy,R,day){
+  const b=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>`;
+  if(day<=7)  return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${LIT}"/>${b}`;
+  if(day<=13){const t=day>7?0.81:0.19;return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${LIT}"/><path d="${moonPath(cx,cy,R,0.81)}" fill="${DARKP}"/>${b}`;}
+  if(day<=21) return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${DARKP}"/><path d="${moonPath(cx,cy,R,0.19)}" fill="${LIT}"/>${b}`;
+  return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${DARKP}"/>${b}`;
+}
+function phaseName(day){
+  if(day<=7) return '经期'; if(day<=13) return '卵泡期'; if(day<=21) return '排卵期'; return '黄体期';
+}
+
+// ---- 扁平浅弧几何：R=300，弦 330（x 30→360），端点 y=y0，弧顶 y0-49.5 ----
+const R=300, CXA=195, HALFC=165, SWEEP=(2*Math.asin(HALFC/R)); // 总弧度 ≈1.977 rad ≈113.3°
+function pt(phi,y0){ // φ∈[-SWEEP/2, +SWEEP/2]，0=弧顶
+  return { x: CXA + R*Math.sin(phi), y: y0 + (R*Math.cos(SWEEP/2)) - R*Math.cos(phi) };
+}
+// arc from φ0→φ1 (屏幕坐标顺时针 = φ 增大)
+function arcD(f0,f1,y0){
+  const p0=pt(f0,y0), p1=pt(f1,y0), large=(f1-f0)>Math.PI?1:0;
+  return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+}
+
+// ---- 通用：弧下方文字块 + 按钮 ----
+function textBlock(score, day){
+  return `
+  <div style="position:absolute;top:238px;left:0;right:0;text-align:center">
+    <div style="font-size:52px;font-weight:300;letter-spacing:-1.5px;color:#fff;font-variant-numeric:tabular-nums;line-height:1">${score}</div>
+    <div style="margin-top:10px;font-size:12px;color:${MUTED};letter-spacing:3px;font-weight:500">恢复状态</div>
+    <div style="margin-top:26px;font-size:30px;font-weight:400;color:#fff;letter-spacing:0.5px">稳步提升</div>
+    <div style="margin-top:12px;font-size:13.5px;font-weight:300;color:rgba(255,255,255,0.65);padding:0 44px;line-height:1.6">你的恢复优秀，${phaseName(day)}第 ${day} 天，今天的身体状态高于基准。</div>
+    <div style="margin-top:22px;display:inline-block;padding:10px 26px;border-radius:22px;background:rgba(255,255,255,0.1);font-size:13px;color:#fff;font-weight:400">了解更多</div>
+  </div>`;
+}
+
+// ---- V1：忠实复刻 ----
+function renderV1(day, score){
+  const y0=150, half=SWEEP/2;
+  const frac=score/100;
+  const tipPhi=-half + SWEEP*frac;
+  const tip=pt(tipPhi,y0);
+  let ticks='';
+  for(let i=0;i<=4;i++){
+    const p=pt(-half+SWEEP*i/4,y0);
+    ticks+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.6" fill="rgba(255,255,255,0.55)"/>`;
+  }
+  const l=pt(-half,y0), r=pt(half,y0);
+  document.getElementById('p1').innerHTML=`
+  <svg width="390" height="230" viewBox="0 0 390 230">
+    <path d="${arcD(-half,half,y0)}" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="${arcD(-half,tipPhi,y0)}" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+    ${ticks}
+    <text x="${l.x+2}" y="${l.y+26}" font-size="11" fill="${MUTED}" font-weight="500">0</text>
+    <text x="${r.x-16}" y="${r.y+24}" font-size="11" fill="${MUTED}" font-weight="500" transform="rotate(45 ${r.x-8} ${r.y+20})">100</text>
+    ${moonDisc(tip.x, tip.y, 9, day)}
+  </svg>`+textBlock(score, day);
+}
+
+// ---- V2：刻度点=四月相 ----
+function renderV2(day, score){
+  const y0=150, half=SWEEP/2;
+  const frac=score/100, tipPhi=-half+SWEEP*frac, tip=pt(tipPhi,y0);
+  // 四个月相刻度：黄体/经期/卵泡/排卵 均布（避开两端刻度字）
+  const names=['黄体','经期','卵泡','排卵'];
+  let dots='';
+  for(let i=0;i<4;i++){
+    const phi=-half + SWEEP*(i+0.5)/4;
+    const p=pt(phi,y0);
+    const d=[22,3,10,17][i];
+    const cur=Math.abs(d-day)<=1;
+    const rr=cur?11:8;
+    dots+=`<circle cx="${p.x}" cy="${p.y}" r="${rr+4}" fill="${GOLD}" opacity="${cur?0.18:0}"/>
+           ${moonDisc(p.x,p.y,rr,d)}`;
+  }
+  const l=pt(-half,y0), r=pt(half,y0);
+  document.getElementById('p2').innerHTML=`
+  <svg width="390" height="230" viewBox="0 0 390 230">
+    <path d="${arcD(-half,half,y0)}" fill="none" stroke="${TRACK}" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="${arcD(-half,tipPhi,y0)}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    ${dots}
+    <circle cx="${tip.x.toFixed(1)}" cy="${tip.y.toFixed(1)}" r="4.5" fill="#fff"/>
+    <text x="${l.x+2}" y="${l.y+26}" font-size="11" fill="${MUTED}" font-weight="500">0</text>
+    <text x="${r.x-16}" y="${r.y+24}" font-size="11" fill="${MUTED}" font-weight="500" transform="rotate(45 ${r.x-8} ${r.y+20})">100</text>
+  </svg>`+textBlock(score, day);
+}
+
+// ---- V3：双弧双编码（方案D 套扁平浅弧） ----
+function renderV3(day, score){
+  const y0=150, half=SWEEP/2, Ri=R-26;
+  function ptI(phi){ return { x: CXA + Ri*Math.sin(phi), y: y0 + (Ri*Math.cos(SWEEP/2)) - Ri*Math.cos(phi) }; }
+  function arcI(f0,f1){
+    const p0=ptI(f0), p1=ptI(f1), large=(f1-f0)>Math.PI?1:0;
+    return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${Ri} ${Ri} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+  }
+  const fRec=score/100, fCyc=day/28;
+  const tipR=pt(-half+SWEEP*fRec,y0);
+  const tipC=ptI(-half+SWEEP*fCyc);
+  const l=pt(-half,y0), r=pt(half,y0);
+  document.getElementById('p3').innerHTML=`
+  <svg width="390" height="230" viewBox="0 0 390 230">
+    <path d="${arcD(-half,half,y0)}" fill="none" stroke="${TRACK}" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="${arcD(-half,-half+SWEEP*fRec,y0)}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <path d="${arcI(-half,half)}" fill="none" stroke="rgba(214,194,131,0.25)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="${arcI(-half,-half+SWEEP*fCyc)}" fill="none" stroke="${GOLD}" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${tipR.x.toFixed(1)}" cy="${tipR.y.toFixed(1)}" r="4.5" fill="#fff"/>
+    ${moonDisc(tipC.x, tipC.y, 8, day)}
+    <text x="${l.x+2}" y="${l.y+26}" font-size="11" fill="${MUTED}" font-weight="500">0</text>
+    <text x="${r.x-16}" y="${r.y+24}" font-size="11" fill="${MUTED}" font-weight="500" transform="rotate(45 ${r.x-8} ${r.y+20})">100</text>
+    <text x="195" y="216" text-anchor="middle" font-size="11" fill="${MUTED}" letter-spacing="2">外弧 恢复 ${score} · 内弧 周期 第 ${day} 天</text>
+  </svg>`+textBlock(score, day);
+}
+
+function renderAll(){
+  const day=+document.getElementById('s1').value, score=+document.getElementById('s1b').value;
+  renderV1(day,score); renderV2(day,score); renderV3(day,score);
+  // V2/V3 滑块同步 V1 值
+  ['s2','s3'].forEach(id=>document.getElementById(id).value=day);
+  ['s2b','s3b'].forEach(id=>document.getElementById(id).value=score);
+}
+['s1','s1b','s2','s2b','s3','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',renderAll));
+renderAll();
+</script>
+</body>
+</html>
