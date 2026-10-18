@@ -100,7 +100,7 @@ const CHIP_H = 96;
 const CHIP_GAP = 8;
 // 半圆环尺寸（旧；已弃用为扁平浅弧）——保留 GAUGE_H 仅作下方 clamp 的块高估算
 const GAUGE_W = 280;
-const GAUGE_H = 188; // ★ 2026-10-18：扁平浅弧块（弧 68 + 状态词/82/周期 ≈114）估算高，用于短屏钳位
+const GAUGE_H = 192; // ★ 2026-10-18：扁平浅弧块（弧 68 + 状态词/82(48px)/周期 ≈124）估算高，用于居中计算
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -179,10 +179,15 @@ export default function CalmWaveHome() {
   //   +2→-8（再上移 10px，与第二十六轮持平略高），与弧的间距保持 24 不变。
   // ★ 第二十九轮：用户"上移不太明显，再往上一点"——-8→-16（再上移 8px）。
   //   长屏复算（852 高）：环底距 AI 卡顶 ≈53px 安全；短屏走下方 Math.min 钳位不受影响。
-  const chipRowTop = transitionY - 16;
-  const gaugeTop = Math.min(
-    chipRowTop + CHIP_H + 4,
-    height - aiBottom - aiCardH - 12 - GAUGE_H,
+  // ★ 第三十五轮（真机照片反馈）：①卡行+标题整体再上移 12px（-16→-28；用户"今日状态再往上一点，
+  //   情绪/生理周期卡片再往上挪一点点"）②弧+文字块在「卡行底 ↔ AI 卡顶」之间垂直居中
+  //   （用户"圆弧往下一点、整个中间的圆弧和文字应该居中"）——不再贴卡行，取中点下移。
+  const chipRowTop = transitionY - 28;
+  const chipsBottom = chipRowTop + CHIP_H;
+  const aiTop = height - aiBottom - aiCardH;
+  const gaugeTop = Math.max(
+    chipsBottom + 8,
+    chipsBottom + (aiTop - chipsBottom - GAUGE_H) / 2,
   );
 
   return (
@@ -447,7 +452,7 @@ const s = StyleSheet.create({
   },
   gMoodRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5 },
-  gBig: { fontSize: 58, fontWeight: '700', letterSpacing: -1.5, marginTop: 4, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gBig: { fontSize: 48, fontWeight: '700', letterSpacing: -1.5, marginTop: 4, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   gDesc: { fontSize: 13.5, fontWeight: '300', color: 'rgba(255,255,255,0.65)', marginTop: 8, lineHeight: 20, textAlign: 'center' },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
