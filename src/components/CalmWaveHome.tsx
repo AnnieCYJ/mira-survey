@@ -55,7 +55,8 @@ const lineIcon = (d: string | string[]) => (
   </Svg>
 );
 const CHIPS: Chip[] = [
-  { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
+  // ★ 2026-10-18 用户：「压力水平」改名「情绪」（tag 同步为情绪平稳，路由目标不变）
+  { label: '情绪', value: '38', tag: '情绪平稳', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
   { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
   { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
@@ -118,23 +119,20 @@ export default function CalmWaveHome() {
         locations={[0, 0.14, 0.24, 0.31, 0.4, 1]}
       />
 
-      {/* 顶部：左列 = 账户 icon + 下方「今日状态」大标题；右侧 = 设置 icon。
-          ★ 2026-10-18 用户：头栏图标与标题改明显的深色（浮在浅色海浪视频上），标题字加大。 */}
+      {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
+          ★ 2026-10-18 用户：「今日状态」白色标题从头栏移到指标卡行上方（见下方 cardTitle）。 */}
       <View style={[s.head, { paddingTop: insets.top + 10 }]}>
-        <View style={s.headLeft}>
-          <TouchableOpacity
-            style={s.hIcon}
-            activeOpacity={0.7}
-            accessibilityLabel="我的账户"
-            onPress={() => navigation.navigate('Profile')}
-          >
-            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <Circle cx={12} cy={8.2} r={3.6} />
-              <Path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6" />
-            </Svg>
-          </TouchableOpacity>
-          <Text style={s.titleC}>今日状态</Text>
-        </View>
+        <TouchableOpacity
+          style={s.hIcon}
+          activeOpacity={0.7}
+          accessibilityLabel="我的账户"
+          onPress={() => navigation.navigate('Profile')}
+        >
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <Circle cx={12} cy={8.2} r={3.6} />
+            <Path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6" />
+          </Svg>
+        </TouchableOpacity>
         <TouchableOpacity
           style={s.hIcon}
           activeOpacity={0.7}
@@ -147,6 +145,10 @@ export default function CalmWaveHome() {
           </Svg>
         </TouchableOpacity>
       </View>
+
+      {/* 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方。
+          位置在渐变 94% 不透明深色线（0.31×height）附近，白字可读。 */}
+      <Text style={[s.cardTitle, { top: chipRowTop - 30 }]}>今日状态</Text>
 
       {/* Oura 式细弧半圆环（进度末端白点 + 光晕，中心大数字；整环可点 → 全天状态趋势） */}
       <TouchableOpacity
@@ -236,14 +238,13 @@ export default function CalmWaveHome() {
 const s = StyleSheet.create({
   root: { flex: 1 },
 
-  // 顶部头栏：左列（账户 icon + 「今日状态」大标题竖排）+ 右侧设置 icon
+  // 顶部头栏：左 = 账户 icon；右 = 设置 icon
   head: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
-  headLeft: { alignItems: 'flex-start' },
   hIcon: {
     width: 38,
     height: 38,
@@ -254,7 +255,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleC: { fontSize: 21, fontWeight: '700', color: HEAD_INK, letterSpacing: 0.5, marginTop: 9, textShadowColor: 'rgba(255,255,255,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  // 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方（过渡区深色带上）
+  cardTitle: {
+    position: 'absolute',
+    left: 16,
+    fontSize: 21,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(20,44,64,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
 
   // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；84×96 大字版，横向滑动 4+1）
   chipRowZone: {
