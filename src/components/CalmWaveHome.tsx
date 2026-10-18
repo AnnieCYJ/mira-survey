@@ -87,14 +87,17 @@ export default function CalmWaveHome() {
   }, []));
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
-  // AI 卡贴在真 tab 上方（tab 胶囊顶 = insets.bottom + 56，再留 12 间距）。
-  // 注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
-  // ★ 2026-10-18 用户：建议卡再靠下 → 68 改 52（比 tab 顶再低 16px）。
-  const aiBottom = insets.bottom + 52;
+  // AI 卡贴在真 tab 上方。★ 2026-10-18 第二十五轮：几何纠正——CustomTabBar wrap 是
+  //   bottom:0 + marginBottom:8 + height:48，**tab 视觉顶距屏底 56，与 insets 无关**；
+  //   之前误按「insets+56」模型，导致 AI 卡实际距 tab 还有 30px。
+  //   现在 bottom = insets+32（34 屏 = 66，距 tab 顶 10px）——用户："分析和建议卡片再下一点"。
+  //   注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
+  const aiBottom = insets.bottom + 32;
   const aiCardH = 164; // AI 卡近似高（两行分析 + 建议行 + 内边距；字号放大后 +16）
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
-  //   环在卡行下方 14px；短屏时整体上移，防环底撞 AI 卡顶
-  const chipRowTop = transitionY + 6;
+  //   环在卡行下方 14px；短屏时整体上移，防环底撞 AI 卡顶。
+  // ★ 第二十五轮：标题+卡行整体再上移 12px（用户："连着下面的卡片位置整体再往上移一点"）。
+  const chipRowTop = transitionY - 6;
   const gaugeTop = Math.min(
     chipRowTop + CHIP_H + 14,
     height - aiBottom - aiCardH - 12 - GAUGE_H,
@@ -255,17 +258,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方（过渡区深色带上）
+  // 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方（过渡区深色带上）。
+  // ★ 第二十五轮：字号 21→25（用户："字大一些"），投影加深保浅色海浪末端可读。
   cardTitle: {
     position: 'absolute',
     left: 16,
-    fontSize: 21,
+    fontSize: 25,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
-    textShadowColor: 'rgba(20,44,64,0.5)',
+    textShadowColor: 'rgba(20,44,64,0.65)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    textShadowRadius: 10,
   },
 
   // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；84×96 大字版，横向滑动 4+1）
