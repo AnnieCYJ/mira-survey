@@ -14,16 +14,16 @@
  * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身体负荷」两张卡（与白底版 6 卡对齐）；
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { useCallback } from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
@@ -31,6 +31,7 @@ import type { TabParamList } from '../navigation/BottomTabNavigator';
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
+const WAVE_SOUND = require('../assets/wave-sound.mp3'); // ★ 2026-10-18 用户：海浪白噪音（FFmpeg 合成 30s 无缝循环）
 const THUMB_RELAX = require('../assets/card_relax.jpg');
 
 const GLASS_BG = 'rgba(255,255,255,0.13)';
@@ -38,6 +39,10 @@ const GLASS_BD = 'rgba(255,255,255,0.28)';
 const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
 // ★ 2026-10-18 用户：头栏图标与「今日状态」标题改明显的深色（浮在浅色海浪视频上）
 const HEAD_INK = 'rgba(16,36,58,0.88)';
+// AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
+const AI_CARD_BG = 'rgba(9,28,48,0.52)';
+// 海浪声音开关的存储 key（与 SettingsScreen 共用）
+const WAVE_SOUND_KEY = 'waveSound';
 
 type Chip = {
   label: string;
@@ -85,6 +90,43 @@ export default function CalmWaveHome() {
     StatusBar.setBarStyle('light-content', true);
     return () => StatusBar.setBarStyle('light-content', true);
   }, []));
+  // ★ 2026-10-18 用户：设置里「海浪白噪音」开关控制本页海浪声（AsyncStorage 持久化）。
+  //   视频无音轨，声音用独立 mp3（wave-sound.mp3）经 Audio.Sound 循环播放；
+  //   聚焦+开 → 播放；失焦/关 → 暂停；组件卸载 → 卸载 Sound 资源。
+  const [waveOn, setWaveOn] = useState(false);
+  const [focused, setFocused] = useState(true);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    AsyncStorage.getItem(WAVE_SOUND_KEY).then((v) => {
+      if (alive) setWaveOn(v === '1');
+    });
+    return () => { alive = false; };
+  }, []));
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (waveOn && focused) {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+        if (soundRef.current) {
+          await soundRef.current.playAsync(); // 已加载过 → 直接续播
+          return;
+        }
+        const { sound } = await Audio.Sound.createAsync(WAVE_SOUND, { isLooping: true, volume: 0.6 });
+        if (cancelled) { await sound.unloadAsync(); return; }
+        soundRef.current = sound;
+        await sound.playAsync();
+      } else if (soundRef.current) {
+        await soundRef.current.pauseAsync();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [waveOn, focused]);
+  useEffect(() => () => { soundRef.current?.unloadAsync(); }, []); // 卸载清理
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
   // AI 卡贴在真 tab 上方。★ 2026-10-18 第二十五轮：几何纠正——CustomTabBar wrap 是
@@ -150,8 +192,9 @@ export default function CalmWaveHome() {
       </View>
 
       {/* 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方。
-          位置在渐变 94% 不透明深色线（0.31×height）附近，白字可读。 */}
-      <Text style={[s.cardTitle, { top: chipRowTop - 30 }]}>今日状态</Text>
+          位置在渐变 94% 不透明深色线（0.31×height）附近，白字可读。
+          ★ 第二十六轮：字号 25→28、位置再往上 8px（用户："字大一些，位置再往上一点"）。 */}
+      <Text style={[s.cardTitle, { top: chipRowTop - 38 }]}>今日状态</Text>
 
       {/* Oura 式细弧半圆环（进度末端白点 + 光晕，中心大数字；整环可点 → 全天状态趋势） */}
       <TouchableOpacity
@@ -218,7 +261,9 @@ export default function CalmWaveHome() {
         />
       </View>
 
-      {/* AI 分析卡：沉底（避开真 tab 栏） */}
+      {/* AI 分析卡：沉底（避开真 tab 栏）★ 2026-10-18 第二十六轮（用户）：
+          改语音气泡——右下角小尾巴指向卡外的 AI 头像（营造"AI 在说话"感，
+          参考 Grok 对话界面：头像在气泡尾巴末端）。 */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
         <Text style={s.analysis}>
           恢复得不错，<Text style={s.hl}>82 分</Text>比平时高一点，压力也低，别浪费今天的好状态～
@@ -233,6 +278,23 @@ export default function CalmWaveHome() {
             <Text style={s.goTxt}>去呼吸 ›</Text>
           </View>
         </View>
+        {/* 气泡尾巴：直角三角形从卡右下角逐出，尖角指向右下方 AI 头像。
+            right/bottom -8 → Svg 占卡右下角往右下 22×22；path (0,0)→(22,22)→(0,22)。
+            ★ 第二十六轮几何：尖角 (卡右缘+8, 卡底边+8) 精确落在 40px 头像的右下角顶点。 */}
+        <Svg width={22} height={22} style={{ position: 'absolute', right: -8, bottom: -8 }} pointerEvents="none">
+          <Path d="M0 0 L22 22 L0 22 Z" fill={AI_CARD_BG} />
+        </Svg>
+      </View>
+
+      {/* AI 头像：骑在建议卡右下角（上半叠卡内），气泡尾巴尖指向其右下角。
+          几何：40px、right 4、bottom aiBottom-8 → 底缘距屏底 aiBottom-8+40... 即
+          头像底缘 = 屏底-(aiBottom-8)，与 tab 胶囊顶（距屏底 56）留 ≥2px，不压 tab；
+          与卡底边重叠 32px，视觉「骑角」；尾巴尖 = (卡右缘+8, 卡底边+8) 落在头像右下顶点。 */}
+      <View style={[s.aiAvatar, { bottom: aiBottom - 8 }]} pointerEvents="none">
+        <Svg width={20} height={20} viewBox="0 0 24 24">
+          <Path d="M12 2.2 L13.9 8.6 L20.3 10.5 L13.9 12.4 L12 18.8 L10.1 12.4 L3.7 10.5 L10.1 8.6 Z" fill="#0B1E33" />
+          <Path d="M12 6.4 L12.9 9.6 L16 10.5 L12.9 11.4 L12 14.6 L11.1 11.4 L8 10.5 L11.1 9.6 Z" fill="#BFCBFF" />
+        </Svg>
       </View>
     </View>
   );
@@ -259,11 +321,11 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   // 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方（过渡区深色带上）。
-  // ★ 第二十五轮：字号 21→25（用户："字大一些"），投影加深保浅色海浪末端可读。
+  // ★ 第二十五轮：字号 21→25；★ 第二十六轮：25→28 再加大 + 投影加深（用户："字大一些"）。
   cardTitle: {
     position: 'absolute',
     left: 16,
-    fontSize: 25,
+    fontSize: 28,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
@@ -319,14 +381,16 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 9,
+    bottom: 2,
     alignItems: 'center',
   },
-  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 6, fontWeight: '500' },
-  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  // ★ 2026-10-18 第二十六轮（用户："82/状态良好/更新于整体字往下一点，拉开点距离，现在挤到一起"）：
+  //   gaugeCenter bottom 9→2 整体下移；三行间距全部拉开。
+  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', marginBottom: 10, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 9, fontWeight: '500' },
+  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
 
-  // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）
+  // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {
     position: 'absolute',
     left: 16,
@@ -335,9 +399,27 @@ const s = StyleSheet.create({
     paddingBottom: 15,
     paddingHorizontal: 17,
     borderRadius: 20,
-    backgroundColor: 'rgba(9,28,48,0.52)',
+    backgroundColor: AI_CARD_BG,
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
+  },
+  // AI 头像（语音气泡尾巴指向的目标）：长春花蓝圆底 + 双层 spark 图标 + 白描边
+  aiAvatar: {
+    position: 'absolute',
+    right: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(160,178,255,0.95)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   analysis: { fontSize: 16.5, lineHeight: 24, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
