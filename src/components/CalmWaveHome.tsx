@@ -36,6 +36,8 @@ const THUMB_RELAX = require('../assets/card_relax.jpg');
 const GLASS_BG = 'rgba(255,255,255,0.13)';
 const GLASS_BD = 'rgba(255,255,255,0.28)';
 const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
+// ★ 2026-10-18 用户：头栏图标与「今日状态」标题改明显的深色（浮在浅色海浪视频上）
+const HEAD_INK = 'rgba(16,36,58,0.88)';
 
 type Chip = {
   label: string;
@@ -53,61 +55,25 @@ const lineIcon = (d: string | string[]) => (
   </Svg>
 );
 const CHIPS: Chip[] = [
-  { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
-  { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
   { label: '压力水平', value: '38', tag: '压力偏低', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
-  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
+  { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
+  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
+  { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
   // 「脑力准备度」按用户要求隐藏（2026-10-17 改花瓣布局只留 5 张）；要恢复：取消下行注释
   // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
-const CHIP_W = 96;
-const CHIP_H = 78;
-// 注：icon 为白色细线 SVG（Oura 式），无圆底
-
-/**
- * 花瓣形（圆角三角瓣）SVG path：96×78 画布，尖尾在上（-90°）、宽底边在下。
- * 参考元意空间：每瓣是三边弧线的圆角三角形——三个角全部圆弧过渡，尖尾指向圆心成辐射花簇。
- * ★ 2026-10-18 第十九轮起形状迭代：水滴 → 尖角三角 → 圆角三角（用户："每个三角卡片的角是弧形的"）。
- *   各角圆弧：尖顶切点 (42,12)/(54,12) 经 Q(48,8) 过渡；左下/右下角两段 Q 包圆；底边中凸。
- *   每瓣尖尾朝向由 petalRot 单独控制（见 PETALS），与卡片文字倾角 rot 解耦。
- */
-const PETAL_PATH =
-  'M42 12 Q30 22 16 38 Q8 50 9 60 Q12 72 26 75 Q48 83 70 75 Q84 72 87 60 Q88 50 80 38 Q66 22 54 12 Q48 8 42 12 Z';
-
-/**
- * 花瓣 Svg 的 viewBox：以花瓣几何中心 (48,39) 为画布中心，四周留旋转余量。
- * 165/195° 旋转时矩形外接 = 96·cos15 + 78·sin15 ≈ 113×101，故画布 113×103（负偏移居中）。
- * Svg 元素按百分比放大（117.7%×132%）+ 负 left/top 使其中心与卡中心重合，
- * 旋转绕 Svg 中心 = 绕花瓣中心，花瓣不偏心、不飞出卡框。
- */
-const PETAL_VB_X = -8.5;
-const PETAL_VB_Y = -12.5;
-const PETAL_VB_W = 113;
-const PETAL_VB_H = 103;
-
-/**
- * 花瓣簇坐标（卡中心，相对半圆环圆心 (屏心中点, gaugeTop+120)）。
- * rot = 卡片（含文字）倾角；petalRot = 花瓣形状内部旋转（尖尾指向圆心，与文字倾角解耦）。
- * 环 240×128（R=100）；卡 96×78（半宽 48 / 半高 39）。数组顺序 = z 序（后者压前者）：
- *   肩瓣（±34°）→ 上排瓣（±18°）→ 顶心瓣（0°）。
- * petalRot 推导：尖尾初始朝上（-90°），要旋到指向圆心的方向角 α，
- *   petalRot = α + 90° − rot（α = atan2(−dy, −dx)，圆心在卡片正下方系）。
- * 各瓣相对圆心：
- *   睡眠恢复 (0, -152)      顶心瓣：贴环顶（底 427 vs 环顶 440），petalRot 180（尖朝下正指圆心）
- *   压力水平 (-76.4, -202)  上左瓣 / 活动消耗 (76.4, -202) 上右瓣：高悬，petalRot 180
- *   生理周期 (-126.4, -108) 左肩瓣 / 身体负荷 (126.4, -108) 右肩瓣：petalRot 165/195
- *     （卡片倾角 ±34° 的补偿量），尖尾对准右下/左下圆心方向
- * 相邻瓣经旋转后角区错开不相交；瓣内文字集中在宽底边侧（安全区）。
- */
-const PETALS: Record<string, { dx: number; dy: number; rot: number; petalRot: number }> = {
-  '生理周期': { dx: -126.4, dy: -108, rot: -34, petalRot: 165 },
-  '身体负荷': { dx: 126.4, dy: -108, rot: 34, petalRot: 195 },
-  '压力水平': { dx: -76.4, dy: -202, rot: -18, petalRot: 180 },
-  '活动消耗': { dx: 76.4, dy: -202, rot: 18, petalRot: 180 },
-  '睡眠恢复': { dx: 0, dy: -152, rot: 0, petalRot: 180 },
-};
+// ★ 2026-10-18 第二十二轮（用户）：花瓣（四轮迭代：圆角矩形→水滴→尖角三角→圆角三角）
+//   最终改回方卡，5 张横排一行贴在弧上方（用户："圆弧上面的那几个卡片还是做成方的吧，排成一行"）。
+//   历史花瓣资产：PETAL_PATH / PETAL_VB_* / PETALS（圆角三角瓣 + petalRot 辐射朝向）已删除，
+//   如需恢复可从 git 历史取回（a07525c / 06d2f83）。
+const CHIP_W = 66;
+const CHIP_H = 76;
+const CHIP_GAP = 6;
+// 一行 5 张：总宽 5×66+4×6=354（390 屏居中，左右余 18）；卡中心 dy=-150，
+// 卡底 = ringCy-112，环顶 = ringCy-100，余 12 不碰环
+const CHIP_ROW_DY = -150;
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -122,17 +88,20 @@ export default function CalmWaveHome() {
   const transitionY = height * 0.34;
   // AI 卡贴在真 tab 上方（tab 胶囊顶 = insets.bottom + 56，再留 12 间距）。
   // 注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
-  const aiBottom = insets.bottom + 68;
+  // ★ 2026-10-18 用户：建议卡再靠下 → 68 改 52（比 tab 顶再低 16px）。
+  const aiBottom = insets.bottom + 52;
   const aiCardH = 148; // AI 卡近似高（两行分析 + 建议行 + 内边距）
-  // 花瓣布局：环心 cy = gaugeTop+120；上排瓣顶（cy-225-39）对齐交界线下方 11px；
-  // 短屏时整体上移，防止环底（cy）撞上 AI 卡顶（height - aiBottom - aiCardH）
-  const fanS = Math.min(1, (width - 32) / 375); // 窄屏等比收缩（含旋转角外扩量）
+  // 方卡一行布局：环心 cy = gaugeTop+120；卡行总宽 354 居中；
+  // 短屏时整体等比收缩，防止环底（cy）撞上 AI 卡顶（height - aiBottom - aiCardH）
+  const rowTotalW = CHIPS.length * CHIP_W + (CHIPS.length - 1) * CHIP_GAP;
+  const fanS = Math.min(1, (width - 32) / rowTotalW); // 窄屏（<386pt）等比收缩卡行
   const gaugeTop = Math.min(
     transitionY + 133,
     height - aiBottom - aiCardH - 12 - 120,
   );
   const ringCx = width / 2;
   const ringCy = gaugeTop + 120; // 半圆环圆心（弧两端所在高度）
+  const chipRowX = ringCx - (rowTotalW * fanS) / 2; // 卡行左缘
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -153,27 +122,30 @@ export default function CalmWaveHome() {
         locations={[0, 0.14, 0.24, 0.31, 0.4, 1]}
       />
 
-      {/* 顶部：用户账户 / 今日状态 / 设置（浮在海浪上；账户→我的 tab，设置→Settings） */}
+      {/* 顶部：左列 = 账户 icon + 下方「今日状态」大标题；右侧 = 设置 icon。
+          ★ 2026-10-18 用户：头栏图标与标题改明显的深色（浮在浅色海浪视频上），标题字加大。 */}
       <View style={[s.head, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity
-          style={s.hIcon}
-          activeOpacity={0.7}
-          accessibilityLabel="我的账户"
-          onPress={() => navigation.navigate('Profile')}
-        >
-          <Svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-            <Circle cx={12} cy={8.2} r={3.6} />
-            <Path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6" />
-          </Svg>
-        </TouchableOpacity>
-        <Text style={s.titleC}>今日状态</Text>
+        <View style={s.headLeft}>
+          <TouchableOpacity
+            style={s.hIcon}
+            activeOpacity={0.7}
+            accessibilityLabel="我的账户"
+            onPress={() => navigation.navigate('Profile')}
+          >
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <Circle cx={12} cy={8.2} r={3.6} />
+              <Path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6" />
+            </Svg>
+          </TouchableOpacity>
+          <Text style={s.titleC}>今日状态</Text>
+        </View>
         <TouchableOpacity
           style={s.hIcon}
           activeOpacity={0.7}
           accessibilityLabel="设置"
           onPress={() => navigation.navigate('Settings')}
         >
-          <Svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
             <Circle cx={12} cy={12} r={3.2} />
             <Path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9" />
           </Svg>
@@ -206,55 +178,33 @@ export default function CalmWaveHome() {
         </Svg>
       </TouchableOpacity>
 
-      {/* 花瓣簇：5 张卡围绕半圆环（绝对定位+切向旋转，坐标见 PETALS 注释；每张可点进对应详情页）。
-          渲染在半圆环之后 = 画在上层；数组顺序即 z 序（肩瓣→上排瓣→顶心瓣）。 */}
-      {CHIPS.map((c) => {
-        const p = PETALS[c.label];
-        if (!p) return null;
-        return (
-          <TouchableOpacity
-            key={c.label}
-            style={[
-              s.chip,
-              {
-                width: CHIP_W * fanS,
-                height: CHIP_H,
-                position: 'absolute',
-                left: ringCx + p.dx * fanS - (CHIP_W * fanS) / 2,
-                top: ringCy + p.dy - CHIP_H / 2,
-                transform: [{ rotate: `${p.rot}deg` }],
-              },
-            ]}
-            activeOpacity={0.7}
-            accessibilityLabel={`${c.label} ${c.value}`}
-            onPress={() => c.go(navigation)}
-          >
-            {/* 花瓣形背景（SVG 圆角三角瓣：玻璃填充 + 白描边）。
-                viewBox 以花瓣中心为中心并留旋转余量；Svg 百分比放大 + 负偏移使中心对齐卡心，
-                petalRot 绕该中心旋转 → 尖尾指向圆心且不偏心、不飞出卡框。 */}
-            <Svg
-              style={{
-                position: 'absolute',
-                width: `${(PETAL_VB_W / 96) * 100}%`,
-                height: `${(PETAL_VB_H / 78) * 100}%`,
-                left: `${(PETAL_VB_X / 96) * 100}%`,
-                top: `${(PETAL_VB_Y / 78) * 100}%`,
-                transform: [{ rotate: `${p.petalRot}deg` }],
-              }}
-              viewBox={`${PETAL_VB_X} ${PETAL_VB_Y} ${PETAL_VB_W} ${PETAL_VB_H}`}
-            >
-              <Path d={PETAL_PATH} fill={GLASS_BG} stroke={GLASS_BD} strokeWidth={1} />
-            </Svg>
-            <View style={s.chipIcon}>{c.icon}</View>
-            <Text style={s.chipLabel}>{c.label}</Text>
-            <View style={s.chipValRow}>
-              <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
-              {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
-            </View>
-            <Text style={s.chipTag}>{c.tag}</Text>
-          </TouchableOpacity>
-        );
-      })}
+      {/* 指标卡一行：5 张方卡横排贴弧上方（★ 2026-10-18 用户：花瓣改回方卡、排成一行）。
+          卡 66×76、间距 6、总宽 354 居中于屏心；数组顺序 = 左→右。每张可点进对应详情页。 */}
+      {CHIPS.map((c, i) => (
+        <TouchableOpacity
+          key={c.label}
+          style={[
+            s.chip,
+            {
+              width: CHIP_W * fanS,
+              position: 'absolute',
+              left: chipRowX + i * (CHIP_W + CHIP_GAP) * fanS,
+              top: ringCy + CHIP_ROW_DY - CHIP_H / 2,
+            },
+          ]}
+          activeOpacity={0.7}
+          accessibilityLabel={`${c.label} ${c.value}`}
+          onPress={() => c.go(navigation)}
+        >
+          <View style={s.chipIcon}>{c.icon}</View>
+          <Text style={s.chipLabel}>{c.label}</Text>
+          <View style={s.chipValRow}>
+            <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
+            {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
+          </View>
+          <Text style={s.chipTag}>{c.tag}</Text>
+        </TouchableOpacity>
+      ))}
 
       {/* AI 分析卡：沉底（避开真 tab 栏） */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
@@ -279,41 +229,46 @@ export default function CalmWaveHome() {
 const s = StyleSheet.create({
   root: { flex: 1 },
 
-  // 顶部头栏
+  // 顶部头栏：左列（账户 icon + 「今日状态」大标题竖排）+ 右侧设置 icon
   head: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
+  headLeft: { alignItems: 'flex-start' },
   hIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.30)',
+    borderColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleC: { fontSize: 17, fontWeight: '600', color: '#fff', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12 },
+  titleC: { fontSize: 21, fontWeight: '700', color: HEAD_INK, letterSpacing: 0.5, marginTop: 9, textShadowColor: 'rgba(255,255,255,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 
-  // 花瓣卡（水滴瓣形状由 SVG PETAL_PATH 绘制；此处只留布局与排版）。
-  // paddingBottom 偏大 → 文字整体上移，落入花瓣宽区（三角瓣下部收窄不放文字）。
+  // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；66×76 小字号适配一行 5 张）
   chip: {
-    paddingTop: 4,
-    paddingBottom: 10,
-    paddingHorizontal: 2,
+    height: CHIP_H,
+    borderRadius: 14,
+    paddingTop: 7,
+    paddingBottom: 6,
+    paddingHorizontal: 1,
+    backgroundColor: GLASS_BG,
+    borderColor: GLASS_BD,
+    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  chipIcon: { marginBottom: 1 },
-  chipLabel: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.2 },
-  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 1.5 },
-  chipVal: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  chipIcon: { marginBottom: 2 },
+  chipLabel: { fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.1 },
+  chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 2 },
+  chipVal: { fontSize: 12.5, fontWeight: '700', color: '#fff' },
   chipValGood: { color: '#D5E384' },
-  chipUnit: { fontSize: 10, color: 'rgba(255,255,255,0.55)', marginLeft: 1 },
-  chipTag: { fontSize: 10, color: 'rgba(255,255,255,0.47)', marginTop: 1 },
+  chipUnit: { fontSize: 7.5, color: 'rgba(255,255,255,0.55)', marginLeft: 1 },
+  chipTag: { fontSize: 8, color: 'rgba(255,255,255,0.47)', marginTop: 2 },
 
   // 半圆环（240×128，R=100；viewBox 1:1，弧两端在 y=120）
   gaugeZone: {
