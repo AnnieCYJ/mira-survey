@@ -41,8 +41,9 @@ const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
 const HEAD_INK = 'rgba(16,36,58,0.88)';
 // AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
 const AI_CARD_BG = 'rgba(9,28,48,0.52)';
-// ★ 2026-10-18：扁平浅弧双弧配色——外白弧=恢复分，内金弧=周期天数（Oura 香槟金）
-const GOLD = '#d6c283';
+// ★ 2026-10-18：扁平浅弧双弧配色——外弧=状态分（按当前档位染色，如 82→黄），
+//   内弧=周期天数（白色）；"有颜色的那条=状态分、白的那条=周期"，不再混淆。
+//   ★ 本轮：状态分档位色——0–25 淡粉 / 26–50 紫 / 51–75 绿 / 76–100 黄。
 
 // ★ 2026-10-18：扁平浅弧几何（用户选 Oura 风格双弧、去月相）。超大半径 R=300 的浅弧——
 //   弦 330（x 30→360）、端点 y=150、弧顶仅比两端高 ≈50px（与 design/oura-flat-arc.html 一致）。
@@ -61,6 +62,24 @@ function arcPath(f0: number, f1: number, Rr: number) {
   const a = arcPt(f0, Rr);
   const b = arcPt(f1, Rr);
   return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${Rr} ${Rr} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+}
+// hex → rgba（给状态弧轨道加透明，与进度同色系）
+function hexA(hex: string, a: number) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+// 周期天数 + 四期模型（经期1–7 / 卵泡期8–13 / 排卵期14–21 / 黄体期22–28）；
+// 第14天 → 排卵期。若改用两期模型（卵泡期/黄体期），改此函数即可。
+const CYCLE_DAY = 14;
+const CYCLE_LEN = 28;
+function cyclePhase(day: number) {
+  if (day <= 7) return '经期';
+  if (day <= 13) return '卵泡期';
+  if (day <= 21) return '排卵期';
+  return '黄体期';
 }
 // 海浪声音开关的存储 key（与 SettingsScreen 共用）
 const WAVE_SOUND_KEY = 'waveSound';
@@ -81,12 +100,13 @@ const lineIcon = (d: string | string[]) => (
   </Svg>
 );
 const CHIPS: Chip[] = [
+  // ★ 2026-10-18 用户指定首页卡片顺序：睡眠恢复 → 身体负荷 → 情绪 → 活动消耗 → 生理周期
+  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
+  { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
   // ★ 2026-10-18 用户：「压力水平」改名「情绪」（tag 同步为情绪平稳，路由目标不变）
   { label: '情绪', value: '38', tag: '情绪平稳', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
-  { label: '生理周期', value: '第14天', tag: '黄体期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
-  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
   { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
-  { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
+  { label: '生理周期', value: '第14天', tag: '排卵期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   // 「脑力准备度」按用户要求隐藏（2026-10-17 改花瓣布局只留 5 张）；要恢复：取消下行注释
   // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
@@ -157,17 +177,17 @@ export default function CalmWaveHome() {
   //   注意：absolute 定位 bottom 值越大卡片越高——勿再改反方向。
   const aiBottom = insets.bottom + 32;
   const aiCardH = 164; // AI 卡近似高（两行分析 + 建议行 + 内边距；字号放大后 +16）
-  // 扁平浅弧端点 / 进度尖端坐标（供 SVG Circle 定位）
-  const tipR = arcPt(-ARC_HALF + ARC_SWEEP * (82 / 100), ARC_R);
+  // 扁平浅弧两端坐标（供端点刻度 0 / 100 定位）
   const lEnd = arcPt(-ARC_HALF, ARC_R);
   const rEnd = arcPt(ARC_HALF, ARC_R);
   // ★ 第三十四轮：白底版「今日状态」四档词（DailyStatusCard 同源）：
-  //   元气满满 ≥76 / 状态良好 51–75 / 平平静静 26–50 / 休息一下 0–25，颜色与圆环同源
+  //   元气满满 ≥76 / 状态良好 51–75 / 平平静静 26–50 / 休息一下 0–25，颜色与圆环同源。
+  //   ★ 本轮：0–25 改淡粉（白底版），其余 紫/绿/黄 不变。
   const RECOVERY = 82;
   const mood = RECOVERY >= 76 ? { label: '元气满满', color: '#F0C46E' }
     : RECOVERY >= 51 ? { label: '状态良好', color: '#BCCB62' }
     : RECOVERY >= 26 ? { label: '平平静静', color: '#9D8AF0' }
-    : { label: '休息一下', color: '#9DA7B5' };
+    : { label: '休息一下', color: '#F0B5C4' };
   const moodLabel = mood.label;
   const moodColor = mood.color;
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
@@ -254,17 +274,15 @@ export default function CalmWaveHome() {
         <View style={s.arcWrap}>
           {/* 只裁弧本体：viewBox y 从 96 起（弧顶 100.5 上留 4.5 余量），裁掉上方 ~90px 空白 */}
           <Svg width={350} height={68} viewBox="0 96 390 76">
-            {/* 外弧轨道 */}
-            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
-            {/* 外弧进度（白） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (82 / 100), ARC_R)} fill="none" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" />
-            {/* 内弧轨道（金） */}
-            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_RI)} fill="none" stroke="rgba(214,194,131,0.28)" strokeWidth={2.5} strokeLinecap="round" />
-            {/* 内弧进度（金） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (14 / 28), ARC_RI)} fill="none" stroke={GOLD} strokeWidth={2.5} strokeLinecap="round" />
-            {/* 外弧进度端点白点 */}
-            <Circle cx={tipR.x} cy={tipR.y} r={4.5} fill="#FFFFFF" />
-            {/* 端点刻度 0 / 100 */}
+            {/* 外弧轨道（状态分，淡色同系） */}
+            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke={hexA(moodColor, 0.22)} strokeWidth={2.5} strokeLinecap="round" />
+            {/* 外弧进度（状态分档位色，如 82→黄） */}
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (RECOVERY / 100), ARC_R)} fill="none" stroke={moodColor} strokeWidth={3} strokeLinecap="round" />
+            {/* 内弧轨道（周期，白） */}
+            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_RI)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
+            {/* 内弧进度（周期，白） */}
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (CYCLE_DAY / CYCLE_LEN), ARC_RI)} fill="none" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
+            {/* 端点刻度 0 / 100（状态分刻度） */}
             <SvgText x={lEnd.x - 4} y={lEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">0</SvgText>
             <SvgText x={rEnd.x - 16} y={rEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">100</SvgText>
           </Svg>
@@ -274,14 +292,17 @@ export default function CalmWaveHome() {
             按 82 分→元气满满，颜色与圆环同源），下面写 82，下面只留「周期第 14 天」；
             去掉「恢复状态」「恢复优秀」；整块上提（离卡行更近）。 */}
         <View style={s.gaugeInfo}>
-          <View style={s.gMoodRow}>
-            <Text style={[s.gMood, { color: moodColor }]}>{moodLabel}</Text>
+          <Text style={[s.gMood, { color: moodColor }]}>{moodLabel}</Text>
+          <View style={s.gScoreRow}>
+            <Text style={[s.gBig, { color: moodColor }]}>{RECOVERY}</Text>
+            <Text style={s.gDen}>/100</Text>
             <Svg width={13} height={22} viewBox="0 0 13 22">
               <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </View>
-          <Text style={[s.gBig, { color: moodColor }]}>82</Text>
-          <Text style={s.gDesc}>周期第 14 天</Text>
+          <View style={s.gPhase}>
+            <Text style={s.gPhaseTxt}>周期 · {cyclePhase(CYCLE_DAY)} · 第{CYCLE_DAY}天</Text>
+          </View>
         </View>
       </TouchableOpacity>
 
@@ -445,15 +466,27 @@ const s = StyleSheet.create({
   arcWrap: {
     alignSelf: 'center',
   },
-  // 弧下文字块：状态词 → 82 → 周期（全部顺排，不叠字）
+  // 弧下文字块：状态词 → 82/100 → 周期药丸（全部顺排，不叠字）
   gaugeInfo: {
     alignItems: 'center',
     marginTop: 4,
   },
-  gMoodRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5 },
-  gBig: { fontSize: 48, fontWeight: '700', letterSpacing: -1.5, marginTop: 4, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gDesc: { fontSize: 13.5, fontWeight: '300', color: 'rgba(255,255,255,0.65)', marginTop: 8, lineHeight: 20, textAlign: 'center' },
+  // 分数行：82（主视觉，缩小）+ 小号 /100 + 右箭头（点击进全天趋势）
+  gScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  gBig: { fontSize: 34, fontWeight: '700', letterSpacing: -1.5, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gDen: { fontSize: 15, fontWeight: '500', color: 'rgba(255,255,255,0.6)' },
+  // 周期药丸：明示所属时期（排卵期等）
+  gPhase: {
+    marginTop: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  gPhaseTxt: { fontSize: 12.5, fontWeight: '500', color: '#FFFFFF' },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {

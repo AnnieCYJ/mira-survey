@@ -303,6 +303,11 @@ export default function InsightScreen() {
     const healthAge = frozenRec?.healthAge ?? estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
     // 弧长用冻结的综合分（与冻结的身体年龄同一份快照 → 数字与弧永远同步）
     const arcScore = frozenRec?.overallScore ?? longTerm;
+    // ★ 2026-10-18：用「年轻/偏老」结论统摄文案——确保下方 AI 分析与上方大数字（较实际年龄低/高 X 岁）同方向，不再各说各话。
+    const hasEstimate = healthAge != null && ACTUAL != null && Number.isFinite(healthAge) && Number.isFinite(ACTUAL);
+    const delta = hasEstimate ? (healthAge as number) - (ACTUAL as number) : 0;
+    const isYounger = hasEstimate && delta < 0;
+    const isFlat = hasEstimate && Math.abs(delta) < 0.5;
     // ④ 简化分析文案（综合两个维度）——★ 2026-10-08（用户：按 ISHO 风格，先事实再人话）
     let hormonalClause: string;
     if (hormonalLabel === '数据不足') {
@@ -317,7 +322,18 @@ export default function InsightScreen() {
     const longTermClause = longTerm == null ? '睡眠和压力数据还没攒够，暂不计算综合评分' : longTermHealthy
       ? `长期健康数据整体${longTermLabel}，状态稳得住`
       : `长期健康数据偏弱，主要是睡眠和压力在拖`;
-    const analysis = `${hormonalClause}；${longTermClause}。`;
+    // ★ 2026-10-18：先说「年轻/偏老」结论（与上方大数字同源），再给两个维度拆解，避免文案方向与数字打架。
+    let directionClause = '';
+    if (hasEstimate) {
+      directionClause = isFlat
+        ? '身体年龄和实际年龄基本一致。'
+        : isYounger
+          ? `身体年龄比实际年龄小 ${Math.abs(delta).toFixed(1)} 岁，整体状态更轻盈。`
+          : `身体年龄比实际年龄大 ${Math.abs(delta).toFixed(1)} 岁，近期身体负担偏重。`;
+    }
+    const analysis = directionClause
+      ? `${directionClause}${hormonalClause}；${longTermClause}。`
+      : `${hormonalClause}；${longTermClause}。`;
     // ⑤ 两条综合建议
     const suggestions: string[] = [];
     if (!hormonalHealthy && hormonalLabel !== '数据不足') {
