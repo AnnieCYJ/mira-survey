@@ -1040,10 +1040,11 @@ export default function TodayScreen() {
 
   return (
     <View style={styles.page}>
-      {/* MindMate v10：首页背景全白（SPEC §0 规则 1）。原「上白下紫」分屏收起——
-          状态面板圆弧在纯白底上自然隐形，页面成为一个连续白面。 */}
+      {/* ★ mira-ocean（2026-10-19）：首页背景由纯白改深海三色渐变（与全 App 同源 bgGradStops）。
+          原「上白下紫」/「全白」分屏收起——各文字/卡片 token 在 ocean 分支已是白阶玻璃，
+          翻背景即可整体进入深海主题，无需逐个翻色。 */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
         style={StyleSheet.absoluteFill}
       />
       {/* ★ v18.50 原整屏吸附翻页；2026-10-08 改自然滚动：第二屏（消费与恢复节律卡片）
@@ -1090,7 +1091,7 @@ export default function TodayScreen() {
             {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出）
                 ★ 2026-10-16（用户）：账号行（K / Kristina）移到「今日状态」标题上方，标题随之下移 */}
             <View style={styles.head} onLayout={measureSection('head')}>
-              <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('AccountHub')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLetter}>K</Text>
                 </View>

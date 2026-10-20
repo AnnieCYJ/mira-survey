@@ -29,6 +29,10 @@ import LearnReadScreen from '../screens/LearnReadScreen';
 import {
   EmotionInterveneHome,
 } from '../screens/EmotionInterveneScreen';
+import AccountHubScreen from '../screens/AccountHubScreen';
+import MemberDetailScreen from '../screens/MemberDetailScreen';
+import BindingRitualScreen from '../screens/BindingRitualScreen';
+import type { Relationship } from '../data/familyStore';
 
 export interface MetricDetailParams {
   key: string;
@@ -56,6 +60,9 @@ export type RootStackParamList = {
   EmotionLog: undefined;
   EmotionIntervene: undefined;
   Breathing: undefined;
+  AccountHub: undefined;
+  MemberDetail: { memberId: string };
+  BindingRitual: { relationship: Relationship; name: string; memberId?: string };
   FoodScan: { autoCamera?: boolean } | undefined;
   ToolTopic: { topic: 'glow' | 'sport' | 'learn' | 'nutrition' | 'sportArticles' };
   LearnRead: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition' };
@@ -78,7 +85,7 @@ export default function RootStackNavigator() {
         name="VoiceChat"
         component={VoiceChatScreen}
         options={{
-          contentStyle: { backgroundColor: theme.colors.gradCardFrom },
+          contentStyle: { backgroundColor: theme.colors.bgBottom },
         }}
       />
       <Stack.Screen
@@ -160,6 +167,10 @@ export default function RootStackNavigator() {
         options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
+      {/* ★ 2026-10-19 账户 / 家庭绑定：账户中枢 + 家人详情 + 绑定仪式 */}
+      <Stack.Screen name="AccountHub" component={AccountHubScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
+      <Stack.Screen name="MemberDetail" component={MemberDetailScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
+      <Stack.Screen name="BindingRitual" component={BindingRitualScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
     </Stack.Navigator>
   );
 }

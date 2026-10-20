@@ -16,6 +16,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
+import { theme } from '../theme/theme';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +28,8 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
+import AvatarStack from './AvatarStack';
+import TaTodayRow from './TaTodayRow';
 
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
@@ -232,17 +235,14 @@ export default function CalmWaveHome() {
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
           ★ 2026-10-18 用户：「今日状态」白色标题从头栏移到指标卡行上方（见下方 cardTitle）。 */}
       <View style={[s.head, { paddingTop: insets.top + 30 }]}>
-        <TouchableOpacity
-          style={s.hIcon}
-          activeOpacity={0.7}
-          accessibilityLabel="我的账户"
-          onPress={() => navigation.navigate('Profile')}
-        >
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-            <Circle cx={12} cy={8.2} r={3.6} />
-            <Path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6" />
-          </Svg>
-        </TouchableOpacity>
+        <AvatarStack
+          size={34}
+          onSelect={(id) => {
+            if (id === 'self') navigation.navigate('AccountHub');
+            else navigation.navigate('MemberDetail', { memberId: id });
+          }}
+          onAdd={() => navigation.navigate('AccountHub')}
+        />
         <TouchableOpacity
           style={s.hIcon}
           activeOpacity={0.7}
@@ -254,6 +254,16 @@ export default function CalmWaveHome() {
             <Path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9" />
           </Svg>
         </TouchableOpacity>
+      </View>
+
+      {/* ★ 2026-10-19 家人绑定：首页「TA的今日」横滑状态卡（只给结论，不曝光原始数据）；
+          多头像入口已在头栏（AvatarStack）。本行嵌在头栏与「今日状态」标题之间的窄缝。 */}
+      <View style={{ position: 'absolute', top: insets.top + 30 + 40, left: 0, right: 0, height: theme.sp(18) }}>
+        <TaTodayRow
+          dark
+          compact
+          onSelect={(id) => navigation.navigate('MemberDetail', { memberId: id })}
+        />
       </View>
 
       {/* 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方。

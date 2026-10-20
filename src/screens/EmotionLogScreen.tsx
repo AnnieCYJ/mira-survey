@@ -324,7 +324,7 @@ export default function EmotionLogScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 返回头（与详情页同构） */}
         <View style={styles.head}>

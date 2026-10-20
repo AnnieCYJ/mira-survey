@@ -389,7 +389,7 @@ export default function HealthAgeDetailScreen() {
   const factors = useMemo(() => computeFactors(todayDk), [todayDk]);
 
   return (
-    <ScreenContainer compactTop>
+    <ScreenContainer compactTop withGradient>
       {/* ★ 2026-10-10（九改・用户）：返回头对齐其他详情页（睡眠恢复 / 脑力·昼夜节律 / 情绪）。
           原实现三处不一致：① 返回 icon 外面套了圆形底框+描边（别页没有）；
           ② 标题用 fontSize.card + semibold（别页统一 h2 + medium）；

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import MiraBot from '../components/MiraBot';
 
@@ -35,6 +36,12 @@ export default function FocusScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + theme.sp(6), paddingBottom: insets.bottom + theme.sp(4) }]}>
+      {/* ★ mira-ocean（2026-10-19）：铺深海三色渐变（与全 App 同源 bgGradStops），去掉导航默认平板深紫实底 */}
+      <LinearGradient
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      />
       {/* 背景装饰 */}
       <View style={styles.bgDeco}>
         {Array.from({ length: 6 }).map((_, i) => (
@@ -119,7 +126,7 @@ const styles = StyleSheet.create({
   blob: {
     position: 'absolute',
     borderRadius: 9999,
-    backgroundColor: '#c4b5fd',
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
   header: {
     alignItems: 'center',
@@ -154,7 +161,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(2),
     borderRadius: 9999,
     borderWidth: 1.5,
-    borderColor: 'rgba(196, 181, 253, 0.3)',
+    borderColor: 'rgba(255,255,255,0.22)',
     backgroundColor: 'rgba(255,255,255,0.12)',
     margin: theme.sp(1),
   },
