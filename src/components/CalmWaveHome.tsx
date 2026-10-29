@@ -348,8 +348,9 @@ export default function CalmWaveHome() {
   const TOP_OFFSET = 20;
   const gaugeTop = transitionY - 28 + TOP_OFFSET;     // 双弧块移到原卡行顶部位置 + 整体下移 20px
   const arcBottom = gaugeTop + GAUGE_H;
-  // ★ 2026-10-29 蒙层策略（用户：顶部要像参考视频那样清楚）：hero（今日状态标题+弧+82）全清，
-  //   蒙层只从「今日状态卡行」起往下压。titleTopF=标题顶占屏比（其上方全透）、heroBottomF=弧底占屏比（其上方仅极轻托底）。
+  // ★ 2026-10-29 蒙层策略（用户修正：蒙层要从「今日状态」这行字起往下压，标题本身也要有蒙层，否则白字看不清）：
+  //   titleTopF=标题顶占屏比（其上方全透、海浪清楚，像参考视频）；heroBottomF=弧底占屏比（其下方继续压暗到实色）。
+  //   标题~弧底整块 hero 给 0.60 托底，白字可读；标题上方保持参考视频那样清楚。
   const titleTopF = Math.max(0.1, (gaugeTop - 62) / height);
   const heroBottomF = Math.min(0.85, arcBottom / height);
   const aiTop = height - aiBottom - aiCardH;
@@ -370,21 +371,20 @@ export default function CalmWaveHome() {
         shouldPlay
         useNativeControls={false}
       />
-      {/* 渐变：★ 2026-10-29（用户：顶部要像参考视频那样清楚）
-          hero（今日状态标题+弧+82）完全透/极轻托底，蒙层只从「今日状态卡行」起往下压、下方实色。
-          顶 0~titleTopF 全透（海浪原色，像参考视频）→ titleTopF~heroBottomF 仅 0.14 轻托底（浪仍亮，白字靠投影）
-          → heroBottomF 起快速压暗到卡行 → 下方实色深蓝。 */}
+      {/* 渐变：★ 2026-10-29 修正（用户：蒙层从「今日状态」这行字起往下压，标题本身也要有蒙层，否则白字看不清）
+          顶 0~titleTopF 全透（标题上方海浪清楚，像参考视频）→ titleTopF 起快速压暗到 0.60（标题+弧+82 整块 hero 有托底、白字可读）
+          → heroBottomF 往下继续压到实色深蓝。即：标题上方清、标题这行起就有蒙层。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
           'rgba(43,53,100,0)',          // 0          顶部完全透：海浪清晰（像参考视频）
-          `rgba(43,53,100,0)`,          // titleTopF  今日状态标题之前全透
-          `rgba(43,53,100,0.14)`,       // heroBottomF 弧底：仅极轻托底，浪仍亮
-          `rgba(43,53,100,0.55)`,       // +0.05      卡行起明显压暗
-          'rgba(43,53,100,0.92)',       // +0.30      近实色
+          `rgba(43,53,100,0)`,          // titleTopF  今日状态标题"之前"全透（标题上方海浪清楚）
+          `rgba(43,53,100,0.60)`,       // titleTopF+0.025 标题处即压暗→「今日状态」白字可读（蒙层从标题这行起）
+          `rgba(43,53,100,0.60)`,       // heroBottomF 弧/82 同档托底
+          `rgba(43,53,100,0.90)`,       // +0.12      卡行起压暗
           '#2B3564',                    // 1          纯深蓝
         ]}
-        locations={[0, titleTopF, heroBottomF, Math.min(0.99, heroBottomF + 0.05), Math.min(0.99, heroBottomF + 0.30), 1]}
+        locations={[0, titleTopF, Math.min(0.99, titleTopF + 0.025), heroBottomF, Math.min(0.99, heroBottomF + 0.12), 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
