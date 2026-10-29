@@ -45,7 +45,9 @@ const THUMB_RELAX = require('../assets/card_relax.jpg');
 
 const GLASS_BG = 'rgba(255,255,255,0.13)';
 const GLASS_BD = 'rgba(255,255,255,0.28)';
-const PAGE_BG = theme.colors.bgBottom; // 渐变末端固定蓝：与 App 其它页面背景底部同源（theme bgBottom = #2B3564，深海渐变同款）
+// ★ 2026-10-30（用户：首页底部由蓝改黑，避免与其它页蓝不一致；改用与 tab 栏/AI 卡同款的近黑深板岩，三者同色不冲突）
+const HOME_BOTTOM_RGB = '9,28,48';                 // 首页底部近黑深板岩 = 自定义 tab 栏 leftCard / AI 卡同款，确保无缝
+const PAGE_BG = `rgba(${HOME_BOTTOM_RGB},1)`;       // 根背景兜底（视频下方实色区同色）
 // ★ 2026-10-18 用户：头栏图标与「今日状态」标题改明显的深色（浮在浅色海浪视频上）
 const HEAD_INK = 'rgba(16,36,58,0.88)';
 // AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
@@ -364,12 +366,12 @@ export default function CalmWaveHome() {
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
-      {/* ★ 2026-10-30 统一背景：底层 = App 其它页面完全同源的深海渐变（theme.bgGradStops
-          #3E627A→#2A4470→#2B3564）。视频化掉后露出的就是它，保证首页底部与其他页面背景一致。 */}
+      {/* ★ 2026-10-30（用户：首页底部改黑）：底层兜底 = 近黑深板岩（与 tab/AI 卡同款）。
+          正常被视频 + 黑染层完全覆盖，仅作视频异常时的兜底，避免蓝/白漏底。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={[...theme.colors.bgGradStops] as unknown as string[]}
-        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+        colors={['#091C30', '#091C30', '#091C30']}
+        locations={[0, 0.5, 1]}
       />
       {/* 上 1/3 海浪视频（全屏铺底，渐变盖住下 2/3） */}
       <Video
@@ -394,8 +396,8 @@ export default function CalmWaveHome() {
         colors={[
           'rgba(255,255,255,0)',               // 0              顶部全透
           `rgba(255,255,255,0)`,               // titleFrac      标题顶仍全透
-          `rgba(255,255,255,0.06)`,            // fadeStartFrac  磨砂起始：极淡奶白
-          `rgba(255,255,255,0.16)`,            // 0.44          中段磨砂峰值（海浪被柔化、呈磨砂玻璃感）
+          `rgba(255,255,255,0.03)`,            // fadeStartFrac  磨砂起始：极淡（黑底上不泛奶）
+          `rgba(255,255,255,0.09)`,            // 0.44          中段磨砂峰值（海浪被柔化、呈磨砂玻璃感）
           `rgba(255,255,255,0)`,               // 0.60          磨砂回落（避免洗白底部实色）
         ]}
         locations={[0, titleFrac, fadeStartFrac, 0.44, 0.60]}
@@ -403,12 +405,12 @@ export default function CalmWaveHome() {
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
-          'rgba(43,53,100,0)',                 // 0              顶部全透
-          `rgba(43,53,100,0)`,                 // titleFrac      标题顶仍全透
-          `rgba(43,53,100,0.28)`,              // fadeStartFrac  「今日状态」下面起：深蓝 #2B3564 化入（与其他页面背景同源）
-          `rgba(43,53,100,0.78)`,              // 0.50          蓝染中段：海浪已很弱、呈磨砂蓝玻璃
-          `rgba(43,53,100,1)`,                 // 0.66          完全化实
-          `rgba(43,53,100,1)`,                 // 1              固定深蓝实色（= App 其它页面背景底部）
+          `rgba(${HOME_BOTTOM_RGB},0)`,        // 0              顶部全透
+          `rgba(${HOME_BOTTOM_RGB},0)`,        // titleFrac      标题顶仍全透
+          `rgba(${HOME_BOTTOM_RGB},0.28)`,     // fadeStartFrac  「今日状态」下面起：近黑深板岩化入（与 tab/AI 卡同款）
+          `rgba(${HOME_BOTTOM_RGB},0.78)`,     // 0.50          黑染中段：海浪已很弱、呈磨砂暗玻璃
+          `rgba(${HOME_BOTTOM_RGB},1)`,        // 0.66          完全化实
+          `rgba(${HOME_BOTTOM_RGB},1)`,        // 1              固定近黑实色（= tab 栏/AI 卡同款，全 App 底统一）
         ]}
         locations={[0, titleFrac, fadeStartFrac, 0.50, 0.66, 1]}
       />
@@ -528,7 +530,7 @@ export default function CalmWaveHome() {
         </ScrollView>
         {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
         <LinearGradient
-          colors={['rgba(43,53,100,0)', 'rgba(43,53,100,0.92)']}
+          colors={[`rgba(${HOME_BOTTOM_RGB},0)`, `rgba(${HOME_BOTTOM_RGB},0.92)`]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={s.chipFade}
