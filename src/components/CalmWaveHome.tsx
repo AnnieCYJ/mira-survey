@@ -355,10 +355,12 @@ export default function CalmWaveHome() {
     Math.max(arcBottom + 8, arcBottom + (aiTop - arcBottom - CHIP_H) / 2),
     aiTop - CHIP_H - 8,                              // 钳位：卡行底不撞 AI 卡顶
   );
-  // ★ 2026-10-30（用户：从「今日状态」标题往下就该逐渐变蓝）：过渡起点对齐标题顶，
-  //   标题以上=纯海浪视频（零蒙层），标题处起同色蓝薄雾化入、向下渐深到固定蓝实色。
-  //   钳到 [0.18,0.30] 区间，兼容长短屏；标题顶 = gaugeTop-62（cardTitle 同款定位）。
-  const titleFrac = Math.min(0.30, Math.max(0.18, (gaugeTop - 62) / height));
+  // ★ 2026-10-30（用户：蓝要从「今日状态」下面就开始，整体再往上提一点）：
+  //   标题顶(titleFrac)=纯海浪视频零蒙层（标题靠文字阴影可读）；标题底(fadeStartFrac)=蓝从这里化入。
+  //   fadeStartFrac = gaugeTop-28（标题文字高约 34，故标题底≈gaugeTop-28），即"今日状态"正下方。
+  //   titleFrac 钳 [0.16,0.30]，fadeStartFrac 钳 [0.20,0.34]，兼容长短屏。
+  const titleFrac = Math.min(0.30, Math.max(0.16, (gaugeTop - 62) / height));
+  const fadeStartFrac = Math.min(0.34, Math.max(0.20, (gaugeTop - 28) / height));
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -390,12 +392,12 @@ export default function CalmWaveHome() {
         style={StyleSheet.absoluteFill}
         colors={[
           'rgba(62,98,122,0)',               // 0              顶部全透：海浪原始视频 + 头栏（与渐变顶 #3E627A 同色，仅 alpha 0）
-          `rgba(62,98,122,0)`,               // titleFrac      标题处仍全透（标题靠自身文字阴影可读）
-          `rgba(42,68,112,0.55)`,            // 0.42           渐变中段 #2A4470（与其它页面背景同源），开始化实
-          `rgba(42,68,112,1)`,               // 0.56           #2A4470 完全化实（视频盖掉，露出同源渐变中段）
+          `rgba(62,98,122,0)`,               // titleFrac      标题顶仍全透（标题靠自身文字阴影可读）
+          `rgba(42,68,112,0.5)`,             // fadeStartFrac  「今日状态」下面起：渐变中段 #2A4470（与其它页面背景同源）化入
+          `rgba(42,68,112,1)`,               // 0.48           #2A4470 完全化实（比此前 0.56 更靠上，蓝区整体上提）
           `rgba(43,53,100,1)`,               // 1              渐变底 #2B3564（与 App 其它页面背景底部同色）
         ]}
-        locations={[0, titleFrac, 0.42, 0.56, 1]}
+        locations={[0, titleFrac, fadeStartFrac, 0.48, 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
