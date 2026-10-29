@@ -174,14 +174,14 @@ const styles = StyleSheet.create({
   refreshIcon: {
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
     marginRight: theme.sp(1),
   },
   refreshIconBusy: { color: theme.colors.textSub },
   refreshLabel: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   refreshLabelBusy: { color: theme.colors.textSub },
   grid: {

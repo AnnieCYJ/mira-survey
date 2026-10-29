@@ -193,20 +193,15 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
         {segPaths.map((d, i) => (
           <Path key={`seg${i}`} d={d} fill="none" stroke="url(#trendStroke)" strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
         ))}
-        {/* 单点段（例如只在 00:29 采过一次）：只画点，不画任何线 */}
+        {/* 单点段（例如只在 00:29 采过一次）：只画点，不画任何线（孤立单点无折线可画） */}
         {pts.length === 1 ? (
           (() => {
             const p = pts[0]!;
             return <Circle key="solo" cx={p.x} cy={p.y} r={5} fill={moodFor(p.value).color} stroke="#fff" strokeWidth={2} />;
           })()
         ) : null}
-        {/* ★ v18.105：单点段不重复画圆（上面已画），只保留气泡 */}
-        {selIdx != null && pts.length > 1 && pts[selIdx] ? (() => {
-          const p = pts[selIdx]!;
-          const mood = moodFor(p.value);
-          // ★ 最新数据点：状态色实心点 + 白描边，明确展示当前所在档位（替代不显眼的白圈）
-          return <Circle key="selDot" cx={p.x} cy={p.y} r={5} fill={mood.color} stroke="#fff" strokeWidth={2} />;
-        })() : null}
+        {/* ★ 2026-10-21（用户）：不再在最新数据点画实心圆（selDot）—— 趋势图只留线，
+           当前档位已由下方彩色气泡（backgroundColor=mood.color）表达，圆点属冗余装饰。 */}
       </Svg>
 
       {selIdx != null && pts[selIdx] ? (() => {

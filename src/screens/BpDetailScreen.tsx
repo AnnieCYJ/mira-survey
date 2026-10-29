@@ -807,10 +807,10 @@ const styles = StyleSheet.create({
   },
   entryBtnText: { fontSize: 13, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', justifyContent: 'center', alignItems: 'center', padding: 24,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   modalCard: {
-    width: '100%', maxWidth: 340, backgroundColor: theme.colors.cardBg,
+    width: '100%', maxWidth: 340, backgroundColor: theme.colors.bgBottom,
     borderRadius: theme.radius.md, padding: 18,
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
   },

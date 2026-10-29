@@ -1,3 +1,5 @@
+import { uploadSelfReports } from '../data/selfReportSync';
+import { getLocalDeviceId } from '../data/ringIdentity';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
@@ -12,6 +14,8 @@ import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { healthStore } from '../data/healthStore';
+// ★ Phase 1/2：上传成功后重拉规律摘要
+import { syncPatterns } from '../ai/cloudPatterns';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -144,7 +148,7 @@ export default function SettingsScreen() {
     if (uploading) return;
     Alert.alert(
       '上传云端',
-      '将把你佩戴戒指积累的数据上传到云端存储（仅手动触发，本机数据始终保留）。是否继续？',
+      '将同步戒指数据、情绪选择和经期记录到云端，用于个人分析。自由文本备注不上传；情绪和经期的云端副本会按本机现有记录更新（包含删除）。本机数据保留。是否继续？',
       [
         { text: '取消', style: 'cancel' },
         {
@@ -152,9 +156,26 @@ export default function SettingsScreen() {
           onPress: async () => {
             setUploading(true);
             setUploadMsg(null);
+            try {
             const r = await RingBle.uploadRingData();
+            const stForReports = RingBle.getState();
+            const reports = await uploadSelfReports(stForReports.deviceId || stForReports.deviceName || await getLocalDeviceId());
             setUploading(false);
-            setUploadMsg(r.ok ? `已上传 ${r.count} 条记录到云端` : `上传失败：${r.error ?? '未知错误'}`);
+            setUploadMsg(r.ok ? `已上传 ${r.count} 条戒指记录；${reports.ok ? '自报记录同步完成' : reports.error}` : `戒指上传失败：${r.error ?? '未知错误'}；${reports.ok ? '自报同步完成' : reports.error}`);
+            // ★ Phase 1/2：上传成功 → 云端数据变了，强制重拉一次规律摘要（长窗口规律可能刚成立）
+            if (r.ok || reports.ok) {
+              try {
+                const st = RingBle.getState();
+                await syncPatterns({ deviceId: st.deviceId || st.deviceName || undefined, force: true });
+              } catch {
+                /* 拉规律失败不影响上传结果 */
+              }
+            }
+            } catch {
+              setUploadMsg('同步未完成，请稍后重试');
+            } finally {
+              setUploading(false);
+            }
           },
         },
       ]
@@ -334,7 +355,7 @@ export default function SettingsScreen() {
               <Icon
                 name="ring"
                 size={theme.fs(20)}
-                color={ringConnected ? theme.colors.textWhite : theme.colors.accentSolid}
+                color={ringConnected ? theme.colors.textWhite : theme.colors.accentText}
                 strokeWidth={2}
               />
             </View>
@@ -468,7 +489,7 @@ export default function SettingsScreen() {
                     <Icon
                       name="ring"
                       size={theme.fs(18)}
-                      color={d.recommended ? theme.colors.textWhite : theme.colors.accentSolid}
+                      color={d.recommended ? theme.colors.textWhite : theme.colors.accentText}
                       strokeWidth={2}
                     />
                   </View>
@@ -605,6 +626,20 @@ export default function SettingsScreen() {
             最近上传：{fmtUploadTime(ring.lastUploadedAt)}
           </Text>
         </Card>
+
+        {/* ★ Phase 0（P0 合规）：隐私政策入口 */}
+        <Text style={styles.sectionTitle}>关于与条款</Text>
+        <Card padded={false} style={styles.listCard}>
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() => navigation.navigate('PrivacyPolicy' as never)}
+            activeOpacity={0.7}
+          >
+            <Icon name="mind" size={theme.fs(16)} color={mm.colors.ink} strokeWidth={2} />
+            <Text style={styles.navRowTitle}>隐私政策与开源致谢</Text>
+            <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} strokeWidth={2} />
+          </TouchableOpacity>
+        </Card>
       </ScreenContainer>
     </View>
   );
@@ -669,7 +704,7 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, width: '100%', backgroundColor: theme.colors.textWhite },
+  root: { flex: 1, width: '100%', backgroundColor: theme.colors.bgBottom },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -721,6 +756,20 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   listCard: { marginBottom: theme.space.sm },
+  // ── Phase 0：关于与条款导航行 ──
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(3),
+    gap: theme.sp(2.5),
+  },
+  navRowTitle: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textBody,
+    fontWeight: theme.weight.medium,
+  },
   noteCard: { marginBottom: theme.space.sm },
   footnote: {
     marginTop: theme.space.xs,
@@ -953,7 +1002,7 @@ const styles = StyleSheet.create({
   },
   debugPath: {
     marginTop: theme.space.sm,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   diagBtns: {
     flexDirection: 'row',

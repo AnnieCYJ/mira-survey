@@ -19,19 +19,18 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { chart } from '../theme/chart';
 import type { EmotionFaceMood } from './EmotionFaceIcon';
+import { MOOD_COLOR, moodFromEmotionLevel } from '../data/emotionLog';
 
-/** 五档情绪色（与 App 内 EmotionFaceIcon / 点阵 DOT_LEGEND 同源，绝不另起一套 hex） */
-const MOOD: Record<EmotionFaceMood, { c: string; mouth: 'smile' | 'flat' | 'frown' }> = {
-  excited: { c: '#F39A62', mouth: 'smile' },
-  happy: { c: '#F2C35E', mouth: 'smile' },
-  calm: { c: '#B8C86A', mouth: 'flat' },
-  stressed: { c: '#D58AAE', mouth: 'frown' },
-  sad: { c: '#7EA6F8', mouth: 'frown' },
+/** 五档情绪 → 嘴型（脸形）。颜色统一走 emotionLog.MOOD_COLOR（与 App 内点阵 / 日历 / 详情页同源，绝不另起一套 hex）。 */
+const MOOD_MOUTH: Record<EmotionFaceMood, 'smile' | 'flat' | 'frown'> = {
+  excited: 'smile', happy: 'smile', calm: 'flat', stressed: 'frown', sad: 'frown',
 };
+/** 图例 / 趋势着色顺序（与情绪记录五档一致） */
+const MOOD_ORDER_FACES: EmotionFaceMood[] = ['excited', 'happy', 'calm', 'stressed', 'sad'];
 /** 自报表情 → 代表 valence（落在 −10~+10 轴上，便于落点） */
 const MOOD_VALENCE: Record<EmotionFaceMood, number> = {
   excited: 8, happy: 5, calm: 0, stressed: -5, sad: -8,
@@ -81,7 +80,7 @@ export default function EmotionTrendChart({
   const padL = theme.sp(7);
   const padR = theme.sp(9);
   const padT = theme.sp(3);
-  const padB = theme.sp(13);
+  const padB = theme.sp(22);
   const plotW = Math.max(1, svgW - padL - padR);
   const plotH = Math.max(1, svgH - padT - padB);
 
@@ -115,19 +114,9 @@ export default function EmotionTrendChart({
     }
     if (cur.length) vRuns.push(cur);
   }
-  const smoothV = (idx: number[]) => {
-    if (idx.length < 2) return '';
-    const pts = idx.map((s) => ({ x: xAt(s), y: vY(valenceSlots[s]!) }));
-    if (pts.length === 2) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} L ${pts[1].x.toFixed(1)} ${pts[1].y.toFixed(1)}`;
-    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
-      const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
-      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-    }
-    return d;
-  };
+  /** 直线段路径（用于面积与逐段着色；48 采样点下视觉已足够平滑） */
+  const linePath = (idx: number[]) =>
+    idx.map((s, k) => `${k === 0 ? 'M' : 'L'} ${xAt(s).toFixed(1)} ${vY(valenceSlots[s]!).toFixed(1)}`).join(' ');
 
   const anyValence = valenceSlots.some((v) => v != null);
   const anyArousal = arousalSlots.some((v) => v != null);
@@ -135,6 +124,13 @@ export default function EmotionTrendChart({
 
   const HOURS = [0, 6, 12, 18, 24];
   const xTick = (h: number) => (h === 24 ? padL + plotW : padL + (h / 24) * plotW);
+  /** 把「此刻」槽（0–47，每槽 30 分钟）换算成 HH:MM，直接回答「数据是哪个时刻的」 */
+  const nowHM = (() => {
+    if (nowSlot == null || nowSlot < 0 || nowSlot >= N) return null;
+    const hh = Math.floor(nowSlot / 2);
+    const mm = (nowSlot % 2) * 30;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  })();
 
   return (
     <View>
@@ -144,13 +140,6 @@ export default function EmotionTrendChart({
       >
         {svgW > 0 ? (
           <Svg width={svgW} height={svgH + theme.sp(2)}>
-            <Defs>
-              <SvgLinear id="valenceArea" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={chart.series.primary} stopOpacity={0.22} />
-                <Stop offset="100%" stopColor={chart.series.primary} stopOpacity={0.01} />
-              </SvgLinear>
-            </Defs>
-
             {/* 情绪区：−10 / 0 / +10 网格 + 零轴 */}
             {[-10, 10].map((v) => (
               <Path key={'v' + v} d={`M ${padL} ${vY(v)} L ${padL + plotW} ${vY(v)}`} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
@@ -160,15 +149,29 @@ export default function EmotionTrendChart({
               <SvgText key={'vy' + v} x={padL - theme.sp(1.5)} y={vY(v) + 3} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>{v > 0 ? '+' + v : v}</SvgText>
             ))}
 
-            {/* 情绪线 + 面积 */}
-            {vRuns.map((idx, i) => idx.length > 1 ? (
-              <React.Fragment key={'vr' + i}>
-                <Path d={`${smoothV(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${aBottom.toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${aBottom.toFixed(1)} Z`} fill="url(#valenceArea)" opacity={0.5} />
-                <Path d={smoothV(idx)} fill="none" stroke={chart.series.primary} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
-              </React.Fragment>
-            ) : (
-              <Circle key={'vp' + i} cx={xAt(idx[0])} cy={vY(valenceSlots[idx[0]]!)} r={chart.dot.radius} fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
-            ))}
+            {/* 情绪线：按每段 valence 对应情绪着色（绿=平静·黄=开心·橙=兴奋·粉=压力·蓝=难过），不画圆点 */}
+            {vRuns.map((idx, i) => {
+              if (idx.length === 1) return null; // 孤立单点不画圆（用户：趋势图不要圆环）
+              const areaD = `${linePath(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${aBottom.toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${aBottom.toFixed(1)} Z`;
+              const segs: React.ReactNode[] = [];
+              for (let k = 0; k < idx.length - 1; k++) {
+                const s0 = idx[k], s1 = idx[k + 1];
+                const v0 = valenceSlots[s0]!;
+                const mood = moodFromEmotionLevel(v0);
+                const color = mood ? MOOD_COLOR[mood] : theme.colors.textSub;
+                segs.push(
+                  <Path key={`sg${i}-${k}`}
+                    d={`M ${xAt(s0).toFixed(1)} ${vY(v0).toFixed(1)} L ${xAt(s1).toFixed(1)} ${vY(valenceSlots[s1]!).toFixed(1)}`}
+                    stroke={color} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                );
+              }
+              return (
+                <React.Fragment key={'vr' + i}>
+                  <Path d={areaD} fill="rgba(255,255,255,0.04)" />
+                  {segs}
+                </React.Fragment>
+              );
+            })}
 
             {/* 自报表情标记（落在情绪线上，深底光环 + 脸 icon） */}
             {markers.map((mk, i) => {
@@ -197,16 +200,46 @@ export default function EmotionTrendChart({
             {/* 唤醒区左标签 */}
             <SvgText x={padL - theme.sp(1.5)} y={aTop + 11} textAnchor="end" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>唤醒</SvgText>
 
-            {/* 此刻竖线（贯穿两块） */}
+            {/* 唤醒度右侧竖向刻度：高/中/低（阈值对齐顶部数字 ≤30 低·放松 / 31–60 中·适中 / ≥60 高·紧绷） */}
+            {(() => {
+              const scX = padL + plotW + theme.sp(1);
+              const aY = (v: number) => aBottom - (v / 100) * aH;
+              const ticks = [
+                { v: 82, t: '高' },
+                { v: 45, t: '中' },
+                { v: 14, t: '低' },
+              ];
+              return (
+                <React.Fragment>
+                  <Line x1={scX} y1={aTop} x2={scX} y2={aBottom} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
+                  {ticks.map((tk, i) => {
+                    const y = aY(tk.v);
+                    return (
+                      <React.Fragment key={'asc' + i}>
+                        <Line x1={scX - theme.sp(0.75)} y1={y} x2={scX} y2={y} stroke="rgba(255,255,255,0.30)" strokeWidth={1} />
+                        <SvgText x={scX + theme.sp(1.5)} y={y + 3} textAnchor="start" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>{tk.t}</SvgText>
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })()}
+
+            {/* 此刻竖线（贯穿两块）+ 底部「此刻 HH:MM」时间标注 */}
             {nowSlot != null && nowSlot >= 0 && nowSlot < N ? (
-              <Line x1={xAt(nowSlot)} y1={eTop} x2={xAt(nowSlot)} y2={aBottom} stroke={chart.series.primary} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} opacity={0.5} />
+              <>
+                <Line x1={xAt(nowSlot)} y1={eTop} x2={xAt(nowSlot)} y2={aBottom} stroke="rgba(255,255,255,0.45)" strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} />
+                {nowHM != null && (
+                  <SvgText x={xAt(nowSlot)} y={aBottom + theme.sp(20)} textAnchor="middle" fontSize={theme.fontSize.xs} fill={theme.colors.textBody}>此刻 {nowHM}</SvgText>
+                )}
+              </>
             ) : null}
 
-            {/* X 轴刻度 */}
+            {/* X 轴刻度（钟点时间） */}
             {HOURS.map((h) => {
               const x = xTick(h);
               const align = h === 0 ? 'start' : h >= 24 ? 'end' : 'middle';
-              return <SvgText key={'x' + h} x={x} y={aBottom + theme.sp(11)} textAnchor={align} fontSize={theme.fontSize.xs} fill={theme.colors.textSub}>{String(h).padStart(2, '0')}</SvgText>;
+              return <SvgText key={'x' + h} x={x} y={aBottom + theme.sp(11)} textAnchor={align} fontSize={theme.fontSize.xs} fill={theme.colors.textSub}>{h}:00</SvgText>;
             })}
           </Svg>
         ) : null}
@@ -214,9 +247,9 @@ export default function EmotionTrendChart({
 
       {/* 图例 + 口径说明 */}
       <View style={styles.legendRow}>
-        {(Object.keys(MOOD) as EmotionFaceMood[]).map((m) => (
+        {MOOD_ORDER_FACES.map((m) => (
           <View key={m} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: MOOD[m].c }]} />
+            <View style={[styles.legendDot, { backgroundColor: MOOD_COLOR[m] }]} />
             <Text style={styles.legendText}>{({ excited: '兴奋', happy: '开心', calm: '平静', stressed: '压力', sad: '难过' } as Record<EmotionFaceMood, string>)[m]}</Text>
           </View>
         ))}
@@ -227,7 +260,7 @@ export default function EmotionTrendChart({
       </View>
       <Text style={styles.caption}>
         {anyData
-          ? '紫线 = 情绪（−10~+10，零为中性）· 脸 = 你记的心情 · 下方条 = 唤醒度（身体激活，越深越绷着）'
+          ? '线条颜色 = 情绪状态（绿=平静 · 黄=开心 · 橙=兴奋 · 粉=压力 · 蓝=难过）· 脸 = 你记的心情 · 下方条 = 唤醒度（身体激活，越深越绷着）'
           : '今天还没有可判定的时段 · 连上戒指开启自动监测后开始生成（约需 3 天建立个人基线）'}
       </Text>
     </View>
@@ -236,19 +269,20 @@ export default function EmotionTrendChart({
 
 /** 单纯返回一张脸的 SVG 片段（Circle + 眼 + 嘴），供标记复用 */
 function faceCircle(cx: number, cy: number, mood: EmotionFaceMood, r: number): React.ReactNode {
-  const m = MOOD[mood];
+  const mouthType = MOOD_MOUTH[mood];
+  const color = MOOD_COLOR[mood];
   const eyeY = cy - r * 0.28;
   const eyeDx = r * 0.38;
   const eyeR = Math.max(0.9, r * 0.13);
   const mouthY = cy + r * 0.22;
   const dark = '#1A2030';
   let mouth: string;
-  if (m.mouth === 'smile') mouth = `M ${(cx - r * 0.45).toFixed(1)} ${mouthY.toFixed(1)} Q ${cx.toFixed(1)} ${(cy + r * 0.62).toFixed(1)} ${(cx + r * 0.45).toFixed(1)} ${mouthY.toFixed(1)}`;
-  else if (m.mouth === 'frown') mouth = `M ${(cx - r * 0.45).toFixed(1)} ${(cy + r * 0.5).toFixed(1)} Q ${cx.toFixed(1)} ${(mouthY - r * 0.1).toFixed(1)} ${(cx + r * 0.45).toFixed(1)} ${(cy + r * 0.5).toFixed(1)}`;
+  if (mouthType === 'smile') mouth = `M ${(cx - r * 0.45).toFixed(1)} ${mouthY.toFixed(1)} Q ${cx.toFixed(1)} ${(cy + r * 0.62).toFixed(1)} ${(cx + r * 0.45).toFixed(1)} ${mouthY.toFixed(1)}`;
+  else if (mouthType === 'frown') mouth = `M ${(cx - r * 0.45).toFixed(1)} ${(cy + r * 0.5).toFixed(1)} Q ${cx.toFixed(1)} ${(mouthY - r * 0.1).toFixed(1)} ${(cx + r * 0.45).toFixed(1)} ${(cy + r * 0.5).toFixed(1)}`;
   else mouth = `M ${(cx - r * 0.42).toFixed(1)} ${mouthY.toFixed(1)} L ${(cx + r * 0.42).toFixed(1)} ${mouthY.toFixed(1)}`;
   return (
     <>
-      <Circle cx={cx} cy={cy} r={r} fill={m.c} stroke="#0E1A2B" strokeWidth={1} />
+      <Circle cx={cx} cy={cy} r={r} fill={color} stroke="#0E1A2B" strokeWidth={1} />
       <Circle cx={cx - eyeDx} cy={eyeY} r={eyeR} fill={dark} />
       <Circle cx={cx + eyeDx} cy={eyeY} r={eyeR} fill={dark} />
       <Path d={mouth} stroke={dark} strokeWidth={r * 0.14} fill="none" strokeLinecap="round" />

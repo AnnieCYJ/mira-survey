@@ -17,6 +17,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
 import { theme } from '../theme/theme';
+import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
+import { RingBle } from '../ble/RingBleManager';
+import { dayKey } from '../data/healthStore';
+import { computeEmotionalStress, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
+import { computeStressReport } from '../lib/stressAlgorithm';
+import { estimateVo2maxFromStore } from '../lib/vo2max';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +36,6 @@ import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import AvatarStack from './AvatarStack';
-import TaTodayRow from './TaTodayRow';
 
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
@@ -87,12 +93,9 @@ function cyclePhase(day: number) {
 // 海浪声音开关的存储 key（与 SettingsScreen 共用）
 const WAVE_SOUND_KEY = 'waveSound';
 
-type Chip = {
+type ChipDef = {
+  key: string;
   label: string;
-  value: string;
-  unit?: string;
-  tag: string;
-  good?: boolean;
   icon: JSX.Element;
   /** 点击目标（与白底版 TodayScreen 同款路由） */
   go: (nav: NavProp) => void;
@@ -102,16 +105,18 @@ const lineIcon = (d: string | string[]) => (
     {(Array.isArray(d) ? d : [d]).map((p, i) => <Path key={i} d={p} />)}
   </Svg>
 );
-const CHIPS: Chip[] = [
-  // ★ 2026-10-18 用户指定首页卡片顺序：睡眠恢复 → 身体负荷 → 情绪 → 活动消耗 → 生理周期
-  { label: '睡眠恢复', value: '82', tag: '恢复良好', good: true, icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
-  { label: '身体负荷', value: '46', tag: '负荷适中', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
-  // ★ 2026-10-18 用户：「压力水平」改名「情绪」（tag 同步为情绪平稳，路由目标不变）
-  { label: '情绪', value: '38', tag: '情绪平稳', good: true, icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
-  { label: '活动消耗', value: '320', unit: 'kcal', tag: '达成55%', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
-  { label: '生理周期', value: '第14天', tag: '排卵期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
+// ★ 2026-10-26（用户）：卡片的 value/tag/unit/good 不再写死，改为组件内接真实数据（见下方 chipDyn）。
+//   这里只保留静态元数据（顺序/图标/路由），顺序：睡眠恢复 → 身体负荷 → 情绪 → 活动消耗 → 生理周期。
+const CHIP_DEFS: ChipDef[] = [
+  { key: 'recovery', label: '睡眠恢复', icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
+  { key: 'load', label: '身体负荷', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '身体负荷', unit: '/100', yMin: 0, yMax: 100 }) },
+  // ★ 2026-10-18 用户：「压力水平」改名「情绪」（路由目标不变 → EnergyDetail emotion）
+  { key: 'emo', label: '情绪', icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
+  { key: 'act', label: '活动消耗', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
+  { key: 'cycle', label: '生理周期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
+  { key: 'cardio', label: '心肺能力', icon: lineIcon('M12 21s-7.5-4.6-10-9.3C.6 8.3 2.3 5 5.5 5c1.9 0 3.2 1 4.5 2.6C11.3 6 12.6 5 14.5 5 17.7 5 19.4 8.3 22 11.7 19.5 16.4 12 21 12 21Z'), go: (n) => n.navigate('CardioDetail') },
   // 「脑力准备度」按用户要求隐藏（2026-10-17 改花瓣布局只留 5 张）；要恢复：取消下行注释
-  // { label: '脑力准备度', value: '64', tag: '准备度中', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
+  // { key: 'cognitive', label: '脑力准备度', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
 // ★ 2026-10-18 第二十三轮（用户："卡片展示四个，最后一个滑动可看；整体字太小"）：
@@ -129,6 +134,14 @@ export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
+  // ★ 2026-10-26（用户）：首页 5 张指标卡改为接真实数据（之前 4 张写死静态预览值）。
+  //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
+  const [ring, setRing] = useState(() => RingBle.getState());
+  useEffect(() => RingBle.onState((s) => setRing(s)), []);
+  // ★ 2026-10-26（修复「今日状态一直不更新」）：圆环恢复分 / 压力 / 情绪 都从 healthStore 读取，
+  //   而 healthStore 在戒指回填写入后只增 version、不会自动触发本组件重渲染 —— 故显式订阅其版本，
+  //   每次同步/回填完成即重算首页数据（与 InsightScreen / MetricDetail / CognitiveLoadCard 同源机制）。
+  useHealthStoreVersion();
   // ★ mira-ocean：视频+深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
@@ -186,13 +199,133 @@ export default function CalmWaveHome() {
   // ★ 第三十四轮：白底版「今日状态」四档词（DailyStatusCard 同源）：
   //   元气满满 ≥76 / 状态良好 51–75 / 平平静静 26–50 / 休息一下 0–25，颜色与圆环同源。
   //   ★ 本轮：0–25 改淡粉（白底版），其余 紫/绿/黄 不变。
-  const RECOVERY = 82;
-  const mood = RECOVERY >= 76 ? { label: '元气满满', color: '#F0C46E' }
-    : RECOVERY >= 51 ? { label: '状态良好', color: '#BCCB62' }
-    : RECOVERY >= 26 ? { label: '平平静静', color: '#9D8AF0' }
+  //   ★ 2026-10-21（用户：圆弧下的数不能一直 82）：改用与睡眠节律卡 / SleepCard 同源的
+  //     今日恢复分（sleepRecoveryScoreForDay），数据随模拟日变化；取不到时回落 82。
+  // ★ 2026-10-26（用户）：今日恢复分必须「随天清零」—— 今天若没有任何恢复数据（新的一天 / 没戴戒指），
+  //   一律显示「暂无数据」，不再写死兜底 82 + 元气满满。取数本身按天（Date.now() 当日），
+  //   24:00 跨天后自动回到空态，无需额外定时器。
+  // 恢复分（睡眠指标，下沉到卡片行「睡眠恢复」）—— 仅供下方卡片行展示，不再作为首页「今日状态」大数字
+  const recoveryScore = sleepRecoveryScoreForDay(Date.now());
+  const hasRecoveryData = recoveryScore != null;
+  const RECOVERY = hasRecoveryData ? Math.round(recoveryScore) : 0;
+  // ★ 2026-10-26：首页指标卡全部接真实数据（替代原写死的静态预览值 82/46/38/320/第14天）。
+  //   口径与 TodayScreen 顶部 chips 同源：
+  //   · 睡眠恢复 → sleepRecoveryScoreForDay（上方已算）
+  //   · 身体负荷 → 基础指标压力信号 ring.metrics['stress'] / ring.daily['stress']（与 MetricDetail stress 同源）
+  //   · 情绪     → emotionalStress 百分位 stressScale.value（与 EnergyDetail emotion 同源）
+  //   · 活动消耗 → 运动段 totalCal 优先，否则当日计步 calorie（与运动消耗卡同源）
+  //   · 生理周期 → curveStatus.phaseLabel / dayInCycle（与周期卡同源）
+  //   任一项无数据 / 断流 / 校准无效 → 显「—」+「暂无数据 / 建立基线中」，不编数字。
+  const status = ring.curveStatus;
+  // ★ 2026-10-28（修复：原样输出浮点原始值导致 33.645316484174145 这种一长串小数）：
+  //   状态分取整显示（与弧进度/档位词口径统一），不再露原始浮点。
+  // ★ 2026-10-28（用户：首页「今日状态」大数字须为状态曲线值，与详情页同源；恢复分=睡眠，已下沉到卡片行「睡眠恢复」）
+  const CV = status?.value != null ? Math.round(status.value) : null;
+  const CV_STALE = status?.dataStale ?? true;
+  const hasStatusData = CV != null && !CV_STALE;
+  const EMPTY_COLOR = theme.colors.stateEnergy; // 空态统一紫（与 EnergyBall 圆环同源）
+  const mood = !hasStatusData
+    ? { label: '暂无数据', color: EMPTY_COLOR }
+    : CV >= 76 ? { label: '元气满满', color: '#F0C46E' }
+    : CV >= 51 ? { label: '状态良好', color: '#BCCB62' }
+    : CV >= 26 ? { label: '平平静静', color: '#9D8AF0' }
     : { label: '休息一下', color: '#F0B5C4' };
   const moodLabel = mood.label;
   const moodColor = mood.color;
+  const dkToday = dayKey(Date.now());
+  // ★ sportSessions 是跨天持久化列表（固件回传+本地归档），不能整体累加；
+  //   活动消耗只统计「今天」的运动段 totalCal，与活动详情页（EnergyDetail dayK === dk）同口径。
+  const sportSessions = ring?.sportSessions ?? null;
+  const stepsToday = ring?.stepDaily?.[dkToday]?.steps ?? 0;
+  const stepKcalToday = ring?.stepDaily?.[dkToday]?.calorie ?? 0;
+  const activityHasData = stepsToday > 0;
+  const todaysSessions = (ring?.sportSessions ?? []).filter((s: any) => dayKey(s.beginTime) === dkToday);
+  const hasTodaySport = todaysSessions.length > 0;
+  const actKcal = hasTodaySport
+    ? Math.round(todaysSessions.reduce((a: number, s: any) => a + (s.totalCal || 0), 0))
+    : (activityHasData ? Math.round(stepKcalToday) : null);
+
+  // 身体负荷：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
+  // ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hr，daily 也不含 stress，
+  //   该字段恒为 null → 身体负荷卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
+  const stressReport = (() => { try { return computeStressReport(Date.now()); } catch { return null; } })();
+  const bodyLoad = stressReport?.score ?? null;
+
+  // 情绪：emotionalStress 多信号融合（0–100，50=和平时差不多；越高压力越大）
+  const esReport = (() => {
+    try { return computeEmotionalStress(Date.now(), sportSessions); } catch { return null; }
+  })();
+  const emoValue = (() => {
+    try {
+      if ((status as any)?.dataStale) return null;
+      if (!esReport || !esReport.stressScale) return null;
+      if (esReport.baselineDays == null || esReport.baselineDays < ES_MIN_BASELINE_DAYS) return null;
+      if (esReport.calibration?.level === 'invalid') return null;
+      return esReport.stressScale.value;
+    } catch { return null; }
+  })();
+
+  // 生理周期
+  const dayInCycle = status?.dayInCycle ?? null;
+  const phaseLabel = status?.phaseLabel ?? null;
+  // ★ 2026-10-27 修复：双弧周期药丸此前写死 CYCLE_DAY=14，与上方真实「生理周期」卡不一致；
+  //   改用真实周期日（无记录时回退 14），让弧与卡口径统一。
+  const cycleDay = dayInCycle ?? CYCLE_DAY;
+  const cyclePhaseNow = phaseLabel && phaseLabel !== '未记录' ? phaseLabel : cyclePhase(cycleDay);
+
+  // 心肺能力（VO₂max）：权威非运动估算法（Jackson 1990 + Uth 心率比法交叉），详见 lib/vo2max.ts。
+  const vo2 = (() => { try { return estimateVo2maxFromStore(Date.now()); } catch { return null; } })();
+
+  // 各卡展示数据（value / unit / tag / good）
+  const chipDyn: Record<string, { value: string; unit?: string; tag: string; good?: boolean }> = {
+    recovery: {
+      value: hasRecoveryData ? String(RECOVERY) : '—',
+      unit: hasRecoveryData ? '/100' : undefined,
+      tag: !hasRecoveryData ? '暂无数据'
+        : RECOVERY >= 76 ? '恢复良好'
+        : RECOVERY >= 51 ? '恢复较好'
+        : RECOVERY >= 26 ? '恢复中'
+        : '恢复偏弱',
+      good: hasRecoveryData && RECOVERY >= 51,
+    },
+    load: {
+      value: bodyLoad != null ? String(bodyLoad) : '—',
+      unit: bodyLoad != null ? '/100' : undefined,
+      tag: bodyLoad == null ? '暂无数据'
+        : bodyLoad < 30 ? '负荷轻松'
+        : bodyLoad < 55 ? '负荷适中'
+        : '负荷偏重',
+      good: bodyLoad != null && bodyLoad < 30,
+    },
+    emo: {
+      value: emoValue != null ? String(emoValue) : '—',
+      unit: emoValue != null ? '/100' : undefined,
+      tag: emoValue == null
+        ? (esReport && esReport.baselineDays < ES_MIN_BASELINE_DAYS ? '建立基线中' : '暂无数据')
+        : emoValue < 35 ? '情绪轻松'
+        : emoValue < 60 ? '情绪平稳'
+        : '情绪偏紧',
+      good: emoValue != null && emoValue < 35,
+    },
+    act: {
+      value: actKcal != null && actKcal > 0 ? String(actKcal) : '—',
+      unit: actKcal != null && actKcal > 0 ? 'kcal' : undefined,
+      tag: actKcal != null && actKcal > 0 ? '今日活动' : '暂无活动',
+      good: false,
+    },
+    cycle: {
+      value: dayInCycle != null ? `第 ${dayInCycle} 天` : '—',
+      unit: undefined,
+      tag: phaseLabel && phaseLabel !== '未记录' ? phaseLabel : '未记录',
+      good: false,
+    },
+    cardio: {
+      value: vo2 ? String(Math.round(vo2.estimate)) : '—',
+      unit: vo2 ? 'ml/kg·min' : undefined,
+      tag: vo2 ? vo2.band : '暂无数据',
+      good: vo2 ? vo2.bandRank >= 4 : false,
+    },
+  };
   // ★ 2026-10-18 第二十三轮：卡行移到交界线正下方（过渡区）——贴海浪下缘的深色渐变带；
   //   短屏时整体上移，防环底撞 AI 卡顶。
   // ★ 第二十五轮：标题+卡行整体再上移 12px（用户："连着下面的卡片位置整体再往上移一点"）。
@@ -205,12 +338,20 @@ export default function CalmWaveHome() {
   // ★ 第三十五轮（真机照片反馈）：①卡行+标题整体再上移 12px（-16→-28；用户"今日状态再往上一点，
   //   情绪/生理周期卡片再往上挪一点点"）②弧+文字块在「卡行底 ↔ AI 卡顶」之间垂直居中
   //   （用户"圆弧往下一点、整个中间的圆弧和文字应该居中"）——不再贴卡行，取中点下移。
-  const chipRowTop = transitionY - 28;
-  const chipsBottom = chipRowTop + CHIP_H;
+  // ★ 2026-10-20 布局实验（用户）：把「上方卡片行（睡眠恢复/身体负荷…）」与「下方双弧块（元气满满/82/周期）」
+  //   位置调换——双弧 hero 上移、卡片行下移到「弧底 ↔ AI 卡顶」之间垂直居中。
+  //   ▶ 还原原布局：把下面 gaugeTop / chipRowTop 两行换回——
+  //     chipRowTop = transitionY - 28；gaugeTop = Math.max(chipRowTop+CHIP_H+8, chipRowTop+CHIP_H+(aiTop-chipRowTop-CHIP_H-GAUGE_H)/2)
+  // ★ 2026-10-20 微调：用户"圆环+周期+下方睡眠恢复卡片整体往下移一点点"——给 gaugeTop 加
+  //   TOP_OFFSET(=20)，因「今日状态」标题(gaugeTop-62)、弧块(gaugeTop)、卡行(arcBottom 派生) 全部由
+  //   gaugeTop 驱动，三者会整体同步下移；卡行有 Math.min 钳位不撞 AI 卡顶。
+  const TOP_OFFSET = 20;
+  const gaugeTop = transitionY - 28 + TOP_OFFSET;     // 双弧块移到原卡行顶部位置 + 整体下移 20px
+  const arcBottom = gaugeTop + GAUGE_H;
   const aiTop = height - aiBottom - aiCardH;
-  const gaugeTop = Math.max(
-    chipsBottom + 8,
-    chipsBottom + (aiTop - chipsBottom - GAUGE_H) / 2,
+  const chipRowTop = Math.min(
+    Math.max(arcBottom + 8, arcBottom + (aiTop - arcBottom - CHIP_H) / 2),
+    aiTop - CHIP_H - 8,                              // 钳位：卡行底不撞 AI 卡顶
   );
 
   return (
@@ -225,11 +366,24 @@ export default function CalmWaveHome() {
         shouldPlay
         useNativeControls={false}
       />
-      {/* 渐变：透明 → 钢蓝 → 深蓝紫（与 HTML 同参数） */}
+      {/* 渐变：顶部清晰（0–20% 零蒙版，海浪原色透出） → 向下平滑压暗托底文字。
+          ★ 2026-10-28（用户）：① 顶部要像参考图那样清楚——顶 20% 完全透；
+          ② 文字区要有蒙层——从「今日状态」标题区起向上扫暗，44% 起明显压暗、
+          72% 近乎实色、底部纯深蓝；既保顶部海浪清楚，又保标题/82/卡片白字读得清。
+          ▶ 曾试「整段 0–36% 全透」导致标题与 82 浮在亮浪上看不清，已弃；现恢复
+          原"从上往下压"的覆盖高度，仅把最顶上 20% 掏空。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={['rgba(62,98,122,0)', 'rgba(62,98,122,0)', 'rgba(52,88,116,0.45)', 'rgba(38,62,96,0.94)', '#2A4470', '#2B3564']}
-        locations={[0, 0.14, 0.24, 0.31, 0.4, 1]}
+        colors={[
+          'rgba(43,53,100,0)',        // 0    顶部完全透：海浪清晰
+          'rgba(43,53,100,0)',        // 0.20 顶部清晰区（头栏图标）
+          'rgba(43,53,100,0.20)',     // 0.30 「今日状态」标题轻托底
+          'rgba(43,53,100,0.50)',     // 0.46 双弧 82 分强托底
+          'rgba(43,53,100,0.82)',     // 0.58 卡片行
+          'rgba(43,53,100,0.97)',     // 0.72 近实色
+          '#2B3564',                  // 1    纯深蓝
+        ]}
+        locations={[0, 0.20, 0.30, 0.46, 0.58, 0.72, 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
@@ -256,22 +410,15 @@ export default function CalmWaveHome() {
         </TouchableOpacity>
       </View>
 
-      {/* ★ 2026-10-19 家人绑定：首页「TA的今日」横滑状态卡（只给结论，不曝光原始数据）；
-          多头像入口已在头栏（AvatarStack）。本行嵌在头栏与「今日状态」标题之间的窄缝。 */}
-      <View style={{ position: 'absolute', top: insets.top + 30 + 40, left: 0, right: 0, height: theme.sp(18) }}>
-        <TaTodayRow
-          dark
-          compact
-          onSelect={(id) => navigation.navigate('MemberDetail', { memberId: id })}
-        />
-      </View>
+      {/* ★ 2026-10-20 家人状态改为"头像状态环 + 右上角表情标识"（见头栏 AvatarStack），
+          不再用独立横滑卡——更小巧、只给结论。头栏 AvatarStack 已承载状态。
 
       {/* 「今日状态」白色标题：★ 2026-10-18 用户要求改白色、放到指标卡行上方。
           位置在渐变 94% 不透明深色线（0.31×height）附近，白字可读。
           ★ 第二十六轮：字号 25→28、位置再往上 8px（用户："字大一些，位置再往上一点"）。
           ★ 第三十轮：仅标题再上移 12px（-38→-50，卡行不动；用户："今日状态这几个字位置再往上"）。
           ★ 第三十一轮：再上移 12px（-50→-62；用户："今日状态位置再往上放一点"）。 */}
-      <Text style={[s.cardTitle, { top: chipRowTop - 62 }]}>今日状态</Text>
+      <Text style={[s.cardTitle, { top: gaugeTop - 62 }]}>今日状态</Text>
 
       {/* 扁平浅弧双弧（Oura 风格，去月相）——外白弧=恢复分、内金弧=周期天数；整区可点 → 全天状态趋势。
           ★ 2026-10-18 用户拍板：用双弧样式、不要月相标识（design/oura-dual-arc-nomoon.html A 版）。 */}
@@ -287,11 +434,11 @@ export default function CalmWaveHome() {
             {/* 外弧轨道（状态分，淡色同系） */}
             <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke={hexA(moodColor, 0.22)} strokeWidth={2.5} strokeLinecap="round" />
             {/* 外弧进度（状态分档位色，如 82→黄） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (RECOVERY / 100), ARC_R)} fill="none" stroke={moodColor} strokeWidth={3} strokeLinecap="round" />
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * ((hasStatusData ? CV : 0) / 100), ARC_R)} fill="none" stroke={moodColor} strokeWidth={3} strokeLinecap="round" />
             {/* 内弧轨道（周期，白） */}
             <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_RI)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
             {/* 内弧进度（周期，白） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (CYCLE_DAY / CYCLE_LEN), ARC_RI)} fill="none" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
+            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (cycleDay / CYCLE_LEN), ARC_RI)} fill="none" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
             {/* 端点刻度 0 / 100（状态分刻度） */}
             <SvgText x={lEnd.x - 4} y={lEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">0</SvgText>
             <SvgText x={rEnd.x - 16} y={rEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">100</SvgText>
@@ -303,15 +450,17 @@ export default function CalmWaveHome() {
             去掉「恢复状态」「恢复优秀」；整块上提（离卡行更近）。 */}
         <View style={s.gaugeInfo}>
           <Text style={[s.gMood, { color: moodColor }]}>{moodLabel}</Text>
-          <View style={s.gScoreRow}>
-            <Text style={[s.gBig, { color: moodColor }]}>{RECOVERY}</Text>
-            <Text style={s.gDen}>/100</Text>
-            <Svg width={13} height={22} viewBox="0 0 13 22">
-              <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          </View>
+          {hasStatusData ? (
+            <View style={s.gScoreRow}>
+              <Text style={[s.gBig, { color: moodColor }]}>{CV}</Text>
+              <Text style={s.gDen}>/100</Text>
+              <Svg width={13} height={22} viewBox="0 0 13 22">
+                <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </View>
+          ) : null}
           <View style={s.gPhase}>
-            <Text style={s.gPhaseTxt}>周期 · {cyclePhase(CYCLE_DAY)} · 第{CYCLE_DAY}天</Text>
+            <Text style={s.gPhaseTxt}>周期 · {cyclePhaseNow} · 第{cycleDay}天</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -327,23 +476,28 @@ export default function CalmWaveHome() {
           decelerationRate="fast"
           contentContainerStyle={{ paddingHorizontal: 16, gap: CHIP_GAP }}
         >
-          {CHIPS.map((c) => (
-            <TouchableOpacity
-              key={c.label}
-              style={[s.chip, { width: CHIP_W }]}
-              activeOpacity={0.7}
-              accessibilityLabel={`${c.label} ${c.value}`}
-              onPress={() => c.go(navigation)}
-            >
-              <View style={s.chipIcon}>{c.icon}</View>
-              <Text style={s.chipLabel}>{c.label}</Text>
-              <View style={s.chipValRow}>
-                <Text style={[s.chipVal, c.good && s.chipValGood]}>{c.value}</Text>
-                {c.unit ? <Text style={s.chipUnit}>{c.unit}</Text> : null}
-              </View>
-              <Text style={s.chipTag}>{c.tag}</Text>
-            </TouchableOpacity>
-          ))}
+          {/* ★ 2026-10-28（用户：暂时没数据的心肺能力不该放首页）—— vo2 为 null（档案缺 / 不足 7 晚静息心率）
+              时直接从卡行移除；有值才出现，不影响其余 5 张卡的滑动布局。 */}
+          {CHIP_DEFS.filter((c) => c.key !== 'cardio' || !!vo2).map((c) => {
+            const d = chipDyn[c.key];
+            return (
+              <TouchableOpacity
+                key={c.key}
+                style={[s.chip, { width: CHIP_W }]}
+                activeOpacity={0.7}
+                accessibilityLabel={`${c.label} ${d.value}${d.unit ? d.unit : ''}`}
+                onPress={() => c.go(navigation)}
+              >
+                <View style={s.chipIcon}>{c.icon}</View>
+                <Text style={s.chipLabel}>{c.label}</Text>
+                <View style={s.chipValRow}>
+                  <Text style={[s.chipVal, d.good && s.chipValGood]}>{d.value}</Text>
+                  {d.unit ? <Text style={s.chipUnit}>{d.unit}</Text> : null}
+                </View>
+                <Text style={s.chipTag}>{d.tag}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
         {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
         <LinearGradient
@@ -361,7 +515,9 @@ export default function CalmWaveHome() {
           第二十七轮：去掉骑角的紫色圆环头像（用户："不是要那个东西"），尾巴即终点。 */}
       <View style={[s.aiCard, { bottom: aiBottom }]}>
         <Text style={s.analysis}>
-          恢复得不错，<Text style={s.hl}>82 分</Text>比平时高一点，压力也低，别浪费今天的好状态～
+          {hasStatusData
+            ? <>今天状态不错，<Text style={s.hl}>{CV} 分</Text>比平时稳，趁状态好做点想做的事～</>
+            : '今天还没有状态数据，戴上戒指，我会帮你把今天的状态看得更准～'}
         </Text>
         <View style={s.sug}>
           <Image source={THUMB_RELAX} style={s.sugThumb} />
@@ -481,7 +637,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
-  gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5 },
+  gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
   // 分数行：82（主视觉，缩小）+ 小号 /100 + 右箭头（点击进全天趋势）
   gScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   gBig: { fontSize: 34, fontWeight: '700', letterSpacing: -1.5, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
@@ -496,7 +652,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
-  gPhaseTxt: { fontSize: 12.5, fontWeight: '500', color: '#FFFFFF' },
+  gPhaseTxt: { fontSize: 12.5, fontWeight: '500', color: '#FFFFFF', textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {

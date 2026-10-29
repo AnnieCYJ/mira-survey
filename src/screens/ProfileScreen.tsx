@@ -163,7 +163,11 @@ export default function ProfileScreen({ navigation }: any) {
             「日」视图改为点月历上的某一天 → 下抽屉弹出（见 MonthDiscoveryView / DayDrawer）。 */}
         {USE_MONTH_DISCOVERY ? (
           /* ★ 2026-10-12（用户）：月视图改版方案 A —— 卡片堆叠月历 + 规律总结 */
-          <MonthDiscoveryView tasks={tasks} />
+          <MonthDiscoveryView
+            tasks={tasks}
+            /* ★ Phase 3：规律观察 → 带着这条观察去问 Mira（云端长窗口综合分析） */
+            onAskMira={(q) => navigation.navigate('VoiceChat', { question: q })}
+          />
         ) : (
         <>
         {/* 旧版（CalendarGrid + RelaxCardDeck；仅 USE_MONTH_DISCOVERY = false 时启用，代码保留不删） */}

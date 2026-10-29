@@ -24,7 +24,7 @@ export const MOOD_COLOR: Record<MoodKey, string> = {
   love: mm.colors.roseCore,
   grateful: mm.colors.honeyDeep,
   pleasant: mm.colors.skyCore,
-  calm: '#B8C86A',
+  calm: '#6CC28E',
   tired: mm.colors.limeDeep,
   stressed: '#D58AAE',
   anxious: theme.colors.danger,
@@ -163,6 +163,8 @@ function emit(): void {
 const FILE_URI = `${FileSystem.documentDirectory ?? ''}emotionLog.json`;
 let entries: EmotionEntry[] = [];
 let loaded = false;
+let hasLocalEdits = false;
+let syncLoadFailed = false;
 let loadPromise: Promise<void> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -179,7 +181,8 @@ async function loadOnce(): Promise<void> {
         );
       }
     } catch {
-      // 首次无文件 → 空表
+      // 区分首次无文件与读取失败；失败内存不能覆盖云端完整快照。
+      try { syncLoadFailed = (await FileSystem.getInfoAsync(FILE_URI)).exists; } catch { syncLoadFailed = true; }
       entries = [];
     }
     loaded = true;
@@ -188,6 +191,7 @@ async function loadOnce(): Promise<void> {
 }
 
 function persist(): void {
+  hasLocalEdits = true;
   if (saveTimer != null) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
@@ -272,4 +276,18 @@ export function deleteEmotionEntry(id: string): void {
   entries = entries.filter((e) => e.id !== id);
   persist();
   emit();
+}
+
+/** 手动同步读取内存中的最新记录（包含尚在延时落盘的新增和删除）。 */
+export async function emotionEntriesForSync(): Promise<EmotionEntry[] | null> {
+  if (hasLocalEdits && (syncLoadFailed || !loaded)) throw new Error('Emotion history was not loaded safely');
+  // 无本轮修改时直接严格读取；读失败不可变成空快照覆盖云端。
+  if (!hasLocalEdits) {
+    const info = await FileSystem.getInfoAsync(FILE_URI);
+    if (!info.exists) return null;
+    const raw = JSON.parse(await FileSystem.readAsStringAsync(FILE_URI));
+    if (!Array.isArray(raw?.entries)) throw new Error('Invalid emotion snapshot');
+    return raw.entries;
+  }
+  return entries.map(e => ({ ...e }));
 }

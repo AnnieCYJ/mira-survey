@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     width: '100%',
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.xl,
     borderTopRightRadius: theme.radius.xl,
     paddingHorizontal: theme.sp(4),
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
   dayToggle: {
     flexDirection: 'row',
     alignSelf: 'center',
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.pill,
     padding: 3,
     marginBottom: theme.sp(0.5),
@@ -695,7 +695,7 @@ const styles = StyleSheet.create({
   wheelText: {
     fontSize: theme.fs(20),
     fontWeight: '600' as never,
-    color: mm.colors.ink,
+    color: mm.colors.purpleDeep, // ★ 对比度修复：白字压 purpleSoft 浅紫滚轮底不可读 → purpleDeep（深浅底通用）
     fontVariant: ['tabular-nums'],
   },
   wheelTextOn: { color: mm.colors.purpleDeep, fontWeight: '700' as never, fontSize: theme.fs(22) },
@@ -856,9 +856,9 @@ const styles = StyleSheet.create({
     paddingTop: theme.sp(2),
     paddingHorizontal: theme.sp(4),
     marginHorizontal: -theme.sp(4),
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.bgBottom,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.06)',
+    borderTopColor: theme.colors.cardBorder,
   },
   recWrap: {
     borderRadius: theme.radius.pill,

@@ -41,13 +41,15 @@ import EmotionQuickRecord from '../components/EmotionQuickRecord';
 // ★ 认知准备度（2026-10-05）：详情页日/周/月/年统一改用准备度口径
 import ReadinessTrendChart, { readinessColor } from '../components/ReadinessTrendChart';
 import { computeReadinessSeries, readinessLevelLabel, READY_LOW, dailyBrainUsed } from '../lib/cognitiveReadiness';
-import { buildStressRangeSeries, rangeStressMean } from '../lib/stressDaily';
+import { buildStressRangeSeries, rangeStressMean, dailyStressValue } from '../lib/stressDaily';
 import { todaySportLogs } from '../lib/sportLog';
 // ★ 2026-10-12：运动消耗·日视图「今日运动建议」——按当前周期相位给处方
 import { buildWorkoutAdvice, buildPhaseAnalysis } from '../lib/phaseAdvice';
 // ★ 2026-10-12：与工具页「运动建议」共用引擎，抽真实处方字段上卡（单一事实来源）
 import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
 import { collectWorkoutInput } from '../lib/workoutInput';
+// ★ P0-2（2026-10-28）：行为关联面板（Pearson r + Cohen's d），放在情绪详情页底部
+import BehaviorCorrelationPanel from '../components/BehaviorCorrelationPanel';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -59,7 +61,7 @@ interface RouteParams { type: EnergyType; }
 const SHOW_AI_BANNER = false;
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
-  emotion:   { name: '心理压力', accent: mm.colors.roseCore,    sub: '心理压力 · 全天与区间趋势' },
+  emotion:   { name: '心理压力', accent: mm.colors.roseCore, sub: '心理压力' },
   cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '认知准备度 · 全天与区间趋势' },
   activity:  { name: '运动消耗', accent: mm.colors.skyCore,  sub: '步数 · 距离 · 活动消耗' },
 };
@@ -258,6 +260,9 @@ export default function EnergyDetailScreen() {
             ? <RangeTrendBars type={type} range={range} anchor={anchor} ring={ring} />
             : <CognitiveRangeView range={range} anchor={anchor} rows={cogRangeRows ?? []} />)}
 
+        {/* ★ P0-2（2026-10-28）：行为关联面板 —— 仅情绪详情页底部，展示「哪些行为影响情绪」（Pearson r + Cohen's d） */}
+        {type === 'emotion' && <BehaviorCorrelationPanel outcome="emotion" />}
+
         {/* 给底部常驻「记录情绪」按钮留白，避免情绪洞察末尾（图例/分析卡）被遮挡 */}
         {type === 'emotion' && <View style={{ height: 160 }} />}
       </View>
@@ -399,7 +404,13 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
   if (type === 'activity') {
     const dk = dayKey(anchor.getTime());  // ★ 跟随日期选择器
     const st = ring?.stepDaily?.[dk];
-    const cal = Math.round(st?.calorie ?? 0);
+    // ★ 2026-10-27（用户）：与首页「活动消耗」卡同口径 —— 优先取当日运动段 totalCal 汇总，
+    //   无运动段时回退计步 calorie；否则当天有运动时外卡（运动段 kcal）与详情（仅计步 kcal）会不一致。
+    const daySport = ((ring as any)?.sportSessions ?? []).filter(
+      (s: any) => dayKey(s.beginTime) === dk,
+    );
+    const daySportCal = daySport.reduce((a: number, s: any) => a + (s.totalCal || 0), 0);
+    const cal = daySportCal > 0 ? Math.round(daySportCal) : Math.round(st?.calorie ?? 0);
     const prevCal = ring?.stepDaily?.[dayKey(anchor.getTime() - 86400000)]?.calorie ?? null;
     // ★ 2026-10-09（exercise-consumption-preview .hero .ctx）：↑ / ↓ N% 较昨日（无昨日数据则不显示）
     const delta = prevCal != null && prevCal > 0 ? Math.round(((cal - prevCal) / prevCal) * 100) : null;
@@ -579,7 +590,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
           <>
             <View>
               <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
-              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]} · 50=平时</Text>
+              <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
             </View>
             <Text style={[styles.heroCtx, { color: band!.c }]}>{band!.t}</Text>
           </>
@@ -588,7 +599,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
           <>
             <View>
               <Text style={styles.heroVal}>—</Text>
-              <Text style={styles.heroUnit}>/100 · 心理压力{RL[range]} · 50=平时</Text>
+              <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
             </View>
             <Text style={[styles.heroCtx, { color: theme.colors.textSub }]}>暂无数据</Text>
           </>
@@ -1384,8 +1395,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.xs,
     alignItems: 'center',
   },
-  waStatK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) },
-  waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  waStatK: { fontSize: theme.fontSize.micro, color: mm.colors.skyDeep, marginBottom: theme.sp(0.5) }, // ★ 对比度修复：skyTint 浅底上白系不可读
+  waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
   /* ★ 2026-10-12（用户：「较昨日上升125%，可以字大一点」）：xs(13) → body(15) */
   heroCtx: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
   // .rows / .row：margin-top 6px，13px 行，底线分隔，末行无底线
@@ -1438,7 +1449,7 @@ const styles = StyleSheet.create({
 
   // ★ 2026-10-09（brain-readiness-preview .cmpCard / .cmpNote）
   cmpCardRow: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(2), marginTop: theme.sp(2) },
-  cmpBig: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid, lineHeight: theme.fontSize.stat },
+  cmpBig: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.semibold as any, color: theme.colors.accentText, lineHeight: theme.fontSize.stat },
   cmpUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, paddingBottom: theme.sp(1.25) },
   cmpDelta: { marginLeft: 'auto', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, paddingBottom: theme.sp(1.25) },
 
@@ -1498,17 +1509,19 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
     const events = report?.events?.length ?? 0;
     const peak = report?.peakHour;
     const avgRec = report?.avgRecoverySec;
-    const load = report?.emotionalLoad;
+    // ★ 2026-10-27（用户）：与首页「情绪」卡 + 详情 Hero + 折线图同口径 —— 用 stressScale.value
+    //   （dailyStressValue，0–100、50=平时），不再用另一套 emotionalLoad，避免同一页冒出第二个数字。
+    const load = dailyStressValue(dayKey(reportMs), (ring as any)?.sportSessions ?? null);
     const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
 
     // 第一段：纯段落（InsightBanner 会自动处理）
     const firstBody = events === 0
       ? '今日暂无压力事件记录，状态保持平稳。'
       : events <= 3
-        ? `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，整体处于低压力区间。`
+        ? `今日共有 ${events} 次压力事件，情绪 ${load ?? '—'}，整体处于低压力区间。`
         : events <= 6
-          ? `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，处于中等压力水平。`
-          : `今日共有 ${events} 次压力事件，情绪消耗 ${load ?? '—'}，压力负荷较高，注意放松。`;
+          ? `今日共有 ${events} 次压力事件，情绪 ${load ?? '—'}，处于中等压力水平。`
+          : `今日共有 ${events} 次压力事件，情绪 ${load ?? '—'}，压力负荷较高，注意放松。`;
 
     // 其余分段
     if (events > 0 && peak != null) {
@@ -1592,10 +1605,10 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
             const rep = computeCognitiveLoadReport(midMs);
             if (rep?.sampleCount >= 2 && rep.loadScore != null) { sum += rep.loadScore; cnt++; }
           } else if (type === 'emotion') {
-            const { computeStressReport } = require('../lib/stressAlgorithm');
-            const midMs = (parseDayKey(dk) || 0) + 12 * 3600 * 1000;
-            const rep = computeStressReport(midMs);
-            if (rep?.sampleCount >= 2 && rep.emotionalLoad != null) { sum += rep.emotionalLoad; cnt++; }
+            // ★ 2026-10-27（用户）：与首页「情绪」卡 + 折线图同口径 —— 用 stressScale.value（dailyStressValue），
+            //   不再用 computeStressReport().emotionalLoad（另一套数），保证「图」与「条」是同一个数。
+            const v = dailyStressValue(dk, (ring as any)?.sportSessions ?? null);
+            if (v != null) { sum += v; cnt++; }
           } else if (type === 'activity') {
             // ★ 2026-10-09：与**日视图同源**读 `ring.stepDaily[dk].calorie`（真实 kcal）。
             //   之前读 healthStore('calorie') 拿不到历史、还被归一化成 0–100 分数，导致周月年全 0。

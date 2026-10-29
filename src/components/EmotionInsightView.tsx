@@ -510,7 +510,7 @@ export default function EmotionInsightView({
           </Text>
           {showStress && (
             <>
-              <SectionTitle>心理压力 · 全天趋势</SectionTitle>
+              <SectionTitle>心理压力</SectionTitle>
               <EmotionTrendChart arousalSlots={arousalSlots} valenceSlots={valenceSlots} markers={trendMarkers} nowSlot={nowSlot} sleepWindow={sleepWindow} chartH={chartH} />
             </>
           )}
@@ -569,7 +569,7 @@ export default function EmotionInsightView({
             ★ 2026-10-09（psychological-stress-preview）：补三档图例 + 轴说明 + 「详细数据」折叠 */}
         {showStress ? (
           <>
-        <SectionTitle>心理压力 · 全天趋势</SectionTitle>
+        <SectionTitle>心理压力</SectionTitle>
         <EmotionTrendChart arousalSlots={arousalSlots} valenceSlots={valenceSlots} markers={trendMarkers} nowSlot={nowSlot} sleepWindow={sleepWindow} chartH={chartH} />
         <TouchableOpacity
           style={styles.mhRow}

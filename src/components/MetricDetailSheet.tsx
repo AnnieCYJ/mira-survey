@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: theme.colors.cardBg, // mira-ocean：0.7 白玻璃 chip + textSub 浅字不可读 → 深色玻璃
     marginRight: theme.space.xs,
   },
   rangeChipOn: { backgroundColor: theme.colors.accentSolid },

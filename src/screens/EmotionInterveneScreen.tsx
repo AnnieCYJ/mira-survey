@@ -475,13 +475,14 @@ export function EmotionReframe({ onClose }: { onClose: () => void }) {
               <Text style={ei.quoteText}>「{thought.trim() || '那句话'}」</Text>
             </View>
             <View style={[ei.quoteCard, { borderColor: mm.colors.purpleMid, backgroundColor: mm.colors.purpleTint }]}>
-              <Text style={ei.quoteMeta}>现在的</Text>
+              {/* ★ 对比度修复：purpleTint 浅底上白系 quoteMeta/输入文字不可读 → purpleDeep */}
+              <Text style={[ei.quoteMeta, { color: mm.colors.purpleDeep }]}>现在的</Text>
               <TextInput
                 value={reframe}
                 onChangeText={setReframe}
                 placeholder="「这件事没做好，但上周那次是做完了的」"
-                placeholderTextColor={mm.colors.inkFaint}
-                style={ei.quoteInput}
+                placeholderTextColor="rgba(110,88,200,0.55)"
+                style={[ei.quoteInput, { color: mm.colors.purpleDeep }]}
                 multiline
                 maxLength={80}
               />
@@ -1057,11 +1058,12 @@ const ei = StyleSheet.create({
   pill: { borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(1), backgroundColor: mm.colors.honeySoft },
   pillText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.honeyDeep },
 
-  /* 弹卡（PlanSheet）：遮罩 + 底部滑入的暖白大卡 */
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(31,29,26,0.42)', justifyContent: 'flex-end' },
+  /* 弹卡（PlanSheet）：遮罩 + 底部滑入的深色大卡（mira-ocean：原 cardBg 13% 玻璃太透，文字透底叠影 → 改深蓝紫实底） */
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheetCard: {
-    height: '78%', backgroundColor: theme.colors.cardBg,
+    height: '78%', backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder,
     overflow: 'hidden',
   },
   sheetGrabber: {
@@ -1180,9 +1182,9 @@ const ei = StyleSheet.create({
     backgroundColor: mm.colors.honeyTint, borderWidth: 1, borderColor: mm.colors.honeyMid,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(1), marginBottom: theme.sp(1),
   },
-  grKeyTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(22), fontWeight: theme.weight.bold as never, color: mm.colors.ink, marginTop: theme.sp(1.5), marginBottom: theme.sp(1.5) },
+  grKeyTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(22), fontWeight: theme.weight.bold as never, color: mm.colors.honeyDeep, marginTop: theme.sp(1.5), marginBottom: theme.sp(1.5) }, // ★ 对比度修复：honeyTint 浅底上白字不可读
   grKeyLine: { height: StyleSheet.hairlineWidth, backgroundColor: mm.colors.honeyMid, marginVertical: theme.sp(2) },
-  grKeyExpl: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: mm.colors.inkSoft },
+  grKeyExpl: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: 'rgba(151,111,26,0.9)' }, // ★ 对比度修复：honeyDeep 90% 压浅米黄
 
   /* 动一动 */
   card: {

@@ -25,6 +25,7 @@ import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import { moodFromEmotionLevel, MOOD_COLOR } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
+import { computeStressReport } from '../lib/stressAlgorithm';
 import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
@@ -906,8 +907,14 @@ export default function MetricDetailScreen() {
       ? Math.round(((series.latest - firstReal) / Math.abs(firstReal)) * 100)
       : 0;
   const hasData = series.latest != null || series.avg != null;
+  // ★ 2026-10-27（用户）：压力（身体负荷）页的 hero 必须与首页「身体负荷」卡同源 ——
+  //   用 computeStressReport().score（SDK 压力 /12×100，0–100），而非原始 0–12 序列值（series.latest）。
+  //   否则外卡显示 14/100、详情显示 1.x（原始值），口径打架。
+  const isStress = params.key === 'stress';
+  const stressScore = isStress ? (() => { try { return computeStressReport(anchor.getTime()).score; } catch { return null; } })() : null;
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
-  const heroVal = range === 'day' ? series.latest : series.avg;
+  const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
+  const heroUnit = isStress ? '/100' : (series.unit || undefined);
 
   // 打开「历史日」且当前指标无数据时，自动触发一次 backfill（需戒指已连接），
   // 让历史趋势图无需手动连戒指即可补拉。同一日期只触发一次，避免重复请求刷屏。
@@ -983,9 +990,9 @@ export default function MetricDetailScreen() {
             <View style={styles.pad}>
               <View style={styles.hero}>
                 <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
-                {series.unit ? <Text style={styles.heroUnit}>{series.unit}</Text> : null}
+                {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
                 {range !== 'day' && hasData ? <Text style={styles.heroTag}>区间平均</Text> : null}
-                {range === 'day' && hasData && deltaPct !== 0 && series.kind !== 'cycle' && (
+                {range === 'day' && hasData && !isStress && deltaPct !== 0 && series.kind !== 'cycle' && (
                   <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
                     {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
                   </Text>
@@ -1791,18 +1798,20 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
   );
 }
 
-/* ★ 2026-10-16：尿酸详情页——参考区间条（低 0–90 / 正常 90–360 / 高 360–1000 µmol/L）+ 分级 */
+/* ★ 2026-10-28：尿酸详情页参考区间条 —— 与全 App 其余口径统一为临床常用 155–428 µmol/L
+ * （BloodComponentPanel / quickCheckStore / ai.insight 均用 155–428；此前详情页错用 90–360/1000，
+ *   与面板、AI 结论打架，用户看不明白）。正常上限 428，偏高 >428，偏低 <155。 */
 const UA_MAX = 1000;
 const UA_TIERS = [
-  { key: 'low', name: '偏低', lo: 0, hi: 90, color: mm.colors.skyCore },
-  { key: 'normal', name: '正常', lo: 90, hi: 360, color: mm.colors.limeMid },
-  { key: 'high', name: '偏高', lo: 360, hi: UA_MAX, color: mm.colors.roseDeep },
+  { key: 'low', name: '偏低', lo: 0, hi: 155, color: mm.colors.skyCore },
+  { key: 'normal', name: '正常', lo: 155, hi: 428, color: mm.colors.limeMid },
+  { key: 'high', name: '偏高', lo: 428, hi: UA_MAX, color: mm.colors.roseDeep },
 ] as const;
 
 function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
   const dk = dateKeyOf(anchor.getTime());
   const val = latestVal('ua', dk);
-  const tier = val == null ? null : val < 90 ? UA_TIERS[0] : val < 360 ? UA_TIERS[1] : UA_TIERS[2];
+  const tier = val == null ? null : val < 155 ? UA_TIERS[0] : val < 428 ? UA_TIERS[1] : UA_TIERS[2];
   const markerPct = val == null ? 0 : Math.max(0, Math.min(100, (Math.min(val, UA_MAX) / UA_MAX) * 100));
 
   const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
@@ -1868,7 +1877,7 @@ function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: str
             </View>
           </>
         )}
-        <Text style={styles.note}>参考区间：偏低 0–90 / 正常 90–360 / 偏高 360–1000 µmol/L。仅供参考，不替代医学检测。</Text>
+        <Text style={styles.note}>参考区间：偏低 &lt;155 / 正常 155–428 / 偏高 &gt;428 µmol/L。仅供参考，不替代医学检测。</Text>
       </Card>
       <InsightBanner title="尿酸解读" rows={rows} onMore={() => openChat('帮我分析尿酸水平')} />
     </>
@@ -2597,7 +2606,7 @@ const styles = StyleSheet.create({
   partBtnOn: { backgroundColor: mm.colors.limeSoft, borderColor: mm.colors.limeMid },
   partBtnOff: { opacity: 0.4 },
   partBtnText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
-  partBtnTextOn: { color: mm.colors.ink, fontWeight: theme.weight.semibold as any },
+  partBtnTextOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any }, // ★ 对比度修复：白字压 limeSoft 不可读
   /** ★ 2026-10-10：柱状小条卡顶部的口径标签 / 有效数据计数 */
   specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
   specCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
@@ -2660,7 +2669,7 @@ const styles = StyleSheet.create({
   ecgCell: {
     flexBasis: '30%',
     flexGrow: 1,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: theme.colors.cardBg, // mira-ocean：0.6 白玻璃 + 浅字不可读 → 深色玻璃
     borderRadius: theme.radius.sm,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,

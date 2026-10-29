@@ -113,9 +113,12 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
       {/* ★ 2026-10-10（用户）：峰值时刻 + 作息类型，样式对标脑力消耗日视图「认知准备度」duoRow */}
       {range === 'day' ? (
         <View style={styles.duoRow}>
-          <View style={[styles.duoCell, { backgroundColor: mm.colors.limeSoft }]}>
+          {/* ★ 2026-10-20 对比度修复：浅色主题实色粉彩 limeSoft(#EAF0BE) 在深色 ocean 主题下
+              与白色 textTitle/textSub 组合 → 白字落在浅粉彩上不可读。改用 chipBg.lime 半透底
+              （深蓝紫上呈暗橄榄，白字/浅 lime 字对比达标，与 MOD_BG 同一套深色安全配色）。 */}
+          <View style={[styles.duoCell, { backgroundColor: mm.chipBg.lime.bg }]}>
             <Text style={styles.duoLab}>峰值时刻</Text>
-            <Text style={styles.duoTime}>{fmtHM(dayPeakH)}</Text>
+            <Text style={[styles.duoTime, { color: mm.chipBg.lime.fg }]}>{fmtHM(dayPeakH)}</Text>
             <Text style={styles.duoSub}>{dayPeakSub}</Text>
           </View>
           <View style={[styles.duoCell, { backgroundColor: theme.colors.cardBgSoft }]}>

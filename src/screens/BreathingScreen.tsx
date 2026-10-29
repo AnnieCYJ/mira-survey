@@ -49,16 +49,16 @@ export default function BreathingScreen() {
   const navigation = useNavigation<any>();
   // ★ 十八改：支持深链直达具体练习 —— 首页建议卡「去呼吸」带 params.breath，
   //   进入本页直接打开对应节奏的播放器（不再让用户在聚合页里自己找）。
-  const route = useRoute<{ key: string; name: string; params?: { breath?: PatternKey } }>();
-  const [breathPlayer, setBreathPlayer] = useState<null | { patternKey: PatternKey; duration: number }>(null);
+  const route = useRoute<{ key: string; name: string; params?: { breath?: PatternKey; completionId?: string } }>();
+  const [breathPlayer, setBreathPlayer] = useState<null | { patternKey: PatternKey; duration: number; completionId?: string }>(null);
   const [meditationTrack, setMeditationTrack] = useState<MeditationTrack | null>(null);
 
   const breathParam = route.params?.breath;
   useEffect(() => {
     if (!breathParam) return;
     const t = BREATH_TRACKS.find((x) => x.patternKey === breathParam);
-    if (t) setBreathPlayer({ patternKey: t.patternKey, duration: 5 });
-  }, [breathParam]);
+    if (t) setBreathPlayer({ patternKey: t.patternKey, duration: 5, completionId: route.params?.completionId });
+  }, [breathParam, route.params?.completionId]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -158,6 +158,7 @@ export default function BreathingScreen() {
           {breathPlayer && (
             <BreathingPlayer
               patternKey={breathPlayer.patternKey}
+              completionId={breathPlayer.completionId}
               duration={breathPlayer.duration}
               onClose={() => setBreathPlayer(null)}
             />

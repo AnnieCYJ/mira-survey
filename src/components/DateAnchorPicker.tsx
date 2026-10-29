@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.colors.cardBgStrong,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.card,
     borderTopRightRadius: theme.radius.card,
     paddingBottom: theme.space.lg,

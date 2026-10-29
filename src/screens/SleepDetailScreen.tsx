@@ -30,8 +30,10 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
+import { RingBle, type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
+// ★ 用与首页同源的「健康库刷新节拍」当依赖，睡眠记录到达后卡片才会跟着刷新
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 // ── v9 原型移植：睡眠节律 / 睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
 import SleepRhythmCard from '../components/SleepRhythmCard';
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
@@ -46,6 +48,10 @@ import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { reportNowMsForDay } from '../lib/dayAnchor';
+// ★ P0-2（2026-10-28）：行为关联面板（Pearson r + Cohen's d），置于详情页底部
+import BehaviorCorrelationPanel from '../components/BehaviorCorrelationPanel';
 
 
 interface DayRec {
@@ -465,8 +471,11 @@ export default function SleepDetailScreen() {
       ) : null}
 
       {dRange === 'day' ? (
-        /* 日：睡眠分析（可折叠，含整夜分期 + 生理信号子折叠）+ 睡眠节律（皮质醇） */
+        /* 日：脑力准备度（★ 2026-10-26 用户：睡眠分析上方加卡，展示当前准备度 + 脑力峰/谷时段，
+               与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan） */
         <>
+          <BrainReadinessCard anchorMs={anchor.getTime()} />
+
           <SleepAnalysisCard
             day={dayAnalysis.day}
             segments={dayAnalysis.segs}
@@ -545,7 +554,85 @@ export default function SleepDetailScreen() {
       {/* ★ 2026-10-09（用户：预览里没有这张卡）：移除月视图「睡眠·激素节律关联」，
           周/月/年 = 双轴图卡 + 多维度对比卡，与 sleep-recovery-preview.html 严格一致。 */}
 
+      {/* ★ P0-2（2026-10-28）：行为关联面板 —— 置于睡眠详情页底部，展示「哪些行为影响睡眠」（Pearson r + Cohen's d） */}
+      <BehaviorCorrelationPanel outcome="sleep" />
+
     </ScreenContainer>
+    </View>
+  );
+}
+
+
+/**
+ * BrainReadinessCard —— 「脑力准备度」卡片（日视图，置于「睡眠分析」上方）
+ *
+ * ★ 2026-10-26（用户）：睡眠恢复页要展示脑力准备度 + 脑力峰值/低谷时段。
+ *   与能量详情页「认知准备度」卡**同源同口径**：
+ *   - 当前准备度 `report.brainRemaining`（0–100，剩余脑力）；
+ *   - 峰/谷时段 `report.forecast.peakSpan / troughSpan`（节律拟合的 ±1.5h 区间，
+ *     没有全天数据也用基线预测，绝不插值；无预测则诚实显「—」）。
+ *   数据纪律：任一项缺失 → 显「—」，不猜、不拿演示数据顶替。
+ */
+function fmtSpan(span: { startHour: number; endHour: number } | null | undefined): string {
+  if (!span) return '—';
+  const f = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`;
+  return `${f(span.startHour)} – ${f(span.endHour)}`;
+}
+
+function BrainReadinessCard({ anchorMs }: { anchorMs: number }) {
+  const hsRefresh = useDebouncedHealthStoreRefresh(700);
+  // ★ 2026-10-27（审计 P2）：戒指断流（>3h 无采样）时，脑力准备度不得再显示旧预测值，
+  //   强制空态（与睡眠结构卡 / 节律卡 / 首页圆环同一口径）。
+  const dataStale = (RingBle.getState().curveStatus as any)?.dataStale === true;
+  const report = useMemo(() => {
+    try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs)); } catch { return null; }
+  }, [anchorMs, hsRefresh]);
+
+  const remain = !dataStale ? (report?.brainRemaining ?? null) : null;
+  const band = remain == null
+    ? null
+    : remain >= 70
+      ? { text: '充沛', color: theme.colors.success }
+      : remain >= 40
+        ? { text: '中等', color: theme.colors.warn }
+        : { text: '偏低', color: theme.colors.danger };
+
+  return (
+    <View style={styles.brCard}>
+      <View style={styles.brHead}>
+        <Text style={styles.brTitle}>脑力准备度</Text>
+        <Text style={[styles.brState, { color: band?.color ?? theme.colors.textSub }]}>
+          {band ? band.text : '暂无数据'}
+        </Text>
+      </View>
+
+      <View style={styles.brHero}>
+        <Text style={[styles.brNum, { color: band?.color ?? mm.colors.ink }]}>
+          {remain != null ? String(Math.round(remain)) : '—'}
+        </Text>
+        <Text style={styles.brUnit}>/100 · 当前</Text>
+      </View>
+
+      <View style={styles.brDuo}>
+        <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
+          <Text style={styles.brCellLab}>脑力峰值时段</Text>
+          <Text
+            style={[styles.brCellTime, { color: !dataStale && report?.forecast?.peakSpan ? theme.colors.success : theme.colors.textSub }]}
+          >
+            {!dataStale && report?.forecast?.peakSpan ? fmtSpan(report.forecast.peakSpan) : '—'}
+          </Text>
+          <Text style={styles.brCellSub}>适合深度思考</Text>
+        </View>
+        <View style={[styles.brCell, { backgroundColor: theme.colors.danger + '1A' }]}>
+          <Text style={styles.brCellLab}>脑力低谷时段</Text>
+          <Text
+            style={[styles.brCellTime, { color: !dataStale && report?.forecast?.troughSpan ? theme.colors.danger : theme.colors.textSub }]}
+          >
+            {!dataStale && report?.forecast?.troughSpan ? fmtSpan(report.forecast.troughSpan) : '—'}
+          </Text>
+          <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -559,6 +646,31 @@ const styles = StyleSheet.create({
   //   只有睡眠恢复用了 h1 显得特别大。
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  /* ── 脑力准备度卡（日视图，置于睡眠分析上方）── */
+  brCard: {
+    ...theme.shadow.card,
+    backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    padding: theme.space.cardPad,
+    marginBottom: theme.space.md,
+  },
+  brHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.space.sm },
+  brTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink },
+  brState: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
+  brHero: { flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.space.sm },
+  brNum: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold, color: mm.colors.ink, lineHeight: 48 },
+  brUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: theme.sp(1.5) },
+  brDuo: { flexDirection: 'row', gap: theme.space.sm },
+  brCell: {
+    flex: 1,
+    borderRadius: theme.radius.md,
+    padding: theme.space.sm,
+  },
+  brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  brCellTime: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   chartCard: {
     ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,

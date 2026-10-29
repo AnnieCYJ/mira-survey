@@ -69,9 +69,11 @@ export const colors = {
   textTitle: '#FFFFFF',
   textBody: 'rgba(255,255,255,0.82)',
   /**
-   * textSub —— 次级文字。★ mira-ocean：白 62%，深蓝紫底（#2B3564）上对比 ≈4.9，达标 AA。
+   * textSub —— 次级文字。★ mira-ocean：白 62% → 提至 74%（2026-10-28）：
+   *   半透明白卡（cardBg 0.13）叠在深蓝紫底上，62% 白字实测发糊；
+   *   提至 74% 仍明显低于 textBody(0.82)/ink(1.0)，层级不变，但全 App 次级文字可读性显著改善。
    */
-  textSub: 'rgba(255,255,255,0.62)',
+  textSub: 'rgba(255,255,255,0.74)',
   /** tab 未选中标签：白 55%；选中改长春花蓝 */
   textNavIdle: 'rgba(255,255,255,0.55)',
   textNavOn: '#BFCBFF',

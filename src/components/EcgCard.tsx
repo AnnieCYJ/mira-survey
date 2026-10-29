@@ -151,7 +151,7 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
             ['HRV', `${Math.round(latest.aveHrv)}`, 'ms'],
             ['呼吸', `${Math.round(latest.aveResRate)}`, '次/分'],
           ].map(([k, v, u]) => (
-            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.ui.white55, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
+            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{k}</Text>
               <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>{v}</Text>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{u}</Text>
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   waveBox: {
     height: 40,
-    backgroundColor: theme.colors.ui.white55,
+    backgroundColor: theme.colors.ui.offTrack, // mira-ocean：white55(0.55) 浅盒 + 红波形 → 改深色轨迹盒，与 ecgChart 一致
     borderRadius: theme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: '100%',
     height: 4,
-    backgroundColor: theme.colors.ui.white25,
+    backgroundColor: theme.colors.ui.scrimSoft,
     borderRadius: theme.sp(0.5),
     overflow: 'hidden',
   },

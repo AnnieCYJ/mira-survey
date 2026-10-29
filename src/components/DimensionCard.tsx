@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
   tagText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   main: { flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) },
   val: {

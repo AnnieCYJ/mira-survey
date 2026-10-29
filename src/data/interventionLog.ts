@@ -13,6 +13,7 @@ export type InterventionKind =
   | 'breath' | 'meditate';
 
 export interface InterventionEntry {
+  completionId?: string;
   kind: InterventionKind;
   /** 完成时间戳(ms) */
   ts: number;
@@ -75,6 +76,7 @@ export function addBreathCompletion(
   kind: 'breath' | 'meditate',
   detail: string,
   meta?: {
+    completionId?: string;
     stateBefore?: string | null;
     stateAfter?: string | null;
     valueBefore?: number | null;
@@ -87,6 +89,7 @@ export function addBreathCompletion(
     kind,
     ts: Date.now(),
     detail,
+    completionId: meta?.completionId,
     stateBefore: meta?.stateBefore ?? null,
     stateAfter: meta?.stateAfter ?? null,
     valueBefore: meta?.valueBefore ?? null,

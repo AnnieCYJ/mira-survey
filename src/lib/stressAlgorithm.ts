@@ -200,8 +200,10 @@ function computeStressReportUncached(nowMs: number): StressReport {
   );
 
   // ── HRV ──
-  const todayKey = new Date(nowMs).toISOString().slice(0, 10);
-  const yesterday = new Date(nowMs - 86400000).toISOString().slice(0, 10);
+  // ★ 2026-10-28 修复时区 bug：以下 day key 原本用 toISOString()(UTC) 取日期，在 UTC+8 下会读错天。
+  //   全仓 day key 统一用本地 dayKey(nowMs)，与 healthStore 口径一致（cross-day 清零/读对天的前提）。
+  const todayKey = dayKey(nowMs);
+  const yesterday = dayKey(nowMs - 86400000);
   const hrvNow = healthStore.getDay('hrv' as MetricKey, todayKey)?.mean ?? null;
   const hrvYest = healthStore.getDay('hrv' as MetricKey, yesterday)?.mean ?? null;
   let hrvTrend: 'up' | 'down' | 'stable' | null = null;
@@ -210,19 +212,37 @@ function computeStressReportUncached(nowMs: number): StressReport {
     hrvTrend = diff > 0.1 ? 'up' : diff < -0.1 ? 'down' : 'stable';
   }
 
-  // ── 当前压力分 ──
-  // ★ SDK 成熟算法转正（v19.52）：Veepoo 端上 stress(0-12) 由 HRV+HR+PPG 多信号融合，
-  //   是厂商标定过的输出 → 主源。EDA z-score 公式仅在 SDK stress 缺失时兜底。
-  const sdkStressRecent = healthStore.getTimeRange('stress', nowMs - SCORE_WINDOW_MS, nowMs, { fillDailyMean: false, maxPoints: 24 });
-  const sdkStressLatest = sdkStressRecent.length > 0 ? sdkStressRecent[sdkStressRecent.length - 1].v : null;
+  // ── 身体负荷分（0–100，与 healthStore 中 stress 量程一致）──
+  // ★ 修复（2026-10-27）：healthStore['stress'] 已是 0–100 量程——原生 SDK stressIndex 为 [1,99]
+  //   （RingBleManager:406「精神压力 [1,99]」），metrics.ts 定义 range 0–100，offlineEstimates 以
+  //   stress 25~35 为典型映射源；旧代码误按 Veepoo 另一套 0–12 折算 score = sdkStressLatest/12*100 →
+  //   任何真实压力 ≥12（0–100 量程下几乎必然）都被钳到 100，造成「外面永远 100、里面柱子 ≈14~35」的假满格。
+  //   现改为：身体负荷 = 当日 stress 全天均值（0–100，优先用 healthStore 日聚合 mean，缺则退 intraday 均值），
+  //   与详情页柱状图同源同量程，外面卡片 / 详情大数字 / 详情柱状图三者口径彻底统一。
+  // ★ 2026-10-28 修复「跨天不清零 / 读错天」：原 `new Date(dayStart).toISOString().slice(0,10)`
+  //   按 **UTC** 取日期，在 UTC+8 下本地午夜 = UTC 前一天 16:00 → anchorDayKey 永远比真实本地
+  //   日期少一天，身体负荷读到**昨天**的 stress 日均值；今天无数据时不会显示「暂无数据」而是顶昨天的
+  //   值，造成「没有跨天清零」。healthStore 的 day key 全仓统一用本地 `dayKey(ts)`，故此处也必须用
+  //   本地日期，与 store 口径一致。
+  const anchorDayKey = dayKey(nowMs);
+  const stressDayMean = healthStore.getDay('stress' as MetricKey, anchorDayKey)?.mean ?? null;
+  let stressMean: number | null = stressDayMean;
+  if (stressMean == null) {
+    const dayStress = healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: false, maxPoints: 480 });
+    stressMean = dayStress.length > 0
+      ? dayStress.reduce((a, p) => a + (p.v ?? 0), 0) / dayStress.length
+      : null;
+  }
   const edaNow = filtered[filtered.length - 1]?.v ?? null;
   let score: number | null = null;
   let level: StressLevel | null = null;
-  if (sdkStressLatest != null) {
-    score = Math.round(Math.max(0, Math.min(100, (sdkStressLatest / 12) * 100)));
-    // SDK 档位（Veepoo 0-12 分级惯例）: 0-3 放松 / 4-6 轻度 / 7-9 中度 / 10-12 高压
-    level = sdkStressLatest <= 3 ? 'calm' : sdkStressLatest <= 6 ? 'mild' : sdkStressLatest <= 9 ? 'moderate' : 'high';
+  if (stressMean != null) {
+    score = Math.round(Math.max(0, Math.min(100, stressMean)));
+    // 0–100 档位（对齐 quickCheckStore 压力等级 1–29 放松 / 30–59 正常 / 60–79 中等 / 80–99 压力较大，
+    //   以及 CalmWaveHome 负荷阈值 <30 轻松 / <55 适中 / 其余偏重）：
+    level = score <= 29 ? 'calm' : score <= 59 ? 'mild' : score <= 79 ? 'moderate' : 'high';
   } else if (edaNow != null && recentStats && recentStats.std > 0.01) {
+    // 兜底层（无 SDK stress 时）：用 EDA z-score 估算（保持原逻辑）
     const z = (edaNow - recentStats.mean) / recentStats.std;
     score = Math.round(Math.max(0, Math.min(100, 40 + z * 15)));
     if (hrvTrend === 'down' && z > 0.5) score = Math.min(100, score + 10);
@@ -428,7 +448,7 @@ function computeStressReportUncached(nowMs: number): StressReport {
     // ── 多日基线 (过去 2 天) ──
     const daysBack: string[] = [];
     for (let i = 1; i <= 2; i++) {
-      daysBack.push(new Date(nowMs - i * 86400000).toISOString().slice(0, 10));
+      daysBack.push(dayKey(nowMs - i * 86400000));
     }
     const meanOf = (key: MetricKey) => {
       const vs = daysBack.map((dk) => healthStore.getDay(key, dk)?.mean ?? null).filter((v): v is number => v != null);

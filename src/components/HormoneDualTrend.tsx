@@ -22,7 +22,7 @@
  */
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Rect, Stop, Circle, Line } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Path, Rect, Stop, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { chart } from '../theme/chart';
@@ -31,10 +31,12 @@ import { phaseBand } from '../lib/phaseColors';
 import { buildEstrogenData, buildProgesteroneData, cycleAxis, phaseOfDay, type TrendRange } from '../lib/hormoneTrend';
 import type { RingState } from '../ble/RingBleManager';
 
-/** ★ 2026-10-12（用户：雌激素线颜色加深 + 只展示雌激素）：
- *  雌激素线由淡黄绿 limeCore #D5E384 改为同色系深档 limeDeep #6E7A24（白卡/浅色带上均清晰）。 */
-const EST_COLOR = mm.colors.limeDeep; // 深橄榄绿 #6E7A24
-const PROG_COLOR = theme.colors.accentSolid; // 紫 #7C6AE0（onlyEstrogen 时不画，保留常量备用）
+/** ★ 2026-10-21（用户：皮质醇等趋势线是亮色，生理周期这条却偏暗，要调亮一致）：
+ *  雌激素线由深橄榄绿 limeDeep #6E7A24 改回亮黄绿 limeMid #BCCB62（与皮质醇亮绿同家族，深色玻璃卡上更跳）；
+ *  孕激素由 accentSolid #7C6AE0 改为亮薰衣草紫 purpleCore #9D8AF0。
+ *  背景四相色带仅 0.14~0.2 透明度，叠在深色玻璃卡上整体仍偏暗，亮线可清晰浮起。 */
+const EST_COLOR = mm.colors.limeMid; // 亮黄绿 #BCCB62（与皮质醇 series.cortisol 同家族）
+const PROG_COLOR = mm.colors.purpleCore; // 亮薰衣草紫 #9D8AF0（onlyEstrogen 时不画，保留常量备用）
 const RANGE: TrendRange = 'month';
 
 type Pt = { x: number; y: number; date: string };
@@ -200,16 +202,10 @@ export default function HormoneDualTrend({
             ) : null}
             {estPath ? <Path d={`${estPath} L ${estPts[estPts.length - 1].x.toFixed(1)} ${(PAD + plotH).toFixed(1)} L ${estPts[0].x.toFixed(1)} ${(PAD + plotH).toFixed(1)} Z`} fill="url(#dualEstGrad)" /> : null}
             {!onlyEstrogen && progPath ? <Path d={`${progPath} L ${progPts[progPts.length - 1].x.toFixed(1)} ${(PAD + plotH).toFixed(1)} L ${progPts[0].x.toFixed(1)} ${(PAD + plotH).toFixed(1)} Z`} fill="url(#dualProgGrad)" /> : null}
-            {!onlyEstrogen && progPath ? <Path d={progPath} fill="none" stroke={PROG_COLOR} strokeWidth={2.4} strokeLinecap="round" /> : null}
-            {estPath ? <Path d={estPath} fill="none" stroke={EST_COLOR} strokeWidth={2.4} strokeLinecap="round" /> : null}
-            {!onlyEstrogen
-              ? progPts.map((p, i) => (
-                  <Circle key={`p${i}`} cx={p.x} cy={p.y} r={2.6} fill={PROG_COLOR} />
-                ))
-              : null}
-            {estPts.map((p, i) => (
-              <Circle key={`e${i}`} cx={p.x} cy={p.y} r={2.6} fill={EST_COLOR} stroke="#FFFFFF" strokeWidth={1} />
-            ))}
+            {/* ★ 2026-10-20（用户：「生理周期节律下面那卡片，点圆圈不应该有，去掉」）：
+                移除每个数据点的实心圆点，只保留平滑曲线；线宽 2.4 → 3 提升清晰度。 */}
+            {!onlyEstrogen && progPath ? <Path d={progPath} fill="none" stroke={PROG_COLOR} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
+            {estPath ? <Path d={estPath} fill="none" stroke={EST_COLOR} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
           </Svg>
 
           {/* ★ 2026-10-12：横坐标双行——上「第 N 天」/ 下对应日期（周期轴）；回退窗口单行日期 */}

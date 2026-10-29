@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 日历页重设计预览 v2</title>
+<style>
+  :root{
+    --bg-top:#3E627A; --bg-mid:#2A4470; --bg-bottom:#2B3564;
+    --card:rgba(255,255,255,0.13);
+    --card-soft:rgba(255,255,255,0.08);
+    --border:rgba(255,255,255,0.22);
+    --ink:#FFFFFF;
+    --body:rgba(255,255,255,0.82);
+    --sub:rgba(255,255,255,0.62);
+    --faint:rgba(255,255,255,0.50);
+    --purple:#9D8AF0; --purple-deep:#6E58C8;
+    --sky:#7EA6F8; --lime:#BCCB62; --lime-deep:#6E7A24;
+    --honey:#F0C46E; --gold:#B98A2E;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;background:#11161f;display:flex;justify-content:center;padding:24px 0;}
+  .phone{width:390px;min-height:844px;border-radius:44px;overflow:hidden;background:linear-gradient(180deg,var(--bg-top) 0%,var(--bg-mid) 42%,var(--bg-bottom) 100%);box-shadow:0 24px 60px rgba(0,0,0,0.45);position:relative;padding:54px 18px 40px;}
+  .notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:30px;background:#0c0f16;border-radius:18px;}
+  .nav{display:flex;align-items:center;gap:6px;margin:0 2px 14px;}
+  .nav .chev{font-size:22px;color:var(--ink);line-height:1;}
+  .nav .title{font-size:19px;font-weight:700;color:var(--ink);letter-spacing:.5px;}
+  .nav .sub{margin-left:auto;font-size:12px;color:var(--sub);}
+
+  .cal{margin:0 0 18px;}
+  .cal-week{display:flex;gap:6px;margin-bottom:6px;}
+  .cal-week span{flex:1;text-align:center;font-size:11px;color:var(--sub);font-weight:600;}
+  .cal-grid{display:flex;flex-wrap:wrap;gap:6px;}
+  .cal-cell{width:calc((100% - 36px)/7);aspect-ratio:1;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--sub);}
+  .cal-cell.today{background:rgba(249,196,110,0.18);color:var(--gold);font-weight:700;}
+
+  .stack{display:flex;flex-direction:column;gap:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:20px 18px;}
+  .card-head{display:flex;align-items:center;gap:9px;}
+  .card-head .ico{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+  .card-head .htitle{font-size:16px;font-weight:700;color:var(--ink);}
+  .head-actions{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .btn-fav{font-size:16px;color:var(--sub);cursor:pointer;user-select:none;transition:transform .15s;}
+  .btn-fav.on{color:var(--gold);transform:scale(1.1);}
+  .btn-chev{font-size:15px;color:var(--sub);cursor:pointer;transition:transform .2s;user-select:none;}
+  .btn-chev.on{transform:rotate(180deg);}
+
+  .card-body{overflow:hidden;}
+  .card-body.hide{display:none;}
+
+  /* 热力图 */
+  .hm{display:flex;flex-direction:column;gap:6px;margin-top:16px;}
+  .hm-row{display:flex;align-items:center;gap:6px;}
+  .hm-lab{width:34px;font-size:10px;color:var(--faint);text-align:center;font-weight:600;}
+  .hm-cell{flex:1;aspect-ratio:1;border-radius:5px;background:var(--card-soft);}
+  .hm-legend{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:12px;}
+  .hm-legend .t{font-size:10px;color:var(--faint);}
+  .hm-legend .s{width:11px;height:11px;border-radius:3.5px;}
+  .hm-big{margin-top:18px;}
+  .hm-num{font-size:30px;font-weight:800;color:var(--purple);letter-spacing:-1px;line-height:1;}
+  .hm-num .u{font-size:14px;font-weight:600;color:var(--sub);margin-left:3px;}
+  .hm-lab2{font-size:12px;color:var(--sub);margin-top:4px;line-height:17px;}
+
+  /* 合并卡内的「你做过多少次」小标题 + obs 行 */
+  .sub-label-row{display:flex;align-items:center;gap:8px;margin:22px 0 14px;cursor:pointer;user-select:none;}
+  .sub-label{font-size:11px;font-weight:700;color:var(--faint);letter-spacing:1px;}
+  .sub-label-row .btn-chev{font-size:15px;color:var(--sub);transition:transform .2s;margin-left:auto;transform:rotate(180deg);}
+  .sub-label-row .btn-chev.on{transform:rotate(0deg);}
+  .obs{display:flex;gap:12px;align-items:flex-start;position:relative;}
+  .obs + .obs{margin-top:18px;}
+  .obs-ico{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-top:1px;}
+  .obs-body{flex:1;min-width:0;}
+  .obs-text{font-size:13.5px;line-height:20px;color:var(--body);}
+  .obs-text b{color:var(--ink);font-weight:700;}
+  .obs-chip{align-self:flex-start;border-radius:999px;padding:3px 10px;margin-top:8px;font-size:10.5px;font-weight:700;display:inline-block;}
+  .obs-del{position:absolute;top:0;right:0;font-size:11px;color:var(--faint);cursor:pointer;}
+
+  .card-note{font-size:11px;color:var(--faint);margin-top:18px;line-height:16px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="notch"></div>
+
+  <div class="nav">
+    <span class="chev">‹</span>
+    <span class="title">十月 2026</span>
+    <span class="sub">第 4 周</span>
+  </div>
+
+  <div class="cal">
+    <div class="cal-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+    <div class="cal-grid">
+      <div class="cal-cell">29</div><div class="cal-cell">30</div><div class="cal-cell">1</div><div class="cal-cell">2</div><div class="cal-cell">3</div><div class="cal-cell">4</div><div class="cal-cell">5</div>
+      <div class="cal-cell">6</div><div class="cal-cell">7</div><div class="cal-cell">8</div><div class="cal-cell">9</div><div class="cal-cell">10</div><div class="cal-cell">11</div><div class="cal-cell">12</div>
+      <div class="cal-cell">13</div><div class="cal-cell">14</div><div class="cal-cell">15</div><div class="cal-cell">16</div><div class="cal-cell">17</div><div class="cal-cell">18</div><div class="cal-cell">19</div>
+      <div class="cal-cell">20</div><div class="cal-cell">21</div><div class="cal-cell">22</div><div class="cal-cell">23</div><div class="cal-cell">24</div><div class="cal-cell">25</div><div class="cal-cell">26</div>
+      <div class="cal-cell">27</div><div class="cal-cell today">28</div><div class="cal-cell">29</div><div class="cal-cell">30</div><div class="cal-cell">31</div><div class="cal-cell"></div><div class="cal-cell"></div>
+    </div>
+  </div>
+
+  <div class="stack">
+
+    <!-- ① 合并大卡：你的本月节奏（含「你做过多少次」） -->
+    <div class="card">
+      <div class="card-head">
+        <div class="htitle">你的本月节奏</div>
+        <div class="head-actions">
+          <span class="btn-fav" id="favA" onclick="this.classList.toggle('on')">🔖</span>
+        </div>
+      </div>
+
+      <div class="card-body" id="bodyA">
+        <div class="hm">
+          <div class="hm-row"><div class="hm-lab">凌晨</div>
+            <div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.18)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.12)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div>
+          </div>
+          <div class="hm-row"><div class="hm-lab">上午</div>
+            <div class="hm-cell" style="background:rgba(255,255,255,0.12)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.16)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.22)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.14)"></div>
+          </div>
+          <div class="hm-row"><div class="hm-lab">下午</div>
+            <div class="hm-cell" style="background:rgba(255,255,255,0.14)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.18)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.12)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.22)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.16)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div><div class="hm-cell" style="background:rgba(255,255,255,0.10)"></div>
+          </div>
+          <div class="hm-row"><div class="hm-lab">晚上</div>
+            <div class="hm-cell" style="background:rgba(157,138,240,0.30)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.55)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.45)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.62)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.50)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.38)"></div><div class="hm-cell" style="background:rgba(157,138,240,0.55)"></div>
+          </div>
+        </div>
+        <div class="hm-legend">
+          <span class="t">少</span>
+          <span class="s" style="background:rgba(255,255,255,0.10)"></span>
+          <span class="s" style="background:rgba(255,255,255,0.20)"></span>
+          <span class="s" style="background:rgba(157,138,240,0.45)"></span>
+          <span class="s" style="background:rgba(157,138,240,0.65)"></span>
+          <span class="t">多</span>
+        </div>
+
+        <div class="hm-big">
+          <div class="hm-num">44<span class="u">%</span></div>
+          <div class="hm-lab2">你的记录出现在晚上 · 约一半的活跃都落在 21 点之后</div>
+        </div>
+
+        <!-- 合并进来的「你做过多少次」（右侧下拉箭头可折叠） -->
+        <div class="sub-label-row" onclick="toggleCount()">
+          <span class="sub-label">你做过多少次</span>
+          <span class="btn-chev" id="chevCount">⌄</span>
+        </div>
+        <div id="countBody">
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(240,196,110,0.20);">🍱</div>
+          <div class="obs-body">
+            <div class="obs-text"><b>记饮食</b> · 18 次</div>
+            <span class="obs-chip" style="background:rgba(240,196,110,0.20);color:var(--honey);">10-03 起 · 约 1.3 次/周</span>
+          </div>
+        </div>
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(126,166,248,0.20);">🫁</div>
+          <div class="obs-body">
+            <div class="obs-text"><b>呼吸练习</b> · 12 次</div>
+            <span class="obs-chip" style="background:rgba(126,166,248,0.20);color:var(--sky);">10-05 起 · 约 0.9 次/周</span>
+          </div>
+        </div>
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(157,138,240,0.20);">🏃</div>
+          <div class="obs-body">
+            <div class="obs-text"><b>运动</b> · 9 次</div>
+            <span class="obs-chip" style="background:rgba(157,138,240,0.20);color:var(--purple);">10-08 起 · 约 0.6 次/周</span>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 规律观察（改用 obs 样式：左图标 + 文字 + 文字下方 chip；删掉右上角；去 chip/问问Mira/挺准） -->
+    <div class="card">
+      <div class="card-head">
+        <div class="htitle">规律观察</div>
+        <div class="head-actions">
+          <span class="btn-fav" id="favB" onclick="this.classList.toggle('on')">🔖</span>
+        </div>
+      </div>
+
+      <div class="card-body" id="bodyB">
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(126,166,248,0.20);">🫁</div>
+          <div class="obs-body">
+            <div class="obs-text">你做过的呼吸练习几乎都在晚上 —— <b>25 次里有 19 次在 21 点以后</b>。</div>
+            <span class="obs-chip" style="background:rgba(126,166,248,0.20);color:var(--sky);">夜间 21:00–24:00 · 19 / 25 次</span>
+          </div>
+          <div class="obs-del">删掉</div>
+        </div>
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(240,196,110,0.20);">🍱</div>
+          <div class="obs-body">
+            <div class="obs-text">认真记饮食的那 6 天，你的深睡平均 36%；没记的 17 天平均 34%。</div>
+            <span class="obs-chip" style="background:rgba(240,196,110,0.20);color:var(--honey);">记饮食 6 天 · 没记 17 天</span>
+          </div>
+          <div class="obs-del">删掉</div>
+        </div>
+        <div class="obs">
+          <div class="obs-ico" style="background:rgba(249,196,110,0.20);">🌙</div>
+          <div class="obs-body">
+            <div class="obs-text">深睡占比从月初的 30% 走到月末的 40%。数字不大，但方向很清楚。</div>
+            <span class="obs-chip" style="background:rgba(249,196,110,0.20);color:var(--gold);">+10 个百分点</span>
+          </div>
+          <div class="obs-del">删掉</div>
+        </div>
+        <div class="card-note">这些是从你自己的数据里看出来的规律，不是诊断；不想看就点右上角删掉。</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function toggleCount(){
+    var body=document.getElementById('countBody');
+    var chev=document.getElementById('chevCount');
+    if(body.classList.contains('hide')){body.classList.remove('hide');chev.classList.remove('on');}
+    else{body.classList.add('hide');chev.classList.add('on');}
+  }
+</script>
+</body>
+</html>

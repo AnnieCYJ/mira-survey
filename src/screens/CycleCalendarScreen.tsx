@@ -70,6 +70,9 @@ import SymptomStatsPanel from '../components/SymptomStatsPanel';
 import SymptomPhaseMatrix from '../components/SymptomPhaseMatrix';
 import CycleRegularityCard from '../components/CycleRegularityCard';
 import CycleYearReviewCard from '../components/CycleYearReviewCard';
+// ★ P1-1 / P1-2（2026-10-28）：孕期洞察卡 + 受孕窗卡
+import PregnancyCard from '../components/PregnancyCard';
+import FertileWindowCard from '../components/FertileWindowCard';
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -177,12 +180,23 @@ export default function CycleCalendarScreen() {
   const [recordOpen, setRecordOpen] = useState(false);
   // ★ 2026-10-13：今日练习卡（呼吸/冥想完成记录）数据源
   const [practiceTick, setPracticeTick] = useState(0);
+  // ★ P1-1（2026-10-28）：孕期模式开关（读取本地 log.pregnant；写入时连同 pregnancyLmp 一并保存）
+  const [pregnancyOn, setPregnancyOn] = useState<boolean>(false);
   useEffect(() => {
-    void loadCycleLog().then(setLocalLog);
+    void loadCycleLog().then((l) => { setLocalLog(l); setPregnancyOn(!!l?.pregnant); });
     void loadPeriodDays().then(setPeriodDays);
     // 确保干预记录已落盘加载，再触发一次重算
     void ensureInterventionLogLoaded().then(() => setPracticeTick((t) => t + 1));
   }, []);
+
+  /** 切换孕期模式并持久化（写入 cycleLog.pregnant；若开启且尚无 LMP，则用 lastPeriodStart 兜底） */
+  const togglePregnancy = async (on: boolean) => {
+    setPregnancyOn(on);
+    if (!log) return;
+    const next: CycleLog = { ...log, pregnant: on || undefined, pregnancyLmp: on ? (log.pregnancyLmp ?? log.lastPeriodStart) : log.pregnancyLmp };
+    await saveCycleLog(next);
+    void loadCycleLog().then(setLocalLog);
+  };
 
   const log = mergeCycleLog(ring, localLog);
   const hasLog = !!log;
@@ -517,6 +531,25 @@ export default function CycleCalendarScreen() {
             {/* ★ 2026-10-07（用户要求）：记录 / 修改入口 —— 月相环（或网格）正下方 */}
             {recordRowNode}
 
+            {/* ★ P1-1（2026-10-28）：孕期模式开关（开启且填了末次经期时，下方显示孕期卡） */}
+            {hasLog && (
+              <View style={styles.pregToggleRow}>
+                <Text style={styles.pregToggleLabel}>孕期模式</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => togglePregnancy(!pregnancyOn)}
+                  style={[styles.pregToggle, pregnancyOn && styles.pregToggleOn]}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: pregnancyOn }}
+                >
+                  <View style={[styles.pregKnob, pregnancyOn && styles.pregKnobOn]} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {pregnancyOn && (
+              <PregnancyCard pregnant={true} lmp={log?.pregnancyLmp ?? log?.lastPeriodStart} onEditLmp={() => setRecordOpen(true)} />
+            )}
+
             {/* ★ 2026-10-07（用户：圆环与「记录 / 修改」下方加两个 tab）：
                 「周期分析」= 周期指标 / 规律性 / 体温双相 / 症状统计；
                 「激素节律分析」= 雌激素 + 孕激素 两张趋势图与分析 */}
@@ -538,6 +571,8 @@ export default function CycleCalendarScreen() {
                   ring={ring}
                   periodDays={periodDays}
                 />
+                {/* ★ P1-2（2026-10-28）：受孕窗卡 —— 置于「周期分析」tab（周期指标之后），与 Oura 受孕窗对标 */}
+                <FertileWindowCard log={log} cycleInfo={cycleInfo} />
                 {/* ★ 2026-10-07（用户：「生理周期是否准确？每个生理周期是不准确，还是推迟了？我记得 oura 有」）：
                     周期规律性 + 每个周期的提前/推迟 + 该周期记症状天数 */}
                 <CycleRegularityCard cycleStarts={cycleStarts} baseCycleLength={cycleLen} periodDays={periodDays} />
@@ -619,15 +654,12 @@ export default function CycleCalendarScreen() {
         onSave={onSaveDay}
       />
 
-      {/* ★ 2026-10-07：记录 / 修改经期 Sheet —— 内容与洞察页卡片的「记录 / 修改」完全一致
-          （PeriodRecordPanel：日期 / 经量 / 疼痛 / 心情 / 身体症状 / 设为本次经期第一天） */}
+      {/* ★ 2026-10-27（用户）：当日记录/经期记录弹窗改为全屏 + 深板岩背景（与首页 AI 分析区、DaySheet 同色系），
+          不再用底部浅玻璃 sheet，避免透出日历看不清。 */}
       <Modal visible={recordOpen} transparent animationType="slide" onRequestClose={() => setRecordOpen(false)}>
-        <View style={styles.sheetMask}>
-          <View style={[styles.sheet, styles.recordSheet]}>
-            <View style={styles.sheetHandle} />
-            {/* ★ 2026-10-07（用户：打开近期记录后关不掉、卡住了）：原来这张 Sheet 只能靠底部「保存记录」退出，
-                不想保存就无路可走 → 补上标准的右上角关闭按钮。 */}
-            <View style={styles.recordSheetHead}>
+        <View style={styles.daySheetMask}>
+          <View style={styles.daySheet}>
+            <View style={styles.daySheetHead}>
               <Text style={styles.sheetDate}>经期记录</Text>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -636,7 +668,7 @@ export default function CycleCalendarScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="关闭"
               >
-                <Text style={styles.recordSheetClose}>✕</Text>
+                <Text style={styles.daySheetClose}>✕</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.recordSheetBody} showsVerticalScrollIndicator={false}>
@@ -945,10 +977,22 @@ function DaySheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.sheetMask}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetDate}>{dt.getFullYear()} 年 {dt.getMonth() + 1} 月 {dt.getDate()} 日</Text>
+      <View style={styles.daySheetMask}>
+        <View style={styles.daySheet}>
+          {/* ★ 2026-10-27（用户）：日历日弹窗改为全屏 + 顶部关闭按钮；背景改深板岩，与首页 AI 分析区同色系 */}
+          <View style={styles.daySheetHead}>
+            <Text style={styles.sheetDate}>{dt.getFullYear()} 年 {dt.getMonth() + 1} 月 {dt.getDate()} 日</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={onClose}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+              accessibilityRole="button"
+              accessibilityLabel="关闭"
+            >
+              <Text style={styles.daySheetClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.daySheetBody} showsVerticalScrollIndicator={false}>
           <View style={styles.sheetPhaseRow}>
             <View style={[styles.sheetPhaseTag, { backgroundColor: phaseBg(ph, 0.2) }]}>
               <Text style={[styles.sheetPhaseText, { color: PHASE_COLOR[ph] }]}>{PHASE_LABEL[ph]}</Text>
@@ -999,6 +1043,7 @@ function DaySheet({
           <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={styles.cancelBtn}>
             <Text style={styles.cancelBtnText}>取消</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -1151,12 +1196,19 @@ const styles = StyleSheet.create({
   recordBtn: { borderRadius: theme.radius.pill, overflow: 'hidden' },
   recordBtnGrad: { paddingVertical: theme.sp(2), paddingHorizontal: theme.space.lg, borderRadius: theme.radius.pill, alignItems: 'center' },
   recordBtnText: { color: mm.colors.btnTextOnGrad, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any },
+  /* ★ P1-1（2026-10-28）：孕期模式开关 */
+  pregToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  pregToggleLabel: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.medium as any },
+  pregToggle: { width: 48, height: 28, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)', padding: 3, justifyContent: 'center' },
+  pregToggleOn: { backgroundColor: mm.colors.limeDeep, alignItems: 'flex-end' },
+  pregKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF' },
+  pregKnobOn: { backgroundColor: '#FFFFFF' },
   /* ★ 2026-10-07：记录面板复用洞察页那张（内容较高），Sheet 只需封顶高度 + 可滚动 */
   recordSheet: { maxHeight: '88%' },
   recordSheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   recordSheetClose: { fontSize: theme.fontSize.card, color: theme.colors.textSub, fontWeight: theme.weight.bold as any },
   /* minHeight: 0 + flexShrink: 1 —— 让 ScrollView 在封顶高度的 Sheet 里真正可滚动（不会把底部按钮顶出屏幕） */
-  recordSheetBody: { marginTop: theme.space.xs, flexShrink: 1, minHeight: 0 },
+  recordSheetBody: { marginTop: theme.space.xs, flex: 1, minHeight: 0, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.space.xl },
 
   // ★ 2026-10-13（用户：日历格子大一点）：本页横向留白收窄，让月历网格占更宽，格子整体变大
   pageWide: { paddingHorizontal: theme.sp(2) },
@@ -1175,6 +1227,12 @@ const styles = StyleSheet.create({
 
   sheetMask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
   sheet: { backgroundColor: theme.colors.cardBgStrong, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, padding: theme.space.cardPad, paddingBottom: theme.space.xl },
+  // ★ 2026-10-27（用户）：日历日弹窗改为全屏 + 深板岩背景（与首页 AI 分析区同色系），替代浅玻璃底部 sheet
+  daySheetMask: { flex: 1, backgroundColor: 'rgba(9,28,48,0.98)' },
+  daySheet: { flex: 1, backgroundColor: 'rgba(9,28,48,0.98)' },
+  daySheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.cardPad, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
+  daySheetClose: { fontSize: theme.fs(22), color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  daySheetBody: { flex: 1, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.space.xl },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.ui.chipNeutralBg, alignSelf: 'center', marginBottom: theme.space.sm },
   sheetDate: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   sheetPhaseRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: theme.space.sm },

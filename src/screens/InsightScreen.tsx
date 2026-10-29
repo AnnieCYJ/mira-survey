@@ -20,6 +20,7 @@ import Card from '../components/Card';
 import Icon from '../components/Icon';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
 import ExamTab from '../components/ExamTab';
+import QuickCheckTab from '../components/QuickCheckTab';
 import { getLatestExamRecord } from '../data/examStore';
 import ChatSheet from '../components/ChatSheet';
 import EmotionInsightView from '../components/EmotionInsightView';
@@ -57,7 +58,7 @@ function formatValue(v: number | null): string {
 // 以 ima 归档（04-屏幕Screens）的权威洞察页设计为底：
 // 5 个维度 chip（睡眠和激素/周期和激素/代谢/心脏健康/心理和压力）+ 选中后 DimensionCard + 本周关键变化。
 // 新增「基础指标」tab 置顶：直连戒指真实信号（心率/血氧/体温/皮电/HRV/呼吸率）。
-// 新增「一键体检」tab（置于中部）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
+// 新增「一键体检」tab（置于身体指标首位、最左侧）：本地估算身体成分并持久化记录，洞察页只展示最新、历史页按时间排列。
 type TabKey = 'basics' | MetricKey;
 
 const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
@@ -72,6 +73,7 @@ const RHYTHM_SUBS: { key: string; label: string }[] = [
 ];
 
 const LONGEVITY_SUBS: { key: string; label: string }[] = [
+  { key: 'quickcheck', label: '一键体检' },
   { key: 'ecg', label: '心电' },
   { key: 'bp', label: '血压' },
   { key: 'sugar', label: '血糖' },
@@ -175,7 +177,7 @@ const PIN_AFTER: Record<string, string> = {
   sns: 'skin',
 };
 
-import { resolveDailyHealthAge } from '../lib/dailyHealthAge';
+import { computeCurrentHealthAge } from '../lib/healthAgeCurrent';
 
 export default function InsightScreen() {
   // ★ mira-ocean（2026-10-17）：深底页面 → 聚焦时状态栏改亮图标，失焦恢复深色
@@ -295,14 +297,12 @@ export default function InsightScreen() {
      *   卡片上的数字和圆弧都不会再跳；跨天自动重算。
      *   综合分必须一起冻结：圆弧长度 = 综合分，只冻数字会变成「数字不动、弧一直在跑」。
      */
-    const frozenRec = resolveDailyHealthAge(() => ({
-      healthAge: estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足'),
-      actualAge: ACTUAL ?? null,
-      overallScore: longTerm,
-    })).value;
-    const healthAge = frozenRec?.healthAge ?? estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
-    // 弧长用冻结的综合分（与冻结的身体年龄同一份快照 → 数字与弧永远同步）
-    const arcScore = frozenRec?.overallScore ?? longTerm;
+    // ★ 2026-10-28：统一到共享实时计算（lib/healthAgeCurrent），与详情页头条完全一致；
+    //   去掉按天冻结 —— 既保证洞察页卡 = 详情页数字（连通），又能随数据实时更新（不再「一天不变」）。
+    const cur = computeCurrentHealthAge(ACTUAL);
+    const healthAge = cur?.healthAge ?? estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
+    // 弧长用与身体年龄同一份实时综合分（数字与弧永远同步）
+    const arcScore = cur?.overallScore ?? longTerm;
     // ★ 2026-10-18：用「年轻/偏老」结论统摄文案——确保下方 AI 分析与上方大数字（较实际年龄低/高 X 岁）同方向，不再各说各话。
     const hasEstimate = healthAge != null && ACTUAL != null && Number.isFinite(healthAge) && Number.isFinite(ACTUAL);
     const delta = hasEstimate ? (healthAge as number) - (ACTUAL as number) : 0;
@@ -511,7 +511,9 @@ export default function InsightScreen() {
   const renderBasicsCard = (m: BasicMetricDef) => {
     const isRealtime = realtimeKeys.has(m.key);
     const rk = m.key as RingMetricKey;
-    const real = isRealtime ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
+    // ★ 2026-10-27（审计修复 P1）：戒指断流（>3h 无采样）时，实时信号不得再显示旧快照值，
+    //   强制置 null → formatValue 输出「—」，与睡眠结构卡 / 节律卡 / 首页圆环同一口径。
+    const real = isRealtime ? (dataStale ? null : (ring.metrics[rk] ?? null)) : (ring.daily[m.key] ?? null);
     const hist = getCachedHist(m.key);
     const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
     if (m.manualOnly) {
@@ -533,7 +535,7 @@ export default function InsightScreen() {
         compact
         metric={m}
         auto={trendOn}
-        live={isRealtime ? ring.availability[rk] === 'live' : real != null}
+        live={isRealtime ? (!dataStale && ring.availability[rk] === 'live') : real != null}
         syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
         value={formatValue(real)}
         data={hist}
@@ -579,7 +581,7 @@ export default function InsightScreen() {
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
-          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'recover' : 'ecg'); }}
+          onChange={(i) => { const k = TOP_TABS[i].key; setTopTab(k); setSubTab(k === 'rhythm' ? 'recover' : 'quickcheck'); }}
         />
         {/* ★ 2026-10-06：节律健康仅 2 个 tab 时（large）——直接整屏等宽平铺，不套 ScrollView。
             横向 ScrollView 内 flex:1 宽度在 Fabric 下偶尔失效，导致两个 tab 没撑满整屏。
@@ -667,6 +669,9 @@ export default function InsightScreen() {
             ) : subTab === 'bloodcomp' ? (
               // ★ 2026-10-16（用户）：血液成分 = 尿酸 + 血脂四项，紧邻「身体成分」的独立子 tab
               <BloodPanelTab onOpenDetail={openDetail} />
+            ) : subTab === 'quickcheck' ? (
+              // ★ 2026-10-26（用户）：一键体检 = HealthGlance 聚合快检（概览 → 记录 → 报告详情）
+              <QuickCheckTab />
             ) : (
               // basics
               <>
@@ -810,8 +815,6 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
 
   return (
     <View>
-      {/* ★ 2026-10-16（用户：去掉「健康一览自动同步」副标，只留分区名） */}
-      <Text style={styles.sectionLabel}>血液成分</Text>
       <Text style={subHead}>尿酸</Text>
       <View style={grid}>{uricItems.map((it) => renderChip(it, true))}</View>
       {/* ★ 2026-10-16（续 4）：四张血脂小卡外面包一个框，右上角箭头 → 进入血脂详情（内含日/周/月/年趋势图） */}
@@ -1495,7 +1498,7 @@ const styles = StyleSheet.create({
   ecgCell: {
     flexBasis: '30%',
     flexGrow: 1,
-    backgroundColor: theme.colors.ui.white55,
+    backgroundColor: theme.colors.cardBg, // mira-ocean：white55(0.55) 浅玻璃 + 浅字不可读 → 深色玻璃
     borderRadius: theme.radius.sm,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,

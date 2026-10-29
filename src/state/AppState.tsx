@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +17,9 @@ import {
   type TaskType,
 } from '../data/tasks';
 import { RingBle } from '../ble/RingBleManager';
+// ★ Phase 1/2：启动后拉一次云端规律摘要 + 端侧规律引擎，写进本地「人生上下文库」。
+//   不 await、不阻塞首屏；失败静默降级（本地引擎仍然出观察）。
+import { syncPatterns } from '../ai/cloudPatterns';
 
 export interface CelebrationState {
   visible: boolean;
@@ -65,6 +69,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [ttsOn, setTtsOn] = useState(true);
   const toolsRef = useRef(tools);
   toolsRef.current = tools;
+
+  // ★ Phase 1/2：冷启动拉一次规律（云端长窗口 + 端侧细数据）。
+  //   只跑一次，之后由 TTL（6h）与「上传成功后强制刷新」控制节奏。
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const st = RingBle.getState();
+        const deviceId = st.deviceId || st.deviceName || undefined;
+        if (alive) await syncPatterns({ deviceId });
+      } catch {
+        /* 拉不到就用端侧观察，不影响任何功能 */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const addToolTask = useCallback((t: TaskItem) => {
     const exists = toolsRef.current.some((x) => x.title === t.title);

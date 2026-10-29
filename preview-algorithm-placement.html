@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira 算法落点预览 · P0 / P1</title>
+<style>
+  :root{
+    --slate:#091C30; --slate2:#0C2236; --ocean1:#3E627A; --ocean2:#2A4470; --ocean3:#2B3564;
+    --ink:#FFFFFF; --textsub:rgba(255,255,255,.62); --cardbg:rgba(255,255,255,.05);
+    --cardborder:rgba(255,255,255,.10);
+    --lime-core:#7CF5C4; --lime-deep:#1FBF8F; --lime-soft:rgba(124,245,196,.14);
+    --rose-deep:#FF6B8A; --rose-soft:rgba(255,107,138,.14);
+    --amber:#FFC46B;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1200px 800px at 70% -10%,#16314d 0%,var(--slate) 55%);color:var(--ink);}
+  a{color:inherit;}
+  .app{display:flex;min-height:100vh;}
+  /* ---- Sidebar ---- */
+  .nav{width:248px;flex:0 0 248px;padding:28px 18px;position:sticky;top:0;height:100vh;overflow:auto;
+    background:linear-gradient(180deg,rgba(43,53,100,.35),rgba(9,28,48,.2));border-right:1px solid var(--cardborder);}
+  .brand{font-size:19px;font-weight:700;letter-spacing:.5px;margin-bottom:4px;}
+  .brand small{display:block;font-size:11px;font-weight:500;color:var(--textsub);letter-spacing:0;margin-top:3px;}
+  .nav-group{margin-top:26px;font-size:11px;color:var(--textsub);text-transform:uppercase;letter-spacing:1.2px;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:11px 13px;margin-top:7px;border-radius:12px;cursor:pointer;
+    color:var(--textsub);font-size:14px;font-weight:500;transition:.18s;border:1px solid transparent;}
+  .nav-item:hover{background:var(--cardbg);color:var(--ink);}
+  .nav-item.active{background:linear-gradient(90deg,rgba(31,191,143,.22),rgba(31,191,143,.04));color:var(--ink);
+    border-color:rgba(31,191,143,.4);}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;}
+  .legend{margin-top:30px;padding:14px;border-radius:14px;background:var(--cardbg);border:1px solid var(--cardborder);}
+  .legend h4{margin:0 0 10px;font-size:12px;color:var(--textsub);letter-spacing:.5px;}
+  .legend .row{display:flex;align-items:flex-start;gap:8px;font-size:11.5px;line-height:1.5;margin-bottom:8px;color:var(--textsub);}
+  .legend .row b{color:var(--ink);font-weight:600;}
+  .tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;letter-spacing:.3px;}
+  /* ---- Main ---- */
+  .main{flex:1;padding:34px 40px 80px;max-width:1100px;}
+  .head{margin-bottom:8px;}
+  .head h1{font-size:26px;margin:0 0 6px;font-weight:700;}
+  .head p{margin:0;color:var(--textsub);font-size:13.5px;max-width:760px;line-height:1.6;}
+  .screen-wrap{display:none;}
+  .screen-wrap.active{display:block;animation:fade .35s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .screen-title{display:flex;align-items:baseline;gap:12px;margin:26px 0 16px;}
+  .screen-title h2{font-size:18px;margin:0;font-weight:650;}
+  .screen-title span{font-size:12.5px;color:var(--textsub);}
+  /* ---- Phone mockup ---- */
+  .phone{width:392px;max-width:100%;border-radius:42px;padding:12px;background:linear-gradient(160deg,#0d2438,#0a1b2c);
+    box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.06);margin:0 auto;}
+  .phone-screen{border-radius:32px;background:linear-gradient(180deg,#0b2034,#0a1a2b);overflow:hidden;
+    border:1px solid rgba(255,255,255,.06);}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:14px 22px 6px;font-size:12px;color:var(--textsub);}
+  .screen-head{padding:6px 22px 14px;border-bottom:1px solid var(--cardborder);}
+  .screen-head .t{font-size:20px;font-weight:700;}
+  .screen-head .s{font-size:12px;color:var(--textsub);margin-top:3px;}
+  .scroll{height:520px;overflow:auto;padding:16px 16px 28px;}
+  .scroll::-webkit-scrollbar{width:0;}
+  /* existing UI chrome (dimmed) */
+  .ghost{background:var(--cardbg);border:1px solid var(--cardborder);border-radius:16px;padding:14px;margin-bottom:12px;}
+  .ghost .lt{font-size:11px;color:var(--textsub);}
+  .ghost .lb{font-size:17px;font-weight:700;margin-top:4px;}
+  .ghost .lsub{font-size:12px;color:var(--textsub);margin-top:4px;}
+  .barrow{display:flex;gap:6px;margin-top:10px;}
+  .bar{height:7px;border-radius:4px;background:rgba(255,255,255,.12);flex:1;}
+  .bar.h{background:linear-gradient(90deg,var(--ocean1),var(--lime-deep));}
+  .chiprow{display:flex;flex-wrap:wrap;gap:9px;}
+  .chip{width:104px;height:96px;border-radius:16px;background:var(--cardbg);border:1px solid var(--cardborder);
+    padding:11px;display:flex;flex-direction:column;justify-content:space-between;}
+  .chip .cl{font-size:11px;color:var(--textsub);}
+  .chip .cv{font-size:21px;font-weight:750;}
+  .chip .cu{font-size:10px;color:var(--textsub);}
+  /* ---- HIGHLIGHT: the new algorithm card ---- */
+  .hl{position:relative;border-radius:18px;padding:15px 15px 14px;margin-bottom:14px;
+    background:linear-gradient(180deg,rgba(31,191,143,.10),rgba(43,53,100,.10));
+    border:1.5px solid var(--lime-deep);box-shadow:0 0 0 4px rgba(31,191,143,.12),0 14px 34px rgba(31,191,143,.10);}
+  .hl.rose{border-color:var(--rose-deep);box-shadow:0 0 0 4px rgba(255,107,138,.12),0 14px 34px rgba(255,107,138,.10);
+    background:linear-gradient(180deg,rgba(255,107,138,.10),rgba(43,53,100,.10));}
+  .hl .badge{position:absolute;top:-12px;left:14px;font-size:10.5px;font-weight:800;letter-spacing:.4px;
+    padding:4px 11px;border-radius:999px;color:#04130d;background:var(--lime-core);box-shadow:0 6px 16px rgba(124,245,196,.35);}
+  .hl.rose .badge{color:#2a0410;background:var(--rose-deep);box-shadow:0 6px 16px rgba(255,107,138,.35);}
+  .hl .htitle{font-size:14.5px;font-weight:700;margin-top:4px;display:flex;align-items:center;gap:8px;}
+  .hl .hmeta{font-size:11.5px;color:var(--textsub);margin-top:3px;}
+  .hl .hline{height:1px;background:var(--cardborder);margin:11px 0;}
+  .hl .ritem{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--cardborder);}
+  .hl .ritem:first-of-type{border-top:none;}
+  .hl .rtag{font-size:13px;font-weight:600;}
+  .hl .rchip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--lime-soft);color:var(--lime-deep);}
+  .hl.rose .rchip{background:var(--rose-soft);color:var(--rose-deep);}
+  .hl .rsum{font-size:11.5px;color:var(--textsub);margin-top:2px;}
+  .hl .rstat{font-size:10.5px;color:var(--textsub);font-variant-numeric:tabular-nums;margin-top:3px;}
+  .hl .hnote{font-size:10.5px;color:var(--textsub);line-height:1.55;margin-top:10px;opacity:.9;}
+  .hl .hero{font-size:34px;font-weight:800;letter-spacing:-.5px;}
+  .hl .heros{font-size:13px;color:var(--textsub);}
+  .hl .band{display:inline-block;font-size:12px;font-weight:700;padding:4px 12px;border-radius:999px;margin-top:8px;}
+  .band.reversing{background:var(--lime-soft);color:var(--lime-deep);}
+  .band.steady{background:rgba(124,170,255,.14);color:#9cc0ff;}
+  .band.accelerating{background:var(--rose-soft);color:var(--rose-deep);}
+  .toggle{display:flex;align-items:center;justify-content:space-between;background:var(--cardbg);
+    border:1px solid var(--cardborder);border-radius:14px;padding:13px 15px;margin-bottom:12px;}
+  .toggle .tl{font-size:13.5px;font-weight:600;}
+  .toggle .ts{font-size:11px;color:var(--textsub);margin-top:2px;}
+  .switch{width:46px;height:27px;border-radius:999px;background:rgba(255,255,255,.18);position:relative;flex:0 0 46px;}
+  .switch.on{background:var(--lime-deep);}
+  .switch .knob{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.2s;}
+  .switch.on .knob{left:22px;}
+  .wincells{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;}
+  .wincell{width:54px;border-radius:11px;border:1.4px solid var(--cardborder);padding:7px 0;text-align:center;}
+  .wincell .wd{font-size:10px;font-weight:700;}
+  .wincell .wt{font-size:9.5px;margin-top:3px;}
+  .winpeak{border-color:var(--lime-deep);background:rgba(31,191,143,.12);}
+  .winhigh{border-color:var(--lime-core);}
+  .winmid{border-color:rgba(255,255,255,.2);}
+  .winlow{border-color:rgba(255,255,255,.12);}
+  .place-note{margin-top:14px;font-size:12px;color:var(--textsub);background:var(--cardbg);border:1px dashed var(--cardborder);
+    border-radius:12px;padding:12px 14px;line-height:1.6;}
+  .place-note b{color:var(--lime-core);}
+  /* ---- summary table ---- */
+  .table{width:100%;border-collapse:collapse;margin-top:22px;font-size:13px;}
+  .table th,.table td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--cardborder);vertical-align:top;}
+  .table th{font-size:11.5px;color:var(--textsub);text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
+  .table td{color:var(--ink);}
+  .table td small{color:var(--textsub);display:block;margin-top:3px;font-size:11.5px;line-height:1.5;}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
+  .pill.p02{background:var(--lime-soft);color:var(--lime-deep);}
+  .pill.p03{background:rgba(124,170,255,.14);color:#9cc0ff;}
+  .pill.p11{background:var(--rose-soft);color:var(--rose-deep);}
+  .pill.p12{background:rgba(255,196,107,.15);color:var(--amber);}
+  .pill.p01{background:rgba(124,245,196,.16);color:var(--lime-core);}
+  .foot{margin-top:36px;font-size:11.5px;color:var(--textsub);line-height:1.7;border-top:1px solid var(--cardborder);padding-top:18px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <nav class="nav">
+    <div class="brand">Mira<small>算法落点预览 · P0 / P1</small></div>
+    <div class="nav-group">逐屏查看</div>
+    <div class="nav-item active" data-go="home"><span class="dot" style="background:var(--lime-core)"></span>首页 · 总览</div>
+    <div class="nav-item" data-go="sleep"><span class="dot" style="background:var(--lime-deep)"></span>睡眠详情</div>
+    <div class="nav-item" data-go="energy"><span class="dot" style="background:var(--lime-deep)"></span>精力 · 情绪详情</div>
+    <div class="nav-item" data-go="healthage"><span class="dot" style="background:#9cc0ff"></span>身体年龄详情</div>
+    <div class="nav-item" data-go="cycle"><span class="dot" style="background:var(--rose-deep)"></span>周期日历</div>
+
+    <div class="legend">
+      <h4>图例 · 新算法标色</h4>
+      <div class="row"><span class="tag pill p01">P0-1</span><div><b>VO₂ Max 心肺能力</b><br>首页 chip → CardioDetail</div></div>
+      <div class="row"><span class="tag pill p02">P0-2</span><div><b>行为关联引擎</b><br>睡眠/情绪详情底部</div></div>
+      <div class="row"><span class="tag pill p03">P0-3</span><div><b>衰老速度 Pace</b><br>身体年龄详情内</div></div>
+      <div class="row"><span class="tag pill p11">P1-1</span><div><b>孕期洞察</b><br>周期日历·孕期模式</div></div>
+      <div class="row"><span class="tag pill p12">P1-2</span><div><b>受孕窗</b><br>周期分析 tab</div></div>
+    </div>
+  </nav>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="head">
+      <h1>算法落点预览</h1>
+      <p>按你的规矩：新算法一律放进「对应的数据详情页里面」，<b>不新增散乱卡片、不乱放</b>。下方逐屏高亮标注每个算法在界面里的精确落点；权威依据列在末尾对照表。</p>
+    </div>
+
+    <!-- ===== HOME ===== -->
+    <section class="screen-wrap active" id="home">
+      <div class="screen-title"><h2>首页 · 总览</h2><span>VO₂ Max（P0-1）以首页第 6 张 chip 落点，点进去是独立 CardioDetail 详情页</span></div>
+      <div class="phone"><div class="phone-screen">
+        <div class="statusbar"><span>9:41</span><span>Mira</span></div>
+        <div class="screen-head"><div class="t">今天</div><div class="s">身体活力 · 情绪压力 · 经期节律</div></div>
+        <div class="scroll">
+          <div class="ghost"><div class="lt">身体负荷</div><div class="lb">38</div><div class="lsub">低于你 14 天基线</div>
+            <div class="barrow"><div class="bar h"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div></div>
+          <div class="ghost"><div class="lt">情绪</div><div class="lb">52</div><div class="lsub">相对平时（50=基准）</div></div>
+          <div class="ghost"><div class="lt">睡眠恢复</div><div class="lb">81</div><div class="lsub">深睡充足</div></div>
+          <div class="chiprow">
+            <div class="chip"><div class="cl">身体年龄</div><div class="cv">29.4</div><div class="cu">岁</div></div>
+            <div class="chip"><div class="cl">HRV</div><div class="cv">58</div><div class="cu">ms</div></div>
+            <div class="chip"><div class="cl">恢复力</div><div class="cv">72</div><div class="cu">分</div></div>
+            <div class="chip"><div class="cl">周期</div><div class="cv">卵泡期</div><div class="cu">D8</div></div>
+            <!-- ===== P0-1 HIGHLIGHT ===== -->
+            <div class="chip" style="border:1.5px solid var(--lime-deep);box-shadow:0 0 0 3px rgba(31,191,143,.12);background:linear-gradient(180deg,rgba(31,191,143,.12),rgba(43,53,100,.1));">
+              <div class="cl" style="color:var(--lime-core);font-weight:700;">P0-1 心肺能力</div>
+              <div class="cv">38.2</div><div class="cu">ml/kg/min · 良好</div></div>
+          </div>
+          <div class="place-note"><b>落点：</b>首页芯片墙第 6 张「心肺能力」卡（VO₂ Max 估算）。点击 → CardioDetailScreen（独立详情页，含 Jackson 1990 主估计 + Uth 2004 交叉验证 + ACSM 常模分档 + 5 条文献出处）。<b>未新增散乱入口</b>，复用首页既有芯片墙。</div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ===== SLEEP ===== -->
+    <section class="screen-wrap" id="sleep">
+      <div class="screen-title"><h2>睡眠详情</h2><span>P0-2 行为关联（outcome=睡眠）放在页面最底部，与「数据详情里面」的规矩一致</span></div>
+      <div class="phone"><div class="phone-screen">
+        <div class="statusbar"><span>9:41</span><span>Mira</span></div>
+        <div class="screen-head"><div class="t">睡眠恢复</div><div class="s">近 30 天趋势</div></div>
+        <div class="scroll">
+          <div class="ghost"><div class="lt">昨夜睡眠恢复</div><div class="lb">81 / 100</div><div class="lsub">深睡 1h52m · 恢复充分</div></div>
+          <div class="ghost"><div class="lt">睡眠趋势</div><div class="lb">稳定</div><div class="barrow"><div class="bar h"></div><div class="bar h"></div><div class="bar"></div><div class="bar h"></div><div class="bar"></div></div></div>
+          <div class="ghost"><div class="lt">HRV / 静息心率</div><div class="lb">58 ms / 54 bpm</div></div>
+          <!-- ===== P0-2 HIGHLIGHT ===== -->
+          <div class="hl">
+            <div class="badge">P0-2 行为关联</div>
+            <div class="htitle">行为关联 <span style="font-weight:400;font-size:12px;color:var(--textsub)">哪些行为影响你的睡眠</span></div>
+            <div class="hline"></div>
+            <div class="ritem"><div><div class="rtag">烧脑日</div><div class="rsum">烧脑日，睡眠恢复平均更低 9 分（强关联）</div></div><div class="rchip">强关联</div></div>
+            <div class="rstat">r = −0.62　r² = 0.38　d = 1.04　n = 18/49</div>
+            <div class="ritem"><div><div class="rtag">运动日</div><div class="rsum">运动日，睡眠恢复平均更高 6 分（中等）</div></div><div class="rchip">中等</div></div>
+            <div class="rstat">r = 0.41　r² = 0.17　d = 0.62　n = 22/45</div>
+            <div class="ritem"><div><div class="rtag">情绪日</div><div class="rsum">情绪日，睡眠恢复平均更低 5 分（中等）</div></div><div class="rchip">中等</div></div>
+            <div class="rstat">r = −0.37　r² = 0.14　d = 0.55　n = 15/52</div>
+            <div class="hnote">Pearson 相关（r）与 Cohen's d 效应量（Cohen 1988）。关联仅说明共同出现、不代表因果；样本为个人历史。至少需要 14 天、某行为 ≥7 天才计算。</div>
+          </div>
+          <div class="place-note"><b>落点：</b>睡眠详情页滚动区<b>最底部</b>，紧跟睡眠趋势/HRV 等既有卡片之后。复用既有 <b>Card</b> 组件与深色海洋样式，<b>未新增独立页面或散乱浮卡</b>。情绪视角同构落在「精力·情绪详情」页底部。</div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ===== ENERGY / EMOTION ===== -->
+    <section class="screen-wrap" id="energy">
+      <div class="screen-title"><h2>精力 · 情绪详情</h2><span>P0-2 行为关联（outcome=情绪）仅在「情绪」视图下、页面底部出现</span></div>
+      <div class="phone"><div class="phone-screen">
+        <div class="statusbar"><span>9:41</span><span>Mira</span></div>
+        <div class="screen-head"><div class="t">情绪</div><div class="s">心理压力百分位 · valence 拆分</div></div>
+        <div class="scroll">
+          <div class="ghost"><div class="lt">今日情绪</div><div class="lb">52 / 100</div><div class="lsub">相对平时（50=基准）</div></div>
+          <div class="ghost"><div class="lt">建设性 vs 破坏性</div><div class="lb">68% 建设性</div><div class="barrow"><div class="bar h"></div><div class="bar"></div><div class="bar"></div></div></div>
+          <!-- ===== P0-2 HIGHLIGHT (emotion) ===== -->
+          <div class="hl">
+            <div class="badge">P0-2 行为关联</div>
+            <div class="htitle">行为关联 <span style="font-weight:400;font-size:12px;color:var(--textsub)">哪些行为影响你的情绪</span></div>
+            <div class="hline"></div>
+            <div class="ritem"><div><div class="rtag">情绪日</div><div class="rsum">情绪日，情绪分平均更低 7 分（强关联）</div></div><div class="rchip">强关联</div></div>
+            <div class="rstat">r = −0.58　r² = 0.34　d = 0.91　n = 15/52</div>
+            <div class="ritem"><div><div class="rtag">烧脑日</div><div class="rsum">烧脑日，情绪分平均更低 4 分（中等）</div></div><div class="rchip">中等</div></div>
+            <div class="rstat">r = −0.39　r² = 0.15　d = 0.58　n = 18/49</div>
+            <div class="hnote">与睡眠视角同源引擎，仅 outcome 切换为「情绪（心理压力百分位）」。诚实闸门一致：样本不足不展示。</div>
+          </div>
+          <div class="place-note"><b>落点：</b>仅当用户切到「情绪」视图时，<b>页面底部</b>出现行为关联面板（outcome=情绪）。睡眠视图则用 outcome=睡眠（见上屏）。两处共用同一 <b>BehaviorCorrelationPanel</b> 组件，仅 prop 不同，<b>未新增散乱卡片</b>。</div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ===== HEALTH AGE ===== -->
+    <section class="screen-wrap" id="healthage">
+      <div class="screen-title"><h2>身体年龄详情</h2><span>P0-3 衰老速度（对标 WHOOP Pace of Aging）放在「对比卡之后、页内」</span></div>
+      <div class="phone"><div class="phone-screen">
+        <div class="statusbar"><span>9:41</span><span>Mira</span></div>
+        <div class="screen-head"><div class="t">身体年龄</div><div class="s">复合年龄 · 激素 + 皮质醇</div></div>
+        <div class="scroll">
+          <div class="ghost"><div class="lt">当前身体年龄</div><div class="lb">29.4 岁</div><div class="lsub">实际年龄 31 · 年轻 1.6 岁</div></div>
+          <div class="ghost"><div class="lt">对比卡：你 vs 同年龄均值</div><div class="lb">优于 72% 同齡</div><div class="barrow"><div class="bar h"></div><div class="bar h"></div><div class="bar"></div></div></div>
+          <!-- ===== P0-3 HIGHLIGHT ===== -->
+          <div class="hl">
+            <div class="badge" style="background:#9cc0ff;color:#04101f">P0-3 衰老速度</div>
+            <div class="htitle">衰老速度 <span style="font-weight:400;font-size:12px;color:var(--textsub)">Pace of Aging</span></div>
+            <div class="hline"></div>
+            <div class="hero">0.4 <span style="font-size:15px;font-weight:600;">岁/年</span></div>
+            <div class="heros">近 180 天身体年龄线性回归斜率（基准 = 1 岁/年）</div>
+            <div class="band steady">稳定 · 慢于自然衰老</div>
+            <div class="ritem" style="margin-top:10px;"><div class="rtag">近 30 天均值</div><div class="rstat" style="margin:0;font-size:13px;color:var(--ink);">29.6 岁</div></div>
+            <div class="ritem"><div class="rtag">长期基线均值</div><div class="rstat" style="margin:0;font-size:13px;color:var(--ink);">29.9 岁</div></div>
+            <div class="hnote">算法：取近 180 天逐日身体年龄做 OLS 最小二乘线性拟合，斜率换算为「岁/年」，以 1 岁/年为基准分 逆转(&lt;0) / 稳定(≤1) / 加速(&gt;1)。参考 WHOOP Healthspan「Pace of Aging」。少于 30 天数据不展示。</div>
+          </div>
+          <div class="place-note"><b>落点：</b>身体年龄详情页内，<b>紧跟「对比卡」之后</b>，页内同屏滚动。复用既有 Card 容器，<b>未新增散乱浮卡或独立页</b>。这是 Mira 在 WHOOP「健康跨度 + 衰老速度双指标」上的对标与差异化落点。</div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ===== CYCLE ===== -->
+    <section class="screen-wrap" id="cycle">
+      <div class="screen-title"><h2>周期日历</h2><span>P1-1 孕期洞察（孕期模式开启后）+ P1-2 受孕窗（周期分析 tab）均落在周期页内</span></div>
+      <div class="phone"><div class="phone-screen">
+        <div class="statusbar"><span>9:41</span><span>Mira</span></div>
+        <div class="screen-head"><div class="t">周期</div><div class="s">卵泡期 · D8</div></div>
+        <div class="scroll">
+          <div class="ghost"><div class="lt">当前周期</div><div class="lb">卵泡期 · 第 8 天</div><div class="lsub">预计排卵 10-06</div></div>
+          <!-- ===== P1-1 toggle ===== -->
+          <div class="toggle">
+            <div><div class="tl">孕期模式</div><div class="ts">开启后显示孕周与预产期推算</div></div>
+            <div class="switch on"><div class="knob"></div></div>
+          </div>
+          <!-- ===== P1-1 HIGHLIGHT ===== -->
+          <div class="hl rose">
+            <div class="badge">P1-1 孕期洞察</div>
+            <div class="htitle">孕期 <span style="font-weight:400;font-size:12px;color:var(--textsub)">基于末次经期推算</span></div>
+            <div class="hline"></div>
+            <div class="hero">第 14 周 <span style="font-size:14px;font-weight:600;">· 孕早期</span></div>
+            <div class="heros">预产期 2026-04-18（Naegele 规则：LMP + 280 天）</div>
+            <div class="ritem" style="margin-top:8px;"><div class="rtag">进度</div><div class="rstat" style="margin:0;font-size:13px;color:var(--ink);">35%</div></div>
+            <div class="hnote">三孕期划分（ACOG/WHO）：1–13 周孕早期、14–27 周孕中期、28–40 周孕晚期。本卡仅作周期自然延伸，含「修改末次经期」入口与免责声明。非医学诊断。</div>
+          </div>
+          <!-- tab -->
+          <div class="ghost" style="display:flex;gap:10px;padding:10px;">
+            <span style="font-size:12px;font-weight:700;color:var(--ink);">周期分析</span>
+            <span style="font-size:12px;color:var(--textsub);">激素节律</span>
+          </div>
+          <div class="ghost"><div class="lt">周期指标 / 规律性</div><div class="lb">28 天 · 规律</div></div>
+          <!-- ===== P1-2 HIGHLIGHT ===== -->
+          <div class="hl" style="border-color:var(--amber);box-shadow:0 0 0 4px rgba(255,196,107,.12),0 14px 34px rgba(255,196,107,.10);background:linear-gradient(180deg,rgba(255,196,107,.10),rgba(43,53,100,.10));">
+            <div class="badge" style="background:var(--amber);color:#2a1c04;">P1-2 受孕窗</div>
+            <div class="htitle">受孕窗 <span style="font-weight:400;font-size:12px;color:var(--textsub)">距排卵还有 10 天</span></div>
+            <div class="hline"></div>
+            <div class="hmeta">受孕窗 10-01 – 10-06（排卵日 10-06）</div>
+            <div class="hmeta" style="color:var(--lime-deep);font-weight:700;">最佳受孕日：10-04（排卵前 2 天）</div>
+            <div class="wincells">
+              <div class="wincell winlow"><div class="wd">10-01</div><div class="wt" style="color:var(--textsub)">低</div></div>
+              <div class="wincell winmid"><div class="wd">10-02</div><div class="wt" style="color:var(--textsub)">中</div></div>
+              <div class="wincell winhigh"><div class="wd">10-03</div><div class="wt" style="color:var(--lime-core)">高</div></div>
+              <div class="wincell winpeak"><div class="wd">10-04</div><div class="wt" style="color:var(--lime-deep);font-weight:700">最佳</div></div>
+              <div class="wincell winhigh"><div class="wd">10-05</div><div class="wt" style="color:var(--lime-core)">高</div></div>
+              <div class="wincell winpeak"><div class="wd">10-06</div><div class="wt" style="color:var(--lime-deep);font-weight:700">排卵</div></div>
+            </div>
+            <div class="hnote">受孕窗 = 排卵前 5 天至排卵日（精子存活约 5 天、卵子约 24 小时，峰值落在排卵前 2 天~排卵日，WHO/ACOG）。基于你的周期长度与黄体期推算，仅供备孕参考，非医学建议。</div>
+          </div>
+          <div class="place-note"><b>落点：</b>① <b>P1-1 孕期卡</b>——周期页「孕期模式」开关开启后，紧贴开关下方出现（默认关，不干扰常规周期视图）；② <b>P1-2 受孕窗卡</b>——「周期分析」tab 内，紧跟「周期指标」之后。两卡都在周期页语境内，<b>未跳出到别的模块、未新增散乱卡片</b>。</div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ===== SUMMARY TABLE ===== -->
+    <section class="screen-wrap" id="summary" style="display:none"></section>
+    <div style="margin-top:40px;">
+      <h2 style="font-size:18px;margin:0 0 4px;">落点对照表 · 权威依据</h2>
+      <p style="color:var(--textsub);font-size:13px;margin:0 0 6px;">每条算法都绑定了可溯源的权威口径，未自创统计、未瞎编数字；缺口留空不插值，样本不足不展示（诚实闸门）。</p>
+      <table class="table">
+        <thead><tr><th>算法</th><th>落点页面</th><th>精确位置</th><th>权威依据</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill p01">P0-1</span><br><b>VO₂ Max 心肺能力</b></td>
+            <td>首页 chip →<br>CardioDetailScreen</td>
+            <td>首页芯片墙第 6 张卡；点入独立详情页（Hero 大数字 + 分档 + 双算法拆解 + 常模 + 文献）</td>
+            <td><small>Jackson et al. 1990 非运动回归方程（R²=.66）；Uth–Sørensen–Overgaard–Pedersen 2004 心率比法；Tanaka 2001 HRmax=208−0.7·age；ACSM Guidelines 11ed 常模 7 档</small></td>
+          </tr>
+          <tr>
+            <td><span class="pill p02">P0-2</span><br><b>行为关联引擎</b></td>
+            <td>睡眠详情 +<br>精力·情绪详情</td>
+            <td>两页滚动区<b>最底部</b>面板，各按 outcome（睡眠/情绪）切换，复用 BehaviorCorrelationPanel 组件</td>
+            <td><small>Pearson r（复用 selfReportCalibration.pearsonR）；Cohen's d 效应量（1988 阈值 .2/.5/.8）+ Hedges' g 小样本校正；r² 决定系数。样本&lt;14天/某行为&lt;7天不展示</small></td>
+          </tr>
+          <tr>
+            <td><span class="pill p03">P0-3</span><br><b>衰老速度 Pace</b></td>
+            <td>身体年龄详情</td>
+            <td>「对比卡」<b>之后</b>、页内同屏滚动，复用 Card 容器</td>
+            <td><small>WHOOP Healthspan「Pace of Aging」对标；近 180 天逐日身体年龄做 OLS 最小二乘线性拟合，斜率→岁/年，以 1 岁/年为基准分 逆转/稳定/加速。&lt;30天不展示</small></td>
+          </tr>
+          <tr>
+            <td><span class="pill p11">P1-1</span><br><b>孕期洞察</b></td>
+            <td>周期日历</td>
+            <td>「孕期模式」开关开启后，紧贴开关下方出现；含孕周 Hero、进度、预产期、三孕期提示、修改 LMP 入口、免责声明</td>
+            <td><small>Naegele 规则（LMP + 280 天）；三孕期 1–13/14–27/28–40 周（ACOG/WHO）。非医学诊断，仅周期自然延伸</small></td>
+          </tr>
+          <tr>
+            <td><span class="pill p12">P1-2</span><br><b>受孕窗</b></td>
+            <td>周期日历 ·<br>周期分析 tab</td>
+            <td>周期分析 tab 内，「周期指标」<b>之后</b>；6 天受孕窗 + 最佳受孕日 + 逐日概率档位</td>
+            <td><small>受孕窗 = 排卵前 5 天~排卵日（精子存活 ~5 天、卵子 ~24 小时，峰值排卵前 2 天~排卵日，WHO/ACOG）；复用 computeCycle 的 ovulationDate/fertilityStart/fertilityEnd，与日历网格同源</small></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="foot">
+        规则自检（按你要求）：① 全部新算法均放进「对应的数据详情页里面」——睡眠/情绪详情底部（P0-2）、身体年龄详情对比卡之后（P0-3）、周期页孕期模式/周期分析 tab（P1-1/P1-2）、VO₂ Max 走首页既有芯片墙（P0-1）。<b>无任何散乱新卡片、未跨模块乱放</b>。② 全部绑定权威口径，未自创统计、未瞎编数字。③ 诚实闸门：样本不足不展示、缺口留空不插值。<br>
+        当前状态：代码已落盘并通过类型检查（我改动的 5 个新文件 + 6 个接线文件零 tsc 错误；工程另有 40 个存量 tsc 错误在 RingBleManager 等未触碰文件，与本次无关，且 Expo 用 Metro/Babel 转译默认不做全量类型检查，不阻塞打包）。<b>按规矩尚未重编安装</b>，待你说「装吧」后用 Release 配置烤回设备（含本批 P0/P1 全部 + 之前时区修复 + 身体负荷/情绪一致性修复）。
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const items = document.querySelectorAll('.nav-item');
+  const wraps = document.querySelectorAll('.screen-wrap');
+  items.forEach(it=>{
+    it.addEventListener('click',()=>{
+      const go = it.getAttribute('data-go');
+      items.forEach(x=>x.classList.remove('active'));
+      it.classList.add('active');
+      wraps.forEach(w=>{
+        const id = w.id;
+        if(id==='summary') return;
+        w.classList.toggle('active', id===go);
+      });
+      document.querySelector('.main').scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+</script>
+</body>
+</html>

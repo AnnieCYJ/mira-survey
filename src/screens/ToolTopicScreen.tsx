@@ -898,7 +898,8 @@ const ls = StyleSheet.create({
   heroCard: {
     alignSelf: 'flex-start',
     maxWidth: '78%',
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: theme.colors.bgMid,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.space.cardPadCompact,
     paddingVertical: theme.space.cardPadCompact,
@@ -1174,19 +1175,20 @@ function SportArticlesSection({ navigation }: { navigation: TopicNav }) {
 
 /* ── 运动工具页专用样式（v18.86）──────────────────────── */
 const ss = StyleSheet.create({
-  /* 底部操作栏（钉在屏幕底）：白底托住滚过的内容，贴底 padding 运行时补 insets.bottom */
-  actionBar: { paddingTop: theme.sp(2), backgroundColor: 'rgba(255,255,255,0.96)' },
+  /* 底部操作栏（钉在屏幕底）：深蓝紫实底托住滚过的内容（mira-ocean：原白底 → 深底，避免与深色主题冲突） */
+  actionBar: { paddingTop: theme.sp(2), backgroundColor: theme.colors.bgBottom, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder },
   /* ── 添加运动 · 弹出小卡（v18.98：Modal 底部小卡，高由内容决定，不占整页）── */
-  addMask: { flex: 1, backgroundColor: 'rgba(31,29,26,0.42)', justifyContent: 'flex-end' },
+  addMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   addCard: {
-    backgroundColor: theme.colors.cardBg,
+    backgroundColor: theme.colors.bgBottom,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder,
     borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,
     paddingHorizontal: theme.space.cardPad, paddingTop: theme.sp(2),
     paddingBottom: theme.sp(5),
   },
   addGrabber: {
     alignSelf: 'center', width: theme.sp(9), height: theme.sp(1), borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(31,29,26,0.14)', marginBottom: theme.sp(2.5),
+    backgroundColor: theme.colors.cardBorder, marginBottom: theme.sp(2.5),
   },
   addTitle: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(3) },
   addSection: { fontSize: theme.fontSize.micro, fontWeight: '800' as never, letterSpacing: 0.6, color: mm.colors.inkFaint, marginBottom: theme.sp(2) },
@@ -1270,7 +1272,7 @@ const ss = StyleSheet.create({
   },
   kindChipActive: { backgroundColor: mm.colors.limeSoft ?? mm.chipBg.lav.bg },
   kindChipText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.medium as never, color: mm.colors.inkSoft },
-  kindChipTextActive: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.chipBg.lav.fg },
+  kindChipTextActive: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.limeDeep }, // ★ 对比度修复：浅 lav 字压 limeSoft 底不可读 → limeDeep
   minuteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },
   minuteLabel: { fontSize: theme.fontSize.body, color: mm.colors.inkSoft },
   minuteStepper: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(3) },
@@ -1309,7 +1311,7 @@ const ss = StyleSheet.create({
 const sp2 = StyleSheet.create({
   /* 白卡通用 */
   card: {
-    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)',
+    backgroundColor: theme.colors.bgMid, borderWidth: 1, borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact,
   },
   heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: -theme.sp(3) },
@@ -1321,7 +1323,7 @@ const sp2 = StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) },
   sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
   sectionLink: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkFaint },
-  workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: 'rgba(121, 103, 210, 0.20)', borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.bgMid, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
   workoutIcon: { width: theme.sp(12), height: theme.sp(12), borderRadius: theme.sp(4), alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(2.5) },
   workoutIconText: { fontSize: theme.fs(27), fontWeight: '500' as never },
   workoutBody: { flex: 1, minWidth: 0 },

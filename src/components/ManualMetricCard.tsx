@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   range: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
     marginBottom: theme.space.sm,
   },
   note: {

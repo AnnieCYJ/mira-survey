@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(31,29,26,0.35)',
   },
   sheet: {
-    backgroundColor: theme.colors.cardBg,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(2), paddingBottom: theme.space.lg,
     shadowColor: '#1F1D1A',
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   fullHead: {
     flexDirection: 'row', alignItems: 'center', height: 52,
     paddingHorizontal: theme.sp(3),
-    borderBottomWidth: 1, borderColor: mm.colors.cardBorder, backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1, borderColor: mm.colors.cardBorder, backgroundColor: theme.colors.bgBottom,
   },
   fullBack: { paddingVertical: theme.sp(1), paddingRight: theme.sp(2) },
   fullBackText: { fontSize: theme.fontSize.body, color: mm.colors.inkSoft },
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink, letterSpacing: -0.3,
   },
   fullCount: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginLeft: theme.sp(2) },
-  fullScroll: { flex: 1, backgroundColor: '#FFFFFF' },
+  fullScroll: { flex: 1, backgroundColor: theme.colors.bgBottom },
   fullScrollContent: {
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(3), paddingBottom: theme.space.lg,
   },

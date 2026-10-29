@@ -18,6 +18,7 @@ import SleepDetailScreen from '../screens/SleepDetailScreen';
 import BpDetailScreen from '../screens/BpDetailScreen';
 import EcgDetailScreen from '../screens/EcgDetailScreen';
 import HealthAgeDetailScreen from '../screens/HealthAgeDetailScreen';
+import CardioDetailScreen from '../screens/CardioDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
 import BreathingScreen from '../screens/BreathingScreen';
@@ -32,6 +33,9 @@ import {
 import AccountHubScreen from '../screens/AccountHubScreen';
 import MemberDetailScreen from '../screens/MemberDetailScreen';
 import BindingRitualScreen from '../screens/BindingRitualScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import QuickCheckHistoryScreen from '../screens/QuickCheckHistoryScreen';
+import QuickCheckDetailScreen from '../screens/QuickCheckDetailScreen';
 import type { Relationship } from '../data/familyStore';
 
 export interface MetricDetailParams {
@@ -57,16 +61,20 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   HealthAgeDetail: undefined;
+  CardioDetail: undefined;
   EmotionLog: undefined;
   EmotionIntervene: undefined;
   Breathing: undefined;
   AccountHub: undefined;
   MemberDetail: { memberId: string };
   BindingRitual: { relationship: Relationship; name: string; memberId?: string };
+  PrivacyPolicy: undefined;
   FoodScan: { autoCamera?: boolean } | undefined;
   ToolTopic: { topic: 'glow' | 'sport' | 'learn' | 'nutrition' | 'sportArticles' };
   LearnRead: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition' };
   VoiceChat: { question: string };
+  QuickCheckHistory: undefined;
+  QuickCheckDetail: { recordId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -135,6 +143,11 @@ export default function RootStackNavigator() {
         options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
+        name="CardioDetail"
+        component={CardioDetailScreen}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
+      />
+      <Stack.Screen
         name="EmotionLog"
         component={EmotionLogScreen}
         options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
@@ -154,7 +167,7 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="FoodScan"
         component={FoodScanScreen}
-        options={{ contentStyle: { backgroundColor: theme.colors.textWhite } }}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
         name="ToolTopic"
@@ -171,6 +184,19 @@ export default function RootStackNavigator() {
       <Stack.Screen name="AccountHub" component={AccountHubScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
       <Stack.Screen name="MemberDetail" component={MemberDetailScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
       <Stack.Screen name="BindingRitual" component={BindingRitualScreen} options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }} />
+      {/* ★ Phase 0（P0 合规）：隐私政策与开源致谢（含 CBT-Copilot Apache-2.0 归属） */}
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ contentStyle: { backgroundColor: theme.colors.textWhite } }} />
+      {/* ★ 2026-10-26：「一键体检」体检记录列表 / 微体检报告详情（独立全屏页，非洞察页内切换） */}
+      <Stack.Screen
+        name="QuickCheckHistory"
+        component={QuickCheckHistoryScreen}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
+      />
+      <Stack.Screen
+        name="QuickCheckDetail"
+        component={QuickCheckDetailScreen}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
+      />
     </Stack.Navigator>
   );
 }

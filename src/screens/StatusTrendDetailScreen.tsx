@@ -492,89 +492,88 @@ export default function StatusTrendDetailScreen() {
     return { lineD: line, areaD: area, dots: allDots, gradStops };
   }, [w, pts]);
 
-  // ★ v18.150 图表叠加层：月视图周期相位带 + 经前 PMS；周视图皮质醇异常图标
-  // 与图表点对齐（周=7天等距 / 月=当月每天等距）。
-  const chartOverlay = useMemo(() => {
+  // ★ 性能修复（2026-10-28）：原先 chartOverlay 的 useMemo 依赖含 `pts`，
+  //   实时数据一推送（pts 变化）就重跑月视图 31 次 computeCycle + 周视图皮质醇扫描，主线程被反复占满
+  //   → 详情页进场 / 切月视图"卡一下"。现拆为两个独立 memo：
+  //   - phaseBands（月视图相位带）：只依赖 range/anchor/cycle/temp，**不依赖实时 pts**；
+  //   - cortIcons（周视图皮质醇）：只在周视图跑，y 对齐用 pts（7 天开销极小）。
+
+  // 月视图：周期相位带 + 经前 PMS（不依赖实时 pts，range/anchor/cycleLog 变化时才算）
+  const phaseBands = useMemo(() => {
     const bands: { x0: number; x1: number; phase: PhaseKey; pms: boolean }[] = [];
-    const cort: { x: number; y: number; i: number; mesor: number }[] = [];
-    // 皮质醇基线的中间量（供 __DEV__ 日志核对，不影响渲染）
-    let cortBaseN = 0;
-    let cortP75: number | null = null;
-    if (w === 0) return { bands, cort };
-
-    // 与图表点对齐的日期 keys
-    let dayKeys: string[] = [];
-    if (dRange === 'week') {
-      const mon = startOfWeek(anchor);
-      for (let i = 0; i < 7; i++) dayKeys.push(dayKey(addDays(mon, i).getTime()));
-    } else if (dRange === 'month') {
-      const y = anchor.getFullYear();
-      const m0 = anchor.getMonth();
-      const dim = new Date(y, m0 + 1, 0).getDate();
-      for (let d = 1; d <= dim; d++) dayKeys.push(dayKey(new Date(y, m0, d).getTime()));
-    } else {
-      return { bands, cort };
-    }
-
+    if (w === 0 || dRange !== 'month') return bands;
+    const y = anchor.getFullYear();
+    const m0 = anchor.getMonth();
+    const dim = new Date(y, m0 + 1, 0).getDate();
+    const dayKeys: string[] = [];
+    for (let d = 1; d <= dim; d++) dayKeys.push(dayKey(new Date(y, m0, d).getTime()));
     const n = dayKeys.length;
-    if (n < 2) return { bands, cort };
+    if (n < 2) return bands;
     const edge = (frac: number) => PAD_L + Math.max(0, Math.min(1, frac)) * plotW;
-    const xAt = (i: number) => edge(i / (n - 1));
     const leftOf = (i: number) => edge((i - 0.5) / (n - 1));
     const rightOf = (i: number) => edge((i + 0.5) / (n - 1));
-
-    if (dRange === 'month') {
-      const tempSeries = Object.keys(ring.tempDaily ?? {}).length
-        ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] }))
-        : undefined;
-      const days: { phase: PhaseKey; pms: boolean }[] = dayKeys.map((dk) => {
-        const info = computeCycle(cycleLog, parseDate(dk), { tempSeries, periodHistory: cycleLog?.history });
-        const dtnp = info.daysToNextPeriod;
-        const pms = dtnp != null && dtnp >= 0 && dtnp <= PMS_WINDOW && info.phase === 'luteal';
-        return { phase: (info.phase as PhaseKey) ?? 'unknown', pms };
-      });
-      // 合并同相位连续段 → 干净背景带
-      let runPhase: PhaseKey = days[0].phase;
-      let runStart = 0;
-      const flushRun = (endIdx: number) => {
-        if (runPhase === 'unknown') { runStart = endIdx + 1; return; }
-        bands.push({ x0: leftOf(runStart), x1: rightOf(endIdx), phase: runPhase, pms: false });
-      };
-      for (let i = 1; i < n; i++) {
-        if (days[i].phase !== runPhase) { flushRun(i - 1); runPhase = days[i].phase; runStart = i; }
-      }
-      flushRun(n - 1);
-      // PMS 段叠加（暖色覆盖在黄体带之上）
-      let pStart = -1;
-      for (let i = 0; i <= n; i++) {
-        const isP = i < n && days[i].pms;
-        if (isP && pStart < 0) pStart = i;
-        if (!isP && pStart >= 0) {
-          bands.push({ x0: leftOf(pStart), x1: rightOf(i - 1), phase: 'unknown', pms: true });
-          pStart = -1;
-        }
-      }
-    } else if (dRange === 'week') {
-      // ★ 与节律卡同口径：个人基线 = 被查看这一周之前 14 天的皮质醇日均值（不含本周，避免当天自身抬高阈值）
-      const mon = startOfWeek(anchor);
-      const baseMeans: number[] = [];
-      for (let i = 1; i <= CORT_BASELINE_DAYS; i++) {
-        const m = cortisolDayMean(dayKey(addDays(mon, -i).getTime()));
-        if (m != null) baseMeans.push(m);
-      }
-      cortBaseN = baseMeans.length;
-      cortP75 = percentileOf(baseMeans.slice().sort((a, b) => a - b), CORT_ANOMALY_P);
-      if (cortP75 != null) {
-        for (let i = 0; i < n; i++) {
-          const m = cortisolDayMean(dayKeys[i]);
-          if (m == null || m <= cortP75) continue;   // 未超过个人 P75 → 不算异常
-          const v = pts[i]?.value ?? null;
-          const y = v != null ? yAt(v) : PAD_T + 6;
-          cort.push({ x: xAt(i), y, i, mesor: m });
-        }
+    const tempSeries = Object.keys(ring.tempDaily ?? {}).length
+      ? Object.keys(ring.tempDaily).map((d) => ({ date: d, temp: (ring.tempDaily as any)[d] }))
+      : undefined;
+    const days: { phase: PhaseKey; pms: boolean }[] = dayKeys.map((dk) => {
+      const info = computeCycle(cycleLog, parseDate(dk), { tempSeries, periodHistory: cycleLog?.history });
+      const dtnp = info.daysToNextPeriod;
+      const pms = dtnp != null && dtnp >= 0 && dtnp <= PMS_WINDOW && info.phase === 'luteal';
+      return { phase: (info.phase as PhaseKey) ?? 'unknown', pms };
+    });
+    // 合并同相位连续段 → 干净背景带
+    let runPhase: PhaseKey = days[0].phase;
+    let runStart = 0;
+    const flushRun = (endIdx: number) => {
+      if (runPhase === 'unknown') { runStart = endIdx + 1; return; }
+      bands.push({ x0: leftOf(runStart), x1: rightOf(endIdx), phase: runPhase, pms: false });
+    };
+    for (let i = 1; i < n; i++) {
+      if (days[i].phase !== runPhase) { flushRun(i - 1); runPhase = days[i].phase; runStart = i; }
+    }
+    flushRun(n - 1);
+    // PMS 段叠加（暖色覆盖在黄体带之上）
+    let pStart = -1;
+    for (let i = 0; i <= n; i++) {
+      const isP = i < n && days[i].pms;
+      if (isP && pStart < 0) pStart = i;
+      if (!isP && pStart >= 0) {
+        bands.push({ x0: leftOf(pStart), x1: rightOf(i - 1), phase: 'unknown', pms: true });
+        pStart = -1;
       }
     }
-    if (__DEV__ && dRange === 'week') {
+    return bands;
+  }, [w, plotW, dRange, anchor, ring.tempDaily, cycleLog]);
+
+  // 周视图：皮质醇异常图标（y 对齐用 pts，仅在周视图跑；range/anchor 不变时只因 pts 微重算，7 天开销极小）
+  const cortIcons = useMemo(() => {
+    const cort: { x: number; y: number; i: number; mesor: number }[] = [];
+    if (w === 0 || dRange !== 'week') return cort;
+    const mon = startOfWeek(anchor);
+    const dayKeys: string[] = [];
+    for (let i = 0; i < 7; i++) dayKeys.push(dayKey(addDays(mon, i).getTime()));
+    const n = dayKeys.length;
+    if (n < 2) return cort;
+    const edge = (frac: number) => PAD_L + Math.max(0, Math.min(1, frac)) * plotW;
+    const xAt = (i: number) => edge(i / (n - 1));
+    // ★ 与节律卡同口径：个人基线 = 被查看这一周之前 14 天的皮质醇日均值（不含本周，避免当天自身抬高阈值）
+    const baseMeans: number[] = [];
+    for (let i = 1; i <= CORT_BASELINE_DAYS; i++) {
+      const m = cortisolDayMean(dayKey(addDays(mon, -i).getTime()));
+      if (m != null) baseMeans.push(m);
+    }
+    const cortBaseN = baseMeans.length;
+    const cortP75 = percentileOf(baseMeans.slice().sort((a, b) => a - b), CORT_ANOMALY_P);
+    if (cortP75 != null) {
+      for (let i = 0; i < n; i++) {
+        const m = cortisolDayMean(dayKeys[i]);
+        if (m == null || m <= cortP75) continue;   // 未超过个人 P75 → 不算异常
+        const v = pts[i]?.value ?? null;
+        const y = v != null ? yAt(v) : PAD_T + 6;
+        cort.push({ x: xAt(i), y, i, mesor: m });
+      }
+    }
+    if (__DEV__) {
       console.log('[STATUS-WEEK-CORT]', JSON.stringify({
         anchor: formatDate(anchor),
         baseDays: cortBaseN,
@@ -583,8 +582,8 @@ export default function StatusTrendDetailScreen() {
         note: cort.length === 0 ? '本周无 cortisol 样本 / 基线不足 4 天 / 日均值均未超个人 P75 → 不标图标（数据侧，非渲染 bug）' : '',
       }));
     }
-    return { bands, cort };
-  }, [w, plotW, dRange, anchor, ring.tempDaily, cycleLog, pts, plotH]);
+    return cort;
+  }, [w, plotW, dRange, anchor, pts]);
 
   const deltaPct =
     firstReal != null && current != null && firstReal !== 0
@@ -821,7 +820,7 @@ export default function StatusTrendDetailScreen() {
                     经前 PMS 是叠加在黄体期末段的暖橙段（额外一层）。
                     等级信息在月视图不再走背景，改由「每个点的等级色」表达（见下方散点）。 */}
                 {dRange === 'month'
-                  ? chartOverlay.bands.map((b, i) => {
+                  ? phaseBands.map((b, i) => {
                       const x = Math.max(PAD_L, b.x0);
                       const wClip = Math.max(0, Math.min(PAD_L + plotW, b.x1) - x);
                       if (wClip <= 0) return null;
@@ -892,33 +891,16 @@ export default function StatusTrendDetailScreen() {
 
                 {areaD ? <Path d={areaD} fill="url(#std_grad)" /> : null}
                 {/* ★ 主折线：与首页「全天状态趋势」同款 —— 等级色横向渐变描边 2.5pt，
-                    线本身随等级变色。不再压白底粗线、也不再统一单色。 */}
+                    线本身随等级变色。不再压白底粗线、也不再统一单色。
+                    ★ 2026-10-21（用户）：去掉逐点实心圆（散点），趋势图只留线，等级色靠线条渐变表达。
+                       dots 数组仍保留，仅供点击 tooltip 命中检测（见下方 onLayout 触摸逻辑）。 */}
                 {lineD ? (
                   <Path d={lineD} fill="none" stroke="url(#std_line)" strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
 
-                {/* ★ 散点：日/周/月/年每个点都画，颜色 = 该点自己的 4 等级色（moodFor）。
-                    等级信息靠它表达（月视图背景已经让位给周期相位），所以不能统一成单色。
-                    日视图 48 槽很密 → 小半径细描边；周/月/年较疏 → 大半径 + 白描边压住背景。 */}
-                {dots.map((d, i) => {
-                  const dense = dRange === 'day';
-                  const isLast = i === dots.length - 1;
-                  return (
-                    <Circle
-                      key={`dot-${i}`}
-                      cx={d.x}
-                      cy={d.y}
-                      r={dense ? 2.6 : isLast ? 4.5 : 3.5}
-                      fill={d.color}
-                      stroke="#FFFFFF"
-                      strokeWidth={dense ? 0.8 : 1.5}
-                    />
-                  );
-                })}
-
                 {/* ★ 周视图：皮质醇异常图标（单档，红底白「!」），虚线连到当天的数据点 */}
                 {dRange === 'week'
-                  ? chartOverlay.cort.map((c, i) => {
+                  ? cortIcons.map((c, i) => {
                       const topY = PAD_T + 8;
                       return (
                         <G key={`cort-${i}`}>

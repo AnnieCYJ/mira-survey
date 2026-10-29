@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mira · 一键体检原型（A/B）</title>
+<style>
+  :root{
+    --bg1:#3E627A; --bg2:#2A4470; --bg3:#2B3564;
+    --card:rgba(255,255,255,0.12);
+    --card2:rgba(255,255,255,0.08);
+    --border:rgba(255,255,255,0.16);
+    --title:#F2F7FF; --sub:rgba(240,247,255,0.62); --faint:rgba(240,247,255,0.40);
+    --lime:#E6F56B; --rose:#FF6F91;
+    --ok:#5BD6A0; --high:#F2B85C; --low:#6FB7FF; --risk:#FF7A9C;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;background:#0E1422;font-family:-apple-system,"PingFang SC","Segoe UI",Roboto,sans-serif;
+    display:flex;justify-content:center;padding:24px 12px 48px;color:var(--title);}
+  .phone{width:390px;background:linear-gradient(165deg,var(--bg1) 0%,var(--bg2) 48%,var(--bg3) 100%);
+    border-radius:34px;padding:14px 16px 26px;min-height:760px;position:relative;
+    box-shadow:0 24px 60px rgba(0,0,0,0.45);overflow:hidden;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;
+    color:var(--title);padding:4px 6px 10px;}
+  .topbar{display:flex;align-items:center;gap:10px;margin:2px 2px 14px;}
+  .back{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--title);
+    border:1px solid var(--border);cursor:pointer;}
+  .topbar h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.3px;}
+  .topbar .spacer{flex:1;}
+  .share{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid var(--border);}
+  .seg{display:flex;background:rgba(255,255,255,0.10);border-radius:12px;padding:4px;margin:0 2px 16px;}
+  .seg button{flex:1;border:0;background:transparent;color:var(--sub);font-size:13px;font-weight:600;
+    padding:8px 0;border-radius:9px;cursor:pointer;}
+  .seg button.on{background:rgba(255,255,255,0.18);color:var(--title);}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:12px;}
+  .label{font-size:13px;color:var(--sub);letter-spacing:.4px;}
+  .big{font-size:30px;font-weight:700;line-height:1.1;}
+  .unit{font-size:13px;color:var(--sub);font-weight:500;margin-left:3px;}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+    font-size:13px;font-weight:650;background:rgba(255,255,255,0.10);}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12px;
+    font-weight:600;background:rgba(255,255,255,0.08);border:1px solid var(--border);}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+  .ok{color:var(--ok);} .high{color:var(--high);} .low{color:var(--low);} .risk{color:var(--risk);}
+  .bg-ok{background:var(--ok);} .bg-high{background:var(--high);} .bg-low{background:var(--low);} .bg-risk{background:var(--risk);}
+  .row{display:flex;align-items:center;justify-content:space-between;}
+  .gap{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .cta{margin-top:14px;width:100%;border:0;border-radius:14px;padding:14px 0;font-size:15px;font-weight:700;
+    color:#241b2e;background:linear-gradient(90deg,var(--lime),var(--rose));cursor:pointer;}
+  .link{margin-top:12px;font-size:13px;color:var(--lime);font-weight:600;display:flex;justify-content:space-between;
+    align-items:center;cursor:pointer;}
+  .hist{padding:14px;margin-bottom:12px;}
+  .hist .when{font-size:13px;color:var(--sub);}
+  .hist .head{display:flex;align-items:center;justify-content:space-between;margin-top:4px;}
+  .hist .dn{font-size:20px;font-weight:700;}
+  .hist .meta{font-size:13px;color:var(--sub);margin-top:8px;}
+  .group-title{font-size:14px;font-weight:700;color:var(--title);margin:18px 4px 10px;
+    display:flex;align-items:center;gap:8px;}
+  .grp-ico{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,0.10);
+    display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .metric{display:flex;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .metric:last-child{border-bottom:0;}
+  .mn{font-size:14px;color:var(--title);font-weight:600;}
+  .mv{margin-top:2px;}
+  .mstatus{font-size:12px;font-weight:700;white-space:nowrap;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .gcell{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px;}
+  .scale{height:7px;border-radius:999px;margin-top:10px;position:relative;display:flex;overflow:hidden;}
+  .scale span{flex:1;}
+  .marker{position:absolute;top:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+    border-top:8px solid #fff;transform:translateX(-50%);}
+  .note{font-size:12px;color:var(--sub);line-height:1.55;margin-top:8px;}
+  .sumbox{background:rgba(255,255,255,0.10);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:6px;}
+  .sumbox .t{font-size:13px;color:var(--sub);}
+  .sumbox .m{font-size:16px;font-weight:650;margin-top:4px;line-height:1.5;}
+  .sumbox .n{font-size:12px;color:var(--faint);margin-top:10px;line-height:1.5;}
+  .empty{font-size:12px;color:var(--faint);margin-top:10px;}
+  .toast{position:absolute;left:16px;right:16px;bottom:20px;background:rgba(20,26,42,0.92);
+    border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13px;color:var(--title);
+    text-align:center;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .bigstat{display:flex;gap:10px;margin-top:14px;}
+  .bigstat .b{flex:1;background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:14px;
+    padding:12px;text-align:center;}
+  .bigstat .b .v{font-size:26px;font-weight:750;}
+  .bigstat .b .k{font-size:12px;color:var(--sub);margin-top:2px;}
+  .ablist{margin-top:12px;}
+  .ablist .it{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .ablist .it:last-child{border-bottom:0;}
+  .fade{animation:fade .25s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="phone" id="app"></div>
+
+<script>
+/* ───────── 演示数据：3 次体检，按时间倒序 ───────── */
+const CHECKUPS = [
+  {
+    id:'c1', date:'10/08 11:37', done:11, abnormal:1,
+    groups:[
+      {title:'核心体征', icon:'❤️', metrics:[
+        {name:'平均心率', value:'60', unit:'次/分', status:'ok', label:'正常', ref:'参考 60~100 bpm',
+         note:'本次静息平均心率落在常见参考区间内。单次数值会随测量时的状态波动，建议结合多日观察。'},
+        {name:'HRV', value:'30', unit:'毫秒', status:'ok', label:'正常',
+         note:'HRV 反映心率变异性，本次处于常见区间。它受睡眠、压力影响较大，宜作趋势观察。'},
+        {name:'血压', value:'113/82', unit:'mmHg', status:'ok', label:'正常', ref:'参考 <120/80',
+         scale:{min:80,max:160,v:113},
+         note:'收缩压与舒张压都在常见参考范围内。血压会随情绪与活动波动，本结果仅为本次测量快照。'},
+        {name:'血氧', value:'98', unit:'%', status:'ok', label:'正常', ref:'参考 95~100%',
+         note:'血氧饱和度在常见区间内。'},
+      ]},
+      {title:'血液健康检测', icon:'🩸', metrics:[
+        {name:'血糖', value:'5.29', unit:'mmol/L', status:'ok', label:'正常', ref:'空腹参考 3.9~6.1',
+         note:'空腹血糖在常见参考区间内。餐后数值通常更高，本结果反映空腹状态。'},
+        {name:'尿酸', value:'456', unit:'μmol/L', status:'high', label:'偏高', ref:'常见参考 155~428',
+         scale:{min:100,max:500,v:456},
+         note:'尿酸高于常见参考上限。单次偏高可能受饮食、饮水影响，建议多次测量并结合专业检查判断；本结果仅供参考，不构成诊断。'},
+        {name:'总胆固醇', value:'3.12', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'甘油三酯', value:'0.88', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'高密度脂蛋白', value:'0.95', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'低密度脂蛋白', value:'0.62', unit:'mmol/L', status:'ok', label:'正常'},
+      ]},
+      {title:'心理健康检测', icon:'🧠', risk:{name:'抑郁症风险', status:'ok', label:'低风险',
+         note:'综合皮肤含水量、情绪、皮质醇、交感神经活跃度四项，本次评估处于低风险区间。这是基于设备信号的相对参考，不代表临床结论。'},
+       sub:[
+        {name:'皮肤含水量', value:'47', unit:'%', status:'ok', label:'正常'},
+        {name:'情绪', value:'3', unit:'', status:'ok', label:'稳定'},
+        {name:'皮质醇', value:'8.0', unit:'ug/dL', status:'ok', label:'正常'},
+        {name:'交感神经活跃度', value:'27', unit:'', status:'ok', label:'放松'},
+       ]},
+      {title:'压力与疲劳', icon:'🌿', standalone:[
+        {name:'压力', value:'11', unit:'', status:'ok', label:'放松',
+         scale:{min:0,max:99,v:11}, levels:'压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大',
+         note:'本次压力值落在放松区间。压力会随日程波动，可作当日状态的一个观察点。'},
+        {name:'疲劳度', value:'1', unit:'', status:'low', label:'轻度疲劳',
+         scale:{min:0,max:10,v:1}, levels:'疲劳值 0-10 级，等级越高越疲惫；4-6 为中度，是身体提醒放慢节奏的信号',
+         note:'本次疲劳值处于较低区间。'},
+      ]},
+    ]
+  },
+  {
+    id:'c2', date:'10/01 09:12', done:11, abnormal:0,
+    groups:[
+      {title:'核心体征', icon:'❤️', metrics:[
+        {name:'平均心率', value:'62', unit:'次/分', status:'ok', label:'正常', ref:'参考 60~100 bpm', note:'本次静息心率在常见参考区间内。'},
+        {name:'HRV', value:'34', unit:'毫秒', status:'ok', label:'正常', note:'HRV 处于常见区间。'},
+        {name:'血压', value:'118/79', unit:'mmHg', status:'ok', label:'正常', ref:'参考 <120/80', scale:{min:80,max:160,v:118}, note:'血压在常见参考范围内。'},
+        {name:'血氧', value:'99', unit:'%', status:'ok', label:'正常', ref:'参考 95~100%', note:'血氧饱和度在常见区间内。'},
+      ]},
+      {title:'血液健康检测', icon:'🩸', metrics:[
+        {name:'血糖', value:'5.11', unit:'mmol/L', status:'ok', label:'正常', ref:'空腹参考 3.9~6.1', note:'空腹血糖在常见参考区间内。'},
+        {name:'尿酸', value:'312', unit:'μmol/L', status:'ok', label:'正常', ref:'常见参考 155~428', scale:{min:100,max:500,v:312}, note:'尿酸在常见参考区间内。'},
+        {name:'总胆固醇', value:'3.40', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'甘油三酯', value:'0.95', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'高密度脂蛋白', value:'1.02', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'低密度脂蛋白', value:'0.70', unit:'mmol/L', status:'ok', label:'正常'},
+      ]},
+      {title:'心理健康检测', icon:'🧠', risk:{name:'抑郁症风险', status:'ok', label:'低风险',
+         note:'四项综合评估处于低风险区间，为相对参考，不代表临床结论。'},
+       sub:[
+        {name:'皮肤含水量', value:'52', unit:'%', status:'ok', label:'正常'},
+        {name:'情绪', value:'4', unit:'', status:'ok', label:'稳定'},
+        {name:'皮质醇', value:'7.2', unit:'ug/dL', status:'ok', label:'正常'},
+        {name:'交感神经活跃度', value:'24', unit:'', status:'ok', label:'放松'},
+       ]},
+      {title:'压力与疲劳', icon:'🌿', standalone:[
+        {name:'压力', value:'22', unit:'', status:'ok', label:'放松', scale:{min:0,max:99,v:22}, levels:'压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note:'压力值落在放松区间。'},
+        {name:'疲劳度', value:'2', unit:'', status:'low', label:'轻度疲劳', scale:{min:0,max:10,v:2}, levels:'疲劳值 0-10 级，等级越高越疲惫', note:'疲劳值处于较低区间。'},
+      ]},
+    ]
+  },
+  {
+    id:'c3', date:'09/24 21:45', done:11, abnormal:2,
+    groups:[
+      {title:'核心体征', icon:'❤️', metrics:[
+        {name:'平均心率', value:'71', unit:'次/分', status:'ok', label:'正常', ref:'参考 60~100 bpm', note:'本次静息心率在常见参考区间内。'},
+        {name:'HRV', value:'24', unit:'毫秒', status:'low', label:'偏低', ref:'常见区间偏下', note:'HRV 低于近期常见水平。它受当日压力与睡眠质量影响，建议结合多日观察。'},
+        {name:'血压', value:'138/89', unit:'mmHg', status:'high', label:'偏高', ref:'参考 <120/80', scale:{min:80,max:160,v:138}, note:'收缩压与舒张压高于常见参考范围。血压会随活动与情绪波动，建议多次测量并结合专业检查；本结果仅供参考。'},
+        {name:'血氧', value:'97', unit:'%', status:'ok', label:'正常', ref:'参考 95~100%', note:'血氧饱和度在常见区间内。'},
+      ]},
+      {title:'血液健康检测', icon:'🩸', metrics:[
+        {name:'血糖', value:'5.62', unit:'mmol/L', status:'ok', label:'正常', ref:'空腹参考 3.9~6.1', note:'空腹血糖在常见参考区间内。'},
+        {name:'尿酸', value:'401', unit:'μmol/L', status:'ok', label:'正常', ref:'常见参考 155~428', scale:{min:100,max:500,v:401}, note:'尿酸在常见参考区间内，接近上限。'},
+        {name:'总胆固醇', value:'3.30', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'甘油三酯', value:'1.10', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'高密度脂蛋白', value:'0.98', unit:'mmol/L', status:'ok', label:'正常'},
+        {name:'低密度脂蛋白', value:'0.75', unit:'mmol/L', status:'ok', label:'正常'},
+      ]},
+      {title:'心理健康检测', icon:'🧠', risk:{name:'抑郁症风险', status:'ok', label:'低风险',
+         note:'四项综合评估处于低风险区间，为相对参考。'},
+       sub:[
+        {name:'皮肤含水量', value:'44', unit:'%', status:'ok', label:'正常'},
+        {name:'情绪', value:'2', unit:'', status:'ok', label:'偏低', note:''},
+        {name:'皮质醇', value:'9.1', unit:'ug/dL', status:'ok', label:'正常'},
+        {name:'交感神经活跃度', value:'39', unit:'', status:'high', label:'偏活跃', note:''},
+       ]},
+      {title:'压力与疲劳', icon:'🌿', standalone:[
+        {name:'压力', value:'54', unit:'', status:'ok', label:'正常', scale:{min:0,max:99,v:54}, levels:'压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note:'压力值落在正常区间。'},
+        {name:'疲劳度', value:'5', unit:'', status:'high', label:'中度疲劳', scale:{min:0,max:10,v:5}, levels:'疲劳值 0-10 级，4-6 为中度，是身体提醒放慢节奏的信号', note:'疲劳值处于中度区间，是身体提醒放慢节奏的一个信号。'},
+      ]},
+    ]
+  },
+];
+
+/* ───────── 状态 ───────── */
+let mode='A', view='overview', selId=null;
+const app=document.getElementById('app');
+const SEG=['#6FB7FF','#5BD6A0','#F2B85C','#FF7A9C'];
+
+function statusColor(s){return s==='ok'?'var(--ok)':s==='high'?'var(--high)':s==='low'?'var(--low)':'var(--risk)';}
+function statusBg(s){return s==='ok'?'var(--ok)':s==='high'?'var(--high)':s==='low'?'var(--low)':'var(--risk)';}
+
+function scaleBar(sc){
+  const pct=Math.max(0,Math.min(100,((sc.v-sc.min)/(sc.max-sc.min))*100));
+  return `<div class="scale">${SEG.map(c=>`<span style="background:${c}"></span>`).join('')}
+    <div class="marker" style="left:${pct}%"></div></div>`;
+}
+
+function metricRow(m){
+  return `<div class="metric">
+    <div>
+      <div class="mn">${m.name}</div>
+      ${m.ref?`<div class="label">${m.ref}</div>`:''}
+      ${m.scale?scaleBar(m.scale):''}
+      ${m.note?`<div class="note">${m.note}</div>`:''}
+    </div>
+    <div style="text-align:right">
+      <div class="mv"><span class="big" style="font-size:22px">${m.value}</span><span class="unit">${m.unit||''}</span></div>
+      <div class="mstatus" style="color:${statusColor(m.status)}">${m.label}</div>
+    </div>
+  </div>`;
+}
+
+function renderGroup(g){
+  let html=`<div class="group-title"><span class="grp-ico">${g.icon}</span>${g.title}</div><div class="card">`;
+  if(g.risk){
+    html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="mn" style="font-size:15px">${g.risk.name}</div>
+      <div class="mstatus" style="color:${statusColor(g.risk.status)}">${g.risk.label}</div></div>
+      <div class="grid2">${g.sub.map(s=>`
+        <div class="gcell">
+          <div class="mn" style="font-size:13px">${s.name}</div>
+          <div style="margin-top:6px"><span class="big" style="font-size:20px">${s.value}</span><span class="unit">${s.unit||''}</span></div>
+          <div class="mstatus" style="color:${statusColor(s.status)};font-size:11px;margin-top:2px">${s.label}</div>
+        </div>`).join('')}</div>
+      ${g.risk.note?`<div class="note">${g.risk.note}</div>`:''}`;
+  }
+  if(g.metrics) html+=g.metrics.map(metricRow).join('');
+  html+=`</div>`;
+  if(g.standalone){
+    html+=g.standalone.map(m=>`<div class="card">${metricRow(m)}${m.levels?`<div class="note">${m.levels}</div>`:''}</div>`).join('');
+  }
+  return html;
+}
+
+/* ───────── 视图 ───────── */
+function renderOverview(){
+  const last=CHECKUPS[0];
+  const ab=last.groups.flatMap(g=>(g.metrics||[]).filter(m=>m.status!=='ok'))
+    .concat(last.groups.flatMap(g=>g.standalone?g.standalone.filter(m=>m.status!=='ok'):[]));
+  let inner='';
+  if(mode==='A'){
+    inner=`<div class="card fade">
+      <div class="row"><div class="label">最近一次体检</div><div class="label">${last.date}</div></div>
+      <div class="gap">
+        <span class="pill"><span class="dot bg-ok"></span>正常 ${last.done-last.abnormal} 项</span>
+        <span class="pill"><span class="dot ${last.abnormal?'bg-high':'bg-ok'}"></span>异常 ${last.abnormal} 项</span>
+      </div>
+      ${ab.length?`<div class="gap">${ab.map(m=>`<span class="chip"><span class="dot ${m.status==='high'?'bg-high':m.status==='low'?'bg-low':'bg-risk'}"></span>${m.name} ${m.label}</span>`).join('')}</div>`
+        :`<div class="empty">本次完成 ${last.done} 项检测，指标均在参考区间内。</div>`}
+      <div class="link" onclick="goHistory()">查看全部 ${CHECKUPS.length} 次体检记录 <span>›</span></div>
+      <button class="cta" onclick="measure()">开始一次一键体检</button>
+    </div>`;
+  } else {
+    inner=`<div class="card fade">
+      <div class="row"><div class="label">最近一次体检</div><div class="label">${last.date}</div></div>
+      <div class="bigstat">
+        <div class="b"><div class="v ok">${last.done-last.abnormal}</div><div class="k">项正常</div></div>
+        <div class="b"><div class="v ${last.abnormal?'high':'ok'}">${last.abnormal}</div><div class="k">项异常</div></div>
+      </div>
+      ${ab.length?`<div class="ablist">${ab.map(m=>`<div class="it"><span class="mn">${m.name}</span>
+        <span class="mstatus ${m.status==='high'?'high':m.status==='low'?'low':'risk'}">${m.label}</span></div>`).join('')}</div>`
+        :`<div class="empty" style="margin-top:12px">本次完成 ${last.done} 项检测，未见异常。</div>`}
+      <div class="link" onclick="goHistory()">查看全部 ${CHECKUPS.length} 次记录 <span>›</span></div>
+      <button class="cta" onclick="measure()">开始一次一键体检</button>
+    </div>`;
+  }
+  app.innerHTML=`
+    <div class="statusbar"><span>14:08</span><span>●●● 5G ▔ 45%</span></div>
+    <div class="seg"><button class="${mode==='A'?'on':''}" onclick="setMode('A')">方案 A · 状态条</button>
+      <button class="${mode==='B'?'on':''}" onclick="setMode('B')">方案 B · 清单</button></div>
+    <div class="topbar"><h1>一键体检</h1></div>
+    ${inner}
+    <div class="note" style="margin:4px 6px">说明：「--」表示该检测项本次未测成功。参考区间来自常见医学资料，仅供参考，不构成诊断建议。</div>
+    ${toastHtml()}`;
+}
+
+function renderHistory(){
+  app.innerHTML=`
+    <div class="statusbar"><span>14:08</span><span>●●● 5G ▔ 45%</span></div>
+    <div class="topbar"><div class="back" onclick="back()">‹</div><h1>体检记录</h1></div>
+    <div class="label" style="margin:0 4px 12px">共 ${CHECKUPS.length} 次体检</div>
+    ${CHECKUPS.map(c=>{
+      const ab=c.groups.flatMap(g=>(g.metrics||[]).filter(m=>m.status!=='ok'))
+        .concat(c.groups.flatMap(g=>g.standalone?g.standalone.filter(m=>m.status!=='ok'):[]));
+      return `<div class="card hist fade" onclick="goDetail('${c.id}')">
+        <div class="row"><div class="when">${c.date}</div>
+          <span class="dot ${c.abnormal?'bg-high':'bg-ok'}" style="width:9px;height:9px"></span></div>
+        <div class="head"><div class="dn">${c.done} 项</div>
+          <div class="mstatus ${c.abnormal?'high':'ok'}">${c.abnormal?c.abnormal+' 项异常':'未见异常'}</div></div>
+        <div class="meta">${ab.length?ab.map(m=>m.name).join('、')+' 异常':'全部指标在参考区间内'}</div>
+      </div>`;
+    }).join('')}
+    ${toastHtml()}`;
+}
+
+function renderDetail(id){
+  const c=CHECKUPS.find(x=>x.id===id);
+  const ab=c.groups.flatMap(g=>(g.metrics||[]).filter(m=>m.status!=='ok'))
+    .concat(c.groups.flatMap(g=>g.standalone?g.standalone.filter(m=>m.status!=='ok'):[]));
+  app.innerHTML=`
+    <div class="statusbar"><span>14:08</span><span>●●● 5G ▔ 45%</span></div>
+    <div class="topbar"><div class="back" onclick="back()">‹</div><h1>微体检报告</h1>
+      <div class="spacer"></div><div class="share">↗</div></div>
+    <div class="sumbox fade">
+      <div class="t">检测时间 ${c.date}</div>
+      <div class="m">本次完成 ${c.done} 项检测，${c.abnormal?c.abnormal+' 项偏高/偏低':'未见异常'}</div>
+      <div class="n">「--」表示该检测项本次未测成功。参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。</div>
+    </div>
+    ${c.groups.map(renderGroup).join('')}
+    ${toastHtml()}`;
+}
+
+function toastHtml(){return `<div class="toast" id="toast"></div>`;}
+function toast(msg){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);}
+function measure(){toast('演示：未连接戒指，真实测量需一键触发设备快检');}
+
+function setMode(m){mode=m;renderOverview();}
+function goHistory(){view='history';renderHistory();}
+function goDetail(id){selId=id;view='detail';renderDetail(id);}
+function back(){if(view==='detail'){view='history';renderHistory();}else{view='overview';renderOverview();}}
+
+renderOverview();
+</script>
+</body>
+</html>

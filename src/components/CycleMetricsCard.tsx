@@ -54,7 +54,7 @@ export default function CycleMetricsCard({
   const metric = (label: string, value: React.ReactNode, sub?: React.ReactNode, highlight?: boolean) => (
     <View style={styles.metricItem}>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={[styles.metricValue, highlight && { color: theme.colors.accentSolid }]}>{value}</Text>
+      <Text style={[styles.metricValue, highlight && { color: theme.colors.accentText }]}>{value}</Text>
       {sub ? <Text style={styles.metricSub} numberOfLines={2}>{sub}</Text> : null}
     </View>
   );

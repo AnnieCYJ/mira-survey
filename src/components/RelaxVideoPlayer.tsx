@@ -168,6 +168,6 @@ const styles = StyleSheet.create({
   replayHint: {
     marginTop: theme.sp(1.5),
     fontSize: theme.fontSize.sm,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
 });

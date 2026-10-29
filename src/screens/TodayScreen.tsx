@@ -910,14 +910,14 @@ export default function TodayScreen() {
     t != null ? CHIP_VALUE_TONE[t] : undefined;
 
   // ★ 2026-10-17（用户：「身体负荷 = 洞察页面基础指标的压力指标，不是心理压力那个」）：
-  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备/健康一览同步的
-  //   实时压力信号 `ring.metrics['stress']`（0–100，越高越紧张），回落读 `ring.daily['stress']`。
+  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备 SDK 压力信号经
+  //   stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
+  //   ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hrv、daily 不含
+  //     stress，该字段恒为 null → 身体负荷卡一直「— / 暂无数据」；改用 computeStressReport().score
+  //     （与 MetricDetail「压力」卡、首页 CalmWaveHome 同源）。
   //   它 ≠ StressInsightCard 的 emotionalLoad（那个是派生总消耗），也 ≠ 「心理压力」chip 的
   //   emotionalStress 百分位（50=和平时差不多）。三者是三个不同口径，这里严格对齐基础指标压力卡。
-  const bodyLoad =
-    ((ring.metrics as Record<string, number | null>)['stress']
-      ?? ring.daily['stress']
-      ?? null) as number | null;
+  const bodyLoad = (() => { try { const r = computeStressReport(Date.now()); return r?.score ?? null; } catch { return null; } })();
   const loadValue = bodyLoad != null ? String(bodyLoad) : '—';
   const loadTone: 'good' | 'mid' | 'bad' | undefined =
     bodyLoad == null ? undefined

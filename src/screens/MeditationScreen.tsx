@@ -16,7 +16,7 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import { RingBle } from '../ble/RingBleManager';
 import { buildToolCtx } from '../lib/toolRecommend';
-import { getToolDailyTip, getToolPhaseLine, getToolStateLine } from '../lib/toolTips';
+import { getToolPhaseLine } from '../lib/toolTips';
 import { listHabits, undoHabit, type HabitEntry } from '../data/habitSuggestions';
 
 
@@ -101,9 +101,7 @@ const frostAlpha = (i: number) => Math.pow((i + 0.5) / FROST_STEPS, 1.25);
 function CardGlassCaption({
   t, toolCtx, cardH,
 }: { t: ToolItem; toolCtx: any; cardH: number }) {
-  const tip = toolCtx ? getToolDailyTip(t.key, toolCtx) : null;
   const phaseLine = toolCtx ? (getToolPhaseLine(toolCtx) || '周期未记录') : '周期未记录';
-  const stateLine = toolCtx ? (getToolStateLine(t.key, toolCtx) || '—') : '—';
 
   const uri = TOOL_IMAGE_DATA[t.key];
   const fallback = TOOL_IMAGES_FALLBACK[t.key];
@@ -154,14 +152,12 @@ function CardGlassCaption({
         pointerEvents="none"
       />
       <View style={styles.fadeInner}>
-        {/* ① 时期行：工具名 · 最近处于什么时期 */}
-        <Text style={styles.cgKicker} numberOfLines={1}>{t.key} · {phaseLine}</Text>
-        {/* ② 状态行：当下怎么样（真实数据） */}
-        <Text style={styles.cgTitle} numberOfLines={1}>{stateLine}</Text>
-        {/* ③ 建议行：可以怎么改善 */}
-        {tip ? <Text style={styles.cgTip} numberOfLines={2}>{tip}</Text> : null}
-        {/* ④ 资源数（真实配置，无则不显示） */}
-        {t.m ? <Text style={styles.cgMeta} numberOfLines={1}>{t.m}</Text> : null}
+        {/* ① 类别名（放大当主标题，一眼分清是哪类工具） */}
+        <Text style={styles.cgCat} numberOfLines={1}>{t.key}</Text>
+        {/* ② 周期阶段（小字） */}
+        <Text style={styles.cgPhase} numberOfLines={1}>{phaseLine}</Text>
+        {/* ③ 用途描述（小字，原 t.d 一直没上卡，现在补上） */}
+        {t.d ? <Text style={styles.cgDesc} numberOfLines={2}>{t.d}</Text> : null}
       </View>
     </View>
   );
@@ -482,46 +478,35 @@ const styles = StyleSheet.create({
     paddingBottom: theme.sp(4),
     alignItems: 'flex-start',
   },
-  // ① 小字行：工具名 · 最近处于什么时期
-  cgKicker: {
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.medium,
-    color: 'rgba(255,255,255,0.76)',
-    letterSpacing: 0.2,
-    marginBottom: theme.sp(0.75),
-    textShadowColor: 'rgba(0,0,0,0.42)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  // ② 标题行：当下状态（真实数据）
-  cgTitle: {
-    fontSize: theme.fs(17),
+  // ① 类别名（放大当主标题，一眼分清是哪类工具）
+  cgCat: {
+    fontSize: theme.fs(20),
     fontWeight: theme.weight.semibold,
     color: '#FFFFFF',
     letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  // ② 周期阶段（小字）
+  cgPhase: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
+    color: 'rgba(255,255,255,0.78)',
+    letterSpacing: 0.2,
+    marginTop: theme.sp(1),
     textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  // ③ 建议行：可以怎么改善（每日微文案）
-  cgTip: {
-    marginTop: theme.sp(1),
-    fontSize: theme.fs(12.5),
+  // ③ 用途描述（小字，原 t.d 一直没上卡，现在补上）
+  cgDesc: {
+    marginTop: theme.sp(0.5),
+    fontSize: theme.fs(13),
     fontWeight: theme.weight.regular,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: theme.fs(17),
-    textShadowColor: 'rgba(0,0,0,0.40)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  // ④ 资源数
-  cgMeta: {
-    marginTop: theme.sp(1.5),
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.regular,
-    color: 'rgba(255,255,255,0.72)',
-    letterSpacing: 0.2,
-    textShadowColor: 'rgba(0,0,0,0.40)',
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: theme.fs(18),
+    textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },

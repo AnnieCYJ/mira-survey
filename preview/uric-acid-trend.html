@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>尿酸趋势图 · 样式对比</title>
+<style>
+  :root{
+    --bg-top:#2B3564; --bg-bot:#2A4470;
+    --glass:rgba(255,255,255,0.10); --glass-strong:rgba(255,255,255,0.16);
+    --line:rgba(255,255,255,0.18);
+    --ink:#FFFFFF; --body:rgba(255,255,255,0.82); --sub:rgba(255,255,255,0.55);
+    --normal:#5BD6A6; --low:#7FB2FF; --high:#F6B3D0; --warn:#F2C879;
+    --honey:#E0A458;
+    --ref-band:rgba(91,214,166,0.14);
+    --low-band:rgba(127,178,255,0.10);
+    --high-band:rgba(246,179,208,0.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,sans-serif;
+    background:linear-gradient(165deg,var(--bg-top),var(--bg-bot));
+    color:var(--ink); min-height:100vh; padding:28px 16px; display:flex; justify-content:center;
+  }
+  .wrap{width:100%;max-width:430px;}
+  .title{font-size:22px;font-weight:700;letter-spacing:.5px;}
+  .sub{font-size:12px;color:var(--sub);margin-top:4px;}
+  .hero{
+    margin-top:18px;background:var(--glass);border:1px solid var(--line);border-radius:20px;
+    padding:16px 18px;display:flex;align-items:flex-end;justify-content:space-between;
+  }
+  .hero .big{font-size:42px;font-weight:800;line-height:1;}
+  .hero .unit{font-size:13px;color:var(--sub);margin-left:6px;font-weight:600;}
+  .hero .tag{font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px;}
+  .hero .tag.ok{background:rgba(91,214,166,.18);color:var(--normal);}
+  .hero .tag.hi{background:rgba(246,179,208,.20);color:var(--high);}
+  .seg{display:flex;gap:6px;margin-top:16px;}
+  .seg .g{display:flex;background:rgba(255,255,255,0.08);border-radius:12px;padding:3px;flex:1;}
+  .seg button{
+    flex:1;border:0;background:transparent;color:var(--sub);font-size:12.5px;font-weight:600;
+    padding:8px 0;border-radius:9px;cursor:pointer;transition:.18s;font-family:inherit;
+  }
+  .seg button.on{background:var(--glass-strong);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.2);}
+  .card{
+    margin-top:14px;background:var(--glass);border:1px solid var(--line);border-radius:20px;
+    padding:14px;
+  }
+  .card .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .card .ch .t{font-size:14px;font-weight:700;}
+  .card .ch .r{font-size:11px;color:var(--sub);}
+  .chart{width:100%;display:block;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--body);}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
+  .note{
+    margin-top:16px;background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;font-size:11.5px;line-height:1.7;color:var(--body);
+  }
+  .note b{color:var(--ink);}
+  .styleLabel{margin-top:16px;font-size:12px;color:var(--sub);}
+  .styleLabel b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">尿酸趋势</div>
+  <div class="sub">Uric Acid · µmol/L · 参考区间 155 – 428</div>
+
+  <div class="hero">
+    <div><span class="big" id="heroVal">405</span><span class="unit">µmol/L</span></div>
+    <div class="tag ok" id="heroTag">正常</div>
+  </div>
+
+  <div class="seg" id="rangeSeg">
+    <div class="g">
+      <button data-r="day" class="on">日</button>
+      <button data-r="week">周</button>
+      <button data-r="month">月</button>
+      <button data-r="year">年</button>
+    </div>
+  </div>
+
+  <div class="styleLabel">视觉风格（点下方切换对比）：</div>
+  <div class="seg" id="styleSeg">
+    <div class="g">
+      <button data-s="A" class="on">A · 离散点</button>
+      <button data-s="B">B · 区间柱</button>
+      <button data-s="C">C · 极简线</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ch">
+      <div class="t" id="chartTitle">今日测量</div>
+      <div class="r" id="chartReadout"></div>
+    </div>
+    <svg class="chart" id="chart" viewBox="0 0 390 220" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span><i style="background:var(--low-band)"></i>偏低 &lt;155</span>
+      <span><i style="background:var(--ref-band)"></i>正常 155–428</span>
+      <span><i style="background:var(--high-band)"></i>偏高 &gt;428</span>
+    </div>
+  </div>
+
+  <div class="note" id="note"></div>
+</div>
+
+<script>
+// ===== 模拟真实数据（稀疏血液指标：健康一览每日几次快照，不连续）=====
+const REF = { lo:155, hi:428, min:0, max:500 };
+const DATA = {
+  day: {
+    title:'今日测量',
+    // 真实时间戳（0-24h），每天仅 2~4 次健康一览快照 —— 不再是上百个同质轮询点
+    pts:[ {h:9.2,v:405}, {h:14.5,v:412}, {h:21.75,v:398} ],
+    axisLabels:['0','6','12','18','24']
+  },
+  week: {
+    title:'本周每日',
+    pts:[ {x:0,v:null}, {x:1,v:402}, {x:2,v:410}, {x:3,v:null}, {x:4,v:408}, {x:5,v:395}, {x:6,v:401} ],
+    axisLabels:['一','二','三','四','五','六','日']
+  },
+  month: {
+    title:'本月每日',
+    // 稀疏：隔几天才测一次，缺口为 null（诚实断线，不编造）
+    pts:Array.from({length:30},(_,i)=>{
+      const seed=[null,402,null,null,410,null,408,null,null,395,null,401,null,null,418,null,405,null,null,398,null,412,null,null,407,null,null,395,null,404];
+      return {x:i,v:seed[i]};
+    }),
+    axisLabels:Array.from({length:30},(_,i)=> (i%5===0?(i+1):''))
+  },
+  year: {
+    title:'本年每月均值',
+    pts:[ {x:0,v:388},{x:1,v:402},{x:2,v:410},{x:3,v:398},{x:4,v:405},{x:5,v:412},
+           {x:6,v:401},{x:7,v:395},{x:8,v:408},{x:9,v:418},{x:10,v:402},{x:11,v:399} ],
+    axisLabels:['1','2','3','4','5','6','7','8','9','10','11','12']
+  }
+};
+
+const NOTES = {
+  A:'<b>风格 A · 离散测量点</b>：日视图把每次健康一览快照画成一个点（不再把 60s 轮询的上百个同质点连成密线），参考带把 155–428 正常区高亮。最适合"偶尔测一次"的血液指标，一眼看清几次测量的高低与是否越线。',
+  B:'<b>风格 B · 区间柱状</b>：日/周/月用柱表达当日值，柱身颜色随区间变色（蓝=偏低 / 绿=正常 / 粉=偏高），参考带作背景分区。数值密集时比折线更不容易糊。',
+  C:'<b>风格 C · 极简折线</b>：只保留一条细折线 + 当前大数值 + 155/428 两条虚线参考。去掉填充与网格，最干净，适合作为详情页主图；缺口自动断线。'
+};
+
+let curRange='day', curStyle='A';
+const svg=document.getElementById('chart');
+const PAD={l:30,r:12,t:14,b:24}, W=390, H=220;
+
+function yAt(v){ return PAD.t + (1-(v-REF.min)/(REF.max-REF.min))*(H-PAD.t-PAD.b); }
+function xAtDay(h){ return PAD.l + (h/24)*(W-PAD.l-PAD.r); }
+function xAtIdx(i,n){ return PAD.l + (n>1? i/(n-1):0.5)*(W-PAD.l-PAD.r); }
+
+function bandRect(yTop,yBot,fill){
+  return `<rect x="${PAD.l}" y="${yTop}" width="${W-PAD.l-PAD.r}" height="${Math.max(0,yBot-yTop)}" fill="${fill}"/>`;
+}
+function refBands(){
+  const yHi=yAt(REF.max), y428=yAt(REF.hi), y155=yAt(REF.lo), yLo=yAt(REF.min);
+  return bandRect(yHi,y428,'var(--high-band)')+bandRect(y428,y155,'var(--ref-band)')+bandRect(y155,yLo,'var(--low-band)');
+}
+function gridY(){
+  let s='';
+  [0,125,250,375,500].forEach(v=>{
+    const y=yAt(v);
+    s+=`<line x1="${PAD.l}" y1="${y}" x2="${W-PAD.r}" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+    s+=`<text x="${PAD.l-5}" y="${y+3}" font-size="8" fill="var(--sub)" text-anchor="end">${v}</text>`;
+  });
+  // 参考线
+  s+=`<line x1="${PAD.l}" y1="${yAt(REF.hi)}" x2="${W-PAD.r}" y2="${yAt(REF.hi)}" stroke="var(--warn)" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>`;
+  s+=`<line x1="${PAD.l}" y1="${yAt(REF.lo)}" x2="${W-PAD.r}" y2="${yAt(REF.lo)}" stroke="var(--low)" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>`;
+  return s;
+}
+function xLabels(labels){
+  let s='';
+  const n=labels.length;
+  labels.forEach((lb,i)=>{
+    if(!lb) return;
+    const x = curRange==='day'? xAtDay(parseFloat(lb)) : xAtIdx(i,n);
+    s+=`<text x="${x}" y="${H-7}" font-size="8" fill="var(--sub)" text-anchor="middle">${lb}</text>`;
+  });
+  return s;
+}
+function statusColor(v){ return v<REF.lo?'var(--low)': v>REF.hi?'var(--high)':'var(--normal)'; }
+function dot(x,y,c){ return `<circle cx="${x}" cy="${y}" r="3.4" fill="${c}" stroke="#fff" stroke-width="1.2"/>`; }
+
+function render(){
+  const d=DATA[curRange];
+  document.getElementById('chartTitle').textContent=d.title;
+  let body='';
+  let readout='';
+
+  if(curStyle==='A'){
+    // 离散点 + 细连线
+    if(curRange==='day'){
+      const pts=d.pts.map(p=>({x:xAtDay(p.h),v:p.v}));
+      let line='';
+      const valid=pts.filter(p=>p.v!=null);
+      if(valid.length>1){
+        line=`<polyline points="${valid.map(p=>`${p.x.toFixed(1)},${yAt(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.4" stroke-dasharray="2 3"/>`;
+      }
+      body=refBands()+gridY()+line+valid.map(p=>dot(p.x,yAt(p.v),statusColor(p.v))).join('');
+      readout=`${d.pts.length} 次测量`;
+    } else {
+      const n=d.pts.length;
+      const valid=d.pts.filter(p=>p.v!=null);
+      let line='';
+      if(valid.length>1){
+        const vx=valid.map(p=>({x:xAtIdx(d.pts.indexOf(p),n),v:p.v}));
+        line=`<polyline points="${vx.map(p=>`${p.x.toFixed(1)},${yAt(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.4" stroke-dasharray="2 3"/>`;
+      }
+      body=refBands()+gridY()+line+d.pts.map((p,i)=> p.v==null?'':dot(xAtIdx(i,n),yAt(p.v),statusColor(p.v))).join('');
+      readout=`${valid.length}/${n} 天有数据`;
+    }
+  }
+
+  else if(curStyle==='B'){
+    // 区间柱
+    const n=d.pts.length;
+    const bw=(W-PAD.l-PAD.r)/n*0.52;
+    body=refBands()+gridY();
+    d.pts.forEach((p,i)=>{
+      if(p.v==null) return;
+      const x=xAtIdx(i,n);
+      const y=yAt(p.v), y0=yAt(REF.min);
+      body+=`<rect x="${x-bw/2}" y="${y}" width="${bw}" height="${Math.max(0,y0-y)}" rx="3" fill="${statusColor(p.v)}" opacity="0.85"/>`;
+    });
+    const valid=d.pts.filter(p=>p.v!=null);
+    readout=valid.length? `区间 ${Math.min(...valid.map(p=>p.v))}–${Math.max(...valid.map(p=>p.v))}` : '暂无数据';
+  }
+
+  else { // C 极简线
+    if(curRange==='day'){
+      const valid=d.pts.filter(p=>p.v!=null).map(p=>({x:xAtDay(p.h),v:p.v}));
+      body=refBands()+gridY()+(valid.length>1?`<polyline points="${valid.map(p=>`${p.x.toFixed(1)},${yAt(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`:'')+valid.map(p=>dot(p.x,yAt(p.v),statusColor(p.v))).join('');
+    } else {
+      const n=d.pts.length, valid=d.pts.filter(p=>p.v!=null);
+      body=refBands()+gridY()+(valid.length>1?`<polyline points="${valid.map(p=>`${xAtIdx(d.pts.indexOf(p),n).toFixed(1)},${yAt(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`:'')+d.pts.map((p,i)=>p.v==null?'':dot(xAtIdx(i,n),yAt(p.v),statusColor(p.v))).join('');
+    }
+    const all=d.pts.filter(p=>p.v!=null);
+    readout=all.length? `最新 ${all[all.length-1].v}` : '暂无数据';
+  }
+
+  body+=xLabels(d.axisLabels);
+  svg.innerHTML=body;
+
+  // hero
+  const lastValid=[...d.pts].reverse().find(p=>p.v!=null);
+  const lv=lastValid?lastValid.v:405;
+  document.getElementById('heroVal').textContent=lv;
+  const tag=document.getElementById('heroTag');
+  if(lv<REF.lo){tag.textContent='偏低';tag.className='tag hi';}
+  else if(lv>REF.hi){tag.textContent='偏高';tag.className='tag hi';}
+  else {tag.textContent='正常';tag.className='tag ok';}
+
+  document.getElementById('chartReadout').textContent=readout;
+  document.getElementById('note').innerHTML=NOTES[curStyle];
+}
+
+document.querySelectorAll('#rangeSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#rangeSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); curRange=b.dataset.r; render();
+});
+document.querySelectorAll('#styleSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#styleSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); curStyle=b.dataset.s; render();
+});
+render();
+</script>
+</body>
+</html>
