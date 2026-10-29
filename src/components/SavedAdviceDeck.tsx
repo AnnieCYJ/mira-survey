@@ -5,6 +5,7 @@ import {
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { habitHeadline, type HabitEntry } from '../data/habitSuggestions';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 /* ★ 2026-10-11（用户）：每条建议左边加小图，风格与首页泡泡建议卡一致。
    缩略图直接复用首页同款资产 card_*.jpg/png，按 cta 屏幕映射，再补文本兜底。 */
@@ -190,12 +191,12 @@ export default function SavedAdviceDeck({
               })}
             </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* ★ 2026-10-11（用户）：「共 N 条」点开 = 完整页面（全屏，非底部 sheet） */}
       <Modal visible={fullList} transparent={false} animationType="slide" onRequestClose={() => setFullList(false)}>
-        <View style={styles.fullPage}>
+        <SafeAreaView style={styles.fullPage}>
           <View style={styles.fullHead}>
             <TouchableOpacity style={styles.fullBack} activeOpacity={theme.press.opacity} onPress={() => setFullList(false)}>
               <Text style={styles.fullBackText}>‹ 返回</Text>

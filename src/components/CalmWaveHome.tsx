@@ -369,6 +369,7 @@ export default function CalmWaveHome() {
         isLooping
         isMuted
         shouldPlay
+        paused={!focused}
         useNativeControls={false}
       />
       {/* 渐变：★ 2026-10-29 再修正（用户：不要硬分界线，要平滑过渡；参考 Calm——顶部清、往下持续加深）
