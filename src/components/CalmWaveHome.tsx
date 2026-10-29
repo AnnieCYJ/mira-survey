@@ -383,12 +383,12 @@ export default function CalmWaveHome() {
         colors={[
           'rgba(74,107,150,0)',               // 0              顶部全透：海浪原始视频 + 头栏
           `rgba(74,107,150,0)`,               // titleFrac      标题处仍全透（标题靠自身文字阴影可读）
-          `rgba(74,107,150,0.16)`,            // titleFrac+0.05 标题下方起：同色蓝薄雾化入
-          `rgba(74,107,150,0.50)`,            // +0.15          中段：视频仍可辨
-          `rgba(74,107,150,0.90)`,            // +0.28          接近实色
+          `rgba(74,107,150,0.42)`,            // titleFrac+0.04 标题下方起：蓝明显化入（加深，不再发浅）
+          `rgba(74,107,150,0.80)`,            // +0.12          中段：视频已很弱
+          `rgba(74,107,150,0.98)`,            // +0.20          接近实色
           '#4A6B96',                         // 1              固定蓝实色（不随上面视频变）
         ]}
-        locations={[0, titleFrac, titleFrac + 0.05, titleFrac + 0.15, titleFrac + 0.28, 1]}
+        locations={[0, titleFrac, titleFrac + 0.04, titleFrac + 0.12, titleFrac + 0.20, 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
