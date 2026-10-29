@@ -45,7 +45,7 @@ const THUMB_RELAX = require('../assets/card_relax.jpg');
 
 const GLASS_BG = 'rgba(255,255,255,0.13)';
 const GLASS_BD = 'rgba(255,255,255,0.28)';
-const PAGE_BG = '#2B3564'; // 渐变末端固定蓝：对齐 App 其它页面背景底部（theme bgBottom #2B3564，深海渐变同款）
+const PAGE_BG = theme.colors.bgBottom; // 渐变末端固定蓝：与 App 其它页面背景底部同源（theme bgBottom = #2B3564，深海渐变同款）
 // ★ 2026-10-18 用户：头栏图标与「今日状态」标题改明显的深色（浮在浅色海浪视频上）
 const HEAD_INK = 'rgba(16,36,58,0.88)';
 // AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
@@ -362,6 +362,13 @@ export default function CalmWaveHome() {
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
+      {/* ★ 2026-10-30 统一背景：底层 = App 其它页面完全同源的深海渐变（theme.bgGradStops
+          #3E627A→#2A4470→#2B3564）。视频化掉后露出的就是它，保证首页底部与其他页面背景一致。 */}
+      <LinearGradient
+        style={StyleSheet.absoluteFill}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+      />
       {/* 上 1/3 海浪视频（全屏铺底，渐变盖住下 2/3） */}
       <Video
         style={StyleSheet.absoluteFill}
@@ -373,22 +380,22 @@ export default function CalmWaveHome() {
         paused={!focused}
         useNativeControls={false}
       />
-      {/* ★ 2026-10-30 架构修正（用户：参考 Calm——上面视频可换、下面蓝固定不动、中间只一层同色薄雾）
-          - 顶部 0~标题顶(titleFrac) 全透：海浪=原始视频，零蒙层（标题靠自身文字阴影可读，不在海浪上加任何东西）。
-          - 标题处起：单支固定蓝（与底部同色 #2B3564、即 App 其它页面背景底部）以薄雾方式化入，视频内容透过薄雾仍可见、向下缓缓消融。
-          - titleFrac+0.28~1 纯固定蓝实色（无论上面换成森林/什么图，这段蓝与过渡都不变）。
-          - 全程单色、一段雾、无硬边、无多色分层。视频本身不烤任何渐变（避免透出杂色）。 */}
+      {/* ★ 2026-10-30 统一背景（用户：首页底部要和其他页面背景一致）：
+          - 薄雾颜色直接取自 theme.bgGradStops（#3E627A→#2A4470→#2B3564），与底层渐变同源。
+          - 顶部 0~标题顶(titleFrac) 全透：海浪=原始视频，零蒙层（标题靠文字阴影可读）。
+          - 标题处起：薄雾由透化实，中段 = 渐变 #2A4470、底部 = #2B3564（即其它页面背景底的同色），
+            视频被同色薄雾缓缓盖掉、露出底层同源渐变。无论上面视频换成森林/什么图，下面这段蓝与过渡都不变。
+          - 全程单色渐变、一段雾、无硬边、无多色分层。视频本身不烤任何渐变（避免透出杂色）。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
-          'rgba(43,53,100,0)',               // 0              顶部全透：海浪原始视频 + 头栏
-          `rgba(43,53,100,0)`,               // titleFrac      标题处仍全透（标题靠自身文字阴影可读）
-          `rgba(43,53,100,0.42)`,            // titleFrac+0.04 标题下方起：深蓝紫薄雾化入（与其他页面底部同色 #2B3564）
-          `rgba(43,53,100,0.80)`,            // +0.12          中段：视频已很弱
-          `rgba(43,53,100,0.98)`,            // +0.20          接近实色
-          '#2B3564',                         // 1              固定蓝实色（与 App 其它页面背景底部一致）
+          'rgba(62,98,122,0)',               // 0              顶部全透：海浪原始视频 + 头栏（与渐变顶 #3E627A 同色，仅 alpha 0）
+          `rgba(62,98,122,0)`,               // titleFrac      标题处仍全透（标题靠自身文字阴影可读）
+          `rgba(42,68,112,0.55)`,            // 0.42           渐变中段 #2A4470（与其它页面背景同源），开始化实
+          `rgba(42,68,112,1)`,               // 0.56           #2A4470 完全化实（视频盖掉，露出同源渐变中段）
+          `rgba(43,53,100,1)`,               // 1              渐变底 #2B3564（与 App 其它页面背景底部同色）
         ]}
-        locations={[0, titleFrac, titleFrac + 0.04, titleFrac + 0.12, titleFrac + 0.20, 1]}
+        locations={[0, titleFrac, 0.42, 0.56, 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
