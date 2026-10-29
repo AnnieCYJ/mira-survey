@@ -160,6 +160,15 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
         </View>
       ) : null}
 
+      {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
+      {!isMeasuring && !isDone && !ecgUnsupported ? (
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+          <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+            测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
+          </Text>
+        </View>
+      ) : null}
+
       {/* 测量按钮（数据驱动三种状态） */}
       {isMeasuring ? (
         // 状态 1：正在测量 → 红色按钮 + 进度 + 停止

@@ -248,9 +248,18 @@ export default function EcgDetailScreen() {
               <EcgScrollTrace waveform={liveWave} height={120} color={mm.colors.ecgRed} />
             ) : (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>正在采集波形，请保持手指接触电极…</Text>
+                <Text style={styles.emptyText}>正在采集波形，请用另一只手食指轻触戒指外侧金属电极闭合回路…</Text>
               </View>
             )}
+          </View>
+        ) : null}
+
+        {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
+        {!measuring ? (
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+            <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+              测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
+            </Text>
           </View>
         ) : null}
 
@@ -273,6 +282,11 @@ export default function EcgDetailScreen() {
         {ring.ecgError ? (
           <View style={styles.ecgErrBox}>
             <Text style={styles.ecgErrText}>{ring.ecgError}</Text>
+            {/(导联|脱落|接触|回路)/.test(ring.ecgError) ? (
+              <Text style={[styles.ecgErrText, { marginTop: 6, color: '#FFFFFF', opacity: 0.85 }]}>
+                提示：单导联 ECG 需要闭合回路——戴好戒指后，用另一只手食指轻触戒指外侧金属电极再点测量。
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
