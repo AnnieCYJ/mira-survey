@@ -45,7 +45,7 @@ const THUMB_RELAX = require('../assets/card_relax.jpg');
 
 const GLASS_BG = 'rgba(255,255,255,0.13)';
 const GLASS_BD = 'rgba(255,255,255,0.28)';
-const PAGE_BG = '#2B3564'; // 渐变末端：Calm 式深蓝紫
+const PAGE_BG = '#4A6B96'; // 渐变末端：Calm 式灰蓝（对齐参考图底部 #4A6B96–#5B7BA6）
 // ★ 2026-10-18 用户：头栏图标与「今日状态」标题改明显的深色（浮在浅色海浪视频上）
 const HEAD_INK = 'rgba(16,36,58,0.88)';
 // AI 建议卡（语音气泡）底色——尾巴 SVG 与卡身同色
@@ -348,11 +348,8 @@ export default function CalmWaveHome() {
   const TOP_OFFSET = 20;
   const gaugeTop = transitionY - 28 + TOP_OFFSET;     // 双弧块移到原卡行顶部位置 + 整体下移 20px
   const arcBottom = gaugeTop + GAUGE_H;
-  // ★ 2026-10-29 蒙层策略（用户修正：蒙层要从「今日状态」这行字起往下压，标题本身也要有蒙层，否则白字看不清）：
-  //   titleTopF=标题顶占屏比（其上方全透、海浪清楚，像参考视频）；heroBottomF=弧底占屏比（其下方继续压暗到实色）。
-  //   标题~弧底整块 hero 给 0.60 托底，白字可读；标题上方保持参考视频那样清楚。
-  const titleTopF = Math.max(0.1, (gaugeTop - 62) / height);
-  const heroBottomF = Math.min(0.85, arcBottom / height);
+  // ★ 2026-10-29 蒙层策略（用户修正：参考图只有「海浪→一段过渡→底部实色」三段，不要分多层）：
+  //   顶部海浪清晰，约 1/3 处起一段平滑过渡，底部纯灰蓝实色。标题靠自身文字阴影保证可读，不再单独加托底分层。
   const aiTop = height - aiBottom - aiCardH;
   const chipRowTop = Math.min(
     Math.max(arcBottom + 8, arcBottom + (aiTop - arcBottom - CHIP_H) / 2),
@@ -372,21 +369,17 @@ export default function CalmWaveHome() {
         paused={!focused}
         useNativeControls={false}
       />
-      {/* 渐变：★ 2026-10-29 再修正（用户：不要硬分界线，要平滑过渡；参考 Calm——顶部清、往下持续加深）
-          顶 0~0.14 全透（头栏+海浪清楚）→ titleTopF 标题处仅 0.35 轻托底（白字+投影可读，无突变）
-          → 之后连续平滑加深（0.55→0.72→0.90→实色），全程无硬边、无平台，像参考图那样渐隐到深蓝。 */}
+      {/* 渐变：★ 2026-10-29 简化（用户：海浪顶部不要加任何东西，只要原始视频）
+          0~0.42 全透 = 海浪原始视频，零蒙层；约 0.42 起单段平滑过渡 → 底部纯灰蓝实色。无硬边、无平台。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
-          'rgba(43,53,100,0)',          // 0          顶部完全透：海浪清晰（像参考视频）
-          'rgba(43,53,100,0)',          // 0.14       头栏区仍透
-          `rgba(43,53,100,0.35)`,       // titleTopF  今日状态标题：轻托底（平滑过渡，白字+投影可读）
-          `rgba(43,53,100,0.55)`,       // +0.10      平滑加深
-          `rgba(43,53,100,0.72)`,       // heroBottomF 弧/82 托底
-          `rgba(43,53,100,0.90)`,       // +0.12      卡行起压暗
-          '#2B3564',                    // 1          纯深蓝
+          'rgba(74,107,150,0)',          // 0          顶部全透：海浪=原始视频，零蒙层
+          'rgba(74,107,150,0)',          // 0.42       过渡起点前全透：上方海浪完全不加东西
+          'rgba(74,107,150,0.92)',       // 0.76       单段平滑过渡中段
+          '#4A6B96',                    // 1          纯灰蓝实色（对齐参考图底部）
         ]}
-        locations={[0, 0.14, titleTopF, Math.min(0.95, titleTopF + 0.10), heroBottomF, Math.min(0.99, heroBottomF + 0.12), 1]}
+        locations={[0, 0.42, 0.76, 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
@@ -504,7 +497,7 @@ export default function CalmWaveHome() {
         </ScrollView>
         {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
         <LinearGradient
-          colors={['rgba(42,68,112,0)', 'rgba(42,68,112,0.92)']}
+          colors={['rgba(74,107,150,0)', 'rgba(74,107,150,0.92)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={s.chipFade}
