@@ -371,20 +371,21 @@ export default function CalmWaveHome() {
         shouldPlay
         useNativeControls={false}
       />
-      {/* 渐变：★ 2026-10-29 修正（用户：蒙层从「今日状态」这行字起往下压，标题本身也要有蒙层，否则白字看不清）
-          顶 0~titleTopF 全透（标题上方海浪清楚，像参考视频）→ titleTopF 起快速压暗到 0.60（标题+弧+82 整块 hero 有托底、白字可读）
-          → heroBottomF 往下继续压到实色深蓝。即：标题上方清、标题这行起就有蒙层。 */}
+      {/* 渐变：★ 2026-10-29 再修正（用户：不要硬分界线，要平滑过渡；参考 Calm——顶部清、往下持续加深）
+          顶 0~0.14 全透（头栏+海浪清楚）→ titleTopF 标题处仅 0.35 轻托底（白字+投影可读，无突变）
+          → 之后连续平滑加深（0.55→0.72→0.90→实色），全程无硬边、无平台，像参考图那样渐隐到深蓝。 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
           'rgba(43,53,100,0)',          // 0          顶部完全透：海浪清晰（像参考视频）
-          `rgba(43,53,100,0)`,          // titleTopF  今日状态标题"之前"全透（标题上方海浪清楚）
-          `rgba(43,53,100,0.60)`,       // titleTopF+0.025 标题处即压暗→「今日状态」白字可读（蒙层从标题这行起）
-          `rgba(43,53,100,0.60)`,       // heroBottomF 弧/82 同档托底
+          'rgba(43,53,100,0)',          // 0.14       头栏区仍透
+          `rgba(43,53,100,0.35)`,       // titleTopF  今日状态标题：轻托底（平滑过渡，白字+投影可读）
+          `rgba(43,53,100,0.55)`,       // +0.10      平滑加深
+          `rgba(43,53,100,0.72)`,       // heroBottomF 弧/82 托底
           `rgba(43,53,100,0.90)`,       // +0.12      卡行起压暗
           '#2B3564',                    // 1          纯深蓝
         ]}
-        locations={[0, titleTopF, Math.min(0.99, titleTopF + 0.025), heroBottomF, Math.min(0.99, heroBottomF + 0.12), 1]}
+        locations={[0, 0.14, titleTopF, Math.min(0.95, titleTopF + 0.10), heroBottomF, Math.min(0.99, heroBottomF + 0.12), 1]}
       />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
