@@ -27,6 +27,7 @@ import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur'; // ★ 2026-10-30（用户要真·磨砂玻璃）：对标题下方海浪视频做真实高斯模糊
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -384,23 +385,15 @@ export default function CalmWaveHome() {
         paused={!focused}
         useNativeControls={false}
       />
-      {/* ★ 2026-10-30 磨砂玻璃 + 过渡（用户参考 Oura：标题往下视频逐渐磨砂模糊、压暗，再过渡成蓝/黑）：
+      {/* ★ 2026-10-30 真·磨砂玻璃 + 过渡（用户参考 Oura：标题往下视频逐渐磨砂模糊、压暗，再过渡成黑）：
           - 顶部 0~标题顶(titleFrac) 全透：海浪=原始视频，零蒙层（标题靠文字阴影可读）。
-          - 标题底(fadeStartFrac) 起：两层叠加 ——
-             ① 磨砂层(FROST)：少量白色薄雾在中段达峰再回落，让海浪看起来被磨砂玻璃柔化（非真高斯模糊，靠奶白+压暗模拟）。
-             ② 蓝染层(TINT)：与 App 同源深蓝 #2B3564 由透化实，0.66 起完全化实、露出底层同源渐变。
-          - 视频被磨砂+蓝染盖掉后，下方露出的正是 App 其它页面同款深海渐变；无论上面视频换成森林/什么图都不变。
-          - 注：真·高斯模糊需原生模块(expo-blur)不在当前原生壳，故用奶白雾+蓝染模拟磨砂感；要像素级真模糊可加 expo-blur 并重编原生。 */}
-      <LinearGradient
-        style={StyleSheet.absoluteFill}
-        colors={[
-          'rgba(255,255,255,0)',               // 0              顶部全透
-          `rgba(255,255,255,0)`,               // titleFrac      标题顶仍全透
-          `rgba(255,255,255,0.03)`,            // fadeStartFrac  磨砂起始：极淡（黑底上不泛奶）
-          `rgba(255,255,255,0.09)`,            // 0.44          中段磨砂峰值（海浪被柔化、呈磨砂玻璃感）
-          `rgba(255,255,255,0)`,               // 0.60          磨砂回落（避免洗白底部实色）
-        ]}
-        locations={[0, titleFrac, fadeStartFrac, 0.44, 0.60]}
+          - 标题底(fadeStartFrac) 起：① 真实高斯模糊 BlurView（expo-blur / UIVisualEffectView）对下方海浪做磨砂；
+            ② 黑染层(TINT)：与 tab/AI 卡同款的近黑深板岩由透化实，0.66 起完全化实 → 黑。
+          - 标题以上仍是原始清晰视频、零蒙层；视频可换森林等，下面磨砂+黑过渡都不变。 */}
+      <BlurView
+        style={{ position: 'absolute', top: `${fadeStartFrac * 100}%`, left: 0, right: 0, bottom: 0 }}
+        intensity={70}
+        tint="default"
       />
       <LinearGradient
         style={StyleSheet.absoluteFill}
