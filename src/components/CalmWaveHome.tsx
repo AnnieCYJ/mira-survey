@@ -41,6 +41,7 @@ import AvatarStack from './AvatarStack';
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
+const HOME_BG = require('../assets/bg_lake_mist.jpg'); // ★ 2026-10-30 首页背景：雾湖（上亮下暗，替代海浪视频，对齐参考图远山+湖泊）
 const WAVE_SOUND = require('../assets/wave-sound.mp3'); // ★ 2026-10-18 用户：海浪白噪音（FFmpeg 合成 30s 无缝循环）
 const THUMB_RELAX = require('../assets/card_relax.jpg');
 
@@ -374,27 +375,21 @@ export default function CalmWaveHome() {
         colors={['#091C30', '#091C30', '#091C30']}
         locations={[0, 0.5, 1]}
       />
-      {/* 上 1/3 海浪视频（全屏铺底，渐变盖住下 2/3） */}
-      <Video
+      {/* ★ 2026-10-30（用户：海浪换成风景——用项目内 bg_lake_mist 雾湖，结构=上亮下暗，对齐参考图远山+湖泊）：
+          全屏铺底，下方由磨砂+黑化入。图片可换（森林等），下面磨砂+黑过渡不变。 */}
+      <Image
+        source={HOME_BG}
         style={StyleSheet.absoluteFill}
-        source={WAVE_VIDEO}
-        resizeMode={ResizeMode.COVER}
-        isLooping
-        isMuted
-        shouldPlay
-        paused={!focused}
-        useNativeControls={false}
+        resizeMode="cover"
       />
-      {/* ★ 2026-10-30 真·磨砂玻璃 + 过渡（用户参考 Oura：标题往下视频逐渐磨砂模糊、压暗，再过渡成黑）：
-          - 顶部 0~标题顶(titleFrac) 全透：海浪=原始视频，零蒙层（标题靠文字阴影可读）。
-          - 标题底(fadeStartFrac) 起：① 真实高斯模糊 BlurView（expo-blur / UIVisualEffectView）对下方海浪做磨砂；
-            ② 黑染层(TINT)：与 tab/AI 卡同款的近黑深板岩由透化实，0.66 起完全化实 → 黑。
-          - 标题以上仍是原始清晰视频、零蒙层；视频可换森林等，下面磨砂+黑过渡都不变。 */}
-      <BlurView
-        style={{ position: 'absolute', top: `${fadeStartFrac * 100}%`, left: 0, right: 0, bottom: 0 }}
-        intensity={70}
-        tint="default"
-      />
+      {/* ★ 2026-10-30 真·磨砂（消除硬缝儿）：从标题顶起「逐级加深」的多层高斯模糊。
+          - 4 层 BlurView 叠放：top 越往下、intensity 越高，逐级加 dark tint 压暗；
+            累计模糊+压暗从标题平滑化入，不再有一刀切的界限（原先单层在 fadeStartFrac 硬起，才有缝）。
+          - 标题以上(titleFrac 之上)无模糊层 → 风景清晰；图片可换，下面磨砂+黑过渡不变。 */}
+      <BlurView style={{ position: 'absolute', top: `${titleFrac * 100}%`, left: 0, right: 0, bottom: 0 }} intensity={12} tint="default" />
+      <BlurView style={{ position: 'absolute', top: `${(fadeStartFrac - 0.01) * 100}%`, left: 0, right: 0, bottom: 0 }} intensity={38} tint="default" />
+      <BlurView style={{ position: 'absolute', top: `${(fadeStartFrac + 0.05) * 100}%`, left: 0, right: 0, bottom: 0 }} intensity={64} tint="dark" />
+      <BlurView style={{ position: 'absolute', top: `${(fadeStartFrac + 0.12) * 100}%`, left: 0, right: 0, bottom: 0 }} intensity={92} tint="dark" />
       <LinearGradient
         style={StyleSheet.absoluteFill}
         colors={[
