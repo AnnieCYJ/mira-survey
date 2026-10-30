@@ -1,19 +1,17 @@
 /**
- * Calm 式海浪首页（真机预览版 · 2026-10-17）
- * 结构对齐根目录 home-calm-wave.html：
- *   上 1/3 海浪视频（已用 ffmpeg 裁掉内嵌 UI）→ 蓝→蓝紫渐变 →
+ * Calm 式雪山首页（真机预览版 · 2026-10-30）
+ * 结构：雪山背景图（home_g_reference.jpg，精确屏幕尺寸铺满 cover）→ 深板岩渐变 →
  *   chips 贴交界线下 → Oura 式细弧半圆环 → AI 分析卡沉底。
  * 纯静态预览数据（82/64/38/320kcal），不接健康数据；
  * 预览开关在 BottomTabNavigator（USE_CALM_WAVE_HOME），改回 false 即恢复原 TodayScreen。
  */
 import React from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 
-const WAVE_VIDEO = require('../assets/wave-video.mp4');
+const HOME_BG = require('../assets/home_g_reference.jpg');
 const THUMB_RELAX = require('../assets/card_relax.jpg');
 
 const GLASS_BG = 'rgba(255,255,255,0.13)';
@@ -39,28 +37,31 @@ const CHIP_GAP = 9;
 // 注：icon 为白色细线 SVG（Oura 式），无圆底
 
 export default function CalmWaveHome() {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // 渐变交界线（海浪 → 深色）= 屏幕高的 34%，与 HTML 渐变 stops 对齐
   const transitionY = height * 0.34;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
-      {/* 上 1/3 海浪视频（全屏铺底，渐变盖住下 2/3） */}
-      <Video
-        style={StyleSheet.absoluteFill}
-        source={WAVE_VIDEO}
-        resizeMode={ResizeMode.COVER}
-        isLooping
-        isMuted
-        shouldPlay
-        useNativeControls={false}
+      {/* ★ 2026-10-30 修复：雪山背景图用精确屏幕尺寸(width/height)严格铺满, 不再用百分比(不可靠会局部放大) */}
+      <Image
+        source={HOME_BG}
+        style={[StyleSheet.absoluteFill, { width, height }]}
+        resizeMode="cover"
       />
-      {/* 渐变：透明 → 钢蓝 → 深蓝紫（与 HTML 同参数） */}
+      {/* 渐变：顶部透明(雪山清晰) → 底部深板岩(卡片可读), 与 Mira Lite 同调 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={['rgba(62,98,122,0)', 'rgba(62,98,122,0)', 'rgba(52,88,116,0.45)', 'rgba(38,62,96,0.94)', '#2A4470', '#2B3564']}
-        locations={[0, 0.14, 0.24, 0.31, 0.4, 1]}
+        colors={[
+          'rgba(9,28,48,0)',
+          'rgba(9,28,48,0)',
+          'rgba(9,28,48,0.18)',
+          'rgba(9,28,48,0.40)',
+          'rgba(9,28,48,0.70)',
+          'rgba(9,28,48,0.90)',
+        ]}
+        locations={[0, 0.34, 0.5, 0.66, 0.85, 1]}
       />
 
       {/* 顶部：用户账户 / 今日状态 / 设置（浮在海浪上） */}
