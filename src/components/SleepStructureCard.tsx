@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   total: {
     fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.semibold,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   totalLabel: {
     fontSize: theme.fontSize.xs,

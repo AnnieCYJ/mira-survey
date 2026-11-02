@@ -5,6 +5,7 @@
 import { initLlama, releaseAllLlama, type LlamaContext } from 'llama.rn';
 import * as FileSystem from 'expo-file-system';
 import { postLog } from '../lib/logger';
+import { MODEL_CONTEXT_TOKENS } from './contextBudget';
 
 export const MODEL_FILENAME = 'qwen2.5-1.5b-instruct-q4_k_m.gguf';
 
@@ -87,7 +88,7 @@ export function getLlamaContext(): Promise<LlamaContext> {
       console.log('[MiraAI] initLlama:', model);
       const c = await initLlama({
         model,
-        n_ctx: 2048,
+        n_ctx: MODEL_CONTEXT_TOKENS,
         n_gpu_layers: 99, // iOS Metal 全卸载
         n_batch: 512, // 加速 prompt prefill（TTFT 关键）
         n_ubatch: 512,

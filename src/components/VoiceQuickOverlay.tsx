@@ -186,7 +186,7 @@ export default function VoiceQuickOverlay() {
 const styles = StyleSheet.create({
   mask: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(252, 251, 250, 0.58)', // v20：白雾（原暗黑 rgba(10,8,20,.5) 废弃）
+    backgroundColor: 'rgba(10, 8, 20, 0.55)', // mira-ocean：白雾 → 暗黑遮罩（对齐深色主题，不再把整屏洗白）
   },
   pillWrap: {
     position: 'absolute', left: 0, right: 0,

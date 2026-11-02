@@ -24,6 +24,9 @@ export interface CycleLog {
   periodLength: number;
   /** 历史经期开始日（旧→新），由 cycleLog 累积；≥3 段时用于统计预测（Periodical 均值法） */
   history?: string[];
+  /** ★ P1-1（2026-10-28）：孕期模式。pregnant=是否开启孕期视图；pregnancyLmp=用于推算孕周的末次经期日（YYYY-M-D） */
+  pregnant?: boolean;
+  pregnancyLmp?: string;
 }
 
 export type CyclePhase = 'period' | 'follicular' | 'ovulation' | 'luteal';

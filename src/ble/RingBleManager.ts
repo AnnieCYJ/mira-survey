@@ -25,7 +25,10 @@ import { Alert, NativeModules, NativeEventEmitter, Platform, AppState, type AppS
 import { postLog as _postLog } from '../lib/logger';
 import * as FileSystem from 'expo-file-system';
 import { theme } from '../theme/theme';
-import { BACKEND_BASE_URL, RING_DATA_SOURCE, RING_SYNC_TOKEN } from '../config';
+import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
+// ★ Phase 1：设备令牌（按 device_id 隔离的云端访问凭证）
+import { authHeaders, ensureDeviceToken, getLocalDeviceId } from '../data/ringIdentity';
+import { ringUploadExtFields } from '../lib/ringUploadFields';
 import {
   computeCycle,
   daysBetween,
@@ -1386,7 +1389,7 @@ class NativeRingSource {
         try {
           // ★ 修: recomputeDailyStatus 是 RingConnectionImpl 的方法，NativeRingSource 调不到！
           // 用 this.requestFlush() 代替 —— 它实际指向 RingConnectionImpl 的回调：
-          //   requestFlush = () => { this.rebuildHistoricalStatus(); this.recomputeDailyStatus(); ... }
+          //   requestFlush = () => { this.rebuildHistoricalStatus(); this.scheduleRecomputeDailyStatus(); ... }
           this.requestFlush();
           postLog('RingBle', `[State] ✅ requestFlush (rebuild+recompute) after backfill (settled)`);
         } catch (err: any) {
@@ -2880,7 +2883,8 @@ class BackendRingSource {
   private async getJSON(path: string): Promise<any> {
     const res = await fetch(`${BACKEND_BASE_URL}${path}`, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      // ★ Phase 1：读云端也要带设备令牌（后端按令牌收敛 device_id）
+      headers: { Accept: 'application/json', ...authHeaders() },
     });
     if (!res.ok) throw new Error(`后端返回 ${res.status} @ ${path}`);
     return res.json();
@@ -3397,7 +3401,7 @@ class RingConnectionImpl {
         // ★ 先清历史垃圾 key（如 2083-05-xx），再重建
     this.purgeInvalidDateKeys();
     this.rebuildHistoricalStatus();
-        this.recomputeDailyStatus();
+        this.scheduleRecomputeDailyStatus();
         this.syncExtendedDaily();
         this.ensureDay(Date.now());
         void this.saveSnapshot();
@@ -3432,7 +3436,7 @@ class RingConnectionImpl {
       AppState.addEventListener('change', (next: AppStateStatus) => {
         if (next !== 'active') return;
         try {
-          this.recomputeDailyStatus(Date.now(), true);
+          this.scheduleRecomputeDailyStatus(Date.now(), true);
           postLog('RingBle', '[FOREGROUND_RECOMPUTE] App 回到前台已重算今日状态');
         } catch (e) {}
       });
@@ -3549,7 +3553,7 @@ class RingConnectionImpl {
     const boundaryTs = this.alignBoundaryTs(now);
     if (this.lastCurveAccumTs != null && boundaryTs - this.lastCurveAccumTs >= STATUS_SNAPSHOT_MS) {
       postLog('RingBle', `[scheduleStatusTick] ⚡ 补打错过的边界: ${new Date(boundaryTs).toISOString().slice(11,16)} (gap=${Math.round((boundaryTs - this.lastCurveAccumTs)/60000)}min)`);
-      this.recomputeDailyStatus(boundaryTs, true); // 用 boundaryTs 而非 now，保证 pushStatusPoint 的 t 对齐
+      this.scheduleRecomputeDailyStatus(boundaryTs, true); // 用 boundaryTs 而非 now，保证 pushStatusPoint 的 t 对齐
     }
     // 距下一个 :00 / :30 边界的毫秒数（相对整点的分钟：<30→30，否则下个整点 60）
     const nextBoundaryMin = min < 30 ? 30 : 60;
@@ -3557,7 +3561,7 @@ class RingConnectionImpl {
     if (delay < 0) delay += 30 * 60_000;
     if (delay > 30 * 60_000) delay = 30 * 60_000;
     this.statusTimer = setTimeout(() => {
-      this.recomputeDailyStatus(Date.now(), true); // force：边界必出一点（若有数据）
+      this.scheduleRecomputeDailyStatus(Date.now(), true); // force：边界必出一点（若有数据）
       this.scheduleStatusTick(); // 重新对齐下一边界
     }, delay);
   }
@@ -3623,7 +3627,7 @@ class RingConnectionImpl {
     }
     // 经期数据变化 → 相位变化 → 重算今日状态（基线/叙事）。recompute 在 main 类上，
     // 故放此处（handleFemale 位于 NativeRingSource，拿不到 recompute）。
-    if (patch.female !== undefined) this.recomputeDailyStatus();
+    if (patch.female !== undefined) this.scheduleRecomputeDailyStatus();
     // 历史回填（HRV/睡眠/计步/健康一览/ECG）落地 → 反推过去每天的状态分，补全状态趋势的周/月/年历史；
     // extDaily/ecgDaily 来自健康一览+ECG 的实时测量与 backfill，同样需要投影进 daily/dailyHistory。
     // ⚠️ 关键防护：下方投影若抛异常，绝不能再吃掉 this.emit()——否则 state 已更新、但所有监听屏
@@ -3639,7 +3643,7 @@ class RingConnectionImpl {
       try {
         this.rebuildHistoricalStatus();
         this.syncExtendedDaily(); // 归档 → daily/dailyHistory 投影，修复「回填型卡片不更新」
-        this.recomputeDailyStatus(); // 睡眠/HRV 归档落地后重算今日状态（解锁首页「今日状态」与全天状态趋势）
+        this.scheduleRecomputeDailyStatus(); // 睡眠/HRV 归档落地后重算今日状态（解锁首页「今日状态」与全天状态趋势）
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         postLog('RingBle', `[applyPatch] 归档投影异常（已忽略，保证 UI 刷新）: ${msg}`);
@@ -3876,7 +3880,7 @@ class RingConnectionImpl {
 
     this.emit();
     // 数据每次刷新后重算「今日状态」（晨间锚点 + 基线 + 归一化）
-    this.recomputeDailyStatus();
+    this.scheduleRecomputeDailyStatus();
     // 回填归档投影必须在每次 flush 后重派生：flush 会按 CORE_KEYS 重建 metrics（含 hrv），
     // 可能把历史日 HRV 兜底层冲掉；此处用归档重新断言，保证「回填型卡片」持续有值。
     this.syncExtendedDaily();
@@ -4114,7 +4118,7 @@ class RingConnectionImpl {
     } catch {
       this.localCycle = null;
     }
-    this.recomputeDailyStatus();
+    this.scheduleRecomputeDailyStatus();
   }
 
   private mergeRecord(history: DailyRecord[], rec: DailyRecord): DailyRecord[] {
@@ -4166,6 +4170,30 @@ class RingConnectionImpl {
       if (sleepAt(k, v)) return { dateKey: k, ...(v as any) };
     }
     return null;
+  }
+
+  // ★ 性能修复（2026-10-28）：合并同一事件循环（同一帧）内的多次 recompute 调用。
+  //   BLE 密集推送 / 回填 / 归档落地会在极短时间内连续触发多次 recomputeDailyStatus，
+  //   每次都跑全量算法（buildCurveStatus / accumulateWindow / 基线推导），把主线程占满
+  //   → 触摸事件被丢弃（表现为"一阵一阵点不动 / 卡"）。
+  //   这里把请求入队，用 setTimeout(0) 合并为「一次事件循环只算一次」：取最新 now + force 的 OR。
+  private _recomputeScheduled = false;
+  private _recomputePending: { now: number; force: boolean } | null = null;
+  private scheduleRecomputeDailyStatus(now: number = Date.now(), force = false) {
+    if (this._recomputePending) {
+      this._recomputePending.now = Math.max(this._recomputePending.now, now);
+      this._recomputePending.force = this._recomputePending.force || force;
+    } else {
+      this._recomputePending = { now, force };
+    }
+    if (this._recomputeScheduled) return;
+    this._recomputeScheduled = true;
+    setTimeout(() => {
+      this._recomputeScheduled = false;
+      const args = this._recomputePending;
+      this._recomputePending = null;
+      if (args) this.recomputeDailyStatus(args.now, args.force);
+    }, 0);
   }
 
   private recomputeDailyStatus(now: number = Date.now(), force = false) {
@@ -4608,7 +4636,9 @@ class RingConnectionImpl {
     } catch (_e) {}
     if (!curve || !curveIsToday || curve.seed.value == null || tlAllZero || !hasTodayMeasurement || dataStale) {
       const pb = cycle.phase as PhaseBucket;
-      const lastT = tl.length ? tl[tl.length - 1].t : null;
+      // ★ 一致性修正：取时间最新点而非数组末位（数组可能因跨天清理/种子补点乱序）
+      const tlSorted0 = tl.length ? [...tl].sort((a: any, b: any) => a.t - b.t) : [];
+      const lastT = tlSorted0.length ? tlSorted0[tlSorted0.length - 1].t : null;
       // 阈值 3h，按小时取整；不足 1 小时（刚跨过阈值）也至少写 1 小时，不写「0 小时」
       // ★ v18.121：dataStale 现在只表示「**从来没采到过数据**」（旧口径是「距上次采样 > 3h」，
       //   会把「断开 3 小时后仍显示同一份旧值」的正常冻结误判成空态）。
@@ -4636,7 +4666,11 @@ class RingConnectionImpl {
       };
     }
     // ★ v18.96：取「今天最后一个点」，跨天时不用昨天的末值冒充今天。
-    const value = (tl.length ? tl[tl.length - 1].value : null) ?? curve.seed.value;
+    // ★ 一致性修正：按时间排序后取最新点，与详情页（StatusTrendDetail）口径完全一致，
+    //   避免数组乱序导致首页圆环/大字与详情页 hero 显示不同数值（用户实锤 81 vs 60）。
+    const tlSorted = tl.length ? [...tl].sort((a: any, b: any) => a.t - b.t) : [];
+    const lastPoint = tlSorted.length ? tlSorted[tlSorted.length - 1] : null;
+    const value = (lastPoint?.value ?? null) ?? curve.seed.value;
     const lvl = curveLevel(value, CURVE_DEFAULTS);
     const seed = curve.seed;
     const delta = seed.recoveryDelta != null ? `${seed.recoveryDelta > 0 ? '+' : ''}${Math.round(seed.recoveryDelta)}` : '';
@@ -4660,7 +4694,8 @@ class RingConnectionImpl {
       narrative,
       hasData: true,
       staleSleepDate,
-      lastPointAt: tl.length ? tl[tl.length - 1].t : null,
+      // ★ 一致性修正：时间排序后取最新点的时刻
+      lastPointAt: tlSorted.length ? tlSorted[tlSorted.length - 1].t : null,
       dataStale,
       lastSampleAt,
     };
@@ -5887,7 +5922,7 @@ class RingConnectionImpl {
       //   这里在恢复完成后立刻驱动一次：ensureDay 跨天清零「最新值」结构 + 归档裁剪昨日曲线
       //   + buildCurveStatus 重算（今天无输入 → 诚实空态）。之后正常打点/连接会继续更新。
       try {
-        this.recomputeDailyStatus(Date.now(), true);
+        this.scheduleRecomputeDailyStatus(Date.now(), true);
       } catch (e) {
         postLog('RingBle', `[loadPersisted] ⚠️ 启动跨天重算失败（已忽略）: ${e instanceof Error ? e.message : e}`);
       }
@@ -6092,7 +6127,7 @@ class RingConnectionImpl {
     try {
       this.rebuildHistoricalStatus();
       this.syncExtendedDaily();
-      this.recomputeDailyStatus();
+      this.scheduleRecomputeDailyStatus();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       postLog('RingBle', `[flushNow] 派生数据投影异常（已忽略）: ${msg}`);
@@ -6304,7 +6339,7 @@ class RingConnectionImpl {
    */
   async uploadRingData(): Promise<{ ok: boolean; count: number; error?: string }> {
     const st = this.state;
-    const deviceId = st.deviceId || st.deviceName || 'mira-ring';
+    const deviceId = st.deviceId || st.deviceName || await getLocalDeviceId();
     const firmware = st.firmware || 'HK18';
     const records: Array<{ channel: string; ts: number; payload: Record<string, any> }> = [];
 
@@ -6339,11 +6374,11 @@ class RingConnectionImpl {
       const hr = st.hrDaily[dk];
       const spo2 = st.spo2Daily[dk];
       const temp = st.tempDaily[dk];
-      const eda = st.edaDaily[dk];
-      const rr = st.rrDaily[dk];
+      const eda = st.edaDaily[dk];      const rr = st.rrDaily[dk];
       const status = st.statusDaily[dk];
+      const extFields = ringUploadExtFields(st.extDaily[dk]);
       const hasAuto =
-        !!step || !!sleep || hr != null || spo2 != null || temp != null || eda != null || rr != null || status != null;
+        !!step || !!sleep || hr != null || spo2 != null || temp != null || eda != null || rr != null || status != null || Object.keys(extFields).length > 0;
       if (hasAuto) {
         const { ts, date } = norm(dk);
         const payload: Record<string, any> = { date };
@@ -6369,20 +6404,38 @@ class RingConnectionImpl {
         if (rr != null) payload.rr_daily_mean = rr;
         if (status != null) payload.status_score = status;
         // 健康一览硬指标 + 光电血压 + ECG 平均心率（均来自 extDaily 归档）
-        const ext = st.extDaily[dk];
-        if (ext) {
-          const extKeys = ['bloodSugar', 'bloodFat', 'triglyceride', 'hdl', 'ldl', 'uricAcid', 'bpSys', 'bpDia', 'ecg'] as const;
-          for (const k of extKeys) {
-            const v = ext[k];
-            if (typeof v === 'number' && Number.isFinite(v)) payload[k] = v;
-          }
-        }
+        Object.assign(payload, extFields);
         records.push({ channel: 'auto_data', ts, payload });
       }
       const hv = st.hrvDaily[dk];
       if (hv != null) {
         const { ts, date } = norm(dk);
         records.push({ channel: 'hrv_history', ts, payload: { date, hrv_value: hv } });
+      }
+      // ★ 云端也要有「压力」这一维：gsr 通道（皮电 SNS 日均）。
+      //   之前 App 从不上传 gsr → 云端恢复分永远缺 stress 分量、data_complete 恒为 false，
+      //   运营后台的「压力/身心」列也一直是空的。
+      //   ⚠ **诚实口径**：历史日的 sns 可能是**推算**值（由 stress 线性换算，见
+      //   healthStore.isDerivedDay）——上传必须标 source='derived'，后端才知道
+      //   不能拿它当实测建个人基线、也不能当成真压力去算恢复分。
+      try {
+        const snsDay = healthStore.getDay('sns', dk);
+        if (snsDay && typeof snsDay.mean === 'number' && Number.isFinite(snsDay.mean)) {
+          const { ts, date } = norm(dk);
+          const derived = healthStore.isDerivedDay('sns', dk);
+          records.push({
+            channel: 'gsr',
+            ts,
+            payload: {
+              date,
+              sns: Math.round(snsDay.mean * 100) / 100,
+              source: derived ? 'derived' : 'measured',
+              samples: typeof snsDay.samples === 'number' ? snsDay.samples : 0,
+            },
+          });
+        }
+      } catch {
+        /* 取不到皮电日均就不传这一条，不影响其它通道 */
       }
       // 离线/实时 ECG 记录（含波形）：逐个日期回传，后端原样存储 waveform
       const ecg = st.ecgDaily[dk];
@@ -6427,8 +6480,10 @@ class RingConnectionImpl {
     if (records.length === 0) return { ok: false, count: 0, error: '暂无可导出的本地数据' };
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (RING_SYNC_TOKEN) headers['Authorization'] = `Bearer ${RING_SYNC_TOKEN}`;
+      // ★ Phase 1：带设备令牌上传（没有就先向云端签一枚）。
+      //   没有令牌时后端走开发态放行；签发成功后本机长期持有自己的令牌。
+      const token = await ensureDeviceToken(deviceId);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders(token) };
       const res = await fetch(`${BACKEND_BASE_URL}/v1/ring/sync`, {
         method: 'POST',
         headers,

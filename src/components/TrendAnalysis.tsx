@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.bold as any,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   metricUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: theme.sp(1) },
   metricDetail: { flex: 1, fontSize: theme.fontSize.micro, color: theme.colors.textSub },

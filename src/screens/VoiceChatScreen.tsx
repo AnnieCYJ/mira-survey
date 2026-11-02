@@ -26,5 +26,5 @@ export default function VoiceChatScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.colors.gradCardFrom },
+  root: { flex: 1, backgroundColor: theme.colors.bgBottom },
 });

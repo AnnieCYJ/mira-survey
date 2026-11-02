@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>圆弧形状变体 · 6 款（Mira 首页 · 方案 D 结构）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#101826; font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; color:#E8EEF7; padding:28px 24px 60px; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:0.5px; }
+  .sub { font-size:13px; color:rgba(232,238,247,0.55); margin-top:6px; line-height:1.7; }
+  .sub b { color:#F2C75C; font-weight:600; }
+
+  .grid { display:grid; grid-template-columns:repeat(2, 410px); gap:28px; justify-content:center; margin-top:24px; }
+  .proposal { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:20px; padding:18px 18px 20px; }
+  .proposal.base { border-color:rgba(242,199,92,0.45); }
+  .pTag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:1px; color:#0F1B2E; background:#F2C75C; border-radius:6px; padding:3px 8px; }
+  .pTag.dim { background:rgba(255,255,255,0.25); color:#fff; }
+  .pTitle { font-size:16px; font-weight:700; margin-top:10px; }
+  .pDesc { font-size:12px; color:rgba(232,238,247,0.5); margin-top:6px; line-height:1.7; min-height:52px; }
+  .pDesc em { color:#F2C75C; font-style:normal; }
+
+  /* ===== 手机框 ===== */
+  .phone { position:relative; width:390px; height:760px; overflow:hidden; border-radius:34px; margin:14px auto 0;
+    background:linear-gradient(180deg,#3E627A 0%,#3E627A 12%,rgba(52,88,116,0.5) 22%,rgba(38,62,96,0.94) 29%,#2A4470 38%,#2B3564 100%);
+    border:1px solid rgba(255,255,255,0.12); }
+  .wave { position:absolute; left:0; right:0; top:0; height:215px;
+    background:linear-gradient(180deg,#7FB2C4 0%,#5E93A8 45%,#4A7B96 100%); }
+  .wave::before { content:""; position:absolute; left:-60px; top:-40px; width:260px; height:200px; border-radius:50%; background:rgba(255,255,255,0.22); filter:blur(38px); }
+  .wave::after { content:""; position:absolute; right:-40px; top:50px; width:220px; height:170px; border-radius:50%; background:rgba(220,245,255,0.28); filter:blur(42px); }
+  .head { position:absolute; left:0; right:0; top:70px; display:flex; align-items:flex-start; justify-content:space-between; padding:0 16px; }
+  .hIcon { width:34px; height:34px; border-radius:17px; background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.75); display:flex; align-items:center; justify-content:center; }
+  .titleT { position:absolute; left:16px; top:196px; font-size:26px; font-weight:700; color:#fff; letter-spacing:0.5px; text-shadow:0 1px 10px rgba(20,44,64,0.65); }
+  .chipRow { position:absolute; left:0; right:0; top:258px; height:74px; display:flex; gap:7px; padding:0 16px; }
+  .chip { width:81px; height:74px; border-radius:14px; background:rgba(255,255,255,0.13); border:1px solid rgba(255,255,255,0.28);
+    display:flex; flex-direction:column; align-items:center; padding-top:8px; flex:none; }
+  .chipL { font-size:10px; color:rgba(255,255,255,0.62); }
+  .chipV { font-size:18px; font-weight:700; color:#fff; margin-top:2px; }
+  .chipV.g { color:#D5E384; }
+  .chipT { font-size:9.5px; color:rgba(255,255,255,0.5); margin-top:2px; }
+  .ringZone { position:absolute; left:55px; top:334px; width:280px; height:210px; }
+  .legend { position:absolute; left:0; right:0; top:548px; display:flex; justify-content:center; gap:14px; }
+  .lgItem { display:flex; align-items:center; gap:5px; font-size:10.5px; color:rgba(255,255,255,0.65); }
+  .lgLine { width:14px; height:3px; border-radius:2px; }
+  .lgDot { width:8px; height:8px; border-radius:50%; }
+  .aiCard { position:absolute; left:16px; right:16px; bottom:66px; border-radius:20px; background:rgba(9,28,48,0.52);
+    border:1px solid rgba(255,255,255,0.17); padding:14px 16px 13px; }
+  .aiTxt { font-size:14px; line-height:21px; color:rgba(255,255,255,0.92); }
+  .aiTxt b { color:#BFCBFF; }
+  .aiSug { display:flex; align-items:center; gap:11px; padding-top:9px; margin-top:9px; border-top:1px solid rgba(255,255,255,0.14); }
+  .aiThumb { width:44px; height:44px; border-radius:13px; background:linear-gradient(135deg,#8FB8D8,#5E7FB8); border:1px solid rgba(255,255,255,0.35); }
+  .aiSugT { font-size:14px; font-weight:600; color:#fff; }
+  .aiSugD { font-size:11.5px; color:rgba(255,255,255,0.65); margin-top:2px; }
+  .aiGo { margin-left:auto; background:rgba(160,178,255,0.95); border-radius:999px; padding:6px 13px; font-size:12.5px; font-weight:600; color:#101C33; }
+  .tab { position:absolute; left:16px; right:16px; bottom:8px; height:48px; border-radius:28px;
+    background:rgba(255,255,255,0.22); border:1px solid rgba(255,255,255,0.38); display:flex; align-items:center; justify-content:space-around; }
+  .tabDot { width:8px; height:8px; border-radius:4px; background:rgba(255,255,255,0.55); }
+  .tabDot.on { background:#fff; }
+  .tabBot { width:34px; height:34px; border-radius:17px; background:rgba(255,255,255,0.85); }
+  @media (max-width:900px){ .grid{ grid-template-columns:410px; } }
+</style>
+</head>
+<body>
+
+<h1>圆弧形状变体 · 6 款</h1>
+<p class="sub">
+  在<b>方案 D 结构</b>（外白弧=恢复分 82% / 内金弧=周期 14/28 / 内弧末端月相）不变的前提下，只改<b>弧的几何</b>：
+  圆心角从 140° 到 240°、正圆到椭圆。周期固定第 14 天（满月）。V1 即当前真机形态，作对照。
+</p>
+
+<div class="grid" id="grid"></div>
+
+<script>
+/* ===== 白版 moonPath 端口（t=0.5 满月） ===== */
+function moonPath(cx, cy, R, t) {
+  const p = ((t % 1) + 1) % 1;
+  const waxing = p < 0.5;
+  const k = Math.abs(Math.cos(Math.PI * 2 * p));
+  const rx = Math.max(0.0001, R * k);
+  const outerSweep = waxing ? 1 : 0;
+  const crescent = waxing ? p < 0.25 : p > 0.75;
+  const innerSweep = crescent ? outerSweep : 1 - outerSweep;
+  return `M ${cx.toFixed(2)} ${(cy - R).toFixed(2)} A ${R.toFixed(2)} ${R.toFixed(2)} 0 0 ${outerSweep} ${cx.toFixed(2)} ${(cy + R).toFixed(2)} A ${rx.toFixed(2)} ${R.toFixed(2)} 0 0 ${innerSweep} ${cx.toFixed(2)} ${(cy - R).toFixed(2)} Z`;
+}
+const LIT = '#F2C75C', DARK = 'rgba(10,22,40,0.88)';
+const CX = 140, CY = 120;
+
+/* 参数化弧：phi 数学角（右端0°、顶90°、左端180°），theta=圆心角跨度，start=起始角 */
+function pt(phiDeg, rx, ry) {
+  const r = phiDeg * Math.PI / 180;
+  return { x: CX + rx * Math.cos(r), y: CY - ry * Math.sin(r) };
+}
+function arcD(theta, rx, ry) {
+  const start = 90 + theta / 2;               // 起角（左上）
+  const end = 90 - theta / 2;                 // 终角（右上）
+  const a = pt(start, rx, ry), b = pt(end, rx, ry);
+  const large = theta > 180 ? 1 : 0;
+  return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} A ${rx} ${ry} 0 ${large} 1 ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+}
+function arcSeg(theta, rx, ry, pct, color, width) {
+  // pathLength=100 归一化 → dasharray 直接用百分比
+  return `<path d="${arcD(theta, rx, ry)}" pathLength="100" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${pct} 100"/>`;
+}
+function moonDisc(cx, cy, R) { // t=0.5 满月
+  cx = +cx; cy = +cy; R = +R;
+  return `<circle cx="${cx}" cy="${cy}" r="${R * 2.1}" fill="${LIT}" opacity="0.14"/>
+  <circle cx="${cx}" cy="${cy}" r="${R * 1.5}" fill="${LIT}" opacity="0.2"/>
+  <circle cx="${cx}" cy="${cy}" r="${R}" fill="${DARK}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+  <path d="${moonPath(cx, cy, R - 0.8, 0.5)}" fill="${LIT}"/>`;
+}
+const chev = `<path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(283,66)"/>`;
+function gaugeText() {
+  return `<text x="${CX}" y="104" text-anchor="middle" font-size="52" font-weight="700" fill="#fff" style="text-shadow:0 2px 14px rgba(20,44,64,0.45)">82</text>
+  <text x="${CX}" y="126" text-anchor="middle" font-size="13.5" fill="rgba(255,255,255,0.72)">状态良好</text>
+  <text x="${CX}" y="144" text-anchor="middle" font-size="12" fill="rgba(255,255,255,0.55)">更新于 11:30</text>`;
+}
+
+/* ===== 6 个弧变体 ===== */
+const VARIANTS = [
+  { id:'V1', theta:180, rx:110, ry:110, title:'V1 · 正圆半弧（当前真机）', dim:false,
+    desc:'圆心角 <em>180°</em>、正圆 R110。两端正好落在环的水平直径上——现在真机的形态，作为对照基准。' },
+  { id:'V2', theta:150, rx:110, ry:110, title:'V2 · 收角 150°', dim:false,
+    desc:'圆心角 <em>150°</em>，两端抬离水平线约 15°。弧更内聚、更"笑眼"，视觉上比 V1 精神一点。' },
+  { id:'V3', theta:140, rx:110, ry:110, title:'V3 · 扁角 140°', dim:false,
+    desc:'圆心角 <em>140°</em>。明显更矮更收，84×96 的卡片行与弧顶的纵向关系更紧凑。' },
+  { id:'V4', theta:210, rx:110, ry:110, title:'V4 · 开口 210°', dim:false,
+    desc:'圆心角 <em>210°</em>，两端下沉探过水平线约 15°。弧有了"环抱"感，像张开的臂弯托住 82。' },
+  { id:'V5', theta:240, rx:110, ry:110, title:'V5 · 大开口 240°', dim:false,
+    desc:'圆心角 <em>240°</em>（3/4 圆），只剩底部一个缺口。包裹感最强，与 AI 卡的圆角语言呼应。' },
+  { id:'V6', theta:210, rx:118, ry:86, title:'V6 · 椭圆开口 210°', dim:false,
+    desc:'椭圆 <em>rx118 / ry86</em> + 开口 210°。横向拉宽的扁弧，两端下沉——扁与张两个诉求的组合。' },
+];
+
+function renderVariant(v) {
+  const outerR = 110, irx = v.rx - 9, iry = v.ry - 9;
+  const phiOuter = 90 + v.theta / 2 - 0.82 * v.theta;      // 外弧 82% 末端角
+  const phiInner = 90 + v.theta / 2 - 0.5 * v.theta;       // 内弧 50%（day14）末端角
+  const po = pt(phiOuter, v.rx, v.ry), pi = pt(phiInner, irx, iry);
+  return `<svg width="280" height="210" viewBox="0 0 280 210">
+    ${arcSeg(v.theta, v.rx, v.ry, 100, 'rgba(255,255,255,0.22)', 6)}
+    ${arcSeg(v.theta, v.rx, v.ry, 82, '#FFFFFF', 6)}
+    ${arcSeg(v.theta, irx, iry, 50, LIT, 4)}
+    ${gaugeText()}
+    <circle cx="${po.x.toFixed(1)}" cy="${po.y.toFixed(1)}" r="5.2" fill="#fff"/>
+    ${moonDisc(pi.x.toFixed(1), pi.y.toFixed(1), 10)}
+    ${chev}
+  </svg>`;
+}
+
+/* 手机骨架 */
+function phone(v) {
+  return `<div class="phone">
+    <div class="wave"></div>
+    <div class="head">
+      <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20c1-3.6 3.8-5.6 7.2-5.6s6.2 2 7.2 5.6"/></svg></div>
+      <div class="hIcon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(16,36,58,0.88)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6"/></svg></div>
+    </div>
+    <div class="titleT">今日状态</div>
+    <div class="chipRow">
+      <div class="chip"><div class="chipL">情绪</div><div class="chipV g">38</div><div class="chipT">情绪平稳</div></div>
+      <div class="chip"><div class="chipL">生理周期</div><div class="chipV g">第14天</div><div class="chipT">黄体期</div></div>
+      <div class="chip"><div class="chipL">睡眠恢复</div><div class="chipV g">82</div><div class="chipT">恢复良好</div></div>
+      <div class="chip"><div class="chipL">活动消耗</div><div class="chipV">320</div><div class="chipT">达成55%</div></div>
+    </div>
+    <div class="ringZone">${renderVariant(v)}</div>
+    <div class="legend">
+      <div class="lgItem"><div class="lgLine" style="background:#fff"></div>恢复分 82%</div>
+      <div class="lgItem"><div class="lgLine" style="background:#F2C75C"></div>周期 14/28</div>
+      <div class="lgItem"><div class="lgDot" style="background:#F2C75C"></div>月相</div>
+    </div>
+    <div class="aiCard">
+      <div class="aiTxt">恢复得不错，<b>82 分</b>比平时高一点，压力也低，别浪费今天的好状态～</div>
+      <div class="aiSug"><div class="aiThumb"></div><div><div class="aiSugT">3 分钟呼吸放松</div><div class="aiSugD">开会前把心率平一下</div></div><div class="aiGo">去呼吸 ›</div></div>
+    </div>
+    <div class="tab"><div class="tabDot on"></div><div class="tabDot"></div><div class="tabBot"></div><div class="tabDot"></div><div class="tabDot"></div></div>
+  </div>`;
+}
+
+document.getElementById('grid').innerHTML = VARIANTS.map(v =>
+  `<div class="proposal${v.id === 'V1' ? ' base' : ''}">
+    <span class="pTag${v.id === 'V1' ? '' : ' dim'}">${v.id === 'V1' ? '当前形态 · 对照' : v.id}</span>
+    <div class="pTitle">${v.title}</div>
+    <div class="pDesc">${v.desc}</div>
+    ${phone(v)}
+  </div>`).join('');
+</script>
+</body>
+</html>

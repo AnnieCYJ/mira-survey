@@ -151,12 +151,21 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
             ['HRV', `${Math.round(latest.aveHrv)}`, 'ms'],
             ['呼吸', `${Math.round(latest.aveResRate)}`, '次/分'],
           ].map(([k, v, u]) => (
-            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.ui.white55, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
+            <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{k}</Text>
               <Text style={{ fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textTitle }}>{v}</Text>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{u}</Text>
             </View>
           ))}
+        </View>
+      ) : null}
+
+      {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
+      {!isMeasuring && !isDone && !ecgUnsupported ? (
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+          <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+            测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
+          </Text>
         </View>
       ) : null}
 
@@ -177,7 +186,8 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
         </TouchableOpacity>
       ) : isDone ? (
         // 状态 2：刚完成（100%）→ 短暂过渡态，等 ring.ecg 写入
-        <View style={[styles.btn, { backgroundColor: theme.colors.success || '#22c55e' }]}>
+        // ★ mira-ocean（2026-10-17）：success 已改亮档文字色，按钮底改用 limeDeep（白字可读）
+        <View style={[styles.btn, { backgroundColor: mm.colors.limeDeep }]}>
           <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.btnLabel}>处理结果中…</Text>
         </View>
@@ -256,7 +266,7 @@ const styles = StyleSheet.create({
   time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   waveBox: {
     height: 40,
-    backgroundColor: theme.colors.ui.white55,
+    backgroundColor: theme.colors.ui.offTrack, // mira-ocean：white55(0.55) 浅盒 + 红波形 → 改深色轨迹盒，与 ecgChart 一致
     borderRadius: theme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -291,7 +301,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: '100%',
     height: 4,
-    backgroundColor: theme.colors.ui.white25,
+    backgroundColor: theme.colors.ui.scrimSoft,
     borderRadius: theme.sp(0.5),
     overflow: 'hidden',
   },

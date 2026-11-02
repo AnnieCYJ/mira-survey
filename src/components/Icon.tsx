@@ -21,6 +21,8 @@ export type IconName =
   | 'learn'
   | 'chevronLeft'
   | 'chevronRight'
+  | 'chevronDown'
+  | 'bookmark'
   | 'pen'
   | 'image'
   | 'close'
@@ -113,6 +115,11 @@ const ICONS: Record<IconName, IconDef> = {
   },
   chevronLeft: { mode: 'stroke', nodes: [{ p: 'M15 18l-6-6 6-6' }] },
   chevronRight: { mode: 'stroke', nodes: [{ p: 'M9 18l6-6-6-6' }] },
+  chevronDown: { mode: 'stroke', nodes: [{ p: 'M6 9l6 6 6-6' }] },
+  bookmark: {
+    mode: 'stroke',
+    nodes: [{ p: 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z' }],
+  },
   pen: {
     mode: 'stroke',
     nodes: [

@@ -53,8 +53,26 @@ import {
 } from '../data/interventionLog';
 import { loadFoodLogs, type FoodLog } from '../lib/foodAi';
 import { loadSportLogs, type SportLog } from '../lib/sportLog';
+// ★ Phase 2（无门禁软闭环）：规律观察直接落位日历观察区 ——
+//   观察不等确认就写进来；用户点「挺准」→ 加权进人生上下文；随时可删（删了不复活）。
+import {
+  listVisiblePatterns,
+  dismissPattern,
+  type PatternEntry,
+} from '../data/patternStore';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+
+/** ★ 2026-10-28（用户）：规律观察每条下方加「类别标签」，让用户一眼分清这观察是讲什么的。 */
+const PATTERN_KIND_LABEL: Record<string, string> = {
+  rhythm: '时间节律',
+  correlation: '相关',
+  group_diff: '组间差异',
+  coverage: '数据覆盖',
+};
+function patternKindLabel(kind: string): string {
+  return PATTERN_KIND_LABEL[kind] ?? '发现';
+}
 
 // ── App 同款照片资源（与首页泡泡卡 / 工具页同源） ──
 const IMG = {
@@ -278,13 +296,21 @@ function StackPhoto({ img, rot, off, zIndex, photoSize, delay, playId, reduced }
 
 export default function MonthDiscoveryView({
   tasks,
+  onAskMira,
 }: {
   tasks: Record<number, number[]>;
+  /** ★ Phase 3：把一条规律观察带去问 Mira（走云端长窗口综合分析）。可选 —— 没传就不渲染按钮。 */
+  onAskMira?: (question: string) => void;
 }) {
   const [data, setData] = useState<MonthData | null>(null);
   const [cellW, setCellW] = useState(40);
   // ★ 2026-10-12（用户）：点某个日期 → 下抽屉弹出「原先日的那种」旅程视图（中间曲线 + 两侧活动卡片）
   const [drawerDate, setDrawerDate] = useState<Date | null>(null);
+
+  // ★ 2026-10-28（V1 重设计）：卡头「收藏」+「你做过多少次」折叠开关
+  const [favRhythm, setFavRhythm] = useState(false);
+  const [favPattern, setFavPattern] = useState(false);
+  const [countOpen, setCountOpen] = useState(true);
 
   // ★ 丝滑化：切到日历页时，月历照片卡错峰「堆叠展开」；focused 变化重放
   const calendarFocused = useIsFocused();
@@ -304,6 +330,27 @@ export default function MonthDiscoveryView({
   const realNow = new Date();
   // 仅当查看的正是「真实当前月」时才高亮今天，否则不渲染今天底色
   const todayDay = realNow.getFullYear() === viewY && realNow.getMonth() === viewM ? realNow.getDate() : -1;
+
+  // ★ Phase 2：规律观察（云端长窗口 + 端侧细数据算出的观察）
+  const [patterns, setPatterns] = useState<PatternEntry[]>([]);
+  const reloadPatterns = async () => {
+    try {
+      const list = await listVisiblePatterns();
+      setPatterns(list);
+    } catch {
+      setPatterns([]);
+    }
+  };
+  useEffect(() => { void reloadPatterns(); }, []);
+  useEffect(() => {
+    // 回到日历页时刷新一次（可能刚刚在别处点过「挺准」/删过）
+    if (calendarFocused) void reloadPatterns();
+  }, [calendarFocused]);
+
+  const onPatternRemove = async (id: string) => {
+    await dismissPattern(id);
+    await reloadPatterns();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -560,9 +607,18 @@ export default function MonthDiscoveryView({
     return { heat, slotTotals, total, dominantIdx, dominantPct, insights };
   }, [data, viewY, viewM, viewDays, extra]);
 
+  // 观察列表：剔除「数据覆盖」这类上下文条目（单独作脚注）
+  const observedPatterns = useMemo(
+    () => patterns.filter((p) => p.kind !== 'coverage'),
+    [patterns],
+  );
+  const coverageNote = useMemo(() => {
+    const c = patterns.find((p) => p.kind === 'coverage');
+    return c ? c.title : '';
+  }, [patterns]);
+
   // 月历网格（周一起始，补齐整周）
-  const rows = useMemo(() => {
-    const first = new Date(viewY, viewM, 1).getDay();
+  const rows = useMemo(() => {    const first = new Date(viewY, viewM, 1).getDay();
     const lead = (first + 6) % 7;
     const total = new Date(viewY, viewM + 1, 0).getDate();
     const cells: number[] = [];
@@ -581,10 +637,11 @@ export default function MonthDiscoveryView({
     setCellW(w);
   };
 
-  /** 单元格：预览稿口径 aspect 1 : 1.32（2026-10-12 用户「格子稍微大一点」）；透明底（无灰框），仅今天蜜黄 */
-  const cellH = cellW * 1.32;
-  // ★ 2026-10-14：照片占格宽比例 0.92 → 0.95，让格内图片更饱满（堆叠错位/旋转仍保留层次感）
-  const photo = Math.max(22, cellW * 0.95);
+  /** 单元格：预览稿口径 aspect 1 : 1.18（2026-10-17 用户「日历卡片再小一点」：1.32 → 1.18）；透明底（无灰框），仅今天蜜黄 */
+  const cellH = cellW * 1.18;
+  // ★ 2026-10-20（用户：「日历页面上面的那些图片稍微小一点」）：照片占格宽比例 0.95 → 0.82，
+  //   格内图片更收敛、周围留白更多（堆叠错位/旋转仍保留层次感）
+  const photo = Math.max(20, cellW * 0.82);
 
   const renderCell = (day: number, colIdx: number, rowIdx: number) => {
     // ★ 只有真实存在的日（day > 0）才可能是「今天」。空槽 day = -1，而非当前月时 todayDay 也是 -1，
@@ -689,12 +746,22 @@ export default function MonthDiscoveryView({
             这些个，还有什么认知专注这些都去掉。」 */}
       </Card>
 
-      {/* ★ 月度发现 · 你的本月节奏：时间热力 + 44% 主数字 + 4 条洞察，合一卡
-          （用户：把「时间指纹」和下面的洞察合并成一张卡，且不再叫「时间指纹」） */}
+      {/* ★ 月度发现 · 你的本月节奏（合并「你做过多少次」）：时间热力 + 44% + 你做过多少次（可折叠）
+          ★ 2026-10-28 重设计：卡头去掉图标只留标题 + 收藏；去掉原「洞察」散文段，
+            下方改放「你做过多少次」；其小标题右侧加向下箭头可折叠。 */}
       <Card>
         <View style={styles.cardHead}>
-          <Icon name="calendar" size={18} color={mm.colors.limeDeep} />
           <Text style={styles.cardHeadTitle}>你的本月节奏</Text>
+          <View style={styles.headActions}>
+            <TouchableOpacity
+              style={styles.favBtn}
+              onPress={() => setFavRhythm((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={favRhythm ? '取消收藏本月节奏' : '收藏本月节奏'}
+            >
+              <Icon name="bookmark" size={18} color={favRhythm ? GOLD : mm.colors.inkFaint} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {rhythm ? (
@@ -739,90 +806,140 @@ export default function MonthDiscoveryView({
             </View>
             <Text style={styles.cardNote}>色深 = 那个时段做了多少次 · 按小时和星期把你的记录铺开看</Text>
 
-            {/* 洞察（icon + 文字 + 证据 chip，直接接 44%，无 Mira 包装） */}
-            <View style={styles.obsWrap}>
-              {rhythm.insights.map((it, i) => (
-                <View key={i} style={[styles.obs, i > 0 && styles.obsGap]}>
-                  <View style={[styles.obsIco, { backgroundColor: it.soft }]}>
-                    <Icon name={it.icon} size={14} color={it.deep} />
-                  </View>
-                  <View style={styles.obsBody}>
-                    <Text style={styles.obsText}>{it.text}</Text>
-                    <View style={[styles.obsChip, { backgroundColor: it.soft }]}>
-                      <Text style={[styles.obsChipText, { color: it.deep }]}>{it.chip}</Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
+            {/* ★ 你做过多少次（合并进本月节奏；小标题右侧箭头可折叠） */}
+            <TouchableOpacity
+              style={styles.subLabelRow}
+              onPress={() => setCountOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={countOpen ? '收起你做过多少次' : '展开你做过多少次'}
+            >
+              <Text style={styles.subLabel}>你做过多少次</Text>
+              <Icon
+                name="chevronDown"
+                size={16}
+                color={mm.colors.inkFaint}
+                style={{ transform: [{ rotate: countOpen ? '0deg' : '180deg' }] }}
+              />
+            </TouchableOpacity>
+
+            {countOpen ? (
+              <View style={styles.obsWrap}>
+                {habitCards.length > 0 ? (
+                  (() => {
+                    const maxCount = Math.max(...habitCards.slice(0, 5).map((x) => x.count), 1);
+                    return habitCards.slice(0, 5).map((h, i) => (
+                      <View key={h.name} style={[styles.habitRow, i > 0 && styles.habitRowGap]}>
+                        <View style={styles.habitTopRow}>
+                          <View style={[styles.habitIconSq, { backgroundColor: h.soft }]}>
+                            <Icon name={h.icon as any} size={16} color={h.deep} />
+                          </View>
+                          <View style={styles.habitTextCol}>
+                            <Text style={styles.habitName}>{h.name}</Text>
+                            {h.metric ? <Text style={styles.habitTag}>{h.metric}</Text> : null}
+                          </View>
+                          <View style={styles.habitNumRow}>
+                            <Text style={[styles.habitNum, { color: mm.colors.ink }]}>{h.count}</Text>
+                            <Text style={styles.habitUnit}>{h.unit}</Text>
+                          </View>
+                        </View>
+                        {/* ★ 2026-10-28（用户：恢复进度条）：每条约一根进度条，宽度 = 该习惯次数 ÷ 本月最多次数，直观看相对量 */}
+                        <View style={styles.habitTrack}>
+                          <View
+                            style={[
+                              styles.habitFill,
+                              { width: `${Math.max(8, Math.round((h.count / maxCount) * 100))}%`, backgroundColor: h.deep },
+                            ]}
+                          />
+                        </View>
+                        <View style={styles.habitFoot}>
+                          <Text style={styles.habitFootText}>{mdOf(h.firstAt)} – {mdOf(h.lastAt)}</Text>
+                          <Text style={styles.habitFootText}>{weeklyText(h.count, h.firstAt, h.lastAt, h.unit)}</Text>
+                        </View>
+                      </View>
+                    ));
+                  })()
+                ) : (
+                  <Text style={styles.cardNote}>把 Mira 的建议确认「有帮助」之后，就会出现在这里</Text>
+                )}
+              </View>
+            ) : null}
           </>
         ) : null}
       </Card>
 
-      {/* ★ 月度发现 · 习惯卡 = 「你做过多少次」（改名；真实口径不变） */}
+      {/* ★ Phase 2：规律观察 —— 无门禁软闭环的落位处（2026-10-28 重设计：
+          卡头去掉图标只留标题 + 收藏；每条改 obs 样式（左图标 + 文字），
+          去掉「23天配对·r0.59」证据 chip、问问 Mira、挺准；删掉放右上角）。 */}
       <Card>
         <View style={styles.cardHead}>
-          <Icon name="check" size={18} color={mm.colors.limeDeep} />
-          <Text style={styles.cardHeadTitle}>你做过多少次</Text>
+          <Text style={styles.cardHeadTitle}>规律观察</Text>
+          <View style={styles.headActions}>
+            <TouchableOpacity
+              style={styles.favBtn}
+              onPress={() => setFavPattern((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={favPattern ? '取消收藏规律观察' : '收藏规律观察'}
+            >
+              <Icon name="bookmark" size={18} color={favPattern ? GOLD : mm.colors.inkFaint} />
+            </TouchableOpacity>
+          </View>
         </View>
-        {habitCards.length > 0 ? (
+
+        {observedPatterns.length > 0 ? (
           <>
-            {habitCards.slice(0, 5).map((h, i) => {
-              const maxCount = habitCards[0].count || 1;
-              const pct = Math.max(6, Math.round((h.count / maxCount) * 100));
+            {observedPatterns.slice(0, 4).map((p, i) => {
+              const accent =
+                p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
+                : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
+                : p.kind === 'group_diff' ? { soft: mm.colors.purpleSoft, deep: mm.colors.purpleDeep }
+                : { soft: mm.colors.limeSoft, deep: mm.colors.limeDeep };
+              const pIcon: IconName =
+                p.kind === 'rhythm' ? 'moon'
+                : p.kind === 'correlation' ? 'sync'
+                : p.kind === 'group_diff' ? 'activity'
+                : 'sparkle';
+              const kindLabel = patternKindLabel(p.kind);
               return (
-                <View key={h.name} style={[styles.habitRow, i > 0 && styles.habitRowGap]}>
-                  <View style={styles.habitTopRow}>
-                    <View style={[styles.habitIconSq, { backgroundColor: h.soft }]}>
-                      <Icon name={h.icon as any} size={17} color={h.deep} />
+                <View key={p.id} style={[styles.patObsRow, i > 0 && styles.patRowGap]}>
+                  <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
+                    <Icon name={pIcon} size={14} color={accent.deep} />
+                  </View>
+                  <View style={styles.obsBody}>
+                    {/* ★ 2026-10-28：正文放大 + 纯白，确保一眼读清（原 xs/inkSoft 在半透明白卡上发糊） */}
+                    <Text style={styles.obsText}>{p.text}</Text>
+                    {/* ★ 2026-10-28（用户）：每条下方加类别标签，分清这观察讲什么 */}
+                    <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
+                      <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
                     </View>
-                    <View style={styles.habitTextCol}>
-                      <Text style={styles.habitName} numberOfLines={1}>{h.name}</Text>
-                      <Text style={styles.habitTag} numberOfLines={1}>
-                        {h.metric || `从 ${mdOf(h.firstAt)} 开始记着`}
-                      </Text>
-                    </View>
-                    <Text style={styles.habitNum}>
-                      <Text style={{ color: h.deep }}>{h.count}</Text>
-                      <Text style={styles.habitUnit}> {h.unit}</Text>
-                    </Text>
                   </View>
-                  <View style={styles.habitTrack}>
-                    <View style={[styles.habitFill, { width: `${pct}%`, backgroundColor: h.deep }]} />
-                  </View>
-                  <View style={styles.habitFoot}>
-                    <Text style={styles.habitFootText}>{mdOf(h.firstAt)} 起 · 最近 {mdOf(h.lastAt)}</Text>
-                    <Text style={styles.habitFootText}>{weeklyText(h.count, h.firstAt, h.lastAt, h.unit)}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.patObsDel}
+                    onPress={() => { void onPatternRemove(p.id); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`删掉这条规律：${p.title}`}
+                  >
+                    <Text style={styles.patObsDelText}>删掉</Text>
+                  </TouchableOpacity>
                 </View>
               );
             })}
             <Text style={styles.cardNote}>
-              按你确认「有帮助」的次数排 · 条长 = 相对这个月做得最多的那项
+              {coverageNote
+                ? `${coverageNote} · `
+                : ''}这些是从你自己的数据里看出来的规律，不是诊断；不想看就点右上角删掉。
             </Text>
           </>
         ) : (
-          <View style={styles.habitRow}>
-            <View style={styles.habitTopRow}>
-              <View style={[styles.habitIconSq, { backgroundColor: mm.colors.emptyFill }]}>
-                <Icon name="check" size={17} color={mm.colors.inkFaint} />
-              </View>
-              <View style={styles.habitTextCol}>
-                <Text style={styles.habitName}>—</Text>
-                <Text style={styles.habitTag}>还没有确认过的习惯</Text>
-              </View>
-              <Text style={styles.habitNum}>
-                <Text style={{ color: mm.colors.inkFaint }}>—</Text>
-                <Text style={styles.habitUnit}> 次</Text>
-              </Text>
-            </View>
-            <View style={styles.habitTrack}>
-              <View style={[styles.habitFill, { width: '0%', backgroundColor: mm.colors.inkFaint }]} />
-            </View>
-            <Text style={styles.cardNote}>把 Mira 的建议确认「有帮助」之后，就会出现在这里</Text>
-          </View>
+          <>
+            <Text style={styles.patText}>
+              还没有观察到规律 —— 多戴几天、让数据连起来，这里就会出现只属于你的观察。
+            </Text>
+            <Text style={styles.cardNote}>规律来自你自己的数据，不是诊断；不想看就删掉。</Text>
+          </>
         )}
       </Card>
+
+      {/* ★ 2026-10-28：「你做过多少次」已合并进上方「你的本月节奏」卡（可折叠），此处不再单独成卡 */}
 
       {/* ★ 点击某个日期 → 下抽屉（原先「日」页的旅程视图：中间曲线 + 两侧活动卡片） */}
       <DayDrawer date={drawerDate} onClose={() => setDrawerDate(null)} />
@@ -881,7 +998,13 @@ const styles = StyleSheet.create({
   // 卡片小标题（图标 + 标题）
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), marginBottom: theme.sp(3) },
   cardHeadTitle: { fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink, letterSpacing: -0.3 },
-  cardNote: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginTop: theme.sp(2) },
+  // ★ 2026-10-28 重设计：卡头右侧操作（收藏）
+  headActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', gap: theme.sp(3) },
+  favBtn: { padding: theme.sp(1), marginRight: -theme.sp(1) },
+  // ★ 你做过多少次 折叠小标题（左侧文字 + 右侧向下箭头）
+  subLabelRow: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(4) },
+  subLabel: { flex: 1, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, letterSpacing: 1 },
+  cardNote: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, marginTop: theme.sp(2) },
 
   // ① 规律总结标题（★ 2026-10-12 用户：去掉外框，就是两行字；三个统计格已删）
   heroCard: { backgroundColor: 'transparent', paddingHorizontal: 2 },
@@ -898,14 +1021,17 @@ const styles = StyleSheet.create({
   },
   habitTextCol: { flex: 1, minWidth: 0 },
   habitName: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink },
-  habitTag: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, marginTop: 2 },
+  // ★ 2026-10-28：证据短语放大到 xs + inkSoft，原 micro/inkSoft 太小看不清
+  habitTag: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, marginTop: 2 },
   // 大数字（对齐用户截图：次数大、单位小）
-  habitNum: { fontSize: theme.fs(24), fontWeight: theme.weight.bold, letterSpacing: -0.5, lineHeight: 28, marginLeft: theme.sp(2) },
-  habitUnit: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as any, color: mm.colors.inkSoft },
+  habitNumRow: { flexDirection: 'row', alignItems: 'flex-end', marginLeft: theme.sp(2) },
+  habitNum: { fontSize: theme.fs(24), fontWeight: theme.weight.bold, letterSpacing: -0.5, lineHeight: 28 },
+  habitUnit: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as any, color: mm.colors.inkSoft, marginLeft: 2, marginBottom: 4 },
   habitTrack: { height: 7, borderRadius: 4, backgroundColor: mm.colors.emptyFill, overflow: 'hidden', marginTop: theme.sp(2.5) },
   habitFill: { height: 7, borderRadius: 4 },
   habitFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: theme.sp(1.5) },
-  habitFootText: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint },
+  // ★ 2026-10-28：起止/频率小字放大到 xs + inkSoft
+  habitFootText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft },
 
   // 你的本月节奏（热力 + 44% + 洞察，合一卡）
   hmGrid: { marginTop: theme.sp(0.5) },
@@ -918,7 +1044,7 @@ const styles = StyleSheet.create({
   hmDow: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.inkFaint },
   hmCell: { flex: 1, aspectRatio: 1, borderRadius: 4, backgroundColor: mm.colors.emptyFill },
   hmLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: theme.sp(1), marginTop: theme.sp(2) },
-  hmLegendText: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint },
+  hmLegendText: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
   hmSwatch: { width: 11, height: 11, borderRadius: 3.5 },
   hmBig: { marginTop: theme.sp(3) },
   hmBigNum: { fontSize: theme.fs(26), fontWeight: theme.weight.bold as any, letterSpacing: -0.7, lineHeight: 30 },
@@ -932,7 +1058,56 @@ const styles = StyleSheet.create({
     marginRight: theme.sp(2.5), marginTop: 1, flexShrink: 0,
   },
   obsBody: { flex: 1, minWidth: 0 },
-  obsText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, lineHeight: 20 },
-  obsChip: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 2.5, paddingHorizontal: 8, marginTop: theme.sp(1.5) },
-  obsChipText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
+  // ★ 2026-10-28（用户）：正文放大到 sm + 纯白 —— 半透明白卡上原 xs/inkSoft 发糊，现一眼读清
+  obsText: { fontSize: theme.fontSize.sm, color: mm.colors.ink, lineHeight: 21 },
+  obsChip: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9, marginTop: theme.sp(1.5) },
+  obsChipText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+
+  // ★ 2026-10-28 重设计：规律观察 obs 行（左图标 + 文字 + 右上角删掉）
+  patObsRow: { flexDirection: 'row', alignItems: 'flex-start', position: 'relative', paddingRight: 44 },
+  patObsDel: { position: 'absolute', top: 0, right: 0, paddingHorizontal: 6, paddingVertical: 2 },
+  // ★ 2026-10-28：删掉按钮放大到 xs + inkSoft，原来 micro/inkFaint 太小太淡看不清
+  patObsDelText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft },
+  // ★ 2026-10-28（用户）：每条规律观察下方的类别标签（时间节律/相关/组间差异）
+  patTag: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 3, paddingHorizontal: 10, marginTop: theme.sp(2.5) },
+  patTagText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, letterSpacing: 0.4 },
+
+  // ★ Phase 2：规律观察卡
+  patRow: {},
+  patRowGap: { marginTop: theme.sp(3.5) },
+  patHeadRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  patTitle: {
+    flex: 1, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold,
+    color: mm.colors.ink, lineHeight: 20,
+  },
+  patOkBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: mm.colors.limeSoft, borderRadius: 999,
+    paddingHorizontal: 7, paddingVertical: 2.5, marginLeft: theme.sp(2),
+  },
+  patOkText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep },
+  patText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, lineHeight: 20, marginTop: theme.sp(1) },
+  patFootRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.sp(2),
+  },
+  patChip: { borderRadius: 999, paddingVertical: 2.5, paddingHorizontal: 8, alignSelf: 'flex-start' },
+  patChipText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
+  patActions: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
+  // ★ Phase 3：问问 Mira —— 走云端长窗口综合分析
+  patActAsk: {
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: mm.colors.purpleSoft,
+  },
+  patActAskText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.purpleDeep },
+  patActOk: {
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: mm.colors.limeSoft,
+  },
+  patActOkText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep },
+  patActDel: {
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: mm.colors.emptyFill,
+  },
+  patActDelText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any, color: mm.colors.inkFaint },
 });

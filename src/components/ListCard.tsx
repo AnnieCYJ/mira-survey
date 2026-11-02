@@ -69,5 +69,5 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(1),
   },
   itemSub: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
-  right: { fontSize: theme.fontSize.body, color: theme.colors.accentSolid },
+  right: { fontSize: theme.fontSize.body, color: theme.colors.accentText },
 });

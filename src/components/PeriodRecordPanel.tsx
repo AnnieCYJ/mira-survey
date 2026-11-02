@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
   /* ★ 2026-10-07：历史入口 + 列表（不铺灰底，用描边框区分） */
   histRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.xs },
   histLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  histLink: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentSolid },
+  histLink: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentText },
   histList: { marginTop: theme.space.xs, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.sm },
   histItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
   histDate: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, minWidth: theme.sp(9) },
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBtnText: { fontSize: 20, color: theme.colors.accentSolid, fontWeight: theme.weight.bold as any },
+  stepBtnText: { fontSize: 20, color: theme.colors.accentText, fontWeight: theme.weight.bold as any },
   stepValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginHorizontal: 16, minWidth: 48, textAlign: 'center' },
 
   // v16：保存按钮 = lime→粉 渐变（Touchable 只留圆角+裁切，padding 在渐变层）

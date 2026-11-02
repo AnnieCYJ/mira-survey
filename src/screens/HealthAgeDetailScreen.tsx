@@ -24,6 +24,7 @@ import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
+import { computeCurrentHealthAge } from '../lib/healthAgeCurrent';
 import { analyzeCortisol, type CortisolSample } from '../lib/cortisolRhythm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeStressReport } from '../lib/stressAlgorithm';
@@ -61,29 +62,6 @@ function computeHormonalHealthy(dk: string): boolean {
     return a?.status?.level === 'normal';
   } catch {
     return false;
-  }
-}
-
-/** 当日身体年龄（与 InsightScreen bodyAgeInsight 完全同口径）：ring.daily 睡眠分 + 无参报告 + 今日皮质醇 */
-function computeHealthAgeNow(actualAge: number): number | null {
-  try {
-    const fatigue = computeCognitiveLoadReport();
-    const stress = computeStressReport();
-    const sleep = RingBle.getState()?.daily?.['sleepScore'];
-    const scores: number[] = [];
-    if (fatigue?.sampleCount > 0 && fatigue.loadScore != null && Number.isFinite(fatigue.loadScore)) {
-      scores.push(100 - fatigue.loadScore * 0.6);
-    }
-    if (stress?.sampleCount > 0 && stress.emotionalLoad != null && Number.isFinite(stress.emotionalLoad)) {
-      scores.push(100 - stress.emotionalLoad * 0.5);
-    }
-    if (sleep != null && Number.isFinite(sleep) && sleep >= 0 && sleep <= 100) scores.push(sleep);
-    if (scores.length === 0) return null;
-    const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    const hormonalHealthy = computeHormonalHealthy(dayKey(Date.now()));
-    return estimateHealthAge(actualAge, overallScore, hormonalHealthy, true);
-  } catch {
-    return null;
   }
 }
 
@@ -138,6 +116,57 @@ function yearSeries(anchor: Date, actualAge: number, hormonalHealthy: boolean): 
     out.push({ val: vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null });
   }
   return out;
+}
+
+/**
+ * ★ P0-3（2026-10-28）：衰老速度（对标 WHOOP Pace of Aging）。
+ *   取最近 180 天逐日身体年龄，做**普通最小二乘（OLS）线性拟合**得到斜率（岁/年）。
+ *   以「实际年龄老化速度 = 1 岁/年」为基准：
+ *     · slope < 0        → 逆转（身体年龄在下移，越活越年轻）
+ *     · 0 ≤ slope ≤ 1    → 平稳（接近实际老化速度）
+ *     · slope > 1        → 加速（比实际年龄老得还快）
+ *   另给「近 30 天均值」vs「长期基线均值（180 天）」对照，直观显示近期是否改善。
+ *   参考：WHOOP Healthspan「Pace of Aging」= 近 30 天相对 6 个月 WHOOP Age 的投影速度（-1x~3x）。
+ *   口径：数据不足（有效天 <30）返回 null，不展示，避免噪声。
+ */
+function agingPaceSeries(actualAge: number, hormonalHealthy: boolean, days = 180): number[] {
+  const out: number[] = [];
+  const now = Date.now();
+  for (let i = days; i >= 0; i--) {
+    const dk = dayKey(now - i * 86400000);
+    const v = computeHealthAgeForDay(dk, actualAge, hormonalHealthy);
+    if (v != null && Number.isFinite(v)) out.push(v);
+  }
+  return out;
+}
+
+function computeAgingPace(actualAge: number, hormonalHealthy: boolean): {
+  slopePerYear: number | null;
+  paceX: number | null;
+  band: 'reversing' | 'steady' | 'accelerating' | null;
+  recentMean: number | null;
+  baselineMean: number | null;
+  enough: boolean;
+} {
+  const series = agingPaceSeries(actualAge, hormonalHealthy, 180);
+  if (series.length < 30) {
+    return { slopePerYear: null, paceX: null, band: null, recentMean: null, baselineMean: null, enough: false };
+  }
+  const n = series.length;
+  // OLS 斜率：以「天序号」为自变量，岁为因变量 → 再换算成 岁/年
+  const xs = series.map((_, i) => i);
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = series.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (series[i] - my); sxx += (xs[i] - mx) ** 2; }
+  const slopePerDay = sxx > 1e-9 ? sxy / sxx : 0;
+  const slopePerYear = slopePerDay * 365;
+  const paceX = Math.round(slopePerYear * 100) / 100; // 以 1 岁/年为基准
+  const band: 'reversing' | 'steady' | 'accelerating' =
+    slopePerYear < 0 ? 'reversing' : slopePerYear <= 1 ? 'steady' : 'accelerating';
+  const recentMean = Math.round(series.slice(-30).reduce((a, b) => a + b, 0) / Math.min(30, series.length) * 10) / 10;
+  const baselineMean = Math.round(my * 10) / 10;
+  return { slopePerYear: Math.round(slopePerYear * 100) / 100, paceX, band, recentMean, baselineMean, enough: true };
 }
 
 function computeFactors(dk: string) {
@@ -221,7 +250,7 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
             <Line x1={PAD_L} y1={yAtE(actualAge)} x2={W - PAD_R} y2={yAtE(actualAge)} stroke="rgba(31,29,26,0.32)" strokeWidth={1.3} strokeDasharray="5 4" />
           )}
         </Svg>
-        <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, backgroundColor: theme.colors.textWhite, paddingHorizontal: theme.sp(2) }}>
+        <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, backgroundColor: 'transparent', paddingHorizontal: theme.sp(2) }}>
           暂无数据 · 连续佩戴后可见趋势
         </Text>
       </View>
@@ -354,7 +383,15 @@ export default function HealthAgeDetailScreen() {
   const [anchor, setAnchor] = useState(new Date());
   // ★ 2026-10-10（用户）：实际年龄与洞察页同口径——优先体检记录，fallback 戒指档案。
   //   旧实现只用 getUserProfile()?.age 且强制整数，体检记录里的年龄在详情页取不到 → 完全没有数据。
-  const [actualAge, setActualAge] = useState<number | null>(null);
+  // ★ 2026-10-28（用户·修「先空状态后数据」闪烁）：actualAge 同步从戒指档案初始化（getUserProfile 同步可读），
+  //   首帧即有值（有档案年龄时不再闪空状态）；体检记录为异步，仅用于覆盖/细化。
+  const [actualAge, setActualAge] = useState<number | null>(() => {
+    const a = RingBle.getUserProfile()?.age;
+    return a != null && Number.isInteger(a) && a >= 18 && a <= 120 ? a : null;
+  });
+  // ★ 2026-10-28：体检记录异步加载完成前，不展示「填写身体成分」引导（避免无数据时误导闪一下）；
+  //   仅在加载完成且确实无年龄时才显示引导卡。
+  const [ready, setReady] = useState(false);
   // ★ 2026-10-10（用户）：未填身体成分时，详情页引导用户去填（填完回写 actualAge，数据与趋势即出）。
   const [showExam, setShowExam] = useState(false);
   useFocusEffect(useCallback(() => {
@@ -366,7 +403,8 @@ export default function HealthAgeDetailScreen() {
       if (!active) return;
       const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
       setActualAge(value != null && Number.isInteger(value) && value >= 18 && value <= 120 ? value : null);
-    }).catch(() => { /* 体检记录不可用时保留戒指档案年龄 */ });
+    }).catch(() => { /* 体检记录不可用时保留戒指档案年龄 */ })
+      .finally(() => { if (active) setReady(true); });
     return () => { active = false; };
   }, []));
 
@@ -378,7 +416,8 @@ export default function HealthAgeDetailScreen() {
   }, [range, anchor, actualAge, hormonalHealthyNow]);
 
   // ★ 头条 = 当日身体年龄（与洞察页 bodyAgeInsight 完全同口径）→ 数值一致
-  const currentBodyAge = actualAge != null ? computeHealthAgeNow(actualAge) : null;
+  // ★ 2026-10-28：头条用共享实时计算（与洞察页身体年龄卡完全一致 → 两页数字连通），去掉本地重算分支
+  const currentBodyAge = actualAge != null ? computeCurrentHealthAge(actualAge)?.healthAge ?? null : null;
   const validVals = series.map((d) => d.val).filter((v): v is number => v != null && Number.isFinite(v));
   const avgBodyAge = validVals.length > 0 ? Math.round(validVals.reduce((a, b) => a + b, 0) / validVals.length * 10) / 10 : null;
   // ★ 2026-10-10（用户）：Hero 只讲差值 → 用 currentBodyAge 优先、缺失回退区间均值（有图就有数）
@@ -388,8 +427,14 @@ export default function HealthAgeDetailScreen() {
   const todayDk = dayKey(Date.now());
   const factors = useMemo(() => computeFactors(todayDk), [todayDk]);
 
+  // ★ P0-3（2026-10-28）：衰老速度（对标 WHOOP Pace of Aging）—— 近 180 天 OLS 斜率，以 1 岁/年为基准
+  const pace = useMemo(() => {
+    if (actualAge == null) return null;
+    return computeAgingPace(actualAge, hormonalHealthyNow);
+  }, [actualAge, hormonalHealthyNow]);
+
   return (
-    <ScreenContainer compactTop>
+    <ScreenContainer compactTop withGradient>
       {/* ★ 2026-10-10（九改・用户）：返回头对齐其他详情页（睡眠恢复 / 脑力·昼夜节律 / 情绪）。
           原实现三处不一致：① 返回 icon 外面套了圆形底框+描边（别页没有）；
           ② 标题用 fontSize.card + semibold（别页统一 h2 + medium）；
@@ -427,7 +472,7 @@ export default function HealthAgeDetailScreen() {
             <View style={styles.heroNumRow}>
               <Text style={styles.heroNum}>—</Text>
               <Text style={[styles.heroCompare, { color: theme.colors.textSub }]}>
-                {actualAge == null ? '填写身体成分后可见' : '数据积累中'}
+                {actualAge == null && ready ? '填写身体成分后可见' : '数据加载中…'}
               </Text>
             </View>
           )}
@@ -435,7 +480,7 @@ export default function HealthAgeDetailScreen() {
 
         {/* ★ 2026-10-10（用户）：未填身体成分 → 引导卡；点按钮原地展开 ExamTab 表单，
             填完 saveExamRecord + setUserInfo 回写 actualAge → 趋势与均值即出。 */}
-        {actualAge == null && !showExam && (
+        {actualAge == null && !showExam && ready && (
           <Card style={[styles.panel, styles.examCta]}>
             <View style={styles.examCtaIcon}>
               <Icon name="pen" size={20} color={mm.colors.limeDeep} />
@@ -490,9 +535,43 @@ export default function HealthAgeDetailScreen() {
             实际年龄仍由 actualAge 驱动，未填身体成分时为 —（引导卡已提示去填）。 */}
         <CompareCard bodyAge={headline} actualAge={actualAge} factors={factors} isMonth={range === 'month'} />
 
+        {/* ★ P0-3（2026-10-28）：衰老速度卡 —— 置于身体年龄详情页内（对比卡之后），对标 WHOOP Pace of Aging */}
+        {pace && pace.enough && pace.slopePerYear != null && (
+          <PaceCard pace={pace} />
+        )}
+
         <View style={{ height: theme.sp(6) }} />
       </ScrollView>
     </ScreenContainer>
+  );
+}
+
+/** ★ P0-3（2026-10-28）：衰老速度卡 —— 对标 WHOOP Pace of Aging（-1x~3x） */
+function PaceCard({ pace }: { pace: NonNullable<ReturnType<typeof computeAgingPace>> }) {
+  const band = pace.band;
+  const bandText = band === 'reversing' ? '逆转 · 在变年轻' : band === 'steady' ? '平稳' : '加速 · 偏快';
+  const bandColor = band === 'reversing' ? mm.colors.limeDeep : band === 'steady' ? theme.colors.textSub : mm.colors.roseDeep;
+  const slopeTxt = pace.slopePerYear != null
+    ? (pace.slopePerYear >= 0 ? '+' : '') + pace.slopePerYear.toFixed(2)
+    : '—';
+  return (
+    <Card style={styles.panel}>
+      <View style={styles.panelHead}>
+        <Text style={styles.panelTitle}>衰老速度</Text>
+        <Text style={[styles.paceBand, { color: bandColor }]}>{bandText}</Text>
+      </View>
+      <View style={styles.paceHero}>
+        <Text style={[styles.paceNum, { color: bandColor }]}>{slopeTxt}</Text>
+        <Text style={styles.paceUnit}>岁 / 年</Text>
+      </View>
+      <Text style={styles.paceDesc}>
+        以「实际年龄老化 = 1 岁/年」为基准。近 30 天身体年龄均值 {pace.recentMean ?? '—'} 岁，长期基线 {pace.baselineMean ?? '—'} 岁。
+        {band === 'reversing' ? '近期趋势下移，身体年龄在下降。' : band === 'steady' ? '近期趋势接近实际老化速度。' : '近期趋势上移，老得比实际年龄还快。'}
+      </Text>
+      <Text style={styles.cmpNote}>
+        算法：近 180 天逐日身体年龄做最小二乘（OLS）线性拟合，斜率换算为岁/年（对标 WHOOP Pace of Aging 的近 30 天相对 6 个月投影速度）。仅作健康参考，非医学诊断。
+      </Text>
+    </Card>
   );
 }
 
@@ -724,5 +803,33 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginTop: theme.sp(2.5),
     lineHeight: 17,
+  },
+  // ★ P0-3：衰老速度卡样式
+  paceBand: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold as any,
+  },
+  paceHero: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: theme.sp(1),
+    marginBottom: theme.sp(1),
+  },
+  paceNum: {
+    fontSize: theme.fontSize.hero,
+    fontWeight: theme.weight.semibold,
+    letterSpacing: -1.5,
+    lineHeight: 48,
+  },
+  paceUnit: {
+    fontSize: 14,
+    color: theme.colors.textSub,
+    marginLeft: 6,
+  },
+  paceDesc: {
+    fontSize: theme.fontSize.sm,
+    color: mm.colors.ink,
+    lineHeight: 19,
+    marginTop: theme.sp(1),
   },
 });

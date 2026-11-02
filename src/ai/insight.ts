@@ -13,6 +13,8 @@
  */
 import * as FileSystem from 'expo-file-system';
 import { runOnModel } from './model';
+import { fitContext } from './contextBudget';
+import { selectHealthFacts } from './healthSelection';
 import {
   buildHealthSnapshot,
   getTodayCortisolSummary,
@@ -35,7 +37,7 @@ export { parseInsightRows };
 
 // ★ 2026-10-13：升 v2 —— 长版 AI 分析 prompt 精修（先事实后原因、诚实说数据局限、不以问句结尾、建议用「·」清单），
 //   旧缓存按新口径已不适用，强制下次加载重新生成。
-const FILE = (FileSystem.documentDirectory ?? '') + 'mira_ai_insight_v2.json';
+const FILE = (FileSystem.documentDirectory ?? '') + 'mira_ai_insight_v3.json';
 const MIN_REGEN_MS = 30 * 60 * 1000; // 同一数据指纹 30 分钟内不重复生成
 
 interface CacheEntry {
@@ -147,20 +149,13 @@ function simpleHash(s: string): string {
 }
 
 /** 取真实健康数据摘要（无任何数据时返回空串 → 调用方回落到规则文案） */
-function buildFacts(): { facts: string; sig: string } {
+function buildFacts(kind: InsightKind): { facts: string; sig: string } {
   let facts = '';
   try {
-    facts = buildHealthSnapshot() || '';
+    const question = { overview: '综合健康分析', cycle: '周期激素节律', recovery: '睡眠恢复', today: '综合当前状态' }[kind];
+    facts = selectHealthFacts(buildHealthSnapshot() || '', question);
   } catch {
     facts = '';
-  }
-  // 端侧小模型上下文有限；洞察只需要当前事实摘要，不应把完整聊天/知识块一并塞入。
-  // 保留开头（当前时段、基础指标、睡眠）和末尾（趋势、周期、已确认方法）。
-  const MAX_FACT_CHARS = 5200;
-  if (facts.length > MAX_FACT_CHARS) {
-    const head = facts.slice(0, 3600);
-    const tail = facts.slice(-1400);
-    facts = `${head}\n• 事实摘要已按上下文预算压缩。\n${tail}`;
   }
   return { facts, sig: simpleHash(facts) };
 }
@@ -266,9 +261,10 @@ async function runCompletion(
   //   端侧 ctx 是单例，并发 completion 会抛 "Context is busy" 并被上层静默降级成规则文案。
   return runOnModel(async (ctx) => {
     let full = '';
+    const fitted = await fitContext(ctx, messages, nPredict);
     const res: any = await ctx.completion(
       {
-        messages,
+        messages: fitted,
         n_predict: nPredict,
         temperature,
         top_p: 0.9,
@@ -316,7 +312,7 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<s
     facts = buildRecoveryFactsForDay(targetDk);
     sig = simpleHash(facts);
   } else {
-    const f = buildFacts();
+    const f = buildFacts(kind);
     facts = f.facts;
     sig = f.sig;
   }

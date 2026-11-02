@@ -293,7 +293,8 @@ export default function FoodScanScreen() {
 
   return (
     <View style={styles.page}>
-      <LinearGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
       {/* 固定列结构：头部 + 内容（自己滚）+ 底栏（钉死屏幕底）。
        *  不再包 ScreenContainer——它自带外层 ScrollView，底栏会被外层滚动拖着走，永远钉不住。 */}
       <View style={[styles.col, { paddingTop: theme.space.screen + insets.top }]}>
@@ -402,11 +403,11 @@ export default function FoodScanScreen() {
                     <View style={hs.adviceGrid}>
                       <View style={[hs.adviceCard, hs.adviceEat]}>
                         <Text style={hs.adviceCardTitle}>✦ 推荐多吃</Text>
-                        {target.focus.map((f) => <Text key={f} style={hs.adviceLine}>{f}</Text>)}
+                        {target.focus.map((f) => <Text key={f} style={[hs.adviceLine, hs.adviceEatLine]}>{f}</Text>)}
                       </View>
                       <View style={[hs.adviceCard, hs.adviceAvoid]}>
                         <Text style={[hs.adviceCardTitle, hs.adviceAvoidTitle]}>↓ 先少碰</Text>
-                        {target.avoid.length > 0 ? target.avoid.map((f) => <Text key={f} style={hs.adviceLine}>{f}</Text>) : <Text style={hs.adviceLine}>减少高糖和过度刺激</Text>}
+                        {target.avoid.length > 0 ? target.avoid.map((f) => <Text key={f} style={[hs.adviceLine, hs.adviceAvoidLine]}>{f}</Text>) : <Text style={[hs.adviceLine, hs.adviceAvoidLine]}>减少高糖和过度刺激</Text>}
                       </View>
                     </View>
                   </View>
@@ -880,6 +881,9 @@ const hs = StyleSheet.create({
   adviceCardTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: mm.colors.limeDeep, marginBottom: theme.sp(1.5) },
   adviceAvoidTitle: { color: mm.colors.honeyDeep },
   adviceLine: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(18), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
+  // ★ 对比度修复：adviceEat(limeTint)/adviceAvoid(honeyTint) 浅底上 inkSoft(白 78%) 不可读 → 按卡分色
+  adviceEatLine: { color: mm.colors.limeDeep },
+  adviceAvoidLine: { color: mm.colors.honeyDeep },
   /* 餐次卡（SPEC §3.5） */
   mealTitle: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, marginBottom: theme.sp(1) },
   emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
@@ -1021,7 +1025,7 @@ const styles = StyleSheet.create({
   homeStack: { flex: 1, width: '100%', position: 'relative' },
   scanBtnWrap: {
     paddingHorizontal: theme.sp(2), paddingTop: theme.sp(2),
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: theme.colors.bgBottom,
   },
   scanBtnGrad: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(2),

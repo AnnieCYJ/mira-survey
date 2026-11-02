@@ -134,7 +134,7 @@ export function computeConsumption(ring: any): { segs: Seg[]; overall: number | 
       {
         key: 'sport',
         label: '运动消耗',
-        color: theme.colors.accentSolid,
+        color: theme.colors.accentText,
         glow: theme.colors.cardGlowSport,
         w: wSport,
         share: w[2],
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    color: theme.colors.accentSolid,
+    color: theme.colors.accentText,
   },
   body: { flexDirection: 'row', alignItems: 'center' },
   ringBox: { width: RING, height: RING, alignItems: 'center', justifyContent: 'center' },

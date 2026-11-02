@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>唤醒度轴标注 · 样式预览</title>
+<style>
+  :root {
+    --bg0:#3E627A; --bg1:#2A4470; --bg2:#2B3564;
+    --card:rgba(255,255,255,0.10);
+    --card-line:rgba(255,255,255,0.16);
+    --ink:#FFFFFF; --sub:rgba(255,255,255,0.62);
+    --lime:#D5E384; --rose:#F6B3D0;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,var(--bg0),var(--bg1) 45%,var(--bg2));
+    min-height:100vh; color:var(--ink); padding:28px 18px 60px;
+  }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; letter-spacing:.3px; }
+  .lead { color:var(--sub); font-size:13px; margin-bottom:22px; line-height:1.6; }
+  .wrap { max-width:520px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .card {
+    background:var(--card); border:1px solid var(--card-line); border-radius:18px;
+    padding:18px 18px 16px; backdrop-filter:blur(8px);
+  }
+  .ctitle { display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+  .ctitle b { font-size:15px; font-weight:600; }
+  .ctitle span { font-size:12px; color:var(--lime); font-weight:600; }
+  .cnote { font-size:12px; color:var(--sub); margin-bottom:14px; line-height:1.5; }
+  /* chart area */
+  .chart { position:relative; height:170px; display:flex; }
+  .bars { display:flex; align-items:flex-end; gap:3px; height:100%; flex:1; }
+  .bar { flex:1; border-radius:4px 4px 0 0; min-width:3px; }
+  .legend { font-size:11px; color:var(--sub); margin-top:10px; text-align:center; }
+  /* variant A: left bands */
+  .leftbands { width:74px; position:relative; height:100%; margin-right:6px; flex:0 0 74px; }
+  .band { position:absolute; left:0; right:0; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; }
+  .band .t { font-size:11px; font-weight:600; }
+  .band .s { font-size:9px; color:var(--sub); margin-left:4px; }
+  .divider { position:absolute; left:0; right:0; border-top:1px dashed rgba(255,255,255,0.28); }
+  /* variant B: right scale */
+  .rightscale { width:26px; position:relative; height:100%; margin-left:6px; flex:0 0 26px; }
+  .tick { position:absolute; left:0; right:0; }
+  .tick .t { font-size:10px; font-weight:600; }
+  /* variant C: bottom gradient */
+  .gradbar { height:12px; border-radius:6px; margin-top:12px;
+    background:linear-gradient(90deg,rgb(173,140,217),rgb(117,80,160),rgb(61,21,91)); }
+  .gradlabels { display:flex; justify-content:space-between; font-size:11px; color:var(--sub); margin-top:5px; }
+  .gradlabels b { color:var(--ink); font-weight:600; }
+  /* variant D: badges */
+  .barwrap { position:relative; flex:1; height:100%; display:flex; align-items:flex-end; }
+  .badge { position:absolute; top:-2px; transform:translateX(-50%); background:var(--rose); color:#3a1430;
+    font-size:9px; font-weight:700; padding:1px 5px; border-radius:8px; white-space:nowrap; }
+</style>
+</head>
+<body>
+  <h1>唤醒度轴标注 · 样式预览</h1>
+  <div class="lead">
+    紫色条 = 全天唤醒度（身体紧张度），<b>越深 = 唤醒越高（身体越绷着）</b>。下方四种「低 / 中 / 高」文字标注方案，
+    阈值统一对齐顶部数字：≤30 低·放松 / 31–60 中·适中 / ≥60 高·紧绷。
+  </div>
+  <div class="wrap">
+
+    <!-- 方案 A 左侧分段带 -->
+    <div class="card">
+      <div class="ctitle"><b>方案 A</b><span>左侧分段带</span></div>
+      <div class="cnote">在条带左侧按阈值分三段，直接写「低/中/高 · 放松/适中/紧绷」，配虚线分隔。最直读。</div>
+      <div class="chart">
+        <div class="leftbands" id="bandsA"></div>
+        <div class="bars" id="barsA"></div>
+      </div>
+      <div class="legend">紫色越深 = 唤醒越高</div>
+    </div>
+
+    <!-- 方案 B 右侧竖向刻度 -->
+    <div class="card">
+      <div class="ctitle"><b>方案 B</b><span>右侧竖向刻度</span></div>
+      <div class="cnote">条带右侧加一条细刻度，标注高(顶)/中(中)/低(底)，不占左侧阅读空间，更轻。</div>
+      <div class="chart">
+        <div class="bars" id="barsB"></div>
+        <div class="rightscale" id="scaleB"></div>
+      </div>
+      <div class="legend">高 · 中 · 低（由深到浅）</div>
+    </div>
+
+    <!-- 方案 C 底部渐变刻度条 -->
+    <div class="card">
+      <div class="ctitle"><b>方案 C</b><span>底部渐变刻度</span></div>
+      <div class="cnote">条带下方放一条浅→深渐变条，左低右高，三处标「低/中/高」，呼应「深=高」图例。</div>
+      <div class="chart">
+        <div class="bars" id="barsC"></div>
+      </div>
+      <div class="gradbar"></div>
+      <div class="gradlabels"><span><b>低</b>·放松</span><span><b>中</b>·适中</span><span><b>高</b>·紧绷</span></div>
+    </div>
+
+    <!-- 方案 D 高亮角标 -->
+    <div class="card">
+      <div class="ctitle"><b>方案 D</b><span>仅高亮角标</span></div>
+      <div class="cnote">保持极简：不画刻度，只在超过 60（紧绷）的条上加一个「高」角标，其余靠深浅+图例读。</div>
+      <div class="chart">
+        <div class="bars" id="barsD"></div>
+      </div>
+      <div class="legend">仅高唤醒条标「高」· 深=高</div>
+    </div>
+
+  </div>
+
+<script>
+function arousalColor(v){
+  var t=Math.max(0,Math.min(100,v))/100;
+  var h=266, s=0.5+0.12*t, l=0.70-0.48*t;
+  var c=(1-Math.abs(2*l-1))*s;
+  var x=c*(1-Math.abs(((h/60)%2)-1));
+  var m=l-c/2;
+  var r=0,g=0,b=0;
+  if(h<60){r=c;g=x;} else if(h<120){r=x;g=c;} else if(h<180){g=c;b=x;}
+  else if(h<240){g=x;b=c;} else if(h<300){r=x;b=c;} else {r=c;b=x;}
+  return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')';
+}
+
+// representative arousal series (0-100)
+var data=[12,18,22,15,30,42,55,48,38,28,20,16,25,40,58,72,85,90,78,64,50,36,24,18,14,22,34,46,60,52,40,30];
+
+function renderBars(el){
+  el.innerHTML='';
+  data.forEach(function(v){
+    var d=document.createElement('div');
+    d.className='bar';
+    d.style.height=v+'%';
+    d.style.background=arousalColor(v);
+    el.appendChild(d);
+  });
+}
+
+// A: left bands + dividers
+(function(){
+  renderBars(document.getElementById('barsA'));
+  var bands=document.getElementById('bandsA');
+  bands.innerHTML='';
+  var segs=[{t:'高·紧绷',s:'≥60',top:100,bot:60,c:'#F6B3D0'},
+            {t:'中·适中',s:'30–60',top:60,bot:30,c:'#FFFFFF'},
+            {t:'低·放松',s:'≤30',top:30,bot:0,c:'#D5E384'}];
+  segs.forEach(function(sg){
+    var h=(sg.top-sg.bot);
+    var el=document.createElement('div');
+    el.className='band';
+    el.style.top=(100-sg.top)+'%';
+    el.style.height=h+'%';
+    el.innerHTML='<span class="t" style="color:'+sg.c+'">'+sg.t+'</span><span class="s">'+sg.s+'</span>';
+    bands.appendChild(el);
+  });
+  [60,30].forEach(function(thr){
+    var dv=document.createElement('div');
+    dv.className='divider';
+    dv.style.top=(100-thr)+'%';
+    bands.appendChild(dv);
+  });
+})();
+
+// B: right scale
+(function(){
+  renderBars(document.getElementById('barsB'));
+  var sc=document.getElementById('scaleB');
+  sc.innerHTML='';
+  var ticks=[{t:'高',top:100},{t:'中',top:50},{t:'低',top:0}];
+  ticks.forEach(function(tk){
+    var el=document.createElement('div');
+    el.className='tick';
+    el.style.top=Math.max(0,(100-tk.top)-7)+'%';
+    el.innerHTML='<span class="t">'+tk.t+'</span>';
+    sc.appendChild(el);
+  });
+})();
+
+// C: bottom gradient (bars plain)
+renderBars(document.getElementById('barsC'));
+
+// D: highlight badges on bars>60
+(function(){
+  var el=document.getElementById('barsD');
+  el.innerHTML='';
+  data.forEach(function(v){
+    var wrap=document.createElement('div');
+    wrap.className='barwrap';
+    var bar=document.createElement('div');
+    bar.className='bar';
+    bar.style.height=v+'%';
+    bar.style.background=arousalColor(v);
+    wrap.appendChild(bar);
+    if(v>=60){
+      var bd=document.createElement('div');
+      bd.className='badge';
+      bd.style.left='50%';
+      bd.textContent='高';
+      wrap.appendChild(bd);
+    }
+    el.appendChild(wrap);
+  });
+})();
+</script>
+</body>
+</html>

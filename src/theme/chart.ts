@@ -21,14 +21,14 @@ export const chart = {
     cortisol: mm.colors.limeMid,
   },
   anomaly: '#E2554E',
-  /** 坐标轴文字：白底需深色。左轴「睡眠时长」用深绿（区别于亮绿柱 #BCCB62，保证可读）；右轴「恢复分」用紫。 */
+  /** 坐标轴文字：★ mira-ocean（2026-10-17）深底改亮档——左轴「睡眠时长」用黄绿 core，右轴「恢复分」用紫。 */
   axis: {
-    left: '#5C7A1E',
+    left: '#D5E384',
     right: theme.colors.accentSolid,
   },
   grid: theme.colors.ui.borderSoft,
   axisText: theme.colors.textSub,
-  refFaint: 'rgba(31,29,26,0.32)',
+  refFaint: 'rgba(255,255,255,0.28)',
   lw: { series: 2.4, ref: 1.3, grid: 1 },
   dot: { radius: 3, anomaly: 6, stroke: 2 },
   barRadius: 3,

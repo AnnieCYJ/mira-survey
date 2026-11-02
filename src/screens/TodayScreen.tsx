@@ -910,14 +910,14 @@ export default function TodayScreen() {
     t != null ? CHIP_VALUE_TONE[t] : undefined;
 
   // ★ 2026-10-17（用户：「身体负荷 = 洞察页面基础指标的压力指标，不是心理压力那个」）：
-  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备/健康一览同步的
-  //   实时压力信号 `ring.metrics['stress']`（0–100，越高越紧张），回落读 `ring.daily['stress']`。
+  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备 SDK 压力信号经
+  //   stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
+  //   ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hrv、daily 不含
+  //     stress，该字段恒为 null → 身体负荷卡一直「— / 暂无数据」；改用 computeStressReport().score
+  //     （与 MetricDetail「压力」卡、首页 CalmWaveHome 同源）。
   //   它 ≠ StressInsightCard 的 emotionalLoad（那个是派生总消耗），也 ≠ 「心理压力」chip 的
   //   emotionalStress 百分位（50=和平时差不多）。三者是三个不同口径，这里严格对齐基础指标压力卡。
-  const bodyLoad =
-    ((ring.metrics as Record<string, number | null>)['stress']
-      ?? ring.daily['stress']
-      ?? null) as number | null;
+  const bodyLoad = (() => { try { const r = computeStressReport(Date.now()); return r?.score ?? null; } catch { return null; } })();
   const loadValue = bodyLoad != null ? String(bodyLoad) : '—';
   const loadTone: 'good' | 'mid' | 'bad' | undefined =
     bodyLoad == null ? undefined
@@ -1040,10 +1040,11 @@ export default function TodayScreen() {
 
   return (
     <View style={styles.page}>
-      {/* MindMate v10：首页背景全白（SPEC §0 规则 1）。原「上白下紫」分屏收起——
-          状态面板圆弧在纯白底上自然隐形，页面成为一个连续白面。 */}
+      {/* ★ mira-ocean（2026-10-19）：首页背景由纯白改深海三色渐变（与全 App 同源 bgGradStops）。
+          原「上白下紫」/「全白」分屏收起——各文字/卡片 token 在 ocean 分支已是白阶玻璃，
+          翻背景即可整体进入深海主题，无需逐个翻色。 */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
         style={StyleSheet.absoluteFill}
       />
       {/* ★ v18.50 原整屏吸附翻页；2026-10-08 改自然滚动：第二屏（消费与恢复节律卡片）
@@ -1090,7 +1091,7 @@ export default function TodayScreen() {
             {/* v18.45 头部单行：Today 居左，头像+名字移到右侧（整屏模式下不再滚动淡出）
                 ★ 2026-10-16（用户）：账号行（K / Kristina）移到「今日状态」标题上方，标题随之下移 */}
             <View style={styles.head} onLayout={measureSection('head')}>
-              <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('AccountHub')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLetter}>K</Text>
                 </View>

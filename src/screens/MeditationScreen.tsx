@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Animated, ScrollView, Pressable,
-  useWindowDimensions,
+  useWindowDimensions, StatusBar,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,7 +16,7 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import { RingBle } from '../ble/RingBleManager';
 import { buildToolCtx } from '../lib/toolRecommend';
-import { getToolDailyTip, getToolPhaseLine, getToolStateLine } from '../lib/toolTips';
+import { getToolPhaseLine } from '../lib/toolTips';
 import { listHabits, undoHabit, type HabitEntry } from '../data/habitSuggestions';
 
 
@@ -94,16 +94,14 @@ const FROST_BLUR = 18;                   // 模糊半径（单一值，整片均
    但**不透明度逐条递增**（最上面接近 0 → 最下面 1）。
    ⇒ 从清晰到模糊是连续过渡的，看不出"蒙层从哪一行开始"，边界彻底消失。
    相邻两条只差 ~8% 不透明度，肉眼不可分辨；比"叠几层不同模糊"干净得多（后者会露出台阶）。 */
-const FROST_STEPS = 12;
+const FROST_STEPS = 8;
 /** 第 i 条（0 = 最上）的不透明度：越往下越实，顶部用幂函数压得更淡，收尾更柔 */
 const frostAlpha = (i: number) => Math.pow((i + 0.5) / FROST_STEPS, 1.25);
 
 function CardGlassCaption({
   t, toolCtx, cardH,
 }: { t: ToolItem; toolCtx: any; cardH: number }) {
-  const tip = toolCtx ? getToolDailyTip(t.key, toolCtx) : null;
   const phaseLine = toolCtx ? (getToolPhaseLine(toolCtx) || '周期未记录') : '周期未记录';
-  const stateLine = toolCtx ? (getToolStateLine(t.key, toolCtx) || '—') : '—';
 
   const uri = TOOL_IMAGE_DATA[t.key];
   const fallback = TOOL_IMAGES_FALLBACK[t.key];
@@ -154,14 +152,12 @@ function CardGlassCaption({
         pointerEvents="none"
       />
       <View style={styles.fadeInner}>
-        {/* ① 时期行：工具名 · 最近处于什么时期 */}
-        <Text style={styles.cgKicker} numberOfLines={1}>{t.key} · {phaseLine}</Text>
-        {/* ② 状态行：当下怎么样（真实数据） */}
-        <Text style={styles.cgTitle} numberOfLines={1}>{stateLine}</Text>
-        {/* ③ 建议行：可以怎么改善 */}
-        {tip ? <Text style={styles.cgTip} numberOfLines={2}>{tip}</Text> : null}
-        {/* ④ 资源数（真实配置，无则不显示） */}
-        {t.m ? <Text style={styles.cgMeta} numberOfLines={1}>{t.m}</Text> : null}
+        {/* ① 类别名（放大当主标题，一眼分清是哪类工具） */}
+        <Text style={styles.cgCat} numberOfLines={1}>{t.key}</Text>
+        {/* ② 周期阶段（小字） */}
+        <Text style={styles.cgPhase} numberOfLines={1}>{phaseLine}</Text>
+        {/* ③ 用途描述（小字，原 t.d 一直没上卡，现在补上） */}
+        {t.d ? <Text style={styles.cgDesc} numberOfLines={2}>{t.d}</Text> : null}
       </View>
     </View>
   );
@@ -250,6 +246,11 @@ function ToolIcon({ path, size, color }: { path: string; size: number; color: st
 }
 
 export default function MeditationScreen() {
+  // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('light-content', true);
+  }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -330,12 +331,13 @@ export default function MeditationScreen() {
 
   return (
     <View style={styles.page}>
-      {/* 工具页背景全白（与首页/洞察页/日历页同款） */}
+      {/* ★ mira-ocean（2026-10-17）：工具页背景由白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Tools</Text>
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
@@ -421,7 +423,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     gap: theme.sp(1.5), marginTop: theme.sp(2.5),
   },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(31,29,26,0.18)' },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.25)' },
   dotOn: { width: 14, backgroundColor: mm.colors.ink },
   page: { flex: 1 },
   title: {
@@ -476,46 +478,35 @@ const styles = StyleSheet.create({
     paddingBottom: theme.sp(4),
     alignItems: 'flex-start',
   },
-  // ① 小字行：工具名 · 最近处于什么时期
-  cgKicker: {
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.medium,
-    color: 'rgba(255,255,255,0.76)',
-    letterSpacing: 0.2,
-    marginBottom: theme.sp(0.75),
-    textShadowColor: 'rgba(0,0,0,0.42)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  // ② 标题行：当下状态（真实数据）
-  cgTitle: {
-    fontSize: theme.fs(17),
+  // ① 类别名（放大当主标题，一眼分清是哪类工具）
+  cgCat: {
+    fontSize: theme.fs(20),
     fontWeight: theme.weight.semibold,
     color: '#FFFFFF',
     letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  // ② 周期阶段（小字）
+  cgPhase: {
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
+    color: 'rgba(255,255,255,0.78)',
+    letterSpacing: 0.2,
+    marginTop: theme.sp(1),
     textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  // ③ 建议行：可以怎么改善（每日微文案）
-  cgTip: {
-    marginTop: theme.sp(1),
-    fontSize: theme.fs(12.5),
+  // ③ 用途描述（小字，原 t.d 一直没上卡，现在补上）
+  cgDesc: {
+    marginTop: theme.sp(0.5),
+    fontSize: theme.fs(13),
     fontWeight: theme.weight.regular,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: theme.fs(17),
-    textShadowColor: 'rgba(0,0,0,0.40)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  // ④ 资源数
-  cgMeta: {
-    marginTop: theme.sp(1.5),
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.regular,
-    color: 'rgba(255,255,255,0.72)',
-    letterSpacing: 0.2,
-    textShadowColor: 'rgba(0,0,0,0.40)',
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: theme.fs(18),
+    textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },

@@ -213,7 +213,7 @@ export default function HormoneCurveCard({
       <View style={styles.nowRow}>
         <Text style={styles.nowLabel}>今天雌激素水平</Text>
         {estrogenIdx != null ? (
-          <Text style={[styles.nowVal, { color: theme.colors.accentSolid }]}>{estrogenIdx}</Text>
+          <Text style={[styles.nowVal, { color: theme.colors.accentText }]}>{estrogenIdx}</Text>
         ) : (
           <Text style={styles.nowVal}>—</Text>
         )}

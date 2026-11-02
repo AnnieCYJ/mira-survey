@@ -33,12 +33,12 @@ export const mm = {
     // 红 ECG = 专业心电波形（线必为红，生理监测惯例；与 anomaly #E2554E 异常语义解耦，勿混用）
     ecgRed: '#E5484D', ecgRedSoft: 'rgba(229,72,77,0.14)',
 
-    /* ── 文字（中性）── */
-    ink: '#1F1D1A',
-    inkSoft: '#5C574F',
-    inkFaint: '#706A61', // Secondary text remains readable on light surfaces.
-    emptyFill: '#F6F4F1',
-    sleepDot: '#EAE7E2', // 点阵「睡眠」格
+    /* ── 文字（中性）── ★ mira-ocean（2026-10-17）：白阶；原深色墨系存档 mira-ios */
+    ink: '#FFFFFF',
+    inkSoft: 'rgba(255,255,255,0.88)', // ★ 2026-10-28：0.78 → 0.88，半透明白卡上更清楚
+    inkFaint: 'rgba(255,255,255,0.74)', // ★ 2026-10-28：0.62 → 0.74（AA 仍达标，但发糊问题改善）
+    emptyFill: 'rgba(255,255,255,0.08)',
+    sleepDot: 'rgba(255,255,255,0.22)', // 点阵「睡眠」格
 
     /* ── v10 legacy 别名（值已按 v16 legacyMap 迁移，勿再新增使用）── */
     lime: '#D5E384',           // → limeCore
@@ -73,33 +73,32 @@ export const mm = {
     moodFocus: '#9D8AF0',  // 专注（紫 core）
     moodStress: '#F2A3C6', // 紧张（粉 core）
     moodTired: '#7EA6F8',  // 疲惫（蓝 core）
-    moodSleep: '#EAE7E2',  // 睡眠（中性）
-    moodNone: '#BDB7AE',   // 无数据（中灰，Bento 情绪卡点阵：睡眠段/未到时段/无曲线覆盖）
+    moodSleep: 'rgba(255,255,255,0.35)', // 睡眠（深底白阶）
+    moodNone: 'rgba(255,255,255,0.25)',  // 无数据（深底白阶）
 
-    /* ── 白卡与描边 ── */
-    cardBg: '#FFFFFF',
-    // 干预系列页暖白底（设计稿 out-iv2/0-plans.png 口径；区别于 App 根紫渐变）
-    pageWarm: '#F7F5F0',
-    // 0.05 在纯白上几乎不可见（用户实测反馈「看不到边框」）→ 提到 0.09
-    cardBorder: 'rgba(31,29,26,0.09)',
-    chipBorder: 'rgba(31,29,26,0.10)',
-    tabBorder: 'rgba(31,29,26,0.14)',
+    /* ── 白卡与描边 ── ★ mira-ocean：改玻璃（与 CalmWaveHome chips 同款） */
+    cardBg: 'rgba(255,255,255,0.13)',
+    // 干预系列页暖白底 → mira-ocean 深海页底
+    pageWarm: '#2B3564',
+    cardBorder: 'rgba(255,255,255,0.22)',
+    chipBorder: 'rgba(255,255,255,0.28)',
+    tabBorder: 'rgba(255,255,255,0.22)',
 
     /* ── CTA 渐变按钮（SPEC §4.1 #12：mid 档软渐变 黄绿→米→粉）── */
     btnGradFrom: '#D5E384',
     btnGradTo: '#F6B3D0',      // roseMid（v16 渐变端点限 mid 档）
     btnTextOnGrad: '#5F6B1F',  // 黄绿底上的深绿字
-    btnBusyBg: 'rgba(31,29,26,0.06)',
+    btnBusyBg: 'rgba(255,255,255,0.10)',
 
-    /* ── 身体年龄 hero（v16 §4.2 #1：浅黄绿底 + 黄绿阶弧）── */
-    heroGradFrom: '#F8FAE8',
-    heroGradTo: '#FDFEF7',
-    heroBorder: 'rgba(146,168,52,0.18)',
-    heroTrack: '#E7EBD4',
-    heroPillGreen: '#EAF0BE',  // 黄绿胶囊底（年轻/衰老统一黄绿）
+    /* ── 身体年龄 hero ── ★ mira-ocean：浅黄绿底改深海玻璃（深板岩 → 中蓝），弧线语义色不变 */
+    heroGradFrom: 'rgba(9,28,48,0.52)',
+    heroGradTo: 'rgba(38,62,96,0.40)',
+    heroBorder: 'rgba(255,255,255,0.22)',
+    heroTrack: 'rgba(255,255,255,0.16)',
+    heroPillGreen: 'rgba(191,203,255,0.20)',  // 胶囊底改长春花蓝玻璃
 
-    /* ── 底栏 ── */
-    tabBg: 'rgba(255,255,255,0.96)',
+    /* ── 底栏 ── ★ mira-ocean：tabBg 改 Calm 式半透玻璃（与 CustomTabBar 内联值一致） */
+    tabBg: 'rgba(255,255,255,0.22)',
     // ★ 2026-10-15（用户定稿 V1 去紫）：右下 Mira 脸由紫渐变改墨色（#3A3644→#2E2A3A）
     fabFrom: '#3A3644',
     fabTo: '#2E2A3A',
@@ -112,29 +111,28 @@ export const mm = {
     iconSqMd: 10, // 30px 卡角标方块
   },
 
-  /** pastel 图标方块 bg/fg 对（v16：soft 底 + deep icon；§4.5） */
+  /** pastel 图标方块 bg/fg 对 ★ mira-ocean：soft 底改色相玻璃、deep icon 改亮档（深底可读） */
   chipBg: {
-    lav: { bg: '#E7E1FB', fg: '#6E58C8' },    // 紫（认知）
-    pink: { bg: '#FCE7F0', fg: '#C9598A' },   // 粉（情绪）
-    cyan: { bg: '#E3EBFE', fg: '#4C74C9' },   // 蓝（运动·心肺；旧青语义由蓝接管）
-    lime: { bg: '#EAF0BE', fg: '#6E7A24' },   // 黄绿（恢复/选中）
-    butter: { bg: '#FBEFD6', fg: '#B98A2E' }, // 黄（代谢）
+    lav: { bg: 'rgba(157,138,240,0.22)', fg: '#D9CFF9' },    // 紫（认知）
+    pink: { bg: 'rgba(242,163,198,0.20)', fg: '#F9D3E4' },   // 粉（情绪）
+    cyan: { bg: 'rgba(126,166,248,0.22)', fg: '#CFDEFB' },   // 蓝（运动·心肺；旧青语义由蓝接管）
+    lime: { bg: 'rgba(213,227,132,0.20)', fg: '#E9F3C0' },   // 黄绿（恢复/选中）
+    butter: { bg: 'rgba(240,196,110,0.20)', fg: '#F8E3B8' }, // 黄（代谢）
   } as const,
 
-  /** 白卡阴影：CSS `0 14px 34px -18px rgba(31,29,26,.14)` 的 RN 拆解 */
+  /** 白卡阴影 → mira-ocean 深海玻璃卡：黑投影（深底上出层次，不再用墨色） */
   shadow: {
-    color: '#1F1D1A',
-    opacity: 0.14,
-    height: 7,
-    radius: 17,
-    elevation: 2,
+    color: '#000000',
+    opacity: 0.28,
+    height: 8,
+    radius: 18,
+    elevation: 6,
   },
 
-  /** 底栏 AI FAB 紫色光晕：CSS `0 16px 30px -12px rgba(157,138,240,.6)` 的 RN 拆解 */
+  /** 底栏 AI FAB 光晕 → mira-ocean：黑投影压深 */
   fabShadow: {
-    // ★ 2026-10-15（用户定稿 V1 去紫）：Mira 脸投影由紫改中性墨
-    color: '#1F1D1A',
-    opacity: 0.6,
+    color: '#000000',
+    opacity: 0.4,
     height: 16,
     radius: 15,
     elevation: 6,

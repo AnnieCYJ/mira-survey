@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -27,6 +28,11 @@ const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', 
 const USE_MONTH_DISCOVERY = true;
 
 export default function ProfileScreen({ navigation }: any) {
+  // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  useFocusEffect(useCallback(() => {
+    StatusBar.setBarStyle('light-content', true);
+    return () => StatusBar.setBarStyle('light-content', true);
+  }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -141,12 +147,13 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <View style={styles.root}>
-      {/* v10：日历页背景全白（与首页/洞察页同款处理） */}
+      {/* ★ mira-ocean（2026-10-17）：日历页背景由白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
       <LinearGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.textWhite}>
+      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>Calendar</Text>
         </Animated.View>
@@ -156,7 +163,11 @@ export default function ProfileScreen({ navigation }: any) {
             「日」视图改为点月历上的某一天 → 下抽屉弹出（见 MonthDiscoveryView / DayDrawer）。 */}
         {USE_MONTH_DISCOVERY ? (
           /* ★ 2026-10-12（用户）：月视图改版方案 A —— 卡片堆叠月历 + 规律总结 */
-          <MonthDiscoveryView tasks={tasks} />
+          <MonthDiscoveryView
+            tasks={tasks}
+            /* ★ Phase 3：规律观察 → 带着这条观察去问 Mira（云端长窗口综合分析） */
+            onAskMira={(q) => navigation.navigate('VoiceChat', { question: q })}
+          />
         ) : (
         <>
         {/* 旧版（CalendarGrid + RelaxCardDeck；仅 USE_MONTH_DISCOVERY = false 时启用，代码保留不删） */}

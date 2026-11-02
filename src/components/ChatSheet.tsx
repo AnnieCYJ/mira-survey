@@ -22,6 +22,8 @@ import AiOrb from './AiOrb';
 import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
+import { askCloud, shouldRouteToCloud } from '../ai/cloudAsk';
+import { recommendExerciseForText, type ExerciseProtocol } from '../ai/exercises';
 import { useSpeech } from '../hooks/useSpeech';
 import { type RingState } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
@@ -42,6 +44,7 @@ interface Message {
   task?: AiTask;
   taskAdded?: boolean;  // 是否已添加到工具页
   jumps?: AiJump[];     // ★ v18.94 AI 回复下方的工具跳转按钮（按用户问题域挑）
+  exercise?: ExerciseProtocol; // ★ Phase 0：低落/焦虑等困扰触发时挂的陪伴练习卡
 }
 
 /** 顶部右侧：版本徽章 + 语音播报开关（喇叭）。喇叭状态来自全局 AppState，首页与问答页共享。
@@ -103,6 +106,44 @@ function SuggestStrip({ questions, onPick }: { questions: string[]; onPick: (q: 
   );
 }
 
+/** ★ Phase 0：陪伴练习卡——识别到用户低落/焦虑时挂在 AI 回复下方。
+ *  "陪我做一次"把练习首句作为用户消息发回，并用 systemNote 切到练习专属陪伴语气；
+ *  "看看怎么练"展开步骤与文献。不诊断、不评分，只陪做。
+ *  定义在模块级（而非 ChatSheetInner 内），避免流式每 100ms 重渲染重建组件导致展开态丢失。 */
+function ExerciseCard({ ex, onStart }: { ex: ExerciseProtocol; onStart: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.exCard}>
+      <View style={styles.exHead}>
+        <Text style={styles.exTag}>{ex.tag}</Text>
+        <Text style={styles.exDuration}>约 {ex.durationMin} 分钟</Text>
+      </View>
+      <Text style={styles.exName}>{ex.name}</Text>
+      {ex.warning ? <Text style={styles.exWarn}>⚠️ {ex.warning}</Text> : null}
+      <TouchableOpacity style={styles.exStartWrap} onPress={onStart} activeOpacity={0.7}>
+        <LinearGradient
+          colors={[mm.colors.limeCore, mm.colors.limeMid]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <Icon name="sparkle" size={theme.fs(14)} color="#3F4A0E" strokeWidth={2} />
+        <Text style={styles.exStartText}>陪我做一次 →</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.exToggle} onPress={() => setOpen((o) => !o)} activeOpacity={0.7}>
+        <Text style={styles.exToggleText}>{open ? '收起步骤' : '看看怎么练'}</Text>
+      </TouchableOpacity>
+      {open ? (
+        <View style={styles.exSteps}>
+          {ex.protocol.map((s, i) => (
+            <Text key={i} style={styles.exStep}>{(i + 1)}. {s}</Text>
+          ))}
+          <Text style={styles.exScience}>文献：{ex.scienceRef}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }: Props) {
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState('');
@@ -114,6 +155,8 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   const inputRef = useRef<TextInput>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
+  // ★ Phase 0：练习卡冷却——推过一次后 2 个回合内不再推，避免连续问答里反复骚扰
+  const exerciseCooldownRef = useRef(0);
   // ★ 2026-10-12（用户：点 GROK / 语音 / 跳 AI 页都特别卡）：端侧 Qwen 流式输出时
   //   onToken 每 ~80ms 回调一次，旧实现每个 token 都全量 map 消息数组 + scrollToEnd(animated)，
   //   10–15s 生成期持续掉帧。改为 token 先进缓冲区、100ms 合并 flush 一次，滚动改无动画。
@@ -161,7 +204,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
     prevVisible.current = visible;
   }, [visible, ringState]);
 
-  const sendMessage = useCallback(async (text: string, opts?: { skipUserBubble?: boolean }) => {
+  const sendMessage = useCallback(async (text: string, opts?: { skipUserBubble?: boolean; systemNote?: string }) => {
     if (!text.trim() || isLoading) return;
     Keyboard.dismiss();
     const q = text.trim();
@@ -211,9 +254,50 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       });
     };
 
+    // ★ Phase 0：低落/焦虑等困扰信号 → 挂一个陪伴练习卡（带冷却，避免骚扰）
+    const attachExercise = (ex: ExerciseProtocol) => {
+      setMessages((prev) => {
+        const idx = prev.length - 1;
+        return prev.map((m, i) => (i === idx ? { ...m, exercise: ex } : m));
+      });
+      exerciseCooldownRef.current = 2;
+    };
+    const maybeExercise = () => {
+      if (exerciseCooldownRef.current > 0) { exerciseCooldownRef.current -= 1; return; }
+      const ex = recommendExerciseForText(q);
+      if (ex) attachExercise(ex);
+    };
+
     try {
+      // ★ Phase 3：跨时间的综合/归因类问题 → 交给云端长窗口分析（端侧 1.5B 做不了 30 天归因）。
+      //   云端送进去的是「云端摘要 + 端侧人生上下文」，回的是一段有依据的自然语言。
+      //   失败（没网/没令牌/模型超时/未配置）一律静默回落端侧 —— 聊天不能因此断掉。
+      if (shouldRouteToCloud(q)) {
+        try {
+          setMessages((prev) =>
+            prev.map((m, i) => (i === prev.length - 1 ? { ...m, text: '正在翻你这段时间的数据…' } : m)),
+          );
+          const r = await askCloud(q);
+          if (r?.answer) {
+            setMessages((prev) =>
+              prev.map((m, i) => (i === prev.length - 1 ? { ...m, text: r.answer } : m)),
+            );
+            scrollRef.current?.scrollToEnd({ animated: false });
+            if (ttsOnRef.current) speak(r.answer);
+            attachTask(pickReply(q).task);
+            attachJumps(pickJumps(q));
+            return;
+          }
+        } catch (e) {
+          console.warn('[ChatSheet] 云端追问失败，回落端侧:', e);
+        }
+        // 回落：把占位文案清掉（空 AI 消息不渲染，由加载泡代表等待）
+        setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, text: '' } : m)));
+      }
+
       await ask(q, {
         history,
+        systemNote: opts?.systemNote,
         onToken,
         // ★ 回复完整后播报（仅当喇叭开启）：流式逐字播会断句错乱，必须等全文到齐。
         //   ★ 2026-10-12：onDone 前先把缓冲区里未 flush 的 token 落进消息，再播报。
@@ -224,6 +308,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       });
       attachTask(pickReply(q).task);
       attachJumps(pickJumps(q));
+      maybeExercise();
     } catch (e) {
       console.warn('[ChatSheet] MiraAI 出错，回退模板:', e);
       // ★ 2026-10-12：清掉流式残留缓冲——fallback 直接覆盖整条 text，
@@ -240,6 +325,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       });
       attachTask(fb.task);
       attachJumps(pickJumps(q));
+      maybeExercise();
     } finally {
       setIsLoading(false);
     }
@@ -373,6 +459,12 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
               ))}
             </View>
           ) : null}
+          {msg.exercise ? (
+            <ExerciseCard
+              ex={msg.exercise}
+              onStart={() => sendMessage(msg.exercise!.aiPrompts[0], { systemNote: msg.exercise!.systemPrompt })}
+            />
+          ) : null}
         </View>
       </View>
     );
@@ -468,7 +560,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   //   白底 + 墨色标题 + 返回圆钮 + limeSoft 徽章 + purpleSoft 喇叭钮（HeaderRight 非 onPurple 变体）。
   if (fullScreen) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.textWhite }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.bgBottom }}>
         <View style={[styles.fsHead, { paddingTop: insets.top + theme.sp(2) }]}>
           <View style={styles.fsHeadRow}>
             <TouchableOpacity onPress={onClose} style={styles.fsBack} accessibilityLabel="返回">
@@ -513,7 +605,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.sp(1.5),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: theme.colors.cardBg, // mira-ocean：0.72 白玻璃 badge + textBody 浅字不可读 → 深色玻璃
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
   },
@@ -543,7 +635,7 @@ const styles = StyleSheet.create({
   suggestWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.bgBottom,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.cardBorder,
     paddingVertical: theme.sp(2),
@@ -613,7 +705,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(2),
     paddingTop: theme.sp(2),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.09)', // v21 §4.8#7：分隔线一律中性灰，紫只留给 AI 身份元素
+    borderTopColor: theme.colors.cardBorder, // v21 §4.8#7：分隔线一律中性灰，紫只留给 AI 身份元素
   },
   taskSuggestionTitle: {
     fontSize: theme.fontSize.sm,
@@ -659,7 +751,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.cardBg,
     marginTop: theme.sp(1),
   },
   taskAddBtnSecondary: {
@@ -692,7 +784,7 @@ const styles = StyleSheet.create({
   },
   taskAddedBtnText: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.textSub,
+    color: mm.colors.purpleDeep, // ★ 对比度修复：白 62% 压 purpleSoft 浅紫不可读
     fontWeight: theme.weight.semibold,
   },
   // ── v18.94 AI 回复下方的工具跳转按钮（AI 语义紫：soft 底 + deep 字）──
@@ -715,6 +807,43 @@ const styles = StyleSheet.create({
     color: mm.colors.purpleDeep,
     fontWeight: theme.weight.semibold,
   },
+  // ── Phase 0：陪伴练习卡（limeSoft 底，与工具跳转紫区分）──
+  exCard: {
+    marginTop: theme.sp(2),
+    paddingTop: theme.sp(2),
+    paddingHorizontal: theme.sp(2.5),
+    paddingBottom: theme.sp(2.5),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(31,29,26,0.09)',
+    borderWidth: 1,
+    borderColor: mm.colors.limeSoft,
+    borderRadius: theme.radius.md,
+    backgroundColor: mm.colors.limeSoft,
+  },
+  exHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  exTag: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
+  exDuration: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
+  exName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginTop: theme.sp(1) },
+  exWarn: { fontSize: theme.fontSize.xs, color: mm.colors.honeyDeep, marginTop: theme.sp(1) },
+  exStartWrap: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.radius.pill,
+    overflow: 'hidden',
+    marginTop: theme.sp(2),
+  },
+  exStartText: {
+    flexDirection: 'row',
+    fontSize: theme.fontSize.xs,
+    color: '#3F4A0E',
+    fontWeight: theme.weight.semibold,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(2),
+  },
+  exToggle: { marginTop: theme.sp(1.5), alignSelf: 'flex-start' },
+  exToggleText: { fontSize: theme.fontSize.xs, color: mm.colors.limeDeep, fontWeight: theme.weight.medium },
+  exSteps: { marginTop: theme.sp(1.5) },
+  exStep: { fontSize: theme.fontSize.xs, color: theme.colors.textBody, lineHeight: theme.fontSize.xs * 1.7, marginBottom: theme.sp(0.5) },
+  exScience: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginTop: theme.sp(1) },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
   loadingDot: {
     width: theme.sp(1.5),
@@ -729,7 +858,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.screen,
     paddingTop: theme.sp(1.5),
     // v18.78：分隔线上移到「猜你想问」条上缘，输入行不再自带描边（避免双线）
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.bgBottom,
   },
   input: {
     flex: 1,
@@ -750,16 +879,16 @@ const styles = StyleSheet.create({
     height: theme.sp(11),
     borderRadius: theme.radius.pill,
     overflow: 'hidden',
-    backgroundColor: 'rgba(31,29,26,0.06)',
+    backgroundColor: theme.colors.cardBgSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: 'rgba(31,29,26,0.06)' },
+  sendBtnDisabled: { backgroundColor: theme.colors.cardBgSoft },
   // ── v18.76 全屏头：白底 + 墨色字（与其他详情页同款返回圆钮）──
   fsHead: {
     paddingHorizontal: theme.space.screen,
     paddingBottom: theme.sp(2),
-    backgroundColor: theme.colors.textWhite,
+    backgroundColor: theme.colors.bgBottom,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.cardBorder,
   },
@@ -786,5 +915,5 @@ const styles = StyleSheet.create({
     color: mm.colors.inkFaint,
     marginTop: 2,
   },
-  fsBody: { flex: 1, backgroundColor: theme.colors.textWhite },
+  fsBody: { flex: 1, backgroundColor: theme.colors.bgBottom },
 });

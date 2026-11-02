@@ -399,7 +399,7 @@ export default function CortisolDailyChart({
         <TouchableOpacity activeOpacity={0.7} onPress={goDetail}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
             <Text style={styles.title}>{title}</Text>
-            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentText }}>详情 ›</Text>
           </View>
           <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} hideYAxis={flat} height={chartHeight} />
         </TouchableOpacity>
@@ -425,7 +425,7 @@ export default function CortisolDailyChart({
       <TouchableOpacity activeOpacity={0.7} onPress={goDetail}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentSolid }}>详情 ›</Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentText }}>详情 ›</Text>
         </View>
         {/* ★ 还原 2026-10-09 误改：昼夜节律详情页的皮质醇日视图保留「14 天基线」（绿色虚线），
            不画纵坐标（flat=详情页 → hideYAxis=true，皮质醇看波形节律、无 Y 轴）。
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.5), paddingTop: theme.sp(2.5),
   },
   rhythmCollapsedTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
-  rhythmCollapsedHint: { fontSize: theme.fontSize.micro, color: theme.colors.accentSolid, marginRight: theme.sp(2) },
+  rhythmCollapsedHint: { fontSize: theme.fontSize.micro, color: theme.colors.accentText, marginRight: theme.sp(2) },
   rhythmChev: {
     width: theme.sp(2), height: theme.sp(2),
     borderRightWidth: 1.6, borderBottomWidth: 1.6, borderColor: theme.colors.textSub,

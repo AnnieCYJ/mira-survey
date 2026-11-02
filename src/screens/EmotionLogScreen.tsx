@@ -324,7 +324,7 @@ export default function EmotionLogScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer withGradient>
       <View style={styles.stack}>
         {/* 返回头（与详情页同构） */}
         <View style={styles.head}>
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
 
   rainWrap: {
     marginTop: theme.sp(1),
-    backgroundColor: theme.colors.cardBgSoft + 'AA',
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.fs(14),
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,

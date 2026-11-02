@@ -3,10 +3,14 @@
 // 流式 token 回调给 UI。
 
 import { runOnModel } from './model';
+import { fitContext } from './contextBudget';
+import { needsHealthFacts, selectHealthFacts } from './healthSelection';
 import { MemoryStore } from './memory';
 import { ChatContextStore, type ChatContextSnapshot } from './context';
 import { CHARACTER, buildCompanionInjection } from './character';
 import { buildHealthSnapshot } from './health';
+// ★ Phase 2：人生上下文（用户已确认的个人规律）——Agent 要"记得"用户的长期规律
+import { buildPatternContextBlock } from './cloudPatterns';
 import { emitAiRecord } from '../lib/aiRecordBus';
 
 const memory = new MemoryStore();
@@ -22,6 +26,9 @@ export interface AskOptions {
   onToken?: (tok: string) => void;
   onDone?: (full: string) => void;
   onError?: (e: Error) => void;
+  /** ★ Phase 0：练习模式注入。把练习库的 systemPrompt 作为追加 system 消息，
+   *  让 Mira 在该轮切换成对应陪伴语气（如感恩日记的轻柔引导、呼吸的慢速口令）。 */
+  systemNote?: string;
 }
 
 /** ★ 2026-10-12（用户深夜被问「早上好」）：模型没有时间感知，全靠训练先验猜问候，
@@ -58,19 +65,21 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
     ? `【上次聊到的延续】\n情绪：${ctxSnap.moodLabel}；话题：${ctxSnap.recentThemes.join('、')}；笔记：${ctxSnap.summary}`
     : '';
 
+  // ★ Phase 2：人生上下文（用户点过「挺准」的个人规律 + 最近观察）
+  //   独立成块、不塞进健康快照 —— 聊天时不必用户问健康也能引用她的长期规律。
+  const patternBlock = buildPatternContextBlock();
+
   // 健康快照只在用户问了相关问题时才**计算并**注入：
   // buildHealthSnapshot 要同步跑皮质醇 30 天 / 激素 60 天 / 压力 / 准备度等重计算（全在 JS 线程阻塞），
   // 且占 ~800 token prefill。闲聊 / 情绪 / 一般建议问题根本用不到它，
   // 此前无条件先计算再丢弃 = 每次对话白卡几秒 + 多吃 prefill。按需计算后这部分问题首字延迟大幅下降。
   // ★ 2026-10-13：放宽触发词，覆盖自然口语问法（"我状态怎么样""昨晚怎么样""今天累不累"
   //   旧列表只认字面健康词，问"状态/恢复/精力/休息"等反而拉不到数据、只能凭空聊）。
-  const healthKeywords = [
-    '睡眠', '睡', '心率', '压力', '状态', '恢复', '精力', '休息', '累', '疲劳',
-    '周期', '经期', '激素', '皮质醇', '体温', '血氧', 'HRV', '能量', '指标',
-    '数据', '健康', '情绪', '心情', '气色', '运动', '锻炼', '饮食', '营养', '皮肤',
-  ];
-  const needsHealth = healthKeywords.some(k => userText.includes(k));
-  const health = needsHealth ? buildHealthSnapshot() : '';
+  const needsHealth = needsHealthFacts(userText);
+  // 个人规律已独立注入；健康摘要里移除重复副本。
+  const health = needsHealth
+    ? selectHealthFacts(buildHealthSnapshot(), userText, { omitPatternContext: true })
+    : '';
 
   const messages: { role: string; content: string }[] = [
     // ★ 时间放最前面：问候/早晚判断的唯一事实来源（2026-10-12 修「早上好」bug）
@@ -79,7 +88,9 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
     ...(companion ? [{ role: 'system', content: companion }] : []),
     ...(memBlock ? [{ role: 'system', content: memBlock }] : []),
     ...(ctxBlock ? [{ role: 'system', content: ctxBlock }] : []),
+    ...(patternBlock ? [{ role: 'system', content: patternBlock }] : []),
     ...(needsHealth && health ? [{ role: 'system', content: health }] : []),
+    ...(opts.systemNote ? [{ role: 'system', content: `【本轮陪伴模式】\n${opts.systemNote}` }] : []),
     ...(opts.history || []).slice(-3).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userText },
   ];
@@ -88,10 +99,14 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
   try {
     // ★ 走全局推理队列：与「AI 分析」共用同一条串行链。
     //   端侧 ctx 单例，两者并发会抛 "Context is busy" 且被静默降级（聊天表现为答非所问/无内容）。
-    const res = await runOnModel((ctx) =>
-      ctx.completion(
+    const res = await runOnModel(async (ctx) => {
+      const optionalIndices = messages.flatMap((m, i) =>
+        i < messages.length - 1 && (m.role !== 'system' || [memBlock, ctxBlock, patternBlock].includes(m.content)) ? [i] : [],
+      );
+      const fitted = await fitContext(ctx, messages, 150, optionalIndices);
+      return ctx.completion(
         {
-          messages,
+          messages: fitted,
           n_predict: 150,
           temperature: 0.8,
           top_p: 0.9,
@@ -104,8 +119,8 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
             opts.onToken?.(tok);
           }
         }
-      )
-    );
+      );
+    });
     full = res?.text || full;
   } finally {
     // 无论如何都写回记忆 + 上下文（延续性）

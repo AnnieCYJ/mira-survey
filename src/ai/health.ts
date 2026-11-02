@@ -11,6 +11,8 @@ import { computeReadinessSeries, readinessLevel, readinessLevelLabel } from '../
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/hormoneInference';
 import { factsForDay, sleepFactForDay } from '../lib/analysisFacts';
+// ★ Phase 2：人生上下文（用户点过「挺准」的个人规律 + 最近观察），让 Mira 能引用长期规律
+import { buildPatternContextBlock } from './cloudPatterns';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -503,6 +505,11 @@ export function buildHealthSnapshot(): string {
         .join('；')}`
     );
   }
+
+  // ⑨ 用户已确认的个人规律（人生上下文）——让 Mira 能引用「只属于她」的长期规律
+  //    ⚠ 口径：只作「观察」引用，不下诊断、不评分。
+  const patternCtx = buildPatternContextBlock();
+  if (patternCtx) blocks.push(patternCtx);
 
   if (blocks.length === 0) {
     _healthSnapCache = { at: Date.now(), value: '' };

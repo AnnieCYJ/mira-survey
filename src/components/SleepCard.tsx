@@ -200,15 +200,16 @@ const SleepCard = React.memo(function SleepCard({ dataStale = false, onPress }: 
                 borderRadius: theme.radius.sm, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs,
               }}
             >
-              <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro }}>{it.label}</Text>
+              {/* ★ 对比度修复：limeTint 浅底上白系 textSub/textInk 不可读 → limeDeep 深档 */}
+              <Text style={{ color: 'rgba(110,122,36,0.78)', fontSize: theme.fontSize.micro }}>{it.label}</Text>
               <Text style={{
-                color: theme.colors.textInk, fontSize: theme.fontSize.xs,
+                color: mm.colors.limeDeep, fontSize: theme.fontSize.xs,
                 fontWeight: theme.weight.semibold, marginTop: 1,
               }} numberOfLines={1}>
                 {it.value}
               </Text>
               {!!it.note && (
-                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.micro, marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ color: 'rgba(110,122,36,0.78)', fontSize: theme.fontSize.micro, marginTop: 1 }} numberOfLines={1}>
                   {it.note}
                 </Text>
               )}

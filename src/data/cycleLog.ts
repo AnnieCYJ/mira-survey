@@ -25,6 +25,8 @@ export async function loadCycleLog(): Promise<CycleLog | null> {
       lutealLength: Number(j.lutealLength) || 14,
       periodLength: Number(j.periodLength) || 5,
       history: Array.isArray(j.history) ? j.history.map(String) : undefined,
+      pregnant: j.pregnant === true ? true : undefined,
+      pregnancyLmp: typeof j.pregnancyLmp === 'string' ? j.pregnancyLmp : undefined,
     };
   } catch {
     return null;

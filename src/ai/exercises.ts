@@ -131,3 +131,25 @@ export function recommendExercise(mood: string | PlutchikLabel, domain?: string)
 export function pickExercise(id: ExerciseId): ExerciseProtocol {
   return PROTOCOLS[id];
 }
+
+/**
+ * 从用户自由输入里识别"此刻需要陪做练习"的信号，返回对应练习。
+ * 命中即返回，未命中返回 null（不骚扰）。与 recommendExercise(mood) 互补：
+ * recommendExercise 吃的是已标注情绪；本函数直接吃自然语言文本，用于聊天流触发。
+ */
+export function recommendExerciseForText(text: string): ExerciseProtocol | null {
+  const t = String(text || '').toLowerCase();
+  // 焦虑 / 紧张 / 要炸 → 4-7-8 呼吸（最快平复生理唤醒）
+  if (/(焦虑|紧张|慌|要炸|崩溃|撑不住|压力|stress|stressed|overwhelm)/.test(t)) return BREATHING_478;
+  // 生气 / 愤怒 / 烦躁 → 先呼吸降温
+  if (/(生气|愤怒|火大|气死|烦躁|恼火|breath|angry)/.test(t)) return BREATHING_478;
+  // 怕 / 担心 / 恐惧 → 认知重构（检验那个反复转的念头）
+  if (/(怕|担心|恐惧|焦虑|慌乱|fear|anxious|worried)/.test(t)) return COGNITIVE_RESTRUCTURING;
+  // 难过 / 伤心 / 哭 / 丧 / 没动力 → 感恩日记
+  if (/(难过|伤心|哭|丧|低落|没动力|提不起|depressed|sad)/.test(t)) return GRATITUDE_JOURNAL;
+  // 卡住 / 反复想 / 走不出来 / 钻牛角尖 → 表达性写作
+  if (/(卡|转不出来|反复想|走不出来|钻牛角尖|放不下|堵)/.test(t)) return EXPRESSIVE_WRITING;
+  // 睡不着 / 紧绷 / 累 / 身体 → 身体扫描放松
+  if (/(睡不着|失眠|紧绷|累|好累|身体|绷|放松|relax|tired)/.test(t)) return PROGRESSIVE_RELAXATION;
+  return null;
+}

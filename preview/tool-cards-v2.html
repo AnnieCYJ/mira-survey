@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具卡片 · 3 套样式对比</title>
+<style>
+  :root{
+    --ink:#1d2440; --inkSoft:#5b6480;
+    --ocean-1:#2B3564; --ocean-2:#3A3F73; --ocean-3:#4b4f8f;
+    /* 6 个类别各自的强调色 */
+    --c-emotion:#FF8FA3; --c-glow:#FFC36B; --c-nutri:#7BD389;
+    --c-sport:#FF9F5A; --c-sleep:#9B8CFF; --c-learn:#5BC8D8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    background:linear-gradient(160deg,#eef1f8,#e3e7f3);
+    color:var(--ink); padding:32px 18px 60px; min-height:100vh;
+  }
+  h1{font-size:22px;font-weight:700;text-align:center;margin-bottom:6px;letter-spacing:-.3px;}
+  .lead{text-align:center;color:var(--inkSoft);font-size:14px;margin-bottom:30px;}
+  .wrap{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;align-items:flex-start;}
+  .col{flex:1 1 300px;max-width:340px;display:flex;flex-direction:column;align-items:center;}
+  .tag{font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--ocean-1),var(--ocean-3));
+       padding:6px 14px;border-radius:999px;margin-bottom:14px;letter-spacing:.5px;}
+  .desc{font-size:12.5px;line-height:1.6;color:var(--inkSoft);text-align:center;
+        background:#fff;border-radius:14px;padding:12px 14px;margin-top:16px;box-shadow:0 4px 14px rgba(40,50,90,.07);}
+  .desc b{color:var(--ink);}
+
+  /* 手机外框 */
+  .phone{width:300px;height:620px;border-radius:42px;background:linear-gradient(165deg,var(--ocean-1),var(--ocean-3));
+         padding:14px;box-shadow:0 20px 50px rgba(30,40,80,.28);position:relative;overflow:hidden;}
+  .phone::before{content:"";position:absolute;top:0;left:0;right:0;height:64px;
+     background:linear-gradient(180deg,rgba(255,255,255,.10),transparent);}
+  .notch{width:120px;height:22px;background:#11152b;border-radius:0 0 16px 16px;margin:0 auto 10px;}
+  .phead{padding:6px 8px 14px;}
+  .phead h2{color:#fff;font-size:20px;font-weight:600;letter-spacing:-.4px;}
+  .phead p{color:rgba(255,255,255,.66);font-size:12px;margin-top:3px;}
+
+  /* ===== 通用类别图标块配色 ===== */
+  .emotion{--c:var(--c-emotion);} .glow{--c:var(--c-glow);} .nutri{--c:var(--c-nutri);}
+  .sport{--c:var(--c-sport);} .sleep{--c:var(--c-sleep);} .learn{--c:var(--c-learn);}
+
+  /* ===== 方案 A：顶部分类胶囊（保留图卡横滑，加醒目类别标签）===== */
+  .a-strip{display:flex;flex-direction:column;gap:12px;padding:0 6px;}
+  .a-card{height:118px;border-radius:18px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,color-mix(in srgb,var(--c) 70%,#2a2f55),color-mix(in srgb,var(--c) 38%,#3a3f73));
+    box-shadow:0 6px 16px rgba(20,25,55,.25);}
+  .a-card .cap{position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:6px;
+    background:rgba(255,255,255,.92);color:#23284a;font-size:12px;font-weight:700;
+    padding:5px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.15);}
+  .a-card .cap .dot{width:9px;height:9px;border-radius:50%;background:var(--c);}
+  .a-card .foot{position:absolute;left:12px;right:12px;bottom:10px;color:#fff;}
+  .a-card .foot .t{font-size:13.5px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .a-card .foot .m{font-size:11px;opacity:.82;margin-top:2px;text-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .a-dots{display:flex;gap:5px;justify-content:center;margin-top:14px;}
+  .a-dots i{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.3);}
+  .a-dots i.on{width:16px;background:#fff;}
+
+  /* ===== 方案 B：左图右文列表（最清晰、可扫读）===== */
+  .b-list{display:flex;flex-direction:column;gap:10px;padding:0 6px;}
+  .b-row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.13);
+    border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:10px;}
+  .b-ic{width:46px;height:46px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;
+    background:color-mix(in srgb,var(--c) 85%,#fff);box-shadow:0 3px 8px rgba(0,0,0,.18);}
+  .b-ic svg{width:24px;height:24px;stroke:#fff;}
+  .b-tx{flex:1;min-width:0;}
+  .b-tx .nm{color:#fff;font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:7px;}
+  .b-tx .nm .pill{font-size:10px;font-weight:700;color:#23284a;background:var(--c);
+     padding:2px 7px;border-radius:999px;}
+  .b-tx .ds{color:rgba(255,255,255,.74);font-size:11.5px;margin-top:3px;line-height:1.4;}
+  .b-tx .mt{color:rgba(255,255,255,.55);font-size:10.5px;margin-top:3px;}
+
+  /* ===== 方案 C：图标大卡（2 列网格，类别色块当头）===== */
+  .c-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 6px;}
+  .c-card{border-radius:16px;overflow:hidden;background:rgba(255,255,255,.13);
+    border:1px solid rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(20,25,55,.2);}
+  .c-head{height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    background:color-mix(in srgb,var(--c) 80%,#2a2f55);}
+  .c-head svg{width:22px;height:22px;stroke:#fff;}
+  .c-head .nm{color:#fff;font-size:12.5px;font-weight:700;}
+  .c-body{padding:9px 10px;}
+  .c-body .ds{color:rgba(255,255,255,.78);font-size:10.5px;line-height:1.4;}
+  .c-body .mt{color:rgba(255,255,255,.55);font-size:10px;margin-top:5px;}
+
+  .icon{width:100%;height:100%;}
+  .icon svg{width:100%;height:100%;stroke:#fff;}
+</style>
+</head>
+<body>
+  <h1>工具卡片 · 3 套样式对比</h1>
+  <div class="lead">核心问题：现在 6 张图卡只靠背景图区分，类别不醒目 → 分不清「情绪」还是「饮食」。<br/>下面三套都用「类别色 + 图标 + 名称」把每一类的身份做明显，只是布局不同。</div>
+
+  <div class="wrap">
+
+    <!-- ============ 方案 A ============ -->
+    <div class="col">
+      <div class="tag">方案 A · 顶部分类胶囊</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="phead"><h2>Tools</h2><p>小的改变积累起来也很了不起</p></div>
+        <div class="a-strip">
+          <div class="a-card emotion">
+            <div class="cap"><span class="dot"></span>情绪调节</div>
+            <div class="foot"><div class="t">今日情绪波动 3 次</div><div class="m">4 段冥想 · 3 个呼吸练习</div></div>
+          </div>
+          <div class="a-card nutri">
+            <div class="cap"><span class="dot"></span>营养搭配</div>
+            <div class="foot"><div class="t">经期饮食指南已更新</div><div class="m">6 份食谱 · 经期饮食指南</div></div>
+          </div>
+          <div class="a-card sleep">
+            <div class="cap"><span class="dot"></span>稳定睡眠</div>
+            <div class="foot"><div class="t">昨晚睡眠 82</div><div class="m">3 段助眠音 · 睡眠回顾</div></div>
+          </div>
+        </div>
+        <div class="a-dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="desc"><b>保留现有的图卡横滑交互</b>，只在每张卡左上角加一个<b>类别胶囊（色块+名称）</b>。<br/>改动最小、最贴近现在的设计；但仍是「一张张翻」，类别要靠翻到才看清。</div>
+    </div>
+
+    <!-- ============ 方案 B ============ -->
+    <div class="col">
+      <div class="tag">方案 B · 左图右文列表</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="phead"><h2>Tools</h2><p>小的改变积累起来也很了不起</p></div>
+        <div class="b-list">
+          <div class="b-row emotion"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/></svg></div><div class="b-tx"><div class="nm">情绪调节 <span class="pill">情绪</span></div><div class="ds">缓一缓，把紧绷的情绪松下来。</div><div class="mt">4 段冥想 · 3 个呼吸练习</div></div></div>
+          <div class="b-row glow"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5zM18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/></svg></div><div class="b-tx"><div class="nm">提升颜值 <span class="pill">颜值</span></div><div class="ds">跟着周期养气色，状态更稳。</div><div class="mt">5 个护肤提醒 · 周期建议</div></div></div>
+          <div class="b-row nutri"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/></svg></div><div class="b-tx"><div class="nm">营养搭配 <span class="pill">饮食</span></div><div class="ds">吃对，激素稳，能量也更平稳。</div><div class="mt">6 份食谱 · 经期饮食指南</div></div></div>
+          <div class="b-row sport"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/></svg></div><div class="b-tx"><div class="nm">运动建议 <span class="pill">运动</span></div><div class="ds">今天怎么动，看身体状态。</div><div class="mt">4 类运动 · 按周期推荐</div></div></div>
+          <div class="b-row sleep"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/></svg></div><div class="b-tx"><div class="nm">稳定睡眠 <span class="pill">睡眠</span></div><div class="ds">睡好，恢复更快，状态更稳。</div><div class="mt">3 段助眠音 · 睡眠回顾</div></div></div>
+          <div class="b-row learn"><div class="b-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2zM12 6.7v12.1"/></svg></div><div class="b-tx"><div class="nm">知识科普 <span class="pill">科普</span></div><div class="ds">读懂身体的每个变化。</div><div class="mt">12 篇科普 · 每周更新</div></div></div>
+        </div>
+      </div>
+      <div class="desc"><b>类别最清晰、一眼扫完 6 类</b>：每行左侧是类别色块图标，名称后跟一个小标签（情绪/饮食/睡眠…）。<br/>代价：放弃「图卡横滑」的视觉冲击，改成列表，更克制实用。</div>
+    </div>
+
+    <!-- ============ 方案 C ============ -->
+    <div class="col">
+      <div class="tag">方案 C · 图标大卡网格</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="phead"><h2>Tools</h2><p>小的改变积累起来也很了不起</p></div>
+        <div class="c-grid">
+          <div class="c-card emotion"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.6C12 20.6 3.6 15.3 3.6 9.5c0-3 2.3-5 4.8-5 1.6 0 2.8.8 3.6 1.9.8-1.1 2-1.9 3.6-1.9 2.5 0 4.8 2 4.8 5 0 5.8-8.4 11.1-8.4 11.1z"/></svg><span class="nm">情绪调节</span></div><div class="c-body"><div class="ds">缓一缓，把紧绷的情绪松下来。</div><div class="mt">4 段冥想 · 3 个呼吸练习</div></div></div>
+          <div class="c-card glow"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5zM18.3 14.1l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/></svg><span class="nm">提升颜值</span></div><div class="c-body"><div class="ds">跟着周期养气色，状态更稳。</div><div class="mt">5 个护肤提醒 · 周期建议</div></div></div>
+          <div class="c-card nutri"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.4v5.4a2.3 2.3 0 0 0 4.6 0V3.4M9.3 11.1V20.6M17.2 3.4c-1.3 1.5-1.9 3.4-1.9 5.5 0 1.7.6 2.7 1.9 2.9v8.8"/></svg><span class="nm">营养搭配</span></div><div class="c-body"><div class="ds">吃对，激素稳，能量也更平稳。</div><div class="mt">6 份食谱 · 经期饮食指南</div></div></div>
+          <div class="c-card sport"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3l-8 10.5h5.2L10 21l8-10.5h-5.2z"/></svg><span class="nm">运动建议</span></div><div class="c-body"><div class="ds">今天怎么动，看身体状态。</div><div class="mt">4 类运动 · 按周期推荐</div></div></div>
+          <div class="c-card sleep"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.2 14.3A8.2 8.2 0 0 1 9.7 3.8a7.7 7.7 0 1 0 10.5 10.5z"/></svg><span class="nm">稳定睡眠</span></div><div class="c-body"><div class="ds">睡好，恢复更快，状态更稳。</div><div class="mt">3 段助眠音 · 睡眠回顾</div></div></div>
+          <div class="c-card learn"><div class="c-head"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.7c-1.1-1.3-2.7-2-5-2H4.6v12.1H7c2.3 0 3.9.7 5 2 1.1-1.3 2.7-2 5-2h2.4V4.7H17c-2.3 0-3.9.7-5 2zM12 6.7v12.1"/></svg><span class="nm">知识科普</span></div><div class="c-body"><div class="ds">读懂身体的每个变化。</div><div class="mt">12 篇科普 · 每周更新</div></div></div>
+        </div>
+      </div>
+      <div class="desc"><b>类别色块当卡片头部</b>，大图标 + 大名称，2 列网格一次看全 6 类。<br/>保留网格的「卡片感」，但不再是整图背景，更偏信息卡。</div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -113,9 +113,12 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
       {/* ★ 2026-10-10（用户）：峰值时刻 + 作息类型，样式对标脑力消耗日视图「认知准备度」duoRow */}
       {range === 'day' ? (
         <View style={styles.duoRow}>
-          <View style={[styles.duoCell, { backgroundColor: mm.colors.limeSoft }]}>
+          {/* ★ 2026-10-20 对比度修复：浅色主题实色粉彩 limeSoft(#EAF0BE) 在深色 ocean 主题下
+              与白色 textTitle/textSub 组合 → 白字落在浅粉彩上不可读。改用 chipBg.lime 半透底
+              （深蓝紫上呈暗橄榄，白字/浅 lime 字对比达标，与 MOD_BG 同一套深色安全配色）。 */}
+          <View style={[styles.duoCell, { backgroundColor: mm.chipBg.lime.bg }]}>
             <Text style={styles.duoLab}>峰值时刻</Text>
-            <Text style={styles.duoTime}>{fmtHM(dayPeakH)}</Text>
+            <Text style={[styles.duoTime, { color: mm.chipBg.lime.fg }]}>{fmtHM(dayPeakH)}</Text>
             <Text style={styles.duoSub}>{dayPeakSub}</Text>
           </View>
           <View style={[styles.duoCell, { backgroundColor: theme.colors.cardBgSoft }]}>
@@ -444,10 +447,11 @@ export default function EmotionCognitiveDetailScreen() {
     <View style={{ flex: 1 }}>
       {/* v16：详情页全白底（与 Insight/Tools 同款做法），盖住 App 根渐变 */}
       <BgGradient
-        colors={[theme.colors.textWhite, theme.colors.textWhite]}
+        colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-    <ScreenContainer topFadeColor={theme.colors.textWhite}>
+    <ScreenContainer topFadeColor={theme.colors.bgTop}>
       <View style={styles.stack}>
         {/* 返回头 */}
         <View style={styles.head}>
@@ -953,7 +957,7 @@ const styles = StyleSheet.create({
   calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   calCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   calMonthCell: { flex: 1, aspectRatio: 1.5, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
-  calCellToday: { borderWidth: 2, borderColor: theme.colors.accentSolid },
+  calCellToday: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：紫 → 白
   calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any },
   calCellEmpty: { flex: 1 },
   calTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

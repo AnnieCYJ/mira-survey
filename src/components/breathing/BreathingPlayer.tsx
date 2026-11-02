@@ -11,6 +11,7 @@ import Confetti from '../../components/Confetti';
 import { addBreathCompletion } from '../../data/interventionLog';
 
 interface Props {
+  completionId?: string;
   patternKey: keyof typeof BREATH_PATTERNS;
   duration?: number;
   audioUri?: string;
@@ -42,7 +43,7 @@ function stateChangeLine(
 }
 
 export default function BreathingPlayer({
-  patternKey, audioUri, onClose, rounds = DEFAULT_ROUNDS,
+  patternKey, audioUri, onClose, completionId, rounds = DEFAULT_ROUNDS,
 }: Props) {
   const pattern = BREATH_PATTERNS[patternKey];
   const [playing, setPlaying] = useState(true); // ★ 夜改：进入即自动开始，无需先点播放
@@ -83,6 +84,7 @@ export default function BreathingPlayer({
     const minutes = Math.max(1, Math.round((rounds * roundSec) / 60));
     // ★ 二十改：完整做完才记录（中途退出不记）；这里同时存前后状态供完成卡 / 日历卡
     addBreathCompletion('breath', `${pattern.label} · 做完 ${rounds} 轮`, {
+      completionId,
       stateBefore: b.level,
       stateAfter: aLevel,
       valueBefore: b.value,

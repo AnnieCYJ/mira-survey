@@ -24,11 +24,13 @@ import {
   type StressEvent,
 } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
-import { healthStore, dayKey } from '../data/healthStore';
-import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, moodFromEmotionLevel, type EmotionEntry } from '../data/emotionLog';
+import { healthStore, dayKey, dayStartMs } from '../data/healthStore';
+import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, EVENT_LABEL, MOOD_LABEL, MOOD_COLOR, moodFromEmotionLevel, type EmotionEntry, type MoodKey } from '../data/emotionLog';
 import { HourHistogram } from './StressInsightCard';
 // ★ 心理压力全天趋势图（首页心理压力卡点进来 / 洞察页情绪 tab 共用本视图）
-import StressTrendChart, { stressPointsOf } from './StressTrendChart';
+import { stressPointsOf } from './StressTrendChart';
+// ★ 2026-10-19（用户 finalized D1）：情绪 + 唤醒趋势图，替换原 StressTrendChart
+import EmotionTrendChart, { type EmotionTrendMarker } from './EmotionTrendChart';
 import { computeEmotionalStress } from '../lib/emotionalStress';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import EmotionFaceIcon, { type EmotionFaceMood } from './EmotionFaceIcon';
@@ -110,8 +112,8 @@ const DOT_BY_MOOD: Record<string, string> = {
   [COL_STRESSED]: '#D58AAE',
   [COL_ANXIOUS]: '#C9789F',
 };
-const DOT_EMPTY = '#BDB7AE';
-const DOT_SLEEP = '#EAE7E2';
+const DOT_EMPTY = 'rgba(255,255,255,0.25)';   // ★ mira-ocean：深底白阶（原 #BDB7AE）
+const DOT_SLEEP = 'rgba(255,255,255,0.35)';   // ★ mira-ocean：深底白阶（原 #EAE7E2）
 /** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
 const DOT_LEGEND: { c: string; t: string; mood?: EmotionFaceMood }[] = [
   { c: '#B8C86A', t: '平静', mood: 'calm' },
@@ -438,6 +440,41 @@ export default function EmotionInsightView({
     severity: Math.abs(p.v) * 10,
     isRingEmotion: true,
   } as any));
+
+  // ★ 2026-10-19（用户 finalized D1）：构造 EmotionTrendChart 的三份同源数组
+  //   · arousalSlots  ← 原心理压力百分位（EDA/SCR 融合），重命名为「唤醒度」；
+  //   · valenceSlots  ← 设备 emotionLevel(−10~+10) 逐 30 分钟均值；
+  //   · trendMarkers  ← 用户手动心情记录（EmotionEntry.mood → 5 档脸）。
+  const midnight = dayStartMs(anchorMs ?? Date.now());
+  const SLOT_MS = 1800000; // 30 分钟
+  const arousalSlots: (number | null)[] = Array.from({ length: 48 }, (_, s) => {
+    const p = stressPts.find((q) => q.slot === s);
+    return p && p.hasData ? p.value : null;
+  });
+  const valenceSlots: (number | null)[] = Array.from({ length: 48 }, () => null);
+  {
+    const sum = Array(48).fill(0);
+    const cnt = Array(48).fill(0);
+    for (const p of ringIntradayEvents) {
+      const s = Math.floor((p.t - midnight) / SLOT_MS);
+      if (s < 0 || s >= 48) continue;
+      const v = p.emotionLevel;
+      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+      sum[s] += v; cnt[s] += 1;
+    }
+    for (let s = 0; s < 48; s++) if (cnt[s] > 0) valenceSlots[s] = sum[s] / cnt[s];
+  }
+  // MoodKey(12) → EmotionFaceMood(5)：自报脸只支持 5 档，其余映射到最近档
+  const moodToFace: Record<MoodKey, EmotionFaceMood> = {
+    excited: 'excited', happy: 'happy', love: 'happy', grateful: 'happy', pleasant: 'happy',
+    calm: 'calm', tired: 'calm',
+    stressed: 'stressed', anxious: 'stressed', angry: 'stressed',
+    sad: 'sad', lonely: 'sad',
+  };
+  const trendMarkers: EmotionTrendMarker[] = selfEntries
+    .map((e) => ({ slot: Math.floor((e.t - midnight) / SLOT_MS), mood: moodToFace[e.mood] }))
+    .filter((m) => m.slot >= 0 && m.slot < 48);
+
   // 合并：手动记录 + EDA 采样，按时间升序；手动记录在同槽内优先展示（slotColor 取优先级）
   // ★ 2026-10-12（用户铁律：睡眠阶段不记录情绪）—— 落在睡眠窗内的**设备推断**情绪点
   //   （戒指 emotionLevel 采样 + EDA 压力事件）一律剔除：点阵图 / 情绪节律峰谷 /
@@ -473,8 +510,8 @@ export default function EmotionInsightView({
           </Text>
           {showStress && (
             <>
-              <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-              <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={chartH} sleepWindow={sleepWindow} />
+              <SectionTitle>心理压力</SectionTitle>
+              <EmotionTrendChart arousalSlots={arousalSlots} valenceSlots={valenceSlots} markers={trendMarkers} nowSlot={nowSlot} sleepWindow={sleepWindow} chartH={chartH} />
             </>
           )}
           {showEmotion && (
@@ -532,25 +569,8 @@ export default function EmotionInsightView({
             ★ 2026-10-09（psychological-stress-preview）：补三档图例 + 轴说明 + 「详细数据」折叠 */}
         {showStress ? (
           <>
-        <SectionTitle>心理压力 · 全天趋势</SectionTitle>
-        <StressTrendChart points={stressPts} scale={stressScale} nowSlot={nowSlot} chartH={chartH} sleepWindow={sleepWindow} />
-        <View style={styles.legendRow}>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: theme.colors.danger }]} />
-            <Text style={styles.legendText}>高压力</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: theme.colors.warn }]} />
-            <Text style={styles.legendText}>中压力</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
-            <Text style={styles.legendText}>低压力</Text>
-          </View>
-        </View>
-        <Text style={styles.axisNote}>
-          纵轴 = 心理压力 0–100（越高越紧张，50 = 个人基线）· 横轴 = 一天 24h · 夜间为睡眠，不展示压力数据
-        </Text>
+        <SectionTitle>心理压力</SectionTitle>
+        <EmotionTrendChart arousalSlots={arousalSlots} valenceSlots={valenceSlots} markers={trendMarkers} nowSlot={nowSlot} sleepWindow={sleepWindow} chartH={chartH} />
         <TouchableOpacity
           style={styles.mhRow}
           activeOpacity={0.7}
@@ -699,11 +719,12 @@ const styles = StyleSheet.create({
   hmCol: { flex: 1, flexDirection: 'column' },
   hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
   hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
-  sleepDot: { backgroundColor: '#E8E1F7', borderWidth: 1, borderColor: '#A99BD6', alignItems: 'center', justifyContent: 'center' },
-  sleepGlyph: { fontSize: 8, lineHeight: 10, color: '#806FB5' },
-  // ★ 2026-10-09（稿 .dots 无记录色 #BDB7AE）
-  // 无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
-  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#DCD8E5', borderStyle: 'dashed' },
+  // ★ mira-ocean（2026-10-17）：睡眠格改白阶玻璃（原浅紫 #E8E1F7 在深底上发闷）
+  sleepDot: { backgroundColor: 'rgba(255,255,255,0.30)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.50)', alignItems: 'center', justifyContent: 'center' },
+  sleepGlyph: { fontSize: 8, lineHeight: 10, color: 'rgba(255,255,255,0.75)' },
+  // ★ 2026-10-09（稿 .dots 无记录色）无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
+  // ★ mira-ocean：虚线轮廓改白阶。
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderStyle: 'dashed' },
   // ★ 点阵图例（与格子同色）
   dotLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(2) },
   dotLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },

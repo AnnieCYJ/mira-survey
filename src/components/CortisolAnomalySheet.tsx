@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   mask: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(31,29,26,0.42)' },
   sheet: {
-    backgroundColor: theme.colors.cardBg,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.xl,
     borderTopRightRadius: theme.radius.xl,
     paddingHorizontal: theme.space.cardPad,
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     width: 38, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(31,29,26,0.16)',
+    backgroundColor: theme.colors.cardBorder,
     alignSelf: 'center', marginBottom: theme.space.md,
   },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },

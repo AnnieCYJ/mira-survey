@@ -210,8 +210,9 @@ export default function EcgDetailScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <BgGradient colors={[theme.colors.textWhite, theme.colors.textWhite]} style={StyleSheet.absoluteFill} />
-      <ScreenContainer compactTop topFadeColor={theme.colors.textWhite}>
+      <BgGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+        locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
+      <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
         <View style={styles.head}>
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
             <Text style={{ fontSize: 20 }}>‹</Text>
@@ -247,9 +248,18 @@ export default function EcgDetailScreen() {
               <EcgScrollTrace waveform={liveWave} height={120} color={mm.colors.ecgRed} />
             ) : (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>正在采集波形，请保持手指接触电极…</Text>
+                <Text style={styles.emptyText}>正在采集波形，请用另一只手食指轻触戒指外侧金属电极闭合回路…</Text>
               </View>
             )}
+          </View>
+        ) : null}
+
+        {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
+        {!measuring ? (
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+            <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+              测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
+            </Text>
           </View>
         ) : null}
 
@@ -272,6 +282,11 @@ export default function EcgDetailScreen() {
         {ring.ecgError ? (
           <View style={styles.ecgErrBox}>
             <Text style={styles.ecgErrText}>{ring.ecgError}</Text>
+            {/(导联|脱落|接触|回路)/.test(ring.ecgError) ? (
+              <Text style={[styles.ecgErrText, { marginTop: 6, color: '#FFFFFF', opacity: 0.85 }]}>
+                提示：单导联 ECG 需要闭合回路——戴好戒指后，用另一只手食指轻触戒指外侧金属电极再点测量。
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -445,11 +460,13 @@ const styles = StyleSheet.create({
   },
   btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
 
-  segment: { flexDirection: 'row', backgroundColor: 'rgba(157,138,240,0.12)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
+  // ★ mira-ocean（2026-10-17）：淡紫轨道 → 玻璃白
+  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.sm },
   segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   segTxt: { fontSize: 13, fontWeight: '600', color: theme.colors.textSub },
-  segTxtOn: { color: theme.colors.textTitle },
+  // ★ mira-ocean：白 pill 上选中文字 → 深蓝（原 textTitle 已随主题变白，白底白字）
+  segTxtOn: { color: '#2A4470' },
 
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metricCell: {

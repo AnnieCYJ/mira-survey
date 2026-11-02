@@ -127,3 +127,23 @@
 - 发现：本地 master 领先 origin/master **1 个提交**；工作区 24 项未提交改动——修改 19 个源文件（MetricDetailScreen ±637 行、EcgDetailScreen ±361 行、BpDetailScreen ±158 行、RingBleManager +190 行、HomeAiBubble ±220 行，及 theme/mindmate.ts、App.tsx、analysisFacts/tempBaseline/healthAgeEstimate 等 lib）+ 新增 5 个文件（home-gray-bg.html、preview/assets/sea-dusk.jpg、preview/bubble-variants.html、preview/ecg-detail.html、preview/glass-home.html）。子模块 hband-sdk/WeChat_Mini_Program_Ble_SDK 仍维持已知 -dirty。
 - 处理：执行 `git add -A`（24 文件，子模块无法暂存）→ commit c45e252「迭代指标详情、血压/心电页及 BLE 管理层」→ push 成功 a9d83eb..c45e252。
 - 结果：master 与 origin/master 完全同步。剩余脏项仅已知子模块 -dirty，维持既有决策：不动、仅报告。
+
+## 2026-10-17 14:12（第二十五次运行）
+- 发现：本地 master 领先 origin/master **10 个提交**（血压/血糖/ECG 趋势、首页水波圆环、Oura 式玻璃卡片提案、周期图例调整等系列）；工作区 5 个修改文件（realSeries.ts、BpDetailScreen ±185、MetricDetailScreen ±170、TodayScreen）+ 2 个新预览 HTML（preview-15min-bars、preview-chips-bodyload）。子模块仍为已知 -dirty。
+- 处理：git add -A（6 文件，+799/-5，子模块无法暂存）→ commit c97a9fb「迭代血压/指标详情页与今日页，新增 15 分钟柱状图与身体负荷 chips 预览稿」→ push 成功 c45e252..c97a9fb（10 个积压提交 + 本次 1 个，共 11 个）。
+- 结果：master 与 origin/master 完全同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-18 14:12（第二十六次运行）
+- 发现：工作区干净（唯一脏项仍为已知子模块 -dirty，无可暂存改动）；**分支状态变化：HEAD 已切到新分支 `mira-ocean`**（无上游，Oura 风格圆环提案系列），master 领先 origin/master 6 个提交（海浪首页/圆环设计提案系列，89715d7 尖端）。
+- 处理：无新 commit；`git push origin master` 成功 c97a9fb..89715d7（6 个积压提交推送，push 不受当前分支影响）。
+- 注意：mira-ocean 分支本地独有、未推送。若后续需要备份该设计分支，建议 `git push -u origin mira-ocean`。
+
+## 2026-10-19 14:12（第二十七次运行）
+- 发现：当前分支 mira-ocean（领先 origin/master 32 个提交，Oura 双弧提案系列）；工作区未提交改动：CalmWaveHome.tsx（±89 行：双弧配色重定义——外弧=状态分按档位染色 淡粉/紫/绿/黄、内弧=周期改白色；卡行顺序改为 睡眠恢复→身体负荷→情绪→活动消耗→生理周期；周期 tag 改四期模型排卵期；0–25 档改淡粉；gaugeInfo 结构改为 档位词→82/100）+ InsightScreen.tsx（±18 行）+ automation 记忆文件；子模块仍为已知 -dirty。
+- 处理：git add -A（3 文件，子模块无法暂存）→ commit「mira-ocean 双弧配色与卡行迭代：状态分弧按档位染色、周期弧改白，调整首页卡行顺序与周期四期模型，更新洞察页」→ 按指令 push origin master（master 为 HEAD 祖先，实际无新内容可推，成功 no-op）；另按上次运行建议执行 `git push -u origin mira-ocean` 备份设计分支（33 个提交）。
+- 结果：mira-ocean 已建立远程上游；origin/master 保持同步。子模块脏改动维持既有决策：不动、仅报告。
+
+## 2026-10-20 14:12（第二十八次运行）
+- 发现：当前分支 mira-ocean（与 origin/master 0 领先、origin/mira-ocean 0 领先）；工作区未提交改动 15 文件——**家庭共享体系初版**：新增 AccountHubScreen/BindingRitualScreen/MemberDetailScreen 三个屏幕 + familyStore 数据层，新增 AvatarStack/EmotionTrendChart/TaTodayRow 组件；修改 8 个源文件（CalmWaveHome/EmotionInsightView/RootStackNavigator/EmotionLog/Focus/HealthAgeDetail/Today/VoiceChat）+ automation 记忆文件；子模块仍为已知 -dirty。
+- 处理：git add -A（15 文件，+1165/-43，子模块无法暂存）→ commit c8f3c24「mira-ocean 家庭共享体系初版」→ 按指令 push origin master（no-op）+ push -u origin mira-ocean 成功 b4c42f6..c8f3c24。
+- 结果：mira-ocean 与远程同步；origin/master 保持同步。子模块脏改动维持既有决策：不动、仅报告。

@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   /* 底部弹起 Sheet */
   sheetMask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: theme.colors.cardBgStrong,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.card,
     borderTopRightRadius: theme.radius.card,
     maxHeight: '88%',

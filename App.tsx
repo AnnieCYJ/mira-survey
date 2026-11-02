@@ -71,7 +71,8 @@ export default function App() {
         locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={styles.gradient}
       >
-        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+        {/* ★ mira-ocean（2026-10-17）：全分支深底，状态栏恒亮 */}
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <SafeAreaProvider>
           <AppStateProvider>
             <NavigationContainer theme={navTheme}>

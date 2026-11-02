@@ -137,6 +137,12 @@ export interface SuggestionCandidate {
    * saveId 用于「我的建议」去重与已留存判定（同一建议跨槽只存一张卡片）。
    */
   saveId?: string;
+  /**
+   * ★ Phase 2：这条建议来自哪条**个人规律**（patternStore 的 id）。
+   *   首页点「有用」→ 给这条规律确认次数 +1；点「没啥感觉」→ -1。
+   *   为空 = 普通建议，不参与规律加权。
+   */
+  patternId?: string;
 }
 
 const nums = (xs: (number | null)[]): number[] =>

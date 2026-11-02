@@ -5,6 +5,7 @@ import {
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { habitHeadline, type HabitEntry } from '../data/habitSuggestions';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 /* ★ 2026-10-11（用户）：每条建议左边加小图，风格与首页泡泡建议卡一致。
    缩略图直接复用首页同款资产 card_*.jpg/png，按 cta 屏幕映射，再补文本兜底。 */
@@ -195,7 +196,7 @@ export default function SavedAdviceDeck({
 
       {/* ★ 2026-10-11（用户）：「共 N 条」点开 = 完整页面（全屏，非底部 sheet） */}
       <Modal visible={fullList} transparent={false} animationType="slide" onRequestClose={() => setFullList(false)}>
-        <View style={styles.fullPage}>
+        <SafeAreaView style={styles.fullPage}>
           <View style={styles.fullHead}>
             <TouchableOpacity style={styles.fullBack} activeOpacity={theme.press.opacity} onPress={() => setFullList(false)}>
               <Text style={styles.fullBackText}>‹ 返回</Text>
@@ -223,7 +224,7 @@ export default function SavedAdviceDeck({
               </View>
             ))}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -249,11 +250,12 @@ const styles = StyleSheet.create({
   advList: { gap: theme.sp(2) },
   card: {
     minHeight: CARD_MIN_H,
-    backgroundColor: '#FFFFFF',
+    // ★ mira-ocean（2026-10-17）：白卡 → 深海玻璃（白 13% + 白 14% 细边）
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: 'rgba(31,29,26,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
     paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(3.5),
-    shadowColor: '#1F1D1A',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
@@ -304,7 +306,7 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(31,29,26,0.35)',
   },
   sheet: {
-    backgroundColor: theme.colors.cardBg,
+    backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(2), paddingBottom: theme.space.lg,
     shadowColor: '#1F1D1A',
@@ -312,7 +314,7 @@ const styles = StyleSheet.create({
   },
   sheetGrab: {
     width: theme.sp(11), height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(31,29,26,0.14)', alignSelf: 'center', marginBottom: theme.sp(3),
+    backgroundColor: 'rgba(255,255,255,0.24)', alignSelf: 'center', marginBottom: theme.sp(3), // ★ mira-ocean：白阶
   },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(3) },
   sheetTitle: {
@@ -328,7 +330,7 @@ const styles = StyleSheet.create({
 
   sRow: {
     flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.cardBg, // ★ mira-ocean：白 → 深海玻璃
     borderRadius: theme.radius.card, borderWidth: 1, borderColor: mm.colors.cardBorder,
     paddingVertical: theme.sp(3), paddingHorizontal: theme.sp(3), marginBottom: theme.sp(2),
   },
@@ -355,11 +357,11 @@ const styles = StyleSheet.create({
   sRemoveText: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
 
   // ★ 完整页面（「共 N 条」点开，全屏）
-  fullPage: { flex: 1, backgroundColor: '#FFFFFF' },
+  fullPage: { flex: 1, backgroundColor: theme.colors.bgBottom }, // ★ mira-ocean：白 → 深蓝紫实底
   fullHead: {
     flexDirection: 'row', alignItems: 'center', height: 52,
     paddingHorizontal: theme.sp(3),
-    borderBottomWidth: 1, borderColor: mm.colors.cardBorder, backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1, borderColor: mm.colors.cardBorder, backgroundColor: theme.colors.bgBottom,
   },
   fullBack: { paddingVertical: theme.sp(1), paddingRight: theme.sp(2) },
   fullBackText: { fontSize: theme.fontSize.body, color: mm.colors.inkSoft },
@@ -368,7 +370,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink, letterSpacing: -0.3,
   },
   fullCount: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginLeft: theme.sp(2) },
-  fullScroll: { flex: 1, backgroundColor: '#FFFFFF' },
+  fullScroll: { flex: 1, backgroundColor: theme.colors.bgBottom },
   fullScrollContent: {
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(3), paddingBottom: theme.space.lg,
   },

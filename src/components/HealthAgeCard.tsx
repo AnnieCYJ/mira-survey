@@ -58,18 +58,20 @@ export default function HealthAgeCard({
    * 红=危险/告警，粉=「这个数字比基准线高」，语气是陈述而非警告。
    */
   const tone = isFlat ? 'flat' : isYounger ? 'young' : 'high';
+  // ★ mira-ocean（2026-10-17）：hero 改深海玻璃底 → 弧渐变取中档（浅档在深底上发灰）、
+  //   pill.fg 改亮档（limeCore / roseCore；flat 走 textSub 白阶）。
   const PALETTE = {
     young: {
-      gradFrom: mm.colors.limeSoft, gradMid: mm.colors.limeCore, gradTo: mm.colors.limeMid,
-      marker: mm.colors.limeMid, fg: mm.colors.limeDeep,
+      gradFrom: mm.colors.limeMid, gradMid: mm.colors.limeCore, gradTo: mm.colors.limeMid,
+      marker: mm.colors.limeMid, fg: '#D5E384',
     },
     high: {
-      gradFrom: mm.colors.roseTint, gradMid: mm.colors.roseCore, gradTo: mm.colors.roseDeep,
-      marker: mm.colors.roseCore, fg: mm.colors.roseDeep,
+      gradFrom: mm.colors.roseMid, gradMid: mm.colors.roseCore, gradTo: mm.colors.roseDeep,
+      marker: mm.colors.roseCore, fg: '#F2A3C6',
     },
     flat: {
-      gradFrom: mm.colors.inkFaint, gradMid: mm.colors.inkSoft, gradTo: mm.colors.inkSoft,
-      marker: mm.colors.inkSoft, fg: theme.colors.textSub,
+      gradFrom: 'rgba(255,255,255,0.62)', gradMid: 'rgba(255,255,255,0.78)', gradTo: 'rgba(255,255,255,0.78)',
+      marker: 'rgba(255,255,255,0.78)', fg: theme.colors.textSub,
     },
   } as const;
   const pal = PALETTE[tone];
@@ -182,10 +184,10 @@ export default function HealthAgeCard({
         {/* ★ 2026-10-10（用户）：「身体年龄」移到卡片左上角；去掉「参考估算」 */}
         <View style={[styles.topLabelRow, { justifyContent: 'space-between' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeDeep} style={{ marginRight: 4 }} />
-            <Text style={[styles.topLabel, { color: mm.colors.limeDeep }]}>身体年龄</Text>
+            <Icon name="heart" size={theme.fontSize.sm} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={[styles.topLabel, { color: '#FFFFFF' }]}>身体年龄</Text>
           </View>
-          <Icon name="chevronRight" size={16} color={mm.colors.limeDeep} />
+          <Icon name="chevronRight" size={16} color="rgba(255,255,255,0.72)" />
         </View>
 
         {/* ═══ SVG 弧（onLayout 实测宽度，viewBox 1:1，无拉伸变形） ═══ */}
@@ -260,7 +262,7 @@ export default function HealthAgeCard({
         {actualAge == null && onEditProfile ? (
           <TouchableOpacity onPress={onEditProfile} accessibilityRole="button" accessibilityLabel="填写身体档案"
             style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: mm.colors.limeDeep, fontSize: theme.fontSize.body }}>填写身体档案 ›</Text>
+            <Text style={{ color: '#BFCBFF', fontSize: theme.fontSize.body }}>填写身体档案 ›</Text>
           </TouchableOpacity>
         ) : null}
         <View style={styles.cardWrap}>
@@ -413,7 +415,7 @@ const styles = StyleSheet.create({
   suggestTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
-    color: mm.colors.limeDeep,
+    color: '#D5E384',
     marginBottom: theme.sp(1.5),
   },
   suggestItem: {

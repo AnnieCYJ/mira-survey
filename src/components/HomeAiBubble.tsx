@@ -14,7 +14,11 @@ import { mm } from '../theme/mindmate';
 import { useVoiceTriggerLive, useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
 import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine';
 import { requestAiSuggestion, aiCandidateFor, sigOf } from '../lib/aiSuggestion';
+import { allInterventionEntries } from '../data/interventionLog';
 import { keepHabit, dismissSuggestion, habitHeadline, HABIT_QUESTION } from '../data/habitSuggestions';
+// ★ Phase 2：首页建议卡的「人生上下文」内容源 + 规律反馈加权
+import { patternCandidateFor } from '../lib/patternSuggestion';
+import { feedbackPattern } from '../data/patternStore';
 import { recordAnalysisFeedback } from '../data/analysisFeedback';
 import Icon from './Icon';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -262,13 +266,21 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
       pendingSigRef.current = null;
       const avoid = lastDismissedRef.current;
       lastDismissedRef.current = null;
-      pickSuggestion(cs, { force: true })
-        .then((e) => {
-          if (fbRef.current) return;
-          if (e) { applyCand(e, sig); }
-          else setCand(null); // 池子空 → idle（AI 若稍后生成成功，下一轮轮询会补上）
-        })
-        .catch(() => {});
+      // ★ Phase 2：优先换一张「人生上下文」卡（用户点过的个人规律，确定性、瞬时）
+      const avoidPatternId =
+        avoid?.id && avoid.id.startsWith('pat-') ? avoid.id.slice(4) : undefined;
+      const pat = patternCandidateFor(avoidPatternId);
+      if (pat) {
+        applyCand(pat, sig);
+      } else {
+        pickSuggestion(cs, { force: true })
+          .then((e) => {
+            if (fbRef.current) return;
+            if (e) { applyCand(e, sig); }
+            else setCand(null); // 池子空 → idle（AI 若稍后生成成功，下一轮轮询会补上）
+          })
+          .catch(() => {});
+      }
       requestAiSuggestion(cs, { force: true, avoidId: avoid?.id, avoidHeadline: avoid?.headline }).catch(() => {});
       return;
     }
@@ -290,6 +302,9 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
         if (sigOf(statusRef.current) !== sig || fbRef.current) return;
         if (!c) {
           if (candRef.current) return; // 已有卡在显示（AI 极迟到/用户已操作）→ 不动
+          // ★ Phase 2：AI 没出来 → 先给「人生上下文」卡（只属于她的规律），再退引擎卡
+          const pat = patternCandidateFor();
+          if (pat) { applyCand(pat, sig); return; }
           pickSuggestion(statusRef.current)
             .then((e) => {
               if (fbRef.current || candRef.current) return;
@@ -389,6 +404,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
   // 观察/分析卡的认可只用于校准，不进入工具页；只有行动完成后的回访才保存为有效方法。
   const onKeep = () => {
     if (cand?.noPersist) void recordAnalysisFeedback(cand.id, 'accurate');
+    // ★ Phase 2：这张卡来自某条个人规律 → 用户点「有用」＝给这条规律加权（+1）
+    if (cand?.patternId) void feedbackPattern(cand.patternId, 'accurate');
     void saveSuggestion(cand, !cand?.noPersist);
   };
   const onKeepFb = () => { void saveSuggestion(fb, true); };
@@ -405,6 +422,8 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     setFb(null);
     if (cand) {
       if (cand.noPersist) void recordAnalysisFeedback(cand.id, 'inaccurate');
+      // ★ Phase 2：规律卡被否 → 该规律置信度 -1（掉到 0 就退出人生上下文）
+      if (cand.patternId) void feedbackPattern(cand.patternId, 'inaccurate');
       lastDismissedRef.current = { id: cand.saveId ?? cand.id, headline: cand.headline };
       dismissSuggestion(cand.saveId ?? cand.id).catch(() => {});
       setCand(null);

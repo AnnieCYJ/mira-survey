@@ -357,11 +357,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     height: theme.layout.tabBarHeight,
-    // ★ Calm 式透明玻璃胶囊（2026-10-17 预览）：原 rgba(255,255,255,0.96) 实底改半透玻璃。
-    //   回退：改回 mm.colors.tabBg / mm.colors.cardBorder。
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    // ★ 2026-10-27（用户）：底部 tab 太浅，滚动时内容透出来、样式看不清 → 改用首页 AI 分析卡同款
+    //   深板岩（rgba(9,28,48)），近不透明，滑动时内容不再透出、与页面清晰分层。
+    backgroundColor: 'rgba(9,28,48,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
+    borderColor: 'rgba(255,255,255,0.16)',
     // ★ 必须用 pill：高度 = tabBarHeight(56)，pill(999) 会解析成半高 28 → 完整胶囊。
     //   原先写 radius.card 时 card 恰好是 28 才碰巧是胶囊；2026-09-20 把 card 收紧到 14 后就退化成圆角矩形了。
     borderRadius: theme.radius.pill,

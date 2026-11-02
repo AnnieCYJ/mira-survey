@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具卡 · 横向滑动（卡片加宽）</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    background:linear-gradient(160deg,#eef1f8,#e3e7f3);padding:28px 16px 50px;color:#1d2440;}
+  h1{font-size:20px;font-weight:700;text-align:center;margin-bottom:6px;}
+  .lead{text-align:center;color:#5b6480;font-size:13px;margin-bottom:24px;line-height:1.6;}
+  .note{font-size:12px;line-height:1.6;color:#5b6480;background:#fff;border-radius:14px;
+    padding:12px 14px;margin:18px auto 0;max-width:600px;box-shadow:0 4px 14px rgba(40,50,90,.07);}
+  .note b{color:#1d2440;}
+
+  .phone{width:360px;margin:0 auto;border-radius:44px;background:linear-gradient(165deg,#2B3564,#4b4f8f);
+    padding:14px;box-shadow:0 20px 50px rgba(30,40,80,.28);overflow:hidden;}
+  .notch{width:130px;height:22px;background:#11152b;border-radius:0 0 16px 16px;margin:0 auto 8px;}
+  .phead{padding:4px 10px 12px;text-align:center;}
+  .phead h2{color:#fff;font-size:20px;font-weight:600;letter-spacing:-.4px;}
+  .phead p{color:rgba(255,255,255,.66);font-size:12px;margin-top:3px;}
+
+  /* ★ 横向滑动卡片（与现状一致：中间大、两侧露出一角，左右滑切换） */
+  .carousel{position:relative;height:350px;display:flex;align-items:center;justify-content:center;}
+  .card{position:absolute;border-radius:26px;overflow:hidden;box-shadow:0 10px 26px rgba(15,20,45,.35);}
+  .card.side{width:150px;height:240px;opacity:.5;filter:saturate(.9);}
+  .card.side.l{left:10px;transform:rotate(-4deg) scale(.92);z-index:1;}
+  .card.side.r{right:10px;transform:rotate(4deg) scale(.92);z-index:1;}
+  /* 中间卡加宽 */
+  .card.center{width:288px;height:320px;z-index:2;}
+  .card.emotion{background:linear-gradient(150deg,#FF8FA3,#b96b8a);}
+  .card.glow{background:linear-gradient(150deg,#FFC36B,#d99a4e);}
+  .card.nutri{background:linear-gradient(150deg,#7BD389,#4f8f6a);}
+  /* 底部磨砂蒙层（结构不变） */
+  .fade{position:absolute;left:0;right:0;bottom:0;height:52%;
+    background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.22) 50%,rgba(0,0,0,.56) 100%);
+    display:flex;flex-direction:column;justify-content:flex-end;padding:14px 18px 18px;}
+  .fade.side{padding:10px 12px 13px;}
+  /* ① 类别名 —— 放大但不夸张（20px） */
+  .cat{font-size:20px;font-weight:700;color:#fff;letter-spacing:.4px;line-height:1.1;
+    text-shadow:0 1px 5px rgba(0,0,0,.5);}
+  .cat.side{font-size:15px;}
+  /* ② 周期阶段 —— 小字 */
+  .phase{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.85);margin-top:8px;
+    text-shadow:0 1px 3px rgba(0,0,0,.45);}
+  .phase.side{font-size:10.5px;margin-top:5px;}
+  /* ③ 用途描述 —— 小字 */
+  .desc{font-size:13px;color:rgba(255,255,255,.92);margin-top:4px;line-height:1.45;
+    text-shadow:0 1px 3px rgba(0,0,0,.45);}
+  .desc.side{font-size:10.5px;margin-top:3px;}
+  .hint{text-align:center;color:rgba(255,255,255,.6);font-size:11px;margin-top:14px;}
+  .dots{display:flex;gap:5px;justify-content:center;margin-top:12px;}
+  .dots i{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.3);}
+  .dots i.on{width:16px;background:#fff;}
+</style>
+</head>
+<body>
+  <h1>工具卡 · 横向滑动结构（卡片加宽）</h1>
+  <div class="lead">结构不变：左右滑动卡片，中间大、两侧露角。仅调文字层级 + 卡片加宽。<br/>
+  类别名 20px（不大不小），下面两行小字（周期阶段 + 用途描述）。</div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="phead"><h2>Tools</h2><p>小的改变积累起来也很了不起</p></div>
+    <div class="carousel">
+      <div class="card side l glow">
+        <div class="fade side">
+          <div class="cat side">提升颜值</div>
+          <div class="phase side">卵泡期 · 第 8 天</div>
+          <div class="desc side">跟着周期养气色</div>
+        </div>
+      </div>
+      <div class="card center emotion">
+        <div class="fade">
+          <div class="cat">情绪调节</div>
+          <div class="phase">黄体期 · 第 24 天</div>
+          <div class="desc">缓一缓，把紧绷的情绪松下来</div>
+        </div>
+      </div>
+      <div class="card side r nutri">
+        <div class="fade side">
+          <div class="cat side">营养搭配</div>
+          <div class="phase side">卵泡期 · 第 8 天</div>
+          <div class="desc side">吃对，激素稳</div>
+        </div>
+      </div>
+    </div>
+    <div class="hint">← 左右滑动切换 →</div>
+    <div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <div class="note"><b>最终卡面文字（3 行，结构不动）：</b><br/>
+  ① <b>类别名 20px</b>（情绪调节 / 营养搭配 / 稳定睡眠…一眼分清，不抢眼）<br/>
+  ② 周期阶段 · 小字（黄体期第 24 天）<br/>
+  ③ 用途描述 · 小字（缓一缓，把紧绷的情绪松下来）<br/>
+  <br/>横滑图卡、底部磨砂蒙层、两侧露角、吸附全部保持原样；卡片已加宽。<br/>
+  确认后我只改 <code>MeditationScreen.tsx</code> 的 <code>CardGlassCaption</code> 文字部分。</div>
+</body>
+</html>

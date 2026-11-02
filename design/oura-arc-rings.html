@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mira × Oura 圆弧环提案</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a0a;color:#fff;font-family:'Inter',-apple-system,'PingFang SC','Helvetica Neue',sans-serif;
+       padding:40px 24px 64px;-webkit-font-smoothing:antialiased}
+  h1{font-weight:300;font-size:30px;letter-spacing:-1px;margin-bottom:6px}
+  .sub{color:#8a8a8a;font-size:14px;font-weight:300;margin-bottom:34px;max-width:720px;line-height:1.6}
+  .grid{display:grid;grid-template-columns:repeat(2,390px);gap:30px;justify-content:center}
+  @media(max-width:880px){.grid{grid-template-columns:390px}}
+  .phone{width:390px;height:780px;background:#000;border-radius:44px;position:relative;overflow:hidden;
+         border:1px solid #1c1c1c;box-shadow:0 30px 60px rgba(0,0,0,0.6)}
+  .tag{position:absolute;top:14px;left:16px;z-index:5;font-size:11px;font-weight:500;
+       letter-spacing:0.14em;text-transform:uppercase;color:#d6c283}
+  .cap{position:absolute;bottom:60px;left:0;right:0;text-align:center;font-size:12px;
+       color:#8a8a8a;font-weight:300;padding:0 24px;line-height:1.5}
+  .cap b{color:#cfcfcf;font-weight:500}
+  .obar{position:absolute;top:0;left:0;right:0;height:78px;display:flex;align-items:center;
+        justify-content:space-between;padding:34px 22px 0;z-index:4}
+  .oword{font-size:19px;font-weight:300;letter-spacing:1px;color:#fff}
+  .oico{width:30px;height:30px;border-radius:50%;border:1px solid #2a2a2a;display:flex;
+        align-items:center;justify-content:center;color:#9a9a9a;font-size:13px}
+  .oring-wrap{position:absolute;top:120px;left:0;right:0;display:flex;flex-direction:column;align-items:center}
+  .chips{position:absolute;bottom:150px;left:18px;right:18px;display:flex;gap:8px;overflow:hidden}
+  .chip{flex:1;background:#0d0d0d;border:1px solid #1c1c1c;border-radius:14px;height:92px;
+        padding:10px 8px;display:flex;flex-direction:column;justify-content:space-between}
+  .chip .cl{font-size:11px;color:#8a8a8a;font-weight:300}
+  .chip .cv{font-size:15px;color:#e8e8e8;font-weight:400}
+  .chip .ct{font-size:10px;color:#d6c283;font-weight:400}
+  .sliders{position:absolute;bottom:18px;left:18px;right:18px;display:flex;gap:18px}
+  .sliders label{flex:1;font-size:10px;color:#6a6a6a;text-transform:uppercase;letter-spacing:0.1em}
+  .sliders input{width:100%;margin-top:4px;accent-color:#d6c283}
+</style>
+</head>
+<body>
+  <h1>Mira × Oura 圆弧环提案</h1>
+  <div class="sub">纠正上一版：Oura 的环是<b>开口的圆弧环</b>（一段弧 + 中间镂空放数字），不是满圆。这一版用 SVG 路径画真·开口弧，套 Oura 语言：纯黑 #000、香槟金 #d6c283、Inter 300 轻字重中心数字、环轨 #262626。月相用白版验证过的四象限画法。</div>
+  <div class="grid">
+    <div class="phone"><div class="tag">V1 · 开口弧 Hero</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div class="oring-wrap" id="p1"></div><div class="chips" id="c1"></div><div class="sliders"><label>周期 day <input id="s1" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s1b" type="range" min="40" max="100" value="82"></label></div><div class="cap">顶部留 60° 缺口的大弧（像戒指开口），金弧 + 中心 82 轻字重 + RECOVERY 大写标签，月相在弧起点。</div></div>
+
+    <div class="phone"><div class="tag">V2 · 半圆弧 Oura 版</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div class="oring-wrap" id="p2"></div><div class="chips" id="c2"></div><div class="sliders"><label>周期 day <input id="s2" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s2b" type="range" min="40" max="100" value="82"></label></div><div class="cap">当前真机的 180° 半圆，套 Oura 黑底金弧语言——替代之前白底那版。</div></div>
+
+    <div class="phone"><div class="tag">V3 · 双弧周期</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div class="oring-wrap" id="p3"></div><div class="chips" id="c3"></div><div class="sliders"><label>周期 day <input id="s3" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s3b" type="range" min="40" max="100" value="82"></label></div><div class="cap">方案 D 双编码改开口弧：外金弧=恢复 82、内紫弧=周期天数，中心月相盘。</div></div>
+
+    <div class="phone"><div class="tag">V4 · 月相弧心</div><div class="obar"><span class="oword">mira</span><span class="oico">◇</span></div><div class="oring-wrap" id="p4"></div><div class="chips" id="c4"></div><div class="sliders"><label>周期 day <input id="s4" type="range" min="1" max="28" value="14"></label><label>恢复分 <input id="s4b" type="range" min="40" max="100" value="82"></label></div><div class="cap">开口弧内放放大月相盘当主角，82 降为小字——最贴合「月相 + 戒指」气质。</div></div>
+  </div>
+
+<script>
+const GOLD='#d6c283', PURPLE='#9c7ed9', BLUE='#7eb8d9', GREEN='#84d97e',
+      TRACK='#262626', MUTED='#8a8a8a', LIT='#F2C75C', DARKP='#9D8AF0';
+
+// 月相盘：白版四象限画法（只用验证过的形状）——
+//   经期 1-7 满金 / 卵泡 8-13 金底紫月牙 / 排卵 14-21 紫底金月牙 / 黄体 22-28 全紫
+//   moonPath 仅取 t=0.19(右月牙) / 0.81(左月牙) 两个白版实际用过的值
+function moonDisc(cx,cy,R,day){
+  const b=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
+  let style = day<=7?'full' : day<=13?'quarterR' : day<=21?'quarterL' : 'allPurple';
+  if(style==='full')      return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${LIT}"/>${b}`;
+  if(style==='allPurple') return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${DARKP}"/>${b}`;
+  const right = style==='quarterR';
+  const bg = right?LIT:DARKP, fg = right?DARKP:LIT, t = right?0.19:0.81;
+  return `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${bg}"/>
+          <path d="${moonPath(cx,cy,R,t)}" fill="${fg}"/>${b}`;
+}
+function phaseName(day){ return day<=7?'经期' : day<=13?'卵泡期' : day<=21?'排卵期' : '黄体期'; }
+// ★ 复用白版验证过的 moonPath 算法（两段弧围亮面，t=day/28）：
+//   外弧=亮侧半圆，内弧=明暗分界线(横向半径 rx=R·|cos2πt| 的椭圆弧)；
+//   rx=R→空面/满圆，rx=0→半圆；sweep 方向决定月牙/凸月。
+function moonPath(cx,cy,R,t){
+  const p=((t%1)+1)%1;
+  const waxing=p<0.5;
+  const k=Math.abs(Math.cos(Math.PI*2*p));
+  const rx=Math.max(0.0001,R*k);
+  const outerSweep=waxing?1:0;
+  const crescent=waxing?p<0.25:p>0.75;
+  const innerSweep=crescent?outerSweep:1-outerSweep;
+  return `M ${cx} ${cy-R} A ${R} ${R} 0 0 ${outerSweep} ${cx} ${cy+R} A ${rx} ${R} 0 0 ${innerSweep} ${cx} ${cy-R} Z`;
+}
+// 极坐标：θ 从顶部(12点)顺时针，θ=0 顶、90 右、180 底、270 左
+function polar(cx,cy,r,deg){const a=deg*Math.PI/180;return {x:cx+r*Math.sin(a), y:cy-r*Math.cos(a)};}
+// ★ 开口圆弧环（真·弧，非整圆）：顶部留 openHalf*2 的缺口
+//   openHalf=30 → 开口 60°（sweep 300°）；openHalf=90 → 半圆 180°
+function arcRing(cx,cy,r,sw,openHalf,pct,color,glow){
+  const sweep=360-2*openHalf;
+  const a0=openHalf, a1=openHalf+sweep;
+  const P0=polar(cx,cy,r,a0), P1=polar(cx,cy,r,a1);
+  const large=sweep>180?1:0;
+  const d=`M ${P0.x.toFixed(2)} ${P0.y.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${P1.x.toFixed(2)} ${P1.y.toFixed(2)}`;
+  const L=r*sweep*Math.PI/180; // 真实弧长（px），dasharray 用真实长度（pathLength 归一化在弧上不可靠）
+  const g=glow?`filter="url(#g)"`:'';
+  // 轨道画整条弧；前景 dash 填充 pct 部分，gap 取 L+2 防 round cap 溢出
+  return `<path d="${d}" fill="none" stroke="${TRACK}" stroke-width="${sw}" stroke-linecap="round"/>
+          <path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round"
+            stroke-dasharray="${(L*pct).toFixed(2)} ${(L+2).toFixed(2)}" ${g}/>`;
+}
+function glowDef(){return `<defs><filter id="g" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>`;}
+
+// V1 开口弧 Hero
+function render1(day,rec){
+  const cx=195,cy=165,R=108,sw=12;
+  const P0=polar(cx,cy,R,30); // 弧起点（顶部偏右 30°）
+  document.getElementById('p1').innerHTML=`<svg width="390" height="330" viewBox="0 0 390 330">
+    ${glowDef()}
+    ${arcRing(cx,cy,R,sw,30,rec/100,GOLD,true)}
+    <text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="84" font-weight="300" fill="#fff" style="font-variant-numeric:tabular-nums" letter-spacing="-2">${rec}</text>
+    <text x="${cx}" y="${cy+40}" text-anchor="middle" font-size="11" fill="${MUTED}" letter-spacing="2" font-weight="500">RECOVERY · 恢复</text>
+    ${moonDisc(P0.x,P0.y,12,day)}
+  </svg>`;
+  chips('c1');
+}
+// V2 半圆弧 Oura 版
+function render2(day,rec){
+  const cx=195,cy=165,R=108,sw=12;
+  const Pend=polar(cx,cy,R,90); // 弧右端（θ=90 正右）
+  document.getElementById('p2').innerHTML=`<svg width="390" height="330" viewBox="0 0 390 330">
+    ${glowDef()}
+    ${arcRing(cx,cy,R,sw,90,rec/100,GOLD,true)}
+    <text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="84" font-weight="300" fill="#fff" style="font-variant-numeric:tabular-nums" letter-spacing="-2">${rec}</text>
+    <text x="${cx}" y="${cy+40}" text-anchor="middle" font-size="11" fill="${MUTED}" letter-spacing="2" font-weight="500">RECOVERY · 恢复</text>
+    ${moonDisc(Pend.x,Pend.y,12,day)}
+  </svg>`;
+  chips('c2');
+}
+// V3 双弧周期
+function render3(day,rec){
+  const cx=195,cy=165,sw=10;
+  const R1=110, R2=84;
+  document.getElementById('p3').innerHTML=`<svg width="390" height="330" viewBox="0 0 390 330">
+    ${glowDef()}
+    ${arcRing(cx,cy,R1,sw,30,rec/100,GOLD,true)}
+    ${arcRing(cx,cy,R2,sw,30,(day-1)/27,PURPLE,false)}
+    ${moonDisc(cx,cy,28,day)}
+    <text x="${cx}" y="${cy-42}" text-anchor="middle" font-size="38" font-weight="300" fill="#fff" style="font-variant-numeric:tabular-nums" letter-spacing="-1">${rec}</text>
+    <text x="${cx}" y="${cy+48}" text-anchor="middle" font-size="11" fill="${MUTED}" letter-spacing="1.5" font-weight="500">${phaseName(day)} · 第 ${day} 天</text>
+  </svg>`;
+  chips('c3');
+}
+// V4 月相弧心
+function render4(day,rec){
+  const cx=195,cy=165,R=108,sw=12;
+  document.getElementById('p4').innerHTML=`<svg width="390" height="330" viewBox="0 0 390 330">
+    ${glowDef()}
+    ${arcRing(cx,cy,R,sw,30,rec/100,GOLD,true)}
+    ${moonDisc(cx,cy,50,day)}
+    <text x="${cx}" y="${cy+R-12}" text-anchor="middle" font-size="34" font-weight="300" fill="#fff" style="font-variant-numeric:tabular-nums" letter-spacing="-1">${rec}</text>
+    <text x="${cx}" y="${cy+R+22}" text-anchor="middle" font-size="11" fill="${MUTED}" letter-spacing="2" font-weight="500">RECOVERY · 恢复</text>
+  </svg>`;
+  chips('c4');
+}
+function chips(id){
+  const data=[['情绪','平稳',''],['生理周期','第14天',''],['睡眠恢复','86','优'],['活动消耗','420',' kcal']];
+  document.getElementById(id).innerHTML=data.map(d=>
+    `<div class="chip"><span class="cl">${d[0]}</span><span class="cv">${d[1]}</span><span class="ct">${d[2]}</span></div>`).join('');
+}
+function all(){
+  const d1=+document.getElementById('s1').value, r1=+document.getElementById('s1b').value;
+  const d2=+document.getElementById('s2').value, r2=+document.getElementById('s2b').value;
+  const d3=+document.getElementById('s3').value, r3=+document.getElementById('s3b').value;
+  const d4=+document.getElementById('s4').value, r4=+document.getElementById('s4b').value;
+  render1(d1,r1);render2(d2,r2);render3(d3,r3);render4(d4,r4);
+}
+['s1','s1b','s2','s2b','s3','s3b','s4','s4b'].forEach(id=>document.getElementById(id).addEventListener('input',all));
+all();
+</script>
+</body>
+</html>
