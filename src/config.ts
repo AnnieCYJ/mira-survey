@@ -19,7 +19,7 @@
  * ⚠️ 首次 `wrangler deploy` 后，请把下面地址替换为终端实际输出的 `https://mira-ring-sync.<子域>.workers.dev`。
  * 本地调试阶段可临时改回 http://192.168.1.2:3000（需手机与 Mac 同一 Wi-Fi）。
  */
-export const BACKEND_BASE_URL = 'https://mira-ring-sync.mira-annie.workers.dev';
+export const BACKEND_BASE_URL = 'https://data.lunamiraring.com';
 
 /** 上传云端时的 Bearer 令牌；为空则不带鉴权（与本地 :3000 dev 行为一致）。生产用 `wrangler secret put API_TOKEN` 设好后端令牌后，填此处即可自动带上。 */
 export const RING_SYNC_TOKEN = '';
