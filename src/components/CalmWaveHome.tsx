@@ -33,7 +33,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import AvatarStack from './AvatarStack';
@@ -130,9 +130,9 @@ const CHIP_DEFS: ChipDef[] = [
 const CHIP_W = 84;
 const CHIP_H = 96;
 const CHIP_GAP = 8;
-// 半圆环尺寸（旧；已弃用为扁平浅弧）——保留 GAUGE_H 仅作下方 clamp 的块高估算
+// 大半圆环尺寸（★ 2026-11-03 还原 2026-10-18 大半圆：viewBox 280×150，R=116.7，用于下方布局块高估算）
 const GAUGE_W = 280;
-const GAUGE_H = 192; // ★ 2026-10-18：扁平浅弧块（弧 68 + 状态词/82(48px)/周期 ≈124）估算高，用于居中计算
+const GAUGE_H = 150; // ★ 2026-10-18：大半圆块（弧 150 高，中心字 58px）估算高，用于居中计算
 
 export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
@@ -276,6 +276,14 @@ export default function CalmWaveHome() {
   //   改用真实周期日（无记录时回退 14），让弧与卡口径统一。
   const cycleDay = dayInCycle ?? CYCLE_DAY;
   const cyclePhaseNow = phaseLabel && phaseLabel !== '未记录' ? phaseLabel : cyclePhase(cycleDay);
+
+  // ★ 还原 2026-10-18 大半圆几何：viewBox 280×150，圆心(140,140) R=116.7，左端点 180°→右端点 0° 的真·半圆。
+  //   进度末端白点坐标随 CV 比例移动（无数据则落在左端点）。
+  const ARC_SEMI_R = 116.7;
+  const ARC_END_T = hasStatusData ? (CV ?? 0) / 100 : 0;
+  const ARC_END_TH = Math.PI * (1 - ARC_END_T);
+  const endX = 140 + ARC_SEMI_R * Math.cos(ARC_END_TH);
+  const endY = 140 - ARC_SEMI_R * Math.sin(ARC_END_TH);
 
   // 心肺能力（VO₂max）：权威非运动估算法（Jackson 1990 + Uth 心率比法交叉），详见 lib/vo2max.ts。
   const vo2 = (() => { try { return estimateVo2maxFromStore(Date.now()); } catch { return null; } })();
@@ -437,50 +445,51 @@ export default function CalmWaveHome() {
           ★ 第三十一轮：再上移 12px（-50→-62；用户："今日状态位置再往上放一点"）。 */}
       <Text style={[s.cardTitle, { top: gaugeTop - 62 }]}>今日状态</Text>
 
-      {/* 扁平浅弧双弧（Oura 风格，去月相）——外白弧=恢复分、内金弧=周期天数；整区可点 → 全天状态趋势。
-          ★ 2026-10-18 用户拍板：用双弧样式、不要月相标识（design/oura-dual-arc-nomoon.html A 版）。 */}
-      <TouchableOpacity
-        style={[s.gaugeZone, { top: gaugeTop }]}
-        activeOpacity={0.85}
-        accessibilityLabel="查看全天状态趋势详情"
-        onPress={() => navigation.navigate('StatusTrendDetail')}
-      >
-        <View style={s.arcWrap}>
-          {/* 只裁弧本体：viewBox y 从 96 起（弧顶 100.5 上留 4.5 余量），裁掉上方 ~90px 空白 */}
-          <Svg width={350} height={68} viewBox="0 96 390 76">
-            {/* 外弧轨道（状态分，淡色同系） */}
-            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_R)} fill="none" stroke={hexA(moodColor, 0.22)} strokeWidth={2.5} strokeLinecap="round" />
-            {/* 外弧进度（状态分档位色，如 82→黄） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * ((hasStatusData ? CV : 0) / 100), ARC_R)} fill="none" stroke={moodColor} strokeWidth={3} strokeLinecap="round" />
-            {/* 内弧轨道（周期，白） */}
-            <Path d={arcPath(-ARC_HALF, ARC_HALF, ARC_RI)} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5} strokeLinecap="round" />
-            {/* 内弧进度（周期，白） */}
-            <Path d={arcPath(-ARC_HALF, -ARC_HALF + ARC_SWEEP * (cycleDay / CYCLE_LEN), ARC_RI)} fill="none" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
-            {/* 端点刻度 0 / 100（状态分刻度） */}
-            <SvgText x={lEnd.x - 4} y={lEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">0</SvgText>
-            <SvgText x={rEnd.x - 16} y={rEnd.y + 16} fontSize={11} fill="rgba(255,255,255,0.45)" fontWeight="500">100</SvgText>
+      {/* Oura 式细弧大半圆环（★ 还原 2026-10-18 大半圆几何：viewBox 280×150，真·半圆 R=116.7，两端在 y=140）
+          → 中心大数字 + 状态词；整环可点 → 全天状态趋势。接真实数据（CV / moodLabel / cycleDay），保留用户 2 天成果。 */}
+      <View style={[s.gaugeZone, { top: gaugeTop }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity
+            style={s.gauge}
+            activeOpacity={0.85}
+            accessibilityLabel="查看全天状态趋势详情"
+            onPress={() => navigation.navigate('StatusTrendDetail')}
+          >
+            <Svg width="100%" height="100%" viewBox="0 0 280 150">
+              {/* 半圆轨道（白，淡） */}
+              <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={6} strokeLinecap="round" />
+              {/* 半圆进度（白，按 CV 比例） */}
+              {hasStatusData ? (
+                <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="#FFFFFF" strokeWidth={6} strokeLinecap="round" strokeDasharray={`${(366.6 * (CV ?? 0) / 100).toFixed(1)} 366.6`} />
+              ) : null}
+              {/* 进度末端白点 + 光晕 */}
+              {hasStatusData ? (
+                <>
+                  <Circle cx={endX} cy={endY} r={10.5} fill="rgba(255,255,255,0.20)" />
+                  <Circle cx={endX} cy={endY} r={5.2} fill="#FFFFFF" />
+                </>
+              ) : null}
+            </Svg>
+            <View style={s.gaugeCenter}>
+              <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
+              <Text style={s.gLabel}>{moodLabel}</Text>
+              <Text style={s.gUpd}>周期 · {cyclePhaseNow} · 第{cycleDay}天</Text>
+            </View>
+          </TouchableOpacity>
+          {/* 环旁向右箭头提示（→ 全天趋势） */}
+          <Svg width={16} height={26} viewBox="0 0 13 22" style={{ marginLeft: 3 }}>
+            <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
         </View>
-        {/* 弧下方（Oura 结构 + 白底版状态词）：状态档位词 → 82 → 周期。
-            ★ 第三十四轮（用户）：圆弧下写状态词（白底版四档：元气满满/状态良好/平平静静/休息一下，
-            按 82 分→元气满满，颜色与圆环同源），下面写 82，下面只留「周期第 14 天」；
-            去掉「恢复状态」「恢复优秀」；整块上提（离卡行更近）。 */}
-        <View style={s.gaugeInfo}>
-          <Text style={[s.gMood, { color: moodColor }]}>{moodLabel}</Text>
-          {hasStatusData ? (
-            <View style={s.gScoreRow}>
-              <Text style={[s.gBig, { color: moodColor }]}>{CV}</Text>
-              <Text style={s.gDen}>/100</Text>
-              <Svg width={13} height={22} viewBox="0 0 13 22">
-                <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-              </Svg>
-            </View>
-          ) : null}
-          <View style={s.gPhase}>
-            <Text style={s.gPhaseTxt}>周期 · {cyclePhaseNow} · 第{cycleDay}天</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
+        {/* ★ 还原：收工啦放松胶囊（点 → 呼吸放松） */}
+        <TouchableOpacity
+          style={s.relaxPill}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('Breathing')}
+        >
+          <Text style={s.relaxPillTxt}>收工啦，轻呼吸放松放松 ›</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 指标卡行：横向滑动（★ 2026-10-18 用户："卡片展示四个，最后一个滑动可看"）。
           首屏 4 张 84×96 大卡（大字），第 5 张滑动可见；snapToInterval 逐张吸附；
@@ -638,38 +647,40 @@ const s = StyleSheet.create({
   chipUnit: { fontSize: 10.5, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
   chipTag: { fontSize: 10.5, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
 
-  // 扁平浅弧双弧区（Oura 风格，去月相）：整区居中、可点
+  // 大半圆区（Oura 风格，去月相）：整区居中、可点
   gaugeZone: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  // 弧包裹：宽 350、只裁弧本体（viewBox y 96-172 → 高 76，缩放后 68）
-  arcWrap: {
-    alignSelf: 'center',
-  },
-  // 弧下文字块：状态词 → 82/100 → 周期药丸（全部顺排，不叠字）
-  gaugeInfo: {
+  // 半圆环容器（280×150，viewBox 1:1，弧两端在 y=140）
+  gauge: { width: GAUGE_W, height: GAUGE_H },
+  // 中心文字组（绝对定位，沉到半圆底部下方）
+  gaugeCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -20,
     alignItems: 'center',
-    marginTop: 4,
   },
-  gMood: { fontSize: 22, fontWeight: '600', letterSpacing: 0.5, textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
-  // 分数行：82（主视觉，缩小）+ 小号 /100 + 右箭头（点击进全天趋势）
-  gScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  gBig: { fontSize: 34, fontWeight: '700', letterSpacing: -1.5, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  gDen: { fontSize: 15, fontWeight: '500', color: 'rgba(255,255,255,0.6)' },
-  // 周期药丸：明示所属时期（排卵期等）
-  gPhase: {
-    marginTop: 10,
-    paddingVertical: 5,
-    paddingHorizontal: 13,
+  // 分数主视觉（大半圆：58px 白字）
+  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', marginBottom: 10, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  // 状态档位词（如 状态良好）
+  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 9, fontWeight: '500' },
+  // 周期副行
+  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
+  // 收工啦放松胶囊（→ 呼吸放松）
+  relaxPill: {
+    marginTop: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.28)',
   },
-  gPhaseTxt: { fontSize: 12.5, fontWeight: '500', color: '#FFFFFF', textShadowColor: 'rgba(20,44,64,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  relaxPillTxt: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {
