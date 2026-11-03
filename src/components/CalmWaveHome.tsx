@@ -41,7 +41,7 @@ import AvatarStack from './AvatarStack';
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
-const HOME_BG = require('../assets/bg_lake_mist.jpg'); // ★ 2026-10-30 首页背景：雾湖（上亮下暗，替代海浪视频，对齐参考图远山+湖泊）
+const HOME_BG = require('../assets/home_bg.jpg'); // ★ 2026-11-03 首页背景：用户指定雪景照（已裁掉状态栏/Home 黑条）
 const WAVE_SOUND = require('../assets/wave-sound.mp3'); // ★ 2026-10-18 用户：海浪白噪音（FFmpeg 合成 30s 无缝循环）
 const THUMB_RELAX = require('../assets/card_relax.jpg');
 
@@ -376,39 +376,28 @@ export default function CalmWaveHome() {
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
-      {/* ★ 2026-10-30（用户：首页底部改黑）：底层兜底 = 近黑深板岩（与 tab/AI 卡同款）。
-          正常被视频 + 黑染层完全覆盖，仅作视频异常时的兜底，避免蓝/白漏底。 */}
-      <LinearGradient
-        style={StyleSheet.absoluteFill}
-        colors={['#091C30', '#091C30', '#091C30']}
-        locations={[0, 0.5, 1]}
-      />
-      {/* ★ 2026-10-30（用户：海浪换成风景——用项目内 bg_lake_mist 雾湖，结构=上亮下暗，对齐参考图远山+湖泊）：
-          全屏铺底，下方由磨砂+黑化入。图片可换（森林等），下面磨砂+黑过渡不变。 */}
+      {/* ★ 2026-11-03：首页背景 = 用户指定雪景照（home_bg.jpg，已裁掉状态栏/Home 黑条），全屏覆盖。
+          整体轻磨砂（BlurView）保留照片观感又统一磨砂质感；底部加深一点保证磨砂卡/玻璃 tab 可读。 */}
       <Image
         source={HOME_BG}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       />
-      {/* ★ 2026-11-03 还原参考图背景：湖雾图（蓝调 + 粉紫云霞）为底，顶部压深蓝、底部提粉紫暖光，
-          保留底部轻磨砂，回到「深蓝 → 亮蓝 → 粉紫云霞」日落云海观感（对齐用户截图，撤销 10-30 黑底）。 */}
+      {/* 整体磨砂：轻高斯模糊，统一磨砂玻璃质感（tint=default 保照片本色） */}
+      <BlurView style={StyleSheet.absoluteFill} intensity={18} tint="default" />
+      {/* 顶部微提亮 + 底部加深：上半照片清晰，下半为卡片/tab 提供对比底 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={['rgba(8,30,58,0.55)', 'rgba(8,30,58,0.18)', 'rgba(8,30,58,0)', 'rgba(8,30,58,0)', 'rgba(8,30,58,0)']}
-        locations={[0, 0.18, 0.34, 0.6, 1]}
+        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(8,30,58,0.05)', 'rgba(8,30,58,0.30)']}
+        locations={[0, 0.42, 0.72, 1]}
       />
-      <LinearGradient
-        style={StyleSheet.absoluteFill}
-        colors={['rgba(8,30,58,0)', 'rgba(8,30,58,0)', 'rgba(150,110,185,0.10)', 'rgba(195,145,205,0.30)', 'rgba(225,185,210,0.45)']}
-        locations={[0, 0.5, 0.7, 0.88, 1]}
-      />
-      <BlurView style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%' }} intensity={22} tint="light" />
 
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
           ★ 2026-10-18 用户：「今日状态」白色标题从头栏移到指标卡行上方（见下方 cardTitle）。 */}
       <View style={[s.head, { paddingTop: insets.top + 30 }]}>
         <AvatarStack
           size={34}
+          mono
           onSelect={(id) => {
             if (id === 'self') navigation.navigate('AccountHub');
             else navigation.navigate('MemberDetail', { memberId: id });
@@ -521,7 +510,7 @@ export default function CalmWaveHome() {
         </ScrollView>
         {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
         <LinearGradient
-          colors={[`rgba(${HOME_BOTTOM_RGB},0)`, `rgba(${HOME_BOTTOM_RGB},0.92)`]}
+          colors={['rgba(8,30,58,0)', 'rgba(8,30,58,0.38)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={s.chipFade}

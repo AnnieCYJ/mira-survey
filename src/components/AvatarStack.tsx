@@ -22,18 +22,25 @@ interface Props {
   size?: number;
   /** 是否在头像外圈加"状态环" + 右上角状态表情（仅给结论，不曝光数据）。默认开。 */
   showStatus?: boolean;
+  /** mono 白玻璃模式：头像全白半透明 + 白描边 + 暗字 + 隐藏彩色状态环/表情（首页用）。 */
+  mono?: boolean;
 }
 
-export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showStatus = true }: Props) {
+export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showStatus = true, mono = false }: Props) {
   const members = useFamilyMembers();
   const shown = members.filter((m) => m.bound);
   const overlap = size * 0.36;
   const badgeSize = Math.max(12, size * 0.4);
+  // ★ 2026-11-03（用户：首页家人区全部白色）：mono → 隐藏彩色状态环/表情
+  const showSt = mono ? false : showStatus;
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       {shown.map((m, i) => {
-        const toneColor = showStatus ? TONE_COLOR[m.statusTone] : theme.colors.cardBorder;
+        const toneColor = showSt ? TONE_COLOR[m.statusTone] : theme.colors.cardBorder;
+        const avatarBg = mono ? 'rgba(255,255,255,0.18)' : m.avatarColor;
+        const avatarBorder = mono ? 'rgba(255,255,255,0.62)' : toneColor;
+        const letterColor = mono ? 'rgba(10,30,55,0.92)' : '#fff';
         return (
           <TouchableOpacity
             key={m.id}
@@ -44,13 +51,13 @@ export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showS
             <View
               style={{
                 width: size, height: size, borderRadius: size / 2,
-                backgroundColor: m.avatarColor,
-                borderWidth: showStatus ? 2.5 : 2, borderColor: toneColor,
+                backgroundColor: avatarBg,
+                borderWidth: 2.5, borderColor: avatarBorder,
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '600', fontSize: size * 0.42 }}>{m.avatarLetter}</Text>
-              {showStatus ? (
+              <Text style={{ color: letterColor, fontWeight: '600', fontSize: size * 0.42 }}>{m.avatarLetter}</Text>
+              {showSt ? (
                 <View
                   style={{
                     position: 'absolute', top: -size * 0.12, right: -size * 0.12,
@@ -75,12 +82,12 @@ export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showS
           <View
             style={{
               width: size, height: size, borderRadius: size / 2,
-              backgroundColor: 'rgba(255,255,255,0.10)',
-              borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.cardBorder,
+              backgroundColor: mono ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.10)',
+              borderWidth: 1.5, borderStyle: 'dashed', borderColor: mono ? 'rgba(255,255,255,0.62)' : theme.colors.cardBorder,
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Text style={{ color: theme.colors.textSub, fontSize: size * 0.5, fontWeight: '600' }}>+</Text>
+            <Text style={{ color: mono ? '#fff' : theme.colors.textSub, fontSize: size * 0.5, fontWeight: '600' }}>+</Text>
           </View>
         </TouchableOpacity>
       ) : null}
