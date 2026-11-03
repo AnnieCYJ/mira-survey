@@ -28,6 +28,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur'; // ★ 2026-10-30（用户要真·磨砂玻璃）：对标题下方海浪视频做真实高斯模糊
+import Icon from './Icon'; // ★ 2026-11-03：档位词右箭头（chevronRight）
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -377,7 +378,7 @@ export default function CalmWaveHome() {
   const k = height / 844;
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
   const gaugeTop = 158 * k;                            // 仪表区顶部（★ 2026-11-03：140→158 整体再下移一点点，圆环+分析+胶囊联动下移）
-  const analysisTop = gaugeTop + 310 * k;              // 分析文字（★ 本轮 340→310：整体上移，离「平平静静」更近，与下方胶囊成整体）
+  const analysisTop = gaugeTop + 318 * k;              // 分析文字（★ 2026-11-03 310→318：用户「和下面的今日状态不错拉开一点点距离」）
   const capsuleTop = analysisTop + 40 * k;             // 建议胶囊（★ 本轮 44→40：与上方分析文字收紧成整体）
   // 卡片行：贴 tab 上方（tab 高 84 + 安全区）；★ 本轮：底部间隙 4→14，卡片整体再下移约 10px
   const chipRowTop = height - insets.bottom - 84 - 2 - CHIP_H;
@@ -464,7 +465,11 @@ export default function CalmWaveHome() {
           {/* 数字落圆下部开口处（圆心空）：★ 2026-11-03 整体下移，正好落在 0/100 中间开口处 */}
           <View style={[s.gaugeCenter, { top: 206 * (gaugeSize / 300) }]}>
             <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
-            <Text style={s.gLabel}>{moodLabel}</Text>
+            {/* ★ 2026-11-03（用户）：档位词右边加向右箭头 —— 提示整块可点、进入全天状态趋势（外层 gauge 已是 TouchableOpacity） */}
+            <View style={s.gLabelRow}>
+              <Text style={s.gLabel}>{moodLabel}</Text>
+              <Icon name="chevronRight" size={theme.fontSize.body} color="rgba(255,255,255,0.85)" strokeWidth={2.4} />
+            </View>
           </View>
           {/* 0 / 100 刻度（左 0、右 100） */}
           <Text style={[s.scaleTxt, { left: '30.8%', top: '79%' }]}>0</Text>
@@ -638,8 +643,11 @@ const s = StyleSheet.create({
   },
   // 分数主视觉（★ 2026-11-03：58→44 数字缩小；★ 本轮 收紧与状态词间距）
   gBig: { fontSize: theme.fontSize.hero, fontWeight: '700', color: '#fff', marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  // 状态档位词（如 平平静静）：★ 本轮 44→40，比大数字略小一点（用户要求"稍小一点点"）
-  gLabel: { fontSize: theme.fontSize.hero, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
+  // 状态档位词（如 平平静静）：★ 2026-11-03（用户「稍微小一点儿」）hero(46) → h1(36)——
+  //   之前注释写「44→40」但实际挂的仍是 hero，与上面大数字同大；现降到 h1，层级回到「数字主、档位词辅」
+  gLabel: { fontSize: theme.fontSize.h1, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+  // ★ 2026-11-03：档位词 + 右箭头行（整块仍随外层 gauge 可点 → 全天状态趋势）
+  gLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   // 周期副行
   gUpd: { fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
   // 收工啦放松胶囊（→ 呼吸放松）

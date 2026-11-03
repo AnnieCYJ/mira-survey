@@ -28,8 +28,10 @@ const PAD_T = 10;
 const PAD_B = 22;
 
 // v16：血压=蓝图（收缩=蓝 core / 舒张=蓝 mid），统一走 Design Token
+// ★ 2026-11-03（用户「蓝色太不明显」）：舒张压 skyMid(#B9CCF9) 淡得几乎隐形 → skyDeep(#4C74C9)；
+//   收缩压保持 skyCore(#7EA6F8)——一亮一深同为 mm token，曲线/大数字/图例区分度都拉起来
 const COL_SYS = mm.colors.skyCore;
-const COL_DIA = mm.colors.skyMid;
+const COL_DIA = mm.colors.skyDeep;
 
 type Pt = { t: number; v: number };
 

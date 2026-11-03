@@ -586,10 +586,8 @@ export default function StatusTrendDetailScreen() {
     return cort;
   }, [w, plotW, dRange, anchor, pts]);
 
-  const deltaPct =
-    firstReal != null && current != null && firstReal !== 0
-      ? Math.round(((current - firstReal) / Math.abs(firstReal)) * 100)
-      : 0;
+  // ★ 2026-11-03：hero delta 改走 comparison.prevDelta（统一「较昨日/上周/上个月/去年」口径），
+  //   原「较区间首点」的 deltaPct / firstReal 计算随之删除。
 
   // ★ v18.147 对比模块数据（StressWatch 范式：方块+数字，不写长段文字）
   const comparison = useMemo(() => {
@@ -681,6 +679,27 @@ export default function StatusTrendDetailScreen() {
     };
   }, [dRange, anchor, statusDaily, ring, avg]);
 
+  // ★ 2026-11-03：hero 卡解读文字（数据锚定 + 人话 + 诚实口径，与第十轮 AI 文案铁律一致）。
+  //   依赖 comparison（best/worst/prevDelta），必须放在 comparison memo 之后。
+  const heroAnalysis = useMemo(() => {
+    if (!hasData || avg == null) return null;
+    const lvl = curveLevel(avg, CURVE_DEFAULTS);
+    const mLabel = MOODS[lvl.index]?.label ?? '平平静静';
+    if (dRange === 'day') {
+      const good = lvl.index <= 1;
+      return `今天状态平均 ${Math.round(avg)} 分、当前 ${fmtVal(current)} 分，处在「${mLabel}」档——${good ? '趁状态好，把难的事往前推' : '节奏放缓一点，别硬撑'}。`;
+    }
+    const b = comparison.best;
+    const wst = comparison.worst;
+    const bw = b && wst && b.label !== wst.label ? `，${b.label}最好（${fmtVal(b.value)} 分）、${wst.label}最低（${fmtVal(wst.value)} 分）` : '';
+    const trend = !comparison.prevDelta
+      ? '上一期还没有足够数据对照'
+      : comparison.prevDelta.startsWith('▲')
+        ? `较${comparison.prevLabel}有所回升`
+        : `较${comparison.prevLabel}有所回落`;
+    return `这段状态平均 ${Math.round(avg)} 分${bw}；${trend}，${lvl.index <= 1 ? '整体节奏在线' : '给恢复多留点空间'}。`;
+  }, [hasData, avg, current, dRange, comparison]);
+
   // 轴标签：日视图固定时间轴（space-between）；周/月/年每个数据点一槽、刻度居中，稀疏刻度与柱对齐
   const renderAxis = () => {
     if (fixedAxis) {
@@ -739,12 +758,17 @@ export default function StatusTrendDetailScreen() {
             <View style={styles.hero}>
               <Text style={styles.heroVal}>{fmtVal(current)}</Text>
               <Text style={styles.heroUnit}>/ 100</Text>
-              {hasData && deltaPct !== 0 ? (
-                <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
-                  {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
+              {/* ★ 2026-11-03（用户「对比口径不统一」）：「较区间首点」→ 统一「较昨日/上周/上个月/去年」
+                  （previousPeriodLabel，与 MetricDetail / BpDetail 同一 lib 出口）；▲绿▼红 = 活力语义（升=好） */}
+              {hasData && comparison.prevDelta ? (
+                <Text style={[styles.delta, comparison.prevDelta.startsWith('▲') ? styles.up : styles.down]}>
+                  {comparison.prevDelta} · 较{comparison.prevLabel}
                 </Text>
               ) : null}
             </View>
+            {/* ★ 2026-11-03（用户「整个分析没按统一格式」）：hero 卡内补解读文字 ——
+                与 MetricDetail 同款「大数字 + 一句数据锚定的人话解读」结构 */}
+            {heroAnalysis ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
           </View>
         </Card>
 
@@ -1068,8 +1092,11 @@ const styles = StyleSheet.create({
   heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   delta: { fontSize: theme.fontSize.sm, marginLeft: 6 },
-  up: { color: theme.colors.danger },
-  down: { color: theme.colors.success },
+  // ★ 2026-11-03：状态指数是「活力」语义——升=好=绿、降=注意=红（原 up 红/down 绿是心率类指标的语义，装反了）
+  up: { color: theme.colors.success },
+  down: { color: theme.colors.danger },
+  // ★ 2026-11-03：hero 卡内解读文字（与 MetricDetail heroAnalysis 同款层级）
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.md,
