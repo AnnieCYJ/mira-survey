@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { theme } from '../../theme/theme';
 
 // ——— 呼吸模式预设 ———
 export interface BreathPattern {
