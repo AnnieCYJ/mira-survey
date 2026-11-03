@@ -47,13 +47,13 @@ export interface MetricDef {
 export const METRICS: Record<MetricKey, MetricDef> = {
   sleep: {
     name: '睡眠',
-    tag: '深睡 24%',
-    val: '7h 12m',
+    tag: '',
+    val: '—',
     unit: '总睡眠',
-    delta: '↑ 较上周 +38 分钟',
+    delta: '',
     dir: 'up',
-    note: '生长激素在入睡后 90 分钟达到峰值，你的深睡窗口稳定在 01:20–03:40。',
-    data: [46, 52, 48, 60, 58, 66, 72],
+    note: '',
+    data: [],
   },
   cycle: {
     name: '生理',
@@ -67,33 +67,33 @@ export const METRICS: Record<MetricKey, MetricDef> = {
   },
   metabolism: {
     name: '代谢',
-    tag: '静息代谢',
-    val: '1,842',
+    tag: '',
+    val: '—',
     unit: 'kcal / 天',
-    delta: '↓ 较上周 -24 kcal',
+    delta: '',
     dir: 'down',
-    note: '黄体期基础代谢会自然上浮 5–10%，当前数值处于你的正常区间。',
-    data: [62, 60, 64, 58, 61, 59, 57],
+    note: '',
+    data: [],
   },
   heart: {
     name: '心血管',
-    tag: '静息 58 bpm',
-    val: '62',
+    tag: '',
+    val: '—',
     unit: 'ms HRV',
-    delta: '↑ 较上周 +6 ms',
+    delta: '',
     dir: 'up',
-    note: 'HRV 连续 5 天高于你的个人基线，说明自主神经恢复良好。',
-    data: [48, 50, 54, 52, 58, 60, 62],
+    note: '',
+    data: [],
   },
   mind: {
     name: '情绪&认知',
-    tag: '中等',
-    val: '34',
+    tag: '',
+    val: '—',
     unit: '压力指数',
-    delta: '↓ 较上周 -8',
+    delta: '',
     dir: 'up',
-    note: '午后 14:00–16:00 出现两次明显压力峰，建议安排 5 分钟呼吸。',
-    data: [58, 54, 60, 72, 66, 48, 34],
+    note: '',
+    data: [],
   },
 };
 
@@ -101,7 +101,7 @@ export const METRIC_ORDER: MetricKey[] = ['sleep', 'cycle', 'metabolism', 'heart
 
 // ───────────────────────────────────────────────────────────
 // 基础指标：戒指（HK18 / Veepoo）硬件可直接测量的生理信号
-// 这些值当前为示例；连接戒指并完成实时命令接入后由 RingBle 推送真值。
+// value/data 仅作元数据占位（恒为 '—' / []），真实数值一律由 realSeries.buildHistorySeries 从 RingBle 真值计算——这里不许放示例数字（2026-11-03 用户：界面上不能有假数据）。
 // ───────────────────────────────────────────────────────────
 import type { IconName } from '../components/Icon';
 
@@ -143,10 +143,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     name: '心率',
     dimension: 'basics',
     icon: 'heart',
-    value: '72',
+    value: '—',
     unit: 'bpm',
     range: '正常 60–100',
-    data: [58, 56, 55, 54, 55, 57, 62, 70, 76, 78, 75, 72, 74, 80, 82, 79, 76, 73, 70, 68, 66, 64, 61, 59],
+    data: [],
     live: true,
     note: '静息心率反映心脏负荷与恢复状态。',
     freq: '实时连续 · 约 1 次/秒',
@@ -158,10 +158,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     name: '血氧',
     dimension: 'basics',
     icon: 'drop',
-    value: '98',
+    value: '—',
     unit: '%',
     range: '正常 95–100',
-    data: [98, 98, 97, 97, 96, 97, 98, 99, 99, 98, 98, 97, 98, 99, 98, 97, 98, 99, 98, 97, 96, 97, 98, 98],
+    data: [],
     live: true,
     note: '血氧饱和度，睡眠中持续低于 90% 值得关注。',
     freq: '实时连续 · 约 1 次/秒',
@@ -173,13 +173,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     name: '体温',
     dimension: 'basics',
     icon: 'thermometer',
-    value: '36.5',
+    value: '—',
     unit: '°C',
     range: '正常 36.0–37.2',
-    data: [
-      36.4, 36.3, 36.2, 36.2, 36.3, 36.4, 36.5, 36.6, 36.7, 36.8, 36.9, 36.8,
-      36.9, 37.0, 36.9, 36.8, 36.7, 36.6, 36.5, 36.5, 36.4, 36.4, 36.3, 36.4,
-    ],
+    data: [],
     live: true,
     note: '皮肤温度随周期激素波动，排卵期后略升。详情页看的是「相对个人基线的偏离」，不是绝对值。',
     // ★ 2026-10-10：原写「单次测量 · 约每 20 秒」与真实链路不符（healthStore cadence = 每 5 分钟）
@@ -192,10 +189,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     name: 'EDA 皮电',
     dimension: 'basics',
     icon: 'activity',
-    value: '42',
+    value: '—',
     unit: '指数',
     range: '相对值 1–99',
-    data: [38, 42, 45, 50, 47, 44, 40, 52, 60, 55, 48, 43, 46, 58, 62, 57, 50, 45, 41, 39, 36, 34, 33, 35],
+    data: [],
     live: true,
     note: '经原生桥取到的「皮电」实为 Veepoo GSR 的 skin_moisture（厂商相对指数 1–99），反映交感神经皮肤反应，是压力的直接信号。',
     freq: '单次测量 · 约每 20 秒',
@@ -207,10 +204,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     name: '心率变异性',
     dimension: 'basics',
     icon: 'heart',
-    value: '62',
+    value: '—',
     unit: 'ms',
     range: '越高越好',
-    data: [88, 90, 92, 94, 91, 86, 78, 64, 56, 58, 62, 66, 60, 54, 52, 55, 58, 62, 68, 74, 80, 84, 88, 90],
+    data: [],
     live: true,
     note: 'HRV 高说明自主神经恢复良好、抗压能力强。',
     freq: '每日自动采集 · 连接后实时读取并展开逐拍 RR 间期',
@@ -542,37 +539,6 @@ export const RANGE_UNIT: Record<
     week: { unit: '周均压力', fmt: (v) => `${Math.round(v)}` },
     month: { unit: '月均压力', fmt: (v) => `${Math.round(v)}` },
     year: { unit: '年均压力', fmt: (v) => `${Math.round(v)}` },
-  },
-};
-
-export const RANGE_NOTE: Record<RangeKey, Record<MetricKey, string>> = {
-  day: {
-    sleep: '夜间曲线反映你的睡眠结构。深睡集中在 01:20–03:40。',
-    cycle: '雌激素在清晨达到日内高点，午后缓慢回落。',
-    metabolism: '代谢率从清晨开始爬升，午后进入平台。',
-    heart: 'HRV 在深睡阶段最高，白天随活动和压力下降。',
-    mind: '压力指数在午后出现明显峰值，与你的会议时段重合。',
-  },
-  week: {
-    sleep: '本周睡眠时长整体上行，工作日与周末差异在 40 分钟以内。',
-    cycle: '本周周期阶段解读由真实记录（经期日期 + 体温确认排卵）驱动。',
-    metabolism: '本周静息代谢波动不大，处在你的正常区间。',
-    heart: '本周 HRV 连续高于个人基线，恢复良好。',
-    mind: '本周压力峰值集中在工作日中段，周末明显回落。',
-  },
-  month: {
-    sleep: '整月睡眠在排卵期后略有下降，与孕激素升高一致。',
-    cycle: '本周期激素曲线由真实相位驱动，峰值在排卵期附近。',
-    metabolism: '整月代谢在黄体期上浮约 5–8%。',
-    heart: '整月 HRV 呈缓慢上行趋势，正向平衡。',
-    mind: '整月压力与工作节奏高度相关。',
-  },
-  year: {
-    sleep: '全年睡眠时长冬季略长、夏季略短，无结构性问题。',
-    cycle: '全年周期长度稳定在 27–29 天。',
-    metabolism: '全年基础代谢随体成分缓慢变化。',
-    heart: '全年 HRV 随训练周期波动，冬季略低属正常。',
-    mind: '全年压力与工作项目节奏吻合，无长期升高。',
   },
 };
 

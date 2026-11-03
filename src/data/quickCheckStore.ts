@@ -204,138 +204,6 @@ export async function countQuickChecks(): Promise<number> {
   }
 }
 
-/* ───────── 演示数据（首次库空时写入，便于无戒指环境审阅 UI）───────────────── */
-
-function mkDate(y: number, m: number, d: number, hh: number, mm: number): number {
-  return new Date(y, m - 1, d, hh, mm).getTime();
-}
-
-const SEED: QuickCheckRecord[] = [
-  {
-    id: 'seed-1',
-    createdAt: mkDate(2026, 10, 8, 11, 37),
-    groups: [
-      {
-        key: 'core', title: '核心体征', icon: '❤️', metrics: [
-          { key: 'hr', name: '平均心率', value: '60', unit: '次/分', status: 'ok', ref: '参考 60~100 bpm', note: '本次静息平均心率落在常见参考区间内。单次数值会随测量时状态波动，建议结合多日观察。' },
-          { key: 'hrv', name: 'HRV', value: '30', unit: '毫秒', status: 'ok', note: 'HRV 反映心率变异性，本次处于常见区间。它受睡眠、压力影响较大，宜作趋势观察。' },
-          { key: 'bp', name: '血压', value: '113/82', unit: 'mmHg', status: 'ok', ref: '参考 <120/80', scale: { min: 80, max: 160, v: 113 }, note: '收缩压与舒张压都在常见参考范围内。血压会随情绪与活动波动，本结果仅为本次测量快照。' },
-          { key: 'spo2', name: '血氧', value: '98', unit: '%', status: 'ok', ref: '参考 95~100%', note: '血氧饱和度在常见区间内。' },
-        ],
-      },
-      {
-        key: 'blood', title: '血液健康检测', icon: '🩸', metrics: [
-          { key: 'glucose', name: '血糖', value: '5.29', unit: 'mmol/L', status: 'ok', ref: '空腹参考 3.9~6.1', note: '空腹血糖在常见参考区间内。餐后数值通常更高，本结果反映空腹状态。' },
-          { key: 'uricAcid', name: '尿酸', value: '456', unit: 'μmol/L', status: 'high', ref: '常见参考 155~428', scale: { min: 100, max: 500, v: 456 }, note: '尿酸高于常见参考上限。单次偏高可能受饮食、饮水影响，建议多次测量并结合专业检查判断；本结果仅供参考，不构成诊断。' },
-          { key: 'tc', name: '总胆固醇', value: '3.12', unit: 'mmol/L', status: 'ok' },
-          { key: 'tg', name: '甘油三酯', value: '0.88', unit: 'mmol/L', status: 'ok' },
-          { key: 'hdl', name: '高密度脂蛋白', value: '0.95', unit: 'mmol/L', status: 'ok' },
-          { key: 'ldl', name: '低密度脂蛋白', value: '0.62', unit: 'mmol/L', status: 'ok' },
-        ],
-      },
-      {
-        key: 'mental', title: '心理健康检测', icon: '🧠', risk: {
-          name: '抑郁症风险', status: 'ok', label: '低风险', note: '综合皮肤含水量、情绪、皮质醇、交感神经活跃度四项，本次评估处于低风险区间。这是基于设备信号的相对参考，不代表临床结论。',
-          sub: [
-            { key: 'skin', name: '皮肤含水量', value: '47', unit: '%', status: 'ok' },
-            { key: 'mood', name: '情绪', value: '3', unit: '', status: 'ok', label: '稳定' },
-            { key: 'cortisol', name: '皮质醇', value: '8.0', unit: 'ug/dL', status: 'ok' },
-            { key: 'sns', name: '交感神经活跃度', value: '27', unit: '', status: 'ok', label: '放松' },
-          ],
-        },
-      },
-      {
-        key: 'stress', title: '压力与疲劳', icon: '🌿', standalone: [
-          { key: 'stress', name: '压力', value: '11', unit: '', status: 'ok', label: '放松', scale: { min: 0, max: 99, v: 11 }, levels: '压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note: '本次压力值落在放松区间。压力会随日程波动，可作当日状态的一个观察点。' },
-          { key: 'fatigue', name: '疲劳度', value: '1', unit: '', status: 'low', label: '轻度疲劳', scale: { min: 0, max: 10, v: 1 }, levels: '疲劳值 0-10 级，等级越高越疲惫；4-6 为中度，是身体提醒放慢节奏的信号', note: '本次疲劳值处于较低区间。' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'seed-2',
-    createdAt: mkDate(2026, 10, 1, 9, 12),
-    groups: [
-      {
-        key: 'core', title: '核心体征', icon: '❤️', metrics: [
-          { key: 'hr', name: '平均心率', value: '62', unit: '次/分', status: 'ok', ref: '参考 60~100 bpm', note: '本次静息心率在常见参考区间内。' },
-          { key: 'hrv', name: 'HRV', value: '34', unit: '毫秒', status: 'ok', note: 'HRV 处于常见区间。' },
-          { key: 'bp', name: '血压', value: '118/79', unit: 'mmHg', status: 'ok', ref: '参考 <120/80', scale: { min: 80, max: 160, v: 118 }, note: '血压在常见参考范围内。' },
-          { key: 'spo2', name: '血氧', value: '99', unit: '%', status: 'ok', ref: '参考 95~100%', note: '血氧饱和度在常见区间内。' },
-        ],
-      },
-      {
-        key: 'blood', title: '血液健康检测', icon: '🩸', metrics: [
-          { key: 'glucose', name: '血糖', value: '5.11', unit: 'mmol/L', status: 'ok', ref: '空腹参考 3.9~6.1', note: '空腹血糖在常见参考区间内。' },
-          { key: 'uricAcid', name: '尿酸', value: '312', unit: 'μmol/L', status: 'ok', ref: '常见参考 155~428', scale: { min: 100, max: 500, v: 312 }, note: '尿酸在常见参考区间内。' },
-          { key: 'tc', name: '总胆固醇', value: '3.40', unit: 'mmol/L', status: 'ok' },
-          { key: 'tg', name: '甘油三酯', value: '0.95', unit: 'mmol/L', status: 'ok' },
-          { key: 'hdl', name: '高密度脂蛋白', value: '1.02', unit: 'mmol/L', status: 'ok' },
-          { key: 'ldl', name: '低密度脂蛋白', value: '0.70', unit: 'mmol/L', status: 'ok' },
-        ],
-      },
-      {
-        key: 'mental', title: '心理健康检测', icon: '🧠', risk: {
-          name: '抑郁症风险', status: 'ok', label: '低风险', note: '四项综合评估处于低风险区间，为相对参考，不代表临床结论。',
-          sub: [
-            { key: 'skin', name: '皮肤含水量', value: '52', unit: '%', status: 'ok' },
-            { key: 'mood', name: '情绪', value: '4', unit: '', status: 'ok', label: '稳定' },
-            { key: 'cortisol', name: '皮质醇', value: '7.2', unit: 'ug/dL', status: 'ok' },
-            { key: 'sns', name: '交感神经活跃度', value: '24', unit: '', status: 'ok', label: '放松' },
-          ],
-        },
-      },
-      {
-        key: 'stress', title: '压力与疲劳', icon: '🌿', standalone: [
-          { key: 'stress', name: '压力', value: '22', unit: '', status: 'ok', label: '放松', scale: { min: 0, max: 99, v: 22 }, levels: '压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note: '压力值落在放松区间。' },
-          { key: 'fatigue', name: '疲劳度', value: '2', unit: '', status: 'low', label: '轻度疲劳', scale: { min: 0, max: 10, v: 2 }, levels: '疲劳值 0-10 级，等级越高越疲惫', note: '疲劳值处于较低区间。' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'seed-3',
-    createdAt: mkDate(2026, 9, 24, 21, 45),
-    groups: [
-      {
-        key: 'core', title: '核心体征', icon: '❤️', metrics: [
-          { key: 'hr', name: '平均心率', value: '71', unit: '次/分', status: 'ok', ref: '参考 60~100 bpm', note: '本次静息心率在常见参考区间内。' },
-          { key: 'hrv', name: 'HRV', value: '24', unit: '毫秒', status: 'low', label: '偏低', ref: '常见区间偏下', note: 'HRV 低于近期常见水平。它受当日压力与睡眠质量影响，建议结合多日观察。' },
-          { key: 'bp', name: '血压', value: '138/89', unit: 'mmHg', status: 'high', label: '偏高', ref: '参考 <120/80', scale: { min: 80, max: 160, v: 138 }, note: '收缩压与舒张压高于常见参考范围。血压会随活动与情绪波动，建议多次测量并结合专业检查；本结果仅供参考。' },
-          { key: 'spo2', name: '血氧', value: '97', unit: '%', status: 'ok', ref: '参考 95~100%', note: '血氧饱和度在常见区间内。' },
-        ],
-      },
-      {
-        key: 'blood', title: '血液健康检测', icon: '🩸', metrics: [
-          { key: 'glucose', name: '血糖', value: '5.62', unit: 'mmol/L', status: 'ok', ref: '空腹参考 3.9~6.1', note: '空腹血糖在常见参考区间内。' },
-          { key: 'uricAcid', name: '尿酸', value: '401', unit: 'μmol/L', status: 'ok', ref: '常见参考 155~428', scale: { min: 100, max: 500, v: 401 }, note: '尿酸在常见参考区间内，接近上限。' },
-          { key: 'tc', name: '总胆固醇', value: '3.30', unit: 'mmol/L', status: 'ok' },
-          { key: 'tg', name: '甘油三酯', value: '1.10', unit: 'mmol/L', status: 'ok' },
-          { key: 'hdl', name: '高密度脂蛋白', value: '0.98', unit: 'mmol/L', status: 'ok' },
-          { key: 'ldl', name: '低密度脂蛋白', value: '0.75', unit: 'mmol/L', status: 'ok' },
-        ],
-      },
-      {
-        key: 'mental', title: '心理健康检测', icon: '🧠', risk: {
-          name: '抑郁症风险', status: 'ok', label: '低风险', note: '四项综合评估处于低风险区间，为相对参考。',
-          sub: [
-            { key: 'skin', name: '皮肤含水量', value: '44', unit: '%', status: 'ok' },
-            { key: 'mood', name: '情绪', value: '2', unit: '', status: 'ok', label: '偏低' },
-            { key: 'cortisol', name: '皮质醇', value: '9.1', unit: 'ug/dL', status: 'ok' },
-            { key: 'sns', name: '交感神经活跃度', value: '39', unit: '', status: 'high', label: '偏活跃' },
-          ],
-        },
-      },
-      {
-        key: 'stress', title: '压力与疲劳', icon: '🌿', standalone: [
-          { key: 'stress', name: '压力', value: '54', unit: '', status: 'ok', label: '正常', scale: { min: 0, max: 99, v: 54 }, levels: '压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note: '压力值落在正常区间。' },
-          { key: 'fatigue', name: '疲劳度', value: '5', unit: '', status: 'high', label: '中度疲劳', scale: { min: 0, max: 10, v: 5 }, levels: '疲劳值 0-10 级，4-6 为中度，是身体提醒放慢节奏的信号', note: '疲劳值处于中度区间，是身体提醒放慢节奏的一个信号。' },
-        ],
-      },
-    ],
-  },
-];
-
 /**
  * 真实体检组装：从 healthStore 现有真实测量值（实时体征 + 健康一览血液指标 + 压力/疲劳成分）
  * 聚合一条体检记录并落库。无任何真实数据（从未连过戒指）时返回 { ok:false, reason:'no-data' }。
@@ -398,7 +266,10 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   if (emotion != null) mentalSub.push({ key: 'mood', name: '情绪', value: String(Math.round(emotion)), unit: '', status: 'ok', label: '已记录' });
   if (cortisol != null) mentalSub.push({ key: 'cortisol', name: '皮质醇', value: String(r2(cortisol)), unit: 'ug/dL', status: 'ok' });
   if (sns != null) mentalSub.push({ key: 'sns', name: '交感神经活跃度', value: String(Math.round(sns)), unit: '', status: 'ok', label: sns >= 60 ? '偏活跃' : sns <= 30 ? '放松' : '适中' });
-  const mentalRisk: QCRiskBlock = { name: '抑郁症风险', status: 'ok', label: '低风险', note: '综合皮肤含水量、情绪、皮质醇、交感神经活跃度四项，本次评估为相对参考，不代表临床结论。', sub: mentalSub };
+  // ★ 2026-11-03（用户）：不许有写死的「抑郁症风险 · 低风险」评估结论——
+  //   该结论此前不随数据判定、只要有一项信号就固定显示「低风险」，属假分析。
+  //   现改为中性的「已记录信号」汇总：只展示真实读数，不做风险结论。
+  const mentalRisk: QCRiskBlock = { name: '心理健康 · 本次记录信号', status: 'ok', label: '已记录', note: '以下为本次真实记录到的信号值。Mira 只做描述与参考，不做抑郁等风险评估或诊断性结论。', sub: mentalSub };
 
   const stressStandalone: QCMetric[] = [];
   if (stress != null) stressStandalone.push({ key: 'stress', name: '压力', value: String(Math.round(stress)), unit: '', status: sb('stress', stress), label: stress >= 60 ? '偏高' : stress >= 30 ? '正常' : '放松', scale: { min: 0, max: 99, v: Math.round(stress) }, levels: '压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note: '本次压力值，会随日程波动，可作当日状态观察点。' });

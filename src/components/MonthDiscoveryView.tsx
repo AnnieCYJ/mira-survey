@@ -74,13 +74,8 @@ function patternKindLabel(kind: string): string {
   return PATTERN_KIND_LABEL[kind] ?? '发现';
 }
 
-// ★ 本轮（用户：「先给我写几个样子看看」）：真实库里还没有规律时，用下面 3 条示例填充，
-//   让日历末页直接展示「每条独立磨砂玻璃卡」的真实样式；接入真实数据后会自动替换为真实规律。
-const SAMPLE_PATTERNS: Array<{ id: string; kind: string; text: string; title: string }> = [
-  { id: 'sample-rhythm', kind: 'rhythm', title: '入睡时间与情绪', text: '你 23 点以后入睡的晚上，第二天的情绪评分平均更高 —— 最近 14 天里大概 9 天是这样。' },
-  { id: 'sample-corr', kind: 'correlation', title: '饮食记录与深睡', text: '认真记饮食的那几天，你的深睡占比平均比没记的那几天高 4%。' },
-  { id: 'sample-grp', kind: 'group_diff', title: '周期阶段与活动', text: '排卵期前一周，你的活动消耗平均比黄体期高 8%，身体状态更活跃。' },
-];
+// ★ 2026-11-03（用户：不能有假数据/假分析）：原「示例规律」3 条已删除。
+//   真实规律还没生成时，展示诚实的空态说明，不再用编造的观察占位。
 
 // ── App 同款照片资源（与首页泡泡卡 / 工具页同源） ──
 const IMG = {
@@ -896,10 +891,24 @@ export default function MonthDiscoveryView({
 
       {(() => {
         const isSample = observedPatterns.length === 0;
-        const displayPatterns = isSample ? SAMPLE_PATTERNS : observedPatterns;
         return (
           <>
-            {displayPatterns.slice(0, 4).map((p) => {
+            {isSample ? (
+              /* ★ 空态（诚实）：真实规律还没攒够样本，不放假观察 */
+              <Card>
+                <View style={styles.patObsRow}>
+                  <View style={[styles.obsIco, { backgroundColor: mm.colors.skySoft }]}>
+                    <Icon name="sparkle" size={14} color={mm.colors.skyDeep} />
+                  </View>
+                  <View style={styles.obsBody}>
+                    <Text style={styles.obsText}>还没有从你的数据里看出稳定规律。</Text>
+                    <Text style={styles.cardNote}>
+                      连续佩戴并记录一两周后，这里会出现真正属于你的观察（比如作息与情绪的关联）。样本不够时，我们不会编一条给你。
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            ) : observedPatterns.slice(0, 4).map((p) => {
               const accent =
                 p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
                 : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
@@ -942,27 +951,22 @@ export default function MonthDiscoveryView({
                         </TouchableOpacity>
                       ) : null}
                     </View>
-                    {/* ★ 本轮：示例态不显示「删掉」（示例非真实数据，删了会反复出现） */}
-                    {!isSample ? (
-                      <TouchableOpacity
-                        style={styles.patObsDel}
-                        onPress={() => { void onPatternRemove(p.id); }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`删掉这条规律：${p.title}`}
-                      >
-                        <Text style={styles.patObsDelText}>删掉</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    <TouchableOpacity
+                      style={styles.patObsDel}
+                      onPress={() => { void onPatternRemove(p.id); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`删掉这条规律：${p.title}`}
+                    >
+                      <Text style={styles.patObsDelText}>删掉</Text>
+                    </TouchableOpacity>
                   </View>
                 </Card>
               );
             })}
             <Text style={styles.cardNote}>
-              {isSample
-                ? '以下为示例样式（接入你的数据后会替换成真实观察）—— 这些是从你自己的数据里看出来的规律，不是诊断。'
-                : coverageNote
-                  ? `${coverageNote} · 这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。`
-                  : '这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。'}
+              {coverageNote
+                ? `${coverageNote} · 这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。`
+                : '这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。'}
             </Text>
           </>
         );

@@ -10,7 +10,6 @@ import { chart } from '../theme/chart';
 import ScreenContainer from '../components/ScreenContainer';
 import Chip from '../components/Chip';
 import InsightBanner from '../components/InsightBanner';
-import DimensionCard from '../components/DimensionCard';
 import SleepStructureCard from '../components/SleepStructureCard';
 import CyclePhaseCard from '../components/CyclePhaseCard';
 import BasicMetricCard from '../components/BasicMetricCard';
