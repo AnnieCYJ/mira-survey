@@ -14,6 +14,17 @@ import { mm } from '../theme/mindmate';
 import { computeSleepPersonalized } from '../lib/sleepPersonalized';
 // ★ 用与首页同源的「健康库刷新节拍」当依赖，睡眠记录到达后 hero 才会跟着刷新
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
+// ★ 本轮（用户）：把「脑力峰值 / 低谷时段」合进这张「睡眠恢复分」卡内部，
+//   不再单独成块。与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan。
+import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
+import { reportNowMsForDay } from '../lib/dayAnchor';
+import { RingBle } from '../ble/RingBleManager';
+
+function fmtSpan(span: { startHour: number; endHour: number } | null | undefined): string {
+  if (!span) return '—';
+  const f = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`;
+  return `${f(span.startHour)} – ${f(span.endHour)}`;
+}
 
 interface Props {
   /** 日视图：用锚点日毫秒算当日睡眠恢复分 */
@@ -49,6 +60,16 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
     return '恢复明显偏低，今天以休养为主，早点睡比什么都重要。';
   })();
 
+  // ★ 本轮（用户）：脑力峰值 / 低谷时段合进本卡（仅日视图有 anchorMs 时展示）
+  //   ★ 审计（2026-10-27）：戒指断流（>3h 无采样）时，时段不得再显示旧预测值，强制空态。
+  const dataStale = (RingBle.getState().curveStatus as any)?.dataStale === true;
+  const cog = useMemo(() => {
+    if (anchorMs == null || value != null) return null;
+    try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs)); } catch { return null; }
+  }, [anchorMs, value, hsRefresh]);
+  const peak = !dataStale ? cog?.forecast?.peakSpan : null;
+  const trough = !dataStale ? cog?.forecast?.troughSpan : null;
+
   return (
     <View style={styles.card}>
       {/* ★ 本轮：title 移到数字上方（如「睡眠恢复分」） */}
@@ -61,6 +82,29 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
       </View>
       {/* ★ 本轮：数字下方短 AI 分析 */}
       <Text style={styles.analysis}>{analysis}</Text>
+      {/* ★ 本轮（用户）：脑力峰值 / 低谷时段两格，合进睡眠恢复分卡内部 */}
+      {anchorMs != null ? (
+        <View style={styles.brDuo}>
+          <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
+            <Text style={styles.brCellLab}>脑力峰值时段</Text>
+            <Text
+              style={[styles.brCellTime, { color: !dataStale && peak ? theme.colors.success : theme.colors.textSub }]}
+            >
+              {!dataStale && peak ? fmtSpan(peak) : '—'}
+            </Text>
+            <Text style={styles.brCellSub}>适合深度思考</Text>
+          </View>
+          <View style={[styles.brCell, { backgroundColor: theme.colors.danger + '1A' }]}>
+            <Text style={styles.brCellLab}>脑力低谷时段</Text>
+            <Text
+              style={[styles.brCellTime, { color: !dataStale && trough ? theme.colors.danger : theme.colors.textSub }]}
+            >
+              {!dataStale && trough ? fmtSpan(trough) : '—'}
+            </Text>
+            <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -93,4 +137,10 @@ const styles = StyleSheet.create({
   ctx: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeMid, paddingBottom: 4 },
   // ★ 本轮：数字下方短 AI 分析
   analysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: 10 },
+  // ★ 本轮（用户）：脑力峰/谷时段两格（合进卡内）
+  brDuo: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.md },
+  brCell: { flex: 1, borderRadius: theme.radius.md, padding: theme.space.sm },
+  brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  brCellTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
 });

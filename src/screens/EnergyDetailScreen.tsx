@@ -48,8 +48,6 @@ import { buildWorkoutAdvice, buildPhaseAnalysis } from '../lib/phaseAdvice';
 // ★ 2026-10-12：与工具页「运动建议」共用引擎，抽真实处方字段上卡（单一事实来源）
 import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
 import { collectWorkoutInput } from '../lib/workoutInput';
-// ★ P0-2（2026-10-28）：行为关联面板（Pearson r + Cohen's d），放在情绪详情页底部
-import BehaviorCorrelationPanel from '../components/BehaviorCorrelationPanel';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -61,7 +59,7 @@ interface RouteParams { type: EnergyType; }
 const SHOW_AI_BANNER = false;
 
 const META: Record<EnergyType, { name: string; accent: string; sub: string }> = {
-  emotion:   { name: '心理压力', accent: mm.colors.roseCore, sub: '心理压力' },
+  emotion:   { name: '情绪压力', accent: mm.colors.roseCore, sub: '情绪压力' },
   cognitive: { name: '脑力消耗', accent: mm.colors.purpleCore, sub: '认知准备度 · 全天与区间趋势' },
   activity:  { name: '运动消耗', accent: mm.colors.skyCore,  sub: '步数 · 距离 · 活动消耗' },
 };
@@ -170,10 +168,10 @@ export default function EnergyDetailScreen() {
                   activeOpacity={0.8}
                   onPress={() => setEmoTab(k)}
                   accessibilityRole="button"
-                  accessibilityLabel={k === 'stress' ? '心理压力' : '情绪记录'}
+                  accessibilityLabel={k === 'stress' ? '情绪压力' : '情绪记录'}
                 >
                   <Text style={[styles.tabText, on && styles.tabTextOn]}>
-                    {k === 'stress' ? '心理压力' : '情绪记录'}
+                    {k === 'stress' ? '情绪压力' : '情绪记录'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -260,10 +258,8 @@ export default function EnergyDetailScreen() {
             ? <RangeTrendBars type={type} range={range} anchor={anchor} ring={ring} />
             : <CognitiveRangeView range={range} anchor={anchor} rows={cogRangeRows ?? []} />)}
 
-        {/* ★ P0-2（2026-10-28）：行为关联面板 —— 仅情绪详情页底部，展示「哪些行为影响情绪」（Pearson r + Cohen's d） */}
-        {type === 'emotion' && <BehaviorCorrelationPanel outcome="emotion" />}
-
-        {/* 给底部常驻「记录情绪」按钮留白，避免情绪洞察末尾（图例/分析卡）被遮挡 */}
+        {/* ★ 本轮（用户）：去掉情绪压力页底部的「行为关联」面板。
+            给底部常驻「记录情绪」按钮留白，避免情绪洞察末尾（图例/分析卡）被遮挡 */}
         {type === 'emotion' && <View style={{ height: 160 }} />}
       </View>
     </ScreenContainer>
@@ -446,11 +442,11 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       const RL2: Record<RangeKey, string> = { day: '日均', week: '周', month: '月', year: '年' };
       const activityTitle = `${RL2[range]}平均活动消耗`;
       const activityAnalysis = (() => {
-        if (curCal == null) return `这个${RL2[range]}还没有活动数据，继续戴几天就能看到区间平均。`;
-        if (rangeDelta == null) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，暂时没有上个${RL2[range]}的对比。`;
-        if (rangeDelta > 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}多 ${rangeDelta}%。`;
-        if (rangeDelta < 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}少 ${Math.abs(rangeDelta)}%。`;
-        return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，和上个${RL2[range]}持平。`;
+        if (curCal == null) return `这个${RL2[range]}还没有活动数据。戒指还在积累你的运动记录，继续佩戴几天，这里就会显示本${RL2[range]}的日均消耗，并和上个${RL2[range]}做对比。`;
+        if (rangeDelta == null) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，暂时还没有上个${RL2[range]}的数据做对比。建议保持每天 30 分钟以上的中低强度活动，让身体规律地动起来。`;
+        if (rangeDelta > 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}多 ${rangeDelta}%，活动量明显上来了。建议顺势维持节奏，注意运动后的拉伸与补水，别一下子加量太多。`;
+        if (rangeDelta < 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}少 ${Math.abs(rangeDelta)}%，近段时间动得偏少。建议从每天快走或居家训练开始，先把习惯捡回来，再慢慢加量。`;
+        return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，和上个${RL2[range]}基本持平，节奏很稳。建议保持当前安排，穿插一些不同强度的活动，让身体持续有新鲜刺激。`;
       })();
       return (
         <View>
@@ -501,11 +497,11 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
     const sessCount = ex.count;
     const activityDayTitle = '今日活动消耗';
     const activityDayAnalysis = (() => {
-      if (cal === 0) return '今天还没有活动数据，走一走或同步戒指后这里会显示你的消耗。';
-      if (prevCal == null || prevCal <= 0) return `今天消耗 ${cal} 卡路里，暂时没有昨天的对比。`;
-      if (delta > 0) return `今天消耗 ${cal} 卡路里，比昨天多 ${delta}%，动得比平时多。`;
-      if (delta < 0) return `今天消耗 ${cal} 卡路里，比昨天少 ${Math.abs(delta)}%，活动量偏少。`;
-      return `今天消耗 ${cal} 卡路里，和昨天差不多。`;
+      if (cal === 0) return '今天还没有活动数据。出门走一走，或把戒指同步一下，这里就会显示你今天的消耗，并和昨天做对比。';
+      if (prevCal == null || prevCal <= 0) return `今天消耗 ${cal} 卡路里，暂时还没有昨天的记录做对比。建议今天安排 30 分钟左右的活动，步数、心率都会被记下来。`;
+      if (delta > 0) return `今天消耗 ${cal} 卡路里，比昨天多 ${delta}%，动得比平时多。建议趁状态不错，把运动后的拉伸和补水安排上，给身体一个缓冲。`;
+      if (delta < 0) return `今天消耗 ${cal} 卡路里，比昨天少 ${Math.abs(delta)}%，活动量偏少。建议晚些时候补一段快走或居家训练，不用多，先把今天的量补回来。`;
+      return `今天消耗 ${cal} 卡路里，和昨天差不多，节奏很稳。建议保持这个量级，明天可以换个强度或项目，让身体持续受益。`;
     })();
     return (
       <View>
@@ -614,7 +610,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       : v >= 67 ? { t: '压力偏高', c: theme.colors.danger }
         : v >= 34 ? { t: '压力中等', c: theme.colors.warn }
           : { t: '压力偏低', c: theme.colors.success };
-    const emoTitle = range === 'day' ? '今日心理压力' : '近期心理压力';
+    const emoTitle = range === 'day' ? '今日情绪压力' : '近期情绪压力';
     const emoAnalysis = (() => {
       if (v == null) return '今天还没有压力数据，同步后这里会显示你的压力水平。';
       if (v >= 67) return `压力偏高（${v}/100），今天节奏紧，找点空档缓一缓。`;
@@ -1109,7 +1105,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
     return (
       <Card padded={false} style={{ marginTop: theme.sp(2) }}>
         <View style={styles.pad}>
-          <Text style={styles.chartTitle}>心理压力 · {RANGE_DEF[range].label}趋势</Text>
+          <Text style={styles.chartTitle}>情绪压力 · {RANGE_DEF[range].label}趋势</Text>
           <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
             这{RANGE_DEF[range].label}还没有可用于判定的采样
           </Text>
@@ -1126,7 +1122,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
     <Card padded={false} style={{ marginTop: theme.sp(2) }}>
       <View style={styles.pad}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(0.5) }}>
-          <Text style={styles.chartTitle}>心理压力 · {RANGE_DEF[range].label}趋势</Text>
+          <Text style={styles.chartTitle}>情绪压力 · {RANGE_DEF[range].label}趋势</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
             {RANGE_DEF[range].label}平均 {mean}
           </Text>
@@ -1449,8 +1445,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.xs,
     alignItems: 'center',
   },
-  waStatK: { fontSize: theme.fontSize.micro, color: mm.colors.skyDeep, marginBottom: theme.sp(0.5) }, // ★ 对比度修复：skyTint 浅底上白系不可读
-  waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  waStatK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }, // ★ 2026-11-03（用户）：运动建议小卡文字改白（深玻璃卡上白字可读）
+  waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textInk },
   /* ★ 2026-11-03（用户：「较昨日/较上周 字大一点、往上一点、和数值同一行」）：body(15) → card(18) */
   heroCtx: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any },
   // .rows / .row：margin-top 6px，13px 行，底线分隔，末行无底线

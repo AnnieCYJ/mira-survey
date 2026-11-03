@@ -14,7 +14,7 @@
  * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身体负荷」两张卡（与白底版 6 卡对齐）；
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
 import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
@@ -23,7 +23,7 @@ import { dayKey } from '../data/healthStore';
 import { computeEmotionalStress, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { estimateVo2maxFromStore } from '../lib/vo2max';
-import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
@@ -114,7 +114,7 @@ const CHIP_DEFS: ChipDef[] = [
   { key: 'recovery', label: '睡眠恢复', icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
   { key: 'load', label: '身体负荷', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '身体负荷', unit: '/100', yMin: 0, yMax: 100 }) },
   // ★ 2026-10-18 用户：「压力水平」改名「情绪」（路由目标不变 → EnergyDetail emotion）
-  { key: 'emo', label: '情绪', icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
+  { key: 'emo', label: '情绪压力', icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
   { key: 'act', label: '活动消耗', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
   { key: 'cycle', label: '生理周期', icon: lineIcon(['M12 3.2a8.8 8.8 0 1 0 8.8 8.8', 'M12 7.2a4.8 4.8 0 0 1 0 9.6']), go: (n) => n.navigate('CycleCalendar') },
   { key: 'cardio', label: '心肺能力', icon: lineIcon('M12 21s-7.5-4.6-10-9.3C.6 8.3 2.3 5 5.5 5c1.9 0 3.2 1 4.5 2.6C11.3 6 12.6 5 14.5 5 17.7 5 19.4 8.3 22 11.7 19.5 16.4 12 21 12 21Z'), go: (n) => n.navigate('CardioDetail') },
@@ -147,8 +147,11 @@ export default function CalmWaveHome() {
   useEffect(() => RingBle.onState((s) => setRing(s)), []);
   // ★ 2026-10-26（修复「今日状态一直不更新」）：圆环恢复分 / 压力 / 情绪 都从 healthStore 读取，
   //   而 healthStore 在戒指回填写入后只增 version、不会自动触发本组件重渲染 —— 故显式订阅其版本，
-  //   每次同步/回填完成即重算首页数据（与 InsightScreen / MetricDetail / CognitiveLoadCard 同源机制）。
-  useHealthStoreVersion();
+  // ★ 性能修复：原本 useHealthStoreVersion() 在 healthStore 每次写入（实时流/回填高频）都重渲染整页
+  //   并同步重算 stressReport / esReport / 恢复分 等重型函数 → 主线程被压满 → 首页卡顿、点卡片无响应、
+  //   切 Tab / Grok 共享同一 JS 线程也跟着卡。改用品详情页同源的「防抖刷新键」：
+  //   数据安静约 700ms（高频时最多 1500ms）才重渲染一次，重型派生值也用 useMemo 跟着收口。
+  const refreshKey = useDebouncedHealthStoreRefresh(700);
   // ★ mira-ocean：视频+深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
@@ -212,7 +215,7 @@ export default function CalmWaveHome() {
   //   一律显示「暂无数据」，不再写死兜底 82 + 元气满满。取数本身按天（Date.now() 当日），
   //   24:00 跨天后自动回到空态，无需额外定时器。
   // 恢复分（睡眠指标，下沉到卡片行「睡眠恢复」）—— 仅供下方卡片行展示，不再作为首页「今日状态」大数字
-  const recoveryScore = sleepRecoveryScoreForDay(Date.now());
+  const recoveryScore = useMemo(() => sleepRecoveryScoreForDay(Date.now()), [refreshKey]);
   const hasRecoveryData = recoveryScore != null;
   const RECOVERY = hasRecoveryData ? Math.round(recoveryScore) : 0;
   // ★ 2026-10-26：首页指标卡全部接真实数据（替代原写死的静态预览值 82/46/38/320/第14天）。
@@ -255,13 +258,13 @@ export default function CalmWaveHome() {
   // 身体负荷：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
   // ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hr，daily 也不含 stress，
   //   该字段恒为 null → 身体负荷卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
-  const stressReport = (() => { try { return computeStressReport(Date.now()); } catch { return null; } })();
+  const stressReport = useMemo(() => { try { return computeStressReport(Date.now()); } catch { return null; } }, [refreshKey]);
   const bodyLoad = stressReport?.score ?? null;
 
   // 情绪：emotionalStress 多信号融合（0–100，50=和平时差不多；越高压力越大）
-  const esReport = (() => {
+  const esReport = useMemo(() => {
     try { return computeEmotionalStress(Date.now(), sportSessions); } catch { return null; }
-  })();
+  }, [refreshKey, sportSessions]);
   const emoValue = (() => {
     try {
       if ((status as any)?.dataStale) return null;

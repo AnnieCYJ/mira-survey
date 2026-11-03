@@ -30,10 +30,8 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
+import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
-// ★ 用与首页同源的「健康库刷新节拍」当依赖，睡眠记录到达后卡片才会跟着刷新
-import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 // ── v9 原型移植：睡眠节律 / 睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
 import SleepRhythmCard from '../components/SleepRhythmCard';
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
@@ -48,8 +46,6 @@ import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
-import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
-import { reportNowMsForDay } from '../lib/dayAnchor';
 
 
 interface DayRec {
@@ -511,8 +507,6 @@ export default function SleepDetailScreen() {
             onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
           />
 
-          <BrainPeakTroughBlock anchorMs={anchor.getTime()} />
-
           <SleepRhythmCard
             dk={sleepDayKey(anchor)}
             isToday={dayKey(anchor) === healthDayKey(Date.now())}
@@ -600,67 +594,9 @@ export default function SleepDetailScreen() {
 }
 
 
-/**
- * BrainReadinessCard —— 「脑力准备度」卡片（日视图，置于「睡眠分析」上方）
- *
- * ★ 2026-10-26（用户）：睡眠恢复页要展示脑力准备度 + 脑力峰值/低谷时段。
- *   与能量详情页「认知准备度」卡**同源同口径**：
- *   - 当前准备度 `report.brainRemaining`（0–100，剩余脑力）；
- *   - 峰/谷时段 `report.forecast.peakSpan / troughSpan`（节律拟合的 ±1.5h 区间，
- *     没有全天数据也用基线预测，绝不插值；无预测则诚实显「—」）。
- *   数据纪律：任一项缺失 → 显「—」，不猜、不拿演示数据顶替。
- */
-function fmtSpan(span: { startHour: number; endHour: number } | null | undefined): string {
-  if (!span) return '—';
-  const f = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`;
-  return `${f(span.startHour)} – ${f(span.endHour)}`;
-}
 
-/**
- * BrainPeakTroughBlock —— 仅展示「脑力峰值 / 低谷时段」（日视图，置于「睡眠恢复分」卡片下方）
- *
- * ★ 本轮（用户）：去掉「脑力准备度」总分卡（不再展示 0–100 当前分），
- *   只把峰值 / 低谷时段作为两个小格子放在睡眠恢复分卡片下方，不再单独成卡。
- *   与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan。
- *   数据纪律：任一项缺失 → 显「—」，不猜、不拿演示数据顶替。
- */
-function BrainPeakTroughBlock({ anchorMs }: { anchorMs: number }) {
-  const hsRefresh = useDebouncedHealthStoreRefresh(700);
-  // ★ 2026-10-27（审计 P2）：戒指断流（>3h 无采样）时，时段不得再显示旧预测值，强制空态。
-  const dataStale = (RingBle.getState().curveStatus as any)?.dataStale === true;
-  const report = useMemo(() => {
-    try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs)); } catch { return null; }
-  }, [anchorMs, hsRefresh]);
-
-  const peak = !dataStale ? report?.forecast?.peakSpan : null;
-  const trough = !dataStale ? report?.forecast?.troughSpan : null;
-
-  return (
-    <View style={{ marginBottom: theme.space.md }}>
-      <View style={styles.brDuo}>
-        <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
-          <Text style={styles.brCellLab}>脑力峰值时段</Text>
-          <Text
-            style={[styles.brCellTime, { color: !dataStale && peak ? theme.colors.success : theme.colors.textSub }]}
-          >
-            {!dataStale && peak ? fmtSpan(peak) : '—'}
-          </Text>
-          <Text style={styles.brCellSub}>适合深度思考</Text>
-        </View>
-        <View style={[styles.brCell, { backgroundColor: theme.colors.danger + '1A' }]}>
-          <Text style={styles.brCellLab}>脑力低谷时段</Text>
-          <Text
-            style={[styles.brCellTime, { color: !dataStale && trough ? theme.colors.danger : theme.colors.textSub }]}
-          >
-            {!dataStale && trough ? fmtSpan(trough) : '—'}
-          </Text>
-          <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
+// ★ 本轮（用户）：脑力峰值 / 低谷时段已合进 SleepRecoveryHero 卡内部（src/components/SleepRecoveryHero.tsx），
+//   睡眠恢复详情页不再单独渲染 BrainPeakTroughBlock。fmtSpan 也随之一并迁移到该组件。
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginBottom: theme.space.md },

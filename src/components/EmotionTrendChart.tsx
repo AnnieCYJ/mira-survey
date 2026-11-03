@@ -84,11 +84,11 @@ export default function EmotionTrendChart({
   const plotW = Math.max(1, svgW - padL - padR);
   const plotH = Math.max(1, svgH - padT - padB);
 
-  // 上下两块：情绪线占 62%，唤醒条占 30%，中间留白
-  const eH = plotH * 0.62;
-  const aH = plotH * 0.30;
+  // 上下两块：情绪线占 50%，唤醒条占 42%（★ 本轮：用户要唤醒高度再高一点），中间留白
+  const eH = plotH * 0.50;
+  const aH = plotH * 0.42;
   const eTop = padT;
-  const aTop = eTop + eH + theme.sp(10);
+  const aTop = eTop + eH + theme.sp(8);
 
   const xAt = (slot: number) => padL + ((slot + 0.5) / N) * plotW;
   const vY = (val: number) => eTop + eH * (1 - (val + 10) / 20);     // −10~+10
