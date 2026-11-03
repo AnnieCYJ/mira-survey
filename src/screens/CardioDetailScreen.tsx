@@ -172,7 +172,8 @@ const s = StyleSheet.create({
     backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: theme.radius.lg,
     paddingVertical: 22, alignItems: 'center', marginBottom: 14,
   },
-  heroNum: { fontSize: 58, fontWeight: '800', color: mm.colors.ink, lineHeight: 60 },
+  // ★ 2026-11-03：裸 58 → fontSize.hero(46)，与 MetricDetail/StatusTrend 等 hero 数字同 token
+  heroNum: { fontSize: theme.fontSize.hero, fontWeight: '800', color: mm.colors.ink, lineHeight: 48 },
   heroUnit: { fontSize: theme.fontSize.sm, color: SUB, marginLeft: 8, marginBottom: 10 },
   bandPill: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: theme.radius.pill, marginTop: 6 },
   bandPillTxt: { fontSize: theme.fontSize.xs, fontWeight: '700' },
