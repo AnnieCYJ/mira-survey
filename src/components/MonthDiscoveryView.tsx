@@ -74,6 +74,14 @@ function patternKindLabel(kind: string): string {
   return PATTERN_KIND_LABEL[kind] ?? '发现';
 }
 
+// ★ 本轮（用户：「先给我写几个样子看看」）：真实库里还没有规律时，用下面 3 条示例填充，
+//   让日历末页直接展示「每条独立磨砂玻璃卡」的真实样式；接入真实数据后会自动替换为真实规律。
+const SAMPLE_PATTERNS: Array<{ id: string; kind: string; text: string; title: string }> = [
+  { id: 'sample-rhythm', kind: 'rhythm', title: '入睡时间与情绪', text: '你 23 点以后入睡的晚上，第二天的情绪评分平均更高 —— 最近 14 天里大概 9 天是这样。' },
+  { id: 'sample-corr', kind: 'correlation', title: '饮食记录与深睡', text: '认真记饮食的那几天，你的深睡占比平均比没记的那几天高 4%。' },
+  { id: 'sample-grp', kind: 'group_diff', title: '周期阶段与活动', text: '排卵期前一周，你的活动消耗平均比黄体期高 8%，身体状态更活跃。' },
+];
+
 // ── App 同款照片资源（与首页泡泡卡 / 工具页同源） ──
 const IMG = {
   meditation: require('../assets/card_meditation.jpg'),
@@ -746,10 +754,12 @@ export default function MonthDiscoveryView({
             这些个，还有什么认知专注这些都去掉。」 */}
       </Card>
 
-      {/* ★ 月度发现 · 你的本月节奏（合并「你做过多少次」）：时间热力 + 44% + 你做过多少次（可折叠）
+      {/* ★ 2026-11-03(2)：按用户要求「先隐藏掉我的本月节奏」——整卡隐藏（保留代码便于后续切换） */}
+      {false && (
+      <Card>
+        {/* ★ 月度发现 · 你的本月节奏（合并「你做过多少次」）：时间热力 + 44% + 你做过多少次（可折叠）
           ★ 2026-10-28 重设计：卡头去掉图标只留标题 + 收藏；去掉原「洞察」散文段，
             下方改放「你做过多少次」；其小标题右侧加向下箭头可折叠。 */}
-      <Card>
         <View style={styles.cardHead}>
           <Text style={styles.cardHeadTitle}>你的本月节奏</Text>
           <View style={styles.headActions}>
@@ -866,28 +876,30 @@ export default function MonthDiscoveryView({
           </>
         ) : null}
       </Card>
+      )}
 
-      {/* ★ Phase 2：规律观察 —— 无门禁软闭环的落位处（2026-10-28 重设计：
-          卡头去掉图标只留标题 + 收藏；每条改 obs 样式（左图标 + 文字），
-          去掉「23天配对·r0.59」证据 chip、问问 Mira、挺准；删掉放右上角）。 */}
-      <Card>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardHeadTitle}>规律观察</Text>
-          <View style={styles.headActions}>
-            <TouchableOpacity
-              style={styles.favBtn}
-              onPress={() => setFavPattern((v) => !v)}
-              accessibilityRole="button"
-              accessibilityLabel={favPattern ? '取消收藏规律观察' : '收藏规律观察'}
-            >
-              <Icon name="bookmark" size={18} color={favPattern ? GOLD : mm.colors.inkFaint} />
-            </TouchableOpacity>
-          </View>
+      {/* ★ 2026-11-03(2)：规律观察 —— 每条独立成一张磨砂玻璃卡（左 icon + 右内容 + 类别标签）；
+          卡头只留标题 + 收藏（保留切换）。 */}
+      <View style={styles.cardHead}>
+        <Text style={styles.cardHeadTitle}>规律观察</Text>
+        <View style={styles.headActions}>
+          <TouchableOpacity
+            style={styles.favBtn}
+            onPress={() => setFavPattern((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={favPattern ? '取消收藏规律观察' : '收藏规律观察'}
+          >
+            <Icon name="bookmark" size={18} color={favPattern ? GOLD : mm.colors.inkFaint} />
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {observedPatterns.length > 0 ? (
+      {(() => {
+        const isSample = observedPatterns.length === 0;
+        const displayPatterns = isSample ? SAMPLE_PATTERNS : observedPatterns;
+        return (
           <>
-            {observedPatterns.slice(0, 4).map((p, i) => {
+            {displayPatterns.slice(0, 4).map((p) => {
               const accent =
                 p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
                 : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
@@ -900,44 +912,44 @@ export default function MonthDiscoveryView({
                 : 'sparkle';
               const kindLabel = patternKindLabel(p.kind);
               return (
-                <View key={p.id} style={[styles.patObsRow, i > 0 && styles.patRowGap]}>
-                  <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
-                    <Icon name={pIcon} size={14} color={accent.deep} />
-                  </View>
-                  <View style={styles.obsBody}>
-                    {/* ★ 2026-10-28：正文放大 + 纯白，确保一眼读清（原 xs/inkSoft 在半透明白卡上发糊） */}
-                    <Text style={styles.obsText}>{p.text}</Text>
-                    {/* ★ 2026-10-28（用户）：每条下方加类别标签，分清这观察讲什么 */}
-                    <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
-                      <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
+                <Card key={p.id}>
+                  <View style={[styles.patObsRow, isSample && { paddingRight: 8 }]}>
+                    <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
+                      <Icon name={pIcon} size={14} color={accent.deep} />
                     </View>
+                    <View style={styles.obsBody}>
+                      {/* ★ 2026-10-28：正文放大 + 纯白，确保一眼读清 */}
+                      <Text style={styles.obsText}>{p.text}</Text>
+                      {/* ★ 2026-10-28（用户）：每条下方加类别标签，分清这观察讲什么 */}
+                      <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
+                        <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
+                      </View>
+                    </View>
+                    {/* ★ 本轮：示例态不显示「删掉」（示例非真实数据，删了会反复出现） */}
+                    {!isSample ? (
+                      <TouchableOpacity
+                        style={styles.patObsDel}
+                        onPress={() => { void onPatternRemove(p.id); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`删掉这条规律：${p.title}`}
+                      >
+                        <Text style={styles.patObsDelText}>删掉</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
-                  <TouchableOpacity
-                    style={styles.patObsDel}
-                    onPress={() => { void onPatternRemove(p.id); }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`删掉这条规律：${p.title}`}
-                  >
-                    <Text style={styles.patObsDelText}>删掉</Text>
-                  </TouchableOpacity>
-                </View>
+                </Card>
               );
             })}
             <Text style={styles.cardNote}>
-              {coverageNote
-                ? `${coverageNote} · `
-                : ''}这些是从你自己的数据里看出来的规律，不是诊断；不想看就点右上角删掉。
+              {isSample
+                ? '以下为示例样式（接入你的数据后会替换成真实观察）—— 这些是从你自己的数据里看出来的规律，不是诊断。'
+                : coverageNote
+                  ? `${coverageNote} · 这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。`
+                  : '这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。'}
             </Text>
           </>
-        ) : (
-          <>
-            <Text style={styles.patText}>
-              还没有观察到规律 —— 多戴几天、让数据连起来，这里就会出现只属于你的观察。
-            </Text>
-            <Text style={styles.cardNote}>规律来自你自己的数据，不是诊断；不想看就删掉。</Text>
-          </>
-        )}
-      </Card>
+        );
+      })()}
 
       {/* ★ 2026-10-28：「你做过多少次」已合并进上方「你的本月节奏」卡（可折叠），此处不再单独成卡 */}
 

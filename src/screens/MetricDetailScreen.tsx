@@ -73,6 +73,51 @@ const PHASE_BG: Record<string, string> = {
 };
 
 /**
+ * ★ 本轮（用户）：指标详情 hero 数字下方加一段短 AI 分析（不太长），按指标语义 + 相对口径判读。
+ *   覆盖身体负荷 / 情绪 / 心率 / 血氧 / HRV / 疲劳 / 皮电 / 体温 / 血糖 / 血压 等常用指标，其余走通用兜底。
+ */
+function buildHeroAnalysis(key: string, name: string, value: number | null, range: RangeKey): string {
+  const day = range === 'day';
+  if (value == null) {
+    return day
+      ? '今天还没有足够的数据，持续佩戴后，这里会结合你的真实数据生成解读。'
+      : '这一区间还没有足够的数据，多戴几天后这里会出现你的趋势解读。';
+  }
+  switch (key) {
+    case 'stress': // 身体负荷
+      if (value < 30) return day ? '今天身体负荷很轻，状态松弛，可以放心安排强度高一点的活动。' : '这段时间身体负荷整体偏轻，节奏稳，保持就好。';
+      if (value < 55) return day ? '今天身体负荷适中，节奏平稳，按原计划来即可。' : '这段时间负荷适中，状态平稳。';
+      return day ? '今天身体负荷偏重，身体在提醒你慢下来，午后找机会歇一歇。' : '这段时间负荷偏重，记得给自己留点喘息的空间。';
+    case 'emotion':
+      if (value < 35) return day ? '今天情绪轻松，状态敞开，适合处理需要专注或沟通的事。' : '这段时间情绪整体轻松。';
+      if (value < 60) return day ? '今天情绪平稳，没有大起大落，正常推进就好。' : '这段时间情绪平稳。';
+      return day ? '今天情绪偏紧，琐事堆积让你有点绷，做点放松的事缓一缓。' : '这段时间情绪偏紧，留意给自己减压。';
+    case 'hr':
+      return day ? `今天心率均值约 ${Math.round(value)} 次/分，静息偏低说明心脏效率高。` : `这段心率均值约 ${Math.round(value)} 次/分。`;
+    case 'spo2':
+      return value >= 95 ? '血氧在正常区间，身体供氧充足。' : '血氧略低于 95%，留意呼吸节奏与睡眠环境。';
+    case 'hrv':
+      return value >= 50 ? 'HRV 不错，身体恢复和自主调节能力在线。' : 'HRV 偏低，可能疲劳或压力大，注意休息。';
+    case 'fatigue':
+      if (value < 30) return '疲劳度低，精力在线。';
+      if (value < 55) return '疲劳度适中，正常节奏。';
+      return '疲劳度偏高，今天别硬撑，早点收工休息。';
+    case 'eda':
+      return value >= 50 ? '皮电偏高，交感神经活跃，可能紧张或高度专注。' : '皮电平稳，身体处于放松状态。';
+    case 'temp':
+    case 'skinTemp':
+      return '体温按相对个人基线显示，曲线形状比绝对数值更有意义。';
+    case 'bloodSugar':
+      return value <= 7.8 ? '餐后血糖在常见范围内，代谢平稳。' : '血糖偏高，留意饮食结构，餐后走一走有帮助。';
+    case 'bpSys':
+    case 'bpDia':
+      return '血压按全天趋势展示，数值随测量时段波动，看整体比看单点更有意义。';
+    default:
+      return day ? `今天你的${name}已记录，结合长期趋势，保持现在的节奏即可。` : `这段${name}趋势已记录，保持现在的节奏即可。`;
+  }
+}
+
+/**
  * ★ 2026-10-10（用户拍板）：日视图走「全天柱状小条」的六项指标规格。
  *
  * `binMin`  一律 5 分钟/点（与心率同口径，Oura 5 分钟增量）
@@ -915,6 +960,8 @@ export default function MetricDetailScreen() {
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
   const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
+  // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
+  const heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
 
   // 打开「历史日」且当前指标无数据时，自动触发一次 backfill（需戒指已连接），
   // 让历史趋势图无需手动连戒指即可补拉。同一日期只触发一次，避免重复请求刷屏。
@@ -988,6 +1035,8 @@ export default function MetricDetailScreen() {
         {!isEcg && (
           <Card padded={false}>
             <View style={styles.pad}>
+              {/* ★ 本轮：title 移到数字上方（今日/近期 + 指标名） */}
+              <Text style={styles.heroTitle}>{range === 'day' ? `今日${params.name}` : `近期${params.name}`}</Text>
               <View style={styles.hero}>
                 <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
                 {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
@@ -998,6 +1047,8 @@ export default function MetricDetailScreen() {
                   </Text>
                 )}
               </View>
+              {/* ★ 本轮：数字下方短 AI 分析 */}
+              {hasData ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
             </View>
           </Card>
         )}
@@ -2557,11 +2608,15 @@ const styles = StyleSheet.create({
   },
   liveText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.success },
   hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
+  // ★ 本轮：title 在数字上方（今日/近期 + 指标名）
+  heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(1.5) },
   // ★ 2026-10-10：原 #FFFFFF 白字是给旧深色渐变头用的，v16 页面改全白底后大数字「白字白底」不可见；
   //   数据卡挪到选择器下方的同时改为墨色（与状态趋势/脑力详情页同口径）。
   heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, color: mm.colors.ink },
   heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
   heroTag: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.space.md, alignSelf: 'center' },
+  // ★ 本轮：数字下方短 AI 分析
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
   up: { color: theme.colors.success },
   down: { color: theme.colors.stateTense },

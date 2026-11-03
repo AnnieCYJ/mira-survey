@@ -40,17 +40,27 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
         : (pers.daysToReady > 0 ? `还需 ${pers.daysToReady} 晚建立基线` : '按固定目标评估'))
     : null;
 
+  // ★ 本轮（用户）：数字下方加一段短 AI 分析（不太长），按相对 50 基线判读
+  const analysis = (() => {
+    if (score == null) return '今天还没有睡眠数据，戴上戒指睡一觉，明天这里会显示你的恢复分和解读。';
+    if (score >= 82) return '今天睡得比平时好，身体恢复得很到位，保持现在的入睡节奏，明天状态会更稳。';
+    if (score >= 69) return '睡眠恢复略低于平时，今晚早点休息，给身体一点缓冲，状态会慢慢回来。';
+    if (score >= 51) return '恢复偏弱，今天别把安排排太满，午间小憩或傍晚散个步会有帮助。';
+    return '恢复明显偏低，今天以休养为主，早点睡比什么都重要。';
+  })();
+
   return (
     <View style={styles.card}>
+      {/* ★ 本轮：title 移到数字上方（如「睡眠恢复分」） */}
+      <Text style={styles.title}>{label}</Text>
       <View style={styles.hero}>
-        <View style={styles.lhs}>
-          <Text style={styles.score}>{score != null ? String(Math.round(score)) : '—'}</Text>
-          <Text style={styles.lab}>{label}</Text>
-        </View>
+        <Text style={styles.score}>{score != null ? String(Math.round(score)) : '—'}</Text>
         <Text style={[styles.ctx, resolvedCtx == null && { color: theme.colors.textSub }]}>
           {resolvedCtx ?? '暂无数据'}
         </Text>
       </View>
+      {/* ★ 本轮：数字下方短 AI 分析 */}
+      <Text style={styles.analysis}>{analysis}</Text>
     </View>
   );
 }
@@ -71,6 +81,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   lhs: { flexDirection: 'column' },
+  // ★ 本轮：title 在数字上方（如「睡眠恢复分」）
+  title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: 6 },
   score: {
     fontSize: theme.fontSize.hero,
     fontWeight: theme.weight.semibold,
@@ -78,5 +90,7 @@ const styles = StyleSheet.create({
     lineHeight: 48,
   },
   lab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 4 },
-  ctx: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep, paddingBottom: 4 },
+  ctx: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.limeMid, paddingBottom: 4 },
+  // ★ 本轮：数字下方短 AI 分析
+  analysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: 10 },
 });

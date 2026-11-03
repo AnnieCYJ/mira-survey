@@ -11,7 +11,9 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet, StatusBar } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { theme } from '../theme/theme';
@@ -30,6 +32,7 @@ const TONE_COLOR: Record<'good' | 'fair' | 'low', string> = {
 
 export default function AccountHubScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList, 'AccountHub'>>();
+  const insets = useSafeAreaInsets();
   const members = useFamilyMembers();
   const me = members.find((m) => m.relationship === 'self')!;
   const bound = members.filter((m) => m.bound && m.relationship !== 'self');
@@ -51,10 +54,17 @@ export default function AccountHubScreen() {
 
   return (
     <View style={[s.root, { backgroundColor: theme.colors.bgBottom }]}>
+      {/* ★ 2026-11-03：背景与设置页一致 = App 深海渐变（bgGradStops 顶→底） */}
+      <LinearGradient
+        colors={[...theme.colors.bgGradStops]}
+        locations={theme.colors.bgGradLocs as unknown as number[]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={{ paddingBottom: theme.space.xl }}>
         {/* 头部 */}
-        <View style={s.head}>
+        <View style={[s.head, { paddingTop: insets.top + theme.space.xl }]}>
           <Text style={s.headTitle}>账户</Text>
           <TouchableOpacity style={s.gear} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
             <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={theme.colors.textTitle} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">

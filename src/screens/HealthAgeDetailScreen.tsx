@@ -460,6 +460,7 @@ export default function HealthAgeDetailScreen() {
             只讲差值 —— 大数字 = 较实际年龄的差（5.4）+ 岁，右侧绿字「较实际年龄低」（贴着数字右边，不再悬到卡片最右）。
             绝对值 29.6 / 35.0 一律挪到下方「与实际年龄对比」卡里（身体年龄 XX岁 / 实际年龄 XX岁）。 */}
         <Card style={styles.heroCard}>
+          <Text style={styles.heroTitle}>身体年龄</Text>
           {delta != null ? (
             <View style={styles.heroNumRow}>
               <Text style={styles.heroNum}>{Math.abs(delta).toFixed(1)}</Text>
@@ -476,6 +477,15 @@ export default function HealthAgeDetailScreen() {
               </Text>
             </View>
           )}
+          <Text style={styles.heroAnalysis}>
+            {(() => {
+              if (delta == null) return '填写身体成分后，这里会显示你的身体年龄与近 30 天趋势。';
+              const d = Math.abs(delta);
+              if (d < 0.05) return '身体年龄与实际年龄基本一致。';
+              if (delta < 0) return `身体年龄比实际年龄小 ${d.toFixed(1)} 岁，近期恢复和状态不错。`;
+              return `身体年龄比实际年龄大 ${d.toFixed(1)} 岁，近期可以多些恢复和睡眠。`;
+            })()}
+          </Text>
         </Card>
 
         {/* ★ 2026-10-10（用户）：未填身体成分 → 引导卡；点按钮原地展开 ExamTab 表单，
@@ -667,6 +677,9 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     marginBottom: 9,
   },
+  /* ★ 2026-11-03（用户·统一 hero 结构）：数字上方 title + 数字下方短 AI 分析 */
+  heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   panel: {
     padding: theme.sp(4),
     marginBottom: theme.sp(3),

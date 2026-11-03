@@ -127,8 +127,12 @@ const CHIP_DEFS: ChipDef[] = [
 //   一行 5 张改横向 ScrollView——首屏露出 4 张（84×96 大卡大字），第 5 张滑动可见；
 //   卡行从弧上方移到海浪/深色交界线下方（过渡区）；环 240→280、中心字 46→58；
 //   AI 建议卡字号同步放大。花瓣历史资产见 git a07525c。
-const CHIP_W = 84;
-const CHIP_H = 96;
+// ★ 2026-11-03（用户：展示三个卡片，后边往后移；睡眠恢复/身体负荷字要大一些）：
+//   前 3 张大卡（宽 100、标签 14）更醒目，其余卡片收窄（宽 74、标签 12.5）向右滑动可见。
+// ★ 本轮：底部指标卡整体略放大（用户："卡片可以稍微大一点"）—— 宽 100→108、高 96→104
+const CHIP_BIG_W = 108;
+const CHIP_SMALL_W = 74;
+const CHIP_H = 104;
 const CHIP_GAP = 8;
 // 大半圆环尺寸（★ 2026-11-03 还原 2026-10-18 大半圆：viewBox 280×150，R=116.7，用于下方布局块高估算）
 const GAUGE_W = 280;
@@ -370,11 +374,11 @@ export default function CalmWaveHome() {
   // ★ 2026-11-03（V2）：以 844 设计高为基准等比缩放，对齐用户参考图布局
   const k = height / 844;
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
-  const gaugeTop = 116 * k;                            // 仪表区顶部（状态栏下）
-  const analysisTop = gaugeTop + 312 * k;              // 分析文字（弧/数字下方）
+  const gaugeTop = 140 * k;                            // 仪表区顶部（★ 本轮 116→140 整体下移）
+  const analysisTop = gaugeTop + 340 * k;              // 分析文字（★ 本轮 312→340 避让放大后的状态词）
   const capsuleTop = analysisTop + 58 * k;             // 建议胶囊
-  // 卡片行：贴 tab 上方（tab 高 84 + 安全区，上留 12）
-  const chipRowTop = height - insets.bottom - 84 - 12 - CHIP_H;
+  // 卡片行：贴 tab 上方（tab 高 84 + 安全区，上留 4，★ 本轮 12→4 整体再下移一点点）
+  const chipRowTop = height - insets.bottom - 84 - 4 - CHIP_H;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -450,8 +454,8 @@ export default function CalmWaveHome() {
             <Circle cx={arcEnd.x} cy={arcEnd.y} r={13} fill="rgba(255,255,255,0.30)" />
             <Circle cx={arcEnd.x} cy={arcEnd.y} r={7} fill="#FFFFFF" />
           </Svg>
-          {/* 数字落圆下部开口处（圆心空） */}
-          <View style={[s.gaugeCenter, { top: 168 * (gaugeSize / 300) }]}>
+          {/* 数字落圆下部开口处（圆心空）：★ 2026-11-03 整体下移，正好落在 0/100 中间开口处 */}
+          <View style={[s.gaugeCenter, { top: 206 * (gaugeSize / 300) }]}>
             <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
             <Text style={s.gLabel}>{moodLabel}</Text>
           </View>
@@ -468,26 +472,28 @@ export default function CalmWaveHome() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          snapToInterval={CHIP_W + CHIP_GAP}
-          decelerationRate="fast"
           contentContainerStyle={{ paddingHorizontal: 16, gap: CHIP_GAP }}
         >
           {/* ★ 2026-10-28（用户：暂时没数据的心肺能力不该放首页）—— vo2 为 null（档案缺 / 不足 7 晚静息心率）
-              时直接从卡行移除；有值才出现，不影响其余 5 张卡的滑动布局。 */}
-          {CHIP_DEFS.filter((c) => c.key !== 'cardio' || !!vo2).map((c) => {
+              时直接从卡行移除；有值才出现，不影响其余 5 张卡的滑动布局。
+              ★ 2026-11-03：前 3 张为大卡（宽 100、标签/数值更大），其余收窄（宽 74）向右滑动。 */}
+          {CHIP_DEFS.filter((c) => c.key !== 'cardio' || !!vo2).map((c, i) => {
             const d = chipDyn[c.key];
+            // ★ 本轮：全部卡片统一为大卡尺寸（活动消耗/生理周期 与 情绪/身体负荷 同尺寸）
+            const big = true;
+            const w = CHIP_BIG_W;
             return (
               <TouchableOpacity
                 key={c.key}
-                style={[s.chip, { width: CHIP_W }]}
+                style={[s.chip, { width: w }]}
                 activeOpacity={0.7}
                 accessibilityLabel={`${c.label} ${d.value}${d.unit ? d.unit : ''}`}
                 onPress={() => c.go(navigation)}
               >
                 <View style={s.chipIcon}>{c.icon}</View>
-                <Text style={s.chipLabel}>{c.label}</Text>
+                <Text style={[s.chipLabel, big && s.chipLabelBig]}>{c.label}</Text>
                 <View style={s.chipValRow}>
-                  <Text style={[s.chipVal, d.good && s.chipValGood]}>{d.value}</Text>
+                  <Text style={[s.chipVal, big && s.chipValBig, d.good && s.chipValGood]}>{d.value}</Text>
                   {d.unit ? <Text style={s.chipUnit}>{d.unit}</Text> : null}
                 </View>
                 <Text style={s.chipTag}>{d.tag}</Text>
@@ -597,9 +603,11 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   chipIcon: { marginBottom: 3 },
-  chipLabel: { fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
+  chipLabel: { fontSize: 12.5, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
+  chipLabelBig: { fontSize: 14, color: 'rgba(255,255,255,0.78)' },
   chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
-  chipVal: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  chipVal: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  chipValBig: { fontSize: 22 },
   chipValGood: { color: '#D5E384' },
   chipUnit: { fontSize: 10.5, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
   chipTag: { fontSize: 10.5, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
@@ -621,10 +629,10 @@ const s = StyleSheet.create({
     top: 0,
     alignItems: 'center',
   },
-  // 分数主视觉（大半圆：58px 白字）
-  gBig: { fontSize: 58, fontWeight: '700', color: '#fff', marginBottom: 10, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
-  // 状态档位词（如 状态良好）
-  gLabel: { fontSize: 14.5, color: 'rgba(255,255,255,0.72)', marginTop: 9, fontWeight: '500' },
+  // 分数主视觉（★ 2026-11-03：58→44 数字缩小；★ 本轮 收紧与状态词间距）
+  gBig: { fontSize: 44, fontWeight: '700', color: '#fff', marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  // 状态档位词（如 平平静静）：★ 本轮 44→40，比大数字略小一点（用户要求"稍小一点点"）
+  gLabel: { fontSize: 40, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
   // 周期副行
   gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
   // 收工啦放松胶囊（→ 呼吸放松）
@@ -637,7 +645,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },
-  relaxPillTxt: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+  relaxPillTxt: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 
   // 分析文字（浮于照片，无卡片底）
   analysisWrap: { position: 'absolute', left: 24, right: 24 },
@@ -660,7 +668,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 17.5, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0 },
+  analysis: { fontSize: 17.5, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0, textAlign: 'center' },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',

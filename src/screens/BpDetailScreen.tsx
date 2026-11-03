@@ -391,32 +391,47 @@ export default function BpDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Hero：平均值 sys/dia */}
-      <View style={styles.heroRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.heroAvgLabel}>平均值</Text>
-          <View style={styles.heroVals}>
-            <Text style={[styles.heroSys, { color: COL_SYS }]}>{fmt(data.avgSys)}</Text>
-            <Text style={styles.heroSep}>/</Text>
-            <Text style={[styles.heroDia, { color: COL_DIA }]}>{fmt(data.avgDia)}</Text>
-            <Text style={styles.heroUnit}> mmHg</Text>
-          </View>
-        </View>
-        {/* 图例 */}
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COL_SYS }} />
-            <Text style={styles.legendText}>收缩压</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COL_DIA }} />
-            <Text style={styles.legendText}>舒张压</Text>
-          </View>
-        </View>
-      </View>
-
       <RangeSwitch value={range} onChange={setRange} />
       <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
+
+      {/* ★ 2026-11-03（用户）：血压数据卡移到「日/周/月/年」切换器下方，与其他详情页统一（切换 → 选择器 → 数据卡 → 图表）。此前本页 hero+分析在切换器上方，属孤例。 */}
+      <Card>
+        {/* Hero：平均值 sys/dia */}
+        <View style={styles.heroRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.heroAvgLabel}>平均值</Text>
+            <View style={styles.heroVals}>
+              <Text style={[styles.heroSys, { color: COL_SYS }]}>{fmt(data.avgSys)}</Text>
+              <Text style={styles.heroSep}>/</Text>
+              <Text style={[styles.heroDia, { color: COL_DIA }]}>{fmt(data.avgDia)}</Text>
+              <Text style={styles.heroUnit}> mmHg</Text>
+            </View>
+          </View>
+          {/* 图例 */}
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COL_SYS }} />
+              <Text style={styles.legendText}>收缩压</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COL_DIA }} />
+              <Text style={styles.legendText}>舒张压</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ★ 2026-11-03（用户·统一 hero 结构）：大数字下方短分析（分级解读在下方 InsightBanner） */}
+        <Text style={styles.heroAnalysis}>
+          {(() => {
+            const sys = data.avgSys, dia = data.avgDia;
+            if (sys == null || dia == null) return '今天还没有血压读数，连上气囊血压计或做一次光电血压测量后这里会显示。';
+            if (sys >= 140 || dia >= 90) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，属于高血压范围，建议规律监测并咨询医生。`;
+            if (sys >= 130 || dia >= 80) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，略偏高，注意减盐、规律有氧。`;
+            if (sys >= 90 && dia >= 60) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，在理想范围内，保持就好。`;
+            return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，偏低，留意是否有头晕乏力。`;
+          })()}
+        </Text>
+      </Card>
 
       {/* 图表 */}
       <View style={styles.chartCard}>
@@ -770,6 +785,8 @@ const styles = StyleSheet.create({
   heroSep: { fontSize: 28, color: theme.colors.textSub, marginHorizontal: 4 },
   heroDia: { fontSize: 40, fontWeight: '700' },
   heroUnit: { fontSize: 14, color: theme.colors.textSub, marginLeft: 4 },
+  /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析 */
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(1.5) },
   legendText: { fontSize: 12, color: theme.colors.textSub },
   chartCard: {
     backgroundColor: theme.colors.cardBg,

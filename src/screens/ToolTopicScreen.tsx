@@ -1309,12 +1309,13 @@ const ss = StyleSheet.create({
 
 /* ── 运动页 V3 样式（mira-design/SPORT-DIET-SPEC-v1.md §2.2–2.6）──────────────────────── */
 const sp2 = StyleSheet.create({
-  /* 白卡通用 */
+  /* 白卡通用 ★ 本轮：bgMid 实底 → cardBg 磨砂玻璃（对齐首页/饮食页），可辨识 */
   card: {
-    backgroundColor: theme.colors.bgMid, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact,
   },
-  heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: -theme.sp(3) },
+  /* ★ 本轮：弧与下方内容间距拉开（-3 负重叠 → +4 留白） */
+  heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: theme.sp(4) },
   conclusion: { marginBottom: theme.sp(1), alignItems: 'flex-start' },
   conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, textAlign: 'left' },
   conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkFaint, textAlign: 'left' },
@@ -1323,7 +1324,7 @@ const sp2 = StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) },
   sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
   sectionLink: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkFaint },
-  workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.bgMid, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
   workoutIcon: { width: theme.sp(12), height: theme.sp(12), borderRadius: theme.sp(4), alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(2.5) },
   workoutIconText: { fontSize: theme.fs(27), fontWeight: '500' as never },
   workoutBody: { flex: 1, minWidth: 0 },

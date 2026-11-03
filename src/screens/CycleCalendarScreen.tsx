@@ -531,6 +531,14 @@ export default function CycleCalendarScreen() {
             {/* ★ 2026-10-07（用户要求）：记录 / 修改入口 —— 月相环（或网格）正下方 */}
             {recordRowNode}
 
+            {/* ★ 2026-11-03（用户·统一 hero 结构）：周期页无单一大数字 hero，这里加「周期解读」摘要 */}
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>周期解读</Text>
+              <Text style={{ fontSize: 12.5, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+                {`你正处在周期第 ${labelDay} 天 / 共 ${labelTotal} 天，按这个节奏安排休息与活动会更稳。`}
+              </Text>
+            </View>
+
             {/* ★ P1-1（2026-10-28）：孕期模式开关（开启且填了末次经期时，下方显示孕期卡） */}
             {hasLog && (
               <View style={styles.pregToggleRow}>

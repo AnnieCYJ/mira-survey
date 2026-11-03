@@ -91,6 +91,15 @@ export default function CardioDetailScreen() {
           <Text style={s.heroSub}>
             较同龄同性别常模：第 {result.bandRank + 1} / 7 档（Poor → Superior）
           </Text>
+          <Text style={s.heroAnalysis}>
+            {(() => {
+              const r = result.bandRank;
+              if (r >= 5) return '心肺能力在同龄中处于上游，规律运动帮了大忙，继续保持。';
+              if (r >= 3) return '心肺能力中等偏上，再加点规律有氧还能往上提。';
+              if (r >= 1) return '心肺能力处于中等水平，规律快走、骑车这类有氧会慢慢见效。';
+              return '心肺能力偏低，从低强度有氧（快走、游泳）开始更容易坚持。';
+            })()}
+          </Text>
         </View>
 
         {/* 输入数据 */}
@@ -168,6 +177,8 @@ const s = StyleSheet.create({
   bandPill: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999, marginTop: 6 },
   bandPillTxt: { fontSize: 13, fontWeight: '700' },
   heroSub: { fontSize: 12, color: FAINT, marginTop: 8 },
+  /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析（深色主题，沿用 FAINT/SUB） */
+  heroAnalysis: { fontSize: 12.5, color: SUB, lineHeight: 19, marginTop: 10 },
   card: {
     backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: 16,
     padding: 16, marginBottom: 14,

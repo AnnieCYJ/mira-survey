@@ -108,9 +108,18 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
           <Text style={[styles.heroBig, { color }]}>{big}</Text>
           <Text style={styles.heroLab}>{lab}</Text>
         </View>
-        <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
-      </View>
-      {/* ★ 2026-10-10（用户）：峰值时刻 + 作息类型，样式对标脑力消耗日视图「认知准备度」duoRow */}
+            <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
+          </View>
+          {/* ★ 2026-11-03（用户·统一 hero 结构）：大字下方短分析 */}
+          <Text style={styles.heroAnalysis}>
+            {(() => {
+              if (big == null || big === '—') return '今天还没有足够数据判断皮质醇节律，多戴几天会更准。';
+              if (String(big).includes('偏高')) return '皮质醇整体偏高，今天注意减压，傍晚后少刺激、早点休息。';
+              if (String(big).includes('紊乱')) return '皮质醇节律还不够稳，作息尽量规律，给身体一个固定节奏。';
+              return '皮质醇节律正常，身体按预期在白天清醒、夜里回落。';
+            })()}
+          </Text>
+          {/* ★ 2026-10-10（用户）：峰值时刻 + 作息类型，样式对标脑力消耗日视图「认知准备度」duoRow */}
       {range === 'day' ? (
         <View style={styles.duoRow}>
           {/* ★ 2026-10-20 对比度修复：浅色主题实色粉彩 limeSoft(#EAF0BE) 在深色 ocean 主题下
@@ -922,6 +931,8 @@ const styles = StyleSheet.create({
   heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
   heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+  /* ★ 2026-11-03（用户·统一 hero 结构）：大字下方短分析 */
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   // ★ 2026-10-10（用户）：峰值时刻 + 作息类型，对标脑力消耗「认知准备度」.duo 双格（圆角 11 · 内边距 · 标签/副文 11px · 时间 17px·600）
   duoRow: { flexDirection: 'row', gap: theme.sp(2.5), marginTop: theme.sp(2) },
   duoCell: { flex: 1, paddingVertical: theme.sp(2.5), paddingHorizontal: theme.sp(2.75), borderRadius: theme.radius.md },

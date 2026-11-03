@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import Icon, { type IconName } from './Icon';
 import { useVoiceTriggerApi } from '../hooks/useVoiceTrigger';
-import Svg, { Circle, Defs, LinearGradient as SvgLg, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 
 const TAB_ICON: Record<string, IconName> = {
   Today: 'home',
@@ -96,15 +96,9 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
 
   return (
     <View style={{ width: size, height: size }}>
-      {/* 身体 —— ★ 2026-10-15：改洞察页「生理周期节律」按钮同款渐变（青柠→粉），原墨色渐变改掉 */}
+      {/* 身体 —— ★ 2026-11-03（用户：GROK 改成白色）：主体改纯白，去掉青柠→粉渐变；眼睛改黑色 */}
       <Svg viewBox="0 0 200 200" width={size} height={size}>
-        <Defs>
-          <SvgLg id="tabBotBody" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor="#C6D84B" />
-            <Stop offset="100%" stopColor="#F58AB8" />
-          </SvgLg>
-        </Defs>
-        <Circle cx={100} cy={100} r={82} fill="url(#tabBotBody)" />
+        <Circle cx={100} cy={100} r={82} fill="#FFFFFF" />
       </Svg>
 
       {/* ========== 竖长眼睛（正常态） ========== */}
@@ -112,7 +106,7 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
       <Animated.View
         style={{
           position: 'absolute',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#16223F',
           borderRadius: EYE_W / 2,
           left: EYE_LX - EYE_W / 2,
           top: EYE_CY - EYE_H / 2,
@@ -130,7 +124,7 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
       <Animated.View
         style={{
           position: 'absolute',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#16223F',
           borderRadius: EYE_W / 2,
           left: EYE_RX - EYE_W / 2,
           top: EYE_CY - EYE_H / 2,
@@ -150,7 +144,7 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
       <Animated.View
         style={{
           position: 'absolute',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#16223F',
           borderRadius: SMILE_W / 2,
           left: EYE_LX - SMILE_W / 2,
           top: SMILE_CY - SMILE_H / 2,
@@ -167,7 +161,7 @@ function AnimatedBotFace({ size, focused }: { size: number; focused: boolean }) 
       <Animated.View
         style={{
           position: 'absolute',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#16223F',
           borderRadius: SMILE_W / 2,
           left: EYE_RX - SMILE_W / 2,
           top: SMILE_CY - SMILE_H / 2,
@@ -200,13 +194,14 @@ function TabItem({ route, focused, onPress }: { route: any; focused: boolean; on
       accessibilityState={{ selected: focused }}
       aria-selected={focused}
     >
-      {/* v10 选中态：lime 圆底 + 深色 icon；未选 = inkFaint */}
+      {/* v10 选中态：★ 2026-11-03(2) 修正 —— 用户要的是「图标本身变白」，不是整圈白底。
+          故去掉白色圆底（itemCircleOn 不再填白），选中图标转纯白高亮、未选半透明白。 */}
       {/* ★ 2026-10-10（用户）：去掉「今日/洞察/工具/我的」文字，只留图标；图标稍大（22→25） */}
-      <Animated.View style={[styles.itemCircle, focused && { backgroundColor: mm.colors.lime }, { transform: [{ scale }] }]}>
+      <Animated.View style={[styles.itemCircle, { transform: [{ scale }] }]}>
         <Icon
           name={TAB_ICON[route.name] ?? 'home'}
           size={theme.fs(26)}
-          color={focused ? mm.colors.ink : mm.colors.inkFaint}
+          color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'}
           strokeWidth={2}
         />
       </Animated.View>
@@ -372,7 +367,7 @@ const styles = StyleSheet.create({
   // ★ 2026-10-15（用户定稿 V1 去紫）：选中描边由 purpleDeep 改墨色
   botSelected: { borderWidth: 2, borderColor: mm.colors.ink },
   item: { minHeight: 48, flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(0.5) },
-  // v10：选中项 = 42px lime 圆底（SPEC §2 #13），不再用小圆点
+  // v10：选中项 = 42px 圆底（SPEC §2 #13），不再用小圆点
   // ★ 2026-10-10：文字标签移除，圆底随之放大（24→30→36，用户："绿色背景圈大一点"），icon 居中
   itemCircle: {
     width: 36,

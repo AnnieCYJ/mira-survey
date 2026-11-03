@@ -444,8 +444,17 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
         ? Math.round(((curCal - prevCal) / prevCal) * 100)
         : null;
       const RL2: Record<RangeKey, string> = { day: '日均', week: '周', month: '月', year: '年' };
+      const activityTitle = `${RL2[range]}平均活动消耗`;
+      const activityAnalysis = (() => {
+        if (curCal == null) return `这个${RL2[range]}还没有活动数据，继续戴几天就能看到区间平均。`;
+        if (rangeDelta == null) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，暂时没有上个${RL2[range]}的对比。`;
+        if (rangeDelta > 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}多 ${rangeDelta}%。`;
+        if (rangeDelta < 0) return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，比上个${RL2[range]}少 ${Math.abs(rangeDelta)}%。`;
+        return `这${RL2[range]}日均消耗 ${Math.round(curCal)} 卡路里，和上个${RL2[range]}持平。`;
+      })();
       return (
         <View>
+          <Text style={styles.heroTitle}>{activityTitle}</Text>
           <View style={styles.heroWrap}>
             <View>
               <Text style={[styles.heroVal, { color: mm.colors.honeyDeep }]}>
@@ -482,6 +491,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
               <Text style={styles.statSub}>日均</Text>
             </View>
           </View>
+          <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
         </View>
       );
     }
@@ -489,8 +499,17 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
     const ex = dayExercise(ring, dk);
     const durMin = ex.minutes;
     const sessCount = ex.count;
+    const activityDayTitle = '今日活动消耗';
+    const activityDayAnalysis = (() => {
+      if (cal === 0) return '今天还没有活动数据，走一走或同步戒指后这里会显示你的消耗。';
+      if (prevCal == null || prevCal <= 0) return `今天消耗 ${cal} 卡路里，暂时没有昨天的对比。`;
+      if (delta > 0) return `今天消耗 ${cal} 卡路里，比昨天多 ${delta}%，动得比平时多。`;
+      if (delta < 0) return `今天消耗 ${cal} 卡路里，比昨天少 ${Math.abs(delta)}%，活动量偏少。`;
+      return `今天消耗 ${cal} 卡路里，和昨天差不多。`;
+    })();
     return (
       <View>
+        <Text style={styles.heroTitle}>{activityDayTitle}</Text>
         <View style={styles.heroWrap}>
           {/* ★ 2026-10-12（用户：「27 旁边写卡路里，去掉下面那个今日消耗 · kcal」）：
               单位并入大数字旁（基线对齐），原下方 heroLab「今日消耗 · kcal」标签行删除。 */}
@@ -528,6 +547,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             <Text style={styles.statSub}>运动</Text>
           </View>
         </View>
+        <Text style={styles.heroAnalysis}>{activityDayAnalysis}</Text>
       </View>
     );
   }
@@ -547,29 +567,40 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
         : consumedPct <= 35 ? theme.colors.warn
           : theme.colors.danger
       : mm.colors.ink;
+    const cogTitle = range === 'day' ? '今日脑力消耗' : `${RANGE_DEF[range].label}平均脑力消耗`;
+    const cogAnalysis = (() => {
+      if (consumedPct == null) return '今天还没有足够数据算出脑力消耗，多戴一段时间会更准。';
+      if (consumedPct <= 20) return `脑力消耗 ${consumedPct}%，今天用得轻，状态还宽裕。`;
+      if (consumedPct <= 35) return `脑力消耗 ${consumedPct}%，中等强度用脑，注意休息节奏。`;
+      return `脑力消耗 ${consumedPct}%，今天用脑偏重，晚上早点歇一歇。`;
+    })();
     return (
-      <View style={styles.hero}>
-        {consumedPct != null ? (
-          <>
-            <Text style={[styles.heroVal, { color: conColor }]}>{consumedPct}</Text>
-            <Text style={styles.heroUnit}>
-              {range === 'day' ? '% · 今日脑力消耗' : `% · ${RANGE_DEF[range].label}平均脑力消耗`}
-            </Text>
-            {basisPv && (
-              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
-                无睡眠记录，按当日峰谷估算
+      <View>
+        <Text style={styles.heroTitle}>{cogTitle}</Text>
+        <View style={styles.hero}>
+          {consumedPct != null ? (
+            <>
+              <Text style={[styles.heroVal, { color: conColor }]}>{consumedPct}</Text>
+              <Text style={styles.heroUnit}>
+                {range === 'day' ? '% · 今日脑力消耗' : `% · ${RANGE_DEF[range].label}平均脑力消耗`}
               </Text>
-            )}
-          </>
-        ) : (
-          /* ★ 2026-10-10（用户）：无数据保留单位与说明，数字「—」，整卡不许消失 */
-          <>
-            <Text style={[styles.heroVal, { color: mm.colors.ink }]}>—</Text>
-            <Text style={styles.heroUnit}>
-              {range === 'day' ? '% · 今日脑力消耗' : `% · ${RANGE_DEF[range].label}平均脑力消耗`}
-            </Text>
-          </>
-        )}
+              {basisPv && (
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) }}>
+                  无睡眠记录，按当日峰谷估算
+                </Text>
+              )}
+            </>
+          ) : (
+            /* ★ 2026-10-10（用户）：无数据保留单位与说明，数字「—」，整卡不许消失 */
+            <>
+              <Text style={[styles.heroVal, { color: mm.colors.ink }]}>—</Text>
+              <Text style={styles.heroUnit}>
+                {range === 'day' ? '% · 今日脑力消耗' : `% · ${RANGE_DEF[range].label}平均脑力消耗`}
+              </Text>
+            </>
+          )}
+        </View>
+        <Text style={styles.heroAnalysis}>{cogAnalysis}</Text>
       </View>
     );
   }
@@ -583,27 +614,38 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       : v >= 67 ? { t: '压力偏高', c: theme.colors.danger }
         : v >= 34 ? { t: '压力中等', c: theme.colors.warn }
           : { t: '压力偏低', c: theme.colors.success };
+    const emoTitle = range === 'day' ? '今日心理压力' : '近期心理压力';
+    const emoAnalysis = (() => {
+      if (v == null) return '今天还没有压力数据，同步后这里会显示你的压力水平。';
+      if (v >= 67) return `压力偏高（${v}/100），今天节奏紧，找点空档缓一缓。`;
+      if (v >= 34) return `压力中等（${v}/100），在正常范围，留意别让它往上走。`;
+      return `压力偏低（${v}/100），状态松弛，保持就好。`;
+    })();
     return (
-      /* ★ 2026-10-09（psychological-stress-preview .hero）：大数字 + 右下状态语（压力中等）+ 下方标签 */
-      <View style={styles.heroWrap}>
-        {v != null ? (
-          <>
-            <View>
-              <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
-              <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
-            </View>
-            <Text style={[styles.heroCtx, { color: band!.c }]}>{band!.t}</Text>
-          </>
-        ) : (
-          /* ★ 2026-10-10（用户）：无数据保留单位与基线说明，数字「—」 */
-          <>
-            <View>
-              <Text style={styles.heroVal}>—</Text>
-              <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
-            </View>
-            <Text style={[styles.heroCtx, { color: theme.colors.textSub }]}>暂无数据</Text>
-          </>
-        )}
+      <View>
+        <Text style={styles.heroTitle}>{emoTitle}</Text>
+        {/* ★ 2026-10-09（psychological-stress-preview .hero）：大数字 + 右下状态语（压力中等）+ 下方标签 */}
+        <View style={styles.heroWrap}>
+          {v != null ? (
+            <>
+              <View>
+                <Text style={[styles.heroVal, { color: band!.c }]}>{v}</Text>
+                <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
+              </View>
+              <Text style={[styles.heroCtx, { color: band!.c }]}>{band!.t}</Text>
+            </>
+          ) : (
+            /* ★ 2026-10-10（用户）：无数据保留单位与基线说明，数字「—」 */
+            <>
+              <View>
+                <Text style={styles.heroVal}>—</Text>
+                <Text style={styles.heroUnit}>/100 · 压力{RL[range]} · 50=平时</Text>
+              </View>
+              <Text style={[styles.heroCtx, { color: theme.colors.textSub }]}>暂无数据</Text>
+            </>
+          )}
+        </View>
+        <Text style={styles.heroAnalysis}>{emoAnalysis}</Text>
       </View>
     );
   }
@@ -671,6 +713,16 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
               {band ? `${band.text} · ${band.short}` : '暂无数据'}
             </Text>
           </View>
+
+          {/* ★ 2026-11-03（用户·统一 hero 结构）：ctitle 已在上方，这里补数字下方的短 AI 分析 */}
+          <Text style={styles.heroAnalysis}>
+            {(() => {
+              if (remain == null) return '今天还没有足够数据算出认知准备度，多戴一段时间会更准。';
+              if (remain >= 70) return `认知准备度 ${remain}，现在精力充沛，适合安排烧脑的事。`;
+              if (remain >= 40) return `认知准备度 ${remain}，还有一半左右，重要的事趁早做。`;
+              return `认知准备度 ${remain}，偏低，简单任务或休息更合适。`;
+            })()}
+          </Text>
 
           {/* ★ 2026-10-09（用户）：不要多加的「实际高峰 / 节律峰值」两行，按稿只留 hero + duo + 说明 */}
 
@@ -1340,6 +1392,9 @@ const styles = StyleSheet.create({
   heroNumRow: { flexDirection: 'row', alignItems: 'baseline' },
   heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  /* ★ 2026-11-03（用户·统一 hero 结构）：数字上方 title + 数字下方短 AI 分析（与 MetricDetail / SleepRecoveryHero 同款） */
+  heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
+  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   /* ★ 2026-10-12 运动消耗·日视图「今日运动建议」卡 */
   waCard: {
     backgroundColor: theme.colors.cardBg,
@@ -1419,8 +1474,8 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
   },
   duoLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75) },
-  // .duo .t = 17px·650（App 无 17 档 token，用 theme.fs(17) 精确对齐）
-  duoTime: { fontSize: theme.fs(17), fontWeight: theme.weight.semibold as any, lineHeight: theme.fs(17) * 1.1 },
+  // .duo .t = 15px·650（★ 本轮 17→15 缩小学力峰谷时间数字，对齐用户"调小一点"）
+  duoTime: { fontSize: theme.fs(15), fontWeight: theme.weight.semibold as any, lineHeight: theme.fs(15) * 1.1 },
   duoSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.75) },
   // .axisnote：10.5px；日视图卡内左对齐版本
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },

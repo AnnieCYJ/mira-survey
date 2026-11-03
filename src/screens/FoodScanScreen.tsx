@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
@@ -117,6 +117,8 @@ export default function FoodScanScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [mode, setMode] = useState<'home' | 'detail'>('home');
+  /** ★ 本轮：拍照识别成功后弹出「餐食分析卡」（Modal），而非切到整页 detail */
+  const [mealModal, setMealModal] = useState(false);
   /** 今日记录页选中的日期（YYYY-MM-DD，可左右切最近 14 天） */
   const [selDate, setSelDate] = useState<string>(() => dateKeyOf());
 
@@ -218,11 +220,11 @@ export default function FoodScanScreen() {
       setPhotoUri(a.uri);
       setItems([]);
       setPicked(new Set());
-      setMode('detail');
 
       const vlmReady = Boolean(FOOD_VLM.endpoint && FOOD_VLM.apiKey && FOOD_VLM.model);
       if (!vlmReady) {
         setSource('manual');
+        setMode('detail');
         return;
       }
       setScanning(true);
@@ -232,11 +234,13 @@ export default function FoodScanScreen() {
         aiItems = await recognizeMeal(b64);
       } catch { aiItems = null; }
       setScanning(false);
-      if (aiItems) {
+      if (aiItems && aiItems.length > 0) {
         setItems(aiItems);
         setSource('ai');
+        setMealModal(true); // ★ 本轮：识别成功 → 弹出餐食分析卡
       } else {
         setSource('manual');
+        setMode('detail'); // 没认出来 → 走原手动选择页
       }
     } catch (e) {
       setScanning(false);
@@ -279,6 +283,24 @@ export default function FoodScanScreen() {
     setMode('home');
   };
 
+  /* ★ 本轮：餐食分析卡「了解了」→ 保存这餐并关闭弹卡回主页；「重拍」→ 关弹卡重新拍照 */
+  const onUnderstood = async () => {
+    await onSave();
+    setMealModal(false);
+  };
+  const onRetake = () => {
+    setMealModal(false);
+    setItems([]);
+    setPicked(new Set());
+    void pickImage(true);
+  };
+  const onDismissMeal = () => {
+    setMealModal(false);
+    setItems([]);
+    setPicked(new Set());
+    setPhotoUri(null);
+  };
+
   const hasResult = source === 'ai' ? items.length > 0 : picked.size > 0;
   const currentItems: MealItem[] = source === 'ai' ? items : mealItemsForAnalysis;
 
@@ -292,6 +314,7 @@ export default function FoodScanScreen() {
   const dayMacros = useMemo(() => sumMacros(dayItems), [dayItems]);
 
   return (
+    <>
     <View style={styles.page}>
       <LinearGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
         locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
@@ -583,6 +606,21 @@ export default function FoodScanScreen() {
         )}
       </View>
     </View>
+
+    {/* ★ 本轮：拍照识别成功 → 餐食分析弹卡（Modal） */}
+    <MealModal
+      visible={mealModal}
+      items={currentItems}
+      target={target}
+      dayKcal={dayKcal}
+      phase={phase}
+      hormoneSnap={hormoneSnap}
+      photoUri={photoUri}
+      onUnderstood={onUnderstood}
+      onRetake={onRetake}
+      onClose={onDismissMeal}
+    />
+    </>
   );
 }
 
@@ -831,18 +869,233 @@ function ItemList({ items, photoUri, onRemove }: {
   );
 }
 
+/* ══════════════════ 餐食分析弹卡（Modal）══════════════════ */
+/**
+ * ★ 本轮（用户：「拍照之后要先弹出卡片展示这一餐的分析结果……了解了之后再回到营养搭配主页」）：
+ * 拍照识别成功后弹出的半屏分析卡。内容：吃了什么 / 营养含量（蛋白·碳水·脂肪 g + 占比）/
+ * 矿物质（镁锌铁钙 有/无）/ 适不适合现在吃（结合剩余预算 + 皮质醇）/ 建议。
+ * 底部「重拍」（重拍）与「了解了」（保存并回主页）。
+ */
+function MealModal({ visible, items, target, dayKcal, phase, hormoneSnap, photoUri, onUnderstood, onRetake, onClose }: {
+  visible: boolean;
+  items: MealItem[];
+  target: PhaseNutritionTarget;
+  dayKcal: number;
+  phase: PhaseKey;
+  hormoneSnap: HormoneNutritionSnapshot | null;
+  photoUri: string | null;
+  onUnderstood: () => void;
+  onRetake: () => void;
+  onClose: () => void;
+}) {
+  const mealKcal = items.reduce((s, it) => s + it.kcal, 0);
+  const remaining = Math.max(0, target.kcal - dayKcal);
+  const overBudget = mealKcal > remaining;
+  const macros = sumMacros(items);
+  const c = macroCals(macros);
+  const total = Math.max(1, c.total);
+  const pPct = Math.round((c.protein / total) * 100);
+  const cPct = Math.round((c.carbs / total) * 100);
+  const fPct = Math.max(0, 100 - pPct - cPct);
+  const names = items.map((it) => stripEmoji(it.name)).filter(Boolean);
+
+  // 矿物质（镁·锌·铁·钙，有/无）
+  const elRes = analyzeElements(items);
+  const elems = TAG_KEYS.map((k) => {
+    const r = elRes.find((x) => x.key === k);
+    return { key: k, label: ELEMENT_META[k].label, on: Boolean(r?.present) };
+  });
+
+  // 适不适合现在吃（剩余预算 + 皮质醇）
+  const cortisol = hormoneSnap?.cortisol;
+  let verdict: string; let verdictTone: 'good' | 'warn'; let verdictSub: string;
+  if (overBudget) {
+    verdict = '这餐热量偏高'; verdictTone = 'warn';
+    verdictSub = `约 ${mealKcal} kcal，今天还剩 ${remaining} kcal 预算，吃下去会超出一点。`;
+  } else if (cortisol?.ready && cortisol?.level === 'high') {
+    verdict = '适合，但少吃一点'; verdictTone = 'warn';
+    verdictSub = '今天皮质醇偏高，分量轻一点、少刺激会更稳。';
+  } else {
+    verdict = '适合现在吃'; verdictTone = 'good';
+    verdictSub = `约 ${mealKcal} kcal，今天还剩 ${remaining} kcal 预算，可以放心吃。`;
+  }
+
+  // 建议（来自当前阶段营养目标）
+  const advice: string[] = [];
+  if (target.focus.length) advice.push(`更推荐：${target.focus.join('、')}`);
+  if (target.avoid.length) advice.push(`暂时少碰：${target.avoid.join('、')}`);
+  if (advice.length === 0) advice.push('均衡搭配、细嚼慢咽就好。');
+
+  const macroRows: Array<{ k: 'protein' | 'carbs' | 'fat'; pct: number; grams: number }> = [
+    { k: 'protein', pct: pPct, grams: Math.round(macros.protein) },
+    { k: 'carbs', pct: cPct, grams: Math.round(macros.carbs) },
+    { k: 'fat', pct: fPct, grams: Math.round(macros.fat) },
+  ];
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <View style={mm_m.mask}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} accessibilityLabel="关闭餐食分析" />
+        <View style={mm_m.sheet}>
+          <View style={mm_m.grabber} />
+          {/* 头部 */}
+          <View style={mm_m.head}>
+            <Text style={mm_m.title}>这餐分析</Text>
+            <TouchableOpacity activeOpacity={0.7} onPress={onClose} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }} accessibilityLabel="关闭">
+              <Icon name="close" size={18} color={mm.colors.ink} strokeWidth={2.2} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={mm_m.scroll} contentContainerStyle={mm_m.scrollContent} showsVerticalScrollIndicator={false} bounces>
+            {/* 照片 */}
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={mm_m.photo} resizeMode="cover" />
+            ) : null}
+
+            {/* 吃了什么 */}
+            <Text style={mm_m.sectionTitle}>吃了什么</Text>
+            <View style={mm_m.nameWrap}>
+              {names.map((n, i) => (
+                <View key={`${n}-${i}`} style={mm_m.nameChip}>
+                  <Text style={mm_m.nameText}>{n}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* 营养含量 */}
+            <Text style={mm_m.sectionTitle}>营养含量</Text>
+            <View style={mm_m.kcalBig}>
+              <Text style={mm_m.kcalNum}>{mealKcal}</Text>
+              <Text style={mm_m.kcalUnit}>kcal</Text>
+            </View>
+            <View style={mm_m.macroList}>
+              {macroRows.map(({ k, pct, grams }) => {
+                const cfg = MACRO_COLOR[k];
+                return (
+                  <View key={k} style={mm_m.mrow}>
+                    <View style={[mm_m.md, { backgroundColor: cfg.fg }]} />
+                    <Text style={mm_m.ml}>{cfg.label}</Text>
+                    <View style={mm_m.track}>
+                      <View style={[mm_m.fill, { width: `${pct}%`, backgroundColor: cfg.fg }]} />
+                    </View>
+                    <Text style={[mm_m.mv, { color: cfg.deep }]}>{grams} g · {pct}%</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* 矿物质 */}
+            <View style={mm_m.elemWrap}>
+              {elems.map((e) => (
+                <View key={e.key} style={[mm_m.elemTag, e.on ? mm_m.elemOn : mm_m.elemOff]}>
+                  <Text style={[mm_m.elemText, { color: e.on ? mm.colors.limeDeep : mm.colors.inkFaint }]}>{e.label}·{e.on ? '有' : '无'}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* 适不适合现在吃 */}
+            <View style={[mm_m.verdict, verdictTone === 'good' ? mm_m.verdictGood : mm_m.verdictWarn]}>
+              <View style={mm_m.verdictTop}>
+                <View style={[mm_m.verdictDot, { backgroundColor: verdictTone === 'good' ? mm.colors.limeDeep : mm.colors.honeyDeep }]} />
+                <Text style={mm_m.verdictTitle}>{verdict}</Text>
+              </View>
+              <Text style={mm_m.verdictSub}>{verdictSub}</Text>
+              <View style={mm_m.verdictPhase}>
+                <Text style={mm_m.verdictPhaseText}>当前阶段 · {PHASE_LABEL[phase]}</Text>
+              </View>
+            </View>
+
+            {/* 建议 */}
+            <Text style={mm_m.sectionTitle}>建议</Text>
+            {advice.map((a, i) => (
+              <Text key={i} style={mm_m.adviceLine}>· {a}</Text>
+            ))}
+          </ScrollView>
+
+          {/* 底部操作 */}
+          <View style={mm_m.btnRow}>
+            <TouchableOpacity activeOpacity={0.7} style={mm_m.retake} onPress={onRetake} accessibilityRole="button" accessibilityLabel="重拍">
+              <Text style={mm_m.retakeText}>重拍</Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={onUnderstood} accessibilityRole="button" accessibilityLabel="了解了">
+              <LinearGradient colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mm_m.understoodGrad}>
+                <Text style={mm_m.understoodText}>了解了</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ── 餐食分析弹卡样式 ── */
+const mm_m = StyleSheet.create({
+  mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: theme.colors.bgBottom, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder,
+    borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,
+    paddingHorizontal: theme.space.cardPad, paddingTop: theme.sp(2), paddingBottom: theme.sp(4),
+    maxHeight: '88%',
+  },
+  grabber: { alignSelf: 'center', width: theme.sp(9), height: theme.sp(1), borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBorder, marginBottom: theme.sp(2.5) },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  scroll: { width: '100%' },
+  scrollContent: { paddingBottom: theme.sp(2) },
+  photo: { width: '100%', aspectRatio: 4 / 3, borderRadius: mm.radius.card, overflow: 'hidden', marginBottom: theme.space.md },
+  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(2), marginTop: theme.sp(2) },
+  nameWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5) },
+  nameChip: { backgroundColor: mm.colors.honeyTint, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(3), paddingVertical: theme.sp(1.5) },
+  nameText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: mm.colors.honeyDeep },
+  kcalBig: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.sp(1.5), marginBottom: theme.sp(2) },
+  kcalNum: { fontSize: theme.fs(38), fontWeight: theme.weight.medium as never, color: mm.colors.honeyDeep, lineHeight: theme.fs(40), letterSpacing: -0.5 },
+  kcalUnit: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as never, color: mm.colors.honeyDeep, paddingBottom: theme.sp(0.75) },
+  macroList: { gap: theme.sp(2.5) },
+  mrow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
+  md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: 3 },
+  ml: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft, width: theme.sp(11.5) },
+  track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: 'rgba(31,29,26,0.07)', overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: theme.radius.pill },
+  mv: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as never, width: theme.sp(20), textAlign: 'right' },
+  elemWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), marginTop: theme.sp(3) },
+  elemTag: { borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1) },
+  elemOn: { backgroundColor: mm.colors.limeSoft },
+  elemOff: { backgroundColor: 'rgba(31,29,26,0.05)' },
+  elemText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fs(15) },
+  verdict: { marginTop: theme.sp(3), borderRadius: theme.radius.card, padding: theme.space.cardPadCompact },
+  verdictGood: { backgroundColor: mm.colors.limeTint },
+  verdictWarn: { backgroundColor: mm.colors.honeyTint },
+  verdictTop: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
+  verdictDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.radius.pill },
+  verdictTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  verdictSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkSoft },
+  verdictPhase: { marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.08)' },
+  verdictPhaseText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as never, color: mm.colors.inkFaint },
+  adviceLine: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
+  btnRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), marginTop: theme.sp(3) },
+  retake: {
+    height: theme.sp(12), paddingHorizontal: theme.sp(3.25), borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  retakeText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint },
+  understoodGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.sp(3.5), borderRadius: theme.radius.pill },
+  understoodText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.btnTextOnGrad },
+});
+
 /* ══════════════════ 样式 ══════════════════ */
 
 /* ── home（今日记录）── */
 const hs = StyleSheet.create({
   card: { padding: theme.space.cardPadCompact, marginBottom: theme.space.md },
-  /* 环居中（SPEC §3.2） */
-  ringWrap: { alignItems: 'center', marginTop: theme.sp(2) },
-  /* 环下行「还剩 X · N 餐」 */
-  remainText: { fontSize: theme.fontSize.xs, fontWeight: '600' as never, color: mm.colors.inkFaint, textAlign: 'center', marginTop: theme.sp(1.5) },
+  /* 环居中（SPEC §3.2）★ 本轮：环顶与卡顶间距拉开（2→4） */
+  ringWrap: { alignItems: 'center', marginTop: theme.sp(4) },
+  /* 环下行「还剩 X · N 餐」★ 本轮：环与文字间距拉开（1.5→3） */
+  remainText: { fontSize: theme.fontSize.xs, fontWeight: '600' as never, color: mm.colors.inkFaint, textAlign: 'center', marginTop: theme.sp(3) },
   remainBold: { fontSize: theme.fontSize.sm, fontWeight: '700' as never, color: mm.colors.inkSoft },
   mmacros: {
-    flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(3.5),
+    flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(6),
   },
   /* macro 三格：surface-2 底（inline 设置），值 18/600 + 单位（SPEC §3.3） */
   mm: { flex: 1, minWidth: 0, borderRadius: theme.sp(3), paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(2.25) },

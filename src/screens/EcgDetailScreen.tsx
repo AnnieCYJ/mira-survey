@@ -293,6 +293,20 @@ export default function EcgDetailScreen() {
         {/* 分段：医学指标 / 风险分析 */}
         {latest?.analysis ? (
           <>
+            {/* ★ 2026-11-03（用户·统一 hero 结构）：心电无单一大数字 hero，这里加短解读摘要 */}
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>心电解读</Text>
+              <Text style={{ fontSize: 12.5, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+                {(() => {
+                  const hr = Math.round(latest?.aveHeart ?? 0);
+                  const hrv = Math.round(latest?.aveHrv ?? 0);
+                  const highs = risks.filter((r) => r.value >= 60).map((r) => r.label);
+                  const base = `本次平均心率 ${hr} bpm，HRV ${hrv} ms`;
+                  if (highs.length) return `${base}；有 ${highs.length} 项风险指标偏高（${highs.join('、')}），建议关注并咨询医生。`;
+                  return `${base}，各项指标在参考范围内。数据仅作健康参考，不构成诊断。`;
+                })()}
+              </Text>
+            </View>
             <View style={styles.segment}>
               {(['metrics', 'risk'] as const).map((k) => (
                 <TouchableOpacity key={k} style={[styles.segBtn, tab === k && styles.segBtnOn]} onPress={() => setTab(k)}>

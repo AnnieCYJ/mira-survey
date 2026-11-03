@@ -11,9 +11,9 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
-import SavedAdviceDeck from '../components/SavedAdviceDeck';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RingBle } from '../ble/RingBleManager';
 import { buildToolCtx } from '../lib/toolRecommend';
 import { getToolPhaseLine } from '../lib/toolTips';
@@ -169,8 +169,9 @@ const CARD_RATIO = 0.8;
 const CARD_RADIUS = theme.fs(26);
   // ★ 两侧卡片相对中间卡的缩放：缩小后它在屏幕边缘露出的只是「一个角」，而不是平着的整条竖边
 const SIDE_SCALE = 0.86;
-/** 两侧想露出的圆角宽度（视觉上真正能看到的部分，不是内边距） */
-const CORNER = 16;
+/** 两侧想露出的圆角宽度（视觉上真正能看到的部分，不是内边距）
+ *  ★ 本轮 16→8，中间图卡更宽（两侧只露极窄圆角） */
+const CORNER = 8;
 
 /* ★ H2 版（2026-10-13 用户定稿）：扇形展开 —— 中卡最大最正（scale 1 / 0°），
    两侧邻卡整体外移 + 绕底部中心向外倾 10°（左邻逆时针、右邻顺时针）。
@@ -293,7 +294,8 @@ export default function MeditationScreen() {
      露出量刻意做**小**（一条窄边），再配合「两侧卡片整体缩一圈」+ 卡片较大的圆角 →
      屏边看到的就不是一条平着的竖边，而是邻卡的**一个圆角**。 */
   const GAP = theme.sp(1);     // 卡间距 4
-  const winW = useWindowDimensions().width;
+  const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const bleedW = Math.min(winW, theme.layout.maxWidth ?? winW);        // 全出血宽（屏宽）
   const contentW = Math.max(1, bleedW - theme.space.screen * 2);       // 常规内容宽（节点行 / 收藏卡沿用）
   /* ★ 反解 PEEK（别再手填内边距再猜露出量）——两侧卡片是**缩过的**，
@@ -306,6 +308,14 @@ export default function MeditationScreen() {
   const PAGE = cardW + GAP;                                            // 吸附步长
   // 卡片比例固定 4:5（0.8）——与用户给的图片比例（0.807）几乎一致，可整图铺满不裁切
   const cardH = Math.round(cardW / CARD_RATIO);
+
+  // ★ 本轮（用户："卡片再下一点、和上方 tab 拉开距离、更居中、减少底部空白"）：
+  //   用窗口高度反推卡片块（标题+tab+卡片+小点）的剩余空间，把卡片垂直居中到「tab 下方 ↔ 屏幕底」之间。
+  //   clamp 到 [16,160]，小屏不会溢出、大屏不会顶到 tab。
+  const TOP_STATIC = 172;                          // 标题+副标题+胶囊tab 的近似高度（★ 本轮 tab 下移 8，故 164→172）
+  const carouselBlock = cardH + theme.sp(16);       // 卡片 + 下方小点 + 间距
+  const avail = winH - insets.top - insets.bottom - TOP_STATIC;
+  const carouselMT = Math.max(16, Math.min(160, (avail - carouselBlock) / 2));
 
   const goTo = useCallback((i: number) => {
     const idx = Math.max(0, Math.min(N - 1, i));
@@ -343,8 +353,29 @@ export default function MeditationScreen() {
           <Text style={styles.subtitle}>小的改变积累起来也很了不起</Text>
         </Animated.View>
 
+      {/* ★ 2026-11-03(2)：胶囊型分类 tab（情绪调节 / 营养搭配 …），位于副标题与卡片之间；
+          选中 = 亮白 pill；点击滚动到对应工具卡（与下方横滑卡联动）。 */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.toolTabs}
+      >
+        {TOOLS.map((t, i) => (
+          <TouchableOpacity
+            key={t.key}
+            activeOpacity={0.8}
+            onPress={() => goTo(i)}
+            style={[styles.toolPill, i === active && styles.toolPillOn]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: i === active }}
+          >
+            <Text style={[styles.toolPillTxt, i === active && styles.toolPillTxtOn]}>{t.key}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       {/* ★ 纯图横滑卡片：全出血 + 左右各露出邻卡的一个圆角（点中间卡片进入对应功能页） */}
-      <View style={[styles.carouselWrap, { width: bleedW, marginHorizontal: -theme.space.screen }]}>
+      <View style={[styles.carouselWrap, { width: bleedW, marginHorizontal: -theme.space.screen, marginTop: carouselMT }]}>
         <Animated.ScrollView
           ref={scrollRef}
           horizontal
@@ -401,17 +432,6 @@ export default function MeditationScreen() {
         ))}
       </View>
 
-      {/* ★ 2026-10-11 用户：收藏建议移到页面底部（工具卡下方） */}
-      <SavedAdviceDeck
-        habits={habits}
-        width={contentW}
-        navigation={navigation}
-        onRemove={async (id: string) => {
-          try { await undoHabit(id); } catch { /* 静默 */ }
-          refreshHabits();
-        }}
-      />
-
       </ScreenContainer>
     </View>
   );
@@ -433,10 +453,31 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(1),
   },
   subtitle: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fs(18),
     color: mm.colors.inkSoft,
+    marginTop: theme.sp(1.5),
     marginBottom: theme.space.lg,
+    fontWeight: theme.weight.medium as any,
   },
+  // ★ 2026-11-03(2)：胶囊型分类 tab —— ★ 本轮（用户："tab 再往下一点点"）：加 marginTop 让整排 tab 下移，与上方副标题拉开距离
+  toolTabs: { gap: theme.sp(1.5), paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1), marginTop: theme.sp(2) },
+  toolPill: {
+    paddingHorizontal: theme.sp(4),
+    paddingVertical: theme.sp(2),
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolPillOn: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
+  toolPillTxt: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold as any,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  toolPillTxtOn: { color: '#1B2240' },
   // 细线：left/right 由调用方按 NODE/2 传入（只连到首尾节点圆心）
   /* ★ 2026-10-12（用户选 D 版）：选中态不描边、不反色 ——
      底色由浅 pastel 压深一档（deepen()）+ 放大 1.12，图标保持原深色。 */
@@ -444,6 +485,7 @@ const styles = StyleSheet.create({
   carouselWrap: {
     alignSelf: 'center',
     width: '100%',
+    marginTop: theme.sp(3),   // ★ 本轮 与上方胶囊 tab 拉开距离
   },
   card: {
     width: '100%',
