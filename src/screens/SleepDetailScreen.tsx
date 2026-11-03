@@ -434,6 +434,39 @@ export default function SleepDetailScreen() {
     : dRange === 'month' ? { cur: '本月', prev: '上月' }
     : { cur: '本年', prev: '去年' };
 
+  /** 周/月/年：睡眠分析（文本）—— 置于时间选择器下方、双轴图之上，与「多维度对比」同源口径 */
+  const sleepRangeAnalysis = useMemo<string[] | null>(() => {
+    if (dRange === 'day') return null;
+    const recs = toRecords(sleepDaily);
+    if (recs.length === 0) return null;
+    const cw = windowOf(dRange, anchor);
+    const pw = prevWindowOf(dRange, anchor);
+    const cur = statsOf(recs, cw.start, cw.end, (dk) => cortKindOfDay(dk).kind);
+    const prev = statsOf(recs, pw.start, pw.end, (dk) => cortKindOfDay(dk).kind);
+    const period = cmpLabels.cur;
+    const prevWord = cmpLabels.prev;
+    const lines: string[] = [];
+    if (cur.durH != null) {
+      lines.push(`本${period}平均睡眠时长 ${(cur.durH / 60).toFixed(1)} 小时，睡眠恢复分 ${cur.score != null ? Math.round(cur.score) : '—'} 分。`);
+    }
+    if (cur.deepPct != null) {
+      lines.push(`平均深睡占比约 ${Math.round(cur.deepPct)}%。`);
+    }
+    if (cur.level) {
+      lines.push(`皮质醇整体水平：${cur.level}${cur.abnDays > 0 ? `（${cur.abnDays} 天异常）` : ''}。`);
+    }
+    if (cur.score != null && prev.score != null) {
+      const d = Math.round(cur.score - prev.score);
+      if (d > 0) lines.push(`与${prevWord}相比，恢复分上升 ${d} 分。`);
+      else if (d < 0) lines.push(`与${prevWord}相比，恢复分下降 ${Math.abs(d)} 分。`);
+      else lines.push(`与${prevWord}相比，恢复分基本持平。`);
+    }
+    if (lines.length === 0) {
+      lines.push('本周期暂无足够睡眠数据，连接戒指并同步每晚睡眠后，这里会自动生成分析。');
+    }
+    return lines;
+  }, [dRange, sleepDaily, anchor, cortKindCache, cmpLabels]);
+
   const cortAbnDaysCur = useMemo(
     () => dualPoints.filter((p) => p.cortisolAbnormal).length,
     [dualPoints],
@@ -469,17 +502,16 @@ export default function SleepDetailScreen() {
       ) : null}
 
       {dRange === 'day' ? (
-        /* 日：脑力准备度（★ 2026-10-26 用户：睡眠分析上方加卡，展示当前准备度 + 脑力峰/谷时段，
-               与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan） */
+        /* 日：睡眠分析卡 → 脑力峰/谷时段（置于分析下方，不单独成卡） → 睡眠节律卡 */
         <>
-          <BrainPeakTroughBlock anchorMs={anchor.getTime()} />
-
           <SleepAnalysisCard
             day={dayAnalysis.day}
             segments={dayAnalysis.segs}
             phys={dayAnalysis.phys}
             onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
           />
+
+          <BrainPeakTroughBlock anchorMs={anchor.getTime()} />
 
           <SleepRhythmCard
             dk={sleepDayKey(anchor)}
@@ -494,36 +526,46 @@ export default function SleepDetailScreen() {
           </View>
         </>
       ) : (
-        /* 周 / 月 / 年：睡眠与恢复双纵轴图（柱=时长 · 线=恢复分 · 异常 icon 可点击） */
-        <View style={[styles.chartCard, { padding: theme.space.cardPad }]}>
-          {!hasData ? (
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyText}>
-                暂无可展示的睡眠记录。连接戒指并将每晚睡眠同步后，这里会自动绘制睡眠与恢复趋势。
-              </Text>
+        /* 周 / 月 / 年：睡眠分析卡（文本分析）→ 睡眠与恢复双纵轴图 */
+        <>
+          {sleepRangeAnalysis ? (
+            <View style={styles.mCard}>
+              <Text style={styles.mTitle}>睡眠分析</Text>
+              {sleepRangeAnalysis.map((s, i) => (
+                <Text key={i} style={styles.saText}>{s}</Text>
+              ))}
             </View>
-          ) : (
-            <>
-              <View style={styles.dualHead}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.mTitle}>睡眠与恢复</Text>
-                  <Text style={styles.cardSubLine}>
-                    {periodSub} · 柱 = 睡眠时长 · 线 = 恢复分
-                  </Text>
+          ) : null}
+          <View style={[styles.chartCard, { padding: theme.space.cardPad }]}>
+            {!hasData ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>
+                  暂无可展示的睡眠记录。连接戒指并将每晚睡眠同步后，这里会自动绘制睡眠与恢复趋势。
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.dualHead}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.mTitle}>睡眠与恢复</Text>
+                    <Text style={styles.cardSubLine}>
+                      {periodSub} · 柱 = 睡眠时长 · 线 = 恢复分
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={{ marginTop: theme.space.xs }}>
-                <SleepDualAxisChart
-                  points={dualPoints}
-                  onAnomalyPress={(p) => setCortSheet({ kind: p.cortisolKind, date: p.key })}
-                />
-              </View>
+                <View style={{ marginTop: theme.space.xs }}>
+                  <SleepDualAxisChart
+                    points={dualPoints}
+                    onAnomalyPress={(p) => setCortSheet({ kind: p.cortisolKind, date: p.key })}
+                  />
+                </View>
 
-              <Text style={styles.axisNote}>左轴：睡眠时长（小时） · 右轴：睡眠恢复分（0–100）</Text>
-            </>
-          )}
-        </View>
+                <Text style={styles.axisNote}>左轴：睡眠时长（小时） · 右轴：睡眠恢复分（0–100）</Text>
+              </>
+            )}
+          </View>
+        </>
       )}
 
       {/* ★ 皮质醇异常说明弹层（双轴图 icon 点击触发） */}
@@ -594,7 +636,7 @@ function BrainPeakTroughBlock({ anchorMs }: { anchorMs: number }) {
   const trough = !dataStale ? report?.forecast?.troughSpan : null;
 
   return (
-    <View style={styles.brCard}>
+    <View style={{ marginBottom: theme.space.md }}>
       <View style={styles.brDuo}>
         <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
           <Text style={styles.brCellLab}>脑力峰值时段</Text>
@@ -711,4 +753,6 @@ const styles = StyleSheet.create({
   scoreLegendTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
   scoreLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
   scoreLegendNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18, marginTop: theme.sp(1) },
+  /* 周/月/年：睡眠分析卡文本行 */
+  saText: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 22, marginBottom: theme.sp(1) },
 });

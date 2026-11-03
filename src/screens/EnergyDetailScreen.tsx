@@ -456,11 +456,11 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
         <View>
           <Text style={styles.heroTitle}>{activityTitle}</Text>
           <View style={styles.heroWrap}>
-            <View>
+            <View style={styles.heroNumRow}>
               <Text style={[styles.heroVal, { color: mm.colors.honeyDeep }]}>
                 {curCal != null ? Math.round(curCal) : '—'}
               </Text>
-              <Text style={styles.heroLab}>{RL2[range]}平均消耗 · kcal</Text>
+              <Text style={styles.heroUnit}>千卡</Text>
             </View>
             {rangeDelta != null ? (
               <Text style={[styles.heroCtx, { color: rangeDelta >= 0 ? theme.colors.success : theme.colors.danger }]}>
@@ -1259,9 +1259,6 @@ function ActivityDetail({ ring, navigation, anchor }: { ring: any; navigation: a
           </Card>
         );
       })()}
-      <Text style={styles.insightText}>
-        今日步行 {fmtKm(distance)} km，活动消耗 {Math.round(calorie)} kcal。
-      </Text>
     </>
   );
 }
@@ -1385,7 +1382,7 @@ const styles = StyleSheet.create({
   // ★ 2026-10-10（用户）：去掉 heroWrap 额外的上下 padding（外层 pad 已是 cardPad），
   //   与睡眠详情页 SleepRecoveryHero 同口径，避免心理压力 Hero 比其它详情页 Hero 高太多。
   heroWrap: {
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 0, paddingHorizontal: 0,
   },
   /* ★ 2026-10-12（用户：「27 旁边写卡路里」）：大数字 + 单位基线对齐一行 */
@@ -1444,16 +1441,18 @@ const styles = StyleSheet.create({
   waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(2) },
   waStat: {
     flex: 1,
-    backgroundColor: mm.colors.skyTint,
-    borderRadius: theme.radius.card,
+    backgroundColor: 'transparent',
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
     paddingVertical: theme.sp(1.5),
     paddingHorizontal: theme.space.xs,
     alignItems: 'center',
   },
   waStatK: { fontSize: theme.fontSize.micro, color: mm.colors.skyDeep, marginBottom: theme.sp(0.5) }, // ★ 对比度修复：skyTint 浅底上白系不可读
   waStatV: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
-  /* ★ 2026-10-12（用户：「较昨日上升125%，可以字大一点」）：xs(13) → body(15) */
-  heroCtx: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
+  /* ★ 2026-11-03（用户：「较昨日/较上周 字大一点、往上一点、和数值同一行」）：body(15) → card(18) */
+  heroCtx: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any },
   // .rows / .row：margin-top 6px，13px 行，底线分隔，末行无底线
   rowsBox: { marginTop: theme.sp(1.5) },
   rowItem: {
@@ -1899,8 +1898,8 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
         </Card>
       )}
 
-      {/* 卡 ③ 对比上周期 */}
-      {hasAny && prevMean != null && (
+      {/* 卡 ③ 对比上周期（★ 2026-11-03 用户：运动量对比已并入「周平均活动消耗」Hero 卡的分析文案，活动页不再单独成卡） */}
+      {hasAny && prevMean != null && type !== 'activity' && (
         <Card padded={false} style={{ marginTop: theme.sp(2) }}>
           <View style={styles.pad}>
             <Text style={styles.chartTitle}>对比{trendLabel}</Text>
