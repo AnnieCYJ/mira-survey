@@ -221,8 +221,8 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const pressBotOut = () =>
     Animated.spring(botScale, { toValue: 1, friction: 5, tension: 200, useNativeDriver: true }).start();
   const insets = useSafeAreaInsets();
-  // ★ 2026-10-10（用户：整体包括底下的 tab 往上挪一点点）：0 → 8 —— 悬浮 tab 胶囊不再贴死屏幕底。
-  const marginBottom = 8;
+  // ★ 2026-11-03（用户：整体包括底下的 tab 往下挪一点点）：8 → 4 —— 悬浮 tab 胶囊略微下沉、离屏幕底更近一点。
+  const marginBottom = 4;
   useEffect(() => () => {
     if (voiceStartTimer.current) clearTimeout(voiceStartTimer.current);
   }, []);

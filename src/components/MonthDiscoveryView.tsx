@@ -924,6 +924,23 @@ export default function MonthDiscoveryView({
                       <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
                         <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
                       </View>
+                      {/* ★ 2026-11-03（用户：规律观察也要接上 AI）：每条真实规律加「✨ AI 解读」，
+                          跳云端大模型（Qwen3-30B）用真实数据做描述性解读，不诊断。示例态不显示。 */}
+                      {!isSample && onAskMira ? (
+                        <TouchableOpacity
+                          style={styles.patAiBtn}
+                          onPress={() =>
+                            onAskMira(
+                              `我观察到一条关于自己的规律：「${p.text}」。用大白话帮我解读一下：这大概说明什么、可能和什么有关？只做描述性观察，不要诊断、不要吓我。`,
+                            )
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel="用 AI 解读这条规律"
+                        >
+                          <Icon name="sparkle" size={13} color={mm.colors.inkSoft} />
+                          <Text style={styles.patAiBtnText}>AI 解读</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                     {/* ★ 本轮：示例态不显示「删掉」（示例非真实数据，删了会反复出现） */}
                     {!isSample ? (
@@ -1083,6 +1100,9 @@ const styles = StyleSheet.create({
   // ★ 2026-10-28（用户）：每条规律观察下方的类别标签（时间节律/相关/组间差异）
   patTag: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 3, paddingHorizontal: 10, marginTop: theme.sp(2.5) },
   patTagText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, letterSpacing: 0.4 },
+  // ★ 2026-11-03（用户：规律观察接上 AI）：每条规律下方的「✨ AI 解读」入口
+  patAiBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1), marginTop: theme.sp(2) },
+  patAiBtnText: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
 
   // ★ Phase 2：规律观察卡
   patRow: {},

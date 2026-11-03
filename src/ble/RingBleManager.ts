@@ -6500,7 +6500,8 @@ class RingConnectionImpl {
       }
       const j = (await res.json().catch(() => ({}))) as any;
       const uploadedAt = Date.now();
-      this.state = { ...this.state, lastUploadedAt: uploadedAt };
+      // ★ 走 applyPatch 通知订阅者（设置页「最近上传」需实时刷新），而非直接改 this.state
+      this.applyPatch({ lastUploadedAt: uploadedAt });
       return { ok: true, count: j.received ?? records.length };
     } catch (e: any) {
       return { ok: false, count: 0, error: e?.message || '网络错误（请检查手机网络连接）' };

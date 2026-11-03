@@ -1,5 +1,6 @@
 import { uploadSelfReports } from '../data/selfReportSync';
 import { getLocalDeviceId } from '../data/ringIdentity';
+import { getAutoUploadEnabled, setAutoUploadEnabled } from '../data/autoUpload';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
@@ -36,14 +37,18 @@ export default function SettingsScreen() {
       navigation.navigate('Main' as never);
     }
   }, [navigation]);
-  const [notif, setNotif] = useState(true);
   // ★ 2026-10-18 用户：设置里加「海浪白噪音」开关（AsyncStorage 持久化，CalmWaveHome 读取控制首页海浪声）
   const [waveSound, setWaveSound] = useState(false);
   useEffect(() => {
     AsyncStorage.getItem('waveSound').then((v) => setWaveSound(v === '1'));
   }, []);
   const [sync, setSync] = useState(RingBle.getSyncEnabled());
+  const [autoUpload, setAutoUpload] = useState(true);
+  React.useEffect(() => {
+    getAutoUploadEnabled().then((v) => setAutoUpload(v));
+  }, []);
   const { autoMonitor, setAutoMonitor } = useAppState();
+  const [notif, setNotif] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [dumpPath, setDumpPath] = useState<string | null>(null);
@@ -504,11 +509,25 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        {/* 数据备份 · 上传云端（仅手动触发，本地数据始终保留） */}
+        {/* 数据备份 · 上传云端 */}
         <Text style={styles.sectionTitle}>数据备份（云端）</Text>
         <Card style={styles.uploadCard}>
+          <View style={styles.uploadAutoRow}>
+            <View style={styles.toggleText}>
+              <Text style={styles.rowTitle}>自动上传云端</Text>
+              <Text style={styles.rowDesc}>每约 4 小时自动同步到你的数据平台（也可随时手动上传）</Text>
+            </View>
+            <Toggle
+              value={autoUpload}
+              onValueChange={(v) => {
+                setAutoUpload(v);
+                void setAutoUploadEnabled(v);
+              }}
+            />
+          </View>
+          <View style={styles.divider} />
           <Text style={styles.uploadDesc}>
-            你佩戴戒指积累的数据始终保存在本机。点击下方按钮，可手动把数据上传到云端存储（仅手动触发、上传前会确认）。本机数据不会被删除。
+            你佩戴戒指积累的数据始终保存在本机。可手动点击上方按钮上传，或开启「自动上传云端」由 App 每约 4 小时自动同步。本机数据不会被删除。
           </Text>
           <TouchableOpacity
             onPress={uploadCloud}
@@ -971,6 +990,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textWhite,
   },
   uploadCard: { marginBottom: theme.space.sm },
+  uploadAutoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.sp(2.5),
+  },
   uploadDesc: {
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.6,

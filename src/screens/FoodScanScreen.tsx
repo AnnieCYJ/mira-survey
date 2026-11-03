@@ -400,27 +400,27 @@ export default function FoodScanScreen() {
                     </View>
                     {/* 状态胶囊：你处于 X · 皮质醇 · 今天状态（有数据才出，不编） */}
                     <View style={hs.statusTags}>
-                      <View style={[hs.statusPill, { backgroundColor: mm.colors.purpleSoft }]}>
-                        <Text style={[hs.statusPillText, { color: mm.colors.purpleDeep }]}>{PHASE_LABEL[phase]}</Text>
+                      <View style={hs.statusPill}>
+                        <Text style={hs.statusPillText}>{PHASE_LABEL[phase]}</Text>
                       </View>
                       {(() => {
                         const c = hormoneSnap?.cortisol;
                         if (!c?.ready) return (
-                          <View style={[hs.statusPill, { backgroundColor: mm.colors.skySoft }]}>
-                            <Text style={[hs.statusPillText, { color: mm.colors.skyDeep }]} numberOfLines={1}>皮质醇待同步</Text>
+                          <View style={hs.statusPill}>
+                            <Text style={hs.statusPillText} numberOfLines={1}>皮质醇待同步</Text>
                           </View>
                         );
-                        let bg: string = mm.colors.limeSoft, fg: string = mm.colors.limeDeep, t: string = '皮质醇平稳';
-                        if (c.level === 'high') { bg = mm.colors.roseSoft; fg = mm.colors.roseDeep; t = '皮质醇偏高'; }
-                        else if (c.level === 'dysregulated') { bg = mm.colors.honeySoft; fg = mm.colors.honeyDeep; t = '皮质醇节律略乱'; }
-                        return (
-                          <View style={[hs.statusPill, { backgroundColor: bg }]}>
-                            <Text style={[hs.statusPillText, { color: fg }]}>{t}</Text>
-                          </View>
-                        );
+            let t: string = '皮质醇平稳';
+            if (c.level === 'high') { t = '皮质醇偏高'; }
+            else if (c.level === 'dysregulated') { t = '皮质醇节律略乱'; }
+            return (
+              <View style={hs.statusPill}>
+                <Text style={hs.statusPillText}>{t}</Text>
+              </View>
+            );
                       })()}
-                      <View style={[hs.statusPill, { backgroundColor: mm.colors.honeySoft }]}>
-                        <Text style={[hs.statusPillText, { color: mm.colors.honeyDeep }]} numberOfLines={1}>今天状态 {todayStatusScore ?? '待同步'}</Text>
+                      <View style={hs.statusPill}>
+                        <Text style={hs.statusPillText} numberOfLines={1}>今天状态 {todayStatusScore ?? '待同步'}</Text>
                       </View>
                     </View>
 
@@ -669,8 +669,8 @@ function MineralChips({ items }: { items: MealItem[] }) {
   return (
     <View style={ms2.wrap}>
       {chips.map((c) => (c.on ? (
-        <View key={c.label} style={[ms2.chip, { backgroundColor: mm.colors.roseTint }]}>
-          <Text style={[ms2.chipText, { color: mm.colors.roseDeep }]}>{c.label} · 已补</Text>
+        <View key={c.label} style={[ms2.chip, { backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder }]}>
+          <Text style={[ms2.chipText, { color: mm.colors.inkSoft }]}>{c.label} · 已补</Text>
         </View>
       ) : (
         <View key={c.label} style={ms2.chipOff}>
@@ -1125,20 +1125,20 @@ const hs = StyleSheet.create({
   conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: mm.colors.inkFaint },
   /* 状态胶囊行：你处于 X · 皮质醇 · 今天状态 */
   statusTags: { flexDirection: 'row', flexWrap: 'nowrap', gap: theme.sp(1) },
-  statusPill: { flex: 1, minWidth: 0, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(1.25), alignItems: 'center' },
-  statusPillText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, lineHeight: theme.fs(17), textAlign: 'center' },
+  statusPill: { flex: 1, minWidth: 0, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(1.5), paddingVertical: theme.sp(1.25), alignItems: 'center', backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
+  statusPillText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, lineHeight: theme.fs(17), textAlign: 'center', color: mm.colors.inkSoft },
   focusTag: { marginTop: theme.sp(3), marginBottom: theme.sp(1.5) },
   avoidTag: { marginTop: theme.sp(3), marginBottom: theme.sp(1.5) },
   adviceGrid: { flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(3) },
-  adviceCard: { flex: 1, minWidth: 0, borderRadius: theme.sp(4), padding: theme.sp(3) },
-  adviceEat: { backgroundColor: mm.colors.limeTint },
-  adviceAvoid: { backgroundColor: mm.colors.honeyTint },
-  adviceCardTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: mm.colors.limeDeep, marginBottom: theme.sp(1.5) },
-  adviceAvoidTitle: { color: mm.colors.honeyDeep },
+  adviceCard: { flex: 1, minWidth: 0, borderRadius: theme.sp(4), padding: theme.sp(3), backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
+  adviceEat: {},
+  adviceAvoid: {},
+  adviceCardTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: mm.colors.ink, marginBottom: theme.sp(1.5) },
+  adviceAvoidTitle: { color: mm.colors.ink },
   adviceLine: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(18), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
-  // ★ 对比度修复：adviceEat(limeTint)/adviceAvoid(honeyTint) 浅底上 inkSoft(白 78%) 不可读 → 按卡分色
-  adviceEatLine: { color: mm.colors.limeDeep },
-  adviceAvoidLine: { color: mm.colors.honeyDeep },
+  // ★ 本轮（用户）：推荐多吃/先少碰 浅 tint 实底 → cardBg 磨砂玻璃（对齐首页/运动页/状态胶囊），白字可读
+  adviceEatLine: { color: mm.colors.inkSoft },
+  adviceAvoidLine: { color: mm.colors.inkSoft },
   /* 餐次卡（SPEC §3.5） */
   mealTitle: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, marginBottom: theme.sp(1) },
   emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },

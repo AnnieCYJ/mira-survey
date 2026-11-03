@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
     padding: theme.space.sm,
   },
   brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  brCellTime: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
+  brCellTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
   brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
   chartCard: {
     ...theme.shadow.card,

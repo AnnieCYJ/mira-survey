@@ -2241,14 +2241,51 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   const resColor = (lvl: string) =>
     lvl === '卓越' || lvl === '强健' ? C.relax : lvl === '稳健' ? C.mid : C.stress;
   const partName = part === 'day' ? '日间' : '夜间';
+  // ★ 本轮（用户）：疲劳度直接取「洞察页基础数据→疲劳度」同源值（healthStore 日均值），不再用 压力×1.2 推算
+  const rangeLabel = range === 'day' ? '今日' : range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
+  const fatigue =
+    range === 'day'
+      ? (healthStore.getDay('fatigue' as HSMetricKey, dateKeyOf(anchor.getTime()))?.mean ?? null)
+      : (() => {
+          let sum = 0, cnt = 0;
+          for (const dk of rangeDayKeys(anchor, range)) {
+            const m = healthStore.getDay('fatigue' as HSMetricKey, dk)?.mean;
+            if (m != null && Number.isFinite(m)) { sum += m; cnt += 1; }
+          }
+          return cnt > 0 ? Math.round(sum / cnt) : null;
+        })();
+  const fatigueBand =
+    fatigue == null ? null
+      : fatigue < 30 ? { text: '低', color: C.relax }
+      : fatigue < 55 ? { text: '适中', color: C.mid }
+      : { text: '偏高', color: C.stress };
+  const renderFatigue = () => (
+    <Card>
+      <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
+      <View style={styles.statGrid}>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>疲劳度</Text>
+          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>程度</Text>
+          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textSub }]}>{fatigueBand ? fatigueBand.text : '—'}</Text>
+        </View>
+      </View>
+      <Text style={styles.note}>与「洞察页基础数据 → 疲劳度」同源（健康一览自动评估），0–100，越低越轻松。非医学诊断。</Text>
+    </Card>
+  );
 
   if (range === 'day') {
     if (!today.hasData) {
       return (
-        <Card>
-          <Text style={styles.specLab}>今日压力分析</Text>
-          <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
-        </Card>
+        <View>
+          <Card>
+            <Text style={styles.specLab}>今日压力分析</Text>
+            <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
+          </Card>
+          {renderFatigue()}
+        </View>
       );
     }
     const sel = part === 'day' ? today.day : today.night;
@@ -2264,7 +2301,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     const midH = Math.max(0, sel.totalMin / 60 - sel.relaxH - sel.stressH);
     return (
       <View>
-        {/* 卡片 1：选中段总览 */}
+        {/* ★ 本轮（用户）：日间压力分析 + 时长分布 合并为一张卡 */}
         <Card>
           <Text style={styles.specLab}>{partName}压力分析</Text>
           <View style={styles.statGrid}>
@@ -2281,13 +2318,6 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
               <Text style={[styles.statValue, { color: C.stress }]}>{dash(sel.peak)}</Text>
             </View>
           </View>
-          {!partHasData ? (
-            <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
-          ) : null}
-        </Card>
-        {/* 卡片 2：选中段时长分布 */}
-        <Card>
-          <Text style={styles.specLab}>时长分布（{partName}）</Text>
           <View style={styles.statGrid}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>放松时长</Text>
@@ -2302,7 +2332,12 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
               <Text style={[styles.statValue, { color: C.stress }]}>{fmtH(sel.stressH)}</Text>
             </View>
           </View>
+          {!partHasData ? (
+            <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
+          ) : null}
         </Card>
+        {/* ★ 本轮（用户）：疲劳度（洞察页基础指标同源）置于时长分布下方 */}
+        {renderFatigue()}
       </View>
     );
   }
@@ -2317,7 +2352,6 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
         ? C.relax
         : C.mid
       : theme.colors.textSub;
-  const rangeLabel = range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
   return (
     <View>
       {/* 卡片 1：区间总览 */}
@@ -2361,6 +2395,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           <Text style={styles.note}>基于近 {resilience.days} 天压力信号：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</Text>
         </Card>
       ) : null}
+      {renderFatigue()}
       {w && w.daysWithData === 0 ? (
         <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
       ) : null}

@@ -20,6 +20,8 @@ import { RingBle } from '../ble/RingBleManager';
 // ★ Phase 1/2：启动后拉一次云端规律摘要 + 端侧规律引擎，写进本地「人生上下文库」。
 //   不 await、不阻塞首屏；失败静默降级（本地引擎仍然出观察）。
 import { syncPatterns } from '../ai/cloudPatterns';
+// ★ 自动上传云端：App 启动后挂 4h 定时 + 回前台补传（受独立开关控制）
+import { initAutoUpload } from '../data/autoUpload';
 
 export interface CelebrationState {
   visible: boolean;
@@ -84,6 +86,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     return () => { alive = false; };
+  }, []);
+
+  // ★ 自动上传云端：挂载即启动（4h 定时 + 回前台补传），卸载时清理。
+  useEffect(() => {
+    const cleanup = initAutoUpload();
+    return cleanup;
   }, []);
 
   const addToolTask = useCallback((t: TaskItem) => {
