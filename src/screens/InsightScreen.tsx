@@ -36,6 +36,7 @@ import {
 } from '../data/metrics';
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
+import { useDeviceModel, hasCap, type DeviceCapabilities } from '../config/deviceModel'; // ★ 2026-11-04（用户：双机型）
 import { healthStore, dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
@@ -224,7 +225,13 @@ export default function InsightScreen() {
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
   const [subTab, setSubTab] = useState<string>('recover'); // rhythm: recover(皮质醇) | body(雌/孕激素)
   // 当前 top tab 生效的子 tab 配置（hero/Segmented/UnderlineTabs 两个分支共用一套）
-  const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : LONGEVITY_SUBS;
+  // ★ 2026-11-04（用户：双机型）：Luna Mira 无心电/血液成分/一键体检 → 按机型能力过滤「身体指标」子 tab
+  const { model: deviceModel } = useDeviceModel();
+  const SUB_CAP: Partial<Record<string, keyof DeviceCapabilities>> = { ecg: 'ecg', bloodcomp: 'bloodComponents', quickcheck: 'quickCheck' };
+  const longevitySubs = LONGEVITY_SUBS.filter(t => { const c = SUB_CAP[t.key]; return !c || hasCap(deviceModel, c); });
+  const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : longevitySubs;
+  // 当前 subTab 被机型能力过滤掉时（如切到 Luna Mira），有效键回落到第一个可用 tab，避免空屏/选中错位
+  const effSub = ACTIVE_SUBS.some(t => t.key === subTab) ? subTab : (ACTIVE_SUBS[0]?.key ?? 'basics');
   const [tab, setTab] = useState<TabKey>('basics');
 
   // ★ 顶部「AI 综合分析」：真实接入端侧大模型（Qwen2.5-1.5B），上下文为该用户的真实健康数据
@@ -589,7 +596,7 @@ export default function InsightScreen() {
           <View style={{ width: '100%' }}>
             <UnderlineTabs
               options={ACTIVE_SUBS.map(t => t.label)}
-              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
+              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === effSub)}
               onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
               large
             />
@@ -599,7 +606,7 @@ export default function InsightScreen() {
             style={styles.chipRow} contentContainerStyle={styles.chipContent}>
             <UnderlineTabs
               options={ACTIVE_SUBS.map(t => t.label)}
-              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === subTab)}
+              activeIndex={ACTIVE_SUBS.findIndex(t => t.key === effSub)}
               onChange={(i) => setSubTab(ACTIVE_SUBS[i].key)}
               tone={'cy'}
             />
@@ -608,21 +615,21 @@ export default function InsightScreen() {
 
         {topTab === 'rhythm' ? (
           <>
-            {subTab === 'sleep' ? (
+            {effSub === 'sleep' ? (
               <>
                 <SleepStructureCard dataStale={dataStale} segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
                 <CortisolSleepSummary dataStale={dataStale} insightRows={recoveryRows} />
               </>
-            ) : subTab === 'body' ? (
+            ) : effSub === 'body' ? (
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
-            ) : subTab === 'recover' ? (
+            ) : effSub === 'recover' ? (
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
               <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
-            ) : subTab === 'mindCog' ? (
+            ) : effSub === 'mindCog' ? (
               // v18.3：认知 = 认知负荷（与首页「认知消耗」同源 computeCognitiveLoadReport；
               //   今天无采样时回退到最近有数据日，避免整卡空态）
               <CogTabCard ring={ring} navigation={navigation} />
-            ) : subTab === 'emotion' ? (
+            ) : effSub === 'emotion' ? (
               // v18.3：情绪 = 情绪洞察，点卡片进「情绪消耗」日/周/年详情页
               <>
                 <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EnergyDetail', { type: 'emotion' })}>
@@ -642,19 +649,19 @@ export default function InsightScreen() {
         ) : (
           <>
             {/* v18：心血管拆成「心电 / 血压」两个独立子 tab，各自全宽竖排 */}
-            {subTab === 'ecg' ? (
+            {effSub === 'ecg' ? (
               <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EcgDetail')}>
                 <Card style={{ padding: theme.space.cardPadCompact }}>
                   <EcgCard ring={ring} onPress={() => {}} compactMode />
                 </Card>
               </TouchableOpacity>
-            ) : subTab === 'bp' ? (
+            ) : effSub === 'bp' ? (
               /* ★ 2026-10-10（用户）：血压 tab 整卡重做 = 最新值 + 「全天血压趋势」双曲线，
                   与血糖卡同构；数据走 intraday bpSys/bpDia（与 BpDetail 详情页同源）。 */
               <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('BpDetail')}>
                 <BpTrendCard ring={ring} />
               </TouchableOpacity>
-            ) : subTab === 'sugar' ? (
+            ) : effSub === 'sugar' ? (
               /* ★ 2026-10-10（用户）：血糖 tab 整卡重做 = 最新值 + 「全天血糖趋势」曲线。
                   数据走 healthStore intraday 'glucose'（RingBle 把血糖增量写入 15 分钟槽，与指标详情页同源）——
                   daily.bloodSugar 缺失时也能出值；无采样 → 空骨架 + 「—」，绝不画假曲线（空态铁律）。
@@ -662,13 +669,13 @@ export default function InsightScreen() {
               <TouchableOpacity activeOpacity={0.7} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
                 <SugarTrendCard ring={ring} />
               </TouchableOpacity>
-            ) : subTab === 'bodycomp' ? (
+            ) : effSub === 'bodycomp' ? (
               // v18：一键体检 = 本地估算身体成分并持久化，独立成「身体成分」子 tab
               <ExamTab onProfileSaved={age => { profileRevision.current += 1; setActualAge(age); }} />
-            ) : subTab === 'bloodcomp' ? (
+            ) : effSub === 'bloodcomp' ? (
               // ★ 2026-10-16（用户）：血液成分 = 尿酸 + 血脂四项，紧邻「身体成分」的独立子 tab
               <BloodPanelTab onOpenDetail={openDetail} />
-            ) : subTab === 'quickcheck' ? (
+            ) : effSub === 'quickcheck' ? (
               // ★ 2026-10-26（用户）：一键体检 = HealthGlance 聚合快检（概览 → 记录 → 报告详情）
               <QuickCheckTab />
             ) : (
@@ -695,7 +702,7 @@ export default function InsightScreen() {
       </View>
     </ScreenContainer>
     {/* 情绪洞察页底部悬浮记录卡（仅 emotion 子 tab 出现；认知/其他 tab 不动） */}
-    {topTab === 'rhythm' && subTab === 'emotion' && <EmotionQuickRecord />}
+    {topTab === 'rhythm' && effSub === 'emotion' && <EmotionQuickRecord />}
     </View>
     <ChatSheet
       visible={chatVisible}

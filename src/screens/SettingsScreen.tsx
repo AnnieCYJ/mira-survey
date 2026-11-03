@@ -16,6 +16,8 @@ import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
 import { healthStore } from '../data/healthStore';
+// ★ 2026-11-04（用户：双机型）：Luna Mira Pro / Luna Mira 能力区分
+import { useDeviceModel, DEVICE_MODELS } from '../config/deviceModel';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
 
@@ -49,6 +51,8 @@ export default function SettingsScreen() {
   const [dumpPath, setDumpPath] = useState<string | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
   const [hsTick, setHsTick] = useState(0);
+  // ★ 2026-11-04（用户：双机型）：当前戒指型号（持久化在 prefs，切换后全 App 门禁即时生效）
+  const { model: deviceModel, setModelId: applyDeviceModel } = useDeviceModel();
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
@@ -459,6 +463,29 @@ export default function SettingsScreen() {
           )}
         </Card>
 
+        {/* ★ 2026-11-04（用户：双机型）：设备型号 = Luna Mira Pro（全功能）/ Luna Mira（精简档）。
+            同一 Veepoo 协议、广播名暂无法可靠区分 → 手动选择，默认 Pro。 */}
+        <Text style={styles.sectionTitle}>设备型号</Text>
+        <Card padded={false} style={styles.listCard}>
+          {Object.values(DEVICE_MODELS).map((m) => {
+            const on = m.id === deviceModel.id;
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={styles.modelRow}
+                activeOpacity={0.7}
+                onPress={() => applyDeviceModel(m.id)}
+              >
+                <View style={styles.modelTextWrap}>
+                  <Text style={styles.modelLabel}>{m.label}</Text>
+                  <Text style={styles.modelDesc}>{m.subtitle}</Text>
+                </View>
+                {on ? <Icon name="check" size={theme.fs(18)} color={mm.colors.ink} strokeWidth={2.4} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </Card>
+
         {/* 扫描到的候选设备：手动点选连接（避免盲连第一个） */}
         {ring.devices.length > 0 && ring.status !== 'connected' && (
           <Card padded={false} style={styles.listCard}>
@@ -685,6 +712,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   listCard: { marginBottom: theme.space.sm },
+  // ── ★ 2026-11-04：设备型号选择（Luna Mira Pro / Luna Mira）──
+  modelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(3),
+    gap: theme.sp(2.5),
+  },
+  modelTextWrap: { flex: 1 },
+  modelLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textBody,
+    fontWeight: theme.weight.semibold,
+  },
+  modelDesc: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
+    marginTop: 2,
+  },
   // ── Phase 0：关于与条款导航行 ──
   navRow: {
     flexDirection: 'row',
