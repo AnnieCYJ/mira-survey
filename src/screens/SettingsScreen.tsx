@@ -425,9 +425,6 @@ export default function SettingsScreen() {
           <View style={styles.statusBar}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-            {ring.protocol && ringConnected && (
-              <Text style={styles.protocolTag}>· {ring.protocol}</Text>
-            )}
           </View>
 
           {/* 已连接：电量 / 信号 / 固件 明细 */}
@@ -505,86 +502,6 @@ export default function SettingsScreen() {
             ))}
           </Card>
         )}
-
-        {/* 调试 · 数据诊断（临时，确认后可删） */}
-        <Text style={styles.sectionTitle}>调试 · 数据诊断（临时）</Text>
-        <Card style={styles.debugCard}>
-          <DebugRow label="连接状态" value={ring.status} />
-          <DebugRow label="最近同步" value={fmtAgo(ring.lastSyncedAt)} />
-          <DebugRow label="最近 backfill" value={fmtAgo(ring.lastBackfillAt)} />
-          <DebugRow
-            label="导出诊断"
-            value={typeof (RingBle as any).exportDebugDump === 'function' ? '可用' : '需 Clean Build'}
-          />
-          {/* ★ 图表真实数据源：healthStore 当前内存状态 */}
-          <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 10, marginBottom: 4 }]}>
-            healthStore 真实状态（图表/趋势图数据源）
-          </Text>
-          <Text style={styles.debugNote}>
-            这是图表与趋势图实际读取的唯一数据源。若某指标「天数」&gt;0 但图表仍空 → 渲染问题；若「天数」=0 → 离线数据未回传（开启设置页「数据同步」开关即可从戒指重拉）。
-          </Text>
-          {(() => {
-            // ★ 先 try/catch 防止 healthStore 写入风暴时 freshnessReport 卡死导致 Card 白屏
-            let rep: any[] = [];
-            try {
-              rep = healthStore.freshnessReport();
-            } catch {
-              rep = [];
-            }
-            const withData = rep.filter((r) => r.days > 0);
-            const none = rep.filter((r) => r.days === 0);
-            return (
-              <View>
-                {withData.length === 0 ? (
-                  <Text style={[styles.debugKeys, { color: theme.colors.danger }]}>（全部指标 0 天 — 离线数据未回传）</Text>
-                ) : (
-                  withData.map((r) => (
-                    <Text key={r.key} style={styles.debugKeys}>
-                      {r.label}: {r.days}天 · 样本{r.samples} · {r.status === 'fresh' ? '最近更新' : `${r.ageMinutes}分钟前`}
-                    </Text>
-                  ))
-                )}
-                <Text style={styles.debugKeys}>未覆盖: {none.map((r) => r.label).join('、') || '（无）'}</Text>
-              </View>
-            );
-          })()}
-          <View style={styles.divider} />
-          <DebugRow label="HR 历史天数" value={String(Object.keys(ring.hrDaily).length)} />
-          <Text style={styles.debugKeys}>HR 日期: {Object.keys(ring.hrDaily).sort().join(', ') || '（空）'}</Text>
-          <Text style={styles.debugKeys}>HR 样本日期: {Object.keys(ring.seriesByDay?.hr ?? {}).sort().join(', ') || '（空）'}</Text>
-          <DebugRow label="9/3 HR 趋势可见" value={sep3HrVisible ? '是 ✅' : '否 ❌'} />
-          <View style={styles.divider} />
-          <DebugRow label="HRV 历史天数" value={String(Object.keys(ring.hrvDaily).length)} />
-          <Text style={styles.debugKeys}>HRV 样本日期: {Object.keys(ring.seriesByDay?.hrv ?? {}).sort().join(', ') || '（空）'}</Text>
-          <DebugRow label="睡眠 历史天数" value={String(Object.keys(ring.sleepDaily).length)} />
-          <Text style={styles.debugKeys}>睡眠日期: {Object.keys(ring.sleepDaily).sort().join(', ') || '（空）'}</Text>
-          <Text style={styles.debugKeys}>睡眠摘要日期: {ring.sleepSummaryDate || '（空）'}</Text>
-          <DebugRow label="计步 历史天数" value={String(Object.keys(ring.stepDaily).length)} />
-          <DebugRow label="体温 历史天数" value={String(Object.keys(ring.tempDaily).length)} />
-          <Text style={styles.debugKeys}>体温 样本日期: {Object.keys(ring.seriesByDay?.temp ?? {}).sort().join(', ') || '（空）'}</Text>
-          <DebugRow label="血氧 历史天数" value={String(Object.keys(ring.spo2Daily).length)} />
-          <Text style={styles.debugKeys}>血氧 样本日期: {Object.keys(ring.seriesByDay?.spo2 ?? {}).sort().join(', ') || '（空）'}</Text>
-          <DebugRow label="EDA 历史天数" value={String(Object.keys(ring.edaDaily).length)} />
-          <DebugRow label="状态趋势 天数" value={String(Object.keys(ring.statusDaily).length)} />
-          <Text style={styles.debugNote}>
-            若「HR 日期」里没有 2026-9-3 → 戒指没把 9/3 的 HR 回传（当天没戴 / 已滚出 3 天缓冲 / backfill 未触发）。
-            开启「数据同步」开关连上戒指重拉最新离线数据；点「导出诊断」把完整状态存成文件，隔空投送发我即可，我直接看数据定位。
-          </Text>
-          <View style={styles.divider} />
-          <View style={styles.diagBtns}>
-            <TouchableOpacity onPress={() => { try { (RingBle as any).forceResync?.(); } catch(e) {} }} style={[styles.diagBtn, styles.diagBtnAlt]}>
-              <Text style={styles.diagBtnText}>🔄 重新同步离线数据</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onExportDump} disabled={diagBusy} style={[styles.diagBtn, styles.diagBtnAlt]}>
-              <Text style={styles.diagBtnText}>导出诊断文件</Text>
-            </TouchableOpacity>
-          </View>
-          {dumpPath && (
-            <Text style={[styles.debugKeys, styles.debugPath]} selectable>
-              {dumpPath}
-            </Text>
-          )}
-        </Card>
 
         {/* 数据备份 · 上传云端（仅手动触发，本地数据始终保留） */}
         <Text style={styles.sectionTitle}>数据备份（云端）</Text>

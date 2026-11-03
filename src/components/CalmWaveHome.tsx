@@ -277,13 +277,23 @@ export default function CalmWaveHome() {
   const cycleDay = dayInCycle ?? CYCLE_DAY;
   const cyclePhaseNow = phaseLabel && phaseLabel !== '未记录' ? phaseLabel : cyclePhase(cycleDay);
 
-  // ★ 还原 2026-10-18 大半圆几何：viewBox 280×150，圆心(140,140) R=116.7，左端点 180°→右端点 0° 的真·半圆。
-  //   进度末端白点坐标随 CV 比例移动（无数据则落在左端点）。
-  const ARC_SEMI_R = 116.7;
-  const ARC_END_T = hasStatusData ? (CV ?? 0) / 100 : 0;
-  const ARC_END_TH = Math.PI * (1 - ARC_END_T);
-  const endX = 140 + ARC_SEMI_R * Math.cos(ARC_END_TH);
-  const endY = 140 - ARC_SEMI_R * Math.sin(ARC_END_TH);
+  // ★ 2026-11-03（V2，对齐用户参考图）：近整圆几何——圆心(150,135) R=115，底部留 ~60° 开口。
+  //   左端点(0%)=(92.5,234.6)，右端点(100%)=(207.5,234.6)；进度从左侧起、顺时针过顶部到右。
+  const ARC_CX2 = 150;
+  const ARC_CY2 = 135;
+  const ARC_R2 = 115;
+  const ARC_GAP = 60;                         // 底部开口角度
+  const ARC_SWEEP2 = 360 - ARC_GAP;            // 弧总角度 300°
+  const START_A = 90 + ARC_GAP / 2;            // 左端点角度（120°）
+  const ptOnArc = (deg: number) => ({
+    x: ARC_CX2 + ARC_R2 * Math.cos((deg * Math.PI) / 180),
+    y: ARC_CY2 + ARC_R2 * Math.sin((deg * Math.PI) / 180),
+  });
+  const arcStart = ptOnArc(START_A);
+  const arcEndFull = ptOnArc(START_A + ARC_SWEEP2);
+  const frac = hasStatusData ? (CV ?? 0) / 100 : 0;
+  const arcEnd = ptOnArc(START_A + ARC_SWEEP2 * frac);
+  const progLargeArc = ARC_SWEEP2 * frac > 180 ? 1 : 0;
 
   // 心肺能力（VO₂max）：权威非运动估算法（Jackson 1990 + Uth 心率比法交叉），详见 lib/vo2max.ts。
   const vo2 = (() => { try { return estimateVo2maxFromStore(Date.now()); } catch { return null; } })();
@@ -357,22 +367,14 @@ export default function CalmWaveHome() {
   // ★ 2026-10-20 微调：用户"圆环+周期+下方睡眠恢复卡片整体往下移一点点"——给 gaugeTop 加
   //   TOP_OFFSET(=20)，因「今日状态」标题(gaugeTop-62)、弧块(gaugeTop)、卡行(arcBottom 派生) 全部由
   //   gaugeTop 驱动，三者会整体同步下移；卡行有 Math.min 钳位不撞 AI 卡顶。
-  const TOP_OFFSET = 20;
-  const gaugeTop = transitionY - 28 + TOP_OFFSET;     // 双弧块移到原卡行顶部位置 + 整体下移 20px
-  const arcBottom = gaugeTop + GAUGE_H;
-  // ★ 2026-10-29 蒙层策略（用户修正：参考图只有「海浪→一段过渡→底部实色」三段，不要分多层）：
-  //   顶部海浪清晰，约 1/3 处起一段平滑过渡，底部纯灰蓝实色。标题靠自身文字阴影保证可读，不再单独加托底分层。
-  const aiTop = height - aiBottom - aiCardH;
-  const chipRowTop = Math.min(
-    Math.max(arcBottom + 8, arcBottom + (aiTop - arcBottom - CHIP_H) / 2),
-    aiTop - CHIP_H - 8,                              // 钳位：卡行底不撞 AI 卡顶
-  );
-  // ★ 2026-10-30（用户：蓝要从「今日状态」下面就开始，整体再往上提一点）：
-  //   标题顶(titleFrac)=纯海浪视频零蒙层（标题靠文字阴影可读）；标题底(fadeStartFrac)=蓝从这里化入。
-  //   fadeStartFrac = gaugeTop-28（标题文字高约 34，故标题底≈gaugeTop-28），即"今日状态"正下方。
-  //   titleFrac 钳 [0.16,0.30]，fadeStartFrac 钳 [0.20,0.34]，兼容长短屏。
-  const titleFrac = Math.min(0.30, Math.max(0.16, (gaugeTop - 62) / height));
-  const fadeStartFrac = Math.min(0.34, Math.max(0.20, (gaugeTop - 28) / height));
+  // ★ 2026-11-03（V2）：以 844 设计高为基准等比缩放，对齐用户参考图布局
+  const k = height / 844;
+  const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
+  const gaugeTop = 116 * k;                            // 仪表区顶部（状态栏下）
+  const analysisTop = gaugeTop + 312 * k;              // 分析文字（弧/数字下方）
+  const capsuleTop = analysisTop + 58 * k;             // 建议胶囊
+  // 卡片行：贴 tab 上方（tab 高 84 + 安全区，上留 12）
+  const chipRowTop = height - insets.bottom - 84 - 12 - CHIP_H;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -398,10 +400,7 @@ export default function CalmWaveHome() {
         <AvatarStack
           size={34}
           mono
-          onSelect={(id) => {
-            if (id === 'self') navigation.navigate('AccountHub');
-            else navigation.navigate('MemberDetail', { memberId: id });
-          }}
+          onSelect={() => navigation.navigate('AccountHub')}
           onAdd={() => navigation.navigate('AccountHub')}
         />
         <Text style={s.navTitle}>今日状态</Text>
@@ -428,49 +427,37 @@ export default function CalmWaveHome() {
           ★ 第三十一轮：再上移 12px（-50→-62；用户："今日状态位置再往上放一点"）。 */}
       {/* ★ 2026-11-03：标题「今日状态」已移至顶部导航栏中央（s.navTitle），此处不再单独渲染 */}
 
-      {/* Oura 式细弧大半圆环（★ 还原 2026-10-18 大半圆几何：viewBox 280×150，真·半圆 R=116.7，两端在 y=140）
-          → 中心大数字 + 状态词；整环可点 → 全天状态趋势。接真实数据（CV / moodLabel / cycleDay），保留用户 2 天成果。 */}
+      {/* 仪表区：近整圆（底部开口）+ 数字落开口处（圆心空）+ 分析/胶囊浮于照片 */}
       <View style={[s.gaugeZone, { top: gaugeTop }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <TouchableOpacity
-            style={s.gauge}
-            activeOpacity={0.85}
-            accessibilityLabel="查看全天状态趋势详情"
-            onPress={() => navigation.navigate('StatusTrendDetail')}
-          >
-            <Svg width="100%" height="100%" viewBox="0 0 280 150">
-              {/* 半圆轨道（白，淡） */}
-              <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={6} strokeLinecap="round" />
-              {/* 半圆进度（白，按 CV 比例） */}
-              {hasStatusData ? (
-                <Path d="M 23.3 140 A 116.7 116.7 0 0 1 256.7 140" fill="none" stroke="#FFFFFF" strokeWidth={6} strokeLinecap="round" strokeDasharray={`${(366.6 * (CV ?? 0) / 100).toFixed(1)} 366.6`} />
-              ) : null}
-              {/* 进度末端白点 + 光晕 */}
-              {hasStatusData ? (
-                <>
-                  <Circle cx={endX} cy={endY} r={10.5} fill="rgba(255,255,255,0.20)" />
-                  <Circle cx={endX} cy={endY} r={5.2} fill="#FFFFFF" />
-                </>
-              ) : null}
-            </Svg>
-            <View style={s.gaugeCenter}>
-              <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
-              <Text style={s.gLabel}>{moodLabel}</Text>
-              <Text style={s.gUpd}>周期 · {cyclePhaseNow} · 第{cycleDay}天</Text>
-            </View>
-          </TouchableOpacity>
-          {/* 环旁向右箭头提示（→ 全天趋势） */}
-          <Svg width={16} height={26} viewBox="0 0 13 22" style={{ marginLeft: 3 }}>
-            <Path d="M2 2 L10 11 L2 20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </View>
-        {/* ★ 还原：收工啦放松胶囊（点 → 呼吸放松） */}
         <TouchableOpacity
-          style={s.relaxPill}
+          style={[s.gauge, { width: gaugeSize, height: gaugeSize }]}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('Breathing')}
+          accessibilityLabel="查看全天状态趋势详情"
+          onPress={() => navigation.navigate('StatusTrendDetail')}
         >
-          <Text style={s.relaxPillTxt}>收工啦，轻呼吸放松放松 ›</Text>
+          <Svg width="100%" height="100%" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
+            {/* 轨道：近整圆、底部开口 60°，淡白 */}
+            <Path
+              d={`M ${arcStart.x.toFixed(2)} ${arcStart.y.toFixed(2)} A ${ARC_R2} ${ARC_R2} 0 1 1 ${arcEndFull.x.toFixed(2)} ${arcEndFull.y.toFixed(2)}`}
+              fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={8} strokeLinecap="round"
+            />
+            {/* 进度：白色，左0→CV%（按当前状态分） */}
+            <Path
+              d={`M ${arcStart.x.toFixed(2)} ${arcStart.y.toFixed(2)} A ${ARC_R2} ${ARC_R2} 0 ${progLargeArc} 1 ${arcEnd.x.toFixed(2)} ${arcEnd.y.toFixed(2)}`}
+              fill="none" stroke="#FFFFFF" strokeWidth={8} strokeLinecap="round"
+            />
+            {/* 进度末端亮点（更明显：外晕+实心） */}
+            <Circle cx={arcEnd.x} cy={arcEnd.y} r={13} fill="rgba(255,255,255,0.30)" />
+            <Circle cx={arcEnd.x} cy={arcEnd.y} r={7} fill="#FFFFFF" />
+          </Svg>
+          {/* 数字落圆下部开口处（圆心空） */}
+          <View style={[s.gaugeCenter, { top: 168 * (gaugeSize / 300) }]}>
+            <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
+            <Text style={s.gLabel}>{moodLabel}</Text>
+          </View>
+          {/* 0 / 100 刻度（左 0、右 100） */}
+          <Text style={[s.scaleTxt, { left: '30.8%', top: '79%' }]}>0</Text>
+          <Text style={[s.scaleTxt, { left: '69.2%', top: '79%' }]}>100</Text>
         </TouchableOpacity>
       </View>
 
@@ -518,46 +505,19 @@ export default function CalmWaveHome() {
         />
       </View>
 
-      {/* AI 分析卡：沉底（避开真 tab 栏）★ 2026-10-18 第二十六→二十七轮（用户）：
-          改语音气泡——右下角逐出白版同款圆角小尾巴（尖朝右下，参考 5b22460
-          白玻璃气泡 HomeAiBubble：底边两点汇聚成尖 + strokeLinejoin/cap round）。
-          第二十七轮：去掉骑角的紫色圆环头像（用户："不是要那个东西"），尾巴即终点。 */}
-      <View style={[s.aiCard, { bottom: aiBottom }]}>
+      {/* 分析文字（浮于照片，无卡片底） */}
+      <View style={[s.analysisWrap, { top: analysisTop }]}>
         <Text style={s.analysis}>
           {hasStatusData
             ? <>今天状态不错，<Text style={s.hl}>{CV} 分</Text>比平时稳，趁状态好做点想做的事～</>
             : '今天还没有状态数据，戴上戒指，我会帮你把今天的状态看得更准～'}
         </Text>
-        <View style={s.sug}>
-          <Image source={THUMB_RELAX} style={s.sugThumb} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.sugH}>3 分钟呼吸放松</Text>
-            <Text style={s.sugD}>开会前把心率平一下</Text>
-          </View>
-          <View style={s.goPill}>
-            <Text style={s.goTxt}>去呼吸 ›</Text>
-          </View>
-        </View>
-        {/* 气泡尾巴：白版（5b22460 HomeAiBubble）同款几何——
-           卡底边两点 (b0,b1) 汇聚到下方尖端 tip，strokeLinejoin/cap=round 出圆角尖；
-           Svg 60×12、right:16 bottom:-9 → 顶缘 y=0..3 在卡内被底边盖住，y=3 即卡底边，
-           尖伸出卡外 9px；tip 略右偏（相对 b0b1 中点 +2）指向右下。 */}
-        <Svg
-          width={60}
-          height={12}
-          viewBox="0 0 60 12"
-          style={{ position: 'absolute', right: 16, bottom: -9 }}
-          pointerEvents="none"
-        >
-          <Path
-            d="M16 3 L36 12 L32 3"
-            fill={AI_CARD_BG}
-            stroke={AI_CARD_BG}
-            strokeWidth={1}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </Svg>
+      </View>
+      {/* 建议胶囊（→ 呼吸放松） */}
+      <View style={[s.capsuleWrap, { top: capsuleTop }]}>
+        <TouchableOpacity style={s.relaxPill} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
+          <Text style={s.relaxPillTxt}>收工啦，轻呼吸放松放松 ›</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -658,7 +618,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -20,
+    top: 0,
     alignItems: 'center',
   },
   // 分数主视觉（大半圆：58px 白字）
@@ -679,6 +639,14 @@ const s = StyleSheet.create({
   },
   relaxPillTxt: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
 
+  // 分析文字（浮于照片，无卡片底）
+  analysisWrap: { position: 'absolute', left: 24, right: 24 },
+  capsuleWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  scaleTxt: {
+    position: 'absolute', fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.6)',
+    textShadowColor: 'rgba(8,30,58,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+  },
+
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）
   aiCard: {
     position: 'absolute',
@@ -692,7 +660,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 16.5, lineHeight: 24, color: 'rgba(255,255,255,0.92)', marginBottom: 12 },
+  analysis: { fontSize: 17.5, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0 },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
