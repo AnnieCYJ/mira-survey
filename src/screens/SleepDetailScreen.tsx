@@ -50,8 +50,6 @@ import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { reportNowMsForDay } from '../lib/dayAnchor';
-// ★ P0-2（2026-10-28）：行为关联面板（Pearson r + Cohen's d），置于详情页底部
-import BehaviorCorrelationPanel from '../components/BehaviorCorrelationPanel';
 
 
 interface DayRec {
@@ -467,14 +465,14 @@ export default function SleepDetailScreen() {
 
       {/* ★ 睡眠恢复分卡片：仅日视图显示（置于选择器下方）；周/月/年已在双轴图里以「恢复分曲线」呈现，不再重复显示总分数 */}
       {dRange === 'day' ? (
-        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分（个人基线映射）" />
+        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分" />
       ) : null}
 
       {dRange === 'day' ? (
         /* 日：脑力准备度（★ 2026-10-26 用户：睡眠分析上方加卡，展示当前准备度 + 脑力峰/谷时段，
                与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan） */
         <>
-          <BrainReadinessCard anchorMs={anchor.getTime()} />
+          <BrainPeakTroughBlock anchorMs={anchor.getTime()} />
 
           <SleepAnalysisCard
             day={dayAnalysis.day}
@@ -554,9 +552,6 @@ export default function SleepDetailScreen() {
       {/* ★ 2026-10-09（用户：预览里没有这张卡）：移除月视图「睡眠·激素节律关联」，
           周/月/年 = 双轴图卡 + 多维度对比卡，与 sleep-recovery-preview.html 严格一致。 */}
 
-      {/* ★ P0-2（2026-10-28）：行为关联面板 —— 置于睡眠详情页底部，展示「哪些行为影响睡眠」（Pearson r + Cohen's d） */}
-      <BehaviorCorrelationPanel outcome="sleep" />
-
     </ScreenContainer>
     </View>
   );
@@ -579,56 +574,43 @@ function fmtSpan(span: { startHour: number; endHour: number } | null | undefined
   return `${f(span.startHour)} – ${f(span.endHour)}`;
 }
 
-function BrainReadinessCard({ anchorMs }: { anchorMs: number }) {
+/**
+ * BrainPeakTroughBlock —— 仅展示「脑力峰值 / 低谷时段」（日视图，置于「睡眠恢复分」卡片下方）
+ *
+ * ★ 本轮（用户）：去掉「脑力准备度」总分卡（不再展示 0–100 当前分），
+ *   只把峰值 / 低谷时段作为两个小格子放在睡眠恢复分卡片下方，不再单独成卡。
+ *   与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan。
+ *   数据纪律：任一项缺失 → 显「—」，不猜、不拿演示数据顶替。
+ */
+function BrainPeakTroughBlock({ anchorMs }: { anchorMs: number }) {
   const hsRefresh = useDebouncedHealthStoreRefresh(700);
-  // ★ 2026-10-27（审计 P2）：戒指断流（>3h 无采样）时，脑力准备度不得再显示旧预测值，
-  //   强制空态（与睡眠结构卡 / 节律卡 / 首页圆环同一口径）。
+  // ★ 2026-10-27（审计 P2）：戒指断流（>3h 无采样）时，时段不得再显示旧预测值，强制空态。
   const dataStale = (RingBle.getState().curveStatus as any)?.dataStale === true;
   const report = useMemo(() => {
     try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs)); } catch { return null; }
   }, [anchorMs, hsRefresh]);
 
-  const remain = !dataStale ? (report?.brainRemaining ?? null) : null;
-  const band = remain == null
-    ? null
-    : remain >= 70
-      ? { text: '充沛', color: theme.colors.success }
-      : remain >= 40
-        ? { text: '中等', color: theme.colors.warn }
-        : { text: '偏低', color: theme.colors.danger };
+  const peak = !dataStale ? report?.forecast?.peakSpan : null;
+  const trough = !dataStale ? report?.forecast?.troughSpan : null;
 
   return (
     <View style={styles.brCard}>
-      <View style={styles.brHead}>
-        <Text style={styles.brTitle}>脑力准备度</Text>
-        <Text style={[styles.brState, { color: band?.color ?? theme.colors.textSub }]}>
-          {band ? band.text : '暂无数据'}
-        </Text>
-      </View>
-
-      <View style={styles.brHero}>
-        <Text style={[styles.brNum, { color: band?.color ?? mm.colors.ink }]}>
-          {remain != null ? String(Math.round(remain)) : '—'}
-        </Text>
-        <Text style={styles.brUnit}>/100 · 当前</Text>
-      </View>
-
       <View style={styles.brDuo}>
         <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
           <Text style={styles.brCellLab}>脑力峰值时段</Text>
           <Text
-            style={[styles.brCellTime, { color: !dataStale && report?.forecast?.peakSpan ? theme.colors.success : theme.colors.textSub }]}
+            style={[styles.brCellTime, { color: !dataStale && peak ? theme.colors.success : theme.colors.textSub }]}
           >
-            {!dataStale && report?.forecast?.peakSpan ? fmtSpan(report.forecast.peakSpan) : '—'}
+            {!dataStale && peak ? fmtSpan(peak) : '—'}
           </Text>
           <Text style={styles.brCellSub}>适合深度思考</Text>
         </View>
         <View style={[styles.brCell, { backgroundColor: theme.colors.danger + '1A' }]}>
           <Text style={styles.brCellLab}>脑力低谷时段</Text>
           <Text
-            style={[styles.brCellTime, { color: !dataStale && report?.forecast?.troughSpan ? theme.colors.danger : theme.colors.textSub }]}
+            style={[styles.brCellTime, { color: !dataStale && trough ? theme.colors.danger : theme.colors.textSub }]}
           >
-            {!dataStale && report?.forecast?.troughSpan ? fmtSpan(report.forecast.troughSpan) : '—'}
+            {!dataStale && trough ? fmtSpan(trough) : '—'}
           </Text>
           <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
         </View>

@@ -1585,8 +1585,6 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-16：血脂页（四项任一）——血脂四项汇总 + 规则 AI 分析。
             注意：四项同图的「日/周/月/年」趋势卡（LipidTrendCard）已作为主图渲染在页面顶部（续 6）。 */}
         {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidOverviewCard anchor={anchor} openChat={openChat} /> : null}
-        {/* ★ 2026-10-17：压力页——Mira 式规则解读层（当日定性 / 今日放松紧张时长 / 本周主导档位 + 紧张占比） */}
-        {params.key === 'stress' ? <StressInsightCard anchor={anchor} openChat={openChat} /> : null}
         {edaDiagnostics ? (
           <View style={styles.debugFoot}>
             <Text style={styles.debugTitle}>测试信息 · EDA（最近 30 分钟）</Text>
@@ -2078,122 +2076,6 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
   );
 }
 
-/* ★ 2026-10-17：压力详情页——Mira 式规则解读层（对齐 Oura Daytime Stress 的分析语义，但保持 Mira 口径）
- * 从压力真数据派生：当日定性（放松日 / 平衡日 / 紧张日）、今日放松·紧张时长、本周主导档位与紧张占比。
- * 配色与全局一致：低档=主题绿 limeMid（放松）、中档=琥珀 honeyCore、高档=粉 roseDeep（紧张）。
- * 注意：stress 与 emotionalStress / emotionalLoad 并非同一指标——此处只用基础指标压力（与「身体负荷」chip 同源）。 */
-function StressInsightCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
-  // 单日压力聚合：委托给模块级 stressDaySummary（与 StressStatCards 同源口径）
-  const dayStress = useCallback((dk: string, dayStartTs: number) => stressDaySummary(dk, dayStartTs), []);
-
-  const today = useMemo(() => dayStress(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())), [anchor, dayStress]);
-
-  // 本周（anchor 所在自然周，周一~周日）跨天聚合，求主导档位与紧张占比
-  const week = useMemo(() => {
-    const mon = startOfWeek(anchor);
-    let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(mon, i);
-      const dk = dateKeyOf(d.getTime());
-      const r = dayStress(dk, dayStartOf(d.getTime()));
-      if (!r.hasData) continue;
-      daysWithData += 1;
-      relaxMin += r.relaxH * 60;
-      midMin += r.midH * 60;
-      stressMin += r.stressH * 60;
-      if (r.avg != null) { sum += r.avg; cnt += 1; }
-    }
-    const totalMin = relaxMin + midMin + stressMin;
-    const dominant: '放松' | '平衡' | '紧张' =
-      stressMin >= relaxMin && stressMin >= midMin ? '紧张' : relaxMin >= midMin ? '放松' : '平衡';
-    return {
-      daysWithData,
-      avg: cnt > 0 ? sum / cnt : null,
-      stressPct: totalMin > 0 ? Math.round((stressMin / totalMin) * 100) : 0,
-      dominant,
-    };
-  }, [anchor, dayStress]);
-
-  // 恢复力（近 14 天），与 StressStatCards 同源
-  const resilience = useMemo(() => stressResilience(anchor), [anchor]);
-
-  const qualOf = (avg: number | null): '放松日' | '平衡日' | '紧张日' | null => {
-    if (avg == null) return null;
-    if (avg < STRESS_BANDS[0]) return '放松日';
-    if (avg > STRESS_BANDS[1]) return '紧张日';
-    return '平衡日';
-  };
-
-  const todayQual = qualOf(today.avg);
-  const toneOfToday = todayQual === '放松日' ? 'good' : todayQual === '紧张日' ? 'warn' : 'neutral';
-
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [];
-
-  // 第一段：当日定性（纯段落）
-  if (today.hasData && today.avg != null) {
-    rows.push({
-      tone: 'neutral',
-      title: '',
-      body: `今日压力均值为 ${Math.round(today.avg)}（0–100），整体属于「${todayQual}」。`,
-    });
-  } else {
-    rows.push({
-      tone: 'neutral',
-      title: '',
-      body: '今日压力数据不足，暂无法评估当日节奏。持续佩戴后，这里会结合你的真实压力曲线生成解读。',
-    });
-  }
-
-  // 今日放松 / 紧张时长
-  if (today.hasData) {
-    rows.push({
-      tone: toneOfToday,
-      title: '今日节奏',
-      body: `放松时段约 ${today.relaxH.toFixed(1)}h、紧张时段约 ${today.stressH.toFixed(1)}h（按 5 分钟档位统计，未佩戴时段不计入）。`,
-    });
-  }
-
-  // 本周主导档位 + 紧张占比
-  if (week.daysWithData > 0) {
-    rows.push({
-      tone: 'neutral',
-      title: '本周主导',
-      body: `本周 ${week.daysWithData} 天有数据，主导档位为「${week.dominant}」，紧张占比约 ${week.stressPct}%。`,
-    });
-  } else {
-    rows.push({
-      tone: 'neutral',
-      title: '本周主导',
-      body: '本周暂无足够压力数据，无法判断主导档位与紧张占比。',
-    });
-  }
-
-  // 恢复力（近 14 天综合，与图下数据卡同源）
-  if (resilience) {
-    rows.push({
-      tone: resilience.level === '受限' || resilience.level === '一般' ? 'warn' : 'good',
-      title: '恢复力',
-      body: `近 ${resilience.days} 天综合恢复力为「${resilience.level}」（评分 ${resilience.score}）。夜间压力越低、日间放松越多，恢复力越强。`,
-    });
-  }
-
-  // 建议（按当日状态给平实提示，不做认知反馈 / 评分）
-  let adviceBody = '压力随活动、睡眠与周期相位波动属正常；留意连续多日紧张占比偏高时，主动安排休息。';
-  if (todayQual === '紧张日') {
-    adviceBody = '今天紧张时段偏多，可留意呼吸节奏与休息间隙；压力随活动、睡眠与周期相位自然波动。';
-  } else if (todayQual === '放松日') {
-    adviceBody = '今天整体放松，保持规律作息即可；压力随活动、睡眠与周期相位自然波动。';
-  }
-  rows.push({ tone: 'neutral', title: '建议', body: adviceBody });
-
-  return (
-    <InsightBanner
-      title="压力解读"
-      rows={rows}
-      onMore={() => openChat('帮我分析今天的压力水平和本周趋势，结合放松与紧张时段给出调节建议')}
-    />
-  );
-}
 
 /* ★ 2026-10-17（用户：① 分析以数据卡片嵌在日/周/月/年详情图下；② 日夜参考心率用 tab 区分；③ 恢复力要加上）：
  * - 日视图：顶部「日间/夜间」tab 切换，图与卡均跟随选中段；卡片 = 定性 + 平均 + 峰值 + 时长分布（放松/平衡/紧张）。
@@ -2268,10 +2150,11 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       : fatigue < 55 ? { text: '适中', color: C.mid }
       : { text: '偏高', color: C.stress };
   // ★ 本轮（用户）：疲劳度 → 低/中/高 分段条形（指针标记当前值，一眼看懂 0–100 含义）
+  // ★ 本轮（用户）：疲劳度不再单独成卡，作为内嵌块并入「压力分析 + 恢复力」合并卡
   const renderFatigueBar = () => {
     const pct = fatigue == null ? 0 : Math.max(0, Math.min(100, fatigue));
     return (
-      <Card>
+      <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
           <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle, fontSize: theme.sp(3.4) }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
@@ -2293,7 +2176,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           <Text style={[styles.note, { color: C.stress }]}>高</Text>
         </View>
         <Text style={styles.note}>0–100，越低越轻松。与「洞察页基础数据 → 疲劳度」同源（健康一览自动评估）。非医学诊断。</Text>
-      </Card>
+      </View>
     );
   };
 
@@ -2304,8 +2187,8 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           <Card>
             <Text style={styles.specLab}>今日压力分析</Text>
             <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
+            {renderFatigueBar()}
           </Card>
-          {renderFatigueBar()}
         </View>
       );
     }
@@ -2322,25 +2205,11 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     const midH = Math.max(0, sel.totalMin / 60 - sel.relaxH - sel.stressH);
     return (
       <View>
-        {/* ★ 本轮（用户）：压力分析 + 恢复力 合并一卡；含 平均/最高/最低 */}
+        {/* ★ 本轮（用户）：压力分析 + 恢复力 + 疲劳度 合并一卡；去掉 平均/最高/最低 */}
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.specLab}>{partName}压力分析</Text>
             <Text style={{ color: qColor, fontSize: theme.sp(1.6), fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
-          </View>
-          <View style={styles.statGrid}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>平均压力</Text>
-              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{dash(sel.avg)}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>最高压力</Text>
-              <Text style={[styles.statValue, { color: C.stress }]}>{dash(sel.peak)}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>最低压力</Text>
-              <Text style={[styles.statValue, { color: C.relax }]}>{dash(sel.min)}</Text>
-            </View>
           </View>
           <View style={styles.statGrid}>
             <View style={styles.statCell}>
@@ -2375,11 +2244,11 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
               </View>
             </View>
           ) : null}
+          {renderFatigueBar()}
           {!partHasData ? (
             <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
           ) : null}
         </Card>
-        {renderFatigueBar()}
       </View>
     );
   }
@@ -2396,23 +2265,9 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       : theme.colors.textSub;
   return (
     <View>
-      {/* ★ 本轮（用户）：区间压力分析 + 恢复力 合并一卡；含 平均/最高/最低 */}
+      {/* ★ 本轮（用户）：区间压力分析 + 恢复力 + 疲劳度 合并一卡；去掉 平均/最高/最低 */}
       <Card>
         <Text style={styles.specLab}>{rangeLabel}压力分析</Text>
-        <View style={styles.statGrid}>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>平均压力</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{w && w.avg != null ? String(Math.round(w.avg)) : '—'}</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>最高压力</Text>
-            <Text style={[styles.statValue, { color: C.stress }]}>{w && w.max != null ? String(Math.round(w.max)) : '—'}</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>最低压力</Text>
-            <Text style={[styles.statValue, { color: C.relax }]}>{w && w.min != null ? String(Math.round(w.min)) : '—'}</Text>
-          </View>
-        </View>
         <View style={styles.statGrid}>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>主导档位</Text>
@@ -2446,8 +2301,8 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             </View>
           </View>
         ) : null}
+        {renderFatigueBar()}
       </Card>
-      {renderFatigueBar()}
       {w && w.daysWithData === 0 ? (
         <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
       ) : null}

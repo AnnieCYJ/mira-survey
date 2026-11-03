@@ -374,8 +374,8 @@ export default function CalmWaveHome() {
   const k = height / 844;
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
   const gaugeTop = 158 * k;                            // 仪表区顶部（★ 2026-11-03：140→158 整体再下移一点点，圆环+分析+胶囊联动下移）
-  const analysisTop = gaugeTop + 340 * k;              // 分析文字（★ 本轮 312→340 避让放大后的状态词）
-  const capsuleTop = analysisTop + 44 * k;             // 建议胶囊（★ 本轮 58→44：整体上移约14pt，与下方卡片行拉开间距）
+  const analysisTop = gaugeTop + 310 * k;              // 分析文字（★ 本轮 340→310：整体上移，离「平平静静」更近，与下方胶囊成整体）
+  const capsuleTop = analysisTop + 40 * k;             // 建议胶囊（★ 本轮 44→40：与上方分析文字收紧成整体）
   // 卡片行：贴 tab 上方（tab 高 84 + 安全区）；★ 本轮：底部间隙 4→14，卡片整体再下移约 10px
   const chipRowTop = height - insets.bottom - 84 - 2 - CHIP_H;
 
