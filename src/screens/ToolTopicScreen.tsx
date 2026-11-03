@@ -140,6 +140,8 @@ export default function ToolTopicScreen() {
 
             {/* 日期步进器（SPEC §1：左右 ±1 天、点中间弹日历、不可选未来） */}
             <DateAnchorPicker value={sportDate} onChange={onSportDateChange} range="day" formatLabel={dayLabel} />
+            {/* ★ 本轮（用户）：时间选择器 ↔ 弧 拉开距离 */}
+            <View style={{ height: theme.sp(4) }} />
 
             {/* 卡1 分析（先）→ 卡2 推荐（后）+ 运动记录 + 记录面板 */}
             <SportRedesign sportDate={sportDate} pickerOpen={pickerOpen} setPickerOpen={setPickerOpen} />
@@ -510,11 +512,11 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
     <>
       {/* ① 今日状态分析（环 + stat3 + 理由；按反馈不显示顶部「为什么今天这么动」标签，内容保留） */}
       <SportAnalysisCard plan={plan} brief={brief} statusLine={statusLine} sleepScore={sleepSel?.score ?? null} sleepTotalMin={sleepSel?.total ?? null} />
-      <View style={{ height: theme.space.md }} />
+      <View style={{ height: theme.sp(6) }} />
 
       {/* ② 今天推荐 · 三选二（建议在后） */}
       <SportRecCard brief={brief} />
-      <View style={{ height: theme.space.md }} />
+      <View style={{ height: theme.sp(6) }} />
 
       {/* ③ 运动记录和分析（既有功能） */}
       <SportRecordsSection />
@@ -627,9 +629,9 @@ function IntensityRing({ color, gearName, gearSub }: { color: string; gearName: 
 }
 
 /** stat3 状态三格（心率 / 体感 / 时段，tint 底 + 圆点） */
-function StatTile({ tint, dot, label, value }: { tint: string; dot: string; label: string; value: string }) {
+function StatTile({ dot, label, value }: { dot: string; label: string; value: string }) {
   return (
-    <View style={[sp2.statTile, { backgroundColor: tint }]}>
+    <View style={sp2.statTile}>
       <View style={[sp2.statDot, { backgroundColor: dot }]} />
       <Text style={sp2.statLabel}>{label}</Text>
       <Text style={sp2.statValue}>{value}</Text>
@@ -679,9 +681,9 @@ function SportAnalysisCard({ plan, brief, statusLine, sleepScore, sleepTotalMin 
         <Text style={sp2.conclusionSub}>睡眠恢复不错，适合中低强度。{brief.reason} · {statusLine}</Text>
       </View>
       <View style={sp2.stat3}>
-        <StatTile tint={mm.colors.skyTint} dot={mm.colors.skyCore} label="恢复" value={sleepScore != null ? `${Math.round(sleepScore)}` : "—"} />
-        <StatTile tint={mm.colors.honeyTint} dot={mm.colors.honeyCore} label="睡眠" value={sleepTotalMin != null ? `${Math.floor(sleepTotalMin / 60)}h${String(sleepTotalMin % 60).padStart(2, "0")}` : "—"} />
-        <StatTile tint={mm.colors.roseTint} dot={mm.colors.roseCore} label="建议强度" value={brief.gearName === "恢复" ? "低" : brief.gearName === "平稳" ? "中低" : "中"} />
+        <StatTile dot={mm.colors.skyCore} label="恢复" value={sleepScore != null ? `${Math.round(sleepScore)}` : "—"} />
+        <StatTile dot={mm.colors.honeyCore} label="睡眠" value={sleepTotalMin != null ? `${Math.floor(sleepTotalMin / 60)}h${String(sleepTotalMin % 60).padStart(2, "0")}` : "—"} />
+        <StatTile dot={mm.colors.roseCore} label="建议强度" value={brief.gearName === "恢复" ? "低" : brief.gearName === "平稳" ? "中低" : "中"} />
       </View>
       </View>
     </>
@@ -1315,7 +1317,8 @@ const sp2 = StyleSheet.create({
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact,
   },
   /* ★ 本轮：弧与下方内容间距拉开（-3 负重叠 → +4 留白） */
-  heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: theme.sp(4) },
+  /* ★ 本轮（用户）：弧 ↔ 下方卡片 拉开距离（4 → 6） */
+  heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: theme.sp(6) },
   conclusion: { marginBottom: theme.sp(1), alignItems: 'flex-start' },
   conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, textAlign: 'left' },
   conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkFaint, textAlign: 'left' },
@@ -1345,7 +1348,8 @@ const sp2 = StyleSheet.create({
 
   /* stat3 三格：环下方 10px，3 列 gap 8，tint 底（SPEC §2.3） */
   stat3: { flexDirection: 'row', gap: theme.sp(1.5), marginTop: theme.sp(2) },
-  statTile: { flex: 1, borderRadius: theme.sp(3), paddingHorizontal: theme.sp(1.75), paddingVertical: theme.sp(1.75) },
+  /* ★ 本轮：tint 实底 → cardBg 磨砂玻璃（对齐首页/饮食页），白字在磨砂底上可读，彩色用 statDot 保留 */
+  statTile: { flex: 1, borderRadius: theme.sp(3), paddingHorizontal: theme.sp(1.75), paddingVertical: theme.sp(1.75), backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
   statDot: { width: theme.sp(1.75), height: theme.sp(1.75), borderRadius: theme.radius.pill, marginBottom: theme.sp(1.25) },
   statLabel: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, color: mm.colors.inkSoft },
   statValue: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, marginTop: 2 },

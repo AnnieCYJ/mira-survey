@@ -369,8 +369,9 @@ export default function FoodScanScreen() {
                     const got = dayMacros[k];
                     const pct = goal > 0 ? Math.min(100, Math.round((got / goal) * 100)) : 0;
                     const c = MACRO_COLOR[k];
+                    /* ★ 本轮（用户）：浅 tint 实底 → cardBg 磨砂玻璃（对齐首页/运动页），白字 mmLabelText/mmVal 在磨砂底上可读，彩色仅留 c.fg 圆点/进度条 */
                     return (
-                      <View key={k} style={[hs.mm, { backgroundColor: c.bg }]}>
+                      <View key={k} style={[hs.mm, { backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder }]}>
                         <View style={hs.mmLabel}>
                           <View style={[hs.mmDot, { backgroundColor: c.fg }]} />
                           <Text style={hs.mmLabelText}>{c.label}</Text>
@@ -1064,8 +1065,9 @@ const mm_m = StyleSheet.create({
   elemOff: { backgroundColor: 'rgba(31,29,26,0.05)' },
   elemText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fs(15) },
   verdict: { marginTop: theme.sp(3), borderRadius: theme.radius.card, padding: theme.space.cardPadCompact },
-  verdictGood: { backgroundColor: mm.colors.limeTint },
-  verdictWarn: { backgroundColor: mm.colors.honeyTint },
+  /* ★ 本轮（用户）：浅 tint 实底 → cardBg 磨砂玻璃（对齐首页/运动页），白字 verdictTitle/Sub/PhaseText 在磨砂底上可读 */
+  verdictGood: { backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
+  verdictWarn: { backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
   verdictTop: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
   verdictDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.radius.pill },
   verdictTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },

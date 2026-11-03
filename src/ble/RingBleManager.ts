@@ -6503,7 +6503,7 @@ class RingConnectionImpl {
       this.state = { ...this.state, lastUploadedAt: uploadedAt };
       return { ok: true, count: j.received ?? records.length };
     } catch (e: any) {
-      return { ok: false, count: 0, error: e?.message || '网络错误（请确认手机与后端同一 WiFi）' };
+      return { ok: false, count: 0, error: e?.message || '网络错误（请检查手机网络连接）' };
     }
   }
 }

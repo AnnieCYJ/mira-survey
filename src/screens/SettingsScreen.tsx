@@ -13,6 +13,7 @@ import Icon from '../components/Icon';
 import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
 import { healthStore } from '../data/healthStore';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
@@ -556,6 +557,16 @@ export default function SettingsScreen() {
             <Text style={styles.navRowTitle}>隐私政策与开源致谢</Text>
             <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} strokeWidth={2} />
           </TouchableOpacity>
+          <View style={styles.divider} />
+          {/* ★ 本轮：设置页展示当前版本号（与 git tag 对齐） */}
+          <View style={styles.verRow}>
+            <Text style={styles.verRowTitle}>当前版本</Text>
+            <Text style={styles.verRowVal}>{APP_VERSION_LABEL}</Text>
+          </View>
+          <View style={styles.verRow}>
+            <Text style={styles.verRowTitle}>版本标记</Text>
+            <Text style={styles.verRowVal}>{APP_VERSION_TAG}</Text>
+          </View>
         </Card>
       </ScreenContainer>
     </View>
@@ -686,6 +697,23 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.textBody,
     fontWeight: theme.weight.medium,
+  },
+  // ★ 本轮：设置页版本号两行（与 git tag 对齐）
+  verRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(2.5),
+  },
+  verRowTitle: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textBody,
+    fontWeight: theme.weight.medium,
+  },
+  verRowVal: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
   },
   noteCard: { marginBottom: theme.space.sm },
   footnote: {
