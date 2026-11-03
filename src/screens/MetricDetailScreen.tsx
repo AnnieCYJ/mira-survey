@@ -966,6 +966,32 @@ export default function MetricDetailScreen() {
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
   const heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
 
+  // ★ 本轮（用户）：周/月/年视图 → 与「上一周期」对比（相比上周/上月/上年 上升/下降多少）。
+  //   统一所有指标详情页 hero 卡格式：日视图保持「较区间首点」，周月年显示「较上周/上月/上年」。
+  const prevLabel = range === 'week' ? '较上周' : range === 'month' ? '较上月' : range === 'year' ? '较上年' : '';
+  const prevAnchor = useMemo(() => {
+    if (range === 'day') return anchor;
+    const a = new Date(anchor.getTime());
+    if (range === 'week') a.setDate(a.getDate() - 7);
+    else if (range === 'month') a.setMonth(a.getMonth() - 1);
+    else if (range === 'year') a.setFullYear(a.getFullYear() - 1);
+    return a;
+  }, [anchor, range]);
+  const prevSeries = useMemo(() => {
+    if (range === 'day') return null;
+    try { return buildHistorySeries(params.key, range, ring, cycleLog, prevAnchor); } catch { return null; }
+  }, [params.key, range, ring, cycleLog, prevAnchor]);
+  // ★ 压力（身体负荷）用 computeStressReport 0–100 口径（与 heroVal 同源）；其余用上一周期区间均值
+  const prevVal = isStress
+    ? (() => { try { return computeStressReport(prevAnchor.getTime()).score; } catch { return null; } })()
+    : (prevSeries?.avg ?? null);
+  const prevDeltaPct =
+    typeof heroVal === 'number' && prevVal != null && prevVal !== 0
+      ? Math.round(((heroVal - prevVal) / Math.abs(prevVal)) * 100)
+      : 0;
+  // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」（身体负荷 → 身体负荷趋势图，其余同理）
+  const chartTitle = `${params.name}趋势图`;
+
   // 打开「历史日」且当前指标无数据时，自动触发一次 backfill（需戒指已连接），
   // 让历史趋势图无需手动连戒指即可补拉。同一日期只触发一次，避免重复请求刷屏。
   useEffect(() => {
@@ -1043,10 +1069,14 @@ export default function MetricDetailScreen() {
               <View style={styles.hero}>
                 <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
                 {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
-                {range !== 'day' && hasData ? <Text style={styles.heroTag}>区间平均</Text> : null}
                 {range === 'day' && hasData && !isStress && deltaPct !== 0 && series.kind !== 'cycle' && (
                   <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
                     {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
+                  </Text>
+                )}
+                {range !== 'day' && hasData && prevDeltaPct !== 0 && (
+                  <Text style={[styles.delta, prevDeltaPct > 0 ? styles.up : styles.down]}>
+                    {prevDeltaPct > 0 ? '↑' : '↓'} {Math.abs(prevDeltaPct)}% · {prevLabel}
                   </Text>
                 )}
               </View>
@@ -1059,6 +1089,7 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-10（用户）：心率日视图 = Oura 风格全天柱状小条（5 分钟一点 / 30 分钟一格刻度） */}
         {isHrDayBars && hrBars ? (
           <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>{chartTitle}</Text>
             <AllDayBarsChart
               buckets={hrBars.buckets}
               dayStartMs={hrBars.dayStart}
@@ -1076,6 +1107,7 @@ export default function MetricDetailScreen() {
         {isTempDay && tempDay ? (
           <>
           <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>{chartTitle}</Text>
             {/* ★ 2026-10-16：体温 / 皮肤温度 双 tab */}
             <View style={styles.partRow}>
               {(['temp', 'skinTemp'] as const).map((sig) => {
@@ -1128,6 +1160,7 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-10（用户）：HRV 日视图 = 夜间 / 日间 分两段展示（Oura 口径：HRV 的意义集中在睡眠期） */}
         {isHrvDay && hrvDay ? (
           <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>{chartTitle}</Text>
             <View style={styles.partRow}>
               {(['night', 'day'] as const).map((p) => {
                 const on = hrvPart === p;
@@ -1178,12 +1211,13 @@ export default function MetricDetailScreen() {
         {isSpecDay && spec && specDay ? (
           <View style={styles.chartCard}>
             <View style={styles.partRow}>
-              <Text style={styles.specLab}>{DAY_BAR_SPECS[params.key]?.barLabel
-                ?? (DAY_BAR_SPECS[params.key]?.bands ? '全天 · 按档位分色' : '全天 · 每 5 分钟一点')}</Text>
-              <Text style={styles.specCount}>
-                {specDay.blocked ? '无实测数据'
-                  : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
-              </Text>
+              <Text style={styles.specLab}>{chartTitle}</Text>
+              {!isStress && (
+                <Text style={styles.specCount}>
+                  {specDay.blocked ? '无实测数据'
+                    : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
+                </Text>
+              )}
             </View>
             {/* ★ 2026-10-17（用户：日夜参考心率，做个 tab 区分就行）：压力日视图 日间/夜间 分段控件 */}
             <View style={styles.partRow}>
@@ -1262,18 +1296,21 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-17（用户：压力周月年对齐 Oura —— 分色柱而非连续折线）：
             分档（状态型）指标在周/月/年视图，逐桶分色柱，与日视图同套档位配色与语义。 */}
         {isSpecRange && spec ? (
-          <RangeBarsChart
-            points={series.points}
-            labels={axisLabels}
-            range={range}
-            colorOf={specColorOf}
-            yMin={params.yMin ?? 0}
-            yMax={params.yMax ?? 100}
-            unit={series.unit}
-            valueFmt={fmtVal}
-            showYAxis={!hideYAxis}
-            emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
-          />
+          <View>
+            <Text style={styles.chartTitle}>{chartTitle}</Text>
+            <RangeBarsChart
+              points={series.points}
+              labels={axisLabels}
+              range={range}
+              colorOf={specColorOf}
+              yMin={params.yMin ?? 0}
+              yMax={params.yMax ?? 100}
+              unit={series.unit}
+              valueFmt={fmtVal}
+              showYAxis={!hideYAxis}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+            />
+          </View>
         ) : null}
 
         {/* ★ 2026-10-17：压力——分析「数据卡片」嵌在日/周/月/年详情里（图表下方），与 AI 文字解读并行 */}
@@ -1282,10 +1319,11 @@ export default function MetricDetailScreen() {
         ) : null}
 
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
-        {isLipid ? <LipidTrendCard range={range} anchor={anchor} /> : null}
+        {isLipid ? <LipidTrendCard range={range} anchor={anchor} title="血脂四项趋势图" /> : null}
 
         {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && !isSpecRange && (
         <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>{chartTitle}</Text>
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             {/* Y 轴刻度：HTML 文字避免 SVG 横向拉伸变形；位置与参考线一一对应 */}
@@ -2606,6 +2644,8 @@ const styles = StyleSheet.create({
   partBtnTextOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any }, // ★ 对比度修复：白字压 limeSoft 不可读
   /** ★ 2026-10-10：柱状小条卡顶部的口径标签 / 有效数据计数 */
   specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
+  // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」
+  chartTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(2) },
   specCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   // ★ 2026-10-17：日视图「紧张 / 放松时长」汇总（对齐 Oura）
   zoneSummary: { flexDirection: 'row', gap: theme.sp(18), marginTop: theme.sp(12), alignItems: 'center' },
