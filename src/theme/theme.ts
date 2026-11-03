@@ -19,15 +19,16 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const colors = {
   // ★★★ mira-ocean 分支（2026-10-17）：白底设计存档于 mira-ios（tag v-mira-ios-white）。
-  //   本分支页面底色改为 Calm 式深海渐变：钢蓝 #3E627A（顶）→ #2A4470 → 深蓝紫 #2B3564（底）。
-  //   真相源在 src/theme/ocean.ts；此处按同值内联，保持旧调用点零改动。
-  bgTop: '#3E627A',
-  bgTopAlt: '#3A5E76',
-  bgMid: '#2A4470',
-  bgMidAlt: '#2A4470',
-  bgBottom: '#2B3564',
-  bgGradStops: ['#3E627A', '#2A4470', '#2B3564'] as const,
-  bgGradLocs: [0, 0.42, 1] as const,
+  //   本分支页面底色为 Calm 式深海渐变。真相源在 src/theme/ocean.ts。
+  //   ★ 2026-11-04（用户选定方案 B「整片沉海」）：三段全部取自首页照片海面与夜空
+  //     #1F4C7E（顶）→ #113861 → #0A294F（底）——与 ocean.ts 同值内联，旧调用点零改动。
+  bgTop: '#1F4C7E',
+  bgTopAlt: '#1D4876',
+  bgMid: '#113861',
+  bgMidAlt: '#113861',
+  bgBottom: '#0A294F',
+  bgGradStops: ['#1F4C7E', '#113861', '#0A294F'] as const,
+  bgGradLocs: [0, 0.46, 1] as const,
   accent1: '#9D8AF0',
   accent2: '#7EA6F8',
   /**

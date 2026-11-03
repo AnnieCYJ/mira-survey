@@ -29,6 +29,7 @@ import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur'; // ★ 2026-10-30（用户要真·磨砂玻璃）：对标题下方海浪视频做真实高斯模糊
 import Icon from './Icon'; // ★ 2026-11-03：档位词右箭头（chevronRight）
+import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine'; // ★ 2026-11-04：动态建议
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -232,6 +233,47 @@ export default function CalmWaveHome() {
   //   状态分取整显示（与弧进度/档位词口径统一），不再露原始浮点。
   // ★ 2026-10-28（用户：首页「今日状态」大数字须为状态曲线值，与详情页同源；恢复分=睡眠，已下沉到卡片行「睡眠恢复」）
   const CV = status?.value != null ? Math.round(status.value) : null;
+
+  // ★ 2026-11-04（用户「建议要跟分析结合、点完换下一条」）：建议胶囊接入 suggestionEngine
+  //   （与旧版首页建议卡同源，今日状态/相位/睡眠/压力同一事实源 → 与上方分析说得是同一件事）：
+  //  · 只取带 cta 的行动引导型（requireCta）——点了直接跳进对应工具页；
+  //  · 从工具页回来 → 强制换下一条（引擎避开刚展示的 id，负反馈还有 30 天冷却）；
+  //  · 引擎按 30 分钟槽位轮换、按状态签名去重（状态没变不会闪换）；池子空 → 回落原「呼吸放松」。
+  const [sugg, setSugg] = useState<SuggestionCandidate | null>(null);
+  const suggTapRef = useRef(false);
+  const refreshSugg = useCallback(
+    async (force: boolean) => {
+      try {
+        const c = await pickSuggestion(status, { requireCta: true, ...(force ? { force: true } : {}) });
+        if (c) setSugg(c);
+        else if (force) setSugg(null); // 强制换但池子空 → 回落默认胶囊
+        // 非 force 的 null = 状态没变/引擎让保留当前 → 不动
+      } catch {
+        /* 引擎异常 → 保留当前 */
+      }
+    },
+    [status],
+  );
+  useEffect(() => {
+    refreshSugg(false);
+  }, [refreshSugg]);
+  // 刚点过建议从工具页回来 → 换一条
+  useFocusEffect(
+    useCallback(() => {
+      if (suggTapRef.current) {
+        suggTapRef.current = false;
+        refreshSugg(true);
+      }
+    }, [refreshSugg]),
+  );
+  const onSuggPress = () => {
+    const c = sugg;
+    suggTapRef.current = true;
+    // cta.screen 来自引擎候选（Breathing/ToolTopic/LearnRead/FoodScan 等，均为已注册路由）
+    const nav = navigation.navigate as unknown as (screen: string, params?: Record<string, unknown>) => void;
+    if (c?.cta) nav(c.cta.screen, c.cta.params);
+    else nav('Breathing');
+  };
   const CV_STALE = status?.dataStale ?? true;
   const hasStatusData = CV != null && !CV_STALE;
   const EMPTY_COLOR = theme.colors.stateEnergy; // 空态统一紫（与 EnergyBall 圆环同源）
@@ -531,10 +573,12 @@ export default function CalmWaveHome() {
             : '今天还没有状态数据，戴上戒指，我会帮你把今天的状态看得更准～'}
         </Text>
       </View>
-      {/* 建议胶囊（→ 呼吸放松） */}
+      {/* 建议胶囊（★ 2026-11-04：动态建议——根据今日状态分析给、可跳对应工具、点完换下一条；池子空回落呼吸放松） */}
       <View style={[s.capsuleWrap, { top: capsuleTop }]}>
-        <TouchableOpacity style={s.relaxPill} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
-          <Text style={s.relaxPillTxt}>收工啦，轻呼吸放松放松 ›</Text>
+        <TouchableOpacity style={s.relaxPill} activeOpacity={0.85} onPress={onSuggPress}>
+          <Text style={s.relaxPillTxt} numberOfLines={2}>
+            {sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -650,9 +694,10 @@ const s = StyleSheet.create({
   gLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   // 周期副行
   gUpd: { fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
-  // 收工啦放松胶囊（→ 呼吸放松）
+  // 建议胶囊（★ 2026-11-04 动态建议：maxWidth 防长文案撑爆，最多两行）
   relaxPill: {
     marginTop: 16,
+    maxWidth: '86%',
     paddingVertical: 9,
     paddingHorizontal: 18,
     borderRadius: theme.radius.pill,
@@ -660,7 +705,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },
-  relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF' },
+  relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF', textAlign: 'center' },
 
   // 分析文字（浮于照片，无卡片底）
   analysisWrap: { position: 'absolute', left: 24, right: 24 },

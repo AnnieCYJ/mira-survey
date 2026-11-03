@@ -14,20 +14,24 @@
  *      ★ 重映射只发生在 mira-ocean 分支；mira-ios 分支保留白底原值。
  *
  * 层级（深 → 浅）：
- *   pageTop   #3E627A  钢蓝（页顶，承接首页海浪的视频末端色）
- *   pageMid   #2A4470  中蓝
- *   pageDeep  #2B3564  深蓝紫（页底，Calm 参考图末端色）
+ *   pageTop   #1F4C7E  沉海蓝（页顶，取自首页照片海面亮段）
+ *   pageMid   #113861  中海蓝
+ *   pageDeep  #0A294F  海面最深处（页底，与首页照片收底色同源）
+ *
+ * ★ 2026-11-04（用户选定方案 B「整片沉海」）：三段全部取自首页照片海面与夜空
+ *   （#1F4C7E → #113861 → #0A294F），比旧版（#3E627A→#2A4470→#2B3564，尾段紫味重）
+ *   暗一档、饱和一档——洞察/工具等页与首页照片从此同一片海。
  */
 export const ocean = {
-  /** 页面纵向渐变（无视频页面用）：钢蓝 → 中蓝 → 深蓝紫 */
+  /** 页面纵向渐变（无视频页面用）：沉海蓝 → 中海蓝 → 海面最深处 */
   grad: {
-    colors: ['#3E627A', '#2A4470', '#2B3564'] as const,
-    locations: [0, 0.42, 1] as const,
+    colors: ['#1F4C7E', '#113861', '#0A294F'] as const,
+    locations: [0, 0.46, 1] as const,
   },
 
-  pageTop: '#3E627A',
-  pageMid: '#2A4470',
-  pageDeep: '#2B3564',
+  pageTop: '#1F4C7E',
+  pageMid: '#113861',
+  pageDeep: '#0A294F',
 
   /** 玻璃卡（chips / 通用卡）：白 13% + 白 28% 细边，与 CalmWaveHome 完全一致 */
   glassBg: 'rgba(255,255,255,0.13)',

@@ -105,7 +105,7 @@ export default function BindingRitualScreen() {
 
   return (
     <View style={[s.root, { backgroundColor: theme.colors.bgBottom }]}>
-      <LinearGradient style={StyleSheet.absoluteFill} colors={['#2B3564', '#2A4470', '#3E627A']} locations={[0, 0.55, 1]} />
+      <LinearGradient style={StyleSheet.absoluteFill} colors={['#0A294F', '#113861', '#1F4C7E']} locations={[0, 0.55, 1]} />
       <Confetti visible={confetti} count={90} duration={3000} />
 
       <TouchableOpacity style={s.close} onPress={() => navigation.goBack()} activeOpacity={0.7}>

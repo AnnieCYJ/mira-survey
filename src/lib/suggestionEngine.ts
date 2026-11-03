@@ -441,7 +441,7 @@ function buildActionCandidates(cs: any, slot: number): SuggestionCandidate[] {
  */
 export async function pickSuggestion(
   cs?: any,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; /** true = 只要带 cta 的行动引导型（首页建议胶囊用：点了要能跳进对应工具） */ requireCta?: boolean },
 ): Promise<SuggestionCandidate | null> {
   await loadShown();
   await loadHabits();
@@ -479,6 +479,13 @@ export async function pickSuggestion(
     await markShown(sig, ''); // 池子空了：记下签名，气泡回落 idle，等状态变化再试
     return null;
   }
+  // ★ 2026-11-04（用户「建议要能跳进工具」）：requireCta = 只保留行动引导型；
+  //   观察反馈型（要点按钮评价的）不适合胶囊形态，过滤后为空则回落默认。
+  const finalPool = opts?.requireCta ? pool.filter((c) => !!c.cta) : pool;
+  if (finalPool.length === 0) {
+    await markShown(sig, '');
+    return null;
+  }
   // 第一阶段个性化：只用用户对同类分析的认可度调整顺序，不改变任何阈值。
   const feedback = peekAnalysisFeedback();
   const feedbackScore = (c: SuggestionCandidate) => {
@@ -487,11 +494,11 @@ export async function pickSuggestion(
       .filter((f) => f.id === key || f.id === c.id)
       .reduce((sum, f) => sum + (f.value === 'accurate' ? 1 : -1), 0);
   };
-  pool.sort((a, b) => feedbackScore(b) - feedbackScore(a));
+  finalPool.sort((a, b) => feedbackScore(b) - feedbackScore(a));
   // 按槽位页码稳定取一条；force 换新时避开刚被否/刚展示过的那条
-  let pick = Math.abs(slot) % pool.length;
-  if (pool.length > 1 && pool[pick].id === lastId) pick = (pick + 1) % pool.length;
-  const chosen = pool[pick];
+  let pick = Math.abs(slot) % finalPool.length;
+  if (finalPool.length > 1 && finalPool[pick].id === lastId) pick = (pick + 1) % finalPool.length;
+  const chosen = finalPool[pick];
   await markShown(sig, chosen.id);
   return chosen;
 }

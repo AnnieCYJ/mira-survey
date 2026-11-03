@@ -79,15 +79,16 @@ export const mm = {
     /* ── 白卡与描边 ── ★ mira-ocean：改玻璃（与 CalmWaveHome chips 同款） */
     cardBg: 'rgba(255,255,255,0.13)',
     // 干预系列页暖白底 → mira-ocean 深海页底
-    pageWarm: '#2B3564',
+    pageWarm: '#0A294F',
     cardBorder: 'rgba(255,255,255,0.22)',
     chipBorder: 'rgba(255,255,255,0.28)',
     tabBorder: 'rgba(255,255,255,0.22)',
 
-    /* ── CTA 渐变按钮（SPEC §4.1 #12：mid 档软渐变 黄绿→米→粉）── */
-    btnGradFrom: '#D5E384',
-    btnGradTo: '#F6B3D0',      // roseMid（v16 渐变端点限 mid 档）
-    btnTextOnGrad: '#5F6B1F',  // 黄绿底上的深绿字
+    /* ── CTA 按钮：★ 2026-11-03（用户）绿粉渐变与深海色系不搭 → 改白色玻璃（与 glassBg 同族，
+       上亮下沉的微渐变模拟玻璃受光）；字全白。 */
+    btnGradFrom: 'rgba(255,255,255,0.32)',
+    btnGradTo: 'rgba(255,255,255,0.14)',
+    btnTextOnGrad: '#FFFFFF',
     btnBusyBg: 'rgba(255,255,255,0.10)',
 
     /* ── 身体年龄 hero ── ★ mira-ocean：浅黄绿底改深海玻璃（深板岩 → 中蓝），弧线语义色不变 */

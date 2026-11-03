@@ -52,7 +52,7 @@ export default function CardioDetailScreen() {
   if (!result || !inputs) {
     return (
       <ScreenContainer>
-        <LinearGradient colors={['#2A4470', '#2B3564']} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['#113861', '#0A294F']} style={StyleSheet.absoluteFill} />
         <View style={s.wrap}>
           <Text style={s.h1}>心肺能力</Text>
           <View style={[s.card, { marginTop: 16 }]}>
@@ -74,7 +74,7 @@ export default function CardioDetailScreen() {
 
   return (
     <ScreenContainer>
-      <LinearGradient colors={['#2A4470', '#2B3564']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#113861', '#0A294F']} style={StyleSheet.absoluteFill} />
       <ScrollView contentContainerStyle={s.wrap} showsVerticalScrollIndicator={false}>
         <Text style={s.h1}>心肺能力</Text>
         <Text style={s.h2}>VO₂max · 最大摄氧量</Text>

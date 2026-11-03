@@ -90,59 +90,79 @@ function normalizeElements(raw?: Record<string, unknown>): ElementField | undefi
 
 const RECOGNIZE_PROMPT = `你是饮食记录助手。识别照片中的食物，返回 JSON（不要多余文字）：
 {"items":[{"name":"菜品名","portion":"份量描述如1碗/150g","kcal":估算热量整数,"protein":蛋白质克数,"carbs":碳水克数,"fat":脂肪克数,"elements":{"mg":镁毫克,"zn":锌毫克,"fe":铁毫克,"ca":钙毫克,"b6":维生素B6毫克,"fa":叶酸微克,"se":硒微克}}]}
-规则：每样食物单独一项；kcal 与宏量按常见做法估算；elements 为该菜品可食部常见含量的估算（毫克 mg，叶酸用微克 μg），识别不出某项就省略该键；最多 8 项；识别不出就返回 {"items":[]}。`;
+规则：每样食物单独一项；kcal 与宏量按常见做法估算；elements 为该菜品可食部常见含量的估算（毫克 mg，叶酸用微克 μg），识别不出某项就省略该键；最多 6 项；识别不出就返回 {"items":[]}。`;
 
-/** 调 VLM 识别餐食照片；任何失败返回 null（调用方走兜底） */
+/** 调 VLM 识别餐食照片；任何失败返回 null（调用方走兜底）。
+ *  ★ 2026-11-03（用户：识别慢且老是失败）：
+ *  ① max_tokens 500→1500 —— 8 道菜×7 元素字段的 JSON 会被 500 截断 → 解析失败 =「识别不出来」的主因；
+ *  ② 20s AbortController 超时（之前无超时，spinner 可以挂很久）；
+ *  ③ 失败/空结果自动重试 1 次（flash 模型偶发返回 items:[] 或截断，重试可救回一大半）；
+ *  ④ 菜品上限 8→6，降低截断概率。 */
 export async function recognizeMeal(base64Jpeg: string): Promise<MealItem[] | null> {
   if (!FOOD_VLM.endpoint || !FOOD_VLM.apiKey || !FOOD_VLM.model) return null;
-  try {
-    const res = await fetch(`${FOOD_VLM.endpoint}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${FOOD_VLM.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: FOOD_VLM.model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: RECOGNIZE_PROMPT },
-              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
-            ],
-          },
-        ],
-        max_tokens: 500,
-        temperature: 0.2,
-      }),
-    });
-    if (!res.ok) {
-      console.warn('[FoodScan] VLM 请求失败:', res.status, (await res.text()).slice(0, 200));
-      return null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const t0 = Date.now();
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20_000);
+      const res = await fetch(`${FOOD_VLM.endpoint}/chat/completions`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${FOOD_VLM.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: FOOD_VLM.model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: RECOGNIZE_PROMPT },
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
+              ],
+            },
+          ],
+          max_tokens: 1500,
+          temperature: 0.2,
+        }),
+      }).finally(() => clearTimeout(timer));
+      if (!res.ok) {
+        console.warn('[FoodScan] VLM 请求失败:', res.status, (await res.text()).slice(0, 200));
+        continue; // 重试
+      }
+      const data = await res.json();
+      const text: string = data?.choices?.[0]?.message?.content ?? '';
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) { console.warn('[FoodScan] VLM 返回无 JSON（第', attempt, '次）:', text.slice(0, 100)); continue; }
+      let parsed: { items?: Array<MealItem & { elements?: Record<string, number> }> };
+      try {
+        parsed = JSON.parse(m[0]) as { items?: Array<MealItem & { elements?: Record<string, number> }> };
+      } catch {
+        console.warn('[FoodScan] VLM JSON 截断/非法（第', attempt, '次）:', m[0].slice(-80));
+        continue; // 截断 → 重试
+      }
+      const items = (parsed.items || [])
+        .filter((it) => it && it.name && Number.isFinite(Number(it.kcal)))
+        .slice(0, 6)
+        .map((it) => ({
+          name: String(it.name),
+          portion: String(it.portion || '1 份'),
+          kcal: Math.round(Number(it.kcal)),
+          protein: Number.isFinite(Number(it.protein)) ? Math.round(Number(it.protein)) : 0,
+          carbs: Number.isFinite(Number(it.carbs)) ? Math.round(Number(it.carbs)) : 0,
+          fat: Number.isFinite(Number(it.fat)) ? Math.round(Number(it.fat)) : 0,
+          elements: normalizeElements(it.elements),
+        }));
+      console.log('[FoodScan] VLM 识别成功:', items.length, '项 |', Date.now() - t0, 'ms');
+      if (items.length) return items;
+      // items:[] 空结果也重试一次
+    } catch (e: unknown) {
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      console.warn('[FoodScan] VLM 请求异常（第', attempt, '次）:', aborted ? '超时 20s' : e);
     }
-    const data = await res.json();
-    const text: string = data?.choices?.[0]?.message?.content ?? '';
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const parsed = JSON.parse(m[0]) as { items?: Array<MealItem & { elements?: Record<string, number> }> };
-    const items = (parsed.items || [])
-      .filter((it) => it && it.name && Number.isFinite(Number(it.kcal)))
-      .slice(0, 8)
-      .map((it) => ({
-        name: String(it.name),
-        portion: String(it.portion || '1 份'),
-        kcal: Math.round(Number(it.kcal)),
-        protein: Number.isFinite(Number(it.protein)) ? Math.round(Number(it.protein)) : 0,
-        carbs: Number.isFinite(Number(it.carbs)) ? Math.round(Number(it.carbs)) : 0,
-        fat: Number.isFinite(Number(it.fat)) ? Math.round(Number(it.fat)) : 0,
-        elements: normalizeElements(it.elements),
-      }));
-    console.log('[FoodScan] VLM 识别成功:', items.length, '项 |', text.slice(0, 120));
-    return items.length ? items : null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 // ═══ 2. 内置常见菜品热量表（手动兜底/编辑用，单份常见摄入量 + 宏量营养素克数）═══

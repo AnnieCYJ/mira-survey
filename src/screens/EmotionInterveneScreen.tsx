@@ -197,7 +197,13 @@ export function EmotionInterveneHome() {
   const dailyRows = PLANS.filter((p) => p.group === 'daily' && showDaily);
 
   return (
-    <ScreenContainer style={{ backgroundColor: theme.colors.cardBg }} topFadeColor={theme.colors.cardBg}>
+    // ★ 2026-11-04：整页底色从 cardBg（半透明白，违和）→ 与其他详情页统一的海色渐变（方案 B）
+    <LinearGradient
+      style={{ flex: 1 }}
+      colors={[...theme.colors.bgGradStops] as unknown as string[]}
+      locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+    >
+    <ScreenContainer topFadeColor={theme.colors.bgTop}>
       <View style={ei.head}>
         <TouchableOpacity
           activeOpacity={0.7}
@@ -271,6 +277,7 @@ export function EmotionInterveneHome() {
 
       <PlanSheet open={open} onClose={() => setOpen(null)} />
     </ScreenContainer>
+    </LinearGradient>
   );
 }
 

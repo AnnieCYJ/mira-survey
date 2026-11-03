@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     // ★ mira-ocean：底色由根渐变铺（见 render 顶部 LinearGradient），此处留深蓝紫兜底
-    backgroundColor: '#2B3564',
+    backgroundColor: '#0A294F',
   },
   // —— 顶部 header（白底 + 墨字）——
   header: {

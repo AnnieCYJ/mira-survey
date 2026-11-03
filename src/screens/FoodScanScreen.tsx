@@ -5,6 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
@@ -221,6 +222,22 @@ export default function FoodScanScreen() {
       setItems([]);
       setPicked(new Set());
 
+      /* ★ 2026-11-03（用户：识别非常慢）：先压缩再上云。iPhone 相机原图 12MP（quality 0.6 仍 1~3MB），
+       * base64 后 2~4MB 直接传 VLM —— 上传占掉大头耗时。压到 ≤1280px / q0.7（约 150~300KB），
+       * 上传快 10 倍，且小图识别率更高（flash 模型对大图反而更慢更差）。 */
+      let workUri = a.uri;
+      try {
+        const acts: ImageManipulator.Action[] = [];
+        if ((a.width ?? 0) > 1280) acts.push({ resize: { width: 1280 } });
+        const comp = await ImageManipulator.manipulateAsync(
+          workUri,
+          acts,
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
+        );
+        workUri = comp.uri;
+      } catch (me) { console.warn('[FoodScan] 压缩失败，用原图:', me); }
+      setPhotoUri(workUri);
+
       const vlmReady = Boolean(FOOD_VLM.endpoint && FOOD_VLM.apiKey && FOOD_VLM.model);
       if (!vlmReady) {
         setSource('manual');
@@ -230,17 +247,18 @@ export default function FoodScanScreen() {
       setScanning(true);
       let aiItems: MealItem[] | null = null;
       try {
-        const b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const b64 = await FileSystem.readAsStringAsync(workUri, { encoding: FileSystem.EncodingType.Base64 });
         aiItems = await recognizeMeal(b64);
       } catch { aiItems = null; }
       setScanning(false);
       if (aiItems && aiItems.length > 0) {
         setItems(aiItems);
         setSource('ai');
-        setMealModal(true); // ★ 本轮：识别成功 → 弹出餐食分析卡
+        setMealModal(true); // ★ 拍照识别成功 → 弹出这一餐的分析与建议卡，关掉后回营养主页
       } else {
         setSource('manual');
-        setMode('detail'); // 没认出来 → 走原手动选择页
+        setMode('detail'); // 没认出来 → 手动选菜页（不编造分析）
+        Alert.alert('这次没认出来', '照片可能太暗、太远或角度太斜。可以重拍一张（离食物近一点），或直接手动选你吃了什么。');
       }
     } catch (e) {
       setScanning(false);
@@ -608,6 +626,8 @@ export default function FoodScanScreen() {
       </View>
     </View>
 
+    {/* ★ 2026-11-03：识别中全屏浮层 —— 成功路径不进 detail 页，之前 home 模式下识别毫无反馈（用户：响应非常慢的体感来源之一） */}
+    <ScanOverlay visible={scanning} />
     {/* ★ 本轮：拍照识别成功 → 餐食分析弹卡（Modal） */}
     <MealModal
       visible={mealModal}
@@ -626,6 +646,29 @@ export default function FoodScanScreen() {
 }
 
 /* ══════════════════ 通用小组件 ══════════════════ */
+
+/** ★ 2026-11-03：识别中全屏浮层 —— 已用秒数 + 分阶段提示，让 3~10s 的等待有明确预期 */
+const SCAN_HINTS = ['正在上传照片…', 'AI 正在看这餐吃了什么…', '正在估算热量和营养素…', '马上就好，正在整理分析…'];
+function ScanOverlay({ visible }: { visible: boolean }) {
+  const [sec, setSec] = useState(0);
+  useEffect(() => {
+    if (!visible) { setSec(0); return; }
+    const t = setInterval(() => setSec((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [visible]);
+  const hint = SCAN_HINTS[Math.min(SCAN_HINTS.length - 1, Math.floor(sec / 3))];
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,18,34,0.82)', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ alignItems: 'center', paddingVertical: theme.sp(6), paddingHorizontal: theme.sp(8), borderRadius: theme.radius.card, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder }}>
+          <ActivityIndicator size="large" color={mm.colors.btnGradFrom} />
+          <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: '600', marginTop: theme.sp(4) }}>AI 正在识别餐食</Text>
+          <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.sm, marginTop: theme.sp(2) }}>{hint}（{sec}s）</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 /** 卡路里弧（★ 2026-10-11 改：整圈圆环 → 宽扁大弧，样式对齐身体年龄）：弧 = 已摄入/目标，轨道 emptyFill。
  *  内容不变：中央仍是「kcal / target kcal」。 */
