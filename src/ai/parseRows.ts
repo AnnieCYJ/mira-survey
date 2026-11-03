@@ -98,7 +98,8 @@ export function parseInsightRows(text: string | null | undefined): AiInsightRow[
     const parts = line.split(PIPE).filter((p) => p.trim().length > 0);
     if (parts.length >= 3) {
       const tone = toneFromToken(parts[0]) ?? inferTone(line);
-      const title = parts[1].trim().slice(0, 14);
+      // ★ 2026-11-03：14 → 18 —— 标题升级为「一句人话结论」（如「昨晚睡得太晚，白天有点虚」），14 字不够用
+      const title = parts[1].trim().slice(0, 18);
       const body = parts.slice(2).join(' ').trim();
       if (title && body) out.push({ tone, title, body });
       continue;
@@ -119,7 +120,7 @@ export function parseInsightRows(text: string | null | undefined): AiInsightRow[
     if (m) {
       const tone = toneFromToken(m[1]) ?? inferTone(m[2]);
       const rest = m[2].trim();
-      const mm = rest.match(/^(.{2,14}?)\s*[:：]\s*(.+)$/);
+      const mm = rest.match(/^(.{2,18}?)\s*[:：]\s*(.+)$/);
       if (mm) out.push({ tone, title: mm[1].trim(), body: mm[2].trim() });
       else out.push({ tone, title: inferTitle(rest), body: rest });
       continue;

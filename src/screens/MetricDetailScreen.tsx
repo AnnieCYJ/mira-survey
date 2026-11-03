@@ -94,22 +94,31 @@ function buildHeroAnalysis(key: string, name: string, value: number | null, rang
       if (value < 60) return day ? '今天情绪平稳，没有大起大落，正常推进就好。' : '这段时间情绪平稳。';
       return day ? '今天情绪偏紧，琐事堆积让你有点绷，做点放松的事缓一缓。' : '这段时间情绪偏紧，留意给自己减压。';
     case 'hr':
-      return day ? `今天心率均值约 ${Math.round(value)} 次/分，静息偏低说明心脏效率高。` : `这段心率均值约 ${Math.round(value)} 次/分。`;
+      if (day) {
+        if (value > 85) return `今天心率均值约 ${Math.round(value)} 次/分，偏高——今天别安排高强度训练，晚上早点休息，看明早能不能回落。`;
+        if (value < 58) return `今天心率均值约 ${Math.round(value)} 次/分，静息偏低，说明心脏效率不错，恢复状态在线。`;
+        return `今天心率均值约 ${Math.round(value)} 次/分，在常见静息范围内，和睡眠、压力对照着看更有意义。`;
+      }
+      return `这段心率均值约 ${Math.round(value)} 次/分，趋势平稳；和睡眠恢复对照着看更有意义。`;
     case 'spo2':
-      return value >= 95 ? '血氧在正常区间，身体供氧充足。' : '血氧略低于 95%，留意呼吸节奏与睡眠环境。';
+      return value >= 95 ? '血氧在正常区间，身体供氧充足。' : '血氧略低于 95%，先留意呼吸节奏和卧室通风；如果持续偏低，要当回事。';
     case 'hrv':
-      return value >= 50 ? 'HRV 不错，身体恢复和自主调节能力在线。' : 'HRV 偏低，可能疲劳或压力大，注意休息。';
+      return value >= 50
+        ? `HRV ${Math.round(value)}ms，恢复和自主调节在线，适合安排有强度的训练。`
+        : `HRV ${Math.round(value)}ms 偏低，身体可能还没缓过来——今晚早点放下手机，训练减量。`;
     case 'fatigue':
-      if (value < 30) return '疲劳度低，精力在线。';
-      if (value < 55) return '疲劳度适中，正常节奏。';
-      return '疲劳度偏高，今天别硬撑，早点收工休息。';
+      if (value < 30) return '疲劳度低，精力在线，适合把难的事安排在今天。';
+      if (value < 55) return '疲劳度适中，按正常节奏推进就好。';
+      return '疲劳度偏高，今天别硬撑：午后歇 20 分钟，晚上提前收工。';
     case 'eda':
-      return value >= 50 ? '皮电偏高，交感神经活跃，可能紧张或高度专注。' : '皮电平稳，身体处于放松状态。';
+      return value >= 50
+        ? '皮电偏高，身体处于「绷着」的状态——找 10 分钟做几组慢呼吸，或出去走一圈。'
+        : '皮电平稳，身体处于放松状态。';
     case 'temp':
     case 'skinTemp':
       return '体温按相对个人基线显示，曲线形状比绝对数值更有意义。';
     case 'bloodSugar':
-      return value <= 7.8 ? '餐后血糖在常见范围内，代谢平稳。' : '血糖偏高，留意饮食结构，餐后走一走有帮助。';
+      return value <= 7.8 ? '餐后血糖在常见范围内，代谢平稳。' : '血糖偏高——下一餐少点精制碳水，餐后走 15 分钟有帮助。';
     case 'bpSys':
     case 'bpDia':
       return '血压按全天趋势展示，数值随测量时段波动，看整体比看单点更有意义。';
@@ -1084,9 +1093,21 @@ export default function MetricDetailScreen() {
               </View>
               {/* ★ 本轮：数字下方短 AI 分析 */}
               {hasData ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
+              {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示 */}
+              {!isEcg && !isLipid && hasData && series.note ? (
+                <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: theme.colors.cardBorder }}>
+                  <Text style={styles.heroNote}>{series.note}</Text>
+                </View>
+              ) : null}
             </View>
           </Card>
         )}
+
+        {/* ★ 2026-11-03（用户）：解读内容统一上移——紧跟总体数据卡，不再放页面底部单独卡片。
+            心率/尿酸/血脂的规则解读（原 InsightBanner 在页面底部各 section 末尾）提到这里。 */}
+        {params.key === 'hr' ? <HrInsight anchor={anchor} openChat={openChat} /> : null}
+        {params.key === 'ua' || params.key === 'uricAcid' ? <UaInsight anchor={anchor} openChat={openChat} /> : null}
+        {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidInsight anchor={anchor} openChat={openChat} /> : null}
 
         {/* ★ 2026-10-10（用户）：心率日视图 = Oura 风格全天柱状小条（5 分钟一点 / 30 分钟一格刻度） */}
         {isHrDayBars && hrBars ? (
@@ -1468,8 +1489,7 @@ export default function MetricDetailScreen() {
         </View>
         )}
 
-        {/* 解读（血脂四项页用自己的解读卡，不显示单指标 note） */}
-        {!isEcg && !isLipid && series.note ? <Text style={styles.note}>{series.note}</Text> : null}
+        {/* ★ 2026-11-03：解读已上移合并进顶部总体数据卡（hero），此处不再展示 */}
 
         {/* 历史测量列表（手动测量类指标才显示，按时间倒序）
             ★ 2026-10-16（用户：「血脂详情页的历史测量记录默认收起来」）：改为可折叠区块，默认收起，
@@ -1745,12 +1765,10 @@ function fmtDur(min: number): string {
   return h > 0 ? `${h}h${m}m` : `${m}m`;
 }
 
-function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
-  const dk = dateKeyOf(anchor.getTime());
-  const age = RingBle.getUserProfile()?.age ?? 30;
-  const mhr = Math.round(211 - 0.64 * age);
-
-  const { zones, resting, peak, activeTotal } = useMemo(() => {
+/** ★ 2026-11-03（用户：解读上移）：心率区间数据计算抽成共享 hook——
+ *  HrZoneSection（区间环）与 HrInsight（顶部解读）共用同一份日内心率统计，逻辑不重复。 */
+function useHrZoneStats(dk: string, mhr: number) {
+  return useMemo(() => {
     let pts: { t: number; v: number }[] = [];
     try { pts = healthStore.getIntraday('hr', dk); } catch { pts = []; }
     pts = pts
@@ -1777,6 +1795,14 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
     const restingAvg = restVals.length ? restVals.reduce((a, b) => a + b, 0) / restVals.length : null;
     return { zones: dur, resting: restingAvg, peak: pk || null, activeTotal: active };
   }, [dk, mhr]);
+}
+
+function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const age = RingBle.getUserProfile()?.age ?? 30;
+  const mhr = Math.round(211 - 0.64 * age);
+
+  const { zones, activeTotal } = useHrZoneStats(dk, mhr);
 
   const R = 52, SW = 16, D = (R + SW) * 2, C = 2 * Math.PI * R;
   let acc = 0;
@@ -1800,28 +1826,6 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
     );
     acc += len;
     return el;
-  });
-
-  const cardioActive = zones[1] + zones[2] + zones[3] + zones[4];
-  const cardioFrac = activeTotal > 0 ? cardioActive / activeTotal : 0;
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body: `今日心率峰值 ${peak != null ? Math.round(peak) : '—'} bpm（约 ${peak ? Math.round((peak / mhr) * 100) : 0}% MHR），静息约 ${resting != null ? Math.round(resting) : '—'} bpm。`,
-    },
-  ];
-  if (activeTotal > 0) {
-    rows.push({
-      tone: cardioFrac > 0.2 ? 'good' : 'neutral',
-      title: '中高强度',
-      body: `燃脂 / 有氧 / 无氧区间累计 ${fmtDur(cardioActive)}，占活动时长约 ${Math.round(cardioFrac * 100)}%。`,
-    });
-  }
-  rows.push({
-    tone: 'neutral',
-    title: '建议',
-    body: '结合当天活动与睡眠维持规律有氧；若静息心率持续偏高，注意恢复是否充足。',
   });
 
   return (
@@ -1867,9 +1871,39 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
         </View>
         <Text style={styles.note}>区间按最大心率百分比划分（50 / 60 / 70 / 80 / 90%）。仅供参考，运动强度因人而异。</Text>
       </Card>
-      <InsightBanner title="心率解读" rows={rows} onMore={() => openChat('帮我分析今天的心率区间和运动负荷')} />
     </>
   );
+}
+
+/** ★ 2026-11-03（用户：解读上移）：心率解读——原在页面底部 HrZoneSection 末尾，
+ *  现紧跟顶部总体数据卡渲染，与「今日心率 68」下的分析话术衔接。 */
+function HrInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const age = RingBle.getUserProfile()?.age ?? 30;
+  const mhr = Math.round(211 - 0.64 * age);
+  const { zones, resting, peak, activeTotal } = useHrZoneStats(dk, mhr);
+  const cardioActive = zones[1] + zones[2] + zones[3] + zones[4];
+  const cardioFrac = activeTotal > 0 ? cardioActive / activeTotal : 0;
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body: `今日心率峰值 ${peak != null ? Math.round(peak) : '—'} bpm（约 ${peak ? Math.round((peak / mhr) * 100) : 0}% MHR），静息约 ${resting != null ? Math.round(resting) : '—'} bpm。`,
+    },
+  ];
+  if (activeTotal > 0) {
+    rows.push({
+      tone: cardioFrac > 0.2 ? 'good' : 'neutral',
+      title: '中高强度',
+      body: `燃脂 / 有氧 / 无氧区间累计 ${fmtDur(cardioActive)}，占活动时长约 ${Math.round(cardioFrac * 100)}%。`,
+    });
+  }
+  rows.push({
+    tone: 'neutral',
+    title: '建议',
+    body: '结合当天活动与睡眠维持规律有氧；若静息心率持续偏高，注意恢复是否充足。',
+  });
+  return <InsightBanner title="心率解读" rows={rows} onMore={() => openChat('帮我分析今天的心率区间和运动负荷')} />;
 }
 
 /* ★ 2026-10-28：尿酸详情页参考区间条 —— 与全 App 其余口径统一为临床常用 155–428 µmol/L
@@ -1882,29 +1916,11 @@ const UA_TIERS = [
   { key: 'high', name: '偏高', lo: 428, hi: UA_MAX, color: mm.colors.roseDeep },
 ] as const;
 
-function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+function UaReferenceCard({ anchor }: { anchor: Date; openChat: (q: string) => void }) {
   const dk = dateKeyOf(anchor.getTime());
   const val = latestVal('ua', dk);
   const tier = val == null ? null : val < 155 ? UA_TIERS[0] : val < 428 ? UA_TIERS[1] : UA_TIERS[2];
   const markerPct = val == null ? 0 : Math.max(0, Math.min(100, (Math.min(val, UA_MAX) / UA_MAX) * 100));
-
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body:
-        val == null
-          ? '今日暂无尿酸读数，连接戒指完成一次健康一览后查看。'
-          : `当前读数 ${Math.round(val)} µmol/L，处于「${tier?.name}」区间。`,
-    },
-  ];
-  if (val != null && tier) {
-    if (tier.key === 'high')
-      rows.push({ tone: 'warn', title: '偏高提示', body: '尿酸偏高与饮食、代谢相关，建议减少高嘌呤食物、多饮水，长期偏高请咨询医生。' });
-    else if (tier.key === 'low')
-      rows.push({ tone: 'neutral', title: '偏低', body: '尿酸偏低通常无临床意义，可能与饮食清淡有关。' });
-    else rows.push({ tone: 'good', title: '正常', body: '尿酸处于常规参考区间内，继续保持均衡饮食。' });
-  }
 
   return (
     <>
@@ -1953,9 +1969,33 @@ function UaReferenceCard({ anchor, openChat }: { anchor: Date; openChat: (q: str
         )}
         <Text style={styles.note}>参考区间：偏低 &lt;155 / 正常 155–428 / 偏高 &gt;428 µmol/L。仅供参考，不替代医学检测。</Text>
       </Card>
-      <InsightBanner title="尿酸解读" rows={rows} onMore={() => openChat('帮我分析尿酸水平')} />
     </>
   );
+}
+
+/** ★ 2026-11-03（用户：解读上移）：尿酸解读——原在页面底部 UaReferenceCard 末尾，现紧跟顶部总体数据卡。 */
+function UaInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const val = latestVal('ua', dk);
+  const tier = val == null ? null : val < 155 ? UA_TIERS[0] : val < 428 ? UA_TIERS[1] : UA_TIERS[2];
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        val == null
+          ? '今日暂无尿酸读数，连接戒指完成一次健康一览后查看。'
+          : `当前读数 ${Math.round(val)} µmol/L，处于「${tier?.name}」区间。`,
+    },
+  ];
+  if (val != null && tier) {
+    if (tier.key === 'high')
+      rows.push({ tone: 'warn', title: '偏高提示', body: '尿酸偏高与饮食、代谢相关，建议减少高嘌呤食物、多饮水，长期偏高请咨询医生。' });
+    else if (tier.key === 'low')
+      rows.push({ tone: 'neutral', title: '偏低', body: '尿酸偏低通常无临床意义，可能与饮食清淡有关。' });
+    else rows.push({ tone: 'good', title: '正常', body: '尿酸处于常规参考区间内，继续保持均衡饮食。' });
+  }
+  return <InsightBanner title="尿酸解读" rows={rows} onMore={() => openChat('帮我分析尿酸水平')} />;
 }
 
 /* ★ 2026-10-16：血脂详情页——血脂四项汇总（TC / TG / HDL / LDL）+ 参考区间 + 分级 */
@@ -1966,7 +2006,7 @@ const LIPID_ITEMS = [
   { key: 'ldl', name: '低密度脂蛋白', short: 'LDL', unit: 'mmol/L', hi: 3.4, scaleMax: 6, lowerBetter: true, color: mm.colors.honeyCore, lowLabel: '正常', highLabel: '偏高' },
 ] as const;
 
-function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => void }) {
   // ★ 2026-10-16（续）：四个脂蛋白画到「同一张图」——共享 0–10 mmol/L 坐标轴，不同颜色代表不同指标，
   //   这样 TC/TG/HDL/LDL 可直接横向对比，而不是各自独立量程的小条。
   const AXIS_MAX = 10;
@@ -1992,22 +2032,6 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
     const valPct = v != null ? Math.max(0, Math.min(100, (v / AXIS_MAX) * 100)) : null;
     return { ...it, v, status, label, bandStartPct, bandWidthPct, valPct };
   });
-
-  const abnormal = data.filter((d) => d.status === 'warn').length;
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body:
-        abnormal > 0
-          ? `今日血脂四项中 ${abnormal} 项超出理想范围，建议结合饮食与运动改善，并定期复查。`
-          : '今日血脂四项均处于理想范围内，继续保持。',
-    },
-  ];
-  if (abnormal > 0) {
-    rows.push({ tone: 'warn', title: '提示', body: '单项偏高不代表疾病，受近期饮食、空腹状态影响较大；持续异常请咨询医生。' });
-  }
-  rows.push({ tone: 'neutral', title: '建议', body: '减少饱和脂肪与精制糖、增加膳食纤维，规律有氧有助于血脂管理。' });
 
   const dotColor = (s: string) =>
     s === 'good' ? theme.colors.success : s === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
@@ -2093,9 +2117,33 @@ function LipidOverviewCard({ anchor, openChat }: { anchor: Date; openChat: (q: s
         </View>
         <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
       </Card>
-      <InsightBanner title="血脂解读" rows={rows} onMore={() => openChat('帮我分析血脂四项')} />
     </>
   );
+}
+
+/** ★ 2026-11-03（用户：解读上移）：血脂解读——原在页面底部 LipidOverviewCard 末尾，现紧跟顶部总体数据卡。 */
+function LipidInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
+  const dk = dateKeyOf(anchor.getTime());
+  const abnormal = LIPID_ITEMS.filter((it) => {
+    const v = latestVal(it.key, dk);
+    if (v == null) return false;
+    return it.lowerBetter ? v > it.hi : v < (it.lo ?? 0);
+  }).length;
+  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
+    {
+      tone: 'neutral',
+      title: '',
+      body:
+        abnormal > 0
+          ? `今日血脂四项中 ${abnormal} 项超出理想范围，建议结合饮食与运动改善，并定期复查。`
+          : '今日血脂四项均处于理想范围内，继续保持。',
+    },
+  ];
+  if (abnormal > 0) {
+    rows.push({ tone: 'warn', title: '提示', body: '单项偏高不代表疾病，受近期饮食、空腹状态影响较大；持续异常请咨询医生。' });
+  }
+  rows.push({ tone: 'neutral', title: '建议', body: '减少饱和脂肪与精制糖、增加膳食纤维，规律有氧有助于血脂管理。' });
+  return <InsightBanner title="血脂解读" rows={rows} onMore={() => openChat('帮我分析血脂四项')} />;
 }
 
 
@@ -2581,6 +2629,8 @@ const styles = StyleSheet.create({
   heroTag: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.space.md, alignSelf: 'center' },
   // ★ 本轮：数字下方短 AI 分析
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
+  /** ★ 2026-11-03：hero 卡内的区间解读段（从页面底部上移合并）——比 heroAnalysis 再小半档，弱层级 */
+  heroNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: 19, opacity: 0.9 },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
   up: { color: theme.colors.success },
   down: { color: theme.colors.stateTense },
