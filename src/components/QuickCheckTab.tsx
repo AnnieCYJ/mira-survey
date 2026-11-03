@@ -12,8 +12,8 @@
  * 品牌铁律：只描述不诊断、不评分；参考区间仅供参考，不构成诊断建议。
  * ───────────────────────────────────────────────────────────────────────────
  */
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, Alert, Modal, Animated, Easing, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import Card from './Card';
@@ -27,11 +27,22 @@ import {
 } from '../data/quickCheckStore';
 import { qc, statusColor, statusLabel, QCta } from './quickCheckShared';
 
+/** ★ 2026-11-03（用户）：点「体检」先出等待动画（分步文案轮播），最短停留 1.8s，成功后跳体检详情页 */
+const CHECK_STEPS = [
+  '正在读取心率与血氧…',
+  '正在汇总血压与血液指标…',
+  '正在整理压力与疲劳数据…',
+  '正在生成体检报告…',
+];
+
 export default function QuickCheckTab() {
   const navigation = useNavigation<any>();
   const [latest, setLatest] = useState<QuickCheckRecord | null>(null);
   const [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [stepIdx, setStepIdx] = useState(0);
+  const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const reload = async () => {
     const [last, c] = await Promise.all([getLatestQuickCheck(), countQuickChecks()]);
@@ -41,6 +52,7 @@ export default function QuickCheckTab() {
 
   useEffect(() => {
     (async () => { await reload(); })();
+    return () => { if (stepTimer.current) clearInterval(stepTimer.current); };
   }, []);
 
   const latestTally = latest ? tallyRecord(latest) : { done: 0, abnormal: 0 };
@@ -49,11 +61,22 @@ export default function QuickCheckTab() {
   const startCheck = async () => {
     if (busy) return;
     setBusy(true);
+    setChecking(true);
+    setStepIdx(0);
+    // 分步文案每 600ms 走一步，配合最短 1.8s 的等待体感
+    stepTimer.current = setInterval(
+      () => setStepIdx((i) => Math.min(i + 1, CHECK_STEPS.length - 1)),
+      600,
+    );
+    const minWait = new Promise<void>((r) => setTimeout(r, 1800));
     try {
-      const res = await assembleQuickCheckFromRealtime();
-      if (res.ok) {
+      const [res] = await Promise.all([assembleQuickCheckFromRealtime(), minWait] as const);
+      setChecking(false);
+      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
+      if (res.ok && res.record) {
         await reload();
-        Alert.alert('体检完成', '已根据戒指最近一次真实测量生成体检记录。');
+        // ★ 成功不再弹 Alert，直接跳本次体检的详情页
+        navigation.navigate('QuickCheckDetail', { recordId: res.record.id });
       } else {
         Alert.alert(
           '暂时没有可用数据',
@@ -61,6 +84,10 @@ export default function QuickCheckTab() {
           [{ text: '知道了' }]
         );
       }
+    } catch {
+      setChecking(false);
+      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
+      Alert.alert('体检未完成', '读取测量数据时出了问题，请稍后再试。', [{ text: '知道了' }]);
     } finally {
       setBusy(false);
     }
@@ -69,68 +96,173 @@ export default function QuickCheckTab() {
   // ★ 空状态：从未体检过 → 引导用户触发一次真实体检
   if (count === 0 && !busy) {
     return (
-      <View>
-        <Card style={qc.overviewCard}>
-          <Text style={qc.label}>一键体检</Text>
-          <View style={{ alignItems: 'center', paddingVertical: theme.sp(4) }}>
-            <Text style={[qc.abEmpty, { textAlign: 'center', fontSize: theme.fontSize.sm, lineHeight: 22 }]}>
-              暂时还没有体检记录。{'\n'}连接戒指并佩戴后，点下面按钮做一次真实体检。
-            </Text>
-          </View>
-          <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
-        </Card>
-        <Text style={qc.footerNote}>
-          体检数据来自戒指的真实测量（心率 / 血压 / 血氧 / 血液指标 / 压力 / 疲劳等），Mira 只做描述与参考，不做诊断与评分。
-        </Text>
-      </View>
+      <>
+        <View>
+          <Card style={qc.overviewCard}>
+            <Text style={qc.label}>一键体检</Text>
+            <View style={{ alignItems: 'center', paddingVertical: theme.sp(4) }}>
+              <Text style={[qc.abEmpty, { textAlign: 'center', fontSize: theme.fontSize.sm, lineHeight: 22 }]}>
+                暂时还没有体检记录。{'\n'}连接戒指并佩戴后，点下面按钮做一次真实体检。
+              </Text>
+            </View>
+            <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
+          </Card>
+          <Text style={qc.footerNote}>
+            体检数据来自戒指的真实测量（心率 / 血压 / 血氧 / 血液指标 / 压力 / 疲劳等），Mira 只做描述与参考，不做诊断与评分。
+          </Text>
+        </View>
+        <CheckWaitOverlay visible={checking} step={CHECK_STEPS[stepIdx]} />
+      </>
     );
   }
 
   return (
-    <View>
-      <Card style={qc.overviewCard}>
-        <View style={qc.overviewHead}>
-          <Text style={qc.label}>最近一次体检</Text>
-          <Text style={qc.label}>{latest ? fmtDateLocal(latest.createdAt) : '—'}</Text>
-        </View>
-        <View style={qc.bigStatRow}>
-          <View style={[qc.bigStat, { borderColor: theme.colors.success + '55' }]}>
-            <Text style={[qc.bigStatNum, { color: theme.colors.success }]}>{latestTally.done - latestTally.abnormal}</Text>
-            <Text style={qc.bigStatKey}>项正常</Text>
+    <>
+      <View>
+        <Card style={qc.overviewCard}>
+          <View style={qc.overviewHead}>
+            <Text style={qc.label}>最近一次体检</Text>
+            <Text style={qc.label}>{latest ? fmtDateLocal(latest.createdAt) : '—'}</Text>
           </View>
-          <View style={[qc.bigStat, { borderColor: latestTally.abnormal ? theme.colors.warn + '55' : theme.colors.success + '55' }]}>
-            <Text style={[qc.bigStatNum, { color: latestTally.abnormal ? theme.colors.warn : theme.colors.success }]}>{latestTally.abnormal}</Text>
-            <Text style={qc.bigStatKey}>项异常</Text>
+          <View style={qc.bigStatRow}>
+            <View style={[qc.bigStat, { borderColor: theme.colors.success + '55' }]}>
+              <Text style={[qc.bigStatNum, { color: theme.colors.success }]}>{latestTally.done - latestTally.abnormal}</Text>
+              <Text style={qc.bigStatKey}>项正常</Text>
+            </View>
+            <View style={[qc.bigStat, { borderColor: latestTally.abnormal ? theme.colors.warn + '55' : theme.colors.success + '55' }]}>
+              <Text style={[qc.bigStatNum, { color: latestTally.abnormal ? theme.colors.warn : theme.colors.success }]}>{latestTally.abnormal}</Text>
+              <Text style={qc.bigStatKey}>项异常</Text>
+            </View>
           </View>
-        </View>
-        {latestAbnormal.length ? (
-          <View style={qc.abList}>
-            {latestAbnormal.map((m) => (
-              <View key={m.key} style={qc.abItem}>
-                <Text style={qc.metricName}>{m.name}</Text>
-                <Text style={[qc.metricStatus, { color: statusColor(m) }]}>{statusLabel(m)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={qc.abEmpty}>本次完成 {latestTally.done} 项检测，未见异常。</Text>
-        )}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('QuickCheckHistory')}
-          style={qc.linkRow}
-        >
-          <Text style={qc.linkText}>查看全部 {count} 次体检记录</Text>
-          <Text style={qc.linkArrow}>›</Text>
-        </TouchableOpacity>
-        <QCta title={busy ? '体检中…' : '再体检一次'} onPress={startCheck} disabled={busy} />
-      </Card>
-      <Text style={qc.footerNote}>
-        「--」表示该检测项本次未测成功。参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
-      </Text>
-    </View>
+          {latestAbnormal.length ? (
+            <View style={qc.abList}>
+              {latestAbnormal.map((m) => (
+                <View key={m.key} style={qc.abItem}>
+                  <Text style={qc.metricName}>{m.name}</Text>
+                  <Text style={[qc.metricStatus, { color: statusColor(m) }]}>{statusLabel(m)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={qc.abEmpty}>本次完成 {latestTally.done} 项检测，未见异常。</Text>
+          )}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('QuickCheckHistory')}
+            style={qc.linkRow}
+          >
+            <Text style={qc.linkText}>查看全部 {count} 次体检记录</Text>
+            <Text style={qc.linkArrow}>›</Text>
+          </TouchableOpacity>
+          <QCta title={busy ? '体检中…' : '再体检一次'} onPress={startCheck} disabled={busy} />
+        </Card>
+        <Text style={qc.footerNote}>
+          「--」表示该检测项本次未测成功。参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
+        </Text>
+      </View>
+      <CheckWaitOverlay visible={checking} step={CHECK_STEPS[stepIdx]} />
+    </>
   );
 }
+
+/**
+ * ★ 2026-11-03（用户）：一键体检等待动画浮层。
+ * 呼吸脉冲双环 + 🫀 核心图标 + 分步文案轮播；深色 backdrop 盖住洞察页，
+ * 玻璃卡走 theme token（cardBg / cardBorder），与深海主题一致。
+ */
+function CheckWaitOverlay({ visible, step }: { visible: boolean; step: string }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!visible) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [visible, pulse]);
+
+  const outerScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.18] });
+  const outerOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] });
+  const midScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1.05, 0.95] });
+  const midOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0.45] });
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" statusBarTranslucent>
+      <View style={ov.backdrop}>
+        <View style={ov.box}>
+          <View style={ov.ringWrap}>
+            <Animated.View style={[ov.ringOuter, { transform: [{ scale: outerScale }], opacity: outerOpacity }]} />
+            <Animated.View style={[ov.ringMid, { transform: [{ scale: midScale }], opacity: midOpacity }]} />
+            <View style={ov.core}>
+              <Text style={ov.coreEmoji}>🫀</Text>
+            </View>
+          </View>
+          <Text style={ov.stepText}>{step}</Text>
+          <Text style={ov.hint}>正在从戒指的真实测量中汇总，请稍候</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const ov = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(10,18,32,0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  box: {
+    width: 260,
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.sp(6),
+    paddingHorizontal: theme.sp(5),
+  },
+  ringWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: theme.sp(4) },
+  ringOuter: {
+    position: 'absolute',
+    width: 96, height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: theme.colors.textWhite,
+  },
+  ringMid: {
+    position: 'absolute',
+    width: 72, height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: theme.colors.textWhite,
+  },
+  core: {
+    width: 52, height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.cardBgSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coreEmoji: { fontSize: theme.fs(24) },
+  stepText: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textWhite,
+    textAlign: 'center',
+  },
+  hint: {
+    marginTop: theme.sp(2),
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
+});
 
 function fmtDateLocal(ts: number): string {
   const d = new Date(ts);

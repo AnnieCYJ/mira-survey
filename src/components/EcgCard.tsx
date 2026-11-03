@@ -6,6 +6,7 @@ import { mm } from '../theme/mindmate';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import Icon from './Icon';
+import EcgMeasureSheet from './EcgMeasureSheet';
 
 interface Props {
   ring: RingState;
@@ -162,8 +163,8 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
 
       {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
       {!isMeasuring && !isDone && !ecgUnsupported ? (
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
-          <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+          <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', lineHeight: 18 }}>
             测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
           </Text>
         </View>
@@ -217,6 +218,18 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
         </View>
       ) : null}
 
+      {/* ★ 2026-11-03（用户）：点「测量」弹出引导动画浮层 —— 食指按戒指示意 + 底部进度条 + 实时心电图；
+          失败浮层停留展示原因（与上方常驻错误块一致），成功自动收起 */}
+      <EcgMeasureSheet
+        visible={isMeasuring || isDone}
+        progress={displayProgress}
+        hr={prog?.hr ?? null}
+        liveWaveform={ring.ecgLiveWaveform}
+        error={ring.ecgError}
+        hint={ring.ecgHint}
+        onCancel={stopEcg}
+      />
+
     </View>
   );
 }
@@ -243,7 +256,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 2,
   },
-  ucName: { fontSize: 14, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  ucName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   pill: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill, alignSelf: 'flex-start' },
   pillLive: { backgroundColor: theme.colors.successSoft },
   pillOff: { backgroundColor: theme.colors.ui.offTrack },
@@ -260,8 +273,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  enterTxt: { fontSize: 12, fontWeight: theme.weight.semibold, color: mm.colors.ecgRed },
-  enterArr: { fontSize: 13, fontWeight: theme.weight.bold, color: mm.colors.ecgRed },
+  enterTxt: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.ecgRed },
+  enterArr: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold, color: mm.colors.ecgRed },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   time: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   waveBox: {

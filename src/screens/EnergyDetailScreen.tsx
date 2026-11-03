@@ -13,6 +13,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { previousPeriodLabel } from '../lib/periodLabels';
 import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import Svg, { Rect, Text as SvgText, Line, G, Circle, Path } from 'react-native-svg';
@@ -935,7 +936,8 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
   const prevPeriods = useMemo(() => buildPrevNaturalPeriods(range, anchorMs), [range, anchorMs]);
   const prevRows = useMemo(() => prevPeriods.map(computeCogRow), [prevPeriods]);
 
-  const prevLabel = range === 'week' ? '上周' : range === 'month' ? '上月' : '去年同期';
+  // ★ 2026-11-03：上一周期标签统一走 lib/periodLabels（上周/上个月/去年，全 App 唯一口径）
+  const prevLabel = previousPeriodLabel(range);
 
   // 布局：★与日视图 StressTrendChart 同款 —— onLayout 取真实卡片宽度，viewBox 按真实像素 1:1 画。
   //   旧做法：固定 viewBox(320) + 固定 height，默认 preserveAspectRatio 会按宽度缩进一个更高的盒子，
@@ -1708,7 +1710,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
   const lowerIsBetter = type === 'cognitive' || type === 'emotion';
   const trendBad = delta != null && ((lowerIsBetter && delta > 0) || (!lowerIsBetter && delta < 0));
   const trendColor = trendBad ? theme.colors.danger : delta != null && delta !== 0 ? theme.colors.success : theme.colors.textSub;
-  const trendLabel = range === 'week' ? '上周' : range === 'month' ? '上月' : '去年同期';
+  const trendLabel = previousPeriodLabel(range);
   const trendArrow = delta == null ? '—' : delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
 
   // 图表尺寸：★viewBox 固定坐标系(320 宽) + width 100% 自适应；月视图 28~31 柱自动收窄
@@ -1903,13 +1905,13 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
               <Text style={{ fontSize: theme.fontSize.h2, fontWeight: '800', color: trendColor }}>
                 {delta == null ? '—' : (delta > 0 ? '+' : '') + delta}
               </Text>
-              <Text style={{ fontSize: 14, color: theme.colors.textSub, marginLeft: 6 }}>
+              <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 6 }}>
                 {deltaPct != null ? `(${trendArrow} ${Math.abs(deltaPct!)}%)` : ''}
               </Text>
               <View style={{ flex: 1 }} />
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 11, color: theme.colors.textSub }}>{trendLabel}均值</Text>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: theme.colors.textTitle }}>{prevMean}</Text>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{trendLabel}均值</Text>
+                <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: theme.colors.textTitle }}>{prevMean}</Text>
               </View>
             </View>
             <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1.5), lineHeight: 18 }}>

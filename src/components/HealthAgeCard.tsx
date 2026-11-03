@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.5),
   },
   deltaBig: {
-    fontSize: 40,
+    fontSize: theme.fontSize.hero,
     fontWeight: '300',
     letterSpacing: -1.5,
     lineHeight: 44,

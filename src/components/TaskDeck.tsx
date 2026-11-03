@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', overflow: 'visible',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
-    borderRadius: 28,
+    borderRadius: theme.radius.xl,
   },
   // ★ 2026-10-08（用户参考图）：后排卡也要有接地投影，才不会「白卡贴白底」看不出层次
   cardBack: {
@@ -524,18 +524,18 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 22 },
   headerRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   ico: {
-    width: 54, height: 54, borderRadius: 16,
+    width: 54, height: 54, borderRadius: theme.radius.lg,
     alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  cardNum: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1 },
+  cardNum: { fontSize: theme.fontSize.xs, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1 },
 
   badge: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },
   badgePlain: { backgroundColor: mm.colors.limeSoft },
-  badgeText: { fontSize: 10.5, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
-  badgeTextAi: { fontSize: 10.5, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
+  badgeText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
+  badgeTextAi: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 
-  title: { fontSize: 20, fontWeight: '700', color: '#1F2937', marginBottom: 10, letterSpacing: -0.3 },
-  desc: { fontSize: 13, lineHeight: 21, color: '#6B7280', marginBottom: 26 },
+  title: { fontSize: theme.fontSize.lg, fontWeight: '700', color: '#1F2937', marginBottom: 10, letterSpacing: -0.3 },
+  desc: { fontSize: theme.fontSize.xs, lineHeight: 21, color: '#6B7280', marginBottom: 26 },
 
   // ★ v18.77 渐变按钮套路（同设置页铁律）：Touchable 只留圆角+裁切，尺寸全由渐变层撑起。
   //   渐变层若用 absoluteFillObject 绝对定位会不占布局宽 → 按钮塌成窄条（真机事故）。
@@ -555,8 +555,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 22,
   },
-  btnText: { fontSize: 13, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
-  btnTextDone: { fontSize: 13, fontWeight: theme.weight.semibold, color: mm.colors.inkSoft },
+  btnText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.btnTextOnGrad },
+  btnTextDone: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.inkSoft },
   btnFull: { alignSelf: 'stretch' },
 
   // ── v18.88 翻面浮层 ──
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
   face: {
     ...StyleSheet.absoluteFillObject,
     backfaceVisibility: 'hidden',
-    borderRadius: 28,
+    borderRadius: theme.radius.xl,
     overflow: 'hidden',
   },
   flipShell: {
@@ -585,14 +585,14 @@ const styles = StyleSheet.create({
     right: 20,
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: mm.colors.btnBusyBg,
   },
-  flipCloseText: { fontSize: 13, color: mm.colors.inkSoft, lineHeight: 15 },
+  flipCloseText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, lineHeight: 15 },
   flipEyebrow: {
-    fontSize: 11,
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
     letterSpacing: 1.2,
     color: theme.colors.accentText,
@@ -600,14 +600,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   flipTitle: {
-    fontSize: 21,
+    fontSize: theme.fontSize.lg,
     lineHeight: 29,
     fontWeight: '700',
     color: '#1F2937',
     letterSpacing: -0.3,
     marginBottom: 14,
   },
-  flipTip: { fontSize: 14, lineHeight: 24, color: '#6B7280' },
+  flipTip: { fontSize: theme.fontSize.sm, lineHeight: 24, color: '#6B7280' },
   // v18.91 背面双按钮：去完成（紫渐变主）+ 查看详情（灰底次要）
   flipBtnRow: { flexDirection: 'row', gap: 10 },
   flipBtnHalf: { flex: 1 },
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   flipSrc: {
-    fontSize: 11,
+    fontSize: theme.fontSize.micro,
     lineHeight: 16,
     color: theme.colors.textSub,
     opacity: 0.75,

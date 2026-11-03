@@ -25,6 +25,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { currentPeriodLabel, previousPeriodLabel } from '../lib/periodLabels';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
@@ -425,10 +426,9 @@ export default function SleepDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dRange, sleepDaily, anchor, cortKindCache]);
 
-  /** 本周期 / 参照周期 的表头文案（随 dRange 变） */
-  const cmpLabels = dRange === 'week' ? { cur: '本周', prev: '上周' }
-    : dRange === 'month' ? { cur: '本月', prev: '上月' }
-    : { cur: '本年', prev: '去年' };
+  /** 本周期 / 参照周期 的表头文案（随 dRange 变）
+   *  ★ 2026-11-03：统一走 lib/periodLabels —— 上个月不写「上月」，去年不写「去年同期」。 */
+  const cmpLabels = { cur: currentPeriodLabel(dRange), prev: previousPeriodLabel(dRange) };
 
   /** 周/月/年：睡眠分析（文本）—— 置于时间选择器下方、双轴图之上，与「多维度对比」同源口径 */
   const sleepRangeAnalysis = useMemo<string[] | null>(() => {

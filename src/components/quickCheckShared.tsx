@@ -50,7 +50,7 @@ export function ScaleBar({ scale }: { scale: { min: number; max: number; v: numb
         ))}
       </View>
       <View style={{ position: 'absolute', top: -4, left: `${pct}%`, transform: [{ translateX: -4 }] }}>
-        <Text style={{ fontSize: 10, color: theme.colors.textTitle }}>▼</Text>
+        <Text style={{ fontSize: theme.fontSize.tiny, color: theme.colors.textTitle }}>▼</Text>
       </View>
     </View>
   );
@@ -233,9 +233,9 @@ export const qc = StyleSheet.create({
     backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder,
     alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(2),
   },
-  backArrow: { fontSize: 22, color: theme.colors.textTitle, lineHeight: 24 },
+  backArrow: { fontSize: theme.fontSize.h2, color: theme.colors.textTitle, lineHeight: 24 },
   histTitle: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  shareIcon: { fontSize: 18, color: theme.colors.textSub },
+  shareIcon: { fontSize: theme.fontSize.card, color: theme.colors.textSub },
   histSub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginBottom: theme.sp(3) },
   histCard: {
     backgroundColor: theme.colors.cardBg,
@@ -264,7 +264,7 @@ export const qc = StyleSheet.create({
   sumMain: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginTop: theme.sp(1), lineHeight: theme.fontSize.card * 1.4 },
   sumNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2.5), lineHeight: theme.fontSize.micro * 1.6 },
   groupTitle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(5), marginBottom: theme.sp(2) },
-  groupIcon: { fontSize: 15, marginRight: theme.sp(2) },
+  groupIcon: { fontSize: theme.fontSize.body, marginRight: theme.sp(2) },
   groupTitleText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   groupCard: { padding: theme.space.cardPadCompact },
   metricRow: {

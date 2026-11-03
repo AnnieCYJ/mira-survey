@@ -1002,7 +1002,7 @@ const styles = StyleSheet.create({
   // ★ 2026-10-14：日期数字改绝对定位 + zIndex 5，永远压在照片之上（照片下移后也不被盖住）
   dayNum: {
     position: 'absolute', top: 3, left: 4, zIndex: 5,
-    fontSize: 10, fontWeight: theme.weight.medium as any, color: theme.colors.textSub,
+    fontSize: theme.fontSize.tiny, fontWeight: theme.weight.medium as any, color: theme.colors.textSub,
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any },
 
@@ -1022,7 +1022,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4, backgroundColor: '#1F1D1A',
     alignItems: 'center', justifyContent: 'center', zIndex: 10,
   },
-  plusText: { fontSize: 8, fontWeight: theme.weight.bold as any, color: '#fff' },
+  plusText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: '#fff' },
 
   // 卡片小标题（图标 + 标题）
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), marginBottom: theme.sp(3) },
@@ -1083,13 +1083,13 @@ const styles = StyleSheet.create({
   obs: { flexDirection: 'row', alignItems: 'flex-start' },
   obsGap: { marginTop: theme.sp(3.5) },
   obsIco: {
-    width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
+    width: 26, height: 26, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center',
     marginRight: theme.sp(2.5), marginTop: 1, flexShrink: 0,
   },
   obsBody: { flex: 1, minWidth: 0 },
   // ★ 2026-10-28（用户）：正文放大到 sm + 纯白 —— 半透明白卡上原 xs/inkSoft 发糊，现一眼读清
   obsText: { fontSize: theme.fontSize.sm, color: mm.colors.ink, lineHeight: 21 },
-  obsChip: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9, marginTop: theme.sp(1.5) },
+  obsChip: { alignSelf: 'flex-start', borderRadius: theme.radius.pill, paddingVertical: 3, paddingHorizontal: 9, marginTop: theme.sp(1.5) },
   obsChipText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
 
   // ★ 2026-10-28 重设计：规律观察 obs 行（左图标 + 文字 + 右上角删掉）
@@ -1098,7 +1098,7 @@ const styles = StyleSheet.create({
   // ★ 2026-10-28：删掉按钮放大到 xs + inkSoft，原来 micro/inkFaint 太小太淡看不清
   patObsDelText: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft },
   // ★ 2026-10-28（用户）：每条规律观察下方的类别标签（时间节律/相关/组间差异）
-  patTag: { alignSelf: 'flex-start', borderRadius: 999, paddingVertical: 3, paddingHorizontal: 10, marginTop: theme.sp(2.5) },
+  patTag: { alignSelf: 'flex-start', borderRadius: theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10, marginTop: theme.sp(2.5) },
   patTagText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, letterSpacing: 0.4 },
   // ★ 2026-11-03（用户：规律观察接上 AI）：每条规律下方的「✨ AI 解读」入口
   patAiBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1), marginTop: theme.sp(2) },
@@ -1114,7 +1114,7 @@ const styles = StyleSheet.create({
   },
   patOkBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: mm.colors.limeSoft, borderRadius: 999,
+    backgroundColor: mm.colors.limeSoft, borderRadius: theme.radius.pill,
     paddingHorizontal: 7, paddingVertical: 2.5, marginLeft: theme.sp(2),
   },
   patOkText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep },
@@ -1123,22 +1123,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: theme.sp(2),
   },
-  patChip: { borderRadius: 999, paddingVertical: 2.5, paddingHorizontal: 8, alignSelf: 'flex-start' },
+  patChip: { borderRadius: theme.radius.pill, paddingVertical: 2.5, paddingHorizontal: 8, alignSelf: 'flex-start' },
   patChipText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any },
   patActions: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5) },
   // ★ Phase 3：问问 Mira —— 走云端长窗口综合分析
   patActAsk: {
-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 4,
     backgroundColor: mm.colors.purpleSoft,
   },
   patActAskText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.purpleDeep },
   patActOk: {
-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 4,
     backgroundColor: mm.colors.limeSoft,
   },
   patActOkText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any, color: mm.colors.limeDeep },
   patActDel: {
-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 4,
     backgroundColor: mm.colors.emptyFill,
   },
   patActDelText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any, color: mm.colors.inkFaint },

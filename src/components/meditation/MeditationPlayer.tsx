@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   },
   controls: { justifyContent: 'center', alignItems: 'center', marginBottom: theme.space.md },
   playBtn: {
-    width: 64, height: 64, borderRadius: 32,
+    width: 64, height: 64, borderRadius: theme.radius.xl,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
     justifyContent: 'center', alignItems: 'center',
@@ -226,14 +226,14 @@ const styles = StyleSheet.create({
   doneCard: {
     width: '82%', maxWidth: 320,
     backgroundColor: 'rgba(20,18,28,0.82)',
-    borderRadius: 22, paddingVertical: 26, paddingHorizontal: 22, alignItems: 'center',
+    borderRadius: theme.radius.xl, paddingVertical: 26, paddingHorizontal: 22, alignItems: 'center',
     shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 10 }, shadowRadius: 24, elevation: 10,
   },
   doneBadge: {
-    width: 56, height: 56, borderRadius: 28,
+    width: 56, height: 56, borderRadius: theme.radius.xl,
     backgroundColor: mm.colors.limeMid, alignItems: 'center', justifyContent: 'center', marginBottom: 14,
   },
-  doneCheck: { color: '#1F1D1A', fontSize: 30, fontWeight: '700' },
-  doneTitle: { color: '#fff', fontSize: 19, fontWeight: '600' as any, textAlign: 'center' },
-  doneLine: { color: 'rgba(255,255,255,0.92)', fontSize: 15, lineHeight: 22, marginTop: 12, textAlign: 'center' },
+  doneCheck: { color: '#1F1D1A', fontSize: theme.fontSize.stat, fontWeight: '700' },
+  doneTitle: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: '600' as any, textAlign: 'center' },
+  doneLine: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.body, lineHeight: 22, marginTop: 12, textAlign: 'center' },
 });

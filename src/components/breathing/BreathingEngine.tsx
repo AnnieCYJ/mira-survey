@@ -185,16 +185,16 @@ export default function BreathingEngine({
 const styles = StyleSheet.create({
   center: { position: 'absolute', alignItems: 'center' },
   phase: {
-    fontSize: 22, fontWeight: '600', color: '#fff', letterSpacing: 2,
+    fontSize: theme.fontSize.h2, fontWeight: '600', color: '#fff', letterSpacing: 2,
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   count: {
-    marginTop: 6, fontSize: 13, color: 'rgba(255,255,255,0.82)',
+    marginTop: 6, fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.82)',
     fontVariant: ['tabular-nums'],
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
   cycles: {
-    position: 'absolute', bottom: -6, fontSize: 11.5, color: 'rgba(255,255,255,0.7)', letterSpacing: 1,
+    position: 'absolute', bottom: -6, fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.7)', letterSpacing: 1,
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
 });

@@ -238,7 +238,8 @@ export default function CycleDerivedMetrics({ log, cycleInfo, ring, periodDays }
               <MetricRow k="排卵置信度" v={m.ovulationConfidence != null ? `${m.ovulationConfidence}%` : '—'} s={m.ovulationBasis.join(' · ') || '日历推算'} />
               <MetricRow k="黄体期长度" v={m.actualLutealLength != null ? `${m.actualLutealLength} 天` : '—'} s={m.lutealMethod === '未知' ? '数据不足' : m.lutealMethod} />
               <MetricRow k="周期规律性" v={m.regularity.score != null ? m.regularity.label : '—'} s={m.regularity.cv != null ? `CV ${m.regularity.cv} · 近 ${m.regularity.sampleN} 周期` : '记录 ≥2 次经期'} />
-              <MetricRow k="周期长度" v={`${m.actualCycleLength ?? log.cycleLength} 天`} s={m.actualPeriodLength != null ? `经期 ${m.actualPeriodLength} 天 · 实测均值` : `经期约 ${log.periodLength} 天 · 按你的设置`} />
+              {/* ★ 2026-11-03（用户）：「28 天」臆造数字治理 —— 无实测均值且用户未显式设置周期长度时显「—」，不回落默认 28 */}
+              <MetricRow k="周期长度" v={m.actualCycleLength != null ? `${m.actualCycleLength} 天` : log.cycleLengthCustom ? `${log.cycleLength} 天` : '—'} s={m.actualPeriodLength != null ? `经期 ${m.actualPeriodLength} 天 · 实测均值` : log.cycleLengthCustom ? `经期约 ${log.periodLength} 天 · 按你的设置` : '补上周期长度后可预测'} />
               <MetricRow k="PMS 早筛" v={m.pmsIndex != null ? (m.pmsRisk === 'high' ? '偏高' : m.pmsRisk === 'moderate' ? '中等' : '偏低') : '—'} s={m.pmsIndex != null ? `指数 ${m.pmsIndex}` : '经前 7 天评估'} />
               <MetricRow k="当前受孕概率" v={m.fertilityProbability != null ? `${m.fertilityProbability}%` : '—'} s={m.daysToOvulation != null ? (m.daysToOvulation >= 0 ? `距排卵 ${m.daysToOvulation} 天` : `排卵已过 ${-m.daysToOvulation} 天`) : '—'} />
               {tempNote ? <Text style={styles.noteItem}>· {tempNote}</Text> : null}

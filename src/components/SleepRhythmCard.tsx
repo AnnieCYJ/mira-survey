@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.limeSoft, borderRadius: theme.radius.pill,
     paddingHorizontal: 10, paddingVertical: 4,
   },
-  moreCountText: { fontSize: 12, fontWeight: '600', color: mm.colors.limeDeep },
+  moreCountText: { fontSize: theme.fontSize.xs, fontWeight: '600', color: mm.colors.limeDeep },
   moreTitle: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.semibold },
   chev: { transform: [{ rotate: '90deg' }], marginLeft: theme.space.sm },
   chevOpen: { transform: [{ rotate: '-90deg' }] },

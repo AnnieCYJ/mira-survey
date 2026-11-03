@@ -22,6 +22,11 @@ export interface CycleLog {
   lutealLength: number;
   /** 经期天数，默认 5 */
   periodLength: number;
+  /** ★ 2026-11-03（用户：「生理周期没填入就该是空状态，详情页为啥有 28 天」）：
+   *  true = 用户显式设置过周期长度（记录面板步进器改过，或戒指设备上报 menstrualCircle>0）；
+   *  false / undefined = 只记了开始日、周期长度从未设置 —— 展示层不得把默认 28 当真实数据显示，
+   *  计算层（computeCycle 等）仍可用 cycleLength 数值兜底，但 UI 展示必须走空态/留白。 */
+  cycleLengthCustom?: boolean;
   /** 历史经期开始日（旧→新），由 cycleLog 累积；≥3 段时用于统计预测（Periodical 均值法） */
   history?: string[];
   /** ★ P1-1（2026-10-28）：孕期模式。pregnant=是否开启孕期视图；pregnancyLmp=用于推算孕周的末次经期日（YYYY-M-D） */

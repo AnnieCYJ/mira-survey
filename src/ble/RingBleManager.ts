@@ -375,6 +375,9 @@ export interface RingState {
   ecgLiveWaveform: number[] | null;
   /** ★ 2026-10-16（续）：ECG 测量最近一次失败原因（导联脱落/设备忙/无效读数/超时）。常驻显示，便于用户看到失败原因而非只弹一下 Alert。测量开始或成功后清空。 */
   ecgError: string | null;
+  /** ★ 2026-11-03：ECG 测量中的轻提示（原生 NotLead 前 2 次走 hint，如「请保持手指接触电极…」）。
+   *  与 ecgError 不同：不清进度、不打断测量，测量推进或下次正常回调时自动清空。 */
+  ecgHint: string | null;
   /** ★ 2026-10-16：血氧呼吸暂停分析结果（triggerOxygenAnalysis）。null = 未读取/读取失败。 */
   oxygenAnalysis: OxygenAnalysis | null;
   /** ★ 2026-10-16：HRV Lorenz 散点 + RR 间期（readRrAnalysis）。null = 未读取/读取失败。 */
@@ -1689,7 +1692,7 @@ class NativeRingSource {
       const newHistory = [reading, ...curHistory].slice(0, 30);
       // ★ 关键：清掉 ecgProgress → UI 从"处理结果中…"回到空闲态（显示"重新测量"）
       // 之前设 progress:100 会导致 isDone 永远为 true，UI 永远卡在 loading
-      this.push({ ecg: reading, ecgProgress: null, ecgLiveWaveform: null, ecgError: null, ecgHistory: newHistory });
+      this.push({ ecg: reading, ecgProgress: null, ecgLiveWaveform: null, ecgError: null, ecgHint: null, ecgHistory: newHistory });
       this._ecgLiveBuf = [];
       // 把平均心率作为 'ecg' 信号推入 flush 归档链路 → extDaily[今日]['ecg']，多日趋势可用
       this.pushMetric({ key: 'ecg', value: reading.aveHeart, unit: 'bpm', ts: reading.ts });
@@ -1704,14 +1707,20 @@ class NativeRingSource {
   };
 
   /** ECG 实时测量进度（原生 onEcgProgress）：progress=0~100，hr=当前心率，waveform=本次新增的增量波形采样（mV）。
-   *  仅测量期间有效，结果到达即由 handleEcg 清掉。JS 侧把增量拼接到 ecgLiveWaveform，供详情页实时绘制波形。 */
-  private handleEcgProgress = (raw: { progress?: number; hr?: number; error?: string; waveform?: number[] }) => {
+   *  仅测量期间有效，结果到达即由 handleEcg 清掉。JS 侧把增量拼接到 ecgLiveWaveform，供详情页实时绘制波形。
+   *  ★ 2026-11-03（用户）：失败不再 Alert 打断（改为 UI 内联/浮层展示 ecgError）；新增 hint 轻提示
+   *  通道（原生 NotLead 三振容忍的前 2 次走 hint），hint 只更新 ecgHint 不清进度。 */
+  private handleEcgProgress = (raw: { progress?: number; hr?: number; error?: string; hint?: string; waveform?: number[] }) => {
     try {
       if (raw && raw.error) {
-        if (typeof Alert !== 'undefined') Alert.alert('ECG 测量失败', raw.error);
-        // 设备不支持（NoFunction）/ 导联脱落 / 设备忙 / 失败：清掉进度与实时波形，并把原因常驻写入 ecgError 供 UI 显示
+        // 失败：清进度与实时波形，原因写入 ecgError 由 UI（测量浮层 / 详情页常驻块）展示，不弹 Alert
         this._ecgLiveBuf = [];
         this.push({ ecgProgress: null, ecgLiveWaveform: null, ecgError: raw.error ?? 'ECG 测量失败' });
+        return;
+      }
+      if (raw && raw.hint) {
+        // 轻提示（如「请保持手指接触电极…」）：不清进度、不清波形，仅暂存供 UI 显示
+        this.push({ ecgHint: raw.hint });
         return;
       }
       const progress = typeof raw.progress === 'number' ? raw.progress : 0;
@@ -1724,7 +1733,7 @@ class NativeRingSource {
       if (inc && inc.length) {
         live = (live ?? []).concat(inc);
       }
-      this.push({ ecgProgress: { progress, hr }, ecgLiveWaveform: live, ecgError: null });
+      this.push({ ecgProgress: { progress, hr }, ecgLiveWaveform: live, ecgError: null, ecgHint: null });
     } catch {
       /* 静默 */
     }
@@ -2787,7 +2796,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     if (k === 'ecg') {
       // ★ 开始新的 ECG 测量前，清掉残留 progress + 旧读数 + 旧错误（避免显示上一次失败的 HRV=255/HR=0/ecgError）
       this.resetEcgLive();
-      this.push({ ecgProgress: null, ecg: null, ecgLiveWaveform: null, ecgError: null });
+      this.push({ ecgProgress: null, ecg: null, ecgLiveWaveform: null, ecgError: null, ecgHint: null });
     }
     VeepooNative?.measure(k);
   }
@@ -3142,6 +3151,7 @@ class RingConnectionImpl {
     ecgProgress: null,
     ecgLiveWaveform: null,
     ecgError: null,
+    ecgHint: null,
     oxygenAnalysis: null,
     rrAnalysis: null,
     dataVersion: 0,
@@ -6074,7 +6084,7 @@ class RingConnectionImpl {
   abortEcg() {
     if (this.useNative) this.native.stopEcg();
     this.native?.resetEcgLive?.();
-    this.applyPatch({ ecgProgress: null, ecgLiveWaveform: null, ecgError: '测量超时：未在预期时间内完成，已自动结束。请确认戒指电极与手指接触良好，或稍后重试。' });
+    this.applyPatch({ ecgProgress: null, ecgLiveWaveform: null, ecgError: '测量超时：未在预期时间内完成，已自动结束。请确认戒指电极与手指接触良好，或稍后重试。', ecgHint: null });
   }
 
   async flashRing(): Promise<void> {

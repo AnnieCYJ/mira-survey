@@ -8,6 +8,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { RingBle, type RingState, type EcgReading, type EcgAnalysis } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
+import EcgMeasureSheet from '../components/EcgMeasureSheet';
 
 /** ECG 波形路径：点自适应归一化到 W×H 视窗（传入的已是 mV 值）。 */
 function wavePath(values: number[], W: number, H: number): string {
@@ -59,7 +60,7 @@ function EcgScrollTrace({ waveform, height = 150, color = mm.colors.ecgRed, onTa
       horizontal
       showsHorizontalScrollIndicator
       contentContainerStyle={{ paddingVertical: 4 }}
-      style={{ backgroundColor: 'rgba(255,240,243,0.6)', borderRadius: 8 }}
+      style={{ backgroundColor: 'rgba(255,240,243,0.6)', borderRadius: theme.radius.sm }}
     >
       {onTap ? <TouchableOpacity activeOpacity={0.9} onPress={onTap}>{Inner}</TouchableOpacity> : Inner}
     </ScrollView>
@@ -215,7 +216,7 @@ export default function EcgDetailScreen() {
       <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
         <View style={styles.head}>
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-            <Text style={{ fontSize: 20 }}>‹</Text>
+            <Text style={{ fontSize: theme.fontSize.lg }}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>心电图</Text>
@@ -256,8 +257,8 @@ export default function EcgDetailScreen() {
 
         {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
         {!measuring ? (
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
-            <Text style={{ fontSize: 12.5, color: '#FFFFFF', lineHeight: 18 }}>
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
+            <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', lineHeight: 18 }}>
               测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
             </Text>
           </View>
@@ -294,9 +295,9 @@ export default function EcgDetailScreen() {
         {latest?.analysis ? (
           <>
             {/* ★ 2026-11-03（用户·统一 hero 结构）：心电无单一大数字 hero，这里加短解读摘要 */}
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>心电解读</Text>
-              <Text style={{ fontSize: 12.5, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>心电解读</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
                 {(() => {
                   const hr = Math.round(latest?.aveHeart ?? 0);
                   const hrv = Math.round(latest?.aveHrv ?? 0);
@@ -368,6 +369,18 @@ export default function EcgDetailScreen() {
           </ScrollView>
         )}
 
+        {/* ★ 2026-11-03（用户）：测量弹出「食指按戒指」引导动画浮层 —— 动画示意 + 底部进度条 + 实时心电图；
+            失败时浮层停留展示原因，成功自动收起并回填最新读数 */}
+        <EcgMeasureSheet
+          visible={measuring}
+          progress={ring.ecgProgress?.progress ?? 0}
+          hr={ring.ecgProgress?.hr ?? null}
+          liveWaveform={liveWave}
+          error={ring.ecgError}
+          hint={ring.ecgHint}
+          onCancel={stopEcg}
+        />
+
         {/* 全屏放大查看：完整波形，不压缩，横向滚动 */}
         <Modal visible={zoom} transparent animationType="fade" onRequestClose={() => setZoom(false)}>
           <View style={styles.zoomMask}>
@@ -400,8 +413,8 @@ export default function EcgDetailScreen() {
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
   back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
-  title: { fontSize: 20, fontWeight: '600', color: theme.colors.textTitle },
-  sub: { fontSize: 12, color: theme.colors.textSub, marginTop: 2 },
+  title: { fontSize: theme.fontSize.lg, fontWeight: '600', color: theme.colors.textTitle },
+  sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
 
   latestBox: {
     backgroundColor: theme.colors.cardBg,
@@ -412,8 +425,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   latestTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  latestTime: { fontSize: 13, color: theme.colors.textSub },
-  scaleTag: { fontSize: 10, color: mm.colors.ecgRed, fontWeight: '600' },
+  latestTime: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  scaleTag: { fontSize: theme.fontSize.tiny, color: mm.colors.ecgRed, fontWeight: '600' },
 
   liveBox: {
     backgroundColor: theme.colors.cardBg,
@@ -445,7 +458,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     backgroundColor: 'rgba(229,80,138,0.1)',
   },
-  zoomBtnText: { fontSize: 12, fontWeight: '600', color: mm.colors.ecgRed },
+  zoomBtnText: { fontSize: theme.fontSize.xs, fontWeight: '600', color: mm.colors.ecgRed },
 
   zoomMask: {
     flex: 1,
@@ -460,9 +473,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginBottom: 12,
   },
-  zoomTitle: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
-  zoomClose: { fontSize: 22, color: '#FFFFFF', fontWeight: '500' },
-  zoomHint: { fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
+  zoomTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF' },
+  zoomClose: { fontSize: theme.fontSize.h2, color: '#FFFFFF', fontWeight: '500' },
+  zoomHint: { fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
 
   btn: {
     alignItems: 'center',
@@ -472,13 +485,13 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.ecgRed,
     marginBottom: 16,
   },
-  btnLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.textWhite },
+  btnLabel: { fontSize: theme.fontSize.sm, fontWeight: '600', color: theme.colors.textWhite },
 
   // ★ mira-ocean（2026-10-17）：淡紫轨道 → 玻璃白
   segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.sm },
   segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  segTxt: { fontSize: 13, fontWeight: '600', color: theme.colors.textSub },
+  segTxt: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textSub },
   // ★ mira-ocean：白 pill 上选中文字 → 深蓝（原 textTitle 已随主题变白，白底白字）
   segTxtOn: { color: '#2A4470' },
 
@@ -491,24 +504,24 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.cardBorder,
     padding: 10,
   },
-  metricLabel: { fontSize: 11, color: theme.colors.textSub },
-  metricValue: { fontSize: 17, fontWeight: '700', color: theme.colors.textTitle, marginVertical: 3 },
-  metricUnit: { fontSize: 10, fontWeight: '500', color: theme.colors.textSub },
-  metricRef: { fontSize: 9.5, color: theme.colors.textSub },
+  metricLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  metricValue: { fontSize: theme.fontSize.card, fontWeight: '700', color: theme.colors.textTitle, marginVertical: 3 },
+  metricUnit: { fontSize: theme.fontSize.tiny, fontWeight: '500', color: theme.colors.textSub },
+  metricRef: { fontSize: theme.fontSize.tiny, color: theme.colors.textSub },
   dot: { width: 7, height: 7, borderRadius: 4 },
 
   riskBox: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: 14, marginBottom: 12 },
-  riskHint: { fontSize: 10.5, color: theme.colors.textSub, textAlign: 'center', marginTop: 4, marginBottom: 10 },
+  riskHint: { fontSize: theme.fontSize.tiny, color: theme.colors.textSub, textAlign: 'center', marginTop: 4, marginBottom: 10 },
   riskRow: { marginBottom: 12 },
   riskHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  riskLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.textTitle },
-  riskValue: { fontSize: 13, fontWeight: '700' },
+  riskLabel: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textTitle },
+  riskValue: { fontSize: theme.fontSize.xs, fontWeight: '700' },
   riskTrack: { height: 7, backgroundColor: 'rgba(157,138,240,0.14)', borderRadius: 4, overflow: 'hidden' },
   riskFill: { height: '100%', borderRadius: 4 },
 
-  disclaimer: { fontSize: 10.5, color: theme.colors.textSub, lineHeight: 15, marginVertical: 10 },
+  disclaimer: { fontSize: theme.fontSize.tiny, color: theme.colors.textSub, lineHeight: 15, marginVertical: 10 },
 
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: theme.colors.textTitle, marginBottom: 8, marginTop: 4 },
+  sectionTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: theme.colors.textTitle, marginBottom: 8, marginTop: 4 },
   historyItem: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.sm,
@@ -517,11 +530,11 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
   },
-  hTime: { fontSize: 12, color: theme.colors.textInk, fontWeight: '600' },
-  hRel: { fontSize: 11, color: theme.colors.textSub },
-  hStat: { fontSize: 11, color: theme.colors.textSub },
-  hStatVal: { fontSize: 12, fontWeight: '700', color: theme.colors.textTitle },
+  hTime: { fontSize: theme.fontSize.xs, color: theme.colors.textInk, fontWeight: '600' },
+  hRel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  hStat: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  hStatVal: { fontSize: theme.fontSize.xs, fontWeight: '700', color: theme.colors.textTitle },
 
   emptyBox: { alignItems: 'center', paddingVertical: 22 },
-  emptyText: { fontSize: 13, color: theme.colors.textSub, textAlign: 'center' },
+  emptyText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, textAlign: 'center' },
 });

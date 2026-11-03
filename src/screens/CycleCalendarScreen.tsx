@@ -148,6 +148,8 @@ function mergeCycleLog(ring: RingState, local: CycleLog | null): CycleLog | null
           cycleLength: f.menstrualCircle,
           lutealLength: 14,
           periodLength: f.menstrualDays || 5,
+          // 戒指设备上报的 menstrualCircle 属显式设置值（用户在设备端配过），可展示
+          cycleLengthCustom: true,
         }
       : null;
   if (!ringLog && !local) return null;
@@ -260,6 +262,11 @@ export default function CycleCalendarScreen() {
     if (nextStart && selStart) return Math.max(1, daysBetween(selStart, nextStart));
     return Math.max(20, Math.min(45, Math.round(log?.cycleLength || 28)));
   }, [selStart, nextStart, log]);
+
+  // ★ 2026-11-03（用户：「生理周期没填入就是空状态，为啥详情页有 28 天」）：
+  //   「共 N 天」只允许出现在真实来源 —— 历史周期的实际间隔（nextStart 存在）或
+  //   用户显式设置的周期长度（cycleLengthCustom）。否则只显示「第 N 天」，不臆造总长。
+  const hasRealCycleLen = !!(nextStart && selStart) || log?.cycleLengthCustom === true;
 
   // 该周期横轴（第 1 天 = 周期首日）：当前周期把轴拉到「今天」以保证今天有虚线标记
   const cycAxis = useMemo(() => {
@@ -470,7 +477,9 @@ export default function CycleCalendarScreen() {
                 <Text style={styles.cycleDate}>
                   {selDate ? `${selDate.getMonth() + 1}月${selDate.getDate()}日` : '—'}
                 </Text>
-                <Text style={styles.cycleDay}>第 {labelDay} 天 / 共 {labelTotal} 天</Text>
+                <Text style={styles.cycleDay}>
+                  {hasRealCycleLen ? `第 ${labelDay} 天 / 共 ${labelTotal} 天` : `第 ${labelDay} 天`}
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -532,10 +541,12 @@ export default function CycleCalendarScreen() {
             {recordRowNode}
 
             {/* ★ 2026-11-03（用户·统一 hero 结构）：周期页无单一大数字 hero，这里加「周期解读」摘要 */}
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>周期解读</Text>
-              <Text style={{ fontSize: 12.5, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
-                {`你正处在周期第 ${labelDay} 天 / 共 ${labelTotal} 天，按这个节奏安排休息与活动会更稳。`}
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>周期解读</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+                {hasRealCycleLen
+                  ? `你正处在周期第 ${labelDay} 天 / 共 ${labelTotal} 天，按这个节奏安排休息与活动会更稳。`
+                  : `你正处在周期第 ${labelDay} 天。在下方「记录 / 修改」里补上周期长度，预测会更有依据。`}
               </Text>
             </View>
 
@@ -1207,9 +1218,9 @@ const styles = StyleSheet.create({
   /* ★ P1-1（2026-10-28）：孕期模式开关 */
   pregToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
   pregToggleLabel: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.medium as any },
-  pregToggle: { width: 48, height: 28, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)', padding: 3, justifyContent: 'center' },
+  pregToggle: { width: 48, height: 28, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.18)', padding: 3, justifyContent: 'center' },
   pregToggleOn: { backgroundColor: mm.colors.limeDeep, alignItems: 'flex-end' },
-  pregKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF' },
+  pregKnob: { width: 22, height: 22, borderRadius: theme.radius.md, backgroundColor: '#FFFFFF' },
   pregKnobOn: { backgroundColor: '#FFFFFF' },
   /* ★ 2026-10-07：记录面板复用洞察页那张（内容较高），Sheet 只需封顶高度 + 可滚动 */
   recordSheet: { maxHeight: '88%' },

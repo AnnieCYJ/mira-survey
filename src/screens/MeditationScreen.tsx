@@ -73,7 +73,7 @@ function ToolCardImage({ toolKey }: { toolKey: string }) {
 
 const cardImgFail = StyleSheet.create({
   box: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F6F4F1' },
-  text: { color: '#E2554E', fontSize: 13, fontWeight: '600' },
+  text: { color: '#E2554E', fontSize: theme.fontSize.xs, fontWeight: '600' },
 });
 
 /* ★ 2026-10-12（用户重做口径）—— 卡面文案区 = **底部一块白色磨砂玻璃蒙层 + 白字 + 一个按钮**：

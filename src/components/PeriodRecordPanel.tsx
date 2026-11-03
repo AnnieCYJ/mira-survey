@@ -62,6 +62,10 @@ export default function PeriodRecordPanel({
   const [cycleLen, setCycleLen] = useState(
     female?.menstrualCircle ?? currentLog?.cycleLength ?? 28,
   );
+  // ★ 2026-11-03（用户：「周期没填入就是空状态，详情页为啥有 28 天」）：
+  //   只有用户真的动过步进器（或此前已显式设置过）才把周期长度标记为「真实填写」，
+  //   否则落盘的 28 只是计算兜底，展示层不得当真实数据显示。
+  const [cycleLenTouched, setCycleLenTouched] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
   // ★ 2026-10-07：历史记录（按天累积，最新在上）—— 只列出真的填过内容的那些天
@@ -165,6 +169,11 @@ export default function PeriodRecordPanel({
         cycleLength: cycleLen,
         lutealLength: 14,
         periodLength: 5,
+        // 显式设置：本次动过步进器 / 此前已显式设置过 / 戒指设备已上报周期长度
+        cycleLengthCustom:
+          cycleLenTouched ||
+          currentLog?.cycleLengthCustom === true ||
+          (female?.menstrualCircle ?? 0) > 0,
       };
       await saveCycleLog(next);
       try {
@@ -342,11 +351,11 @@ export default function PeriodRecordPanel({
         <View style={styles.stepperRow}>
           <Text style={styles.stepperLabel}>月经周期长度</Text>
           <View style={styles.stepper}>
-            <TouchableOpacity style={styles.stepBtn} onPress={() => setCycleLen((v) => Math.max(21, v - 1))}>
+            <TouchableOpacity style={styles.stepBtn} onPress={() => { setCycleLenTouched(true); setCycleLen((v) => Math.max(21, v - 1)); }}>
               <Text style={styles.stepBtnText}>−</Text>
             </TouchableOpacity>
             <Text style={styles.stepValue}>{cycleLen} 天</Text>
-            <TouchableOpacity style={styles.stepBtn} onPress={() => setCycleLen((v) => Math.min(40, v + 1))}>
+            <TouchableOpacity style={styles.stepBtn} onPress={() => { setCycleLenTouched(true); setCycleLen((v) => Math.min(40, v + 1)); }}>
               <Text style={styles.stepBtnText}>＋</Text>
             </TouchableOpacity>
           </View>
@@ -450,7 +459,7 @@ const styles = StyleSheet.create({
     minWidth: 52,
   },
   moodChipOn: { backgroundColor: theme.colors.accentSolid },
-  moodEmoji: { fontSize: 20, marginBottom: 2 },
+  moodEmoji: { fontSize: theme.fontSize.lg, marginBottom: 2 },
   moodLabel: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
   moodLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
@@ -464,7 +473,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   symptomTileOn: { backgroundColor: theme.colors.accentSolid },
-  symptomEmoji: { fontSize: 22, marginBottom: 3 },
+  symptomEmoji: { fontSize: theme.fontSize.h2, marginBottom: 3 },
   symptomLabel: { fontSize: theme.fontSize.micro, color: mm.colors.inkSoft },
   symptomLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
@@ -480,7 +489,7 @@ const styles = StyleSheet.create({
     marginRight: theme.space.xs,
   },
   checkboxOn: { backgroundColor: theme.colors.accentSolid },
-  checkMark: { color: theme.colors.textWhite, fontSize: 14, fontWeight: theme.weight.bold as any },
+  checkMark: { color: theme.colors.textWhite, fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as any },
   startTextWrap: { flex: 1 },
   startTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   startSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 1 },
@@ -496,7 +505,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBtnText: { fontSize: 20, color: theme.colors.accentText, fontWeight: theme.weight.bold as any },
+  stepBtnText: { fontSize: theme.fontSize.lg, color: theme.colors.accentText, fontWeight: theme.weight.bold as any },
   stepValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginHorizontal: 16, minWidth: 48, textAlign: 'center' },
 
   // v16：保存按钮 = lime→粉 渐变（Touchable 只留圆角+裁切，padding 在渐变层）

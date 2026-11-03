@@ -241,8 +241,8 @@ const styles = StyleSheet.create({
   emptyText: { position: 'absolute', left: 0, right: 0, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.space.xs },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  bubble: { position: 'absolute', minWidth: 70, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  bubbleLevel: { fontSize: 10, color: '#fff', fontWeight: theme.weight.semibold },
-  bubbleTime: { fontSize: 8, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  bubble: { position: 'absolute', minWidth: 70, paddingHorizontal: 7, paddingVertical: 3, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
+  bubbleLevel: { fontSize: theme.fontSize.tiny, color: '#fff', fontWeight: theme.weight.semibold },
+  bubbleTime: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
   hit: { position: 'absolute', backgroundColor: 'transparent' },
 });

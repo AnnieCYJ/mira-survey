@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect, G, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
+import { previousPeriodLabel, baselineLabel } from '../lib/periodLabels';
 import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
@@ -227,7 +228,7 @@ export default function StatusTrendDetailScreen() {
   };
 
   // 计算各区间的（点序列 + 轴标签 + 当前值 + 统计）
-  const { pts, axisLabels, fixedAxis, current, firstReal, avg, hi, lo, hasData } = useMemo(() => {
+  const { pts, axisLabels, fixedAxis, current, firstReal, avg, hasData } = useMemo(() => {
     const anchorKey = dayKey(anchor.getTime());  // ★ 补零格式
 
     if (dRange === 'day') {
@@ -608,26 +609,23 @@ export default function StatusTrendDetailScreen() {
     // 当前区间逐单元（日/月）序列 + 区间 dayKeys
     let units: { label: string; value: number | null }[] = [];
     let curKeys: string[] = [];
-    let prevLabel = '上期';
-    let baseLabel = '基线';
+    // ★ 2026-11-03：标签统一走 lib/periodLabels —— 昨日/上周/上个月/去年 全 App 唯一口径
+    let prevLabel = previousPeriodLabel(dRange);
+    let baseLabel = baselineLabel(dRange);
     if (dRange === 'day') {
       const dk = dayKey(anchor.getTime());
       units = [{ label: '今日', value: valOf(dk) }];
       curKeys = [dk];
-      prevLabel = '昨日'; baseLabel = '7天基线';
     } else if (dRange === 'week') {
       const mon = startOfWeek(anchor);
       for (let i = 0; i < 7; i++) { const d = addDays(mon, i); curKeys.push(dayKey(d.getTime())); units.push({ label: fmtD(d), value: valOf(dayKey(d.getTime())) }); }
-      prevLabel = '上周'; baseLabel = '30天基线';
     } else if (dRange === 'month') {
       const y = anchor.getFullYear(); const m0 = anchor.getMonth();
       const dim = new Date(y, m0 + 1, 0).getDate();
       for (let day = 1; day <= dim; day++) { const d = new Date(y, m0, day); curKeys.push(dayKey(d.getTime())); units.push({ label: `${day}`, value: valOf(dayKey(d.getTime())) }); }
-      prevLabel = '上月'; baseLabel = '30天基线';
     } else {
       const y = anchor.getFullYear();
       for (let mo = 0; mo < 12; mo++) units.push({ label: `${mo + 1}月`, value: monthMean(statusDaily, y, mo) });
-      prevLabel = '去年'; baseLabel = '全年基线';
     }
 
     const withVal = units.filter((u): u is { label: string; value: number } => u.value != null);
@@ -924,9 +922,9 @@ export default function StatusTrendDetailScreen() {
               const triX = tip.x - 8;
               return (
                 <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                    <Text style={{ fontSize: 11, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
+                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
+                    <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
                   </View>
                   <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
                 </View>
@@ -1001,21 +999,7 @@ export default function StatusTrendDetailScreen() {
           <Text style={styles.cmpSub}>{dRange === 'day' ? '今日' : dRange === 'week' ? '本周' : dRange === 'month' ? '本月' : '本年'}</Text>
         </View>
 
-        {/* 第一排：平均 / 最高 / 最低（本区间统计值，与上方曲线同源：pts 的有效点） */}
-        <View style={styles.statGrid}>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>平均</Text>
-            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(avg)}</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>最高</Text>
-            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(hi)}</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>最低</Text>
-            <Text style={styles.statValue} numberOfLines={1}>{fmtVal(lo)}</Text>
-          </View>
-        </View>
+        {/* ★ 2026-11-03（用户）：平均/最高/最低三卡条已全 App 删除（与 MetricDetail 同口径），统计语义由下方 状态最好/最差 + 对比 承担 */}
 
         {comparison.showBestWorst && (
           <View style={[styles.cmpGrid2, { marginTop: theme.space.sm }]}>
@@ -1081,7 +1065,7 @@ const styles = StyleSheet.create({
   },
   liveText: { fontSize: theme.fontSize.micro, color: theme.colors.success, fontWeight: theme.weight.medium as any },
   hero: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  heroVal: { fontSize: 40, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   delta: { fontSize: theme.fontSize.sm, marginLeft: 6 },
   up: { color: theme.colors.danger },
@@ -1124,6 +1108,6 @@ const styles = StyleSheet.create({
   cmpGrid2: { flexDirection: 'row', gap: theme.space.sm },
   cmpCell: { flex: 1, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.cardBorder, borderWidth: 1, borderRadius: theme.radius.md, padding: theme.space.sm },
   cmpLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 },
-  cmpVal: { fontSize: 24, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
+  cmpVal: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
   cmpMeta: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
 });

@@ -1,0 +1,313 @@
+/**
+ * EcgMeasureSheet —— 心电测量引导浮层（EcgDetailScreen 与洞察页 EcgCard 共用）
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ★ 2026-11-03（用户）：
+ *   1) 点击「测量」弹出动画图 —— 食指轻触戒指外侧金属电极的示意（手指往复轻点 + 电极发光）；
+ *   2) 底部进度条（真实 progress 与 UI 平滑值取大者，由调用方传入 displayProgress）；
+ *   3) 采到心电后浮层内直接展示实时心电图（ecgLiveWaveform，最新窗口不压缩）；
+ *   4) 失败（ecgError）时浮层停留展示原因 + 关闭按钮；成功（visible 变 false）自动收起。
+ * 全部走 design token，无裸值（动画坐标除外）。
+ */
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, View, Text, Animated, Easing, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import Svg, { Path, Line } from 'react-native-svg';
+import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
+
+/** 实时波形路径：取最新 ~600 点窗口，归一化到 W×H（与 EcgDetailScreen.wavePath 同口径）。 */
+function liveWavePath(values: number[], W: number, H: number): string {
+  if (!values || values.length < 4) return '';
+  const WINDOW = 600;
+  const arr = values.length > WINDOW ? values.slice(-WINDOW) : values;
+  let mn = Infinity, mx = -Infinity;
+  for (const v of arr) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const span = mx - mn || 1;
+  const step = W / arr.length;
+  let d = '';
+  for (let i = 0; i < arr.length; i++) {
+    const x = i * step;
+    const y = H - ((arr[i] - mn) / span) * H * 0.82 - H * 0.09;
+    d += (i === 0 ? 'M ' : 'L ') + `${x.toFixed(1)} ${y.toFixed(1)} `;
+  }
+  return d;
+}
+
+/** 心电纸网格（与详情页同款红细/粗线）。 */
+function LiveGrid({ W, H }: { W: number; H: number }) {
+  const minor = 10, major = 50;
+  const lines: React.ReactElement[] = [];
+  for (let x = 0; x <= W; x += minor) {
+    lines.push(<Line key={`v${x}`} x1={x} y1={0} x2={x} y2={H} stroke={mm.colors.ecgRed} strokeOpacity={x % major === 0 ? 0.22 : 0.08} strokeWidth={1} />);
+  }
+  for (let y = 0; y <= H; y += minor) {
+    lines.push(<Line key={`h${y}`} x1={0} y1={y} x2={W} y2={y} stroke={mm.colors.ecgRed} strokeOpacity={y % major === 0 ? 0.22 : 0.08} strokeWidth={1} />);
+  }
+  return <>{lines}</>;
+}
+
+interface Props {
+  /** true = 测量进行中（调用方按状态机传：isMeasuring / isDone）；false 且无 error 时自动收起 */
+  visible: boolean;
+  /** 显示用进度（0–100，调用方已做平滑） */
+  progress?: number;
+  /** 测量中实时心率 */
+  hr?: number | null;
+  /** 实时波形缓冲（mV） */
+  liveWaveform?: number[] | null;
+  /** 最近一次失败原因（非空时浮层停留展示） */
+  error?: string | null;
+  /** 测量中的轻提示（如「请保持手指接触电极…」） */
+  hint?: string | null;
+  /** 用户主动关闭（停止测量 / 关闭失败浮层） */
+  onCancel: () => void;
+}
+
+export default function EcgMeasureSheet({ visible, progress, hr, liveWaveform, error, hint, onCancel }: Props) {
+  // 内部 open：visible=true 时打开；visible=false 且无 error → 自动收起（成功）；
+  // 有 error 时停留展示原因，由用户点「关闭」收起。
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (visible) setOpen(true); }, [visible]);
+  useEffect(() => { if (!visible && !error) setOpen(false); }, [visible, error]);
+
+  // 食指轻点动画：往复下压 + 电极光晕呼吸
+  const tap = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!open) return;
+    const tapLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tap, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(tap, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    tapLoop.start();
+    glowLoop.start();
+    return () => { tapLoop.stop(); glowLoop.stop(); };
+  }, [open, tap, glow]);
+
+  const fingerY = tap.interpolate({ inputRange: [0, 1], outputRange: [-26, 8] });
+  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.75] });
+  const glowScale = glow.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.25] });
+
+  const W = Math.round(Dimensions.get('window').width) - 72;
+  const H = 96;
+  const hasLive = !!liveWaveform && liveWaveform.length > 4;
+  const p = Math.max(0, Math.min(100, Math.round(progress ?? 0)));
+  const failed = !!error && !visible;
+
+  return (
+    <Modal transparent visible={open} animationType="fade" statusBarTranslucent onRequestClose={() => { onCancel(); }}>
+      <View style={s.backdrop}>
+        <View style={s.box}>
+          <Text style={s.title}>心电测量</Text>
+
+          {/* 引导动画：食指往复轻点戒指外侧电极 */}
+          <View style={s.illuWrap}>
+            <Animated.View
+              style={[s.glow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
+            />
+            {/* 戒指截面（外侧电极朝上） */}
+            <View style={s.ringBody}>
+              <View style={s.electrode} />
+            </View>
+            {/* 手指（指尖朝下） */}
+            <Animated.View style={[s.finger, { transform: [{ translateY: fingerY }] }]}>
+              <View style={s.nail} />
+            </Animated.View>
+          </View>
+          <Text style={s.guide}>
+            戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后开始出图
+          </Text>
+
+          {/* 实时心电图：采到波形后替换引导区 */}
+          {hasLive ? (
+            <View style={s.liveBox}>
+              <View style={s.liveHead}>
+                <Text style={s.liveTitle}>实时心电图</Text>
+                {hr ? <Text style={s.liveHr}>{Math.round(hr)} bpm</Text> : null}
+              </View>
+              <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+                <LiveGrid W={W} H={H} />
+                <Path d={liveWavePath(liveWaveform!, W, H)} fill="none" stroke={mm.colors.ecgRed} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </View>
+          ) : failed ? (
+            <View style={s.errBox}>
+              <Text style={s.errText}>{error}</Text>
+              <Text style={s.errSub}>提示：戴紧戒指后，用另一只手食指持续轻触戒指外侧金属电极再测。</Text>
+            </View>
+          ) : (
+            <View style={s.waitBox}>
+              <Text style={s.waitText}>{hint ?? '正在启动测量，请保持手指接触电极…'}</Text>
+            </View>
+          )}
+
+          {/* 底部进度条 */}
+          {!failed ? (
+            <View style={s.progWrap}>
+              <View style={s.progTrack}>
+                <View style={[s.progFill, { width: `${p}%` }]} />
+              </View>
+              <Text style={s.progText}>
+                测量中 {p}%{hr ? ` · ${Math.round(hr)} bpm` : ''}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* 操作按钮 */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[s.btn, failed && { backgroundColor: theme.colors.cardBgSoft, borderWidth: 1, borderColor: theme.colors.cardBorder }]}
+            onPress={() => { onCancel(); if (failed) setOpen(false); }}
+          >
+            <Text style={[s.btnText, failed && { color: theme.colors.textTitle }]}>{failed ? '关闭' : '停止测量'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const s = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(10,18,32,0.66)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  box: {
+    width: '86%',
+    maxWidth: 360,
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    paddingVertical: theme.sp(5),
+    paddingHorizontal: theme.sp(4),
+  },
+  title: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.bold,
+    color: theme.colors.textTitle,
+    marginBottom: theme.sp(2),
+  },
+
+  illuWrap: {
+    width: 150,
+    height: 130,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: theme.sp(2),
+  },
+  glow: {
+    position: 'absolute',
+    bottom: 30,
+    width: 46,
+    height: 14,
+    borderRadius: theme.radius.sm,
+    backgroundColor: mm.colors.ecgRed,
+  },
+  ringBody: {
+    width: 96,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 7,
+    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 8,
+  },
+  electrode: {
+    position: 'absolute',
+    top: -5,
+    width: 44,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  finger: {
+    position: 'absolute',
+    top: 0,
+    width: 46,
+    height: 92,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
+  },
+  nail: {
+    marginTop: 6,
+    width: 30,
+    height: 22,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+
+  guide: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: theme.sp(3),
+  },
+
+  liveBox: {
+    width: '100%',
+    backgroundColor: 'rgba(255,240,243,0.6)',
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.sp(1.5),
+    paddingHorizontal: theme.sp(2),
+    marginBottom: theme.sp(3),
+  },
+  liveHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  liveTitle: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: mm.colors.ecgRed },
+  liveHr: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
+
+  waitBox: { minHeight: 56, justifyContent: 'center', marginBottom: theme.sp(3) },
+  waitText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center', lineHeight: 20 },
+
+  errBox: {
+    width: '100%',
+    backgroundColor: theme.colors.dangerSoft ?? 'rgba(229,57,53,0.10)',
+    borderRadius: theme.radius.sm,
+    padding: theme.sp(2),
+    marginBottom: theme.sp(3),
+  },
+  errText: { fontSize: theme.fontSize.sm, color: theme.colors.danger ?? '#e53935', fontWeight: theme.weight.semibold, lineHeight: 19 },
+  errSub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 4, lineHeight: 17 },
+
+  progWrap: { width: '100%', marginBottom: theme.sp(3) },
+  progTrack: {
+    width: '100%',
+    height: 6,
+    backgroundColor: theme.colors.ui.scrimSoft,
+    borderRadius: theme.sp(0.75),
+    overflow: 'hidden',
+  },
+  progFill: { height: '100%', backgroundColor: mm.colors.ecgRed, borderRadius: theme.sp(0.75) },
+  progText: {
+    marginTop: theme.sp(1.5),
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
+
+  btn: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.sp(2.5),
+    borderRadius: theme.radius.md,
+    backgroundColor: mm.colors.ecgRed,
+  },
+  btnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
+});

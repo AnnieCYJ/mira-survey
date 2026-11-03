@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(1.5),
   },
   tickRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: theme.sp(1), marginBottom: theme.sp(0.5) },
-  tickDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: 999, opacity: 0.4 },
+  tickDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.radius.pill, opacity: 0.4 },
   tickDotActive: { opacity: 1, transform: [{ scale: 1.2 }] },
   tickLabel: { fontSize: theme.fs(10), color: mm.colors.inkSoft, textAlign: 'center', minWidth: 40 },
   tickLabelActive: { color: mm.colors.purpleDeep, fontWeight: '700' as never },

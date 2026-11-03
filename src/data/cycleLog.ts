@@ -24,6 +24,9 @@ export async function loadCycleLog(): Promise<CycleLog | null> {
       cycleLength: Number(j.cycleLength) || 28,
       lutealLength: Number(j.lutealLength) || 14,
       periodLength: Number(j.periodLength) || 5,
+      // ★ 2026-11-03：区分「用户真实填写的周期长度」与「未设置时的 28 兜底」——
+      //   cycleLength 数值仍兜底 28 供计算层使用，但展示层凭 cycleLengthCustom 判断是否可展示。
+      cycleLengthCustom: j.cycleLengthCustom === true,
       history: Array.isArray(j.history) ? j.history.map(String) : undefined,
       pregnant: j.pregnant === true ? true : undefined,
       pregnancyLmp: typeof j.pregnancyLmp === 'string' ? j.pregnancyLmp : undefined,

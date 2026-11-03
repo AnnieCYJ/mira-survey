@@ -115,7 +115,7 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
 
       {!anyData && !condensed ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: CH / 2 - 8, alignItems: 'center' }}>
-          <Text style={{ fontSize: 9, color: theme.colors.textSub }}>暂无数据</Text>
+          <Text style={{ fontSize: theme.fontSize.tiny, color: theme.colors.textSub }}>暂无数据</Text>
         </View>
       ) : null}
     </View>

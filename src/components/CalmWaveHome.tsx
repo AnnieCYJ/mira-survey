@@ -552,7 +552,7 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: theme.fontSize.h2,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
@@ -575,7 +575,7 @@ const s = StyleSheet.create({
   cardTitle: {
     position: 'absolute',
     left: 16,
-    fontSize: 28,
+    fontSize: theme.fontSize.stat,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
@@ -599,7 +599,7 @@ const s = StyleSheet.create({
   },
   chip: {
     height: CHIP_H,
-    borderRadius: 16,
+    borderRadius: theme.radius.lg,
     paddingTop: 9,
     paddingBottom: 8,
     paddingHorizontal: 2,
@@ -610,14 +610,14 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   chipIcon: { marginBottom: 3 },
-  chipLabel: { fontSize: 12.5, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
-  chipLabelBig: { fontSize: 14, color: 'rgba(255,255,255,0.78)' },
+  chipLabel: { fontSize: theme.fontSize.xs, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
+  chipLabelBig: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.78)' },
   chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
-  chipVal: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  chipValBig: { fontSize: 22 },
+  chipVal: { fontSize: theme.fontSize.card, fontWeight: '700', color: '#fff' },
+  chipValBig: { fontSize: theme.fontSize.h2 },
   chipValGood: { color: '#D5E384' },
-  chipUnit: { fontSize: 10.5, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
-  chipTag: { fontSize: 10.5, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
+  chipUnit: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
+  chipTag: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
 
   // 大半圆区（Oura 风格，去月相）：整区居中、可点
   gaugeZone: {
@@ -637,28 +637,28 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   // 分数主视觉（★ 2026-11-03：58→44 数字缩小；★ 本轮 收紧与状态词间距）
-  gBig: { fontSize: 44, fontWeight: '700', color: '#fff', marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gBig: { fontSize: theme.fontSize.hero, fontWeight: '700', color: '#fff', marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   // 状态档位词（如 平平静静）：★ 本轮 44→40，比大数字略小一点（用户要求"稍小一点点"）
-  gLabel: { fontSize: 40, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
+  gLabel: { fontSize: theme.fontSize.hero, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
   // 周期副行
-  gUpd: { fontSize: 12.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
+  gUpd: { fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
   // 收工啦放松胶囊（→ 呼吸放松）
   relaxPill: {
     marginTop: 16,
     paddingVertical: 9,
     paddingHorizontal: 18,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },
-  relaxPillTxt: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+  relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF' },
 
   // 分析文字（浮于照片，无卡片底）
   analysisWrap: { position: 'absolute', left: 24, right: 24 },
   capsuleWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   scaleTxt: {
-    position: 'absolute', fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.6)',
+    position: 'absolute', fontSize: theme.fontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.6)',
     textShadowColor: 'rgba(8,30,58,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
 
@@ -675,7 +675,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.17)',
     borderWidth: 1,
   },
-  analysis: { fontSize: 17.5, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0, textAlign: 'center' },
+  analysis: { fontSize: theme.fontSize.card, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0, textAlign: 'center' },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
@@ -685,9 +685,9 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.14)',
   },
-  sugThumb: { width: 56, height: 56, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  sugH: { fontSize: 17, fontWeight: '600', color: '#fff' },
-  sugD: { fontSize: 14, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
-  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: 999, paddingHorizontal: 15, paddingVertical: 7 },
-  goTxt: { fontSize: 14.5, fontWeight: '600', color: '#101C33' },
+  sugThumb: { width: 56, height: 56, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  sugH: { fontSize: theme.fontSize.card, fontWeight: '600', color: '#fff' },
+  sugD: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: theme.radius.pill, paddingHorizontal: 15, paddingVertical: 7 },
+  goTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#101C33' },
 });

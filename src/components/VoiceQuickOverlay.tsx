@@ -219,8 +219,8 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.purpleSoft, // #E7E1FB
   },
   textCol: { flex: 1, minWidth: 0 },
-  title: { fontSize: 15, fontWeight: '600', color: mm.colors.ink }, // 「正在聆听…」ink
-  subtitle: { marginTop: 1, fontSize: 12.5, color: '#9C968C' }, // 「松开后发送给我」
+  title: { fontSize: theme.fontSize.body, fontWeight: '600', color: mm.colors.ink }, // 「正在聆听…」ink
+  subtitle: { marginTop: 1, fontSize: theme.fontSize.xs, color: '#9C968C' }, // 「松开后发送给我」
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 18 },
   waveBar: { width: 3, borderRadius: 2, backgroundColor: mm.colors.purpleCore },
 });

@@ -10,6 +10,7 @@ import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { theme } from '../theme/theme';
+import { compareLabel } from '../lib/periodLabels';
 import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import { healthStore } from '../data/healthStore';
@@ -380,7 +381,7 @@ export default function BpDetailScreen() {
     <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
       <View style={styles.head}>
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-          <Text style={{ fontSize: 20 }}>‹</Text>
+          <Text style={{ fontSize: theme.fontSize.lg }}>‹</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>血压</Text>
@@ -447,7 +448,7 @@ export default function BpDetailScreen() {
                     position: 'absolute',
                     top: Math.max(0, yAt(gv) - 7),
                     right: 3,
-                    fontSize: 11,
+                    fontSize: theme.fontSize.micro,
                     color: theme.colors.textSub,
                     textAlign: 'right',
                   }}
@@ -533,7 +534,7 @@ export default function BpDetailScreen() {
         {/* X 轴标签：日视图走时间轴（space-between）；周/月/年每个柱位一槽、刻度居中，稀疏刻度与柱对齐 */}
         <View style={{ flexDirection: 'row', justifyContent: range === 'day' ? 'space-between' : undefined, paddingLeft: Y_GUT, marginTop: 6 }}>
           {(range === 'day' ? dayXAxis(isTodayAnchor) : data.sys.axis).map((a, i) => (
-            <Text key={i} style={{ fontSize: 11, color: theme.colors.textSub, flex: range === 'day' ? undefined : 1, textAlign: range === 'day' ? undefined : 'center' }}>{a}</Text>
+            <Text key={i} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, flex: range === 'day' ? undefined : 1, textAlign: range === 'day' ? undefined : 'center' }}>{a}</Text>
           ))}
         </View>
 
@@ -584,7 +585,8 @@ export default function BpDetailScreen() {
           </View>
           {dSys != null && (
             <View style={styles.compareRow}>
-              <Text style={styles.compareLabel}>较上一周期</Text>
+              {/* ★ 2026-11-03：统一走 lib/periodLabels —— 较昨日/较上周/较上个月/较去年 */}
+              <Text style={styles.compareLabel}>{compareLabel(range)}</Text>
               <Text style={styles.compareVal}>
                 收缩压 {dSys > 0 ? '↑' : dSys < 0 ? '↓' : '−'} {fmt(Math.abs(dSys))} · 舒张压 {dDia! > 0 ? '↑' : dDia! < 0 ? '↓' : '−'} {fmt(Math.abs(dDia!))} mmHg
               </Text>
@@ -604,7 +606,7 @@ export default function BpDetailScreen() {
                 <Text style={{ color: COL_SYS }}>{fmt(latestVal('ppgSys'))}</Text>
                 <Text style={{ color: theme.colors.textSub }}>/</Text>
                 <Text style={{ color: COL_DIA }}>{fmt(latestVal('ppgDia'))}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: 12 }}> mmHg</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs }}> mmHg</Text>
               </Text>
             </View>
             <View style={styles.detailCol}>
@@ -613,7 +615,7 @@ export default function BpDetailScreen() {
                 <Text style={{ color: COL_SYS }}>{fmt(latestVal('bpSys'))}</Text>
                 <Text style={{ color: theme.colors.textSub }}>/</Text>
                 <Text style={{ color: COL_DIA }}>{fmt(latestVal('bpDia'))}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: 12 }}> mmHg</Text>
+                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs }}> mmHg</Text>
               </Text>
             </View>
           </View>
@@ -716,13 +718,13 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
         {has ? (
           <>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 10 }}>
-              <Text style={{ fontSize: 26, fontWeight: '700', color: tier?.color }}>
+              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: '700', color: tier?.color }}>
                 {Math.round(s!)}/{Math.round(d!)}
               </Text>
-              <Text style={{ fontSize: 13, color: theme.colors.textSub, marginLeft: 6 }}>mmHg</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginLeft: 6 }}>mmHg</Text>
               <View style={{ flex: 1 }} />
-              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: tier?.color, opacity: 0.18 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: tier?.color }}>{tier?.name}</Text>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radius.md, backgroundColor: tier?.color, opacity: 0.18 }}>
+                <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: tier?.color }}>{tier?.name}</Text>
               </View>
             </View>
             {/* 六档水平条：当前档高亮 */}
@@ -748,7 +750,7 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
                 }}
               />
             </View>
-            <Text style={{ fontSize: 12, color: theme.colors.textSub, marginTop: 10, lineHeight: 18 }}>
+            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 10, lineHeight: 18 }}>
               {tier?.name}：{tier?.note}
             </Text>
           </>
@@ -776,18 +778,18 @@ function latestValLocal(k: 'bpSys' | 'bpDia'): number | null {
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
   back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
-  title: { fontSize: 20, fontWeight: '600', color: theme.colors.textTitle },
-  sub: { fontSize: 12, color: theme.colors.textSub, marginTop: 2 },
+  title: { fontSize: theme.fontSize.lg, fontWeight: '600', color: theme.colors.textTitle },
+  sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
   heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  heroAvgLabel: { fontSize: 13, color: theme.colors.textSub },
+  heroAvgLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   heroVals: { flexDirection: 'row', alignItems: 'baseline', marginTop: 2 },
-  heroSys: { fontSize: 40, fontWeight: '700' },
-  heroSep: { fontSize: 28, color: theme.colors.textSub, marginHorizontal: 4 },
-  heroDia: { fontSize: 40, fontWeight: '700' },
-  heroUnit: { fontSize: 14, color: theme.colors.textSub, marginLeft: 4 },
+  heroSys: { fontSize: theme.fontSize.hero, fontWeight: '700' },
+  heroSep: { fontSize: theme.fontSize.stat, color: theme.colors.textSub, marginHorizontal: 4 },
+  heroDia: { fontSize: theme.fontSize.hero, fontWeight: '700' },
+  heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 4 },
   /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析 */
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(1.5) },
-  legendText: { fontSize: 12, color: theme.colors.textSub },
+  legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.md,
@@ -797,15 +799,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   emptyBox: { alignItems: 'center', paddingVertical: 30 },
-  emptyText: { fontSize: 13, color: theme.colors.textSub },
-  statLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 4 },
-  statVal: { fontSize: 20, fontWeight: '700', color: theme.colors.textTitle },
+  emptyText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  statLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: 4 },
+  statVal: { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.colors.textTitle },
   // 详细分析块
-  detailTitle: { fontSize: 13, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: 10 },
+  detailTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: 10 },
   detailGrid: { flexDirection: 'row' },
   detailCol: { flex: 1, alignItems: 'center' },
-  detailColLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 4 },
-  detailColVal: { fontSize: 18, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
+  detailColLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: 4 },
+  detailColVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
   compareRow: {
     marginTop: 12,
     paddingTop: 10,
@@ -815,14 +817,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  compareLabel: { fontSize: 12, color: theme.colors.textSub },
-  compareVal: { fontSize: 12.5, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  compareLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  compareVal: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
   // ★ 2026-10-17：录入按钮 + 录入弹窗样式
   entryBtn: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.lg,
     backgroundColor: mm.colors.skySoft, marginLeft: 8,
   },
-  entryBtnText: { fontSize: 13, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  entryBtnText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24,
   },
@@ -831,23 +833,23 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md, padding: 18,
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
   },
-  modalTitle: { fontSize: 17, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
-  modalHint: { fontSize: 12, color: theme.colors.textSub, marginTop: 6, lineHeight: 17 },
+  modalTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
+  modalHint: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 6, lineHeight: 17 },
   modalInputRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 14 },
   modalInputWrap: { flex: 1 },
-  modalInputLabel: { fontSize: 12, color: theme.colors.textSub, marginBottom: 6 },
+  modalInputLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: 6 },
   modalInput: {
-    borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 18, color: theme.colors.textTitle,
+    borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.sm,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: theme.fontSize.card, color: theme.colors.textTitle,
     textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  modalSlash: { fontSize: 22, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
-  modalErr: { fontSize: 12, color: mm.colors.roseDeep, marginTop: 10 },
+  modalSlash: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
+  modalErr: { fontSize: theme.fontSize.xs, color: mm.colors.roseDeep, marginTop: 10 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   modalBtn: {
-    paddingHorizontal: 18, paddingVertical: 9, borderRadius: 12,
+    paddingHorizontal: 18, paddingVertical: 9, borderRadius: theme.radius.md,
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },
-  modalBtnText: { fontSize: 14, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
 });

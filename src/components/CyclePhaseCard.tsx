@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   sheetClose: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.cardBgSoft,

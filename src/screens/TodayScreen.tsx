@@ -1462,7 +1462,7 @@ const styles = StyleSheet.create({
   },
   statusNarr: {
     // ★ v18.49：保留 A 的 16px/居中/留白28，但降浓——常规字重 + 柔和灰，不再浓黑
-    fontSize: 16,
+    fontSize: theme.fontSize.body,
     lineHeight: 24,
     // ★ 2026-10-13（用户：保证圆环下面恒为两行文字）：锁死两行高，
     //   文案为 1 行或 AI 缓存未刷新时也保留两行占位，下方趋势图位置不随文案长度跳动。
@@ -1484,7 +1484,7 @@ const styles = StyleSheet.create({
     right: 2,
     width: 26,
     height: 26,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.72)',

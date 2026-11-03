@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(3),
   },
   examCtaIcon: {
-    width: 40, height: 40, borderRadius: 12,
+    width: 40, height: 40, borderRadius: theme.radius.md,
     backgroundColor: mm.colors.limeSoft, alignItems: 'center', justifyContent: 'center',
     marginBottom: theme.sp(2),
   },
@@ -663,7 +663,7 @@ const styles = StyleSheet.create({
     color: mm.colors.ink,
   },
   heroUnit: {
-    fontSize: 16,
+    fontSize: theme.fontSize.body,
     fontWeight: '400',
     color: theme.colors.textSub,
     marginLeft: 4,
@@ -671,7 +671,7 @@ const styles = StyleSheet.create({
   },
   // ★ 2026-10-10（用户・六改）：Hero 右侧绿字「较实际年龄低」，紧贴大数字右边，与数字基线对齐
   heroCompare: {
-    fontSize: 15,
+    fontSize: theme.fontSize.body,
     fontWeight: '600',
     color: mm.colors.limeDeep,
     marginLeft: 10,
@@ -756,27 +756,27 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cmpLab: {
-    fontSize: 11,
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
   },
   // ★ 2026-10-10（十改・根因）：这里原来写的是 `lineHeight: 1.04`——RN 的 lineHeight 是**绝对 px**，
   // 不是倍数！30px 字号配1.04px 行高 → 行盒被压成一条缝，数字被裁得只剩一个像素 → 手机上「29.9」彻底看不见，
   // 只剩旁边 13px 的「岁」有行高照常显示，于是每张对比卡都成了「只有岁没有数」。
   cmpNum: {
-    fontSize: 30,
+    fontSize: theme.fontSize.stat,
     fontWeight: '300',
     letterSpacing: -1,
     lineHeight: 36,
   },
   cmpUnit: {
-    fontSize: 13,
+    fontSize: theme.fontSize.xs,
     fontWeight: '400',
     color: theme.colors.textSub,
     marginLeft: 2,
     marginBottom: 4,
   },
   factorTitle: {
-    fontSize: 11.5,
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
     marginVertical: theme.sp(2),
   },
@@ -788,7 +788,7 @@ const styles = StyleSheet.create({
   },
   factorName: {
     width: 64,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     color: mm.colors.ink,
     flexShrink: 0,
   },
@@ -796,23 +796,23 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 12,
     backgroundColor: theme.colors.cardBgSoft,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
     overflow: 'hidden',
   },
   factorBar: {
     height: '100%',
     backgroundColor: mm.colors.limeCore,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
   },
   factorVal: {
     width: 42,
     textAlign: 'right',
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: '600',
     flexShrink: 0,
   },
   cmpNote: {
-    fontSize: 11,
+    fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
     marginTop: theme.sp(2.5),
     lineHeight: 17,
@@ -835,7 +835,7 @@ const styles = StyleSheet.create({
     lineHeight: 48,
   },
   paceUnit: {
-    fontSize: 14,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textSub,
     marginLeft: 6,
   },

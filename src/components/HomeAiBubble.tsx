@@ -680,11 +680,11 @@ const styles = StyleSheet.create({
   suggEyebrowDot: {
     width: 7,
     height: 7,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
     flexShrink: 0,
   },
   suggEyebrow: {
-    fontSize: 11,
+    fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
     color: TXT_ON_GLASS_SUB,
     letterSpacing: 2,
@@ -720,7 +720,7 @@ const styles = StyleSheet.create({
   // ★ 方案B（2026-10-14）：圆环下方原分析两行移入气泡顶部，作为 Mira 的今日状态解读
   // ★ V4（2026-10-15）：深玻璃上白字 + 深色柔光投影
   analysisText: {
-    fontSize: 14,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.regular,
     color: TXT_ON_GLASS,
     lineHeight: 20,
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
   },
   // 标题独占（★ 十三改：✕ 整个去掉，关闭职责由「不感兴趣」承担）
   suggAsk: {
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.regular,
     color: TXT_ON_GLASS_SUB,
     lineHeight: 15,
@@ -789,7 +789,7 @@ const styles = StyleSheet.create({
    */
   suggHeadline: {
     // ★ 2026-10-15 末：用户要求建议字体不要加粗 → 改 regular（400），与上方分析叙述一致。
-    fontSize: 14.5,
+    fontSize: theme.fontSize.body,
     fontWeight: theme.weight.regular,
     color: TXT_ON_GLASS,
     lineHeight: 21,
@@ -841,13 +841,13 @@ const styles = StyleSheet.create({
   btnPill: {
     minHeight: 32, justifyContent: 'center',
     backgroundColor: PILL_LIGHT_BG,
-    borderRadius: 999,
+    borderRadius: theme.radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 10,
   },
   btnPillText: {
     color: PILL_LIGHT_TEXT,
-    fontSize: 13,
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
   },
   // ★ 2026-10-16：GROK 渐变主按钮（CTA）。容器去白底、开圆角裁剪，由内层 LinearGradient 填充；
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
   },
   btnPillGradText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
   },
   /** 心 + 「有用」横排（回访卡 / 发现型的主按钮） */
@@ -874,7 +874,7 @@ const styles = StyleSheet.create({
   },
   btnLinkText: {
     color: TXT_ON_GLASS_FAINT,
-    fontSize: 13,
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.regular,
     textDecorationLine: 'underline',
   },
@@ -885,7 +885,7 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
   },
   keptText: {
-    fontSize: 14,          // ★ 12.5 → 14（确认态只有一行，放大更清楚）
+    fontSize: theme.fontSize.sm,          // ★ 12.5 → 14（确认态只有一行，放大更清楚）
     fontWeight: theme.weight.medium,
     color: TXT_ON_GLASS,
     ...GLASS_TEXT_SHADOW,

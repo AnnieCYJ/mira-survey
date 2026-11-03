@@ -30,6 +30,7 @@ import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } fr
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
+import { compareLabel } from '../lib/periodLabels';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../components/charts/AllDayBarsChart';
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
@@ -452,9 +453,9 @@ function RangeBarsChart({
             const triX = tip.x - 8;
             return (
               <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                  <Text style={{ fontSize: 11, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label || '数值'}</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
+                <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label || '数值'}</Text>
+                  <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
                 </View>
                 <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
               </View>
@@ -966,9 +967,10 @@ export default function MetricDetailScreen() {
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
   const heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
 
-  // ★ 本轮（用户）：周/月/年视图 → 与「上一周期」对比（相比上周/上月/上年 上升/下降多少）。
-  //   统一所有指标详情页 hero 卡格式：日视图保持「较区间首点」，周月年显示「较上周/上月/上年」。
-  const prevLabel = range === 'week' ? '较上周' : range === 'month' ? '较上月' : range === 'year' ? '较上年' : '';
+  // ★ 本轮（用户）：周/月/年视图 → 与「上一周期」对比（相比上周/上个月/去年 上升/下降多少）。
+  //   统一所有指标详情页 hero 卡格式：日视图保持「较区间首点」，周月年显示「较上周/较上个月/较去年」。
+  //   ★ 2026-11-03：标签词表收敛到 lib/periodLabels（唯一真相源），不再各页手写。
+  const prevLabel = range === 'day' ? '' : compareLabel(range);
   const prevAnchor = useMemo(() => {
     if (range === 'day') return anchor;
     const a = new Date(anchor.getTime());
@@ -1431,9 +1433,9 @@ export default function MetricDetailScreen() {
               const triX = tip.x - 8;
               return (
                 <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                    <Text style={{ fontSize: 11, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
+                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
+                    <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
                   </View>
                   <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
                 </View>
@@ -1464,24 +1466,6 @@ export default function MetricDetailScreen() {
             ))}
           </View>
         </View>
-        )}
-
-        {/* 统计：平均 / 最高 / 最低（血脂四项页由上方 LipidTrendCard + LipidOverviewCard 承担，不显示单指标统计） */}
-        {!isEcg && !isLipid && (
-          <View style={styles.statGrid}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>平均</Text>
-              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.avg)}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>最高</Text>
-              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.hi)}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>最低</Text>
-              <Text style={styles.statValue} numberOfLines={1}>{fmtVal(series.lo)}</Text>
-            </View>
-          </View>
         )}
 
         {/* 解读（血脂四项页用自己的解读卡，不显示单指标 note） */}
@@ -1852,7 +1836,7 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
             </Svg>
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: theme.fontSize.h2, fontWeight: '700', color: mm.colors.ink }}>{Math.round(activeTotal)}</Text>
-              <Text style={{ fontSize: 11, color: theme.colors.textSub }}>活动分钟</Text>
+              <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>活动分钟</Text>
             </View>
           </View>
           <View style={{ flex: 1, gap: theme.sp(1) }}>

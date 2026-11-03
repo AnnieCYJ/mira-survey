@@ -246,8 +246,8 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  yText: { position: 'absolute', fontSize: 13, textAlign: 'right' },
-  axisTitle: { position: 'absolute', fontSize: 12, color: theme.colors.textSub },
+  yText: { position: 'absolute', fontSize: theme.fontSize.xs, textAlign: 'right' },
+  axisTitle: { position: 'absolute', fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   // X 轴标签容器：与绘图区等宽，标签按数据点 xAt 比例绝对定位、水平居中
   xAxisWrap: { height: 18, position: 'relative', marginTop: 2 },
   xLabel: {

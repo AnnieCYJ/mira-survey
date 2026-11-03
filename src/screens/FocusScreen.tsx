@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   blob: {
     position: 'absolute',
-    borderRadius: 9999,
+    borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(255,255,255,0.07)',
   },
   header: {
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: theme.sp(3.5),
     paddingVertical: theme.sp(2),
-    borderRadius: 9999,
+    borderRadius: theme.radius.pill,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.22)',
     backgroundColor: 'rgba(255,255,255,0.12)',

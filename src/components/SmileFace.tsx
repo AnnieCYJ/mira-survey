@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   },
   greeting: {
     marginTop: theme.space.cardPad,
-    fontSize: 28,
+    fontSize: theme.fontSize.stat,
     fontWeight: theme.weight.semibold,
     color: '#ffffff',
     letterSpacing: 0.5,

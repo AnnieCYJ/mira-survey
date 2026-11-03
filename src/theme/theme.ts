@@ -244,7 +244,7 @@ export const space = {
  *   pill 999 → 胶囊（chip / tag / 日期选择器圆角 / 圆形头像），不参与上面的递减关系
  * 说明：theme.radius.card 与 mm.radius.card 现已对齐为 24（此前 14，2026-11-03 统一）。
  */
-export const radius = { phone: 55, xl: 24, card: 24, md: 11, sm: 9, pill: 999 } as const;
+export const radius = { phone: 55, xl: 24, card: 24, /** ★ 2026-11-03：lg=14 收口散落的 13–16 内卡圆角 */ lg: 14, md: 11, sm: 9, pill: 999 } as const;
 
 const BASE_WIDTH = 390;
 const fontScale = Math.min(Math.max(SCREEN_WIDTH / BASE_WIDTH, 0.88), 1.22);
@@ -253,13 +253,17 @@ export const fs = (size: number): number => Math.round(size * fontScale * 10) / 
 export const fontSize = {
   h1: fs(36),
   h2: fs(22),
-  /** 卡片内的「指标大数字」（如血压 118 / 76）。介于 h2 与 h1 之间，避免用裸值 32。 */
+  /** 卡片内的「指标大数字」（如血压 118 / 76）。介于 h2 与 body 之间，避免用裸值 32。 */
   stat: fs(32),
   card: fs(18),
+  /** ★ 2026-11-03：lg=fs(20) 收口散落的 19–21 小标题 */
+  lg: fs(20),
   body: fs(15),
   sm: fs(13.5),
   xs: fs(13),
   micro: fs(11),
+  /** ★ 2026-11-03：tiny=fs(10) 收口 8–10.5 的脚注/角标，不再逐处写裸值 */
+  tiny: fs(10),
   hero: fs(46),
   orb: fs(24),
 } as const;

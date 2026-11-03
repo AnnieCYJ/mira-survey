@@ -331,6 +331,6 @@ const styles = StyleSheet.create({
   legendRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 14, marginBottom: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
-  legendText: { fontSize: 11, color: '#666' },
-  sleepNote: { fontSize: 10, color: '#7C6AE0', marginTop: 2 },
+  legendText: { fontSize: theme.fontSize.micro, color: '#666' },
+  sleepNote: { fontSize: theme.fontSize.tiny, color: '#7C6AE0', marginTop: 2 },
 });

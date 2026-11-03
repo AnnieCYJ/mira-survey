@@ -196,5 +196,5 @@ const styles = StyleSheet.create({
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any }, // honeyDeep
   events: { flexDirection: 'row', justifyContent: 'center', gap: 3 },
-  evEmoji: { fontSize: 10, lineHeight: 12 },
+  evEmoji: { fontSize: theme.fontSize.tiny, lineHeight: 12 },
 });

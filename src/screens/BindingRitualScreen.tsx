@@ -178,10 +178,10 @@ const styles = StyleSheet.create({
 const s = StyleSheet.create({
   root: { flex: 1 },
   close: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
-  closeX: { color: '#fff', fontSize: 18 },
+  closeX: { color: '#fff', fontSize: theme.fontSize.card },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   mergingText: { position: 'absolute', bottom: '22%', color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.body },
-  mergedInitial: { color: '#fff', fontSize: 44, fontWeight: '700' },
+  mergedInitial: { color: '#fff', fontSize: theme.fontSize.hero, fontWeight: '700' },
   doneWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: theme.space.screen, paddingBottom: theme.space.xl, alignItems: 'center' },
   headline: { color: '#fff', fontSize: theme.fontSize.h1, fontWeight: theme.weight.semibold as any, textAlign: 'center' },
   subline: { color: 'rgba(255,255,255,0.78)', fontSize: theme.fontSize.body, textAlign: 'center', marginTop: theme.sp(1.5), lineHeight: 22 },
