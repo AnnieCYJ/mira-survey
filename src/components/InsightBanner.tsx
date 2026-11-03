@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
-import { AiBadge, AiResultRow } from './AiAnalysis';
+import { AiResultRow } from './AiAnalysis';
 
 interface InsightRow {
   tone: 'good' | 'warn' | 'neutral';
@@ -31,7 +31,6 @@ interface Props {
 export default function InsightBanner({ onMore, title = null, subtitle, advice, text, rows, pending, bodyColor }: Props) {
   return (
     <Card>
-      <AiBadge label="AI 综合分析" />
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 

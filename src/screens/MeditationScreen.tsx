@@ -87,7 +87,7 @@ const cardImgFail = StyleSheet.create({
        ③ 建议行：怎么改善（每日微文案，按周期阶段每天轮换）
        ④ 小字行：该工具真实资源数（如「4 段冥想 · 3 个呼吸练习」）
    纯 JS（Image.blurRadius）实现，无原生模块依赖，可热更。 */
-const FADE_H_RATIO = 0.44;               // 蒙层区高度 = 卡高 × 该比例
+const FADE_H_RATIO = 0.40;               // 蒙层区高度 = 卡高 × 该比例（★ 本轮 0.44→0.40：露出更多照片）
 const FROST_BLUR = 18;                   // 模糊半径（单一值，整片均匀）
 /* ★ 2026-10-12（用户：蒙层要做**渐渐进**的，现在边界太齐、像一块）——
    把蒙层区纵向切成 FROST_STEPS 条，每条都是同一张模糊图（坐标系与卡片一致）、
@@ -168,10 +168,11 @@ const CARD_RATIO = 0.8;
 // ★ 2026-10-12（用户参考图）：卡片圆角加大 —— 露出量很小时，屏边看到的才是邻卡的那个「圆弧角」
 const CARD_RADIUS = theme.fs(26);
   // ★ 两侧卡片相对中间卡的缩放：缩小后它在屏幕边缘露出的只是「一个角」，而不是平着的整条竖边
-const SIDE_SCALE = 0.86;
+  //   ★ 本轮（用户：图大一些）：0.86→0.94，两侧缩得更少 → 中间图卡更宽（照片更大）
+const SIDE_SCALE = 0.94;
 /** 两侧想露出的圆角宽度（视觉上真正能看到的部分，不是内边距）
- *  ★ 本轮 16→8，中间图卡更宽（两侧只露极窄圆角） */
-const CORNER = 8;
+ *  ★ 本轮 16→8→4，中间图卡更宽（两侧只露极窄圆角） */
+const CORNER = 4;
 
 /* ★ H2 版（2026-10-13 用户定稿）：扇形展开 —— 中卡最大最正（scale 1 / 0°），
    两侧邻卡整体外移 + 绕底部中心向外倾 10°（左邻逆时针、右邻顺时针）。
@@ -460,7 +461,8 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.medium as any,
   },
   // ★ 2026-11-03(2)：胶囊型分类 tab —— ★ 本轮（用户："tab 再往下一点点"）：加 marginTop 让整排 tab 下移，与上方副标题拉开距离
-  toolTabs: { gap: theme.sp(1.5), paddingHorizontal: theme.space.screen, paddingVertical: theme.sp(1), marginTop: theme.sp(2) },
+  //   ★ 本轮（用户："tab 往左一点"）：左内边距减半（24→12），整排往左挪约 12pt；右内边距保留 24 保证横滑不顶边
+  toolTabs: { gap: theme.sp(1.5), paddingLeft: theme.sp(3), paddingRight: theme.space.screen, paddingVertical: theme.sp(1), marginTop: theme.sp(2) },
   toolPill: {
     paddingHorizontal: theme.sp(4),
     paddingVertical: theme.sp(2),

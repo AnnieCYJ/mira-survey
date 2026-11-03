@@ -36,7 +36,6 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
-import AvatarStack from './AvatarStack';
 
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
@@ -374,11 +373,11 @@ export default function CalmWaveHome() {
   // ★ 2026-11-03（V2）：以 844 设计高为基准等比缩放，对齐用户参考图布局
   const k = height / 844;
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
-  const gaugeTop = 140 * k;                            // 仪表区顶部（★ 本轮 116→140 整体下移）
+  const gaugeTop = 158 * k;                            // 仪表区顶部（★ 2026-11-03：140→158 整体再下移一点点，圆环+分析+胶囊联动下移）
   const analysisTop = gaugeTop + 340 * k;              // 分析文字（★ 本轮 312→340 避让放大后的状态词）
-  const capsuleTop = analysisTop + 58 * k;             // 建议胶囊
-  // 卡片行：贴 tab 上方（tab 高 84 + 安全区，上留 4，★ 本轮 12→4 整体再下移一点点）
-  const chipRowTop = height - insets.bottom - 84 - 4 - CHIP_H;
+  const capsuleTop = analysisTop + 44 * k;             // 建议胶囊（★ 本轮 58→44：整体上移约14pt，与下方卡片行拉开间距）
+  // 卡片行：贴 tab 上方（tab 高 84 + 安全区）；★ 本轮：底部间隙 4→14，卡片整体再下移约 10px
+  const chipRowTop = height - insets.bottom - 84 - 2 - CHIP_H;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -401,12 +400,17 @@ export default function CalmWaveHome() {
       {/* 顶部：左 = 账户 icon；右 = 设置 icon（均浮在海浪上）。
           ★ 2026-10-18 用户：「今日状态」白色标题从头栏移到指标卡行上方（见下方 cardTitle）。 */}
       <View style={[s.head, { paddingTop: insets.top + 30 }]}>
-        <AvatarStack
-          size={34}
-          mono
-          onSelect={() => navigation.navigate('AccountHub')}
-          onAdd={() => navigation.navigate('AccountHub')}
-        />
+        <TouchableOpacity
+          style={s.hIcon}
+          activeOpacity={0.7}
+          accessibilityLabel="账户"
+          onPress={() => navigation.navigate('AccountHub')}
+        >
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={HEAD_INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <Circle cx={12} cy={8} r={4} />
+            <Path d="M4 20c0-4.2 3.6-6.8 8-6.8s8 2.6 8 6.8" />
+          </Svg>
+        </TouchableOpacity>
         <Text style={s.navTitle}>今日状态</Text>
         <TouchableOpacity
           style={s.hIcon}
@@ -545,7 +549,7 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,

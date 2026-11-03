@@ -35,7 +35,7 @@ import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../component
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
-import AiAnalysis, { AiResultRow, AiBadge } from '../components/AiAnalysis';
+import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
 import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import LipidTrendCard from '../components/LipidTrendCard';
@@ -209,20 +209,22 @@ const isDaytime = (ts: number) => {
 export type StressDayPart = {
   avg: number | null;
   peak: number | null;
+  min: number | null;
   relaxH: number;
   stressH: number;
   totalMin: number;
 };
 function stressDaySummary(dk: string, dayStartTs: number) {
   const buckets = binByMinutes(healthStore.getIntraday('stress', dk), 5, { dayStartMs: dayStartTs });
-  let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, peak = 0;
-  let dayRelaxMin = 0, dayMidMin = 0, dayStressMin = 0, daySum = 0, dayCnt = 0, dayPeak = 0;
-  let nightRelaxMin = 0, nightMidMin = 0, nightStressMin = 0, nightSum = 0, nightCnt = 0, nightPeak = 0;
+  let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, peak = 0, overallMin = Infinity;
+  let dayRelaxMin = 0, dayMidMin = 0, dayStressMin = 0, daySum = 0, dayCnt = 0, dayPeak = 0, dayMin = Infinity;
+  let nightRelaxMin = 0, nightMidMin = 0, nightStressMin = 0, nightSum = 0, nightCnt = 0, nightPeak = 0, nightMin = Infinity;
   for (const b of buckets) {
     if (b.v == null) continue;
     const day = isDaytime(b.t);
     sum += b.v; cnt += 1;
     if (b.v > peak) peak = b.v;
+    if (b.v < overallMin) overallMin = b.v;
     if (b.v < STRESS_BANDS[0]) {
       relaxMin += 5; if (day) dayRelaxMin += 5; else nightRelaxMin += 5;
     } else if (b.v > STRESS_BANDS[1]) {
@@ -230,21 +232,22 @@ function stressDaySummary(dk: string, dayStartTs: number) {
     } else {
       midMin += 5; if (day) dayMidMin += 5; else nightMidMin += 5;
     }
-    if (day) { daySum += b.v; dayCnt += 1; if (b.v > dayPeak) dayPeak = b.v; }
-    else { nightSum += b.v; nightCnt += 1; if (b.v > nightPeak) nightPeak = b.v; }
+    if (day) { daySum += b.v; dayCnt += 1; if (b.v > dayPeak) dayPeak = b.v; if (b.v < dayMin) dayMin = b.v; }
+    else { nightSum += b.v; nightCnt += 1; if (b.v > nightPeak) nightPeak = b.v; if (b.v < nightMin) nightMin = b.v; }
   }
-  const part = (relaxH: number, stressH: number, midH: number, avg: number | null, pk: number | null): StressDayPart => ({
-    avg, peak: pk, relaxH, stressH, totalMin: relaxH * 60 + stressH * 60 + midH * 60,
+  const part = (relaxH: number, stressH: number, midH: number, avg: number | null, pk: number | null, mn: number | null): StressDayPart => ({
+    avg, peak: pk, min: mn, relaxH, stressH, totalMin: relaxH * 60 + stressH * 60 + midH * 60,
   });
   return {
     hasData: cnt > 0,
     avg: cnt > 0 ? sum / cnt : null,
     peak: cnt > 0 ? peak : null,
+    min: cnt > 0 ? overallMin : null,
     relaxH: relaxMin / 60,
     midH: midMin / 60,
     stressH: stressMin / 60,
-    day: part(dayRelaxMin / 60, dayStressMin / 60, dayMidMin / 60, dayCnt > 0 ? daySum / dayCnt : null, dayCnt > 0 ? dayPeak : null),
-    night: part(nightRelaxMin / 60, nightStressMin / 60, nightMidMin / 60, nightCnt > 0 ? nightSum / nightCnt : null, nightCnt > 0 ? nightPeak : null),
+    day: part(dayRelaxMin / 60, dayStressMin / 60, dayMidMin / 60, dayCnt > 0 ? daySum / dayCnt : null, dayCnt > 0 ? dayPeak : null, dayCnt > 0 ? dayMin : null),
+    night: part(nightRelaxMin / 60, nightStressMin / 60, nightMidMin / 60, nightCnt > 0 ? nightSum / nightCnt : null, nightCnt > 0 ? nightPeak : null, nightCnt > 0 ? nightMin : null),
   };
 }
 
@@ -2209,12 +2212,15 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   const agg = useMemo(() => {
     if (range === 'day') return null;
     let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
+    let max = -Infinity, min = Infinity;
     for (const dk of rangeDayKeys(anchor, range)) {
       const r = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
       if (!r.hasData) continue;
       daysWithData += 1;
       relaxMin += r.relaxH * 60; midMin += r.midH * 60; stressMin += r.stressH * 60;
       if (r.avg != null) { sum += r.avg; cnt += 1; }
+      if (r.peak != null && r.peak > max) max = r.peak;
+      if (r.min != null && r.min < min) min = r.min;
     }
     const totalMin = relaxMin + midMin + stressMin;
     const dominant: '放松' | '平衡' | '紧张' =
@@ -2224,6 +2230,8 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       avg: cnt > 0 ? sum / cnt : null,
       stressPct: totalMin > 0 ? Math.round((stressMin / totalMin) * 100) : 0,
       dominant,
+      max: max > -Infinity ? max : null,
+      min: min < Infinity ? min : null,
     };
   }, [anchor, range]);
 
@@ -2259,22 +2267,35 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       : fatigue < 30 ? { text: '低', color: C.relax }
       : fatigue < 55 ? { text: '适中', color: C.mid }
       : { text: '偏高', color: C.stress };
-  const renderFatigue = () => (
-    <Card>
-      <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
-      <View style={styles.statGrid}>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>疲劳度</Text>
-          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
+  // ★ 本轮（用户）：疲劳度 → 低/中/高 分段条形（指针标记当前值，一眼看懂 0–100 含义）
+  const renderFatigueBar = () => {
+    const pct = fatigue == null ? 0 : Math.max(0, Math.min(100, fatigue));
+    return (
+      <Card>
+        <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
+          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle, fontSize: theme.sp(3.4) }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
+          <Text style={[styles.statLabel, { marginLeft: theme.sp(1.5), color: fatigueBand?.color ?? theme.colors.textSub }]}>{fatigueBand ? `${fatigueBand.text}疲劳` : '暂无数据'}</Text>
         </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>程度</Text>
-          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textSub }]}>{fatigueBand ? fatigueBand.text : '—'}</Text>
+        <View style={{ position: 'relative', marginVertical: theme.sp(1) }}>
+          <View style={{ flexDirection: 'row', height: theme.sp(2.6), borderRadius: theme.sp(1.3), overflow: 'hidden' }}>
+            <View style={{ flex: 30, backgroundColor: C.relax }} />
+            <View style={{ flex: 25, backgroundColor: C.mid }} />
+            <View style={{ flex: 45, backgroundColor: C.stress }} />
+          </View>
+          {fatigue != null ? (
+            <View style={{ position: 'absolute', left: `${pct}%`, top: -theme.sp(0.4), width: 2, height: theme.sp(3.4), backgroundColor: theme.colors.textTitle, borderRadius: 1, marginLeft: -1 }} />
+          ) : null}
         </View>
-      </View>
-      <Text style={styles.note}>与「洞察页基础数据 → 疲劳度」同源（健康一览自动评估），0–100，越低越轻松。非医学诊断。</Text>
-    </Card>
-  );
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={[styles.note, { color: C.relax }]}>低</Text>
+          <Text style={[styles.note, { color: C.mid }]}>中</Text>
+          <Text style={[styles.note, { color: C.stress }]}>高</Text>
+        </View>
+        <Text style={styles.note}>0–100，越低越轻松。与「洞察页基础数据 → 疲劳度」同源（健康一览自动评估）。非医学诊断。</Text>
+      </Card>
+    );
+  };
 
   if (range === 'day') {
     if (!today.hasData) {
@@ -2284,7 +2305,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             <Text style={styles.specLab}>今日压力分析</Text>
             <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
           </Card>
-          {renderFatigue()}
+          {renderFatigueBar()}
         </View>
       );
     }
@@ -2301,21 +2322,24 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     const midH = Math.max(0, sel.totalMin / 60 - sel.relaxH - sel.stressH);
     return (
       <View>
-        {/* ★ 本轮（用户）：日间压力分析 + 时长分布 合并为一张卡 */}
+        {/* ★ 本轮（用户）：压力分析 + 恢复力 合并一卡；含 平均/最高/最低 */}
         <Card>
-          <Text style={styles.specLab}>{partName}压力分析</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.specLab}>{partName}压力分析</Text>
+            <Text style={{ color: qColor, fontSize: theme.sp(1.6), fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
+          </View>
           <View style={styles.statGrid}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>定性</Text>
-              <Text style={[styles.statValue, { color: qColor }]}>{qualOf(sel.avg)}</Text>
-            </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均压力</Text>
               <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{dash(sel.avg)}</Text>
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>峰值压力</Text>
+              <Text style={styles.statLabel}>最高压力</Text>
               <Text style={[styles.statValue, { color: C.stress }]}>{dash(sel.peak)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>最低压力</Text>
+              <Text style={[styles.statValue, { color: C.relax }]}>{dash(sel.min)}</Text>
             </View>
           </View>
           <View style={styles.statGrid}>
@@ -2332,12 +2356,30 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
               <Text style={[styles.statValue, { color: C.stress }]}>{fmtH(sel.stressH)}</Text>
             </View>
           </View>
+          {resilience ? (
+            <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+              <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（近 14 天）</Text>
+              <View style={styles.statGrid}>
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>等级</Text>
+                  <Text style={[styles.statValue, { color: resColor(resilience.level) }]}>{resilience.level}</Text>
+                </View>
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>综合评分</Text>
+                  <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.score}</Text>
+                </View>
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>夜间平均</Text>
+                  <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.nightAvg}</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
           {!partHasData ? (
             <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
           ) : null}
         </Card>
-        {/* ★ 本轮（用户）：疲劳度（洞察页基础指标同源）置于时长分布下方 */}
-        {renderFatigue()}
+        {renderFatigueBar()}
       </View>
     );
   }
@@ -2354,9 +2396,23 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       : theme.colors.textSub;
   return (
     <View>
-      {/* 卡片 1：区间总览 */}
+      {/* ★ 本轮（用户）：区间压力分析 + 恢复力 合并一卡；含 平均/最高/最低 */}
       <Card>
         <Text style={styles.specLab}>{rangeLabel}压力分析</Text>
+        <View style={styles.statGrid}>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>平均压力</Text>
+            <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{w && w.avg != null ? String(Math.round(w.avg)) : '—'}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>最高压力</Text>
+            <Text style={[styles.statValue, { color: C.stress }]}>{w && w.max != null ? String(Math.round(w.max)) : '—'}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>最低压力</Text>
+            <Text style={[styles.statValue, { color: C.relax }]}>{w && w.min != null ? String(Math.round(w.min)) : '—'}</Text>
+          </View>
+        </View>
         <View style={styles.statGrid}>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>主导档位</Text>
@@ -2367,35 +2423,31 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             <Text style={[styles.statValue, { color: C.stress }]}>{w ? `${w.stressPct}%` : '—'}</Text>
           </View>
           <View style={styles.statCell}>
-            <Text style={styles.statLabel}>平均压力</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>
-              {w && w.avg != null ? String(Math.round(w.avg)) : '—'}
-            </Text>
+            <Text style={styles.statLabel}>有数据日</Text>
+            <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{w ? `${w.daysWithData} 天` : '—'}</Text>
           </View>
         </View>
-      </Card>
-      {/* 卡片 2：恢复力（近 14 天） */}
-      {resilience ? (
-        <Card>
-          <Text style={styles.specLab}>恢复力（近 14 天）</Text>
-          <View style={styles.statGrid}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>等级</Text>
-              <Text style={[styles.statValue, { color: resColor(resilience.level) }]}>{resilience.level}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>综合评分</Text>
-              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.score}</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>夜间平均</Text>
-              <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.nightAvg}</Text>
+        {resilience ? (
+          <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+            <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（近 14 天）</Text>
+            <View style={styles.statGrid}>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>等级</Text>
+                <Text style={[styles.statValue, { color: resColor(resilience.level) }]}>{resilience.level}</Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>综合评分</Text>
+                <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.score}</Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={styles.statLabel}>夜间平均</Text>
+                <Text style={[styles.statValue, { color: theme.colors.textTitle }]}>{resilience.nightAvg}</Text>
+              </View>
             </View>
           </View>
-          <Text style={styles.note}>基于近 {resilience.days} 天压力信号：夜间压力越低、日间放松占比越高，恢复力越强。仅供身体承压状态参考，非医学诊断。</Text>
-        </Card>
-      ) : null}
-      {renderFatigue()}
+        ) : null}
+      </Card>
+      {renderFatigueBar()}
       {w && w.daysWithData === 0 ? (
         <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
       ) : null}

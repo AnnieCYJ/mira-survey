@@ -5,7 +5,6 @@ import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
-import { AiBadge } from './AiAnalysis';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 
 interface Props {
@@ -266,7 +265,6 @@ export default function HealthAgeCard({
           </TouchableOpacity>
         ) : null}
         <View style={styles.cardWrap}>
-          <AiBadge label="AI 分析" />
           <Text style={styles.body}>
             {analysisTextResolved}
           </Text>

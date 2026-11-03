@@ -37,11 +37,6 @@ export default function SettingsScreen() {
       navigation.navigate('Main' as never);
     }
   }, [navigation]);
-  // ★ 2026-10-18 用户：设置里加「海浪白噪音」开关（AsyncStorage 持久化，CalmWaveHome 读取控制首页海浪声）
-  const [waveSound, setWaveSound] = useState(false);
-  useEffect(() => {
-    AsyncStorage.getItem('waveSound').then((v) => setWaveSound(v === '1'));
-  }, []);
   const [sync, setSync] = useState(RingBle.getSyncEnabled());
   const [autoUpload, setAutoUpload] = useState(true);
   React.useEffect(() => {
@@ -294,19 +289,6 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>日常设置</Text>
         <Card padded={false} style={styles.listCard}>
           <Row icon="bell" tone="pink" title="消息通知" desc="周期提醒与每日洞察推送" value={notif} onValueChange={setNotif} />
-          <View style={styles.divider} />
-          {/* ★ 2026-10-18 用户：海浪白噪音开关（控制首页海浪视频的环境音，写入 AsyncStorage） */}
-          <Row
-            icon="speaker"
-            tone="cyan"
-            title="海浪白噪音"
-            desc="打开后首页播放海浪环境音"
-            value={waveSound}
-            onValueChange={(v) => {
-              setWaveSound(v);
-              AsyncStorage.setItem('waveSound', v ? '1' : '0');
-            }}
-          />
           <View style={styles.divider} />
           <Row
             icon="sync"

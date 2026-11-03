@@ -12,9 +12,7 @@
  */
 import React, { type ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
-import Icon from './Icon';
 
 export type AiTone = 'good' | 'warn' | 'neutral';
 
@@ -52,34 +50,17 @@ export function AiResultRow({
   );
 }
 
-/** 渐变「✨ AI 分析」胶囊（与洞察页一致） */
-export function AiBadge({ label = 'AI 分析' }: { label?: string }) {
-  return (
-    <LinearGradient
-      colors={theme.colors.aiBadgeGrad as unknown as string[]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.aiBadge}
-    >
-      <Icon name="sparkle" size={theme.fs(13)} color={theme.colors.textWhite} strokeWidth={2} />
-      <Text style={styles.aiBadgeText}>{label}</Text>
-    </LinearGradient>
-  );
-}
-
 /**
- * 完整外壳：badge + 大标题 + 标签 + 结论行(children) + 小点建议 + 脚注
+ * 完整外壳：大标题 + 标签 + 结论行(children) + 小点建议 + 脚注
  *
  * @param title 大标题（加粗，如「排卵期·状态巅峰」）
  * @param subtitle 小字标签（如「周期第 14 天」）
  * @param advice 建议小点列表（纯文本）
- * @param label badge 文案（默认「AI 分析」）
  * @param foot 脚注（免责声明等）
  */
 export default function AiAnalysis({
   children,
   foot,
-  label,
   title,
   subtitle,
   advice,
@@ -87,7 +68,6 @@ export default function AiAnalysis({
 }: {
   children: ReactNode;
   foot?: ReactNode;
-  label?: string;
   title?: string;
   subtitle?: string;
   advice?: string[];
@@ -96,7 +76,6 @@ export default function AiAnalysis({
 }) {
   return (
     <View style={[styles.wrap, compact && styles.wrapCompact]}>
-      <AiBadge label={label} />
       {title ? <Text style={[styles.title, compact && styles.titleCompact]}>{title}</Text> : null}
       {subtitle ? <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>{subtitle}</Text> : null}
       {children}
@@ -117,21 +96,6 @@ export default function AiAnalysis({
 
 const styles = StyleSheet.create({
   wrap: { marginTop: theme.space.md },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: theme.sp(1.5),
-    borderRadius: theme.radius.pill,
-    marginBottom: theme.sp(1),
-  },
-  aiBadgeText: {
-    fontSize: theme.fontSize.micro,
-    fontWeight: theme.weight.semibold as any,
-    color: theme.colors.textWhite,
-    marginLeft: theme.sp(1.5),
-  },
   title: {
     fontSize: theme.fontSize.h2,
     fontWeight: theme.weight.bold as any,
