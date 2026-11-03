@@ -606,35 +606,11 @@ const styles = StyleSheet.create({
   //   只有睡眠恢复用了 h1 显得特别大。
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
-  /* ── 脑力准备度卡（日视图，置于睡眠分析上方）── */
-  brCard: {
-    ...theme.shadow.card,
-    backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    padding: theme.space.cardPad,
-    marginBottom: theme.space.md,
-  },
-  brHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.space.sm },
-  brTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink },
-  brState: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textSub },
-  brHero: { flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.space.sm },
-  brNum: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold, color: mm.colors.ink, lineHeight: 48 },
-  brUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: theme.sp(1.5) },
-  brDuo: { flexDirection: 'row', gap: theme.space.sm },
-  brCell: {
-    flex: 1,
-    borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-  },
-  brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
-  brCellTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  /* ★ 本轮：原 brCard/brDuo/brCell 等「脑力准备度」样式已随 BrainPeakTroughBlock 移除而废弃，一并清除避免误用 */
   chartCard: {
     ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.sm,
@@ -647,7 +623,7 @@ const styles = StyleSheet.create({
   mCard: {
     ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.cardPad,
@@ -683,7 +659,7 @@ const styles = StyleSheet.create({
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'center' },
   scoreLegend: {
     marginTop: theme.space.sm, marginBottom: theme.space.lg, padding: theme.space.sm,
-    borderRadius: theme.radius.md, backgroundColor: theme.colors.cardBgSoft,
+    borderRadius: mm.radius.card, backgroundColor: theme.colors.cardBgSoft,
     borderWidth: 1, borderColor: theme.colors.cardBorder,
   },
   scoreLegendTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) },

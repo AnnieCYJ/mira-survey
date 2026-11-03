@@ -2602,7 +2602,7 @@ const styles = StyleSheet.create({
   down: { color: theme.colors.stateTense },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.sm,
@@ -2672,7 +2672,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: theme.sp(2.5),
     paddingHorizontal: theme.sp(1),
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
     backgroundColor: theme.colors.cardBg,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
@@ -2688,7 +2688,7 @@ const styles = StyleSheet.create({
   debugFoot: {
     marginTop: theme.space.md,
     padding: theme.space.sm,
-    borderRadius: theme.radius.sm,
+    borderRadius: mm.radius.card,
     backgroundColor: 'rgba(120, 100, 220, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(120, 100, 220, 0.14)',
@@ -2699,7 +2699,7 @@ const styles = StyleSheet.create({
   ecgTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
   ecgChart: {
     backgroundColor: theme.colors.ui.offTrack,
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
     padding: theme.space.sm,
   },
   ecgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
@@ -2707,7 +2707,7 @@ const styles = StyleSheet.create({
     flexBasis: '30%',
     flexGrow: 1,
     backgroundColor: theme.colors.cardBg, // mira-ocean：0.6 白玻璃 + 浅字不可读 → 深色玻璃
-    borderRadius: theme.radius.sm,
+    borderRadius: mm.radius.card,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
   },

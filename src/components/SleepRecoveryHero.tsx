@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   card: {
     ...theme.shadow.card,
     backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     padding: theme.space.cardPad,
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   analysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: 10 },
   // ★ 本轮（用户）：脑力峰/谷时段两格（合进卡内）
   brDuo: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.md },
-  brCell: { flex: 1, borderRadius: theme.radius.md, padding: theme.space.sm },
+  brCell: { flex: 1, borderRadius: mm.radius.card, padding: theme.space.sm },
   brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   brCellTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
   brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },

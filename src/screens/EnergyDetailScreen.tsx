@@ -1268,7 +1268,7 @@ function ActivityTile({ label, value, unit, color, onPress, last }: {
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[
       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.space.md },
-      last && { borderBottomLeftRadius: theme.radius.md, borderBottomRightRadius: theme.radius.md },
+      last && { borderBottomLeftRadius: mm.radius.card, borderBottomRightRadius: mm.radius.card },
     ]}>
       <Text style={styles.activityLabel}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
@@ -1335,7 +1335,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: theme.sp(2.5),
     paddingHorizontal: theme.sp(2.75),
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
     backgroundColor: theme.colors.cardBgSoft,
   },
   peakLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
@@ -1345,7 +1345,7 @@ const styles = StyleSheet.create({
   reasonText: { fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, lineHeight: theme.fontSize.sm * 1.5 },
 
   chartCard: {
-    borderRadius: theme.radius.card, backgroundColor: theme.colors.cardBg,
+    borderRadius: mm.radius.card, backgroundColor: theme.colors.cardBg,
     borderWidth: 1, borderColor: theme.colors.cardBorder, ...theme.shadow.card,
     paddingHorizontal: theme.space.cardPad,
   },
@@ -1393,7 +1393,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBg,
     borderColor: theme.colors.cardBorder,
     borderWidth: 1,
-    borderRadius: theme.radius.card,
+    borderRadius: mm.radius.card,
     padding: theme.space.cardPad,
     marginTop: theme.space.sm,
   },
@@ -1438,7 +1438,7 @@ const styles = StyleSheet.create({
   waStat: {
     flex: 1,
     backgroundColor: 'transparent',
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     paddingVertical: theme.sp(1.5),
@@ -1466,7 +1466,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: theme.sp(2.5),
     paddingHorizontal: theme.sp(2.75),
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
   },
   duoLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75) },
   // .duo .t = 15px·650（★ 本轮 17→15 缩小学力峰谷时间数字，对齐用户"调小一点"）
@@ -1511,7 +1511,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: theme.sp(2.25),
     paddingHorizontal: theme.sp(2.5),
-    borderRadius: theme.radius.md,
+    borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     backgroundColor: 'transparent',
