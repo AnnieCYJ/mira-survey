@@ -201,7 +201,7 @@ export default function AllDayBarsChart({
       return (
         <React.Fragment key={`t${l.label}-${i}`}>
           <Line x1={x} y1={PAD_T} x2={x} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
-          <SvgText x={x} y={H - 5} fontSize={9.5} fill={chart.axisText}
+          <SvgText x={x} y={H - 5} fontSize={chart.axisFont} fill={chart.axisText}
             textAnchor={i === 0 ? 'start' : i === labelDefs.length - 1 ? 'end' : 'middle'}>
             {l.label}
           </SvgText>
@@ -214,7 +214,7 @@ export default function AllDayBarsChart({
       const y = yAt(g);
       if (y < PAD_T - 1 || y > baseY + 1) continue;
       yLabels.push(
-        <SvgText key={`y${g}`} x={PAD_L - 5} y={y + 3} fontSize={9.5} fill={chart.axisText}
+        <SvgText key={`y${g}`} x={PAD_L - 5} y={y + 3} fontSize={chart.axisFont} fill={chart.axisText}
           textAnchor="end">{fmtTick(g)}</SvgText>,
       );
     }

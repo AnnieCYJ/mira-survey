@@ -28,6 +28,11 @@ export const chart = {
   },
   grid: theme.colors.ui.borderSoft,
   axisText: theme.colors.textSub,
+  /**
+   * ★ 2026-11-03（用户：身体负荷趋势图轴文字太小）：图表坐标轴文字字号（SVG 内绝对像素，
+   * 不随 viewBox 缩放）。统一为 12，替代此前散落的 9.5 / 11 硬编码，保证日/周/月/年轴文字一致可读。
+   */
+  axisFont: 12,
   refFaint: 'rgba(255,255,255,0.28)',
   lw: { series: 2.4, ref: 1.3, grid: 1 },
   dot: { radius: 3, anomaly: 6, stroke: 2 },

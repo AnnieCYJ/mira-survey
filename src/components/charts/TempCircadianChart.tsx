@@ -101,14 +101,14 @@ export default function TempCircadianChart({
       return (
         <React.Fragment key={`t${hh}`}>
           <Line x1={x} y1={PAD_T} x2={x} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
-          <SvgText x={x} y={H - 5} fontSize={9.5} fill={chart.axisText}
+          <SvgText x={x} y={H - 5} fontSize={chart.axisFont} fill={chart.axisText}
             textAnchor={hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle'}>{`${hh}:00`}</SvgText>
         </React.Fragment>
       );
     });
 
     const yLabels: React.ReactNode[] = [half, 0, -half].map((g) => (
-      <SvgText key={`y${g}`} x={PAD_L - 5} y={yOf(g) + 3} fontSize={9.5}
+      <SvgText key={`y${g}`} x={PAD_L - 5} y={yOf(g) + 3} fontSize={chart.axisFont}
         fill={g === 0 ? theme.colors.textSub : theme.colors.textSub}
         textAnchor="end" fontWeight={g === 0 ? '500' : '400'}>
         {g > 0 ? `+${g.toFixed(1)}` : g.toFixed(1)}

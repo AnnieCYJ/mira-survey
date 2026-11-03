@@ -1470,7 +1470,7 @@ const styles = StyleSheet.create({
   },
   duoLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.75) },
   // .duo .t = 15px·650（★ 本轮 17→15 缩小学力峰谷时间数字，对齐用户"调小一点"）
-  duoTime: { fontSize: theme.fs(15), fontWeight: theme.weight.semibold as any, lineHeight: theme.fs(15) * 1.1 },
+  duoTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.body * 1.1 },
   duoSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.75) },
   // .axisnote：10.5px；日视图卡内左对齐版本
   axisNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.4 },
@@ -1733,8 +1733,8 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
             <Text style={styles.chartTitle}>{META[type].name} · {RANGE_DEF[range].label}趋势</Text>
             {prevMean != null && deltaPct != null && (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, color: theme.colors.textSub }}>vs {trendLabel}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: trendColor, marginLeft: 4 }}>
+                <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>vs {trendLabel}</Text>
+                <Text style={{ fontSize: theme.fontSize.sm, fontWeight: '700', color: trendColor, marginLeft: 4 }}>
                   {trendArrow} {Math.abs(deltaPct!)}%
                 </Text>
               </View>
@@ -1900,7 +1900,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
           <View style={styles.pad}>
             <Text style={styles.chartTitle}>对比{trendLabel}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Text style={{ fontSize: 26, fontWeight: '800', color: trendColor }}>
+              <Text style={{ fontSize: theme.fontSize.h2, fontWeight: '800', color: trendColor }}>
                 {delta == null ? '—' : (delta > 0 ? '+' : '') + delta}
               </Text>
               <Text style={{ fontSize: 14, color: theme.colors.textSub, marginLeft: 6 }}>

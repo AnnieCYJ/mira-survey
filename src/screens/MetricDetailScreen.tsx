@@ -1851,7 +1851,7 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
               {arcs}
             </Svg>
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 22, fontWeight: '700', color: mm.colors.ink }}>{Math.round(activeTotal)}</Text>
+              <Text style={{ fontSize: theme.fontSize.h2, fontWeight: '700', color: mm.colors.ink }}>{Math.round(activeTotal)}</Text>
               <Text style={{ fontSize: 11, color: theme.colors.textSub }}>活动分钟</Text>
             </View>
           </View>
@@ -2195,7 +2195,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle, fontSize: theme.sp(3.4) }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
+          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
           <Text style={[styles.statLabel, { marginLeft: theme.sp(1.5), color: fatigueBand?.color ?? theme.colors.textSub }]}>{fatigueBand ? `${fatigueBand.text}疲劳` : '暂无数据'}</Text>
         </View>
         <View style={{ position: 'relative', marginVertical: theme.sp(1) }}>
@@ -2247,7 +2247,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.specLab}>{partName}压力分析</Text>
-            <Text style={{ color: qColor, fontSize: theme.sp(1.6), fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
+            <Text style={{ color: qColor, fontSize: theme.fontSize.micro, fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
           </View>
           <View style={styles.statGrid}>
             <View style={styles.statCell}>

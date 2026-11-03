@@ -235,10 +235,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: theme.space.xs,
-    // ★ mira-ocean（2026-10-17 用户）：紫边/紫底 → 白边/玻璃底
+    // ★ 2026-11-03（用户：中间日期背景与详情页玻璃面不一致）：改用统一玻璃卡 token，
+    //   与左右箭头（cardBg / cardBorder）同口径，不再用独立的 0.10 底 + 0.42 亮边
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.pill,
     paddingVertical: theme.sp(1.5),
   },
