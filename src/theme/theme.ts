@@ -235,15 +235,16 @@ export const space = {
 } as const;
 
 /**
- * 圆角尺度（★ 2026-09-20 两轮收紧：28 → 18 → 14，用户评价「太圆」）。
- * 保持「外层卡 > 控件 > 卡内分块」的递减比例（14 : 11 : 9 ≈ 原 28 : 22 : 17 的缩放），
- * 避免出现内层比外层更圆：
- *   card 14 → 外层卡（Card / GlassCard / 自绘卡片容器）
- *   md   11 → 控件（按钮、次级卡）
- *   sm    9 → 卡内分块、小色块
- *   pill 999 → 胶囊（chip / tag / 圆形头像），不参与上面的递减关系
+ * 圆角尺度（★ 2026-11-03 统一为单一标准）。
+ * 详情页全部卡片（外层卡 / 卡内子卡 / 图表卡）统一圆角 = 24（与共享 <Card> 组件 mm.radius.card 同口径）。
+ * 控件与卡内分块保持递减，避免内层比外层更圆：
+ *   card 24 → 外层卡 + 卡内子卡（Card / GlassCard / 自绘卡片容器 / 图表卡 / 峰值低谷小卡 / 图例块）
+ *   md   11 → 控件（按钮、次级卡、ECG 按钮）
+ *   sm    9 → 卡内分块、小色块、行高亮
+ *   pill 999 → 胶囊（chip / tag / 日期选择器圆角 / 圆形头像），不参与上面的递减关系
+ * 说明：theme.radius.card 与 mm.radius.card 现已对齐为 24（此前 14，2026-11-03 统一）。
  */
-export const radius = { phone: 55, xl: 24, card: 14, md: 11, sm: 9, pill: 999 } as const;
+export const radius = { phone: 55, xl: 24, card: 24, md: 11, sm: 9, pill: 999 } as const;
 
 const BASE_WIDTH = 390;
 const fontScale = Math.min(Math.max(SCREEN_WIDTH / BASE_WIDTH, 0.88), 1.22);
