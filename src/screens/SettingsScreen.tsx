@@ -16,6 +16,8 @@ import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
 import { healthStore } from '../data/healthStore';
+// ★ 2026-11-04（用户「看不出 Luna Mira 哪些能测」）：诊断卡内展示当前机型与本机不支持项
+import { useDeviceModel, hasCap, type DeviceModelId } from '../config/deviceModel';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
 
@@ -185,6 +187,16 @@ export default function SettingsScreen() {
 
   // ★ 2026-11-04（用户）：数据覆盖诊断 —— 连精简机型（Luna Mira）后看哪些指标实际无数据，为「屏蔽无数据指标」决策提供依据
   const [covOpen, setCovOpen] = useState(false);
+  const { model: deviceModel } = useDeviceModel();
+  // 本机硬件不支持 → 对应指标在覆盖网格里标「不支持」（灰）而不是「0/7 天」（红）
+  const GATED = React.useMemo(() => {
+    const set = new Set<string>();
+    if (!hasCap(deviceModel, 'ecg')) set.add('ecg');
+    if (!hasCap(deviceModel, 'bloodComponents')) {
+      for (const k of ['cholesterol', 'triglyceride', 'hdl', 'ldl', 'ua', 'uricAcid', 'bloodSugar', 'glucose']) set.add(k);
+    }
+    return set;
+  }, [deviceModel]);
   const covRows = React.useMemo(() => {
     if (!covOpen) return [];
     const keys7: string[] = [];
@@ -197,17 +209,17 @@ export default function SettingsScreen() {
       stress: '压力', fatigue: '疲劳度', emotion: '情绪', bloodSugar: '血糖', bpSys: '收缩压', bpDia: '舒张压',
       cortisols: '皮质醇', snsActivation: '交感活性', steps: '步数', sleep: '睡眠', ecg: '心电',
     };
-    const rows: { label: string; days: number }[] = [];
+    const rows: { key: string; label: string; days: number }[] = [];
     const series = (ring as any).seriesByDay ?? {};
     for (const k of Object.keys(series)) {
-      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => ((series[k] ?? {})[d]?.length ?? 0) > 0).length });
+      rows.push({ key: k, label: LABEL[k] ?? k, days: keys7.filter((d) => ((series[k] ?? {})[d]?.length ?? 0) > 0).length });
     }
     const extras: [string, Record<string, unknown> | undefined][] = [
       ['steps', (ring as any).stepDaily], ['sleep', (ring as any).sleepDaily], ['ecg', (ring as any).ecgDaily],
     ];
     for (const [k, m] of extras) {
       if (!m) continue;
-      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => m[d] != null).length });
+      rows.push({ key: k, label: LABEL[k] ?? k, days: keys7.filter((d) => m[d] != null).length });
     }
     return rows.sort((a, b) => b.days - a.days);
   }, [covOpen, ring]);
@@ -525,17 +537,41 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>数据覆盖诊断</Text>
         <Card padded={false} style={styles.listCard}>
           <TouchableOpacity style={styles.covHead} activeOpacity={0.7} onPress={() => setCovOpen((v) => !v)}>
-            <Text style={styles.covTitle}>最近 7 天各指标有数据天数{covOpen ? '　▾' : '　▸'}</Text>
+            <Text style={styles.covTitle}>当前机型：{deviceModel.label} · 最近 7 天数据覆盖{covOpen ? '　▾' : '　▸'}</Text>
           </TouchableOpacity>
           {covOpen ? (
-            <View style={styles.covGrid}>
-              {covRows.map((r) => (
-                <View key={r.label} style={styles.covCell}>
-                  <Text style={styles.covLabel}>{r.label}</Text>
-                  <Text style={[styles.covVal, r.days === 0 && styles.covZero]}>{r.days}/7 天</Text>
+            <>
+              {/* 本机不支持项（按机型能力矩阵） */}
+              {GATED.size > 0 ? (
+                <View style={styles.covGatedRow}>
+                  <Text style={styles.covGatedTitle}>本机不支持：</Text>
+                  <View style={styles.covGatedChips}>
+                    {Array.from(GATED).map((k) => (
+                      <View key={k} style={styles.covGatedChip}>
+                        <Text style={styles.covGatedChipTxt}>
+                          {{ ecg: '心电', cholesterol: '血脂', triglyceride: '甘油三酯', hdl: 'HDL', ldl: 'LDL', ua: '尿酸', uricAcid: '尿酸', bloodSugar: '血糖', glucose: '血糖' }[k] ?? k}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              ))}
-            </View>
+              ) : (
+                <Text style={styles.covGatedTitle}>全功能机型，所有指标均支持</Text>
+              )}
+              <View style={styles.covGrid}>
+                {covRows.map((r) => {
+                  const gated = GATED.has(r.key);
+                  return (
+                    <View key={r.label} style={styles.covCell}>
+                      <Text style={styles.covLabel}>{r.label}</Text>
+                      <Text style={[styles.covVal, gated ? styles.covGatedVal : r.days === 0 && styles.covZero]}>
+                        {gated ? '不支持' : `${r.days}/7 天`}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
           ) : null}
         </Card>
 
@@ -740,6 +776,12 @@ const styles = StyleSheet.create({
   covLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   covVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textBody, marginTop: 2 },
   covZero: { color: theme.colors.danger },
+  covGatedRow: { paddingHorizontal: theme.space.md, paddingBottom: theme.sp(1.5), flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1) },
+  covGatedTitle: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, paddingHorizontal: theme.space.md, paddingBottom: theme.sp(1.5) },
+  covGatedChips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1) },
+  covGatedChip: { backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, paddingVertical: 2, paddingHorizontal: theme.sp(1.5) },
+  covGatedChipTxt: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  covGatedVal: { color: theme.colors.textSub },
   // ── Phase 0：关于与条款导航行 ──
   navRow: {
     flexDirection: 'row',
