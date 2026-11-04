@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from '../components/Icon';
-import AiOrb from '../components/AiOrb';
+import GrokFace from '../components/GrokFace';
 import { generateQuestions } from '../data/chat';
 import { useRingState } from '../hooks/useRingState';
 import { useSpeech } from '../hooks/useSpeech';
@@ -97,7 +97,7 @@ export default function MiraAIHomeScreen() {
       <View style={[styles.header, { paddingTop: insets.top + theme.sp(2) }]}>
         <View style={styles.headLeft}>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Mira AI</Text>
+            <Text style={styles.title}>Luna Mira</Text>
             <View style={styles.versionBadge}>
               <Text style={styles.versionText}>1.3</Text>
             </View>
@@ -130,21 +130,19 @@ export default function MiraAIHomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.orbWrap}>
-          <AiOrb size={150} title="Hi 👋" />
-        </View>
-
-        {/* ★ Mira 打招呼气泡（与聊天页 AI 气泡同源样式） */}
-        <View style={styles.greetRow}>
-          <View style={styles.greetAvatar}>
-            <Icon name="sparkle" size={theme.fs(13)} color={theme.colors.textWhite} strokeWidth={2.4} />
+          <View style={styles.orbWrap}>
+            <GrokFace size={150} />
           </View>
+
+        {/* ★ Luna Mira 打招呼气泡（与聊天页 AI 气泡同源样式） */}
+        <View style={styles.greetRow}>
+          <GrokFace size={theme.sp(6)} glow={false} />
           <View style={styles.greetBubble}>
             <View style={styles.greetBadge}>
-              <Text style={styles.greetBadgeTxt}>Mira</Text>
+              <Text style={styles.greetBadgeTxt}>Luna Mira</Text>
             </View>
             <Text style={styles.greetText}>
-              嗨，我是 Mira 👋 你的健康助手。今天想聊聊身体状态，还是随便问我点什么？
+              嗨，我是 Luna Mira 👋 你的健康助手。今天想聊聊身体状态，还是随便问我点什么？
             </Text>
           </View>
         </View>

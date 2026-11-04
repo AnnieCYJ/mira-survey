@@ -18,7 +18,7 @@ import { mm } from '../theme/mindmate';
 import { LinearGradient } from 'expo-linear-gradient';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
-import AiOrb from './AiOrb';
+import GrokFace from './GrokFace';
 import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
@@ -494,8 +494,8 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         >
           {messages.length === 0 ? (
             <View style={styles.empty}>
-              {/* v18.78：建议问题移到输入框上方横向滑动条（SuggestStrip），空态只留 Orb */}
-              <AiOrb size={240} title="Hi, can I help you?" />
+              {/* v18.78：建议问题移到输入框上方横向滑动条（SuggestStrip），空态只留 Grok 头像 */}
+              <GrokFace size={240} />
             </View>
           ) : (
             messages.map(renderMessage)

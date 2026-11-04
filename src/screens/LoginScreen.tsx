@@ -145,8 +145,7 @@ export default function LoginScreen({ onAuthenticated }: Props) {
         >
           {/* 品牌区 */}
           <View style={s.brand}>
-            <View style={s.logoDot} />
-            <Text style={s.wordmark}>Mira</Text>
+            <Text style={s.wordmark}>Luna Mira</Text>
             <Text style={s.tagline}>你的身体，自有节奏</Text>
           </View>
 
@@ -246,7 +245,7 @@ export default function LoginScreen({ onAuthenticated }: Props) {
           </View>
 
           <Text style={s.privacy}>登录即表示同意《隐私政策》与《用户协议》</Text>
-          <Text style={s.footnote}>Mira · 看见 · 理解 · 掌控</Text>
+          <Text style={s.footnote}>lunamira · 看见 · 理解 · 掌控</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -332,17 +331,6 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bgBottom },
   scroll: { paddingHorizontal: theme.space.card, alignItems: 'center' },
   brand: { alignItems: 'center', marginBottom: theme.space.xl },
-  logoDot: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.accentGreen,
-    marginBottom: theme.space.sm,
-    shadowColor: theme.colors.accentGreen,
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-  },
   wordmark: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.bold as any,
@@ -370,6 +358,7 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.pill,
     padding: 3,
     marginBottom: theme.space.md,
+    overflow: 'hidden',
   },
   segmentThumb: {
     position: 'absolute',
@@ -378,15 +367,11 @@ const s = StyleSheet.create({
     width: '48%',
     bottom: 3,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentGreen,
-    shadowColor: theme.colors.accentGreen,
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    backgroundColor: '#F2F4F8',
   },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.space.xs, zIndex: 1 },
   segTxt: { fontSize: theme.fontSize.body, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
-  segTxtOn: { color: '#fff', fontWeight: theme.weight.semibold as any },
+  segTxtOn: { color: theme.colors.bgBottom, fontWeight: theme.weight.semibold as any },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -406,15 +391,17 @@ const s = StyleSheet.create({
     height: 50,
   },
   eye: { paddingHorizontal: theme.space.xs },
-  eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentGreenText },
+  eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   codeBtn: {
-    backgroundColor: theme.colors.accentGreenSoft,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 6,
   },
   codeBtnOff: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentGreenText, fontWeight: theme.weight.medium as any },
+  codeTxt: { fontSize: theme.fontSize.sm, color: '#FFFFFF', fontWeight: theme.weight.medium as any },
   codeTxtOff: { color: theme.colors.textSub },
   error: {
     color: theme.colors.danger,
@@ -441,7 +428,7 @@ const s = StyleSheet.create({
   primaryTxt: { color: theme.colors.bgBottom, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
   demoHint: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.accentGreenText,
+    color: theme.colors.textSub,
     marginTop: theme.space.xs,
     textAlign: 'center',
   },

@@ -11,7 +11,7 @@
  * 本文件与两个 Screen 的调用方式不变。
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from './theme/theme';
 import { userStore, onSessionChange } from './data/userStore';
@@ -66,10 +66,50 @@ function Splash() {
         pointerEvents="none"
       />
       <View style={s.center}>
-        <View style={s.dot} />
-        <Text style={s.word}>Mira</Text>
+        {/* ★ 2026-11-04：去掉紫色圆点 + "Mira"，改为手写体 "Luna Mira" 逐字显现动画 */}
+        <Handwritten text="Luna Mira" style={s.word} />
         <ActivityIndicator style={{ marginTop: theme.space.md }} color={theme.colors.accentText} />
       </View>
+    </View>
+  );
+}
+
+/** ★ 手写体逐字显现：每个字母依次淡入 + 上移 + 轻微放大，像被手写出来。 */
+function Handwritten({ text, style }: { text: string; style?: any }) {
+  const letters = Array.from(text);
+  const anims = React.useRef(letters.map(() => new Animated.Value(0))).current;
+  React.useEffect(() => {
+    Animated.stagger(
+      85,
+      anims.map((a) =>
+        Animated.timing(a, {
+          toValue: 1,
+          duration: 430,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+      ),
+    ).start();
+  }, [anims]);
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      {letters.map((ch, i) => (
+        <Animated.Text
+          key={i}
+          style={[
+            style,
+            {
+              opacity: anims[i],
+              transform: [
+                { translateY: anims[i].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+                { scale: anims[i].interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) },
+              ],
+            },
+          ]}
+        >
+          {ch === ' ' ? ' ' : ch}
+        </Animated.Text>
+      ))}
     </View>
   );
 }
@@ -77,21 +117,12 @@ function Splash() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bgBottom },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  dot: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: theme.colors.accentSolid,
-    shadowColor: theme.colors.accentSolid,
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-  },
   word: {
     fontSize: theme.fontSize.h1,
-    fontWeight: theme.weight.bold as any,
+    fontWeight: theme.weight.semibold as any,
     color: theme.colors.textTitle,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
     marginTop: theme.space.sm,
+    fontFamily: 'Bradley Hand',
   },
 });

@@ -19,12 +19,12 @@ import {
   StatusBar,
   Animated,
 } from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { userStore, type UserProfile } from '../data/userStore';
+import GrokFace from '../components/GrokFace';
 
 interface Props {
   onDone: () => void;
@@ -288,13 +288,13 @@ function OnboardVideoScreen({ onDone }: { onDone: () => void }) {
       <Video
         source={require('../assets/onboarding/onboard_welcome.mp4')}
         style={StyleSheet.absoluteFill}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={ResizeMode.CONTAIN}
         isLooping
         shouldPlay
       />
-      <View style={s.videoScrim} />
+      {/* ★ 2026-11-04：去掉底部黑色蒙层（videoScrim）；按钮改为「进入 LunaMira →」磨砂胶囊 */}
       <TouchableOpacity style={s.videoEnter} activeOpacity={0.85} onPress={onDone}>
-        <Text style={s.videoEnterTxt}>进入 Mira →</Text>
+        <Text style={s.videoEnterTxt}>进入 LunaMira →</Text>
       </TouchableOpacity>
     </View>
   );
@@ -303,16 +303,10 @@ function OnboardVideoScreen({ onDone }: { onDone: () => void }) {
 function AiBubble({ text }: { text: string }) {
   return (
     <View style={s.aiRow}>
-      <View style={s.aiAvatar}>
-        <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round">
-          <Path d="M5 13a7 7 0 0 1 14 0" />
-          <Circle cx={9} cy={11} r={1.1} fill="#fff" stroke="none" />
-          <Circle cx={15} cy={11} r={1.1} fill="#fff" stroke="none" />
-        </Svg>
-      </View>
+      <GrokFace size={30} glow={false} />
       <View style={s.aiBubble}>
         <View style={s.aiBadge}>
-          <Text style={s.aiBadgeTxt}>Mira</Text>
+          <Text style={s.aiBadgeTxt}>Luna Mira</Text>
         </View>
         <Text style={s.aiText}>{text}</Text>
       </View>
@@ -333,13 +327,7 @@ function UserBubble({ text }: { text: string }) {
 function TypingBubble({ dot }: { dot: Animated.Value }) {
   return (
     <View style={s.aiRow}>
-      <View style={s.aiAvatar}>
-        <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round">
-          <Path d="M5 13a7 7 0 0 1 14 0" />
-          <Circle cx={9} cy={11} r={1.1} fill="#fff" stroke="none" />
-          <Circle cx={15} cy={11} r={1.1} fill="#fff" stroke="none" />
-        </Svg>
-      </View>
+      <GrokFace size={30} glow={false} />
       <View style={s.aiBubble}>
         <View style={s.typingDots}>
           {[0, 1, 2].map((i) => (
@@ -498,15 +486,7 @@ const s = StyleSheet.create({
   finishBtnOff: { opacity: 0.6 },
   finishTxt: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
   // —— 欢迎视频页 ——
-  videoRoot: { flex: 1, backgroundColor: '#000' },
-  videoScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 150,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
+  videoRoot: { flex: 1, backgroundColor: '#1F4C7E' },
   videoEnter: {
     position: 'absolute',
     left: theme.space.card,
