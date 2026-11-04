@@ -121,40 +121,62 @@ export default function LipidTrendCard({ range: rangeProp, onRangeChange, showTo
   const xAtT = (t: number) => PAD_L + ((t - domMin) / (domMax - domMin || 1)) * plotW;
   const xAtI = (i: number) => PAD_L + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
 
-  const lines = seriesList.map((s, idx) => {
-    const def = LIPIDS[idx];
-    const pts: { x: number; y: number }[] = [];
-    if (mode === 'cont' && s.continuous && s.tPoints) {
-      for (const p of s.tPoints) {
-        if (!Number.isFinite(p.v)) continue;
-        pts.push({ x: xAtT(p.t), y: yAt(p.v) });
-      }
-    } else {
-      s.points.forEach((v, i) => {
-        if (v == null || !Number.isFinite(v)) return;
-        pts.push({ x: xAtI(i), y: yAt(v) });
-      });
+  // ★ 2026-11-04（用户「四项数值每次都差得很近，放一起看不清」）：
+  //   四条线共用 0–10 轴 → TC/TG/HDL/LDL 全挤在下半区。改为「四条独立小图」：
+  //   各自量程自动缩放 + 各自参考线（理想区间），每项趋势独立可读；X 域四图共享。
+  const SPARK_H = 62;
+  const PAD_L_S = 30;
+  const PAD_R_S = 10;
+  const PAD_T_S = 8;
+  const PAD_B_S = 14;
+  const plotWS = w - PAD_L_S - PAD_R_S;
+
+  const panelDomain = (s: HistoryResult, ref: number | null) => {
+    const vals = (s.continuous && s.tPoints ? s.tPoints.map((p) => p.v) : (s.points.filter((v) => v != null) as number[]))
+      .filter((v) => Number.isFinite(v));
+    let lo = vals.length ? Math.min(...vals) : 0;
+    let hi = vals.length ? Math.max(...vals) : 1;
+    if (ref != null) {
+      lo = Math.min(lo, ref);
+      hi = Math.max(hi, ref);
     }
-    return { ...def, pts };
-  });
+    const pad = Math.max((hi - lo) * 0.25, hi * 0.12, 0.3);
+    return { lo: Math.max(0, lo - pad), hi: hi + pad };
+  };
 
-  const hasData = lines.some((l) => l.pts.length > 0);
+  const sparkY = (v: number, dlo: number, dhi: number) => {
+    const span = dhi - dlo || 1;
+    const c = Math.max(dlo, Math.min(dhi, Number.isFinite(v) ? v : dlo));
+    return PAD_T_S + (1 - (c - dlo) / span) * (SPARK_H - PAD_T_S - PAD_B_S);
+  };
 
-  // X 轴标签位置（避免过密）
+  const hasData = seriesList.some((s) =>
+    s.continuous && s.tPoints ? s.tPoints.length > 0 : s.points.some((v) => v != null)
+  );
+
+  // 理想区间参考线（与 MetricDetailScreen.LIPID_ITEMS 的 hi/lo 同值）
+  const REF: Record<string, { v: number; label: string }> = {
+    cholesterol: { v: 5.2, label: '理想 ≤5.2' },
+    triglyceride: { v: 1.7, label: '理想 ≤1.7' },
+    hdl: { v: 1.0, label: '理想 ≥1.0' },
+    ldl: { v: 3.4, label: '理想 ≤3.4' },
+  };
+
+  // X 轴标签（四图共享同一 X 域，只画在最下面一幅）
   const xLabels: { x: number; label: string }[] = [];
-  if (mode === 'cont') {
-    const steps = [0, 0.25, 0.5, 0.75, 1];
-    for (const f of steps) {
-      const t = domMin + f * (domMax - domMin);
-      const d = new Date(t);
-      xLabels.push({ x: PAD_L + f * plotW, label: `${String(d.getHours()).padStart(2, '0')}:00` });
+  if (hasData) {
+    if (mode === 'cont') {
+      for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+        const t = domMin + f * (domMax - domMin);
+        const d = new Date(t);
+        xLabels.push({ x: PAD_L_S + f * plotWS, label: `${String(d.getHours()).padStart(2, '0')}:00` });
+      }
+    } else if (n > 0) {
+      const step = Math.max(1, Math.ceil(n / 7));
+      const xAt = (i: number) => PAD_L_S + (n > 1 ? (i / (n - 1)) * plotWS : plotWS / 2);
+      for (let i = 0; i < n; i += step) xLabels.push({ x: xAt(i), label: axisLabels[i] ?? '' });
+      if ((n - 1) % step !== 0) xLabels.push({ x: xAt(n - 1), label: axisLabels[n - 1] ?? '' });
     }
-  } else if (n > 0) {
-    const step = Math.max(1, Math.ceil(n / 7));
-    for (let i = 0; i < n; i += step) {
-      xLabels.push({ x: xAtI(i), label: axisLabels[i] ?? '' });
-    }
-    if ((n - 1) % step !== 0) xLabels.push({ x: xAtI(n - 1), label: axisLabels[n - 1] ?? '' });
   }
 
   return (
@@ -174,9 +196,6 @@ export default function LipidTrendCard({ range: rangeProp, onRangeChange, showTo
           </View>
         ) : null}
       </View>
-      <Text style={[styles.note, { marginBottom: theme.sp(2) }]}>
-        共享 0–10 mmol/L 坐标轴 · 不同颜色 = 不同指标 · 缺口 = 当日无测量
-      </Text>
 
       {!hasData ? (
         <View style={styles.empty}>
@@ -185,71 +204,80 @@ export default function LipidTrendCard({ range: rangeProp, onRangeChange, showTo
         </View>
       ) : (
         <View onLayout={onLayout}>
-          <Svg width={w} height={CHART_H}>
-            {/* Y 轴网格 + 刻度 */}
-            {Y_TICKS.map((t) => {
-              const y = yAt(t);
-              return (
-                <G key={`y${t}`}>
-                  <SvgLine x1={PAD_L} y1={y} x2={w - PAD_R} y2={y} stroke="#ECECEC" strokeWidth={1} />
-                  <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={theme.colors.textSub} textAnchor="end">
-                    {t}
+          {LIPIDS.map((it, idx) => {
+            const s = seriesList[idx];
+            const ref = REF[it.key];
+            const dom = panelDomain(s, ref.v);
+            const pts: string[] = [];
+            if (mode === 'cont' && s.continuous && s.tPoints) {
+              for (const p of s.tPoints) {
+                if (!Number.isFinite(p.v)) continue;
+                const x = PAD_L_S + ((p.t - domMin) / (domMax - domMin || 1)) * plotWS;
+                pts.push(`${x.toFixed(1)},${sparkY(p.v, dom.lo, dom.hi).toFixed(1)}`);
+              }
+            } else {
+              s.points.forEach((v, i) => {
+                if (v == null || !Number.isFinite(v)) return;
+                const x = PAD_L_S + (n > 1 ? (i / (n - 1)) * plotWS : plotWS / 2);
+                pts.push(`${x.toFixed(1)},${sparkY(v, dom.lo, dom.hi).toFixed(1)}`);
+              });
+            }
+            const latest =
+              s.continuous && s.tPoints?.length
+                ? s.tPoints[s.tPoints.length - 1].v
+                : (() => {
+                    for (let k = s.points.length - 1; k >= 0; k--) {
+                      const v = s.points[k];
+                      if (v != null && Number.isFinite(v)) return v;
+                    }
+                    return null;
+                  })();
+            const refY = sparkY(ref.v, dom.lo, dom.hi);
+            const isLast = idx === LIPIDS.length - 1;
+            return (
+              <View key={it.key} style={isLast ? undefined : styles.panelGap}>
+                <View style={styles.panelHead}>
+                  <View style={[styles.legendDot, { backgroundColor: it.color }]} />
+                  <Text style={styles.panelName}>{it.name}</Text>
+                  <View style={{ flex: 1 }} />
+                  <Text style={[styles.panelVal, { color: it.color }]}>{latest != null ? latest.toFixed(2) : '—'}</Text>
+                  <Text style={styles.panelUnit}>mmol/L</Text>
+                </View>
+                <Svg width={w} height={SPARK_H}>
+                  {/* 理想区间参考线（虚线 + 右上小字） */}
+                  <SvgLine x1={PAD_L_S} y1={refY} x2={w - PAD_R_S} y2={refY} stroke={theme.colors.textSub} strokeWidth={1} strokeDasharray="4 4" opacity={0.55} />
+                  <SvgText x={w - PAD_R_S} y={Math.max(9, refY - 4)} fontSize={8.5} fill={theme.colors.textSub} textAnchor="end">
+                    {ref.label}
                   </SvgText>
-                </G>
-              );
-            })}
-            {/* 四条线 */}
-            {lines.map((l) => (
-              <G key={l.key}>
-                {l.pts.length > 1 ? (
-                  <Polyline
-                    points={l.pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
-                    fill="none"
-                    stroke={l.color}
-                    strokeWidth={2}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
+                  {pts.length > 1 ? (
+                    <Polyline
+                      points={pts.join(' ')}
+                      fill="none"
+                      stroke={it.color}
+                      strokeWidth={2}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  ) : null}
+                  {pts.map((pt, i) => {
+                    const [cx, cy] = pt.split(',');
+                    return <Circle key={i} cx={parseFloat(cx)} cy={parseFloat(cy)} r={2.4} fill={it.color} stroke="#FFFFFF" strokeWidth={1} />;
+                  })}
+                </Svg>
+                {isLast ? (
+                  <Svg width={w} height={18}>
+                    {xLabels.map((xl, i) => (
+                      <SvgText key={i} x={xl.x} y={12} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">
+                        {xl.label}
+                      </SvgText>
+                    ))}
+                  </Svg>
                 ) : null}
-                {l.pts.map((p, i) => (
-                  <Circle key={i} cx={p.x} cy={p.y} r={2.6} fill={l.color} stroke="#FFFFFF" strokeWidth={1} />
-                ))}
-              </G>
-            ))}
-            {/* X 轴标签 */}
-            {xLabels.map((xl, i) => (
-              <SvgText key={i} x={xl.x} y={CHART_H - 8} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">
-                {xl.label}
-              </SvgText>
-            ))}
-          </Svg>
+              </View>
+            );
+          })}
         </View>
       )}
-
-      {/* 图例（含各项最新值，四指标一图到底） */}
-      <View style={styles.legend}>
-        {LIPIDS.map((it, i) => {
-          const s = seriesList[i];
-          const latest = s?.continuous && s.tPoints?.length
-            ? s.tPoints[s.tPoints.length - 1].v
-            : (() => {
-                for (let k = (s?.points.length ?? 0) - 1; k >= 0; k--) {
-                  const v = s!.points[k];
-                  if (v != null && Number.isFinite(v)) return v;
-                }
-                return null;
-              })();
-          return (
-            <View key={it.key} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: it.color }]} />
-              <Text style={styles.legendText}>{it.short}</Text>
-              <Text style={[styles.legendVal, { color: it.color }]}>
-                {latest != null ? latest.toFixed(2) : '—'}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
     </Card>
   );
 }
@@ -311,6 +339,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textTitle,
     fontWeight: theme.weight.semibold,
   },
+  panelGap: { marginTop: theme.sp(2.5) },
+  panelHead: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 4 },
+  panelName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle, marginLeft: 6 },
+  panelVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold },
+  panelUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 4 },
   empty: {
     height: CHART_H,
     alignItems: 'center',

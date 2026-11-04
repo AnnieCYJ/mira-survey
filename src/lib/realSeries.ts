@@ -391,9 +391,9 @@ const MANUAL_KEYS_SET = new Set(['triglyceride', 'hdl', 'ldl', 'cholesterol', 'b
 const DAY_BIN_15MIN = new Set(['glucose']);
 
 /** 把日内连续点按 15 分钟窗口聚合：每个窗口只保留一点（窗口内均值，时间戳取窗口内最新样本）。 */
-function binTo15Min(tps: TimePt[], dayStart: number): TimePt[] {
+function binTo15Min(tps: TimePt[], dayStart: number, bucketMs = 15 * 60 * 1000): TimePt[] {
   if (tps.length === 0) return tps;
-  const BUCKET = 15 * 60 * 1000;
+  const BUCKET = bucketMs;
   const map = new Map<number, { sum: number; cnt: number; lastT: number }>();
   for (const p of tps) {
     const slot = Math.floor((p.t - dayStart) / BUCKET);
@@ -440,6 +440,24 @@ export function buildHistorySeries(
         const start = dayStartMs(anchor.getTime());
         const end = start + 86400000;
         const pts = asc.filter(m => m.t >= start && m.t < end).map(m => ({ t: m.t, v: m.v }));
+        // ★ 2026-11-04（用户「尿酸详情页也要半小时趋势图」）：尿酸不走手动优先——
+        //   healthGlance 扩展指标实际增量写入了实时连续存储（upsertRealtime 'ua' + 15 分钟槽），
+        //   手动优先导致日视图只剩一两个稀疏点。改为 实时连续 + 手动点 合并后按 30 分钟槽聚合，
+        //   与心率/血氧等详情页同款 0-24h 连续趋势。
+        if (key === 'uricAcid') {
+          const isTodayUa = dateKeyOf(anchor.getTime()) === dateKeyOf(Date.now());
+          const dataEndUa = isTodayUa ? Date.now() : end;
+          const intra = healthStore
+            .getTimeRange(hsKey, start, dataEndUa, { fillDailyMean: false, maxPoints: 480 })
+            .filter(p => Number.isFinite(p.v) && p.v > 0);
+          const merged = [...intra, ...pts].sort((a, b) => a.t - b.t);
+          if (merged.length >= 2) {
+            return finalizeContinuous(
+              binTo15Min(merged, start, 30 * 60 * 1000),
+              start, end, def, false, `${def.name} 30 分钟趋势`
+            );
+          }
+        }
         if (pts.length) {
           return finalizeContinuous(pts, start, end, def, false, `${def.name} 手动测量趋势`);
         }
@@ -464,8 +482,17 @@ export function buildHistorySeries(
           const d = new Date(startDay.getTime() + i * DAY);
           const dayMs = dayStartMs(d.getTime());
           const dayEnd = dayMs + DAY;
-          const dayPts = asc.filter(m => m.t >= dayMs && m.t < dayEnd);
-          out.push(dayPts.length ? dayPts[dayPts.length - 1].v : null);
+          // ★ 2026-11-04（用户）：尿酸周/月聚合并入实时连续存储（当日均值），与日视图同源
+          let dayPts: TimePt[] = asc.filter(m => m.t >= dayMs && m.t < dayEnd).map(m => ({ t: m.t, v: m.v }));
+          if (key === 'uricAcid') {
+            const intra = healthStore
+              .getTimeRange(hsKey, dayMs, dayEnd, { fillDailyMean: false, maxPoints: 480 })
+              .filter(p => Number.isFinite(p.v) && p.v > 0);
+            dayPts = [...intra, ...dayPts].sort((a, b) => a.t - b.t);
+          }
+          out.push(dayPts.length
+            ? (key === 'uricAcid' ? dayPts.reduce((acc, p) => acc + p.v, 0) / dayPts.length : dayPts[dayPts.length - 1].v)
+            : null);
           axis.push(range === 'week' ? `${d.getMonth() + 1}/${d.getDate()}` : `${i + 1}`);
         }
         const nonNull = out.filter(v => v != null).length;
@@ -482,8 +509,15 @@ export function buildHistorySeries(
         for (let mo = 0; mo < 12; mo++) {
           const monthStart = new Date(y, mo, 1).getTime();
           const monthEnd = new Date(y, mo + 1, 0).getTime() + 86400000;
-          const monthPts = asc.filter(m => m.t >= monthStart && m.t < monthEnd);
-          out.push(monthPts.length ? monthPts.reduce((s, m) => s + m.v, 0) / monthPts.length : null);
+          // ★ 2026-11-04（用户）：尿酸年聚合并入实时连续存储
+          let monthPts: TimePt[] = asc.filter(m => m.t >= monthStart && m.t < monthEnd).map(m => ({ t: m.t, v: m.v }));
+          if (key === 'uricAcid') {
+            const intra = healthStore
+              .getTimeRange(hsKey, monthStart, monthEnd, { fillDailyMean: false, maxPoints: 480 })
+              .filter(p => Number.isFinite(p.v) && p.v > 0);
+            monthPts = [...intra, ...monthPts].sort((a, b) => a.t - b.t);
+          }
+          out.push(monthPts.length ? monthPts.reduce((acc, p) => acc + p.v, 0) / monthPts.length : null);
           axis.push(`${mo + 1}月`);
         }
         const nonNull = out.filter(v => v != null).length;
