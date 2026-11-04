@@ -5,7 +5,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from './src/theme/theme';
 import { AppStateProvider } from './src/state/AppState';
-import RootStackNavigator from './src/navigation/RootStackNavigator';
+import AuthGate from './src/AuthGate';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { postLog } from './src/lib/logger';
 import { VoiceTriggerProvider } from './src/hooks/useVoiceTrigger';
@@ -78,7 +78,8 @@ export default function App() {
             <NavigationContainer theme={navTheme}>
               <ErrorBoundary>
                 <VoiceTriggerProvider>
-                  <RootStackNavigator />
+                  {/* ★ 登录门禁：未登录→Login，未填资料→Onboarding，否则→主页 */}
+                  <AuthGate />
                   <VoiceQuickOverlay />
                 </VoiceTriggerProvider>
               </ErrorBoundary>

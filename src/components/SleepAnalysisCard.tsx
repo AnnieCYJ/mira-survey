@@ -20,6 +20,8 @@ import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import SleepStageChart from './SleepStageChart';
 import type { SleepSegment } from '../ble/RingBleManager';
+// ★ 2026-11-04（双机型）：Luna Mira 无温度传感器 → 体温行（含偏离）整行隐藏
+import { useDeviceModel, hasCap } from '../config/deviceModel';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -86,6 +88,8 @@ interface Props {
 }
 
 export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }: Props) {
+  const { model: dmModel } = useDeviceModel();
+  const hasTempCap = hasCap(dmModel, 'temp');
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   /** 入睡时刻的绝对 ms（给 HRV 第二层做 x 轴参考）；拿不到就null */
@@ -219,6 +223,7 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }:
             <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms"
               metric={{ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }}
               onPress={onOpenMetric ? () => onOpenMetric({ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }) : undefined} />
+            {hasTempCap ? (<>
             <Divider />
             {/* ★ 2026-10-10（修 bug）：优先显示「相对个人基线的偏离」；基线未建立时退回绝对体温，
                 且标签同步改成「体温」—— 绝不把 36.5℃ 当成「偏离 +36.5℃」显示。 */}
@@ -233,6 +238,7 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }:
               : <Row name="体温偏离（相对基线）" value="—" unit="℃"
                   metric={{ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }}
                   onPress={onOpenMetric ? () => onOpenMetric({ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }) : undefined} />}
+            </>) : null}
             <Divider />
             {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min"
               metric={{ key: 'rr', name: '呼吸率', unit: '次/分', yMin: 5, yMax: 40 }}

@@ -13,6 +13,8 @@ import { getEmotionHistory } from '../ble/RingBleManager';
 import { ensureEmotionLogLoaded, getEntriesForDay, onEmotionLog, type MoodKey } from '../data/emotionLog';
 import { healthStore, dayKey, type MetricKey } from '../data/healthStore';
 import type { EmotionLabel } from '../lib/emotionEngine';
+// ★ 2026-11-04（双机型）：Luna Mira 无皮电传感器 → 诊断行隐藏（usable 判定不变，HRV/SNS/HR 仍可达标）
+import { useDeviceModel, hasCap } from '../config/deviceModel';
 
 // ── 情绪 → token 颜色映射 (复用 theme 已有 token, 不造新色) ──
 const emoColor: Record<EmotionLabel, string> = {
@@ -219,6 +221,8 @@ function SumCell({ label, value, sub }: { label: string; value: string; sub?: st
 
 /** 空状态 */
 function EmotionEmptyState({ cardW }: { cardW: number }) {
+  const { model: dmModel } = useDeviceModel();
+  const hasEdaCap = hasCap(dmModel, 'eda');
   const [diag, setDiag] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -265,7 +269,9 @@ function EmotionEmptyState({ cardW }: { cardW: number }) {
 
         {/* 诊断 grid */}
         <View style={{ marginTop: SP(3) }}>
-          {([['eda','皮肤电'],['hrv','心率变异性'],['sns','神经激活'],['hr','心率'],['bpSys','血压高压'],['bpDia','血压低压']] as const).map(([k, label]) => {
+          {([['eda','皮肤电'],['hrv','心率变异性'],['sns','神经激活'],['hr','心率'],['bpSys','血压高压'],['bpDia','血压低压']] as const)
+            .filter(([k]) => k !== 'eda' || hasEdaCap)
+            .map(([k, label]) => {
             const n = diag[k] ?? 0;
             const ok = n >= 3;
             return (

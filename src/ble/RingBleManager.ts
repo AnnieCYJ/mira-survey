@@ -63,8 +63,15 @@ import {
 import { computeHRV } from "../lib/hrvCompute";
 import { computeEmotionSnapshot, EMOTION_LABEL_CN, type EmotionSnapshot, type EmotionLabel } from '../lib/emotionEngine';
 import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recomputePipeline';
-// ★ 2026-11-04（用户：双机型）：连接成功后按广播名自动应用机型配置（Luna Mira=精简；Luna Mira Pro/HK18=全功能）
-import { autoApplyModelFromDeviceName, guessModelFromName, DEVICE_MODELS } from '../config/deviceModel';
+// ★ 2026-11-04（用户定稿）：设备识别改能力字段驱动（Veepoo SDK *Type），替代读 BLE DIS 0x2A24。
+//   连接就绪后原生透传 capabilities，据此动态判定 Pro/基础版（有就展示）。
+import {
+  applyProfileFromCapabilities,
+  resolveProfileByModel,
+  getStoredDeviceInfo,
+  getProfile,
+  DEFAULT_DEVICE_PROFILE,
+} from '../config/deviceModel';
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
@@ -1411,6 +1418,15 @@ class NativeRingSource {
       // ★ V2 性能：开启累积模式（backfill 期间 RingState patch 不立即 push）
       this._pendingBatchPatch = {};
       postLog('RingBle', `[State] ready totalDays=${raw.deviceTotalDays ?? '?'}`);
+      // ★ 2026-11-04（用户定稿·能力字段驱动）：连接就绪后，原生透传 capabilities（SDK *Type），
+      //   据此动态判定 Pro/基础版 与 展示哪些功能（有就展示）。
+      if (raw.capabilities) {
+        void applyProfileFromCapabilities(raw.capabilities)
+          .then((p) => {
+            if (p) postLog('RingBle', `[DeviceProfile] 能力字段 → 应用 ${p}（ecgType=${raw.capabilities?.ecgType}）`);
+          })
+          .catch(() => {});
+      }
       if (this.getState().status === 'connected' && healthStore.syncEnabled) {
         this.triggerBackfillOnReady('ready');
       } else {
@@ -1463,12 +1479,8 @@ class NativeRingSource {
     }
     if (raw.deviceName) patch.deviceName = String(raw.deviceName);
     if (status === 'connected' && raw.deviceName) {
-      // ★ 2026-11-04（用户：双机型）：连接成功 → 按广播名自动切换机型配置（Luna Mira=精简；Luna Mira Pro/HK18=全功能）
-      void autoApplyModelFromDeviceName(String(raw.deviceName))
-        .then((applied) => {
-          if (applied) postLog('RingBle', `[DeviceModel] 广播名「${String(raw.deviceName)}」→ 自动应用机型 ${applied}`);
-        })
-        .catch(() => {});
+      // ★ 2026-11-04（用户定稿）：机型识别改在 ready 分支基于原生透传的 capabilities（SDK *Type）判定，
+      //   不再在此读 DIS（Veepoo SDK 不暴露 0x2A24）。见上方 ready 分支。
     }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? null;
     if (raw.firmware) patch.firmware = String(raw.firmware);
@@ -1554,12 +1566,7 @@ class NativeRingSource {
     if (typeof raw.status === 'string') patch.status = raw.status as RingConnStatus;
     if (raw.deviceName) patch.deviceName = raw.deviceName;
     if (raw.status === 'connected' && raw.deviceName) {
-      // ★ 2026-11-04（用户：双机型）：连接成功 → 按广播名自动切换机型配置（同分流 6）
-      void autoApplyModelFromDeviceName(String(raw.deviceName))
-        .then((applied) => {
-          if (applied) postLog('RingBle', `[DeviceModel] 广播名「${String(raw.deviceName)}」→ 自动应用机型 ${applied}`);
-        })
-        .catch(() => {});
+      // ★ 2026-11-04（用户定稿）：机型识别改在 ready 分支基于原生透传的 capabilities（SDK *Type）判定。
     }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? patch.battery;
     if (raw.firmware) patch.firmware = raw.firmware;
@@ -6371,8 +6378,11 @@ class RingConnectionImpl {
     // ★ 2026-11-04（用户：固件号标注）：固件未同步时不再误标 'HK18' → 'unknown'；
     //   顶层新增 model（机型，按广播名识别），后端一个账户可挂多固件/多机型，按此区分数据呈现。
     const firmware = st.firmware || 'unknown';
-    const guessedModel = guessModelFromName(st.deviceName);
-    const model = guessedModel ? DEVICE_MODELS[guessedModel].label : (st.deviceName || 'unknown');
+    // ★ 2026-11-04（用户定稿）：上传型号标注以 DIS(0x2A24) 读到的型号为准（不靠广播名）。
+    //   读不到型号时回退到设备名，再不行 'unknown'；不再误标 'HK18'。
+    const { modelNumber } = await getStoredDeviceInfo();
+    const profileId = resolveProfileByModel(modelNumber) ?? (st.deviceName ? resolveProfileByModel(st.deviceName) : null) ?? DEFAULT_DEVICE_PROFILE;
+    const model = getProfile(profileId).label;
     const records: Array<{ channel: string; ts: number; payload: Record<string, any> }> = [];
 
     // 把 'YYYY-M-D' / 'YYYY-MM-DD' 规整为本地 0 点的 epoch 秒，并归一化为 'YYYY-MM-DD'

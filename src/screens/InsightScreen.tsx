@@ -490,8 +490,14 @@ export default function InsightScreen() {
   };
 
   const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
-  // 基础指标信号（纯静态定义，只算一次）
-  const basicsSignals = useMemo(() => signalsForDimension('basics'), []);
+  // 基础指标信号（★ 2026-11-04：按机型能力过滤——Luna Mira 无 体温/皮电，对应卡不渲染；deviceModel 已在上方 229 行声明并订阅）
+  const basicsSignals = useMemo(() => {
+    const BASIC_CAP: Partial<Record<string, keyof DeviceCapabilities>> = { temp: 'temp', skinTemp: 'temp', eda: 'eda' };
+    return signalsForDimension('basics').filter((m) => {
+      const c = BASIC_CAP[m.key];
+      return !c || hasCap(deviceModel, c);
+    });
+  }, [deviceModel]);
   // ★ 双列瀑布流布局：按 section 分组（组标题占整行），组内按「有无趋势图」估高做两列分配。
   //   分配结果（当前 6 张卡）：
   //     左列 = 心率 / EDA皮电 / 心率变异性（高·矮·高）

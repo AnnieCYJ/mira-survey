@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { theme } from '../theme/theme';
+import { userStore } from '../data/userStore';
 import {
   familyStore, useFamilyMembers, REL_LABEL, REL_EMOJI, type Relationship,
 } from '../data/familyStore';
@@ -141,6 +142,11 @@ export default function AccountHubScreen() {
           <Text style={s.addBtnTxt}>＋ 添加家人</Text>
         </TouchableOpacity>
 
+        {/* 退出登录 */}
+        <TouchableOpacity style={s.logoutBtn} activeOpacity={0.85} onPress={() => { void userStore.signOut(); }}>
+          <Text style={s.logoutTxt}>退出登录</Text>
+        </TouchableOpacity>
+
         {/* 隐私说明 */}
         <View style={s.privacy}>
           <Text style={s.privacyTxt}>家人之间只共享「状态结论」（今天状态好不好），原始健康数据始终留在你自己的设备上。</Text>
@@ -219,6 +225,18 @@ const s = StyleSheet.create({
   addBtnTxt: { color: theme.colors.textTitle, fontSize: theme.fontSize.card, fontWeight: theme.weight.medium as any },
   privacy: { marginHorizontal: theme.space.screen, marginTop: theme.sp(3) },
   privacyTxt: { color: theme.colors.textSub, fontSize: theme.fontSize.micro, lineHeight: 18 },
+  logoutBtn: {
+    marginHorizontal: theme.space.screen,
+    marginTop: theme.space.lg,
+    height: 50,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+  },
+  logoutTxt: { color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium as any },
   sheetBody: { paddingHorizontal: theme.space.screen, paddingTop: theme.space.md },
   relRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5) },
   relPick: { paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1.5), borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },

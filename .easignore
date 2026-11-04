@@ -1,0 +1,8 @@
+# ---- iOS-only assets: not needed for Android builds ----
+veepoo-assets/Frameworks/
+ios/
+
+# ---- hband-sdk is a git submodule (276MB of SDK/docs/source). The Veepoo AAR/jar
+#      libs the build needs have been copied to vendor/veepoo-libs/, so exclude the
+#      whole submodule from the upload to keep the archive small. ----
+hband-sdk/
