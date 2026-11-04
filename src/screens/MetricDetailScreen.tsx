@@ -37,7 +37,6 @@ import TempCircadianChart, { TempBaselineLegend } from '../components/charts/Tem
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
-import InsightBanner from '../components/InsightBanner';
 import ChatSheet from '../components/ChatSheet';
 import LipidTrendCard from '../components/LipidTrendCard';
 
@@ -533,6 +532,8 @@ export default function MetricDetailScreen() {
   const requestedForRef = useRef<string | null>(null);
   // 锚点是否为「今天」之外：只有历史日才需要（且值得）自动触发 backfill
   const anchorKey = dateKeyOf(anchor.getTime());
+  // ★ 2026-11-04（用户：解读融合）：心率峰值/静息并入 hero 分析（原 HrInsight 卡数据源，顶层调用）
+  const hrZoneExtra = useHrZoneStats(anchorKey, Math.round(211 - 0.64 * (RingBle.getUserProfile()?.age ?? 30)));
   const isHistorical = anchorKey !== dateKeyOf(Date.now());
 
   // 心电图：仅主动测量。点击按钮触发原生 ECG 测量（约 30 秒），完成后 ring.ecg 更新并自动刷新本页。
@@ -974,7 +975,21 @@ export default function MetricDetailScreen() {
   const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
-  const heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
+  let heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
+  // ★ 2026-11-04（用户：解读融合，统一规则 = hero 数字下一句分析，不再出独立解读卡）：
+  // ① 体温日视图 —— 用基线偏离分析替代独立「体温解读」卡（TempAiCard 已删，信息并入这里）
+  if (isTempDay && tempDay) {
+    heroAnalysis = buildTempInsightText(tempDay, tempSignal) ?? heroAnalysis;
+  }
+  // ② 心率日视图 —— 峰值/静息并入同一句，替代独立「心率解读」卡（HrInsight 已删）
+  if (params.key === 'hr' && range === 'day' && hasData) {
+    const pk = hrZoneExtra.peak != null ? Math.round(hrZoneExtra.peak) : null;
+    const rst = hrZoneExtra.resting != null ? Math.round(hrZoneExtra.resting) : null;
+    if (pk != null || rst != null) {
+      heroAnalysis = `${heroAnalysis.replace(/。\s*$/, '')}。峰值 ${pk ?? '—'} bpm，静息约 ${rst ?? '—'} bpm。`;
+    }
+  }
+  // 心率 hero 融合用的当日峰值/静息（hook 必须顶层无条件调用）
 
   // ★ 本轮（用户）：周/月/年视图 → 与「上一周期」对比（相比上周/上个月/去年 上升/下降多少）。
   //   统一所有指标详情页 hero 卡格式：日视图保持「较区间首点」，周月年显示「较上周/较上个月/较去年」。
@@ -1105,9 +1120,6 @@ export default function MetricDetailScreen() {
 
         {/* ★ 2026-11-03（用户）：解读内容统一上移——紧跟总体数据卡，不再放页面底部单独卡片。
             心率/尿酸/血脂的规则解读（原 InsightBanner 在页面底部各 section 末尾）提到这里。 */}
-        {params.key === 'hr' ? <HrInsight anchor={anchor} openChat={openChat} /> : null}
-        {params.key === 'ua' || params.key === 'uricAcid' ? <UaInsight anchor={anchor} openChat={openChat} /> : null}
-        {['cholesterol', 'triglyceride', 'hdl', 'ldl'].includes(params.key) ? <LipidInsight anchor={anchor} openChat={openChat} /> : null}
 
         {/* ★ 2026-10-10（用户）：心率日视图 = Oura 风格全天柱状小条（5 分钟一点 / 30 分钟一格刻度） */}
         {isHrDayBars && hrBars ? (
@@ -1176,7 +1188,6 @@ export default function MetricDetailScreen() {
                 : '体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，曲线形状才有意义（黄体期通常整体上移约 +0.3℃）。'}
             </Text>
           </View>
-          <TempAiCard tempDay={tempDay} tempSignal={tempSignal} openChat={openChat} />
           </>
         ) : null}
 
@@ -1234,7 +1245,7 @@ export default function MetricDetailScreen() {
         {isSpecDay && spec && specDay ? (
           <View style={styles.chartCard}>
             <View style={styles.partRow}>
-              <Text style={styles.specLab}>{chartTitle}</Text>
+              <Text style={[styles.chartTitle, styles.titleFlex]}>{chartTitle}</Text>
               {!isStress && (
                 <Text style={styles.specCount}>
                   {specDay.blocked ? '无实测数据'
@@ -1319,7 +1330,7 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-17（用户：压力周月年对齐 Oura —— 分色柱而非连续折线）：
             分档（状态型）指标在周/月/年视图，逐桶分色柱，与日视图同套档位配色与语义。 */}
         {isSpecRange && spec ? (
-          <View>
+          <View style={styles.chartCard}>
             <Text style={styles.chartTitle}>{chartTitle}</Text>
             <RangeBarsChart
               points={series.points}
@@ -1877,35 +1888,6 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
 
 /** ★ 2026-11-03（用户：解读上移）：心率解读——原在页面底部 HrZoneSection 末尾，
  *  现紧跟顶部总体数据卡渲染，与「今日心率 68」下的分析话术衔接。 */
-function HrInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
-  const dk = dateKeyOf(anchor.getTime());
-  const age = RingBle.getUserProfile()?.age ?? 30;
-  const mhr = Math.round(211 - 0.64 * age);
-  const { zones, resting, peak, activeTotal } = useHrZoneStats(dk, mhr);
-  const cardioActive = zones[1] + zones[2] + zones[3] + zones[4];
-  const cardioFrac = activeTotal > 0 ? cardioActive / activeTotal : 0;
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body: `今日心率峰值 ${peak != null ? Math.round(peak) : '—'} bpm（约 ${peak ? Math.round((peak / mhr) * 100) : 0}% MHR），静息约 ${resting != null ? Math.round(resting) : '—'} bpm。`,
-    },
-  ];
-  if (activeTotal > 0) {
-    rows.push({
-      tone: cardioFrac > 0.2 ? 'good' : 'neutral',
-      title: '中高强度',
-      body: `燃脂 / 有氧 / 无氧区间累计 ${fmtDur(cardioActive)}，占活动时长约 ${Math.round(cardioFrac * 100)}%。`,
-    });
-  }
-  rows.push({
-    tone: 'neutral',
-    title: '建议',
-    body: '结合当天活动与睡眠维持规律有氧；若静息心率持续偏高，注意恢复是否充足。',
-  });
-  return <InsightBanner title="心率解读" rows={rows} onMore={() => openChat('帮我分析今天的心率区间和运动负荷')} />;
-}
-
 /* ★ 2026-10-28：尿酸详情页参考区间条 —— 与全 App 其余口径统一为临床常用 155–428 µmol/L
  * （BloodComponentPanel / quickCheckStore / ai.insight 均用 155–428；此前详情页错用 90–360/1000，
  *   与面板、AI 结论打架，用户看不明白）。正常上限 428，偏高 >428，偏低 <155。 */
@@ -1971,31 +1953,6 @@ function UaReferenceCard({ anchor }: { anchor: Date; openChat: (q: string) => vo
       </Card>
     </>
   );
-}
-
-/** ★ 2026-11-03（用户：解读上移）：尿酸解读——原在页面底部 UaReferenceCard 末尾，现紧跟顶部总体数据卡。 */
-function UaInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
-  const dk = dateKeyOf(anchor.getTime());
-  const val = latestVal('ua', dk);
-  const tier = val == null ? null : val < 155 ? UA_TIERS[0] : val < 428 ? UA_TIERS[1] : UA_TIERS[2];
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body:
-        val == null
-          ? '今日暂无尿酸读数，连接戒指完成一次健康一览后查看。'
-          : `当前读数 ${Math.round(val)} µmol/L，处于「${tier?.name}」区间。`,
-    },
-  ];
-  if (val != null && tier) {
-    if (tier.key === 'high')
-      rows.push({ tone: 'warn', title: '偏高提示', body: '尿酸偏高与饮食、代谢相关，建议减少高嘌呤食物、多饮水，长期偏高请咨询医生。' });
-    else if (tier.key === 'low')
-      rows.push({ tone: 'neutral', title: '偏低', body: '尿酸偏低通常无临床意义，可能与饮食清淡有关。' });
-    else rows.push({ tone: 'good', title: '正常', body: '尿酸处于常规参考区间内，继续保持均衡饮食。' });
-  }
-  return <InsightBanner title="尿酸解读" rows={rows} onMore={() => openChat('帮我分析尿酸水平')} />;
 }
 
 /* ★ 2026-10-16：血脂详情页——血脂四项汇总（TC / TG / HDL / LDL）+ 参考区间 + 分级 */
@@ -2121,31 +2078,6 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
   );
 }
 
-/** ★ 2026-11-03（用户：解读上移）：血脂解读——原在页面底部 LipidOverviewCard 末尾，现紧跟顶部总体数据卡。 */
-function LipidInsight({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
-  const dk = dateKeyOf(anchor.getTime());
-  const abnormal = LIPID_ITEMS.filter((it) => {
-    const v = latestVal(it.key, dk);
-    if (v == null) return false;
-    return it.lowerBetter ? v > it.hi : v < (it.lo ?? 0);
-  }).length;
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body:
-        abnormal > 0
-          ? `今日血脂四项中 ${abnormal} 项超出理想范围，建议结合饮食与运动改善，并定期复查。`
-          : '今日血脂四项均处于理想范围内，继续保持。',
-    },
-  ];
-  if (abnormal > 0) {
-    rows.push({ tone: 'warn', title: '提示', body: '单项偏高不代表疾病，受近期饮食、空腹状态影响较大；持续异常请咨询医生。' });
-  }
-  rows.push({ tone: 'neutral', title: '建议', body: '减少饱和脂肪与精制糖、增加膳食纤维，规律有氧有助于血脂管理。' });
-  return <InsightBanner title="血脂解读" rows={rows} onMore={() => openChat('帮我分析血脂四项')} />;
-}
-
 
 /* ★ 2026-10-17（用户：① 分析以数据卡片嵌在日/周/月/年详情图下；② 日夜参考心率用 tab 区分；③ 恢复力要加上）：
  * - 日视图：顶部「日间/夜间」tab 切换，图与卡均跟随选中段；卡片 = 定性 + 平均 + 峰值 + 时长分布（放松/平衡/紧张）。
@@ -2255,7 +2187,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       return (
         <View>
           <Card>
-            <Text style={styles.specLab}>今日压力分析</Text>
+            <Text style={styles.chartTitle}>压力分析</Text>
             <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
             {renderFatigueBar()}
           </Card>
@@ -2278,7 +2210,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
         {/* ★ 本轮（用户）：压力分析 + 恢复力 + 疲劳度 合并一卡；去掉 平均/最高/最低 */}
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.specLab}>{partName}压力分析</Text>
+            <Text style={[styles.chartTitle, styles.titleFlex]}>压力分析</Text>
             <Text style={{ color: qColor, fontSize: theme.fontSize.micro, fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
           </View>
           <View style={styles.statGrid}>
@@ -2337,7 +2269,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     <View>
       {/* ★ 本轮（用户）：区间压力分析 + 恢复力 + 疲劳度 合并一卡；去掉 平均/最高/最低 */}
       <Card>
-        <Text style={styles.specLab}>{rangeLabel}压力分析</Text>
+        <Text style={styles.chartTitle}>压力分析</Text>
         <View style={styles.statGrid}>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>主导档位</Text>
@@ -2381,47 +2313,25 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
 }
 
 /* ★ 2026-10-16：体温详情页——规则 AI 解读（偏离个人基线趋势） */
-function TempAiCard({
-  tempDay,
-  tempSignal,
-  openChat,
-}: {
-  tempDay: { summary: { avg: number | null; maxUp: number | null; maxDown: number | null } };
-  tempSignal: 'temp' | 'skinTemp';
-  openChat: (q: string) => void;
-}) {
+/**
+ * ★ 2026-11-04（用户：解读融合）：体温解读并入 hero 一句话（原 TempAiCard 独立卡删除）。
+ * 信息 = 基线偏离幅度 + 一句人话归因；数据不足诚实直说。
+ */
+function buildTempInsightText(
+  tempDay: { summary: { avg: number | null; maxUp: number | null; maxDown: number | null } } | null,
+  tempSignal: 'temp' | 'skinTemp',
+): string | null {
   const avg = tempDay?.summary?.avg;
   const sigName = tempSignal === 'skinTemp' ? '皮肤温度' : '体温';
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body:
-        avg != null
-          ? `今日${sigName}相对个人基线${avg > 0 ? '偏高' : '偏低'}约 ${Math.abs(avg).toFixed(2)}℃。`
-          : `今日${sigName}数据不足，暂无法评估基线偏离。`,
-    },
-  ];
-  if (avg != null) {
-    rows.push({
-      tone: avg > 0.3 ? 'warn' : 'neutral',
-      title: '趋势',
-      body:
-        avg > 0.3
-          ? '整体高于基线，可能处于黄体期或近期活动 / 环境升温；若伴随不适请留意。'
-          : avg < -0.3
-          ? '整体低于基线，注意保暖与休息。'
-          : '围绕基线小幅波动，属正常昼夜节律。',
-    });
-  }
-  rows.push({ tone: 'neutral', title: '建议', body: '体温仅是参考信号，结合经期记录与睡眠更完整；持续异常请就医。' });
-  return (
-    <InsightBanner
-      title={`${sigName}解读`}
-      rows={rows}
-      onMore={() => openChat(`帮我分析今天的${sigName}变化`)}
-    />
-  );
+  if (avg == null) return `今日${sigName}数据不足，暂无法评估基线偏离。`;
+  const base = `今日${sigName}相对个人基线${avg > 0 ? '偏高' : '偏低'}约 ${Math.abs(avg).toFixed(2)}℃`;
+  const trend =
+    avg > 0.3
+      ? '，可能处于黄体期或近期活动 / 环境升温，留意身体感受'
+      : avg < -0.3
+      ? '，注意保暖与休息'
+      : '，围绕基线小幅波动，属正常昼夜节律';
+  return `${base}${trend}。`;
 }
 
 /* ★ 2026-10-16：血氧详情页——呼吸暂停（OSAHS）分析
@@ -2680,6 +2590,8 @@ const styles = StyleSheet.create({
   specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
   // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」
   chartTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(2) },
+  // ★ 2026-11-04：横排标题（左侧标题 + 右侧徽章/计数）复用 chartTitle 字号，去掉底距、占满左侧
+  titleFlex: { flex: 1, marginBottom: 0 },
   specCount: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   // ★ 2026-10-17：日视图「紧张 / 放松时长」汇总（对齐 Oura）
   zoneSummary: { flexDirection: 'row', gap: theme.sp(18), marginTop: theme.sp(12), alignItems: 'center' },

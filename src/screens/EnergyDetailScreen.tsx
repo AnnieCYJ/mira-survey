@@ -971,7 +971,7 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
       <Card padded={false} style={{ marginTop: theme.sp(2) }}>
         <View style={styles.pad}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1) }}>
-            <Text style={styles.chartTitle}>每日脑力消耗</Text>
+            <Text style={styles.chartTitle}>脑力消耗趋势图</Text>
             <View style={{ flexDirection: 'row', gap: theme.sp(2) }}>
               {(dominantPv
                 ? [['当日峰', mm.colors.limeMid], ['当日谷', mm.colors.purpleDeep]]
@@ -1107,7 +1107,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
     return (
       <Card padded={false} style={{ marginTop: theme.sp(2) }}>
         <View style={styles.pad}>
-          <Text style={styles.chartTitle}>情绪压力 · {RANGE_DEF[range].label}趋势</Text>
+          <Text style={styles.chartTitle}>情绪压力趋势图</Text>
           <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
             这{RANGE_DEF[range].label}还没有可用于判定的采样
           </Text>
@@ -1124,7 +1124,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
     <Card padded={false} style={{ marginTop: theme.sp(2) }}>
       <View style={styles.pad}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(0.5) }}>
-          <Text style={styles.chartTitle}>情绪压力 · {RANGE_DEF[range].label}趋势</Text>
+          <Text style={styles.chartTitle}>情绪压力趋势图</Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
             {RANGE_DEF[range].label}平均 {mean}
           </Text>
@@ -1732,7 +1732,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
       <Card padded={false}>
         <View style={styles.pad}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <Text style={styles.chartTitle}>{META[type].name} · {RANGE_DEF[range].label}趋势</Text>
+            <Text style={styles.chartTitle}>{META[type].name}趋势图</Text>
             {prevMean != null && deltaPct != null && (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>vs {trendLabel}</Text>
