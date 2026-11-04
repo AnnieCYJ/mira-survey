@@ -63,6 +63,8 @@ import {
 import { computeHRV } from "../lib/hrvCompute";
 import { computeEmotionSnapshot, EMOTION_LABEL_CN, type EmotionSnapshot, type EmotionLabel } from '../lib/emotionEngine';
 import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recomputePipeline';
+// ★ 2026-11-04（用户：双机型）：连接成功后按广播名自动应用机型配置（Luna Mira=精简；Luna Mira Pro/HK18=全功能）
+import { autoApplyModelFromDeviceName } from '../config/deviceModel';
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
@@ -1460,6 +1462,14 @@ class NativeRingSource {
       patch.status = status as RingConnStatus;
     }
     if (raw.deviceName) patch.deviceName = String(raw.deviceName);
+    if (status === 'connected' && raw.deviceName) {
+      // ★ 2026-11-04（用户：双机型）：连接成功 → 按广播名自动切换机型配置（Luna Mira=精简；Luna Mira Pro/HK18=全功能）
+      void autoApplyModelFromDeviceName(String(raw.deviceName))
+        .then((applied) => {
+          if (applied) postLog('RingBle', `[DeviceModel] 广播名「${String(raw.deviceName)}」→ 自动应用机型 ${applied}`);
+        })
+        .catch(() => {});
+    }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? null;
     if (raw.firmware) patch.firmware = String(raw.firmware);
     if (raw.deviceAddress) patch.deviceId = String(raw.deviceAddress);
@@ -1543,6 +1553,14 @@ class NativeRingSource {
     const patch: StatePatch = {};
     if (typeof raw.status === 'string') patch.status = raw.status as RingConnStatus;
     if (raw.deviceName) patch.deviceName = raw.deviceName;
+    if (raw.status === 'connected' && raw.deviceName) {
+      // ★ 2026-11-04（用户：双机型）：连接成功 → 按广播名自动切换机型配置（同分流 6）
+      void autoApplyModelFromDeviceName(String(raw.deviceName))
+        .then((applied) => {
+          if (applied) postLog('RingBle', `[DeviceModel] 广播名「${String(raw.deviceName)}」→ 自动应用机型 ${applied}`);
+        })
+        .catch(() => {});
+    }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? patch.battery;
     if (raw.firmware) patch.firmware = raw.firmware;
     if (raw.deviceAddress) patch.deviceId = String(raw.deviceAddress);

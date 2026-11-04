@@ -464,8 +464,9 @@ export default function SettingsScreen() {
         </Card>
 
         {/* ★ 2026-11-04（用户：双机型）：设备型号 = Luna Mira Pro（全功能）/ Luna Mira（精简档）。
-            同一 Veepoo 协议、广播名暂无法可靠区分 → 手动选择，默认 Pro。 */}
+            连接成功后按广播名自动切换（Luna Mira=精简；Luna Mira Pro/HK18=全功能），手动选择仅作兜底。 */}
         <Text style={styles.sectionTitle}>设备型号</Text>
+        <Text style={styles.modelHint}>连接戒指后按设备名自动切换，一般无需手动选择</Text>
         <Card padded={false} style={styles.listCard}>
           {Object.values(DEVICE_MODELS).map((m) => {
             const on = m.id === deviceModel.id;
@@ -712,7 +713,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   listCard: { marginBottom: theme.space.sm },
-  // ── ★ 2026-11-04：设备型号选择（Luna Mira Pro / Luna Mira）──
+  // ── ★ 2026-11-04：设备型号选择（Luna Mira Pro / Luna Mira，连接后自动识别）──
+  modelHint: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
+    marginLeft: theme.space.xs,
+    marginBottom: theme.space.sm,
+  },
   modelRow: {
     flexDirection: 'row',
     alignItems: 'center',

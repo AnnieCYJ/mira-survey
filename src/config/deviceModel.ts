@@ -78,11 +78,48 @@ export function hasCap(model: DeviceModelProfile, cap: keyof DeviceCapabilities)
 }
 
 /**
- * （预留）广播名 → 机型猜测：两机型共用协议、命名未定，先恒返回 null（= 交给手动选择）。
- * 将来广播名定了（例如含 "Pro" 尾缀），在这里补关键词即可全链路自动生效。
+ * ★ 2026-11-04（用户拍板）：广播名只有两种 → 自动识别机型
+ *  - 「Luna Mira」（不含 Pro）→ 精简档
+ *  - 「Luna Mira Pro」/「HK18」→ 全功能档
+ * 其余名字识别不出 → 返回 null（保留当前选择，可在设置页手动指定）。
  */
-export function guessModelFromName(_deviceName: string | null | undefined): DeviceModelId | null {
+export function guessModelFromName(deviceName: string | null | undefined): DeviceModelId | null {
+  const n = String(deviceName ?? '').trim().toLowerCase();
+  if (!n) return null;
+  const hasLunaMira = n.includes('luna mira') || n.includes('lunamira');
+  // 先判 Pro：避免「luna mira pro」被精简规则截胡（pro 判定优先）
+  if (hasLunaMira && (n.includes('pro') || n.includes('hk18'))) return 'lunaMiraPro';
+  if (hasLunaMira) return 'lunaMira';
+  if (n.includes('hk18')) return 'lunaMiraPro';
   return null;
+}
+
+// ── 机型变更订阅：BLE 层自动切换时通知所有 useDeviceModel() 实例即时刷新 ──
+type ModelListener = (id: DeviceModelId) => void;
+const listeners = new Set<ModelListener>();
+
+export function subscribeModelChange(fn: ModelListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+/**
+ * ★ 连接成功后按广播名自动应用机型（BLE 层调用）：
+ * 识别出新机型且与当前持久化值不同 → 写入 + 通知全 App 门禁刷新。
+ * 识别不出（null）→ 不动，保留用户手动选择/默认 Pro。
+ */
+export async function autoApplyModelFromDeviceName(
+  deviceName: string | null | undefined,
+): Promise<DeviceModelId | null> {
+  const guessed = guessModelFromName(deviceName);
+  if (!guessed) return null;
+  const current = await getDeviceModelId();
+  if (current === guessed) return guessed;
+  await setDeviceModelId(guessed);
+  listeners.forEach((fn) => fn(guessed));
+  return guessed;
 }
 
 /**
@@ -99,8 +136,13 @@ export function useDeviceModel(): {
     getDeviceModelId().then((v) => {
       if (alive) setId(v);
     });
+    // ★ 订阅自动切换（BLE 连接按广播名识别机型后，所有门禁即时生效）
+    const off = subscribeModelChange((next) => {
+      if (alive) setId(next);
+    });
     return () => {
       alive = false;
+      off();
     };
   }, []);
   const setModelId = async (next: DeviceModelId) => {
