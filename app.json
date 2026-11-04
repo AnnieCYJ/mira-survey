@@ -70,6 +70,7 @@
         }
       ],
       "./plugins/withMetroScheme",
+      "./plugins/withAndroidBuildHardening",
       [
         "@react-native-voice/voice",
         {

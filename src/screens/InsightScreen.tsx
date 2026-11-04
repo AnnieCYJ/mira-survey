@@ -498,6 +498,25 @@ export default function InsightScreen() {
       return !c || hasCap(deviceModel, c);
     });
   }, [deviceModel]);
+  // ★ 2026-11-04（用户：「这个版本没有返回数据的，就直接去掉展示」）：
+  //   动态隐藏「当前无数据」的指标卡（如基础版 EDA 皮电显示「尚未测量」）。
+  //   用稳定的 dataSig 字符串驱动，仅当某指标「有无数据」状态翻转时才重算布局，避免 1Hz 心率采样引发整页重排抖动。
+  const dataSig = basicsSignals
+    .map((m) => {
+      const rk = m.key as RingMetricKey;
+      const real = realtimeKeys.has(m.key) ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
+      const hasTrend = getTodaySeries(m.key).length > 0;
+      return real != null || hasTrend ? '1' : '0';
+    })
+    .join('');
+  const visibleKeys = useMemo(() => {
+    const set = new Set<string>();
+    basicsSignals.forEach((m, i) => {
+      if (dataSig[i] === '1') set.add(m.key);
+    });
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataSig]);
   // ★ 双列瀑布流布局：按 section 分组（组标题占整行），组内按「有无趋势图」估高做两列分配。
   //   分配结果（当前 6 张卡）：
   //     左列 = 心率 / EDA皮电 / 心率变异性（高·矮·高）
@@ -514,10 +533,10 @@ export default function InsightScreen() {
     //   11 张卡进同一对列 → 整体紧凑、底部两列自然对齐。
     return [{
       section: basicsSignals.find((m) => !!m.section)?.section ?? '',
-      items: basicsSignals,
-      columns: splitColumnsBalanced(basicsSignals, estH, (m) => m.key, afterOf),
+      items: basicsSignals.filter((m) => visibleKeys.has(m.key)),
+      columns: splitColumnsBalanced(basicsSignals.filter((m) => visibleKeys.has(m.key)), estH, (m) => m.key, afterOf),
     }];
-  }, [basicsSignals]);
+  }, [basicsSignals, visibleKeys]);
 
   /** 渲染单张基础指标卡（原网格内的卡片逻辑抽出，供左右两列复用）。 */
   const renderBasicsCard = (m: BasicMetricDef) => {
