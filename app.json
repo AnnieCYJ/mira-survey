@@ -69,12 +69,6 @@
           }
         }
       ],
-      [
-        "./plugins/withLlamaRN",
-        {
-          "forceCxx20": true
-        }
-      ],
       "./plugins/withMetroScheme",
       [
         "@react-native-voice/voice",

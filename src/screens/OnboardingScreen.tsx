@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { userStore, type UserProfile } from '../data/userStore';
@@ -91,6 +92,17 @@ const QUESTIONS: Question[] = [
 
 type Bubble = { role: 'ai' | 'user'; text: string };
 
+/** ★ 2026-11-04：每答一题后 Mira 的柔和活泼回应（带一点解释，语气轻快） */
+const RESPONSES: Record<string, string> = {
+  gender: '好呀～ 记下了 🌿 了解这个，能帮我更贴近你的周期节奏。',
+  age: '收到～ 年龄会让参考区间更贴合你，不会拿错标准。',
+  height: '好嘞，身高记下啦。',
+  weight: '嗯嗯，体重也记下咯～',
+  sleep: '懂了～ 作息对恢复和情绪影响不小，我会多留意。',
+  exercise: '收到！运动是很棒的恢复信号 💪',
+  work: '明白～ 工作节奏我会算进你的精力消耗里。',
+};
+
 export default function OnboardingScreen({ onDone }: Props) {
   const insets = useSafeAreaInsets();
   const [bubbles, setBubbles] = useState<Bubble[]>([{ role: 'ai', text: QUESTIONS[0].ai }]);
@@ -99,6 +111,7 @@ export default function OnboardingScreen({ onDone }: Props) {
   const [typing, setTyping] = useState(false);
   const [numText, setNumText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'chat' | 'video'>('chat');
   const scrollRef = useRef<ScrollView>(null);
   const dot = useRef(new Animated.Value(0)).current;
 
@@ -140,13 +153,17 @@ export default function OnboardingScreen({ onDone }: Props) {
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
-      if (next < total) {
-        setStep(next);
-        pushAi(QUESTIONS[next].ai);
-      } else {
-        setStep(total);
-        pushAi('都了解啦～ 这些信息会帮我更贴近你的身体节奏。准备好开始了吗？');
-      }
+      // ★ 2026-11-04：每答一题，Mira 先给一个柔和活泼的回应，再抛下一题（更像真实对话）
+      pushAi(RESPONSES[q.id] ?? '记下了～');
+      setTimeout(() => {
+        if (next < total) {
+          setStep(next);
+          pushAi(QUESTIONS[next].ai);
+        } else {
+          setStep(total);
+          pushAi('都了解啦～ 这些信息会帮我更贴近你的身体节奏。准备好开始了吗？');
+        }
+      }, 950);
     }, 620);
   };
 
@@ -163,8 +180,13 @@ export default function OnboardingScreen({ onDone }: Props) {
     };
     await userStore.completeOnboarding(profile);
     setBusy(false);
-    onDone();
+    // ★ 2026-11-04：资料保存后不直接进主页，先放一段欢迎视频，看完再进入
+    setPhase('video');
   };
+
+  if (phase === 'video') {
+    return <OnboardVideoScreen onDone={onDone} />;
+  }
 
   return (
     <View style={s.root}>
@@ -255,6 +277,25 @@ export default function OnboardingScreen({ onDone }: Props) {
           </View>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/** ★ 2026-11-04：资料收集完成后的欢迎视频页（问答之后播放，看完点「进入 Mira」进主页） */
+function OnboardVideoScreen({ onDone }: { onDone: () => void }) {
+  return (
+    <View style={s.videoRoot}>
+      <Video
+        source={require('../assets/onboarding/onboard_welcome.mp4')}
+        style={StyleSheet.absoluteFill}
+        resizeMode={ResizeMode.COVER}
+        isLooping
+        shouldPlay
+      />
+      <View style={s.videoScrim} />
+      <TouchableOpacity style={s.videoEnter} activeOpacity={0.85} onPress={onDone}>
+        <Text style={s.videoEnterTxt}>进入 Mira →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -456,4 +497,32 @@ const s = StyleSheet.create({
   },
   finishBtnOff: { opacity: 0.6 },
   finishTxt: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
+  // —— 欢迎视频页 ——
+  videoRoot: { flex: 1, backgroundColor: '#000' },
+  videoScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 150,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  videoEnter: {
+    position: 'absolute',
+    left: theme.space.card,
+    right: theme.space.card,
+    bottom: theme.space.xl,
+    height: 52,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.ui.white92,
+    borderWidth: 1,
+    borderColor: theme.colors.ui.white55,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  videoEnterTxt: { color: theme.colors.bgBottom, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
 });

@@ -237,11 +237,6 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               disabled={busy}
               onPress={submit}
             >
-              <LinearGradient
-                colors={[...theme.colors.aiBadgeGrad]}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
               <Text style={s.primaryTxt}>{busy ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}</Text>
             </TouchableOpacity>
 
@@ -341,9 +336,9 @@ const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: theme.colors.accentGreen,
     marginBottom: theme.space.sm,
-    shadowColor: theme.colors.accentSolid,
+    shadowColor: theme.colors.accentGreen,
     shadowOpacity: 0.5,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
@@ -383,8 +378,8 @@ const s = StyleSheet.create({
     width: '48%',
     bottom: 3,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accentSolid,
-    shadowColor: theme.colors.accentSolid,
+    backgroundColor: theme.colors.accentGreen,
+    shadowColor: theme.colors.accentGreen,
     shadowOpacity: 0.4,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -411,15 +406,15 @@ const s = StyleSheet.create({
     height: 50,
   },
   eye: { paddingHorizontal: theme.space.xs },
-  eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentText },
+  eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentGreenText },
   codeBtn: {
-    backgroundColor: theme.colors.accentSoft,
+    backgroundColor: theme.colors.accentGreenSoft,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 6,
   },
   codeBtnOff: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.medium as any },
+  codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.accentGreenText, fontWeight: theme.weight.medium as any },
   codeTxtOff: { color: theme.colors.textSub },
   error: {
     color: theme.colors.danger,
@@ -433,13 +428,20 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: theme.space.sm,
-    overflow: 'hidden',
+    backgroundColor: theme.colors.ui.white92,
+    borderWidth: 1,
+    borderColor: theme.colors.ui.white55,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   primaryOff: { opacity: 0.6 },
-  primaryTxt: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
+  primaryTxt: { color: theme.colors.bgBottom, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
   demoHint: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.accentText,
+    color: theme.colors.accentGreenText,
     marginTop: theme.space.xs,
     textAlign: 'center',
   },

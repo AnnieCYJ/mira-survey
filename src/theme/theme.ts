@@ -44,6 +44,15 @@ export const colors = {
   accentText: '#BFCBFF',
   accentSoft: 'rgba(160,178,255,0.16)',
   /**
+   * ★ 2026-11-04：登录/注册页专属绿色强调（用户要求「紫色改绿色」）。
+   *   仅用于 LoginScreen 的滑块 / 圆点等小面积色块；深底上用深翠绿 #16A06A（白字可读），
+   *   文字类点缀用浅绿 #79E0AE（深蓝紫底对比达标），浅底用 accentGreenSoft。
+   *   ⚠️ 不影响 App 其余 Mira AI 身份紫（聊天 / onboarding 仍走 accent* 紫系）。
+   */
+  accentGreen: '#16A06A',
+  accentGreenSoft: 'rgba(22,160,106,0.20)',
+  accentGreenText: '#79E0AE',
+  /**
    * 紫色渐变卡（血压 / 血糖）的两端 —— 由深到浅：from 左上、to 右下。
    * ★ 2026-09-20 第四版（用户定稿方向）：**紫底 + 白字**，但紫要落在 design token 的量级
    *   （原 `#5B4BC8 → #6A5AE2` 太深）。现取值 = `accentSolid #7C6AE0` 同色相下压两档

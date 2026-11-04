@@ -1,21 +1,14 @@
 /**
  * MiraAIHomeScreen —— 点击 tab bar 中间 bot 后进入的「Mira AI 首页」。
  *
- * ★ v16 reskin：整页白底 + 墨字（AI 语义紫只保留在 AiOrb 光球上）；
- *   版本徽章/喇叭钮 = 黄绿；发送钮 = 统一 lime→粉 渐变。
- *   - 顶部：白色左对齐大标题「Mira AI」+ 标题右侧「1.3」半透明胶囊徽章；
- *     下一行副标题「你的健康助手」；右上角 🔊 喇叭按钮。无返回键（tab 页靠 tab bar 导航）。
- *   - 中部：AiOrb 光球（"Hi, can I help you?"）+ 三排建议问题跑马灯：
- *     第 1/3 排向左滚动，第 2 排向右滚动；手指按住可暂停并手动拖动，松手 2.2s 后恢复。
- *   - 底部：圆角输入框 + 渐变发送圆钮（麦克风按钮已按用户要求移除）。
- *     ★ 输入行用 position:absolute 贴在屏底、paddingBottom = tabBarHeight + sp(2) + sp(2.5) = 74px，
- *       即「tab 卡片顶边(64px) + 10px 间距」纯几何计算（**不加 insets.bottom**，tab bar 是
- *       bottom:0 浮层、不含安全区，加了会重复计算）。绕开 KeyboardAvoidingView 在 iOS 篡改 padding 的坑。
- *
- * 点击问题 / 发送文字 → push VoiceChat（ChatSheet）带初始问题进入对话（语音输入走 tab bar 长按 bot）。
- * 跑马灯在页面失焦（跳转到问答页时）自动暂停，转场更顺、不空转。
+ * ★ 2026-11-04（用户要求）：做成「更像对话」的 Grok 式首页——
+ *   顶部 Mira 打招呼气泡（与聊天页同源的 AI 气泡样式）+ 一串静态「你可以这样问我」建议问题，
+ *   点任意一条直接进入对话。去掉原先自动横向跑马灯（不够像对话）。
+ *   - 顶部：左对齐大标题「Mira AI」+ 版本徽章；副标题「你的健康助手」；右上 🔊 喇叭。无返回键。
+ *   - 中部：AiOrb 光球 + Mira 打招呼气泡 + 静态建议问题（可点，像 ChatGPT/Grok 开场）。
+ *   - 底部：圆角输入框 + 渐变发送圆钮。
  */
-import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,7 +16,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Animated,
   StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,107 +42,6 @@ function questionKey(rs: RingState | null): string {
   ].join('|');
 }
 
-const MARQUEE_SPEED = 26;   // 自动滚动速度 px/s
-const RESUME_DELAY_MS = 2200; // 手动拖动后恢复自动滚动的延时
-
-/** v16：三排建议问题 = 三个 pastel 家族（紫=认知 / 粉=情绪 / 蓝=运动心肺），soft 底 + deep 字 */
-const ROW_TONES = [
-  { bg: mm.colors.purpleSoft, fg: mm.colors.purpleDeep },
-  { bg: mm.colors.roseSoft, fg: mm.colors.roseDeep },
-  { bg: mm.colors.skySoft, fg: mm.colors.skyDeep },
-] as const;
-
-/**
- * 单排问题跑马灯：内容复制一份做无缝循环。
- * direction=1 内容向左移（第 1/3 排），direction=-1 内容向右移（第 2 排）。
- *
- * ★ 用 Animated translateX 位移，而非 ScrollView.scrollTo —— 否则 ScrollView 每帧都处在
- *   「滚动/惯性」状态，iOS 会吃掉子按钮的 onPress（表现为点问题没反应）。translateX 动画
- *   不会触发滚动态，点击正常。
- * ★ active=false（页面失焦/跳走）时暂停更新，转场不空转、更顺滑。
- */
-function MarqueeRow({
-  questions,
-  direction,
-  onPick,
-  active,
-  bg,
-  fg,
-}: {
-  questions: string[];
-  direction: 1 | -1;
-  onPick: (q: string) => void;
-  active: boolean;
-  /** v16：每排一个 pastel 家族（soft 底 + deep 字） */
-  bg: string;
-  fg: string;
-}) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const halfW = useRef(0);                  // 单份内容的宽度（循环周期）
-  const pos = useRef(0);
-  const paused = useRef(false);
-  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeRef = useRef(active);
-  const loop = useMemo(() => [...questions, ...questions], [questions]);
-
-  useEffect(() => { activeRef.current = active; }, [active]);
-
-  useEffect(() => {
-    let raf = 0;
-    let last = Date.now();
-    const step = () => {
-      const now = Date.now();
-      const dt = Math.min(now - last, 64); // 切后台回来防止跳变
-      last = now;
-      if (activeRef.current && !paused.current && halfW.current > 0) {
-        pos.current += (direction * MARQUEE_SPEED * dt) / 1000;
-        if (pos.current >= halfW.current) pos.current -= halfW.current;
-        if (pos.current < 0) pos.current += halfW.current;
-        translateX.setValue(-pos.current);
-      }
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => {
-      cancelAnimationFrame(raf);
-      if (resumeTimer.current) clearTimeout(resumeTimer.current);
-    };
-  }, [direction, translateX]);
-
-  const pause = () => {
-    paused.current = true;
-    if (resumeTimer.current) clearTimeout(resumeTimer.current);
-  };
-  const resumeSoon = () => {
-    if (resumeTimer.current) clearTimeout(resumeTimer.current);
-    resumeTimer.current = setTimeout(() => { paused.current = false; }, RESUME_DELAY_MS);
-  };
-
-  return (
-    <View
-      style={styles.qRow}
-      onTouchStart={pause}
-      onTouchEnd={resumeSoon}
-    >
-      <Animated.View
-        style={[styles.qRowInner, { transform: [{ translateX }] }]}
-        onLayout={(e) => { halfW.current = e.nativeEvent.layout.width / 2; }}
-      >
-        {loop.map((q, i) => (
-          <TouchableOpacity
-            key={`${q}-${i}`}
-            style={[styles.qChip, { backgroundColor: bg }]}
-            onPress={() => onPick(q)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.qChipText, { color: fg }]}>{q}</Text>
-          </TouchableOpacity>
-        ))}
-      </Animated.View>
-    </View>
-  );
-}
-
 export default function MiraAIHomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -160,7 +51,7 @@ export default function MiraAIHomeScreen() {
   const { stop } = useSpeech();
   const [draft, setDraft] = useState('');
 
-  // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
+  // ★ mira-ocean：深底 → 状态栏亮图标
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
     return () => StatusBar.setBarStyle('light-content', true);
@@ -168,7 +59,14 @@ export default function MiraAIHomeScreen() {
 
   const k = questionKey(ringState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const rows = useMemo(() => generateQuestions(ringState, 4), [k]);
+  const rows = useMemo(() => generateQuestions(ringState), [k]);
+
+  // ★ 2026-11-04：把三排问题摊平成「开场建议」，去重后取前 6 条，静态展示可点
+  const starters = useMemo(() => {
+    const flat: string[] = [];
+    rows.forEach((r) => r.forEach((q) => { if (!flat.includes(q)) flat.push(q); }));
+    return flat.slice(0, 6);
+  }, [rows]);
 
   const openChat = (q: string) => {
     const t = (q || '').trim();
@@ -184,18 +82,10 @@ export default function MiraAIHomeScreen() {
     openChat(t);
   };
 
-  /* ★ 输入行底部留白 = tab 卡片顶边高度 + 10px 间距，纯几何计算。
-     实测 tab bar 几何（CustomTabBar.tsx）：wrap 是 position:absolute + bottom:0（屏幕底）
-     + marginBottom sp(2)=8，leftCard/botBtn 高 tabBarHeight=56 → 卡片顶边恒在屏底上方
-     56+8=64px，且**不含安全区**（导航器未给 tab bar 包 SafeArea，bottom:0 即屏幕底）。
-     所以这里绝不能再加 insets.bottom —— 加了会重复计算（真机多出 ~34px 空隙）。
-     ⚠️ 不要改回 layout.pageBottomPad(insets)：那个公式面向「内容被 tab 栏遮挡」的滚动页，
-        它假定 tab 栏上方还留 raised(16)+20 的缓冲，对贴底的输入行偏松。 */
   const inputPadBottom = theme.layout.tabBarHeight + theme.sp(2) + theme.sp(2.5); // 56+8+10 = 74
 
   return (
     <View style={styles.root}>
-      {/* ★ mira-ocean（2026-10-17）：整页由白底改深海渐变（Calm 式钢蓝→蓝紫，同 App 根渐变） */}
       <LinearGradient
         colors={[...theme.colors.bgGradStops] as unknown as string[]}
         locations={[...theme.colors.bgGradLocs] as unknown as number[]}
@@ -233,35 +123,50 @@ export default function MiraAIHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 中部：光球 + 三排跑马灯问题（1/3 排向左、2 排向右，按住可暂停拖动） */}
+      {/* 中部：光球 + Mira 打招呼气泡 + 静态建议问题（更像对话） */}
       <ScrollView
         style={styles.content}
         contentContainerStyle={[styles.contentInner, { paddingBottom: inputPadBottom + theme.sp(4) }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <AiOrb size={240} title="Hi, can I help you?" />
-        <View style={styles.qRows}>
-          {rows.map((row, ri) => (
-            <MarqueeRow
-              key={ri}
-              questions={row}
-              direction={ri === 1 ? -1 : 1}
-              onPick={openChat}
-              active={focused}
-              bg={ROW_TONES[ri % ROW_TONES.length].bg}
-              fg={ROW_TONES[ri % ROW_TONES.length].fg}
-            />
+        <View style={styles.orbWrap}>
+          <AiOrb size={150} title="Hi 👋" />
+        </View>
+
+        {/* ★ Mira 打招呼气泡（与聊天页 AI 气泡同源样式） */}
+        <View style={styles.greetRow}>
+          <View style={styles.greetAvatar}>
+            <Icon name="sparkle" size={theme.fs(13)} color={theme.colors.textWhite} strokeWidth={2.4} />
+          </View>
+          <View style={styles.greetBubble}>
+            <View style={styles.greetBadge}>
+              <Text style={styles.greetBadgeTxt}>Mira</Text>
+            </View>
+            <Text style={styles.greetText}>
+              嗨，我是 Mira 👋 你的健康助手。今天想聊聊身体状态，还是随便问我点什么？
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.suggestHeader}>你可以这样问我</Text>
+        <View style={styles.chipWrap}>
+          {starters.map((q, i) => (
+            <TouchableOpacity
+              key={`${q}-${i}`}
+              style={styles.suggestChip}
+              onPress={() => openChat(q)}
+              activeOpacity={0.7}
+            >
+              <Icon name="sparkle" size={theme.fs(13)} color={theme.colors.accentText} strokeWidth={2.2} />
+              <Text style={styles.suggestChipText} numberOfLines={2}>{q}</Text>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
-      {/* 底部输入行：输入框 + 紫色发送 + 麦克风。
-          ★ position:absolute 贴在屏底，paddingBottom = pageBottomPad（= tab 栏高 56 + 安全区 + raised 16 + 20），
-            彻底绕开 KeyboardAvoidingView 在 iOS 上篡改 padding 的坑，输入框稳显示于 tab 栏上方 */}
-      <View
-        style={[styles.inputBar, { paddingBottom: inputPadBottom }]}
-      >
+      {/* 底部输入行：输入框 + 发送渐变圆钮 */}
+      <View style={[styles.inputBar, { paddingBottom: inputPadBottom }]}>
         <TextInput
           style={styles.input}
           placeholder="问我任何健康问题"
@@ -279,7 +184,6 @@ export default function MiraAIHomeScreen() {
           accessibilityLabel="发送"
         >
           {draft.trim() ? (
-            /* v16：发送钮 = 统一 lime→粉 渐变（渐变层自带圆角） */
             <LinearGradient
               colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
               start={{ x: 0, y: 0 }}
@@ -289,8 +193,6 @@ export default function MiraAIHomeScreen() {
               <Icon name="send" size={theme.fs(18)} color={mm.colors.btnTextOnGrad} />
             </LinearGradient>
           ) : (
-            /* v18.20：禁用态也用铺满内层——此前 Icon 直接当子元素会被
-               TouchableOpacity（纵向容器）顶到左上角，图标飘出圆心 */
             <View style={[styles.sendBtnGrad, { backgroundColor: mm.colors.btnBusyBg }]}>
               <Icon name="send" size={theme.fs(18)} color={mm.colors.inkFaint} />
             </View>
@@ -304,10 +206,8 @@ export default function MiraAIHomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    // ★ mira-ocean：底色由根渐变铺（见 render 顶部 LinearGradient），此处留深蓝紫兜底
     backgroundColor: '#0A294F',
   },
-  // —— 顶部 header（白底 + 墨字）——
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,36 +252,75 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   contentInner: {
     flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: theme.space.xl,
   },
-  qRows: {
-    width: '100%',
+  orbWrap: {
+    alignItems: 'center',
+    marginTop: theme.sp(2),
+    marginBottom: theme.space.lg,
+  },
+  // —— Mira 打招呼气泡（与聊天页 AI 气泡同源）——
+  greetRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: theme.space.lg,
+  },
+  greetAvatar: {
+    width: theme.sp(6),
+    height: theme.sp(6),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.colors.purpleCore,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(2),
+  },
+  greetBubble: {
+    flex: 1,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    padding: theme.space.sm + 2,
+  },
+  greetBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.accentSoft,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
+  greetBadgeTxt: { fontSize: theme.fontSize.tiny, color: theme.colors.accentText, fontWeight: theme.weight.semibold as any },
+  greetText: { fontSize: theme.fontSize.body, color: theme.colors.textBody, lineHeight: theme.fontSize.body * 1.5 },
+  // —— 静态建议问题（开场，可点）——
+  suggestHeader: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    fontWeight: theme.weight.medium as any,
+    marginBottom: theme.space.sm,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.sp(2),
-    marginTop: theme.space.xl,
   },
-  qRow: {
-    width: '100%',
-    overflow: 'hidden',
-  },
-  // 横向排布、不换行；内容复制两份做无缝循环，容器 overflow 隐藏裁切两侧
-  qRowInner: {
+  suggestChip: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  qChip: {
-    flexShrink: 0,
-    marginHorizontal: theme.sp(1.5),
+    maxWidth: '48%',
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.sp(2.5),
-    borderRadius: theme.radius.pill,
-    backgroundColor: mm.colors.btnBusyBg,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
-  qChipText: {
+  suggestChipText: {
     fontSize: theme.fontSize.xs,
-    color: mm.colors.inkSoft,
-    fontWeight: theme.weight.medium,
+    color: theme.colors.textBody,
+    fontWeight: theme.weight.medium as any,
+    marginLeft: theme.sp(1.5),
+    flex: 1,
   },
   // —— 底部输入行（absolute 贴屏底）——
   inputBar: {

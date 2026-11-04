@@ -2154,12 +2154,13 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   // ★ 本轮（用户）：疲劳度 → 低/中/高 分段条形（指针标记当前值，一眼看懂 0–100 含义）
   // ★ 本轮（用户）：疲劳度不再单独成卡，作为内嵌块并入「压力分析 + 恢复力」合并卡
   const renderFatigueBar = () => {
-    const pct = fatigue == null ? 0 : Math.max(0, Math.min(100, fatigue));
+    const shown = fatigue == null ? null : Math.round(fatigue);
+    const pct = shown == null ? 0 : Math.max(0, Math.min(100, shown));
     return (
       <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
-          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{fatigue != null ? String(fatigue) : '—'}</Text>
+          <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{shown != null ? String(shown) : '—'}</Text>
           <Text style={[styles.statLabel, { marginLeft: theme.sp(1.5), color: fatigueBand?.color ?? theme.colors.textSub }]}>{fatigueBand ? `${fatigueBand.text}疲劳` : '暂无数据'}</Text>
         </View>
         <View style={{ position: 'relative', marginVertical: theme.sp(1) }}>
