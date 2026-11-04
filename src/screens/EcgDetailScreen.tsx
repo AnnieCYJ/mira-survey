@@ -171,6 +171,26 @@ export default function EcgDetailScreen() {
     return () => clearTimeout(id);
   }, [measuring]);
 
+  // ★ 2026-11-04（用户：「99% 卡住不动」）：进度停滞看门狗 —— progress 连续 12s 不涨（SDK 卡在末段等最终结果）
+  //   就不再干等满 120s，直接中止并给出明确失败原因，浮层立即回到可重试状态。
+  useEffect(() => {
+    if (!measuring) return;
+    let lastP = -1;
+    let lastChangeAt = Date.now();
+    const iv = setInterval(() => {
+      const p = RingBle.getState().ecgProgress?.progress ?? 0;
+      if (p !== lastP) {
+        lastP = p;
+        lastChangeAt = Date.now();
+        return;
+      }
+      if (p > 0 && Date.now() - lastChangeAt > 12000) {
+        RingBle.abortEcg();
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [measuring]);
+
   const measureEcg = useCallback(() => {
     if (measuring) return;
     setMeasuring(true);

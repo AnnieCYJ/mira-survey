@@ -1,15 +1,14 @@
 /**
  * EcgMeasureSheet —— 心电测量引导浮层（EcgDetailScreen 与洞察页 EcgCard 共用）
  * ─────────────────────────────────────────────────────────────────────────────
- * ★ 2026-11-03（用户）：
- *   1) 点击「测量」弹出动画图 —— 食指轻触戒指外侧金属电极的示意（手指往复轻点 + 电极发光）；
- *   2) 底部进度条（真实 progress 与 UI 平滑值取大者，由调用方传入 displayProgress）；
- *   3) 采到心电后浮层内直接展示实时心电图（ecgLiveWaveform，最新窗口不压缩）；
- *   4) 失败（ecgError）时浮层停留展示原因 + 关闭按钮；成功（visible 变 false）自动收起。
+ * ★ 2026-11-03（用户）：点击「测量」弹出浮层：底部进度条（调用方传入真实 progress）+
+ *   实时心电图（ecgLiveWaveform）+ 失败停留展示原因 + 成功自动收起。
+ * ★ 2026-11-04（用户）：① 删顶部「食指轻点」动画图（看不懂）；② 卡片/内嵌块配色深化（白字才看得清）；
+ *   ③ 99% 停滞不再干等——调用方有停滞看门狗，此处 99% 显示「即将完成，正在生成报告…」。
  * 全部走 design token，无裸值（动画坐标除外）。
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, Animated, Easing, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -69,32 +68,6 @@ export default function EcgMeasureSheet({ visible, progress, hr, liveWaveform, e
   useEffect(() => { if (visible) setOpen(true); }, [visible]);
   useEffect(() => { if (!visible && !error) setOpen(false); }, [visible, error]);
 
-  // 食指轻点动画：往复下压 + 电极光晕呼吸
-  const tap = useRef(new Animated.Value(0)).current;
-  const glow = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!open) return;
-    const tapLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(tap, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(tap, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ])
-    );
-    const glowLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ])
-    );
-    tapLoop.start();
-    glowLoop.start();
-    return () => { tapLoop.stop(); glowLoop.stop(); };
-  }, [open, tap, glow]);
-
-  const fingerY = tap.interpolate({ inputRange: [0, 1], outputRange: [-26, 8] });
-  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.75] });
-  const glowScale = glow.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.25] });
-
   const W = Math.round(Dimensions.get('window').width) - 72;
   const H = 96;
   const hasLive = !!liveWaveform && liveWaveform.length > 4;
@@ -107,20 +80,6 @@ export default function EcgMeasureSheet({ visible, progress, hr, liveWaveform, e
         <View style={s.box}>
           <Text style={s.title}>心电测量</Text>
 
-          {/* 引导动画：食指往复轻点戒指外侧电极 */}
-          <View style={s.illuWrap}>
-            <Animated.View
-              style={[s.glow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
-            />
-            {/* 戒指截面（外侧电极朝上） */}
-            <View style={s.ringBody}>
-              <View style={s.electrode} />
-            </View>
-            {/* 手指（指尖朝下） */}
-            <Animated.View style={[s.finger, { transform: [{ translateY: fingerY }] }]}>
-              <View style={s.nail} />
-            </Animated.View>
-          </View>
           <Text style={s.guide}>
             戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后开始出图
           </Text>
@@ -155,7 +114,7 @@ export default function EcgMeasureSheet({ visible, progress, hr, liveWaveform, e
                 <View style={[s.progFill, { width: `${p}%` }]} />
               </View>
               <Text style={s.progText}>
-                测量中 {p}%{hr ? ` · ${Math.round(hr)} bpm` : ''}
+                {p >= 99 ? '即将完成，正在生成报告…' : `测量中 ${p}%`}{p < 99 && hr ? ` · ${Math.round(hr)} bpm` : ''}
               </Text>
             </View>
           ) : null}
@@ -185,7 +144,8 @@ const s = StyleSheet.create({
     width: '86%',
     maxWidth: 360,
     alignItems: 'center',
-    backgroundColor: theme.colors.cardBg,
+    // ★ 2026-11-04（用户「太浅看不清字」）：白 13% 半透明太浅，改近实心深色玻璃，白字对比拉满
+    backgroundColor: 'rgba(12,20,35,0.97)',
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card,
@@ -199,59 +159,6 @@ const s = StyleSheet.create({
     marginBottom: theme.sp(2),
   },
 
-  illuWrap: {
-    width: 150,
-    height: 130,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginBottom: theme.sp(2),
-  },
-  glow: {
-    position: 'absolute',
-    bottom: 30,
-    width: 46,
-    height: 14,
-    borderRadius: theme.radius.sm,
-    backgroundColor: mm.colors.ecgRed,
-  },
-  ringBody: {
-    width: 96,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 7,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginBottom: 8,
-  },
-  electrode: {
-    position: 'absolute',
-    top: -5,
-    width: 44,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
-  finger: {
-    position: 'absolute',
-    top: 0,
-    width: 46,
-    height: 92,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.6)',
-    alignItems: 'center',
-  },
-  nail: {
-    marginTop: 6,
-    width: 30,
-    height: 22,
-    borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-
   guide: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.textSub,
@@ -262,7 +169,8 @@ const s = StyleSheet.create({
 
   liveBox: {
     width: '100%',
-    backgroundColor: 'rgba(255,240,243,0.6)',
+    // ★ 2026-11-04：浅粉 0.6 白底 + 白字看不清 → 深红玻璃底
+    backgroundColor: 'rgba(229,72,77,0.12)',
     borderRadius: theme.radius.sm,
     paddingVertical: theme.sp(1.5),
     paddingHorizontal: theme.sp(2),
@@ -277,7 +185,7 @@ const s = StyleSheet.create({
 
   errBox: {
     width: '100%',
-    backgroundColor: theme.colors.dangerSoft ?? 'rgba(229,57,53,0.10)',
+    backgroundColor: 'rgba(229,72,77,0.14)', // ★ 2026-11-04：深化，配白字
     borderRadius: theme.radius.sm,
     padding: theme.sp(2),
     marginBottom: theme.sp(3),

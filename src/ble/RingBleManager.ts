@@ -64,7 +64,7 @@ import { computeHRV } from "../lib/hrvCompute";
 import { computeEmotionSnapshot, EMOTION_LABEL_CN, type EmotionSnapshot, type EmotionLabel } from '../lib/emotionEngine';
 import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recomputePipeline';
 // ★ 2026-11-04（用户：双机型）：连接成功后按广播名自动应用机型配置（Luna Mira=精简；Luna Mira Pro/HK18=全功能）
-import { autoApplyModelFromDeviceName } from '../config/deviceModel';
+import { autoApplyModelFromDeviceName, guessModelFromName, DEVICE_MODELS } from '../config/deviceModel';
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
@@ -6368,7 +6368,11 @@ class RingConnectionImpl {
   async uploadRingData(): Promise<{ ok: boolean; count: number; error?: string }> {
     const st = this.state;
     const deviceId = st.deviceId || st.deviceName || await getLocalDeviceId();
-    const firmware = st.firmware || 'HK18';
+    // ★ 2026-11-04（用户：固件号标注）：固件未同步时不再误标 'HK18' → 'unknown'；
+    //   顶层新增 model（机型，按广播名识别），后端一个账户可挂多固件/多机型，按此区分数据呈现。
+    const firmware = st.firmware || 'unknown';
+    const guessedModel = guessModelFromName(st.deviceName);
+    const model = guessedModel ? DEVICE_MODELS[guessedModel].label : (st.deviceName || 'unknown');
     const records: Array<{ channel: string; ts: number; payload: Record<string, any> }> = [];
 
     // 把 'YYYY-M-D' / 'YYYY-MM-DD' 规整为本地 0 点的 epoch 秒，并归一化为 'YYYY-MM-DD'
@@ -6518,6 +6522,7 @@ class RingConnectionImpl {
         body: JSON.stringify({
           device_id: deviceId,
           firmware,
+          model,
           synced_at: Math.floor(Date.now() / 1000),
           records,
         }),

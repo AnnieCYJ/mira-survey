@@ -43,8 +43,9 @@ export const DEVICE_MODELS: Record<DeviceModelId, DeviceModelProfile> = {
   lunaMira: {
     id: 'lunaMira',
     label: 'Luna Mira',
-    subtitle: '精简档：基础健康指标（无心电/血液成分/一键体检）',
-    capabilities: { ecg: false, bloodComponents: false, quickCheck: false },
+    // ★ 2026-11-04（用户）：一键体检加回精简档（数据项比 Pro 少，但功能保留）
+    subtitle: '基础健康指标 + 一键体检（无心电 / 血液成分）',
+    capabilities: { ecg: false, bloodComponents: false, quickCheck: true },
   },
 };
 

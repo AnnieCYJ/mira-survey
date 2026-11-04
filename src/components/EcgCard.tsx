@@ -84,6 +84,29 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
     return () => clearTimeout(id);
   }, [isMeasuring]);
 
+  // ★ 2026-11-04（用户：「99% 卡住不动」）：进度停滞看门狗 —— progress 连续 12s 不涨直接中止，
+  //   不再干等满 120s（SDK 末段等最终结果时 progress 会停在 99，Complete 不来就永远卡着）。
+  useEffect(() => {
+    if (!isMeasuring) return;
+    let lastP = -1;
+    let lastChangeAt = Date.now();
+    const iv = setInterval(() => {
+      const p = RingBle.getState().ecgProgress?.progress ?? 0;
+      if (p !== lastP) {
+        lastP = p;
+        lastChangeAt = Date.now();
+        return;
+      }
+      if (p > 0 && Date.now() - lastChangeAt > 12000) {
+        RingBle.abortEcg();
+        if (typeof Alert !== 'undefined') {
+          Alert.alert('ECG 测量未完成', '末段长时间无进展，已自动结束。请确认手指持续接触戒指外侧电极后重试。');
+        }
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isMeasuring]);
+
   const measureEcg = useCallback(() => {
     if (isMeasuring) return; // 正在测，忽略重复点击
     if (isDone) return;      // 刚完成，等结果落盘

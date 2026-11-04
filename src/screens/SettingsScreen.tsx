@@ -16,8 +16,6 @@ import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
 import { healthStore } from '../data/healthStore';
-// ★ 2026-11-04（用户：双机型）：Luna Mira Pro / Luna Mira 能力区分
-import { useDeviceModel, DEVICE_MODELS } from '../config/deviceModel';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
 
@@ -51,8 +49,6 @@ export default function SettingsScreen() {
   const [dumpPath, setDumpPath] = useState<string | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
   const [hsTick, setHsTick] = useState(0);
-  // ★ 2026-11-04（用户：双机型）：当前戒指型号（持久化在 prefs，切换后全 App 门禁即时生效）
-  const { model: deviceModel, setModelId: applyDeviceModel } = useDeviceModel();
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
@@ -186,6 +182,35 @@ export default function SettingsScreen() {
       ]
     );
   };
+
+  // ★ 2026-11-04（用户）：数据覆盖诊断 —— 连精简机型（Luna Mira）后看哪些指标实际无数据，为「屏蔽无数据指标」决策提供依据
+  const [covOpen, setCovOpen] = useState(false);
+  const covRows = React.useMemo(() => {
+    if (!covOpen) return [];
+    const keys7: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      keys7.push(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`); // 与 BLE 层 'YYYY-M-D' 同格式（不补零）
+    }
+    const LABEL: Record<string, string> = {
+      hr: '心率', spo2: '血氧', temp: '体温', skinTemp: '皮肤温度', eda: '皮电', hrv: 'HRV', rr: '呼吸率',
+      stress: '压力', fatigue: '疲劳度', emotion: '情绪', bloodSugar: '血糖', bpSys: '收缩压', bpDia: '舒张压',
+      cortisols: '皮质醇', snsActivation: '交感活性', steps: '步数', sleep: '睡眠', ecg: '心电',
+    };
+    const rows: { label: string; days: number }[] = [];
+    const series = (ring as any).seriesByDay ?? {};
+    for (const k of Object.keys(series)) {
+      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => ((series[k] ?? {})[d]?.length ?? 0) > 0).length });
+    }
+    const extras: [string, Record<string, unknown> | undefined][] = [
+      ['steps', (ring as any).stepDaily], ['sleep', (ring as any).sleepDaily], ['ecg', (ring as any).ecgDaily],
+    ];
+    for (const [k, m] of extras) {
+      if (!m) continue;
+      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => m[d] != null).length });
+    }
+    return rows.sort((a, b) => b.days - a.days);
+  }, [covOpen, ring]);
 
   const ringConnected = ring.status === 'connected';
   const ringBusy = ring.status === 'scanning' || ring.status === 'connecting';
@@ -463,30 +488,6 @@ export default function SettingsScreen() {
           )}
         </Card>
 
-        {/* ★ 2026-11-04（用户：双机型）：设备型号 = Luna Mira Pro（全功能）/ Luna Mira（精简档）。
-            连接成功后按广播名自动切换（Luna Mira=精简；Luna Mira Pro/HK18=全功能），手动选择仅作兜底。 */}
-        <Text style={styles.sectionTitle}>设备型号</Text>
-        <Text style={styles.modelHint}>连接戒指后按设备名自动切换，一般无需手动选择</Text>
-        <Card padded={false} style={styles.listCard}>
-          {Object.values(DEVICE_MODELS).map((m) => {
-            const on = m.id === deviceModel.id;
-            return (
-              <TouchableOpacity
-                key={m.id}
-                style={styles.modelRow}
-                activeOpacity={0.7}
-                onPress={() => applyDeviceModel(m.id)}
-              >
-                <View style={styles.modelTextWrap}>
-                  <Text style={styles.modelLabel}>{m.label}</Text>
-                  <Text style={styles.modelDesc}>{m.subtitle}</Text>
-                </View>
-                {on ? <Icon name="check" size={theme.fs(18)} color={mm.colors.ink} strokeWidth={2.4} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </Card>
-
         {/* 扫描到的候选设备：手动点选连接（避免盲连第一个） */}
         {ring.devices.length > 0 && ring.status !== 'connected' && (
           <Card padded={false} style={styles.listCard}>
@@ -520,6 +521,24 @@ export default function SettingsScreen() {
         )}
 
         {/* 数据备份 · 上传云端 */}
+        {/* ★ 2026-11-04（用户）：数据覆盖诊断（默认收起）——后续按此屏蔽精简机型的无数据指标 */}
+        <Text style={styles.sectionTitle}>数据覆盖诊断</Text>
+        <Card padded={false} style={styles.listCard}>
+          <TouchableOpacity style={styles.covHead} activeOpacity={0.7} onPress={() => setCovOpen((v) => !v)}>
+            <Text style={styles.covTitle}>最近 7 天各指标有数据天数{covOpen ? '　▾' : '　▸'}</Text>
+          </TouchableOpacity>
+          {covOpen ? (
+            <View style={styles.covGrid}>
+              {covRows.map((r) => (
+                <View key={r.label} style={styles.covCell}>
+                  <Text style={styles.covLabel}>{r.label}</Text>
+                  <Text style={[styles.covVal, r.days === 0 && styles.covZero]}>{r.days}/7 天</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Card>
+
         <Text style={styles.sectionTitle}>数据备份（云端）</Text>
         <Card style={styles.uploadCard}>
           <View style={styles.uploadAutoRow}>
@@ -713,31 +732,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   listCard: { marginBottom: theme.space.sm },
-  // ── ★ 2026-11-04：设备型号选择（Luna Mira Pro / Luna Mira，连接后自动识别）──
-  modelHint: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textSub,
-    marginLeft: theme.space.xs,
-    marginBottom: theme.space.sm,
-  },
-  modelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.sp(3),
-    gap: theme.sp(2.5),
-  },
-  modelTextWrap: { flex: 1 },
-  modelLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textBody,
-    fontWeight: theme.weight.semibold,
-  },
-  modelDesc: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textSub,
-    marginTop: 2,
-  },
+  // ── ★ 2026-11-04：数据覆盖诊断 ──
+  covHead: { paddingHorizontal: theme.space.md, paddingVertical: theme.sp(2.5) },
+  covTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textBody },
+  covGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: theme.space.md, paddingBottom: theme.space.md, gap: theme.sp(1.5) },
+  covCell: { width: '30%' as any, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(1.5), marginBottom: theme.sp(1) },
+  covLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
+  covVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textBody, marginTop: 2 },
+  covZero: { color: theme.colors.danger },
   // ── Phase 0：关于与条款导航行 ──
   navRow: {
     flexDirection: 'row',
