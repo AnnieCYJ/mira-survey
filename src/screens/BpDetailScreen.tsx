@@ -631,10 +631,22 @@ export default function BpDetailScreen() {
       {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
     </ScreenContainer>
 
-    {/* ★ 2026-10-17：手动录入血压弹窗 */}
+    {/* ★ 2026-11-05（修复：弹窗背景错色 + 无法退出）：
+        背景改 App 统一磨砂白卡（cardBg），加 X 关闭按钮，点遮罩也可关闭。 */}
     <Modal visible={entryVisible} transparent animationType="fade" onRequestClose={() => { setEntryVisible(false); setEntryErr(''); }}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => { setEntryVisible(false); setEntryErr(''); }}
+      >
+        <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <TouchableOpacity
+            style={styles.modalClose}
+            onPress={() => { setEntryVisible(false); setEntryErr(''); }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.modalCloseTxt}>✕</Text>
+          </TouchableOpacity>
           <Text style={styles.modalTitle}>录入血压</Text>
           <Text style={styles.modalHint}>为「{anchor.toLocaleDateString('zh-CN')}」添加一次读数，将显示在趋势图中。</Text>
           <View style={styles.modalInputRow}>
@@ -664,8 +676,8 @@ export default function BpDetailScreen() {
               <Text style={[styles.modalBtnText, { color: '#fff' }]}>保存</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
     <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </View>
@@ -831,10 +843,15 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   modalCard: {
-    width: '100%', maxWidth: 340, backgroundColor: theme.colors.bgBottom,
-    borderRadius: theme.radius.md, padding: 18,
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
+    width: '100%', maxWidth: 340, backgroundColor: theme.colors.cardBg,
+    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: theme.colors.cardBorder,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
   },
+  modalClose: {
+    position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.offTrack,
+  },
+  modalCloseTxt: { fontSize: theme.fontSize.card, color: theme.colors.textTitle, fontWeight: theme.weight.semibold },
   modalTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
   modalHint: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 6, lineHeight: 17 },
   modalInputRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 14 },
@@ -843,14 +860,14 @@ const styles = StyleSheet.create({
   modalInput: {
     borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.sm,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: theme.fontSize.card, color: theme.colors.textTitle,
-    textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.10)',
+    textAlign: 'center', backgroundColor: theme.colors.cardBgStrong,
   },
   modalSlash: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
   modalErr: { fontSize: theme.fontSize.xs, color: mm.colors.roseDeep, marginTop: 10 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   modalBtn: {
     paddingHorizontal: 18, paddingVertical: 9, borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: theme.colors.ui.offTrack,
   },
   modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },
   modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },

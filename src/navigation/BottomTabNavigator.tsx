@@ -12,7 +12,9 @@ import MiraAIHomeScreen from '../screens/MiraAIHomeScreen';
 
 export type TabParamList = {
   Today: undefined;
-  Insight: undefined;
+  /** ★ 2026-11-05：首页建议胶囊可直达「身体指标 → 一键体检」子 tab；
+   *  t 为每次点击的 nonce，保证重复点击也能重新落到 quickcheck（参数不变时 effect 不会重跑）。 */
+  Insight: { subTab?: string; t?: number } | undefined;
   Meditation: undefined;
   Profile: undefined;
   /** Mira AI 首页（点击 tab bar 中间 bot 进入；CustomTabBar 里隐藏图标） */
@@ -25,9 +27,9 @@ export default function BottomTabNavigator() {
   return (
     <Tab.Navigator
       tabBar={(props) => <CustomTabBar {...props} />}
+      sceneContainerStyle={{ backgroundColor: 'transparent' }}
       screenOptions={{
         headerShown: false,
-        sceneContainerStyle: { backgroundColor: 'transparent' },
         // ★ 2026-10-14 回退：恢复 lazy:true（访问时才挂载），避免 5 个重页面在
         //   离线数据加载前就全部挂载 → 切到首页时趋势图/卡片要等数据回填才显示。
         //   freezeOnBlur 仍冻结后台页，省资源且不卸载（不会丢失已渲染状态）。

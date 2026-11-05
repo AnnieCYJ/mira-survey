@@ -49,6 +49,7 @@ import { buildWorkoutAdvice, buildPhaseAnalysis } from '../lib/phaseAdvice';
 // ★ 2026-10-12：与工具页「运动建议」共用引擎，抽真实处方字段上卡（单一事实来源）
 import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
 import { collectWorkoutInput } from '../lib/workoutInput';
+import { useDeviceModel } from '../config/deviceModel'; // ★ 2026-11-05：运动建议合并只对基础版生效
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -93,6 +94,10 @@ export default function EnergyDetailScreen() {
   const openChat = (q: string) => { setChatQuestion(q); setChatVisible(true); };
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
+  // ★ 2026-11-05（用户）：把工具页「今天适合短时发力」并进「今日运动建议」——只对 BASE_UI 生效，
+  //   PRO_UI 保持原来的「强度 / 主项 / 时长」三格与周期分析文案。
+  const { model: energyModel } = useDeviceModel();
+  const isBase = energyModel.id === 'BASE_UI';
 
   // ★ 2026-10-12（用户）：运动消耗·日视图「今日运动建议」——按当前周期相位给处方（与 CyclePhaseCard 同源相位）。
   //   无经期记录（phaseLabel='未记录'）时返回引导语；绝不编造激素/数据。
@@ -107,6 +112,24 @@ export default function EnergyDetailScreen() {
     [type, ring]
   );
   const sportBrief = workoutPlan ? buildSportBrief(phaseLabel, workoutPlan.timeSlot) : null;
+  // ★ 2026-11-05：工具页运动建议二级页的「今天适合短时发力 / 保持节奏 / 温和恢复」结论，
+  //   与工具页共用 buildTodayWorkout(collectWorkoutInput(...)) 的同一份处方，不会出现两处口径打架。
+  const workoutConclusion = workoutPlan
+    ? workoutPlan.intensity === 'intense' ? '今天适合短时发力'
+      : workoutPlan.intensity === 'moderate' ? '今天适合保持节奏'
+        : workoutPlan.intensity === 'recovery' ? '今天适合温和恢复'
+          : '今天先等数据同步'
+    : '今天先等数据同步';
+  const sleepSelForAdvice = useMemo(() => {
+    try {
+      return healthStore.getSleep(dayKey(Date.now()))
+        ?? healthStore.getSleep(dayKey(Date.now() - 86400000)) ?? null;
+    } catch { return null; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ring]);
+  const workoutConclusionSub = sleepSelForAdvice?.score != null
+    ? `昨晚睡眠恢复 ${Math.round(sleepSelForAdvice.score)} 分 · ${sportBrief?.reason ?? '按今天的身体状态安排'}`
+    : (sportBrief?.reason ?? '睡眠数据待同步，先按今天的身体状态安排');
   // ★ 2026-10-12（用户：「加上你处于什么，比方说经期的什么时候或者什么状态，适宜练什么样的运动，
   //   这一小段分析，不要太多字」）：真实相位 + 周期天 + 今日状态 → 一小段处境分析；未记录经期为 null。
   const curveStatus = (ring as any)?.curveStatus;
@@ -203,7 +226,6 @@ export default function EnergyDetailScreen() {
             accessibilityLabel="查看今日运动方案"
           >
             <View style={styles.waHead}>
-              <Icon name="run" size={18} color={mm.chipBg.cyan.fg} />
               <Text style={styles.waTitle}>今日运动建议</Text>
               {phaseKnown ? (
                 <View style={styles.waPhase}>
@@ -215,23 +237,44 @@ export default function EnergyDetailScreen() {
               </View>
             </View>
             <Text style={styles.waHeadline}>
-              {workoutPlan?.dataDriven ? workoutPlan.headline : workoutAdvice.headline}
+              {isBase ? workoutConclusion : (workoutPlan?.dataDriven ? workoutPlan.headline : workoutAdvice.headline)}
             </Text>
-            {phaseAnalysis ? <Text style={styles.waAnalysis}>{phaseAnalysis}</Text> : null}
+            {isBase
+              ? <Text style={styles.waAnalysis}>{workoutConclusionSub}</Text>
+              : (phaseAnalysis ? <Text style={styles.waAnalysis}>{phaseAnalysis}</Text> : null)}
             {workoutPlan?.dataDriven ? (
               <View style={styles.waStats}>
-                <View style={styles.waStat}>
-                  <Text style={styles.waStatK}>强度</Text>
-                  <Text style={styles.waStatV}>{sportBrief?.gearName ?? '—'}</Text>
-                </View>
-                <View style={styles.waStat}>
-                  <Text style={styles.waStatK}>主项</Text>
-                  <Text style={styles.waStatV}>{workoutPlan.primaryName}</Text>
-                </View>
-                <View style={styles.waStat}>
-                  <Text style={styles.waStatK}>时长</Text>
-                  <Text style={styles.waStatV}>{workoutPlan.totalMinutes} 分钟</Text>
-                </View>
+                {isBase ? (
+                  <>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>恢复</Text>
+                      <Text style={styles.waStatV}>{sleepSelForAdvice?.score != null ? String(Math.round(sleepSelForAdvice.score)) : '—'}</Text>
+                    </View>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>睡眠</Text>
+                      <Text style={styles.waStatV}>{sleepSelForAdvice?.total != null ? `${Math.floor(sleepSelForAdvice.total / 60)}h${String(sleepSelForAdvice.total % 60).padStart(2, '0')}` : '—'}</Text>
+                    </View>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>建议强度</Text>
+                      <Text style={styles.waStatV}>{sportBrief?.gearName === '恢复' ? '低' : sportBrief?.gearName === '平稳' ? '中低' : '中'}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>强度</Text>
+                      <Text style={styles.waStatV}>{sportBrief?.gearName ?? '—'}</Text>
+                    </View>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>主项</Text>
+                      <Text style={styles.waStatV}>{workoutPlan.primaryName}</Text>
+                    </View>
+                    <View style={styles.waStat}>
+                      <Text style={styles.waStatK}>时长</Text>
+                      <Text style={styles.waStatV}>{workoutPlan.totalMinutes} 分钟</Text>
+                    </View>
+                  </>
+                )}
               </View>
             ) : (
               <Text style={styles.waDetail}>{workoutAdvice.detail}</Text>
@@ -488,7 +531,13 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
               <Text style={styles.statSub}>日均</Text>
             </View>
           </View>
-          <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
+          {/* ★ 2026-11-05（用户·统一）：区间分析单独成卡并补标题 */}
+          <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+            <View style={styles.pad}>
+              <Text style={styles.anaTitle}>运动消耗分析</Text>
+              <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
+            </View>
+          </Card>
         </View>
       );
     }
@@ -500,8 +549,8 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
     const activityDayAnalysis = (() => {
       if (cal === 0) return '今天还没有活动数据。出门走一走，或把戒指同步一下，这里就会显示你今天的消耗，并和昨天做对比。';
       if (prevCal == null || prevCal <= 0) return `今天消耗 ${cal} 卡路里，暂时还没有昨天的记录做对比。建议今天安排 30 分钟左右的活动，步数、心率都会被记下来。`;
-      if (delta > 0) return `今天消耗 ${cal} 卡路里，比昨天多 ${delta}%，动得比平时多。建议趁状态不错，把运动后的拉伸和补水安排上，给身体一个缓冲。`;
-      if (delta < 0) return `今天消耗 ${cal} 卡路里，比昨天少 ${Math.abs(delta)}%，活动量偏少。建议晚些时候补一段快走或居家训练，不用多，先把今天的量补回来。`;
+      if (delta != null && delta > 0) return `今天消耗 ${cal} 卡路里，比昨天多 ${delta}%，动得比平时多。建议趁状态不错，把运动后的拉伸和补水安排上，给身体一个缓冲。`;
+      if (delta != null && delta < 0) return `今天消耗 ${cal} 卡路里，比昨天少 ${Math.abs(delta)}%，活动量偏少。建议晚些时候补一段快走或居家训练，不用多，先把今天的量补回来。`;
       return `今天消耗 ${cal} 卡路里，和昨天差不多，节奏很稳。建议保持这个量级，明天可以换个强度或项目，让身体持续受益。`;
     })();
     return (
@@ -520,7 +569,8 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             </Text>
           ) : null}
         </View>
-        {/* ★ 2026-10-09（exercise-consumption-preview .statRow）：运动时长 / 步数 / 距离 三格进 hero 卡 */}
+        <Text style={styles.heroAnalysis}>{activityDayAnalysis}</Text>
+        {/* ★ 2026-11-05（用户）：运动时长 / 步数 / 距离 移到「今日消耗」分析下方 */}
         <View style={styles.statGrid}>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>运动时长</Text>
@@ -544,7 +594,6 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             <Text style={styles.statSub}>运动</Text>
           </View>
         </View>
-        <Text style={styles.heroAnalysis}>{activityDayAnalysis}</Text>
       </View>
     );
   }
@@ -1389,22 +1438,25 @@ const styles = StyleSheet.create({
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
   /* ★ 2026-11-03（用户·统一 hero 结构）：数字上方 title + 数字下方短 AI 分析（与 MetricDetail / SleepRecoveryHero 同款） */
   heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
+  // ★ 2026-11-05（用户·统一）：区间分析卡标题（与 heroTitle 同语言）
+  anaTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
-  /* ★ 2026-10-12 运动消耗·日视图「今日运动建议」卡 */
+  /* ★ 2026-11-05（用户）：运动建议卡统一收窄、字号间距收紧、去掉左侧 icon */
   waCard: {
     backgroundColor: theme.colors.cardBg,
     borderColor: theme.colors.cardBorder,
     borderWidth: 1,
     borderRadius: mm.radius.card,
-    padding: theme.space.cardPad,
+    paddingVertical: theme.sp(3),
+    paddingHorizontal: theme.sp(3.5),
     marginTop: theme.space.sm,
   },
-  waHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1.5) },
+  waHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) },
+  // ★ 2026-11-05（用户·统一）：今日运动建议抬头与「今日活动消耗」heroTitle 同字号/字重
   waTitle: {
     fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.medium,
-    color: theme.colors.textTitle,
-    marginLeft: theme.sp(1.5),
+    fontWeight: theme.weight.semibold as any,
+    color: mm.colors.ink,
   },
   waPhase: {
     marginLeft: 'auto',
@@ -1419,10 +1471,10 @@ const styles = StyleSheet.create({
     color: mm.chipBg.cyan.fg,
   },
   waHeadline: {
-    fontSize: theme.fontSize.body,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: theme.colors.textInk,
-    marginBottom: theme.sp(0.75),
+    marginBottom: theme.sp(0.5),
   },
   waDetail: {
     fontSize: theme.fontSize.sm,
@@ -1436,15 +1488,15 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.xs * 1.5,
     marginTop: theme.sp(1),
   },
-  waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(2) },
+  waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(1.5) },
   waStat: {
     flex: 1,
     backgroundColor: 'transparent',
     borderRadius: mm.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
-    paddingVertical: theme.sp(1.5),
-    paddingHorizontal: theme.space.xs,
+    paddingVertical: theme.sp(1.2),
+    paddingHorizontal: theme.sp(1),
     alignItems: 'center',
   },
   waStatK: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }, // ★ 2026-11-03（用户）：运动建议小卡文字改白（深玻璃卡上白字可读）
@@ -1505,7 +1557,8 @@ const styles = StyleSheet.create({
   cmpUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, paddingBottom: theme.sp(1.25) },
   cmpDelta: { marginLeft: 'auto', fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, paddingBottom: theme.sp(1.25) },
 
-  statGrid: { flexDirection: 'row', gap: theme.space.xs },
+  // ★ 2026-11-05（用户）：三卡片与上方分析文字拉开距离
+  statGrid: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(2.5) },
   // ★ 2026-10-09（exercise/psychological-stress-preview .statRow .tile）：无底色描边小格
   //   （radius 11 / 内边距 9·10 / 标签 11px / 值 15px·650），替代原先的浅底大号格
   statCell: {

@@ -3,13 +3,13 @@ import React, { createContext, useContext, useCallback, useMemo, useRef, useStat
 export interface VoiceOpenOptions {
   /**
    * silent = 不弹底部「正在聆听…」浮层，改由**页面内常驻气泡**呈现录音态。
-   * 目前用于首页：长按右下 GROK → 内容直接显示在趋势图下方的常驻 AI 气泡里。
+   * 目前用于首页：长按右下助手按钮 → 内容直接显示在趋势图下方的常驻 AI 气泡里。
    */
   silent?: boolean;
 }
 
 /**
- * ★ 2026-10-12（用户：点 GROK / 语音 / 跳转 AI 页都特别卡）：
+ * ★ 2026-10-12（用户：点助手按钮 / 语音 / 跳转 AI 页都特别卡）：
  * context 拆成两个——
  *  · VoiceTriggerApi（open/close/onReleaseRef/clearSpoken）：**引用永远稳定**，
  *    给 CustomTabBar 等只触发录音、不展示转写的组件订阅；
@@ -34,7 +34,7 @@ interface VoiceTriggerLive {
   setLiveText: (t: string) => void;
   /**
    * 最近一次录音的最终转写（松手后保留，不清空）。
-   * 用途：长按 GROK 松手 → 跳转 VoiceChat 的「释放→导航」窗口内，以及从 VoiceChat 返回首页时，
+   * 用途：长按助手按钮松手 → 跳转 VoiceChat 的「释放→导航」窗口内，以及从 VoiceChat 返回首页时，
    * 常驻气泡显示这句转写（紫字），**而不是回退到常态占位文案**，
    * 避免跳转瞬间的占位闪现、也让返回首页时不再重复问同一句。
    */

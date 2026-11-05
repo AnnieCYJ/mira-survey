@@ -861,7 +861,7 @@ const isCortisolRow = (r: AiInsightRow | undefined): boolean =>
 function cortisolCopyContradicts(body: string, level: 'normal' | 'high' | 'dysregulated'): boolean {
   const t = body || '';
   const saysNormal = /正常|平稳|无异常|未见异常|没问题/.test(t);
-  const saysAbnormal = /偏高|紊乱|异常|负荷偏重|回落不足|压力偏大/.test(t);
+  const saysAbnormal = /偏高|紊乱|异常|负荷偏重|压力偏重|回落不足|压力偏大/.test(t);
   if (level === 'normal') return saysAbnormal && !saysNormal;
   return saysNormal && !saysAbnormal;
 }

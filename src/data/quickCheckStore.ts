@@ -15,6 +15,16 @@
  */
 import * as SQLite from 'expo-sqlite';
 import { healthStore, type MetricKey } from './healthStore';
+import { RingBle } from '../ble/RingBleManager';
+import { userStore } from './userStore';
+import { computeBodyComposition } from './examStore';
+import { getProfile, getDeviceProfileId, hasCap } from '../config/deviceModel';
+import {
+  estimateTodayStatus, estimateStress, statusLevel,
+  windowMean, baselineFromDaily, type EstimateInput, type QCSource,
+} from '../lib/quickCheckEstimate';
+import { saveQuickCheckResult, type QuickCheckResultValue } from './quickCheckResult';
+import { saneBodyTemp } from './ringDataIsolation';
 
 export type QCStatus = 'ok' | 'high' | 'low' | 'risk';
 
@@ -31,6 +41,8 @@ export interface QCMetric {
   ref?: string;
   /** 描述性说明（Mira 口径：只描述不诊断） */
   note?: string;
+  /** 数据来源：实测回读 / 估算。★ 2026-11-05 用户要求：估算项必须明确标注，不冒充实测 */
+  source?: QCSource;
   /** 分段刻度条（血压 / 尿酸 / 压力 / 疲劳等带量纲的指标可用） */
   scale?: { min: number; max: number; v: number };
   /** 等级说明（压力 / 疲劳等分级指标） */
@@ -49,6 +61,8 @@ export interface QCGroup {
   key: string;
   title: string;
   icon?: string;
+  /** 分组级来源说明（如「本组全部为戒指真实回读」/「按身高体重估算」） */
+  note?: string;
   metrics?: QCMetric[];
   risk?: QCRiskBlock;
   standalone?: QCMetric[];
@@ -205,23 +219,95 @@ export async function countQuickChecks(): Promise<number> {
 }
 
 /**
- * 真实体检组装：从 healthStore 现有真实测量值（实时体征 + 健康一览血液指标 + 压力/疲劳成分）
- * 聚合一条体检记录并落库。无任何真实数据（从未连过戒指）时返回 { ok:false, reason:'no-data' }。
- * 品牌铁律：只描述不诊断、不评分；参考区间仅供参考。
+ * 一键体检组装（★ 2026-11-05 重写：按机型能力 + 当前戒指真实回读，杜绝 HK18 遗留数据混显）
+ * ---------------------------------------------------------------------------
+ * 旧实现无差别读 healthStore 的 bpSys/glucose/ua/cholesterol/skin/emotion/cortisol，
+ * 那些是本机历史库里 HK18 时期留下的测量值，与当前基础版 Luna Mira 无关，
+ * 却被当成「本次真实测量」展示（用户实锤质疑：「之前不是说没有血压血糖吗？」）。
+ *
+ * 新口径：
+ *  1. 实测项：只从 RingBle 当前状态（BackendRingSource 投影的 auto_data/gsr/hrv_history
+ *     真实日值）读取，并按机型能力白名单过滤；Pro 专属项仅在 PRO_UI 下才从 healthStore 读。
+ *  2. 估算项：今日状态 / 压力由当前 HRV 短窗 + 心率/血氧/睡眠/交感推算；
+ *     身体成分由首次注册录入的身高/体重/年龄/性别推算。全部带 source='estimated'
+ *     与来源说明，界面明确标注「估算」，绝不冒充戒指实测。
+ *  3. 体检完成后把「今日状态」结果写入 quickCheckResult，首页据此刷新今日状态。
+ *
+ * 品牌铁律：只描述不诊断、不做风险结论；参考区间仅供参考。
  */
 export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; record?: QuickCheckRecord; reason?: string }> {
   const gl = (k: MetricKey, n = 7) => healthStore.getLatest(k, n);
   const r2 = (v: number | null) => (v == null ? null : Math.round(v * 100) / 100);
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
 
-  const hr = gl('hr'), hrv = gl('hrv'), spo2 = gl('spo2');
-  const bpSys = gl('bpSys'), bpDia = gl('bpDia');
-  const glucose = gl('glucose'), ua = gl('ua');
-  const tc = gl('cholesterol'), tg = gl('triglyceride'), hdl = gl('hdl'), ldl = gl('ldl');
-  const skin = gl('skin'), emotion = gl('emotion'), cortisol = gl('cortisol'), sns = gl('sns');
-  const stress = gl('stress'), fatigue = gl('fatigue');
+  const profileId = await getDeviceProfileId();
+  const profile = getProfile(profileId);
+  const isPro = profileId === 'PRO_UI';
 
-  const present = [hr, hrv, spo2, bpSys, bpDia, glucose, ua, tc, tg, hdl, ldl, skin, emotion, cortisol, sns, stress, fatigue].some((v) => v != null);
-  if (!present) return { ok: false, reason: 'no-data' };
+  const state = RingBle.getState();
+  const daily = state?.daily ?? {};
+  const d = (k: string): number | null => num(daily[k]);
+
+  // ── 1. 实测回读（基础版白名单：戒指真实上传的日值）───────────────────────
+  // ★ 绝不回退到 healthStore：那里的 hr/spo2/hrv 可能是 HK18 时期留下的历史值，
+  //   一旦兜底就会把旧数据标成「戒指真实回读」（用户实锤批评的数据混显）。
+  //   后端 auto_data 本来就有这三项；没同步到就如实不展示，不编数字。
+  const hr = d('hr');
+  const spo2 = d('spo2');
+  const temp = saneBodyTemp(d('temp')); // 只接受当前戒指的合法日均体温，挡住旧设备遗留 39℃
+  const hrv = d('hrv');
+  const sns = d('sns');
+  const steps = d('steps');
+  const sleepMin = d('sleepTotal');
+  const tg = d('triglyceride');
+  const hdl = d('hdl');
+  const ldl = d('ldl');
+  const statusMeasured = d('statusScore');   // auto_data.status_score 真实回读
+  const hrvDaily = (state as any)?.hrvDaily as Record<string, number> | undefined;
+  const hrvPts = (state as any)?.history?.hrv as { t: number; v: number }[] | undefined;
+
+  // Pro 专属：仅 PRO_UI 才允许读 healthStore 的历史测量（基础版一律不碰，避免 HK18 混显）
+  const bpSys = isPro && hasCap(profile, 'bp') ? gl('bpSys') : null;
+  const bpDia = isPro && hasCap(profile, 'bp') ? gl('bpDia') : null;
+  const glucose = isPro && hasCap(profile, 'glucose') ? gl('glucose') : null;
+  const ua = isPro && hasCap(profile, 'uricAcid') ? gl('ua') : null;
+  const tc = isPro && hasCap(profile, 'cholesterol') ? gl('cholesterol') : null;
+  const skin = isPro && hasCap(profile, 'skin') ? gl('skin') : null;
+  const emotion = isPro && hasCap(profile, 'emotion') ? gl('emotion') : null;
+  const cortisol = isPro && hasCap(profile, 'cortisol') ? gl('cortisol') : null;
+  const stressMeasured = isPro && hasCap(profile, 'cortisol') ? gl('stress') : null;
+  const fatigue = isPro && hasCap(profile, 'cortisol') ? gl('fatigue') : null;
+
+  // ── 2. 估算输入：HRV 60s / 30s 短窗 + 近 7 天基线 ────────────────────────
+  const now = Date.now();
+  const estInput: EstimateInput = {
+    hrv60: windowMean(hrvPts, 60_000, now) ?? hrv,
+    hrv30: windowMean(hrvPts, 30_000, now) ?? hrv,
+    hrvBaseline: baselineFromDaily(hrvDaily ?? {}, 7, now),
+    hr, spo2, sns, sleepMin, statusMeasured, stressMeasured,
+  };
+  const todayStatus = estimateTodayStatus(estInput);
+  const stressEst = estimateStress(estInput);
+
+  // ── 3. 身体成分：来自首次注册录入的身高 / 体重 / 年龄 / 性别 ─────────────
+  let bodyMetrics: ReturnType<typeof computeBodyComposition> | null = null;
+  let bodyNote = '';
+  try {
+    const session = await userStore.loadSession();
+    const p = session.profile;
+    if (p && typeof p.height === 'number' && typeof p.weight === 'number' && p.height > 0 && p.weight > 0) {
+      const age = typeof p.age === 'number' && p.age > 0 ? p.age : 30;
+      const sex: 'female' | 'male' = p.gender === 'male' ? 'male' : 'female';
+      bodyMetrics = computeBodyComposition({ weight: p.weight, height: p.height, age, sex });
+      bodyNote = `按你首次填写的身高 ${p.height}cm / 体重 ${p.weight}kg${typeof p.age !== 'number' ? '（年龄未填，按 30 岁估算）' : ''}推算，非戒指测量。`;
+    }
+  } catch { /* 档案读取失败 → 不展示身体成分，不编数字 */ }
+
+  const hasAny = [hr, spo2, temp, hrv, sns, steps, sleepMin, tg, hdl, ldl, statusMeasured,
+    bpSys, glucose, ua, tc, skin, emotion, cortisol, fatigue].some((v) => v != null)
+    || bodyMetrics != null || todayStatus != null || stressEst != null;
+  if (!hasAny) return { ok: false, reason: 'no-data' };
 
   const sb = (key: string, v: number): QCStatus => {
     switch (key) {
@@ -240,47 +326,121 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       default: return 'ok';
     }
   };
-
-  const bpValue = bpSys != null && bpDia != null ? `${Math.round(bpSys)}/${Math.round(bpDia)}` : null;
-
-  const core: QCMetric[] = [];
-  if (hr != null) core.push({ key: 'hr', name: '平均心率', value: String(Math.round(hr)), unit: '次/分', status: sb('hr', hr), ref: '参考 60~100', note: '本次静息平均心率，会随状态波动，建议结合多日观察。' });
-  if (hrv != null) core.push({ key: 'hrv', name: 'HRV', value: String(Math.round(hrv)), unit: '毫秒', status: 'ok', note: 'HRV 反映心率变异性，受睡眠与压力影响较大，宜作趋势观察。' });
-  if (bpValue) {
-    const st = sb('bpSys', bpSys!) !== 'ok' || sb('bpDia', bpDia!) !== 'ok'
-      ? (sb('bpSys', bpSys!) === 'high' || sb('bpDia', bpDia!) === 'high' ? 'high' : 'low') : 'ok';
-    core.push({ key: 'bp', name: '血压', value: bpValue, unit: 'mmHg', status: st, ref: '参考 <120/80', scale: { min: 80, max: 160, v: Math.round(bpSys!) }, note: '血压会随情绪与活动波动，本结果仅为本次测量快照。' });
-  }
-  if (spo2 != null) core.push({ key: 'spo2', name: '血氧', value: String(Math.round(spo2)), unit: '%', status: sb('spo2', spo2), ref: '参考 95~100%', note: '血氧饱和度。' });
-
-  const blood: QCMetric[] = [];
-  if (glucose != null) blood.push({ key: 'glucose', name: '血糖', value: String(r2(glucose)), unit: 'mmol/L', status: sb('glucose', glucose), ref: '空腹参考 3.9~6.1', note: '空腹血糖，餐后通常更高，本结果反映近期空腹状态。' });
-  if (ua != null) blood.push({ key: 'uricAcid', name: '尿酸', value: String(Math.round(ua)), unit: 'μmol/L', status: sb('ua', ua), ref: '常见参考 155~428', scale: { min: 100, max: 500, v: Math.round(ua) }, note: '尿酸。单次偏高可能受饮食饮水影响，建议多次测量并结合专业检查；仅供参考，不构成诊断。' });
-  if (tc != null) blood.push({ key: 'tc', name: '总胆固醇', value: String(r2(tc)), unit: 'mmol/L', status: sb('cholesterol', tc), ref: '参考 <5.2', note: '总胆固醇。' });
-  if (tg != null) blood.push({ key: 'tg', name: '甘油三酯', value: String(r2(tg)), unit: 'mmol/L', status: sb('triglyceride', tg), ref: '参考 <1.7', note: '甘油三酯。' });
-  if (hdl != null) blood.push({ key: 'hdl', name: '高密度脂蛋白', value: String(r2(hdl)), unit: 'mmol/L', status: sb('hdl', hdl), ref: '参考 >1.0', note: '高密度脂蛋白（好胆固醇），偏高通常更友好。' });
-  if (ldl != null) blood.push({ key: 'ldl', name: '低密度脂蛋白', value: String(r2(ldl)), unit: 'mmol/L', status: sb('ldl', ldl), ref: '参考 <3.4', note: '低密度脂蛋白（坏胆固醇）。' });
-
-  const mentalSub: QCMetric[] = [];
-  if (skin != null) mentalSub.push({ key: 'skin', name: '皮肤含水量', value: String(Math.round(skin)), unit: '%', status: 'ok' });
-  if (emotion != null) mentalSub.push({ key: 'mood', name: '情绪', value: String(Math.round(emotion)), unit: '', status: 'ok', label: '已记录' });
-  if (cortisol != null) mentalSub.push({ key: 'cortisol', name: '皮质醇', value: String(r2(cortisol)), unit: 'ug/dL', status: 'ok' });
-  if (sns != null) mentalSub.push({ key: 'sns', name: '交感神经活跃度', value: String(Math.round(sns)), unit: '', status: 'ok', label: sns >= 60 ? '偏活跃' : sns <= 30 ? '放松' : '适中' });
-  // ★ 2026-11-03（用户）：不许有写死的「抑郁症风险 · 低风险」评估结论——
-  //   该结论此前不随数据判定、只要有一项信号就固定显示「低风险」，属假分析。
-  //   现改为中性的「已记录信号」汇总：只展示真实读数，不做风险结论。
-  const mentalRisk: QCRiskBlock = { name: '心理健康 · 本次记录信号', status: 'ok', label: '已记录', note: '以下为本次真实记录到的信号值。Mira 只做描述与参考，不做抑郁等风险评估或诊断性结论。', sub: mentalSub };
-
-  const stressStandalone: QCMetric[] = [];
-  if (stress != null) stressStandalone.push({ key: 'stress', name: '压力', value: String(Math.round(stress)), unit: '', status: sb('stress', stress), label: stress >= 60 ? '偏高' : stress >= 30 ? '正常' : '放松', scale: { min: 0, max: 99, v: Math.round(stress) }, levels: '压力等级参考：1-29 放松 / 30-59 正常 / 60-79 中等 / 80-99 压力较大', note: '本次压力值，会随日程波动，可作当日状态观察点。' });
-  if (fatigue != null) stressStandalone.push({ key: 'fatigue', name: '疲劳度', value: String(Math.round(fatigue)), unit: '', status: sb('fatigue', fatigue), label: fatigue >= 7 ? '中度疲劳' : fatigue >= 4 ? '轻度疲劳' : '轻松', scale: { min: 0, max: 10, v: Math.round(fatigue) }, levels: '疲劳值 0-10 级，等级越高越疲惫', note: '本次疲劳值。' });
-
+  const MEASURED = '戒指真实回读';
+  const MEASURED_HISTORY = '本机历史测量记录（Pro 机型）';
   const groups: QCGroup[] = [];
-  if (core.length) groups.push({ key: 'core', title: '核心体征', icon: '❤️', metrics: core });
-  if (blood.length) groups.push({ key: 'blood', title: '血液健康检测', icon: '🩸', metrics: blood });
-  if (mentalSub.length) groups.push({ key: 'mental', title: '心理健康检测', icon: '🧠', risk: mentalRisk });
-  if (stressStandalone.length) groups.push({ key: 'stress', title: '压力与疲劳', icon: '🌿', standalone: stressStandalone });
+  let measuredCount = 0;
+  let estimatedCount = 0;
+  const measured = (m: QCMetric): QCMetric => { measuredCount++; return { ...m, source: 'measured' as const }; };
+  const estimated = (m: QCMetric): QCMetric => { estimatedCount++; return { ...m, source: 'estimated' as const }; };
+
+  // ── 今日状态 / 压力（首页数据来源）───────────────────────────────────────
+  const statusItems: QCMetric[] = [];
+  if (todayStatus) {
+    statusItems.push((todayStatus.source === 'measured' ? measured : estimated)({
+      key: 'todayStatus', name: '今日状态', value: String(todayStatus.value), unit: '/100',
+      status: 'ok', label: statusLevel(todayStatus.value),
+      note: todayStatus.reason, scale: { min: 0, max: 100, v: todayStatus.value },
+    }));
+  }
+  if (stressEst) {
+    statusItems.push((stressEst.source === 'measured' ? measured : estimated)({
+      key: 'stress', name: '压力', value: String(stressEst.value), unit: '',
+      status: sb('stress', stressEst.value),
+      label: stressEst.value >= 60 ? '偏高' : stressEst.value >= 30 ? '平稳' : '放松',
+      scale: { min: 0, max: 100, v: stressEst.value },
+      levels: '压力等级参考：1-29 放松 / 30-59 平稳 / 60-79 中等 / 80-100 压力较大',
+      note: stressEst.reason,
+    }));
+  }
+  if (statusItems.length) {
+    groups.push({
+      key: 'today', title: '今日状态', icon: '✨',
+      note: '这一组是本次体检给出的当下状态结果，会同步到首页「今日状态」。带「估算」标记的项不是戒指直接测量。',
+      metrics: statusItems,
+    });
+  }
+
+  // ── 核心体征（全部实测）─────────────────────────────────────────────────
+  const core: QCMetric[] = [];
+  if (hr != null) core.push(measured({ key: 'hr', name: '心率', value: String(Math.round(hr)), unit: '次/分', status: sb('hr', hr), ref: '参考 60~100', note: MEASURED }));
+  if (hrv != null) core.push(measured({ key: 'hrv', name: 'HRV', value: String(Math.round(hrv)), unit: '毫秒', status: 'ok', note: `${MEASURED}；反映心率变异性，受睡眠与状态影响，宜看趋势。` }));
+  if (spo2 != null) core.push(measured({ key: 'spo2', name: '血氧', value: String(Math.round(spo2)), unit: '%', status: sb('spo2', spo2), ref: '参考 95~100%', note: MEASURED }));
+  if (temp != null) core.push(measured({ key: 'temp', name: '体温', value: String(r2(temp)), unit: '°C', status: 'ok', note: MEASURED }));
+  if (sns != null) core.push(measured({ key: 'sns', name: '交感神经活跃度', value: String(Math.round(sns)), unit: '', status: 'ok', label: sns >= 60 ? '偏活跃' : sns <= 30 ? '放松' : '适中', note: `${MEASURED}（gsr 通道）` }));
+  if (bpSys != null && bpDia != null) {
+    const st = sb('bpSys', bpSys) !== 'ok' || sb('bpDia', bpDia) !== 'ok'
+      ? (sb('bpSys', bpSys) === 'high' || sb('bpDia', bpDia) === 'high' ? 'high' : 'low') : 'ok';
+    core.push(measured({ key: 'bp', name: '血压', value: `${Math.round(bpSys)}/${Math.round(bpDia)}`, unit: 'mmHg', status: st, ref: '参考 <120/80', scale: { min: 80, max: 160, v: Math.round(bpSys) }, note: MEASURED_HISTORY }));
+  }
+  if (core.length) groups.push({ key: 'core', title: '核心体征', icon: '❤️', note: '标「实测」的项来自当前戒指回读（Pro 机型血压取本机历史测量记录）。', metrics: core });
+
+  // ── 活动与睡眠（实测）───────────────────────────────────────────────────
+  const activity: QCMetric[] = [];
+  if (steps != null) activity.push(measured({ key: 'steps', name: '今日步数', value: String(Math.round(steps)), unit: '步', status: 'ok', note: MEASURED }));
+  if (sleepMin != null) activity.push(measured({ key: 'sleep', name: '昨夜睡眠', value: `${Math.floor(sleepMin / 60)}小时${Math.round(sleepMin % 60)}分`, unit: '', status: 'ok', note: MEASURED }));
+  if (activity.length) groups.push({ key: 'activity', title: '活动与睡眠', icon: '🌙', note: '本组全部为戒指真实回读。', metrics: activity });
+
+  // ── 血脂（基础版也有，实测）─────────────────────────────────────────────
+  const blood: QCMetric[] = [];
+  if (tg != null) blood.push(measured({ key: 'tg', name: '甘油三酯', value: String(r2(tg)), unit: 'mmol/L', status: sb('triglyceride', tg), ref: '参考 <1.7', note: MEASURED }));
+  if (hdl != null) blood.push(measured({ key: 'hdl', name: '高密度脂蛋白', value: String(r2(hdl)), unit: 'mmol/L', status: sb('hdl', hdl), ref: '参考 >1.0', note: MEASURED }));
+  if (ldl != null) blood.push(measured({ key: 'ldl', name: '低密度脂蛋白', value: String(r2(ldl)), unit: 'mmol/L', status: sb('ldl', ldl), ref: '参考 <3.4', note: MEASURED }));
+  if (glucose != null) blood.push(measured({ key: 'glucose', name: '血糖', value: String(r2(glucose)), unit: 'mmol/L', status: sb('glucose', glucose), ref: '空腹参考 3.9~6.1', note: MEASURED_HISTORY }));
+  if (ua != null) blood.push(measured({ key: 'uricAcid', name: '尿酸', value: String(Math.round(ua)), unit: 'μmol/L', status: sb('ua', ua), ref: '常见参考 155~428', scale: { min: 100, max: 500, v: Math.round(ua) }, note: MEASURED_HISTORY }));
+  if (tc != null) blood.push(measured({ key: 'tc', name: '总胆固醇', value: String(r2(tc)), unit: 'mmol/L', status: sb('cholesterol', tc), ref: '参考 <5.2', note: MEASURED_HISTORY }));
+  if (blood.length) groups.push({ key: 'blood', title: '血液指标', icon: '🩸', note: '标「实测」的项来自当前戒指回读或本机历史测量记录；基础版提供血脂三项。', metrics: blood });
+
+  // ── 身体成分（按首次注册资料估算）───────────────────────────────────────
+  if (bodyMetrics) {
+    const pick = ['bmi', 'bodyFatPercentage', 'muscleMass', 'basalMetabolicRate'];
+    const bodyItems = bodyMetrics
+      .filter((m) => pick.includes(m.key))
+      .map((m) => estimated({
+        key: m.key, name: m.name, value: m.value.toFixed(m.decimals), unit: m.unit,
+        status: m.status === 'low' ? 'low' : m.status === 'high' ? 'high' : 'ok',
+        ref: m.range, note: bodyNote,
+      }));
+    if (bodyItems.length) {
+      groups.push({ key: 'body', title: '身体成分', icon: '⚖️', note: '本组为按你首次填写的身高 / 体重 / 年龄 / 性别用公开公式估算，不是戒指测量。', metrics: bodyItems });
+    }
+  }
+
+  // ── Pro 专属健康一览信号（仅 PRO_UI）────────────────────────────────────
+  if (isPro) {
+    const mentalSub: QCMetric[] = [];
+    if (skin != null) mentalSub.push(measured({ key: 'skin', name: '皮肤含水量', value: String(Math.round(skin)), unit: '%', status: 'ok', note: MEASURED }));
+    if (emotion != null) mentalSub.push(measured({ key: 'mood', name: '情绪', value: String(Math.round(emotion)), unit: '', status: 'ok', label: '已记录', note: MEASURED }));
+    if (cortisol != null) mentalSub.push(measured({ key: 'cortisol', name: '皮质醇', value: String(r2(cortisol)), unit: 'μg/dL', status: 'ok', note: MEASURED }));
+    if (fatigue != null) mentalSub.push(measured({ key: 'fatigue', name: '疲劳度', value: String(Math.round(fatigue)), unit: '', status: sb('fatigue', fatigue), note: MEASURED }));
+    if (mentalSub.length) {
+      const mentalRisk: QCRiskBlock = {
+        name: '本次记录信号', status: 'ok', label: '已记录',
+        note: '以下为本次真实记录到的信号值。Mira 只做描述与参考，不做风险评估或诊断性结论。',
+        sub: mentalSub,
+      };
+      groups.push({ key: 'mental', title: '健康一览信号', icon: '🧠', risk: mentalRisk });
+    }
+  }
 
   const rec = await addQuickCheck(groups);
+
+  // ── 4. 把「今日状态」结果写给首页（订阅后即时刷新）──────────────────────
+  const toResultValue = (v: { value: number; source: QCSource; reason: string } | null): QuickCheckResultValue | null =>
+    v ? { value: v.value, source: v.source, reason: v.reason } : null;
+  const bmi = bodyMetrics?.find((m) => m.key === 'bmi')?.value ?? null;
+  const bodyFat = bodyMetrics?.find((m) => m.key === 'bodyFatPercentage')?.value ?? null;
+  const muscle = bodyMetrics?.find((m) => m.key === 'muscleMass')?.value ?? null;
+  const bmr = bodyMetrics?.find((m) => m.key === 'basalMetabolicRate')?.value ?? null;
+  await saveQuickCheckResult({
+    createdAt: Date.now(),
+    recordId: rec.id,
+    status: toResultValue(todayStatus),
+    stress: toResultValue(stressEst),
+    body: bmi != null && bodyFat != null && muscle != null && bmr != null ? { bmi, bodyFat, muscle, bmr } : null,
+    measuredCount,
+    estimatedCount,
+  });
+
   return { ok: true, record: rec };
 }

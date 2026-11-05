@@ -48,6 +48,7 @@ export default function LoginScreen({ onAuthenticated }: Props) {
   const [countdown, setCountdown] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const slide = useRef(new Animated.Value(0)).current;
+  const [segW, setSegW] = useState(0);
 
   const switchMode = (m: Mode) => {
     if (m === mode) return;
@@ -152,16 +153,17 @@ export default function LoginScreen({ onAuthenticated }: Props) {
           {/* 表单玻璃卡 */}
           <View style={s.card}>
             {/* 分段切换 */}
-            <View style={s.segment}>
+            <View style={s.segment} onLayout={(e) => setSegW(e.nativeEvent.layout.width)}>
               <Animated.View
                 style={[
                   s.segmentThumb,
-                  {
+                  segW > 0 && {
+                    width: (segW - 6) / 2,
                     transform: [
                       {
                         translateX: slide.interpolate({
                           inputRange: [0, 1],
-                          outputRange: [0, (theme.layout.maxWidth - theme.space.card * 2 - 6) / 2],
+                          outputRange: [0, (segW - 6) / 2],
                         }),
                       },
                     ],

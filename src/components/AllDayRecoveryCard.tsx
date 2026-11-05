@@ -512,7 +512,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
         {/* ★ v18.147（用户要求）：删除底部「压力分析」解读行（原 keyRow：色点 + 压力结论 + 趋势说明）。
             只保留数据来源说明——用户需要知道这个值不是直接测的激素浓度，而是从 4 项生理信号反推出来的。 */}
         {chartMode === 'today' && g.points.length > 0 ? (
-          <Text style={styles.legendTx}>反推自 HRV · 皮电 · 体温 · 心率 · 非血液检测</Text>
+          <Text style={styles.legendTx}>反推自 HRV · 体温 · 心率 · 活动 · 非血液检测</Text>
         ) : null}
 
         {/* ★ 2026-10-07（用户：洞察页「昼夜节律」卡片里面加一个 AI 分析，约三行）：

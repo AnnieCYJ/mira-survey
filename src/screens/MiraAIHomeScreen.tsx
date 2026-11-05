@@ -1,11 +1,11 @@
 /**
  * MiraAIHomeScreen —— 点击 tab bar 中间 bot 后进入的「Mira AI 首页」。
  *
- * ★ 2026-11-04（用户要求）：做成「更像对话」的 Grok 式首页——
+ * ★ 2026-11-04（用户要求）：做成「更像对话」的 对话式首页——
  *   顶部 Mira 打招呼气泡（与聊天页同源的 AI 气泡样式）+ 一串静态「你可以这样问我」建议问题，
  *   点任意一条直接进入对话。去掉原先自动横向跑马灯（不够像对话）。
  *   - 顶部：左对齐大标题「Mira AI」+ 版本徽章；副标题「你的健康助手」；右上 🔊 喇叭。无返回键。
- *   - 中部：AiOrb 光球 + Mira 打招呼气泡 + 静态建议问题（可点，像 ChatGPT/Grok 开场）。
+ *   - 中部：AiOrb 光球 + Mira 打招呼气泡 + 静态建议问题（可点，像 ChatGPT 式开场）。
  *   - 底部：圆角输入框 + 渐变发送圆钮。
  */
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from '../components/Icon';
-import GrokFace from '../components/GrokFace';
+import LunaMiraFace from '../components/LunaMiraFace';
 import { generateQuestions } from '../data/chat';
 import { useRingState } from '../hooks/useRingState';
 import { useSpeech } from '../hooks/useSpeech';
@@ -131,12 +131,12 @@ export default function MiraAIHomeScreen() {
         keyboardShouldPersistTaps="handled"
       >
           <View style={styles.orbWrap}>
-            <GrokFace size={150} />
+            <LunaMiraFace size={150} />
           </View>
 
         {/* ★ Luna Mira 打招呼气泡（与聊天页 AI 气泡同源样式） */}
         <View style={styles.greetRow}>
-          <GrokFace size={theme.sp(6)} glow={false} />
+          <LunaMiraFace size={theme.sp(6)} glow={false} />
           <View style={styles.greetBubble}>
             <View style={styles.greetBadge}>
               <Text style={styles.greetBadgeTxt}>Luna Mira</Text>

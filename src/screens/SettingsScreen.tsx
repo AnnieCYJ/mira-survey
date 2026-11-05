@@ -303,17 +303,6 @@ export default function SettingsScreen() {
           <View style={styles.headerBtn} />
         </View>
 
-        {/* 用户卡片 */}
-        <Card style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarLetter}>K</Text>
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Kristina</Text>
-            <Text style={styles.profileSub}>Mira 会员 · 第 2 个月</Text>
-          </View>
-        </Card>
-
         {/* 日常设置 */}
         <Text style={styles.sectionTitle}>日常设置</Text>
         <Card padded={false} style={styles.listCard}>
@@ -354,9 +343,9 @@ export default function SettingsScreen() {
             此开关用于开启佩戴时的自动持续采集。以下指标的趋势曲线均依赖它（关闭后卡片仅显示手动测量结果，不再有全天趋势）：
           </Text>
           <Text style={[styles.footnote, styles.footnoteSub]}>
-            · 基础指标：心率 · 血氧 · 体温 · 皮肤电(EDA) · HRV{'\n'}
-            · 代谢：血糖 · 血脂 · 尿酸{'\n'}
-            · 心理 / 睡眠：压力 · 疲劳度 · 情绪 · 皮肤含水量 · 皮质醇
+            · 基础指标：心率 · 血氧 · 体温 · HRV{'\n'}
+            · 代谢：血脂 · 身体成分{'\n'}
+            · 睡眠 / 恢复：睡眠分期 · 交感神经活跃度
           </Text>
           <Text style={[styles.footnote, styles.footnoteSub]}>
             采集方式：原生每约 20 秒执行一次健康一览，并按 15 分钟为一个区间对样本取均值，全天约 96 个趋势点，曲线更平滑。

@@ -18,13 +18,16 @@ import {
   StyleSheet,
   StatusBar,
   Animated,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
+import { mm } from '../theme/mindmate';
 import { userStore, type UserProfile } from '../data/userStore';
-import GrokFace from '../components/GrokFace';
+import LunaMiraFace from '../components/LunaMiraFace';
 
 interface Props {
   onDone: () => void;
@@ -111,7 +114,6 @@ export default function OnboardingScreen({ onDone }: Props) {
   const [typing, setTyping] = useState(false);
   const [numText, setNumText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<'chat' | 'video'>('chat');
   const scrollRef = useRef<ScrollView>(null);
   const dot = useRef(new Animated.Value(0)).current;
 
@@ -141,6 +143,7 @@ export default function OnboardingScreen({ onDone }: Props) {
 
   const answer = (q: Question, raw: string) => {
     if (typing) return;
+    Keyboard.dismiss(); // ★ 2026-11-04：用户输完即收起键盘，避免遮挡对话
     const label =
       q.type === 'choice'
         ? q.options!.find((o) => o.value === raw)?.label ?? raw
@@ -180,13 +183,9 @@ export default function OnboardingScreen({ onDone }: Props) {
     };
     await userStore.completeOnboarding(profile);
     setBusy(false);
-    // ★ 2026-11-04：资料保存后不直接进主页，先放一段欢迎视频，看完再进入
-    setPhase('video');
+    // ★ 2026-11-05：去掉欢迎视频，资料保存后直接进主页
+    onDone();
   };
-
-  if (phase === 'video') {
-    return <OnboardVideoScreen onDone={onDone} />;
-  }
 
   return (
     <View style={s.root}>
@@ -207,11 +206,16 @@ export default function OnboardingScreen({ onDone }: Props) {
         <Text style={s.progressTxt}>{answeredCount} / {total}</Text>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[s.chat, { paddingBottom: theme.space.lg }]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + theme.space.lg}
       >
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[s.chat, { paddingBottom: theme.space.xl + 140 }]}
+          keyboardShouldPersistTaps="handled"
+        >
         {bubbles.map((b, i) =>
           b.role === 'ai' ? <AiBubble key={i} text={b.text} /> : <UserBubble key={i} text={b.text} />,
         )}
@@ -241,7 +245,7 @@ export default function OnboardingScreen({ onDone }: Props) {
                   maxLength={4}
                   value={numText}
                   onChangeText={setNumText}
-                  selectionColor={theme.colors.accentText}
+                  selectionColor={mm.colors.ink}
                 />
                 {current.unit && <Text style={s.numUnit}>{current.unit}</Text>}
                 <TouchableOpacity
@@ -271,31 +275,12 @@ export default function OnboardingScreen({ onDone }: Props) {
               <SummaryItem label="节奏" value={habitText('work', answers.work)} span />
             </View>
             <TouchableOpacity style={[s.finishBtn, busy && s.finishBtnOff]} activeOpacity={0.85} disabled={busy} onPress={finish}>
-              <LinearGradient colors={[...theme.colors.aiBadgeGrad]} style={StyleSheet.absoluteFill} pointerEvents="none" />
               <Text style={s.finishTxt}>{busy ? '保存中…' : '完成，开始体验'}</Text>
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
-    </View>
-  );
-}
-
-/** ★ 2026-11-04：资料收集完成后的欢迎视频页（问答之后播放，看完点「进入 Mira」进主页） */
-function OnboardVideoScreen({ onDone }: { onDone: () => void }) {
-  return (
-    <View style={s.videoRoot}>
-      <Video
-        source={require('../assets/onboarding/onboard_welcome.mp4')}
-        style={StyleSheet.absoluteFill}
-        resizeMode={ResizeMode.CONTAIN}
-        isLooping
-        shouldPlay
-      />
-      {/* ★ 2026-11-04：去掉底部黑色蒙层（videoScrim）；按钮改为「进入 LunaMira →」磨砂胶囊 */}
-      <TouchableOpacity style={s.videoEnter} activeOpacity={0.85} onPress={onDone}>
-        <Text style={s.videoEnterTxt}>进入 LunaMira →</Text>
-      </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -303,7 +288,7 @@ function OnboardVideoScreen({ onDone }: { onDone: () => void }) {
 function AiBubble({ text }: { text: string }) {
   return (
     <View style={s.aiRow}>
-      <GrokFace size={30} glow={false} />
+      <LunaMiraFace size={30} glow={false} />
       <View style={s.aiBubble}>
         <View style={s.aiBadge}>
           <Text style={s.aiBadgeTxt}>Luna Mira</Text>
@@ -327,7 +312,7 @@ function UserBubble({ text }: { text: string }) {
 function TypingBubble({ dot }: { dot: Animated.Value }) {
   return (
     <View style={s.aiRow}>
-      <GrokFace size={30} glow={false} />
+      <LunaMiraFace size={30} glow={false} />
       <View style={s.aiBubble}>
         <View style={s.typingDots}>
           {[0, 1, 2].map((i) => (
@@ -385,7 +370,7 @@ const s = StyleSheet.create({
   head: { paddingHorizontal: theme.space.card, paddingBottom: theme.space.md },
   headTitle: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.space.sm },
   progressTrack: { height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBgSoft, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: theme.colors.accentSolid, borderRadius: theme.radius.pill },
+  progressFill: { height: '100%', backgroundColor: '#FFFFFF', borderRadius: theme.radius.pill },
   progressTxt: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'right' },
   chat: { paddingHorizontal: theme.space.card },
   aiRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: theme.space.md },
@@ -408,22 +393,22 @@ const s = StyleSheet.create({
   },
   aiBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: theme.colors.accentSoft,
+    backgroundColor: '#FFFFFF',
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 2,
     marginBottom: 4,
   },
-  aiBadgeTxt: { fontSize: theme.fontSize.tiny, color: theme.colors.accentText, fontWeight: theme.weight.semibold as any },
+  aiBadgeTxt: { fontSize: theme.fontSize.tiny, color: mm.colors.ink, fontWeight: theme.weight.semibold as any },
   aiText: { fontSize: theme.fontSize.body, color: theme.colors.textBody, lineHeight: theme.fontSize.body * 1.5 },
   userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.md },
   userBubble: {
     maxWidth: '78%',
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: '#FFFFFF',
     borderRadius: theme.radius.card,
     padding: theme.space.sm + 2,
   },
-  userText: { fontSize: theme.fontSize.body, color: '#fff', fontWeight: theme.weight.medium as any },
+  userText: { fontSize: theme.fontSize.body, color: mm.colors.ink, fontWeight: theme.weight.medium as any },
   typingDots: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
   typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.colors.textSub, marginHorizontal: 3 },
   answerArea: { marginTop: theme.space.md },
@@ -451,7 +436,7 @@ const s = StyleSheet.create({
   },
   numUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginHorizontal: theme.space.xs },
   numNext: {
-    backgroundColor: theme.colors.accentSolid,
+    backgroundColor: '#FFFFFF',
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.space.md,
     height: 48,
@@ -460,7 +445,7 @@ const s = StyleSheet.create({
     marginLeft: theme.space.xs,
   },
   numNextOff: { opacity: 0.5 },
-  numNextTxt: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
+  numNextTxt: { color: mm.colors.ink, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
   summaryCard: {
     marginTop: theme.space.lg,
     backgroundColor: theme.colors.cardBg,
@@ -482,27 +467,34 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginTop: theme.space.sm,
     overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
   },
   finishBtnOff: { opacity: 0.6 },
-  finishTxt: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
-  // —— 欢迎视频页 ——
-  videoRoot: { flex: 1, backgroundColor: '#1F4C7E' },
+  finishTxt: { color: mm.colors.ink, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
+  // —— 欢迎视频页 ——（背景渐变由 OnboardVideoScreen 的 LinearGradient 提供，与视频边缘同色）
   videoEnter: {
     position: 'absolute',
     left: theme.space.card,
     right: theme.space.card,
     bottom: theme.space.xl,
-    height: 52,
-    borderRadius: theme.radius.md,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.ui.white92,
+    backgroundColor: 'rgba(255,255,255,0.22)',
     borderWidth: 1,
-    borderColor: theme.colors.ui.white55,
+    borderColor: 'rgba(255,255,255,0.55)',
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
-  videoEnterTxt: { color: theme.colors.bgBottom, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
+  videoEnterTxt: {
+    color: '#FFFFFF',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.weight.semibold as any,
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
 });

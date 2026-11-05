@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions, StatusBar } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText, Line as SvgLine, Circle as SvgCircle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import EcgCard from '../components/EcgCard';
@@ -37,6 +37,8 @@ import {
 import { getTodaySeries } from '../lib/realSeries';
 import { RingBle, type RingState, type MetricKey as RingMetricKey, type EcgReading } from '../ble/RingBleManager';
 import { useDeviceModel, hasCap, type DeviceCapabilities } from '../config/deviceModel'; // ★ 2026-11-04（用户：双机型）
+// ★ 2026-11-05：基础版禁止把 HK18 历史归档当成当前戒指温度/皮电数据源
+import { LEGACY_HISTORY_BLOCKED_KEYS, saneBodyTemp } from '../data/ringDataIsolation';
 import { healthStore, dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
@@ -112,7 +114,7 @@ const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
  * 用于双列瀑布流的高度估算与错落排布，同时作为卡片的 showTrend 判据，
  * 保证「估高」与实际渲染高度一致（不会一个说有图一个说没图）。
  */
-const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol', 'stress', 'fatigue', 'emotion', 'skin', 'snsActivation']);
+const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol', 'stress', 'fatigue', 'emotion', 'skin', 'sns', 'snsActivation']);
 const showTrendFor = (key: string) => !SHORT_METRIC_KEYS.has(key);
 
 /**
@@ -224,10 +226,32 @@ export default function InsightScreen() {
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
   const [subTab, setSubTab] = useState<string>('recover'); // rhythm: recover(皮质醇) | body(雌/孕激素)
+  // ★ 2026-11-05：首页「今日状态」空值时，建议胶囊引导去一键体检 → 直达本页的 quickcheck 子 tab。
+  //   路由参数变化时同步切换（含从后台切回的重复导航）。
+  const route = useRoute<any>();
+  useEffect(() => {
+    if (route?.params?.subTab === 'quickcheck') {
+      setTopTab('longevity');
+      setSubTab('quickcheck');
+    }
+  }, [route?.params?.subTab, route?.params?.t]);
   // 当前 top tab 生效的子 tab 配置（hero/Segmented/UnderlineTabs 两个分支共用一套）
-  // ★ 2026-11-04（用户：双机型）：Luna Mira 无心电/血液成分/一键体检 → 按机型能力过滤「身体指标」子 tab
+  // ★ 2026-11-05（用户：双机型）：基础版无心电/血压/血糖/皮电等，按机型能力过滤「身体指标」子 tab；
+  //   一键体检 quickCheck 基础版保留（改为「实测 + 估算」，不依赖 Pro 专属传感器）。
   const { model: deviceModel } = useDeviceModel();
-  const SUB_CAP: Partial<Record<string, keyof DeviceCapabilities>> = { ecg: 'ecg', bloodcomp: 'bloodComponents', quickcheck: 'quickCheck' };
+  // ★ 2026-11-05（用户：「我在基础版 UI 上做调整，不会改到 Pro 的排布吧？」）：
+  //   本页 PRO_UI / BASE_UI 原本共用同一套 JSX、同一套子 tab，直接改排布会两档一起变。
+  //   这里加机型分支：以下「去子 tab、上下卡片平铺」的新排布**只对 BASE_UI 生效**，
+  //   PRO_UI 完整保留原来的 Segmented + UnderlineTabs + 分子 tab 渲染。
+  const isBaseLayout = deviceModel.id === 'BASE_UI';
+  const SUB_CAP: Partial<Record<string, keyof DeviceCapabilities>> = {
+    ecg: 'ecg',
+    bloodcomp: 'bloodComponents',
+    quickcheck: 'quickCheck',
+    bp: 'bp',
+    sugar: 'glucose',
+    bodycomp: 'bodyComp',
+  };
   const longevitySubs = LONGEVITY_SUBS.filter(t => { const c = SUB_CAP[t.key]; return !c || hasCap(deviceModel, c); });
   const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : longevitySubs;
   // 当前 subTab 被机型能力过滤掉时（如切到 Luna Mira），有效键回落到第一个可用 tab，避免空屏/选中错位
@@ -461,6 +485,11 @@ export default function InsightScreen() {
   // ★ 轻量缓存：render 内新建 Map（短生命周期，GC 友好），避免每次 render 遍历 healthStore
   const _cache = new Map<string, { hist: any[]; lastT: number | null }>();
   const getCachedHist = (key: string): any[] => {
+    // ★ 2026-11-05（用户：HK18 数据不要混进来）：基础版的温度/皮电类指标
+    //   一律不读本机 healthStore 历史归档 —— 里面混着旧戒指写入的 39℃ 体温、
+    //   皮肤含水量（曾被误命名成 EDA）与皮肤温度。只用当前戒指的云端日值。
+    //   Pro 机型保持原行为，不受影响。
+    if (deviceModel.id === 'BASE_UI' && LEGACY_HISTORY_BLOCKED_KEYS.includes(key)) return [];
     const c = _cache.get(key);
     if (c) return c.hist;
     const raw = getTodaySeries(key);
@@ -490,33 +519,42 @@ export default function InsightScreen() {
   };
 
   const realtimeKeys = new Set(BASIC_METRICS.map((b) => b.key));
-  // 基础指标信号（★ 2026-11-04：按机型能力过滤——Luna Mira 无 体温/皮电，对应卡不渲染；deviceModel 已在上方 229 行声明并订阅）
+  // ★ 云端日值对应的真实日期（auto_data 按天一条，今天没上传时最新是昨天）→ 卡片副标题如实标注
+  const dailyDateTs = (ring?.daily as Record<string, number> | undefined)?.['dailyDateTs'] ?? null;
+  const dailySourceLabel = typeof dailyDateTs === 'number' && Number.isFinite(dailyDateTs)
+    ? `${new Date(dailyDateTs).getMonth() + 1}/${new Date(dailyDateTs).getDate()} 日均`
+    : '最近日均';
+  // 基础指标信号（★ 2026-11-06 修正注释：基础版 Luna Mira 实际**支持体温(temp)** 与 **交感神经(sns, gsr 通道)**，
+  //   对应卡会正常渲染；仅「皮电(eda)/皮肤温度(skin)」基础版无数据源 → 不渲染。deviceModel 已在上方 229 行声明并订阅）
   const basicsSignals = useMemo(() => {
-    const BASIC_CAP: Partial<Record<string, keyof DeviceCapabilities>> = { temp: 'temp', skinTemp: 'temp', eda: 'eda' };
+    const BASIC_CAP: Partial<Record<string, keyof DeviceCapabilities>> = {
+      temp: 'temp',
+      skinTemp: 'skin',  // ★ 2026-11-05：基础版无独立皮肤温度数据源（skin=false），不渲染
+      eda: 'eda',        // ★ 2026-11-05：协议无 EDA，BASE_UI.eda=false → 不渲染
+      rr: 'rr',
+      skin: 'skin',
+      emotion: 'emotion',
+      cortisol: 'cortisolProxy',
+      depressionRisk: 'cortisol',
+      bpSys: 'bp',
+      bpDia: 'bp',
+      // ★ 2026-11-05：压力/疲劳度只来自「健康一览 healthGlance 自动快照」，
+      //   基础版戒指该通道实测为空（后端 health_glance 0 条），卡片会永远显示「—」。
+      //   复用 cortisol（同为健康一览族）作为该数据源的能力开关 → 基础版直接不渲染。
+      stress: 'cortisol',
+      fatigue: 'cortisol',
+    };
     return signalsForDimension('basics').filter((m) => {
       const c = BASIC_CAP[m.key];
       return !c || hasCap(deviceModel, c);
     });
   }, [deviceModel]);
-  // ★ 2026-11-04（用户：「这个版本没有返回数据的，就直接去掉展示」）：
-  //   动态隐藏「当前无数据」的指标卡（如基础版 EDA 皮电显示「尚未测量」）。
-  //   用稳定的 dataSig 字符串驱动，仅当某指标「有无数据」状态翻转时才重算布局，避免 1Hz 心率采样引发整页重排抖动。
-  const dataSig = basicsSignals
-    .map((m) => {
-      const rk = m.key as RingMetricKey;
-      const real = realtimeKeys.has(m.key) ? (ring.metrics[rk] ?? null) : (ring.daily[m.key] ?? null);
-      const hasTrend = getTodaySeries(m.key).length > 0;
-      return real != null || hasTrend ? '1' : '0';
-    })
-    .join('');
-  const visibleKeys = useMemo(() => {
-    const set = new Set<string>();
-    basicsSignals.forEach((m, i) => {
-      if (dataSig[i] === '1') set.add(m.key);
-    });
-    return set;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataSig]);
+  // ★ 2026-11-05（修复「跨天基础指标全空」）：
+  //   之前的 dataSig/visibleKeys 按「今日有无数据」隐藏卡片——新的一天戒指尚未同步时，
+  //   当日 daily / 今日 intraday 都为空 → 所有卡被整页隐藏，造成「跨天全不见」。
+  //   正确口径：卡片可见性只由**设备能力**决定（basicsSignals 已用 hasCap 过滤掉本机型不支持的指标，
+  //   如基础版无 体温/皮电）；对设备支持的指标，**永远渲染卡片**，今天还没采到就显示「—」而非隐藏。
+  //   这样既满足用户「本版本不返回的指标直接不展示」，又不会在跨天/未同步时把正常指标误删。
   // ★ 双列瀑布流布局：按 section 分组（组标题占整行），组内按「有无趋势图」估高做两列分配。
   //   分配结果（当前 6 张卡）：
   //     左列 = 心率 / EDA皮电 / 心率变异性（高·矮·高）
@@ -533,20 +571,65 @@ export default function InsightScreen() {
     //   11 张卡进同一对列 → 整体紧凑、底部两列自然对齐。
     return [{
       section: basicsSignals.find((m) => !!m.section)?.section ?? '',
-      items: basicsSignals.filter((m) => visibleKeys.has(m.key)),
-      columns: splitColumnsBalanced(basicsSignals.filter((m) => visibleKeys.has(m.key)), estH, (m) => m.key, afterOf),
+      items: basicsSignals,
+      columns: splitColumnsBalanced(basicsSignals, estH, (m) => m.key, afterOf),
     }];
-  }, [basicsSignals, visibleKeys]);
+  }, [basicsSignals]);
 
   /** 渲染单张基础指标卡（原网格内的卡片逻辑抽出，供左右两列复用）。 */
   const renderBasicsCard = (m: BasicMetricDef) => {
     const isRealtime = realtimeKeys.has(m.key);
     const rk = m.key as RingMetricKey;
-    // ★ 2026-10-27（审计修复 P1）：戒指断流（>3h 无采样）时，实时信号不得再显示旧快照值，
-    //   强制置 null → formatValue 输出「—」，与睡眠结构卡 / 节律卡 / 首页圆环同一口径。
-    const real = isRealtime ? (dataStale ? null : (ring.metrics[rk] ?? null)) : (ring.daily[m.key] ?? null);
+    // ★ 2026-11-05（用户实锤「连着戒指为什么很多指标还不出值」「体温为什么还没有数据」）：
+    //   5 张核心卡只读 ring.metrics，而基础版固件不开放体温/HRV 的实时流 → 恒为 null；
+    //   ★ 2026-11-05 修正：温度类不再向本地 healthStore 兜底（那里是 HK18 时期的历史值，
+    //   曾导致详情页显示 39℃）；只用「原生实时 → 当前戒指云端按天真实回读」两级。
+    //   并挡住「心率 1 bpm」「日均体温 >38.5℃」这类明显不是生理读数的异常值。
+    //   日值按云端真实日期标「M/D 日均」，不冒充今天。
+    const sane = (k: string, v: number | null | undefined): boolean => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return false;
+      if (k === 'hr') return v >= 30 && v <= 220;
+      if (k === 'spo2') return v >= 50 && v <= 100;
+      if (k === 'temp') {
+        const t = saneBodyTemp(v);
+        // 当前戒指只回读「日均体温」，日均 >38.5℃ 不可能是真实值 → 视为旧戒指/单位脏值
+        return t != null && (deviceModel.id !== 'BASE_UI' || t <= 38.5);
+      }
+      if (k === 'hrv') return v > 0 && v <= 300;
+      if (k === 'eda') return v >= 0 && v <= 99;
+      return true;
+    };
+    const localLast = (key: string): { v: number; t: number } | null => {
+      const arr = getCachedHist(key);
+      const last = arr.length ? arr[arr.length - 1] : null;
+      return last && Number.isFinite(last.v) ? { v: last.v as number, t: last.t as number } : null;
+    };
+    let real: number | null = null;
+    let measureTime: number | null = null;
+    let sourceLabel: string | undefined;
+    if (isRealtime) {
+      const rt = ring.metrics[rk] ?? null;
+      if (!dataStale && sane(m.key, rt)) {
+        real = rt ?? null;
+        measureTime = ring.lastUpdated[rk] ?? null;
+      } else {
+        const dv = ring.daily[rk] ?? null;
+        const loc = localLast(m.key);
+        if (sane(m.key, dv)) { real = dv ?? null; measureTime = loc?.t ?? null; sourceLabel = dailySourceLabel; }
+        else if (loc && sane(m.key, loc.v)) { real = loc.v; measureTime = loc.t; }
+        else { measureTime = ring.lastUpdated[rk] ?? null; }
+      }
+    } else {
+      const dv = ring.daily[m.key] ?? null;
+      const loc = localLast(m.key);
+      if (sane(m.key, dv)) {
+        real = dv ?? null;
+        measureTime = getCachedLastT(m.key);
+        sourceLabel = measureTime == null ? dailySourceLabel : undefined;
+      } else if (loc && sane(m.key, loc.v)) { real = loc.v; measureTime = loc.t; }
+      else measureTime = getCachedLastT(m.key);
+    }
     const hist = getCachedHist(m.key);
-    const measureTime = isRealtime ? ring.lastUpdated[rk] : getCachedLastT(m.key);
     if (m.manualOnly) {
       return (
         <ManualMetricCard
@@ -573,6 +656,7 @@ export default function InsightScreen() {
         onMeasure={() => RingBle.measure(rk)}
         hideMeasure={m.hideMeasure ?? true}
         measureTime={measureTime}
+        sourceLabel={sourceLabel}
         showTrend={showTrendFor(m.key)}
         onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
       />
@@ -617,7 +701,7 @@ export default function InsightScreen() {
         {/* ★ 2026-10-06：节律健康仅 2 个 tab 时（large）——直接整屏等宽平铺，不套 ScrollView。
             横向 ScrollView 内 flex:1 宽度在 Fabric 下偶尔失效，导致两个 tab 没撑满整屏。
             其它 tab（ecg 等多项）仍走 ScrollView 横向滚动。 */}
-        {topTab === 'rhythm' ? (
+        {!isBaseLayout && (topTab === 'rhythm' ? (
           <View style={{ width: '100%' }}>
             <UnderlineTabs
               options={ACTIVE_SUBS.map(t => t.label)}
@@ -636,9 +720,31 @@ export default function InsightScreen() {
               tone={'cy'}
             />
           </ScrollView>
-        )}
+        ))}
 
-        {topTab === 'rhythm' ? (
+        {/* ★ 2026-11-05（用户）：基础版洞察页去掉子 tab ——
+              · 荷尔蒙节律 = 上下两张卡片（昼夜节律 / 生理周期节律）
+              · 身体指标   = 第一张一键体检，下面直接平铺心率/血氧/体温/HRV/皮电/交感等基础指标卡
+            仅 BASE_UI 生效；PRO_UI 走下面原分子 tab 布局。 */}
+        {isBaseLayout && (topTab === 'rhythm' ? (
+          <>
+            {/* ★ 2026-11-06（用户）：移除「昼夜节律」小标题（用户认为不需要），保留卡片本身 */}
+            <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+            <Text style={styles.sectionLabel}>生理周期节律</Text>
+            <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
+          </>
+        ) : (
+          <>
+            <QuickCheckTab />
+            {/* ★ 2026-11-06（用户）：基础指标卡改为**单列全宽列表**（更宽、像列表一样平铺），并去掉「基础指标」标题文字 */}
+            <View style={styles.basicsList}>
+              {basicsSignals.map((m) => renderBasicsCard(m))}
+            </View>
+            {SHOW_LONGEVITY_AI ? <InsightBanner rows={insightRows} pending={aiOverview.loading} /> : null}
+          </>
+        ))}
+
+        {!isBaseLayout && (topTab === 'rhythm' ? (
           <>
             {effSub === 'sleep' ? (
               <>
@@ -723,7 +829,7 @@ export default function InsightScreen() {
             {/* ★ 2026-10-07（用户：长期健康里面，AI 综合分析先隐藏）：由 SHOW_LONGEVITY_AI 控制 */}
             {SHOW_LONGEVITY_AI ? <InsightBanner rows={insightRows} pending={aiOverview.loading} /> : null}
           </>
-        )}
+        ))}
       </View>
     </ScreenContainer>
     {/* 情绪洞察页底部悬浮记录卡（仅 emotion 子 tab 出现；认知/其他 tab 不动） */}
@@ -778,6 +884,7 @@ const BLOOD_PANEL: {
 
 const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOpenDetail: (key: string, name: string, unit: string, yMin: number, yMax: number) => void }) {
   const hsVer = useHealthStoreVersion();
+  const { model: bpModel } = useDeviceModel();
   const dk = dayKey(Date.now());
   const getLatest = useCallback((k: string): number | null => {
     try {
@@ -840,14 +947,24 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
   };
   const grid = { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.space.sm };
 
-  const uricItems = BLOOD_PANEL.filter((it) => it.key === 'ua');
-  const lipidItems = BLOOD_PANEL.filter((it) => it.key !== 'ua');
+  // ★ 2026-11-05（用户：按真机收敛）：基础版不展示其硬件未回读的指标（尿酸 uricAcid / 总胆固醇 cholesterol）
+  const panelItems = BLOOD_PANEL.filter((it) => {
+    if (it.key === 'ua') return hasCap(bpModel, 'uricAcid');
+    if (it.key === 'cholesterol') return hasCap(bpModel, 'cholesterol');
+    return true;
+  });
+  const uricItems = panelItems.filter((it) => it.key === 'ua');
+  const lipidItems = panelItems.filter((it) => it.key !== 'ua');
   const subHead = { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginTop: theme.sp(3), marginBottom: theme.sp(1.5) };
 
   return (
     <View>
-      <Text style={subHead}>尿酸</Text>
-      <View style={grid}>{uricItems.map((it) => renderChip(it, true))}</View>
+      {uricItems.length > 0 ? (
+        <>
+          <Text style={subHead}>尿酸</Text>
+          <View style={grid}>{uricItems.map((it) => renderChip(it, true))}</View>
+        </>
+      ) : null}
       {/* ★ 2026-10-16（续 4）：四张血脂小卡外面包一个框，右上角箭头 → 进入血脂详情（内含日/周/月/年趋势图） */}
       <View style={[lipidGroup, { marginTop: theme.sp(3) }]}>
         <TouchableOpacity
@@ -1161,7 +1278,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
             return <SvgRect key={'wb' + i} x={x} y={y} width={bw} height={bh} rx={empty ? 1 : chart.barRadius} fill={col} />;
           })}
           {MON.slice(0, N).map((d, i) => (
-            <SvgText key={'wl' + i} x={i * slotW + slotW / 2} y={H - 2}
+            <SvgText key={'wl' + i} x={i * slotW + slotW / 2} y={H - 4}
               textAnchor="middle" fontSize={9}
               fontWeight={i === todayIdx ? '700' : '500'}
               fill={i === todayIdx ? mm.colors.skyDeep : mm.colors.inkFaint}>
@@ -1433,6 +1550,8 @@ const styles = StyleSheet.create({
   //   配合「单一分组」消除组间空白，整页明显更紧凑。
   masonry: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(2) },
   masonryCol: { flex: 1, gap: theme.sp(2) },
+  // ★ 2026-11-06（用户）：基础指标卡改为单列全宽列表（更宽、像列表一样平铺）
+  basicsList: { flexDirection: 'column', gap: theme.sp(3) },
   emptyNote: {
     fontSize: theme.fontSize.micro,
     lineHeight: theme.fontSize.micro * 1.7,

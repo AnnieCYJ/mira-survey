@@ -14,6 +14,7 @@ import RelaxVideoPlayer from '../components/RelaxVideoPlayer';
 import { useAppState, PLAN_PER_DAY } from '../state/AppState';
 import { CAL_YEAR, CAL_MONTH } from '../data/tasks';
 import MonthDiscoveryView from '../components/MonthDiscoveryView';
+import JourneyDayView from '../components/JourneyDayView';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CONFETTI_MS = 3000; // 礼花时长
@@ -44,6 +45,10 @@ export default function ProfileScreen({ navigation }: any) {
   const dayRefs = useRef<Record<number, any>>({});
   const [flight, setFlight] = useState<{ dx: number; dy: number; scale: number } | null>(null);
   const cardSizeRef = useRef({ w: 300, h: 180 });
+
+  // ★ 2026-11-05（用户）：日历区块改名为「回顾」，上方加「今日 / 本月」两个 tab；
+  //   今日 = 当日行为流程（JourneyDayView，即点月历某一天弹出的那种图）；本月 = 月历网格。
+  const [reviewTab, setReviewTab] = useState<'today' | 'month'>('month');
 
   // 庆祝自动流程：礼花 → 卡片停留 → 飞向对应日期格子 → 关闭
   useEffect(() => {
@@ -155,17 +160,36 @@ export default function ProfileScreen({ navigation }: any) {
       />
       <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
-          <Text style={styles.title}>Calendar</Text>
+          <Text style={styles.title}>回顾</Text>
         </Animated.View>
 
-        {/* ★ 2026-10-12（用户）：「去掉日和月表上面那个选 tab 吧，只保留月」——
-            顶部的「日 / 月」分段器整块移除，Calendar 页固定为「月」视图；
-            「日」视图改为点月历上的某一天 → 下抽屉弹出（见 MonthDiscoveryView / DayDrawer）。 */}
-        {USE_MONTH_DISCOVERY ? (
+        {/* ★ 2026-11-05（用户）：今日 / 本月 两个 tab 置于时间选择器上方 */}
+        <View style={styles.reviewTabs}>
+          <TouchableOpacity
+            style={[styles.reviewTab, reviewTab === 'today' && styles.reviewTabOn]}
+            activeOpacity={0.7}
+            onPress={() => setReviewTab('today')}
+          >
+            <Text style={[styles.reviewTabTxt, reviewTab === 'today' && styles.reviewTabTxtOn]}>今日</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.reviewTab, reviewTab === 'month' && styles.reviewTabOn]}
+            activeOpacity={0.7}
+            onPress={() => setReviewTab('month')}
+          >
+            <Text style={[styles.reviewTabTxt, reviewTab === 'month' && styles.reviewTabTxtOn]}>本月</Text>
+          </TouchableOpacity>
+        </View>
+
+        {reviewTab === 'today' ? (
+          /* ★ 2026-11-05（用户）：今日 = 当日行为流程（睡眠 / 运动 / 情绪 / 压力 时间轴） */
+          <View style={styles.reviewToday}>
+            <JourneyDayView />
+          </View>
+        ) : USE_MONTH_DISCOVERY ? (
           /* ★ 2026-10-12（用户）：月视图改版方案 A —— 卡片堆叠月历 + 规律总结 */
           <MonthDiscoveryView
             tasks={tasks}
-            /* ★ Phase 3：规律观察 → 带着这条观察去问 Mira（云端长窗口综合分析） */
             onAskMira={(q) => navigation.navigate('VoiceChat', { question: q })}
           />
         ) : (
@@ -253,6 +277,38 @@ const styles = StyleSheet.create({
     color: mm.colors.ink,
     marginBottom: theme.space.md,
   },
+  /* ★ 2026-11-06（用户）：回顾页 今日 / 本月 tab 加大字号、加宽（更醒目、更好点） */
+  reviewTabs: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(31,29,26,0.06)',
+    borderRadius: theme.radius.pill,
+    padding: theme.sp(2),
+    marginBottom: theme.space.md,
+    alignSelf: 'flex-start',
+  },
+  reviewTab: {
+    paddingVertical: theme.sp(2.5),
+    paddingHorizontal: theme.sp(11),
+    borderRadius: theme.radius.pill,
+  },
+  reviewTabOn: {
+    backgroundColor: mm.colors.cardBg,
+    shadowColor: mm.shadow.color,
+    shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius,
+    shadowOffset: { width: 0, height: mm.shadow.height },
+    elevation: 2,
+  },
+  reviewTabTxt: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.weight.medium,
+    color: mm.colors.inkFaint,
+  },
+  reviewTabTxtOn: {
+    color: mm.colors.ink,
+    fontWeight: theme.weight.semibold as never,
+  },
+  reviewToday: { marginTop: theme.sp(1) },
   calHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

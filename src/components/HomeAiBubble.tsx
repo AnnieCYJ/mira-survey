@@ -49,8 +49,8 @@ const GLASS_TEXT_SHADOW = {
 // 白玻璃上的行动 pills（深字保证可读）
 const PILL_LIGHT_BG = '#FFFFFF';
 const PILL_LIGHT_TEXT = '#2C2A3E';
-// ★ 2026-10-16：GROK 渐变（青柠绿 → 粉），用于 CTA 主按钮填充，比白底 pills 更跳
-const GROK_GRAD: [string, string] = ['#C6D84B', '#F58AB8'];
+// ★ 2026-10-16：lunamira 渐变（青柠绿 → 粉），用于 CTA 主按钮填充，比白底 pills 更跳
+const MIRA_CTA_GRAD: [string, string] = ['#C6D84B', '#F58AB8'];
 
 function thumbFor(c: SuggestionCandidate): number {
   if (c.cta && TOOL_THUMB[c.cta.screen]) return TOOL_THUMB[c.cta.screen];
@@ -174,7 +174,7 @@ const BubbleIdleContent = memo(function BubbleIdleContent({ height, analysis }: 
 });
 
 // ★ 2026-10-14：首页常驻气泡的「录音中」浮层（与 idle 文案隔离，避免每 250ms 转写推进重渲染整块气泡）。
-//   关键修复：首页**正在显示建议卡**(hasCard) 时，长按右下 GROK 触发的就地录音（inlineMode）
+//   关键修复：首页**正在显示建议卡**(hasCard) 时，长按右下助手按钮 触发的就地录音（inlineMode）
 //   原本被建议卡盖住、且浮层在首页被刻意抑制 → 用户「长按没反应、语音输入没在了」。
 //   现在录音态在此独立叶子渲染并覆盖在气泡之上，保证**任何状态**下长按都能看到「正在聆听…」。
 const VoiceListeningView = memo(function VoiceListeningView() {
@@ -486,7 +486,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
     }
   };
 
-  // 尾巴靠右，tip 略右偏 → 指向右下角的 GROK
+  // 尾巴靠右，tip 略右偏 → 指向右下角的助手按钮
   const tailCx = Math.max(R + TAIL_W, w - 34);
   const b0 = tailCx - TAIL_W / 2;
   const b1 = tailCx + TAIL_W / 2;
@@ -591,7 +591,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                           style={[styles.btnPill, styles.btnPillGrad]}
                         >
                           <LinearGradient
-                            colors={GROK_GRAD}
+                            colors={MIRA_CTA_GRAD}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={StyleSheet.absoluteFill}
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold,
   },
-  // ★ 2026-10-16：GROK 渐变主按钮（CTA）。容器去白底、开圆角裁剪，由内层 LinearGradient 填充；
+  // ★ 2026-10-16：lunamira 渐变主按钮（CTA）。容器去白底、开圆角裁剪，由内层 LinearGradient 填充；
   //   覆写 paddingHorizontal 让按钮更宽（用户：按钮再宽一点）
   btnPillGrad: {
     backgroundColor: 'transparent',

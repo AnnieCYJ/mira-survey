@@ -196,7 +196,7 @@ export default function TempBiphasicChart({
       <View style={styles.empty}>
         <Text style={styles.emptyTitle}>体温双相曲线</Text>
         <Text style={styles.emptyText}>
-          今日暂无体温数据。戒指会自动采集皮肤温度，佩戴一段时间后即可看到日内趋势。
+          今日暂无体温数据。戒指按天回读日均体温，同步后即可看到趋势。
         </Text>
       </View>
     );

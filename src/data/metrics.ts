@@ -27,7 +27,7 @@ export const TREND_SCRIPT: [StateKey, number][] = [
   ['calm', 58], ['calm', 62], ['calm', 56], ['calm', 48], ['calm', 42], ['tired', 36],
   ['tired', 32], ['tired', 28], ['calm', 26], ['calm', 24], ['tired', 22], ['tired', 24],
 ];
-export const TREND_AXIS = ['0时', '4时', '8时', '12时', '16时', '20时', '24时'];
+export const TREND_AXIS = DAY_HOUR_TICKS.map((h) => `${h}时`);
 
 import type { CurveStatus } from '../lib/dailyStatus';
 
@@ -178,9 +178,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     range: '正常 36.0–37.2',
     data: [],
     live: true,
-    note: '皮肤温度随周期激素波动，排卵期后略升。详情页看的是「相对个人基线的偏离」，不是绝对值。',
-    // ★ 2026-10-10：原写「单次测量 · 约每 20 秒」与真实链路不符（healthStore cadence = 每 5 分钟）
-    freq: '自动每 5 分钟 · 手动按需',
+    // ★ 2026-11-05 协议复核：这枚戒指只有「日均体温」一路真实温度（auto_data.temp_daily_mean）；
+    //   health_glance 空表、gsr 无温度 → 没有独立皮肤温度数据流，也没有 EDA 皮电。
+    note: '戒指日常数据回读的日均体温（℃），是本机唯一真实温度数据；协议无独立皮肤温度流、无皮电 EDA。',
+    freq: '日常数据按天回读 · 日均值',
     yMin: 35,
     yMax: 38.5,
   },
@@ -194,8 +195,10 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     range: '相对值 1–99',
     data: [],
     live: true,
-    note: '经原生桥取到的「皮电」实为 Veepoo GSR 的 skin_moisture（厂商相对指数 1–99），反映交感神经皮肤反应，是压力的直接信号。',
-    freq: '单次测量 · 约每 20 秒',
+    // ★ 2026-11-05：协议里根本没有 EDA（VPGSRResultModel 只有皮肤含水量 skin_moisture 1–99）。
+    //   旧值是把皮肤含水量错误命名成皮电；基础版 BASE_UI.eda=false → 该卡不渲染。
+    note: '协议无 EDA 皮肤电导；历史值实为 GSR 的 skin_moisture（皮肤含水量 1–99），基础版不展示。',
+    freq: '无数据源 · 不展示',
     yMin: 0,
     yMax: 99,
   },
@@ -316,8 +319,8 @@ export const EXTENDED_SIGNALS: BasicMetricDef[] = [
   },
   {
     key: 'cortisol', name: '皮质醇', icon: 'ring', dimension: 'basics',
-    value: '—', unit: 'μg/L', range: '正常 ~50–250（晨高夜低）', data: [], live: false, hideMeasure: true,
-    note: '压力激素皮质醇浓度，随昼夜节律波动（晨高夜低）。健康一览自动同步。', freq: '健康一览自动同步', yMin: 0, yMax: 500,
+    value: '—', unit: '指数', range: '推算节律 · 晨高夜低', data: [], live: false, hideMeasure: true,
+    note: '基础版戒指不实测皮质醇。这里按 HRV / 皮电 / 体温 / 心率等多信号推算的昼夜节律活性（0–100 相对指数），不是激素浓度检测值，仅作趋势参考。', freq: '推算 · 每 30 分钟一个节律点', yMin: 0, yMax: 100,
   },
   {
     // ★ 2026-10-10（用户实锤：「洞察页基础指标里有两个交感神经卡片，左下那个还不显示数据」）

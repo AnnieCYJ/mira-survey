@@ -623,7 +623,7 @@ export default function CycleCalendarScreen() {
               <>
                 <TrendCard
                   kind="estrogen"
-                  title="雌激素波动（HRV·EDA 推算）"
+                  title="雌激素波动（HRV·心率 推算）"
                   lineColor={PHASE_COLOR.ovulation}
                   data={estData}
                   log={log}
@@ -631,8 +631,8 @@ export default function CycleCalendarScreen() {
                   cycleInfo={cycleInfo}
                   cycleStart={selStart}
                   cycleDays={cycAxis?.days}
-                  emptyNote="连续佩戴获取 HRV 与 EDA（皮肤电导）后，这里会显示基于实测信号推算的雌激素相位趋势：HRV 卵泡期较高、EDA 排卵期升高。戒指不直接测量雌激素。"
-                  note="基于戒指实测 HRV + EDA（皮肤电导）推算，按所选周期窗口各自归一化后加权（HRV 0.6 / EDA 0.4）。戒指不直接测量雌激素，仅供参考。"
+                  emptyNote="连续佩戴获取 HRV 与心率后，这里会显示基于回读信号推算的雌激素相位趋势。戒指不直接测量雌激素。"
+                  note="基于戒指回读的 HRV / 心率 / 体温等多信号推算，按所选周期窗口各自归一化后加权。戒指不直接测量雌激素，仅供参考。"
                 />
                 <TrendCard
                   kind="progesterone"
@@ -655,7 +655,7 @@ export default function CycleCalendarScreen() {
               <Text style={styles.methodTitle}>方法与依据</Text>
               <Text style={styles.methodItem}>· 排卵 / 相位：症状体温法 symptothermal（基础体温 BBT 双相）＋ 日历法</Text>
               <Text style={styles.methodItem}>· 孕激素：黄体期基础体温升高（0.3–0.5 °C）＋ 静息心率升高，均为孕酮驱动的实测信号</Text>
-              <Text style={styles.methodItem}>· 雌激素：以 HRV（卵泡期较高）＋ EDA 皮肤电导（排卵期升高）推算</Text>
+              <Text style={styles.methodItem}>· 雌激素：以 HRV（卵泡期较高）＋ 心率 / 体温变化推算</Text>
               <Text style={styles.methodFoot}>均为开源成熟方法或已发表研究支持的推算，戒指不直接测量激素，结果不构成医学诊断。</Text>
             </View>
           </>

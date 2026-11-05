@@ -234,6 +234,8 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
                 <View key={`${it.time}-${i}`} style={styles.row}>
                   <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
                   <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
+                    {/* ★ 本轮（用户 #245）：达标 → 卡片右上角画星 */}
+                    {it.goalMet ? <Text style={styles.goalStar}>★</Text> : null}
                     <View style={styles.cardHead}>
                       <View style={[styles.icon, { backgroundColor: mixWhite(it.color, 0.82) }]}>
                         <Text style={styles.iconTxt}>{it.emoji ?? emojiFor(it.title)}</Text>
@@ -241,6 +243,8 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
                       <Text style={styles.cardTitle} numberOfLines={2}>{it.title}</Text>
                     </View>
                     {!!it.sub && <Text style={styles.cardSub} numberOfLines={2}>{it.sub}</Text>}
+                    {/* ★ 本轮（用户 #248）：卡片底部补一句分析 */}
+                    {!!it.analysis && <Text style={styles.cardAnalysis} numberOfLines={2}>{it.analysis}</Text>}
                     <Text style={styles.cardTime}>{it.time}</Text>
                   </View>
                 </View>
@@ -302,6 +306,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.sp(1.5), borderWidth: 2.5, borderColor: theme.colors.cardBg, zIndex: 1,
   },
   card: {
+    position: 'relative',
     backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
     borderRadius: mm.radius.card, padding: theme.space.cardPadCompact,
     shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
@@ -326,6 +331,17 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(1.25),
   },
   cardTime: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint, marginTop: theme.sp(1.5) },
+  // ★ 本轮（用户 #245）：达标星标，卡片右上角
+  goalStar: {
+    position: 'absolute', top: theme.sp(1), right: theme.sp(1.25),
+    fontSize: theme.fs(13), color: mm.colors.limeDeep, fontWeight: theme.weight.bold as never,
+    zIndex: 3,
+  },
+  // ★ 本轮（用户 #248）：卡片底部分析句，比 sub 再弱一档
+  cardAnalysis: {
+    fontSize: theme.fontSize.micro, color: mm.colors.limeDeep,
+    lineHeight: theme.fontSize.micro * 1.45, marginTop: theme.sp(1),
+  },
 
   sumBar: {
     marginTop: theme.sp(2), backgroundColor: mm.colors.cardBg,

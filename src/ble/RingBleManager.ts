@@ -27,7 +27,9 @@ import * as FileSystem from 'expo-file-system';
 import { theme } from '../theme/theme';
 import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
 // ★ Phase 1：设备令牌（按 device_id 隔离的云端访问凭证）
-import { authHeaders, ensureDeviceToken, getLocalDeviceId } from '../data/ringIdentity';
+import { authHeaders, ensureDeviceToken } from '../data/ringIdentity';
+// ★ 2026-11-05：两套戒指数据源隔离（旧 HK18 数据不得混进当前戒指）+ 体温合法性校验
+import { trustedCurrentRingDeviceId, isBlockedRingDeviceId, saneBodyTemp } from '../data/ringDataIsolation';
 import { ringUploadExtFields } from '../lib/ringUploadFields';
 import {
   computeCycle,
@@ -67,8 +69,10 @@ import { scheduleRecompute, scheduleRecomputeMany, flushAll } from '../lib/recom
 //   连接就绪后原生透传 capabilities，据此动态判定 Pro/基础版（有就展示）。
 import {
   applyProfileFromCapabilities,
+  applyProfileFromDevice,
   resolveProfileByModel,
   getStoredDeviceInfo,
+  getDeviceProfileId,
   getProfile,
   DEFAULT_DEVICE_PROFILE,
 } from '../config/deviceModel';
@@ -1420,10 +1424,15 @@ class NativeRingSource {
       postLog('RingBle', `[State] ready totalDays=${raw.deviceTotalDays ?? '?'}`);
       // ★ 2026-11-04（用户定稿·能力字段驱动）：连接就绪后，原生透传 capabilities（SDK *Type），
       //   据此动态判定 Pro/基础版 与 展示哪些功能（有就展示）。
-      if (raw.capabilities) {
-        void applyProfileFromCapabilities(raw.capabilities)
+      // ★ 2026-11-05（用户：连上戒指就该识别 Pro/基础版）：优先用能力字段；若原生没透传，回退到已连上的 MAC / 广播名。
+      if (raw.capabilities || this.getState().deviceId || this.getState().deviceName) {
+        void applyProfileFromDevice({
+          capabilities: raw.capabilities,
+          deviceName: this.getState().deviceName,
+          deviceId: this.getState().deviceId,
+        })
           .then((p) => {
-            if (p) postLog('RingBle', `[DeviceProfile] 能力字段 → 应用 ${p}（ecgType=${raw.capabilities?.ecgType}）`);
+            if (p) postLog('RingBle', `[DeviceProfile] 真机识别 → 应用 ${p}（ecgType=${raw.capabilities?.ecgType}，mac=${this.getState().deviceId}）`);
           })
           .catch(() => {});
       }
@@ -1478,9 +1487,9 @@ class NativeRingSource {
       patch.status = status as RingConnStatus;
     }
     if (raw.deviceName) patch.deviceName = String(raw.deviceName);
-    if (status === 'connected' && raw.deviceName) {
-      // ★ 2026-11-04（用户定稿）：机型识别改在 ready 分支基于原生透传的 capabilities（SDK *Type）判定，
-      //   不再在此读 DIS（Veepoo SDK 不暴露 0x2A24）。见上方 ready 分支。
+    if (status === 'connected' && (raw.deviceName || raw.deviceAddress)) {
+      // ★ 2026-11-05（用户：连上戒指就识别 Pro/基础版）：用 MAC + 广播名做真机识别（能力字段在 ready 分支补充）。
+      void applyProfileFromDevice({ deviceName: raw.deviceName, deviceId: raw.deviceAddress });
     }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? null;
     if (raw.firmware) patch.firmware = String(raw.firmware);
@@ -2910,6 +2919,8 @@ class BackendRingSource {
   private deviceId: string | null = null;
   private metricTimer: ReturnType<typeof setInterval> | null = null;
   private deviceTimer: ReturnType<typeof setInterval> | null = null;
+  /** ★ 2026-11-05：原生直连模式下的「云端日值补齐器」定时器（独立，不碰实时链路） */
+  private fallbackTimer: ReturnType<typeof setInterval> | null = null;
   private autoMonitor = false;
 
   constructor(private push: (patch: StatePatch) => void) {}
@@ -2932,7 +2943,9 @@ class BackendRingSource {
     return Array.isArray(data?.records) ? (data.records as BackendRecord[]) : [];
   }
 
-  private async refreshDevice() {
+  private async refreshDevice(silent = false) {
+    // silent：日值补齐模式下只借它拿 deviceId，不推 status / protocol / 设备名
+    const emit = (patch: StatePatch) => { if (!silent) this.push(patch); };
     try {
       const data = await this.getJSON(
         this.deviceId
@@ -2947,7 +2960,7 @@ class BackendRingSource {
         : list.find((d) => d.bound) || list[0] || null;
 
       if (!dev) {
-        this.push({
+        emit({
           status: 'idle',
           error: '后端暂无已绑定设备：请先在 MiraRingProbe 探针 App 连上 HK18 并同步',
           devices: list.map((d) => ({
@@ -2960,7 +2973,7 @@ class BackendRingSource {
         return;
       }
       this.deviceId = dev.device_id;
-      this.push({
+      emit({
         status: 'connected',
         deviceName: dev.name || 'Mira Ring Pro',
         rssi: null,
@@ -2980,14 +2993,14 @@ class BackendRingSource {
         postLog('RingBle', '设备已绑定但最近未同步（探针未实时采集），仍展示已存真实数据。');
       }
     } catch (e: any) {
-      this.push({
+      emit({
         status: 'error',
         error: `无法连接后端（${BACKEND_BASE_URL}）：${e?.message || '网络错误'}。请确认后端已启动且与手机同一 WiFi。`,
       });
     }
   }
 
-  private async refreshMetrics() {
+  private async refreshMetrics(dailyOnly = false) {
     if (!this.deviceId) return;
     const deviceId = this.deviceId;
     const now = Math.floor(Date.now() / 1000);
@@ -3015,52 +3028,157 @@ class BackendRingSource {
     const hrPts = toPts(recs(hrR), (r) => num(r.payload?.value));
     const spo2Pts = toPts(recs(spo2R), (r) => num(r.payload?.value));
     const breathPts = toPts(recs(breathR), (r) => num(r.payload?.value));
-    const gsrPts = toPts(recs(gsrR), (r) => num(r.payload?.skin_moisture));
-    const hgPts = toPts(recs(hgR), (r) => num(r.payload?.temp));
+    // ★ 2026-11-05（协议复核）：Veepoo SDK 的 VPGSRResultModel 只有
+    //   skin_moisture(皮肤含水量 1–99) / sns_activation / emotion / depression_risk / cortisol，
+    //   **没有 EDA 皮肤电导**。旧代码把 skin_moisture 与 auto_data.eda_daily_mean
+    //   当成「皮电」写进 metrics.eda / daily.eda 是错误命名；11-05 真机连着戒指
+    //   也没有任何 EDA 回报。这里不再把 GSR 值投影成 EDA（gsr 通道实测只有 sns）。
+    // 体温：health_glance 表实测为空；保留通道但用 saneBodyTemp 挡住脏值/旧戒指遗留值。
+    const hgPts = toPts(recs(hgR), (r) => saneBodyTemp(r.payload?.temp));
     const hrvPts = toPts(recs(hrvR), (r) => num(r.payload?.hrv_value));
 
     const hr = hrPts.length ? hrPts[hrPts.length - 1].v : null;
     const hgLatest = recs(hgR).length ? recs(hgR)[recs(hgR).length - 1].payload : null;
     const spo2FromRealtime = spo2Pts.length ? spo2Pts[spo2Pts.length - 1].v : null;
     const spo2 = spo2FromRealtime ?? num(hgLatest?.spo2) ?? null;
-    const temp = hgPts.length ? hgPts[hgPts.length - 1].v : num(hgLatest?.temp) ?? null;
+    const temp = saneBodyTemp(hgPts.length ? hgPts[hgPts.length - 1].v : num(hgLatest?.temp));
 
     const autoLatest = recs(autoR).length ? recs(autoR)[recs(autoR).length - 1].payload : null;
+    const auto = autoLatest ?? {};
+    const gsrLatest = recs(gsrR).length ? recs(gsrR)[recs(gsrR).length - 1].payload : null;
     const rrBreath = breathPts.length ? breathPts[breathPts.length - 1].v : null;
-    const rrAuto = num(autoLatest?.sleep?.breath_avg) ?? null;
+    const rrAuto = num(auto.sleep?.breath_avg) ?? null;
     const rr = rrBreath ?? rrAuto;
 
-    const eda = gsrPts.length ? gsrPts[gsrPts.length - 1].v : null;
     const hrv = hrvPts.length ? hrvPts[hrvPts.length - 1].v : null;
-    const metrics: RingMetrics = { hr, spo2, temp, eda, hrv, rr };
+
+    // ★ 2026-11-05（用户实锤「我连着戒指啊，为什么很多指标还不出值呢」）：
+    //   基础版 LUNA-MIRA 的真实数据全在 auto_data（日聚合）/ gsr / hrv_history 通道，
+    //   旧实现只把它们映射进 6 个「实时」RingMetrics，ring.daily 一个键都没写 →
+    //   洞察页基础指标卡（renderBasicsCard 读 ring.daily[key]）恒显「—」；
+    //   心率/血氧/体温（realtimeKeys 读 ring.metrics）也因 hr_realtime 等通道为空而全空。
+    //   这里把云端**已存的真实日值**投影进 metrics + daily，全部为实测回读，不推算、不编数字。
+    const hrDay = num(auto.hr_daily_mean);
+    const spo2Day = num(auto.spo2_daily_mean);
+    const tempDay = saneBodyTemp(auto.temp_daily_mean); // 唯一真实温度：日均体温(℃)
+    const metrics: RingMetrics = {
+      hr: hr ?? hrDay,
+      spo2: spo2 ?? spo2Day,
+      temp: temp ?? tempDay,
+      eda: null,
+      hrv, rr,
+    };
+
+    const dailyPatch: Record<string, number> = {};
+    const putDaily = (k: string, v: unknown) => {
+      const n = num(v);
+      if (n != null && Number.isFinite(n)) dailyPatch[k] = n;
+    };
+    putDaily('hr', hrDay);
+    putDaily('spo2', spo2Day);
+    putDaily('temp', tempDay);
+    // ❌ 不再写 daily['eda']：协议无 EDA；旧值实为皮肤含水量，且 11-05 无任何新回读。
+    putDaily('hrv', hrv);
+    putDaily('rr', rr);
+    putDaily('steps', auto.steps);
+    putDaily('distance', auto.distance);
+    putDaily('calorie', auto.calorie);
+    putDaily('triglyceride', auto.triglyceride);
+    putDaily('hdl', auto.hdl);
+    putDaily('ldl', auto.ldl);
+    putDaily('statusScore', auto.status_score);
+    // 交感神经活跃度：gsr 通道的 sns 是真实回读（不是健康一览推算）
+    putDaily('sns', gsrLatest?.sns);
+    // 睡眠：后端 auto_data.sleep 实测结构 = { total_sleep_min, deep_min, light_min, rem_min, score, get_up }
+    if (typeof auto.sleep === 'number') putDaily('sleepTotal', auto.sleep);
+    else if (auto.sleep && typeof auto.sleep === 'object') {
+      const totalMin = num(auto.sleep.total_sleep_min) ?? num(auto.sleep.total_min)
+        ?? num(auto.sleep.total) ?? num(auto.sleep.duration);
+      if (totalMin != null && totalMin > 0) {
+        putDaily('sleepTotal', totalMin);
+        // 洞察页 sleepDeep / sleepRem 期望百分比（不是分钟），按真实分期时长换算
+        const deepMin = num(auto.sleep.deep_min);
+        const remMin = num(auto.sleep.rem_min);
+        if (deepMin != null) putDaily('sleepDeep', Math.round((deepMin / totalMin) * 100));
+        if (remMin != null) putDaily('sleepRem', Math.round((remMin / totalMin) * 100));
+      }
+      putDaily('sleepScore', auto.sleep.score);
+    }
+    // Pro 才有的健康一览：压力/疲劳/情绪/皮肤含水量/皮质醇（基础版该通道为空 → 自然不写）
+    for (const k of ['stress', 'fatigue', 'emotion', 'skin', 'cortisol'] as const) {
+      if (hgLatest) putDaily(k, (hgLatest as any)[k]);
+    }
+    // ★ 2026-11-05：云端 auto_data 是「按天一条、ts = 当日 0 点」，今天尚未上传时最新记录
+    //   其实是昨天的日均值。把该批记录对应的日期一起带进 daily，UI 才能如实标「11-04 日均」，
+    //   而不是把昨天的值冒充「今日日均」。
+    const autoLastRec = recs(autoR).length ? recs(autoR)[recs(autoR).length - 1] : null;
+    const autoTs = Number(autoLastRec?.ts);
+    if (Number.isFinite(autoTs) && autoTs > 0) {
+      dailyPatch['dailyDateTs'] = autoTs < 1e12 ? autoTs * 1000 : autoTs;
+    }
 
     const nowMs = Math.floor(Date.now() / 1000) * 1000;
     const availability: Record<MetricKey, 'live' | 'syncing' | 'unavailable'> = {
-      hr: hr != null ? 'live' : 'unavailable',
-      spo2: spo2 != null ? 'live' : 'unavailable',
-      temp: temp != null ? 'live' : 'unavailable',
-      eda: eda != null ? 'live' : 'unavailable',
-      hrv: hrv != null ? 'live' : 'unavailable',
-      rr: rr != null ? 'live' : 'unavailable',
+      hr: metrics.hr != null ? 'live' : 'unavailable',
+      spo2: metrics.spo2 != null ? 'live' : 'unavailable',
+      temp: metrics.temp != null ? 'live' : 'unavailable',
+      eda: 'unavailable',
+      hrv: metrics.hrv != null ? 'live' : 'unavailable',
+      rr: metrics.rr != null ? 'live' : 'unavailable',
     };
     // 全天趋势最多保留 1440 点（≈每分钟 1 点），避免数组无限增长。
     const history: Record<MetricKey, TimePoint[]> = {
       hr: tail(hrPts, 1440),
       spo2: tail(spo2Pts, 1440),
       temp: tail(hgPts, 1440),
-      eda: tail(gsrPts, 1440),
+      eda: [],
       hrv: tail(hrvPts, 1440),
       rr: tail(breathPts, 1440),
     };
     const lastUpdated: Record<MetricKey, number | null> = {
-      hr: hr != null ? nowMs : null,
-      spo2: spo2 != null ? nowMs : null,
-      temp: temp != null ? nowMs : null,
-      eda: eda != null ? nowMs : null,
-      hrv: hrv != null ? nowMs : null,
-      rr: rr != null ? nowMs : null,
+      hr: metrics.hr != null ? nowMs : null,
+      spo2: metrics.spo2 != null ? nowMs : null,
+      temp: metrics.temp != null ? nowMs : null,
+      eda: null,
+      hrv: metrics.hrv != null ? nowMs : null,
+      rr: metrics.rr != null ? nowMs : null,
     };
-    this.push({ metrics, availability, history, lastUpdated });
+    // daily 只带本次有值的键；外层 applyBackendPatch 会与 state.daily 深合并，
+    // 不会冲掉 syncExtendedDaily 投影出来的步数/睡眠/HRV 等归档值。
+    // ★ 2026-11-05：原生直连戒指时只补 daily，绝不覆盖原生实时 metrics / 连接状态 / lastUpdated。
+    if (dailyOnly) {
+      this.push({ daily: dailyPatch });
+      return;
+    }
+    this.push({ metrics, availability, history, lastUpdated, daily: dailyPatch });
+  }
+
+  /**
+   * ★ 2026-11-05（用户实锤「连着戒指为什么很多指标还不出值」）：
+   *   真机 RING_DATA_SOURCE='native' → startScan 只走原生桥，BackendRingSource 从不 start()，
+   *   导致 auto_data / gsr / hrv_history 里那些**真实的按天回读值**（eda_daily_mean、
+   *   temp_daily_mean、sns、hrv_value）一个都没进 ring.daily。
+   *   这里启动一个只读补齐器：60s 拉一次，只推 daily（外层回调对 daily 深合并，不删已有归档）。
+   *   不写 metrics / availability / lastUpdated / status → 原生实时数据完全不受影响。
+   */
+  async startDailyFallback() {
+    this.stopTimers();
+    // ★ 2026-11-05（用户：两套数据源不要混）：
+    //   旧实现直接 refreshDevice(true)，后端在「没带 device_id」时返回设备列表第一台，
+    //   很可能就是旧 HK18 的 C9:00:9C:D7:C2:D8 → 把旧戒指日值补进基础版 App。
+    //   这里先锁定当前连接戒指的可信 MAC，再拉数据；拿不到身份就宁可不出值。
+    const trusted = await trustedCurrentRingDeviceId();
+    if (isBlockedRingDeviceId(this.deviceId)) this.deviceId = null;
+    if (!this.deviceId) this.deviceId = trusted;
+    if (!this.deviceId) return;
+    await this.refreshDevice(true);
+    // refreshDevice 可能用后端返回的 bound 设备覆盖 deviceId，这里再兜一次黑名单
+    if (isBlockedRingDeviceId(this.deviceId)) this.deviceId = trusted;
+    if (!this.deviceId) return;
+    await this.refreshMetrics(true);
+    if (!this.fallbackTimer) {
+      this.fallbackTimer = setInterval(() => void this.refreshMetrics(true), 60_000);
+    }
   }
 
   async start() {
@@ -3103,6 +3221,7 @@ class BackendRingSource {
   private stopTimers() {
     this.stopMetricTimer();
     if (this.deviceTimer) { clearInterval(this.deviceTimer); this.deviceTimer = null; }
+    if (this.fallbackTimer) { clearInterval(this.fallbackTimer); this.fallbackTimer = null; }
   }
 
   disconnect() {
@@ -3444,7 +3563,16 @@ class RingConnectionImpl {
       // 同步进度回调 → 独立轻量通道（底部「正在同步数据 x%」浮层订阅它）
       (p) => this.pushSyncProgress(p)
     );
-    this.backend = new BackendRingSource((patch) => this.applyPatch(patch));
+    // ★ 2026-11-05：后端 refreshMetrics 现在每 10s 推一次 daily（真实日值投影）。
+    //   applyPatch 是浅合并，直接推 daily 会整体覆盖 syncExtendedDaily 写进 state 的
+    //   步数/睡眠/HRV 归档 → 那些卡片反而变空。这里对后端来源做深合并，只补不删。
+    this.backend = new BackendRingSource((patch) => {
+      if (patch.daily) {
+        this.applyPatch({ ...patch, daily: { ...this.state.daily, ...patch.daily } });
+      } else {
+        this.applyPatch(patch);
+      }
+    });
 
     const wantNative = RING_DATA_SOURCE === 'native';
     this.useNative = wantNative && this.native.available;
@@ -3453,6 +3581,8 @@ class RingConnectionImpl {
       postLog('RingBle', '原生 VeepooRing 模块不可用（非 iOS 真机或未 prebuild），回退后端客户端。');
     }
     this.state.protocol = this.useNative ? 'Veepoo·原生' : 'Veepoo·后端';
+    // ★ 2026-11-05：原生直连模式下也补齐云端按天真实回读值（详见 startDailyFallback）。
+    if (this.useNative) void this.backend.startDailyFallback();
     // 跨 ⌘R 保留真实数据：启动时异步恢复本地快照（沙盒文件），戒指重连前的空窗期也能看到趋势
     void this.loadPersisted();
     // 恢复「数据同步」开关（独立于快照，确保开关状态总能落盘）
@@ -6374,14 +6504,27 @@ class RingConnectionImpl {
    */
   async uploadRingData(): Promise<{ ok: boolean; count: number; error?: string }> {
     const st = this.state;
-    const deviceId = st.deviceId || st.deviceName || await getLocalDeviceId();
+    // ★ 2026-11-05（用户：两套数据源不要混）：上传目标必须是当前连接的真实戒指 MAC。
+    //   旧的 `st.deviceName || getLocalDeviceId()` 会把设备名 / 本地随机 id 当成 device_id，
+    //   同一批本地历史归档因此被写到多个 device_id（D1 里 41:42… 与 C9:00… 的 11-02/11-03
+    //   数据逐字段完全相同，根因就在这里）。这里禁止设备名兜底，并拒绝向旧 HK18 设备上传。
+    if (st.deviceId && isBlockedRingDeviceId(st.deviceId)) {
+      return { ok: false, count: 0, error: '当前连接的是旧设备，已阻止上传（两套戒指数据不混）' };
+    }
+    const deviceId = st.deviceId || await trustedCurrentRingDeviceId();
+    if (!deviceId) {
+      return { ok: false, count: 0, error: '未识别到当前戒指，已阻止上传' };
+    }
     // ★ 2026-11-04（用户：固件号标注）：固件未同步时不再误标 'HK18' → 'unknown'；
     //   顶层新增 model（机型，按广播名识别），后端一个账户可挂多固件/多机型，按此区分数据呈现。
     const firmware = st.firmware || 'unknown';
     // ★ 2026-11-04（用户定稿）：上传型号标注以 DIS(0x2A24) 读到的型号为准（不靠广播名）。
     //   读不到型号时回退到设备名，再不行 'unknown'；不再误标 'HK18'。
+    // ★ 2026-11-05（用户：按真机收敛）：上传机型标注以「连接时真机识别出的 Profile」为准
+    //   （能力字段 / MAC / 广播名三层识别，安全默认 BASE_UI），不再用空 modelNumber 重解析落回全功能。
     const { modelNumber } = await getStoredDeviceInfo();
-    const profileId = resolveProfileByModel(modelNumber) ?? (st.deviceName ? resolveProfileByModel(st.deviceName) : null) ?? DEFAULT_DEVICE_PROFILE;
+    const resolvedByStored = resolveProfileByModel(modelNumber) ?? (st.deviceName ? resolveProfileByModel(st.deviceName) : null);
+    const profileId = (await getDeviceProfileId()) ?? resolvedByStored ?? DEFAULT_DEVICE_PROFILE;
     const model = getProfile(profileId).label;
     const records: Array<{ channel: string; ts: number; payload: Record<string, any> }> = [];
 
@@ -6416,11 +6559,11 @@ class RingConnectionImpl {
       const hr = st.hrDaily[dk];
       const spo2 = st.spo2Daily[dk];
       const temp = st.tempDaily[dk];
-      const eda = st.edaDaily[dk];      const rr = st.rrDaily[dk];
+      const rr = st.rrDaily[dk];
       const status = st.statusDaily[dk];
       const extFields = ringUploadExtFields(st.extDaily[dk]);
       const hasAuto =
-        !!step || !!sleep || hr != null || spo2 != null || temp != null || eda != null || rr != null || status != null || Object.keys(extFields).length > 0;
+        !!step || !!sleep || hr != null || spo2 != null || saneBodyTemp(temp) != null || rr != null || status != null || Object.keys(extFields).length > 0;
       if (hasAuto) {
         const { ts, date } = norm(dk);
         const payload: Record<string, any> = { date };
@@ -6441,8 +6584,10 @@ class RingConnectionImpl {
         }
         if (hr != null) payload.hr_daily_mean = hr;
         if (spo2 != null) payload.spo2_daily_mean = spo2;
-        if (temp != null) payload.temp_daily_mean = temp;
-        if (eda != null) payload.eda_daily_mean = eda;
+        // 体温：只上传当前戒指的合法日均体温，挡住旧设备遗留的 39℃ 等脏值
+        const safeTemp = saneBodyTemp(temp);
+        if (safeTemp != null) payload.temp_daily_mean = safeTemp;
+        // ❌ 不再上传 eda_daily_mean：协议无 EDA，旧字段实为皮肤含水量（且 11-05 无新回读）
         if (rr != null) payload.rr_daily_mean = rr;
         if (status != null) payload.status_score = status;
         // 健康一览硬指标 + 光电血压 + ECG 平均心率（均来自 extDaily 归档）

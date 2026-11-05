@@ -110,7 +110,7 @@ export default function TempBiphasicAnalysis({ ring, cycleInfo }: Props) {
       ovTone = 'warn';
       ovText = (
         <>
-          可能排卵：体温有抬升但幅度偏低（{mag}°C）。戒指测的是手腕皮肤温度，噪声较晨起舌下体温大、
+          可能排卵：体温有抬升但幅度偏低（{mag}°C）。戒指回读的是日均体温，噪声较晨起舌下体温大、
           振幅偏小，若长期如此可关注排卵质量。
         </>
       );
@@ -212,7 +212,7 @@ export default function TempBiphasicAnalysis({ ring, cycleInfo }: Props) {
       title={bipTitle}
       subtitle={dayStr}
       advice={bipAdvice}
-      foot="基于戒指真测皮肤温度与 symptothermal 开源算法推算，仅供参考，不构成医学诊断。"
+      foot="基于戒指回读的日均体温与 symptothermal 开源算法推算，仅供参考，不构成医学诊断。"
     >
       <AiResultRow compact tone={ovTone} title="确认排卵">
         {ovText}

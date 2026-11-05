@@ -11,7 +11,7 @@
  *   给花瓣让位；卡 96×78 紧凑四行；z 序 = 数组序（肩→上排→顶心）。
  * ★ 2026-10-17 第十六轮（用户）：隐藏「脑力准备度」，余 5 张卡改花瓣状围绕半圆环
  *   （参考用户提供的玻璃拟态花瓣簇截图）。
- * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身体负荷」两张卡（与白底版 6 卡对齐）；
+ * ★ 2026-10-17 第十一轮（用户）：补齐「生理周期 / 身心压力」两张卡（与白底版 6 卡对齐）；
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -30,6 +30,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur'; // ★ 2026-10-30（用户要真·磨砂玻璃）：对标题下方海浪视频做真实高斯模糊
 import Icon from './Icon'; // ★ 2026-11-03：档位词右箭头（chevronRight）
 import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine'; // ★ 2026-11-04：动态建议
+import { useDeviceModel } from '../config/deviceModel'; // ★ 2026-11-05：首页排布按机型分支，Pro 不受影响
+import {
+  getQuickCheckResultSync, loadQuickCheckResult, subscribeQuickCheckResult,
+  validQuickCheckResult, type QuickCheckResult,
+} from '../data/quickCheckResult'; // ★ 2026-11-05：一键体检 → 首页今日状态
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -111,10 +116,10 @@ const lineIcon = (d: string | string[]) => (
   </Svg>
 );
 // ★ 2026-10-26（用户）：卡片的 value/tag/unit/good 不再写死，改为组件内接真实数据（见下方 chipDyn）。
-//   这里只保留静态元数据（顺序/图标/路由），顺序：睡眠恢复 → 身体负荷 → 情绪 → 活动消耗 → 生理周期。
+//   这里只保留静态元数据（顺序/图标/路由），顺序：睡眠恢复 → 身心压力 → 情绪 → 活动消耗 → 生理周期。
 const CHIP_DEFS: ChipDef[] = [
   { key: 'recovery', label: '睡眠恢复', icon: lineIcon('M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z'), go: (n) => n.navigate('SleepDetail') },
-  { key: 'load', label: '身体负荷', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '身体负荷', unit: '/100', yMin: 0, yMax: 100 }) },
+  { key: 'load', label: '身心压力', icon: lineIcon('M13 2.5 4.8 13.6h6L9.6 21.5 19.2 10h-6.2L13 2.5Z'), go: (n) => n.navigate('MetricDetail', { key: 'stress', name: '身心压力', unit: '/100', yMin: 0, yMax: 100 }) },
   // ★ 2026-10-18 用户：「压力水平」改名「情绪」（路由目标不变 → EnergyDetail emotion）
   { key: 'emo', label: '情绪压力', icon: lineIcon('M3 12h3l2-4.5 3 9 2.5-6.5 1.5 2h6'), go: (n) => n.navigate('EnergyDetail', { type: 'emotion' }) },
   { key: 'act', label: '活动消耗', icon: lineIcon(['M12 3c2.8 2.6 4.2 5.1 4.2 7.4a4.2 4.2 0 0 1-8.4 0C7.8 8.1 9.2 5.6 12 3Z', 'M8 17.5h8M9.5 20.5h5']), go: (n) => n.navigate('EnergyDetail', { type: 'activity' }) },
@@ -124,11 +129,22 @@ const CHIP_DEFS: ChipDef[] = [
   // { key: 'cognitive', label: '脑力准备度', icon: lineIcon(['M12 3a4.2 4.2 0 0 0-4.2 4.2c-1.9.6-3.3 2.4-3.3 4.5 0 1.6.8 3 2 3.9v2.1a3.3 3.3 0 0 0 3.3 3.3h4.4a3.3 3.3 0 0 0 3.3-3.3v-2.1a4.8 4.8 0 0 0 2-3.9c0-2.1-1.4-3.9-3.3-4.5A4.2 4.2 0 0 0 12 3Z', 'M9.5 13.5 11 12l1.5 1.5L14 12']), go: (n) => n.navigate('EnergyDetail', { type: 'cognitive' }) },
 ];
 
+/**
+ * ★ 2026-11-05（用户）：首页隐藏「情绪压力」「生理周期」；
+ *   ★ 2026-11-06（用户纠偏）：「稳定睡眠」不再放首页 chip 行，移到睡眠恢复详情页（SleepDetail）底部最下面。
+ *   ★ 仅 BASE_UI 使用 —— PRO_UI 仍走上面的完整 CHIP_DEFS，卡片顺序完全不变。
+ *   顺序：睡眠恢复 → 身心压力 → 活动消耗 → 心肺能力。
+ */
+const BASE_CHIP_DEFS: ChipDef[] = [
+  CHIP_DEFS[0],
+  ...CHIP_DEFS.filter((c) => c.key !== 'recovery' && c.key !== 'emo' && c.key !== 'cycle'),
+];
+
 // ★ 2026-10-18 第二十三轮（用户："卡片展示四个，最后一个滑动可看；整体字太小"）：
 //   一行 5 张改横向 ScrollView——首屏露出 4 张（84×96 大卡大字），第 5 张滑动可见；
 //   卡行从弧上方移到海浪/深色交界线下方（过渡区）；环 240→280、中心字 46→58；
 //   AI 建议卡字号同步放大。花瓣历史资产见 git a07525c。
-// ★ 2026-11-03（用户：展示三个卡片，后边往后移；睡眠恢复/身体负荷字要大一些）：
+// ★ 2026-11-03（用户：展示三个卡片，后边往后移；睡眠恢复/身心压力字要大一些）：
 //   前 3 张大卡（宽 100、标签 14）更醒目，其余卡片收窄（宽 74、标签 12.5）向右滑动可见。
 // ★ 本轮：底部指标卡整体略放大（用户："卡片可以稍微大一点"）—— 宽 100→108、高 96→104
 const CHIP_BIG_W = 108;
@@ -147,6 +163,17 @@ export default function CalmWaveHome() {
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
   const [ring, setRing] = useState(() => RingBle.getState());
   useEffect(() => RingBle.onState((s) => setRing(s)), []);
+  // ★ 2026-11-05（用户）：首次进入「今日状态」是空的 → 做完一键体检后首页要有当下结果。
+  //   订阅体检结果缓存（体检完成即广播），并在每次回到首页时重新读一次，避免跨页丢刷新。
+  const [qcResult, setQcResult] = useState<QuickCheckResult | null>(() => getQuickCheckResultSync());
+  useEffect(() => {
+    void loadQuickCheckResult().then(setQcResult);
+    return subscribeQuickCheckResult(setQcResult);
+  }, []);
+  useFocusEffect(useCallback(() => {
+    void loadQuickCheckResult().then(setQcResult);
+    return () => {};
+  }, []));
   // ★ 2026-10-26（修复「今日状态一直不更新」）：圆环恢复分 / 压力 / 情绪 都从 healthStore 读取，
   //   而 healthStore 在戒指回填写入后只增 version、不会自动触发本组件重渲染 —— 故显式订阅其版本，
   // ★ 性能修复：原本 useHealthStoreVersion() 在 healthStore 每次写入（实时流/回填高频）都重渲染整页
@@ -223,7 +250,7 @@ export default function CalmWaveHome() {
   // ★ 2026-10-26：首页指标卡全部接真实数据（替代原写死的静态预览值 82/46/38/320/第14天）。
   //   口径与 TodayScreen 顶部 chips 同源：
   //   · 睡眠恢复 → sleepRecoveryScoreForDay（上方已算）
-  //   · 身体负荷 → 基础指标压力信号 ring.metrics['stress'] / ring.daily['stress']（与 MetricDetail stress 同源）
+  //   · 身心压力 → 基础指标压力信号 ring.metrics['stress'] / ring.daily['stress']（与 MetricDetail stress 同源）
   //   · 情绪     → emotionalStress 百分位 stressScale.value（与 EnergyDetail emotion 同源）
   //   · 活动消耗 → 运动段 totalCal 优先，否则当日计步 calorie（与运动消耗卡同源）
   //   · 生理周期 → curveStatus.phaseLabel / dayInCycle（与周期卡同源）
@@ -274,14 +301,28 @@ export default function CalmWaveHome() {
     if (c?.cta) nav(c.cta.screen, c.cta.params);
     else nav('Breathing');
   };
+  // ★ 2026-11-05：空态胶囊 → 底部 Tab「洞察」→「身体指标 → 一键体检」子 tab
+  const onGoQuickCheck = () => {
+    suggTapRef.current = false;
+    (navigation.navigate as unknown as (screen: string, params?: Record<string, unknown>) => void)(
+      'Insight', { subTab: 'quickcheck', t: Date.now() },
+    );
+  };
   const CV_STALE = status?.dataStale ?? true;
-  const hasStatusData = CV != null && !CV_STALE;
+  // ★ 2026-11-05：曲线模型无值/断流时，回退到「一键体检」给出的当下状态分。
+  //   曲线优先（真实连续采样），体检结果兜底（首次进入、或戒指断流时也能看到今天的体检结果）。
+  const qcValid = validQuickCheckResult(qcResult);
+  const qcStatus = qcValid?.status ?? null;
+  const curveHasValue = CV != null && !CV_STALE;
+  const displayStatus = curveHasValue ? CV : (qcStatus?.value ?? null);
+  const hasStatusData = displayStatus != null;
+  const statusFromCheck = !curveHasValue && qcStatus != null;
   const EMPTY_COLOR = theme.colors.stateEnergy; // 空态统一紫（与 EnergyBall 圆环同源）
   const mood = !hasStatusData
     ? { label: '暂无数据', color: EMPTY_COLOR }
-    : CV >= 76 ? { label: '元气满满', color: '#F0C46E' }
-    : CV >= 51 ? { label: '状态良好', color: '#BCCB62' }
-    : CV >= 26 ? { label: '平平静静', color: '#9D8AF0' }
+    : displayStatus! >= 76 ? { label: '元气满满', color: '#F0C46E' }
+    : displayStatus! >= 51 ? { label: '状态良好', color: '#BCCB62' }
+    : displayStatus! >= 26 ? { label: '平平静静', color: '#9D8AF0' }
     : { label: '休息一下', color: '#F0B5C4' };
   const moodLabel = mood.label;
   const moodColor = mood.color;
@@ -298,9 +339,9 @@ export default function CalmWaveHome() {
     ? Math.round(todaysSessions.reduce((a: number, s: any) => a + (s.totalCal || 0), 0))
     : (activityHasData ? Math.round(stepKcalToday) : null);
 
-  // 身体负荷：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
+  // 身心压力：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
   // ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hr，daily 也不含 stress，
-  //   该字段恒为 null → 身体负荷卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
+  //   该字段恒为 null → 身心压力卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
   const stressReport = useMemo(() => { try { return computeStressReport(Date.now()); } catch { return null; } }, [refreshKey]);
   const bodyLoad = stressReport?.score ?? null;
 
@@ -340,12 +381,16 @@ export default function CalmWaveHome() {
   });
   const arcStart = ptOnArc(START_A);
   const arcEndFull = ptOnArc(START_A + ARC_SWEEP2);
-  const frac = hasStatusData ? (CV ?? 0) / 100 : 0;
+  const frac = hasStatusData ? (displayStatus ?? 0) / 100 : 0;
   const arcEnd = ptOnArc(START_A + ARC_SWEEP2 * frac);
   const progLargeArc = ARC_SWEEP2 * frac > 180 ? 1 : 0;
 
   // 心肺能力（VO₂max）：权威非运动估算法（Jackson 1990 + Uth 心率比法交叉），详见 lib/vo2max.ts。
   const vo2 = (() => { try { return estimateVo2maxFromStore(Date.now()); } catch { return null; } })();
+
+  // ★ 2026-11-05：首页卡片排布调整只对基础版生效，Pro 保持原样。
+  const { model: homeModel } = useDeviceModel();
+  const isBase = homeModel.id === 'BASE_UI';
 
   // 各卡展示数据（value / unit / tag / good）
   const chipDyn: Record<string, { value: string; unit?: string; tag: string; good?: boolean }> = {
@@ -363,9 +408,9 @@ export default function CalmWaveHome() {
       value: bodyLoad != null ? String(bodyLoad) : '—',
       unit: bodyLoad != null ? '/100' : undefined,
       tag: bodyLoad == null ? '暂无数据'
-        : bodyLoad < 30 ? '负荷轻松'
-        : bodyLoad < 55 ? '负荷适中'
-        : '负荷偏重',
+        : bodyLoad < 30 ? '压力轻松'
+        : bodyLoad < 55 ? '压力适中'
+        : '压力偏重',
       good: bodyLoad != null && bodyLoad < 30,
     },
     emo: {
@@ -409,7 +454,7 @@ export default function CalmWaveHome() {
   // ★ 第三十五轮（真机照片反馈）：①卡行+标题整体再上移 12px（-16→-28；用户"今日状态再往上一点，
   //   情绪/生理周期卡片再往上挪一点点"）②弧+文字块在「卡行底 ↔ AI 卡顶」之间垂直居中
   //   （用户"圆弧往下一点、整个中间的圆弧和文字应该居中"）——不再贴卡行，取中点下移。
-  // ★ 2026-10-20 布局实验（用户）：把「上方卡片行（睡眠恢复/身体负荷…）」与「下方双弧块（元气满满/82/周期）」
+  // ★ 2026-10-20 布局实验（用户）：把「上方卡片行（睡眠恢复/身心压力…）」与「下方双弧块（元气满满/82/周期）」
   //   位置调换——双弧 hero 上移、卡片行下移到「弧底 ↔ AI 卡顶」之间垂直居中。
   //   ▶ 还原原布局：把下面 gaugeTop / chipRowTop 两行换回——
   //     chipRowTop = transitionY - 28；gaugeTop = Math.max(chipRowTop+CHIP_H+8, chipRowTop+CHIP_H+(aiTop-chipRowTop-CHIP_H-GAUGE_H)/2)
@@ -506,7 +551,7 @@ export default function CalmWaveHome() {
           </Svg>
           {/* 数字落圆下部开口处（圆心空）：★ 2026-11-03 整体下移，正好落在 0/100 中间开口处 */}
           <View style={[s.gaugeCenter, { top: 206 * (gaugeSize / 300) }]}>
-            <Text style={s.gBig}>{hasStatusData ? CV : '—'}</Text>
+            <Text style={s.gBig}>{hasStatusData ? displayStatus : '—'}</Text>
             {/* ★ 2026-11-03（用户）：档位词右边加向右箭头 —— 提示整块可点、进入全天状态趋势（外层 gauge 已是 TouchableOpacity） */}
             <View style={s.gLabelRow}>
               <Text style={s.gLabel}>{moodLabel}</Text>
@@ -531,9 +576,9 @@ export default function CalmWaveHome() {
           {/* ★ 2026-10-28（用户：暂时没数据的心肺能力不该放首页）—— vo2 为 null（档案缺 / 不足 7 晚静息心率）
               时直接从卡行移除；有值才出现，不影响其余 5 张卡的滑动布局。
               ★ 2026-11-03：前 3 张为大卡（宽 100、标签/数值更大），其余收窄（宽 74）向右滑动。 */}
-          {CHIP_DEFS.filter((c) => c.key !== 'cardio' || !!vo2).map((c, i) => {
+          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS).filter((c) => c.key !== 'cardio' || !!vo2).map((c, i) => {
             const d = chipDyn[c.key];
-            // ★ 本轮：全部卡片统一为大卡尺寸（活动消耗/生理周期 与 情绪/身体负荷 同尺寸）
+            // ★ 本轮：全部卡片统一为大卡尺寸（活动消耗/生理周期 与 情绪/身心压力 同尺寸）
             const big = true;
             const w = CHIP_BIG_W;
             return (
@@ -568,16 +613,21 @@ export default function CalmWaveHome() {
       {/* 分析文字（浮于照片，无卡片底） */}
       <View style={[s.analysisWrap, { top: analysisTop }]}>
         <Text style={s.analysis}>
-          {hasStatusData
-            ? <>今天状态不错，<Text style={s.hl}>{CV} 分</Text>比平时稳，趁状态好做点想做的事～</>
-            : '今天还没有状态数据，戴上戒指，我会帮你把今天的状态看得更准～'}
+          {statusFromCheck
+            ? <>刚做完一键体检，今天的<Text style={s.hl}>{displayStatus} 分</Text>{qcStatus?.source === 'estimated' ? '是按当前 HRV 估算的，连续佩戴后会更贴近真实状态～' : '来自戒指同步～'}</>
+            : hasStatusData
+              ? <>今天状态不错，<Text style={s.hl}>{displayStatus} 分</Text>比平时稳，趁状态好做点想做的事～</>
+              : '今天还没有状态数据，做一次一键体检，我帮你算出当下的状态～'}
         </Text>
       </View>
-      {/* 建议胶囊（★ 2026-11-04：动态建议——根据今日状态分析给、可跳对应工具、点完换下一条；池子空回落呼吸放松） */}
+      {/* 建议胶囊：★ 2026-11-05（用户）今日状态空值时引导「去一键体检一下」；有数据后走动态建议引擎 */}
       <View style={[s.capsuleWrap, { top: capsuleTop }]}>
-        <TouchableOpacity style={s.relaxPill} activeOpacity={0.85} onPress={onSuggPress}>
+        <TouchableOpacity style={s.relaxPill} activeOpacity={0.85}
+          onPress={hasStatusData ? onSuggPress : onGoQuickCheck}>
           <Text style={s.relaxPillTxt} numberOfLines={2}>
-            {sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›'}
+            {hasStatusData
+              ? (sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›')
+              : '去做一次一键体检，看看今天的状态 ›'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -596,12 +646,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     position: 'relative',
   },
+  /* ★ 2026-11-06（用户）：今日状态 字号加大，并改为与「账户 / 设置」图标同一行的流式居中，
+       不再绝对定位 —— 标题与齿轮图标在同一水平线上、字更大更醒目。 */
   navTitle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+    flex: 1,
     textAlign: 'center',
-    fontSize: theme.fontSize.h2,
+    fontSize: theme.fontSize.stat,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,

@@ -248,7 +248,7 @@ export default function CortisolDailyChart({
           {isToday
             ? (proxy && proxy.baselineDays < MIN_BASELINE_DAYS
                 ? `正在建立你的个人基线（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天），多戴几天戒指就能看到全天趋势。`
-                : '佩戴戒指约半小时后，这里会显示由心率变异性、皮电、体温与心率反推出的全天皮质醇活性曲线。')
+                : '佩戴戒指约半小时后，这里会显示由心率变异性、体温、心率与活动反推出的全天皮质醇活性曲线。')
             : `${mdLabel} 暂无皮质醇数据`}
         </Text>
       </Card>

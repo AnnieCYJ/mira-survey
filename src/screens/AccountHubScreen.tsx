@@ -67,12 +67,6 @@ export default function AccountHubScreen() {
         {/* 头部 */}
         <View style={[s.head, { paddingTop: insets.top + theme.space.xl }]}>
           <Text style={s.headTitle}>账户</Text>
-          <TouchableOpacity style={s.gear} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
-            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={theme.colors.textTitle} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <Circle cx={12} cy={12} r={3.2} />
-              <Path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9" />
-            </Svg>
-          </TouchableOpacity>
         </View>
 
         {/* 本人资料卡 */}
@@ -84,9 +78,6 @@ export default function AccountHubScreen() {
             <Text style={s.profileName}>{me.name}</Text>
             <Text style={s.profileSub}>Mira 会员 · 第 2 个月</Text>
           </View>
-          <TouchableOpacity style={s.ghostBtn} activeOpacity={0.7} onPress={() => navigation.navigate('Settings')}>
-            <Text style={s.ghostTxt}>查看与编辑</Text>
-          </TouchableOpacity>
         </View>
 
         {/* 我的家庭 */}

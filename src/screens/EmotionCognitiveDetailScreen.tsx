@@ -437,7 +437,7 @@ export default function EmotionCognitiveDetailScreen() {
       })();
       return {
         label: j.label as string,
-        firstInsight: `今日皮质醇活性平均 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、皮电、体温与心率反推。`,
+        firstInsight: `今日皮质醇活性平均 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、体温、心率与活动反推。`,
         peakH, peakSub, chrono,
       };
     } catch {

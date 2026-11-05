@@ -909,11 +909,11 @@ export default function TodayScreen() {
   const chipValueTone = (t?: string): 'good' | 'mid' | 'bad' | undefined =>
     t != null ? CHIP_VALUE_TONE[t] : undefined;
 
-  // ★ 2026-10-17（用户：「身体负荷 = 洞察页面基础指标的压力指标，不是心理压力那个」）：
-  //   身体负荷 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备 SDK 压力信号经
+  // ★ 2026-10-17（用户：「身心压力 = 洞察页面基础指标的压力指标，不是心理压力那个」）：
+  //   身心压力 直接取洞察页「基础指标」tab 里那张「压力」卡的同源数值 —— 设备 SDK 压力信号经
   //   stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
   //   ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hrv、daily 不含
-  //     stress，该字段恒为 null → 身体负荷卡一直「— / 暂无数据」；改用 computeStressReport().score
+  //     stress，该字段恒为 null → 身心压力卡一直「— / 暂无数据」；改用 computeStressReport().score
   //     （与 MetricDetail「压力」卡、首页 CalmWaveHome 同源）。
   //   它 ≠ StressInsightCard 的 emotionalLoad（那个是派生总消耗），也 ≠ 「心理压力」chip 的
   //   emotionalStress 百分位（50=和平时差不多）。三者是三个不同口径，这里严格对齐基础指标压力卡。
@@ -940,10 +940,10 @@ export default function TodayScreen() {
     { key: 'act', icon: 'flame', tone: 'butter', label: '运动消耗', value: actChipValue, unit: actChipValue !== '—' ? 'kcal' : undefined, onPress: () => navigation.navigate('EnergyDetail', { type: 'activity' }) },
     // ★ 2026-10-15（V1 去紫）：周期卡 tone lav(紫)→cyan(蓝)
     { key: 'period', icon: 'moon', tone: 'cyan', label: status?.phaseLabel && status.phaseLabel !== '未记录' ? status.phaseLabel : '生理周期', value: status?.dayInCycle != null ? `第 ${status.dayInCycle} 天` : '—', moonStyle: phaseMoon, onPress: () => navigation.navigate('CycleCalendar') },
-    // ★ 2026-10-17 新增「身体负荷」：取洞察页「基础指标」压力卡同源 —— `ring.metrics['stress']`
+    // ★ 2026-10-17 新增「身心压力」：取洞察页「基础指标」压力卡同源 —— `ring.metrics['stress']`
     //   （0–100，越高越紧张）。点按去向与基础指标压力卡一致 → stress 指标详情页（MetricDetail），
     //   而非「心理压力」的情绪压力详情页（EnergyDetail emotion）。tone 复用 pink，置于数组末位。
-    { key: 'load', icon: 'bolt', tone: 'pink', label: '身体负荷', value: loadValue, unit: loadValue !== '—' ? '/100' : undefined, valueTone: loadTone, onPress: () => navigation.navigate('MetricDetail', { key: 'stress', name: '压力', unit: '', yMin: 0, yMax: 100 }) },
+    { key: 'load', icon: 'bolt', tone: 'pink', label: '身心压力', value: loadValue, unit: loadValue !== '—' ? '/100' : undefined, valueTone: loadTone, onPress: () => navigation.navigate('MetricDetail', { key: 'stress', name: '身心压力', unit: '/100', yMin: 0, yMax: 100 }) },
   ];
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */

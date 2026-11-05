@@ -4,7 +4,7 @@ import Svg, { Rect, Line, Path, Text as SvgText } from 'react-native-svg';
 import { theme } from '../../theme/theme';
 import { mm } from '../../theme/mindmate';
 import { chart } from '../../theme/chart';
-import { DAY_HOUR_TICKS } from '../../lib/chartAxis';
+import { DAY_HOUR_TICKS, hourTickLabel } from '../../lib/chartAxis';
 import { TEMP_BAND_C, type TempBaseline } from '../../lib/tempBaseline';
 
 /**
@@ -39,7 +39,8 @@ interface Props {
 const PAD_L = 32;
 const PAD_R = 12;
 const PAD_T = 14;
-const AXIS_H = 20;
+// ★ 2026-11-05（用户「横坐标被遮挡 / 裁掉」）：20 → 28，让底部 Y 轴刻度与 X 轴标签带分开
+const AXIS_H = 28;
 
 export default function TempCircadianChart({
   dev,
@@ -96,20 +97,26 @@ export default function TempCircadianChart({
         ` L ${s[s.length - 1].x.toFixed(1)} ${baseY} L ${s[0].x.toFixed(1)} ${baseY} Z`,
     );
 
+    // ★ 2026-11-05：X 轴标签统一 middle 锚点 + 半宽 clamp，首末不再贴边被裁。
+    const labelHalf = (s: string) => (s.length * chart.axisFont * 0.62) / 2;
     const ticks: React.ReactNode[] = DAY_HOUR_TICKS.map((hh) => {
-      const x = PAD_L + (plotW * hh) / 24;
+      const rawX = PAD_L + (plotW * hh) / 24;
+      const label = hourTickLabel(hh);
+      const lh = labelHalf(label);
+      const x = Math.max(PAD_L + lh, Math.min(PAD_L + plotW - lh, rawX));
       return (
         <React.Fragment key={`t${hh}`}>
-          <Line x1={x} y1={PAD_T} x2={x} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
-          <SvgText x={x} y={H - 5} fontSize={chart.axisFont} fill={chart.axisText}
-            textAnchor={hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle'}>{`${hh}:00`}</SvgText>
+          <Line x1={rawX} y1={PAD_T} x2={rawX} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
+          <SvgText x={x} y={H - 6} fontSize={chart.axisFont} fill={chart.axisText}
+            textAnchor="middle">{label}</SvgText>
         </React.Fragment>
       );
     });
 
+    // 最底部刻度（-half）抬高到 baseY-8，避免与 X 轴「0:00」叠在一起造成「被遮挡」
     const yLabels: React.ReactNode[] = [half, 0, -half].map((g) => (
-      <SvgText key={`y${g}`} x={PAD_L - 5} y={yOf(g) + 3} fontSize={chart.axisFont}
-        fill={g === 0 ? theme.colors.textSub : theme.colors.textSub}
+      <SvgText key={`y${g}`} x={PAD_L - 5} y={Math.min(yOf(g) + 3, baseY - 8)} fontSize={chart.axisFont}
+        fill={theme.colors.textSub}
         textAnchor="end" fontWeight={g === 0 ? '500' : '400'}>
         {g > 0 ? `+${g.toFixed(1)}` : g.toFixed(1)}
       </SvgText>

@@ -56,12 +56,28 @@ export function ScaleBar({ scale }: { scale: { min: number; max: number; v: numb
   );
 }
 
-/** 单指标行。 */
+/**
+ * 单指标行。★ 2026-11-05：带来源徽标（实测 / 估算）——用户要求
+ * 「一键体检里估算出来的数据必须明确标注，不能冒充戒指实测」。
+ */
 export function MetricRow({ m }: { m: QCMetric }) {
+  const estimated = m.source === 'estimated';
   return (
     <View style={qc.metricRow}>
       <View style={{ flex: 1, marginRight: theme.sp(2) }}>
-        <Text style={qc.metricName}>{m.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={qc.metricName}>{m.name}</Text>
+          {m.source ? (
+            <Text style={{
+              fontSize: theme.fontSize.micro ?? 10,
+              color: estimated ? '#F0C46E' : '#8FE3C4',
+              backgroundColor: estimated ? 'rgba(240,196,110,0.14)' : 'rgba(143,227,196,0.12)',
+              paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, overflow: 'hidden',
+            }}>
+              {estimated ? '估算' : '实测'}
+            </Text>
+          ) : null}
+        </View>
         {m.ref ? <Text style={qc.metricRef}>{m.ref}</Text> : null}
         {m.scale ? <ScaleBar scale={m.scale} /> : null}
         {m.note ? <Text style={qc.metricNote}>{m.note}</Text> : null}
@@ -114,6 +130,7 @@ export function GroupBlock({ group }: { group: QCGroup }) {
         <Text style={qc.groupTitleText}>{g.title}</Text>
       </View>
       <View style={qc.groupCard}>
+        {g.note ? <Text style={[qc.metricNote, { marginBottom: theme.sp(2) }]}>{g.note}</Text> : null}
         {inner}
         {(g.standalone ?? []).map((m) => (
           <View key={m.key}>

@@ -212,16 +212,16 @@ function computeStressReportUncached(nowMs: number): StressReport {
     hrvTrend = diff > 0.1 ? 'up' : diff < -0.1 ? 'down' : 'stable';
   }
 
-  // ── 身体负荷分（0–100，与 healthStore 中 stress 量程一致）──
+  // ── 身心压力分（0–100，与 healthStore 中 stress 量程一致）──
   // ★ 修复（2026-10-27）：healthStore['stress'] 已是 0–100 量程——原生 SDK stressIndex 为 [1,99]
   //   （RingBleManager:406「精神压力 [1,99]」），metrics.ts 定义 range 0–100，offlineEstimates 以
   //   stress 25~35 为典型映射源；旧代码误按 Veepoo 另一套 0–12 折算 score = sdkStressLatest/12*100 →
   //   任何真实压力 ≥12（0–100 量程下几乎必然）都被钳到 100，造成「外面永远 100、里面柱子 ≈14~35」的假满格。
-  //   现改为：身体负荷 = 当日 stress 全天均值（0–100，优先用 healthStore 日聚合 mean，缺则退 intraday 均值），
+  //   现改为：身心压力 = 当日 stress 全天均值（0–100，优先用 healthStore 日聚合 mean，缺则退 intraday 均值），
   //   与详情页柱状图同源同量程，外面卡片 / 详情大数字 / 详情柱状图三者口径彻底统一。
   // ★ 2026-10-28 修复「跨天不清零 / 读错天」：原 `new Date(dayStart).toISOString().slice(0,10)`
   //   按 **UTC** 取日期，在 UTC+8 下本地午夜 = UTC 前一天 16:00 → anchorDayKey 永远比真实本地
-  //   日期少一天，身体负荷读到**昨天**的 stress 日均值；今天无数据时不会显示「暂无数据」而是顶昨天的
+  //   日期少一天，身心压力读到**昨天**的 stress 日均值；今天无数据时不会显示「暂无数据」而是顶昨天的
   //   值，造成「没有跨天清零」。healthStore 的 day key 全仓统一用本地 `dayKey(ts)`，故此处也必须用
   //   本地日期，与 store 口径一致。
   const anchorDayKey = dayKey(nowMs);

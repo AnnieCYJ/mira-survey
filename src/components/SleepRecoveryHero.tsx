@@ -7,10 +7,11 @@
  *   大数字字号 = theme.fontSize.hero（46），与预览稿日面板 .big 同款。
  *   右下角状态语：日视图按相对 50 基线自动判读；周月年不传 ctx（仅展示均值）。
  */
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import Icon from './Icon';
 import { computeSleepPersonalized } from '../lib/sleepPersonalized';
 // ★ 用与首页同源的「健康库刷新节拍」当依赖，睡眠记录到达后 hero 才会跟着刷新
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
@@ -70,6 +71,9 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
   const peak = !dataStale ? cog?.forecast?.peakSpan : null;
   const trough = !dataStale ? cog?.forecast?.troughSpan : null;
 
+  // ★ 2026-11-06（用户）：把「睡眠恢复分怎么看」折叠进本卡（置于脑力峰/谷下方），默认收起，点击展开。
+  const [showHow, setShowHow] = useState(false);
+
   return (
     <View style={styles.card}>
       {/* ★ 本轮：title 移到数字上方（如「睡眠恢复分」） */}
@@ -103,6 +107,23 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
             </Text>
             <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
           </View>
+        </View>
+      ) : null}
+
+      {/* ★ 2026-11-06（用户）：什么是睡眠恢复分 —— 默认收起，点击展开说明 */}
+      <TouchableOpacity
+        style={styles.howHead}
+        activeOpacity={0.7}
+        onPress={() => setShowHow((v) => !v)}
+      >
+        <Text style={styles.howTitle}>什么是睡眠恢复分</Text>
+        <Icon name={showHow ? 'chevronDown' : 'chevronRight'} size={theme.fs(16)} color={theme.colors.textSub} strokeWidth={2} />
+      </TouchableOpacity>
+      {showHow ? (
+        <View style={styles.howBody}>
+          <Text style={styles.howText}>75 分：接近个人平时　·　82 分以上：明显好于平时</Text>
+          <Text style={styles.howText}>68–81 分：轻度偏低　·　45–67 分：恢复偏低</Text>
+          <Text style={styles.howNote}>这是基于个人滚动基线的趋势分，不是医学诊断分。</Text>
         </View>
       ) : null}
     </View>
@@ -143,4 +164,18 @@ const styles = StyleSheet.create({
   brCellLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   brCellTime: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold, color: theme.colors.textSub, marginTop: theme.sp(1) },
   brCellSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  // ★ 2026-11-06（用户）：什么是睡眠恢复分 —— 卡内可折叠说明
+  howHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.space.md,
+    paddingTop: theme.space.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.cardBorder,
+  },
+  howTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textSub },
+  howBody: { marginTop: theme.space.sm },
+  howText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
+  howNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontStyle: 'italic', marginTop: theme.sp(1) },
 });

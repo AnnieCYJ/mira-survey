@@ -11,7 +11,7 @@
  * 本文件与两个 Screen 的调用方式不变。
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from './theme/theme';
 import { userStore, onSessionChange } from './data/userStore';
@@ -21,7 +21,14 @@ import RootStackNavigator from './navigation/RootStackNavigator';
 
 export default function AuthGate() {
   const [ready, setReady] = useState(false);
+  const [splashMinDone, setSplashMinDone] = useState(false);
   const [session, setSession] = useState({ loggedIn: false, onboardingDone: false });
+
+  // ★ 2026-11-04：保证手写 "Luna Mira" 启动动画每次冷启动都看得清，最短展示 2400ms
+  useEffect(() => {
+    const t = setTimeout(() => setSplashMinDone(true), 2400);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -50,7 +57,7 @@ export default function AuthGate() {
     );
   };
 
-  if (!ready) return <Splash />;
+  if (!ready || !splashMinDone) return <Splash />;
   if (!session.loggedIn) return <LoginScreen onAuthenticated={refresh} />;
   if (!session.onboardingDone) return <OnboardingScreen onDone={refresh} />;
   return <RootStackNavigator />;
@@ -68,7 +75,6 @@ function Splash() {
       <View style={s.center}>
         {/* ★ 2026-11-04：去掉紫色圆点 + "Mira"，改为手写体 "Luna Mira" 逐字显现动画 */}
         <Handwritten text="Luna Mira" style={s.word} />
-        <ActivityIndicator style={{ marginTop: theme.space.md }} color={theme.colors.accentText} />
       </View>
     </View>
   );

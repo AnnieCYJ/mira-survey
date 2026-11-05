@@ -166,8 +166,8 @@ export default function HormoneDualTrend({
       {!hasAny ? (
         <Text style={styles.note}>
           {onlyEstrogen
-            ? '连续佩戴获取 HRV 与 EDA 后，这里会显示雌激素的推算趋势：卵泡期逐步爬升、排卵前后达峰。戒指不直接测量激素，均为推算。'
-            : '连续佩戴获取 HRV、EDA、体温与静息心率后，这里会显示雌激素与孕激素叠加的双相趋势：卵泡期雌激素爬升、排卵后孕激素抬升。戒指不直接测量激素，均为推算。'}
+            ? '连续佩戴获取 HRV 与心率后，这里会显示雌激素的推算趋势：卵泡期逐步爬升、排卵前后达峰。戒指不直接测量激素，均为推算。'
+            : '连续佩戴获取 HRV、心率、体温与静息心率后，这里会显示雌激素与孕激素叠加的双相趋势：卵泡期雌激素爬升、排卵后孕激素抬升。戒指不直接测量激素，均为推算。'}
         </Text>
       ) : (
         <>
@@ -231,7 +231,7 @@ export default function HormoneDualTrend({
           <View style={styles.legend}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: EST_COLOR }]} />
-              <Text style={styles.legendText}>雌激素（HRV·EDA）</Text>
+              <Text style={styles.legendText}>雌激素（HRV·心率）</Text>
             </View>
             {!onlyEstrogen ? (
               <View style={styles.legendItem}>

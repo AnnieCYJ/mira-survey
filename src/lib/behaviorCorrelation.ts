@@ -20,7 +20,7 @@
  * ★ 数据来源（不新增采集，复用已有自报）：
  *   · 行为标签：CognitiveLabel（用户在负荷/回顾里记的 taskType：开会/写代码/阅读/运动/其他；
  *     + cognitiveType：burn 烧脑 / emotion 情绪 / calm 平静）。
- *   · 结果指标：各详情页同源的逐日值（睡眠恢复分 / 情绪分 / 身体负荷分）。
+ *   · 结果指标：各详情页同源的逐日值（睡眠恢复分 / 情绪分 / 身心压力分）。
  */
 import { healthStore } from '../data/healthStore';
 import { pearsonR } from './selfReportCalibration';
@@ -186,7 +186,7 @@ export function computeBehaviorCorrelations(
 }
 
 function outcomeLabel(o: OutcomeKey): string {
-  return o === 'sleep' ? '睡眠恢复' : o === 'emotion' ? '情绪' : '身体负荷';
+  return o === 'sleep' ? '睡眠恢复' : o === 'emotion' ? '情绪' : '身心压力';
 }
 
 function buildSummary(tag: string, o: OutcomeKey, dir: 'higher' | 'lower', effect: string, delta: number): string {

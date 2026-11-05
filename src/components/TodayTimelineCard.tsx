@@ -18,6 +18,10 @@ export interface TimelineItem {
   sub?: string;
   /** ★ 2026-10-10（日历页「日」Tab 曲线旅程 JourneyDayView）：条目图标 emoji，由 push 站点按语义给 */
   emoji?: string;
+  /** ★ 本轮（用户 #245）：该条是否达到当日目标，达标则在卡片右上角画一颗星 */
+  goalMet?: boolean;
+  /** ★ 本轮（用户 #248）：卡片底部补一句分析 / 解读（可选，缺省不渲染） */
+  analysis?: string;
 }
 
 interface Props {
@@ -57,8 +61,12 @@ export default function TodayTimelineCard({ title, dateLabel, items }: Props) {
               </View>
               {/* 右：事项 */}
               <View style={[styles.body, !last && { paddingBottom: theme.sp(3) }]}>
-                <Text style={styles.itemTitle} numberOfLines={1}>{it.title}</Text>
+                <View style={styles.itemHead}>
+                  <Text style={styles.itemTitle} numberOfLines={1}>{it.title}</Text>
+                  {it.goalMet ? <Text style={styles.itemStar}>★</Text> : null}
+                </View>
                 {it.sub ? <Text style={styles.itemSub} numberOfLines={2}>{it.sub}</Text> : null}
+                {it.analysis ? <Text style={styles.itemAnalysis} numberOfLines={2}>{it.analysis}</Text> : null}
               </View>
             </View>
           );
@@ -133,16 +141,26 @@ const styles = StyleSheet.create({
     minWidth: 0,
     marginLeft: theme.space.sm,
   },
+  itemHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
   itemTitle: {
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.medium,
     color: theme.colors.textTitle,
+    flex: 1,
   },
+  itemStar: { fontSize: theme.fs(12), color: theme.colors.success, fontWeight: theme.weight.bold as any },
   itemSub: {
     fontSize: theme.fontSize.sm,
     /** 玻璃底上用 chipText（比 textSub 深），保证浅色卡片上的小字对比度 */
     color: theme.colors.ui.chipText,
     marginTop: theme.sp(0.5),
     lineHeight: theme.fontSize.sm * 1.45,
+  },
+  /** ★ 本轮（用户 #248）：事项底部补一句分析，比 itemSub 弱一档 */
+  itemAnalysis: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.success,
+    marginTop: theme.sp(0.5),
+    lineHeight: theme.fontSize.xs * 1.45,
   },
 });

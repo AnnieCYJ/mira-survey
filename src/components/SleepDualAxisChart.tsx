@@ -27,9 +27,11 @@ import { chart } from '../theme/chart';
 const FALLBACK_W = 680;        // 未测到宽度前的兜底 viewBox 宽
 // ★ 2026-10-10（chart-size-unified-spec）：L 档（详情主图 / 双轴），总高 240（原 380）
 const H = chart.h.l;           // 总高（含轴标题带 + X 轴标签带）
-// 左右留白 ≥ 半个最大柱宽（barW 上限 34），首个/末个柱子不被裁切
-const PAD_L = 20;
-const PAD_R = 20;
+// ★ 2026-11-05（用户「睡眠详情横坐标被裁掉」）：20 → 28。
+//   首/末标签按 xAt 居中；原来 PAD 只有 20，遇到「30」「11月」这类两/三字标签时
+//   半宽大于留白 → 被 clamp 推到容器边、与对应柱子错位，看起来像被裁掉。
+const PAD_L = 28;
+const PAD_R = 28;
 // ★ 2026-10-10（规则 2：装饰带预算 ≤ 50pt，原 44+40=84 严重超标）
 const PAD_T = 32;              // 顶部：轴标题带（独立于刻度，不重叠）
 const PAD_B = 28;              // 底部：X 轴标签带
@@ -198,6 +200,7 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
               return (
                 <Text
                   key={`x${i}`}
+                  numberOfLines={1}
                   onLayout={(e) => {
                     const lw = e.nativeEvent.layout.width;
                     setLabelW((m) => (m[i] === lw ? m : { ...m, [i]: lw }));
@@ -249,7 +252,8 @@ const styles = StyleSheet.create({
   yText: { position: 'absolute', fontSize: theme.fontSize.xs, textAlign: 'right' },
   axisTitle: { position: 'absolute', fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   // X 轴标签容器：与绘图区等宽，标签按数据点 xAt 比例绝对定位、水平居中
-  xAxisWrap: { height: 18, position: 'relative', marginTop: 2 },
+  // ★ 2026-11-05：标签带高度 18 → 22，micro 字号不再下探贴底被下方元素压住
+  xAxisWrap: { height: 22, position: 'relative', marginTop: 4 },
   xLabel: {
     position: 'absolute',
     top: 0,

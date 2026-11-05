@@ -95,19 +95,36 @@ export default function SleepStageChart({
   const x = (min: number) => (totalMin > 0 ? (Math.min(min, totalMin) / totalMin) * W : 0);
   const startAbs = parseClock(sleepTime);
 
-  // 时间轴刻度：从入睡时间开始，每 2 小时一个标签
+  // ★ 2026-11-05（用户：「睡眠分析里面那横坐标的那个时间都不对」）：
+  //   旧实现从「入睡后的第一个整点」开始标，最左端没有入睡时刻、最右端也没有起床时刻，
+  //   加上首末标签用 middle 锚点贴边 → 既被裁切、又让人误以为整夜从 00:00 开始。
+  //   现在：第一个标签 = 真实入睡钟点，最后一个标签 = 真实起床钟点，中间每 2 小时；
+  //   相邻标签间距不足 34px 时跳过中间刻度（短觉时避免两个时间叠在一起）。
   const ticks: { x: number; label: string }[] = [];
+  const pushTick = (rel: number, label: string) => {
+    const prev = ticks[ticks.length - 1];
+    if (prev && x(rel) - prev.x < 34) return;
+    ticks.push({ x: x(rel), label });
+  };
   if (startAbs != null && totalMin > 0) {
-    let cur = Math.ceil(startAbs / 60) * 60;
     const endAbs = startAbs + totalMin;
+    pushTick(0, fmtClock(startAbs));
+    let cur = Math.ceil(startAbs / 60) * 60;
     while (cur <= endAbs && ticks.length < 40) {
-      const rel = cur - startAbs;
-      ticks.push({ x: x(rel), label: fmtClock(cur) });
+      pushTick(cur - startAbs, fmtClock(cur));
       cur += 120;
+    }
+    // 起床钟点一定出现：太靠近上一个标签时替换掉它，不追加一个会重叠的标签
+    const last = ticks[ticks.length - 1];
+    if (last && x(totalMin) - last.x < 34) {
+      last.x = x(totalMin);
+      last.label = fmtClock(endAbs);
+    } else {
+      pushTick(totalMin, fmtClock(endAbs));
     }
   } else if (totalMin > 0) {
     for (let t = 0; t <= totalMin; t += 120) {
-      ticks.push({ x: x(t), label: `+${Math.round(t / 60)}h` });
+      pushTick(t, `+${Math.round(t / 60)}h`);
     }
   }
 
@@ -237,7 +254,8 @@ export default function SleepStageChart({
             y={H - theme.sp(0.75)}
             fontSize={theme.fontSize.micro}
             fill={theme.colors.textSub}
-            textAnchor="middle"
+            // 首标签向右展开、末标签向左展开 → 贴边也不被裁（与 AllDayRecoveryCard 同款口径）
+            textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}
           >
             {t.label}
           </SvgText>

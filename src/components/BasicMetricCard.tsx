@@ -167,6 +167,8 @@ interface Props {
   hideMeasure?: boolean;
   /** 最近测量/更新时间（epoch ms），显示在数值右侧，确认数据新鲜度 */
   measureTime?: number | null;
+  /** ★ 数据来源标签（如「今日日均」）。给出时替代相对时间，避免把日均值伪装成实时读数 */
+  sourceLabel?: string;
   /** 点击卡片进入「指标历史详情」全屏页 */
   onPress?: () => void;
   /** 是否渲染全天趋势图（默认 true） */
@@ -184,6 +186,7 @@ export default function BasicMetricCard({
   onMeasure,
   hideMeasure,
   measureTime,
+  sourceLabel,
   onPress,
   showTrend = true,
 }: Props) {
@@ -222,6 +225,13 @@ export default function BasicMetricCard({
   }, [data, w, h, yBounds, metric.yMin, metric.yMax, axis.start, axis.end]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // ★ 2026-11-05（用户：「心率反馈要 15 分钟」）：staleTag 原来只在 render 时算一次，
+  //   页面不重渲染时「15 分钟前」会一直冻结不动。这里每 30 秒自重绘副标题。
+  const [, tickClock] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tickClock((x) => x + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const onPressMeasure = () => {
     if (measuring) return;
@@ -234,7 +244,7 @@ export default function BasicMetricCard({
   };
 
   const measureLabel = measuring || syncing ? '测量中…' : lastMeasured ? '刚刚测量' : '手动测量';
-  const statusTag = live ? '实时' : syncing ? '同步中' : '待接入';
+  const statusTag = sourceLabel ? '日值' : live ? '实时' : syncing ? '同步中' : '待接入';
 
   // compact: Insight 2列小卡片，有图/无图由 showTrend 决定
   if (compact) {
@@ -283,7 +293,7 @@ export default function BasicMetricCard({
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, flexShrink: 1 }}>{value}</Text>
             <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
-            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{staleTag(measureTime)}</Text>
+            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{sourceLabel ?? staleTag(measureTime)}</Text>
           </View>
           {showTrend && (
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
@@ -357,7 +367,7 @@ export default function BasicMetricCard({
       <View style={styles.main}>
         <Text style={styles.val}>{value}</Text>
         <Text style={styles.unit}>{metric.unit}</Text>
-        <Text style={styles.measuredAt}>{staleTag(measureTime)}</Text>
+        <Text style={styles.measuredAt}>{sourceLabel ?? staleTag(measureTime)}</Text>
       </View>
 
       <Text style={styles.range}>{metric.range}</Text>

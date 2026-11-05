@@ -152,7 +152,7 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
     `${lineOf(idx)} L ${xAt(idx[idx.length - 1]).toFixed(1)} ${(padT + plotH).toFixed(1)} L ${xAt(idx[0]).toFixed(1)} ${(padT + plotH).toFixed(1)} Z`;
 
   const anyData = points.some((p) => p.hasData);
-  // ★ 2026-10-09：日视图小时刻度统一走 chartAxis.DAY_HOUR_TICKS（每 4 小时），
+  // ★ 2026-10-09：日视图小时刻度统一走 chartAxis.DAY_HOUR_TICKS（★ 2026-11-05 起每 6 小时：0/6/12/18/24），
   //   与 ReadinessTrendChart / CognitiveLoadCard / RANGE_DEF 完全一致。
   const MAIN_HOURS = [...DAY_HOUR_TICKS];
 

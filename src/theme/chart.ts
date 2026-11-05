@@ -29,7 +29,7 @@ export const chart = {
   grid: theme.colors.ui.borderSoft,
   axisText: theme.colors.textSub,
   /**
-   * ★ 2026-11-03（用户：身体负荷趋势图轴文字太小）：图表坐标轴文字字号（SVG 内绝对像素，
+   * ★ 2026-11-03（用户：身心压力趋势图轴文字太小）：图表坐标轴文字字号（SVG 内绝对像素，
    * 不随 viewBox 缩放）。统一为 12，替代此前散落的 9.5 / 11 硬编码，保证日/周/月/年轴文字一致可读。
    */
   axisFont: 12,
@@ -50,7 +50,8 @@ export const chart = {
     /** 柱宽 = clamp(minWidth, 槽宽 × slotRatio, maxWidth) */
     minWidth: 4,
     maxWidth: 24,
-    slotRatio: 0.6,
+    // ★ 2026-11-05（用户：全天柱状条太细看不清，稍加宽）：0.6 → 0.82
+    slotRatio: 0.82,
     /** 有值柱最小高度（px） */
     minHeight: 2,
     /** 空槽桩高度 / 圆角 */

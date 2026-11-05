@@ -33,6 +33,7 @@ import { dayKey, healthStore } from '../data/healthStore';
 import { computeCycle, parseDate, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { phaseBg, PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
+import AxisLabels from '../components/charts/AxisLabels';
 
 
 // ★ 2026-10-10（用户「按现在的 design token」）：图表高度挂 token —— 详情页主趋势 = L 档
@@ -700,21 +701,9 @@ export default function StatusTrendDetailScreen() {
     return `这段状态平均 ${Math.round(avg)} 分${bw}；${trend}，${lvl.index <= 1 ? '整体节奏在线' : '给恢复多留点空间'}。`;
   }, [hasData, avg, current, dRange, comparison]);
 
-  // 轴标签：日视图固定时间轴（space-between）；周/月/年每个数据点一槽、刻度居中，稀疏刻度与柱对齐
-  const renderAxis = () => {
-    if (fixedAxis) {
-      return DAY_AXIS.map((t, i) => (
-        <Text key={i} style={styles.axisText}>
-          {t}
-        </Text>
-      ));
-    }
-    return axisLabels.map((t, i) => (
-      <Text key={i} style={[styles.axisText, { flex: 1, textAlign: 'center' }]}>
-        {t}
-      </Text>
-    ));
-  };
+  // ★ 2026-11-05：X 轴标签统一交给 AxisLabels（只渲染可见项 + 比例定位 + 边界 clamp）。
+  //   旧 renderAxis 用 space-between 排「每点一个 Text」，月/年视图密槽时标签互相压住、
+  //   末标签贴右缘被裁，已废弃。
 
   return (
     <View style={{ flex: 1 }}>
@@ -738,11 +727,7 @@ export default function StatusTrendDetailScreen() {
             <Text style={styles.title}>全天状态趋势</Text>
             <Text style={styles.sub}>状态指数 0–100（越高越有活力）</Text>
           </View>
-          {hasData ? (
-            <View style={styles.liveTag}>
-              <Text style={styles.liveText}>真实数据</Text>
-            </View>
-          ) : null}
+          {/* ★ 2026-11-05（用户）：详情页右上角不显示「真实数据 / 实时」徽标 */}
         </View>
 
         {/* 日 / 周 / 月 / 年 切换 */}
@@ -755,6 +740,8 @@ export default function StatusTrendDetailScreen() {
               切换上方不再放大数字 —— 与脑力/心理压力等详情页统一（切换 → 选择器 → 数据卡 → 图表） */}
         <Card padded={false}>
           <View style={styles.pad}>
+            {/* ★ 2026-11-05（用户·统一）：顶部数据卡补标题，随区间变化 */}
+            <Text style={styles.heroCardTitle}>{dRange === 'day' ? '今日状态' : dRange === 'week' ? '本周状态' : dRange === 'month' ? '本月状态' : '本年状态'}</Text>
             <View style={styles.hero}>
               <Text style={styles.heroVal}>{fmtVal(current)}</Text>
               <Text style={styles.heroUnit}>/ 100</Text>
@@ -774,6 +761,8 @@ export default function StatusTrendDetailScreen() {
 
         {/* 趋势图 */}
         <View style={styles.chartCard}>
+          {/* ★ 2026-11-05（用户·统一）：趋势图卡补标题 */}
+          <Text style={styles.chartTitle}>全天状态曲线</Text>
           <View
             onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}
             onTouchStart={(e) => {
@@ -967,8 +956,13 @@ export default function StatusTrendDetailScreen() {
             </View>
           ) : null}
 
-          {/* X 轴标签 */}
-          <View style={styles.axis}>{renderAxis()}</View>
+          {/* X 轴标签 ★ 2026-11-05：不再被遮挡 / 裁切 */}
+          <AxisLabels
+            labels={axisLabels}
+            mode={fixedAxis || axisLabels.length <= 8 ? 'edge' : 'slot'}
+            padLeft={PAD_L}
+            padRight={PAD_R}
+          />
 
           {/* ★ 图表图例：等级色（日/周/月/年通用，散点颜色）+ 周期相位·经前PMS（月）+ 皮质醇异常（周） */}
           <View style={styles.legendRow}>
@@ -1017,11 +1011,14 @@ export default function StatusTrendDetailScreen() {
         {/* ★ 详细分析（StressWatch 范式：方块+数字，不写长段文字）
             口径（v18.153 用户定的顺序）：**第一排 = 平均 / 最高 / 最低**，
             再 状态最好 / 状态最差，最后 对比上期 / 对比基线。
-            （前两版把统计值沉到中间/最底，用户逐次纠正后定稿为「统计值在最上」。） */}
-        <View style={styles.cmpHead}>
-          <Text style={styles.cmpTitle}>详细分析</Text>
-          <Text style={styles.cmpSub}>{dRange === 'day' ? '今日' : dRange === 'week' ? '本周' : dRange === 'month' ? '本月' : '本年'}</Text>
-        </View>
+            （前两版把统计值沉到中间/最底，用户逐次纠正后定稿为「统计值在最上」。）
+            ★ 2026-11-05（用户·统一）：整段包进 Card，与其他模块分析卡一致。 */}
+        <Card padded={false}>
+          <View style={styles.pad}>
+            <View style={styles.cmpHead}>
+              <Text style={styles.cmpTitle}>详细分析</Text>
+              <Text style={styles.cmpSub}>{dRange === 'day' ? '今日' : dRange === 'week' ? '本周' : dRange === 'month' ? '本月' : '本年'}</Text>
+            </View>
 
         {/* ★ 2026-11-03（用户）：平均/最高/最低三卡条已全 App 删除（与 MetricDetail 同口径），统计语义由下方 状态最好/最差 + 对比 承担 */}
 
@@ -1054,6 +1051,8 @@ export default function StatusTrendDetailScreen() {
             <Text style={[styles.cmpMeta, { color: comparison.baseDelta.startsWith('▲') ? theme.colors.success : comparison.baseDelta.startsWith('▼') ? theme.colors.danger : theme.colors.textSub }]}>{comparison.baseDelta || '—'}</Text>
           </View>
         </View>
+          </View>
+        </Card>
 
         {/* ★ v18.151：原来这里的「激素均值」三宫格 + 下面那段解读文案已整块删除（用户口径）。
             相关计算（buildEstrogenData / buildProgesteroneData / cortAvg）同步从 comparison 里移除，
@@ -1097,6 +1096,10 @@ const styles = StyleSheet.create({
   down: { color: theme.colors.danger },
   // ★ 2026-11-03：hero 卡内解读文字（与 MetricDetail heroAnalysis 同款层级）
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
+  // ★ 2026-11-05（用户·统一）：顶部数据卡标题
+  heroCardTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
+  // ★ 2026-11-05（用户·统一）：趋势图卡标题
+  chartTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.md,
@@ -1129,7 +1132,8 @@ const styles = StyleSheet.create({
   statValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginTop: 2 },
 
   // ★ v18.147 对比模块（StressWatch 范式：方块+数字）
-  cmpHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: theme.space.lg, marginBottom: theme.space.xs },
+  // ★ 2026-11-05（用户·统一）：现处 Card 内，去掉额外的顶部大间距
+  cmpHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 0, marginBottom: theme.space.xs },
   cmpTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
   cmpSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   cmpGrid2: { flexDirection: 'row', gap: theme.space.sm },

@@ -4,7 +4,7 @@ import Svg, { Rect, Line, Path, Text as SvgText } from 'react-native-svg';
 import { theme } from '../../theme/theme';
 import { mm } from '../../theme/mindmate';
 import { chart } from '../../theme/chart';
-import { DAY_HOUR_TICKS, DAY_MINOR_TICK_MINUTES } from '../../lib/chartAxis';
+import { DAY_HOUR_TICKS, DAY_MINOR_TICK_MINUTES, hourTickLabel } from '../../lib/chartAxis';
 import { bucketMean, type Bucket } from '../../lib/timeBuckets';
 import { smoothPath } from '../../lib/smoothPath';
 
@@ -74,7 +74,9 @@ interface Props {
 const PAD_L = 30;
 const PAD_R = 12;
 const PAD_T = 16;
-const AXIS_H = 20;
+// ★ 2026-11-05（用户「横坐标被遮挡 / 裁掉」）：20 → 28，给 12px 字号留足下探空间，
+//   同时把 X 轴标签带与最底部 Y 轴刻度彻底分开（两者原来只差 12px，会叠在一起）。
+const AXIS_H = 28;
 
 export default function AllDayBarsChart({
   buckets,
@@ -195,14 +197,28 @@ export default function AllDayBarsChart({
 
     const labelDefs = tickLabels
       ? tickLabels.map((l) => ({ frac: l.frac, label: l.label }))
-      : DAY_HOUR_TICKS.map((hh) => ({ frac: hh / 24, label: `${hh}:00` }));
+      : DAY_HOUR_TICKS.map((hh) => ({ frac: hh / 24, label: hourTickLabel(hh) }));
+    // ★ 2026-11-05（用户实锤「心率/血氧详情页 20 点跟 24 点重合」）：
+    //   这是心率/血氧/HRV/压力**日视图真正生效**的 X 轴（SVG SvgText），不走 AxisLabels。
+    //   ① 刻度改 6h 等距 → 相邻中心距 plotW/4，不再挤在一起；
+    //   ② 首末标签按文字半宽 clamp 到绘图区内，middle 锚点保证不越界、不被裁；
+    //   ③ 自定义 tickLabels（HRV 夜间窗口刻度较密）时，与上一个标签距离不足就跳过，
+    //      但首尾两个标签永远保留 → 既不重叠也不丢时间端点。
+    //   竖线始终画在原始刻度 x 上，只有文字位置被 clamp，视觉不错位。
+    const labelHalf = (s: string) => (s.length * chart.axisFont * 0.62) / 2;
+    let lastKeptX = -Infinity;
     const ticks: React.ReactNode[] = labelDefs.map((l, i) => {
-      const x = PAD_L + plotW * l.frac;
+      const rawX = PAD_L + plotW * l.frac;
+      const lh = labelHalf(l.label);
+      const x = Math.max(PAD_L + lh, Math.min(PAD_L + plotW - lh, rawX));
+      const isEdge = i === 0 || i === labelDefs.length - 1;
+      if (!isEdge && x - lastKeptX < lh * 2 + 4) return null;
+      lastKeptX = x;
       return (
         <React.Fragment key={`t${l.label}-${i}`}>
-          <Line x1={x} y1={PAD_T} x2={x} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
-          <SvgText x={x} y={H - 5} fontSize={chart.axisFont} fill={chart.axisText}
-            textAnchor={i === 0 ? 'start' : i === labelDefs.length - 1 ? 'end' : 'middle'}>
+          <Line x1={rawX} y1={PAD_T} x2={rawX} y2={baseY} stroke={chart.grid} strokeWidth={chart.lw.grid} />
+          <SvgText x={x} y={H - 6} fontSize={chart.axisFont} fill={chart.axisText}
+            textAnchor="middle">
             {l.label}
           </SvgText>
         </React.Fragment>
@@ -213,8 +229,10 @@ export default function AllDayBarsChart({
     for (const g of niceTicks(range.lo, range.hi)) {
       const y = yAt(g);
       if (y < PAD_T - 1 || y > baseY + 1) continue;
+      // 最底部刻度抬高，避免与 X 轴标签带重叠造成「被遮挡」
+      const ty = Math.min(y + 3, baseY - 8);
       yLabels.push(
-        <SvgText key={`y${g}`} x={PAD_L - 5} y={y + 3} fontSize={chart.axisFont} fill={chart.axisText}
+        <SvgText key={`y${g}`} x={PAD_L - 5} y={ty} fontSize={chart.axisFont} fill={chart.axisText}
           textAnchor="end">{fmtTick(g)}</SvgText>,
       );
     }

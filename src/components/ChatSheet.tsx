@@ -18,7 +18,7 @@ import { mm } from '../theme/mindmate';
 import { LinearGradient } from 'expo-linear-gradient';
 import Sheet, { SheetHead } from './Sheet';
 import Icon from './Icon';
-import GrokFace from './GrokFace';
+import LunaMiraFace from './LunaMiraFace';
 import { pickReply, generateQuestions, type AiTask } from '../data/chat';
 import { useAppState } from '../state/AppState';
 import { ask, type ChatHistoryItem } from '../ai';
@@ -157,7 +157,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
   messagesRef.current = messages;
   // ★ Phase 0：练习卡冷却——推过一次后 2 个回合内不再推，避免连续问答里反复骚扰
   const exerciseCooldownRef = useRef(0);
-  // ★ 2026-10-12（用户：点 GROK / 语音 / 跳 AI 页都特别卡）：端侧 Qwen 流式输出时
+  // ★ 2026-10-12（用户：点助手按钮 / 语音 / 跳 AI 页都特别卡）：端侧 Qwen 流式输出时
   //   onToken 每 ~80ms 回调一次，旧实现每个 token 都全量 map 消息数组 + scrollToEnd(animated)，
   //   10–15s 生成期持续掉帧。改为 token 先进缓冲区、100ms 合并 flush 一次，滚动改无动画。
   const tokenBufRef = useRef('');
@@ -220,7 +220,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
       .slice(-10)
       .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
-    // ★ 语音入口（长按 GROK → VoiceChat）已在挂载时把用户那句落进对话流，
+    // ★ 语音入口（长按助手按钮 → VoiceChat）已在挂载时把用户那句落进对话流，
     //   这里跳过重复落用户气泡、只跑推理 → 转场期间不再重排、不再闪。
     setMessages((prev) =>
       opts?.skipUserBubble ? prev : [...prev, { from: 'user', text: q }, { from: 'ai', text: '' }],
@@ -494,8 +494,8 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         >
           {messages.length === 0 ? (
             <View style={styles.empty}>
-              {/* v18.78：建议问题移到输入框上方横向滑动条（SuggestStrip），空态只留 Grok 头像 */}
-              <GrokFace size={240} />
+              {/* v18.78：建议问题移到输入框上方横向滑动条（SuggestStrip）；空态为 lunamira 品牌字标 */}
+              <LunaMiraFace size={240} />
             </View>
           ) : (
             messages.map(renderMessage)

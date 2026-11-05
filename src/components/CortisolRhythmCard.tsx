@@ -281,7 +281,8 @@ function CortisolBars({ r, sleepWindow }: { r: CortisolRhythmResult; sleepWindow
       {/* 时间轴 */}
       <View style={styles.timeAxis}>
         {DAY_HOUR_TICKS_COMPACT.map((h) => (
-          <Text key={h} style={styles.timeAxisLabel}>{h % 24}</Text>
+          // ★ 2026-11-05：旧写法 `h % 24` 把末点 24 写成 0，首末标签都显示「0」→ 时间轴看起来不对。
+          <Text key={h} style={styles.timeAxisLabel}>{String(h)}</Text>
         ))}
       </View>
       <Text style={styles.chartCap}>
@@ -537,7 +538,8 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
         {[0, 6, 12, 18, 24].map((h) => {
           const slot = Math.min(h * 2, SLOTS - 1);
           return (
-            <SvgText key={h} x={xOfSlot(slot)} y={H - 2} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">{h === 24 ? '24' : h % 24}</SvgText>
+            <SvgText key={h} x={xOfSlot(slot)} y={H - 4} fontSize={9} fill={theme.colors.textSub}
+              textAnchor={h === 24 ? 'end' : h === 0 ? 'start' : 'middle'}>{String(h)}</SvgText>
           );
         })}
       </Svg>
@@ -636,7 +638,7 @@ const styles = StyleSheet.create({
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
   bars: { flexDirection: 'row', alignItems: 'flex-end', height: 72, justifyContent: 'space-between', marginTop: theme.sp(0.5) },
   bar: { width: 8, borderRadius: chart.barRadius },
-  timeAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: 2 },
+  timeAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(1.5) },
   timeAxisLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   chartCap: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), textAlign: 'center' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.sp(1.5) },

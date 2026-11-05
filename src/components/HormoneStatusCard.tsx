@@ -36,6 +36,19 @@ function statusColor(s: string | null | undefined): string {
   }
 }
 
+/** ★ 本轮（用户 #254）：把生理周期节律并入激素卡——按当前相位 + 周期日给出一句节律描述（不与 CyclePhaseCard 的身心建议重复） */
+function cycleRhythmLine(phase: string | null | undefined, dayInCycle: number | null | undefined): string | null {
+  if (!phase) return null;
+  const dayTxt = dayInCycle != null ? `（周期第 ${dayInCycle} 天）` : '';
+  switch (phase) {
+    case '经期': return `生理周期节律${dayTxt}：身体在下行、慢慢重置，强度高的活动先少安排。`;
+    case '卵泡期': return `生理周期节律${dayTxt}：雌激素回升，精力与心情整体往上走。`;
+    case '排卵期': return `生理周期节律${dayTxt}：激素处在高位，状态与活力都不错。`;
+    case '黄体期': return `生理周期节律${dayTxt}：激素在回落，情绪体力容易波动，多留点缓冲。`;
+    default: return `生理周期节律${dayTxt}：激素节律稳稳的。`;
+  }
+}
+
 
 function ProgSparkline({ dayInCycle, cycleLog, status }: { dayInCycle: number | null; cycleLog: CycleLog | null; status: string }) {
   if (!cycleLog) return null;
@@ -248,6 +261,18 @@ export default function HormoneStatusCard({
         )}
       </View>
 
+      {/* ★ 本轮（用户 #254）：生理周期节律——按当前相位 + 周期日一句节律描述 */}
+      {(() => {
+        const line = cycleRhythmLine(cycleInfo?.phase, cycleInfo?.dayInCycle);
+        if (!line) return null;
+        return (
+          <View style={styles.rhythmBox}>
+            <Text style={styles.rhythmTitle}>🌿 生理周期节律</Text>
+            <Text style={styles.rhythmText}>{line}</Text>
+          </View>
+        );
+      })()}
+
       <Text style={styles.disclaimer}>
         ⚠️ 戒指不能直接测激素, 这是根据生理信号推算的结果, 不是临床诊断。
       </Text>
@@ -305,6 +330,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: theme.space.sm,
   },
+
+  // ★ 本轮（用户 #254）：生理周期节律块
+  rhythmBox: {
+    borderRadius: theme.radius.md,
+    padding: theme.space.sm,
+    backgroundColor: theme.colors.cardBgSoft,
+    marginTop: theme.space.xs,
+  },
+  rhythmTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: theme.sp(0.5) },
+  rhythmText: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: theme.fontSize.sm * 1.5 },
 
   emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.6, marginBottom: theme.sp(0.5) },

@@ -512,12 +512,18 @@ export default function SleepDetailScreen() {
             isToday={dayKey(anchor) === healthDayKey(Date.now())}
           />
 
-          <View style={styles.scoreLegend} accessibilityRole="text">
-            <Text style={styles.scoreLegendTitle}>睡眠恢复分怎么看</Text>
-            <Text style={styles.scoreLegendText}>75 分：接近个人平时　·　82 分以上：明显好于平时</Text>
-            <Text style={styles.scoreLegendText}>68–81 分：轻度偏低　·　45–67 分：恢复偏低</Text>
-            <Text style={styles.scoreLegendNote}>这是基于个人滚动基线的趋势分，不是医学诊断分。</Text>
-          </View>
+          {/* ★ 2026-11-06（用户）：「什么是睡眠恢复分」说明已折叠进上方「睡眠恢复分」卡内（SleepRecoveryHero），此处不再重复 */}
+          {/* ★ 2026-11-06（用户纠偏）：「稳定睡眠」入口卡置于日视图最底部，点击直达睡前助眠呼吸（Breathing） */}
+          <TouchableOpacity style={styles.stableSleepCard} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
+            <View style={styles.stableSleepIcon}>
+              <Icon name="moon" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2} />
+            </View>
+            <View style={styles.stableSleepBody}>
+              <Text style={styles.stableSleepTitle}>稳定睡眠</Text>
+              <Text style={styles.stableSleepSub}>睡前助眠呼吸 · 放松身心，更好入睡</Text>
+            </View>
+            <Icon name="chevronRight" size={theme.fs(20)} color={theme.colors.textSub} strokeWidth={2} />
+          </TouchableOpacity>
         </>
       ) : (
         /* 周 / 月 / 年：睡眠分析卡（文本分析）→ 睡眠与恢复双纵轴图 */
@@ -665,6 +671,20 @@ const styles = StyleSheet.create({
   scoreLegendTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
   scoreLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
   scoreLegendNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18, marginTop: theme.sp(1) },
+  // ★ 2026-11-06（用户）：日视图底部「稳定睡眠」入口卡（→ Breathing 睡前助眠呼吸）
+  stableSleepCard: {
+    flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm,
+    paddingVertical: theme.space.sm, paddingHorizontal: theme.space.cardPad,
+    borderRadius: mm.radius.card, backgroundColor: theme.colors.cardBg,
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+  },
+  stableSleepIcon: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)', marginRight: theme.space.sm,
+  },
+  stableSleepBody: { flex: 1 },
+  stableSleepTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  stableSleepSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
   /* 周/月/年：睡眠分析卡文本行 */
   saText: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 22, marginBottom: theme.sp(1) },
 });

@@ -23,10 +23,15 @@ import Icon from '../components/Icon';
 import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
-import { moodFromEmotionLevel, MOOD_COLOR } from '../data/emotionLog';
+import {
+  moodFromEmotionLevel, MOOD_COLOR, MOOD_EMOJI, MOOD_LABEL,
+  getLatestForDay, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
+} from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
+import { useDeviceModel } from '../config/deviceModel';
+import { saneBodyTemp } from '../data/ringDataIsolation';
 import { computeStressReport } from '../lib/stressAlgorithm';
-import { healthStore, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
+import { healthStore, dayKey, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
@@ -34,11 +39,14 @@ import { compareLabel } from '../lib/periodLabels';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../components/charts/AllDayBarsChart';
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
+import AxisLabels from '../components/charts/AxisLabels';
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
 import ChatSheet from '../components/ChatSheet';
+import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import LipidTrendCard from '../components/LipidTrendCard';
+import CortisolTrendCard from '../components/CortisolTrendCard';
 
 interface Params {
   key: string;
@@ -74,7 +82,7 @@ const PHASE_BG: Record<string, string> = {
 
 /**
  * ★ 本轮（用户）：指标详情 hero 数字下方加一段短 AI 分析（不太长），按指标语义 + 相对口径判读。
- *   覆盖身体负荷 / 情绪 / 心率 / 血氧 / HRV / 疲劳 / 皮电 / 体温 / 血糖 / 血压 等常用指标，其余走通用兜底。
+ *   覆盖身心压力 / 情绪 / 心率 / 血氧 / HRV / 疲劳 / 皮电 / 体温 / 血糖 / 血压 等常用指标，其余走通用兜底。
  */
 function buildHeroAnalysis(key: string, name: string, value: number | null, range: RangeKey): string {
   const day = range === 'day';
@@ -84,10 +92,10 @@ function buildHeroAnalysis(key: string, name: string, value: number | null, rang
       : '这一区间还没有足够的数据，多戴几天后这里会出现你的趋势解读。';
   }
   switch (key) {
-    case 'stress': // 身体负荷
-      if (value < 30) return day ? '今天身体负荷很轻，状态松弛，可以放心安排强度高一点的活动。' : '这段时间身体负荷整体偏轻，节奏稳，保持就好。';
-      if (value < 55) return day ? '今天身体负荷适中，节奏平稳，按原计划来即可。' : '这段时间负荷适中，状态平稳。';
-      return day ? '今天身体负荷偏重，身体在提醒你慢下来，午后找机会歇一歇。' : '这段时间负荷偏重，记得给自己留点喘息的空间。';
+    case 'stress': // 身心压力
+      if (value < 30) return day ? '今天身心压力较低，状态松弛，可以放心安排强度高一点的活动。' : '这段时间身心压力整体偏低，节奏稳，保持就好。';
+      if (value < 55) return day ? '今天身心压力适中，节奏平稳，按原计划来即可。' : '这段时间身心压力适中，状态平稳。';
+      return day ? '今天身心压力偏重，身体在提醒你慢下来，午后找机会歇一歇。' : '这段时间身心压力偏重，记得给自己留点喘息的空间。';
     case 'emotion':
       if (value < 35) return day ? '今天情绪轻松，状态敞开，适合处理需要专注或沟通的事。' : '这段时间情绪整体轻松。';
       if (value < 60) return day ? '今天情绪平稳，没有大起大落，正常推进就好。' : '这段时间情绪平稳。';
@@ -127,6 +135,31 @@ function buildHeroAnalysis(key: string, name: string, value: number | null, rang
 }
 
 /**
+ * ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定——只在确有正向信号时给，
+ * 不做评分、不用 "我们" 居高临下语气、不编造。无明显正向信号时返回 null（不渲染）。
+ */
+function buildPraise(key: string, name: string, value: number | null, range: RangeKey): string | null {
+  if (value == null) return null;
+  const day = range === 'day';
+  switch (key) {
+    case 'hrv':
+      return value >= 50 ? '自主神经调节在线，今天身体跟得上你的节奏。' : null;
+    case 'spo2':
+      return value >= 95 ? '供氧一直稳稳的，身体在好好呼吸。' : null;
+    case 'steps':
+      return day ? `今天已记录 ${Math.round(value)} 步，身体一直在动，这很好。` : null;
+    case 'sleep':
+    case 'sleepScore':
+      return value >= 82 ? '昨晚睡得扎实，今天的精神底子不错。' : null;
+    case 'energy':
+    case 'activity':
+      return day ? '今天的活动量已经攒起来了，身体在持续做功。' : null;
+    default:
+      return null;
+  }
+}
+
+/**
  * ★ 2026-10-10（用户拍板）：日视图走「全天柱状小条」的六项指标规格。
  *
  * `binMin`  一律 5 分钟/点（与心率同口径，Oura 5 分钟增量）
@@ -160,7 +193,7 @@ const DAY_BAR_SPECS: Record<string, {
   },
   eda: {
     key: 'eda',
-    sourceNote: '每根柱 = 5 分钟平均皮电反应。皮肤电反映交感神经活动，事件时段会明显抬高。',
+    sourceNote: '协议无 EDA 皮电；该视图在基础版不使用。',
   },
   fatigue: {
     key: 'fatigue',
@@ -184,8 +217,10 @@ const DAY_BAR_SPECS: Record<string, {
   },
   cortisol: {
     key: 'cortisol',
+    // ★ 2026-11-05（用户授权）：基础版无实测，改用 CortisolTrendCard 的多信号推算节律，
+    //   日/周/月/年全粒度展示并明确标「推算」。此 spec 保留仅为兼容旧逻辑，详情页主图已不走它。
     measuredOnly: true,
-    sourceNote: '每根柱 = 5 分钟平均皮质醇。仅展示戒指实测值。',
+    sourceNote: '基础版不实测皮质醇；趋势图由多信号推算，非检测值。',
   },
   skin: {
     key: 'skin',
@@ -195,7 +230,7 @@ const DAY_BAR_SPECS: Record<string, {
   sns: {
     key: 'sns',
     bands: [30, 55],
-    sourceNote: '每根柱 = 5 分钟平均交感神经活跃度，按档位分色。与皮电互为印证。',
+    sourceNote: '每根柱 = 5 分钟平均交感神经活跃度，按档位分色。数据来自 GSR 通道的 sns 回读。',
   },
 };
 
@@ -265,11 +300,16 @@ function stressDaySummary(dk: string, dayStartTs: number) {
  * 以压力信号为主：夜间压力越低 = 恢复越好（权重 0.6），日间放松占比越高 = 承压越稳（权重 0.4）。
  * 不做认知评分，仅作身体承压/恢复状态的平实呈现。返回 0–100 评分 + 5 档等级。
  */
-function stressResilience(anchor: Date): { score: number; level: string; nightAvg: number; relaxRatio: number; days: number } | null {
+function stressResilience(anchor: Date, range: RangeKey): { score: number; level: string; nightAvg: number; relaxRatio: number; days: number } | null {
+  // ★ 本轮（用户）：恢复力按周期真正算出不同值——
+  //   日视图仍用近 14 天滚动（对齐 Oura Resilience）；周/月/年改用 rangeDayKeys 覆盖对应自然日。
+  const dayKeys =
+    range === 'day'
+      ? Array.from({ length: 14 }, (_, i) => dateKeyOf(addDays(anchor, -i).getTime()))
+      : rangeDayKeys(anchor, range);
   let nightSum = 0, nightCnt = 0, relaxSum = 0, relaxCnt = 0, days = 0;
-  for (let i = 0; i < 14; i++) {
-    const d = addDays(anchor, -i);
-    const ds = stressDaySummary(dateKeyOf(d.getTime()), dayStartOf(d.getTime()));
+  for (const dk of dayKeys) {
+    const ds = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
     if (!ds.hasData) continue;
     days += 1;
     if (ds.night.avg != null) { nightSum += ds.night.avg; nightCnt += 1; }
@@ -476,11 +516,14 @@ function RangeBarsChart({
           <Text style={styles.emptyText}>{emptyText}</Text>
         </View>
       ) : null}
-      <View style={[styles.axis, { paddingLeft: showYAxis ? Y_GUT : PAD_L }]}>
-        {labels.map((t, i) => (
-          <Text key={i} style={styles.axisText}>{axisTickVisible(range, t) ? t : ''}</Text>
-        ))}
-      </View>
+      {/* ★ 2026-11-05：只渲染可见刻度，按槽位比例绝对定位 + 边界 clamp，
+          不再用 space-between 把末标签顶到卡片右缘被裁、也不让空标签挤压可见标签。 */}
+      <AxisLabels
+        labels={labels}
+        visible={(t) => axisTickVisible(range, t)}
+        padLeft={showYAxis ? Y_GUT : PAD_L}
+        padRight={PAD_R}
+      />
     </View>
   );
 }
@@ -489,6 +532,18 @@ export default function MetricDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const params = route.params as Params;
+  // ★ 2026-11-05（用户）：身心压力详情页复用「情绪压力」页的「记录此刻心情」胶囊，
+  //   记录完成后把对应表情显示在身心压力趋势图的顶部。数据源与情绪页完全同一套 emotionLog。
+  const [latestMood, setLatestMood] = useState<EmotionEntry | null>(null);
+  useEffect(() => {
+    if (params.key !== 'stress') return;
+    const refresh = () => {
+      try { setLatestMood(getLatestForDay(dayKey(Date.now()))); } catch { setLatestMood(null); }
+    };
+    void ensureEmotionLogLoaded().then(refresh);
+    refresh();
+    return onEmotionLog(refresh);
+  }, [params.key]);
 
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
@@ -500,7 +555,10 @@ export default function MetricDetailScreen() {
   // ★ 2026-10-17（用户：日夜参考心率，做个 tab 区分就行）：压力日视图分「日间 / 夜间」两段，
   //   与 HRV 同套 partRow 控件 + mutedRanges 静音非选中段。默认日间（压力主故事在白天）。
   const [stressPart, setStressPart] = useState<'day' | 'night'>('day');
-  // ★ 2026-10-16：体温详情页双 tab —— 体温（temp）/ 皮肤温度（skinTemp，orgTemperature 原始体温）
+  // ★ 2026-11-05：基础版体温只用当前戒指日均，不读 HK18 时期写入的 healthStore 历史
+  const { model: deviceModel } = useDeviceModel();
+  const isBaseLayout = deviceModel.id === 'BASE_UI';
+  // ★ 2026-10-16：体温详情页双 tab（Pro 保留；基础版无独立皮肤温度流，见 isTempDay 的门禁）
   const [tempSignal, setTempSignal] = useState<'temp' | 'skinTemp'>('temp');
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
   const [w, setW] = useState(0);
@@ -555,10 +613,32 @@ export default function MetricDetailScreen() {
     void loadCycleLog().then((l) => setCycleLog(l));
   }, []);
 
-  const series: HistoryResult = useMemo(
-    () => buildHistorySeries(params.key, range, ring, cycleLog, anchor),
-    [params.key, range, ring, cycleLog, anchor]
-  );
+  const series: HistoryResult = useMemo(() => {
+    const built = buildHistorySeries(params.key, range, ring, cycleLog, anchor);
+    // ★ 2026-11-05（用户：卡片和详情对不齐、详情页体温 39℃）：
+    //   buildHistorySeries 一律读 healthStore，那里混着 HK18 时期写入的温度值（39℃ 即来自此）。
+    //   基础版体温改为只读「当前戒指」的云端日均体温，与洞察页卡片同源、同数值。
+    if (isBaseLayout && params.key === 'temp') {
+      const cur = saneBodyTemp(
+        (ring as any)?.metrics?.temp ?? (ring as any)?.daily?.temp ?? null,
+      );
+      return {
+        ...built,
+        continuous: false,
+        tPoints: undefined,
+        points: cur != null ? [cur] : [],
+        latest: cur,
+        avg: cur,
+        hi: cur,
+        lo: cur,
+        multiDay: false,
+        note: cur != null
+          ? '当前戒指只回读日均体温（℃），没有逐点温度流，也没有独立皮肤温度；与洞察页卡片同源。'
+          : '当前戒指尚未回读体温；不使用其它戒指的历史值。',
+      };
+    }
+    return built;
+  }, [params.key, range, ring, cycleLog, anchor, isBaseLayout]);
 
   // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)，其余回落 params.color / 主色紫
   const color = (() => {
@@ -625,7 +705,8 @@ export default function MetricDetailScreen() {
    * 压力 / **黄体期上移**。我们按 30 分钟槽建个人基线（见 lib/tempBaseline.ts），
    * Y 轴画**偏离量 Δ℃**，绝对值只在标题行给一个，避免 Y 轴冒出 35~38 这种无信息量刻度。
    * ══════════════════════════════════════════════════════════════ */
-  const isTempDay = !isEcg && range === 'day' && params.key === 'temp';
+  // ★ 2026-11-05：基础版没有逐点温度样本，也不该用 HK18 历史画「相对个人基线」曲线 → 关掉该视图与双 tab
+  const isTempDay = !isEcg && !isBaseLayout && range === 'day' && params.key === 'temp';
   const tempDay = useMemo(() => {
     if (!isTempDay) return null;
     const dk = dateKeyOf(anchor.getTime());
@@ -966,16 +1047,20 @@ export default function MetricDetailScreen() {
       ? Math.round(((series.latest - firstReal) / Math.abs(firstReal)) * 100)
       : 0;
   const hasData = series.latest != null || series.avg != null;
-  // ★ 2026-10-27（用户）：压力（身体负荷）页的 hero 必须与首页「身体负荷」卡同源 ——
+  // ★ 2026-10-27（用户）：压力（身心压力）页的 hero 必须与首页「身心压力」卡同源 ——
   //   用 computeStressReport().score（SDK 压力 /12×100，0–100），而非原始 0–12 序列值（series.latest）。
   //   否则外卡显示 14/100、详情显示 1.x（原始值），口径打架。
   const isStress = params.key === 'stress';
+  // ★ 基础版无皮质醇实测 → 详情页改用「推算节律」趋势卡（日/周/月/年），不走实测柱状图
+  const isCortisol = params.key === 'cortisol';
   const stressScore = isStress ? (() => { try { return computeStressReport(anchor.getTime()).score; } catch { return null; } })() : null;
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
   const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
   let heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
+  // ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定（仅正向信号时非空）
+  const praiseLine = buildPraise(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
   // ★ 2026-11-04（用户：解读融合，统一规则 = hero 数字下一句分析，不再出独立解读卡）：
   // ① 体温日视图 —— 用基线偏离分析替代独立「体温解读」卡（TempAiCard 已删，信息并入这里）
   if (isTempDay && tempDay) {
@@ -1007,7 +1092,7 @@ export default function MetricDetailScreen() {
     if (range === 'day') return null;
     try { return buildHistorySeries(params.key, range, ring, cycleLog, prevAnchor); } catch { return null; }
   }, [params.key, range, ring, cycleLog, prevAnchor]);
-  // ★ 压力（身体负荷）用 computeStressReport 0–100 口径（与 heroVal 同源）；其余用上一周期区间均值
+  // ★ 压力（身心压力）用 computeStressReport 0–100 口径（与 heroVal 同源）；其余用上一周期区间均值
   const prevVal = isStress
     ? (() => { try { return computeStressReport(prevAnchor.getTime()).score; } catch { return null; } })()
     : (prevSeries?.avg ?? null);
@@ -1015,8 +1100,15 @@ export default function MetricDetailScreen() {
     typeof heroVal === 'number' && prevVal != null && prevVal !== 0
       ? Math.round(((heroVal - prevVal) / Math.abs(prevVal)) * 100)
       : 0;
-  // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」（身体负荷 → 身体负荷趋势图，其余同理）
+  // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」（身心压力 → 身心压力趋势图，其余同理）
   const chartTitle = `${params.name}趋势图`;
+  /** ★ 身心压力趋势图顶部：当天最近一次自报心情的表情 + 标签（没记录则不渲染）。 */
+  // ★ 2026-11-05（用户）：记录心情后只在图表顶部展示表情 icon，不再压一句说明文字
+  const moodOnChart = isStress && latestMood ? (
+    <View style={styles.moodStrip} pointerEvents="none">
+      <Text style={styles.moodStripEmoji}>{MOOD_EMOJI[latestMood.mood] ?? '🙂'}</Text>
+    </View>
+  ) : null;
 
   // 打开「历史日」且当前指标无数据时，自动触发一次 backfill（需戒指已连接），
   // 让历史趋势图无需手动连戒指即可补拉。同一日期只触发一次，避免重复请求刷屏。
@@ -1072,11 +1164,7 @@ export default function MetricDetailScreen() {
             <Text style={styles.title}>{params.name}</Text>
             {params.dimension ? <Text style={styles.sub}>{params.unit}</Text> : null}
           </View>
-          {!isEcg && hasData ? (
-            <View style={styles.liveTag}>
-              <Text style={styles.liveText}>真实数据</Text>
-            </View>
-          ) : null}
+          {/* ★ 2026-11-05（用户）：详情页右上角不显示「真实数据 / 实时」徽标，标题区保持干净 */}
         </View>
 
         {/* 日 / 周 / 月 / 年 切换 */}
@@ -1108,6 +1196,8 @@ export default function MetricDetailScreen() {
               </View>
               {/* ★ 本轮：数字下方短 AI 分析 */}
               {hasData ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
+              {/* ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定 */}
+              {hasData && praiseLine ? <Text style={styles.heroPraise}>{praiseLine}</Text> : null}
               {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示 */}
               {!isEcg && !isLipid && hasData && series.note ? (
                 <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: theme.colors.cardBorder }}>
@@ -1191,6 +1281,18 @@ export default function MetricDetailScreen() {
           </>
         ) : null}
 
+        {/* ★ 2026-11-05：基础版体温只有「日均体温」一路真实数据，与洞察页卡片同源 */}
+        {isBaseLayout && params.key === 'temp' && range === 'day' ? (
+          <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>体温数据来源</Text>
+            <Text style={styles.chartNote}>
+              这枚戒指通过日常数据回读「日均体温」（℃）。协议里体温与体表温度是同一条测量链路的两个字段，
+              没有独立的皮肤温度数据流，也没有皮电 EDA。这里与洞察页体温卡显示的是同一个数值；
+              尚未同步新数据时显示最近一次日均，不补其它戒指的历史值。
+            </Text>
+          </View>
+        ) : null}
+
         {/* ★ 2026-10-10（用户）：HRV 日视图 = 夜间 / 日间 分两段展示（Oura 口径：HRV 的意义集中在睡眠期） */}
         {isHrvDay && hrvDay ? (
           <View style={styles.chartCard}>
@@ -1242,8 +1344,9 @@ export default function MetricDetailScreen() {
         ) : null}
 
         {/* ★ 2026-10-10（用户拍板）：血氧 / 压力 / EDA / 疲劳 / 情绪 / 皮质醇 —— 全天柱状小条 */}
-        {isSpecDay && spec && specDay ? (
+        {isSpecDay && spec && specDay && !isCortisol ? (
           <View style={styles.chartCard}>
+            {moodOnChart}
             <View style={styles.partRow}>
               <Text style={[styles.chartTitle, styles.titleFlex]}>{chartTitle}</Text>
               {!isStress && (
@@ -1331,6 +1434,7 @@ export default function MetricDetailScreen() {
             分档（状态型）指标在周/月/年视图，逐桶分色柱，与日视图同套档位配色与语义。 */}
         {isSpecRange && spec ? (
           <View style={styles.chartCard}>
+            {moodOnChart}
             <Text style={styles.chartTitle}>{chartTitle}</Text>
             <RangeBarsChart
               points={series.points}
@@ -1347,6 +1451,11 @@ export default function MetricDetailScreen() {
           </View>
         ) : null}
 
+        {/* ★ 2026-11-05（用户：「底层有没有自己的算法推算皮质醇节律？可以出日周月年趋势图」）：
+            基础版不实测皮质醇（health_glance 0 条），用项目自有 cortisolProxy 多信号加权推算，
+            组件内全链路标注「推算」，无真实信号的时间窗留白、不插值。 */}
+        {isCortisol ? <CortisolTrendCard range={range} anchor={anchor} title={chartTitle} /> : null}
+
         {/* ★ 2026-10-17：压力——分析「数据卡片」嵌在日/周/月/年详情里（图表下方），与 AI 文字解读并行 */}
         {params.key === 'stress' && (isSpecDay || isSpecRange) ? (
           <StressStatCards anchor={anchor} range={range} part={stressPart} />
@@ -1355,7 +1464,26 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
         {isLipid ? <LipidTrendCard range={range} anchor={anchor} title="血脂四项趋势图" /> : null}
 
-        {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && !isSpecRange && (
+        {/* ★ 2026-11-05（用户：心率 / 心率变异性 周月年也展示成柱状图，与日视图同款） */}
+        {!isEcg && (params.key === 'hr' || params.key === 'hrv') && range !== 'day' ? (
+          <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>{chartTitle}</Text>
+            <RangeBarsChart
+              points={series.points}
+              labels={axisLabels}
+              range={range}
+              colorOf={() => color}
+              yMin={yLo}
+              yMax={yHi}
+              unit={series.unit}
+              valueFmt={fmtVal}
+              showYAxis={!hideYAxis}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+            />
+          </View>
+        ) : null}
+
+        {!isEcg && !isLipid && !isHrDayBars && !isTempDay && !isHrvDay && !isSpecDay && !isSpecRange && !isCortisol && params.key !== 'hr' && params.key !== 'hrv' && (
         <View style={styles.chartCard}>
           <Text style={styles.chartTitle}>{chartTitle}</Text>
           {/* 图表主体：左侧 Y 轴刻度列 + 右侧曲线（X 轴标签在下方，左移 Y_GUT 对齐） */}
@@ -1489,14 +1617,14 @@ export default function MetricDetailScreen() {
             </View>
           ) : null}
 
-          {/* X 轴标签 */}
-          <View style={[styles.axis, { paddingLeft: hideYAxis ? PAD_L : Y_GUT }]}>
-            {axisLabels.map((t, i) => (
-              <Text key={i} style={styles.axisText}>
-                {axisTickVisible(range, t) ? t : ''}
-              </Text>
-            ))}
-          </View>
+          {/* X 轴标签 ★ 2026-11-05：统一走 AxisLabels（绝对定位 + clamp），修末标签被裁 / 密槽互相遮挡 */}
+          <AxisLabels
+            labels={axisLabels}
+            visible={(t) => axisTickVisible(range, t)}
+            mode={axisLabels.length > 8 ? 'slot' : 'edge'}
+            padLeft={hideYAxis ? PAD_L : Y_GUT}
+            padRight={PAD_R}
+          />
         </View>
         )}
 
@@ -1646,9 +1774,12 @@ export default function MetricDetailScreen() {
             </Text>
           </View>
         ) : null}
+        {/* 给底部常驻「记录此刻心情」胶囊留白，避免遮住图表与分析卡 */}
+        {isStress ? <View style={{ height: 160 }} /> : null}
       </View>
       <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </ScreenContainer>
+    {isStress ? <EmotionQuickRecord /> : null}
     </View>
   );
 }
@@ -2119,8 +2250,8 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     };
   }, [anchor, range]);
 
-  // 恢复力（近 14 天滚动，与 Oura Resilience 口径对齐；压力信号为主）
-  const resilience = useMemo(() => stressResilience(anchor), [anchor]);
+  // 恢复力（日视图=近 14 天滚动，与 Oura Resilience 口径对齐；周/月/年=对应周期覆盖自然日）
+  const resilience = useMemo(() => stressResilience(anchor, range), [anchor, range]);
 
   const qualOf = (avg: number | null): '放松日' | '平衡日' | '紧张日' | null => {
     if (avg == null) return null;
@@ -2135,6 +2266,8 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   const partName = part === 'day' ? '日间' : '夜间';
   // ★ 本轮（用户）：疲劳度直接取「洞察页基础数据→疲劳度」同源值（healthStore 日均值），不再用 压力×1.2 推算
   const rangeLabel = range === 'day' ? '今日' : range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
+  // ★ 本轮（用户）：恢复力标题随周期变化（日=近 14 天，周/月/年=本{周/月/年}）
+  const resilienceLabel = range === 'day' ? '近 14 天' : rangeLabel;
   const fatigue =
     range === 'day'
       ? (healthStore.getDay('fatigue' as HSMetricKey, dateKeyOf(anchor.getTime()))?.mean ?? null)
@@ -2190,7 +2323,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           <Card>
             <Text style={styles.chartTitle}>压力分析</Text>
             <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
-            {renderFatigueBar()}
+            {fatigue != null && renderFatigueBar()}
           </Card>
         </View>
       );
@@ -2230,7 +2363,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           </View>
           {resilience ? (
             <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
-              <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（近 14 天）</Text>
+              <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（{resilienceLabel}）</Text>
               <View style={styles.statGrid}>
                 <View style={styles.statCell}>
                   <Text style={styles.statLabel}>等级</Text>
@@ -2247,7 +2380,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
               </View>
             </View>
           ) : null}
-          {renderFatigueBar()}
+          {fatigue != null && renderFatigueBar()}
           {!partHasData ? (
             <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
           ) : null}
@@ -2287,7 +2420,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
         </View>
         {resilience ? (
           <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
-            <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（近 14 天）</Text>
+            <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（{resilienceLabel}）</Text>
             <View style={styles.statGrid}>
               <View style={styles.statCell}>
                 <Text style={styles.statLabel}>等级</Text>
@@ -2304,7 +2437,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             </View>
           </View>
         ) : null}
-        {renderFatigueBar()}
+        {fatigue != null && renderFatigueBar()}
       </Card>
       {w && w.daysWithData === 0 ? (
         <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
@@ -2509,6 +2642,15 @@ function HrvLorenzSection() {
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
+  moodStrip: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
+    paddingVertical: theme.sp(1), paddingHorizontal: theme.sp(2.5),
+    marginBottom: theme.sp(2), borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1, borderColor: 'rgba(124,106,224,0.18)',
+  },
+  moodStripEmoji: { fontSize: theme.fs(20), marginRight: theme.sp(1.5) },
+  moodStripTxt: { fontSize: theme.fontSize.micro, color: mm.colors.ink, fontWeight: theme.weight.medium as never },
   pad: { padding: theme.space.cardPad },
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: {
@@ -2540,6 +2682,8 @@ const styles = StyleSheet.create({
   heroTag: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.space.md, alignSelf: 'center' },
   // ★ 本轮：数字下方短 AI 分析
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
+  /** ★ 本轮（用户 #246）：客观数据后的夸赞 / 肯定句——比 heroAnalysis 弱半档、带一点强调色，但不喧宾夺主 */
+  heroPraise: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep ?? theme.colors.success, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
   /** ★ 2026-11-03：hero 卡内的区间解读段（从页面底部上移合并）——比 heroAnalysis 再小半档，弱层级 */
   heroNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: 19, opacity: 0.9 },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },

@@ -147,7 +147,7 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
         title={estroTitle}
         subtitle={phaseDay}
         advice={estroAdvice}
-        foot={`基于戒指实测 HRV + EDA（皮肤电导）推算的 0–100 相对指数；戒指不直接测量雌激素，仅供了解自身趋势，不构成医学诊断。`}
+        foot={`基于戒指回读的 HRV / 心率 / 体温等多信号推算的 0–100 相对指数；戒指不直接测量雌激素，仅供了解自身趋势，不构成医学诊断。`}
       >
         <AiResultRow compact tone={row1Tone} title="当前相位水平">
           最新（{md(last.date)}）推算指数 {last.value}，处于近 {windowDays} 天的{levelLabel}（区间 {r0(min)}–
@@ -246,7 +246,7 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
     refText = (
       <>
         已进入黄体期但体温曲线尚未确认双相。体温与静息心率同源驱动，若孕激素曲线已上行而体温未确认，
-        多为皮肤温度噪声或佩戴不连续所致。
+        多为日均体温噪声或佩戴不连续所致。
       </>
     );
   } else {

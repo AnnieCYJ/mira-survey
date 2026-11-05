@@ -19,6 +19,7 @@
  */
 import * as FileSystem from 'expo-file-system';
 import { BACKEND_BASE_URL, RING_SYNC_TOKEN } from '../config';
+import { getStoredDeviceInfo, getDeviceProfileId, getProfile } from '../config/deviceModel';
 
 const PATH = (FileSystem.documentDirectory ?? '') + 'mira_ring_identity.json';
 
@@ -143,10 +144,15 @@ export async function ensureDeviceToken(deviceId: string): Promise<string | null
   }
   minting = (async () => {
     try {
+      // ★ 2026-11-05（用户：按真机收敛）：上报型号以「连接时真机识别出的 Profile」为准，
+      //   不再写死 'HK18'（基础版 LunaMira 本体无 ECG，不该被标成 HK18/全功能）。
+      const { modelNumber } = await getStoredDeviceInfo();
+      const profId = await getDeviceProfileId();
+      const model = modelNumber || getProfile(profId).label;
       const res = await fetch(`${BACKEND_BASE_URL}/v1/ring/device/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, name: 'Mira Ring', model: 'HK18' }),
+        body: JSON.stringify({ device_id: deviceId, name: 'Mira Ring', model }),
       });
       if (!res.ok) return null;
       const j: any = await res.json().catch(() => ({}));

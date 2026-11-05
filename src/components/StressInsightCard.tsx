@@ -84,7 +84,7 @@ export default function StressInsightCard() {
           )}
         </View>
 
-        {/* Big score —— ★ 2026-10-27：改用 report.score（身体负荷分，与首页「身体负荷」卡 / MetricDetail 压力页 hero 同源），
+        {/* Big score —— ★ 2026-10-27：改用 report.score（身心压力分，与首页「身心压力」卡 / MetricDetail 压力页 hero 同源），
             不再用 emotionalLoad（派生情绪消耗），避免同页出现两个口径不同的 /100 数字。
             情绪消耗作为下方网格子项保留。 */}
         <View style={styles.scoreRow}>

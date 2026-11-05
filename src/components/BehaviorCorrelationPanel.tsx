@@ -18,7 +18,7 @@ import { useHealthStoreVersion } from '../hooks/useHealthStore';
 const OUTCOME_TITLE: Record<OutcomeKey, string> = {
   sleep: '哪些行为影响你的睡眠',
   emotion: '哪些行为影响你的情绪',
-  bodyLoad: '哪些行为影响你的身体负荷',
+  bodyLoad: '哪些行为影响你的身心压力',
 };
 
 export default function BehaviorCorrelationPanel({ outcome }: { outcome: OutcomeKey }) {

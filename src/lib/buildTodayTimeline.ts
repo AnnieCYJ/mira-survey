@@ -12,6 +12,8 @@ import { computeStressReport } from './stressAlgorithm';
 import type { TimelineItem } from '../components/TodayTimelineCard';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+/** 每日步数目标（与 metrics.ts 步数指标「目标 10000」文案同源；暂未开放设置页可调） */
+const STEP_GOAL = 10000;
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 function fmtMin(min: number | null | undefined): string {
   if (min == null || !Number.isFinite(min) || min <= 0) return '\u2014';
@@ -80,14 +82,28 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
   const todaySleep = healthStore.getSleep(dayKeySel);
   if (todaySleep?.wakeTime) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(todaySleep.wakeTime.trim());
+    const sleepScore = todaySleep.score;
+    const sleepScoreNum = typeof sleepScore === 'number' ? sleepScore : NaN;
     pushItem({
       time: todaySleep.wakeTime,
       color: theme.colors.stateTired,
-      title: dataStale ? '起床' : `起床 · 睡眠评分 ${todaySleep.score ?? '\u2014'}`,
+      title: dataStale ? '起床' : `起床 · 睡眠评分 ${sleepScore ?? '\u2014'}`,
       emoji: '☀️',
       sub: dataStale
         ? '昨晚的睡眠还没同步，细节稍后能看到'
         : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
+      // ★ 本轮（用户 #245）：睡眠评分 ≥ 85 视为达标（高质量睡眠），卡片右上角画星
+      goalMet: !dataStale && Number.isFinite(sleepScoreNum) && sleepScoreNum >= 85,
+      // ★ 本轮（用户 #248）：起床评分卡补一句分析（按评分分层，平实、不评分说教）
+      analysis: dataStale
+        ? undefined
+        : !Number.isFinite(sleepScoreNum)
+        ? '今晚的睡眠数据还不完整，等同步完再看恢复情况。'
+        : sleepScoreNum >= 85
+        ? '醒来状态不错，身体恢复得比较扎实，今天的精神底子很好。'
+        : sleepScoreNum >= 70
+        ? '昨晚恢复中等，今天节奏别排太满，留点余地给自己。'
+        : '昨晚睡得偏浅，上午先缓一缓，重要的事往后挪挪。',
     }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
 
@@ -136,6 +152,8 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
       title: `活动 ${stepsToday} 步`,
       emoji: '🏃‍♀️',
       sub: '今天走动了，都记在这里',
+      // ★ 本轮（用户 #245）：步数达到当日目标则在卡片右上角画星
+      goalMet: stepsToday >= STEP_GOAL,
     }, lastStepMin ?? curMin);
   }
 
@@ -153,7 +171,7 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
   const items: TimelineItem[] = dated
     .sort((a, b) => a.k - b.k)
     .slice(0, 7)
-    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub, emoji: it.emoji }));
+    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub, emoji: it.emoji, goalMet: it.goalMet, analysis: it.analysis }));
 
   return { dateLabel, items };
 }

@@ -88,7 +88,8 @@ export default function QuickCheckDetailScreen() {
           {t.abnormal ? `${t.abnormal} 项偏高/偏低` : '未见异常'}
         </Text>
         <Text style={qc.sumNote}>
-          「--」表示该检测项本次未测成功。参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
+          标「实测」的是戒指真实回读；标「估算」的是按当前 HRV 与首次录入的身高体重推算，不是戒指直接测量。
+          参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
         </Text>
       </View>
 

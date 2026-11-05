@@ -139,12 +139,12 @@ export default function PhaseInsightSection({
       } else {
         body = `近 30 天在 ${Math.round(e.last)} 上下小幅波动，未见明显趋势。`;
       }
-      rows.push({ tone: 'good', title: '雌激素趋势（HRV·EDA 推算）', body });
+      rows.push({ tone: 'good', title: '雌激素趋势（HRV·心率 推算）', body });
     } else {
       rows.push({
         tone: 'neutral',
-        title: '雌激素趋势（HRV·EDA 推算）',
-        body: '连续佩戴获取 HRV 与皮肤电导（EDA）后，这里会显示雌激素趋势推算。',
+        title: '雌激素趋势（HRV·心率 推算）',
+        body: '连续佩戴获取 HRV 与心率后，这里会显示雌激素趋势推算。',
       });
     }
 

@@ -23,8 +23,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import JourneyDayView from './JourneyDayView';
+import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
+import { dayKey } from '../data/healthStore';
+import { RingBle } from '../ble/RingBleManager';
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** ★ 2026-11-05（用户）：当日「达标 / 状态不错 / 有活动」→ 右上角显示奖励 icon（⭐）。
+ *   判定：睡眠恢复分 ≥ 60（个人相对口径，恢复良好）或当天有步数（活跃日）。 */
+function dayRewarded(date: Date): boolean {
+  try {
+    const rec = sleepRecoveryScoreForDay(date.getTime());
+    const dk = dayKey(date.getTime());
+    const steps = (RingBle.getState()?.stepDaily as any)?.[dk]?.steps ?? 0;
+    return (rec != null && rec >= 60) || steps > 0;
+  } catch {
+    return false;
+  }
+}
 
 interface Props {
   /** 要点开的那一天；传 null 表示关闭 */
@@ -57,15 +73,22 @@ export default function DayDrawer({ date, onClose }: Props) {
                   <Text style={styles.headTitle}>{`${date.getMonth() + 1}月${date.getDate()}日`}</Text>
                   <Text style={styles.headSub}>{`周${WEEK[date.getDay()]}`}</Text>
                 </View>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={onClose}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="关闭"
-                >
-                  <Text style={styles.headClose}>✕</Text>
-                </TouchableOpacity>
+                <View style={styles.headRight}>
+                  {dayRewarded(date) ? (
+                    <View style={styles.rewardBadge}>
+                      <Text style={styles.rewardTxt}>★</Text>
+                    </View>
+                  ) : null}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={onClose}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="关闭"
+                  >
+                    <Text style={styles.headClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -92,6 +115,7 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headLeft: { flexDirection: 'row', alignItems: 'baseline', gap: theme.sp(2) },
+  headRight: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
   headTitle: {
     fontSize: theme.fs(20),
     fontWeight: theme.weight.semibold,
@@ -100,5 +124,13 @@ const styles = StyleSheet.create({
   },
   headSub: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.6)' },
   headClose: { fontSize: theme.fs(22), color: 'rgba(255,255,255,0.8)', paddingHorizontal: theme.sp(1) },
+  rewardBadge: {
+    width: theme.fs(26), height: theme.fs(26),
+    borderRadius: theme.fs(13),
+    backgroundColor: 'rgba(245,196,110,0.18)',
+    borderWidth: 1, borderColor: 'rgba(245,196,110,0.6)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rewardTxt: { fontSize: theme.fs(15), color: '#F0C46E', fontWeight: theme.weight.bold as never },
   body: { paddingBottom: theme.space.lg },
 });

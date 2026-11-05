@@ -50,10 +50,19 @@ export const NATIVE_METRIC_CATALOG: NativeMetricSpec[] = [
   { key: 'hr', label: '心率', layer: 'realtime' },
   { key: 'spo2', label: '血氧', layer: 'realtime' },
   { key: 'hrv', label: '心率变异性', layer: 'realtime' },
-  { key: 'rr', label: '呼吸率', layer: 'realtime' },
-  { key: 'temp', label: '体温', layer: 'backfill' },                          // ★ 基础版实测回读含体温（temp_daily_mean）
-  { key: 'skinTemp', label: '皮肤温度', layer: 'realtime', proOnly: true },   // ★ 基础版无独立皮肤温度
-  { key: 'eda', label: '皮电 EDA', layer: 'backfill' },                        // ★ 基础版实测回读含皮电（eda_daily_mean）
+  { key: 'rr', label: '呼吸率', layer: 'realtime', proOnly: true },
+  // ★ 2026-11-05 协议复核（VeepooBleSDK.framework/Headers + UniApp SDK 使用文档）：
+  //   · 温度只有一条真实链路：bodyTemperature(体温) / orgTemperature(原始温度=体表温度)，
+  //     由 VPPeripheralModel.temperatureType 决定设备是否支持。当前戒指只在
+  //     auto_data.temp_daily_mean 回读「日均体温」36.15–36.93℃；health_glance 空表、
+  //     gsr 通道无温度字段 → **没有独立皮肤温度数据流**。
+  //   · 协议里根本不存在 EDA(皮肤电导)：VPGSRResultModel 只有 skin_moisture(皮肤含水量 1–99)、
+  //     sns_activation(交感)、emotion、depression_risk、cortisol_value。
+  //     旧 auto_data.eda_daily_mean 是皮肤含水量被错误命名，且 11-05 真机连着戒指 0 条新回读
+  //     → 基础版彻底移除皮电（用户 2026-11-05 拍板）。
+  { key: 'temp', label: '体温', layer: 'backfill' },                          // ✅ 唯一真实温度：日均体温(℃)
+  { key: 'skinTemp', label: '皮肤温度', layer: 'realtime', proOnly: true },   // ❌ 无独立数据源，不展示
+  { key: 'eda', label: '皮电 EDA', layer: 'backfill', proOnly: true },         // ❌ 协议无此指标，基础版不展示
 
   // —— 活动量（backfill，按天）——
   { key: 'steps', label: '步数', layer: 'backfill' },
@@ -67,27 +76,27 @@ export const NATIVE_METRIC_CATALOG: NativeMetricSpec[] = [
   { key: 'met', label: '梅脱', layer: 'backfill' },
 
   // —— 血压估计（backfill / PPG 估计）——
-  { key: 'bpSys', label: '收缩压', layer: 'backfill' },
-  { key: 'bpDia', label: '舒张压', layer: 'backfill' },
-  { key: 'ppgSys', label: 'PPG 收缩压', layer: 'backfill' },
-  { key: 'ppgDia', label: 'PPG 舒张压', layer: 'backfill' },
+  { key: 'bpSys', label: '收缩压', layer: 'backfill', proOnly: true },
+  { key: 'bpDia', label: '舒张压', layer: 'backfill', proOnly: true },
+  { key: 'ppgSys', label: 'PPG 收缩压', layer: 'backfill', proOnly: true },
+  { key: 'ppgDia', label: 'PPG 舒张压', layer: 'backfill', proOnly: true },
 
   // —— 血液成分（backfill / HealthGlance 光谱；基础版按用户实测“有”血脂四项+尿酸+血糖）——
   { key: 'lipid', label: '血脂', layer: 'backfill' },
   { key: 'triglyceride', label: '甘油三酯', layer: 'backfill' },
   { key: 'hdl', label: '高密度脂蛋白', layer: 'backfill' },
   { key: 'ldl', label: '低密度脂蛋白', layer: 'backfill' },
-  { key: 'cholesterol', label: '总胆固醇', layer: 'backfill' },
-  { key: 'ua', label: '尿酸', layer: 'backfill' },
-  { key: 'glucose', label: '血糖', layer: 'backfill' },
-  { key: 'glucoseType', label: '血糖测量类型', layer: 'backfill' },
-  { key: 'glucoseLevel', label: '血糖风险等级', layer: 'backfill' },
+  { key: 'cholesterol', label: '总胆固醇', layer: 'backfill', proOnly: true },
+  { key: 'ua', label: '尿酸', layer: 'backfill', proOnly: true },
+  { key: 'glucose', label: '血糖', layer: 'backfill', proOnly: true },
+  { key: 'glucoseType', label: '血糖测量类型', layer: 'backfill', proOnly: true },
+  { key: 'glucoseLevel', label: '血糖风险等级', layer: 'backfill', proOnly: true },
 
   // —— 皮肤/情绪/皮质醇（backfill）——
-  { key: 'skin', label: '皮肤含水量', layer: 'backfill' },
-  { key: 'emotion', label: '情绪', layer: 'backfill' },
-  { key: 'cortisol', label: '皮质醇', layer: 'backfill' },
-  { key: 'depressionRisk', label: '抑郁风险', layer: 'backfill' },
+  { key: 'skin', label: '皮肤含水量', layer: 'backfill', proOnly: true },
+  { key: 'emotion', label: '情绪', layer: 'backfill', proOnly: true },
+  { key: 'cortisol', label: '皮质醇', layer: 'backfill', proOnly: true },
+  { key: 'depressionRisk', label: '抑郁风险', layer: 'backfill', proOnly: true },
 
   // —— 睡眠（backfill，设备库读回）——
   { key: 'sleep', label: '睡眠', layer: 'backfill' },
@@ -110,7 +119,23 @@ export type DeviceModelId = DeviceProfileId;
  * Pro 专属 UI 功能（组件级开关）。
  * BASE_UI 中这些为 false → 对应组件“根本不存在”，不在界面留灰锁/占位。
  */
-export type ProFeature = 'ecg' | 'bloodComponents' | 'quickCheck' | 'temp' | 'eda';
+export type ProFeature =
+  | 'ecg'
+  | 'bloodComponents'
+  | 'quickCheck'
+  | 'temp'
+  | 'eda'
+  | 'rr'
+  | 'skin'
+  | 'emotion'
+  | 'cortisol'
+  /** 基础版无皮质醇实测，但底层有 cortisolProxy 多信号推算节律 → 允许展示「推算」趋势图 */
+  | 'cortisolProxy'
+  | 'bp'
+  | 'glucose'
+  | 'bodyComp'
+  | 'cholesterol'
+  | 'uricAcid';
 
 /** 兼容旧类型名：DeviceCapabilities = ProFeature 的能力记录 */
 export type DeviceCapabilities = Record<ProFeature, boolean>;
@@ -144,14 +169,22 @@ export const DEVICE_PROFILE_MAP: Record<string, DeviceProfileId> = {
 const PRO_NATIVE_METRICS = ALL_NATIVE_METRIC_KEYS;
 
 /**
- * BASE_UI（LUNA-MIRA）原生指标 —— 按用户实测标定（2026-11-04 后端实查 41:.. 这枚）：
- *   ✅ 有：核心生命体征(hr/spo2/hrv/rr)、活动量、压力/疲劳/交感/梅脱、血压估计、
- *         体温 temp、皮电 eda（均走每日回读 temp_daily_mean/eda_daily_mean）、
- *         血液成分（血脂四项 triglyceride/hdl/ldl/cholesterol + 尿酸 ua + 血糖 glucose）、
- *         皮肤/情绪/皮质醇、睡眠
- *   ❌ 无（硬件不支持 / 无数据）：皮肤温度 skinTemp、心电 ecg
- * 注：skinTemp/ecg 在 NATIVE_METRIC_CATALOG 中标记为 proOnly，这里直接剔除；
- *     temp/eda 实测基础版也回读，已从 proOnly 移除以确保展示。
+ * BASE_UI（LUNA-MIRA）原生指标 —— 按 2026-11-05 协议 + 真机后端双重收敛（MAC 41:42:E7:17:9B:1C）：
+ *   ✅ 有（后端 auto_data / gsr / hrv_history 实测回读）：
+ *         核心生命体征 hr/spo2/hrv、活动量 steps/distance/calorie、睡眠 sleep、
+ *         体温 temp（temp_daily_mean，36.15–36.93℃ 日均）、
+ *         血脂四项 triglyceride/hdl/ldl（status_score）、交感神经 sns（gsr 通道）
+ *   ❌ 无（协议不存在 / 硬件不支持 / 后端无数据，统一从基础版剔除）：
+ *         皮电 EDA（协议无此指标，旧值实为皮肤含水量）、独立皮肤温度 skinTemp、
+ *         心电 ecg、呼吸率 rr、血压 bpSys/bpDia/ppgSys/ppgDia、血糖 glucose*、
+ *         总胆固醇 cholesterol、尿酸 ua、皮肤含水量 skin、情绪 emotion、
+ *         皮质醇 cortisol、抑郁风险 depressionRisk
+ *   ⚠️ 数据隔离：旧设备 HK18（device_id C9:00:9C:D7:C2:D8）的数据不得混入本机型，
+ *      见 src/data/ringDataIsolation.ts。11-05 全库 0 条新记录，最新停在 11-04。
+ *   说明：压力 stress / 疲劳 fatigue / 梅脱 met 虽然保留在 nativeMetrics（属 Mira 心理状态核心），
+ *   但它们的数据源只有「健康一览 healthGlance 自动快照」——基础版后端该通道实测 0 条，
+ *   故 UI 层按 cortisol 能力开关把这两张卡与一键体检文案隐藏（见 InsightScreen / QuickCheckTab），
+ *   避免永远显示「—」。未来若基础版固件补上健康一览，打开该开关即可恢复。
  */
 const BASE_NATIVE_METRICS = ALL_NATIVE_METRIC_KEYS.filter((k) => {
   const spec = NATIVE_METRIC_CATALOG.find((m) => m.key === k);
@@ -164,26 +197,50 @@ export const DEVICE_PROFILES: Record<DeviceProfileId, DeviceProfile> = {
     label: 'Luna Mira Pro',
     subtitle: '全功能：心电 · 体温/皮电 · 血液成分 · 一键体检',
     nativeMetrics: PRO_NATIVE_METRICS,
-    features: { ecg: true, bloodComponents: true, quickCheck: true, temp: true, eda: true },
-    capabilities: { ecg: true, bloodComponents: true, quickCheck: true, temp: true, eda: true },
+    features: {
+      ecg: true, bloodComponents: true, quickCheck: true, temp: true, eda: true,
+      rr: true, skin: true, emotion: true, cortisol: true, cortisolProxy: true, bp: true,
+      glucose: true, bodyComp: true, cholesterol: true, uricAcid: true,
+    },
+    capabilities: {
+      ecg: true, bloodComponents: true, quickCheck: true, temp: true, eda: true,
+      rr: true, skin: true, emotion: true, cortisol: true, cortisolProxy: true, bp: true,
+      glucose: true, bodyComp: true, cholesterol: true, uricAcid: true,
+    },
   },
   BASE_UI: {
     id: 'BASE_UI',
     label: 'Luna Mira',
-    subtitle: '基础版：心率/HRV/血氧/体温/皮电/睡眠/活动/血压/血液成分（无 心电/皮肤温度）',
+    subtitle: '基础版：心率/HRV/血氧/体温/睡眠/活动/血脂/交感/身体成分（无 皮电·皮肤温度·心电·血压·血糖·情绪·皮质醇）',
     nativeMetrics: BASE_NATIVE_METRICS,
-    // 基础版：无 ECG / 独立皮肤温度；体温 temp 与皮电 eda 实测走每日回读（有数据，照常展示）；
-    // 血液成分（血脂四项+尿酸+血糖）按实测“有”；一键体检保留
-    features: { ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: true },
-    capabilities: { ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: true },
+    // 基础版：无 EDA 皮电（协议无此指标）/ 皮肤温度 / ECG / 呼吸率 / 血压 / 血糖 /
+    // 总胆固醇 / 尿酸 / 皮肤含水量 / 情绪 / 皮质醇实测 / 抑郁风险；
+    // 有真实数据照常展示：体温 temp（唯一温度）、血脂四项、交感神经 sns、活动/睡眠；
+    // 一键体检 quickCheck 与皮质醇推算节律保留
+    features: {
+      ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: false,
+      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: false,
+      glucose: false, bodyComp: true, cholesterol: false, uricAcid: false,
+    },
+    capabilities: {
+      ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: false,
+      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: false,
+      glucose: false, bodyComp: true, cholesterol: false, uricAcid: false,
+    },
   },
 };
 
 /** 兼容旧调用方：DEVICE_MODELS 即 DEVICE_PROFILES 的别名 */
 export const DEVICE_MODELS = DEVICE_PROFILES;
 
-/** 默认 Profile = PRO_UI（功能全的档），未读到型号/读取出错时兜底 */
-export const DEFAULT_DEVICE_PROFILE: DeviceProfileId = 'PRO_UI';
+/**
+ * 默认 Profile = BASE_UI（基础版，无 ECG/皮肤温度）。
+ * ★ 2026-11-05（用户：按真机收敛）：未读到型号 / 原生未透传能力 / 读取出错时，
+ *   一律兜底为「功能最少的档」，绝不默认全功能。理由：默认全功能会让本无 ECG 传感器的
+ *   基础版错误展示心电入口；而真机识别（能力字段 → 已知 MAC → 广播名）会在连接时把 Pro 升级到全功能。
+ *   即「无证据证明有 ECG，就不展示 ECG」。
+ */
+export const DEFAULT_DEVICE_PROFILE: DeviceProfileId = 'BASE_UI';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. 型号识别（0x2A24 Model Number → Profile）
@@ -278,23 +335,31 @@ export async function readDeviceInformation(): Promise<DeviceInformation | null>
 const PROFILE_KEY = 'device_profile_v1';
 const MODEL_KEY = 'device_model_number_v1';
 const FIRMWARE_KEY = 'device_firmware_v1';
+const DEVICE_ID_KEY = 'device_id_v1';
 
-/** 持久化当前连接的 Profile / 型号 / 固件 */
+/** 持久化当前连接的 Profile / 型号 / 固件 / MAC（MAC = 真机身份，用于上传标注 & 数据隔离判定） */
 export async function persistProfile(
   profile: DeviceProfileId,
   modelNumber: string | null,
   firmware: string | null,
+  deviceId?: string | null,
 ): Promise<void> {
   await Prefs.setItem(PROFILE_KEY, profile);
   if (modelNumber) await Prefs.setItem(MODEL_KEY, modelNumber);
   if (firmware) await Prefs.setItem(FIRMWARE_KEY, firmware);
+  if (deviceId) await Prefs.setItem(DEVICE_ID_KEY, String(deviceId));
 }
 
-/** 读取已持久化的型号/固件（用于上传标注 & 数据隔离判定） */
-export async function getStoredDeviceInfo(): Promise<{ modelNumber: string | null; firmware: string | null }> {
+/** 读取已持久化的型号/固件/MAC（用于上传标注 & 数据隔离判定） */
+export async function getStoredDeviceInfo(): Promise<{
+  modelNumber: string | null;
+  firmware: string | null;
+  deviceId: string | null;
+}> {
   const modelNumber = (await Prefs.getItem(MODEL_KEY)) || null;
   const firmware = (await Prefs.getItem(FIRMWARE_KEY)) || null;
-  return { modelNumber, firmware };
+  const deviceId = (await Prefs.getItem(DEVICE_ID_KEY)) || null;
+  return { modelNumber, firmware, deviceId };
 }
 
 /**
@@ -326,8 +391,13 @@ export async function applyProfileFromDis(): Promise<{
  * 分档规则：
  *   - ecgType > 0（有 ECG 硬件）→ PRO_UI（LunaMira Pro / HK18 全功能）
  *   - 否则 → BASE_UI（LunaMira 基础版）
- * 体温/皮电等是否展示不靠型号假设：BASE_UI 已包含 temp/eda（实测基础版也回读），
- * 前端卡片按「实测到数据才渲染」实现「有就展示」；ECG 入口仅 PRO_UI 有。
+ * ★ 2026-11-05 协议复核（推翻第二轮的错误判断）：BASE_UI **只有 temp，没有 eda**。
+ *   Veepoo SDK（VPGSRResultModel）里根本没有 EDA 皮肤电导，只有 skin_moisture 皮肤含水量；
+ *   旧 auto_data.eda_daily_mean 即该值被错误命名，且 11-05 真机连着戒指 0 条新回读。
+ *   gsr 通道只回传 sns，不含任何皮电逐点值 → BASE_UI.eda = false。
+ *   温度也只有 temp 一路（日均体温），没有独立皮肤温度；血压 / 血糖 / 尿酸 / 总胆固醇 /
+ *   皮肤含水量 / 情绪 / 皮质醇实测 / 疲劳度无源，按机型能力隐藏。
+ *   ECG / 心电、呼吸率 rr 也仅 PRO_UI 有；一键体检 quickCheck 基础版保留（实测 + 估算）。
  *
  * @param caps 原生 onState(ready) 透传的 capabilities（temperatureType/gsrType/ecgType/…）
  */
@@ -358,6 +428,67 @@ export async function applyProfileFromCapabilities(
   const profile = resolveProfileByCapabilities(caps);
   if (!profile) return null;
   await persistProfile(profile, null, null);
+  listeners.forEach((fn) => fn(profile));
+  return profile;
+}
+
+/**
+ * ★ 2026-11-05（用户：连上戒指就该知道是 Pro 还是基础版，按真机收敛）：
+ *   已知设备 MAC → Profile 的硬编码映射。这是「真机身份」最可靠的信号——
+ *   原生即便不暴露型号字符串 / 不透传能力字段，MAC 也一定在。
+ *   用户已确认：基础版 Luna Mira = 41:42:E7:17:9B:1C；Pro（HK18）由能力字段/广播名识别。
+ *   后续新增已知设备直接在此追加即可。
+ */
+export const DEVICE_ID_PROFILES: Record<string, DeviceProfileId> = {
+  '41:42:E7:17:9B:1C': 'BASE_UI', // ★ 用户确认的 LunaMira 基础版 MAC（当前在用）
+  'C9:00:9C:D7:C2:D8': 'PRO_UI',  // ★ 旧设备 / HK18 时期，仅用于识别，数据不得混入基础版
+};
+
+function normDeviceId(id?: string | null): string {
+  return String(id ?? '').trim().toUpperCase();
+}
+
+/**
+ * 统一真机识别：按「能力字段 → 已知 MAC → 广播名」优先级判定 Profile。
+ * 任何一层都拿不到证据时返回 null（调用方据此保留上一档 / 用安全默认，绝不强行全功能）。
+ *
+ * 优先级说明：
+ *  - 能力字段（ecgType>0）→ PRO_UI；ecgType=0 或缺失 → 该层已能确定「无 ECG」→ BASE_UI（也是真值，直接返回）。
+ *  - 已知 MAC：用户确认的实体设备身份，覆盖「原生不报型号/能力」的情况。
+ *  - 广播名：'luna mira'+'pro'/'hk18' → Pro；'luna mira' → 基础版。
+ */
+export function detectProfile(opts: {
+  capabilities?: RingCapabilities | null;
+  deviceName?: string | null;
+  deviceId?: string | null;
+}): DeviceProfileId | null {
+  // 1) 能力字段最准：有 ECG 硬件 → Pro；无 ECG（或缺失）→ 该层即可定 BASE_UI
+  const byCaps = resolveProfileByCapabilities(opts.capabilities);
+  if (byCaps) return byCaps;
+  // 2) 已知设备 MAC（真机身份）
+  const did = normDeviceId(opts.deviceId);
+  if (did && DEVICE_ID_PROFILES[did]) return DEVICE_ID_PROFILES[did];
+  // 3) 广播名 / 设备名
+  const byName = guessModelFromName(opts.deviceName);
+  if (byName) return byName;
+  return null;
+}
+
+/**
+ * ★ 连接流程统一入口：汇集「连接就绪时原生透传的能力字段 / 已连上的设备名 / MAC」，
+ *   调用 detectProfile 判定 Profile，持久化（含 MAC）并通知全 App 门禁刷新。
+ *   返回应用到的 Profile（null = 未能判定，不动现有选择）。
+ */
+export async function applyProfileFromDevice(opts: {
+  capabilities?: RingCapabilities | null;
+  deviceName?: string | null;
+  deviceId?: string | null;
+  modelNumber?: string | null;
+  firmware?: string | null;
+}): Promise<DeviceProfileId | null> {
+  const profile = detectProfile(opts);
+  if (!profile) return null;
+  await persistProfile(profile, opts.modelNumber ?? null, opts.firmware ?? null, opts.deviceId ?? null);
   listeners.forEach((fn) => fn(profile));
   return profile;
 }
@@ -446,9 +577,11 @@ export async function autoApplyModelFromDeviceName(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. 数据隔离（同一账户内两枚戒指数据不混显）
-//    实现要点：healthStore 的每日桶必须加一层 deviceId（戒指 MAC）维度；
-//    展示层只取“当前连接戒指的 MAC”的数据。
-//    本模块提供判定入口，具体 healthStore 分桶改造为后续步骤（见 build 前的集成任务）。
+//    ★ 2026-11-05：真相源已抽到 src/data/ringDataIsolation.ts ——
+//      旧 HK18 设备 C9:00:9C:D7:C2:D8 / demo-* / test-diag-* 全部拉黑；
+//      云端日值补齐器只认当前连接戒指的可信 MAC；展示层禁止对温度类指标
+//      回退到本机 healthStore 历史归档（那里混着 HK18 时期的 39℃ 脏值）。
+//    本模块保留 currentRingDeviceId() 作为展示层判定入口。
 // ─────────────────────────────────────────────────────────────────────────────
 /**
  * 当前连接戒指的 MAC（来自 ring state.deviceId / 原生 deviceAddress）。
