@@ -100,13 +100,8 @@ const styles = StyleSheet.create({
     paddingBottom: theme.sp(1.5),
     paddingHorizontal: theme.sp(1),
     alignItems: 'center',
-    // ★ 2026-10-15（V1 定稿）：全宽白面板已拆，chips 直承浅灰页面 → 补轻投影让白卡浮出
-    //   （opacity 0.06 极轻：小卡不显脏，只与灰底分层）
-    shadowColor: '#1F1D1A',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    // ★ 2026-11-05（用户：活动卡右边那道阴影要去掉）：移除 chip 投影，只留上方已有的 1px 描边分层，
+    //   不再有右侧假阴影（此前右缘投影在末张卡上显出一条边）。
   },
   /** 按下反馈：整体轻缩 + 略降透——chip 本身就小，缩幅取 0.96 刚好“按得动，但不跳” */
   chipPressed: {

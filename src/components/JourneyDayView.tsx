@@ -23,6 +23,9 @@ import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import type { TimelineItem } from './TodayTimelineCard';
 import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortByTime } from '../data/selfReportLog';
+// ★ 本轮（用户）：呼吸 / 冥想完成后，其完成记录落在 interventionLog，
+//   回顾·日 原本只读 selfReportLog，导致「做完呼吸回顾里啥也没有」——这里把 interventionLog 也并进来。
+import { ensureInterventionLogLoaded, allInterventionEntries } from '../data/interventionLog';
 
 const ROW_H = theme.sp(26);          // 每行 104：卡片区高
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
@@ -164,6 +167,8 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
   useEffect(() => {
     let alive = true;
     void ensureSelfReportsLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
+    // ★ 本轮（用户）：呼吸 / 冥想记录同样要即时并入时间线
+    void ensureInterventionLogLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
     const off = onSelfReport(() => { if (alive) setRecapTick((n) => n + 1); });
     return () => { alive = false; off(); };
   }, []);
@@ -188,9 +193,42 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
     }));
   }, [selDate]);
 
+  // ★ 本轮（用户）：呼吸 / 冥想完成记录（interventionLog）并入回顾·日——
+  //   否则「做完呼吸，回顾里啥也没有」。带前后状态变化时一并写出。
+  const interventionItems: TimelineItem[] = useMemo(() => {
+    const dk = dayKey(selDate.getTime());
+    return allInterventionEntries()
+      .filter((e) => dayKey(e.ts) === dk)
+      .map((e) => {
+        const d = new Date(e.ts);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mn = String(d.getMinutes()).padStart(2, '0');
+        const isBreath = e.kind === 'breath';
+        let sub = e.detail ?? '';
+        if (e.stateBefore && e.stateAfter && e.stateBefore !== e.stateAfter) {
+          sub += ` · 状态 ${e.stateBefore}→${e.stateAfter}`;
+        } else if (
+          e.valueBefore != null && e.valueAfter != null &&
+          Math.abs(e.valueAfter - e.valueBefore) >= 2
+        ) {
+          sub += ` · ${e.valueBefore}→${e.valueAfter}`;
+        }
+        return {
+          time: `${hh}:${mn}`,
+          color: isBreath ? mm.colors.limeDeep : mm.colors.purpleCore,
+          title: isBreath ? '呼吸练习' : '正念冥想',
+          sub,
+          emoji: isBreath ? '🌬️' : '🧘',
+          goalMet: false,
+          analysis: undefined,
+          imageUri: undefined,
+        } as TimelineItem;
+      });
+  }, [selDate]);
+
   const items: TimelineItem[] = useMemo(
-    () => sortByTime<TimelineItem>([...(result?.items ?? []), ...recapItems]),
-    [result, recapItems],
+    () => sortByTime<TimelineItem>([...(result?.items ?? []), ...recapItems, ...interventionItems]),
+    [result, recapItems, interventionItems],
   );
   const totalH = Math.max(items.length, 1) * ROW_H;
   const wavePath = buildWavePath(totalH, items.length);
