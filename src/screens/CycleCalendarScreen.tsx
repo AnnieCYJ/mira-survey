@@ -42,6 +42,7 @@ import ScreenContainer from '../components/ScreenContainer';
 import Icon from '../components/Icon';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   computeCycle,
   estrogenAt,
@@ -166,6 +167,7 @@ export default function CycleCalendarScreen() {
   const navigation = useNavigation<any>();
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
+  const insets = useSafeAreaInsets();
   const [localLog, setLocalLog] = useState<CycleLog | null>(null);
   const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
   // ★ 2026-10-07（用户：点击生理周期最上面的时间选择器出错了；「参考一下其他的生理期 App 怎么选择时间」）：
@@ -678,14 +680,16 @@ export default function CycleCalendarScreen() {
       <Modal visible={recordOpen} transparent animationType="slide" onRequestClose={() => setRecordOpen(false)}>
         <View style={styles.daySheetMask}>
           <View style={styles.daySheet}>
-            <View style={styles.daySheetHead}>
+            {/* ★ 本轮（用户 #283）：顶到状态栏/电池 —— 加安全区顶部留白；关闭按钮加大点击区 + 可见底 */}
+            <View style={[styles.daySheetHead, { paddingTop: insets.top + theme.space.lg }]}>
               <Text style={styles.sheetDate}>经期记录</Text>
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => setRecordOpen(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
                 accessibilityRole="button"
                 accessibilityLabel="关闭"
+                style={styles.daySheetCloseBtn}
               >
                 <Text style={styles.daySheetClose}>✕</Text>
               </TouchableOpacity>
@@ -1251,6 +1255,15 @@ const styles = StyleSheet.create({
   daySheet: { flex: 1, backgroundColor: 'rgba(9,28,48,0.98)' },
   daySheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.cardPad, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
   daySheetClose: { fontSize: theme.fs(22), color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  // ★ 本轮（用户 #283）：关闭按钮加一圈可见底 + 更大内边距，便于点按
+  daySheetCloseBtn: {
+    padding: theme.sp(2),
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -theme.sp(1),
+  },
   daySheetBody: { flex: 1, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.space.xl },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.ui.chipNeutralBg, alignSelf: 'center', marginBottom: theme.space.sm },
   sheetDate: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },

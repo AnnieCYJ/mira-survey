@@ -24,7 +24,7 @@ import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/R
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import {
-  moodFromEmotionLevel, MOOD_COLOR, MOOD_EMOJI, MOOD_LABEL,
+  moodFromEmotionLevel, MOOD_COLOR, MOOD_LABEL,
   getLatestForDay, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
 } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
@@ -45,6 +45,7 @@ import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '..
 import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
 import ChatSheet from '../components/ChatSheet';
 import EmotionQuickRecord from '../components/EmotionQuickRecord';
+import MoodBlob from '../components/MoodBlob';
 import LipidTrendCard from '../components/LipidTrendCard';
 import CortisolTrendCard from '../components/CortisolTrendCard';
 
@@ -172,7 +173,7 @@ function buildPraise(key: string, name: string, value: number | null, range: Ran
 const DAY_BAR_SPECS: Record<string, {
   key: HSMetricKey;
   binMin?: number;
-  bands?: [number, number];
+  bands?: number[];
   /** 自定义分色（优先于 bands）。情绪这类双向指标用：负=偏低 / 0 附近=平稳 / 正=积极 */
   colorOf?: (v: number) => string;
   /** 图表左上角的小标签；不给则按 bands 有无自动选 */
@@ -183,8 +184,8 @@ const DAY_BAR_SPECS: Record<string, {
 }> = {
   stress: {
     key: 'stress',
-    bands: [30, 55],
-    sourceNote: '每根柱 = 5 分钟平均压力值，按档位分色（低 / 中 / 高）。',
+    bands: [30, 60, 80],
+    sourceNote: '每根柱 = 5 分钟平均压力值，按四档分色（放松 / 正常 / 中等 / 偏高）。',
   },
   spo2: {
     key: 'spo2',
@@ -240,11 +241,12 @@ function fmtVal(v: number | null): string {
 }
 
 /**
- * ★ 2026-10-17：压力「状态型」指标的派生分析——单日聚合（与 specZoneHours / StressInsightCard / StressStatCards 共用）。
- * 按 5 分钟档位统计三档时长（低=放松 / 中=平衡 / 高=紧张），与 DAY_BAR_SPECS.stress.bands 同源。
- * 返回纯数值，颜色由调用方按主题色映射，便于「数据卡片」与「AI 文字解读」两处复用同一口径。
+ * ★ 2026-11-05（用户）：压力四档（放松 / 正常 / 中等 / 偏高），与趋势图图例、区间分布一致。
+ *   阈值取 STRESS_BANDS（= DAY_BAR_SPECS.stress.bands，当前 [30,60,80]）；
+ *   两阈值规格（无第三阈值）时退化为 放松/正常/偏高 三档，保持兼容。
+ *   返回纯数值，颜色由调用方按主题色映射。
  */
-const STRESS_BANDS: [number, number] = (DAY_BAR_SPECS.stress?.bands as [number, number]) ?? [30, 55];
+const STRESS_BANDS: number[] = (DAY_BAR_SPECS.stress?.bands as number[]) ?? [30, 55];
 // 日间 / 夜间窗口（本地小时）：日间 07:00–22:59，夜间 23:00–06:59。
 const isDaytime = (ts: number) => {
   const h = new Date(ts).getHours();
@@ -255,43 +257,51 @@ export type StressDayPart = {
   peak: number | null;
   min: number | null;
   relaxH: number;
+  normalH: number;
+  midH: number;
   stressH: number;
   totalMin: number;
 };
 function stressDaySummary(dk: string, dayStartTs: number) {
   const buckets = binByMinutes(healthStore.getIntraday('stress', dk), 5, { dayStartMs: dayStartTs });
-  let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, peak = 0, overallMin = Infinity;
-  let dayRelaxMin = 0, dayMidMin = 0, dayStressMin = 0, daySum = 0, dayCnt = 0, dayPeak = 0, dayMin = Infinity;
-  let nightRelaxMin = 0, nightMidMin = 0, nightStressMin = 0, nightSum = 0, nightCnt = 0, nightPeak = 0, nightMin = Infinity;
+  const th = STRESS_BANDS;
+  const b0 = th[0] ?? 30, b1 = th[1] ?? b0, b2 = th[2] ?? b1;
+  const classify = (v: number): 0 | 1 | 2 | 3 => (v <= b0 ? 0 : v <= b1 ? 1 : v <= b2 ? 2 : 3);
+  let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0;
+  let sum = 0, cnt = 0, peak = 0, overallMin = Infinity;
+  let dayRelaxMin = 0, dayNormalMin = 0, dayMidMin = 0, dayStressMin = 0;
+  let daySum = 0, dayCnt = 0, dayPeak = 0, dayMin = Infinity;
+  let nightRelaxMin = 0, nightNormalMin = 0, nightMidMin = 0, nightStressMin = 0;
+  let nightSum = 0, nightCnt = 0, nightPeak = 0, nightMin = Infinity;
   for (const b of buckets) {
     if (b.v == null) continue;
     const day = isDaytime(b.t);
+    const c = classify(b.v);
+    if (c === 0) { relaxMin += 5; if (day) dayRelaxMin += 5; else nightRelaxMin += 5; }
+    else if (c === 1) { normalMin += 5; if (day) dayNormalMin += 5; else nightNormalMin += 5; }
+    else if (c === 2) { midMin += 5; if (day) dayMidMin += 5; else nightMidMin += 5; }
+    else { stressMin += 5; if (day) dayStressMin += 5; else nightStressMin += 5; }
     sum += b.v; cnt += 1;
     if (b.v > peak) peak = b.v;
     if (b.v < overallMin) overallMin = b.v;
-    if (b.v < STRESS_BANDS[0]) {
-      relaxMin += 5; if (day) dayRelaxMin += 5; else nightRelaxMin += 5;
-    } else if (b.v > STRESS_BANDS[1]) {
-      stressMin += 5; if (day) dayStressMin += 5; else nightStressMin += 5;
-    } else {
-      midMin += 5; if (day) dayMidMin += 5; else nightMidMin += 5;
-    }
     if (day) { daySum += b.v; dayCnt += 1; if (b.v > dayPeak) dayPeak = b.v; if (b.v < dayMin) dayMin = b.v; }
     else { nightSum += b.v; nightCnt += 1; if (b.v > nightPeak) nightPeak = b.v; if (b.v < nightMin) nightMin = b.v; }
   }
-  const part = (relaxH: number, stressH: number, midH: number, avg: number | null, pk: number | null, mn: number | null): StressDayPart => ({
-    avg, peak: pk, min: mn, relaxH, stressH, totalMin: relaxH * 60 + stressH * 60 + midH * 60,
+  const part = (
+    relaxH: number, normalH: number, midH: number, stressH: number,
+    avg: number | null, pk: number | null, mn: number | null,
+  ): StressDayPart => ({
+    avg, peak: pk, min: mn, relaxH, normalH, midH, stressH,
+    totalMin: relaxH * 60 + normalH * 60 + midH * 60 + stressH * 60,
   });
   return {
     hasData: cnt > 0,
     avg: cnt > 0 ? sum / cnt : null,
     peak: cnt > 0 ? peak : null,
     min: cnt > 0 ? overallMin : null,
-    relaxH: relaxMin / 60,
-    midH: midMin / 60,
-    stressH: stressMin / 60,
-    day: part(dayRelaxMin / 60, dayStressMin / 60, dayMidMin / 60, dayCnt > 0 ? daySum / dayCnt : null, dayCnt > 0 ? dayPeak : null, dayCnt > 0 ? dayMin : null),
-    night: part(nightRelaxMin / 60, nightStressMin / 60, nightMidMin / 60, nightCnt > 0 ? nightSum / nightCnt : null, nightCnt > 0 ? nightPeak : null, nightCnt > 0 ? nightMin : null),
+    relaxH: relaxMin / 60, normalH: normalMin / 60, midH: midMin / 60, stressH: stressMin / 60,
+    day: part(dayRelaxMin / 60, dayNormalMin / 60, dayMidMin / 60, dayStressMin / 60, dayCnt > 0 ? daySum / dayCnt : null, dayCnt > 0 ? dayPeak : null, dayCnt > 0 ? dayMin : null),
+    night: part(nightRelaxMin / 60, nightNormalMin / 60, nightMidMin / 60, nightStressMin / 60, nightCnt > 0 ? nightSum / nightCnt : null, nightCnt > 0 ? nightPeak : null, nightCnt > 0 ? nightMin : null),
   };
 }
 
@@ -751,29 +761,42 @@ export default function MetricDetailScreen() {
   // 始终返回一个函数（即便 spec 无 bands/colorOf 也回退到默认三档），避免调用处类型歧义。
   const specColorOf = useMemo(() => {
     if (spec?.colorOf) return spec.colorOf;
-    const [lo, hi] = spec?.bands ?? [30, 55];
-    // ★ 2026-10-17（用户：灰柱不好看）：低档（放松/恢复）由灰 inkFaint 改为主题绿 limeMid，
-    //   与 App「睡眠恢复」同语义；中=琥珀 honeyCore、高=粉 roseDeep 不变。三档均为主题色。
+    const bands = spec?.bands ?? [30, 55];
+    const [b0, b1, b2] = bands;
+    // ★ 2026-11-05（用户：压力四档 放松/正常/中等/偏高）：四档指标用 绿/蓝/琥珀/粉 四色；
+    //   三档指标（疲劳/皮肤含水量/交感）保持原 绿/琥珀/粉 三色，不引入第四色相。
+    if (bands.length >= 4) {
+      return (v: number) =>
+        v <= (b0 ?? 30) ? mm.colors.limeMid
+        : v <= (b1 ?? 60) ? mm.colors.skyMid
+        : v <= (b2 ?? 80) ? mm.colors.honeyCore
+        : mm.colors.roseDeep;
+    }
+    const lo = b0 ?? 30, hi = b1 ?? 55;
     return (v: number) => (v <= lo ? mm.colors.limeMid : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
   }, [spec]);
   // ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张时长 / 恢复时长」汇总）：日视图按档位把有数据的桶折算成小时。
   //   每桶 = binMin 分钟（默认 5）；v<lo=放松（恢复），v>hi=紧张。
   const specZoneHours = useMemo(() => {
     if (!specDay || specDay.blocked || !spec?.bands) return null;
-    const [lo, hi] = spec.bands;
+    const bands = spec.bands;
+    const [b0, b1, b2] = bands;
     const BIN = spec.binMin ?? 5;
-    // ★ 2026-10-17（用户：日夜参考心率做 tab 区分）：zoneSummary 跟随 stressPart 分日夜
+    // ★ 2026-11-05（用户：压力四档）：按四档折算各档时长（放松/正常/中等/偏高）
     const inPart = (t: number) => {
       const h = new Date(t).getHours();
       return stressPart === 'day' ? h >= 7 && h < 23 : h < 7 || h >= 23;
     };
-    let relaxMin = 0, stressMin = 0;
+    let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0;
     for (const b of specDay.buckets ?? []) {
       if (b.v == null || !inPart(b.t)) continue;
-      if (b.v < lo) relaxMin += BIN;
-      else if (b.v > hi) stressMin += BIN;
+      const v = b.v;
+      if (v <= (b0 ?? 30)) relaxMin += BIN;
+      else if (v <= (b1 ?? 60)) normalMin += BIN;
+      else if (v <= (b2 ?? 80)) midMin += BIN;
+      else stressMin += BIN;
     }
-    return { relax: relaxMin / 60, stress: stressMin / 60 };
+    return { relax: relaxMin / 60, normal: normalMin / 60, mid: midMin / 60, stress: stressMin / 60 };
   }, [specDay, spec, stressPart]);
   // ★ 2026-10-17（用户：日夜参考心率做 tab）：按 stressPart 静音非选中段（日间=07:00–23:00，夜间=23:00–07:00）
   const stressMutedRanges = useMemo<[number, number][]>(() => {
@@ -1054,6 +1077,21 @@ export default function MetricDetailScreen() {
   // ★ 基础版无皮质醇实测 → 详情页改用「推算节律」趋势卡（日/周/月/年），不走实测柱状图
   const isCortisol = params.key === 'cortisol';
   const stressScore = isStress ? (() => { try { return computeStressReport(anchor.getTime()).score; } catch { return null; } })() : null;
+  // ★ 2026-11-06（用户）：压力 hero 右侧加定性档位（放松/正常/中等/偏高）+ 较昨日升降
+  const stressYday = isStress ? (() => {
+    try { const d = new Date(anchor.getTime()); d.setDate(d.getDate() - 1); return computeStressReport(d.getTime()).score; } catch { return null; }
+  })() : null;
+  const stressDeltaPct = isStress && typeof stressScore === 'number' && stressYday != null && stressYday !== 0
+    ? Math.round(((stressScore - stressYday) / Math.abs(stressYday)) * 100)
+    : 0;
+  // 档位词与四档分色（specColorOf 四档）完全同源：放松=limeMid / 正常=skyMid / 中等=honeyCore / 偏高=roseDeep
+  const stressQualIdx = typeof stressScore === 'number'
+    ? (stressScore <= 30 ? 0 : stressScore <= 60 ? 1 : stressScore <= 80 ? 2 : 3)
+    : -1;
+  const STRESS_QUAL_WORDS = ['放松', '正常', '中等', '偏高'];
+  const STRESS_QUAL_COLORS = [mm.colors.limeMid, mm.colors.skyMid, mm.colors.honeyCore, mm.colors.roseDeep];
+  const stressQual = isStress && stressQualIdx >= 0 ? STRESS_QUAL_WORDS[stressQualIdx] : null;
+  const stressQualColor = stressQualIdx >= 0 ? STRESS_QUAL_COLORS[stressQualIdx] : theme.colors.textSub;
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
   const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
@@ -1106,7 +1144,8 @@ export default function MetricDetailScreen() {
   // ★ 2026-11-05（用户）：记录心情后只在图表顶部展示表情 icon，不再压一句说明文字
   const moodOnChart = isStress && latestMood ? (
     <View style={styles.moodStrip} pointerEvents="none">
-      <Text style={styles.moodStripEmoji}>{MOOD_EMOJI[latestMood.mood] ?? '🙂'}</Text>
+      <MoodBlob mood={latestMood.mood} size={theme.sp(26)} variant={1} />
+      <Text style={styles.moodStripTxt}>今日记录的心情</Text>
     </View>
   ) : null;
 
@@ -1183,6 +1222,15 @@ export default function MetricDetailScreen() {
               <View style={styles.hero}>
                 <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
                 {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
+                {/* ★ 2026-11-06（用户）：压力卡右侧补定性档位 + 较昨日升降（与其余指标 hero 同款 delta 位） */}
+                {isStress && stressQual ? (
+                  <Text style={[styles.stressQual, { color: stressQualColor }]}>{stressQual}</Text>
+                ) : null}
+                {isStress && range === 'day' && stressDeltaPct !== 0 ? (
+                  <Text style={[styles.delta, stressDeltaPct > 0 ? styles.up : styles.down]}>
+                    {stressDeltaPct > 0 ? '↑' : '↓'} {Math.abs(stressDeltaPct)}% · 较昨日
+                  </Text>
+                ) : null}
                 {range === 'day' && hasData && !isStress && deltaPct !== 0 && series.kind !== 'cycle' && (
                   <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
                     {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
@@ -1198,8 +1246,9 @@ export default function MetricDetailScreen() {
               {hasData ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
               {/* ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定 */}
               {hasData && praiseLine ? <Text style={styles.heroPraise}>{praiseLine}</Text> : null}
-              {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示 */}
-              {!isEcg && !isLipid && hasData && series.note ? (
+              {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示
+                  ★ 2026-11-06（用户）：压力页去掉「X 为今日真实测量」注脚（没必要写） */}
+              {!isEcg && !isLipid && hasData && series.note && !(isStress && (series.note ?? '').includes('真实测量')) ? (
                 <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: theme.colors.cardBorder }}>
                   <Text style={styles.heroNote}>{series.note}</Text>
                 </View>
@@ -1389,13 +1438,12 @@ export default function MetricDetailScreen() {
                   mutedRanges={stressMutedRanges}
                   yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
                   height={chart.plot.l}
-                  moodMarker={isStress && latestMood ? { ts: latestMood.t, emoji: MOOD_EMOJI[latestMood.mood] ?? '🙂' } : null}
+                  moodMarker={isStress && latestMood ? { ts: latestMood.t, mood: latestMood.mood } : null}
                 />
                 {/* ★ 2026-10-12（用户拍板：统一成 平静/开心/兴奋/压力/难过）—— 情绪图例 = 「情绪记录」
                     点阵的同一套五档顺序（DOT_LEGEND），色值一律取 MOOD_COLOR，跨页完全一致。
                     睡眠/清醒/活动是心率类图的分段（segmentOf），情绪/压力是状态型指标不用那套
-                    → 压力按「放松/平衡/紧张」三档着色，图例跟着换成同色相（2026-11-05 修正：
-                    此前压力图误用 睡眠/清醒/活动 图例，与柱色对不上）。 */}
+                    → 压力按「放松/正常/中等/偏高」四档着色（2026-11-05 用户：四档），图例跟着换成同色相。 */}
                 <DayBarsLegend
                   showMean={false}
                   items={
@@ -1407,8 +1455,9 @@ export default function MetricDetailScreen() {
                       { color: MOOD_COLOR.sad, label: '难过' },
                     ] : params.key === 'stress' ? [
                       { color: mm.colors.limeMid, label: '放松' },
-                      { color: mm.colors.honeyCore, label: '平衡' },
-                      { color: mm.colors.roseDeep, label: '紧张' },
+                      { color: mm.colors.skyMid, label: '正常' },
+                      { color: mm.colors.honeyCore, label: '中等' },
+                      { color: mm.colors.roseDeep, label: '偏高' },
                     ] : undefined
                   }
                 />
@@ -1421,15 +1470,23 @@ export default function MetricDetailScreen() {
                 </Text>
                 {/* ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张 / 恢复时长」汇总）：
                     按档位把有数据的桶折算成小时，与日视图同套档位配色（低=灰 / 高=粉）。 */}
-                {specZoneHours && (specZoneHours.relax > 0 || specZoneHours.stress > 0) ? (
+                {specZoneHours && (specZoneHours.relax > 0 || specZoneHours.normal > 0 || specZoneHours.mid > 0 || specZoneHours.stress > 0) ? (
                   <View style={styles.zoneSummary}>
                     <View style={styles.zoneItem}>
                       <View style={[styles.zoneDot, { backgroundColor: mm.colors.limeMid }]} />
                       <Text style={styles.zoneText}>放松 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.relax.toFixed(1)}h</Text></Text>
                     </View>
                     <View style={styles.zoneItem}>
+                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.skyMid }]} />
+                      <Text style={styles.zoneText}>正常 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.normal.toFixed(1)}h</Text></Text>
+                    </View>
+                    <View style={styles.zoneItem}>
+                      <View style={[styles.zoneDot, { backgroundColor: mm.colors.honeyCore }]} />
+                      <Text style={styles.zoneText}>中等 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.mid.toFixed(1)}h</Text></Text>
+                    </View>
+                    <View style={styles.zoneItem}>
                       <View style={[styles.zoneDot, { backgroundColor: mm.colors.roseDeep }]} />
-                      <Text style={styles.zoneText}>紧张 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.stress.toFixed(1)}h</Text></Text>
+                      <Text style={styles.zoneText}>偏高 <Text style={{ fontWeight: theme.weight.semibold }}>{specZoneHours.stress.toFixed(1)}h</Text></Text>
                     </View>
                   </View>
                 ) : null}
@@ -2219,35 +2276,38 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
 
 
 /* ★ 2026-10-17（用户：① 分析以数据卡片嵌在日/周/月/年详情图下；② 日夜参考心率用 tab 区分；③ 恢复力要加上）：
- * - 日视图：顶部「日间/夜间」tab 切换，图与卡均跟随选中段；卡片 = 定性 + 平均 + 峰值 + 时长分布（放松/平衡/紧张）。
- * - 周/月/年：主导档位 + 紧张占比 + 平均压力（覆盖范围内有数据的自然日聚合）。
+ * - 日视图：顶部「日间/夜间」tab 切换，图与卡均跟随选中段；卡片 = 定性 + 时长分布（放松/正常/中等/偏高）。
+ * - 周/月/年：主导档位 + 偏高占比 + 平均压力（覆盖范围内有数据的自然日聚合）。
  * - 恢复力（近 14 天，对齐 Oura Resilience，压力信号为主）独立卡片，日/周/月/年均展示。
- * 色值与全局一致：低档=主题绿 limeMid（放松）/ 中档=琥珀 honeyCore / 高档=粉 roseDeep（紧张）。 */
+ * 色值与全局一致：放松=绿 limeMid / 正常=蓝 skyMid / 中等=琥珀 honeyCore / 偏高=粉 roseDeep。 */
 function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKey; part: 'day' | 'night' }) {
-  const C = { relax: mm.colors.limeMid, mid: mm.colors.honeyCore, stress: mm.colors.roseDeep };
+  // ★ 2026-11-05（用户：压力四档）：四档配色 放松=绿 / 正常=蓝 / 中等=琥珀 / 偏高=粉
+  const C = { relax: mm.colors.limeMid, normal: mm.colors.skyMid, mid: mm.colors.honeyCore, stress: mm.colors.roseDeep };
 
   const today = useMemo(
     () => stressDaySummary(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())),
     [anchor],
   );
 
-  // 周 / 月 / 年：覆盖范围内所有自然日聚合，求主导档位与紧张占比
+  // 周 / 月 / 年：覆盖范围内所有自然日聚合，求主导档位与偏高占比
   const agg = useMemo(() => {
     if (range === 'day') return null;
-    let relaxMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
+    let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
     let max = -Infinity, min = Infinity;
     for (const dk of rangeDayKeys(anchor, range)) {
       const r = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
       if (!r.hasData) continue;
       daysWithData += 1;
-      relaxMin += r.relaxH * 60; midMin += r.midH * 60; stressMin += r.stressH * 60;
+      relaxMin += r.relaxH * 60; normalMin += r.normalH * 60; midMin += r.midH * 60; stressMin += r.stressH * 60;
       if (r.avg != null) { sum += r.avg; cnt += 1; }
       if (r.peak != null && r.peak > max) max = r.peak;
       if (r.min != null && r.min < min) min = r.min;
     }
-    const totalMin = relaxMin + midMin + stressMin;
-    const dominant: '放松' | '平衡' | '紧张' =
-      stressMin >= relaxMin && stressMin >= midMin ? '紧张' : relaxMin >= midMin ? '放松' : '平衡';
+    const totalMin = relaxMin + normalMin + midMin + stressMin;
+    // ★ 2026-11-05：主导档位按四档占比取最高
+    const order: [string, number][] = [['放松', relaxMin], ['正常', normalMin], ['中等', midMin], ['偏高', stressMin]];
+    order.sort((a, b) => b[1] - a[1]);
+    const dominant: '放松' | '正常' | '中等' | '偏高' = order[0][0] as '放松' | '正常' | '中等' | '偏高';
     return {
       daysWithData,
       avg: cnt > 0 ? sum / cnt : null,
@@ -2261,11 +2321,13 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   // 恢复力（日视图=近 14 天滚动，与 Oura Resilience 口径对齐；周/月/年=对应周期覆盖自然日）
   const resilience = useMemo(() => stressResilience(anchor, range), [anchor, range]);
 
-  const qualOf = (avg: number | null): '放松日' | '平衡日' | '紧张日' | null => {
+  const qualOf = (avg: number | null): '放松日' | '正常日' | '中等日' | '偏高日' | null => {
     if (avg == null) return null;
-    if (avg < STRESS_BANDS[0]) return '放松日';
-    if (avg > STRESS_BANDS[1]) return '紧张日';
-    return '平衡日';
+    const b0 = STRESS_BANDS[0] ?? 30, b1 = STRESS_BANDS[1] ?? 60, b2 = STRESS_BANDS[2] ?? 80;
+    if (avg <= b0) return '放松日';
+    if (avg <= b1) return '正常日';
+    if (avg <= b2) return '中等日';
+    return '偏高日';
   };
   const fmtH = (h: number) => `${h.toFixed(1)}h`;
   const dash = (v: number | null, suffix = '') => (v != null ? `${Math.round(v)}${suffix}` : '—');
@@ -2344,13 +2406,14 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     const partHasData = sel.totalMin > 0;
     const qColor =
       sel.avg != null
-        ? sel.avg < STRESS_BANDS[0]
+        ? sel.avg <= STRESS_BANDS[0]
           ? C.relax
-          : sel.avg > STRESS_BANDS[1]
-          ? C.stress
-          : C.mid
+          : sel.avg <= STRESS_BANDS[1]
+          ? C.normal
+          : sel.avg <= STRESS_BANDS[2]
+          ? C.mid
+          : C.stress
         : theme.colors.textSub;
-    const midH = Math.max(0, sel.totalMin / 60 - sel.relaxH - sel.stressH);
     return (
       <View>
         {/* ★ 本轮（用户）：压力分析 + 恢复力 + 疲劳度 合并一卡；去掉 平均/最高/最低 */}
@@ -2359,17 +2422,22 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             <Text style={[styles.chartTitle, styles.titleFlex]}>压力分析</Text>
             <Text style={{ color: qColor, fontSize: theme.fontSize.micro, fontWeight: '700' }}>{qualOf(sel.avg) ?? '—'}</Text>
           </View>
+          {/* ★ 2026-11-05（用户：四档）：放松/正常/中等/偏高 时长，直接取 StressDayPart 四桶 */}
           <View style={styles.statGrid}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>放松时长</Text>
               <Text style={[styles.statValue, { color: C.relax }]}>{fmtH(sel.relaxH)}</Text>
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>平衡时长</Text>
-              <Text style={[styles.statValue, { color: C.mid }]}>{fmtH(midH)}</Text>
+              <Text style={styles.statLabel}>正常时长</Text>
+              <Text style={[styles.statValue, { color: C.normal }]}>{fmtH(sel.normalH)}</Text>
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>紧张时长</Text>
+              <Text style={styles.statLabel}>中等时长</Text>
+              <Text style={[styles.statValue, { color: C.mid }]}>{fmtH(sel.midH)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>偏高时长</Text>
               <Text style={[styles.statValue, { color: C.stress }]}>{fmtH(sel.stressH)}</Text>
             </View>
           </View>
@@ -2405,11 +2473,13 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   const w = agg;
   const dColor =
     w && w.daysWithData > 0
-      ? w.dominant === '紧张'
+      ? w.dominant === '偏高'
         ? C.stress
-        : w.dominant === '放松'
-        ? C.relax
-        : C.mid
+        : w.dominant === '中等'
+        ? C.mid
+        : w.dominant === '正常'
+        ? C.normal
+        : C.relax
       : theme.colors.textSub;
   return (
     <View>
@@ -2422,7 +2492,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             <Text style={[styles.statValue, { color: dColor }]}>{w && w.daysWithData > 0 ? w.dominant : '—'}</Text>
           </View>
           <View style={styles.statCell}>
-            <Text style={styles.statLabel}>紧张占比</Text>
+            <Text style={styles.statLabel}>偏高占比</Text>
             <Text style={[styles.statValue, { color: C.stress }]}>{w ? `${w.stressPct}%` : '—'}</Text>
           </View>
           <View style={styles.statCell}>
@@ -2480,84 +2550,9 @@ function buildTempInsightText(
   return `${base}${trend}。`;
 }
 
-/* ★ 2026-10-16：血氧详情页——呼吸暂停（OSAHS）分析
- * 数据来自戒指血氧历史（原生 triggerOxygenAnalysis 读取设备库 → VPOxygenAnalysisModel 解析）。
- * 设计对齐 MetricDetail 现有卡片：外层 Card + ecgTitle 口径标题 + statGrid/statCell 统计格 + note 免责说明。 */
-const OSAHS_LEVELS: { [k: number]: { label: string; color: string } } = {
-  [-1]: { label: '暂无结果', color: theme.colors.textSub },
-  0: { label: '正常', color: mm.colors.skyDeep },
-  1: { label: '轻度', color: mm.colors.honeyCore },
-  2: { label: '中度', color: mm.colors.roseMid },
-  3: { label: '重度', color: mm.colors.roseDeep },
-};
-
-function OxygenApneaSection() {
-  const ring = useRingState();
-  const [loading, setLoading] = useState(false);
-  const a = ring.oxygenAnalysis;
-  const osahs = a ? (OSAHS_LEVELS[a.osahsResult] ?? OSAHS_LEVELS[-1]) : null;
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try { await RingBle.triggerOxygenAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
-  }, []);
-  useEffect(() => { void reload(); }, [reload]);
-
-  return (
-    <Card>
-      <Text style={styles.ecgTitle}>呼吸暂停分析</Text>
-      {!a && !loading ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>当天暂无血氧数据，请先佩戴一段时间或测量血氧后再查看。</Text>
-        </View>
-      ) : !a && loading ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>正在读取戒指血氧历史…</Text>
-        </View>
-      ) : a ? (
-        <>
-          <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>平均血氧</Text>
-              <Text style={[styles.statValue, { color: mm.colors.skyDeep }]}>{a.aveOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>最低血氧</Text>
-              <Text style={[styles.statValue, { color: a.minOxygen > 0 && a.minOxygen < 90 ? mm.colors.roseMid : theme.colors.textTitle }]}>{a.minOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>呼吸暂停</Text>
-              <Text style={[styles.statValue, { color: osahs?.color, fontSize: theme.fontSize.body }]}>{osahs?.label ?? '—'}</Text>
-            </View>
-          </View>
-          <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>呼吸率（均）</Text>
-              <Text style={styles.statValue}>{a.aveRespRate || '—'}<Text style={styles.statLabel}> 次/分</Text></Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>低氧时间（均）</Text>
-              <Text style={styles.statValue}>{a.aveLowOxygenTime || '—'}<Text style={styles.statLabel}> s</Text></Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>心脏负荷（均）</Text>
-              <Text style={styles.statValue}>{a.aveCardiacLoad || '—'}</Text>
-            </View>
-          </View>
-          {a.freqTimes.length > 0 ? (
-            <View style={styles.note}>
-              <Text style={styles.note}>呼吸暂停频现时段：{a.freqTimes.join('、')}</Text>
-            </View>
-          ) : null}
-          <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
-            <Text style={styles.ecgBtnLabel}>重新读取</Text>
-          </TouchableOpacity>
-          <Text style={styles.note}>数据来自戒指血氧历史，仅供参考，不作为睡眠呼吸暂停综合征诊断依据。</Text>
-        </>
-      ) : null}
-    </Card>
-  );
-}
+/* ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析抽成可复用组件 src/components/OxygenApneaSection.tsx，
+ * 血氧页与睡眠恢复页共用同一份实现。 */
+import { OxygenApneaSection } from '../components/OxygenApneaSection';
 
 /* ★ 2026-10-16：HRV 详情页——Lorenz 散点（RR 间期相位图）+ 时域 HRV
  * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。 */
@@ -2701,6 +2696,8 @@ const styles = StyleSheet.create({
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
   up: { color: theme.colors.success },
   down: { color: theme.colors.stateTense },
+  /* ★ 2026-11-06（用户）：压力 hero 右侧定性档位（颜色按四档内联注入） */
+  stressQual: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold, marginLeft: theme.space.md, alignSelf: 'center' },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: mm.radius.card,

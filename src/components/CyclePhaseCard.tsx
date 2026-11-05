@@ -25,6 +25,7 @@ import { loadCycleLog, loadPeriodDays, type PeriodDayLog } from '../data/cycleLo
 import { type FemaleInfo, type RingState } from '../ble/RingBleManager';
 import CycleMoonPhase from './CycleMoonPhase';
 import Icon from './Icon';
+import { MindIcon } from './MindIcons';
 import PhaseInsightSection from './PhaseInsightSection';
 import PeriodRecordPanel from './PeriodRecordPanel';
 // ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里也加个 AI 分析，同样三行以内）
@@ -85,10 +86,14 @@ export default function CyclePhaseCard({
   ring,
   female,
   onPress,
+  title,
+  hideHormoneTrend = false,
 }: {
   ring: RingState;
   female: FemaleInfo | null;
   onPress?: () => void;
+  title?: string;
+  hideHormoneTrend?: boolean;
 }) {
   const [log, setLog] = useState<CycleLog | null>(null);
   const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
@@ -149,6 +154,15 @@ export default function CyclePhaseCard({
       disabled={expanded || !onPress}
     >
       <View style={styles.card}>
+      {/* ★ 本轮（用户 #281）：卡片内标题，与「昼夜节律」卡片（AllDayRecoveryCard）保持一致 */}
+      {title ? (
+        <View style={styles.titleRow}>
+          <View style={styles.iconChip}>
+            <MindIcon name="leaf" size={theme.fs(17)} color={mm.colors.limeDeep} />
+          </View>
+          <Text style={styles.title}>{title}</Text>
+        </View>
+      ) : null}
       {/* ★ 月相 Hero：与周期日历页顶部同一组件——相位 / 第几天 / 距下次经期由月相环表达。
           尺寸按「卡片实际可用宽度」收窄（默认按屏宽算会溢出卡片内边距）。
           ★ 2026-10-12（用户：环缩小后「里面的字小一点」）：compact 模式，中央文字降一档。 */}
@@ -238,7 +252,9 @@ export default function CyclePhaseCard({
       {/* ★ 2026-10-12（用户：「雌激素孕激素不要写文字，就画趋势图」+「只展示雌激素，孕激素先不展示」）：
           置于 AI 分析上方；embedded 嵌入本卡（无独立外壳），onlyEstrogen 只画雌激素一条线
           （HRV·EDA 推算，戒指不直接测量激素，组件标题右侧自带「推算 · 非实测」口径）。 */}
-      <HormoneDualTrend embedded onlyEstrogen ring={ring} cycleInfo={info} log={effective} />
+      {!hideHormoneTrend && (
+        <HormoneDualTrend embedded onlyEstrogen ring={ring} cycleInfo={info} log={effective} />
+      )}
 
       {/* ★ 2026-10-07（用户：「雌孕激素下面的 AI 分析去掉」）：整块「本阶段身心特征」
           （AI 分析结论行 + ● 建议）先隐藏，由 SHOW_PHASE_INSIGHT 控制。 */}
@@ -271,6 +287,22 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card,
     padding: theme.space.cardPad,
     marginTop: theme.space.sm,
+  },
+  // ★ 本轮（用户 #281）：卡片内标题（与 AllDayRecoveryCard 的 titleRow 同款）
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
+  iconChip: {
+    width: theme.fs(36),
+    height: theme.fs(36),
+    borderRadius: theme.radius.pill,
+    backgroundColor: mm.chipBg.lime.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.sp(2),
+  },
+  title: {
+    fontSize: theme.fontSize.card,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textInk,
   },
 
   /** ★ 2026-10-07：卡片右上角的「可点击」箭头 */

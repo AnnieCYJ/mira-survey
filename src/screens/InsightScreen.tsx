@@ -546,8 +546,9 @@ export default function InsightScreen() {
       fatigue: 'cortisol',
     };
     return signalsForDimension('basics').filter((m) => {
-      // ★ 2026-11-05（用户）：体检/身体指标区移除 心率 / 皮质醇 / 交感神经活跃 三张卡
-      if (m.key === 'hr' || m.key === 'cortisol' || m.key === 'sns') return false;
+      // ★ 2026-11-05（用户）：体检/身体指标区移除 皮质醇 / 交感神经活跃 两张卡
+      // ★ 2026-11-06（用户：「身体指标里为啥心率也没有了？」）→ 心率卡恢复展示
+      if (m.key === 'cortisol' || m.key === 'sns') return false;
       const c = BASIC_CAP[m.key];
       return !c || hasCap(deviceModel, c);
     });
@@ -680,7 +681,7 @@ export default function InsightScreen() {
     <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
       <View style={styles.stack}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
-          <Text style={styles.title}>Insights</Text>
+          <Text style={styles.title}>洞察</Text>
         </Animated.View>
 
         
@@ -733,10 +734,9 @@ export default function InsightScreen() {
             仅 BASE_UI 生效；PRO_UI 走下面原分子 tab 布局。 */}
         {isBaseLayout && (topTab === 'rhythm' ? (
           <>
-            {/* ★ 2026-11-06（用户）：移除「昼夜节律」小标题（用户认为不需要），保留卡片本身 */}
+            {/* ★ 2026-11-06（用户）：移除「昼夜节律」小标题；★ 本轮：生理周期节律改为卡片内标题（与昼夜节律一致）+ 先隐藏雌激素趋势图 */}
             <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
-            <Text style={styles.sectionLabel}>生理周期节律</Text>
-            <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
+            <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />
           </>
         ) : (
           <>

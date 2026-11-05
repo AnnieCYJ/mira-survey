@@ -7,6 +7,8 @@ import { chart } from '../../theme/chart';
 import { DAY_HOUR_TICKS, DAY_MINOR_TICK_MINUTES, hourTickLabel } from '../../lib/chartAxis';
 import { bucketMean, type Bucket } from '../../lib/timeBuckets';
 import { smoothPath } from '../../lib/smoothPath';
+import MoodBlob from '../MoodBlob';
+import type { MoodKey } from '../../data/emotionLog';
 
 /**
  * AllDayBarsChart —— 全天柱状小条（2026-10-10 建立）
@@ -75,7 +77,7 @@ interface Props {
    *   并拉一条竖向虚线到基线，让用户一眼看到「这个时刻记了什么心情」。
    *   不在绘图区范围内（如夜间视图下白天记的心情）则不渲染。
    */
-  moodMarker?: { ts: number; emoji: string } | null;
+  moodMarker?: { ts: number; mood: MoodKey } | null;
 }
 
 const PAD_L = 30;
@@ -249,7 +251,8 @@ export default function AllDayBarsChart({
       stroke={chart.grid} strokeWidth={chart.lw.grid} />;
 
     // ★ 2026-11-05（用户：心情 icon 标到趋势图相应时间点）：按 ts 换算 X，
-    //   绘图区顶部画表情 + 白色光晕，并拉一条竖向虚线到基线，定位「这个时刻记了心情」。
+    //   绘图区顶部画竖向虚线 + 白色光晕底，定位「这个时刻记了心情」；
+    //   真正的 MoodBlob 由外层 RN 层叠覆盖（SVG 内不便嵌动态 blob）。
     let moodNode: React.ReactNode = null;
     if (moodMarker) {
       const mx = xOf(moodMarker.ts);
@@ -258,9 +261,8 @@ export default function AllDayBarsChart({
           <React.Fragment key="mood">
             <Line x1={mx} y1={PAD_T} x2={mx} y2={baseY}
               stroke={theme.colors.textSub} strokeWidth={1} strokeDasharray="3,4" opacity={0.5} />
-            <Rect x={mx - 10} y={PAD_T - 1} width={20} height={18} rx={5}
+            <Rect x={mx - 12} y={PAD_T - 2} width={24} height={20} rx={6}
               fill={theme.colors.cardBg} opacity={0.92} />
-            <SvgText x={mx} y={PAD_T + 13} fontSize={14} textAnchor="middle">{moodMarker.emoji}</SvgText>
           </React.Fragment>
         );
       }
@@ -268,6 +270,10 @@ export default function AllDayBarsChart({
 
     return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData, moodNode };
   }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges, moodMarker]);
+
+  // ★ 2026-11-05（用户）：心情 marker 的 X 坐标（外层 RN 叠 MoodBlob 用，不进 SVG）
+  const moodX = moodMarker && w > 0 ? PAD_L + (plotW * (moodMarker.ts - t0)) / spanMs : null;
+  const moodVisible = moodX != null && moodX >= PAD_L - 1 && moodX <= PAD_L + plotW + 1;
 
   return (
     <View onLayout={onLayout}>
@@ -298,6 +304,15 @@ export default function AllDayBarsChart({
           {geom.moodNode}
         </Svg>
       )}
+      {/* ★ 2026-11-05（用户）：MoodBlob 叠在趋势图顶部对应时间点（不进 SVG，保动态 blob） */}
+      {moodVisible && moodMarker ? (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: (moodX ?? 0) - 11, top: PAD_T - 3, width: 22, height: 22, zIndex: 5 }}
+        >
+          <MoodBlob mood={moodMarker.mood} size={22} variant={1} />
+        </View>
+      ) : null}
     </View>
   );
 }

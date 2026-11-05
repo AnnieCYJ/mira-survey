@@ -47,6 +47,8 @@ import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
+// ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡（与血氧页共用，抽成可复用组件）
+import { OxygenApneaSection } from '../components/OxygenApneaSection';
 
 
 interface DayRec {
@@ -511,6 +513,10 @@ export default function SleepDetailScreen() {
             dk={sleepDayKey(anchor)}
             isToday={dayKey(anchor) === healthDayKey(Date.now())}
           />
+
+          {/* ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡——睡眠期呼吸暂停本就是睡眠现象，
+              放在睡眠恢复详情页（与血氧页共用同一组件与数据 ring.oxygenAnalysis） */}
+          <OxygenApneaSection title="睡眠呼吸暂停（OSAHS）" />
 
           {/* ★ 2026-11-06（用户）：「什么是睡眠恢复分」说明已折叠进上方「睡眠恢复分」卡内（SleepRecoveryHero），此处不再重复 */}
           {/* ★ 2026-11-06（用户纠偏）：「稳定睡眠」入口卡置于日视图最底部，点击直达睡前助眠呼吸（Breathing） */}

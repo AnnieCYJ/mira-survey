@@ -96,7 +96,7 @@ export default function DayDrawer({ date, onClose }: Props) {
                 nestedScrollEnabled
               >
                 {/* 原先「日」页的旅程视图：中间曲线 + 两侧活动卡片 */}
-                <JourneyDayView date={date} />
+                <JourneyDayView date={date} showDatePicker={false} />
               </ScrollView>
             </>
           ) : null}

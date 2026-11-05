@@ -53,6 +53,8 @@ import {
 } from '../data/interventionLog';
 import { loadFoodLogs, type FoodLog } from '../lib/foodAi';
 import { loadSportLogs, type SportLog } from '../lib/sportLog';
+// ★ 2026-11-06（用户）：月历格子改展示「当天获得的皇冠数」——与回顾·日视图的达标皇冠同源
+import { buildTodayTimeline } from '../lib/buildTodayTimeline';
 // ★ Phase 2（无门禁软闭环）：规律观察直接落位日历观察区 ——
 //   观察不等确认就写进来；用户点「挺准」→ 加权进人生上下文；随时可删（删了不复活）。
 import {
@@ -408,6 +410,22 @@ export default function MonthDiscoveryView({
     return map;
   }, [data, tasks, viewY, viewM]);
 
+  // ★ 2026-11-06（用户）：月历格子上不再展示图片，改展示该天获得的皇冠数。
+  //   皇冠口径与回顾·日视图（JourneyDayView 卡片右上角 👑）完全同源：
+  //   buildTodayTimeline(该日).items 中 goalMet = true 的条目数。
+  const crownsByDay = useMemo(() => {
+    const map: Record<number, number> = {};
+    const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      try {
+        const items = buildTodayTimeline(undefined, new Date(viewY, viewM, d)).items;
+        const n = items.filter((it) => it.goalMet).length;
+        if (n > 0) map[d] = n;
+      } catch { /* 单日构建失败忽略，该格不显示皇冠 */ }
+    }
+    return map;
+  }, [viewY, viewM]);
+
   const stats = useMemo(() => (data ? computeMonthStats(data, viewY, viewM) : null), [data, viewY, viewM]);
 
   // ★ 2026-10-12 20:10（用户 18:55 截图 + 语音）：
@@ -651,13 +669,8 @@ export default function MonthDiscoveryView({
     //   若只写 day === todayDay，则所有空槽都会被判成「今天」→ 染上蜜黄底方框
     //   （用户 2026-10-12 截图发现的「一二三四五那些空的时间怎么有背景框」根因）。必须加 day > 0。
     const isToday = day > 0 && day === todayDay;
-    const recs = day > 0 ? recordsByDay[day] ?? [] : [];
-    const show = recs.slice(0, 3);
-    const extra = recs.length - show.length;
-
-    // ★ 2026-10-14：满出血后，最左/最右列的照片若仍带负/正 x 偏移会贴边被屏幕切掉；
-    //   把两端列的 x 偏移收进格内（首列 ≥ 2，末列 ≤ -2），堆叠层次保留、贴边照片完整可见。
-    const clampX = (x: number) => (colIdx === 0 ? Math.max(x, 2) : colIdx === COLS - 1 ? Math.min(x, -2) : x);
+    // ★ 2026-11-06（用户）：月历格子不再展示图片，改展示当天皇冠数（≤4 逐个显示，>4 显示 👑×N）
+    const crownCount = day > 0 ? crownsByDay[day] ?? 0 : 0;
 
     return (
       <TouchableOpacity
@@ -674,30 +687,15 @@ export default function MonthDiscoveryView({
       >
         <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day > 0 ? day : ''}</Text>
 
-        {recs.length > 0 ? (
-          <View style={styles.stackWrap} pointerEvents="none">
-            {show.map((r, i) => {
-              // 错峰延迟：按 cell 全局位置 + 卡内叠放顺序，形成从左上到右下的「堆叠展开」波
-              const cellDelay = Math.min((rowIdx * 7 + colIdx) * 18, 700);
-              return (
-                <StackPhoto
-                  key={i}
-                  img={r.img}
-                  rot={PH_ROT[i]}
-                  off={{ x: clampX(PH_OFF[i].x), y: PH_OFF[i].y }}
-                  zIndex={show.length - i}
-                  photoSize={photo}
-                  delay={cellDelay + i * 70}
-                  playId={photoPlayId}
-                  reduced={calendarReduced}
-                />
-              );
-            })}
-            {extra > 0 ? (
-              <View style={styles.plusBadge}>
-                <Text style={styles.plusText}>+{extra}</Text>
-              </View>
-            ) : null}
+        {/* ★ 2026-11-06（用户）：格子内的图片堆叠改为皇冠展示——
+            少量（≤4）逐个排皇冠；更多（>4）显示「👑×N」避免溢出格子。 */}
+        {crownCount > 0 ? (
+          <View style={styles.crownWrap} pointerEvents="none">
+            {crownCount <= 4
+              ? Array.from({ length: crownCount }).map((_, i) => (
+                  <Text key={i} style={styles.crownIcon}>👑</Text>
+                ))
+              : <Text style={styles.crownX}>👑×{crownCount}</Text>}
           </View>
         ) : null}
       </TouchableOpacity>
@@ -1009,6 +1007,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.tiny, fontWeight: theme.weight.medium as any, color: theme.colors.textSub,
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any },
+
+  /* ★ 2026-11-06（用户）：格子皇冠展示（替代照片堆叠）——
+     ≤4 个逐个排开；>4 个显示「👑×N」，保证不溢出格子。 */
+  crownWrap: { position: 'absolute', top: 18, left: 2, right: 2, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', rowGap: 1 },
+  crownIcon: { fontSize: theme.fontSize.sm },
+  crownX: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
 
   // 照片堆叠区（对齐预览 .stack）：★ 2026-10-14 top 12 → 18，整摞照片下移，给左上角日期数字让位
   stackWrap: { position: 'absolute', top: 18, left: 1, right: 1, bottom: 2, alignItems: 'center', justifyContent: 'center' },

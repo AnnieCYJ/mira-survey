@@ -13,8 +13,8 @@
  *
  * ⚠️ 布局采用**固定行高 + 逐点生成 SVG 路径**（见 docs/design-tokens.md §10.9，禁 aspectRatio）。
  */
-import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -26,15 +26,24 @@ import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortBy
 // ★ 本轮（用户）：呼吸 / 冥想完成后，其完成记录落在 interventionLog，
 //   回顾·日 原本只读 selfReportLog，导致「做完呼吸回顾里啥也没有」——这里把 interventionLog 也并进来。
 import { ensureInterventionLogLoaded, allInterventionEntries } from '../data/interventionLog';
+import DateAnchorPicker from './DateAnchorPicker';
+
+/** ★ 2026-11-05（用户 #286）：单日记录摘要，上抛给父层用于「钉在 Tab 正上方」的浮层。
+ *  count = 当日记录条数；selLabel = 标题前缀（今日 / X月X日）；first/last = 首末记录时间/标题。 */
+export type DaySummary = {
+  count: number;
+  isToday: boolean;
+  selLabel: string;
+  firstTime: string;
+  lastTime: string;
+  firstTitle: string;
+  lastTitle: string;
+};
 
 const ROW_H = theme.sp(26);          // 每行 104：卡片区高
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
 const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
-const STRIP_BACK = 9;                // 日期条：锚点前 9 天
-const STRIP_FWD = 4;                 // 日期条：锚点后 4 天（并裁剪到今天）
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const CELL_W = theme.sp(11);         // 日期格 44
-const CELL_GAP = theme.sp(2);        // 格间距 8
 
 /** #RRGGBB 与白混合（做图标方块的浅底） */
 function mixWhite(hex: string, ratio: number): string {
@@ -60,16 +69,6 @@ function emojiFor(title: string): string {
   if (/对话/.test(title)) return '💬';
   if (/洞察/.test(title)) return '✨';
   return '🌸';
-}
-
-/** 该日是否有旅程数据（睡眠 / 步数），用于日期条小圆点 */
-function hasDayData(d: Date): boolean {
-  try {
-    const dk = dayKey(d.getTime());
-    if (healthStore.getSleep(dk)) return true;
-    const steps = (RingBle.getState()?.stepDaily as any)?.[dk]?.steps ?? 0;
-    return steps > 0;
-  } catch { return false; }
 }
 
 /**
@@ -110,56 +109,18 @@ function buildWavePath(height: number, count: number): string {
  * ★ 2026-10-12（用户）：支持从月历点某一天打开 —— 传 `date` 即以该日为锚点
  *   （日期条窗口跟着那天走、选中那天居中），不传则等同旧行为（锚点=今天）。
  */
-export default function JourneyDayView({ date }: { date?: Date } = {}) {
+export default function JourneyDayView({ date, showDatePicker = true, onSummaryChange }: { date?: Date; showDatePicker?: boolean; onSummaryChange?: (s: DaySummary | null) => void } = {}) {
   const anchor = useMemo(() => {
     const d = date ?? new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }, [date]);
 
-  // 日期条：锚点前 9 天 ~ 后 4 天（升序；不展示未来，故裁剪到今天）。
-  // 锚点=今天时窗口正好是「今天往前 14 天」，与旧实现完全一致。
-  const days = useMemo(() => {
-    const t = new Date();
-    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
-    const arr: Date[] = [];
-    for (let i = -STRIP_BACK; i <= STRIP_FWD; i++) {
-      const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + i);
-      if (d.getTime() > today.getTime()) continue;
-      arr.push(d);
-    }
-    return arr;
-  }, [anchor]);
-
   const [selDate, setSelDate] = useState<Date>(anchor);
 
-  const stripRef = useRef<ScrollView>(null);
-  const stripW = useRef(0);
-  const initialScrollDone = useRef(false);
-
-  // ★ 选中格居中：条宽测量后 + 每次选择后都滚到中间
-  const centerSel = useCallback((date: Date, animated: boolean) => {
-    const idx = days.findIndex((d) => sameDay(d, date));
-    if (idx < 0 || stripW.current <= 0) return;
-    const target = idx * (CELL_W + CELL_GAP) + CELL_W / 2 - stripW.current / 2;
-    stripRef.current?.scrollTo({ x: Math.max(0, target), animated });
-  }, [days]);
-
-  useEffect(() => {
-    if (!initialScrollDone.current && stripW.current > 0) {
-      initialScrollDone.current = true;
-      centerSel(selDate, false);
-    }
-  }, [selDate, centerSel]);
-
-  // ★ 2026-10-12：锚点变化（月历换了另一天打开）→ 选中日同步 + 重新居中
+  // ★ 2026-10-12：锚点变化（月历换了另一天打开）→ 选中日同步
   useEffect(() => {
     setSelDate(anchor);
-    initialScrollDone.current = false;
-    if (stripW.current > 0) {
-      initialScrollDone.current = true;
-      centerSel(anchor, false);
-    }
-  }, [anchor, centerSel]);
+  }, [anchor]);
 
   // ★ 本轮（用户）：进入回顾即拉起回顾补充数据源；新记录产生（如用户在别的页刚完成饮食/心情）
   //   即时合并进时间线，无需手动刷新。
@@ -234,40 +195,38 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
   const wavePath = buildWavePath(totalH, items.length);
   const isSelToday = sameDay(selDate, new Date());
 
+  // ★ 2026-11-05（用户 #286）：把「X 条记录」摘要上抛父层，由 ProfileScreen 钉在 Tab 正上方（固定浮层，不随滚动走）
+  const daySummary = useMemo<DaySummary | null>(() => {
+    if (items.length === 0) return null;
+    return {
+      count: items.length,
+      isToday: isSelToday,
+      selLabel: isSelToday ? '今日' : `${selDate.getMonth() + 1}月${selDate.getDate()}日`,
+      firstTime: items[0].time,
+      lastTime: items[items.length - 1].time,
+      firstTitle: items[0].title,
+      lastTitle: items[items.length - 1].title,
+    };
+  }, [items, isSelToday, selDate]);
+
+  useEffect(() => {
+    onSummaryChange?.(daySummary);
+  }, [daySummary, onSummaryChange]);
+
   return (
     <View style={styles.wrap}>
-      {/* ── 方案 A：日期条（选中格居中 + 紫底变色；有记录的日带点；今天绿描边）── */}
-      <View style={styles.stripWrap}>
-        <ScrollView
-          ref={stripRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.stripContent}
-          onLayout={(e) => {
-            stripW.current = e.nativeEvent.layout.width;
-            if (!initialScrollDone.current) centerSel(selDate, false);
-          }}
-        >
-          {days.map((d) => {
-            const sel = sameDay(d, selDate);
-            const today = sameDay(d, new Date());
-            const has = hasDayData(d);
-            return (
-              <TouchableOpacity
-                key={d.getTime()}
-                activeOpacity={0.7}
-                onPress={() => { setSelDate(d); centerSel(d, true); }}
-              >
-                <View style={[styles.cell, sel && styles.cellSel, today && !sel && styles.cellToday]}>
-                  <Text style={[styles.cellW, sel && styles.cellWSel]}>{WEEKDAYS[d.getDay()]}</Text>
-                  <Text style={[styles.cellN, sel && styles.cellNSel]}>{d.getDate()}</Text>
-                  {has ? <View style={[styles.cellDot, sel && styles.cellDotSel]} /> : <View style={styles.cellDotNone} />}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {/* ── 日期步进器（与月视图 DateAnchorPicker 同款，保证日 / 月 选择器一致）── */}
+      {showDatePicker && (
+        <DateAnchorPicker value={selDate} onChange={(d) => setSelDate(d)} range="day" maxDate={new Date()} />
+      )}
+
+      {/* ★ 2026-11-06（用户）：品牌句从「回顾」标题下移到日时间选择器下方；
+          字号/字重参考月视图选择器下的「稳步向上的一个月」（heroHeadline 同款）。 */}
+      {showDatePicker ? (
+        <Text style={styles.brandTagline}>
+          lunamira AI 记得你未曾发觉的每一件小事，也看得到你每次卓越的表现。
+        </Text>
+      ) : null}
 
       {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ── */}
       {items.length === 0 ? (
@@ -323,20 +282,6 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
               );
             })}
           </View>
-
-          {/* 汇总条 */}
-          <View style={styles.sumBar}>
-            <Text style={styles.sumText} numberOfLines={1}>
-              {isSelToday ? '今日' : `${selDate.getMonth() + 1}月${selDate.getDate()}日`}共{' '}
-              <Text style={styles.sumNum}>{items.length}</Text> 条记录
-              {items.length > 1 ? ` · 从 ${items[0].time} 到 ${items[items.length - 1].time}` : ''}
-            </Text>
-            {items.length >= 2 && (
-              <Text style={styles.valueText} numberOfLines={2}>
-                当天先记录「{items[0].title}」，之后又出现「{items[items.length - 1].title}」；这是一条可继续观察的变化线索。
-              </Text>
-            )}
-          </View>
         </>
       )}
     </View>
@@ -346,23 +291,11 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
 const styles = StyleSheet.create({
   wrap: { position: 'relative', marginTop: theme.sp(1) },
 
-  /* 日期条 */
-  stripWrap: { marginBottom: theme.sp(1) },
-  stripContent: { alignItems: 'center', paddingHorizontal: theme.sp(1) },
-  cell: {
-    width: CELL_W, height: theme.sp(14), marginHorizontal: CELL_GAP / 2,
-    borderRadius: theme.radius.md, backgroundColor: 'rgba(31,29,26,0.04)',
-    alignItems: 'center', justifyContent: 'center', gap: 1,
+  /* ★ 2026-11-06（用户）：品牌句（对齐月视图 heroHeadline：fs17/semibold/ink/-0.3 字距） */
+  brandTagline: {
+    fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink,
+    letterSpacing: -0.3, marginTop: theme.sp(1.5), marginHorizontal: 2,
   },
-  cellSel: { backgroundColor: mm.colors.purpleCore },
-  cellToday: { borderWidth: 1.5, borderColor: mm.colors.limeMid },
-  cellW: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint },
-  cellWSel: { color: 'rgba(255,255,255,0.85)' },
-  cellN: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
-  cellNSel: { color: theme.colors.textWhite },
-  cellDot: { width: theme.sp(1.25), height: theme.sp(1.25), borderRadius: theme.sp(0.625), backgroundColor: mm.colors.limeMid },
-  cellDotSel: { backgroundColor: theme.colors.textWhite },
-  cellDotNone: { width: theme.sp(1.25), height: theme.sp(1.25) },
 
   /* 曲线与行 */
   // ★ 2026-10-12：曲线与行同容器（曲线以本容器 top:0 定位），保证端点与圆点重合
@@ -388,7 +321,8 @@ const styles = StyleSheet.create({
   },
   cardL: { marginRight: 'auto' },
   cardR: { marginLeft: 'auto' },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
+  // ★ 本轮（用户 #287）：卡片头右侧留出空间，避免右上角达标皇冠压到标题文字
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), paddingRight: theme.sp(8) },
   icon: {
     width: theme.sp(7.5), height: theme.sp(7.5), borderRadius: mm.radius.iconSq,
     alignItems: 'center', justifyContent: 'center',
@@ -422,18 +356,6 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     backgroundColor: mm.colors.btnBusyBg,
   },
-
-  // ★ 本轮（用户 #261）：底部总结去掉胶囊背景，纯文字置底居中
-  sumBar: {
-    marginTop: theme.sp(3), alignSelf: 'center', maxWidth: '100%',
-    paddingHorizontal: theme.sp(5),
-  },
-  valueText: {
-    marginTop: theme.sp(1.25), fontSize: theme.fontSize.micro, lineHeight: theme.fs(16),
-    color: mm.colors.inkFaint, textAlign: 'center',
-  },
-  sumText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, textAlign: 'center' },
-  sumNum: { fontWeight: theme.weight.bold as never, color: mm.colors.ink },
 
   empty: {
     backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,

@@ -344,8 +344,10 @@ export default function EmotionQuickRecord() {
       {!visible && (
       <View style={[styles.fab, { bottom: insets.bottom + theme.sp(8) }]}>
         <TouchableOpacity activeOpacity={0.7} onPress={open} style={styles.fabTouch}>
+          {/* ★ 2026-11-06（用户：胶囊看不清）：原半透明白渐变 + 白字对比不足，
+              改为深色渐变底（白字清晰可读）。 */}
           <LinearGradient
-            colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
+            colors={['rgba(30,52,90,0.94)', 'rgba(18,36,66,0.92)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.fabGrad}

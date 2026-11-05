@@ -475,11 +475,6 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       };
       const curCal = mean(curKeys, (s) => s?.calorie ?? 0);
       const prevCal = mean(prevKeys, (s) => s?.calorie ?? 0);
-      const curSteps = mean(curKeys, (s) => s?.steps ?? 0);
-      const curDist = mean(curKeys, (s) => s?.distance ?? 0);
-      // 运动时长：区间内逐日 dayExercise 汇总 → 日均分钟（含手动记录 + 心率兜底）
-      const agg = aggregateExercise(ring, curKeys);
-      const durMin = agg.minutes;
       const rangeDelta = curCal != null && prevCal != null && prevCal > 0
         ? Math.round(((curCal - prevCal) / prevCal) * 100)
         : null;
@@ -508,33 +503,9 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
               </Text>
             ) : null}
           </View>
-          <View style={styles.statGrid}>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>运动时长</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
-                {durMin ?? '—'}{durMin != null ? <Text style={unitStyle}> 分</Text> : null}
-              </Text>
-              <Text style={styles.statSub}>日均</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>步数</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
-                {curSteps != null ? (curSteps / 1000).toFixed(1) : '—'}{<Text style={unitStyle}> k</Text>}
-              </Text>
-              <Text style={styles.statSub}>日均</Text>
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>距离</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
-                {curDist != null ? curDist.toFixed(1) : '—'}{<Text style={unitStyle}> km</Text>}
-              </Text>
-              <Text style={styles.statSub}>日均</Text>
-            </View>
-          </View>
-          {/* ★ 2026-11-05（用户）：区间分析去外框，仅保留标题 + 解读文字（不再套 Card）；
-              底部「周期均值 / 峰值 / 低谷 / 波动度」统计框的「消耗分析」抬头见下方卡。 */}
+          {/* ★ 2026-11-06（用户）：①「周平均活动消耗」卡里不再写「运动消耗分析」标题，只留解读文字；
+              ② 运动时长/步数/距离 三格移到底部「消耗分析」卡里（见下方 activity 分支）。 */}
           <View style={[styles.pad, { marginTop: theme.sp(2) }]}>
-            <Text style={styles.anaTitle}>运动消耗分析</Text>
             <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
           </View>
         </View>
@@ -1440,14 +1411,14 @@ const styles = StyleSheet.create({
   // ★ 2026-11-05（用户·统一）：区间分析卡标题（与 heroTitle 同语言）
   anaTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginBottom: theme.sp(1) },
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
-  /* ★ 2026-11-05（用户）：运动建议卡统一收窄、字号间距收紧、去掉左侧 icon */
+  /* ★ 2026-11-06（用户：今日运动建议卡太拥挤）：整卡 padding 与上方「今日活动消耗」hero 卡
+     同为 cardPad；正文/分析行距与 heroAnalysis 同款（sm 字号、lineHeight 21、上距 sp(2)）。 */
   waCard: {
     backgroundColor: theme.colors.cardBg,
     borderColor: theme.colors.cardBorder,
     borderWidth: 1,
     borderRadius: mm.radius.card,
-    paddingVertical: theme.sp(3),
-    paddingHorizontal: theme.sp(3.5),
+    padding: theme.space.cardPad,
     marginTop: theme.space.sm,
   },
   waHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) },
@@ -1473,21 +1444,22 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: theme.colors.textInk,
-    marginBottom: theme.sp(0.5),
+    marginBottom: theme.sp(1),
   },
   waDetail: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSub,
     lineHeight: 20,
   },
-  /* ★ 2026-10-12：处境分析一小段（相位 + 第几天 + 今日状态 → 适宜什么运动） */
+  /* ★ 2026-10-12：处境分析一小段（相位 + 第几天 + 今日状态 → 适宜什么运动）
+     ★ 2026-11-06（用户：太拥挤）：与 heroAnalysis 同款字号/行距 */
   waAnalysis: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textBody,
-    lineHeight: theme.fontSize.xs * 1.5,
-    marginTop: theme.sp(1),
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    lineHeight: 21,
+    marginTop: theme.sp(2),
   },
-  waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(1.5) },
+  waStats: { flexDirection: 'row', gap: theme.space.xs, marginTop: theme.sp(2) },
   waStat: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -1883,6 +1855,43 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
               <StatCell label="低谷" value={String(trough)} sub="kcal" valueColor={theme.colors.success} />
               <StatCell label="波动度" value={String(volatility)} sub="σ" />
             </View>
+            {/* ★ 2026-11-06（用户）：运动时长/步数/距离（日均）从上方「周平均活动消耗」Hero 卡移到本卡四格下方 */}
+            {(() => {
+              const allKeys = periods.flatMap((p) => p.dayKeys).filter((x) => x <= dayKey(Date.now()));
+              const agg = aggregateExercise(ring, allKeys);
+              const meanOf = (pick: (s: any) => number): number | null => {
+                const vals = allKeys.map((k) => pick(ring?.stepDaily?.[k])).filter((v) => Number.isFinite(v) && (v as number) > 0);
+                return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
+              };
+              const steps = meanOf((s) => s?.steps ?? 0);
+              const dist = meanOf((s) => s?.distance ?? 0);
+              const unit = { fontSize: theme.fontSize.micro, color: theme.colors.textSub };
+              return (
+                <View style={[styles.statGrid, { marginTop: theme.sp(1.5) }]}>
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>运动时长</Text>
+                    <Text style={styles.statValue} numberOfLines={1}>
+                      {agg.minutes ?? '—'}{agg.minutes != null ? <Text style={unit}> 分</Text> : null}
+                    </Text>
+                    <Text style={styles.statSub}>日均</Text>
+                  </View>
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>步数</Text>
+                    <Text style={styles.statValue} numberOfLines={1}>
+                      {steps != null ? (steps / 1000).toFixed(1) : '—'}{<Text style={unit}> k</Text>}
+                    </Text>
+                    <Text style={styles.statSub}>日均</Text>
+                  </View>
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>距离</Text>
+                    <Text style={styles.statValue} numberOfLines={1}>
+                      {dist != null ? dist.toFixed(1) : '—'}{<Text style={unit}> km</Text>}
+                    </Text>
+                    <Text style={styles.statSub}>日均</Text>
+                  </View>
+                </View>
+              );
+            })()}
             <TouchableOpacity
               style={styles.mhRow}
               activeOpacity={0.7}

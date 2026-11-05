@@ -466,9 +466,14 @@ export default function CalmWaveHome() {
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
   const gaugeTop = 158 * k;                            // 仪表区顶部（★ 2026-11-03：140→158 整体再下移一点点，圆环+分析+胶囊联动下移）
   const analysisTop = gaugeTop + 318 * k;              // 分析文字（★ 2026-11-03 310→318：用户「和下面的今日状态不错拉开一点点距离」）
-  const capsuleTop = analysisTop + 40 * k;             // 建议胶囊（★ 本轮 44→40：与上方分析文字收紧成整体）
+  // ★ 2026-11-06（用户：分析文字三排要自适应）：分析文字行数不定（1~3 行），
+  //   胶囊不再用固定 40k 偏移，而是跟随实测文字高度下移；三排时指标卡行（睡眠恢复/身心压力/活动消耗）也随之下移一点。
+  const [analysisH, setAnalysisH] = useState(50);      // 默认按两行（lineHeight 25）
+  const analysisLines = Math.max(1, Math.round(analysisH / 25));
+  const capsuleTop = analysisTop + analysisH + 6;      // 建议胶囊：贴分析文字实际底沿
   // 卡片行：贴 tab 上方（tab 高 84 + 安全区）；★ 本轮：底部间隙 4→14，卡片整体再下移约 10px
-  const chipRowTop = height - insets.bottom - 84 - 2 - CHIP_H;
+  // ★ 2026-11-06（用户）：分析文字 ≥3 行时，卡行也顺势再往下挪 8px，保持整页呼吸感
+  const chipRowTop = height - insets.bottom - 84 - 2 - (analysisLines >= 3 ? 8 : 0) - CHIP_H;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -610,14 +615,21 @@ export default function CalmWaveHome() {
         />
       </View>
 
-      {/* 分析文字（浮于照片，无卡片底） */}
+      {/* 分析文字（浮于照片，无卡片底）★ 2026-11-06：实测行高驱动下方胶囊位置（三排自适应） */}
       <View style={[s.analysisWrap, { top: analysisTop }]}>
-        <Text style={s.analysis}>
+        <Text
+          style={s.analysis}
+          onTextLayout={(e) => {
+            // RN 的 onTextLayout 只给 lines（无整体 layout.height）——行数 × lineHeight(25) 换算
+            const n = e.nativeEvent.lines.length;
+            if (n > 0) setAnalysisH(n * 25);
+          }}
+        >
           {statusFromCheck
             ? <>刚做完一键体检，今天的<Text style={s.hl}>{displayStatus} 分</Text>{qcStatus?.source === 'estimated' ? '是按当前 HRV 估算的，连续佩戴后会更贴近真实状态～' : '来自戒指同步～'}</>
             : hasStatusData
               ? <>今天状态不错，<Text style={s.hl}>{displayStatus} 分</Text>比平时稳，趁状态好做点想做的事～</>
-              : '今天还没有状态数据，做一次一键体检，我帮你算出当下的状态～'}
+              : '今日状态暂无数据，做一次一键体检，最快获取你的健康数据～'}
         </Text>
       </View>
       {/* 建议胶囊：★ 2026-11-05（用户）今日状态空值时引导「去一键体检一下」；有数据后走动态建议引擎 */}
@@ -627,7 +639,7 @@ export default function CalmWaveHome() {
           <Text style={s.relaxPillTxt} numberOfLines={2}>
             {hasStatusData
               ? (sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›')
-              : '去做一次一键体检，看看今天的状态 ›'}
+              : '去一键体检，获取最新的健康数据 ›'}
           </Text>
         </TouchableOpacity>
       </View>

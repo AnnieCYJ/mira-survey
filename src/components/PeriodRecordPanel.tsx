@@ -18,7 +18,6 @@
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import {
@@ -362,16 +361,9 @@ export default function PeriodRecordPanel({
         </View>
       ) : null}
 
-      {/* v21：保存 CTA=紫实底（周期域紫主控）；渐变层自带 padding，Touchable 只留裁切 */}
+      {/* ★ 本轮（用户 #283）：保存 CTA = 白色胶囊（替代原周期域紫实底） */}
       <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.7}>
-        <LinearGradient
-          colors={[mm.colors.purpleBtn, mm.colors.purpleBtn]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.saveBtnGrad}
-        >
-          <Text style={styles.saveBtnText}>{justSaved ? '已保存 ✓' : '保存记录'}</Text>
-        </LinearGradient>
+        <Text style={styles.saveBtnText}>{justSaved ? '已保存 ✓' : '保存记录'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -510,15 +502,17 @@ const styles = StyleSheet.create({
   stepBtnText: { fontSize: theme.fontSize.lg, color: theme.colors.accentText, fontWeight: theme.weight.bold as any },
   stepValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginHorizontal: 16, minWidth: 48, textAlign: 'center' },
 
-  // v16：保存按钮 = lime→粉 渐变（Touchable 只留圆角+裁切，padding 在渐变层）
+  // ★ 本轮（用户 #283）：保存按钮 = 白色胶囊 + 深色字（与周期日历页经期弹窗保存钮同口径）
   saveBtn: {
     marginTop: theme.space.lg,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    paddingVertical: theme.sp(3.5),
   },
   saveBtnGrad: {
     alignItems: 'center',
     paddingVertical: 13,
   },
-  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
+  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#2A4470' },
 });

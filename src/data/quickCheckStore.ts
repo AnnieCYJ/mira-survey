@@ -266,6 +266,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   const statusMeasured = d('statusScore');   // auto_data.status_score 真实回读
   const hrvDaily = (state as any)?.hrvDaily as Record<string, number> | undefined;
   const hrvPts = (state as any)?.history?.hrv as { t: number; v: number }[] | undefined;
+  const hrPts = (state as any)?.history?.hr as { t: number; v: number }[] | undefined;
 
   // Pro 专属：仅 PRO_UI 才允许读 healthStore 的历史测量（基础版一律不碰，避免 HK18 混显）
   const bpSys = isPro && hasCap(profile, 'bp') ? gl('bpSys') : null;
@@ -280,12 +281,22 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   const fatigue = isPro && hasCap(profile, 'cortisol') ? gl('fatigue') : null;
 
   // ── 2. 估算输入：HRV 60s / 30s 短窗 + 近 7 天基线 ────────────────────────
+  // ★ 2026-11-06（用户：做完体检今日状态不能还是空的）：短窗/今日 daily 都取不到时，
+  //   回退到「最近一次」HRV / 心率读数（history 里最新的一个点，不限今天），
+  //   让体检总能基于最近的生理信号给出状态结果；来源仍标「估算」，不冒充实测。
   const now = Date.now();
+  const lastPt = (pts: { t: number; v: number }[] | null | undefined): number | null => {
+    if (!pts || !pts.length) return null;
+    const sorted = [...pts].filter((p) => Number.isFinite(p.v) && p.v > 0).sort((a, b) => b.t - a.t);
+    return sorted.length ? sorted[0].v : null;
+  };
+  const hrvLatest = hrv ?? lastPt(hrvPts);
+  const hrLatest = hr ?? lastPt(hrPts);
   const estInput: EstimateInput = {
-    hrv60: windowMean(hrvPts, 60_000, now) ?? hrv,
-    hrv30: windowMean(hrvPts, 30_000, now) ?? hrv,
+    hrv60: windowMean(hrvPts, 60_000, now) ?? hrvLatest,
+    hrv30: windowMean(hrvPts, 30_000, now) ?? hrvLatest,
     hrvBaseline: baselineFromDaily(hrvDaily ?? {}, 7, now),
-    hr, spo2, sns, sleepMin, statusMeasured, stressMeasured,
+    hr: hrLatest, spo2, sns, sleepMin, statusMeasured, stressMeasured,
   };
   const todayStatus = estimateTodayStatus(estInput);
   const stressEst = estimateStress(estInput);

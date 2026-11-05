@@ -17,8 +17,13 @@ import type { QCSource } from '../lib/quickCheckEstimate';
 
 const KEY = 'mira_quickcheck_result_v1';
 
-/** 结果 12 小时内有效：过期的体检不该继续当「今日状态」显示。 */
-export const QC_RESULT_TTL_MS = 12 * 60 * 60 * 1000;
+/** ★ 2026-11-06（用户：跨天清零）：体检结果只在「做完的那个自然日」内有效。
+ *  之前用 12 小时 TTL，昨天 23 点做的体检今天 0 点后仍被判有效，首页误显示「刚做完一键体检」。
+ *  现改为按本地日历日判定：createdAt 不是今天就作废（零点自动清零）。 */
+function sameLocalDay(ts: number, now = Date.now()): boolean {
+  const a = new Date(ts), b = new Date(now);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
 
 export interface QuickCheckResultValue {
   value: number;
@@ -67,7 +72,7 @@ export async function loadQuickCheckResult(): Promise<QuickCheckResult | null> {
   try {
     const raw = await getItem(KEY);
     const r = raw ? (JSON.parse(raw) as QuickCheckResult) : null;
-    const valid = r && typeof r.createdAt === 'number' && Date.now() - r.createdAt < QC_RESULT_TTL_MS;
+    const valid = r && typeof r.createdAt === 'number' && sameLocalDay(r.createdAt);
     cache = valid ? r : null;
   } catch {
     cache = null;
@@ -85,8 +90,8 @@ export async function saveQuickCheckResult(r: QuickCheckResult): Promise<void> {
   emit(r);
 }
 
-/** 取「当前有效」的结果：过期返回 null。 */
+/** 取「当前有效」的结果：非今日做的体检一律作废（跨天清零）。 */
 export function validQuickCheckResult(r: QuickCheckResult | null): QuickCheckResult | null {
   if (!r || typeof r.createdAt !== 'number') return null;
-  return Date.now() - r.createdAt < QC_RESULT_TTL_MS ? r : null;
+  return sameLocalDay(r.createdAt) ? r : null;
 }

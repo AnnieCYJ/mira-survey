@@ -16,7 +16,7 @@ import type { RangeKey } from '../data/metrics';
 import { useAppState, PLAN_PER_DAY } from '../state/AppState';
 import { CAL_YEAR, CAL_MONTH } from '../data/tasks';
 import MonthDiscoveryView from '../components/MonthDiscoveryView';
-import JourneyDayView from '../components/JourneyDayView';
+import JourneyDayView, { type DaySummary } from '../components/JourneyDayView';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CONFETTI_MS = 3000; // 礼花时长
@@ -52,6 +52,8 @@ export default function ProfileScreen({ navigation }: any) {
   //   今日 = 当日行为流程（JourneyDayView，即点月历某一天弹出的那种图）；本月 = 月历网格。
   // ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月）
   const [reviewTab, setReviewTab] = useState<RangeKey>('day');
+  // ★ 2026-11-05（用户 #286）：单日记录摘要（由 JourneyDayView 上抛），钉在底部 Tab 正上方（固定浮层）
+  const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
 
   // 庆祝自动流程：礼花 → 卡片停留 → 飞向对应日期格子 → 关闭
   useEffect(() => {
@@ -164,8 +166,7 @@ export default function ProfileScreen({ navigation }: any) {
       <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>回顾</Text>
-          {/* ★ 本轮（用户）：标题下一行品牌句 */}
-          <Text style={styles.reviewTagline}>lunamira AI 记得你未曾发觉的每一件小事，也看得到你每次卓越的表现。</Text>
+          {/* ★ 2026-11-06（用户）：品牌句移到「日」时间选择器下方（JourneyDayView 内），此处不再显示 */}
         </Animated.View>
 
         {/* ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月） */}
@@ -174,7 +175,7 @@ export default function ProfileScreen({ navigation }: any) {
         {reviewTab === 'day' ? (
           /* ★ 2026-11-05（用户）：今日 = 当日行为流程（睡眠 / 运动 / 情绪 / 压力 时间轴） */
           <View style={styles.reviewToday}>
-            <JourneyDayView />
+            <JourneyDayView onSummaryChange={setDaySummary} />
           </View>
         ) : USE_MONTH_DISCOVERY ? (
           /* ★ 2026-10-12（用户）：月视图改版方案 A —— 卡片堆叠月历 + 规律总结 */
@@ -210,6 +211,22 @@ export default function ProfileScreen({ navigation }: any) {
         </>
         )}
       </ScreenContainer>
+
+      {/* ★ 2026-11-05（用户 #286）：单日记录摘要钉在底部 Tab 正上方（固定浮层，不随滚动走） */}
+      {reviewTab === 'day' && daySummary ? (
+        <View style={styles.daySummaryBar} pointerEvents="none">
+          <Text style={styles.daySummaryText} numberOfLines={1}>
+            {daySummary.selLabel}共{' '}
+            <Text style={styles.daySummaryNum}>{daySummary.count}</Text> 条记录
+            {daySummary.count > 1 ? ` · 从 ${daySummary.firstTime} 到 ${daySummary.lastTime}` : ''}
+          </Text>
+          {daySummary.count >= 2 && (
+            <Text style={styles.daySummaryClue} numberOfLines={1}>
+              当天先记录「{daySummary.firstTitle}」，之后又出现「{daySummary.lastTitle}」
+            </Text>
+          )}
+        </View>
+      ) : null}
 
       <Confetti visible={celebration.visible} duration={3000} count={120} />
 
@@ -261,17 +278,31 @@ export default function ProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // ★ 2026-11-05（用户 #286）：钉在 Tab 正上方的单日摘要浮层
+  daySummaryBar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: theme.colors.cardBg,
+    borderTopWidth: 1, borderTopColor: theme.colors.cardBorder,
+    paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(4),
+    alignItems: 'center',
+    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: -mm.shadow.height },
+    elevation: mm.shadow.elevation,
+  },
+  daySummaryText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
+  daySummaryNum: { fontWeight: theme.weight.bold as never, color: theme.colors.textTitle },
+  daySummaryClue: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(0.5) },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
     marginBottom: theme.space.xs,
   },
-  /* ★ 本轮（用户）：回顾标题下的品牌句 */
+  /* ★ 本轮（用户）：回顾标题下的品牌句 —— 字号放大一档、颜色提亮，更易读 */
   reviewTagline: {
-    fontSize: theme.fontSize.sm,
-    color: mm.colors.inkFaint,
-    lineHeight: theme.fontSize.sm * 1.5,
+    fontSize: theme.fontSize.body,
+    color: mm.colors.inkSoft,
+    lineHeight: theme.fontSize.body * 1.5,
     marginBottom: theme.space.md,
   },
   /* ★ 本轮（用户 #260）：回顾页 今日 / 本月 改用 RangeSwitch 分段控件，样式随组件，本页不再单独定义 */
