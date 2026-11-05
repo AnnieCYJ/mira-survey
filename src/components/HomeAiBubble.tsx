@@ -725,6 +725,7 @@ const styles = StyleSheet.create({
     color: TXT_ON_GLASS,
     lineHeight: 20,
     marginBottom: 4,
+    textAlign: 'center',
     ...GLASS_TEXT_SHADOW,
   },
   waveRow: {

@@ -378,8 +378,10 @@ export default function PeriodRecordPanel({
 }
 
 const styles = StyleSheet.create({
+  // ★ 2026-11-05（用户两次反馈「记录经期弹窗背景还是浅的」）：
+  //   根节点自带深板岩底，确保经期记录页在任何容器里都是深色，不依赖外层 sheet 是否上色。
   panel: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(9,28,48,0.98)',
     borderRadius: 0,
     padding: 0,
     marginTop: 0,

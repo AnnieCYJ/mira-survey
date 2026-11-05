@@ -335,10 +335,10 @@ const styles = StyleSheet.create({
   },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs, marginTop: theme.space.sm },
 
-  /* 底部弹起 Sheet */
-  sheetMask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
+  /* 底部弹起 Sheet（★ 2026-11-05：与周期日历页经期弹窗同色系——深板岩，避免浅底残留） */
+  sheetMask: { flex: 1, backgroundColor: 'rgba(9,28,48,0.6)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: theme.colors.bgBottom,
+    backgroundColor: 'rgba(9,28,48,0.98)',
     borderTopLeftRadius: theme.radius.card,
     borderTopRightRadius: theme.radius.card,
     maxHeight: '88%',
