@@ -265,7 +265,7 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
                   <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
                   <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
                     {/* ★ 本轮（用户 #245）：达标 → 卡片右上角画星 */}
-                    {it.goalMet ? <Text style={styles.goalStar}>★</Text> : null}
+                    {it.goalMet ? <Text style={styles.goalStar}>👑</Text> : null}
                     <View style={styles.cardHead}>
                       <View style={[styles.icon, { backgroundColor: mixWhite(it.color, 0.82) }]}>
                         <Text style={styles.iconTxt}>{it.emoji ?? emojiFor(it.title)}</Text>
@@ -365,15 +365,15 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(1.25),
   },
   cardTime: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint, marginTop: theme.sp(1.5) },
-  // ★ 本轮（用户 #245）：达标星标，卡片右上角
+  // ★ 本轮（用户 #261）：达标皇冠，卡片右上角（放大 + 明亮黄绿，更醒目、鼓励感更强）
   goalStar: {
-    position: 'absolute', top: theme.sp(1), right: theme.sp(1.25),
-    fontSize: theme.fs(13), color: mm.colors.limeDeep, fontWeight: theme.weight.bold as never,
+    position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5),
+    fontSize: theme.fs(20), color: mm.colors.limeCore, fontWeight: theme.weight.bold as never,
     zIndex: 3,
   },
-  // ★ 本轮（用户 #248）：卡片底部分析句，比 sub 再弱一档
+  // ★ 本轮（用户 #261）：卡片底部分析句，改用明亮黄绿（limeCore）替代看不清的深绿（limeDeep）
   cardAnalysis: {
-    fontSize: theme.fontSize.micro, color: mm.colors.limeDeep,
+    fontSize: theme.fontSize.micro, color: mm.colors.limeCore,
     lineHeight: theme.fontSize.micro * 1.45, marginTop: theme.sp(1),
   },
   // ★ 本轮（用户）：饮食记录卡片内附图
@@ -385,13 +385,10 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.btnBusyBg,
   },
 
+  // ★ 本轮（用户 #261）：底部总结去掉胶囊背景，纯文字置底居中
   sumBar: {
-    marginTop: theme.sp(2), backgroundColor: mm.colors.cardBg,
-    borderWidth: 1, borderColor: mm.colors.cardBorder, borderRadius: theme.radius.pill,
-    paddingVertical: theme.sp(2.5), paddingHorizontal: theme.sp(5),
-    alignSelf: 'center', maxWidth: '100%',
-    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity * 0.7,
-    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: mm.shadow.height }, elevation: 2,
+    marginTop: theme.sp(3), alignSelf: 'center', maxWidth: '100%',
+    paddingHorizontal: theme.sp(5),
   },
   valueText: {
     marginTop: theme.sp(1.25), fontSize: theme.fontSize.micro, lineHeight: theme.fs(16),

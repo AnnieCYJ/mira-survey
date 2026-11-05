@@ -135,6 +135,9 @@ export interface BasicMetricDef {
   section?: string;
   /** 是否显示卡片下方的全天趋势图（默认 true） */
   showTrend?: boolean;
+  /** ★ 2026-11-06（用户）：当该指标没有任何真实读数时，整张卡不渲染（降噪，避免永远显示"—"）。
+   *  一旦 sane 通过的有效值回读到，卡片自动重新出现。仅用于当前固件尚未回读到的信号（如体温）。 */
+  hideNoData?: boolean;
 }
 
 export const BASIC_METRICS: BasicMetricDef[] = [
@@ -178,6 +181,9 @@ export const BASIC_METRICS: BasicMetricDef[] = [
     range: '正常 36.0–37.2',
     data: [],
     live: true,
+    // ★ 2026-11-06（用户）：当前这枚戒指还没有回读到体温数据 → 该卡不展示，降噪；
+    //   等 auto_data.temp_daily_mean 真正回读到有效值（sane 通过）后再自动出现。
+    hideNoData: true,
     // ★ 2026-11-05 协议复核：这枚戒指只有「日均体温」一路真实温度（auto_data.temp_daily_mean）；
     //   health_glance 空表、gsr 无温度 → 没有独立皮肤温度数据流，也没有 EDA 皮电。
     note: '戒指日常数据回读的日均体温（℃），是本机唯一真实温度数据；协议无独立皮肤温度流、无皮电 EDA。',

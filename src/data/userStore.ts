@@ -25,6 +25,17 @@ export interface UserAccount {
   accountName: string;
 }
 
+export interface PeriodInfo {
+  /** 最近一次生理期开始日期（ISO YYYY-MM-DD） */
+  lastStart?: string;
+  /** 最近一次生理期结束日期（ISO YYYY-MM-DD） */
+  lastEnd?: string;
+  /** 周期是否规律 */
+  regular?: boolean;
+  /** 平均周期天数（默认 28） */
+  cycleDays?: number;
+}
+
 export interface UserProfile {
   gender?: Gender;
   age?: number;
@@ -33,6 +44,8 @@ export interface UserProfile {
   sleepHabit?: SleepHabit;
   exerciseHabit?: ExerciseHabit;
   workRhythm?: WorkRhythm;
+  /** 女性专属：最近一次生理期与周期信息（Onboarding 选「女」后追问采集） */
+  period?: PeriodInfo;
 }
 
 export interface UserSession {

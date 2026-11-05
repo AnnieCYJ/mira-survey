@@ -1346,7 +1346,6 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-10（用户拍板）：血氧 / 压力 / EDA / 疲劳 / 情绪 / 皮质醇 —— 全天柱状小条 */}
         {isSpecDay && spec && specDay && !isCortisol ? (
           <View style={styles.chartCard}>
-            {moodOnChart}
             <View style={styles.partRow}>
               <Text style={[styles.chartTitle, styles.titleFlex]}>{chartTitle}</Text>
               {!isStress && (
@@ -1390,19 +1389,28 @@ export default function MetricDetailScreen() {
                   mutedRanges={stressMutedRanges}
                   yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
                   height={chart.plot.l}
+                  moodMarker={isStress && latestMood ? { ts: latestMood.t, emoji: MOOD_EMOJI[latestMood.mood] ?? '🙂' } : null}
                 />
                 {/* ★ 2026-10-12（用户拍板：统一成 平静/开心/兴奋/压力/难过）—— 情绪图例 = 「情绪记录」
                     点阵的同一套五档顺序（DOT_LEGEND），色值一律取 MOOD_COLOR，跨页完全一致。
-                    睡眠/清醒/活动是心率类图的分段（segmentOf），情绪是状态型指标不用那套。 */}
+                    睡眠/清醒/活动是心率类图的分段（segmentOf），情绪/压力是状态型指标不用那套
+                    → 压力按「放松/平衡/紧张」三档着色，图例跟着换成同色相（2026-11-05 修正：
+                    此前压力图误用 睡眠/清醒/活动 图例，与柱色对不上）。 */}
                 <DayBarsLegend
                   showMean={false}
-                  items={params.key === 'emotion' ? [
-                    { color: MOOD_COLOR.calm, label: '平静' },
-                    { color: MOOD_COLOR.happy, label: '开心' },
-                    { color: MOOD_COLOR.excited, label: '兴奋' },
-                    { color: MOOD_COLOR.stressed, label: '压力' },
-                    { color: MOOD_COLOR.sad, label: '难过' },
-                  ] : undefined}
+                  items={
+                    params.key === 'emotion' ? [
+                      { color: MOOD_COLOR.calm, label: '平静' },
+                      { color: MOOD_COLOR.happy, label: '开心' },
+                      { color: MOOD_COLOR.excited, label: '兴奋' },
+                      { color: MOOD_COLOR.stressed, label: '压力' },
+                      { color: MOOD_COLOR.sad, label: '难过' },
+                    ] : params.key === 'stress' ? [
+                      { color: mm.colors.limeMid, label: '放松' },
+                      { color: mm.colors.honeyCore, label: '平衡' },
+                      { color: mm.colors.roseDeep, label: '紧张' },
+                    ] : undefined
+                  }
                 />
                 <Text style={styles.chartNote}>
                   {spec!.sourceNote}
@@ -2268,9 +2276,13 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
   const rangeLabel = range === 'day' ? '今日' : range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
   // ★ 本轮（用户）：恢复力标题随周期变化（日=近 14 天，周/月/年=本{周/月/年}）
   const resilienceLabel = range === 'day' ? '近 14 天' : rangeLabel;
+  // ★ 2026-11-05（用户：疲劳度若没算出就去掉）：非有限值一律视为「无数据」，不渲染疲劳度块
   const fatigue =
     range === 'day'
-      ? (healthStore.getDay('fatigue' as HSMetricKey, dateKeyOf(anchor.getTime()))?.mean ?? null)
+      ? (() => {
+          const m = healthStore.getDay('fatigue' as HSMetricKey, dateKeyOf(anchor.getTime()))?.mean;
+          return m != null && Number.isFinite(m) ? m : null;
+        })()
       : (() => {
           let sum = 0, cnt = 0;
           for (const dk of rangeDayKeys(anchor, range)) {

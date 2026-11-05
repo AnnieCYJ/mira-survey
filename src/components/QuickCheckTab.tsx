@@ -165,14 +165,8 @@ export default function QuickCheckTab() {
           ) : (
             <Text style={qc.abEmpty}>本次完成 {latestTally.done} 项检测，未见异常。</Text>
           )}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('QuickCheckHistory')}
-            style={qc.linkRow}
-          >
-            <Text style={qc.linkText}>查看全部 {count} 次体检记录</Text>
-            <Text style={qc.linkArrow}>›</Text>
-          </TouchableOpacity>
+          {/* ★ 2026-11-05（用户）：去掉「查看全部 N 次体检记录」跳转链接；
+              正常/异常已在上方大数字汇总（X 项正常 / Y 项异常），底部仅保留「再体检一次」。 */}
           <QCta title={busy ? '体检中…' : '再体检一次'} onPress={startCheck} disabled={busy} />
         </Card>
         <Text style={qc.footerNote}>

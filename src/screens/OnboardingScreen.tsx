@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { userStore, type UserProfile } from '../data/userStore';
+import { saveCycleLog } from '../data/cycleLog';
 import LunaMiraFace from '../components/LunaMiraFace';
 
 interface Props {
@@ -44,6 +45,7 @@ interface Question {
   options?: Option[];
   unit?: string;
   placeholder?: string;
+  defaultText?: string;
   keyboardType?: 'number-pad' | 'default';
 }
 
@@ -93,6 +95,22 @@ const QUESTIONS: Question[] = [
   },
 ];
 
+/** ★ 本轮（用户 #259）：女性专属生理期追问 —— 选「女」后追加在基础 7 题之后 */
+const PERIOD_QUESTIONS: Question[] = [
+  { id: 'periodStart', ai: '了解～ 最近一次生理期，大概是几天前开始的？', type: 'number', unit: '天前', placeholder: '例如 14', keyboardType: 'number-pad' },
+  { id: 'periodDuration', ai: '那一次持续了几天呢？', type: 'number', unit: '天', placeholder: '例如 5', keyboardType: 'number-pad' },
+  {
+    id: 'periodRegular',
+    ai: '你的周期一般规律吗？',
+    type: 'choice',
+    options: [
+      { label: '规律', value: 'regular' },
+      { label: '不太规律', value: 'irregular' },
+    ],
+  },
+  { id: 'periodCycle', ai: '那平均周期大概是几天？（常见 28 天左右）', type: 'number', unit: '天', placeholder: '28', defaultText: '28', keyboardType: 'number-pad' },
+];
+
 type Bubble = { role: 'ai' | 'user'; text: string };
 
 /** ★ 2026-11-04：每答一题后 Mira 的柔和活泼回应（带一点解释，语气轻快） */
@@ -104,6 +122,10 @@ const RESPONSES: Record<string, string> = {
   sleep: '懂了～ 作息对恢复和情绪影响不小，我会多留意。',
   exercise: '收到！运动是很棒的恢复信号 💪',
   work: '明白～ 工作节奏我会算进你的精力消耗里。',
+  periodStart: '收到～ 这个时间点帮我定位周期起点。',
+  periodDuration: '好嘞，持续天数记下啦。',
+  periodRegular: '明白，规律与否我都会留意。',
+  periodCycle: '记下了，平均周期会帮我更稳妥地预判下次时间。',
 };
 
 export default function OnboardingScreen({ onDone }: Props) {
@@ -117,9 +139,11 @@ export default function OnboardingScreen({ onDone }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const dot = useRef(new Animated.Value(0)).current;
 
+  // ★ 本轮（用户 #259）：选「女」时在基础 7 题之后追加生理期追问
+  const Q = answers.gender === 'female' ? [...QUESTIONS, ...PERIOD_QUESTIONS] : QUESTIONS;
   const answeredCount = Object.keys(answers).length;
-  const total = QUESTIONS.length;
-  const current = step < total ? QUESTIONS[step] : null;
+  const total = Q.length;
+  const current = step < total ? Q[step] : null;
 
   // 输入中三点动画
   useEffect(() => {
@@ -159,11 +183,15 @@ export default function OnboardingScreen({ onDone }: Props) {
       // ★ 2026-11-04：每答一题，Mira 先给一个柔和活泼的回应，再抛下一题（更像真实对话）
       pushAi(RESPONSES[q.id] ?? '记下了～');
       setTimeout(() => {
-        if (next < total) {
+        if (next < Q.length) {
+          const nq = Q[next];
           setStep(next);
-          pushAi(QUESTIONS[next].ai);
+          // ★ 本轮（用户 #259）：有 defaultText 的数字题预填（如周期天数默认 28）
+          setNumText(nq.type === 'number' && nq.defaultText ? nq.defaultText : '');
+          pushAi(nq.ai);
         } else {
           setStep(total);
+          setNumText('');
           pushAi('都了解啦～ 这些信息会帮我更贴近你的身体节奏。准备好开始了吗？');
         }
       }, 950);
@@ -172,6 +200,25 @@ export default function OnboardingScreen({ onDone }: Props) {
 
   const finish = async () => {
     setBusy(true);
+    // ★ 本轮（用户 #259）：女性 → 由「几天前开始 / 持续几天 / 规律 / 周期天数」推算起止日期并写入
+    let period: UserProfile['period'];
+    if (answers.gender === 'female') {
+      const daysAgo = answers.periodStart ? Number(answers.periodStart) : undefined;
+      const duration = answers.periodDuration ? Number(answers.periodDuration) : undefined;
+      const todayMs = Date.now();
+      const startMs =
+        daysAgo != null && Number.isFinite(daysAgo) ? todayMs - daysAgo * 86400000 : undefined;
+      const endMs =
+        startMs != null && duration != null && Number.isFinite(duration)
+          ? startMs + duration * 86400000
+          : undefined;
+      period = {
+        lastStart: startMs != null ? isoDate(startMs) : undefined,
+        lastEnd: endMs != null ? isoDate(endMs) : undefined,
+        regular: answers.periodRegular === 'regular',
+        cycleDays: answers.periodCycle ? Number(answers.periodCycle) : 28,
+      };
+    }
     const profile: UserProfile = {
       gender: (answers.gender as UserProfile['gender']) ?? undefined,
       age: answers.age ? Number(answers.age) : undefined,
@@ -180,8 +227,21 @@ export default function OnboardingScreen({ onDone }: Props) {
       sleepHabit: (answers.sleep as UserProfile['sleepHabit']) ?? undefined,
       exerciseHabit: (answers.exercise as UserProfile['exerciseHabit']) ?? undefined,
       workRhythm: (answers.work as UserProfile['workRhythm']) ?? undefined,
+      period,
     };
     await userStore.completeOnboarding(profile);
+    // ★ 本轮（用户 #259）：回写周期记录——把最近一次生理期起点 + 周期长度写入 cycleLog，
+    //   供周期相位预测（月相环 / 阶段底色）直接使用，与用户后续在周期页手动补记同源。
+    if (period?.lastStart) {
+      const duration = answers.periodDuration ? Number(answers.periodDuration) : undefined;
+      await saveCycleLog({
+        lastPeriodStart: period.lastStart,
+        cycleLength: period.cycleDays ?? 28,
+        periodLength: duration != null && Number.isFinite(duration) ? duration : 5,
+        lutealLength: 14,
+        cycleLengthCustom: true,
+      });
+    }
     setBusy(false);
     // ★ 2026-11-05：去掉欢迎视频，资料保存后直接进主页
     onDone();
@@ -273,6 +333,15 @@ export default function OnboardingScreen({ onDone }: Props) {
               <SummaryItem label="作息" value={habitText('sleep', answers.sleep)} />
               <SummaryItem label="运动" value={habitText('exercise', answers.exercise)} />
               <SummaryItem label="节奏" value={habitText('work', answers.work)} span />
+              {/* ★ 本轮（用户 #259）：女性 → 在小结里展示生理期信息 */}
+              {answers.gender === 'female' ? (
+                <>
+                  <SummaryItem label="最近一次" value={answers.periodStart ? `${answers.periodStart} 天前` : '—'} />
+                  <SummaryItem label="持续" value={answers.periodDuration ? `${answers.periodDuration} 天` : '—'} />
+                  <SummaryItem label="规律" value={answers.periodRegular === 'regular' ? '规律' : '不太规律'} />
+                  <SummaryItem label="周期" value={`${answers.periodCycle ?? '28'} 天`} />
+                </>
+              ) : null}
             </View>
             <TouchableOpacity style={[s.finishBtn, busy && s.finishBtnOff]} activeOpacity={0.85} disabled={busy} onPress={finish}>
               <Text style={s.finishTxt}>{busy ? '保存中…' : '完成，开始体验'}</Text>
@@ -350,6 +419,15 @@ function genderText(v?: string) {
   if (v === 'undisclosed') return '不愿透露';
   return '—';
 }
+
+/** 时间戳 → YYYY-MM-DD（本地日期，用于生理期起止日期存储） */
+function isoDate(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 function habitText(kind: 'sleep' | 'exercise' | 'work', v?: string) {
   const map: Record<string, string> = {
     early: '早睡早起',
@@ -399,7 +477,7 @@ const s = StyleSheet.create({
     paddingVertical: 2,
     marginBottom: 4,
   },
-  aiBadgeTxt: { fontSize: theme.fontSize.tiny, color: mm.colors.ink, fontWeight: theme.weight.semibold as any },
+  aiBadgeTxt: { fontSize: theme.fontSize.tiny, color: '#132A4A', fontWeight: theme.weight.semibold as any },
   aiText: { fontSize: theme.fontSize.body, color: theme.colors.textBody, lineHeight: theme.fontSize.body * 1.5 },
   userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.md },
   userBubble: {
@@ -408,7 +486,7 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.card,
     padding: theme.space.sm + 2,
   },
-  userText: { fontSize: theme.fontSize.body, color: mm.colors.ink, fontWeight: theme.weight.medium as any },
+  userText: { fontSize: theme.fontSize.body, color: '#132A4A', fontWeight: theme.weight.medium as any },
   typingDots: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
   typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.colors.textSub, marginHorizontal: 3 },
   answerArea: { marginTop: theme.space.md },
@@ -445,7 +523,7 @@ const s = StyleSheet.create({
     marginLeft: theme.space.xs,
   },
   numNextOff: { opacity: 0.5 },
-  numNextTxt: { color: mm.colors.ink, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
+  numNextTxt: { color: '#132A4A', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
   summaryCard: {
     marginTop: theme.space.lg,
     backgroundColor: theme.colors.cardBg,
@@ -470,7 +548,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   finishBtnOff: { opacity: 0.6 },
-  finishTxt: { color: mm.colors.ink, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
+  finishTxt: { color: '#132A4A', fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },
   // —— 欢迎视频页 ——（背景渐变由 OnboardVideoScreen 的 LinearGradient 提供，与视频边缘同色）
   videoEnter: {
     position: 'absolute',

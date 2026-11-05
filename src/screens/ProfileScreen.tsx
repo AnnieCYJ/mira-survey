@@ -11,6 +11,8 @@ import Confetti from '../components/Confetti';
 import Icon from '../components/Icon';
 import RelaxCardDeck from '../components/RelaxCardDeck';
 import RelaxVideoPlayer from '../components/RelaxVideoPlayer';
+import RangeSwitch from '../components/RangeSwitch';
+import type { RangeKey } from '../data/metrics';
 import { useAppState, PLAN_PER_DAY } from '../state/AppState';
 import { CAL_YEAR, CAL_MONTH } from '../data/tasks';
 import MonthDiscoveryView from '../components/MonthDiscoveryView';
@@ -48,7 +50,8 @@ export default function ProfileScreen({ navigation }: any) {
 
   // ★ 2026-11-05（用户）：日历区块改名为「回顾」，上方加「今日 / 本月」两个 tab；
   //   今日 = 当日行为流程（JourneyDayView，即点月历某一天弹出的那种图）；本月 = 月历网格。
-  const [reviewTab, setReviewTab] = useState<'today' | 'month'>('today');
+  // ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月）
+  const [reviewTab, setReviewTab] = useState<RangeKey>('day');
 
   // 庆祝自动流程：礼花 → 卡片停留 → 飞向对应日期格子 → 关闭
   useEffect(() => {
@@ -165,25 +168,10 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.reviewTagline}>lunamira AI 记得你未曾发觉的每一件小事，也看得到你每次卓越的表现。</Text>
         </Animated.View>
 
-        {/* ★ 2026-11-05（用户）：今日 / 本月 两个 tab 置于时间选择器上方 */}
-        <View style={styles.reviewTabs}>
-          <TouchableOpacity
-            style={[styles.reviewTab, reviewTab === 'today' && styles.reviewTabOn]}
-            activeOpacity={0.7}
-            onPress={() => setReviewTab('today')}
-          >
-            <Text style={[styles.reviewTabTxt, reviewTab === 'today' && styles.reviewTabTxtOn]}>今日</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.reviewTab, reviewTab === 'month' && styles.reviewTabOn]}
-            activeOpacity={0.7}
-            onPress={() => setReviewTab('month')}
-          >
-            <Text style={[styles.reviewTabTxt, reviewTab === 'month' && styles.reviewTabTxtOn]}>本月</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月） */}
+        <RangeSwitch value={reviewTab} onChange={setReviewTab} exclude={['week', 'year']} />
 
-        {reviewTab === 'today' ? (
+        {reviewTab === 'day' ? (
           /* ★ 2026-11-05（用户）：今日 = 当日行为流程（睡眠 / 运动 / 情绪 / 压力 时间轴） */
           <View style={styles.reviewToday}>
             <JourneyDayView />
@@ -286,37 +274,7 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.sm * 1.5,
     marginBottom: theme.space.md,
   },
-  /* ★ 2026-11-06（用户）：回顾页 今日 / 本月 tab 加大字号、加宽（更醒目、更好点） */
-  reviewTabs: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(31,29,26,0.06)',
-    borderRadius: theme.radius.pill,
-    padding: theme.sp(2),
-    marginBottom: theme.space.md,
-    alignSelf: 'flex-start',
-  },
-  reviewTab: {
-    paddingVertical: theme.sp(2.5),
-    paddingHorizontal: theme.sp(11),
-    borderRadius: theme.radius.pill,
-  },
-  reviewTabOn: {
-    backgroundColor: mm.colors.cardBg,
-    shadowColor: mm.shadow.color,
-    shadowOpacity: mm.shadow.opacity,
-    shadowRadius: mm.shadow.radius,
-    shadowOffset: { width: 0, height: mm.shadow.height },
-    elevation: 2,
-  },
-  reviewTabTxt: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.weight.medium,
-    color: mm.colors.inkFaint,
-  },
-  reviewTabTxtOn: {
-    color: mm.colors.ink,
-    fontWeight: theme.weight.semibold as never,
-  },
+  /* ★ 本轮（用户 #260）：回顾页 今日 / 本月 改用 RangeSwitch 分段控件，样式随组件，本页不再单独定义 */
   reviewToday: { marginTop: theme.sp(1) },
   calHead: {
     flexDirection: 'row',

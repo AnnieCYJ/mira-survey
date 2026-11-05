@@ -114,7 +114,8 @@ const METABOLISM_VISIBLE_KEYS = new Set<string>(['bloodSugar']);
  * 用于双列瀑布流的高度估算与错落排布，同时作为卡片的 showTrend 判据，
  * 保证「估高」与实际渲染高度一致（不会一个说有图一个说没图）。
  */
-const SHORT_METRIC_KEYS = new Set<string>(['spo2', 'eda', 'cortisol', 'stress', 'fatigue', 'emotion', 'skin', 'sns', 'snsActivation']);
+// ★ 2026-11-05（用户）：血氧也展示趋势图 → 把 spo2 从「短卡（无趋势）」集合里移除
+const SHORT_METRIC_KEYS = new Set<string>(['eda', 'cortisol', 'stress', 'fatigue', 'emotion', 'skin', 'sns', 'snsActivation']);
 const showTrendFor = (key: string) => !SHORT_METRIC_KEYS.has(key);
 
 /**
@@ -545,6 +546,8 @@ export default function InsightScreen() {
       fatigue: 'cortisol',
     };
     return signalsForDimension('basics').filter((m) => {
+      // ★ 2026-11-05（用户）：体检/身体指标区移除 心率 / 皮质醇 / 交感神经活跃 三张卡
+      if (m.key === 'hr' || m.key === 'cortisol' || m.key === 'sns') return false;
       const c = BASIC_CAP[m.key];
       return !c || hasCap(deviceModel, c);
     });
@@ -629,6 +632,8 @@ export default function InsightScreen() {
       } else if (loc && sane(m.key, loc.v)) { real = loc.v; measureTime = loc.t; }
       else measureTime = getCachedLastT(m.key);
     }
+    // ★ 2026-11-06（用户）：体温等「当前固件尚未回读到」的指标，没有任何真实读数时整张卡不渲染（降噪）
+    if (m.hideNoData && real == null) return null;
     const hist = getCachedHist(m.key);
     if (m.manualOnly) {
       return (

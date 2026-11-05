@@ -531,13 +531,12 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
               <Text style={styles.statSub}>日均</Text>
             </View>
           </View>
-          {/* ★ 2026-11-05（用户·统一）：区间分析单独成卡并补标题 */}
-          <Card padded={false} style={{ marginTop: theme.sp(2) }}>
-            <View style={styles.pad}>
-              <Text style={styles.anaTitle}>运动消耗分析</Text>
-              <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
-            </View>
-          </Card>
+          {/* ★ 2026-11-05（用户）：区间分析去外框，仅保留标题 + 解读文字（不再套 Card）；
+              底部「周期均值 / 峰值 / 低谷 / 波动度」统计框的「消耗分析」抬头见下方卡。 */}
+          <View style={[styles.pad, { marginTop: theme.sp(2) }]}>
+            <Text style={styles.anaTitle}>运动消耗分析</Text>
+            <Text style={styles.heroAnalysis}>{activityAnalysis}</Text>
+          </View>
         </View>
       );
     }
@@ -1877,6 +1876,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
       {type === 'activity' && hasAny && (
         <Card padded={false} style={{ marginTop: theme.sp(2) }}>
           <View style={styles.pad}>
+            <Text style={styles.anaTitle}>消耗分析</Text>
             <View style={styles.statGrid}>
               <StatCell label="周期均值" value={String(mean)} sub="kcal" />
               <StatCell label="峰值" value={String(peak)} sub="kcal" valueColor={theme.colors.celebrateGrad[0]} />
@@ -1939,6 +1939,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
       {hasAny && type !== 'activity' && (
         <Card padded={false} style={{ marginTop: theme.sp(2) }}>
           <View style={styles.pad}>
+            <Text style={styles.anaTitle}>消耗分析</Text>
             <View style={styles.statGrid}>
               <StatCell label="周期均值" value={String(mean)} sub="/ 100" />
               <StatCell label="峰值" value={String(peak)} sub="/ 100" valueColor={theme.colors.celebrateGrad[0]} />

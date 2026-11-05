@@ -69,6 +69,13 @@ interface Props {
    * 画成空桩会让人误以为「有槽但没读到」。
    */
   mutedRanges?: [number, number][];
+  /**
+   * ★ 2026-11-05（用户：记录此刻心情后，把心情 icon 标到趋势图上的「相应时间点」）：
+   *   自报心情的标记。会按 `ts` 换算成 X 轴位置，在绘图区顶部画一个带白色光晕的表情，
+   *   并拉一条竖向虚线到基线，让用户一眼看到「这个时刻记了什么心情」。
+   *   不在绘图区范围内（如夜间视图下白天记的心情）则不渲染。
+   */
+  moodMarker?: { ts: number; emoji: string } | null;
 }
 
 const PAD_L = 30;
@@ -92,6 +99,7 @@ export default function AllDayBarsChart({
   tickLabels,
   mutedRanges,
   colorOf,
+  moodMarker,
 }: Props) {
   const plotH = height ?? chart.plot.l;
   const H = PAD_T + plotH + AXIS_H;
@@ -240,8 +248,26 @@ export default function AllDayBarsChart({
     const baseline = <Line x1={PAD_L} y1={baseY} x2={PAD_L + plotW} y2={baseY}
       stroke={chart.grid} strokeWidth={chart.lw.grid} />;
 
-    return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData };
-  }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges]);
+    // ★ 2026-11-05（用户：心情 icon 标到趋势图相应时间点）：按 ts 换算 X，
+    //   绘图区顶部画表情 + 白色光晕，并拉一条竖向虚线到基线，定位「这个时刻记了心情」。
+    let moodNode: React.ReactNode = null;
+    if (moodMarker) {
+      const mx = xOf(moodMarker.ts);
+      if (mx >= PAD_L && mx <= PAD_L + plotW) {
+        moodNode = (
+          <React.Fragment key="mood">
+            <Line x1={mx} y1={PAD_T} x2={mx} y2={baseY}
+              stroke={theme.colors.textSub} strokeWidth={1} strokeDasharray="3,4" opacity={0.5} />
+            <Rect x={mx - 10} y={PAD_T - 1} width={20} height={18} rx={5}
+              fill={theme.colors.cardBg} opacity={0.92} />
+            <SvgText x={mx} y={PAD_T + 13} fontSize={14} textAnchor="middle">{moodMarker.emoji}</SvgText>
+          </React.Fragment>
+        );
+      }
+    }
+
+    return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData, moodNode };
+  }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges, moodMarker]);
 
   return (
     <View onLayout={onLayout}>
@@ -268,6 +294,8 @@ export default function AllDayBarsChart({
               ))}
             </>
           ) : null}
+          {/* ★ 2026-11-05（用户）：心情 icon 标在趋势图上的对应时间点（最上层，盖在柱/线之上） */}
+          {geom.moodNode}
         </Svg>
       )}
     </View>
