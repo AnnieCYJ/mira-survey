@@ -3,8 +3,8 @@
  * 白卡 chip：pastel 方块 icon + 灰标签 + 数值。数据与消耗大卡同源（由 TodayScreen 传入）。
  * 取代原「四指标环」TodayMetricTiles 的展示位（组件文件保留，可随时回退）。
  */
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm, type MindChipTone } from '../theme/mindmate';
 import { MindIcon, type MindIconName } from './MindIcons';
@@ -28,27 +28,12 @@ export interface MindChipItem {
   onPress: () => void;
 }
 
-/** 每屏可见 chip 数：4 张均分整行宽（v18.153 定稿的视觉基线） */
-const PER_SCREEN = 4;
-
 function MindChipsImpl({ items }: { items: MindChipItem[] }) {
-  // ★ 2026-10-07（用户：「加一个运动的小卡片…它是可以左右滑动的，可以看得到这个卡片」）：
-  //   条目 > 4 张时改走**横向滚动**，第 5 张卡能被滑出；
-  //   ≤ 4 张仍走 flex 均分行，左右贴边、间距对称，与旧版逐像素一致。
-  //   ⚠ 滚动模式下 chip 宽度必须**手工固定**为 (行宽 − 3×gap)/4：
-  //     ScrollView 的内容宽度不受 flex 约束，写 flex:1 会被压成 0 宽；
-  //     该式与旧 flex 均分同解 ⇒ 第 5 张是「多出来一张」，而不是把前 4 张挤窄。
+  // ★ 2026-11-05（用户：三个卡片偏左 + 活动卡右边露边像阴影）：
+  //   不再走横向滚动（滚动会让卡片整体左对齐、末张露出一角像阴影），改为**整行均匀分配**——
+  //   所有 chip 用 flex:1 等权均分整行宽、左右贴边、间距对称，肉眼就是「均匀排布」。
+  //   条目再多也均分（窄一点但不偏左、不露边），彻底去掉右侧那条假阴影。
   const GAP = theme.sp(2);
-  // ★ 2026-10-07（用户：「运动旁边应该留一点点边，否则我并不知道还可以滑动」）：
-  //   可滚动时右侧**预留一条露边**（PEEK），让第 5 张卡露出一角 ⇒
-  //   用户一眼就知道“这里还能往右滑”。
-  //   可见宽度 = PEEK − GAP = 12pt（只露一点儿边，用户 2026-10-07：「只展示一点儿边就行」）。
-  //   非滚动（≤ 4 张）时 PEEK = 0，布局与旧版逐像素一致。
-  const PEEK = theme.sp(3) + GAP;
-  const [rowW, setRowW] = useState(0);
-  const peek = items.length > PER_SCREEN ? PEEK : 0;
-  const chipW = rowW > 0 ? (rowW - GAP * (PER_SCREEN - 1) - peek) / PER_SCREEN : 0;
-  const scrollable = items.length > PER_SCREEN && chipW > 0;
 
   const renderChip = (it: MindChipItem) => {
     const cb = mm.chipBg[it.tone];
@@ -63,7 +48,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
         onPress={it.onPress}
         style={({ pressed }) => [
           styles.chip,
-          scrollable ? { width: chipW } : { flex: 1 },
+          { flex: 1 },
           pressed && styles.chipPressed,
         ]}
         accessibilityRole="button"
@@ -95,20 +80,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
   };
 
   return (
-    <View onLayout={(e) => setRowW(e.nativeEvent.layout.width)}>
-      {scrollable ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: GAP }}
-          directionalLockEnabled
-        >
-          {items.map(renderChip)}
-        </ScrollView>
-      ) : (
-        <View style={{ flexDirection: 'row', gap: GAP }}>{items.map(renderChip)}</View>
-      )}
-    </View>
+    <View style={{ flexDirection: 'row', gap: GAP }}>{items.map(renderChip)}</View>
   );
 }
 
