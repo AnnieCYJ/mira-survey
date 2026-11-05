@@ -22,6 +22,8 @@ export interface TimelineItem {
   goalMet?: boolean;
   /** ★ 本轮（用户 #248）：卡片底部补一句分析 / 解读（可选，缺省不渲染） */
   analysis?: string;
+  /** ★ 本轮（用户：回顾页展示完成的饮食/心情）：卡片内附图（如饮食照片，可选） */
+  imageUri?: string;
 }
 
 interface Props {

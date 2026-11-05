@@ -27,11 +27,12 @@ import type { IconName } from './Icon';
 import MoodBlob from './MoodBlob';
 import Icon from './Icon';
 import {
-  MOOD_ORDER, MOOD_LABEL, MOOD_COLOR, addEmotionEntry,
+  MOOD_ORDER, MOOD_LABEL, MOOD_COLOR, MOOD_EMOJI, addEmotionEntry,
   EVENT_KEYS, EVENT_LABEL, type MoodKey, type EventKey,
 } from '../data/emotionLog';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { logSelfReport } from '../data/selfReportLog';
 
 /** 5 档愉悦度（与 MOOD_ORDER 一致：兴奋→开心→平静→压力→难过） */
 const MOODS: MoodKey[] = MOOD_ORDER;
@@ -313,9 +314,25 @@ export default function EmotionQuickRecord() {
   })();
   const isBackfill = (atOffsetMin != null && atOffsetMin > 0) || atCustomMs != null;
 
-  const onRecord = () => {
+  const onRecord = async () => {
     if (saved) return;
     addEmotionEntry(mood, undefined, events, customSel.length > 0 ? customSel : undefined, recordAtMs());
+    // ★ 本轮（用户）：记录心情时，同时写一条回顾摘要，让「刚记的心情」立刻出现在回顾·今日。
+    const at = recordAtMs();
+    const d = new Date(at);
+    const dk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const parts = [MOOD_LABEL[mood], ...events.map((e) => EVENT_LABEL[e]), ...(customSel.length > 0 ? customSel : [])];
+    await logSelfReport({
+      type: 'mood',
+      dk,
+      time: hhmm,
+      title: '记录心情',
+      sub: parts.join(' · '),
+      analysis: '你的感受，值得被接住。',
+      emoji: MOOD_EMOJI[mood],
+      color: MOOD_COLOR[mood],
+    });
     setSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => close(), 1300);

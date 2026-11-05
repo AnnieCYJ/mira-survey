@@ -23,6 +23,7 @@ import Matter from 'matter-js';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
+import { logSelfReport } from '../data/selfReportLog';
 import Icon from '../components/Icon';
 import {
   MOOD_ORDER, MOOD_LABEL, MOOD_EMOJI, MOOD_COLOR, type MoodKey,
@@ -313,9 +314,23 @@ export default function EmotionLogScreen() {
     return () => { alive = false; };
   }, []);
 
-  const save = () => {
+  const save = async () => {
     if (!selected) return;
     addEmotionEntry(selected, note);
+    // ★ 本轮（用户）：保存心情时，同时写一条回顾摘要，让「刚记的心情」立刻出现在回顾·今日。
+    const now = new Date();
+    const dk = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    await logSelfReport({
+      type: 'mood',
+      dk,
+      time: hhmm,
+      title: '记录心情',
+      sub: note && note.trim() ? note.trim() : MOOD_LABEL[selected],
+      analysis: '你的感受，值得被接住。',
+      emoji: MOOD_EMOJI[selected],
+      color: MOOD_COLOR[selected],
+    });
     setSavedTick(true);
     setTimeout(() => {
       setSavedTick(false);
@@ -366,9 +381,10 @@ export default function EmotionLogScreen() {
               value={note}
               onChangeText={setNote}
               placeholder="记一句此刻的感受（可选）"
-              placeholderTextColor={mm.colors.inkFaint}
+              placeholderTextColor={'rgba(255,255,255,0.42)'}
               multiline
               maxLength={80}
+              autoFocus
               style={styles.noteInput}
             />
           ) : null}
@@ -440,7 +456,7 @@ const styles = StyleSheet.create({
 
   noteInput: {
     marginTop: theme.sp(2),
-    backgroundColor: mm.colors.cardBg,
+    backgroundColor: mm.colors.btnBusyBg,
     borderWidth: 1,
     borderColor: mm.colors.cardBorder,
     borderRadius: theme.radius.md,

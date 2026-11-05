@@ -48,7 +48,7 @@ export default function ProfileScreen({ navigation }: any) {
 
   // ★ 2026-11-05（用户）：日历区块改名为「回顾」，上方加「今日 / 本月」两个 tab；
   //   今日 = 当日行为流程（JourneyDayView，即点月历某一天弹出的那种图）；本月 = 月历网格。
-  const [reviewTab, setReviewTab] = useState<'today' | 'month'>('month');
+  const [reviewTab, setReviewTab] = useState<'today' | 'month'>('today');
 
   // 庆祝自动流程：礼花 → 卡片停留 → 飞向对应日期格子 → 关闭
   useEffect(() => {
@@ -161,6 +161,8 @@ export default function ProfileScreen({ navigation }: any) {
       <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>回顾</Text>
+          {/* ★ 本轮（用户）：标题下一行品牌句 */}
+          <Text style={styles.reviewTagline}>lunamira AI 记得你未曾发觉的每一件小事，也看得到你每次卓越的表现。</Text>
         </Animated.View>
 
         {/* ★ 2026-11-05（用户）：今日 / 本月 两个 tab 置于时间选择器上方 */}
@@ -275,6 +277,13 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
+    marginBottom: theme.space.xs,
+  },
+  /* ★ 本轮（用户）：回顾标题下的品牌句 */
+  reviewTagline: {
+    fontSize: theme.fontSize.sm,
+    color: mm.colors.inkFaint,
+    lineHeight: theme.fontSize.sm * 1.5,
     marginBottom: theme.space.md,
   },
   /* ★ 2026-11-06（用户）：回顾页 今日 / 本月 tab 加大字号、加宽（更醒目、更好点） */

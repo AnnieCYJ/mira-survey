@@ -14,7 +14,7 @@
  * ⚠️ 布局采用**固定行高 + 逐点生成 SVG 路径**（见 docs/design-tokens.md §10.9，禁 aspectRatio）。
  */
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -22,6 +22,7 @@ import { buildTodayTimeline } from '../lib/buildTodayTimeline';
 import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import type { TimelineItem } from './TodayTimelineCard';
+import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortByTime } from '../data/selfReportLog';
 
 const ROW_H = theme.sp(26);          // 每行 104：卡片区高
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
@@ -157,11 +158,40 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
     }
   }, [anchor, centerSel]);
 
+  // ★ 本轮（用户）：进入回顾即拉起回顾补充数据源；新记录产生（如用户在别的页刚完成饮食/心情）
+  //   即时合并进时间线，无需手动刷新。
+  const [, setRecapTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void ensureSelfReportsLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
+    const off = onSelfReport(() => { if (alive) setRecapTick((n) => n + 1); });
+    return () => { alive = false; off(); };
+  }, []);
+
   const result = useMemo(() => {
     try { return buildTodayTimeline(undefined, selDate); } catch { return null; }
   }, [selDate]);
 
-  const items: TimelineItem[] = result?.items ?? [];
+  // ★ 本轮（用户）：回顾补充数据源——用户在胶囊建议里完成的饮食 / 心情记录，
+  //   按时间插进当日生理时间线，让「刚做完的事」立刻出现在回顾·今日。
+  const recapItems: TimelineItem[] = useMemo(() => {
+    const dk = dayKey(selDate.getTime());
+    return getSelfReportsForDaySync(dk).map((sr) => ({
+      time: sr.time,
+      color: sr.color,
+      title: sr.title,
+      sub: sr.sub,
+      emoji: sr.emoji,
+      goalMet: false,
+      analysis: sr.analysis,
+      imageUri: sr.imageUri,
+    }));
+  }, [selDate]);
+
+  const items: TimelineItem[] = useMemo(
+    () => sortByTime<TimelineItem>([...(result?.items ?? []), ...recapItems]),
+    [result, recapItems],
+  );
   const totalH = Math.max(items.length, 1) * ROW_H;
   const wavePath = buildWavePath(totalH, items.length);
   const isSelToday = sameDay(selDate, new Date());
@@ -245,6 +275,10 @@ export default function JourneyDayView({ date }: { date?: Date } = {}) {
                     {!!it.sub && <Text style={styles.cardSub} numberOfLines={2}>{it.sub}</Text>}
                     {/* ★ 本轮（用户 #248）：卡片底部补一句分析 */}
                     {!!it.analysis && <Text style={styles.cardAnalysis} numberOfLines={2}>{it.analysis}</Text>}
+                    {/* ★ 本轮（用户）：饮食等带图记录，卡片内附图 */}
+                    {!!it.imageUri && (
+                      <Image source={{ uri: it.imageUri }} style={styles.cardPhoto} resizeMode="cover" />
+                    )}
                     <Text style={styles.cardTime}>{it.time}</Text>
                   </View>
                 </View>
@@ -341,6 +375,14 @@ const styles = StyleSheet.create({
   cardAnalysis: {
     fontSize: theme.fontSize.micro, color: mm.colors.limeDeep,
     lineHeight: theme.fontSize.micro * 1.45, marginTop: theme.sp(1),
+  },
+  // ★ 本轮（用户）：饮食记录卡片内附图
+  cardPhoto: {
+    marginTop: theme.sp(1.5),
+    width: '100%',
+    height: theme.sp(22),
+    borderRadius: theme.radius.sm,
+    backgroundColor: mm.colors.btnBusyBg,
   },
 
   sumBar: {

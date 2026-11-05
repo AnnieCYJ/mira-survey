@@ -23,6 +23,7 @@ import {
   type MealItem, type FoodLog, type Macros,
 } from '../lib/foodAi';
 import { analyzeElements, ELEMENT_META, type ElementKey } from '../lib/mealAnalysis';
+import { logSelfReport } from '../data/selfReportLog';
 import { useRingState } from '../hooks/useRingState';
 import { loadLastViewDate, saveLastViewDate } from '../lib/lastViewDate';
 import { loadCycleLog } from '../data/cycleLog';
@@ -295,6 +296,24 @@ export default function FoodScanScreen() {
     }
     const total = finalItems.reduce((s, it) => s + it.kcal, 0);
     setLogs(saveFoodLog({ dateKey: todayKey, source, items: finalItems, totalKcal: total, photoUri: persistUri }));
+    // ★ 本轮（用户）：保存这餐时，同时写一条回顾摘要（带图 + 鼓励句），让「刚记的饮食」立刻出现在回顾·今日。
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const photoForRecap =
+      persistUri && !persistUri.startsWith('file:') && !persistUri.startsWith('/')
+        ? `${FileSystem.documentDirectory}${persistUri}`
+        : persistUri;
+    void logSelfReport({
+      type: 'food',
+      dk: todayKey,
+      time: hhmm,
+      title: '记录饮食',
+      sub: `${finalItems.map((it) => it.name).join('、')} · 约 ${total} 千卡`,
+      analysis: '吃进肚子里的，身体都记得。',
+      imageUri: photoForRecap ?? undefined,
+      emoji: '🍽️',
+      color: mm.colors.honeyCore,
+    });
     setItems([]);
     setPicked(new Set());
     setPhotoUri(null);
