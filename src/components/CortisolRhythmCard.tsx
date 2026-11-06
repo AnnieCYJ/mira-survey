@@ -30,12 +30,21 @@ const LEVEL_META: Record<string, { label: string; color: string }> = {
 
 const LOOKBACK_DAYS = 14;
 
-/** 拉取近 14 天 cortisol 逐样本（已剔除零值），含离线回填日。 */
+/**
+ * 拉取近 14 天 cortisol 逐样本（已剔除零值）。**只含实测日**。
+ *
+ * ★ 2026-11-06 审查（docs/audit/02 🟡#2）：**过滤推算日**。
+ *   cortisol 的历史样本大多来自 offlineEstimates 的 stress 线性换算
+ *   （cortisol = stress × 1.6 + 20），不是戒指实测。
+ *   把推算样本喂进 cosinor 拟合，会得出「晨峰 08:00 / 节律良好」这类
+ *   基于编造数据的生理节律结论。现只保留实测日样本。
+ */
 export function collectSamples(): CortisolSample[] {
   const out: CortisolSample[] = [];
   const now = Date.now();
   for (let i = 0; i < LOOKBACK_DAYS; i++) {
     const dk = dayKey(now - i * 86400000);
+    if (healthStore.isDerivedDay('cortisol', dk)) continue;   // ★ 跳过推算日
     const arr = healthStore.getIntraday('cortisol', dk);
     for (const p of arr) {
       if (typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0) out.push({ t: p.t, v: p.v });
@@ -44,16 +53,24 @@ export function collectSamples(): CortisolSample[] {
   return out;
 }
 
-/** 拉取指定某一天的 cortisol 逐样本（已剔除零值）。用于身体恢复详情页按 anchor 日查看。 */
+/**
+ * 拉取指定某一天的 cortisol 逐样本（已剔除零值）。用于身体恢复详情页按 anchor 日查看。
+ * ★ 2026-11-06（审查 02 🟡#2）：推算日不取 —— 否则单日视图也是一张换算出来的曲线。
+ */
 export function collectSamplesForDay(dk: string): CortisolSample[] {
   const out: CortisolSample[] = [];
+  if (healthStore.isDerivedDay('cortisol', dk)) return out;
   for (const p of healthStore.getIntraday('cortisol', dk)) {
     if (typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0) out.push({ t: p.t, v: p.v });
   }
   return out;
 }
 
-/** 拉取 [startMs, endMs] 闭区间内所有天的 cortisol 逐样本（已剔除零值）。用于周/月/年区间聚合。 */
+/**
+ * 拉取 [startMs, endMs] 闭区间内所有天的 cortisol 逐样本（已剔除零值）。用于周/月/年区间聚合。
+ * ★ 2026-11-06（审查 02 🟡#2）：区间基线同样过滤推算日 —— 30 分钟窗基线若含推算值，
+ *   整张皮质醇节律卡的参照系就全是换算出来的。
+ */
 export function collectSamplesForRange(startMs: number, endMs: number): CortisolSample[] {
   const out: CortisolSample[] = [];
   const cur = new Date(startMs);
@@ -61,8 +78,11 @@ export function collectSamplesForRange(startMs: number, endMs: number): Cortisol
   const end = new Date(endMs);
   end.setHours(23, 59, 59, 999);
   while (cur.getTime() <= end.getTime()) {
-    for (const p of healthStore.getIntraday('cortisol', dayKey(cur.getTime()))) {
+    const dk = dayKey(cur.getTime());
+    if (!healthStore.isDerivedDay('cortisol', dk)) {
+    for (const p of healthStore.getIntraday('cortisol', dk)) {
       if (typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0) out.push({ t: p.t, v: p.v });
+    }
     }
     cur.setDate(cur.getDate() + 1);
   }
@@ -151,7 +171,7 @@ export default function CortisolRhythmCard() {
         <Text style={styles.hint}>
           暂无足够的皮质醇数据。连上戒指并开启自动监测后，约 1 天即可开始分析昼夜节律。
         </Text>
-        <Text style={styles.disclaimer}>基于戒指压力代理值（非化验级皮质醇），仅供趋势参考。</Text>
+        <Text style={styles.disclaimer}>基于戒指压力代理值（非化验级皮质醇），且仅使用实测日样本；仅供趋势参考。</Text>
       </Card>
     );
   }

@@ -95,6 +95,19 @@ export interface HistoryResult {
   lo: number | null;
   multiDay: boolean;
   note?: string;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🟡#1）：本区间内**含推算值**的日期集合。
+   *   周 / 月 / 年视图的每一根柱都对应一个（或一段）日期，取数链路
+   *   （dailyValueFor → healthStore.getIntraday）**不区分推算日与实测日**，
+   *   所以推算柱与实测柱长得一模一样。UI 必须靠这个字段显式告知用户。
+   *   键为 dateKey('YYYY-MM-DD')；年视图为「该月内含推算日」的月份首日。
+   */
+  derivedDayKeys?: string[];
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🟡#1）：与 `points` **索引对齐**的推算位置。
+   *   （周/月：index = 第几天；年：index = 第几个月。）UI 用它把推算柱单独着色。
+   */
+  derivedIndexes?: number[];
 }
 
 function dayMean(pts: TimePoint[] | undefined): number | null {
@@ -635,12 +648,23 @@ export function buildHistorySeries(
   if (range === 'week' || range === 'month') {
     const out: (number | null)[] = [];
     const axis: string[] = [];
+    // ★ 2026-11-06 审查（docs/audit/02 🟡#1）：收集区间内的推算日，供 UI 标注。
+    const derivedDayKeys: string[] = [];
+    const derivedIndexes: number[] = [];
+    const trackDerived = (dk: string, hasValue: boolean, idx: number) => {
+      if (hasValue && healthStore.isDerivedDay(hsKey, dk)) {
+        derivedDayKeys.push(dk);
+        derivedIndexes.push(idx);
+      }
+    };
     if (range === 'week') {
       const mon = startOfWeek(anchor);
       for (let i = 0; i < 7; i++) {
         const d = addDays(mon, i);
         const dk = dateKeyOf(d.getTime());
-        out.push(dailyValueFor(key, dk));
+        const v = dailyValueFor(key, dk);
+        out.push(v);
+        trackDerived(dk, v != null, i);
         axis.push(`${d.getMonth() + 1}/${d.getDate()}`);
       }
     } else {
@@ -649,7 +673,9 @@ export function buildHistorySeries(
       const dim = new Date(y, m0 + 1, 0).getDate();
       for (let day = 1; day <= dim; day++) {
         const dk = dateKeyOf(new Date(y, m0, day).getTime());
-        out.push(dailyValueFor(key, dk));
+        const v = dailyValueFor(key, dk);
+        out.push(v);
+        trackDerived(dk, v != null, day - 1);
         axis.push(`${day}`);
       }
     }
@@ -660,23 +686,37 @@ export function buildHistorySeries(
       : `${def.name} 的多日趋势来自 healthStore 按天归档与持续佩戴累积；当前范围内仅有少量真实数据，缺口为未记录或未同步之日。`;
     const res = finalize(out, def, multiDay, note);
     res.axisOverride = axis;
+    if (derivedDayKeys.length) {
+      res.derivedDayKeys = derivedDayKeys;
+      res.derivedIndexes = derivedIndexes;
+    }
     return res;
   }
 
   // 年：按月均值趋势（12 个点，每月一个均值；缺口 null 断线）。
   const out: (number | null)[] = [];
   const axis: string[] = [];
+  // ★ 2026-11-06 审查（docs/audit/02 🟡#1）：年视图按月聚合 → 收集「含推算日」的月份。
+  const derivedDayKeys: string[] = [];
+  const derivedIndexes: number[] = [];
   const y = anchor.getFullYear();
   for (let mo = 0; mo < 12; mo++) {
     const mdim = new Date(y, mo + 1, 0).getDate();
     let sum = 0;
     let cnt = 0;
+    let monthHasDerived = false;
     for (let day = 1; day <= mdim; day++) {
-      const v = dailyValueFor(key, dateKeyOf(new Date(y, mo, day).getTime()));
+      const dk = dateKeyOf(new Date(y, mo, day).getTime());
+      const v = dailyValueFor(key, dk);
       if (v != null) {
         sum += v;
         cnt += 1;
+        if (healthStore.isDerivedDay(hsKey, dk)) monthHasDerived = true;
       }
+    }
+    if (monthHasDerived) {
+      derivedDayKeys.push(dateKeyOf(new Date(y, mo, 1).getTime()));
+      derivedIndexes.push(mo);
     }
     out.push(cnt ? sum / cnt : null);
     axis.push(`${mo + 1}月`);
@@ -684,5 +724,9 @@ export function buildHistorySeries(
   const nonNull = out.filter((v) => v != null).length;
   const res = finalize(out, def, nonNull > 1);
   res.axisOverride = axis;
+  if (derivedDayKeys.length) {
+    res.derivedDayKeys = derivedDayKeys;
+    res.derivedIndexes = derivedIndexes;
+  }
   return res;
 }

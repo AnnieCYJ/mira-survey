@@ -965,6 +965,29 @@ export class HealthStore {
     return out;
   }
 
+  /**
+   * 取某指标近 N 天的日均值数组（最新在前）。**跳过推算日**。
+   *
+   * ★ 2026-11-06 审查（docs/audit/02 🟡#3）：给 AI 趋势摘要用的版本。
+   *   eda / sns / cortisol / emotion / skin / fatigue 的 daily 里混有
+   *   offlineEstimates 的推算日（stress 线性换算）。若不剔除，AI 会把
+   *   换算值当实测统计报出（「近 7 天皮电均值 42.3」）。
+   */
+  getMetricDailyMeansMeasured(metric: MetricKey, days = 7): number[] {
+    const store = this.stores[metric];
+    if (!store) return [];
+    const out: number[] = [];
+    const now = Date.now();
+    for (let i = 0; i < days; i++) {
+      const dk = dayKey(now - i * 86400000);
+      if (store.derivedDays?.[dk] === 1) continue;   // ★ 跳过推算日
+      const d = store.daily?.[dk];
+      if (d && d.last != null && !Number.isNaN(d.last)) out.push(d.last);
+      else if (d && d.mean != null && !Number.isNaN(d.mean)) out.push(d.mean);
+    }
+    return out;
+  }
+
   /** 取某指标近 N 天的日均值数组（最新在前，旧的在后）。跳过没数据的日子。 */
   getMetricDailyMeans(metric: MetricKey, days = 7): number[] {
     const store = this.stores[metric];
@@ -1026,6 +1049,13 @@ export class HealthStore {
   /** 从旧 v1 快照（RingState 的 *Daily/seriesByDay/extDaily/ecgDaily）迁移。 */
   migrateFromV1(snap: any): void {
     if (!snap || typeof snap !== 'object') return;
+    // ★ 2026-11-06 审查（docs/audit/02 🟡#4）：v1 快照里混着「实测」与「离线推算」两类值。
+    //   旧实现统一写 source:'backfill' 且**不打 derivedDays**，等于给推算值做了洗白：
+    //   isDerivedDay() 会把它们当成实测日 → measuredOnly 保护失效、
+    //   patterns 的实测过滤失效、AI 会标 source:'measured'。
+    //   现在：能判定为推算来源的指标一律打 derivedDays 标；
+    //   快照里带明确推算标记（derivedDays / derived）的日也打标。
+    const DERIVED_ONLY_KEYS = new Set<MetricKey>(['eda', 'sns', 'cortisol', 'emotion', 'skin', 'fatigue']);
     const moveDaily = (src: Record<string, any> | undefined, key: MetricKey) => {
       if (!src) return;
       const store = this.stores[key];
@@ -1039,6 +1069,12 @@ export class HealthStore {
         store.daily[dk] = {
           mean: v, min: v, max: v, last: v, samples: 1, source: 'backfill', updatedAt: Date.now(),
         };
+        // ★ 打推算标：v1 里这些指标本就只有推算来源，或快照自带 derived 标记。
+        const rawMarked = (snap.derivedDays && snap.derivedDays[rawK]) || (snap.derived && snap.derived[rawK]);
+        if (rawMarked || DERIVED_ONLY_KEYS.has(key)) {
+          if (!store.derivedDays) store.derivedDays = {};
+          store.derivedDays[dk] = 1;
+        }
       }
     };
     const moveSeries = (src: Record<string, any> | undefined, key: MetricKey) => {

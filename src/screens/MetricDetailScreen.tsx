@@ -427,6 +427,7 @@ function ecgWaveformPath(values: number[]): string {
  * 柱高基于指标固定量程（默认 0–100），与日视图同尺度。 */
 function RangeBarsChart({
   points, labels, range, colorOf, yMin, yMax, unit, valueFmt, showYAxis, emptyText, moodMarkers,
+  derivedIndexes,
 }: {
   points: (number | null)[];
   labels: string[];
@@ -445,6 +446,12 @@ function RangeBarsChart({
    *   画在**绘图区顶部**（每根柱的正上方），不是标题上方。
    */
   moodMarkers?: { index: number; mood: MoodKey }[] | null;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🟡#1）：与 points 索引对齐的**推算位置**。
+   *   推算柱（由压力值换算，非戒指实测）用虚线描边 + 半透明填充区分，
+   *   否则推算柱与实测柱长得一模一样。
+   */
+  derivedIndexes?: number[] | null;
 }) {
   const [w, setW] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
@@ -510,7 +517,23 @@ function RangeBarsChart({
                 const x = barX(i);
                 const y = yAt(v);
                 const h = Math.max(1, baseY - y);
-                return <Rect key={`b-${i}`} x={x} y={y} width={barW} height={h} rx={2} fill={colorOf(v) ?? mm.colors.ink} />;
+                const base = colorOf(v) ?? mm.colors.ink;
+                // ★ 2026-11-06 审查（docs/audit/02 🟡#1）：推算柱单独区分 ——
+                //   半透明填充 + 虚线描边，与实测柱视觉可辨。
+                if (derivedIndexes && derivedIndexes.includes(i)) {
+                  return (
+                    <Rect
+                      key={`b-${i}`}
+                      x={x} y={y} width={barW} height={h} rx={2}
+                      fill={base}
+                      fillOpacity={0.32}
+                      stroke={base}
+                      strokeWidth={1}
+                      strokeDasharray="3 2"
+                    />
+                  );
+                }
+                return <Rect key={`b-${i}`} x={x} y={y} width={barW} height={h} rx={2} fill={base} />;
               })}
             </Svg>
           ) : null}
@@ -687,6 +710,19 @@ export default function MetricDetailScreen() {
     }
     return built;
   }, [params.key, range, ring, cycleLog, anchor, isBaseLayout]);
+
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🟡#1）：周 / 月 / 年视图的推算日提示。
+   *   日视图已有「（当日历史数据为推算值）」，但周/月/年没有 ——
+   *   同一屏内两种口径不一致，用户会以为周视图的数据更可靠。
+   *   这里统一在图表下方说明「本区间含 N 天为推算值」。
+   */
+  const derivedRangeNote = useMemo(() => {
+    const keys = series.derivedDayKeys;
+    if (!keys || keys.length === 0) return null;
+    const unit = range === 'year' ? '个月' : '天';
+    return `本区间含 ${keys.length} ${unit}为推算值（由压力值换算，非戒指实测），已用浅色标出。`;
+  }, [series.derivedDayKeys, range]);
 
   // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)，其余回落 params.color / 主色紫
   const color = (() => {
@@ -1570,7 +1606,10 @@ export default function MetricDetailScreen() {
               showYAxis={!hideYAxis}
               emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
               moodMarkers={rangeMoodMarkers}
+              derivedIndexes={series.derivedIndexes}
             />
+            {/* ★ 2026-11-06 审查（docs/audit/02 🟡#1）：周/月/年视图必须说明推算日占比。 */}
+            {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
           </View>
         ) : null}
 
@@ -1602,7 +1641,9 @@ export default function MetricDetailScreen() {
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
               emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              derivedIndexes={series.derivedIndexes}
             />
+            {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
           </View>
         ) : null}
 
@@ -1623,7 +1664,9 @@ export default function MetricDetailScreen() {
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
               emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              derivedIndexes={series.derivedIndexes}
             />
+            {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
           </View>
         ) : null}
 

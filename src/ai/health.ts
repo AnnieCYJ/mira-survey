@@ -49,11 +49,14 @@ function trendDir(vals: number[]): string {
 
 function metricHistorySummary(metric: MetricKey, days = 7): string | null {
   try {
-    const vals = healthStore.getMetricDailyMeans(metric, days);
+    // ★ 2026-11-06 审查（docs/audit/02 🟡#3）：只用**实测日**样本。
+    //   推算日（offlineEstimates 的 stress 线性换算）不参与统计，
+    //   避免把换算值当实测报出（「近 7 天皮电均值 42.3」）。
+    const vals = healthStore.getMetricDailyMeansMeasured(metric, days);
     if (vals.length < 2) return null;
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const dir = trendDir(vals.slice().reverse());
-    return `近${days}天均值 ${fmt(mean)}，${dir}`;
+    return `近${days}天实测均值 ${fmt(mean)}，${dir}`;
   } catch { return null; }
 }
 
