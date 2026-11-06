@@ -7,6 +7,7 @@ import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import Icon from './Icon';
 import EcgMeasureSheet from './EcgMeasureSheet';
+import { useDeviceModel, hasCap } from '../config/deviceModel';
 
 interface Props {
   ring: RingState;
@@ -66,9 +67,18 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
   }, [isMeasuring]);
   const displayProgress = isMeasuring ? Math.max(progress, anim) : progress;
 
-  // ★ 2026-10-16：设备能力门禁——ecgType=0 表示当前戒指固件不支持 ECG，提前告知而非盲目测量后卡死
-  const ecgType = ring.deviceCapabilities?.ecgType;
-  const ecgUnsupported = ecgType === 0;
+// ★ 2026-10-16：设备能力门禁——ecgType=0 表示当前戒指固件不支持 ECG，提前告知而非盲目测量后卡死
+// ★ 2026-11-06 审查（docs/audit/03 🔴#2）：双保险判定 ——
+//   ① 机型档位（权威）：BASE_UI 无 ECG 传感器 → 直接判不支持。
+//   ② 固件能力字段（补充）：ring.deviceCapabilities 目前**恒为 null**
+//      （RingBleManager.handleDeviceCapabilities 从未被 reg(...) 注册，
+//       iOS/Android 原生也没有 onDeviceCapabilities 事件），故 ecgType 恒为 undefined。
+//   旧逻辑 `ecgType === 0` 把 undefined 当成「支持」→ 基础版照常显示测量入口，
+//   点下去原生无回包，用户盯着「测量中」直到 120s 超时 —— 必然失败且失败得极慢。
+//   现按「无证据证明有 ECG 就不展示 ECG」的原则修正。
+const { model } = useDeviceModel();
+const ecgType = ring.deviceCapabilities?.ecgType;
+const ecgUnsupported = !hasCap(model, 'ecg') || ecgType === 0;
 
   // ★ 2026-10-16：测量超时兜底——原生无回包时 UI 会永久停在「测量中」；
   //   120s 内未出结果则主动 abort（停测 + 清进度 + 写 ecgError），并提示用户重试。

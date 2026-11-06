@@ -418,7 +418,16 @@ export function resolveProfileByCapabilities(
 ): DeviceProfileId | null {
   if (!caps) return null;
   // ECG 是 Pro 与基础版的唯一硬件硬区分（基础版无 ECG 传感器）
-  if (Number(caps.ecgType) > 0) return 'PRO_UI';
+  //
+  // ★ 2026-11-06 审查（docs/audit/03 🟡#6）：只有在**确实读到 ecgType** 时才下结论。
+  //   旧实现里 ecgType 缺失（undefined）时 Number(undefined) > 0 → false → 判 BASE_UI。
+  //   而 detectProfile 的 caps 层优先级最高 → 会把 MAC / 广播名判定整个短路掉。
+  //   实锤：iOS VeepooRing.m 在 connectedModel 尚未就绪时透传的是**空字典 {}**（pm 为 nil），
+  //   那样一台 Pro 设备会被永久持久化成 BASE_UI（用户侧：ECG/血压/血糖入口全部消失）。
+  //   修正：ecgType 缺失 → 返回 null，交回 MAC / 广播名判定；三条线索都拿不到时由调用方保留上一档。
+  const ecgType = caps.ecgType;
+  if (typeof ecgType !== 'number' || !Number.isFinite(ecgType)) return null;
+  if (ecgType > 0) return 'PRO_UI';
   return 'BASE_UI';
 }
 

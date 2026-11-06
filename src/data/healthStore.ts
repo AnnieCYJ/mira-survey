@@ -284,15 +284,30 @@ function mergeRealtime(prev: TimePoint[] | undefined, incoming: TimePoint): Time
  */
 const SIGNED_METRICS = new Set<string>(['emotion']);
 
+/**
+ * ★ 2026-11-06 审查（docs/audit/04 🔴-3）：**零值有效**指标 —— 0 是合法档位，不是「无测量」占位符。
+ *   原生 VeepooRing.m:1658 / :1710 对 depressionRisk 的判定是 `>= 0`（而非其余指标的 `> 0`），
+ *   协议侧明确认为 0 = 「抑郁风险正常」是有效读数。
+ *   但旧实现一律用 `v > 0` 过滤、RingBleManager 的 extract() 也用 `v <= 0` 丢弃，
+ *   导致「抑郁风险 = 0（正常）」这一最常见读数在数据层被完整丢弃 → 指标卡恒空。
+ *
+ *   语义区分（务必分清）：
+ *   - SIGNED_METRICS：值域含**负数**（emotion -10~10）
+ *   - ZERO_VALID_METRICS：值域是**离散档位且 0 合法**（depressionRisk 0/1/2）
+ */
+const ZERO_VALID_METRICS = new Set<string>(['depressionRisk']);
+
 function recomputeDaily(
   intraday: TimePoint[],
   prevDaily: DayMetric | undefined,
   source: Source,
   key?: string,
 ): DayMetric {
-  // ★ 生理指标 0/负数=原生 SDK 占位符（无测量）；emotion 等带符号指标例外，0/负是有效值。
+  // ★ 生理指标 0/负数=原生 SDK 占位符（无测量）；
+  //   emotion（带符号）与 depressionRisk（零值有效档位）例外。
   const signed = key ? SIGNED_METRICS.has(key) : false;
-  const clean = intraday.filter((p) => Number.isFinite(p.v) && (signed || p.v > 0));
+  const zeroValid = key ? ZERO_VALID_METRICS.has(key) : false;
+  const clean = intraday.filter((p) => Number.isFinite(p.v) && (signed || zeroValid || p.v > 0));
   const vals = clean.map((p) => p.v);
   const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   const min = vals.length ? Math.min(...vals) : null;

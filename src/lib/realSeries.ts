@@ -142,7 +142,13 @@ function bucketByHour(pts: TimePoint[] | undefined): (number | null)[] {
 }
 
 function lastNonNull(vals: (number | null)[]): number | null {
-  for (let i = vals.length - 1; i >= 0; i--) if (vals[i] != null) return vals[i];
+  // ★ 2026-11-06 审查（docs/audit/04 🔴-4）：NaN 也必须视为「无值」。
+  //   旧实现只判 != null，NaN 会通过 → latest/avg/hi/lo 变成 NaN →
+  //   hero 数值显示 "NaN"、SVG path 画出 NaN 坐标（整条曲线消失或画穿坐标轴）。
+  for (let i = vals.length - 1; i >= 0; i--) {
+    const v = vals[i];
+    if (v != null && Number.isFinite(v)) return v;
+  }
   return null;
 }
 
@@ -159,7 +165,11 @@ function finalize(
   multiDay: boolean,
   note?: string
 ): HistoryResult {
-  const real = vals.filter((v): v is number => v != null);
+  // ★ 2026-11-06 审查（docs/audit/04 🔴-4）：过滤 NaN/Infinity，不只是 null。
+  //   否则 avg/hi/lo 变 NaN → hero 显示 "NaN"；points 里残留的 NaN 也会让 SVG 路径失效。
+  const real = vals.filter((v): v is number => v != null && Number.isFinite(v));
+  // points 里的 NaN 归一为 null（图表层按「断点」处理，不画穿坐标轴）
+  const safeVals = vals.map((v) => (v != null && Number.isFinite(v) ? v : null));
   const latest = lastNonNull(vals);
   const avg = real.length ? real.reduce((a, b) => a + b, 0) / real.length : null;
   const hi = real.length ? Math.max(...real) : null;
@@ -167,7 +177,7 @@ function finalize(
   return {
     kind: 'signal',
     continuous: false,
-    points: vals,
+    points: safeVals,
     unit: def.unit,
     yMin: def.yMin,
     yMax: def.yMax,
@@ -190,7 +200,9 @@ function finalizeContinuous(
   note?: string
 ): HistoryResult {
   const real = tps.map((p) => p.v).filter((v) => Number.isFinite(v));
-  const latest = tps.length ? tps[tps.length - 1].v : null;
+  // ★ 2026-11-06 审查（🔴-4）：最后一个点可能是 NaN → latest 变 NaN → hero 显示 "NaN"。
+  //   改为「最后一个**有限**值」。
+  const latest = lastNonNull(tps.map((p) => p.v));
   const avg = real.length ? real.reduce((a, b) => a + b, 0) / real.length : null;
   const hi = real.length ? Math.max(...real) : null;
   const lo = real.length ? Math.min(...real) : null;

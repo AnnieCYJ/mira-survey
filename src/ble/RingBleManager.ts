@@ -1070,15 +1070,25 @@ class NativeRingSource {
       // ★ 带符号指标：emotion 值域 [-10,10] 含负数（消极/低落），0/负是有效值，
       //   不能用「生理指标 0/负=占位符」的守卫砍掉，否则情绪点阵只剩开心/兴奋。
       const SIGNED_HKEYS = new Set<string>(['emotion']);
+      /**
+       * ★ 2026-11-06 审查（docs/audit/04 🔴-3）：**零值有效**指标。
+       *   原生 VeepooRing.m:1658 / :1710 对 depressionRisk 用 `>= 0` 判定（其余指标是 `> 0`），
+       *   协议侧明确认为 0 = 「抑郁风险正常」是有效读数。
+       *   旧实现 `if (!signed && v <= 0) continue;` 把它当占位符丢弃 →
+       *   「抑郁风险正常」这一最常见读数根本进不了 healthStore → 指标卡恒空。
+       */
+      const ZERO_VALID_HKEYS = new Set<string>(['depressionRisk']);
       const extract = (nativeKey: string): Array<{ t: number; v: number }> => {
         const hsKey = METRIC_MAP[nativeKey];
         if (!hsKey) return [];
         const signed = SIGNED_HKEYS.has(hsKey);
+        const zeroValid = ZERO_VALID_HKEYS.has(hsKey);
         const out: Array<{ t: number; v: number }> = [];
         for (const s of slots) {
           const v = num(s?.[nativeKey]);
           if (v == null || !Number.isFinite(v)) continue;
-          if (!signed && v <= 0) continue;  // 生理指标 0/负=占位符；emotion 等带符号指标保留
+          // 生理指标 0/负=占位符；emotion（带符号）与 depressionRisk（0 合法档位）保留
+          if (!signed && !zeroValid && v <= 0) continue;
           const t = parseSampleTs(date, s?.time ?? s?.t ?? '');
           if (t == null) continue;
           out.push({ t, v });
@@ -1735,8 +1745,18 @@ class NativeRingSource {
       if (reading.aveResRate > 0) {
         this.pushMetric({ key: 'rr', value: reading.aveResRate, unit: '次/分', ts: reading.ts });
       }
-    } catch {
-      /* ECG 解析失败静默 */
+    } catch (e) {
+      // ★ 2026-11-06 审查（docs/audit/03 🟡#16）：ECG 解析失败必须写 ecgError 并清进度。
+      //   旧实现静默吞错 → ecgProgress 保持原值 → EcgCard 的 isMeasuring 恒为 true →
+      //   UI 永远停在「测量中 N%」，用户唯一出路是等 120s 超时 Alert。
+      //   对齐 handleEcgProgress 的失败处理口径（见上方 :1749-1753）。
+      _postLog('RingBle', `[handleEcg] ❌ 解析失败：${e}`);
+      this._ecgLiveBuf = [];
+      this.push({
+        ecgProgress: null,
+        ecgLiveWaveform: null,
+        ecgError: '心电图数据解析失败，请重新测量',
+      });
     }
   };
 

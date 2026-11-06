@@ -457,7 +457,11 @@ function RangeBarsChart({
     return PAD_T + (1 - (c - yLo) / (yHi - yLo || 1)) * plotH;
   };
   const n = points.length;
-  const hasData = points.some((p) => p != null);
+  // ★ 2026-11-06 审查（docs/audit/04 🟡-1）：NaN 必须与 null 同等对待。
+  //   旧实现只判 != null → NaN 通过 → yAt(NaN) 落到 yLo → 画出一根基线处的「假最小柱」，
+  //   看起来像真实的极小值，而不是数据缺失。
+  const isValid = (p: number | null): p is number => p != null && Number.isFinite(p);
+  const hasData = points.some((p) => isValid(p));
   const slotW = n > 0 ? plotW / n : plotW;
   const barW = Math.max(2, slotW * 0.5);
   const barX = (i: number) => PAD_L + (i + 0.5) * slotW - barW / 2;
@@ -474,7 +478,7 @@ function RangeBarsChart({
       if (d < bestD) { bestD = d; best = i; }
     }
     const v = points[best];
-    if (v == null) { setTip(null); return; }
+    if (!isValid(v)) { setTip(null); return; }
     setTip({ x: barX(best) + barW / 2, y: yAt(v), label: labels[best] ?? '', value: valueFmt(v), color: colorOf(v) ?? mm.colors.ink });
   };
   return (
@@ -502,7 +506,7 @@ function RangeBarsChart({
                 <Line key={`g-${i}`} x1={PAD_L} y1={yAt(gv)} x2={W - PAD_R} y2={yAt(gv)} stroke={theme.colors.ui.borderSoft} strokeWidth={chart.lw.grid} />
               ))}
               {points.map((v, i) => {
-                if (v == null) return null;
+                if (!isValid(v)) return null;
                 const x = barX(i);
                 const y = yAt(v);
                 const h = Math.max(1, baseY - y);

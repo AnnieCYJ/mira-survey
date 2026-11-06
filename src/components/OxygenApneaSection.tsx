@@ -31,6 +31,14 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
   const [loading, setLoading] = useState(false);
   const a = ring.oxygenAnalysis;
   const osahs = a ? (OSAHS_LEVELS[a.osahsResult] ?? OSAHS_LEVELS[-1]) : null;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/03 🔴#1）：渲染层防御。
+   *   oxygenAnalysis 是**可写字段**（快照恢复 / 未来新增写入路径都可能塞进缺字段的对象），
+   *   而 `a.freqTimes.length` 一旦 freqTimes 为 undefined 就抛 TypeError →
+   *   React 渲染期抛错 → 整页白屏（血氧页与睡眠恢复页同时中招）。
+   *   当前唯一写入点有 Array.isArray 守卫，但不应只靠「单一写入点的纪律」兜底。
+   */
+  const freqTimes: string[] = Array.isArray(a?.freqTimes) ? a.freqTimes : [];
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -54,11 +62,13 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均血氧</Text>
-              <Text style={[styles.statValue, { color: mm.colors.skyDeep }]}>{a.aveOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
+              <Text style={[styles.statValue, { color: mm.colors.skyDeep }]}>{a.aveOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
+              {!a.aveOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>最低血氧</Text>
-              <Text style={[styles.statValue, { color: a.minOxygen > 0 && a.minOxygen < 90 ? mm.colors.roseMid : theme.colors.textTitle }]}>{a.minOxygen || '—'}<Text style={styles.statLabel}> %</Text></Text>
+              <Text style={[styles.statValue, { color: a.minOxygen > 0 && a.minOxygen < 90 ? mm.colors.roseMid : theme.colors.textTitle }]}>{a.minOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
+              {!a.minOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>呼吸暂停</Text>
@@ -84,9 +94,9 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
               {!a.aveCardiacLoad ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
           </View>
-          {a.freqTimes.length > 0 ? (
+          {freqTimes.length > 0 ? (
             <View style={styles.note}>
-              <Text style={styles.note}>呼吸暂停频现时段：{a.freqTimes.join('、')}</Text>
+              <Text style={styles.note}>呼吸暂停频现时段：{freqTimes.join('、')}</Text>
             </View>
           ) : null}
           <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
