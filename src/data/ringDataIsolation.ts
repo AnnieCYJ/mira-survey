@@ -27,7 +27,12 @@
  *   ✅ 有：体温（日均，℃）
  *   ❌ 无：EDA 皮电、独立皮肤温度、健康一览 temp、gsr 里的温度
  */
-import { getStoredDeviceInfo } from '../config/deviceModel';
+import {
+  ALL_NATIVE_METRIC_KEYS,
+  DEFAULT_DEVICE_PROFILE,
+  getProfile,
+  getStoredDeviceInfo,
+} from '../config/deviceModel';
 
 /** 当前在用的 LunaMira 基础版 MAC（用户 2026-11-05 确认） */
 export const CURRENT_BASE_RING_ID = '41:42:E7:17:9B:1C';
@@ -82,7 +87,18 @@ export function saneBodyTemp(v: unknown): number | null {
  * 基础版禁止回退到本机 healthStore 历史归档的指标。
  * healthStore 里混着 HK18 时期写入的 temp / skinTemp / eda 值（详情页曾显示 39℃），
  * 与当前戒指无关。这些指标只允许用 ring.metrics / ring.daily 的当前戒指日值。
+ *
+ * ★ v18.134（审查 03 🔵#22）：改为**从 deviceModel 自动派生** ——
+ *   凡基础版 Profile（BASE_UI）的 nativeMetrics 不含的原生指标，一律拉黑。
+ *   以后在 NATIVE_METRIC_CATALOG 新增 Pro 专属指标（如 bloodGlucose）时，
+ *   只要不加进 BASE_NATIVE_METRICS 就会自动进黑名单，不再依赖手工同步。
  */
-export const LEGACY_HISTORY_BLOCKED_KEYS: readonly string[] = [
-  'temp', 'skinTemp', 'eda', 'skin',
-];
+export const LEGACY_HISTORY_BLOCKED_KEYS: readonly string[] = (() => {
+  // 显式保留的历史键：协议语义上属「只此一路、别处兜底」的数据流，
+  // 即使基础版 nativeMetrics 变化也不允许从 healthStore 历史归档回填。
+  const manual: readonly string[] = ['temp', 'skinTemp', 'eda', 'skin'];
+  // 基础版原生不支持的指标（= 全集减去 BASE_UI nativeMetrics）自动拉黑
+  const baseMetrics = getProfile(DEFAULT_DEVICE_PROFILE).nativeMetrics;
+  const auto = ALL_NATIVE_METRIC_KEYS.filter((k) => !baseMetrics.includes(k));
+  return Array.from(new Set<string>([...manual, ...auto]));
+})();

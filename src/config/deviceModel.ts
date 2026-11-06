@@ -311,6 +311,11 @@ export const FIRMWARE_BUG_SHIELDS: Record<string, ProFeature[]> = {
  * ★ 2026-11-06 审查（docs/audit/03 🟡#9）：**始终返回副本** ——
  *   旧实现在无屏蔽时直接返回 `profile.features` 本体，调用方若误改返回值
  *   就会污染全局 Profile 定义（所有页面共享同一个对象）。
+ *
+ * ★ v18.134（审查 03 🔵#23）：生产链路请不要直接调本函数，统一走
+ *   `hasCap(profile, feature, firmware)`（内部即取 getEffectiveFeatures）。
+ *   原引用本函数的示例文件 ProfileAwareHome.example.tsx 已删除
+ *   （它未被任何地方 import，是死代码，却让人误以为门禁已在生产生效）。
  */
 export function getEffectiveFeatures(profile: DeviceProfile, firmware: string | null | undefined): DeviceCapabilities {
   const out: DeviceCapabilities = { ...profile.features };
