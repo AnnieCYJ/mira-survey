@@ -756,7 +756,7 @@ export default function InsightScreen() {
           <>
             {effSub === 'sleep' ? (
               <>
-                <SleepStructureCard dataStale={dataStale} segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} onPress={() => navigation.navigate('SleepDetail')} />
+                <SleepStructureCard dataStale={dataStale} segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} stagesSynthesized={!!ring.sleepStagesSynthesizedDays?.[dayKey(Date.now())]} onPress={() => navigation.navigate('SleepDetail')} />
                 <CortisolSleepSummary dataStale={dataStale} insightRows={recoveryRows} />
               </>
             ) : effSub === 'body' ? (

@@ -19,6 +19,8 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Icon from './Icon';
 import SleepStageChart from './SleepStageChart';
+// ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成分期图的「示意」免责提示
+import SynthesizedStagesNote from './SynthesizedStagesNote';
 import type { SleepSegment } from '../ble/RingBleManager';
 // ★ 2026-11-04（双机型）：Luna Mira 无温度传感器 → 体温行（含偏离）整行隐藏
 import { useDeviceModel, hasCap } from '../config/deviceModel';
@@ -81,13 +83,18 @@ interface Props {
   day: DaySleepAnalysis | null;
   /** 该日分期段（无数据时为 null → 显占位） */
   segments: SleepSegment[] | null;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🔴#3）：该日分期图是否为「按时长合成」。
+   *   true → 图下必须显示「示意」说明（时长是实测，时间轴分布是铺排的）。
+   */
+  stagesSynthesized?: boolean;
   phys: DayPhys;
   /** ★ 2026-10-12（用户）：生理信号行点击跳转洞察页基础指标详情页。
    *   传 null 则不显示箭头、不可点击。 */
   onOpenMetric?: (m: MetricJump) => void;
 }
 
-export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }: Props) {
+export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, stagesSynthesized }: Props) {
   const { model: dmModel } = useDeviceModel();
   const hasTempCap = hasCap(dmModel, 'temp');
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -169,6 +176,8 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric }:
           昨夜睡眠分期暂未同步。将戒指连接 App 后，后台会自动回填历史睡眠分期。
         </Text>
       ) : null}
+      {/* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成分期图必须告知用户。 */}
+      {stagesSynthesized && segments && segments.length > 0 ? <SynthesizedStagesNote /> : null}
 
       {/* ③ 详细数据（默认收起）：睡眠结构 + 作息与时机 + 生理信号 */}
       <Pressable onPress={toggleDetails} style={styles.moreHead} accessibilityRole="button"

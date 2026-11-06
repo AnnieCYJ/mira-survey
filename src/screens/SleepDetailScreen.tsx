@@ -507,6 +507,8 @@ export default function SleepDetailScreen() {
             day={dayAnalysis.day}
             segments={dayAnalysis.segs}
             phys={dayAnalysis.phys}
+            /* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：该日分期若走合成路径，需标注「示意」。 */
+            stagesSynthesized={!!ring.sleepStagesSynthesizedDays?.[sleepDayKey(anchor)]}
             onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
           />
 

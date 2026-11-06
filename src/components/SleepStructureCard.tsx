@@ -4,6 +4,8 @@ import { theme } from '../theme/theme';
 import Icon from './Icon';
 import { mm } from '../theme/mindmate';
 import SleepStageChart, { SLEEP_STAGE_META } from './SleepStageChart';
+// ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成分期图的「示意」免责提示
+import SynthesizedStagesNote from './SynthesizedStagesNote';
 import { formatSleepClockText } from '../lib/sleepTime';
 import type { SleepSegment, SleepSummary } from '../ble/RingBleManager';
 
@@ -26,6 +28,7 @@ export default function SleepStructureCard({
   fallbackTotalMinutes,
   onPress,
   dataStale,
+  stagesSynthesized,
 }: {
   segments: SleepSegment[] | null;
   summary: SleepSummary | null;
@@ -36,6 +39,11 @@ export default function SleepStructureCard({
   score: number | null;
   fallbackTotalMinutes?: number | null;
   onPress?: () => void;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🔴#3）：该日分期图是否为「按时长合成」。
+   *   true → 图下必须显示「示意」说明（时长是实测，时间轴分布是铺排的）。
+   */
+  stagesSynthesized?: boolean;
   /**
    * ★ v18.104 断流即空态（与首页圆环 / 昼夜节律卡同一口径）：
    *   戒指已经很久没回传新采样时，这张卡**整块走空态** —— 时长/入睡/起床/分期图/占比/评分全置「—」，
@@ -122,6 +130,9 @@ export default function SleepStructureCard({
         ))}
       </View>
       ) : null}
+
+      {/* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成分期图必须告知用户。 */}
+      {stagesSynthesized && showStages ? <SynthesizedStagesNote /> : null}
 
       {/* 摘要 */}
       <View style={styles.summaryRow}>

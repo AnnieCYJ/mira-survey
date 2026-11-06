@@ -315,6 +315,14 @@ export interface RingState {
   sleepStages: SleepSegment[] | null;
   /** 历史每天睡眠分期归档：dateKey('YYYY-MM-DD') → SleepSegment[]。backfill 逐日写入。 */
   sleepStagesDaily: Record<string, SleepSegment[]>;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🔴#3）：**哪些天的分期图是合成的**。
+   *   HK18/QH15 只返回各阶段「时长」、不返回逐分钟分期，SDK 无 curve/segments 时
+   *   会用 synthesizeSleepStages() 按典型睡眠周期铺排出一张 hypnogram。
+   *   各阶段「时长占比」= 实测值，但**夜内时间轴分布是编造的**，
+   *   与真实分期曲线在视觉上无法区分 → 必须标记并在 UI 显式告知。
+   */
+  sleepStagesSynthesizedDays?: Record<string, 1>;
   /** 昨夜睡眠摘要（总/深/浅/REM/评分/起夜） */
   sleepSummary: SleepSummary | null;
   /** sleepSummary 对应的日期；backfill 按 dn=0,1,2… 顺序读，避免后读的旧日期覆盖今天 */
@@ -2735,6 +2743,10 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       const cur = this.getState().sleepDaily;
       // 生成段
       let segs: SleepSegment[];
+      // ★ 2026-11-06 审查（docs/audit/02 🔴#3）：记录是否走了「合成」路径。
+      //   合成路径的各阶段时长是实测，但夜内时间轴分布是按典型睡眠周期铺排的
+      //   **示意图** —— 与真实分期曲线视觉上无法区分，必须打标并在 UI 告知。
+      let synthesized = false;
       if (Array.isArray(raw.curve) && raw.curve.length) {
         segs = mergeSleepCurve(raw.curve);
       } else if (Array.isArray(raw.segments) && raw.segments.length) {
@@ -2743,6 +2755,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
           .filter((s: any) => Number.isFinite(s.type) && Number.isFinite(s.start) && Number.isFinite(s.end));
       } else {
         segs = this.synthesizeSleepStages(v);
+        synthesized = true;
       }
       const dk = dateKeyOfStr(String(raw.date));
       healthStore.recordSleep(dk, v);
@@ -2756,6 +2769,11 @@ steps点数=${reshaped.steps?.length ?? 0}`,
         newStagesByDay[dk] = segs;
       }
       patch.sleepStagesDaily = newStagesByDay;
+      // ★ 2026-11-06 审查（docs/audit/02 🔴#3）：记录合成日，供 UI 标注。
+      const prevSynthDays = this.getState().sleepStagesSynthesizedDays ?? {};
+      const nextSynthDays = { ...prevSynthDays };
+      if (synthesized) nextSynthDays[dk] = 1; else delete nextSynthDays[dk];
+      patch.sleepStagesSynthesizedDays = nextSynthDays;
 
       const curDate = this.getState().sleepSummaryDate;
       if (v.total > 0 && (!curDate || dk >= curDate)) {
@@ -2979,6 +2997,26 @@ class BackendRingSource {
           : (data as BackendDevice)
         : list.find((d) => d.bound) || list[0] || null;
 
+      // ★ 2026-11-06 审查（docs/audit/02 🔴#4）：**设备身份黑名单守卫**。
+      //   后端设备列表里可能含 demo- / test-diag- 前缀的演示/诊断设备，也可能含
+      //   旧 HK18（LEGACY_RING_IDS）。ringDataIsolation 的约定是「任何真机展示链路
+      //   都不得读取」—— 这里必须硬拦，否则 start() → refreshDevice() →
+      //   refreshMetrics() 会把演示设备的数据直接写进 state.daily 与 healthStore。
+      if (dev && isBlockedRingDeviceId(dev.device_id)) {
+        this.deviceId = null;
+        emit({
+          status: 'idle',
+          error: '当前后端仅有演示 / 诊断设备，已阻止读取（不展示非真实测量数据）',
+          devices: list.map((d) => ({
+            id: d.device_id,
+            name: d.name || 'Mira Ring Pro',
+            rssi: null,
+            recommended: !!d.bound,
+          })),
+        });
+        return;
+      }
+
       if (!dev) {
         emit({
           status: 'idle',
@@ -3022,6 +3060,12 @@ class BackendRingSource {
 
   private async refreshMetrics(dailyOnly = false) {
     if (!this.deviceId) return;
+    // ★ 2026-11-06 审查（docs/audit/02 🔴#4）：兜底再拦一次 —— 演示 / 诊断 /
+    //   旧 HK18 设备的任何通道数据都不允许进入 state.daily 与 healthStore。
+    if (isBlockedRingDeviceId(this.deviceId)) {
+      this.deviceId = null;
+      return;
+    }
     const deviceId = this.deviceId;
     const now = Math.floor(Date.now() / 1000);
     const dayAgo = now - 86_400;
@@ -3203,7 +3247,25 @@ class BackendRingSource {
 
   async start() {
     this.stopTimers();
+    // ★ 2026-11-06 审查（docs/audit/02 🔴#4）：与 startDailyFallback 同口径 ——
+    //   先锁定当前可信戒指身份再拉数据；拿不到可信身份就宁可不出值。
+    //   旧实现直接 refreshDevice()，后端在「没带 device_id」时返回设备列表第一台，
+    //   可能就是 demo- / test-diag- / 旧 HK18 → 演示数据会经 refreshMetrics()
+    //   直接进 state.daily 与 healthStore。
+    const trusted = await trustedCurrentRingDeviceId();
+    if (isBlockedRingDeviceId(this.deviceId)) this.deviceId = null;
+    if (!this.deviceId) this.deviceId = trusted;
+    if (!this.deviceId) {
+      this.push({ status: 'idle', error: '未识别到当前戒指，已阻止读取（不展示非真实测量数据）' });
+      return;
+    }
     await this.refreshDevice();
+    // refreshDevice 可能用后端返回的 bound 设备覆盖 deviceId，这里再兜一次黑名单
+    if (isBlockedRingDeviceId(this.deviceId)) {
+      this.deviceId = null;
+      this.push({ status: 'idle', error: '后端设备为演示 / 诊断设备，已阻止读取（不展示非真实测量数据）' });
+      return;
+    }
     if (this.deviceId) {
       await this.refreshMetrics();
       this.startTimers();
@@ -3279,6 +3341,7 @@ class RingConnectionImpl {
     tempDaily: {},
     sleepStages: null,
     sleepStagesDaily: {},
+    sleepStagesSynthesizedDays: {},
     sleepSummary: null,
     sleepSummaryDate: null,
     sleepTime: null,
@@ -5535,6 +5598,9 @@ class RingConnectionImpl {
         dailyHistory: this.state.dailyHistory,
         sleepStages: this.state.sleepStages,
         sleepStagesDaily: this.state.sleepStagesDaily,
+        // ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成日标记必须一起持久化，
+        //   否则重启后 UI 会把示意图当成实测曲线展示。
+        sleepStagesSynthesizedDays: this.state.sleepStagesSynthesizedDays,
         sleepSummary: this.state.sleepSummary,
         // ★ 必须一起持久化（此前漏了）：sleepSummaryDate 是「sleepSummary 属于哪一天」的唯一凭据，
         //   漏存 → 重启后恒为 null → 历史日详情页会把「今天」的分期段错画到历史日上。
@@ -5954,6 +6020,7 @@ class RingConnectionImpl {
       if (snap.dailyHistory) patch.dailyHistory = snap.dailyHistory;
       if (snap.sleepStages) patch.sleepStages = snap.sleepStages;
       if (snap.sleepStagesDaily) patch.sleepStagesDaily = snap.sleepStagesDaily;
+      if (snap.sleepStagesSynthesizedDays) patch.sleepStagesSynthesizedDays = snap.sleepStagesSynthesizedDays;
       if (snap.sleepSummary) patch.sleepSummary = this.rescoreSleep(snap.sleepSummary);
       if (snap.sleepTime) patch.sleepTime = snap.sleepTime;
       if (snap.wakeTime) patch.wakeTime = snap.wakeTime;
@@ -6223,6 +6290,7 @@ class RingConnectionImpl {
       lastUpdated: { ...DEFAULT_LAST_UPDATED },
       sleepStages: null,
       sleepStagesDaily: {},
+      sleepStagesSynthesizedDays: {},
       sleepSummary: null,
       sleepTime: null,
       wakeTime: null,
