@@ -833,7 +833,8 @@ export default function MetricDetailScreen() {
     // 皮质醇：推算日不出曲线（空态）
     if (spec.measuredOnly && derived) return { blocked: true as const, dk, derived, buckets: null };
     const pts = healthStore.getIntraday(spec.key as HSMetricKey, dk);
-    const buckets = binByMinutes(pts, spec.binMin ?? 5, { dayStartMs: dayStart });
+    // ★ v18.134（审查 04 🔵-1）：传 metricKey → emotion 的负值样本不再被当占位符丢弃
+    const buckets = binByMinutes(pts, spec.binMin ?? 5, { dayStartMs: dayStart, metricKey: spec.key });
     const filled = bucketFilledCount(buckets);
     return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length };
   }, [isSpecDay, spec, anchor]);

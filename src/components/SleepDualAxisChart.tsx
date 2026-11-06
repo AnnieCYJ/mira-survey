@@ -76,7 +76,18 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
   const durMax = durMaxHours ?? Math.max(4, Math.ceil((Math.max(...(durVals.length ? durVals : [0]), 1) * 1.15) / 2) * 2);
 
   const yDur = (h: number) => PAD_T + ch * (1 - Math.max(0, Math.min(1, h / durMax)));
-  const yScore = (v: number) => PAD_T + ch * (1 - Math.max(0, Math.min(1, v / 100)));
+  // ★ v18.134（审查 04 🔵-2）：恢复分是**个人相对分**（50 = 平时），可以合法为负或超 100。
+  //   旧实现 `Math.max(0, Math.min(1, v / 100))` 把负分硬压到 0、超高分压到 100 →
+  //   「-5 分」与「-50 分」在图上完全重叠。改为按数据实际范围自适应量程。
+  const scoreVals = points.map((p) => p.score).filter((v): v is number => v != null && Number.isFinite(v));
+  const scoreLo = scoreVals.length ? Math.min(0, ...scoreVals) : 0;
+  const scoreHi = scoreVals.length ? Math.max(100, ...scoreVals) : 100;
+  const scoreSpan = scoreHi - scoreLo || 100;
+  const yScore = (v: number) => {
+    const vv = Number.isFinite(v) ? v : scoreLo;
+    const ratio = (vv - scoreLo) / scoreSpan;
+    return PAD_T + ch * (1 - Math.max(0, Math.min(1, ratio)));
+  };
   const xAt = (i: number) => (n <= 1 ? PAD_L + cw / 2 : PAD_L + (i / (n - 1)) * cw);
   const slot = cw / n;
   const barW = Math.max(3, Math.min(34, slot * 0.5));
@@ -84,8 +95,12 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
   // 左轴刻度：每 2h（0h/2h/…/8h，深绿 + h 单位，同预览）
   const lTicks: number[] = [];
   for (let h = 0; h <= durMax + 0.001; h += 2) lTicks.push(h);
-  // 右轴刻度：0/20/40/60/80/100
-  const rTicks = [0, 20, 40, 60, 80, 100];
+  // 右轴刻度：0/20/40/60/80/100；★ v18.134（审查 04 🔵-2）：量程自适应时刻度同步跟随
+  const rTicks: number[] = (() => {
+    if (scoreLo === 0 && scoreHi === 100) return [0, 20, 40, 60, 80, 100];
+    const step = (scoreHi - scoreLo) / 5;
+    return Array.from({ length: 6 }, (_, i) => Math.round((scoreLo + i * step) / 5) * 5);
+  })();
 
   // X 轴标签：由数据点自带（父级按 chartAxis 规范填好，'' = 该点不标）
   const labelPoints = points.map((p, i) => ({ i, text: p.label })).filter((s) => !!s.text);

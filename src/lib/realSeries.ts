@@ -42,9 +42,15 @@ export interface TimePt {
   v: number;
 }
 
-/** 有些指标在展示层与数据层 key 不同（如皮肤含水量 skin 实际走 eda 信号） */
+/**
+ * 展示层 key → 信号层 key（恒等映射）。
+ *
+ * ★ v18.134（审查 04 🔵-3）：旧实现 `if (metricKey === 'skin') return 'eda'` 是**过时且错误**的。
+ *   数据层 `skin` 与 `eda` 是两份独立 store（RingBleManager 有 eda → skin 双写，
+ *   原生 emit 的 `eda` 与 skinMoisture 语义不同）；旧特判已无实际作用（skin 不匹配任何
+ *   sleep 分支），却会让读代码的人误以为 skin 的数据在 eda 里。
+ */
 function signalKeyFor(metricKey: string): string {
-  if (metricKey === 'skin') return 'eda';
   return metricKey;
 }
 

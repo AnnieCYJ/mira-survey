@@ -306,7 +306,7 @@ function mergeRealtime(prev: TimePoint[] | undefined, incoming: TimePoint): Time
  *   - emotion：戒指原生情绪等级 [-10, 10]，负值=消极/低落，必须保留；否则情绪点阵与
  *     日均值只会看到「开心/兴奋」，丢光压力/难过（见 2026-10-12 修复）。
  */
-const SIGNED_METRICS = new Set<string>(['emotion']);
+export const SIGNED_METRICS = new Set<string>(['emotion']);
 
 /**
  * ★ 2026-11-06 审查（docs/audit/04 🔴-3）：**零值有效**指标 —— 0 是合法档位，不是「无测量」占位符。
@@ -319,7 +319,7 @@ const SIGNED_METRICS = new Set<string>(['emotion']);
  *   - SIGNED_METRICS：值域含**负数**（emotion -10~10）
  *   - ZERO_VALID_METRICS：值域是**离散档位且 0 合法**（depressionRisk 0/1/2）
  */
-const ZERO_VALID_METRICS = new Set<string>(['depressionRisk']);
+export const ZERO_VALID_METRICS = new Set<string>(['depressionRisk']);
 
 function recomputeDaily(
   intraday: TimePoint[],
@@ -606,11 +606,24 @@ export class HealthStore {
     const dk = normalizeDayKey(dayKeyRaw);
     return store.daily[dk] ?? null;
   }
+  /**
+   * 取某日的逐样本序列（按 t 升序）。
+   *
+   * ★ v18.134（审查 04 🔵-6）：返回**副本**而不是内部数组引用 —— 旧实现返回
+   *   store.intraday[dk] 直接引用，调用方一次 sort()/reverse() 就能改坏 store。
+   *   同时在此处**显式排序**，把「数组已按 t 升序」从隐式契约变成 API 保证
+   *   （NightBpCard 等依赖「最后一个 = 最新一次」）。
+   */
   getIntraday(key: MetricKey, dayKeyRaw: string): TimePoint[] {
     const store = this.safeStore(key);
     if (!store) return [];
     const dk = normalizeDayKey(dayKeyRaw);
-    return store.intraday[dk] ?? [];
+    const arr = store.intraday[dk];
+    if (!arr || arr.length === 0) return [];
+    const sorted = arr.every((p, i) => i === 0 || arr[i - 1].t <= p.t)
+      ? arr
+      : arr.slice().sort((a, b) => a.t - b.t);
+    return sorted.slice();
   }
   /**
    * ★ 2026-10-10：该日的 intraday 是否为「由 stress 线性换算的推算值」。
@@ -851,9 +864,23 @@ export class HealthStore {
         const hasData =
           Object.keys(incoming.daily ?? {}).length > 0 ||
           Object.keys(incoming.intraday ?? {}).length > 0 ||
-          (incoming.manualMeasurements?.length ?? 0) > 0;
+          (incoming.manualMeasurements?.length ?? 0) > 0 ||
+          // ★ v18.134（审查 04 🔵-4）：derivedDays 也要计入判定 —— 漏判会让
+          //   「只带推算日标记」的 store 被整体跳过 → derivedDays 丢失 →
+          //   推算日被当成实测日展示（违反「诚实标注」铁律）。
+          Object.keys(incoming.derivedDays ?? {}).length > 0;
         if (hasData || !this.stores[k]) {
-          this.stores[k] = incoming;
+          // ★ v18.134（审查 04 🔵-4）：结构归一 —— 快照可能来自被截断/外部修改的 JSON，
+          //   daily/intraday 必须是对象、manualMeasurements 必须是数组，
+          //   否则后续 store.daily[dk] 赋值会抛 TypeError。
+          this.stores[k] = {
+            daily: (incoming.daily && typeof incoming.daily === 'object') ? incoming.daily : {},
+            intraday: (incoming.intraday && typeof incoming.intraday === 'object') ? incoming.intraday : {},
+            manualMeasurements: Array.isArray(incoming.manualMeasurements) ? incoming.manualMeasurements : [],
+            ...(incoming.derivedDays && typeof incoming.derivedDays === 'object'
+              ? { derivedDays: incoming.derivedDays as Record<string, 1> }
+              : {}),
+          };
         }
       } else if (!this.stores[k]) {
         this.stores[k] = emptyStore();

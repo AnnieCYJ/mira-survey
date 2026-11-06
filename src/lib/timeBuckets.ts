@@ -25,6 +25,8 @@
  *   const sleep = binByMinutes(pts, 5, { dayStartMs: bedMs, slotCount: 96 });
  */
 
+import { SIGNED_METRICS, ZERO_VALID_METRICS } from '../data/healthStore';
+
 export interface TimePt {
   t: number;
   v: number;
@@ -61,20 +63,25 @@ export function dayStartOf(ts: number): number {
 export function binByMinutes(
   pts: TimePt[] | null | undefined,
   minutes: number,
-  opts?: { dayStartMs?: number; slotCount?: number; roundDigits?: number },
+  opts?: { dayStartMs?: number; slotCount?: number; roundDigits?: number; metricKey?: string },
 ): Bucket[] {
   const spanMs = Math.max(1, minutes) * 60_000;
   const source = (pts ?? []).filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v));
   const dayStartMs = opts?.dayStartMs ?? (source.length ? dayStartOf(source[0].t) : dayStartOf(Date.now()));
   const slotCount = opts?.slotCount ?? Math.ceil(DAY_MS / spanMs);
   const digits = opts?.roundDigits ?? 1;
+  // ★ v18.134（审查 04 🔵-1）：带符号（emotion -10~10）/ 零有效（depressionRisk 0/1/2）指标
+  //   的 0/负值是**有效读数**，不能按「占位符」丢弃 —— 与 healthStore.SIGNED_METRICS 契约对齐。
+  //   旧实现无差别 `v <= 0 continue` → 情绪日视图「难过/低落/压力」三档永不出现。
+  const mk = opts?.metricKey;
+  const keepNonPositive = mk != null && (SIGNED_METRICS.has(mk) || ZERO_VALID_METRICS.has(mk));
 
   const sum = new Array(slotCount).fill(0);
   const cnt = new Array(slotCount).fill(0);
 
   const sorted = source.slice().sort((a, b) => a.t - b.t);
   for (const p of sorted) {
-    if (p.v <= 0) continue;                       // 纪律 2：0/负数是占位符
+    if (!keepNonPositive && p.v <= 0) continue;   // 纪律 2：0/负数是占位符（带符号/零有效指标除外）
     const slot = Math.floor((p.t - dayStartMs) / spanMs);
     if (slot < 0 || slot >= slotCount) continue;
     sum[slot] += p.v;
