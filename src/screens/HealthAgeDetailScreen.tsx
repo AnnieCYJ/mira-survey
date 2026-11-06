@@ -24,7 +24,7 @@ import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
-import { computeCurrentHealthAge } from '../lib/healthAgeCurrent';
+import { computeCurrentHealthAge, computeHormonalHealthyCurrent } from '../lib/healthAgeCurrent';
 import { analyzeCortisol, type CortisolSample } from '../lib/cortisolRhythm';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { computeStressReport } from '../lib/stressAlgorithm';
@@ -51,22 +51,18 @@ import { LinearGradient } from 'expo-linear-gradient';
  *   - computeHealthAgeNow 复刻洞察页 bodyAgeInsight 的「当日」口径（ring.daily.sleepScore + 无参报告 + 今日皮质醇），
  *     保证详情页头条 = 洞察页「年轻 X 岁」。
  */
-function computeHormonalHealthy(dk: string): boolean {
-  try {
-    const samples: CortisolSample[] = healthStore
-      .getIntraday('cortisol', dk)
-      .filter((p: any) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
-      .map((p: any, i: number) => ({ t: Number.isFinite(p.t) ? p.t : i * 3600 * 1000, v: p.v }));
-    if (samples.length < 4) return false;
-    const a = analyzeCortisol(samples) as any;
-    return a?.status?.level === 'normal';
-  } catch {
-    return false;
-  }
-}
+/**
+ * ★ v18.134：荷尔蒙判定**统一复用** src/lib/healthAgeCurrent 的共享实现，
+ *   不再在本文件里维护第二份副本（原副本与共享实现漂移，且没有 hasHormonalData 出口）。
+ */
 
 /** 逐日身体年龄：综合分用当日报告，荷尔蒙健康复用「当日」结论（hormonalHealthy） */
-function computeHealthAgeForDay(dk: string, actualAge: number, hormonalHealthy: boolean): number | null {
+function computeHealthAgeForDay(
+  dk: string,
+  actualAge: number,
+  hormonalHealthy: boolean,
+  hasHormonalData: boolean,
+): number | null {
   try {
     const dkMs = parseDayKey(dk);
     const nowMs = reportNowMsForDay(dkMs);
@@ -85,24 +81,36 @@ function computeHealthAgeForDay(dk: string, actualAge: number, hormonalHealthy: 
     }
     if (scores.length === 0) return null;
     const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    return estimateHealthAge(actualAge, overallScore, hormonalHealthy, true);
-  } catch {
+    // ★ v18.134：hasHormonalData 不再硬编码 true —— 基础版无皮质醇实测时走中性 ±1.5
+    return estimateHealthAge(actualAge, overallScore, hormonalHealthy, hasHormonalData);
+  } catch (e) {
+    console.warn('[HealthAgeDetail] 逐日身体年龄计算异常：', dk, e);
     return null;
   }
 }
 
-function monthSeries(anchor: Date, actualAge: number, hormonalHealthy: boolean): { val: number | null }[] {
+function monthSeries(
+  anchor: Date,
+  actualAge: number,
+  hormonalHealthy: boolean,
+  hasHormonalData: boolean,
+): { val: number | null }[] {
   const y = anchor.getFullYear(), m = anchor.getMonth();
   const days = new Date(y, m + 1, 0).getDate();
   const out: { val: number | null }[] = [];
   for (let d = 1; d <= days; d++) {
     const dk = dayKey(new Date(y, m, d).getTime());
-    out.push({ val: computeHealthAgeForDay(dk, actualAge, hormonalHealthy) });
+    out.push({ val: computeHealthAgeForDay(dk, actualAge, hormonalHealthy, hasHormonalData) });
   }
   return out;
 }
 
-function yearSeries(anchor: Date, actualAge: number, hormonalHealthy: boolean): { val: number | null }[] {
+function yearSeries(
+  anchor: Date,
+  actualAge: number,
+  hormonalHealthy: boolean,
+  hasHormonalData: boolean,
+): { val: number | null }[] {
   const y = anchor.getFullYear();
   const out: { val: number | null }[] = [];
   for (let mo = 0; mo < 12; mo++) {
@@ -110,7 +118,7 @@ function yearSeries(anchor: Date, actualAge: number, hormonalHealthy: boolean): 
     const vals: number[] = [];
     for (let d = 1; d <= days; d++) {
       const dk = dayKey(new Date(y, mo, d).getTime());
-      const v = computeHealthAgeForDay(dk, actualAge, hormonalHealthy);
+      const v = computeHealthAgeForDay(dk, actualAge, hormonalHealthy, hasHormonalData);
       if (v != null && Number.isFinite(v)) vals.push(v);
     }
     out.push({ val: vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null });
@@ -129,18 +137,23 @@ function yearSeries(anchor: Date, actualAge: number, hormonalHealthy: boolean): 
  *   参考：WHOOP Healthspan「Pace of Aging」= 近 30 天相对 6 个月 WHOOP Age 的投影速度（-1x~3x）。
  *   口径：数据不足（有效天 <30）返回 null，不展示，避免噪声。
  */
-function agingPaceSeries(actualAge: number, hormonalHealthy: boolean, days = 180): number[] {
+function agingPaceSeries(
+  actualAge: number,
+  hormonalHealthy: boolean,
+  hasHormonalData: boolean,
+  days = 180,
+): number[] {
   const out: number[] = [];
   const now = Date.now();
   for (let i = days; i >= 0; i--) {
     const dk = dayKey(now - i * 86400000);
-    const v = computeHealthAgeForDay(dk, actualAge, hormonalHealthy);
+    const v = computeHealthAgeForDay(dk, actualAge, hormonalHealthy, hasHormonalData);
     if (v != null && Number.isFinite(v)) out.push(v);
   }
   return out;
 }
 
-function computeAgingPace(actualAge: number, hormonalHealthy: boolean): {
+function computeAgingPace(actualAge: number, hormonalHealthy: boolean, hasHormonalData: boolean): {
   slopePerYear: number | null;
   paceX: number | null;
   band: 'reversing' | 'steady' | 'accelerating' | null;
@@ -148,7 +161,7 @@ function computeAgingPace(actualAge: number, hormonalHealthy: boolean): {
   baselineMean: number | null;
   enough: boolean;
 } {
-  const series = agingPaceSeries(actualAge, hormonalHealthy, 180);
+  const series = agingPaceSeries(actualAge, hormonalHealthy, hasHormonalData, 180);
   if (series.length < 30) {
     return { slopePerYear: null, paceX: null, band: null, recentMean: null, baselineMean: null, enough: false };
   }
@@ -409,11 +422,15 @@ export default function HealthAgeDetailScreen() {
   }, []));
 
   // ★ 荷尔蒙节律（慢变量）按「当日」判定一次，区间内逐日复用 → 有综合分即出身体年龄
-  const hormonalHealthyNow = useMemo(() => computeHormonalHealthy(dayKey(Date.now())), []);
+  const hormonalNow = useMemo(() => computeHormonalHealthyCurrent(dayKey(Date.now())), []);
+  const hormonalHealthyNow = hormonalNow.hormonalHealthy;
+  const hasHormonalDataNow = hormonalNow.hasHormonalData;
   const series = useMemo(() => {
     if (actualAge == null) return [];
-    return range === 'month' ? monthSeries(anchor, actualAge, hormonalHealthyNow) : yearSeries(anchor, actualAge, hormonalHealthyNow);
-  }, [range, anchor, actualAge, hormonalHealthyNow]);
+    return range === 'month'
+      ? monthSeries(anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow)
+      : yearSeries(anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow);
+  }, [range, anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow]);
 
   // ★ 头条 = 当日身体年龄（与洞察页 bodyAgeInsight 完全同口径）→ 数值一致
   // ★ 2026-10-28：头条用共享实时计算（与洞察页身体年龄卡完全一致 → 两页数字连通），去掉本地重算分支
@@ -430,8 +447,8 @@ export default function HealthAgeDetailScreen() {
   // ★ P0-3（2026-10-28）：衰老速度（对标 WHOOP Pace of Aging）—— 近 180 天 OLS 斜率，以 1 岁/年为基准
   const pace = useMemo(() => {
     if (actualAge == null) return null;
-    return computeAgingPace(actualAge, hormonalHealthyNow);
-  }, [actualAge, hormonalHealthyNow]);
+    return computeAgingPace(actualAge, hormonalHealthyNow, hasHormonalDataNow);
+  }, [actualAge, hormonalHealthyNow, hasHormonalDataNow]);
 
   return (
     <ScreenContainer compactTop withGradient>

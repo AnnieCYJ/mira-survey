@@ -23,18 +23,30 @@ import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import { estimateHealthAge } from './healthAgeEstimate';
 
-/** 当日皮质醇节律是否健康（与详情页同源）：≥4 个有效实测槽才判定，否则 false */
-export function computeHormonalHealthyCurrent(dk: string = dayKey(Date.now())): boolean {
+/**
+ * 当日皮质醇节律是否健康（与详情页同源）：≥4 个有效实测槽才判定，否则 false
+ *
+ * ★ v18.134：新增「是否有实测数据」出口 —— 基础版没有皮质醇实测通道，
+ *   「没测」和「测了不健康」必须区分，否则身体年龄会被当成荷尔蒙失衡而偏老
+ *   （与 healthAgeEstimate.ts 的「hasHormonalData=false → 中性 ±1.5」设计意图相悖）。
+ */
+export function computeHormonalHealthyCurrent(dk: string = dayKey(Date.now())): {
+  hormonalHealthy: boolean;
+  hasHormonalData: boolean;
+} {
   try {
     const samples: CortisolSample[] = healthStore
       .getIntraday('cortisol', dk)
       .filter((p: any) => typeof p.v === 'number' && Number.isFinite(p.v) && p.v > 0)
       .map((p: any, i: number) => ({ t: Number.isFinite(p.t) ? p.t : i * 3600 * 1000, v: p.v }));
-    if (samples.length < 4) return false;
+    // ★ 不足 4 个实测槽 = 「没测」，不是「测了不健康」
+    if (samples.length < 4) return { hormonalHealthy: false, hasHormonalData: false };
     const a = analyzeCortisol(samples) as any;
-    return a?.status?.level === 'normal';
-  } catch {
-    return false;
+    return { hormonalHealthy: a?.status?.level === 'normal', hasHormonalData: true };
+  } catch (e) {
+    // ★ 异常必须留痕 —— 否则「算崩了」与「没数据」在 UI 上完全一致，无法排查
+    console.warn('[healthAgeCurrent] 皮质醇节律计算异常：', e);
+    return { hormonalHealthy: false, hasHormonalData: false };
   }
 }
 
@@ -58,10 +70,13 @@ export function computeCurrentHealthAge(actualAge: number | null): {
     if (sleep != null && Number.isFinite(sleep) && sleep >= 0 && sleep <= 100) scores.push(sleep);
     if (scores.length === 0) return null;
     const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    const hormonalHealthy = computeHormonalHealthyCurrent(dayKey(Date.now()));
-    const healthAge = estimateHealthAge(actualAge, overallScore, hormonalHealthy, true);
+    const { hormonalHealthy, hasHormonalData } = computeHormonalHealthyCurrent(dayKey(Date.now()));
+    // ★ hasHormonalData 不再硬编码 true：基础版没有皮质醇实测通道时走「中性 ±1.5」，
+    //   不会被误判成「荷尔蒙失衡 → 偏老」
+    const healthAge = estimateHealthAge(actualAge, overallScore, hormonalHealthy, hasHormonalData);
     return { healthAge, overallScore };
-  } catch {
+  } catch (e) {
+    console.warn('[healthAgeCurrent] 身体年龄计算异常：', e);
     return null;
   }
 }
