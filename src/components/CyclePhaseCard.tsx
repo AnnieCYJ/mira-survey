@@ -291,8 +291,8 @@ const styles = StyleSheet.create({
   // ★ 本轮（用户 #281）：卡片内标题（与 AllDayRecoveryCard 的 titleRow 同款）
   titleRow: { flexDirection: 'row', alignItems: 'center' },
   iconChip: {
-    width: theme.fs(36),
-    height: theme.fs(36),
+    width: theme.fontSize.h1,
+    height: theme.fontSize.h1,
     borderRadius: theme.radius.pill,
     backgroundColor: mm.chipBg.lime.bg,
     alignItems: 'center',
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   /* 底部弹起 Sheet（★ 2026-11-05：与周期日历页经期弹窗同色系——深板岩，避免浅底残留） */
   sheetMask: { flex: 1, backgroundColor: 'rgba(9,28,48,0.6)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: 'rgba(9,28,48,0.98)',
+    backgroundColor: theme.colors.ui.sheetDeep,
     borderTopLeftRadius: theme.radius.card,
     borderTopRightRadius: theme.radius.card,
     maxHeight: '88%',

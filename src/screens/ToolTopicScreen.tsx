@@ -129,7 +129,7 @@ export default function ToolTopicScreen() {
                 accessibilityLabel="返回"
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+                <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
               </TouchableOpacity>
               <Animated.View style={[styles.headText, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}>
                 <Text style={styles.title}>{meta.title}</Text>
@@ -191,7 +191,7 @@ export default function ToolTopicScreen() {
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <Animated.View style={[styles.headText, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}>
             <Text style={styles.title}>{meta.title}</Text>
@@ -917,7 +917,7 @@ const ls = StyleSheet.create({
   },
   heroTitle: {
     fontSize: theme.fontSize.card,
-    lineHeight: theme.fs(24),
+    lineHeight: theme.fontSize.orb,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
     marginBottom: theme.sp(1),
@@ -948,7 +948,7 @@ const ls = StyleSheet.create({
   methodCopy: { padding: theme.sp(2) },
   methodTone: { color: 'rgba(255,255,255,0.82)', fontSize: theme.fontSize.micro, marginBottom: theme.sp(0.5) },
   methodTitle: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, marginBottom: theme.sp(0.5) },
-  methodText: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.micro, lineHeight: theme.fs(15) },
+  methodText: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.body },
   secHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -993,7 +993,7 @@ const ls = StyleSheet.create({
   },
   articleTitle: {
     fontSize: theme.fontSize.body,
-    lineHeight: theme.fs(20),
+    lineHeight: theme.fontSize.lg,
     fontWeight: theme.weight.semibold,
     color: mm.colors.ink,
     marginBottom: theme.sp(1),
@@ -1235,7 +1235,7 @@ const ss = StyleSheet.create({
   wkDur: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
   wkStats: {
     flexDirection: 'row', marginTop: theme.sp(3), paddingTop: theme.sp(3),
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(31,29,26,0.08)',
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft,
   },
   wkStat: { flex: 1, alignItems: 'flex-start' },
   wkStatVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
@@ -1248,7 +1248,7 @@ const ss = StyleSheet.create({
   /* 心率条：容器整条圆角 + overflow hidden，内部 4 段无缝拼接（Garmin/Apple 那种分段条），
      比「每段各自圆角」更干净，也避免 6pt 细条套 radius.sm 变成 4 个小胶囊 */
   wkZoneBar: { flexDirection: 'row', height: theme.sp(2), borderRadius: theme.sp(1), overflow: 'hidden' },
-  wkZoneSeg: { flex: 1, backgroundColor: 'rgba(31,29,26,0.10)' },
+  wkZoneSeg: { flex: 1, backgroundColor: theme.colors.ui.offTrack },
   emptyCard: { paddingVertical: theme.sp(4), alignItems: 'center' },
   emptyIco: {
     width: theme.sp(13), height: theme.sp(13), borderRadius: theme.radius.pill,
@@ -1258,7 +1258,7 @@ const ss = StyleSheet.create({
   emptyIcoText: { fontSize: theme.sp(7) },
   emptyTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(1) },
   emptySub: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint, textAlign: 'center', lineHeight: theme.fs(19) },
-  recFoot: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint, marginTop: theme.sp(1), lineHeight: theme.fs(18) },
+  recFoot: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint, marginTop: theme.sp(1), lineHeight: theme.fontSize.card },
 
   /* ── 记录运动 · 运动种类选择面板（v18.87）──────────────── */
   pickerWrap: {
@@ -1320,19 +1320,19 @@ const sp2 = StyleSheet.create({
   /* ★ 本轮（用户）：弧 ↔ 下方卡片 拉开距离（4 → 6） */
   heroRing: { alignItems: 'center', paddingTop: theme.sp(1), paddingBottom: 0, marginBottom: theme.sp(6) },
   conclusion: { marginBottom: theme.sp(1), alignItems: 'flex-start' },
-  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, textAlign: 'left' },
+  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fontSize.orb, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, textAlign: 'left' },
   conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkFaint, textAlign: 'left' },
   kickerWrap: { marginBottom: theme.sp(1.5) },
   /* 推荐卡头部：主标签(MiraTag) + 小字说明，对齐饮食页层级 */
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(2) },
-  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
-  sectionLink: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkFaint },
+  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fontSize.orb, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  sectionLink: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.lg, color: mm.colors.inkFaint },
   workoutCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2) },
   workoutIcon: { width: theme.sp(12), height: theme.sp(12), borderRadius: theme.sp(4), alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(2.5) },
   workoutIconText: { fontSize: theme.fs(27), fontWeight: '500' as never },
   workoutBody: { flex: 1, minWidth: 0 },
   workoutName: { fontSize: theme.fontSize.card, lineHeight: theme.fs(23), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
-  workoutMeta: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkSoft, marginTop: 2 },
+  workoutMeta: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.lg, color: mm.colors.inkSoft, marginTop: 2 },
   workoutWhy: { fontSize: theme.fontSize.micro, lineHeight: theme.fs(16), color: mm.colors.inkFaint, marginTop: 2 },
   startButton: { backgroundColor: mm.colors.limeMid, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1.75) },
   startButtonText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
@@ -1343,7 +1343,7 @@ const sp2 = StyleSheet.create({
   ringBox: { alignItems: 'center', marginTop: theme.sp(2), position: 'relative' },
   ringCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   /* 档位名最大 4 字（黄金窗口），fs(24) 保证不溢出环内径 */
-  ringGear: { fontSize: theme.fs(24), fontWeight: '500' as never, color: mm.colors.ink, letterSpacing: -0.3 },
+  ringGear: { fontSize: theme.fontSize.orb, fontWeight: '500' as never, color: mm.colors.ink, letterSpacing: -0.3 },
   ringGearSub: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, color: mm.colors.inkFaint, marginTop: theme.sp(0.75) },
 
   /* stat3 三格：环下方 10px，3 列 gap 8，tint 底（SPEC §2.3） */
@@ -1357,7 +1357,7 @@ const sp2 = StyleSheet.create({
   /* 理由行（adv）：tag 胶囊 soft 底 deep 字 + 正文，行间细分隔线（SPEC §2.4） */
   advList: { marginTop: theme.sp(1.5) },
   advRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: theme.sp(2) },
-  advRowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(31,29,26,0.06)' },
+  advRowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.ui.borderSoft },
   advTag: {
     minWidth: theme.sp(10), paddingHorizontal: theme.sp(2.25), paddingVertical: theme.sp(1),
     borderRadius: theme.radius.pill, marginRight: theme.sp(2), marginTop: theme.sp(0.25),
@@ -1370,12 +1370,12 @@ const sp2 = StyleSheet.create({
   recRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: theme.sp(2) },
   recBody: { flex: 1, minWidth: 0 },
   recMain: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink },
-  recWhy: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(18), fontWeight: '600' as never, color: mm.colors.inkSoft, marginTop: 2 },
+  recWhy: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.card, fontWeight: '600' as never, color: mm.colors.inkSoft, marginTop: 2 },
 
   /* 依据行：固定文案，居中（SPEC §2.5 + §4 红线 4） */
   sourceLine: {
     fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, textAlign: 'center',
     marginTop: theme.sp(1.5), paddingTop: theme.sp(2),
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(31,29,26,0.07)',
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft,
   },
 });

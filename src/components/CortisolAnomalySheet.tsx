@@ -114,7 +114,7 @@ export default function CortisolAnomalySheet({ visible, onClose, kind, dateLabel
 
 const styles = StyleSheet.create({
   mask: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(31,29,26,0.42)' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.colors.ui.scrim },
   sheet: {
     backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.xl,

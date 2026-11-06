@@ -78,7 +78,7 @@ export default function BreathingScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+          <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={styles.headText}>
           <Text style={styles.title}>呼吸冥想</Text>
@@ -136,7 +136,7 @@ export default function BreathingScreen() {
             onPress={() => setBreathPlayer({ patternKey: c.patternKey, duration: c.duration })}
           >
             <View style={[styles.courseIcon, c.tag === 'live' ? { backgroundColor: mm.colors.purpleCore } : { backgroundColor: mm.colors.limeMid }]}>
-              <Icon name={c.tag === 'live' ? 'mind' : 'learn'} size={theme.fs(18)} color={theme.colors.textWhite} strokeWidth={1.8} />
+              <Icon name={c.tag === 'live' ? 'mind' : 'learn'} size={theme.fontSize.card} color={theme.colors.textWhite} strokeWidth={1.8} />
             </View>
             <View style={styles.courseInfo}>
               <Text style={styles.courseTitle}>{c.title}</Text>

@@ -86,7 +86,7 @@ export function SheetHead({
         <View style={styles.back}>
           <Icon
             name="back"
-            size={theme.fs(22)}
+            size={theme.fontSize.h2}
             color={theme.colors.textTitle}
             strokeWidth={2.2}
           />

@@ -19,14 +19,17 @@ import { dayKey } from './healthStore';
  *  亮色系=积极（moodEnergy/moodGood/rose/honey/sky），沉色系=低落（state/danger/purple/灰紫） */
 export const MOOD_COLOR: Record<MoodKey, string> = {
   // Keep the selector, matrix faces, and legend on one shared palette.
-  excited: '#F39A62',
-  happy: '#F2C35E',
+  // ★ 2026-11-06 审查（C-03）：色值提升为 theme.colors.mood.* 命名 token，
+  //   消除 EmotionInsightView 里 17 处同名裸 hex 的重复粘贴；
+  //   色值本身不变（视觉零差异），反查逻辑（faceMoodFromColor）继续有效。
+  excited: theme.colors.mood.excited,
+  happy: theme.colors.mood.happy,
   love: mm.colors.roseCore,
   grateful: mm.colors.honeyDeep,
   pleasant: mm.colors.skyCore,
-  calm: '#6CC28E',
+  calm: theme.colors.mood.calm,
   tired: mm.colors.limeDeep,
-  stressed: '#D58AAE',
+  stressed: theme.colors.mood.stressed,
   anxious: theme.colors.danger,
   sad: '#7EA6F8',
   angry: theme.colors.stateTense,

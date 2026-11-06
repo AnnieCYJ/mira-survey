@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     width: theme.sp(7.5), height: theme.sp(7.5), borderRadius: mm.radius.iconSq,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconTxt: { fontSize: theme.fs(15) },
+  iconTxt: { fontSize: theme.fontSize.body },
   cardTitle: {
     flex: 1, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never,
     color: mm.colors.ink, lineHeight: theme.fontSize.sm * 1.3,
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   // ★ 本轮（用户 #261）：达标皇冠，卡片右上角（放大 + 明亮黄绿，更醒目、鼓励感更强）
   goalStar: {
     position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5),
-    fontSize: theme.fs(20), color: mm.colors.limeCore, fontWeight: theme.weight.bold as never,
+    fontSize: theme.fontSize.lg, color: mm.colors.limeCore, fontWeight: theme.weight.bold as never,
     zIndex: 3,
   },
   // ★ 本轮（用户 #261）：卡片底部分析句，改用明亮黄绿（limeCore）替代看不清的深绿（limeDeep）

@@ -1147,7 +1147,7 @@ export default function TodayScreen() {
               accessibilityLabel="查看全天状态趋势详情"
               onPress={() => navigation.navigate('StatusTrendDetail')}
             >
-              <Icon name="chevronRight" size={theme.fs(22)} color={theme.colors.textSub} />
+              <Icon name="chevronRight" size={theme.fontSize.h2} color={theme.colors.textSub} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1489,7 +1489,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1,
-    borderColor: 'rgba(31,29,26,0.08)',
+    borderColor: theme.colors.ui.borderSoft,
   },
 
   energyCol: {

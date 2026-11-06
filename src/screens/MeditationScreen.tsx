@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(1),
   },
   subtitle: {
-    fontSize: theme.fs(18),
+    fontSize: theme.fontSize.card,
     color: mm.colors.inkSoft,
     marginTop: theme.sp(1.5),
     marginBottom: theme.space.lg,
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
   },
   // ① 类别名（放大当主标题，一眼分清是哪类工具）
   cgCat: {
-    fontSize: theme.fs(20),
+    fontSize: theme.fontSize.lg,
     fontWeight: theme.weight.semibold,
     color: '#FFFFFF',
     letterSpacing: -0.2,
@@ -546,10 +546,10 @@ const styles = StyleSheet.create({
   // ③ 用途描述（小字，原 t.d 一直没上卡，现在补上）
   cgDesc: {
     marginTop: theme.sp(0.5),
-    fontSize: theme.fs(13),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.regular,
     color: 'rgba(255,255,255,0.92)',
-    lineHeight: theme.fs(18),
+    lineHeight: theme.fontSize.card,
     textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,

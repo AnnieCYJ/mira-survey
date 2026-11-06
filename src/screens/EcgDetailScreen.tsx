@@ -80,7 +80,7 @@ function fmtRelative(ts: number): string {
   return `${Math.floor(diff / 1440)} 天前`;
 }
 
-const STATUS_COLOR = { normal: '#3FB984', high: '#E8A23D', low: '#5AA9E6' } as const;
+const STATUS_COLOR = { normal: theme.colors.success, high: theme.colors.warn, low: theme.colors.stateTired } as const;
 type Status = keyof typeof STATUS_COLOR;
 
 /** 医学指标卡：值 + 单位 + 参考区间 + 中性状态点（不写诊断结论）。 */
@@ -136,7 +136,7 @@ function RiskBar({ label, value }: { label: string; value: number }) {
   const v = Math.max(0, Math.min(99, value ?? 0));
   // 中性分级：<50 偏低/平稳，50–75 适中，>75 偏高（仅描述强度，不开诊断）
   const level = v > 75 ? 'high' : v > 50 ? 'mid' : 'low';
-  const color = level === 'high' ? '#E8A23D' : level === 'mid' ? '#9D8AF0' : '#3FB984';
+  const color = level === 'high' ? theme.colors.warn : level === 'mid' ? theme.colors.accentSolid : theme.colors.success;
   return (
     <View style={styles.riskRow}>
       <View style={styles.riskHead}>
@@ -461,12 +461,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: theme.sp(1.5),
     paddingHorizontal: theme.sp(2),
-    backgroundColor: theme.colors.dangerSoft ?? 'rgba(229,57,53,0.10)',
+    backgroundColor: theme.colors.dangerSoft,
     borderRadius: theme.radius.sm,
   },
   ecgErrText: {
     fontSize: theme.fontSize.xs,
-    color: theme.colors.danger ?? '#e53935',
+    color: theme.colors.danger,
     lineHeight: 18,
   },
 
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   segTxt: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textSub },
   // ★ mira-ocean：白 pill 上选中文字 → 深蓝（原 textTitle 已随主题变白，白底白字）
-  segTxtOn: { color: '#2A4470' },
+  segTxtOn: { color: theme.colors.bgMid },
 
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metricCell: {

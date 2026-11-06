@@ -195,7 +195,7 @@ export default function ProfileScreen({ navigation }: any) {
               {MONTHS[CAL_MONTH]} {CAL_YEAR}
             </Text>
             <TouchableOpacity onPress={() => {}}>
-              <Icon name="chevronRight" size={theme.fs(20)} color={theme.colors.textSub} />
+              <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textSub} />
             </TouchableOpacity>
           </View>
           <CalendarGrid

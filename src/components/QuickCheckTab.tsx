@@ -262,7 +262,7 @@ const ov = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  coreEmoji: { fontSize: theme.fs(24) },
+  coreEmoji: { fontSize: theme.fontSize.orb },
   stepText: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold,

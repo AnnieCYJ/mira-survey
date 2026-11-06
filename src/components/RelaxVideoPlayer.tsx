@@ -82,7 +82,7 @@ export default function RelaxVideoPlayer({ visible, onClose }: Props) {
         pointerEvents="auto"
       >
         <TouchableOpacity style={styles.close} onPress={handleClose} activeOpacity={0.7}>
-          <Icon name="close" size={theme.fs(20)} color={theme.colors.textWhite} strokeWidth={2.5} />
+          <Icon name="close" size={theme.fontSize.lg} color={theme.colors.textWhite} strokeWidth={2.5} />
         </TouchableOpacity>
 
         {/* 容器固定像素尺寸 + overflow:hidden；Video 用 COVER 填满（Web 端即 object-fit:cover）居中裁剪，无黑边 */}

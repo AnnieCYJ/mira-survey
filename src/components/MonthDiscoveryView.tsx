@@ -1045,7 +1045,7 @@ const styles = StyleSheet.create({
   habitTag: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, marginTop: 2 },
   // 大数字（对齐用户截图：次数大、单位小）
   habitNumRow: { flexDirection: 'row', alignItems: 'flex-end', marginLeft: theme.sp(2) },
-  habitNum: { fontSize: theme.fs(24), fontWeight: theme.weight.bold, letterSpacing: -0.5, lineHeight: 28 },
+  habitNum: { fontSize: theme.fontSize.orb, fontWeight: theme.weight.bold, letterSpacing: -0.5, lineHeight: 28 },
   habitUnit: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as any, color: mm.colors.inkSoft, marginLeft: 2, marginBottom: 4 },
   habitTrack: { height: 7, borderRadius: 4, backgroundColor: mm.colors.emptyFill, overflow: 'hidden', marginTop: theme.sp(2.5) },
   habitFill: { height: 7, borderRadius: 4 },

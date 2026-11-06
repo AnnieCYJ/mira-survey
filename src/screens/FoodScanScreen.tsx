@@ -361,7 +361,7 @@ export default function FoodScanScreen() {
         {/* 头部 */}
         <View style={styles.header}>
           <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => navigation.goBack()}>
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{mode === 'home' ? '饮食记录' : '拍照识别'}</Text>
@@ -1107,7 +1107,7 @@ const mm_m = StyleSheet.create({
   scroll: { width: '100%' },
   scrollContent: { paddingBottom: theme.sp(2) },
   photo: { width: '100%', aspectRatio: 4 / 3, borderRadius: mm.radius.card, overflow: 'hidden', marginBottom: theme.space.md },
-  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(2), marginTop: theme.sp(2) },
+  sectionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fontSize.orb, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, marginBottom: theme.sp(2), marginTop: theme.sp(2) },
   nameWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5) },
   nameChip: { backgroundColor: mm.colors.honeyTint, borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(3), paddingVertical: theme.sp(1.5) },
   nameText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: mm.colors.honeyDeep },
@@ -1118,14 +1118,14 @@ const mm_m = StyleSheet.create({
   mrow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
   md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: 3 },
   ml: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft, width: theme.sp(11.5) },
-  track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: 'rgba(31,29,26,0.07)', overflow: 'hidden' },
+  track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.borderSoft, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill },
   mv: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as never, width: theme.sp(20), textAlign: 'right' },
   elemWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), marginTop: theme.sp(3) },
   elemTag: { borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1) },
   elemOn: { backgroundColor: mm.colors.limeSoft },
-  elemOff: { backgroundColor: 'rgba(31,29,26,0.05)' },
-  elemText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fs(15) },
+  elemOff: { backgroundColor: theme.colors.ui.borderSoft },
+  elemText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fontSize.body },
   verdict: { marginTop: theme.sp(3), borderRadius: theme.radius.card, padding: theme.space.cardPadCompact },
   /* ★ 本轮（用户）：浅 tint 实底 → cardBg 磨砂玻璃（对齐首页/运动页），白字 verdictTitle/Sub/PhaseText 在磨砂底上可读 */
   verdictGood: { backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
@@ -1134,9 +1134,9 @@ const mm_m = StyleSheet.create({
   verdictDot: { width: theme.sp(2.5), height: theme.sp(2.5), borderRadius: theme.radius.pill },
   verdictTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
   verdictSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.sm, lineHeight: theme.fs(19), color: mm.colors.inkSoft },
-  verdictPhase: { marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.08)' },
+  verdictPhase: { marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: theme.colors.ui.borderSoft },
   verdictPhaseText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as never, color: mm.colors.inkFaint },
-  adviceLine: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
+  adviceLine: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.lg, color: mm.colors.inkSoft, marginTop: theme.sp(1) },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), marginTop: theme.sp(3) },
   retake: {
     height: theme.sp(12), paddingHorizontal: theme.sp(3.25), borderRadius: theme.radius.pill,
@@ -1166,24 +1166,24 @@ const hs = StyleSheet.create({
   mmLabel: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.25) },
   mmDot: { width: theme.sp(2), height: theme.sp(2), borderRadius: theme.sp(0.75) },
   mmLabelText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, color: mm.colors.inkSoft },
-  mmVal: { fontSize: theme.fs(18), fontWeight: '600' as never, color: mm.colors.ink, marginTop: theme.sp(0.75) },
+  mmVal: { fontSize: theme.fontSize.card, fontWeight: '600' as never, color: mm.colors.ink, marginTop: theme.sp(0.75) },
   mmUnit: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, color: mm.colors.inkFaint },
-  mmBar: { height: theme.sp(1), borderRadius: theme.radius.pill, backgroundColor: 'rgba(31,29,26,0.08)', marginTop: theme.sp(1), overflow: 'hidden' },
+  mmBar: { height: theme.sp(1), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.borderSoft, marginTop: theme.sp(1), overflow: 'hidden' },
   mmBarFill: { height: '100%', borderRadius: theme.radius.pill },
   /* 推荐多吃 / 先少碰（v18.99 起并入 MIRA AI 区块；v19.1 标签按语义换色：推荐多吃=lime / 先少碰=honey） */
   focusChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5) },
   focusChip: {
-    backgroundColor: mm.colors.limeTint, borderRadius: theme.radius.pill,
+    backgroundColor: mm.chipBg.lime.bg, borderRadius: theme.radius.pill,
     paddingHorizontal: theme.sp(2.75), paddingVertical: theme.sp(1.25),
   },
-  focusChipText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, color: mm.colors.limeDeep },
+  focusChipText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never, color: mm.chipBg.lime.fg },
   avoidList: { fontSize: theme.fontSize.sm, fontWeight: '600' as never, color: mm.colors.honeyDeep, lineHeight: theme.fs(19) },
   /* MIRA AI 区块（v18.99：状态句 + 推荐多吃/少碰，合并去重；v19.0 标签化） */
   aiWrap: { marginTop: theme.sp(2) },
-  aiSep: { borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.08)', marginBottom: theme.sp(3) },
+  aiSep: { borderTopWidth: 1, borderTopColor: theme.colors.ui.borderSoft, marginBottom: theme.sp(3) },
   aiTag: { marginBottom: theme.sp(3) },
   conclusion: { marginBottom: theme.sp(2), alignItems: 'flex-start' },
-  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(24), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  conclusionTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fontSize.orb, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
   conclusionSub: { marginTop: theme.sp(1), fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: mm.colors.inkFaint },
   /* 状态胶囊行：你处于 X · 皮质醇 · 今天状态 */
   statusTags: { flexDirection: 'row', flexWrap: 'nowrap', gap: theme.sp(1) },
@@ -1197,7 +1197,7 @@ const hs = StyleSheet.create({
   adviceAvoid: {},
   adviceCardTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: mm.colors.ink, marginBottom: theme.sp(1.5) },
   adviceAvoidTitle: { color: mm.colors.ink },
-  adviceLine: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(18), color: mm.colors.inkSoft, marginTop: theme.sp(1) },
+  adviceLine: { fontSize: theme.fontSize.xs, lineHeight: theme.fontSize.card, color: mm.colors.inkSoft, marginTop: theme.sp(1) },
   // ★ 本轮（用户）：推荐多吃/先少碰 浅 tint 实底 → cardBg 磨砂玻璃（对齐首页/运动页/状态胶囊），白字可读
   adviceEatLine: { color: mm.colors.inkSoft },
   adviceAvoidLine: { color: mm.colors.inkSoft },
@@ -1218,8 +1218,8 @@ const et = StyleSheet.create({
   wrap: { flexDirection: 'row', gap: theme.sp(1), marginTop: theme.sp(1) },
   tag: { borderRadius: 5, paddingHorizontal: theme.sp(1.25), paddingVertical: 1.5 },
   tagOn: { backgroundColor: mm.colors.limeSoft },
-  tagNo: { backgroundColor: 'rgba(31,29,26,0.05)' },
-  tagText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.bold as never, lineHeight: theme.fs(15) },
+  tagNo: { backgroundColor: theme.colors.ui.borderSoft },
+  tagText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.bold as never, lineHeight: theme.fontSize.body },
 });
 
 /* ── 识别结果卡 ── */
@@ -1239,14 +1239,14 @@ const rc = StyleSheet.create({
   share: { marginLeft: 'auto', alignItems: 'flex-end', paddingBottom: theme.sp(0.5) },
   shareLabel: { fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as never },
   shareVal: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold as never, color: mm.colors.ink, lineHeight: theme.fs(17) },
-  macros: { marginTop: theme.sp(3.5), paddingTop: theme.sp(3), borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.07)', gap: theme.sp(2.5) },
+  macros: { marginTop: theme.sp(3.5), paddingTop: theme.sp(3), borderTopWidth: 1, borderTopColor: theme.colors.ui.borderSoft, gap: theme.sp(2.5) },
   mrow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
   md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: 3 },
   ml: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft, width: theme.sp(11.5) },
-  track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: 'rgba(31,29,26,0.07)', overflow: 'hidden' },
+  track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.borderSoft, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill },
   mv: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold as never, width: theme.sp(17.5), textAlign: 'right' },
-  ehint: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as never, color: mm.colors.inkSoft, lineHeight: theme.fs(16), marginTop: theme.sp(3), paddingTop: theme.sp(2.5), borderTopWidth: 1, borderTopColor: 'rgba(31,29,26,0.07)' },
+  ehint: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.medium as never, color: mm.colors.inkSoft, lineHeight: theme.fs(16), marginTop: theme.sp(3), paddingTop: theme.sp(2.5), borderTopWidth: 1, borderTopColor: theme.colors.ui.borderSoft },
 });
 
 /* ── 识别明细 ── */
@@ -1256,8 +1256,8 @@ const il = StyleSheet.create({
     borderRadius: mm.radius.card, paddingHorizontal: theme.space.cardPadCompact, paddingVertical: theme.sp(1),
     marginBottom: theme.space.md,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.75), paddingVertical: theme.sp(2.75), borderBottomWidth: 1, borderBottomColor: 'rgba(31,29,26,0.06)' },
-  thumb: { width: theme.sp(9.5), height: theme.sp(9.5), borderRadius: mm.radius.iconSqMd, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(31,29,26,0.08)' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.75), paddingVertical: theme.sp(2.75), borderBottomWidth: 1, borderBottomColor: theme.colors.ui.borderSoft },
+  thumb: { width: theme.sp(9.5), height: theme.sp(9.5), borderRadius: mm.radius.iconSqMd, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.ui.borderSoft },
   thumbImg: { width: '100%', height: '100%' },
   thumbInitial: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: mm.colors.honeyDeep },
   box: { flex: 1, minWidth: 0 },
@@ -1276,13 +1276,13 @@ const dt = StyleSheet.create({
     backgroundColor: mm.colors.emptyFill, marginBottom: theme.space.md,
   },
   vfPhoto: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  vfDim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(31,29,26,0.06)' },
+  vfDim: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.colors.ui.borderSoft },
   ck: { position: 'absolute', width: theme.sp(6), height: theme.sp(6), borderColor: theme.colors.textWhite },
   ckTL: { left: theme.sp(3), top: theme.sp(3), borderTopWidth: 2.6, borderLeftWidth: 2.6, borderTopLeftRadius: 8 },
   ckTR: { right: theme.sp(3), top: theme.sp(3), borderTopWidth: 2.6, borderRightWidth: 2.6, borderTopRightRadius: 8 },
   ckBL: { left: theme.sp(3), bottom: theme.sp(3), borderBottomWidth: 2.6, borderLeftWidth: 2.6, borderBottomLeftRadius: 8 },
   ckBR: { right: theme.sp(3), bottom: theme.sp(3), borderBottomWidth: 2.6, borderRightWidth: 2.6, borderBottomRightRadius: 8 },
-  vfScanning: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,29,26,0.35)', gap: theme.sp(2) },
+  vfScanning: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.scrimSoft, gap: theme.sp(2) },
   vfScanningText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: theme.colors.textWhite },
   aiPill: {
     position: 'absolute', left: theme.sp(3), bottom: theme.sp(3),
@@ -1355,7 +1355,7 @@ const styles = StyleSheet.create({
 
 /* ── 环中心文字 ── */
 const mc = StyleSheet.create({
-  ringKcal: { fontSize: theme.fs(30), fontWeight: '500' as never, color: mm.colors.ink, lineHeight: theme.fs(32), letterSpacing: -0.3 },
+  ringKcal: { fontSize: theme.fs(30), fontWeight: '500' as never, color: mm.colors.ink, lineHeight: theme.fontSize.stat, letterSpacing: -0.3 },
   ringTarget: { fontSize: theme.fontSize.sm, fontWeight: '700' as never, color: mm.colors.inkFaint, marginTop: 3 },
 });
 
@@ -1369,7 +1369,7 @@ const ms2 = StyleSheet.create({
   chipText: { fontSize: theme.fontSize.xs, fontWeight: '700' as never },
   chipOff: {
     borderRadius: theme.radius.pill,
-    borderWidth: 1, borderColor: 'rgba(31,29,26,0.14)', borderStyle: 'dashed',
+    borderWidth: 1, borderColor: theme.colors.ui.offTrack, borderStyle: 'dashed',
     paddingHorizontal: theme.sp(2.75), paddingVertical: theme.sp(1.25),
   },
   chipOffText: { fontSize: theme.fontSize.xs, fontWeight: '600' as never, color: mm.colors.inkFaint },
@@ -1379,7 +1379,7 @@ const ms2 = StyleSheet.create({
 const mr = StyleSheet.create({
   row: {
     paddingVertical: theme.sp(2.75),
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(31,29,26,0.06)',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.ui.borderSoft,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
   tile: {
@@ -1388,16 +1388,16 @@ const mr = StyleSheet.create({
   },
   tilePhoto: {
     width: theme.sp(10), height: theme.sp(10), borderRadius: theme.sp(3),
-    borderWidth: 1, borderColor: 'rgba(31,29,26,0.08)',
+    borderWidth: 1, borderColor: theme.colors.ui.borderSoft,
   },
-  tileEmoji: { fontSize: theme.fs(18) },
+  tileEmoji: { fontSize: theme.fontSize.card },
   main: { flex: 1, minWidth: 0 },
   name: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink },
   kcal: { fontSize: theme.fontSize.xs, fontWeight: '600' as never, color: mm.colors.inkFaint, marginTop: 2 },
   /* 宏量比例条（按热量占比） */
   macroBar: {
     flexDirection: 'row', gap: 2, height: theme.sp(1.5), borderRadius: theme.radius.pill,
-    overflow: 'hidden', marginTop: theme.sp(2.25), backgroundColor: 'rgba(31,29,26,0.06)',
+    overflow: 'hidden', marginTop: theme.sp(2.25), backgroundColor: theme.colors.ui.borderSoft,
   },
   seg: { height: '100%' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(1.5) },
@@ -1408,6 +1408,6 @@ const mr = StyleSheet.create({
   elRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1.5), marginTop: theme.sp(2) },
   elTag: { borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1) },
   elOn: { backgroundColor: mm.colors.limeSoft },
-  elOff: { backgroundColor: 'rgba(31,29,26,0.05)' },
-  elText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fs(15) },
+  elOff: { backgroundColor: theme.colors.ui.borderSoft },
+  elText: { fontSize: theme.fontSize.micro, fontWeight: '700' as never, lineHeight: theme.fontSize.body },
 });

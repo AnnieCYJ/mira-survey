@@ -60,7 +60,7 @@ function PolicyHeader({ onBack }: { onBack: () => void }) {
   return (
     <View style={[styles.header, { paddingTop: insets.top + theme.sp(2) }]}>
       <TouchableOpacity onPress={onBack} style={styles.back} accessibilityLabel="返回">
-        <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+        <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
       </TouchableOpacity>
       <View style={styles.headText}>
         <Text style={styles.title}>隐私政策</Text>

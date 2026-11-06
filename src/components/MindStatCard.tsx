@@ -42,7 +42,7 @@ function MindStatCardImpl({ title, sub, value, unit, cornerIcon, cornerTone = 'l
       <Animated.View style={[styles.card, { transform: [{ scale: pressScale }] }]}>
         {cornerIcon ? (
           <View style={[styles.corner, { backgroundColor: cb.bg }]}>
-            <MindIcon name={cornerIcon} size={theme.fs(15)} color={cb.fg} />
+            <MindIcon name={cornerIcon} size={theme.fontSize.body} color={cb.fg} />
           </View>
         ) : null}
         <Text style={styles.ttl} numberOfLines={1}>{title}</Text>
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(3),
     paddingTop: theme.sp(2.25),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.10)',
+    borderTopColor: theme.colors.ui.offTrack,
     
   },
   footText: {

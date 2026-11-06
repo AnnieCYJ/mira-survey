@@ -273,7 +273,7 @@ interface IconProps {
 
 export default function Icon({
   name,
-  size = theme.fs(24),
+  size = theme.fontSize.orb,
   color = theme.colors.textSub,
   strokeWidth = 2,
   style,

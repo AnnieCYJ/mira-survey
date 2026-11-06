@@ -379,7 +379,7 @@ export default function EmotionQuickRecord() {
             <View style={styles.head}>
               <Text style={styles.headTitle}>记录此刻心情</Text>
               <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Icon name="close" size={theme.fs(20)} color={mm.colors.inkSoft} />
+                <Icon name="close" size={theme.fontSize.lg} color={mm.colors.inkSoft} />
               </TouchableOpacity>
             </View>
 
@@ -509,7 +509,7 @@ export default function EmotionQuickRecord() {
                     >
                       <Icon
                         name={EVENT_ICON[ev]}
-                        size={theme.fs(15)}
+                        size={theme.fontSize.body}
                         color={sel ? mm.colors.purpleDeep : mm.colors.inkSoft}
                       />
                       <Text style={[styles.evLabel, sel && styles.evLabelOn]}>{EVENT_LABEL[ev]}</Text>
@@ -641,7 +641,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(31,29,26,0.16)',
+    backgroundColor: theme.colors.ui.offTrack,
     alignSelf: 'center',
     marginVertical: theme.sp(1.5),
   },
@@ -680,12 +680,12 @@ const styles = StyleSheet.create({
   tickRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: theme.sp(1), marginBottom: theme.sp(0.5) },
   tickDot: { width: theme.sp(1.5), height: theme.sp(1.5), borderRadius: theme.radius.pill, opacity: 0.4 },
   tickDotActive: { opacity: 1, transform: [{ scale: 1.2 }] },
-  tickLabel: { fontSize: theme.fs(10), color: mm.colors.inkSoft, textAlign: 'center', minWidth: 40 },
+  tickLabel: { fontSize: theme.fontSize.tiny, color: mm.colors.inkSoft, textAlign: 'center', minWidth: 40 },
   tickLabelActive: { color: mm.colors.purpleDeep, fontWeight: '700' as never },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(1.5), gap: theme.sp(2.5) },
   customBtn: { paddingHorizontal: theme.sp(2.5), paddingVertical: theme.sp(1), borderRadius: theme.sp(4), backgroundColor: mm.colors.purpleSoft },
   customBtnText: { fontSize: theme.fs(12), color: mm.colors.purpleDeep, fontWeight: '600' as never },
-  customNow: { fontSize: theme.fs(15), fontWeight: '700' as never, color: mm.colors.ink, fontVariant: ['tabular-nums'] },
+  customNow: { fontSize: theme.fontSize.body, fontWeight: '700' as never, color: mm.colors.ink, fontVariant: ['tabular-nums'] },
 
   /* ── 时间选择器 ── */
   pickerWrap: {
@@ -714,12 +714,12 @@ const styles = StyleSheet.create({
   wheelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   wheelItem: { height: ITEM_H, justifyContent: 'center', alignItems: 'center' },
   wheelText: {
-    fontSize: theme.fs(20),
+    fontSize: theme.fontSize.lg,
     fontWeight: '600' as never,
     color: mm.colors.purpleDeep, // ★ 对比度修复：白字压 purpleSoft 浅紫滚轮底不可读 → purpleDeep（深浅底通用）
     fontVariant: ['tabular-nums'],
   },
-  wheelTextOn: { color: mm.colors.purpleDeep, fontWeight: '700' as never, fontSize: theme.fs(22) },
+  wheelTextOn: { color: mm.colors.purpleDeep, fontWeight: '700' as never, fontSize: theme.fontSize.h2 },
   wheelHighlight: {
     position: 'absolute',
     left: theme.sp(1.5), right: theme.sp(1.5),
@@ -733,11 +733,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: WHEEL_PAD - theme.sp(0.5),
     right: theme.sp(3),
-    fontSize: theme.fs(10),
+    fontSize: theme.fontSize.tiny,
     color: mm.colors.inkSoft,
   },
   wheelColon: { width: theme.sp(3), alignItems: 'center' },
-  wheelColonText: { fontSize: theme.fs(20), fontWeight: '700' as never, color: mm.colors.inkSoft, marginTop: -ITEM_H * 2 },
+  wheelColonText: { fontSize: theme.fontSize.lg, fontWeight: '700' as never, color: mm.colors.inkSoft, marginTop: -ITEM_H * 2 },
 
   trackWrap: {
     height: theme.sp(7),
@@ -748,7 +748,7 @@ const styles = StyleSheet.create({
     left: 0, right: 0,
     height: theme.sp(0.75),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(31,29,26,0.08)',
+    backgroundColor: theme.colors.ui.borderSoft,
   },
   tick: {
     position: 'absolute',
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
     marginLeft: -theme.sp(4.5),
     backgroundColor: 'rgba(255,255,255,0.88)',
     borderWidth: 1,
-    borderColor: 'rgba(31,29,26,0.05)',
+    borderColor: theme.colors.ui.borderSoft,
     shadowColor: '#8A8AA0',
     shadowOpacity: 0.22,
     shadowRadius: 10,
@@ -832,7 +832,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     backgroundColor: mm.colors.btnBusyBg,
     borderWidth: 1,
-    borderColor: 'rgba(31,29,26,0.06)',
+    borderColor: theme.colors.ui.borderSoft,
   },
   addConfirm: {
     paddingHorizontal: theme.sp(4),
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.btnBusyBg,
     borderWidth: 1,
-    borderColor: 'rgba(31,29,26,0.04)',
+    borderColor: theme.colors.ui.borderSoft,
   },
   evChipOn: {
     backgroundColor: mm.colors.purpleSoft,

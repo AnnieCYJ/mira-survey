@@ -65,7 +65,7 @@ function HeaderRight({ ttsOn, onToggle }: { ttsOn: boolean; onToggle: () => void
       >
         <Icon
           name={ttsOn ? 'speaker' : 'speaker_off'}
-          size={theme.fs(20)}
+          size={theme.fontSize.lg}
           color={ttsOn ? mm.colors.purpleDeep : theme.colors.textSub}
           strokeWidth={2.2}
         />
@@ -97,7 +97,7 @@ function SuggestStrip({ questions, onPick }: { questions: string[]; onPick: (q: 
             onPress={() => onPick(q)}
             activeOpacity={0.7}
           >
-            <Icon name="sparkle" size={theme.fs(13)} color={mm.colors.purpleDeep} strokeWidth={2.2} />
+            <Icon name="sparkle" size={theme.fontSize.xs} color={mm.colors.purpleDeep} strokeWidth={2.2} />
             <Text style={styles.suggestChipText} numberOfLines={1}>{q}</Text>
           </TouchableOpacity>
         ))}
@@ -549,7 +549,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
                 style={StyleSheet.absoluteFillObject}
               />
             )}
-            <Icon name="send" size={theme.fs(18)} color={input.trim() ? mm.colors.btnTextOnGrad : mm.colors.inkFaint} />
+            <Icon name="send" size={theme.fontSize.card} color={input.trim() ? mm.colors.btnTextOnGrad : mm.colors.inkFaint} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -564,7 +564,7 @@ function ChatSheetInner({ visible = true, onClose, initialQuestion, fullScreen }
         <View style={[styles.fsHead, { paddingTop: insets.top + theme.sp(2) }]}>
           <View style={styles.fsHeadRow}>
             <TouchableOpacity onPress={onClose} style={styles.fsBack} accessibilityLabel="返回">
-              <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+              <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
             </TouchableOpacity>
             <View style={styles.fsHeadText}>
               <Text style={styles.fsTitle}>Mira AI</Text>
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.sp(2.5),
     paddingBottom: theme.sp(2.5),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.09)',
+    borderTopColor: theme.colors.ui.borderSoft,
     borderWidth: 1,
     borderColor: mm.colors.limeSoft,
     borderRadius: theme.radius.md,

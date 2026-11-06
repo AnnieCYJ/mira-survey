@@ -384,7 +384,7 @@ export default function CycleCalendarScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           {/* ★ 2026-10-07（用户：上边一写生理周期、节律）
               ★ 2026-11-06（用户：「去详情页就直接写生理周期节律就行了，中间加个点儿干啥？」）→ 去掉「·」 */}
@@ -397,7 +397,7 @@ export default function CycleCalendarScreen() {
             accessibilityRole="button"
             accessibilityLabel={showCal ? '返回月相环' : '查看日历'}
           >
-            <Icon name="calendar" size={theme.fs(20)} color={showCal ? mm.colors.limeMid : mm.colors.ink} strokeWidth={2} />
+            <Icon name="calendar" size={theme.fontSize.lg} color={showCal ? mm.colors.limeMid : mm.colors.ink} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
@@ -468,7 +468,7 @@ export default function CycleCalendarScreen() {
               >
                 <Icon
                   name="chevronLeft"
-                  size={theme.fs(18)}
+                  size={theme.fontSize.card}
                   color={hasPrev ? mm.colors.ink : theme.colors.textSub}
                   strokeWidth={2.2}
                 />
@@ -495,7 +495,7 @@ export default function CycleCalendarScreen() {
                 <Text style={[styles.cycleNavText, isCurrentCycle && styles.cycleNavTextOff]}>下一个周期</Text>
                 <Icon
                   name="chevronRight"
-                  size={theme.fs(18)}
+                  size={theme.fontSize.card}
                   color={isCurrentCycle ? theme.colors.textSub : mm.colors.ink}
                   strokeWidth={2.2}
                 />
@@ -1078,13 +1078,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   // ★ mira-ocean（2026-10-17 用户）：选中紫 pill → 近白
-  segChipItemOn: { backgroundColor: 'rgba(255,255,255,0.95)' },
+  segChipItemOn: { backgroundColor: theme.colors.ui.white92 },
   segChipText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.semibold as any,
     color: theme.colors.textSub,
   },
-  segChipTextOn: { color: '#2A4470' }, // ★ mira-ocean：白底深字
+  segChipTextOn: { color: theme.colors.bgMid }, // ★ mira-ocean：白底深字
   // ★ 圆环下方「周期分析 / 激素节律分析」：参考洞察页「昼夜节律 / 生理周期节律」——
   //   等宽平铺、无底色，选中只把描边换成 limeMid（绿），未选保留浅描边
   segRingRow: { flexDirection: 'row', width: '100%', gap: theme.sp(1) },
@@ -1099,7 +1099,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: mm.colors.cardBorder,
   },
-  segRingItemOn: { borderColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：节律分段选中描边绿 → 白
+  segRingItemOn: { borderColor: theme.colors.ui.white92 }, // ★ mira-ocean：节律分段选中描边绿 → 白
   segRingText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.medium as any,
@@ -1215,7 +1215,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, padding: theme.sp(0.5), aspectRatio: 1 },
   dayBox: { flex: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  dayToday: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：今天圈紫 → 白
+  dayToday: { borderWidth: 2, borderColor: theme.colors.ui.white92 }, // ★ mira-ocean：今天圈紫 → 白
   dayNextPeriod: { borderWidth: 2, borderColor: theme.colors.textSub, },
   // ★ 2026-10-13（用户：图也大一点）：日期数字 + 经期点 + 排卵环同步放大
   dayNum: { fontSize: theme.fs(16), fontWeight: theme.weight.semibold as any },
@@ -1230,7 +1230,7 @@ const styles = StyleSheet.create({
   daySheetMask: { flex: 1, backgroundColor: theme.colors.bgTop },
   daySheet: { flex: 1, backgroundColor: theme.colors.bgTop },
   daySheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.cardPad, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
-  daySheetClose: { fontSize: theme.fs(22), color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  daySheetClose: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
   // ★ 本轮（用户 #283）：关闭按钮加一圈可见底 + 更大内边距，便于点按
   daySheetCloseBtn: {
     padding: theme.sp(2),
@@ -1251,17 +1251,17 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   // ★ mira-ocean（2026-10-17）：淡紫底 → 玻璃白
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.10)' },
-  chipOn: { backgroundColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：紫 → 白
+  chipOn: { backgroundColor: theme.colors.ui.white92 }, // ★ mira-ocean：紫 → 白
   chipText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  chipTextOn: { color: '#2A4470', fontWeight: theme.weight.semibold as any }, // ★ mira-ocean：白底深字
+  chipTextOn: { color: theme.colors.bgMid, fontWeight: theme.weight.semibold as any }, // ★ mira-ocean：白底深字
   // ★ mira-ocean（2026-10-17）：紫保存钮 → 白底深字
-  saveBtn: { marginTop: theme.space.lg, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: 'rgba(255,255,255,0.95)' },
-  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#2A4470' },
+  saveBtn: { marginTop: theme.space.lg, alignItems: 'center', paddingVertical: theme.sp(3), borderRadius: theme.radius.md, backgroundColor: theme.colors.ui.white92 },
+  saveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.bgMid },
   cancelBtn: { marginTop: theme.sp(2.5), alignItems: 'center', paddingVertical: theme.sp(3) },
   cancelBtnText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
   // ★ mira-ocean（2026-10-17）：淡紫底 → 玻璃白
   endBtn: { marginTop: theme.space.md, alignItems: 'center', paddingVertical: theme.sp(2.5), borderRadius: theme.radius.md, backgroundColor: 'rgba(255,255,255,0.10)' },
-  endBtnOn: { backgroundColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：绿 → 白
+  endBtnOn: { backgroundColor: theme.colors.ui.white92 }, // ★ mira-ocean：绿 → 白
   endBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textSub },
   endBtnTextOn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: '#1F1D1A' },
 });

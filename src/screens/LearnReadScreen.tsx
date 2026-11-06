@@ -62,7 +62,7 @@ export default function LearnReadScreen() {
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <Text style={styles.headTitle}>{HEAD_TITLES[collection]}</Text>
           <View style={styles.headSpacer} />

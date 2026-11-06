@@ -143,6 +143,68 @@ export const mm = {
 export type MindChipTone = keyof typeof mm.chipBg;
 
 /**
+ * ★ 2026-11-06 UI 一致性审查（C-08）：运动项目色板 + 心率区间色板。
+ *
+ * 背景：运动项目色是**数据分类色**，不是状态色，因此与五色相体系刻意解耦
+ * （不能把跑步色改成「情绪粉」）。但此前 `lib/sportVisual.ts` 里 30+ 个运动项
+ * 与 4 个心率区间全是裸 hex，绕开了 token 体系 —— 一旦要调色只能逐处改。
+ *
+ * 策略：**色值本身全部保留**（视觉零差异），只从裸 hex 提升为命名 token。
+ * 这样既消除了漂移面，又不会让已经验证过的运动色板发生意外变化。
+ */
+export const sportPalette = {
+  /* ── 跑步 / 心肺 ── */
+  run: '#FF3B30',
+  treadmill: '#FF3B30',
+  walk: '#4CA9FF',
+  stairs: '#34C759',
+  cycle: '#007AFF',
+  spin: '#007AFF',
+  rope: '#FF2D55',
+  hiit: '#D93025',
+  aerobics: '#FF6600',
+  boxing: '#C0392B',
+  zumba: '#FF448A',
+  dance: '#FF6FA5',
+  elliptical: '#5AC8FA',
+  rowing: '#2E86AB',
+  climbing: '#8E5CF0',
+
+  /* ── 力量 ── */
+  strength: '#FF9500',
+  core: '#F5A623',
+  situp: '#F5A623',
+
+  /* ── 身心 ── */
+  yoga: '#7B61FF',
+  pilates: '#8E7BFF',
+  stretch: '#8E8E9C',
+  taiji: '#4B4B55',
+
+  /* ── 球类 / 水上 ── */
+  swim: '#30B0C7',
+  pingpong: '#E7B13A',
+  badminton: '#4CAF50',
+  basketball: '#F57C00',
+
+  /** 未知运动类型兜底（中性） */
+  other: '#9A93A8',
+} as const;
+
+/**
+ * 心率区间色板（4 段）。
+ * ⚠️ onColor 不是装饰 —— 每个区间底色都核过对比度：
+ *   浅色区间（#E0A33C）用深墨 #1F1608，饱和区间用白字。
+ *   改任一 color 时必须同步复核 onColor，否则字会看不见。
+ */
+export const hrZonePalette = {
+  warmup: { color: '#2F7BE8', onColor: '#FFFFFF' },     // 热身 0–99
+  aerobic: { color: '#22C55E', onColor: '#0F1A0C' },    // 有氧 100–124
+  anaerobic: { color: '#E0A33C', onColor: '#1F1608' },  // 无氧 125–149
+  extreme: { color: '#E5484D', onColor: '#FFFFFF' },   // 极限 150+
+} as const;
+
+/**
  * 指标卡图标方块取色：按 key 稳定哈希从五色相取一组
  * （soft = 图标方块底，fg = deep 图标色）。
  * ★ v16：数据卡一律白底——本函数只用于卡内 26px 图标方块，不再做卡底色。

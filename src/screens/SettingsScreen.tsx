@@ -297,7 +297,7 @@ export default function SettingsScreen() {
         {/* 顶部导航 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={safeGoBack} style={styles.headerBtn} hitSlop={10}>
-            <Icon name="chevronLeft" size={theme.fs(24)} color={mm.colors.ink} />
+            <Icon name="chevronLeft" size={theme.fontSize.orb} color={mm.colors.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>设置</Text>
           <View style={styles.headerBtn} />
@@ -330,7 +330,7 @@ export default function SettingsScreen() {
           <View style={styles.toggleCard}>
             <View style={styles.toggleLeft}>
               <View style={[styles.iconWrap, { backgroundColor: mm.chipBg.lime.bg }]}>
-                <Icon name="orb" size={theme.fs(20)} color={mm.chipBg.lime.fg} strokeWidth={2} />
+                <Icon name="orb" size={theme.fontSize.lg} color={mm.chipBg.lime.fg} strokeWidth={2} />
               </View>
               <View style={styles.toggleText}>
                 <Text style={styles.rowTitle}>基础指标自动监测</Text>
@@ -360,7 +360,7 @@ export default function SettingsScreen() {
             <View style={[styles.iconWrap, ringConnected && styles.iconWrapOn]}>
               <Icon
                 name="ring"
-                size={theme.fs(20)}
+                size={theme.fontSize.lg}
                 color={ringConnected ? theme.colors.textWhite : theme.colors.accentText}
                 strokeWidth={2}
               />
@@ -491,7 +491,7 @@ export default function SettingsScreen() {
                   <View style={[styles.iconWrap, d.recommended && styles.iconWrapOn]}>
                     <Icon
                       name="ring"
-                      size={theme.fs(18)}
+                      size={theme.fontSize.card}
                       color={d.recommended ? theme.colors.textWhite : theme.colors.accentText}
                       strokeWidth={2}
                     />
@@ -657,7 +657,7 @@ function Row({
   return (
     <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: chip.bg }]}>
-        <Icon name={icon} size={theme.fs(20)} color={chip.fg} strokeWidth={2} />
+        <Icon name={icon} size={theme.fontSize.lg} color={chip.fg} strokeWidth={2} />
       </View>
       <View style={styles.toggleText}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: theme.fs(6),
-    height: theme.fs(10),
+    height: theme.fontSize.tiny,
     borderRadius: theme.fs(2),
     backgroundColor: theme.colors.cardBorder,
   },

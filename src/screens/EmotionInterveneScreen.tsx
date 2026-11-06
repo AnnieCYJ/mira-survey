@@ -54,7 +54,7 @@ function Head({ title, pill, pillBg, pillColor, onClose }: { title: string; pill
         accessibilityLabel="收起"
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
-        <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+        <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
       </TouchableOpacity>
       <Text style={ei.headTitle}>{title}</Text>
       {pill ? (
@@ -140,7 +140,7 @@ function PlanRow({ plan, onPress }: { plan: typeof PLANS[number]; onPress: () =>
       accessibilityLabel={plan.name}
     >
       <View style={ei.playCircle}>
-        <Icon name="play" size={theme.fs(13)} color={mm.colors.ink} strokeWidth={2.2} />
+        <Icon name="play" size={theme.fontSize.xs} color={mm.colors.ink} strokeWidth={2.2} />
       </View>
       <View style={ei.pBody}>
         <Text style={ei.pName}>{plan.name}</Text>
@@ -213,7 +213,7 @@ export function EmotionInterveneHome() {
           accessibilityLabel="返回"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+          <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={ei.headText}>
           <Text style={ei.title}>情绪调节</Text>
@@ -711,7 +711,7 @@ export function EmotionActivate({ onClose }: { onClose: () => void }) {
               accessibilityRole="button"
               accessibilityLabel="发送给 Mira AI"
             >
-              <Icon name="send" size={theme.fs(15)} color={theme.colors.textWhite} strokeWidth={2.2} />
+              <Icon name="send" size={theme.fontSize.body} color={theme.colors.textWhite} strokeWidth={2.2} />
             </TouchableOpacity>
           </View>
           <Text style={ei.sayHint}>不想打字，就按住底栏中间那个直接说。</Text>
@@ -1103,7 +1103,7 @@ const ei = StyleSheet.create({
   pSub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
   thumbImg: { width: 52, height: 52, borderRadius: theme.radius.sm },
   aiPlus: { width: theme.sp(5.5), height: theme.sp(5.5), borderRadius: theme.radius.pill, backgroundColor: mm.colors.purpleCore, alignItems: 'center', justifyContent: 'center' },
-  aiPlusText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: theme.colors.textWhite, lineHeight: theme.fs(15) },
+  aiPlusText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: theme.colors.textWhite, lineHeight: theme.fontSize.body },
 
   planIco: { width: theme.sp(9), height: theme.sp(9), borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
   planBody: { flex: 1 },
@@ -1131,7 +1131,7 @@ const ei = StyleSheet.create({
   progSegOn: { backgroundColor: mm.colors.limeMid },
 
   h1: { fontSize: theme.fontSize.h2, lineHeight: theme.fs(28), fontWeight: theme.weight.bold as never, color: mm.colors.ink, letterSpacing: -0.2 },
-  h1Sub: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(18), color: mm.colors.inkSoft, marginTop: theme.sp(1), marginBottom: theme.sp(3) },
+  h1Sub: { fontSize: theme.fontSize.xs, lineHeight: theme.fontSize.card, color: mm.colors.inkSoft, marginTop: theme.sp(1), marginBottom: theme.sp(3) },
 
   /* 缓一缓输入行 */
   gRow: {
@@ -1161,8 +1161,8 @@ const ei = StyleSheet.create({
     padding: theme.space.cardPadCompact, marginBottom: theme.sp(3),
   },
   quoteMeta: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginBottom: theme.sp(1) },
-  quoteText: { fontSize: theme.fontSize.body, lineHeight: theme.fs(22), fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
-  quoteInput: { fontSize: theme.fontSize.body, lineHeight: theme.fs(22), fontWeight: theme.weight.semibold as never, color: mm.colors.ink, paddingVertical: 0, minHeight: theme.sp(6) },
+  quoteText: { fontSize: theme.fontSize.body, lineHeight: theme.fontSize.h2, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  quoteInput: { fontSize: theme.fontSize.body, lineHeight: theme.fontSize.h2, fontWeight: theme.weight.semibold as never, color: mm.colors.ink, paddingVertical: 0, minHeight: theme.sp(6) },
   evCard: {
     backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2.5),
@@ -1189,7 +1189,7 @@ const ei = StyleSheet.create({
     backgroundColor: mm.colors.honeyTint, borderWidth: 1, borderColor: mm.colors.honeyMid,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(1), marginBottom: theme.sp(1),
   },
-  grKeyTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fs(22), fontWeight: theme.weight.bold as never, color: mm.colors.honeyDeep, marginTop: theme.sp(1.5), marginBottom: theme.sp(1.5) }, // ★ 对比度修复：honeyTint 浅底上白字不可读
+  grKeyTitle: { fontSize: theme.fontSize.card, lineHeight: theme.fontSize.h2, fontWeight: theme.weight.bold as never, color: mm.colors.honeyDeep, marginTop: theme.sp(1.5), marginBottom: theme.sp(1.5) }, // ★ 对比度修复：honeyTint 浅底上白字不可读
   grKeyLine: { height: StyleSheet.hairlineWidth, backgroundColor: mm.colors.honeyMid, marginVertical: theme.sp(2) },
   grKeyExpl: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: 'rgba(151,111,26,0.9)' }, // ★ 对比度修复：honeyDeep 90% 压浅米黄
 
@@ -1199,7 +1199,7 @@ const ei = StyleSheet.create({
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2.5),
   },
   actHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), marginBottom: theme.sp(2) },
-  actBody: { fontSize: theme.fontSize.sm, lineHeight: theme.fs(20), color: mm.colors.ink, marginBottom: theme.sp(2.5) },
+  actBody: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.lg, color: mm.colors.ink, marginBottom: theme.sp(2.5) },
   walkBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: mm.colors.btnBusyBg, borderRadius: theme.radius.md,
@@ -1226,7 +1226,7 @@ const ei = StyleSheet.create({
     backgroundColor: theme.colors.cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginBottom: theme.sp(2.5),
   },
-  cmpInput: { fontSize: theme.fontSize.body, lineHeight: theme.fs(22), color: mm.colors.ink, paddingVertical: theme.sp(1), minHeight: theme.sp(14), textAlignVertical: 'top' },
+  cmpInput: { fontSize: theme.fontSize.body, lineHeight: theme.fontSize.h2, color: mm.colors.ink, paddingVertical: theme.sp(1), minHeight: theme.sp(14), textAlignVertical: 'top' },
   cmpLine: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.cardBorder, marginVertical: theme.sp(1.5) },
   cmpHint: { fontSize: theme.fontSize.xs, lineHeight: theme.fs(17), color: mm.colors.inkSoft },
   cmpOk: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1.5), marginTop: theme.sp(1) },
@@ -1244,7 +1244,7 @@ const ei = StyleSheet.create({
   },
   svRingWrap: { alignItems: 'center', justifyContent: 'center', marginVertical: theme.sp(3) },
   svRingCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  svRingNum: { fontSize: theme.fs(40), fontWeight: theme.weight.bold as never, color: mm.colors.ink, lineHeight: theme.fs(46) },
+  svRingNum: { fontSize: theme.fs(40), fontWeight: theme.weight.bold as never, color: mm.colors.ink, lineHeight: theme.fontSize.hero },
   svRingNumBig: { fontSize: theme.fs(34), fontWeight: theme.weight.bold as never, color: mm.colors.ink, lineHeight: theme.fs(40) },
   svRingLabel: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginTop: theme.sp(0.5) },
   svPrompts: { gap: theme.sp(1.5), marginBottom: theme.sp(2) },

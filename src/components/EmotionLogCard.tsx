@@ -117,5 +117,5 @@ const styles = StyleSheet.create({
   moodLabel: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: theme.colors.textTitle },
   time: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   note: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(0.3) },
-  chev: { fontSize: theme.fs(20), color: theme.colors.textSub, fontWeight: theme.weight.regular as never },
+  chev: { fontSize: theme.fontSize.lg, color: theme.colors.textSub, fontWeight: theme.weight.regular as never },
 });

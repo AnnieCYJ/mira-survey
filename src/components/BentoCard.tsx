@@ -173,8 +173,8 @@ const styles = StyleSheet.create({
     marginBottom: theme.sp(0.75),           // ★ v18.60：1.5→0.75（用户：icon 行往上收，给四排点阵+底部数字让位）
   },
   chip: {
-    width: theme.fs(36),
-    height: theme.fs(36),
+    width: theme.fontSize.h1,
+    height: theme.fontSize.h1,
     borderRadius: theme.radius.pill,        // 白圆 chip（参考图比例 ~36pt）
     backgroundColor: mm.colors.cardBg,
     alignItems: 'center',
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(2),
     paddingTop: theme.sp(1.75),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.08)',   // ★ v18.59：dashed 在 Fabric 报「Unsupported dashed/dotted border style」红条，改实线浅色
+    borderTopColor: theme.colors.ui.borderSoft,   // ★ v18.59：dashed 在 Fabric 报「Unsupported dashed/dotted border style」红条，改实线浅色
   },
   footText: {
     fontSize: theme.fontSize.xs,

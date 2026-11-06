@@ -9,6 +9,8 @@
  * 数据层只放「值 + 语义色」，不碰布局，RN 组件层仍走 theme token。
  */
 
+import { sportPalette, hrZonePalette } from '../theme/mindmate';
+
 export interface SportVisual {
   /** 类别主色（色块/圆点用，文字一律用深 ink，色块上不放小字） */
   color: string;
@@ -20,35 +22,35 @@ export interface SportVisual {
 
 /** type = 固件 VPDeviceRuningMode 枚举值 → 视觉 */
 export const SPORT_VISUALS: Record<number, SportVisual> = {
-  1: { color: '#FF3B30', emoji: '🏃', group: 'cardio' },   // 跑步
-  2: { color: '#4CA9FF', emoji: '🚶', group: 'cardio' },   // 快走
-  63: { color: '#FF3B30', emoji: '🏃', group: 'cardio' },  // 跑步机
-  23: { color: '#34C759', emoji: '🚶', group: 'cardio' },  // 爬楼梯
-  7: { color: '#007AFF', emoji: '🚴', group: 'cardio' },   // 骑行
-  77: { color: '#007AFF', emoji: '🚴', group: 'cardio' },  // 动感单车
-  15: { color: '#FF2D55', emoji: '🤸', group: 'cardio' },  // 跳绳
-  32: { color: '#D93025', emoji: '🔥', group: 'cardio' },  // HIIT
-  38: { color: '#FF6600', emoji: '🤸', group: 'cardio' },  // 有氧操
-  83: { color: '#C0392B', emoji: '🥊', group: 'cardio' },  // 搏击操
-  97: { color: '#FF448A', emoji: '💃', group: 'cardio' },  // 尊巴
-  31: { color: '#FF6FA5', emoji: '💃', group: 'cardio' },  // 舞蹈
-  12: { color: '#30B0C7', emoji: '🏊', group: 'water' },   // 游泳
-  9: { color: '#5AC8FA', emoji: '🚶', group: 'cardio' },   // 椭圆机
-  10: { color: '#2E86AB', emoji: '🚣', group: 'cardio' },  // 划船机
-  33: { color: '#8E5CF0', emoji: '🧗', group: 'cardio' },  // 攀岩
-  84: { color: '#FF9500', emoji: '🏋️', group: 'strength' },// 力量训练
-  86: { color: '#F5A623', emoji: '💪', group: 'strength' },// 核心训练
-  13: { color: '#F5A623', emoji: '💪', group: 'strength' },// 仰卧起坐
-  16: { color: '#7B61FF', emoji: '🧘', group: 'mind' },    // 瑜伽
-  89: { color: '#8E7BFF', emoji: '🧘', group: 'mind' },    // 普拉提
-  91: { color: '#8E8E9C', emoji: '🦵', group: 'mind' },    // 拉伸
-  109: { color: '#4B4B55', emoji: '☯️', group: 'mind' },   // 太极
-  17: { color: '#E7B13A', emoji: '🏓', group: 'ball' },    // 乒乓球
-  21: { color: '#4CAF50', emoji: '🏸', group: 'ball' },    // 羽毛球
-  18: { color: '#F57C00', emoji: '🏀', group: 'ball' },    // 篮球
+  1: { color: sportPalette.run, emoji: '🏃', group: 'cardio' },   // 跑步
+  2: { color: sportPalette.walk, emoji: '🚶', group: 'cardio' },   // 快走
+  63: { color: sportPalette.treadmill, emoji: '🏃', group: 'cardio' },  // 跑步机
+  23: { color: sportPalette.stairs, emoji: '🚶', group: 'cardio' },  // 爬楼梯
+  7: { color: sportPalette.cycle, emoji: '🚴', group: 'cardio' },   // 骑行
+  77: { color: sportPalette.spin, emoji: '🚴', group: 'cardio' },  // 动感单车
+  15: { color: sportPalette.rope, emoji: '🤸', group: 'cardio' },  // 跳绳
+  32: { color: sportPalette.hiit, emoji: '🔥', group: 'cardio' },  // HIIT
+  38: { color: sportPalette.aerobics, emoji: '🤸', group: 'cardio' },  // 有氧操
+  83: { color: sportPalette.boxing, emoji: '🥊', group: 'cardio' },  // 搏击操
+  97: { color: sportPalette.zumba, emoji: '💃', group: 'cardio' },  // 尊巴
+  31: { color: sportPalette.dance, emoji: '💃', group: 'cardio' },  // 舞蹈
+  12: { color: sportPalette.swim, emoji: '🏊', group: 'water' },   // 游泳
+  9: { color: sportPalette.elliptical, emoji: '🚶', group: 'cardio' },   // 椭圆机
+  10: { color: sportPalette.rowing, emoji: '🚣', group: 'cardio' },  // 划船机
+  33: { color: sportPalette.climbing, emoji: '🧗', group: 'cardio' },  // 攀岩
+  84: { color: sportPalette.strength, emoji: '🏋️', group: 'strength' },// 力量训练
+  86: { color: sportPalette.core, emoji: '💪', group: 'strength' },// 核心训练
+  13: { color: sportPalette.situp, emoji: '💪', group: 'strength' },// 仰卧起坐
+  16: { color: sportPalette.yoga, emoji: '🧘', group: 'mind' },    // 瑜伽
+  89: { color: sportPalette.pilates, emoji: '🧘', group: 'mind' },    // 普拉提
+  91: { color: sportPalette.stretch, emoji: '🦵', group: 'mind' },    // 拉伸
+  109: { color: sportPalette.taiji, emoji: '☯️', group: 'mind' },   // 太极
+  17: { color: sportPalette.pingpong, emoji: '🏓', group: 'ball' },    // 乒乓球
+  21: { color: sportPalette.badminton, emoji: '🏸', group: 'ball' },    // 羽毛球
+  18: { color: sportPalette.basketball, emoji: '🏀', group: 'ball' },    // 篮球
 };
 
-const FALLBACK_VISUAL: SportVisual = { color: '#9A93A8', emoji: '🎯', group: 'other' };
+const FALLBACK_VISUAL: SportVisual = { color: sportPalette.other, emoji: '🎯', group: 'other' };
 
 /** 取运动视觉：未知类型回落到中性色，不显示空 */
 export function sportVisualOf(type?: number): SportVisual {
@@ -68,10 +70,10 @@ export interface HeartZone {
 }
 
 export const HEART_ZONES: HeartZone[] = [
-  { label: '热身', min: 0, max: 99, color: '#2F7BE8', onColor: '#FFFFFF' },
-  { label: '有氧', min: 100, max: 124, color: '#22C55E', onColor: '#0F1A0C' },
-  { label: '无氧', min: 125, max: 149, color: '#E0A33C', onColor: '#1F1608' },
-  { label: '极限', min: 150, max: 255, color: '#E5484D', onColor: '#FFFFFF' },
+  { label: '热身', min: 0, max: 99, color: hrZonePalette.warmup.color, onColor: hrZonePalette.warmup.onColor },
+  { label: '有氧', min: 100, max: 124, color: hrZonePalette.aerobic.color, onColor: hrZonePalette.aerobic.onColor },
+  { label: '无氧', min: 125, max: 149, color: hrZonePalette.anaerobic.color, onColor: hrZonePalette.anaerobic.onColor },
+  { label: '极限', min: 150, max: 255, color: hrZonePalette.extreme.color, onColor: hrZonePalette.extreme.onColor },
 ];
 
 /** 平均心率 → 所在区间；无心率返回 null（不让 UI 编一个区间） */

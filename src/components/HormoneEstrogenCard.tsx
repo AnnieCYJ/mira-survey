@@ -35,11 +35,11 @@ const PAD_B = 26;
 const Y_MAX = 100;
 
 const PHASE_BG: Record<string, string> = {
-  period: 'rgba(224,123,107,0.16)',
-  follicular: 'rgba(124,106,224,0.10)',
-  ovulation: 'rgba(111,207,180,0.20)',
-  luteal: 'rgba(157,138,240,0.13)',
-  unknown: 'rgba(138,138,168,0.05)',
+  period: theme.colors.cyclePeriod,
+  follicular: theme.colors.cycleFollicular,
+  ovulation: theme.colors.cycleOvulation,
+  luteal: theme.colors.cycleLuteal,
+  unknown: theme.colors.cycleUnknown,
 };
 
 const PHASE_LABEL: Record<string, string> = {

@@ -116,7 +116,7 @@ export default function MiraAIHomeScreen() {
         >
           <Icon
             name={ttsOn ? 'speaker' : 'speaker_off'}
-            size={theme.fs(20)}
+            size={theme.fontSize.lg}
             color={ttsOn ? mm.colors.limeDeep : mm.colors.inkFaint}
             strokeWidth={2.2}
           />
@@ -156,7 +156,7 @@ export default function MiraAIHomeScreen() {
               onPress={() => openChat(q)}
               activeOpacity={0.7}
             >
-              <Icon name="sparkle" size={theme.fs(13)} color={theme.colors.accentText} strokeWidth={2.2} />
+              <Icon name="sparkle" size={theme.fontSize.xs} color={theme.colors.accentText} strokeWidth={2.2} />
               <Text style={styles.suggestChipText} numberOfLines={2}>{q}</Text>
             </TouchableOpacity>
           ))}
@@ -188,11 +188,11 @@ export default function MiraAIHomeScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.sendBtnGrad}
             >
-              <Icon name="send" size={theme.fs(18)} color={mm.colors.btnTextOnGrad} />
+              <Icon name="send" size={theme.fontSize.card} color={mm.colors.btnTextOnGrad} />
             </LinearGradient>
           ) : (
             <View style={[styles.sendBtnGrad, { backgroundColor: mm.colors.btnBusyBg }]}>
-              <Icon name="send" size={theme.fs(18)} color={mm.colors.inkFaint} />
+              <Icon name="send" size={theme.fontSize.card} color={mm.colors.inkFaint} />
             </View>
           )}
         </TouchableOpacity>

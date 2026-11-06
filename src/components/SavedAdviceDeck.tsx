@@ -270,17 +270,17 @@ const styles = StyleSheet.create({
   cardCol: { flex: 1, minWidth: 0 },
   cTitle: {
     fontSize: theme.fs(14), fontWeight: theme.weight.semibold,
-    color: mm.colors.ink, letterSpacing: -0.3, lineHeight: theme.fs(18),
+    color: mm.colors.ink, letterSpacing: -0.3, lineHeight: theme.fontSize.card,
   },
   cDesc: {
     marginTop: theme.sp(0.5),
     fontSize: theme.fontSize.xs, fontWeight: theme.weight.regular,
-    color: mm.colors.inkSoft, lineHeight: theme.fs(15),
+    color: mm.colors.inkSoft, lineHeight: theme.fontSize.body,
   },
   cTime: {
     marginTop: theme.sp(0.5),
     fontSize: theme.fontSize.micro, fontWeight: theme.weight.regular,
-    color: mm.colors.inkFaint, lineHeight: theme.fs(13),
+    color: mm.colors.inkFaint, lineHeight: theme.fontSize.xs,
   },
 
   // 紫色药丸（放在卡片底部，右对齐；浅紫底 + 紫字）
@@ -297,13 +297,13 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'flex-start', justifyContent: 'center' },
   emptyText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.inkSoft },
   emptyHint: {
-    fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginTop: 4, lineHeight: theme.fs(18),
+    fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginTop: 4, lineHeight: theme.fontSize.card,
   },
 
   // ★ 展开 sheet
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end' },
   sheetScrim: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(31,29,26,0.35)',
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.ui.scrimSoft,
   },
   sheet: {
     backgroundColor: theme.colors.bgBottom,
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   sText: { flex: 1, minWidth: 0 },
   sTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink },
   sDesc: {
-    fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, marginTop: 2, lineHeight: theme.fs(18),
+    fontSize: theme.fontSize.xs, color: mm.colors.inkSoft, marginTop: 2, lineHeight: theme.fontSize.card,
   },
   sTime: {
     fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginTop: 3, lineHeight: theme.fs(16),

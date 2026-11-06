@@ -721,7 +721,7 @@ export default function StatusTrendDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>全天状态趋势</Text>

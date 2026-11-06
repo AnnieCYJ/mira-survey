@@ -106,21 +106,21 @@ const colorToLabel = (c: string): string =>
  *   / 睡眠 #EAE7E2 / 无记录 #BDB7AE。
  */
 const DOT_BY_MOOD: Record<string, string> = {
-  [COL_CALM]: '#B8C86A',
-  [COL_PLEASANT]: '#F2C35E',
-  [COL_EXCITED]: '#F39A62',
-  [COL_STRESSED]: '#D58AAE',
-  [COL_ANXIOUS]: '#C9789F',
+  [COL_CALM]: theme.colors.mood.calmDot,
+  [COL_PLEASANT]: theme.colors.mood.happy,
+  [COL_EXCITED]: theme.colors.mood.excited,
+  [COL_STRESSED]: theme.colors.mood.stressed,
+  [COL_ANXIOUS]: theme.colors.mood.anxious,
 };
 const DOT_EMPTY = 'rgba(255,255,255,0.25)';   // ★ mira-ocean：深底白阶（原 #BDB7AE）
 const DOT_SLEEP = 'rgba(255,255,255,0.35)';   // ★ mira-ocean：深底白阶（原 #EAE7E2）
 /** 点阵图例（与点阵同色，避免图例和格子颜色对不上） */
 const DOT_LEGEND: { c: string; t: string; mood?: EmotionFaceMood }[] = [
-  { c: '#B8C86A', t: '平静', mood: 'calm' },
-  { c: '#F2C35E', t: '开心', mood: 'happy' },
-  { c: '#F39A62', t: '兴奋', mood: 'excited' },
-  { c: '#D58AAE', t: '压力', mood: 'stressed' },
-  { c: '#7EA6F8', t: '难过', mood: 'sad' },
+  { c: theme.colors.mood.calmDot, t: '平静', mood: 'calm' },
+  { c: theme.colors.mood.happy, t: '开心', mood: 'happy' },
+  { c: theme.colors.mood.excited, t: '兴奋', mood: 'excited' },
+  { c: theme.colors.mood.stressed, t: '压力', mood: 'stressed' },
+  { c: theme.colors.mood.sad, t: '难过', mood: 'sad' },
   { c: DOT_SLEEP, t: '睡眠' },
 ];
 const dotColorOf = (e: any): string => DOT_BY_MOOD[moodColor(e)] ?? DOT_EMPTY;
@@ -132,10 +132,10 @@ const faceMoodOf = (e: any): EmotionFaceMood => {
   return 'calm';
 };
 const faceMoodFromColor = (c: string | null): EmotionFaceMood => {
-  if (c === '#F39A62') return 'excited';
-  if (c === '#F2C35E') return 'happy';
-  if (c === '#D58AAE') return 'stressed';
-  if (c === '#7EA6F8') return 'sad';
+  if (c === theme.colors.mood.excited) return 'excited';
+  if (c === theme.colors.mood.happy) return 'happy';
+  if (c === theme.colors.mood.stressed) return 'stressed';
+  if (c === theme.colors.mood.sad) return 'sad';
   return 'calm';
 };
 
@@ -204,11 +204,11 @@ export function MoodDotMatrix({ events, fallbackMood = null, sleepWindow = null 
     if (!evs.length) return null;
     const manual = evs.find((e) => e.isManual);
     if (manual) {
-      if (manual.manualMood === 'excited') return '#F39A62';
-      if (manual.manualMood === 'happy') return '#F2C35E';
-      if (manual.manualMood === 'calm') return '#B8C86A';
-      if (manual.manualMood === 'stressed') return '#D58AAE';
-      if (manual.manualMood === 'sad') return '#7EA6F8';
+      if (manual.manualMood === 'excited') return theme.colors.mood.excited;
+      if (manual.manualMood === 'happy') return theme.colors.mood.happy;
+      if (manual.manualMood === 'calm') return theme.colors.mood.calmDot;
+      if (manual.manualMood === 'stressed') return theme.colors.mood.stressed;
+      if (manual.manualMood === 'sad') return theme.colors.mood.sad;
       return dotColorOf(manual);
     }
     const ring = evs.find((e) => Number.isFinite(e?.emotionLevel));
@@ -749,8 +749,8 @@ const styles = StyleSheet.create({
 
   // 周期提示条
   cycleCard: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5),
-    backgroundColor: '#FDF4F9', borderWidth: 1, borderColor: '#F0DCEA', borderRadius: theme.radius.md, padding: theme.sp(2), marginTop: theme.sp(2) },
-  cycleText: { flex: 1, fontSize: theme.fontSize.xs, color: '#A8628C', lineHeight: theme.fontSize.xs * 1.5 },
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.md, padding: theme.sp(2), marginTop: theme.sp(2) },
+  cycleText: { flex: 1, fontSize: theme.fontSize.xs, color: theme.colors.accentText, lineHeight: theme.fontSize.xs * 1.5 },
 
   // 情绪高峰 / 低谷 双卡行
   hmCardsRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(1.5) },

@@ -528,13 +528,13 @@ export default function SleepDetailScreen() {
           {/* ★ 2026-11-06（用户纠偏）：「稳定睡眠」入口卡置于日视图最底部，点击直达睡前助眠呼吸（Breathing） */}
           <TouchableOpacity style={styles.stableSleepCard} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
             <View style={styles.stableSleepIcon}>
-              <Icon name="moon" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2} />
+              <Icon name="moon" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2} />
             </View>
             <View style={styles.stableSleepBody}>
               <Text style={styles.stableSleepTitle}>稳定睡眠</Text>
               <Text style={styles.stableSleepSub}>睡前助眠呼吸 · 放松身心，更好入睡</Text>
             </View>
-            <Icon name="chevronRight" size={theme.fs(20)} color={theme.colors.textSub} strokeWidth={2} />
+            <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textSub} strokeWidth={2} />
           </TouchableOpacity>
         </>
       ) : (

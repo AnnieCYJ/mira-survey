@@ -35,12 +35,14 @@ const THUMB_FOOD = require('../assets/card_food.jpg');
 const THUMB_LEARN = require('../assets/card_learn.png');
 const THUMB_DEFAULT = require('../assets/card_emotion.jpg');
 // ★ 2026-10-15 晚：恢复「原先白玻璃磨砂气泡」样式（去掉海景背景，卡片即白玻璃）
-const GLASS_FILL = 'rgba(255,255,255,0.82)';     // 白玻璃填充（半透明白，原白玻璃气泡同款）
-const GLASS_BORDER = 'rgba(31,29,26,0.14)';       // 浅描边（同原版）
+// ★ 2026-11-06 审查（H-18）：裸 hex → theme.colors.ui.onGlass* 命名 token，色值不变。
+//   注意：这组是**浅底深字**（白玻璃卡片），不能换成深底用的 textTitle/textSub。
+const GLASS_FILL = theme.colors.ui.onGlassFill;       // 白玻璃填充（半透明白，原白玻璃气泡同款）
+const GLASS_BORDER = theme.colors.ui.offTrack;         // 浅描边（同原版）
 // 白玻璃上的深色文字色系（保证浅底可读）
-const TXT_ON_GLASS = '#2E2A3A';                    // 深主字
-const TXT_ON_GLASS_SUB = 'rgba(74,70,96,0.80)';    // 次字
-const TXT_ON_GLASS_FAINT = 'rgba(74,70,96,0.55)';  // 弱字
+const TXT_ON_GLASS = theme.colors.ui.onGlassInk;        // 深主字
+const TXT_ON_GLASS_SUB = theme.colors.ui.onGlassInkSub; // 次字
+const TXT_ON_GLASS_FAINT = theme.colors.ui.onGlassInkFaint; // 弱字
 const GLASS_TEXT_SHADOW = {
   textShadowColor: 'transparent',
   textShadowOffset: { width: 0, height: 0 },
@@ -536,7 +538,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
             {kept ? (
               /* ── 确认态：点了「有用」→ 只显示这一行（带心），2.4s 后自动收回 idle ── */
               <View style={styles.keptRow}>
-                <Icon name="heart" size={theme.fs(15)} color={TXT_ON_GLASS} />
+                <Icon name="heart" size={theme.fontSize.body} color={TXT_ON_GLASS} />
                 <Text style={styles.keptText}>{keptMsg}</Text>
               </View>
             ) : (
@@ -577,7 +579,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                           style={styles.btnPill}
                         >
                           <View style={styles.pillRow}>
-                            <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
+                            <Icon name="heart" size={theme.fontSize.xs} color={mm.colors.ink} />
                             <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : '有用'}</Text>
                           </View>
                         </TouchableOpacity>
@@ -608,7 +610,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
                           style={styles.btnPill}
                         >
                           <View style={styles.pillRow}>
-                            <Icon name="heart" size={theme.fs(13)} color={mm.colors.ink} />
+                            <Icon name="heart" size={theme.fontSize.xs} color={mm.colors.ink} />
                             <Text style={styles.btnPillText}>{savingHabit ? '保存中…' : cand!.noPersist ? '说得准' : '有用'}</Text>
                           </View>
                         </TouchableOpacity>
@@ -715,7 +717,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.micro,
     color: TXT_ON_GLASS_SUB,
     marginTop: theme.sp(1.5),
-    lineHeight: theme.fs(15),
+    lineHeight: theme.fontSize.body,
   },
   // ★ 方案B（2026-10-14）：圆环下方原分析两行移入气泡顶部，作为 Mira 的今日状态解读
   // ★ V4（2026-10-15）：深玻璃上白字 + 深色柔光投影
@@ -820,7 +822,7 @@ const styles = StyleSheet.create({
   /** 第二条建议与第一条之间的分隔（细分隔线 + 呼吸位；浅渐变卡上用深色细分隔线） */
   suggBodyGap: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(31,29,26,0.10)',
+    borderTopColor: theme.colors.ui.offTrack,
     marginTop: 6,
     paddingTop: 10,
   },

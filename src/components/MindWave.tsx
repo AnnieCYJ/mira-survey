@@ -31,7 +31,7 @@ function MindWaveImpl({ values, color, dotColor, height = 36 }: Props) {
           <Path
             d={d}
             fill="none"
-            stroke="rgba(31,29,26,0.18)"
+            stroke="rgba(255,255,255,0.18)"
             strokeWidth={2}
             strokeLinecap="round"
             strokeDasharray="5 6"

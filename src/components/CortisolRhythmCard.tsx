@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   trendLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(2), marginTop: theme.sp(0.5) },
   trendLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.8) },
   trendLegendLine: { width: theme.sp(3), height: 2.6, borderRadius: 1.3 },
-  trendLegendDash: { width: theme.sp(3), height: 1.5, borderRadius: 0.75, backgroundColor: 'rgba(31,29,26,0.35)' }, // ★ Fabric 不支持 dashed border（红条警告），改实线短杠
+  trendLegendDash: { width: theme.sp(3), height: 1.5, borderRadius: 0.75, backgroundColor: theme.colors.ui.scrimSoft }, // ★ Fabric 不支持 dashed border（红条警告），改实线短杠
   trendLegendBand: { width: theme.sp(3), height: theme.sp(1.6), borderRadius: 1, backgroundColor: theme.colors.ui.borderSoft }, // ★ 睡眠时段阴影色块（与图内 sleepRects 同源）
   trendLegendTx: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },

@@ -566,8 +566,8 @@ const styles = StyleSheet.create({
   // ★ v18.53：leaf 图标 chip（与 Bento 卡白圆 chip 同规格）
   titleRow: { flexDirection: 'row', alignItems: 'center' },
   iconChip: {
-    width: theme.fs(36),
-    height: theme.fs(36),
+    width: theme.fontSize.h1,
+    height: theme.fontSize.h1,
     borderRadius: theme.radius.pill,
     backgroundColor: mm.chipBg.lime.bg,
     alignItems: 'center',

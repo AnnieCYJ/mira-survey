@@ -75,11 +75,11 @@ const Y_GUT = 34;
 const RELATIVE_AXIS_KEYS = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
 
 const PHASE_BG: Record<string, string> = {
-  period: 'rgba(224,123,107,0.16)',
-  follicular: 'rgba(124,106,224,0.10)',
-  ovulation: 'rgba(111,207,180,0.20)',
-  luteal: 'rgba(157,138,240,0.13)',
-  unknown: 'rgba(138,138,168,0.05)',
+  period: theme.colors.cyclePeriod,
+  follicular: theme.colors.cycleFollicular,
+  ovulation: theme.colors.cycleOvulation,
+  luteal: theme.colors.cycleLuteal,
+  unknown: theme.colors.cycleUnknown,
 };
 
 /**
@@ -1249,7 +1249,7 @@ export default function MetricDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{params.name}</Text>
@@ -1790,7 +1790,7 @@ export default function MetricDetailScreen() {
                 color: theme.colors.textTitle,
               }}>历史测量记录{manualList.length > 0 ? `（${manualList.length}）` : ''}</Text>
               <View style={{ transform: [{ rotate: historyExpanded ? '90deg' : '0deg' }] }}>
-                <Icon name="chevronRight" size={theme.fs(18)} color={theme.colors.textSub} />
+                <Icon name="chevronRight" size={theme.fontSize.card} color={theme.colors.textSub} />
               </View>
             </TouchableOpacity>
             {historyExpanded && (
@@ -2294,7 +2294,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
               </View>
             </View>
             {/* 同尺度轨道：灰底 + 绿色理想带 + 彩色实测点（全部以 0–10 mmol/L 为基准，可直接对比） */}
-            <View style={{ height: 12, borderRadius: 6, backgroundColor: '#ECECEC', position: 'relative' }}>
+            <View style={{ height: 12, borderRadius: 6, backgroundColor: theme.colors.cardBgSoft, position: 'relative' }}>
               <View
                 style={{
                   position: 'absolute',
@@ -2302,7 +2302,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
                   width: `${d.bandWidthPct}%`,
                   top: 0,
                   bottom: 0,
-                  backgroundColor: 'rgba(76,175,80,0.22)',
+                  backgroundColor: 'rgba(213,227,132,0.22)',
                   borderRadius: 6,
                 }}
               />
@@ -2342,7 +2342,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
           ))}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
-          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: 'rgba(76,175,80,0.35)', marginRight: 6 }} />
+          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: 'rgba(213,227,132,0.35)', marginRight: 6 }} />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>绿色带 = 理想区间 · 彩色竖条 = 你今日的实测值</Text>
         </View>
         <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
@@ -2733,7 +2733,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1, borderColor: 'rgba(124,106,224,0.18)',
   },
-  moodStripEmoji: { fontSize: theme.fs(20), marginRight: theme.sp(1.5) },
+  moodStripEmoji: { fontSize: theme.fontSize.lg, marginRight: theme.sp(1.5) },
   moodStripTxt: { fontSize: theme.fontSize.micro, color: mm.colors.ink, fontWeight: theme.weight.medium as never },
   pad: { padding: theme.space.cardPad },
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
@@ -2866,9 +2866,9 @@ const styles = StyleSheet.create({
     marginTop: theme.space.md,
     padding: theme.space.sm,
     borderRadius: mm.radius.card,
-    backgroundColor: 'rgba(120, 100, 220, 0.06)',
+    backgroundColor: theme.colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(120, 100, 220, 0.14)',
+    borderColor: theme.colors.ui.accentSoft20,
   },
   debugTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: theme.weight.semibold },
   debugText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1), lineHeight: theme.fontSize.micro * 1.5 },

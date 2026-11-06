@@ -118,7 +118,7 @@ export default function SuggestionCard({
 
         <View style={styles.savedFoot}>
           <View style={styles.savedTag}>
-            <Icon name="heart" size={theme.fs(13)} color={mm.colors.limeDeep} />
+            <Icon name="heart" size={theme.fontSize.xs} color={mm.colors.limeDeep} />
             {/* ★ 2026-10-08 十改：与首页气泡的确认文案同口径（Mira 声线统一） */}
             <Text style={styles.savedTagText}>已收进你的专属建议啦</Text>
           </View>
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,
     color: theme.colors.textInk,
-    lineHeight: theme.fs(22),
+    lineHeight: theme.fontSize.h2,
     marginTop: theme.space.xs,
   },
   evidence: {
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     marginTop: theme.space.sm,
     paddingTop: theme.space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(31,29,26,0.07)',
+    borderTopColor: theme.colors.ui.borderSoft,
   },
   savedTag: {
     flexDirection: 'row',

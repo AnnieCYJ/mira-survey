@@ -56,7 +56,7 @@ function MindChipsImpl({ items }: { items: MindChipItem[] }) {
       >
         <View style={[styles.iconSq, { backgroundColor: cb.bg }]}>
           {it.moonStyle != null
-            ? <MoonDot style={it.moonStyle} size={theme.fs(15)} />
+            ? <MoonDot style={it.moonStyle} size={theme.fontSize.body} />
             : <MindIcon name={it.icon} size={theme.fs(14)} color={cb.fg} />}
         </View>
         <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>

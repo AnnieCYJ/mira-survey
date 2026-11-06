@@ -351,7 +351,7 @@ export default function EmotionLogScreen() {
             accessibilityLabel="返回"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>情绪记录</Text>
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     minHeight: theme.sp(9),
     marginTop: theme.sp(2),
   },
-  selectedEmoji: { fontSize: theme.fs(24) },
+  selectedEmoji: { fontSize: theme.fontSize.orb },
   selectedLabel: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold as never, color: mm.colors.ink },
   selectedHint: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint },
 

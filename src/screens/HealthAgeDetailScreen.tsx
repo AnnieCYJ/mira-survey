@@ -239,7 +239,7 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
             const isRef = actualAge != null && g === Math.round(actualAge);
             return (
               <React.Fragment key={i}>
-                <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="rgba(31,29,26,0.06)" strokeWidth={1} />
+                <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={theme.colors.ui.white05} strokeWidth={1} />
                 {isRef && (
                   <SvgText x={W - PAD_R} y={y - 4} fontSize={9} fill={theme.colors.textSub} textAnchor="end">{'实际年龄'}</SvgText>
                 )}
@@ -247,7 +247,7 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
             );
           })}
           {actualAge != null && (
-            <Line x1={PAD_L} y1={yAtE(actualAge)} x2={W - PAD_R} y2={yAtE(actualAge)} stroke="rgba(31,29,26,0.32)" strokeWidth={1.3} strokeDasharray="5 4" />
+            <Line x1={PAD_L} y1={yAtE(actualAge)} x2={W - PAD_R} y2={yAtE(actualAge)} stroke={theme.colors.ui.white25} strokeWidth={1.3} strokeDasharray="5 4" />
           )}
         </Svg>
         <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, backgroundColor: 'transparent', paddingHorizontal: theme.sp(2) }}>
@@ -303,7 +303,7 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
         const isRef = g === 0;
         return (
           <React.Fragment key={i}>
-            <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="rgba(31,29,26,0.06)" strokeWidth={1} />
+            <Line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={theme.colors.ui.white05} strokeWidth={1} />
             {isRef ? (
               <SvgText x={W - PAD_R} y={y - 4} fontSize={9} fill={theme.colors.textSub} textAnchor="end">{'实际年龄'}</SvgText>
             ) : (
@@ -313,7 +313,7 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
         );
       })}
       {/* 实际年龄参考线（差值 0 位） */}
-      <Line x1={PAD_L} y1={yAt(0)} x2={W - PAD_R} y2={yAt(0)} stroke="rgba(31,29,26,0.32)" strokeWidth={1.3} strokeDasharray="5 4" />
+      <Line x1={PAD_L} y1={yAt(0)} x2={W - PAD_R} y2={yAt(0)} stroke={theme.colors.ui.white25} strokeWidth={1.3} strokeDasharray="5 4" />
       {segs.map((s, i) => (
         <Path key={i} d={s.d} fill="none" stroke={s.c} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
       ))}
@@ -444,7 +444,7 @@ export default function HealthAgeDetailScreen() {
         <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}
           accessibilityRole="button" accessibilityLabel="返回"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
+          <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>身体年龄</Text>
@@ -528,7 +528,7 @@ export default function HealthAgeDetailScreen() {
                   「Unsupported dashed / dotted border style」警示条；改用三段实心小段拼出虚线，零告警。 */}
               <View style={styles.legendDashes}>
                 {[0, 1, 2].map((i) => (
-                  <View key={i} style={[styles.legendDashSeg, { backgroundColor: 'rgba(31,29,26,0.32)' }]} />
+                  <View key={i} style={[styles.legendDashSeg, { backgroundColor: theme.colors.ui.scrimSoft }]} />
                 ))}
               </View>
               <Text style={styles.legendText}>实际年龄{actualAge != null ? ' ' + actualAge : ''}</Text>

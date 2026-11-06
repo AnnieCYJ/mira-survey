@@ -222,7 +222,78 @@ export const colors = {
      * 文字层次靠**字号/字重**区分，不要靠降低不透明度。
      */
     onGrad: '#FFFFFF',
+
+    /**
+     * ★ 2026-11-06 UI 一致性审查（docs/audit/01 C-01 / H-01）：
+     * 白阶补充档 —— 收口代码中流通的 39 种白色 alpha。
+     */
+    white05: 'rgba(255,255,255,0.05)',
+    white45: 'rgba(255,255,255,0.45)',
+    white50: 'rgba(255,255,255,0.50)',
+    white65: 'rgba(255,255,255,0.65)',
+    white85: 'rgba(255,255,255,0.85)',
+    white95: 'rgba(255,255,255,0.95)',
+    /** 弹层深底（与 bgBottom #0A294F 同源） */
+    sheetDeep: 'rgba(9,28,48,0.98)',
+    /** 深海阴影系（与 bgBottom 同源，收口 rgba(8,30,58,*)） */
+    deepScrim: 'rgba(10,41,79,0.35)',
+
+    /**
+     * ★ 2026-11-06 UI 一致性审查（H-18）：白玻璃卡上的文字色系。
+     *
+     * ⚠️ 这里的色值是**深色**，因为白玻璃气泡（HomeAiBubble）是**浅底深字**的
+     * 独立设计（用户 2026-10-15 明确要求恢复白玻璃样式）。
+     *    绝不能换成 theme.colors.textTitle/textSub —— 那些是深底浅字，
+     *    放到白玻璃上会不可读。审查报告建议的 glassBgStrong 会让气泡变暗，
+     *    同样不可采纳。
+     *
+     * 所以这里只做「裸 hex → 命名 token」，色值本身不变（视觉零差异）。
+     */
+    onGlassFill: 'rgba(255,255,255,0.82)',
+    onGlassInk: '#2E2A3A',
+    onGlassInkSub: 'rgba(74,70,96,0.80)',
+    onGlassInkFaint: 'rgba(74,70,96,0.55)',
   } as const,
+
+  /**
+   * ★ 2026-11-06 UI 一致性审查（C-02 / C-03 / H-13）：
+   * 周期四相区间色 —— MetricDetailScreen 与 HormoneEstrogenCard 此前各定义一遍，
+   * 现统一到 token，两处必须引用同一份，避免再次漂移。
+   */
+  cyclePeriod: 'rgba(224,123,107,0.16)',
+  cycleFollicular: 'rgba(124,106,224,0.10)',
+  cycleOvulation: 'rgba(111,207,180,0.20)',
+  cycleLuteal: 'rgba(157,138,240,0.13)',
+  /** 周期相位未知（区间底色） */
+  cycleUnknown: 'rgba(138,138,168,0.05)',
+
+  /**
+   * ★ 2026-11-06 UI 一致性审查（C-03）：
+   * 情绪点阵色板。此前这些 hex 同时散落在 `data/emotionLog.ts`（MOOD_COLOR）与
+   * `components/EmotionInsightView.tsx`（DOT_BY_MOOD / DOT_LEGEND / 手动记录映射），
+   * 共 17 处粘贴同一组私有色值，且**用字符串相等做反查**（faceMoodFromColor）。
+   *
+   * 收敛策略：**色值本身不变**（视觉零差异），只是从裸 hex 提升为命名 token，
+   * 由两处共同引用 —— 这样既消除了漂移，又不会因改成 mm 五色相导致反查静默失效。
+   *
+   * ⚠️ 若要改这里的色值，必须同步检查 `faceMoodFromColor` 的反查表。
+   */
+  mood: {
+    /** 兴奋（橙） */
+    excited: '#F39A62',
+    /** 开心（黄） */
+    happy: '#F2C35E',
+    /** 平静（点阵用黄绿，与设备侧 calm 绿区分） */
+    calmDot: '#B8C86A',
+    /** 平静（设备侧 emotionLevel 映射用绿） */
+    calm: '#6CC28E',
+    /** 压力（粉） */
+    stressed: '#D58AAE',
+    /** 焦虑（深粉） */
+    anxious: '#C9789F',
+    /** 难过（蓝） */
+    sad: '#7EA6F8',
+  },
 } as const;
 
 export const sp = (n: number): number => n * 4;
@@ -254,7 +325,25 @@ export const space = {
  *   pill 999 → 胶囊（chip / tag / 日期选择器圆角 / 圆形头像），不参与上面的递减关系
  * 说明：theme.radius.card 与 mm.radius.card 现已对齐为 24（此前 14，2026-11-03 统一）。
  */
-export const radius = { phone: 55, xl: 24, card: 24, /** ★ 2026-11-03：lg=14 收口散落的 13–16 内卡圆角 */ lg: 14, md: 11, sm: 9, pill: 999 } as const;
+export const radius = {
+  phone: 55,
+  /** @deprecated —— 与 card 同值，请用 card */
+  xl: 24,
+  card: 24,
+  /** ★ 2026-11-03：lg=14 收口散落的 13–16 内卡圆角 */
+  lg: 14,
+  md: 11,
+  /** ★ 2026-11-06 审查（H-04）：对齐 mm.radius.chip */
+  chip: 16,
+  /** ★ 2026-11-06 审查（H-04）：对齐 mm.radius.iconSq */
+  iconSq: 9,
+  /** ★ 2026-11-06 审查（H-04）：对齐 mm.radius.iconSqMd */
+  iconSqMd: 10,
+  sm: 9,
+  /** ★ 2026-11-06 审查（M-01）：微型标记点（2~3px） */
+  xs: 3,
+  pill: 999,
+} as const;
 
 const BASE_WIDTH = 390;
 const fontScale = Math.min(Math.max(SCREEN_WIDTH / BASE_WIDTH, 0.88), 1.22);
@@ -276,6 +365,16 @@ export const fontSize = {
   tiny: fs(10),
   hero: fs(46),
   orb: fs(24),
+  /**
+   * ★ 2026-11-06 UI 一致性审查（4.2）：详情页页头副标题统一字号
+   *   （收口 13 / 13.5 / 14 三种）。
+   */
+  pageSub: fs(13.5),
+  /**
+   * ★ 2026-11-06 UI 一致性审查（4.2）：图表轴标签
+   *   （收口 fs(10) / fs(12) 混用）。
+   */
+  axis: fs(10),
 } as const;
 
 export const weight = {
@@ -284,7 +383,14 @@ export const weight = {
   medium: '500',
   semibold: '600',
   bold: '700',
-} as const;
+  /**
+   * ★ 2026-11-06 UI 一致性审查（C-11）：
+   * 用 satisfies 取代 as const —— as const 会把每个值收窄成只读字面量，
+   * 赋给 RN 的 `fontWeight?: '300'|'400'|'500'|'600'|'700'|'800'|'900'` 时
+   * 因可变/只读差异而被迫写 `as any` / `as never`（全库 44 处类型逃逸）。
+   * satisfies 保留字面量推断的同时让值可直接赋给 RN 类型。
+   */
+} as const satisfies Record<string, '300' | '400' | '500' | '600' | '700' | '800' | '900'>;
 
 export const shadow = {
   card: {

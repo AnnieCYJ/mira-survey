@@ -119,14 +119,14 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
       {/* 步进器：◀ 当前选择 ▶，点中间弹日历 */}
       <View style={styles.stepper}>
         <TouchableOpacity style={styles.arrow} onPress={goPrev} hitSlop={8}>
-          <Icon name="chevronLeft" size={theme.fs(20)} color={theme.colors.textTitle} />
+          <Icon name="chevronLeft" size={theme.fontSize.lg} color={theme.colors.textTitle} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.center} onPress={openCalendar} activeOpacity={0.7}>
-          <Icon name="calendar" size={theme.fs(15)} color="rgba(255,255,255,0.85)" />
+          <Icon name="calendar" size={theme.fontSize.body} color="rgba(255,255,255,0.85)" />
           <Text style={styles.centerText}>{formatLabel ? formatLabel(value) : centerLabel(value, range)}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.arrow} onPress={goNext} hitSlop={8}>
-          <Icon name="chevronRight" size={theme.fs(20)} color={theme.colors.textTitle} />
+          <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textTitle} />
         </TouchableOpacity>
       </View>
 
@@ -154,7 +154,7 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
                 setCalM(p.getMonth() + 1);
               }}
             >
-              <Icon name="chevronLeft" size={theme.fs(18)} color={theme.colors.textTitle} />
+              <Icon name="chevronLeft" size={theme.fontSize.card} color={theme.colors.textTitle} />
             </TouchableOpacity>
             <Text style={styles.calTitle}>{calY}年{calM}月</Text>
             <TouchableOpacity
@@ -165,7 +165,7 @@ export default function DateAnchorPicker({ value, onChange, range, maxDate, minD
                 setCalM(p.getMonth() + 1);
               }}
             >
-              <Icon name="chevronRight" size={theme.fs(18)} color={theme.colors.textTitle} />
+              <Icon name="chevronRight" size={theme.fontSize.card} color={theme.colors.textTitle} />
             </TouchableOpacity>
           </View>
 
