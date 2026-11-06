@@ -408,8 +408,17 @@ export interface RingState {
   ecgHint: string | null;
   /** ★ 2026-10-16：血氧呼吸暂停分析结果（triggerOxygenAnalysis）。null = 未读取/读取失败。 */
   oxygenAnalysis: OxygenAnalysis | null;
+  /**
+   * ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：**读取失败原因**（区别于「暂无数据」）。
+   *   此前触发失败与事件解析失败都被静默吞掉 → UI 空态文案恒为「当天暂无血氧数据」，
+   *   用户无法区分「设备不支持」「读取失败」与「确实没数据」。这里显式记录失败原因，
+   *   由 OxygenApneaSection / HrvLorenzSection 展示。
+   */
+  oxygenAnalysisError?: string | null;
   /** ★ 2026-10-16：HRV Lorenz 散点 + RR 间期（readRrAnalysis）。null = 未读取/读取失败。 */
   rrAnalysis: RrAnalysis | null;
+  /** ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：RR 间期分析失败原因。 */
+  rrAnalysisError?: string | null;
   /** healthStore 数据版本计数器：healthStore 写入时递增，让只订阅 RingState 的页面也能感知到数据变化并刷新。 */
   dataVersion: number;
 }
@@ -1459,7 +1468,11 @@ class NativeRingSource {
           .then((p) => {
             if (p) postLog('RingBle', `[DeviceProfile] 真机识别 → 应用 ${p}（ecgType=${raw.capabilities?.ecgType}，mac=${this.getState().deviceId}）`);
           })
-          .catch(() => {});
+          // ★ 2026-11-06 审查（docs/audit/03 🟡#12）：**完全静默 → 带日志**。
+          //   机型识别失败时至少要留痕，否则「Pro 被当成基础版」永远查不到原因。
+          .catch((e) => {
+            postLog('RingBle', `[DeviceProfile] 真机识别失败：${e}`);
+          });
       }
       if (this.getState().status === 'connected' && healthStore.syncEnabled) {
         this.triggerBackfillOnReady('ready');
@@ -1514,7 +1527,12 @@ class NativeRingSource {
     if (raw.deviceName) patch.deviceName = String(raw.deviceName);
     if (status === 'connected' && (raw.deviceName || raw.deviceAddress)) {
       // ★ 2026-11-05（用户：连上戒指就识别 Pro/基础版）：用 MAC + 广播名做真机识别（能力字段在 ready 分支补充）。
-      void applyProfileFromDevice({ deviceName: raw.deviceName, deviceId: raw.deviceAddress });
+      // ★ 2026-11-06 审查（docs/audit/03 🟡#13）：**必须挂 .catch** ——
+      //   旧实现 `void applyProfileFromDevice(...)` 无 catch，识别失败会产生
+      //   unhandled rejection（真机上表现为红线告警，且机型识别失败无迹可寻）。
+      void applyProfileFromDevice({ deviceName: raw.deviceName, deviceId: raw.deviceAddress }).catch((e) => {
+        postLog('RingBle', `[DeviceProfile] 真机识别失败：${e}`);
+      });
     }
     if (raw.battery != null) patch.battery = num(raw.battery) ?? null;
     if (raw.firmware) patch.firmware = String(raw.firmware);
@@ -1825,7 +1843,9 @@ class NativeRingSource {
       if (!raw) return;
       if (raw.error) {
         postLog('O2-ANALYSIS', ` ${String(raw.error)}`);
-        this.push({ oxygenAnalysis: null });
+        // ★ 2026-11-06 审查（docs/audit/03 🟡#11）：解析失败原因不再被吞 ——
+        //   UI 需能区分「读取失败」与「暂无数据」。
+        this.push({ oxygenAnalysis: null, oxygenAnalysisError: `血氧分析失败：${String(raw.error)}` });
         return;
       }
       const analysis: OxygenAnalysis = {
@@ -1847,8 +1867,12 @@ class NativeRingSource {
         ts: num(raw.ts) ?? Date.now(),
       };
       postLog('O2-ANALYSIS', ` ✅ osahs=${analysis.osahsResult} aveO2=${analysis.aveOxygen} minO2=${analysis.minOxygen}`);
-      this.push({ oxygenAnalysis: analysis });
-    } catch { /* 单事件失败不中断 */ }
+      this.push({ oxygenAnalysis: analysis, oxygenAnalysisError: null });
+    } catch (e) {
+      // ★ 2026-11-06 审查（docs/audit/03 🟡#11）：不再完全静默 —— 记录并写错误态。
+      postLog('O2-ANALYSIS', ` ❌ 解析失败：${e}`);
+      this.push({ oxygenAnalysis: null, oxygenAnalysisError: '血氧分析数据解析失败，请重新连接戒指后重试' });
+    }
   };
 
   /** ★ 2026-10-16：RR 间期 / Lorenz 散点落地（原生 onRrAnalysis） */
@@ -1857,7 +1881,7 @@ class NativeRingSource {
       if (!raw) return;
       if (raw.error) {
         postLog('RR-ANALYSIS', ` ${String(raw.error)}`);
-        this.push({ rrAnalysis: null });
+        this.push({ rrAnalysis: null, rrAnalysisError: `RR 间期分析失败：${String(raw.error)}` });
         return;
       }
       const rr = Array.isArray(raw.rr) ? raw.rr.map((v: any) => num(v) ?? 0).filter((v: number) => v > 0) : [];
@@ -1867,8 +1891,12 @@ class NativeRingSource {
             .filter((p: { x: number; y: number }) => p.x > 0 && p.y > 0)
         : [];
       postLog('RR-ANALYSIS', ` ✅ rr=${rr.length} lorentz=${lorentz.length}`);
-      this.push({ rrAnalysis: { rr, lorentz, ts: num(raw.ts) ?? Date.now() } });
-    } catch { /* 单事件失败不中断 */ }
+      this.push({ rrAnalysis: { rr, lorentz, ts: num(raw.ts) ?? Date.now() }, rrAnalysisError: null });
+    } catch (e) {
+      // ★ 2026-11-06 审查（docs/audit/03 🟡#11）：不再完全静默 —— 记录并写错误态。
+      postLog('RR-ANALYSIS', ` ❌ 解析失败：${e}`);
+      this.push({ rrAnalysis: null, rrAnalysisError: 'RR 间期分析数据解析失败，请重新连接戒指后重试' });
+    }
   };
 
   private handleEcgDay = (raw: {    date?: string;
@@ -2896,12 +2924,28 @@ steps点数=${reshaped.steps?.length ?? 0}`,
   /** 离线恢复：先 veepooSdkStartReadDeviceAllData 从戒指 flash 重拉最新离线数据，再逐日回填。 */
   recoverOffline() { VeepooNative?.recoverOffline?.(); }
   /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
+  /**
+   * ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。
+   * ★ 2026-11-06 审查（docs/audit/03 🟡#10）：**不再静默吞错** —— 失败原因写入 state，
+   *   由 UI 显示「读取失败」，否则用户看到的永远是「暂无数据」，
+   *   无法区分「设备不支持」与「读取失败」。
+   */
   async triggerOxygenAnalysis(): Promise<void> {
-    try { await VeepooNative?.triggerOxygenAnalysis?.(); } catch { /* 静默 */ }
+    try {
+      await VeepooNative?.triggerOxygenAnalysis?.();
+    } catch (e) {
+      postLog('O2-ANALYSIS', ` ❌ 触发失败：${e}`);
+      this.push({ oxygenAnalysisError: '血氧历史读取失败，请确认戒指已连接并佩戴' });
+    }
   }
   /** ★ 2026-10-16：触发 HRV Lorenz 散点读取——原生读 RR 间期历史 → Lorenz 散点。结果经 onRrAnalysis 事件写入 RingState.rrAnalysis。 */
   async readRrAnalysis(): Promise<void> {
-    try { await VeepooNative?.readRrAnalysis?.(); } catch { /* 静默 */ }
+    try {
+      await VeepooNative?.readRrAnalysis?.();
+    } catch (e) {
+      postLog('RR-ANALYSIS', ` ❌ 读取失败：${e}`);
+      this.push({ rrAnalysisError: 'RR 间期历史读取失败，请确认戒指已连接并佩戴' });
+    }
   }
 
   /**
@@ -3457,12 +3501,23 @@ class RingConnectionImpl {
   private extBuckets: Record<string, Map<number, { sum: number; count: number; last: number }>> = {};
 
   /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
+  /** ★ 2026-11-06 审查（docs/audit/03 🟡#10）：失败原因写入 state，不再静默吞错。 */
   async triggerOxygenAnalysis(): Promise<void> {
-    try { await VeepooNative?.triggerOxygenAnalysis?.(); } catch { /* 静默 */ }
+    try {
+      await VeepooNative?.triggerOxygenAnalysis?.();
+    } catch (e) {
+      postLog('O2-ANALYSIS', ` ❌ 触发失败：${e}`);
+      this.applyPatch({ oxygenAnalysisError: '血氧历史读取失败，请确认戒指已连接并佩戴' });
+    }
   }
-  /** ★ 2026-10-16：触发 HRV Lorenz 散点读取——原生读 RR 间期历史 → Lorenz 散点。结果经 onRrAnalysis 事件写入 RingState.rrAnalysis。 */
+  /** ★ 2026-11-06 审查（docs/audit/03 🟡#10）：失败原因写入 state，不再静默吞错。 */
   async readRrAnalysis(): Promise<void> {
-    try { await VeepooNative?.readRrAnalysis?.(); } catch { /* 静默 */ }
+    try {
+      await VeepooNative?.readRrAnalysis?.();
+    } catch (e) {
+      postLog('RR-ANALYSIS', ` ❌ 读取失败：${e}`);
+      this.applyPatch({ rrAnalysisError: 'RR 间期历史读取失败，请确认戒指已连接并佩戴' });
+    }
   }
 
   /** 跨天则清空所有槽，并把 dayStart 指向今天 0 点 */

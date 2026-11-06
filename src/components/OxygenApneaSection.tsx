@@ -51,7 +51,11 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
       <Text style={styles.ecgTitle}>{title}</Text>
       {!a && !loading ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>当天暂无血氧数据，请先佩戴一段时间或测量血氧后再查看。</Text>
+          {/* ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：区分「读取失败」与「暂无数据」。
+              此前两者文案完全一样 → 用户无法判断是设备不支持还是读取出了问题。 */}
+          <Text style={[styles.emptyText, ring.oxygenAnalysisError ? styles.errorText : null]}>
+            {ring.oxygenAnalysisError ?? '当天暂无血氧数据，请先佩戴一段时间或测量血氧后再查看。'}
+          </Text>
         </View>
       ) : !a && loading ? (
         <View style={styles.emptyBox}>
@@ -131,6 +135,7 @@ const styles = StyleSheet.create({
   statHint: { fontSize: theme.fontSize.micro - 2, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  errorText: { color: theme.colors.danger },
   note: {
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.7,

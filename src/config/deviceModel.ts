@@ -268,9 +268,24 @@ export function getProfile(id: DeviceProfileId): DeviceProfile {
   return DEVICE_PROFILES[id] ?? DEVICE_PROFILES[DEFAULT_DEVICE_PROFILE];
 }
 
-/** 能力判断统一出口：入口处一句 `hasCap(profile, 'ecg')`。 */
-export function hasCap(profile: DeviceProfile, feature: ProFeature): boolean {
-  return profile.features[feature] === true;
+/**
+ * 能力判断统一出口：入口处一句 `hasCap(profile, 'ecg')`。
+ *
+ * ★ 2026-11-06 审查（docs/audit/03 🟡#9）：**固件屏蔽必须在这里生效**。
+ *   旧实现直接读 `profile.features`，完全绕过 `FIRMWARE_BUG_SHIELDS` ——
+ *   那意味着「某个已知 bug 固件临时屏蔽 ECG」这张保护是**假保护**
+ *   （生产代码从未调用 getEffectiveFeatures，只有未被引用的示例文件调用过）。
+ *   现在统一走 getEffectiveFeatures，屏蔽表一填即生效。
+ *
+ * @param firmware 当前戒指固件号（null/undefined = 未知，不屏蔽）
+ */
+export function hasCap(
+  profile: DeviceProfile,
+  feature: ProFeature,
+  firmware?: string | null,
+): boolean {
+  const features = getEffectiveFeatures(profile, firmware);
+  return features[feature] === true;
 }
 
 /** 该 Profile 是否原生支持某个指标（决定卡片/趋势是否渲染） */
@@ -290,12 +305,19 @@ export const FIRMWARE_BUG_SHIELDS: Record<string, ProFeature[]> = {
   // '00.12.09-2526': ['ecg'], // 示例：该固件 ECG 异常，临时屏蔽（修复后删除此行）
 };
 
-/** 叠加固件屏蔽后的有效能力（前端实际应使用的 features） */
+/**
+ * 叠加固件屏蔽后的有效能力（前端实际应使用的 features）。
+ *
+ * ★ 2026-11-06 审查（docs/audit/03 🟡#9）：**始终返回副本** ——
+ *   旧实现在无屏蔽时直接返回 `profile.features` 本体，调用方若误改返回值
+ *   就会污染全局 Profile 定义（所有页面共享同一个对象）。
+ */
 export function getEffectiveFeatures(profile: DeviceProfile, firmware: string | null | undefined): DeviceCapabilities {
-  const shield = firmware ? FIRMWARE_BUG_SHIELDS[firmware] : undefined;
-  if (!shield || shield.length === 0) return profile.features;
   const out: DeviceCapabilities = { ...profile.features };
-  for (const f of shield) out[f] = false;
+  const shield = firmware ? FIRMWARE_BUG_SHIELDS[firmware] : undefined;
+  if (shield && shield.length > 0) {
+    for (const f of shield) out[f] = false;
+  }
   return out;
 }
 
@@ -319,15 +341,26 @@ export interface DeviceInformation {
  */
 export async function readDeviceInformation(): Promise<DeviceInformation | null> {
   try {
-    if (!VeepooNative || typeof VeepooNative.readDeviceInformation !== 'function') return null;
+    if (!VeepooNative || typeof VeepooNative.readDeviceInformation !== 'function') {
+      // 老固件 / Android 未实现 → 属**预期**路径，但留一行日志以便与「读取失败」区分
+      console.info('[deviceModel] 原生未实现 readDeviceInformation（老固件 / Android），跳过型号读取');
+      return null;
+    }
     const raw = await VeepooNative.readDeviceInformation();
-    if (!raw) return null;
+    if (!raw) {
+      console.warn('[deviceModel] readDeviceInformation 返回空');
+      return null;
+    }
     return {
       modelNumber: raw.modelNumber ?? raw.model_number ?? raw.model ?? null,
       firmware: raw.firmware ?? raw.firmwareRevision ?? null,
       serialNumber: raw.serialNumber ?? raw.serial_number ?? null,
     };
-  } catch {
+  } catch (e) {
+    // ★ 2026-11-06 审查（docs/audit/03 🟡#8）：读取失败 ≠ 设备不支持。
+    //   两种失败原本被合并成同一个 null 且不留日志 → 「Pro 设备被识别成基础版」
+    //   这类问题永远无法自证。这里必须留痕。
+    console.warn('[deviceModel] readDeviceInformation 调用失败：', e);
     return null;
   }
 }
@@ -519,7 +552,11 @@ export async function getDeviceProfileId(): Promise<DeviceProfileId> {
   try {
     const v = await Prefs.getItem(PROFILE_KEY);
     if (v === 'PRO_UI' || v === 'BASE_UI') return v;
-  } catch {}
+  } catch (e) {
+    // ★ 2026-11-06 审查（docs/audit/03 🟡#7）：读盘失败静默吞错 → 机型**静默降级**为
+    //   BASE_UI，且无任何日志。此处留痕，否则「Pro 设备被当成基础版」无从追查。
+    console.warn('[deviceModel] 读取机型配置失败，回退为默认机型：', e);
+  }
   return DEFAULT_DEVICE_PROFILE;
 }
 

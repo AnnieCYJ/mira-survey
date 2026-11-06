@@ -2753,7 +2753,10 @@ function HrvLorenzSection() {
       <Text style={styles.ecgTitle}>HRV 相位图（Lorenz）</Text>
       {!r && !loading ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>当天暂无 RR 间期数据，请先佩戴一段时间后再查看。</Text>
+          {/* ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：区分「读取失败」与「暂无数据」。 */}
+          <Text style={[styles.emptyText, ring.rrAnalysisError ? styles.errorText : null]}>
+            {ring.rrAnalysisError ?? '当天暂无 RR 间期数据，请先佩戴一段时间后再查看。'}
+          </Text>
         </View>
       ) : !r && loading ? (
         <View style={styles.emptyBox}>
@@ -2923,6 +2926,7 @@ const styles = StyleSheet.create({
   zoneText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  errorText: { color: theme.colors.danger },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingLeft: Y_GUT },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   /**
