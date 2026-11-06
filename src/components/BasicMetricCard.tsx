@@ -157,7 +157,7 @@ interface Props {
   live: boolean;
   /** 是否正在等待戒指回包 */
   syncing: boolean;
-  /** 当前数值（优先真实值，未收到则回退到 mock） */
+  /** 当前数值（由调用方从真实测量格式化；无真实数据时传 '—'，本组件不做任何 mock 回退） */
   value: string;
   /** 全天趋势数据：每个点 { t: epoch ms, v: 数值 }，按今日时间轴绘制 */
   data: { t: number; v: number }[];

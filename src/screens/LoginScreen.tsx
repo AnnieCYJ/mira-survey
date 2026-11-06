@@ -241,9 +241,11 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               <Text style={s.primaryTxt}>{busy ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}</Text>
             </TouchableOpacity>
 
-            {mode === 'register' && codeSent && (
-              <Text style={s.demoHint}>演示验证码：{DEMO_CODE}（无短信后端，正式版由服务端下发）</Text>
-            )}
+            {/* ★ 2026-11-06 审查（docs/audit/02 🔵#6）：Release 包不展示演示验证码。
+                联调期只在 __DEV__ 下展示，避免正式包被截图传播「这是个可以随便登录的后门」。 */}
+            {mode === 'register' && codeSent && __DEV__ ? (
+              <Text style={s.demoHint}>联调验证码：{DEMO_CODE}（仅 Debug 包可见）</Text>
+            ) : null}
           </View>
 
           <Text style={s.privacy}>登录即表示同意《隐私政策》与《用户协议》</Text>

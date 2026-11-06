@@ -17,16 +17,10 @@ export const MOODS = [
 export type MoodIndex = 0 | 1 | 2 | 3;
 export const DEFAULT_MOOD: MoodIndex = 1;
 
-export const TREND_SCRIPT: [StateKey, number][] = [
-  ['tired', 30], ['tired', 26], ['calm', 24], ['calm', 22], ['calm', 24], ['calm', 28],
-  ['calm', 32], ['calm', 40], ['energy', 52], ['energy', 64], ['energy', 72], ['energy', 70],
-  ['energy', 66], ['tense', 60], ['tense', 58], ['energy', 64], ['energy', 68], ['tense', 62],
-  ['tense', 58], ['energy', 60], ['energy', 56], ['tired', 46], ['tired', 42], ['energy', 52],
-  ['energy', 60], ['energy', 64], ['tense', 62], ['tense', 58], ['energy', 60], ['energy', 56],
-  ['tense', 54], ['tense', 50], ['tired', 44], ['tired', 40], ['calm', 46], ['calm', 52],
-  ['calm', 58], ['calm', 62], ['calm', 56], ['calm', 48], ['calm', 42], ['tired', 36],
-  ['tired', 32], ['tired', 28], ['calm', 26], ['calm', 24], ['tired', 22], ['tired', 24],
-];
+/* ★ 2026-11-06 审查（docs/audit/02 🔵#2）：**已删除写死的情绪状态脚本 TREND_SCRIPT**。
+   那 48 个 ('tired'|'calm'|'energy'|'tense', 数值) 组成一条「看起来像真实情绪记录」的
+   假序列。全仓零引用、尚未泄漏，但留着随时可能被接到情绪趋势图上。
+   真实情绪曲线由 emotionLog / healthStore 的实测与（标 derived 的）推算数据提供。 */
 export const TREND_AXIS = DAY_HOUR_TICKS.map((h) => `${h}时`);
 
 import type { CurveStatus } from '../lib/dailyStatus';
@@ -472,48 +466,12 @@ export const RANGE_DEF: Record<RangeKey, { label: string; n: number; axis: strin
   year: { label: '年', n: 12, axis: YEAR_TICK_MONTHS.map((m) => `${m}月`) },
 };
 
-export interface SeriesParam {
-  base: number;
-  amp: number;
-  cycles: number;
-  phase: number;
-  seed: number;
-  min?: number;
-  max?: number;
-}
-
-export const SERIES_PARAM: Record<MetricKey, Record<RangeKey, SeriesParam>> = {
-  sleep: {
-    day: { base: 46, amp: 42, cycles: 1, phase: 1.571, seed: 3, min: 0, max: 100 },
-    week: { base: 7.1, amp: 0.6, cycles: 1.5, phase: 0, seed: 5, min: 4.5, max: 10 },
-    month: { base: 7.2, amp: 0.7, cycles: 4, phase: 1, seed: 7, min: 4.5, max: 10 },
-    year: { base: 7.0, amp: 0.4, cycles: 2, phase: 0.5, seed: 2, min: 5, max: 9.5 },
-  },
-  cycle: {
-    day: { base: 58, amp: 24, cycles: 1, phase: -0.31, seed: 4, min: 0, max: 100 },
-    week: { base: 62, amp: 18, cycles: 1, phase: 0, seed: 6, min: 0, max: 100 },
-    month: { base: 55, amp: 32, cycles: 1, phase: -1.38, seed: 8, min: 0, max: 100 },
-    year: { base: 58, amp: 12, cycles: 3, phase: 0, seed: 1, min: 0, max: 100 },
-  },
-  metabolism: {
-    day: { base: 76, amp: 30, cycles: 1, phase: -1.571, seed: 9, min: 0, max: 100 },
-    week: { base: 1842, amp: 90, cycles: 1.5, phase: 0, seed: 2, min: 1400, max: 2400 },
-    month: { base: 1836, amp: 70, cycles: 1.2, phase: -1.2, seed: 4, min: 1400, max: 2400 },
-    year: { base: 1820, amp: 60, cycles: 2, phase: 0.5, seed: 6, min: 1400, max: 2400 },
-  },
-  heart: {
-    day: { base: 58, amp: 16, cycles: 1, phase: 1.571, seed: 7, min: 25, max: 110 },
-    week: { base: 60, amp: 8, cycles: 1.2, phase: 0, seed: 3, min: 25, max: 110 },
-    month: { base: 59, amp: 9, cycles: 3, phase: 1, seed: 5, min: 25, max: 110 },
-    year: { base: 57, amp: 6, cycles: 2, phase: 0.4, seed: 8, min: 25, max: 110 },
-  },
-  mind: {
-    day: { base: 40, amp: 26, cycles: 1, phase: -1.571, seed: 1, min: 0, max: 100 },
-    week: { base: 42, amp: 14, cycles: 1.5, phase: 0, seed: 9, min: 0, max: 100 },
-    month: { base: 44, amp: 16, cycles: 3.5, phase: 0.8, seed: 2, min: 0, max: 100 },
-    year: { base: 41, amp: 10, cycles: 2, phase: 0.3, seed: 4, min: 0, max: 100 },
-  },
-};
+/* ★ 2026-11-06 审查（docs/audit/02 🔵#1）：**已删除假曲线生成器**
+   （SeriesParam / SERIES_PARAM / genSeries）。
+   那是一套完整的假测量值生成器（基础代谢 base: 1842、睡眠 base: 7.1、心率 base: 60 …），
+   用正弦波 + 伪随机噪声造出「看起来像测量」的曲线。全仓零引用（仅命中本文件定义），
+   **尚未泄漏**，但留着就是一个随时可被接上的造假后门。
+   真实曲线一律由 realSeries.buildHistorySeries 从 RingBle 真值计算。 */
 
 export const RANGE_UNIT: Record<
   MetricKey,
@@ -588,16 +546,3 @@ export function cycleNote(range: RangeKey, cs: CurveStatus | null): string {
   return `全年周期趋势稳定，当前处于${phase}（周期第 ${day} 天）。记录越久，这里会展示你的周期长度规律。`;
 }
 
-export function genSeries(p: SeriesParam, n: number): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = n > 1 ? i / (n - 1) : 0;
-    const s = Math.sin(t * p.cycles * 2 * Math.PI + p.phase);
-    const noise = (((i * 13 + p.seed * 7) % 7) - 3) * (p.amp / 14);
-    let v = p.base + p.amp * s + noise;
-    if (p.min !== undefined) v = Math.max(p.min, v);
-    if (p.max !== undefined) v = Math.min(p.max, v);
-    out.push(v);
-  }
-  return out;
-}

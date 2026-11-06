@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Image, ImageBackground, Animated, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -32,6 +32,8 @@ import MiniReadinessTrend from '../components/MiniReadinessTrend';
 import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
 import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
+// ★ 2026-11-06 审查（docs/audit/02 🔵#3）：接真实账号昵称，不再写死 Kristina / K
+import { userStore, getCachedSession } from '../data/userStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
@@ -160,6 +162,30 @@ export default function TodayScreen() {
   // ★ 2026-10-08（用户：「进首页不需要上下滑动」）：首页一屏锁定。
   //   量出第一屏内容的自然高度，若 ≤ 可视高度就彻底关掉滚动与回弹；
   //   只有极窄屏/超长文案导致内容确实超高时，才退回可滚动（避免内容被裁掉）。
+  /**
+   * ★ 2026-11-06 审查（docs/audit/02 🔵#3）：接**真实账号昵称**，不再写死 Kristina / K。
+   *   userStore 已持久化 accountName（注册 / 登录时写入）。
+   *   写死会让渠道商用别的名字讲时首页仍显示 Kristina —— 既是演示身份泄漏，
+   *   也是真实用户信息没接上。
+   */
+  const [accountName, setAccountName] = useState(() => {
+    const cached = getCachedSession().account?.accountName;
+    return cached && cached.trim() ? cached.trim() : '我';
+  });
+  useEffect(() => {
+    let alive = true;
+    void userStore.loadSession().then((s) => {
+      if (!alive) return;
+      const n = s.account?.accountName?.trim();
+      if (n) setAccountName(n);
+    });
+    return () => { alive = false; };
+  }, []);
+  const accountLetter = useMemo(
+    () => (accountName && accountName !== '我' ? accountName.slice(0, 1).toUpperCase() : '我'),
+    [accountName]
+  );
+
   const [vp_H, setVpH] = useState(0);
   const [canScroll, setCanScroll] = useState(false);
   const homeContentHRef = useRef(0);
@@ -1093,9 +1119,9 @@ export default function TodayScreen() {
             <View style={styles.head} onLayout={measureSection('head')}>
               <TouchableOpacity style={styles.avatarName} onPress={() => navigation.navigate('AccountHub')} activeOpacity={0.7}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarLetter}>K</Text>
+                  <Text style={styles.avatarLetter}>{accountLetter}</Text>
                 </View>
-                <Text style={styles.name}>Kristina</Text>
+                <Text style={styles.name}>{accountName}</Text>
               </TouchableOpacity>
               <Text style={[styles.title, { marginTop: theme.space.sm }]}>今日状态</Text>
             </View>

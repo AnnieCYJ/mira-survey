@@ -79,24 +79,42 @@ function emitSessionChange() {
   listeners.forEach((l) => l());
 }
 
+/**
+ * ★ 2026-11-06 审查（docs/audit/02 🔵#3）：会话内存缓存。
+ *   首页/账户页要展示**当前账号的真实昵称**（accountName），但 getItem 是异步的，
+ *   渲染层无法同步读取。缓存一份最近一次加载到的会话，供同步读取使用。
+ */
+let sessionCache: UserSession = { loggedIn: false, onboardingDone: false };
+
+/** 同步读取最近一次加载到的会话（未加载过则返回未登录态）。 */
+export function getCachedSession(): UserSession {
+  return sessionCache;
+}
+
 // ── 底层读写 ──────────────────────────────────────────────────────────────
 async function loadSession(): Promise<UserSession> {
   const raw = await getItem(SESSION_KEY);
-  if (!raw) return { loggedIn: false, onboardingDone: false };
+  if (!raw) {
+    sessionCache = { loggedIn: false, onboardingDone: false };
+    return sessionCache;
+  }
   try {
     const p = JSON.parse(raw);
-    return {
+    sessionCache = {
       loggedIn: !!p.loggedIn,
       onboardingDone: !!p.onboardingDone,
       account: p.account,
       profile: p.profile,
     };
+    return sessionCache;
   } catch {
-    return { loggedIn: false, onboardingDone: false };
+    sessionCache = { loggedIn: false, onboardingDone: false };
+    return sessionCache;
   }
 }
 
 async function saveSession(s: UserSession): Promise<void> {
+  sessionCache = s;
   await setItem(SESSION_KEY, JSON.stringify(s));
 }
 

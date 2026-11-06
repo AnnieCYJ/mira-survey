@@ -77,7 +77,10 @@ export default function AccountHubScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.profileName}>{me.name}</Text>
-            <Text style={s.profileSub}>Mira 会员 · 第 2 个月</Text>
+            {/* ★ 2026-11-06 审查（docs/audit/02 🔵#4）：会员时长不得写死。
+                无真实订阅数据源时只展示会员标识，不编造「第 N 个月」——
+                写死的时长是一个「看起来像真实账户状态」的字段，演示时容易被当作产品能力讲解。 */}
+            <Text style={s.profileSub}>Mira 会员</Text>
           </View>
         </View>
 

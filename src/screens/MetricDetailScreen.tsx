@@ -6,6 +6,11 @@
  *  - 真实数据趋势图（面积 + 渐变曲线 + 末端白点，与 BasicMetricCard / DimensionCard 同源）；
  *  - 平均/最高/最低统计；底部解读文案。
  *  - 数据来自 buildHistorySeries（真实戒指数据，缺口断线，不编造）。
+ *
+ * ★ 2026-11-06 审查（docs/audit/02 🔵#8）：本文件里的 `?? 30` / `?? 55` 等兜底
+ *   **只允许用于阈值常量**（压力档位边界、温度区间等静态参数）。
+ *   **严禁用于年龄 / 体重 / 身高等生理输入** —— 那会产出基于编造输入的生理结论
+ *   （见 🔴#5：`age ?? 30` 曾导致 MHR 算出 192 并在 UI 明写「基于 30 岁」）。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';

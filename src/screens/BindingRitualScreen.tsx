@@ -46,12 +46,15 @@ export default function BindingRitualScreen() {
   const route = useRoute<RouteProp_>();
   const params: Params = route.params ?? {};
   const relationship: Relationship = params.relationship ?? 'spouse';
-  const name = params.name ?? '陈屿';
+  // ★ 2026-11-06 审查（docs/audit/02 🔵#5）：**删除写死的演示姓名兜底**。
+  //   '陈屿' 是本轮已删除的演示家人（familyStore 中已无此人），
+  //   留在 params.name 的兜底位上，一旦某条流程没传 name 就会凭空冒出这个人。
+  const name = params.name?.trim() || '家人';
 
   const selfMember = familyStore.getMember('self');
   const ownerColor = selfMember?.avatarColor ?? '#9D8AF0';
-  const ownerLetter = selfMember?.avatarLetter ?? 'K';
-  const ownerName = selfMember?.name ?? 'Kristina';
+  const ownerLetter = selfMember?.avatarLetter ?? '我';
+  const ownerName = selfMember?.name ?? '我';
   const inColor = REL_COLOR[relationship] ?? '#7EA6F8';
 
   const [phase, setPhase] = useState<'merging' | 'done'>('merging');
