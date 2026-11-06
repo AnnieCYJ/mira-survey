@@ -50,6 +50,7 @@ import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '..
 // ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡（与血氧页共用，抽成可复用组件）
 import { OxygenApneaSection } from '../components/OxygenApneaSection';
 import NightBpCard from '../components/NightBpCard';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 
 interface DayRec {
@@ -199,6 +200,8 @@ function statsOf(
 }
 
 export default function SleepDetailScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const navigation = useNavigation<any>();
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
@@ -329,7 +332,7 @@ export default function SleepDetailScreen() {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dRange, sleepDaily, anchor, cortKindCache]);
+  }, [dRange, sleepDaily, anchor, cortKindCache, hsVer]);
 
   /** 卡片副标题：自然周期 + 实际日期范围（本周 10/5–10/11 / 2026年10月 / 2026年）——
    *  对齐横轴的自然周 / 自然月 / 自然年口径，不再写「近 7 天 / 近 30 天 / 近 12 月」。 */
@@ -389,7 +392,7 @@ export default function SleepDetailScreen() {
         hrvIntraday,
       },
     };
-  }, [sleepDaily, anchor, ring]);
+  }, [sleepDaily, anchor, ring, hsVer]);
 
   /** 多维度对比：当前 vs **上一同量级周期**
    *  ★ 周→上周 / 月→上月 / 年→去年（绝不把上周·上月·去年三个口径并列，维度会错位） */
@@ -464,7 +467,7 @@ export default function SleepDetailScreen() {
       lines.push('本周期暂无足够睡眠数据，连接戒指并同步每晚睡眠后，这里会自动生成分析。');
     }
     return lines;
-  }, [dRange, sleepDaily, anchor, cortKindCache, cmpLabels]);
+  }, [dRange, sleepDaily, anchor, cortKindCache, cmpLabels, hsVer]);
 
   const cortAbnDaysCur = useMemo(
     () => dualPoints.filter((p) => p.cortisolAbnormal).length,

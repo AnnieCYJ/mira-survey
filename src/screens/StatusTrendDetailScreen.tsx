@@ -34,6 +34,7 @@ import { computeCycle, parseDate, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { phaseBg, PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 import AxisLabels from '../components/charts/AxisLabels';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 
 // ★ 2026-10-10（用户「按现在的 design token」）：图表高度挂 token —— 详情页主趋势 = L 档
@@ -176,6 +177,8 @@ function fmtVal(v: number | null): string {
 const DAY_AXIS = ['0', '6', '12', '18', '24'];
 
 export default function StatusTrendDetailScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const navigation = useNavigation<any>();
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
@@ -423,7 +426,7 @@ export default function StatusTrendDetailScreen() {
       lo: minOf(values),
       hasData: values.some((v) => v != null),
     };
-  }, [dRange, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor]);
+  }, [dRange, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor, hsVer]);
 
   const plotW = w - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -678,7 +681,7 @@ export default function StatusTrendDetailScreen() {
       best, worst, prevLabel, baseLabel, vsPrev, vsBase, prevDelta, baseDelta,
       showBestWorst: dRange !== 'day',
     };
-  }, [dRange, anchor, statusDaily, ring, avg]);
+  }, [dRange, anchor, statusDaily, ring, avg, hsVer]);
 
   // ★ 2026-11-03：hero 卡解读文字（数据锚定 + 人话 + 诚实口径，与第十轮 AI 文案铁律一致）。
   //   依赖 comparison（best/worst/prevDelta），必须放在 comparison memo 之后。
@@ -699,7 +702,7 @@ export default function StatusTrendDetailScreen() {
         ? `较${comparison.prevLabel}有所回升`
         : `较${comparison.prevLabel}有所回落`;
     return `这段状态平均 ${Math.round(avg)} 分${bw}；${trend}，${lvl.index <= 1 ? '整体节奏在线' : '给恢复多留点空间'}。`;
-  }, [hasData, avg, current, dRange, comparison]);
+  }, [hasData, avg, current, dRange, comparison, hsVer]);
 
   // ★ 2026-11-05：X 轴标签统一交给 AxisLabels（只渲染可见项 + 比例定位 + 边界 clamp）。
   //   旧 renderAxis 用 space-between 排「每点一个 Text」，月/年视图密槽时标签互相压住、

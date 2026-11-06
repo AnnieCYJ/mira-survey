@@ -45,6 +45,7 @@ import { SPORT_ARTICLES, SPORT_HERO_ID, getSportArticle } from '../lib/sportArti
 import { NUTRITION_ARTICLES, getNutritionArticle } from '../lib/nutritionArticles';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 type TopicKey = 'glow' | 'sport' | 'learn' | 'nutrition' | 'sportArticles';
 
@@ -64,6 +65,8 @@ const TOPIC_META: Record<TopicKey, { title: string; sub: string }> = {
 };
 
 export default function ToolTopicScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const route = useRoute<{ key: string; name: string; params: { topic: TopicKey } }>();
   const navigation = useNavigation<CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>>();
   const topic: TopicKey = (route.params?.topic ?? 'learn') as TopicKey;

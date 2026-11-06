@@ -20,6 +20,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { healthStore, dayKey, type TimePoint } from '../data/healthStore';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 const DAY_MS = 86400000;
 
@@ -55,6 +56,8 @@ function daytimeHrMean(dk: string): number | null {
 }
 
 export function NightBpCard({ anchorMs }: Props) {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const data = useMemo(() => {
     const dayMs = anchorMs ?? Date.now();
     const dk = dayKey(dayMs);
@@ -107,7 +110,7 @@ export function NightBpCard({ anchorMs }: Props) {
       : '夜间高于日间';
     const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeDeep : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
     return { sys, dia, measuredAt, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr };
-  }, [anchorMs]);
+  }, [anchorMs, hsVer]);
 
   const hasBp = data.sys != null && data.dia != null;
 

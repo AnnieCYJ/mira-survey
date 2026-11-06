@@ -18,6 +18,7 @@ import type { RangeKey } from '../data/metrics';
 import { dayStartMs } from '../data/healthStore';
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { timeTickLabel } from '../lib/chartAxis';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 
 const H = 180;          // 图表高
@@ -264,6 +265,8 @@ function ampmSummary(range: RangeKey, anchor: Date): { morning: AmpmAvg; evening
 }
 
 export default function BpDetailScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const navigation = useNavigation<any>();
   const [range, setRange] = useState<RangeKey>('day');
   const [anchor, setAnchor] = useState<Date>(new Date());
@@ -282,7 +285,7 @@ export default function BpDetailScreen() {
   const [entryErr, setEntryErr] = useState('');
   const [nonce, setNonce] = useState(0);
 
-  const data = useMemo(() => buildDual(range, anchor), [range, anchor, nonce]);
+  const data = useMemo(() => buildDual(range, anchor), [range, anchor, nonce, hsVer]);
 
   // 上一周期锚点（用于「较上一周期」对比）
   const prevAnchor = useMemo(() => {
@@ -293,7 +296,7 @@ export default function BpDetailScreen() {
     else a.setFullYear(a.getFullYear() - 1);
     return a;
   }, [anchor, range]);
-  const prev = useMemo(() => buildDual(range, prevAnchor), [range, prevAnchor, nonce]);
+  const prev = useMemo(() => buildDual(range, prevAnchor), [range, prevAnchor, nonce, hsVer]);
 
   // ★ 2026-10-17：晨晚血压汇总（随数据变化重算）
   const ampm = useMemo(() => ampmSummary(range, anchor), [range, anchor, nonce]);

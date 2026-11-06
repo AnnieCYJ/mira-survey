@@ -49,6 +49,7 @@ import PhaseLegend from '../components/PhaseLegend';
 import type { PhaseKey } from '../lib/phaseColors';
 import { resolveSportName } from '../lib/veepooSportTypes';
 import { sportVisualOf } from '../lib/sportVisual';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 /** 「今日日历」取的 AI 聊天记录（MemoryStore 单例，避免每次渲染重建） */
 const memoryStore = new MemoryStore();
@@ -141,6 +142,8 @@ const PeriodDayCircles = React.memo(function PeriodDayCircles({ marked }: { mark
 // Bottom clearance is derived from the tab bar and live safe-area insets below.
 
 export default function TodayScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const { width } = useWindowDimensions();
 
   // ─────────────────────────────────────────────────────────────
@@ -218,7 +221,9 @@ export default function TodayScreen() {
   // ★ B2（2026-10-08 交互优化）：无内部缓存算法的 memo key ——
   //   healthVer = healthStore 版本（戒指数据写入时自增）、dayKeyStr = 当日日期、
   //   esWindow = 30s 窗口（computeEmotionalStress 吃实时 EDA，与 cognitiveLoad 的 30s 缓存策略同款）。
-  const healthVer = healthStore.getVersion();
+  // ★ v18.134（审查 04 🟡-5）：healthStore.getVersion() 只是普通读、不触发重渲染；
+  //   改用 useHealthStoreVersion 订阅（组件顶部 hsVer），写入后本页才会真正重算。
+  const healthVer = hsVer;
   const dayKeyStr = dayKey(Date.now());
   const esWindow = Math.floor(Date.now() / 30000);
 

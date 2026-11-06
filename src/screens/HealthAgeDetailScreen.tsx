@@ -36,6 +36,7 @@ import { type RangeKey } from '../data/metrics';
 import { timeTickLabel } from '../lib/chartAxis';
 import ExamTab from '../components/ExamTab';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 /**
  * ★ 2026-10-10（用户）：实际年龄改为 state + useFocusEffect 加载（见下方组件），与洞察页同口径：
@@ -391,6 +392,8 @@ function CompareCard({ bodyAge, actualAge, factors, isMonth }: { bodyAge: number
 }
 
 export default function HealthAgeDetailScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const navigation = useNavigation<any>();
   const [range, setRange] = useState<RangeKey>('month');
   const [anchor, setAnchor] = useState(new Date());
@@ -422,7 +425,8 @@ export default function HealthAgeDetailScreen() {
   }, []));
 
   // ★ 荷尔蒙节律（慢变量）按「当日」判定一次，区间内逐日复用 → 有综合分即出身体年龄
-  const hormonalNow = useMemo(() => computeHormonalHealthyCurrent(dayKey(Date.now())), []);
+  // ★ v18.134（审查 04 🟡-5）：皮质醇入库后荷尔蒙判定要能重算（原来 deps 为空，永不刷新）
+  const hormonalNow = useMemo(() => computeHormonalHealthyCurrent(dayKey(Date.now())), [hsVer]);
   const hormonalHealthyNow = hormonalNow.hormonalHealthy;
   const hasHormonalDataNow = hormonalNow.hasHormonalData;
   const series = useMemo(() => {
@@ -430,7 +434,7 @@ export default function HealthAgeDetailScreen() {
     return range === 'month'
       ? monthSeries(anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow)
       : yearSeries(anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow);
-  }, [range, anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow]);
+  }, [range, anchor, actualAge, hormonalHealthyNow, hasHormonalDataNow, hsVer]);
 
   // ★ 头条 = 当日身体年龄（与洞察页 bodyAgeInsight 完全同口径）→ 数值一致
   // ★ 2026-10-28：头条用共享实时计算（与洞察页身体年龄卡完全一致 → 两页数字连通），去掉本地重算分支
@@ -442,13 +446,13 @@ export default function HealthAgeDetailScreen() {
   const delta = headline != null && actualAge != null ? headline - actualAge : null;
 
   const todayDk = dayKey(Date.now());
-  const factors = useMemo(() => computeFactors(todayDk), [todayDk]);
+  const factors = useMemo(() => computeFactors(todayDk), [todayDk, hsVer]);
 
   // ★ P0-3（2026-10-28）：衰老速度（对标 WHOOP Pace of Aging）—— 近 180 天 OLS 斜率，以 1 岁/年为基准
   const pace = useMemo(() => {
     if (actualAge == null) return null;
     return computeAgingPace(actualAge, hormonalHealthyNow, hasHormonalDataNow);
-  }, [actualAge, hormonalHealthyNow, hasHormonalDataNow]);
+  }, [actualAge, hormonalHealthyNow, hasHormonalDataNow, hsVer]);
 
   return (
     <ScreenContainer compactTop withGradient>

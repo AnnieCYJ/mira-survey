@@ -50,6 +50,7 @@ import { buildWorkoutAdvice, buildPhaseAnalysis } from '../lib/phaseAdvice';
 import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
 import { collectWorkoutInput } from '../lib/workoutInput';
 import { useDeviceModel } from '../config/deviceModel'; // ★ 2026-11-05：运动建议合并只对基础版生效
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -67,6 +68,8 @@ const META: Record<EnergyType, { name: string; accent: string; sub: string }> = 
 };
 
 export default function EnergyDetailScreen() {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: RouteParams }, 'params'>>();
   const type = route.params?.type ?? 'emotion';
@@ -126,7 +129,7 @@ export default function EnergyDetailScreen() {
         ?? healthStore.getSleep(dayKey(Date.now() - 86400000)) ?? null;
     } catch { return null; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ring]);
+  }, [ring, hsVer]);
   const workoutConclusionSub = sleepSelForAdvice?.score != null
     ? `昨晚睡眠恢复 ${Math.round(sleepSelForAdvice.score)} 分 · ${sportBrief?.reason ?? '按今天的身体状态安排'}`
     : (sportBrief?.reason ?? '睡眠数据待同步，先按今天的身体状态安排');

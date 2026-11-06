@@ -138,6 +138,8 @@ export default function HormoneCurveCard({
   cycleInfo: CycleInfo | null;
   cycleLog: CycleLog | null;
 }) {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   if (!cycleLog || !cycleLog.lastPeriodStart) {
     return (
       <View style={styles.wrap}>
@@ -161,7 +163,7 @@ export default function HormoneCurveCard({
     const base = modelEstrogenCurve({ cycleLength, ovulationDay, periodLength });
     if (!enough) return base.map(p => ({ ...p, value: Math.round(p.value) }));
     return calibrateWithRing(base, cycleLength, ovulationDay, periodLength, cycleLog.lastPeriodStart);
-  }, [cycleLength, ovulationDay, periodLength, enough, cycleLog.lastPeriodStart]);
+  }, [cycleLength, ovulationDay, periodLength, enough, cycleLog.lastPeriodStart, hsVer]);
 
   // 今日雌激素指数
   const estrogenIdx = useMemo(() => {
@@ -301,3 +303,4 @@ const styles = StyleSheet.create({
 });
 
 import { dayKey } from '../data/healthStore';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';

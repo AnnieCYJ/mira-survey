@@ -62,6 +62,7 @@ import {
   dismissPattern,
   type PatternEntry,
 } from '../data/patternStore';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -307,6 +308,8 @@ export default function MonthDiscoveryView({
   /** ★ Phase 3：把一条规律观察带去问 Mira（走云端长窗口综合分析）。可选 —— 没传就不渲染按钮。 */
   onAskMira?: (question: string) => void;
 }) {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const [data, setData] = useState<MonthData | null>(null);
   const [cellW, setCellW] = useState(40);
   // ★ 2026-10-12（用户）：点某个日期 → 下抽屉弹出「原先日的那种」旅程视图（中间曲线 + 两侧活动卡片）
@@ -522,7 +525,7 @@ export default function MonthDiscoveryView({
       if (d.getFullYear() === viewY && d.getMonth() === viewM) foodDays.add(d.getDate());
     }
     return { startPct, endPct, scale, sleepDays: pcts.length, cbt, med, foodDays: foodDays.size };
-  }, [data, viewY, viewM]);
+  }, [data, viewY, viewM, hsVer]);
 
   /**
    * 「你的本月节奏」= 时间热力（4 时段 × 7 天）+ 44% 主数字 + 4 条洞察，合一卡。
@@ -626,7 +629,7 @@ export default function MonthDiscoveryView({
     }
 
     return { heat, slotTotals, total, dominantIdx, dominantPct, insights };
-  }, [data, viewY, viewM, viewDays, extra]);
+  }, [data, viewY, viewM, viewDays, extra, hsVer]);
 
   // 观察列表：剔除「数据覆盖」这类上下文条目（单独作脚注）
   const observedPatterns = useMemo(

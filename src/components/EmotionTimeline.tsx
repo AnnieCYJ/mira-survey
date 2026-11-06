@@ -12,6 +12,7 @@ import { chart } from '../theme/chart';
 import { dayKey, healthStore } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
 import type { EmotionLabel } from '../lib/emotionEngine';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 const LABEL_COLOR: Record<EmotionLabel, string> = {
   focused:  '#2ECC71',
@@ -168,6 +169,8 @@ export default function EmotionTimeline({
   width,
   height = 140,
 }: Props) {
+  // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
+  const hsVer = useHealthStoreVersion();
   const sleepSummary = healthStore.getSleep(dayKey(Date.now()));
   const pad = { l: 36, r: 8, t: 12, b: 24 };
   const innerW = Math.max(1, width - pad.l - pad.r);
@@ -230,7 +233,7 @@ export default function EmotionTimeline({
     const areaPath = p + ` L ${mapped[mapped.length - 1].x.toFixed(1)} ${pad.t + innerH} L ${mapped[0].x.toFixed(1)} ${pad.t + innerH} Z`;
 
     return { pts: mapped, path: p, area: areaPath, awakeStart, awakeEnd };
-  }, [history, width, height]);
+  }, [history, width, height, hsVer]);
 
   const empty = pts.length === 0;
 
