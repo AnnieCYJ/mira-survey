@@ -62,8 +62,7 @@ import { allInterventionEntries, ensureInterventionLogLoaded } from '../data/int
 import { PHASE_COLOR, PHASE_LABEL, phaseBg, phaseBand } from '../lib/phaseColors';
 import CycleMoonPhase from '../components/CycleMoonPhase';
 import CycleDerivedMetrics from '../components/CycleDerivedMetrics';
-import TempBiphasicChart from '../components/TempBiphasicChart';
-import TempBiphasicAnalysis from '../components/TempBiphasicAnalysis';
+// ★ 2026-11-06（用户：去掉详情页里的体温双向监测）→ TempBiphasicChart / TempBiphasicAnalysis 不再引入
 import TrendAnalysis from '../components/TrendAnalysis';
 import PhaseLegend from '../components/PhaseLegend';
 import PeriodRecordPanel from '../components/PeriodRecordPanel';
@@ -387,8 +386,9 @@ export default function CycleCalendarScreen() {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Icon name="back" size={theme.fs(22)} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
-          {/* ★ 2026-10-07（用户：上边一写生理周期、节律） */}
-          <Text style={styles.title}>生理周期 · 节律</Text>
+          {/* ★ 2026-10-07（用户：上边一写生理周期、节律）
+              ★ 2026-11-06（用户：「去详情页就直接写生理周期节律就行了，中间加个点儿干啥？」）→ 去掉「·」 */}
+          <Text style={styles.title}>生理周期节律</Text>
           {/* ★ 2026-10-10（用户：去掉顶部「查看详情」开关 → 右上角日历 icon，点击看日历 / 收回月相环） */}
           <TouchableOpacity
             activeOpacity={0.7}
@@ -597,22 +597,8 @@ export default function CycleCalendarScreen() {
                 {/* ★ 2026-10-07（用户：「生理周期是否准确？每个生理周期是不准确，还是推迟了？我记得 oura 有」）：
                     周期规律性 + 每个周期的提前/推迟 + 该周期记症状天数 */}
                 <CycleRegularityCard cycleStarts={cycleStarts} baseCycleLength={cycleLen} periodDays={periodDays} />
-                {/* 体温双相监测卡片：用戒指真实体温画双相趋势（经期低、排卵后升） */}
-                <View style={styles.tempCard}>
-                  <View style={styles.tempCardHead}>
-                    <Text style={styles.tempCardTitle}>体温双相监测</Text>
-                  </View>
-                  <TempBiphasicChart
-                    tempDaily={ring.tempDaily ?? {}}
-                    tempHistory={ring.history.temp}
-                    log={log}
-                    range="month"
-                    showHeader={false}
-                    cycleStart={selStart}
-                    cycleDays={cycAxis?.days}
-                  />
-                  <TempBiphasicAnalysis ring={ring} cycleInfo={cycleInfo} />
-                </View>
+                {/* ★ 2026-11-06（用户：「去掉这个详情页里面的体温双向监测」）→ 整块移除：
+                    戒指无体温传感器时该卡永远是空图，留着反而占版面。 */}
                 {/* ★ 方案二 / 三（2026-10-07，用户：「这里面生理周期的很多统计呀、症状的一些个比方说统计啊什么的都挺丰富的」）：
                     用本地真实记录做「症状统计」与「症状 × 相位分布」两面板 */}
                 {/* ★ 2026-10-09（menstrual-cycle-preview）：症状×相位分布内嵌进「症状统计」的
@@ -676,9 +662,15 @@ export default function CycleCalendarScreen() {
       />
 
       {/* ★ 2026-10-27（用户）：当日记录/经期记录弹窗改为全屏 + 深板岩背景（与首页 AI 分析区、DaySheet 同色系），
-          不再用底部浅玻璃 sheet，避免透出日历看不清。 */}
+          不再用底部浅玻璃 sheet，避免透出日历看不清。
+          ★ 2026-11-06（用户：「经期记录为什么背景还是黑的？去掉那个」）→ 底色由近黑深板岩
+          改为 App 根渐变（bgTop→bgBottom），与全 App 同一套深蓝。 */}
       <Modal visible={recordOpen} transparent animationType="slide" onRequestClose={() => setRecordOpen(false)}>
-        <View style={styles.daySheetMask}>
+        <BgGradient
+          colors={[...theme.colors.bgGradStops] as unknown as string[]}
+          locations={[...theme.colors.bgGradLocs] as unknown as number[]}
+          style={styles.daySheetMask}
+        >
           <View style={styles.daySheet}>
             {/* ★ 本轮（用户 #283）：顶到状态栏/电池 —— 加安全区顶部留白；关闭按钮加大点击区 + 可见底 */}
             <View style={[styles.daySheetHead, { paddingTop: insets.top + theme.space.lg }]}>
@@ -706,7 +698,7 @@ export default function CycleCalendarScreen() {
               />
             </ScrollView>
           </View>
-        </View>
+        </BgGradient>
       </Modal>
     </ScreenContainer>
     </View>
@@ -1074,25 +1066,7 @@ function DaySheet({
 }
 
 const styles = StyleSheet.create({
-  tempCard: {
-    backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    padding: theme.space.sm,
-    marginTop: theme.space.sm,
-  },
-  tempCardHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.space.xs,
-  },
-  tempCardTitle: {
-    fontSize: theme.fontSize.body,
-    fontWeight: theme.weight.semibold as any,
-    color: theme.colors.textTitle,
-  },
+  // ★ 2026-11-06（用户：去掉详情页里的体温双向监测）→ tempCard / tempCardHead / tempCardTitle 随之移除
   stack: { gap: theme.space.md },
   // ★ 顶部「周期 / 年」：参考指标页 日 / 周 / 月 / 年 的小胶囊 —— 靠左、字号最小、选中实心主色
   segChipRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },
@@ -1251,8 +1225,10 @@ const styles = StyleSheet.create({
   sheetMask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
   sheet: { backgroundColor: theme.colors.cardBgStrong, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, padding: theme.space.cardPad, paddingBottom: theme.space.xl },
   // ★ 2026-10-27（用户）：日历日弹窗改为全屏 + 深板岩背景（与首页 AI 分析区同色系），替代浅玻璃底部 sheet
-  daySheetMask: { flex: 1, backgroundColor: 'rgba(9,28,48,0.98)' },
-  daySheet: { flex: 1, backgroundColor: 'rgba(9,28,48,0.98)' },
+  // ★ 2026-11-06（用户：「经期记录为什么背景还是黑的？去掉那个」）→ 去掉近黑的深板岩实底，
+  //   改用 App 根渐变底色（bgTop→bgBottom），与全 App 同一套深蓝，不再像另一套界面。
+  daySheetMask: { flex: 1, backgroundColor: theme.colors.bgTop },
+  daySheet: { flex: 1, backgroundColor: theme.colors.bgTop },
   daySheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.cardPad, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
   daySheetClose: { fontSize: theme.fs(22), color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
   // ★ 本轮（用户 #283）：关闭按钮加一圈可见底 + 更大内边距，便于点按

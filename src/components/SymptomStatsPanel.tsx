@@ -13,6 +13,8 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
+import EmptyChart from './charts/EmptyChart';
 import {
   SYMPTOM_TAGS,
   FLOW_LABEL,
@@ -90,9 +92,23 @@ export default function SymptomStatsPanel({
     <View style={styles.card}>
       <Text style={styles.title}>症状统计</Text>
       {!hasAny ? (
-        <Text style={styles.empty}>
-          还没有足够的状态记录。在日历里点任意一天，记录经量、疼痛与身体症状后，这里会汇总你的高频症状与分布。
-        </Text>
+        /* ★ 2026-11-06（用户：「症状统计也是可以是空的，就是没有数据的一些个空的图表。不要全部是描述文字。」）
+           → 无数据时展示**空图表骨架 + 空分布条**，不再是一段说明文字。 */
+        <View style={styles.emptyChartBox}>
+          <EmptyChart height={chart.plot.s} />
+          <Text style={styles.blockTitle}>经量分布</Text>
+          <View style={styles.distBar}>
+            {FLOW_STEPS.map((f, i) => (
+              <View key={f} style={[styles.distSeg, { flex: 1, backgroundColor: mm.colors.emptyFill, opacity: 0.5 }]} />
+            ))}
+          </View>
+          <Text style={styles.blockTitle}>疼痛程度分布</Text>
+          <View style={styles.distBar}>
+            {PAIN_STEPS.map((p, i) => (
+              <View key={p} style={[styles.distSeg, { flex: 1, backgroundColor: mm.colors.emptyFill, opacity: 0.5 }]} />
+            ))}
+          </View>
+        </View>
       ) : (
         <>
           {/* ① 高频症状 */}
@@ -222,6 +238,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
+  // ★ 2026-11-06（用户：症状统计无数据时展示空图表，不要全是文字）
+  emptyChartBox: { gap: theme.sp(1.5) },
   blockTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold as any,

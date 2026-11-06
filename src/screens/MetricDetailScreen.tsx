@@ -26,6 +26,7 @@ import { loadCycleLog } from '../data/cycleLog';
 import {
   moodFromEmotionLevel, MOOD_COLOR, MOOD_LABEL,
   getLatestForDay, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
+  type MoodKey,
 } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { useDeviceModel } from '../config/deviceModel';
@@ -425,7 +426,7 @@ function ecgWaveformPath(values: number[]): string {
  * （低=灰 inkFaint / 中=琥珀 honeyCore / 高=粉 roseDeep），形态与语义从日贯穿到年，消除折线断层。
  * 柱高基于指标固定量程（默认 0–100），与日视图同尺度。 */
 function RangeBarsChart({
-  points, labels, range, colorOf, yMin, yMax, unit, valueFmt, showYAxis, emptyText,
+  points, labels, range, colorOf, yMin, yMax, unit, valueFmt, showYAxis, emptyText, moodMarkers,
 }: {
   points: (number | null)[];
   labels: string[];
@@ -437,6 +438,13 @@ function RangeBarsChart({
   valueFmt: (v: number) => string;
   showYAxis: boolean;
   emptyText: string;
+  /**
+   * ★ 2026-11-06（用户：「如果是周月年，每一天他要加了心情状态的话那可以在这个趋势图的图上面，
+   *   就是趋势图上来标记这个某一天他加的这个情绪…放在图表上，不要放在这个身心压力趋势图这几个字的上面。」）
+   *   → 逐槽心情标记：index = 数据点下标，mood = 当天最新一次自报心情。
+   *   画在**绘图区顶部**（每根柱的正上方），不是标题上方。
+   */
+  moodMarkers?: { index: number; mood: MoodKey }[] | null;
 }) {
   const [w, setW] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
@@ -502,6 +510,32 @@ function RangeBarsChart({
               })}
             </Svg>
           ) : null}
+          {/* ★ 2026-11-06（用户）：周/月/年每日心情标记画在**图表上**（柱顶上方），不在标题上方。
+              MoodBlob 是 RN View（带动画），不能进 Svg → 用绝对定位叠在绘图区上。 */}
+          {w > 0 && moodMarkers && moodMarkers.length > 0
+            ? moodMarkers.map((mk) => {
+                if (mk.index < 0 || mk.index >= n) return null;
+                const cx = PAD_L + (mk.index + 0.5) * slotW;
+                const px = (cx / W) * w;
+                return (
+                  <View
+                    key={`mood-${mk.index}`}
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      left: px - theme.sp(9),
+                      top: Math.max(0, PAD_T - theme.sp(11)),
+                      width: theme.sp(18),
+                      height: theme.sp(18),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <MoodBlob mood={mk.mood} size={theme.sp(16)} variant={1} />
+                  </View>
+                );
+              })
+            : null}
           {tip && w > 0 ? (() => {
             const TW = 96, TH = 56;
             let tipX = tip.x - TW / 2;
@@ -1142,12 +1176,30 @@ export default function MetricDetailScreen() {
   const chartTitle = `${params.name}趋势图`;
   /** ★ 身心压力趋势图顶部：当天最近一次自报心情的表情 + 标签（没记录则不渲染）。 */
   // ★ 2026-11-05（用户）：记录心情后只在图表顶部展示表情 icon，不再压一句说明文字
-  const moodOnChart = isStress && latestMood ? (
+  // ★ 2026-11-06（用户）：周/月/年 → 心情标记画在**图表上**（逐日），不再在标题上方单独一条。
+  //   日视图保留顶部单条（当天只有一个时刻的心情）。
+  const moodOnChart = isStress && latestMood && range === 'day' ? (
     <View style={styles.moodStrip} pointerEvents="none">
       <MoodBlob mood={latestMood.mood} size={theme.sp(26)} variant={1} />
       <Text style={styles.moodStripTxt}>今日记录的心情</Text>
     </View>
   ) : null;
+
+  /** ★ 2026-11-06（用户）：周/月/年逐日心情标记（index 对应 series.points 下标）。
+   *  每天取当天最新一次自报心情；无记录则该槽不标。 */
+  const rangeMoodMarkers = useMemo(() => {
+    if (!isStress || range === 'day' || !isSpecRange) return null;
+    const out: { index: number; mood: MoodKey }[] = [];
+    try {
+      const dks = rangeDayKeys(anchor, range);
+      dks.forEach((dk, i) => {
+        const e = getLatestForDay(dk);
+        if (e) out.push({ index: i, mood: e.mood });
+      });
+    } catch { return null; }
+    return out.length > 0 ? out : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStress, range, isSpecRange, anchor.getTime()]);
 
   // 打开「历史日」且当前指标无数据时，自动触发一次 backfill（需戒指已连接），
   // 让历史趋势图无需手动连戒指即可补拉。同一日期只触发一次，避免重复请求刷屏。
@@ -1499,7 +1551,8 @@ export default function MetricDetailScreen() {
             分档（状态型）指标在周/月/年视图，逐桶分色柱，与日视图同套档位配色与语义。 */}
         {isSpecRange && spec ? (
           <View style={styles.chartCard}>
-            {moodOnChart}
+            {/* ★ 2026-11-06（用户：「放在图表上，不要放在这个身心压力趋势图这几个字的上面」）
+                → 周/月/年视图不再在标题上方单独一条心情条；心情逐日画进图表柱顶（moodMarkers）。 */}
             <Text style={styles.chartTitle}>{chartTitle}</Text>
             <RangeBarsChart
               points={series.points}
@@ -1512,6 +1565,7 @@ export default function MetricDetailScreen() {
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
               emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              moodMarkers={rangeMoodMarkers}
             />
           </View>
         ) : null}
@@ -1540,6 +1594,27 @@ export default function MetricDetailScreen() {
               colorOf={() => color}
               yMin={yLo}
               yMax={yHi}
+              unit={series.unit}
+              valueFmt={fmtVal}
+              showYAxis={!hideYAxis}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+            />
+          </View>
+        ) : null}
+
+        {/* ★ 2026-11-06（用户：「血氧卡片详情的周月年也展示柱状图和趋势图一起吧」）：
+            血氧周/月/年 = 柱状图（上方，与日视图同款分柱口径）+ 趋势图（下方通用折线卡）双图并存。
+            血氧量程固定 85–100（与日视图一致），柱色用指标主色。 */}
+        {!isEcg && params.key === 'spo2' && range !== 'day' ? (
+          <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>{params.name}柱状分布</Text>
+            <RangeBarsChart
+              points={series.points}
+              labels={axisLabels}
+              range={range}
+              colorOf={() => color}
+              yMin={params.yMin ?? 85}
+              yMax={params.yMax ?? 100}
               unit={series.unit}
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
@@ -1839,12 +1914,14 @@ export default function MetricDetailScreen() {
             </Text>
           </View>
         ) : null}
-        {/* 给底部常驻「记录此刻心情」胶囊留白，避免遮住图表与分析卡 */}
-        {isStress ? <View style={{ height: 160 }} /> : null}
+        {/* 给底部常驻「记录此刻心情」胶囊留白，避免遮住图表与分析卡
+            ★ 2026-11-06（用户：「心压力的周，不展示这个记录此刻心情」）→ 周/月/年不渲染 FAB，也不需要留白 */}
+        {isStress && range === 'day' ? <View style={{ height: 160 }} /> : null}
       </View>
       <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </ScreenContainer>
-    {isStress ? <EmotionQuickRecord /> : null}
+    {/* ★ 2026-11-06（用户）：「心压力的周、月、年，不展示这个记录此刻心情」→ 仅日视图保留 FAB */}
+    {isStress && range === 'day' ? <EmotionQuickRecord /> : null}
     </View>
   );
 }

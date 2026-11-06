@@ -344,17 +344,18 @@ export default function EmotionQuickRecord() {
       {!visible && (
       <View style={[styles.fab, { bottom: insets.bottom + theme.sp(8) }]}>
         <TouchableOpacity activeOpacity={0.7} onPress={open} style={styles.fabTouch}>
-          {/* ★ 2026-11-06（用户：胶囊看不清）：原半透明白渐变 + 白字对比不足，
-              改为深色渐变底（白字清晰可读）。 */}
+          {/* ★ 2026-11-06（用户：胶囊看不清 → 「背景可以再白一点」）：
+              半透明白 → 深色 → 现在改为**实心白底 + 深蓝文字**，白字看不见的问题彻底解决；
+              文字色改深蓝保证对比度（白底白字不可读）。 */}
           <LinearGradient
-            colors={['rgba(30,52,90,0.94)', 'rgba(18,36,66,0.92)']}
+            colors={['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.90)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.fabGrad}
           >
             <MoodBlob mood={mood} size={theme.sp(11)} variant={1} />
             <Text style={styles.fabText}>记录此刻心情</Text>
-            <Icon name="plus" size={theme.fs(16)} color={theme.colors.textWhite} style={styles.fabPlus} />
+            <Icon name="plus" size={theme.fs(16)} color="#1F4C7E" style={styles.fabPlus} />
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -610,7 +611,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.sp(4.5),
   },
   fabText: {
-    color: theme.colors.textWhite,
+    // ★ 2026-11-06（用户：胶囊背景再白一点）→ 白底必须配深色字，否则白字不可读
+    color: '#1F4C7E',
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.semibold as never,
     marginLeft: theme.sp(1.5),

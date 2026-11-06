@@ -633,10 +633,7 @@ export default function MonthDiscoveryView({
     () => patterns.filter((p) => p.kind !== 'coverage'),
     [patterns],
   );
-  const coverageNote = useMemo(() => {
-    const c = patterns.find((p) => p.kind === 'coverage');
-    return c ? c.title : '';
-  }, [patterns]);
+  // ★ 2026-11-06（用户：底下那句「这 30 天里有六天是有可用数据…」不需要写）→ coverageNote 随之移除。
 
   // 月历网格（周一起始，补齐整周）
   const rows = useMemo(() => {    const first = new Date(viewY, viewM, 1).getDay();
@@ -931,41 +928,27 @@ export default function MonthDiscoveryView({
                       <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
                         <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
                       </View>
-                      {/* ★ 2026-11-03（用户：规律观察也要接上 AI）：每条真实规律加「✨ AI 解读」，
-                          跳云端大模型（Qwen3-30B）用真实数据做描述性解读，不诊断。示例态不显示。 */}
-                      {!isSample && onAskMira ? (
-                        <TouchableOpacity
-                          style={styles.patAiBtn}
-                          onPress={() =>
-                            onAskMira(
-                              `我观察到一条关于自己的规律：「${p.text}」。用大白话帮我解读一下：这大概说明什么、可能和什么有关？只做描述性观察，不要诊断、不要吓我。`,
-                            )
-                          }
-                          accessibilityRole="button"
-                          accessibilityLabel="用 AI 解读这条规律"
-                        >
-                          <Icon name="sparkle" size={13} color={mm.colors.inkSoft} />
-                          <Text style={styles.patAiBtnText}>AI 解读</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                      {/* ★ 2026-11-06（用户：「不展示 AI 解读」）→ 移除「✨ AI 解读」入口。
+                          ★ 2026-11-03 引入、2026-11-06 用户明确不要了。 */}
                     </View>
+                    {/* ★ 2026-11-06（用户：「右边那个删掉，改成一个叉就行了，不要删掉那两个字」）
+                        → 「删掉」两个字换成 ✕ 图标按钮。 */}
                     <TouchableOpacity
                       style={styles.patObsDel}
                       onPress={() => { void onPatternRemove(p.id); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       accessibilityRole="button"
                       accessibilityLabel={`删掉这条规律：${p.title}`}
                     >
-                      <Text style={styles.patObsDelText}>删掉</Text>
+                      <Text style={styles.patObsDelText}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 </Card>
               );
             })}
-            <Text style={styles.cardNote}>
-              {coverageNote
-                ? `${coverageNote} · 这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。`
-                : '这些是从你自己的数据里看出来的规律，不是诊断；不想看就点卡片右上角删掉。'}
-            </Text>
+            {/* ★ 2026-11-06（用户：「底下那句话不用写，这 30 天里有六天是有可用数据，
+                这些个数在这些数据可以看出来规律之类，这句话不需要写。」）
+                → 移除 coverageNote 脚注（覆盖天数/说明文案整行去掉）。 */}
           </>
         );
       })()}

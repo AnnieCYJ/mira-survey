@@ -93,6 +93,10 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
   const color = RHYTHM_STATUS_COLOR[big] ?? RHYTHM_STATUS_COLOR[rangeStatus ?? 'normal'] ?? mm.colors.ink;
   const lab = range === 'day' ? '今日节律结论' : '区间节律结论';
   const ctx = range === 'day' ? '今天' : rangeLabel;
+  /* ★ 2026-11-06（用户：「它那个字因为数字可以写大一些，但是那个文字那有点太大了，可以稍微小一点。」）
+     → Hero 大字位原本是给「数字」设计的（hero 46px）。这里显示的是「节律紊乱 / 皮质醇偏高」这类**词**，
+       46px 撑满整行显得过大 → 词用 stat 档 32px；若是纯数字则仍用 hero 46px。 */
+  const bigIsNumber = /^[0-9]/.test(String(big));
   // ★ 2026-10-10（用户）：日视图峰值时刻格式化 HH:MM（与节律分析卡 fmtHour 同源）
   const fmtHM = (h: number | null) => {
     if (h == null || !Number.isFinite(h)) return '—';
@@ -105,7 +109,7 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
       <Text style={styles.ctitle}>皮质醇昼夜节律</Text>
       <View style={styles.heroWrap}>
         <View>
-          <Text style={[styles.heroBig, { color }]}>{big}</Text>
+          <Text style={[styles.heroBig, { color }, !bigIsNumber && styles.heroBigWord]}>{big}</Text>
           <Text style={styles.heroLab}>{lab}</Text>
         </View>
             <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
@@ -499,8 +503,8 @@ export default function EmotionCognitiveDetailScreen() {
           <RangeView cur={rangeData.cur} prev={rangeData.prev} range={range} anchor={anchor} />
         ) : null}
 
-        {/* ★ 2026-10-16：抑郁风险（戒指健康一览 / GSR 回传；key 修正为 depressionRisk 后落库） */}
-        <DepressionRiskCard />
+        {/* ★ 2026-11-06（用户：「去掉昼夜节律详情页下面的抑郁风险」）→ 移除 DepressionRiskCard。
+            （该指标仍保留在「健康一览 / 戒指健康」里，只是不在昼夜节律详情页展示。） */}
       </View>
     </ScreenContainer>
     </View>
@@ -860,49 +864,6 @@ function SumCell({ label, value, sub, bg, fg }: { label: string; value: string; 
   );
 }
 
-/* ★ 2026-10-16：抑郁风险卡（情绪/认知详情页新增，复用现有 cardTitle/summaryGrid/SumCell 口径）。
- * 数据：戒指健康一览或 GSR 回传的 depressionRisk（[0,2]，0 低 / 1 中 / 2 高），经 key 修正后落 healthStore。 */
-const DEPRESSION_RISK_LEVELS: { [k: number]: { label: string; sub: string; bg: string; fg: string } } = {
-  0: { label: '低风险', sub: '当前未见明显风险信号', bg: theme.colors.accentSoft, fg: mm.colors.ink },
-  1: { label: '中风险', sub: '建议关注情绪状态', bg: mm.colors.honeySoft, fg: mm.colors.ink },
-  2: { label: '高风险', sub: '建议寻求专业帮助', bg: mm.colors.roseSoft, fg: mm.colors.ink },
-};
-
-function DepressionRiskCard() {
-  const dk = dayKey(Date.now());
-  let level: number | null = null;
-  try {
-    const pts = healthStore.getIntraday('depressionRisk', dk);
-    if (pts.length) {
-      const raw = Math.round(pts[pts.length - 1].v);
-      level = raw >= 0 && raw <= 2 ? raw : null;
-    }
-  } catch { /* 静默 */ }
-  return (
-    <Card padded={false}>
-      <View style={styles.pad}>
-        <Text style={styles.cardTitle}>抑郁风险</Text>
-        {level == null ? (
-          <Text style={styles.sumSub}>暂无戒指测量数据。连接戒指并完成健康一览 / 压力测量后展示。</Text>
-        ) : (
-          <>
-            <View style={styles.summaryGrid}>
-              <SumCell
-                label="风险等级"
-                value={DEPRESSION_RISK_LEVELS[level].label}
-                sub={DEPRESSION_RISK_LEVELS[level].sub}
-                bg={DEPRESSION_RISK_LEVELS[level].bg}
-                fg={DEPRESSION_RISK_LEVELS[level].fg}
-              />
-            </View>
-            <Text style={styles.sumSub}>数据来自戒指测量，仅供参考，不构成医学诊断。</Text>
-          </>
-        )}
-      </View>
-    </Card>
-  );
-}
-
 const pad = { padding: theme.space.cardPad };
 
 const styles = StyleSheet.create({
@@ -923,12 +884,15 @@ const styles = StyleSheet.create({
     padding: theme.space.cardPad,
     marginBottom: theme.space.md,
   },
-  // 对标 EnergyDetailScreen「认知准备度」卡 .ctitle（15·600·textTitle）+ 下方留白
-  ctitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
+  // ★ 2026-11-06（用户：「我感觉这个 title 的字字体大小也不统一」）
+  //   → 与同页其它卡标题（cardTitle / ecgTitle = fontSize.card 18）统一，不再用 body 15。
+  ctitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
   // 对标 .heroWrap：左大数字/标签，右上下文，两端对齐
   heroWrap: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   // 对标 .big：46pt（hero token），状态着色
   heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
+  /* ★ 2026-11-06（用户：结论是词不是数字，字有点太大 → 稍小一点）：词用 stat 档 32px */
+  heroBigWord: { fontSize: theme.fontSize.stat, lineHeight: theme.fontSize.stat },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
   heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
   /* ★ 2026-11-03（用户·统一 hero 结构）：大字下方短分析 */

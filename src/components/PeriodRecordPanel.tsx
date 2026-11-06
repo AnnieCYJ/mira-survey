@@ -370,10 +370,12 @@ export default function PeriodRecordPanel({
 }
 
 const styles = StyleSheet.create({
-  // ★ 2026-11-05（用户两次反馈「记录经期弹窗背景还是浅的」）：
-  //   根节点自带深板岩底，确保经期记录页在任何容器里都是深色，不依赖外层 sheet 是否上色。
+  /* ★ 2026-11-06（用户：「生理周期那个记录，经期记录为什么背景还是黑的？去掉那个」）：
+     去掉自带的深板岩实底 → 透明，透出 App 根渐变（#1F4C7E→#0A294F）。
+     深色实底是 10-27 加的（当时为了「弹窗是深色才不漏日历」），但和 App 主色不一致，
+     用户明确要求去掉黑底 —— 统一到全 App 同一套深蓝渐变，弹窗不再像另一套界面。 */
   panel: {
-    backgroundColor: 'rgba(9,28,48,0.98)',
+    backgroundColor: 'transparent',
     borderRadius: 0,
     padding: 0,
     marginTop: 0,

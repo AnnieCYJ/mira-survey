@@ -55,11 +55,12 @@ export interface FamilyMember {
 }
 
 function seedMembers(): FamilyMember[] {
+  /* ★ 2026-11-06（用户：「家人关怀这个添加家人这里面目前我其实还没添加任何家人呢，
+     这两个演示的要不先去掉。」）
+     → 移除 3 个演示成员（陈屿 / 妈妈 / 爸爸）。现在只有「本人」一条，
+     家人一律由用户自己添加，避免给渠道商演示时看起来像已有真实家庭数据。 */
   return [
     { id: 'self', name: 'Kristina', relationship: 'self', avatarColor: AVATAR_COLORS[0], avatarLetter: 'K', bound: true, statusTone: 'good', statusLabel: '精力充沛', statusEmoji: '✨', mood: 'happy', recoveryScore: 82, sleepHours: 7.4, menstrualPhase: '排卵期', lastSyncLabel: '刚刚' },
-    { id: 'm1', name: '陈屿', relationship: 'spouse', avatarColor: AVATAR_COLORS[1], avatarLetter: '屿', bound: true, boundAt: Date.now() - 86400000 * 12, statusTone: 'fair', statusLabel: '恢复略慢', statusEmoji: '🌙', mood: 'calm', recoveryScore: 61, sleepHours: 6.2, lastSyncLabel: '8 分钟前' },
-    { id: 'm2', name: '妈妈', relationship: 'mother', avatarColor: AVATAR_COLORS[2], avatarLetter: '妈', bound: true, boundAt: Date.now() - 86400000 * 30, statusTone: 'good', statusLabel: '状态平稳', statusEmoji: '🌿', mood: 'calm', recoveryScore: 74, sleepHours: 7.0, lastSyncLabel: '1 小时前' },
-    { id: 'm3', name: '爸爸', relationship: 'father', avatarColor: AVATAR_COLORS[3], avatarLetter: '爸', bound: false, statusTone: 'low', statusLabel: '暂未同步', statusEmoji: '·' },
   ];
 }
 

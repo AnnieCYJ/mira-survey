@@ -68,15 +68,20 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>呼吸率（均）</Text>
-              <Text style={styles.statValue}>{a.aveRespRate || '—'}<Text style={styles.statLabel}> 次/分</Text></Text>
+              {/* ★ 2026-11-06：SDK 需连续血氧数据才解析呼吸率/低氧时间/心脏负荷；零星点测返回 0 → 显示 --。
+                  为 0 时改为「--」+ 灰色小字说明（需全天血氧监测数据，连接后 App 已自动开启）。 */}
+              <Text style={styles.statValue}>{a.aveRespRate || '--'}<Text style={styles.statLabel}> 次/分</Text></Text>
+              {!a.aveRespRate ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>低氧时间（均）</Text>
-              <Text style={styles.statValue}>{a.aveLowOxygenTime || '—'}<Text style={styles.statLabel}> s</Text></Text>
+              <Text style={styles.statValue}>{a.aveLowOxygenTime || '--'}<Text style={styles.statLabel}> s</Text></Text>
+              {!a.aveLowOxygenTime ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>心脏负荷（均）</Text>
-              <Text style={styles.statValue}>{a.aveCardiacLoad || '—'}</Text>
+              <Text style={styles.statValue}>{a.aveCardiacLoad || '--'}</Text>
+              {!a.aveCardiacLoad ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
           </View>
           {a.freqTimes.length > 0 ? (
@@ -113,6 +118,7 @@ const styles = StyleSheet.create({
   },
   statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
   statValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  statHint: { fontSize: theme.fontSize.micro - 2, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   note: {

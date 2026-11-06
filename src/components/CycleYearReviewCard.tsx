@@ -118,9 +118,23 @@ export default function CycleYearReviewCard({
       </View>
 
       {!hasAny ? (
-        <Text style={styles.empty}>
-          {year} 年还没有经期或症状记录。记录后这里会按自然年汇总你的周期数与每月经期/症状分布。
-        </Text>
+        /* ★ 2026-11-06（用户：「生理周期那个年一样，空图表，不要展示文字。」）
+           → 无数据时仍渲染**12 个月空柱骨架**（同一张图，只是没有柱子），不再是一段说明文字。 */
+        <View style={styles.chartWrap}>
+          <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
+            {Array.from({ length: 12 }).map((_, i) => {
+              const gx = PAD_L + i * groupW;
+              const cx = gx + groupW / 2;
+              const base = H - PAD_B;
+              return (
+                <React.Fragment key={i}>
+                  <Rect x={cx - barW - 1} y={base - 2} width={barW} height={2} rx={chart.barRadius} fill={mm.colors.emptyFill} />
+                  <Rect x={cx + 1} y={base - 2} width={barW} height={2} rx={chart.barRadius} fill={mm.colors.emptyFill} />
+                </React.Fragment>
+              );
+            })}
+          </Svg>
+        </View>
       ) : (
         <>
           {/* 概览 */}

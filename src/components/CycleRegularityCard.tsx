@@ -15,6 +15,8 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import { chart } from '../theme/chart';
+import EmptyChart from './charts/EmptyChart';
 import { addDays, daysBetween, parseDate } from '../lib/cycleMath';
 import type { PeriodDayLog } from '../data/cycleLog';
 
@@ -93,11 +95,26 @@ export default function CycleRegularityCard({
       <Text style={styles.title}>周期规律性</Text>
 
       {data.n === 0 ? (
-        <Text style={styles.empty}>
-          还需要至少 2 次经期记录（凑满 1 个完整周期）才能算出规律性。在「记录 / 修改」里每记一次经期首日，
-          就会多一个可统计的周期。
-          {baseCycleLength ? ` 目前基准周期长度设为 ${baseCycleLength} 天。` : ''}
-        </Text>
+        /* ★ 2026-11-06（用户：「那个周期规律性是不是个图表还是什么东西？最好就是一个空的表，
+           不要完全是文字来描述，看着有点…」）→ 无数据时展示**空图表骨架**，不再是一段说明文字。
+           周期长度条 / 平均周期长度 / 波动 三格数值仍然保留（无数据时给「--」）。 */
+        <View style={styles.emptyChartBox}>
+          <EmptyChart height={chart.plot.m} />
+          <View style={styles.emptyStatRow}>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>--</Text>
+              <Text style={styles.subLabel}>平均周期长度</Text>
+            </View>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>--</Text>
+              <Text style={styles.subLabel}>波动（天）</Text>
+            </View>
+            <View style={styles.subCol}>
+              <Text style={styles.subValue}>--</Text>
+              <Text style={styles.subLabel}>完整周期</Text>
+            </View>
+          </View>
+        </View>
       ) : (
         <>
           {/* ① 判读 Hero：档位徽章 + 一句大白话
@@ -175,6 +192,9 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   empty: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.7, color: theme.colors.textSub },
+  // ★ 2026-11-06（用户：周期规律性改成空图表而非文字）
+  emptyChartBox: { gap: theme.sp(2) },
+  emptyStatRow: { flexDirection: 'row', alignItems: 'flex-start' },
   // ① 判读 Hero
   hero: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2) },
   heroBadge: {

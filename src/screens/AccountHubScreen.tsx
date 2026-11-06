@@ -45,8 +45,12 @@ export default function AccountHubScreen() {
 
   const startAdd = () => {
     if (!name.trim()) return;
+    /* ★ 2026-11-06（用户：「我点击了添加家人，然后之后直接添加就 OK 了，不要展示那个动画了，
+       那动画太丑了。」）
+       → 不再跳 BindingRitual 仪式页，直接写入家人并关闭 Sheet。 */
+    familyStore.bindMember(rel, name.trim());
+    setName('');
     setAddOpen(false);
-    navigation.navigate('BindingRitual', { relationship: rel, name: name.trim() });
   };
   const startPending = (m: typeof pending[number]) => {
     // 第二枚戒指激活：带上 memberId，让仪式只标记该成员为已绑定（不重复建人）
@@ -173,7 +177,7 @@ export default function AccountHubScreen() {
             onPress={startAdd}
             disabled={!name.trim()}
           >
-            <Text style={s.confirmTxt}>下一步 · 绑定仪式</Text>
+            <Text style={s.confirmTxt}>添加</Text>
           </TouchableOpacity>
         </View>
       </Sheet>

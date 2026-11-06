@@ -49,6 +49,7 @@ import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 // ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡（与血氧页共用，抽成可复用组件）
 import { OxygenApneaSection } from '../components/OxygenApneaSection';
+import NightBpCard from '../components/NightBpCard';
 
 
 interface DayRec {
@@ -517,6 +518,11 @@ export default function SleepDetailScreen() {
           {/* ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡——睡眠期呼吸暂停本就是睡眠现象，
               放在睡眠恢复详情页（与血氧页共用同一组件与数据 ring.oxygenAnalysis） */}
           <OxygenApneaSection title="睡眠呼吸暂停（OSAHS）" />
+
+          {/* ★ 2026-11-06（用户：「其他的我其实应该可以做个血压……放在睡眠恢复的相应位置上」）：
+              夜间血压参考卡——最近光电血压测量 + 7 天均值 + 夜间心率 dipping 参考（Oura 对标推导指标，
+              不做绝对血压推算，不诊断）。 */}
+          <NightBpCard anchorMs={anchor.getTime()} />
 
           {/* ★ 2026-11-06（用户）：「什么是睡眠恢复分」说明已折叠进上方「睡眠恢复分」卡内（SleepRecoveryHero），此处不再重复 */}
           {/* ★ 2026-11-06（用户纠偏）：「稳定睡眠」入口卡置于日视图最底部，点击直达睡前助眠呼吸（Breathing） */}

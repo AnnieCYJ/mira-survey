@@ -9,8 +9,10 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
+import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
+import EmptyChart from './charts/EmptyChart';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
@@ -241,16 +243,17 @@ export default function CortisolDailyChart({
   // ★ v18.123：门槛提前 return（今日槽 <3 → 空态卡）。2026-10-10 移到全部 hooks 之后，
   //   修复 "Rendered more hooks than during the previous render"（hooks 顺序恒定）。
   if (isToday ? proxyValid < 3 : false) {
+    // ★ 2026-11-06（用户：没有数据展示空图表，不要展示一句话）→ 空态渲染同款图表骨架
+    //   （坐标轴 + 网格 + 虚线基线），保留一行轻量进度提示（仅基线建立期），不再整卡纯文字。
     return (
       <Card>
         <Text style={styles.title}>{title}</Text>
-        <Text style={{ fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
-          {isToday
-            ? (proxy && proxy.baselineDays < MIN_BASELINE_DAYS
-                ? `正在建立你的个人基线（${proxy.baselineDays}/${MIN_BASELINE_DAYS} 天），多戴几天戒指就能看到全天趋势。`
-                : '佩戴戒指约半小时后，这里会显示由心率变异性、体温、心率与活动反推出的全天皮质醇活性曲线。')
-            : `${mdLabel} 暂无皮质醇数据`}
-        </Text>
+        <EmptyChart height={chart.plot.m} xLabels={['00', '06', '12', '18', '24']} />
+        {isToday && proxy && proxy.baselineDays < MIN_BASELINE_DAYS ? (
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
+            正在建立你的个人基线（{proxy.baselineDays}/{MIN_BASELINE_DAYS} 天）
+          </Text>
+        ) : null}
       </Card>
     );
   }
