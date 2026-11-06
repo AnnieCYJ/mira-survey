@@ -18,6 +18,8 @@ import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
+// ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
+import { fmtEcgUnit } from '../lib/ecgFormat';
 import ExamTab from '../components/ExamTab';
 import QuickCheckTab from '../components/QuickCheckTab';
 import { getLatestExamRecord } from '../data/examStore';
@@ -1439,11 +1441,12 @@ function EcgReadout({ ring }: { ring: RingState }) {
   }
 
   const rows: [string, string][] = [
-    ['平均心率', `${Math.round(reading.aveHeart)} bpm`],
-    ['HRV', `${Math.round(reading.aveHrv)} ms`],
-    ['呼吸率', `${Math.round(reading.aveResRate)} 次/分`],
-    ['QT', `${Math.round(reading.aveQT)} ms`],
-    ['PWV', `${Math.round(reading.avePWV)} cm/s`],
+    // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值缺失 / NaN 一律显示 '—'。
+    ['平均心率', fmtEcgUnit(reading.aveHeart, 'bpm')],
+    ['HRV', fmtEcgUnit(reading.aveHrv, 'ms')],
+    ['呼吸率', fmtEcgUnit(reading.aveResRate, '次/分')],
+    ['QT', fmtEcgUnit(reading.aveQT, 'ms')],
+    ['PWV', fmtEcgUnit(reading.avePWV, 'cm/s')],
   ];
   return (
     <Card>

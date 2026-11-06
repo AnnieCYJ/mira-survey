@@ -35,6 +35,8 @@ import {
 } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { useDeviceModel } from '../config/deviceModel';
+// ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
+import { fmtEcgUnit } from '../lib/ecgFormat';
 import { saneBodyTemp } from '../data/ringDataIsolation';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { healthStore, dayKey, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
@@ -1912,11 +1914,13 @@ export default function MetricDetailScreen() {
             <View style={styles.ecgGrid}>
               {(
                 [
-                  ['平均心率', ring.ecg ? `${Math.round(ring.ecg.aveHeart)} bpm` : '—'],
-                  ['HRV', ring.ecg ? `${Math.round(ring.ecg.aveHrv)} ms` : '—'],
-                  ['呼吸率', ring.ecg ? `${Math.round(ring.ecg.aveResRate)} 次/分` : '—'],
-                  ['QT', ring.ecg ? `${Math.round(ring.ecg.aveQT)} ms` : '—'],
-                  ['PWV', ring.ecg ? `${Math.round(ring.ecg.avePWV)} cm/s` : '—'],
+                  // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ring.ecg 可能来自旧版快照
+                  //   （字段不全）→ Math.round(undefined) = NaN 会直接显示给用户。
+                  ['平均心率', fmtEcgUnit(ring.ecg?.aveHeart, 'bpm')],
+                  ['HRV', fmtEcgUnit(ring.ecg?.aveHrv, 'ms')],
+                  ['呼吸率', fmtEcgUnit(ring.ecg?.aveResRate, '次/分')],
+                  ['QT', fmtEcgUnit(ring.ecg?.aveQT, 'ms')],
+                  ['PWV', fmtEcgUnit(ring.ecg?.avePWV, 'cm/s')],
                 ] as [string, string][]
               ).map(([k, v]) => (
                 <View style={styles.ecgCell} key={k}>

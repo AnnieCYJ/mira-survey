@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Line, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,10 @@ import { mm } from '../theme/mindmate';
 import { RingBle, type RingState, type EcgReading, type EcgAnalysis } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import EcgMeasureSheet from '../components/EcgMeasureSheet';
+// ★ 2026-11-06 审查（docs/audit/03 🔴#3）：机型能力门禁（ECG 硬件是否存在）
+import { useDeviceModel, hasCap } from '../config/deviceModel';
+// ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
+import { fmtEcgNum, ecgStatus } from '../lib/ecgFormat';
 
 /** ECG 波形路径：点自适应归一化到 W×H 视窗（传入的已是 mV 值）。 */
 function wavePath(values: number[], W: number, H: number): string {
@@ -153,6 +157,10 @@ function RiskBar({ label, value }: { label: string; value: number }) {
 export default function EcgDetailScreen() {
   const navigation = useNavigation<any>();
   const ring = useRingState();
+  // ★ 2026-11-06 审查（docs/audit/03 🔴#3）：机型能力门禁 ——
+  //   基础版（无 ECG 传感器）整页不再显示「HK18 ECG 硬件 + 开始测量」的空壳界面。
+  const { model: dmModel } = useDeviceModel();
+  const ecgSupported = hasCap(dmModel, 'ecg');
   const [measuring, setMeasuring] = useState(false);
   const [tab, setTab] = useState<'metrics' | 'risk'>('metrics');
   const [zoom, setZoom] = useState(false);
@@ -191,11 +199,20 @@ export default function EcgDetailScreen() {
     return () => clearInterval(iv);
   }, [measuring]);
 
+  /**
+   * ★ 2026-11-06 审查（docs/audit/03 🔴#3）：测量入口三重前置检查。
+   *   旧实现无任何检查 → 基础版点「开始测量」后直接进入无限「测量中」，
+   *   连「请先连接戒指」都得不到（对比 EcgCard 已有这三道检查）。
+   */
   const measureEcg = useCallback(() => {
     if (measuring) return;
+    const st = RingBle.getState();
+    if (!st.deviceId) { Alert.alert('提示', '请先连接戒指'); return; }
+    if (st.status !== 'connected') { Alert.alert('提示', '戒指未连接（当前: ' + st.status + '）'); return; }
+    if (!ecgSupported) { Alert.alert('提示', '当前戒指硬件不支持 ECG 测量'); return; }
     setMeasuring(true);
     RingBle.measure('ecg');
-  }, [measuring]);
+  }, [measuring, ecgSupported]);
 
   const stopEcg = useCallback(() => {
     RingBle.stopEcg();
@@ -209,8 +226,11 @@ export default function EcgDetailScreen() {
 
   // 医学指标（参考区间中性描述）
   const metrics: { label: string; value: string; unit: string; refText: string; status?: Status }[] = [
-    { label: '平均心率', value: `${Math.round(latest?.aveHeart ?? 0)}`, unit: 'bpm', refText: '60–100', status: (latest?.aveHeart ?? 0) > 100 ? 'high' : (latest?.aveHeart ?? 0) < 60 ? 'low' : 'normal' },
-    { label: 'HRV', value: `${Math.round(latest?.aveHrv ?? 0)}`, unit: 'ms', refText: '通常 20–100' },
+    // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：快照恢复的旧 ecg 对象可能缺字段
+    //   （aveQT / avePWV 是后加的）→ Math.round(undefined) = NaN 会直接显示给用户。
+    //   一律走 fmtEcgNum：无有效值显示 '—'；status 无值时为 undefined（走中性样式）。
+    { label: '平均心率', value: fmtEcgNum(latest?.aveHeart), unit: 'bpm', refText: '60–100', status: ecgStatus(latest?.aveHeart, 60, 100) as 'high' | 'low' | 'normal' | undefined },
+    { label: 'HRV', value: fmtEcgNum(latest?.aveHrv), unit: 'ms', refText: '通常 20–100' },
     { label: 'SDNN', value: a?.sdnn != null ? `${Math.round(a.sdnn)}` : '—', unit: 'ms', refText: '102–180', status: a?.sdnn != null ? (a.sdnn > 180 ? 'high' : a.sdnn < 102 ? 'low' : 'normal') : undefined },
     { label: 'RMSSD', value: a?.rmssd != null ? `${Math.round(a.rmssd)}` : '—', unit: 'ms', refText: '15–39', status: a?.rmssd != null ? (a.rmssd > 39 ? 'high' : a.rmssd < 15 ? 'low' : 'normal') : undefined },
     { label: 'QTc', value: a?.qtc != null ? `${Math.round(a.qtc)}` : '—', unit: 'ms', refText: '女 <460', status: a?.qtc != null ? (a.qtc > 460 ? 'high' : 'normal') : undefined },
@@ -229,6 +249,39 @@ export default function EcgDetailScreen() {
     { label: '血管硬化', value: a?.angiosclerosisRisk ?? 0 },
   ];
 
+  // ★ 2026-11-06 审查（docs/audit/03 🔴#3）：整页早退门禁 ——
+  //   基础版（无 ECG 传感器）不应该看到「HK18 ECG 硬件 + 开始心电图测量」的完整界面，
+  //   那等于把「不支持」说成了「支持」。这里直接给出明确说明并给出返回路径。
+  if (!ecgSupported) {
+    return (
+      <View style={{ flex: 1 }}>
+        <BgGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
+          locations={[...theme.colors.bgGradLocs] as unknown as number[]} style={StyleSheet.absoluteFill} />
+        <ScreenContainer compactTop topFadeColor={theme.colors.bgTop}>
+          <View style={styles.head}>
+            <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
+              <Text style={{ fontSize: theme.fontSize.lg }}>‹</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>心电图</Text>
+              <Text style={styles.sub}>当前设备不支持 ECG 测量</Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'center', paddingVertical: theme.sp(16), paddingHorizontal: theme.space.screen }}>
+            <Text style={{
+              fontSize: theme.fontSize.body,
+              color: theme.colors.textSub,
+              textAlign: 'center',
+              lineHeight: theme.fontSize.body * 1.7,
+            }}>
+              当前这枚戒指没有心电传感器，无法进行心电图测量。
+            </Text>
+          </View>
+        </ScreenContainer>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <BgGradient colors={[...theme.colors.bgGradStops] as unknown as string[]}
@@ -240,7 +293,15 @@ export default function EcgDetailScreen() {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>心电图</Text>
-            <Text style={styles.sub}>{ring.status === 'connected' ? 'HK18 ECG 硬件' : '连接戒指后测量'}</Text>
+            {/* ★ 2026-11-06 审查（docs/audit/03 🔴#3）：副标题不得写死机型名。
+                基础版连接成功后也会显示「HK18 ECG 硬件」—— 属于把「不支持」说成了「支持」。 */}
+            <Text style={styles.sub}>
+              {!ecgSupported
+                ? '当前设备不支持 ECG 测量'
+                : ring.status === 'connected'
+                  ? (dmModel.id === 'PRO_UI' ? 'HK18 ECG 硬件' : 'ECG 硬件')
+                  : '连接戒指后测量'}
+            </Text>
           </View>
         </View>
 
@@ -319,10 +380,13 @@ export default function EcgDetailScreen() {
               <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>心电解读</Text>
               <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
                 {(() => {
-                  const hr = Math.round(latest?.aveHeart ?? 0);
-                  const hrv = Math.round(latest?.aveHrv ?? 0);
+                  // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：无有效值时不说「平均心率 0 bpm」。
+                  const hrTxt = fmtEcgNum(latest?.aveHeart);
+                  const hrvTxt = fmtEcgNum(latest?.aveHrv);
                   const highs = risks.filter((r) => r.value >= 60).map((r) => r.label);
-                  const base = `本次平均心率 ${hr} bpm，HRV ${hrv} ms`;
+                  const base = hrTxt === '—' && hrvTxt === '—'
+                    ? '本次测量缺少心率与 HRV 数值'
+                    : `本次平均心率 ${hrTxt} bpm，HRV ${hrvTxt} ms`;
                   if (highs.length) return `${base}；有 ${highs.length} 项风险指标偏高（${highs.join('、')}），建议关注并咨询医生。`;
                   return `${base}，各项指标在参考范围内。数据仅作健康参考，不构成诊断。`;
                 })()}
@@ -380,9 +444,9 @@ export default function EcgDetailScreen() {
                   </Svg>
                 ) : null}
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                  <Text style={styles.hStat}>心率 <Text style={styles.hStatVal}>{Math.round(r.aveHeart)}</Text> bpm</Text>
-                  <Text style={styles.hStat}>HRV <Text style={styles.hStatVal}>{Math.round(r.aveHrv)}</Text> ms</Text>
-                  <Text style={styles.hStat}>呼吸 <Text style={styles.hStatVal}>{Math.round(r.aveResRate)}</Text></Text>
+                  <Text style={styles.hStat}>心率 <Text style={styles.hStatVal}>{fmtEcgNum(r.aveHeart)}</Text> bpm</Text>
+                  <Text style={styles.hStat}>HRV <Text style={styles.hStatVal}>{fmtEcgNum(r.aveHrv)}</Text> ms</Text>
+                  <Text style={styles.hStat}>呼吸 <Text style={styles.hStatVal}>{fmtEcgNum(r.aveResRate)}</Text></Text>
                 </View>
               </View>
             ))}

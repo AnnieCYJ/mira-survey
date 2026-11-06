@@ -8,6 +8,8 @@ import { RingBle, type RingState } from '../ble/RingBleManager';
 import Icon from './Icon';
 import EcgMeasureSheet from './EcgMeasureSheet';
 import { useDeviceModel, hasCap } from '../config/deviceModel';
+// ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
+import { fmtEcgNum } from '../lib/ecgFormat';
 
 interface Props {
   ring: RingState;
@@ -181,9 +183,11 @@ const ecgUnsupported = !hasCap(model, 'ecg') || ecgType === 0;
       {latest ? (
         <View style={{ flexDirection: 'row', marginTop: 10, gap: 12 }}>
           {[
-            ['心率', `${Math.round(latest.aveHeart)}`, 'bpm'],
-            ['HRV', `${Math.round(latest.aveHrv)}`, 'ms'],
-            ['呼吸', `${Math.round(latest.aveResRate)}`, '次/分'],
+            // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：字段缺失 / NaN 一律显示 '—'，
+            //   绝不把 Math.round(undefined)=NaN 递给用户。
+            ['心率', fmtEcgNum(latest.aveHeart), 'bpm'],
+            ['HRV', fmtEcgNum(latest.aveHrv), 'ms'],
+            ['呼吸', fmtEcgNum(latest.aveResRate), '次/分'],
           ].map(([k, v, u]) => (
             <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{k}</Text>
