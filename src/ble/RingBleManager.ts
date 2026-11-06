@@ -29,7 +29,7 @@ import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
 // ★ Phase 1：设备令牌（按 device_id 隔离的云端访问凭证）
 import { authHeaders, ensureDeviceToken } from '../data/ringIdentity';
 // ★ 2026-11-05：两套戒指数据源隔离（旧 HK18 数据不得混进当前戒指）+ 体温合法性校验
-import { trustedCurrentRingDeviceId, isBlockedRingDeviceId, saneBodyTemp } from '../data/ringDataIsolation';
+import { trustedCurrentRingDeviceId, isBlockedRingDeviceId, saneBodyTemp, normDeviceId } from '../data/ringDataIsolation';
 import { ringUploadExtFields } from '../lib/ringUploadFields';
 import {
   computeCycle,
@@ -384,6 +384,13 @@ export interface RingState {
   ecgDaily: Record<string, EcgReading>;
   /** ECG 每次测量追加历史，最多 30 条，按时间倒序。 */
   ecgHistory: EcgReading[];
+  /**
+   * ★ 2026-11-06 审查（docs/audit/03 🔴#5）：**ECG 读数来自哪一枚戒指**。
+   *   ECG 读数里含心率/HRV/波形，是最敏感的数据。换了戒指（HK18 → Luna Mira 基础版）
+   *   后若把旧戒指的 ECG 原样恢复，等于把上一枚戒指的心电图展示给新用户。
+   *   这里记录来源 deviceId，恢复与连接时都据此校验。
+   */
+  ecgDeviceId?: string | null;
   /** 最近一次手动「上传云端」成功的时间戳（秒），用于设置页展示上传时间；null = 从未上传。 */
   lastUploadedAt: number | null;
   /** 设备能力标志（连接后由原生 onPasswordVerified 上报）：ecgType(0无/1E/2G)、funcAssessmentType、
@@ -1744,7 +1751,17 @@ class NativeRingSource {
       const newHistory = [reading, ...curHistory].slice(0, 30);
       // ★ 关键：清掉 ecgProgress → UI 从"处理结果中…"回到空闲态（显示"重新测量"）
       // 之前设 progress:100 会导致 isDone 永远为 true，UI 永远卡在 loading
-      this.push({ ecg: reading, ecgProgress: null, ecgLiveWaveform: null, ecgError: null, ecgHint: null, ecgHistory: newHistory });
+      // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：记录 ECG 的来源戒指，
+      //   供快照恢复与连接后校验（防止旧戒指心电图混入新戒指）。
+      this.push({
+        ecg: reading,
+        ecgProgress: null,
+        ecgLiveWaveform: null,
+        ecgError: null,
+        ecgHint: null,
+        ecgHistory: newHistory,
+        ecgDeviceId: this.getState().deviceId ?? null,
+      });
       this._ecgLiveBuf = [];
       // 把平均心率作为 'ecg' 信号推入 flush 归档链路 → extDaily[今日]['ecg']，多日趋势可用
       this.pushMetric({ key: 'ecg', value: reading.aveHeart, unit: 'bpm', ts: reading.ts });
@@ -3831,6 +3848,18 @@ class RingConnectionImpl {
       const keys = Object.keys(patch.seriesByDay);
       postLog('RingBle', `[applyPatch] 📦 seriesByDay PUSH keys=${keys}`);
     }
+    // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：**ECG 来源二次校验**。
+    //   快照恢复时若当时还没连上设备，ECG 会以「来源已知即恢复」的宽松规则放行；
+    //   此刻拿到真实 deviceId 后必须再校一次 —— 若这份 ECG 属于另一枚戒指
+    //   （换了设备 / 换了用户 / 换了 App 账号），立即清空，不混显。
+    const patchDeviceId = normDeviceId(patch.deviceId);
+    if (patchDeviceId) {
+      const prevEcgSrc = normDeviceId(this.state.ecgDeviceId);
+      if (this.state.ecg && prevEcgSrc && prevEcgSrc !== patchDeviceId) {
+        postLog('RingBle', `[applyPatch] 清空他戒 ECG：来源 ${prevEcgSrc} ≠ 当前 ${patchDeviceId}`);
+        patch = { ...patch, ecg: null, ecgHistory: [], ecgDeviceId: null };
+      }
+    }
     this.state = { ...this.state, ...patch };
     // 连上戒指即自动开启原生「自动监测」（实时 HR/SpO₂ + 体温/皮电轮询 + HRV 历史读取），
     // 不再依赖用户在设置页手动拨开关——之前 autoMonitor 默认 false 且不持久化，
@@ -5642,6 +5671,14 @@ class RingConnectionImpl {
         ecg: this.state.ecg,
         ecgDaily: this.state.ecgDaily,
         ecgHistory: this.state.ecgHistory,
+        // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：ECG 来源戒指随快照落盘，
+        //   恢复时据此判断「这份 ECG 是不是当前这枚戒指测的」。
+        ecgDeviceId: this.state.ecgDeviceId ?? null,
+        // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：血氧分析 / RR 间期分析也要落盘。
+        //   否则冷启动后 oxygenAnalysis / rrAnalysis 恒为 null，血氧页与 HRV 页
+        //   每次冷启动都必须重新连设备拉一次，离线时永远停在空态。
+        oxygenAnalysis: this.state.oxygenAnalysis,
+        rrAnalysis: this.state.rrAnalysis,
         lastUploadedAt: this.state.lastUploadedAt,
         availability: this.state.availability,
         lastUpdated: this.state.lastUpdated,
@@ -6078,8 +6115,35 @@ class RingConnectionImpl {
       if (snap.stepDaily) patch.stepDaily = snap.stepDaily;
       if (snap.lastSyncedAt) patch.lastSyncedAt = snap.lastSyncedAt;
       if (snap.extDaily) patch.extDaily = snap.extDaily;
-      if (snap.ecg) patch.ecg = snap.ecg;
+      // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：**ECG 读数必须校验来源戒指**。
+      //   快照里的 ecg / ecgHistory 是「上次 App 运行时那枚戒指」测的。
+      //   换了戒指（HK18 → Luna Mira 基础版）后原样恢复 = 把旧戒指的心电图
+      //   展示给新用户 —— 与 ringDataIsolation「旧 HK18 数据不得混入当前戒指」
+      //   的铁律直接冲突（隔离此前只做了 daily / healthStore 层）。
+      //   判定：快照来源 deviceId 必须存在、不在黑名单、且与当前戒指一致。
+      //   判定依据优先级：① ecgDeviceId（这批 ECG 实际是哪枚戒指测的，最准确）
+      //   → ② 快照 deviceId（老快照没有 ecgDeviceId 时的兜底）。
+      const snapEcgDeviceId = normDeviceId((snap as any).ecgDeviceId) || normDeviceId((snap as any).deviceId);
+      //   黑名单设备（demo- / test-diag- / 旧 HK18）的 ECG 一律不恢复。
+      //   若是当前这枚戒指，恢复；来源未知（老快照没写 deviceId）时不恢复 ——
+      //   无法证明归属的 ECG 不给用户看，这是宁可不出值也不混显的取舍。
+      const ecgSourceKnown = !!snapEcgDeviceId && !isBlockedRingDeviceId(snapEcgDeviceId);
+      const currentRingId = normDeviceId(this.state.deviceId);
+      const ecgBelongsToCurrentRing =
+        ecgSourceKnown && (!currentRingId || snapEcgDeviceId === currentRingId);
+      if (ecgBelongsToCurrentRing) {
+        if (snap.ecg) patch.ecg = snap.ecg;
+        if (Array.isArray(snap.ecgHistory)) patch.ecgHistory = snap.ecgHistory;
+        patch.ecgDeviceId = snapEcgDeviceId;
+      } else if (snap.ecg || snap.ecgHistory) {
+        postLog('RingBle', `[loadPersisted] 跳过 ECG 恢复：来源设备 ${snapEcgDeviceId || '(未知)'} 非当前戒指或属黑名单`);
+      }
       if (snap.ecgDaily) patch.ecgDaily = snap.ecgDaily;
+      // ★ 2026-11-06 审查（docs/audit/03 🔴#5）：ecgHistory 存了就要恢复，
+      //   否则 EcgDetailScreen 的「历史测量 N 次」冷启动后恒为 0，
+      //   而同一份 ring.ecg 却在 MetricDetailScreen 有值 → 两页自相矛盾。
+      if (snap.oxygenAnalysis) patch.oxygenAnalysis = snap.oxygenAnalysis;
+      if (snap.rrAnalysis) patch.rrAnalysis = snap.rrAnalysis;
       if (snap.lastUploadedAt) patch.lastUploadedAt = snap.lastUploadedAt;
       if (snap.deviceId) patch.deviceId = snap.deviceId;
       // ★ v18.133 补：恢复运动段（与 saveSnapshot 新增字段配对）。
