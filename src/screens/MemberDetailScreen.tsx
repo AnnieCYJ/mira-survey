@@ -12,13 +12,9 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { theme } from '../theme/theme';
-import { familyStore, REL_LABEL, REL_EMOJI } from '../data/familyStore';
+import { familyStore, REL_LABEL, REL_EMOJI, familyToneColor, FAMILY_NO_DATA_LABEL } from '../data/familyStore';
 import EmotionFaceIcon from '../components/EmotionFaceIcon';
 import Icon from '../components/Icon';
-
-const TONE_COLOR: Record<'good' | 'fair' | 'low', string> = {
-  good: theme.colors.success, fair: '#F0C46E', low: theme.colors.danger,
-};
 
 export default function MemberDetailScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList, 'MemberDetail'>>();
@@ -56,7 +52,9 @@ export default function MemberDetailScreen() {
 
           <View style={s.statusCard}>
             <EmotionFaceIcon mood={m.mood ?? 'calm'} color={m.avatarColor} size={40} />
-            <Text style={[s.statusLabel, { color: TONE_COLOR[m.statusTone] }]}>TA今日 · {m.statusLabel} {m.statusEmoji}</Text>
+            <Text style={[s.statusLabel, { color: familyToneColor(m.statusTone) ?? theme.colors.textSub }]}>
+              TA今日 · {m.statusLabel ? `${m.statusLabel} ${m.statusEmoji ?? ''}`.trim() : FAMILY_NO_DATA_LABEL}
+            </Text>
             <Text style={s.statusSub}>最近同步：{m.lastSyncLabel}</Text>
           </View>
 

@@ -11,14 +11,8 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, type ViewStyle } from 'react-native';
 import { theme } from '../theme/theme';
-import { useFamilyMembers } from '../data/familyStore';
+import { useFamilyMembers, familyToneColor, FAMILY_NO_DATA_LABEL } from '../data/familyStore';
 import EmotionFaceIcon from './EmotionFaceIcon';
-
-const TONE_COLOR: Record<'good' | 'fair' | 'low', string> = {
-  good: theme.colors.success,
-  fair: '#F0C46E',
-  low: theme.colors.danger,
-};
 
 interface Props {
   onSelect?: (id: string) => void;
@@ -71,10 +65,16 @@ export default function TaTodayRow({ onSelect, dark = false, compact = false, co
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1), marginTop: theme.sp(2) }}>
               <EmotionFaceIcon mood={m.mood ?? 'calm'} color={m.avatarColor} size={compact ? 18 : 22} />
               <Text
-                style={{ color: TONE_COLOR[m.statusTone], fontSize: compact ? theme.fontSize.sm : theme.fontSize.card, fontWeight: theme.weight.medium as any, flex: 1 }}
+                style={{
+                  // ★ 2026-11-06：无结论时用次级灰 + 「等待数据」，不再凭空显示状态
+                  color: familyToneColor(m.statusTone) ?? subColor,
+                  fontSize: compact ? theme.fontSize.sm : theme.fontSize.card,
+                  fontWeight: theme.weight.medium as any,
+                  flex: 1,
+                }}
                 numberOfLines={1}
               >
-                {m.statusLabel} {m.statusEmoji}
+                {m.statusLabel ? `${m.statusLabel} ${m.statusEmoji ?? ''}`.trim() : FAMILY_NO_DATA_LABEL}
               </Text>
             </View>
           </View>

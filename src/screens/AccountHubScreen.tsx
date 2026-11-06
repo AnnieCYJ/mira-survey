@@ -19,17 +19,14 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { theme } from '../theme/theme';
 import { userStore } from '../data/userStore';
 import {
-  familyStore, useFamilyMembers, REL_LABEL, REL_EMOJI, type Relationship,
+  familyStore, useFamilyMembers, REL_LABEL, REL_EMOJI, familyToneColor, FAMILY_NO_DATA_LABEL,
+  type Relationship,
 } from '../data/familyStore';
 import Sheet, { SheetHead } from '../components/Sheet';
 import EmotionFaceIcon from '../components/EmotionFaceIcon';
 import Icon from '../components/Icon';
 
 const ADDABLE: Relationship[] = ['spouse', 'father', 'mother', 'child', 'sibling', 'other'];
-
-const TONE_COLOR: Record<'good' | 'fair' | 'low', string> = {
-  good: theme.colors.success, fair: '#F0C46E', low: theme.colors.danger,
-};
 
 export default function AccountHubScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList, 'AccountHub'>>();
@@ -109,8 +106,10 @@ export default function AccountHubScreen() {
               </View>
               <View style={s.memberStatus}>
                 <EmotionFaceIcon mood={m.mood ?? 'calm'} color={m.avatarColor} size={18} />
-                <Text style={[s.memberStatusTxt, { color: TONE_COLOR[m.statusTone] }]}>{m.statusLabel} {m.statusEmoji}</Text>
-                <Text style={s.memberSync}>· {m.lastSyncLabel}</Text>
+                <Text style={[s.memberStatusTxt, { color: familyToneColor(m.statusTone) ?? theme.colors.textSub }]}>
+                  {m.statusLabel ? `${m.statusLabel} ${m.statusEmoji ?? ''}`.trim() : FAMILY_NO_DATA_LABEL}
+                </Text>
+                {m.lastSyncLabel ? <Text style={s.memberSync}>· {m.lastSyncLabel}</Text> : null}
               </View>
             </View>
             <Icon name="back" size={18} color={theme.colors.textSub} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />

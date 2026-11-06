@@ -7,14 +7,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
-import { familyStore, useFamilyMembers } from '../data/familyStore';
-
-// 状态色（与 TaTodayRow 同口径）：good=绿 / fair=黄 / low=红
-const TONE_COLOR: Record<'good' | 'fair' | 'low', string> = {
-  good: theme.colors.success,
-  fair: '#F0C46E',
-  low: theme.colors.danger,
-};
+import { familyStore, useFamilyMembers, familyToneColor } from '../data/familyStore';
 
 interface Props {
   onSelect?: (id: string) => void;
@@ -37,7 +30,8 @@ export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showS
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       {shown.map((m, i) => {
-        const toneColor = showSt ? TONE_COLOR[m.statusTone] : theme.colors.cardBorder;
+        // ★ 2026-11-06：无状态结论时不再取到 undefined 颜色（原来会渲染成无色文字）
+        const toneColor = showSt ? (familyToneColor(m.statusTone) ?? theme.colors.cardBorder) : theme.colors.cardBorder;
         const avatarBg = mono ? 'rgba(255,255,255,0.18)' : m.avatarColor;
         const avatarBorder = mono ? 'rgba(255,255,255,0.62)' : toneColor;
         const letterColor = mono ? 'rgba(10,30,55,0.92)' : '#fff';
@@ -57,7 +51,7 @@ export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showS
               }}
             >
               <Text style={{ color: letterColor, fontWeight: '600', fontSize: size * 0.42 }}>{m.avatarLetter}</Text>
-              {showSt ? (
+              {showSt && m.statusEmoji ? (
                 <View
                   style={{
                     position: 'absolute', top: -size * 0.12, right: -size * 0.12,

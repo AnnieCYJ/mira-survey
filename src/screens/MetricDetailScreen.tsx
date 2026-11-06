@@ -639,7 +639,7 @@ export default function MetricDetailScreen() {
   // 锚点是否为「今天」之外：只有历史日才需要（且值得）自动触发 backfill
   const anchorKey = dateKeyOf(anchor.getTime());
   // ★ 2026-11-04（用户：解读融合）：心率峰值/静息并入 hero 分析（原 HrInsight 卡数据源，顶层调用）
-  const hrZoneExtra = useHrZoneStats(anchorKey, Math.round(211 - 0.64 * (RingBle.getUserProfile()?.age ?? 30)));
+  const hrZoneExtra = useHrZoneStats(anchorKey, mhrFromProfileAge().mhr);
   const isHistorical = anchorKey !== dateKeyOf(Date.now());
 
   // 心电图：仅主动测量。点击按钮触发原生 ECG 测量（约 30 秒），完成后 ring.ecg 更新并自动刷新本页。
@@ -2055,7 +2055,7 @@ function fmtDur(min: number): string {
 
 /** ★ 2026-11-03（用户：解读上移）：心率区间数据计算抽成共享 hook——
  *  HrZoneSection（区间环）与 HrInsight（顶部解读）共用同一份日内心率统计，逻辑不重复。 */
-function useHrZoneStats(dk: string, mhr: number) {
+function useHrZoneStats(dk: string, mhr: number | null) {
   return useMemo(() => {
     let pts: { t: number; v: number }[] = [];
     try { pts = healthStore.getIntraday('hr', dk); } catch { pts = []; }
@@ -2064,13 +2064,19 @@ function useHrZoneStats(dk: string, mhr: number) {
       .sort((a, b) => a.t - b.t);
     const dur = [0, 0, 0, 0, 0];
     let rest = 0, active = 0, pk = 0, sum = 0, cnt = 0;
+    // ★ 2026-11-06 审查（docs/audit/02 🔴#5）：mhr 为 null（未录入年龄）时**不做百分比分档**。
+    //   旧实现用 `age ?? 30` 兜底 → MHR=192 → 区间边界（115~173 bpm）全是假的，
+    //   而且 UI 会写「基于 30 岁 · 公式 211 − 0.64 × 年龄」—— 是明确的假声明。
+    //   现在：无年龄 → 不分档（zones 全 0），UI 走「录入年龄后显示区间」空态。
+    const denom = mhr != null && Number.isFinite(mhr) && mhr > 0 ? mhr : null;
     for (let i = 1; i < pts.length; i++) {
       const gap = (pts[i].t - pts[i - 1].t) / 60000;
       if (gap <= 0 || gap > 30) continue; // 断连 / 异常间隔跳过
       const v = pts[i].v;
-      const pct = (v / mhr) * 100;
       if (v > pk) pk = v;
       sum += v; cnt++;
+      if (denom == null) { rest += gap; continue; }
+      const pct = (v / denom) * 100;
       let zi = -1;
       if (pct >= 90) zi = 4;
       else if (pct >= 80) zi = 3;
@@ -2079,16 +2085,30 @@ function useHrZoneStats(dk: string, mhr: number) {
       else if (pct >= 50) zi = 0;
       if (zi >= 0) { dur[zi] += gap; active += gap; } else { rest += gap; }
     }
-    const restVals = pts.filter((p) => (p.v / mhr) * 100 < 50).map((p) => p.v);
+    const restVals = denom == null
+      ? []
+      : pts.filter((p) => (p.v / denom) * 100 < 50).map((p) => p.v);
     const restingAvg = restVals.length ? restVals.reduce((a, b) => a + b, 0) / restVals.length : null;
-    return { zones: dur, resting: restingAvg, peak: pk || null, activeTotal: active };
+    return { zones: dur, resting: restingAvg, peak: pk || null, activeTotal: active, hasMhr: denom != null };
   }, [dk, mhr]);
+}
+
+/**
+ * ★ 2026-11-06 审查（🔴#5）：最大心率只由**真实录入的年龄**推导。
+ *   旧实现 `RingBle.getUserProfile()?.age ?? 30` —— 未填年龄时用 30 岁算出 MHR=192，
+ *   心率区间环与「基于 30 岁」的文案全是编造的。返回 null 表示「年龄未知」。
+ */
+function mhrFromProfileAge(): { mhr: number | null; age: number | null } {
+  const raw = RingBle.getUserProfile()?.age;
+  const age = raw != null && Number.isInteger(raw) && raw >= 10 && raw <= 100 ? raw : null;
+  if (age == null) return { mhr: null, age: null };
+  return { mhr: Math.round(211 - 0.64 * age), age };
 }
 
 function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
   const dk = dateKeyOf(anchor.getTime());
-  const age = RingBle.getUserProfile()?.age ?? 30;
-  const mhr = Math.round(211 - 0.64 * age);
+  // ★ 2026-11-06 审查（🔴#5）：年龄未知 → mhr 为 null，不再用假年龄 30 兜底。
+  const { mhr, age } = mhrFromProfileAge();
 
   const { zones, activeTotal } = useHrZoneStats(dk, mhr);
 
@@ -2120,6 +2140,20 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
     <>
       <Card>
         <Text style={styles.ecgTitle}>心率区间</Text>
+        {mhr == null ? (
+          // ★ 2026-11-06 审查（🔴#5）：未录入年龄 → 不显示任何区间数值。
+          //   旧实现用假年龄 30 算出 MHR=192 并写「基于 30 岁」，是彻底的假声明。
+          <>
+            <View style={{ alignItems: 'center', paddingVertical: theme.sp(6), gap: theme.sp(2) }}>
+              <Text style={[styles.statValue, { fontSize: theme.fontSize.card }]}>—</Text>
+              <Text style={styles.note}>
+                心率区间按最大心率百分比划分，需要先录入年龄才能计算。
+              </Text>
+              <Text style={styles.note}>录入年龄后，这里会显示 50 / 60 / 70 / 80 / 90% 五档的实际活动时长分布。</Text>
+            </View>
+          </>
+        ) : (
+        <>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(4) }}>
           <View style={{ width: D, height: D, position: 'relative' }}>
             <Svg width={D} height={D} viewBox={`0 0 ${D} ${D}`}>
@@ -2158,6 +2192,8 @@ function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: strin
           })}
         </View>
         <Text style={styles.note}>区间按最大心率百分比划分（50 / 60 / 70 / 80 / 90%）。仅供参考，运动强度因人而异。</Text>
+        </>
+        )}
       </Card>
     </>
   );
