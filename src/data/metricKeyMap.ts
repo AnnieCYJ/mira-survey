@@ -1,0 +1,53 @@
+/**
+ * ★ v18.134（审查 04 🔴-1）【唯一真相源】展示层/信号层 key ↔ healthStore 规范 MetricKey。
+ *
+ * 背景：RingBleManager.ts 与 realSeries.ts 各自维护了一份 `hsKeyFor`，注释互称
+ * 「保持一致」但实际已漂移（realSeries 缺 glucoseType/glucoseLevel/depressionRisk/
+ * ppgSys/ppgDia 显式 case，靠 default 硬 cast 巧合兜住）。且旧实现的 default 分支
+ * 无条件 `signalKey as HSMetricKey` —— 未知 key 会静默落进 healthStore.safeStore
+ * 的 null 分支被丢弃，不产生任何日志（「key 不一致被 TS 静默丢弃」的结构性根因）。
+ *
+ * 现在两处一律 `import { hsKeyFor } from '../data/metricKeyMap'`：
+ *   - 已登记别名（bloodSugar/uricAcid/bloodFat/snsActivation）→ 显式映射；
+ *   - 已注册规范 key（healthStore.ALL_METRIC_KEYS）→ 恒等返回；
+ *   - **未知 key → null**，由调用方明确打日志或返回空 —— 不静默、不硬 cast。
+ *
+ * 新增原生 key 三步（缺一不可）：
+ *   ① 原生 emit 处定 key  ② healthStore.MetricKey / ALL_METRIC_KEYS 登记
+ *   ③ 若是别名，在 ALIAS_TO_HS 登记。本文件是「不静默丢弃」的唯一闸门。
+ */
+import { ALL_METRIC_KEYS, type MetricKey } from './healthStore';
+
+export type HSMetricKey = MetricKey;
+
+/**
+ * 显式别名表。**只写需要转换的别名**；规范 key 走 REGISTERED 快速路径。
+ */
+const ALIAS_TO_HS: Readonly<Record<string, HSMetricKey>> = Object.freeze({
+  // ── 展示层历史别名 → 数据层规范 key ──
+  bloodSugar: 'glucose',   // 血糖（展示层旧别名）
+  uricAcid: 'ua',          // 尿酸（展示层旧别名）
+  bloodFat: 'cholesterol', // 总胆固醇（展示层旧别名）
+  // ★ 2026-10-10（用户实锤「洞察页有两个交感神经卡，左下那张不显示数据」）：
+  //   原生 emit 的真实 key 是 `sns`；`snsActivation` 只是历史别名 → 映射到 'sns'。
+  snsActivation: 'sns',
+});
+
+const REGISTERED: ReadonlySet<string> = new Set<string>(ALL_METRIC_KEYS);
+
+/**
+ * 把展示/信号 key 映射到 healthStore 规范 MetricKey。
+ * **未知 key 返回 null**（而不是 `as HSMetricKey` 硬 cast）——这是「静默丢弃」事故的总闸门。
+ */
+export function hsKeyFor(signalKey: string): HSMetricKey | null {
+  if (!signalKey) return null;
+  const mapped = ALIAS_TO_HS[signalKey];
+  if (mapped) return mapped;
+  // 未登记的 key：只有它本身就是已注册的规范 key 时才放行，否则明确拒绝
+  return REGISTERED.has(signalKey) ? (signalKey as HSMetricKey) : null;
+}
+
+/** 调试/自检用：列出所有「展示层 key → 数据层 key」的显式映射。 */
+export function dumpKeyMap(): Record<string, string> {
+  return { ...ALIAS_TO_HS };
+}

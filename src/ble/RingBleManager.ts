@@ -40,6 +40,7 @@ import {
 } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from '../data/healthStore';
+import { hsKeyFor } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
 import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
 import {
@@ -145,40 +146,11 @@ export type MetricKey = 'hr' | 'spo2' | 'temp' | 'eda' | 'hrv' | 'rr';
 const CORE_KEYS: MetricKey[] = ['hr', 'spo2', 'temp', 'eda', 'hrv', 'rr'];
 
 /**
- * 把 RingBleManager 内部 / 原生 signalKey 映射到 healthStore 的规范 MetricKey。
- * 这是「旧三套表示 → 单一 healthStore」统一层的关键桥：所有 backfill/realtime 写入
- * 路由到 healthStore 的规范 key，读侧（realSeries）只认 healthStore，消除「读哪个」混乱。
+ * ★ v18.134（审查 04 🔴-1）：hsKeyFor 收敛到 src/data/metricKeyMap.ts 唯一实现。
+ *   原本地副本与 realSeries.ts 的副本是两份复制粘贴且已漂移，default 分支无条件
+ *   `as HSMetricKey` 硬 cast，是「key 不一致静默丢数据」的结构性根因。
+ *   新实现：别名显式映射 + 规范 key 恒等 + 未知 key 返回 null（调用方已有 if (hk) 判空）。
  */
-function hsKeyFor(signalKey: string): HSMetricKey | null {
-  switch (signalKey) {
-    case 'hr': case 'spo2': case 'temp': case 'skinTemp': case 'eda': case 'hrv': case 'rr':
-    case 'steps': case 'distance': case 'calorie':
-    case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
-    case 'bpSys': case 'bpDia':
-    // ★ 2026-10-10：`sns` 是原生真实 emit key，加进直通名单（否则 hk=null → intraday 不落库）。
-    //   `snsActivation` 保留为历史别名，向后兼容。
-    case 'sns':
-      return signalKey as HSMetricKey;
-    case 'snsActivation': return 'sns';
-    case 'bloodSugar': return 'glucose';
-    case 'triglyceride': return 'triglyceride';
-    case 'hdl': return 'hdl';
-    case 'ldl': return 'ldl';
-    case 'bloodFat':
-    case 'cholesterol':
-      return 'cholesterol';
-    case 'uricAcid':
-    case 'ua':
-      return 'ua';
-    // ★ 2026-10-16：协议补齐——血糖类型/等级、抑郁风险（key 修正后原生 emit depressionRisk）
-    case 'glucoseType': case 'glucoseLevel': case 'depressionRisk':
-    case 'ppgSys': case 'ppgDia': // 血压细分：光电血压（气囊值走 bpSys/bpDia）
-      return signalKey as HSMetricKey;
-    default:
-      // 宽松兜底：未知 key 先 cast 试试，healthStore.safeStore 会校验合法性返回 null
-      return signalKey as HSMetricKey; // 未知/未映射指标不要硬 cast，避免 healthStore 里 store 未定义崩溃
-  }
-}
 
 /** 趋势图的一个数据点：t = 收到时刻(epoch ms)，v = 数值。卡片按 t 映射到"今日时间轴"。 */
 export interface TimePoint {
@@ -1006,25 +978,35 @@ class NativeRingSource {
     const ts = num(raw.ts) ?? Date.now();
     if (!metric || value == null || !Number.isFinite(value)) return;
 
+    // ★ v18.134（审查 04 🔴-2）：**必须经 hsKeyFor 桥接后再写库**。
+    //   原实现直接 `upsertRealtime(metric as any, ...)`：原生一旦改用别名 key
+    //   （如 glucose → bloodSugar），healthStore.safeStore 返回 null → 数据静默丢弃
+    //   且外层 catch {} 连日志都没有。现在未知 key 明确打日志并跳过（可观测）。
+    const hk = hsKeyFor(metric);
+    if (!hk) {
+      postLog('HR-REALTIME', ` ⚠️ 未知原生 metric key="${metric}"，已跳过（请在 metricKeyMap.ts 登记）`);
+      return;
+    }
+
     // 节流计数（旧 handleMetric 的诊断逻辑保留）
     this.jsMetricCount++;
     this.jsMetricKeys[metric] = (this.jsMetricKeys[metric] ?? 0) + 1;
 
     // V2 简化：直接写 healthStore + pushMetric + 更新 RingState.metrics
     try {
-      healthStore.upsertRealtime(metric as any, { t: ts, v: value }, ts);
+      healthStore.upsertRealtime(hk, { t: ts, v: value }, ts);
       // ★ 触发派生指标重算（去抖 500ms，同一 dayKey 多次写入合并一次）
       scheduleRecompute(dayKey(ts));
       // ★ 诊断日志：关键指标到了没
       if (['cortisol','sns','emotion','skin','fatigue','hrv','stress','cholesterol','triglyceride','hdl','ldl','ua','glucose','temp','skinTemp','bpSys','bpDia','ppgSys','ppgDia','glucoseType','glucoseLevel','depressionRisk'].includes(metric)) {
-        const _dk = (() => {
-          const d = new Date(ts);
-          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        })();
+        const _dk = dayKey(ts);
         postLog('HR-REALTIME', ` ✅ ${metric}=${value} ${raw.unit||''} at ${new Date(ts).toLocaleTimeString()} dk=${_dk}`);
-        try { postLog('HS-INT', ` ${metric} intraday[${_dk}]=${healthStore.getIntraday(metric as any, _dk).length} samples`); } catch {}
+        try { postLog('HS-INT', ` ${hk} intraday[${_dk}]=${healthStore.getIntraday(hk, _dk).length} samples`); } catch {}
       }
-    } catch { /* 单个 metric 落库失败不中断 */ }
+    } catch (e) {
+      // ★ v18.134：落库失败必须留痕，不能静默吞掉
+      postLog('HR-REALTIME', ` ⚠️ 写入 healthStore 失败 key=${hk}: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     // 同时走旧的 pushMetric（RingState.metrics 实时更新 + 情绪曲线依赖）
     this.pushMetric({ key: metric as any, value, unit: raw.unit ?? '', ts });

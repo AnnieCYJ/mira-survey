@@ -17,6 +17,7 @@
  */
 import type { RingState, TimePoint } from '../ble/RingBleManager';
 import { healthStore, dayStartMs, type MetricKey as HSMetricKey } from '../data/healthStore';
+import { hsKeyFor } from '../data/metricKeyMap';
 import {
   BASIC_METRICS,
   EXTENDED_SIGNALS,
@@ -47,30 +48,11 @@ function signalKeyFor(metricKey: string): string {
   return metricKey;
 }
 
-/** 把展示/信号 key 映射到 healthStore 的规范 MetricKey（与 RingBleManager.hsKeyFor 保持一致）。 */
-function hsKeyFor(signalKey: string): HSMetricKey {
-  switch (signalKey) {
-    case 'hr': case 'spo2': case 'temp': case 'eda': case 'hrv': case 'rr':
-    case 'steps': case 'distance': case 'calorie':
-    case 'stress': case 'fatigue': case 'met': case 'cortisol': case 'emotion': case 'skin':
-    case 'bpSys': case 'bpDia':
-    // ★ 2026-10-10（用户实锤「洞察页基础指标里有两个交感神经卡，左下那个不显示数据」）：
-    //   原生 emit 的真实 key就是 **`sns`**（洞察页 `ring.daily['sns']` 能取到值），
-    //   而展示层旧卡用的 `snsActivation` 只是历史别名 → hsKeyFor 映射到 'sns'，
-    //   于是 `ring.daily['snsActivation']` 恒不存在 → 那张卡永远显示「—」。
-    //   现在把 `sns` 加进直通名单，展示层与数据层用同一个 key。
-    case 'sns':
-      return signalKey as HSMetricKey;
-    case 'snsActivation': return 'sns';
-    case 'bloodSugar': return 'glucose';
-    case 'bloodFat': return 'cholesterol';
-    case 'triglyceride': return 'triglyceride';
-    case 'hdl': return 'hdl';
-    case 'ldl': return 'ldl';
-    case 'uricAcid': return 'ua';
-    default: return signalKey as HSMetricKey;
-  }
-}
+/**
+ * ★ v18.134（审查 04 🔴-1）：hsKeyFor 收敛到 src/data/metricKeyMap.ts 唯一实现
+ *   （原副本与 RingBleManager 的副本漂移，default 无条件硬 cast）。
+ *   返回类型为 HSMetricKey | null：未知 key → null，各调用点显式处理。
+ */
 
 export interface HistoryResult {
   kind: 'signal' | 'cycle';
@@ -133,6 +115,7 @@ function dailyValueFor(key: string, dk: string): number | null {
   if (sk === 'sleepScore') return healthStore.getSleep(dk)?.score ?? null;
   // ★ 其他指标：从 intraday 实时重算 mean（不信任已存 daily.mean，旧数据含 0 占位符）
   const hsKey = hsKeyFor(key);
+  if (!hsKey) return null; // ★ 未知 key 不再 fallback 到 getDay（旧实现硬 cast 会读不存在的 store）
   const today0 = new Date(dk + 'T00:00:00').getTime();
   const pts = healthStore.getIntraday(hsKey, dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
   if (pts.length === 0) return healthStore.getDay(hsKey, dk)?.mean ?? null; // fallback
@@ -400,6 +383,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
  */
 export function getTodaySeries(metricKey: string): TimePt[] {
   const hsKey = hsKeyFor(metricKey);
+  if (!hsKey) return []; // ★ 未知 key → 明确返回空，不读不存在的 store
   const start = dayStartMs(Date.now());
   const end = Date.now();
   return healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
@@ -457,6 +441,7 @@ export function buildHistorySeries(
   // 如果 manualMeasurements 为空（比如原生 SDK 把数据写到 intraday），fallback 到下面通用链路。
   if (MANUAL_KEYS_SET.has(key)) {
     const hsKey = hsKeyFor(key);
+    if (!hsKey) return emptyResult(key, '未知指标 key（未在 metricKeyMap 登记）');
     const all = healthStore.getManualMeasurements(hsKey);  // 按时间倒序
     if (all.length > 0) {
       // 有 manual 数据，走趋势图
@@ -560,6 +545,7 @@ export function buildHistorySeries(
   const anchorKey = dateKeyOf(anchor.getTime());
   const isTodayAnchor = anchorKey === dateKeyOf(Date.now());
   const hsKey = hsKeyFor(key);
+  if (!hsKey) return emptyResult(key, '未知指标 key（未在 metricKeyMap 登记）');
   const DAY = 86400000;
 
   // ★ 诊断日志 — bloodSugar / 所有 key
