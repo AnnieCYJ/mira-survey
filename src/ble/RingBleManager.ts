@@ -40,7 +40,7 @@ import {
 } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from '../data/healthStore';
-import { hsKeyFor } from '../data/metricKeyMap';
+import { hsKeyFor, DISPLAY_KEY_BY_HS } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
 import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
 import {
@@ -4060,8 +4060,15 @@ class RingConnectionImpl {
           availability['skin'] = 'live';
         }
       } else {
-        // 扩展指标：存最新值，并增量写入 15 分钟时间槽以累积全天趋势曲线
-        daily[m.key] = m.value;
+        // ★ v18.134（审查 04 🟡-6）：扩展指标同时写**原生 key** 与**展示别名 key**。
+        //   旧实现只写 `daily[m.key]`（原生 key，如 'glucose' / 'ua' / 'cholesterol'），
+        //   而洞察页 renderBasicsCard 读的是 `ring.daily[m.key]`（展示别名，如 'bloodSugar' / 'uricAcid'）
+        //   → 血糖/尿酸在没有实时流时 daily 兜底恒空 → 卡片永远「—」。
+        const nativeKey = m.key; // 原生 key（数据层）
+        const hsKey0 = hsKeyFor(nativeKey); // 数据层规范 key
+        const displayKey = DISPLAY_KEY_BY_HS.get(hsKey0 ?? '') ?? nativeKey; // 展示层别名 key
+        daily[nativeKey] = m.value;
+        if (displayKey !== nativeKey) daily[displayKey] = m.value;
         const t = m.ts ?? Date.now();
         // ★ v18.102（用户实锤「一会儿空、一会儿又冒出数据」的元凶）：
         //   扩展指标多由 HealthGlance/健康一览轮询（~60s）取回，原生**不带样本时间戳**，
@@ -4077,6 +4084,8 @@ class RingConnectionImpl {
         // 按天归档（今日），供跨天历史（浅拷贝当天对象，避免改动旧 state 嵌套引用）
         const prevDay = extDaily[bucketDay] ?? {};
         extDaily[bucketDay] = { ...prevDay, [m.key]: m.value };
+        // ★ v18.134（审查 04 🟡-6）：归档也双写展示别名，周/月/年 dailyValueFor 两套 key 都能命中
+        if (displayKey !== nativeKey) extDaily[bucketDay] = { ...extDaily[bucketDay], [displayKey]: m.value };
         const hk = hsKeyFor(m.key);
         if (hk) {
           // 之前只调了 upsertBackfillDay 写 daily 聚合，healthStore.intraday 为空 → trend 图画不出来。
@@ -4169,17 +4178,24 @@ class RingConnectionImpl {
     } catch(e) {}
     // ★ 把扩展信号（stress/cortisol/emotion/skin/fatigue/bpSys/bpDia/bloodSugar/bloodFat/uricAcid/triglyceride/hdl/ldl/snsActivation）
     // 的实时均值也写入 extDaily[today] — 这样 MetricDetail 周/月/年视图的 dailyValueFor(sk) 就能取到值
+    // ★ v18.134（审查 04 🔵-5）：数据源从 `this.state.metrics` 改为 **`daily`** ——
+    //   RingMetrics 只有 hr/spo2/temp/eda/hrv/rr 六个核心字段，扩展指标从来不写进 metrics
+    //   → 旧循环对扩展信号恒空转。同时修正 key 口径：'snsActivation'/'bloodSugar'/'bloodFat'/'uricAcid'
+    //   是展示层历史别名，读侧用 hsKeyFor 回退到数据层规范 key（daily 现已双写两套 key）。
     const EXT_SIGNAL_KEYS = [
-      'stress', 'cortisol', 'emotion', 'skin', 'fatigue', 'snsActivation',
-      'bpSys', 'bpDia', 'bloodSugar', 'bloodFat', 'uricAcid', 'triglyceride', 'hdl', 'ldl', 'met',
+      'stress', 'cortisol', 'emotion', 'skin', 'fatigue', 'sns',
+      'bpSys', 'bpDia', 'triglyceride', 'hdl', 'ldl', 'met',
+      // 展示别名（对应数据层 glucose / ua / cholesterol / sns）
+      'bloodSugar', 'uricAcid', 'bloodFat', 'snsActivation',
     ];
     const todayKey = this.bucketDay || dayKeyOf(Date.now());
     const curExt = { ...this.state.extDaily };
     const prevDay = curExt[todayKey] ?? {};
     let extDirty = false;
+    const dailyRec = daily as unknown as Record<string, number | null>;
     for (const sk of EXT_SIGNAL_KEYS) {
       if (prevDay[sk] != null && prevDay[sk] > 0) continue;
-      const m = (this.state.metrics as unknown as Record<string, number | null>)[sk];
+      const m = dailyRec[sk] ?? dailyRec[hsKeyFor(sk) ?? sk];
       if (typeof m === 'number' && m > 0) {
         prevDay[sk] = m;
         const hk = hsKeyFor(sk);

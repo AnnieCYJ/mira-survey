@@ -36,6 +36,17 @@ const ALIAS_TO_HS: Readonly<Record<string, HSMetricKey>> = Object.freeze({
 const REGISTERED: ReadonlySet<string> = new Set<string>(ALL_METRIC_KEYS);
 
 /**
+ * ★ v18.134（审查 04 🟡-6）：数据层规范 key → 展示层别名 key（用于 RingState.daily / extDaily 双写）。
+ *   RingState.daily 既是数据层（realSeries 读原生/规范 key）又是展示层（InsightScreen 读别名 key）
+ *   的并集 —— 写侧两套 key 都写，读侧才都能命中（血糖/尿酸卡在没有实时流时不再恒「—」）。
+ */
+export const DISPLAY_KEY_BY_HS: ReadonlyMap<string, string> = new Map<string, string>([
+  ['glucose', 'bloodSugar'],
+  ['ua', 'uricAcid'],
+  ['cholesterol', 'bloodFat'],
+]);
+
+/**
  * 把展示/信号 key 映射到 healthStore 规范 MetricKey。
  * **未知 key 返回 null**（而不是 `as HSMetricKey` 硬 cast）——这是「静默丢弃」事故的总闸门。
  */
