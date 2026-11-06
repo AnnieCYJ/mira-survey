@@ -2441,7 +2441,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     const shown = fatigue == null ? null : Math.round(fatigue);
     const pct = shown == null ? 0 : Math.max(0, Math.min(100, shown));
     return (
-      <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+      <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft }}>
         <Text style={styles.specLab}>疲劳度（{rangeLabel}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: theme.sp(1) }}>
           <Text style={[styles.statValue, { color: fatigueBand?.color ?? theme.colors.textTitle }]}>{shown != null ? String(shown) : '—'}</Text>
@@ -2519,7 +2519,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
             </View>
           </View>
           {resilience ? (
-            <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+            <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft }}>
               <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（{resilienceLabel}）</Text>
               <View style={styles.statGrid}>
                 <View style={styles.statCell}>
@@ -2578,7 +2578,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
           </View>
         </View>
         {resilience ? (
-          <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+          <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.ui.borderSoft }}>
             <Text style={[styles.specLab, { marginBottom: theme.sp(1) }]}>恢复力（{resilienceLabel}）</Text>
             <View style={styles.statGrid}>
               <View style={styles.statCell}>

@@ -866,7 +866,7 @@ const styles = StyleSheet.create({
   modalErr: { fontSize: theme.fontSize.xs, color: mm.colors.roseDeep, marginTop: 10 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   modalBtn: {
-    paddingHorizontal: 18, paddingVertical: 9, borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.screen, paddingVertical: 9, borderRadius: theme.radius.md,
     backgroundColor: theme.colors.ui.offTrack,
   },
   modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },

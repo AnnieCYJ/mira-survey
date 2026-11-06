@@ -489,7 +489,7 @@ export default function CalmWaveHome() {
       {/* 顶部微提亮 + 底部加深：上半照片清晰，下半为卡片/tab 提供对比底 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(8,30,58,0.05)', 'rgba(8,30,58,0.30)']}
+        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(10,41,79,0.05)', 'rgba(10,41,79,0.30)']}
         locations={[0, 0.42, 0.72, 1]}
       />
 
@@ -607,7 +607,7 @@ export default function CalmWaveHome() {
         </ScrollView>
         {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
         <LinearGradient
-          colors={['rgba(8,30,58,0)', 'rgba(8,30,58,0.38)']}
+          colors={['rgba(10,41,79,0)', 'rgba(10,41,79,0.38)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={s.chipFade}
@@ -667,7 +667,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
-    textShadowColor: 'rgba(8,30,58,0.6)',
+    textShadowColor: 'rgba(10,41,79,0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 8,
   },
@@ -774,7 +774,7 @@ const s = StyleSheet.create({
   capsuleWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   scaleTxt: {
     position: 'absolute', fontSize: theme.fontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.6)',
-    textShadowColor: 'rgba(8,30,58,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    textShadowColor: 'rgba(10,41,79,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
 
   // AI 分析卡（Oura 配色：深板岩玻璃 + 长春花蓝点缀）；★ 2026-10-18：改语音气泡，底色走 AI_CARD_BG 常量（尾巴同色）

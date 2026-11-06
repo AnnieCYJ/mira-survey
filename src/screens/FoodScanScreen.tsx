@@ -678,7 +678,7 @@ function ScanOverlay({ visible }: { visible: boolean }) {
   const hint = SCAN_HINTS[Math.min(SCAN_HINTS.length - 1, Math.floor(sec / 3))];
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View style={{ flex: 1, backgroundColor: 'rgba(10,18,34,0.82)', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.ui.scrimDark, alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', paddingVertical: theme.sp(6), paddingHorizontal: theme.sp(8), borderRadius: theme.radius.card, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder }}>
           <ActivityIndicator size="large" color={mm.colors.btnGradFrom} />
           <Text style={{ color: theme.colors.textTitle, fontSize: theme.fontSize.body, fontWeight: '600', marginTop: theme.sp(4) }}>AI 正在识别餐食</Text>
@@ -1094,7 +1094,7 @@ function MealModal({ visible, items, target, dayKcal, phase, hormoneSnap, photoU
 
 /* ── 餐食分析弹卡样式 ── */
 const mm_m = StyleSheet.create({
-  mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  mask: { flex: 1, backgroundColor: theme.colors.ui.scrim, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: theme.colors.bgBottom, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder,
     borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,

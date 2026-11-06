@@ -18,7 +18,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { estimateVo2maxFromStore, gatherVo2Inputs, tanakaHrmax } from '../lib/vo2max';
 
-const CARD = 'rgba(255,255,255,0.06)';
+const CARD = theme.colors.ui.white05;
 const CARD_BORDER = 'rgba(255,255,255,0.12)';
 const SUB = 'rgba(255,255,255,0.62)';
 const FAINT = 'rgba(255,255,255,0.42)';
@@ -165,12 +165,12 @@ export default function CardioDetailScreen() {
 }
 
 const s = StyleSheet.create({
-  wrap: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 40 },
+  wrap: { paddingHorizontal: theme.space.screen, paddingTop: 18, paddingBottom: 40 },
   h1: { fontSize: theme.fontSize.h2, fontWeight: '700', color: mm.colors.ink, letterSpacing: 0.5 },
   h2: { fontSize: theme.fontSize.xs, color: SUB, marginTop: 2, marginBottom: 12 },
   hero: {
-    backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: theme.radius.lg,
-    paddingVertical: 22, alignItems: 'center', marginBottom: 14,
+    backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: theme.radius.card,
+    paddingVertical: 22, alignItems: 'center', marginBottom: theme.sp(3.5),
   },
   // ★ 2026-11-03：裸 58 → fontSize.hero(46)，与 MetricDetail/StatusTrend 等 hero 数字同 token
   heroNum: { fontSize: theme.fontSize.hero, fontWeight: '800', color: mm.colors.ink, lineHeight: 48 },
@@ -181,11 +181,11 @@ const s = StyleSheet.create({
   /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析（深色主题，沿用 FAINT/SUB） */
   heroAnalysis: { fontSize: theme.fontSize.xs, color: SUB, lineHeight: 19, marginTop: 10 },
   card: {
-    backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: theme.radius.lg,
-    padding: 16, marginBottom: 14,
+    backgroundColor: CARD, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: theme.radius.card,
+    padding: theme.space.cardPad, marginBottom: theme.sp(3.5),
   },
   cardTitle: { fontSize: theme.fontSize.body, fontWeight: '700', color: mm.colors.ink, marginBottom: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderTopColor: theme.colors.ui.white05 },
   rowLabel: { fontSize: theme.fontSize.xs, color: SUB, width: 110 },
   rowValue: { fontSize: theme.fontSize.sm, fontWeight: '600', color: mm.colors.ink },
   rowSub: { fontSize: theme.fontSize.micro, color: FAINT, marginTop: 2 },

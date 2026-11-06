@@ -1209,7 +1209,7 @@ const styles = StyleSheet.create({
 
   // ★ 2026-10-13（用户：日历格子大一点）：本页横向留白收窄，让月历网格占更宽，格子整体变大
   pageWide: { paddingHorizontal: theme.sp(2) },
-  monthCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.sp(2) },
+  monthCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.card, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.space.cardPadCompact },
   weekRow: { flexDirection: 'row', marginBottom: theme.sp(1.5) },
   weekText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },

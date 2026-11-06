@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: theme.space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(120,120,180,0.08)',
+    borderBottomColor: theme.colors.ui.borderSoft,
   },
   last: { borderBottomWidth: 0, paddingBottom: 0 },
   dot: {

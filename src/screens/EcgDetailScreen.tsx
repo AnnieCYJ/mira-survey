@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: theme.space.screen,
     marginBottom: 12,
   },
   zoomTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF' },

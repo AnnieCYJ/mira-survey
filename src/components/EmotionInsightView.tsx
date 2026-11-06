@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
 
   // 周期提示条
   cycleCard: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5),
-    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.md, padding: theme.sp(2), marginTop: theme.sp(2) },
+    backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(2) },
   cycleText: { flex: 1, fontSize: theme.fontSize.xs, color: theme.colors.accentText, lineHeight: theme.fontSize.xs * 1.5 },
 
   // 情绪高峰 / 低谷 双卡行

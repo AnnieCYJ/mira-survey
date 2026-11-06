@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   sumSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
 
   // AI 洞察
-  insightBox: { backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.md, padding: theme.sp(2.5), marginTop: theme.sp(2) },
+  insightBox: { backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(2) },
   insightTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
   insightLine: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: theme.fontSize.sm * 1.55, marginBottom: theme.sp(0.5) },
 
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
 
   // 持续性卡片
   // ★ 2026-10-08：同上，flat 时不铺灰底
-  persistenceCard: { borderRadius: theme.radius.md, padding: theme.sp(2.5), marginTop: theme.sp(2) },
+  persistenceCard: { borderRadius: theme.radius.card, padding: theme.space.cardPadCompact, marginTop: theme.sp(2) },
   persistenceCardSoft: { backgroundColor: theme.colors.cardBgSoft },
   // ★ 2026-10-10：flat = 预览稿 persistCard —— 白底 + 描边（不再无框）
   persistenceCardFlat: {

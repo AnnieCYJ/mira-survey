@@ -121,7 +121,7 @@ const s = StyleSheet.create({
   tileValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: theme.sp(1) },
   tileVal: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   tileSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 2 },
-  phaseCard: { marginTop: theme.sp(2), padding: theme.sp(2.5), borderRadius: theme.radius.card, backgroundColor: 'rgba(255,255,255,0.08)' },
+  phaseCard: { marginTop: theme.sp(2), padding: theme.space.cardPadCompact, borderRadius: theme.radius.card, backgroundColor: theme.colors.cardBg },
   phaseTxt: { color: theme.colors.textBody, fontSize: theme.fontSize.sm, textAlign: 'center' },
   privacy: { marginTop: theme.sp(3) },
   privacyTxt: { color: theme.colors.textSub, fontSize: theme.fontSize.micro, lineHeight: 18 },
