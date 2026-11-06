@@ -118,6 +118,9 @@ export default function AllDayBarsChart({
   const plotW = Math.max(0, w - PAD_L - PAD_R);
 
   // 量程：优先外部指定；否则按有效槽自适应
+  // ★ v18.134（审查 04 🟡-2）：只传单边量程时也要尊重它 ——
+  //   旧实现只有 yMin/yMax 同时传才生效，`yMin={0}`（hrv）或 `yMin={-10}`（emotion）
+  //   在自适应分支被无视 → HRV 柱画到 0 线以下、emotion 负值区间被压掉。
   const range = useMemo(() => {
     if (yMin != null && yMax != null && yMax > yMin) return { lo: yMin, hi: yMax };
     let lo = Infinity;
@@ -127,17 +130,27 @@ export default function AllDayBarsChart({
       if (b.v < lo) lo = b.v;
       if (b.v > hi) hi = b.v;
     }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { lo: 0, hi: 1 };
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { lo: yMin ?? 0, hi: yMax ?? (yMin != null ? yMin + 1 : 1) };
     if (lo === hi) { lo -= 1; hi += 1; }
     const pad = (hi - lo) * 0.12;
-    return { lo: lo - pad, hi: hi + pad };
+    return {
+      lo: yMin != null ? Math.min(lo - pad, yMin) : lo - pad,
+      hi: yMax != null ? Math.max(hi + pad, yMax) : hi + pad,
+    };
   }, [buckets, yMin, yMax]);
 
   const mean = meanLine !== undefined ? meanLine : bucketMean(buckets);
 
   const geom = useMemo(() => {
     if (w <= 0) return null;
-    const yAt = (v: number) => PAD_T + plotH * (1 - (v - range.lo) / (range.hi - range.lo));
+    // ★ v18.134（审查 04 🟡-2）：yAt 必须 clamp 到量程内 —— 旧实现无任何 clamp，
+    //   超量程值会把柱子画出绘图区、溢出到图例/标题区域；NaN/Infinity 还会产出非法
+    //   SVG 坐标（非有限值会让 iOS 原生 SVG 渲染器硬退出）。口径与 MetricDetailScreen.yAt 对齐。
+    const ySpan = range.hi - range.lo;
+    const yAt = (v: number) => {
+      const c = Number.isFinite(v) ? Math.max(range.lo, Math.min(range.hi, v)) : range.lo;
+      return PAD_T + plotH * (1 - (ySpan === 0 ? 0 : (c - range.lo) / ySpan));
+    };
     const xOf = (t: number) => PAD_L + (plotW * (t - t0)) / spanMs;
 
     const slotCount = Math.max(1, buckets.length);

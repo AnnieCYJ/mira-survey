@@ -255,17 +255,41 @@ function clampValid(v: number): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * 合并 intraday 样本。
+ *
+ * ★ v18.134（审查 04 🟡-4）：修复「邻域匹配连锁覆盖」丢样本。
+ *   旧实现：遍历 map.keys() 找到**第一个** ±MERGE_MS 内的 key 就 `map.set(k, p)` ——
+ *   ① 复用旧 key（map.key 与 value.t 不一致），后续点邻域判断基准错位；
+ *   ② 同一个旧 key 会被后续多个 incoming 点反复命中 → 3 个样本连锁合并成 1 个（Node 可复现：
+ *      prev=[{t:995}] + incoming=[{t:1000},{t:1010},{t:1020}] → 只剩 1 个点）；
+ *   ③ 只取「第一个」匹配而非「最近」匹配，结果依赖插入顺序。
+ *   新实现：同刻判定统一为「±MERGE_MS 内取最近」；命中后先删旧 key、按新 t 写入
+ *   （key 与 value.t 始终一致）；incoming 内部先按 t 去重。
+ */
 function mergeIntraday(prev: TimePoint[] | undefined, incoming: TimePoint[]): TimePoint[] {
-  if (!prev || prev.length === 0) return [...incoming].sort((a, b) => a.t - b.t);
-  const map = new Map<number, TimePoint>();
-  for (const p of prev) map.set(p.t, p);
-  for (const p of incoming) {
-    // 找最近邻（±MERGE_MS）覆盖，否则新增
-    let replaced = false;
-    for (const k of map.keys()) {
-      if (Math.abs(k - p.t) <= MERGE_MS) { map.set(k, p); replaced = true; break; }
+  const base = prev && prev.length ? prev : [];
+  if (base.length === 0) {
+    // 无既有数据：按 t 去重后直接返回（同一批内不互相覆盖）
+    const m0 = new Map<number, TimePoint>();
+    for (const p of incoming) {
+      if (Number.isFinite(p?.t) && Number.isFinite(p?.v)) m0.set(p.t, p);
     }
-    if (!replaced) map.set(p.t, p);
+    return Array.from(m0.values()).sort((a, b) => a.t - b.t);
+  }
+  const map = new Map<number, TimePoint>();
+  for (const p of base) map.set(p.t, p);
+  for (const p of incoming) {
+    if (!Number.isFinite(p?.t) || !Number.isFinite(p?.v)) continue;
+    // 找**最近**的同刻点（而非第一个命中）
+    let hitT: number | null = null;
+    let bestDiff = Infinity;
+    for (const k of map.keys()) {
+      const diff = Math.abs(k - p.t);
+      if (diff <= MERGE_MS && diff < bestDiff) { bestDiff = diff; hitT = k; }
+    }
+    if (hitT != null) map.delete(hitT); // ★ 先删旧 key，保证 key 与 value.t 一致
+    map.set(p.t, p);                    // ★ 按新时间戳写入
   }
   return Array.from(map.values()).sort((a, b) => a.t - b.t);
 }
@@ -430,7 +454,19 @@ export class HealthStore {
     const dk = normalizeDayKey(dayKeyRaw);
     if (dk === dayKeyRaw && Number.isNaN(parseDayKey(dk))) return; // 非法 key 丢弃
     if (!samples || samples.length === 0) return;
-    store.intraday[dk] = mergeIntraday(store.intraday[dk], samples);
+    // ★ v18.134（审查 04 🟡-4）：过滤非法值，杜绝 NaN 进入 intraday（会污染日聚合与 SVG 坐标）
+    const valid = samples.filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v));
+    if (valid.length === 0) return;
+    // ★ 实时真值优先：该日已有 realtime/mixed 来源的样本时，backfill 不覆盖同刻（±MERGE_MS）样本，
+    //   避免「实时刚测的真值被历史精度值回写覆盖」且两条通路覆盖顺序不同、结果不同。
+    const existing = store.intraday[dk] ?? [];
+    const dailySrc = store.daily[dk]?.source;
+    const hasRealtime = dailySrc === 'realtime' || dailySrc === 'mixed';
+    const toWrite = hasRealtime
+      ? valid.filter((p) => !existing.some((q) => Math.abs(q.t - p.t) <= MERGE_MS))
+      : valid;
+    if (toWrite.length === 0) return;
+    store.intraday[dk] = mergeIntraday(store.intraday[dk], toWrite);
     // ★ 2026-10-10：标记该日为「由 stress 换算的推算日」（见 MetricStore.derivedDays）。
     //   只增不减 —— 推算过一次就永远是推算，不允许后来被当成实测。
     if (opts?.derived) {
@@ -443,7 +479,7 @@ export class HealthStore {
     // ★ v18.96：lastUpdated 记「数据本身的时间戳」（取本批样本最新 t），不是 Date.now()。
     //   否则回填 30 天历史也会把 lastUpdated 刷成「现在」，新鲜度判断（freshnessReport、
     //   RingBleManager 的 hrvFreshToday 等）会把历史数据误认为刚采到的。
-    const newest = samples.reduce((a, s) => (Number.isFinite(s.t) && s.t > a ? s.t : a), 0);
+    const newest = valid.reduce((a, s) => (Number.isFinite(s.t) && s.t > a ? s.t : a), 0);
     if (newest > 0) {
       this.lastUpdated[key] = Math.max(this.lastUpdated[key] ?? 0, Math.min(newest, Date.now()));
     }

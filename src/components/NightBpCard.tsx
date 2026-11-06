@@ -67,9 +67,13 @@ export function NightBpCard({ anchorMs }: Props) {
       const sp: TimePoint[] = healthStore.getIntraday('bpSys', d);
       const dp: TimePoint[] = healthStore.getIntraday('bpDia', d);
       if (sp.length && dp.length) {
-        sys = sp[sp.length - 1].v;
-        dia = dp[dp.length - 1].v;
-        measuredAt = Math.max(sp[sp.length - 1].t, dp[dp.length - 1].t);
+        // ★ v18.134（审查 04 🟡-3 配套）：按 t 显式取最新，不依赖「数组已升序」的隐式契约
+        //   （loadV2 快照恢复不做排序校验，被外部改乱顺序的快照会让「最近一次」变「最早一次」）。
+        const spLast = sp.reduce((a, b) => (b.t > a.t ? b : a), sp[0]);
+        const dpLast = dp.reduce((a, b) => (b.t > a.t ? b : a), dp[0]);
+        sys = spLast.v;
+        dia = dpLast.v;
+        measuredAt = Math.max(spLast.t, dpLast.t);
         break;
       }
     }
@@ -88,10 +92,19 @@ export function NightBpCard({ anchorMs }: Props) {
     // 3) 夜间心率 dipping 近似
     const nightHr = nightHrMean(dk, dayMs);
     const dayHr = daytimeHrMean(dk);
-    const dipPct = nightHr != null && dayHr != null && dayHr > 0
+    // ★ 除零保护保留：dayHr <= 0 时直接判「无数据」，不参与百分比计算
+    const dipPct = nightHr != null && dayHr != null && dayHr > 0 && Number.isFinite(nightHr) && Number.isFinite(dayHr)
       ? ((dayHr - nightHr) / dayHr) * 100
       : null;
-    const dipLabel = dipPct == null ? null : dipPct >= 10 ? '下降充分' : dipPct >= 3 ? '下降偏少' : '基本没降';
+    // ★ v18.134（审查 04 🟡-3）：负 dipPct（夜间心率**高于**日间）不能与「基本没降」共用文案。
+    //   公开生理学口径：夜间较日间下降 ≥10% 为正常 dipping；3~10% 下降不足；0~3% 基本没降；
+    //   < 0% 属于**反向（夜间反而更高）**，是更需警惕的昼夜节律反转形态，须单独文案。
+    const dipLabel = dipPct == null
+      ? null
+      : dipPct >= 10 ? '下降充分'
+      : dipPct >= 3 ? '下降偏少'
+      : dipPct >= 0 ? '基本没降'
+      : '夜间高于日间';
     const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeDeep : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
     return { sys, dia, measuredAt, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr };
   }, [anchorMs]);
