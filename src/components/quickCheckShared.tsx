@@ -163,35 +163,17 @@ export function QCta({ title, onPress, disabled }: { title: string; onPress: () 
 }
 
 /**
- * 一键体检演示数据标识 —— 当前「一键体检」的所有数值来自预置演示记录（非真实戒指测量）。
- * 三页（概览/列表/详情）统一展示此标识，避免用户把演示值误读为真实体检结果。
+ * ★ 2026-11-06 审查（docs/audit/02）：已删除 DemoBadge。
+ *   它原本用于标注「演示数据 · 非真实测量」—— 现在一键体检已完全去演示化
+ *   （quickCheckStore 不再 seed 任何演示记录），所有数值都来自真实戒指测量，
+ *   标这个徽章反而会误导用户以为数据不可信。
+ *
+ * 保留位置说明：如后续重新引入任何非真实数据源，必须在此处恢复徽章并标注来源。
  */
-export function DemoBadge() {
-  return (
-    <View style={qc.demoBadge}>
-      <Text style={qc.demoBadgeText}>演示数据 · 非真实测量</Text>
-    </View>
-  );
-}
 
 export const qc = StyleSheet.create({
   label: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   overviewCard: { padding: theme.space.cardPad },
-  // ★ 2026-10-27（审计 P2 数据诚信）：一键体检当前为演示数据（seed 预置，非真实测量），
-  //   需在概览/列表/详情三页显著标注，避免误读为真实体检结果。
-  demoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(246,179,208,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(246,179,208,0.5)',
-    borderRadius: theme.radius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-    marginTop: theme.sp(2),
-  },
-  demoBadgeText: { fontSize: theme.fontSize.micro, color: theme.colors.danger, fontWeight: theme.weight.semibold },
   overviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bigStatRow: { flexDirection: 'row', gap: theme.sp(3), marginTop: theme.sp(4) },
   bigStat: {

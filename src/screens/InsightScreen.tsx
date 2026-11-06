@@ -199,9 +199,12 @@ export default function InsightScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     const revision = profileRevision.current;
-    // ★ 2026-10-14：演示兜底——模拟/演示数据下未录入身体档案时，给一个可展示的演示年龄，
-    //   使身体年龄卡片能正常出值；真实用户经 ExamTab 填写后会被覆盖（不动离线数据加载逻辑）。
-    const DEMO_PROFILE_AGE = 30;
+    // ★ 2026-11-06 审查（docs/audit/02）：**删除演示年龄兜底**。
+    //   旧实现：未录入身体档案时硬塞 DEMO_PROFILE_AGE = 30，让身体年龄卡片能出数。
+    //   但身体年龄 = 实际年龄 + 活力调整 —— 用假的 30 岁算出来的「身体年龄 27 岁」
+    //   是彻头彻尾的假数据，渠道演示时会被当成用户的真实身体年龄。
+    //   现在：无真实档案 → actualAge 保持 null → HealthAgeCard 的 hasEstimate 为 false
+    //   → 走「去填写身体档案」CTA 空态，不显示任何编造的年龄数字。
     const clampAge = (a: number | null | undefined) =>
       a != null && Number.isInteger(a) && a >= 18 && a <= 120 ? a : null;
     const devAge = RingBle.getUserProfile()?.age;
@@ -209,9 +212,9 @@ export default function InsightScreen() {
     getLatestExamRecord().then(record => {
       if (!active || revision !== profileRevision.current) return;
       const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
-      setActualAge(clampAge(value) ?? DEMO_PROFILE_AGE);
+      setActualAge(clampAge(value));
     }).catch(() => {
-      setActualAge(clampAge(RingBle.getUserProfile()?.age) ?? DEMO_PROFILE_AGE);
+      setActualAge(clampAge(RingBle.getUserProfile()?.age));
     });
     return () => { active = false; };
   }, []));
