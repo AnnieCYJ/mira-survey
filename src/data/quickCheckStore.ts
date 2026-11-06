@@ -307,6 +307,9 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   // ── 3. 身体成分：来自首次注册录入的身高 / 体重 / 年龄 / 性别 ─────────────
   let bodyMetrics: ReturnType<typeof computeBodyComposition> | null = null;
   let bodyNote = '';
+  // ★ v18.134（审查 03 🔵#17）：区分「档案读取失败」与「用户从未填过身高体重」。
+  //   两者在 UI 上原本完全一样 —— 身体成分整项凭空消失，用户不知道是自己的问题还是 App 读失败。
+  let bodyAbsentReason: 'profile-missing' | 'profile-read-failed' | null = null;
   try {
     const session = await userStore.loadSession();
     const p = session.profile;
@@ -315,8 +318,16 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       const sex: 'female' | 'male' = p.gender === 'male' ? 'male' : 'female';
       bodyMetrics = computeBodyComposition({ weight: p.weight, height: p.height, age, sex });
       bodyNote = `按你首次填写的身高 ${p.height}cm / 体重 ${p.weight}kg${typeof p.age !== 'number' ? '（年龄未填，按 30 岁估算）' : ''}推算，非戒指测量。`;
+    } else {
+      bodyAbsentReason = 'profile-missing';
+      bodyNote = '填写身高体重后可推算身体成分（当前戒指不支持实测）。';
     }
-  } catch { /* 档案读取失败 → 不展示身体成分，不编数字 */ }
+  } catch (e) {
+    // ★ 读取失败与「未填写」必须区分 —— 否则用户看到身体成分凭空消失却不知原因。
+    console.warn('[quickCheckStore] 读取用户档案失败：', e);
+    bodyAbsentReason = 'profile-read-failed';
+    bodyNote = '身体成分档案读取失败，可稍后重试或检查设置。';
+  }
 
   const hasAny = [hr, spo2, temp, hrv, sns, steps, sleepMin, tg, hdl, ldl, statusMeasured,
     bpSys, glucose, ua, tc, skin, emotion, cortisol, fatigue].some((v) => v != null)
@@ -418,6 +429,17 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     if (bodyItems.length) {
       groups.push({ key: 'body', title: '身体成分', icon: '⚖️', note: '本组为按你首次填写的身高 / 体重 / 年龄 / 性别用公开公式估算，不是戒指测量。', metrics: bodyItems });
     }
+  } else if (bodyAbsentReason) {
+    // ★ v18.134：没有身体成分时**仍然给一整组说明**，让用户知道是「没填」还是「读失败」，
+    //   而不是让整项凭空消失。
+    groups.push({
+      key: 'body',
+      title: '身体成分',
+      icon: '⚖️',
+      note: bodyAbsentReason === 'profile-read-failed'
+        ? '本次体检未包含身体成分：读取你的身高体重档案失败，可稍后重试或到设置里检查账号信息。'
+        : '本次体检未包含身体成分：还没有填写身高体重，填好后可按公开公式推算（不是戒指测量）。',
+    });
   }
 
   // ── Pro 专属健康一览信号（仅 PRO_UI）────────────────────────────────────

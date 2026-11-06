@@ -19,7 +19,6 @@ import Card from '../components/Card';
 import Icon from '../components/Icon';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
 // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
-import { fmtEcgUnit } from '../lib/ecgFormat';
 import ExamTab from '../components/ExamTab';
 import QuickCheckTab from '../components/QuickCheckTab';
 import { getLatestExamRecord } from '../data/examStore';
@@ -290,7 +289,12 @@ export default function InsightScreen() {
       if (sleep != null && Number.isFinite(sleep) && sleep >= 0 && sleep <= 100) scores.push(sleep);
       if (scores.length === 0) return null;
       return Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
-    } catch { return null; }
+    } catch (e) {
+      // ★ v18.134：算法异常与「数据不足」区分开，前者要留痕
+      //   （否则综合分恒 0、弧长退化且无人知晓）。
+      console.warn('[InsightScreen] overallScoreFromReport 计算异常：', e);
+      return null;
+    }
   }, [ring]);
 
 
@@ -320,7 +324,12 @@ export default function InsightScreen() {
         hormonalHealthy = j.label === '节律正常';
         hormonalLabel = j.label === '节律紊乱' ? '节律紊乱' : j.label === '皮质醇偏高' ? '持续偏高' : '节律平稳';
       }
-    } catch { /* 保持数据不足 */ }
+    } catch (e) {
+      // ★ v18.134：基础版无实测皮质醇 → 「数据不足」是预期；
+      //   但算法异常同样是「数据不足」，必须留痕以区分「硬件没有」与「算崩了」。
+      console.warn('[InsightScreen] 皮质醇节律构建异常：', e);
+      hormonalLabel = '数据不足';
+    }
     // ② 长期健康数据（综合 脑力/压力/睡眠 的 0–100 分）
     const longTerm = overallScoreFromReport; // 0–100
     const longTermHealthy = longTerm != null && longTerm >= 65;
@@ -1348,138 +1357,15 @@ const SportRecoveryCard = React.memo(function SportRecoveryCard({ ring, navigati
   );
 });
 
-/** ECG 波形路径：归一化 + Catmull-Rom 平滑成真实心电图曲线。 */
-function ecgWaveformPath(values: number[]): string {
-  if (!values || values.length < 4) return '';
-  const W = 320;
-  const H = chart.h.xs;  // ★ 规范：XS 档 64（原 80，与同页 64 不一致）
-  const pad = 8;
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-  if (max - min < 1e-6) max = min + 1;
-  const n = values.length;
-  const pts: [number, number][] = values.map((v, i) => [
-    pad + (i / (n - 1)) * (W - pad * 2),
-    pad + (1 - (v - min) / (max - min)) * (H - pad * 2),
-  ]);
-  // Catmull-Rom → cubic bezier
-  const d = [`M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d.push(`C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`);
-  }
-  return d.join(' ');
-}
-
-/** 心电图卡片：空状态 / 测量进度 / 最近一次波形 + 指标。 */
-function EcgReadout({ ring }: { ring: RingState }) {
-  const reading = ring.ecg;
-  const progress = ring.ecgProgress;
-  const caps = ring.deviceCapabilities;
-  const ecgSupported = !caps || caps.ecgType > 0;
-  const isMeasuring = progress != null;
-
-  if (!ecgSupported) {
-    return (
-      <Card>
-        <Text style={styles.profTitle}>心电图</Text>
-        <Text style={styles.emptyNote}>当前戒指硬件不支持 ECG 测量</Text>
-      </Card>
-    );
-  }
-
-  // v10：渐变按钮（lime→粉，135°，参考稿「Save Mood」）
-  const measureBtn = (
-    <TouchableOpacity
-      style={[styles.ecgBtn, isMeasuring && styles.ecgBtnDisabled]}
-      onPress={() => RingBle.measure('ecg')}
-      disabled={isMeasuring}
-    >
-      <LinearGradient
-        colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.ecgBtnGrad}
-      >
-        <Text style={styles.ecgBtnText}>
-          {isMeasuring ? `测量中 ${progress?.progress ?? 0}%` : reading ? '重新测量' : '开始测量'}
-        </Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-
-  if (!reading && !isMeasuring) {
-    return (
-      <Card>
-        <Text style={styles.profTitle}>心电图</Text>
-        <Text style={styles.emptyNote}>尚未测量，点击下方按钮启动 ECG（约 30 秒完成）</Text>
-        {measureBtn}
-      </Card>
-    );
-  }
-
-  if (!reading) {
-    return (
-      <Card>
-        <Text style={styles.profTitle}>心电图 · 测量中</Text>
-        <View style={styles.ecgProgressBar}>
-          <View style={[styles.ecgProgressFill, { width: `${progress?.progress ?? 0}%` }]} />
-        </View>
-        <Text style={styles.emptyNote}>
-          {progress?.hr ? `当前心率 ${Math.round(progress.hr)} bpm · ` : ''}
-          {progress?.progress ?? 0}% — 请保持手指稳定接触戒指
-        </Text>
-      </Card>
-    );
-  }
-
-  const rows: [string, string][] = [
-    // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值缺失 / NaN 一律显示 '—'。
-    ['平均心率', fmtEcgUnit(reading.aveHeart, 'bpm')],
-    ['HRV', fmtEcgUnit(reading.aveHrv, 'ms')],
-    ['呼吸率', fmtEcgUnit(reading.aveResRate, '次/分')],
-    ['QT', fmtEcgUnit(reading.aveQT, 'ms')],
-    ['PWV', fmtEcgUnit(reading.avePWV, 'cm/s')],
-  ];
-  return (
-    <Card>
-      <Text style={styles.profTitle}>心电图 · 最近一次测量</Text>
-      <View style={styles.ecgChart}>
-        <Svg width="100%" height={80} viewBox="0 0 320 80" preserveAspectRatio="none">
-          <SvgPath
-            d={ecgWaveformPath(reading.waveform)}
-            fill="none"
-            stroke={mm.colors.skyCore}
-            strokeWidth={1.6}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </Svg>
-      </View>
-      <View style={styles.ecgGrid}>
-        {rows.map(([k, v]) => (
-          <View style={styles.ecgCell} key={k}>
-            <Text style={styles.ecgLabel}>{k}</Text>
-            <Text style={styles.ecgValue}>{v}</Text>
-          </View>
-        ))}
-      </View>
-      {isMeasuring ? (
-        <Text style={styles.emptyNote}>测量中…（{progress?.progress ?? 0}%）</Text>
-      ) : (
-        measureBtn
-      )}
-    </Card>
-  );
-}
-
+/**
+ * ★ v18.134（审查 03 🔵#20）：原 EcgReadout 组件已删除。
+ *   原因：① 它在 InsightScreen 中已无任何渲染点（实际渲染 ECG 的是 <EcgCard>），
+ *        是死代码；② 它的能力判定写成 `!caps || caps.ecgType > 0`（caps 为 null 即判支持），
+ *        而 ring.deviceCapabilities 目前恒为 null → 该判定永远为 true，起不到门禁作用，
+ *        却会让开发者误以为「ECG 不支持」提示已存在。
+ *   生产链路的 ECG 门禁统一走 src/config/deviceModel.ts 的 hasCap(model, 'ecg')
+ *   （见 src/components/EcgCard.tsx）。
+ */
 
 // ── v10: 组 tab 胶囊（白底描边轨道 + lime 选中滑块，SPEC §1 #15）──
 function Segmented({ options, activeIndex, onChange }: { options: string[]; activeIndex: number; onChange: (i: number) => void }) {
@@ -1575,34 +1461,6 @@ const styles = StyleSheet.create({
     marginTop: theme.space.md,
     marginBottom: theme.sp(1),
   },
-  ecgBtn: {
-    marginTop: theme.space.md,
-    borderRadius: theme.radius.pill,
-    alignSelf: 'flex-start',
-    overflow: 'hidden',
-  },
-  ecgBtnGrad: {
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.sm,
-  },
-  ecgBtnDisabled: { opacity: 0.5 },
-  ecgBtnText: {
-    color: theme.colors.textWhite,
-    fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.semibold,
-  },
-  ecgProgressBar: {
-    height: 6,
-    backgroundColor: theme.colors.textSub + '44',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginVertical: theme.space.sm,
-  },
-  ecgProgressFill: {
-    height: '100%',
-    backgroundColor: theme.colors.accent1,
-    borderRadius: 3,
-  },
   profTitle: {
     fontSize: theme.fontSize.card,
     fontWeight: theme.weight.medium,
@@ -1649,23 +1507,6 @@ const styles = StyleSheet.create({
   },
   profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
   profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.success, textAlign: 'center' },
-  ecgChart: {
-    backgroundColor: theme.colors.ui.offTrack,
-    borderRadius: theme.radius.card,
-    padding: theme.space.sm,
-    marginBottom: theme.space.sm,
-  },
-  ecgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  ecgCell: {
-    flexBasis: '30%',
-    flexGrow: 1,
-    backgroundColor: theme.colors.cardBg, // mira-ocean：white55(0.55) 浅玻璃 + 浅字不可读 → 深色玻璃
-    borderRadius: theme.radius.sm,
-    paddingVertical: theme.space.sm,
-    paddingHorizontal: theme.space.md,
-  },
-  ecgLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
-  ecgValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   // 方案 A Segmented
   segmentedWrap: { alignItems: 'flex-start' },
   segmentedTrack: {
