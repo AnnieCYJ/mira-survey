@@ -31,10 +31,10 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import { type SleepSummary, type SleepSegment } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
-// ── v9 原型移植：睡眠节律 / 睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
-import SleepRhythmCard from '../components/SleepRhythmCard';
+// ── v9 原型移植：睡眠分析 / 恢复分 hero / 双轴图 / 多维度对比 ──
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
 import SleepRecoveryHero from '../components/SleepRecoveryHero';
 import SleepDualAxisChart, { type DualPoint } from '../components/SleepDualAxisChart';
@@ -47,6 +47,8 @@ import { startOfWeek, endOfWeek } from '../lib/dateUtils';
 import { type RangeKey } from '../data/metrics';
 import { dayKey as healthDayKey, healthStore } from '../data/healthStore';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
+// ★ 2026-11-07（用户）：夜间静息心率 / 夜间 HRV / 夜间血氧 改由睡眠窗口内逐样本计算
+import { computeNightPhys } from '../lib/nightPhysiology';
 // ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡（与血氧页共用，抽成可复用组件）
 import { OxygenApneaSection } from '../components/OxygenApneaSection';
 import NightBpCard from '../components/NightBpCard';
@@ -365,8 +367,33 @@ export default function SleepDetailScreen() {
       if (!bl.ready) return null;
       return tempDeviationSummary(tempDeviationSeries(dk, bl).dev).avg;
     })();
+    // ★ 2026-11-07（用户）：旧实现直接读 ring.hrDaily/hrvDaily/spo2Daily ——那是「全天日均归档」，
+    //   且原生 onBatch.dayData 压根没有 hr 字段，所以三行常年显示「—」。
+    //   真机日志实证同日 healthStore 里 hrv 有 80–96 个逐样本点、hr 有 23–40 个点。
+    //   改为按真实睡眠窗口（起床时刻 - 总睡眠分钟）从逐样本里取，缺口才回落到全天日均并如实标注。
+    const night = computeNightPhys(dk, {
+      sleepTime: sum?.sleepTime ?? (isLatest ? ring.sleepTime : null) ?? undefined,
+      wakeTime: sum?.wakeTime ?? (isLatest ? ring.wakeTime : null) ?? undefined,
+      totalMin: sum?.total ?? null,
+      fallback: {
+        hr: ring.hrDaily?.[dk] ?? null,
+        hrv: ring.hrvDaily?.[dk] ?? null,
+        spo2: ring.spo2Daily?.[dk] ?? null,
+      },
+    });
+    const physBase: DayPhys = {
+      hr: night.hr,
+      hrv: night.hrv,
+      tempDelta: tempDev,
+      tempAbs,
+      rr: ring.rrDaily?.[dk] ?? null,
+      spo2: night.spo2,
+      recoveryIdx: null,
+      hrvIntraday,
+      physSourceNote: night.sourceNote,
+    };
     if (!sum) {
-      return { day: null, segs, phys: { hr: ring.hrDaily?.[dk] ?? null, hrv: ring.hrvDaily?.[dk] ?? null, tempDelta: tempDev, tempAbs, rr: ring.rrDaily?.[dk] ?? null, spo2: ring.spo2Daily?.[dk] ?? null, recoveryIdx: null, hrvIntraday } };
+      return { day: null, segs, phys: physBase };
     }
     const awakeMin = (sum.awake ?? 0) + (sum.insomnia ?? 0);
     return {
@@ -381,16 +408,7 @@ export default function SleepDetailScreen() {
         getUp: sum.getUp ?? null,
       },
       segs,
-      phys: {
-        hr: ring.hrDaily?.[dk] ?? null,
-        hrv: ring.hrvDaily?.[dk] ?? null,
-        tempDelta: tempDev,
-        tempAbs,
-        rr: ring.rrDaily?.[dk] ?? null,
-        spo2: ring.spo2Daily?.[dk] ?? null,
-        recoveryIdx: null,
-        hrvIntraday,
-      },
+      phys: physBase,
     };
   }, [sleepDaily, anchor, ring, hsVer]);
 
@@ -484,12 +502,10 @@ export default function SleepDetailScreen() {
       />
     <ScreenContainer topFadeColor={theme.colors.bgTop}>
       <View style={styles.header}>
-        <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => navigation.goBack()}>
-          <Icon name="chevronLeft" size={22} color={mm.colors.ink} />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} />
         <View style={styles.titleWrap}>
           <Text style={styles.title}>睡眠恢复</Text>
-          <Text style={styles.unit}>整夜分期 · 睡眠节律</Text>
+          <Text style={styles.unit}>整夜分期</Text>
         </View>
       </View>
 
@@ -500,44 +516,56 @@ export default function SleepDetailScreen() {
 
       {/* ★ 睡眠恢复分卡片：仅日视图显示（置于选择器下方）；周/月/年已在双轴图里以「恢复分曲线」呈现，不再重复显示总分数 */}
       {dRange === 'day' ? (
-        <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分" />
+        <View style={styles.section}>
+          <SleepRecoveryHero anchorMs={anchor.getTime()} label="睡眠恢复分" />
+        </View>
       ) : null}
 
       {dRange === 'day' ? (
-        /* 日：睡眠分析卡 → 脑力峰/谷时段（置于分析下方，不单独成卡） → 睡眠节律卡 */
+        /* 日：睡眠分析卡 → 呼吸暂停（OSAHS）卡 → 夜间血压参考卡 → 稳定睡眠入口卡
+           ★ 2026-11-06（用户）：移除「睡眠节律」卡；各卡用 styles.section 统一留间距，
+           避免呼吸暂停卡与夜间血压卡零间距视觉压叠。 */
         <>
-          <SleepAnalysisCard
-            day={dayAnalysis.day}
-            segments={dayAnalysis.segs}
-            phys={dayAnalysis.phys}
-            /* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：该日分期若走合成路径，需标注「示意」。 */
-            stagesSynthesized={!!ring.sleepStagesSynthesizedDays?.[sleepDayKey(anchor)]}
-            onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
-          />
-
-          <SleepRhythmCard
-            dk={sleepDayKey(anchor)}
-            isToday={dayKey(anchor) === healthDayKey(Date.now())}
-          />
+          <View style={styles.section}>
+            <SleepAnalysisCard
+              day={dayAnalysis.day}
+              segments={dayAnalysis.segs}
+              phys={dayAnalysis.phys}
+              /* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：该日分期若走合成路径，需标注「示意」。 */
+              stagesSynthesized={!!ring.sleepStagesSynthesizedDays?.[sleepDayKey(anchor)]}
+              onOpenMetric={(m) => navigation.navigate('MetricDetail', { ...m })}
+            />
+          </View>
 
           {/* ★ 2026-11-05（用户 E）：呼吸暂停（OSAHS）分析卡——睡眠期呼吸暂停本就是睡眠现象，
               放在睡眠恢复详情页（与血氧页共用同一组件与数据 ring.oxygenAnalysis） */}
-          <OxygenApneaSection title="睡眠呼吸暂停（OSAHS）" />
+          <View style={styles.section}>
+            <OxygenApneaSection title="睡眠呼吸暂停（OSAHS）" />
+          </View>
 
           {/* ★ 2026-11-06（用户：「其他的我其实应该可以做个血压……放在睡眠恢复的相应位置上」）：
-              夜间血压参考卡——最近光电血压测量 + 7 天均值 + 夜间心率 dipping 参考（Oura 对标推导指标，
-              不做绝对血压推算，不诊断）。 */}
-          <NightBpCard anchorMs={anchor.getTime()} />
+              夜间血压参考卡——最近血压测量（戒指光电/手动记录）+ 7 天均值 + 夜间心率 dipping 参考
+              （Oura 对标推导指标，不做绝对血压推算，不诊断）。 */}
+          <View style={styles.section}>
+            <NightBpCard anchorMs={anchor.getTime()} />
+          </View>
 
-          {/* ★ 2026-11-06（用户）：「什么是睡眠恢复分」说明已折叠进上方「睡眠恢复分」卡内（SleepRecoveryHero），此处不再重复 */}
-          {/* ★ 2026-11-06（用户纠偏）：「稳定睡眠」入口卡置于日视图最底部，点击直达睡前助眠呼吸（Breathing） */}
-          <TouchableOpacity style={styles.stableSleepCard} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
+          {/* ★ 2026-11-07（用户）：底部改成「睡眠呼吸冥想」入口卡 —— 卡片加大加宽、内容更丰富，
+              直达睡前助眠呼吸 / 冥想（Breathing） */}
+          <TouchableOpacity style={[styles.stableSleepCard, styles.section]} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
             <View style={styles.stableSleepIcon}>
-              <Icon name="moon" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2} />
+              <Icon name="breath" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2} />
             </View>
             <View style={styles.stableSleepBody}>
-              <Text style={styles.stableSleepTitle}>稳定睡眠</Text>
-              <Text style={styles.stableSleepSub}>睡前助眠呼吸 · 放松身心，更好入睡</Text>
+              <Text style={styles.stableSleepTitle}>睡眠呼吸冥想</Text>
+              <Text style={styles.stableSleepSub}>
+                呼气比吸气长时，身体会自己慢下来。睡前 4-7-8 助眠呼吸、身体扫描冥想、3 段助眠音，跟着做不用自己数拍子。
+              </Text>
+              <View style={styles.stableSleepChips}>
+                <View style={styles.stableSleepChip}><Text style={styles.stableSleepChipTxt}>睡前呼吸</Text></View>
+                <View style={styles.stableSleepChip}><Text style={styles.stableSleepChipTxt}>身体扫描</Text></View>
+                <View style={styles.stableSleepChip}><Text style={styles.stableSleepChipTxt}>助眠音</Text></View>
+              </View>
             </View>
             <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textSub} strokeWidth={2} />
           </TouchableOpacity>
@@ -629,6 +657,8 @@ const styles = StyleSheet.create({
   //   只有睡眠恢复用了 h1 显得特别大。
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium, color: mm.colors.ink },
   unit: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(0.5) },
+  // ★ 2026-11-06（用户）：日视图堆叠区块统一纵向间距（marginBottom），避免卡片零间距视觉压叠
+  section: { width: '100%', marginBottom: theme.space.md },
   /* ★ 本轮：原 brCard/brDuo/brCell 等「脑力准备度」样式已随 BrainPeakTroughBlock 移除而废弃，一并清除避免误用 */
   chartCard: {
     ...theme.shadow.card,
@@ -688,20 +718,27 @@ const styles = StyleSheet.create({
   scoreLegendTitle: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) },
   scoreLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
   scoreLegendNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18, marginTop: theme.sp(1) },
-  // ★ 2026-11-06（用户）：日视图底部「稳定睡眠」入口卡（→ Breathing 睡前助眠呼吸）
+  // ★ 2026-11-07（用户）：日视图底部「睡眠呼吸冥想」入口卡（→ Breathing），加大加宽、内容更丰富
   stableSleepCard: {
-    flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm,
-    paddingVertical: theme.space.sm, paddingHorizontal: theme.space.cardPad,
+    flexDirection: 'row', alignItems: 'flex-start', marginTop: theme.space.sm,
+    paddingVertical: theme.space.md, paddingHorizontal: theme.space.cardPad,
     borderRadius: mm.radius.card, backgroundColor: theme.colors.cardBg,
     borderWidth: 1, borderColor: theme.colors.cardBorder,
   },
   stableSleepIcon: {
-    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.9)', marginRight: theme.space.sm,
   },
   stableSleepBody: { flex: 1 },
   stableSleepTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  stableSleepSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  stableSleepSub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 20, marginTop: theme.sp(1) },
+  stableSleepChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1), marginTop: theme.sp(1.5) },
+  stableSleepChip: {
+    paddingVertical: theme.sp(0.75), paddingHorizontal: theme.sp(1.5),
+    borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1, borderColor: theme.colors.cardBorder,
+  },
+  stableSleepChipTxt: { fontSize: theme.fontSize.micro, color: theme.colors.textBody },
   /* 周/月/年：睡眠分析卡文本行 */
   saText: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 22, marginBottom: theme.sp(1) },
 });
