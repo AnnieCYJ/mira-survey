@@ -396,6 +396,8 @@ export default function BpDetailScreen() {
       <DateAnchorPicker value={anchor} onChange={setAnchor} range={range} />
 
       {/* ★ 2026-11-03（用户）：血压数据卡移到「日/周/月/年」切换器下方，与其他详情页统一（切换 → 选择器 → 数据卡 → 图表）。此前本页 hero+分析在切换器上方，属孤例。 */}
+      {/* ★ 2026-11-07（间距统一·A 方案）：主卡栈包进 gap 父容器，模块间统一 space.md，去掉零散 marginTop（控制条自带 mb 不包入以免双重间距） */}
+      <View style={{ gap: theme.space.md }}>
       <Card>
         {/* Hero：平均值 sys/dia */}
         <View style={styles.heroRow}>
@@ -547,7 +549,7 @@ export default function BpDetailScreen() {
 
       {/* ★ 2026-10-17：晨晚血压汇总（Omron / SmartBP 同款 AM/PM 均值） */}
       {hasData ? (
-        <Card style={{ marginTop: 12 }}>
+        <Card>
           <Text style={styles.detailTitle}>晨晚血压汇总</Text>
           <View style={styles.detailGrid}>
             <View style={styles.detailCol}>
@@ -567,7 +569,7 @@ export default function BpDetailScreen() {
 
       {/* ★ 统一「详细分析」块：平均 / 最高 / 最低 + 较上一周期对比 */}
       {hasData ? (
-        <Card style={{ marginTop: 12 }}>
+        <Card>
           <Text style={styles.detailTitle}>详细分析</Text>
           <View style={styles.detailGrid}>
             <View style={styles.detailCol}>
@@ -597,7 +599,7 @@ export default function BpDetailScreen() {
 
       {/* ★ 2026-10-16：血压细分——光电血压（PPG，无气囊戒指默认）vs 气囊血压（带气囊机型） */}
       {hasData ? (
-        <Card style={{ marginTop: 12 }}>
+        <Card>
           <Text style={styles.detailTitle}>测量方式细分</Text>
           <View style={styles.detailGrid}>
             <View style={styles.detailCol}>
@@ -618,6 +620,7 @@ export default function BpDetailScreen() {
 
       {/* ★ 2026-10-16：血压分级（WHO/ISH 六档）+ 规则 AI 解读 */}
       {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
+      </View>
     </ScreenContainer>
 
     {/* ★ 2026-11-07（用户「白色磨砂背景太浅看不清」）：弹窗改深色玻璃卡（白字清晰），
@@ -723,7 +726,7 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
 
   return (
     <>
-      <Card style={{ marginTop: 12 }}>
+      <Card>
         <Text style={styles.detailTitle}>血压分级（WHO/ISH）</Text>
         {has ? (
           <>
