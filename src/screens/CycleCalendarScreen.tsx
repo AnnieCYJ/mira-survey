@@ -1263,5 +1263,5 @@ const styles = StyleSheet.create({
   endBtn: { marginTop: theme.space.md, alignItems: 'center', paddingVertical: theme.sp(2.5), borderRadius: theme.radius.md, backgroundColor: 'rgba(255,255,255,0.10)' },
   endBtnOn: { backgroundColor: theme.colors.ui.white92 }, // ★ mira-ocean：绿 → 白
   endBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textSub },
-  endBtnTextOn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: '#1F1D1A' },
+  endBtnTextOn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.ui.onGlassInk },
 });

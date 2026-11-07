@@ -507,18 +507,18 @@ const styles = StyleSheet.create({
     paddingVertical: 48, paddingHorizontal: 24,
     backgroundColor: '#FFFFFF', overflow: 'visible',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 0,
     borderRadius: theme.radius.xl,
   },
   // ★ 2026-10-08（用户参考图）：后排卡也要有接地投影，才不会「白卡贴白底」看不出层次
   cardBack: {
     shadowColor: mm.shadow.color, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12, shadowRadius: 16, elevation: 4,
+    shadowOpacity: 0.12, shadowRadius: 16, elevation: 0,
   },
   cardTop: {
     // ★ 2026-10-08（用户参考图）：前排投影收敛一点，更接近参考图里柔和的悬浮感
     shadowColor: '#8B7CF6', shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.16, shadowRadius: 30, elevation: 10,
+    shadowOpacity: 0.16, shadowRadius: 30, elevation: 0,
   },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 22 },
@@ -527,15 +527,15 @@ const styles = StyleSheet.create({
     width: 54, height: 54, borderRadius: theme.radius.lg,
     alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  cardNum: { fontSize: theme.fontSize.xs, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1 },
+  cardNum: { fontSize: theme.fontSize.xs, fontWeight: '700', color: 'theme.colors.ui.onGlassInkFaint', letterSpacing: 1 },
 
   badge: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.75), borderRadius: theme.radius.pill },
   badgePlain: { backgroundColor: mm.colors.limeSoft },
   badgeText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
   badgeTextAi: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 
-  title: { fontSize: theme.fontSize.lg, fontWeight: '700', color: '#1F2937', marginBottom: 10, letterSpacing: -0.3 },
-  desc: { fontSize: theme.fontSize.xs, lineHeight: 21, color: '#6B7280', marginBottom: 26 },
+  title: { fontSize: theme.fontSize.lg, fontWeight: '700', color: 'theme.colors.ui.onGlassInk', marginBottom: 10, letterSpacing: -0.3 },
+  desc: { fontSize: theme.fontSize.xs, lineHeight: 21, color: 'theme.colors.ui.onGlassInkSub', marginBottom: 26 },
 
   // ★ v18.77 渐变按钮套路（同设置页铁律）：Touchable 只留圆角+裁切，尺寸全由渐变层撑起。
   //   渐变层若用 absoluteFillObject 绝对定位会不占布局宽 → 按钮塌成窄条（真机事故）。
@@ -603,11 +603,11 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.lg,
     lineHeight: 29,
     fontWeight: '700',
-    color: '#1F2937',
+    color: 'theme.colors.ui.onGlassInk',
     letterSpacing: -0.3,
     marginBottom: 14,
   },
-  flipTip: { fontSize: theme.fontSize.sm, lineHeight: 24, color: '#6B7280' },
+  flipTip: { fontSize: theme.fontSize.sm, lineHeight: 24, color: 'theme.colors.ui.onGlassInkSub' },
   // v18.91 背面双按钮：去完成（紫渐变主）+ 查看详情（灰底次要）
   flipBtnRow: { flexDirection: 'row', gap: 10 },
   flipBtnHalf: { flex: 1 },

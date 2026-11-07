@@ -1502,7 +1502,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.regular,
     // 面板改成全宽、左右对称之后，文字也居中（原来左对齐会显得偏）
     textAlign: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: theme.space.screen,
   },
   // ★ V1（2026-10-15）：全宽白面板（statusPanel）与底部圆弧（statusPanelArc）已整体移除；
   //   圆环直承浅灰页面底色；「圆环 → chips」16pt 间距与居中由下方 energyWrap 负责。

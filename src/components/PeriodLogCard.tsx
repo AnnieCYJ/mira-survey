@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   endBtnOn: { backgroundColor: mm.colors.limeMid },
   endBtnText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
-  endBtnTextOn: { color: '#1F1D1A', fontWeight: theme.weight.semibold as any },
+  endBtnTextOn: { color: theme.colors.ui.onGlassInk, fontWeight: theme.weight.semibold as any },
   saved: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   saveBtn: { paddingHorizontal: 20, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accentSoft },
   saveBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.accentText },

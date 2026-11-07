@@ -787,7 +787,7 @@ function latestValLocal(k: 'bpSys' | 'bpDia'): number | null {
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
   back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
-  title: { fontSize: theme.fontSize.lg, fontWeight: '600', color: theme.colors.textTitle },
+  title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
   heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   heroAvgLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
