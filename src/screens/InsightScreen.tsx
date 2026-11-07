@@ -1518,7 +1518,7 @@ function UnderlineTabs({
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: theme.space.lg },
+  stack: { gap: theme.space.md },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
