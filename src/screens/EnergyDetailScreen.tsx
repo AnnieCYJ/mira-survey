@@ -1050,9 +1050,10 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
   const grid = [0, 25, 50, 75, 100];
 
   return (
-    <>
+    <View style={{ gap: theme.space.md }}>
+      {/* ★ 2026-11-07（间距统一·A 方案）：子组件内多卡包 gap:space.md，去掉零散 mt，与全屏模块间距一致 */}
       {/* 区间卡：每日脑力消耗（上沿 晨起 / 下沿 睡前，柱高 = 当天真正用掉的量） */}
-      <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+      <Card padded={false}>
         <View style={styles.pad}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1) }}>
             <Text style={styles.chartTitle}>脑力消耗趋势图</Text>
@@ -1118,7 +1119,7 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
 
       {/* 对比卡：只比「每天用了多少脑」这一个量（准备度均值已被否决，无意义） */}
       {hasAny && prevMeanConsumed != null && meanConsumed != null && (
-        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+        <Card padded={false}>
           <View style={styles.pad}>
             <Text style={styles.chartTitle}>对比{prevLabel}</Text>
             {/* ★ 2026-10-09（brain-readiness-preview .cmpCard）：大数字 30 + 单位 + 右侧变化量 一行式 */}
@@ -1142,7 +1143,7 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
           </View>
         </Card>
       )}
-    </>
+    </View>
   );
 }
 
@@ -1189,7 +1190,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
   const vals = rows.map((r) => r.value).filter((v): v is number => v != null);
   if (n === 0 || vals.length === 0) {
     return (
-      <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+      <Card padded={false}>
         <View style={styles.pad}>
           <Text style={styles.chartTitle}>情绪压力趋势图</Text>
           <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1) }}>
@@ -1205,7 +1206,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
   const minRow = rows.reduce((a, b) => ((b.value ?? 999) < (a.value ?? 999) ? b : a));
 
   return (
-    <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+    <Card padded={false}>
       <View style={styles.pad}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(0.5) }}>
           <Text style={styles.chartTitle}>情绪压力趋势图</Text>
@@ -1932,7 +1933,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
       {/* ★ 2026-10-10（用户）：运动详情页的「周期均值 / 峰值 / 低谷 / 波动度」与
           「详细数据」合并到同一张卡里，不再分两张 */}
       {type === 'activity' && hasAny && (
-        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+        <Card padded={false}>
           <View style={styles.pad}>
             <Text style={styles.anaTitle}>消耗分析</Text>
             <View style={styles.statGrid}>
@@ -2024,7 +2025,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
 
       {/* 卡 ② 统计指标网格（★ 运动页已并入上面的「详细数据」卡，这里不再重复） */}
       {hasAny && type !== 'activity' && (
-        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+        <Card padded={false}>
           <View style={styles.pad}>
             <Text style={styles.anaTitle}>消耗分析</Text>
             <View style={styles.statGrid}>
@@ -2039,7 +2040,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
 
       {/* 卡 ③ 对比上周期（★ 2026-11-03 用户：运动量对比已并入「周平均活动消耗」Hero 卡的分析文案，活动页不再单独成卡） */}
       {hasAny && prevMean != null && type !== 'activity' && (
-        <Card padded={false} style={{ marginTop: theme.sp(2) }}>
+        <Card padded={false}>
           <View style={styles.pad}>
             <Text style={styles.chartTitle}>对比{trendLabel}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
