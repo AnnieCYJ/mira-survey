@@ -5,9 +5,9 @@
  * 作用：在用户点「开始体验」之后、进主页之前，引导用户正确佩戴戒指并完成蓝牙连接。
  *
  * 精简布局（用户 2026-11-07 要求）：
- *   · 中间：金 / 银两枚戒指（透明 PNG，置于磨砂玻璃卡上，蓝渐变背景透出）；
+ *   · 中间：金 / 银两枚戒指（透明 PNG，直接浮于蓝渐变，无外框）；
  *   · 图下方一句：怎么戴；
- *   · 再下方：直接「连接戒指」按钮（连接成功后变为「进入主界面」）；
+ *   · 再下方：直接「连接戒指」按钮（连接成功后变为「进入主界面」）—— 该按钮带磨砂玻璃框；
  *   · 底部常驻「稍后再连，先体验主界面」——任何状态下都可点（不再被连接中禁用）。
  *
  * 数据纪律：状态全部来自真实 BLE（RingBle / useRingState），绝不伪造连接成功。
@@ -130,53 +130,51 @@ export default function RingConnectScreen({ onDone }: Props) {
         <Text style={s.brandName}>Luna Mira</Text>
       </View>
 
-      {/* 中部：磨砂玻璃卡（金/银戒指 + 佩戴说明 + 状态） */}
+      {/* 中部：金 / 银两枚戒指（直接浮于蓝渐变，无外框）+ 佩戴说明 + 状态 */}
       <View style={s.center}>
-        <View style={s.glassCard}>
-          <View style={s.ringRow}>
-            <Image source={RING_GOLD} style={s.ringImg} resizeMode="contain" />
-            <Image source={RING_SILVER} style={s.ringImg} resizeMode="contain" />
-          </View>
-          <Text style={s.wearLine}>将戒指戴在食指或中指根部，传感器一面贴紧皮肤。</Text>
+        <View style={s.ringRow}>
+          <Image source={RING_GOLD} style={s.ringImg} resizeMode="contain" />
+          <Image source={RING_SILVER} style={s.ringImg} resizeMode="contain" />
+        </View>
+        <Text style={s.wearLine}>将戒指戴在食指或中指根部，传感器一面贴紧皮肤。</Text>
 
-          {/* 连接状态（极简一行） */}
-          <View style={s.statusRow}>
-            <Animated.View
-              style={[
-                s.statusDot,
-                { backgroundColor: statusColor },
-                busy && {
-                  transform: [
-                    {
-                      rotate: spin.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '360deg'],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              {!busy ? (
-                <Icon
-                  name={connected ? 'check' : failed ? 'close' : 'ring'}
-                  size={theme.fontSize.sm}
-                  color={theme.colors.bgBottom}
-                  strokeWidth={2.2}
-                />
-              ) : null}
-            </Animated.View>
-            <Text style={[s.statusText, { color: statusColor }]}>{statusText}</Text>
-            {connected && ring.battery != null ? (
-              <Text style={s.statusBattery}>· 电量 {ring.battery}%</Text>
+        {/* 连接状态（极简一行） */}
+        <View style={s.statusRow}>
+          <Animated.View
+            style={[
+              s.statusDot,
+              { backgroundColor: statusColor },
+              busy && {
+                transform: [
+                  {
+                    rotate: spin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {!busy ? (
+              <Icon
+                name={connected ? 'check' : failed ? 'close' : 'ring'}
+                size={theme.fontSize.sm}
+                color={theme.colors.bgBottom}
+                strokeWidth={2.2}
+              />
             ) : null}
-          </View>
-          {!connected && !busy ? (
-            <Text style={s.statusHint}>点击下方按钮，开始连接你的戒指</Text>
-          ) : busy ? (
-            <Text style={s.statusHint}>请保持手机靠近戒指，并在戒指上确认配对</Text>
+          </Animated.View>
+          <Text style={[s.statusText, { color: statusColor }]}>{statusText}</Text>
+          {connected && ring.battery != null ? (
+            <Text style={s.statusBattery}>· 电量 {ring.battery}%</Text>
           ) : null}
         </View>
+        {!connected && !busy ? (
+          <Text style={s.statusHint}>点击下方按钮，开始连接你的戒指</Text>
+        ) : busy ? (
+          <Text style={s.statusHint}>请保持手机靠近戒指，并在戒指上确认配对</Text>
+        ) : null}
       </View>
 
       {/* 底部：直接连接 / 稍后再连 */}
@@ -187,8 +185,9 @@ export default function RingConnectScreen({ onDone }: Props) {
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
+        {/* ★ 主按钮带磨砂玻璃框（与 App 玻璃卡同款材质） */}
         <TouchableOpacity
-          style={[s.enterBtn, (connected ? s.enterBtnOn : s.enterBtnOff)]}
+          style={s.enterBtn}
           activeOpacity={0.85}
           disabled={busy && !connected}
           onPress={primaryPress}
@@ -210,7 +209,7 @@ export default function RingConnectScreen({ onDone }: Props) {
               ]}
             />
           ) : connected ? (
-            <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.bgBottom} strokeWidth={2.2} />
+            <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textWhite} strokeWidth={2.2} />
           ) : null}
           <Text style={s.enterTxt}>{primaryLabel}</Text>
         </TouchableOpacity>
@@ -243,15 +242,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.space.card,
-  },
-  // ★ 磨砂玻璃卡：复用 theme.glassMorph（白 13% 底 + 白 28% 高光描边 + 黑投影，elevation:0）
-  glassCard: {
-    ...theme.glassMorph,
-    width: '100%',
-    borderRadius: theme.radius.card,
-    paddingVertical: theme.space.lg,
-    paddingHorizontal: theme.space.card,
-    alignItems: 'center',
   },
   ringRow: {
     flexDirection: 'row',
@@ -308,27 +298,23 @@ const s = StyleSheet.create({
     paddingHorizontal: theme.space.card,
     paddingTop: theme.space.lg,
   },
+  // ★ 主按钮磨砂玻璃框：复用 theme.glassMorph（白 13% 底 + 白 28% 高光描边），白字
   enterBtn: {
+    ...theme.glassMorph,
     height: 54,
     borderRadius: theme.radius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: theme.space.card,
     shadowColor: theme.colors.ui.shadowBlack,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 0,
   },
-  enterBtnOn: {
-    backgroundColor: theme.colors.textWhite,
-  },
-  enterBtnOff: {
-    backgroundColor: theme.colors.ui.white92,
-    opacity: 0.85,
-  },
   enterTxt: {
-    color: theme.colors.bgBottom,
+    color: theme.colors.textWhite,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.weight.semibold,
     marginRight: theme.space.xs,
@@ -338,8 +324,8 @@ const s = StyleSheet.create({
     height: 18,
     borderRadius: theme.radius.sm,
     borderWidth: 2,
-    borderColor: 'rgba(10,41,79,0.25)',
-    borderTopColor: theme.colors.bgBottom,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderTopColor: theme.colors.textWhite,
     marginRight: theme.space.xs,
   },
   skipBtn: { alignItems: 'center', paddingVertical: theme.space.sm, marginTop: theme.space.xs },

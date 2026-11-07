@@ -5,7 +5,7 @@ import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
-import InsightBanner from '../components/InsightBanner';
+import { AiResultRow } from '../components/AiAnalysis';
 import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -286,6 +286,9 @@ export default function BpDetailScreen() {
 
   const data = useMemo(() => buildDual(range, anchor), [range, anchor, nonce, hsVer]);
 
+  // ★ 2026-11-07（用户）：解读合并进首个 Hero 卡片（原底部独立「血压解读」上移）
+  const bpRows = useMemo(() => buildBpInsightRows(data.avgSys, data.avgDia), [data.avgSys, data.avgDia]);
+
   // 上一周期锚点（用于「较上一周期」对比）
   const prevAnchor = useMemo(() => {
     const a = new Date(anchor);
@@ -418,17 +421,17 @@ export default function BpDetailScreen() {
           </View>
         </View>
 
-        {/* ★ 2026-11-03（用户·统一 hero 结构）：大数字下方短分析（分级解读在下方 InsightBanner） */}
-        <Text style={styles.heroAnalysis}>
-          {(() => {
-            const sys = data.avgSys, dia = data.avgDia;
-            if (sys == null || dia == null) return '今天还没有血压读数，连上气囊血压计或做一次光电血压测量后这里会显示。';
-            if (sys >= 140 || dia >= 90) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，属于高血压范围，建议规律监测并咨询医生。`;
-            if (sys >= 130 || dia >= 80) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，略偏高，注意减盐、规律有氧。`;
-            if (sys >= 90 && dia >= 60) return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，在理想范围内，保持就好。`;
-            return `平均 ${Math.round(sys)}/${Math.round(dia)} mmHg，偏低，留意是否有头晕乏力。`;
-          })()}
-        </Text>
+        {/* ★ 2026-11-07（用户）：解读合并进首个 Hero 卡片（原底部独立「血压解读」上移） */}
+        <Text style={styles.heroAnalysis}>{bpRows[0]?.body ?? ''}</Text>
+        {bpRows.slice(1).map((r, i) => (
+          <AiResultRow key={`${r.title}-${i}`} tone={r.tone} title={r.title}>
+            {r.body}
+          </AiResultRow>
+        ))}
+        <TouchableOpacity style={styles.heroMoreLink} onPress={() => openChat('帮我分析今天的血压')} activeOpacity={0.7}>
+          <Text style={styles.heroMoreText}>查看更多分析</Text>
+          <Text style={styles.heroMoreArrow}>›</Text>
+        </TouchableOpacity>
       </Card>
 
       {/* 图表 */}
@@ -606,18 +609,9 @@ export default function BpDetailScreen() {
                 <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs }}> mmHg</Text>
               </Text>
             </View>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailColLabel}>气囊血压</Text>
-              <Text style={styles.detailColVal}>
-                <Text style={{ color: COL_SYS }}>{fmt(latestVal('bpSys'))}</Text>
-                <Text style={{ color: theme.colors.textSub }}>/</Text>
-                <Text style={{ color: COL_DIA }}>{fmt(latestVal('bpDia'))}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs }}> mmHg</Text>
-              </Text>
-            </View>
           </View>
           <Text style={[styles.compareLabel, { marginTop: 10 }]}>
-            读数优先采用气囊血压；无气囊机型（如本款）以光电血压（PPG）为准，数值含估测成分。
+            本款无气囊血压，以戒指光电血压（PPG）为准，数值含估测成分。
           </Text>
         </Card>
       ) : null}
@@ -626,8 +620,8 @@ export default function BpDetailScreen() {
       {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
     </ScreenContainer>
 
-    {/* ★ 2026-11-05（修复：弹窗背景错色 + 无法退出）：
-        背景改 App 统一磨砂白卡（cardBg），加 X 关闭按钮，点遮罩也可关闭。 */}
+    {/* ★ 2026-11-07（用户「白色磨砂背景太浅看不清」）：弹窗改深色玻璃卡（白字清晰），
+        加 X 关闭按钮，点遮罩也可关闭。 */}
     <Modal visible={entryVisible} transparent animationType="fade" onRequestClose={() => { setEntryVisible(false); setEntryErr(''); }}>
       <TouchableOpacity
         style={styles.modalOverlay}
@@ -693,7 +687,9 @@ function bpStageOf(s: number, d: number): number {
   return Math.max(sStage, dStage);
 }
 
-function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | null; diaAvg: number | null; openChat: (q: string) => void }) {
+/* ★ 2026-11-07（用户）：把「血压解读」从底部独立卡片合并进首个 Hero 卡片。
+ * 抽成共享函数，主屏 Hero 与 BpClassificationCard 共用同一套解读文案。 */
+function buildBpInsightRows(sysAvg: number | null, diaAvg: number | null): { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] {
   const s = sysAvg ?? latestValLocal('bpSys');
   const d = diaAvg ?? latestValLocal('bpDia');
   const has = s != null && d != null;
@@ -704,10 +700,9 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
     {
       tone: 'neutral',
       title: '',
-      body:
-        has
-          ? `当前血压约 ${Math.round(s!)}/${Math.round(d!)} mmHg，评级为「${tier?.name}」。`
-          : '今日暂无足够血压数据，连接戒指完成一次测量后查看分级。',
+      body: has
+        ? `当前血压约 ${Math.round(s!)}/${Math.round(d!)} mmHg，评级为「${tier?.name}」。`
+        : '今日暂无足够血压数据，连接戒指完成一次测量后查看分级。',
     },
   ];
   if (has && tier) {
@@ -716,6 +711,15 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
     else rows.push({ tone: 'good', title: '良好', body: tier.note });
   }
   rows.push({ tone: 'neutral', title: '建议', body: '定期监测、减盐限酒、规律有氧；分级仅作参考，诊断请遵医嘱。' });
+  return rows;
+}
+
+function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | null; diaAvg: number | null; openChat: (q: string) => void }) {
+  const s = sysAvg ?? latestValLocal('bpSys');
+  const d = diaAvg ?? latestValLocal('bpDia');
+  const has = s != null && d != null;
+  const stage = has ? bpStageOf(s, d) : 0;
+  const tier = has ? BP_TIERS[stage - 1] : null;
 
   return (
     <>
@@ -766,7 +770,6 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
           </View>
         )}
       </Card>
-      <InsightBanner title="血压解读" rows={rows} onMore={() => openChat('帮我分析今天的血压')} />
     </>
   );
 }
@@ -795,6 +798,17 @@ const styles = StyleSheet.create({
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 4 },
   /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析 */
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(1.5) },
+  /* ★ 2026-11-07（用户）：解读合并进 Hero，复用 InsightBanner 的「查看更多分析」入口样式 */
+  heroMoreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    marginTop: theme.space.sm,
+    paddingHorizontal: theme.sp(1),
+    paddingVertical: theme.sp(0.5),
+  },
+  heroMoreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.medium },
+  heroMoreArrow: { fontSize: theme.fontSize.h2, color: theme.colors.accentText, lineHeight: theme.fontSize.h2, marginLeft: 2 },
   legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
@@ -836,13 +850,12 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(4,18,38,0.72)', justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   modalCard: {
-    // ★ 2026-11-07（用户「背景颜色有点奇怪」）：实底 #113861 在深色遮罩上显得又亮又蓝，
-    //   改回 App 全局统一的玻璃白卡（glassBg 0.13 白 + 玻璃描边）——与洞察页所有卡片同款材质，
-    //   遮罩已加深（rgba(4,18,38,0.72)），玻璃卡在暗底上层次清晰、文字仍为白色可读。
-    width: '100%', maxWidth: 340, backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.26)',
+    // ★ 2026-11-07（用户「白色磨砂背景太浅看不清，不需要白色磨砂背景」）：改深色玻璃卡，
+    //   白字在暗底上清晰、与 App 深色基调一致，不再用白色磨砂卡。遮罩已加深（rgba(4,18,38,0.72)）。
+    width: '100%', maxWidth: 340, backgroundColor: 'rgba(12,38,70,0.96)',
+    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.42, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
   modalClose: {

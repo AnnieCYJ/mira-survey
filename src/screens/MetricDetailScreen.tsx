@@ -22,6 +22,7 @@ import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
+import ChartTooltip from '../components/ChartTooltip';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
@@ -29,8 +30,8 @@ import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/R
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import {
-  moodFromEmotionLevel, MOOD_COLOR, MOOD_LABEL,
-  getLatestForDay, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
+  moodFromEmotionLevel, MOOD_COLOR, MOOD_LABEL, MOOD_ORDER,
+  getLatestForDay, getEntriesForDay, monthMoodMap, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
   type MoodKey,
 } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
@@ -49,6 +50,8 @@ import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../component
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
 import AxisLabels from '../components/charts/AxisLabels';
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
+// ★ 2026-11-07（用户）：柱状图柱宽按当前戒指真实有效读数间隔自适应；仅 BASE_UI 生效
+import { DEFAULT_BIN_MIN, resolveBaseBin, baseBinNote, withBaseBinText } from '../lib/baseChartCadence';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
 import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
 import ChatSheet from '../components/ChatSheet';
@@ -56,6 +59,7 @@ import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import MoodBlob from '../components/MoodBlob';
 import LipidTrendCard from '../components/LipidTrendCard';
 import CortisolTrendCard from '../components/CortisolTrendCard';
+// ★ 2026-11-07（用户「所有的采样频率都不需要在这写」）：CadenceNote 采样频率卡已整体移除
 
 interface Params {
   key: string;
@@ -270,8 +274,10 @@ export type StressDayPart = {
   stressH: number;
   totalMin: number;
 };
-function stressDaySummary(dk: string, dayStartTs: number) {
-  const buckets = binByMinutes(healthStore.getIntraday('stress', dk), 5, { dayStartMs: dayStartTs });
+function stressDaySummary(dk: string, dayStartTs: number, binMin: number = DEFAULT_BIN_MIN) {
+  // ★ 2026-11-07：BASE_UI 柱宽按真实读数间隔自适应 → 分桶与「每桶折算分钟」必须同宽
+  const BIN = binMin;
+  const buckets = binByMinutes(healthStore.getIntraday('stress', dk), BIN, { dayStartMs: dayStartTs });
   const th = STRESS_BANDS;
   const b0 = th[0] ?? 30, b1 = th[1] ?? b0, b2 = th[2] ?? b1;
   const classify = (v: number): 0 | 1 | 2 | 3 => (v <= b0 ? 0 : v <= b1 ? 1 : v <= b2 ? 2 : 3);
@@ -285,10 +291,10 @@ function stressDaySummary(dk: string, dayStartTs: number) {
     if (b.v == null) continue;
     const day = isDaytime(b.t);
     const c = classify(b.v);
-    if (c === 0) { relaxMin += 5; if (day) dayRelaxMin += 5; else nightRelaxMin += 5; }
-    else if (c === 1) { normalMin += 5; if (day) dayNormalMin += 5; else nightNormalMin += 5; }
-    else if (c === 2) { midMin += 5; if (day) dayMidMin += 5; else nightMidMin += 5; }
-    else { stressMin += 5; if (day) dayStressMin += 5; else nightStressMin += 5; }
+    if (c === 0) { relaxMin += BIN; if (day) dayRelaxMin += BIN; else nightRelaxMin += BIN; }
+    else if (c === 1) { normalMin += BIN; if (day) dayNormalMin += BIN; else nightNormalMin += BIN; }
+    else if (c === 2) { midMin += BIN; if (day) dayMidMin += BIN; else nightMidMin += BIN; }
+    else { stressMin += BIN; if (day) dayStressMin += BIN; else nightStressMin += BIN; }
     sum += b.v; cnt += 1;
     if (b.v > peak) peak = b.v;
     if (b.v < overallMin) overallMin = b.v;
@@ -318,7 +324,7 @@ function stressDaySummary(dk: string, dayStartTs: number) {
  * 以压力信号为主：夜间压力越低 = 恢复越好（权重 0.6），日间放松占比越高 = 承压越稳（权重 0.4）。
  * 不做认知评分，仅作身体承压/恢复状态的平实呈现。返回 0–100 评分 + 5 档等级。
  */
-function stressResilience(anchor: Date, range: RangeKey): { score: number; level: string; nightAvg: number; relaxRatio: number; days: number } | null {
+function stressResilience(anchor: Date, range: RangeKey, binMin: number = DEFAULT_BIN_MIN): { score: number; level: string; nightAvg: number; relaxRatio: number; days: number } | null {
   // ★ 本轮（用户）：恢复力按周期真正算出不同值——
   //   日视图仍用近 14 天滚动（对齐 Oura Resilience）；周/月/年改用 rangeDayKeys 覆盖对应自然日。
   const dayKeys =
@@ -327,7 +333,7 @@ function stressResilience(anchor: Date, range: RangeKey): { score: number; level
       : rangeDayKeys(anchor, range);
   let nightSum = 0, nightCnt = 0, relaxSum = 0, relaxCnt = 0, days = 0;
   for (const dk of dayKeys) {
-    const ds = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
+    const ds = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()), binMin);
     if (!ds.hasData) continue;
     days += 1;
     if (ds.night.avg != null) { nightSum += ds.night.avg; nightCnt += 1; }
@@ -514,6 +520,35 @@ function RangeBarsChart({
           onTouchEnd={() => setTimeout(() => setTip(null), 2000)}
           pointerEvents="box-none"
         >
+          {/* ★ 2026-11-07（用户「心情 icon 再小一点，最好展示在柱状图的上面」）：
+              心情标记移到绘图区**上方独立小条**（每根柱正上方），icon 缩小到 sp(9)。
+              MoodBlob 是 RN View（带动画），不能进 Svg → 用绝对定位对齐槽位。 */}
+          {w > 0 && moodMarkers && moodMarkers.length > 0 ? (
+            <View style={{ height: theme.sp(15), marginBottom: theme.sp(0.5) }} pointerEvents="none">
+              {moodMarkers.map((mk) => {
+                if (mk.index < 0 || mk.index >= n) return null;
+                const cx = PAD_L + (mk.index + 0.5) * slotW;
+                const px = (cx / W) * w;
+                return (
+                  <View
+                    key={`mood-${mk.index}`}
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      left: px - theme.sp(6),
+                      top: theme.sp(1.5),
+                      width: theme.sp(12),
+                      height: theme.sp(12),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <MoodBlob mood={mk.mood} size={theme.sp(9)} variant={1} />
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
           {w > 0 ? (
             <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
               {yTicks.map((gv, i) => (
@@ -544,49 +579,7 @@ function RangeBarsChart({
               })}
             </Svg>
           ) : null}
-          {/* ★ 2026-11-06（用户）：周/月/年每日心情标记画在**图表上**（柱顶上方），不在标题上方。
-              MoodBlob 是 RN View（带动画），不能进 Svg → 用绝对定位叠在绘图区上。 */}
-          {w > 0 && moodMarkers && moodMarkers.length > 0
-            ? moodMarkers.map((mk) => {
-                if (mk.index < 0 || mk.index >= n) return null;
-                const cx = PAD_L + (mk.index + 0.5) * slotW;
-                const px = (cx / W) * w;
-                return (
-                  <View
-                    key={`mood-${mk.index}`}
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute',
-                      left: px - theme.sp(9),
-                      top: Math.max(0, PAD_T - theme.sp(11)),
-                      width: theme.sp(18),
-                      height: theme.sp(18),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <MoodBlob mood={mk.mood} size={theme.sp(16)} variant={1} />
-                  </View>
-                );
-              })
-            : null}
-          {tip && w > 0 ? (() => {
-            const TW = 96, TH = 56;
-            let tipX = tip.x - TW / 2;
-            if (tipX < 4) tipX = 4;
-            if (tipX + TW > w - 4) tipX = w - 4 - TW;
-            const tipY = Math.max(0, tip.y - TH - 12);
-            const triX = tip.x - 8;
-            return (
-              <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                  <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label || '数值'}</Text>
-                  <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
-                </View>
-                <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
-              </View>
-            );
-          })() : null}
+          <ChartTooltip tip={tip} w={w} H={H} />
         </View>
       </View>
       {!hasData ? (
@@ -606,6 +599,384 @@ function RangeBarsChart({
   );
 }
 
+/* ★ 2026-11-07（用户「月的心情每天其实很多个，在图表上不好展示」）：
+ * 月视图心情日历 —— 身心压力趋势图下方的一张 30 天日历格：每天一格，
+ * 格内显示日期 + 当天记录的**全部**心情 icon（最多 3 个 + 溢出 +n），一眼看清整月心情。
+ * 数据源与记录心情同一套 emotionLog；没记录的天留空，绝不伪造。 */
+function MoodMonthCalendar({ anchor, version }: { anchor: Date; version: number }) {
+  const y = anchor.getFullYear();
+  const m = anchor.getMonth();
+  const dim = new Date(y, m + 1, 0).getDate();
+  // 周一为首列：offset = (getDay()+6) % 7
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+  const cells: { d: number; dk: string; moods: MoodKey[] }[] = [];
+  for (let d = 1; d <= dim; d++) {
+    const dk = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const list = (() => { try { return getEntriesForDay(dk); } catch { return []; } })();
+    // 倒序（最新在前）→ 正序展示（早→晚）
+    const moods = [...list].reverse().map((e) => e.mood);
+    cells.push({ d, dk, moods });
+  }
+  void version;
+  const total = cells.reduce((a, c) => a + c.moods.length, 0);
+  return (
+    <View style={styles.chartCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Text style={styles.chartTitle}>{m + 1}月心情日历</Text>
+        <Text style={styles.chartNote}>{total > 0 ? `共 ${total} 条记录` : '本月暂无心情记录'}</Text>
+      </View>
+      {total === 0 ? (
+        <Text style={styles.chartNote}>点下方「记录今日心情」后，这里会按天展示你的心情。</Text>
+      ) : null}
+      {/* 星期表头 */}
+      <View style={{ flexDirection: 'row', marginBottom: theme.sp(1) }}>
+        {['一', '二', '三', '四', '五', '六', '日'].map((w) => (
+          <Text key={w} style={{ width: `${100 / 7}%`, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{w}</Text>
+        ))}
+      </View>
+      {/* 日历格：前导空白 + 每天一格 */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {Array.from({ length: lead }, (_, i) => (
+          <View key={`lead-${i}`} style={{ width: `${100 / 7}%` }} />
+        ))}
+        {cells.map((c) => (
+          <View key={c.dk} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: theme.sp(0.75) }}>
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5) }}>{c.d}</Text>
+            <View style={{ flexDirection: 'row', gap: theme.sp(0.4), alignItems: 'center', height: theme.sp(10) }}>
+              {c.moods.length === 0 ? (
+                <View style={{ width: theme.sp(1), height: theme.sp(1), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.offTrack, opacity: 0.5 }} />
+              ) : (
+                <>
+                  {c.moods.slice(0, 3).map((mo, k) => (
+                    <MoodBlob key={`${c.dk}-${k}`} mood={mo} size={theme.sp(8)} variant={1} />
+                  ))}
+                  {c.moods.length > 3 ? (
+                    <Text style={{ fontSize: 8, color: theme.colors.textSub }}>{`+${c.moods.length - 3}`}</Text>
+                  ) : null}
+                </>
+              )}
+            </View>
+          </View>
+        ))}
+      </View>
+      {/* 五档图例 */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(1.5) }}>
+        {MOOD_ORDER.map((mo) => (
+          <View key={mo} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.75) }}>
+            <MoodBlob mood={mo} size={theme.sp(7)} variant={1} />
+            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{MOOD_LABEL[mo]}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/* ★ 2026-11-07（用户「年也像压力时段一样，做成一月到十二月的情绪热力图」）：
+ * 年视图情绪热力 —— 5 档心情 × 12 个月的热力矩阵（与压力时段的热力网格同构）：
+ * 每格 = 该月「有这个心情的天数」，颜色取该心情的主题色，深浅按占当月最大值归一。
+ * 每天取当天最新一次心情（与图表上的逐日标记同口径）。 */
+function MoodYearHeat({ anchor, version }: { anchor: Date; version: number }) {
+  const y = anchor.getFullYear();
+  void version;
+  const counts: Record<string, number>[] = [];
+  let maxN = 0;
+  let total = 0;
+  for (let mo = 0; mo < 12; mo++) {
+    const map = monthMoodMap(y, mo);
+    const c: Record<string, number> = {};
+    for (const dk of Object.keys(map)) {
+      const mk = map[dk];
+      c[mk] = (c[mk] ?? 0) + 1;
+      total += 1;
+    }
+    counts.push(c);
+  }
+  for (const c of counts) for (const k of Object.keys(c)) maxN = Math.max(maxN, c[k]);
+  const nowMo = y === new Date().getFullYear() ? new Date().getMonth() : 11;
+  return (
+    <View style={styles.chartCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Text style={styles.chartTitle}>情绪时段 · {y}</Text>
+        <Text style={styles.chartNote}>{total > 0 ? `共 ${total} 天有记录` : '今年暂无心情记录'}</Text>
+      </View>
+      {total === 0 ? (
+        <Text style={styles.chartNote}>记录心情后，这里会按月呈现五种心情的分布热力。</Text>
+      ) : null}
+      {/* 月份表头 */}
+      <View style={{ flexDirection: 'row', paddingLeft: theme.sp(9) }}>
+        {Array.from({ length: 12 }, (_, mo) => (
+          <Text
+            key={mo}
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              fontSize: 9,
+              color: mo === nowMo ? theme.colors.textTitle : theme.colors.textSub,
+              fontWeight: mo === nowMo ? ('700' as never) : ('400' as never),
+            }}
+          >{mo + 1}月</Text>
+        ))}
+      </View>
+      {/* 热力行：每行 = 一种心情 */}
+      {MOOD_ORDER.map((mo) => (
+        <View key={mo} style={{ flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(0.75) }}>
+          <View style={{ width: theme.sp(9), alignItems: 'flex-start' }}>
+            <MoodBlob mood={mo} size={theme.sp(7)} variant={1} />
+          </View>
+          {counts.map((c, mi) => {
+            const n = c[mo] ?? 0;
+            const op = n > 0 ? 0.22 + 0.78 * Math.max(0.25, n / Math.max(1, maxN)) : 1;
+            return (
+              <View key={mi} style={{ flex: 1, alignItems: 'center' }}>
+                <View
+                  style={{
+                    width: '88%',
+                    height: theme.sp(7),
+                    borderRadius: theme.radius.sm,
+                    backgroundColor: n > 0 ? MOOD_COLOR[mo] : theme.colors.ui.offTrack,
+                    opacity: n > 0 ? op : 0.35,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {n > 0 ? (
+                    <Text style={{ fontSize: 8, color: '#FFFFFF', fontWeight: ('700' as never) }}>{n}</Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ))}
+      <Text style={styles.chartNote}>格内数字 = 该月有此心情的天数（每天取当天最新一次心情）</Text>
+    </View>
+  );
+}
+
+// ★ 2026-11-07（用户）：身心压力周/月/年详情页 → 新增两块分析：
+//   ① 压力分布（按天把当日平均压力归入 放松/正常/中等/偏高 四档，统计有效天数与各档占比，纵向堆叠条）
+//   ② 压力时段（按 天×小时 把逐样本压力归入档位，热力图呈现高发时段；并给出发散/放松高峰时段与 HRV 极值）
+function StressDistributionTimeCards({ anchor, range, binMin = DEFAULT_BIN_MIN }: { anchor: Date; range: RangeKey; binMin?: number }) {
+  const hsVer = useHealthStoreVersion();
+  const C = [mm.colors.limeMid, mm.colors.skyMid, mm.colors.honeyCore, mm.colors.roseDeep];
+  const LABELS = ['放松', '正常', '中等', '偏高'];
+  const b = STRESS_BANDS;
+  const classify = (v: number): 0 | 1 | 2 | 3 =>
+    v <= (b[0] ?? 30) ? 0 : v <= (b[1] ?? 60) ? 1 : v <= (b[2] ?? 80) ? 2 : 3;
+
+  // 压力分布：按天统计各档天数
+  // ★ 2026-11-07（用户「压力的数据应该早就有了」）：逐 5min 样本只有 onBatch 回填一条路，
+  //   基础版固件经常只给日均（health_glance 通道）。这里加兜底：无逐样本的天回退用
+  //   healthStore 日均压力（dm.mean）参与分档，分布图不再因缺明细而整块空白；来源如实标注。
+  const dist = useMemo(() => {
+    const counts = [0, 0, 0, 0];
+    let valid = 0;
+    let fromIntraday = 0, fromDaily = 0;
+    for (const dk of rangeDayKeys(anchor, range)) {
+      const ds = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()), binMin);
+      let avg: number | null = ds.hasData && ds.avg != null && Number.isFinite(ds.avg) ? ds.avg : null;
+      if (avg != null) fromIntraday += 1;
+      if (avg == null) {
+        const dm = healthStore.getDay('stress', dk);
+        if (dm && typeof dm.mean === 'number' && Number.isFinite(dm.mean) && dm.mean > 0) { avg = dm.mean; fromDaily += 1; }
+      }
+      if (avg == null) continue;
+      counts[classify(avg)] += 1;
+      valid += 1;
+    }
+    return { counts, valid, fromIntraday, fromDaily };
+  }, [anchor, range, hsVer, binMin]);
+
+  // 压力时段：天×小时 热力矩阵 + 高发/放松时段 + HRV 极值
+  const time = useMemo(() => {
+    const rows: { label: string; dks: string[] }[] = [];
+    if (range === 'week') {
+      const wd = ['日', '一', '二', '三', '四', '五', '六'];
+      const mon = startOfWeek(anchor);
+      for (let i = 0; i < 7; i++) { const d = addDays(mon, i); rows.push({ label: `周${wd[d.getDay()]}`, dks: [dateKeyOf(d.getTime())] }); }
+    } else if (range === 'month') {
+      const y = anchor.getFullYear(), m = anchor.getMonth(), dim = new Date(y, m + 1, 0).getDate();
+      for (let d = 1; d <= dim; d++) rows.push({ label: `${d}`, dks: [dateKeyOf(new Date(y, m, d).getTime())] });
+    } else {
+      const y = anchor.getFullYear();
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(y, mo + 1, 0).getDate();
+        const dks: string[] = [];
+        for (let d = 1; d <= dim; d++) dks.push(dateKeyOf(new Date(y, mo, d).getTime()));
+        rows.push({ label: `${mo + 1}月`, dks });
+      }
+    }
+    const n = rows.length;
+    const rowHour: number[][][] = rows.map(() => Array.from({ length: 24 }, () => [0, 0, 0, 0]));
+    const hourCount: number[][] = Array.from({ length: 24 }, () => [0, 0, 0, 0]);
+    let anyData = false;
+    for (let r = 0; r < n; r++) {
+      for (const dk of rows[r].dks) {
+        const pts = healthStore.getIntraday('stress', dk);
+        for (const p of pts) {
+          if (typeof p.v !== 'number' || !Number.isFinite(p.v) || p.v <= 0) continue;
+          const h = new Date(p.t).getHours();
+          const lvl = classify(p.v);
+          rowHour[r][h][lvl] += 1;
+          hourCount[h][lvl] += 1;
+          anyData = true;
+        }
+      }
+    }
+    const cell: (0 | 1 | 2 | 3 | null)[][] = rowHour.map((rh) =>
+      rh.map((cnt) => {
+        let mi = -1, mv = 0;
+        for (let i = 0; i < 4; i++) { if (cnt[i] > mv) { mv = cnt[i]; mi = i; } }
+        return mv > 0 ? (mi as 0 | 1 | 2 | 3) : null;
+      }),
+    );
+    // 3 小时频段：发散(偏高) / 放松(放松) 最多时段
+    let overload = { start: 0, count: 0 }, relax = { start: 0, count: 0 };
+    for (let h = 0; h < 24; h += 3) {
+      let hi = 0, lo = 0;
+      for (let k = 0; k < 3; k++) { hi += hourCount[h + k][3]; lo += hourCount[h + k][0]; }
+      if (hi > overload.count) overload = { start: h, count: hi };
+      if (lo > relax.count) relax = { start: h, count: lo };
+    }
+    // HRV 极值（带时间戳）
+    let hvMin = { v: Infinity, t: 0 }, hvMax = { v: -Infinity, t: 0 };
+    for (const dk of rangeDayKeys(anchor, range)) {
+      const pts = healthStore.getIntraday('hrv', dk);
+      for (const p of pts) {
+        if (typeof p.v !== 'number' || !Number.isFinite(p.v) || p.v <= 0) continue;
+        if (p.v < hvMin.v) hvMin = { v: p.v, t: p.t };
+        if (p.v > hvMax.v) hvMax = { v: p.v, t: p.t };
+      }
+    }
+    return {
+      rows, cell, anyData,
+      overload, relax,
+      hvMin: hvMin.v < Infinity ? hvMin : null,
+      hvMax: hvMax.v > -Infinity ? hvMax : null,
+    };
+  }, [anchor, range, hsVer]);
+
+  const fmtTs = (t: number) => {
+    const d = new Date(t);
+    const p = (x: number) => String(x).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  return (
+    // ★ 2026-11-07（用户「压力分布/压力时段两卡挤在一起」）：外层裸 View 会吃掉父级
+    //   styles.stack 的 gap —— 两张 chartCard 之间没有间距直接贴住。补 gap 统一与其他卡一致。
+    <View style={{ gap: theme.space.md }}>
+      {/* ① 压力分布 —— ★ 2026-11-07（用户）：没数据也必须展示空图空占位，不能啥都不画 */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>压力分布</Text>
+        {dist.valid === 0 ? (
+          <Text style={styles.chartNote}>暂无压力样本 · 戒指同步后自动填充</Text>
+        ) : dist.fromDaily > 0 ? (
+          <Text style={styles.chartNote}>{dist.fromDaily} 天用的是日均压力（当天无逐 5 分钟明细）</Text>
+        ) : null}
+        <View style={saStyles.distRow}>
+          <View style={saStyles.distLeft}>
+            <View style={saStyles.distBigRow}>
+              <Text style={saStyles.distBig}>{dist.valid}</Text>
+              <Text style={saStyles.distBigUnit}>有效天数</Text>
+            </View>
+            <View style={{ marginTop: theme.sp(2) }}>
+              {LABELS.map((lab, i) => (
+                <View key={i} style={saStyles.legendItem}>
+                  <View style={[saStyles.legendDot, { backgroundColor: C[i] }]} />
+                  <Text style={saStyles.legendText}>{lab}</Text>
+                  <Text style={saStyles.legendVal}>{dist.valid > 0 ? `${dist.counts[i]}天 · ${Math.round((dist.counts[i] / dist.valid) * 100)}%` : '0天 · —'}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={saStyles.barWrap}>
+            <View style={saStyles.bar}>
+              {dist.valid > 0
+                ? dist.counts.map((c, i) => (c > 0 ? <View key={i} style={[saStyles.barSeg, { flex: c, backgroundColor: C[i] }]} /> : null))
+                : <View style={[saStyles.barSeg, { flex: 1, backgroundColor: theme.colors.cardBgSoft }]} />}
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ② 压力时段 —— ★ 2026-11-07（用户）：空数据同样渲染热力网格骨架 + 汇总占位 */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>压力时段</Text>
+        {!time.anyData ? (
+          <Text style={styles.chartNote}>暂无逐小时压力样本 · 戒指同步后自动填充</Text>
+        ) : null}
+        <View>
+          {time.rows.map((row, r) => (
+            <View key={r} style={saStyles.heatRow}>
+              <Text style={saStyles.heatRowLabel}>{row.label}</Text>
+              <View style={saStyles.heatCells}>
+                {time.cell[r].map((lvl, h) => (
+                  <View key={h} style={[saStyles.heatCell, { backgroundColor: lvl == null ? theme.colors.cardBgSoft : C[lvl] }]} />
+                ))}
+              </View>
+            </View>
+          ))}
+          <View style={saStyles.heatRow}>
+            <View style={saStyles.heatRowLabel} />
+            <View style={saStyles.heatCells}>
+              {[0, 3, 6, 9, 12, 15, 18, 21, 23].map((h) => (
+                <Text key={h} style={saStyles.heatXLabel}>{h}</Text>
+              ))}
+            </View>
+          </View>
+          <View style={saStyles.timeSummary}>
+            <View style={saStyles.timeCol}>
+              <Text style={saStyles.timeColLab}>过载最多时段</Text>
+              <Text style={saStyles.timeColVal}>{time.anyData ? `${time.overload.start}–${time.overload.start + 3}时` : '—'}</Text>
+              <Text style={saStyles.timeColSub}>压力过载 {time.anyData ? time.overload.count : 0} 次</Text>
+            </View>
+            <View style={saStyles.timeCol}>
+              <Text style={saStyles.timeColLab}>优秀最多时段</Text>
+              <Text style={saStyles.timeColVal}>{time.anyData ? `${time.relax.start}–${time.relax.start + 3}时` : '—'}</Text>
+              <Text style={saStyles.timeColSub}>状态优秀 {time.anyData ? time.relax.count : 0} 次</Text>
+            </View>
+          </View>
+          {time.hvMin && time.hvMax ? (
+            <View style={saStyles.hrvRow}>
+              <Text style={saStyles.hrvText}>最低 HRV：{Math.round(time.hvMin.v)} ms · {fmtTs(time.hvMin.t)}</Text>
+              <Text style={saStyles.hrvText}>最高 HRV：{Math.round(time.hvMax.v)} ms · {fmtTs(time.hvMax.t)}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const saStyles = StyleSheet.create({
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(4) },
+  distLeft: { flex: 1 },
+  distBigRow: { flexDirection: 'row', alignItems: 'baseline' },
+  distBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: mm.colors.ink, lineHeight: 44 },
+  distBigUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 6 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.sp(1.5) },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: theme.fontSize.sm, color: mm.colors.ink, width: 32 },
+  legendVal: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  barWrap: { width: 30, height: 132, justifyContent: 'center' },
+  bar: { width: 30, height: 132, borderRadius: 15, overflow: 'hidden', backgroundColor: theme.colors.cardBgSoft, flexDirection: 'column' },
+  barSeg: { width: '100%' },
+  heatRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  heatRowLabel: { width: 36, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right', paddingRight: 6 },
+  heatCells: { flex: 1, flexDirection: 'row', gap: 2 },
+  heatCell: { flex: 1, height: 9, borderRadius: 2 },
+  heatXLabel: { flex: 1, fontSize: 9, color: theme.colors.textSub, textAlign: 'center' },
+  timeSummary: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(3) },
+  timeCol: { flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, padding: theme.sp(2) },
+  timeColLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  timeColVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginTop: 2 },
+  timeColSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  hrvRow: { marginTop: theme.sp(2) },
+  hrvText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 16 },
+});
+
 export default function MetricDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -613,10 +984,13 @@ export default function MetricDetailScreen() {
   // ★ 2026-11-05（用户）：身心压力详情页复用「情绪压力」页的「记录此刻心情」胶囊，
   //   记录完成后把对应表情显示在身心压力趋势图的顶部。数据源与情绪页完全同一套 emotionLog。
   const [latestMood, setLatestMood] = useState<EmotionEntry | null>(null);
+  // ★ 2026-11-07：心情日志版本号 —— 记录/删除后驱动月日历、年热力图重算
+  const [moodVer, setMoodVer] = useState(0);
   useEffect(() => {
     if (params.key !== 'stress') return;
     const refresh = () => {
       try { setLatestMood(getLatestForDay(dayKey(Date.now()))); } catch { setLatestMood(null); }
+      setMoodVer((v) => v + 1);
     };
     void ensureEmotionLogLoaded().then(refresh);
     refresh();
@@ -636,6 +1010,25 @@ export default function MetricDetailScreen() {
   // ★ 2026-11-05：基础版体温只用当前戒指日均，不读 HK18 时期写入的 healthStore 历史
   const { model: deviceModel } = useDeviceModel();
   const isBaseLayout = deviceModel.id === 'BASE_UI';
+  /**
+   * ★ 2026-11-07（用户：「柱状图可以按现在比如 30 分钟就 30 分钟一个柱子」）
+   * 只在 BASE_UI（LunaMira 精简版）按真实有效读数间隔重算柱宽；
+   * PRO_UI 恒为 5 分钟 → 分桶、槽数、说明文案全部保持原样，机型排布零影响。
+   * 统计窗口 = anchor 当天 + 设备可存的近 3 天（精简版 watchDays=3）。
+   */
+  const baseBinDayKeys = useMemo(() => {
+    const set = new Set<string>();
+    set.add(dateKeyOf(anchor.getTime()));
+    for (let i = 0; i < 3; i++) set.add(dateKeyOf(Date.now() - i * 86400000));
+    return Array.from(set);
+  }, [anchor]);
+  const barBin = useMemo(
+    () => isBaseLayout
+      ? resolveBaseBin(params.key as HSMetricKey, baseBinDayKeys)
+      : { minutes: DEFAULT_BIN_MIN, measured: null, samples: 0, merged: false },
+    [isBaseLayout, params.key, baseBinDayKeys],
+  );
+  const barBinMin = barBin.minutes;
   // ★ 2026-10-16：体温详情页双 tab（Pro 保留；基础版无独立皮肤温度流，见 isTempDay 的门禁）
   const [tempSignal, setTempSignal] = useState<'temp' | 'skinTemp'>('temp');
   const [cycleLog, setCycleLog] = useState<ReturnType<typeof loadCycleLog> extends Promise<infer T> ? T : null>(null);
@@ -686,7 +1079,7 @@ export default function MetricDetailScreen() {
   // （BLE 状态订阅已由 useRingState 统一处理，见上方 const ring = useRingState()）
   // 直接订阅 healthStore 版本号：回填写入后本页立即重算 buildHistorySeries，
   // 历史曲线即时出现，无需切 Tab / 重进。
-  useHealthStoreVersion();
+  const hsVer = useHealthStoreVersion();
   useEffect(() => {
     void loadCycleLog().then((l) => setCycleLog(l));
   }, []);
@@ -754,7 +1147,9 @@ export default function MetricDetailScreen() {
     const anchorMs = anchor.getTime();
     const dk = dateKeyOf(anchorMs);
     const dayStart = dayStartOf(anchorMs);
-    const buckets = binByMinutes(healthStore.getIntraday('hr', dk), 5, { dayStartMs: dayStart });
+    // ★ 2026-11-07：BASE_UI 按真实读数间隔选柱宽（心率实测 ~30 分钟 → 30 分钟一柱）；
+    //   PRO_UI 仍是 5 分钟桶。柱宽随 barBinMin 变化一起进 useMemo 依赖。
+    const buckets = binByMinutes(healthStore.getIntraday('hr', dk), barBinMin, { dayStartMs: dayStart });
 
     // 睡眠窗口：入睡/起床小时（跨零点时 wake < bed）
     const sl = healthStore.getSleep(dk);
@@ -776,8 +1171,8 @@ export default function MetricDetailScreen() {
       sportRanges.push([b, e > b ? e : b + 3600_000]);
     }
 
-    return { buckets, dayStart, bedMs, wakeMs, sportRanges };
-  }, [isHrDayBars, anchor, ring.sportSessions]);
+    return { buckets, dayStart, bedMs, wakeMs, sportRanges, binMin: barBinMin };
+  }, [isHrDayBars, anchor, ring.sportSessions, barBinMin]);
 
   const hrSegmentOf = useMemo(() => {
     if (!hrBars) return undefined;
@@ -834,10 +1229,12 @@ export default function MetricDetailScreen() {
     if (spec.measuredOnly && derived) return { blocked: true as const, dk, derived, buckets: null };
     const pts = healthStore.getIntraday(spec.key as HSMetricKey, dk);
     // ★ v18.134（审查 04 🔵-1）：传 metricKey → emotion 的负值样本不再被当占位符丢弃
-    const buckets = binByMinutes(pts, spec.binMin ?? 5, { dayStartMs: dayStart, metricKey: spec.key });
+    // ★ 2026-11-07：BASE_UI 柱宽按真实读数间隔自适应，PRO_UI 仍用 spec.binMin ?? 5
+    const binMin = isBaseLayout ? barBinMin : (spec.binMin ?? 5);
+    const buckets = binByMinutes(pts, binMin, { dayStartMs: dayStart, metricKey: spec.key });
     const filled = bucketFilledCount(buckets);
-    return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length };
-  }, [isSpecDay, spec, anchor]);
+    return { blocked: false as const, dk, derived, buckets, filled, total: buckets.length, binMin };
+  }, [isSpecDay, spec, anchor, isBaseLayout, barBinMin]);
 
   // 状态型指标的分档配色：优先 spec 自定义（情绪按方向），否则低/中/高三档。
   // 始终返回一个函数（即便 spec 无 bands/colorOf 也回退到默认三档），避免调用处类型歧义。
@@ -863,7 +1260,8 @@ export default function MetricDetailScreen() {
     if (!specDay || specDay.blocked || !spec?.bands) return null;
     const bands = spec.bands;
     const [b0, b1, b2] = bands;
-    const BIN = spec.binMin ?? 5;
+    // ★ 2026-11-07：柱宽变了，时长折算必须跟着变，否则 30 分钟一柱却按 5 分钟累计
+    const BIN = specDay.binMin ?? spec.binMin ?? 5;
     // ★ 2026-11-05（用户：压力四档）：按四档折算各档时长（放松/正常/中等/偏高）
     const inPart = (t: number) => {
       const h = new Date(t).getHours();
@@ -922,8 +1320,9 @@ export default function MetricDetailScreen() {
 
     if (hrvPart === 'night' && win) {
       const [bedMs, wakeMs] = win;
-      const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (5 * 60_000)));
-      const buckets = binByMinutes(pts, 5, { dayStartMs: bedMs, slotCount });
+      // ★ 2026-11-07：BASE_UI 夜间 HRV 实测 ~5 分钟、日间 ~30 分钟，柱宽按本指标真实间隔
+      const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (barBinMin * 60_000)));
+      const buckets = binByMinutes(pts, barBinMin, { dayStartMs: bedMs, slotCount });
       const ticks: { frac: number; label: string }[] = [];
       const stepMs = 2 * 3600_000;
       const first = Math.ceil(bedMs / stepMs) * stepMs;
@@ -934,20 +1333,21 @@ export default function MetricDetailScreen() {
           label: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
         });
       }
-      return { buckets, t0: bedMs, spanMs: wakeMs - bedMs, ticks, muted: undefined, window: win };
+      return { buckets, binMin: barBinMin, t0: bedMs, spanMs: wakeMs - bedMs, ticks, muted: undefined, window: win };
     }
 
     // 日间视图：全天轴，睡眠段静默（趋势线在静默区断开，见 AllDayBarsChart 分段逻辑）
-    const buckets = binByMinutes(pts, 5, { dayStartMs: dayStart });
+    const buckets = binByMinutes(pts, barBinMin, { dayStartMs: dayStart });
     return {
       buckets,
+      binMin: barBinMin,
       t0: dayStart,
       spanMs: 86_400_000,
       ticks: undefined,
       muted: win ? ([[win[0], Math.min(win[1], dayStart + 86_400_000)]] as [number, number][]) : undefined,
       window: win,
     };
-  }, [isHrvDay, anchor, hrvPart, hrvSleepWindow]);
+  }, [isHrvDay, anchor, hrvPart, hrvSleepWindow, barBinMin]);
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
   // ★ 2026-10-16：尿酸两个入口 key 都收——洞察页传 'ua'，BloodComponentPanel 传 'uricAcid'
@@ -1222,21 +1622,14 @@ export default function MetricDetailScreen() {
       : 0;
   // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」（身心压力 → 身心压力趋势图，其余同理）
   const chartTitle = `${params.name}趋势图`;
-  /** ★ 身心压力趋势图顶部：当天最近一次自报心情的表情 + 标签（没记录则不渲染）。 */
-  // ★ 2026-11-05（用户）：记录心情后只在图表顶部展示表情 icon，不再压一句说明文字
-  // ★ 2026-11-06（用户）：周/月/年 → 心情标记画在**图表上**（逐日），不再在标题上方单独一条。
-  //   日视图保留顶部单条（当天只有一个时刻的心情）。
-  const moodOnChart = isStress && latestMood && range === 'day' ? (
-    <View style={styles.moodStrip} pointerEvents="none">
-      <MoodBlob mood={latestMood.mood} size={theme.sp(26)} variant={1} />
-      <Text style={styles.moodStripTxt}>今日记录的心情</Text>
-    </View>
-  ) : null;
 
-  /** ★ 2026-11-06（用户）：周/月/年逐日心情标记（index 对应 series.points 下标）。
-   *  每天取当天最新一次自报心情；无记录则该槽不标。 */
+  /** ★ 2026-11-07（用户「周月年心情 icon 再小一点，展示在柱状图上面」）：
+   *  周/月/年逐日心情标记（index 对应 series.points 下标）—— 画在柱状图**上方独立小条**，
+   *  不再压在柱顶上。每天取当天最新一次自报心情；无记录则该槽不标。 */
   const rangeMoodMarkers = useMemo(() => {
-    if (!isStress || range === 'day' || !isSpecRange) return null;
+    // ★ 2026-11-07（用户）：表情只在本周视图展示在柱状图上方（贴近柱子）；
+    //   月视图下方已有心情日历、年视图已有情绪时段热力图，故月/年均不再在趋势图上方重复展示。
+    if (!isStress || range === 'day' || !isSpecRange || range !== 'week') return null;
     const out: { index: number; mood: MoodKey }[] = [];
     try {
       const dks = rangeDayKeys(anchor, range);
@@ -1301,7 +1694,6 @@ export default function MetricDetailScreen() {
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>{params.name}</Text>
-            {params.dimension ? <Text style={styles.sub}>{params.unit}</Text> : null}
           </View>
           {/* ★ 2026-11-05（用户）：详情页右上角不显示「真实数据 / 实时」徽标，标题区保持干净 */}
         </View>
@@ -1369,10 +1761,13 @@ export default function MetricDetailScreen() {
               dayStartMs={hrBars.dayStart}
               segmentOf={hrSegmentOf}
               height={chart.plot.l}
+              denseBars={isBaseLayout}
             />
             <DayBarsLegend />
             <Text style={styles.chartNote}>
-              每根柱 = 5 分钟平均心率，横轴每 30 分钟一条刻度线。数据缺失的时段留白，不做插值。
+              {isBaseLayout
+                ? `每根柱 = ${hrBars.binMin} 分钟平均心率，横轴每 30 分钟一条刻度线。${baseBinNote(barBin, '心率')}`
+                : '每根柱 = 5 分钟平均心率，横轴每 30 分钟一条刻度线。数据缺失的时段留白，不做插值。'}
             </Text>
           </View>
         ) : null}
@@ -1475,6 +1870,7 @@ export default function MetricDetailScreen() {
                   buckets={hrvDay.buckets}
                   dayStartMs={hrvDay.t0}
                   spanMs={hrvDay.spanMs}
+                  denseBars={isBaseLayout}
                   tickLabels={hrvDay.ticks}
                   mutedRanges={hrvDay.muted}
                   yMin={0}
@@ -1484,8 +1880,9 @@ export default function MetricDetailScreen() {
                 <DayBarsLegend showMean={false} />
                 <Text style={styles.chartNote}>
                   {hrvPart === 'night'
-                    ? '每根柱 = 5 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。'
-                    : '每根柱 = 5 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。'}
+                    ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。`
+                    : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。`}
+                  {isBaseLayout ? ` ${baseBinNote(barBin, 'HRV')}` : ''}
                 </Text>
               </>
             ) : null}
@@ -1533,6 +1930,7 @@ export default function MetricDetailScreen() {
                 <AllDayBarsChart
                   buckets={specDay.buckets ?? []}
                   dayStartMs={dayStartOf(anchor.getTime())}
+                  denseBars={isBaseLayout}
                   segmentOf={spec!.nightFirst ? hrSegmentOf : undefined}
                   colorOf={specColorOf}
                   mutedRanges={stressMutedRanges}
@@ -1562,8 +1960,9 @@ export default function MetricDetailScreen() {
                   }
                 />
                 <Text style={styles.chartNote}>
-                  {spec!.sourceNote}
+                  {isBaseLayout ? withBaseBinText(spec!.sourceNote, specDay.binMin ?? barBinMin) : spec!.sourceNote}
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}
+                  {isBaseLayout ? ` ${baseBinNote(barBin, params.name)}` : ''}
                   {stressPart === 'night'
                     ? ' 当前为夜间视图（23:00–07:00），日间时段已隐藏。'
                     : ' 当前为日间视图（07:00–23:00），夜间时段已隐藏。'}
@@ -1621,6 +2020,11 @@ export default function MetricDetailScreen() {
           </View>
         ) : null}
 
+        {/* ★ 2026-11-07（用户）：月视图 → 趋势图下方加「30 天心情日历」（每天全部心情 icon）；
+            年视图 → 像压力时段一样的「情绪时段」热力图（1-12 月 × 五档心情）。 */}
+        {isStress && range === 'month' ? <MoodMonthCalendar anchor={anchor} version={moodVer} /> : null}
+        {isStress && range === 'year' ? <MoodYearHeat anchor={anchor} version={moodVer} /> : null}
+
         {/* ★ 2026-11-05（用户：「底层有没有自己的算法推算皮质醇节律？可以出日周月年趋势图」）：
             基础版不实测皮质醇（health_glance 0 条），用项目自有 cortisolProxy 多信号加权推算，
             组件内全链路标注「推算」，无真实信号的时间窗留白、不插值。 */}
@@ -1628,8 +2032,15 @@ export default function MetricDetailScreen() {
 
         {/* ★ 2026-10-17：压力——分析「数据卡片」嵌在日/周/月/年详情里（图表下方），与 AI 文字解读并行 */}
         {params.key === 'stress' && (isSpecDay || isSpecRange) ? (
-          <StressStatCards anchor={anchor} range={range} part={stressPart} />
+          <StressStatCards anchor={anchor} range={range} part={stressPart} binMin={barBinMin} />
         ) : null}
+
+        {/* ★ 2026-11-07（用户）：身心压力周/月/年详情页 → 压力分布 + 压力时段 两块分析 */}
+        {params.key === 'stress' && range !== 'day' ? (
+          <StressDistributionTimeCards anchor={anchor} range={range} binMin={barBinMin} />
+        ) : null}
+
+        {/* ★ 2026-11-07（用户「所有的采样频率都不需要在这写」）：采样频率卡已移除 */}
 
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
         {isLipid ? <LipidTrendCard range={range} anchor={anchor} title="血脂四项趋势图" /> : null}
@@ -1776,26 +2187,8 @@ export default function MetricDetailScreen() {
                 {/* 数据点已去掉，改用点击 tooltip 展示详细数据 */}
               </Svg>
             ) : null}
-            {/* ★ tooltip：点击显示白色详情框 */}
-            {tip && w > 0 ? (() => {
-              const TW = 110, TH = 60;
-              // 智能定位：不超屏
-              let tipX = tip.x - TW / 2;
-              if (tipX < 4) tipX = 4;
-              if (tipX + TW > w - 4) tipX = w - 4 - TW;
-              const tipY = Math.max(0, tip.y - TH - 12);
-              // 小三角
-              const triX = tip.x - 8;
-              return (
-                <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
-                    <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
-                  </View>
-                  <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
-                </View>
-              );
-            })() : null}
+            {/* ★ tooltip：点击显示磨砂玻璃详情框（统一组件） */}
+            <ChartTooltip tip={tip} w={w} H={H} />
           </View>
           </View>
 
@@ -2450,13 +2843,13 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
  * - 周/月/年：主导档位 + 偏高占比 + 平均压力（覆盖范围内有数据的自然日聚合）。
  * - 恢复力（近 14 天，对齐 Oura Resilience，压力信号为主）独立卡片，日/周/月/年均展示。
  * 色值与全局一致：放松=绿 limeMid / 正常=蓝 skyMid / 中等=琥珀 honeyCore / 偏高=粉 roseDeep。 */
-function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKey; part: 'day' | 'night' }) {
+function StressStatCards({ anchor, range, part, binMin = DEFAULT_BIN_MIN }: { anchor: Date; range: RangeKey; part: 'day' | 'night'; binMin?: number }) {
   // ★ 2026-11-05（用户：压力四档）：四档配色 放松=绿 / 正常=蓝 / 中等=琥珀 / 偏高=粉
   const C = { relax: mm.colors.limeMid, normal: mm.colors.skyMid, mid: mm.colors.honeyCore, stress: mm.colors.roseDeep };
 
   const today = useMemo(
-    () => stressDaySummary(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())),
-    [anchor],
+    () => stressDaySummary(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime()), binMin),
+    [anchor, binMin],
   );
 
   // 周 / 月 / 年：覆盖范围内所有自然日聚合，求主导档位与偏高占比
@@ -2465,7 +2858,7 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
     let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0, sum = 0, cnt = 0, daysWithData = 0;
     let max = -Infinity, min = Infinity;
     for (const dk of rangeDayKeys(anchor, range)) {
-      const r = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()));
+      const r = stressDaySummary(dk, dayStartOf(new Date(dk + 'T00:00:00').getTime()), binMin);
       if (!r.hasData) continue;
       daysWithData += 1;
       relaxMin += r.relaxH * 60; normalMin += r.normalH * 60; midMin += r.midH * 60; stressMin += r.stressH * 60;
@@ -2486,10 +2879,10 @@ function StressStatCards({ anchor, range, part }: { anchor: Date; range: RangeKe
       max: max > -Infinity ? max : null,
       min: min < Infinity ? min : null,
     };
-  }, [anchor, range]);
+  }, [anchor, range, binMin]);
 
   // 恢复力（日视图=近 14 天滚动，与 Oura Resilience 口径对齐；周/月/年=对应周期覆盖自然日）
-  const resilience = useMemo(() => stressResilience(anchor, range), [anchor, range]);
+  const resilience = useMemo(() => stressResilience(anchor, range, binMin), [anchor, range, binMin]);
 
   const qualOf = (avg: number | null): '放松日' | '正常日' | '中等日' | '偏高日' | null => {
     if (avg == null) return null;
@@ -2822,15 +3215,6 @@ function HrvLorenzSection() {
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
-  moodStrip: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    paddingVertical: theme.sp(1), paddingHorizontal: theme.sp(2.5),
-    marginBottom: theme.sp(2), borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 1, borderColor: 'rgba(124,106,224,0.18)',
-  },
-  moodStripEmoji: { fontSize: theme.fontSize.lg, marginRight: theme.sp(1.5) },
-  moodStripTxt: { fontSize: theme.fontSize.micro, color: mm.colors.ink, fontWeight: theme.weight.medium as never },
   pad: { padding: theme.space.cardPad },
   head: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
   back: {
