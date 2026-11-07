@@ -11,6 +11,11 @@
  * 兼容策略：v10 时代的 key 名保留（避免全库改调用点），值按 v16 legacyMap 重映射；
  * 新代码请用五色相 5 档 key（purple/rose/sky/lime/honey × tint/soft/mid/core/deep）。
  */
+
+// ★ 2026-11-07 UI 终审：半径唯一真相源收敛到 theme.radius（避免 mm.radius.card / theme.radius.card 双入口）。
+//   mindmate 只保留「五色相」与「运动色板」两块领域 token；其余尺寸类全部引用 theme。
+import { radius as themeRadius } from './theme';
+
 export const mm = {
   colors: {
     /* ── 五色相 · 每相 5 档（v16 锁定）── */
@@ -106,10 +111,11 @@ export const mm = {
   },
 
   radius: {
-    card: 24,     // 标准白卡
-    chip: 16,     // 四指标 chip
-    iconSq: 9,    // 26px 图标方块
-    iconSqMd: 10, // 30px 卡角标方块
+    /** @deprecated 与 theme.radius.card 同值（24）—— 单一真相源请用 theme.radius.card */
+    card: themeRadius.card,
+    chip: 16,     // 四指标 chip（theme.radius.chip 已对齐 = 16）
+    iconSq: 9,    // 26px 图标方块（= theme.radius.iconSq）
+    iconSqMd: 10, // 30px 卡角标方块（= theme.radius.iconSqMd）
   },
 
   /** pastel 图标方块 bg/fg 对 ★ mira-ocean：soft 底改色相玻璃、deep icon 改亮档（深底可读） */
@@ -121,13 +127,22 @@ export const mm = {
     butter: { bg: 'rgba(240,196,110,0.20)', fg: '#F8E3B8' }, // 黄（代谢）
   } as const,
 
-  /** 白卡阴影 → mira-ocean 深海玻璃卡：黑投影（深底上出层次，不再用墨色） */
+  /**
+   * 白卡阴影 → mira-ocean 深海玻璃卡：黑投影（深底上出层次，不再用墨色）。
+   *
+   * ★ 2026-11-06（华为 P30 / EMUI 真机实证）：半透明玻璃底（cardBg = rgba(255,255,255,0.13)）
+   *   + borderRadius + overflow:'hidden' + elevation>0 会让 Android 原生 outline 退化成
+   *   **直角实心方块**叠在卡片内容上，透出底层深蓝，看起来像「卡片中间有一块蓝色矩形」。
+   *   把 elevation 置 0 后方块完全消失，磨砂玻璃（半透明白底 + 1px 白描边）保持不变。
+   *   iOS 不使用 elevation、仍走 shadow* 投影，故此处置 0 对 iOS 观感无影响。
+   *   所有引用 mm.shadow.elevation 的玻璃卡组件一并受益。
+   */
   shadow: {
     color: '#000000',
     opacity: 0.28,
     height: 8,
     radius: 18,
-    elevation: 6,
+    elevation: 0,
   },
 
   /** 底栏 AI FAB 光晕 → mira-ocean：黑投影压深 */
@@ -136,7 +151,7 @@ export const mm = {
     opacity: 0.4,
     height: 16,
     radius: 15,
-    elevation: 6,
+    elevation: 0,
   },
 } as const;
 

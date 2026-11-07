@@ -496,7 +496,7 @@ export default function EcgDetailScreen() {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
-  back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
+  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
   title: { fontSize: theme.fontSize.lg, fontWeight: '600', color: theme.colors.textTitle },
   sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
 

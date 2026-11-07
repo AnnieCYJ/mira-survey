@@ -28,11 +28,11 @@ const PAD_R = 6;
 const PAD_T = 10;
 const PAD_B = 22;
 
-// v16：血压=蓝图（收缩=蓝 core / 舒张=蓝 mid），统一走 Design Token
-// ★ 2026-11-03（用户「蓝色太不明显」）：舒张压 skyMid(#B9CCF9) 淡得几乎隐形 → skyDeep(#4C74C9)；
-//   收缩压保持 skyCore(#7EA6F8)——一亮一深同为 mm token，曲线/大数字/图例区分度都拉起来
-const COL_SYS = mm.colors.skyCore;
-const COL_DIA = mm.colors.skyDeep;
+// ★ 2026-11-07（用户「蓝色看不清，换个颜色」）：血压整页从蓝图换**紫图** ——
+//   收缩=purpleCore(#9D8AF0 亮紫) / 舒张=purpleDeep(#6E58C8 深紫)，同族亮/深映射不变，
+//   白底卡上两条曲线、大数字、图例对比度都比 sky 系高一截。
+const COL_SYS = mm.colors.purpleCore;
+const COL_DIA = mm.colors.purpleDeep;
 
 type Pt = { t: number; v: number };
 
@@ -281,7 +281,6 @@ export default function BpDetailScreen() {
   const [entryVisible, setEntryVisible] = useState(false);
   const [sysIn, setSysIn] = useState('');
   const [diaIn, setDiaIn] = useState('');
-  const [timeIn, setTimeIn] = useState('');
   const [entryErr, setEntryErr] = useState('');
   const [nonce, setNonce] = useState(0);
 
@@ -360,18 +359,12 @@ export default function BpDetailScreen() {
     if (!Number.isFinite(dia) || dia < 30 || dia > 200) { setEntryErr('舒张压请填 30–200 的整数'); return; }
     if (dia >= sys) { setEntryErr('舒张压应小于收缩压'); return; }
     let hh = new Date().getHours(), mm = new Date().getMinutes();
-    const tStr = timeIn.trim();
-    if (tStr) {
-      const m = /^(\d{1,2}):(\d{2})$/.exec(tStr);
-      if (!m) { setEntryErr('时间格式应为 HH:mm，如 08:30'); return; }
-      hh = Number(m[1]); mm = Number(m[2]);
-      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { setEntryErr('时间超出范围'); return; }
-    }
+    // ★ 2026-11-07（用户）：时间输入条已删，手动读数一律按「现在」落点
     const base = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), hh, mm, 0, 0);
     const ts = base.getTime();
     healthStore.upsertRealtime('bpSys', { t: ts, v: sys }, ts);
     healthStore.upsertRealtime('bpDia', { t: ts, v: dia }, ts);
-    setEntryVisible(false); setSysIn(''); setDiaIn(''); setTimeIn(''); setEntryErr('');
+    setEntryVisible(false); setSysIn(''); setDiaIn(''); setEntryErr('');
     setNonce((n) => n + 1);
   };
 
@@ -390,7 +383,6 @@ export default function BpDetailScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>血压</Text>
-          <Text style={styles.sub}>收缩压 / 舒张压 · {anchor.toLocaleDateString('zh-CN')}</Text>
         </View>
         <TouchableOpacity style={styles.entryBtn} onPress={() => setEntryVisible(true)}>
           <Text style={styles.entryBtnText}>＋ 录入</Text>
@@ -665,11 +657,8 @@ export default function BpDetailScreen() {
                 value={diaIn} onChangeText={setDiaIn} />
             </View>
           </View>
-          <View style={styles.modalInputWrap}>
-            <Text style={styles.modalInputLabel}>时间（可选 · HH:mm · 留空=现在）</Text>
-            <TextInput style={styles.modalInput} keyboardType="numbers-and-punctuation" placeholder="现在" maxLength={5}
-              value={timeIn} onChangeText={setTimeIn} />
-          </View>
+          {/* ★ 2026-11-07（用户「按钮底下压的那条是啥，去掉」）：时间输入条整个删除——
+              手动录入按「现在」落点即可，少一个输入框，弹窗更干净也不会再被按钮压住。 */}
           {entryErr ? <Text style={styles.modalErr}>{entryErr}</Text> : null}
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.modalBtn} onPress={() => { setEntryVisible(false); setEntryErr(''); }}>
@@ -794,7 +783,7 @@ function latestValLocal(k: 'bpSys' | 'bpDia'): number | null {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
-  back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
+  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
   title: { fontSize: theme.fontSize.lg, fontWeight: '600', color: theme.colors.textTitle },
   sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
   heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -835,20 +824,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   compareLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  compareVal: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
-  // ★ 2026-10-17：录入按钮 + 录入弹窗样式
+  compareVal: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.purpleDeep },
+  // ★ 2026-10-17：录入按钮 + 录入弹窗样式（★ 2026-11-07：随血压换紫，蓝按钮同步换紫系）
   entryBtn: {
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.lg,
-    backgroundColor: mm.colors.skySoft, marginLeft: 8,
+    backgroundColor: mm.colors.purpleSoft, marginLeft: 8,
   },
-  entryBtnText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.skyDeep },
+  entryBtnText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold, color: mm.colors.purpleDeep },
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24,
+    // ★ 2026-11-07（用户）：录入弹窗太浅看不清 → 遮罩也加深一档，和弹窗拉开层次
+    flex: 1, backgroundColor: 'rgba(4,18,38,0.72)', justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   modalCard: {
-    width: '100%', maxWidth: 340, backgroundColor: theme.colors.cardBg,
-    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: theme.colors.cardBorder,
-    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
+    // ★ 2026-11-07（用户「背景颜色有点奇怪」）：实底 #113861 在深色遮罩上显得又亮又蓝，
+    //   改回 App 全局统一的玻璃白卡（glassBg 0.13 白 + 玻璃描边）——与洞察页所有卡片同款材质，
+    //   遮罩已加深（rgba(4,18,38,0.72)），玻璃卡在暗底上层次清晰、文字仍为白色可读。
+    width: '100%', maxWidth: 340, backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.26)',
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.42, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   modalClose: {
     position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14,
@@ -861,17 +856,20 @@ const styles = StyleSheet.create({
   modalInputWrap: { flex: 1 },
   modalInputLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: 6 },
   modalInput: {
-    borderWidth: 1, borderColor: theme.colors.cardBorder, borderRadius: theme.radius.sm,
+    // ★ 2026-11-07：实底弹窗上输入框边界要更明确，避免和卡片背景融成一片
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', borderRadius: theme.radius.sm,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: theme.fontSize.card, color: theme.colors.textTitle,
-    textAlign: 'center', backgroundColor: theme.colors.cardBgStrong,
+    textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.10)',
   },
   modalSlash: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
   modalErr: { fontSize: theme.fontSize.xs, color: mm.colors.roseDeep, marginTop: 10 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
   modalBtn: {
-    paddingHorizontal: theme.space.screen, paddingVertical: 9, borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.ui.offTrack,
+    // ★ 2026-11-07（用户「换成统一的玻璃按钮」）：不再用实底色块，改全局玻璃胶囊——
+    //   取消 = 常规玻璃（headBtnBg 同款 0.18 白）；保存 = 高亮玻璃（0.30 白）保持主次。
+    paddingHorizontal: 20, paddingVertical: 9, borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
   },
-  modalBtnPrimary: { backgroundColor: mm.colors.skyDeep },
-  modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  modalBtnPrimary: { backgroundColor: 'rgba(255,255,255,0.30)', borderColor: 'rgba(255,255,255,0.45)' },
+  modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
 });

@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
 // 注：s.* 在下方 StyleSheet.create 中定义（与 styles.* 分区，便于阅读）
 const s = StyleSheet.create({
   root: { flex: 1 },
-  close: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  close: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 36, height: 36, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
   closeX: { color: '#fff', fontSize: theme.fontSize.card },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   mergingText: { position: 'absolute', bottom: '22%', color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.body },

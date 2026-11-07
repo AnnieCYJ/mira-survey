@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   thumbWrap: { width: 52, height: 52, position: 'relative' },
   // 玻璃拟态播放钮（与呼吸/冥想播放器同款语言，压在照片缩略图上）
   glassBtn: {
-    position: 'absolute', top: 6, left: 6, width: 40, height: 40, borderRadius: 20,
+    position: 'absolute', top: 6, left: 6, width: 40, height: 40, borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(0,0,0,0.32)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
     alignItems: 'center', justifyContent: 'center',
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     padding: theme.space.cardPad, gap: theme.space.md,
     shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 }, shadowRadius: 8,
-    elevation: 2,
+    elevation: 0,
   },
   trackInfo: { flex: 1, gap: 2 },
   trackTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textBody },
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     padding: theme.space.cardPad, gap: theme.space.md,
     shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 }, shadowRadius: 8,
-    elevation: 2,
+    elevation: 0,
   },
   courseIcon: { width: 40, height: 40, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   courseInfo: { flex: 1, gap: 2 },
@@ -234,6 +234,6 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card, overflow: 'hidden',
     shadowColor: theme.colors.ui.shadowDeep, shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: theme.sp(4) }, shadowRadius: theme.sp(8),
-    elevation: 6,
+    elevation: 0,
   },
 });

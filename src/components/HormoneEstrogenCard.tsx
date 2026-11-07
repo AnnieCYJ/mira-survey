@@ -245,12 +245,12 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
         ))}
         {/* 面积 + 曲线 */}
         {area ? <Path d={area} fill="rgba(233,128,168,0.16)" /> : null}
-        {d ? <Path d={d} fill="none" stroke="#e980a8" strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" /> : null}
+        {d ? <Path d={d} fill="none" stroke={theme.colors.danger} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" /> : null}
         {/* 当前日标记 */}
         {markerX != null && currentValue != null && (
           <>
             <Line x1={markerX} y1={PAD_T} x2={markerX} y2={PAD_T + plotH} stroke={theme.colors.textTitle} strokeWidth={1.4} strokeDasharray="4 3" />
-            <Circle cx={markerX} cy={yAt(currentValue)} r={5.5} fill="#e980a8" stroke="#fff" strokeWidth={2.4} />
+            <Circle cx={markerX} cy={yAt(currentValue)} r={5.5} fill={theme.colors.danger} stroke="#fff" strokeWidth={2.4} />
             <SvgText x={Math.min(W - PAD_R - 2, Math.max(PAD_L + 2, markerX))} y={yAt(currentValue) - 12} textAnchor="middle" fontSize={12} fontWeight="700" fill={theme.colors.textTitle}>
               {currentValue}
             </SvgText>
@@ -259,7 +259,7 @@ export default function HormoneEstrogenCard({ ring, female, range, onPress }: Pr
         {yearMarkerX != null && yearCurrentValue != null && (
           <>
             <Line x1={yearMarkerX} y1={PAD_T} x2={yearMarkerX} y2={PAD_T + plotH} stroke={theme.colors.textTitle} strokeWidth={1.4} strokeDasharray="4 3" />
-            <Circle cx={yearMarkerX} cy={yAt(yearCurrentValue)} r={5.5} fill="#e980a8" stroke="#fff" strokeWidth={2.4} />
+            <Circle cx={yearMarkerX} cy={yAt(yearCurrentValue)} r={5.5} fill={theme.colors.danger} stroke="#fff" strokeWidth={2.4} />
           </>
         )}
         {/* 关键日标注 */}
