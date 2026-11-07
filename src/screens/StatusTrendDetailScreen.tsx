@@ -19,9 +19,10 @@ import { previousPeriodLabel, baselineLabel } from '../lib/periodLabels';
 import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
+import ChartTooltip from '../components/ChartTooltip';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
-import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
 import { type RangeKey } from '../data/metrics';
@@ -96,6 +97,271 @@ function moodFor(value: number | null | undefined): string {
 /** 4 等级图例：★ 与首页圆环下方图例完全同源（直接用 MOODS：元气满满/状态良好/平平静静/休息一下），
  *  不再用 curveLevel 的「充沛/平稳/偏低/不足」—— 两套叫法会让用户以为是两回事。 */
 const LEVEL_LEGEND = MOODS.map((m) => ({ label: m.label, color: m.color }));
+
+/* ─────────────────────────────────────────────────────────────
+ * ★ 2026-11-07（用户）：今日状态周/月/年详情页 → 新增「状态分布 + 状态时段」两块分析，
+ *   与身心压力详情页的 压力分布 / 压力时段（MetricDetailScreen.StressDistributionTimeCards）完全同构：
+ *   ① 状态分布 —— 按天取当日状态分（statusDaily → timelineByDay 均值 → 今日实时兜底，与主曲线同一口径），
+ *      归入 元气满满/状态良好/平平静静/休息一下 四档（curveLevel，阈值 76/51/26），
+ *      统计有效天数与各档占比，纵向堆叠条。
+ *   ② 状态时段 —— 天×小时 热力矩阵（每格取该小时出现最多的档位；数据源 ring.statusTimelineByDay），
+ *      给出 元气满满 / 休息一下 的高发 3 小时频段；并附 HRV 极值（与压力时段同款）。
+ *   空数据照样渲染骨架与占位，不整块消失（与压力分布同铁律）。
+ * ───────────────────────────────────────────────────────────── */
+
+/** 区间内每一天的 dayKey（week=7 天 / month=当月逐日 / year=全年逐日） */
+function statusRangeDayKeys(anchor: Date, range: RangeKey): string[] {
+  const keys: string[] = [];
+  if (range === 'week') {
+    const mon = startOfWeek(anchor);
+    for (let i = 0; i < 7; i++) keys.push(dayKey(addDays(mon, i).getTime()));
+  } else if (range === 'month') {
+    const y = anchor.getFullYear();
+    const m = anchor.getMonth();
+    const dim = new Date(y, m + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) keys.push(dayKey(new Date(y, m, d).getTime()));
+  } else {
+    const y = anchor.getFullYear();
+    for (let mo = 0; mo < 12; mo++) {
+      const dim = new Date(y, mo + 1, 0).getDate();
+      for (let d = 1; d <= dim; d++) keys.push(dayKey(new Date(y, mo, d).getTime()));
+    }
+  }
+  return keys;
+}
+
+function StatusDistributionTimeCards({ anchor, range, ring }: { anchor: Date; range: RangeKey; ring: any }) {
+  const hsVer = useHealthStoreVersion();
+  const C = MOODS.map((m) => m.color);
+  const LABELS = MOODS.map((m) => m.label);
+  const tierOf = (v: number): 0 | 1 | 2 | 3 => curveLevel(v, CURVE_DEFAULTS).index as 0 | 1 | 2 | 3;
+  const todayK = dayKey(Date.now());
+
+  /** 某天状态分（与主趋势图同一条 fallback 链：statusDaily → timelineByDay 均值 → 今日实时） */
+  const dayMean = (dk: string): number | null => {
+    const sd = (ring.statusDaily ?? {})[dk];
+    if (sd != null && Number.isFinite(sd) && sd > 0) return sd;
+    const tl = ring.statusTimelineByDay?.[dk];
+    if (tl && tl.length > 0) {
+      const vals = tl.map((p: any) => p.value).filter((v: any) => Number.isFinite(v) && v > 0);
+      if (vals.length > 0) return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
+    }
+    if (dk === todayK) {
+      const rt = ring.statusTimeline ?? [];
+      const vals = rt.map((p: any) => p.value).filter((v: any) => Number.isFinite(v) && v > 0);
+      if (vals.length > 0) return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
+    }
+    return null;
+  };
+
+  /** 某天逐点状态样本（fill 插值补点一律剔除，与全天曲线同口径） */
+  const dayPoints = (dk: string): { t: number; v: number }[] => {
+    let src: any[] | undefined = ring.statusTimelineByDay?.[dk];
+    if ((!src || src.length === 0) && dk === todayK) src = ring.statusTimeline;
+    if (!src) return [];
+    return src
+      .filter((p: any) => Number.isFinite(p?.value) && p.value > 0 && Number.isFinite(p?.t) && !(p as any).fill)
+      .map((p: any) => ({ t: p.t as number, v: p.value as number }));
+  };
+
+  // ① 状态分布：按天统计各档天数
+  const dist = useMemo(() => {
+    const counts = [0, 0, 0, 0];
+    let valid = 0;
+    for (const dk of statusRangeDayKeys(anchor, range)) {
+      const m = dayMean(dk);
+      if (m == null) continue;
+      counts[tierOf(m)] += 1;
+      valid += 1;
+    }
+    return { counts, valid };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor, range, hsVer, ring.statusDaily, ring.statusTimelineByDay, ring.statusTimeline]);
+
+  // ② 状态时段：天×小时 热力矩阵 + 元气/休息高发时段
+  const time = useMemo(() => {
+    const rows: { label: string; dks: string[] }[] = [];
+    if (range === 'week') {
+      const wd = ['日', '一', '二', '三', '四', '五', '六'];
+      const mon = startOfWeek(anchor);
+      for (let i = 0; i < 7; i++) { const d = addDays(mon, i); rows.push({ label: `周${wd[d.getDay()]}`, dks: [dayKey(d.getTime())] }); }
+    } else if (range === 'month') {
+      const y = anchor.getFullYear();
+      const m = anchor.getMonth();
+      const dim = new Date(y, m + 1, 0).getDate();
+      for (let d = 1; d <= dim; d++) rows.push({ label: `${d}`, dks: [dayKey(new Date(y, m, d).getTime())] });
+    } else {
+      const y = anchor.getFullYear();
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(y, mo + 1, 0).getDate();
+        const dks: string[] = [];
+        for (let d = 1; d <= dim; d++) dks.push(dayKey(new Date(y, mo, d).getTime()));
+        rows.push({ label: `${mo + 1}月`, dks });
+      }
+    }
+    const rowHour: number[][][] = rows.map(() => Array.from({ length: 24 }, () => [0, 0, 0, 0]));
+    let anyData = false;
+    for (let r = 0; r < rows.length; r++) {
+      for (const dk of rows[r].dks) {
+        for (const p of dayPoints(dk)) {
+          const h = new Date(p.t).getHours();
+          rowHour[r][h][tierOf(p.v)] += 1;
+          anyData = true;
+        }
+      }
+    }
+    const cell: (0 | 1 | 2 | 3 | null)[][] = rowHour.map((rh) =>
+      rh.map((cnt) => {
+        let mi = -1;
+        let mv = 0;
+        for (let i = 0; i < 4; i++) { if (cnt[i] > mv) { mv = cnt[i]; mi = i; } }
+        return mv > 0 ? (mi as 0 | 1 | 2 | 3) : null;
+      }),
+    );
+    // 3 小时频段：元气满满(idx0) / 休息一下(idx3) 最多时段
+    const hourSum: number[][] = Array.from({ length: 24 }, (_, h) =>
+      rows.reduce((acc, _row, r) => acc.map((x, i) => x + rowHour[r][h][i]), [0, 0, 0, 0]));
+    let top = { start: 0, count: 0 };
+    let rest = { start: 0, count: 0 };
+    for (let h = 0; h < 24; h += 3) {
+      let hi = 0;
+      let lo = 0;
+      for (let k = 0; k < 3; k++) { hi += hourSum[h + k][0]; lo += hourSum[h + k][3]; }
+      if (hi > top.count) top = { start: h, count: hi };
+      if (lo > rest.count) rest = { start: h, count: lo };
+    }
+    // HRV 极值（带时间戳）—— 与压力时段同款
+    let hvMin = { v: Infinity, t: 0 };
+    let hvMax = { v: -Infinity, t: 0 };
+    for (const dk of statusRangeDayKeys(anchor, range)) {
+      const pts = healthStore.getIntraday('hrv', dk);
+      for (const p of pts) {
+        if (typeof p.v !== 'number' || !Number.isFinite(p.v) || p.v <= 0) continue;
+        if (p.v < hvMin.v) hvMin = { v: p.v, t: p.t };
+        if (p.v > hvMax.v) hvMax = { v: p.v, t: p.t };
+      }
+    }
+    return {
+      rows, cell, anyData, top, rest,
+      hvMin: hvMin.v < Infinity ? hvMin : null,
+      hvMax: hvMax.v > -Infinity ? hvMax : null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor, range, hsVer, ring.statusTimelineByDay, ring.statusTimeline]);
+
+  const fmtTs = (t: number) => {
+    const d = new Date(t);
+    const p = (x: number) => String(x).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  return (
+    // ★ 2026-11-07（用户）：外层裸 View 吃掉父级 gap → 两卡紧贴；补 gap 与其他卡间距统一
+    <View style={{ gap: theme.space.md }}>
+      {/* ① 状态分布 —— 空数据也渲染占位 */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>状态分布</Text>
+        {dist.valid === 0 ? <Text style={stdStyles.note}>暂无状态样本 · 戒指同步后自动填充</Text> : null}
+        <View style={stdStyles.distRow}>
+          <View style={stdStyles.distLeft}>
+            <View style={stdStyles.distBigRow}>
+              <Text style={stdStyles.distBig}>{dist.valid}</Text>
+              <Text style={stdStyles.distBigUnit}>有效天数</Text>
+            </View>
+            <View style={{ marginTop: theme.sp(2) }}>
+              {LABELS.map((lab, i) => (
+                <View key={i} style={stdStyles.legendItem}>
+                  <View style={[stdStyles.legendDot, { backgroundColor: C[i] }]} />
+                  <Text style={stdStyles.legendText}>{lab}</Text>
+                  <Text style={stdStyles.legendVal}>{dist.valid > 0 ? `${dist.counts[i]}天 · ${Math.round((dist.counts[i] / dist.valid) * 100)}%` : '0天 · —'}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={stdStyles.barWrap}>
+            <View style={stdStyles.bar}>
+              {dist.valid > 0
+                ? dist.counts.map((c, i) => (c > 0 ? <View key={i} style={[stdStyles.barSeg, { flex: c, backgroundColor: C[i] }]} /> : null))
+                : <View style={[stdStyles.barSeg, { flex: 1, backgroundColor: theme.colors.cardBgSoft }]} />}
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ② 状态时段 —— 空数据渲染热力网格骨架 + 占位 */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>状态时段</Text>
+        {!time.anyData ? <Text style={stdStyles.note}>暂无逐小时状态样本 · 戒指同步后自动填充</Text> : null}
+        <View>
+          {time.rows.map((row, r) => (
+            <View key={r} style={stdStyles.heatRow}>
+              <Text style={stdStyles.heatRowLabel}>{row.label}</Text>
+              <View style={stdStyles.heatCells}>
+                {time.cell[r].map((lvl, h) => (
+                  <View key={h} style={[stdStyles.heatCell, { backgroundColor: lvl == null ? theme.colors.cardBgSoft : C[lvl] }]} />
+                ))}
+              </View>
+            </View>
+          ))}
+          <View style={stdStyles.heatRow}>
+            <View style={stdStyles.heatRowLabel} />
+            <View style={stdStyles.heatCells}>
+              {[0, 3, 6, 9, 12, 15, 18, 21, 23].map((h) => (
+                <Text key={h} style={stdStyles.heatXLabel}>{h}</Text>
+              ))}
+            </View>
+          </View>
+          <View style={stdStyles.timeSummary}>
+            <View style={stdStyles.timeCol}>
+              <Text style={stdStyles.timeColLab}>元气满满最多时段</Text>
+              <Text style={stdStyles.timeColVal}>{time.anyData ? `${time.top.start}–${time.top.start + 3}时` : '—'}</Text>
+              <Text style={stdStyles.timeColSub}>元气满满 {time.anyData ? time.top.count : 0} 次</Text>
+            </View>
+            <View style={stdStyles.timeCol}>
+              <Text style={stdStyles.timeColLab}>休息一下最多时段</Text>
+              <Text style={stdStyles.timeColVal}>{time.anyData ? `${time.rest.start}–${time.rest.start + 3}时` : '—'}</Text>
+              <Text style={stdStyles.timeColSub}>休息一下 {time.anyData ? time.rest.count : 0} 次</Text>
+            </View>
+          </View>
+          {time.hvMin && time.hvMax ? (
+            <View style={stdStyles.hrvRow}>
+              <Text style={stdStyles.hrvText}>最低 HRV：{Math.round(time.hvMin.v)} ms · {fmtTs(time.hvMin.t)}</Text>
+              <Text style={stdStyles.hrvText}>最高 HRV：{Math.round(time.hvMax.v)} ms · {fmtTs(time.hvMax.t)}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const stdStyles = StyleSheet.create({
+  note: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(4) },
+  distLeft: { flex: 1 },
+  distBigRow: { flexDirection: 'row', alignItems: 'baseline' },
+  distBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: mm.colors.ink, lineHeight: 44 },
+  distBigUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 6 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.sp(1.5) },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: theme.fontSize.sm, color: mm.colors.ink, width: 64 },
+  legendVal: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  barWrap: { width: 30, height: 132, justifyContent: 'center' },
+  bar: { width: 30, height: 132, borderRadius: 15, overflow: 'hidden', backgroundColor: theme.colors.cardBgSoft, flexDirection: 'column' },
+  barSeg: { width: '100%' },
+  heatRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  heatRowLabel: { width: 36, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right', paddingRight: 6 },
+  heatCells: { flex: 1, flexDirection: 'row', gap: 2 },
+  heatCell: { flex: 1, height: 9, borderRadius: 2 },
+  heatXLabel: { flex: 1, fontSize: 9, color: theme.colors.textSub, textAlign: 'center' },
+  timeSummary: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(3) },
+  timeCol: { flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, padding: theme.sp(2) },
+  timeColLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+  timeColVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: mm.colors.ink, marginTop: 2 },
+  timeColSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
+  hrvRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2) },
+  hrvText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
+});
 
 /** 把稀疏的 statusTimeline 点展开为全天 48 个 30min 边界槽。
  *  没数据的槽用 null，让折线分段逻辑自动断线。 */
@@ -720,15 +986,9 @@ export default function StatusTrendDetailScreen() {
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="返回"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
-          </TouchableOpacity>
+          <BackButton onPress={() => navigation.goBack()} />
           <View style={styles.headText}>
             <Text style={styles.title}>全天状态趋势</Text>
-            <Text style={styles.sub}>状态指数 0–100（越高越有活力）</Text>
           </View>
           {/* ★ 2026-11-05（用户）：详情页右上角不显示「真实数据 / 实时」徽标 */}
         </View>
@@ -846,7 +1106,7 @@ export default function StatusTrendDetailScreen() {
                             <Rect x={x} y={PAD_T} width={wClip} height={3} fill={PMS_COLOR} opacity={0.9} />
                             {/* PMS 名靠右写：相位名统一靠左，两者不会压在一起 */}
                             {wClip >= 44 ? (
-                              <SvgText x={x + wClip - 5} y={PAD_T + 17} fontSize={9} fontWeight="600" fill={PMS_COLOR} textAnchor="end">
+                              <SvgText x={x + wClip - 5} y={PAD_T + 17} fontSize={chart.axisFont} fontWeight="600" fill={PMS_COLOR} textAnchor="end">
                                 经前PMS
                               </SvgText>
                             ) : null}
@@ -863,7 +1123,7 @@ export default function StatusTrendDetailScreen() {
                             <SvgText
                               x={x + 5}
                               y={PAD_T + 17}
-                              fontSize={9}
+                              fontSize={chart.axisFont}
                               fontWeight="600"
                               fill={theme.colors.textSub}
                               textAnchor="start"
@@ -892,7 +1152,7 @@ export default function StatusTrendDetailScreen() {
                     <SvgText
                       x={PAD_L - 7}
                       y={yAt(gv) + 3.2}
-                      fontSize={9}
+                      fontSize={chart.axisFont}
                       fill={theme.colors.textSub}
                       textAnchor="end"
                     >
@@ -928,24 +1188,8 @@ export default function StatusTrendDetailScreen() {
               </Svg>
               </Animated.View>
             ) : null}
-            {/* ★ tooltip：点击显示白色详情框 */}
-            {tip && w > 0 ? (() => {
-              const TW = 110, TH = 60;
-              let tipX = tip.x - TW / 2;
-              if (tipX < 4) tipX = 4;
-              if (tipX + TW > w - 4) tipX = w - 4 - TW;
-              const tipY = Math.max(0, tip.y - TH - 12);
-              const triX = tip.x - 8;
-              return (
-                <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-                  <View style={{ position: 'absolute', left: tipX, top: tipY, width: TW, height: TH, backgroundColor: '#FFFFFF', borderRadius: theme.radius.sm, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-                    <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: 2 }}>{tip.label}</Text>
-                    <Text style={{ fontSize: theme.fontSize.body, fontWeight: '700', color: tip.color }}>{tip.value}</Text>
-                  </View>
-                  <View style={{ position: 'absolute', left: triX, top: tipY + TH, width: 0, height: 0, backgroundColor: 'transparent', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF' }} />
-                </View>
-              );
-            })() : null}
+            {/* ★ tooltip：点击显示磨砂玻璃详情框（统一组件） */}
+            <ChartTooltip tip={tip} w={w} H={H} />
           </View>
 
           {/* 无数据占位（诚实） */}
@@ -1001,15 +1245,11 @@ export default function StatusTrendDetailScreen() {
             </View>
           ) : null}
 
-          {/* ★ 2026-10-06（用户反馈）：图例下方加一个向下箭头，提示「下面还有内容，往下滑」，
-              否则用户以为图例就是页面底部。整页可滚动，详细分析在图例下方。 */}
-          <View style={styles.moreHint}>
-            <View style={{ transform: [{ rotate: '90deg' }] }}>
-              <Icon name="chevronRight" size={theme.fontSize.body} color={theme.colors.textSub} />
-            </View>
-            <Text style={styles.moreHintText}>下滑查看详细分析</Text>
-          </View>
         </View>
+
+        {/* ★ 2026-11-07（用户）：今日状态周/月/年详情页 → 状态分布 + 状态时段 两块分析
+            （与身心压力详情页的 压力分布/压力时段 同构；日视图不加，保持全天曲线专注） */}
+        {dRange !== 'day' ? <StatusDistributionTimeCards anchor={anchor} range={dRange} ring={ring} /> : null}
 
         {/* ★ 详细分析（StressWatch 范式：方块+数字，不写长段文字）
             口径（v18.153 用户定的顺序）：**第一排 = 平均 / 最高 / 最低**，

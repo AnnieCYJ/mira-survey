@@ -92,7 +92,7 @@ function PhaseTrendChart({ data }: { data: { name: string; color: string; pos: n
         return (
           <G key={gi}>
             <Line x1={L} y1={yOf(g)} x2={R} y2={yOf(g)} stroke={chart.grid} strokeWidth={chart.lw.grid} strokeDasharray={chart.dash.grid} />
-            <SvgText x={L - 5} y={yOf(g) + 3} fontSize={9} fill={chart.axisText} textAnchor="end">{valTxt}</SvgText>
+            <SvgText x={L - 5} y={yOf(g) + 3} fontSize={chart.axisFont} fill={chart.axisText} textAnchor="end">{valTxt}</SvgText>
           </G>
         );
       })}
@@ -101,17 +101,17 @@ function PhaseTrendChart({ data }: { data: { name: string; color: string; pos: n
       {data.map((d, i) => (
         <G key={`neg${i}`}>
           <Circle cx={xOf(i)} cy={yOf(d.neg)} r={chart.dot.radius} fill={TREND_NEG} />
-          <SvgText x={xOf(i)} y={yOf(d.neg) + 13} fontSize={9} fill={TREND_NEG} textAnchor="middle">{d.neg.toFixed(1)}</SvgText>
+          <SvgText x={xOf(i)} y={yOf(d.neg) + 13} fontSize={chart.axisFont} fill={TREND_NEG} textAnchor="middle">{d.neg.toFixed(1)}</SvgText>
         </G>
       ))}
       {data.map((d, i) => (
         <G key={`pos${i}`}>
           <Circle cx={xOf(i)} cy={yOf(d.pos)} r={chart.dot.radius} fill={TREND_POS} />
-          <SvgText x={xOf(i)} y={yOf(d.pos) - 7} fontSize={9} fill={TREND_POS} textAnchor="middle">{d.pos.toFixed(1)}</SvgText>
+          <SvgText x={xOf(i)} y={yOf(d.pos) - 7} fontSize={chart.axisFont} fill={TREND_POS} textAnchor="middle">{d.pos.toFixed(1)}</SvgText>
         </G>
       ))}
       {data.map((d, i) => (
-        <SvgText key={`x${i}`} x={xOf(i)} y={B + 18} fontSize={10} fill={d.color} textAnchor="middle" fontWeight="500">{d.name}</SvgText>
+        <SvgText key={`x${i}`} x={xOf(i)} y={B + 18} fontSize={chart.axisFont} fill={d.color} textAnchor="middle" fontWeight="500">{d.name}</SvgText>
       ))}
     </Svg>
   );

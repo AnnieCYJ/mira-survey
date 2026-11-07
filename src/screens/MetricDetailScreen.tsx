@@ -711,7 +711,7 @@ function MoodYearHeat({ anchor, version }: { anchor: Date; version: number }) {
             style={{
               flex: 1,
               textAlign: 'center',
-              fontSize: 9,
+              fontSize: theme.fontSize.axis,
               color: mo === nowMo ? theme.colors.textTitle : theme.colors.textSub,
               fontWeight: mo === nowMo ? ('700' as never) : ('400' as never),
             }}
@@ -967,7 +967,7 @@ const saStyles = StyleSheet.create({
   heatRowLabel: { width: 36, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right', paddingRight: 6 },
   heatCells: { flex: 1, flexDirection: 'row', gap: 2 },
   heatCell: { flex: 1, height: 9, borderRadius: 2 },
-  heatXLabel: { flex: 1, fontSize: 9, color: theme.colors.textSub, textAlign: 'center' },
+  heatXLabel: { flex: 1, fontSize: theme.fontSize.axis, color: theme.colors.textSub, textAlign: 'center' },
   timeSummary: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.sp(3) },
   timeCol: { flex: 1, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, padding: theme.sp(2) },
   timeColLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

@@ -101,7 +101,7 @@ function fmtClock(hourFloat: number): string {
 
 export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg: iconFgProp, title = '昼夜节律', insightMode = false }: { onPress?: () => void; ring?: any; bg?: string; iconFg?: string; title?: string; insightMode?: boolean }) {
   // ★ v18.53.2：bg 可传 butter（黄）；图标/强调色默认 lime，黄底时由调用方传 butter.fg
-  const iconFg = iconFgProp ?? mm.chipBg.lime.fg;
+  const iconFg = iconFgProp ?? mm.colors.limeMid;
   const ring = ringProp ?? useRingState();
   const [W, setW] = useState(0);
   // ★ v18.53：可传背景色（Bento 化，恢复=lime）；有底色时 badge 改白底避免同色相融
@@ -464,7 +464,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                   <SvgText
                     x={Math.min(Math.max(g.peakX, PAD_L + 16), PAD_L + g.chartW - 16)}
                     y={Math.max(g.peakY - 12, 12)}
-                    fontSize={11}
+                    fontSize={chart.axisFont}
                     fontWeight="600"
                     fill={mm.colors.ringTealDeep}
                     textAnchor="middle"
@@ -484,7 +484,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                     key={h}
                     x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + g.chartW - 1 : xOf(slot)}
                     y={CHART_H - 4}
-                    fontSize={9.5}
+                    fontSize={chart.axisFont}
                     fill={mm.colors.inkFaint}
                     textAnchor={edgeL ? 'start' : edgeR ? 'end' : 'middle'}
                   >

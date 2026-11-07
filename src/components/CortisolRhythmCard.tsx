@@ -543,7 +543,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
               <SvgText
                 x={Math.min(Math.max(ovX, padL + 16), padL + chartW - 16)}
                 y={Math.max(ovY - 12, 12)}
-                fontSize={11}
+                fontSize={chart.axisFont}
                 fontWeight="600"
                 fill={mm.colors.limeDeep}
                 textAnchor="middle"

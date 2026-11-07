@@ -369,7 +369,7 @@ export default function SleepRhythmHomeCard({ onPress, ring: ringProp, bg, iconF
                   <SvgText
                     x={Math.min(Math.max(g.peakX, PAD_L + 16), PAD_L + g.chartW - 16)}
                     y={Math.max(g.peakY - 12, 12)}
-                    fontSize={11}
+                    fontSize={chart.axisFont}
                     fontWeight="600"
                     fill={mm.colors.ringTealDeep}
                     textAnchor="middle"
@@ -389,7 +389,7 @@ export default function SleepRhythmHomeCard({ onPress, ring: ringProp, bg, iconF
                     key={h}
                     x={edgeL ? PAD_L + 1 : edgeR ? PAD_L + g.chartW - 1 : xOf(slot)}
                     y={CHART_H - 4}
-                    fontSize={9.5}
+                    fontSize={chart.axisFont}
                     fill={mm.colors.inkFaint}
                     textAnchor={edgeL ? 'start' : edgeR ? 'end' : 'middle'}
                   >

@@ -15,6 +15,7 @@ import { View, Text, StyleSheet } from "react-native";
 import Svg, { Path, Circle, Rect, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
 import { theme } from "../theme/theme";
 import { mm } from "../theme/mindmate";
+import { chart } from "../theme/chart";
 import { modelEstrogenCurve, type CycleLog, type CycleInfo, type CyclePhase } from "../lib/cycleMath";
 import { healthStore } from "../data/healthStore";
 
@@ -256,7 +257,7 @@ export default function HormoneCurveCard({
           return (
             <React.Fragment>
               <Circle cx={ovX} cy={yForVal(curve.find(p => p.day === ovulationDay)?.value ?? 100)} r={3.5} fill="#BCCB62" />
-              <SvgText x={ovX} y={H - 4} fontSize={8} fill="#6E7A24" textAnchor="middle">排卵</SvgText>
+              <SvgText x={ovX} y={H - 4} fontSize={chart.axisFont} fill="#6E7A24" textAnchor="middle">排卵</SvgText>
             </React.Fragment>
           );
         })()}
@@ -268,10 +269,10 @@ export default function HormoneCurveCard({
           </React.Fragment>
         )}
 
-        <SvgText x={PAD_L - 4} y={PAD_T + 3} fontSize={8} fill="#999" textAnchor="end">100</SvgText>
-        <SvgText x={PAD_L - 4} y={PAD_T + innerH + 2} fontSize={8} fill="#999" textAnchor="end">20</SvgText>
+        <SvgText x={PAD_L - 4} y={PAD_T + 3} fontSize={chart.axisFont} fill="#999" textAnchor="end">100</SvgText>
+        <SvgText x={PAD_L - 4} y={PAD_T + innerH + 2} fontSize={chart.axisFont} fill="#999" textAnchor="end">20</SvgText>
         {[1, Math.ceil(cycleLength / 2), cycleLength].map((day, i) => (
-          <SvgText key={i} x={xForDay(day)} y={H - 6} fontSize={8} fill="#999" textAnchor="middle">D{day}</SvgText>
+          <SvgText key={i} x={xForDay(day)} y={H - 6} fontSize={chart.axisFont} fill="#999" textAnchor="middle">D{day}</SvgText>
         ))}
       </Svg>
 

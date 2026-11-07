@@ -9,7 +9,7 @@
  * 运动消耗: 步数/距离/消耗 list + MetricDetail 跳转
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -21,6 +21,7 @@ import ScreenContainer from '../components/ScreenContainer';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import { useRingState } from '../hooks/useRingState';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';import { RANGE_DEF, type RangeKey } from '../data/metrics';
@@ -54,6 +55,25 @@ import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
+
+/**
+ * ★ 2026-11-07（用户）：运动消耗页加「梅脱（MET）」格 + 感叹号解释弹层。
+ * LunaMira 精简版不回传 met（deviceModel 标 proOnly），因此：
+ *   · 优先用真实 met 采样（未来硬件升级自动切换）；
+ *   · 缺省按当日逐点心率映射粗档估算，诚实标注「心率估算」，绝不冒充实测。
+ * 映射表为心率→强度的通用粗档（静止~1.3 → 高强度~9），只作参考。
+ */
+function estimateDayMet(dk: string): { value: number | null; source: 'met' | 'hr' | null } {
+  try {
+    const metPts = healthStore.getIntraday('met' as any, dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
+    if (metPts.length > 0) return { value: metPts.reduce((a, p) => a + p.v, 0) / metPts.length, source: 'met' };
+    const hrPts = healthStore.getIntraday('hr', dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
+    if (hrPts.length === 0) return { value: null, source: null };
+    const hrMet = (hr: number): number =>
+      hr < 70 ? 1.3 : hr < 85 ? 1.8 : hr < 100 ? 3.0 : hr < 115 ? 4.5 : hr < 130 ? 6.0 : hr < 145 ? 7.5 : 9.0;
+    return { value: hrPts.reduce((a, p) => a + hrMet(p.v), 0) / hrPts.length, source: 'hr' };
+  } catch { return { value: null, source: null }; }
+}
 
 /**
  * ★ 2026-10-07（用户）：脑力消耗 / 心理压力 详情页的「AI 综合分析」先隐藏。
@@ -165,15 +185,11 @@ export default function EnergyDetailScreen() {
       <View style={styles.stack}>
         {/* 顶部返回 + 标题 */}
         <View style={styles.head}>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="返回"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
-          </TouchableOpacity>
+          {/* ★ 2026-11-07（用户）：运动/活动消耗详情页返回键与其余详情页统一为「圆形白底 + 左箭头」。
+              旧写法只有光秃秃一个箭头（styles.back 没有背景色），视觉上像向右箭头、与其它页不一致。 */}
+          <BackButton onPress={() => navigation.goBack()} />
           <View style={styles.headText}>
             <Text style={styles.title}>{meta.name}</Text>
-            <Text style={styles.sub}>{meta.sub}</Text>
           </View>
         </View>
 
@@ -429,6 +445,14 @@ function aggregateExercise(ring: any, dayKeys: string[]): {
 }
 
 function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rangeMeanStress }: { type: EnergyType; accent: string; anchor: Date; ring: any; range: RangeKey; rangeMeanConsumption?: number | null; rangeMeanStress?: number | null }) {
+  // ★ 2026-11-07（用户）：梅脱格的「!」解释弹层 + healthStore 版本订阅（心率水合后梅脱格立即重算）
+  const [metInfoVisible, setMetInfoVisible] = useState(false);
+  const hsVer = useHealthStoreVersion();
+  // 梅脱今日估算（仅运动消耗页用；随数据水合 / 锚定日变化重算）
+  const metEst = useMemo(
+    () => (type === 'activity' ? estimateDayMet(dayKey(anchor.getTime())) : { value: null, source: null }),
+    [type, anchor, hsVer],
+  );
   // ★ 按「锚定日」取报告：今天=此刻；历史日=该日整天（传错会得到空区间/永远是今天）
   const reportMs = reportNowMsForDay(anchor.getTime());
   const report = useMemo(() => {
@@ -527,8 +551,9 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
       return `今天消耗 ${cal} 卡路里，和昨天差不多，节奏很稳。建议保持这个量级，明天可以换个强度或项目，让身体持续受益。`;
     })();
     return (
-      <View>
-        <Text style={styles.heroTitle}>{activityDayTitle}</Text>
+      <>
+        <View>
+          <Text style={styles.heroTitle}>{activityDayTitle}</Text>
         <View style={styles.heroWrap}>
           {/* ★ 2026-10-12（用户：「27 旁边写卡路里，去掉下面那个今日消耗 · kcal」）：
               单位并入大数字旁（基线对齐），原下方 heroLab「今日消耗 · kcal」标签行删除。 */}
@@ -543,15 +568,10 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
           ) : null}
         </View>
         <Text style={styles.heroAnalysis}>{activityDayAnalysis}</Text>
-        {/* ★ 2026-11-05（用户）：运动时长 / 步数 / 距离 移到「今日消耗」分析下方 */}
+        {/* ★ 2026-11-07（用户）：运动时长这枚精简版戒指根本没有（无运动时段传感器，此前一直是「—/估算」），
+            整格删掉；步数 / 距离 两格自动变宽，不再挤三列。
+            ★ 同日：按用户要求加回第三格「梅脱」，右侧感叹号点开底部解释弹层。 */}
         <View style={styles.statGrid}>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>运动时长</Text>
-            <Text style={styles.statValue} numberOfLines={1}>
-              {durMin ?? '—'}{durMin != null ? <Text style={unitStyle}> 分</Text> : null}
-            </Text>
-            <Text style={styles.statSub}>{sessCount > 0 ? `${sessCount} 次` : (ex.source === 'hr' ? '心率估算' : ex.source === 'steps' ? '步数估算' : '—')}</Text>
-          </View>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>步数</Text>
             <Text style={styles.statValue} numberOfLines={1}>
@@ -564,10 +584,52 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
             <Text style={styles.statValue} numberOfLines={1}>
               {(st?.distance ?? 0).toFixed(1)}{<Text style={unitStyle}> km</Text>}
             </Text>
-            <Text style={styles.statSub}>运动</Text>
+            <Text style={styles.statSub}>今日累计</Text>
+          </View>
+          <View style={styles.statCell}>
+            <View style={styles.statLabelRow}>
+              <Text style={styles.statLabel}>梅脱</Text>
+              <TouchableOpacity
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => setMetInfoVisible(true)}
+              >
+                <View style={styles.metInfoDot}>
+                  <Text style={styles.metInfoTxt}>!</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {metEst.value != null ? metEst.value.toFixed(1) : '—'}
+            </Text>
+            <Text style={styles.statSub}>
+              {metEst.source === 'met' ? '戒指实测' : metEst.source === 'hr' ? '心率估算' : '暂无数据'}
+            </Text>
           </View>
         </View>
-      </View>
+        </View>
+
+        {/* ★ 2026-11-07（用户）：点「梅脱」旁的感叹号，从底部拉起解释弹层 */}
+        <Modal visible={metInfoVisible} transparent animationType="slide" onRequestClose={() => setMetInfoVisible(false)}>
+          <TouchableOpacity style={styles.metSheetOverlay} activeOpacity={1} onPress={() => setMetInfoVisible(false)}>
+            <TouchableOpacity style={styles.metSheet} activeOpacity={1}>
+              <View style={styles.metSheetGrab} />
+              <Text style={styles.metSheetTitle}>什么是「梅脱」？</Text>
+              <Text style={styles.metSheetBody}>
+                梅脱（MET，代谢当量）是衡量活动强度的通用单位：1 梅脱约等于安静坐着时的能量消耗强度，数值越高，活动越剧烈。
+              </Text>
+              <Text style={styles.metSheetBody}>
+                {'· 1–3 梅脱：轻度（散步、家务）\n· 3–6 梅脱：中度（快走、骑行）\n· 6–9 梅脱：较高（跑步、爬楼）\n· 9 以上：高强度（冲刺、球类）'}
+              </Text>
+              <Text style={styles.metSheetNote}>
+                当前精简版戒指不直接回传梅脱，这里的数值由当日心率变化估算，仅供参考。
+              </Text>
+              <TouchableOpacity style={styles.metSheetBtn} onPress={() => setMetInfoVisible(false)}>
+                <Text style={styles.metSheetBtnTxt}>知道了</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      </>
     );
   }
 
@@ -1014,7 +1076,7 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
                   <Line x1={AX_L} y1={y} x2={VW - AX_R} y2={y}
                     stroke={chart.grid} strokeWidth={chart.lw.grid}
                     strokeDasharray={v === 0 ? undefined : chart.dash.grid} />
-                  <SvgText x={AX_L - 4} y={y + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>{v}</SvgText>
+                  <SvgText x={AX_L - 4} y={y + 3} textAnchor="end" fontSize={chart.axisFont} fill={theme.colors.textSub}>{v}</SvgText>
                 </G>
               );
             })}
@@ -1040,7 +1102,7 @@ function CognitiveRangeView({ range, anchor, rows }: { range: RangeKey; anchor: 
               );
             })}
             {periods.map((p, i) => (
-              <SvgText key={i} x={cxOf(i)} y={chartH - 5} textAnchor="middle" fontSize={8.5} fill={theme.colors.textSub}>{showXLabel(range, i, p.label) ? p.label : ''}</SvgText>
+              <SvgText key={i} x={cxOf(i)} y={chartH - 5} textAnchor="middle" fontSize={chart.axisFont} fill={theme.colors.textSub}>{showXLabel(range, i, p.label) ? p.label : ''}</SvgText>
             ))}
           </Svg>
           </View>
@@ -1169,7 +1231,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
               <Line x1={AX_L} y1={yOf(v)} x2={VW - AX_R} y2={yOf(v)}
                 stroke={chart.grid}
                 strokeWidth={chart.lw.grid} strokeDasharray={v === 0 ? undefined : chart.dash.grid} />
-              <SvgText x={AX_L - 4} y={yOf(v) + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>{v}</SvgText>
+              <SvgText x={AX_L - 4} y={yOf(v) + 3} textAnchor="end" fontSize={chart.axisFont} fill={theme.colors.textSub}>{v}</SvgText>
             </G>
           ))}
           {/* 右侧档位标注 */}
@@ -1179,7 +1241,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
             { label: '低', v: 17, color: theme.colors.success },
           ].map((b) => (
             <SvgText key={'slv' + b.label} x={VW - AX_R + 3} y={yOf(b.v) + 3}
-              textAnchor="start" fontSize={8.5} fill={b.color} fontWeight="600">{b.label}</SvgText>
+              textAnchor="start" fontSize={chart.axisFont} fill={b.color} fontWeight="600">{b.label}</SvgText>
           ))}
 
           {/* 区间均值参考线：★ 稿里虚线是 bad 色（#C9598A dashed，opacity 0.7） */}
@@ -1213,7 +1275,7 @@ function StressRangeView({ range, anchor, ring }: { range: RangeKey; anchor: Dat
           })()}
 
           {rows.map((r, i) => (
-            <SvgText key={'sx' + i} x={cxOf(i)} y={chartH - 5} textAnchor="middle" fontSize={8.5}
+            <SvgText key={'sx' + i} x={cxOf(i)} y={chartH - 5} textAnchor="middle" fontSize={chart.axisFont}
               fill={theme.colors.textSub}>{showXLabel(range, i, r.label) ? r.label : ''}</SvgText>
           ))}
         </Svg>
@@ -1547,6 +1609,27 @@ const styles = StyleSheet.create({
   },
   statSub: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center', lineHeight: theme.fontSize.micro * 1.4 },
   statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(0.5), textAlign: 'center' },
+  // ★ 2026-11-07：梅脱格 —— 标签行（标签 + 感叹号）居中排布
+  statLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  metInfoDot: {
+    width: theme.fs(13), height: theme.fs(13), borderRadius: theme.fs(6.5),
+    borderWidth: 1, borderColor: theme.colors.textSub, marginLeft: theme.sp(0.75),
+    alignItems: 'center', justifyContent: 'center',
+  },
+  metInfoTxt: { fontSize: theme.fs(9), lineHeight: theme.fs(12), fontWeight: theme.weight.bold as any, color: theme.colors.textSub, marginTop: -theme.sp(0.4) },
+  // ★ 2026-11-07：梅脱解释弹层（底部拉起，深海蓝底与详情页弹窗统一）
+  metSheetOverlay: { flex: 1, backgroundColor: 'rgba(4,18,38,0.72)', justifyContent: 'flex-end' },
+  metSheet: {
+    backgroundColor: '#113861', borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 26,
+    borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.24)',
+  },
+  metSheetGrab: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.30)', marginBottom: 12 },
+  metSheetTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: 10 },
+  metSheetBody: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 21, marginBottom: 8 },
+  metSheetNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, opacity: 0.9, lineHeight: 17, marginTop: 2, marginBottom: 16 },
+  metSheetBtn: { alignSelf: 'stretch', backgroundColor: mm.colors.purpleBtn, borderRadius: theme.radius.md, paddingVertical: 11, alignItems: 'center' },
+  metSheetBtnTxt: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: '#FFFFFF' },
   statValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.body * 1.15, textAlign: 'center' },
   insightText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.55, paddingHorizontal: theme.space.xs },
 
@@ -1779,7 +1862,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
                 const y = plotTop + plotH - f * plotH;
                 return (
                   <G key={`y${f}`}>
-                    <SvgText x={AX_L2 - 4} y={y + 3} textAnchor="end" fontSize={8.5} fill={theme.colors.textSub}>
+                    <SvgText x={AX_L2 - 4} y={y + 3} textAnchor="end" fontSize={chart.axisFont} fill={theme.colors.textSub}>
                       {Math.round(v)}
                     </SvgText>
                     {f > 0 && f < 1 && (
@@ -1826,7 +1909,7 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
                                fontWeight="700" fill={theme.colors.celebrateGrad[0]}>▲</SvgText>
                     )}
                     {showXLabel(range, i, periods[i].label) && (
-                      <SvgText x={cxOfP(i)} y={chartH - theme.sp(1.5)} textAnchor="middle" fontSize={8.5} fill={theme.colors.textSub}>
+                      <SvgText x={cxOfP(i)} y={chartH - theme.sp(1.5)} textAnchor="middle" fontSize={chart.axisFont} fill={theme.colors.textSub}>
                         {periods[i].label}
                       </SvgText>
                     )}
@@ -1858,10 +1941,9 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
               <StatCell label="低谷" value={String(trough)} sub="kcal" valueColor={theme.colors.success} />
               <StatCell label="波动度" value={String(volatility)} sub="σ" />
             </View>
-            {/* ★ 2026-11-06（用户）：运动时长/步数/距离（日均）从上方「周平均活动消耗」Hero 卡移到本卡四格下方 */}
+            {/* ★ 2026-11-07（用户）：周视图同样删掉「运动时长」格（精简版无此数据），步数/距离 两格日均 */}
             {(() => {
               const allKeys = periods.flatMap((p) => p.dayKeys).filter((x) => x <= dayKey(Date.now()));
-              const agg = aggregateExercise(ring, allKeys);
               const meanOf = (pick: (s: any) => number): number | null => {
                 const vals = allKeys.map((k) => pick(ring?.stepDaily?.[k])).filter((v) => Number.isFinite(v) && (v as number) > 0);
                 return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
@@ -1871,13 +1953,6 @@ function RangeTrendBars({ type, range, anchor, ring }: { type: EnergyType; range
               const unit = { fontSize: theme.fontSize.micro, color: theme.colors.textSub };
               return (
                 <View style={[styles.statGrid, { marginTop: theme.sp(1.5) }]}>
-                  <View style={styles.statCell}>
-                    <Text style={styles.statLabel}>运动时长</Text>
-                    <Text style={styles.statValue} numberOfLines={1}>
-                      {agg.minutes ?? '—'}{agg.minutes != null ? <Text style={unit}> 分</Text> : null}
-                    </Text>
-                    <Text style={styles.statSub}>日均</Text>
-                  </View>
                   <View style={styles.statCell}>
                     <Text style={styles.statLabel}>步数</Text>
                     <Text style={styles.statValue} numberOfLines={1}>

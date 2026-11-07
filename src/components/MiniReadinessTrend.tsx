@@ -124,5 +124,5 @@ export default function MiniReadinessTrend({ points, condensed, height }: Props)
 
 /** 迷你轴标签 */
 function SvgTextX({ x, y, anchor, label }: { x: number; y: number; anchor: 'start' | 'middle' | 'end'; label: string }) {
-  return <SvgText x={x} y={y} textAnchor={anchor} fontSize={8} fill="rgba(120,110,160,0.6)">{label}</SvgText>;
+  return <SvgText x={x} y={y} textAnchor={anchor} fontSize={chart.axisFont} fill="rgba(120,110,160,0.6)">{label}</SvgText>;
 }

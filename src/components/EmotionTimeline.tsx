@@ -259,7 +259,7 @@ export default function EmotionTimeline({
         })}
 
         {empty ? (
-          <SvgText x={width / 2} y={height / 2} fontSize={11} fill="#AAA" textAnchor="middle">
+          <SvgText x={width / 2} y={height / 2} fontSize={chart.axisFont} fill="#AAA" textAnchor="middle">
             暂无情绪数据 — 等戒指同步几轮后自动画
           </SvgText>
         ) : (
@@ -281,7 +281,7 @@ export default function EmotionTimeline({
                 <SvgText
                   x={Math.min(last.x, width - 14)}
                   y={Math.max(last.y - 6, pad.t + 10)}
-                  fontSize={11} textAnchor="middle"
+                  fontSize={chart.axisFont} textAnchor="middle"
                 >{emoji}</SvgText>
               );
             })()}

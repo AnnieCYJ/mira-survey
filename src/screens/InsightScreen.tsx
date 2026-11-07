@@ -22,12 +22,16 @@ import { estimateHealthAge } from '../lib/healthAgeEstimate';
 import ExamTab from '../components/ExamTab';
 import QuickCheckTab from '../components/QuickCheckTab';
 import { getLatestExamRecord } from '../data/examStore';
+// ★ 2026-11-07：首次登录 Onboarding 录入的年龄存在 userStore.session.profile.age
+import { userStore, getCachedSession } from '../data/userStore';
 import ChatSheet from '../components/ChatSheet';
 import EmotionInsightView from '../components/EmotionInsightView';
 import EmotionQuickRecord from '../components/EmotionQuickRecord';
 import CognitiveLoadCard from "../components/CognitiveLoadCard";
 import CortisolSleepSummary from '../components/CortisolSleepSummary';
 import CortisolRhythmCard from '../components/CortisolRhythmCard';
+import AiAnalysis, { AiResultRow } from '../components/AiAnalysis';
+import { buildMetricAnalysis } from '../lib/metricAnalysis';
 import {
   METRICS,
   BASIC_METRICS,
@@ -47,6 +51,7 @@ import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import StressRecoveryCard from '../components/StressRecoveryCard';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, judgeCortisolRhythm } from '../lib/cortisolProxy';
 import { reportNowMsForDay } from '../lib/dayAnchor';
@@ -65,8 +70,8 @@ function formatValue(v: number | null): string {
 type TabKey = 'basics' | MetricKey;
 
 const TOP_TABS: { key: 'rhythm' | 'longevity'; label: string }[] = [
-  { key: 'rhythm', label: '荷尔蒙节律' },
-  { key: 'longevity', label: '身体指标' },
+  { key: 'rhythm', label: '身体节律' },
+  { key: 'longevity', label: '基础指标' },
 ];
 
 // ★ 2026-10-07（用户：皮质醇 → 昼夜节律；雌/孕激素 → 生理周期节律）——2026-10-12 落地到 label
@@ -181,7 +186,7 @@ const PIN_AFTER: Record<string, string> = {
   sns: 'skin',
 };
 
-import { computeCurrentHealthAge } from '../lib/healthAgeCurrent';
+import { computeCurrentHealthAge, hasBaselineDays } from '../lib/healthAgeCurrent';
 
 export default function InsightScreen() {
   // ★ mira-ocean（2026-10-17）：深底页面 → 聚焦时状态栏改亮图标，失焦恢复深色
@@ -200,22 +205,28 @@ export default function InsightScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     const revision = profileRevision.current;
-    // ★ 2026-11-06 审查（docs/audit/02）：**删除演示年龄兜底**。
-    //   旧实现：未录入身体档案时硬塞 DEMO_PROFILE_AGE = 30，让身体年龄卡片能出数。
-    //   但身体年龄 = 实际年龄 + 活力调整 —— 用假的 30 岁算出来的「身体年龄 27 岁」
-    //   是彻头彻尾的假数据，渠道演示时会被当成用户的真实身体年龄。
-    //   现在：无真实档案 → actualAge 保持 null → HealthAgeCard 的 hasEstimate 为 false
-    //   → 走「去填写身体档案」CTA 空态，不显示任何编造的年龄数字。
-    const clampAge = (a: number | null | undefined) =>
-      a != null && Number.isInteger(a) && a >= 18 && a <= 120 ? a : null;
+    // ★ 2026-11-07（用户）：「我一开始已经填了我的年龄这些东西，就直接写…
+    //   等到七天以后有基础数据以后再更新」—— 年龄在首次登录 Onboarding 就录进
+    //   userStore.session.profile.age 了，旧实现只读戒指档案 getUserProfile()，
+    //   而这枚 LunaMira 从未下发过身体档案 → actualAge 恒 null →
+    //   身体年龄卡一直挂「填写年龄后查看 / 填写身体档案」，与事实矛盾。
+    //   现在按「体检记录 → 首次登录档案 → 戒指档案」取真实年龄，绝不硬塞演示值。
+    const clampAge = (a: unknown): number | null => {
+      const n = typeof a === 'number' ? a : typeof a === 'string' ? Number(a) : NaN;
+      return Number.isFinite(n) && n >= 18 && n <= 120 ? Math.round(n) : null;
+    };
+    const profileAge = getCachedSession()?.profile?.age;
     const devAge = RingBle.getUserProfile()?.age;
-    setActualAge(clampAge(devAge));
-    getLatestExamRecord().then(record => {
+    setActualAge(clampAge(devAge) ?? clampAge(profileAge));
+    Promise.all([
+      getLatestExamRecord().catch(() => null),
+      userStore.loadSession().catch(() => null),
+    ]).then(([record, session]) => {
       if (!active || revision !== profileRevision.current) return;
-      const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
+      const value = record?.inputs.age ?? session?.profile?.age ?? RingBle.getUserProfile()?.age ?? profileAge;
       setActualAge(clampAge(value));
     }).catch(() => {
-      setActualAge(clampAge(RingBle.getUserProfile()?.age));
+      setActualAge(clampAge(devAge) ?? clampAge(profileAge));
     });
     return () => { active = false; };
   }, []));
@@ -345,7 +356,16 @@ export default function InsightScreen() {
     // ★ 2026-10-28：统一到共享实时计算（lib/healthAgeCurrent），与详情页头条完全一致；
     //   去掉按天冻结 —— 既保证洞察页卡 = 详情页数字（连通），又能随数据实时更新（不再「一天不变」）。
     const cur = computeCurrentHealthAge(ACTUAL);
-    const healthAge = cur?.healthAge ?? estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
+    const est = estimateHealthAge(ACTUAL, longTerm, hormonalHealthy, hormonalLabel !== '数据不足');
+    // ★ 本轮（用户）：年龄首启即录入，无长期健康数据时应回落到「身体年龄 = 实际年龄」（差值 0），
+    //   不再显示「填写身体档案 / 数据积累中」空态；攒够数据（综合分出来）后自然过渡到年轻/偏老。
+    // ★ 2026-11-07（用户）：佩戴未满 3 天，身体年龄就按首次录入的实际年龄显示，
+    //   攒够 3 天基础数据后才允许「偏年轻 / 偏老」调整。两页共用 healthAgeCurrent 的判据。
+    const baselineReady = hasBaselineDays();
+    const healthAge = baselineReady
+      ? (cur?.healthAge ?? est ?? (ACTUAL != null ? ACTUAL : null))
+      : ACTUAL;
+    const usingProfileAge = !baselineReady && ACTUAL != null;
     // 弧长用与身体年龄同一份实时综合分（数字与弧永远同步）
     const arcScore = cur?.overallScore ?? longTerm;
     // ★ 2026-10-18：用「年轻/偏老」结论统摄文案——确保下方 AI 分析与上方大数字（较实际年龄低/高 X 岁）同方向，不再各说各话。
@@ -369,7 +389,9 @@ export default function InsightScreen() {
       : `长期健康数据偏弱，主要是睡眠和压力在拖`;
     // ★ 2026-10-18：先说「年轻/偏老」结论（与上方大数字同源），再给两个维度拆解，避免文案方向与数字打架。
     let directionClause = '';
-    if (hasEstimate) {
+    if (usingProfileAge) {
+      directionClause = '身体年龄先按首次录入的实际年龄显示；连续佩戴 3 天、攒够基础数据后会随状态更新。';
+    } else if (hasEstimate) {
       directionClause = isFlat
         ? '身体年龄和实际年龄基本一致。'
         : isYounger
@@ -390,7 +412,7 @@ export default function InsightScreen() {
     if (suggestions.length < 2) {
       suggestions.push(hormonalHealthy && longTermHealthy
         ? '现在的作息和运动节奏很好，照这样保持就行。'
-        : '再连续戴 7 天，数据攒够了这份分析会准很多。');
+        : '再连续戴 3 天，数据攒够了这份分析会准很多。');
     }
     return { healthAge, arcScore, analysis, suggestions: suggestions.slice(0, 2) };
   }, [ring, overallScoreFromReport, actualAge]);
@@ -647,9 +669,16 @@ export default function InsightScreen() {
       } else if (loc && sane(m.key, loc.v)) { real = loc.v; measureTime = loc.t; }
       else measureTime = getCachedLastT(m.key);
     }
+    // ★ 2026-11-06（用户）：右上角改为显示「最新更新时间」，不再显示「M/D 日均」/相对时间
+    const updatedAt: number | null =
+      measureTime ??
+      (ring.lastUpdated as Record<string, number | null>)[rk] ??
+      (sourceLabel ? dailyDateTs : null);
     // ★ 2026-11-06（用户）：体温等「当前固件尚未回读到」的指标，没有任何真实读数时整张卡不渲染（降噪）
     if (m.hideNoData && real == null) return null;
     const hist = getCachedHist(m.key);
+    // ★ 本轮（用户）：每个基础指标卡 AI 分析 → 作为卡片内底部区块（analysis prop 传入，整张卡为「一张卡」）
+    const metricAnalysisText = buildMetricAnalysis(m, real) ?? undefined;
     if (m.manualOnly) {
       return (
         <ManualMetricCard
@@ -660,6 +689,7 @@ export default function InsightScreen() {
           measureTime={measureTime}
           onMeasure={() => RingBle.measure(rk)}
           onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
+          analysis={metricAnalysisText}
         />
       );
     }
@@ -677,7 +707,9 @@ export default function InsightScreen() {
         hideMeasure={m.hideMeasure ?? true}
         measureTime={measureTime}
         sourceLabel={sourceLabel}
+        updatedAt={updatedAt}
         showTrend={showTrendFor(m.key)}
+        analysis={metricAnalysisText}
         onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
       />
     );
@@ -748,6 +780,8 @@ export default function InsightScreen() {
             仅 BASE_UI 生效；PRO_UI 走下面原分子 tab 布局。 */}
         {isBaseLayout && (topTab === 'rhythm' ? (
           <>
+            {/* ★ 2026-11-06（用户）：新增「压力恢复」卡片，置于昼夜节律卡片之上 */}
+            <StressRecoveryCard onPress={() => navigation.navigate('StressRecoveryDetail')} />
             {/* ★ 2026-11-06（用户）：移除「昼夜节律」小标题；★ 本轮：生理周期节律改为卡片内标题（与昼夜节律一致）+ 先隐藏雌激素趋势图 */}
             <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
             <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />
@@ -759,6 +793,16 @@ export default function InsightScreen() {
             <View style={styles.basicsList}>
               {basicsSignals.map((m) => renderBasicsCard(m))}
             </View>
+            {/* ★ 2026-11-07（用户：「身体指标底下加一个血压的卡片」）：
+                LunaMira 精简版能力包 BpTag=1，onBatch 逐点真实回传 bpSys/bpDia（近 3 天各 92 点），
+                所以这里补一张「戒指实测血压」卡，紧跟基础指标列表，点按进血压详情页。
+                ⚠ 只在 isBaseLayout（BASE_UI）分支渲染：PRO_UI 仍走原来的「血压」子 tab，
+                两档机型的排布互不干扰。 */}
+            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('BpDetail')}>
+              <BpTrendCard ring={ring} />
+            </TouchableOpacity>
+            {/* ★ 2026-11-07（用户）：「手动记录（自测）」卡组整个下线——不再需要手动记录血压血糖，
+                基础版「身体指标」区只保留 BpTrendCard 等戒指同源卡片。 */}
             {SHOW_LONGEVITY_AI ? <InsightBanner rows={insightRows} pending={aiOverview.loading} /> : null}
           </>
         ))}
@@ -1184,10 +1228,10 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
   return (
     <Card padded={false}>
       <View style={{ padding: theme.space.cardPad }}>
-        {/* 头部：图标方 + 名称 + 右侧测量时间 */}
+        {/* 头部：图标方 + 名称 + 右侧测量时间（★ 2026-11-07：血压换紫图，图标方同步紫系） */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.skySoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
-            <Icon name="drop" size={14} color={mm.colors.skyDeep} />
+          <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.purpleSoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
+            <Icon name="drop" size={14} color={mm.colors.purpleDeep} />
           </View>
           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
           <View style={{ flex: 1 }} />
@@ -1203,7 +1247,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
         <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
           {lastSys != null && lastDia != null ? `${Math.round(lastSys.v)}/${Math.round(lastDia.v)}` : '—'}
         </Text>
-        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.skyDeep, marginTop: theme.sp(0.5) }}>mmHg · 今日</Text>
+        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.purpleDeep, marginTop: theme.sp(0.5) }}>mmHg · 今日</Text>
 
         {/* 全天趋势（S 档）：收缩 skyCore / 舒张 skyMid 双平滑曲线 + 末点；无数据画虚线基线骨架 */}
         <View
@@ -1223,15 +1267,15 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
               ))}
               {hasData ? (
                 <>
-                  <SvgPath d={sysD} fill="none" stroke={mm.colors.skyCore} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
-                  <SvgPath d={diaD} fill="none" stroke={mm.colors.skyMid} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
+                  <SvgPath d={sysD} fill="none" stroke={mm.colors.purpleCore} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
+                  <SvgPath d={diaD} fill="none" stroke={mm.colors.purpleDeep} strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
                   {lastSys != null && (
                     <SvgCircle cx={xOf(lastSys.t)} cy={yOf(lastSys.v)} r={chart.dot.radius}
-                      fill={mm.colors.skyCore} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
+                      fill={mm.colors.purpleCore} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
                   )}
                   {lastDia != null && (
                     <SvgCircle cx={xOf(lastDia.t)} cy={yOf(lastDia.v)} r={chart.dot.radius}
-                      fill={mm.colors.skyMid} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
+                      fill={mm.colors.purpleDeep} stroke="#FFFFFF" strokeWidth={chart.dot.stroke} />
                   )}
                 </>
               ) : (
@@ -1253,17 +1297,60 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
         {/* 图例：收缩 / 舒张 */}
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.skyCore }} />
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.purpleCore }} />
             <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>收缩压</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.skyMid }} />
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.purpleDeep }} />
             <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>舒张压</Text>
           </View>
         </View>
         <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(0.5) }}>
           纵轴 = mmHg · 横轴 = 一天 24h{hasData ? '' : ' · 暂无血压采样'}
         </Text>
+        {/* ★ 2026-11-07（用户）：血压也要有 AI 分析 —— 与心率/血氧/HRV 同款结论行，
+            不写「AI 分析」标题，正文完整不截断、字号与荷尔蒙节律分析一致（fontSize.sm） */}
+        {(() => {
+          const sVals = sysPts.map((p: any) => p.v).filter((v: number) => Number.isFinite(v) && v > 0);
+          const dVals = diaPts.map((p: any) => p.v).filter((v: number) => Number.isFinite(v) && v > 0);
+          if (!hasData) {
+            return (
+              <AiResultRow compact tone="neutral" bodyColor={theme.colors.textBody}>
+                今日暂无血压采样。手动录入或完成一次测量后，这里会给出全天血压的解读。
+              </AiResultRow>
+            );
+          }
+          const avgS = sVals.length ? sVals.reduce((a: number, b: number) => a + b, 0) / sVals.length : null;
+          const avgD = dVals.length ? dVals.reduce((a: number, b: number) => a + b, 0) / dVals.length : null;
+          const lastS = lastSys != null ? Math.round(lastSys.v) : null;
+          const lastD = lastDia != null ? Math.round(lastDia.v) : null;
+          const head = avgS != null && avgD != null
+            ? `今天平均血压 ${Math.round(avgS)}/${Math.round(avgD)} mmHg${lastS != null && lastD != null ? `，最近一次 ${lastS}/${lastD}` : ''}。`
+            : lastS != null && lastD != null
+              ? `今天最近一次血压 ${lastS}/${lastD} mmHg。`
+              : '';
+          const high = avgS ?? lastS;
+          const low = avgD ?? lastD;
+          let verdict: string;
+          let tone: 'good' | 'warn' | 'neutral' = 'neutral';
+          if (high == null) {
+            verdict = '舒张压暂无足够读数，先看收缩压走势即可。';
+          } else if (high >= 140 || (low != null && low >= 90)) {
+            verdict = '整体已进入偏高水平，建议连续几天固定时间复测；若持续偏高，请咨询医生。';
+            tone = 'warn';
+          } else if (high >= 120 || (low != null && low >= 80)) {
+            verdict = '处在正常高值区间，注意控制盐分摄入、保证睡眠，趋势平稳就不用担心。';
+            tone = 'warn';
+          } else {
+            verdict = '收缩压与舒张压都在理想范围内，保持目前的作息与活动节奏即可。';
+            tone = 'good';
+          }
+          return (
+            <AiResultRow compact tone={tone} bodyColor={theme.colors.textBody}>
+              {head}{verdict}
+            </AiResultRow>
+          );
+        })()}
       </View>
     </Card>
   );
@@ -1298,7 +1385,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           })}
           {MON.slice(0, N).map((d, i) => (
             <SvgText key={'wl' + i} x={i * slotW + slotW / 2} y={H - 4}
-              textAnchor="middle" fontSize={9}
+              textAnchor="middle" fontSize={chart.axisFont}
               fontWeight={i === todayIdx ? '700' : '500'}
               fill={i === todayIdx ? mm.colors.skyDeep : mm.colors.inkFaint}>
               {d}

@@ -310,7 +310,7 @@ export default function TempBiphasicChart({
               x={onlyPoint.x}
               y={onlyPoint.y - 10}
               textAnchor="middle"
-              fontSize={11}
+              fontSize={chart.axisFont}
               fill={theme.colors.textTitle}
               fontWeight="600"
             >
