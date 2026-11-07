@@ -336,10 +336,11 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: theme.space.card, alignItems: 'center' },
   brand: { alignItems: 'center', marginBottom: theme.space.xl },
   wordmark: {
-    fontSize: theme.fontSize.h1,
-    fontWeight: theme.weight.bold as any,
+    // ★ 2026-11-07（用户「Luna Mira 要手写体」）：与启动页同款 Caveat 手写字体（AuthGate 全局加载）
+    fontSize: theme.fontSize.h1 * 1.6,
     color: theme.colors.textTitle,
     letterSpacing: 1,
+    fontFamily: 'Caveat',
   },
   tagline: {
     fontSize: theme.fontSize.sm,
@@ -405,7 +406,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
   },
   codeBtnOff: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  codeTxt: { fontSize: theme.fontSize.sm, color: '#FFFFFF', fontWeight: theme.weight.medium as any },
+  codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, fontWeight: theme.weight.medium as any },
   codeTxtOff: { color: theme.colors.textSub },
   error: {
     color: theme.colors.danger,
@@ -422,11 +423,11 @@ const s = StyleSheet.create({
     backgroundColor: theme.colors.ui.white92,
     borderWidth: 1,
     borderColor: theme.colors.ui.white55,
-    shadowColor: '#000',
+    shadowColor: theme.colors.ui.shadowBlack,
     shadowOpacity: 0.14,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 0,
   },
   primaryOff: { opacity: 0.6 },
   primaryTxt: { color: theme.colors.bgBottom, fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold as any },

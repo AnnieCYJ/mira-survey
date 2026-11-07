@@ -166,7 +166,8 @@ export default function ProfileScreen({ navigation }: any) {
       <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>回顾</Text>
-          {/* ★ 2026-11-06（用户）：品牌句移到「日」时间选择器下方（JourneyDayView 内），此处不再显示 */}
+          {/* ★ 本轮（用户）：品牌句文案改为「每一次卓越表现」 */}
+          <Text style={styles.reviewTagline}>LunaMira AI 记得你未曾发觉的每一次卓越表现</Text>
         </Animated.View>
 
         {/* ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月） */}
@@ -210,11 +211,9 @@ export default function ProfileScreen({ navigation }: any) {
         <RelaxCardDeck onPlayRelax={() => setRelaxVisible(true)} />
         </>
         )}
-      </ScreenContainer>
-
-      {/* ★ 2026-11-05（用户 #286）：单日记录摘要钉在底部 Tab 正上方（固定浮层，不随滚动走） */}
+      {/* ★ 2026-11-06（用户）：单日记录摘要移到回顾内容流末尾（白字、无底色，置于 Tab 之上、不遮挡） */}
       {reviewTab === 'day' && daySummary ? (
-        <View style={styles.daySummaryBar} pointerEvents="none">
+        <View style={styles.daySummaryBar}>
           <Text style={styles.daySummaryText} numberOfLines={1}>
             {daySummary.selLabel}共{' '}
             <Text style={styles.daySummaryNum}>{daySummary.count}</Text> 条记录
@@ -227,6 +226,7 @@ export default function ProfileScreen({ navigation }: any) {
           )}
         </View>
       ) : null}
+      </ScreenContainer>
 
       <Confetti visible={celebration.visible} duration={3000} count={120} />
 
@@ -280,30 +280,25 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   // ★ 2026-11-05（用户 #286）：钉在 Tab 正上方的单日摘要浮层
   daySummaryBar: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    backgroundColor: theme.colors.cardBg,
-    borderTopWidth: 1, borderTopColor: theme.colors.cardBorder,
-    paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(4),
+    marginTop: theme.sp(8), marginBottom: theme.sp(3),
     alignItems: 'center',
-    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
-    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: -mm.shadow.height },
-    elevation: mm.shadow.elevation,
   },
-  daySummaryText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
-  daySummaryNum: { fontWeight: theme.weight.bold as never, color: theme.colors.textTitle },
-  daySummaryClue: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(0.5) },
+  daySummaryText: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, textAlign: 'center' },
+  daySummaryNum: { fontWeight: theme.weight.bold as never, color: theme.colors.textWhite },
+  daySummaryClue: { fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginTop: theme.sp(0.5) },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,
     color: mm.colors.ink,
     marginBottom: theme.space.xs,
   },
-  /* ★ 本轮（用户）：回顾标题下的品牌句 —— 字号放大一档、颜色提亮，更易读 */
+  /* ★ 2026-11-06（用户）：回顾标题下的品牌句 —— 小字、inkSoft、标题正下方 */
   reviewTagline: {
-    fontSize: theme.fontSize.body,
+    fontSize: theme.fs(14),
     color: mm.colors.inkSoft,
-    lineHeight: theme.fontSize.body * 1.5,
-    marginBottom: theme.space.md,
+    lineHeight: theme.fs(14) * 1.45,
+    marginTop: theme.sp(1),
+    marginBottom: theme.sp(2),
   },
   /* ★ 本轮（用户 #260）：回顾页 今日 / 本月 改用 RangeSwitch 分段控件，样式随组件，本页不再单独定义 */
   reviewToday: { marginTop: theme.sp(1) },
@@ -345,7 +340,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 0,
   },
   celebrateIconWrapMonthly: {
     backgroundColor: theme.colors.accentSolid,

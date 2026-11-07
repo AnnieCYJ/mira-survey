@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1.0,
     shadowRadius: 32,
-    elevation: 30,
+    elevation: 0,
     backgroundColor: 'transparent',
   },
 
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 12,
-    elevation: 14,
+    elevation: 0,
   },
 
   // ★ 向内光晕：仅白边（填充已由上方 LinearGradient 承担）
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   transcriptHasText: {
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
     opacity: 1,
   },
 

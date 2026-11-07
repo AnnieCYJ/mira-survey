@@ -142,11 +142,11 @@ const styles = StyleSheet.create({
     // ★ mira-ocean（2026-10-17 用户「日周月年按钮变紫改白」）：选中 pill 紫 → 近白
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: theme.radius.pill,
-    shadowColor: '#000',
+    shadowColor: theme.colors.ui.shadowBlack,
     shadowOpacity: 0.18,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    elevation: 0,
   },
   textStack: { alignItems: 'center', justifyContent: 'center' },
   textOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },

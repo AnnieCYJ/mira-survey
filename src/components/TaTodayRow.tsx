@@ -55,7 +55,7 @@ export default function TaTodayRow({ onSelect, dark = false, compact = false, co
                   backgroundColor: m.avatarColor, alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: avatarSize * 0.42 }}>{m.avatarLetter}</Text>
+                <Text style={{ color: theme.colors.textWhite, fontWeight: '600', fontSize: avatarSize * 0.42 }}>{m.avatarLetter}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: labelColor, fontSize: theme.fontSize.body, fontWeight: theme.weight.medium as any }}>{m.name}</Text>

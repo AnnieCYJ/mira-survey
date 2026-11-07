@@ -741,7 +741,7 @@ function MoodYearHeat({ anchor, version }: { anchor: Date; version: number }) {
                   }}
                 >
                   {n > 0 ? (
-                    <Text style={{ fontSize: 8, color: '#FFFFFF', fontWeight: ('700' as never) }}>{n}</Text>
+                    <Text style={{ fontSize: 8, color: theme.colors.textWhite, fontWeight: ('700' as never) }}>{n}</Text>
                   ) : null}
                 </View>
               </View>

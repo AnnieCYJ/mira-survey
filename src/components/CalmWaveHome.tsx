@@ -15,7 +15,7 @@
  *   chips / 半圆环全部可点 → 跳对应详情页（与 TodayScreen 同款路由目标）。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { RingBle } from '../ble/RingBleManager';
@@ -146,9 +146,7 @@ const BASE_CHIP_DEFS: ChipDef[] = [
 //   AI 建议卡字号同步放大。花瓣历史资产见 git a07525c。
 // ★ 2026-11-03（用户：展示三个卡片，后边往后移；睡眠恢复/身心压力字要大一些）：
 //   前 3 张大卡（宽 100、标签 14）更醒目，其余卡片收窄（宽 74、标签 12.5）向右滑动可见。
-// ★ 本轮：底部指标卡整体略放大（用户："卡片可以稍微大一点"）—— 宽 100→108、高 96→104
-const CHIP_BIG_W = 108;
-const CHIP_SMALL_W = 74;
+// ★ 本轮：底部指标卡整体略放大（用户："卡片可以稍微大一点"）—— 高 96→104
 const CHIP_H = 104;
 const CHIP_GAP = 8;
 // 大半圆环尺寸（★ 2026-11-03 还原 2026-10-18 大半圆：viewBox 280×150，R=116.7，用于下方布局块高估算）
@@ -569,27 +567,18 @@ export default function CalmWaveHome() {
         </TouchableOpacity>
       </View>
 
-      {/* 指标卡行：横向滑动（★ 2026-10-18 用户："卡片展示四个，最后一个滑动可看"）。
-          首屏 4 张 84×96 大卡（大字），第 5 张滑动可见；snapToInterval 逐张吸附；
+      {/* 指标卡行：★ 2026-11-07（用户）：取消横向滑动，改为整行等宽平铺，不再有右滑阴影。
           位置在海浪/深色交界线正下方（过渡区深色渐变带上）。每张可点进对应详情页。 */}
       <View style={[s.chipRowZone, { top: chipRowTop, height: CHIP_H }]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, gap: CHIP_GAP }}
-        >
-          {/* ★ 2026-10-28（用户：暂时没数据的心肺能力不该放首页）—— vo2 为 null（档案缺 / 不足 7 晚静息心率）
-              时直接从卡行移除；有值才出现，不影响其余 5 张卡的滑动布局。
-              ★ 2026-11-03：前 3 张为大卡（宽 100、标签/数值更大），其余收窄（宽 74）向右滑动。 */}
-          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS).filter((c) => c.key !== 'cardio' || !!vo2).map((c, i) => {
+        <View style={s.chipRow}>
+          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS).filter((c) => c.key !== 'cardio' || !!vo2).map((c) => {
             const d = chipDyn[c.key];
             // ★ 本轮：全部卡片统一为大卡尺寸（活动消耗/生理周期 与 情绪/身心压力 同尺寸）
             const big = true;
-            const w = CHIP_BIG_W;
             return (
               <TouchableOpacity
                 key={c.key}
-                style={[s.chip, { width: w }]}
+                style={[s.chip, { flex: 1, minWidth: 0 }]}
                 activeOpacity={0.7}
                 accessibilityLabel={`${c.label} ${d.value}${d.unit ? d.unit : ''}`}
                 onPress={() => c.go(navigation)}
@@ -604,15 +593,7 @@ export default function CalmWaveHome() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
-        {/* 右侧渐隐带：提示"还有卡片，向左滑动"（pointerEvents 放过触摸） */}
-        <LinearGradient
-          colors={['rgba(10,41,79,0)', 'rgba(10,41,79,0.38)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={s.chipFade}
-          pointerEvents="none"
-        />
+        </View>
       </View>
 
       {/* 分析文字（浮于照片，无卡片底）★ 2026-11-06：实测行高驱动下方胶囊位置（三排自适应） */}
@@ -665,7 +646,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
     fontSize: theme.fontSize.stat,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
     letterSpacing: 0.5,
     textShadowColor: 'rgba(10,41,79,0.6)',
     textShadowOffset: { width: 0, height: 1 },
@@ -688,25 +669,24 @@ const s = StyleSheet.create({
     left: 16,
     fontSize: theme.fontSize.stat,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
     letterSpacing: 0.5,
     textShadowColor: 'rgba(20,44,64,0.65)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
   },
 
-  // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；84×96 大字版，横向滑动 4+1）
+  // 指标方卡（Oura 式玻璃卡：icon + label + 值 + tag；整行等宽平铺，不可滑动）
   chipRowZone: {
     position: 'absolute',
     left: 0,
     right: 0,
   },
-  chipFade: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 26,
+  chipRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: CHIP_GAP,
+    alignItems: 'stretch',
   },
   chip: {
     height: CHIP_H,
@@ -724,7 +704,7 @@ const s = StyleSheet.create({
   chipLabel: { fontSize: theme.fontSize.xs, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
   chipLabelBig: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.78)' },
   chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
-  chipVal: { fontSize: theme.fontSize.card, fontWeight: '700', color: '#fff' },
+  chipVal: { fontSize: theme.fontSize.card, fontWeight: '700', color: theme.colors.textWhite },
   chipValBig: { fontSize: theme.fontSize.h2 },
   chipValGood: { color: '#D5E384' },
   chipUnit: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
@@ -748,7 +728,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   // 分数主视觉（★ 2026-11-03：58→44 数字缩小；★ 本轮 收紧与状态词间距）
-  gBig: { fontSize: theme.fontSize.hero, fontWeight: '700', color: '#fff', marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
+  gBig: { fontSize: theme.fontSize.hero, fontWeight: '700', color: theme.colors.textWhite, marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   // 状态档位词（如 平平静静）：★ 2026-11-03（用户「稍微小一点儿」）hero(46) → h1(36)——
   //   之前注释写「44→40」但实际挂的仍是 hero，与上面大数字同大；现降到 h1，层级回到「数字主、档位词辅」
   gLabel: { fontSize: theme.fontSize.h1, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
@@ -767,7 +747,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },
-  relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF', textAlign: 'center' },
+  relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: theme.colors.textWhite, textAlign: 'center' },
 
   // 分析文字（浮于照片，无卡片底）
   analysisWrap: { position: 'absolute', left: 24, right: 24 },
@@ -801,7 +781,7 @@ const s = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.14)',
   },
   sugThumb: { width: 56, height: 56, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  sugH: { fontSize: theme.fontSize.card, fontWeight: '600', color: '#fff' },
+  sugH: { fontSize: theme.fontSize.card, fontWeight: '600', color: theme.colors.textWhite },
   sugD: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
   goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: theme.radius.pill, paddingHorizontal: 15, paddingVertical: 7 },
   goTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#101C33' },

@@ -186,7 +186,7 @@ export default function BreathingEngine({
 const styles = StyleSheet.create({
   center: { position: 'absolute', alignItems: 'center' },
   phase: {
-    fontSize: theme.fontSize.h2, fontWeight: '600', color: '#fff', letterSpacing: 2,
+    fontSize: theme.fontSize.h2, fontWeight: '600', color: theme.colors.textWhite, letterSpacing: 2,
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   count: {

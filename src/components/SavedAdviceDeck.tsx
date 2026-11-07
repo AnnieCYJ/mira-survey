@@ -255,9 +255,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
     paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(3.5),
-    shadowColor: '#000',
+    shadowColor: theme.colors.ui.shadowBlack,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    shadowOpacity: 0.05, shadowRadius: 10, elevation: 0,
   },
   // ★ 上排：图左 + 文右（A 版：按钮在文字下方右对齐）
   cardTop: {
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(2), paddingBottom: theme.space.lg,
     shadowColor: '#1F1D1A',
-    shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 8,
+    shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 0,
   },
   sheetGrab: {
     width: theme.sp(11), height: 4, borderRadius: 2,

@@ -25,7 +25,7 @@ import { buildSmoothSeries, computeYRange, slotToClock, CHART_SLOTS } from '../l
 const LEVEL_META: Record<string, { label: string; color: string }> = {
   normal: { label: '节律正常', color: chart.series.cortisol },
   sustained_high: { label: '持续偏高', color: theme.colors.danger },
-  dysregulated: { label: '节律紊乱', color: '#FFFFFF' },
+  dysregulated: { label: '节律紊乱', color: theme.colors.textWhite },
 };
 
 const LOOKBACK_DAYS = 14;

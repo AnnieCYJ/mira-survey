@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     marginTop: theme.space.cardPad,
     fontSize: theme.fontSize.stat,
     fontWeight: theme.weight.semibold,
-    color: '#ffffff',
+    color: theme.colors.textWhite,
     letterSpacing: 0.5,
   },
 });

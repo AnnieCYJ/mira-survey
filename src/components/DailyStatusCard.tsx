@@ -200,7 +200,7 @@ function Sparkline({ points, width }: { points: CurvePoint[]; width: number }) {
         const isStart = i === 0;
         const isEnd = i === n - 1;
         const r = isStart ? 3 : isEnd ? 4 : 2;
-        const fill = isStart ? '#fff' : isEnd ? m.color : '#fff';
+        const fill = isStart ? '#fff' : isEnd ? m.color : theme.colors.textWhite;
         return (
           <View
             key={`dot-${i}`}
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.semibold,
-    color: '#fff',
+    color: theme.colors.textWhite,
   },
   scoreRow: {
     flexDirection: 'row',
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   },
   sparkLabelText: {
     fontSize: theme.fontSize.tiny,
-    color: '#fff',
+    color: theme.colors.textWhite,
     fontWeight: theme.weight.semibold,
   },
   sparkVal: {

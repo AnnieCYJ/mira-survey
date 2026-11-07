@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   sheetTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
-  todayBtn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: '#FFFFFF' }, // ★ mira-ocean：紫 → 白
+  todayBtn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite }, // ★ mira-ocean：紫 → 白
   calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.md },
   calArrow: { padding: theme.sp(1) },
   calTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },

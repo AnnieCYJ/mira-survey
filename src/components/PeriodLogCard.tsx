@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: 'rgba(124,106,224,0.10)' },
   chipOn: { backgroundColor: theme.colors.accentSolid },
   chipText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  chipTextOn: { color: '#fff', fontWeight: theme.weight.semibold as any },
+  chipTextOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
   footRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.space.md },
   endBtn: {
     marginTop: theme.space.sm, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill,

@@ -1546,7 +1546,7 @@ const styles = StyleSheet.create({
   },
   energyMiniTitle: {
     fontSize: theme.fontSize.micro,
-    color: '#fff',
+    color: theme.colors.textWhite,
     fontWeight: theme.weight.medium,
   },
   energyMiniValRow: {
@@ -1555,7 +1555,7 @@ const styles = StyleSheet.create({
   },
   energyMiniVal: {
     fontSize: theme.fontSize.card,
-    color: '#fff',
+    color: theme.colors.textWhite,
     fontWeight: theme.weight.semibold,
   },
   energyMiniUnit: {

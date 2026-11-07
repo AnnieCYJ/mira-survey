@@ -325,11 +325,11 @@ const styles = StyleSheet.create({
   },
   segBtnActive: {
     backgroundColor: mm.colors.cardBg,
-    shadowColor: '#000',
+    shadowColor: theme.colors.ui.shadowBlack,
     shadowOpacity: 0.08,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    elevation: 0,
   },
   segLabel: {
     fontSize: theme.fontSize.micro,

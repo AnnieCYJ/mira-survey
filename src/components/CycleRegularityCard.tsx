@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     backgroundColor: mm.colors.emptyFill,
   },
-  heroBadgeText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#fff' },
+  heroBadgeText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
   // ★ 2026-10-09（menstrual-cycle-preview .regText 11.5px）：判读句用 xs 档
   heroText: { flex: 1, fontSize: theme.fontSize.xs, lineHeight: theme.fontSize.xs * 1.5, color: theme.colors.textBody },
   // ② 主指标

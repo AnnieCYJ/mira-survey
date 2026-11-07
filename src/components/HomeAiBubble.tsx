@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.10,
     shadowRadius: 20,
-    elevation: 6,
+    elevation: 0,
   },
   content: {
     flexDirection: 'column',
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   btnPillGradText: {
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
   },

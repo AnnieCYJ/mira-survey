@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, paddingHorizontal: theme.space.card, zIndex: 2 },
   header: { alignItems: 'center', marginTop: 12, marginBottom: theme.space.xl },
   title: {
-    fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: '#fff',
+    fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite,
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   subtitle: {
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16,
+    shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.25, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16,
     elevation: 0,
   },
   // ★ 完成卡 + 撒花
@@ -227,13 +227,13 @@ const styles = StyleSheet.create({
     width: '82%', maxWidth: 320,
     backgroundColor: 'rgba(20,18,28,0.82)',
     borderRadius: theme.radius.xl, paddingVertical: 26, paddingHorizontal: 22, alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 10 }, shadowRadius: 24, elevation: 0,
+    shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.4, shadowOffset: { width: 0, height: 10 }, shadowRadius: 24, elevation: 0,
   },
   doneBadge: {
     width: 56, height: 56, borderRadius: theme.radius.xl,
     backgroundColor: mm.colors.limeMid, alignItems: 'center', justifyContent: 'center', marginBottom: 14,
   },
   doneCheck: { color: theme.colors.ui.onGlassInk, fontSize: theme.fontSize.stat, fontWeight: '700' },
-  doneTitle: { color: '#fff', fontSize: theme.fontSize.lg, fontWeight: '600' as any, textAlign: 'center' },
+  doneTitle: { color: theme.colors.textWhite, fontSize: theme.fontSize.lg, fontWeight: '600' as any, textAlign: 'center' },
   doneLine: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.body, lineHeight: 22, marginTop: 12, textAlign: 'center' },
 });

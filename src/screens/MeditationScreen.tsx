@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 18,
-    elevation: 3,
+    elevation: 0,
   },
   // ★ 图卡底部「白色磨砂玻璃蒙层」文案区（贴卡底、无边界的渐入蒙层）
   cardFade: {
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
   cgCat: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.weight.semibold,
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
     letterSpacing: -0.2,
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },

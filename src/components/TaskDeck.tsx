@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     width: CARD_W,
     paddingVertical: 48, paddingHorizontal: 24,
     backgroundColor: '#FFFFFF', overflow: 'visible',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowColor: theme.colors.ui.shadowBlack, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 0,
     borderRadius: theme.radius.xl,
   },

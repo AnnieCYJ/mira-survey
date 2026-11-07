@@ -544,8 +544,8 @@ export default function CycleCalendarScreen() {
 
             {/* ★ 2026-11-03（用户·统一 hero 结构）：周期页无单一大数字 hero，这里加「周期解读」摘要 */}
             <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
-              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>周期解读</Text>
-              <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textWhite, marginBottom: 4 }}>周期解读</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, opacity: 0.85, lineHeight: 18 }}>
                 {hasRealCycleLen
                   ? `你正处在周期第 ${labelDay} 天 / 共 ${labelTotal} 天，按这个节奏安排休息与活动会更稳。`
                   : `你正处在周期第 ${labelDay} 天。在下方「记录 / 修改」里补上周期长度，预测会更有依据。`}

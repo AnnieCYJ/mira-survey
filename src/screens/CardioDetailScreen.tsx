@@ -115,7 +115,7 @@ export default function CardioDetailScreen() {
         {/* 算法拆解 */}
         <Section title="两种权威算法（透明拆解）">
           <Text style={s.note}>
-            主估计采用 <Text style={{ color: '#fff' }}>{methodZh}</Text>；另一种作为独立交叉验证一并列出。
+            主估计采用 <Text style={{ color: theme.colors.textWhite }}>{methodZh}</Text>；另一种作为独立交叉验证一并列出。
           </Text>
           <View style={s.methodBlock}>
             <Text style={s.methodName}>① Jackson 1990 非运动方程</Text>
@@ -140,7 +140,7 @@ export default function CardioDetailScreen() {
           </Text>
           <Text style={s.bandList}>
             偏低 · 略低 · 平均 · 中上 · 良好 · 优秀 · 卓越{'\n'}
-            你所在档：<Text style={{ color: '#fff' }}>{result.band}</Text>
+            你所在档：<Text style={{ color: theme.colors.textWhite }}>{result.band}</Text>
           </Text>
           <Text style={s.note}>
             参考点：35 ≈ 代谢健康基线；45 ≈ 活跃业余运动者中位；55+ ≈ 竞技业余跑者；65+ ≈ 次精英耐力运动员。
@@ -150,8 +150,8 @@ export default function CardioDetailScreen() {
         {/* 诚实声明 + 出处 */}
         <Section title="关于这个数字">
           <Text style={s.note}>
-            这是基于可穿戴静息心率 + 体成分的<Text style={{ color: '#fff' }}>非运动估算</Text>，不是实验室气体交换直接测量值。
-            可穿戴估算与真值存在 ±5–10 ml/kg·min 的个体偏差（群体均值准、个体偏差大），更适合<Text style={{ color: '#fff' }}>看自己的长期趋势</Text>，而非单次精确值。
+            这是基于可穿戴静息心率 + 体成分的<Text style={{ color: theme.colors.textWhite }}>非运动估算</Text>，不是实验室气体交换直接测量值。
+            可穿戴估算与真值存在 ±5–10 ml/kg·min 的个体偏差（群体均值准、个体偏差大），更适合<Text style={{ color: theme.colors.textWhite }}>看自己的长期趋势</Text>，而非单次精确值。
             服用影响心率的药物（如 β 受体阻滞剂）、疾病、高温、高原等会显著影响心率类估算。
           </Text>
           <Text style={s.refTitle}>文献出处</Text>

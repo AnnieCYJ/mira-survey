@@ -662,7 +662,7 @@ export default function BpDetailScreen() {
               <Text style={styles.modalBtnText}>取消</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={saveEntry}>
-              <Text style={[styles.modalBtnText, { color: '#fff' }]}>保存</Text>
+              <Text style={[styles.modalBtnText, { color: theme.colors.textWhite }]}>保存</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -858,7 +858,7 @@ const styles = StyleSheet.create({
     width: '100%', maxWidth: 340, backgroundColor: 'rgba(12,38,70,0.96)',
     borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
+    shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.5, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
   modalClose: {
@@ -887,5 +887,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
   },
   modalBtnPrimary: { backgroundColor: 'rgba(255,255,255,0.30)', borderColor: 'rgba(255,255,255,0.45)' },
-  modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: '#FFFFFF' },
+  modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 });

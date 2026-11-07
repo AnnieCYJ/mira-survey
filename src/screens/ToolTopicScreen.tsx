@@ -19,6 +19,7 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import MiraTag from '../components/MiraTag';
 import { ArcGauge } from '../components/ArcGauge';
 import { healthStore, dayKey } from '../data/healthStore';
@@ -124,16 +125,7 @@ export default function ToolTopicScreen() {
           >
             {/* 头部：返回圈 + 标题同行 + 右侧相位 chip（SPEC §2.1 dhead） */}
             <View style={styles.head}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => navigation.goBack()}
-                style={styles.backBtn}
-                accessibilityRole="button"
-                accessibilityLabel="返回"
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
-              </TouchableOpacity>
+              <BackButton onPress={() => navigation.goBack()} />
               <Animated.View style={[styles.headText, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}>
                 <Text style={styles.title}>{meta.title}</Text>
                 <Text style={styles.subtitle}>{meta.sub}</Text>
@@ -950,7 +942,7 @@ const ls = StyleSheet.create({
   methodShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,24,42,0.22)' },
   methodCopy: { padding: theme.sp(2) },
   methodTone: { color: 'rgba(255,255,255,0.82)', fontSize: theme.fontSize.micro, marginBottom: theme.sp(0.5) },
-  methodTitle: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, marginBottom: theme.sp(0.5) },
+  methodTitle: { color: theme.colors.textWhite, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, marginBottom: theme.sp(0.5) },
   methodText: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.body },
   secHead: {
     flexDirection: 'row',

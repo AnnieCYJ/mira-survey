@@ -1630,7 +1630,7 @@ const styles = StyleSheet.create({
   metSheetBody: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 21, marginBottom: 8 },
   metSheetNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, opacity: 0.9, lineHeight: 17, marginTop: 2, marginBottom: 16 },
   metSheetBtn: { alignSelf: 'stretch', backgroundColor: mm.colors.purpleBtn, borderRadius: theme.radius.md, paddingVertical: 11, alignItems: 'center' },
-  metSheetBtnTxt: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: '#FFFFFF' },
+  metSheetBtnTxt: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textWhite },
   statValue: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, lineHeight: theme.fontSize.body * 1.15, textAlign: 'center' },
   insightText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: theme.fontSize.sm * 1.55, paddingHorizontal: theme.space.xs },
 

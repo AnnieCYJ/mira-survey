@@ -339,7 +339,7 @@ export default function EcgDetailScreen() {
         {/* ★ 2026-10-29：ECG 前置引导——单导联需闭合回路：戴好戒指 + 用另一只手食指轻触外侧电极 */}
         {!measuring ? (
           <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 }}>
-            <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', lineHeight: 18 }}>
+            <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, lineHeight: 18 }}>
               测量方法：戴好戒指，用另一只手食指轻触戒指外侧金属电极，闭合回路后才会开始出图（单导联心电）。
             </Text>
           </View>
@@ -365,7 +365,7 @@ export default function EcgDetailScreen() {
           <View style={styles.ecgErrBox}>
             <Text style={styles.ecgErrText}>{ring.ecgError}</Text>
             {/(导联|脱落|接触|回路)/.test(ring.ecgError) ? (
-              <Text style={[styles.ecgErrText, { marginTop: 6, color: '#FFFFFF', opacity: 0.85 }]}>
+              <Text style={[styles.ecgErrText, { marginTop: 6, color: theme.colors.textWhite, opacity: 0.85 }]}>
                 提示：单导联 ECG 需要闭合回路——戴好戒指后，用另一只手食指轻触戒指外侧金属电极再点测量。
               </Text>
             ) : null}
@@ -377,8 +377,8 @@ export default function EcgDetailScreen() {
           <>
             {/* ★ 2026-11-03（用户·统一 hero 结构）：心电无单一大数字 hero，这里加短解读摘要 */}
             <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
-              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>心电解读</Text>
-              <Text style={{ fontSize: theme.fontSize.xs, color: '#FFFFFF', opacity: 0.85, lineHeight: 18 }}>
+              <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textWhite, marginBottom: 4 }}>心电解读</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, opacity: 0.85, lineHeight: 18 }}>
                 {(() => {
                   // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：无有效值时不说「平均心率 0 bpm」。
                   const hrTxt = fmtEcgNum(latest?.aveHeart);
@@ -557,8 +557,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.screen,
     marginBottom: 12,
   },
-  zoomTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#FFFFFF' },
-  zoomClose: { fontSize: theme.fontSize.h2, color: '#FFFFFF', fontWeight: '500' },
+  zoomTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: theme.colors.textWhite },
+  zoomClose: { fontSize: theme.fontSize.h2, color: theme.colors.textWhite, fontWeight: '500' },
   zoomHint: { fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
 
   btn: {
@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
   // ★ mira-ocean（2026-10-17）：淡紫轨道 → 玻璃白
   segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.sm },
-  segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   segTxt: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textSub },
   // ★ mira-ocean：白 pill 上选中文字 → 深蓝（原 textTitle 已随主题变白，白底白字）
   segTxtOn: { color: theme.colors.bgMid },

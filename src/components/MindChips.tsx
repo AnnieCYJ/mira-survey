@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   dayPillText: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.bold,
-    color: '#FFFFFF',
+    color: theme.colors.textWhite,
   },
   tag: {
     fontSize: theme.fontSize.micro,

@@ -43,6 +43,7 @@ import Card from './Card';
 import Icon, { type IconName } from './Icon';
 import DateAnchorPicker from './DateAnchorPicker';
 import DayDrawer from './DayDrawer';
+import type { TimelineItem } from './TodayTimelineCard';
 import { healthStore } from '../data/healthStore';
 import {
   CAL_YEAR, CAL_MONTH, TODAY_DAY, TASK_LABELS, type TaskType,
@@ -55,6 +56,7 @@ import { loadFoodLogs, type FoodLog } from '../lib/foodAi';
 import { loadSportLogs, type SportLog } from '../lib/sportLog';
 // ★ 2026-11-06（用户）：月历格子改展示「当天获得的皇冠数」——与回顾·日视图的达标皇冠同源
 import { buildTodayTimeline } from '../lib/buildTodayTimeline';
+// ★ 2026-11-07（用户）：日历格子皇冠已去掉，CrownMark 不再引用
 // ★ Phase 2（无门禁软闭环）：规律观察直接落位日历观察区 ——
 //   观察不等确认就写进来；用户点「挺准」→ 加权进人生上下文；随时可删（删了不复活）。
 import {
@@ -65,6 +67,17 @@ import {
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+
+/** #RRGGBB 与白混合（做图标方块的浅底）；与 JourneyDayView.mixWhite 同源 */
+function mixWhite(hex: string, ratio: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#F6F4F1';
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - ratio) + 255 * ratio);
+  const g = Math.round(((n >> 8) & 255) * (1 - ratio) + 255 * ratio);
+  const b = Math.round((n & 255) * (1 - ratio) + 255 * ratio);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
 
 /** ★ 2026-10-28（用户）：规律观察每条下方加「类别标签」，让用户一眼分清这观察是讲什么的。 */
 const PATTERN_KIND_LABEL: Record<string, string> = {
@@ -300,6 +313,10 @@ function StackPhoto({ img, rot, off, zIndex, photoSize, delay, playId, reduced }
   );
 }
 
+// ★ 2026-11-07（用户）：原「本月卓越表现」独立卡组已移除 —— 其信息现直接落在日历格子的 icon 卡内（每个皇冠任务一张 icon 卡）。
+
+
+
 export default function MonthDiscoveryView({
   tasks,
   onAskMira,
@@ -413,18 +430,23 @@ export default function MonthDiscoveryView({
     return map;
   }, [data, tasks, viewY, viewM]);
 
-  // ★ 2026-11-06（用户）：月历格子上不再展示图片，改展示该天获得的皇冠数。
-  //   皇冠口径与回顾·日视图（JourneyDayView 卡片右上角 👑）完全同源：
-  //   buildTodayTimeline(该日).items 中 goalMet = true 的条目数。
-  const crownsByDay = useMemo(() => {
-    const map: Record<number, number> = {};
+  // ★ 2026-11-07（用户）：月历格子内只展示「当天一个代表 icon」（如起床 = ☀️ 太阳），
+  //   右上角再叠一个「小皇冠」标记当天是否达成（皇冠/goalMet）任务。
+  //   代表 icon 优先取「起床」事件（与回顾·日视图同源），否则取当天首个带 emoji 的条目。
+  const dayCellMap = useMemo(() => {
+    const map: Record<number, { icon: string | null; color: string }> = {};
     const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
       try {
         const items = buildTodayTimeline(undefined, new Date(viewY, viewM, d)).items;
-        const n = items.filter((it) => it.goalMet).length;
-        if (n > 0) map[d] = n;
-      } catch { /* 单日构建失败忽略，该格不显示皇冠 */ }
+        if (!items.length) continue;
+        const wake = items.find((it) => (it.title ?? '').startsWith('起床'));
+        const rep = wake ?? items.find((it) => !!it.emoji) ?? items[0];
+        map[d] = {
+          icon: rep?.emoji ?? null,
+          color: rep?.color ?? '#C9C4BC',
+        };
+      } catch { /* 单日构建失败忽略，该格不显示 */ }
     }
     return map;
   }, [viewY, viewM]);
@@ -669,12 +691,13 @@ export default function MonthDiscoveryView({
     //   若只写 day === todayDay，则所有空槽都会被判成「今天」→ 染上蜜黄底方框
     //   （用户 2026-10-12 截图发现的「一二三四五那些空的时间怎么有背景框」根因）。必须加 day > 0。
     const isToday = day > 0 && day === todayDay;
-    // ★ 2026-11-06（用户）：月历格子不再展示图片，改展示当天皇冠数（≤4 逐个显示，>4 显示 👑×N）
-    const crownCount = day > 0 ? crownsByDay[day] ?? 0 : 0;
+    // ★ 2026-11-07（用户）：去掉右上角皇冠；icon 放大到至少原来的两倍（约 0.84 格宽，上限留 4pt 边距）。
+    const cell = day > 0 ? dayCellMap[day] : null;
+    const box = Math.max(28, Math.min(cellW - 4, Math.round(cellW * 0.84)));
 
     return (
       <TouchableOpacity
-        key={colIdx + '-' + day}
+        key={`${rowIdx}-${colIdx}-${day}`}
         activeOpacity={day > 0 ? 0.6 : 1}
         disabled={day <= 0}
         onPress={() => { if (day > 0) setDrawerDate(new Date(viewY, viewM, day)); }}
@@ -687,15 +710,18 @@ export default function MonthDiscoveryView({
       >
         <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day > 0 ? day : ''}</Text>
 
-        {/* ★ 2026-11-06（用户）：格子内的图片堆叠改为皇冠展示——
-            少量（≤4）逐个排皇冠；更多（>4）显示「👑×N」避免溢出格子。 */}
-        {crownCount > 0 ? (
-          <View style={styles.crownWrap} pointerEvents="none">
-            {crownCount <= 4
-              ? Array.from({ length: crownCount }).map((_, i) => (
-                  <Text key={i} style={styles.crownIcon}>👑</Text>
-                ))
-              : <Text style={styles.crownX}>👑×{crownCount}</Text>}
+        {/* ★ 2026-11-07（用户）：格子内只展示当天一个代表 icon（如起床 = ☀️ 太阳），皇冠已去掉 */}
+        {cell?.icon ? (
+          <View
+            style={[
+              styles.cellIconBox,
+              {
+                width: box, height: box, borderRadius: Math.round(box * 0.28),
+                backgroundColor: mixWhite(cell.color, 0.82),
+              },
+            ]}
+          >
+            <Text style={[styles.cellIconTxt, { fontSize: Math.round(box * 0.58) }]}>{cell.icon}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
@@ -724,28 +750,20 @@ export default function MonthDiscoveryView({
         </View>
       ) : null}
 
-      {/* ★ 中：照片卡堆叠月历（透明无框，对齐预览稿）
-          ★ 2026-10-14：padded={false} 去掉卡片默认 20px 左右内边距 → 网格更宽、格子与照片都更大 */}
-      <Card style={styles.calCard} padded={false}>
+      {/* ★ 2026-11-07（用户）：月视图 = 日历；每个格子内堆叠「当天皇冠任务」的 icon 卡。
+          周一起始，空槽不画框；点格子 → 下抽屉日视图（旅程 + 两侧活动卡）。 */}
+      <View style={styles.grid} onLayout={onGridLayout}>
         <View style={styles.weekRow}>
-          {WEEK_LABELS.map((w, i) => (
-            <Text key={w} style={[styles.weekLabel, i >= 5 && styles.weekLabelWE, i === 6 && { marginRight: 0 }]}>
-              {w}
-            </Text>
+          {['一', '二', '三', '四', '五', '六', '日'].map((w) => (
+            <Text key={w} style={styles.weekLabel}>{w}</Text>
           ))}
         </View>
-        <View style={styles.grid} onLayout={onGridLayout}>
-          {rows.map((row, ri) => (
-            <View key={ri} style={styles.row}>
-              {row.map((day, ci) => renderCell(day, ci, ri))}
-            </View>
-          ))}
-        </View>
-
-        {/* ★ 2026-10-12（用户）：日历下方的类别图例（呼吸冥想 / 情绪调节 / 记饮食 / 运动 /
-            认知提升…）整块删除 —— 用户：「再去掉那个日历下面什么呼吸冥想，什么情绪调节及饮食
-            这些个，还有什么认知专注这些都去掉。」 */}
-      </Card>
+        {rows.map((row, ri) => (
+          <View key={ri} style={styles.row}>
+            {row.map((day, ci) => renderCell(day, ci, ri))}
+          </View>
+        ))}
+      </View>
 
       {/* ★ 2026-11-03(2)：按用户要求「先隐藏掉我的本月节奏」——整卡隐藏（保留代码便于后续切换） */}
       {false && (
@@ -906,7 +924,7 @@ export default function MonthDiscoveryView({
                   </View>
                 </View>
               </Card>
-            ) : observedPatterns.slice(0, 4).map((p) => {
+            ) : observedPatterns.slice(0, 4).map((p, idx) => {
               const accent =
                 p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
                 : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
@@ -918,8 +936,11 @@ export default function MonthDiscoveryView({
                 : p.kind === 'group_diff' ? 'activity'
                 : 'sparkle';
               const kindLabel = patternKindLabel(p.kind);
+              // ★ 2026-11-07（用户）：规律观察卡改「错落」展示 —— 像本月卓越表现卡那样
+              //   左右轻微交替倾斜（±1.2°），几卡片看去有层次感，不再是整齐一条线。
+              const obsRot = idx % 2 === 0 ? -1.2 : 1.2;
               return (
-                <Card key={p.id}>
+                <Card key={p.id} style={{ transform: [{ rotate: `${obsRot}deg` }] }}>
                   <View style={[styles.patObsRow, isSample && { paddingRight: 8 }]}>
                     <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
                       <Icon name={pIcon} size={14} color={accent.deep} />
@@ -973,7 +994,8 @@ const styles = StyleSheet.create({
   //   （透明卡本就无框，放开裁切避免圆角把贴边照片拐角切掉）。
   calCard: {
     backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0, elevation: 0,
-    marginHorizontal: -theme.space.screen, overflow: 'visible', borderRadius: 0,
+    alignSelf: 'center', width: '100%', maxWidth: Math.min(330, SCREEN_W - 48),
+    overflow: 'visible', borderRadius: 0,
   },
   weekRow: { flexDirection: 'row', marginBottom: theme.sp(1) },
   weekLabel: {
@@ -994,11 +1016,15 @@ const styles = StyleSheet.create({
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any },
 
-  /* ★ 2026-11-06（用户）：格子皇冠展示（替代照片堆叠）——
+  // ★ 2026-11-07（用户）：格子内只放「一个代表 icon」的方块（如起床 = ☀️ 太阳），居中于日期数字下方；皇冠已去掉
+  cellIconBox: { alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(3) },
+  cellIconTxt: { textAlign: 'center' },
+
+  /* ★ 2026-11-06（用户）：格子皇冠展示（替代照片堆叠；本轮改为矢量 CrownMark）——
      ≤4 个逐个排开；>4 个显示「👑×N」，保证不溢出格子。 */
   crownWrap: { position: 'absolute', top: 18, left: 2, right: 2, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', rowGap: 1 },
-  crownIcon: { fontSize: theme.fontSize.sm },
-  crownX: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
+  crownX: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  crownXText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: mm.colors.ink },
 
   // 照片堆叠区（对齐预览 .stack）：★ 2026-10-14 top 12 → 18，整摞照片下移，给左上角日期数字让位
   stackWrap: { position: 'absolute', top: 18, left: 1, right: 1, bottom: 2, alignItems: 'center', justifyContent: 'center' },
@@ -1007,7 +1033,7 @@ const styles = StyleSheet.create({
     position: 'absolute', borderRadius: 7, borderWidth: 1.5, borderColor: '#fff',
     overflow: 'hidden', backgroundColor: '#fff',
     shadowColor: '#1F1D1A', shadowOpacity: 0.18, shadowRadius: 1.5,
-    shadowOffset: { width: 0, height: 1 }, elevation: 1,
+    shadowOffset: { width: 0, height: 1 }, elevation: 0,
   },
   photoImg: { width: '100%', height: '100%' },
   // +N 徽章（对齐预览 .plus：深墨药丸 + 白字，贴右下）
@@ -1016,7 +1042,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4, backgroundColor: '#1F1D1A',
     alignItems: 'center', justifyContent: 'center', zIndex: 10,
   },
-  plusText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: '#fff' },
+  plusText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: theme.colors.textWhite },
 
   // 卡片小标题（图标 + 标题）
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), marginBottom: theme.sp(3) },
@@ -1136,4 +1162,25 @@ const styles = StyleSheet.create({
     backgroundColor: mm.colors.emptyFill,
   },
   patActDelText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.medium as any, color: mm.colors.inkFaint },
+
+  // ★ 本轮（用户）：月视图「本月卓越表现」Icon 卡堆叠（与回顾·日视图卡片同源风格）
+  deckWrap: { width: '100%', alignSelf: 'center', maxWidth: 360 },
+  deckHead: { fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink, letterSpacing: -0.3, marginBottom: theme.sp(2) },
+  deckList: { gap: theme.sp(2.5) },
+  deckEmpty: { fontSize: theme.fontSize.sm, color: mm.colors.inkFaint, textAlign: 'center', lineHeight: theme.fontSize.sm * 1.5 },
+  exCard: {
+    backgroundColor: mm.colors.cardBg,
+    borderWidth: 1, borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card, padding: theme.space.cardPadCompact,
+    shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
+    shadowRadius: mm.shadow.radius, shadowOffset: { width: 0, height: mm.shadow.height },
+    elevation: mm.shadow.elevation,
+  },
+  exHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), paddingRight: theme.sp(8) },
+  exIcon: { width: theme.sp(7.5), height: theme.sp(7.5), borderRadius: mm.radius.iconSq, alignItems: 'center', justifyContent: 'center' },
+  exIconTxt: { fontSize: theme.fontSize.body },
+  exTitle: { flex: 1, fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: mm.colors.ink, lineHeight: theme.fontSize.sm * 1.3 },
+  exCrown: { position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5), zIndex: 3 },
+  exSub: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(1.25) },
+  exDate: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint, marginTop: theme.sp(1.5) },
 });
