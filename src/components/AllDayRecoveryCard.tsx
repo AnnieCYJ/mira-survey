@@ -323,11 +323,11 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   const body = (
     <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
       <View style={styles.inner}>
-        {/* 卡片标题 + leaf 图标 chip（与首页圆环上方 chips 的恢复 icon 同款）+ 青色胶囊 badge */}
+            {/* 卡片标题 + sun 图标 chip（昼夜节律语义；颜色与首页圆环上方 chips 的恢复色同款）+ 青色胶囊 badge */}
         <View style={styles.headRow}>
           <View style={styles.titleRow}>
             <View style={[styles.iconChip, onColor && { backgroundColor: mm.colors.cardBg }]}>
-              <MindIcon name="leaf" size={theme.fs(17)} color={iconFg} />
+              <MindIcon name="sun" size={theme.fs(17)} color={iconFg} />
             </View>
             <Text style={styles.title}>{title}</Text>
           </View>

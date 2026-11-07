@@ -66,7 +66,7 @@ export default function StressRecoveryCard({ onPress }: { onPress?: () => void }
         <View style={styles.headRow}>
           <View style={styles.titleRow}>
             <View style={styles.iconChip}>
-              <MindIcon name="leaf" size={theme.fs(17)} color={mm.colors.limeMid} />
+              <MindIcon name="breath" size={theme.fs(17)} color={mm.colors.limeMid} />
             </View>
             <Text style={styles.title}>压力恢复节律</Text>
           </View>
