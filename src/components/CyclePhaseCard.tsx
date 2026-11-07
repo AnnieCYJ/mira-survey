@@ -158,7 +158,7 @@ export default function CyclePhaseCard({
       {title ? (
         <View style={styles.titleRow}>
           <View style={styles.iconChip}>
-            <MindIcon name="leaf" size={theme.fs(17)} color={mm.colors.limeDeep} />
+            <MindIcon name="leaf" size={theme.fs(17)} color={mm.colors.limeMid} />
           </View>
           <Text style={styles.title}>{title}</Text>
         </View>

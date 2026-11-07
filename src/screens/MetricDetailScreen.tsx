@@ -1124,10 +1124,12 @@ export default function MetricDetailScreen() {
     return `本区间含 ${keys.length} ${unit}为推算值（由压力值换算，非戒指实测），已用浅色标出。`;
   }, [series.derivedDayKeys, range]);
 
-  // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)，其余回落 params.color / 主色紫
+  // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)、体温→琥珀(honey)，其余回落 params.color / 主色紫
+  // ★ 2026-11-07（用户）：与洞察页基础指标迷你趋势图同源（trendColorFor）——同一指标内外同色。
   const color = (() => {
     if (params.key === 'bloodSugar' || params.key === 'glucose') return mm.colors.honeyCore;
     if (params.key === 'spo2') return mm.colors.skyCore;
+    if (params.key === 'temp') return mm.colors.honeyCore;
     return params.color || theme.colors.accentSolid;
   })();
 

@@ -13,25 +13,21 @@ import { chart } from '../theme/chart';
 import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
+import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { BasicMetricDef } from '../data/metrics';
 
 // 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
 // Y 轴随今日真实数据自适应缩放（值域上下各留 12% 余量，单点/空时回退固定生理量程）。
 // 数据点按时间排序后绘制；相邻点间隔超过 36h 则断线（诚实留白，不编造连续趋势）。
-// v16 reskin（2026-09-24）：趋势线按指标 key 从五色 core 家族稳定取色（紫/蓝/粉/黄/黄绿mid），
-// 同一指标永远同色（跨页面/刷新不变），不同指标错开色相。青色已删除。
-const TREND_PALETTE: string[] = [
-  mm.colors.purpleCore, // 紫 = 认知
-  mm.colors.skyCore,    // 蓝 = 运动·心肺
-  mm.colors.roseCore,   // 粉 = 情绪
-  mm.colors.honeyCore,  // 黄 = 代谢
-  mm.colors.limeMid,    // 黄绿 mid = 恢复
-  mm.colors.purpleDeep, // 紫 deep（第 6 项兜底）
-];
+// ★ 2026-11-07（用户：基础指标迷你趋势图配色要与详情页统一）：
+//   取消原哈希六色随机（心率→粉、体温→琥珀…，虽按 key 稳定但与详情页不一致、语义也错乱），
+//   改为与 MetricDetailScreen 同一套「按指标 key 固定取色」：
+//   血氧(spo2)→蓝、血糖/体温→琥珀、其余→主色紫(accentSolid)，确保「卡片外」与「详情页内」同色。
 function trendColorFor(key: string): string {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return TREND_PALETTE[h % TREND_PALETTE.length];
+  if (key === 'spo2') return mm.colors.skyCore;
+  if (key === 'bloodSugar' || key === 'glucose') return mm.colors.honeyCore;
+  if (key === 'temp') return mm.colors.honeyCore;
+  return theme.colors.accentSolid;
 }
 
 /** 迷你趋势图 Y 标注：整数不带小数，小数保留 1 位。 */
@@ -71,13 +67,28 @@ function todayWindow(now = Date.now()): { start: number; end: number; left: stri
  * 原来超过 1 小时就直接显示「11:32」，看不出「数据停在 11:32」还是「11:32 刚测的」——
  * 19 点看皮质醇写着 11:32 就像坏了。加「截至」前缀明确是数据截止时间。
  */
-function staleTag(ts: number | null | undefined): string {
-  if (ts == null || !Number.isFinite(ts) || ts <= 0) return '尚未测量';
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+/**
+ * ★ 2026-11-06（用户）：卡片右上角改为显示「最新更新时间」（绝对时间，不再用「X 分钟前」相对时间）。
+ *   · 今天            → 「更新于 HH:MM」
+ *   · 其它日期        → 「更新于 M/D HH:MM」
+ *   · 日均类只有日期(00:00) → 「更新于 M/D」（不显示无效的 00:00）
+ *   · 无时间戳        → 空串（不显示假装的时间）
+ */
+function formatUpdateTime(ts: number | null | undefined): string {
+  if (ts == null || !Number.isFinite(ts) || ts <= 0) return '';
   const d = new Date(ts);
-  return `截至 ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const now = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const M = d.getMonth() + 1;
+  const D = d.getDate();
+  if (hh === '00' && mm === '00') return `更新于 ${M}/${D}`;
+  const hm = `${hh}:${mm}`;
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay ? `更新于 ${hm}` : `更新于 ${M}/${D} ${hm}`;
 }
 
 function buildDayPath(
@@ -167,12 +178,16 @@ interface Props {
   hideMeasure?: boolean;
   /** 最近测量/更新时间（epoch ms），显示在数值右侧，确认数据新鲜度 */
   measureTime?: number | null;
-  /** ★ 数据来源标签（如「今日日均」）。给出时替代相对时间，避免把日均值伪装成实时读数 */
+  /** ★ 数据来源标签（如「今日日均」）。给出时驱动状态标签（日值/实时），但不显示在数值旁 */
   sourceLabel?: string;
+  /** ★ 最新更新时间（epoch ms），显示在数值右侧；取代原来的相对时间 / 日均标签 */
+  updatedAt?: number | null;
   /** 点击卡片进入「指标历史详情」全屏页 */
   onPress?: () => void;
   /** 是否渲染全天趋势图（默认 true） */
   showTrend?: boolean;
+  /** ★ 本轮（用户）：AI 分析句 —— 渲染为卡片内底部区块（与节律卡同源），使整张卡为「一张卡」 */
+  analysis?: string;
 }
 
 export default function BasicMetricCard({
@@ -187,8 +202,10 @@ export default function BasicMetricCard({
   hideMeasure,
   measureTime,
   sourceLabel,
+  updatedAt,
   onPress,
   showTrend = true,
+  analysis,
 }: Props) {
   const [w, setW] = useState(0);
   const [measuring, setMeasuring] = useState(false);
@@ -196,9 +213,8 @@ export default function BasicMetricCard({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const h = theme.fs(84);
   const gid = `bm_${metric.key}`;
-  // 统一配色铁律：血氧(spo2)趋势线强制 skyCore 蓝（与血压/心电同源，修掉哈希随机色）
-  let tc = trendColorFor(metric.key);
-  if (metric.key === 'spo2') tc = mm.colors.skyCore;
+  // ★ 2026-11-07（用户）：与详情页统一——trendColorFor 已按 key 固定取色（血氧→蓝 / 血糖·体温→琥珀 / 其余→主色紫）
+  const tc = trendColorFor(metric.key);
   // 今日窗口内的实际最大/最小值，作为迷你趋势图的 Y 向参照（不画整条标尺，避免拥挤）
   const yStats = useMemo(() => {
     const ys = data.map((d) => d.v).filter((v) => Number.isFinite(v));
@@ -225,13 +241,6 @@ export default function BasicMetricCard({
   }, [data, w, h, yBounds, metric.yMin, metric.yMax, axis.start, axis.end]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  // ★ 2026-11-05（用户：「心率反馈要 15 分钟」）：staleTag 原来只在 render 时算一次，
-  //   页面不重渲染时「15 分钟前」会一直冻结不动。这里每 30 秒自重绘副标题。
-  const [, tickClock] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tickClock((x) => x + 1), 30_000);
-    return () => clearInterval(t);
-  }, []);
 
   const onPressMeasure = () => {
     if (measuring) return;
@@ -293,7 +302,7 @@ export default function BasicMetricCard({
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, flexShrink: 1 }}>{value}</Text>
             <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
-            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{sourceLabel ?? staleTag(measureTime)}</Text>
+            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{updatedAt ? formatUpdateTime(updatedAt) : ''}</Text>
           </View>
           {showTrend && (
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
@@ -319,14 +328,19 @@ export default function BasicMetricCard({
                 )}
               </Svg>
             ) : null}
-            {/* ★ 2026-10-10（用户）：横轴口径全卡统一 —— 左「0:00」右「现在 HH:mm」，
-                所有基础指标卡同一套，不再一个画到中午一个画到整天。 */}
-            <View style={styles.axisRow}>
-              <Text style={styles.axisText}>{axis.left}</Text>
-              <Text style={styles.axisText}>{axis.right}</Text>
-            </View>
+            {/* ★ 2026-11-06（用户）：去掉底部「0:00 / 现在 HH:mm」横轴时间标签，
+                右下角的「现在」时间不再显示；数据新鲜度改由数值右侧「更新于 HH:MM」表达。 */}
           </View>
           )}
+          {analysis ? (
+            <View style={styles.analysisInner}>
+              <AiAnalysis compact>
+                <AiResultRow compact tone="neutral" bodyColor={theme.colors.textBody}>
+                  {analysis}
+                </AiResultRow>
+              </AiAnalysis>
+            </View>
+          ) : null}
 
         </Card>
       </TouchableOpacity>
@@ -367,7 +381,7 @@ export default function BasicMetricCard({
       <View style={styles.main}>
         <Text style={styles.val}>{value}</Text>
         <Text style={styles.unit}>{metric.unit}</Text>
-        <Text style={styles.measuredAt}>{sourceLabel ?? staleTag(measureTime)}</Text>
+        <Text style={styles.measuredAt}>{updatedAt ? formatUpdateTime(updatedAt) : ''}</Text>
       </View>
 
       <Text style={styles.range}>{metric.range}</Text>
@@ -425,6 +439,15 @@ export default function BasicMetricCard({
         <Text style={styles.freqLabel}>监测频率</Text>
         <Text style={styles.freqValue}>{metric.freq}</Text>
       </View>
+      {analysis ? (
+        <View style={styles.analysisInner}>
+          <AiAnalysis compact>
+            <AiResultRow compact tone="neutral" bodyColor={theme.colors.textBody}>
+              {analysis}
+            </AiResultRow>
+          </AiAnalysis>
+        </View>
+      ) : null}
       </Card>
     </TouchableOpacity>
   );
@@ -551,5 +574,12 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.7,
     color: theme.colors.textSub,
     marginTop: theme.space.sm,
+  },
+  // ★ 本轮（用户）：指标卡 AI 分析 —— 卡片内底部区块（与节律卡同源，一条细分隔线隔开）
+  analysisInner: {
+    marginTop: theme.sp(2.5),
+    paddingTop: theme.sp(2.5),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: mm.colors.cardBorder,
   },
 });
