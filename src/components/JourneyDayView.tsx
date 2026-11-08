@@ -177,7 +177,7 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
         }
         return {
           time: `${hh}:${mn}`,
-          color: isBreath ? mm.colors.limeDeep : mm.colors.purpleCore,
+          color: isBreath ? mm.colors.limeCore : mm.colors.purpleCore,
           title: isBreath ? '呼吸练习' : '正念冥想',
           sub,
           emoji: isBreath ? '🌬️' : '🧘',

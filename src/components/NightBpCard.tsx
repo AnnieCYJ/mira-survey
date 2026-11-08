@@ -132,7 +132,7 @@ export function NightBpCard({ anchorMs }: Props) {
       : dipPct >= 3 ? '下降偏少'
       : dipPct >= 0 ? '基本没降'
       : '夜间高于日间';
-    const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeDeep : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
+    const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeCore : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
     return { sys, dia, measuredAt, measuredManual, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr, dayHrIsDaily };
   }, [anchorMs, hsVer]);
 

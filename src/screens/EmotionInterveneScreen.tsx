@@ -1155,7 +1155,7 @@ const ei = StyleSheet.create({
   rfDotText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as never, color: mm.colors.inkFaint },
   rfDotTextOn: { color: mm.colors.limeDeep },
   rfLabel: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint, marginLeft: theme.sp(1) },
-  rfLabelOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as never },
+  rfLabelOn: { color: mm.colors.limeCore, fontWeight: theme.weight.semibold as never },
   quoteCard: {
     backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.md,
     padding: theme.space.cardPadCompact, marginBottom: theme.sp(3),

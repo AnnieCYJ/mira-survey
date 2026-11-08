@@ -118,7 +118,7 @@ export default function SuggestionCard({
 
         <View style={styles.savedFoot}>
           <View style={styles.savedTag}>
-            <Icon name="heart" size={theme.fontSize.xs} color={mm.colors.limeDeep} />
+            <Icon name="heart" size={theme.fontSize.xs} color={mm.colors.limeCore} />
             {/* ★ 2026-10-08 十改：与首页气泡的确认文案同口径（Mira 声线统一） */}
             <Text style={styles.savedTagText}>已收进你的专属建议啦</Text>
           </View>

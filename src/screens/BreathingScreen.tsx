@@ -39,10 +39,10 @@ const COURSES: Course[] = [
 
 // —— 睡眠科学（v18.42 并入：斯坦福平衡激素法则中与睡眠相关的条目收拢在这里）——
 const SLEEP_CARDS: ListItem[] = [
-  { dot: mm.colors.limeDeep, title: '褪黑素怕光', sub: '夜间哪怕中等亮度也会压制褪黑素——睡前把灯调暗、屏幕拿远，比任何补剂都靠谱。' },
-  { dot: mm.colors.limeDeep, title: '深睡是修复窗口', sub: '生长激素主要在深睡分泌，皮肤屏障与身体修复都在这里发生；睡眠债会直接写在状态上。' },
-  { dot: mm.colors.limeDeep, title: '热水澡是降温开关', sub: '热水把血带到体表，出浴后核心温度下降——身体降温正是入睡的开关。' },
-  { dot: mm.colors.limeDeep, title: 'NSDR：20 分钟快速回血', sub: '非睡眠深度休息（身体扫描/瑜伽休憩）能降低皮质醇、恢复多巴胺，午后低谷比咖啡好用。' },
+  { dot: mm.colors.limeMid, title: '褪黑素怕光', sub: '夜间哪怕中等亮度也会压制褪黑素——睡前把灯调暗、屏幕拿远，比任何补剂都靠谱。' },
+  { dot: mm.colors.limeMid, title: '深睡是修复窗口', sub: '生长激素主要在深睡分泌，皮肤屏障与身体修复都在这里发生；睡眠债会直接写在状态上。' },
+  { dot: mm.colors.limeMid, title: '热水澡是降温开关', sub: '热水把血带到体表，出浴后核心温度下降——身体降温正是入睡的开关。' },
+  { dot: mm.colors.limeMid, title: 'NSDR：20 分钟快速回血', sub: '非睡眠深度休息（身体扫描/瑜伽休憩）能降低皮质醇、恢复多巴胺，午后低谷比咖啡好用。' },
 ];
 
 export default function BreathingScreen() {

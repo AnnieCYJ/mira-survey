@@ -44,8 +44,10 @@ export default function FertileWindowCard({ log, cycleInfo }: { log: CycleLog | 
   }
 
   const tierLabel: Record<string, string> = { peak: '最佳', high: '高', mid: '中', low: '低' };
+  // ★ 2026-11-08：深玻璃卡上 limeDeep 发糊；改为「最佳=最亮 limeCore / 高=次亮 limeMid /
+  //   中=暗玻璃 / 低=灰」，四档由亮到暗，保持层级区分（原来最佳档反而是最暗的深橄榄绿）。
   const tierColor: Record<string, string> = {
-    peak: mm.colors.limeDeep, high: mm.colors.limeCore, mid: theme.colors.cardBgSoft, low: theme.colors.textSub,
+    peak: mm.colors.limeCore, high: mm.colors.limeMid, mid: theme.colors.cardBgSoft, low: theme.colors.textSub,
   };
 
   return (
@@ -85,7 +87,7 @@ const styles = StyleSheet.create({
   title: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: mm.colors.ink },
   meta: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   range: { fontSize: theme.fontSize.sm, color: mm.colors.ink, marginBottom: 4 },
-  peak: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep, fontWeight: theme.weight.semibold, marginBottom: theme.space.sm },
+  peak: { fontSize: theme.fontSize.sm, color: mm.colors.limeCore, fontWeight: theme.weight.semibold, marginBottom: theme.space.sm },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: theme.space.sm },
   cell: {
     width: 56, borderRadius: theme.radius.sm, borderWidth: 1.2, paddingVertical: 6,

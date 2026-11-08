@@ -32,7 +32,7 @@ export default function PregnancyCard({
     <Card style={styles.panel}>
       <View style={styles.head}>
         <Text style={styles.title}>孕期</Text>
-        <Text style={[styles.trimester, { color: mm.colors.limeDeep }]}>{TRIMESTER_LABEL[trimester]}</Text>
+        <Text style={[styles.trimester, { color: mm.colors.limeCore }]}>{TRIMESTER_LABEL[trimester]}</Text>
       </View>
 
       <View style={styles.hero}>

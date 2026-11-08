@@ -532,7 +532,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
                 y1={ovY}
                 x2={ovX}
                 y2={gMain.yBase}
-                stroke={mm.colors.limeDeep}
+                stroke={mm.colors.limeMid}
                 strokeOpacity={0.45}
                 strokeWidth={chart.lw.ref}
                 strokeDasharray={chart.dash.ref}
@@ -545,7 +545,7 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
                 y={Math.max(ovY - 12, 12)}
                 fontSize={chart.axisFont}
                 fontWeight="600"
-                fill={mm.colors.limeDeep}
+                fill={mm.colors.limeMid}
                 textAnchor="middle"
               >
                 {slotToClock(ovSlot)}

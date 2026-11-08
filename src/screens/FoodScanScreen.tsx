@@ -1060,7 +1060,7 @@ function MealModal({ visible, items, target, dayKcal, phase, hormoneSnap, photoU
             {/* 适不适合现在吃 */}
             <View style={[mm_m.verdict, verdictTone === 'good' ? mm_m.verdictGood : mm_m.verdictWarn]}>
               <View style={mm_m.verdictTop}>
-                <View style={[mm_m.verdictDot, { backgroundColor: verdictTone === 'good' ? mm.colors.limeDeep : mm.colors.honeyDeep }]} />
+                <View style={[mm_m.verdictDot, { backgroundColor: verdictTone === 'good' ? mm.colors.limeMid : mm.colors.honeyDeep }]} />
                 <Text style={mm_m.verdictTitle}>{verdict}</Text>
               </View>
               <Text style={mm_m.verdictSub}>{verdictSub}</Text>

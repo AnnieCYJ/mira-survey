@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
   calMonth: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
   calWeekRow: { flexDirection: 'row', marginBottom: theme.sp(0.75) },
   calWeek: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: theme.weight.medium as any },
-  calWeekWE: { color: mm.colors.limeDeep },
+  calWeekWE: { color: mm.colors.limeCore },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   // ★ 2026-10-10（用户：日历下方空白 + "今天"数字下沉）：
   //   1) 行高显式固定 sp(9)=36，不再用 aspectRatio（百分比宽 + aspectRatio 在 iOS flexWrap 里行高计算不稳，会撑出空行）；
@@ -427,10 +427,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'transparent',
   },
   calCellOn: { backgroundColor: mm.colors.limeMid },
-  calCellToday: { borderColor: mm.colors.limeDeep },
+  calCellToday: { borderColor: mm.colors.limeCore },
   calDay: { fontSize: theme.fontSize.xs, lineHeight: 18, color: theme.colors.textBody },
   calDayOn: { color: '#3E4A18', fontWeight: theme.weight.bold as any },
-  calDayToday: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any },
+  calDayToday: { color: mm.colors.limeCore, fontWeight: theme.weight.semibold as any },
   calDayOff: { color: theme.colors.cardBorder },
 
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },

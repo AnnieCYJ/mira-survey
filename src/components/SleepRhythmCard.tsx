@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   rowName: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle, flex: 1 },
   rowRight: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   rowVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  rowValOk: { color: mm.colors.limeDeep },
+  rowValOk: { color: mm.colors.limeCore },
   rowValWarn: { color: mm.colors.honeyDeep },
   rowValBad: { color: mm.colors.roseDeep },
   rowNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

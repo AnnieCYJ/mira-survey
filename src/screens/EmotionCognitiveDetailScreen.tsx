@@ -55,13 +55,14 @@ const MOD_BG = {
 
 /**
  * 节律状态 → 语义色（与睡眠详情页 levelMeta / 节律日历 CAL_COLOR 同源）。
- * 正常=limeDeep 绿 / 偏高=danger 红 / 紊乱=roseDeep 粉（★ 2026-11-07 用户：紊乱用粉色，不再琥珀）。
+ * 正常=limeCore 亮黄绿 / 偏高=danger 红 / 紊乱=roseDeep 粉（★ 2026-11-07 用户：紊乱用粉色，不再琥珀）。
+ * ★ 2026-11-08：深玻璃卡上的深橄榄绿 limeDeep 发糊，语义色统一换 limeCore。
  */
 const RHYTHM_STATUS_COLOR: Record<string, string> = {
-  节律正常: mm.colors.limeDeep,
+  节律正常: mm.colors.limeCore,
   皮质醇偏高: theme.colors.danger,
   节律紊乱: mm.colors.roseDeep,
-  normal: mm.colors.limeDeep,
+  normal: mm.colors.limeCore,
   sustained_high: theme.colors.danger,
   dysregulated: mm.colors.roseDeep,
 };
@@ -711,7 +712,7 @@ function RhythmCalendar({ range, anchor }: { range: RangeKey; anchor: Date }) {
  *  改为节律小结三格（异常天数 / 节律状态 / 峰值时段）；异常天数与节律日历同源（dayAbnormal）。 */
 function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg; range: RangeKey; anchor: Date }) {
   const levelMeta: Record<RhythmLevel, { label: string; color: string }> = {
-    normal: { label: '节律正常', color: mm.colors.limeDeep },
+    normal: { label: '节律正常', color: mm.colors.limeCore },
     sustained_high: { label: '持续偏高', color: theme.colors.danger },
     dysregulated: { label: '节律紊乱', color: mm.colors.roseDeep },
   };

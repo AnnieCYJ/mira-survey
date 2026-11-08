@@ -28,7 +28,7 @@ export const MOOD_COLOR: Record<MoodKey, string> = {
   grateful: mm.colors.honeyDeep,
   pleasant: mm.colors.skyCore,
   calm: theme.colors.mood.calm,
-  tired: mm.colors.limeDeep,
+  tired: mm.colors.limeMid,
   stressed: theme.colors.mood.stressed,
   anxious: theme.colors.danger,
   sad: '#7EA6F8',

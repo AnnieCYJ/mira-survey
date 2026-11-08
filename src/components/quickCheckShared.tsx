@@ -219,8 +219,8 @@ export const qc = StyleSheet.create({
     alignItems: 'center',
     marginTop: theme.sp(4),
   },
-  linkText: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep, fontWeight: theme.weight.semibold },
-  linkArrow: { fontSize: theme.fontSize.card, color: mm.colors.limeDeep },
+  linkText: { fontSize: theme.fontSize.sm, color: mm.colors.limeCore, fontWeight: theme.weight.semibold },
+  linkArrow: { fontSize: theme.fontSize.card, color: mm.colors.limeCore },
   cta: {
     marginTop: theme.sp(4),
     marginBottom: theme.sp(4),

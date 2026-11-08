@@ -11,7 +11,7 @@
  * 展示：平均血氧 / 最低血氧 / 呼吸暂停(OSAHS 分级) / 呼吸率 / 低氧时间 / 心脏负荷 + 频现时段 + 免责说明。
  */
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
@@ -103,9 +103,7 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
               <Text style={styles.note}>呼吸暂停频现时段：{freqTimes.join('、')}</Text>
             </View>
           ) : null}
-          <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
-            <Text style={styles.ecgBtnLabel}>重新读取</Text>
-          </TouchableOpacity>
+          {/* ★ 2026-11-08（用户）：进入页面已自动拉取血氧历史，去掉「重新读取」手动按钮 */}
           <Text style={styles.note}>数据来自戒指血氧历史，仅供参考，不作为睡眠呼吸暂停综合征诊断依据。</Text>
         </>
       ) : null}
@@ -142,13 +140,4 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     marginTop: theme.space.sm,
   },
-  ecgBtn: {
-    marginTop: theme.space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: theme.space.md,
-    borderRadius: theme.radius.md,
-    backgroundColor: mm.colors.purpleBtn,
-  },
-  ecgBtnLabel: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 });

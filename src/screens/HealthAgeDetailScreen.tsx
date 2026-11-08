@@ -357,7 +357,7 @@ function CompareCard({ bodyAge, actualAge, factors, isMonth }: { bodyAge: number
         <View style={styles.cmpCol}>
           <Text style={styles.cmpLab}>身体年龄</Text>
           <View style={styles.cmpValRow}>
-            <Text style={[styles.cmpNum, { color: mm.colors.limeDeep }]}>
+            <Text style={[styles.cmpNum, { color: mm.colors.limeCore }]}>
               {bodyAge != null ? bodyAge.toFixed(1) : '—'}
             </Text>
             <Text style={styles.cmpUnit}>岁</Text>
@@ -380,7 +380,7 @@ function CompareCard({ bodyAge, actualAge, factors, isMonth }: { bodyAge: number
           <View style={styles.factorTrack}>
             <View style={[styles.factorBar, { width: `${Math.max(0, Math.min(100, f.pct))}%` }]} />
           </View>
-          <Text style={[styles.factorVal, { color: mm.colors.limeDeep }]}>
+          <Text style={[styles.factorVal, { color: mm.colors.limeCore }]}>
             {f.contribution > 0 ? '+' : ''}{f.contribution.toFixed(1)}
           </Text>
         </View>
@@ -564,7 +564,7 @@ export default function HealthAgeDetailScreen() {
 function PaceCard({ pace }: { pace: NonNullable<ReturnType<typeof computeAgingPace>> }) {
   const band = pace.band;
   const bandText = band === 'reversing' ? '逆转 · 在变年轻' : band === 'steady' ? '平稳' : '加速 · 偏快';
-  const bandColor = band === 'reversing' ? mm.colors.limeDeep : band === 'steady' ? theme.colors.textSub : mm.colors.roseDeep;
+  const bandColor = band === 'reversing' ? mm.colors.limeCore : band === 'steady' ? theme.colors.textSub : mm.colors.roseDeep;
   const slopeTxt = pace.slopePerYear != null
     ? (pace.slopePerYear >= 0 ? '+' : '') + pace.slopePerYear.toFixed(2)
     : '—';
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
   heroCompare: {
     fontSize: theme.fontSize.body,
     fontWeight: '600',
-    color: mm.colors.limeDeep,
+    color: mm.colors.limeCore,
     marginLeft: 10,
     marginBottom: 9,
   },

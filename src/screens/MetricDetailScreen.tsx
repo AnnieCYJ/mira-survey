@@ -3261,9 +3261,7 @@ function HrvLorenzSection() {
           </View>
         </View>
       ) : null}
-      <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
-        <Text style={styles.ecgBtnLabel}>重新读取</Text>
-      </TouchableOpacity>
+      {/* ★ 2026-11-08（用户）：进入页面已自动拉取 RR 历史，不需要「重新读取」手动按钮 */}
       <Text style={styles.note}>数据来自戒指记录的心跳间期历史（RR 间期），需连续佩戴一段时间才有足够的点；仅作趋势参考，不构成医学判断。</Text>
     </Card>
   );
