@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: mm.colors.limeDeep },
   badgeTextAi: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 
-  title: { fontSize: theme.fontSize.lg, fontWeight: '700', color: 'theme.colors.ui.onGlassInk', marginBottom: 10, letterSpacing: -0.3 },
+  title: { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.colors.ui.onGlassInk, marginBottom: 10, letterSpacing: -0.3 },
   desc: { fontSize: theme.fontSize.xs, lineHeight: 21, color: 'theme.colors.ui.onGlassInkSub', marginBottom: 26 },
 
   // ★ v18.77 渐变按钮套路（同设置页铁律）：Touchable 只留圆角+裁切，尺寸全由渐变层撑起。
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.lg,
     lineHeight: 29,
     fontWeight: '700',
-    color: 'theme.colors.ui.onGlassInk',
+    color: theme.colors.ui.onGlassInk,
     letterSpacing: -0.3,
     marginBottom: 14,
   },

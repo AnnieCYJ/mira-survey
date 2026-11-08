@@ -1,4 +1,10 @@
 /**
+ * ★ 2026-11-07 重要修正：此前本文件的 BASE_UI 能力是**照全量版协议 + HK18 旧后端数据**推出来的，
+ *   与用户当前手上这枚 LunaMira 精简版有多处相反（体温/血脂/尿酸写「有」实际没有；血压写「无」实际有）。
+ *   现按真机 `IDeviceFuctionDataListener` 能力包 + onBatch slot 实测字段重写，
+ *   逐项证据见 docs/RING_DEVICE_CAPABILITY_MATRIX.md。
+ *   **SDK 协议文档描述的是全量版（PRO_UI），不能套到精简版（BASE_UI）上。**
+ *
  * ★ 2026-11-04（用户定稿）：两套 Profile 架构 —— 设备能力真相源
  *
  * 核心规则（用户拍板）：
@@ -60,7 +66,10 @@ export const NATIVE_METRIC_CATALOG: NativeMetricSpec[] = [
   //     sns_activation(交感)、emotion、depression_risk、cortisol_value。
   //     旧 auto_data.eda_daily_mean 是皮肤含水量被错误命名，且 11-05 真机连着戒指 0 条新回读
   //     → 基础版彻底移除皮电（用户 2026-11-05 拍板）。
-  { key: 'temp', label: '体温', layer: 'backfill' },                          // ✅ 唯一真实温度：日均体温(℃)
+  // ★ 2026-11-07 真机能力包实证（LunaMira 41:42:E7:17:9B:1C / 固件 00.12.09 / 协议版本 5）：
+  //   `能力包P3 ─ 体温Type=0` = 精简版**没有体温传感器**；`能力包P4 ─ 体温告警=不支持`。
+  //   旧注释「✅ 唯一真实温度：日均体温」是拿 HK18 全量版的数据反推精简版，已作废。
+  { key: 'temp', label: '体温', layer: 'backfill', proOnly: true },            // ❌ 精简版不支持(type=0)
   { key: 'skinTemp', label: '皮肤温度', layer: 'realtime', proOnly: true },   // ❌ 无独立数据源，不展示
   { key: 'eda', label: '皮电 EDA', layer: 'backfill', proOnly: true },         // ❌ 协议无此指标，基础版不展示
 
@@ -70,22 +79,30 @@ export const NATIVE_METRIC_CATALOG: NativeMetricSpec[] = [
   { key: 'calorie', label: '卡路里', layer: 'backfill' },
 
   // —— 健康评分/派生（backfill）——
+  // ★ 2026-11-07 真机能力包：`压力 Stress : 支持 (StressType=2)` / `疲劳 Fatigue : 不支持`。
+  //   压力硬件是有的，但**不在 v5 五分钟/一分钟 slot 里**（实测 keys=hr,bpDia,bpSys,spo2,hrv,t），
+  //   要读设备手动测量记录（readDeviceManualData / STRESS）才有值，见 docs/RING_DEVICE_CAPABILITY_MATRIX.md。
   { key: 'stress', label: '压力', layer: 'backfill' },
-  { key: 'fatigue', label: '疲劳', layer: 'backfill' },
-  { key: 'sns', label: '交感神经', layer: 'backfill' },
-  { key: 'met', label: '梅脱', layer: 'backfill' },
+  { key: 'fatigue', label: '疲劳', layer: 'backfill', proOnly: true },          // ❌ 精简版不支持
+  { key: 'sns', label: '交感神经', layer: 'backfill' },                          // ⚠️ 精简版能力包未确认，按实测渲染
+  { key: 'met', label: '梅脱', layer: 'backfill', proOnly: true },              // ❌ slot 无 met，精简版无源
 
   // —— 血压估计（backfill / PPG 估计）——
-  { key: 'bpSys', label: '收缩压', layer: 'backfill', proOnly: true },
-  { key: 'bpDia', label: '舒张压', layer: 'backfill', proOnly: true },
+  // ★ 2026-11-07 真机能力包：`血压 BP : 支持 (BpTag=1)`，且 onBatch 实测逐点回传
+  //   `bpSys=119 / bpDia=84` —— 精简版**有血压**。旧配置把血压标成 Pro 专属，反了。
+  { key: 'bpSys', label: '收缩压', layer: 'backfill' },
+  { key: 'bpDia', label: '舒张压', layer: 'backfill' },
   { key: 'ppgSys', label: 'PPG 收缩压', layer: 'backfill', proOnly: true },
   { key: 'ppgDia', label: 'PPG 舒张压', layer: 'backfill', proOnly: true },
 
   // —— 血液成分（backfill / HealthGlance 光谱；基础版按用户实测“有”血脂四项+尿酸+血糖）——
-  { key: 'lipid', label: '血脂', layer: 'backfill' },
-  { key: 'triglyceride', label: '甘油三酯', layer: 'backfill' },
-  { key: 'hdl', label: '高密度脂蛋白', layer: 'backfill' },
-  { key: 'ldl', label: '低密度脂蛋白', layer: 'backfill' },
+  // ★ 2026-11-07 真机能力包：`能力包P4 ─ ★血液成分(尿酸/血脂)=不支持 (CompTag=0)`、
+  //   `单次校准=不支持`、`身体成分=不支持` → 精简版**没有血液成分**。
+  //   旧配置写「基础版按用户实测有血脂四项+尿酸」，那是 HK18 全量版时期的数据，已作废。
+  { key: 'lipid', label: '血脂', layer: 'backfill', proOnly: true },
+  { key: 'triglyceride', label: '甘油三酯', layer: 'backfill', proOnly: true },
+  { key: 'hdl', label: '高密度脂蛋白', layer: 'backfill', proOnly: true },
+  { key: 'ldl', label: '低密度脂蛋白', layer: 'backfill', proOnly: true },
   { key: 'cholesterol', label: '总胆固醇', layer: 'backfill', proOnly: true },
   { key: 'ua', label: '尿酸', layer: 'backfill', proOnly: true },
   { key: 'glucose', label: '血糖', layer: 'backfill', proOnly: true },
@@ -169,22 +186,28 @@ export const DEVICE_PROFILE_MAP: Record<string, DeviceProfileId> = {
 const PRO_NATIVE_METRICS = ALL_NATIVE_METRIC_KEYS;
 
 /**
- * BASE_UI（LUNA-MIRA）原生指标 —— 按 2026-11-05 协议 + 真机后端双重收敛（MAC 41:42:E7:17:9B:1C）：
- *   ✅ 有（后端 auto_data / gsr / hrv_history 实测回读）：
- *         核心生命体征 hr/spo2/hrv、活动量 steps/distance/calorie、睡眠 sleep、
- *         体温 temp（temp_daily_mean，36.15–36.93℃ 日均）、
- *         血脂四项 triglyceride/hdl/ldl（status_score）、交感神经 sns（gsr 通道）
- *   ❌ 无（协议不存在 / 硬件不支持 / 后端无数据，统一从基础版剔除）：
- *         皮电 EDA（协议无此指标，旧值实为皮肤含水量）、独立皮肤温度 skinTemp、
- *         心电 ecg、呼吸率 rr、血压 bpSys/bpDia/ppgSys/ppgDia、血糖 glucose*、
- *         总胆固醇 cholesterol、尿酸 ua、皮肤含水量 skin、情绪 emotion、
- *         皮质醇 cortisol、抑郁风险 depressionRisk
- *   ⚠️ 数据隔离：旧设备 HK18（device_id C9:00:9C:D7:C2:D8）的数据不得混入本机型，
- *      见 src/data/ringDataIsolation.ts。11-05 全库 0 条新记录，最新停在 11-04。
- *   说明：压力 stress / 疲劳 fatigue / 梅脱 met 虽然保留在 nativeMetrics（属 Mira 心理状态核心），
- *   但它们的数据源只有「健康一览 healthGlance 自动快照」——基础版后端该通道实测 0 条，
- *   故 UI 层按 cortisol 能力开关把这两张卡与一键体检文案隐藏（见 InsightScreen / QuickCheckTab），
- *   避免永远显示「—」。未来若基础版固件补上健康一览，打开该开关即可恢复。
+ * BASE_UI（LunaMira 精简版）原生指标 —— ★ 2026-11-07 **按设备能力包真机实证重写**。
+ *
+ * 证据：真机 MAC 41:42:E7:17:9B:1C / 固件 00.12.09 / 原始协议版本 5，
+ *       Veepoo SDK `IDeviceFuctionDataListener.onFunctionSupportDataChange` 回包
+ *       （完整日志见 docs/RING_DEVICE_CAPABILITY_MATRIX.md）。
+ *
+ *   ✅ 设备声明支持：
+ *        心率 HR（始终）、血氧 SpO2、HRV（HrvType=6，全天 HRV 支持、App 测量不支持）、
+ *        血压 BP（BpTag=1）、压力 Stress（StressType=2）、
+ *        精准睡眠（sleepTag=6）、活动量 steps/distance/calorie（日汇总）
+ *   ✅ onBatch 实测逐点回传的字段（dk=2026-11-06，1440 点/天，全天 1 分钟等间隔）：
+ *        `hr, bpSys, bpDia, spo2, hrv, t` —— 只有这 5 个生命体征 + 时间戳
+ *   ❌ 设备明确不支持：
+ *        体温(type=0)、血液成分/尿酸/血脂(CompTag=0)、身体成分、血糖(GluTag=0)、
+ *        疲劳、呼吸率、ECG、呼吸暂停提醒、体温告警、App 触发 HRV 测量
+ *   ⚠️ 压力：硬件支持，但**不在 onBatch slot 里**（slot keys 无 stress），
+ *        需走 `readDeviceManualData(STRESS)` 手动测量记录通道；当前原生未接入 → UI 如实空态。
+ *   ⚠️ 数据隔离：旧设备 HK18（C9:00:9C:D7:C2:D8）是全量版，数据不得混入本机型，
+ *        见 src/data/ringDataIsolation.ts。旧配置把它的数据当成精简版能力，是本次修正的根因。
+ *
+ * 与 PRO_UI 的关系：PRO_UI = 全功能戒指（HK18 / LunaMira Pro，SDK 协议全集），
+ * BASE_UI = 这枚精简版，只保留上面「设备声明支持 ∪ 实测回传」的指标。
  */
 const BASE_NATIVE_METRICS = ALL_NATIVE_METRIC_KEYS.filter((k) => {
   const spec = NATIVE_METRIC_CATALOG.find((m) => m.key === k);
@@ -211,21 +234,21 @@ export const DEVICE_PROFILES: Record<DeviceProfileId, DeviceProfile> = {
   BASE_UI: {
     id: 'BASE_UI',
     label: 'Luna Mira',
-    subtitle: '基础版：心率/HRV/血氧/体温/睡眠/活动/血脂/交感/身体成分（无 皮电·皮肤温度·心电·血压·血糖·情绪·皮质醇）',
+    subtitle: '精简版：心率 · HRV · 血氧 · 血压 · 压力 · 精准睡眠 · 活动（无 体温·血液成分·血糖·ECG·皮电·呼吸率·疲劳）',
     nativeMetrics: BASE_NATIVE_METRICS,
-    // 基础版：无 EDA 皮电（协议无此指标）/ 皮肤温度 / ECG / 呼吸率 / 血压 / 血糖 /
-    // 总胆固醇 / 尿酸 / 皮肤含水量 / 情绪 / 皮质醇实测 / 抑郁风险；
-    // 有真实数据照常展示：体温 temp（唯一温度）、血脂四项、交感神经 sns、活动/睡眠；
-    // 一键体检 quickCheck 与皮质醇推算节律保留
+    // ★ 2026-11-07 真机能力包对齐：体温 / 血液成分 / 身体成分 / 血糖 / ECG / 呼吸率 /
+    //   疲劳 / 皮电 / 皮肤温度 / 情绪 / 皮质醇实测 / 抑郁风险 = 硬件不支持，一律关闭；
+    //   血压（BpTag=1）与压力（StressType=2）设备支持，血压还有逐点真实值 → 打开；
+    //   quickCheck 与 cortisolProxy 是多信号推算，不依赖缺失传感器，保留。
     features: {
-      ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: false,
-      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: false,
-      glucose: false, bodyComp: true, cholesterol: false, uricAcid: false,
+      ecg: false, bloodComponents: false, quickCheck: true, temp: false, eda: false,
+      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: true,
+      glucose: false, bodyComp: false, cholesterol: false, uricAcid: false,
     },
     capabilities: {
-      ecg: false, bloodComponents: true, quickCheck: true, temp: true, eda: false,
-      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: false,
-      glucose: false, bodyComp: true, cholesterol: false, uricAcid: false,
+      ecg: false, bloodComponents: false, quickCheck: true, temp: false, eda: false,
+      rr: false, skin: false, emotion: false, cortisol: false, cortisolProxy: true, bp: true,
+      glucose: false, bodyComp: false, cholesterol: false, uricAcid: false,
     },
   },
 };
@@ -449,7 +472,59 @@ export interface RingCapabilities {
   skinType?: number;
   deviceVersion?: string;
   deviceNumber?: number;
+  // ── Veepoo `FunctionDeviceSupportData` 能力包字段（设备硬件真相源）──
+  //   ⚠️ 2026-11-07 真机实测：已装 APK 的 `ready` 事件目前**只透传**
+  //   `{deviceVersion, passwordConfirmed}`，下面这些 *Type 都没透传到 JS
+  //   （原生只把它们打进 logcat「设备能力总览」）。所以能力门禁此刻实际靠 MAC 兜底，
+  //   等原生重编译后补齐透传，这些字段即可直接用于分档，无需再改 JS 判定逻辑。
+  originProtocolVersion?: number;
+  watchDays?: number;
+  hrvType?: number;
+  allDayHrv?: boolean;
+  hrvAppDetect?: boolean;
+  spo2H?: boolean;
+  spo2HBreathBreak?: boolean;
+  bp?: boolean;
+  bpTag?: number;
+  temperatureFunction?: boolean;
+  bloodGlucose?: boolean;
+  gluTag?: number;
+  bloodComponent?: boolean;
+  compTag?: number;
+  bodyComposition?: boolean;
+  stress?: boolean;
+  stressType?: number;
+  fatigue?: boolean;
+  breath?: boolean;
+  precisionSleep?: boolean;
+  sleepTag?: number;
 }
+
+/**
+ * ★ 2026-11-07 真机能力指纹：LunaMira **精简版**（当前用户手上这枚）。
+ * MAC 41:42:E7:17:9B:1C / 固件 00.12.09 / 原始协议版本 5 / 存储 3 天。
+ * 来源：logcat `[VeepooRing] 设备能力总览` + `能力包P2/P3/P4`（逐项原文见能力矩阵文档）。
+ * 这是「精简版有哪些数据」的唯一实证基准，与 SDK 全量协议（PRO_UI）严格区分。
+ */
+export const LUNAMIRA_BASE_CAPABILITY_FINGERPRINT = {
+  originProtocolVersion: 5,
+  watchDays: 3,
+  hr: true,               // 始终支持
+  spo2H: true,            // 支持
+  spo2HBreathBreak: false,
+  hrv: true, hrvType: 6, allDayHrv: true, hrvAppDetect: false,
+  bp: true, bpTag: 1,
+  temperatureFunction: false, temperatureType: 0,
+  bloodGlucose: false, gluTag: 0,
+  bloodComponent: false, compTag: 0, bodyComposition: false,
+  stress: true, stressType: 2,
+  fatigue: false,
+  breath: false,
+  ecg: false,
+  precisionSleep: true, sleepTag: 6,
+  /** onBatch 逐点 slot 实测 key 全集（1440 点/天，全天 1 分钟等间隔） */
+  slotKeys: ['hr', 'bpSys', 'bpDia', 'spo2', 'hrv', 't'],
+} as const;
 
 export function resolveProfileByCapabilities(
   caps: RingCapabilities | null | undefined,

@@ -122,8 +122,8 @@ const styles = StyleSheet.create({
     color: theme.colors.textTitle,
     letterSpacing: -0.3,
   },
-  headSub: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.6)' },
-  headClose: { fontSize: theme.fontSize.h2, color: 'rgba(255,255,255,0.8)', paddingHorizontal: theme.sp(1) },
+  headSub: { fontSize: theme.fontSize.sm, color: theme.colors.ui.white60 },
+  headClose: { fontSize: theme.fontSize.h2, color: theme.colors.ui.white80, paddingHorizontal: theme.sp(1) },
   rewardBadge: {
     width: theme.fs(26), height: theme.fs(26),
     borderRadius: theme.fontSize.xs,

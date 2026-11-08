@@ -16,7 +16,7 @@ import { theme } from '../theme/theme';
 
 export type AiTone = 'good' | 'warn' | 'neutral';
 
-/** 结论行：左侧状态圆点（good=绿 / warn=橙 / neutral=灰）+ 标题 + 正文 */
+/** 结论行：左侧状态圆点（good=绿 / warn=橙 / neutral=灰）+ 标题（可选）+ 正文 */
 export function AiResultRow({
   tone,
   title,
@@ -25,23 +25,23 @@ export function AiResultRow({
   bodyColor,
 }: {
   tone: AiTone;
-  title: string;
+  /** ★ 2026-11-07（用户：不要写「AI 分析」四个字）：标题改为可选 —— 调用方不传就不渲染标题行 */
+  title?: string;
   children: ReactNode;
-  /** ★ 2026-10-07（用户：AI 分析太长了，缩小一点）：紧凑模式 —— 字号降一档、行距收紧、正文最多 2 行 */
+  /** ★ 2026-10-07（用户：AI 分析太长了，缩小一点）：紧凑模式 —— 字号降一档、行距收紧 */
   compact?: boolean;
   /** ★ 2026-10-08（用户：那些个节律分析，我不要灰色的）：正文色可覆写（传 theme.colors.textBody 等正文色）；不传保持灰色 textSub */
   bodyColor?: string;
 }) {
   const dot =
-    tone === 'good' ? theme.colors.success : tone === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
+    tone === 'good' ? theme.colors.ui.status.good : tone === 'warn' ? theme.colors.ui.status.warn : theme.colors.ui.status.neutral;
   return (
     <View style={[styles.row, compact && styles.rowCompact]}>
       <View style={[styles.dot, { backgroundColor: dot }]} />
       <View style={styles.rowBody}>
-        <Text style={[styles.rowTitle, compact && styles.rowTitleCompact]}>{title}</Text>
+        {title ? <Text style={[styles.rowTitle, compact && styles.rowTitleCompact]}>{title}</Text> : null}
         <Text
           style={[styles.rowText, compact && styles.rowTextCompact, bodyColor ? { color: bodyColor } : null]}
-          numberOfLines={compact ? 2 : undefined}
         >
           {children}
         </Text>
@@ -83,12 +83,12 @@ export default function AiAnalysis({
         <View style={[styles.adviceBox, compact && styles.adviceBoxCompact]}>
           <Text style={[styles.adviceTitle, compact && styles.textCompact]}>● 建议</Text>
           {advice.map((t, i) => (
-            <Text key={i} style={[styles.adviceItem, compact && styles.textCompact]} numberOfLines={compact ? 2 : undefined}>· {t}</Text>
+            <Text key={i} style={[styles.adviceItem, compact && styles.textCompact]}>· {t}</Text>
           ))}
         </View>
       ) : null}
       {foot ? (
-        <Text style={[styles.foot, compact && styles.textCompact]} numberOfLines={compact ? 2 : undefined}>{foot}</Text>
+        <Text style={[styles.foot, compact && styles.textCompact]}>{foot}</Text>
       ) : null}
     </View>
   );
@@ -155,7 +155,8 @@ const styles = StyleSheet.create({
   subtitleCompact: { marginBottom: theme.sp(1) },
   rowCompact: { marginBottom: theme.sp(0.75) },
   rowTitleCompact: { fontSize: theme.fontSize.micro, marginBottom: 0 },
-  rowTextCompact: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.5 },
+  // ★ 2026-11-07（用户）：compact 正文升到 fontSize.sm（=荷尔蒙节律皮质醇/周期分析同款字号），且不再截断
+  rowTextCompact: { fontSize: theme.fontSize.sm, lineHeight: theme.fontSize.sm * 1.6 },
   adviceBoxCompact: { marginTop: theme.space.xs },
   textCompact: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.35 },
 });

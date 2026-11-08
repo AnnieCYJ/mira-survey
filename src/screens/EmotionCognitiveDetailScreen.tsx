@@ -55,15 +55,15 @@ const MOD_BG = {
 
 /**
  * 节律状态 → 语义色（与睡眠详情页 levelMeta / 节律日历 CAL_COLOR 同源）。
- * 正常=limeDeep 绿 / 偏高=danger 红 / 紊乱=honeyDeep 琥珀。
+ * 正常=limeDeep 绿 / 偏高=danger 红 / 紊乱=roseDeep 粉（★ 2026-11-07 用户：紊乱用粉色，不再琥珀）。
  */
 const RHYTHM_STATUS_COLOR: Record<string, string> = {
   节律正常: mm.colors.limeDeep,
   皮质醇偏高: theme.colors.danger,
-  节律紊乱: mm.colors.honeyDeep,
+  节律紊乱: mm.colors.roseDeep,
   normal: mm.colors.limeDeep,
   sustained_high: theme.colors.danger,
-  dysregulated: mm.colors.honeyDeep,
+  dysregulated: mm.colors.roseDeep,
 };
 const RANGE_STATUS_LABEL: Record<RhythmLevel, string> = {
   normal: '节律正常',
@@ -476,8 +476,6 @@ export default function EmotionCognitiveDetailScreen() {
           </TouchableOpacity>
           <View style={styles.headText}>
             <Text style={styles.title}>昼夜节律</Text>
-            {/* ★ 副标题：与情绪/脑力消耗详情页同结构（标题 + 副标题） */}
-            <Text style={styles.sub}>皮质醇昼夜曲线 · 情绪 · 疲劳 · 睡眠恢复</Text>
           </View>
         </View>
 
@@ -715,7 +713,7 @@ function RangeView({ cur, prev, range, anchor }: { cur: RangeAgg; prev: RangeAgg
   const levelMeta: Record<RhythmLevel, { label: string; color: string }> = {
     normal: { label: '节律正常', color: mm.colors.limeDeep },
     sustained_high: { label: '持续偏高', color: theme.colors.danger },
-    dysregulated: { label: '节律紊乱', color: mm.colors.honeyDeep },
+    dysregulated: { label: '节律紊乱', color: mm.colors.roseDeep },
   };
   const cMeta = cur.cortisolStatus ? levelMeta[cur.cortisolStatus] : null;
   // 异常天数（年=异常月份）：与 RhythmCalendar 完全同一判定（dayAbnormal 模块级缓存，不重复算）
@@ -932,7 +930,7 @@ const styles = StyleSheet.create({
   calHeadText: { flex: 1, textAlign: 'center', fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   calCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   calMonthCell: { flex: 1, aspectRatio: 1.5, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
-  calCellToday: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.95)' }, // ★ mira-ocean：紫 → 白
+  calCellToday: { borderWidth: 2, borderColor: theme.colors.ui.white95 }, // ★ mira-ocean：紫 → 白
   calCellText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any },
   calCellEmpty: { flex: 1 },
   calTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

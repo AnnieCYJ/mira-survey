@@ -72,7 +72,7 @@ export const ocean = {
   chartRef: 'rgba(255,255,255,0.28)',
 
   /** 深底上的阴影（黑而非墨，避免「越遮越脏」） */
-  shadow: { color: '#000000', opacity: 0.28, radius: 18, offset: { width: 0, height: 8 }, elevation: 6 },
+  shadow: { color: '#000000', opacity: 0.28, radius: 18, offset: { width: 0, height: 8 }, elevation: 0 },
 
   /** Tab 栏玻璃（Calm 式半透胶囊） */
   tabBg: 'rgba(255,255,255,0.22)',

@@ -43,6 +43,9 @@ import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from 
 import { hsKeyFor, DISPLAY_KEY_BY_HS } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
 import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
+import { safeNativeEmitter } from '../lib/nativeEmitter';
+// ★ 2026-11-07（用户）：LunaMira 精简版压力同步（仅 BASE_UI，设备实测优先）
+import { syncBaseStress } from '../lib/baseStressSync';
 import {
   computeSeed,
   deriveDaytimeBaseline,
@@ -76,7 +79,62 @@ import {
   getDeviceProfileId,
   getProfile,
   DEFAULT_DEVICE_PROFILE,
+  DEVICE_ID_PROFILES,
 } from '../config/deviceModel';
+
+/**
+ * ★ 2026-11-07（用户：戒指叫 Luna Mira，App 里不要叫 Mira Ring）
+ * 已装 APK 的原生桥在「按 MAC 直连、拿不到广播名」时会回退成历史占位名
+ * 'Mira Ring' / 'Mira Ring Pro' / 'Mira Ring (9B:1C)'；扫描连接时给的是真实广播名 'Lunamira'。
+ * 占位名根本不是设备名。这里只做「显示名收敛」：占位名 / 空值 → 品牌标准写法 'Luna Mira'，
+ * 真实广播名的无空格写法也统一成品牌写法；其它真实设备名一律原样保留（不改写、不臆造）。
+ */
+const LEGACY_RING_PLACEHOLDER = /^mira\s*ring(?:\s*pro)?(?:\s*\(.*\))?$/i;
+export function displayRingName(raw: unknown, fallback = 'Luna Mira'): string {
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  if (!name || LEGACY_RING_PLACEHOLDER.test(name)) return fallback;
+  if (/^luna[\s-]*mira$/i.test(name)) return fallback;
+  return name;
+}
+
+/**
+ * ★ 2026-11-07（用户：要在 App 里看到「固件广播名」）
+ * 固件广播名 = 戒指自己在 BLE 广播里报的名字，与 App 品牌显示名 `Luna Mira` 不是一回事。
+ * 真机实证（adb logcat，2026-11-07）：
+ *   CAWARENESS_BluetoothDeviceHelper: deviceName=Lunamira, deviceAddress=41:42:E7:17:**:**
+ *   ota:JLBleDataManager: Device[Lunamira,41:42:E7:17:9B:1C]
+ * 问题：按 MAC 直连绕过了扫描，原生桥拿不到广播名时会回退成占位串 `Mira Ring`，
+ * 所以不能只靠 `raw.deviceName`。这里保存本机已记录的真实广播名作兜底，并明确标注来源，
+ * 绝不把记录值伪装成实时读数；一旦扫描到 / 原生回传真名，实时值立即覆盖。
+ */
+const RECORDED_BROADCAST_NAMES: Record<string, string> = {
+  '41:42:E7:17:9B:1C': 'Lunamira',
+};
+const liveBroadcastNames = new Map<string, string>();
+export type BroadcastNameSource = 'live' | 'recorded' | null;
+export function rememberBroadcastName(mac: unknown, rawName: unknown): void {
+  const key = String(mac ?? '').toUpperCase();
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
+  if (!key || !name || LEGACY_RING_PLACEHOLDER.test(name)) return;
+  liveBroadcastNames.set(key, name);
+}
+/** 解析出「固件广播名 + 来源」：实时值优先，其次本机扫描缓存，最后本机已记录值。 */
+export function resolveBroadcastName(
+  mac: unknown,
+  rawName: unknown,
+): { name: string | null; source: BroadcastNameSource } {
+  const key = String(mac ?? '').toUpperCase();
+  const raw = typeof rawName === 'string' ? rawName.trim() : '';
+  if (raw && !LEGACY_RING_PLACEHOLDER.test(raw)) {
+    rememberBroadcastName(key, raw);
+    return { name: raw, source: 'live' };
+  }
+  if (key && liveBroadcastNames.has(key)) return { name: liveBroadcastNames.get(key)!, source: 'live' };
+  if (key && RECORDED_BROADCAST_NAMES[key]) {
+    return { name: RECORDED_BROADCAST_NAMES[key], source: 'recorded' };
+  }
+  return { name: null, source: null };
+}
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
 const STATUS_SNAPSHOT_MS = 30 * 60 * 1000;
@@ -251,6 +309,97 @@ export interface FemaleInfo {
   currentMenstrualDays: number; // 当前经期实际天数
 }
 
+/**
+ * ★ 2026-11-07（用户：「我要看到这枚戒指到底连了个啥」）：一次 onBatch 同步的**真实回传摘要**。
+ * 由固件实际吐出的 slot 计算，不是 SDK 全量协议清单。设置页据此回答：
+ *   「当前这枚戒指传了哪些字段、多少点、日间/夜间各是多少分钟间隔」。
+ * ⚠️ 与 HK18 全量版严格分开：摘要带 deviceId，换戒指即作废。
+ */
+export interface BatchDaySummary {
+  /** YYYY-MM-DD */
+  dayKey: string;
+  /** 数据来源戒指 MAC（用于跨机型隔离） */
+  deviceId: string | null;
+  /** 该日收到的 slot 条数 */
+  slotCount: number;
+  /** 固件原始字段名全集（如 hr,bpSys,bpDia,spo2,hrv,t） */
+  slotKeys: string[];
+  /** 从真实时间戳算出的日间 / 夜间间隔中位数（分钟） */
+  dayMinutes: number | null;
+  nightMinutes: number | null;
+  /** 实际写进 healthStore 的指标与点数 */
+  written: Array<{ key: string; count: number }>;
+  updatedAt: number;
+}
+
+/**
+ * 跨 onBatch 累积的实收摘要。
+ * ⚠️ 刻意放在模块作用域：handleBatch 属于 NativeRingSource，applyPatch 属于 RingConnectionImpl，
+ *    挂成任一边的实例字段都会在另一边报「属性不存在」。本文件是单实例 BLE 管理器，模块级足够。
+ */
+let batchSummaryAccum: Record<string, BatchDaySummary> = {};
+
+/**
+ * ★ 2026-11-07（用户「活动消耗 / 卡路里还没出来」）：把逐点活动样本折成日汇总。
+ *
+ * 根因：LunaMira 精简版的 `daily` 通道只回 `step`（真机 `[Batch.daily] step=90`），
+ *   **不带 cal / dist**；而 `slots` 通道确实有逐点 calorie/distance/steps（各 3~4 点）。
+ *   过去只把逐点写进 intraday，`stepDaily[dk].calorie` 恒为 0 → 首页「活动消耗 —」、
+ *   详情页卡路里空白、设置页实况「0 kcal」。
+ *
+ * 固件两种口径都要兼容，不猜死：
+ *   · 单调不减（累计值：30 / 60 / 90）→ 取最大值，避免重复累加；
+ *   · 有回落（每区间增量：1.2 / 0.8 / 1.5）→ 求和。
+ */
+/**
+ * 本次同步里「逐点活动样本折出的日汇总」权威值。
+ * ⚠ 与 batchSummaryAccum 同理：backfill 期间 mergePatch 会先攒在 pending，
+ *    `getState().stepDaily` 读不到刚写的值，path B 直接拿 state 会把 path A 的结果覆盖掉。
+ *    所以两路通道都读写这份模块级累积，最后以它为准写 state。
+ */
+let activityDailyAccum: Record<string, { steps: number; distance: number; calorie: number }> = {};
+
+function aggregateActivityDay(points: Array<{ t: number; v: number }>): number {
+  const vals = (points ?? [])
+    .map((p) => p?.v)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+  if (vals.length === 0) return 0;
+  let monotonic = true;
+  for (let i = 1; i < vals.length; i++) {
+    if (vals[i] + 1e-6 < vals[i - 1]) { monotonic = false; break; }
+  }
+  const total = monotonic ? Math.max(...vals) : vals.reduce((a, b) => a + b, 0);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * ★ 2026-11-07（用户「压力还没同步」）：LunaMira 精简版压力同步的统一入口。
+ * onBatch 逐天到达时用防抖合并成一次；backfillDone 收尾再跑一次（幂等）。
+ * ⚠ 真正的机型门禁 / 设备实测优先逻辑都在 baseStressSync.ts，这里只负责触发。
+ */
+let stressSyncTimer: ReturnType<typeof setTimeout> | null = null;
+function runStressSync(state: RingState, tag: string): void {
+  try {
+    const summaries = Object.values(state.batchSummaries ?? {});
+    const slotKeys = Array.from(new Set(summaries.flatMap((b) => b.slotKeys ?? [])));
+    const syncDays = Array.from(new Set<string>([
+      ...summaries.map((b) => b.dayKey),
+      ...[0, 1, 2].map((i) => dayKey(Date.now() - i * 86400000)),
+    ]));
+    const r = syncBaseStress(syncDays, state.deviceId, slotKeys);
+    postLog('RingBle', `[STRESS-SYNC/${tag}] ${r.reason} days=${r.days} points=${r.points} slotKeys=${slotKeys.join(',')}`);
+  } catch (e) {
+    postLog('RingBle', `[STRESS-SYNC/${tag}] ⚠️ 已忽略: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+function scheduleStressSync(state: RingState): void {
+  if (stressSyncTimer) clearTimeout(stressSyncTimer);
+  stressSyncTimer = setTimeout(() => {
+    stressSyncTimer = null;
+    runStressSync(state, 'BATCH');
+  }, 1500);
+}
+
 export interface RingState {
   /** 实时情绪快照 (每 30s 节流) */
   emotion: {
@@ -265,6 +414,10 @@ export interface RingState {
 
   status: RingConnStatus;
   deviceName: string | null;
+  /** 固件 BLE 广播原名（如 `Lunamira`），未做品牌规范化；null = 尚未读到。 */
+  deviceBroadcastName: string | null;
+  /** 'live' = 本次真实读到；'recorded' = 按 MAC 直连拿不到广播名，用本机已记录值兜底。 */
+  deviceBroadcastNameSource: BroadcastNameSource;
   rssi: number | null;
   battery: number | null;
   firmware: string | null;
@@ -369,6 +522,8 @@ export interface RingState {
    *  healthGlanceType、supportManualTestType（位掩码：GSR=1<<12 / BP=1<<0 / HG=1<<9）。
    *  用于如实判断「心电/光电血压/抑郁风险」在当前戒指上能否测量，而非盲目调用。 */
   deviceCapabilities: { ecgType: number; funcAssessmentType: number; healthGlanceType: number; supportManualTestType: number } | null;
+  /** 本次运行期间各天 onBatch 的**实收摘要**（键 = YYYY-MM-DD）。仅记录当前连接戒指，换设备即清空。 */
+  batchSummaries?: Record<string, BatchDaySummary>;
   /** ECG 实时测量进度（原生 onEcgProgress 回传）：progress=0~100，hr=当前心率（测量中）。非持久化，仅测量期间有效。 */
   ecgProgress: { progress: number; hr?: number } | null;
   /** ★ 2026-10-16（续）：ECG 测量过程中的实时波形缓冲（原生 onEcgProgress 增量回传、JS 在此累积）。仅测量期间有效，结果到达或中断即清空。 */
@@ -588,25 +743,79 @@ function clockOrDateToMs(s: string | null | undefined, baseMs: number): number |
 }
 
 /**
- * 解析原生 `sleepLine`（16 进制串）→ 每分钟睡眠状态数组。
+ * 解析原生 `sleepLine` → **逐分钟**睡眠状态数组（统一精准口径：
+ * 0 深睡 / 1 浅睡 / 2 REM / 3 失眠 / 4 苏醒）。
  *
- * SDK 约定（VPAccurateSleepModel.h L68）：每 2 字节 = 1 个点 = 1 分钟，高位在前低位在后，
- * 取**高 3 bit** 得状态：0 深睡 / 1 浅睡 / 2 REM / 3 失眠 / 4 苏醒（KH 系列无 2、3）。
+ * ★ 2026-11-07「分期图只显示一点点」的真因：Android 与 iOS 的 sleepLine **格式完全不同**，
+ *   旧实现只认 iOS 格式，把 Android 曲线砍成 1/4（普通睡眠 1/20），状态语义也颠倒。
  *
- * 为什么必须解析它：原生只 emit `sleepTotalMin/deep/light/insomnia/score`，
- * **不发 REM、不发苏醒**，也不发分期曲线 —— 而 `sleepLine` 是「各阶段时长的真相源」。
- * 2026-09-18 真机校验：点数 = 521 = sleepDuration；逐分钟统计 深睡 130 / REM 99
- * 与 SDK 的 deepDuration / otherDuration 完全一致，且各阶段之和严格等于总时长。
+ * | 平台/类型 | 串形态 | 粒度 | 状态含义 |
+ * | --- | --- | --- | --- |
+ * | iOS VPAccurateSleepModel | 4 个十六进制字符/点 | 1 分钟 | 取 (v>>13)&0x7 |
+ * | Android 普通睡眠 | 0/1/2 数字串 | **1 字符 = 5 分钟** | 0 浅睡 / 1 深睡 / 2 苏醒 |
+ * | Android 精准睡眠 | 0/1/2/3/4 数字串 | **1 字符 = 1 分钟** | 0 深 / 1 浅 / 2 REM / 3 失眠 / 4 苏醒 |
+ *
+ * 依据：`hband-sdk/Android_Ble_SDK/android_sdk_source/sdkdoc/VeepooSDK Android Api.md`
+ * 的 `SleepData.sleepLine` / `SleepPrecisionData.sleepLine` 字段说明（:1041 / :3327），
+ * 以及同目录「交互log/睡眠数据.txt」的真机样例（79 字符 = 395 分钟）。
+ *
+ * 判定策略：传入 SDK 的 `sleepTotalMin` 作锚，在三种候选解析里选「分钟数最接近总时长」的，
+ * 因此无需知道当前连的是哪一端、也不用猜固件返回的是普通还是精准睡眠。
  */
-export function parseSleepLineHex(line: unknown): number[] {
-  if (typeof line !== 'string' || line.length < 8) return [];
-  const out: number[] = [];
-  for (let i = 0; i + 4 <= line.length; i += 4) {
-    const v = parseInt(line.slice(i, i + 4), 16);
-    if (!Number.isFinite(v)) break;
-    out.push((v >> 13) & 0x7);
+export function parseSleepLineHex(line: unknown, totalMin?: number | null): number[] {
+  if (typeof line !== 'string' || line.length < 4) return [];
+  const s = line.trim();
+  if (!s) return [];
+  const total = typeof totalMin === 'number' && Number.isFinite(totalMin) && totalMin > 0
+    ? totalMin : null;
+
+  // 候选①：iOS VPAccurateSleepModel.sleepLine —— 每 4 个十六进制字符 = 1 分钟，
+  //         取 (v >> 13) & 0x7 作为阶段。
+  let iosCurve: number[] = [];
+  if (s.length % 4 === 0) {
+    const tmp: number[] = [];
+    for (let i = 0; i + 4 <= s.length; i += 4) {
+      const v = parseInt(s.slice(i, i + 4), 16);
+      if (!Number.isFinite(v)) { tmp.length = 0; break; }
+      tmp.push((v >> 13) & 0x7);
+    }
+    iosCurve = tmp;
   }
-  return out;
+
+  // 候选②③：Android SDK SleepData.sleepLine / SleepPrecisionData.sleepLine
+  //   （hband-sdk/.../VeepooSDK_Android_Api.md:1041 / :3327 原文）
+  const digits = /^[0-4]+$/.test(s);
+  const preciseCurve: number[] = [];   // 精准睡眠：每字符 1 分钟
+  const normalCurve: number[] = [];    // 普通睡眠：每字符 5 分钟
+  if (digits) {
+    for (const ch of s) {
+      const n = Number(ch);
+      preciseCurve.push(n);                                   // 0深/1浅/2REM/3失眠/4苏醒
+      const normalType = n === 0 ? 1 : n === 1 ? 0 : 4;      // 0浅/1深/2苏醒 → 统一精准口径
+      for (let i = 0; i < 5; i++) normalCurve.push(normalType);
+    }
+  }
+
+  const candidates: Array<{ c: number[]; kind: string }> = [];
+  if (digits) {
+    candidates.push({ c: preciseCurve, kind: 'android-precise' });
+    candidates.push({ c: normalCurve, kind: 'android-normal' });
+  }
+  if (iosCurve.length > 0) candidates.push({ c: iosCurve, kind: 'ios-hex' });
+  if (candidates.length === 0) return [];
+
+  // 有总时长做锚：选「解析出的分钟数」最接近 SDK 总时长的那一种格式。
+  // 这一步同时能纠正「精准睡眠恰好没出现 3/4」被误判成普通睡眠的情况。
+  if (total != null) {
+    candidates.sort((a, b) =>
+      Math.abs(a.c.length - total) - Math.abs(b.c.length - total));
+    return candidates[0].c;
+  }
+
+  // 无锚（旧 iOS 事件链路 handleSleepDay）：保持历史行为优先，避免回退。
+  if (!digits) return iosCurve;
+  if (/[34]/.test(s)) return preciseCurve;
+  return iosCurve.length > 0 ? iosCurve : normalCurve;
 }
 
 /** 每分钟状态数组 → 连续同状态合并的分期段（hypnogram 用），单位为分钟（自入睡起算）。 */
@@ -782,6 +991,22 @@ function mergeDaySeries(existing: TimePoint[] | undefined, incoming: TimePoint[]
     .map(([t, v]) => ({ t, v }));
 }
 
+// ★ 2026-11-08（跨天清零 · 用户定稿）：实时日缓冲 state.daily 的「当日累积基准」。
+//   模块级单例：原生 / 后端两个数据源共用同一个「今天」判定，避免各管各的导致跨天残留。
+//   - 当日 key 未变        → 返回传入的 currentDaily（继续累积今日各键）；
+//   - 跨天（或首次进入）→ 清空基准返回 {}，使今日实时缓冲不再携带昨日残留值。
+//   配合各 handler 的 `patch.daily = { ...dailyBaseForNow(this.getState().daily), x: v }`，
+//   确保除生理周期 / 体检外，所有每日指标（压力 / 身心压力 / 血压 / 心率 …）跨天归零。
+let _dailyResetDayKey = '';
+function dailyBaseForNow(currentDaily: Record<string, number | null> | undefined): Record<string, number | null> {
+  const tk = dayKey(Date.now());
+  if (_dailyResetDayKey !== tk) {
+    _dailyResetDayKey = tk;
+    return {};
+  }
+  return currentDaily ?? {};
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 原生桥数据源（VeepooRing）
 // ─────────────────────────────────────────────────────────────────────────────
@@ -812,7 +1037,10 @@ class NativeRingSource {
     private onSyncProgress: (p: SyncProgress | null) => void
   ) {
     if (VeepooNative) {
-      const emitter = new NativeEventEmitter(VeepooNative);
+      // ★ 2026-11-07：改走 safeNativeEmitter —— VeepooRing 原生缺 add/removeListeners，
+      //   直接 new NativeEventEmitter 会在真机反复弹 dev 警告红屏（见 lib/nativeEmitter.ts）。
+      const emitter = safeNativeEmitter('VeepooRing');
+      if (!emitter) return;
       this.emitter = emitter;
       // ★★ 2026-09-17 修红屏：原生 `supportedEvents` 只声明 6 个事件
       //    （onStateChange / onMetric / onLog / onBackfillDay / onBackfillSamples / onBackfillComplete）。
@@ -829,7 +1057,14 @@ class NativeRingSource {
       //   onEcg / onEcgProgress → ★ 2026-10-10 接通：ECG 实时测量结果/进度
       //     （此前 V2 收敛时被排除在白名单外，handleEcg/handleEcgProgress 成了死代码——
       //      「ECG 能测但结果永远不回来」的 JS 侧根因；原生侧 measure: 也没有 ecg 分支）
-      const V2_EVENTS = new Set<string>(['onLog', 'onRealtime', 'onBatch', 'onState', 'onEcg', 'onEcgProgress']);
+      // ★ 2026-11-07：补回 onOxygenAnalysis / onRrAnalysis —— 下面 line 854/855 早已 reg 了
+      //   这两个事件，但白名单没有它们 → reg() 直接 return，handleOxygenAnalysis /
+      //   handleRrAnalysis 一直是死代码。呼吸暂停分析里的 aveOxygen/minOxygen 本可作为
+      //   夜间血氧的补充数据源，白白丢掉。（iOS 侧 supportedEvents 也已同步补声明。）
+      const V2_EVENTS = new Set<string>([
+        'onLog', 'onRealtime', 'onBatch', 'onState', 'onEcg', 'onEcgProgress',
+        'onOxygenAnalysis', 'onRrAnalysis',
+      ]);
       const reg = (name: string, fn: (...a: any[]) => void) => {
         if (!V2_EVENTS.has(name)) return;
         emitter.addListener(name, fn);
@@ -1030,6 +1265,10 @@ class NativeRingSource {
     const METRIC_MAP: Record<string, HSMetricKey> = {
       hr: 'hr',
       spo2: 'spo2',
+      // ★ 2026-11-07：已装 APK 的 classes4.dex 常量里确认有 `spo2h`（SDK
+      //   Spo2hOriginData 血氧历史通道），旧 METRIC_MAP 只认 `spo2`，这条链路的点全被丢弃。
+      //   upsertBackfillSamples 是 mergeIntraday 合并语义，同 key 两次写入不会互相覆盖丢点。
+      spo2h: 'spo2',
       temp: 'temp',
       hrv: 'hrv',
       glucose: 'glucose',
@@ -1051,6 +1290,33 @@ class NativeRingSource {
       ldl: 'ldl',
       ua: 'ua',
       uricAcid: 'ua',  // UI 别名
+      // ── ★ 2026-11-07 全指标协议审计：登记 SDK 真实字段名 ──
+      //   依据（本地 hband-sdk，逐条可查）：
+      //   · iOS VPDataBaseOperation.h:21-48 原始数据样例：heartValue / sportValue /
+      //     stepValue / calValue / disValue / systolic / diastolic / met / stress
+      //   · Android OriginData: getRateValue / getStepValue / getCalValue / getDisValue /
+      //     getHighValue / getLowValue / getSportValue；OriginData3: getResRates / getOxygens
+      //   · VPHealthGlanceTestModel.h: stress / fatigueLevel / snsActivation /
+      //     cortisolValue / emotionLevel / skinMoisture / depressionRisk
+      //   · PressureManualData.pressure [0-100]、MetoManualData.getMeto()、
+      //     SkinConductanceManualData、HrvManualData、BloodOxygenManualData
+      //   · EAutoMeasureType / DeviceManualDataType: STRESS(3) / MET(6) / FATIGUE(11) /
+      //     SKIN_CONDUCTANCE(12)，这些都是带 timeStamp 的设备端测量序列。
+      //   旧 METRIC_MAP 只认一套自造 key，固件一旦用 SDK 原名回传就被整条丢弃 ——
+      //   这是「戒指能传的指标里有些不对」的直接原因之一。
+      heartValue: 'hr', heartRate: 'hr', heartrate: 'hr', rateValue: 'hr', pulse: 'hr',
+      oxygen: 'spo2', oxygenValue: 'spo2', bloodOxygen: 'spo2',
+      temperature: 'temp', bodyTemperature: 'temp',
+      steps: 'steps', stepValue: 'steps', calValue: 'calorie', disValue: 'distance',
+      systolic: 'bpSys', diastolic: 'bpDia', highValue: 'bpSys', lowValue: 'bpDia',
+      pressure: 'stress', pressureValue: 'stress', stressValue: 'stress', stressIndex: 'stress',
+      meto: 'met', metValue: 'met',
+      fatigueLevel: 'fatigue', fatigueIndex: 'fatigue',
+      eda: 'eda', gsr: 'eda', skinConductance: 'eda',
+      rr: 'rr', resRate: 'rr', respRate: 'rr', respirationRate: 'rr',
+      snsActivation: 'sns', cortisolValue: 'cortisol', emotionLevel: 'emotion',
+      skinMoisture: 'skin', depressionRisk: 'depressionRisk',
+      bloodSugar: 'glucose', bloodGlucose: 'glucose',
     };
 
     // ★ V2 性能：backfill 期间 RingState patch 先累加到 this._pendingBatchPatch，
@@ -1070,7 +1336,110 @@ class NativeRingSource {
     const slots = Array.isArray(raw.daily?.slots) && raw.daily.slots.length > 0
                   ? raw.daily.slots
                   : (Array.isArray(raw.slots) ? raw.slots : []);
+
+    // ★ 2026-11-07（用户「静息心率/夜间HRV/血氧都没算」）：真机日志
+    //   `[Batch.daily] step=379 spo2=- hrv=- sleep=-` —— 原生 dayData 只给了 step，
+    //   其余日汇总字段全空，于是所有读 ring.hrDaily/hrvDaily/spo2Daily 的页面恒为「—」。
+    //   但 slots 里明明有逐点数据。这里从 slots 反算日均补齐（真实样本均值，不插值、不编造）。
+    // ★ 2026-11-07 全指标协议审计：原生 5min slot / 设备测量记录的字段名并不与
+    //   JS METRIC_MAP 一一对应（dex 实证有 spo2h / heartrate / oxygen；SDK 头文件里
+    //   还有 pressure / meto / fatigueLevel / snsActivation / gsr / resRate 等）。
+    //   每个 healthStore 指标登记「按优先级尝试的原生字段名」，取第一个有效值即止 ——
+    //   只做字段命名对齐，不做任何换算、插值或编造。
+    const FIELD_ALIASES: Record<string, string[]> = {
+      hr: ['hr', 'heartValue', 'heartRate', 'heartrate', 'rateValue', 'pulse', 'bpm'],
+      spo2: ['spo2', 'spo2h', 'oxygen', 'oxygenValue', 'bloodOxygen', 'bloodoxygen'],
+      temp: ['temp', 'temperature', 'bodyTemperature'],
+      hrv: ['hrv', 'hrvValue'],
+      steps: ['step', 'steps', 'stepValue'],
+      calorie: ['cal', 'calValue', 'calorie'],
+      distance: ['dist', 'disValue', 'distance'],
+      stress: ['stress', 'pressure', 'pressureValue', 'stressValue', 'stressIndex'],
+      met: ['met', 'meto', 'metValue'],
+      fatigue: ['fatigue', 'fatigueLevel', 'fatigueIndex'],
+      eda: ['eda', 'gsr', 'skinConductance', 'gsrValue'],
+      rr: ['rr', 'resRate', 'respRate', 'respirationRate', 'breathRate'],
+      bpSys: ['bpSys', 'systolic', 'highValue', 'ppgSys'],
+      bpDia: ['bpDia', 'diastolic', 'lowValue', 'ppgDia'],
+      glucose: ['glucose', 'bloodSugar', 'bloodGlucose'],
+      sns: ['sns', 'snsActivation'],
+      cortisol: ['cortisol', 'cortisolValue'],
+      emotion: ['emotion', 'emotionLevel'],
+      skin: ['skin', 'skinMoisture'],
+      ua: ['ua', 'uricAcid'],
+      depressionRisk: ['depressionRisk'],
+    };
+    const dailyMeanFromSlots = (nativeKey: string): number | null => {
+      if (slots.length === 0) return null;
+      const keys = FIELD_ALIASES[nativeKey] ?? [nativeKey];
+      const vals: number[] = [];
+      for (const s of slots) {
+        for (const k of keys) {
+          const v = num(s?.[k]);
+          if (v != null && Number.isFinite(v) && v > 0) { vals.push(v); break; }
+        }
+      }
+      if (vals.length === 0) return null;
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+
     if (slots.length > 0) {
+      // ★ 2026-11-07：把本次同步的「实收真相」留给设置页展示，不靠文档口径推测。
+      let rawSlotKeys: string[] = [];
+      let rawDayMin: number | null = null;
+      let rawNightMin: number | null = null;
+
+      // ★ 2026-11-07（用户「协议没读通」）：把原生 5min 样本的**原始字段名**打进日志。
+      //   这是定位「压力 / 活动量 / 皮温等字段到底叫什么、有没有回传」的唯一实证手段：
+      //   之前一直靠猜字段名 + 看 UI 空态，无法区分「固件没吐」和「JS 没接」。
+      //   同步一次后 adb logcat 里 grep "[Batch.slots]" 即可拿到字段全集。
+      try {
+        const first = slots[0] ?? {};
+        const mid = slots[Math.floor(slots.length / 2)] ?? {};
+        const keys = Array.from(new Set<string>([
+          ...Object.keys(first), ...Object.keys(mid),
+        ]));
+        postLog('RingBle', `[Batch.slots] dk=${dk} n=${slots.length} keys=${keys.join(',')}`);
+        postLog('RingBle', `[Batch.slots] sample0=${JSON.stringify(first).slice(0, 600)}`);
+        // ★ 2026-11-07（用户「夜间频率高、日间频率低，频率要标出来」）：
+        //   从原生 slot 的**真实时间戳**算日间/夜间采样间隔中位数，真机验收时
+        //   adb logcat | grep Batch.cadence 就能直接看到差异，不靠猜。
+        const tsAll: number[] = [];
+        for (const s of slots) {
+          const tRaw = s?.time ?? s?.t ?? s?.ts ?? s?.timestamp ?? s?.dateTime ?? s?.hhmm ?? '';
+          const t = parseSampleTs(date, tRaw);
+          if (t != null) tsAll.push(t);
+        }
+        tsAll.sort((a, b) => a - b);
+        const dayGaps: number[] = [];
+        const nightGaps: number[] = [];
+        for (let i = 1; i < tsAll.length; i++) {
+          const gap = (tsAll[i] - tsAll[i - 1]) / 60000;
+          if (gap <= 0 || gap > 120) continue; // 重复点 / 断连大缺口不算采样间隔
+          const h = new Date(tsAll[i - 1]).getHours();
+          (h >= 22 || h < 8 ? nightGaps : dayGaps).push(gap);
+        }
+        const med = (xs: number[]): number | null => {
+          if (xs.length === 0) return null;
+          const a = [...xs].sort((x, y) => x - y);
+          const m = Math.floor(a.length / 2);
+          return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+        };
+        const dMed = med(dayGaps), nMed = med(nightGaps);
+        postLog('RingBle',
+          `[Batch.cadence] dk=${dk} points=${tsAll.length} ` +
+          `日间=${dMed == null ? '-' : dMed.toFixed(1) + 'min'}(${dayGaps.length}) ` +
+          `夜间=${nMed == null ? '-' : nMed.toFixed(1) + 'min'}(${nightGaps.length})`);
+        // ★ 原生压力通道补丁（VeepooManualTestReader）会带 source/cadenceMinutes，
+        //   打进日志便于连戒指时确认「这批点到底来自 v3 原始桶还是设备测量记录」。
+        if (raw?.source || raw?.cadenceMinutes != null) {
+          postLog('RingBle',
+            `[Batch.source] dk=${dk} source=${String(raw.source)} cadenceMinutes=${String(raw.cadenceMinutes ?? '-')}`);
+        }
+        rawSlotKeys = keys;
+        rawDayMin = dMed;
+        rawNightMin = nMed;
+      } catch { /* 日志失败不能影响入库 */ }
 
       // 统一解析函数：从 slots 里按 key 提取 [{t, v}]
       // ★ 带符号指标：emotion 值域 [-10,10] 含负数（消极/低落），0/负是有效值，
@@ -1083,19 +1452,38 @@ class NativeRingSource {
        *   旧实现 `if (!signed && v <= 0) continue;` 把它当占位符丢弃 →
        *   「抑郁风险正常」这一最常见读数根本进不了 healthStore → 指标卡恒空。
        */
-      const ZERO_VALID_HKEYS = new Set<string>(['depressionRisk']);
-      const extract = (nativeKey: string): Array<{ t: number; v: number }> => {
-        const hsKey = METRIC_MAP[nativeKey];
-        if (!hsKey) return [];
+      // ★ 2026-11-07（用户「活动消耗没有」）：steps / calorie / distance 的 0 是**合法读数**
+      //   （这 5 分钟没动），不是占位符。旧守卫 `v<=0 continue` 把整条活动曲线砍成只剩 1 个点
+      //   （真机日志 `steps=1`），活动消耗页因此常年空白。
+      // ★ 2026-11-07：PressureManualData.pressure 有效范围明确是 [0,100]，
+      //   0 = 完全放松是合法读数，不能被「生理指标 0=占位符」守卫砍掉。
+      const ZERO_VALID_HKEYS = new Set<string>(['depressionRisk', 'steps', 'calorie', 'distance', 'stress']);
+      /**
+       * ★ 2026-11-07 协议审计：按 FIELD_ALIASES 依次尝试原生字段名。
+       * 旧实现只认 `s[nativeKey]` 一个名字，固件用 SDK 原名（如 pressure / meto /
+       * heartValue）回传时整条指标被静默丢弃 —— 这正是「有些指标不对」的根因。
+       */
+      const extract = (nativeKey: string, hsKey: HSMetricKey): Array<{ t: number; v: number }> => {
         const signed = SIGNED_HKEYS.has(hsKey);
         const zeroValid = ZERO_VALID_HKEYS.has(hsKey);
+        const candidates = Array.from(new Set<string>([
+          nativeKey, ...(FIELD_ALIASES[hsKey] ?? []),
+        ]));
         const out: Array<{ t: number; v: number }> = [];
         for (const s of slots) {
-          const v = num(s?.[nativeKey]);
-          if (v == null || !Number.isFinite(v)) continue;
+          let v: number | null = null;
+          for (const k of candidates) {
+            const x = num(s?.[k]);
+            if (x != null && Number.isFinite(x)) { v = x; break; }
+          }
+          if (v == null) continue;
           // 生理指标 0/负=占位符；emotion（带符号）与 depressionRisk（0 合法档位）保留
           if (!signed && !zeroValid && v <= 0) continue;
-          const t = parseSampleTs(date, s?.time ?? s?.t ?? '');
+          // ★ 2026-11-07：已装 APK 的原生实现（反编译 dex 证实）slot 里有 `ts` 时间字段；
+          //   旧代码只认 time/t → 传 '' 给 parseSampleTs → 返回 null → 整条样本被静默丢弃。
+          //   这是「279 条 5 分钟样本收到了，但只有零星几个点进 store」的主要嫌疑。
+          const tRaw = s?.time ?? s?.t ?? s?.ts ?? s?.timestamp ?? s?.dateTime ?? s?.hhmm ?? '';
+          const t = parseSampleTs(date, tRaw);
           if (t == null) continue;
           out.push({ t, v });
         }
@@ -1104,19 +1492,31 @@ class NativeRingSource {
 
       let okCount = 0;
       let skipCount = 0;
+      /** 本次真正写进 healthStore 的指标与点数（设置页「实收」栏的数据源） */
+      const batchWritten: Array<{ key: string; count: number }> = [];
+      /** ★ 2026-11-07：逐点活动样本，用于补齐设备 daily 通道缺失的 cal / dist 日汇总 */
+      const activitySamples: Partial<Record<'steps' | 'distance' | 'calorie', Array<{ t: number; v: number }>>> = {};
       // ★ v18.96 逻辑B（重连补齐）：path A 原来只写 healthStore、不更新 state.lastUpdated →
       //   回传上来的今日样本无法通过「今天新鲜度」守卫，今日状态种子拿不到 HRV/HR。
       //   这里用**样本自身的真实时间戳**登记新鲜度（不是 Date.now()，历史日不会被当成新鲜）。
       const batchLatestTs: Record<string, number> = {};
+      // ★ 多个 SDK 别名指向同一指标时只写一次，避免重复点与重复日志。
+      const seenHsKeys = new Set<HSMetricKey>();
       for (const [nativeKey, hsKey] of Object.entries(METRIC_MAP)) {
-        const samples = extract(nativeKey);
+        if (seenHsKeys.has(hsKey)) continue;
+        const samples = extract(nativeKey, hsKey);
         if (samples.length > 0) {
           try {
             healthStore.upsertBackfillSamples(hsKey as any, dk, samples);
+            if (hsKey === 'steps' || hsKey === 'distance' || hsKey === 'calorie') {
+              activitySamples[hsKey as 'steps' | 'distance' | 'calorie'] = samples;
+            }
+            seenHsKeys.add(hsKey);
             for (const s of samples) {
               if (!batchLatestTs[hsKey] || s.t > batchLatestTs[hsKey]) batchLatestTs[hsKey] = s.t;
             }
             okCount++;
+            batchWritten.push({ key: hsKey, count: samples.length });
             postLog('RingBle', `[Batch] ✅ ${hsKey} dk=${dk} n=${samples.length}`);
           } catch (err: any) {
             postLog('RingBle', `[Batch] ❌ ${hsKey} FAILED: ${err?.message ?? err}`);
@@ -1125,6 +1525,29 @@ class NativeRingSource {
           skipCount++;
         }
       }
+
+      // ★ 2026-11-07（用户「活动消耗 / 卡路里没出来」）：把逐点 steps/distance/calorie
+      //   折成日汇总。LunaMira 精简版的 daily 通道只回 step，不回 cal/dist，
+      //   首页 / 活动详情页 / 设置页实况读的正是 stepDaily[dk].calorie，必须在这里补齐。
+      if (Object.keys(activitySamples).length > 0) {
+        const prev = activityDailyAccum[dk] ?? { steps: 0, distance: 0, calorie: 0 };
+        const next = {
+          steps: activitySamples.steps ? Math.max(prev.steps, aggregateActivityDay(activitySamples.steps)) : prev.steps,
+          distance: activitySamples.distance ? Math.max(prev.distance, aggregateActivityDay(activitySamples.distance)) : prev.distance,
+          calorie: activitySamples.calorie ? Math.max(prev.calorie, aggregateActivityDay(activitySamples.calorie)) : prev.calorie,
+        };
+        activityDailyAccum[dk] = next;
+        const accKeys = Object.keys(activityDailyAccum).sort();
+        if (accKeys.length > 7) {
+          activityDailyAccum = Object.fromEntries(accKeys.slice(-7).map((k) => [k, activityDailyAccum[k]]));
+        }
+        mergePatch({ stepDaily: { ...(this.getState().stepDaily ?? {}), [dk]: next } });
+        healthStore.upsertBackfillDay('steps' as any, dk, next.steps);
+        healthStore.upsertBackfillDay('distance' as any, dk, next.distance);
+        healthStore.upsertBackfillDay('calorie' as any, dk, next.calorie);
+        postLog('RingBle', `[Batch.activity] dk=${dk} steps=${next.steps} dist=${next.distance} cal=${next.calorie} (逐点折日汇总)`);
+      }
+
       const curLastUpd = this.getState().lastUpdated ?? {};
       const newLastUpd: Record<string, number | null> = { ...curLastUpd };
       let lastUpdChanged = false;
@@ -1133,6 +1556,28 @@ class NativeRingSource {
       }
       if (lastUpdChanged) mergePatch({ lastUpdated: newLastUpd as any });
       postLog('RingBle', `[Batch] date=${date} dk=${dk} OK=${okCount} SKIP=${skipCount} slots=${slots.length}`);
+
+      // ★ 2026-11-07：把「这枚戒指这一批到底传了什么」写进 state，供设置页如实展示。
+      //   累积式写入（backfill 期间 getState() 还没 flush，逐天覆盖会丢前面的日子）。
+      const summary: BatchDaySummary = {
+        dayKey: dk,
+        deviceId: this.getState().deviceId ?? null,
+        slotCount: slots.length,
+        slotKeys: rawSlotKeys,
+        dayMinutes: rawDayMin == null ? null : Math.round(rawDayMin * 10) / 10,
+        nightMinutes: rawNightMin == null ? null : Math.round(rawNightMin * 10) / 10,
+        written: batchWritten,
+        updatedAt: Date.now(),
+      };
+      batchSummaryAccum = { ...batchSummaryAccum, [dk]: summary };
+      const accKeys = Object.keys(batchSummaryAccum).sort();
+      if (accKeys.length > 7) {
+        const keep = accKeys.slice(-7);
+        batchSummaryAccum = Object.fromEntries(keep.map((k) => [k, batchSummaryAccum[k]]));
+      }
+      mergePatch({ batchSummaries: batchSummaryAccum });
+      // ★ 兜底：万一原生没发 backfillDone，逐批到达后 1.5s 也照样同步压力（防抖合并）
+      scheduleStressSync(this.getState());
     }
 
     // ── path B: daily（日汇总）──
@@ -1140,47 +1585,54 @@ class NativeRingSource {
     if (raw.daily && typeof raw.daily === 'object') {
       const d = raw.daily;
       // step/dist/cal → stepDaily (特殊：复合结构)
-      if (d.step != null || d.dist != null || d.cal != null) {
-        const cur = this.getState().stepDaily;
+      // ★ 2026-11-07：LunaMira 精简版 daily 只回 step、cal/dist 给 0 或不给，
+      //   以前会用 0 覆盖真实值 → 活动消耗卡恒「—」。现在以逐点折出的日汇总兜底。
+      const slotAccum = activityDailyAccum[dk] ?? null;
+      if (d.step != null || d.dist != null || d.cal != null || slotAccum) {
+        const cur = this.getState().stepDaily ?? {};
         const prev = cur[dk] ?? { steps: 0, distance: 0, calorie: 0 };
-        mergePatch({
-          stepDaily: {
-            ...cur,
-            [dk]: {
-              steps: num(d.step) ?? prev.steps,
-              distance: num(d.dist) ?? prev.distance,
-              calorie: num(d.cal) ?? prev.calorie,
-            },
-          },
-        });
-        if (d.step != null) healthStore.upsertBackfillDay('steps' as any, dk, num(d.step)!);
-        if (d.dist != null) healthStore.upsertBackfillDay('distance' as any, dk, num(d.dist)!);
-        if (d.cal != null) healthStore.upsertBackfillDay('calorie' as any, dk, num(d.cal)!);
+        const dStep = num(d.step), dDist = num(d.dist), dCal = num(d.cal);
+        const final = {
+          steps: dStep != null ? dStep : (slotAccum?.steps ?? prev.steps),
+          distance: dDist != null && dDist > 0 ? dDist : (slotAccum?.distance ?? prev.distance),
+          calorie: dCal != null && dCal > 0 ? dCal : (slotAccum?.calorie ?? prev.calorie),
+        };
+        activityDailyAccum[dk] = final;
+        mergePatch({ stepDaily: { ...cur, [dk]: final } });
+        healthStore.upsertBackfillDay('steps' as any, dk, final.steps);
+        healthStore.upsertBackfillDay('distance' as any, dk, final.distance);
+        healthStore.upsertBackfillDay('calorie' as any, dk, final.calorie);
       }
       // 单一 metric 的日均值 → 直接 upsertBackfillDay
-      const SINGLE_MAP: Record<string, any> = { spo2: 'spo2', hrv: 'hrv', temp: 'temp', bpSys: 'bpSys', bpDia: 'bpDia' };
+      // ★ 2026-11-07：补 `hr`（原生 dayData 没有这个字段，之前 SINGLE_MAP 漏了）；
+      //   并且每个字段在原生没给时，回落到 slots 逐点均值。
+      const SINGLE_MAP: Record<string, any> = {
+        hr: 'hr', spo2: 'spo2', hrv: 'hrv', temp: 'temp', bpSys: 'bpSys', bpDia: 'bpDia',
+      };
+      const effDaily: Record<string, number | null> = {};
       for (const [nk, hk] of Object.entries(SINGLE_MAP)) {
-        if (d[nk] != null) {
-          const v = num(d[nk]);
-          if (v != null) healthStore.upsertBackfillDay(hk, dk, v);
-        }
+        const direct = d[nk] != null ? num(d[nk]) : null;
+        const v = direct ?? dailyMeanFromSlots(nk);
+        effDaily[nk] = v;
+        if (v != null) healthStore.upsertBackfillDay(hk, dk, v);
       }
       // ★ V2 补 RingState patch —— 今日状态 / 趋势 / 身体恢复都读这些字段！
       const isToday = dk === dayKey(Date.now());
       const statePatch: StatePatch = {};
 
       // hrvDaily / hrDaily / spo2Daily / tempDaily（今日状态种子依赖）
-      if (d.hrv != null) {
-        statePatch.hrvDaily = { ...this.getState().hrvDaily, [dk]: num(d.hrv)! };
+      // ★ 2026-11-07：改读 effDaily（原生直给优先，缺失时由 slots 反算补齐）
+      if (effDaily.hrv != null) {
+        statePatch.hrvDaily = { ...this.getState().hrvDaily, [dk]: effDaily.hrv };
       }
-      if (d.hr != null) {
-        statePatch.hrDaily = { ...this.getState().hrDaily, [dk]: num(d.hr)! };
+      if (effDaily.hr != null) {
+        statePatch.hrDaily = { ...this.getState().hrDaily, [dk]: effDaily.hr };
       }
-      if (d.spo2 != null) {
-        statePatch.spo2Daily = { ...this.getState().spo2Daily, [dk]: num(d.spo2)! };
+      if (effDaily.spo2 != null) {
+        statePatch.spo2Daily = { ...this.getState().spo2Daily, [dk]: effDaily.spo2 };
       }
-      if (d.temp != null) {
-        statePatch.tempDaily = { ...this.getState().tempDaily, [dk]: num(d.temp)! };
+      if (effDaily.temp != null) {
+        statePatch.tempDaily = { ...this.getState().tempDaily, [dk]: effDaily.temp };
       }
       if (d.bpSys != null) {
         statePatch.bpSysDaily = { ...this.getState().bpSysDaily, [dk]: num(d.bpSys)! };
@@ -1203,7 +1655,11 @@ class NativeRingSource {
         //   （onLog/onRealtime/onBatch/onState 四事件）下从未被调用 ——
         //   于是 sleepStages/sleepStagesDaily 永远为空（睡眠详情页「日」视图只能拿陈旧快照兜底
         //   或显示「暂未同步」），且原生不发的 REM / 苏醒恒为 0。曲线是各阶段时长的真相源。
-        const curve = parseSleepLineHex(d.sleepLine);
+        // ★ 2026-11-07：把 SDK 总时长传进去做格式判定锚（Android 普通/精准 vs iOS hex），
+        //   否则 Android 的「1 字符 = 5 分钟」曲线会被旧解析砍成 1/20，分期图只剩一小段。
+        const sdkTotalMin = num(d.sleepTotalMin);
+        const curve = parseSleepLineHex(d.sleepLine, sdkTotalMin);
+        postLog('BATCH-SLEEP', `🔎 sleepLine 解析 dk=${dk} 原串长=${String(d.sleepLine ?? '').length} SDK总时长=${sdkTotalMin ?? '-'} 解析点数=${curve.length}`);
         const segs = sleepLineToSegments(curve);
         let deep = num(d.sleepDeepMin) ?? 0;
         let light = num(d.sleepLightMin) ?? 0;
@@ -1286,7 +1742,7 @@ class NativeRingSource {
 
       // 今日 HRV/HR → state.daily（recomputeDailyStatus 种子输入）
       if (isToday) {
-        const curDaily = { ...this.getState().daily };
+        const curDaily = { ...dailyBaseForNow(this.getState().daily) };
         if (d.hrv != null) curDaily['hrv'] = num(d.hrv)!;
         if (d.hr != null) curDaily['hr'] = num(d.hr)!;
         if (d.spo2 != null) curDaily['spo2'] = num(d.spo2)!;
@@ -1371,10 +1827,19 @@ class NativeRingSource {
 
     // ── 分流 1: backfillDone → 更新增量锚点 ──
     if (raw.backfillDone) {
+      // ★ 原生完成离线数据同步后主动收起「同步中」浮层（否则要等 90s 兜底）
+      try { this.onSyncProgress(null); } catch { /* 静默 */ }
       const today = dayKey(Date.now());
       healthStore.setLastSyncDate(today);
       // ★ V2 派生指标管道：backfill 完成后立即把积压的所有 dayKey 重算一遍
       try { flushAll(); } catch {}
+      // ★ 2026-11-07（用户「压力还没同步」）：LunaMira 精简版 onBatch slot 没有 pressure 字段，
+      //   设备压力测量记录要等原生接 readDeviceManualData(STRESS)。这里在每次戒指同步完成后，
+      //   用同一次同步落库的 HRV / 心率 / 血压**真实读数**生成压力参考值并标记 derived，
+      //   让首页身心压力 / 详情页 / 分布 / 时段 / 恢复力整条链路立即有数据，且如实标注推算。
+      //   必须放在 estimateOfflineMetricsRecent 之前，派生指标才能用上新落库的 stress 样本。
+      //   ⚠ 内部按 Profile 门禁：PRO_UI 与已知 HK18 MAC 一律跳过，不影响另一档机型。
+      runStressSync(this.getState(), 'BACKFILL');
       // ★ v18.113：历史日派生指标（cortisol/eda/sns/…）的 intraday 补齐**必须放在 backfill 之后**。
       //   启动时那次 estimateOfflineMetricsRecent(30) 跑在回填之前 —— 当时历史日 stress 还是空的，
       //   deriveFromStress 拿不到样本 → 只落 1 个正午点（甚至完全不落），
@@ -1441,6 +1906,13 @@ class NativeRingSource {
       // ★ 2026-11-04（用户定稿·能力字段驱动）：连接就绪后，原生透传 capabilities（SDK *Type），
       //   据此动态判定 Pro/基础版 与 展示哪些功能（有就展示）。
       // ★ 2026-11-05（用户：连上戒指就该识别 Pro/基础版）：优先用能力字段；若原生没透传，回退到已连上的 MAC / 广播名。
+      // ★ 2026-11-07（用户：必须区分全量版与 LunaMira 精简版）：把原生透传的 *Type 能力字段
+      //   原样打进日志，作为「这枚精简版戒指到底有哪些传感器」的可核对证据。
+      if (raw.capabilities) {
+        try {
+          postLog('RingBle', `[DeviceProfile] 能力字段=${JSON.stringify(raw.capabilities)}`);
+        } catch { /* 日志失败不影响连接 */ }
+      }
       if (raw.capabilities || this.getState().deviceId || this.getState().deviceName) {
         void applyProfileFromDevice({
           capabilities: raw.capabilities,
@@ -1484,29 +1956,49 @@ class NativeRingSource {
 
     // ── 分流 4: scanResult → 设备列表 ──
     if (status === 'scanResult' && Array.isArray(raw.devices)) {
-      this.push({
-        devices: raw.devices.map((d: any) => ({
-          id: String(d.id ?? d.deviceAddress ?? ''),
-          name: String(d.name ?? d.deviceName ?? 'Mira Ring Pro'),
-          rssi: num(d.rssi ?? d.signalStrength) ?? null,
-          recommended: !!d.recommended,
-        })),
-      });
+      // 扫描是唯一能稳定拿到固件广播原名的通道，按 MAC 记下来供直连时展示。
+      raw.devices.forEach((d: any) =>
+        rememberBroadcastName(d.id ?? d.deviceAddress ?? d.address, d.name ?? d.deviceName));
+      const list = raw.devices.map((d: any) => ({
+        // Android 原生桥统一发 { id, address, name, rssi }；iOS 旧版只发 deviceAddress。
+        id: String(d.id ?? d.deviceAddress ?? d.address ?? ''),
+        name: displayRingName(d.name ?? d.deviceName),
+        rssi: num(d.rssi ?? d.signalStrength) ?? null,
+        recommended: !!d.recommended || /LUNA|MIRA/i.test(String(d.name ?? '')),
+      }));
+      // 真机排障：留下 MAC 与广播名，便于区分「戒指」和周围其它 BLE 设备
+      postLog('RingBle', `[Scan] ${list.length} 台: ${list.slice(0, 6).map((d) => `${d.name}@${d.id}`).join(' | ')}`);
+      this.push({ devices: list });
       return;
     }
 
     // ── 分流 5: error ──
+    // ★ 2026-11-06：必须同时把 status 落到 'error'，否则 startScan/connectToId
+    //   设下的 'scanning'/'connecting' 永不释放 → 设置页「连接」按钮被 ringBusy
+    //   永久禁用、错误提示也出不来，表现为「点了没反应 / 一直转圈」。
     if (status === 'error' || raw.error) {
-      this.push({ error: String(raw.error ?? status) });
+      this.push({ status: 'error', error: String(raw.error ?? status) });
       return;
     }
 
     // ── 分流 6: connected / disconnected → 通用 patch ──
+    // 'disconnected' 不在 RingConnStatus 里（设置页 STATUS_COLOR 也无此键），统一归位 idle
     const patch: StatePatch = {};
     if (status === 'connected' || status === 'disconnected' || status === 'connecting') {
-      patch.status = status as RingConnStatus;
+      patch.status = (status === 'disconnected' ? 'idle' : status) as RingConnStatus;
     }
-    if (raw.deviceName) patch.deviceName = String(raw.deviceName);
+    if (typeof raw.rssi === 'number' && Number.isFinite(raw.rssi)) patch.rssi = raw.rssi;
+    if (raw.deviceName) patch.deviceName = displayRingName(raw.deviceName);
+    // ★ 2026-11-07：留存固件广播原名（设置页展示）。按 MAC 直连时原生常给占位串，
+    //   resolveBroadcastName 会退回本机已记录值并标明来源，不会把记录值当实时读数。
+    if (raw.deviceName !== undefined || raw.deviceAddress) {
+      const bn = resolveBroadcastName(raw.deviceAddress ?? this.getState().deviceId, raw.deviceName);
+      if (bn.name) {
+        patch.deviceBroadcastName = bn.name;
+        patch.deviceBroadcastNameSource = bn.source;
+      }
+      postLog('RingBle', `[DeviceName] raw=${String(raw.deviceName ?? '-')} → 广播名=${bn.name ?? '-'}(${bn.source ?? '未知'})`);
+    }
     if (status === 'connected' && (raw.deviceName || raw.deviceAddress)) {
       // ★ 2026-11-05（用户：连上戒指就识别 Pro/基础版）：用 MAC + 广播名做真机识别（能力字段在 ready 分支补充）。
       // ★ 2026-11-06 审查（docs/audit/03 🟡#13）：**必须挂 .catch** ——
@@ -1598,7 +2090,14 @@ class NativeRingSource {
     // eslint-disable-next-line no-console
     const patch: StatePatch = {};
     if (typeof raw.status === 'string') patch.status = raw.status as RingConnStatus;
-    if (raw.deviceName) patch.deviceName = raw.deviceName;
+    if (raw.deviceName) patch.deviceName = displayRingName(raw.deviceName);
+    if (raw.deviceName !== undefined || raw.deviceAddress) {
+      const bn = resolveBroadcastName(raw.deviceAddress ?? this.getState().deviceId, raw.deviceName);
+      if (bn.name) {
+        patch.deviceBroadcastName = bn.name;
+        patch.deviceBroadcastNameSource = bn.source;
+      }
+    }
     if (raw.status === 'connected' && raw.deviceName) {
       // ★ 2026-11-04（用户定稿）：机型识别改在 ready 分支基于原生透传的 capabilities（SDK *Type）判定。
     }
@@ -1615,9 +2114,10 @@ class NativeRingSource {
       postLog('RingBle', `[Sport] 读取到 ${raw.sportSessions.length} 段运动: ${names}`);
     }
     if (Array.isArray(raw.devices)) {
+      raw.devices.forEach((d: any) => rememberBroadcastName(d.id ?? d.address, d.name));
       patch.devices = raw.devices.map((d: any) => ({
         id: String(d.id ?? ''),
-        name: String(d.name ?? 'Mira Ring Pro'),
+        name: displayRingName(d.name),
         rssi: num(d.rssi) ?? null,
         recommended: !!d.recommended,
       }));
@@ -1935,23 +2435,7 @@ class NativeRingSource {
   };
 
   /** 历史日健康一览硬指标回填：原生 backfill 按日读离线血糖+血液成分，带 dateKey 回传，落库到 extDaily[date]。 */
-  private handleHealthGlanceDay = (raw: {
-    date?: string;
-    bloodSugar?: number;
-    bloodFat?: number;
-    triglyceride?: number;
-    hdl?: number;
-    ldl?: number;
-    uricAcid?: number;
-    // ★ 原生 backfillDayHealthGlance 已从原始数据回传 stress/met/fatigue/snsActivation 历史（9-3 rawStress n=6 s=15.5）
-    stress?: number;
-    fatigue?: number;
-    snsActivation?: number;
-    met?: number;
-    cortisol?: number;
-    emotion?: number;
-    skin?: number;
-  }) => {
+  private handleHealthGlanceDay = (raw: any) => {
     try {
       if (!raw || !raw.date) return;
       const date = String(raw.date);
@@ -1963,18 +2447,24 @@ class NativeRingSource {
         hdl: num(raw.hdl),
         ldl: num(raw.ldl),
         uricAcid: num(raw.uricAcid),
-        stress: num(raw.stress),
-        fatigue: num(raw.fatigue),
-        snsActivation: num(raw.snsActivation),
-        met: num(raw.met),
-        cortisol: num(raw.cortisol),
-        emotion: num(raw.emotion),
-        skin: num(raw.skin),
+        // ★ 2026-11-07：健康一览/微体检的字段在 SDK 里叫 stress / fatigueLevel /
+        //   snsActivation / cortisolValue / emotionLevel / skinMoisture；压力手动测量
+        //   通道叫 pressure。两套名字都接，避免原生换名后整块历史丢失。
+        stress: num(raw.stress ?? raw.pressure ?? raw.stressValue ?? raw.stressIndex),
+        fatigue: num(raw.fatigue ?? raw.fatigueLevel),
+        snsActivation: num(raw.snsActivation ?? raw.sns),
+        met: num(raw.met ?? raw.meto),
+        cortisol: num(raw.cortisol ?? raw.cortisolValue),
+        emotion: num(raw.emotion ?? raw.emotionLevel),
+        skin: num(raw.skin ?? raw.skinMoisture),
       };
       const clean: Record<string, number> = {};
       (Object.keys(fields) as string[]).forEach((k) => {
         const v = fields[k];
-        if (typeof v === 'number' && Number.isFinite(v) && v > 0) clean[k] = v;
+        if (typeof v !== 'number' || !Number.isFinite(v)) return;
+        // 压力 [0,100] 的 0 = 完全放松，合法；其余 0 仍是「无读数」占位符。
+        const ok = k === 'stress' ? v >= 0 : v > 0;
+        if (ok) clean[k] = v;
       });
       if (Object.keys(clean).length === 0) return; // 当日无离线 HealthGlance 不落库
       const curExt = this.getState().extDaily;
@@ -2017,17 +2507,34 @@ class NativeRingSource {
       if (!raw?.date) { postLog('JS', '[handleBackfillDaySlots] ❌ no date, skip'); return; }
       const dk = dateKeyOfStr(String(raw.date));
       if (!dk) { postLog('JS', '[handleBackfillDaySlots] ❌ invalid dk, skip'); return; }
+      // ★ 2026-11-07 协议审计：原生按日回传的数组也可能用 SDK 原名（pressure / meto /
+      //   heartValue / spo2h / gsr / resRate 等），这里与 handleBatch 用同一套别名口径。
+      const pick = (...xs: any[]): any => xs.find((x) => Array.isArray(x) && x.length > 0);
       const map: Record<string, Array<{ t: number; v: number }> | undefined> = {
-        hr: raw.hr, spo2: raw.spo2, temp: raw.temp, hrv: raw.hrv, glucose: raw.glucose,
-        bpSys: raw.bpSys, bpDia: raw.bpDia,
-        steps: raw.steps, calorie: raw.calorie, distance: raw.distance,
-        stress: raw.stress, met: raw.met,
+        hr: pick(raw.hr, raw.heartValue, raw.heartRate),
+        spo2: pick(raw.spo2, raw.spo2h, raw.oxygen),
+        temp: pick(raw.temp, raw.temperature, raw.bodyTemperature),
+        hrv: pick(raw.hrv, raw.hrvValue),
+        glucose: pick(raw.glucose, raw.bloodSugar, raw.bloodGlucose),
+        bpSys: pick(raw.bpSys, raw.systolic, raw.highValue),
+        bpDia: pick(raw.bpDia, raw.diastolic, raw.lowValue),
+        steps: pick(raw.steps, raw.stepValue),
+        calorie: pick(raw.calorie, raw.calValue),
+        distance: pick(raw.distance, raw.disValue),
+        stress: pick(raw.stress, raw.pressure, raw.stressValue, raw.stressIndex),
+        met: pick(raw.met, raw.meto, raw.metValue),
+        fatigue: pick(raw.fatigue, raw.fatigueLevel),
+        eda: pick(raw.eda, raw.gsr, raw.skinConductance),
+        rr: pick(raw.rr, raw.resRate, raw.respirationRate),
       };
+      // ★ 0 是合法读数：压力 [0,100] 的 0=完全放松、步数/卡路里/距离的 0=这 5 分钟没动。
+      //   旧 `p.v > 0` 把整条活动曲线与低压日砍成空。
+      const ZERO_OK = new Set<string>(['steps', 'calorie', 'distance', 'stress', 'depressionRisk']);
       const summary: string[] = [];
       for (const [key, arr] of Object.entries(map)) {
         try {
           if (Array.isArray(arr) && arr.length > 0) {
-            const cleaned = arr.filter(p => Number.isFinite(p.v) && p.v > 0);
+            const cleaned = arr.filter(p => Number.isFinite(p.v) && (p.v > 0 || (p.v === 0 && ZERO_OK.has(key))));
             summary.push(`${key}=${cleaned.length}`);
             if (cleaned.length > 0) {
               healthStore.upsertBackfillSamples(key as any, dk, cleaned);
@@ -2095,7 +2602,7 @@ class NativeRingSource {
           score: num(raw.sleepScore) ?? 0,
           sleepTime: raw.sleepTime ?? null,
           wakeTime: raw.wakeTime ?? null,
-          curve: parseSleepLineHex(raw.sleepLine),
+          curve: parseSleepLineHex(raw.sleepLine, num(raw.sleepTotalMin)),
         });
       }
       // 日值：血氧 / HRV / 体温 / 血压
@@ -2282,7 +2789,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       const todayKey = dayKeyOf(Date.now());
       if (dk === todayKey) {
         patch.metrics = { ...this.getState().metrics, hrv: raw.value };
-        patch.daily = { ...this.getState().daily, hrv: raw.value };
+        patch.daily = { ...dailyBaseForNow(this.getState().daily), hrv: raw.value };
       }
       this.push(patch);
     } catch {
@@ -2309,7 +2816,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       const todayKey = dayKeyOf(Date.now());
       if (dk === todayKey) {
         patch.metrics = { ...this.getState().metrics, hr: raw.value };
-        patch.daily = { ...this.getState().daily, hr: raw.value };
+        patch.daily = { ...dailyBaseForNow(this.getState().daily), hr: raw.value };
       }
       this.push(patch);
     } catch {
@@ -2423,7 +2930,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
           this.lastHrvIngestTs = Math.max(scoreTs, maxCurveTs);
           // 末尾强制写回 HRV 分数，避免上面 tachogram 的 pushMetric 改写 metrics.hrv
           patch.metrics = { ...this.getState().metrics, hrv: scoreLatest };
-          patch.daily = { ...this.getState().daily, hrv: scoreLatest };
+          patch.daily = { ...dailyBaseForNow(this.getState().daily), hrv: scoreLatest };
         }
       }
       this.push(patch);
@@ -2498,7 +3005,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
         if (latest != null) {
           this.lastHrIngestTs = latestTs;
           patch.metrics = { ...this.getState().metrics, hr: latest };
-          patch.daily = { ...this.getState().daily, hr: latest };
+          patch.daily = { ...dailyBaseForNow(this.getState().daily), hr: latest };
         }
       }
       this.push(patch);
@@ -2743,6 +3250,12 @@ steps点数=${reshaped.steps?.length ?? 0}`,
         }
         // total 以曲线为准
         total = curve.length;
+      } else if (total > 0) {
+        // ★ 2026-11-06 修复：Luna Mira 固件 onSleepDataChange 的 SleepData.getSleepLine()
+        //   返回空，逐分钟分期曲线缺失；若不补齐，会把 total-(深+浅+REM+失眠) 的大段卧床/清醒
+        //   时间静默丢弃（本次实测 total=356 但 deep+light=89，漏掉 267min）。
+        //   用 total 反推清醒/卧床时长，让分期 100% 闭合（与 computeRrHrv 之外的 awake 口径一致）。
+        awake = Math.max(0, total - deep - light - rem - insomnia);
       }
 
       if (total <= 0) return;
@@ -2824,13 +3337,17 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     try {
       if (!raw || !raw.date) return;
       const cur = this.getState().stepDaily;
+      const dk = dateKeyOfStr(String(raw.date));
+      // ★ 2026-11-07：原生计步回填常只带 steps，cal/dist 是 0 → 不能拿 0 覆盖
+      //   onBatch 逐点折出来的真实日汇总，否则活动消耗卡又变回「—」。
+      const prev = activityDailyAccum[dk] ?? cur[dk] ?? { steps: 0, distance: 0, calorie: 0 };
+      const rawCal = num(raw.calorie), rawDist = num(raw.distance);
       const v = {
-        steps: num(raw.steps) ?? 0,
-        distance: num(raw.distance) ?? 0,
-        calorie: num(raw.calorie) ?? 0,
+        steps: num(raw.steps) ?? prev.steps,
+        distance: rawDist != null && rawDist > 0 ? rawDist : prev.distance,
+        calorie: rawCal != null && rawCal > 0 ? rawCal : prev.calorie,
       };
       if (v.steps <= 0) return;
-      const dk = dateKeyOfStr(String(raw.date));
       postLog('JS', `[handleStepDay] date=${raw.date} steps=${v.steps} dist=${v.distance} cal=${v.calorie}`);
       healthStore.upsertBackfillDay('steps', dk, v.steps);
       healthStore.upsertBackfillDay('distance', dk, v.distance);
@@ -2856,7 +3373,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       // 今日血氧立即落到 metrics.spo2 / daily['spo2']，让实时流/今日状态即时可用
       if (dk === todayKey) {
         patch.metrics = { ...this.getState().metrics, spo2: raw.value };
-        patch.daily = { ...this.getState().daily, spo2: raw.value };
+        patch.daily = { ...dailyBaseForNow(this.getState().daily), spo2: raw.value };
       }
       this.push(patch);
     } catch {
@@ -2878,7 +3395,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       // 今日体温立即落到 metrics.temp / daily['temp']，与实时 healthGlance 体温同源（℃）
       if (dk === todayKey) {
         patch.metrics = { ...this.getState().metrics, temp: raw.value };
-        patch.daily = { ...this.getState().daily, temp: raw.value };
+        patch.daily = { ...dailyBaseForNow(this.getState().daily), temp: raw.value };
       }
       this.push(patch);
     } catch {
@@ -3052,7 +3569,7 @@ class BackendRingSource {
           error: '当前后端仅有演示 / 诊断设备，已阻止读取（不展示非真实测量数据）',
           devices: list.map((d) => ({
             id: d.device_id,
-            name: d.name || 'Mira Ring Pro',
+            name: displayRingName(d.name),
             rssi: null,
             recommended: !!d.bound,
           })),
@@ -3066,7 +3583,7 @@ class BackendRingSource {
           error: '后端暂无已绑定设备：请先在 MiraRingProbe 探针 App 连上 HK18 并同步',
           devices: list.map((d) => ({
             id: d.device_id,
-            name: d.name || 'Mira Ring Pro',
+            name: displayRingName(d.name),
             rssi: null,
             recommended: !!d.bound,
           })),
@@ -3076,7 +3593,7 @@ class BackendRingSource {
       this.deviceId = dev.device_id;
       emit({
         status: 'connected',
-        deviceName: dev.name || 'Mira Ring Pro',
+        deviceName: displayRingName(dev.name),
         rssi: null,
         battery: num(dev.battery) ?? null,
         firmware: dev.firmware || null,
@@ -3084,7 +3601,7 @@ class BackendRingSource {
         error: null,
         devices: list.map((d) => ({
           id: d.device_id,
-          name: d.name || 'Mira Ring Pro',
+          name: displayRingName(d.name),
           rssi: null,
           recommended: !!d.bound,
         })),
@@ -3369,6 +3886,8 @@ class RingConnectionImpl {
   private state: RingState = {
     status: 'idle',
     deviceName: null,
+    deviceBroadcastName: null,
+    deviceBroadcastNameSource: null,
     rssi: null,
     battery: null,
     firmware: null,
@@ -3430,6 +3949,28 @@ class RingConnectionImpl {
   private backend: BackendRingSource;
   private useNative: boolean;
   private autoMonitor = false;
+
+  // ── ★ 2026-11-07（用户）：自动连接 + 常驻保活 ──────────────────────────────
+  //   需求：扫到 LunaMira 就主动连，不用手点；连上后要一直保持，断了自动补回来。
+  //   为什么必须做在 JS：原生 `connect(address)` 支持**按 MAC 直开 GATT**，不依赖广播；
+  //   而扫描是固定 10s 窗口、无 ScanSettings，戒指广播间隔长时容易整轮落空
+  //   （真机 12:58 复现 `[Scan] 0 台`，系统日志里设备名 `Lunamira` 明明在）。
+  //   原生还有「自动重连 3 次上限」；JS 每次调 native.connect(mac) 会把它清零，
+  //   于是掉线后可以无限补连，不会第 4 次断掉就永久躺平。
+  private autoLinkInstalled = false;
+  /** 用户在设置页主动点「断开」→ 停止一切自动连接，直到用户再次主动连接 */
+  private userStoppedLink = false;
+  private autoLinkTimer: ReturnType<typeof setTimeout> | null = null;
+  private autoLinkWatchdog: ReturnType<typeof setInterval> | null = null;
+  private autoLinkUnsub: (() => void) | null = null;
+  private autoLinkRetries = 0;
+  /** 只在「首次连上」打一条日志，避免 connected 状态反复推送时刷屏 */
+  private autoLinkWasConnected = false;
+  /** 8s 内不重复发起，避免 error/idle 回调引发连接风暴 */
+  private autoLinkBusyUntil = 0;
+  /** 上次连上的 MAC；掉线后据此直连，不再等广播 */
+  private knownMac: string | null = null;
+
   /**
    * 「数据同步」总开关（持久化）：唯一控制 backfill 的来源。
    * true=开启（默认），连接成功时回填戒指历史数据；false=关闭，连接后不自动回填。
@@ -3705,7 +4246,7 @@ class RingConnectionImpl {
     //   步数/睡眠/HRV 归档 → 那些卡片反而变空。这里对后端来源做深合并，只补不删。
     this.backend = new BackendRingSource((patch) => {
       if (patch.daily) {
-        this.applyPatch({ ...patch, daily: { ...this.state.daily, ...patch.daily } });
+        this.applyPatch({ ...patch, daily: { ...dailyBaseForNow(this.state.daily), ...patch.daily } });
       } else {
         this.applyPatch(patch);
       }
@@ -3890,6 +4431,13 @@ class RingConnectionImpl {
     //   此刻拿到真实 deviceId 后必须再校一次 —— 若这份 ECG 属于另一枚戒指
     //   （换了设备 / 换了用户 / 换了 App 账号），立即清空，不混显。
     const patchDeviceId = normDeviceId(patch.deviceId);
+    // ★ 2026-11-07（用户：「不要跟 HK18 混在一起」）：换了戒指，上一枚的实收摘要立即作废，
+    //   绝不允许把全量版的字段清单/频率显示成当前这枚精简版的数据。
+    const prevRingId = normDeviceId(this.state.deviceId);
+    if (patchDeviceId && prevRingId && prevRingId !== patchDeviceId) {
+      batchSummaryAccum = {};
+      patch = { ...patch, batchSummaries: {} };
+    }
     if (patchDeviceId) {
       const prevEcgSrc = normDeviceId(this.state.ecgDeviceId);
       if (this.state.ecg && prevEcgSrc && prevEcgSrc !== patchDeviceId) {
@@ -4033,7 +4581,7 @@ class RingConnectionImpl {
     const metrics = { ...this.state.metrics };
     const availability: Record<string, 'live' | 'syncing' | 'unavailable'> = { ...this.state.availability };
     const lastUpdated: Record<string, number | null> = { ...this.state.lastUpdated };
-    const daily = { ...this.state.daily };
+    const daily = { ...dailyBaseForNow(this.state.daily) };
     const dailyHistory = { ...this.state.dailyHistory };
     // 健康一览扩展指标 / 手动测量（血压/ECG）按天归档：extDaily[dateKey][key] = value
     // 供周/月/年跨天历史（realSeries 读取）。仅在今日有值才写，避免 null 污染归档。
@@ -4233,7 +4781,7 @@ class RingConnectionImpl {
    */
   private syncExtendedDaily() {
     const st = this.state;
-    const daily = { ...st.daily };
+    const daily = { ...dailyBaseForNow(st.daily) };
     const metrics = { ...st.metrics };
     const dailyHistory = { ...st.dailyHistory };
     const hrvDaily = { ...st.hrvDaily };
@@ -5883,49 +6431,160 @@ class RingConnectionImpl {
    *  4. 3s 内没扫到就静默放弃（用户可去设置页手动连），不弹任何东西。
    */
   private autoConnectOnLaunch(): void {
-    if (!this.useNative) return;
-    const lastId = this.state.deviceId;
-    const lastName = this.state.deviceName;
-    if (!lastId && !lastName) {
-      postLog('RingBle', '[autoConnect] 跳过：没有上次设备记录（首次使用请在设置页连接）');
-      return;
-    }
-    postLog('RingBle', `[autoConnect] 启动自动连接 lastId=${lastId ?? '-'} name=${lastName ?? '-'}`);
-    const un = this.onState((s) => {
-      const list = s.devices ?? [];
-      if (Array.isArray(list) && list.length > 0) {
-        const byId = lastId ? list.find((d: any) => String(d?.id ?? d?.deviceId ?? '') === String(lastId)) : null;
-        const byName = lastName
-          ? list.find((d: any) => String(d?.name ?? d?.deviceName ?? '') === String(lastName))
-          : null;
-        const hit = byId ?? byName ?? null;
-        un();
-        if (hit) {
-          const id = String(hit?.id ?? '');
-          if (id) {
-            postLog('RingBle', `[autoConnect] ✅ 命中上次设备 → 连接 ${hit?.name ?? id}`);
-            void this.connectToId(id);
-          }
-        } else {
-          postLog('RingBle', '[autoConnect] 扫到的设备里没有上次那台，放弃（可在设置页手动连）');
-        }
-      }
-    });
-    setTimeout(() => {
-      un();
-      postLog('RingBle', '[autoConnect] 3s 内未命中，结束');
-    }, 3000);
-    void this.startScan();
+    // ★ 2026-11-07：老实现是「只扫一次、8s 没命中就永久放弃」，正是用户说的
+    //   「有时候能搜到有时候搜不到 / 要自己去找」。现在改交常驻保活状态机。
+    this.startAutoLink();
   }
 
   /**
-   * v18.112 公开封装：设置页聚焦 / App 启动都调它。已连 / 在连 / 在扫则跳过，避免重复发起扫描。
-   * 行为同 autoConnectOnLaunch（扫到上次那台设备就 connectToId）。
+   * v18.112 公开封装：设置页聚焦 / App 启动都调它。保活状态机幂等，重复调用不会重复订阅。
    */
   autoConnect(): void {
+    this.startAutoLink();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ★ 2026-11-07（用户）：扫到即连 + 断线自动补连 + 常驻保活
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 安装常驻保活（幂等）。用户主动断开后由 disconnect() 关闭，再次主动连接会重新打开。 */
+  private startAutoLink(): void {
+    if (!this.useNative || this.autoLinkInstalled) return;
+    this.autoLinkInstalled = true;
+    this.userStoppedLink = false;
+    const st = this.getState();
+    if (st.deviceId) {
+      this.knownMac = String(st.deviceId);
+    } else {
+      // 快照丢失时，用「用户已确认的 LunaMira 基础版 MAC」兜底直连，
+      // 不退化成只能靠 10s 广播窗口碰运气（见 config/deviceModel.ts DEVICE_ID_PROFILES）。
+      const baseMac = Object.keys(DEVICE_ID_PROFILES).find((k) => DEVICE_ID_PROFILES[k] === 'BASE_UI');
+      if (baseMac) {
+        this.knownMac = baseMac;
+        postLog('RingBle', `[autoLink] 快照无 MAC，用已知 LunaMira MAC 兜底 ${baseMac}`);
+      }
+    }
+
+    this.autoLinkUnsub = this.onState((s) => {
+      // 1) 扫到设备 → 命中 LunaMira（优先已知 MAC）立即连，不等用户点
+      if (Array.isArray(s.devices) && s.devices.length > 0) this.onAutoLinkDevices(s.devices);
+      // 2) 连上 → 归零退避、记住 MAC、停掉待重试
+      if (s.status === 'connected') {
+        this.autoLinkRetries = 0;
+        this.autoLinkBusyUntil = 0;
+        if (s.deviceId) this.knownMac = String(s.deviceId);
+        this.clearAutoLinkTimer();
+        if (!this.autoLinkWasConnected) {
+          this.autoLinkWasConnected = true;
+          postLog('RingBle', `[autoLink] ✅ 已连接 ${s.deviceName ?? ''}@${this.knownMac ?? '-'}，保活待命`);
+        }
+      }
+      // 3) 掉线 / 扫描失败 → 自动补连（原生断开发的是 disconnected → 主类归为 idle）
+      if (s.status === 'idle' || s.status === 'error') {
+        this.autoLinkWasConnected = false;
+        this.scheduleAutoLink(s.status === 'error' ? '连接/扫描失败' : '待连接');
+      }
+    });
+
+    // 低频 watchdog：覆盖「原生静默掉线、没发 disconnected」的情况
+    this.autoLinkWatchdog = setInterval(() => {
+      const cur = this.getState();
+      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting') return;
+      void this.runAutoLink('watchdog');
+    }, 30_000);
+
+    postLog('RingBle', `[autoLink] 保活已启动 knownMac=${this.knownMac ?? '-'}`);
+    // 启动即尝试连：有 MAC 就直连，没 MAC 才扫描
+    this.scheduleAutoLink('启动', 900);
+  }
+
+  private stopAutoLink(): void {
+    this.clearAutoLinkTimer();
+    if (this.autoLinkWatchdog) {
+      clearInterval(this.autoLinkWatchdog);
+      this.autoLinkWatchdog = null;
+    }
+    if (this.autoLinkUnsub) {
+      this.autoLinkUnsub();
+      this.autoLinkUnsub = null;
+    }
+    this.autoLinkInstalled = false;
+  }
+
+  private clearAutoLinkTimer(): void {
+    if (this.autoLinkTimer) {
+      clearTimeout(this.autoLinkTimer);
+      this.autoLinkTimer = null;
+    }
+  }
+
+  /** 退避排程：断线后 2s→4s→6s…（上限 30s）持续尝试，不设「3 次就放弃」。 */
+  private scheduleAutoLink(reason: string, delay?: number): void {
+    if (!this.useNative || this.userStoppedLink) return;
+    const cur = this.getState();
+    if (cur.status === 'connected' || cur.status === 'connecting') return;
+    this.clearAutoLinkTimer();
+    const d = delay ?? Math.min(30_000, 2000 + this.autoLinkRetries * 2000);
+    this.autoLinkTimer = setTimeout(() => {
+      this.autoLinkTimer = null;
+      const s = this.getState();
+      if (this.userStoppedLink || s.status === 'connected' || s.status === 'connecting') return;
+      this.autoLinkRetries = Math.min(this.autoLinkRetries + 1, 12);
+      void this.runAutoLink(reason);
+    }, d);
+  }
+
+  /**
+   * 发起一轮自动连接。
+   * ① 已知 MAC → `native.connect(mac)` 直接开 GATT，**完全绕过 BLE 广播**
+   *    （系统扫描 10s 窗口容易错过戒指广播，这是「有时搜不到」的根因）；
+   * ② 没有 MAC → 扫一轮，scanResult 命中 LunaMira 就立刻连；
+   * ③ 每轮都留兜底重排，直到连上或用户主动断开。
+   */
+  private async runAutoLink(reason: string): Promise<void> {
+    if (!this.useNative || this.userStoppedLink) return;
     const st = this.getState();
     if (st.status === 'connected' || st.status === 'connecting' || st.status === 'scanning') return;
-    this.autoConnectOnLaunch();
+    const now = Date.now();
+    if (now < this.autoLinkBusyUntil) return;
+    this.autoLinkBusyUntil = now + 8000;
+
+    const mac = this.knownMac ?? st.deviceId ?? null;
+    if (mac) {
+      postLog('RingBle', `[autoLink] ${reason} → 按已知 MAC 直连 ${mac}（不依赖广播）`);
+      this.applyPatch({ status: 'connecting', error: null });
+      this.native.connect(mac);
+      // 原生连接超时约 30s；这里 14s 后若无结果就再排一轮（会被 busy 节流）
+      this.scheduleAutoLink('直连兜底', 14_000);
+      return;
+    }
+    postLog('RingBle', `[autoLink] ${reason} → 无已知 MAC，启动扫描找 LunaMira`);
+    try {
+      await this.startScan();
+    } catch (e) {
+      postLog('RingBle', `[autoLink] 扫描启动失败：${e instanceof Error ? e.message : e}`);
+    }
+    this.scheduleAutoLink('扫描兜底', 16_000);
+  }
+
+  /** scanResult 命中即连：优先已知 MAC，其次广播名含 luna/mira（真机名是 `Lunamira`，无空格）。 */
+  private onAutoLinkDevices(list: any[]): void {
+    if (!this.useNative || this.userStoppedLink) return;
+    const st = this.getState();
+    if (st.status === 'connected' || st.status === 'connecting') return;
+    const mac = this.knownMac ?? st.deviceId;
+    const isLuna = (n: unknown) => /luna|mira/i.test(String(n ?? ''));
+    const hit =
+      (mac ? list.find((d: any) => String(d?.id ?? d?.deviceId ?? '') === String(mac)) : null) ??
+      list.find((d: any) => isLuna(d?.name)) ??
+      null;
+    if (!hit) return;
+    const id = String(hit?.id ?? '');
+    if (!id) return;
+    this.knownMac = id;
+    this.autoLinkBusyUntil = Date.now() + 8000;
+    postLog('RingBle', `[autoLink] 🔎 扫到 ${hit?.name ?? '?'}@${id} → 立即自动连接`);
+    void this.connectToId(id);
   }
 
   /**
@@ -6106,7 +6765,15 @@ class RingConnectionImpl {
       }
       const patch: StatePatch = {};
       if (snap.history) patch.history = snap.history;
-      if (snap.daily) patch.daily = snap.daily;
+      // ★ 2026-11-08（跨天清零）：持久化的实时 daily 缓冲只在本日才恢复。
+      //   跨天快照的 daily 一律丢弃——本日首个实时样本会经 dailyBaseForNow 从空对象重新累积，
+      //   避免把昨日残留的 temp/spo2/血压等带到新的一天。同日本日恢复时同步置位
+      //   _dailyResetDayKey，保证 flushPending / syncExtendedDaily 不把它当「跨天残留」清掉。
+      const snapDayKey = typeof snap.dayStart === 'number' ? dayKeyOf(snap.dayStart) : '';
+      if (snap.daily && snapDayKey && snapDayKey === dayKeyOf(Date.now())) {
+        patch.daily = snap.daily;
+        _dailyResetDayKey = snapDayKey;
+      }
       if (snap.dailyHistory) patch.dailyHistory = snap.dailyHistory;
       if (snap.sleepStages) patch.sleepStages = snap.sleepStages;
       if (snap.sleepStagesDaily) patch.sleepStagesDaily = snap.sleepStagesDaily;
@@ -6367,9 +7034,17 @@ class RingConnectionImpl {
   }
 
   async startScan(): Promise<void> {
+    // ★ 2026-11-07：用户主动断开会拆掉保活；再次点「连接」是唯一的恢复入口。
+    if (this.useNative && !this.autoLinkInstalled) this.startAutoLink();
     this.applyPatch({ status: 'scanning', error: null, devices: [], flashResult: null });
     if (this.useNative) {
       this.native.scan();
+      // ★ 原生扫描固定 10s 结束，但不会发「扫描结束」状态。若用户没点选设备，
+      //   'scanning' 会一直挂着 → 设置页按钮被 ringBusy 永久禁用。这里按时释放。
+      //   已点选设备时状态已变 connecting/connected，此定时器不会误伤。
+      setTimeout(() => {
+        if (this.getState().status === 'scanning') this.applyPatch({ status: 'idle' });
+      }, 10_500);
     } else {
       await this.backend.start();
     }
@@ -6380,6 +7055,10 @@ class RingConnectionImpl {
   }
 
   async connectToId(id: string): Promise<void> {
+    // 手动点选设备 = 用户同意连接 → 恢复保活并记住这枚戒指的 MAC
+    this.userStoppedLink = false;
+    if (id) this.knownMac = String(id);
+    if (!this.autoLinkInstalled) this.startAutoLink();
     this.applyPatch({ status: 'connecting', error: null });
     if (this.useNative) {
       this.native.connect(id);
@@ -6391,6 +7070,10 @@ class RingConnectionImpl {
   }
 
   async disconnect(): Promise<void> {
+    // ★ 2026-11-07：用户主动断开 → 停掉常驻保活，不再自动连回来。
+    //   必须在 applyPatch(idle) 之前拆订阅，否则 idle 会立刻触发补连。
+    this.userStoppedLink = true;
+    this.stopAutoLink();
     this.clearStatusTimer();
     if (this.useNative) this.native.disconnect();
     else this.backend.disconnect();
@@ -6398,6 +7081,8 @@ class RingConnectionImpl {
     this.applyPatch({
       status: 'idle',
       deviceName: null,
+      deviceBroadcastName: null,
+      deviceBroadcastNameSource: null,
       rssi: null,
       battery: null,
       firmware: null,

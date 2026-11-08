@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold,
     color: theme.colors.textTitle,
   },
-  mask: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' },
+  mask: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.ui.black40 },
   sheet: {
     position: 'absolute',
     left: 0,
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.xs },
   cell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   // ★ mira-ocean（2026-10-17）：选中日紫底 → 白底 + 深蓝字
-  cellOn: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: theme.radius.sm },
+  cellOn: { backgroundColor: theme.colors.ui.white95, borderRadius: theme.radius.sm },
   cellText: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle },
   cellDim: { color: theme.colors.textSub },
   cellTextOn: { color: '#2A4470', fontWeight: theme.weight.semibold }, // ★ mira-ocean：白底深字

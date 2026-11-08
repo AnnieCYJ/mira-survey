@@ -1066,7 +1066,7 @@ const ei = StyleSheet.create({
   pillText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.honeyDeep },
 
   /* 弹卡（PlanSheet）：遮罩 + 底部滑入的深色大卡（mira-ocean：原 cardBg 13% 玻璃太透，文字透底叠影 → 改深蓝紫实底） */
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheetOverlay: { flex: 1, backgroundColor: theme.colors.ui.black50, justifyContent: 'flex-end' },
   sheetCard: {
     height: '78%', backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,

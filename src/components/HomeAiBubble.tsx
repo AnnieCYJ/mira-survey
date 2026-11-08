@@ -510,7 +510,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
         accessibilityRole={!hasCard ? 'button' : undefined}
         accessibilityLabel={!hasCard ? '打开 Mira AI 聊天' : undefined}
       >
-        {/* 气泡白玻璃背景：本体由下方 SVG path 填充（半透明白底 rgba(255,255,255,0.82) + 浅描边） */}
+        {/* 气泡白玻璃背景：本体由下方 SVG path 填充（半透明白底 theme.colors.ui.white82 + 浅描边） */}
 
         {/* 气泡描边 + 右下小尾巴（SVG 保证边框与尾巴同色同源；本体填充白玻璃） */}
         {w > 0 && bodyPath && (

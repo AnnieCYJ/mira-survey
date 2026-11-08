@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>皇冠 / 星星 样式备选 · Mira</title>
+<style>
+  :root{
+    --bg:#FBF7F2; --card:#FFFFFF; --ink:#3A3531; --inkSoft:#8A827B;
+    --gold:#D9A441; --goldSoft:#E8C07C; --peach:#F0A98C; --rose:#E78A9C;
+    --sky:#7FB6D6; --line:#EDE6DC;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:32px 20px 56px;}
+  .wrap{max-width:960px;margin:0 auto;}
+  h1{font-size:24px;font-weight:600;letter-spacing:-0.3px;margin:0 0 4px;}
+  .sub{font-size:14px;color:var(--inkSoft);margin:0 0 8px;line-height:1.6;}
+  .note{font-size:12.5px;color:var(--inkSoft);background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;margin:14px 0 28px;line-height:1.7;}
+  .note b{color:var(--gold);font-weight:600;}
+  .section{margin:34px 0 10px;display:flex;align-items:baseline;gap:10px;}
+  .section h2{font-size:18px;font-weight:600;margin:0;}
+  .section .tag{font-size:12px;color:var(--inkSoft);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-top:14px;}
+  .opt{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;
+    display:flex;flex-direction:column;align-items:center;transition:transform .15s ease, box-shadow .15s ease;}
+  .opt:hover{transform:translateY(-3px);box-shadow:0 8px 22px rgba(0,0,0,.06);}
+  .opt .name{font-size:13.5px;font-weight:600;margin-top:10px;text-align:center;}
+  .opt .desc{font-size:11.5px;color:var(--inkSoft);margin-top:3px;text-align:center;line-height:1.5;min-height:32px;}
+  .big{width:64px;height:64px;margin-top:6px;}
+  /* sample journey card mock */
+  .mock{margin-top:14px;width:100%;background:linear-gradient(180deg,#FFFDFA,#FBF4EC);
+    border:1px solid var(--line);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden;}
+  .mock .row{display:flex;align-items:center;gap:10px;}
+  .mock .ic{width:34px;height:34px;border-radius:10px;background:#F3E7D6;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .mock .t{font-size:13px;font-weight:600;}
+  .mock .s{font-size:11px;color:var(--inkSoft);}
+  .mock .badge{position:absolute;top:10px;right:12px;width:22px;height:22px;}
+  .swatches{display:flex;gap:8px;margin-top:12px;}
+  .sw{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.06);}
+  .footer{margin-top:40px;font-size:12px;color:var(--inkSoft);border-top:1px solid var(--line);padding-top:16px;line-height:1.7;}
+  code{background:#F3EEE6;padding:1px 6px;border-radius:5px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>皇冠 / 星星 样式备选</h1>
+  <p class="sub">现状：回顾·日视图的「达标」卡片、月历格子用的是 emoji <b style="font-size:18px">👑</b>。下面给出几组 SVG 矢量备选，可在小尺寸（角标）与大尺寸（详情）下保持一致清晰。</p>
+  <div class="note">
+    建议方向：<b>矢量 SVG 组件</b>替代 emoji（emoji 在不同系统渲染不一致、偏卡通）。颜色默认 <b>暖金 #D9A441</b>，也可切蜜桃 / 白描边。下方每个方案都附「角标实拍（贴在卡片右上角）」与「放大预览」。
+  </div>
+
+  <!-- ============ CROWN ============ -->
+  <div class="section"><h2>① 皇冠 Crown</h2><span class="tag">替代 👑 的达标标记</span></div>
+  <div class="grid">
+
+    <!-- A 细线皇冠 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">🏃</div><div><div class="t">晨间散步</div><div class="s">达标 · 30 分钟</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="none" stroke="#D9A441" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="none" stroke="#D9A441" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      <div class="name">A · 细线皇冠</div>
+      <div class="desc">极简描边，最克制，小尺寸也干净</div>
+    </div>
+
+    <!-- B 实心金冠 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">💧</div><div><div class="t">饮水达标</div><div class="s">达标 · 8 杯</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><defs><linearGradient id="gB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="url(#gB)"/><circle cx="3" cy="8" r="1.4" fill="#fff" opacity=".85"/><circle cx="12" cy="6" r="1.4" fill="#fff" opacity=".85"/><circle cx="21" cy="8" r="1.4" fill="#fff" opacity=".85"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><defs><linearGradient id="gB2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="url(#gB2)"/><circle cx="3" cy="8" r="1.5" fill="#fff" opacity=".9"/><circle cx="12" cy="6" r="1.5" fill="#fff" opacity=".9"/><circle cx="21" cy="8" r="1.5" fill="#fff" opacity=".9"/></svg>
+      <div class="name">B · 实心金冠</div>
+      <div class="desc">金渐变 + 三颗珍珠点，最像皇冠</div>
+    </div>
+
+    <!-- C 宝石皇冠 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">🌙</div><div><div class="t">睡眠恢复</div><div class="s">达标 · 深度睡眠</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><defs><linearGradient id="gC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EFD9A8"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="url(#gC)"/><circle cx="3" cy="8" r="1.6" fill="#F0A98C"/><circle cx="12" cy="6" r="1.6" fill="#E78A9C"/><circle cx="21" cy="8" r="1.6" fill="#7FB6D6"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><defs><linearGradient id="gC2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EFD9A8"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M5 18 L3 8 L9 12 L12 6 L15 12 L21 8 L19 18 Z" fill="url(#gC2)"/><circle cx="3" cy="8" r="1.7" fill="#F0A98C"/><circle cx="12" cy="6" r="1.7" fill="#E78A9C"/><circle cx="21" cy="8" r="1.7" fill="#7FB6D6"/></svg>
+      <div class="name">C · 宝石皇冠</div>
+      <div class="desc">三色宝石（蜜桃/玫红/天蓝），更活泼</div>
+    </div>
+
+    <!-- D 光环徽章 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">🧘</div><div><div class="t">冥想打卡</div><div class="s">连续 7 天</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><defs><linearGradient id="gD" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><circle cx="12" cy="12" r="8" fill="none" stroke="url(#gD)" stroke-width="2"/><path d="M12 8.5 C12 11 13.5 12.5 16 12.5 C13.5 12.5 12 14 12 16.5 C12 14 10.5 12.5 8 12.5 C10.5 12.5 12 11 12 8.5 Z" fill="#D9A441"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><defs><linearGradient id="gD2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><circle cx="12" cy="12" r="8" fill="none" stroke="url(#gD2)" stroke-width="2"/><path d="M12 8.5 C12 11 13.5 12.5 16 12.5 C13.5 12.5 12 14 12 16.5 C12 14 10.5 12.5 8 12.5 C10.5 12.5 12 11 12 8.5 Z" fill="#D9A441"/></svg>
+      <div class="name">D · 光环徽章</div>
+      <div class="desc">圆环 + 中心闪星，跳出「皇冠」语义</div>
+    </div>
+
+  </div>
+
+  <!-- ============ STAR ============ -->
+  <div class="section"><h2>② 星星 Star</h2><span class="tag">备选标记 / 成就点缀</span></div>
+  <div class="grid">
+
+    <!-- E 五角金星 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">⭐</div><div><div class="t">目标达成</div><div class="s">本周全部完成</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><defs><linearGradient id="gE" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="url(#gE)"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><defs><linearGradient id="gE2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8C07C"/><stop offset="1" stop-color="#D9A441"/></linearGradient></defs><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="url(#gE2)"/></svg>
+      <div class="name">E · 五角金星</div>
+      <div class="desc">经典星，金渐变，辨识度最高</div>
+    </div>
+
+    <!-- F 闪星 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">✨</div><div><div class="t">小确幸</div><div class="s">记录了一件好事</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2 C12 8 16 12 22 12 C16 12 12 16 12 22 C12 16 8 12 2 12 C8 12 12 8 12 2 Z" fill="#D9A441"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><path d="M12 2 C12 8 16 12 22 12 C16 12 12 16 12 22 C12 16 8 12 2 12 C8 12 12 8 12 2 Z" fill="#D9A441"/></svg>
+      <div class="name">F · 四角闪星</div>
+      <div class="desc">像 ✨，轻盈、女性化，适合「小成就」</div>
+    </div>
+
+    <!-- G 圆角软星 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">🌟</div><div><div class="t">连续打卡</div><div class="s">温柔不刺眼</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="#F0A98C" stroke="#F0A98C" stroke-width="2.4" stroke-linejoin="round"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="#F0A98C" stroke="#F0A98C" stroke-width="2.2" stroke-linejoin="round"/></svg>
+      <div class="name">G · 圆角软星</div>
+      <div class="desc">蜜桃色 + 圆角描边，柔和亲和无攻击性</div>
+    </div>
+
+    <!-- H 描边星 -->
+    <div class="opt">
+      <div class="mock">
+        <div class="row"><div class="ic">☆</div><div><div class="t">轻标记</div><div class="s">极简线稿</div></div></div>
+        <div class="badge"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="none" stroke="#D9A441" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+      </div>
+      <svg class="big" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z" fill="none" stroke="#D9A441" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <div class="name">H · 描边星</div>
+      <div class="desc">纯线稿，最轻量，可白可金</div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <b>颜色变体（同一图形可切换）：</b>
+    <div class="swatches">
+      <div class="sw" style="background:#D9A441" title="暖金"></div>
+      <div class="sw" style="background:#E8C07C" title="浅金"></div>
+      <div class="sw" style="background:#F0A98C" title="蜜桃"></div>
+      <div class="sw" style="background:#E78A9C" title="玫红"></div>
+      <div class="sw" style="background:#7FB6D6" title="天蓝"></div>
+      <div class="sw" style="background:#FFFFFF;border-color:#ccc" title="白描边"></div>
+    </div>
+    <p style="margin-top:14px">落地方式：把选中的 SVG 抽成一个 <code>&lt;CrownMark /&gt;</code> / <code>&lt;StarMark /&gt;</code> 组件（接收 <code>size</code> / <code>color</code> prop），替换 <code>JourneyDayView</code> 的 <code>goalStar</code> 与 <code>MonthDiscoveryView</code> 的皇冠 emoji。需要我直接改成代码版就告诉我选哪组。</p>
+  </div>
+</div>
+</body>
+</html>

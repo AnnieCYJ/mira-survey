@@ -187,15 +187,15 @@ const styles = StyleSheet.create({
   center: { position: 'absolute', alignItems: 'center' },
   phase: {
     fontSize: theme.fontSize.h2, fontWeight: '600', color: theme.colors.textWhite, letterSpacing: 2,
-    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
+    textShadowColor: theme.colors.ui.black35, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   count: {
-    marginTop: 6, fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.82)',
+    marginTop: 6, fontSize: theme.fontSize.xs, color: theme.colors.ui.white82,
     fontVariant: ['tabular-nums'],
-    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    textShadowColor: theme.colors.ui.black35, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
   cycles: {
-    position: 'absolute', bottom: -6, fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.7)', letterSpacing: 1,
-    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    position: 'absolute', bottom: -6, fontSize: theme.fontSize.micro, color: theme.colors.ui.white70, letterSpacing: 1,
+    textShadowColor: theme.colors.ui.black35, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
 });

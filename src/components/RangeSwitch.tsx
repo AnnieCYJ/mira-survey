@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   pill: {
     ...StyleSheet.absoluteFillObject,
     // ★ mira-ocean（2026-10-17 用户「日周月年按钮变紫改白」）：选中 pill 紫 → 近白
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.ui.white95,
     borderRadius: theme.radius.pill,
     shadowColor: theme.colors.ui.shadowBlack,
     shadowOpacity: 0.18,

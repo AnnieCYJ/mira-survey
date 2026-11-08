@@ -28,7 +28,6 @@ export default function HealthAgeCard({
   healthAge = null,
   actualAge = null,
   overallScore = null,
-  onEditProfile,
   onPress,
   ring,
   rows,
@@ -69,8 +68,8 @@ export default function HealthAgeCard({
       marker: mm.colors.roseCore, fg: '#F2A3C6',
     },
     flat: {
-      gradFrom: 'rgba(255,255,255,0.62)', gradMid: 'rgba(255,255,255,0.78)', gradTo: 'rgba(255,255,255,0.78)',
-      marker: 'rgba(255,255,255,0.78)', fg: theme.colors.textSub,
+      gradFrom: theme.colors.ui.white62, gradMid: theme.colors.ui.white78, gradTo: theme.colors.ui.white78,
+      marker: theme.colors.ui.white78, fg: theme.colors.textSub,
     },
   } as const;
   const pal = PALETTE[tone];
@@ -169,8 +168,8 @@ export default function HealthAgeCard({
 
   return (
     <TouchableOpacity
-      activeOpacity={onPress && actualAge != null ? 0.7 : 1}
-      onPress={onPress && actualAge != null ? onPress : undefined}
+      activeOpacity={onPress ? 0.7 : 1}
+      onPress={onPress ?? undefined}
       style={styles.cardShell}
     >
       {/* v16 §4.2 #1：浅黄绿渐变卡底（#F8FAE8→#FDFEF7），弧线画在其上 */}
@@ -183,8 +182,8 @@ export default function HealthAgeCard({
         {/* ★ 2026-10-10（用户）：「身体年龄」移到卡片左上角；去掉「参考估算」 */}
         <View style={[styles.topLabelRow, { justifyContent: 'space-between' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon name="heart" size={theme.fontSize.sm} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={[styles.topLabel, { color: '#FFFFFF' }]}>身体年龄</Text>
+            <Icon name="heart" size={theme.fontSize.sm} color={mm.colors.limeCore} style={{ marginRight: 4 }} />
+            <Text style={[styles.topLabel, { color: mm.colors.limeCore }]}>身体年龄</Text>
           </View>
           <Icon name="chevronRight" size={16} color="rgba(255,255,255,0.72)" />
         </View>
@@ -242,28 +241,27 @@ export default function HealthAgeCard({
             {hasEstimate ? (
               <>
                 <Text style={[styles.deltaCap, { color: pill.fg }]}>
-                  {delta === 0 ? '与实际年龄相近' : `较实际年龄${isYounger ? '低' : '高'}`}
+                  {isFlat ? '与实际年龄相近' : `较实际年龄${isYounger ? '低' : '高'}`}
                 </Text>
-                <Text style={[styles.deltaBig, { color: pill.fg }]}>
-                  {Math.abs(delta).toFixed(1)} 岁
-                </Text>
+                {!isFlat && (
+                  <Text style={[styles.deltaBig, { color: pill.fg }]}>
+                    {Math.abs(delta).toFixed(1)} 岁
+                  </Text>
+                )}
               </>
             ) : (
-              <Text style={[styles.deltaSub, { color: theme.colors.textSub }]}>
-                {actualAge == null ? '填写年龄后查看' : '数据积累中'}
-              </Text>
+              // ★ 2026-11-07（用户）：去掉「填写年龄后查看 / 数据积累中」引导字。
+              //   年龄首次登录已录入，读不到时也不再引导去填档案，只留中性占位。
+              <Text style={[styles.deltaSub, { color: theme.colors.textSub }]}>—</Text>
             )}
           </View>
         </View>
 
         {/* ═══ AI 分析白卡片（渐变底上的独立白卡，SPEC「再下白卡」）
-            ★ 2026-10-06（用户：分析与建议不要两个框，合并在一个框里） ═══ */}
-        {actualAge == null && onEditProfile ? (
-          <TouchableOpacity onPress={onEditProfile} accessibilityRole="button" accessibilityLabel="填写身体档案"
-            style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#BFCBFF', fontSize: theme.fontSize.body }}>填写身体档案 ›</Text>
-          </TouchableOpacity>
-        ) : null}
+            ★ 2026-10-06（用户：分析与建议不要两个框，合并在一个框里）
+            ★ 2026-11-07（用户）：整块删掉「填写身体档案 ›」CTA —— 年龄在首次登录
+              Onboarding 已录入，洞察页会从 userStore 读真实年龄；这里不再出现任何
+              「去填档案」的引导，也不再劫持卡片点击。onEditProfile 仅保留接口兼容。 ═══ */}
         <View style={styles.cardWrap}>
           <Text style={styles.body}>
             {analysisTextResolved}

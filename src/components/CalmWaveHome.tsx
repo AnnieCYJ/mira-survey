@@ -43,6 +43,9 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
+// ★ 2026-11-08：首页「今日状态」分析接入真实 AI 综合分析（overview 通道），与洞察页顶部同源。
+//   模型未打包 / 无数据 / 推理未完成前 text 为 null → 回落本地模板（与洞察页一致）。
+import { useAiInsight } from '../hooks/useAiInsight';
 
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
 
@@ -324,6 +327,9 @@ export default function CalmWaveHome() {
     : { label: '休息一下', color: '#F0B5C4' };
   const moodLabel = mood.label;
   const moodColor = mood.color;
+  // ★ 2026-11-08：首页分析接入真实 AI（端侧 Qwen2.5-1.5B，同洞察页顶部综合分析）。
+  //   返回文本为「结论句 + 综合段落 + 今日建议」，约 2–3 行；无数据时 text=null，下方回落本地模板。
+  const { text: aiAnalysis, loading: aiAnalysisLoading } = useAiInsight('overview');
   const dkToday = dayKey(Date.now());
   // ★ sportSessions 是跨天持久化列表（固件回传+本地归档），不能整体累加；
   //   活动消耗只统计「今天」的运动段 totalCal，与活动详情页（EnergyDetail dayK === dk）同口径。
@@ -549,7 +555,7 @@ export default function CalmWaveHome() {
               fill="none" stroke="#FFFFFF" strokeWidth={8} strokeLinecap="round"
             />
             {/* 进度末端亮点（更明显：外晕+实心） */}
-            <Circle cx={arcEnd.x} cy={arcEnd.y} r={13} fill="rgba(255,255,255,0.30)" />
+            <Circle cx={arcEnd.x} cy={arcEnd.y} r={13} fill="rgba(255,255,255,0.3)" />
             <Circle cx={arcEnd.x} cy={arcEnd.y} r={7} fill="#FFFFFF" />
           </Svg>
           {/* 数字落圆下部开口处（圆心空）：★ 2026-11-03 整体下移，正好落在 0/100 中间开口处 */}
@@ -596,21 +602,26 @@ export default function CalmWaveHome() {
         </View>
       </View>
 
-      {/* 分析文字（浮于照片，无卡片底）★ 2026-11-06：实测行高驱动下方胶囊位置（三排自适应） */}
+      {/* 分析文字（浮于照片，无卡片底）★ 2026-11-06：实测行高驱动下方胶囊位置（三排自适应）
+          ★ 2026-11-08：优先展示真实 AI 综合分析（端侧模型生成）；模型未就绪 / 无数据 → 回落下方本地模板。
+          首页只做「一眼概览」，AI 文案约 2–3 行，超长截断避免挤占下方胶囊与指标卡行。 */}
       <View style={[s.analysisWrap, { top: analysisTop }]}>
         <Text
           style={s.analysis}
+          numberOfLines={aiAnalysis ? 3 : undefined}
           onTextLayout={(e) => {
             // RN 的 onTextLayout 只给 lines（无整体 layout.height）——行数 × lineHeight(25) 换算
             const n = e.nativeEvent.lines.length;
             if (n > 0) setAnalysisH(n * 25);
           }}
         >
-          {statusFromCheck
-            ? <>刚做完一键体检，今天的<Text style={s.hl}>{displayStatus} 分</Text>{qcStatus?.source === 'estimated' ? '是按当前 HRV 估算的，连续佩戴后会更贴近真实状态～' : '来自戒指同步～'}</>
-            : hasStatusData
-              ? <>今天状态不错，<Text style={s.hl}>{displayStatus} 分</Text>比平时稳，趁状态好做点想做的事～</>
-              : '今日状态暂无数据，做一次一键体检，最快获取你的健康数据～'}
+          {aiAnalysis
+            ? aiAnalysis
+            : (statusFromCheck
+              ? <>刚做完一键体检，今天的<Text style={s.hl}>{displayStatus} 分</Text>{qcStatus?.source === 'estimated' ? '是按当前 HRV 估算的，连续佩戴后会更贴近真实状态～' : '来自戒指同步～'}</>
+              : hasStatusData
+                ? <>今天状态不错，<Text style={s.hl}>{displayStatus} 分</Text>比平时稳，趁状态好做点想做的事～</>
+                : '今日状态暂无数据，做一次一键体检，最快获取你的健康数据～')}
         </Text>
       </View>
       {/* 建议胶囊：★ 2026-11-05（用户）今日状态空值时引导「去一键体检一下」；有数据后走动态建议引擎 */}
@@ -656,9 +667,9 @@ const s = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: theme.colors.ui.white55,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.75)',
+    borderColor: theme.colors.ui.white75,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -701,14 +712,14 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   chipIcon: { marginBottom: 3 },
-  chipLabel: { fontSize: theme.fontSize.xs, fontWeight: '500', color: 'rgba(255,255,255,0.62)', letterSpacing: 0.1 },
-  chipLabelBig: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.78)' },
+  chipLabel: { fontSize: theme.fontSize.xs, fontWeight: '500', color: theme.colors.ui.white62, letterSpacing: 0.1 },
+  chipLabelBig: { fontSize: theme.fontSize.sm, color: theme.colors.ui.white78 },
   chipValRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
   chipVal: { fontSize: theme.fontSize.card, fontWeight: '700', color: theme.colors.textWhite },
   chipValBig: { fontSize: theme.fontSize.h2 },
   chipValGood: { color: '#D5E384' },
-  chipUnit: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.62)', marginLeft: 1.5 },
-  chipTag: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.5)', marginTop: 3 },
+  chipUnit: { fontSize: theme.fontSize.tiny, color: theme.colors.ui.white62, marginLeft: 1.5 },
+  chipTag: { fontSize: theme.fontSize.tiny, color: theme.colors.ui.white50, marginTop: 3 },
 
   // 大半圆区（Oura 风格，去月相）：整区居中、可点
   gaugeZone: {
@@ -731,11 +742,11 @@ const s = StyleSheet.create({
   gBig: { fontSize: theme.fontSize.hero, fontWeight: '700', color: theme.colors.textWhite, marginBottom: 2, textShadowColor: 'rgba(20,44,64,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14 },
   // 状态档位词（如 平平静静）：★ 2026-11-03（用户「稍微小一点儿」）hero(46) → h1(36)——
   //   之前注释写「44→40」但实际挂的仍是 hero，与上面大数字同大；现降到 h1，层级回到「数字主、档位词辅」
-  gLabel: { fontSize: theme.fontSize.h1, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+  gLabel: { fontSize: theme.fontSize.h1, color: theme.colors.ui.white85, fontWeight: '600' },
   // ★ 2026-11-03：档位词 + 右箭头行（整块仍随外层 gauge 可点 → 全天状态趋势）
   gLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   // 周期副行
-  gUpd: { fontSize: theme.fontSize.xs, color: 'rgba(255,255,255,0.55)', marginTop: 6 },
+  gUpd: { fontSize: theme.fontSize.xs, color: theme.colors.ui.white55, marginTop: 6 },
   // 建议胶囊（★ 2026-11-04 动态建议：maxWidth 防长文案撑爆，最多两行）
   relaxPill: {
     marginTop: 16,
@@ -743,9 +754,9 @@ const s = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 18,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: theme.colors.ui.white12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: theme.colors.ui.white28,
   },
   relaxPillTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: theme.colors.textWhite, textAlign: 'center' },
 
@@ -753,7 +764,7 @@ const s = StyleSheet.create({
   analysisWrap: { position: 'absolute', left: 24, right: 24 },
   capsuleWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   scaleTxt: {
-    position: 'absolute', fontSize: theme.fontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.6)',
+    position: 'absolute', fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.ui.white60,
     textShadowColor: 'rgba(10,41,79,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
 
@@ -767,10 +778,10 @@ const s = StyleSheet.create({
     paddingHorizontal: 17,
     borderRadius: 20,
     backgroundColor: AI_CARD_BG,
-    borderColor: 'rgba(255,255,255,0.17)',
+    borderColor: theme.colors.ui.white17,
     borderWidth: 1,
   },
-  analysis: { fontSize: theme.fontSize.card, lineHeight: 25, color: 'rgba(255,255,255,0.92)', marginBottom: 0, textAlign: 'center' },
+  analysis: { fontSize: theme.fontSize.card, lineHeight: 25, color: theme.colors.ui.white92, marginBottom: 0, textAlign: 'center' },
   hl: { fontWeight: '700', color: '#BFCBFF' },
   sug: {
     flexDirection: 'row',
@@ -778,11 +789,11 @@ const s = StyleSheet.create({
     gap: 13,
     paddingTop: 9,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.14)',
+    borderTopColor: theme.colors.ui.white14,
   },
-  sugThumb: { width: 56, height: 56, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  sugThumb: { width: 56, height: 56, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.ui.white35 },
   sugH: { fontSize: theme.fontSize.card, fontWeight: '600', color: theme.colors.textWhite },
-  sugD: { fontSize: theme.fontSize.sm, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  sugD: { fontSize: theme.fontSize.sm, color: theme.colors.ui.white65, marginTop: 2 },
   goPill: { backgroundColor: 'rgba(160,178,255,0.95)', borderRadius: theme.radius.pill, paddingHorizontal: 15, paddingVertical: 7 },
   goTxt: { fontSize: theme.fontSize.body, fontWeight: '600', color: '#101C33' },
 });

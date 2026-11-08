@@ -24,8 +24,15 @@
  *   · VPAutoMonitTestModel 的 VPAutoMonitTestTypeBodyTemperature 是同一路体温自动监测。
  *
  * 结论（本模块对外口径）：
- *   ✅ 有：体温（日均，℃）
  *   ❌ 无：EDA 皮电、独立皮肤温度、健康一览 temp、gsr 里的温度
+ *
+ * ★ 2026-11-07 修正：上面「✅ 有：体温（日均，℃）」这条**已作废**。
+ *   它是从 HK18 时期的云端 auto_data.temp_daily_mean 反推的，而那批数据
+ *   与当前戒指的 device_id 混在一起（本文件开头已证实两个 ID 的记录逐字段相同）。
+ *   真机能力包（见 docs/RING_DEVICE_CAPABILITY_MATRIX.md）明确：
+ *   `体温 Temp : 不支持 (type=0)`、`体温告警=不支持`，
+ *   且 onBatch 逐点 slot 字段全集里没有 temp。
+ *   → 当前 LunaMira 精简版**没有体温**，UI 不得展示，也不得拿旧归档兜底。
  */
 import {
   ALL_NATIVE_METRIC_KEYS,

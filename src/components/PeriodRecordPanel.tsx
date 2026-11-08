@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   // ★ 本轮（用户 #283）：保存按钮 = 白色胶囊 + 深色字（与周期日历页经期弹窗保存钮同口径）
   saveBtn: {
     marginTop: theme.space.lg,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.ui.white95,
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     paddingVertical: theme.sp(3.5),

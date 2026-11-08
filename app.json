@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "miraringfashion",
+    "name": "Luna Mira",
     "slug": "miraringfashion",
     "version": "1.1.0",
+    "icon": "./assets/lunamira-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "scheme": "miraringfashion",
     "ios": {
       "supportsTablet": true,
@@ -13,9 +14,9 @@
       "buildNumber": "2",
       "deploymentTarget": "13.4",
       "infoPlist": {
-        "NSHealthShareUsageDescription": "miraringfashion 读取你的睡眠与心率数据用于生成每日状态。",
-        "NSBluetoothAlwaysUsageDescription": "miraringfashion 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
-        "NSBluetoothPeripheralUsageDescription": "miraringfashion 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
+        "NSHealthShareUsageDescription": "Luna Mira 读取你的睡眠与心率数据用于生成每日状态。",
+        "NSBluetoothAlwaysUsageDescription": "Luna Mira 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
+        "NSBluetoothPeripheralUsageDescription": "Luna Mira 需要通过蓝牙连接你的智能戒指以采集周期、睡眠与心率数据。",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
@@ -29,7 +30,7 @@
           "UISceneConfigurations": {}
         },
         "NSMicrophoneUsageDescription": "Mira 需要访问麦克风以支持语音输入。",
-        "NSMotionUsageDescription": "miraringfashion 读取运动与步数数据用于计算每日活动量与状态分析。",
+        "NSMotionUsageDescription": "Luna Mira 读取运动与步数数据用于计算每日活动量与状态分析。",
         "NSSpeechRecognitionUsageDescription": "Mira 需要语音识别权限以将你的语音转换成文字。"
       }
     },
@@ -71,6 +72,7 @@
       ],
       "./plugins/withMetroScheme",
       "./plugins/withAndroidBuildHardening",
+      "./plugins/withNewArchEnabled",
       [
         "@react-native-voice/voice",
         {

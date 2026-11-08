@@ -48,7 +48,7 @@ function TabItem({ route, focused, onPress }: { route: any; focused: boolean; on
         <Icon
           name={TAB_ICON[route.name] ?? 'home'}
           size={theme.fs(26)}
-          color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'}
+          color={focused ? '#FFFFFF' : theme.colors.ui.white50}
           strokeWidth={2}
         />
       </Animated.View>
@@ -112,9 +112,9 @@ const styles = StyleSheet.create({
     height: theme.layout.tabBarHeight,
     // ★ 2026-11-03（用户：tab 也要玻璃质感，对齐首页磨砂卡）：半透明白玻璃 + 白描边，
     //   图标保持深色（ink）在白玻璃上清晰可读；适度不透明避免滚动时内容过度透出。
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: theme.colors.ui.white28,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: theme.colors.ui.white50,
     // ★ 必须用 pill：高度 = tabBarHeight(56)，pill(999) 会解析成半高 28 → 完整胶囊。
     //   原先写 radius.card 时 card 恰好是 28 才碰巧是胶囊；2026-09-20 把 card 收紧到 14 后就退化成圆角矩形了。
     borderRadius: theme.radius.pill,

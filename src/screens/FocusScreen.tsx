@@ -161,8 +161,8 @@ const styles = StyleSheet.create({
     paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: theme.colors.ui.white22,
+    backgroundColor: theme.colors.ui.white12,
     margin: theme.sp(1),
   },
   chipText: {

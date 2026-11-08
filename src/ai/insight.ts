@@ -449,7 +449,9 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<s
       // ★ 同时把「真实错误」写到 8899 日志（见 scripts/logcollector.js）——LogBox 上的提示是截断的，
       //   只有这里能看到完整 message/stack，便于定位是 init 失败还是推理失败。
       const detail = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
-      console.warn('[AI-Insight] 生成失败（回落到规则文案）:', e);
+      // ★ 2026-11-07（用户）：console.warn 会触发 LogBox 红屏，真机上反复盖住页面。
+      //   降级是设计内行为（回落规则文案），改走 console.log（不进 LogBox）；完整错误仍在 8899 postLog。
+      console.log('[AI-Insight] 生成失败（回落到规则文案）:', e);
       try {
         postLog('AI-Insight', `生成失败 kind=${kind} dk=${targetDk}：${detail}`);
       } catch {

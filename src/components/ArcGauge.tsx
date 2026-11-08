@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Circle, Path, G } from 'react-native-svg';
 import { mm } from '../theme/mindmate';
+import { theme } from '../theme/theme';
 
 interface Props {
   /** 进度 0–100（超出自动夹紧） */

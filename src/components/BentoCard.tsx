@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: theme.sp(mm.shadow.height) },
     shadowOpacity: mm.shadow.opacity * 0.6,
     shadowRadius: theme.sp(mm.shadow.radius),
-    elevation: 2,
+    elevation: 0,
   },
   topRow: {
     flexDirection: 'row',

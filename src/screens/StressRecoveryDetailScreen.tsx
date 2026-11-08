@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   metricTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) },
   metricLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textInk },
   metricValue: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
-  metricTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
+  metricTrack: { height: 4, borderRadius: 2, backgroundColor: theme.colors.ui.white12, overflow: 'hidden' },
   metricFill: { height: 4, borderRadius: 2 },
   statRow: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.md },
   statItem: { flex: 1 },

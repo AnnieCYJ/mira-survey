@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.5),
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  legendSwatch: { width: 10, height: 10, borderRadius: 3 },
+  legendSwatch: { width: 10, height: 10, borderRadius: theme.radius.xs },
   legendLine: { width: 16, height: 2, borderRadius: 1 },
   legendText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
 });

@@ -5,6 +5,7 @@ import { theme } from '../theme/theme';
 import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
+import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import { formatClockTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
 
@@ -27,9 +28,11 @@ interface Props {
   onMeasure: () => void;
   /** 点击卡片进入「指标历史详情」全屏页 */
   onPress?: () => void;
+  /** ★ 本轮（用户）：AI 分析句 —— 渲染为卡片内底部区块，整张卡为「一张卡」 */
+  analysis?: string;
 }
 
-export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure, onPress }: Props) {
+export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure, onPress, analysis }: Props) {
   const [measuring, setMeasuring] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -118,6 +121,15 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
           </Text>
         </LinearGradient>
       </TouchableOpacity>
+      {analysis ? (
+        <View style={styles.analysisInner}>
+          <AiAnalysis compact>
+            <AiResultRow compact tone="neutral" bodyColor={theme.colors.textBody}>
+              {analysis}
+            </AiResultRow>
+          </AiAnalysis>
+        </View>
+      ) : null}
       </Card>
     </TouchableOpacity>
   );
@@ -219,5 +231,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold,
     color: mm.colors.btnTextOnGrad,
+  },
+  // ★ 本轮（用户）：指标卡 AI 分析 —— 卡片内底部区块（与节律卡同源）
+  analysisInner: {
+    marginTop: theme.sp(2.5),
+    paddingTop: theme.sp(2.5),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: mm.colors.cardBorder,
   },
 });

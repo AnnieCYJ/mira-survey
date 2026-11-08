@@ -142,7 +142,7 @@ export async function ask(userText: string, opts: AskOptions = {}): Promise<stri
         await context.save(snap);
       }
     } catch (e) {
-      console.warn('[MiraAI] 写回记忆/上下文失败:', e);
+      console.log('[MiraAI] 写回记忆/上下文失败:', e);
     }
   }
 

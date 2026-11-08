@@ -1,5 +1,5 @@
 /**
- * healthStore.ts —— Mira Ring 唯一健康数据源（历史存储 + 离线读取统一层）
+ * healthStore.ts —— Luna Mira 唯一健康数据源（历史存储 + 离线读取统一层）
  *
  * 设计目标（对应数据层重做）：
  *  1. 单一规范模型：每个指标只有一个 DayMetric（日聚合）+ intraday（逐时曲线），
@@ -90,7 +90,11 @@ export type MetricKey =
   // ★ 2026-10-16：协议补齐——血糖测量类型/风险等级（1/2/3 低中高）、抑郁风险（[0,2]）
   | 'glucoseType' | 'glucoseLevel' | 'depressionRisk'
   // ★ 2026-10-16：皮肤温度（orgTemperature 原始体温读数），与体温（temp）区分做双 tab
-  | 'skinTemp';
+  | 'skinTemp'
+  // ★ 2026-11-06（用户：基础版无血压/血糖传感器，需手动自测记录 + 趋势）：
+  //   手动自测指标走独立 key，与戒指原生 bp/glucose（proOnly）及 LEGACY_HISTORY_BLOCKED_KEYS
+  //   完全解耦，基础版亦可记录与展示，且不会被旧戒指数据隔离误伤。
+  | 'manualBpSys' | 'manualBpDia' | 'manualGlucose';
 
 export const ALL_METRIC_KEYS: MetricKey[] = [
   'hr', 'hrv', 'spo2', 'temp', 'skinTemp', 'eda', 'rr',
@@ -99,6 +103,7 @@ export const ALL_METRIC_KEYS: MetricKey[] = [
   'bpSys', 'bpDia', 'ppgSys', 'ppgDia', 'glucose', 'lipid', 'ua', 'skin', 'emotion', 'cortisol',
   'triglyceride', 'hdl', 'ldl', 'cholesterol',
   'glucoseType', 'glucoseLevel', 'depressionRisk',
+  'manualBpSys', 'manualBpDia', 'manualGlucose',
 ];
 
 export type Source = 'realtime' | 'backfill' | 'manual' | 'mixed';
@@ -553,6 +558,36 @@ export class HealthStore {
     this.notify();
   }
 
+  /**
+   * ★ 2026-11-06（用户：基础版无血压/血糖传感器，需手动自测记录 + 趋势）：
+   *   手动自测样本写入——同时落 intraday（出趋势曲线）、daily（出日均值/最新值）、
+   *   manualMeasurements（出手动记录列表）。与戒指原生 bp/glucose 走不同 key（manualBpSys 等），
+   *   彻底脱离 proOnly / LEGACY_HISTORY_BLOCKED_KEYS 的机型门禁与旧戒指数据隔离，
+   *   基础版（LUNA-MIRA）也能记录与展示。source 固定 'manual'，UI 如实标注「手动记录」。
+   */
+  upsertManualSample(key: MetricKey, dayKeyRaw: string, value: number, ts = Date.now(), source = 'manual'): void {
+    const store = this.safeStore(key);
+    if (!store) return;
+    const dk = normalizeDayKey(dayKeyRaw);
+    if (Number.isNaN(parseDayKey(dk))) return;
+    const v = clampValid(value);
+    if (v == null) return;
+    const point: TimePoint = { t: ts, v };
+    store.intraday[dk] = mergeIntraday(store.intraday[dk] ?? [], [point]);
+    store.daily[dk] = { ...recomputeDaily(store.intraday[dk], store.daily[dk], 'manual', key), source: 'manual' };
+    if (!store.manualMeasurements) store.manualMeasurements = [];
+    const arr = store.manualMeasurements;
+    let replaced = false;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (Math.abs(arr[i].t - ts) < 60_000) { arr[i] = { t: ts, v, source }; replaced = true; break; }
+    }
+    if (!replaced) arr.push({ t: ts, v, source });
+    if (arr.length > 1000) arr.splice(0, arr.length - 1000);
+    arr.sort((a, b) => a.t - b.t);
+    this.lastUpdated[key] = ts;
+    this.notify();
+  }
+
   getManualMeasurements(key: MetricKey): ManualMeasurement[] {
     const store = this.stores[key];
     if (!store?.manualMeasurements) return [];
@@ -605,6 +640,15 @@ export class HealthStore {
     if (!store) return null;
     const dk = normalizeDayKey(dayKeyRaw);
     return store.daily[dk] ?? null;
+  }
+  /**
+   * ★ 2026-11-08（跨天清零策略·唯一今日读取入口）
+   * 严格按「今日」取值（当日 YYYY-MM-DD 的日均值）；跨天即归零——新的一天无样本 → null。
+   * 每日指标（压力/身心压力/血压/心率/…）在 UI 一律走这里，绝不回退到「最近一次」（getLatest 大窗口）。
+   * 长周期/一次性数据（周期 cycle、体检 exam）不存于 healthStore.daily，走各自独立 store，天然不清零。
+   */
+  getTodayValue(key: MetricKey, now: number = Date.now()): number | null {
+    return this.getDay(key, dayKey(now))?.mean ?? null;
   }
   /**
    * 取某日的逐样本序列（按 t 升序）。

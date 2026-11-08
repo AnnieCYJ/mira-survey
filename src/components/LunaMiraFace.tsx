@@ -15,6 +15,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { theme } from '../theme/theme';
 
 type Props = { size?: number; glow?: boolean };
 

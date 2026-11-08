@@ -11,9 +11,11 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import { useDeviceModel } from '../config/deviceModel';
 import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
 import { healthStore } from '../data/healthStore';
 // ★ Phase 1/2：上传成功后重拉规律摘要
@@ -23,7 +25,6 @@ export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   useFocusEffect(
     React.useCallback(() => {
-      setHsTick((t) => t + 1);
       // ★ 2026-10-10：进入设置页自动尝试连回上次那台戒指（与 App 启动自动连同源），
       //   不再需要手动点「连接」。已连 / 在连 / 在扫时 autoConnect 内部跳过。
       RingBle.autoConnect();
@@ -43,15 +44,18 @@ export default function SettingsScreen() {
     getAutoUploadEnabled().then((v) => setAutoUpload(v));
   }, []);
   const { autoMonitor, setAutoMonitor } = useAppState();
+  // 机型分档：精简版 / 全量版两套口径严格分开，说明文案与数据实况都按它走
+  const { model } = useDeviceModel();
   const [notif, setNotif] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [dumpPath, setDumpPath] = useState<string | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
-  const [hsTick, setHsTick] = useState(0);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
+    deviceBroadcastName: null,
+    deviceBroadcastNameSource: null,
     rssi: null,
     battery: null,
     firmware: null,
@@ -103,6 +107,7 @@ export default function SettingsScreen() {
     ecgProgress: null,
     ecgLiveWaveform: null,
     ecgError: null,
+    ecgHint: null,
     oxygenAnalysis: null,
     rrAnalysis: null,
     emotion: null,
@@ -183,34 +188,9 @@ export default function SettingsScreen() {
     );
   };
 
-  // ★ 2026-11-04（用户）：数据覆盖诊断 —— 连精简机型（Luna Mira）后看哪些指标实际无数据，为「屏蔽无数据指标」决策提供依据
-  const [covOpen, setCovOpen] = useState(false);
-  const covRows = React.useMemo(() => {
-    if (!covOpen) return [];
-    const keys7: string[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000);
-      keys7.push(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`); // 与 BLE 层 'YYYY-M-D' 同格式（不补零）
-    }
-    const LABEL: Record<string, string> = {
-      hr: '心率', spo2: '血氧', temp: '体温', skinTemp: '皮肤温度', eda: '皮电', hrv: 'HRV', rr: '呼吸率',
-      stress: '压力', fatigue: '疲劳度', emotion: '情绪', bloodSugar: '血糖', bpSys: '收缩压', bpDia: '舒张压',
-      cortisols: '皮质醇', snsActivation: '交感活性', steps: '步数', sleep: '睡眠', ecg: '心电',
-    };
-    const rows: { label: string; days: number }[] = [];
-    const series = (ring as any).seriesByDay ?? {};
-    for (const k of Object.keys(series)) {
-      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => ((series[k] ?? {})[d]?.length ?? 0) > 0).length });
-    }
-    const extras: [string, Record<string, unknown> | undefined][] = [
-      ['steps', (ring as any).stepDaily], ['sleep', (ring as any).sleepDaily], ['ecg', (ring as any).ecgDaily],
-    ];
-    for (const [k, m] of extras) {
-      if (!m) continue;
-      rows.push({ label: LABEL[k] ?? k, days: keys7.filter((d) => m[d] != null).length });
-    }
-    return rows.sort((a, b) => b.days - a.days);
-  }, [covOpen, ring]);
+  // ★ 2026-11-07（用户：「显示不出来、显示不对」）：旧的「最近 7 天各指标有数据天数」
+  //   默认收起、只给天数不给频率，且混着旧戒指的历史归档 —— 已换成默认展开的
+  //   「当前戒指 · 数据实况」卡片，按机型分开、点数与频率都从真实样本算。
 
   const ringConnected = ring.status === 'connected';
   const ringBusy = ring.status === 'scanning' || ring.status === 'connecting';
@@ -218,10 +198,10 @@ export default function SettingsScreen() {
 
   // 状态视觉映射（基于设计系统 token，组件不写裸色）
   const STATUS_COLOR = {
-    connected: theme.colors.success,
-    scanning: theme.colors.warn,
-    connecting: theme.colors.warn,
-    error: theme.colors.danger,
+    connected: theme.colors.ui.status.good,
+    scanning: theme.colors.ui.status.warn,
+    connecting: theme.colors.ui.status.warn,
+    error: theme.colors.ui.status.danger,
     idle: theme.colors.textSub,
   } as const;
   const statusColor = STATUS_COLOR[ring.status];
@@ -244,9 +224,12 @@ export default function SettingsScreen() {
     return 1;
   })();
 
+  // ★ 2026-11-07（用户）：卡片标题直接用**固件广播名**（如 Lunamira），不再显示品牌占位名。
+  //   按 MAC 直连时 resolveBroadcastName 会退回本机已记录的真实广播名，仍是固件原名，不是编的名字。
+  const firmwareName = ring.deviceBroadcastName?.trim() || null;
   const ringTitle =
     ring.status === 'connected'
-      ? ring.deviceName || 'Mira Ring'
+      ? firmwareName || '已连接戒指'
       : ring.status === 'scanning'
       ? '正在搜索戒指…'
       : ring.status === 'connecting'
@@ -296,9 +279,7 @@ export default function SettingsScreen() {
       <ScreenContainer>
         {/* 顶部导航 */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={safeGoBack} style={styles.headerBtn} hitSlop={10}>
-            <Icon name="chevronLeft" size={theme.fontSize.orb} color={mm.colors.ink} />
-          </TouchableOpacity>
+          <BackButton onPress={safeGoBack} />
           <Text style={styles.headerTitle}>设置</Text>
           <View style={styles.headerBtn} />
         </View>
@@ -340,15 +321,12 @@ export default function SettingsScreen() {
             <Toggle value={autoMonitor} onValueChange={setAutoMonitor} />
           </View>
           <Text style={styles.footnote}>
-            此开关用于开启佩戴时的自动持续采集。以下指标的趋势曲线均依赖它（关闭后卡片仅显示手动测量结果，不再有全天趋势）：
+            此开关用于开启佩戴时的自动持续采集。下面只列当前连接的这枚戒指真实具备的通道：
           </Text>
           <Text style={[styles.footnote, styles.footnoteSub]}>
-            · 基础指标：心率 · 血氧 · 体温 · HRV{'\n'}
-            · 代谢：血脂 · 身体成分{'\n'}
-            · 睡眠 / 恢复：睡眠分期 · 交感神经活跃度
-          </Text>
-          <Text style={[styles.footnote, styles.footnoteSub]}>
-            采集方式：原生每约 20 秒执行一次健康一览，并按 15 分钟为一个区间对样本取均值，全天约 96 个趋势点，曲线更平滑。
+            {model.id === 'BASE_UI'
+              ? '· 逐点（全天 1 分钟等间隔）：心率 · 血氧 · HRV · 收缩压 / 舒张压\n· 日汇总：步数 · 距离 · 卡路里\n· 睡眠：精准睡眠分期（1 分钟 / 点）\n· 压力：设备支持，但原生测量记录通道未接入，当前为空'
+              : '· 基础指标：心率 · 血氧 · 体温 · HRV · 呼吸率\n· 代谢：血脂 · 血糖 · 身体成分\n· 睡眠 / 恢复：睡眠分期 · 交感神经活跃度'}
           </Text>
         </Card>
 
@@ -466,13 +444,27 @@ export default function SettingsScreen() {
                 <Text style={styles.metricLabel}>固件</Text>
                 <Text style={styles.metricVal}>{ring.firmware ?? '待同步'}</Text>
               </View>
+
+              {/* ★ 2026-11-07：固件广播名已上移为卡片标题；这里补机型 / 协议，不再重复占位文案 */}
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>机型</Text>
+                <Text style={styles.metricVal}>
+                  {model.id === 'BASE_UI' ? 'LunaMira 精简版' : 'HK18 / 全量版'}
+                </Text>
+              </View>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>协议</Text>
+                <Text style={styles.metricVal}>
+                  {model.id === 'BASE_UI' ? 'v5 · 存储 3 天' : 'SDK 全量协议'}
+                </Text>
+              </View>
             </View>
           )}
 
           {/* 连接失败：错误提示框 */}
           {ringFailed && ring.error && (
-            <View style={[styles.errorBox, { borderColor: theme.colors.danger }]}>
-              <Text style={[styles.errorText, { color: theme.colors.danger }]}>{ring.error}</Text>
+            <View style={[styles.errorBox, { borderColor: theme.colors.ui.status.danger }]}>
+              <Text style={[styles.errorText, { color: theme.colors.ui.status.danger }]}>{ring.error}</Text>
             </View>
           )}
         </Card>
@@ -509,24 +501,7 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        {/* 数据备份 · 上传云端 */}
-        {/* ★ 2026-11-04（用户）：数据覆盖诊断（默认收起）——后续按此屏蔽精简机型的无数据指标 */}
-        <Text style={styles.sectionTitle}>数据覆盖诊断</Text>
-        <Card padded={false} style={styles.listCard}>
-          <TouchableOpacity style={styles.covHead} activeOpacity={0.7} onPress={() => setCovOpen((v) => !v)}>
-            <Text style={styles.covTitle}>最近 7 天各指标有数据天数{covOpen ? '　▾' : '　▸'}</Text>
-          </TouchableOpacity>
-          {covOpen ? (
-            <View style={styles.covGrid}>
-              {covRows.map((r) => (
-                <View key={r.label} style={styles.covCell}>
-                  <Text style={styles.covLabel}>{r.label}</Text>
-                  <Text style={[styles.covVal, r.days === 0 && styles.covZero]}>{r.days}/7 天</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </Card>
+        {/* ★ 2026-11-07（用户）：「当前戒指 · 数据实况」整段卡片已按要求移除 */}
 
         <Text style={styles.sectionTitle}>数据备份（云端）</Text>
         <Card style={styles.uploadCard}>
@@ -571,7 +546,7 @@ export default function SettingsScreen() {
             <Text
               style={[
                 styles.uploadMsg,
-                { color: uploadMsg.startsWith('已') ? theme.colors.success : theme.colors.danger },
+                { color: uploadMsg.startsWith('已') ? theme.colors.ui.status.good : theme.colors.ui.status.danger },
               ]}
             >
               {uploadMsg}
@@ -721,14 +696,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   listCard: { marginBottom: theme.space.sm },
-  // ── ★ 2026-11-04：数据覆盖诊断 ──
-  covHead: { paddingHorizontal: theme.space.md, paddingVertical: theme.sp(2.5) },
-  covTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textBody },
-  covGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: theme.space.md, paddingBottom: theme.space.md, gap: theme.sp(1.5) },
-  covCell: { width: '30%' as any, backgroundColor: theme.colors.cardBgSoft, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5), paddingHorizontal: theme.sp(1.5), marginBottom: theme.sp(1) },
-  covLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  covVal: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textBody, marginTop: 2 },
-  covZero: { color: theme.colors.danger },
   // ── Phase 0：关于与条款导航行 ──
   navRow: {
     flexDirection: 'row',
@@ -936,7 +903,7 @@ const styles = StyleSheet.create({
   batteryFill: {
     height: theme.fs(8),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.success,
+    backgroundColor: theme.colors.ui.status.good,
   },
   bars: {
     flex: 1,
@@ -958,7 +925,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
     borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.dangerSoft,
+    backgroundColor: theme.colors.ui.status.dangerSoft,
     borderWidth: 1,
   },
   errorText: {

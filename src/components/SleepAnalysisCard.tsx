@@ -13,7 +13,7 @@
  * 数据全部来自真实归档（sleepDaily / sleepStagesDaily / hrvDaily / hrDaily /
  * spo2Daily / tempDaily / rrDaily），缺口显「—」，不插值不编造。
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -23,7 +23,8 @@ import SleepStageChart from './SleepStageChart';
 import SynthesizedStagesNote from './SynthesizedStagesNote';
 import type { SleepSegment } from '../ble/RingBleManager';
 // ★ 2026-11-04（双机型）：Luna Mira 无温度传感器 → 体温行（含偏离）整行隐藏
-import { useDeviceModel, hasCap } from '../config/deviceModel';
+import { useDeviceModel } from '../config/deviceModel';
+// ★ 2026-11-07（用户「所有的采样频率都不需要写」）：夜间采样频率实测标注已移除
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -69,6 +70,8 @@ export interface DayPhys {
    * 不用 `ring.history.hrv`（那条混了由 RR 间期展开的 BPM 值）。
    */
   hrvIntraday?: { t: number; v: number }[] | null;
+  /** ★ 2026-11-07：夜间三指标的数据来源说明（逐样本 / 全天日均 / 无数据），如实告知用户 */
+  physSourceNote?: string | null;
 }
 
 export interface MetricJump {
@@ -95,9 +98,10 @@ interface Props {
 }
 
 export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, stagesSynthesized }: Props) {
-  const { model: dmModel } = useDeviceModel();
-  const hasTempCap = hasCap(dmModel, 'temp');
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  useDeviceModel();
+  // ★ 2026-11-07（用户「静息心率/夜间HRV/血氧都不展示」）：详细数据改为默认展开——
+  //   睡眠生理信号（静息心率/夜间HRV/血氧/呼吸率）不再藏在折叠区里，进卡即见。
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
   /** 入睡时刻的绝对 ms（给 HRV 第二层做 x 轴参考）；拿不到就null */
   const bedTimeMs = (() => {
@@ -178,6 +182,13 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, s
       ) : null}
       {/* ★ 2026-11-06 审查（docs/audit/02 🔴#3）：合成分期图必须告知用户。 */}
       {stagesSynthesized && segments && segments.length > 0 ? <SynthesizedStagesNote /> : null}
+      {/* ★ 2026-11-07（用户「睡到10点多，中间那些没有啊」）：分期曲线比总时长短时如实标注缺口——
+          曲线（sleepLine）与总时长（原生汇总）不同源，戒指只回读到某刻时，缺口必须说明而不是静默截断。 */}
+      {segments && segments.length > 0 && total > 0 && segments[segments.length - 1].end < total - 5 ? (
+        <Text style={styles.empty}>
+          分期明细只回读到 {fmtStageEnd(day?.sleepTime ?? null, segments[segments.length - 1].end)}，之后的分段戒指还没上传，同步后会自动补全。
+        </Text>
+      ) : null}
 
       {/* ③ 详细数据（默认收起）：睡眠结构 + 作息与时机 + 生理信号 */}
       <Pressable onPress={toggleDetails} style={styles.moreHead} accessibilityRole="button"
@@ -232,7 +243,7 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, s
             <Row name="夜间 HRV（RMSSD）" value={fmtNum(phys.hrv, 0)} unit="ms"
               metric={{ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }}
               onPress={onOpenMetric ? () => onOpenMetric({ key: 'hrv', name: '心率变异性', unit: 'ms', yMin: 0, yMax: 150 }) : undefined} />
-            {hasTempCap ? (<>
+            {(phys.tempAbs != null || phys.tempDelta != null) ? (<>
             <Divider />
             {/* ★ 2026-10-10（修 bug）：优先显示「相对个人基线的偏离」；基线未建立时退回绝对体温，
                 且标签同步改成「体温」—— 绝不把 36.5℃ 当成「偏离 +36.5℃」显示。 */}
@@ -258,6 +269,11 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, s
               onPress={onOpenMetric ? () => onOpenMetric({ key: 'spo2', name: '血氧', unit: '%', yMin: 80, yMax: 100 }) : undefined} />
             <Divider />
             {phys.recoveryIdx != null ? <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last /> : null}
+            {/* ★ 2026-11-07（用户）：如实标注夜间指标的取数口径，避免把全天日均冒充夜间值 */}
+            {!!phys.physSourceNote ? (
+              <Text style={styles.physSourceNote}>{phys.physSourceNote}</Text>
+            ) : null}
+            {/* ★ 2026-11-07（用户「所有的采样频率都不需要写」）：夜间采样频率 / 协议频率说明已移除 */}
           </View>
         </View>
       ) : null}
@@ -345,6 +361,14 @@ function fmtSigned(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return (v > 0 ? '+' : '') + (Math.round(v * 100) / 100).toString();
 }
+/** 分期曲线覆盖到的钟点：入睡时刻 + 曲线末端（相对分钟），跨天取模；无法解析返回 null。
+ *  ★ 2026-11-07：分期缺口提示用。 */
+function fmtStageEnd(sleepTime: string | null, spanMin: number): string {
+  const startMin = parseHM(sleepTime);
+  if (startMin == null) return '暂未同步的时段';
+  const abs = (((startMin + Math.round(spanMin)) % 1440) + 1440) % 1440;
+  return fmtClock(abs);
+}
 
 const styles = StyleSheet.create({
   card: {
@@ -370,7 +394,7 @@ const styles = StyleSheet.create({
   // 日无数据的「灰色分期图」占位
   emptyStage: { marginTop: theme.space.sm, gap: theme.sp(0.75) },
   emptyLane: { height: theme.sp(4.5), justifyContent: 'center' },
-  emptyLaneBar: { height: theme.sp(2.5), borderRadius: 3, opacity: 0.13 },
+  emptyLaneBar: { height: theme.sp(2.5), borderRadius: theme.radius.xs, opacity: 0.13 },
   empty: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.space.xs, lineHeight: 20 },
   // 图例
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md, marginTop: theme.space.sm },
@@ -396,6 +420,11 @@ const styles = StyleSheet.create({
   groupTitle: {
     fontSize: theme.fontSize.micro, color: theme.colors.textSub,
     marginTop: theme.space.md, marginBottom: theme.space.xs,
+  },
+  // ★ 2026-11-07：夜间三指标数据来源说明（次级小字，不抢主数据）
+  physSourceNote: {
+    marginTop: theme.space.xs, fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub, lineHeight: theme.fontSize.micro * 1.5,
   },
   // 睡眠结构比例条（★ bar-design-unified-spec 规则2：横条 ≤10pt 一律 pill）
   propBar: {

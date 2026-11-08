@@ -76,7 +76,7 @@ export default function AvatarStack({ onSelect, onAdd, size = theme.sp(7), showS
           <View
             style={{
               width: size, height: size, borderRadius: size / 2,
-              backgroundColor: mono ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.10)',
+              backgroundColor: mono ? 'rgba(255,255,255,0.14)' : theme.colors.ui.white10,
               borderWidth: 1.5, borderStyle: 'dashed', borderColor: mono ? 'rgba(255,255,255,0.62)' : theme.colors.cardBorder,
               alignItems: 'center', justifyContent: 'center',
             }}

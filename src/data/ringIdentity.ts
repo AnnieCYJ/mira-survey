@@ -152,7 +152,8 @@ export async function ensureDeviceToken(deviceId: string): Promise<string | null
       const res = await fetch(`${BACKEND_BASE_URL}/v1/ring/device/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, name: 'Mira Ring', model }),
+        // ★ 2026-11-07（用户）：设备名按品牌标准写法上报，不用历史占位名 'Mira Ring'。
+        body: JSON.stringify({ device_id: deviceId, name: getProfile(profId).label, model }),
       });
       if (!res.ok) return null;
       const j: any = await res.json().catch(() => ({}));

@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     // ★ mira-ocean（2026-10-17）：白卡 → 深海玻璃（白 13% + 白 14% 细边）
     backgroundColor: theme.colors.cardBg,
     borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1, borderColor: theme.colors.ui.white14,
     paddingVertical: theme.sp(2), paddingHorizontal: theme.sp(3.5),
     shadowColor: theme.colors.ui.shadowBlack,
     shadowOffset: { width: 0, height: 4 },
@@ -309,12 +309,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bgBottom,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: theme.space.md, paddingTop: theme.sp(2), paddingBottom: theme.space.lg,
-    shadowColor: '#1F1D1A',
+    shadowColor: theme.colors.ui.onGlassInk,
     shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 0,
   },
   sheetGrab: {
     width: theme.sp(11), height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.24)', alignSelf: 'center', marginBottom: theme.sp(3), // ★ mira-ocean：白阶
+    backgroundColor: theme.colors.ui.white24, alignSelf: 'center', marginBottom: theme.sp(3), // ★ mira-ocean：白阶
   },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(3) },
   sheetTitle: {

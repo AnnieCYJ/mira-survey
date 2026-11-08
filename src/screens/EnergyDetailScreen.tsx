@@ -1623,9 +1623,9 @@ const styles = StyleSheet.create({
   metSheet: {
     backgroundColor: '#113861', borderTopLeftRadius: 18, borderTopRightRadius: 18,
     paddingHorizontal: 20, paddingTop: 10, paddingBottom: 26,
-    borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.24)',
+    borderWidth: 1, borderBottomWidth: 0, borderColor: theme.colors.ui.white24,
   },
-  metSheetGrab: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.30)', marginBottom: 12 },
+  metSheetGrab: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: theme.colors.ui.white30, marginBottom: 12 },
   metSheetTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, marginBottom: 10 },
   metSheetBody: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 21, marginBottom: 8 },
   metSheetNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, opacity: 0.9, lineHeight: 17, marginTop: 2, marginBottom: 16 },

@@ -327,7 +327,7 @@ export default function EmotionQuickRecord() {
       type: 'mood',
       dk,
       time: hhmm,
-      title: '记录心情',
+      title: '记录今日心情',
       sub: parts.join(' · '),
       analysis: '你的感受，值得被接住。',
       emoji: MOOD_EMOJI[mood],
@@ -348,13 +348,13 @@ export default function EmotionQuickRecord() {
               半透明白 → 深色 → 现在改为**实心白底 + 深蓝文字**，白字看不见的问题彻底解决；
               文字色改深蓝保证对比度（白底白字不可读）。 */}
           <LinearGradient
-            colors={['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.90)']}
+            colors={['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.9)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.fabGrad}
           >
             <MoodBlob mood={mood} size={theme.sp(11)} variant={1} />
-            <Text style={styles.fabText}>记录此刻心情</Text>
+            <Text style={styles.fabText}>记录今日心情</Text>
             <Icon name="plus" size={theme.fs(16)} color="#1F4C7E" style={styles.fabPlus} />
           </LinearGradient>
         </TouchableOpacity>
@@ -377,7 +377,7 @@ export default function EmotionQuickRecord() {
 
             {/* 头部 */}
             <View style={styles.head}>
-              <Text style={styles.headTitle}>记录此刻心情</Text>
+              <Text style={styles.headTitle}>记录今日心情</Text>
               <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Icon name="close" size={theme.fontSize.lg} color={mm.colors.inkSoft} />
               </TouchableOpacity>
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.32,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+    elevation: 0,
   },
   fabGrad: {
     flexDirection: 'row',
@@ -633,11 +633,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: theme.radius.xl,
     borderTopRightRadius: theme.radius.xl,
     paddingHorizontal: theme.sp(4),
-    shadowColor: '#1F1D1A',
+    shadowColor: theme.colors.ui.onGlassInk,
     shadowOpacity: 0.18,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: -8 },
-    elevation: 24,
+    elevation: 0,
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
@@ -767,14 +767,14 @@ const styles = StyleSheet.create({
     height: theme.sp(6.5),
     borderRadius: theme.radius.pill,
     marginLeft: -theme.sp(4.5),
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: theme.colors.ui.white88,
     borderWidth: 1,
     borderColor: theme.colors.ui.borderSoft,
     shadowColor: '#8A8AA0',
     shadowOpacity: 0.22,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    elevation: 0,
   },
   evTitle: {
     fontSize: theme.fontSize.sm,

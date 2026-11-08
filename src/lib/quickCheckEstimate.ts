@@ -73,7 +73,7 @@ export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
     return {
       value: Math.round(clamp(i.statusMeasured, 0, 100)),
       source: 'measured',
-      reason: '来自戒指同步的今日状态分（实测回读）',
+      reason: '综合心率、HRV、睡眠等信号给出的当下状态分；分数越高代表当前状态越平稳，看趋势比单次更有意义。',
     };
   }
 
@@ -105,7 +105,7 @@ export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
   return {
     value,
     source: 'estimated',
-    reason: `基于${basis}估算，非戒指直接测量；连续佩戴几天后会更贴近你的真实状态`,
+    reason: `结合${basis}推算的当下状态分；分数反映当前恢复与平稳程度，连续佩戴几天后趋势会更稳定清晰。`,
   };
 }
 
@@ -119,7 +119,7 @@ export function estimateStress(i: EstimateInput): EstimateValue | null {
     return {
       value: Math.round(clamp(i.stressMeasured, 0, 100)),
       source: 'measured',
-      reason: '来自戒指健康一览快照（实测回读）',
+      reason: '戒指综合多项生理信号给出的压力分；分数越高代表越紧张，可结合当天节奏与放松安排观察。',
     };
   }
 
@@ -138,7 +138,7 @@ export function estimateStress(i: EstimateInput): EstimateValue | null {
   return {
     value,
     source: 'estimated',
-    reason: `基于${basis}估算，非戒指直接测量`,
+    reason: `结合${basis}推算的压力分；分数越高代表越紧张，留意当天节奏、休息与放松安排。`,
   };
 }
 

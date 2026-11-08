@@ -50,6 +50,28 @@ export function computeHormonalHealthyCurrent(dk: string = dayKey(Date.now())): 
   }
 }
 
+/**
+ * ★ 2026-11-07（用户）：「我一开始已经填了我的年龄…还是跟当时填的年龄一样，
+ *   等戴够几天有基础数据以后再更新」。
+ *
+ * 佩戴未满 3 天时，身体年龄一律等于首次录入的实际年龄（活力调整 0），
+ * 不让刚连上 1–2 天就跳成「年轻 2.2 岁」这种没有依据的结论。
+ * 判据：healthStore 里最近滚动 3 天中「有逐点生理读数」的天数是否 ≥ 3。
+ * App 每天同步会累积落库（戒指本身只存 3 天），戴满 3 天后自然满足。
+ */
+export function hasBaselineDays(now: number = Date.now()): boolean {
+  const KEYS = ['hr', 'hrv', 'spo2'] as const;
+  let days = 0;
+  for (let i = 0; i < 3; i++) {
+    const dk = dayKey(now - i * 86400000);
+    const has = KEYS.some((k) => {
+      try { return (healthStore.getIntraday(k, dk)?.length ?? 0) > 0; } catch { return false; }
+    });
+    if (has) days++;
+  }
+  return days >= 3;
+}
+
 /** 当前身体年龄（实时）：返回身体年龄 + 综合分；任一输入不足返回 null */
 export function computeCurrentHealthAge(actualAge: number | null): {
   healthAge: number | null;
@@ -70,6 +92,9 @@ export function computeCurrentHealthAge(actualAge: number | null): {
     if (sleep != null && Number.isFinite(sleep) && sleep >= 0 && sleep <= 100) scores.push(sleep);
     if (scores.length === 0) return null;
     const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    // ★ 2026-11-07：未满 3 天基础数据 → 身体年龄就按首次录入的实际年龄显示；
+    //   综合分仍然照实返回（卡片弧长用它），只是不做任何「偏年轻 / 偏老」调整。
+    if (!hasBaselineDays()) return { healthAge: actualAge, overallScore };
     const { hormonalHealthy, hasHormonalData } = computeHormonalHealthyCurrent(dayKey(Date.now()));
     // ★ hasHormonalData 不再硬编码 true：基础版没有皮质醇实测通道时走「中性 ±1.5」，
     //   不会被误判成「荷尔蒙失衡 → 偏老」

@@ -216,7 +216,7 @@ export default function EmotionTrendChart({
                     const y = aY(tk.v);
                     return (
                       <React.Fragment key={'asc' + i}>
-                        <Line x1={scX - theme.sp(0.75)} y1={y} x2={scX} y2={y} stroke="rgba(255,255,255,0.30)" strokeWidth={1} />
+                        <Line x1={scX - theme.sp(0.75)} y1={y} x2={scX} y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
                         <SvgText x={scX + theme.sp(1.5)} y={y + 3} textAnchor="start" fontSize={theme.fontSize.micro} fill={theme.colors.textSub}>{tk.t}</SvgText>
                       </React.Fragment>
                     );

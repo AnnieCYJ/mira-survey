@@ -324,7 +324,7 @@ const s = StyleSheet.create({
     height: 18,
     borderRadius: theme.radius.sm,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: theme.colors.ui.white35,
     borderTopColor: theme.colors.textWhite,
     marginRight: theme.space.xs,
   },

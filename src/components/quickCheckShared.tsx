@@ -6,16 +6,17 @@
  *   - 分段刻度条 ScaleBar
  *   - 单指标行 MetricRow
  *   - 分组块 GroupBlock（标题 + 玻璃卡，含抑郁症风险大卡）
- *   - 共享样式表 qc（与全站深海深底 + 玻璃 token 同源）
+ *   - 共享样式表 qc（与洞察页 InsightScreen 同源：白玻璃 cardBg / cardBorder）
  * 品牌铁律：只描述不诊断、不评分；参考区间仅供参考，不构成诊断建议。
  * ───────────────────────────────────────────────────────────────────────────
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import type { QCMetric, QCStatus, QCGroup } from '../data/quickCheckStore';
+import { requestMetricInterpretation } from '../ai/quickCheckAi';
 
 export const STATUS_LABEL: Record<QCStatus, string> = {
   ok: '正常',
@@ -44,7 +45,7 @@ export function ScaleBar({ scale }: { scale: { min: number; max: number; v: numb
   const segs = [theme.colors.accent2, theme.colors.success, theme.colors.warn, theme.colors.danger];
   return (
     <View style={{ marginTop: theme.sp(2), position: 'relative' }}>
-      <View style={{ height: 6, borderRadius: 3, flexDirection: 'row', overflow: 'hidden' }}>
+      <View style={{ height: 6, borderRadius: theme.radius.xs, flexDirection: 'row', overflow: 'hidden' }}>
         {segs.map((c, i) => (
           <View key={i} style={{ flex: 1, backgroundColor: c }} />
         ))}
@@ -57,30 +58,43 @@ export function ScaleBar({ scale }: { scale: { min: number; max: number; v: numb
 }
 
 /**
- * 单指标行。★ 2026-11-05：带来源徽标（实测 / 估算）——用户要求
- * 「一键体检里估算出来的数据必须明确标注，不能冒充戒指实测」。
+ * 单指标行。报告里每条指标只展示：名称 + 数值 + 状态（正常/偏高/偏低/风险）
+ * + 一段「意义 · 分析 · 建议」说明（来源标注统一移到分组级，不在每条下面写实测/估算）。
+ *
+ * ★ AI 解读（useAi=true 时，仅详情页开启）：手写解读先显示，端侧本地模型生成更口语的
+ *   解读到货后静默替换；模型不可用 / 超时 / 输出不合法则保留手写解读，绝不空白。
  */
-export function MetricRow({ m }: { m: QCMetric }) {
-  const estimated = m.source === 'estimated';
+export function MetricRow({ m, useAi, groupTitle }: { m: QCMetric; useAi?: boolean; groupTitle?: string }) {
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!useAi) return;
+    let cancelled = false;
+    requestMetricInterpretation({
+      name: m.name,
+      value: m.value,
+      unit: m.unit,
+      ref: m.ref,
+      status: m.status,
+      groupTitle,
+    })
+      .then((t) => {
+        if (t && !cancelled) setAiNote(t);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [useAi, m.name, m.value, m.unit, m.ref, m.status, groupTitle]);
+  const note = aiNote ?? m.note;
   return (
     <View style={qc.metricRow}>
       <View style={{ flex: 1, marginRight: theme.sp(2) }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={qc.metricName}>{m.name}</Text>
-          {m.source ? (
-            <Text style={{
-              fontSize: theme.fontSize.micro ?? 10,
-              color: estimated ? '#F0C46E' : '#8FE3C4',
-              backgroundColor: estimated ? 'rgba(240,196,110,0.14)' : 'rgba(143,227,196,0.12)',
-              paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, overflow: 'hidden',
-            }}>
-              {estimated ? '估算' : '实测'}
-            </Text>
-          ) : null}
         </View>
         {m.ref ? <Text style={qc.metricRef}>{m.ref}</Text> : null}
         {m.scale ? <ScaleBar scale={m.scale} /> : null}
-        {m.note ? <Text style={qc.metricNote}>{m.note}</Text> : null}
+        {note ? <Text style={qc.metricNote}>{note}</Text> : null}
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
@@ -94,7 +108,7 @@ export function MetricRow({ m }: { m: QCMetric }) {
 }
 
 /** 渲染一个分组（核心体征 / 血液 / 心理 / 压力疲劳通用）。 */
-export function GroupBlock({ group }: { group: QCGroup }) {
+export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }) {
   const g = group;
   const inner: React.ReactNode[] = [];
   if (g.risk) {
@@ -122,7 +136,7 @@ export function GroupBlock({ group }: { group: QCGroup }) {
       </View>
     );
   }
-  (g.metrics ?? []).forEach((m) => inner.push(<MetricRow key={m.key} m={m} />));
+  (g.metrics ?? []).forEach((m) => inner.push(<MetricRow key={m.key} m={m} useAi={useAi} groupTitle={g.title} />));
   return (
     <View key={g.key}>
       <View style={qc.groupTitle}>
@@ -134,7 +148,7 @@ export function GroupBlock({ group }: { group: QCGroup }) {
         {inner}
         {(g.standalone ?? []).map((m) => (
           <View key={m.key}>
-            <MetricRow m={m} />
+            <MetricRow m={m} useAi={useAi} groupTitle={g.title} />
             {m.levels ? <Text style={qc.metricNote}>{m.levels}</Text> : null}
           </View>
         ))}
@@ -149,7 +163,7 @@ export function GroupBlock({ group }: { group: QCGroup }) {
  */
 export function QCta({ title, onPress, disabled }: { title: string; onPress: () => void | Promise<void>; disabled?: boolean }) {
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={qc.cta} disabled={disabled}>
+    <TouchableOpacity activeOpacity={disabled ? 1 : 0.7} onPress={onPress} style={[qc.cta, disabled && qc.ctaDisabled]} disabled={disabled}>
       <LinearGradient
         colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
         start={{ x: 0, y: 0 }}
@@ -175,16 +189,19 @@ export const qc = StyleSheet.create({
   label: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   overviewCard: { padding: theme.space.cardPad },
   overviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  bigStatRow: { flexDirection: 'row', gap: theme.sp(3), marginTop: theme.sp(4) },
+  // ★ 本轮（用户）：「再体检一次」按钮移入卡片内，与 AI 分析块留间距
+  ctaInside: { marginTop: theme.sp(3) },
+  bigStatRow: { flexDirection: 'row', gap: theme.sp(3), marginTop: theme.sp(3) },
   bigStat: {
     flex: 1,
-    backgroundColor: theme.colors.cardBgSoft,
+    backgroundColor: theme.colors.cardBgStrong,
     borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.md,
-    paddingVertical: theme.sp(4),
+    paddingVertical: theme.sp(2.5),
     alignItems: 'center',
   },
-  bigStatNum: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold },
+  bigStatNum: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.bold },
   bigStatKey: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: 2 },
   abList: { marginTop: theme.sp(4) },
   abItem: {
@@ -210,6 +227,7 @@ export const qc = StyleSheet.create({
     borderRadius: theme.radius.pill,
     overflow: 'hidden',
   },
+  ctaDisabled: { opacity: 0.45 },
   ctaGrad: {
     paddingVertical: theme.sp(3.5),
     alignItems: 'center',
@@ -265,14 +283,20 @@ export const qc = StyleSheet.create({
   groupTitle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(5), marginBottom: theme.sp(2) },
   groupIcon: { fontSize: theme.fontSize.body, marginRight: theme.sp(2) },
   groupTitleText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  groupCard: { padding: theme.space.cardPadCompact },
+  groupCard: {
+    backgroundColor: theme.colors.cardBg,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    borderRadius: theme.radius.card,
+    padding: theme.space.cardPadCompact,
+  },
   metricRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: theme.sp(2.5),
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.cardBorder,
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   metricName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
   metricRef: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: 2 },
@@ -285,7 +309,7 @@ export const qc = StyleSheet.create({
   grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2) },
   gcell: {
     width: '47%',
-    backgroundColor: theme.colors.cardBgSoft,
+    backgroundColor: theme.colors.cardBgStrong,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.sm,

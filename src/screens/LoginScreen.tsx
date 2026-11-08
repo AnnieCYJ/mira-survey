@@ -398,9 +398,9 @@ const s = StyleSheet.create({
   eye: { paddingHorizontal: theme.space.xs },
   eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   codeBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: theme.colors.ui.white12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    borderColor: theme.colors.ui.white22,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 6,
@@ -409,7 +409,7 @@ const s = StyleSheet.create({
   codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, fontWeight: theme.weight.medium as any },
   codeTxtOff: { color: theme.colors.textSub },
   error: {
-    color: theme.colors.danger,
+    color: theme.colors.ui.status.danger,
     fontSize: theme.fontSize.sm,
     marginTop: theme.space.xs,
     marginBottom: theme.space.xs,

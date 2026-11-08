@@ -52,9 +52,9 @@ const styles = StyleSheet.create({
   },
   on: {},
   idle: {
-    backgroundColor: 'rgba(255,255,255,0.46)',
+    backgroundColor: theme.colors.ui.white46,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: theme.colors.ui.white60,
   },
   text: {
     fontSize: theme.fontSize.xs,

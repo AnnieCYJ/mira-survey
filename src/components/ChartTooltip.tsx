@@ -60,7 +60,7 @@ const s = StyleSheet.create({
   },
   label: {
     fontSize: theme.fontSize.micro,
-    color: 'rgba(255,255,255,0.74)',
+    color: theme.colors.ui.white74,
     marginBottom: 2,
   },
   value: {

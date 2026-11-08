@@ -789,7 +789,7 @@ function latestValLocal(k: 'bpSys' | 'bpDia'): number | null {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
-  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
+  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.white70, marginRight: 8 },
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
   heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -856,13 +856,13 @@ const styles = StyleSheet.create({
     // ★ 2026-11-07（用户「白色磨砂背景太浅看不清，不需要白色磨砂背景」）：改深色玻璃卡，
     //   白字在暗底上清晰、与 App 深色基调一致，不再用白色磨砂卡。遮罩已加深（rgba(4,18,38,0.72)）。
     width: '100%', maxWidth: 340, backgroundColor: 'rgba(12,38,70,0.96)',
-    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: theme.radius.md, padding: 18, borderWidth: 1, borderColor: theme.colors.ui.white18,
     overflow: 'hidden',
     shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.5, shadowRadius: 22, shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
   modalClose: {
-    position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14,
+    position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: theme.radius.lg,
     alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.offTrack,
   },
   modalCloseTxt: { fontSize: theme.fontSize.card, color: theme.colors.textTitle, fontWeight: theme.weight.semibold },
@@ -873,9 +873,9 @@ const styles = StyleSheet.create({
   modalInputLabel: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginBottom: 6 },
   modalInput: {
     // ★ 2026-11-07：实底弹窗上输入框边界要更明确，避免和卡片背景融成一片
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', borderRadius: theme.radius.sm,
+    borderWidth: 1, borderColor: theme.colors.ui.white30, borderRadius: theme.radius.sm,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: theme.fontSize.card, color: theme.colors.textTitle,
-    textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.10)',
+    textAlign: 'center', backgroundColor: theme.colors.ui.white10,
   },
   modalSlash: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, paddingHorizontal: 10, paddingBottom: 8 },
   modalErr: { fontSize: theme.fontSize.xs, color: mm.colors.roseDeep, marginTop: 10 },
@@ -884,8 +884,8 @@ const styles = StyleSheet.create({
     // ★ 2026-11-07（用户「换成统一的玻璃按钮」）：不再用实底色块，改全局玻璃胶囊——
     //   取消 = 常规玻璃（headBtnBg 同款 0.18 白）；保存 = 高亮玻璃（0.30 白）保持主次。
     paddingHorizontal: 20, paddingVertical: 9, borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: theme.colors.ui.white18, borderWidth: 1, borderColor: theme.colors.ui.white30,
   },
-  modalBtnPrimary: { backgroundColor: 'rgba(255,255,255,0.30)', borderColor: 'rgba(255,255,255,0.45)' },
+  modalBtnPrimary: { backgroundColor: theme.colors.ui.white30, borderColor: theme.colors.ui.white45 },
   modalBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
 });

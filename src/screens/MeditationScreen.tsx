@@ -138,7 +138,7 @@ function CardGlassCaption({
       ) : null}
       {/* ① 白色磨砂玻璃感（顶透明 → 底 0.30 白）：保留「奶白磨砂」的质感 */}
       <LinearGradient
-        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.24)', 'rgba(255,255,255,0.30)']}
+        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.24)', 'rgba(255,255,255,0.3)']}
         locations={[0, 0.28, 0.68, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
@@ -146,7 +146,7 @@ function CardGlassCaption({
       {/* ② 压深（顶透明 → 底 0.50 黑）：用户反馈白字看不清，叠一层向下加深的暗色把字托住。
             两层叠加后底部仍带一点奶白的磨砂味，但整体是「偏深的磨砂玻璃」，白字对比度足够。 */}
       <LinearGradient
-        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.16)', 'rgba(0,0,0,0.36)', 'rgba(0,0,0,0.50)']}
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.16)', 'rgba(0,0,0,0.36)', 'rgba(0,0,0,0.5)']}
         locations={[0, 0.28, 0.68, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     gap: theme.sp(1.5), marginTop: theme.sp(2.5),
   },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.25)' },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: theme.colors.ui.white25 },
   dotOn: { width: 14, backgroundColor: mm.colors.ink },
   page: { flex: 1 },
   title: {
@@ -467,9 +467,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.sp(4),
     paddingVertical: theme.sp(2),
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: theme.colors.ui.white12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    borderColor: theme.colors.ui.white22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   toolPillTxt: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.weight.semibold as any,
-    color: 'rgba(255,255,255,0.85)',
+    color: theme.colors.ui.white85,
   },
   toolPillTxtOn: { color: '#1B2240' },
   // 细线：left/right 由调用方按 NODE/2 传入（只连到首尾节点圆心）
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: theme.colors.cardBg,
     // 极轻投影，避免「灰底」观感（用户：不要灰底）
-    shadowColor: '#1F1D1A',
+    shadowColor: theme.colors.ui.onGlassInk,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.weight.semibold,
     color: theme.colors.textWhite,
     letterSpacing: -0.2,
-    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowColor: theme.colors.ui.black45,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 5,
   },
@@ -536,10 +536,10 @@ const styles = StyleSheet.create({
   cgPhase: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    color: 'rgba(255,255,255,0.78)',
+    color: theme.colors.ui.white78,
     letterSpacing: 0.2,
     marginTop: theme.sp(1),
-    textShadowColor: 'rgba(0,0,0,0.42)',
+    textShadowColor: theme.colors.ui.black42,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
@@ -548,9 +548,9 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(0.5),
     fontSize: theme.fontSize.xs,
     fontWeight: theme.weight.regular,
-    color: 'rgba(255,255,255,0.92)',
+    color: theme.colors.ui.white92,
     lineHeight: theme.fontSize.card,
-    textShadowColor: 'rgba(0,0,0,0.42)',
+    textShadowColor: theme.colors.ui.black42,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },

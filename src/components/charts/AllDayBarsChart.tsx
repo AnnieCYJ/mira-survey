@@ -78,6 +78,12 @@ interface Props {
    *   不在绘图区范围内（如夜间视图下白天记的心情）则不渲染。
    */
   moodMarker?: { ts: number; mood: MoodKey } | null;
+  /**
+   * ★ 2026-11-07（用户「柱状图太细，不需要那么细」）：BASE_UI 低采样率机型专用。
+   *   柱子占满槽宽的 0.9、最小 4px（仍 clamp 在槽宽内防止重叠）；
+   *   不传时保持 PRO_UI 原有 token 口径，一个像素都不变。
+   */
+  denseBars?: boolean;
 }
 
 const PAD_L = 30;
@@ -102,6 +108,7 @@ export default function AllDayBarsChart({
   mutedRanges,
   colorOf,
   moodMarker,
+  denseBars = false,
 }: Props) {
   const plotH = height ?? chart.plot.l;
   const H = PAD_T + plotH + AXIS_H;
@@ -155,7 +162,14 @@ export default function AllDayBarsChart({
 
     const slotCount = Math.max(1, buckets.length);
     const slotW = plotW / slotCount;
-    const barW = Math.max(0.8, Math.min(chart.bar.maxWidth, slotW * chart.bar.slotRatio));
+    // ★ 2026-11-07（BASE_UI）：低采样率机型柱子要看得见 —— 占满槽宽 0.9、最小 4px；
+    //   同时 clamp 在 slotW*0.94 内，避免相邻柱重叠成一堵墙。PRO_UI 不传 denseBars，保持原口径。
+    const ratio = denseBars ? 0.9 : chart.bar.slotRatio;
+    const floor = denseBars ? chart.bar.minWidth : 0.8;
+    const barW = Math.max(
+      Math.min(floor, slotW * 0.94),
+      Math.min(chart.bar.maxWidth, slotW * ratio),
+    );
     const baseY = PAD_T + plotH;
 
     const bars: React.ReactNode[] = [];
@@ -282,7 +296,7 @@ export default function AllDayBarsChart({
     }
 
     return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData, moodNode };
-  }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges, moodMarker]);
+  }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges, moodMarker, denseBars]);
 
   // ★ 2026-11-05（用户）：心情 marker 的 X 坐标（外层 RN 叠 MoodBlob 用，不进 SVG）
   const moodX = moodMarker && w > 0 ? PAD_L + (plotW * (moodMarker.ts - t0)) / spanMs : null;
@@ -401,7 +415,7 @@ const styles = StyleSheet.create({
     marginTop: theme.sp(1.5),
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  legendSwatch: { width: 10, height: 10, borderRadius: 3 },
+  legendSwatch: { width: 10, height: 10, borderRadius: theme.radius.xs },
   legendLine: { width: 16, height: 2, borderRadius: 1 },
   legendText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
 });

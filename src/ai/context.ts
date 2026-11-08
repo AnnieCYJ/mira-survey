@@ -41,7 +41,7 @@ export class ChatContextStore {
       if (!row) return null;
       return JSON.parse(row.data) as ChatContextSnapshot;
     } catch (e) {
-      console.warn('[ChatContext] load failed:', e);
+      console.log('[ChatContext] load failed:', e);
       return null;
     }
   }
@@ -54,7 +54,7 @@ export class ChatContextStore {
         [JSON.stringify(snap), snap.updatedAt]
       );
     } catch (e) {
-      console.warn('[ChatContext] save failed:', e);
+      console.log('[ChatContext] save failed:', e);
     }
   }
 }

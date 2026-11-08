@@ -978,9 +978,9 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
   const renderChip = (it: (typeof BLOOD_PANEL)[number], wide?: boolean) => {
     const v = getLatest(it.key);
     const st = v == null ? null : it.status(v);
-    const toneColor = st == null ? theme.colors.textSub
-      : st.tone === 'good' ? theme.colors.success
-      : st.tone === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
+    const toneColor = st == null ? theme.colors.ui.status.neutral
+      : st.tone === 'good' ? theme.colors.ui.status.good
+      : st.tone === 'warn' ? theme.colors.ui.status.warn : theme.colors.ui.status.neutral;
     return (
       <TouchableOpacity
         key={it.key}
@@ -1297,11 +1297,11 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
         {/* 图例：收缩 / 舒张 */}
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.sp(3), marginTop: theme.sp(1) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.purpleCore }} />
+            <View style={{ width: 6, height: 6, borderRadius: theme.radius.xs, backgroundColor: mm.colors.purpleCore }} />
             <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>收缩压</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: mm.colors.purpleDeep }} />
+            <View style={{ width: 6, height: 6, borderRadius: theme.radius.xs, backgroundColor: mm.colors.purpleDeep }} />
             <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>舒张压</Text>
           </View>
         </View>
@@ -1593,7 +1593,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profSaveText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textWhite },
-  profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.success, textAlign: 'center' },
+  profSaved: { marginTop: theme.space.xs, fontSize: theme.fontSize.micro, color: theme.colors.ui.status.good, textAlign: 'center' },
   // 方案 A Segmented
   segmentedWrap: { alignItems: 'flex-start' },
   segmentedTrack: {

@@ -85,7 +85,7 @@ export default function CardioDetailScreen() {
             <Text style={s.heroNum}>{Math.round(result.estimate)}</Text>
             <Text style={s.heroUnit}>ml/kg·min</Text>
           </View>
-          <View style={[s.bandPill, { backgroundColor: result.bandRank >= 4 ? mm.colors.limeCore : 'rgba(255,255,255,0.14)' }]}>
+          <View style={[s.bandPill, { backgroundColor: result.bandRank >= 4 ? mm.colors.limeCore : theme.colors.ui.white14 }]}>
             <Text style={[s.bandPillTxt, { color: result.bandRank >= 4 ? '#10241A' : '#fff' }]}>{result.band}</Text>
           </View>
           <Text style={s.heroSub}>
@@ -190,7 +190,7 @@ const s = StyleSheet.create({
   rowValue: { fontSize: theme.fontSize.sm, fontWeight: '600', color: mm.colors.ink },
   rowSub: { fontSize: theme.fontSize.micro, color: FAINT, marginTop: 2 },
   note: { fontSize: theme.fontSize.xs, color: SUB, lineHeight: 18, marginBottom: 8 },
-  methodBlock: { backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: theme.radius.md, padding: theme.space.cardPadCompact, marginBottom: 10 },
+  methodBlock: { backgroundColor: theme.colors.ui.black18, borderRadius: theme.radius.md, padding: theme.space.cardPadCompact, marginBottom: 10 },
   methodName: { fontSize: theme.fontSize.sm, fontWeight: '700', color: mm.colors.ink, marginBottom: 4 },
   formula: { fontSize: theme.fontSize.xs, color: theme.colors.accentText, fontStyle: 'italic', marginBottom: 6 },
   bandList: { fontSize: theme.fontSize.xs, color: SUB, lineHeight: 20, marginBottom: 6 },

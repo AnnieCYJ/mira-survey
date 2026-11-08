@@ -233,6 +233,56 @@ export const colors = {
     white65: 'rgba(255,255,255,0.65)',
     white85: 'rgba(255,255,255,0.85)',
     white95: 'rgba(255,255,255,0.95)',
+
+    /** 2026-11-08 补齐白阶（与既有 white05/45/50/65/82/85/95 同源，收口全仓 rgba(255,255,255,*)） */
+    white4: 'rgba(255,255,255,0.04)',
+    white6: 'rgba(255,255,255,0.06)',
+    white7: 'rgba(255,255,255,0.07)',
+    white8: 'rgba(255,255,255,0.08)',
+    white10: 'rgba(255,255,255,0.1)',
+    white12: 'rgba(255,255,255,0.12)',
+    white13: 'rgba(255,255,255,0.13)',
+    white14: 'rgba(255,255,255,0.14)',
+    white16: 'rgba(255,255,255,0.16)',
+    white17: 'rgba(255,255,255,0.17)',
+    white18: 'rgba(255,255,255,0.18)',
+    white22: 'rgba(255,255,255,0.22)',
+    white24: 'rgba(255,255,255,0.24)',
+    white28: 'rgba(255,255,255,0.28)',
+    white30: 'rgba(255,255,255,0.3)',
+    white32: 'rgba(255,255,255,0.32)',
+    white35: 'rgba(255,255,255,0.35)',
+    white38: 'rgba(255,255,255,0.38)',
+    white42: 'rgba(255,255,255,0.42)',
+    white46: 'rgba(255,255,255,0.46)',
+    white47: 'rgba(255,255,255,0.47)',
+    white60: 'rgba(255,255,255,0.6)',
+    white62: 'rgba(255,255,255,0.62)',
+    white70: 'rgba(255,255,255,0.7)',
+    white74: 'rgba(255,255,255,0.74)',
+    white75: 'rgba(255,255,255,0.75)',
+    white78: 'rgba(255,255,255,0.78)',
+    white80: 'rgba(255,255,255,0.8)',
+    white82: 'rgba(255,255,255,0.82)',
+    white88: 'rgba(255,255,255,0.88)',
+    white90: 'rgba(255,255,255,0.9)',
+    white97: 'rgba(255,255,255,0.97)',
+
+    /** 2026-11-08 黑阶（收口全仓 rgba(0,0,0,*) 阴影/遮罩） */
+    black6: 'rgba(0,0,0,0.06)',
+    black8: 'rgba(0,0,0,0.08)',
+    black15: 'rgba(0,0,0,0.15)',
+    black16: 'rgba(0,0,0,0.16)',
+    black18: 'rgba(0,0,0,0.18)',
+    black28: 'rgba(0,0,0,0.28)',
+    black30: 'rgba(0,0,0,0.3)',
+    black32: 'rgba(0,0,0,0.32)',
+    black35: 'rgba(0,0,0,0.35)',
+    black36: 'rgba(0,0,0,0.36)',
+    black40: 'rgba(0,0,0,0.4)',
+    black42: 'rgba(0,0,0,0.42)',
+    black45: 'rgba(0,0,0,0.45)',
+    black50: 'rgba(0,0,0,0.5)',
     /** 弹层深底（与 bgBottom #0A294F 同源） */
     sheetDeep: 'rgba(9,28,48,0.98)',
     /** 深海阴影系（与 bgBottom 同源，收口 rgba(8,30,58,*)） */
@@ -253,6 +303,23 @@ export const colors = {
     onGlassInk: '#2E2A3A',
     onGlassInkSub: 'rgba(74,70,96,0.80)',
     onGlassInkFaint: 'rgba(74,70,96,0.55)',
+
+    /**
+     * ★ 2026-11-07（用户：状态色统一到少数几色）：「好/坏/警示/中性」状态单一真相源。
+     * 4 档：好=绿 / 中性=灰 / 警示=黄 / 异常=粉。色值复用既有 success/danger/warn/textSub，零新增色相。
+     * 旧 token（colors.success / colors.danger / colors.warn / colors.stateTense）逐步废弃，新状态点请直接用本块。
+     * ⚠️ 本块只用于「好/坏/警示/中性」状态语义；情绪/状态类目色（stateCalm/stateTired/stateFocus、mood.*、
+     *    cyclePeriod.*、phaseColors.*）属分类维度，不在本块范畴，请勿混入，否则会破坏今日四环/周期相位映射。
+     */
+    status: {
+      good: '#9BD37E',
+      goodSoft: 'rgba(155,211,126,0.18)',
+      neutral: 'rgba(255,255,255,0.74)',
+      warn: '#F0C46E',
+      warnSoft: 'rgba(240,196,110,0.18)',
+      danger: '#F2A3C6',
+      dangerSoft: 'rgba(242,163,198,0.18)',
+    },
   } as const,
 
   /**
@@ -398,49 +465,49 @@ export const shadow = {
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.08,
     shadowRadius: 30,
-    elevation: 4,
+    elevation: 0,
   },
   hover: {
     shadowColor: '#7878B4',
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.16,
     shadowRadius: 44,
-    elevation: 8,
+    elevation: 0,
   },
   nav: {
     shadowColor: '#8278B4',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 30,
-    elevation: 10,
+    elevation: 0,
   },
   center: {
     shadowColor: '#7C6AE0',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.38,
     shadowRadius: 32,
-    elevation: 12,
+    elevation: 0,
   },
   deckTop: {
     shadowColor: '#463A6E',
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.17,
     shadowRadius: 44,
-    elevation: 10,
+    elevation: 0,
   },
   deckBack: {
     shadowColor: '#463A6E',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.12,
     shadowRadius: 26,
-    elevation: 6,
+    elevation: 0,
   },
   sheet: {
     shadowColor: '#463A6E',
     shadowOffset: { width: 0, height: 24 },
     shadowOpacity: 0.26,
     shadowRadius: 60,
-    elevation: 16,
+    elevation: 0,
   },
 } as const;
 
@@ -523,7 +590,10 @@ export const glassMorph = {
   shadowOffset: { width: 0, height: 8 },
   shadowOpacity: 1,
   shadowRadius: 20,
-  elevation: 6,
+  // ★ 2026-11-06（华为 P30 真机实证）：半透明玻璃底 + elevation 会让 EMUI 画出
+  //   直角实心蓝色方块覆盖卡片内容。置 0 只去掉 Android 原生投影，玻璃质感保留；
+  //   iOS 仍使用上面的 shadow* 投影。详见 mindmate.ts 的 shadow 注释。
+  elevation: 0,
   overflow: 'hidden',
 } as const;
 

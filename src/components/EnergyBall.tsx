@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fs(28),
     color: theme.colors.orbTextInk,
     fontWeight: theme.weight.semibold,
-    textShadowColor: 'rgba(255,255,255,0.55)',
+    textShadowColor: theme.colors.ui.white55,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
   },

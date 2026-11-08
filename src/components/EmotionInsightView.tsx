@@ -720,11 +720,11 @@ const styles = StyleSheet.create({
   hmSlot: { height: DOT_CELL, alignItems: 'center', justifyContent: 'center' },
   hmDot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
   // ★ mira-ocean（2026-10-17）：睡眠格改白阶玻璃（原浅紫 #E8E1F7 在深底上发闷）
-  sleepDot: { backgroundColor: 'rgba(255,255,255,0.30)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.50)', alignItems: 'center', justifyContent: 'center' },
-  sleepGlyph: { fontSize: theme.fontSize.tiny, lineHeight: 10, color: 'rgba(255,255,255,0.75)' },
+  sleepDot: { backgroundColor: theme.colors.ui.white30, borderWidth: 1, borderColor: theme.colors.ui.white50, alignItems: 'center', justifyContent: 'center' },
+  sleepGlyph: { fontSize: theme.fontSize.tiny, lineHeight: 10, color: theme.colors.ui.white75 },
   // ★ 2026-10-09（稿 .dots 无记录色）无记录/未来不使用实心灰点，避免被误读成一种情绪；只保留轻虚线轮廓。
   // ★ mira-ocean：虚线轮廓改白阶。
-  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderStyle: 'dashed' },
+  hmDotEmpty: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2, backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.colors.ui.white35, borderStyle: 'dashed' },
   // ★ 点阵图例（与格子同色）
   dotLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(2), marginTop: theme.sp(2) },
   dotLegendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) },

@@ -12,6 +12,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import MiraTag from '../components/MiraTag';
 import { ArcGauge } from '../components/ArcGauge';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -519,10 +520,10 @@ export default function FoodScanScreen() {
         ) : (
           <>
             {/* 拍照落地页 */}
-            <TouchableOpacity activeOpacity={0.7} style={styles.backDetail} onPress={() => setMode('home')}>
-              <Icon name="chevronLeft" size={20} color={mm.colors.ink} />
+            <View style={styles.backDetail}>
+              <BackButton onPress={() => setMode('home')} />
               <Text style={styles.backDetailText}>返回</Text>
-            </TouchableOpacity>
+            </View>
 
             <ScrollView style={dt.scroll} contentContainerStyle={dt.scrollContent} showsVerticalScrollIndicator={false} bounces>
               {/* 取景框：照片 + 四角角标 + AI pill（识别中盖遮罩） */}
@@ -1116,7 +1117,7 @@ const mm_m = StyleSheet.create({
   kcalUnit: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as never, color: mm.colors.honeyDeep, paddingBottom: theme.sp(0.75) },
   macroList: { gap: theme.sp(2.5) },
   mrow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
-  md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: 3 },
+  md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: theme.radius.xs },
   ml: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft, width: theme.sp(11.5) },
   track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.borderSoft, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill },
@@ -1241,7 +1242,7 @@ const rc = StyleSheet.create({
   shareVal: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold as never, color: mm.colors.ink, lineHeight: theme.fs(17) },
   macros: { marginTop: theme.sp(3.5), paddingTop: theme.sp(3), borderTopWidth: 1, borderTopColor: theme.colors.ui.borderSoft, gap: theme.sp(2.5) },
   mrow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5) },
-  md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: 3 },
+  md: { width: theme.sp(2.25), height: theme.sp(2.25), borderRadius: theme.radius.xs },
   ml: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as never, color: mm.colors.inkSoft, width: theme.sp(11.5) },
   track: { flex: 1, height: theme.sp(2), borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.borderSoft, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill },

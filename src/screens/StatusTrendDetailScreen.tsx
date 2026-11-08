@@ -1271,12 +1271,12 @@ export default function StatusTrendDetailScreen() {
               <Text style={styles.cmpLabel}>状态最好</Text>
               {/* ★ 数值必须过 fmtVal：best/worst 直接来自 statusDaily / timeline 日均，
                   未格式化时会出现 68.42857142857143 这种一串小数（用户实测）。 */}
-              <Text style={[styles.cmpVal, { color: theme.colors.success }]}>{fmtVal(comparison.best ? comparison.best.value : null)}</Text>
+              <Text style={[styles.cmpVal, { color: theme.colors.ui.status.good }]}>{fmtVal(comparison.best ? comparison.best.value : null)}</Text>
               <Text style={styles.cmpMeta}>{comparison.best ? comparison.best.label : '暂无数据'}</Text>
             </View>
             <View style={styles.cmpCell}>
               <Text style={styles.cmpLabel}>状态最差</Text>
-              <Text style={[styles.cmpVal, { color: theme.colors.danger }]}>{fmtVal(comparison.worst ? comparison.worst.value : null)}</Text>
+              <Text style={[styles.cmpVal, { color: theme.colors.ui.status.danger }]}>{fmtVal(comparison.worst ? comparison.worst.value : null)}</Text>
               <Text style={styles.cmpMeta}>{comparison.worst ? comparison.worst.label : '暂无数据'}</Text>
             </View>
           </View>
@@ -1286,12 +1286,12 @@ export default function StatusTrendDetailScreen() {
           <View style={styles.cmpCell}>
             <Text style={styles.cmpLabel}>对比{comparison.prevLabel}</Text>
             <Text style={styles.cmpVal}>{fmtVal(comparison.vsPrev)}</Text>
-            <Text style={[styles.cmpMeta, { color: comparison.prevDelta.startsWith('▲') ? theme.colors.success : comparison.prevDelta.startsWith('▼') ? theme.colors.danger : theme.colors.textSub }]}>{comparison.prevDelta || '—'}</Text>
+            <Text style={[styles.cmpMeta, { color: comparison.prevDelta.startsWith('▲') ? theme.colors.ui.status.good : comparison.prevDelta.startsWith('▼') ? theme.colors.ui.status.danger : theme.colors.textSub }]}>{comparison.prevDelta || '—'}</Text>
           </View>
           <View style={styles.cmpCell}>
             <Text style={styles.cmpLabel}>对比{comparison.baseLabel}</Text>
             <Text style={styles.cmpVal}>{fmtVal(comparison.vsBase)}</Text>
-            <Text style={[styles.cmpMeta, { color: comparison.baseDelta.startsWith('▲') ? theme.colors.success : comparison.baseDelta.startsWith('▼') ? theme.colors.danger : theme.colors.textSub }]}>{comparison.baseDelta || '—'}</Text>
+            <Text style={[styles.cmpMeta, { color: comparison.baseDelta.startsWith('▲') ? theme.colors.ui.status.good : comparison.baseDelta.startsWith('▼') ? theme.colors.ui.status.danger : theme.colors.textSub }]}>{comparison.baseDelta || '—'}</Text>
           </View>
         </View>
           </View>
@@ -1329,14 +1329,14 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(111,207,180,0.16)',
   },
-  liveText: { fontSize: theme.fontSize.micro, color: theme.colors.success, fontWeight: theme.weight.medium as any },
+  liveText: { fontSize: theme.fontSize.micro, color: theme.colors.ui.status.good, fontWeight: theme.weight.medium as any },
   hero: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   delta: { fontSize: theme.fontSize.sm, marginLeft: 6 },
   // ★ 2026-11-03：状态指数是「活力」语义——升=好=绿、降=注意=红（原 up 红/down 绿是心率类指标的语义，装反了）
-  up: { color: theme.colors.success },
-  down: { color: theme.colors.danger },
+  up: { color: theme.colors.ui.status.good },
+  down: { color: theme.colors.ui.status.danger },
   // ★ 2026-11-03：hero 卡内解读文字（与 MetricDetail heroAnalysis 同款层级）
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   // ★ 2026-11-05（用户·统一）：顶部数据卡标题

@@ -193,8 +193,8 @@ const styles = StyleSheet.create({
   // 玻璃拟态播放钮（与呼吸/冥想播放器同款语言，压在照片缩略图上）
   glassBtn: {
     position: 'absolute', top: 6, left: 6, width: 40, height: 40, borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(0,0,0,0.32)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: theme.colors.ui.black32,
+    borderWidth: 1, borderColor: theme.colors.ui.white45,
     alignItems: 'center', justifyContent: 'center',
   },
   trackList: { gap: theme.space.card },

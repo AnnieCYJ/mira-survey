@@ -92,11 +92,11 @@ export default function QuickCheckHistoryScreen() {
           >
             <View style={qc.histHead}>
               <Text style={qc.histDate}>{fmtDateLocal(r.createdAt)}</Text>
-              <View style={[qc.dot, { backgroundColor: t.abnormal ? theme.colors.warn : theme.colors.success }]} />
+              <View style={[qc.dot, { backgroundColor: t.abnormal ? theme.colors.ui.status.warn : theme.colors.ui.status.good }]} />
             </View>
             <View style={qc.histMetaRow}>
               <Text style={qc.histDone}>{t.done} 项</Text>
-              <Text style={[qc.histAb, { color: t.abnormal ? statusColor(ab[0]) : theme.colors.success }]}>
+              <Text style={[qc.histAb, { color: t.abnormal ? statusColor(ab[0]) : theme.colors.ui.status.good }]}>
                 {t.abnormal ? `${t.abnormal} 项异常` : '未见异常'}
               </Text>
             </View>

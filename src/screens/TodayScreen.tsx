@@ -1176,6 +1176,7 @@ export default function TodayScreen() {
               activeOpacity={0.6}
               accessibilityRole="button"
               accessibilityLabel="查看全天状态趋势详情"
+              hitSlop={{ top: 14, bottom: 14, left: 16, right: 16 }}
               onPress={() => navigation.navigate('StatusTrendDetail')}
             >
               <Icon name="chevronRight" size={theme.fontSize.h2} color={theme.colors.textSub} />
@@ -1518,7 +1519,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: theme.colors.ui.white72,
     borderWidth: 1,
     borderColor: theme.colors.ui.borderSoft,
   },
@@ -1560,7 +1561,7 @@ const styles = StyleSheet.create({
   },
   energyMiniUnit: {
     fontSize: theme.fontSize.micro,
-    color: 'rgba(255,255,255,0.85)',
+    color: theme.colors.ui.white85,
   },
   adviceWrap: { marginTop: theme.space.md },
   cardTitle: {

@@ -31,9 +31,9 @@ import { theme } from '../theme/theme';
  *   （渲染成无色文字/无色描边）。现在统一收口到这里，并提供类型安全的取色函数。
  */
 export const FAMILY_TONE_COLOR = {
-  good: theme.colors.success,
+  good: theme.colors.ui.status.good,
   fair: '#F0C46E',
-  low: theme.colors.danger,
+  low: theme.colors.ui.status.danger,
 } as const;
 
 export type FamilyTone = keyof typeof FAMILY_TONE_COLOR;

@@ -31,6 +31,32 @@ const ALIAS_TO_HS: Readonly<Record<string, HSMetricKey>> = Object.freeze({
   // ★ 2026-10-10（用户实锤「洞察页有两个交感神经卡，左下那张不显示数据」）：
   //   原生 emit 的真实 key 是 `sns`；`snsActivation` 只是历史别名 → 映射到 'sns'。
   snsActivation: 'sns',
+
+  // ── ★ 2026-11-07 全指标协议审计：SDK 头文件里的真实字段名 ──
+  // 依据：iOS VPDataBaseOperation.h / VPHealthGlanceTestModel.h / VPManualTestDataModel.h、
+  //       Android OriginData·OriginData3 getters、PressureManualData / MetoManualData。
+  // 原生若改用 SDK 原名 emit onRealtime / onBatch，旧版会打印「未知 metric key」后丢弃；
+  // 这里登记后一律正确落库。与 RingBleManager.FIELD_ALIASES 保持同一套命名口径。
+  // 心率
+  heartValue: 'hr', heartRate: 'hr', rateValue: 'hr', bpm: 'hr', pulse: 'hr', heartrate: 'hr',
+  // 血氧
+  oxygen: 'spo2', oxygenValue: 'spo2', bloodOxygen: 'spo2', bloodoxygen: 'spo2', spo2h: 'spo2',
+  // 体温 / HRV
+  temperature: 'temp', bodyTemperature: 'temp', hrvValue: 'hrv',
+  // 活动量
+  stepValue: 'steps', calValue: 'calorie', disValue: 'distance',
+  // 血压
+  systolic: 'bpSys', diastolic: 'bpDia', highValue: 'bpSys', lowValue: 'bpDia',
+  // ★ 压力（用户明确要求「压力也做」）：PressureManualData.pressure [0-100]
+  pressure: 'stress', pressureValue: 'stress', stressValue: 'stress', stressIndex: 'stress',
+  // 梅脱 / 疲劳 / 皮电 / 呼吸率
+  meto: 'met', metValue: 'met',
+  fatigueLevel: 'fatigue', fatigueIndex: 'fatigue',
+  gsr: 'eda', skinConductance: 'eda', gsrValue: 'eda',
+  resRate: 'rr', respRate: 'rr', respirationRate: 'rr', breathRate: 'rr', resRates: 'rr',
+  // 健康一览复合指标
+  cortisolValue: 'cortisol', emotionLevel: 'emotion', skinMoisture: 'skin',
+  bloodGlucose: 'glucose',
 });
 
 const REGISTERED: ReadonlySet<string> = new Set<string>(ALL_METRIC_KEYS);

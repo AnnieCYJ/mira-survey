@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 14, marginTop: 2 },
-  legendDot: { width: 10, height: 10, borderRadius: 3, marginRight: 5 },
+  legendDot: { width: 10, height: 10, borderRadius: theme.radius.xs, marginRight: 5 },
   legendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   empty: { paddingVertical: 26, alignItems: 'center', paddingHorizontal: 22, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.cardBorder, borderWidth: 1, borderRadius: theme.radius.card, marginTop: theme.space.sm },
   emptyTitle: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: 8 },

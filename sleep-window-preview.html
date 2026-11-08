@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>睡眠恢复图 · 入睡/出睡浮动柱 预览</title>
+<style>
+  :root{ --bg:#FBF7F2; --card:#fff; --ink:#3A3531; --inkSoft:#8A827B; --teal:#3FA7A0; --tealDeep:#2C7E78; --rose:#E78A9C; --line:#EDE6DC; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;padding:32px 20px 56px;}
+  .wrap{max-width:760px;margin:0 auto;}
+  h1{font-size:22px;font-weight:600;letter-spacing:-0.3px;margin:0 0 4px;}
+  .sub{font-size:14px;color:var(--inkSoft);line-height:1.7;margin:0 0 18px;}
+  .note{font-size:12.5px;color:var(--inkSoft);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:26px;line-height:1.7;}
+  .note b{color:var(--tealDeep);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 18px;margin-bottom:22px;}
+  .card h2{font-size:15px;font-weight:600;margin:0 0 4px;}
+  .card .csub{font-size:12px;color:var(--inkSoft);margin:0 0 16px;}
+  .plot{position:relative;display:flex;gap:14px;}
+  .axis{width:46px;display:flex;flex-direction:column;justify-content:space-between;padding:4px 0;font-size:11px;color:var(--inkSoft);text-align:right;}
+  .axis span{line-height:1;}
+  .grid{flex:1;position:relative;height:320px;background:linear-gradient(180deg,#FAFCFC,#F4F8F8);border-left:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .gl{position:absolute;left:0;right:0;border-top:1px dashed rgba(0,0,0,0.07);}
+  .bar{position:absolute;left:8%;right:8%;border-radius:8px;background:linear-gradient(180deg,var(--teal),var(--tealDeep));opacity:.9;}
+  .bar.wide{background:linear-gradient(180deg,#F0B7A1,var(--rose));}
+  .blabel{position:absolute;font-size:10px;color:var(--inkSoft);white-space:nowrap;}
+  .blabel.b{transform:translate(-50%,6px);}
+  .blabel.t{transform:translate(-50%,-14px);}
+  .xlabels{display:flex;margin-left:60px;margin-top:6px;justify-content:space-around;font-size:11px;color:var(--inkSoft);}
+  .legend{display:flex;gap:18px;margin-top:14px;font-size:12px;color:var(--inkSoft);}
+  .sw{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:5px;}
+  .foot{font-size:12px;color:var(--inkSoft);border-top:1px solid var(--line);padding-top:16px;line-height:1.7;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>睡眠恢复图 · 入睡 / 出睡浮动柱</h1>
+  <p class="sub">把左轴从「睡眠时长」改为「初入睡时间 / 出睡时间」。每根柱子不再从 0 起，而是<b>一段浮动的睡眠窗口</b>：底部 = 入睡，顶部 = 出睡，因为入睡/出睡时间每天不同，柱子自然落在坐标轴中段。</p>
+  <div class="note">
+    设计要点（按你的描述）：<br>
+    ① 左轴是<b>一天的时刻</b>（18:00 在底 → 次日 12:00 在顶，共 18h），不是时长；<br>
+    ② 柱子是<b>浮动的区间段</b>（Gantt 式），不是从坐标轴底部长出来的；<br>
+    ③ <b>底部标入睡、顶部标出睡</b>；入睡偏晚的夜（如周五 01:20 睡）整段右移、贴近顶；<br>
+    ④ 不同入睡时点 → 柱子在竖向上<b>错落分布在中段</b>，一眼能看出作息漂移。
+  </div>
+
+  <div class="card">
+    <h2>周视图（7 天睡眠窗口）</h2>
+    <p class="csub">每根浮动柱 = 当天「入睡 → 出睡」；柱越靠上 = 入睡越晚。</p>
+    <div class="plot">
+      <div class="axis" id="axis"></div>
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="xlabels" id="xlabels"></div>
+    <div class="legend">
+      <span><span class="sw" style="background:linear-gradient(180deg,#3FA7A0,#2C7E78)"></span>常规入睡窗口</span>
+      <span><span class="sw" style="background:linear-gradient(180deg,#F0B7A1,#E78A9C)"></span>偏晚入睡（入睡 &gt; 00:30）</span>
+    </div>
+  </div>
+
+  <div class="foot">
+    确认方向后，我会把真实睡眠数据接到这张图：左轴改成时刻刻度、每根柱取当天 <code>bedHour → wakeHour</code>（来自 <code>healthStore.getSleep</code>），并对周/月/年分别聚合（周=逐日、月=逐日、年=按月均值窗口）。当前睡眠恢复详情页的「双轴图」会相应调整左轴语义。
+  </div>
+</div>
+
+<script>
+  // 时间轴：底=18:00(1080min) 顶=次日12:00(2160min)
+  const AXIS_BOTTOM = 18*60, AXIS_TOP = 12*60+1440; // 1080 .. 2160
+  const SPAN = AXIS_TOP - AXIS_BOTTOM;
+  function toAxis(min){ let m = min; if (m < AXIS_BOTTOM) m += 1440; return m; }
+  function pct(min){ return (toAxis(min) - AXIS_BOTTOM) / SPAN * 100; } // 0%=底,100%=顶
+
+  const days = [
+    { label:'周一', bed:22*60+30, wake:7*60+10 },
+    { label:'周二', bed:23*60+40, wake:6*60+50 },
+    { label:'周三', bed:24*60+10, wake:7*60+30 },   // 00:10
+    { label:'周四', bed:22*60,    wake:6*60+40 },
+    { label:'周五', bed:25*60+20, wake:9*60 },       // 01:20
+    { label:'周六', bed:23*60+10, wake:8*60+20 },
+    { label:'周日', bed:22*60+50, wake:7*60 },
+  ];
+
+  function hhmm(min){ const m = ((min%1440)+1440)%1440; const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+
+  // y-axis ticks
+  const axisEl = document.getElementById('axis');
+  [18,21,0,3,6,9,12].forEach(h=>{
+    const t = h<18 ? h+24 : h;
+    const s = document.createElement('span'); s.textContent = `${String(t%24).padStart(2,'0')}:00`; axisEl.appendChild(s);
+  });
+
+  const grid = document.getElementById('grid');
+  // gridlines
+  [0,1/6,2/6,3/6,4/6,5/6,1].forEach(f=>{
+    const g = document.createElement('div'); g.className='gl'; g.style.top = (f*100)+'%'; grid.appendChild(g);
+  });
+
+  days.forEach((d,i)=>{
+    const bottomPct = pct(d.bed);
+    const topPct = pct(d.wake);
+    const bar = document.createElement('div');
+    bar.className = 'bar' + (d.bed > 0*60+30 && d.bed >= 24*60+30 ? ' wide' : (d.bed >= 24*60+30 ? ' wide':'') );
+    if (d.bed >= 24*60+30) bar.classList.add('wide');
+    bar.style.bottom = bottomPct + '%';
+    bar.style.height = (topPct - bottomPct) + '%';
+    grid.appendChild(bar);
+
+    const lb = document.createElement('div'); lb.className='blabel b'; lb.style.left=(i+0.5)/days.length*100+'%'; lb.style.bottom=(bottomPct)+'%'; lb.textContent='入 '+hhmm(d.bed);
+    const lt = document.createElement('div'); lt.className='blabel t'; lt.style.left=(i+0.5)/days.length*100+'%'; lt.style.bottom=(topPct)+'%'; lt.textContent='出 '+hhmm(d.wake);
+    grid.appendChild(lb); grid.appendChild(lt);
+  });
+
+  const xl = document.getElementById('xlabels');
+  days.forEach(d=>{ const s=document.createElement('span'); s.textContent=d.label; xl.appendChild(s); });
+</script>
+</body>
+</html>

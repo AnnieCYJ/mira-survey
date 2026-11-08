@@ -4,6 +4,7 @@
 
 import { initLlama, releaseAllLlama, type LlamaContext } from 'llama.rn';
 import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
 import { postLog } from '../lib/logger';
 import { MODEL_CONTEXT_TOKENS } from './contextBudget';
 
@@ -39,9 +40,27 @@ function normalizeNativePath(p: string | null | undefined): string {
   return s;
 }
 
-/** 解析模型路径：从 iOS app bundle 原生资源取 llama.rn 可用的本地路径 */
+/** 解析模型路径：iOS 走 app bundle 原生资源；Android 走 app 私有 files 目录（由 adb push 预置） */
 export async function resolveModelPath(): Promise<string> {
   if (cachedPath) return cachedPath;
+  if (Platform.OS === 'android') {
+    // ★ 2026-11-06（用户：P30 真跑 AI）：Android 端 llama.rn 没有 bundle 资源概念，
+    //   模型通过 `scripts/push-model-android.sh` 用 adb 推到 app 私有 files 目录
+    //   （/data/data/com.miraringfashion.app/files/）。该路径 expo-file-system 可直接读。
+    const dir = FileSystem.documentDirectory;
+    const modelPath = `${dir}${MODEL_FILENAME}`;
+    const info = await FileSystem.getInfoAsync(modelPath);
+    if (!info.exists) {
+      throw new Error(
+        `[MiraAI] Android 模型未找到：${modelPath}\n` +
+          '请先执行 `bash scripts/push-model-android.sh` 把 ' +
+          MODEL_FILENAME +
+          ' 推送到设备。'
+      );
+    }
+    cachedPath = modelPath;
+    return modelPath;
+  }
   const rawBundleDir = FileSystem.bundleDirectory;
   if (!rawBundleDir) {
     throw new Error('[MiraAI] FileSystem.bundleDirectory 为空，无法定位模型');
@@ -81,18 +100,22 @@ export function getLlamaContext(): Promise<LlamaContext> {
           await releaseAllLlama();
           console.log('[MiraAI] 已释放遗留的原生 llama context（防 reload 崩溃）');
         } catch (e) {
-          console.warn('[MiraAI] releaseAllLlama 失败（忽略，继续加载）:', e);
+          console.log('[MiraAI] releaseAllLlama 失败（忽略，继续加载）:', e);
         }
       }
       const model = await resolveModelPath();
       console.log('[MiraAI] initLlama:', model);
+      // ★ 2026-11-06（用户：P30 真跑 AI）：Android 走 llama.cpp CPU 后端（n_gpu_layers=0），
+      //   避开麒麟 980 的 Vulkan/OpenCL 兼容坑，保证一定能加载（1.5B q4 在 CPU 上约 10–20 tok/s，可用）；
+      //   iOS 维持 Metal 全卸载（n_gpu_layers=99）。
+      const isAndroid = Platform.OS === 'android';
       const c = await initLlama({
         model,
         n_ctx: MODEL_CONTEXT_TOKENS,
-        n_gpu_layers: 99, // iOS Metal 全卸载
+        n_gpu_layers: isAndroid ? 0 : 99,
         n_batch: 512, // 加速 prompt prefill（TTFT 关键）
         n_ubatch: 512,
-        n_threads: 4, // CPU 部分并行（GPU offload 下仍有益）
+        n_threads: isAndroid ? 4 : 4, // CPU 部分并行（GPU offload 下仍有益）
         // ★ 2026-09-27 移除 use_mlock：它把 ~1GB 模型内存钉成 wired 不可换出，
         //   iPhone 13 4GB 上直接把全机 free 内存压到 27MB，相机等重内存场景全部卡死。
       });
@@ -117,7 +140,7 @@ export function getLlamaContext(): Promise<LlamaContext> {
       //   之后每次 getLlamaContext() 都直接返回它 →「模型失败一次 = 整轮会话永久走规则文案」。
       //   清空后下一次调用会重新尝试加载（内存/瞬时失败可自愈）。
       loading = null;
-      console.warn('[MiraAI] initLlama 失败（已允许下次重试）:', e);
+      console.log('[MiraAI] initLlama 失败（已允许下次重试）:', e);
       throw e;
     }
   })();
@@ -252,6 +275,6 @@ export async function releaseLlama(): Promise<void> {
 export function warmupModel(): void {
   getLlamaContext().then(
     (c) => console.log('[MiraAI] ✅ 模型预热完成, gpu=', c.gpu),
-    (e) => console.warn('[MiraAI] 预热失败（不影响首次 ask，会重试）:', e)
+    (e) => console.log('[MiraAI] 预热失败（不影响首次 ask，会重试）:', e)
   );
 }

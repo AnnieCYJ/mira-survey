@@ -1032,14 +1032,14 @@ const styles = StyleSheet.create({
   photoCard: {
     position: 'absolute', borderRadius: 7, borderWidth: 1.5, borderColor: '#fff',
     overflow: 'hidden', backgroundColor: '#fff',
-    shadowColor: '#1F1D1A', shadowOpacity: 0.18, shadowRadius: 1.5,
+    shadowColor: theme.colors.ui.onGlassInk, shadowOpacity: 0.18, shadowRadius: 1.5,
     shadowOffset: { width: 0, height: 1 }, elevation: 0,
   },
   photoImg: { width: '100%', height: '100%' },
   // +N 徽章（对齐预览 .plus：深墨药丸 + 白字，贴右下）
   plusBadge: {
     position: 'absolute', right: 0, bottom: 0, minWidth: 15, height: 14, borderRadius: 7,
-    paddingHorizontal: 4, backgroundColor: '#1F1D1A',
+    paddingHorizontal: 4, backgroundColor: theme.colors.ui.onGlassInk,
     alignItems: 'center', justifyContent: 'center', zIndex: 10,
   },
   plusText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: theme.colors.textWhite },

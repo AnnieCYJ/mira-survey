@@ -1,0 +1,1392 @@
+// ⚠ 从历史会话还原的已装 APK 原生桥源码片段（第 300-1689 行）。
+// 第 1-299 行未留存；重编译前必须补齐，否则会覆盖手机上可用的完整实现。
+        val display = if (name.isEmpty()) "Mira Ring (${mac.takeLast(5)})" else name
+        mainHandler.post {
+            val old = synchronized(scanned) { scanned[mac] }
+            // 同名设备只更新 RSSI，不刷列表；名字变化（广播名后到）才重新发射
+            val changed = old == null || old.name != display
+            synchronized(scanned) {
+                scanned[mac] = Dev(mac, display, rssi, true)
+            }
+            if (changed) requestScanEmit()
+        }
+    }
+
+    private fun stopSystemScan() {
+        scanStopRunnable?.let { mainHandler.removeCallbacks(it) }
+        scanStopRunnable = null
+        scanEmitRunnable?.let { mainHandler.removeCallbacks(it) }
+        scanEmitRunnable = null
+        bleScanCallback?.let { cb ->
+            try { bleScanner?.stopScan(cb) } catch (e: Throwable) { }
+        }
+        bleScanner = null
+        bleScanCallback = null
+    }
+
+    private fun handleSystemScanResult(result: BleScanResult) {
+        val dev = result.device ?: return
+        val mac = dev.address ?: return
+        var name = ""
+        try {
+            name = dev.name ?: ""
+        } catch (e: Throwable) {
+            // Android 12+ 没有 BLUETOOTH_CONNECT 时读设备名会抛 SecurityException
+        }
+        if (name.isEmpty()) {
+            try {
+                name = result.scanRecord?.deviceName ?: ""
+            } catch (e: Throwable) { }
+        }
+        publishDevice(mac, name, result.rssi)
+    }
+
+    @ReactMethod
+    fun scan() {
+        if (!ensureBlePermissions()) return
+        val adapter = bluetoothAdapter()
+        if (adapter == null || !adapter.isEnabled) {
+            sendState("error", "error" to "蓝牙未开启：请在系统设置打开蓝牙后重新扫描")
+            return
+        }
+        if (!locationEnabled()) {
+            sendState("error", "error" to "手机定位开关未打开：Android 扫描蓝牙必须开启定位服务，请下拉快捷开关打开「位置信息」后重试")
+            return
+        }
+        val scanner = adapter.bluetoothLeScanner
+        if (scanner == null) {
+            sendState("error", "error" to "当前设备不支持 BLE 扫描")
+            return
+        }
+        stopSystemScan()
+        synchronized(scanned) { scanned.clear() }
+        lastScanEmitAt = SystemClock.elapsedRealtime()
+        emitScanResult()
+
+        log("[VeepooRing] 开始系统 BLE 扫描（${SCAN_TIME}ms，仅保留戒指类设备）")
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: BleScanResult) {
+                handleSystemScanResult(result)
+            }
+            override fun onBatchScanResults(results: MutableList<BleScanResult>) {
+                results.forEach { handleSystemScanResult(it) }
+            }
+            override fun onScanFailed(errorCode: Int) {
+                log("[VeepooRing] 系统扫描失败 code=$errorCode")
+                sendState(
+                    "error",
+                    "error" to "蓝牙扫描失败（code=$errorCode）：请确认定位开关已打开、位置权限已允许，或重启一次手机蓝牙"
+                )
+            }
+        }
+        bleScanCallback = cb
+        try {
+            scanner.startScan(cb)
+            bleScanner = scanner
+        } catch (e: Throwable) {
+            bleScanCallback = null
+            sendState("error", "error" to "启动扫描异常：${e.message}")
+            return
+        }
+
+        val stop = Runnable {
+            stopSystemScan()
+            log("[VeepooRing] 扫描结束，共发现 ${synchronized(scanned) { scanned.size }} 台戒指设备")
+            if (synchronized(scanned) { scanned.isEmpty() }) {
+                sendState("error", "error" to "扫描完成，附近没有找到戒指：请确认 Luna Mira / HK18 戒指在旁边且有电、未连着其他手机，并打开手机定位开关")
+            }
+        }
+        scanStopRunnable = stop
+        mainHandler.postDelayed(stop, SCAN_TIME)
+    }
+
+    @ReactMethod
+    fun stopScan() {
+        stopSystemScan()
+        log("[VeepooRing] 扫描已停止")
+    }
+
+    // ── 连接 / 断开（Android 标准 GATT，任意 BLE 设备可用） ─────────────────
+    private fun cancelConnectTimeout() {
+        connectTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        connectTimeoutRunnable = null
+    }
+
+    private fun closeGatt(clearConnecting: Boolean = true) {
+        stopLinkMonitor()
+        val g = gatt
+        gatt = null
+        gattCallback = null
+        try { g?.disconnect() } catch (e: Throwable) { }
+        try { g?.close() } catch (e: Throwable) { }
+        connectedMac = null
+        connectedName = null
+        ready.set(false)
+        readySent.set(false)
+        if (clearConnecting) connectingMac = null
+    }
+
+    /** ready 只发一次：服务发现成功或 2.5s 兜底，避免 JS 回填被重复触发 */
+    private fun emitReadyOnce(caps: WritableMap?) {
+        if (!readySent.compareAndSet(false, true)) return
+        sendState("ready", "capabilities" to (caps ?: Arguments.createMap()))
+        log("[VeepooRing] ready 已上报，JS 流程继续")
+    }
+
+    @ReactMethod
+    fun connect(address: String) {
+        mainHandler.post {
+            reconnectTries = 0
+            cancelReconnect()
+            connectInternal(address.trim())
+        }
+    }
+
+    private fun connectInternal(mac: String) {
+        if (mac.isEmpty()) {
+            sendState("error", "error" to "设备地址为空，请重新扫描后再点选")
+            return
+        }
+        stopSystemScan()
+        cancelConnectTimeout()
+        closeGatt()
+        if (!ensureBlePermissions()) return
+
+        val adapter = bluetoothAdapter()
+        if (adapter == null || !adapter.isEnabled) {
+            sendState("error", "error" to "蓝牙未开启：请在系统设置打开蓝牙后重试")
+            return
+        }
+        val displayName = synchronized(scanned) { scanned[mac]?.name } ?: "Mira Ring"
+        connectingMac = mac
+        connectRetryDone = false
+        sdkMode = false
+        sdkConnectSucceeded = false
+        authStarted = false
+        authenticated = false
+        userInitiatedDisconnect = false
+        synchronized(batchBuffer) { batchBuffer.clear() }
+        stopLinkMonitor()
+        sendState("connecting", "deviceName" to displayName, "deviceAddress" to mac)
+
+        // 主路径：Veepoo SDK 连接（内部会注册 notify / 完成设备握手，戒指才不会
+        // 在 ~20s 后以 status=19 主动断开）。SDK 失败/抛异常时回退标准 GATT。
+        val viaSdk = trySdkConnect(mac, displayName, adapter)
+        if (!viaSdk) {
+            log("[VeepooRing] 使用标准 GATT 直连 $mac ($displayName)")
+            openGatt(adapter, mac, displayName)
+            scheduleConnectTimeout(CONNECT_TIMEOUT)
+        } else {
+            // SDK 自带 30s 连接超时 + 3 次重试，这里给足余量
+            scheduleConnectTimeout(SDK_CONNECT_TIMEOUT)
+        }
+    }
+
+    private fun trySdkConnect(
+        mac: String,
+        displayName: String,
+        adapter: android.bluetooth.BluetoothAdapter
+    ): Boolean {
+        return try {
+            val m = manager
+            sdkMode = true
+            m.connectDevice(
+                mac,
+                IConnectResponse { code, _, _ ->
+                    mainHandler.post {
+                        try {
+                            if (connectingMac != mac && connectedMac != mac) return@post
+                            if (code == Code.REQUEST_SUCCESS) {
+                                sdkConnectSucceeded = true
+                                cancelConnectTimeout()
+                                connectingMac = null
+                                connectedMac = mac
+                                connectedName = displayName
+                                lastConnectedMac = mac
+                                reconnectTries = 0
+                                ready.set(true)
+                                readySent.set(false)
+                                log("[VeepooRing] ✅ SDK GATT 已连接 $mac，准备 Veepoo 密钥认证")
+                                sendState("connected", "deviceName" to displayName, "deviceAddress" to mac)
+                                startLinkMonitor(mac)
+                                // INotifyResponse 不一定回调，连接成功后主动发起认证
+                                mainHandler.postDelayed({
+                                    if (connectedMac == mac && sdkMode) doAuth(mac)
+                                }, AUTH_DELAY)
+                                // 认证无响应时仍要让 JS 的 ready → 回填链路闭环，避免 UI 卡住
+                                mainHandler.postDelayed({
+                                    if (connectedMac == mac && !authenticated) emitReadyOnce(null)
+                                }, 8000L)
+                            } else {
+                                if (connectedMac == mac) return@post
+                                log("[VeepooRing] SDK 连接失败 code=$code → 回退标准 GATT")
+                                try { m.disconnectWatch(IBleWriteResponse { }) } catch (e: Throwable) { }
+                                sdkMode = false
+                                connectingMac = mac
+                                openGatt(adapter, mac, displayName)
+                                scheduleConnectTimeout(CONNECT_TIMEOUT)
+                            }
+                        } catch (e: Throwable) {
+                            log("[VeepooRing] SDK 连接回调异常: ${e.message}")
+                        }
+                    }
+                },
+                INotifyResponse { state ->
+                    mainHandler.post {
+                        try {
+                            if (connectedMac != mac) return@post
+                            if (state == Code.REQUEST_SUCCESS) {
+                                log("[VeepooRing] SDK 设备通道就绪 state=$state，发起密钥认证")
+                                doAuth(mac)
+                            } else {
+                                log("[VeepooRing] SDK 设备通道返回 state=$state（继续维持 GATT 连接）")
+                            }
+                        } catch (e: Throwable) { }
+                    }
+                }
+            )
+            true
+        } catch (e: Throwable) {
+            log("[VeepooRing] SDK 连接异常 ${e.message} → 回退标准 GATT")
+            sdkMode = false
+            false
+        }
+    }
+
+    // ── Veepoo 协议层 ───────────────────────────────────────────────────────
+    // SDK 文档明确要求：「所有的功能接口必须在完成密钥认证后才能正常使用」。
+    // 旧版只建立物理 GATT 链路、没做 confirmDevicePwd，戒指会在 ~20s 后
+    // 以 status=19 主动断开，且电量/历史数据一律读不出来 —— 这正是用户
+    // 反馈「连接容易断 + 连上后没有任何数据」的根因。
+    private fun doAuth(mac: String, pwd: String = DEVICE_PASSWORD, attempt: Int = 0) {
+        if (connectedMac != mac || !sdkMode || authenticated || authStarted) return
+        authStarted = true
+        log("[VeepooRing] 发起 Veepoo 密钥认证（attempt=$attempt, isPair=false）")
+        try {
+            manager.confirmDevicePwd(
+                IBleWriteResponse { code ->
+                    mainHandler.post { log("[VeepooRing] 密钥认证写入返回 code=$code") }
+                },
+                object : IPwdDataListener {
+                    override fun onPwdDataChange(data: PwdData) {
+                        mainHandler.post {
+                            val st = try { data.getmStatus() } catch (e: Throwable) { null }
+                            log("[VeepooRing] 密钥认证结果 status=$st")
+                            if (connectedMac != mac) return@post
+                            val ok = st == EPwdStatus.CHECK_SUCCESS ||
+                                st == EPwdStatus.CHECK_AND_TIME_SUCCESS ||
+                                st == EPwdStatus.READ_SUCCESS ||
+                                st == EPwdStatus.SETTING_SUCCESS
+                            if (ok) onAuthenticated(mac, data)
+                            else if (attempt < 1 && connectedMac == mac) {
+                                authStarted = false
+                                log("[VeepooRing] 默认密码未通过，改用备用密码重试一次")
+                                doAuth(mac, DEVICE_PASSWORD_FALLBACK, attempt + 1)
+                            } else emitReadyOnce(null)
+                        }
+                    }
+
+                    override fun onConnectionConfirmTimeout() {
+                        mainHandler.post {
+                            log("[VeepooRing] 密钥认证超时（设备未确认）")
+                            if (connectedMac == mac) emitReadyOnce(null)
+                        }
+                    }
+                },
+                object : IDeviceFuctionDataListener {
+                    override fun onFunctionSupportDataChange(d: FunctionDeviceSupportData) {
+                        mainHandler.post {
+                            try {
+                                val wd = try { d.getWathcDay() } catch (e: Throwable) { 0 }
+                                if (wd > 0) watchDays = wd.coerceIn(1, 7)
+                                originProtocolVersion =
+                                    try { d.getOriginProtcolVersion() } catch (e: Throwable) { 0 }
+                                // SDK 的 VpSpGetUtil 才是 readOriginData 内部真正读的版本号，
+                                // 两个来源都打出来便于核对 v3 分支是否命中。
+                                val spVer = try {
+                                    VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext)
+                                        .getOriginProtocolVersion()
+                                } catch (e: Throwable) { -1 }
+                                val f: (EFunctionStatus?) -> String = { s ->
+                                    when {
+                                        s == null -> "n/a"
+                                        s == EFunctionStatus.UNSUPPORT -> "不支持"
+                                        s == EFunctionStatus.SUPPORT_OPEN -> "支持·已开"
+                                        s == EFunctionStatus.SUPPORT_CLOSE -> "支持·未开"
+                                        s == EFunctionStatus.SUPPORT -> "支持"
+                                        else -> "未知($s)"
+                                    }
+                                }
+                                val bp = try { f(d.getBp()) } catch (e: Throwable) { "?" }
+                                val glu = try { f(d.getBloodGlucose()) } catch (e: Throwable) { "?" }
+                                val gluAdj = try { f(d.getBloodGlucoseAdjusting()) } catch (e: Throwable) { "?" }
+                                val gluMul = try { f(d.getBloodGlucoseMultipleAdjusting()) } catch (e: Throwable) { "?" }
+                                val gluRisk = try { f(d.getBloodGlucoseRiskAssessment()) } catch (e: Throwable) { "?" }
+                                val comp = try { f(d.getBloodComponent()) } catch (e: Throwable) { "?" }
+                                val compCal = try { f(d.getBloodComponentSingleCalibration()) } catch (e: Throwable) { "?" }
+                                val temp = try { f(d.getTemperatureFunction()) } catch (e: Throwable) { "?" }
+                                val tempType = try { d.getTemptureType() } catch (e: Throwable) { -1 }
+                                val spo = try { f(d.getSpo2H()) } catch (e: Throwable) { "?" }
+                                val spoBreath = try { f(d.getSpo2HBreathBreak()) } catch (e: Throwable) { "?" }
+                                val hrv = try { f(d.getHrvFunction()) } catch (e: Throwable) { "?" }
+                                val allDayHrv = try { f(d.getAllDayHrvFunc()) } catch (e: Throwable) { "?" }
+                                val hrvApp = try { f(d.getHrvAppDetectFunction()) } catch (e: Throwable) { "?" }
+                                val stress = try { f(d.getStress()) } catch (e: Throwable) { "?" }
+                                val fatigue = try { f(d.getFatigue()) } catch (e: Throwable) { "?" }
+                                val breath = try { f(d.getBeathFunction()) } catch (e: Throwable) { "?" }
+                                val psleep = try { f(d.getPrecisionSleep()) } catch (e: Throwable) { "?" }
+                                val sleepTag = try { d.getSleepTag() } catch (e: Throwable) { -1 }
+                                // 能力包里没有直接的「血压是否佩戴测量」字段，但 BpTag 表示血压测量标志位
+                                val bpTag = try { d.getBpTag() } catch (e: Throwable) { -1 }
+                                val gluTag = try { d.getBloodGlucoseTag() } catch (e: Throwable) { -1 }
+                                val compTag = try { d.getBloodComponentTag() } catch (e: Throwable) { -1 }
+                                log("[VeepooRing] 设备能力总览 ─────────────────────────")
+                                log("[VeepooRing]   存储天数 watchDays=$watchDays  原始协议版本 能力包=$originProtocolVersion / VpSp=$spVer")
+                                log("[VeepooRing]   心率(HR)         : 始终支持")
+                                log("[VeepooRing]   血氧 SpO2        : $spo  呼吸暂停提醒=$spoBreath")
+                                log("[VeepooRing]   HRV              : $hrv  全天HRV=$allDayHrv  App测量=$hrvApp")
+                                log("[VeepooRing]   血压 BP          : $bp  (BpTag=$bpTag)")
+                                log("[VeepooRing]   体温 Temp        : $temp  (type=$tempType)")
+                                log("[VeepooRing]   血糖 Glucose     : $glu  校准=$gluAdj 多校准=$gluMul 风险评估=$gluRisk (GluTag=$gluTag)")
+                                log("[VeepooRing]   血液成分(尿酸/血脂): $comp  单次校准=$compCal (CompTag=$compTag)")
+                                log("[VeepooRing]   压力 Stress      : $stress")
+                                log("[VeepooRing]   疲劳 Fatigue     : $fatigue")
+                                log("[VeepooRing]   呼吸率 Breath    : $breath")
+                                log("[VeepooRing]   精准睡眠         : $psleep  (sleepTag=$sleepTag)")
+                                log("[VeepooRing] ─────────────────────────────────────")
+                            } catch (e: Throwable) {
+                                log("[VeepooRing] 设备能力解析异常 ${e.message}")
+                            }
+                        }
+                    }
+                    override fun onDeviceFunctionPackage1Report(d: DeviceFunctionPackage1) {}
+                    override fun onDeviceFunctionPackage2Report(d: DeviceFunctionPackage2) {}
+                    override fun onDeviceFunctionPackage3Report(d: DeviceFunctionPackage3) {}
+                    override fun onDeviceFunctionPackage4Report(d: DeviceFunctionPackage4) {}
+                    override fun onDeviceFunctionPackage5Report(d: DeviceFunctionPackage5) {}
+                },
+                object : ISocialMsgDataListener {
+                    override fun onSocialMsgSupportDataChange(d: FunctionSocailMsgData) {}
+                    override fun onSocialMsgSupportDataChange2(d: FunctionSocailMsgData) {}
+                },
+                pwd,
+                false
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 密钥认证异常 ${e.message}")
+            emitReadyOnce(null)
+        }
+    }
+
+    private fun onAuthenticated(mac: String, pwd: PwdData) {
+        if (authenticated) return
+        authenticated = true
+        val caps = Arguments.createMap()
+        caps.putBoolean("passwordConfirmed", true)
+        try { pwd.getDeviceVersion()?.let { caps.putString("deviceVersion", it) } } catch (e: Throwable) { }
+        log("[VeepooRing] ✅ 密钥认证通过，开始读取电量")
+        val readyAlreadySent = readySent.get()
+        emitReadyOnce(caps)
+        readBatteryNow(mac)
+        // 8s 兜底 ready 已先发出时，JS 的回填发生在认证之前会被跳过，这里补一次
+        if (readyAlreadySent) syncHealthData(mac)
+    }
+
+    /** 电量：JS 侧 onState 分流 6 会把 raw.battery 写进 RingState.battery，设置页直接显示 */
+    private fun readBatteryNow(mac: String) {
+        if (connectedMac != mac || !sdkMode || !authenticated) return
+        lastBatteryAt = SystemClock.elapsedRealtime()
+        try {
+            manager.readBattery(
+                IBleWriteResponse { code ->
+                    mainHandler.post { log("[VeepooRing] 电量读取指令 code=$code") }
+                },
+                object : IBatteryDataListener {
+                    override fun onDataChange(b: BatteryData) {
+                        mainHandler.post {
+                            if (connectedMac != mac) return@post
+                            val pct = try {
+                                if (b.isPercent()) b.getBatteryPercent()
+                                else when (b.getBatteryLevel()) {
+                                    1 -> 25; 2 -> 50; 3 -> 75; 4 -> 100
+                                    else -> b.getBatteryPercent()
+                                }
+                            } catch (e: Throwable) { -1 }
+                            if (pct < 0) return@post
+                            val level = pct.coerceIn(0, 100)
+                            log("[VeepooRing] 🔋 电量 $level%")
+                            sendState(
+                                "battery",
+                                "battery" to level,
+                                "batteryLow" to (level <= 20),
+                                "deviceName" to (connectedName ?: "Mira Ring"),
+                                "deviceAddress" to mac
+                            )
+                        }
+                    }
+                }
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 读取电量异常 ${e.message}")
+        }
+    }
+
+    /** Veepoo 的日期可能是 "2026-11-06" / "2026-11-06-09-05" / "20261106" */
+    /** 睡眠/日汇总回调里发过 daily 的日期，用于 backfillDone 的天数统计 */
+    private val dailyDays = mutableSetOf<String>()
+
+    private fun normalizeDate(raw: String?): String? {
+        if (raw.isNullOrEmpty()) return null
+        val digits = raw.replace(Regex("[^0-9]"), "")
+        if (digits.length < 8) return null
+        return "${digits.substring(0, 4)}-${digits.substring(4, 6)}-${digits.substring(6, 8)}"
+    }
+
+    /**
+     * Veepoo 睡眠回调传回来的 date 是「天索引」字符串（0=今天 1=昨天 2=前天），
+     * 不是 yyyymmdd。真机日志：收到睡眠数据 0 total=356 —— 旧代码拿 "0" 去做
+     * normalizeDate 直接返回 null，把 356 分钟睡眠整条丢掉了。
+     */
+    private fun dayIndexToDate(raw: String?): String? {
+        val idx = raw?.trim()?.toIntOrNull() ?: return normalizeDate(raw)
+        if (idx < 0 || idx > 30) return normalizeDate(raw)
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -idx)
+        return String.format(
+            "%04d-%02d-%02d",
+            cal.get(java.util.Calendar.YEAR),
+            cal.get(java.util.Calendar.MONTH) + 1,
+            cal.get(java.util.Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    /** 5 分钟粒度原始样本 → JS onBatch slots */
+    private fun collectOrigin(d: OriginData) {
+        try {
+            val tm = d.getmTime() ?: return
+            val dk = normalizeDate(d.getDate())
+                ?: String.format("%04d-%02d-%02d", tm.getYear(), tm.getMonth(), tm.getDay())
+            val slot = Arguments.createMap()
+            slot.putString("t", String.format("%02d:%02d", tm.getHour(), tm.getMinute()))
+            val hr = d.getRateValue()
+            if (hr in 30..220) slot.putInt("hr", hr)
+            val step = d.getStepValue()
+            if (step > 0) slot.putInt("step", step)
+            val hi = d.getHighValue()
+            if (hi in 60..250) slot.putInt("bpSys", hi)
+            val lo = d.getLowValue()
+            if (lo in 30..160) slot.putInt("bpDia", lo)
+            val temp = try { d.getTemperature() } catch (e: Throwable) { 0.0 }
+            if (temp in 30.0..45.0) slot.putDouble("temp", temp)
+            val cal = try { d.getCalValue() } catch (e: Throwable) { 0.0 }
+            if (cal > 0) slot.putDouble("cal", cal)
+            val dis = try { d.getDisValue() } catch (e: Throwable) { 0.0 }
+            if (dis > 0) slot.putDouble("dist", dis)
+            synchronized(batchBuffer) {
+                batchBuffer.getOrPut(dk) { mutableListOf() }.add(slot)
+            }
+        } catch (e: Throwable) { }
+    }
+
+    private fun flushBatches() {
+        if (syncFlushed) return
+        syncFlushed = true
+        val snapshot: Map<String, List<WritableMap>> = synchronized(batchBuffer) {
+            val copy = batchBuffer.mapValues { (_, v) -> v.toList() }
+            batchBuffer.clear()
+            copy
+        }
+        snapshot.forEach { (dk, slots) ->
+            val arr = Arguments.createArray()
+            slots.forEach { arr.pushMap(it) }
+            emit("onBatch", argsMap("date" to dk, "slots" to arr))
+            log("[VeepooRing] 📦 回传 $dk 共 ${slots.size} 条样本")
+        }
+        sendState("syncing", "progress" to 1.0)
+        // 睡眠/日汇总走的是即时 onBatch，不计入 snapshot；天数要把它们算进去，
+        // 否则明明同步回了 356 分钟睡眠，UI 仍显示「同步完成 0 天」。
+        emitBackfillDone(maxOf(snapshot.size, dailyDays.size))
+        // 数据读完之后再下发采集配置，避免与读指令抢 SDK 的单命令写队列；
+        // 这样戒指从下一次佩戴开始就会持续产生心率/血氧/HRV 原始样本。
+        mainHandler.postDelayed({
+            connectedMac?.let { if (syncEnabled) applyAutoMeasureSettings(it) }
+        }, 1500L)
+    }
+
+    /** JS 侧按 raw.backfillDone === true 收口（不是看 status 字符串） */
+    private fun emitBackfillDone(days: Int) {
+        emit(
+            "onState",
+            argsMap(
+                "status" to "connected",
+                "backfillDone" to true,
+                "progress" to 1.0,
+                "days" to days,
+                "deviceName" to (connectedName ?: "Mira Ring"),
+                "deviceAddress" to (connectedMac ?: "")
+            )
+        )
+        log("[VeepooRing] ✅ 离线数据同步完成 days=$days")
+    }
+
+    /** JS 的 ready → backfillSince 会调到这里：真正去戒指里读离线健康数据 */
+    private fun syncHealthData(mac: String) {
+        if (connectedMac != mac || !sdkMode || !authenticated) {
+            log("[VeepooRing] 未完成密钥认证，跳过离线数据读取")
+            emitBackfillDone(0)
+            return
+        }
+        syncFlushed = false
+        extraDataStarted = false
+        synchronized(batchBuffer) { batchBuffer.clear() }
+        dailyDays.clear()
+        sendState("syncing", "progress" to 0.0)
+        val sampleCount = java.util.concurrent.atomic.AtomicInteger(0)
+        log("[VeepooRing] 准备读取戒指离线健康数据（watchDays=$watchDays，错峰 1.8s）")
+
+        // 认证通过后立刻发的电量指令与读数据指令会撞在 SDK 的单命令写队列里，
+        // 后者会被静默吞掉（真机 logcat：E000 之后没有任何 write character）。
+        // 错峰到电量回包之后，再发 readAllHealthData。
+        mainHandler.postDelayed({
+            if (connectedMac != mac || !authenticated) {
+                log("[VeepooRing] 错峰等待期间链路已变化，跳过读数据")
+            } else {
+                try {
+                    log("[VeepooRing] 发出 readAllHealthData(watchDays=$watchDays) 指令（睡眠+日常数据，多天）")
+                    manager.readAllHealthData(
+                        object : IAllHealthDataListener {
+                            override fun onProgress(p: Float) {
+                                if (p > 0f && sampleCount.get() == 0) {
+                                    log("[VeepooRing] SDK 读数据进度开始 p=$p")
+                                }
+                                mainHandler.post { sendState("syncing", "progress" to p.toDouble().coerceIn(0.0, 1.0)) }
+                            }
+
+                            override fun onSleepDataChange(date: String, sleep: SleepData) {
+                                log("[VeepooRing] 收到睡眠数据 $date total=${sleep.getAllSleepTime()}")
+                                mainHandler.post {
+                                    try {
+                                        val dk = dayIndexToDate(date) ?: return@post
+                                        if (sleep.getAllSleepTime() > 0) {
+                                            // JS 侧 parseSleepLineHex(d.sleepLine) 会还原逐分钟
+                                            // 深睡/浅睡/REM/失眠/清醒曲线，是睡眠详情页与
+                                            // 睡眠分析的唯一数据源；旧版只发 3 个时长，曲线恒空。
+                                            val daily = Arguments.createMap()
+                                            daily.putInt("sleepTotalMin", sleep.getAllSleepTime())
+                                            daily.putInt("sleepDeepMin", sleep.getDeepSleepTime())
+                                            daily.putInt("sleepLightMin", sleep.getLowSleepTime())
+                                            try { daily.putInt("sleepScore", sleep.getSleepQulity()) } catch (e: Throwable) { }
+                                            try { daily.putInt("sleepGetUp", sleep.getWakeCount()) } catch (e: Throwable) { }
+                                            try { sleep.getSleepLine()?.let { daily.putString("sleepLine", it) } } catch (e: Throwable) { }
+                                            try {
+                                                sleep.getSleepDown()?.let {
+                                                    daily.putString("sleepTime", String.format("%02d:%02d", it.getHour(), it.getMinute()))
+                                                }
+                                                sleep.getSleepUp()?.let {
+                                                    daily.putString("wakeTime", String.format("%02d:%02d", it.getHour(), it.getMinute()))
+                                                }
+                                            } catch (e: Throwable) { }
+                                            emit("onBatch", argsMap("date" to dk, "daily" to daily))
+                                            dailyDays.add(dk)
+                                            log("[VeepooRing] 💤 睡眠日汇总已回传 $dk total=${sleep.getAllSleepTime()}min line=${sleep.getSleepLine()?.length ?: 0}")
+                                        }
+                                    } catch (e: Throwable) { }
+                                }
+                            }
+
+                            override fun onReadSleepComplete() {
+                                log("[VeepooRing] 睡眠数据读取完成，准备补读血氧/HRV")
+                                // 新协议 v3 下 SDK 在这里就停了，不会继续读 origin；
+                                // 由我们自己的串行链补齐（错开 1.2s 避免撞写队列）。
+                                mainHandler.postDelayed({ startExtraDataChain(mac) }, 1200L)
+                            }
+
+                            override fun onOringinFiveMinuteDataChange(d: OriginData) {
+                                val n = sampleCount.incrementAndGet()
+                                if (n == 1 || n % 10 == 0) log("[VeepooRing] 收到 5 分钟样本 n=$n")
+                                mainHandler.post { collectOrigin(d) }
+                            }
+
+                            override fun onOringinHalfHourDataChange(d: OriginHalfHourData) {
+                                mainHandler.post {
+                                    try {
+                                        val dk = dayIndexToDate(d.getDate()) ?: return@post
+                                        if (d.getAllStep() > 0) {
+                                            emit("onBatch", argsMap("date" to dk, "daily" to argsMap("step" to d.getAllStep())))
+                                            dailyDays.add(dk)
+                                        }
+                                    } catch (e: Throwable) { }
+                                }
+                            }
+
+                            override fun onReadOriginComplete() {
+                                // 不在这里 flush：血氧/HRV 补读链还没跑完，
+                                // 提前 flush 会把后续样本丢掉。统一由补读链收尾或 42s 兜底。
+                                mainHandler.post {
+                                    log("[VeepooRing] SDK 原始数据读取完成，共 ${sampleCount.get()} 条样本")
+                                    startExtraDataChain(mac)
+                                }
+                            }
+
+                            override fun onReadTimeout(code: Int) {
+                                mainHandler.post {
+                                    log("[VeepooRing] 离线数据读取超时 code=$code 样本=${sampleCount.get()}，转补读链")
+                                    startExtraDataChain(mac)
+                                }
+                            }
+                        },
+                        // ★ 官方示例 readAllHealthData(listener, 3)：第二个参数是手表可存储的
+                        //   天数(watchday)，不是 day index。传 0 时 SDK 按「0 天」处理，
+                        //   睡眠/5 分钟数据都读不出来。这里用密钥认证能力包里拿到的真实值。
+                        watchDays
+                    )
+                } catch (e: Throwable) {
+                    log("[VeepooRing] 读取离线数据异常 ${e.message}")
+                    flushBatches()
+                }
+            }
+        }, 1800L)
+
+        // 部分固件连 onReadSleepComplete 都不回调：9s 后无条件启动补读链
+        mainHandler.postDelayed({
+            if (connectedMac == mac && !syncFlushed && !extraDataStarted) {
+                log("[VeepooRing] 睡眠完成回调缺失，兜底启动血氧/HRV 补读")
+                startExtraDataChain(mac)
+            }
+        }, 9_000L)
+
+        // 兜底收尾：v3 补读链最长约 22s（readOriginData）+ 逐日回退，
+        // 留足 70s 避免在数据还在回包时提前 flush，把后面的样本丢掉。
+        mainHandler.postDelayed({
+            if (connectedMac == mac && !syncFlushed) {
+                log("[VeepooRing] 离线数据读取兜底收尾（收到 ${sampleCount.get()} 条样本）")
+                flushBatches()
+            }
+        }, 70_000L)
+    }
+
+    // ── 新协议 v3 补读：血氧 / 心率 / HRV ─────────────────────────────────
+    // 反编译 VPOperateManager.vp_a(IAllHealthDataListener,int) 确认：
+    // 当 VpSpGetUtil.getOriginProtocolVersion() == 3 时，readAllHealthData
+    // 在睡眠读完后直接 return，不调用 readOriginData —— 真机 logcat 也证实
+    // 睡眠完成回调之后 0 个 write character，所以血氧/心率/HRV 一条都没有。
+    // 这里独立调用 readSpo2hOrigin / readHRVOrigin，串行执行避免撞写队列。
+    private var extraDataStarted = false
+
+    /** 当前已缓存的 5 分钟样本条数，用于判断补读链是否真的拿到数据 */
+    private fun slotCount(): Int = synchronized(batchBuffer) {
+        batchBuffer.values.sumOf { it.size }
+    }
+
+    /** readOriginData 内部读的是 VpSpGetUtil 里的版本；能力包的值作为兜底 */
+    private fun currentProtocolVersion(): Int {
+        val v = try {
+            VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext)
+                .getOriginProtocolVersion()
+        } catch (e: Throwable) { 0 }
+        return if (v > 0) v else originProtocolVersion
+    }
+
+    private fun startExtraDataChain(mac: String) {
+        if (extraDataStarted) return
+        extraDataStarted = true
+        if (connectedMac != mac || !authenticated) {
+            log("[VeepooRing] 链路已断开，跳过血氧/HRV 补读")
+            flushBatches()
+            return
+        }
+        val ver = currentProtocolVersion()
+        log("[VeepooRing] 补读链启动：协议v$ver watchDays=$watchDays")
+        // 协议 3/5 必须走 IOriginData3Listener：传 IOriginDataListener 时 SDK 的
+        // readOriginDataBySetting 会直接 return（"传入的接口有误"），一条数据都不给。
+        if (ver == 3 || ver == 5) readOriginDataAll(mac)
+        else readSpo2Data(mac, 0)
+    }
+
+    /**
+     * 协议 v3/v5 的权威数据源。一次 readOriginData 就能按 watchDays 回传多天的
+     *   - onOriginFiveMinuteListDataChange: OriginData3（心率/血氧 oxygens[]/步数/体温…）
+     *   - onOriginSpo2OriginListDataChange: Spo2hOriginData（血氧/心率/HRV 变化/呼吸率）
+     *   - onOriginHRVOriginListDataChange : HRVOriginData（HRV）
+     *   - onOriginHalfHourDataChange     : 30 分钟日汇总
+     * 旧版只调 readSpo2hOrigin(day=0) / readHRVOrigin(day=0)，碰上当天戒指没采集
+     * 就只会收到空包 D2,00 / D9,00 —— 这正是「血氧/心率/HRV 一条都没有」的实锤原因。
+     */
+    private fun readOriginDataAll(mac: String) {
+        if (connectedMac != mac || !authenticated) {
+            flushBatches()
+            return
+        }
+        log("[VeepooRing] 发出 readOriginData(v3/v5, watchDays=$watchDays) 指令（多天心率/血氧/HRV）")
+        var done = false
+        val finish = Runnable {
+            if (done) return@Runnable
+            done = true
+            val n = slotCount()
+            log("[VeepooRing] v3 原始数据收尾，累计样本=$n")
+            mainHandler.postDelayed({
+                if (connectedMac != mac) return@postDelayed
+                if (n == 0) {
+                    log("[VeepooRing] v3 原始数据为空，回退逐日 readSpo2hOrigin/readHRVOrigin")
+                    readSpo2Data(mac, 0)
+                } else flushBatches()
+            }, 900L)
+        }
+        try {
+            manager.readOriginData(
+                writeOk("readOriginData(v3/v5)"),
+                // 同时实现两套监听：SDK 会按协议版本 instanceof 挑一个用，
+                // 这样不必在调用点分支，也不会出现「接口传错被静默丢弃」。
+                object : IOriginData3Listener, IOriginDataListener {
+                    override fun onReadOriginProgress(p: Float) {
+                        mainHandler.post {
+                            sendState("syncing", "progress" to (0.35 + p * 0.5).coerceIn(0.0, 0.95))
+                        }
+                    }
+                    override fun onReadOriginProgressDetail(a: Int, b: String, c: Int, d: Int) {}
+                    override fun onReadOriginComplete() {
+                        log("[VeepooRing] v3 原始数据读取完成")
+                        mainHandler.post(finish)
+                    }
+                    override fun onReadTimeout(code: Int) {
+                        log("[VeepooRing] v3 原始数据读取超时 code=$code")
+                        mainHandler.post(finish)
+                    }
+                    // ── 协议 v3 / v5 ──
+                    override fun onOriginFiveMinuteListDataChange(list: MutableList<OriginData3>) {
+                        mainHandler.post {
+                            list.forEach { collectOrigin3(it) }
+                            if (list.isNotEmpty()) log("[VeepooRing] v3 收到 ${list.size} 条 5 分钟样本")
+                        }
+                    }
+                    override fun onOriginHalfHourDataChange(d: OriginHalfHourData) {
+                        mainHandler.post { collectHalfHour(d) }
+                    }
+                    override fun onOriginHRVOriginListDataChange(list: MutableList<HRVOriginData>) {
+                        mainHandler.post { list.forEach { collectHrv(it) } }
+                    }
+                    override fun onOriginSpo2OriginListDataChange(list: MutableList<Spo2hOriginData>) {
+                        mainHandler.post { list.forEach { collectSpo2(it) } }
+                    }
+                    // ── 协议 v1（同一对象兼容，SDK 非 v3 分支会走这里）──
+                    override fun onOringinFiveMinuteDataChange(d: OriginData) {
+                        mainHandler.post { collectOrigin(d) }
+                    }
+                    override fun onOringinHalfHourDataChange(d: OriginHalfHourData) {
+                        mainHandler.post { collectHalfHour(d) }
+                    }
+                },
+                watchDays
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] v3 原始数据读取异常 ${e.message}")
+            mainHandler.post(finish)
+        }
+        mainHandler.postDelayed({
+            if (!done) {
+                log("[VeepooRing] v3 原始数据 22s 无完成回调，收尾")
+                finish.run()
+            }
+        }, 22_000L)
+    }
+
+    /** 30 分钟日汇总：睡眠/步数按天即时回传，供日历与日汇总页使用 */
+    private fun collectHalfHour(d: OriginHalfHourData) {
+        try {
+            val dk = dayIndexToDate(d.getDate()) ?: return
+            if (d.getAllStep() > 0) {
+                emit("onBatch", argsMap("date" to dk, "daily" to argsMap("step" to d.getAllStep())))
+                dailyDays.add(dk)
+            }
+        } catch (e: Throwable) { }
+    }
+
+    /** 协议 v3 的 5 分钟包：血氧藏在 oxygens[] 里，不是 OriginData 的字段 */
+    private fun collectOrigin3(d: OriginData3) {
+        try {
+            val tm = d.getmTime() ?: return
+            val dk = normalizeDate(d.getDate())
+                ?: String.format("%04d-%02d-%02d", tm.getYear(), tm.getMonth(), tm.getDay())
+            val t = String.format("%02d:%02d", tm.getHour(), tm.getMinute())
+            mergeSlot(dk, t) { s ->
+                val hr = d.getRateValue()
+                if (hr in 30..220) s.putInt("hr", hr)
+                // oxygens[] 是一个 5 分钟包内的多个采样点；过滤 0/255 之类占位后取均值，
+                // 否则血氧趋势图会被无效读数污染。
+                val oxy = try { d.getOxygens() } catch (e: Throwable) { null }
+                if (oxy != null && oxy.isNotEmpty()) {
+                    val valid = oxy.filter { it in 50..100 }
+                    if (valid.isNotEmpty()) s.putInt("spo2", Math.round(valid.average()).toInt())
+                }
+                val step = d.getStepValue()
+                if (step > 0) s.putInt("step", step)
+                val hi = d.getHighValue()
+                if (hi in 60..250) s.putInt("bpSys", hi)
+                val lo = d.getLowValue()
+                if (lo in 30..160) s.putInt("bpDia", lo)
+                val temp = try { d.getTemperature() } catch (e: Throwable) { 0.0 }
+                if (temp in 30.0..45.0) s.putDouble("temp", temp)
+                val cal = try { d.getCalValue() } catch (e: Throwable) { 0.0 }
+                if (cal > 0) s.putDouble("cal", cal)
+                val dis = try { d.getDisValue() } catch (e: Throwable) { 0.0 }
+                if (dis > 0) s.putDouble("dist", dis)
+            }
+        } catch (e: Throwable) { }
+    }
+
+    private fun writeOk(tag: String): IBleWriteResponse = object : IBleWriteResponse {
+        override fun onResponse(code: Int) {
+            log("[VeepooRing] $tag 指令写入 code=$code")
+        }
+    }
+
+    /** 同一天同一时间点的样本合并（血氧包与 HRV 包可能各自带一部分指标） */
+    private fun mergeSlot(dk: String, t: String, fill: (WritableMap) -> Unit) {
+        synchronized(batchBuffer) {
+            val list = batchBuffer.getOrPut(dk) { mutableListOf() }
+            val slot: WritableMap = list.firstOrNull { it.getString("t") == t }
+                ?: Arguments.createMap().also {
+                    it.putString("t", t)
+                    list.add(it)
+                }
+            fill(slot)
+        }
+    }
+
+    private fun collectSpo2(d: Spo2hOriginData) {
+        try {
+            val tm = d.getmTime() ?: return
+            val dk = normalizeDate(d.getDate()) ?: dayIndexToDate("0") ?: return
+            val t = String.format("%02d:%02d", tm.getHour(), tm.getMinute())
+            mergeSlot(dk, t) { s ->
+                val spo = d.getOxygenValue()
+                if (spo in 50..100) s.putInt("spo2", spo)
+                val hr = d.getHeartValue()
+                if (hr in 30..220) s.putInt("hr", hr)
+                val hrv = d.gethRVariation()
+                if (hrv > 0) s.putInt("hrv", hrv)
+                val step = d.getStepValue()
+                if (step > 0) s.putInt("step", step)
+            }
+        } catch (e: Throwable) { }
+    }
+
+    private fun collectHrv(d: HRVOriginData) {
+        try {
+            val tm = d.getmTime() ?: return
+            val dk = normalizeDate(d.getDate()) ?: dayIndexToDate("0") ?: return
+            val t = String.format("%02d:%02d", tm.getHour(), tm.getMinute())
+            val v = d.getHrvValue()
+            if (v > 0) mergeSlot(dk, t) { s -> s.putInt("hrv", v) }
+        } catch (e: Throwable) { }
+    }
+
+    /** 逐日回退最多读 3 天：当天戒指常常还没采集（回空包 D2,00 / D9,00），
+     *  但昨天/前天通常有历史数据，只读 day=0 会让页面一直全空。 */
+    private val fallbackMaxDay = 2
+
+    private fun readSpo2Data(mac: String, day: Int) {
+        if (connectedMac != mac || !authenticated) {
+            mainHandler.postDelayed({ readHrvData(mac, 0) }, 800L)
+            return
+        }
+        log("[VeepooRing] 发出 readSpo2hOrigin(day=$day) 指令（血氧/心率/HRV 变化/呼吸率）")
+        var done = false
+        val finish = Runnable {
+            if (done) return@Runnable
+            done = true
+            mainHandler.postDelayed({
+                if (day < fallbackMaxDay) readSpo2Data(mac, day + 1)
+                else readHrvData(mac, 0)
+            }, 900L)
+        }
+        try {
+            manager.readSpo2hOrigin(
+                writeOk("readSpo2hOrigin(day=$day)"),
+                object : ISpo2hOriginDataListener {
+                    override fun onReadOriginProgress(p: Float) {}
+                    override fun onReadOriginProgressDetail(a: Int, b: String, c: Int, d: Int) {}
+                    override fun onSpo2hOriginListener(d: Spo2hOriginData) {
+                        mainHandler.post { collectSpo2(d) }
+                    }
+                    override fun onReadOriginComplete() {
+                        log("[VeepooRing] 血氧原始数据读取完成 day=$day 累计样本=${slotCount()}")
+                        mainHandler.post(finish)
+                    }
+                },
+                day
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 血氧读取异常 day=$day ${e.message}")
+            mainHandler.post(finish)
+        }
+        // 设备不支持该功能时 SDK 的 FunctionCheckUtil 会直接 return、不给任何回调
+        mainHandler.postDelayed({
+            if (!done) {
+                log("[VeepooRing] 血氧读取 day=$day 7s 无完成回调，继续")
+                finish.run()
+            }
+        }, 7_000L)
+    }
+
+    private fun readHrvData(mac: String, day: Int) {
+        if (connectedMac != mac || !authenticated) {
+            flushBatches()
+            return
+        }
+        log("[VeepooRing] 发出 readHRVOrigin(day=$day) 指令")
+        var done = false
+        val finish = Runnable {
+            if (done) return@Runnable
+            done = true
+            mainHandler.postDelayed({
+                if (day < fallbackMaxDay) readHrvData(mac, day + 1)
+                else {
+                    log("[VeepooRing] 补读链结束，统一回传样本 共 ${slotCount()} 条")
+                    flushBatches()
+                }
+            }, 900L)
+        }
+        try {
+            manager.readHRVOrigin(
+                writeOk("readHRVOrigin(day=$day)"),
+                object : IHRVOriginDataListener {
+                    override fun onReadOriginProgress(p: Float) {}
+                    override fun onReadOriginProgressDetail(a: Int, b: String, c: Int, d: Int) {}
+                    override fun onHRVOriginListener(d: HRVOriginData) {
+                        mainHandler.post { collectHrv(d) }
+                    }
+                    override fun onDayHrvScore(score: Int, date: String, type: Int) {}
+                    override fun onReadOriginComplete() {
+                        log("[VeepooRing] HRV 原始数据读取完成 day=$day 累计样本=${slotCount()}")
+                        mainHandler.post(finish)
+                    }
+                },
+                day
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] HRV 读取异常 day=$day ${e.message}")
+            mainHandler.post(finish)
+        }
+        mainHandler.postDelayed({
+            if (!done) {
+                log("[VeepooRing] HRV 读取 day=$day 7s 无完成回调，收尾")
+                finish.run()
+            }
+        }, 7_000L)
+    }
+
+    // ── 自动监测设置：让戒指「以后」持续产生心率/血氧/HRV 原始数据 ──────────
+    /**
+     * 只把「关着的」开关打开，绝不关闭任何已有配置；读不到设置（设备不支持 B3
+     * 协议时 SDK 的 checkB3() 会静默 return）就跳过，不影响主同步链路。
+     */
+    private fun applyAutoMeasureSettings(mac: String) {
+        if (connectedMac != mac || !authenticated || autoMeasureApplied) return
+        autoMeasureApplied = true
+        // EAutoMeasureType / AutoMeasureData 是 Kotlin 2.1 metadata，本项目 Kotlin 1.9
+        // 编译器读不了，统一走 Java 桥 VeepooAutoBridge（javac 不校验 kotlin.Metadata）。
+        try {
+            VeepooAutoBridge.applyAutoMeasure(manager, VeepooAutoBridge.Log { msg -> log(msg) })
+        } catch (e: Throwable) {
+            log("[VeepooRing] 自动监测下发异常 ${e.message}")
+        }
+    }
+
+    // ── 手动测量：结果同时走 onRealtime（卡片立即可见）与 onBatch（趋势图落库）──
+    private fun pushRealtime(metric: String, value: Int, unit: String) {
+        emit(
+            "onRealtime",
+            argsMap(
+                "metric" to metric,
+                "value" to value,
+                "unit" to unit,
+                "ts" to System.currentTimeMillis()
+            )
+        )
+    }
+
+    /** 用全新的 WritableMap 发射，绝不复用 batchBuffer 里的对象（RN map 一次性消费） */
+    private fun emitRealtimeSlot(metric: String, value: Int) {
+        val dk = dayIndexToDate("0") ?: return
+        val cal = java.util.Calendar.getInstance()
+        val t = String.format(
+            "%02d:%02d",
+            cal.get(java.util.Calendar.HOUR_OF_DAY),
+            cal.get(java.util.Calendar.MINUTE)
+        )
+        mergeSlot(dk, t) { s -> s.putInt(metric, value) }
+        val one = Arguments.createMap()
+        one.putString("t", t)
+        one.putInt(metric, value)
+        val arr = Arguments.createArray()
+        arr.pushMap(one)
+        emit("onBatch", argsMap("date" to dk, "slots" to arr))
+    }
+
+    private fun startHeartDetect() {
+        try {
+            log("[VeepooRing] 手动测量：startDetectHeart")
+            manager.startDetectHeart(
+                writeOk("startDetectHeart"),
+                object : IHeartDataListener {
+                    override fun onDataChange(d: HeartData) {
+                        val v = try { d.getData() } catch (e: Throwable) { 0 }
+                        if (v in 30..220) {
+                            log("[VeepooRing] 手动心率 $v bpm")
+                            pushRealtime("hr", v, "bpm")
+                            emitRealtimeSlot("hr", v)
+                        }
+                    }
+                }
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 手动心率测量异常 ${e.message}")
+        }
+    }
+
+    private fun startSpo2Detect() {
+        try {
+            log("[VeepooRing] 手动测量：startDetectSPO2H")
+            manager.startDetectSPO2H(
+                writeOk("startDetectSPO2H"),
+                object : ISpo2hDataListener {
+                    override fun onSpO2HADataChange(d: Spo2hData) {
+                        val v = try { d.getValue() } catch (e: Throwable) { 0 }
+                        if (v in 50..100) {
+                            log("[VeepooRing] 手动血氧 $v%")
+                            pushRealtime("spo2", v, "%")
+                            emitRealtimeSlot("spo2", v)
+                        }
+                        val hr = try { d.getRateValue() } catch (e: Throwable) { 0 }
+                        if (hr in 30..220) {
+                            pushRealtime("hr", hr, "bpm")
+                            emitRealtimeSlot("hr", hr)
+                        }
+                    }
+                }
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 手动血氧测量异常 ${e.message}")
+        }
+    }
+
+    private fun startHrvDetect() {
+        // IHrvDetectListener / HrvDetectState 同样是 Kotlin 2.1 metadata，走 Java 桥。
+        try {
+            VeepooAutoBridge.startHrv(
+                manager,
+                VeepooAutoBridge.Log { msg -> log(msg) },
+                VeepooAutoBridge.IntCallback { v ->
+                    mainHandler.post {
+                        pushRealtime("hrv", v, "ms")
+                        emitRealtimeSlot("hrv", v)
+                    }
+                }
+            )
+        } catch (e: Throwable) {
+            log("[VeepooRing] 手动 HRV 测量异常 ${e.message}")
+        }
+    }
+
+    private fun cancelReconnect() {
+        reconnectRunnable?.let { mainHandler.removeCallbacks(it) }
+        reconnectRunnable = null
+    }
+
+    /** 意外掉线时有限次数自动重连；用户主动点「断开」不重连 */
+    private fun scheduleReconnect(mac: String) {
+        cancelReconnect()
+        if (userInitiatedDisconnect) return
+        if (reconnectTries >= 3) {
+            log("[VeepooRing] 自动重连已达 3 次上限，请手动重连")
+            return
+        }
+        val delay = 1200L + reconnectTries * 1000L
+        val r = Runnable {
+            reconnectRunnable = null
+            if (connectedMac != null || userInitiatedDisconnect) return@Runnable
+            reconnectTries++
+            log("[VeepooRing] 自动重连第 $reconnectTries 次 → $mac")
+            connectInternal(mac)
+        }
+        reconnectRunnable = r
+        mainHandler.postDelayed(r, delay)
+    }
+
+    /** SDK 模式下没有 BluetoothGattCallback，轮询 SDK 的连接状态来感知意外断开 */
+    private fun startLinkMonitor(mac: String) {
+        stopLinkMonitor()
+        val r = object : Runnable {
+            override fun run() {
+                if (connectedMac != mac) return
+                val alive = try { manager.isDeviceConnected(mac) } catch (e: Throwable) { true }
+                if (!alive) {
+                    log("[VeepooRing] SDK 链路意外断开 $mac")
+                    val name = connectedName ?: "Mira Ring"
+                    stopLinkMonitor()
+                    closeGatt()
+                    sendState("disconnected", "deviceName" to name, "deviceAddress" to mac)
+                    scheduleReconnect(mac)
+                    return
+                }
+                if (authenticated && SystemClock.elapsedRealtime() - lastBatteryAt > BATTERY_REFRESH_INTERVAL) {
+                    readBatteryNow(mac)
+                }
+                linkMonitorRunnable = this
+                mainHandler.postDelayed(this, 4000L)
+            }
+        }
+        linkMonitorRunnable = r
+        mainHandler.postDelayed(r, 4000L)
+    }
+
+    private fun stopLinkMonitor() {
+        linkMonitorRunnable?.let { mainHandler.removeCallbacks(it) }
+        linkMonitorRunnable = null
+    }
+
+    private fun openGatt(adapter: android.bluetooth.BluetoothAdapter, mac: String, displayName: String) {
+        val device: BluetoothDevice = try {
+            adapter.getRemoteDevice(mac)
+        } catch (e: Throwable) {
+            sendState("error", "error" to "设备地址无效：${e.message}")
+            return
+        }
+        val cb = object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+                mainHandler.post {
+                    if (g !== gatt && gatt != null) return@post
+                    if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
+                        cancelConnectTimeout()
+                        connectingMac = null
+                        connectedMac = mac
+                        connectedName = displayName
+                        ready.set(true)
+                        readySent.set(false)
+                        log("[VeepooRing] ✅ GATT 已连接 $mac")
+                        sendState("connected", "deviceName" to displayName, "deviceAddress" to mac)
+                        try { g.discoverServices() } catch (e: Throwable) {
+                            // 服务发现失败也要让 JS 流程走完，不能卡在 connecting
+                            emitReadyOnce(null)
+                        }
+                        // 部分设备不回调 onServicesDiscovered，兜底保证 connected → ready 一定闭环
+                        mainHandler.postDelayed({
+                            if (connectedMac == mac) emitReadyOnce(null)
+                        }, 2500L)
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        val wasConnected = connectedMac != null
+                        val wasConnecting = connectingMac != null
+                        if (wasConnecting && !wasConnected && !connectRetryDone && status != BluetoothGatt.GATT_SUCCESS) {
+                            // 华为 EMUI 上 status=133 很常见，断开后重试一次通常即可连上
+                            connectRetryDone = true
+                            log("[VeepooRing] 首次连接失败 status=$status，600ms 后自动重试一次")
+                            val old = gatt
+                            gatt = null
+                            try { old?.close() } catch (e: Throwable) { }
+                            cancelConnectTimeout()
+                            mainHandler.postDelayed({
+                                if (connectingMac == mac) openGatt(adapter, mac, displayName)
+                                scheduleConnectTimeout()
+                            }, 600L)
+                            return@post
+                        }
+                        cancelConnectTimeout()
+                        closeGatt()
+                        if (wasConnected) {
+                            log("[VeepooRing] 连接已断开 $mac")
+                            sendState("disconnected", "deviceName" to displayName, "deviceAddress" to mac)
+                            scheduleReconnect(mac)
+                        } else if (wasConnecting) {
+                            sendState(
+                                "error",
+                                "error" to "连接失败（GATT status=$status）：请确认戒指有电、靠近手机，且未被系统蓝牙或其他 App 占用；必要时在系统蓝牙里取消配对后重试"
+                            )
+                        }
+                    }
+                }
+            }
+
+            override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+                mainHandler.post {
+                    if (connectedMac == null) return@post
+                    val caps = Arguments.createMap()
+                    val services = Arguments.createArray()
+                    try {
+                        g.services?.forEach { services.pushString(it.uuid.toString()) }
+                    } catch (e: Throwable) { }
+                    caps.putArray("services", services)
+                    log("[VeepooRing] GATT 服务发现完成 status=$status，共 ${services.size()} 个服务")
+                    emitReadyOnce(caps)
+                }
+            }
+        }
+        gattCallback = cb
+        try {
+            gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                device.connectGatt(reactContext.applicationContext, false, cb, BluetoothDevice.TRANSPORT_LE)
+            } else {
+                device.connectGatt(reactContext.applicationContext, false, cb)
+            }
+        } catch (e: Throwable) {
+            gatt = null
+            cancelConnectTimeout()
+            sendState("error", "error" to "连接异常：${e.message}")
+            return
+        }
+        if (gatt == null) {
+            cancelConnectTimeout()
+            sendState("error", "error" to "无法建立 GATT 连接：请检查蓝牙是否开启、戒指是否被占用")
+        }
+    }
+
+    private fun scheduleConnectTimeout(delay: Long = CONNECT_TIMEOUT) {
+        cancelConnectTimeout()
+        val r = Runnable {
+            if (connectingMac != null && connectedMac == null) {
+                log("[VeepooRing] 连接超时（${delay}ms），断开")
+                try { manager.disconnectWatch(IBleWriteResponse { }) } catch (e: Throwable) { }
+                closeGatt()
+                sendState("error", "error" to "连接超时：戒指未响应。请确认戒指有电、在手机旁边，且未被其他 App 占用，然后重新点选设备")
+            }
+        }
+        connectTimeoutRunnable = r
+        mainHandler.postDelayed(r, delay)
+    }
+
+    @ReactMethod
+    fun disconnect() {
+        mainHandler.post {
+            cancelConnectTimeout()
+            cancelReconnect()
+            userInitiatedDisconnect = true
+            authenticated = false
+            authStarted = false
+            if (sdkMode) {
+                try { manager.disconnectWatch(IBleWriteResponse { }) } catch (e: Throwable) { }
+            }
+            closeGatt()
+            sdkMode = false
+            sdkConnectSucceeded = false
+            log("[VeepooRing] 已主动断开")
+            sendState("disconnected")
+        }
+    }
+
+    // ── 自动监测 / 手动测量：已接到 Veepoo 协议 ───────────────────────────────
+    @ReactMethod
+    fun setAutoMonitor(on: Boolean) {
+        monitorOn = on
+        mainHandler.post {
+            if (on && authenticated) connectedMac?.let { applyAutoMeasureSettings(it) }
+        }
+    }
+
+    // JS 层会以较高频次重复下发同值，刻意不打日志避免灌爆主队列
+    @ReactMethod
+    fun setSyncEnabled(on: Boolean) {
+        syncEnabled = on
+        mainHandler.post {
+            if (on && authenticated) connectedMac?.let { applyAutoMeasureSettings(it) }
+        }
+    }
+
+    @ReactMethod
+    fun measure(key: String) {
+        mainHandler.post {
+            val mac = connectedMac
+            if (mac.isNullOrEmpty() || !authenticated) {
+                log("[VeepooRing] measure($key) 需要先连接戒指并完成密钥认证")
+                return@post
+            }
+            when (key.lowercase()) {
+                "hr", "heartrate", "heart", "pulse", "心率" -> startHeartDetect()
+                "spo2", "spo2h", "oxygen", "bloodoxygen", "血氧" -> startSpo2Detect()
+                "hrv", "心率变异性" -> startHrvDetect()
+                else -> log("[VeepooRing] measure($key) 无对应手动测量指令，已忽略")
+            }
+        }
+    }
+
+    @ReactMethod
+    fun stopEcg() {
+        log("[VeepooRing] stopEcg 暂未接线")
+    }
+
+    @ReactMethod
+    fun readBattery() {
+        mainHandler.post {
+            connectedMac?.let { readBatteryNow(it) }
+                ?: log("[VeepooRing] 未连接戒指，无法读取电量")
+        }
+    }
+
+    @ReactMethod
+    fun findDevice() {
+        log("[VeepooRing] findDevice 暂未接线")
+    }
+
+    @ReactMethod
+    fun enterCameraMode() {
+        log("[VeepooRing] enterCameraMode 暂未接线")
+    }
+
+    @ReactMethod
+    fun exitCameraMode() {
+        log("[VeepooRing] exitCameraMode 暂未接线")
+    }
+
+    @ReactMethod
+    fun triggerOxygenAnalysis() {
+        log("[VeepooRing] triggerOxygenAnalysis 暂未接线")
+    }
+
+    @ReactMethod
+    fun readRrAnalysis() {
+        log("[VeepooRing] readRrAnalysis 暂未接线")
+    }
+
+    @ReactMethod
+    fun recoverOffline() {
+        log("[VeepooRing] recoverOffline 暂未接线")
+    }
+
+    @ReactMethod
+    fun readFemale() {
+        log("[VeepooRing] readFemale 暂未接线")
+    }
+
+    @ReactMethod
+    fun writeFemale(lastDate: String, cycle: Int, days: Int) {
+        // 返回 void 即可：JS 侧用 Promise.resolve(native.writeFemale(...)) 兼容
+    }
+
+    @ReactMethod
+    fun backfill() = backfillSince("")
+
+    /** JS 的 ready → backfillSince 入口；已完成密钥认证时读真实离线数据 */
+    @ReactMethod
+    fun backfillSince(fromDateStr: String) {
+        mainHandler.post {
+            val mac = connectedMac
+            if (mac.isNullOrEmpty()) {
+                emitBackfillDone(0)
+                return@post
+            }
+            log("[VeepooRing] backfillSince($fromDateStr) → 同步戒指离线数据")
+            syncHealthData(mac)
+        }
+    }
+
+    // RN 0.74 的 NativeEventEmitter 要求这两个方法存在，否则运行时告警
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // no-op
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // no-op
+    }
+}
+

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Animated, StyleSheet, TouchableOpacity, Easing, Dimensions } from 'react-native';
 import Svg, { Circle, Rect } from 'react-native-svg';
+import { theme } from '../theme/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 

@@ -29,30 +29,38 @@ interface Props {
   anchorMs?: number;
 }
 
-/** 该日「夜间窗口」（前一日 22:00 → 该日 06:00）的平均心率 */
-function nightHrMean(dk: string, dayMs: number): number | null {
-  const out: number[] = [];
-  try {
-    for (const p of healthStore.getIntraday('hr', dayKey(dayMs - DAY_MS))) {
-      if (new Date(p.t).getHours() >= 22) out.push(p.v); // 前夜 22–24
-    }
+/**
+ * ★ 2026-11-08（用户：「夜间心率下降 / 夜间日间心率 没展示」排查）：
+ *   旧实现用固定时钟窗 nightHrMean(22–06) / daytimeHrMean(07–22) 各自独立读 intraday，
+ *   但精简版戒指白天有效 HR 读数很稀疏（全天约 39 个有效点，且多集中在睡眠段），
+ *   导致 daytimeHrMean 经常返回 null → 两个格都因依赖 dayHr 而显示 '--'。
+ *   现改为：一次性跨 [前日/当日/次日] 收集全部 HR 逐样本，
+ *   - 夜间心率：取 22–06 点里**最低 25% 均值**（静息心率近似，与 computeNightPhys 同源口径）；
+ *   - 日间心率：取 07–22 点均值；样本过少（<3）时回退到当天日均值，并标注「日=全天均值」。
+ *   这样只要当天有任意 HR 数据，两个格都会显示真实数值；完全没有 HR 时才诚实地 '--'。
+ */
+function collectHr(days: string[]): { h: number; v: number }[] {
+  const out: { h: number; v: number }[] = [];
+  for (const dk of days) {
     for (const p of healthStore.getIntraday('hr', dk)) {
-      if (new Date(p.t).getHours() < 6) out.push(p.v);   // 该日 0–6
+      if (typeof p.t === 'number' && typeof p.v === 'number' && Number.isFinite(p.v)) {
+        out.push({ h: new Date(p.t).getHours(), v: p.v });
+      }
     }
-  } catch { /* 静默 */ }
-  return out.length ? out.reduce((a, b) => a + b, 0) / out.length : null;
+  }
+  return out;
 }
-
-/** 该日「日间窗口」（07:00–22:00）的平均心率 */
-function daytimeHrMean(dk: string): number | null {
-  const out: number[] = [];
-  try {
-    for (const p of healthStore.getIntraday('hr', dk)) {
-      const h = new Date(p.t).getHours();
-      if (h >= 7 && h < 22) out.push(p.v);
-    }
-  } catch { /* 静默 */ }
-  return out.length ? out.reduce((a, b) => a + b, 0) / out.length : null;
+function meanVal(vals: number[]): number | null {
+  if (!vals.length) return null;
+  const s = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return Number.isFinite(s) ? Math.round(s * 10) / 10 : null;
+}
+/** 静息心率近似：最低 25% 均值（夜间 HR 波动里的低段） */
+function lowestQuartileMean(vals: number[]): number | null {
+  if (!vals.length) return null;
+  const s = [...vals].sort((a, b) => a - b);
+  const n = Math.max(1, Math.ceil(s.length * 0.25));
+  return meanVal(s.slice(0, n));
 }
 
 export function NightBpCard({ anchorMs }: Props) {
@@ -61,40 +69,56 @@ export function NightBpCard({ anchorMs }: Props) {
   const data = useMemo(() => {
     const dayMs = anchorMs ?? Date.now();
     const dk = dayKey(dayMs);
-    // 1) 最近一次血压测量（该日优先，没有则往前找 7 天内最近一次）
+    // ★ 2026-11-06（用户「接上真的数据」）：基础版 LunaMira 无原生光电血压（proOnly），
+    //   但用户可走「手动记录」入口自填血压（写 manualBpSys/manualBpDia）。
+    //   因此同时读原生(戒指光电/健康一览)与手动两路，合并取最新 / 合并日均值。
+    const latestBpForDay = (d: string): { sys: number; dia: number; t: number; manual: boolean } | null => {
+      const ns = healthStore.getIntraday('bpSys', d);
+      const nd = healthStore.getIntraday('bpDia', d);
+      const ms = healthStore.getIntraday('manualBpSys', d);
+      const md = healthStore.getIntraday('manualBpDia', d);
+      const sysPts = [...ns, ...ms].sort((a, b) => a.t - b.t);
+      const diaPts = [...nd, ...md].sort((a, b) => a.t - b.t);
+      if (!sysPts.length || !diaPts.length) return null;
+      const sLast = sysPts[sysPts.length - 1];
+      const dLast = diaPts[diaPts.length - 1];
+      const t = Math.max(sLast.t, dLast.t);
+      const manual = (ms.length > 0 && sLast.t >= ms[ms.length - 1].t)
+        || (md.length > 0 && dLast.t >= md[md.length - 1].t);
+      return { sys: sLast.v, dia: dLast.v, t, manual };
+    };
+    // 1) 最近一次血压测量（该日优先，往前找 7 天内最近一次；原生或手动任一即可）
     let sys: number | null = null;
     let dia: number | null = null;
     let measuredAt: number | null = null;
+    let measuredManual = false;
     for (let i = 0; i < 7; i++) {
-      const d = dayKey(dayMs - i * DAY_MS);
-      const sp: TimePoint[] = healthStore.getIntraday('bpSys', d);
-      const dp: TimePoint[] = healthStore.getIntraday('bpDia', d);
-      if (sp.length && dp.length) {
-        // ★ v18.134（审查 04 🟡-3 配套）：按 t 显式取最新，不依赖「数组已升序」的隐式契约
-        //   （loadV2 快照恢复不做排序校验，被外部改乱顺序的快照会让「最近一次」变「最早一次」）。
-        const spLast = sp.reduce((a, b) => (b.t > a.t ? b : a), sp[0]);
-        const dpLast = dp.reduce((a, b) => (b.t > a.t ? b : a), dp[0]);
-        sys = spLast.v;
-        dia = dpLast.v;
-        measuredAt = Math.max(spLast.t, dpLast.t);
-        break;
-      }
+      const r = latestBpForDay(dayKey(dayMs - i * DAY_MS));
+      if (r) { sys = r.sys; dia = r.dia; measuredAt = r.t; measuredManual = r.manual; break; }
     }
-    // 2) 近 7 天有测量的日均值（≥2 天才给均值，1 天无趋势意义）
+    // 2) 近 7 天有测量的日均值（≥2 天才给均值，1 天无趋势意义；原生/手动取其一，手动优先）
     const sysDays: number[] = [];
     const diaDays: number[] = [];
     let measuredDayCount = 0;
     for (let i = 0; i < 7; i++) {
       const d = dayKey(dayMs - i * DAY_MS);
-      const s = healthStore.getDay('bpSys', d)?.mean ?? null;
-      const di = healthStore.getDay('bpDia', d)?.mean ?? null;
+      const s = healthStore.getDay('manualBpSys', d)?.mean ?? healthStore.getDay('bpSys', d)?.mean ?? null;
+      const di = healthStore.getDay('manualBpDia', d)?.mean ?? healthStore.getDay('bpDia', d)?.mean ?? null;
       if (s != null && di != null) { sysDays.push(s); diaDays.push(di); measuredDayCount++; }
     }
     const sysAvg = sysDays.length >= 2 ? sysDays.reduce((a, b) => a + b, 0) / sysDays.length : null;
     const diaAvg = diaDays.length >= 2 ? diaDays.reduce((a, b) => a + b, 0) / diaDays.length : null;
-    // 3) 夜间心率 dipping 近似
-    const nightHr = nightHrMean(dk, dayMs);
-    const dayHr = daytimeHrMean(dk);
+    // 3) 夜间心率 dipping 近似（★ 2026-11-08 重写：跨日收集 + 静息近似 + 全天均值兜底）
+    const prev = dayKey(dayMs - DAY_MS);
+    const next = dayKey(dayMs + DAY_MS);
+    const allHr = collectHr([prev, dk, next]);
+    const nightPts = allHr.filter((p) => p.h >= 22 || p.h < 7).map((p) => p.v);
+    const dayPts = allHr.filter((p) => p.h >= 7 && p.h < 22).map((p) => p.v);
+    const nightHr = lowestQuartileMean(nightPts);                 // 夜间静息心率近似（最低 25% 均值）
+    const dayHrDaily = healthStore.getDay('hr', dk)?.mean ?? null; // 全天均值兜底
+    const dayHrRaw = dayPts.length >= 3 ? meanVal(dayPts) : null;  // 日间窗样本足够才用
+    const dayHr = dayHrRaw ?? (dayHrDaily != null ? dayHrDaily : null);
+    const dayHrIsDaily = dayHrRaw == null && dayHrDaily != null;
     // ★ 除零保护保留：dayHr <= 0 时直接判「无数据」，不参与百分比计算
     const dipPct = nightHr != null && dayHr != null && dayHr > 0 && Number.isFinite(nightHr) && Number.isFinite(dayHr)
       ? ((dayHr - nightHr) / dayHr) * 100
@@ -109,7 +133,7 @@ export function NightBpCard({ anchorMs }: Props) {
       : dipPct >= 0 ? '基本没降'
       : '夜间高于日间';
     const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeDeep : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
-    return { sys, dia, measuredAt, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr };
+    return { sys, dia, measuredAt, measuredManual, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr, dayHrIsDaily };
   }, [anchorMs, hsVer]);
 
   const hasBp = data.sys != null && data.dia != null;
@@ -126,7 +150,9 @@ export function NightBpCard({ anchorMs }: Props) {
           </Text>
           <Text style={styles.sub}>
             {hasBp
-              ? data.measuredAt ? `光电血压 · ${new Date(data.measuredAt).getMonth() + 1}/${new Date(data.measuredAt).getDate()}` : '光电血压'
+              ? data.measuredAt
+                ? `${data.measuredManual ? '手动记录' : '戒指光电'} · ${new Date(data.measuredAt).getMonth() + 1}/${new Date(data.measuredAt).getDate()}`
+                : data.measuredManual ? '手动记录' : '戒指光电血压'
               : '还没有血压测量'}
           </Text>
         </View>
@@ -140,7 +166,7 @@ export function NightBpCard({ anchorMs }: Props) {
           </Text>
           <Text style={styles.sub}>
             {data.measuredDayCount >= 2
-              ? `近 7 天 ${data.measuredDayCount} 天有测量`
+              ? `近 7 天 ${data.measuredDayCount} 天有测量（含手动）`
               : data.measuredDayCount === 1
                 ? '测量 1 天，暂无均值'
                 : '还没有测量记录'}
@@ -154,7 +180,7 @@ export function NightBpCard({ anchorMs }: Props) {
             {data.dipPct != null ? `${data.dipPct.toFixed(0)}%` : '--'}
           </Text>
           <Text style={[styles.sub, data.dipLabel ? { color: data.dipColor } : null]}>
-            {data.dipLabel ?? '需要夜间心率数据'}
+            {data.dipLabel ?? (data.nightHr == null || data.dayHr == null ? '需要夜间与日间心率' : '需要心率数据')}
           </Text>
         </View>
         <View style={styles.cell}>
@@ -165,13 +191,10 @@ export function NightBpCard({ anchorMs }: Props) {
               : '--'}
             <Text style={styles.unit}> bpm</Text>
           </Text>
-          <Text style={styles.sub}>夜 22–06 · 日 07–22</Text>
+          <Text style={styles.sub}>{data.dayHrIsDaily ? '夜 22–06 · 日=全天均值' : '夜 22–06 · 日 07–22'}</Text>
         </View>
       </View>
-      <Text style={styles.note}>
-        血压来自手动光电测量；夜间心率下降用心率近似血压 dipping（夜间较日间下降 ≥10% 为常见参考口径），仅供参考，
-        不构成医疗建议。连续夜间血压监测可在睡前完成一次光电血压测量积累个人记录。
-      </Text>
+      <Text style={styles.note}>仅供参考，不构成医疗建议。</Text>
     </Card>
   );
 }

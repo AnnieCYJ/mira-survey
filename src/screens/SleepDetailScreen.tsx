@@ -21,7 +21,7 @@
  *     今天用 14 天基线（可判偏高），历史日 baselineDays=1（偏高不可信，只判节律紊乱）。
  */
 import { useMemo, useState, useDeferredValue } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -38,6 +38,9 @@ import { useRingState } from '../hooks/useRingState';
 import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../components/SleepAnalysisCard';
 import SleepRecoveryHero from '../components/SleepRecoveryHero';
 import SleepDualAxisChart, { type DualPoint } from '../components/SleepDualAxisChart';
+
+// ★ 2026-11-08（用户）：睡眠呼吸冥想入口卡左侧用呼吸/冥想配图，替换原先丑白的 icon 块
+const IMG_SLEEP_BREATH = require('../assets/breathing/thumb_sleep_v2.jpg');
 import { timeTickLabel, type TimeRange } from '../lib/chartAxis';
 import SleepMultiDimCompare, { type MetricRow } from '../components/SleepMultiDimCompare';
 import CortisolAnomalySheet, { type CortAnomKind } from '../components/CortisolAnomalySheet';
@@ -553,9 +556,7 @@ export default function SleepDetailScreen() {
           {/* ★ 2026-11-07（用户）：底部改成「睡眠呼吸冥想」入口卡 —— 卡片加大加宽、内容更丰富，
               直达睡前助眠呼吸 / 冥想（Breathing） */}
           <TouchableOpacity style={[styles.stableSleepCard, styles.section]} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
-            <View style={styles.stableSleepIcon}>
-              <Icon name="breath" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2} />
-            </View>
+            <Image source={IMG_SLEEP_BREATH} style={styles.stableSleepIcon} resizeMode="cover" />
             <View style={styles.stableSleepBody}>
               <Text style={styles.stableSleepTitle}>睡眠呼吸冥想</Text>
               <Text style={styles.stableSleepSub}>
@@ -726,8 +727,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: theme.colors.cardBorder,
   },
   stableSleepIcon: {
-    width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)', marginRight: theme.space.sm,
+    width: 56, height: 56, borderRadius: theme.radius.card, marginRight: theme.space.sm,
   },
   stableSleepBody: { flex: 1 },
   stableSleepTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
@@ -735,7 +735,7 @@ const styles = StyleSheet.create({
   stableSleepChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1), marginTop: theme.sp(1.5) },
   stableSleepChip: {
     paddingVertical: theme.sp(0.75), paddingHorizontal: theme.sp(1.5),
-    borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.white10,
     borderWidth: 1, borderColor: theme.colors.cardBorder,
   },
   stableSleepChipTxt: { fontSize: theme.fontSize.micro, color: theme.colors.textBody },

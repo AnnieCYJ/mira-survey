@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1.5) },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: theme.colors.textTitle },
   levelChip: { flexDirection: 'row', alignItems: 'center', borderRadius: theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10 },
-  levelDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  levelDot: { width: 6, height: 6, borderRadius: theme.radius.xs, marginRight: 6 },
   levelText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
   bars: { flexDirection: 'row', alignItems: 'flex-end', height: 72, justifyContent: 'space-between', marginTop: theme.sp(0.5) },
   bar: { width: 8, borderRadius: chart.barRadius },

@@ -35,7 +35,7 @@ import {
   type MoodKey,
 } from '../data/emotionLog';
 import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
-import { useDeviceModel } from '../config/deviceModel';
+import { useDeviceModel, hasMetric } from '../config/deviceModel';
 // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
 import { fmtEcgUnit } from '../lib/ecgFormat';
 import { saneBodyTemp } from '../data/ringDataIsolation';
@@ -499,7 +499,10 @@ function RangeBarsChart({
     }
     const v = points[best];
     if (!isValid(v)) { setTip(null); return; }
-    setTip({ x: barX(best) + barW / 2, y: yAt(v), label: labels[best] ?? '', value: valueFmt(v), color: colorOf(v) ?? mm.colors.ink });
+    // ★ 2026-11-08（用户：点击柱状图弹窗要落在所点柱正上方，不能固定在一处）：
+    //   坐标系是固定 W=680 的 viewBox，但 SVG 按实际渲染宽 w 缩放，ChartTooltip 在 w 空间定位。
+    //   因此 680 空间的 x 必须换算到 w 空间（x_w = x_680 / wScale，与 moodMarkers 的 px=(cx/W)*w 同源）。
+    setTip({ x: (barX(best) + barW / 2) / wScale, y: yAt(v), label: labels[best] ?? '', value: valueFmt(v), color: colorOf(v) ?? mm.colors.ink });
   };
   return (
     <View style={styles.chartCard}>
@@ -2265,7 +2268,7 @@ export default function MetricDetailScreen() {
                       paddingVertical: theme.space.sm,
                       paddingHorizontal: theme.space.md,
                       // ★ mira-ocean（2026-10-17）：淡紫 → 玻璃白
-                      backgroundColor: i === 0 ? 'rgba(255,255,255,0.10)' : 'transparent',
+                      backgroundColor: i === 0 ? 'rgba(255,255,255,0.1)' : 'transparent',
                       borderRadius: theme.radius.sm,
                       marginBottom: theme.sp(1),
                     }}>
@@ -2399,7 +2402,7 @@ function GlucoseRefBand({ label, lo, hi }: { label: string; lo: number; hi: numb
   const lowW = (lo / GLUCOSE_AXIS_MAX) * 100;
   const okW = ((hi - lo) / GLUCOSE_AXIS_MAX) * 100;
   const cLow = mm.colors.skyCore;
-  const cOk = theme.colors.success;
+  const cOk = theme.colors.ui.status.good;
   const cHigh = mm.colors.honeyCore;
   return (
     <View style={{ marginTop: theme.sp(2.5) }}>
@@ -2459,7 +2462,7 @@ function GlucoseSummaryCard() {
       <View style={{ marginTop: theme.sp(3) }}>
         <Text style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginBottom: theme.sp(1) }}>参考</Text>
         <View style={{ flexDirection: 'row', gap: theme.sp(4), marginBottom: theme.sp(1), paddingLeft: 74 }}>
-          {([['偏低', mm.colors.skyCore], ['正常', theme.colors.success], ['偏高', mm.colors.honeyCore]] as const).map(([t, c]) => (
+          {([['偏低', mm.colors.skyCore], ['正常', theme.colors.ui.status.good], ['偏高', mm.colors.honeyCore]] as const).map(([t, c]) => (
             <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{t}</Text>
@@ -2752,7 +2755,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
   });
 
   const dotColor = (s: string) =>
-    s === 'good' ? theme.colors.success : s === 'warn' ? theme.colors.stateTense : theme.colors.textSub;
+    s === 'good' ? theme.colors.ui.status.good : s === 'warn' ? theme.colors.ui.status.warn : theme.colors.ui.status.neutral;
 
   // 共享坐标轴刻度（0–10 mmol/L）
   const TICKS = [0, 2, 4, 6, 8, 10];
@@ -2802,7 +2805,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
                     top: -3,
                     width: 6,
                     height: 18,
-                    borderRadius: 3,
+                    borderRadius: theme.radius.xs,
                     backgroundColor: d.color,
                     borderWidth: 1.5,
                     borderColor: '#FFFFFF',
@@ -2830,7 +2833,7 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
           ))}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
-          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: 'rgba(213,227,132,0.35)', marginRight: 6 }} />
+          <View style={{ width: 10, height: 10, borderRadius: theme.radius.xs, backgroundColor: 'rgba(213,227,132,0.35)', marginRight: 6 }} />
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>绿色带 = 理想区间 · 彩色竖条 = 你今日的实测值</Text>
         </View>
         <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
@@ -2846,6 +2849,11 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
  * - 恢复力（近 14 天，对齐 Oura Resilience，压力信号为主）独立卡片，日/周/月/年均展示。
  * 色值与全局一致：放松=绿 limeMid / 正常=蓝 skyMid / 中等=琥珀 honeyCore / 偏高=粉 roseDeep。 */
 function StressStatCards({ anchor, range, part, binMin = DEFAULT_BIN_MIN }: { anchor: Date; range: RangeKey; part: 'day' | 'night'; binMin?: number }) {
+  // ★ 2026-11-08（用户：疲劳度若戒指不返回就不要展示）：疲劳是 proOnly 指标，
+  //   精简版（LunaMira 基础版）硬件不支持（能力包 疲劳 Fatigue : 不支持），健康一览通道也为空。
+  //   只有设备原生支持 fatigue 时才渲染疲劳度块；否则无论 healthStore 里有没有残留值都一律不展示。
+  const { model } = useDeviceModel();
+  const showFatigue = hasMetric(model, 'fatigue');
   // ★ 2026-11-05（用户：压力四档）：四档配色 放松=绿 / 正常=蓝 / 中等=琥珀 / 偏高=粉
   const C = { relax: mm.colors.limeMid, normal: mm.colors.skyMid, mid: mm.colors.honeyCore, stress: mm.colors.roseDeep };
 
@@ -2962,7 +2970,7 @@ function StressStatCards({ anchor, range, part, binMin = DEFAULT_BIN_MIN }: { an
           <Card>
             <Text style={styles.chartTitle}>压力分析</Text>
             <Text style={styles.note}>今日压力数据不足，暂无法生成分析卡片。持续佩戴后，这里会显示当日节奏。</Text>
-            {fatigue != null && renderFatigueBar()}
+            {showFatigue && fatigue != null && renderFatigueBar()}
           </Card>
         </View>
       );
@@ -3025,7 +3033,7 @@ function StressStatCards({ anchor, range, part, binMin = DEFAULT_BIN_MIN }: { an
               </View>
             </View>
           ) : null}
-          {fatigue != null && renderFatigueBar()}
+          {showFatigue && fatigue != null && renderFatigueBar()}
           {!partHasData ? (
             <Text style={styles.note}>当前时段（{partName}）暂无足够压力数据。</Text>
           ) : null}
@@ -3084,7 +3092,7 @@ function StressStatCards({ anchor, range, part, binMin = DEFAULT_BIN_MIN }: { an
             </View>
           </View>
         ) : null}
-        {fatigue != null && renderFatigueBar()}
+        {showFatigue && fatigue != null && renderFatigueBar()}
       </Card>
       {w && w.daysWithData === 0 ? (
         <Text style={styles.note}>当前范围内暂无足够压力数据，无法生成分析卡片。</Text>
@@ -3225,7 +3233,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: theme.colors.ui.white70,
     marginRight: theme.space.sm,
   },
   headText: { flex: 1 },
@@ -3235,9 +3243,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.sp(1),
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.successSoft,
+    backgroundColor: theme.colors.ui.status.goodSoft,
   },
-  liveText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.success },
+  liveText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.ui.status.good },
   hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
   // ★ 本轮：title 在数字上方（今日/近期 + 指标名）
   heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(1.5) },
@@ -3249,12 +3257,12 @@ const styles = StyleSheet.create({
   // ★ 本轮：数字下方短 AI 分析
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   /** ★ 本轮（用户 #246）：客观数据后的夸赞 / 肯定句——比 heroAnalysis 弱半档、带一点强调色，但不喧宾夺主 */
-  heroPraise: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep ?? theme.colors.success, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
+  heroPraise: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep ?? theme.colors.ui.status.good, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
   /** ★ 2026-11-03：hero 卡内的区间解读段（从页面底部上移合并）——比 heroAnalysis 再小半档，弱层级 */
   heroNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: 19, opacity: 0.9 },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
-  up: { color: theme.colors.success },
-  down: { color: theme.colors.stateTense },
+  up: { color: theme.colors.ui.status.good },
+  down: { color: theme.colors.ui.status.warn },
   /* ★ 2026-11-06（用户）：压力 hero 右侧定性档位（颜色按四档内联注入） */
   stressQual: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold, marginLeft: theme.space.md, alignSelf: 'center' },
   chartCard: {
@@ -3313,12 +3321,12 @@ const styles = StyleSheet.create({
   zoneText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  errorText: { color: theme.colors.danger },
+  errorText: { color: theme.colors.ui.status.danger },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(2), paddingLeft: Y_GUT },
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   /**
    * ★ 2026-10-10（用户：「详情页下面的平均/最高/最低加个框，跟其他模块保持一致」）：
-   * 原来三格是 `rgba(255,255,255,0.6)` 半透明白底 —— 页面本身是白的，等于没有边界，
+   * 原来三格是 `theme.colors.ui.white60` 半透明白底 —— 页面本身是白的，等于没有边界，
    * 所以看起来"没框"。改为与全站卡片同一套规格：`cardBg` 实底 + 1px `cardBorder` 描边
    * + `radius.md` 圆角（对齐 components/Card.tsx 的白卡规格）。
    */
@@ -3393,5 +3401,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.ui.borderSoft,
   },
-  ecgStopLabel: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.danger ?? theme.colors.textSub },
+  ecgStopLabel: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, color: theme.colors.ui.status.danger ?? theme.colors.textSub },
 });

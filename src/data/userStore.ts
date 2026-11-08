@@ -51,6 +51,9 @@ export interface UserProfile {
 export interface UserSession {
   loggedIn: boolean;
   onboardingDone: boolean;
+  /** ★ 2026-11-07（用户）：首次进入在「AI 对话」与「主界面」之间插入「连接戒指」引导页，
+   *  本标记记录该页是否已完成（连接成功或用户选择稍后连接）。true 后不再弹该页。 */
+  ringSetupDone?: boolean;
   account?: UserAccount;
   profile?: UserProfile;
 }
@@ -103,6 +106,7 @@ async function loadSession(): Promise<UserSession> {
     sessionCache = {
       loggedIn: !!p.loggedIn,
       onboardingDone: !!p.onboardingDone,
+      ringSetupDone: !!p.ringSetupDone,
       account: p.account,
       profile: p.profile,
     };
@@ -149,6 +153,7 @@ export const userStore = {
     await saveSession({
       loggedIn: true,
       onboardingDone: false,
+      ringSetupDone: false,
       account: { phone, accountName },
       profile: {},
     });
@@ -164,6 +169,7 @@ export const userStore = {
     await saveSession({
       loggedIn: true,
       onboardingDone: false,
+      ringSetupDone: false,
       account: { phone, accountName: rec.accountName },
       profile: {},
     });
@@ -180,6 +186,16 @@ export const userStore = {
     });
   },
 
+  /** ★ 2026-11-07（用户）：「连接戒指」引导页完成（已连接或用户选择稍后连接）后调用，
+   *  标记 ringSetupDone=true，之后 AuthGate 不再弹该页。 */
+  async completeRingSetup(): Promise<void> {
+    const prev = await loadSession();
+    await saveSession({
+      ...prev,
+      ringSetupDone: true,
+    });
+  },
+
   /** 退出登录：保留账号表与已填资料，仅清登录态（重新登录直达主页）。 */
   async signOut(): Promise<void> {
     const prev = await loadSession();
@@ -193,7 +209,7 @@ export const userStore = {
   /** 调试用：清空全部（账号 + 会话 + 资料），回到首次启动。 */
   async resetAll(): Promise<void> {
     await saveAccounts({});
-    await saveSession({ loggedIn: false, onboardingDone: false });
+    await saveSession({ loggedIn: false, onboardingDone: false, ringSetupDone: false });
     emitSessionChange();
   },
 };

@@ -941,9 +941,9 @@ const ls = StyleSheet.create({
   methodImage: { height: theme.sp(31), justifyContent: 'flex-end', overflow: 'hidden' },
   methodShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,24,42,0.22)' },
   methodCopy: { padding: theme.sp(2) },
-  methodTone: { color: 'rgba(255,255,255,0.82)', fontSize: theme.fontSize.micro, marginBottom: theme.sp(0.5) },
+  methodTone: { color: theme.colors.ui.white82, fontSize: theme.fontSize.micro, marginBottom: theme.sp(0.5) },
   methodTitle: { color: theme.colors.textWhite, fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold, marginBottom: theme.sp(0.5) },
-  methodText: { color: 'rgba(255,255,255,0.92)', fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.body },
+  methodText: { color: theme.colors.ui.white92, fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.body },
   secHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -1175,7 +1175,7 @@ const ss = StyleSheet.create({
   /* 底部操作栏（钉在屏幕底）：深蓝紫实底托住滚过的内容（mira-ocean：原白底 → 深底，避免与深色主题冲突） */
   actionBar: { paddingTop: theme.sp(2), backgroundColor: theme.colors.bgBottom, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder },
   /* ── 添加运动 · 弹出小卡（v18.98：Modal 底部小卡，高由内容决定，不占整页）── */
-  addMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  addMask: { flex: 1, backgroundColor: theme.colors.ui.black50, justifyContent: 'flex-end' },
   addCard: {
     backgroundColor: theme.colors.bgBottom,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.cardBorder,

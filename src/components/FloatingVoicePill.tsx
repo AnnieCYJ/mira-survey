@@ -51,7 +51,7 @@ export default function FloatingVoicePill({ onClose, onMicPress }: Props) {
       <TouchableOpacity
         activeOpacity={1}
         onPress={onClose}
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.28)' }]}
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.ui.black28 }]}
       />
 
       {/* Pill — 紧贴 tab 上方 */}
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   innerGlow: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: theme.colors.ui.white60,
     borderRadius: theme.radius.pill,
   },
 

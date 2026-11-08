@@ -243,6 +243,6 @@ const styles = StyleSheet.create({
   axisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   bubble: { position: 'absolute', minWidth: 70, paddingHorizontal: 7, paddingVertical: 3, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center' },
   bubbleLevel: { fontSize: theme.fontSize.tiny, color: theme.colors.textWhite, fontWeight: theme.weight.semibold },
-  bubbleTime: { fontSize: theme.fontSize.tiny, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  bubbleTime: { fontSize: theme.fontSize.tiny, color: theme.colors.ui.white85, marginTop: 1 },
   hit: { position: 'absolute', backgroundColor: 'transparent' },
 });

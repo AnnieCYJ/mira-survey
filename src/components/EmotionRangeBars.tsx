@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   gridOuter: { position: 'relative' },
   grid: { flexDirection: 'column', gap: 3, padding: 4, borderRadius: theme.radius.md, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.cardBorder },
   gridRow: { flexDirection: 'row', gap: 3 },
-  gridCell: { flex: 1, aspectRatio: 1, borderRadius: 3 },
+  gridCell: { flex: 1, aspectRatio: 1, borderRadius: theme.radius.xs },
   mapLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: theme.sp(1.5) },
   mapCaption: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(0.5), lineHeight: 14 },
   calmPill: {
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
   cmpPrev: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, minWidth: 76, textAlign: 'right' },
   cmpDelta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, minWidth: 52, textAlign: 'right' },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.sp(1), marginBottom: theme.sp(1.25) },
-  bulletDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: PRIMARY, marginTop: theme.fontSize.sm * 0.55 },
+  bulletDot: { width: 5, height: 5, borderRadius: theme.radius.xs, backgroundColor: PRIMARY, marginTop: theme.fontSize.sm * 0.55 },
   bulletText: { fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, lineHeight: theme.fontSize.sm * 1.55, flex: 1 },
   analysisText: { fontSize: theme.fontSize.sm, color: theme.colors.textInkSoft, lineHeight: theme.fontSize.sm * 1.55, marginTop: theme.sp(2) },
 

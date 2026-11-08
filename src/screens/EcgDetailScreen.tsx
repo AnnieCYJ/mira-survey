@@ -496,7 +496,7 @@ export default function EcgDetailScreen() {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 12 },
-  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.7)', marginRight: 8 },
+  back: { width: 36, height: 36, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.white70, marginRight: 8 },
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   sub: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: 2 },
 
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
   },
   zoomTitle: { fontSize: theme.fontSize.body, fontWeight: '600', color: theme.colors.textWhite },
   zoomClose: { fontSize: theme.fontSize.h2, color: theme.colors.textWhite, fontWeight: '500' },
-  zoomHint: { fontSize: theme.fontSize.micro, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
+  zoomHint: { fontSize: theme.fontSize.micro, color: theme.colors.ui.white65, textAlign: 'center', marginTop: 8 },
 
   btn: {
     alignItems: 'center',
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
   btnLabel: { fontSize: theme.fontSize.sm, fontWeight: '600', color: theme.colors.textWhite },
 
   // ★ mira-ocean（2026-10-17）：淡紫轨道 → 玻璃白
-  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
+  segment: { flexDirection: 'row', backgroundColor: theme.colors.ui.white10, borderRadius: theme.radius.md, padding: 4, marginBottom: 12 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.sm },
   segBtnOn: { backgroundColor: theme.colors.textWhite, shadowColor: theme.colors.ui.shadowBlack, shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   segTxt: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textSub },

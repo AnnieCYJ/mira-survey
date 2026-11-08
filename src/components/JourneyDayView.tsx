@@ -27,6 +27,7 @@ import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortBy
 //   回顾·日 原本只读 selfReportLog，导致「做完呼吸回顾里啥也没有」——这里把 interventionLog 也并进来。
 import { ensureInterventionLogLoaded, allInterventionEntries } from '../data/interventionLog';
 import DateAnchorPicker from './DateAnchorPicker';
+import CrownMark from './CrownMark';
 
 /** ★ 2026-11-05（用户 #286）：单日记录摘要，上抛给父层用于「钉在 Tab 正上方」的浮层。
  *  count = 当日记录条数；selLabel = 标题前缀（今日 / X月X日）；first/last = 首末记录时间/标题。 */
@@ -220,14 +221,6 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
         <DateAnchorPicker value={selDate} onChange={(d) => setSelDate(d)} range="day" maxDate={new Date()} />
       )}
 
-      {/* ★ 2026-11-06（用户）：品牌句从「回顾」标题下移到日时间选择器下方；
-          字号/字重参考月视图选择器下的「稳步向上的一个月」（heroHeadline 同款）。 */}
-      {showDatePicker ? (
-        <Text style={styles.brandTagline}>
-          lunamira AI 记得你未曾发觉的每一件小事，也看得到你每次卓越的表现。
-        </Text>
-      ) : null}
-
       {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ── */}
       {items.length === 0 ? (
         <View style={[styles.empty, { marginTop: theme.sp(3) }]}>
@@ -262,7 +255,11 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
                   <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
                   <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
                     {/* ★ 本轮（用户 #245）：达标 → 卡片右上角画星 */}
-                    {it.goalMet ? <Text style={styles.goalStar}>👑</Text> : null}
+                    {it.goalMet ? (
+                      <View style={styles.goalStar}>
+                        <CrownMark size={theme.fontSize.lg} color={mm.colors.limeCore} />
+                      </View>
+                    ) : null}
                     <View style={styles.cardHead}>
                       <View style={[styles.icon, { backgroundColor: mixWhite(it.color, 0.82) }]}>
                         <Text style={styles.iconTxt}>{it.emoji ?? emojiFor(it.title)}</Text>
@@ -284,18 +281,13 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
           </View>
         </>
       )}
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { position: 'relative', marginTop: theme.sp(1) },
-
-  /* ★ 2026-11-06（用户）：品牌句（对齐月视图 heroHeadline：fs17/semibold/ink/-0.3 字距） */
-  brandTagline: {
-    fontSize: theme.fs(17), fontWeight: theme.weight.semibold, color: mm.colors.ink,
-    letterSpacing: -0.3, marginTop: theme.sp(1.5), marginHorizontal: 2,
-  },
 
   /* 曲线与行 */
   // ★ 2026-10-12：曲线与行同容器（曲线以本容器 top:0 定位），保证端点与圆点重合
@@ -337,10 +329,9 @@ const styles = StyleSheet.create({
     lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(1.25),
   },
   cardTime: { fontSize: theme.fontSize.micro - 1, color: mm.colors.inkFaint, marginTop: theme.sp(1.5) },
-  // ★ 本轮（用户 #261）：达标皇冠，卡片右上角（放大 + 明亮黄绿，更醒目、鼓励感更强）
+  // ★ 本轮（用户 #261/#245）：达标皇冠，卡片右上角（矢量 CrownMark，明亮黄绿更醒目、鼓励感更强）
   goalStar: {
     position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5),
-    fontSize: theme.fontSize.lg, color: mm.colors.limeCore, fontWeight: theme.weight.bold as never,
     zIndex: 3,
   },
   // ★ 本轮（用户 #261）：卡片底部分析句，改用明亮黄绿（limeCore）替代看不清的深绿（limeDeep）

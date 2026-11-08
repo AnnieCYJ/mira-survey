@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     // 外发光：让 pill 从白雾里浮起来（§2.6：blur 7 / .55）
     shadowColor: '#9D8AF0',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55, shadowRadius: 7, elevation: 8,
+    shadowOpacity: 0.55, shadowRadius: 7, elevation: 0,
     backgroundColor: '#FFFFFF',
   },
   rimLayer: {

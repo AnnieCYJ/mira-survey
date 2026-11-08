@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
+import { safeNativeEmitter } from '../lib/nativeEmitter';
 
-// Voice 原生模块
+// Voice 原生模块（★ safeNativeEmitter：补 add/removeListeners no-op，消掉 dev 警告红屏）
 const VoiceModule = NativeModules.Voice as any;
-const voiceEmitter = Platform.OS !== 'web' && VoiceModule
-  ? new NativeEventEmitter(VoiceModule)
-  : null;
+const voiceEmitter = Platform.OS !== 'web' ? safeNativeEmitter('Voice') : null;
 
 export type VoiceState = 'idle' | 'listening' | 'error';
 

@@ -182,9 +182,9 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: theme.radius.lg,
     padding: theme.sp(3.5),
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: theme.colors.ui.white82,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: theme.colors.ui.white90,
   },
   headRow: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: '#2C2A44', flex: 1 },

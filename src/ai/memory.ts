@@ -39,7 +39,7 @@ export class MemoryStore {
       await db.execAsync(sql);
       return true;
     } catch (e) {
-      console.warn('[MemoryStore] exec failed:', sql, e);
+      console.log('[MemoryStore] exec failed:', sql, e);
       return false;
     }
   }
@@ -74,7 +74,7 @@ export class MemoryStore {
       }
       await this.trim(db);
     } catch (e) {
-      console.warn('[MemoryStore] add failed:', e);
+      console.log('[MemoryStore] add failed:', e);
     }
   }
 
@@ -95,7 +95,7 @@ export class MemoryStore {
         rows = await db.getAllAsync<Row>(`SELECT text AS orig, ts FROM mem_plain WHERE ${like} LIMIT 30`);
       }
     } catch (e) {
-      console.warn('[MemoryStore] recall failed:', e);
+      console.log('[MemoryStore] recall failed:', e);
       return [];
     }
     const now = Date.now();
@@ -122,7 +122,7 @@ export class MemoryStore {
         [sinceTs, limit]
       );
     } catch (e) {
-      console.warn('[MemoryStore] listSince failed:', e);
+      console.log('[MemoryStore] listSince failed:', e);
       return [];
     }
   }
@@ -140,7 +140,7 @@ export class MemoryStore {
         }
       }
     } catch (e) {
-      console.warn('[MemoryStore] trim failed:', e);
+      console.log('[MemoryStore] trim failed:', e);
     }
   }
 }

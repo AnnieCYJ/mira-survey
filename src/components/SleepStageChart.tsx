@@ -95,6 +95,12 @@ export default function SleepStageChart({
   const x = (min: number) => (totalMin > 0 ? (Math.min(min, totalMin) / totalMin) * W : 0);
   const startAbs = parseClock(sleepTime);
 
+  // ★ 2026-11-07（用户「睡到10点多，中间那些没有啊」）：分期曲线比横轴短时，
+  //   缺口段画虚线占位框（不编造数据），让「戒指只回读到一半」一眼可见，
+  //   而不是图表静默提前结束、看起来像画错了。
+  const missingFrom =
+    totalMin > 0 && segSpan > 0 && segSpan < totalMin - 5 ? segSpan : null;
+
   // ★ 2026-11-05（用户：「睡眠分析里面那横坐标的那个时间都不对」）：
   //   旧实现从「入睡后的第一个整点」开始标，最左端没有入睡时刻、最右端也没有起床时刻，
   //   加上首末标签用 middle 锚点贴边 → 既被裁切、又让人误以为整夜从 00:00 开始。
@@ -201,6 +207,21 @@ export default function SleepStageChart({
   return (
     <View>
       <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        {/* ★ 2026-11-07：分期缺段占位（虚线框）—— 曲线只回读到 segSpan、轴到 totalMin 时的中间缺口 */}
+        {missingFrom != null ? (
+          <Rect
+            x={x(missingFrom) + 1}
+            y={1}
+            width={Math.max(2, x(totalMin) - x(missingFrom) - 2)}
+            height={chartH - 2}
+            fill="none"
+            stroke={chart.grid}
+            strokeWidth={chart.lw.grid}
+            strokeDasharray="4 4"
+            rx={chart.barRadius}
+          />
+        ) : null}
+
         {/* 阶段段：每个 type 落在自己的行内，矩形在行内居中 */}
         {segments.map((s, i) => {
           const meta = SLEEP_STAGE_META[s.type] ?? SLEEP_STAGE_META[1];

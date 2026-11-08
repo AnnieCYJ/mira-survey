@@ -19,7 +19,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
-import Icon from '../components/Icon';
+import BackButton from '../components/BackButton';
 import Card from '../components/Card';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -31,11 +31,10 @@ import { computeStressReport } from '../lib/stressAlgorithm';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { getLatestExamRecord } from '../data/examStore';
+import { userStore, getCachedSession } from '../data/userStore';
 import { RingBle } from '../ble/RingBleManager';
 import { type RangeKey } from '../data/metrics';
 import { timeTickLabel } from '../lib/chartAxis';
-import ExamTab from '../components/ExamTab';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 
 /**
@@ -401,26 +400,28 @@ export default function HealthAgeDetailScreen() {
   //   旧实现只用 getUserProfile()?.age 且强制整数，体检记录里的年龄在详情页取不到 → 完全没有数据。
   // ★ 2026-10-28（用户·修「先空状态后数据」闪烁）：actualAge 同步从戒指档案初始化（getUserProfile 同步可读），
   //   首帧即有值（有档案年龄时不再闪空状态）；体检记录为异步，仅用于覆盖/细化。
-  const [actualAge, setActualAge] = useState<number | null>(() => {
-    const a = RingBle.getUserProfile()?.age;
-    return a != null && Number.isInteger(a) && a >= 18 && a <= 120 ? a : null;
-  });
-  // ★ 2026-10-28：体检记录异步加载完成前，不展示「填写身体成分」引导（避免无数据时误导闪一下）；
-  //   仅在加载完成且确实无年龄时才显示引导卡。
-  const [ready, setReady] = useState(false);
-  // ★ 2026-10-10（用户）：未填身体成分时，详情页引导用户去填（填完回写 actualAge，数据与趋势即出）。
-  const [showExam, setShowExam] = useState(false);
+  // ★ 2026-11-07（用户）：与洞察页同口径补上「首次登录 Onboarding 已录入的年龄」。
+  //   这枚 LunaMira 从未下发过身体档案，只读 getUserProfile() 会让详情页也拿不到年龄。
+  const clampAge = (a: unknown): number | null => {
+    const n = typeof a === 'number' ? a : typeof a === 'string' ? Number(a) : NaN;
+    return Number.isFinite(n) && n >= 18 && n <= 120 ? Math.round(n) : null;
+  };
+  const [actualAge, setActualAge] = useState<number | null>(() =>
+    clampAge(RingBle.getUserProfile()?.age) ?? clampAge(getCachedSession()?.profile?.age),
+  );
   useFocusEffect(useCallback(() => {
     let active = true;
     const devAge = RingBle.getUserProfile()?.age;
-    const base = devAge != null && Number.isInteger(devAge) && devAge >= 18 && devAge <= 120 ? devAge : null;
-    setActualAge(base);
-    getLatestExamRecord().then((record) => {
+    const profileAge = getCachedSession()?.profile?.age;
+    setActualAge(clampAge(devAge) ?? clampAge(profileAge));
+    Promise.all([
+      getLatestExamRecord().catch(() => null),
+      userStore.loadSession().catch(() => null),
+    ]).then(([record, session]) => {
       if (!active) return;
-      const value = record?.inputs.age ?? RingBle.getUserProfile()?.age;
-      setActualAge(value != null && Number.isInteger(value) && value >= 18 && value <= 120 ? value : null);
-    }).catch(() => { /* 体检记录不可用时保留戒指档案年龄 */ })
-      .finally(() => { if (active) setReady(true); });
+      const value = record?.inputs.age ?? session?.profile?.age ?? devAge ?? profileAge;
+      setActualAge(clampAge(value));
+    }).catch(() => { /* 记录不可用时保留已读到的档案年龄 */ });
     return () => { active = false; };
   }, []));
 
@@ -462,11 +463,7 @@ export default function HealthAgeDetailScreen() {
           ③ header/scrollContent 又叠了一层 sp(4) 左右内边距，而 ScreenContainer 内层已有 space.screen(sp(6))
           → 整页比别的详情页内缩一圈，看着「窄一块」。现全部对齐。 */}
       <View style={styles.header}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}
-          accessibilityRole="button" accessibilityLabel="返回"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} />
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>身体年龄</Text>
           <Text style={styles.headerSub}>活力调整 · 睡眠 / 运动 / 代谢 / 节律</Text>
@@ -483,24 +480,28 @@ export default function HealthAgeDetailScreen() {
         <Card style={styles.heroCard}>
           <Text style={styles.heroTitle}>身体年龄</Text>
           {delta != null ? (
-            <View style={styles.heroNumRow}>
-              <Text style={styles.heroNum}>{Math.abs(delta).toFixed(1)}</Text>
-              <Text style={styles.heroUnit}>岁</Text>
-              <Text style={styles.heroCompare}>
-                {Math.abs(delta) < 0.05 ? '与实际年龄相近' : delta < 0 ? '较实际年龄低' : '较实际年龄高'}
-              </Text>
-            </View>
+            Math.abs(delta) < 0.05 ? (
+              <Text style={styles.heroCompare}>与实际年龄相近</Text>
+            ) : (
+              <View style={styles.heroNumRow}>
+                <Text style={styles.heroNum}>{Math.abs(delta).toFixed(1)}</Text>
+                <Text style={styles.heroUnit}>岁</Text>
+                <Text style={styles.heroCompare}>
+                  {delta < 0 ? '较实际年龄低' : '较实际年龄高'}
+                </Text>
+              </View>
+            )
           ) : (
             <View style={styles.heroNumRow}>
               <Text style={styles.heroNum}>—</Text>
               <Text style={[styles.heroCompare, { color: theme.colors.textSub }]}>
-                {actualAge == null && ready ? '填写身体成分后可见' : '数据加载中…'}
+                {'数据加载中…'}
               </Text>
             </View>
           )}
           <Text style={styles.heroAnalysis}>
             {(() => {
-              if (delta == null) return '填写身体成分后，这里会显示你的身体年龄与近 30 天趋势。';
+              if (delta == null) return '身体年龄趋势将在这里展示。';
               const d = Math.abs(delta);
               if (d < 0.05) return '身体年龄与实际年龄基本一致。';
               if (delta < 0) return `身体年龄比实际年龄小 ${d.toFixed(1)} 岁，近期恢复和状态不错。`;
@@ -509,25 +510,7 @@ export default function HealthAgeDetailScreen() {
           </Text>
         </Card>
 
-        {/* ★ 2026-10-10（用户）：未填身体成分 → 引导卡；点按钮原地展开 ExamTab 表单，
-            填完 saveExamRecord + setUserInfo 回写 actualAge → 趋势与均值即出。 */}
-        {actualAge == null && !showExam && ready && (
-          <Card style={[styles.panel, styles.examCta]}>
-            <View style={styles.examCtaIcon}>
-              <Icon name="pen" size={20} color={mm.colors.limeDeep} />
-            </View>
-            <Text style={styles.examCtaTitle}>填写身体成分，查看身体年龄</Text>
-            <Text style={styles.examCtaText}>填写年龄、身高、体重后，这里会显示你的身体年龄，以及近 30 天 / 12 个月的趋势。</Text>
-            <TouchableOpacity style={styles.examCtaBtn} activeOpacity={0.7} onPress={() => setShowExam(true)} accessibilityRole="button" accessibilityLabel="填写身体成分">
-              <LinearGradient colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.examCtaBtnGrad}>
-                <Text style={styles.examCtaBtnText}>填写身体成分</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </Card>
-        )}
-        {actualAge == null && showExam && (
-          <ExamTab onProfileSaved={(a) => { setActualAge(a); setShowExam(false); }} />
-        )}
+        {/* 年龄已在首次登录时录入，无需额外「填写身体成分」引导 */}
 
         <Card style={styles.panel}>
           <View style={styles.panelHead}>

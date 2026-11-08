@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: theme.colors.ui.white70,
     marginRight: theme.space.sm,
   },
   headText: { flex: 1 },

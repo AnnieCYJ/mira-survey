@@ -9,7 +9,7 @@
  * ───────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import { theme } from '../theme/theme';
@@ -20,33 +20,52 @@ import {
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
 import { qc, GroupBlock } from '../components/quickCheckShared';
+import BackButton from '../components/BackButton';
 
 export default function QuickCheckDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const recordId = route.params?.recordId as string | undefined;
   const [record, setRecord] = useState<QuickCheckRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!recordId) {
       setRecord(null);
+      setLoading(false);
       return;
     }
+    setLoading(true);
     const r = await getQuickCheckById(recordId);
     setRecord(r);
+    setLoading(false);
   }, [recordId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  if (loading) {
+    return (
+      <ScreenContainer withGradient>
+        <View style={qc.backRow}>
+          <BackButton onPress={() => navigation.goBack()} />
+          <Text style={qc.histTitle}>微体检报告</Text>
+        </View>
+        <View style={{ paddingVertical: theme.sp(8), alignItems: 'center' }}>
+          <ActivityIndicator color={theme.colors.textSub} />
+          <Text style={[qc.histMeta, { marginTop: theme.sp(2) }]}>报告加载中…</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   if (!record) {
     return (
       <ScreenContainer withGradient>
         <View style={qc.backRow}>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={qc.backBtn}>
-            <Text style={qc.backArrow}>‹</Text>
-          </TouchableOpacity>
+          <BackButton onPress={() => navigation.goBack()} />
           <Text style={qc.histTitle}>微体检报告</Text>
         </View>
         <Text style={qc.histMeta}>未找到该体检记录，可能已被删除。</Text>
@@ -57,12 +76,14 @@ export default function QuickCheckDetailScreen() {
   const t = tallyRecord(record);
 
   const onDelete = () => {
+    if (deleting) return;
     Alert.alert('删除本次体检记录', '删除后无法恢复，确定删除吗？', [
       { text: '取消', style: 'cancel' },
       {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
+          setDeleting(true);
           await deleteQuickCheck(record.id);
           navigation.goBack();
         },
@@ -88,17 +109,21 @@ export default function QuickCheckDetailScreen() {
           {t.abnormal ? `${t.abnormal} 项偏高/偏低` : '未见异常'}
         </Text>
         <Text style={qc.sumNote}>
-          标「实测」的是戒指真实回读；标「估算」的是按当前 HRV 与首次录入的身高体重推算，不是戒指直接测量。
-          参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
+          下面按本次测量到的结果逐项解读：每一项都说明它代表什么、当前是否正常、可能的原因，以及可参考的日常建议。
+          所有结论只帮你了解自己的状态，不构成诊断或评分。
         </Text>
       </View>
 
       {record.groups.map((g) => (
-        <GroupBlock key={g.key} group={g} />
+        <GroupBlock key={g.key} group={g} useAi />
       ))}
 
-      <TouchableOpacity activeOpacity={0.7} onPress={onDelete} style={qc.delRow}>
-        <Text style={qc.delText}>删除本次记录</Text>
+      <TouchableOpacity activeOpacity={0.7} onPress={onDelete} style={qc.delRow} disabled={deleting}>
+        {deleting ? (
+          <ActivityIndicator color={theme.colors.danger} />
+        ) : (
+          <Text style={qc.delText}>删除本次记录</Text>
+        )}
       </TouchableOpacity>
     </ScreenContainer>
   );

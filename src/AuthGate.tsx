@@ -13,16 +13,23 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts } from 'expo-font';
 import { theme } from './theme/theme';
 import { userStore, onSessionChange } from './data/userStore';
 import LoginScreen from './screens/LoginScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import RingConnectScreen from './screens/RingConnectScreen';
 import RootStackNavigator from './navigation/RootStackNavigator';
 
 export default function AuthGate() {
   const [ready, setReady] = useState(false);
   const [splashMinDone, setSplashMinDone] = useState(false);
-  const [session, setSession] = useState({ loggedIn: false, onboardingDone: false });
+  const [session, setSession] = useState({ loggedIn: false, onboardingDone: false, ringSetupDone: false });
+  // ★ 2026-11-07（用户「Luna Mira 要手写体」）：内嵌 Caveat 手写字体。
+  //   之前 fontFamily:'Bradley Hand' 是 iOS 独有字体，Android 上回落默认字体 → 手写体不生效。
+  const [fontsLoaded] = useFonts({
+    Caveat: require('../assets/fonts/Caveat_400Regular.ttf'),
+  });
 
   // ★ 2026-11-04：保证手写 "Luna Mira" 启动动画每次冷启动都看得清，最短展示 2400ms
   useEffect(() => {
@@ -34,7 +41,7 @@ export default function AuthGate() {
     let alive = true;
     userStore.loadSession().then((s) => {
       if (!alive) return;
-      setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone });
+      setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone, ringSetupDone: !!s.ringSetupDone });
       setReady(true);
     });
     return () => {
@@ -46,24 +53,26 @@ export default function AuthGate() {
   useEffect(() => {
     return onSessionChange(() => {
       userStore.loadSession().then((s) =>
-        setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone }),
+        setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone, ringSetupDone: !!s.ringSetupDone }),
       );
     });
   }, []);
 
   const refresh = () => {
     userStore.loadSession().then((s) =>
-      setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone }),
+      setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone, ringSetupDone: !!s.ringSetupDone }),
     );
   };
 
-  if (!ready || !splashMinDone) return <Splash />;
+  if (!ready || !splashMinDone) return <Splash fontsLoaded={fontsLoaded} />;
   if (!session.loggedIn) return <LoginScreen onAuthenticated={refresh} />;
   if (!session.onboardingDone) return <OnboardingScreen onDone={refresh} />;
+  // ★ 2026-11-07（用户）：资料收集完成后、进主页前，先过「连接戒指」引导页
+  if (!session.ringSetupDone) return <RingConnectScreen onDone={refresh} />;
   return <RootStackNavigator />;
 }
 
-function Splash() {
+function Splash({ fontsLoaded }: { fontsLoaded: boolean }) {
   return (
     <View style={s.root}>
       <LinearGradient
@@ -73,8 +82,9 @@ function Splash() {
         pointerEvents="none"
       />
       <View style={s.center}>
-        {/* ★ 2026-11-04：去掉紫色圆点 + "Mira"，改为手写体 "Luna Mira" 逐字显现动画 */}
-        <Handwritten text="Luna Mira" style={s.word} />
+        {/* ★ 2026-11-04：去掉紫色圆点 + "Mira"，改为手写体 "Luna Mira" 逐字显现动画
+            ★ 2026-11-07：真手写字体 Caveat（Android/iOS 通用），字体加载完成后才开始逐字动画 */}
+        {fontsLoaded ? <Handwritten text="Luna Mira" style={s.word} /> : null}
       </View>
     </View>
   );
@@ -124,11 +134,12 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bgBottom },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   word: {
-    fontSize: theme.fontSize.h1,
-    fontWeight: theme.weight.semibold as any,
+    // ★ 2026-11-07（用户「要手写体」）：Caveat = Google Fonts 手写体，iOS/Android 双端内嵌生效。
+    //   Caveat x-height 偏小，字号放大 ~1.6 倍才与原视觉等高；不用 fontWeight（合成粗体会糊）。
+    fontSize: theme.fontSize.h1 * 1.6,
     color: theme.colors.textTitle,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginTop: theme.space.sm,
-    fontFamily: 'Bradley Hand',
+    fontFamily: 'Caveat',
   },
 });

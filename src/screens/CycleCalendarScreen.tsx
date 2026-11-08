@@ -562,6 +562,7 @@ export default function CycleCalendarScreen() {
                   style={[styles.pregToggle, pregnancyOn && styles.pregToggleOn]}
                   accessibilityRole="switch"
                   accessibilityState={{ checked: pregnancyOn }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <View style={[styles.pregKnob, pregnancyOn && styles.pregKnobOn]} />
                 </TouchableOpacity>
@@ -1196,7 +1197,7 @@ const styles = StyleSheet.create({
   /* ★ P1-1（2026-10-28）：孕期模式开关 */
   pregToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
   pregToggleLabel: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.medium as any },
-  pregToggle: { width: 48, height: 28, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.18)', padding: 3, justifyContent: 'center' },
+  pregToggle: { width: 48, height: 28, borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.white18, padding: 3, justifyContent: 'center' },
   pregToggleOn: { backgroundColor: mm.colors.limeDeep, alignItems: 'flex-end' },
   pregKnob: { width: 22, height: 22, borderRadius: theme.radius.md, backgroundColor: '#FFFFFF' },
   pregKnobOn: { backgroundColor: '#FFFFFF' },
@@ -1235,7 +1236,7 @@ const styles = StyleSheet.create({
   daySheetCloseBtn: {
     padding: theme.sp(2),
     borderRadius: theme.radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: theme.colors.ui.white12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: -theme.sp(1),
@@ -1250,7 +1251,7 @@ const styles = StyleSheet.create({
   sheetLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textTitle, marginTop: theme.space.md, marginBottom: 6, fontWeight: theme.weight.semibold as any },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs },
   // ★ mira-ocean（2026-10-17）：淡紫底 → 玻璃白
-  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,255,255,0.10)' },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.white10 },
   chipOn: { backgroundColor: theme.colors.ui.white92 }, // ★ mira-ocean：紫 → 白
   chipText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
   chipTextOn: { color: theme.colors.bgMid, fontWeight: theme.weight.semibold as any }, // ★ mira-ocean：白底深字
@@ -1260,7 +1261,7 @@ const styles = StyleSheet.create({
   cancelBtn: { marginTop: theme.sp(2.5), alignItems: 'center', paddingVertical: theme.sp(3) },
   cancelBtnText: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
   // ★ mira-ocean（2026-10-17）：淡紫底 → 玻璃白
-  endBtn: { marginTop: theme.space.md, alignItems: 'center', paddingVertical: theme.sp(2.5), borderRadius: theme.radius.md, backgroundColor: 'rgba(255,255,255,0.10)' },
+  endBtn: { marginTop: theme.space.md, alignItems: 'center', paddingVertical: theme.sp(2.5), borderRadius: theme.radius.md, backgroundColor: theme.colors.ui.white10 },
   endBtnOn: { backgroundColor: theme.colors.ui.white92 }, // ★ mira-ocean：绿 → 白
   endBtnText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium as any, color: theme.colors.textSub },
   endBtnTextOn: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as any, color: theme.colors.ui.onGlassInk },
