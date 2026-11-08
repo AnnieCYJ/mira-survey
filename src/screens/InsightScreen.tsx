@@ -52,6 +52,8 @@ import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import StressRecoveryCard from '../components/StressRecoveryCard';
+// ★ 2026-11-08（用户）：身体节律区新增「睡眠规律性」卡 —— 逐日入睡/起床区间柱，点进周/月/年详情页。
+import SleepRegularityCard from '../components/SleepRegularityCard';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, judgeCortisolRhythm } from '../lib/cortisolProxy';
 import { reportNowMsForDay } from '../lib/dayAnchor';
@@ -784,6 +786,9 @@ export default function InsightScreen() {
             <StressRecoveryCard onPress={() => navigation.navigate('StressRecoveryDetail')} />
             {/* ★ 2026-11-06（用户）：移除「昼夜节律」小标题；★ 本轮：生理周期节律改为卡片内标题（与昼夜节律一致）+ 先隐藏雌激素趋势图 */}
             <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+            {/* ★ 2026-11-08（用户）：睡眠规律性卡紧随昼夜节律 —— 卡片只给最近一晚时刻 + 相比基线结论，
+                完整逐日区间柱（周/月/年）在 SleepRegularityDetail。仅 BASE_UI 这一档渲染，PRO_UI 布局不动。 */}
+            <SleepRegularityCard onPress={() => navigation.navigate('SleepRegularityDetail')} />
             <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />
           </>
         ) : (

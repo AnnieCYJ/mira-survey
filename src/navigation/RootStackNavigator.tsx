@@ -22,6 +22,8 @@ import CardioDetailScreen from '../screens/CardioDetailScreen';
 import EnergyDetailScreen from '../screens/EnergyDetailScreen';
 import EmotionCognitiveDetailScreen from '../screens/EmotionCognitiveDetailScreen';
 import StressRecoveryDetailScreen from '../screens/StressRecoveryDetailScreen';
+// ★ 2026-11-08：洞察页「睡眠规律性」卡 → 周/月/年详情页
+import SleepRegularityDetailScreen from '../screens/SleepRegularityDetailScreen';
 import BreathingScreen from '../screens/BreathingScreen';
 import FoodScanScreen from '../screens/FoodScanScreen';
 import VoiceChatScreen from '../screens/VoiceChatScreen';
@@ -62,6 +64,7 @@ export type RootStackParamList = {
   EnergyDetail: { type: "emotion" | "cognitive" | "activity" };
   EmotionCognitiveDetail: undefined;
   StressRecoveryDetail: undefined;
+  SleepRegularityDetail: undefined;
   HealthAgeDetail: undefined;
   CardioDetail: undefined;
   EmotionLog: undefined;
@@ -142,6 +145,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="StressRecoveryDetail"
         component={StressRecoveryDetailScreen}
+        options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
+      />
+      <Stack.Screen
+        name="SleepRegularityDetail"
+        component={SleepRegularityDetailScreen}
         options={{ contentStyle: { backgroundColor: theme.colors.bgBottom } }}
       />
       <Stack.Screen
