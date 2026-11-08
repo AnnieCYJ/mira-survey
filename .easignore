@@ -6,3 +6,25 @@ ios/
 #      libs the build needs have been copied to vendor/veepoo-libs/, so exclude the
 #      whole submodule from the upload to keep the archive small. ----
 hband-sdk/
+
+# ---- 2026-11-08: Android 构建产物/缓存（云端会重新生成）。
+#      EAS 打包 tarball 时会遍历 android/，读取 build/intermediates 下文件会
+#      被本机文件策略拒绝，导致上传失败；同时这些目录体积巨大、无上传必要。 ----
+android/app/build/
+android/build/
+android/.gradle/
+android/.idea/
+android/app/.cxx/
+android/captures/
+android/local.properties
+android/*.iml
+
+# 本机依赖与工程缓存
+node_modules/
+.expo/
+.expo-shared/
+.git/
+*.log
+*.apk
+*.aab
+dist/
