@@ -22,6 +22,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import Svg, { Rect, Circle, Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import { chart } from '../theme/chart';
 
 const FALLBACK_W = 680;        // 未测到宽度前的兜底 viewBox 宽
@@ -137,6 +138,24 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
 
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
+  // ★ 统一数值气泡：点任意一天 → 当天睡眠时长 + 恢复分（两者缺一显示其一）
+  const tapSlots: ChartTapSlot[] = points.flatMap((p, i) => {
+    const parts: string[] = [];
+    if (p.durationMin != null && p.durationMin > 0) parts.push(`睡 ${(p.durationMin / 60).toFixed(1)}h`);
+    if (p.score != null && Number.isFinite(p.score)) parts.push(`恢复 ${Math.round(p.score)}`);
+    if (!parts.length) return [];
+    const y = p.score != null
+      ? yScore(p.score)
+      : yDur((p.durationMin ?? 0) / 60);
+    return [{
+      fx: xAt(i) / W,
+      fy: y / H,
+      label: p.label || `${i + 1}`,
+      value: parts.join(' · '),
+      color: chart.series.primary,
+    }];
+  });
+
   return (
     <View>
       <View style={styles.row}>
@@ -155,6 +174,8 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
 
         {/* ── 绘图区 ── */}
         <View style={{ flex: 1 }} onLayout={onLayout}>
+          {/* 放在 Svg 下层：红色异常点的 onPress 仍在最上层可点，其余区域由统一命中层接管 */}
+          <ChartTapTip slots={tapSlots} height={H} width={w} />
           <Svg width={w} height={H} viewBox={`0 0 ${W} ${H}`}>
             {/* 水平网格（虚线，同预览 3 4） */}
             {lTicks.map((h) => (

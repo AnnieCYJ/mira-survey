@@ -30,6 +30,7 @@ import { parseDate, type CycleInfo, type CycleLog } from '../lib/cycleMath';
 import { phaseBand } from '../lib/phaseColors';
 import { buildEstrogenData, buildProgesteroneData, cycleAxis, phaseOfDay, type TrendRange } from '../lib/hormoneTrend';
 import type { RingState } from '../ble/RingBleManager';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 /** ★ 2026-10-21（用户：皮质醇等趋势线是亮色，生理周期这条却偏暗，要调亮一致）：
  *  雌激素线由深橄榄绿 limeDeep #6E7A24 改回亮黄绿 limeMid #BCCB62（与皮质醇亮绿同家族，深色玻璃卡上更跳）；
@@ -153,6 +154,21 @@ export default function HormoneDualTrend({
 
   const hasAny = (est && est.length > 0) || (prog && prog.length > 0);
 
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：雌/孕激素点 → 统一 tap 槽
+  const tapSlots = useMemo<ChartTapSlot[]>(() => {
+    const out: ChartTapSlot[] = [];
+    for (const p of estPts) {
+      out.push({ fx: p.x / W, fy: p.y / H, label: dateOfCd(cdOfDate(p.date)), value: `${Math.round((1 - (p.y - PAD) / plotH) * 100)} 雌激素`, color: EST_COLOR });
+    }
+    if (!onlyEstrogen) {
+      for (const p of progPts) {
+        out.push({ fx: p.x / W, fy: p.y / H, label: dateOfCd(cdOfDate(p.date)), value: `${Math.round((1 - (p.y - PAD) / plotH) * 100)} 孕激素`, color: PROG_COLOR });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estPts, progPts, onlyEstrogen, win.startMs, axisN]);
+
   return (
     <View style={[styles.card, embedded && styles.cardEmbedded]}>
       <View style={styles.head}>
@@ -170,7 +186,8 @@ export default function HormoneDualTrend({
             : '连续佩戴获取 HRV、心率、体温与静息心率后，这里会显示雌激素与孕激素叠加的双相趋势：卵泡期雌激素爬升、排卵后孕激素抬升。戒指不直接测量激素，均为推算。'}
         </Text>
       ) : (
-        <>
+      <>
+        <View>
           <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
             <Defs>
               <LinearGradient id="dualEstGrad" x1="0" y1="0" x2="0" y2="1">
@@ -207,6 +224,8 @@ export default function HormoneDualTrend({
             {!onlyEstrogen && progPath ? <Path d={progPath} fill="none" stroke={PROG_COLOR} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
             {estPath ? <Path d={estPath} fill="none" stroke={EST_COLOR} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
           </Svg>
+          <ChartTapTip slots={tapSlots} height={H} />
+        </View>
 
           {/* ★ 2026-10-12：横坐标双行——上「第 N 天」/ 下对应日期（周期轴）；回退窗口单行日期 */}
           {axis ? (

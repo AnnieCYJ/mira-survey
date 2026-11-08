@@ -1780,6 +1780,7 @@ export default function MetricDetailScreen() {
               segmentOf={hrSegmentOf}
               height={chart.plot.l}
               denseBars={isBaseLayout}
+              unit={params.unit}
             />
             <DayBarsLegend />
             <Text style={styles.chartNote}>
@@ -1896,6 +1897,7 @@ export default function MetricDetailScreen() {
                   yMin={0}
                   segmentOf={hrvPart === 'night' ? () => 'sleep' : () => 'awake'}
                   height={chart.plot.l}
+                  unit={params.unit}
                 />
                 <DayBarsLegend showMean={false} />
                 <Text style={styles.chartNote}>
@@ -1961,6 +1963,7 @@ export default function MetricDetailScreen() {
                   yMin={params.key === 'spo2' ? 85 : params.key === 'emotion' ? -10 : undefined}
                   height={chart.plot.l}
                   moodMarker={isStress && latestMood ? { ts: latestMood.t, mood: latestMood.mood } : null}
+                  unit={params.unit}
                 />
                 {/* ★ 2026-10-12（用户拍板：统一成 平静/开心/兴奋/压力/难过）—— 情绪图例 = 「情绪记录」
                     点阵的同一套五档顺序（DOT_LEGEND），色值一律取 MOOD_COLOR，跨页完全一致。

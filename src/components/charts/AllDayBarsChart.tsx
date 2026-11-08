@@ -8,6 +8,7 @@ import { DAY_HOUR_TICKS, DAY_MINOR_TICK_MINUTES, hourTickLabel } from '../../lib
 import { bucketMean, type Bucket } from '../../lib/timeBuckets';
 import { smoothPath } from '../../lib/smoothPath';
 import MoodBlob from '../MoodBlob';
+import ChartTapTip, { type ChartTapSlot } from '../ChartTapTip';
 import type { MoodKey } from '../../data/emotionLog';
 
 /**
@@ -84,6 +85,8 @@ interface Props {
    *   不传时保持 PRO_UI 原有 token 口径，一个像素都不变。
    */
   denseBars?: boolean;
+  /** ★ 统一数值气泡：数值单位（如 `bpm` / `ms` / `%`），只用于点柱时显示，不改坐标轴 */
+  unit?: string;
 }
 
 const PAD_L = 30;
@@ -109,6 +112,7 @@ export default function AllDayBarsChart({
   colorOf,
   moodMarker,
   denseBars = false,
+  unit,
 }: Props) {
   const plotH = height ?? chart.plot.l;
   const H = PAD_T + plotH + AXIS_H;
@@ -173,6 +177,8 @@ export default function AllDayBarsChart({
     const baseY = PAD_T + plotH;
 
     const bars: React.ReactNode[] = [];
+    // ★ 统一数值气泡：与柱子同源的坐标，避免「点 A 显示 B 的数值」
+    const tapPoints: { cx: number; cy: number; t: number; v: number }[] = [];
     let hasData = false;
     for (const b of buckets) {
       if (b.t > now) continue;                              // 未来槽：完全不画
@@ -188,6 +194,7 @@ export default function AllDayBarsChart({
       }
       hasData = true;
       const y = yAt(b.v);
+      tapPoints.push({ cx: xOf(b.t), cy: y, t: b.t, v: b.v });
       const fill = colorOf?.(b.v) ?? chart.dayBarSegment[segmentOf?.(b.t) ?? 'awake'];
       bars.push(
         <Rect key={b.slot} x={x} y={y} width={barW}
@@ -295,12 +302,29 @@ export default function AllDayBarsChart({
       }
     }
 
-    return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData, moodNode };
+    return { bars, meanPaths, minorLines, ticks, yLabels, baseline, hasData, moodNode, tapPoints };
   }, [buckets, w, plotW, plotH, range.lo, range.hi, t0, spanMs, now, segmentOf, colorOf, minorTicks, mean, H, tickLabels, mutedRanges, moodMarker, denseBars]);
 
   // ★ 2026-11-05（用户）：心情 marker 的 X 坐标（外层 RN 叠 MoodBlob 用，不进 SVG）
   const moodX = moodMarker && w > 0 ? PAD_L + (plotW * (moodMarker.ts - t0)) / spanMs : null;
   const moodVisible = moodX != null && moodX >= PAD_L - 1 && moodX <= PAD_L + plotW + 1;
+
+  // ★ 统一数值气泡：点任意一根柱 → 显示该时刻 + 数值（有单位时带单位）
+  const tapSlots = useMemo<ChartTapSlot[]>(() => {
+    if (!geom || w <= 0) return [];
+    return geom.tapPoints.map((p) => {
+      const d = new Date(p.t);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      const v = Number.isInteger(p.v) ? String(p.v) : p.v.toFixed(1);
+      return {
+        fx: p.cx / w,
+        fy: p.cy / H,
+        label: `${hh}:${mins}`,
+        value: unit ? `${v} ${unit}` : v,
+      };
+    });
+  }, [geom, w, H, unit]);
 
   return (
     <View onLayout={onLayout}>
@@ -340,6 +364,7 @@ export default function AllDayBarsChart({
           <MoodBlob mood={moodMarker.mood} size={22} variant={1} />
         </View>
       ) : null}
+      <ChartTapTip slots={tapSlots} height={H} width={w} />
     </View>
   );
 }

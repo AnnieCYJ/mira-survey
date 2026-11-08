@@ -14,6 +14,7 @@ import Svg, { Polyline, Line as SvgLine, Circle, Defs, LinearGradient as SvgLine
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { type DayCurvePoint } from '../lib/recoveryEngine';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 /** ★ 2026-11-07：档位边界与标签对齐 Oura Readiness 官方口径
  *  （85-100 充沛 / 70-84 良好 / 60-69 一般 / <60 偏弱），与 recoveryTag 同源。 */
@@ -95,7 +96,27 @@ export default function RecoveryDayTrendChart({
   }
   const { y, runs, areaPts, last, padL, padR, padT, padB, nowX, plotW } = layout;
 
+  // ★ 统一数值气泡：点曲线任意时刻 → 显示该时刻 + 恢复分
+  const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
+    if (!layout || W <= 0) return [];
+    const xOf = (t: number) => layout.padL + ((t - dayStart) / 864e5) * layout.plotW;
+    return curve.flatMap((p) => {
+      if (p.score == null || !Number.isFinite(p.score)) return [];
+      const d = new Date(p.t);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      return [{
+        fx: xOf(p.t) / W,
+        fy: layout.y(p.score) / height,
+        label: `${hh}:${mins}`,
+        value: `${Math.round(p.score)} / 100`,
+        color: mm.colors.ringTeal,
+      }];
+    });
+  }, [layout, W, height, curve, dayStart]);
+
   return (
+    <View>
     <Svg width={W} height={height}>
       <Defs>
         <SvgLinearGradient id="dayRecGrad" x1="0" y1="0" x2="0" y2="1">
@@ -134,6 +155,8 @@ export default function RecoveryDayTrendChart({
       <SvgText x={padL + plotW / 2} y={height - 4} fontSize={9.5} fill={mm.colors.inkFaint} textAnchor="middle">12时</SvgText>
       <SvgText x={padL + plotW} y={height - 4} fontSize={9.5} fill={mm.colors.inkFaint} textAnchor="end">24时</SvgText>
     </Svg>
+    <ChartTapTip slots={tapSlots} height={height} width={W} />
+    </View>
   );
 }
 

@@ -24,7 +24,7 @@ import {
   collectSleepSeries,
 } from '../lib/sleepRegularity';
 
-export default function SleepRegularityCard({ onPress }: { onPress?: () => void }) {
+export default function SleepRegularityCard({ onPress, title = '睡眠规律性' }: { onPress?: () => void; /** ★ 2026-11-08（用户）：洞察页这张卡对外叫「昼夜节律」，皮质醇卡收进详情页 */ title?: string }) {
   const hsVer = useHealthStoreVersion();
   const data = useMemo(() => {
     const now = new Date();
@@ -50,7 +50,7 @@ export default function SleepRegularityCard({ onPress }: { onPress?: () => void 
             <View style={styles.iconChip}>
               <MindIcon name="moon" size={theme.fs(17)} color={mm.colors.limeMid} />
             </View>
-            <Text style={styles.title}>睡眠规律性</Text>
+            <Text style={styles.title}>{title}</Text>
           </View>
           <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
         </View>

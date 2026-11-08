@@ -25,6 +25,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { buildCortisolProxyBaseline, computeCortisolProxyDay, computeCortisolShapedDay } from '../lib/cortisolProxy';
 import { CORTISOL_PRIOR_DISCLAIMER } from '../lib/cortisolPrior';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import { dayKey } from '../data/healthStore';
 import type { RangeKey } from '../data/metrics';
 
@@ -45,6 +46,8 @@ interface Trend {
   /** 与 points 等长：true = 该柱只有参考形状、无实测信号（画淡色 + 标注） */
   modeled: boolean[];
   labels: string[];
+  /** 与 points 等长：逐柱的日期/时刻标签，供点击数值气泡显示 */
+  slotLabels: string[];
   filled: number;
   total: number;
   note: string;
@@ -82,7 +85,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
     baseline = buildCortisolProxyBaseline();
   } catch {
     return {
-      points: [], modeled: [], labels: [], filled: 0, total: 0,
+      points: [], modeled: [], labels: [], slotLabels: [], filled: 0, total: 0,
       note: '个人基线还没建立，连续佩戴几天后这里会出现推算节律。',
     };
   }
@@ -115,6 +118,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
       points,
       modeled,
       labels: ['0:00', '6:00', '12:00', '18:00', '24:00'],
+      slotLabels: Array.from({ length: 24 }, (_, h) => `${h}:00`),
       filled: points.filter((v, i) => v != null && !modeled[i]).length,
       total: 24,
       note: shaped
@@ -133,6 +137,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
       points,
       modeled: new Array(points.length).fill(false),
       labels: ['1月', '4月', '7月', '10月', '12月'],
+      slotLabels: groups.map((_, i) => `${i + 1}月`),
       filled: points.filter((v) => v != null).length,
       total: 12,
       note: '每月一根柱 = 当月有信号日期的推算活性均值；没有信号的月份留白。',
@@ -145,6 +150,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
     points,
     modeled: new Array(points.length).fill(false),
     labels: range === 'week' ? ['7天前', '5天前', '3天前', '昨天', '今天'] : ['30天前', '20天前', '10天前', '今天'],
+    slotLabels: keys.map((dk) => `${Number(dk.slice(5, 7))}/${Number(dk.slice(8, 10))}`),
     filled: points.filter((v) => v != null).length,
     total: points.length,
     note: range === 'week'
@@ -157,6 +163,18 @@ export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋
   const t = useMemo(() => buildTrend(range, anchor.getTime()), [range, anchor]);
   // 日视图即使一个实测槽都没有，也要能画出「正常节律参考形状」（用户 2026-11-08 要求）
   const hasAny = t.points.some((v) => v != null);
+
+  // ★ 统一数值气泡：点任意一根柱 → 显示时间窗 + 相对活性；浅色参考形状也如实标注
+  const tapSlots: ChartTapSlot[] = t.points.flatMap((v, i) => {
+    if (v == null) return [];
+    return [{
+      fx: (i + 0.5) / t.total,
+      fy: 1 - Math.max(4, Math.min(100, v)) / 100,
+      label: t.slotLabels[i] ?? `${i + 1}`,
+      value: `${Math.round(v)} / 100${t.modeled[i] ? ' · 参考' : ''}`,
+      color: t.modeled[i] ? BAR_MODELED : BAR_COLOR,
+    }];
+  });
 
   return (
     <View style={styles.card}>
@@ -184,6 +202,7 @@ export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋
                 />
               </View>
             ))}
+            <ChartTapTip slots={tapSlots} height={150} />
           </View>
           <View style={styles.axis}>
             {t.labels.map((l) => <Text key={l} style={styles.axisTxt}>{l}</Text>)}

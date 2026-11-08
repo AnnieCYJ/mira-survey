@@ -21,6 +21,7 @@ import BackButton from '../components/BackButton';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import SleepRegularityChart from '../components/SleepRegularityChart';
+import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import { type RangeKey } from '../data/metrics';
 import {
@@ -79,8 +80,8 @@ export default function SleepRegularityDetailScreen() {
         <View style={styles.header}>
           <BackButton onPress={() => navigation.goBack()} />
           <View style={styles.titleWrap}>
-            <Text style={styles.title}>睡眠规律性</Text>
-            <Text style={styles.unit}>入睡 / 起床时间 · 逐日区间</Text>
+            <Text style={styles.title}>昼夜节律</Text>
+            <Text style={styles.unit}>入睡 / 起床规律 · 皮质醇节律</Text>
           </View>
         </View>
 
@@ -176,6 +177,10 @@ export default function SleepRegularityDetailScreen() {
             last
           />
         </View>
+
+        {/* ★ 2026-11-08（用户拍板）：原洞察页「昼夜节律」卡（皮质醇）收进本详情页，改名「皮质醇节律」；
+            洞察页由改名的「昼夜节律」卡（即上方睡眠规律性内容）作为统一入口。 */}
+        <AllDayRecoveryCard title="皮质醇节律" insightMode />
 
         <Text style={styles.foot}>只描述作息时间的变化，不构成诊断或评分。</Text>
       </ScreenContainer>

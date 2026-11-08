@@ -20,6 +20,7 @@ import Svg, { Path, Defs, LinearGradient as SvgLinear, Stop, Text as SvgText, Ci
 import { theme } from '../theme/theme';
 import { chart } from '../theme/chart';
 import { READY_LOW, READY_HIGH, type ReadinessPoint } from '../lib/cognitiveReadiness';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 /** 准备度三档配色：分数高 = 状态好 = 绿（与疲劳档位方向相反） */
 const LEVELS = [
@@ -94,12 +95,30 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
   // ★ 2026-10-06：N=48（半小时槽），X 轴主刻度每 4 小时 = 每 8 槽
   const MAIN_HOURS = [0, 4, 8, 12, 16, 20, 24];
 
+  // ★ 统一数值气泡：点折线任意槽 → 显示时刻 + 准备度分值（无数据的槽不生成、不弹）
+  const chartHeight = svgH + theme.sp(2);
+  const tapSlots: ChartTapSlot[] = [];
+  if (svgW > 0) {
+    for (let s = 0; s < N; s++) {
+      const p = points[s];
+      if (!p?.hasData || !Number.isFinite(p.score)) continue;
+      tapSlots.push({
+        fx: xAt(s) / svgW,
+        fy: yAt(p.score) / chartHeight,
+        label: `${String(Math.floor(s / 2)).padStart(2, '0')}:${s % 2 ? '30' : '00'}`,
+        value: `${Math.round(p.score)} / 100`,
+        color: readinessColor(p.score),
+      });
+    }
+  }
+
   return (
     <View
       onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
       style={{ width: '100%' }}
     >
       {svgW > 0 ? (
+      <View>
       <Svg width={svgW} height={svgH + theme.sp(2)}>
         <Defs>
           <SvgLinear id="readyArea" x1="0" y1="0" x2="0" y2="1">
@@ -184,6 +203,8 @@ export default function ReadinessTrendChart({ points, sleepWindow, nowHour, capt
           );
         })}
       </Svg>
+      <ChartTapTip slots={tapSlots} height={chartHeight} width={svgW} />
+      </View>
       ) : null}
 
       {/* ★ 2026-10-06（用户口径）：图例改为中性文字说明 0-100 量纲与阈值参考，不再用彩色圆点渲染三档 */}

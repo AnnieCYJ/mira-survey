@@ -20,15 +20,22 @@ export interface ChartTip {
   color?: string;
 }
 
-// ★ 比原白色框（110×60 / 96×56）更小，统一尺寸
-const TW = 94;
 const TH = 52;
 // 磨砂深色玻璃：深海蓝底半透 + 细白描边（原生不支持 backdrop-blur，用半透明+描边模拟磨砂感）
 const GLASS_BG = 'rgba(12,30,52,0.80)';
 const GLASS_BORDER = 'rgba(255,255,255,0.18)';
 
+/** 中文按两个半角宽估；气泡宽度随内容自适应，但所有图表共用同一组件 / 同一 clamp 区间，
+ *  避免 `116/76 mmHg`、`01:35 → 07:31` 这类长数值被 94px 定宽框截断。 */
+function visualLen(s: string): number {
+  let n = 0;
+  for (const ch of s) n += /[\u3400-\u9fff]/.test(ch) ? 2 : 1;
+  return n;
+}
+
 export default function ChartTooltip({ tip, w, H }: { tip: ChartTip | null; w: number; H: number }) {
   if (!tip || w <= 0) return null;
+  const TW = Math.min(168, Math.max(94, Math.max(visualLen(tip.label || ''), visualLen(tip.value || '')) * 8 + 24));
   let tipX = tip.x - TW / 2;
   if (tipX < 4) tipX = 4;
   if (tipX + TW > w - 4) tipX = w - 4 - TW;
@@ -36,7 +43,7 @@ export default function ChartTooltip({ tip, w, H }: { tip: ChartTip | null; w: n
   const triX = tip.x - 7;
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: w, height: H }}>
-      <View style={[s.box, { left: tipX, top: tipY }]}>
+      <View style={[s.box, { left: tipX, top: tipY, width: TW }]}>
         <Text style={s.label} numberOfLines={1}>{tip.label || '数值'}</Text>
         <Text style={[s.value, tip.color ? { color: tip.color } : null]} numberOfLines={1}>{tip.value}</Text>
       </View>
@@ -48,7 +55,7 @@ export default function ChartTooltip({ tip, w, H }: { tip: ChartTip | null; w: n
 const s = StyleSheet.create({
   box: {
     position: 'absolute',
-    width: TW,
+    // width 由内容长度自适应后内联传入（见 ChartTooltip 内的 TW 计算）
     height: TH,
     backgroundColor: GLASS_BG,
     borderWidth: 1,

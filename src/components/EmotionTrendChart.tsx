@@ -24,6 +24,7 @@ import { theme } from '../theme/theme';
 import { chart } from '../theme/chart';
 import type { EmotionFaceMood } from './EmotionFaceIcon';
 import { MOOD_COLOR, moodFromEmotionLevel } from '../data/emotionLog';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 /** 五档情绪 → 嘴型（脸形）。颜色统一走 emotionLog.MOOD_COLOR（与 App 内点阵 / 日历 / 详情页同源，绝不另起一套 hex）。 */
 const MOOD_MOUTH: Record<EmotionFaceMood, 'smile' | 'flat' | 'frown'> = {
@@ -124,6 +125,39 @@ export default function EmotionTrendChart({
 
   const HOURS = [0, 6, 12, 18, 24];
   const xTick = (h: number) => (h === 24 ? padL + plotW : padL + (h / 24) * plotW);
+
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：情绪线 + 唤醒条 → 统一 tap 槽
+  const svgTotalH = svgH + theme.sp(2);
+  const slotHM = (s: number) => `${String(Math.floor(s / 2)).padStart(2, '0')}:${String((s % 2) * 30).padStart(2, '0')}`;
+  const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
+    if (svgW <= 0) return [];
+    const out: ChartTapSlot[] = [];
+    for (let s = 0; s < N; s++) {
+      const v = valenceSlots[s];
+      if (v != null && !inSleep(s)) {
+        out.push({
+          fx: xAt(s) / svgW,
+          fy: vY(v) / svgTotalH,
+          label: slotHM(s),
+          value: `${v >= 0 ? '+' : ''}${v.toFixed(1)} 情绪`,
+          color: moodFromEmotionLevel(v) ? MOOD_COLOR[moodFromEmotionLevel(v)!] : undefined,
+        });
+      }
+      const a = arousalSlots[s];
+      if (a != null && !inSleep(s)) {
+        out.push({
+          fx: xAt(s) / svgW,
+          fy: (aBottom - (a / 100) * aH) / svgTotalH,
+          label: slotHM(s),
+          value: `${Math.round(a)} /100 唤醒`,
+          color: arousalColor(a),
+        });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arousalSlots, valenceSlots, sleepWindow, svgW, svgTotalH]);
+
   /** 把「此刻」槽（0–47，每槽 30 分钟）换算成 HH:MM，直接回答「数据是哪个时刻的」 */
   const nowHM = (() => {
     if (nowSlot == null || nowSlot < 0 || nowSlot >= N) return null;
@@ -243,6 +277,7 @@ export default function EmotionTrendChart({
             })}
           </Svg>
         ) : null}
+        <ChartTapTip slots={tapSlots} height={svgTotalH} width={svgW > 0 ? svgW : undefined} />
       </View>
 
       {/* 图例 + 口径说明 */}

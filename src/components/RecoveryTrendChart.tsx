@@ -15,6 +15,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Polyline, Line as SvgLine, Circle, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -98,6 +99,21 @@ export default function RecoveryTrendChart({
   const { x, y, runs, dots, ticks, padL, padR, padT, padB, lastValid } = layout;
   const plotW = W - padL - padR;
 
+  // ★ 统一数值气泡：点任意一天 → 显示日期 + 当天恢复力分值
+  const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
+    if (!layout || W <= 0) return [];
+    return layout.dots.map((d) => {
+      const day = new Date(endDayMs - (values.length - 1 - d.i) * 864e5);
+      return {
+        fx: d.cx / W,
+        fy: d.cy / height,
+        label: `${day.getMonth() + 1}/${day.getDate()}`,
+        value: `${Math.round(d.v)} / 100`,
+        color: mm.colors.ringTeal,
+      };
+    });
+  }, [layout, W, height, endDayMs, values.length]);
+
   return (
     <View>
       <Svg width={W} height={height}>
@@ -147,6 +163,7 @@ export default function RecoveryTrendChart({
           );
         })}
       </Svg>
+      <ChartTapTip slots={tapSlots} height={height} width={W} />
     </View>
   );
 }

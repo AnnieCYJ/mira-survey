@@ -6,6 +6,7 @@ import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import { parseClockMinutes } from '../lib/sleepTime';
 import type { SleepSegment } from '../ble/RingBleManager';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 /** 睡眠阶段元数据：颜色严格取自 design token，避免裸值。
  *  0=深睡 1=浅睡 2=REM 3=失眠 4=清醒（KH18 固件通常只返回 0/1/2/4）。
@@ -146,6 +147,53 @@ export default function SleepStageChart({
   const rowBottomY = (rowIndex: number) =>
     chartH - (rowIndex + 1) * ROW_H - rowIndex * ROW_GAP;
 
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：每段中点 → 统一 tap 槽
+  const tapSlots: ChartTapSlot[] = [];
+  for (const s of segments) {
+    const meta = SLEEP_STAGE_META[s.type] ?? SLEEP_STAGE_META[1];
+    const mid = Math.max(0, Math.min(totalMin, (s.start + s.end) / 2));
+    tapSlots.push({
+      fx: x(mid) / W,
+      fy: (rowBottomY(meta.row) + BAR_H / 2) / H,
+      label: startAbs != null
+        ? `${fmtClock(startAbs + s.start)} – ${fmtClock(startAbs + s.end)}`
+        : `+${Math.round(s.start / 60)}h – +${Math.round(s.end / 60)}h`,
+      value: meta.label,
+      color: meta.color,
+    });
+  }
+  if (showHrv && hrvLayer) {
+    const bed = bedTimeMs != null ? bedTimeMs : (startAbs != null ? startAbs * 60_000 : null);
+    if (bed != null) {
+      const slotMs = 5 * 60_000;
+      const slotCount = Math.max(1, Math.ceil((totalMin * 60_000) / slotMs));
+      const sum = new Array<number>(slotCount).fill(0);
+      const cnt = new Array<number>(slotCount).fill(0);
+      for (const p of hrvLayer) {
+        if (!Number.isFinite(p.v) || p.v <= 0) continue;
+        const si = Math.floor((p.t - bed) / slotMs);
+        if (si < 0 || si >= slotCount) continue;
+        sum[si] += p.v; cnt[si] += 1;
+      }
+      let hi = 0;
+      for (let i = 0; i < slotCount; i++) if (cnt[i] > 0 && sum[i] / cnt[i] > hi) hi = sum[i] / cnt[i];
+      const top = hi > 0 ? hi * 1.15 : 1;
+      const baseY = chartH + theme.sp(1) + HRV_BAR_H;
+      for (let i = 0; i < slotCount; i++) {
+        if (cnt[i] === 0) continue;
+        const v = sum[i] / cnt[i];
+        const relMin = (i * slotMs) / 60_000;
+        tapSlots.push({
+          fx: x(Math.min(relMin, totalMin)) / W,
+          fy: (baseY - Math.max(chart.bar.minHeight, (v / top) * HRV_BAR_H) / 2) / H,
+          label: startAbs != null ? fmtClock(startAbs + relMin) : `+${Math.round(relMin / 60)}h`,
+          value: `${Math.round(v)} ms HRV`,
+          color: mm.colors.roseDeep,
+        });
+      }
+    }
+  }
+
   const gap = 0.5; // 段间极小间隙
 
   /**
@@ -282,6 +330,7 @@ export default function SleepStageChart({
           </SvgText>
         ))}
       </Svg>
+      <ChartTapTip slots={tapSlots} height={H} width={W} />
     </View>
   );
 }

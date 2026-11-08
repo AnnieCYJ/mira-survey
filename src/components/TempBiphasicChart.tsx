@@ -17,6 +17,7 @@ import { chart } from '../theme/chart';
 import { computeCycle, dayKey, parseDate, tempDailyToSeries, type CycleLog } from '../lib/cycleMath';
 import { phaseBand, type PhaseKey } from '../lib/phaseColors';
 import PhaseLegend from './PhaseLegend';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import { cycleAxis } from '../lib/hormoneTrend';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import type { TimePoint } from '../ble/RingBleManager';
@@ -237,6 +238,28 @@ export default function TempBiphasicChart({
   const todayIdx = !isDay && cycAxis ? cycAxis.todayDay - 1 : -1;
   const showTodayLine = todayIdx >= 0 && todayIdx <= pts.length - 1;
 
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：数据点 → 统一 tap 槽
+  const tapSlots = useMemo<ChartTapSlot[]>(() => {
+    const out: ChartTapSlot[] = [];
+    (pts as any[]).forEach((p, i) => {
+      const v = p.v;
+      if (v == null || !Number.isFinite(v)) return;
+      const x = isDay ? xAtTime(p.t) : xAtIndex(i);
+      const y = yAt(v);
+      const label = isDay
+        ? (() => {
+            const d = new Date(p.t);
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          })()
+        : p.date
+          ? `${p.date.getMonth() + 1}/${p.date.getDate()}`
+          : `第 ${i + 1} 天`;
+      out.push({ fx: x / W, fy: y / H, label, value: `${v.toFixed(2)} °C` });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pts, isDay, dayStart]);
+
   return (
       <View style={styles.wrap}>
         {showHeader && (
@@ -252,6 +275,7 @@ export default function TempBiphasicChart({
             <Text style={styles.todayText}>今天 · 第 {cycAxis.todayDay} 天</Text>
           </View>
         ) : null}
+        <View>
         <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {/* 周期阶段背景带（仅周/月/年有按日相位；日视图因是日内，不画阶段带） */}
         {!isDay &&
@@ -319,6 +343,8 @@ export default function TempBiphasicChart({
           </>
         )}
       </Svg>
+        <ChartTapTip slots={tapSlots} height={H} />
+        </View>
       {noData ? (
         <Text style={styles.hintText}>
           近段暂无日均体温数据。连续佩戴几天后，这里会自动画出体温曲线：经期偏低、排卵后明显升高。

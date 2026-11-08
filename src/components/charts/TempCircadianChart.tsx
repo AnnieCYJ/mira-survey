@@ -6,6 +6,7 @@ import { mm } from '../../theme/mindmate';
 import { chart } from '../../theme/chart';
 import { DAY_HOUR_TICKS, hourTickLabel } from '../../lib/chartAxis';
 import { TEMP_BAND_C, type TempBaseline } from '../../lib/tempBaseline';
+import ChartTapTip, { type ChartTapSlot } from '../ChartTapTip';
 
 /**
  * TempCircadianChart —— 体温「偏离个人基线」的昼夜节律曲线（2026-10-10 建立）
@@ -137,6 +138,31 @@ export default function TempCircadianChart({
 
   const hasData = dev.some((v) => v != null);
 
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：48 槽偏离值 → 统一 tap 槽
+  const tapSlots = useMemo<ChartTapSlot[]>(() => {
+    if (w <= 0 || plotW <= 0) return [];
+    const n = Math.max(1, dev.length);
+    const slotW = plotW / n;
+    const yOf = (v: number) => PAD_T + plotH * (1 - (v + half) / (half * 2));
+    const out: ChartTapSlot[] = [];
+    for (let i = 0; i < n; i++) {
+      const v = dev[i];
+      if (v == null) continue;
+      if (slotStartMs(i, n) > now) continue;            // 未来槽不弹
+      const minutes = (i * 1440) / n;
+      const hh = Math.floor(minutes / 60);
+      const mm2 = Math.round(minutes % 60);
+      out.push({
+        fx: (PAD_L + slotW * (i + 0.5)) / w,
+        fy: yOf(v) / H,
+        label: `${String(hh).padStart(2, '0')}:${String(mm2).padStart(2, '0')}`,
+        value: `${v >= 0 ? '+' : ''}${v.toFixed(2)} ℃`,
+        color: mm.colors.roseDeep,
+      });
+    }
+    return out;
+  }, [dev, w, plotW, plotH, half, now, H]);
+
   return (
     <View onLayout={onLayout}>
       {geom && (
@@ -154,6 +180,7 @@ export default function TempCircadianChart({
           ))}
         </Svg>
       )}
+      <ChartTapTip slots={tapSlots} height={H} width={w} />
       {!baseline.ready && (
         <Text style={styles.note}>
           {`正在建立个人基线（已累计 ${baseline.days} 天，至少需要 3 天）——`}

@@ -12,6 +12,7 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import { chart } from '../theme/chart';
 import Card from './Card';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import { healthStore, dayKey, parseDayKey } from '../data/healthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
 import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from '../lib/cortisolRhythm';
@@ -466,8 +467,21 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
     }
   }
 
+  // ★ 统一数值气泡：点曲线任意 30 分钟槽 → 显示时刻 + 相对活性（0–100）
+  const tapSlots: ChartTapSlot[] = main30.flatMap((v, i) => {
+    if (v == null || !Number.isFinite(v)) return [];
+    return [{
+      fx: xOfSlot(i) / W,
+      fy: yOf(v) / H,
+      label: slotToClock(i),
+      value: `${Math.round(v)} / 100`,
+      color: chart.series.cortisol,
+    }];
+  });
+
   return (
     <View style={{ marginTop: theme.sp(1) }}>
+      <View>
       <Svg width={W} height={H}>
         {/* ★ 首页同款：今日曲线下渐变面积 */}
         <Defs>
@@ -566,6 +580,8 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
           );
         })}
       </Svg>
+      <ChartTapTip slots={tapSlots} height={H} width={W} />
+      </View>
 
       {/* ★ v18.125 图例：用真实线段样式（View 画线）而不是「- -」「—」字符 ——
           字符字形与实际 strokeDasharray 观感不一致，线宽/虚线间距都对不上。 */}

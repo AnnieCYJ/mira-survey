@@ -13,6 +13,7 @@ import { View } from 'react-native';
 import Svg, { Circle, Line as SvgLine, Rect, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import {
   AXIS_MAX_H,
   AXIS_MIN_H,
@@ -66,6 +67,21 @@ export default function SleepRegularityChart({
   }
   const { padL, padR, padT, padB, plotW, plotH, yOf, xOf, barW, axisTicks } = layout;
   const gridRight = padL + plotW;
+
+  // ★ 统一数值气泡：点任意一根区间柱 → 显示该夜的日期 + 入睡/起床时刻
+  const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
+    if (!layout || W <= 0) return [];
+    return points.flatMap((p, i) => {
+      if (p.bedH == null || p.wakeH == null || !p.bedClock || !p.wakeClock) return [];
+      return [{
+        fx: layout.xOf(i) / W,
+        fy: layout.yOf(p.wakeH) / height,
+        label: p.label,
+        value: `${p.bedClock} → ${p.wakeClock}`,
+        color: mm.colors.limeCore,
+      }];
+    });
+  }, [layout, W, height, points]);
 
   return (
     <View>
@@ -165,6 +181,7 @@ export default function SleepRegularityChart({
             ))
           : null}
       </Svg>
+      <ChartTapTip slots={tapSlots} height={height} width={W} />
     </View>
   );
 }

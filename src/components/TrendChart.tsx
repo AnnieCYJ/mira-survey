@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, Text, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, StyleSheet, Text } from 'react-native';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { chart } from '../theme/chart';
@@ -50,7 +51,6 @@ interface PPoint {
 }
 
 export default function TrendChart({ width, height = theme.fs(108), timeline, stale }: Props) {
-  const [selected, setSelected] = useState<number | null>(null);
   const padX = 10;  // 左右内边距, 保证首尾点不被左/右边缘裁掉
 
   const { segPaths, fillPaths, gradStops, pts, minGapX, hasGap } = useMemo(() => {
@@ -130,9 +130,18 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
     return { segPaths, fillPaths, gradStops, pts: p, minGapX: gap, hasGap: groups.length > 1 };
   }, [width, height, timeline]);
 
-  const selIdx = selected != null && selected >= 0 && selected < pts.length
-    ? selected
-    : (pts.length > 0 ? pts.length - 1 : null);
+  // ★ 2026-11-08（用户）：原来这张图独占一套「彩色 mood 气泡」，与详情页统一的黑色磨砂
+  //   数值框不一致 → 换成全站同一套 ChartTapTip（点时数值，松手 2.2s 收起）。
+  const tapSlots = useMemo<ChartTapSlot[]>(() => {
+    if (stale || pts.length === 0) return [];
+    return pts.map((p) => ({
+      fx: p.x / width,
+      fy: p.y / height,
+      label: fmtTime(p.t),
+      value: `${moodFor(p.value).label} ${Math.round(p.value)}`,
+      color: moodFor(p.value).color,
+    }));
+  }, [pts, width, height, stale]);
 
   // ★ v18.105/106：无数据 **或断流（dataStale）** 都保留「空图表」骨架
   //   （基线 + 横向刻度 + 虚线占位框 + 居中说明），不再只丢一个小字「暂无数据」，
@@ -169,9 +178,6 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
     );
   }
 
-  const hitW = Math.max(18, Math.min(minGapX, 34) - 2);
-  const hitH = 26;
-
   return (
     <View style={{ width, height }}>
       <Svg width={width} height={height}>
@@ -204,23 +210,7 @@ export default function TrendChart({ width, height = theme.fs(108), timeline, st
            当前档位已由下方彩色气泡（backgroundColor=mood.color）表达，圆点属冗余装饰。 */}
       </Svg>
 
-      {selIdx != null && pts[selIdx] ? (() => {
-        const p = pts[selIdx]!;
-        const mood = moodFor(p.value);
-        const bubbleW = 78;
-        const left = Math.max(4, Math.min(width - bubbleW - 4, p.x - bubbleW / 2));
-        const top = Math.max(2, p.y - 46);
-        return (
-          <Pressable key="bubble" pointerEvents="none" style={[styles.bubble, { left, top, backgroundColor: mood.color }]}>
-            <Text style={styles.bubbleLevel}>{mood.label} {Math.round(p.value)}</Text>
-            <Text style={styles.bubbleTime}>{fmtTime(p.t)}</Text>
-          </Pressable>
-        );
-      })() : null}
-
-      {pts.map((p, i) => (
-        <Pressable key={`hit-${i}`} onPress={() => setSelected(i)} style={[styles.hit, { left: Math.max(padX, p.x - hitW / 2), top: Math.max(0, p.y - hitH / 2), width: hitW, height: hitH }]} />
-      ))}
+      <ChartTapTip slots={tapSlots} height={height} width={width} />
     </View>
   );
 }

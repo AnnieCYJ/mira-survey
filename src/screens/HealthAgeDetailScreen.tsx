@@ -21,6 +21,7 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import BackButton from '../components/BackButton';
 import Card from '../components/Card';
+import ChartTapTip, { type ChartTapSlot } from '../components/ChartTapTip';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { estimateHealthAge } from '../lib/healthAgeEstimate';
@@ -309,7 +310,21 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
   const xLabels: { x: number; text: string }[] = [];
   axis.forEach((t, i) => { if (t) xLabels.push({ x: xAt(i), text: t }); });
 
+  // ★ 统一数值气泡：点折线任意一天 → 显示日期 + 身体年龄（viewBox 比例与实际宽高等比）
+  const tapSlots: ChartTapSlot[] = data.flatMap((d, i) => {
+    if (d.val == null || !Number.isFinite(d.val) || actualAge == null) return [];
+    const dv = d.val - actualAge;
+    return [{
+      fx: xAt(i) / W,
+      fy: yAt(dv) / H,
+      label: axis[i] || `${i + 1}`,
+      value: `${d.val.toFixed(1)} 岁`,
+      color: segColor(dv),
+    }];
+  });
+
   return (
+    <View>
     <Svg width="100%" height={H} viewBox={'0 0 ' + W + ' ' + H}>
       {grids.map((g, i) => {
         const y = yAt(g);
@@ -340,6 +355,8 @@ function TrendChart({ data, actualAge, isMonth }: { data: { val: number | null }
         <SvgText key={i} x={l.x} y={H - 8} fontSize={9} fill={theme.colors.textSub} textAnchor="middle">{l.text}</SvgText>
       ))}
     </Svg>
+    <ChartTapTip slots={tapSlots} height={H} />
+    </View>
   );
 }
 

@@ -25,6 +25,7 @@ import { chart } from '../theme/chart';
 import { DAY_HOUR_TICKS } from '../lib/chartAxis';
 import { percentileFromZ } from '../lib/psychologicalStressScale';
 import type { EmotionalStressReport, EmotionalStressSlot } from '../lib/emotionalStress';
+import ChartTapTip, { type ChartTapSlot } from './ChartTapTip';
 
 const LEVELS: Array<{ min: number; color: string; band: string; label: string }> = [
   { min: 70, color: theme.colors.danger, band: theme.colors.dangerSoft, label: '高' },
@@ -156,6 +157,26 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
   //   与 ReadinessTrendChart / CognitiveLoadCard / RANGE_DEF 完全一致。
   const MAIN_HOURS = [...DAY_HOUR_TICKS];
 
+  // ★ 2026-11-08（用户：所有图表统一「点一下弹数值框」）：有效压力槽 → 统一 tap 槽
+  const svgTotalH = svgH + theme.sp(2);
+  const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
+    if (svgW <= 0 || plotW <= 0) return [];
+    const out: ChartTapSlot[] = [];
+    for (const p of points) {
+      if (!p.hasData || inSleep(p.slot)) continue;
+      const v = p.value;
+      out.push({
+        fx: xAt(p.slot) / svgW,
+        fy: yAt(v) / svgTotalH,
+        label: `${String(Math.floor(p.slot / 2)).padStart(2, '0')}:${String((p.slot % 2) * 30).padStart(2, '0')}`,
+        value: `${Math.round(v)} /100`,
+        color: stressColorOf(v),
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points, sleepWindow, svgW, plotW, svgTotalH]);
+
   return (
     <View>
       {scale ? (
@@ -239,6 +260,7 @@ export default function StressTrendChart({ points, scale, nowSlot, chartH, sleep
           })}
         </Svg>
         ) : null}
+        <ChartTapTip slots={tapSlots} height={svgTotalH} width={svgW > 0 ? svgW : undefined} />
       </View>
 
       <Text style={styles.caption}>
