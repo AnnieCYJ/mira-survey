@@ -1,12 +1,10 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
-import { AiResultRow } from '../components/AiAnalysis';
-import ChatSheet from '../components/ChatSheet';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import { theme } from '../theme/theme';
@@ -272,10 +270,8 @@ export default function BpDetailScreen() {
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
 
-  // ★ 2026-10-16：血压详情页内 AI 问答入口（与精力/情绪详情页同款 ChatSheet）
-  const [chatVisible, setChatVisible] = useState(false);
-  const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
-  const openChat = useCallback((q: string) => { setChatQuestion(q); setChatVisible(true); }, []);
+  // ★ 2026-11-08（用户：「查看更多分析」所有页面都不要，目前不做这个）：
+  //   原 AI 问答 ChatSheet 的唯一入口就是 Hero 右下角那个链接，已一并移除，不再保留死代码。
 
   // ★ 2026-10-17：录入（手动添加读数）弹窗状态 + 刷新计数（手动写入后强制重算）
   const [entryVisible, setEntryVisible] = useState(false);
@@ -285,9 +281,6 @@ export default function BpDetailScreen() {
   const [nonce, setNonce] = useState(0);
 
   const data = useMemo(() => buildDual(range, anchor), [range, anchor, nonce, hsVer]);
-
-  // ★ 2026-11-07（用户）：解读合并进首个 Hero 卡片（原底部独立「血压解读」上移）
-  const bpRows = useMemo(() => buildBpInsightRows(data.avgSys, data.avgDia), [data.avgSys, data.avgDia]);
 
   // 上一周期锚点（用于「较上一周期」对比）
   const prevAnchor = useMemo(() => {
@@ -320,16 +313,6 @@ export default function BpDetailScreen() {
   const sysHasData = (data.sys.points.some((v) => v != null) || data.sys.tPoints.length > 0);
   const diaHasData = (data.dia.points.some((v) => v != null) || data.dia.tPoints.length > 0);
   const hasData = sysHasData || diaHasData;
-
-  // ★ 2026-10-16：取某指标当天最新一次读数（光电/气囊血压细分卡用）
-  const latestVal = (k: 'ppgSys' | 'ppgDia' | 'bpSys' | 'bpDia'): number | null => {
-    try {
-      const pts = healthStore.getIntraday(k, dateKeyOf(Date.now()));
-      return pts.length ? pts[pts.length - 1].v : null;
-    } catch {
-      return null;
-    }
-  };
 
   // 日视图固定以全天 0~24h 为时间轴，测量点按真实时间落位，避免单点被缩到最右侧
   const isTodayAnchor = dateKeyOf(anchor.getTime()) === dateKeyOf(Date.now());
@@ -423,17 +406,8 @@ export default function BpDetailScreen() {
           </View>
         </View>
 
-        {/* ★ 2026-11-07（用户）：解读合并进首个 Hero 卡片（原底部独立「血压解读」上移） */}
-        <Text style={styles.heroAnalysis}>{bpRows[0]?.body ?? ''}</Text>
-        {bpRows.slice(1).map((r, i) => (
-          <AiResultRow key={`${r.title}-${i}`} tone={r.tone} title={r.title}>
-            {r.body}
-          </AiResultRow>
-        ))}
-        <TouchableOpacity style={styles.heroMoreLink} onPress={() => openChat('帮我分析今天的血压')} activeOpacity={0.7}>
-          <Text style={styles.heroMoreText}>查看更多分析</Text>
-          <Text style={styles.heroMoreArrow}>›</Text>
-        </TouchableOpacity>
+        {/* ★ 2026-11-08（用户）：Hero 卡只保留数值 + 图例。
+            中间的「分析」行与右下角「查看更多分析」入口全部去掉，目前不做这个。 */}
       </Card>
 
       {/* 图表 */}
@@ -597,29 +571,11 @@ export default function BpDetailScreen() {
         </Card>
       ) : null}
 
-      {/* ★ 2026-10-16：血压细分——光电血压（PPG，无气囊戒指默认）vs 气囊血压（带气囊机型） */}
-      {hasData ? (
-        <Card>
-          <Text style={styles.detailTitle}>测量方式细分</Text>
-          <View style={styles.detailGrid}>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailColLabel}>光电血压（PPG）</Text>
-              <Text style={styles.detailColVal}>
-                <Text style={{ color: COL_SYS }}>{fmt(latestVal('ppgSys'))}</Text>
-                <Text style={{ color: theme.colors.textSub }}>/</Text>
-                <Text style={{ color: COL_DIA }}>{fmt(latestVal('ppgDia'))}</Text>
-                <Text style={{ color: theme.colors.textSub, fontSize: theme.fontSize.xs }}> mmHg</Text>
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.compareLabel, { marginTop: 10 }]}>
-            本款无气囊血压，以戒指光电血压（PPG）为准，数值含估测成分。
-          </Text>
-        </Card>
-      ) : null}
+      {/* ★ 2026-11-08（用户）：「测量方式细分」模块整块删除 —— 本款只有一路血压数据，
+          单独列一份 PPG 读数没有信息量。 */}
 
-      {/* ★ 2026-10-16：血压分级（WHO/ISH 六档）+ 规则 AI 解读 */}
-      {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} openChat={openChat} /> : null}
+      {/* ★ 2026-10-16：血压分级（WHO/ISH 六档）+ 规则解读 */}
+      {hasData ? <BpClassificationCard sysAvg={data.avgSys} diaAvg={data.avgDia} /> : null}
       </View>
     </ScreenContainer>
 
@@ -668,7 +624,6 @@ export default function BpDetailScreen() {
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
-    <ChatSheet visible={chatVisible} onClose={() => setChatVisible(false)} initialQuestion={chatQuestion} />
     </View>
   );
 }
@@ -690,34 +645,7 @@ function bpStageOf(s: number, d: number): number {
   return Math.max(sStage, dStage);
 }
 
-/* ★ 2026-11-07（用户）：把「血压解读」从底部独立卡片合并进首个 Hero 卡片。
- * 抽成共享函数，主屏 Hero 与 BpClassificationCard 共用同一套解读文案。 */
-function buildBpInsightRows(sysAvg: number | null, diaAvg: number | null): { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] {
-  const s = sysAvg ?? latestValLocal('bpSys');
-  const d = diaAvg ?? latestValLocal('bpDia');
-  const has = s != null && d != null;
-  const stage = has ? bpStageOf(s, d) : 0;
-  const tier = has ? BP_TIERS[stage - 1] : null;
-
-  const rows: { tone: 'good' | 'warn' | 'neutral'; title: string; body: string }[] = [
-    {
-      tone: 'neutral',
-      title: '',
-      body: has
-        ? `当前血压约 ${Math.round(s!)}/${Math.round(d!)} mmHg，评级为「${tier?.name}」。`
-        : '今日暂无足够血压数据，连接戒指完成一次测量后查看分级。',
-    },
-  ];
-  if (has && tier) {
-    if (stage >= 4) rows.push({ tone: 'warn', title: '关注', body: tier.note });
-    else if (stage === 3) rows.push({ tone: 'neutral', title: '提示', body: tier.note });
-    else rows.push({ tone: 'good', title: '良好', body: tier.note });
-  }
-  rows.push({ tone: 'neutral', title: '建议', body: '定期监测、减盐限酒、规律有氧；分级仅作参考，诊断请遵医嘱。' });
-  return rows;
-}
-
-function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | null; diaAvg: number | null; openChat: (q: string) => void }) {
+function BpClassificationCard({ sysAvg, diaAvg }: { sysAvg: number | null; diaAvg: number | null }) {
   const s = sysAvg ?? latestValLocal('bpSys');
   const d = diaAvg ?? latestValLocal('bpDia');
   const has = s != null && d != null;
@@ -730,14 +658,21 @@ function BpClassificationCard({ sysAvg, diaAvg, openChat }: { sysAvg: number | n
         <Text style={styles.detailTitle}>血压分级（WHO/ISH）</Text>
         {has ? (
           <>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 10 }}>
-              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: '700', color: tier?.color }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: theme.fontSize.stat, fontWeight: '700', color: theme.colors.textWhite }}>
                 {Math.round(s!)}/{Math.round(d!)}
               </Text>
               <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginLeft: 6 }}>mmHg</Text>
               <View style={{ flex: 1 }} />
-              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radius.md, backgroundColor: tier?.color, opacity: 0.18 }}>
-                <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: tier?.color }}>{tier?.name}</Text>
+              {/* ★ 2026-11-08（用户：「正常血压」太轻看不清）：旧实现给整个徽章 View 设 opacity 0.18，
+                  文字被一起压到 18% 再叠一层浅绿，几乎看不见。改为白玻璃底 + 分级色描边 + 纯白粗体字：
+                  分级语义色只留在描边和下方六档色条（图形），文字一律高对比白字。 */}
+              <View style={{
+                paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.radius.md,
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                borderWidth: 1, borderColor: tier?.color,
+              }}>
+                <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '700', color: theme.colors.textWhite }}>{tier?.name}</Text>
               </View>
             </View>
             {/* 六档水平条：当前档高亮 */}
@@ -799,19 +734,6 @@ const styles = StyleSheet.create({
   heroSep: { fontSize: theme.fontSize.stat, color: theme.colors.textSub, marginHorizontal: 4 },
   heroDia: { fontSize: theme.fontSize.hero, fontWeight: '700' },
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: 4 },
-  /* ★ 2026-11-03（用户·统一 hero 结构）：数字下方短分析 */
-  heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(1.5) },
-  /* ★ 2026-11-07（用户）：解读合并进 Hero，复用 InsightBanner 的「查看更多分析」入口样式 */
-  heroMoreLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    marginTop: theme.space.sm,
-    paddingHorizontal: theme.sp(1),
-    paddingVertical: theme.sp(0.5),
-  },
-  heroMoreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.medium },
-  heroMoreArrow: { fontSize: theme.fontSize.h2, color: theme.colors.accentText, lineHeight: theme.fontSize.h2, marginLeft: 2 },
   legendText: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
   chartCard: {
     backgroundColor: theme.colors.cardBg,

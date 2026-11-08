@@ -1697,7 +1697,6 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
     return (
       <InsightBanner
         rows={[{ tone: 'neutral', title: '', body: firstBody }, ...rows]}
-        onMore={() => openChat('帮我分析身体恢复情况')}
       />
     );
   }
@@ -1737,7 +1736,6 @@ function EnergyAiBanner({ type, ring, openChat, anchor }: { type: EnergyType; ri
     return (
       <InsightBanner
         rows={[{ tone: 'neutral', title: '', body: firstBody }, ...rows]}
-        onMore={() => openChat('帮我分析今天的认知准备度')}
       />
     );
   }

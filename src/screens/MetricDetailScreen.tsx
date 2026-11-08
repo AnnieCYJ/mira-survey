@@ -507,7 +507,9 @@ function RangeBarsChart({
   return (
     <View style={styles.chartCard}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        {showYAxis && hasData ? (
+        {/* ★ 2026-11-08（用户）：空数据也要是一张完整的「空图表」——Y 轴刻度不再随 hasData 隐藏，
+            网格线本就常驻，这样周/月/年趋势图在无数据时仍保留坐标框架。 */}
+        {showYAxis ? (
           <View style={{ width: Y_GUT, height: H, position: 'relative' }}>
             {yTicks.map((gv, k) => (
               <Text key={`y-${k}`} style={{ position: 'absolute', top: Math.max(0, yAt(gv) - 7), right: 3, fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'right' }}>
@@ -1867,9 +1869,11 @@ export default function MetricDetailScreen() {
                 );
               })}
             </View>
-            {hrvPart === 'night' && !hrvNightAvailable ? (
-              <Text style={styles.chartNote}>昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段。</Text>
-            ) : hrvDay?.buckets ? (
+            {/* ★ 2026-11-08（用户：「趋势图没数据也要展示空图表，不能是没有」）：
+                旧实现在「默认选中夜间 + 没有睡眠窗口」时只返回一行说明文字，整块图表消失。
+                现在无论有没有数据都保留图表框架 —— AllDayBarsChart 在全空槽时照样画网格、刻度与空桩，
+                极端情况下再用 EmptyChartFrame 兜底，页面永远看得到一张（空的）趋势图。 */}
+            {hrvDay?.buckets ? (
               <>
                 <AllDayBarsChart
                   buckets={hrvDay.buckets}
@@ -1884,13 +1888,17 @@ export default function MetricDetailScreen() {
                 />
                 <DayBarsLegend showMean={false} />
                 <Text style={styles.chartNote}>
-                  {hrvPart === 'night'
-                    ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。`
-                    : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。`}
+                  {hrvPart === 'night' && !hrvNightAvailable
+                    ? '昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段；当前先按全天坐标展示，同步睡眠时段后会自动切回夜间段。'
+                    : hrvPart === 'night'
+                      ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。`
+                      : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。`}
                   {isBaseLayout ? ` ${baseBinNote(barBin, 'HRV')}` : ''}
                 </Text>
               </>
-            ) : null}
+            ) : (
+              <EmptyChartFrame hint="当前范围内暂无心率变异性数据" height={chart.plot.l} />
+            )}
           </View>
         ) : null}
 
@@ -3127,8 +3135,43 @@ function buildTempInsightText(
  * 血氧页与睡眠恢复页共用同一份实现。 */
 import { OxygenApneaSection } from '../components/OxygenApneaSection';
 
+/**
+ * ★ 2026-11-08（用户：「趋势图 / 相位图没有数据，也要展示空图表，不能是没有」）
+ * 通用空图表框架：保留坐标网格 + 基线 +（可选）对角线，中间叠一句状态说明。
+ * 用于 HRV 趋势图兜底、二维相位图为空时，避免整块图表区域消失只剩文字。
+ */
+function EmptyChartFrame({ hint, height = 160, diagonal = false }: { hint: string; height?: number; diagonal?: boolean }) {
+  const W = 280;
+  const H = height;
+  const grid = [0.25, 0.5, 0.75];
+  return (
+    <View style={{ height: H, justifyContent: 'center', alignItems: 'center' }}>
+      <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+        {grid.map((g, i) => (
+          <Line key={`eh${i}`} x1={0} y1={g * H} x2={W} y2={g * H}
+            stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+        ))}
+        {grid.map((g, i) => (
+          <Line key={`ev${i}`} x1={g * W} y1={0} x2={g * W} y2={H}
+            stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+        ))}
+        {diagonal ? (
+          <Line x1={0} y1={H} x2={W} y2={0} stroke={theme.colors.cardBorder}
+            strokeWidth={1} strokeDasharray="4 4" />
+        ) : null}
+        <Line x1={0} y1={H - 1} x2={W} y2={H - 1} stroke={theme.colors.cardBorder} strokeWidth={1} />
+        <Line x1={1} y1={0} x2={1} y2={H} stroke={theme.colors.cardBorder} strokeWidth={1} />
+      </Svg>
+      <View style={{ paddingHorizontal: theme.sp(3), maxWidth: '86%' }}>
+        <Text style={[styles.emptyText, { textAlign: 'center' }]}>{hint}</Text>
+      </View>
+    </View>
+  );
+}
+
 /* ★ 2026-10-16：HRV 详情页——Lorenz 散点（RR 间期相位图）+ 时域 HRV
- * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。 */
+ * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。
+ * ★ 2026-11-08：标题改成人话；无数据时也展示带网格的空相位图，不再只留一行文字。 */
 function HrvLorenzSection() {
   const ring = useRingState();
   const [loading, setLoading] = useState(false);
@@ -3152,73 +3195,65 @@ function HrvLorenzSection() {
     scatter = r.lorentz.map((p) => `M ${sx(p.x).toFixed(1)} ${sx(p.y).toFixed(1)} l 0.1 0.1`);
   }
 
+  const emptyHint = loading
+    ? '正在读取戒指心跳间期历史…'
+    : ring.rrAnalysisError ?? (r ? '数据量不足以绘制相位图。' : '当天暂无 RR 间期数据，请先佩戴一段时间后再查看。');
+
   return (
     <Card>
-      <Text style={styles.ecgTitle}>HRV 相位图（Lorenz）</Text>
-      {!r && !loading ? (
-        <View style={styles.emptyBox}>
-          {/* ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：区分「读取失败」与「暂无数据」。 */}
-          <Text style={[styles.emptyText, ring.rrAnalysisError ? styles.errorText : null]}>
-            {ring.rrAnalysisError ?? '当天暂无 RR 间期数据，请先佩戴一段时间后再查看。'}
-          </Text>
-        </View>
-      ) : !r && loading ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>正在读取戒指心率变异性历史…</Text>
-        </View>
-      ) : r ? (
-        <>
-          <View style={styles.chartCard}>
-            {scatter.length ? (
-              <Svg width="100%" height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet">
-                <Defs>
-                  <LinearGradient id="lorenzDot" x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0%" stopColor={mm.colors.limeMid} stopOpacity={0.9} />
-                    <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={0.9} />
-                  </LinearGradient>
-                </Defs>
-                {[0.25, 0.5, 0.75].map((g, i) => (
-                  <Line key={`gx${i}`} x1={PAD} y1={PAD + g * (SIZE - PAD * 2)} x2={SIZE - PAD} y2={PAD + g * (SIZE - PAD * 2)} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
-                ))}
-                {[0.25, 0.5, 0.75].map((g, i) => (
-                  <Line key={`gy${i}`} x1={PAD + g * (SIZE - PAD * 2)} y1={PAD} x2={PAD + g * (SIZE - PAD * 2)} y2={SIZE - PAD} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
-                ))}
-                {scatter.map((d, i) => (
-                  <Path key={i} d={d} stroke="url(#lorenzDot)" strokeWidth={2.4} strokeLinecap="round" />
-                ))}
-              </Svg>
-            ) : (
-              <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>数据量不足以绘制相位图。</Text>
-              </View>
-            )}
+      <Text style={styles.ecgTitle}>二维相位图（相邻心跳间期）</Text>
+      <Text style={styles.chartNote}>
+        横轴是前一次心跳间隔，纵轴是紧接着的下一次心跳间隔。点云越分散，说明心率变异性越高；越贴着对角线聚成一条，说明相邻心跳差别越小。
+      </Text>
+      <View style={styles.chartCard}>
+        {scatter.length ? (
+          <Svg width="100%" height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet">
+            <Defs>
+              <LinearGradient id="lorenzDot" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0%" stopColor={mm.colors.limeMid} stopOpacity={0.9} />
+                <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={0.9} />
+              </LinearGradient>
+            </Defs>
+            {[0.25, 0.5, 0.75].map((g, i) => (
+              <Line key={`gx${i}`} x1={PAD} y1={PAD + g * (SIZE - PAD * 2)} x2={SIZE - PAD} y2={PAD + g * (SIZE - PAD * 2)} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+            ))}
+            {[0.25, 0.5, 0.75].map((g, i) => (
+              <Line key={`gy${i}`} x1={PAD + g * (SIZE - PAD * 2)} y1={PAD} x2={PAD + g * (SIZE - PAD * 2)} y2={SIZE - PAD} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
+            ))}
+            {scatter.map((d, i) => (
+              <Path key={i} d={d} stroke="url(#lorenzDot)" strokeWidth={2.4} strokeLinecap="round" />
+            ))}
+          </Svg>
+        ) : (
+          /* ★ 2026-11-08（用户）：没有 RR 数据时也展示带网格 + 对角线的空相位图，
+             而不是让整块图表消失、只剩一行文字。 */
+          <EmptyChartFrame diagonal hint={emptyHint} height={SIZE} />
+        )}
+      </View>
+      {hrv ? (
+        <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>SDNN</Text>
+            <Text style={styles.statValue}>{hrv.sdnn}<Text style={styles.statLabel}> ms</Text></Text>
           </View>
-          {hrv ? (
-            <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
-              <View style={styles.statCell}>
-                <Text style={styles.statLabel}>SDNN</Text>
-                <Text style={styles.statValue}>{hrv.sdnn}<Text style={styles.statLabel}> ms</Text></Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={styles.statLabel}>RMSSD</Text>
-                <Text style={styles.statValue}>{hrv.rmssd}<Text style={styles.statLabel}> ms</Text></Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={styles.statLabel}>pNN50</Text>
-                <Text style={styles.statValue}>{hrv.pnn50}<Text style={styles.statLabel}> %</Text></Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={styles.statLabel}>平均心率</Text>
-                <Text style={styles.statValue}>{hrv.meanHr}<Text style={styles.statLabel}> bpm</Text></Text>
-              </View>
-            </View>
-          ) : null}
-          <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
-            <Text style={styles.ecgBtnLabel}>重新读取</Text>
-          </TouchableOpacity>
-          <Text style={styles.note}>Lorenz 散点反映相邻心跳间期的相关性，点云越集中提示心率变异性越低。数据仅供参考。</Text>
-        </>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>RMSSD</Text>
+            <Text style={styles.statValue}>{hrv.rmssd}<Text style={styles.statLabel}> ms</Text></Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>pNN50</Text>
+            <Text style={styles.statValue}>{hrv.pnn50}<Text style={styles.statLabel}> %</Text></Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>平均心率</Text>
+            <Text style={styles.statValue}>{hrv.meanHr}<Text style={styles.statLabel}> bpm</Text></Text>
+          </View>
+        </View>
       ) : null}
+      <TouchableOpacity activeOpacity={0.7} onPress={reload} style={styles.ecgBtn}>
+        <Text style={styles.ecgBtnLabel}>重新读取</Text>
+      </TouchableOpacity>
+      <Text style={styles.note}>数据来自戒指记录的心跳间期历史（RR 间期），需连续佩戴一段时间才有足够的点；仅作趋势参考，不构成医学判断。</Text>
     </Card>
   );
 }
@@ -3257,7 +3292,8 @@ const styles = StyleSheet.create({
   // ★ 本轮：数字下方短 AI 分析
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   /** ★ 本轮（用户 #246）：客观数据后的夸赞 / 肯定句——比 heroAnalysis 弱半档、带一点强调色，但不喧宾夺主 */
-  heroPraise: { fontSize: theme.fontSize.sm, color: mm.colors.limeDeep ?? theme.colors.ui.status.good, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
+  /* ★ 2026-11-08：原 limeDeep 深橄榄绿在深海玻璃卡上对比不足（用户「绿不对」），改白字 */
+  heroPraise: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite80, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
   /** ★ 2026-11-03：hero 卡内的区间解读段（从页面底部上移合并）——比 heroAnalysis 再小半档，弱层级 */
   heroNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: 19, opacity: 0.9 },
   delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
@@ -3303,10 +3339,14 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.cardBorder,
     backgroundColor: 'transparent',
   },
-  partBtnOn: { backgroundColor: mm.colors.limeSoft, borderColor: mm.colors.limeMid },
+  /* ★ 2026-11-08（用户：「夜间 / 日间」这个绿不对、颜色看不清）：
+     旧选中态是 limeSoft 浅黄绿实底 + limeDeep 深橄榄绿字，压在深海玻璃卡上又脏又糊。
+     统一改成全站白玻璃语言：选中 = 亮白玻璃底 + 纯白加粗字，未选中 = 透明底 + 白字，
+     靠底色亮度与字重区分，两者在深底上都保持高对比。 */
+  partBtnOn: { backgroundColor: 'rgba(255,255,255,0.30)', borderColor: 'rgba(255,255,255,0.55)' },
   partBtnOff: { opacity: 0.4 },
   partBtnText: { fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
-  partBtnTextOn: { color: mm.colors.limeDeep, fontWeight: theme.weight.semibold as any }, // ★ 对比度修复：白字压 limeSoft 不可读
+  partBtnTextOn: { color: '#FFFFFF', fontWeight: theme.weight.semibold as any },
   /** ★ 2026-10-10：柱状小条卡顶部的口径标签 / 有效数据计数 */
   specLab: { flex: 1, fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, fontWeight: theme.weight.medium as any },
   // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」

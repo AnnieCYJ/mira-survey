@@ -36,7 +36,10 @@ export const IconFlower = makeIcon(
     <Circle cx="17.7" cy="12" r="3" />
     <Circle cx="12" cy="17.7" r="3" />
     <Circle cx="6.3" cy="12" r="3" />
-    <Circle cx="12" cy="12" r="1.4" fill="color" stroke="none" />
+    {/* ★ 2026-11-08：原 fill="color" 是字面量字符串，react-native-svg 解析失败并弹出
+        全屏黄色 Console Warning（"color" is not a valid color or brush）。children 在
+        makeIcon 调用时求值、拿不到 color 变量，改为继承 G 上的 stroke={color} 描边小圆。 */}
+    <Circle cx="12" cy="12" r="1.4" />
   </>
 );
 

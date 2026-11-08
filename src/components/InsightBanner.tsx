@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import Card from './Card';
 import { AiResultRow } from './AiAnalysis';
@@ -11,7 +11,7 @@ interface InsightRow {
 }
 
 interface Props {
-  onMore?: () => void;
+  /** ★ 2026-11-08（用户）：「查看更多分析」入口全部去掉，目前不做这个，故不再提供 onMore。 */
   /** 大标题（如「今日综合状态」） */
   title?: string | null;
   /** 小字标签（如「基于真实数据」） */
@@ -28,7 +28,7 @@ interface Props {
   bodyColor?: string;
 }
 
-export default function InsightBanner({ onMore, title = null, subtitle, advice, text, rows, pending, bodyColor }: Props) {
+export default function InsightBanner({ title = null, subtitle, advice, text, rows, pending, bodyColor }: Props) {
   return (
     <Card>
       <Text style={styles.title}>{title}</Text>
@@ -67,12 +67,6 @@ export default function InsightBanner({ onMore, title = null, subtitle, advice, 
         <Text style={styles.pending}>✨ 正在结合你的真实数据生成…</Text>
       ) : null}
 
-      {onMore ? (
-        <TouchableOpacity style={styles.moreLink} onPress={onMore} activeOpacity={0.7}>
-          <Text style={styles.moreText}>查看更多分析</Text>
-          <Text style={styles.moreArrow}>›</Text>
-        </TouchableOpacity>
-      ) : null}
     </Card>
   );
 }
@@ -122,14 +116,4 @@ const styles = StyleSheet.create({
     color: theme.colors.textSub,
     opacity: 0.75,
   },
-  moreLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    marginTop: theme.space.sm,
-    paddingHorizontal: theme.sp(1),
-    paddingVertical: theme.sp(0.5),
-  },
-  moreText: { fontSize: theme.fontSize.sm, color: theme.colors.accentText, fontWeight: theme.weight.medium },
-  moreArrow: { fontSize: theme.fontSize.h2, color: theme.colors.accentText, lineHeight: theme.fontSize.h2, marginLeft: 2 },
 });
