@@ -37,9 +37,12 @@ interface Props {
   stretchInner?: boolean;
 }
 
-// 与 App 根渐变同源（不再重复写色值，唯一真相源在 theme.colors.bgGradStops）
+// 与 App 根渐变同源（不再重复写色值，唯一真相源在 theme.colors.bgGradStops / bgGradLocs）
+// ★ 2026-11-08：locations 必须与 colors 等长，否则 expo-linear-gradient 在真机上
+//   弹出「colors and locations props should be arrays of the same length」黄色警告条。
+//   旧实现硬编码 4 个 locs 配 3 个 stops，是全站那条警告的源头。
 const GRAD_COLORS: string[] = [...theme.colors.bgGradStops] as unknown as string[];
-const GRAD_LOCS: number[] = [0, 0.34, 0.64, 1];
+const GRAD_LOCS: number[] = [...theme.colors.bgGradLocs] as unknown as number[];
 
 export default function ScreenContainer({
   children,

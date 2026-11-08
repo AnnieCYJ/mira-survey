@@ -32,6 +32,7 @@ import { saveQuickCheckResult, type QuickCheckResultValue } from './quickCheckRe
 import { saneBodyTemp } from './ringDataIsolation';
 import { loadCycleLog } from './cycleLog';
 import { computeCycle, hormoneLevelsAtDay } from '../lib/cycleMath';
+import { refreshReportNotes } from './quickCheckInterpret';
 
 export type QCStatus = 'ok' | 'high' | 'low' | 'risk';
 
@@ -107,10 +108,19 @@ function genId(): string {
 }
 
 function parseRecord(row: { id: string; created_at: number; groups: string }): QuickCheckRecord {
+  // ★ 2026-11-08：旧记录把「戒指真实回读 / 按首次填写推算」等文案连同数值一起
+  //   序列化进了 SQLite，改前端代码改不到历史数据。读出时统一过一遍解读引擎，
+  //   让所有历史报告打开即显示「这个数值意味着什么 + 正常与否 + 建议」，不改任何测量结果。
+  let groups: QCGroup[] = [];
+  try {
+    groups = JSON.parse(row.groups) as QCGroup[];
+  } catch {
+    groups = [];
+  }
   return {
     id: row.id,
     createdAt: row.created_at,
-    groups: JSON.parse(row.groups) as QCGroup[],
+    groups: refreshReportNotes(groups),
   };
 }
 
@@ -154,9 +164,9 @@ export async function saveQuickCheck(rec: QuickCheckRecord): Promise<void> {
   );
 }
 
-/** 真实测量后落库：从外部传入已组装好的 groups。 */
+/** 真实测量后落库：从外部传入已组装好的 groups（落库前统一走数值驱动解读引擎）。 */
 export async function addQuickCheck(groups: QCGroup[]): Promise<QuickCheckRecord> {
-  const rec: QuickCheckRecord = { id: genId(), createdAt: Date.now(), groups };
+  const rec: QuickCheckRecord = { id: genId(), createdAt: Date.now(), groups: refreshReportNotes(groups) };
   await saveQuickCheck(rec);
   return rec;
 }
