@@ -1243,11 +1243,17 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
             </View>
           </View>
 
-        {/* 大数字：收缩/舒张最新一对；单位保留 */}
-        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
-          {lastSys != null && lastDia != null ? `${Math.round(lastSys.v)}/${Math.round(lastDia.v)}` : '—'}
-        </Text>
-        <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.purpleDeep, marginTop: theme.sp(0.5) }}>mmHg · 今日</Text>
+        {/* ★ 2026-11-08（真机实证）：血压数字与同一列表的 BasicMetricCard 同规格。
+            原先用 h1(36)，而心率变异性等卡是 card(18) —— 正好 2 倍，用户看到
+            「88.3 ms 小小的、120/85 突然巨大」。这里统一成：数值 card + 单位 sm +
+            右侧 micro 说明「收缩压 / 舒张压」，不再单独占一行大字。 */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: theme.sp(1) }}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, flexShrink: 1 }}>
+            {lastSys != null && lastDia != null ? `${Math.round(lastSys.v)}/${Math.round(lastDia.v)}` : '—'}
+          </Text>
+          <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>mmHg</Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>收缩压 / 舒张压</Text>
+        </View>
 
         {/* 全天趋势（S 档）：收缩 skyCore / 舒张 skyMid 双平滑曲线 + 末点；无数据画虚线基线骨架 */}
         <View

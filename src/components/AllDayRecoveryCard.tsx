@@ -46,7 +46,7 @@ import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, MIN_BASELINE_DAYS, judgeCortisolRhythm } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolShapedToday, MIN_BASELINE_DAYS, judgeCortisolRhythm } from '../lib/cortisolProxy';
 // ★ v18.146：睡眠分统一走「今天该显示哪个睡眠分」的唯一入口（与圆环 chip、SleepCard 同源），
 //   不再直接读旧落盘字段 sleep.score（绝对分），否则同一标签「睡眠恢复」会出现两把尺。
 import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonalized';
@@ -147,13 +147,16 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
     //   必须同一时段跨天比较，否则凌晨槽会被白天样本的基线判成「偏高」）。
     const bl = buildCortisolProxyBaseline(14);
     const built = buildCortisolProxyToday(bl);
+    // ★ 2026-11-08：曲线值走「正常节律先验 + 实测温和修正」，但下面所有判定
+    //   （峰值时刻 / 作息类型 / judgeCortisolRhythm）仍用 built 的原始实测槽。
+    const shaped = buildCortisolShapedToday(bl);
     const valid = built.vals.filter((v): v is number => v != null);
     let peakIdx = -1;
     let peakV = -Infinity;
     built.vals.forEach((v, i) => {
       if (v != null && v > peakV) { peakV = v; peakIdx = i; }
     });
-    const out = { ...built, validCount: valid.length, peakIdx, peakV, baselineDays: bl.days };
+    const out = { ...built, shaped, validCount: valid.length, peakIdx, peakV, baselineDays: bl.days };
     // ★ COR-PROBE：诊断日志（离线重算对账用，仅 __DEV__）。核对命令：grep COR-PROBE /tmp/metro_8081.log
     //   输出：峰值槽/值、有效槽数、每槽「值(参与信号数)」压缩串、基线天数。
     //   ★ 必须留在 useMemo 内：原先写在组件体里，每次渲染都会重跑一次 map/join 并打印，
@@ -272,13 +275,14 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       ? (persRelative ? `${sleepScore} · ${badgeWord}` : `${sleepScore}/100 · ${badgeWord}`)
       : badgeWord;
 
-  // —— 曲线数据（★ v18.116 方案 A：直接用多模态反推结果，**无拟合、无虚线**）——
-  //   数据源 = buildCortisolProxyToday() 的 48 槽实测活性（每槽由该窗口 HRV/EDA/体温/心率算出）。
-  //   realFlags 标记「该槽真有生理信号」——绘图只连这些槽，间隔 >1h 断开。
-  //   门槛：有效槽 >= MIN_TODAY_SLOTS 才算「构成趋势」，否则整张卡走空态。
-  //   ★ 不再调用 buildCortisolToday30Ex（那是 cosinor 拟合 + 14 天补形状，v18.114 的虚线已废弃）。
+  // —— 曲线数据 ——
+  //   ★ 2026-11-08：曲线值改用「正常昼夜节律先验 + 实测温和修正」的拟合值
+  //     （单槽偏离限幅 ±14、3 槽平滑，避免基础版只有 HRV 一路时 0~100 乱跳）。
+  //   ★ 诚实口径不变：realFlags 仍只标原始实测槽 —— 没有实测的时段不连线、不画示意图，
+  //     所以「拟合」只是把已有实测点收拢到生理合理的形状上，不会凭空造出一天的数据。
+  //   门槛：有效实测槽 >= MIN_TODAY_SLOTS 才算「构成趋势」，否则整张卡走空态。
   const { series, realFlags, mode } = useMemo<{ series: number[]; realFlags: boolean[]; mode: 'today' | 'none' }>(() => {
-    const vals = proxy.vals;
+    const vals = proxy.shaped.vals;
     const real = proxy.real;
     if (proxy.validCount >= MIN_TODAY_SLOTS) {
       let lastIdx = vals.length - 1;
@@ -292,7 +296,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
       }
     }
     return { series: [], realFlags: [], mode: 'none' };
-  }, [proxy.validCount, proxy.vals, proxy.real, hsRefresh, ring.timelineReady ?? ring.curveStatus]);
+  }, [proxy.validCount, proxy.shaped.vals, proxy.real, hsRefresh, ring.timelineReady ?? ring.curveStatus]);
   // ★ v18.101：断流时整张卡走「无数据」路径（曲线不画、结论行走空态文案），
   //   与圆环/三个 chip 保持同一口径，避免同一屏上「圆环空了、这张卡还有数」。
   const chartMode: 'today' | 'none' = dataStale ? 'none' : mode;

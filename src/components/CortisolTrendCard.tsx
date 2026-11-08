@@ -6,11 +6,13 @@
  *
  * 诚实口径（必须守住）：
  *   · 基础版戒指**不实测皮质醇**：后端 health_glance 通道 0 条，auto_data 也无皮质醇字段。
- *   · 本卡用的是项目自有算法 lib/cortisolProxy.ts：先建 14 天个人基线做 z-score，
- *     再按 HRV .20 / 皮电 EDA .18 / 体温 .14 / 静息心率 .11 / 活动 .07 / 已有皮质醇 .30
- *     加权，经 50 + 50·tanh(z/2) 映射到 0–100 的「皮质醇相对活性」。
+ *   · 实测信号走 lib/cortisolProxy.ts（6 路加权 z-score → 0–100 相对活性），
+ *     ★ 2026-11-08 起展示曲线再经 lib/cortisolPrior.ts 拟合到「正常昼夜节律参考形状」：
+ *     基础版只有 HRV + 静息心率 (+ 活动) 生效，单路 z-score 会被放大成 0~100 乱跳，
+ *     现在以生理先验为骨架、实测按置信度做温和修正，单槽偏离限幅 ±14、3 槽平滑。
  *   · 它是**推算的节律形状**，不是激素浓度检测值；不做评分、不做诊断、不给健康结论。
- *   · 某个时间窗没有任何真实生理信号时返回 null（留白），绝不插值编造。
+ *   · 日视图中「只有参考形状、没有实测信号」的时段用浅色柱标注，绝不冒充检测值；
+ *     周 / 月 / 年视图仍只统计有真实信号的日期，没有信号的日期留白。
  *
  * 粒度：
  *   day   = 当天 48 个 30 分钟推算槽 → 聚合成 24 个小时柱
@@ -21,13 +23,16 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
-import { buildCortisolProxyBaseline, computeCortisolProxyDay } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, computeCortisolProxyDay, computeCortisolShapedDay } from '../lib/cortisolProxy';
+import { CORTISOL_PRIOR_DISCLAIMER } from '../lib/cortisolPrior';
 import { dayKey } from '../data/healthStore';
 import type { RangeKey } from '../data/metrics';
 
 const DAY_MS = 86_400_000;
 const BAR_COLOR = 'rgba(139,122,216,0.88)';
 const BAR_FAINT = 'rgba(139,122,216,0.18)';
+/** 只有参考形状、无实测信号的槽：更淡的柱色，与实测段区分 */
+const BAR_MODELED = 'rgba(139,122,216,0.34)';
 
 interface Props {
   range: RangeKey;
@@ -37,6 +42,8 @@ interface Props {
 
 interface Trend {
   points: (number | null)[];
+  /** 与 points 等长：true = 该柱只有参考形状、无实测信号（画淡色 + 标注） */
+  modeled: boolean[];
   labels: string[];
   filled: number;
   total: number;
@@ -75,11 +82,12 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
     baseline = buildCortisolProxyBaseline();
   } catch {
     return {
-      points: [], labels: [], filled: 0, total: 0,
+      points: [], modeled: [], labels: [], filled: 0, total: 0,
       note: '个人基线还没建立，连续佩戴几天后这里会出现推算节律。',
     };
   }
   const now = Date.now();
+  /** 原始实测驱动值：只用于周/月/年的「按天聚合」，绝不拿拟合值编造整月数据。 */
   const dayVals = (dk: string): (number | null)[] => {
     try {
       return computeCortisolProxyDay(dk, baseline, { now }).vals;
@@ -91,15 +99,27 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
 
   if (range === 'day') {
     const dk = dayKey(anchorMs);
-    const vals = dayVals(dk);
-    // 48 个 30 分钟推算槽 → 24 个小时柱（每 2 槽取均值），保持「晨高夜低」的节律形状
+    // ★ 2026-11-08：日视图走「正常昼夜节律先验 + 实测温和修正」的拟合曲线
+    let shaped;
+    try {
+      shaped = computeCortisolShapedDay(dk, baseline, { now: anchorMs });
+    } catch {
+      shaped = null;
+    }
+    const vals = shaped?.vals ?? dayVals(dk);
+    const modeled48 = shaped?.modeled ?? new Array(48).fill(false);
+    // 48 个 30 分钟槽 → 24 个小时柱（每 2 槽取均值）
     const points = Array.from({ length: 24 }, (_, h) => mean([vals[h * 2] ?? null, vals[h * 2 + 1] ?? null]));
+    const modeled = Array.from({ length: 24 }, (_, h) => modeled48[h * 2] === true && modeled48[h * 2 + 1] === true);
     return {
       points,
+      modeled,
       labels: ['0:00', '6:00', '12:00', '18:00', '24:00'],
-      filled: points.filter((v) => v != null).length,
+      filled: points.filter((v, i) => v != null && !modeled[i]).length,
       total: 24,
-      note: '每小时一根柱 = 该小时推算的皮质醇相对活性（0–100）。晨间偏高、夜间回落是常见节律形态，仅作趋势参考。',
+      note: shaped
+        ? `每小时一根柱 = 拟合后的皮质醇相对活性（0–100）；深色柱含你的实测信号。${CORTISOL_PRIOR_DISCLAIMER}`
+        : '每小时一根柱 = 该小时推算的皮质醇相对活性（0–100），仅作趋势参考。',
     };
   }
 
@@ -111,6 +131,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
     });
     return {
       points,
+      modeled: new Array(points.length).fill(false),
       labels: ['1月', '4月', '7月', '10月', '12月'],
       filled: points.filter((v) => v != null).length,
       total: 12,
@@ -122,6 +143,7 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
   const points = keys.map(dayMean);
   return {
     points,
+    modeled: new Array(points.length).fill(false),
     labels: range === 'week' ? ['7天前', '5天前', '3天前', '昨天', '今天'] : ['30天前', '20天前', '10天前', '今天'],
     filled: points.filter((v) => v != null).length,
     total: points.length,
@@ -133,7 +155,8 @@ function buildTrend(range: RangeKey, anchorMs: number): Trend {
 
 export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋势图' }: Props) {
   const t = useMemo(() => buildTrend(range, anchor.getTime()), [range, anchor]);
-  const hasAny = t.filled > 0;
+  // 日视图即使一个实测槽都没有，也要能画出「正常节律参考形状」（用户 2026-11-08 要求）
+  const hasAny = t.points.some((v) => v != null);
 
   return (
     <View style={styles.card}>
@@ -153,7 +176,10 @@ export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋
                     styles.bar,
                     v == null
                       ? { height: 2, backgroundColor: BAR_FAINT }
-                      : { height: `${Math.max(4, Math.min(100, v))}%`, backgroundColor: BAR_COLOR },
+                      : {
+                          height: `${Math.max(4, Math.min(100, v))}%`,
+                          backgroundColor: t.modeled[i] ? BAR_MODELED : BAR_COLOR,
+                        },
                   ]}
                 />
               </View>
@@ -162,7 +188,11 @@ export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋
           <View style={styles.axis}>
             {t.labels.map((l) => <Text key={l} style={styles.axisTxt}>{l}</Text>)}
           </View>
-          <Text style={styles.count}>{t.filled}/{t.total} 个时间窗有推算值</Text>
+          <Text style={styles.count}>
+            {t.modeled.some(Boolean)
+              ? `${t.filled}/${t.total} 个时间窗含实测信号 · 浅色为正常节律参考形状`
+              : `${t.filled}/${t.total} 个时间窗有推算值`}
+          </Text>
         </>
       ) : (
         <View style={styles.empty}>
@@ -172,7 +202,7 @@ export default function CortisolTrendCard({ range, anchor, title = '皮质醇趋
 
       <Text style={styles.note}>{t.note}</Text>
       <Text style={styles.disclaimer}>
-        依据 HRV / 体温 / 心率 / 活动 / 交感等多信号加权推算，不是戒指直接测量，也不是医学检测结果；不做评分、不做诊断。
+        基础版实际可用的实测信号为 HRV、静息心率与活动。{CORTISOL_PRIOR_DISCLAIMER}不是戒指直接测量，也不是医学检测结果；不做评分、不做诊断。
       </Text>
     </View>
   );

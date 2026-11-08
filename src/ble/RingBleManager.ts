@@ -3630,11 +3630,14 @@ class BackendRingSource {
     const now = Math.floor(Date.now() / 1000);
     const dayAgo = now - 86_400;
 
-    const [hrR, spo2R, breathR, gsrR, hgR, hrvR, autoR] = await Promise.allSettled([
+    // ★ 2026-11-08（用户拍板）：拔掉 sns 残留写入链路。基础版协议 VPGSRResultModel 只有
+    //   skin_moisture(皮肤含水量) / sns_activation(厂商算法分 1–99) / cortisol / emotion，
+    //   既没有 EDA 皮电，也没有可回溯的逐点交感信号。旧代码 gsrLatest?.sns → daily['sns']
+    //   是「交感神经活跃度」唯一写入口，现在拉取 / 本地写入 / 云端上传 / 离线推算整条拔掉。
+    const [hrR, spo2R, breathR, hgR, hrvR, autoR] = await Promise.allSettled([
       this.fetchChannel(deviceId, 'hr_realtime', dayAgo),
       this.fetchChannel(deviceId, 'spo2_realtime', dayAgo),
       this.fetchChannel(deviceId, 'breath_realtime', dayAgo),
-      this.fetchChannel(deviceId, 'gsr'),
       this.fetchChannel(deviceId, 'health_glance'),
       this.fetchChannel(deviceId, 'hrv_history'),
       this.fetchChannel(deviceId, 'auto_data'),
@@ -3669,7 +3672,6 @@ class BackendRingSource {
 
     const autoLatest = recs(autoR).length ? recs(autoR)[recs(autoR).length - 1].payload : null;
     const auto = autoLatest ?? {};
-    const gsrLatest = recs(gsrR).length ? recs(gsrR)[recs(gsrR).length - 1].payload : null;
     const rrBreath = breathPts.length ? breathPts[breathPts.length - 1].v : null;
     const rrAuto = num(auto.sleep?.breath_avg) ?? null;
     const rr = rrBreath ?? rrAuto;
@@ -3711,8 +3713,8 @@ class BackendRingSource {
     putDaily('hdl', auto.hdl);
     putDaily('ldl', auto.ldl);
     putDaily('statusScore', auto.status_score);
-    // 交感神经活跃度：gsr 通道的 sns 是真实回读（不是健康一览推算）
-    putDaily('sns', gsrLatest?.sns);
+    // ❌ 不再写 daily['sns']：协议无 EDA/逐点交感信号，gsr 的 sns_activation 只是厂商算法分，
+    //   不是可回溯的生理量。2026-11-08 用户拍板拔掉残留入口（见本函数开头说明）。
     // 睡眠：后端 auto_data.sleep 实测结构 = { total_sleep_min, deep_min, light_min, rem_min, score, get_up }
     if (typeof auto.sleep === 'number') putDaily('sleepTotal', auto.sleep);
     else if (auto.sleep && typeof auto.sleep === 'object') {
@@ -7489,31 +7491,11 @@ class RingConnectionImpl {
         const { ts, date } = norm(dk);
         records.push({ channel: 'hrv_history', ts, payload: { date, hrv_value: hv } });
       }
-      // ★ 云端也要有「压力」这一维：gsr 通道（皮电 SNS 日均）。
-      //   之前 App 从不上传 gsr → 云端恢复分永远缺 stress 分量、data_complete 恒为 false，
-      //   运营后台的「压力/身心」列也一直是空的。
-      //   ⚠ **诚实口径**：历史日的 sns 可能是**推算**值（由 stress 线性换算，见
-      //   healthStore.isDerivedDay）——上传必须标 source='derived'，后端才知道
-      //   不能拿它当实测建个人基线、也不能当成真压力去算恢复分。
-      try {
-        const snsDay = healthStore.getDay('sns', dk);
-        if (snsDay && typeof snsDay.mean === 'number' && Number.isFinite(snsDay.mean)) {
-          const { ts, date } = norm(dk);
-          const derived = healthStore.isDerivedDay('sns', dk);
-          records.push({
-            channel: 'gsr',
-            ts,
-            payload: {
-              date,
-              sns: Math.round(snsDay.mean * 100) / 100,
-              source: derived ? 'derived' : 'measured',
-              samples: typeof snsDay.samples === 'number' ? snsDay.samples : 0,
-            },
-          });
-        }
-      } catch {
-        /* 取不到皮电日均就不传这一条，不影响其它通道 */
-      }
+      // ★ 2026-11-08（用户拍板）：不再向云端 gsr 通道上传 sns 日均。
+      //   旧实现把 healthStore['sns'] 传上去充当「压力维度」，但基础版硬件根本没有
+      //   EDA/逐点交感信号，历史日的 sns 全部是 offlineEstimates 用 stress 线性换算的
+      //   推算值（isDerivedDay=true）——上传它只会让云端把假值当实测建基线。
+      //   云端压力维度改由已上传的 status_score / stress 等真实通道承担。
       // 离线/实时 ECG 记录（含波形）：逐个日期回传，后端原样存储 waveform
       const ecg = st.ecgDaily[dk];
       if (ecg) {

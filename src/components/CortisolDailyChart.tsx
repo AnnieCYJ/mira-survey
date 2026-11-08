@@ -17,7 +17,7 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 import type { AiInsightRow } from '../ai/insight';
 import { analyzeCortisol, type CortisolRhythmResult } from '../lib/cortisolRhythm';
 import { collectSamples, collectSamplesForDay, getSleepWindow, TrendChart } from './CortisolRhythmCard';
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS, type CortisolRhythmLabel } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolShapedToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS, type CortisolRhythmLabel } from '../lib/cortisolProxy';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { dayKey } from '../data/healthStore';
 
@@ -116,7 +116,10 @@ export default function CortisolDailyChart({
   const proxy = useMemo(() => {
     if (!isToday) return null;
     const bl = buildCortisolProxyBaseline(14);
-    return { ...buildCortisolProxyToday(bl), baselineDays: bl.days };
+    // ★ 2026-11-08：判定层（psum / judge）用原始实测 vals；曲线层另取拟合形状。
+    const measured = buildCortisolProxyToday(bl);
+    const shaped = buildCortisolShapedToday(bl);
+    return { ...measured, shaped, baselineDays: bl.days };
   }, [isToday, hsRefresh]);
 
   const proxyValid = proxy ? proxy.vals.filter((v: number | null): v is number => v != null).length : 0;
@@ -166,14 +169,19 @@ export default function CortisolDailyChart({
         },
         css: NaN,
         baseline: { p25: NaN, p75: NaN, n: proxy.baselineDays },
-        // 每 2 个 30min 槽合成 1 个小时（TrendChart 内部会再聚合成 30min，这里给小时粒度即可）
+        // ★ 2026-11-08：曲线层改用「正常昼夜节律先验 + 实测温和修正」的拟合值；
+        //   hourlyPredicted=true 的小时 = 只有参考形状 / 无实测信号，TrendChart 会画成虚线浅色。
+        //   判定层 psum 仍读 proxy.vals（原始实测），不受拟合影响。
         hourlyMean: Array.from({ length: 24 }, (_, h) => {
-          const a = proxy.vals[h * 2];
-          const b = proxy.vals[h * 2 + 1];
+          const a = proxy.shaped.vals[h * 2];
+          const b = proxy.shaped.vals[h * 2 + 1];
           const both = [a, b].filter((v): v is number => v != null);
           return both.length ? +(both.reduce((x, y) => x + y, 0) / both.length).toFixed(1) : null;
         }),
-        hourlyPredicted: Array.from({ length: 24 }, (_, h) => !(proxy.vals[h * 2] != null || proxy.vals[h * 2 + 1] != null)),
+        hourlyPredicted: Array.from({ length: 24 }, (_, h) =>
+          proxy.shaped.vals[h * 2] == null && proxy.shaped.vals[h * 2 + 1] == null
+            ? true
+            : !!(proxy.shaped.modeled[h * 2] || proxy.shaped.modeled[h * 2 + 1])),
         dailyMesors: psum.mesor != null ? [{ date: targetDk, mesor: psum.mesor }] : [],
         status: { level: 'normal', flags: [] },
         sustainedHighStreak: 0,

@@ -34,8 +34,9 @@ import KalmanFilter from './kalman-filter';
 //   （HRV/EDA/体温/心率 z-score + 设备真实皮质醇真值，6 路加权 → 0~100 活性）。
 import {
   buildCortisolProxyBaseline,
-  buildCortisolProxyToday,
+  buildCortisolShapedToday,
 } from './cortisolProxy';
+import { CORTISOL_PRIOR_DISCLAIMER } from './cortisolPrior';
 
 export interface TimePt {
   t: number;
@@ -604,13 +605,14 @@ export function buildHistorySeries(
     //   有真实皮质醇真值时，该路以 0.30 权重并入合成；无真值时数学上退回纯 proxy，曲线不变（向后兼容）。
     if (hsKey === 'cortisol' && isTodayAnchor) {
       const bl = buildCortisolProxyBaseline(14);
-      const px = buildCortisolProxyToday(bl);
+      // ★ 2026-11-08：与洞察页 / 首页 / 趋势图统一走「正常昼夜节律先验 + 实测温和修正」。
+      const px = buildCortisolShapedToday(bl);
       const nowMs = Date.now();
       const today0 = dayStartMs(nowMs);
       const tps2: { t: number; v: number }[] = [];
       for (let slot = 0; slot < 48; slot++) {
         const v = px.vals[slot];
-        // 仅画「实测/融合有值」的槽；未来时段（>now）与无值槽不画，保持诚实
+        // 仅画「拟合后已过去的槽」；未来时段（>now）保持不画，保持诚实
         if (slot * 2 <= new Date(nowMs).getHours() * 2 + (new Date(nowMs).getMinutes() >= 30 ? 1 : 0)
             && v != null && Number.isFinite(v)) {
           const ts = today0 + slot * 1800000 + 900000; // 30min 槽中点
@@ -618,7 +620,7 @@ export function buildHistorySeries(
         }
       }
       if (tps2.length > 0) {
-        const note = `皮质醇昼夜活性趋势（0~100 相对指数）。`;
+        const note = `皮质醇全天趋势（0~100 相对指数）。${CORTISOL_PRIOR_DISCLAIMER}`;
         return finalizeContinuous(tps2, start, end, def, false, note);
       }
     }

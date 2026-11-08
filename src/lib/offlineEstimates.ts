@@ -1,5 +1,10 @@
 /**
- * 派生指标历史补齐（eda/sns/cortisol/emotion/skin/fatigue）。
+ * 派生指标历史补齐（eda/cortisol/emotion/skin/fatigue）。
+ *
+ * ★ 2026-11-08（用户拍板）：已移除 sns。基础版协议无 EDA/逐点交感信号，
+ *   STRESS_MAP 里的 `sns = stress + 5` 是凭空造的线性假值；配合 RingBleManager
+ *   拔掉 daily['sns'] 投影与云端 gsr 上传后，sns 不再有任何写入源。
+ *   读取端（stressAlgorithm / cognitiveLoad / patterns 等）保留但恒为空 → 走各自的 null 兜底。
  *
  * 设计前提：戒指协议只回传「实时」派生指标，但 offline 数据层其实已经在源头落库了——
  * RingBleManager.flushPending 对每个 HealthGlance / 实时轮询点调 upsertRealtime(hk, …)
@@ -22,11 +27,10 @@ interface TimePoint {
   v: number;
 }
 
-export type EstimatedMetricKey = 'eda' | 'sns' | 'cortisol' | 'emotion' | 'skin' | 'fatigue';
+export type EstimatedMetricKey = 'eda' | 'cortisol' | 'emotion' | 'skin' | 'fatigue';
 
-/** stress → 各指标映射系数（实时实测量级对照：stress 25~35 时 sns≈30、cortisol≈50~75、skin≈33~89、emotion 2~4） */
+/** stress → 各指标映射系数（实时实测量级对照：stress 25~35 时 cortisol≈50~75、skin≈33~89、emotion 2~4） */
 const STRESS_MAP: Record<EstimatedMetricKey, (s: number) => number> = {
-  sns: (s) => Math.round(Math.min(100, Math.max(5, s + 5))),
   cortisol: (s) => Math.round(Math.min(300, Math.max(10, s * 1.6 + 20))),
   emotion: (s) => (s < 18 ? 2 : s < 32 ? 3 : 4),
   eda: (s) => Math.min(100, Math.max(1, s * 1.5 + 10)),
@@ -41,7 +45,7 @@ const STRESS_MAP: Record<EstimatedMetricKey, (s: number) => number> = {
 export function estimateOfflineMetricsForDay(dayKey: string, todayKey: string): number {
   if (dayKey === todayKey) return 0;
   let filled = 0;
-  for (const key of ['eda', 'sns', 'cortisol', 'emotion', 'skin', 'fatigue'] as EstimatedMetricKey[]) {
+  for (const key of ['eda', 'cortisol', 'emotion', 'skin', 'fatigue'] as EstimatedMetricKey[]) {
     const k = key as MetricKey;
     // ① 已有**足够**的真实 intraday → 已冻结，跳过（绝不覆写）。
     // ★ v18.113：只有 1 个点（旧版②的正午点）视为「未成形」——

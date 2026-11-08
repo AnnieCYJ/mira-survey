@@ -51,6 +51,11 @@ import { healthStore, dayKey as hsDayKey } from '../data/healthStore';
 import {
   weightedCenter, weightedRobustScale, type WeightedSample,
 } from './recencyBaseline';
+// ★ 2026-11-08：正常昼夜节律先验 + 置信度收缩拟合（用户：数据少、趋势不准、太夸张）。
+//   只给「画曲线」的组件用；判定层继续用原始 vals + real，绝不吃 shaped 值。
+import {
+  shapeCortisolSeries, type ShapedCortisolSeries,
+} from './cortisolPrior';
 
 // ── 常量 ────────────────────────────────────────────────────────────────
 
@@ -463,6 +468,44 @@ export function buildCortisolProxyToday(
   //   映射要按下标走（不能 counts.indexOf，值重复时会串位）。
   const real = counts.map((c, i) => c > 0 && vals[i] != null);
   return { vals, counts, real, baseline: bl };
+}
+
+/**
+ * ★ 2026-11-08：把某日的实测 proxy 曲线拟合到「正常昼夜节律参考形状」上。
+ *
+ * 只用于**画曲线**（趋势图 / 全天曲线 / 详情页日视图）。判定层请继续用
+ * computeCortisolProxyDay 的原始 vals + counts（见 cortisolPrior.ts 的诚实口径）。
+ *
+ * 返回 ShapedCortisolSeries：
+ *   · vals     = 拟合后的展示曲线（modeled[i]=true 的槽是参考形状，不是实测）
+ *   · prior    = 完整参考曲线（UI 可画浅色参考线）
+ *   · raw      = 原始实测值（保留，便于对照 / 判定）
+ *   · modeled / confidence / overallConfidence = 数据充分度标注
+ */
+export function computeCortisolShapedDay(
+  dk: string,
+  baseline: ProxyBaseline,
+  opts?: { now?: number },
+): ShapedCortisolSeries {
+  const raw = computeCortisolProxyDay(dk, baseline, opts);
+  return shapeCortisolSeries(raw.vals, raw.counts, baseline.days, {
+    now: opts?.now ?? Date.now(),
+    dayStartMs: parseDayKeyMs(dk),
+  });
+}
+
+/** 今日拟合曲线的 UI 入口（与 buildCortisolProxyToday 一一对应，但只用于展示）。 */
+export function buildCortisolShapedToday(
+  baseline?: ProxyBaseline,
+  opts?: { now?: number },
+): ShapedCortisolSeries & { baseline: ProxyBaseline } {
+  const bl = baseline ?? buildCortisolProxyBaseline();
+  const raw = computeCortisolProxyDay(hsDayKey(opts?.now ?? Date.now()), bl, opts);
+  const shaped = shapeCortisolSeries(raw.vals, raw.counts, bl.days, {
+    now: opts?.now ?? Date.now(),
+    dayStartMs: parseDayKeyMs(hsDayKey(opts?.now ?? Date.now())),
+  });
+  return { ...shaped, baseline: bl };
 }
 
 /**

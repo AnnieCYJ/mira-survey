@@ -12,6 +12,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -58,6 +59,47 @@ export function ScaleBar({ scale }: { scale: { min: number; max: number; v: numb
 }
 
 /**
+ * 数值排版统一（2026-11-08，用户反馈「血压数字一下变大、一看就不统一」）
+ * ---------------------------------------------------------------------------
+ * 根因不是数值错，而是量纲 / 字符数不同却共用了同一个 32px 大数字字号：
+ *   HRV `45`、血氧 `98` 是单个两位数；血压 `116/76` 是「两个三位数 + 斜杠」，
+ *   在 stat(32) 下整块宽度约为别人的 3 倍，看上去像数字突然变大。
+ *
+ * 统一规则（只改渲染，不动 groups / QCMetric.value，历史报告无需迁移）：
+ *   1. 纯数字（含小数、千分位）保持 stat 基准字号；
+ *   2. 复合值 `A/B`（血压）、5 位以上长数字 → 降一级到 orb(24)，分隔符弱化小字；
+ *   3. 文本值（「稳定」「黄体期」「5小时40分」）→ 降到 lg(20)，汉字方块不再顶满；
+ *   4. 单位一律 micro 弱化小字，跟在数字主体后面。
+ * 目的：让不同量纲的指标在视觉上「等高、同基准」，不做横向数值比较。
+ */
+const PLAIN_NUM_RE = /^\d[\d,]*(?:\.\d+)?$/;
+const PAIR_NUM_RE = /^(\d[\d,]*(?:\.\d+)?)\s*\/\s*(\d[\d,]*(?:\.\d+)?)$/;
+const CJK_RE = /[\u4e00-\u9fff]/;
+
+export function MetricValue({ value, unit, style }: { value: string; unit?: string; style?: StyleProp<ViewStyle> }) {
+  const v = String(value ?? '').trim();
+  const pair = PAIR_NUM_RE.exec(v);
+  const plain = PLAIN_NUM_RE.test(v);
+  const long = plain && v.replace(/[,\s]/g, '').length >= 5;
+  const hasCjk = CJK_RE.test(v);
+  const size = hasCjk ? theme.fontSize.lg : pair || long ? theme.fontSize.orb : theme.fontSize.stat;
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'baseline' }, style]}>
+      {pair ? (
+        <Text style={[qc.metricValue, { fontSize: size }]}>
+          {pair[1]}
+          <Text style={{ fontSize: size * 0.6, fontWeight: '400', color: theme.colors.textSub }}> / </Text>
+          {pair[2]}
+        </Text>
+      ) : (
+        <Text style={[qc.metricValue, { fontSize: size }]}>{v}</Text>
+      )}
+      {unit ? <Text style={qc.metricUnit}>{unit}</Text> : null}
+    </View>
+  );
+}
+
+/**
  * 单指标行。报告里每条指标只展示：名称 + 数值 + 状态（正常/偏高/偏低/风险）
  * + 一段「意义 · 分析 · 建议」说明（来源标注统一移到分组级，不在每条下面写实测/估算）。
  *
@@ -97,10 +139,7 @@ export function MetricRow({ m, useAi, groupTitle }: { m: QCMetric; useAi?: boole
         {note ? <Text style={qc.metricNote}>{note}</Text> : null}
       </View>
       <View style={{ alignItems: 'flex-end' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <Text style={qc.metricValue}>{m.value}</Text>
-          {m.unit ? <Text style={qc.metricUnit}>{m.unit}</Text> : null}
-        </View>
+        <MetricValue value={m.value} unit={m.unit} />
         <Text style={[qc.metricStatus, { color: statusColor(m) }]}>{statusLabel(m)}</Text>
       </View>
     </View>
@@ -122,10 +161,7 @@ export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }
           {(g.risk.sub ?? []).map((s) => (
             <View key={s.key} style={qc.gcell}>
               <Text style={qc.metricName}>{s.name}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: theme.sp(1) }}>
-                <Text style={qc.metricValue}>{s.value}</Text>
-                {s.unit ? <Text style={qc.metricUnit}>{s.unit}</Text> : null}
-              </View>
+              <MetricValue value={s.value} unit={s.unit} style={{ marginTop: theme.sp(1) }} />
               <Text style={[qc.metricStatus, { color: statusColor(s), fontSize: theme.fontSize.micro, marginTop: 2 }]}>
                 {statusLabel(s)}
               </Text>

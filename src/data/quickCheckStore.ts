@@ -415,7 +415,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   if (bpSys != null && bpDia != null) {
     const st = sb('bpSys', bpSys) !== 'ok' || sb('bpDia', bpDia) !== 'ok'
       ? (sb('bpSys', bpSys) === 'high' || sb('bpDia', bpDia) === 'high' ? 'high' : 'low') : 'ok';
-    core.push(measured({ key: 'bp', name: '血压', value: `${Math.round(bpSys)}/${Math.round(bpDia)}`, unit: 'mmHg', status: st, ref: '参考 <120/80', scale: { min: 80, max: 160, v: Math.round(bpSys) }, note: '血压反映心血管负荷，理想约 <120/80；偏高常与高盐饮食、压力、睡眠不足相关，异常请以医用血压计确认。' }));
+    core.push(measured({ key: 'bp', name: '血压', value: `${Math.round(bpSys)}/${Math.round(bpDia)}`, unit: 'mmHg', status: st, ref: '参考 <120/80 mmHg', scale: { min: 80, max: 160, v: Math.round(bpSys) }, note: '血压反映心血管负荷，理想约 <120/80；偏高常与高盐饮食、压力、睡眠不足相关，异常请以医用血压计确认。' }));
   }
   if (core.length) groups.push({ key: 'core', title: '核心体征', icon: '❤️', note: '以下为核心体征，逐项说明当前是否正常、可能的原因，以及可参考的日常建议。', metrics: core });
 
@@ -492,9 +492,13 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   //      皮质醇节律同源，可作为「波动」的近似参考（只描述形态，不给出激素绝对值）。
   {
     const cFrom = now - 14 * 86400000;
+    // ★ 2026-11-08 门禁：只认**实测**皮质醇样本。历史日 cortisol 常是
+    //   offlineEstimates 用 stress×1.6+20 线性换算的推算值（healthStore 打了 derivedDays 标），
+    //   拿它拟合 cosinor 会得出「晨峰 08:00 / 节律良好」这类建立在假数据上的生理结论。
+    //   过滤后样本不足 4 点 → 自然回落到下面的 HRV 代理路径，只描述波动形态。
     const cSamples = healthStore
       .getTimeRange('cortisol', cFrom, now, { fillDailyMean: false, maxPoints: 2000 })
-      .filter((p) => Number.isFinite(p.v) && p.v > 0)
+      .filter((p) => Number.isFinite(p.v) && p.v > 0 && !healthStore.isDerivedDay('cortisol', dayKey(p.t)))
       .map((p) => ({ t: p.t, v: p.v }));
     if (cSamples.length >= 4) {
       const cr = analyzeCortisol(cSamples);

@@ -18,7 +18,8 @@ import { analyzeCortisol, type CortisolSample, type CortisolRhythmResult } from 
 import KalmanFilter from '../lib/kalman-filter';
 import { DAY_HOUR_TICKS_COMPACT } from '../lib/chartAxis';
 // ★ v18.123：今日曲线改用多模态反推的皮质醇活性（与首页昼夜节律卡同源）
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolBaselineActivity } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolShapedToday, buildCortisolBaselineActivity } from '../lib/cortisolProxy';
+import { CORTISOL_PRIOR_DISCLAIMER } from '../lib/cortisolPrior';
 // ★ v18.125：与首页昼夜节律卡**共用同一套绘图几何**（用户：两处图不一样，看着难受）
 import { buildSmoothSeries, computeYRange, slotToClock, CHART_SLOTS } from '../lib/cortisolChartGeom';
 
@@ -171,7 +172,7 @@ export default function CortisolRhythmCard() {
         <Text style={styles.hint}>
           暂无足够的皮质醇数据。连上戒指并开启自动监测后，约 1 天即可开始分析昼夜节律。
         </Text>
-        <Text style={styles.disclaimer}>基于戒指压力代理值（非化验级皮质醇），且仅使用实测日样本；仅供趋势参考。</Text>
+        <Text style={styles.disclaimer}>样本不足时不作节律判定。皮质醇为 0–100 相对活性，不是激素浓度检测值；连续佩戴后会逐步累积趋势。</Text>
       </Card>
     );
   }
@@ -213,7 +214,7 @@ export default function CortisolRhythmCard() {
       </View>
 
       <Text style={styles.disclaimer}>
-        注：数据来自戒指传感器，以你 14 天基线做相对追踪，仅供参考。
+        注：{CORTISOL_PRIOR_DISCLAIMER}历史日以 14 天个人基线做相对追踪，仅供参考，不是激素浓度。
       </Text>
     </Card>
   );
@@ -398,8 +399,10 @@ export function TrendChart({ r, sleepWindow, fillGaps = true, mainDayDk, hideYAx
     //   输入是 `stress×1.6+20` 的线性代理，且空槽被拟合曲线填满 → 既非实测、形状也不生理。
     //   proxy 每槽由该窗口实测 HRV/EDA/体温/心率算出，**没信号就是 null**（不填）。
     const bl = buildCortisolProxyBaseline(14);
-    const px = buildCortisolProxyToday(bl);
-    main30 = px.vals.map((v, i) => (px.real[i] ? v : null));
+    // ★ 2026-11-08：今日主曲线改用「正常昼夜节律先验 + 实测温和修正」的拟合形状。
+    //   判定（judgeCortisolRhythm / 节律日历）仍走 buildCortisolProxyToday 的实测槽，不受影响。
+    const px = buildCortisolShapedToday(bl);
+    main30 = px.vals.map((v) => v ?? null);
   } else {
     main30 = aggregate30m(mainRaw);
     // 历史日：整天都是过去，用该日自己的 cosinor 节律填满
