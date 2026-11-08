@@ -1198,7 +1198,7 @@ export default function StatusTrendDetailScreen() {
               <Text style={styles.emptyText}>
                 {dRange === 'day'
                   ? '今日状态曲线尚未生成，佩戴戒指并打开数据同步后将实时记录'
-                  : '当前范围内暂无真实测量数据，开启数据同步并佩戴戒指后将逐日累积'}
+                  : '当前范围内暂无数据，佩戴并同步后将逐日累积'}
               </Text>
             </View>
           ) : null}

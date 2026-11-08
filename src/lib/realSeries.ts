@@ -240,7 +240,7 @@ function emptyResult(key: string, note: string): HistoryResult {
     hi: null,
     lo: null,
     multiDay: false,
-    note: `「${key}」暂无真实数据：${note}`,
+    note: `「${key}」暂无数据：${note}`,
   };
 }
 
@@ -295,7 +295,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
       // 日（历史某天）：只有 App 按天归档的当日体温均值（无逐时明细）
       const v = healthStore.getDay('temp', anchorKey)?.mean ?? null;
       if (v == null) {
-        return emptyResult('cycle', `${anchorKey} 该日无真实体温数据（App 未在该日记录）`);
+        return emptyResult('cycle', `${anchorKey} 该日暂无体温数据`);
       }
       points = [v];
       phaseAt = [phaseForDate(effective, anchor)];
@@ -374,7 +374,7 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
     hi,
     lo,
     multiDay: range !== 'day',
-    note: `${cycleNote(range, cs)} 体温为戒指实测，可用于辅助确认排卵；雌激素/黄体酮戒指硬件暂不直接测量。`,
+    note: `${cycleNote(range, cs)} 曲线按周期阶段变化，用来观察排卵前后的走势。`,
   };
 }
 
@@ -475,7 +475,7 @@ export function buildHistorySeries(
           }
         }
         if (pts.length) {
-          return finalizeContinuous(pts, start, end, def, false, `${def.name} 手动测量趋势`);
+          return finalizeContinuous(pts, start, end, def, false);
         }
       } else if (range === 'week' || range === 'month') {
         const DAY = 86400000;
@@ -513,7 +513,7 @@ export function buildHistorySeries(
         }
         const nonNull = out.filter(v => v != null).length;
         if (nonNull > 0) {
-          const res = finalize(out, def, nonNull > 1, `${def.name} 手动测量趋势`);
+          const res = finalize(out, def, nonNull > 1);
           res.axisOverride = axis;
           return res;
         }
@@ -594,8 +594,8 @@ export function buildHistorySeries(
     console.log(`[REAL-SERIES-DAY] getIntraday(${hsKey}, ${anchorKey})=${raw.length} normalized=${healthStore.getIntraday(hsKey, dk2).length}`);
     if (tps.length === 0) {
       const dv = healthStore.getDay(hsKey, anchorKey)?.mean ?? null;
-      if (dv == null) return emptyResult(key, `${anchorKey} 该日无真实测量数据（App 未在该日记录）`);
-      return finalize([dv], def, false, `${def.name} ${anchorKey} 当日均值（按天归档，无逐时明细）`);
+      if (dv == null) return emptyResult(key, `${anchorKey} 该日暂无数据`);
+      return finalize([dv], def, false, `当天只有一个汇总值，暂无逐时明细。`);
     }
 
     // ★ 2026-10-08：皮质醇今日 → 与洞察页昼夜节律卡**同一套融合算法**（buildCortisolProxyToday）。
@@ -618,7 +618,7 @@ export function buildHistorySeries(
         }
       }
       if (tps2.length > 0) {
-        const note = `皮质醇今日节律趋势（多模态融合活性 0~100，含设备真实皮质醇真值）。`;
+        const note = `皮质醇昼夜活性趋势（0~100 相对指数）。`;
         return finalizeContinuous(tps2, start, end, def, false, note);
       }
     }
@@ -630,10 +630,9 @@ export function buildHistorySeries(
       tps = tps.map(p => ({ ...p, v: kf.filter(p.v) }));
     }
 
-    const note = isTodayAnchor
-      ? `${def.name} 为今日真实测量（按时间戳连续绘制）。`
-      : `${def.name} ${anchorKey} 当日连续测量（按时间戳连续绘制，离线回填补全）。`;
-    return finalizeContinuous(tps, start, end, def, false, note);
+    // ★ 2026-11-08（用户）：删掉「X 为今日真实测量 / 当日连续测量」这类来源注脚。
+    //   数值本来就来自测量，写在卡片底下是废话；有实质内容的解读由上游 note 提供。
+    return finalizeContinuous(tps, start, end, def, false);
   }
 
   // 周 / 月：按自然日取「当日均值」画趋势（每点 = 一天均值，按时间顺序；缺口 null 断线，不编造）。
@@ -675,7 +674,7 @@ export function buildHistorySeries(
     const multiDay = nonNull > 1;
     const note = multiDay
       ? undefined
-      : `${def.name} 的多日趋势来自 healthStore 按天归档与持续佩戴累积；当前范围内仅有少量真实数据，缺口为未记录或未同步之日。`;
+      : `当前范围内数据点还很少，空白的日期是尚未记录或未同步的。连续佩戴几天后，趋势会更清楚。`;
     const res = finalize(out, def, multiDay, note);
     res.axisOverride = axis;
     if (derivedDayKeys.length) {

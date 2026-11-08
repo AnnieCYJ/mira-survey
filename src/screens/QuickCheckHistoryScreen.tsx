@@ -47,11 +47,11 @@ export default function QuickCheckHistoryScreen() {
       const res = await assembleQuickCheckFromRealtime();
       if (res.ok) {
         await reload();
-        Alert.alert('体检完成', '已根据戒指最近一次真实测量生成体检记录。');
+        Alert.alert('体检完成', '体检记录已生成。');
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到真实测量值。请先连接戒指并佩戴一会儿，让 App 采集到心率、血压、血液等指标后，再来做一次体检。',
+          '当前还没有可用数据。连接戒指并佩戴一会儿，等心率、血压等指标同步后再做一次体检。',
           [{ text: '知道了' }]
         );
       }

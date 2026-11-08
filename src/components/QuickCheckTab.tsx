@@ -126,7 +126,7 @@ export default function QuickCheckTab() {
             <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
           </Card>
         <Text style={qc.footerNote}>
-          最多覆盖{checkupMetrics.length}类结果，实际以本次戒指回读到的数据为准，没有回读到的项目不会出现在报告里。
+          最多覆盖{checkupMetrics.length}类结果；没有数据的项目不会出现在报告里。
           每一项都说明它代表什么、当前是否正常、可能的原因，以及可参考的建议；「--」表示该检测项本次未测成功。
           Mira 只做描述与参考，不做诊断与评分。
         </Text>

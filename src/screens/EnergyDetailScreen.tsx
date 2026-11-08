@@ -602,7 +602,7 @@ function HeroRow({ type, accent, anchor, ring, range, rangeMeanConsumption, rang
               {metEst.value != null ? metEst.value.toFixed(1) : '—'}
             </Text>
             <Text style={styles.statSub}>
-              {metEst.source === 'met' ? '戒指实测' : metEst.source === 'hr' ? '心率估算' : '暂无数据'}
+              {metEst.value != null ? '当前活动强度' : '暂无数据'}
             </Text>
           </View>
         </View>

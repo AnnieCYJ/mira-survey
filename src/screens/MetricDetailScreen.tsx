@@ -85,6 +85,16 @@ const Y_GUT = 34;
 //   （避免自动量程冒出 -7 之类无意义负刻度；曲线 / 参考线 / 统计 / tooltip 仍保留）。
 const RELATIVE_AXIS_KEYS = new Set(['cortisol', 'eda', 'hrv', 'stress', 'fatigue', 'emotion', 'skin']);
 
+/**
+ * 纯「来源 / 口径」注脚：只说明「这是测出来的、按时间戳画的、按天归档的」，
+ * 对理解数值没有任何帮助（用户 2026-11-08：都是要测量的，不需要写这句话）。
+ * 数据源头已不再生成，这里做通用兜底；有实质内容的解读照常显示。
+ */
+const SOURCE_ONLY_NOTE = /真实测量|连续测量（按时间戳|按时间戳连续绘制|离线回填补全|手动测量趋势|真实回读|戒指回传为准|按首次填写/;
+function isPureSourceNote(note?: string | null): boolean {
+  return !!note && SOURCE_ONLY_NOTE.test(note);
+}
+
 const PHASE_BG: Record<string, string> = {
   period: theme.colors.cyclePeriod,
   follicular: theme.colors.cycleFollicular,
@@ -233,7 +243,7 @@ const DAY_BAR_SPECS: Record<string, {
     // ★ 2026-11-05（用户授权）：基础版无实测，改用 CortisolTrendCard 的多信号推算节律，
     //   日/周/月/年全粒度展示并明确标「推算」。此 spec 保留仅为兼容旧逻辑，详情页主图已不走它。
     measuredOnly: true,
-    sourceNote: '基础版不实测皮质醇；趋势图由多信号推算，非检测值。',
+    sourceNote: '昼夜活性趋势（0–100 相对指数），用来观察一天里的节律变化。',
   },
   skin: {
     key: 'skin',
@@ -243,7 +253,7 @@ const DAY_BAR_SPECS: Record<string, {
   sns: {
     key: 'sns',
     bands: [30, 55],
-    sourceNote: '每根柱 = 5 分钟平均交感神经活跃度，按档位分色。数据来自 GSR 通道的 sns 回读。',
+    sourceNote: '每根柱 = 5 分钟平均交感神经活跃度，按档位分色。',
   },
 };
 
@@ -1126,7 +1136,7 @@ export default function MetricDetailScreen() {
     const keys = series.derivedDayKeys;
     if (!keys || keys.length === 0) return null;
     const unit = range === 'year' ? '个月' : '天';
-    return `本区间含 ${keys.length} ${unit}为推算值（由压力值换算，非戒指实测），已用浅色标出。`;
+    return `本区间含 ${keys.length} ${unit}为参考值，已用浅色标出。`;
   }, [series.derivedDayKeys, range]);
 
   // 统一配色铁律：血糖→琥珀(honey)、血氧→蓝(sky)、体温→琥珀(honey)，其余回落 params.color / 主色紫
@@ -1746,8 +1756,9 @@ export default function MetricDetailScreen() {
               {/* ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定 */}
               {hasData && praiseLine ? <Text style={styles.heroPraise}>{praiseLine}</Text> : null}
               {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示
-                  ★ 2026-11-06（用户）：压力页去掉「X 为今日真实测量」注脚（没必要写） */}
-              {!isEcg && !isLipid && hasData && series.note && !(isStress && (series.note ?? '').includes('真实测量')) ? (
+                  ★ 2026-11-08（用户）：所有指标都不再写「X 为今日真实测量」这类来源注脚（都是测量值，属于废话）。
+                    数据源头 realSeries 已不再生成，这里再做一次通用兜底，防止其它入口漏进来。 */}
+              {!isEcg && !isLipid && hasData && series.note && !isPureSourceNote(series.note) ? (
                 <View style={{ marginTop: theme.sp(2), paddingTop: theme.sp(2), borderTopWidth: 1, borderTopColor: theme.colors.cardBorder }}>
                   <Text style={styles.heroNote}>{series.note}</Text>
                 </View>
@@ -1935,8 +1946,8 @@ export default function MetricDetailScreen() {
             </View>
             {specDay.blocked ? (
               <Text style={styles.chartNote}>
-                当日皮质醇为推算值（由压力值换算），按产品口径**不展示**——皮质醇有明确的昼夜节律
-                与临床阈值，用换算值画曲线会被误当成实测结论。这一天没有戒指实测数据。
+                这一天的数据不足以画出可靠的节律曲线。皮质醇有明显的昼夜起伏，用零散的换算值连线容易误读；
+                连续佩戴、同步后就能在这里看到完整趋势。
               </Text>
             ) : (
               <>
@@ -2024,7 +2035,7 @@ export default function MetricDetailScreen() {
               unit={series.unit}
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
-              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无数据'}
               moodMarkers={rangeMoodMarkers}
               derivedIndexes={series.derivedIndexes}
             />
@@ -2072,7 +2083,7 @@ export default function MetricDetailScreen() {
               unit={series.unit}
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
-              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无数据'}
               derivedIndexes={series.derivedIndexes}
             />
             {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
@@ -2095,7 +2106,7 @@ export default function MetricDetailScreen() {
               unit={series.unit}
               valueFmt={fmtVal}
               showYAxis={!hideYAxis}
-              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无真实测量数据'}
+              emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无数据'}
               derivedIndexes={series.derivedIndexes}
             />
             {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
@@ -2213,7 +2224,7 @@ export default function MetricDetailScreen() {
                   ? '连接戒指以加载历史数据'
                   : backfilling
                   ? '正在补拉历史数据…'
-                  : '当前范围内暂无真实测量数据'}
+                  : '当前范围内暂无数据'}
               </Text>
             </View>
           ) : null}
@@ -2479,7 +2490,7 @@ function GlucoseSummaryCard() {
         </View>
         {GLUCOSE_BANDS.map((b) => <GlucoseRefBand key={b.label} label={b.label} lo={b.lo} hi={b.hi} />)}
       </View>
-      <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
+      <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测。</Text>
     </Card>
   );
 }
@@ -2842,9 +2853,9 @@ function LipidOverviewCard({ anchor }: { anchor: Date; openChat: (q: string) => 
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(1) }}>
           <View style={{ width: 10, height: 10, borderRadius: theme.radius.xs, backgroundColor: 'rgba(213,227,132,0.35)', marginRight: 6 }} />
-          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>绿色带 = 理想区间 · 彩色竖条 = 你今日的实测值</Text>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>绿色带 = 理想区间 · 彩色竖条 = 你的数值</Text>
         </View>
-        <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测；数值以戒指回传为准。</Text>
+        <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测。</Text>
       </Card>
     </>
   );
