@@ -1023,6 +1023,8 @@ class NativeRingSource {
   private lastHrIngestTs = 0;
   /** v18.112：收到 ready 但当时还没 connected → 挂起，等 connected 落地再补触发回填 */
   private _pendingReadyBackfill = false;
+  /** ★ 2026-11-09（用户：电量必须传对）：电量轮询定时器（连接就绪后每 60s 拉一次，断开时清除） */
+  private batteryTimer: ReturnType<typeof setInterval> | null = null;
   /** ★ 2026-10-16（续）：ECG 实时波形累积缓冲（原生 onEcgProgress 增量回传，JS 在此拼接成完整 trace）。 */
   private _ecgLiveBuf: number[] = [];
   resetEcgLive() { this._ecgLiveBuf = []; }
@@ -1212,6 +1214,18 @@ class NativeRingSource {
     const value = num(raw.value);
     const ts = num(raw.ts) ?? Date.now();
     if (!metric || value == null || !Number.isFinite(value)) return;
+
+    // ★ 2026-11-09（用户：电量必须传对）：原生 readBattery 走 onRealtime metric:"battery"，
+    //   电量不是时序指标、也不进 healthStore，直接写 RingState.battery 即可驱动设置页「电量 xx%」。
+    if (metric === 'battery') {
+      const lvl = num(raw.value);
+      if (lvl != null && Number.isFinite(lvl)) {
+        const pct = Math.max(0, Math.min(100, Math.round(lvl)));
+        this.push({ battery: pct });
+        postLog('HR-REALTIME', ` ✅ battery=${pct}% from ring`);
+      }
+      return;
+    }
 
     // ★ v18.134（审查 04 🔴-2）：**必须经 hsKeyFor 桥接后再写库**。
     //   原实现直接 `upsertRealtime(metric as any, ...)`：原生一旦改用别名 key
@@ -1430,6 +1444,30 @@ class NativeRingSource {
           `[Batch.cadence] dk=${dk} points=${tsAll.length} ` +
           `日间=${dMed == null ? '-' : dMed.toFixed(1) + 'min'}(${dayGaps.length}) ` +
           `夜间=${nMed == null ? '-' : nMed.toFixed(1) + 'min'}(${nightGaps.length})`);
+        // ★ 2026-11-09（用户质疑「夜间有睡眠却没心率/HRV」）：明确统计 slots 里各核心指标在
+        //   「日间/夜间」是否有非零样本，定位夜间 hr/hrv 是「戒指没发」还是「App 漏收」。
+        //   下次真机同步后 `adb logcat | grep Batch.presence` 即可定论（DAY/NIGHT 各列样本数）。
+        const countPresent = (nativeKey: string, isNight: boolean): number => {
+          const keys = FIELD_ALIASES[nativeKey] ?? [nativeKey];
+          let c = 0;
+          for (const s of slots) {
+            const tRaw = s?.time ?? s?.t ?? s?.ts ?? s?.timestamp ?? s?.dateTime ?? s?.hhmm ?? '';
+            const t = parseSampleTs(date, tRaw);
+            if (t == null) continue;
+            const h = new Date(t).getHours();
+            const night = h >= 22 || h < 8;
+            if (night !== isNight) continue;
+            for (const k of keys) {
+              const v = num(s?.[k]);
+              if (v != null && Number.isFinite(v) && v > 0) { c++; break; }
+            }
+          }
+          return c;
+        };
+        postLog('RingBle',
+          `[Batch.presence] dk=${dk} ` +
+          `DAY hr=${countPresent('hr', false)} hrv=${countPresent('hrv', false)} spo2=${countPresent('spo2', false)} steps=${countPresent('steps', false)} | ` +
+          `NIGHT hr=${countPresent('hr', true)} hrv=${countPresent('hrv', true)} spo2=${countPresent('spo2', true)} steps=${countPresent('steps', true)}`);
         // ★ 原生压力通道补丁（VeepooManualTestReader）会带 source/cadenceMinutes，
         //   打进日志便于连戒指时确认「这批点到底来自 v3 原始桶还是设备测量记录」。
         if (raw?.source || raw?.cadenceMinutes != null) {
@@ -1944,6 +1982,8 @@ class NativeRingSource {
           `[State] ready 先于 connected 到达（status=${this.getState().status}），挂起回填待连接后补触发`,
         );
       }
+      // ★ 2026-11-09（用户：电量必须传对）：连接就绪后立即拉一次电量，并启动 60s 轮询
+      this.refreshBattery();
       return;
     }
 
@@ -2060,21 +2100,6 @@ class NativeRingSource {
     //   这种版本错配（2026-09-11 真机曾因新增 onBackfillProgress 触发红屏）。
     //   注意：进度只推给独立通道，**不写进 patch / RingState**，
     //   避免同步期间几十次进度更新触发全 App 重渲染、反过来加重卡顿。
-    // ★★ 临时强制 backfill（调试用）：connected 后 3 秒直接调，看原生能不能收到
-    if (raw?.status === 'connected') {
-      console.log('[FORCE-BACKFILL] connected detected, will call backfill in 3s...');
-      setTimeout(() => {
-        try {
-          console.log('[FORCE-BACKFILL] calling VeepooNative.backfill()...');
-          const N = (NativeModules as any).VeepooRing;
-          console.log('[FORCE-BACKFILL] VeepooNative exists?', !!N, 'backfill exists?', !!N?.backfill);
-          N?.backfill?.();
-          console.log('[FORCE-BACKFILL] backfill() called ✅');
-        } catch (e) {
-          console.log('[FORCE-BACKFILL] FAILED:', e);
-        }
-      }, 3000);
-    }
     if (raw && raw.syncProgress) {
       try {
         const sp = raw.syncProgress as { active?: unknown; percent?: unknown; phase?: unknown };
@@ -3406,7 +3431,26 @@ steps点数=${reshaped.steps?.length ?? 0}`,
   scan() { VeepooNative?.scan(); }
   stopScan() { VeepooNative?.stopScan(); }
   connect(id: string) { VeepooNative?.connect(id); }
-  disconnect() { VeepooNative?.disconnect(); }
+  disconnect() {
+    if (this.batteryTimer != null) { clearInterval(this.batteryTimer); this.batteryTimer = null; }
+    VeepooNative?.disconnect();
+  }
+  /** ★ 2026-11-09（用户：电量必须传对）：主动请求戒指电量。
+   *   原生 readBattery() 回调经 onRealtime metric:"battery" 回流，由 handleRealtime 写入 RingState.battery。
+   *   同时启动 60s 周期轮询（覆盖电量自然下降），断开时由 disconnect() 清除定时器。 */
+  refreshBattery() {
+    try {
+      (VeepooNative as any)?.readBattery?.();
+      postLog('RingBle', `[Battery] 请求读取电量（VeepooNative.readBattery）`);
+    } catch (e) {
+      postLog('RingBle', `[Battery] ⚠️ 调用 readBattery 失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (this.batteryTimer == null) {
+      this.batteryTimer = setInterval(() => {
+        try { (VeepooNative as any)?.readBattery?.(); } catch { /* 轮询期间忽略单次失败 */ }
+      }, 60000);
+    }
+  }
   setAutoMonitor(on: boolean) { VeepooNative?.setAutoMonitor(on); }
   measure(k: string) {
     if (k === 'ecg') {
@@ -6913,6 +6957,51 @@ class RingConnectionImpl {
       this.applyPatch(patch);
       // ★ 载入/迁移 healthStore（v2 单一数据源）：优先直接 loadV2；否则用旧 v1 快照迁移
       await this.loadHealthStoreFromDisk(snap);
+      // ★ 2026-11-09：冷启动把 healthStore（v2 唯一数据源）里已同步的数据回填进 RingState。
+      //   旧快照（RingState）与 healthStore 会失同步：healthStore 有今天的步数/睡眠，旧快照没有，
+      //   于是首页读 ring.stepDaily / curveStatus 等「实时态」在冷启动为空 → 界面空白，
+      //   尽管 healthStore 里已有数据。这里在 recompute 链路之前把种子补齐。
+      try {
+        const dkToday = dayKeyOf(Date.now());
+        const patch: Record<string, unknown> = {};
+        // 1) 计步/活动：今日 steps/calorie/distance 回填 ring.stepDaily（首页活动消耗读这里）
+        const hsSteps = healthStore.getDay('steps', dkToday);
+        const hsCal = healthStore.getDay('calorie', dkToday);
+        const hsDist = healthStore.getDay('distance', dkToday);
+        if (hsSteps || hsCal || hsDist) {
+          const prevStep = this.state.stepDaily?.[dkToday];
+          patch.stepDaily = {
+            ...(this.state.stepDaily ?? {}),
+            [dkToday]: {
+              steps: hsSteps?.last ?? prevStep?.steps ?? 0,
+              calorie: hsCal?.last ?? prevStep?.calorie ?? 0,
+              distance: hsDist?.last ?? prevStep?.distance ?? 0,
+            },
+          };
+        }
+        // 2) 今日睡眠回填 sleepSummary → recomputeDailyStatus 用今日种子出「今日状态」
+        const hsSleep = healthStore.getSleep(dkToday);
+        if (hsSleep && (hsSleep.total ?? 0) > 0) {
+          (patch as any).sleepSummary = { ...(hsSleep as any) };
+          (patch as any).sleepSummaryDate = dkToday;
+        }
+        // 3) lastUpdated 合并 healthStore 时间戳，避免 dataStale 误判「从未采到过数据」
+        const hsLU = healthStore.getLastUpdated();
+        if (hsLU && Object.keys(hsLU).length > 0) {
+          const mergedLU = { ...(this.state.lastUpdated ?? {}) };
+          for (const k of Object.keys(hsLU)) {
+            const v = hsLU[k];
+            if (typeof v === 'number' && (mergedLU[k] == null || v > (mergedLU[k] as number))) mergedLU[k] = v;
+          }
+          (patch as any).lastUpdated = mergedLU;
+        }
+        if (Object.keys(patch).length > 0) {
+          this.applyPatch(patch as any);
+          postLog('RingBle', `[loadPersisted] ✅ 已从 healthStore 回填 RingState（stepDaily/sleepSummary/lastUpdated）`);
+        }
+      } catch (e) {
+        postLog('RingBle', `[loadPersisted] ⚠️ healthStore→RingState 回填失败（已忽略）: ${e instanceof Error ? e.message : e}`);
+      }
       // ★ v18.111（用户实锤「戒指数据有更新，全天状态趋势图却还是没数据」的真凶）：
       //   legacy 快照 buckets（今日 30min 槽：hr/hrv/spo2/temp/eda + 扩展指标）**只**恢复进
       //   RingState.dayBuckets，从来不写 healthStore.intraday。而

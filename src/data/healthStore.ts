@@ -670,6 +670,13 @@ export class HealthStore {
     return sorted.slice();
   }
   /**
+   * ★ 2026-11-09：读取 lastUpdated 映射副本。
+   * 冷启动合并进 RingState.lastUpdated，避免 buildCurveStatus 的 dataStale 误判「从未采到过数据」。
+   */
+  getLastUpdated(): Record<string, number> {
+    return { ...this.lastUpdated };
+  }
+  /**
    * ★ 2026-10-10：该日的 intraday 是否为「由 stress 线性换算的推算值」。
    * 用于 UI 诚实标注（皮质醇更严格：推算日一律不出曲线，只走空态）。
    */

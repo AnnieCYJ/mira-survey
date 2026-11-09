@@ -19,7 +19,7 @@ import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, Touchabl
 import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { RingBle } from '../ble/RingBleManager';
-import { dayKey } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
 import { computeEmotionalStress, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { estimateVo2maxFromStore } from '../lib/vo2max';
@@ -48,6 +48,30 @@ import type { TabParamList } from '../navigation/BottomTabNavigator';
 import { useAiInsight } from '../hooks/useAiInsight';
 
 type NavProp = CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>;
+
+// ★ 2026-11-09：回填数据回落。各卡片默认读「今天」，今天无该指标时回落到「最近一个有该指标的天」，
+// 让已同步的历史数据（睡眠/心率/HRV/压力…）在首页可见，而不是一律「— / 暂无数据」。
+// 符合产品铁律：有冻结值就显示、不显空态；回落到的非今日日期由调用方显式标注「数据截至 X日」，不伪装成今天。
+function dayKeyToTs(dk: string): number {
+  const [y, m, d] = dk.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0).getTime();
+}
+function lastDayWithData(keys: string[], maxDays = 30): string {
+  for (let i = 0; i <= maxDays; i++) {
+    const dk = dayKey(Date.now() - i * 86400000);
+    for (const k of keys) {
+      if (k === 'sleep') {
+        if (healthStore.getSleep(dk)) return dk;
+        continue;
+      }
+      const d = healthStore.getDay(k as any, dk);
+      if (d && ((d.last != null && d.last > 0) || (d.mean != null && d.mean > 0) || (d.count ?? 0) > 0)) return dk;
+      const intra = healthStore.getIntraday(k as any, dk);
+      if (intra && intra.length > 0) return dk;
+    }
+  }
+  return dayKey(Date.now());
+}
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
 const HOME_BG = require('../assets/home_bg.jpg'); // ★ 2026-11-03 首页背景：用户指定雪景照（已裁掉状态栏/Home 黑条）
@@ -245,7 +269,9 @@ export default function CalmWaveHome() {
   //   一律显示「暂无数据」，不再写死兜底 82 + 元气满满。取数本身按天（Date.now() 当日），
   //   24:00 跨天后自动回到空态，无需额外定时器。
   // 恢复分（睡眠指标，下沉到卡片行「睡眠恢复」）—— 仅供下方卡片行展示，不再作为首页「今日状态」大数字
-  const recoveryScore = useMemo(() => sleepRecoveryScoreForDay(Date.now()), [refreshKey]);
+  // ★ 2026-11-09：睡眠恢复回落到最近一个有睡眠的天（今天无睡眠时显示最近一晚，避免「—」）
+  const recoveryDay = lastDayWithData(['sleep']);
+  const recoveryScore = useMemo(() => sleepRecoveryScoreForDay(dayKeyToTs(recoveryDay)), [refreshKey, recoveryDay]);
   const hasRecoveryData = recoveryScore != null;
   const RECOVERY = hasRecoveryData ? Math.round(recoveryScore) : 0;
   // ★ 2026-10-26：首页指标卡全部接真实数据（替代原写死的静态预览值 82/46/38/320/第14天）。
@@ -328,8 +354,56 @@ export default function CalmWaveHome() {
   const moodLabel = mood.label;
   const moodColor = mood.color;
   // ★ 2026-11-08：首页分析接入真实 AI（端侧 Qwen2.5-1.5B，同洞察页顶部综合分析）。
-  //   返回文本为「结论句 + 综合段落 + 今日建议」，约 2–3 行；无数据时 text=null，下方回落本地模板。
-  const { text: aiAnalysis, loading: aiAnalysisLoading } = useAiInsight('overview');
+  //   优先用解析后的第 1 行（人话结论标题+正文）——原始 text 含「tone|标题|正文」行与
+  //   「今日建议」行，直接铺到首页会漏管道符、把建议挤进 2 行概览里；无数据时 text=null，
+  //   下方回落本地模板。
+  const { text: aiRaw, rows: aiRows } = useAiInsight('overview');
+  // ★ 2026-11-08（用户，参考 Oura）：首页分析=纯人话句子——只取 rows[0].body 正文，
+  //   不拼标题、不出现「结论：」「综合分析」这类冒号/栏目标题；标题只留给洞察页分类用。
+  // ★ 2026-11-08（收尾加固）：1.5B 偶尔仍会在原始输出里带结构标签（「第一行：」「【状态解读】」
+  //   等，即便系统+用户提示词都禁止）。正常由 parseRows 把纯标签行丢弃、只留 body；
+  //   这里再兜底清洗一次，确保任何漏网的标签都不会显示到首页。
+  const STRIP_LINE_LABEL = /^(第[一二1-2][句段行]?|行[12]|line\s*[12]|【状态解读】|【此刻行动】|【分析】|【建议】|【行动】)[:：、\s-]*/i;
+  const aiAnalysis = useMemo(() => {
+    if (aiRows && aiRows.length > 0) {
+      const r0 = aiRows[0];
+      const body = (r0.body || '')
+        .replace(STRIP_LINE_LABEL, '')
+        .replace(/^结论[:：]\s*/, '')
+        .replace(/[。：:]$/, '')
+        .trim();
+      return body || null;
+    }
+    // 解析失败时的原始兜底：若含管道符（模型没按格式出）宁可不用，避免把格式漏给用户
+    const raw = aiRaw
+      ? aiRaw.replace(/^【[^】]{1,14}】\s*/gm, '').replace(/第[一二1-2]行[:：、]\s*/g, '')
+      : '';
+    return raw && !raw.includes('|') ? raw : null;
+  }, [aiRows, aiRaw]);
+  // ★ 2026-11-08（用户：AI 说「准备度偏低需要休息」与圆环 70 打架）：确定性兜底——
+  //   端侧 1.5B 可能无视提示词里的口径铁律；首页以圆环档位为准：
+  //   圆环 ≥51（状态良好/元气满满）而 AI **总结论**写「需要休息 / 状态偏低」→ 判为矛盾，
+  //   弃用 AI 文案，回落下方本地模板（口径与圆环一致）。
+  //   注意：正文里把「准备度偏低」当细节提一句不算矛盾（脑力准备度确实是次要维度），不触发。
+  const aiContradicts =
+    aiAnalysis != null && hasStatusData && displayStatus! >= 51 &&
+    /需要\s*休息|状态偏低|偏低[，,]\s*需要|该\s*好好\s*休息/.test(aiAnalysis);
+  // ★ 2026-11-09（用户铁律：没数据就显空态，绝不显旧数据推断的睡眠结论）：
+  //   今日状态与一键体检都无数据时，主页分析回落本地空态模板，不展示 AI 基于陈旧数据写出的
+  //   「昨晚睡眠质量良好」等结论。aiRows 仍可能从多年历史里捞出旧睡眠记录，必须挡在门外。
+  const noRealData = !hasStatusData && !statusFromCheck;
+  const aiShown = aiContradicts || noRealData ? null : aiAnalysis;
+  // ★ 2026-11-08（用户）：胶囊建议也吃 AI——rows[1].body 是「此刻行动」（时段+周期感知），
+  //   模型没出/解析失败/判定矛盾时回落本地建议引擎 sugg。
+  const aiSuggestion = useMemo(() => {
+    if (aiContradicts || !aiRows || aiRows.length < 2) return null;
+    const b = (aiRows[1]?.body || '').trim()
+      .replace(STRIP_LINE_LABEL, '')
+      .replace(/^(今日建议|建议|今日行动|行动建议|现在可以)[:：、]\s*/, '')
+      .replace(/。$/, '')
+      .trim();
+    return b.length >= 6 && b.length <= 60 && !b.includes('|') ? b : null;
+  }, [aiRows, aiContradicts]);
   const dkToday = dayKey(Date.now());
   // ★ sportSessions 是跨天持久化列表（固件回传+本地归档），不能整体累加；
   //   活动消耗只统计「今天」的运动段 totalCal，与活动详情页（EnergyDetail dayK === dk）同口径。
@@ -346,13 +420,15 @@ export default function CalmWaveHome() {
   // 身心压力：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
   // ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hr，daily 也不含 stress，
   //   该字段恒为 null → 身心压力卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
-  const stressReport = useMemo(() => { try { return computeStressReport(Date.now()); } catch { return null; } }, [refreshKey]);
+  // ★ 2026-11-09：身心压力回落到最近一个有心率/皮电的天（今天无 hr/eda 时显示最近有数据的那天）
+  const stressDay = lastDayWithData(['hr', 'eda']);
+  const stressReport = useMemo(() => { try { return computeStressReport(dayKeyToTs(stressDay)); } catch { return null; } }, [refreshKey, stressDay]);
   const bodyLoad = stressReport?.score ?? null;
 
   // 情绪：emotionalStress 多信号融合（0–100，50=和平时差不多；越高压力越大）
   const esReport = useMemo(() => {
-    try { return computeEmotionalStress(Date.now(), sportSessions); } catch { return null; }
-  }, [refreshKey, sportSessions]);
+    try { return computeEmotionalStress(dayKeyToTs(stressDay), sportSessions); } catch { return null; }
+  }, [refreshKey, sportSessions, stressDay]);
   const emoValue = (() => {
     try {
       if ((status as any)?.dataStale) return null;
@@ -469,15 +545,32 @@ export default function CalmWaveHome() {
   const k = height / 844;
   const gaugeSize = 300 * k;                          // 近整圆仪表尺寸
   const gaugeTop = 158 * k;                            // 仪表区顶部（★ 2026-11-03：140→158 整体再下移一点点，圆环+分析+胶囊联动下移）
-  const analysisTop = gaugeTop + 318 * k;              // 分析文字（★ 2026-11-03 310→318：用户「和下面的今日状态不错拉开一点点距离」）
+  // ★ 2026-11-08（用户：分析文字第一行被圆环/档位词压住）：分析文字下移 318→348。
+  //   根因：gaugeCenter（大数字 46 + 档位词 h1）实际内容底 ≈ gaugeTop+206k+118，
+  //   超出仪表盒底（gaugeTop+300k），而 318k 起排的分析文字正好撞上 → 首行被盖。
+  //   348k 后与档位词底留出 ~15px 呼吸间隙。
+  const analysisTop = gaugeTop + 348 * k;              // 分析文字（★ 2026-11-03 310→318；★ 2026-11-08 318→348 修复与圆环档位词重叠）
   // ★ 2026-11-06（用户：分析文字三排要自适应）：分析文字行数不定（1~3 行），
   //   胶囊不再用固定 40k 偏移，而是跟随实测文字高度下移；三排时指标卡行（睡眠恢复/身心压力/活动消耗）也随之下移一点。
   const [analysisH, setAnalysisH] = useState(50);      // 默认按两行（lineHeight 25）
-  const analysisLines = Math.max(1, Math.round(analysisH / 25));
-  const capsuleTop = analysisTop + analysisH + 6;      // 建议胶囊：贴分析文字实际底沿
-  // 卡片行：贴 tab 上方（tab 高 84 + 安全区）；★ 本轮：底部间隙 4→14，卡片整体再下移约 10px
-  // ★ 2026-11-06（用户）：分析文字 ≥3 行时，卡行也顺势再往下挪 8px，保持整页呼吸感
-  const chipRowTop = height - insets.bottom - 84 - 2 - (analysisLines >= 3 ? 8 : 0) - CHIP_H;
+  const [capsuleH, setCapsuleH] = useState(54);        // 建议胶囊实测高度（1~2 行），用于钳位防重叠
+  // 卡片行：①默认贴 tab 上方（CustomTabBar 高 56、贴底），此前预留过保守导致下方空一大截；
+  //   ②但「分析文字 + 建议胶囊」高度不固定（AI 文案 1~4 行），必须给中间留足空间。
+  //   → 卡片行取「底部贴 tab」与「胶囊底 + 安全间隙」二者较大值：文字越长，卡片越往下，
+  //     正好满足用户 2026-11-09「三张卡片位置再往下一点，给中间留足展示分析和建议胶囊的空间」。
+  const CARD_GAP = 12;        // 胶囊底 ↔ 卡片顶 安全间隙
+  const chipRowBase = height - 56 - 14 - CHIP_H;
+  // 安全钳位：极端长文案（>3 行、短屏）时，优先保证「分析↔胶囊↔卡片↔tab」永不重叠，
+  // 仅在会溢出屏幕的极少数情况下才对分析文字做行数上限；正常 2~3 行文案永不截断。
+  const maxAllowedAnalysisH = Math.max(50, height - 56 - 14 - CHIP_H - capsuleH - CARD_GAP - analysisTop - 12);
+  const safeAnalysisH = Math.min(analysisH, maxAllowedAnalysisH);
+  // 分析文字：完整展示（用户要求必须完整内容）；实测行高驱动下方胶囊位置。
+  // 胶囊：永远贴分析文字实际底沿（中间留 12），不再写死偏移导致压字。
+  const capsuleTop = analysisTop + safeAnalysisH + 12;
+  // 卡片行联动下移：文字长时自然把卡片顶下去，避免与胶囊/分析重叠。
+  const chipRowTop = Math.max(chipRowBase, capsuleTop + capsuleH + CARD_GAP);
+  // 仅当文案超过屏幕可容纳上限时（极端情况）才截断，正常文案 displayLines=undefined（不截断）。
+  const displayLines = analysisH > maxAllowedAnalysisH ? Math.max(1, Math.floor(maxAllowedAnalysisH / 25)) : undefined;
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -538,12 +631,16 @@ export default function CalmWaveHome() {
       {/* 仪表区：近整圆（底部开口）+ 数字落开口处（圆心空）+ 分析/胶囊浮于照片 */}
       <View style={[s.gaugeZone, { top: gaugeTop }]}>
         <TouchableOpacity
-          style={[s.gauge, { width: gaugeSize, height: gaugeSize }]}
+          // ★ 2026-11-08（真机截图：档位词「状态良好 ›」下半截被裁掉）：根因 = 中心文字组
+          //   （大数字 46 + 档位词 h1）实际高度超出 300×300 仪表盒（约溢出 26k），渲染时被
+          //   盒子底边裁切。修法 = 容器加高 96k 容纳溢出文字；Svg 改固定 gaugeSize 尺寸
+          //   （不再 100% 拉伸，避免跟随容器变高把圆环下移）。
+          style={[s.gauge, { width: gaugeSize, height: gaugeSize + 96 * k, overflow: 'visible' }]}
           activeOpacity={0.85}
           accessibilityLabel="查看全天状态趋势详情"
           onPress={() => navigation.navigate('StatusTrendDetail')}
         >
-          <Svg width="100%" height="100%" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
+          <Svg width={gaugeSize} height={gaugeSize} viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
             {/* 轨道：近整圆、底部开口 60°，淡白 */}
             <Path
               d={`M ${arcStart.x.toFixed(2)} ${arcStart.y.toFixed(2)} A ${ARC_R2} ${ARC_R2} 0 1 1 ${arcEndFull.x.toFixed(2)} ${arcEndFull.y.toFixed(2)}`}
@@ -567,9 +664,9 @@ export default function CalmWaveHome() {
               <Icon name="chevronRight" size={theme.fontSize.body} color="rgba(255,255,255,0.85)" strokeWidth={2.4} />
             </View>
           </View>
-          {/* 0 / 100 刻度（左 0、右 100） */}
-          <Text style={[s.scaleTxt, { left: '30.8%', top: '79%' }]}>0</Text>
-          <Text style={[s.scaleTxt, { left: '69.2%', top: '79%' }]}>100</Text>
+          {/* 0 / 100 刻度（左 0、右 100）★ 2026-11-08：容器加高后 % 定位会随高度漂移，改弧端点绝对像素（弧端 y=234.6/300） */}
+          <Text style={[s.scaleTxt, { left: '30.8%', top: 234.6 * (gaugeSize / 300) }]}>0</Text>
+          <Text style={[s.scaleTxt, { left: '69.2%', top: 234.6 * (gaugeSize / 300) }]}>100</Text>
         </TouchableOpacity>
       </View>
 
@@ -608,15 +705,16 @@ export default function CalmWaveHome() {
       <View style={[s.analysisWrap, { top: analysisTop }]}>
         <Text
           style={s.analysis}
-          numberOfLines={aiAnalysis ? 3 : undefined}
+          numberOfLines={displayLines}
           onTextLayout={(e) => {
-            // RN 的 onTextLayout 只给 lines（无整体 layout.height）——行数 × lineHeight(25) 换算
+            // 完整展示用户文案（不截断）：用真实行数 × lineHeight(25) 作为分析块高度，
+            // 驱动下方胶囊与卡片行联动下移，从根本上消除「胶囊压字 / 文字被省略号截断」。
             const n = e.nativeEvent.lines.length;
             if (n > 0) setAnalysisH(n * 25);
           }}
         >
-          {aiAnalysis
-            ? aiAnalysis
+          {aiShown
+            ? aiShown
             : (statusFromCheck
               ? <>刚做完一键体检，今天的<Text style={s.hl}>{displayStatus} 分</Text>{qcStatus?.source === 'estimated' ? '是按当前 HRV 估算的，连续佩戴后会更贴近真实状态～' : '来自戒指同步～'}</>
               : hasStatusData
@@ -627,10 +725,13 @@ export default function CalmWaveHome() {
       {/* 建议胶囊：★ 2026-11-05（用户）今日状态空值时引导「去一键体检一下」；有数据后走动态建议引擎 */}
       <View style={[s.capsuleWrap, { top: capsuleTop }]}>
         <TouchableOpacity style={s.relaxPill} activeOpacity={0.85}
+          onLayout={(e) => { const h = e.nativeEvent.layout.height; if (h > 0) setCapsuleH(h); }}
           onPress={hasStatusData ? onSuggPress : onGoQuickCheck}>
           <Text style={s.relaxPillTxt} numberOfLines={2}>
             {hasStatusData
-              ? (sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›')
+              ? (aiSuggestion
+                ? `${aiSuggestion} ›`
+                : (sugg?.cta ? `${sugg.headline ?? sugg.action ?? '轻呼吸放松放松'} ›` : '收工啦，轻呼吸放松放松 ›'))
               : '去一键体检，获取最新的健康数据 ›'}
           </Text>
         </TouchableOpacity>
@@ -749,8 +850,8 @@ const s = StyleSheet.create({
   gUpd: { fontSize: theme.fontSize.xs, color: theme.colors.ui.white55, marginTop: 6 },
   // 建议胶囊（★ 2026-11-04 动态建议：maxWidth 防长文案撑爆，最多两行）
   relaxPill: {
-    marginTop: 16,
-    maxWidth: '86%',
+    marginTop: 8, // ★ 2026-11-08：16→8，短屏上给「分析↔胶囊↔卡行」留出刚好不重叠的间隙
+    maxWidth: '92%', // ★ 2026-11-08（用户：宽度自定义）：胶囊贴内容自适应宽度，上限 92% 防溢出
     paddingVertical: 9,
     paddingHorizontal: 18,
     borderRadius: theme.radius.pill,
