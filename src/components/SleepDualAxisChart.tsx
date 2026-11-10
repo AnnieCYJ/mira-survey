@@ -6,7 +6,8 @@
  *   - 无参考虚线（预览没有）；
  *   - 恢复分面积 = 淡紫平涂 opacity 0.10（非重渐变）；
  *   - 柱 = 亮绿（左轴 h）、线 = 紫（右轴 0–100），平滑曲线 Catmull-Rom；
- *   - 皮质醇异常以**红点**标记（用户 2026-10-09 要求在周/月/年显示；点按红点开说明弹层）。
+ *   - ★ 2026-11-09（用户）：**不再**在周/月/年图上标「皮质醇异常日」红点，也不再显示该项图例。
+ *     原 2026-10-09 的红点 + 点按说明弹层已移除；数据层 cortisolAbnormal 仍保留（供异常天数统计用）。
  *
  * ★ 2026-10-09 二次修正（用户反馈「点被挤了 + 横坐标不对」）：
  *   1) 几何：viewBox 宽度与实测容器宽 **1:1**（不再固定 680 配 preserveAspectRatio="none"）。
@@ -58,11 +59,11 @@ interface Props {
   points: DualPoint[];
   /** 左轴上限（小时）；不传按数据自动取整到 2h 步进 */
   durMaxHours?: number;
-  /** 皮质醇异常红点点击 → 打开说明弹层 */
+  /** ★ 2026-11-09：标记移除后不再触发；保留字段只为兼容现有调用方传参，组件不再解构使用 */
   onAnomalyPress?: (p: DualPoint) => void;
 }
 
-export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress }: Props) {
+export default function SleepDualAxisChart({ points, durMaxHours }: Props) {
   const [w, setW] = useState(0);
   // X 轴标签实测宽度（用于精确居中，避免固定盒互相压 / transform 不收百分比）
   const [labelW, setLabelW] = useState<Record<number, number>>({});
@@ -209,19 +210,9 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
                 fill={chart.series.primary} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke} />
             ))}
 
-            {/* 皮质醇异常：红色圆点标记（周/月/年，用户要求显示在恢复分趋势线上；点按开说明弹层）。
-                落在恢复分曲线该点位置，圆点覆盖紫点，白圈衬底更醒目；无恢复分时回退到柱顶。 */}
-            {points.map((p, i) => {
-              if (!p.cortisolAbnormal) return null;
-              const yDot = p.score != null
-                ? yScore(p.score)
-                : ((p.durationMin != null && p.durationMin > 0) ? yDur(p.durationMin / 60) : PAD_T + ch * 0.25);
-              return (
-                <Circle key={`ca${i}`} cx={xAt(i)} cy={yDot} r={chart.dot.anomaly}
-                  fill={theme.colors.danger} stroke={theme.colors.cardBg} strokeWidth={chart.dot.stroke}
-                  onPress={() => onAnomalyPress?.(p)} />
-              );
-            })}
+            {/* ★ 2026-11-09（用户）：皮质醇异常日红点标记已移除。
+                原先这里会在恢复分曲线上盖一个红点并点按打开说明弹层；
+                现在趋势图只保留「时长柱 + 恢复分线 + 恢复分圆点」三组视觉元素。 */}
 
           </Svg>
           {/* X 轴标签：RN Text；按数据点 xAt 居中。宽度由 onLayout 实测（RN 0.74 的 transform
@@ -274,10 +265,7 @@ export default function SleepDualAxisChart({ points, durMaxHours, onAnomalyPress
           <View style={[styles.legendBar, { backgroundColor: chart.series.primary, height: 2.5 }]} />
           <Text style={styles.legendText}>恢复分（右轴）</Text>
         </View>
-        <View style={styles.legendItem}>
-          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.danger }} />
-          <Text style={styles.legendText}>皮质醇异常日</Text>
-        </View>
+        {/* ★ 2026-11-09（用户）：「皮质醇异常日」图例项随红点标记一并移除 */}
       </View>
     </View>
   );

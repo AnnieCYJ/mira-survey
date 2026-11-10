@@ -236,14 +236,11 @@ export default function EnergyDetailScreen() {
         {/* ★ 2026-10-12（用户）：运动消耗·日视图——Hero「整体卡路里」卡下方的「今日运动建议」，
             按当前周期相位给处方；周/月/年不显示（建议天然是「今日」口径）。
             ★ 整卡可点 → 跳工具页「运动建议」（ToolTopic/sport，进入后自动滚到方案卡）。 */}
+        {/* ★ 2026-10-12（用户）：运动消耗·日视图——Hero「整体卡路里」卡下方的「今日运动建议」，
+            按当前周期相位给处方；周/月/年不显示（建议天然是「今日」口径）。
+            ★ 2026-11-09(5)（用户）：先隐藏右箭头、不可点击跳详情 —— 整卡改为普通 View。 */}
         {type === 'activity' && range === 'day' && (
-          <TouchableOpacity
-            style={styles.waCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('ToolTopic', { topic: 'sport' })}
-            accessibilityRole="button"
-            accessibilityLabel="查看今日运动方案"
-          >
+          <View style={styles.waCard}>
             <View style={styles.waHead}>
               <Text style={styles.waTitle}>今日运动建议</Text>
               {phaseKnown ? (
@@ -251,9 +248,6 @@ export default function EnergyDetailScreen() {
                   <Text style={styles.waPhaseText}>{phaseLabel}</Text>
                 </View>
               ) : null}
-              <View style={{ marginLeft: phaseKnown ? theme.sp(1.5) : 'auto' }}>
-                <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
-              </View>
             </View>
             <Text style={styles.waHeadline}>
               {isBase ? workoutConclusion : (workoutPlan?.dataDriven ? workoutPlan.headline : workoutAdvice.headline)}
@@ -298,7 +292,7 @@ export default function EnergyDetailScreen() {
             ) : (
               <Text style={styles.waDetail}>{workoutAdvice.detail}</Text>
             )}
-          </TouchableOpacity>
+          </View>
         )}
 
         {/* AI 分析：★ 2026-10-07（用户）脑力消耗 / 心理压力 详情页先隐藏，代码保留。
@@ -811,18 +805,18 @@ function CognitiveDetail({ anchorMs }: { anchorMs: number }) {
             <View style={[styles.duoCell, { backgroundColor: theme.colors.success + '1A' }]}>
               <Text style={styles.duoLab}>认知高峰 · 预测</Text>
               <Text
-                style={[styles.duoTime, { color: report.forecast?.peakSpan ? theme.colors.success : theme.colors.textSub }]}
+                style={[styles.duoTime, { color: hasData && report.forecast?.peakSpan ? theme.colors.success : theme.colors.textSub }]}
               >
-                {report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '—'}
+                {hasData && report.forecast?.peakSpan ? peakSpanText(report.forecast.peakSpan) : '—'}
               </Text>
               <Text style={styles.duoSub}>最适合烧脑</Text>
             </View>
             <View style={[styles.duoCell, { backgroundColor: theme.colors.danger + '1A' }]}>
               <Text style={styles.duoLab}>认知低谷 · 预测</Text>
               <Text
-                style={[styles.duoTime, { color: report.forecast?.troughSpan ? theme.colors.danger : theme.colors.textSub }]}
+                style={[styles.duoTime, { color: hasData && report.forecast?.troughSpan ? theme.colors.danger : theme.colors.textSub }]}
               >
-                {report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '—'}
+                {hasData && report.forecast?.troughSpan ? peakSpanText(report.forecast.troughSpan) : '—'}
               </Text>
               <Text style={styles.duoSub}>轻度任务 / 休息</Text>
             </View>
@@ -1377,9 +1371,12 @@ const styles = StyleSheet.create({
   headText: { flex: 1 },
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
   sub: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.sp(1) },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: mm.colors.ink },
-  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
+  /* ★ 2026-11-09（一致性排查）：此处 heroUnit 带长中文（「% · 今日脑力消耗」），
+     旧写法 baseline + flexWrap 一换行就逐行重算基线 → 与身心压力页同类错落。
+     改盒子底对齐（与 SleepRecoveryHero 同款），长文案可压缩不再撑破行。 */
+  hero: { flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: theme.sp(1) },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium as any, color: mm.colors.ink, lineHeight: 48 },
+  heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2), flexShrink: 1 },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.xl * 2 },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, textAlign: 'center' },
 

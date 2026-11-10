@@ -385,9 +385,10 @@ const styles = StyleSheet.create({
   chev: { transform: [{ rotate: '90deg' }], marginLeft: theme.space.sm },
   chevOpen: { transform: [{ rotate: '-90deg' }] },
   // 时长（对齐 sleep-recovery-preview.html：总睡眠 22px / 单位 11px，同预览 .durRow2）
-  durRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: theme.space.xs },
+  /* ★ 2026-11-09（一致性排查）：数字 + 单位是二元行，显式 nowrap 锁死基线，避免换行后错落 */
+  durRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'nowrap', marginTop: theme.space.xs },
   dur: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.semibold, color: mm.colors.ink },
-  durUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 6 },
+  durUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 6, flexShrink: 1 },
   durNone: { fontSize: theme.fontSize.body, color: theme.colors.textSub },
   // ★ 2026-10-09（.blockTitle 11px）：块标题用 micro 档，对齐预览稿
   blockTitle: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.space.md, marginBottom: theme.space.xs },

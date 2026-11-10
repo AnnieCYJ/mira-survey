@@ -83,20 +83,11 @@ export default function RecoveryDayTrendChart({
     return { y, runs, areaPts, last, padL, padR, padT, padB, nowX, plotW: W - padL - padR };
   }, [W, curve, dayStart, dayEnd, height, nowMs]);
 
-  if (W === 0 || !layout) {
-    return (
-      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-        {!hasData ? (
-          <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={styles.emptyText}>今日暂无数据，同步后自动绘制</Text>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
-  const { y, runs, areaPts, last, padL, padR, padT, padB, nowX, plotW } = layout;
-
-  // ★ 统一数值气泡：点曲线任意时刻 → 显示该时刻 + 恢复分
+  // ★ 2026-11-08 修复「Rendered more hooks than during the previous render」：
+  //  · 根因 = tapSlots 这个 useMemo 原本放在 `if (W === 0 || !layout) return …` 提前 return 之后，
+  //    首帧（W=0）走提前 return 时跳过了它，onLayout 拿到宽度后第二帧多执行一个 Hook → React 崩溃；
+  //  · 修法 = 把 tapSlots 移到提前 return **之前**无条件执行（Rules of Hooks：Hook 顺序/数量必须逐帧一致），
+  //    里面用 `layout?` 可选链兜底空布局（此时返回空数组，与原来提前 return 后不渲染气泡的行为一致）。
   const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
     if (!layout || W <= 0) return [];
     const xOf = (t: number) => layout.padL + ((t - dayStart) / 864e5) * layout.plotW;
@@ -114,6 +105,19 @@ export default function RecoveryDayTrendChart({
       }];
     });
   }, [layout, W, height, curve, dayStart]);
+
+  if (W === 0 || !layout) {
+    return (
+      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+        {!hasData ? (
+          <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.emptyText}>今日暂无数据，同步后自动绘制</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+  const { y, runs, areaPts, last, padL, padR, padT, padB, nowX, plotW } = layout;
 
   return (
     <View>

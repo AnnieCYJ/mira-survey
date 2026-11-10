@@ -19,7 +19,6 @@ import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 //   不再单独成块。与能量详情页「认知准备度」同源同口径：forecast.peakSpan / troughSpan。
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { reportNowMsForDay } from '../lib/dayAnchor';
-import { RingBle } from '../ble/RingBleManager';
 
 function fmtSpan(span: { startHour: number; endHour: number } | null | undefined): string {
   if (!span) return '—';
@@ -61,15 +60,19 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
     return '恢复明显偏低，今天以休养为主，早点睡比什么都重要。';
   })();
 
-  // ★ 本轮（用户）：脑力峰值 / 低谷时段合进本卡（仅日视图有 anchorMs 时展示）
-  //   ★ 审计（2026-10-27）：戒指断流（>3h 无采样）时，时段不得再显示旧预测值，强制空态。
-  const dataStale = (RingBle.getState().curveStatus as any)?.dataStale === true;
+  // ★ 本轮（用户）+ 2026-11-09：脑力峰值 / 低谷必须「有真实数据才算出来才显示」——
+  //   computeForecast 在没有任何当天数据时，仍会按昼夜模型兜底出一组固定的峰/谷，
+  //   绝不能显示，必须强制空态「—」。判定 = 当天有实测睡眠(readinessBaselineKind==='measured')
+  //   或当日有采样(sampleCount>0)；否则只是模型预测，不是算出来的。
+  //   （原 dataStale 只看实时曲线，从未同步时 curveStatus 为 null、dataStale 反为 false，会漏放兜底值。）
   const cog = useMemo(() => {
     if (anchorMs == null || value != null) return null;
     try { return computeCognitiveLoadReport(reportNowMsForDay(anchorMs)); } catch { return null; }
   }, [anchorMs, value, hsRefresh]);
-  const peak = !dataStale ? cog?.forecast?.peakSpan : null;
-  const trough = !dataStale ? cog?.forecast?.troughSpan : null;
+  const hasRealDayData = cog != null &&
+    (cog.readinessBaselineKind === 'measured' || (cog.sampleCount ?? 0) > 0);
+  const peak = hasRealDayData ? cog?.forecast?.peakSpan : null;
+  const trough = hasRealDayData ? cog?.forecast?.troughSpan : null;
 
   // ★ 2026-11-06（用户）：把「睡眠恢复分怎么看」折叠进本卡（置于脑力峰/谷下方），默认收起，点击展开。
   const [showHow, setShowHow] = useState(false);
@@ -92,18 +95,18 @@ export default function SleepRecoveryHero({ anchorMs, value, label, ctx }: Props
           <View style={[styles.brCell, { backgroundColor: theme.colors.success + '1A' }]}>
             <Text style={styles.brCellLab}>脑力峰值时段</Text>
             <Text
-              style={[styles.brCellTime, { color: !dataStale && peak ? theme.colors.success : theme.colors.textSub }]}
+              style={[styles.brCellTime, { color: peak ? theme.colors.success : theme.colors.textSub }]}
             >
-              {!dataStale && peak ? fmtSpan(peak) : '—'}
+              {peak ? fmtSpan(peak) : '—'}
             </Text>
             <Text style={styles.brCellSub}>适合深度思考</Text>
           </View>
           <View style={[styles.brCell, { backgroundColor: theme.colors.danger + '1A' }]}>
             <Text style={styles.brCellLab}>脑力低谷时段</Text>
             <Text
-              style={[styles.brCellTime, { color: !dataStale && trough ? theme.colors.danger : theme.colors.textSub }]}
+              style={[styles.brCellTime, { color: trough ? theme.colors.danger : theme.colors.textSub }]}
             >
-              {!dataStale && trough ? fmtSpan(trough) : '—'}
+              {trough ? fmtSpan(trough) : '—'}
             </Text>
             <Text style={styles.brCellSub}>安排休息 / 轻任务</Text>
           </View>

@@ -1,5 +1,9 @@
 /**
- * EmotionCognitiveDetailScreen —— 昼夜节律详情页（首页/洞察页「昼夜节律」卡点入，v18.96 由「全天恢复」更名；与情绪/脑力消耗详情页统一骨架）
+ * EmotionCognitiveDetailScreen —— 「皮质醇趋势」详情页（原「昼夜节律」页；与情绪/脑力消耗详情页统一骨架）
+ *
+ * ★ 2026-11-09（用户）：这张页**本来就有日 / 周 / 月 / 年四档**，只是改成睡眠规律性主视觉后一度没有入口。
+ *   现由昼夜节律详情页底部的「皮质醇趋势」卡直接点进来，不再另建 / 重写一个皮质醇详情页。
+ *   对外名称统一叫「皮质醇趋势」（不叫「皮质醇活性」，后者只是算法层的 0~100 反推指数叫法）。
  *
  * 结构：返回头 → RangeSwitch(日/周/月/年) → DateAnchorPicker → 节律状态 Hero（白底描边卡）→ 内容（日=全天趋势+节律分析 / 周月年=节律日历+小结）→ 底部 AI 分析
  *   · 日：锚定日的全天看板（皮质醇全天趋势 + 情绪/脑力/睡眠摘要 + 相比前一天），与之前一致
@@ -425,7 +429,7 @@ export default function EmotionCognitiveDetailScreen() {
       const px = buildCortisolProxyToday(pbl);
       const j = judgeCortisolRhythm(px.vals, px.real);
       if (!j.ready || !j.label) {
-        return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
+        return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇趋势。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
       }
       // ★ 2026-10-10（用户：顶部状态卡下显示「峰值时刻 + 作息类型」，与趋势图/节律分析卡同源）
       const sum = proxySummaryFromSlots(px.vals, px.real);
@@ -442,11 +446,11 @@ export default function EmotionCognitiveDetailScreen() {
       })();
       return {
         label: j.label as string,
-        firstInsight: `今日皮质醇活性平均 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、体温、心率与活动反推。`,
+        firstInsight: `今日皮质醇全天均值 ${j.avg}（峰值时段 ${j.peakWindow ?? j.peakClock}）· ${j.label}。由心率变异性、体温、心率与活动反推。`,
         peakH, peakSub, chrono,
       };
     } catch {
-      return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇活性节律。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
+      return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇趋势。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
     }
     // 依赖 refreshKey：回填/实时数据到达后，顶部大字与节律卡同步刷新
   }, [refreshKey]);
@@ -476,7 +480,7 @@ export default function EmotionCognitiveDetailScreen() {
             <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
-            <Text style={styles.title}>昼夜节律</Text>
+            <Text style={styles.title}>皮质醇趋势</Text>
           </View>
         </View>
 

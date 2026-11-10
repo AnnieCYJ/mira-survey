@@ -62,13 +62,8 @@ export default function SleepRegularityChart({
     return { padL, padR, padT, padB, plotW, plotH, yOf, xOf, barW, axisTicks };
   }, [W, height, n, compact]);
 
-  if (!layout) {
-    return <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)} />;
-  }
-  const { padL, padR, padT, padB, plotW, plotH, yOf, xOf, barW, axisTicks } = layout;
-  const gridRight = padL + plotW;
-
-  // ★ 统一数值气泡：点任意一根区间柱 → 显示该夜的日期 + 入睡/起床时刻
+  // ★ 2026-11-08 修复「Rendered more hooks」：tapSlots 必须在提前 return 之前无条件执行
+  //   （Rules of Hooks：首帧 W=0 走提前 return 时若跳过它，第二帧多出一个 Hook → React 崩溃）。
   const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
     if (!layout || W <= 0) return [];
     return points.flatMap((p, i) => {
@@ -82,6 +77,12 @@ export default function SleepRegularityChart({
       }];
     });
   }, [layout, W, height, points]);
+
+  if (!layout) {
+    return <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)} />;
+  }
+  const { padL, padR, padT, padB, plotW, plotH, yOf, xOf, barW, axisTicks } = layout;
+  const gridRight = padL + plotW;
 
   return (
     <View>

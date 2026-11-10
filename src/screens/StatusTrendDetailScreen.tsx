@@ -9,8 +9,8 @@
  *  - 年：每月均值（statusDaily 当月所有天的均值），一月一个点；
  *  - 全部使用真实数据，缺口断线 / 缺天留空，不编造；无数据区间诚实显示占位。
  */
-import React, { useMemo, useState, useEffect, useRef, useLayoutEffect, useDeferredValue } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, type LayoutChangeEvent, Easing } from 'react-native';
+import React, { useMemo, useState, useEffect, useDeferredValue } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop, Line, Rect, G, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
@@ -54,36 +54,13 @@ const Y_TICKS = [100, 50, 0];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** 皮质醇异常判定（★ 与全 App 唯一口径对齐，见 CortisolRhythmCard / lib/cortisolRhythm）：
- *  「当日皮质醇均值 > 个人近 14 天日均值的 P75」= 相对你自己偏高。
- *  ⚠ 旧实现用的是指数绝对值 ≥ 58（tanh 压缩后的 0–100），与节律卡的百分位口径是两套标准，
- *    导致「节律卡里标了偏高的那天」在趋势页不出图标（用户实测撞上）。
- *  数据源同为 healthStore 的 `cortisol` 逐样本 —— 全 App 同一份信号，不再另算一套。 */
-const CORT_BASELINE_DAYS = 14;
-const CORT_ANOMALY_P = 0.75;
-
-/** 线性插值分位数（与 lib/cortisolRhythm 的 percentile 同实现，保证阈值一致） */
-function percentileOf(sorted: number[], p: number): number | null {
-  if (!sorted.length) return null;
-  const k = (sorted.length - 1) * p;
-  const f = Math.floor(k);
-  const c = Math.min(f + 1, sorted.length - 1);
-  return sorted[f] + (sorted[c] - sorted[f]) * (k - f);
-}
-
-/** 某天的皮质醇日均值（读 healthStore 的 cortisol 逐样本）；无实测样本返回 null。 */
-function cortisolDayMean(dk: string): number | null {
-  const arr = healthStore.getIntraday('cortisol', dk).filter((p) => Number.isFinite(p.v) && p.v > 0);
-  if (arr.length === 0) return null;
-  return arr.reduce((a, p) => a + p.v, 0) / arr.length;
-}
+/** ★ 2026-11-09（用户）：周视图趋势图不再标「皮质醇异常」图标，
+ *  原先的 14 天基线 P75 判定常量 / 分位数 / 日均值函数 / 异常色一并移除，
+ *  避免每周视图仍跑一次无用的皮质醇基线计算。皮质醇本身的数据与统计并未删除。 */
 /** PMS 早筛窗口：下次经期前 N 天内判为经前 PMS（黄体期末段） */
 const PMS_WINDOW = 7;
 /** 经前 PMS 暖色标记（柔和暖橙，区别于 4 相位，且不用红斜纹） */
 const PMS_COLOR = '#E8894A';
-/** 皮质醇异常图标色（单档）：红底白「!」，周视图顶部 + 图例共用。
- *  ★ 2026-10-10：token 化 —— 与全站异常色同源（chart.series.anomaly = #E2554E）。 */
-const CORT_COLOR = chart.anomaly;
 
 /** ★ 4 等级取色：任意数值 → 该点自己的等级色。
  *  与首页圆环/趋势图同源（curveLevel 的 index → MOODS 同索引），
@@ -140,7 +117,7 @@ function StatusDistributionTimeCards({ anchor, range, ring }: { anchor: Date; ra
   /** 某天状态分（与主趋势图同一条 fallback 链：statusDaily → timelineByDay 均值 → 今日实时） */
   const dayMean = (dk: string): number | null => {
     const sd = (ring.statusDaily ?? {})[dk];
-    if (sd != null && Number.isFinite(sd) && sd > 0) return sd;
+    if (typeof sd === 'number' && Number.isFinite(sd) && sd > 0 && sd <= 100) return sd;
     const tl = ring.statusTimelineByDay?.[dk];
     if (tl && tl.length > 0) {
       const vals = tl.map((p: any) => p.value).filter((v: any) => Number.isFinite(v) && v > 0);
@@ -411,7 +388,9 @@ function monthMean(
   year: number,
   month0: number
 ): number | null {
-  const prefix = `${year}-${month0 + 1}-`;
+  // ★ 2026-11-10（用户）：statusDaily 的 key 是补零格式 YYYY-MM-DD（healthStore.dayKey），
+  //   月份也必须补零，否则 1–9 月前缀为 "2026-1-" 之类，匹配不到 "2026-01-10" → 年视图大片空。
+  const prefix = `${year}-${String(month0 + 1).padStart(2, '0')}-`;
   const vals = Object.keys(statusDaily)
     .filter((k) => k.startsWith(prefix))
     .map((k) => statusDaily[k]);
@@ -437,10 +416,12 @@ function minOf(vals: (number | null)[]): number | null {
 
 function fmtVal(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '—';
-  return Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1);
+  // ★ 2026-11-10（用户）：状态分 0–100 本就是每 30 分钟整数点，显示一律取整，不露小数尾巴
+  return String(Math.round(v));
 }
 
-const DAY_AXIS = ['0', '6', '12', '18', '24'];
+// ★ 2026-11-10（用户）：日视图横轴原来是裸数字 0/6/12/18/24，看着像分数刻度。改回时间写法
+const DAY_AXIS = ['0:00', '6:00', '12:00', '18:00', '24:00'];
 
 export default function StatusTrendDetailScreen() {
   // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
@@ -451,20 +432,12 @@ export default function StatusTrendDetailScreen() {
   const [range, setRange] = useState<RangeKey>('day');
   // ★ B4（2026-10-08）：range 的「延迟版」—— chip 高亮即时，重计算/图表稍后跟上。
   const dRange = useDeferredValue(range);
-  // ★ chart fade transition: 旧图层 fadeOut → 新图层 fadeIn
-  const chartOpacity = useRef(new Animated.Value(1)).current;
-  const [renderKey, setRenderKey] = useState(0); // 强制新图层 mount
-  const prevRangeRef = useRef<RangeKey>('day');
-  useEffect(() => {
-    if (prevRangeRef.current === dRange) return;
-    prevRangeRef.current = dRange;
-    // fadeOut → 换 key → fadeIn（★ B4：180/320 → token quick/base，图表更快到位）
-    Animated.sequence([
-      Animated.timing(chartOpacity, { toValue: 0, duration: theme.motion.quick, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      Animated.timing(chartOpacity, { toValue: 1, duration: theme.motion.base, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-    ]).start();
-    setRenderKey((k) => k + 1);
-  }, [dRange]);
+  // ★ 2026-11-10（用户「切到月闪退一下，之后日/周/月全没数据」）：移除图表淡入淡出动画。
+  //   旧实现每次切周期都 Animated.sequence(fadeOut→fadeIn) + key={renderKey} 强制重挂图层；
+  //   useNativeDriver 下正在跑的 fadeOut 被新节点 detach，fadeIn 只作用于已卸载的旧节点，
+  //   新节点拿到 opacity=0 且再也不会被拉回 1 → 整个 <Svg>（网格、Y 刻度、相位带、折线）
+  //   永久透明，只剩外层的 X 轴标签，看起来就是「所有周期都没数据」。
+  //   图表改为直接渲染，不依赖任何动画状态，切换周期必定可见。
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
   // ★ tooltip 状态
@@ -477,7 +450,17 @@ export default function StatusTrendDetailScreen() {
     return () => { alive = false; };
   }, []);
 
-  const statusDaily = ring.statusDaily ?? {};
+  // ★ 2026-11-10：statusDaily 来自持久化快照，老快照可能混入字符串 / null / 越界脏值。
+  //   旧周/月分支的诊断日志直接 v?.toFixed(1)，遇到字符串会抛 TypeError → 整页崩溃（切月闪退）。
+  //   统一清洗：只接受 0–100 的有限数值，后续 monthMean / comparison / 诊断全部安全。
+  const statusDaily = useMemo<Record<string, number>>(() => {
+    const src = ring.statusDaily ?? {};
+    const clean: Record<string, number> = {};
+    for (const [k, v] of Object.entries(src)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100) clean[k] = v;
+    }
+    return clean;
+  }, [ring.statusDaily]);
 
   // ★ Fallback: 从 statusTimelineByDay 反推某一天的状态均值
   const dailyMeanFromTimeline = (dayKey: string): number | null => {
@@ -630,12 +613,7 @@ export default function StatusTrendDetailScreen() {
     }
 
     // week（anchor 所在自然周 周一~周日）/ month（anchor 所在自然月）：每日均值。
-    console.log('[STATUS-RANGE]', JSON.stringify({
-      dRange, anchorKey,
-      statusDaily_all: Object.fromEntries(
-        Object.entries(statusDaily ?? {}).map(([k, v]) => [k, v?.toFixed(1) ?? null])
-      ),
-    }));
+    // ★ 2026-11-10：删除生产环境 [STATUS-RANGE] 诊断日志 —— 其中 v?.toFixed(1) 对脏值会抛异常。
     const keys: string[] = [];
     const labels: string[] = [];
     if (dRange === 'week') {
@@ -694,6 +672,16 @@ export default function StatusTrendDetailScreen() {
     };
   }, [dRange, ring.statusTimeline, ring.statusTimelineByDay, statusDaily, anchor, hsVer]);
 
+  // ★ 2026-11-10（用户）：hero 卡的状态档标签（元气满满 / 状态良好 / 平平静静 / 休息一下）。
+  //   跟着 hero 卡显示的数字走（current = 当前区间最后一个有数据的日值），让「数字 + 档位」一目了然。
+  const heroMood = useMemo(() => {
+    if (!hasData || current == null) return null;
+    const lvl = curveLevel(current, CURVE_DEFAULTS);
+    return MOODS[lvl.index] ?? null;
+  }, [hasData, current]);
+  const heroMoodLabel = heroMood?.label ?? null;
+  const heroMoodColor = heroMood?.color ?? theme.colors.textSub;
+
   const plotW = w - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const yAt = (v: number) => {
@@ -710,13 +698,21 @@ export default function StatusTrendDetailScreen() {
   //   - 填充用首/中/末三点等级色的竖向渐变（0.24 → 0.08 → 0.02），与首页同款；
   //   - 不再画「白底粗线」压线（首页没有），改成 2.5pt 渐变描边直接画。
   //   （以往那版 colorLines「按等级分段上色」已废弃：它遍历 allDots，会跨缺口连线，与「断线不补值」相反。）
-  const { lineD, areaD, dots, gradStops } = useMemo(() => {
-    if (w === 0) return { lineD: '', areaD: '', dots: [] as { x: number; y: number; srcIndex: number; color: string }[], gradStops: [] as { offset: string; color: string }[] };
+  const { lineD, areaD, dots, gradStops, singleDots } = useMemo(() => {
+    if (w === 0) return { lineD: '', areaD: '', dots: [] as { x: number; y: number; srcIndex: number; color: string }[], gradStops: [] as { offset: string; color: string }[], singleDots: [] as { x: number; y: number; color: string }[] };
     let line = '';
     let area = '';
-    let seg: { x: number; y: number }[] = [];
+    let seg: { x: number; y: number; color: string }[] = [];
     const allDots: { x: number; y: number; srcIndex: number; color: string }[] = [];
+    // ★ 2026-11-10：单点段也要看得见。旧实现把长度 1 的段直接丢掉，而散点渲染早已移除，
+    //   于是「只有一天有数据」「两个点被缺口隔开」时趋势图整片空白。
+    const singleDots: { x: number; y: number; color: string }[] = [];
     const flush = () => {
+      if (seg.length === 1) {
+        singleDots.push({ x: seg[0].x, y: seg[0].y, color: seg[0].color });
+        seg = [];
+        return;
+      }
       if (seg.length < 2) {
         seg = [];
         return;
@@ -760,14 +756,14 @@ export default function StatusTrendDetailScreen() {
       const span = allDots[n - 1].x - x0 || 1;
       return allDots.map((d) => ({ offset: `${(((d.x - x0) / span) * 100).toFixed(2)}%`, color: d.color }));
     })();
-    return { lineD: line, areaD: area, dots: allDots, gradStops };
+    return { lineD: line, areaD: area, dots: allDots, gradStops, singleDots };
   }, [w, pts]);
 
   // ★ 性能修复（2026-10-28）：原先 chartOverlay 的 useMemo 依赖含 `pts`，
   //   实时数据一推送（pts 变化）就重跑月视图 31 次 computeCycle + 周视图皮质醇扫描，主线程被反复占满
   //   → 详情页进场 / 切月视图"卡一下"。现拆为两个独立 memo：
   //   - phaseBands（月视图相位带）：只依赖 range/anchor/cycle/temp，**不依赖实时 pts**；
-  //   - cortIcons（周视图皮质醇）：只在周视图跑，y 对齐用 pts（7 天开销极小）。
+  //   - ★ 2026-11-09：周视图皮质醇异常图标计算已移除（不再有渲染出口，也不再跑基线计算）。
 
   // 月视图：周期相位带 + 经前 PMS（不依赖实时 pts，range/anchor/cycleLog 变化时才算）
   const phaseBands = useMemo(() => {
@@ -816,45 +812,8 @@ export default function StatusTrendDetailScreen() {
     return bands;
   }, [w, plotW, dRange, anchor, ring.tempDaily, cycleLog]);
 
-  // 周视图：皮质醇异常图标（y 对齐用 pts，仅在周视图跑；range/anchor 不变时只因 pts 微重算，7 天开销极小）
-  const cortIcons = useMemo(() => {
-    const cort: { x: number; y: number; i: number; mesor: number }[] = [];
-    if (w === 0 || dRange !== 'week') return cort;
-    const mon = startOfWeek(anchor);
-    const dayKeys: string[] = [];
-    for (let i = 0; i < 7; i++) dayKeys.push(dayKey(addDays(mon, i).getTime()));
-    const n = dayKeys.length;
-    if (n < 2) return cort;
-    const edge = (frac: number) => PAD_L + Math.max(0, Math.min(1, frac)) * plotW;
-    const xAt = (i: number) => edge(i / (n - 1));
-    // ★ 与节律卡同口径：个人基线 = 被查看这一周之前 14 天的皮质醇日均值（不含本周，避免当天自身抬高阈值）
-    const baseMeans: number[] = [];
-    for (let i = 1; i <= CORT_BASELINE_DAYS; i++) {
-      const m = cortisolDayMean(dayKey(addDays(mon, -i).getTime()));
-      if (m != null) baseMeans.push(m);
-    }
-    const cortBaseN = baseMeans.length;
-    const cortP75 = percentileOf(baseMeans.slice().sort((a, b) => a - b), CORT_ANOMALY_P);
-    if (cortP75 != null) {
-      for (let i = 0; i < n; i++) {
-        const m = cortisolDayMean(dayKeys[i]);
-        if (m == null || m <= cortP75) continue;   // 未超过个人 P75 → 不算异常
-        const v = pts[i]?.value ?? null;
-        const y = v != null ? yAt(v) : PAD_T + 6;
-        cort.push({ x: xAt(i), y, i, mesor: m });
-      }
-    }
-    if (__DEV__) {
-      console.log('[STATUS-WEEK-CORT]', JSON.stringify({
-        anchor: formatDate(anchor),
-        baseDays: cortBaseN,
-        p75: cortP75 != null ? Math.round(cortP75 * 10) / 10 : null,
-        cortDays: cort.map((c) => ({ day: dayKeys[c.i], mesor: Math.round(c.mesor) })),
-        note: cort.length === 0 ? '本周无 cortisol 样本 / 基线不足 4 天 / 日均值均未超个人 P75 → 不标图标（数据侧，非渲染 bug）' : '',
-      }));
-    }
-    return cort;
-  }, [w, plotW, dRange, anchor, pts]);
+  // ★ 2026-11-09（用户）：周视图皮质醇异常图标已移除，
+  //   原本这里每周都要跑一次「14 天基线 P75 + 逐日均值」的计算，现一并删掉（不再有渲染出口）。
 
   // ★ 2026-11-03：hero delta 改走 comparison.prevDelta（统一「较昨日/上周/上个月/去年」口径），
   //   原「较区间首点」的 deltaPct / firstReal 计算随之删除。
@@ -1005,7 +964,7 @@ export default function StatusTrendDetailScreen() {
           <View style={styles.pad}>
             {/* ★ 2026-11-05（用户·统一）：顶部数据卡补标题，随区间变化 */}
             <Text style={styles.heroCardTitle}>{dRange === 'day' ? '今日状态' : dRange === 'week' ? '本周状态' : dRange === 'month' ? '本月状态' : '本年状态'}</Text>
-            <View style={styles.hero}>
+            <View style={styles.heroRow}>
               <Text style={styles.heroVal}>{fmtVal(current)}</Text>
               <Text style={styles.heroUnit}>/ 100</Text>
               {/* ★ 2026-11-03（用户「对比口径不统一」）：「较区间首点」→ 统一「较昨日/上周/上个月/去年」
@@ -1016,6 +975,11 @@ export default function StatusTrendDetailScreen() {
                 </Text>
               ) : null}
             </View>
+            {/* ★ 2026-11-10（用户）：「元气满满 / 休息一下」四档状态词原本只混在解读句里、不够醒目。
+                单独提出来做成彩色标签，让用户一眼看到当前处于哪个状态档。颜色取该分值对应的等级色。 */}
+            {heroMoodLabel ? (
+              <Text style={[styles.heroMood, { color: heroMoodColor }]}>{heroMoodLabel}</Text>
+            ) : null}
             {/* ★ 2026-11-03（用户「整个分析没按统一格式」）：hero 卡内补解读文字 ——
                 与 MetricDetail 同款「大数字 + 一句数据锚定的人话解读」结构 */}
             {heroAnalysis ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
@@ -1062,7 +1026,7 @@ export default function StatusTrendDetailScreen() {
             pointerEvents="box-none"
           >
             {w > 0 ? (
-              <Animated.View key={renderKey} style={{ opacity: chartOpacity }}>
+              <View>
               <Svg width={w} height={H}>
                 <Defs>
                   {/* 填充：竖向渐变，颜色取首/中/末点的等级色（与首页 TrendChart 同款口径） */}
@@ -1171,22 +1135,15 @@ export default function StatusTrendDetailScreen() {
                 {lineD ? (
                   <Path d={lineD} fill="none" stroke="url(#std_line)" strokeWidth={chart.lw.series} strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
+                {/* ★ 孤立单点（被缺口隔开 / 区间仅一天有数据）也必须可见，否则趋势图看起来没数据 */}
+                {singleDots.map((d, i) => (
+                  <Circle key={`single-${i}`} cx={d.x} cy={d.y} r={3.2} fill={d.color} />
+                ))}
 
-                {/* ★ 周视图：皮质醇异常图标（单档，红底白「!」），虚线连到当天的数据点 */}
-                {dRange === 'week'
-                  ? cortIcons.map((c, i) => {
-                      const topY = PAD_T + 8;
-                      return (
-                        <G key={`cort-${i}`}>
-                          <Line x1={c.x} y1={topY + 8} x2={c.x} y2={c.y} stroke={CORT_COLOR} strokeWidth={chart.lw.ref} strokeDasharray={chart.dash.ref} opacity={0.65} />
-                          <Circle cx={c.x} cy={topY} r={8} fill={CORT_COLOR} />
-                          <SvgText x={c.x} y={topY + 3.5} fontSize={11} fontWeight="700" fill="#FFFFFF" textAnchor="middle">{'!'}</SvgText>
-                        </G>
-                      );
-                    })
-                  : null}
+                {/* ★ 2026-11-09（用户）：周视图「皮质醇异常」红底白 ! 图标 + 虚线已移除，
+                    趋势图只保留状态曲线与等级色，不再叠加推算指标的异常标记。 */}
               </Svg>
-              </Animated.View>
+              </View>
             ) : null}
             {/* ★ tooltip：点击显示磨砂玻璃详情框（统一组件） */}
             <ChartTooltip tip={tip} w={w} H={H} />
@@ -1211,7 +1168,8 @@ export default function StatusTrendDetailScreen() {
             padRight={PAD_R}
           />
 
-          {/* ★ 图表图例：等级色（日/周/月/年通用，散点颜色）+ 周期相位·经前PMS（月）+ 皮质醇异常（周） */}
+          {/* ★ 图表图例：等级色（日/周/月/年通用，散点颜色）+ 周期相位·经前PMS（月）。
+              ★ 2026-11-09（用户）：周视图的「皮质醇异常」图例已移除 */}
           <View style={styles.legendRow}>
             {LEVEL_LEGEND.map((l) => (
               <View key={l.label} style={styles.legendItem}>
@@ -1236,14 +1194,7 @@ export default function StatusTrendDetailScreen() {
             </View>
           ) : null}
 
-          {dRange === 'week' ? (
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: CORT_COLOR }]} />
-                <Text style={styles.legendText}>皮质醇异常</Text>
-              </View>
-            </View>
-          ) : null}
+          {/* ★ 2026-11-09（用户）：周视图「皮质醇异常」图例行已移除 */}
 
         </View>
 
@@ -1330,9 +1281,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(111,207,180,0.16)',
   },
   liveText: { fontSize: theme.fontSize.micro, color: theme.colors.ui.status.good, fontWeight: theme.weight.medium as any },
-  hero: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
+  // ★ 2026-11-10（用户）：数字从 46pt（theme.fontSize.hero）缩到 30pt，避免抢戏；状态词单独用 heroMood 放大
+  heroVal: { fontSize: 30, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle, lineHeight: 38 },
   heroUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  // ★ 2026-11-10（用户）：「元气满满 / 休息一下」四档状态词做成醒目彩色标签（等级色 + 18pt 半粗）
+  heroMood: { fontSize: 18, fontWeight: theme.weight.semibold as any, marginTop: theme.sp(3) },
   delta: { fontSize: theme.fontSize.sm, marginLeft: 6 },
   // ★ 2026-11-03：状态指数是「活力」语义——升=好=绿、降=注意=红（原 up 红/down 绿是心率类指标的语义，装反了）
   up: { color: theme.colors.ui.status.good },

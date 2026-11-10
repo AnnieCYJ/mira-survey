@@ -384,6 +384,13 @@ export interface CognitiveLabel {
 export class HealthStore {
   private stores: Record<MetricKey, MetricStore> = {} as Record<MetricKey, MetricStore>;
   private sleep: Record<string, SleepSummary> = {};
+  /**
+   * ★ 2026-11-09：整夜分期段（由原生 sleepLine 曲线解析出的真实逐段数据）。
+   * 原先只存在 RingState.sleepStagesDaily，但 backfill 期间 RingState 的 patch 会被
+   * 后续快照覆盖 → 详情页永远读到空，显示「昨夜睡眠分期暂未同步」。
+   * healthStore 的 v2 快照落盘可靠，改为在这里存一份，详情页优先读它。
+   */
+  private sleepSegments: Record<string, unknown[]> = {};
   private glance: Record<string, HealthGlanceDay> = {}; // dayKey -> 各子指标末值
   private lastUpdated: Record<string, number> = {};     // metricKey or 'sleep'/'glance:<sub>' -> ts
   /** V2 incremental sync anchor: last successful backfill date (YYYY-MM-DD).
@@ -522,12 +529,25 @@ export class HealthStore {
         updatedAt: Date.now(),
       };
     }
-    // ★ v18.96：同 upsertBackfillSamples，lastUpdated 用该日归档时刻而非 Date.now()。
-    const dayEnd = parseDayKey(dk) + 86400000;
-    if (Number.isFinite(dayEnd)) {
-      this.lastUpdated[key] = Math.max(this.lastUpdated[key] ?? 0, Math.min(dayEnd, Date.now()));
-    } else {
-      this.lastUpdated[key] = Date.now();
+    // ★ v18.96 → 2026-11-10 修正（用户实锤：徽标显示「晚上」但图表停在下午）：
+    //   旧逻辑把 lastUpdated 刷成「当天结束时刻」(≈now)，今天只回填了 16:00 的旧均值，
+    //   徽标却显示「更新于 00:00」，与图表（intraday 真实停在 16:00）矛盾，误导以为没刷新。
+    //   新逻辑：lastUpdated 必须 = 最后一次真实采样时刻，绝不能拿「今日结束」当占位。
+    //   · 当日有逐样本 → 取样本最新 t（截断到 now）
+    //   · 当日只有日均、无样本 → 不虚高，保留已有真实 lastUpdated（没有就不动）
+    //   · 历史日（非今天）→ 仍用当日结束时刻（代表那一整天，合理）
+    const dkTs = parseDayKey(dk);
+    const isToday = dkTs >= parseDayKey(dayKey(Date.now()));
+    let newLu = 0;
+    if (intraday && intraday.length > 0) {
+      const newest = intraday.reduce((a, s) => (Number.isFinite(s.t) && s.t > a ? s.t : a), 0);
+      newLu = newest > 0 ? Math.min(newest, Date.now()) : 0;
+    } else if (!isToday) {
+      const dayEnd = dkTs + 86400000;
+      newLu = Number.isFinite(dayEnd) ? Math.min(dayEnd, Date.now()) : 0;
+    }
+    if (newLu > 0) {
+      this.lastUpdated[key] = Math.max(this.lastUpdated[key] ?? 0, newLu);
     }
     this.notify();
   }
@@ -620,6 +640,23 @@ export class HealthStore {
     return this.sleep[dk] ?? null;
   }
 
+  /** 存整夜分期段（原生 sleepLine 曲线解析结果，真实逐段，不合成）。 */
+  recordSleepSegments(dayKeyRaw: string, segments: unknown[]): void {
+    const dk = normalizeDayKey(dayKeyRaw);
+    if (Number.isNaN(parseDayKey(dk)) || !Array.isArray(segments) || segments.length === 0) return;
+    this.sleepSegments[dk] = segments;
+    // 只保留最近 60 天，避免快照无限膨胀
+    const keys = Object.keys(this.sleepSegments).sort();
+    for (const stale of keys.slice(0, Math.max(0, keys.length - 60))) delete this.sleepSegments[stale];
+    this.lastUpdated['sleepSegments'] = Date.now();
+    this.notify();
+  }
+  getSleepSegments<T = unknown>(dayKeyRaw: string): T[] | null {
+    const dk = normalizeDayKey(dayKeyRaw);
+    const v = this.sleepSegments[dk];
+    return Array.isArray(v) && v.length > 0 ? (v as T[]) : null;
+  }
+
   // ── 健康一览（复合指标末值，按日） ───────────────────────────────────────
   setGlance(dayKeyRaw: string, sub: string, value: number, ts = Date.now()): void {
     const dk = normalizeDayKey(dayKeyRaw);
@@ -673,8 +710,16 @@ export class HealthStore {
    * ★ 2026-11-09：读取 lastUpdated 映射副本。
    * 冷启动合并进 RingState.lastUpdated，避免 buildCurveStatus 的 dataStale 误判「从未采到过数据」。
    */
-  getLastUpdated(): Record<string, number> {
-    return { ...this.lastUpdated };
+  /**
+   * ★ 2026-11-09 修：这个类里原先**重复定义**了 getLastUpdated（无参版 + 带 key 版），
+   *   JS 运行时后定义的会覆盖前面的 → 无参调用实际返回 undefined，
+   *   冷启动「把 lastUpdated 合并进 RingState」和回填通路自检都静默失效。
+   *   现合并为一份实现 + 两个重载签名，两种调用都保持原类型。
+   */
+  getLastUpdated(): Record<string, number>;
+  getLastUpdated(key: string): number | undefined;
+  getLastUpdated(key?: string): Record<string, number> | number | undefined {
+    return key === undefined ? { ...this.lastUpdated } : this.lastUpdated[key];
   }
   /**
    * ★ 2026-10-10：该日的 intraday 是否为「由 stress 线性换算的推算值」。
@@ -770,9 +815,6 @@ export class HealthStore {
       if (v != null) return v;
     }
     return null;
-  }
-  getLastUpdated(key: string): number | undefined {
-    return this.lastUpdated[key];
   }
   allDayKeys(): string[] {
     const set = new Set<string>();
@@ -893,6 +935,7 @@ export class HealthStore {
       lastSyncDate: this.lastSyncDate,
       stores: this.stores,
       sleep: this.sleep,
+      sleepSegments: this.sleepSegments,
       glance: this.glance,
       lastUpdated: this.lastUpdated,
       analysis: this.analysis,
@@ -941,6 +984,10 @@ export class HealthStore {
     //   否则快照里按旧公式存下的 score（例如满屏 100）会被原样恢复 → 改了公式却"看不出变化"。
     //   原始测量值（total/deep/light/rem/awake/getUp/sleepTime/wakeTime）原样保留、不受影响。
     this.sleep = this.rebuildSleepFromSnapshot(json.sleep);
+    // ★ 分期段：快照里没有数据时保留内存现状（不清空），避免旧快照覆盖刚回填的内容
+    if (json.sleepSegments && typeof json.sleepSegments === 'object' && Object.keys(json.sleepSegments).length > 0) {
+      this.sleepSegments = json.sleepSegments as Record<string, unknown[]>;
+    }
     this.glance = json.glance ?? {};
     this.lastUpdated = json.lastUpdated ?? {};
     this.analysis = json.analysis ?? {};

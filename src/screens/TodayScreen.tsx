@@ -1087,9 +1087,10 @@ export default function TodayScreen() {
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         bounces={false}
-        // ★ 2026-10-13（用户：去掉首屏可以往下滑——第二屏内容已隐藏 SHOW_RHYTHM_CARDS=false，
-        //   向下滑只露出空白）：仅当真有第二屏(pagable)且内容超高时才允许滚动，否则锁死。
-        scrollEnabled={SHOW_RHYTHM_CARDS ? canScroll : false}
+        // ★ 2026-11-08（用户：分析/胶囊多行时剩余内容要往下移、绝不重叠）：首屏内容超高时
+        //   放开滚动（canScroll），让长出来的气泡把整体推成可滚动，而非盖住图例/Tab；
+        //   内容能装进视口时 canScroll=false，仍锁死、进首页不用滑（2026-10-08 口径保留）。
+        scrollEnabled={canScroll}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           setVpH(h);

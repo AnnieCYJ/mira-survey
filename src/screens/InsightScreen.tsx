@@ -50,19 +50,19 @@ import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHeal
 import { useAiInsight } from '../hooks/useAiInsight';
 import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
-import AllDayRecoveryCard from '../components/AllDayRecoveryCard';
+import SleepRegularitySummaryCard from '../components/SleepRegularitySummaryCard';
 import StressRecoveryCard from '../components/StressRecoveryCard';
-// ★ 2026-11-08（用户）：身体节律区新增「睡眠规律性」卡 —— 逐日入睡/起床区间柱，点进周/月/年详情页。
-import SleepRegularityCard from '../components/SleepRegularityCard';
 import { computeCognitiveLoadReport } from '../lib/cognitiveLoad';
 import { buildCortisolProxyBaseline, buildCortisolProxyToday, judgeCortisolRhythm } from '../lib/cortisolProxy';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { formatRelativeTime } from '../utils/format';
 
+/** ★ 2026-11-10（用户）：设备采集的生理指标一律整数显示（心率变异性 59.5 → 60）。
+ *  全 App 唯一允许 1 位小数的是「身体年龄」（HealthAgeCard / 身体年龄解读文案）。 */
 function formatValue(v: number | null): string {
-  if (v == null || Number.isNaN(v)) return '—';
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  if (v == null || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
 }
 
 // 以 ima 归档（04-屏幕Screens）的权威洞察页设计为底：
@@ -531,12 +531,44 @@ export default function InsightScreen() {
     if (deviceModel.id === 'BASE_UI' && LEGACY_HISTORY_BLOCKED_KEYS.includes(key)) return [];
     const c = _cache.get(key);
     if (c) return c.hist;
-    const raw = getTodaySeries(key);
+    // ★ 2026-11-10（用户实锤「中间还是缺少很长时间那个数据」，真因）——
+    //   getTodaySeries 走 getTimeRange(maxPoints=480)，它用**纯 stride 均匀索引抽样**：
+    //   今天血氧 11217 点里，00:32–00:42 一簇就占 577 点，10–12 点 5600 点，15–18 点 4200 点，
+    //   而凌晨 01:00–09:00 是「每小时 1 个真实读数」共 9 点。stride=24 直接把这 9 个稀疏点
+    //   全部跳过（抽样后 0–10 点只剩 0 点那一簇）→ 图上中间 9 小时凭空消失。
+    //   详情页读 getIntraday 全量所以看得到，用户说「不可能空」完全正确。
+    //   修法：血氧绕开 stride 抽样，读全量后按 5 分钟槽取均值 —— 密集簇被压缩、
+    //   **每个稀疏整点自成一槽被完整保留**，全天各时段都有真实点，折线自然连续。
+    let raw: any[];
+    if (key === 'spo2') {
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const full = healthStore.getTimeRange('spo2', day0.getTime(), Date.now(), {
+        fillDailyMean: true,
+        maxPoints: 50000, // 不触发 stride 抽样，取今日全量逐样本
+      });
+      const SLOT = 5 * 60 * 1000;
+      const buckets = new Map<number, { s: number; n: number }>();
+      for (const p of full) {
+        // 剔除生理上不可能的脏读数（v<50），保留 50–100 的真实血氧
+        if (!Number.isFinite(p?.v) || p.v < 50 || p.v > 100) continue;
+        const k = Math.floor(p.t / SLOT);
+        const b = buckets.get(k) ?? { s: 0, n: 0 };
+        b.s += p.v; b.n++; buckets.set(k, b);
+      }
+      raw = [...buckets.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([k, b]) => ({ t: k * SLOT, v: +(b.s / b.n).toFixed(1) }));
+    } else {
+      raw = getTodaySeries(key);
+    }
     const lastT = raw.length ? raw[raw.length - 1].t : null;
     // 实时信号半小时聚合（只有 render 时才算）
     const _HALF = ['hr','spo2','temp','eda','hrv','rr','cortisol','stress','fatigue','emotion','skin','sns','bpSys','bpDia'];
     let hist = raw;
-    if (_HALF.includes(key) && raw.length > 0) {
+    // ★ 2026-11-10（用户）：血氧按 30 分钟聚成 48 槽会把「午夜那一簇逐分钟样本」坍缩成最左边缘 1 个点，
+    //   再叠加 60 分钟断线阈值 → 午夜段与白天段断开，中间看着像缺一大段。SpO2 改用原始逐样本点，
+    //   在 0:00→24:00 轴上按真实时刻落点，午夜簇与白天段都如实可见（空档处诚实留白，不画假线）。
+    if (_HALF.includes(key) && key !== 'spo2' && raw.length > 0) {
       const halfMs = 30 * 60 * 1000;
       const dayStart = new Date(); dayStart.setHours(0,0,0,0);
       const slots: { sum: number; n: number; t: number }[] = [];
@@ -711,6 +743,12 @@ export default function InsightScreen() {
         sourceLabel={sourceLabel}
         updatedAt={updatedAt}
         showTrend={showTrendFor(m.key)}
+        // ★ 2026-11-10（用户铁律，勿再改回）：洞察页血氧卡横轴**固定 0:00→24:00**，
+        //   用户明确拒绝 nightFirst 旋转轴（轴会变成 10:30/00:30），也明确要**折线趋势图**（不要柱状图）。
+        //   「中间空一大块」的真因是 getTimeRange 的 stride 抽样抹掉了凌晨 01:00–09:00 的整点读数，
+        //   已在 getCachedHist 里改为「全量 → 5 分钟槽均值」修掉；这里再把断线阈值放宽到 3h，
+        //   让稀疏但真实存在的整点读数连成一条不断开的趋势线（连线对象是真实采样点，非插值假点）。
+        lineGapMs={m.key === 'spo2' ? 3 * 60 * 60 * 1000 : undefined}
         analysis={metricAnalysisText}
         onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
       />
@@ -784,10 +822,9 @@ export default function InsightScreen() {
           <>
             {/* ★ 2026-11-06（用户）：新增「压力恢复」卡片，置于昼夜节律卡片之上 */}
             <StressRecoveryCard onPress={() => navigation.navigate('StressRecoveryDetail')} />
-            {/* ★ 2026-11-08（用户拍板）：洞察页不再单独展示「昼夜节律」（皮质醇）卡 ——
-                它改名「皮质醇节律」收进睡眠规律性详情页；本卡对外更名为「昼夜节律」作入口。
-                详见 SleepRegularityDetailScreen 内嵌的 AllDayRecoveryCard。 */}
-            <SleepRegularityCard title="昼夜节律" onPress={() => navigation.navigate('SleepRegularityDetail')} />
+            {/* ★ 2026-11-09（用户纠偏）：「昼夜节律」卡主视觉改回睡眠规律性（入睡/起床区间图 + 规律性数据），
+                皮质醇因批处理算法未达精准，降级到详情页最底部弱化处理，不再主视觉露出。 */}
+            <SleepRegularitySummaryCard onPress={() => navigation.navigate('SleepRegularityDetail')} />
             <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />
           </>
         ) : (
@@ -822,7 +859,8 @@ export default function InsightScreen() {
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
             ) : effSub === 'recover' ? (
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
-              <AllDayRecoveryCard title="昼夜节律" insightMode onPress={() => navigation.navigate('EmotionCognitiveDetail')} />
+              // ★ 2026-11-09（用户纠偏）：「昼夜节律」卡统一改睡眠规律性（与基础版一致），点进睡眠规律性详情页
+              <SleepRegularitySummaryCard onPress={() => navigation.navigate('SleepRegularityDetail')} />
             ) : effSub === 'mindCog' ? (
               // v18.3：认知 = 认知负荷（与首页「认知消耗」同源 computeCognitiveLoadReport；
               //   今天无采样时回退到最近有数据日，避免整卡空态）

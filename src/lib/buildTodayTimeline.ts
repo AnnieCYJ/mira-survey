@@ -9,7 +9,7 @@ import { theme } from '../theme/theme';
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore';
 import { computeStressReport } from './stressAlgorithm';
-import type { TimelineItem } from '../components/TodayTimelineCard';
+import type { TimelineItem, TimelineDimension } from '../components/TodayTimelineCard';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 /** 每日步数目标（与 metrics.ts 步数指标「目标 10000」文案同源；暂未开放设置页可调） */
@@ -75,6 +75,8 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
         : cs.phaseLabel === '排卵期' ? '排卵期，精力和心情都不错'
         : cs.phaseLabel === '黄体期' ? '激素在回落，情绪体力容易波动'
         : '激素节律稳稳的，今天状态不错',
+      // ★ 2026-11-11（用户：回顾日按维度拆解）：周期是「身体节律」维度，纯文字、无分数 → 不画进度条
+      dimension: 'cycle' as TimelineDimension,
     }, -1);
   }
 
@@ -93,7 +95,10 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
         ? '昨晚的睡眠还没同步，细节稍后能看到'
         : `睡眠 ${fmtMin(todaySleep.total)} · 深睡 ${fmtMin(todaySleep.deep)}`,
       // ★ 本轮（用户 #245）：睡眠评分 ≥ 85 视为达标（高质量睡眠），卡片右上角画星
-      goalMet: !dataStale && Number.isFinite(sleepScoreNum) && sleepScoreNum >= 85,
+      // ★ 2026-11-10（用户「球里太阳币要累计增加」）：dataStale 是**此刻**的断流状态，
+      //   只该约束今天；历史回顾日的睡眠评分是已归档的真实记录，不该因为今天戒指断流被抹掉，
+      //   否则水晶球里已收下的太阳会凭空减少、月累计数倒退。
+      goalMet: (!isToday || !dataStale) && Number.isFinite(sleepScoreNum) && sleepScoreNum >= 85,
       // ★ 本轮（用户 #248）：起床评分卡补一句分析（按评分分层，平实、不评分说教）
       analysis: dataStale
         ? undefined
@@ -104,31 +109,26 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
         : sleepScoreNum >= 70
         ? '昨晚恢复中等，今天节奏别排太满，留点余地给自己。'
         : '昨晚睡得偏浅，上午先缓一缓，重要的事往后挪挪。',
+      // ★ 2026-11-11（用户）：睡眠评分是**有分数**的卡 → 画进度条；含义讲「这对身体意味着什么」
+      dimension: 'sleep' as TimelineDimension,
+      ...(!dataStale && Number.isFinite(sleepScoreNum)
+        ? {
+            score: sleepScoreNum,
+            scoreMax: 100,
+            scoreLabel: `睡眠评分 ${Math.round(sleepScoreNum)} / 100`,
+            meaning: sleepScoreNum >= 85
+              ? '睡得够沉，身体夜里修复得比较完整，白天的精力底子通常更稳。'
+              : sleepScoreNum >= 70
+              ? '恢复中等，身体补回了一部分，白天的余量会比睡足时少一些。'
+              : '这一夜偏浅，身体修复的时间不太够，白天容易觉得没缓过来。',
+          }
+        : {}),
     }, m ? Number(m[1]) * 60 + Number(m[2]) : 7 * 60);
   }
 
-  // 3. 情绪波动峰值（仅今天）
-  try {
-    if (!isToday) throw new Error('skip');
-    // ★ 2026-10-12（用户：睡眠阶段不记录情绪）—— 睡眠窗内的 EDA 事件不计入：
-    //   旅程里的"情绪波动 N 次"只数清醒时段（与详情页点阵/节律同口径）。
-    const bedH = parseClockH(todaySleep?.sleepTime);
-    const wakeH = parseClockH(todaySleep?.wakeTime);
-    const inSleep = (hour: number) => bedH != null && wakeH != null
-      && (bedH > wakeH ? (hour >= bedH || hour < wakeH) : (hour >= bedH && hour < wakeH));
-    const evs = (computeStressReport()?.events ?? [])
-      .filter((e: any) => !inSleep((e.hour ?? 0) + (e.minute ?? 0) / 60));
-    const peakEvent = evs.length > 0 ? evs.reduce((a: any, b: any) => (b.severity > a.severity ? b : a)) : null;
-    if (peakEvent) {
-      pushItem({
-        time: `${pad2(peakEvent.hour)}:${pad2(peakEvent.minute)}`,
-        color: theme.colors.stateTense,
-        title: `情绪波动 ${evs.length} 次`,
-      emoji: '💗',
-        sub: `峰值强度 ${Math.round(peakEvent.severity)} \u00b7 起伏大时，试试 5 分钟深呼吸`,
-      }, peakEvent.hour * 60 + peakEvent.minute);
-    }
-  } catch { /* ignore */ }
+  // 3. ★ 2026-11-09(5)（用户：「情绪波动三次跟哪来的？我咋不知道有这个数据」）—— 整卡移除。
+  //   原卡「情绪波动 N 次」由戒指 EDA/压力事件反推，属于「情绪测量」口径，与品牌铁律
+  //   （用户自报为主、不做情绪测量）冲突；且用户明确表示不信任该数据 → 不再展示。
 
   // 4. 脑力消耗条目已移除（★ 2026-10-12 用户：旅程里不显示脑力准备度/脑力消耗）
 
@@ -154,6 +154,14 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
       sub: '今天走动了，都记在这里',
       // ★ 本轮（用户 #245）：步数达到当日目标则在卡片右上角画星
       goalMet: stepsToday >= STEP_GOAL,
+      // ★ 2026-11-11（用户）：步数有明确目标 → 进度条展示「离目标多远」；完成任务型仍不画
+      dimension: 'activity' as TimelineDimension,
+      score: stepsToday,
+      scoreMax: STEP_GOAL,
+      scoreLabel: `${stepsToday.toLocaleString('en-US')} / ${STEP_GOAL.toLocaleString('en-US')} 步`,
+      meaning: stepsToday >= STEP_GOAL
+        ? '走动达标，白天身体一直在活动，循环和代谢都跟着转起来了。'
+        : '走动量还在累积中，日常多起身，身体的循环会更容易保持顺畅。',
     }, lastStepMin ?? curMin);
   }
 
@@ -168,10 +176,26 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
   const advice = extras?.aiAdvice;
   if (advice) pushItem(advice, 24 * 60);
 
+  // ★ 2026-11-11：这是**字段白名单**。新增 dimension/score/scoreMax/scoreLabel/meaning/imageUri
+  //   必须同步透传，否则日视图进度条、月视图太阳币来源统计会全部丢失（历史踩坑）。
   const items: TimelineItem[] = dated
     .sort((a, b) => a.k - b.k)
     .slice(0, 7)
-    .map((it) => ({ time: it.time, color: it.color, title: it.title, sub: it.sub, emoji: it.emoji, goalMet: it.goalMet, analysis: it.analysis }));
+    .map((it) => ({
+      time: it.time,
+      color: it.color,
+      title: it.title,
+      sub: it.sub,
+      emoji: it.emoji,
+      goalMet: it.goalMet,
+      analysis: it.analysis,
+      imageUri: it.imageUri,
+      dimension: it.dimension,
+      score: it.score,
+      scoreMax: it.scoreMax,
+      scoreLabel: it.scoreLabel,
+      meaning: it.meaning,
+    }));
 
   return { dateLabel, items };
 }

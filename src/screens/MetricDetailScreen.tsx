@@ -29,6 +29,8 @@ import Icon from '../components/Icon';
 import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
+import { getCachedSession, userStore } from '../data/userStore';
+import { getLatestExamRecord } from '../data/examStore';
 import {
   moodFromEmotionLevel, MOOD_COLOR, MOOD_LABEL, MOOD_ORDER,
   getLatestForDay, getEntriesForDay, monthMoodMap, onEmotionLog, ensureEmotionLogLoaded, type EmotionEntry,
@@ -46,6 +48,7 @@ import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
 import { RANGE_DEF, type RangeKey } from '../data/metrics';
 import { compareLabel } from '../lib/periodLabels';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { useMetricHeroAi } from '../hooks/useMetricHeroAi';
 import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../components/charts/AllDayBarsChart';
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
 import AxisLabels from '../components/charts/AxisLabels';
@@ -212,6 +215,11 @@ const DAY_BAR_SPECS: Record<string, {
   spo2: {
     key: 'spo2',
     nightFirst: true,
+    // ★ 2026-11-10（用户）：血氧「越高越好」——不能整片粉色（像异常）。
+    //   按临床口径分三档着色：理想 ≥95%（绿）/ 偏低 90–94%（琥珀）/ 异常 <90%（粉）。
+    //   与下方图例三档一一对应，明确「好 / 临界 / 异常」的等级。
+    colorOf: (v: number) =>
+      v >= 95 ? mm.colors.limeMid : v >= 90 ? mm.colors.honeyCore : mm.colors.roseDeep,
     sourceNote: '每根柱 = 5 分钟平均血氧。血氧主要在睡眠时段测量，白天没有数据就留白，不画假线。',
   },
   eda: {
@@ -257,9 +265,15 @@ const DAY_BAR_SPECS: Record<string, {
   },
 };
 
-function fmtVal(v: number | null): string {
+/** ★ 2026-11-10（用户）：设备采集的生理指标数值一律整数（HRV 59.5 → 60）；
+ *  化验类（mmol/L / μmol/L）保留 2 位小数，否则血糖 5.6 → 6 会丢失医学信息；
+ *  全 App 唯一允许 1 位小数的是「身体年龄」（HealthAgeCard / HealthAgeDetailScreen）。
+ *  Y 轴刻度走 fmtYAxis，不在此列——坐标刻度取整会导致标签重复。 */
+const LAB_KEYS = new Set(['glucose', 'bloodSugar', 'cholesterol', 'triglyceride', 'hdl', 'ldl', 'ua', 'uricAcid']);
+function fmtVal(v: number | null, key?: string): string {
   if (v == null || !Number.isFinite(v)) return '—';
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  if (key && LAB_KEYS.has(key)) return v.toFixed(2);
+  return String(Math.round(v));
 }
 
 /**
@@ -395,19 +409,18 @@ function fmtYAxis(v: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-/** 连续时间轴的 X 轴刻度：日视图出时分，周/月视图出月/日；今日末点标「现在」。 */
+/** 连续时间轴的 X 轴刻度：日视图出时分，周/月视图出月/日。 */
 function fmtClock(ts: number): string {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
-function timeAxisLabels(range: RangeKey, tMin: number, tMax: number, isToday: boolean): string[] {
+function timeAxisLabels(range: RangeKey, tMin: number, tMax: number): string[] {
   const N = 6;
   const labels: string[] = [];
   for (let i = 0; i <= N; i++) {
     const t = tMin + ((tMax - tMin) * i) / N;
     labels.push(range === 'day' ? fmtClock(t) : `${new Date(t).getMonth() + 1}/${new Date(t).getDate()}`);
   }
-  if (range === 'day' && isToday) labels[labels.length - 1] = '现在';
   return labels;
 }
 
@@ -1077,7 +1090,8 @@ export default function MetricDetailScreen() {
   // 锚点是否为「今天」之外：只有历史日才需要（且值得）自动触发 backfill
   const anchorKey = dateKeyOf(anchor.getTime());
   // ★ 2026-11-04（用户：解读融合）：心率峰值/静息并入 hero 分析（原 HrInsight 卡数据源，顶层调用）
-  const hrZoneExtra = useHrZoneStats(anchorKey, mhrFromProfileAge().mhr);
+  // ★ 2026-11-10：MHR 改用 syncResolvedAge() 解析年龄（与 HrZoneSection 同源，注册年龄即可算）
+  const hrZoneExtra = useHrZoneStats(anchorKey, syncResolvedAge() != null ? Math.round(211 - 0.64 * (syncResolvedAge() as number)) : null);
   const isHistorical = anchorKey !== dateKeyOf(Date.now());
 
   // 心电图：仅主动测量。点击按钮触发原生 ECG 测量（约 30 秒），完成后 ring.ecg 更新并自动刷新本页。
@@ -1271,6 +1285,68 @@ export default function MetricDetailScreen() {
     const lo = b0 ?? 30, hi = b1 ?? 55;
     return (v: number) => (v <= lo ? mm.colors.limeMid : v <= hi ? mm.colors.honeyCore : mm.colors.roseDeep);
   }, [spec]);
+
+  /**
+   * ★ 2026-11-10（用户：「图例写了睡眠/清醒/活动的颜色，跟图对不上」）
+   *
+   * 根因：分档型指标（压力/情绪/血氧/疲劳/皮肤含水量/交感）的柱子走 specColorOf **按数值分档**
+   * 上色，图例却一直沿用 DayBarsLegend 的默认「睡眠/清醒/活动」三色 —— 语义与色值都对不上。
+   * 这里统一按 spec 的真实分档生成图例，色值逐项与 specColorOf 一致。
+   */
+  const specLegendItems = useMemo<{ color: string; label: string }[]>(() => {
+    const k = params.key;
+    if (k === 'emotion') return [
+      { color: MOOD_COLOR.calm, label: '平静' },
+      { color: MOOD_COLOR.happy, label: '开心' },
+      { color: MOOD_COLOR.excited, label: '兴奋' },
+      { color: MOOD_COLOR.stressed, label: '压力' },
+      { color: MOOD_COLOR.sad, label: '难过' },
+    ];
+    if (k === 'stress') return [
+      { color: mm.colors.limeMid, label: '放松' },
+      { color: mm.colors.skyMid, label: '正常' },
+      { color: mm.colors.honeyCore, label: '中等' },
+      { color: mm.colors.roseDeep, label: '偏高' },
+    ];
+    if (k === 'spo2') return [
+      // ★ 血氧「越高越好」：绿=好、琥珀=临界、粉=异常，与 spo2.colorOf 逐档对应
+      { color: mm.colors.limeMid, label: '正常 ≥95%' },
+      { color: mm.colors.honeyCore, label: '偏低 90–94%' },
+      { color: mm.colors.roseDeep, label: '异常 <90%' },
+    ];
+    const bands = spec?.bands ?? [30, 55];
+    const [b0, b1, b2] = bands;
+    if (bands.length >= 4) return [
+      { color: mm.colors.limeMid, label: `低 ≤${b0}` },
+      { color: mm.colors.skyMid, label: `中 ${b0}–${b1}` },
+      { color: mm.colors.honeyCore, label: `偏高 ${b1}–${b2}` },
+      { color: mm.colors.roseDeep, label: `高 >${b2}` },
+    ];
+    return [
+      { color: mm.colors.limeMid, label: `低 ≤${b0}` },
+      { color: mm.colors.honeyCore, label: `中 ${b0}–${b1}` },
+      { color: mm.colors.roseDeep, label: `高 >${b1}` },
+    ];
+  }, [params.key, spec]);
+
+  /** 心率全天柱：只显示**图上真实出现过**的分段（没同步睡眠/运动时段时整片都是清醒，图例就不该再列三色）。 */
+  const hrLegendItems = useMemo<{ color: string; label: string }[]>(() => {
+    if (!hrBars || !hrSegmentOf) return [];
+    const seen = new Set<DayBarSegment>();
+    for (const b of hrBars.buckets) {
+      if (b.v == null || !Number.isFinite(b.v)) continue;
+      seen.add(hrSegmentOf(b.t));
+    }
+    const order: { seg: DayBarSegment; label: string }[] = [
+      { seg: 'sleep', label: '睡眠' },
+      { seg: 'awake', label: '清醒' },
+      { seg: 'active', label: '活动' },
+    ];
+    return order.filter((o) => seen.has(o.seg)).map((o) => ({
+      color: chart.dayBarSegment[o.seg], label: o.label,
+    }));
+  }, [hrBars, hrSegmentOf]);
+
   // ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张时长 / 恢复时长」汇总）：日视图按档位把有数据的桶折算成小时。
   //   每桶 = binMin 分钟（默认 5）；v<lo=放松（恢复），v>hi=紧张。
   const specZoneHours = useMemo(() => {
@@ -1575,24 +1651,43 @@ export default function MetricDetailScreen() {
   const isStress = params.key === 'stress';
   // ★ 基础版无皮质醇实测 → 详情页改用「推算节律」趋势卡（日/周/月/年），不走实测柱状图
   const isCortisol = params.key === 'cortisol';
-  const stressScore = isStress ? (() => { try { return computeStressReport(anchor.getTime()).score; } catch { return null; } })() : null;
+  // ★ 2026-11-09（用户「日间夜间应该分开算平均」）：stress 报告整体取一次（含 dayMean/nightMean）。
+  //   日视图 hero 跟随「日间 / 夜间」tab：日间 tab 显示日间均值，夜间 tab 显示夜间均值；
+  //   周/月/年仍用 score（日间口径）。
+  const stressRep = isStress ? (() => { try { return computeStressReport(anchor.getTime()); } catch { return null; } })() : null;
+  const stressScore = isStress ? stressRep?.score ?? null : null;
   // ★ 2026-11-06（用户）：压力 hero 右侧加定性档位（放松/正常/中等/偏高）+ 较昨日升降
   const stressYday = isStress ? (() => {
     try { const d = new Date(anchor.getTime()); d.setDate(d.getDate() - 1); return computeStressReport(d.getTime()).score; } catch { return null; }
   })() : null;
-  const stressDeltaPct = isStress && typeof stressScore === 'number' && stressYday != null && stressYday !== 0
-    ? Math.round(((stressScore - stressYday) / Math.abs(stressYday)) * 100)
+  // 较昨日也跟随当前 tab 的口径（日间 tab 比日间、夜间 tab 比夜间）
+  const stressYdayPart = isStress && range === 'day' ? (() => {
+    try { const d = new Date(anchor.getTime()); d.setDate(d.getDate() - 1);
+      const r = computeStressReport(d.getTime());
+      return stressPart === 'night' ? (r.nightMean ?? r.score) : (r.dayMean ?? r.score);
+    } catch { return null; }
+  })() : null;
+  const stressDeltaPct = isStress && typeof stressScore === 'number' && (stressYdayPart ?? stressYday) != null && (stressYdayPart ?? stressYday) !== 0
+    ? Math.round(((stressScore - (stressYdayPart ?? stressYday)!) / Math.abs((stressYdayPart ?? stressYday)!)) * 100)
     : 0;
+  // hero 大数字：日视图跟随 tab（日间均值 / 夜间均值），无分段时间回退 score
+  const stressHeroVal = isStress && range === 'day'
+    ? (stressPart === 'night' ? (stressRep?.nightMean ?? stressRep?.score ?? null) : (stressRep?.dayMean ?? stressRep?.score ?? null))
+    : stressScore;
+  // ★ 2026-11-10（用户）：压力 hero 不再堆「日间均值/夜间均值」详细行与「数据截至」说明，
+  //   只保留下方 buildHeroAnalysis 生成的短句（如「今天身心压力适中，节奏平稳」）。
+  //   说明文字删干净，避免画蛇添足。
   // 档位词与四档分色（specColorOf 四档）完全同源：放松=limeMid / 正常=skyMid / 中等=honeyCore / 偏高=roseDeep
-  const stressQualIdx = typeof stressScore === 'number'
-    ? (stressScore <= 30 ? 0 : stressScore <= 60 ? 1 : stressScore <= 80 ? 2 : 3)
+  // ★ 2026-11-09：档位基于 hero 当前值（日间 tab=日间均值 / 夜间 tab=夜间均值），不再一律用 score
+  const stressQualIdx = typeof stressHeroVal === 'number'
+    ? (stressHeroVal <= 30 ? 0 : stressHeroVal <= 60 ? 1 : stressHeroVal <= 80 ? 2 : 3)
     : -1;
   const STRESS_QUAL_WORDS = ['放松', '正常', '中等', '偏高'];
   const STRESS_QUAL_COLORS = [mm.colors.limeMid, mm.colors.skyMid, mm.colors.honeyCore, mm.colors.roseDeep];
   const stressQual = isStress && stressQualIdx >= 0 ? STRESS_QUAL_WORDS[stressQualIdx] : null;
   const stressQualColor = stressQualIdx >= 0 ? STRESS_QUAL_COLORS[stressQualIdx] : theme.colors.textSub;
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
-  const heroVal = isStress ? stressScore : (range === 'day' ? series.latest : series.avg);
+  const heroVal = isStress ? stressHeroVal : (range === 'day' ? series.latest : series.avg);
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
   let heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
@@ -1632,11 +1727,40 @@ export default function MetricDetailScreen() {
   // ★ 压力（身心压力）用 computeStressReport 0–100 口径（与 heroVal 同源）；其余用上一周期区间均值
   const prevVal = isStress
     ? (() => { try { return computeStressReport(prevAnchor.getTime()).score; } catch { return null; } })()
-    : (prevSeries?.avg ?? null);
-  const prevDeltaPct =
+    : (prevSeries?.avg ?? null);  const prevDeltaPct =
     typeof heroVal === 'number' && prevVal != null && prevVal !== 0
       ? Math.round(((heroVal - prevVal) / Math.abs(prevVal)) * 100)
       : 0;
+  // ★ 2026-11-10（用户）：Hero 下方分析接入真实 AI（端侧模型生成一句话，模板作即时兜底）。
+  //   先把真实事实拼成 context 喂给模型（不编造数字），再调 useMetricHeroAi；无模型/超时回落下方 heroAnalysis 模板。
+  const heroContext = (() => {
+    const bits: string[] = [];
+    // ★ 2026-11-10 诚实口径：prevDeltaPct 是「今日 vs 昨日」环比，只在 day 区间且确为昨日对比时说「较昨日」；
+    //   week/month 视图下不得拿昨日 delta 充「较上一周期」（会编造周期环比），故非 day 区间不喂此事实。
+    if (range === 'day' && prevDeltaPct !== 0) bits.push(`较昨日 ${prevDeltaPct > 0 ? '+' : ''}${prevDeltaPct}%`);
+    if (isStress && range === 'day' && stressRep) {
+      if (stressRep.dayMean != null) bits.push(`日间均值 ${Math.round(stressRep.dayMean)}`);
+      if (stressRep.nightMean != null) bits.push(`夜间均值 ${Math.round(stressRep.nightMean)}`);
+    }
+    if (params.key === 'hr' && range === 'day') {
+      const pk = hrZoneExtra.peak != null ? Math.round(hrZoneExtra.peak) : null;
+      const rst = hrZoneExtra.resting != null ? Math.round(hrZoneExtra.resting) : null;
+      if (pk != null) bits.push(`当日峰值 ${pk} bpm`);
+      if (rst != null) bits.push(`静息约 ${rst} bpm`);
+    }
+    return bits.join('；');
+  })();
+  const aiHero = useMetricHeroAi(
+    params.key,
+    params.name,
+    typeof heroVal === 'number' ? heroVal : null,
+    range,
+    heroUnit,
+    heroContext,
+  );
+  // ★ 体温日视图已有数据驱动的基线偏离解读（buildTempInsightText），保留其原生文案、不覆盖；
+  //   其余指标优先用 AI 生成句，AI 未就绪时回落 heroAnalysis 模板。
+  const finalHero = params.key === 'temp' ? heroAnalysis : (aiHero ?? heroAnalysis);
   // ★ 本轮（用户）：底部图表统一标题「XXX趋势图」（身心压力 → 身心压力趋势图，其余同理）
   const chartTitle = `${params.name}趋势图`;
 
@@ -1673,7 +1797,7 @@ export default function MetricDetailScreen() {
     return () => clearTimeout(t);
   }, [isEcg, isHistorical, hasData, ring.status, anchorKey]);
 
-  // X 轴标签：连续时间轴按时间域出刻度（日=时分，周/月=月/日，今日末点标"现在"）
+  // X 轴标签：连续时间轴按时间域出刻度（日=时分，周/月=月/日）
   // ★ 高频连续指标（cortisol/eda/hrv/stress/fatigue/emotion/skin）日视图 → 固定 0-24h 刻度
   //   （与 RELATIVE_AXIS_KEYS 同源，统一相对/归一化指标集合）
   const KF_DAY_HOUR_AXIS = RELATIVE_AXIS_KEYS;
@@ -1682,7 +1806,7 @@ export default function MetricDetailScreen() {
       return dayHourAxis();
     }
     if (useContinuous && tMin && tMax && tMax > tMin) {
-      return timeAxisLabels(range, tMin, tMax, isTodayAnchor);
+      return timeAxisLabels(range, tMin, tMax);
     }
     if (series.axisOverride && series.axisOverride.length > 1) {
       // ★ 直接渲染真实序列长度（1:1 对齐数据点）；稀疏刻度由 axisTickVisible 按 chartAxis 同源规则抽稀
@@ -1728,31 +1852,40 @@ export default function MetricDetailScreen() {
             <View style={styles.pad}>
               {/* ★ 本轮：title 移到数字上方（今日/近期 + 指标名） */}
               <Text style={styles.heroTitle}>{range === 'day' ? `今日${params.name}` : `近期${params.name}`}</Text>
-              <View style={styles.hero}>
-                <Text style={styles.heroVal}>{fmtVal(heroVal)}</Text>
-                {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
-                {/* ★ 2026-11-06（用户）：压力卡右侧补定性档位 + 较昨日升降（与其余指标 hero 同款 delta 位） */}
-                {isStress && stressQual ? (
-                  <Text style={[styles.stressQual, { color: stressQualColor }]}>{stressQual}</Text>
-                ) : null}
-                {isStress && range === 'day' && stressDeltaPct !== 0 ? (
-                  <Text style={[styles.delta, stressDeltaPct > 0 ? styles.up : styles.down]}>
-                    {stressDeltaPct > 0 ? '↑' : '↓'} {Math.abs(stressDeltaPct)}% · 较昨日
-                  </Text>
-                ) : null}
-                {range === 'day' && hasData && !isStress && deltaPct !== 0 && series.kind !== 'cycle' && (
-                  <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
-                    {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
-                  </Text>
-                )}
-                {range !== 'day' && hasData && prevDeltaPct !== 0 && (
-                  <Text style={[styles.delta, prevDeltaPct > 0 ? styles.up : styles.down]}>
-                    {prevDeltaPct > 0 ? '↑' : '↓'} {Math.abs(prevDeltaPct)}% · {prevLabel}
-                  </Text>
-                )}
+              {/* ★ 2026-11-09（用户：46 /100 正常 挤在一行错落，跟其他模块不一致）：
+                  旧写法把「大数字 + /100 + 中文档位 + delta」全塞进一个 baseline + flexWrap 的 row，
+                  且档位用 alignSelf:'center' —— 基线对齐与盒子居中混用，换行后逐行重算基线，视觉错落。
+                  改为与 StressRecoveryDetailScreen / SleepRecoveryHero 一致的分组结构：
+                  左 = 数字 + 单位（必定单行的 baseline），右 = 档位 + 升降（竖排右对齐）。 */}
+              <View style={styles.heroRow}>
+                <View style={styles.heroNumRow}>
+                  <Text style={styles.heroVal}>{params.key === 'hr' ? (heroVal != null && Number.isFinite(heroVal) ? String(Math.round(heroVal)) : '—') : fmtVal(heroVal, params.key)}</Text>
+                  {heroUnit ? <Text style={styles.heroUnit}>{heroUnit}</Text> : null}
+                </View>
+                <View style={styles.heroMeta}>
+                  {/* ★ 2026-11-06（用户）：压力卡右侧补定性档位 + 较昨日升降（与其余指标 hero 同款 delta 位） */}
+                  {isStress && stressQual ? (
+                    <Text style={[styles.stressQual, { color: stressQualColor }]}>{stressQual}</Text>
+                  ) : null}
+                  {isStress && range === 'day' && stressDeltaPct !== 0 ? (
+                    <Text style={[styles.delta, stressDeltaPct > 0 ? styles.up : styles.down]}>
+                      {stressDeltaPct > 0 ? '↑' : '↓'} {Math.abs(stressDeltaPct)}% · 较昨日
+                    </Text>
+                  ) : null}
+                  {range === 'day' && hasData && !isStress && deltaPct !== 0 && series.kind !== 'cycle' && (
+                    <Text style={[styles.delta, deltaPct > 0 ? styles.up : styles.down]}>
+                      {deltaPct > 0 ? '↑' : '↓'} {Math.abs(deltaPct)}% · 较区间首点
+                    </Text>
+                  )}
+                  {range !== 'day' && hasData && prevDeltaPct !== 0 && (
+                    <Text style={[styles.delta, prevDeltaPct > 0 ? styles.up : styles.down]}>
+                      {prevDeltaPct > 0 ? '↑' : '↓'} {Math.abs(prevDeltaPct)}% · {prevLabel}
+                    </Text>
+                  )}
+                </View>
               </View>
-              {/* ★ 本轮：数字下方短 AI 分析 */}
-              {hasData ? <Text style={styles.heroAnalysis}>{heroAnalysis}</Text> : null}
+              {/* ★ 本轮：数字下方短分析（AI 生成优先，模板兜底） */}
+              {hasData ? <Text style={styles.heroAnalysis}>{finalHero}</Text> : null}
               {/* ★ 本轮（用户 #246）：客观数据后再补一句夸赞 / 肯定 */}
               {hasData && praiseLine ? <Text style={styles.heroPraise}>{praiseLine}</Text> : null}
               {/* ★ 2026-11-03（用户）：区间解读文字从页面底部上移——与上面那句分析合成一块，页面下部不再单独展示
@@ -1782,7 +1915,8 @@ export default function MetricDetailScreen() {
               denseBars={isBaseLayout}
               unit={params.unit}
             />
-            <DayBarsLegend />
+            {/* ★ 2026-11-10（用户：图例跟图对不上）：只列图上真实出现的分段色 */}
+            <DayBarsLegend items={hrLegendItems} />
             <Text style={styles.chartNote}>
               {isBaseLayout
                 ? `每根柱 = ${hrBars.binMin} 分钟平均心率，横轴每 30 分钟一条刻度线。${baseBinNote(barBin, '心率')}`
@@ -1899,7 +2033,12 @@ export default function MetricDetailScreen() {
                   height={chart.plot.l}
                   unit={params.unit}
                 />
-                <DayBarsLegend showMean={false} />
+                {/* ★ 2026-11-10（用户）：HRV 日视图按 hrvPart 强制单一时段色（夜间=睡眠蓝 / 日间=清醒紫），
+                    图例原来列「睡眠/清醒/活动」三色，图上却只有一种颜色 → 改为只列当前那一种。 */}
+                <DayBarsLegend showMean={false} items={[{
+                  color: chart.dayBarSegment[hrvPart === 'night' ? 'sleep' : 'awake'],
+                  label: hrvPart === 'night' ? '睡眠时段' : '清醒时段',
+                }]} />
                 <Text style={styles.chartNote}>
                   {hrvPart === 'night' && !hrvNightAvailable
                     ? '昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段；当前先按全天坐标展示，同步睡眠时段后会自动切回夜间段。'
@@ -1920,12 +2059,6 @@ export default function MetricDetailScreen() {
           <View style={styles.chartCard}>
             <View style={styles.partRow}>
               <Text style={[styles.chartTitle, styles.titleFlex]}>{chartTitle}</Text>
-              {!isStress && (
-                <Text style={styles.specCount}>
-                  {specDay.blocked ? '无实测数据'
-                    : `${specDay.filled ?? 0}/${specDay.total ?? 0} 有数据`}
-                </Text>
-              )}
             </View>
             {/* ★ 2026-10-17（用户：日夜参考心率，做个 tab 区分就行）：压力日视图 日间/夜间 分段控件 */}
             <View style={styles.partRow}>
@@ -1965,27 +2098,10 @@ export default function MetricDetailScreen() {
                   moodMarker={isStress && latestMood ? { ts: latestMood.t, mood: latestMood.mood } : null}
                   unit={params.unit}
                 />
-                {/* ★ 2026-10-12（用户拍板：统一成 平静/开心/兴奋/压力/难过）—— 情绪图例 = 「情绪记录」
-                    点阵的同一套五档顺序（DOT_LEGEND），色值一律取 MOOD_COLOR，跨页完全一致。
-                    睡眠/清醒/活动是心率类图的分段（segmentOf），情绪/压力是状态型指标不用那套
-                    → 压力按「放松/正常/中等/偏高」四档着色（2026-11-05 用户：四档），图例跟着换成同色相。 */}
-                <DayBarsLegend
-                  showMean={false}
-                  items={
-                    params.key === 'emotion' ? [
-                      { color: MOOD_COLOR.calm, label: '平静' },
-                      { color: MOOD_COLOR.happy, label: '开心' },
-                      { color: MOOD_COLOR.excited, label: '兴奋' },
-                      { color: MOOD_COLOR.stressed, label: '压力' },
-                      { color: MOOD_COLOR.sad, label: '难过' },
-                    ] : params.key === 'stress' ? [
-                      { color: mm.colors.limeMid, label: '放松' },
-                      { color: mm.colors.skyMid, label: '正常' },
-                      { color: mm.colors.honeyCore, label: '中等' },
-                      { color: mm.colors.roseDeep, label: '偏高' },
-                    ] : undefined
-                  }
-                />
+                {/* ★ 2026-11-10（用户）：图例统一走 specLegendItems —— 与柱子的 specColorOf
+                    逐档同源（情绪五档 / 压力四档 / 血氧好·临界·异常 / 其余按 bands 三档），
+                    不再出现「图例写睡眠清醒活动、柱子却按数值分档」的错位。 */}
+                <DayBarsLegend showMean={false} items={specLegendItems} />
                 <Text style={styles.chartNote}>
                   {isBaseLayout ? withBaseBinText(spec!.sourceNote, specDay.binMin ?? barBinMin) : spec!.sourceNote}
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}
@@ -2042,6 +2158,8 @@ export default function MetricDetailScreen() {
               moodMarkers={rangeMoodMarkers}
               derivedIndexes={series.derivedIndexes}
             />
+            {/* ★ 2026-11-10（用户）：周/月/年同样按 specColorOf 分档上色，补上图例，与日视图同源 */}
+            <DayBarsLegend showMean={false} items={specLegendItems} />
             {/* ★ 2026-11-06 审查（docs/audit/02 🟡#1）：周/月/年视图必须说明推算日占比。 */}
             {derivedRangeNote ? <Text style={styles.chartNote}>{derivedRangeNote}</Text> : null}
           </View>
@@ -2567,21 +2685,38 @@ function useHrZoneStats(dk: string, mhr: number | null) {
 }
 
 /**
- * ★ 2026-11-06 审查（🔴#5）：最大心率只由**真实录入的年龄**推导。
- *   旧实现 `RingBle.getUserProfile()?.age ?? 30` —— 未填年龄时用 30 岁算出 MHR=192，
- *   心率区间环与「基于 30 岁」的文案全是编造的。返回 null 表示「年龄未知」。
+ * ★ 2026-11-10（用户）：年龄解析（与洞察页身体年龄卡完全同源）：
+ *   戒指档案 → 首次登录 Onboarding 档案(userStore.session.profile.age) → 异步再补体检记录。
+ *   注册时填的年龄存在 userStore.session.profile.age，而这枚戒指从未下发过身体档案，
+ *   旧实现只读 getUserProfile()?.age → 恒为 null → 区间环永远显示「录入年龄」空态。
+ *   现在 onboarding 年龄即可算出 MHR、画出区间环；无数据时也显示空环（不显示「啥没有」）。
  */
-function mhrFromProfileAge(): { mhr: number | null; age: number | null } {
-  const raw = RingBle.getUserProfile()?.age;
-  const age = raw != null && Number.isInteger(raw) && raw >= 10 && raw <= 100 ? raw : null;
-  if (age == null) return { mhr: null, age: null };
-  return { mhr: Math.round(211 - 0.64 * age), age };
+/** 把任意来源的年龄夹到 18–120 整数；非法返回 null */
+function clampAge(a: unknown): number | null {
+  const n = typeof a === 'number' ? a : typeof a === 'string' ? Number(a) : NaN;
+  return Number.isFinite(n) && n >= 18 && n <= 120 ? Math.round(n) : null;
+}
+/** 同步解析年龄（戒指档案 → 首次登录档案），供首帧与轻量调用使用。 */
+function syncResolvedAge(): number | null {
+  return clampAge(RingBle.getUserProfile()?.age) ?? clampAge(getCachedSession()?.profile?.age);
 }
 
 function HrZoneSection({ anchor, openChat }: { anchor: Date; openChat: (q: string) => void }) {
   const dk = dateKeyOf(anchor.getTime());
-  // ★ 2026-11-06 审查（🔴#5）：年龄未知 → mhr 为 null，不再用假年龄 30 兜底。
-  const { mhr, age } = mhrFromProfileAge();
+  // 同步初值：戒指档案 → 首次登录档案（避免首帧闪「录入年龄」空态）
+  const [age, setAge] = useState<number | null>(() => syncResolvedAge());
+  // 异步补齐：体检记录优先于登录档案
+  useEffect(() => {
+    let active = true;
+    Promise.all([getLatestExamRecord().catch(() => null), userStore.loadSession().catch(() => null)])
+      .then(([rec, sess]) => {
+        if (!active) return;
+        const v = rec?.inputs.age ?? sess?.profile?.age ?? RingBle.getUserProfile()?.age ?? getCachedSession()?.profile?.age;
+        setAge(clampAge(v));
+      });
+    return () => { active = false; };
+  }, []);
+  const mhr = age != null ? Math.round(211 - 0.64 * age) : null;
 
   const { zones, activeTotal } = useHrZoneStats(dk, mhr);
 
@@ -3260,7 +3395,7 @@ function HrvLorenzSection() {
           </View>
           <View style={styles.statCell}>
             <Text style={styles.statLabel}>平均心率</Text>
-            <Text style={styles.statValue}>{hrv.meanHr}<Text style={styles.statLabel}> bpm</Text></Text>
+            <Text style={styles.statValue}>{Math.round(hrv.meanHr)}<Text style={styles.statLabel}> bpm</Text></Text>
           </View>
         </View>
       ) : null}
@@ -3293,14 +3428,18 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.ui.status.goodSoft,
   },
   liveText: { fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: theme.colors.ui.status.good },
-  hero: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
+  /* ★ 2026-11-09：Hero 分组结构（与 StressRecoveryDetailScreen:312 / SleepRecoveryHero:146 逐字对齐）。
+     baseline 只留在必定单行的「数字 + 单位」内层；档位与 delta 竖排在右侧，彻底避开
+     flexWrap 多行逐行重算基线 + alignSelf:'center' 与 baseline 混用导致的错落。 */
+  heroRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: theme.space.sm },
+  heroNumRow: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 1 },
+  heroMeta: { alignItems: 'flex-end', flexShrink: 1, paddingBottom: 4 },
   // ★ 本轮：title 在数字上方（今日/近期 + 指标名）
   heroTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, marginBottom: theme.sp(1.5) },
   // ★ 2026-10-10：原 #FFFFFF 白字是给旧深色渐变头用的，v16 页面改全白底后大数字「白字白底」不可见；
   //   数据卡挪到选择器下方的同时改为墨色（与状态趋势/脑力详情页同口径）。
-  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, color: mm.colors.ink },
+  heroVal: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.medium, color: mm.colors.ink, lineHeight: 48 },
   heroUnit: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginLeft: theme.sp(2) },
-  heroTag: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.space.md, alignSelf: 'center' },
   // ★ 本轮：数字下方短 AI 分析
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   /** ★ 本轮（用户 #246）：客观数据后的夸赞 / 肯定句——比 heroAnalysis 弱半档、带一点强调色，但不喧宾夺主 */
@@ -3308,11 +3447,12 @@ const styles = StyleSheet.create({
   heroPraise: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite80, lineHeight: 21, marginTop: theme.sp(1), fontWeight: theme.weight.medium as any },
   /** ★ 2026-11-03：hero 卡内的区间解读段（从页面底部上移合并）——比 heroAnalysis 再小半档，弱层级 */
   heroNote: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, lineHeight: 19, opacity: 0.9 },
-  delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginLeft: theme.space.md },
+  /* ★ 2026-11-09：delta 归入右侧 heroMeta 竖排，改用 marginTop，不再靠 marginLeft 挤在同一行 */
+  delta: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, marginTop: theme.sp(0.5) },
   up: { color: theme.colors.ui.status.good },
   down: { color: theme.colors.ui.status.warn },
   /* ★ 2026-11-06（用户）：压力 hero 右侧定性档位（颜色按四档内联注入） */
-  stressQual: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold, marginLeft: theme.space.md, alignSelf: 'center' },
+  stressQual: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.bold },
   chartCard: {
     backgroundColor: theme.colors.cardBg,
     borderRadius: mm.radius.card,

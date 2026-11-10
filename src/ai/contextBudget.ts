@@ -1,5 +1,8 @@
-/** 与模型初始化共用窗口配置；按实际聊天模板分词，保留输出空间。 */
-export const MODEL_CONTEXT_TOKENS = 2048;
+/** 与模型初始化共用窗口配置；按实际聊天模板分词，保留输出空间。
+ *  ★ 2026-11-08：2048 → 4096。洞察 overview 通道 nPredict=540 + 健康事实串 > 1444 token，
+ *  在 P30 真机必触发 AI_CONTEXT_BUDGET_EXCEEDED 回落规则文案（logcat 铁证）。
+ *  4096 的 KV 增量约 115MB（Qwen2.5-1.5B GQA），P30 4GB RAM 可承受。 */
+export const MODEL_CONTEXT_TOKENS = 4096;
 const SAFETY_TOKENS = 64;
 export type BudgetMessage = { role: string; content: string };
 export interface BudgetTokenizer {

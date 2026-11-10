@@ -69,6 +69,12 @@ export interface StressReport {
   valenceScore: number | null;          // -100 (负) ~ +100 (正), 情绪倾向
   valenceLabel: ValenceLabel | null;    // positive / negative / neutral
   valenceReason: string | null;         // 判定依据一句话
+
+  // ★ 2026-11-09（用户「日间夜间应该分开算平均」）：日间 / 夜间 stress 均值分开算
+  //   日间 = 07:00–22:59，夜间 = 23:00–06:59（与 MetricDetail 压力日视图 stressPart 口径完全一致）。
+  //   score 优先取 dayMean（日间均值），不再把凌晨样本混进白天的平均里。
+  dayMean: number | null;
+  nightMean: number | null;
 }
 
 const SCORE_WINDOW_MS = 30 * 60 * 1000;   // 当前压力分用最近 30min 窗口
@@ -165,6 +171,7 @@ function computeStressReportUncached(nowMs: number): StressReport {
       avgRecoverySec: null, recoveryProlonged: null,
       valenceScore: null, valenceLabel: null, valenceReason: null,
       worn: false, wearMin: 0,
+      dayMean: null, nightMean: null,
     };
   }
 
@@ -217,22 +224,34 @@ function computeStressReportUncached(nowMs: number): StressReport {
   //   （RingBleManager:406「精神压力 [1,99]」），metrics.ts 定义 range 0–100，offlineEstimates 以
   //   stress 25~35 为典型映射源；旧代码误按 Veepoo 另一套 0–12 折算 score = sdkStressLatest/12*100 →
   //   任何真实压力 ≥12（0–100 量程下几乎必然）都被钳到 100，造成「外面永远 100、里面柱子 ≈14~35」的假满格。
-  //   现改为：身心压力 = 当日 stress 全天均值（0–100，优先用 healthStore 日聚合 mean，缺则退 intraday 均值），
+  //   现改为：身心压力 = 当日 stress 均值（0–100）。2026-11-09 起口径升级为「日间均值」（见下），
   //   与详情页柱状图同源同量程，外面卡片 / 详情大数字 / 详情柱状图三者口径彻底统一。
   // ★ 2026-10-28 修复「跨天不清零 / 读错天」：原 `new Date(dayStart).toISOString().slice(0,10)`
   //   按 **UTC** 取日期，在 UTC+8 下本地午夜 = UTC 前一天 16:00 → anchorDayKey 永远比真实本地
   //   日期少一天，身心压力读到**昨天**的 stress 日均值；今天无数据时不会显示「暂无数据」而是顶昨天的
   //   值，造成「没有跨天清零」。healthStore 的 day key 全仓统一用本地 `dayKey(ts)`，故此处也必须用
   //   本地日期，与 store 口径一致。
+  // ★ 2026-11-09（用户「日间夜间应该分开算平均」）：score 改为**日间均值**。
+  //   日间 = 07:00–22:59，夜间 = 23:00–06:59（与 MetricDetail 压力日视图 stressPart 分段一致）。
+  //   逐样本分两段各自求均值：score = dayMean（日间无样本时回退 getDay 全天日均值，
+  //   两者皆无时回退全天逐样本均值）；nightMean 单独给出供详情页展示。
+  //   这样「今日身心压力 38」= 今天白天（07:00–23:00）的平均压力，凌晨样本不再拉低/拉高白天平均。
+  //   注：窗口读到 dayStart+24h —— 历史日不再被「anchor=当天中午」截掉下午样本（旧 bug），
+  //   今天读到窗口尾也无害（未来样本不存在）。
+  const stressPts = healthStore.getTimeRange('stress', dayStart, dayStart + 86400000, { fillDailyMean: false, maxPoints: 480 });
+  let daySum = 0, dayCnt = 0, nightSum = 0, nightCnt = 0, allSum = 0, allCnt = 0;
+  for (const p of stressPts) {
+    if (p.v == null || !Number.isFinite(p.v)) continue;
+    allSum += p.v; allCnt += 1;
+    if (p.t >= dayStart + 7 * 3600000 && p.t < dayStart + 23 * 3600000) { daySum += p.v; dayCnt += 1; }
+    else { nightSum += p.v; nightCnt += 1; }
+  }
+  const dayMean = dayCnt > 0 ? daySum / dayCnt : null;
+  const nightMean = nightCnt > 0 ? nightSum / nightCnt : null;
+  const allMean = allCnt > 0 ? allSum / allCnt : null;
   const anchorDayKey = dayKey(nowMs);
   const stressDayMean = healthStore.getDay('stress' as MetricKey, anchorDayKey)?.mean ?? null;
-  let stressMean: number | null = stressDayMean;
-  if (stressMean == null) {
-    const dayStress = healthStore.getTimeRange('stress', dayStart, nowMs, { fillDailyMean: false, maxPoints: 480 });
-    stressMean = dayStress.length > 0
-      ? dayStress.reduce((a, p) => a + (p.v ?? 0), 0) / dayStress.length
-      : null;
-  }
+  let stressMean: number | null = dayMean ?? allMean ?? stressDayMean;
   const edaNow = filtered[filtered.length - 1]?.v ?? null;
   let score: number | null = null;
   let level: StressLevel | null = null;
@@ -681,6 +700,8 @@ function computeStressReportUncached(nowMs: number): StressReport {
     valenceScore,
     valenceLabel,
     valenceReason,
+    dayMean: dayMean != null ? Math.round(dayMean) : null,
+    nightMean: nightMean != null ? Math.round(nightMean) : null,
   };
   // ↓ 自动持久化 —— 每次算完都存到 healthStore.analysis
   try {

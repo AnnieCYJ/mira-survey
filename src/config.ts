@@ -26,3 +26,16 @@ export const RING_SYNC_TOKEN = '';
 
 /** 当前真实数据来源：'native'（直连戒指）或 'backend'（读后端） */
 export const RING_DATA_SOURCE: 'backend' | 'native' = 'native';
+
+/**
+ * ★ 2026-11-09：App 内「检查更新」的版本清单地址。
+ * 清单只有几百字节，放任意公网可读静态托管即可；推荐复用已有 Worker：
+ *   ../mira-ring-sync/public/mira-app/update.json → https://data.lunamiraring.com/mira-app/update.json
+ * APK 本体（体积大）不放这里，由清单里的 apkUrl 指向对象存储 / 本地 HTTP 服务。
+ * 生成清单与 APK：node scripts/publish-apk-update.mjs --apk-url <APK 公网地址>
+ */
+// 生产清单地址：复用已上线的 mira-ring-sync Worker 静态资源（国内直连可读）。
+// ★ 2026-11-11 修正：原先写的 app.lunamiraring.com（Cloudflare R2 自定义域）DNS 不存在、
+//   R2 也尚未在 Dashboard 开通，手机每次检查都要白等 10s 超时才回退，故改为已部署的 Worker 路径。
+// 工程期本地验证仍可走 src/data/appUpdate.ts 的 DEV_FALLBACK_URL（127.0.0.1:8765 + adb reverse）。
+export const UPDATE_MANIFEST_URL = 'https://data.lunamiraring.com/mira-app/update.json';

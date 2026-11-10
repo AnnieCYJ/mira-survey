@@ -155,6 +155,51 @@ export function abnormalMetrics(rec: QuickCheckRecord): QCMetric[] {
   return out;
 }
 
+/**
+ * ★ 2026-11-08 B 稿「异常概览」三分类口径（用户拍板）：
+ *   顶部概览不再笼统写「完成 N 项」，而是诚实拆成三类：
+ *   - flagged  测量项里状态异常的（high/low/risk）→ 需要留意，数据用黄色呈现
+ *   - ok       测量项里状态正常的
+ *   - model    source='estimated' 的推算/模型值 → 不参与正常/异常判定（蓝点呈现）
+ *   口径：正常/异常只针对有参考区间的测量项；推算与模型值不做判定，仅供参考。
+ *   历史记录里 source 缺失的条目按测量项处理（estimated 标记自 2026-11-06 引入，齐全）。
+ */
+export interface RecordTally {
+  total: number;
+  ok: number;
+  flagged: number;
+  model: number;
+  /** 需要留意的测量项清单（按出现顺序） */
+  flaggedMetrics: QCMetric[];
+}
+
+export function classifyRecord(rec: QuickCheckRecord): RecordTally {
+  let total = 0;
+  let ok = 0;
+  let flagged = 0;
+  let model = 0;
+  const flaggedMetrics: QCMetric[] = [];
+  const walk = (m?: QCMetric[]) => {
+    for (const it of m ?? []) {
+      total++;
+      if (it.source === 'estimated') {
+        model++;
+      } else if (it.status !== 'ok') {
+        flagged++;
+        flaggedMetrics.push(it);
+      } else {
+        ok++;
+      }
+    }
+  };
+  for (const g of rec.groups) {
+    walk(g.metrics);
+    walk(g.risk?.sub);
+    walk(g.standalone);
+  }
+  return { total, ok, flagged, model, flaggedMetrics };
+}
+
 /** 保存一次体检记录。record.groups 直接序列化入库。 */
 export async function saveQuickCheck(rec: QuickCheckRecord): Promise<void> {
   const db = await openDb();
@@ -339,7 +384,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       const age = typeof p.age === 'number' && p.age > 0 ? p.age : 30;
       const sex: 'female' | 'male' = p.gender === 'male' ? 'male' : 'female';
       bodyMetrics = computeBodyComposition({ weight: p.weight, height: p.height, age, sex });
-      bodyNote = '身体成分反映脂肪比例、肌肉量与基础代谢，与长期代谢健康相关；建议结合均衡饮食与规律运动观察趋势，精确值以专业体测为准。';
+      bodyNote = '身体成分反映脂肪、肌肉与基础代谢的大致水平，精确值以专业体测为准，建议结合饮食运动看趋势。';
     } else {
       bodyAbsentReason = 'profile-missing';
       bodyNote = '填写身高体重后可推算身体成分。';
@@ -370,6 +415,11 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       case 'ldl': return v > 3.4 ? 'high' : 'ok';
       case 'stress': return v >= 60 ? 'high' : 'ok';
       case 'fatigue': return v >= 7 ? 'high' : v >= 4 ? 'low' : 'ok';
+      // ★ 2026-11-08 B 稿落地（用户拍板口径）：活动量/睡眠补一层偏离判定（只作用于实测项）。
+      //   步数 <3000 明显低于日常活动下限（B 稿示例 1,280 步判「偏少」）；昨夜睡眠 <6h 恢复窗口偏紧。
+      //   HRV / 运动消耗个体差异大、无公认参考区间，维持不判定（看趋势，不评分）。
+      case 'steps': return v < 3000 ? 'low' : 'ok';
+      case 'sleepMin': return v < 360 ? 'low' : 'ok';
       default: return 'ok';
     }
   };
@@ -421,8 +471,8 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
 
   // ── 活动与睡眠（实测）───────────────────────────────────────────────────
   const activity: QCMetric[] = [];
-  if (steps != null) activity.push(measured({ key: 'steps', name: '今日步数', value: String(Math.round(steps)), unit: '步', status: 'ok', note: '步数反映日常活动量，一般建议每日 6000–8000 步以上以维持基础活动水平。' }));
-  if (sleepMin != null) activity.push(measured({ key: 'sleep', name: '昨夜睡眠', value: `${Math.floor(sleepMin / 60)}小时${Math.round(sleepMin % 60)}分`, unit: '', status: 'ok', note: '昨夜睡眠时长反映恢复基础，成人建议 7–9 小时；长期偏短会影响 HRV 与日间状态。' }));
+  if (steps != null) activity.push(measured({ key: 'steps', name: '今日步数', value: String(Math.round(steps)), unit: '步', status: sb('steps', steps), label: sb('steps', steps) === 'low' ? '偏少' : undefined, note: '步数反映日常活动量，一般建议每日 6000–8000 步以上以维持基础活动水平；偏少时可分两段各走 10 分钟补齐。' }));
+  if (sleepMin != null) activity.push(measured({ key: 'sleep', name: '昨夜睡眠', value: `${Math.floor(sleepMin / 60)}小时${Math.round(sleepMin % 60)}分`, unit: '', status: sb('sleepMin', sleepMin), label: sb('sleepMin', sleepMin) === 'low' ? '偏短' : undefined, note: '昨夜睡眠时长反映恢复基础，成人建议 7–9 小时；偏短时恢复窗口偏紧，今晚可提前半小时上床。' }));
   if (calorie != null) activity.push(measured({ key: 'calorie', name: '运动消耗', value: String(Math.round(calorie)), unit: '千卡', status: 'ok', note: '运动消耗反映当日能量支出，结合饮食与休息有助于体重与体能管理。' }));
   if (activity.length) groups.push({ key: 'activity', title: '活动与睡眠', icon: '🌙', note: '以下反映你当日的活动量与昨夜睡眠，是评估恢复基础的重要参考。', metrics: activity });
 
@@ -457,8 +507,8 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       title: '身体成分',
       icon: '⚖️',
       note: bodyAbsentReason === 'profile-read-failed'
-        ? '本次体检未包含身体成分：读取你的身高体重档案失败，可稍后重试或到设置里检查账号信息。'
-        : '本次体检未包含身体成分：还没有填写身高体重，填好后可按公开公式推算。',
+        ? '未包含身体成分：读取身高体重档案失败，可稍后重试或检查设置。'
+        : '未包含身体成分：还没填身高体重，填好后按公开公式推算。',
     });
   }
 
@@ -483,7 +533,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     rhythmItems.push(estimated({
       key: 'sleepRhythm', name: '睡眠节律', value: label, unit: '',
       status: irregular ? 'low' : 'ok', label,
-      note: `基于近 ${bedHours.length} 天睡眠记录，入睡时间标准差约 ${stdMin} 分钟，当前节律${label}。规律作息有助于 HRV 与日间恢复；入睡时间频繁大幅偏移时，建议固定上床与起床时间。`,
+      note: `基于近 ${bedHours.length} 天记录，入睡时间标准差约 ${stdMin} 分钟，当前节律${label}。固定上床与起床时间最见效。`,
     }));
   }
 
@@ -542,7 +592,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
             key: 'circadian', name: '昼夜节律', value: lvlText, unit: '',
             status: regular ? 'ok' : 'low',
             label: lvlText,
-            note: `基于近 14 天 HRV 日内波动推算：你的自主神经活跃度在约 ${String(peak.h).padStart(2, '0')}:00 最高、${String(trough.h).padStart(2, '0')}:00 最低，昼夜节律${lvlText}。这种日内节律与生物钟驱动的皮质醇节律同源，规律作息有助于维持健康波动；若长期平缓，可留意睡眠质量与作息规律性。`,
+            note: `基于近 14 天 HRV 日内波动：自主神经活跃度约 ${String(peak.h).padStart(2, '0')}:00 最高、${String(trough.h).padStart(2, '0')}:00 最低，昼夜节律${lvlText}。规律作息有助于维持波动。`,
           }));
         }
       }
@@ -556,10 +606,13 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     const prolonged = stressRep.recoveryProlonged;
     const slow = prolonged != null && prolonged > 100;
     const label = recSec <= 60 ? '恢复快' : recSec <= 90 ? '正常' : '偏慢';
+    // ★ 2026-11-10（用户）：2400 秒看着像写死的常量，其实是 EDA/压力事件恢复耗时均值。
+    //   大数改读成「分」更直观，并明确标注「信号推算、非实测」。
+    const recText = recSec >= 60 ? `${Math.round(recSec / 60)} 分` : `${recSec} 秒`;
     rhythmItems.push(estimated({
-      key: 'recovery', name: '压力恢复节律', value: `${recSec} 秒`, unit: '',
+      key: 'recovery', name: '压力恢复节律', value: recText, unit: '',
       status: slow ? 'high' : 'ok', label,
-      note: `基于全天压力事件后的恢复时长计算，平均每次约 ${recSec} 秒回到基线${prolonged != null ? `，较基线（约 90 秒）${prolonged > 0 ? '延长' : '缩短'}约 ${Math.abs(prolonged)}%` : ''}。恢复偏慢提示自主神经弹性下降，可留意放松与睡眠。`,
+      note: `基于全天压力事件后的恢复时长，平均每次约 ${recText} 回到基线（EDA / 压力信号推算，非实测）。恢复偏慢提示自主神经弹性下降，留意放松与睡眠。`,
     }));
   }
 
@@ -575,16 +628,16 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     }));
     if (hl.estrogen != null) {
       rhythmItems.push(estimated({
-        key: 'estrogen', name: '雌激素相对水平', value: String(Math.round(hl.estrogen)), unit: '/100',
+        key: 'estrogen', name: '雌激素（周期建模）', value: String(Math.round(hl.estrogen)), unit: '/100',
         status: 'ok', scale: { min: 0, max: 100, v: Math.round(hl.estrogen) },
-        note: '按周期阶段建模的相对水平，可结合 HRV 与静息心率观察身体随周期的变化趋势。',
+        note: '由经期记录推算的建模值（戒指不测激素），反映当前周期阶段的相对水平，可结合 HRV 与静息心率观察变化趋势。',
       }));
     }
     if (hl.progesterone != null) {
       rhythmItems.push(estimated({
-        key: 'progesterone', name: '黄体酮相对水平', value: String(Math.round(hl.progesterone)), unit: '/100',
+        key: 'progesterone', name: '黄体酮（周期建模）', value: String(Math.round(hl.progesterone)), unit: '/100',
         status: 'ok', scale: { min: 0, max: 100, v: Math.round(hl.progesterone) },
-        note: '按周期阶段建模的相对水平，黄体期通常高于卵泡期，可结合身体感受观察趋势。',
+        note: '由经期记录推算的建模值（戒指不测激素），黄体期通常高于卵泡期，可结合身体感受观察趋势。',
       }));
     }
   }
@@ -598,7 +651,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   } else {
     groups.push({
       key: 'rhythm', title: '节律', icon: '🌀',
-      note: '节律分析需要连续几天的睡眠、皮质醇或压力信号，以及（生理周期）经期记录。当前数据不足，暂无法推算；连续佩戴并在设置里记录经期后可在此查看。',
+      note: '节律分析需要连续几天的睡眠、压力信号或经期记录。当前数据不足，连续佩戴并记录经期后可查看。',
     });
   }
 

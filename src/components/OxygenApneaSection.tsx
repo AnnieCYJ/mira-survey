@@ -66,12 +66,13 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均血氧</Text>
-              <Text style={[styles.statValue, { color: mm.colors.skyDeep }]}>{a.aveOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
+              {/* ★ 2026-11-10（用户：蓝色字看不清）：原 skyDeep 在卡底对比度低。改为按数值分色——好=绿、临界=琥珀、异常=粉，与详情页柱色一致 */}
+              <Text style={[styles.statValue, { color: a.aveOxygen >= 95 ? mm.colors.limeMid : a.aveOxygen >= 90 ? mm.colors.honeyCore : a.aveOxygen > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>{a.aveOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
               {!a.aveOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>最低血氧</Text>
-              <Text style={[styles.statValue, { color: a.minOxygen > 0 && a.minOxygen < 90 ? mm.colors.roseMid : theme.colors.textTitle }]}>{a.minOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
+              <Text style={[styles.statValue, { color: a.minOxygen >= 95 ? mm.colors.limeMid : a.minOxygen >= 90 ? mm.colors.honeyCore : a.minOxygen > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>{a.minOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
               {!a.minOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
             </View>
             <View style={styles.statCell}>

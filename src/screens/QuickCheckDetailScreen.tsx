@@ -16,10 +16,9 @@ import { theme } from '../theme/theme';
 import {
   getQuickCheckById,
   deleteQuickCheck,
-  tallyRecord,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
-import { qc, GroupBlock } from '../components/quickCheckShared';
+import { qc, GroupBlock, AbnormalOverview } from '../components/quickCheckShared';
 import BackButton from '../components/BackButton';
 
 export default function QuickCheckDetailScreen() {
@@ -73,8 +72,6 @@ export default function QuickCheckDetailScreen() {
     );
   }
 
-  const t = tallyRecord(record);
-
   const onDelete = () => {
     if (deleting) return;
     Alert.alert('删除本次体检记录', '删除后无法恢复，确定删除吗？', [
@@ -102,17 +99,8 @@ export default function QuickCheckDetailScreen() {
         <Text style={qc.shareIcon}>↗</Text>
       </View>
 
-      <View style={qc.sumBox}>
-        <Text style={qc.sumTime}>检测时间 {fmtDateLocal(record.createdAt)}</Text>
-        <Text style={qc.sumMain}>
-          本次完成 {t.done} 项检测，
-          {t.abnormal ? `${t.abnormal} 项偏高/偏低` : '未见异常'}
-        </Text>
-        <Text style={qc.sumNote}>
-          下面按本次测量到的结果逐项解读：每一项都说明它代表什么、当前是否正常、可能的原因，以及可参考的日常建议。
-          所有结论只帮你了解自己的状态，不构成诊断或评分。
-        </Text>
-      </View>
+      {/* ★ 2026-11-08 B 稿落地：顶部异常概览（三分类口径 + 白卡 + 黄色异常数据），替换原 sumBox */}
+      <AbnormalOverview record={record} createdAt={record.createdAt} />
 
       {record.groups.map((g) => (
         <GroupBlock key={g.key} group={g} useAi />
@@ -127,10 +115,4 @@ export default function QuickCheckDetailScreen() {
       </TouchableOpacity>
     </ScreenContainer>
   );
-}
-
-function fmtDateLocal(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }

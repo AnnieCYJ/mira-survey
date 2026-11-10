@@ -17,6 +17,7 @@
  *      各自算 z-score（相对个人 14 天基线，中位数 + MAD×1.4826）→ 加权 → tanh 压缩到 0~100；
  *    · **没有实测信号的窗口 = null**，UI 留白。不拟合、不补形状、**不画虚线**；
  *    · 输出叫「皮质醇活性」，是**相对个人基线的相对量**，不是激素浓度。
+ *      ★ 2026-11-09（用户口径）：「皮质醇活性」只是算法层术语，UI 对外统一叫「皮质醇趋势」。
  *  业界依据（Garmin Firstbeat / Oura / WHOOP 均为反推，非实测）：
  *    Garmin 压力分 vs 唾液皮质醇 r=0.29~0.71；Body Battery vs 晨起皮质醇 r=0.52（n=127, 2024）。
  *
@@ -42,6 +43,8 @@ import Icon from './Icon';
 import { MindIcon } from './MindIcons';
 // ★ 2026-10-07（用户：洞察页「昼夜节律」卡片里加一个约三行的 AI 分析）
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
+// ★ 2026-11-xx：把这张卡的「分析」接成真正的端侧 AI（基于真实节律判读），本地 judge 拼装作回落兜底。
+import { useAiInsight } from '../hooks/useAiInsight';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { useRingState } from '../hooks/useRingState';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
@@ -316,13 +319,36 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
   //   用户看到的就是「卡片自己节律的分析很多也没有分析出来」。现在与 tile 判定同门槛（>=4 槽）。
   const cortAiBody = cortRhythmLabel != null
     ? cortRhythmLabel === '皮质醇偏高'
-      ? `今天皮质醇活性全天均值 ${judge.avg}/100，整体高于你的个人基线。峰值时段 ${judge.peakWindow ?? judge.peakClock}，午后仍维持较高水平，建议减少咖啡因、安排短时放松，并尽量固定入睡时间。`
+      ? `今天皮质醇全天均值 ${judge.avg}/100，整体高于你的个人基线。峰值时段 ${judge.peakWindow ?? judge.peakClock}，午后仍维持较高水平，建议减少咖啡因、安排短时放松，并尽量固定入睡时间。`
       : cortRhythmLabel === '节律紊乱'
-        ? `今天皮质醇活性峰值出现在 ${judge.peakClock}，偏离正常清醒时段，昼夜高低差不足。这类节律常提示作息不规律或夜间压力偏大，建议固定起床时间、增加晨间光照，减少夜间屏幕与咖啡因。`
-        : `今天皮质醇活性全天均值 ${judge.avg}/100，峰值时段 ${judge.peakWindow ?? judge.peakClock}，昼夜高低节律完整。晨间自然抬升、夜间回落，说明作息与压力反应处在你的正常区间。`
+        ? `今天皮质醇峰值出现在 ${judge.peakClock}，偏离正常清醒时段，昼夜高低差不足。这类节律常提示作息不规律或夜间压力偏大，建议固定起床时间、增加晨间光照，减少夜间屏幕与咖啡因。`
+        : `今天皮质醇全天均值 ${judge.avg}/100，峰值时段 ${judge.peakWindow ?? judge.peakClock}，昼夜高低节律完整。晨间自然抬升、夜间回落，说明作息与压力反应处在你的正常区间。`
     : dataStale
       ? '戒指暂无新数据，恢复信号同步后，这里会给出皮质醇昼夜节律的判读与建议。'
       : '今天先看到一些基础变化，继续戴着戒指记录，等节律更完整后我会帮你看趋势。';
+
+  // ★ 2026-11-xx：洞察页昼夜节律卡「分析」接真 AI（端侧模型，基于本卡真实节律判读）。
+  //   指纹 = 卡片自己的真实结论（judge.label / avg / peakClock），与 tile 大字严格同源：
+  //   结论一翻（正常→偏高），旧 AI 文案立即作废重算，避免「大字说紊乱、AI 说正常」。
+  //   enabled 仅洞察页（insightMode）为真 —— 首页同名卡片不需要这张 AI、不占模型。
+  const circadianTag = useMemo(() => {
+    if (!judge.ready || !judge.label) return '';
+    const lvl =
+      judge.label === '皮质醇偏高' ? 'high' : judge.label === '节律紊乱' ? 'dys' : 'norm';
+    return `${lvl}|${judge.avg ?? 0}|${judge.peakClock}`;
+  }, [judge]);
+  const { rows: circadianRows, loading: circadianLoading } = useAiInsight(
+    'circadian',
+    undefined,
+    circadianTag,
+    insightMode
+  );
+  // AI 正文（解析出的首行 body）；不合格（空 / 太短 / 过长 / 还在加载）→ 回落本地 judge 拼装文案。
+  const aiCircadianBody =
+    circadianRows && circadianRows.length > 0 ? circadianRows[0].body : null;
+  const useAiCircadian =
+    !circadianLoading && !!aiCircadianBody && aiCircadianBody.length >= 8 && aiCircadianBody.length <= 200;
+  const cortAiBodyFinal = useAiCircadian ? aiCircadianBody : cortAiBody;
 
   const body = (
     <View style={[styles.wrap, !!bg && { backgroundColor: bg, borderColor: 'transparent' }]}>
@@ -503,7 +529,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
                 {/* ★ v18.104：断流（戴了戒指但很久没新采样）与「没戴过」是两种空态，文案要区分，
                     否则用户以为自己没戴 → 一直对着「戴上戒指后…」发呆。 */}
                 <Text style={styles.emptyHintText}>
-                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的皮质醇活性趋势'}
+                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的皮质醇趋势'}
                 </Text>
               </View>
             ) : null}
@@ -529,7 +555,7 @@ export default function AllDayRecoveryCard({ onPress, ring: ringProp, bg, iconFg
               title={cortRhythmLabel ?? '数据不足'}
               bodyColor={theme.colors.textBody}
             >
-              {cortAiBody}
+              {cortAiBodyFinal}
             </AiResultRow>
           </AiAnalysis>
         ) : null}

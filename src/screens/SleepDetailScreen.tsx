@@ -231,7 +231,30 @@ export default function SleepDetailScreen() {
     return dayKey(anchor);
   };
 
-  const sleepDaily = ring.sleepDaily ?? {};
+  // ★ 2026-11-09（用户：今天有睡眠分数，分期时长/入睡时间却全空）：
+  //   原生回填把睡眠汇总写进 healthStore.sleep(v2)，而本页原来只读 ring.sleepDaily(v1)。
+  //   两份存储没打通 —— 今天(11-09) 在 v2 有 total=508/deep=205/light=178/rem=108，
+  //   v1 却只到 11-08，于是「日」视图整页空态。
+  //   用 v2 补齐 v1 缺失/无时长的日期；v1 已有的 sleepTime/wakeTime 保留作补充，不改展示逻辑。
+  const sleepDaily = useMemo(() => {
+    const out: Record<string, any> = { ...(ring.sleepDaily ?? {}) };
+    for (let i = 0; i < 14; i += 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dk = healthDayKey(d.getTime());
+      if (out[dk] && Number(out[dk].total) > 0) continue;
+      const s = healthStore.getSleep(dk);
+      if (s && Number(s.total) > 0) {
+        out[dk] = {
+          ...(out[dk] ?? {}),
+          ...s,
+          sleepTime: s.sleepTime ?? out[dk]?.sleepTime ?? null,
+          wakeTime: s.wakeTime ?? out[dk]?.wakeTime ?? null,
+        };
+      }
+    }
+    return out;
+  }, [ring.sleepDaily, hsVer]);
 
 
   /** 该区间是否至少有一天真实睡眠记录（双轴图空态判断用） */
@@ -356,7 +379,12 @@ export default function SleepDetailScreen() {
     const dk = sleepDayKey(anchor);
     const isLatest = !ring.sleepSummaryDate || ring.sleepSummaryDate === dk;
     const sum = sleepDaily[dk] ?? null;
-    const segs = ring.sleepStagesDaily?.[dk] ?? (isLatest ? ring.sleepStages : null) ?? null;
+    // ★ 2026-11-09：RingState.sleepStagesDaily 在 backfill 期间会被旧快照覆盖而落盘为空，
+    //   导致「整夜分期」长期显示「暂未同步」。healthStore 的 v2 快照落盘可靠，优先读它。
+    const segs = healthStore.getSleepSegments<SleepSegment>(dk)
+      ?? ring.sleepStagesDaily?.[dk]
+      ?? (isLatest ? ring.sleepStages : null)
+      ?? null;
     // ★ 2026-10-10：夜间 HRV 逐样本序列（分期图第二层用）。
     //   只读 healthStore.intraday（纯 HRV）——`ring.history.hrv` 混了由 RR 间期展开的 BPM 值，不能用。
     const hrvIntraday = healthStore.getIntraday('hrv', dk);

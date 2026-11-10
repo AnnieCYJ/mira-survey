@@ -30,36 +30,72 @@ function trendColorFor(key: string): string {
   return theme.colors.accentSolid;
 }
 
-/** 迷你趋势图 Y 标注：整数不带小数，小数保留 1 位。 */
+/** 迷你趋势图 Y 标注：★ 2026-11-10（用户）与卡片主数值同口径，一律整数。 */
 function fmtMini(v: number): string {
   if (!Number.isFinite(v)) return '';
-  const r = Math.round(v * 10) / 10;
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+  return String(Math.round(v));
 }
 
 /**
- * ★ 2026-10-10（用户）：今日横轴窗口**全局统一为「0:00 → 现在」**。
+ * ★ 2026-11-10（用户）：今日横轴窗口**固定为「0:00 → 24:00」全天**。
  *
- * 原来固定 0:00→24:00，于是每张卡画多长取决于「最后一条样本落在几点」：
- * 心率/血氧有样本到 19:00 → 线铺到右边；皮质醇最后一条在 11:32 → 线只到中间，
- * 视觉上就是「有的展示到现在、有的展示 24 小时」，横坐标完全不统一。
- *
- * 现在所有基础指标卡共用同一个「今日 0:00 → 现在」窗口：曲线一律从左端画到右端，
- * 轴右端统一写「现在 HH:mm」，一眼就知道数据到哪儿为止。
- * 距午夜不足 2h 时窗口太短没有意义，退回 0:00→24:00。
+ * 之前（2026-10-10）改成了「0:00 → 现在」，让曲线一律拉伸到右端、右轴标「现在 HH:mm」。
+ * 用户反馈这样不对：横轴应该是完整的一天 0–24 小时，曲线按真实采样时刻落点——
+ * 数据到 19:00，线就停在 19:00 的位置，而不是被拉伸铺满整张图。
+ * 各卡横轴统一为 0:00 / 24:00，一眼能看出数据截止到一天里的哪个时刻。
  */
-const MIN_SPAN_MS = 2 * 3600_000;
-function todayWindow(now = Date.now()): { start: number; end: number; left: string; right: string } {
+function todayWindow(now = Date.now()): { start: number; end: number; left: string; right: string; anchor: number | null; nightFirst: boolean } {
   const d = new Date(now);
   d.setHours(0, 0, 0, 0);
   const start = d.getTime();
-  const full = start + 86_400_000;
-  const end = now - start < MIN_SPAN_MS ? full : now;
-  const hm = (t: number) => {
-    const x = new Date(t);
-    return `${x.getHours()}:${String(x.getMinutes()).padStart(2, '0')}`;
-  };
-  return { start, end, left: '0:00', right: end >= full ? '24:00' : `现在 ${hm(now)}` };
+  const end = start + 86_400_000; // ★ 固定全天：0:00 → 24:00（曲线按真实采样时刻落点，不再拉伸到「现在」）
+  return { start, end, left: '0:00', right: '24:00', anchor: null, nightFirst: false };
+}
+
+function fmtClock(t: number): string {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * ★ 2026-11-10（用户：洞察血氧卡中间空一大段、但详情页有完整数据）：
+ * 血氧是「夜间指标」——样本集中在睡眠时段（约 23:00→次日 07:00），天然跨越午夜。
+ * 若按 0:00→24:00 线性时间轴绘制，前半夜落在右端、后半夜落在左端，白天整段留白，
+ * 视觉上像「中间缺失一大段数据」。详情页用 nightFirst（睡眠段优先、连续绘制）规避了这个问题。
+ *
+ * 这里做等效处理：找到「相邻样本间（含绕午夜 wrap 间隙）最大的一段空缺」，把它切到可视区之外，
+ * 让剩余样本按真实时间戳连续铺满整张迷你图。不编造任何数据点、不拉伸坐标轴。
+ * 返回的 start/end 即旋转后的时间域；anchor 用于把「绕午夜那段（落在 start 之前）的样本 +24h」移到末尾。
+ */
+function computeNightDomain(
+  points: { t: number; v: number }[]
+): { start: number; end: number; left: string; right: string; anchor: number; nightFirst: boolean } | null {
+  const s = points
+    .filter((p) => Number.isFinite(p.t))
+    .slice()
+    .sort((a, b) => a.t - b.t);
+  if (s.length < 2) return null;
+  // 绕午夜间隙：从最后一点到「第一点 + 1 天」
+  let maxGap = s[0].t + DAY_MS - s[s.length - 1].t;
+  let cutIdx = -1; // -1 = 最大间隙是绕午夜（数据本身已在 [s0, slast] 连续）
+  for (let i = 0; i < s.length - 1; i++) {
+    const g = s[i + 1].t - s[i].t;
+    if (g > maxGap) {
+      maxGap = g;
+      cutIdx = i;
+    }
+  }
+  if (cutIdx === -1) {
+    // 数据本就连续（最大空缺在绕午夜处，落在可视区两端之外），直接按 [s0, slast] 画
+    return { start: s[0].t, end: s[s.length - 1].t, anchor: s[0].t, left: fmtClock(s[0].t), right: fmtClock(s[s.length - 1].t), nightFirst: true };
+  }
+  // 把最大空缺（s[cutIdx] → s[cutIdx+1]）切到可视区之外：
+  //   start = s[cutIdx+1]（空缺之后那段作为图左起点）
+  //   end   = s[cutIdx] + 1 天（空缺之前那段整体 +24h 移到图右结尾）
+  //   anchor = start：所有 t < start 的样本在绘制前 +24h，使曲线连续
+  const start = s[cutIdx + 1].t;
+  const end = s[cutIdx].t + DAY_MS;
+  return { start, end, anchor: start, left: fmtClock(start), right: fmtClock(end), nightFirst: true };
 }
 
 /**
@@ -98,7 +134,11 @@ function buildDayPath(
   dayStart: number,
   dayEnd: number,
   yMin: number,
-  yMax: number
+  yMax: number,
+  nightFirst?: boolean,
+  nightAnchor?: number | null,
+  /** 相邻真实采样点超过此间隔才断开折线（默认 60min）。血氧这类「整点稀疏 + 白天密集」的指标放宽到 3h */
+  gapMs: number = 60 * 60 * 1000
 ) {
   // 防御：任何非有限值（NaN/Infinity）都会导致 iOS 原生 SVG 渲染器直接崩溃（硬退出）。
   const clean = points
@@ -106,9 +146,14 @@ function buildDayPath(
       (p) =>
         Number.isFinite(p.t) &&
         Number.isFinite(p.v) &&
-        p.t >= dayStart &&
+        p.t >= dayStart - (nightFirst ? DAY_MS : 0) &&
         p.t <= dayEnd + SLOT_MS
     )
+    // ★ nightFirst：把「落在 start 之前」的样本 +24h，使跨午夜的夜间数据连续成一段
+    .map((p) => ({
+      ...p,
+      t: nightFirst && nightAnchor != null && p.t < nightAnchor ? p.t + DAY_MS : p.t,
+    }))
     .slice()
     .sort((a, b) => a.t - b.t);
   if (clean.length < 2) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, hasData: false };
@@ -125,7 +170,7 @@ function buildDayPath(
   // 断线阈值 60min：聚合粒度是 30min/点，相邻两个有数据的槽位间隔本来就 ≥30min，
   // 旧阈值 30min 会让「刚好差几秒到 30 分钟」的相邻点被误判成断线 → 曲线被切成一节一节（用户说的"看着乱"）。
   // 60min 恰好容许一个空槽（60min 采样、30min 一格）而不会误断。
-  const GAP_MS = 60 * 60 * 1000;
+  const GAP_MS = gapMs > 0 ? gapMs : 60 * 60 * 1000;
   let lineD = '';
   let areaD = '';
   let seg: { x: number; y: number }[] = [];
@@ -186,6 +231,10 @@ interface Props {
   onPress?: () => void;
   /** 是否渲染全天趋势图（默认 true） */
   showTrend?: boolean;
+  /** ★ 2026-11-10：夜间指标（如血氧）以「睡眠段优先、连续绘制」，避免 0-24h 线性轴把跨午夜的夜间数据甩到两端、白天中段留空 */
+  nightFirst?: boolean;
+  /** ★ 2026-11-10：折线断线阈值（默认 60min）。血氧等整点稀疏指标放宽，避免真实点之间被切开留白 */
+  lineGapMs?: number;
   /** ★ 本轮（用户）：AI 分析句 —— 渲染为卡片内底部区块（与节律卡同源），使整张卡为「一张卡」 */
   analysis?: string;
 }
@@ -206,6 +255,8 @@ export default function BasicMetricCard({
   onPress,
   showTrend = true,
   analysis,
+  nightFirst = false,
+  lineGapMs,
 }: Props) {
   const [w, setW] = useState(0);
   const [measuring, setMeasuring] = useState(false);
@@ -231,14 +282,21 @@ export default function BasicMetricCard({
     const pad = (rawMax - rawMin) * 0.12;
     return { lo: rawMin - pad, hi: rawMax + pad };
   }, [data]);
-  // ★ 2026-10-10（用户）：今日窗口统一「0:00 → 现在」（原来固定 0:00→24:00，
-  // 每张卡的线画多长取决于「最后一条样本在几点」→ 横轴看着不统一）。
-  const axis = todayWindow();
+  // ★ 2026-11-10（用户）：今日窗口固定「0:00 → 24:00」全天（曲线按真实采样时刻落点，数据到几点线就画到几点）。
+  // ★ 2026-11-10（用户追修）：血氧等「夜间指标」改用 nightFirst 域——把跨午夜的睡眠数据段旋转到连续区间，
+  //   避免线性 0-24h 轴把夜间数据甩到两端、白天中段空一大段（详情页本就用 nightFirst，这里对齐）。
+  const axis = useMemo(() => {
+    if (nightFirst && data.length >= 2) {
+      const d = computeNightDomain(data);
+      if (d) return d;
+    }
+    return todayWindow();
+  }, [nightFirst, data]);
   const { lineD, areaD, last, hasData } = useMemo(() => {
     const yLo = yBounds?.lo ?? metric.yMin;
     const yHi = yBounds?.hi ?? metric.yMax;
-    return buildDayPath(data, w, h, axis.start, axis.end, yLo, yHi);
-  }, [data, w, h, yBounds, metric.yMin, metric.yMax, axis.start, axis.end]);
+    return buildDayPath(data, w, h, axis.start, axis.end, yLo, yHi, axis.nightFirst, axis.anchor, lineGapMs);
+  }, [data, w, h, yBounds, metric.yMin, metric.yMax, axis.start, axis.end, axis.nightFirst, axis.anchor, lineGapMs]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -328,8 +386,12 @@ export default function BasicMetricCard({
                 )}
               </Svg>
             ) : null}
-            {/* ★ 2026-11-06（用户）：去掉底部「0:00 / 现在 HH:mm」横轴时间标签，
-                右下角的「现在」时间不再显示；数据新鲜度改由数值右侧「更新于 HH:MM」表达。 */}
+            {/* ★ 2026-11-10（用户）：洞察页所有指标卡补回横轴时间标签（左 0:00 / 右 24:00），
+                与整卡、详情页同源；数据新鲜度仍由数值右侧「更新于 HH:MM」表达。 */}
+            <View style={styles.axisLabels}>
+              <Text style={styles.axisLabel}>{axis.left}</Text>
+              <Text style={styles.axisLabel}>{axis.right}</Text>
+            </View>
           </View>
           )}
           {analysis ? (
@@ -420,7 +482,7 @@ export default function BasicMetricCard({
               </>
             ) : null}
           </View>
-          {/* ★ 2026-10-10（用户）：横轴与洞察页紧凑卡同口径 —— 左 0:00 / 右「现在 HH:mm」（原为固定 0/4/8…24时） */}
+          {/* ★ 2026-11-10（用户）：横轴固定「左 0:00 / 右 24:00」全天（原为「现在 HH:mm」） */}
           <View style={styles.axisLabels}>
             <Text style={styles.axisLabel}>{axis.left}</Text>
             <Text style={styles.axisLabel}>{axis.right}</Text>

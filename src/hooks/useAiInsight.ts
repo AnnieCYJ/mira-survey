@@ -21,18 +21,23 @@ import {
  * @param dayDk 可选：按「某历史日」生成/读取（当前仅 recovery 支持）。缺省=今天。
  *              传历史日时走该日的事实串与 `kind@dk` 缓存，切日即重新生成该日分析。
  */
-export function useAiInsight(kind: InsightKind, dayDk?: string): {
+export function useAiInsight(
+  kind: InsightKind,
+  dayDk?: string,
+  extraTag?: string,
+  enabled: boolean = true
+): {
   text: string | null;
   rows: AiInsightRow[] | null;
   loading: boolean;
 } {
   /**
-   * ★ 结论级状态指纹（recovery = 皮质醇 正常/偏高/紊乱 + 连续天数）。
+   * ★ 结论级状态指纹（recovery = 皮质醇 正常/偏高/紊乱 + 连续天数；circadian = 调用方传入的 extraTag）。
    * 它是 effect 的依赖：数据补齐导致结论翻转时（正常 → 偏高），缓存作废、重新生成，
    * 否则会一直显示早上生成的那版文案（大字已变、AI 未变）。
    */
-  const tag = insightTag(kind, dayDk);
-  const initial = peekInsight(kind, dayDk);
+  const tag = insightTag(kind, dayDk, extraTag);
+  const initial = enabled ? peekInsight(kind, dayDk, extraTag) : null;
   const [text, setText] = useState<string | null>(initial);
   const [loading, setLoading] = useState<boolean>(initial == null);
   const alive = useRef(true);
@@ -41,8 +46,17 @@ export function useAiInsight(kind: InsightKind, dayDk?: string): {
     alive.current = true;
     let cancelled = false;
 
+    // ★ 未启用（如首页同名卡片不需要昼夜节律 AI）→ 直接清空，不生成、不占模型。
+    if (!enabled) {
+      setText(null);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     // 切日：先同步取该日缓存（有则秒显），无则清空并重新生成
-    const cached = peekInsight(kind, dayDk);
+    const cached = peekInsight(kind, dayDk, extraTag);
     if (cached) {
       setText(cached);
       setLoading(false);
@@ -56,7 +70,7 @@ export function useAiInsight(kind: InsightKind, dayDk?: string): {
     // ★ 延后启动：端侧模型约 1.1GB，加载 + 推理会占用内存与主线程，
     //   必须让首屏渲染/滚动先跑完，否则进页面就卡。
     const timer = setTimeout(() => {
-      getAiInsight(kind, dayDk)
+      getAiInsight(kind, dayDk, extraTag)
         .then((t) => {
           if (cancelled || !alive.current) return;
           setText(t);
@@ -74,7 +88,7 @@ export function useAiInsight(kind: InsightKind, dayDk?: string): {
       clearTimeout(timer);
     };
     // tag 进依赖：结论翻转（例：皮质醇 正常 → 偏高）→ 旧文案作废并重新生成
-  }, [kind, dayDk, tag]);
+  }, [kind, dayDk, tag, enabled, extraTag]);
 
   useEffect(
     () => () => {
@@ -85,7 +99,10 @@ export function useAiInsight(kind: InsightKind, dayDk?: string): {
 
   return {
     text,
-    rows: kind === 'cycle' || kind === 'recovery' || kind === 'overview' ? parseInsightRows(text) : null,
+    rows:
+      kind === 'cycle' || kind === 'recovery' || kind === 'overview' || kind === 'circadian'
+        ? parseInsightRows(text)
+        : null,
     loading,
   };
 }

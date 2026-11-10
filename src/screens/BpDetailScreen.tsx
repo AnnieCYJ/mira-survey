@@ -207,9 +207,11 @@ const GAP = 30 * 60 * 1000;
   return { lineD: line, dots };
 }
 
-/** 日视图固定 0~24 小时刻度；今日末位显示「现在」，避免正午看到右侧标「24」造成错位 */
-function dayXAxis(isToday: boolean): string[] {
-  return ['0', '4', '8', '12', '16', '20', isToday ? '现在' : '24'];
+/** ★ 2026-11-10（用户）：日视图横轴固定「全天 0:00 → 24:00」刻度，与洞察页/状态趋势同源；
+ *  末位一律「24:00」——「现在」是误导：右侧刻度本就代表 24:00，曲线按真实采样时刻落点，
+ *  数据到几点线就画到几点，不该用「现在」顶替刻度。 */
+function dayXAxis(): string[] {
+  return ['0:00', '4:00', '8:00', '12:00', '16:00', '20:00', '24:00'];
 }
 
 /** 晨晚窗口（本地小时，含起点不含终点） */
@@ -315,10 +317,11 @@ export default function BpDetailScreen() {
   const hasData = sysHasData || diaHasData;
 
   // 日视图固定以全天 0~24h 为时间轴，测量点按真实时间落位，避免单点被缩到最右侧
-  const isTodayAnchor = dateKeyOf(anchor.getTime()) === dateKeyOf(Date.now());
   const dayStart = dayStartMs(anchor.getTime());
   const tMin = dayStart;
-  const tMax = isTodayAnchor ? Math.max(Date.now(), dayStart + 3600000) : dayStart + 86400000;
+  // ★ 2026-11-10（用户）：横轴固定「全天 0:00 → 24:00」，曲线按真实采样时刻落点；
+  //   不再把末位缩到「现在」，否则固定刻度(0/4/.../24) 与数据时间错位（如 18:40 时「20」竟标在 16:00 位）。
+  const tMax = dayStart + 86400000;
 
   let sysLine = '', sysDots: { x: number; y: number }[] = [],
       diaLine = '', diaDots: { x: number; y: number }[] = [];
@@ -509,7 +512,7 @@ export default function BpDetailScreen() {
 
         {/* X 轴标签：日视图走时间轴（space-between）；周/月/年每个柱位一槽、刻度居中，稀疏刻度与柱对齐 */}
         <View style={{ flexDirection: 'row', justifyContent: range === 'day' ? 'space-between' : undefined, paddingLeft: Y_GUT, marginTop: 6 }}>
-          {(range === 'day' ? dayXAxis(isTodayAnchor) : data.sys.axis).map((a, i) => (
+          {(range === 'day' ? dayXAxis() : data.sys.axis).map((a, i) => (
             <Text key={i} style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, flex: range === 'day' ? undefined : 1, textAlign: range === 'day' ? undefined : 'center' }}>{a}</Text>
           ))}
         </View>

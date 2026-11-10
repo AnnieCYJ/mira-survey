@@ -16,8 +16,10 @@ import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 import { useDeviceModel } from '../config/deviceModel';
-import { APP_VERSION_LABEL, APP_VERSION_TAG } from '../version';
+import { APP_VERSION_LABEL, APP_VERSION_TAG, APP_VERSION_CODE, APP_VERSION_NAME } from '../version';
 import { healthStore } from '../data/healthStore';
+// ★ 2026-11-09：App 内检查更新（版本清单 → 系统浏览器下载 APK → 系统安装器）
+import { checkAppUpdate, openApkDownload, downloadAndInstallApk, formatApkSize, type AppUpdateInfo } from '../data/appUpdate';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
 
@@ -51,6 +53,51 @@ export default function SettingsScreen() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [dumpPath, setDumpPath] = useState<string | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  // ── 检查更新 ──
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'latest' | 'available' | 'error'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const doCheckUpdate = React.useCallback(async () => {
+    setUpdateState('checking');
+    setUpdateMsg(null);
+    const r = await checkAppUpdate();
+    if (r.state === 'available') {
+      setUpdateInfo(r.info);
+      setUpdateState('available');
+    } else if (r.state === 'latest') {
+      setUpdateState('latest');
+      setUpdateMsg(`当前 ${r.current} 已是最新版本`);
+    } else {
+      setUpdateState('error');
+      setUpdateMsg(r.message);
+    }
+  }, []);
+  // 进设置页自动静默检查一次：有新版本直接显示下载入口，不用手动点
+  React.useEffect(() => {
+    void checkAppUpdate().then((r) => {
+      if (r.state === 'available') {
+        setUpdateInfo(r.info);
+        setUpdateState('available');
+      }
+    });
+  }, []);
+  const doDownloadUpdate = React.useCallback(async () => {
+    if (!updateInfo?.apkUrl || downloading) return;
+    setDownloading(true);
+    setProgress(0);
+    setUpdateMsg(null);
+    try {
+      // ★ 2026-11-10：App 内直接下载并拉起系统安装器（不再跳浏览器中转）
+      await downloadAndInstallApk(updateInfo.apkUrl, (p) => setProgress(p.progress));
+      setUpdateMsg('已拉起安装。请在系统弹窗里点「安装」完成更新（覆盖安装，本地数据不会丢）。');
+    } catch {
+      Alert.alert('下载失败', '请检查手机网络后重试，或复制更新地址到浏览器下载安装。');
+    } finally {
+      setDownloading(false);
+    }
+  }, [updateInfo, downloading]);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
     deviceName: null,
@@ -293,12 +340,14 @@ export default function SettingsScreen() {
             icon="sync"
             tone="cyan"
             title="数据同步"
-            desc="开启后从戒指读取并同步存储的生理数据"
+            desc={sync
+              ? '每次连上戒指自动回填全部历史数据；回前台、每 30 分钟也会补一次'
+              : '已关闭：连上戒指不再自动回填历史数据'}
             value={sync}
             onValueChange={(v) => {
               setSync(v);
-              // 「数据同步」开关是唯一控制 backfill（同步）的来源；
-              // 开启即触发一次回填，关闭则停止后续自动同步（不清除已存数据）。
+              // 「数据同步」是回填总开关（默认开启，持久化为 v2 标记）。
+              // 开启即立刻全量同步一次，之后每次连接都自动触发；关闭只停自动同步，不清除已有数据。
               RingBle.setSyncEnabled(v);
               if (v) RingBle.syncBackfill();
             }}
@@ -570,6 +619,53 @@ export default function SettingsScreen() {
             <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} strokeWidth={2} />
           </TouchableOpacity>
           <View style={styles.divider} />
+          {/* ★ 2026-11-09：检查更新 —— 读版本清单，有新版本就直接给下载入口 */}
+          <TouchableOpacity style={styles.navRow} onPress={doCheckUpdate} activeOpacity={0.7}>
+            <Icon name="sync" size={theme.fs(16)} color={mm.colors.ink} strokeWidth={2} />
+            <Text style={styles.navRowTitle}>检查更新</Text>
+            {updateState === 'checking' ? <Text style={styles.verRowVal}>检查中…</Text> : null}
+            {updateState === 'available' ? <Text style={styles.verRowVal}>有新版本</Text> : null}
+            {updateState === 'available' ? <View style={styles.updateDot} /> : null}
+            <Icon name="chevronRight" size={theme.fs(16)} color={theme.colors.textSub} strokeWidth={2} />
+          </TouchableOpacity>
+          {updateState !== 'idle' && updateState !== 'checking' ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.updateResult}>
+                {updateState === 'available' && updateInfo ? (
+                  <>
+                    <Text style={styles.updateTitle}>
+                      新版本 v{updateInfo.versionName} · {formatApkSize(updateInfo.sizeBytes) || 'APK'}
+                    </Text>
+                    {updateInfo.notes ? <Text style={styles.updateNotes}>{updateInfo.notes}</Text> : null}
+                    {downloading ? (
+                      <View style={styles.updateProgressWrap}>
+                        <View style={styles.updateProgressTrack}>
+                          <View style={[styles.updateProgressFill, { width: `${Math.max(progress, 3)}%` }]} />
+                        </View>
+                        <Text style={styles.updateProgressPct}>{progress}%</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity style={styles.updateBtn} onPress={doDownloadUpdate} activeOpacity={0.8}>
+                        <Text style={styles.diagBtnText}>下载并安装</Text>
+                      </TouchableOpacity>
+                    )}
+                    <Text style={styles.updateNotes}>
+                      {downloading
+                        ? '正在本地下载更新包，完成后会自动拉起系统安装器…'
+                        : '点「下载并安装」即在本地下载并拉起安装（覆盖安装，本地数据不会丢）。'}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.updateNotes}>{updateMsg}</Text>
+                )}
+                {updateState === 'available' && updateMsg ? (
+                  <Text style={styles.updateNotes}>{updateMsg}</Text>
+                ) : null}
+              </View>
+            </>
+          ) : null}
+          <View style={styles.divider} />
           {/* ★ 本轮：设置页展示当前版本号（与 git tag 对齐） */}
           <View style={styles.verRow}>
             <Text style={styles.verRowTitle}>当前版本</Text>
@@ -578,6 +674,11 @@ export default function SettingsScreen() {
           <View style={styles.verRow}>
             <Text style={styles.verRowTitle}>版本标记</Text>
             <Text style={styles.verRowVal}>{APP_VERSION_TAG}</Text>
+          </View>
+          {/* ★ 更新比对用的真相源（与 android/app/build.gradle 一致） */}
+          <View style={styles.verRow}>
+            <Text style={styles.verRowTitle}>版本代号</Text>
+            <Text style={styles.verRowVal}>{APP_VERSION_NAME} ({APP_VERSION_CODE})</Text>
           </View>
         </Card>
       </ScreenContainer>
@@ -726,6 +827,61 @@ const styles = StyleSheet.create({
   verRowVal: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSub,
+  },
+  // ── 检查更新 ──
+  updateDot: {
+    width: theme.fs(7),
+    height: theme.fs(7),
+    borderRadius: theme.fs(4),
+    backgroundColor: '#E9705B',
+    marginLeft: theme.sp(1),
+  },
+  updateResult: {
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.sp(3),
+    gap: theme.sp(2),
+  },
+  updateTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textBody,
+  },
+  updateNotes: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    lineHeight: theme.fontSize.sm * 1.5,
+  },
+  updateBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.accentSolid,
+    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.pill,
+  },
+  // ★ 2026-11-10：App 内下载进度条
+  updateProgressWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+  },
+  updateProgressTrack: {
+    flex: 1,
+    height: theme.fs(8),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBorder,
+    overflow: 'hidden',
+  },
+  updateProgressFill: {
+    height: theme.fs(8),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentSolid,
+  },
+  updateProgressPct: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textBody,
+    minWidth: theme.fs(34),
+    textAlign: 'right',
   },
   noteCard: { marginBottom: theme.space.sm },
   footnote: {

@@ -85,21 +85,8 @@ export default function RecoveryTrendChart({
     return { x, y, runs, dots, ticks, padL, padR, padT, padB, lastValid: valid[valid.length - 1] };
   }, [W, values, endDayMs, height, ticksProp]);
 
-  if (W === 0 || !layout) {
-    return (
-      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-        {!hasData ? (
-          <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={styles.emptyText}>近 14 天暂无数据，同步后自动绘制</Text>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
-  const { x, y, runs, dots, ticks, padL, padR, padT, padB, lastValid } = layout;
-  const plotW = W - padL - padR;
-
-  // ★ 统一数值气泡：点任意一天 → 显示日期 + 当天恢复力分值
+  // ★ 2026-11-08 修复「Rendered more hooks」：tapSlots 必须在提前 return 之前无条件执行
+  //   （与 RecoveryDayTrendChart 同源的「首帧 W=0 跳过 Hook、第二帧多一个 Hook」崩溃）。
   const tapSlots = React.useMemo<ChartTapSlot[]>(() => {
     if (!layout || W <= 0) return [];
     return layout.dots.map((d) => {
@@ -113,6 +100,20 @@ export default function RecoveryTrendChart({
       };
     });
   }, [layout, W, height, endDayMs, values.length]);
+
+  if (W === 0 || !layout) {
+    return (
+      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+        {!hasData ? (
+          <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.emptyText}>近 14 天暂无数据，同步后自动绘制</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+  const { x, y, runs, dots, ticks, padL, padR, padT, padB, lastValid } = layout;
+  const plotW = W - padL - padR;
 
   return (
     <View>

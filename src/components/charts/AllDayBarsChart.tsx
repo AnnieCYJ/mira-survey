@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
-import Svg, { Rect, Line, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../../theme/theme';
 import { mm } from '../../theme/mindmate';
 import { chart } from '../../theme/chart';
 import { DAY_HOUR_TICKS, DAY_MINOR_TICK_MINUTES, hourTickLabel } from '../../lib/chartAxis';
 import { bucketMean, type Bucket } from '../../lib/timeBuckets';
-import { smoothPath } from '../../lib/smoothPath';
 import MoodBlob from '../MoodBlob';
 import ChartTapTip, { type ChartTapSlot } from '../ChartTapTip';
 import type { MoodKey } from '../../data/emotionLog';
@@ -27,7 +26,9 @@ import type { MoodKey } from '../../data/emotionLog';
  *      （对齐「自然周期轴永远画满整段 + 未来留空槽」铁律）
  *   2. 没数据**不插值**：已过去的空槽画 2pt灰色空桩（让人看出「有槽但没读到」），
  *      未来的槽**完全不画**（不画桩也不画柱）
- *   3. 均值线不用纯白（Oura 用白是因为压在深色图上；我们是白底卡，白线不可见）→ 用墨色
+ *   3. ★ 2026-11-09（用户）：柱上不再叠加「全天均值」白色趋势线 ——
+ *      288 根柱已经足够表达全天的疏密与冲高，再压一条平滑白线只会盖住柱子、看着像两层图。
+ *      线与其图例项一并移除，`meanLine` 参数保留只为兼容调用方，不再生效。
  */
 
 export type DayBarSegment = 'sleep' | 'awake' | 'active';
@@ -119,11 +120,15 @@ export default function AllDayBarsChart({
   const [w, setW] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
-  const t0 = dayStartMs ?? useMemo(() => {
+  // ★ 2026-11-08 修复条件 Hook（Rules of Hooks）：`dayStartMs ?? useMemo(...)` 在传入
+  //   dayStartMs 的渲染里不会调用该 Hook，Hook 数量随 prop 变化 → React 崩溃风险。
+  //   改为无条件 useMemo + 事后取值。
+  const t0Fallback = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   }, []);
+  const t0 = dayStartMs ?? t0Fallback;
   const now = nowMs ?? Date.now();
   const spanMs = spanMsProp ?? 86_400_000;
   const plotW = Math.max(0, w - PAD_L - PAD_R);
@@ -204,25 +209,11 @@ export default function AllDayBarsChart({
       );
     }
 
-    // 趋势线：按 ~24 个取样点连（够顺又不至于太密）
-    // ★ 2026-10-10（用户：「HRV 日间中间夹了睡眠，那中间这块就不要连线了，有点奇怪」）：
-    //   趋势线必须在「静默区 / 空槽」处**断开**——日间 HRV 里睡眠段是静音的，
-    //   如果只把柱子静音而线照连，就会出现一条曲线横穿睡眠段，很怪。
-    //   所以这里按段收集：遇到 muted槽或空槽就封段，最后每段各自平滑成一条 path。
-    const trendSegs: { x: number; y: number }[][] = [];
-    let seg: { x: number; y: number }[] = [];
-    const closeSeg = () => { if (seg.length >= 2) trendSegs.push(seg); seg = []; };
-    const step = Math.max(1, Math.round(slotCount / 24));
-    for (let i = 0; i < slotCount; i += step) {
-      const win = buckets.slice(i, i + step);
-      const usable = win.filter((b) => b.v != null
-        && !mutedRanges?.some(([a, z]) => b.t >= a && b.t <= z));
-      if (!usable.length) { closeSeg(); continue; }
-      const avg = usable.reduce((a, b) => a + (b.v as number), 0) / usable.length;
-      seg.push({ x: xOf(usable[0].t), y: yAt(avg) });
-    }
-    closeSeg();
-    const meanPaths = mean != null ? trendSegs.map((s) => smoothPath(s)).filter(Boolean) : [];
+    // ★ 2026-11-09（用户「去掉柱状图上面那个白色的趋势图那个线」）：
+    //   原这里按 ~24 个取样点算分段平滑折线（meanPaths），画成压在柱子之上的纯白趋势线。
+    //   用户要求去掉这条线；柱状图保留。整段平滑计算一并移除，日视图不再做无用功。
+    //   `mean` 变量保留只为兼容 meanLine 参数与下方 geom 依赖数组。
+    const meanPaths: string[] = [];
 
     const minorLines: React.ReactNode[] = [];
     if (minorTicks) {
@@ -335,23 +326,9 @@ export default function AllDayBarsChart({
           {geom.ticks}
           {geom.baseline}
           {geom.bars}
-          {/* ★ 2026-10-10（用户「为什么看不到趋势图」）：趋势线原来画在 bars **之前**，
-              被 288 根柱子整层盖住 → 真机上完全看不见。现在画在柱子之上，
-              并加一道卡底色「衬底」描边，保证压在任何颜色的柱子上都读得清。
-              ★ 趋势线按段绘制（meanPaths）：静默区/ 空槽处断开，不会横穿睡眠段。 */}
-          {geom.hasData && geom.meanPaths.length > 0 ? (
-            <>
-              {geom.meanPaths.map((d, i) => (
-                <Path key={`c${i}`} d={d} fill="none" stroke={theme.colors.cardBg}
-                  strokeWidth={chart.lw.series + 2.4} strokeLinejoin="round" strokeLinecap="round" />
-              ))}
-              {geom.meanPaths.map((d, i) => (
-                <Path key={`l${i}`} d={d} fill="none" stroke={mm.colors.ink}
-                  strokeWidth={chart.lw.series} strokeLinejoin="round" strokeLinecap="round" />
-              ))}
-            </>
-          ) : null}
-          {/* ★ 2026-11-05（用户）：心情 icon 标在趋势图上的对应时间点（最上层，盖在柱/线之上） */}
+          {/* ★ 2026-11-09（用户）：白色「全天均值」趋势线 + 卡底色衬底描边已整体移除。
+              柱状图只留 288 根小柱，不再叠任何折线；meanPaths 恒为空数组。 */}
+          {/* ★ 2026-11-05（用户）：心情 icon 标在趋势图上的对应时间点（最上层，盖在柱之上） */}
           {geom.moodNode}
         </Svg>
       )}
@@ -377,9 +354,10 @@ export default function AllDayBarsChart({
  * 否则图例写「睡眠/清醒/活动」而柱子按情绪方向着色，用户完全对不上 —— 用户 2026-10-12 实锤）。
  */
 export function DayBarsLegend({
-  showMean = true,
+  showMean = false,
   items,
 }: {
+  /** ★ 2026-11-09：白色均值线已移除，此参数保留兼容，恒不显示 */
   showMean?: boolean;
   items?: { color: string; label: string }[];
 }) {

@@ -19,7 +19,8 @@
 import { healthStore } from '../data/healthStore';
 import { bedtimeHour, fmtClockHM, parseClockMinutes } from './sleepTime';
 
-export type SleepRangeKey = 'week' | 'month' | 'year';
+/** ★ 2026-11-09（用户）：昼夜节律详情页加回「日」视图（单夜入睡/起床 + 和昨天对比）。 */
+export type SleepRangeKey = 'day' | 'week' | 'month' | 'year';
 
 /** 纵轴固定范围：底 18:00、顶次日 12:00（固定刻度才方便跨周/月/年比较，不随数据跳）。 */
 export const AXIS_MIN_H = 18;
@@ -174,6 +175,13 @@ const WEEK_LABEL = ['周一', '周二', '周三', '周四', '周五', '周六', 
  */
 export function collectSleepSeries(range: SleepRangeKey, anchor: Date): SleepNightPoint[] {
   const out: SleepNightPoint[] = [];
+  if (range === 'day') {
+    // ★ 日视图给两根柱：昨天 + 今天。单根柱看不出「和昨天比」，两根并排才有一眼可比的参照。
+    //   仍是逐夜真实时刻，无数据的那天留空槽，绝不拿另一天补。
+    out.push(nightOf(iso(addDays(anchor, -1)), '昨天'));
+    out.push(nightOf(iso(anchor), '今天'));
+    return out;
+  }
   if (range === 'week') {
     const start = mondayOf(anchor);
     for (let i = 0; i < 7; i++) {
@@ -229,6 +237,7 @@ export function collectSleepSeries(range: SleepRangeKey, anchor: Date): SleepNig
 export function seriesTicks(points: SleepNightPoint[], range: SleepRangeKey): { i: number; label: string }[] {
   const n = points.length;
   if (!n) return [];
+  if (range === 'day') return points.map((p, i) => ({ i, label: p.label }));
   if (range === 'week') return points.map((p, i) => ({ i, label: p.label.slice(1) }));
   if (range === 'month') {
     const idx = [...new Set([0, 7, 14, 21, n - 1])].filter((i) => i >= 0 && i < n).sort((a, b) => a - b);
@@ -363,4 +372,58 @@ export function buildBaselineComparison(anchor: Date, windowDays = 60): Baseline
   empty.diffMin = diffMin;
   empty.tone = diffMin < -10 ? 'good' : diffMin >= 45 ? 'warn' : 'neutral';
   return empty;
+}
+
+/* ── 日视图：今天 vs 昨天 ─────────────────────────────────────────────── */
+
+export interface YesterdayComparison {
+  today: SleepNightPoint;
+  yesterday: SleepNightPoint;
+  /** 今天 − 昨天（分钟）：正值 = 更晚 / 更久；null = 有一晚没记录 */
+  diffBedMin: number | null;
+  diffWakeMin: number | null;
+  diffDurationMin: number | null;
+  /** 一句描述性结论，只讲时间差，不评分、不给建议 */
+  headline: string;
+  tone: 'good' | 'warn' | 'neutral';
+}
+
+/**
+ * ★ 2026-11-09（用户：昼夜节律详情页加「日」视图，要有「和昨天的一些对比」）。
+ * 严格按相邻两个自然日取真实归档时刻，不涉及 14 天基线、不做推算。
+ * 任一晚缺时刻 → 对应差值留 null，结论如实说明缺哪天，绝不拿另一晚补值。
+ */
+export function compareWithYesterday(anchor: Date): YesterdayComparison {
+  const today = nightOf(iso(anchor), '今天');
+  const yesterday = nightOf(iso(addDays(anchor, -1)), '昨天');
+  const diffBedMin = today.bedH != null && yesterday.bedH != null
+    ? Math.round((today.bedH - yesterday.bedH) * 60) : null;
+  const diffWakeMin = today.wakeH != null && yesterday.wakeH != null
+    ? Math.round((today.wakeH - yesterday.wakeH) * 60) : null;
+  const diffDurationMin = today.durationH != null && yesterday.durationH != null
+    ? Math.round((today.durationH - yesterday.durationH) * 60) : null;
+
+  let headline: string;
+  if (today.bedH == null || today.wakeH == null) {
+    headline = '今天还没有带入睡 / 起床时刻的记录';
+  } else if (yesterday.bedH == null || yesterday.wakeH == null) {
+    headline = '昨天没有可比的作息记录，先记下今天这一晚';
+  } else {
+    const bits: string[] = [];
+    if (diffBedMin != null) {
+      bits.push(Math.abs(diffBedMin) < 10
+        ? '入睡和昨天差不多'
+        : `比昨天${diffBedMin > 0 ? '晚' : '早'}睡 ${Math.abs(diffBedMin)} 分钟`);
+    }
+    if (diffWakeMin != null) {
+      bits.push(Math.abs(diffWakeMin) < 10
+        ? '起床时间差不多'
+        : `起床${diffWakeMin > 0 ? '晚' : '早'}了 ${Math.abs(diffWakeMin)} 分钟`);
+    }
+    headline = bits.join('，') + '。';
+  }
+  const tone: 'good' | 'warn' | 'neutral' =
+    diffBedMin != null && diffBedMin >= 45 ? 'warn'
+      : diffBedMin != null && diffBedMin <= -10 ? 'good' : 'neutral';
+  return { today, yesterday, diffBedMin, diffWakeMin, diffDurationMin, headline, tone };
 }

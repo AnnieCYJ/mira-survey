@@ -21,13 +21,28 @@ import { mm } from '../theme/mindmate';
 import { buildTodayTimeline } from '../lib/buildTodayTimeline';
 import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
-import type { TimelineItem } from './TodayTimelineCard';
+import { ScoreBar, type TimelineItem } from './TodayTimelineCard';
+// ★ 2026-11-11（用户：回顾日按维度拆解 + 有分数的小卡加进度条）
+import DayDimensionSection from './DayDimensionSection';
+import { buildDayDimensionGroups } from '../lib/reviewDayDimensions';
+import { loadCycleLog } from '../data/cycleLog';
+import type { CycleLog } from '../lib/cycleMath';
 import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortByTime } from '../data/selfReportLog';
 // ★ 本轮（用户）：呼吸 / 冥想完成后，其完成记录落在 interventionLog，
 //   回顾·日 原本只读 selfReportLog，导致「做完呼吸回顾里啥也没有」——这里把 interventionLog 也并进来。
 import { ensureInterventionLogLoaded, allInterventionEntries } from '../data/interventionLog';
+import { ensureEmotionLogLoaded, onEmotionLog } from '../data/emotionLog';
 import DateAnchorPicker from './DateAnchorPicker';
-import CrownMark from './CrownMark';
+import SunMark from './SunMark';
+// ★ 2026-11-10（用户）：AI 细小观察卡——"记得今天几点到几点状态变了/完成了什么/哪些有提升"，
+//   由 buildDayObservations 从真实存储数据推算（睡眠对比前晚 / 身心压力变化时段 / 活动高峰时段），
+//   历史日同样生效；没有数据不出卡、不臆测。
+import { buildDayObservations, type DayObservation } from '../lib/buildDayObservations';
+
+// ★ 2026-11-10（用户：「球里太阳币数要等于回顾日整个月累计获得的数量」）：
+//   **移除临时演示太阳 DEMO_SUN**。原先它强制当日回顾第一张卡片显示一枚假太阳，
+//   让回顾日里看到的太阳数比水晶球里的真实达标数多；现在卡片只认 real `goalMet`，
+//   日视图卡片 / 月历格子 / 水晶球金币三者完全同源，达标一天就多一枚、逐月累加。
 
 /** ★ 2026-11-05（用户 #286）：单日记录摘要，上抛给父层用于「钉在 Tab 正上方」的浮层。
  *  count = 当日记录条数；selLabel = 标题前缀（今日 / X月X日）；first/last = 首末记录时间/标题。 */
@@ -41,7 +56,12 @@ export type DaySummary = {
   lastTitle: string;
 };
 
-const ROW_H = theme.sp(26);          // 每行 104：卡片区高
+// ★ 2026-11-09(5)（用户：文字要讲全，不要省略号）：去掉 numberOfLines 后文字行数变多，
+//   行高 104→120，保证完整文案在固定行高内放得下。
+// ★ 2026-11-11（用户：有分数的小卡加进度条）：进度条 + 分数标签约多占 25pt；
+//   行高再 120→168，避免卡片内容超出固定行高压到下一行（正是用户反复吐槽的重叠问题）。
+//   曲线点 y = i*ROW_H + ROW_H/2 与行中心共用同一常量，行高变化后端点仍然严格对齐。
+const ROW_H = theme.sp(42);          // 每行 168：卡片区高
 const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
 const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -125,14 +145,21 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
 
   // ★ 本轮（用户）：进入回顾即拉起回顾补充数据源；新记录产生（如用户在别的页刚完成饮食/心情）
   //   即时合并进时间线，无需手动刷新。
-  const [, setRecapTick] = useState(0);
+  const [recapTick, setRecapTick] = useState(0);
+  // ★ 2026-11-11：历史日的「生理周期阶段」要用本地经期记录推算（与日历页同源）。
+  //   异步加载一次，加载完成触发维度区重算；没记录就诚实不出周期卡，不臆测。
+  const [cycleLog, setCycleLog] = useState<CycleLog | null>(null);
   useEffect(() => {
     let alive = true;
     void ensureSelfReportsLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
     // ★ 本轮（用户）：呼吸 / 冥想记录同样要即时并入时间线
     void ensureInterventionLogLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
+    void loadCycleLog().then((l) => { if (alive) setCycleLog(l); }).catch(() => {});
+    // ★ 2026-11-11：情绪自报也是维度卡的「心情」来源，载入完成/新增即时重算
+    void ensureEmotionLogLoaded().then(() => { if (alive) setRecapTick((n) => n + 1); });
     const off = onSelfReport(() => { if (alive) setRecapTick((n) => n + 1); });
-    return () => { alive = false; off(); };
+    const offEmotion = onEmotionLog(() => { if (alive) setRecapTick((n) => n + 1); });
+    return () => { alive = false; off(); offEmotion(); };
   }, []);
 
   const result = useMemo(() => {
@@ -188,10 +215,33 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
       });
   }, [selDate]);
 
-  const items: TimelineItem[] = useMemo(
-    () => sortByTime<TimelineItem>([...(result?.items ?? []), ...recapItems, ...interventionItems]),
-    [result, recapItems, interventionItems],
+  // ★ 2026-11-10（用户）：AI 细小观察卡（recapTick 依赖：回填数据到位后重算观察卡）
+  const obsItems = useMemo<DayObservation[]>(() => {
+    try { return buildDayObservations(selDate); } catch { return []; }
+  }, [selDate, recapTick]);
+
+  // ★ 2026-11-11（用户：回顾日按维度拆解）：独立渲染，不占曲线 items 的 7 条上限。
+  //   cycleLog / recapTick 到位后重算；单源异常已在取数层吞掉，不会拖崩整页。
+  const dimensionGroups = useMemo(
+    () => buildDayDimensionGroups(selDate, cycleLog),
+    [selDate, cycleLog, recapTick],
   );
+
+  const items: TimelineItem[] = useMemo(() => {
+    const all = sortByTime<TimelineItem>([...(result?.items ?? []), ...recapItems, ...interventionItems, ...obsItems]);
+    // 上限 7 条（用户："一天大概五六个、六七个，看他今天完成的事情多少"）——
+    // 超出时优先裁 AI 观察卡（priority 大者先让位），用户打卡/基础时间线永不裁。
+    if (all.length <= 7) return all;
+    const dropOrder = [...obsItems].sort((a, b) => b.priority - a.priority);
+    const dropped = new Set<DayObservation>();
+    let excess = all.length - 7;
+    for (const o of dropOrder) {
+      if (excess <= 0) break;
+      dropped.add(o);
+      excess -= 1;
+    }
+    return all.filter((x) => !dropped.has(x as DayObservation));
+  }, [result, recapItems, interventionItems, obsItems]);
   const totalH = Math.max(items.length, 1) * ROW_H;
   const wavePath = buildWavePath(totalH, items.length);
   const isSelToday = sameDay(selDate, new Date());
@@ -220,6 +270,10 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
       {showDatePicker && (
         <DateAnchorPicker value={selDate} onChange={(d) => setSelDate(d)} range="day" maxDate={new Date()} />
       )}
+
+      {/* ★ 2026-11-11（用户）：这一天按维度拆解（生理周期 / 睡眠 / 运动 / 状态 /
+          情绪压力 / 身体指标 / 完成的事）。独立区块，不占曲线 items 的 7 条上限。 */}
+      <DayDimensionSection groups={dimensionGroups} />
 
       {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ── */}
       {items.length === 0 ? (
@@ -254,21 +308,34 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
                 <View key={`${it.time}-${i}`} style={styles.row}>
                   <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
                   <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
-                    {/* ★ 本轮（用户 #245）：达标 → 卡片右上角画星 */}
+                    {/* ★ 2026-11-10：只认真实达标，与月历格子、水晶球金币三者同源 */}
                     {it.goalMet ? (
                       <View style={styles.goalStar}>
-                        <CrownMark size={theme.fontSize.lg} color={mm.colors.limeCore} />
+                        <SunMark size={Math.round(theme.fontSize.lg * 1.4)} />
                       </View>
                     ) : null}
                     <View style={styles.cardHead}>
                       <View style={[styles.icon, { backgroundColor: mixWhite(it.color, 0.82) }]}>
                         <Text style={styles.iconTxt}>{it.emoji ?? emojiFor(it.title)}</Text>
                       </View>
-                      <Text style={styles.cardTitle} numberOfLines={2}>{it.title}</Text>
+                      <Text style={styles.cardTitle}>{it.title}</Text>
                     </View>
-                    {!!it.sub && <Text style={styles.cardSub} numberOfLines={2}>{it.sub}</Text>}
+                    {!!it.sub && <Text style={styles.cardSub}>{it.sub}</Text>}
+                    {/* ★ 2026-11-11（用户）：有分数才画进度条；完成任务型 / 纯数值型不画 */}
+                    {typeof it.score === 'number' && Number.isFinite(it.score) ? (
+                      <ScoreBar
+                        score={it.score}
+                        max={it.scoreMax ?? 100}
+                        color={it.color}
+                        label={it.scoreLabel ?? `${Math.round(it.score)} / ${Math.round(it.scoreMax ?? 100)}`}
+                        track={mm.colors.emptyFill}
+                      />
+                    ) : null}
                     {/* ★ 本轮（用户 #248）：卡片底部补一句分析 */}
-                    {!!it.analysis && <Text style={styles.cardAnalysis} numberOfLines={2}>{it.analysis}</Text>}
+                    {/* ★ 2026-11-09(5)（用户：文字要讲全，不要省略号）—— 去掉全部 numberOfLines 截断 */}
+                    {!!it.analysis && <Text style={styles.cardAnalysis}>{it.analysis}</Text>}
+                    {/* ★ 健康意义不在这里重复：独立的「按维度看」小卡已经逐条讲清楚，
+                        曲线卡保持紧凑，避免固定行高被撑破。 */}
                     {/* ★ 本轮（用户）：饮食等带图记录，卡片内附图 */}
                     {!!it.imageUri && (
                       <Image source={{ uri: it.imageUri }} style={styles.cardPhoto} resizeMode="cover" />

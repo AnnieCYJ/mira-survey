@@ -136,18 +136,19 @@ function WaveBars({ active }: { active?: boolean }) {
 // ★ 性能隔离：常驻气泡的 idle/rec/spoke 文案**自己订阅**语音直播态，
 //   父组件 HomeAiBubble 不再订阅 liveText —— 否则录音时每 250ms 一次转写推进
 //   会让整块气泡（含 SVG 路径 / 左图 / 按钮）全量重渲染，叠加 ASR 推理直接卡成幻灯片。
-const BubbleIdleContent = memo(function BubbleIdleContent({ height, analysis }: { height?: number; analysis?: string }) {
+const BubbleIdleContent = memo(function BubbleIdleContent({ minH, onContentLayout, analysis }: { minH?: number; onContentLayout?: (h: number) => void; analysis?: string }) {
   const { visible, inlineMode, liveText, spokenText } = useVoiceTriggerLive();
   const listening = visible && inlineMode;
   const title = listening ? liveText.trim() || LISTEN_TEXT : IDLE_TEXT;
   const spoke = !listening && !!spokenText.trim();
   const displayText = listening ? title : spoke ? spokenText : IDLE_TEXT;
   const showHint = !listening && !spoke;
-  // ★ 2026-10-14：idle 文案容器补 height（与建议卡一致）→ 文字在气泡内垂直居中。
-  // ★ 方案B（2026-10-14）：圆环下方原分析两行（analysis）移入气泡顶部。
-  // ★ V4（2026-10-15）：标题行置顶（参考图结构），分析次之，占位文案与声波收尾。
+  // ★ 2026-11-08：去掉固定 height 钉死 → 内容按真实高度撑开（minH 作地板，onLayout 上报实测高度给父组件画玻璃卡）。
   return (
-    <View style={[styles.content, height ? { height } : null]}>
+    <View
+      style={[styles.content, minH != null ? { minHeight: minH } : null]}
+      onLayout={(e) => { onContentLayout?.(e.nativeEvent.layout.height); }}
+    >
       {analysis ? (
         <Text style={styles.analysisText} numberOfLines={3}>{analysis}</Text>
       ) : null}
@@ -200,7 +201,11 @@ const VoiceListeningView = memo(function VoiceListeningView() {
 
 export default function HomeAiBubble({ navigation, status, width, height = BUBBLE_H, analysis }: { navigation?: any; status?: any; width: number; height?: number; analysis?: string }) {
   const w = width;
-  const bubbleHeight = Math.min(BUBBLE_H, Math.max(76, height));
+  // ★ 2026-11-08（用户：分析/胶囊多行时气泡要自适应、不重叠）：父组件传入的 height 作为**最小高度地板**，
+  //   真实高度由内容 onLayout 测量后撑开；SVG 玻璃卡跟随内容高度，不再被固定值钉死。
+  const minH = Math.max(76, height ?? BUBBLE_H);
+  const [contentH, setContentH] = useState(minH);
+  const bubbleHeight = Math.max(minH, Math.round(contentH));
   const [savingHabit, setSavingHabit] = useState(false);
   const savingHabitRef = useRef(false);
   const [saveError, setSaveError] = useState('');
@@ -533,7 +538,10 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
               按钮语言统一：主 = 胶囊绿 pill（行动型是 CTA「去呼吸›」，其余是 心+「有用」）；
               次 = 「不感兴趣」文字链接 —— 点了立刻换一条新建议（force 重取）。 */}
         {hasCard ? (
-          <Animated.View style={[styles.suggContent, { height: bubbleHeight, opacity: enterOpacity, transform: [{ translateX: enterShiftX }, { translateY: enterShiftY }, { scale: enterScale }] }]}>
+          <Animated.View
+            style={[styles.suggContent, { minHeight: minH, opacity: enterOpacity, transform: [{ translateX: enterShiftX }, { translateY: enterShiftY }, { scale: enterScale }] }]}
+            onLayout={(e) => { setContentH(e.nativeEvent.layout.height); }}
+          >
             {analysis ? <Text style={styles.analysisText} numberOfLines={3}>{analysis}</Text> : null}
             {kept ? (
               /* ── 确认态：点了「有用」→ 只显示这一行（带心），2.4s 后自动收回 idle ── */
@@ -633,7 +641,7 @@ export default function HomeAiBubble({ navigation, status, width, height = BUBBL
             )}
           </Animated.View>
         ) : (
-          <BubbleIdleContent height={bubbleHeight} analysis={analysis} />
+          <BubbleIdleContent minH={minH} onContentLayout={setContentH} analysis={analysis} />
         )}
         {/* ★ 录音态浮层：覆盖在气泡之上，保证有建议卡时也看得见「正在聆听…」 */}
         <VoiceListeningView />

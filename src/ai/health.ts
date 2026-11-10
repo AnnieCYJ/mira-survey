@@ -448,14 +448,25 @@ export function buildHealthSnapshot(): string {
   if (sleepFact.quality !== 'missing') {
     blocks.push(`• 睡眠事实：${sleepFact.date}；睡眠评分 ${sleepFact.value}；${sleepFact.source}；${sleepFact.sampleCount} 条夜间摘要`);
   }
-  const tl = st.statusTimeline || [];
-  if (tl.length) {
-    const last = tl[tl.length - 1];
-    add('今日状态值', `${last.value}/100(${last.level})`);
+  // ★ 2026-11-08（用户：AI 文案说「准备度 31/100」与首页圆环 70 打架）：
+  //   「今日状态」= 首页大圆环**同源**值（RingBle.curveStatus.value，含 dataStale 判断），
+  //   独立成第一块事实（模型最先看到），带档位词——所有结论必须与它一致；
+  //   不再用 statusTimeline 末值 —— 两个口径可能不同，模型会拿它当主结论、与用户看到的圆环对冲。
+  const csHero = st.curveStatus;
+  if (csHero && !csHero.dataStale && csHero.value != null) {
+    const heroVal = Math.round(csHero.value);
+    const heroBand = heroVal >= 76 ? '元气满满' : heroVal >= 51 ? '状态良好' : heroVal >= 26 ? '平平静静' : '休息一下';
+    blocks.push(`• 今日状态(首页圆环显示)=${heroVal}/100（档位：${heroBand}）`);
+  } else {
+    const tl = st.statusTimeline || [];
+    if (tl.length) {
+      const last = tl[tl.length - 1];
+      blocks.push(`• 今日状态值(非实时,仅供参考)=${last.value}/100(${last.level})`);
+    }
   }
-  // 当前时段（AI 用它判断是白天工作还是夜晚休息场景）
+  // 当前时段（AI 用它决定给早上任务/午餐午休/下午运动/睡前放松哪类建议；★ 2026-11-08 对齐 早/午/下午/晚上 四段）
   const h = new Date().getHours();
-  const timeLabel = h >= 6 && h < 12 ? '上午' : h >= 12 && h < 18 ? '下午' : h >= 18 && h < 22 ? '傍晚' : '深夜';
+  const timeLabel = h >= 6 && h < 11 ? '上午' : h >= 11 && h < 14 ? '中午' : h >= 14 && h < 18 ? '下午' : h >= 18 && h < 23 ? '晚上' : '深夜';
   blocks.push(`• 当前时段：${timeLabel}(${h}:00)`);
   if (rt.length) blocks.push(`• 睡眠与活动摘要：${rt.join('，')}`);
 

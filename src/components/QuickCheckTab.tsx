@@ -246,20 +246,26 @@ const ov = StyleSheet.create({
     justifyContent: 'center',
   },
   box: {
-    width: 260,
+    width: 268,
     alignItems: 'center',
-    // ★ 2026-11-08 曾因「太淡」改深蓝玻璃；用户回退要求：体检弹框应与洞察页一致用白玻璃磨砂。
-    //   改用白玻璃 cardBgStrong + cardBorder（与 InsightScreen 同源），文字改深字 onGlassInk 保证可读。
-    backgroundColor: theme.colors.cardBgStrong,
+    // ★ 2026-11-09（用户：弹窗颜色还是不对，太浅看不清字）：
+    //   上一版用 cardBgStrong = 白 16% 半透明，叠在 0.62 深色遮罩上几乎全透，
+    //   背后的体检卡片（数字/雷达图/分析段）会穿透成重影；而 onGlassInk 是深墨色，
+    //   压在暗底上对比度严重不足 → 字发灰看不清。
+    //   修法：仍是用户要的「白玻璃磨砂」，但改成近实心浅底（白 97%），
+    //   墨色字才真正落在浅底上（对比约 12:1），背景内容也被完全挡住。
+    //   注意：不要用 theme.colors.cardBgStrong —— 那是深色主题里给白字卡片用的玻璃。
+    backgroundColor: 'rgba(248,246,253,0.97)',
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
+    borderColor: 'rgba(118,108,146,0.30)',
     borderRadius: theme.radius.card,
     paddingVertical: theme.sp(6),
     paddingHorizontal: theme.sp(5),
     shadowColor: '#000',
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.26,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   ringWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: theme.sp(4) },
   ringOuter: {
@@ -267,14 +273,15 @@ const ov = StyleSheet.create({
     width: 96, height: 96,
     borderRadius: 48,
     borderWidth: 2,
-    borderColor: theme.colors.ui.onGlassInk,
+    // 浅底上用带透明度的墨色环，避免实色 #2E2A3A 两圈太压眼
+    borderColor: 'rgba(46,42,58,0.55)',
   },
   ringMid: {
     position: 'absolute',
     width: 72, height: 72,
     borderRadius: 36,
     borderWidth: 2,
-    borderColor: theme.colors.ui.onGlassInk,
+    borderColor: 'rgba(46,42,58,0.32)',
   },
   core: {
     width: 52, height: 52,
@@ -288,14 +295,17 @@ const ov = StyleSheet.create({
   coreEmoji: { fontSize: theme.fontSize.orb },
   stepText: {
     fontSize: theme.fontSize.card,
-    fontWeight: theme.weight.semibold,
+    fontWeight: theme.weight.bold,
+    lineHeight: 24,
+    // 近实心浅底上必须用深墨字（onGlassInk），换成 textTitle 白字会再次不可读
     color: theme.colors.ui.onGlassInk,
     textAlign: 'center',
   },
   hint: {
     marginTop: theme.sp(2),
     fontSize: theme.fontSize.micro,
-    color: theme.colors.ui.onGlassInkSub,
+    lineHeight: 18,
+    color: 'rgba(74,70,96,0.88)',
     textAlign: 'center',
   },
 });

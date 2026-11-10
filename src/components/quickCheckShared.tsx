@@ -16,7 +16,8 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import type { QCMetric, QCStatus, QCGroup } from '../data/quickCheckStore';
+import type { QCMetric, QCStatus, QCGroup, QuickCheckRecord } from '../data/quickCheckStore';
+import { classifyRecord } from '../data/quickCheckStore';
 import { requestMetricInterpretation } from '../ai/quickCheckAi';
 
 export const STATUS_LABEL: Record<QCStatus, string> = {
@@ -176,7 +177,6 @@ export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }
   return (
     <View key={g.key}>
       <View style={qc.groupTitle}>
-        {g.icon ? <Text style={qc.groupIcon}>{g.icon}</Text> : null}
         <Text style={qc.groupTitleText}>{g.title}</Text>
       </View>
       <View style={qc.groupCard}>
@@ -189,6 +189,55 @@ export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * ★ 2026-11-08 B 稿「异常概览」落地（用户拍板：白卡，异常数据改黄色，不加黄色框）
+ * ---------------------------------------------------------------------------
+ * 报告详情页顶部第一张卡。三分类诚实口径：
+ *   - 大标题「N 项需要留意」（无异常时「未见异常」）
+ *   - 副行「共 X 项 · M 项正常 · K 项推算/模型，不参与判定」
+ *   - 三段比例条：正常绿 / 需留意黄 / 推算模型蓝（推算与模型值用蓝点区别，不吓人）
+ *   - 异常清单：白卡上只把异常数值/状态标黄，一条一句解读，不堆字
+ *   - 口径说明：「正常/异常只针对有参考区间的测量项」——Mira 不做评分与诊断
+ */
+/**
+ * ★ 2026-11-08 续（用户拍板）：体检报告顶部概览改为「两张横卡 + 一段分析」。
+ *  - 不套外层卡片；检测时间一行在最上；
+ *  - 左卡「正常 X 项」(绿) / 右卡「需留意 Y 项」(无异常时置灰)；
+ *  - 下方一段分析：正常几项、哪些异常（异常项名点出）；推算/模型值在段落里说明不参与判定。
+ *  - 诚实口径：正常/异常只针对有参考区间的测量项；推算与模型值不做判定。
+ */
+export function AbnormalOverview({ record, createdAt }: { record: QuickCheckRecord; createdAt: number }) {
+  const t = classifyRecord(record);
+  const hasFlag = t.flagged > 0;
+  const names = t.flaggedMetrics.map((m) => m.name).slice(0, 3).join('、');
+  const more = t.flaggedMetrics.length > 3 ? `等 ${t.flaggedMetrics.length} 项` : '';
+  const para = hasFlag
+    ? `本次共 ${t.total} 项测量，${t.ok} 项正常，${t.flagged} 项需留意（${names}${more}）。可结合连续几天的趋势观察，必要时以专业检测确认。`
+    : `本次共 ${t.total} 项测量均在参考区间内，整体平稳。${t.model > 0 ? `另有 ${t.model} 项推算/模型值仅供参考，不参与判定。` : ''}`;
+  return (
+    <View>
+      <Text style={qc.sumTime}>检测时间 {fmtDate(createdAt)}</Text>
+      <View style={qc.ovCardsRow}>
+        <View style={[qc.ovCountCard, { borderColor: theme.colors.success }]}>
+          <Text style={[qc.ovCountLabel, { color: theme.colors.success }]}>正常</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+            <Text style={[qc.ovCountNum, { color: theme.colors.success }]}>{t.ok}</Text>
+            <Text style={qc.ovCountUnit}>项</Text>
+          </View>
+        </View>
+        <View style={[qc.ovCountCard, { borderColor: hasFlag ? theme.colors.warn : theme.colors.cardBorder }]}>
+          <Text style={[qc.ovCountLabel, { color: hasFlag ? theme.colors.warn : theme.colors.textSub }]}>需留意</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+            <Text style={[qc.ovCountNum, { color: hasFlag ? theme.colors.warn : theme.colors.textSub }]}>{t.flagged}</Text>
+            <Text style={qc.ovCountUnit}>项</Text>
+          </View>
+        </View>
+      </View>
+      <Text style={qc.ovPara}>{para}</Text>
     </View>
   );
 }
@@ -305,17 +354,26 @@ export const qc = StyleSheet.create({
   histDone: { fontSize: theme.fontSize.stat, fontWeight: theme.weight.bold, color: theme.colors.textTitle },
   histAb: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold },
   histMeta: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginTop: theme.sp(1.5) },
-  sumBox: {
+  sumTime: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
+  // ★ 2026-11-08 续：顶部概览改为两张横卡 + 一段分析（不套外层卡）
+  ovCardsRow: { flexDirection: 'row', gap: theme.sp(2), marginTop: theme.sp(3) },
+  ovCountCard: {
+    flex: 1,
     backgroundColor: theme.colors.cardBg,
     borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     borderRadius: theme.radius.card,
-    padding: theme.space.cardPadCompact,
-    marginBottom: theme.sp(3),
+    paddingVertical: theme.sp(3),
+    paddingHorizontal: theme.sp(3),
   },
-  sumTime: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  sumMain: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, marginTop: theme.sp(1), lineHeight: theme.fontSize.card * 1.4 },
-  sumNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(2.5), lineHeight: theme.fontSize.micro * 1.6 },
+  ovCountLabel: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium },
+  ovCountNum: { fontSize: theme.fontSize.h1, fontWeight: theme.weight.bold, lineHeight: theme.fontSize.h1 },
+  ovCountUnit: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, marginLeft: theme.sp(1) },
+  ovPara: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    marginTop: theme.sp(3),
+    lineHeight: theme.fontSize.sm * 1.5,
+  },
   groupTitle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(5), marginBottom: theme.sp(2) },
   groupIcon: { fontSize: theme.fontSize.body, marginRight: theme.sp(2) },
   groupTitleText: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },

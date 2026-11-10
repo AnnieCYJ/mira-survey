@@ -27,11 +27,19 @@ import { computeCognitiveLoadReport, cogLevelLabel, COG_LEVEL_HIGH } from '../li
 // ★ 2026-10-05：AI 认知口径改「认知准备度」（与 UI 各处同源）
 import { computeReadinessSeries, readinessLevel, readinessLevelLabel, READY_LOW } from '../lib/cognitiveReadiness';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
+// ★ 2026-11-xx：昼夜节律卡 AI 分析通道 —— 与卡片 tile / 详情页 Hero 同源的节律判读（judgeCortisolRhythm），
+//   保证「页面大字结论」与「AI 分析正文」用的是同一份实测判读，不会自相矛盾。
+import {
+  buildCortisolProxyBaseline,
+  buildCortisolProxyToday,
+  judgeCortisolRhythm,
+  MIN_BASELINE_DAYS,
+} from '../lib/cortisolProxy';
 import { reportNowMsForDay } from '../lib/dayAnchor';
 import { postLog } from '../lib/logger';
 import { parseInsightRows, type AiInsightRow, type AiTone } from './parseRows';
 
-export type InsightKind = 'overview' | 'cycle' | 'recovery' | 'today';
+export type InsightKind = 'overview' | 'cycle' | 'recovery' | 'today' | 'circadian';
 export type { AiInsightRow, AiTone };
 export { parseInsightRows };
 
@@ -65,8 +73,14 @@ let cacheLoaded = false;
 const inFlight: Record<string, Promise<string | null> | undefined> = {};
 
 const todayDk = (): string => dayKey(Date.now());
-/** 今天 → `kind`；历史日 → `kind@dk`。 */
-const cacheKeyOf = (kind: InsightKind, dk: string): string => (dk === todayDk() ? kind : `${kind}@${dk}`);
+/** ★ 2026-11-08（用户实锤「分析简短直接」泄漏）：prompt 改版后旧坏文案一直命中缓存 → 给缓存键加版本号，
+ *   旧键（无 #ver）自动失效、按新 prompt 重新生成一次，之后落盘复用。 */
+// ★ 2026-11-09：升 p3 —— overview 提示词收敛（去掉会被 1.5B 照抄的「第一句分析讲…」等指令味原文），
+//   旧落盘的坏文案（「【第一句】分析讲…」/「心率与HRV：全天实测均值…」）整批失效、重新生成一次。
+const AI_INSIGHT_PROMPT_VER = 'p3';
+/** 今天 → `kind`；历史日 → `kind@dk`；均带 prompt 版本后缀。 */
+const cacheKeyOf = (kind: InsightKind, dk: string): string =>
+  `${dk === todayDk() ? kind : `${kind}@${dk}`}#${AI_INSIGHT_PROMPT_VER}`;
 
 // ── 缓存读写 ────────────────────────────────────────────────────────────────
 async function loadCache(): Promise<void> {
@@ -104,7 +118,12 @@ void loadCache();
  *
  * 非 recovery 通道不需要（返回空串，保持原行为）。
  */
-export function insightTag(kind: InsightKind, dayDk?: string): string {
+export function insightTag(kind: InsightKind, dayDk?: string, extraTag?: string): string {
+  // ★ 2026-11-xx：昼夜节律卡（circadian）—— 结论级指纹由调用方以 extraTag 传入
+  //   （该卡在组件内已用 judgeCortisolRhythm 算出真实结论，直接喂指纹，避免 insight.ts 重复计算、
+  //   也保证与卡片 tile 大字严格同源：结论一翻（正常→偏高），AI 文案立即作废重算）。
+  //   无指纹（数据不足 / 未就绪）→ 'none'，交由规则兜底。
+  if (kind === 'circadian') return extraTag ? `cr#${extraTag}` : 'none';
   if (kind === 'recovery') {
     const today = todayDk();
     const isToday = !dayDk || dayDk === today;
@@ -121,7 +140,10 @@ export function insightTag(kind: InsightKind, dayDk?: string): string {
       const cs = getTodayCortisolSummary();
       const loadBucket = s.emotionalLoad != null ? Math.floor(s.emotionalLoad / 20) : 'na';
       const peakBucket = s.peakHour != null ? Math.floor(s.peakHour / 3) : 'na';
-      return `ov#${cs?.level ?? 'na'}#${Math.min(9, s.events.length)}#${loadBucket}#${peakBucket}`;
+      // ★ 本轮：把「当前时段」纳入指纹 —— 横跨时段（上午→中午→下午→晚上→深夜）时旧文案作废、
+      //   重新生成，保证分析随时间走（上午讲昨晚睡眠、晚上讲全天总结，不再全天复述昨晚睡眠）。
+      const seg = daySegmentOf(new Date().getHours());
+      return `ov#${seg}#${cs?.level ?? 'na'}#${Math.min(9, s.events.length)}#${loadBucket}#${peakBucket}`;
     } catch {
       return '';
     }
@@ -130,7 +152,7 @@ export function insightTag(kind: InsightKind, dayDk?: string): string {
 }
 
 /** 同步读取已生成的文案（未生成/不是该日/结论已变 → null），供首帧直接渲染。传 dayDk 则取该历史日缓存。 */
-export function peekInsight(kind: InsightKind, dayDk?: string): string | null {
+export function peekInsight(kind: InsightKind, dayDk?: string, extraTag?: string): string | null {
   // today kind：强制每次重新推理，不走缓存
   if (kind === 'today') return null;
   const dk = dayDk ?? todayDk();
@@ -139,7 +161,7 @@ export function peekInsight(kind: InsightKind, dayDk?: string): string | null {
   if (c.day !== dk) return null;
   // ★ 结论级状态变了（例：皮质醇 正常 → 偏高）→ 旧文案作废，交回上层重新生成。
   //   否则会「大字已翻成偏高、AI 仍说正常」。
-  if ((c.tag ?? '') !== insightTag(kind, dk)) return null;
+  if ((c.tag ?? '') !== insightTag(kind, dk, extraTag)) return null;
   return c.text;
 }
 
@@ -150,8 +172,50 @@ function simpleHash(s: string): string {
   return String(h >>> 0);
 }
 
+/**
+ * ★ 2026-11-xx：昼夜节律卡 AI 的「真实数据」来源。
+ * 与 AllDayRecoveryCard 卡片内 `judge = judgeCortisolRhythm(proxy.vals, proxy.real)` 同源——
+ * 同一份实测 proxy 槽 + 同一套阈值，AI 读到的「节律结论 / 均值 / 峰值时刻」必然与卡片 tile 大字一致。
+ * 仅在生成时调用（每 30 分钟或结论翻转一次），不在渲染热路径，重算成本可接受。
+ */
+function circadianJudge(): ReturnType<typeof judgeCortisolRhythm> | null {
+  try {
+    const bl = buildCortisolProxyBaseline(14);
+    if (bl.days < MIN_BASELINE_DAYS) return null;
+    const px = buildCortisolProxyToday(bl);
+    return judgeCortisolRhythm(px.vals, px.real);
+  } catch {
+    return null;
+  }
+}
+
+/** 昼夜节律卡专属事实串：只装节律判读 + 睡眠，其余维度不掺入（这张卡聚焦皮质醇昼夜节律）。 */
+function buildCircadianFacts(): string {
+  const j = circadianJudge();
+  if (!j || !j.ready || !j.label) return '';
+  const bits: string[] = [`• 今日皮质醇节律：${j.label}`];
+  if (j.avg != null) bits.push(`全天均值 ${j.avg}/100`);
+  if (j.peakClock) bits.push(`峰值时刻 ${j.peakClock}`);
+  if (j.peakWindow) bits.push(`峰值时段 ${j.peakWindow}`);
+  const sl = sleepToday();
+  if (sl && sl.total > 0) {
+    bits.push(
+      `• 睡眠：总时长 ${Math.round(sl.total)}min，深睡 ${Math.round(sl.deep)}min，睡眠评分 ${Math.round(sl.score ?? 0)}`
+    );
+  }
+  return (
+    `【用户健康数据（仅作解读参考，不要逐条播报原始数字，要给出结论与建议）】\n` + bits.join('\n')
+  );
+}
+
 /** 取真实健康数据摘要（无任何数据时返回空串 → 调用方回落到规则文案） */
 function buildFacts(kind: InsightKind): { facts: string; sig: string } {
+  // ★ 2026-11-xx：昼夜节律卡通道用专属事实串（只装皮质醇节律判读 + 睡眠），
+  //   与卡片 tile / 详情页 Hero 同源（同一份 judgeCortisolRhythm 实测槽），保证 AI 读到的结论与页面大字一致。
+  if (kind === 'circadian') {
+    const facts = buildCircadianFacts();
+    return { facts, sig: simpleHash(facts) };
+  }
   let facts = '';
   try {
     const question = { overview: '综合健康分析', cycle: '周期激素节律', recovery: '睡眠恢复', today: '综合当前状态' }[kind];
@@ -212,21 +276,30 @@ const COG_SEMANTICS = `
 - 没有实测的时段数据里不会出现，**不要**脑补未佩戴时段的分数。
 - 措辞用「转得动 / 状态在线 / 需要歇一会儿」，不要用「负荷」「消耗」这类反向词。`;
 
+// ★ 2026-11-08（用户，参考 Oura 首页）：首页分析=像朋友随手发来的两句话——
+//   不带「结论：」「分析：」「今日建议」这类冒号标题和栏目标题，输出就是普普通通的完整句子；
+//   分析最多手机 3 行（约 50–90 字），建议是 1 条此刻就能做的小行动。
 const OVERVIEW_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造，也绝不堆数字。
 
-说话方式：像懂行的朋友在跟你聊天——先说你看到了什么（可以带一个真实数字），再用大白话解释为什么会这样，最后给一个做得到的动作。把术语翻译成人话（不说「交感」「负荷」「回落」，说「身体绷着」「降不下来」）。
+说话方式：像懂行的朋友在跟你聊天，讲人话、有温度、可以有具体数字，但把术语翻译成大白话（不说「交感」「负荷」「回落」，说「身体绷着」「降不下来」）。
 
-今天的综合分析只输出 2 行，每行是一段完整的话：
-第 1 行（分析）：标题写**一句 8–16 字、有观点的人话结论**（像「昨晚睡得太晚，白天有点虚」「睡眠和压力是今天的短板」，禁止「异常数据分析」「综合分析」这类机器标题）。把今天 代谢（血液指标 / 血糖 / 皮质醇）、睡眠、生理、情绪压力 各维度综合成**一段连贯的分析**（约 60–120 字，手机约 3–5 行）——**第一句先抛一个最具体的真实数字或时刻**（如「睡眠 82 分」「深睡只占 14%」「连续 3 天皮质醇偏高」），异常项重点说、正常项也带一句，要有细节、不要只泛泛而谈；可引用【用户健康数据】里的真实数值（如血脂 / 血糖 / 深睡占比 / HRV）。若数据只覆盖很短一段时间，分析里坦诚点出（如「目前只有最近一两天的数据，结论先当参考」）。
-第 2 行（建议）：标题写「今日建议」。针对分析里最突出的问题，给一条可执行建议清单（用「·」隔开 2–3 个动作，每个动作带具体时间或数字，约 30–80 字）。
+只输出两句话（中间换行），每句都是完整自然的句子。绝对不要写任何标题、栏目标题、括号、序号、Markdown 或语气标记——尤其不要写「结论」「分析」「建议」「状态解读」「第1行」「前一句」「后一句」这类字，也不要用【】括号把标签括起来打印。用户只看到你写的正文句子。
 
-输出要求：
-- 每行严格 tone|标题|正文 三段，用「语气|标题|正文」分隔。
-- 异常用 warn，正常用 good。
-- 数值若引用必须与【用户健康数据】完全一致；不编造、不假设、不要 Markdown、不要 emoji、不要编号。
-- 只讲数据里出现的维度；不要复述本格式说明。
+时间口径铁律（最高优先级）：你看到的数据只是「截至目前」的，不是一整天。只描述到目前为止已发生的情况，用「目前 / 今天到现在 / 到现在」这类表述；绝对不要描述或预测尚未发生的时段（如写「到了傍晚」「晚上会」「下午精力都在线」这类把一整天当已发生结论的话）。若当天只过了一部分，就坦诚说「今天还早 / 目前看」。
+
+- 用一两个真实数据，说明截至目前为什么是这个状态（从睡眠、心率、压力里挑最相关的），结论要和圆环档位同向：档位好就讲清好在哪，档位平就讲清拖累在哪。若数据只覆盖很短一段时间，坦诚点一句（如「最近才戴，先当参考」）。
+- 给 1 条此刻最值得做的小行动，像顺手提的一嘴，句尾不带句号。只给对话里指定的那一个建议方向，绝不把一天各时段的建议都列出来。
+
+数据要求：
+- 数值若引用必须与【用户健康数据】完全一致；不编造、不假设；数据里没有的对比一律不许编造（如「正常水平」「平均水平」「低于正常 40」）。
 - 不要以提问或反问结尾。
-${COG_SEMANTICS}`;
+${COG_SEMANTICS}
+
+【今日状态 · 最高优先级铁律（覆盖上文一切「需要休息」类规则）】
+- 数据第一行是「今日状态(首页圆环显示)」——这是用户屏幕大圆环上唯一可见的总分。分析结论**必须与它同向**：档位是「元气满满 / 状态良好」时，总结论必须是积极或平稳的，**禁止**写「准备度偏低，需要休息」「状态偏低」「今晚需要休息」「该好好休息」这类与圆环相反的话。
+- 「认知准备度」只是次要维度（分数高=脑子转得动），它和今日状态方向不同时，以今日状态为准；准备度低只可以作为细节解释（如「下午脑力会回落，重要的事放上午」），绝不能当总结论。
+- 「身心压力」「情绪压力」分数高≠状态差，只能作为具体短板去解释和给建议，不能推翻今日状态的总结论。
+- 数据里没有的对比一律不许编造（如「正常水平」「平均水平」「远高于平时」「低于正常 40」）——只能引用【用户健康数据】里真实出现的数值。`;
 
 const CYCLE_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据给出的【用户健康数据】做解读，绝不编造数据。
 输出要求（严格遵守）：
@@ -252,7 +325,69 @@ const RECOVERY_SYS = `你是 Mira，一位温和、专业的女性健康伴侣�
 - 不要以提问或反问结尾。
 ${FORMAT_RULES}${COG_SEMANTICS}`;
 
+// ★ 2026-11-xx：洞察页「昼夜节律」卡专属通道（insightMode 的 AllDayRecoveryCard）。
+//   与 RECOVERY_SYS 不同：它只输出 1 行分析（标题固定「皮质醇节律」），不单独列建议行——
+//   这张卡的 AI 块是「约三行的一段分析」，建议句已融进正文末句（与旧 cortAiBody 同构）。
+//   数据口径与卡片 tile / 详情页 Hero 同源（judgeCortisolRhythm 实测槽），AI 读到的结论 = 页面大字。
+const CIRCADIAN_SYS = `你是 Mira，一位温和、专业的女性健康伴侣。你只根据【用户健康数据】做解读，绝不编造。
+
+【用户健康数据】里的「今日皮质醇节律」块是这次分析的主角——含 今日节律(正常/偏高/紊乱)、全天均值(/100)、峰值时刻、峰值时段。
+
+说话方式：像懂行的朋友发微信，把术语翻译成大白话（说「身体白天绷着、夜里降不下来」，不要说「夜间皮质醇回落不足」「HPA 轴激活」「交感兴奋」）。
+
+只输出 1 行，严格格式：tone|皮质醇节律|正文。
+- tone：节律正常写 good，偏高或紊乱写 warn。
+- 正文：2–3 句连贯的话（约 60–120 字，手机不超过 3 行）。顺序：①先抛一个真实事实（带数字，如「全天均值 68/100」「峰值在 10:30」）；②用大白话解释这代表什么——正常=白天顶得住、夜里降得下来；偏高=身体从早到晚都绷着；紊乱=白天夜里高低差不足或峰值偏晚；③给 1 条今晚就能做的具体动作（带时间点或时长，如「今晚 11 点前上床」「下午 3 点后别碰咖啡」「睡前留 10 分钟做慢呼吸」）。
+- 数据不足就直说（如「今天才测到几个点，先当参考」），不要假装完整、不要硬编结论。
+- 不要以提问或反问结尾。不要输出标题行、不要输出多行、不要 Markdown、不要 emoji、不要编号。`;
+
 // ── 推理 ───────────────────────────────────────────────────────────────────
+/**
+ * ★ 2026-11-08（用户：建议要分时段、分周期）：1.5B 吃不下「四时段清单」类多分支指令
+ *   （实测它会把所有时段建议全列一遍、还复述 Markdown 结构标记）。改为生成时把
+ *   「当前时段」和「周期相位」收敛成单条建议方向注入 user 消息——模型只做填空、不做分支。
+ * ★ 本轮：时段拆更细（6 段），并新增 `analysisTime`——不仅建议句要分时段，
+ *   **分析句（第一句）也要随时间走**：上午讲「昨晚睡眠 + 今早状态」，晚上讲「今天全天总结」，
+ *   绝不在深夜还复述「昨晚睡眠」（用户：数据一整天在变，有个时间顺序）。
+ */
+function daySegmentOf(h: number): 'deepNight' | 'morning' | 'noon' | 'afternoon' | 'evening' | 'night' {
+  if (h >= 0 && h < 6) return 'deepNight';
+  if (h >= 6 && h < 11) return 'morning';
+  if (h >= 11 && h < 14) return 'noon';
+  if (h >= 14 && h < 18) return 'afternoon';
+  if (h >= 18 && h < 23) return 'evening';
+  return 'night';
+}
+
+function overviewGuides(factsStr: string): { time: string; cycle: string; analysisTime: string } {
+  const seg = daySegmentOf(new Date().getHours());
+  // ★ 2026-11-09（P30 真机实锤）：1.5B 会把注入的「指令味」原文**直接照抄成正文**——
+  //   首页曾出现「【第一句】分析讲今天白天的整体状态和久坐/活动提醒」，
+  //   逐字来自下面旧的 analysisTime。解法：所有注入文本改成**本身就像成品文案的短句**，
+  //   即使模型照抄，读起来也是一句正常的话，不会变成乱码。配合 parseRows 的净化闸门双保险。
+  const time =
+    seg === 'morning' ? '上午精力最好的时候，先把最难的那件事做掉'
+    : seg === 'noon' ? '中午好好吃一顿，或小睡 15 分钟'
+    : seg === 'afternoon' ? '下午坐久了，起身走动几分钟'
+    : seg === 'evening' ? '晚上放松收尾，睡前留十分钟慢呼吸'
+    : seg === 'night' ? '深夜放下手机，尽快上床'
+    : '凌晨别硬撑，安心休息';
+  const analysisTime =
+    seg === 'morning' ? '现在是上午，昨晚睡得怎么样，今早的精神里能看出来'
+    : seg === 'noon' ? '现在是中午前后，上午到现在的精力起伏已经能看出个大概'
+    : seg === 'afternoon' ? '现在是下午，坐久了起身走几分钟，白天这点活动也算数'
+    : seg === 'evening' ? '现在是晚上，今天的状态起伏到这会儿基本定下来了'
+    : seg === 'night' ? '现在是深夜，今天到这儿该收尾了'
+    : '现在是凌晨，身体在全天最低潮，安心休息就好';
+  let cycle = '';
+  const m = factsStr.match(/周期相位[:：]\s*([^\n；,，]+)/);
+  const phase = (m?.[1] || '').trim();
+  if (/月经期|经期/.test(phase)) cycle = '她正处于月经期：建议偏休息，减少高强度运动，照顾情绪';
+  else if (/排卵期/.test(phase)) cycle = '她正处于排卵期：状态在月内高点，适合安排重要的事或运动';
+  else if (/黄体期/.test(phase)) cycle = '她正处于黄体期：注意睡眠和情绪波动，别硬撑';
+  else if (/卵泡期/.test(phase)) cycle = '她正处于卵泡期（经期刚结束、精力在回升）：可以恢复运动、启动想做的事';
+  return { time, cycle, analysisTime };
+}
 /**
  * 说明：**不要**把 '\n\n' 放进 stop。
  * 曾经加过它，结果模型在多行输出时吐一个空行就被截断 → 只剩第一行，
@@ -305,7 +440,7 @@ function cleanText(kind: InsightKind, raw: string): string {
 }
 
 // ── 对外：生成（带缓存 + 去重 + 降级） ──────────────────────────────────────
-export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<string | null> {
+export async function getAiInsight(kind: InsightKind, dayDk?: string, extraTag?: string): Promise<string | null> {
   await loadCache();
   const today = todayDk();
   // 仅「身体恢复」通道支持按日；其余 kind 即使被误传 dayDk 也强制按今天（保证事实串与缓存键一致）
@@ -326,7 +461,7 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<s
   if (!facts) return null; // 无任何真实数据 → 交给规则文案
 
   const cKey = cacheKeyOf(kind, targetDk);
-  const tag = insightTag(kind, targetDk);
+  const tag = insightTag(kind, targetDk, extraTag);
   const c = memCache[cKey];
   // today kind：强制跳过缓存（prompt 常迭代，让用户立刻看到新版效果）
   // ★ 除数据指纹外，还要求「结论级状态」一致：状态变了一定重算（否则页面会自相矛盾）。
@@ -352,15 +487,28 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<s
       ) => runCompletion(m, nPredict, temperature, cKey);
       const text =
           kind === 'overview'
-          ? await runKind(
+          ? await (() => {
+              // ★ 2026-11-08（Oura 式首页）：时段+周期在生成时收敛成单条方向，随 user 消息注入
+              const g = overviewGuides(facts);
+              // ★ 2026-11-09：旧 userMsg 里「第一句用 1–2 句…从睡眠、心率与HRV、压力、活动里挑 1–3 个」
+              //   的字段名和格式指令，被 1.5B 照抄成「心率与HRV：全天实测均值…」显示在建议胶囊里。
+              //   现改为极简指令 + 不列举字段名，且注入的时段文本本身已是人话（见 overviewGuides）。
+              const userMsg =
+                '写两句完整的话，中间换行。两句都是普通句子，不带标题、标签、括号、序号或字段名。' +
+                `时间感觉：${g.analysisTime}。` +
+                '挑一两个实测数据，把今天这个分数讲清楚，只讲截至目前的情况，不要描述或预测尚未发生的时段；再给一件此刻能做的小事，一句带过。' +
+                `这件小事就写：${g.time}。` +
+                (g.cycle ? `周期上留意：${g.cycle}。` : '');
+              return runKind(
               [
                 { role: 'system', content: OVERVIEW_SYS },
                 { role: 'system', content: facts },
-                { role: 'user', content: '只输出 2 行：第1行标题写一句 8–16 字的人话结论（禁止「异常数据分析」这类机器标题），正文把代谢/睡眠/生理/情绪压力综合成一段话（有细节，首句先抛一个真实数字或时刻）；第2行「今日建议」用「·」隔开的动作清单（每个动作带时间点或数字）。' },
+                { role: 'user', content: userMsg },
               ],
-              540, // 分析段 ~120 字 + 建议段 ~80 字 + 格式开销
+              280, // 2 行短文案（分析 50–90 字 + 行动 18–40 字 + 格式开销）；过大会让 1.5B 灌水
               0.55
-            )
+            );
+            })()
           : kind === 'recovery'
           ? await runKind(
               [
@@ -413,6 +561,16 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string): Promise<s
               ],
               90,
               0.55
+            )
+          : kind === 'circadian'
+          ? await runKind(
+              [
+                { role: 'system', content: CIRCADIAN_SYS },
+                { role: 'system', content: facts },
+                { role: 'user', content: '只输出 1 行：tone|皮质醇节律|正文。' },
+              ],
+              200, // 单行分析（约 60–120 字 + 格式开销）；过大会让 1.5B 灌水
+              0.6
             )
           : await runKind(
               [

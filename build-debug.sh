@@ -19,8 +19,11 @@ export PATH="$JDK/bin:$PATH"
 # 全部 v3 离线数据读取 —— 是最危险的一种「编译通过但功能倒退」。
 # 因此在恢复完整源码之前，一律拒绝重编译。
 BRIDGE="$ROOT/android/app/src/main/java/com/miraringfashion/app/veepoo/VeepooRingModule.kt"
-if ! grep -qE 'readOriginDataAll|flushBatches' "$BRIDGE"; then
-  echo "✗ 拒绝构建：$BRIDGE 是旧桩（缺 readOriginDataAll/flushBatches）。"
+# ★ 2026-11-10：原生函数曾由 readOriginDataAll 改名 readOriginData（见当前 1246 行完整版，含 6 处
+#   readOriginData / 12 处 onBatch / 3 处 backfillSince）。旧桩（.stub-20261107.bak，394 行）两者皆无。
+#   判别式改用 readOriginData：完整版有、旧桩为 0，可正确放行真实桥体、继续拦住旧桩。
+if ! grep -qE 'readOriginData' "$BRIDGE"; then
+  echo "✗ 拒绝构建：$BRIDGE 是旧桩（缺 readOriginData）。"
   echo "  已装 APK 的完整原生实现只存在于 classes4.dex，重编译前必须先恢复完整 Kotlin 源码"
   echo "  和 VeepooAutoBridge.kt，否则会覆盖掉手机上正在工作的原生层。"
   exit 1

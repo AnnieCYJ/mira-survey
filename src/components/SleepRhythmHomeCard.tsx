@@ -406,7 +406,7 @@ export default function SleepRhythmHomeCard({ onPress, ring: ringProp, bg, iconF
                 {/* ★ v18.104：断流（戴了戒指但很久没新采样）与「没戴过」是两种空态，文案要区分，
                     否则用户以为自己没戴 → 一直对着「戴上戒指后…」发呆。 */}
                 <Text style={styles.emptyHintText}>
-                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的皮质醇活性趋势'}
+                  {dataStale ? '暂无数据' : '戴上戒指后，这里显示你的皮质醇趋势'}
                 </Text>
               </View>
             ) : null}

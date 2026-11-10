@@ -10,19 +10,22 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import { postLog } from './src/lib/logger';
 import { VoiceTriggerProvider } from './src/hooks/useVoiceTrigger';
 import VoiceQuickOverlay from './src/components/VoiceQuickOverlay';
-// import { warmupModel } from './src/ai/model';  // ★ 临时禁用：端侧 llama.rn 需新架构(codegen)，
-//   与当前 newArchEnabled:false 冲突导致 Gradle 编译失败。AI 伴侣走云端 cloudAsk 链路，
-//   不影响功能。待单独为安卓开启新架构后再恢复。
+import { warmupModel } from './src/ai/model'; // ★ 2026-11-08 恢复：newArchEnabled=true 已开启，
+//   llama.rn codegen 库（libreact_codegen_RNLlamaSpec.so 等）已确认打入 APK（295 个 .so），
+//   旧注释「需新架构与 false 冲突」的前提已不成立。AI 伴侣不再依赖云端 cloudAsk。
 // import SyncProgressBanner from './src/components/SyncProgressBanner';  // ★ 临时注释
 import { enableFreeze } from 'react-native-screens';
+
+// ★ 2026-11-08 决定性检验：确认真机 bundle 是否为最新代码
+console.log('[BOOT-CHECK] App.tsx 顶层执行, warmupModel type =', typeof warmupModel);
 
 // ★ 性能：开启 react-native-screens 的「冻结」能力，让 React Navigation 的
 //   freezeOnBlur（见 BottomTabNavigator）真正生效 —— 失焦的 Tab 停止重渲染。
 //   否则切 Tab 后旧 Tab 仍在后台订阅 BLE / healthStore 并反复重渲染 → 点击卡顿。
 enableFreeze(true);
 
-// 🔥 App 启动后后台预热端侧模型（已禁用，见上方 import 注释）
-// warmupModel();
+// 🔥 App 启动后后台预热端侧模型（2026-11-08 恢复，不阻塞 UI）
+warmupModel();
 
 // ★ 全局未捕获错误上报（开发期）：捕捉 React 红屏 / “Maximum update depth” /
 // 异步未处理拒绝等 ErrorBoundary 兜不住的致命 JS 错误，POST 到 :8899 收集器，

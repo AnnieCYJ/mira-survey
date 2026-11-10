@@ -43,8 +43,13 @@ import Card from './Card';
 import Icon, { type IconName } from './Icon';
 import DateAnchorPicker from './DateAnchorPicker';
 import DayDrawer from './DayDrawer';
+import SunMark from './SunMark';
+// ★ 2026-11-09（用户）：日历下面加「太阳水晶球」收集瓶 —— 磨砂玻璃球 + 本月太阳金币物理沉底，
+//   活动手机（重力感应）金币滚动、互相碰撞；金币数与月历格子 SunMark 同口径
+import SunGlobe from './SunGlobe';
 import type { TimelineItem } from './TodayTimelineCard';
-import { healthStore } from '../data/healthStore';
+import { healthStore, dayKey } from '../data/healthStore';
+import { getSelfReportsForDaySync } from '../data/selfReportLog';
 import {
   CAL_YEAR, CAL_MONTH, TODAY_DAY, TASK_LABELS, type TaskType,
 } from '../data/tasks';
@@ -56,8 +61,23 @@ import { loadFoodLogs, type FoodLog } from '../lib/foodAi';
 import { loadSportLogs, type SportLog } from '../lib/sportLog';
 // ★ 2026-11-06（用户）：月历格子改展示「当天获得的皇冠数」——与回顾·日视图的达标皇冠同源
 import { buildTodayTimeline } from '../lib/buildTodayTimeline';
+// ★ 2026-11-11（用户：规律观察要讲健康意义 / 太阳币主要来源）
+import {
+  healthMeaningOf,
+  composeRecoveryObservations,
+  composeMonthDimensionInsights,
+  type RecoveryPair,
+} from '../lib/patternHealthMeaning';
+import { RingBle } from '../ble/RingBleManager';
 // ★ 2026-11-07（用户）：日历格子皇冠已去掉，CrownMark 不再引用
 // ★ Phase 2（无门禁软闭环）：规律观察直接落位日历观察区 ——
+
+// ★ 2026-11-10（用户：「回顾日整个月获得多少颗太阳金币，球里就应该有多少颗，要累计逐渐增加」）：
+//   **移除临时演示太阳 DEMO_SUN**。原先它会强制「今天」格子冒出一枚假太阳，
+//   但水晶球只按真实达标数算 → 回顾日里看到的太阳数与球里金币数对不上，
+//   且假太阳每天固定一枚、不会随达标记录累加。现在太阳 100% 来自回顾·日视图的达标卡片
+//   （buildTodayTimeline 的 goalMet：睡眠恢复≥85 / 步数达标），与球完全同源。
+
 //   观察不等确认就写进来；用户点「挺准」→ 加权进人生上下文；随时可删（删了不复活）。
 import {
   listVisiblePatterns,
@@ -349,6 +369,9 @@ export default function MonthDiscoveryView({
   //   ★ 2026-10-12（用户）：默认锚定**当前最新月份**（realNow），不要跳到演示月（8 月）；
   //     可左右步进 / 弹日历跳任意历史月。演示计划（tasks）仍只在查看 8 月时叠加。
   const [anchor, setAnchor] = useState<Date>(() => new Date());
+  // ★ 2026-11-09(5)（用户）：月视图默认展示「太阳水晶球」，球右上角一枚日历小图标；
+  //   点图标 → 展开日历网格（图标变成太阳，可切回圆球）。默认 false = 圆球优先。
+  const [monthShowCal, setMonthShowCal] = useState(false);
   const viewY = anchor.getFullYear();
   const viewM = anchor.getMonth();
   const viewDays = new Date(viewY, viewM + 1, 0).getDate();
@@ -430,26 +453,71 @@ export default function MonthDiscoveryView({
     return map;
   }, [data, tasks, viewY, viewM]);
 
-  // ★ 2026-11-07（用户）：月历格子内只展示「当天一个代表 icon」（如起床 = ☀️ 太阳），
-  //   右上角再叠一个「小皇冠」标记当天是否达成（皇冠/goalMet）任务。
-  //   代表 icon 优先取「起床」事件（与回顾·日视图同源），否则取当天首个带 emoji 的条目。
+  // ★ 2026-11-10（用户「球里的太阳币要累计逐渐增加」）：低频刷新键。
+  //   dayCellMap 读的是 buildTodayTimeline / 自报 / 干预日志这些**外部可变数据**，旧实现
+  //   useMemo 只依赖 [viewY, viewM] → 新增达标记录后不重算，球里金币永远停在进页面那一刻。
+  //   现在：切回回顾页、关闭日抽屉、切月、或每分钟兜底 tick 都会重算当月太阳总数。
+  //   （不把高频 hsVer 直接塞进依赖：戒指实时流每秒写入，会让 31 天时间线被反复重算而卡顿。）
+  const [sunTick, setSunTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSunTick((v) => v + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  // ★ 本轮（用户）：月历格子标记规则改为——
+  //   当天有「达标」(goalMet) → 显示太阳图标（SunMark）；
+  //   当天无达标 → 显示当天完成的各类小 icon，以「叠放的方块卡片」呈现（非横排 emoji）。
   const dayCellMap = useMemo(() => {
-    const map: Record<number, { icon: string | null; color: string }> = {};
+    type CellIcon = { emoji: string; color: string };
+    const map: Record<number, {
+      goalMetCount: number;
+      icons: CellIcon[];
+      /** ★ 2026-11-11：当天各维度达标枚数（太阳币来源统计，与球/格子同源） */
+      sunByDim: Record<string, number>;
+      /** 当天有数据/有记录的维度 */
+      dims: string[];
+    }> = {};
     const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
       try {
-        const items = buildTodayTimeline(undefined, new Date(viewY, viewM, d)).items;
-        if (!items.length) continue;
-        const wake = items.find((it) => (it.title ?? '').startsWith('起床'));
-        const rep = wake ?? items.find((it) => !!it.emoji) ?? items[0];
-        map[d] = {
-          icon: rep?.emoji ?? null,
-          color: rep?.color ?? '#C9C4BC',
-        };
+        const date = new Date(viewY, viewM, d);
+        const dk = dayKey(date.getTime());
+        // 与回顾·日视图同源：生理时间线 + 自报(recap) + 呼吸/冥想(intervention)
+        const items = buildTodayTimeline(undefined, date).items;
+        const recap = getSelfReportsForDaySync(dk).map(
+          (sr) => ({ emoji: sr.emoji, color: sr.color ?? mm.colors.purpleCore, goalMet: false }),
+        );
+        const interv = allInterventionEntries()
+          .filter((e) => dayKey(e.ts) === dk)
+          .map((e) => ({
+            emoji: e.kind === 'breath' ? '🌬️' : '🧘',
+            color: e.kind === 'breath' ? mm.colors.limeCore : mm.colors.purpleCore,
+            goalMet: false,
+          }));
+        const all: { emoji: string; color: string; goalMet: boolean }[] = [
+          ...items.map((i) => ({ emoji: i.emoji ?? '', color: i.color ?? mm.colors.purpleCore, goalMet: !!i.goalMet })),
+          ...recap,
+          ...interv,
+        ];
+        const goalMetCount = all.filter((i) => i.goalMet).length;
+        const seen = new Set<string>();
+        const icons: CellIcon[] = [];
+        for (const i of all) {
+          if (i.emoji && !seen.has(i.emoji)) { seen.add(i.emoji); icons.push({ emoji: i.emoji, color: i.color }); }
+        }
+        // ★ 太阳币来源：只数带 dimension 的达标卡（睡眠 / 活动），与水晶球同源
+        const sunByDim: Record<string, number> = {};
+        const dimSet = new Set<string>();
+        for (const it of items) {
+          if (it.dimension) dimSet.add(it.dimension);
+          if (it.goalMet && it.dimension) sunByDim[it.dimension] = (sunByDim[it.dimension] ?? 0) + 1;
+        }
+        if (recap.length) dimSet.add('mood');
+        if (interv.length) dimSet.add('task');
+        map[d] = { goalMetCount, icons: icons.slice(0, 6), sunByDim, dims: [...dimSet] };
       } catch { /* 单日构建失败忽略，该格不显示 */ }
     }
     return map;
-  }, [viewY, viewM]);
+  }, [viewY, viewM, calendarFocused, drawerDate, data, tasks, sunTick]);
 
   const stats = useMemo(() => (data ? computeMonthStats(data, viewY, viewM) : null), [data, viewY, viewM]);
 
@@ -680,6 +748,96 @@ export default function MonthDiscoveryView({
     setCellW(w);
   };
 
+  // ★ 2026-11-10（用户）：水晶球金币口径 = 当月「回顾日」里所有达标卡片上的太阳总数，
+  //   与月历格子、日回顾卡完全同源（都是 buildTodayTimeline 的 goalMet）。
+  //   演示太阳已移除，球里每一枚都对应一次真实达标；新增达标 → dayCellMap 重算 → 逐颗累加。
+  const monthSunCount = useMemo(() => {
+    let total = 0;
+    for (let d = 1; d <= viewDays; d++) total += dayCellMap[d]?.goalMetCount ?? 0;
+    return total;
+  }, [dayCellMap, viewDays]);
+
+  // ★ 2026-11-11（用户：「哪方面做得比较好、哪方面缺失、太阳币主要从哪来」）：
+  //   按维度聚合当月达标与覆盖天数，交给纯规则模块翻成「带健康意义」的三句。
+  const monthDimInsights = useMemo(() => {
+    const sunByDim: Record<string, number> = {};
+    const coverageByDim: Record<string, number> = {};
+    let daysWithData = 0;
+    for (let d = 1; d <= viewDays; d++) {
+      const cell = dayCellMap[d];
+      if (!cell) continue;
+      if (cell.dims.length) daysWithData += 1;
+      for (const dim of cell.dims) coverageByDim[dim] = (coverageByDim[dim] ?? 0) + 1;
+      for (const [dim, n] of Object.entries(cell.sunByDim)) {
+        sunByDim[dim] = (sunByDim[dim] ?? 0) + n;
+      }
+    }
+    return composeMonthDimensionInsights({
+      sunByDim, coverageByDim, totalSuns: monthSunCount, daysWithData,
+    });
+  }, [dayCellMap, viewDays, monthSunCount]);
+
+  // ★ 2026-11-11（用户举的例子：「经常午休，午休之后今日状态恢复很好，
+  //   说明午休对精力恢复非常有效」）——只从**真实 30 分钟状态曲线 + 真实完成记录**推算：
+  //   逐日比较午间前后状态均值，样本不足/没回升就不出观察（不编）。
+  const recoveryObservations = useMemo(() => {
+    try {
+      const st = RingBle.getState();
+      const todayDk = dayKey(Date.now());
+      let days = 0, liftedDays = 0, liftSum = 0, loggedDays = 0;
+      for (let d = 1; d <= viewDays; d++) {
+        const dk = dayKey(new Date(viewY, viewM, d).getTime());
+        const pts: any[] = dk === todayDk
+          ? (st?.statusTimeline ?? [])
+          : (st?.statusTimelineByDay?.[dk] ?? []);
+        const real = pts.filter((p) => p && Number.isFinite(p.value) && p.value > 0 && p.fill !== true);
+        if (real.length < 6) continue;
+        const meanIn = (lo: number, hi: number): number | null => {
+          const sel = real.filter((p) => {
+            const dt = new Date(p.t);
+            const h = dt.getHours() + dt.getMinutes() / 60;
+            return h >= lo && h < hi;
+          });
+          return sel.length >= 2 ? sel.reduce((s, p) => s + p.value, 0) / sel.length : null;
+        };
+        // 午间前 11:00–12:00 vs 午间后 14:00–15:30
+        const before = meanIn(11, 12);
+        const after = meanIn(14, 15.5);
+        if (before == null || after == null) continue;
+        days += 1;
+        const lift = after - before;
+        liftSum += lift;
+        if (lift >= 2) liftedDays += 1;
+        // 这天中午是否真的「缓过一阵」：干预（呼吸/冥想）或自报记录落在 11:00–14:30
+        let logged = false;
+        try {
+          logged = allInterventionEntries().some((e) => {
+            if (dayKey(e.ts) !== dk) return false;
+            const dt = new Date(e.ts);
+            const h = dt.getHours() + dt.getMinutes() / 60;
+            return h >= 11 && h < 14.5;
+          }) || getSelfReportsForDaySync(dk).some((sr) => {
+            const m = /^(\d{1,2}):(\d{2})$/.exec(sr.time ?? '');
+            if (!m) return false;
+            const h = Number(m[1]) + Number(m[2]) / 60;
+            return h >= 11 && h < 14.5;
+          });
+        } catch { /* 日志未就绪就按无记录算 */ }
+        if (logged) loggedDays += 1;
+      }
+      if (days < 3) return [];
+      const pairs: RecoveryPair[] = [{
+        label: '中午缓一缓',
+        days,
+        liftedDays,
+        avgLift: days > 0 ? liftSum / days : 0,
+        // 只有多数日子真有完成记录，才把措辞说成「做过」；否则只讲曲线形态
+        hasRealLog: loggedDays >= 3 && loggedDays / days >= 0.6,
+      }];
+      return composeRecoveryObservations(pairs);
+    } catch { return []; }
+  }, [viewY, viewM, viewDays, calendarFocused, data, sunTick]);
+
   /** 单元格：预览稿口径 aspect 1 : 1.18（2026-10-17 用户「日历卡片再小一点」：1.32 → 1.18）；透明底（无灰框），仅今天蜜黄 */
   const cellH = cellW * 1.18;
   // ★ 2026-10-20（用户：「日历页面上面的那些图片稍微小一点」）：照片占格宽比例 0.95 → 0.82，
@@ -710,18 +868,44 @@ export default function MonthDiscoveryView({
       >
         <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>{day > 0 ? day : ''}</Text>
 
-        {/* ★ 2026-11-07（用户）：格子内只展示当天一个代表 icon（如起床 = ☀️ 太阳），皇冠已去掉 */}
-        {cell?.icon ? (
-          <View
-            style={[
-              styles.cellIconBox,
-              {
-                width: box, height: box, borderRadius: Math.round(box * 0.28),
-                backgroundColor: mixWhite(cell.color, 0.82),
-              },
-            ]}
-          >
-            <Text style={[styles.cellIconTxt, { fontSize: Math.round(box * 0.58) }]}>{cell.icon}</Text>
+        {/* ★ 2026-11-10：只认真实达标（goalMetCount），不再有演示太阳 —— 与回顾日卡片、水晶球三者同源 */}
+        {cell && cell.goalMetCount > 0 ? (
+          <View style={[styles.cellIconBox, { width: box, height: box }]}>
+            <SunMark size={box} />
+            {(cell?.goalMetCount ?? 0) > 1 && (
+              <View style={styles.cellSunBadge}>
+                <Text style={styles.cellSunBadgeText}>×{cell!.goalMetCount}</Text>
+              </View>
+            )}
+          </View>
+        ) : cell && cell.icons.length > 0 ? (
+          <View style={[styles.cellIconStack, { width: box, height: box }]}>
+            {cell.icons.slice(0, 3).map((ic, i) => (
+              <View
+                key={`${ic.emoji}-${i}`}
+                style={[
+                  styles.cellCard,
+                  {
+                    width: Math.round(box * 0.6),
+                    height: Math.round(box * 0.6),
+                    top: Math.round(i * box * 0.6 * 0.26),
+                    left: Math.round(i * box * 0.6 * 0.2),
+                    backgroundColor: mixWhite(ic.color, 0.78),
+                    borderColor: '#FFFFFF',
+                  },
+                ]}
+              >
+                {/* 仅最上层（最后渲染、叠在最前）的卡片显示 emoji，保持「卡片堆叠」干净感 */}
+                {i === Math.min(cell.icons.length, 3) - 1 && (
+                  <Text style={[styles.cellCardEmoji, { fontSize: Math.round(box * 0.6 * 0.5) }]}>{ic.emoji}</Text>
+                )}
+              </View>
+            ))}
+            {cell.icons.length > 3 && (
+              <View style={[styles.cellPlusBadge, { width: Math.round(box * 0.32), height: Math.round(box * 0.32) }]}>
+                <Text style={styles.cellPlusText}>＋{cell.icons.length - 3}</Text>
+              </View>
+            )}
           </View>
         ) : null}
       </TouchableOpacity>
@@ -750,20 +934,60 @@ export default function MonthDiscoveryView({
         </View>
       ) : null}
 
-      {/* ★ 2026-11-07（用户）：月视图 = 日历；每个格子内堆叠「当天皇冠任务」的 icon 卡。
-          周一起始，空槽不画框；点格子 → 下抽屉日视图（旅程 + 两侧活动卡）。 */}
-      <View style={styles.grid} onLayout={onGridLayout}>
-        <View style={styles.weekRow}>
-          {['一', '二', '三', '四', '五', '六', '日'].map((w) => (
-            <Text key={w} style={styles.weekLabel}>{w}</Text>
-          ))}
-        </View>
-        {rows.map((row, ri) => (
-          <View key={ri} style={styles.row}>
-            {row.map((day, ci) => renderCell(day, ci, ri))}
+      {/* ★ 2026-11-09(5)（用户）：月视图默认展示「太阳水晶球」（本月收下的太阳金币沉在球底），
+          切换小图标与「稳步向上的一个月」同一行最右边（裸图标、无圆环底）；
+          点日历小图标 → 展开日历网格（图标变成太阳，可切回圆球）。
+          日历网格：周一起始，空槽不画框；点格子 → 下抽屉日视图（旅程 + 两侧活动卡）。 */}
+      {monthShowCal ? (
+        <View style={styles.calWrap}>
+          <TouchableOpacity
+            style={styles.viewToggle}
+            onPress={() => setMonthShowCal(false)}
+            accessibilityLabel="回到水晶球"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <SunMark size={22} />
+          </TouchableOpacity>
+          <View style={styles.grid} onLayout={onGridLayout}>
+            <View style={styles.weekRow}>
+              {['一', '二', '三', '四', '五', '六', '日'].map((w) => (
+                <Text key={w} style={styles.weekLabel}>{w}</Text>
+              ))}
+            </View>
+            {rows.map((row, ri) => (
+              <View key={ri} style={styles.row}>
+                {row.map((day, ci) => renderCell(day, ci, ri))}
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
+        </View>
+      ) : (
+        <View style={styles.calWrap}>
+          <TouchableOpacity
+            style={styles.viewToggle}
+            onPress={() => setMonthShowCal(true)}
+            accessibilityLabel="查看日历"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={styles.miniCal}>
+              <View style={styles.miniCalPins}>
+                <View style={styles.miniCalPin} />
+                <View style={styles.miniCalPin} />
+              </View>
+              <View style={styles.miniCalBody}>
+                <View style={styles.miniCalHeader} />
+                <View style={styles.miniCalDots}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <View key={i} style={styles.miniCalDot} />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+          {/* 金币数 = 当月达标日太阳总和（与日历格子同源）；切月时球随月份更新 */}
+          <SunGlobe count={monthSunCount} monthLabel={`${viewM + 1} 月`} />
+        </View>
+      )}
 
       {/* ★ 2026-11-03(2)：按用户要求「先隐藏掉我的本月节奏」——整卡隐藏（保留代码便于后续切换） */}
       {false && (
@@ -905,6 +1129,29 @@ export default function MonthDiscoveryView({
         </View>
       </View>
 
+      {/* ★ 2026-11-11（用户：「规律观察要发觉经常哪方面做得好 / 哪方面缺失 /
+          哪方面太阳金币多、主要从哪来」+「数字变化得说明健康意义」）：
+          维度统计与「行为 → 状态回升」因果观察，每条都带一句「这对身体意味着什么」。 */}
+      {(monthDimInsights.length > 0 || recoveryObservations.length > 0) ? (
+        <Card>
+          <Text style={styles.dimInsightHead}>这个月的太阳，主要从哪来</Text>
+          {monthDimInsights.map((ins) => (
+            <View key={ins.id} style={styles.dimInsightRow}>
+              <Text style={styles.dimInsightLabel}>{ins.label}</Text>
+              <Text style={styles.dimInsightText}>{ins.text}</Text>
+              <Text style={styles.dimInsightMeaning}>{ins.meaning}</Text>
+            </View>
+          ))}
+          {recoveryObservations.map((obs) => (
+            <View key={obs.id} style={styles.dimInsightRow}>
+              <Text style={styles.dimInsightLabel}>状态回升</Text>
+              <Text style={styles.dimInsightText}>{obs.text}</Text>
+              <Text style={styles.dimInsightMeaning}>{obs.meaning}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       {(() => {
         const isSample = observedPatterns.length === 0;
         return (
@@ -936,6 +1183,9 @@ export default function MonthDiscoveryView({
                 : p.kind === 'group_diff' ? 'activity'
                 : 'sparkle';
               const kindLabel = patternKindLabel(p.kind);
+              // ★ 2026-11-11（用户）：光给数字变化不够，补一句「这对身体意味着什么」。
+              //   纯规则翻译，不生成新事实、不诊断；翻译不出来就不显示。
+              const patMeaning = healthMeaningOf(p);
               // ★ 2026-11-07（用户）：规律观察卡改「错落」展示 —— 像本月卓越表现卡那样
               //   左右轻微交替倾斜（±1.2°），几卡片看去有层次感，不再是整齐一条线。
               const obsRot = idx % 2 === 0 ? -1.2 : 1.2;
@@ -948,6 +1198,8 @@ export default function MonthDiscoveryView({
                     <View style={styles.obsBody}>
                       {/* ★ 2026-10-28：正文放大 + 纯白，确保一眼读清 */}
                       <Text style={styles.obsText}>{p.text}</Text>
+                      {/* ★ 2026-11-11：数字变化带来的健康意义（用户点名的缺口） */}
+                      {patMeaning ? <Text style={styles.patMeaning}>{patMeaning}</Text> : null}
                       {/* ★ 2026-10-28（用户）：每条下方加类别标签，分清这观察讲什么 */}
                       <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
                         <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
@@ -988,6 +1240,25 @@ export default function MonthDiscoveryView({
 const styles = StyleSheet.create({
   // 根容器：卡片之间留白（对齐截图卡片间距）
   root: { gap: theme.sp(3) },
+  // ★ 2026-11-09(5)：圆球/日历 双模式容器（relative 供右上角切换按钮定位）
+  calWrap: { position: 'relative' },
+  // ★ 2026-11-09(5)（用户）：切换按钮改版 —— 裸图标（无圆环底），与「稳步向上的一个月」
+  //   同一行最右边（calWrap 上移 46dp 正好落在 heroCard 行内右侧空白处）；不挡日历格子。
+  viewToggle: {
+    position: 'absolute', top: -46, right: 16, zIndex: 6, padding: 4,
+  },
+  // 迷你日历小图标（自绘，与应用内自绘图标风格一致）
+  miniCal: { width: 20, height: 20, alignItems: 'center' },
+  miniCalPins: { position: 'absolute', top: 0, flexDirection: 'row', gap: 8, zIndex: 1 },
+  miniCalPin: { width: 2, height: 6, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.95)' },
+  miniCalBody: {
+    marginTop: 3, width: 18, height: 16, borderRadius: 4,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.16)', overflow: 'hidden',
+  },
+  miniCalHeader: { height: 4, width: '100%', backgroundColor: 'rgba(255,255,255,0.85)' },
+  miniCalDots: { flexDirection: 'row', gap: 2.5, paddingHorizontal: 2.5, marginTop: 2.5 },
+  miniCalDot: { width: 2, height: 2, borderRadius: 0.5, backgroundColor: 'rgba(255,255,255,0.9)' },
   // 日历外层：透明、无边框、无阴影 —— 等同预览稿里浮在页面上的日历
   // ★ 2026-10-14：① marginHorizontal:-space.screen 让日历**整块满出血**（取消页面两侧 24px 白边），
   //   最左列照片不再被卡片 overflow 切掉、整张可见；② overflow:visible + borderRadius:0
@@ -1016,9 +1287,30 @@ const styles = StyleSheet.create({
   },
   dayNumToday: { color: '#B98A2E', fontWeight: theme.weight.bold as any },
 
-  // ★ 2026-11-07（用户）：格子内只放「一个代表 icon」的方块（如起床 = ☀️ 太阳），居中于日期数字下方；皇冠已去掉
-  cellIconBox: { alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(3) },
+  // ★ 本轮（用户）：格子标记区（太阳 / 完成 icon 叠加共用），居中于日期数字下方
+  cellIconBox: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginTop: theme.sp(3) },
   cellIconTxt: { textAlign: 'center' },
+  // 未达标日 → 当天完成的各类 icon 以「叠放的方块卡片」呈现（最多 3 张，超出 +N）
+  cellIconStack: { position: 'relative', marginTop: theme.sp(3) },
+  cellCard: {
+    position: 'absolute', borderRadius: 6, borderWidth: 1.2,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 1.5,
+    shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  cellCardEmoji: { textAlign: 'center' },
+  // 超出 3 张时的 +N 药丸（贴右下）
+  cellPlusBadge: {
+    position: 'absolute', bottom: 1, right: 1, borderRadius: 6,
+    backgroundColor: '#3A342B', alignItems: 'center', justifyContent: 'center',
+  },
+  cellPlusText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: '#FFF' },
+  // 达标日 → 太阳右上角小计数
+  cellSunBadge: {
+    position: 'absolute', top: -2, right: -2, minWidth: 13, height: 13, borderRadius: 6.5,
+    paddingHorizontal: 3, backgroundColor: '#3A342B', alignItems: 'center', justifyContent: 'center',
+  },
+  cellSunBadgeText: { fontSize: theme.fontSize.tiny, fontWeight: theme.weight.bold as any, color: '#FFF' },
 
   /* ★ 2026-11-06（用户）：格子皇冠展示（替代照片堆叠；本轮改为矢量 CrownMark）——
      ≤4 个逐个排开；>4 个显示「👑×N」，保证不溢出格子。 */
@@ -1112,6 +1404,29 @@ const styles = StyleSheet.create({
   obsChip: { alignSelf: 'flex-start', borderRadius: theme.radius.pill, paddingVertical: 3, paddingHorizontal: 9, marginTop: theme.sp(1.5) },
   obsChipText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
 
+  // ★ 2026-11-11：规律观察卡里的「健康意义」段（比正文弱一档，但比类别标签醒目）
+  patMeaning: {
+    fontSize: theme.fontSize.xs, color: mm.colors.inkSoft,
+    lineHeight: theme.fontSize.xs * 1.5, marginTop: theme.sp(1.5),
+  },
+  // ★ 2026-11-11：「这个月的太阳，主要从哪来」维度洞察卡
+  dimInsightHead: {
+    fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any,
+    color: mm.colors.ink, marginBottom: theme.sp(2.5),
+  },
+  dimInsightRow: { marginTop: theme.sp(2.5) },
+  dimInsightLabel: {
+    fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold as any,
+    color: theme.colors.accentText, letterSpacing: 0.4,
+  },
+  dimInsightText: {
+    fontSize: theme.fontSize.sm, color: mm.colors.ink,
+    lineHeight: theme.fontSize.sm * 1.45, marginTop: theme.sp(0.75),
+  },
+  dimInsightMeaning: {
+    fontSize: theme.fontSize.xs, color: mm.colors.inkSoft,
+    lineHeight: theme.fontSize.xs * 1.5, marginTop: theme.sp(1),
+  },
   // ★ 2026-10-28 重设计：规律观察 obs 行（左图标 + 文字 + 右上角删掉）
   patObsRow: { flexDirection: 'row', alignItems: 'flex-start', position: 'relative', paddingRight: 44 },
   patObsDel: { position: 'absolute', top: 0, right: 0, paddingHorizontal: 6, paddingVertical: 2 },

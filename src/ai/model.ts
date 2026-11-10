@@ -91,12 +91,14 @@ export function getLlamaContext(): Promise<LlamaContext> {
   if (loading) return loading;
   loading = (async () => {
     try {
+      console.log('[MiraAI] getLlamaContext: 进入加载流程'); // ★ 2026-11-08 排查埋点
       // ★★ 2026-09-17：先释放「上次 reload 遗留在原生侧的 llama context」再加载模型，
       //    否则新 Runtime 里 initLlama 会触碰已死 Runtime → EXC_BAD_ACCESS → 白屏。
       //    每个 JS 世代只做一次（didCleanStaleContexts），不影响本世代后续推理。
       if (!didCleanStaleContexts) {
         didCleanStaleContexts = true;
         try {
+          console.log('[MiraAI] releaseAllLlama 调用前'); // ★ 2026-11-08 排查埋点
           await releaseAllLlama();
           console.log('[MiraAI] 已释放遗留的原生 llama context（防 reload 崩溃）');
         } catch (e) {

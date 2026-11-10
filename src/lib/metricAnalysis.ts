@@ -10,10 +10,13 @@
 
 type M = { key: string; name: string; unit?: string };
 
+/** ★ 2026-11-10（用户）：文案里的瞬时读数与卡片大数值必须同口径，一律整数
+ *  （心率变异性「当前 59.5ms」→「当前 60ms」）。
+ *  全 App 唯一允许 1 位小数的是「身体年龄」，不经过本函数。 */
 function lead(m: M, v: number | null): string {
-  if (v == null) return '';
+  if (v == null || !Number.isFinite(v)) return '';
   const u = m.unit ?? '';
-  return `当前 ${v}${u}，`;
+  return `当前 ${String(Math.round(v))}${u}，`;
 }
 
 export function buildMetricAnalysis(m: M, value: number | null): string {

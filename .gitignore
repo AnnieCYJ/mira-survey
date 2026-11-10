@@ -27,3 +27,7 @@ build_fresh/
 # Hermes 引擎构建产物与 Xcode 构建配置（构建中间产物，不进 git）
 hermes-engine/
 .last_build_configuration
+
+# OTA 发布产物：APK 约 341 MB，绝不进 git；清单 update.json 保留（几百字节）
+dist-update/*.apk
+dist-update/app-debug.apk
