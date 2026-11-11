@@ -152,8 +152,10 @@ export default function CortisolDailyChart({
   //   TrendChart 内部直接消费 r.hourlyMean 画 30min 曲线，因此这里只需把 proxy 结果映射成 r 的形状。
   //   历史日维持旧链路（analyzeCortisol + collectSamplesForDay）。
   // ★ v18.124：实测槽统计（水平/峰值时刻/波动幅度）——供 r.cosinor 消费，详情页那两个格子靠它出数
+  // ★ 峰值时刻与「今日皮质醇全天趋势」曲线同源：曲线画的是 fitted/shaped 系列，故这里统计也走 shaped
+  //   （仅取实测槽 shaped 值），避免 raw 实测 argmax 把夜间噪声槽误判为峰值（曾显示「2 点」）。均值/振幅一并改 shaped 更平滑。
   const psum = useMemo(
-    () => (proxy ? proxySummaryFromSlots(proxy.vals, proxy.real) : { mesor: null, acrophaseH: null, amplitudePct: null, n: 0 }),
+    () => (proxy ? proxySummaryFromSlots(proxy.shaped.vals, proxy.real) : { mesor: null, acrophaseH: null, amplitudePct: null, n: 0 }),
     [proxy],
   );
   const r: CortisolRhythmResult = isToday && proxy
@@ -407,13 +409,9 @@ export default function CortisolDailyChart({
   if (asTwoCards) {
     return (
       <Card>
-        <TouchableOpacity activeOpacity={0.7} onPress={goDetail}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.sp(1) }}>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.accentText }}>详情 ›</Text>
-          </View>
-          <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} hideYAxis={flat} height={chartHeight} />
-        </TouchableOpacity>
+        {/* ★ 用户：去掉右侧「详情 ›」导航（不再跳转新页），仅保留标题 + 曲线 + 下方「查看详情」就地展开 */}
+        <Text style={[styles.title, { marginBottom: theme.sp(1) }]}>{title}</Text>
+        <TrendChart r={r} sleepWindow={sleepWindow} mainDayDk={targetDk} hideYAxis={flat} height={chartHeight} />
 
         <TouchableOpacity
           style={[styles.rhythmCollapsedRow, rhythmOpen && styles.rhythmCollapsedRowOpen]}

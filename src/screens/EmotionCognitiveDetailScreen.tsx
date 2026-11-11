@@ -28,7 +28,7 @@ import DateAnchorPicker from '../components/DateAnchorPicker';
 import { healthStore, dayKey, type SleepSummary } from '../data/healthStore';
 import { collectSamples, collectSamplesForDay, collectSamplesForRange } from '../components/CortisolRhythmCard';
 // ★ v18.124：皮质醇水平/峰值改用多模态反推的实测槽统计（与首页/趋势图同源）
-import { buildCortisolProxyBaseline, buildCortisolProxyToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
+import { buildCortisolProxyBaseline, buildCortisolProxyToday, buildCortisolShapedToday, proxySummaryFromSlots, judgeCortisolRhythm, judgeCortisolRhythmForDay, MIN_BASELINE_DAYS } from '../lib/cortisolProxy';
 import { analyzeCortisol, type CortisolSample, type RhythmLevel } from '../lib/cortisolRhythm';
 import { type RangeKey } from '../data/metrics';
 import { type StressReport } from '../lib/stressAlgorithm';
@@ -113,12 +113,12 @@ function RhythmHero({ range, dayLabel, rangeStatus, rangeLabel, dayPeakH, dayPea
     <View style={styles.heroCard}>
       <Text style={styles.ctitle}>皮质醇昼夜节律</Text>
       <View style={styles.heroWrap}>
-        <View>
-          <Text style={[styles.heroBig, { color }, !bigIsNumber && styles.heroBigWord]}>{big}</Text>
+        <View style={{ flex: 1, flexShrink: 1, marginRight: theme.sp(2) }}>
+          <Text style={[styles.heroBig, { color }, !bigIsNumber && styles.heroBigWord]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{big}</Text>
           <Text style={styles.heroLab}>{lab}</Text>
         </View>
-            <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
-          </View>
+          <Text style={[styles.heroCtx, { color }]}>{ctx}</Text>
+        </View>
           {/* ★ 2026-11-03（用户·统一 hero 结构）：大字下方短分析 */}
           <Text style={styles.heroAnalysis}>
             {(() => {
@@ -431,9 +431,14 @@ export default function EmotionCognitiveDetailScreen() {
       if (!j.ready || !j.label) {
         return { label: null as string | null, firstInsight: '佩戴戒指后，这里会显示你今日的皮质醇趋势。', peakH: null, peakSub: '—', chrono: { label: '—' as string, sub: '—' as string } };
       }
-      // ★ 2026-10-10（用户：顶部状态卡下显示「峰值时刻 + 作息类型」，与趋势图/节律分析卡同源）
-      const sum = proxySummaryFromSlots(px.vals, px.real);
-      const peakH = Number.isFinite(sum.acrophaseH) ? sum.acrophaseH : null;
+      // ★ 峰值时刻与「今日皮质醇全天趋势」曲线同源：曲线画的是 fitted/shaped 系列（受昼夜节律先验约束、
+      //   峰值落在晨间），故 Hero 也读 shaped 系列最高点 —— 不再用 raw 实测 argmax，避免夜间噪声槽被误判为
+      //   全天峰值（曾显示「2 点」这类异常）。节律结论/均值仍走 raw 实测（judgeCortisolRhythm），与图表/日历口径一致。
+      const shaped = buildCortisolShapedToday(pbl);
+      let shapedPeakIdx = -1;
+      let shapedPeakV = -Infinity;
+      shaped.vals.forEach((v, i) => { if (v != null && v > shapedPeakV) { shapedPeakV = v; shapedPeakIdx = i; } });
+      const peakH = shapedPeakIdx >= 0 ? shapedPeakIdx / 2 : null;
       const peakSub = peakH == null ? '—'
         : peakH >= 6 && peakH <= 11 ? '正常范围 06–11 点'
           : peakH < 6 ? '过早（早醒风险）'
@@ -892,12 +897,12 @@ const styles = StyleSheet.create({
   ctitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle, marginBottom: theme.sp(1.5) },
   // 对标 .heroWrap：左大数字/标签，右上下文，两端对齐
   heroWrap: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  // 对标 .big：46pt（hero token），状态着色
-  heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero },
+  // 对标 .big：46pt（hero token），状态着色；flexShrink 防「皮质醇偏高」等长词被压到与右侧 ctx 重叠
+  heroBig: { fontSize: theme.fontSize.hero, fontWeight: theme.weight.semibold as any, lineHeight: theme.fontSize.hero, flexShrink: 1 },
   /* ★ 2026-11-06（用户：结论是词不是数字，字有点太大 → 稍小一点）：词用 stat 档 32px */
   heroBigWord: { fontSize: theme.fontSize.stat, lineHeight: theme.fontSize.stat },
   heroLab: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any },
+  heroCtx: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.semibold as any, flexShrink: 0, marginLeft: theme.sp(2) },
   /* ★ 2026-11-03（用户·统一 hero 结构）：大字下方短分析 */
   heroAnalysis: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 21, marginTop: theme.sp(2) },
   // ★ 2026-10-10（用户）：峰值时刻 + 作息类型，对标脑力消耗「认知准备度」.duo 双格（圆角 11 · 内边距 · 标签/副文 11px · 时间 17px·600）
