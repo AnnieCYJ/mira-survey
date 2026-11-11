@@ -912,7 +912,13 @@ export default function StatusTrendDetailScreen() {
   //   依赖 comparison（best/worst/prevDelta），必须放在 comparison memo 之后。
   const heroAnalysis = useMemo(() => {
     if (!hasData || avg == null) return null;
-    const lvl = curveLevel(avg, CURVE_DEFAULTS);
+    // ★ 2026-11-11（用户：详情页 Hero 把「当前 45 分」错标成「状态良好」）：
+    //   日视图的档位必须按「当前值 current」算，不能按区间均值 avg ——
+    //   否则 avg 与 current 不一致时会出现「当前 45 分却处在状态良好档」的口径矛盾
+    //   （大彩色标签 heroMoodLabel 本就按 current 算，分析句须与它同源）。
+    //   周/月/年视图没有「当前」概念，才用整段均值 avg。
+    const bandVal = dRange === 'day' ? (current ?? avg) : avg;
+    const lvl = curveLevel(bandVal, CURVE_DEFAULTS);
     const mLabel = MOODS[lvl.index]?.label ?? '平平静静';
     if (dRange === 'day') {
       const good = lvl.index <= 1;

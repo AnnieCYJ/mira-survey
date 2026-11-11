@@ -389,13 +389,23 @@ export default function CalmWaveHome() {
   // ★ 2026-11-10（用户）：首页「今日状态」下方加一行「更新时间 几时几点」——
   //   取最近一次数据刷新时刻：优先一键体检完成时刻；否则戒指最近同步时刻；
   //   否则取各项指标里最新的真实采样时刻（ring.lastUpdated）。空态不显示。
+  // ★ 2026-11-11（用户：更新时间应落在整点 / 半点，如 15:00、15:30，不要出现 15:47 这类任意分钟）：
+  //   展示前把时刻对齐到最近的 :00 / :30（<15 取整点、<45 取半点、≥45 进位下一整点）。
+  const snapHalfHour = (ts: number): number => {
+    const d = new Date(ts);
+    const m = d.getMinutes();
+    if (m < 15) d.setMinutes(0, 0, 0);
+    else if (m < 45) d.setMinutes(30, 0, 0);
+    else { d.setHours(d.getHours() + 1, 0, 0, 0); }
+    return d.getTime();
+  };
   const statusUpdatedAt: number | null = (() => {
-    if (statusFromCheck && qcValid?.createdAt) return qcValid.createdAt;
-    if (ring.lastSyncedAt) return ring.lastSyncedAt;
+    if (statusFromCheck && qcValid?.createdAt) return snapHalfHour(qcValid.createdAt);
+    if (ring.lastSyncedAt) return snapHalfHour(ring.lastSyncedAt);
     const lus = Object.values(ring.lastUpdated ?? {}).filter(
       (t): t is number => typeof t === 'number' && t > 0,
     );
-    return lus.length ? Math.max(...lus) : null;
+    return lus.length ? snapHalfHour(Math.max(...lus)) : null;
   })();
   const EMPTY_COLOR = theme.colors.stateEnergy; // 空态统一紫（与 EnergyBall 圆环同源）
   const mood = !hasStatusData
@@ -492,12 +502,38 @@ export default function CalmWaveHome() {
     const yesterdayDk = dayKey(now - 86400000);
     const recoveryIsRecent = recoveryDay === todayDk || recoveryDay === yesterdayDk;
     const stressIsToday = stressDay === todayDk;
+
+    // ★ 关系链驱动信号：从近 90 分钟真实 HR / 步数，算「心率升高」「运动」两个元素，
+    //   让首页分析能把状态下滑归因到具体数据（与 dailyStatus 消耗项 K_DR_HR / K_DR_STEP 同源）。
+    const DRV_WIN = 90 * 60e3;
+    const recentHr = healthStore.getTimeRange('hr', now - DRV_WIN, now, { maxPoints: 240 });
+    const hrVals = recentHr.map((p) => p.v).filter((v) => Number.isFinite(v) && v > 30 && v < 160);
+    let hrElev: number | null = null;
+    if (hrVals.length >= 3) {
+      const hrMean = hrVals.reduce((a, b) => a + b, 0) / hrVals.length;
+      // 静息代理：近 6 小时 HR 的 10 分位（近似静息心率），避免再引一套基线
+      const wide = healthStore
+        .getTimeRange('hr', now - 6 * 3600e3, now, { maxPoints: 600 })
+        .map((p) => p.v)
+        .filter((v) => Number.isFinite(v) && v > 30 && v < 160)
+        .sort((a, b) => a - b);
+      const hrRest = wide.length ? wide[Math.floor(wide.length * 0.1)] : 60;
+      hrElev = Math.max(0, (hrMean - hrRest) / hrRest);
+    }
+    const recentSteps = healthStore.getTimeRange('steps', now - DRV_WIN, now, { maxPoints: 240 });
+    let activity: number | null = null;
+    if (recentSteps.length) {
+      const stepSum = recentSteps.reduce((a, p) => a + (Number.isFinite(p.v) ? p.v : 0), 0);
+      activity = stepSum / (3 * 600); // 3 个 30min 窗 × CURVE 步数基线(600)
+    }
+
     return buildHomeNarrative({
       now, points, mood: moodLabel,
       stress: stressIsToday ? bodyLoad : null,
       events, phaseLabel,
       recoveryScore: hasRecoveryData && recoveryIsRecent ? RECOVERY : null,
       hasStatusData, statusFromCheck,
+      hrElev, activity,
     });
   }, [
     halfSlotNow, ring?.statusTimeline, ring?.sportSessions, refreshKey, interventionVersion,

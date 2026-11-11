@@ -23,8 +23,11 @@ import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import { ScoreBar, type TimelineItem } from './TodayTimelineCard';
 // ★ 2026-11-11（用户：回顾日按维度拆解 + 有分数的小卡加进度条）
-import DayDimensionSection from './DayDimensionSection';
+//   → 2026-11-11 修订（用户：按维度看不要单独成模块，要融进下面曲线旅程）：
+//     只导入单卡 DayDimensionCard + 维度配色，把维度卡当作曲线旅程的一个节点渲染。
+import { DayDimensionCard, DIM_DEEP } from './DayDimensionSection';
 import { buildDayDimensionGroups } from '../lib/reviewDayDimensions';
+import type { DimensionCard } from '../lib/reviewDimensions';
 import { loadCycleLog } from '../data/cycleLog';
 import type { CycleLog } from '../lib/cycleMath';
 import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortByTime } from '../data/selfReportLog';
@@ -242,8 +245,22 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
     }
     return all.filter((x) => !dropped.has(x as DayObservation));
   }, [result, recapItems, interventionItems, obsItems]);
-  const totalH = Math.max(items.length, 1) * ROW_H;
-  const wavePath = buildWavePath(totalH, items.length);
+  // ★ 2026-11-11 修订（用户：按维度看不要单独成模块，融进曲线旅程）：
+  //   把「时间线事件」与「维度卡」合成同一组由曲线连接的旅程节点。
+  //   事件在前（按时间），维度卡在后（延续同一条曲线，不再另起一个大模块）。
+  type JourneyNode =
+    | { kind: 'event'; item: TimelineItem }
+    | { kind: 'dim'; card: DimensionCard };
+  const nodes: JourneyNode[] = useMemo(() => {
+    const events: JourneyNode[] = items.map((it) => ({ kind: 'event', item: it }));
+    const dims: JourneyNode[] = dimensionGroups.flatMap((g) =>
+      g.cards.map((c) => ({ kind: 'dim', card: c })),
+    );
+    return [...events, ...dims];
+  }, [items, dimensionGroups]);
+
+  const totalH = Math.max(nodes.length, 1) * ROW_H;
+  const wavePath = buildWavePath(totalH, nodes.length);
   const isSelToday = sameDay(selDate, new Date());
 
   // ★ 2026-11-05（用户 #286）：把「X 条记录」摘要上抛父层，由 ProfileScreen 钉在 Tab 正上方（固定浮层，不随滚动走）
@@ -271,12 +288,10 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
         <DateAnchorPicker value={selDate} onChange={(d) => setSelDate(d)} range="day" maxDate={new Date()} />
       )}
 
-      {/* ★ 2026-11-11（用户）：这一天按维度拆解（生理周期 / 睡眠 / 运动 / 状态 /
-          情绪压力 / 身体指标 / 完成的事）。独立区块，不占曲线 items 的 7 条上限。 */}
-      <DayDimensionSection groups={dimensionGroups} />
-
-      {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ── */}
-      {items.length === 0 ? (
+      {/* ── 曲线层：从选中格（居中）正下方引出，向下波浪延伸 ──
+          ★ 2026-11-11 修订（用户）：时间线事件 + 维度卡合并为同一组旅程节点，
+          维度卡不再单独成块，而是挂在同一条曲线上，读起来就是「一整段旅程」。 */}
+      {nodes.length === 0 ? (
         <View style={[styles.empty, { marginTop: theme.sp(3) }]}>
           <Text style={styles.emptyTitle}>{isSelToday ? '今天还没有记录' : '这一天还没有记录'}</Text>
           <Text style={styles.emptyText}>打卡、写日记或戴上戒指走一走，这一天就会在这里留下痕迹。</Text>
@@ -285,9 +300,9 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
         <>
           {/* ★ 2026-10-12：曲线与行共用同一个容器（曲线 top:0 定位在行区内），
               这样曲线端点与圆点严格重合——从第一条记录的点连到最后一条记录的点。 */}
-          <View style={[styles.rows, { height: items.length * ROW_H }]}>
-          {/* ★ 只有 ≥2 条记录才画曲线（1 个点无曲线；空 d 的 Path 会让 SVG 把渐变整块渲染成色块） */}
-          {items.length >= 2 && (
+          <View style={[styles.rows, { height: nodes.length * ROW_H }]}>
+          {/* ★ 只有 ≥2 个节点才画曲线（1 个点无曲线；空 d 的 Path 会让 SVG 把渐变整块渲染成色块） */}
+          {nodes.length >= 2 && (
             <Svg width={44} height={totalH} style={styles.curve} pointerEvents="none">
               <Defs>
                 <SvgGrad id="journeyGrad" x1="22" y1="0" x2="22" y2={totalH} gradientUnits="userSpaceOnUse">
@@ -300,10 +315,23 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
             </Svg>
           )}
 
-          {/* 事件行：左右交替，节点圆点贴卡片内缘、落在曲线上 */}
-            {items.map((it, i) => {
+          {/* 旅程节点行：事件卡 + 维度卡左右交替，节点圆点贴卡片内缘、落在曲线上 */}
+            {nodes.map((node, i) => {
               const left = i % 2 === 0;
               const dotOff = left ? -DOT_AMP : DOT_AMP;
+              // ★ 维度卡：直接复用单卡 DayDimensionCard，挂在同一条曲线上（不再单独成块）
+              if (node.kind === 'dim') {
+                const deep = DIM_DEEP[node.card.dimension] ?? mm.colors.purpleCore;
+                return (
+                  <View key={`dim-${node.card.id}-${i}`} style={styles.row}>
+                    <View style={[styles.dot, { backgroundColor: deep, marginLeft: dotOff - theme.sp(1.5) }]} />
+                    <View style={[left ? styles.cardL : styles.cardR, { width: CARD_W }]}>
+                      <DayDimensionCard card={node.card} />
+                    </View>
+                  </View>
+                );
+              }
+              const it = node.item;
               return (
                 <View key={`${it.time}-${i}`} style={styles.row}>
                   <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
@@ -334,8 +362,6 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
                     {/* ★ 本轮（用户 #248）：卡片底部补一句分析 */}
                     {/* ★ 2026-11-09(5)（用户：文字要讲全，不要省略号）—— 去掉全部 numberOfLines 截断 */}
                     {!!it.analysis && <Text style={styles.cardAnalysis}>{it.analysis}</Text>}
-                    {/* ★ 健康意义不在这里重复：独立的「按维度看」小卡已经逐条讲清楚，
-                        曲线卡保持紧凑，避免固定行高被撑破。 */}
                     {/* ★ 本轮（用户）：饮食等带图记录，卡片内附图 */}
                     {!!it.imageUri && (
                       <Image source={{ uri: it.imageUri }} style={styles.cardPhoto} resizeMode="cover" />

@@ -1,28 +1,31 @@
 /**
- * DayDimensionSection —— 回顾·日「这一天，按维度看」分组卡区（2026-11-11）
+ * DayDimensionSection → 2026-11-11 修订（用户：按维度看不要单独成模块，挂到回顾日曲线旅程上）
  *
- * 用户原话：「回顾日里面其实可以分几个维度，比方说生理周期阶段、早上睡眠、
- *   当天运动、整体状态/平均状态，还有血压各方面……有打分的，可以在日的
- *   每一个小卡里面加一个进度条，没有分数就不用说了，完成任务型可能没有。」
+ * 原始设计是把「这一天，按维度看」渲染成一个带标题、带分组 GlassCard 的**大区块**，
+ * 独立于下方曲线旅程之上。用户明确不要这种「新增一个大模块」的呈现：
+ *   维度小卡应当和下面的曲线旅程卡片**融在一起**，成为旅程的一个节点。
  *
- * 设计：
- *   · **独立渲染在曲线时间线之上**，不塞进 items.map、不占用「最多 7 条」上限；
- *   · 每个维度一张小卡；**只有带 score 的卡才画进度条**（复用 TodayTimelineCard.ScoreBar）；
+ * 因此本文件不再导出整块 Section，只导出：
+ *   · `DayDimensionCard` —— 单张维度卡（无标题、无分组容器），供 JourneyDayView
+ *     当作曲线旅程里的一个节点渲染，与其余旅程卡共用同一条曲线；
+ *   · `DIM_SOFT` / `DIM_DEEP` —— 维度配色映射（浅底 / 深字），与 mindmate token 同源。
+ *
+ * 设计要点（沿用旧口径，品牌铁律不变）：
+ *   · 只有带 score 的卡才画进度条（复用 TodayTimelineCard.ScoreBar）；
  *   · 达标卡右上角沿用 SunMark（与月历格子、水晶球同一枚太阳）；
  *   · 每张卡底部一句 meaning = 「这对身体意味着什么」，平实、软化、不诊断；
- *   · 空数据整组不出，绝不用「—」硬凑。
+ *   · 空数据整卡不出（在规则层 composeDimensionGroups 已保证）。
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
-import GlassCard from './GlassCard';
 import SunMark from './SunMark';
 import { ScoreBar } from './TodayTimelineCard';
-import type { DimensionGroup, DimensionCard } from '../lib/reviewDimensions';
+import type { DimensionCard } from '../lib/reviewDimensions';
 
 /** 每个维度一个稳定的浅底色（取自 mindmate 现有 token，不新增色相） */
-const DIM_SOFT: Record<string, string> = {
+export const DIM_SOFT: Record<string, string> = {
   cycle: mm.colors.purpleSoft,
   sleep: mm.colors.honeySoft,
   activity: mm.colors.limeSoft,
@@ -32,7 +35,7 @@ const DIM_SOFT: Record<string, string> = {
   vitals: mm.colors.limeSoft,
   task: mm.colors.honeySoft,
 };
-const DIM_DEEP: Record<string, string> = {
+export const DIM_DEEP: Record<string, string> = {
   cycle: mm.colors.purpleCore,
   sleep: mm.colors.honeyDeep,
   activity: mm.colors.limeDeep,
@@ -43,7 +46,8 @@ const DIM_DEEP: Record<string, string> = {
   task: mm.colors.honeyDeep,
 };
 
-function DimCardView({ card }: { card: DimensionCard }) {
+/** 单张维度卡：由 JourneyDayView 包在曲线节点（左/右交替）里渲染，自身不带标题与分组框 */
+export function DayDimensionCard({ card }: { card: DimensionCard }) {
   const soft = DIM_SOFT[card.dimension] ?? mm.colors.purpleSoft;
   const deep = DIM_DEEP[card.dimension] ?? mm.colors.purpleCore;
   const hasScore = typeof card.score === 'number' && Number.isFinite(card.score);
@@ -78,42 +82,12 @@ function DimCardView({ card }: { card: DimensionCard }) {
   );
 }
 
-export default function DayDimensionSection({ groups }: { groups: DimensionGroup[] }) {
-  if (!groups.length) return null;
-  return (
-    <View style={styles.wrap}>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>这一天，按维度看</Text>
-        <Text style={styles.sectionHint}>有分数的，标了进度</Text>
-      </View>
-      {groups.map((g) => (
-        <GlassCard key={g.id} style={styles.group}>
-          <Text style={styles.groupTitle}>{g.title}</Text>
-          {g.cards.map((c) => <DimCardView key={c.id} card={c} />)}
-        </GlassCard>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  wrap: { marginTop: theme.sp(3), gap: theme.sp(2.5) },
-  sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  sectionTitle: {
-    fontSize: theme.fs(17), fontWeight: theme.weight.semibold as never,
-    color: mm.colors.ink, letterSpacing: -0.3,
-  },
-  sectionHint: { fontSize: theme.fontSize.xs, color: mm.colors.inkFaint },
-  group: { paddingVertical: theme.sp(3) },
-  groupTitle: {
-    fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never,
-    color: theme.colors.accentText, marginBottom: theme.sp(2.5),
-  },
   card: {
     backgroundColor: mm.colors.cardBg,
     borderWidth: 1, borderColor: mm.colors.cardBorder,
     borderRadius: mm.radius.card, padding: theme.space.cardPadCompact,
-    marginBottom: theme.sp(2), position: 'relative',
+    position: 'relative',
   },
   sun: { position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5), zIndex: 3 },
   head: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), paddingRight: theme.sp(7) },

@@ -30,7 +30,7 @@ const HALF_MS = 30 * 60 * 1000;
 const THREE_H_MS = 3 * 60 * 60 * 1000;
 
 export type Direction = 'up' | 'down' | 'flat' | 'unknown';
-export type ReasonKey = 'action' | 'sport' | 'stress' | 'phase' | 'sleep' | 'none';
+export type ReasonKey = 'action' | 'sport' | 'stress' | 'phase' | 'sleep' | 'hr' | 'exercise' | 'none';
 
 export interface NarrativePoint {
   /** 状态点时刻（墙钟 :00 / :30 对齐） */
@@ -60,6 +60,12 @@ export interface HomeNarrativeInput {
   events: NarrativeEvent[];
   /** 周期相位（黄体期等），无则 null */
   phaseLabel: string | null;
+  /** ★ 关系链驱动信号：近 90 分钟心率比静息高出的比例 (hrMean−hrRest)/hrRest，0–1.5+。
+   *   用于把状态下滑归因到「心率升高」这个元素（与 dailyStatus.accumulateWindow 的 K_DR_HR 同源）。null = 无数据。 */
+  hrElev?: number | null;
+  /** ★ 关系链驱动信号：近 90 分钟步数强度 steps/stepBaseline，0–1.5+。
+   *   用于归因到「运动 / 活动多」这个元素（与 K_DR_STEP 同源）。null = 无数据。 */
+  activity?: number | null;
   /** 睡眠恢复分 —— 仅早晨可能进入叙事，其余时段一律不看 */
   recoveryScore: number | null;
   hasStatusData: boolean;
@@ -141,7 +147,10 @@ const PHASE_WORD: Record<DayPhase, string> = {
   bedtime: '晚上',
 };
 
-/** 归因选择：先看近 3 小时真实发生的事，再看持续信号，最后才用相位；早晨才允许睡眠。 */
+/** 归因选择：先看近 3 小时真实发生的事，再看持续信号（心率升高 / 运动 / 压力），最后才用相位；早晨才允许睡眠。
+ *  ★ 2026-11-11（用户：状态变差要能挖到「心率升高 / 去运动」这些元素）：新增 hr / exercise 两个数据驱动归因。
+ *    它们直接对应 dailyStatus.accumulateWindow 的消耗项 K_DR_HR / K_DR_STEP —— 状态算法本就挂钩这些真实量，
+ *    首页分析只是把「是哪些元素在拉低状态」讲出来，形成关系链。 */
 function pickReason(
   input: HomeNarrativeInput,
   phase: DayPhase,
@@ -149,10 +158,41 @@ function pickReason(
   ev: NarrativeEvent | null,
 ): ReasonKey {
   if (ev) return ev.kind === 'sport' ? 'sport' : 'action';
-  if (typeof input.stress === 'number' && input.stress >= 55 && direction !== 'up') return 'stress';
-  if (phase === 'afternoon' && direction !== 'up' && input.phaseLabel === '黄体期') return 'phase';
+  // ★ 关系链归因只在「状态确实往下」时成立：把下滑挂到 心率升高 / 运动 / 压力 这些实际在拉低状态的元素。
+  // 用 direction==='down'（而非 !=='up'）是为了不让 flat（平稳）也被算成「是运动/压力害的」——
+  // 平稳时给「歇十分钟/放松呼吸」会和「状态没什么起伏」自相矛盾。
+  if (direction === 'down') {
+    const hr = input.hrElev ?? 0;
+    const act = input.activity ?? 0;
+    const stress = typeof input.stress === 'number' ? input.stress : 0;
+    const cands: [ReasonKey, number][] = [];
+    if (hr >= 0.15) cands.push(['hr', hr]);
+    if (act >= 0.5) cands.push(['exercise', act * 1.1]);
+    if (stress >= 55) cands.push(['stress', (stress - 50) / 50]);
+    if (cands.length) return cands.sort((a, b) => b[1] - a[1])[0][0];
+  }
+  if (typeof input.stress === 'number' && input.stress >= 55 && direction === 'down') return 'stress';
+  if (phase === 'afternoon' && direction === 'down' && input.phaseLabel === '黄体期') return 'phase';
   if (phase === 'morning' && input.recoveryScore != null) return 'sleep';
   return 'none';
+}
+
+/**
+ * ★ 关系链从句：状态变差时，把真正在动的驱动元素串成一句（心率升高 / 运动 / 压力），软化表达。
+ * 与 pickReason 的「单一主因」互补 —— 这里把同时活跃的元素都列出来（最多 2 个），呈现你要的「关系链」。
+ * 睡眠/昨晚只在早晨单独出现，绝不进这里（避免夜里讲昨晚）。
+ */
+function chainClause(input: HomeNarrativeInput): string {
+  const parts: string[] = [];
+  const hr = input.hrElev ?? 0;
+  const act = input.activity ?? 0;
+  const stress = typeof input.stress === 'number' ? input.stress : 0;
+  if (hr >= 0.15) parts.push('心率比平时高');
+  if (act >= 0.5) parts.push('刚动了一阵');
+  else if (act >= 0.25) parts.push('活动比平时多');
+  if (stress >= 55) parts.push('压力一直没松开');
+  if (!parts.length) return '';
+  return '，大概和' + parts.slice(0, 2).join('、') + '有关';
 }
 
 /** 每个组合给两个说法，按半小时槽轮换 —— 状态点一更新，话术也跟着换，不会一整天挂着同一句。 */
@@ -329,8 +369,26 @@ function variants(key: string): [string, string] | null {
  *   「状态稳住了」，等于把变差说成没变 —— 正是用户批评的「随便说」。
  *   模板拼句也只吃当前 phase / direction / reason，因此时段与方向天然不可能错。
  */
-function analysisText(phase: DayPhase, direction: Direction, reason: ReasonKey, slot: number, mood: string): string {
+function analysisText(
+  phase: DayPhase,
+  direction: Direction,
+  reason: ReasonKey,
+  slot: number,
+  mood: string,
+  chain: string,
+  useChain: boolean,
+): string {
   const pick = Math.abs(slot) % 2;
+  // ★ 关系链优先：状态变差且驱动元素明确（心率升高 / 运动 / 多元素同现）时，用紧凑链句，
+  //   方向永远正确（专打 down）、≤45 字、软化表达。 lone-stress 仍走下方原有好文案不退化。
+  if (useChain && direction === 'down') {
+    const OPEN: Record<DayPhase, string> = {
+      morning: '早上这会儿', lateMorning: '上午这会儿', preNoon: '快到饭点这会儿',
+      afternoon: '下午这会儿', evening: '傍晚这会儿', bedtime: '晚上这会儿',
+    };
+    const lead = pick ? '状态比刚才低了些' : '状态往下走了些';
+    return `${OPEN[phase]}${lead}${chain}。`;
+  }
   if (direction !== 'unknown' && reason !== 'none') {
     const v = variants(`${phase}|${direction}|${reason}`);
     if (v) return v[pick];
@@ -349,7 +407,7 @@ function analysisText(phase: DayPhase, direction: Direction, reason: ReasonKey, 
   // sleep 只有早晨允许，但早晨的 sleep 组合已在表里命中；这里留空防止任何时段被拼进睡眠词
   const REASON: Record<ReasonKey, string> = {
     action: '刚缓了一缓，', sport: '刚才动了一阵，', stress: '压力一直没松开，',
-    phase: '这个阶段容易发沉，', sleep: '', none: '',
+    phase: '这个阶段容易发沉，', sleep: '', hr: '心率比平时高，', exercise: '刚动了一阵，', none: '',
   };
   const LAND: Record<DayPhase, [string, string]> = {
     morning: ['先把要紧的一件排前面', '先按自己的节奏开局'],
@@ -389,6 +447,19 @@ function suggestionOf(phase: DayPhase, direction: Direction, reason: ReasonKey, 
       cta: { label: '去呼吸', screen: 'Breathing', params: { breath: 'calm' } },
     };
   }
+  // ③a ★ 心率升高导致状态下滑 → 放松呼吸（与「心率比平时高」同源）
+  if (reason === 'hr') {
+    return {
+      text: ['做个 4-2-6 放松呼吸', '先缓一缓，做段放松呼吸'][Math.abs(slot) % 2],
+      cta: { label: '去呼吸', screen: 'Breathing', params: { breath: 'calm' } },
+    };
+  }
+  // ③b ★ 运动 / 活动多导致下滑 → 歇一歇（对应「刚动了一阵」）
+  if (reason === 'exercise') {
+    return {
+      text: ['歇十分钟，别马上坐着', '动得不少了，喝口水缓缓'][Math.abs(slot) % 2],
+    };
+  }
   // ④ 相位带来的发沉 → 留空档，不给跳跃式 CTA
   if (reason === 'phase') {
     return { text: '给自己留十分钟放空' };
@@ -424,13 +495,22 @@ export function buildHomeNarrative(input: HomeNarrativeInput): HomeNarrative {
 
   // 事件短语不直接塞进模板（字数会爆），只用于签名与归因选择；
   // 变体文案里用「刚缓了一缓 / 刚才动了一阵」这类已发生的泛化说法，绝不编造具体动作名。
-  const analysis = analysisText(phase, direction, reasonKey, slot, input.mood || '');
+  // ★ 关系链：状态变差时把「心率升高 / 运动 / 压力」这些实际在拉低状态的元素串成一句。
+  const chain = chainClause(input);
+  // 仅在「心率升高 / 运动 / 多元素同现」时走链句；lone-stress 仍用下方原有好文案（不退化）。
+  const useChain =
+    !!chain &&
+    direction === 'down' &&
+    ((input.hrElev ?? 0) >= 0.15 || (input.activity ?? 0) >= 0.25 || chain.split('、').length >= 2);
+  const analysis = analysisText(phase, direction, reasonKey, slot, input.mood || '', chain, useChain);
   const suggestion = suggestionOf(phase, direction, reasonKey, slot);
 
   const lastPointAt = pts.length ? pts[pts.length - 1].t : 0;
   const signature = [
     lastPointAt, slot, direction, phase, reasonKey,
     ev ? `${ev.kind}@${ev.at}` : 'noevent',
+    `hr${input.hrElev != null ? input.hrElev.toFixed(2) : '-'}`,
+    `ac${input.activity != null ? input.activity.toFixed(2) : '-'}`,
   ].join('|');
 
   return {
@@ -468,6 +548,7 @@ const NIGHT_BAN = /晚上|今晚|临睡|今晚|夜里|睡前|躺下/;
 const FACT_WORDS = [
   '睡眠', '昨晚', '饭', '吃', '呼吸', '缓了一缓', '动了一阵', '走动', '压力',
   '黄体', '节律', '收工', '躺下', '放空', '拍', '照', '灯', '空档', '要紧的一件',
+  '心率', '活动',
 ];
 
 /**

@@ -1415,12 +1415,15 @@ export default function MetricDetailScreen() {
     if (!isHrvDay) return null;
     const dk = dateKeyOf(anchor.getTime());
     const dayStart = dayStartOf(anchor.getTime());
-    const pts = healthStore.getIntraday('hrv', dk);
     const win = hrvSleepWindow;
 
     if (hrvEffectivePart === 'night' && win) {
       const [bedMs, wakeMs] = win;
       // ★ 2026-11-07：BASE_UI 夜间 HRV 实测 ~5 分钟、日间 ~30 分钟，柱宽按本指标真实间隔
+      // ★ 2026-11-11 修复：夜间睡眠常跨零点，post-midnight 的 HRV 样本存在次日（dk+1）的
+      //   intraday 里；旧实现用 getIntraday('hrv', dk) 只取当日 → 跨零点后那段永远收不到、
+      //   夜间图变空。改为 getTimeRange 跨天取 [bedMs, wakeMs] 全量，前后两段天然拼接。
+      const pts = healthStore.getTimeRange('hrv', bedMs, wakeMs, { maxPoints: 720 });
       const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (barBinMin * 60_000)));
       const buckets = binByMinutes(pts, barBinMin, { dayStartMs: bedMs, slotCount });
       const ticks: { frac: number; label: string }[] = [];
@@ -1437,6 +1440,7 @@ export default function MetricDetailScreen() {
     }
 
     // 日间视图：全天轴，睡眠段静默（趋势线在静默区断开，见 AllDayBarsChart 分段逻辑）
+    const pts = healthStore.getIntraday('hrv', dk);
     const buckets = binByMinutes(pts, barBinMin, { dayStartMs: dayStart });
     return {
       buckets,

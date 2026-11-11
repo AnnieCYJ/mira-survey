@@ -1129,49 +1129,74 @@ export default function MonthDiscoveryView({
         </View>
       </View>
 
-      {/* ★ 2026-11-11（用户：「规律观察要发觉经常哪方面做得好 / 哪方面缺失 /
-          哪方面太阳金币多、主要从哪来」+「数字变化得说明健康意义」）：
-          维度统计与「行为 → 状态回升」因果观察，每条都带一句「这对身体意味着什么」。 */}
-      {(monthDimInsights.length > 0 || recoveryObservations.length > 0) ? (
-        <Card>
-          <Text style={styles.dimInsightHead}>这个月的太阳，主要从哪来</Text>
-          {monthDimInsights.map((ins) => (
-            <View key={ins.id} style={styles.dimInsightRow}>
-              <Text style={styles.dimInsightLabel}>{ins.label}</Text>
-              <Text style={styles.dimInsightText}>{ins.text}</Text>
-              <Text style={styles.dimInsightMeaning}>{ins.meaning}</Text>
-            </View>
-          ))}
-          {recoveryObservations.map((obs) => (
-            <View key={obs.id} style={styles.dimInsightRow}>
-              <Text style={styles.dimInsightLabel}>状态回升</Text>
-              <Text style={styles.dimInsightText}>{obs.text}</Text>
-              <Text style={styles.dimInsightMeaning}>{obs.meaning}</Text>
-            </View>
-          ))}
-        </Card>
-      ) : null}
-
+      {/* ★ 2026-11-11 → 修订（用户：太阳从哪来不要单独成块，揉进规律观察小卡）：
+          把「太阳来源维度洞察 + 状态回升因果 + 真实规律」三路合成一组错落玻璃卡，
+          统一在「规律观察」标题下。太阳来源读起来像「深睡比例高 → 因此拿了 N 太阳」。 */}
       {(() => {
-        const isSample = observedPatterns.length === 0;
+        type ObsItem =
+          | { kind: 'insight'; id: string; text: string; meaning: string; tag: string; soft: string; deep: string; iconName: IconName }
+          | { kind: 'pattern'; p: typeof observedPatterns[number] };
+        // 把月份维度洞察的标签翻成（浅底 / 深字 / 图标），让太阳来源卡和「规律观察」同家族
+        const accentForMonthInsight = (label: string): { soft: string; deep: string; icon: IconName } => {
+          if (/太阳/.test(label)) return { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep, icon: 'sparkle' };
+          if (/状态回升/.test(label)) return { soft: mm.colors.skySoft, deep: mm.colors.skyDeep, icon: 'activity' };
+          if (/睡眠/.test(label)) return { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep, icon: 'moon' };
+          if (/走动|活动/.test(label)) return { soft: mm.colors.limeSoft, deep: mm.colors.limeDeep, icon: 'activity' };
+          return { soft: mm.colors.limeSoft, deep: mm.colors.limeDeep, icon: 'sparkle' };
+        };
+        const items: ObsItem[] = [
+          ...monthDimInsights.map((ins): ObsItem => {
+            const a = accentForMonthInsight(ins.label);
+            return { kind: 'insight', id: ins.id, text: ins.text, meaning: ins.meaning, tag: ins.label, soft: a.soft, deep: a.deep, iconName: a.icon };
+          }),
+          ...recoveryObservations.map((obs): ObsItem => ({
+            kind: 'insight', id: obs.id, text: obs.text, meaning: obs.meaning, tag: '状态回升',
+            soft: mm.colors.skySoft, deep: mm.colors.skyDeep, iconName: 'activity',
+          })),
+          ...observedPatterns.map((p): ObsItem => ({ kind: 'pattern', p })),
+        ];
+        if (items.length === 0) {
+          /* ★ 空态（诚实）：真实规律还没攒够样本，不放假观察 */
+          return (
+            <Card>
+              <View style={styles.patObsRow}>
+                <View style={[styles.obsIco, { backgroundColor: mm.colors.skySoft }]}>
+                  <Icon name="sparkle" size={14} color={mm.colors.skyDeep} />
+                </View>
+                <View style={styles.obsBody}>
+                  <Text style={styles.obsText}>还没有从你的数据里看出稳定规律。</Text>
+                  <Text style={styles.cardNote}>
+                    连续佩戴并记录一两周后，这里会出现真正属于你的观察（比如作息与情绪的关联）。样本不够时，我们不会编一条给你。
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          );
+        }
         return (
           <>
-            {isSample ? (
-              /* ★ 空态（诚实）：真实规律还没攒够样本，不放假观察 */
-              <Card>
-                <View style={styles.patObsRow}>
-                  <View style={[styles.obsIco, { backgroundColor: mm.colors.skySoft }]}>
-                    <Icon name="sparkle" size={14} color={mm.colors.skyDeep} />
-                  </View>
-                  <View style={styles.obsBody}>
-                    <Text style={styles.obsText}>还没有从你的数据里看出稳定规律。</Text>
-                    <Text style={styles.cardNote}>
-                      连续佩戴并记录一两周后，这里会出现真正属于你的观察（比如作息与情绪的关联）。样本不够时，我们不会编一条给你。
-                    </Text>
-                  </View>
-                </View>
-              </Card>
-            ) : observedPatterns.slice(0, 4).map((p, idx) => {
+            {items.map((it, idx) => {
+              // ★ 2026-11-07（用户）：规律观察卡「错落」展示 —— 左右轻微交替倾斜（±1.2°）
+              const obsRot = idx % 2 === 0 ? -1.2 : 1.2;
+              if (it.kind === 'insight') {
+                return (
+                  <Card key={it.id} style={{ transform: [{ rotate: `${obsRot}deg` }] }}>
+                    <View style={styles.patObsRow}>
+                      <View style={[styles.obsIco, { backgroundColor: it.soft }]}>
+                        <Icon name={it.iconName} size={14} color={it.deep} />
+                      </View>
+                      <View style={styles.obsBody}>
+                        <Text style={styles.obsText}>{it.text}</Text>
+                        {it.meaning ? <Text style={styles.patMeaning}>{it.meaning}</Text> : null}
+                        <View style={[styles.patTag, { backgroundColor: it.soft }]}>
+                          <Text style={[styles.patTagText, { color: it.deep }]}>{it.tag}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Card>
+                );
+              }
+              const p = it.p;
               const accent =
                 p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
                 : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
@@ -1183,15 +1208,11 @@ export default function MonthDiscoveryView({
                 : p.kind === 'group_diff' ? 'activity'
                 : 'sparkle';
               const kindLabel = patternKindLabel(p.kind);
-              // ★ 2026-11-11（用户）：光给数字变化不够，补一句「这对身体意味着什么」。
-              //   纯规则翻译，不生成新事实、不诊断；翻译不出来就不显示。
+              // ★ 2026-11-11（用户）：光给数字变化不够，补一句「这对身体意味着什么」
               const patMeaning = healthMeaningOf(p);
-              // ★ 2026-11-07（用户）：规律观察卡改「错落」展示 —— 像本月卓越表现卡那样
-              //   左右轻微交替倾斜（±1.2°），几卡片看去有层次感，不再是整齐一条线。
-              const obsRot = idx % 2 === 0 ? -1.2 : 1.2;
               return (
                 <Card key={p.id} style={{ transform: [{ rotate: `${obsRot}deg` }] }}>
-                  <View style={[styles.patObsRow, isSample && { paddingRight: 8 }]}>
+                  <View style={styles.patObsRow}>
                     <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
                       <Icon name={pIcon} size={14} color={accent.deep} />
                     </View>
@@ -1204,8 +1225,6 @@ export default function MonthDiscoveryView({
                       <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
                         <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
                       </View>
-                      {/* ★ 2026-11-06（用户：「不展示 AI 解读」）→ 移除「✨ AI 解读」入口。
-                          ★ 2026-11-03 引入、2026-11-06 用户明确不要了。 */}
                     </View>
                     {/* ★ 2026-11-06（用户：「右边那个删掉，改成一个叉就行了，不要删掉那两个字」）
                         → 「删掉」两个字换成 ✕ 图标按钮。 */}
@@ -1222,9 +1241,6 @@ export default function MonthDiscoveryView({
                 </Card>
               );
             })}
-            {/* ★ 2026-11-06（用户：「底下那句话不用写，这 30 天里有六天是有可用数据，
-                这些个数在这些数据可以看出来规律之类，这句话不需要写。」）
-                → 移除 coverageNote 脚注（覆盖天数/说明文案整行去掉）。 */}
           </>
         );
       })()}
