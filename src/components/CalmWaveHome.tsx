@@ -20,6 +20,7 @@ import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { RingBle } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore';
+import { userStore, getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 import { computeEmotionalStress, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { estimateVo2maxFromStore } from '../lib/vo2max';
@@ -250,6 +251,15 @@ export default function CalmWaveHome() {
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
   const [ring, setRing] = useState(() => RingBle.getState());
   useEffect(() => RingBle.onState((s) => setRing(s)), []);
+  // ★ 2026-11-11（用户）：男性用户首页隐藏「生理周期」chip（男性无生理周期）。
+  //   profile.gender 由 Onboarding 采集；订阅 onSessionChange 即时反映设置变更。
+  const [gender, setGender] = useState<Gender | undefined>(() => getCachedSession()?.profile?.gender);
+  useEffect(() => {
+    const sync = () => setGender(getCachedSession()?.profile?.gender);
+    sync();
+    return onSessionChange(sync);
+  }, []);
+  const showCycle = gender !== 'male';
   // ★ 2026-11-05（用户）：首次进入「今日状态」是空的 → 做完一键体检后首页要有当下结果。
   //   订阅体检结果缓存（体检完成即广播），并在每次回到首页时重新读一次，避免跨页丢刷新。
   const [qcResult, setQcResult] = useState<QuickCheckResult | null>(() => getQuickCheckResultSync());
@@ -789,7 +799,10 @@ export default function CalmWaveHome() {
           位置在海浪/深色交界线正下方（过渡区深色渐变带上）。每张可点进对应详情页。 */}
       <View style={[s.chipRowZone, { top: chipRowTop, height: CHIP_H }]}>
         <View style={s.chipRow}>
-          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS).filter((c) => c.key !== 'cardio' || !!vo2).map((c) => {
+          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS)
+            .filter((c) => c.key !== 'cardio' || !!vo2)
+            .filter((c) => showCycle || c.key !== 'cycle')
+            .map((c) => {
             const d = chipDyn[c.key];
             // ★ 本轮：全部卡片统一为大卡尺寸（活动消耗/生理周期 与 情绪/身心压力 同尺寸）
             const big = true;

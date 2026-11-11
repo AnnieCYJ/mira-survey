@@ -33,7 +33,7 @@ import { computeSleepPersonalized, sleepRecoveryTag } from '../lib/sleepPersonal
 import { RingBle, type RingSportSession } from '../ble/RingBleManager';
 import { healthStore, dayKey } from '../data/healthStore'
 // ★ 2026-11-06 审查（docs/audit/02 🔵#3）：接真实账号昵称，不再写死 Kristina / K
-import { userStore, getCachedSession } from '../data/userStore';
+import { userStore, getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { collectSamples } from '../components/CortisolRhythmCard';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
@@ -217,6 +217,15 @@ export default function TodayScreen() {
     return () => { alive = false; };
   }, []);
   const [ring, setRing] = useState(() => RingBle.getState());
+  // ★ 2026-11-11（用户）：男性用户隐藏「生理周期」状态 chip（男性无生理周期）。
+  //   profile.gender 由 Onboarding 采集；订阅 onSessionChange 即时反映设置变更。
+  const [gender, setGender] = useState<Gender | undefined>(() => getCachedSession()?.profile?.gender);
+  useEffect(() => {
+    const sync = () => setGender(getCachedSession()?.profile?.gender);
+    sync();
+    return onSessionChange(sync);
+  }, []);
+  const showCycle = gender !== 'male';
 
   // ★ B2（2026-10-08 交互优化）：无内部缓存算法的 memo key ——
   //   healthVer = healthStore 版本（戒指数据写入时自增）、dayKeyStr = 当日日期、
@@ -976,6 +985,8 @@ export default function TodayScreen() {
     //   而非「心理压力」的情绪压力详情页（EnergyDetail emotion）。tone 复用 pink，置于数组末位。
     { key: 'load', icon: 'bolt', tone: 'pink', label: '身心压力', value: loadValue, unit: loadValue !== '—' ? '/100' : undefined, valueTone: loadTone, onPress: () => navigation.navigate('MetricDetail', { key: 'stress', name: '身心压力', unit: '/100', yMin: 0, yMax: 100 }) },
   ];
+  // ★ 2026-11-11（用户）：男性 → 移除「生理周期」chip（与洞察页/首页口径一致）
+  const visibleMetricChips = showCycle ? metricChips : metricChips.filter((c) => c.key !== 'period');
 
   /** 睡眠恢复卡数据（MindMate v10：纯数字无图表）。全部来自真实睡眠摘要，缺项显式 '—'。 */
   const sleepCard = (() => {
@@ -1137,7 +1148,7 @@ export default function TodayScreen() {
                 head 的 marginBottom lg 正是当年为「标题与 chips 的呼吸间距」留的量（2026-10-11 用户原话）。
                 chips 各自独立白卡，第 5 张露边提示可横滑；marginBottom md = chips 与圆环的间距。 */}
             <View style={{ marginBottom: theme.space.md }} onLayout={measureSection('chips')}>
-              <MindChips items={metricChips} />
+              <MindChips items={visibleMetricChips} />
             </View>
 
             {/* ★ 2026-10-15：弹性呼吸位 —— 与圆弧下方的另一处弹性位等分剩余高度，

@@ -23,7 +23,7 @@ import ExamTab from '../components/ExamTab';
 import QuickCheckTab from '../components/QuickCheckTab';
 import { getLatestExamRecord } from '../data/examStore';
 // ★ 2026-11-07：首次登录 Onboarding 录入的年龄存在 userStore.session.profile.age
-import { userStore, getCachedSession } from '../data/userStore';
+import { userStore, getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 import ChatSheet from '../components/ChatSheet';
 import EmotionInsightView from '../components/EmotionInsightView';
 import EmotionQuickRecord from '../components/EmotionQuickRecord';
@@ -241,6 +241,16 @@ export default function InsightScreen() {
   const { autoMonitor } = useAppState();
   // 直接订阅戒指实时状态：真实心率/血氧/体温/皮电/HRV/呼吸率都从这里来
   const [ring, setRing] = useState<RingState>(RingBle.getState());
+  // ★ 2026-11-11（用户）：男性用户隐藏「生理周期节律」卡片与对应子 tab —— 男性无生理周期。
+  //   profile.gender 由 Onboarding 采集；AuthGate 进主页前已加载会话，故首渲染即有效；
+  //   订阅 onSessionChange 以即时反映设置里改性别。undisclosed 默认显示（避免误伤潜在女性）。
+  const [gender, setGender] = useState<Gender | undefined>(() => getCachedSession()?.profile?.gender);
+  useEffect(() => {
+    const sync = () => setGender(getCachedSession()?.profile?.gender);
+    sync();
+    return onSessionChange(sync);
+  }, []);
+  const showCycle = gender !== 'male';
   // 默认基础指标 tab：直连戒指真实信号；其余维度 tab 为周期-心理洞察（上线保留）
     const [topTab, setTopTab] = useState<'rhythm' | 'longevity'>('rhythm');
   const [subTab, setSubTab] = useState<string>('recover'); // rhythm: recover(皮质醇) | body(雌/孕激素)
@@ -271,7 +281,9 @@ export default function InsightScreen() {
     bodycomp: 'bodyComp',
   };
   const longevitySubs = LONGEVITY_SUBS.filter(t => { const c = SUB_CAP[t.key]; return !c || hasCap(deviceModel, c); });
-  const ACTIVE_SUBS = topTab === 'rhythm' ? RHYTHM_SUBS : longevitySubs;
+  // ★ 2026-11-11（用户）：男性 → 节律子 tab 移除「生理周期节律」，避免空 tab / 误入
+  const rhythmSubs = showCycle ? RHYTHM_SUBS : RHYTHM_SUBS.filter((t) => t.key !== 'body');
+  const ACTIVE_SUBS = topTab === 'rhythm' ? rhythmSubs : longevitySubs;
   // 当前 subTab 被机型能力过滤掉时（如切到 Luna Mira），有效键回落到第一个可用 tab，避免空屏/选中错位
   const effSub = ACTIVE_SUBS.some(t => t.key === subTab) ? subTab : (ACTIVE_SUBS[0]?.key ?? 'basics');
   const [tab, setTab] = useState<TabKey>('basics');
@@ -825,7 +837,7 @@ export default function InsightScreen() {
             {/* ★ 2026-11-09（用户纠偏）：「昼夜节律」卡主视觉改回睡眠规律性（入睡/起床区间图 + 规律性数据），
                 皮质醇因批处理算法未达精准，降级到详情页最底部弱化处理，不再主视觉露出。 */}
             <SleepRegularitySummaryCard onPress={() => navigation.navigate('SleepRegularityDetail')} />
-            <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />
+            {showCycle && <CyclePhaseCard ring={ring} female={ring.female} title="生理周期节律" hideHormoneTrend onPress={() => navigation.navigate('CycleCalendar')} />}
           </>
         ) : (
           <>
@@ -855,7 +867,7 @@ export default function InsightScreen() {
                 <SleepStructureCard dataStale={dataStale} segments={todaySegments} summary={ring.sleepSummary} sleepTime={todaySleep.sleepTime} wakeTime={todaySleep.wakeTime} deepPct={ring.daily['sleepDeep'] ?? null} remPct={ring.daily['sleepRem'] ?? null} score={ring.daily['sleepScore'] ?? null} fallbackTotalMinutes={ring.daily['sleepTotal'] ?? null} stagesSynthesized={!!ring.sleepStagesSynthesizedDays?.[dayKey(Date.now())]} onPress={() => navigation.navigate('SleepDetail')} />
                 <CortisolSleepSummary dataStale={dataStale} insightRows={recoveryRows} />
               </>
-            ) : effSub === 'body' ? (
+            ) : effSub === 'body' && showCycle ? (
               <CyclePhaseCard ring={ring} female={ring.female} onPress={() => navigation.navigate('CycleCalendar')} />
             ) : effSub === 'recover' ? (
               // v18.2：恢复节律 = 全天恢复（睡眠恢复+皮质醇全天趋势）
