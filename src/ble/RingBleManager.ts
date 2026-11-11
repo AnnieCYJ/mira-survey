@@ -1032,13 +1032,22 @@ class NativeRingSource {
   private syncAllInFlight = false;
   private syncAllRerunQueued = false;
   private syncAllInFlightUntil = 0;
+  /** ★ 2026-11-11：本轮同步事务的启动时刻。原生已把「主同步 + HRV/血氧历史回读」合成一件事，
+   *  事务期间到达的排队请求在收尾时不再值得重跑全量（只会再占约 40s BLE 通道、无新数据）。 */
+  private lastSyncStartedAt = 0;
+  /** ★ 2026-11-11：断点续传游标 = 已完整同步到的最后一天 YYYY-MM-DD；下次只拉 [游标, 今天] 增量。null=首次→全量。 */
+  private lastBackfillDate: string | null = null;
   /** 回填超时兜底：原生若不回 backfillDone，120s 后解锁，避免后续同步永久卡死 */
-  private static readonly SYNC_ALL_TIMEOUT_MS = 120_000;
+  // ★ 2026-11-11：全量回填（首次/手动）可能读多天，放宽到 5 分钟，避免超时强制解锁→重复触发打架。
+  private static readonly SYNC_ALL_TIMEOUT_MS = 300_000;
   /** ★ 2026-11-09（用户：电量必须传对）：电量轮询定时器（连接就绪后每 60s 拉一次，断开时清除） */
   private batteryTimer: ReturnType<typeof setInterval> | null = null;
   /** ★ 2026-10-16（续）：ECG 实时波形累积缓冲（原生 onEcgProgress 增量回传，JS 在此拼接成完整 trace）。 */
   private _ecgLiveBuf: number[] = [];
   resetEcgLive() { this._ecgLiveBuf = []; }
+  /** 断点游标读写：加载时由 RingConnectionImpl 注入，同步完成时通过 onCursorPersist 回写持久化。 */
+  setLastBackfillDate(d: string | null) { this.lastBackfillDate = d; }
+  getLastBackfillDate(): string | null { return this.lastBackfillDate; }
 
   constructor(
     private push: (patch: StatePatch) => void,
@@ -1047,7 +1056,9 @@ class NativeRingSource {
     private requestFlush: () => void,
     private onBackfillComplete: () => void,
     /** 同步进度回调（原生 onBackfillProgress）→ 转发到 RingBleManager 的独立轻量通道 */
-    private onSyncProgress: (p: SyncProgress | null) => void
+    private onSyncProgress: (p: SyncProgress | null) => void,
+    /** ★ 2026-11-11：断点游标推进后回传持有方持久化（NativeRingSource 自身不碰 FileSystem） */
+    private onCursorPersist: (date: string | null) => void
   ) {
     if (VeepooNative) {
       // ★ 2026-11-07：改走 safeNativeEmitter —— VeepooRing 原生缺 add/removeListeners，
@@ -2094,25 +2105,33 @@ class NativeRingSource {
   };
 
   /**
-   * ★ 2026-11-09（用户定稿）：「只要连上戒指，就主动回填历史数据」是**常开通路**。
+   * 同步统一入口（2026-11-09 常开通路 + 2026-11-11 断点增量）：
+   * 「只要连上戒指，就主动回填历史数据」是**常开通路**。
    *
-   * 统一入口：ready / connected 补触发 / 30min 周期 / App 回前台 / 设置页手动同步 /
-   * SDK 初始化 45s 兜底，全部走这里。每次都无条件调 `backfill()` 全量读取设备可存的
-   * 全部天数；`lastSyncDate` 只保留为「上次同步时间」记录，**不再当增量 gate** ——
-   * 旧逻辑 `backfillSince(今天)` 会让同日重连只读今天 1 天，戒指里补到的历史日永远进不来。
+   * 触发点：ready / connected 补触发 / 30min 周期 / App 回前台 / 设置页手动同步 /
+   * SDK 初始化 45s 兜底，全部走这里。
+   *
+   * ★ 断点续传（2026-11-11，用户要求：回填应从断点续传、已在的数据当快照）：
+   *   - 默认增量同步——只拉 [lastBackfillDate, 今天] 这段，已在库的过去日期当快照不再重读；
+   *   - 仅「手动全量同步 / 首次安装（游标 null）」走全量（from=''）；
+   *   - lastBackfillDate 持久化在 sync flag 文件，重启后从断点继续，历史天不重复拉。
+   *   这样每次连接 / 周期同步只补「上次断点之后」的新数据，不会再重拉整段历史
+   *   （彻底解决回填慢、占满 BLE 通道导致实时更新不动的问题）。
    *
    * 原生 `backfillInProgress` 会直接丢弃撞车请求，所以这里在 JS 侧排队，
    * 收到 backfillDone 后由 finishSyncAll() 补跑一次，保证没有一次触发被静默吞掉。
    */
-  syncAll(reason: string): void {
+  syncAll(reason: string, opts?: { full?: boolean }): void {
     if (!healthStore.syncEnabled) {
       postLog('RingBle', `[Sync] 跳过回填（数据同步已关闭，来源=${reason}）`);
       return;
     }
+    const full = !!opts?.full;
+    const from = full ? '' : (this.lastBackfillDate ?? '');
     const now = Date.now();
     if (this.syncAllInFlight && now < this.syncAllInFlightUntil) {
       this.syncAllRerunQueued = true;
-      postLog('RingBle', `[Sync] 已有回填在途（来源=${reason}）→ 排队，完成后补跑`);
+      postLog('RingBle', `[Sync] 已有回填在途（来源=${reason}${full ? '·全量' : '·增量'}）→ 排队，完成后补跑`);
       return;
     }
     if (this.syncAllInFlight) {
@@ -2120,10 +2139,20 @@ class NativeRingSource {
     }
     this.syncAllInFlight = true;
     this.syncAllInFlightUntil = now + NativeRingSource.SYNC_ALL_TIMEOUT_MS;
+    this.lastSyncStartedAt = now;
     setTimeout(() => {
       try {
-        postLog('RingBle', `[Sync] 连接后主动全量回填（来源=${reason}）`);
-        VeepooNative?.backfill?.();
+        if (from === '') {
+          postLog('RingBle', `[Sync] 全量回填（来源=${reason}）`);
+          VeepooNative?.backfill?.();
+        } else if (VeepooNative?.backfillFrom) {
+          postLog('RingBle', `[Sync] 增量回填 from=${from} → 今天（来源=${reason}）`);
+          VeepooNative.backfillFrom(from);
+        } else {
+          // 原生 backfillFrom 尚未就绪时回落全量，保证通路不中断。
+          postLog('RingBle', `[Sync] 增量接口不可用，回落全量（来源=${reason}）`);
+          VeepooNative?.backfill?.();
+        }
       } catch (e: any) {
         this.finishSyncAll();
         postLog('RingBle', `[Sync] 触发失败：${e?.message ?? e}`);
@@ -2131,13 +2160,25 @@ class NativeRingSource {
     }, 500);
   }
 
-  /** backfillDone（两种格式都认）→ 解锁在途标记，并处理排队中的补跑请求。 */
+  /** backfillDone（两种格式都认）→ 解锁在途标记、推进断点游标、处理排队补跑。 */
   private finishSyncAll(): void {
     this.syncAllInFlight = false;
     this.syncAllInFlightUntil = 0;
+    // ★ 断点续传：本次事务成功收口（已含主同步 + origin3 HRV/血氧历史），游标推进到今天。
+    //   下次同步只拉 [今天, 今天]，已同步的历史天不再重读（快照已落盘）。
+    //   首次安装 lastBackfillDate=null 时仍走全量，全量完成即把游标补到今天。
+    const today = dayKey(Date.now());
+    if (this.lastBackfillDate !== today) {
+      this.lastBackfillDate = today;
+      // ★ 游标推进后通知持有方持久化（NativeRingSource 自身不碰 FileSystem）。
+      this.onCursorPersist(today);
+    }
     if (this.syncAllRerunQueued) {
       this.syncAllRerunQueued = false;
-      postLog('RingBle', '[Sync] 在途期间有排队请求 → 800ms 后补跑一次全量同步');
+      // ★ 2026-11-11：backfillDone 现已是整轮事务（含 origin3）的唯一收口，
+      //   补跑绝不会再打断 origin3，故移除旧的 60s 跳过逻辑，确保排队请求一定补跑，
+      //   避免「回前台/周期触发被静默吞掉 → 看起来像没更新」。
+      postLog('RingBle', '[Sync] 在途期间有排队请求 → 800ms 后补跑一次同步');
       setTimeout(() => this.syncAll('排队补跑'), 800);
     }
   }
@@ -3528,7 +3569,8 @@ steps点数=${reshaped.steps?.length ?? 0}`,
   stopEcg() { VeepooNative?.stopEcg?.(); }
   flash() { VeepooNative?.findDevice(); }
   /** 重连后回填历史日数据（戒指离线期间累积的）：走统一常开通路。 */
-  backfill() { this.syncAll('backfill()'); }
+  // ★ 2026-11-11：backfill() 是「强制全量重拉」语义（区别于默认增量），走全量。
+  backfill() { this.syncAll('backfill()', { full: true }); }
   /**
    * 离线恢复 / 设置页「数据同步」打开 / forceResync 的统一实现。
    * ★ 2026-11-09 修断链：两端原生都**没有导出** recoverOffline，`?.` 静默 no-op ——
@@ -3536,7 +3578,8 @@ steps点数=${reshaped.steps?.length ?? 0}`,
    *   Android 的 backfill() 本身就是 readAllHealthDataBySettingOrigin 从设备读取，
    *   直接统一到 syncAll 即可，无需新增原生方法（也避开 android/ 被 .gitignore 忽略的问题）。
    */
-  recoverOffline() { this.syncAll('手动同步 / 离线恢复'); }
+  // ★ 2026-11-11：recoverOffline() 是「手动全量同步 / 离线恢复」，走全量以兜底补齐断点之外的缺口。
+  recoverOffline() { this.syncAll('手动同步 / 离线恢复', { full: true }); }
   /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
   /**
    * ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。
@@ -4095,6 +4138,8 @@ class RingConnectionImpl {
    */
   private syncEnabled = true;
   private syncFlagLoaded = false;
+  /** 上次成功回填的时间戳（ms），供 45s 兜底判定「本次连接是否已回填过」。 */
+  private lastBackfillAt = 0;
   /** 身体成分档案（身高/体重/年龄/性别）：录入后下发戒指，健康一览才会返回身体成分字段。 */
   private userProfile: { weight: number; height: number; age: number; sex: number } | null = null;
   private pendingMetrics: MetricEvent[] | null = null;
@@ -4356,7 +4401,8 @@ class RingConnectionImpl {
         void this.saveSnapshot();
       },
       // 同步进度回调 → 独立轻量通道（底部「正在同步数据 x%」浮层订阅它）
-      (p) => this.pushSyncProgress(p)
+      (p) => this.pushSyncProgress(p),
+      (d: string | null) => { this.lastBackfillAt = Date.now(); this.persistSyncFlag(d); }
     );
     // ★ 2026-11-05：后端 refreshMetrics 现在每 10s 推一次 daily（真实日值投影）。
     //   applyPatch 是浅合并，直接推 daily 会整体覆盖 syncExtendedDaily 写进 state 的
@@ -4598,12 +4644,13 @@ class RingConnectionImpl {
             if (!this.syncEnabled) return;
             // ★ 只在本次连接「一次都没成功回填」时才兜底。以前无条件触发，
             //   与 ready 触发 + 排队补跑撞车，导致连续 3 次全量同步、原生回空包。
-            const last = (this.state as any)?.lastBackfillAt as number | undefined;
+            const last = this.lastBackfillAt;
             if (last && Date.now() - last < 60_000) {
               postLog('RingBle', '[Sync] 45s 兜底跳过：本次连接已成功回填');
               return;
             }
-            // 走统一通路：在途时会排队而不是被原生 backfillInProgress 丢弃
+            // ★ 2026-11-11：此前误写成 this.syncAll（RingConnectionImpl 无此方法），改为 this.native
+            //   （NativeRingSource 实例，真正拥有 syncAll）。走增量同步，尊重断点游标。
             try { this.native.syncAll('SDK 初始化 45s 兜底'); } catch { /* ignore */ }
           }, 45000);
         }
@@ -6262,17 +6309,20 @@ class RingConnectionImpl {
       const info = await FileSystem.getInfoAsync(path);
       if (info.exists) {
         const raw = await FileSystem.readAsStringAsync(path);
-        const o = JSON.parse(raw) as { syncEnabled?: boolean; v?: number };
+        const o = JSON.parse(raw) as { v?: number; syncEnabled?: boolean; lastBackfillDate?: string };
         // ★ 2026-11-09：开关要真的生效，同时把「历史脏状态」一次性自愈。
         //  旧版本曾把 false 写进这个文件导致 backfill 永不触发，因此以前启动/重连
         //  三处都强制覆写 true —— 代价是用户主动关闭开关也永远无效（形同虚设）。
         //  现在用 v2 标记区分：有 v=2 = 用户显式设置，尊重；无标记的老文件 = 脏状态，
         //  自愈为 true 并升级格式。默认恒开，保证「连上就回填」这条通路一直通。
+        // ★ 2026-11-11：同步恢复断点游标 lastBackfillDate（已在库的历史天当快照，不再重拉）。
         if (o.v === 2 && typeof o.syncEnabled === 'boolean') {
           this.syncEnabled = o.syncEnabled;
+          this.native?.setLastBackfillDate(typeof o.lastBackfillDate === 'string' ? o.lastBackfillDate : null);
         } else {
           this.syncEnabled = true;
-          await FileSystem.writeAsStringAsync(path, JSON.stringify({ v: 2, syncEnabled: true }));
+          this.native?.setLastBackfillDate(null);
+          await FileSystem.writeAsStringAsync(path, JSON.stringify({ v: 2, syncEnabled: true, lastBackfillDate: null }));
         }
       } else {
         this.syncEnabled = true;
@@ -6291,12 +6341,14 @@ class RingConnectionImpl {
       // 重拉 flash 交由用户主动点「数据同步」或 App 回前台这类 SDK 已稳定的时机。
     }
   }
-  private async persistSyncFlag() {
+  private async persistSyncFlag(cursor?: string | null) {
     const path = this.syncFlagPath();
     if (!path) return;
     try {
-      // v2 标记 = 用户显式写下的值，启动时不再被当作历史脏状态强制改成 true
-      await FileSystem.writeAsStringAsync(path, JSON.stringify({ v: 2, syncEnabled: this.syncEnabled }));
+      // v2 标记 = 用户显式写下的值，启动时不再被当作历史脏状态强制改成 true；
+      // 同时持久化断点游标 lastBackfillDate（来自 NativeRingSource），重启后从断点继续、历史天不再重拉。
+      const lastBackfillDate = cursor ?? this.native?.getLastBackfillDate() ?? null;
+      await FileSystem.writeAsStringAsync(path, JSON.stringify({ v: 2, syncEnabled: this.syncEnabled, lastBackfillDate }));
     } catch {
       /* 写盘失败静默：绝不阻塞 App */
     }

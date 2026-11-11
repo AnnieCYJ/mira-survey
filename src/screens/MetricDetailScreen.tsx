@@ -1403,6 +1403,13 @@ export default function MetricDetailScreen() {
   }, [isHrvDay, anchor]);
 
   const hrvNightAvailable = hrvSleepWindow != null;
+  /**
+   * ★ 2026-11-11（用户：夜间/日间按钮点击不正确）：引入「有效分段」。
+   * 当当天没有睡眠窗口（夜间 HRV 无法定位时段）时，即便 `hrvPart` 仍是 'night'，
+   * 也强制按 'day' 展示与高亮，避免「高亮的夜间按钮被禁用、点不动、图表却按全天画」的状态陷阱。
+   * 夜间一旦有睡眠数据即恢复真实选中项。
+   */
+  const hrvEffectivePart: 'night' | 'day' = hrvNightAvailable ? hrvPart : 'day';
 
   const hrvDay = useMemo(() => {
     if (!isHrvDay) return null;
@@ -1411,7 +1418,7 @@ export default function MetricDetailScreen() {
     const pts = healthStore.getIntraday('hrv', dk);
     const win = hrvSleepWindow;
 
-    if (hrvPart === 'night' && win) {
+    if (hrvEffectivePart === 'night' && win) {
       const [bedMs, wakeMs] = win;
       // ★ 2026-11-07：BASE_UI 夜间 HRV 实测 ~5 分钟、日间 ~30 分钟，柱宽按本指标真实间隔
       const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (barBinMin * 60_000)));
@@ -1440,7 +1447,7 @@ export default function MetricDetailScreen() {
       muted: win ? ([[win[0], Math.min(win[1], dayStart + 86_400_000)]] as [number, number][]) : undefined,
       window: win,
     };
-  }, [isHrvDay, anchor, hrvPart, hrvSleepWindow, barBinMin]);
+  }, [isHrvDay, anchor, hrvEffectivePart, hrvSleepWindow, barBinMin]);
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
   // ★ 2026-10-16：尿酸两个入口 key 都收——洞察页传 'ua'，BloodComponentPanel 传 'uricAcid'
@@ -1996,7 +2003,8 @@ export default function MetricDetailScreen() {
             <Text style={styles.chartTitle}>{chartTitle}</Text>
             <View style={styles.partRow}>
               {(['night', 'day'] as const).map((p) => {
-                const on = hrvPart === p;
+                // ★ 2026-11-11：高亮态跟随有效分段，避免「夜间不可用却被高亮且禁用」的视觉陷阱
+                const on = hrvEffectivePart === p;
                 // ★ 2026-10-10：可点性只看「当天有没有睡眠时刻」，与当前选中项无关
                 const disabled = p === 'night' && !hrvNightAvailable;
                 return (
@@ -2029,20 +2037,20 @@ export default function MetricDetailScreen() {
                   tickLabels={hrvDay.ticks}
                   mutedRanges={hrvDay.muted}
                   yMin={0}
-                  segmentOf={hrvPart === 'night' ? () => 'sleep' : () => 'awake'}
+                  segmentOf={hrvEffectivePart === 'night' ? () => 'sleep' : () => 'awake'}
                   height={chart.plot.l}
                   unit={params.unit}
                 />
-                {/* ★ 2026-11-10（用户）：HRV 日视图按 hrvPart 强制单一时段色（夜间=睡眠蓝 / 日间=清醒紫），
+                {/* ★ 2026-11-10（用户）：HRV 日视图按 hrvEffectivePart 强制单一时段色（夜间=睡眠蓝 / 日间=清醒紫），
                     图例原来列「睡眠/清醒/活动」三色，图上却只有一种颜色 → 改为只列当前那一种。 */}
                 <DayBarsLegend showMean={false} items={[{
-                  color: chart.dayBarSegment[hrvPart === 'night' ? 'sleep' : 'awake'],
-                  label: hrvPart === 'night' ? '睡眠时段' : '清醒时段',
+                  color: chart.dayBarSegment[hrvEffectivePart === 'night' ? 'sleep' : 'awake'],
+                  label: hrvEffectivePart === 'night' ? '睡眠时段' : '清醒时段',
                 }]} />
                 <Text style={styles.chartNote}>
-                  {hrvPart === 'night' && !hrvNightAvailable
+                  {hrvEffectivePart === 'night' && !hrvNightAvailable
                     ? '昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段；当前先按全天坐标展示，同步睡眠时段后会自动切回夜间段。'
-                    : hrvPart === 'night'
+                    : hrvEffectivePart === 'night'
                       ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。`
                       : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。`}
                   {isBaseLayout ? ` ${baseBinNote(barBin, 'HRV')}` : ''}
