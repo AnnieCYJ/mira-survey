@@ -1035,6 +1035,9 @@ class NativeRingSource {
   /** ★ 2026-11-11：本轮同步事务的启动时刻。原生已把「主同步 + HRV/血氧历史回读」合成一件事，
    *  事务期间到达的排队请求在收尾时不再值得重跑全量（只会再占约 40s BLE 通道、无新数据）。 */
   private lastSyncStartedAt = 0;
+  /** ★ 2026-11-11（用户：回填死锁导致数据永久冻结）：同步连续超时计数。
+   *   达到阈值即判定原生 backfillInProgress 卡死，改为断开重连重置状态机破锁。 */
+  private syncAllConsecutiveTimeouts = 0;
   /** ★ 2026-11-11：断点续传游标 = 已完整同步到的最后一天 YYYY-MM-DD；下次只拉 [游标, 今天] 增量。null=首次→全量。 */
   private lastBackfillDate: string | null = null;
   /** 回填超时兜底：原生若不回 backfillDone，120s 后解锁，避免后续同步永久卡死 */
@@ -2135,7 +2138,21 @@ class NativeRingSource {
       return;
     }
     if (this.syncAllInFlight) {
-      postLog('RingBle', `[Sync] 上次回填超时未收到 backfillDone → 强制解锁重来`);
+      // ★ 2026-11-11（用户：戒指连着但数据停在 2 点不更新）：回填超时且未收到 backfillDone。
+      //   根因：原生 backfill 状态机的 backfillInProgress 锁在完成回调后未释放，
+      //   导致后续所有 backfill/backfillFrom 被原生当作「进行中重复请求」直接丢弃、且永不发 backfillDone，
+      //   形成死锁——JS 每 5 分钟解锁重发都被忽略，数据永久冻结（实锤：14:02 完成后再无更新）。
+      //   连续两次超时（≈10min）即确认死锁：主动断开重连重置原生状态机，ready 后自动重新回填。
+      this.syncAllConsecutiveTimeouts += 1;
+      postLog('RingBle', `[Sync] 上次回填超时未收到 backfillDone（连续 ${this.syncAllConsecutiveTimeouts} 次）→ 强制解锁重来`);
+      if (this.syncAllConsecutiveTimeouts >= 2) {
+        postLog('RingBle', `[Sync] ⚠️ 判定回填死锁，断开重连以重置原生 backfillInProgress 状态机`);
+        this.syncAllInFlight = false;
+        this.syncAllInFlightUntil = 0;
+        this.syncAllConsecutiveTimeouts = 0;
+        try { this.disconnect(); } catch { /* 重连由 autoLink 托管，忽略单次失败 */ }
+        return;
+      }
     }
     this.syncAllInFlight = true;
     this.syncAllInFlightUntil = now + NativeRingSource.SYNC_ALL_TIMEOUT_MS;
@@ -2164,6 +2181,8 @@ class NativeRingSource {
   private finishSyncAll(): void {
     this.syncAllInFlight = false;
     this.syncAllInFlightUntil = 0;
+    // ★ 2026-11-11：成功收口即清零连续超时计数——说明原生回填通路正常，死锁判定撤销。
+    this.syncAllConsecutiveTimeouts = 0;
     // ★ 断点续传：本次事务成功收口（已含主同步 + origin3 HRV/血氧历史），游标推进到今天。
     //   下次同步只拉 [今天, 今天]，已同步的历史天不再重读（快照已落盘）。
     //   首次安装 lastBackfillDate=null 时仍走全量，全量完成即把游标补到今天。
