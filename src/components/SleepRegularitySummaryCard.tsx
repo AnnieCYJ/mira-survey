@@ -60,12 +60,11 @@ export default function SleepRegularitySummaryCard({ onPress }: Props) {
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
-      accessibilityLabel="昼夜节律：睡眠作息规律性"
+      accessibilityLabel="昼夜节律"
     >
       <View style={styles.headRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.title}>昼夜节律</Text>
-          <Text style={styles.subtitle}>睡眠作息规律性</Text>
         </View>
         <Icon name="chevronRight" size={18} color={mm.colors.inkFaint} />
       </View>

@@ -24,14 +24,17 @@ import { computeBodyComposition } from './examStore';
 import { getProfile, getDeviceProfileId, hasCap } from '../config/deviceModel';
 import {
   estimateTodayStatus, estimateStress, statusLevel,
-  windowMean, baselineFromDaily, type EstimateInput, type QCSource,
+  type EstimateInput, type QCSource,
 } from '../lib/quickCheckEstimate';
+import { scopeNote, type QuickCheckScope } from '../lib/quickCheckScope';
 import { analyzeCortisol } from '../lib/cortisolRhythm';
 import { computeStressReport } from '../lib/stressAlgorithm';
+import { physioValid } from '../lib/physioRange';
 import { saveQuickCheckResult, type QuickCheckResultValue } from './quickCheckResult';
 import { saneBodyTemp } from './ringDataIsolation';
 import { loadCycleLog } from './cycleLog';
 import { computeCycle, hormoneLevelsAtDay } from '../lib/cycleMath';
+import { hormoneBrief } from '../lib/phaseHormoneBrief';
 import { refreshReportNotes } from './quickCheckInterpret';
 
 export type QCStatus = 'ok' | 'high' | 'low' | 'risk';
@@ -71,6 +74,12 @@ export interface QCGroup {
   icon?: string;
   /** 分组级来源说明（如「本组全部为戒指真实回读」/「按身高体重估算」） */
   note?: string;
+  /**
+   * ★ 2026-11-13 真机验收：本次报告的「依据说明」（现场测得 / 今天已同步 / 当场重算 /
+   *   最近记录推算）。必须独立于 note：refreshReportNotes() 会把有内容分组的 note 一律清空，
+   *   之前拼进 groups[0].note 的分层说明在真机报告里全部消失（静态门禁查源码却全绿）。
+   */
+  basisNote?: string;
   metrics?: QCMetric[];
   risk?: QCRiskBlock;
   standalone?: QCMetric[];
@@ -287,18 +296,33 @@ export async function countQuickChecks(): Promise<number> {
  * 那些是本机历史库里 HK18 时期留下的测量值，与当前基础版 Luna Mira 无关，
  * 却被当成「本次真实测量」展示（用户实锤质疑：「之前不是说没有血压血糖吗？」）。
  *
- * 新口径：
- *  1. 实测项：只从 RingBle 当前状态（BackendRingSource 投影的 auto_data/gsr/hrv_history
- *     真实日值）读取，并按机型能力白名单过滤；Pro 专属项仅在 PRO_UI 下才从 healthStore 读。
- *  2. 估算项：今日状态 / 压力由当前 HRV 短窗 + 心率/血氧/睡眠/交感推算；
- *     身体成分由首次注册录入的身高/体重/年龄/性别推算。全部带 source='estimated'
- *     与来源说明，界面明确标注「估算」，绝不冒充戒指实测。
- *  3. 体检完成后把「今日状态」结果写入 quickCheckResult，首页据此刷新今日状态。
+ * 新口径（★ 2026-11-13 用户拍板「首次只展示当场测的 + 当场算的，戴久了再加最近的数据」）：
+ *  1. 本次现场测得：心率 / 血氧（35 秒窗口内新回流，优先于日值），与洞察页实时卡同源。
+ *  2. 今天已同步：步数 / 昨夜睡眠 / 血压 / 体温 / 状态分等**当日**日值。`state.daily`
+ *     有跨天清零基准，healthStore 只用 `getTodayValue()`；绝不回退到 `getLatest(k, 7)`
+ *     拿几天前的最后一次读数顶替今天（老用户中途体检最容易踩的坑）。
+ *  3. 当场算出：今日状态 / 身心压力用 ①+② **每次重算**，不沿用上一次的分数；
+ *     身体成分由注册资料推算。全部带 source='estimated' 与来源说明，不冒充实测。
+ *  4. 最近记录推算：睡眠节律 / 昼夜节律 / 压力恢复 / 周期趋势，来自近 7–14 天记录，
+ *     是趋势结论、不是读数，报告里写明来源。首次没有这些记录 → 天然不出现。
+ *  5. 每一项都有「没读数就不展示」守卫，所以**不需要首次分支**：首次时 ②④ 为空，
+ *     报告自动收窄成 ①③。依据说明见 quickCheckScope.scopeNote()。
+ *  6. 体检完成后把「今日状态」结果写入 quickCheckResult，首页据此刷新今日状态。
  *
  * 品牌铁律：只描述不诊断、不做风险结论；参考区间仅供参考。
  */
-export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; record?: QuickCheckRecord; reason?: string }> {
-  const gl = (k: MetricKey, n = 7) => healthStore.getLatest(k, n);
+export async function assembleQuickCheckFromRealtime(
+  /** ★ 2026-11-13：现场测量窗口起点；只认这个时间点之后新回流的实时读数，
+   *  避免把上一次连接留下的旧值当成「本次现场测量」。不传则按已同步日值组装。 */
+  opts?: { since?: number }
+): Promise<{ ok: boolean; record?: QuickCheckRecord; reason?: string }> {
+  const now = Date.now();
+  // ★ 2026-11-13（用户：老用户中途体检「用测量 + 最近的数据」）：给「最近」划边界 ——
+  //   单点读数只认**今天**。旧实现 healthStore.getLatest(k, 7) 会一路回退到 7 天前，
+  //   把「上一次测到的血压」当今天的数值展示；state.daily 有跨天清零基准，
+  //   healthStore.getTodayValue() 同样只取当日，两者都不会带出昨天的数。
+  //   真正跨天的是「节律」组的趋势结论（推算，不是读数），单独标注「基于最近 N 天记录」。
+  const todayVal = (k: MetricKey): number | null => healthStore.getTodayValue(k, now);
   const r2 = (v: number | null) => (v == null ? null : Math.round(v * 100) / 100);
   const num = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -311,15 +335,44 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   const daily = state?.daily ?? {};
   const d = (k: string): number | null => num(daily[k]);
 
+  // ── 0. 本次现场测量读数（★ 2026-11-13）─────────────────────────────────
+  // 体检窗口内 QuickCheckTab 真的调了 RingBle.measure('hr'/'spo2')，读数回流到
+  // state.metrics + state.lastUpdated。这里只认「窗口内新回流」的值：
+  //   · 与洞察页实时卡同源（都是 state.metrics），口径天然一致；
+  //   · 没有时间戳或时间戳早于窗口 → 是上次连接留下的旧值，不算本次现场测量；
+  //   · 戒指 RTC 可能超前/滞后，时间戳留 60s 容差。
+  // ★ 2026-11-13（用户：「HRV 当场测不了，那也不展示 HRV 了吧，不用写固件接口的说明，
+  //   用户不关心」）：体检报告不再有 HRV 这一项，也不写任何技术限制说明。
+  //   HRV 已同步的日值仍留在洞察页独立卡片，那里才是看 HRV 的地方。
+  const since = typeof opts?.since === 'number' ? opts.since : null;
+  const liveReading = (k: MetricKey): number | null => {
+    const v = num((state as any)?.metrics?.[k]);
+    if (v == null) return null;
+    if (since != null) {
+      const t = num((state as any)?.lastUpdated?.[k]);
+      if (t == null || t < since - 60_000) return null;
+    }
+    return v;
+  };
+  const liveHr = liveReading('hr');
+  const liveSpo2Raw = liveReading('spo2');
+  const liveSpo2 = liveSpo2Raw != null && physioValid('spo2', liveSpo2Raw) ? liveSpo2Raw : null;
+  const liveTemp = liveReading('temp');
+  const hasLiveReading = liveHr != null || liveSpo2 != null || liveTemp != null;
+
   // ── 1. 实测回读（基础版白名单：戒指真实上传的日值）───────────────────────
   // ★ 绝不回退到 healthStore：那里的 hr/spo2/hrv 可能是 HK18 时期留下的历史值，
   //   一旦兜底就会把旧数据标成「戒指真实回读」（用户实锤批评的数据混显）。
   //   后端 auto_data 本来就有这三项；没同步到就如实不展示，不编数字。
-  const hr = d('hr');
-  const spo2 = d('spo2');
+  // ★ 2026-11-13：本次现场测到的读数优先，其次才是已同步日值；两者都取不到就 null → 该项不展示。
+  const hr = liveHr ?? d('hr');
+  // ★ 2026-11-13：读取兜底——若当日血氧日均值被脏值（如 1%）污染，回退为 null（不编数字，连上戒指重新同步后自动恢复）
+  let spo2 = liveSpo2 ?? d('spo2');
+  if (spo2 != null && !physioValid('spo2', spo2)) spo2 = null;
   // ★ 体温仅硬件支持时回读（精简版 type=0 不支持，避免把旧设备遗留值冒充实测）
-  const temp = hasCap(profile, 'temp') ? saneBodyTemp(d('temp')) : null;
-  const hrv = d('hrv');
+  const temp = hasCap(profile, 'temp') ? saneBodyTemp(liveTemp ?? d('temp')) : null;
+  // ★ 2026-11-13：体检报告不再读取/展示 HRV（当场测不了，也不解释原因）。
+  //   洞察页的 HRV 卡片仍读 state.daily.hrv，不受这里影响。
   // ★ 交感神经活跃度非戒指可测指标（EDA/皮电精简版不支持），绝不在微体检冒充「实测」
   const sns: number | null = null;
   const steps = d('steps');
@@ -330,43 +383,34 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   const hdl = bcSupported ? d('hdl') : null;
   const ldl = bcSupported ? d('ldl') : null;
   const statusMeasured = d('statusScore');   // auto_data.status_score 真实回读
-  const hrvDaily = (state as any)?.hrvDaily as Record<string, number> | undefined;
-  const hrvPts = (state as any)?.history?.hrv as { t: number; v: number }[] | undefined;
-  const hrPts = (state as any)?.history?.hr as { t: number; v: number }[] | undefined;
+  // ★ 2026-11-13：不再取 HRV 短窗 / 7 天基线作为估算输入（见下方 estInput 说明）。
 
   // Pro 专属：仅 PRO_UI 才允许读 healthStore 的历史测量（基础版一律不碰，避免 HK18 混显）
   // ★ 血压：基础版硬件支持（BpTag=1），应从当前戒指 daily 真实回读，而非仅限 Pro
   const bpSupported = hasCap(profile, 'bp');
-  const bpSys = bpSupported ? (d('bpSys') ?? (isPro ? gl('bpSys') : null)) : null;
-  const bpDia = bpSupported ? (d('bpDia') ?? (isPro ? gl('bpDia') : null)) : null;
-  const glucose = isPro && hasCap(profile, 'glucose') ? gl('glucose') : null;
-  const ua = isPro && hasCap(profile, 'uricAcid') ? gl('ua') : null;
-  const tc = isPro && hasCap(profile, 'cholesterol') ? gl('cholesterol') : null;
-  const skin = isPro && hasCap(profile, 'skin') ? gl('skin') : null;
-  const emotion = isPro && hasCap(profile, 'emotion') ? gl('emotion') : null;
-  const cortisol = isPro && hasCap(profile, 'cortisol') ? gl('cortisol') : null;
-  const stressMeasured = isPro && hasCap(profile, 'cortisol') ? gl('stress') : null;
-  const fatigue = isPro && hasCap(profile, 'cortisol') ? gl('fatigue') : null;
-  // 运动消耗（卡路里日汇总，来自逐点 calorie 折日写入 healthStore，非逐点）
-  const calorie = gl('calorie');
+  const bpSys = bpSupported ? (d('bpSys') ?? (isPro ? todayVal('bpSys') : null)) : null;
+  const bpDia = bpSupported ? (d('bpDia') ?? (isPro ? todayVal('bpDia') : null)) : null;
+  const glucose = isPro && hasCap(profile, 'glucose') ? todayVal('glucose') : null;
+  const ua = isPro && hasCap(profile, 'uricAcid') ? todayVal('ua') : null;
+  const tc = isPro && hasCap(profile, 'cholesterol') ? todayVal('cholesterol') : null;
+  const skin = isPro && hasCap(profile, 'skin') ? todayVal('skin') : null;
+  const emotion = isPro && hasCap(profile, 'emotion') ? todayVal('emotion') : null;
+  const cortisol = isPro && hasCap(profile, 'cortisol') ? todayVal('cortisol') : null;
+  const stressMeasured = isPro && hasCap(profile, 'cortisol') ? todayVal('stress') : null;
+  const fatigue = isPro && hasCap(profile, 'cortisol') ? todayVal('fatigue') : null;
+  // 运动消耗（当日卡路里汇总：优先 healthStore 当日值，其次戒指已同步的今日步数日值）
+  const calorie = todayVal('calorie') ?? d('calorie');
 
-  // ── 2. 估算输入：HRV 60s / 30s 短窗 + 近 7 天基线 ────────────────────────
-  // ★ 2026-11-06（用户：做完体检今日状态不能还是空的）：短窗/今日 daily 都取不到时，
-  //   回退到「最近一次」HRV / 心率读数（history 里最新的一个点，不限今天），
-  //   让体检总能基于最近的生理信号给出状态结果；来源仍标「估算」，不冒充实测。
-  const now = Date.now();
-  const lastPt = (pts: { t: number; v: number }[] | null | undefined): number | null => {
-    if (!pts || !pts.length) return null;
-    const sorted = [...pts].filter((p) => Number.isFinite(p.v) && p.v > 0).sort((a, b) => b.t - a.t);
-    return sorted.length ? sorted[0].v : null;
-  };
-  const hrvLatest = hrv ?? lastPt(hrvPts);
-  const hrLatest = hr ?? lastPt(hrPts);
+  // ── 2. 估算输入：只用现场心率/血氧 + 已同步睡眠 ──────────────────────────
+  // ★ 2026-11-13（用户：「HRV 当场测不了，那也不展示 HRV 了吧」）：
+  //   HRV 短窗 / 7 天基线都不再进入估算 —— 让「今日状态 / 身心压力」的来源
+  //   与 35 秒现场测量窗口一致，报告里也不会再冒出 HRV 字样。
+  //   估算只吃「本次现场读数 / 当日已同步日值」，不再回退到 history 里不限日期的
+  //   「最近一个点」（那会把另一枚戒指或几天前的数据混进今日状态）。
+  //   来源仍标「估算」，不冒充实测。
   const estInput: EstimateInput = {
-    hrv60: windowMean(hrvPts, 60_000, now) ?? hrvLatest,
-    hrv30: windowMean(hrvPts, 30_000, now) ?? hrvLatest,
-    hrvBaseline: baselineFromDaily(hrvDaily ?? {}, 7, now),
-    hr: hrLatest, spo2, sns: null, sleepMin, statusMeasured, stressMeasured,
+    hrv60: null, hrv30: null, hrvBaseline: null,
+    hr, spo2, sns: null, sleepMin, statusMeasured, stressMeasured,
   };
   const todayStatus = estimateTodayStatus(estInput);
   const stressEst = estimateStress(estInput);
@@ -396,10 +440,15 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     bodyNote = '身体成分档案读取失败，可稍后重试或检查设置。';
   }
 
-  const hasAny = [hr, spo2, temp, hrv, steps, sleepMin, tg, hdl, ldl, statusMeasured, calorie,
-    bpSys, glucose, ua, tc, skin, emotion, cortisol, fatigue].some((v) => v != null)
-    || bodyMetrics != null || todayStatus != null || stressEst != null;
-  if (!hasAny) return { ok: false, reason: 'no-data' };
+  // ★ 2026-11-13（用户：首次登录没数据时不该有一份像模像样的报告）：
+  //   只认**戒指真实读数**（本次现场 / 已同步日值）。纯估算项（今日状态 / 压力 / 身体成分）
+  //   不能单独撑起一份体检报告 —— 否则没连戒指也能出一份「55 分」的空报告。
+  //   睡眠、血压等没回读到的项目本就走 `if (x != null)` 守卫，不会以「--」占位出现。
+  // ★ 2026-11-13：HRV 不再计入「有真实读数」门槛（报告已不展示它，也不拿它算状态），
+  //   否则只有一份 HRV 日值时会生成一份几乎空白的报告。
+  const hasRingReading = [hr, spo2, temp, steps, sleepMin, tg, hdl, ldl, statusMeasured, calorie,
+    bpSys, glucose, ua, tc, skin, emotion, cortisol, fatigue].some((v) => v != null);
+  if (!hasRingReading) return { ok: false, reason: 'no-data' };
 
   const sb = (key: string, v: number): QCStatus => {
     switch (key) {
@@ -451,30 +500,37 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   if (statusItems.length) {
     groups.push({
       key: 'today', title: '今日状态', icon: '✨',
-      note: '这一组反映你当下的整体状态，会同步到首页「今日状态」。结合心率、HRV、睡眠等信号给出，看趋势比单次更有意义。',
+      note: '这一组会同步到首页「今日状态」。两项都用这次的读数重新算出，不沿用上一次的分数；看趋势比单次更有意义。',
       metrics: statusItems,
     });
   }
 
   // ── 核心体征（全部实测）─────────────────────────────────────────────────
+  // ★ 2026-11-13（用户：「要查这些数据是不是当场能够测量的」）：每项 note 末尾如实标注来源，
+  //   现场读数与洞察页实时卡同源（state.metrics）；日值则是戒指已同步的读数。
+  const liveTag = '本次为现场测量读数，与洞察页实时卡同源。';
+  const dailyTag = '本次取今天已同步的读数，不是这次 35 秒现场测得的数值。';
   const core: QCMetric[] = [];
-  if (hr != null) core.push(measured({ key: 'hr', name: '心率', value: String(Math.round(hr)), unit: '次/分', status: sb('hr', hr), ref: '参考 60~100', note: '心率反映心脏负荷与即时状态；静息持续 >100 或 <50 并伴不适时建议留意，偶发波动多与运动、情绪或咖啡因有关。' }));
-  if (hrv != null) core.push(measured({ key: 'hrv', name: 'HRV', value: String(Math.round(hrv)), unit: '毫秒', status: 'ok', note: 'HRV 反映自主神经弹性，越高通常代表恢复越好、抗压能力越强；短期下降常因熬夜、压力或饮酒，看趋势比单次更有意义。' }));
-  if (spo2 != null) core.push(measured({ key: 'spo2', name: '血氧', value: String(Math.round(spo2)), unit: '%', status: sb('spo2', spo2), ref: '参考 95~100%', note: '血氧是血液氧气饱和度，正常约 95–100%；低于 95% 可能与呼吸、睡眠或佩戴松紧有关，持续偏低建议就医排查。' }));
-  if (temp != null) core.push(measured({ key: 'temp', name: '体温', value: String(r2(temp)), unit: '°C', status: 'ok', note: '体表温度受环境、活动与周期影响，单次略高/低多为正常波动；若伴发热感应结合体温计判断。' }));
+  if (hr != null) core.push(measured({ key: 'hr', name: '心率', value: String(Math.round(hr)), unit: '次/分', status: sb('hr', hr), ref: '参考 60~100', note: `心率反映心脏负荷与即时状态；静息持续 >100 或 <50 并伴不适时建议留意，偶发波动多与运动、情绪或咖啡因有关。${liveHr != null ? liveTag : dailyTag}` }));
+  // ★ 2026-11-13（用户）：HRV 当场测不了 → 整项从体检报告移除，也不写固件限制说明。
+  //   洞察页的 HRV 卡片仍展示戒指已同步的日值，两处口径互不干扰。
+  if (spo2 != null) core.push(measured({ key: 'spo2', name: '血氧', value: String(Math.round(spo2)), unit: '%', status: sb('spo2', spo2), ref: '参考 95~100%', note: `血氧是血液氧气饱和度，正常约 95–100%；低于 95% 可能与呼吸、睡眠或佩戴松紧有关，持续偏低建议就医排查。${liveSpo2 != null ? liveTag : dailyTag}` }));
+  if (temp != null) core.push(measured({ key: 'temp', name: '体温', value: String(r2(temp)), unit: '°C', status: 'ok', note: `体表温度受环境、活动与周期影响，单次略高/低多为正常波动；若伴发热感应结合体温计判断。${liveTemp != null ? liveTag : dailyTag}` }));
   if (bpSys != null && bpDia != null) {
     const st = sb('bpSys', bpSys) !== 'ok' || sb('bpDia', bpDia) !== 'ok'
       ? (sb('bpSys', bpSys) === 'high' || sb('bpDia', bpDia) === 'high' ? 'high' : 'low') : 'ok';
-    core.push(measured({ key: 'bp', name: '血压', value: `${Math.round(bpSys)}/${Math.round(bpDia)}`, unit: 'mmHg', status: st, ref: '参考 <120/80 mmHg', scale: { min: 80, max: 160, v: Math.round(bpSys) }, note: '血压反映心血管负荷，理想约 <120/80；偏高常与高盐饮食、压力、睡眠不足相关，异常请以医用血压计确认。' }));
+    core.push(measured({ key: 'bp', name: '血压', value: `${Math.round(bpSys)}/${Math.round(bpDia)}`, unit: 'mmHg', status: st, ref: '参考 <120/80 mmHg', scale: { min: 80, max: 160, v: Math.round(bpSys) }, note: `血压反映心血管负荷，理想约 <120/80；偏高常与高盐饮食、压力、睡眠不足相关，异常请以医用血压计确认。${dailyTag}` }));
   }
-  if (core.length) groups.push({ key: 'core', title: '核心体征', icon: '❤️', note: '以下为核心体征，逐项说明当前是否正常、可能的原因，以及可参考的日常建议。', metrics: core });
+  if (core.length) groups.push({ key: 'core', title: '核心体征', icon: '❤️', note: hasLiveReading
+    ? '心率与血氧为本次现场测量所得，其余项目取今天已同步的读数；每项都标了来源，没有读到的项目不会出现在报告里。'
+    : '以下为今天已同步的读数，本次没有现场读到新值；没有读到的项目不会出现在报告里。', metrics: core });
 
   // ── 活动与睡眠（实测）───────────────────────────────────────────────────
   const activity: QCMetric[] = [];
   if (steps != null) activity.push(measured({ key: 'steps', name: '今日步数', value: String(Math.round(steps)), unit: '步', status: sb('steps', steps), label: sb('steps', steps) === 'low' ? '偏少' : undefined, note: '步数反映日常活动量，一般建议每日 6000–8000 步以上以维持基础活动水平；偏少时可分两段各走 10 分钟补齐。' }));
   if (sleepMin != null) activity.push(measured({ key: 'sleep', name: '昨夜睡眠', value: `${Math.floor(sleepMin / 60)}小时${Math.round(sleepMin % 60)}分`, unit: '', status: sb('sleepMin', sleepMin), label: sb('sleepMin', sleepMin) === 'low' ? '偏短' : undefined, note: '昨夜睡眠时长反映恢复基础，成人建议 7–9 小时；偏短时恢复窗口偏紧，今晚可提前半小时上床。' }));
   if (calorie != null) activity.push(measured({ key: 'calorie', name: '运动消耗', value: String(Math.round(calorie)), unit: '千卡', status: 'ok', note: '运动消耗反映当日能量支出，结合饮食与休息有助于体重与体能管理。' }));
-  if (activity.length) groups.push({ key: 'activity', title: '活动与睡眠', icon: '🌙', note: '以下反映你当日的活动量与昨夜睡眠，是评估恢复基础的重要参考。', metrics: activity });
+  if (activity.length) groups.push({ key: 'activity', title: '活动与睡眠', icon: '🌙', note: '以下为今天已同步的活动量与昨夜睡眠，不是这次 35 秒现场测得的；它们一起参与今日状态与身心压力的推算。', metrics: activity });
 
   // ── 血脂（基础版也有，实测）─────────────────────────────────────────────
   const blood: QCMetric[] = [];
@@ -592,7 +648,7 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
             key: 'circadian', name: '昼夜节律', value: lvlText, unit: '',
             status: regular ? 'ok' : 'low',
             label: lvlText,
-            note: `基于近 14 天 HRV 日内波动：自主神经活跃度约 ${String(peak.h).padStart(2, '0')}:00 最高、${String(trough.h).padStart(2, '0')}:00 最低，昼夜节律${lvlText}。规律作息有助于维持波动。`,
+            note: `基于近 14 天连续记录：自主神经活跃度约 ${String(peak.h).padStart(2, '0')}:00 最高、${String(trough.h).padStart(2, '0')}:00 最低，昼夜节律${lvlText}。规律作息有助于维持波动。`,
           }));
         }
       }
@@ -624,34 +680,45 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
     rhythmItems.push(estimated({
       key: 'cyclePhase', name: '生理周期阶段', value: cycleInfo.phaseLabel, unit: '',
       status: 'ok', label: `周期第 ${cycleInfo.dayInCycle} 天`,
-      note: '基于你记录的经期周期推算，反映当前所处的周期阶段；结合 HRV 与静息心率可交叉观察身体状态的变化趋势。',
+      note: `当前处在${cycleInfo.phaseLabel}、周期第 ${cycleInfo.dayInCycle} 天，激素水平正走在这一阶段对应的变化里，精力、体温和情绪会跟着起伏。把这段当背景看其它数据，安排强度和休息会更贴合身体。`,
     }));
-    if (hl.estrogen != null) {
+    // ★ 2026-11-13（用户）：「这两项不该显示 22 呀、8 呀这种数据，只能给出『水平在上升 / 下降』的结论」。
+    //   戒指根本不测激素浓度，之前把经期建模的 0–100 指数当成数值展示，属于伪精确。
+    //   hormoneLevelsAtDay 已经算好 estrogenTrend / progesteroneTrend（与周期日历页同源），
+    //   这里直接只给方向：没有趋势数据（null）→ 整项不展示，不用「--」占位。
+    //   顺带统一命名：黄体酮 = 孕酮 = 孕激素（progesterone），不再用用户看不懂的「黄体酮」。
+    const trendLabel = (t: 'up' | 'down' | 'flat' | null): string | null =>
+      t === 'up' ? '水平在上升' : t === 'down' ? '水平在下降' : t === 'flat' ? '水平相对平稳' : null;
+    const estDir = trendLabel(hl.estrogenTrend);
+    if (estDir != null) {
       rhythmItems.push(estimated({
-        key: 'estrogen', name: '雌激素（周期建模）', value: String(Math.round(hl.estrogen)), unit: '/100',
-        status: 'ok', scale: { min: 0, max: 100, v: Math.round(hl.estrogen) },
-        note: '由经期记录推算的建模值（戒指不测激素），反映当前周期阶段的相对水平，可结合 HRV 与静息心率观察变化趋势。',
+        key: 'estrogen', name: '雌激素趋势', value: estDir, unit: '',
+        status: 'ok', label: estDir,
+        // ★ 2026-11-13（用户）：与洞察页「生理周期节律」卡片底部那段同一种话术 ——
+        //   只讲激素现在处于什么情况 + 由此带来的状态 + 一条具体建议；
+        //   不写「由经期记录推算 / 与周期日历页同源 / 戒指不直接测量 / 浓度数值」等说明。
+        note: hormoneBrief(cycleInfo.phase, 'estrogen'),
       }));
     }
-    if (hl.progesterone != null) {
+    const progDir = trendLabel(hl.progesteroneTrend);
+    if (progDir != null) {
       rhythmItems.push(estimated({
-        key: 'progesterone', name: '黄体酮（周期建模）', value: String(Math.round(hl.progesterone)), unit: '/100',
-        status: 'ok', scale: { min: 0, max: 100, v: Math.round(hl.progesterone) },
-        note: '由经期记录推算的建模值（戒指不测激素），黄体期通常高于卵泡期，可结合身体感受观察趋势。',
+        key: 'progesterone', name: '孕激素趋势', value: progDir, unit: '',
+        status: 'ok', label: progDir,
+        note: hormoneBrief(cycleInfo.phase, 'progesterone'),
       }));
     }
   }
 
+  // ★ 2026-11-13（用户：「没有数据就不要展示」）：数据不足时不再放一个空的「节律」占位组，
+  //   报告里只出现真正算得出来的项，不用说明文字假装有一节内容。
   if (rhythmItems.length) {
     groups.push({
       key: 'rhythm', title: '节律', icon: '🌀',
-      note: '本组从节律角度解读你的身体状态：睡眠规律性看近 7 天入睡是否稳定；昼夜节律看皮质醇或自主神经的日内波动；压力恢复看事件后放松回来的速度；生理周期看经期记录推算的阶段。各项均为趋势性参考，无对应数据时该项不展示。',
+      // ★ 2026-11-13（用户）：不在报告里解释「怎么推算的 / 戒指测不测」，
+      //   分组说明只讲这一组看的是什么；依据分层由 basisNote 单独承担。
+      note: '这一组是最近一段时间的节律观察，看的是变化方向而不是单次数值：睡眠规律性看近几天入睡是否稳定；昼夜节律看一天里的起伏；压力恢复看放松回来的速度；生理周期看当前所处阶段；雌激素与孕激素描述的是激素当下的变化方向。无对应数据时该项不展示。',
       metrics: rhythmItems,
-    });
-  } else {
-    groups.push({
-      key: 'rhythm', title: '节律', icon: '🌀',
-      note: '节律分析需要连续几天的睡眠、压力信号或经期记录。当前数据不足，连续佩戴并记录经期后可查看。',
     });
   }
 
@@ -670,6 +737,35 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
       };
       groups.push({ key: 'mental', title: '健康一览信号', icon: '🧠', risk: mentalRisk });
     }
+  }
+
+  // ── 3.5 本次依据（★ 2026-11-13 用户：首次自动收窄 / 老用户叠加今天与最近记录）──
+  //   这一段只生成展示文案、不改数据。每一项本来就有「没读数就不展示」守卫，
+  //   首次时「今日已同步」「最近记录推算」两层天然为空 → 报告自动只剩现场测得 + 当场算出，
+  //   所以不需要 isFirstTime 分支，也不存在两套组装逻辑分叉。
+  const dailyHistoryDays = (() => {
+    const h = (state as any)?.dailyHistory as Record<string, { t: number; v: number }[]> | undefined;
+    const days = new Set<string>();
+    for (const arr of Object.values(h ?? {})) {
+      for (const p of arr ?? []) if (Number.isFinite(p?.t)) days.add(dayKey(p.t));
+    }
+    return days.size;
+  })();
+  const scope: QuickCheckScope = {
+    hasLive: hasLiveReading,
+    hasToday: [
+      liveHr == null ? d('hr') : null,
+      liveSpo2 == null ? d('spo2') : null,
+      liveTemp == null ? temp : null,
+      steps, sleepMin, bpSys, calorie, statusMeasured,
+      tg, hdl, ldl, glucose, ua, tc, skin, emotion, cortisol, fatigue,
+    ].some((v) => v != null),
+    historyDays: dailyHistoryDays,
+  };
+  if (groups.length) {
+    // ★ 写进 basisNote，不要拼进 note：refreshReportNotes() 会清掉有内容分组的 note。
+    //   真机验收（2026-11-13 15:01）确认旧写法导致报告首页看不到任何依据说明。
+    groups[0].basisNote = scopeNote(scope);
   }
 
   const rec = await addQuickCheck(groups);
@@ -692,4 +788,46 @@ export async function assembleQuickCheckFromRealtime(): Promise<{ ok: boolean; r
   });
 
   return { ok: true, record: rec };
+}
+
+/**
+ * ★ 2026-11-13（用户）：一键体检现场测量窗口 35 秒（用户要 30–40 秒）。
+ * 原生 measure('hr') 单次心率检测占 20s，血氧实时流同期回流，余下时间汇总并生成报告。
+ * 两个体检入口（洞察页一键体检卡 / 体检记录页「再体检一次」）共用这个常量，时长不分叉。
+ */
+export const QUICK_CHECK_DURATION_MS = 35_000;
+
+/** 原生 VeepooRingModule.startSingleHeartDetect() 写死的 20 秒 PPG 独占窗口。 */
+const HR_DETECT_WINDOW_MS = 20_000;
+
+/**
+ * 跑一次完整的一键体检：心率独占测量 → 血氧实时流 → 等满窗口 → 再组装报告。
+ *
+ * ★ 顺序很关键（两处都对应真机实证过的 bug）：
+ *   ① hr 与 spo2 **绝不能同时下发**：本固件 PPG 通道一次只能跑一个检测，
+ *      连着发会让 SDK 写队列只保留后者，heart_read_oprate 全程 0 次（2026-11-09 实锤）。
+ *      必须先让心率独占 20s，结束后再拉起血氧流；startSpo2hOnly 有 listener 幂等守卫，补发是安全的。
+ *   ② 组装必须放在窗口**之后**：旧写法把组装放进 Promise.all 里立即执行，
+ *      读到的是点击瞬间（还没测）的空 state，现场读数永远进不了报告。
+ * ★ HRV 当场测不了，已从体检报告整项移除（不留任何说明、不向用户解释固件限制）；
+ *   洞察页的 HRV 卡片仍展示戒指同步的日值，两处口径互不干扰。
+ */
+export async function runQuickCheckSession(): Promise<{ ok: boolean; record?: QuickCheckRecord; reason?: string }> {
+  const startedAt = Date.now();
+  // ① 心率独占窗口（20s）
+  try {
+    RingBle.measure('hr');
+  } catch {
+    // 测量指令失败不阻断体检，仍按已同步的真实读数出报告
+  }
+  await new Promise<void>((r) => setTimeout(r, HR_DETECT_WINDOW_MS + 1_000));
+  // ② 心率窗口结束后再起血氧实时流，剩余窗口持续回传血氧 + 心率
+  try {
+    RingBle.measure('spo2');
+  } catch {
+    // 同上，不阻断
+  }
+  await new Promise<void>((r) => setTimeout(r, QUICK_CHECK_DURATION_MS - HR_DETECT_WINDOW_MS - 1_000));
+  // ③ 等到现场数据都回流了，才组装报告
+  return assembleQuickCheckFromRealtime({ since: startedAt });
 }

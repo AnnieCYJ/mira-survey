@@ -175,7 +175,7 @@ export default function HormoneStatusCard({
         </View>
 
         {/* mini sparkline */}
-        <ProgSparkline dayInCycle={cycleInfo?.dayInCycle} cycleLog={cycleLog} status={progesterone.status} />
+        <ProgSparkline dayInCycle={cycleInfo?.dayInCycle ?? null} cycleLog={cycleLog} status={progesterone.status} />
         <Text style={styles.srcLabel}>方法: 体温 + 心率</Text>
       </View>
 
@@ -211,7 +211,7 @@ export default function HormoneStatusCard({
         </View>
 
         {/* mini sparkline */}
-        <E2Sparkline dayInCycle={cycleInfo?.dayInCycle} cycleLog={cycleLog} status={estradiol.status} />
+        <E2Sparkline dayInCycle={cycleInfo?.dayInCycle ?? null} cycleLog={cycleLog} status={estradiol.status} />
         <Text style={styles.srcLabel}>方法: 心率波动</Text>
       </View>
 

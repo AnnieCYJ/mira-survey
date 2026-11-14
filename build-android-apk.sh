@@ -13,8 +13,16 @@ cd "$PROJ" || exit 1
 echo "=== [1/4] accept licenses ==="
 yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-echo "=== [2/4] install NDK 26.1.10909125 (project required) ==="
-sdkmanager "ndk;26.1.10909125" 2>&1 | tail -5
+echo "=== [2/4] NDK 26.1.10909125 已装则跳过 ==="
+# ★ 2026-11-13：sdkmanager 对已安装的 NDK 仍会尝试 side-by-side 再装一份，
+#   下载到一半把磁盘写满 → Gradle 连缓存锁都写不进去，BUILD FAILED / No space left on device。
+#   NDK 完整标记 = source.properties + 可执行 ndk-build，齐全就绝不重装。
+NDK_DIR="$ANDROID_HOME/ndk/26.1.10909125"
+if [ -f "$NDK_DIR/source.properties" ] && [ -x "$NDK_DIR/ndk-build" ]; then
+  echo "NDK 已存在且完整，跳过安装：$NDK_DIR"
+else
+  sdkmanager "ndk;26.1.10909125" 2>&1 | tail -5
+fi
 echo "ndk dir check:"; ls "$ANDROID_HOME/ndk" 2>/dev/null
 
 echo "=== [3/4] write android/local.properties ==="

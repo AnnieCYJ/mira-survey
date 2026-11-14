@@ -55,9 +55,14 @@ export default function HealthAgeCard({
    * 为什么用粉不用红：Mira 品牌铁律规避「监测/预警/诊断」口吻；
    * 红=危险/告警，粉=「这个数字比基准线高」，语气是陈述而非警告。
    */
-  const tone = isFlat ? 'flat' : isYounger ? 'young' : 'high';
+  // ★ 2026-11-13（用户：「身体年龄与实际年龄相近 / 还没有具体数据显示时，那个弧别用白色，改成绿色」）：
+  //   原先 isFlat（相近）走白色渐变（theme.colors.ui.white62/78），在浅色 hero 底上发白发灰、像一个没渲染出来的弧；
+  //   空态（hasEstimate=false）旧逻辑会落到 'high'（粉）也怪。现统一：
+  //     - 无估算 / 相近 → 'flat'，弧用绿色系（与 young 同色），视觉上「状态平稳、无异常偏差」；
+  //     - 仅低/高才分别用黄绿/粉。
+  const tone = (!hasEstimate || isFlat) ? 'flat' : isYounger ? 'young' : 'high';
   // ★ mira-ocean（2026-10-17）：hero 改深海玻璃底 → 弧渐变取中档（浅档在深底上发灰）、
-  //   pill.fg 改亮档（limeCore / roseCore；flat 走 textSub 白阶）。
+  //   pill.fg 改亮档（limeCore / roseCore；flat 走绿色，不再走白色）。
   const PALETTE = {
     young: {
       gradFrom: mm.colors.limeMid, gradMid: mm.colors.limeCore, gradTo: mm.colors.limeMid,
@@ -67,9 +72,10 @@ export default function HealthAgeCard({
       gradFrom: mm.colors.roseMid, gradMid: mm.colors.roseCore, gradTo: mm.colors.roseDeep,
       marker: mm.colors.roseCore, fg: '#F2A3C6',
     },
+    // ★ 2026-11-13：相近 / 空态从白色改为绿色系（lime），避免白弧在浅底上「像没渲染」。
     flat: {
-      gradFrom: theme.colors.ui.white62, gradMid: theme.colors.ui.white78, gradTo: theme.colors.ui.white78,
-      marker: theme.colors.ui.white78, fg: theme.colors.textSub,
+      gradFrom: mm.colors.limeMid, gradMid: mm.colors.limeCore, gradTo: mm.colors.limeMid,
+      marker: mm.colors.limeMid, fg: '#D5E384',
     },
   } as const;
   const pal = PALETTE[tone];

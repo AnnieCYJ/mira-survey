@@ -42,9 +42,22 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
 
   const reload = useCallback(async () => {
     setLoading(true);
-    try { await RingBle.triggerOxygenAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
+    try { await RingBle.triggerOxygenAnalysis(); } finally {
+      // ★ 2026-11-13：原生最多 25s 才回读完成（已放宽到 25s），这里给足 26s 的 loading 窗口，
+      //   避免数据还没回来就提前翻成「暂无数据」。
+      setTimeout(() => setLoading(false), 26000);
+    }
   }, []);
+  // 进入页面即拉一次
   useEffect(() => { void reload(); }, [reload]);
+
+  // ★ 2026-11-13（用户：呼吸暂停老说没数据）：页面可能在戒指就绪前就挂载 →
+  //   原生 triggerOxygenAnalysis 因未就绪直接 error；待 onState=ready 后再补跑一次，确保拿得到数据。
+  const ready = ring.status === 'connected';
+  useEffect(() => {
+    if (ready && !a) void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   return (
     <Card>

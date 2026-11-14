@@ -373,6 +373,13 @@ export default function EmotionQuickRecord() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
           <Animated.View style={[styles.sheet, { height: SHEET_H, transform: [{ translateY: offY }] }]}>
+            {/* ★ 2026-11-13（用户：面板背景是死板纯色蓝，与页面渐变不搭 → 改用 App 同款深海渐变。
+                渐变方向与页面 bgGradStops 一致，使抽屉像「页面向上延伸」，不再是一块突兀的蓝板） */}
+            <LinearGradient
+              colors={[...theme.colors.bgGradStops]}
+              locations={[...theme.colors.bgGradLocs]}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={styles.handle} />
 
             {/* 头部 */}
@@ -564,18 +571,18 @@ export default function EmotionQuickRecord() {
             </ScrollView>
 
             {/* 底部记录按钮（钉在抽屉底） */}
-            <View style={[styles.foot, { paddingBottom: insets.bottom + theme.sp(2) }]}>
+            {/* ★ 2026-11-13（用户：不要紫色，要透明玻璃质感 + 白字）：
+                → 改为「磨砂玻璃」：深色半透底（透出背景深蓝，白字才读得清）+ 白色描边 + 顶部高光，frosted glass 观感；
+                ★ 仍保留 68px 底部留白，抬出 OPPO 手势条热区（原 24px 不够，按钮卡在手势条里被挡）。 */}
+            <View style={[styles.foot, { paddingBottom: Math.max(insets.bottom, theme.sp(15)) + theme.sp(2) }]}>
               <TouchableOpacity activeOpacity={0.7} onPress={onRecord} style={styles.recWrap}>
-                <LinearGradient
-                  colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.recGrad}
-                >
+                {/* ★ 磨砂玻璃按钮：与上面「工作/运动」等 chip 同款（btnBusyBg 浅透 + borderSoft 描边），仅放大尺寸；
+                    深色紫字（白字压浅玻璃会糊→故用 purpleDeep，与选中态 chip 同色）；去掉高光线/分隔线等多余线条。 */}
+                <View style={styles.recGlass}>
                   <Text style={styles.recText}>
                     {saved ? '已记录 ✓' : isBackfill ? `记录到 ${atHHMM}` : '记录此刻'}
                   </Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -629,19 +636,23 @@ const styles = StyleSheet.create({
   },
   sheet: {
     width: '100%',
-    backgroundColor: theme.colors.bgBottom,
+    backgroundColor: theme.colors.bgMid,
     borderTopLeftRadius: theme.radius.xl,
     borderTopRightRadius: theme.radius.xl,
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(255,255,255,0.22)',
     paddingHorizontal: theme.sp(4),
+    // ★ 2026-11-13：裁掉渐变方角，露出顶部圆角
+    overflow: 'hidden',
     shadowColor: theme.colors.ui.onGlassInk,
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.32,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: -8 },
     elevation: 0,
   },
   handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: theme.colors.ui.offTrack,
+    width: 44, height: 5, borderRadius: 2.5,
+    backgroundColor: theme.colors.ui.white92,
     alignSelf: 'center',
     marginVertical: theme.sp(1.5),
   },
@@ -877,18 +888,22 @@ const styles = StyleSheet.create({
     paddingTop: theme.sp(2),
     paddingHorizontal: theme.sp(4),
     marginHorizontal: -theme.sp(4),
-    backgroundColor: theme.colors.bgBottom,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.cardBorder,
+    // ★ 2026-11-13：透明背景，去掉顶部分隔线（避免按钮上方多出一条横线）；渐变由抽屉背景透出
+    backgroundColor: 'transparent',
   },
   recWrap: {
     borderRadius: theme.radius.pill,
     overflow: 'hidden',
   },
-  recGrad: {
+  recGlass: {
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: theme.sp(2.25),
     borderRadius: theme.radius.pill,
+    // ★ 与上方「工作/运动」等标签 chip 完全同款：btnBusyBg 浅透磨砂玻璃 + borderSoft 描边，仅放大尺寸；白字
+    backgroundColor: mm.colors.btnBusyBg,
+    borderWidth: 1,
+    borderColor: theme.colors.ui.borderSoft,
   },
   recText: {
     color: theme.colors.textWhite,

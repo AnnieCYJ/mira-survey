@@ -47,12 +47,12 @@ export const DIM_DEEP: Record<string, string> = {
 };
 
 /** 单张维度卡：由 JourneyDayView 包在曲线节点（左/右交替）里渲染，自身不带标题与分组框 */
-export function DayDimensionCard({ card }: { card: DimensionCard }) {
+export function DayDimensionCard({ card, style }: { card: DimensionCard; style?: object }) {
   const soft = DIM_SOFT[card.dimension] ?? mm.colors.purpleSoft;
   const deep = DIM_DEEP[card.dimension] ?? mm.colors.purpleCore;
   const hasScore = typeof card.score === 'number' && Number.isFinite(card.score);
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, style]}>
       {card.goalMet ? (
         <View style={styles.sun}>
           <SunMark size={Math.round(theme.fontSize.lg * 1.15)} />

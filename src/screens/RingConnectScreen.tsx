@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { useRingState } from '../hooks/useRingState';
 import { RingBle } from '../ble/RingBleManager';
+import { shortRingLastSeen } from '../ble/ringDeviceCard';
 import { userStore } from '../data/userStore';
 import Icon from '../components/Icon';
 
@@ -175,6 +176,34 @@ export default function RingConnectScreen({ onDone }: Props) {
         ) : busy ? (
           <Text style={s.statusHint}>请保持手机靠近戒指，并在戒指上确认配对</Text>
         ) : null}
+
+        {/* ★ 2026-11-13（用户）：搜到多枚戒指时全部列出，由用户自己选（1 枚时 App 自动直连）。 */}
+        {ring.devices.length >= 2 && !connected && (
+          <View style={s.deviceList}>
+            <Text style={s.deviceListHint}>
+              {`检测到 ${ring.devices.length} 枚戒指，请选择要连接的那一枚`}
+            </Text>
+            {ring.devices.map((d) => (
+              <TouchableOpacity
+                key={d.id}
+                style={s.deviceRow}
+                activeOpacity={0.8}
+                onPress={() => RingBle.connectToId(d.id)}
+              >
+                <Text style={s.deviceName}>{d.name}</Text>
+                {/* ★ 2026-11-13（用户）：点选前要能认出是哪一枚戒指 —— 完整 MAC + 固件 + 上次连接 */}
+                <Text style={s.deviceMac}>{`MAC ${String(d.id)}`}</Text>
+                <Text style={s.deviceMac}>
+                  {d.firmware ? `固件 ${d.firmware}` : '固件待读取'}
+                  {d.lastConnectedAt
+                    ? ` · 上次连接 ${shortRingLastSeen(d.lastConnectedAt)}`
+                    : ' · 未连接过'}
+                  {d.lastBattery != null ? ` · 电量 ${d.lastBattery}%` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* 底部：直接连接 / 稍后再连 */}
@@ -328,6 +357,28 @@ const s = StyleSheet.create({
     borderTopColor: theme.colors.textWhite,
     marginRight: theme.space.xs,
   },
+  // ★ 多枚戒指候选列表（用户自己选，不自动连第一枚）
+  deviceList: { marginTop: theme.space.lg, width: '100%', maxWidth: 320 },
+  deviceListHint: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+    marginBottom: theme.space.sm,
+  },
+  deviceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    marginBottom: 8,
+  },
+  deviceName: { fontSize: theme.fontSize.body, color: theme.colors.textWhite },
+  deviceMac: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, opacity: 0.75 },
   skipBtn: { alignItems: 'center', paddingVertical: theme.space.sm, marginTop: theme.space.xs },
   skipTxt: {
     fontSize: theme.fontSize.sm,

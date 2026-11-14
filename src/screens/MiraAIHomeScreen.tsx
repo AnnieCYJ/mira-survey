@@ -17,6 +17,7 @@ import {
   ScrollView,
   TextInput,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/native';
@@ -320,12 +321,8 @@ const styles = StyleSheet.create({
     marginLeft: theme.sp(1.5),
     flex: 1,
   },
-  // —— 底部输入行（absolute 贴屏底）——
+  // —— 底部输入行（普通 flex 子元素，随 adjustResize 窗口收缩自然停在键盘上方）——
   inputBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.sp(2),

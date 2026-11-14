@@ -31,7 +31,7 @@
  * 数据：经期主记录来自 RingBle.female + 本地 cycleLog（merge 同 CyclePhaseCard）；
  * 每日状态来自 periodLog。相位/预测均为日历+体温推算，非硬件实测。
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -65,7 +65,7 @@ import CycleDerivedMetrics from '../components/CycleDerivedMetrics';
 // ★ 2026-11-06（用户：去掉详情页里的体温双向监测）→ TempBiphasicChart / TempBiphasicAnalysis 不再引入
 import TrendAnalysis from '../components/TrendAnalysis';
 import PhaseLegend from '../components/PhaseLegend';
-import PeriodRecordPanel from '../components/PeriodRecordPanel';
+import PeriodRecordPanel, { type PeriodRecordPanelHandle } from '../components/PeriodRecordPanel';
 import SymptomStatsPanel from '../components/SymptomStatsPanel';
 import SymptomPhaseMatrix from '../components/SymptomPhaseMatrix';
 import CycleRegularityCard from '../components/CycleRegularityCard';
@@ -167,6 +167,8 @@ export default function CycleCalendarScreen() {
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
   const insets = useSafeAreaInsets();
+  // ★ 本轮（修复缺陷 A）：经期记录浮层的「保存记录」按钮移到固定底部 Footer，这里持有面板 ref 以触发保存。
+  const periodPanelRef = useRef<PeriodRecordPanelHandle>(null);
   const [localLog, setLocalLog] = useState<CycleLog | null>(null);
   const [periodDays, setPeriodDays] = useState<Record<string, PeriodDayLog>>({});
   // ★ 2026-10-07（用户：点击生理周期最上面的时间选择器出错了；「参考一下其他的生理期 App 怎么选择时间」）：
@@ -674,7 +676,7 @@ export default function CycleCalendarScreen() {
         >
           <View style={styles.daySheet}>
             {/* ★ 本轮（用户 #283）：顶到状态栏/电池 —— 加安全区顶部留白；关闭按钮加大点击区 + 可见底 */}
-            <View style={[styles.daySheetHead, { paddingTop: insets.top + theme.space.lg }]}>
+            <View style={[styles.daySheetHead, { paddingTop: insets.top + theme.space.sm }]}>
               <Text style={styles.sheetDate}>经期记录</Text>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -689,6 +691,8 @@ export default function CycleCalendarScreen() {
             </View>
             <ScrollView style={styles.recordSheetBody} showsVerticalScrollIndicator={false}>
               <PeriodRecordPanel
+                ref={periodPanelRef}
+                hideSaveButton
                 female={ring.female}
                 currentLog={log}
                 onSaved={() => {
@@ -698,6 +702,17 @@ export default function CycleCalendarScreen() {
                 }}
               />
             </ScrollView>
+            {/* ★ 本轮（修复缺陷 A）：保存 CTA 固定底部，绝不被 ScrollView 裁切 / 手势条压住。
+                paddingBottom 用内联（insets 在组件作用域，不能写进模块级 StyleSheet）。 */}
+            <View style={[styles.recordFooter, { paddingBottom: Math.max(insets.bottom, theme.sp(15)) + theme.sp(2) }]}>
+              <TouchableOpacity
+                style={styles.recordSaveBtn}
+                onPress={() => periodPanelRef.current?.save()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.recordSaveBtnText}>保存记录</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </BgGradient>
       </Modal>
@@ -1206,7 +1221,7 @@ const styles = StyleSheet.create({
   recordSheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   recordSheetClose: { fontSize: theme.fontSize.card, color: theme.colors.textSub, fontWeight: theme.weight.bold as any },
   /* minHeight: 0 + flexShrink: 1 —— 让 ScrollView 在封顶高度的 Sheet 里真正可滚动（不会把底部按钮顶出屏幕） */
-  recordSheetBody: { marginTop: theme.space.xs, flex: 1, minHeight: 0, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.space.xl },
+  recordSheetBody: { marginTop: theme.space.xs, flex: 1, minHeight: 0, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.sp(17) },
 
   // ★ 2026-10-13（用户：日历格子大一点）：本页横向留白收窄，让月历网格占更宽，格子整体变大
   pageWide: { paddingHorizontal: theme.sp(2) },
@@ -1231,17 +1246,31 @@ const styles = StyleSheet.create({
   daySheetMask: { flex: 1, backgroundColor: theme.colors.bgTop },
   daySheet: { flex: 1, backgroundColor: theme.colors.bgTop },
   daySheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.space.cardPad, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
-  daySheetClose: { fontSize: theme.fontSize.h2, color: theme.colors.textSub, fontWeight: theme.weight.bold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
-  // ★ 本轮（用户 #283）：关闭按钮加一圈可见底 + 更大内边距，便于点按
+  daySheetClose: { fontSize: theme.fontSize.lg, color: theme.colors.textSub, fontWeight: theme.weight.semibold as any, paddingHorizontal: theme.space.sm, paddingVertical: theme.space.xs },
+  // ★ 本轮（用户）：✕ 之前太大太显眼 → 收小字号 + 去掉那圈明显的白底，仅保留不可见的加大点击区
   daySheetCloseBtn: {
-    padding: theme.sp(2),
+    padding: theme.sp(0.5),
     borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.ui.white12,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: -theme.sp(1),
   },
-  daySheetBody: { flex: 1, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.space.xl },
+  daySheetBody: { flex: 1, paddingHorizontal: theme.space.cardPad, paddingBottom: theme.sp(17) },
+  // ★ 本轮（修复缺陷 A）：经期记录「保存记录」固定底部 Footer —— 始终可见可点，不被 ScrollView 裁切 / 手势条压住。
+  recordFooter: {
+    paddingHorizontal: theme.space.cardPad,
+    paddingTop: theme.sp(2),
+    paddingBottom: theme.sp(2),
+    backgroundColor: theme.colors.bgTop,
+  },
+  recordSaveBtn: {
+    backgroundColor: theme.colors.ui.white95,
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    paddingVertical: theme.sp(3.5),
+  },
+  recordSaveBtnText: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: '#2A4470' },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.ui.chipNeutralBg, alignSelf: 'center', marginBottom: theme.space.sm },
   sheetDate: { fontSize: theme.fontSize.card, fontWeight: theme.weight.bold as any, color: theme.colors.textTitle },
   sheetPhaseRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: theme.space.sm },

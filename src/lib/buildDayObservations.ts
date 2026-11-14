@@ -100,6 +100,8 @@ function sleepCompareObs(dk: string): DayObservation | null {
       title,
       sub,
       goalMet: false,
+      // ★ 本轮（用户）：归入 sleep 维度 → 与「睡眠」维度卡去重，回顾·日每类只保留一张卡
+      dimension: 'sleep',
       priority: 1,
     };
   } catch { return null; }
@@ -142,6 +144,8 @@ function stressPeakObs(dk: string): DayObservation | null {
       sub: `${pad2(peakH)}:00–${pad2(peakH + 1)}:00 升到了这一天的高点，其余时段都更平稳。`,
       analysis: report ?? undefined,
       goalMet: false,
+      // ★ 本轮（用户）：归入 stress 维度 → 与「身心压力」维度卡去重
+      dimension: 'stress',
       priority: 2,
     };
   } catch { return null; }
@@ -210,6 +214,8 @@ function stepsPeakObs(dk: string, prevDk: string): DayObservation | null {
       sub: `${periodWord(peakH)} ${pad2(peakH)}:00–${pad2(peakH + 1)}:00 走了约 ${peakN} 步，是一天里走动最多的时段。`,
       analysis,
       goalMet: false,
+      // ★ 本轮（用户）：归入 activity 维度 → 与「当天运动」维度卡去重
+      dimension: 'activity',
       priority: 3,
     };
   } catch { return null; }

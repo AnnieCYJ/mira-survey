@@ -3,7 +3,6 @@ import { ConfigPlugin, withAndroidManifest } from '@expo/config-plugins';
 const withBackgroundBLE: ConfigPlugin = (config) => {
   // Android: 加 foreground service 声明
   config = withAndroidManifest(config, async (conf) => {
-    const { mainApplicationFile } = conf.modResults;
     // AndroidManifest 里加 service 声明（如果还没加）
     const manifestContent = conf.modResults;
     

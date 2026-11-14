@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions, StatusBar, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -40,6 +40,22 @@ export default function ProfileScreen({ navigation }: any) {
   const scrollY = useRef(new Animated.Value(0)).current;
   const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
   const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
+  const scrollRef = useRef<ScrollView>(null);
+  // ★ 2026-11-13 修「进回顾页 title 突然没在、从月切到日又出现」：
+  //   根因不是滚动位置没归零，而是 ScreenContainer 的 onScroll 走原生驱动 ——
+  //   scrollY 的值活在原生侧，下面 setValue(0) 只改 JS 值，头部 opacity 仍按原生侧的旧
+  //   偏移量算成 0；直到切「日 / 月」触发一次 onScroll 才被同步回来（所以又出现了）。
+  //   本页改传 scrollYNativeDriver={false}，让整条链路留在 JS 侧，setValue 才真正生效。
+  //   另外补一次延迟复位：内容异步挂载 / 布局变化后 ScrollView 可能再回传一次旧 offset。
+  useFocusEffect(useCallback(() => {
+    const reset = () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      scrollY.setValue(0);
+    };
+    reset();
+    const t = setTimeout(reset, 120);
+    return () => clearTimeout(t);
+  }, [scrollY]));
 
   const { tasks, celebration, triggerCelebration, dismissCelebration } = useAppState();
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -52,6 +68,11 @@ export default function ProfileScreen({ navigation }: any) {
   //   今日 = 当日行为流程（JourneyDayView，即点月历某一天弹出的那种图）；本月 = 月历网格。
   // ★ 本轮（用户 #260）：回顾页「今日 / 本月」改为与详情页一致的 RangeSwitch 分段控件（日 / 月）
   const [reviewTab, setReviewTab] = useState<RangeKey>('day');
+  // ★ 日 / 月 切换会改变内容高度，可能让 ScrollView 回传一个非零 offset 把标题再次溶解；
+  //   切换时主动复位，保证标题一直在（必须放在 reviewTab 声明之后，避免 TDZ）。
+  useEffect(() => {
+    scrollY.setValue(0);
+  }, [reviewTab, scrollY]);
   // ★ 2026-11-05（用户 #286）：单日记录摘要（由 JourneyDayView 上抛），钉在底部 Tab 正上方（固定浮层）
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
 
@@ -163,7 +184,7 @@ export default function ProfileScreen({ navigation }: any) {
         locations={[...theme.colors.bgGradLocs] as unknown as number[]}
         style={StyleSheet.absoluteFill}
       />
-      <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
+      <ScreenContainer compactTop scrollY={scrollY} scrollRef={scrollRef} scrollYNativeDriver={false} topFadeColor={theme.colors.bgTop}>
         <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
           <Text style={styles.title}>回顾</Text>
           {/* ★ 本轮（用户）：品牌句文案改为「每一次卓越表现」 */}
@@ -217,13 +238,15 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.daySummaryText} numberOfLines={1}>
             {daySummary.selLabel}共{' '}
             <Text style={styles.daySummaryNum}>{daySummary.count}</Text> 条记录
-            {daySummary.count > 1 ? ` · 从 ${daySummary.firstTime} 到 ${daySummary.lastTime}` : ''}
+            {daySummary.count > 1 && daySummary.firstTime && daySummary.lastTime
+              ? ` · 从 ${daySummary.firstTime} 到 ${daySummary.lastTime}`
+              : ''}
           </Text>
-          {daySummary.count >= 2 && (
+          {daySummary.firstTitle && daySummary.lastTitle ? (
             <Text style={styles.daySummaryClue} numberOfLines={1}>
               当天先记录「{daySummary.firstTitle}」，之后又出现「{daySummary.lastTitle}」
             </Text>
-          )}
+          ) : null}
         </View>
       ) : null}
       </ScreenContainer>

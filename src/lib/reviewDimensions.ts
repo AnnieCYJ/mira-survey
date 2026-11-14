@@ -96,8 +96,9 @@ function comma(n: number): string {
   return Math.round(n).toLocaleString('en-US');
 }
 
-/** 只按真实数据组卡；没有任何数据的维度不进返回数组 */
-export function composeDimensionGroups(input: DayDimensionInput): DimensionGroup[] {
+/** 只按真实数据组卡；没有任何数据的维度不进返回数组
+ *  @param showCycle 是否展示生理周期维度（男性=false → 不出「生理周期」卡，也不出现周期相位措辞） */
+export function composeDimensionGroups(input: DayDimensionInput, showCycle = true): DimensionGroup[] {
   const groups: DimensionGroup[] = [];
   const push = (id: string, title: string, cards: (DimensionCard | null)[]) => {
     const real = cards.filter((c): c is DimensionCard => c !== null);
@@ -107,7 +108,7 @@ export function composeDimensionGroups(input: DayDimensionInput): DimensionGroup
   /* ── ① 身体节律：生理周期 + 早上睡眠 ───────────────────────────── */
   const rhythm: (DimensionCard | null)[] = [];
 
-  if (input.cyclePhaseLabel && input.cyclePhaseLabel !== '未记录') {
+  if (showCycle && input.cyclePhaseLabel && input.cyclePhaseLabel !== '未记录') {
     const phase = input.cyclePhaseLabel;
     rhythm.push({
       id: 'cycle',

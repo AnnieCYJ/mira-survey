@@ -33,6 +33,8 @@ import AiAnalysis, { AiResultRow } from './AiAnalysis';
 // ★ 2026-10-12（用户：「雌激素孕激素不要写文字，就画趋势图」）：
 //   恢复 HormoneDualTrend 双相趋势图，以 embedded 模式嵌入本卡（AI 分析上方）。
 import HormoneDualTrend from './HormoneDualTrend';
+// ★ 2026-11-13：相位解读话术移到共享模块，一键体检报告的雌激素 / 孕激素分析同源引用。
+import { PHASE_BRIEF } from '../lib/phaseHormoneBrief';
 
 const FEMALE_STATE_LABEL: Record<number, string> = {
   0: '未设置',
@@ -55,32 +57,10 @@ function shortDate(s: string | null | undefined): string {
 const SHOW_PHASE_INSIGHT: boolean = false;
 
 /** ★ 2026-10-07（用户：洞察页「生理周期节律」卡片里面也加个 AI 分析，三行以内）：
- *  只做相位层面的解读（戒指测不到雌激素/孕酮浓度，绝不编造具体激素值）。
- *  ★ 2026-10-12（用户：「下面的 AI 分析，内容可以稍微多一点」）：每相扩为两句——
- *  第一句讲当前身体处于什么状态，第二句给一个具体可做的建议，仍控制在三行以内。
+ *  只做相位层面的解读 —— 每相两句：先讲激素与身体当前处于什么状态，再给一条具体建议。
+ *  ★ 2026-11-13：文案本体移到 lib/phaseHormoneBrief.ts（PHASE_BRIEF），
+ *    与一键体检报告里雌激素 / 孕激素的分析共用同一套话术，避免两处漂移。
  *  依据：Clue 生理科普 + ACSM 运动与周期指南。 */
-const PHASE_BRIEF: Record<string, { name: string; tone: 'good' | 'warn' | 'neutral'; body: string }> = {
-  period: {
-    name: '经期',
-    tone: 'warn',
-    body: '雌激素与孕酮处于低位，身体进入恢复模式，能量与运动表现偏低，也更容易累。建议降低训练强度、多做拉伸和散步，注意保暖，睡前少看屏幕、把睡眠补足。',
-  },
-  follicular: {
-    name: '卵泡期',
-    tone: 'good',
-    body: '雌激素逐步回升、HRV 上升，精力与情绪持续变好，恢复能力增强。适合安排高强度训练、重要任务与新的计划，想启动的习惯放在这时候最容易坚持。',
-  },
-  ovulation: {
-    name: '排卵期',
-    tone: 'good',
-    body: '雌激素达峰值、状态最佳，是运动与决策的黄金窗口，反应和耐力都在线。想冲力量 PR 或处理难任务就选这两天，同时处于易孕期，如有避孕或备孕计划需注意时间安排。',
-  },
-  luteal: {
-    name: '黄体期',
-    tone: 'warn',
-    body: '孕酮主导、体温升高，能量回落、恢复变慢，PMS 症状较易出现，别用前两周的标准要求自己。建议把高强度换成中等强度有氧，控制糖盐摄入，保证睡眠，重要决定尽量避开经前一周。',
-  },
-};
 
 export default function CyclePhaseCard({
   ring,

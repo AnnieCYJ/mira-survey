@@ -23,37 +23,40 @@ import {
   countQuickChecks,
   abnormalMetrics,
   tallyRecord,
-  assembleQuickCheckFromRealtime,
+  QUICK_CHECK_DURATION_MS,
+  runQuickCheckSession,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
 import { qc, statusColor, statusLabel, QCta } from './quickCheckShared';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
 
 // ★ 一键体检等待动画的分步文案在组件内按机型能力动态生成（见 checkSteps）
+// ★ 2026-11-13：测量窗口由 quickCheckStore.QUICK_CHECK_DURATION_MS 统一定义（35 秒），
+//   与体检记录页「再体检一次」共用 runQuickCheckSession()，避免两个入口时长/口径分叉。
 
 export default function QuickCheckTab() {
   const navigation = useNavigation<any>();
   const { model: profile } = useDeviceModel();
-  // ★ 2026-11-05：体检按「机型能力 + 当前戒指回读」组装。
-  //   基础版 Luna Mira 覆盖：心率/HRV/血氧/体温/活动/睡眠/血脂三项；
-  //   推算项：今日状态、压力（HRV 推算）、身体成分（首次注册录入的身高体重推算）。
-  //   注：交感神经活跃度（SNS）依赖 EDA/皮电，基础版硬件不支持，无真实数据，故不出现在报告中。
+  // ★ 2026-11-13（用户）：报告按「现场测得 / 今天已同步 / 最近记录推算 / 档案推算」分层。
+  //   首次没有历史时，后两层天然为空，报告自动只剩现场测得 + 当场算出的项。
+  //   交感神经活跃度（SNS）依赖 EDA/皮电，基础版硬件不支持，无真实数据，不出现在报告中。
   //   旧实现读 healthStore 遗留的血压/血糖/尿酸/皮肤/情绪/皮质醇，属 HK18 数据混显，已移除。
   const canBp = hasCap(profile, 'bp');
   const canGlucose = hasCap(profile, 'glucose');
   const canGlance = hasCap(profile, 'cortisol');
   const checkupMetrics = [
-    '今日状态', '心率', 'HRV', '血氧', '体温',
+    '今日状态', '心率', '血氧', '体温',
     '活动', '睡眠', '血脂', '压力', '身体成分',
     ...(canBp ? ['血压'] : []),
     ...(canGlucose ? ['血糖'] : []),
     ...(canGlance ? ['健康一览信号'] : []),
   ];
+  // ★ 四步均分 35 秒窗口，文案对齐真实阶段：0–21s 心率独占 PPG 通道，21s 后才起血氧流
   const checkSteps = [
-    '正在读取心率、HRV 与血氧…',
-    '正在汇总活动、睡眠与血脂数据…',
-    '正在分析今日状态与身体成分…',
-    '正在生成体检报告…',
+    '正在现场测量心率，请保持手指静止…',
+    '心率测量进行中，请继续保持静止…',
+    '正在读取血氧与今天已同步的读数…',
+    '正在汇总数据并生成体检报告…',
   ];
   const [latest, setLatest] = useState<QuickCheckRecord | null>(null);
   const [count, setCount] = useState(0);
@@ -81,16 +84,21 @@ export default function QuickCheckTab() {
     setBusy(true);
     setChecking(true);
     setStepIdx(0);
-    // 分步文案每 600ms 走一步，配合最短 1.8s 的等待体感
+
+    // ★ 2026-11-13（用户）：这 35 秒里**真的发起测量**，不是干等。
+    //   现场测量 + 等满窗口 + 组装报告统一在 runQuickCheckSession() 里，两个入口共用同一口径：
+    //   · hr   → 原生 startSingleHeartDetect()，前 20 秒独占 PPG 通道，读数回流到 state.metrics.hr
+    //   · spo2 → 心率窗口结束后才起 startSpo2hOnly() 连续流（PPG 不能并行），剩余时间回传血氧
+    //   报告里其它项目取今天已同步的读数或最近记录推算，各自标明来源，不冒充现场测量。
+
+    // 分步文案按整个测量窗口均分，每一步都对应真实在跑的阶段
+    const stepMs = Math.round(QUICK_CHECK_DURATION_MS / checkSteps.length);
     stepTimer.current = setInterval(
       () => setStepIdx((i) => Math.min(i + 1, checkSteps.length - 1)),
-      600,
+      stepMs,
     );
-    const minWait = new Promise<void>((r) => setTimeout(r, 1800));
     try {
-      const [res] = await Promise.all([assembleQuickCheckFromRealtime(), minWait] as const);
-      setChecking(false);
-      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
+      const res = await runQuickCheckSession();
       if (res.ok && res.record) {
         await reload();
         // ★ 成功不再弹 Alert，直接跳本次体检的详情页
@@ -98,15 +106,15 @@ export default function QuickCheckTab() {
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到戒指数据。请连接戒指并佩戴一会儿，再来做一次体检。',
+          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。没有读到数据的项目不会出现在报告里。',
           [{ text: '知道了' }]
         );
       }
     } catch {
-      setChecking(false);
-      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
       Alert.alert('体检未完成', '读取测量数据时出了问题，请稍后再试。', [{ text: '知道了' }]);
     } finally {
+      setChecking(false);
+      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
       setBusy(false);
     }
   };
@@ -120,15 +128,15 @@ export default function QuickCheckTab() {
             <Text style={qc.label}>一键体检</Text>
             <View style={{ alignItems: 'center', paddingVertical: theme.sp(4) }}>
               <Text style={[qc.abEmpty, { textAlign: 'center', fontSize: theme.fontSize.sm, lineHeight: 22 }]}>
-                还没有体检记录。{'\n'}点下面按钮，用当前 HRV 与戒指数据算出今天的「今日状态」，结果会同步到首页。
+                还没有体检记录。{'\n'}点下面按钮，现场测量心率与血氧，并算出今天的「今日状态」和「身心压力」。戴久一点，报告里会逐步加入睡眠、血压与节律。
               </Text>
             </View>
             <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
           </Card>
         <Text style={qc.footerNote}>
-          最多覆盖{checkupMetrics.length}类结果；没有数据的项目不会出现在报告里。
-          每一项都说明它代表什么、当前是否正常、可能的原因，以及可参考的建议；「--」表示该检测项本次未测成功。
-          Mira 只做描述与参考，不做诊断与评分。
+          现场测量约 {Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒。心率和血氧是这次现场测得的，今日状态与身心压力用这次的读数重新算出。
+          报告最多包含 {checkupMetrics.length} 类结果，今天已同步的读数会一起列出并标明来源；戴了一段时间后，会加入基于最近记录的节律结论。
+          没有读到数据的项目不会出现在报告里，不会用「--」占位。Mira 只做描述与参考，不做诊断与评分。
         </Text>
         </View>
         <CheckWaitOverlay visible={checking} step={checkSteps[stepIdx]} />
@@ -187,7 +195,7 @@ export default function QuickCheckTab() {
           </View>
         </Card>
         <Text style={qc.footerNote}>
-          「--」表示该检测项本次未测成功。参考区间仅供参考，Mira 不做诊断与评分。点击卡片可查看全部体检记录。
+          没有读到数据的项目不会出现在报告里，不会用「--」占位。参考区间仅供参考，Mira 不做诊断与评分。点击卡片可查看全部体检记录。
         </Text>
       </View>
       <CheckWaitOverlay visible={checking} step={checkSteps[stepIdx]} />
@@ -231,7 +239,7 @@ function CheckWaitOverlay({ visible, step }: { visible: boolean; step: string })
             </View>
           </View>
           <Text style={ov.stepText}>{step}</Text>
-          <Text style={ov.hint}>正在汇总你的测量结果与推算项，请稍候</Text>
+          <Text style={ov.hint}>{`现场测量约 ${Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒，请保持戒指佩戴、手指放松`}</Text>
         </View>
       </View>
     </Modal>

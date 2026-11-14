@@ -147,9 +147,10 @@ function vitalsOf(dk: string): { label: string; value: string }[] {
 export function buildDayDimensionGroups(
   date: Date,
   cycleLog?: CycleLog | null,
+  showCycle = true,
 ): DimensionGroup[] {
   try {
-    return buildDayDimensionGroupsInner(date, cycleLog);
+    return buildDayDimensionGroupsInner(date, cycleLog, showCycle);
   } catch {
     // ★ 顶层兜底：任何单源异常都只让维度区少一张卡，绝不让整个回顾页白屏
     return [];
@@ -159,6 +160,7 @@ export function buildDayDimensionGroups(
 function buildDayDimensionGroupsInner(
   date: Date,
   cycleLog?: CycleLog | null,
+  showCycle = true,
 ): DimensionGroup[] {
   const anchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
   const dk = dayKey(anchor.getTime());
@@ -237,7 +239,7 @@ function buildDayDimensionGroupsInner(
   };
 
   try {
-    return composeDimensionGroups(input);
+    return composeDimensionGroups(input, showCycle);
   } catch {
     return [];
   }

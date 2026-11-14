@@ -48,6 +48,7 @@ import { healthStore, dayKey } from '../data/healthStore';
 import { useAppState } from '../state/AppState';
 import { useHealthStoreVersion, useEnsureDerivedMetrics } from '../hooks/useHealthStore';
 import { useAiInsight } from '../hooks/useAiInsight';
+import { useRingDataLoading } from '../hooks/useRingDataLoading';
 import { resolveInsightRows } from '../ai/insight';
 import HealthAgeCard from '../components/HealthAgeCard';
 import SleepRegularitySummaryCard from '../components/SleepRegularitySummaryCard';
@@ -198,9 +199,9 @@ export default function InsightScreen() {
     return () => StatusBar.setBarStyle('light-content', true);
   }, []));
   // ★ 滚动联动：头部随滚动溶解（与首页同一套强度，数值含义见 TodayScreen）
+  //   注意：标题「洞察」不再随滚动溶解——tab 切回时原生驱动的 scrollY 不会复位，
+  //   会导致标题卡在 opacity:0 永久消失（用户反馈的 bug）。改为标题常驻可见。
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headOpacity = scrollY.interpolate({ inputRange: [0, 110], outputRange: [1, 0], extrapolate: 'clamp' });
-  const headLift = scrollY.interpolate({ inputRange: [0, 110], outputRange: [0, -14], extrapolate: 'clamp' });
   const navigation = useNavigation<any>();
   const [actualAge, setActualAge] = useState<number | null>(null);
   const profileRevision = useRef(0);
@@ -494,6 +495,11 @@ export default function InsightScreen() {
   //   戒指超过 3 小时没送新采样时，睡眠 tab 不再把旧归档当成「昨夜实测」继续展示。
   const dataStale = (ring?.curveStatus as any)?.dataStale === true;
 
+  // ★ 2026-11-13（用户）：戒指数据是按指标分批回来的（心率先到、HRV / 血氧还要等一段），
+  //   这段窗口里没读数的卡片底部文案要说明「正在加载中」，别让用户以为没连上或坏了。
+  //   只在 BLE 链路忙 + 真有同步/刚连上（且带 90s 硬上限）时为真，超时自动回落「暂未读到数据」。
+  const ringDataLoading = useRingDataLoading(ring);
+
   // 回填派生指标（eda/cortisol…）intraday：修复「历史皮质醇数据没有」（洞察页节律卡同样依赖）
   useEnsureDerivedMetrics(30);
 
@@ -554,7 +560,8 @@ export default function InsightScreen() {
     let raw: any[];
     if (key === 'spo2') {
       const day0 = new Date(); day0.setHours(0, 0, 0, 0);
-      const full = healthStore.getTimeRange('spo2', day0.getTime(), Date.now(), {
+      // ★ 2026-11-12：留 45 分钟容差，戒指 RTC 未对时期间回读样本不会被 Date.now() 整段过滤
+      const full = healthStore.getTimeRange('spo2', day0.getTime(), Date.now() + 45 * 60_000, {
         fillDailyMean: true,
         maxPoints: 50000, // 不触发 stride 抽样，取今日全量逐样本
       });
@@ -716,15 +723,28 @@ export default function InsightScreen() {
       else measureTime = getCachedLastT(m.key);
     }
     // ★ 2026-11-06（用户）：右上角改为显示「最新更新时间」，不再显示「M/D 日均」/相对时间
-    const updatedAt: number | null =
+    const rawUpdatedAt: number | null =
       measureTime ??
       (ring.lastUpdated as Record<string, number | null>)[rk] ??
       (sourceLabel ? dailyDateTs : null);
+    // ★ 2026-11-12（用户：HRV 显示「更新于 00:51」但当时才 00:43）：
+    //   ring.lastUpdated 里仍可能带着戒指 RTC 的超前时间戳，展示时一律钳到当前时刻，
+    //   绝不显示未来时间；落库层已由 healthStore.correctFutureSamples 平移校正。
+    const updatedAt: number | null = rawUpdatedAt != null ? Math.min(rawUpdatedAt, Date.now()) : null;
     // ★ 2026-11-06（用户）：体温等「当前固件尚未回读到」的指标，没有任何真实读数时整张卡不渲染（降噪）
     if (m.hideNoData && real == null) return null;
     const hist = getCachedHist(m.key);
+    // ★ 2026-11-13（用户）：这张卡自己还没读数、但戒指数据仍在陆续回来 → 底部文案中间插入「正在加载中」。
+    //   · 只对「自动同步」类指标生效；手动测量类（光电血压 / ECG / 呼吸率）没有自动加载，不误报。
+    //   · 手动点测时原生把对应 availability 置 'syncing'，同样视为加载中。
+    //   · 读数一回来 real != null，文案自动切回正常分析，不需要额外清理状态。
+    const autoSyncCard = !m.manualOnly && m.hideMeasure !== false;
+    const cardLoading = real == null && (
+      (autoSyncCard && ringDataLoading) ||
+      (isRealtime && ring.availability[rk] === 'syncing')
+    );
     // ★ 本轮（用户）：每个基础指标卡 AI 分析 → 作为卡片内底部区块（analysis prop 传入，整张卡为「一张卡」）
-    const metricAnalysisText = buildMetricAnalysis(m, real) ?? undefined;
+    const metricAnalysisText = buildMetricAnalysis(m, real, cardLoading) ?? undefined;
     if (m.manualOnly) {
       return (
         <ManualMetricCard
@@ -778,9 +798,9 @@ export default function InsightScreen() {
       />
     <ScreenContainer compactTop scrollY={scrollY} topFadeColor={theme.colors.bgTop}>
       <View style={styles.stack}>
-        <Animated.View style={{ opacity: headOpacity, transform: [{ translateY: headLift }] }}>
+        <View>
           <Text style={styles.title}>洞察</Text>
-        </Animated.View>
+        </View>
 
         
 
@@ -1253,7 +1273,8 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
   const { sysPts, diaPts } = useMemo(() => {
     try {
       const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
-      const now = Date.now();
+      // ★ 2026-11-12：与 realSeries.getTodaySeries 同一容差口径
+      const now = Date.now() + 45 * 60_000;
       return {
         sysPts: healthStore.getTimeRange('bpSys', midnight.getTime(), now, { fillDailyMean: true, maxPoints: 240 }).filter((p: any) => Number.isFinite(p?.v) && p.v > 0),
         diaPts: healthStore.getTimeRange('bpDia', midnight.getTime(), now, { fillDailyMean: true, maxPoints: 240 }).filter((p: any) => Number.isFinite(p?.v) && p.v > 0),
@@ -1366,7 +1387,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           </View>
         </View>
         <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(0.5) }}>
-          纵轴 = mmHg · 横轴 = 一天 24h{hasData ? '' : ' · 暂无血压采样'}
+          纵轴 = mmHg · 横轴 = 一天 24h{hasData ? '' : (Math.max(sysPts.length, diaPts.length) > 0 ? ' · 今日仅 1 条读数' : ' · 暂无血压采样')}
         </Text>
         {/* ★ 2026-11-07（用户）：血压也要有 AI 分析 —— 与心率/血氧/HRV 同款结论行，
             不写「AI 分析」标题，正文完整不截断、字号与荷尔蒙节律分析一致（fontSize.sm） */}
@@ -1374,9 +1395,12 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           const sVals = sysPts.map((p: any) => p.v).filter((v: number) => Number.isFinite(v) && v > 0);
           const dVals = diaPts.map((p: any) => p.v).filter((v: number) => Number.isFinite(v) && v > 0);
           if (!hasData) {
+            const n = Math.max(sysPts.length, diaPts.length);
             return (
               <AiResultRow compact tone="neutral" bodyColor={theme.colors.textBody}>
-                今日暂无血压采样。手动录入或完成一次测量后，这里会给出全天血压的解读。
+                {n > 0
+                  ? `今天已有 ${n} 条血压读数，再攒一条就能画出全天趋势。`
+                  : '今日暂无血压采样。手动录入或完成一次测量后，这里会给出全天血压的解读。'}
               </AiResultRow>
             );
           }

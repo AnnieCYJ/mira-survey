@@ -11,6 +11,20 @@ interface State {
 }
 
 /**
+ * ★ 2026-11-12（用户「OPPO 打开变蓝屏」）：React 错误边界只能捕获「渲染期」错误，
+ *   捕获不到 Promise 回调 / 原生事件回调里抛出的异步错误——后者会撕掉整棵 React 树、
+ *   露出底层蓝底（蓝屏），且无从排查。
+ *   这里保存最外层边界实例的全局引用，供 App.tsx 的 ErrorUtils 全局处理器调用，
+ *   把任何漏网的异步错误也驱动成「页面出错了 + 原因」UI，而非静默蓝屏。
+ */
+let globalBoundary: ErrorBoundary | null = null;
+export function reportGlobalError(err: Error) {
+  if (globalBoundary && !globalBoundary.state.error) {
+    globalBoundary.setState({ error: err });
+  }
+}
+
+/**
  * 全局错误边界：捕获任何渲染期 JS 异常，显示可读提示而非白屏/硬退出。
  * 注意：它无法捕获原生层崩溃（EXC_BAD_ACCESS 等由 SDK 触发的进程退出），
  * 那种情况需要看 Xcode 控制台 / 设备崩溃日志。
@@ -19,6 +33,14 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { error: null };
+  }
+
+  componentDidMount() {
+    globalBoundary = this;
+  }
+
+  componentWillUnmount() {
+    if (globalBoundary === this) globalBoundary = null;
   }
 
   static getDerivedStateFromError(error: Error): State {

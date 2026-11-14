@@ -107,10 +107,14 @@ export function MetricValue({ value, unit, style }: { value: string; unit?: stri
  * ★ AI 解读（useAi=true 时，仅详情页开启）：手写解读先显示，端侧本地模型生成更口语的
  *   解读到货后静默替换；模型不可用 / 超时 / 输出不合法则保留手写解读，绝不空白。
  */
+/** ★ 2026-11-13（用户）：雌激素 / 孕激素固定用与洞察页同源的手写话术，
+ *  不让端侧模型的随机输出替换成另一种口径（尤其别再冒出推算/来源说明）。 */
+const FIXED_NOTE_KEYS = new Set(['estrogen', 'progesterone']);
+
 export function MetricRow({ m, useAi, groupTitle }: { m: QCMetric; useAi?: boolean; groupTitle?: string }) {
   const [aiNote, setAiNote] = useState<string | null>(null);
   useEffect(() => {
-    if (!useAi) return;
+    if (!useAi || FIXED_NOTE_KEYS.has(m.key)) return;
     let cancelled = false;
     requestMetricInterpretation({
       name: m.name,
@@ -180,6 +184,9 @@ export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }
         <Text style={qc.groupTitleText}>{g.title}</Text>
       </View>
       <View style={qc.groupCard}>
+        {/* ★ 本次依据说明（现场测得 / 今天已同步 / 当场重算 / 最近记录推算）置顶显示。
+            单独字段，不经过解读引擎的 note 清理，保证用户一定看得到数据从哪来。 */}
+        {g.basisNote ? <Text style={[qc.metricNote, { marginBottom: theme.sp(2) }]}>{g.basisNote}</Text> : null}
         {g.note ? <Text style={[qc.metricNote, { marginBottom: theme.sp(2) }]}>{g.note}</Text> : null}
         {inner}
         {(g.standalone ?? []).map((m) => (

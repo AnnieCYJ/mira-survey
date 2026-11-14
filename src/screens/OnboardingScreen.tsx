@@ -19,8 +19,6 @@ import {
   StatusBar,
   Animated,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -266,62 +264,22 @@ export default function OnboardingScreen({ onDone }: Props) {
         <Text style={s.progressTxt}>{answeredCount} / {total}</Text>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + theme.space.lg}
+      {/* ★ 2026-11-12：去掉 KeyboardAvoidingView，改回纯 adjustResize（manifest 已设
+         windowSoftInputMode=adjustResize）。聊天区 flex:1 占上方，作答区作为固定底栏（footer）
+         始终停在窗口底部——键盘弹起时窗口整体收缩，footer 自然落在键盘上方，输入框永不被遮挡。
+         与 MiraAIHomeScreen 已验证可行的方案一致。 */}
+      <ScrollView
+        ref={scrollRef}
+        style={s.chatScroll}
+        contentContainerStyle={s.chat}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[s.chat, { paddingBottom: theme.space.xl + 140 }]}
-          keyboardShouldPersistTaps="handled"
-        >
         {bubbles.map((b, i) =>
           b.role === 'ai' ? <AiBubble key={i} text={b.text} /> : <UserBubble key={i} text={b.text} />,
         )}
         {typing && <TypingBubble dot={dot} />}
 
-        {/* 当前题目作答区 */}
-        {current && (
-          <View style={s.answerArea}>
-            {current.type === 'choice' ? (
-              current.options!.map((o) => (
-                <TouchableOpacity
-                  key={o.value}
-                  style={s.option}
-                  activeOpacity={0.85}
-                  onPress={() => answer(current, o.value)}
-                >
-                  <Text style={s.optionTxt}>{o.label}</Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <View style={s.numRow}>
-                <TextInput
-                  style={s.numInput}
-                  placeholder={current.placeholder}
-                  placeholderTextColor={theme.colors.ui.white55}
-                  keyboardType={current.keyboardType}
-                  maxLength={4}
-                  value={numText}
-                  onChangeText={setNumText}
-                  selectionColor={mm.colors.ink}
-                />
-                {current.unit && <Text style={s.numUnit}>{current.unit}</Text>}
-                <TouchableOpacity
-                  style={[s.numNext, !numText.trim() && s.numNextOff]}
-                  activeOpacity={0.85}
-                  disabled={!numText.trim()}
-                  onPress={() => answer(current, numText.trim())}
-                >
-                  <Text style={s.numNextTxt}>下一步</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* 完成小结 */}
+        {/* 完成小结（仅末步，无键盘交互，保留在滚动区内） */}
         {!current && (
           <View style={s.summaryCard}>
             <Text style={s.summaryTitle}>你的基础档案</Text>
@@ -348,8 +306,58 @@ export default function OnboardingScreen({ onDone }: Props) {
             </TouchableOpacity>
           </View>
         )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
+
+      {/* ★ 当前题目作答区 = 固定底栏：选择题 / 数字输入框都钉在键盘上方，永不被遮挡 */}
+      {current && (
+        <View style={[s.answerFooter, { paddingBottom: insets.bottom + theme.sp(2) }]}>
+          {current.type === 'choice' ? (
+            current.options!.map((o) => (
+              <TouchableOpacity
+                key={o.value}
+                style={s.option}
+                activeOpacity={0.85}
+                onPress={() => answer(current, o.value)}
+              >
+                <Text style={s.optionTxt}>{o.label}</Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={s.numRow}>
+              {/*
+                关键修复（2026-11-12）：Fabric 新架构下，受控 TextInput
+                （value + onChangeText）会出现「原生输入框显示已输入文字、但 JS 状态
+                numText 始终为空」的失同步，导致 下一步 一直 disabled、点不动、填了年龄
+                也没反应。改为非受控（defaultValue + 按题 key 重置）：原生输入框自己持有
+                文本，onChangeText 稳定回写 numText，按钮即可正常启用/前进。
+              */}
+              <TextInput
+                key={current.id}
+                style={s.numInput}
+                placeholder={current.placeholder}
+                placeholderTextColor={theme.colors.ui.white55}
+                keyboardType={current.keyboardType}
+                maxLength={4}
+                defaultValue=""
+                onChangeText={setNumText}
+                selectionColor={mm.colors.ink}
+              />
+              {current.unit && <Text style={s.numUnit}>{current.unit}</Text>}
+              <TouchableOpacity
+                style={[s.numNext, !numText.trim() && s.numNextOff]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  const v = numText.trim();
+                  if (!v) return;
+                  answer(current, v);
+                }}
+              >
+                <Text style={s.numNextTxt}>下一步</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -450,7 +458,11 @@ const s = StyleSheet.create({
   progressTrack: { height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBgSoft, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#FFFFFF', borderRadius: theme.radius.pill },
   progressTxt: { fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.space.xs, textAlign: 'right' },
-  chat: { paddingHorizontal: theme.space.card },
+  chat: { paddingHorizontal: theme.space.card, paddingBottom: theme.space.xl },
+  // ★ 2026-11-12：聊天区占满上方剩余空间（flex:1），与底部固定作答栏配合
+  chatScroll: { flex: 1 },
+  // ★ 2026-11-12：固定作答底栏——键盘弹起时窗口收缩，本栏自然落在键盘上方
+  answerFooter: { paddingHorizontal: theme.space.card, paddingTop: theme.sp(2) },
   aiRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: theme.space.md },
   aiAvatar: {
     width: 30,

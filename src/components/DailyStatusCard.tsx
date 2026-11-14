@@ -29,9 +29,12 @@ const CUTS = [26, 51, 76];
 export default function DailyStatusCard({
   status,
   timeline = [],
+  showCycle = true,
 }: {
   status: CurveStatus | null;
   timeline?: CurvePoint[];
+  /** 男性=false：不展示生理周期相位行，叙事也不含周期措辞 */
+  showCycle?: boolean;
 }) {
   const [w, setW] = useState(0);
 
@@ -52,9 +55,11 @@ export default function DailyStatusCard({
   const mood = moodFor(status.value);
   const scoreText = Math.round(status.value).toString();
   const markerPct = Math.max(1, Math.min(99, status.value));
-  const phaseText = status.hasLog
-    ? `${status.phaseLabel}${status.dayInCycle ? ` · 周期第 ${status.dayInCycle} 天` : ''}`
-    : status.phaseLabel;
+  const phaseText = !showCycle
+    ? ''
+    : (status.hasLog
+      ? `${status.phaseLabel}${status.dayInCycle ? ` · 周期第 ${status.dayInCycle} 天` : ''}`
+      : status.phaseLabel);
 
   const seed = status.seed;
   const s0Text = seed && seed.value != null ? Math.round(seed.value).toString() : '—';
@@ -124,7 +129,11 @@ export default function DailyStatusCard({
         </Text>
       ) : null}
 
-      <Text style={styles.narrative}>{status.narrative}</Text>
+      <Text style={styles.narrative}>
+        {!showCycle
+          ? '今天先看到一部分恢复信号，继续佩戴后我会帮你把状态看得更准'
+          : status.narrative}
+      </Text>
     </Card>
   );
 }

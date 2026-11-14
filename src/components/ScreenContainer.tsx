@@ -24,6 +24,15 @@ interface Props {
    */
   scrollY?: Animated.Value;
   /**
+   * ★ 2026-11-13（回顾页「标题突然不见了」）：滚动监听是否走原生驱动，**默认 true**（其它页面行为不变）。
+   *
+   * 原生驱动时 `scrollY` 的值活在原生侧，调用方 `scrollY.setValue(0)` 只改 JS 值，
+   * 头部 `opacity = scrollY.interpolate(...)` 仍按原生侧的旧偏移量算 → 上次滚下去过，
+   * 再次进入 tab 时标题保持透明（要等下一次原生 onScroll 才恢复，正是「切月到日又出现」的由来）。
+   * 传 false 让整条链路留在 JS 侧，`setValue(0)` 才能立刻把标题复位。
+   */
+  scrollYNativeDriver?: boolean;
+  /**
    * 顶部「化入」遮罩的颜色。**默认 = App 根渐变顶部 `colors.bgTop`**，因为所有 tab 场景背景透明、
    * 显示的都是 App 根渐变（App.tsx），顶部恒为 bgTop。传 `null` 可关掉遮罩。
    * 例外：TodayScreen 自己铺了「上白下紫」，所以它传 `colors.textWhite`。
@@ -53,6 +62,7 @@ export default function ScreenContainer({
   contentStyle,
   withGradient = false,
   scrollY,
+  scrollYNativeDriver = true,
   topFadeColor = theme.colors.bgTop,
   stretchInner = false,
 }: Props) {
@@ -89,10 +99,11 @@ export default function ScreenContainer({
           contentStyle,
         ]}
         showsVerticalScrollIndicator={false}
-        // 仅在需要滚动联动时才注册（原生驱动，滚动过程中 JS 线程不参与）
+        // 默认原生驱动（JS 线程不参与滚动）；调用方传 scrollYNativeDriver={false} 时留 JS 侧，
+        // 便于用 setValue(0) 复位头部透明度（见 prop 注释）。
         scrollEventThrottle={16}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: sy } } }], {
-          useNativeDriver: true,
+          useNativeDriver: scrollYNativeDriver,
         })}
       >
         <View style={[styles.inner, stretchInner && styles.innerStretch, innerStyle]}>{children}</View>

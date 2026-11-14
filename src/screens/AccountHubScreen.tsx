@@ -5,11 +5,13 @@
  *   · 本人资料卡；
  *   · "我的家庭"：已绑定成员列表（关系 chip + TA今日状态），点击看 MemberDetail；
  *   · 待绑定成员 → "完成绑定"直接唤起绑定仪式；
- *   · "添加家人" → Sheet 选关系 + 填名 → 进入 BindingRitual 绑定仪式。
+ *   · ★ 2026-11-13（用户：「添加家人这个是先不做」）→ "添加家人"按钮改为弹「敬请期待」占位提示。
+ *     下方 Sheet 表单实现保留但不暴露（当前没有任何路径能打开它），恢复功能时把按钮 onPress
+ *     改回 setAddOpen(true) 即可；届时必须先把 bindMember 换成真实云端绑定，再开放入口。
  *   · 隐私说明：家人只看状态结论，原始数据留在本人设备。
  */
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet, StatusBar, Alert } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -134,8 +136,12 @@ export default function AccountHubScreen() {
           </View>
         ) : null}
 
-        {/* 添加家人 */}
-        <TouchableOpacity style={s.addBtn} activeOpacity={0.85} onPress={() => { setRel('spouse'); setName(''); setAddOpen(true); }}>
+        {/* 添加家人 ★ 2026-11-13：功能先不做，点击只给占位提示，不进入下面的表单 */}
+        <TouchableOpacity
+          style={s.addBtn}
+          activeOpacity={0.85}
+          onPress={() => Alert.alert('敬请期待', '添加家人功能暂未开放。', [{ text: '知道了' }])}
+        >
           <Text style={s.addBtnTxt}>＋ 添加家人</Text>
         </TouchableOpacity>
 
@@ -150,7 +156,9 @@ export default function AccountHubScreen() {
         </View>
       </ScrollView>
 
-      {/* 添加家人 Sheet */}
+      {/* 添加家人 Sheet（★ 2026-11-13 暂缓：addOpen 恒为 false，入口已封，当前不可达）
+          保留实现是为了以后恢复功能时不必重写表单；恢复前请先把 startAdd 的
+          familyStore.bindMember（写入模拟家人）替换为真实云端绑定，避免假家庭数据。 */}
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)}>
         <SheetHead title="添加家人" subtitle="选择关系，给 TA 起个名字" onBack={() => setAddOpen(false)} />
         <View style={s.sheetBody}>

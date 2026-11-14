@@ -133,8 +133,14 @@ function getTodayAwakeWindow(nowMs: number): { wakeHour: number; bedHour: number
       const ranges: { start: number; end: number }[] = [];
       let cur: { start: number; end: number } | null = null;
       for (const h of sleepHours.sort((a, b) => a - b)) {
-        if (!cur || h === cur.end + 1) cur = { start: cur?.start ?? h, end: h };
-        else { ranges.push(cur); cur = { start: h, end: h }; }
+        if (cur === null) {
+          cur = { start: h, end: h };
+        } else if (h === cur.end + 1) {
+          cur = { start: cur.start, end: h };
+        } else {
+          ranges.push(cur);
+          cur = { start: h, end: h };
+        }
       }
       if (cur) ranges.push(cur);
 

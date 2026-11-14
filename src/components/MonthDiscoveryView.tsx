@@ -69,6 +69,7 @@ import {
   type RecoveryPair,
 } from '../lib/patternHealthMeaning';
 import { RingBle } from '../ble/RingBleManager';
+import { getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 // ★ 2026-11-07（用户）：日历格子皇冠已去掉，CrownMark 不再引用
 // ★ Phase 2（无门禁软闭环）：规律观察直接落位日历观察区 ——
 
@@ -359,6 +360,15 @@ export default function MonthDiscoveryView({
 
   // ★ 丝滑化：切到日历页时，月历照片卡错峰「堆叠展开」；focused 变化重放
   const calendarFocused = useIsFocused();
+
+  // ★ 本轮（用户）：男性（gender==='male'）不展示生理周期相关卡与措辞
+  const [mGender, setMGender] = useState<Gender | undefined>(() => getCachedSession()?.profile?.gender);
+  useEffect(() => {
+    const sync = () => setMGender(getCachedSession()?.profile?.gender);
+    sync();
+    return onSessionChange(sync);
+  }, []);
+  const showCycle = mGender !== 'male';
   const calendarReduced = useReducedMotion();
   const [photoPlayId, setPhotoPlayId] = useState(0);
   useEffect(() => {
@@ -396,7 +406,12 @@ export default function MonthDiscoveryView({
   }, [calendarFocused]);
 
   const onPatternRemove = async (id: string) => {
-    await dismissPattern(id);
+    // ★ 2026-11-11（用户：睡眠相关观察合并成一张卡）：点合并卡的 ✕ → 删除全部睡眠子条目
+    if (id === '__merged_sleep__') {
+      for (const sid of sleepPatternIds) await dismissPattern(sid);
+    } else {
+      await dismissPattern(id);
+    }
     await reloadPatterns();
   };
 
@@ -482,7 +497,7 @@ export default function MonthDiscoveryView({
         const date = new Date(viewY, viewM, d);
         const dk = dayKey(date.getTime());
         // 与回顾·日视图同源：生理时间线 + 自报(recap) + 呼吸/冥想(intervention)
-        const items = buildTodayTimeline(undefined, date).items;
+        const items = buildTodayTimeline(undefined, date, showCycle).items;
         const recap = getSelfReportsForDaySync(dk).map(
           (sr) => ({ emoji: sr.emoji, color: sr.color ?? mm.colors.purpleCore, goalMet: false }),
         );
@@ -726,6 +741,23 @@ export default function MonthDiscoveryView({
     () => patterns.filter((p) => p.kind !== 'coverage'),
     [patterns],
   );
+  // ★ 2026-11-11（用户：月视图「规律观察」里睡眠相关的观察应合并成一张卡，
+  //   不要出现好几张「深睡是 X / 睡眠是 Y」单独摆着）：
+  //   把 sleep 话题的 pattern 合并为一条（多段正文用空格连接），其余话题保持独立卡。
+  const SLEEP_TOPIC_RE = /睡眠|深睡|浅睡|入睡|起床|作息|sleep|deep[\s_-]?sleep/i;
+  const sleepPatternIds = useMemo(
+    () => observedPatterns.filter((p) => SLEEP_TOPIC_RE.test(`${p.text} ${p.title ?? ''}`)).map((p) => p.id),
+    [observedPatterns],
+  );
+  const observedPatternsMerged = useMemo(() => {
+    const sleep = observedPatterns.filter((p) => sleepPatternIds.includes(p.id));
+    const others = observedPatterns.filter((p) => !sleepPatternIds.includes(p.id));
+    if (sleep.length <= 1) return observedPatterns; // 只有 0~1 张睡眠卡时无需合并
+    return [
+      ...others,
+      { ...sleep[0], id: '__merged_sleep__', title: '睡眠规律', text: sleep.map((s) => s.text).join('　') },
+    ];
+  }, [observedPatterns, sleepPatternIds]);
   // ★ 2026-11-06（用户：底下那句「这 30 天里有六天是有可用数据…」不需要写）→ coverageNote 随之移除。
 
   // 月历网格（周一起始，补齐整周）
@@ -1022,7 +1054,7 @@ export default function MonthDiscoveryView({
               {SLOTS.map((s, si) => (
                 <View key={s.label} style={styles.hmRow}>
                   <Text style={styles.hmLab}>{s.short}</Text>
-                  {rhythm.heat[si].map((v, di) => (
+                  {rhythm!.heat[si].map((v, di) => (
                     <View key={di} style={[styles.hmCell, { backgroundColor: heatColor(v) }]} />
                   ))}
                 </View>
@@ -1041,11 +1073,11 @@ export default function MonthDiscoveryView({
             {/* 44% 主数字 */}
             <View style={styles.hmBig}>
               <Text style={[styles.hmBigNum, { color: mm.colors.purpleDeep }]}>
-                {rhythm.dominantPct}<Text style={styles.hmBigUnit}>%</Text>
+                {rhythm!.dominantPct}<Text style={styles.hmBigUnit}>%</Text>
               </Text>
               <Text style={styles.hmBigLab}>
-                {rhythm.total > 0
-                  ? `你的记录出现在${SLOTS[rhythm.dominantIdx].label} 点`
+                {rhythm!.total > 0
+                  ? `你的记录出现在${SLOTS[rhythm!.dominantIdx].label} 点`
                   : '这个月还没留下记录，慢慢来也没关系～'}
               </Text>
             </View>
@@ -1153,7 +1185,7 @@ export default function MonthDiscoveryView({
             kind: 'insight', id: obs.id, text: obs.text, meaning: obs.meaning, tag: '状态回升',
             soft: mm.colors.skySoft, deep: mm.colors.skyDeep, iconName: 'activity',
           })),
-          ...observedPatterns.map((p): ObsItem => ({ kind: 'pattern', p })),
+          ...observedPatternsMerged.map((p): ObsItem => ({ kind: 'pattern', p })),
         ];
         if (items.length === 0) {
           /* ★ 空态（诚实）：真实规律还没攒够样本，不放假观察 */
@@ -1176,11 +1208,10 @@ export default function MonthDiscoveryView({
         return (
           <>
             {items.map((it, idx) => {
-              // ★ 2026-11-07（用户）：规律观察卡「错落」展示 —— 左右轻微交替倾斜（±1.2°）
-              const obsRot = idx % 2 === 0 ? -1.2 : 1.2;
+              // ★ 本轮（用户）：去掉"错落倾斜"——规律观察卡改为端正平铺，不再 ±1.2° 旋转（斜角/双角叠压不好看）
               if (it.kind === 'insight') {
                 return (
-                  <Card key={it.id} style={{ transform: [{ rotate: `${obsRot}deg` }] }}>
+                  <Card key={it.id}>
                     <View style={styles.patObsRow}>
                       <View style={[styles.obsIco, { backgroundColor: it.soft }]}>
                         <Icon name={it.iconName} size={14} color={it.deep} />
@@ -1211,7 +1242,7 @@ export default function MonthDiscoveryView({
               // ★ 2026-11-11（用户）：光给数字变化不够，补一句「这对身体意味着什么」
               const patMeaning = healthMeaningOf(p);
               return (
-                <Card key={p.id} style={{ transform: [{ rotate: `${obsRot}deg` }] }}>
+                <Card key={p.id}>
                   <View style={styles.patObsRow}>
                     <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
                       <Icon name={pIcon} size={14} color={accent.deep} />

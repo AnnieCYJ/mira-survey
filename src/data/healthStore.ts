@@ -751,6 +751,47 @@ export class HealthStore {
    *  - fillDailyMean: 对「仅有日均值、无逐样本」的日子补一个正午点，使曲线连贯（仍诚实标注缺口）。
    *  - maxPoints: 点数过多（如今日 1Hz HR）时下采样，避免绘图过密。
    */
+  /**
+   * ★ 2026-11-12（用户：HRV 显示 00:40 但实际才 00:24，洞察页趋势全空）：
+   * 戒指 RTC 从未与手机对时，origin3 回读样本的时间戳比手机快约 35 分钟，
+   * 而所有今日查询都用 Date.now() 做上界 —— 这些数据被当成「未来数据」过滤掉。
+   * 把时间戳落在未来的点整体平移 offsetMs 回手机时间轴，跨零点的按真实日期重新归档。
+   * **不删点、不插值**，只是把错位的真实读数放回正确时刻。
+   */
+  correctFutureSamples(offsetMs: number, nowTs: number = Date.now()): number {
+    if (!Number.isFinite(offsetMs) || offsetMs <= 0) return 0;
+    const cutoff = nowTs + 2 * 60_000;
+    let moved = 0;
+    for (const key of ALL_METRIC_KEYS) {
+      const store = this.safeStore(key);
+      if (!store) continue;
+      const buckets = new Map<string, TimePoint[]>();
+      for (const dk of Object.keys(store.intraday)) {
+        const arr = store.intraday[dk];
+        if (!arr?.length) continue;
+        const kept: TimePoint[] = [];
+        for (const p of arr) {
+          if (p.t > cutoff) {
+            const fixed = { t: p.t - offsetMs, v: p.v };
+            const ndk = dayKey(fixed.t);
+            const b = buckets.get(ndk) ?? [];
+            b.push(fixed);
+            buckets.set(ndk, b);
+            moved++;
+          } else {
+            kept.push(p);
+          }
+        }
+        store.intraday[dk] = kept;
+      }
+      for (const [ndk, pts] of buckets) {
+        store.intraday[ndk] = mergeIntraday(store.intraday[ndk], pts);
+      }
+    }
+    if (moved > 0) this.notify();
+    return moved;
+  }
+
   getTimeRange(
     key: MetricKey,
     fromTs: number,

@@ -19,8 +19,18 @@ function lead(m: M, v: number | null): string {
   return `当前 ${String(Math.round(v))}${u}，`;
 }
 
-export function buildMetricAnalysis(m: M, value: number | null): string {
+/**
+ * ★ 2026-11-13（用户）：戒指数据是按指标陆陆续续回来的——心率先到、HRV/血氧还要再等一段，
+ *   这段窗口里卡片大数值是「—」，底部文案却写「今日暂未读到数据」，看起来像坏了/没连上。
+ *   `loading=true` 时在文案中间插入一句「正在加载中」，明确告诉用户数据还在路上。
+ *   调用方（useRingDataLoading）有硬超时，超时后自动回落到原来的「暂未读到数据」，
+ *   绝不长时间挂着「正在加载中」误导用户。
+ */
+export function buildMetricAnalysis(m: M, value: number | null, loading = false): string {
   if (value == null) {
+    if (loading) {
+      return `${m.name}今日暂未读到数据。正在加载中，戒指数据会分批回来，先到的指标先显示。连接戒指并佩戴一会儿后，这里会显示读数，并给出参考你荷尔蒙节律、昼夜节律与生理周期相位的分析。`;
+    }
     return `${m.name}今日暂未读到数据。连接戒指并佩戴一会儿后，这里会显示读数，并给出参考你荷尔蒙节律、昼夜节律与生理周期相位的分析。`;
   }
   switch (m.key) {

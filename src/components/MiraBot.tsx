@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Animated, StyleSheet, TouchableOpacity, Easing, Dimensions } from 'react-native';
-import Svg, { Circle, Rect } from 'react-native-svg';
+import Svg, { Circle, Rect, Ellipse } from 'react-native-svg';
 import { theme } from '../theme/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -174,7 +174,7 @@ export default function MiraBot({ size, autoAnimate = true }: Props) {
             {/* 高光 */}
             <Circle cx={78} cy={60} r={22} fill="rgba(255,255,255,0.3)" />
             {/* 阴影 (底部椭圆) */}
-            <Circle cx={100} cy={175} rx={50} ry={6} fill="rgba(0,0,0,0.15)" />
+            <Ellipse cx={100} cy={175} rx={50} ry={6} fill="rgba(0,0,0,0.15)" />
 
             {/* 左眼 */}
             <Rect

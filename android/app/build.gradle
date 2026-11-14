@@ -4,6 +4,12 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+// ★ 2026-11-11（构建提速）：ABI 列表统一由 gradle.properties 的 reactNativeArchitectures 驱动。
+//   旧代码在 defaultConfig.ndk 里写死 "arm64-v8a","armeabi-v7a"，会把 32 位 .so 也打进 APK；
+//   RN gradle plugin 则按属性编译 C++。两处不一致 → 白编/白打包。现统一成默认单 arm64-v8a。
+def targetAbiList = (findProperty('reactNativeArchitectures') ?: 'arm64-v8a')
+    .toString().split(',').collect { it.trim() }.findAll { it }
+
 static def versionToNumber(major, minor, patch) {
   return patch * 100 + minor * 10000 + major * 1000000
 }
@@ -40,9 +46,17 @@ react {
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
 
-    // Embed the JS bundle into the debug APK and skip Metro dev-server loading,
-    // so the debug build opens standalone on the device. (Mira: standalone debug)
-    debuggableVariants = []
+    // ★ 2026-11-11（构建提速 · 双模式）：
+    //   默认 debuggableVariants=[] → 内嵌 JS bundle，debug 包脱离电脑也能打开（standalone），
+    //   但每次 assembleDebug 都要跑 :app:createBundleDebugJsAndAssets 全量打包 JS + 资源，
+    //   实测 16~27 分钟，这才是「改一点东西也要等半天」的真正大头（native 编译其实都是 UP-TO-DATE）。
+    //
+    //   快速迭代包：./gradlew assembleDebug -Pmira.fastDebug=true
+    //   → debuggableVariants=["debug"]，跳过 JS/资源打包（约 1~2 分钟出包），
+    //     JS 由 Metro 提供，需 adb reverse tcp:8081 tcp:8081（方案 A 已搭好）。
+    //   日常改 UI 连包都不用出，直接 Metro 热重载 Reload 即可。
+    def fastDebug = (findProperty('mira.fastDebug') ?: 'false').toString() == 'true'
+    debuggableVariants = fastDebug ? ["debug"] : []
 
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '..'
@@ -115,12 +129,12 @@ android {
 
     namespace 'com.miraringfashion.app'
     defaultConfig {
-        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }
+        ndk { abiFilters(*targetAbiList) }
         applicationId 'com.miraringfashion.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.3.1"
+        versionCode 28
+        versionName "1.4.4"
     }
     signingConfigs {
         debug {

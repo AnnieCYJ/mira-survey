@@ -18,11 +18,23 @@ interface Props {
 export default function BpCard({ ring, onPress }: Props) {
   const now = Date.now();
   const start = dayStartMs(now);
+  // ★ 2026-11-14 修复：血压卡同时读取「戒指原生 bpSys/bpDia」与「手动自测 manualBpSys/manualBpDia」。
+  //   基础版戒指无血压传感器，原生通道恒空，唯一来源是用户在「记录血压」手动录入（写 manualBp*）。
+  //   旧实现只读 bpSys/bpDia → 手动录入的血压永不显示在卡上，表现为「连上戒指后血压没更新」。
+  //   优先取原生/较新的一条，两条通道取时间更近者。
   const sysTPs = healthStore.getTimeRange('bpSys', start, now, { maxPoints: 240 });
   const diaTPs = healthStore.getTimeRange('bpDia', start, now, { maxPoints: 240 });
+  const mSysTPs = healthStore.getTimeRange('manualBpSys' as any, start, now, { maxPoints: 240 });
+  const mDiaTPs = healthStore.getTimeRange('manualBpDia' as any, start, now, { maxPoints: 240 });
 
-  const lastSys = sysTPs.length > 0 ? sysTPs[sysTPs.length - 1] : null;
-  const lastDia = diaTPs.length > 0 ? diaTPs[diaTPs.length - 1] : null;
+  const pick = (native: { t: number; v: number }[], manual: { t: number; v: number }[]): { t: number; v: number } | null => {
+    const n = native.length ? native[native.length - 1] : null;
+    const m = manual.length ? manual[manual.length - 1] : null;
+    if (n && m) return n.t >= m.t ? n : m;
+    return n ?? m;
+  };
+  const lastSys = pick(sysTPs, mSysTPs);
+  const lastDia = pick(diaTPs, mDiaTPs);
   const lastT = Math.max(lastSys?.t ?? 0, lastDia?.t ?? 0);
 
   const fmtTime = (t: number) => {

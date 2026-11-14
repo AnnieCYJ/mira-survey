@@ -116,13 +116,12 @@ export default function SleepRegularityDetailScreen() {
           <BackButton onPress={() => navigation.goBack()} />
           <View style={styles.titleWrap}>
             <Text style={styles.title}>昼夜节律</Text>
-            <Text style={styles.unit}>睡眠作息规律性</Text>
           </View>
         </View>
 
         {/* ★ 2026-11-09：主视觉仍是「睡眠规律性」（入睡/起床时间图 + 规律性数据）；
             皮质醇趋势作为单独一张可点卡片放在作息数据之后（日视图在对比卡下，周/月/年在页尾）。 */}
-        <Text style={styles.sectionLabel}>睡眠作息规律</Text>
+        {/* ★ 2026-11-11（用户）：去掉冗余「睡眠作息规律」段标题，标题「昼夜节律」已覆盖 */}
 
         {/* ★ 2026-11-09：四档全开（日 / 周 / 月 / 年），不再 exclude day */}
         <RangeSwitch

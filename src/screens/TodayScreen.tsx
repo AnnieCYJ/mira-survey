@@ -496,7 +496,8 @@ export default function TodayScreen() {
   // 圆环下方分析胶囊：状态胶囊（跟随心情色）+ 相位标签（软底彩字）+ 建议（描述文字），统一走 design token
   const status = ring.curveStatus;
   const statusIdx = status && status.value != null ? curveLevel(status.value, CURVE_DEFAULTS).index : null;
-  const phase = status?.phaseLabel ?? '未记录';
+  // ★ 本轮（用户）：男性不展示生理周期相位，圆环下方分析与经期图例均隐藏
+  const phase = showCycle ? (status?.phaseLabel ?? '未记录') : '未记录';
   const phaseKnown = phase !== '未记录';
   // ★ 2026-10-16（用户：「图例两行有点多，能不能就展示一行，只展示当下的这个处于，
   //   比方说处于卵泡期只展示这个卵泡期，其他的不展示」）：圆环下方经期图例
@@ -506,7 +507,7 @@ export default function TodayScreen() {
     经期: 'period', 卵泡期: 'follicular', 排卵期: 'ovulation', 黄体期: 'luteal',
   };
   const currentPhaseKey: PhaseKey | null =
-    status?.phaseLabel != null ? PHASE_LABEL_TO_KEY[status.phaseLabel] ?? null : null;
+    showCycle && status?.phaseLabel != null ? PHASE_LABEL_TO_KEY[status.phaseLabel] ?? null : null;
   // ★ 真实睡眠检测：用最近一次 healthStore 中记录的睡眠窗口（sleepTime / wakeTime HH:mm）
   //   healthStore 里存的是「今天结束的那次睡眠」，跨午夜睡眠（23:30 → 07:00）正常工作。
   const todaySleep = healthStore.getSleep(dayKey(Date.now()));
@@ -909,7 +910,7 @@ export default function TodayScreen() {
   const PHASE_MOON: Record<string, 'full' | 'quarterR' | 'allPurple' | 'quarterL'> = {
     经期: 'full', 卵泡期: 'quarterR', 黄体期: 'allPurple', 排卵期: 'quarterL',
   };
-  const phaseMoon = status?.phaseLabel != null ? PHASE_MOON[status.phaseLabel] : undefined;
+  const phaseMoon = showCycle && status?.phaseLabel != null ? PHASE_MOON[status.phaseLabel] : undefined;
 
   // ★ v18.107 撤回 staleSleepTip：用户明确反对「戒指已 N 小时没有新数据 · 数据截至 HH:MM」这类
   //   时效小字（口径还会和真实采样时刻 00:29 打架，看着像没用的东西）。
@@ -1312,22 +1313,24 @@ export default function TodayScreen() {
               </View>
             </View>
 
-            {/* 底部：经期卡——处于什么时期 + 第 N 天 + 最近 7 天日期圈 */}
-            <BentoCard
-              bg={mm.colors.cardBg}
-              chipBg={mm.chipBg.lav.bg}
-              icon="moon"
-              iconFg={mm.chipBg.lav.fg}
-              moonStyle={phaseMoon}
-              title="经期"
-              aside={status?.phaseLabel ?? undefined}
-              dayBadge={status?.dayInCycle ?? null}
-              dayBadgeBg={mm.colors.purpleDeep}
-              dayBadgeFg={'#FFFFFF'}
-              chart={<View style={{ marginTop: theme.sp(1.5) }}><PeriodDayCircles marked={periodMarks} /></View>}
-              style={{ height: theme.sp(28), flexGrow: 0 }}
-              onPress={() => navigation.navigate('CycleCalendar')}
-            />
+            {/* 底部：经期卡——处于什么时期 + 第 N 天 + 最近 7 天日期圈（男性不展示） */}
+            {showCycle && (
+              <BentoCard
+                bg={mm.colors.cardBg}
+                chipBg={mm.chipBg.lav.bg}
+                icon="moon"
+                iconFg={mm.chipBg.lav.fg}
+                moonStyle={phaseMoon}
+                title="经期"
+                aside={showCycle ? status?.phaseLabel : undefined}
+                dayBadge={status?.dayInCycle ?? null}
+                dayBadgeBg={mm.colors.purpleDeep}
+                dayBadgeFg={'#FFFFFF'}
+                chart={<View style={{ marginTop: theme.sp(1.5) }}><PeriodDayCircles marked={periodMarks} /></View>}
+                style={{ height: theme.sp(28), flexGrow: 0 }}
+                onPress={() => navigation.navigate('CycleCalendar')}
+              />
+            )}
           </View>
             </ScrollView>{/* /page2Scroll 第二屏内容 */}
           </View>{/* /pageInner 第二屏 */}

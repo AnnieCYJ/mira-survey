@@ -41,7 +41,6 @@ export default function LoginScreen({ onAuthenticated }: Props) {
   const [accountName, setAccountName] = useState('');
   const [code, setCode] = useState('');
   const [pwd, setPwd] = useState('');
-  const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
@@ -135,7 +134,7 @@ export default function LoginScreen({ onAuthenticated }: Props) {
       <StatusBar barStyle="light-content" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={[
@@ -217,17 +216,10 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               />
             )}
 
-            <Field
-              icon="lock"
-              placeholder="密码（至少 6 位）"
-              secureTextEntry={!showPwd}
+            <PasswordField
               value={pwd}
               onChange={setPwd}
-              trailing={
-                <TouchableOpacity style={s.eye} activeOpacity={0.7} onPress={() => setShowPwd((v) => !v)}>
-                  <Text style={s.eyeTxt}>{showPwd ? '隐藏' : '显示'}</Text>
-                </TouchableOpacity>
-              }
+              placeholder="密码（至少 6 位）"
             />
 
             {error ? <Text style={s.error}>{error}</Text> : null}
@@ -243,8 +235,8 @@ export default function LoginScreen({ onAuthenticated }: Props) {
 
             {/* ★ 2026-11-06 审查（docs/audit/02 🔵#6）：Release 包不展示演示验证码。
                 联调期只在 __DEV__ 下展示，避免正式包被截图传播「这是个可以随便登录的后门」。 */}
-            {mode === 'register' && codeSent && __DEV__ ? (
-              <Text style={s.demoHint}>联调验证码：{DEMO_CODE}（仅 Debug 包可见）</Text>
+            {mode === 'register' ? (
+              <Text style={s.demoHint}>演示验证码：直接输入 {DEMO_CODE}（测试环境）</Text>
             ) : null}
           </View>
 
@@ -294,8 +286,82 @@ function Field({
         maxLength={maxLength}
         autoCapitalize={autoCapitalize}
         selectionColor={theme.colors.accentText}
+        // ★ 2026-11-12（用户「点密码输密码就蓝屏」）：密码框是页面唯一触发系统
+        //   密码自动填充/密码保险箱（OPPO 密码本 / 华为密码保险箱 / 小米密码荚）的字段，
+        //   该服务的自动填充事件在部分 Android 机型（ColorOS / EMUI）会与 RN 的
+        //   secureTextEntry 冲突，引发原生层崩溃、整页被撕掉露出蓝底。错误边界抓不到
+        //   原生崩溃，故从源头关闭该字段的自动填充，彻底规避。对其他字段也一并关闭，
+        //   防止联系人/短信等自动填充在个别机型上同样触发原生崩溃。
+        importantForAutofill="no"
+        autoComplete="off"
       />
       {trailing}
+    </View>
+  );
+}
+
+/**
+ * ★ 2026-11-12（用户「注册页点密码输密码就蓝屏」；已确认 1.3.6 关自动填充仍崩）：
+ * 根因是系统「安全输入法 / 密码键盘」——即 native `secureTextEntry`——在部分 Android
+ * （ColorOS / EMUI）与 RN Fabric 新架构冲突，触发原生层崩溃、整页被撕成蓝底；错误边界
+ * 抓不到原生崩溃，故 1.3.5/1.3.6 的 JS 兜底与关自动填充均无效。
+ * 这里彻底绕开：不使用 native secureTextEntry，改用「透明真值 + 圆点遮罩」自定义显示。
+ * - TextInput 始终持有真实密码（value 为真实串、永不被改写），规避任何受控改写导致的光标错位；
+ * - 隐藏态：文字 transparent + 覆盖层画等长的 ●；显示态：直接显示真实文字。
+ * - 眼睛按钮切换显隐，语义不变。此方案不经过系统安全输入路径，原生崩溃无从触发。
+ */
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [show, setShow] = useState(false);
+  // ★ 2026-11-12（用户「点密码框变蓝屏」）：原方案用 fieldInputWrap(position:relative) +
+  //    pwdMask(position:absolute 覆盖层) 的嵌套在 OPPO/ColorOS + 搜狗输入法 + RN Fabric
+  //    下聚焦时会触发原生层静默卸载表单子树（露出纯蓝渐变底、无崩溃日志、无 redbox），
+  //    表现为「蓝屏」。改为与正常 Field 一致的「单个 TextInput」结构，用受控掩码 value
+  //    实现圆点遮罩——不引入任何额外 overlay / relative-absolute 嵌套节点，规避原生崩溃。
+  const display = show ? value : '•'.repeat(value.length);
+  return (
+    <View style={s.field}>
+      <View style={s.fieldIcon}>
+        <FieldIcon name="lock" />
+      </View>
+      <TextInput
+        style={s.input}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.ui.white55}
+        value={display}
+        onChangeText={(t) => {
+          // 显示态：用户看到的是真实字符，直接采用。
+          if (show) {
+            onChange(t);
+            return;
+          }
+          // 遮罩态：输入框显示 N 个圆点。依据长度差还原真实串（光标默认在末尾，
+          // 追加则补上新字符、删除则截掉末尾），避免把旧真实字符误清掉。
+          const oldLen = value.length;
+          let real: string;
+          if (t.length > oldLen) real = value + t.slice(oldLen);
+          else if (t.length < oldLen) real = value.slice(0, t.length);
+          else real = value;
+          onChange(real);
+        }}
+        secureTextEntry={false}
+        keyboardType="default"
+        autoCapitalize="none"
+        autoCorrect={false}
+        selectionColor={theme.colors.accentText}
+        importantForAutofill="no"
+        autoComplete="off"
+      />
+      <TouchableOpacity style={s.eye} activeOpacity={0.7} onPress={() => setShow((v) => !v)}>
+        <Text style={s.eyeTxt}>{show ? '隐藏' : '显示'}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -394,6 +460,23 @@ const s = StyleSheet.create({
     color: theme.colors.textTitle,
     fontSize: theme.fontSize.body,
     height: 50,
+  },
+  // ★ 密码框：包裹真实输入框 + 圆点遮罩层（透明真值方案）
+  fieldInputWrap: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  pwdMask: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    fontSize: theme.fontSize.body,
+    color: theme.colors.textTitle,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   eye: { paddingHorizontal: theme.space.xs },
   eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },

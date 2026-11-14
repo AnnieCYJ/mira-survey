@@ -15,6 +15,7 @@ import BackButton from '../components/BackButton';
 import Toggle from '../components/Toggle';
 import { useAppState } from '../state/AppState';
 import { RingBle, type RingState } from '../ble/RingBleManager';
+import { shortRingLastSeen } from '../ble/ringDeviceCard';
 import { useDeviceModel } from '../config/deviceModel';
 import { APP_VERSION_LABEL, APP_VERSION_TAG, APP_VERSION_CODE, APP_VERSION_NAME } from '../version';
 import { healthStore } from '../data/healthStore';
@@ -518,9 +519,17 @@ export default function SettingsScreen() {
           )}
         </Card>
 
-        {/* 扫描到的候选设备：手动点选连接（避免盲连第一个） */}
+        {/* ★ 2026-11-13（用户）：搜到多枚戒指时全部列出，由用户自己选；1 枚时 App 自动连。
+            两枚同名 Lunamira 靠 MAC 尾号区分，不再显示「推荐」这种替用户做决定的标记。 */}
         {ring.devices.length > 0 && ring.status !== 'connected' && (
           <Card padded={false} style={styles.listCard}>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+              <Text style={styles.rowDesc}>
+                {ring.devices.length > 1
+                  ? `检测到 ${ring.devices.length} 枚戒指，请选择要连接的那一枚`
+                  : '搜索到的戒指'}
+              </Text>
+            </View>
             {ring.devices.map((d, i) => (
               <React.Fragment key={d.id}>
                 {i > 0 && <View style={styles.divider} />}
@@ -539,9 +548,16 @@ export default function SettingsScreen() {
                   </View>
                   <View style={styles.toggleText}>
                     <Text style={styles.rowTitle}>{d.name}</Text>
+                    {/* ★ 2026-11-13（用户）：两枚同名 Lunamira 只靠 MAC 尾号分不清。
+                        显示完整 MAC + 本机记住的固件版本/上次连接/电量，点选前就能认出是哪一枚。 */}
+                    <Text style={styles.rowDesc}>{`MAC ${String(d.id)}`}</Text>
                     <Text style={styles.rowDesc}>
-                      {d.rssi != null ? `信号 ${d.rssi}dBm` : '点击连接'}
-                      {d.recommended ? ' · 推荐' : ''}
+                      {d.rssi != null ? `信号 ${d.rssi}dBm` : '当前未广播'}
+                      {d.firmware ? ` · 固件 ${d.firmware}` : ' · 固件待读取'}
+                      {d.lastConnectedAt
+                        ? ` · 上次连接 ${shortRingLastSeen(d.lastConnectedAt)}`
+                        : ' · 未连接过'}
+                      {d.lastBattery != null ? ` · 电量 ${d.lastBattery}%` : ''}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -549,6 +565,17 @@ export default function SettingsScreen() {
             ))}
           </Card>
         )}
+
+        {/* 任何状态下都可点：强制重新扫描全部戒指（也用来解除「连接中」卡死） */}
+        <TouchableOpacity
+          onPress={() => RingBle.startScan()}
+          activeOpacity={0.7}
+          style={{ paddingVertical: 12, alignItems: 'center' }}
+        >
+          <Text style={{ color: theme.colors.accentText, fontSize: theme.fontSize.sm }}>
+            重新扫描全部戒指
+          </Text>
+        </TouchableOpacity>
 
         {/* ★ 2026-11-07（用户）：「当前戒指 · 数据实况」整段卡片已按要求移除 */}
 

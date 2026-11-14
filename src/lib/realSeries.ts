@@ -388,11 +388,18 @@ function buildCycleSeries(log: CycleLog | null, ring: RingState, range: RangeKey
  *
  * @param metricKey 展示层/信号层 key（如 'skin' 'snsActivation' 'bloodSugar'），内部经 hsKeyFor 映射到 healthStore 规范 key。
  */
+/**
+ * ★ 2026-11-12：戒指 RTC 未对时期间回读的样本时间戳可能略超前于手机，
+ * 今日查询上界留 45 分钟容差，避免真实读数被 Date.now() 当成「未来数据」整段过滤掉。
+ * 数据落库前已由 RingBleManager 统一平移校正，这里只是不丢点的兜底。
+ */
+export const TODAY_QUERY_TOLERANCE_MS = 45 * 60_000;
+
 export function getTodaySeries(metricKey: string): TimePt[] {
   const hsKey = hsKeyFor(metricKey);
   if (!hsKey) return []; // ★ 未知 key → 明确返回空，不读不存在的 store
   const start = dayStartMs(Date.now());
-  const end = Date.now();
+  const end = Date.now() + TODAY_QUERY_TOLERANCE_MS;
   return healthStore.getTimeRange(hsKey, start, end, { fillDailyMean: true, maxPoints: 480 });
 }
 

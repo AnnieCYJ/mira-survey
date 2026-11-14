@@ -400,10 +400,11 @@ export const PHASE_LABEL: Record<PhaseBucket, string> = {
   unknown: '未记录',
 };
 
-export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
+export function computeDailyStatus(opts: ComputeOpts, showCycle = true): DailyStatusResult {
   const c = opts.consts ?? ALGO_DEFAULTS;
   const { input, history, cycle } = opts;
-  const phase = cycle.phase as PhaseBucket;
+  // ★ 本轮（用户）：男性（showCycle=false）按「无周期」基线（unknown）计算，且叙事不含「处于卵泡期/周期第N天/尚未记录经期」
+  const phase = (showCycle ? cycle.phase : 'unknown') as PhaseBucket;
 
   const hasData = input.hrv != null || input.rhr != null || (input.sleep.sleepTotal ?? 0) > 0;
   if (!hasData) {
@@ -413,13 +414,15 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
       level: null,
       levelIndex: null,
       advice: null,
-      phaseLabel: PHASE_LABEL[phase],
-      phaseBucket: phase,
-      dayInCycle: cycle.dayInCycle,
-      hasLog: cycle.hasLog,
       baselineSource: 'lit',
       hasData: false,
-      narrative: cycle.hasLog ? '今天先看到一部分恢复信号，继续佩戴后我会帮你把状态看得更准' : '记录经期并连续佩戴几天，我会逐渐帮你看出自己的状态规律',
+      phaseLabel: showCycle ? PHASE_LABEL[phase] : '未记录',
+      phaseBucket: phase,
+      dayInCycle: showCycle ? cycle.dayInCycle : null,
+      hasLog: showCycle ? cycle.hasLog : false,
+      narrative: showCycle
+        ? (cycle.hasLog ? '今天先看到一部分恢复信号，继续佩戴后我会帮你把状态看得更准' : '记录经期并连续佩戴几天，我会逐渐帮你看出自己的状态规律')
+        : '今天先看到一部分恢复信号，继续佩戴后我会帮你把状态看得更准',
     };
   }
 
@@ -468,11 +471,13 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
 
   // 叙事：与过去同期的自己比（百分位语义）
   let narrative: string;
-  const phaseText = cycle.hasLog ? `你目前处于${PHASE_LABEL[phase]}（周期第 ${cycle.dayInCycle} 天）` : '你目前尚未记录经期';
+  const phaseText = !showCycle
+    ? ''
+    : (cycle.hasLog ? `你目前处于${PHASE_LABEL[phase]}（周期第 ${cycle.dayInCycle} 天）` : '你目前尚未记录经期');
   if (baselineSource === 'lit') {
-    narrative = `${phaseText}，今日状态基于群体基线估算`;
+    narrative = showCycle ? `${phaseText}，今日状态基于群体基线估算` : '今日状态基于群体基线估算';
   } else {
-    narrative = `${phaseText}，今日恢复水平优于过去约 ${Math.round(score)}% 的日子`;
+    narrative = showCycle ? `${phaseText}，今日恢复水平优于过去约 ${Math.round(score)}% 的日子` : `今日恢复水平优于过去约 ${Math.round(score)}% 的日子`;
   }
 
   return {
@@ -481,10 +486,10 @@ export function computeDailyStatus(opts: ComputeOpts): DailyStatusResult {
     level: lvl.level,
     levelIndex: lvl.index,
     advice: lvl.advice,
-    phaseLabel: PHASE_LABEL[phase],
+    phaseLabel: showCycle ? PHASE_LABEL[phase] : '未记录',
     phaseBucket: phase,
-    dayInCycle: cycle.dayInCycle,
-    hasLog: cycle.hasLog,
+    dayInCycle: showCycle ? cycle.dayInCycle : null,
+    hasLog: showCycle ? cycle.hasLog : false,
     baselineSource,
     hasData: true,
     narrative,

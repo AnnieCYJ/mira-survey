@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, '..');
-const APK_SRC = join(APP_ROOT, 'android/app/build/outputs/apk/debug/app-debug.apk');
+const APK_SRC = join(APP_ROOT, 'android/app/build/outputs/apk/release/app-release.apk');
 const GRADLE = join(APP_ROOT, 'android/app/build.gradle');
 const VERSION_TS = join(APP_ROOT, 'src/version.ts');
 const WORKER_PUBLIC = join(APP_ROOT, '..', 'mira-ring-sync', 'public', 'mira-app');

@@ -40,6 +40,7 @@ import { buildHistorySeries, type HistoryResult } from '../lib/realSeries';
 import { useDeviceModel, hasMetric } from '../config/deviceModel';
 // ★ 2026-11-06 审查（docs/audit/03 🔴#4）：ECG 数值兜底格式化
 import { fmtEcgUnit } from '../lib/ecgFormat';
+import { physioValid } from '../lib/physioRange';
 import { saneBodyTemp } from '../data/ringDataIsolation';
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { healthStore, dayKey, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
@@ -53,6 +54,9 @@ import AllDayBarsChart, { DayBarsLegend, type DayBarSegment } from '../component
 import TempCircadianChart, { TempBaselineLegend } from '../components/charts/TempCircadianChart';
 import AxisLabels from '../components/charts/AxisLabels';
 import { binByMinutes, bucketFilledCount, dayStartOf } from '../lib/timeBuckets';
+// ★ 2026-11-11（用户）：夜间 HRV 窗口必须按**真实入睡/起床时刻**界定，不用写死常量。
+//   sleepTime/wakeTime 有多种形态（"HH:mm" / "yyyy-MM-dd HH:mm"），统一交给 sleepTime.ts 解析。
+import { parseClockMinutes } from '../lib/sleepTime';
 // ★ 2026-11-07（用户）：柱状图柱宽按当前戒指真实有效读数间隔自适应；仅 BASE_UI 生效
 import { DEFAULT_BIN_MIN, resolveBaseBin, baseBinNote, withBaseBinText } from '../lib/baseChartCadence';
 import { buildTempBaseline, tempDeviationSeries, tempDeviationSummary } from '../lib/tempBaseline';
@@ -283,7 +287,39 @@ function fmtVal(v: number | null, key?: string): string {
  *   返回纯数值，颜色由调用方按主题色映射。
  */
 const STRESS_BANDS: number[] = (DAY_BAR_SPECS.stress?.bands as number[]) ?? [30, 55];
-// 日间 / 夜间窗口（本地小时）：日间 07:00–22:59，夜间 23:00–06:59。
+/**
+ * ★ 2026-11-11 五次修复（用户：「前一天晚上 23 点就睡了；零点之后应该从 00:00 一直到 09:40 多起床」）：
+ *   全页「日间 / 夜间」分段的**唯一**睡眠窗口实现，自然日口径。
+ *   · bedPrev    昨夜入睡（可能落在前一天，如 11/10 23:37）
+ *   · wake       今早起床（当天，如 11/11 09:46）
+ *   · bedTonight 今晚入睡（= bedPrev + 1 天，如 11/11 23:37）
+ *   白天清醒段 = [wake, bedTonight]；夜间段 = [dayStart, wake] + [bedTonight, dayEnd]。
+ *   一律解析原生 sleepTime/wakeTime（历史日没有 bedHour/wakeHour 字段），无时刻 → null，
+ *   调用方回退到旧的固定 07:00–23:00 或不做分段，绝不臆造。
+ */
+interface DaySleepWindow {
+  dayStart: number;
+  dayEnd: number;
+  bedPrev: number;
+  wake: number;
+  bedTonight: number;
+}
+function sleepWindowForDay(dk: string, dayStart: number): DaySleepWindow | null {
+  const sl = healthStore.getSleep(dk);
+  const bedMin = parseClockMinutes(sl?.sleepTime);
+  const wakeMin = parseClockMinutes(sl?.wakeTime);
+  const bedH = bedMin != null ? bedMin / 60 : (sl?.bedHour ?? null);
+  const wakeH = wakeMin != null ? wakeMin / 60 : (sl?.wakeHour ?? null);
+  if (bedH == null || wakeH == null) return null;
+  const H = 3_600_000, D = 86_400_000;
+  const bedPrev = bedH >= 12 ? dayStart - (24 - bedH) * H : dayStart + bedH * H;
+  let wake = dayStart + wakeH * H;
+  if (wake <= bedPrev) wake += D;
+  if (wake <= bedPrev || wake - bedPrev > 16 * H) return null;
+  return { dayStart, dayEnd: dayStart + D, bedPrev, wake, bedTonight: bedPrev + D };
+}
+
+/** 无睡眠记录时的兜底（本地小时）：日间 07:00–22:59，夜间 23:00–06:59。 */
 const isDaytime = (ts: number) => {
   const h = new Date(ts).getHours();
   return h >= 7 && h < 23;
@@ -305,6 +341,10 @@ function stressDaySummary(dk: string, dayStartTs: number, binMin: number = DEFAU
   const th = STRESS_BANDS;
   const b0 = th[0] ?? 30, b1 = th[1] ?? b0, b2 = th[2] ?? b1;
   const classify = (v: number): 0 | 1 | 2 | 3 => (v <= b0 ? 0 : v <= b1 ? 1 : v <= b2 ? 2 : 3);
+  // ★ 2026-11-11：日夜统计跟随真实睡眠窗口，不再写死 07:00–23:00。
+  const win = sleepWindowForDay(dk, dayStartTs);
+  const isAwake = (t: number): boolean =>
+    win ? t >= win.wake && t <= win.bedTonight : isDaytime(t);
   let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0;
   let sum = 0, cnt = 0, peak = 0, overallMin = Infinity;
   let dayRelaxMin = 0, dayNormalMin = 0, dayMidMin = 0, dayStressMin = 0;
@@ -313,7 +353,7 @@ function stressDaySummary(dk: string, dayStartTs: number, binMin: number = DEFAU
   let nightSum = 0, nightCnt = 0, nightPeak = 0, nightMin = Infinity;
   for (const b of buckets) {
     if (b.v == null) continue;
-    const day = isDaytime(b.t);
+    const day = isAwake(b.t);
     const c = classify(b.v);
     if (c === 0) { relaxMin += BIN; if (day) dayRelaxMin += BIN; else nightRelaxMin += BIN; }
     else if (c === 1) { normalMin += BIN; if (day) dayNormalMin += BIN; else nightNormalMin += BIN; }
@@ -1182,15 +1222,10 @@ export default function MetricDetailScreen() {
     //   PRO_UI 仍是 5 分钟桶。柱宽随 barBinMin 变化一起进 useMemo 依赖。
     const buckets = binByMinutes(healthStore.getIntraday('hr', dk), barBinMin, { dayStartMs: dayStart });
 
-    // 睡眠窗口：入睡/起床小时（跨零点时 wake < bed）
-    const sl = healthStore.getSleep(dk);
-    let bedMs: number | null = null;
-    let wakeMs: number | null = null;
-    if (sl?.bedHour != null && sl?.wakeHour != null) {
-      bedMs = dayStart + sl.bedHour * 3600_000;
-      wakeMs = dayStart + sl.wakeHour * 3600_000;
-      if (wakeMs <= bedMs) wakeMs += 86_400_000;          // 跨零点
-    }
+    // ★ 2026-11-11：睡眠分段统一走 sleepWindowForDay（自然日口径）。
+    //   旧实现只读 sl.bedHour/wakeHour —— 历史日根本没有这两个字段 → 全天柱色恒为「清醒」；
+    //   11/11 有字段时又把 23.62h 算成「今晚 23:37 → 明早 09:46」，睡眠段完全错位。
+    const win = sleepWindowForDay(dk, dayStart);
 
     // 运动段：戒指自动识别 / 手动记录的运动区间 → 柱色用「活动」
     const sessions = ring.sportSessions ?? [];
@@ -1202,14 +1237,17 @@ export default function MetricDetailScreen() {
       sportRanges.push([b, e > b ? e : b + 3600_000]);
     }
 
-    return { buckets, dayStart, bedMs, wakeMs, sportRanges, binMin: barBinMin };
+    return { buckets, dayStart, win, sportRanges, binMin: barBinMin };
   }, [isHrDayBars, anchor, ring.sportSessions, barBinMin]);
 
   const hrSegmentOf = useMemo(() => {
     if (!hrBars) return undefined;
-    const { bedMs, wakeMs, sportRanges } = hrBars;
+    const { win, dayStart, sportRanges } = hrBars;
     return (t: number): DayBarSegment => {
-      if (bedMs != null && wakeMs != null && t >= bedMs && t <= wakeMs) return 'sleep';
+      // 自然日口径：00:00 → 今早起床、今晚入睡 → 24:00 都算睡眠段。
+      if (win && ((t >= dayStart && t <= win.wake) || (t >= win.bedTonight && t <= win.dayEnd))) {
+        return 'sleep';
+      }
       for (const [b, e] of sportRanges) if (t >= b && t <= e) return 'active';
       return 'awake';
     };
@@ -1356,9 +1394,13 @@ export default function MetricDetailScreen() {
     // ★ 2026-11-07：柱宽变了，时长折算必须跟着变，否则 30 分钟一柱却按 5 分钟累计
     const BIN = specDay.binMin ?? spec.binMin ?? 5;
     // ★ 2026-11-05（用户：压力四档）：按四档折算各档时长（放松/正常/中等/偏高）
+    // ★ 2026-11-11：与趋势图 / 统计卡共用同一套真实睡眠窗口，不再写死 07:00–23:00。
+    const win = sleepWindowForDay(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime()));
     const inPart = (t: number) => {
-      const h = new Date(t).getHours();
-      return stressPart === 'day' ? h >= 7 && h < 23 : h < 7 || h >= 23;
+      const awake = win
+        ? t >= win.wake && t <= win.bedTonight
+        : (() => { const h = new Date(t).getHours(); return h >= 7 && h < 23; })();
+      return stressPart === 'day' ? awake : !awake;
     };
     let relaxMin = 0, normalMin = 0, midMin = 0, stressMin = 0;
     for (const b of specDay.buckets ?? []) {
@@ -1371,14 +1413,34 @@ export default function MetricDetailScreen() {
     }
     return { relax: relaxMin / 60, normal: normalMin / 60, mid: midMin / 60, stress: stressMin / 60 };
   }, [specDay, spec, stressPart]);
-  // ★ 2026-10-17（用户：日夜参考心率做 tab）：按 stressPart 静音非选中段（日间=07:00–23:00，夜间=23:00–07:00）
+  // ★ 2026-11-11：所有「全天柱状」指标（压力 / 血氧 / 情绪 / 疲劳 …）的日夜分段
+  //   统一跟随真实睡眠窗口，不再写死 07:00–23:00。
+  const stressDayWin = useMemo(
+    () => sleepWindowForDay(dateKeyOf(anchor.getTime()), dayStartOf(anchor.getTime())),
+    [anchor],
+  );
+  /** 说明文案用的真实时刻；无睡眠记录时回退到旧口径。 */
+  const stressClock = useMemo(() => {
+    const f = (t: number) => {
+      const d = new Date(t);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    return stressDayWin
+      ? { wake: f(stressDayWin.wake), bedTonight: f(stressDayWin.bedTonight) }
+      : { wake: '07:00', bedTonight: '23:00' };
+  }, [stressDayWin]);
   const stressMutedRanges = useMemo<[number, number][]>(() => {
     const s = dayStartOf(anchor.getTime());
-    const H7 = 7 * 3_600_000, H23 = 23 * 3_600_000, D = 86_400_000;
+    if (!stressDayWin) {
+      const H7 = 7 * 3_600_000, H23 = 23 * 3_600_000, D = 86_400_000;
+      return stressPart === 'day'
+        ? [[s, s + H7], [s + H23, s + D]]
+        : [[s + H7, s + H23]];
+    }
     return stressPart === 'day'
-      ? [[s, s + H7], [s + H23, s + D]]
-      : [[s + H7, s + H23]];
-  }, [anchor, stressPart]);
+      ? [[stressDayWin.dayStart, stressDayWin.wake], [stressDayWin.bedTonight, stressDayWin.dayEnd]]
+      : [[stressDayWin.wake, stressDayWin.bedTonight]];
+  }, [anchor, stressPart, stressDayWin]);
   const isHrvDay = !isEcg && range === 'day' && params.key === 'hrv';
 
   /**
@@ -1390,17 +1452,51 @@ export default function MetricDetailScreen() {
    * 「夜间」按钮的 `disabled={hrvDay.window == null}` 变成 true → 自己把按钮禁用了，
    * 再也点不回来。拆开后「夜间可不可点」只由当天有没有睡眠时刻决定，与当前选中项无关。
    */
-  const hrvSleepWindow = useMemo(() => {
+  const hrvSleepWindow = useMemo<[number, number] | null>(() => {
     if (!isHrvDay) return null;
     const dk = dateKeyOf(anchor.getTime());
     const dayStart = dayStartOf(anchor.getTime());
-    const sl = healthStore.getSleep(dk);
-    if (sl?.bedHour == null || sl?.wakeHour == null) return null;
-    const bedMs = dayStart + sl.bedHour * 3600_000;
-    let wakeMs = dayStart + sl.wakeHour * 3600_000;
-    if (wakeMs <= bedMs) wakeMs += 86_400_000;                // 跨零点
-    return wakeMs > bedMs ? ([bedMs, wakeMs] as [number, number]) : null;
+    const H = 3_600_000, MIN = 60_000;
+
+    // ★ 2026-11-11 五次修复（用户：「前一天晚上 23 点就睡了；零点之后应该从 00:00 一直到 09:40 多起床」）：
+    //   夜间（睡眠期）按**自然日**口径展示这一页里属于睡眠的时段：
+    //     · 昨夜入睡落在前一天（如 23:37）→ 本页从 00:00 起；
+    //     · 昨夜入睡落在当天凌晨（如 00:49）→ 本页从该入睡时刻起；
+    //     · 终点一律是今早起床时刻（09:46 / 10:22）。
+    //   跨零点前的 23:37–24:00 归前一天那一页查看，数据不丢、不重复。
+    //   ⚠ 00:00–01:50 若没有 HRV 读数，图上就是真实留白 —— 不插值、不编造。
+    const win = sleepWindowForDay(dk, dayStart);
+    if (win) return [Math.max(dayStart, win.bedPrev), win.wake] as [number, number];
+
+    // 设备完全没给睡眠时刻：只从当日凌晨的真实 HRV 采样推导，绝不写死 22:30–07:00。
+    const pts = healthStore.getTimeRange('hrv', dayStart, dayStart + 12 * H, { maxPoints: 1500 });
+    if (pts.length >= 2) {
+      const t0 = Math.min(...pts.map((p) => p.t));
+      const t1 = Math.max(...pts.map((p) => p.t));
+      return [t0, Math.min(dayStart + 12 * H, t1 + 15 * MIN)] as [number, number];
+    }
+    return null;
   }, [isHrvDay, anchor]);
+
+  /** 窗口两端对应的真实时钟（用于轴首尾刻度 + 说明文案），直接由窗口 ms 格式化，保证与图严格一致。
+   *  bedFull/wakeFull 带完整月日，避免跨零点时把「昨晚」误读成「今晚」。 */
+  const hrvSleepClock = useMemo<{
+    bed: string; wake: string; bedFull: string; wakeFull: string; crossesMidnight: boolean;
+  } | null>(() => {
+    const w = hrvSleepWindow;
+    if (!w) return null;
+    const f = (t: number) => {
+      const d = new Date(t);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    const fFull = (t: number) => {
+      const d = new Date(t);
+      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${f(t)}`;
+    };
+    // 收窄后窗口可能已完全落在同一天（如 11/11 01:50 → 09:46），此时不能再写「跨零点拼接」。
+    const crossesMidnight = new Date(w[0]).getDate() !== new Date(w[1]).getDate();
+    return { bed: f(w[0]), wake: f(w[1]), bedFull: fFull(w[0]), wakeFull: fFull(w[1]), crossesMidnight };
+  }, [hrvSleepWindow]);
 
   const hrvNightAvailable = hrvSleepWindow != null;
   /**
@@ -1427,31 +1523,63 @@ export default function MetricDetailScreen() {
       const slotCount = Math.max(6, Math.ceil((wakeMs - bedMs) / (barBinMin * 60_000)));
       const buckets = binByMinutes(pts, barBinMin, { dayStartMs: bedMs, slotCount });
       const ticks: { frac: number; label: string }[] = [];
+      // ★ 首尾刻度 = 真实入睡 / 起床时刻（用户：夜间图要按睡眠时间，别只给 00:00–08:00 整点）
+      if (hrvSleepClock) {
+        ticks.push({ frac: 0, label: hrvSleepClock.bed });
+        ticks.push({ frac: 1, label: hrvSleepClock.wake });
+      }
       const stepMs = 2 * 3600_000;
       const first = Math.ceil(bedMs / stepMs) * stepMs;
+      const span = wakeMs - bedMs;
       for (let t = first; t <= wakeMs; t += stepMs) {
+        const frac = (t - bedMs) / span;
+        // ★ 首尾已有真实入睡/起床时刻标签；距任一端不足 2 小时的整点直接跳过，
+        //   否则会与其它标签挤成叠字（真机 23:37–09:46 实测 08:00 与 09:46 撞成「08:009:46」）。
+        const EDGE_GAP = 2 * 3600_000;
+        if (t - bedMs < EDGE_GAP || wakeMs - t < EDGE_GAP) continue;
         const d = new Date(t);
         ticks.push({
-          frac: (t - bedMs) / (wakeMs - bedMs),
+          frac,
           label: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
         });
       }
-      return { buckets, binMin: barBinMin, t0: bedMs, spanMs: wakeMs - bedMs, ticks, muted: undefined, window: win };
+      ticks.sort((a, b) => a.frac - b.frac);
+      return { buckets, binMin: barBinMin, t0: bedMs, spanMs: span, ticks, muted: undefined, window: win };
     }
 
-    // 日间视图：全天轴，睡眠段静默（趋势线在静默区断开，见 AllDayBarsChart 分段逻辑）
+    // 日间视图：全天轴，但**把睡眠窗口留白**（数据不丢，移到「夜间（睡眠期）」独立成段展示）。
+    // ★ 2026-11-11 二次修复（用户：夜间 HRV 还是跟日间画在一起）：上一版为了修「中间空一段」
+    //   把睡眠静音去掉改成全天连续，结果夜间的柱子全混进日间图、夜间视图反而空了。
+    //   现在夜间窗口已修正为「昨夜入睡 → 今早起床」，日间只在清醒段画，两段彻底分开。
+    //   注：用户说的「中间空一段」是白天真实采样缺口（离线未回填），与睡眠留白无关，
+    //   由 RingBleManager 缺口自愈负责，不靠把夜间数据混进来遮掩。
     const pts = healthStore.getIntraday('hrv', dk);
     const buckets = binByMinutes(pts, barBinMin, { dayStartMs: dayStart });
+    let muted: [number, number][] | undefined;
+    if (win) {
+      // ★ 2026-11-11 五次修复：日间图留白 = 这一页里两段真实睡眠
+      //   [00:00, 今早起床] + [今晚入睡, 24:00]；清醒段一律照实画，不静音真实采样。
+      const D = 86_400_000;
+      const full = sleepWindowForDay(dk, dayStart);
+      const ranges: [number, number][] = [];
+      const a = Math.max(dayStart, win[0]);
+      const b = Math.min(dayStart + D, win[1]);
+      if (b > a) ranges.push([a, b]);
+      if (full && full.bedTonight > b && full.bedTonight < dayStart + D) {
+        ranges.push([full.bedTonight, dayStart + D]);
+      }
+      muted = ranges.length ? ranges : undefined;
+    }
     return {
       buckets,
       binMin: barBinMin,
       t0: dayStart,
       spanMs: 86_400_000,
       ticks: undefined,
-      muted: win ? ([[win[0], Math.min(win[1], dayStart + 86_400_000)]] as [number, number][]) : undefined,
+      muted,
       window: win,
     };
-  }, [isHrvDay, anchor, hrvEffectivePart, hrvSleepWindow, barBinMin]);
+  }, [isHrvDay, anchor, hrvEffectivePart, hrvSleepWindow, hrvSleepClock, barBinMin]);
   // 手动测量类 key — 在底部显示历史测量列表（按时间倒序）
   // bloodSugar/glucose/bpSys/bpDia 是戒指连续信号，不走 manual 流程
   // ★ 2026-10-16：尿酸两个入口 key 都收——洞察页传 'ua'，BloodComponentPanel 传 'uricAcid'
@@ -1698,7 +1826,11 @@ export default function MetricDetailScreen() {
   const stressQual = isStress && stressQualIdx >= 0 ? STRESS_QUAL_WORDS[stressQualIdx] : null;
   const stressQualColor = stressQualIdx >= 0 ? STRESS_QUAL_COLORS[stressQualIdx] : theme.colors.textSub;
   // 顶部聚合值：日视图显示当日最新读数；周/月/年显示区间平均（按需求：周月=周月均值，年=年均）
-  const heroVal = isStress ? stressHeroVal : (range === 'day' ? series.latest : series.avg);
+  // ★ 2026-11-13：血氧读取兜底——若当日最新/均值被脏值（如 1%）污染，回退均值或 null（不编数字）
+  let heroVal = isStress ? stressHeroVal : (range === 'day' ? series.latest : series.avg);
+  if (params.key === 'spo2' && typeof heroVal === 'number' && !physioValid('spo2', heroVal)) {
+    heroVal = (typeof series.avg === 'number' && physioValid('spo2', series.avg)) ? series.avg : null;
+  }
   const heroUnit = isStress ? '/100' : (series.unit || undefined);
   // ★ 本轮（用户）：数字下方短 AI 分析（按指标语义判读，不太长）
   let heroAnalysis = buildHeroAnalysis(params.key, params.name, typeof heroVal === 'number' ? heroVal : null, range);
@@ -2052,11 +2184,9 @@ export default function MetricDetailScreen() {
                   label: hrvEffectivePart === 'night' ? '睡眠时段' : '清醒时段',
                 }]} />
                 <Text style={styles.chartNote}>
-                  {hrvEffectivePart === 'night' && !hrvNightAvailable
-                    ? '昨夜入睡 / 起床时间未同步，夜间 HRV 暂时无法定位时段；当前先按全天坐标展示，同步睡眠时段后会自动切回夜间段。'
-                    : hrvEffectivePart === 'night'
-                      ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。HRV 只在睡眠静止期有意义，所以只画入睡到起床这一段。`
-                      : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。白天的 HRV 受运动与说话干扰，参考价值低于夜间；睡眠段不做测量，已留白。`}
+                  {hrvEffectivePart === 'night'
+                    ? `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。按自然日分段，只画 ${hrvSleepClock?.bedFull ?? '入睡'} → ${hrvSleepClock?.wakeFull ?? '起床'} 这一段${hrvSleepClock?.crossesMidnight ? '（跨零点拼接）' : ''}。${hrvSleepClock?.bed === '00:00' ? '昨夜入睡到零点之间归前一天查看。' : ''}`
+                    : `每根柱 = ${hrvDay.binMin} 分钟平均 rMSSD（ms）。这里只画清醒时段；${hrvSleepClock ? `${hrvSleepClock.bedFull}–${hrvSleepClock.wakeFull}` : '睡眠期'} 的 HRV 已单独放到「夜间（睡眠期）」，不混在本图里。`}
                   {isBaseLayout ? ` ${baseBinNote(barBin, 'HRV')}` : ''}
                 </Text>
               </>
@@ -2119,8 +2249,8 @@ export default function MetricDetailScreen() {
                   {specDay.derived ? '（当日历史数据为推算值）' : ''}
                   {isBaseLayout ? ` ${baseBinNote(barBin, params.name)}` : ''}
                   {stressPart === 'night'
-                    ? ' 当前为夜间视图（23:00–07:00），日间时段已隐藏。'
-                    : ' 当前为日间视图（07:00–23:00），夜间时段已隐藏。'}
+                    ? ` 当前为夜间视图（00:00–${stressClock.wake} 与 ${stressClock.bedTonight}–24:00），日间时段已隐藏。`
+                    : ` 当前为日间视图（${stressClock.wake}–${stressClock.bedTonight}），夜间时段已隐藏。`}
                 </Text>
                 {/* ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张 / 恢复时长」汇总）：
                     按档位把有数据的桶折算成小时，与日视图同套档位配色（低=灰 / 高=粉）。 */}

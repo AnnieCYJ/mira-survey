@@ -9,8 +9,9 @@
  *   相关**趋势参考**，绝对血压走手动光电测量 BpDetailScreen）：
  *  1. 最近一次血压测量（真实：healthStore bpSys/bpDia intraday 最近点，来自光电测量/健康一览）。
  *  2. 近 7 天有测量的日的均值（getDay().mean）。
- *  3. 夜间心率下降（dipping 近似参考）：夜间(22:00–06:00) 平均 HR 相对日间(07:00–22:00)
- *     平均 HR 的下降百分比。公开生理学口径：夜间血压/心率较日间下降 ≥10% 为正常 dipping
+ *  3. 夜间心率下降（dipping 近似参考）：★ 2026-11-11 起「夜间」按该日真实入睡/起床
+ *     时刻切分（不再写死 22:00–07:00），夜间 HR 相对清醒时段 HR 的下降百分比。
+ *     公开生理学口径：夜间血压/心率较日间下降 ≥10% 为正常 dipping
  *     （non-dipping 与心血管风险相关）。**此处用心率近似血压 dipping**，仅作生活方式参考，
  *     需连续夜间血压才能给出血压 dipping 本身。
  */
@@ -21,6 +22,7 @@ import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { healthStore, dayKey, type TimePoint } from '../data/healthStore';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { parseClockMinutes } from '../lib/sleepTime';
 
 const DAY_MS = 86400000;
 
@@ -35,16 +37,17 @@ interface Props {
  *   但精简版戒指白天有效 HR 读数很稀疏（全天约 39 个有效点，且多集中在睡眠段），
  *   导致 daytimeHrMean 经常返回 null → 两个格都因依赖 dayHr 而显示 '--'。
  *   现改为：一次性跨 [前日/当日/次日] 收集全部 HR 逐样本，
- *   - 夜间心率：取 22–06 点里**最低 25% 均值**（静息心率近似，与 computeNightPhys 同源口径）；
- *   - 日间心率：取 07–22 点均值；样本过少（<3）时回退到当天日均值，并标注「日=全天均值」。
+ *   - 夜间心率：取**该日真实睡眠窗口（入睡→起床）**里最低 25% 均值（静息心率近似，
+ *     与 computeNightPhys 同源口径）；无睡眠记录才回退到固定 22–07 点；
+ *   - 日间心率：取当日清醒时段均值；样本过少（<3）时回退到当天日均值，并标注「日=全天均值」。
  *   这样只要当天有任意 HR 数据，两个格都会显示真实数值；完全没有 HR 时才诚实地 '--'。
  */
-function collectHr(days: string[]): { h: number; v: number }[] {
-  const out: { h: number; v: number }[] = [];
+function collectHr(days: string[]): { h: number; v: number; t: number }[] {
+  const out: { h: number; v: number; t: number }[] = [];
   for (const dk of days) {
     for (const p of healthStore.getIntraday('hr', dk)) {
       if (typeof p.t === 'number' && typeof p.v === 'number' && Number.isFinite(p.v)) {
-        out.push({ h: new Date(p.t).getHours(), v: p.v });
+        out.push({ h: new Date(p.t).getHours(), v: p.v, t: p.t });
       }
     }
   }
@@ -112,8 +115,34 @@ export function NightBpCard({ anchorMs }: Props) {
     const prev = dayKey(dayMs - DAY_MS);
     const next = dayKey(dayMs + DAY_MS);
     const allHr = collectHr([prev, dk, next]);
-    const nightPts = allHr.filter((p) => p.h >= 22 || p.h < 7).map((p) => p.v);
-    const dayPts = allHr.filter((p) => p.h >= 7 && p.h < 22).map((p) => p.v);
+    // ★ 2026-11-11（用户：详情页夜间时间要按真实入睡/起床）：dipping 的夜间段
+    //   由该日原生 sleepTime/wakeTime 决定；无睡眠记录才回退到 22:00–07:00。
+    const dayStart = new Date(`${dk}T00:00:00`).getTime();
+    const sl = healthStore.getSleep(dk);
+    const bedMin = parseClockMinutes(sl?.sleepTime);
+    const wakeMin = parseClockMinutes(sl?.wakeTime);
+    const bedH = bedMin != null ? bedMin / 60 : (sl?.bedHour ?? null);
+    const wakeH = wakeMin != null ? wakeMin / 60 : (sl?.wakeHour ?? null);
+    let bedPrev: number | null = null, wake: number | null = null, bedTonight: number | null = null;
+    if (bedH != null && wakeH != null) {
+      bedPrev = bedH >= 12 ? dayStart - (24 - bedH) * 3600_000 : dayStart + bedH * 3600_000;
+      wake = dayStart + wakeH * 3600_000;
+      if (wake <= bedPrev) wake += DAY_MS;
+      bedTonight = bedPrev + DAY_MS;
+    }
+    const isNightPt = (p: { h: number; t: number }): boolean => {
+      if (bedPrev != null && wake != null && bedTonight != null) {
+        // 昨夜入睡 → 今早起床，以及今晚入睡 → 明早起床（若已同步次日数据）。
+        return (p.t >= bedPrev && p.t <= wake)
+          || (p.t >= bedTonight && p.t <= bedTonight + (wake - bedPrev));
+      }
+      return p.h >= 22 || p.h < 7;
+    };
+    const nightPts = allHr.filter(isNightPt).map((p) => p.v);
+    // 清醒时段只取本页当天，避免把前/后一天的白天样本混进日间均值。
+    const dayPts = allHr
+      .filter((p) => p.t >= dayStart && p.t < dayStart + DAY_MS && !isNightPt(p))
+      .map((p) => p.v);
     const nightHr = lowestQuartileMean(nightPts);                 // 夜间静息心率近似（最低 25% 均值）
     const dayHrDaily = healthStore.getDay('hr', dk)?.mean ?? null; // 全天均值兜底
     const dayHrRaw = dayPts.length >= 3 ? meanVal(dayPts) : null;  // 日间窗样本足够才用

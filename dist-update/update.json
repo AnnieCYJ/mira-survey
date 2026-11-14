@@ -1,9 +1,9 @@
 {
-  "versionCode": 4,
-  "versionName": "1.3.0",
-  "apkUrl": "https://app.lunamiraring.com/mira-app-1.3.0-4.apk",
-  "sizeBytes": 357328188,
-  "sha256": "9cbc0ac234d97d31962d755255dfd2c3a2c874f2065c828bcc671981bbd2bc49",
-  "notes": "设置页新增 App 内「检查更新」：发现新版本后在本地下载并拉起系统安装器完成覆盖安装，本地数据不丢；首页建议胶囊精简为一行、去掉冗余跳转提示；洞察页基础指标卡横坐标固定 0–24 小时；心率区间环形图无数据时显示空环；指标详情页 Hero 接入端侧 Qwen2.5-1.5B 生成解读。",
-  "releasedAt": "2026-11-10T07:37:10.039Z"
+  "versionCode": 27,
+  "versionName": "1.4.3",
+  "apkUrl": "https://app.lunamiraring.com/downloads/LunaMira-1.4.3-20261114.apk",
+  "sizeBytes": 82692892,
+  "sha256": "5074c7db5410beccb02281b163e193aeac5d6b9af8850aa4eb9b93a07d38a2ea",
+  "notes": "经期记录：保存记录按钮改为底部固定栏，彻底修复被滚动裁切；修复进入周期页崩溃(useRef缺失)；修复首页白屏(底部安全距离计算)。",
+  "releasedAt": "2026-11-13T23:22:23.125Z"
 }

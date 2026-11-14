@@ -13,8 +13,8 @@
  *
  * ⚠️ 布局采用**固定行高 + 逐点生成 SVG 路径**（见 docs/design-tokens.md §10.9，禁 aspectRatio）。
  */
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -29,6 +29,7 @@ import { DayDimensionCard, DIM_DEEP } from './DayDimensionSection';
 import { buildDayDimensionGroups } from '../lib/reviewDayDimensions';
 import type { DimensionCard } from '../lib/reviewDimensions';
 import { loadCycleLog } from '../data/cycleLog';
+import { getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 import type { CycleLog } from '../lib/cycleMath';
 import { getSelfReportsForDaySync, ensureSelfReportsLoaded, onSelfReport, sortByTime } from '../data/selfReportLog';
 // ★ 本轮（用户）：呼吸 / 冥想完成后，其完成记录落在 interventionLog，
@@ -65,8 +66,11 @@ export type DaySummary = {
 //   行高再 120→168，避免卡片内容超出固定行高压到下一行（正是用户反复吐槽的重叠问题）。
 //   曲线点 y = i*ROW_H + ROW_H/2 与行中心共用同一常量，行高变化后端点仍然严格对齐。
 const ROW_H = theme.sp(42);          // 每行 168：卡片区高
-const CARD_W = '46%';                // ★ 卡片收窄，中央留出蛇形曲线的通道
-const DOT_AMP = 9;                   // ★ 节点在中心线两侧的摆幅（小振幅 → 大半径圆滑 S 弯）
+// ★ 本轮（用户 #248 复盘）：时间线从「屏幕正中蛇形」改为「左侧 rail 脊线」——
+//   脊线钉在最左边，卡片全部排在它右侧；脊线在标题【左边】，绝不会出现在标题右边冒充分隔线。
+const RAIL_LEFT = theme.sp(5);       // 脊线中心距屏幕左缘（≈20dp）
+const RAIL_AMP = theme.sp(1.4);      // 脊线沿中轴的小幅摆动（保留 S 形韵律，但不侵入卡片区）
+const RAIL_GAP = theme.sp(12);       // 卡片左留白，给脊线 + 圆点让位（卡片整体右移）
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 /** #RRGGBB 与白混合（做图标方块的浅底） */
@@ -98,21 +102,22 @@ function emojiFor(title: string): string {
 /**
  * ★ S 型蛇形曲线（对齐序日参考图）：**从第一个卡片的节点开始**（用户 23:20：
  *   "线的头就从第一个卡片那个点开始"，不再从日期条引出长线），到最后一个节点结束。
- *   节点左右小幅交替（±DOT_AMP）贴卡片内缘，Catmull-Rom → 贝塞尔平滑样条。
+ *   节点贴左侧 rail 脊线（小幅摆动 ±RAIL_AMP 保留 S 形韵律），Catmull-Rom → 贝塞尔平滑样条。
  *
- * ★ 2026-10-12（用户：「线要从卵泡期旁边那个点连到脑力消耗左边那个点」）——
- *   坐标系改为**与行容器同源**：SVG 现在挂在行容器内部（top:0），y 直接取
- *   「第 i 行垂直中心 = i*ROW_H + ROW_H/2」，与 styles.dot 的 top:'50%' 完全重合。
- *   旧实现把 SVG 绝对定位在含日期条的 wrap 上、再用 CURVE_TOP 手算偏移，
- *   结果整条曲线比圆点高了整整半行（日期条 60 − CURVE_TOP 8 = 52 = ROW_H/2），
- *   头尾都对不上两端的点。
+ * ★ 2026-11-11 修订（用户：卡片被拉成长条 / 错位重叠）：
+ *   旧实现把节点中心 y 写死成 `i*ROW_H + ROW_H/2`（固定行高），但维度卡文字多时会
+ *   **超过固定行高** → 内容溢出到邻行、且曲线端点与实际卡片中心对不上（用户截图里
+ *   右卡被压成又高又窄的竖条）。现改为**实测每行的实际中心 Y**（onLayout 测得），
+ *   曲线严格穿过每个圆点（圆点本身 top:50% = 行中心），无论卡片多高都贴合。
+ *   首帧测量未到位前用固定 ROW_H 兜底，避免曲线闪空。
  */
-function buildWavePath(height: number, count: number): string {
-  const pts: { x: number; y: number }[] = [];
-  for (let i = 0; i < count; i++) {
-    const x = 22 + (i % 2 === 0 ? -DOT_AMP : DOT_AMP); // 左卡 → 节点偏左；右卡 → 偏右
-    pts.push({ x, y: i * ROW_H + ROW_H / 2 });
-  }
+function buildWavePath(yCenters: number[]): string {
+  // ★ 脊线居中于 Svg（半宽 = RAIL_AMP 外的固定中心），小幅摆动保留 S 形韵律
+  const cx = 20; // Svg 宽 40，中心 x = 20
+  const pts: { x: number; y: number }[] = yCenters.map((y, i) => ({
+    x: cx + (i % 2 === 0 ? -RAIL_AMP : RAIL_AMP),
+    y,
+  }));
   if (pts.length < 2) return '';
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -165,9 +170,18 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
     return () => { alive = false; off(); offEmotion(); };
   }, []);
 
+  // ★ 本轮（用户）：男性（gender==='male'）不展示生理周期相关卡与措辞
+  const [jGender, setJGender] = useState<Gender | undefined>(() => getCachedSession()?.profile?.gender);
+  useEffect(() => {
+    const sync = () => setJGender(getCachedSession()?.profile?.gender);
+    sync();
+    return onSessionChange(sync);
+  }, []);
+  const showCycle = jGender !== 'male';
+
   const result = useMemo(() => {
-    try { return buildTodayTimeline(undefined, selDate); } catch { return null; }
-  }, [selDate]);
+    try { return buildTodayTimeline(undefined, selDate, showCycle); } catch { return null; }
+  }, [selDate, showCycle]);
 
   // ★ 本轮（用户）：回顾补充数据源——用户在胶囊建议里完成的饮食 / 心情记录，
   //   按时间插进当日生理时间线，让「刚做完的事」立刻出现在回顾·今日。
@@ -226,8 +240,8 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
   // ★ 2026-11-11（用户：回顾日按维度拆解）：独立渲染，不占曲线 items 的 7 条上限。
   //   cycleLog / recapTick 到位后重算；单源异常已在取数层吞掉，不会拖崩整页。
   const dimensionGroups = useMemo(
-    () => buildDayDimensionGroups(selDate, cycleLog),
-    [selDate, cycleLog, recapTick],
+    () => buildDayDimensionGroups(selDate, cycleLog, showCycle),
+    [selDate, cycleLog, recapTick, showCycle],
   );
 
   const items: TimelineItem[] = useMemo(() => {
@@ -251,29 +265,76 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
   type JourneyNode =
     | { kind: 'event'; item: TimelineItem }
     | { kind: 'dim'; card: DimensionCard };
+  // ★ 本轮（用户）：同一类目（睡眠 / 运动 / 生理周期…）只保留一张卡。
+  //   时间线事件与「按维度拆解」卡会同时覆盖这些类目 → 维度卡信息更全（含分数条/健康意义），
+  //   故时间线里同维度的事件卡去掉，避免「同一类重复讲好几张卡」。
+  //   某类目当天无维度卡时（如当天没睡眠数据），时间线事件仍保留，不丢信息。
   const nodes: JourneyNode[] = useMemo(() => {
-    const events: JourneyNode[] = items.map((it) => ({ kind: 'event', item: it }));
+    const dimsCovered = new Set<string>();
+    for (const g of dimensionGroups) {
+      for (const c of g.cards) if (c.dimension) dimsCovered.add(c.dimension);
+    }
+    const events: JourneyNode[] = items
+      .filter((it) => !(it.dimension && dimsCovered.has(it.dimension)))
+      .map((it) => ({ kind: 'event', item: it }));
     const dims: JourneyNode[] = dimensionGroups.flatMap((g) =>
       g.cards.map((c) => ({ kind: 'dim', card: c })),
     );
     return [...events, ...dims];
   }, [items, dimensionGroups]);
 
-  const totalH = Math.max(nodes.length, 1) * ROW_H;
-  const wavePath = buildWavePath(totalH, nodes.length);
+  // ★ 2026-11-11 修订（用户：卡片被拉成长条 / 错位重叠）：
+  //   用 onLayout 实测每个 row 的真实中心 Y（= layout.y + height/2，相对 rows 容器），
+  //   曲线端点严格贴合圆点（圆点 top:50% = 行中心），无论卡片多高都不再错位 / 溢出邻行。
+  //   首帧测量未到位前退回固定 ROW_H 兜底，避免曲线闪空；测量到位后用实测值重画。
+  const [rowLayouts, setRowLayouts] = useState<{ y: number; height: number }[]>([]);
+  const onRowLayout = useCallback(
+    (i: number) => (e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      setRowLayouts((prev) => {
+        const cur = prev[i];
+        if (cur && cur.y === y && cur.height === height) return prev; // 无变化不触发重渲染
+        const next = [...prev];
+        next[i] = { y, height };
+        return next;
+      });
+    },
+    [],
+  );
+
+  const measured = rowLayouts.length === nodes.length;
+  const yCenters = measured
+    ? rowLayouts.map((l) => l.y + l.height / 2)
+    : nodes.map((_, i) => i * ROW_H + ROW_H / 2);
+  const totalH = measured
+    ? rowLayouts[rowLayouts.length - 1].y + rowLayouts[rowLayouts.length - 1].height
+    : Math.max(nodes.length, 1) * ROW_H;
+  const wavePath = buildWavePath(yCenters);
   const isSelToday = sameDay(selDate, new Date());
+
+  // ★ 2026-11-12（修复「从今日到四点」）：buildTodayTimeline 产出的节点含非时间标签
+  //   （'今日' / '全天' / 起床时间 wakeTime 等），如果直接取 items[0]/items[last].time 当首末时间，
+  //   会把这些非 HH:MM 文本拼进摘要，出现「从 今日 到 四点」这类错误文案。
+  //   这里只取「有效 HH:MM 时间」的节点参与首末时间计算；不足 2 条有效时间时，
+  //   firstTime/lastTime 留空，由 ProfileScreen 决定是否渲染时间区间。
+  const isValidHM = (t: string | undefined): boolean =>
+    typeof t === 'string' && /^\d{1,2}:\d{2}$/.test(t);
 
   // ★ 2026-11-05（用户 #286）：把「X 条记录」摘要上抛父层，由 ProfileScreen 钉在 Tab 正上方（固定浮层，不随滚动走）
   const daySummary = useMemo<DaySummary | null>(() => {
     if (items.length === 0) return null;
+    const timed = items.filter((it) => isValidHM(it.time));
+    const first = timed[0];
+    const last = timed[timed.length - 1];
+    const hasRange = timed.length >= 2 && !!first && !!last;
     return {
       count: items.length,
       isToday: isSelToday,
       selLabel: isSelToday ? '今日' : `${selDate.getMonth() + 1}月${selDate.getDate()}日`,
-      firstTime: items[0].time,
-      lastTime: items[items.length - 1].time,
-      firstTitle: items[0].title,
-      lastTitle: items[items.length - 1].title,
+      firstTime: hasRange ? (first!.time as string) : '',
+      lastTime: hasRange ? (last!.time as string) : '',
+      firstTitle: hasRange ? (first!.title as string) : '',
+      lastTitle: hasRange ? (last!.title as string) : '',
     };
   }, [items, isSelToday, selDate]);
 
@@ -300,42 +361,43 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
         <>
           {/* ★ 2026-10-12：曲线与行共用同一个容器（曲线 top:0 定位在行区内），
               这样曲线端点与圆点严格重合——从第一条记录的点连到最后一条记录的点。 */}
-          <View style={[styles.rows, { height: nodes.length * ROW_H }]}>
+          {/* ★ 2026-11-11 修订：去掉固定 height，改为按内容自然撑高（每行 minHeight=ROW_H），
+              配合 onLayout 实测中心 Y 把曲线贴合到真实卡片位置，消除拉长 / 重叠。 */}
+          <View style={styles.rows}>
           {/* ★ 只有 ≥2 个节点才画曲线（1 个点无曲线；空 d 的 Path 会让 SVG 把渐变整块渲染成色块） */}
           {nodes.length >= 2 && (
-            <Svg width={44} height={totalH} style={styles.curve} pointerEvents="none">
+            <Svg width={40} height={totalH} style={styles.curve} pointerEvents="none">
               <Defs>
-                <SvgGrad id="journeyGrad" x1="22" y1="0" x2="22" y2={totalH} gradientUnits="userSpaceOnUse">
+                <SvgGrad id="journeyGrad" x1="20" y1="0" x2="20" y2={totalH} gradientUnits="userSpaceOnUse">
                   <Stop offset="0" stopColor={mm.colors.purpleCore} />
                   <Stop offset="0.5" stopColor={mm.colors.roseCore} />
                   <Stop offset="1" stopColor={mm.colors.limeMid} />
                 </SvgGrad>
               </Defs>
-              <Path d={wavePath} stroke="url(#journeyGrad)" strokeWidth={4.5} strokeLinecap="round" fill="none" />
+              <Path d={wavePath} stroke="url(#journeyGrad)" strokeWidth={2.5} strokeOpacity={0.85} strokeLinecap="round" fill="none" />
             </Svg>
           )}
 
           {/* 旅程节点行：事件卡 + 维度卡左右交替，节点圆点贴卡片内缘、落在曲线上 */}
             {nodes.map((node, i) => {
-              const left = i % 2 === 0;
-              const dotOff = left ? -DOT_AMP : DOT_AMP;
+              // ★ 本轮（用户 #248 复盘）：时间线改为左侧 rail，卡片统一排在脊线右侧，
+              //   不再左右交替（交替会让脊线落在标题右侧，被误读为「竖线分隔条」）。
               // ★ 维度卡：直接复用单卡 DayDimensionCard，挂在同一条曲线上（不再单独成块）
               if (node.kind === 'dim') {
                 const deep = DIM_DEEP[node.card.dimension] ?? mm.colors.purpleCore;
                 return (
-                  <View key={`dim-${node.card.id}-${i}`} style={styles.row}>
-                    <View style={[styles.dot, { backgroundColor: deep, marginLeft: dotOff - theme.sp(1.5) }]} />
-                    <View style={[left ? styles.cardL : styles.cardR, { width: CARD_W }]}>
-                      <DayDimensionCard card={node.card} />
-                    </View>
+                  <View key={`dim-${node.card.id}-${i}`} style={styles.row} onLayout={onRowLayout(i)}>
+                    <View style={[styles.dot, { backgroundColor: deep }]} />
+                    {/* ★ 本轮（用户）：DayDimensionCard 自身已带卡片壳，这里只给布局占位（留白贴脊线），不再套第二层卡片背景 */}
+                    <DayDimensionCard card={node.card} style={styles.cardSlot} />
                   </View>
                 );
               }
               const it = node.item;
               return (
-                <View key={`${it.time}-${i}`} style={styles.row}>
-                  <View style={[styles.dot, { backgroundColor: it.color, marginLeft: dotOff - theme.sp(1.5) }]} />
-                  <View style={[styles.card, { width: CARD_W }, left ? styles.cardL : styles.cardR]}>
+                <View key={`${it.time}-${i}`} style={styles.row} onLayout={onRowLayout(i)}>
+                  <View style={[styles.dot, { backgroundColor: it.color }]} />
+                  <View style={styles.card}>
                     {/* ★ 2026-11-10：只认真实达标，与月历格子、水晶球金币三者同源 */}
                     {it.goalMet ? (
                       <View style={styles.goalStar}>
@@ -383,20 +445,21 @@ const styles = StyleSheet.create({
   wrap: { position: 'relative', marginTop: theme.sp(1) },
 
   /* 曲线与行 */
-  // ★ 2026-10-12：曲线与行同容器（曲线以本容器 top:0 定位），保证端点与圆点重合
+  // ★ 本轮（用户 #248 复盘）：曲线 = 左侧 rail 脊线，钉在屏幕最左缘，卡片整体右移，
+  //   脊线在标题【左边】，不再被误读为「标题右边的竖线分隔条」。
   rows: { position: 'relative', width: '100%' },
-  curve: { position: 'absolute', top: 0, left: '50%', marginLeft: -22 },
+  curve: { position: 'absolute', top: 0, left: RAIL_LEFT - theme.sp(5), width: theme.sp(10) },
   row: {
-    width: '100%', height: ROW_H, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', position: 'relative',
+    width: '100%', minHeight: ROW_H, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'flex-start', position: 'relative',
   },
   dot: {
-    position: 'absolute', left: '50%', top: '50%',
+    position: 'absolute', left: RAIL_LEFT, top: '50%',
     width: theme.sp(3), height: theme.sp(3), marginLeft: -theme.sp(1.5), marginTop: -theme.sp(1.5),
     borderRadius: theme.sp(1.5), borderWidth: 2.5, borderColor: theme.colors.cardBg, zIndex: 1,
   },
   card: {
-    position: 'relative',
+    flex: 1, marginLeft: RAIL_GAP, marginRight: theme.sp(3),
     backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
     borderRadius: mm.radius.card, padding: theme.space.cardPadCompact,
     shadowColor: mm.shadow.color, shadowOpacity: mm.shadow.opacity,
@@ -404,8 +467,8 @@ const styles = StyleSheet.create({
     elevation: mm.shadow.elevation,
     zIndex: 2,
   },
-  cardL: { marginRight: 'auto' },
-  cardR: { marginLeft: 'auto' },
+  // ★ 本轮（用户）：维度卡占位——只负责"贴脊线右移 + 撑满宽度"，不带卡片背景（避免和 DayDimensionCard 自带的壳套两层）
+  cardSlot: { flex: 1, marginLeft: RAIL_GAP, marginRight: theme.sp(3) },
   // ★ 本轮（用户 #287）：卡片头右侧留出空间，避免右上角达标皇冠压到标题文字
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), paddingRight: theme.sp(8) },
   icon: {

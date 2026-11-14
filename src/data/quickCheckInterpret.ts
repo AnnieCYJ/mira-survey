@@ -18,6 +18,7 @@
  * ---------------------------------------------------------------------------
  */
 import type { QCMetric, QCGroup } from './quickCheckStore';
+import { hormoneBrief, type HormoneKind } from '../lib/phaseHormoneBrief';
 
 /** 从 "5小时56分" / "113/82" / "22.6" 里取主数值 */
 function num(m: QCMetric): number | null {
@@ -224,12 +225,32 @@ export function interpretMetric(m: QCMetric): string | null {
       return `昼夜节律看一天里的起伏，健康时通常白天高夜里低。峰值错位常和作息乱、夜光有关。`;
     case 'recovery':
       return `压力事件后回到基线的时间，反映自主神经弹性。恢复偏慢提示还紧绷，睡眠与放松有帮助。`;
-    case 'cyclePhase':
-      return `当前所处周期阶段。不同阶段的精力体温情绪本有起伏，把它当背景看其它数据更清楚。`;
-    case 'estrogen':
-      return `雌激素相对水平随周期起伏，排卵前高、经期前后低。帮你理解体感趋势，非激素化验值。`;
-    case 'progesterone':
-      return `黄体酮相对水平排卵后走高、经期前回落，常伴体感偏沉体温略升。结合自感看趋势。`;
+    case 'cyclePhase': {
+      // 历史报告只存了阶段名，这里也用「阶段 → 激素与身体状态 → 建议」的同款话术，
+      //   不再出现「基于你记录的经期周期推算 / 结合静息心率交叉观察」这类来源说明。
+      const p = String(m.value ?? '').trim();
+      const label = m.label ? `、${m.label}` : '';
+      return `当前处在${p || '本周期'}${label}，激素水平正走在这一阶段对应的变化里，精力、体温和情绪会跟着起伏。把这段当背景看其它数据，安排强度和休息会更贴合身体。`;
+    }
+    // ★ 2026-11-13（用户）：与洞察页「生理周期节律」卡片底部同一套话术 ——
+    //   激素现在处于什么情况 → 由此带来的状态 → 一条具体建议；不提推算、来源、化验值。
+    //   历史报告（只存了方向值）走这里重写，新报告由 quickCheckStore 按相位写入更精准的文案。
+    case 'estrogen': {
+      const d = String(m.value ?? '');
+      if (d.includes('上升'))
+        return '雌激素正在往上走，精力和情绪通常跟着变好，恢复能力也在增强。适合把高强度训练、重要任务和想启动的新计划放在这几天。';
+      if (d.includes('下降'))
+        return '雌激素从峰值回落，状态不像前两周那样顶，恢复也慢一些。把高强度换成中等强度有氧，别硬顶。';
+      return '雌激素水平相对平稳，体感多半也比较稳。保持现在的作息和强度，连着看几天比盯单次更清楚。';
+    }
+    case 'progesterone': {
+      const d = String(m.value ?? '');
+      if (d.includes('上升'))
+        return '孕激素正在上来，体温略升、身体偏沉，恢复也慢一些。把恢复留够，睡前放松，别把日程排太满。';
+      if (d.includes('下降'))
+        return '孕激素在回落，体感会慢慢轻快起来。顺着状态安排强度，重要决定尽量避开经前一周。';
+      return '孕激素水平相对平稳，体感多半也比较稳。保持现在的作息，连着看几天比盯单次更清楚。';
+    }
 
     // ── Pro 机组 ──────────────────────────────────────────────────────────
     case 'skin':
@@ -254,7 +275,15 @@ export function interpretGroup(_g: QCGroup): string | null {
 
 /** 旧版报告里冻结在数据库里的「来源标注」措辞。命中即替换，绝不再展示给用户。 */
 const LEGACY_SOURCE =
-  /戒指真实回读|真实回读|本组全部为|标「实测」|标「估算」|首次填写|非戒指测量|非戒指直接测量|非实测|本机历史测量记录|来自当前戒指|PPG 估算值|按公开公式估算|不是戒指测量/;
+  /戒指真实回读|真实回读|本组全部为|标「实测」|标「估算」|首次填写|非戒指测量|非戒指直接测量|非实测|本机历史测量记录|来自当前戒指|PPG 估算值|按公开公式估算|不是戒指测量|由经期记录|周期相位推算|与周期日历页同源|戒指不直接测量|不给浓度数值|黄体酮就是孕激素|由黄体分泌|只描述方向|非激素化验值|基于你记录的经期周期推算|结合静息心率等信号/;
+
+/** 雌激素 / 孕激素两条：旧报告的推算说明一律重写，新报告按相位写入的文案原样保留。 */
+const HORMONE_KEYS = new Set(['estrogen', 'progesterone']);
+
+/** 旧报告里「生理周期阶段」存的是中文阶段名，用它换回相位 key 取同源话术。 */
+const PHASE_BY_LABEL: Record<string, string> = {
+  经期: 'period', 卵泡期: 'follicular', 排卵期: 'ovulation', 黄体期: 'luteal',
+};
 
 const NEUTRAL_FALLBACK =
   '这项数值反映身体当下的一个侧面，单次数值会随活动、睡眠和情绪波动。连着看几天的趋势，比盯着某一次更容易看出变化。';
@@ -276,14 +305,29 @@ function sanitizeNote(note?: string): string | undefined {
 export function refreshReportNotes(groups: QCGroup[]): QCGroup[] {
   return (groups ?? []).map((g) => {
     const hasContent = !!(g.metrics?.length || g.risk || g.standalone?.length);
+    // ★ 历史报告只存了中文阶段名（如「经期」），用它换回相位 key，
+    //   让旧报告也能取到与洞察页同一套按相位的激素话术，而不是按方向的通用兜底。
+    const phaseLabel = (g.metrics ?? []).find((m) => m.key === 'cyclePhase')?.value;
+    const groupPhase = PHASE_BY_LABEL[String(phaseLabel ?? '').trim()];
     const rewrite = (m: QCMetric): QCMetric => {
       const generated = interpretMetric(m);
+      // ★ 2026-11-13：历史报告里冻结的激素说明写满了「由经期记录推算 / 戒指不直接测量 /
+      //   不给浓度数值 / 非激素化验值」，用户不关心这些。命中即换成本组相位对应的同源话术；
+      //   新报告由 quickCheckStore 按当前相位写入的文案不含来源词，原样保留不被覆盖。
+      if (HORMONE_KEYS.has(m.key)) {
+        return LEGACY_SOURCE.test(m.note ?? '')
+          ? { ...m, note: hormoneBrief(groupPhase, m.key as HormoneKind) }
+          : m;
+      }
       // 节律组的 note 常含近 7 天标准差 / 峰值时刻 / 恢复秒数等真实分析，优先保留
       const keepDynamic = g.key === 'rhythm' && m.note && !LEGACY_SOURCE.test(m.note);
       return { ...m, note: keepDynamic ? sanitizeNote(m.note) : (generated ?? sanitizeNote(m.note) ?? NEUTRAL_FALLBACK) };
     };
     return {
       ...g,
+      // ★ 2026-11-13 真机验收：basisNote 是「本次依据说明」，属于用户必须看到的口径，
+      //   绝不随 note 一起被清掉；解读引擎只负责指标文案，不碰这一层。
+      basisNote: g.basisNote,
       // ★ 有内容分组：清掉「这一组是…」类说明；空状态分组：保留功能性提示
       note: hasContent ? undefined : sanitizeNote(g.note),
       metrics: g.metrics?.map(rewrite),

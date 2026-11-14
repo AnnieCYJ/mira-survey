@@ -21,13 +21,18 @@
  * setAutoMonitor / measure），UI 层（SettingsScreen / InsightScreen /
  * BasicMetricCard）零改动。
  */
-import { Alert, NativeModules, NativeEventEmitter, Platform, AppState, type AppStateStatus } from 'react-native';
+import { Alert, NativeModules, NativeEventEmitter, Platform, AppState, PermissionsAndroid, type AppStateStatus } from 'react-native';
 import { postLog as _postLog } from '../lib/logger';
 import * as FileSystem from 'expo-file-system';
 import { theme } from '../theme/theme';
 import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
 // ★ Phase 1：设备令牌（按 device_id 隔离的云端访问凭证）
 import { authHeaders, ensureDeviceToken } from '../data/ringIdentity';
+import {
+  loadRingDeviceCards,
+  rememberRingDeviceCard,
+  ringDeviceCardOf,
+} from './ringDeviceCard';
 // ★ 2026-11-05：两套戒指数据源隔离（旧 HK18 数据不得混进当前戒指）+ 体温合法性校验
 import { trustedCurrentRingDeviceId, isBlockedRingDeviceId, saneBodyTemp, normDeviceId } from '../data/ringDataIsolation';
 import { ringUploadExtFields } from '../lib/ringUploadFields';
@@ -44,6 +49,9 @@ import { hsKeyFor, DISPLAY_KEY_BY_HS } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
 import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
 import { safeNativeEmitter } from '../lib/nativeEmitter';
+import { physioValid } from '../lib/physioRange';
+// ★ 2026-11-13：Android 蓝牙运行时权限闸门（扫描/连接前统一申请）
+import { ensureBlePermissions } from './ensureBlePermissions';
 // ★ 2026-11-07（用户）：LunaMira 精简版压力同步（仅 BASE_UI，设备实测优先）
 import { syncBaseStress } from '../lib/baseStressSync';
 import {
@@ -236,6 +244,10 @@ export interface SleepSummary {
   getUp: number;       // 起夜次数
   sleepTime?: string | null; // 入睡时间 "HH:mm"
   wakeTime?: string | null;  // 起床时间 "HH:mm"
+  /** 入睡小时 0-23（从 sleepTime 解析，用于 sleepWindow 计算） */
+  bedHour?: number | null;
+  /** 起床小时 0-23（从 wakeTime 解析，用于 sleepWindow 计算） */
+  wakeHour?: number | null;
 }
 
 export interface RingDeviceInfo {
@@ -243,6 +255,12 @@ export interface RingDeviceInfo {
   name: string;
   rssi: number | null;
   recommended?: boolean;
+  /** 本机记录的上次连接固件版本（扫描阶段读不到固件，靠历史名片区分同名戒指）。 */
+  firmware?: string | null;
+  /** 上次连接时间戳（ms）。null = 这枚戒指还没在本机连过。 */
+  lastConnectedAt?: number | null;
+  /** 上次连接时读到的电量。 */
+  lastBattery?: number | null;
 }
 
 /** ★ 2026-10-16：血氧呼吸暂停（OSAHS）分析——原生 triggerOxygenAnalysis 读取设备血氧历史后解析回传。 */
@@ -469,6 +487,9 @@ export interface RingState {
   spo2Daily: Record<string, number>;
   edaDaily: Record<string, number>;
   rrDaily: Record<string, number>;
+  /** 每日血压（收缩/舒张）归档：dateKey -> 当日均值。backfill 回填历史日供趋势。 */
+  bpSysDaily?: Record<string, number>;
+  bpDiaDaily?: Record<string, number>;
   /** 每日睡眠归档（来自原生 backfill 读设备库）：total/deep/light/rem(分钟)/score(0-4)/getUp(起夜次数)。 */
   sleepDaily: Record<string, {
     total: number; deep: number; light: number; rem: number; score: number; getUp: number;
@@ -835,6 +856,13 @@ export function sleepLineToSegments(types: number[]): SleepSegment[] {
   return segs;
 }
 
+/**
+ * ★ 2026-11-12：戒指 RTC 与手机的时钟差（设备时间 - 手机时间，ms）。
+ * 由今日回读批次里「最超前的样本」估计，跨批次平滑；原生侧每次连接也会用
+ * settingTime() 给戒指对时，届时这个值会自然归零、不再触发校正。
+ */
+let deviceClockOffsetMs = 0;
+
 /** 解析原生样本时间戳 t（关联日期 date，yyyy-MM-dd / yyyy-M-D 均可）。
  *  兼容：HH:MM / HH:MM:SS / yyyy-MM-dd HH:MM[:SS] / yyyy-MM-ddTHH:MM[:SS] / 纯数字(epoch ms 或 s)。
  *  返回绝对 ms；无法解析返回 null。原生 backfill 回传的 slot 时间格式未必是纯 HH:MM，
@@ -1040,9 +1068,33 @@ class NativeRingSource {
   private syncAllConsecutiveTimeouts = 0;
   /** ★ 2026-11-11：断点续传游标 = 已完整同步到的最后一天 YYYY-MM-DD；下次只拉 [游标, 今天] 增量。null=首次→全量。 */
   private lastBackfillDate: string | null = null;
+  /** ★ 2026-11-14（用户：连上后不要轻易断开）：最近一次「真正写入数据」的时间戳。
+   *  用于死锁判定区分「慢回填但仍在回传」（健康，不该踢连）与「原生 backfillInProgress 死锁、零回传」（真饿死，才踢连）。 */
+  private lastBatchWriteAt = 0;
+  /**
+   * ★ 2026-11-11（用户：不能接受丢数据）：缺口自愈。
+   * 增量回填后若今日 hr/hrv/spo2 intraday 仍存在「中间缺一段」（断连期间实时流中断、
+   * 且增量锚点已跳过该窗口），触发一次全量回补——让原生 backfill() 重读戒指在端存储的
+   * 历史样本、把缺失窗口补回来。**绝不编造数据**，只从设备真实存储回拉。
+   * ★ 2026-11-11 二次修复（用户：「HRV/血压停在 20 点，问题很大」）：
+   *   旧实现只查 hr/hrv/spo2 的「中间缺口」，且要求 lastGap<1h —— 把「末点停在 20:00
+   *   之后 3 小时没更新」这种**尾部停更**当成同步边界直接跳过；血压压根不在检测列表里。
+   *   现改为：中间缺口 + 尾部停更都触发，血压纳入，同日冷却式最多 3 次（防设备真没数据时打爆 BLE）。
+   * gapRecoveryActive 防递归；gapRecoveryDay/Count/LastAt 做同日节流。
+   */
+  private gapRecoveryActive = false;
+  private gapRecoveryDay: string | null = null;
+  private gapRecoveryCount = 0;
+  private gapRecoveryLastAt = 0;
+  /** ★ 自动测量开关复核节流：ready 事件可能连发多次，避免重复 BLE 读请求占通道 */
+  private autoMeasureCheckedAt = 0;
   /** 回填超时兜底：原生若不回 backfillDone，120s 后解锁，避免后续同步永久卡死 */
   // ★ 2026-11-11：全量回填（首次/手动）可能读多天，放宽到 5 分钟，避免超时强制解锁→重复触发打架。
   private static readonly SYNC_ALL_TIMEOUT_MS = 300_000;
+  /** ★ V2 性能：backfill 期间累积 RingState patch（ready 置 {}，backfillDone 一次性 flush）。
+   *  2026-11-13 补声明：此前该字段只在 RingConnectionImpl 里声明，本类里是 undefined，
+   *  `undefined !== null` 恒为 true → ready 之前的状态补丁被吞掉（tsc TS2339 报了 5 处）。 */
+  private _pendingBatchPatch: StatePatch | null = null;
   /** ★ 2026-11-09（用户：电量必须传对）：电量轮询定时器（连接就绪后每 60s 拉一次，断开时清除） */
   private batteryTimer: ReturnType<typeof setInterval> | null = null;
   /** ★ 2026-10-16（续）：ECG 实时波形累积缓冲（原生 onEcgProgress 增量回传，JS 在此拼接成完整 trace）。 */
@@ -1061,7 +1113,9 @@ class NativeRingSource {
     /** 同步进度回调（原生 onBackfillProgress）→ 转发到 RingBleManager 的独立轻量通道 */
     private onSyncProgress: (p: SyncProgress | null) => void,
     /** ★ 2026-11-11：断点游标推进后回传持有方持久化（NativeRingSource 自身不碰 FileSystem） */
-    private onCursorPersist: (date: string | null) => void
+    private onCursorPersist: (date: string | null) => void,
+    /** ★ 2026-11-13：扫描窗口结束（final 帧）→ 交外层按设备数量决策（1 枚直连 / 多枚列出） */
+    private onScanFinished: (list: any[]) => void = () => {}
   ) {
     if (VeepooNative) {
       // ★ 2026-11-07：改走 safeNativeEmitter —— VeepooRing 原生缺 add/removeListeners，
@@ -1373,9 +1427,50 @@ class NativeRingSource {
     };
 
     // ── path A: slots（5min intraday）──
-    const slots = Array.isArray(raw.daily?.slots) && raw.daily.slots.length > 0
+    let slots = Array.isArray(raw.daily?.slots) && raw.daily.slots.length > 0
                   ? raw.daily.slots
                   : (Array.isArray(raw.slots) ? raw.slots : []);
+
+    // ★ 2026-11-12（用户：「HRV 更新到 00:40，可现在才 00:24」「洞察页趋势图全空」）：
+    //   戒指 RTC 从未对时，origin3 回读的 TimeData 是设备时钟（快约 35 分钟）。
+    //   healthStore.getTimeRange / getTodaySeries 用 Date.now() 做上界，今日回读样本
+    //   全被当成「未来数据」过滤 → 详情页看得到、洞察页全空、更新时间显示超前。
+    //   这里按本批最超前样本估计时钟差，整批平移回手机时间轴；已落库的历史错位样本
+    //   由 healthStore.correctFutureSamples 一并平移（不删点、不插值、跨零点按真实日期归档）。
+    if (slots.length > 0 && dk === dayKey(Date.now())) {
+      const nowMs = Date.now();
+      const rawTimeOf = (s: any) => s?.time ?? s?.t ?? s?.ts ?? s?.timestamp ?? s?.dateTime ?? s?.hhmm ?? '';
+      const tsList: number[] = [];
+      for (const s of slots) {
+        const t = parseSampleTs(dk, rawTimeOf(s));
+        if (t != null) tsList.push(t);
+      }
+      const future = tsList.filter(t => t > nowMs + 2 * 60_000);
+      if (future.length > 0) {
+        const est = Math.max(...future) - nowMs;
+        if (est >= 2 * 60_000 && est <= 3 * 3600_000) {
+          deviceClockOffsetMs = deviceClockOffsetMs <= 0
+            ? est
+            : Math.round(deviceClockOffsetMs * 0.7 + est * 0.3);
+          const off = deviceClockOffsetMs;
+          const fixedCount = healthStore.correctFutureSamples(off, nowMs);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          for (const s of slots) {
+            const t = parseSampleTs(dk, rawTimeOf(s));
+            if (t == null) continue;
+            const fixed = t - off;
+            const d = new Date(fixed);
+            const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+                          `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            s.time = stamp;
+            s.ts = fixed;
+            if (s.t != null && (typeof s.t === 'string' || typeof s.t === 'number')) s.t = stamp;
+          }
+          postLog('RingBle', `[Clock.fix] dk=${dk} off=${Math.round(off / 60000)}min ` +
+            `existingFixed=${fixedCount} slots=${slots.length}`);
+        }
+      }
+    }
 
     // ★ 2026-11-07（用户「静息心率/夜间HRV/血氧都没算」）：真机日志
     //   `[Batch.daily] step=379 spo2=- hrv=- sleep=-` —— 原生 dayData 只给了 step，
@@ -1500,6 +1595,33 @@ class NativeRingSource {
           postLog('RingBle',
             `[Batch.source] dk=${dk} source=${String(raw.source)} cadenceMinutes=${String(raw.cadenceMinutes ?? '-')}`);
         }
+        // ★ 2026-11-11（用户质疑「身心压力有数据，HRV/血压却停在 20 点」）：
+        //   把「这批原始 slots 到底覆盖到几点、20 点后有没有 hrv/bp 字段」如实打出来，
+        //   用原生回传实证区分「设备没产出」与「JS 没接住」，不再靠推测。
+        try {
+          const cov: { t: number; s: any }[] = [];
+          for (const s of slots) {
+            const tRaw = s?.time ?? s?.t ?? s?.ts ?? s?.timestamp ?? s?.dateTime ?? s?.hhmm ?? '';
+            const tt = parseSampleTs(date, tRaw);
+            if (tt != null) cov.push({ t: tt, s });
+          }
+          if (cov.length) {
+            const clock = (x: number) => new Date(x).toTimeString().slice(0, 8);
+            const lo = Math.min(...cov.map((x) => x.t));
+            const hi = Math.max(...cov.map((x) => x.t));
+            const cutoff = dateKeyToStartMs(dk) + 20 * 3600_000;
+            const tail = cov.filter((x) => x.t >= cutoff);
+            const withVal = (k: string, arr: { t: number; s: any }[]) =>
+              arr.filter((x) => { const v = num(x.s?.[k]); return v != null && Number.isFinite(v) && v > 0; });
+            const times = (k: string, arr: { t: number; s: any }[]) =>
+              withVal(k, arr).map((x) => clock(x.t)).join(',') || '-';
+            postLog('RingBle',
+              `[Batch.cover] dk=${dk} n=${cov.length} ${clock(lo)}→${clock(hi)} ` +
+              `全批 hrv=${withVal('hrv', cov).length} bpSys=${withVal('bpSys', cov).length} bpDia=${withVal('bpDia', cov).length} ` +
+              `| ≥20点 slots=${tail.length} ` +
+              `hrv时刻=[${times('hrv', tail)}] bpSys时刻=[${times('bpSys', tail)}] bpDia时刻=[${times('bpDia', tail)}]`);
+          }
+        } catch { /* 诊断日志不能影响入库 */ }
         rawSlotKeys = keys;
         rawDayMin = dMed;
         rawNightMin = nMed;
@@ -1620,6 +1742,8 @@ class NativeRingSource {
       }
       if (lastUpdChanged) mergePatch({ lastUpdated: newLastUpd as any });
       postLog('RingBle', `[Batch] date=${date} dk=${dk} OK=${okCount} SKIP=${skipCount} slots=${slots.length}`);
+      // ★ 2026-11-14：只要有任一天真正写库，就刷新「末批写入时间」，供死锁判定区分慢回填 vs 真饿死。
+      if (okCount > 0) this.lastBatchWriteAt = Date.now();
 
       // ★ 2026-11-07：把「这枚戒指这一批到底传了什么」写进 state，供设置页如实展示。
       //   累积式写入（backfill 期间 getState() 还没 flush，逐天覆盖会丢前面的日子）。
@@ -1686,23 +1810,26 @@ class NativeRingSource {
 
       // hrvDaily / hrDaily / spo2Daily / tempDaily（今日状态种子依赖）
       // ★ 2026-11-07：改读 effDaily（原生直给优先，缺失时由 slots 反算补齐）
-      if (effDaily.hrv != null) {
+      // ★ 2026-11-13：batch 日汇总落库前过滤生理不可能的脏读数（如血氧 1%、血压 39）
+      if (effDaily.hrv != null && physioValid('hrv', effDaily.hrv)) {
         statePatch.hrvDaily = { ...this.getState().hrvDaily, [dk]: effDaily.hrv };
       }
-      if (effDaily.hr != null) {
+      if (effDaily.hr != null && physioValid('hr', effDaily.hr)) {
         statePatch.hrDaily = { ...this.getState().hrDaily, [dk]: effDaily.hr };
       }
-      if (effDaily.spo2 != null) {
+      if (effDaily.spo2 != null && physioValid('spo2', effDaily.spo2)) {
         statePatch.spo2Daily = { ...this.getState().spo2Daily, [dk]: effDaily.spo2 };
       }
-      if (effDaily.temp != null) {
+      if (effDaily.temp != null && physioValid('temp', effDaily.temp)) {
         statePatch.tempDaily = { ...this.getState().tempDaily, [dk]: effDaily.temp };
       }
-      if (d.bpSys != null) {
-        statePatch.bpSysDaily = { ...this.getState().bpSysDaily, [dk]: num(d.bpSys)! };
+      const _bpSys = num(d.bpSys);
+      if (_bpSys != null && physioValid('bpSys', _bpSys)) {
+        statePatch.bpSysDaily = { ...this.getState().bpSysDaily, [dk]: _bpSys };
       }
-      if (d.bpDia != null) {
-        statePatch.bpDiaDaily = { ...this.getState().bpDiaDaily, [dk]: num(d.bpDia)! };
+      const _bpDia = num(d.bpDia);
+      if (_bpDia != null && physioValid('bpDia', _bpDia)) {
+        statePatch.bpDiaDaily = { ...this.getState().bpDiaDaily, [dk]: _bpDia };
       }
 
       // sleepDaily + sleepSummary（今日状态种子依赖 sleep）
@@ -1809,12 +1936,13 @@ class NativeRingSource {
       }
 
       // 今日 HRV/HR → state.daily（recomputeDailyStatus 种子输入）
+      // ★ 2026-11-13：同样过滤生理不可能的脏读数
       if (isToday) {
         const curDaily = { ...dailyBaseForNow(this.getState().daily) };
-        if (d.hrv != null) curDaily['hrv'] = num(d.hrv)!;
-        if (d.hr != null) curDaily['hr'] = num(d.hr)!;
-        if (d.spo2 != null) curDaily['spo2'] = num(d.spo2)!;
-        if (d.temp != null) curDaily['temp'] = num(d.temp)!;
+        if (d.hrv != null && physioValid('hrv', num(d.hrv))) curDaily['hrv'] = num(d.hrv)!;
+        if (d.hr != null && physioValid('hr', num(d.hr))) curDaily['hr'] = num(d.hr)!;
+        if (d.spo2 != null && physioValid('spo2', num(d.spo2))) curDaily['spo2'] = num(d.spo2)!;
+        if (d.temp != null && physioValid('temp', num(d.temp))) curDaily['temp'] = num(d.temp)!;
         statePatch.daily = curDaily;
       }
 
@@ -1848,8 +1976,8 @@ class NativeRingSource {
           }
         }
         if (Object.keys(latestTs).length > 0) {
-          const curLast = this.getState().lastUpdated ?? {};
-          const newLast = { ...curLast };
+          const curLast: Record<string, number | null> = this.getState().lastUpdated ?? {};
+          const newLast: Record<string, number | null> = { ...curLast };
           for (const [k, v] of Object.entries(latestTs)) {
             const hk = (METRIC_MAP as any)[k] ?? k;
             if (!newLast[hk] || v > (newLast[hk] ?? 0)) newLast[hk] = v;
@@ -1862,7 +1990,7 @@ class NativeRingSource {
             }
           }
           if (Object.keys(newLast).some(k => newLast[k] !== curLast[k])) {
-            statePatch.lastUpdated = newLast;
+            statePatch.lastUpdated = newLast as Record<MetricKey, number | null>;
           }
         }
       }
@@ -1979,6 +2107,22 @@ class NativeRingSource {
       // ★ V2 性能：开启累积模式（backfill 期间 RingState patch 不立即 push）
       this._pendingBatchPatch = {};
       postLog('RingBle', `[State] ready totalDays=${raw.deviceTotalDays ?? '?'}`);
+      // ★ 2026-11-11（用户：HRV/血压停在 20 点）：原生 ensureAutoMeasure() 原本只在
+      //   syncPersonInfo()（首次认证）里调一次；已配对设备重启后不再走认证 → 自动测量开关
+      //   再也没被检查过（真机 logcat 里一条 autoMeasure 日志都没有，血压开关从未打开）。
+      //   改为每次 ready 都让原生复核一次 PULSE_RATE / HRV / BLOOD_PRESSURE 三个开关。
+      //   可选链调用：老原生包没这个 ReactMethod 时静默跳过，不会红屏。
+      //   ★ 30 分钟节流：真机一次启动收到多次 ready，旧写法会连发 6 次 BLE 读请求。
+      const amNow = Date.now();
+      if (amNow - this.autoMeasureCheckedAt > 30 * 60 * 1000) {
+        this.autoMeasureCheckedAt = amNow;
+        try {
+          (VeepooNative as any)?.ensureAutoMeasureNow?.();
+          postLog('RingBle', '[AutoMeasure] ready → 请求原生复核心率/HRV/血压自动测量开关');
+        } catch (e: any) {
+          postLog('RingBle', `[AutoMeasure] 复核失败（忽略）：${e?.message ?? e}`);
+        }
+      }
       // ★ 2026-11-04（用户定稿·能力字段驱动）：连接就绪后，原生透传 capabilities（SDK *Type），
       //   据此动态判定 Pro/基础版 与 展示哪些功能（有就展示）。
       // ★ 2026-11-05（用户：连上戒指就该识别 Pro/基础版）：优先用能力字段；若原生没透传，回退到已连上的 MAC / 广播名。
@@ -2045,8 +2189,16 @@ class NativeRingSource {
         recommended: !!d.recommended || /LUNA|MIRA/i.test(String(d.name ?? '')),
       }));
       // 真机排障：留下 MAC 与广播名，便于区分「戒指」和周围其它 BLE 设备
-      postLog('RingBle', `[Scan] ${list.length} 台: ${list.slice(0, 6).map((d) => `${d.name}@${d.id}`).join(' | ')}`);
+      postLog('RingBle', `[Scan] ${list.length} 台: ${list.slice(0, 6).map((d: (typeof list)[number]) => `${d.name}@${d.id}`).join(' | ')}`);
+      // 跨帧累计在外层 applyPatch() 统一完成（本方法属于 NativeRingSource，
+      // 不能在这里直接访问外层 RingBleManager 的字段，否则 TS2339）。
       this.push({ devices: list });
+      // ★ 2026-11-13：只有原生扫描窗口结束（final:true）才按最终数量决策。
+      //   流式 scanResult 里「看到第一枚就连」会在第二枚广播前把连接抢走。
+      if (raw.final === true) {
+        postLog('RingBle', `[Scan] 扫描结束，最终 ${list.length} 台 → 交给决策`);
+        this.onScanFinished(list);
+      }
       return;
     }
 
@@ -2124,13 +2276,15 @@ class NativeRingSource {
    * 原生 `backfillInProgress` 会直接丢弃撞车请求，所以这里在 JS 侧排队，
    * 收到 backfillDone 后由 finishSyncAll() 补跑一次，保证没有一次触发被静默吞掉。
    */
-  syncAll(reason: string, opts?: { full?: boolean }): void {
+  syncAll(reason: string, opts?: { full?: boolean; from?: string }): void {
     if (!healthStore.syncEnabled) {
       postLog('RingBle', `[Sync] 跳过回填（数据同步已关闭，来源=${reason}）`);
       return;
     }
     const full = !!opts?.full;
-    const from = full ? '' : (this.lastBackfillDate ?? '');
+    // ★ 2026-11-14（用户：断点回填，不要全量）：显式 from 优先（缺口自愈用近几日游标重发今日），
+    //   否则默认用持久化游标 lastBackfillDate 做增量；只有 full=true 才读戒指全量存储。
+    const from = full ? '' : (opts?.from ?? this.lastBackfillDate ?? '');
     const now = Date.now();
     if (this.syncAllInFlight && now < this.syncAllInFlightUntil) {
       this.syncAllRerunQueued = true;
@@ -2146,7 +2300,16 @@ class NativeRingSource {
       this.syncAllConsecutiveTimeouts += 1;
       postLog('RingBle', `[Sync] 上次回填超时未收到 backfillDone（连续 ${this.syncAllConsecutiveTimeouts} 次）→ 强制解锁重来`);
       if (this.syncAllConsecutiveTimeouts >= 2) {
-        postLog('RingBle', `[Sync] ⚠️ 判定回填死锁，断开重连以重置原生 backfillInProgress 状态机`);
+        // ★ 2026-11-14（用户：连上后不要轻易断开）：只在「超时窗口内零写入」才判定真死锁并踢连。
+        //   大批量回填（如 13 天 HRV 历史）可能本身较慢，批次仍在陆续到达 → 属健康慢回填，绝不该踢连。
+        const sinceBatch = Date.now() - this.lastBatchWriteAt;
+        const starved = sinceBatch > NativeRingSource.SYNC_ALL_TIMEOUT_MS;
+        if (!starved) {
+          postLog('RingBle', `[Sync] 回填较慢但仍在回传（末批 ${Math.round(sinceBatch / 1000)}s 前写入）→ 不计死锁，继续等待原生回传`);
+          this.syncAllConsecutiveTimeouts = 0;
+          return;
+        }
+        postLog('RingBle', `[Sync] ⚠️ 判定回填死锁（${Math.round(sinceBatch / 1000)}s 零写入），断开重连以重置原生 backfillInProgress 状态机`);
         this.syncAllInFlight = false;
         this.syncAllInFlightUntil = 0;
         this.syncAllConsecutiveTimeouts = 0;
@@ -2183,6 +2346,9 @@ class NativeRingSource {
     this.syncAllInFlightUntil = 0;
     // ★ 2026-11-11：成功收口即清零连续超时计数——说明原生回填通路正常，死锁判定撤销。
     this.syncAllConsecutiveTimeouts = 0;
+    // ★ 2026-11-11（缺口自愈）：无论常态还是自愈全量回填收口，都先解除激活标记
+    //   （同日防重由 gapRecoveryDay 把关，避免自愈同步自身触发二次全量）。
+    this.gapRecoveryActive = false;
     // ★ 断点续传：本次事务成功收口（已含主同步 + origin3 HRV/血氧历史），游标推进到今天。
     //   下次同步只拉 [今天, 今天]，已同步的历史天不再重读（快照已落盘）。
     //   首次安装 lastBackfillDate=null 时仍走全量，全量完成即把游标补到今天。
@@ -2199,6 +2365,65 @@ class NativeRingSource {
       //   避免「回前台/周期触发被静默吞掉 → 看起来像没更新」。
       postLog('RingBle', '[Sync] 在途期间有排队请求 → 800ms 后补跑一次同步');
       setTimeout(() => this.syncAll('排队补跑'), 800);
+    }
+    // ★ 2026-11-11（用户：不能接受丢数据）：收口后自检今日核心指标是否仍有「中间断连缺口」，
+    //   有则从戒指在端存储全量回补缺失窗口（绝不编造）。
+    this.checkAndRecoverGaps();
+  }
+
+  /**
+   * ★ 2026-11-11（用户：不能接受丢数据）：缺口自愈。
+   * 增量回填后若今日 hr/hrv/spo2 intraday 仍存在「中间缺一段」（断连期间实时流中断、
+   * 且增量锚点 lastBackfillDate 已推进到今天 → 那段没被重新回拉），则触发一次全量回补
+   * （原生 backfill() 重读戒指在端存储的历史样本），把缺失窗口补回来。绝不编造数据。
+   * 每天最多自愈一次（gapRecoveryDay 把关），且本次自愈由 finishSyncAll 收口时解除激活，不会递归。
+   */
+  private checkAndRecoverGaps(): void {
+    if (this.gapRecoveryActive) return;            // 自愈同步自身收口前不再触发
+    const today = dayKey(Date.now());
+    if (this.gapRecoveryDay !== today) {           // 跨日重置计数
+      this.gapRecoveryDay = today;
+      this.gapRecoveryCount = 0;
+    }
+    const now = Date.now();
+    // ★ 同日最多 3 次、两次间隔 ≥10 分钟：设备确实没数据时不会无限全量回补打爆 BLE 通道
+    if (this.gapRecoveryCount >= 3) return;
+    if (now - this.gapRecoveryLastAt < 10 * 60 * 1000) return;
+    const dayStart = new Date(today + 'T00:00:00').getTime();
+    // ★ 血压纳入检测（旧版只查 hr/hrv/spo2/eda，血压卡住永远不会自愈）
+    const METRICS: HSMetricKey[] = ['hr', 'hrv', 'spo2', 'bpSys', 'bpDia'];
+    const GAP_MS = 60 * 60 * 1000;                 // 内部缺口 > 1h 才判定为断连丢失
+    for (const m of METRICS) {
+      const pts = healthStore.getIntraday(m, today).filter((p) => p.t >= dayStart && p.t <= now);
+      if (pts.length < 4) continue;               // 样本太少（刚佩戴/刚同步）不判断
+      pts.sort((a, b) => a.t - b.t);
+      let maxGap = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const g = pts[i].t - pts[i - 1].t;
+        if (g > maxGap) maxGap = g;
+      }
+      const firstGap = pts[0].t - dayStart;
+      const lastGap = now - pts[pts.length - 1].t;
+      // 中间缺口必须「夹」在前后数据之间，才说明是佩戴中段的断连丢失
+      const middleGap = maxGap > GAP_MS && firstGap < GAP_MS && lastGap < GAP_MS;
+      // ★ 尾部停更：末点距 now >1h。旧实现要求 lastGap<1h，恰好把「HRV/血压停在 20:00」
+      //   这种最典型的形态当成同步边界跳过，导致自愈永远不触发。凌晨刚起床不判，避免误触发。
+      const tailStall = lastGap > GAP_MS && (now - dayStart) > 2 * GAP_MS;
+      if (middleGap || tailStall) {
+        const why = middleGap
+          ? `中间缺口 ${Math.round(maxGap / 60000)}min`
+          : `尾部停更 ${Math.round(lastGap / 60000)}min（末点 ${new Date(pts[pts.length - 1].t).toTimeString().slice(0, 5)}）`;
+        postLog('RingBle', `[GapRecovery] ⚠️ ${m} 今日${why} → 触发全量回补（今日第 ${this.gapRecoveryCount + 1} 次）`);
+        this.gapRecoveryActive = true;
+        this.gapRecoveryDay = today;
+        this.gapRecoveryCount += 1;
+        this.gapRecoveryLastAt = now;
+        // ★ 2026-11-14（用户：断点回填，不要全量）：缺口只可能在今日（或跨日尾段），
+        //   用「昨日游标」做增量回拉即可重发今日样本填补缺口，避免重读戒指在端存储全量历史。
+        const recoverFrom = dayKeyOf(now - 24 * 60 * 60 * 1000);
+        this.syncAll('缺口自愈', { from: recoverFrom });
+        return;
+      }
     }
   }
 
@@ -2756,11 +2981,12 @@ class NativeRingSource {
         });
       }
       // 日值：血氧 / HRV / 体温 / 血压
-      const spo2 = num(raw.spo2); if (spo2 != null && spo2 > 0) this.handleSpo2Day({ date, value: spo2 });
-      const hrv = num(raw.hrv);   if (hrv != null && hrv > 0)  this.handleHrvDay({ date, value: hrv });
-      const temp = num(raw.temp); if (temp != null && temp > 0) this.handleTempDay({ date, value: temp });
+      // ★ 2026-11-13：落库前过滤生理上不可能的脏读数（如血氧 1%、血压 39 占位值）
+      const spo2 = num(raw.spo2); if (spo2 != null && physioValid('spo2', spo2)) this.handleSpo2Day({ date, value: spo2 });
+      const hrv = num(raw.hrv);   if (hrv != null && physioValid('hrv', hrv))  this.handleHrvDay({ date, value: hrv });
+      const temp = num(raw.temp); if (temp != null && physioValid('temp', temp)) this.handleTempDay({ date, value: temp });
       const sys = num(raw.bpSys); const dia = num(raw.bpDia);
-      if (sys != null && dia != null && sys > 0 && dia > 0) this.handleBpDay({ date, sys, dia });
+      if (sys != null && dia != null && physioValid('bpSys', sys) && physioValid('bpDia', dia)) this.handleBpDay({ date, sys, dia });
     } catch { /* 静默 */ }
   };
 
@@ -2782,7 +3008,7 @@ class NativeRingSource {
       if (raw?.date === '2026-09-17' || /-09-17$/.test(raw?.date || '')) {
         try {
           import('expo-file-system').then(fs => {
-            const path = fs.DocumentDirectoryPath + '/JS_RAW_SLOTS_917.json';
+            const path = (fs.documentDirectory ?? '') + '/JS_RAW_SLOTS_917.json';
             fs.writeAsStringAsync(path, JSON.stringify(raw.slots?.slice(0, 50) || [], null, 2));
           }).catch(()=>{});
         } catch {}
@@ -2794,10 +3020,10 @@ class NativeRingSource {
       if (raw.slots.length > 0) {
         const s0 = raw.slots[0];
         const sLast = raw.slots[raw.slots.length - 1];
-        const hasSpo2 = raw.slots.filter(s => s.spo2 && Number(s.spo2) > 0).length;
-        const hasHrv = raw.slots.filter(s => s.hrv && Number(s.hrv) > 0).length;
-        const hasTemp = raw.slots.filter(s => s.temp && Number(s.temp) > 30).length;
-        const hasGluc = raw.slots.filter(s => s.glucose && Number(s.glucose) > 0).length;
+        const hasSpo2 = raw.slots.filter((s: any) => s.spo2 && Number(s.spo2) > 0).length;
+        const hasHrv = raw.slots.filter((s: any) => s.hrv && Number(s.hrv) > 0).length;
+        const hasTemp = raw.slots.filter((s: any) => s.temp && Number(s.temp) > 30).length;
+        const hasGluc = raw.slots.filter((s: any) => s.glucose && Number(s.glucose) > 0).length;
         console.log(`[BackfillSamples] date=${date} slot0=`, JSON.stringify(s0));
         console.log(`[BackfillSamples] spo2=${hasSpo2} hrv=${hasHrv} temp=${hasTemp} glucose=${hasGluc}`);
       }
@@ -3188,7 +3414,7 @@ steps点数=${reshaped.steps?.length ?? 0}`,
         if (v == null) continue;
         // 恢复原状
 
-        if (v <= 0) continue;  // 0/负数都是占位符（生理指标不可能为0）
+        if (v <= 0 || v < 50 || v > 100) continue;  // 0/负数/非 50~100 的占位符或脏读数直接丢弃
         const ts = sampleTimeMs(s.t, baseMs);
         if (!Number.isFinite(ts)) continue;
         parsed.push({ t: ts, v });
@@ -3512,6 +3738,11 @@ steps点数=${reshaped.steps?.length ?? 0}`,
   private handleSpo2Day = (raw: { date?: string; value?: number }) => {
     try {
       if (!raw || !raw.date || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return;
+      // ★ 2026-11-13：血氧生理有效区间 [50,100]，脏读数（如 1% 或 186%）直接丢弃，不污染今日血氧/趋势
+      if (raw.value < 50 || raw.value > 100) {
+        postLog('RingBle', `[handleSpo2Day] ⛔ 拦截脏血氧值=${raw.value}（非 50~100），跳过`);
+        return;
+      }
       const date = String(raw.date);
       const dk = dateKeyOfStr(date);
       if (!dk) { postLog('RingBle', `[handleSleepDay] 非法 date=${date}, 跳过`); return; }
@@ -3553,9 +3784,25 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     }
   };
 
+  /** ★ 2026-11-13 修复：原来误写成 `void this.startScan()`，但 NativeRingSource 没有该方法
+   *  （startScan 属于外层 RingConnectionImpl），一走扫描就抛 "undefined is not a function"。
+   *  旧流程一直按 MAC 直连绕开了扫描路径，改成「先扫描再决策」后必现。 */
   scan() { VeepooNative?.scan(); }
   stopScan() { VeepooNative?.stopScan(); }
-  connect(id: string) { VeepooNative?.connect(id); }
+  /**
+   * ★ 2026-11-13 权限闸门：Android 12+ 必须在运行时申请 BLUETOOTH_SCAN / BLUETOOTH_CONNECT，
+   * 否则原生扫描拿不到设备 MAC/名称（被空值过滤）、connectDevice 静默失败 → 戒指连不上。
+   * 未授予则置 error(permission_denied) 并 return，避免原生层静默失败让用户干等。
+   */
+  async connect(id: string) {
+    if (!(await ensureBlePermissions())) {
+      // ★ 2026-11-13：本类只有 push（构造参数），applyPatch 属于外层 RingConnectionImpl，
+      //  误调会在「权限被拒」时抛 undefined is not a function，用户完全看不到失败原因。
+      this.push({ status: 'error', error: 'permission_denied' });
+      return;
+    }
+    VeepooNative?.connect(id);
+  }
   disconnect() {
     if (this.batteryTimer != null) { clearInterval(this.batteryTimer); this.batteryTimer = null; }
     VeepooNative?.disconnect();
@@ -4062,6 +4309,9 @@ class RingConnectionImpl {
   private syncProgressListeners = new Set<(p: SyncProgress | null) => void>();
   /** 「同步中」兜底定时器：太久没收到结束信号就自动清掉浮层 */
   private syncProgressTimer: ReturnType<typeof setTimeout> | null = null;
+  /** ★ 2026-11-13：最近一次同步进度快照。页面（洞察页指标卡）挂载时用它判断
+   *  「同步是否已经在跑」，避免订阅建立前就发生的同步被漏掉、卡片误显示「暂未读到数据」。 */
+  private lastSyncProgress: SyncProgress | null = null;
   private state: RingState = {
     status: 'idle',
     deviceName: null,
@@ -4147,8 +4397,39 @@ class RingConnectionImpl {
   private autoLinkWasConnected = false;
   /** 8s 内不重复发起，避免 error/idle 回调引发连接风暴 */
   private autoLinkBusyUntil = 0;
-  /** 上次连上的 MAC；掉线后据此直连，不再等广播 */
+  /** 上次连上的 MAC；仅用于日志与已连接展示，不再驱动启动直连（见 decideAfterScan） */
   private knownMac: string | null = null;
+
+  // ── ★ 2026-11-13（用户）：扫描结果决策 ──────────────────────────────────
+  //   规则：搜到 1 枚 → 自动直连；搜到 ≥2 枚 → 全部列出等用户选；0 枚 → 可重试。
+  //   绝不按持久化 MAC / 硬编码兜底 MAC 启动直连（用户有两枚戒指，会连错那枚）。
+  /** 多枚戒指正在等用户点选：此时不自动连、不自动重扫，避免把用户的选择冲掉 */
+  private awaitingDeviceChoice = false;
+  /** 本轮扫描是否已决策（原生 onSearchStopped / onSearchCanceled 可能都回调） */
+  private scanDecisionDone = false;
+  /** 原生没回调 scanFinished 时的兜底决策定时器 */
+  private scanDecisionTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ── ★ 2026-11-13 真机验收（上线前）：绝不自动切到另一枚戒指 ────────────────
+  //   事故复现：用户有两枚戒指（96% / 43%）。某轮扫描只有 43% 那枚在广播，12s 兜底
+  //   看到「只检测到 1 枚」就直接 connectToId → 自动把用户切到另一枚并换数据桶。
+  //   用户明确要求「不要连另一个，列出来我自己选」。
+  //   规则：只要本机曾经在同一轮扫描里见过 ≥2 枚，就永久记住「这是多戒指环境」，
+  //   之后任何一轮扫描（哪怕只扫到 1 枚）都一律列出已知全部戒指等用户点选，不自动连。
+  /** 是否确认过「多戒指环境」；为真时永不自动直连 */
+  private multiRingKnown = false;
+  /** 已知戒指 MAC（跨会话持久化） */
+  private knownRingIds: string[] = [];
+  /** 本轮扫描累计见到的 MAC（流式 scanResult 每帧可能只报 1 台，必须跨帧合并） */
+  private scanSeenThisRound = new Set<string>();
+
+  // ── ★ 2026-11-13（用户实锤「两枚戒指数据混了」）：数据按戒指 MAC 分桶 ──────
+  //   旧实现所有戒指共用一份 mira_ring_state_v1.json + mira_health_store_v2.json，
+  //   换戒指后另一枚的离线回填仍被读取 →「昨晚才戴的新戒指」显示好几天前的数据。
+  /** 当前数据归属的戒指 MAC；null/未识别时用 _unassigned 桶 */
+  private activeDeviceKey: string | null = null;
+  /** 切桶期间的并发闸 */
+  private deviceSwitching = false;
 
   /**
    * 「数据同步」总开关（持久化）：唯一控制 backfill 的来源。
@@ -4421,7 +4702,9 @@ class RingConnectionImpl {
       },
       // 同步进度回调 → 独立轻量通道（底部「正在同步数据 x%」浮层订阅它）
       (p) => this.pushSyncProgress(p),
-      (d: string | null) => { this.lastBackfillAt = Date.now(); this.persistSyncFlag(d); }
+      (d: string | null) => { this.lastBackfillAt = Date.now(); this.persistSyncFlag(d); },
+      // ★ 原生扫描结束 → 外层决策：只搜到 1 枚就直连，≥2 枚全部列出等用户选
+      (list: any[]) => this.decideAfterScan(list)
     );
     // ★ 2026-11-05：后端 refreshMetrics 现在每 10s 推一次 daily（真实日值投影）。
     //   applyPatch 是浅合并，直接推 daily 会整体覆盖 syncExtendedDaily 写进 state 的
@@ -4443,8 +4726,13 @@ class RingConnectionImpl {
     this.state.protocol = this.useNative ? 'Veepoo·原生' : 'Veepoo·后端';
     // ★ 2026-11-05：原生直连模式下也补齐云端按天真实回读值（详见 startDailyFallback）。
     if (this.useNative) void this.backend.startDailyFallback();
-    // 跨 ⌘R 保留真实数据：启动时异步恢复本地快照（沙盒文件），戒指重连前的空窗期也能看到趋势
-    void this.loadPersisted();
+    // ★ 2026-11-13：启动先确定「上次是哪枚戒指」并归档旧版单份存档，再加载对应数据桶，
+    //   避免两枚戒指共用一份快照导致换戒指后显示另一枚的历史日数据。
+    void this.initDeviceBucket();
+    // ★ 恢复「已知几枚戒指」：多戒指环境跨会话记住，重启后也不会自动连错那枚
+    void this.loadKnownRings();
+    // ★ 恢复每枚戒指的身份名片（固件/电量/上次连接），供扫描列表在点选前区分同名戒指
+    void loadRingDeviceCards();
     // 恢复「数据同步」开关（独立于快照，确保开关状态总能落盘）
     void this.loadSyncFlag();
     // 读取用户在 App 内手动记录的经期（本地 cycleLog），相位计算据此兜底，避免"记了却显示未记录"
@@ -4463,6 +4751,17 @@ class RingConnectionImpl {
         try {
           this.scheduleRecomputeDailyStatus(Date.now(), true);
           postLog('RingBle', '[FOREGROUND_RECOMPUTE] App 回到前台已重算今日状态');
+        } catch (e) {}
+        // ★ 2026-11-14（用户：后台断联回前台别让人手动连）：OS 在后台掐了 GATT，
+        //   回前台立即静默补连，不依赖 30s watchdog 的延迟，用户无感、无需点。
+        //   仅当非用户主动断开、非待选戒指、且当前确未连接时才补连（多戒指环境仍交用户点选）。
+        try {
+          const st = this.getState();
+          if (!this.userStoppedLink && !this.awaitingDeviceChoice
+              && (st.status === 'idle' || st.status === 'error')) {
+            postLog('RingBle', '[autoLink] App 回前台检测到未连接 → 立即静默补连');
+            void this.runAutoLink('App 回前台');
+          }
         } catch (e) {}
       });
     } catch (e) {}
@@ -4599,6 +4898,46 @@ class RingConnectionImpl {
   }
 
   private applyPatch(patch: StatePatch) {
+    // ★ 2026-11-13（用户：「固件不显示，连的时候不知道要连哪个戒指」）：
+    //   原生在 confirmDevicePwd 的 PwdData 回调里才给固件版本，扫描帧里没有。
+    //   这里把本机按 MAC 记住的名片贴到每个列表项上，选戒指时即可看到
+    //   「固件 00.12.09 · 上次连接 11/13」；同时把新读到的固件写回名片。
+    if (typeof patch.firmware === 'string' && patch.firmware.trim()) {
+      const mac = String(patch.deviceId ?? this.state.deviceId ?? '').trim().toUpperCase();
+      if (mac) {
+        void rememberRingDeviceCard(mac, {
+          firmware: patch.firmware.trim(),
+          battery: typeof this.state.battery === 'number' ? this.state.battery : undefined,
+          lastConnectedAt: Date.now(),
+        });
+      }
+    }
+    if (Array.isArray(patch.devices)) {
+      patch = {
+        ...patch,
+        devices: patch.devices.map((d) => {
+          const card = ringDeviceCardOf(d?.id);
+          return {
+            ...d,
+            firmware: card?.firmware ?? null,
+            lastConnectedAt: card?.lastConnectedAt ?? null,
+            lastBattery: card?.battery ?? null,
+          };
+        }),
+      };
+    }
+    // ★ 2026-11-13 上线前验收：所有扫描帧都经这里合并到 state，在这里统一跨帧累计戒指 MAC。
+    //   NativeRingSource 是独立类，不能在那里直接调外层字段（会 TS2339 / undefined is not...）。
+    //   SDK 每帧可能只报 1 台，两枚戒指常分在不同帧，必须在这一层合并才认得出来。
+    if (Array.isArray(patch.devices) && patch.devices.length) {
+      patch.devices.forEach((d: any) => {
+        const id = String(d?.id ?? '').trim().toUpperCase();
+        if (id) this.scanSeenThisRound.add(id);
+      });
+      if (this.scanSeenThisRound.size >= 2) {
+        void this.confirmMultiRing([...this.scanSeenThisRound]);
+      }
+    }
     // ★ 边沿检测：必须在 this.state 被合并【之前】取旧值，用于判断「是否刚刚连上」。
     const prevStatus = this.state.status;
     // eslint-disable-next-line no-console
@@ -4784,6 +5123,8 @@ class RingConnectionImpl {
     for (const m of batch) {
       if (CORE_KEYS.includes(m.key as MetricKey)) {
         const k = m.key as MetricKey;
+        // ★ 2026-11-13：落库前过滤生理上不可能的脏读数（血氧 1%、心率/血压越界），避免污染 metrics/趋势图
+        if (!physioValid(k, m.value)) { postLog('JS', `[applyMetric] ⛔ 拦截脏读数 key=${k} v=${m.value}`); continue; }
         metrics[k] = m.value;
         this.ingest(k, m.value, m.ts ?? Date.now());
         healthStore.upsertRealtime(k, { t: m.ts ?? Date.now(), v: m.value });
@@ -6301,15 +6642,119 @@ class RingConnectionImpl {
     return false;
   }
 
-  private snapshotPath(): string | null {
-    if (!FileSystem.documentDirectory) return null;
-    return FileSystem.documentDirectory + 'mira_ring_state_v1.json';
+  /** ★ 2026-11-13：按戒指 MAC 生成存档后缀，两枚戒指绝不共用一个文件。 */
+  private deviceBucketSuffix(): string {
+    const mac = String(this.activeDeviceKey ?? '').trim().toUpperCase();
+    return mac ? '_' + mac.replace(/[^A-Z0-9]/g, '') : '_unassigned';
   }
 
-  /** healthStore（v2 单一数据源）持久化文件。 */
+  private snapshotPath(): string | null {
+    if (!FileSystem.documentDirectory) return null;
+    return FileSystem.documentDirectory + 'mira_ring_state_v1' + this.deviceBucketSuffix() + '.json';
+  }
+
+  /** healthStore（v2 单一数据源）持久化文件，同样按戒指分桶。 */
   private healthStorePath(): string | null {
     if (!FileSystem.documentDirectory) return null;
-    return FileSystem.documentDirectory + 'mira_health_store_v2.json';
+    return FileSystem.documentDirectory + 'mira_health_store_v2' + this.deviceBucketSuffix() + '.json';
+  }
+
+  /** 记录「上次连接的是哪枚戒指」，冷启动据此加载对应数据桶。 */
+  private activeRingPath(): string | null {
+    if (!FileSystem.documentDirectory) return null;
+    return FileSystem.documentDirectory + 'mira_active_ring_v1.json';
+  }
+
+  /**
+   * 冷启动：① 读上次戒指 MAC；② 把旧版单份存档一次性归档到 9B:1C 桶（历史不丢）；
+   * ③ 再加载对应桶的快照。
+   * 旧数据归属依据 ringDataIsolation.CURRENT_BASE_RING_ID —— 用户 2026-11-05 确认的
+   * 长期佩戴基础版 MAC，不是猜测值；另一枚戒指从干净的独立桶开始。
+   */
+  private async initDeviceBucket(): Promise<void> {
+    const p = this.activeRingPath();
+    if (p) {
+      try {
+        const info = await FileSystem.getInfoAsync(p);
+        if (info.exists) {
+          const j = JSON.parse(await FileSystem.readAsStringAsync(p));
+          if (j && typeof j.mac === 'string') {
+            this.activeDeviceKey = String(j.mac).trim().toUpperCase() || null;
+          }
+        }
+      } catch { /* 读不到就用默认值 */ }
+    }
+    if (FileSystem.documentDirectory) {
+      const dir = FileSystem.documentDirectory;
+      const legacyPairs: [string, string][] = [
+        ['mira_ring_state_v1.json', 'mira_ring_state_v1_4142E7179B1C.json'],
+        ['mira_health_store_v2.json', 'mira_health_store_v2_4142E7179B1C.json'],
+      ];
+      for (const [from, to] of legacyPairs) {
+        try {
+          const a = await FileSystem.getInfoAsync(dir + from);
+          const b = await FileSystem.getInfoAsync(dir + to);
+          // 只复制不删除：旧文件保留作备份，绝不破坏用户已有数据
+          if (a.exists && !b.exists) {
+            // 用读写复制而非 copyAsync：项目里这两个 API 已稳定使用，
+            // 不受 expo-file-system 新旧版 File.copy / copyAsync 差异影响。
+            const content = await FileSystem.readAsStringAsync(dir + from);
+            await FileSystem.writeAsStringAsync(dir + to, content);
+            postLog('RingBle', `[DataIsolation] 旧单份存档已归档到 9B:1C：${from} → ${to}`);
+          }
+        } catch { /* ignore */ }
+      }
+      if (!this.activeDeviceKey) this.activeDeviceKey = '41:42:E7:17:9B:1C';
+    }
+    await this.loadPersisted();
+  }
+
+  private async persistActiveRing(mac: string): Promise<void> {
+    const p = this.activeRingPath();
+    if (!p) return;
+    try {
+      await FileSystem.writeAsStringAsync(p, JSON.stringify({ mac, at: Date.now() }));
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * 换戒指：存旧桶 → 清空内存数据 → 切 MAC → 加载新桶。
+   * 必须在**发起连接之前**调用（connectToId 里），避开「边回填边清」的竞态；
+   * 新戒指若没有自己的存档就从零开始，绝不继承另一枚的历史日数据。
+   */
+  private async switchDeviceData(mac: string): Promise<void> {
+    const next = String(mac).trim().toUpperCase();
+    if (!next || next === this.activeDeviceKey || this.deviceSwitching) return;
+    this.deviceSwitching = true;
+    try {
+      postLog('RingBle', `[DataIsolation] 换戒指 ${this.activeDeviceKey ?? '未识别'} → ${next}，切换独立数据桶`);
+      await this.saveSnapshot(); // 旧桶收尾，数据不丢
+      healthStore.clear();
+      Object.assign(this.state, {
+        metrics: { ...DEFAULT_METRICS },
+        availability: { ...DEFAULT_AVAILABILITY },
+        history: { ...EMPTY_HISTORY },
+        lastUpdated: { ...DEFAULT_LAST_UPDATED },
+        daily: {}, dailyHistory: {}, tempDaily: {}, hrvDaily: {}, hrDaily: {},
+        spo2Daily: {}, edaDaily: {}, rrDaily: {}, sleepDaily: {}, stepDaily: {},
+        seriesByDay: {}, statusHistory: [], statusDaily: {}, statusTimeline: [],
+        statusTimelineByDay: {}, dailyCurve: null, curveStatus: null,
+        sleepStages: null, sleepStagesDaily: {}, sleepStagesSynthesizedDays: {},
+        sleepSummary: null, sleepSummaryDate: null, sleepTime: null, wakeTime: null,
+        lastSyncedAt: null, lastBackfillAt: null, extDaily: {},
+        sportSessions: null, deviceCapabilities: null, female: null,
+        ecg: null, ecgHistory: [], ecgDeviceId: null,
+      });
+      for (const k of Object.keys(this.dayBuckets) as MetricKey[]) this.dayBuckets[k].clear();
+      for (const k of Object.keys(this.extBuckets)) this.extBuckets[k].clear();
+      this.activeDeviceKey = next;
+      await this.persistActiveRing(next);
+      await this.loadPersisted(); // 新桶不存在 → 保持空数据
+      this.emit();               // 强制所有订阅界面按新桶重算
+      postLog('RingBle', `[DataIsolation] ✅ 已切到 ${next} 的独立数据桶`);
+    } finally {
+      this.deviceSwitching = false;
+    }
   }
 
   /** 「数据同步」开关独立持久化文件：不依赖快照是否有数据，确保开关状态总能落盘/恢复。 */
@@ -6656,21 +7101,13 @@ class RingConnectionImpl {
     this.autoLinkInstalled = true;
     this.userStoppedLink = false;
     const st = this.getState();
-    if (st.deviceId) {
-      this.knownMac = String(st.deviceId);
-    } else {
-      // 快照丢失时，用「用户已确认的 LunaMira 基础版 MAC」兜底直连，
-      // 不退化成只能靠 10s 广播窗口碰运气（见 config/deviceModel.ts DEVICE_ID_PROFILES）。
-      const baseMac = Object.keys(DEVICE_ID_PROFILES).find((k) => DEVICE_ID_PROFILES[k] === 'BASE_UI');
-      if (baseMac) {
-        this.knownMac = baseMac;
-        postLog('RingBle', `[autoLink] 快照无 MAC，用已知 LunaMira MAC 兜底 ${baseMac}`);
-      }
-    }
+    // ★ 2026-11-13（用户有两枚戒指）：不再从快照 / 硬编码兜底 MAC 启动直连。
+    //  启动必须重新扫描全部候选，由 decideAfterScan() 按最终数量决策；
+    //  knownMac 仅作日志与已连接展示，不再驱动自动连接。
+    if (st.deviceId) this.knownMac = String(st.deviceId);
 
     this.autoLinkUnsub = this.onState((s) => {
-      // 1) 扫到设备 → 命中 LunaMira（优先已知 MAC）立即连，不等用户点
-      if (Array.isArray(s.devices) && s.devices.length > 0) this.onAutoLinkDevices(s.devices);
+      // 1) 扫到设备不再「命中即连」：扫描是流式上报，统一等 final 帧后由 decideAfterScan() 决策
       // 2) 连上 → 归零退避、记住 MAC、停掉待重试
       if (s.status === 'connected') {
         this.autoLinkRetries = 0;
@@ -6692,7 +7129,7 @@ class RingConnectionImpl {
     // 低频 watchdog：覆盖「原生静默掉线、没发 disconnected」的情况
     this.autoLinkWatchdog = setInterval(() => {
       const cur = this.getState();
-      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting') return;
+      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting' || this.awaitingDeviceChoice) return;
       void this.runAutoLink('watchdog');
     }, 30_000);
 
@@ -6723,7 +7160,7 @@ class RingConnectionImpl {
 
   /** 退避排程：断线后 2s→4s→6s…（上限 30s）持续尝试，不设「3 次就放弃」。 */
   private scheduleAutoLink(reason: string, delay?: number): void {
-    if (!this.useNative || this.userStoppedLink) return;
+    if (!this.useNative || this.userStoppedLink || this.awaitingDeviceChoice) return;
     const cur = this.getState();
     if (cur.status === 'connected' || cur.status === 'connecting') return;
     this.clearAutoLinkTimer();
@@ -6731,7 +7168,7 @@ class RingConnectionImpl {
     this.autoLinkTimer = setTimeout(() => {
       this.autoLinkTimer = null;
       const s = this.getState();
-      if (this.userStoppedLink || s.status === 'connected' || s.status === 'connecting') return;
+      if (this.userStoppedLink || this.awaitingDeviceChoice || s.status === 'connected' || s.status === 'connecting') return;
       this.autoLinkRetries = Math.min(this.autoLinkRetries + 1, 12);
       void this.runAutoLink(reason);
     }, d);
@@ -6748,20 +7185,14 @@ class RingConnectionImpl {
     if (!this.useNative || this.userStoppedLink) return;
     const st = this.getState();
     if (st.status === 'connected' || st.status === 'connecting' || st.status === 'scanning') return;
+    if (this.awaitingDeviceChoice) return; // 多枚戒指待用户选，不自动连、不重扫
     const now = Date.now();
     if (now < this.autoLinkBusyUntil) return;
     this.autoLinkBusyUntil = now + 8000;
 
-    const mac = this.knownMac ?? st.deviceId ?? null;
-    if (mac) {
-      postLog('RingBle', `[autoLink] ${reason} → 按已知 MAC 直连 ${mac}（不依赖广播）`);
-      this.applyPatch({ status: 'connecting', error: null });
-      this.native.connect(mac);
-      // 原生连接超时约 30s；这里 14s 后若无结果就再排一轮（会被 busy 节流）
-      this.scheduleAutoLink('直连兜底', 14_000);
-      return;
-    }
-    postLog('RingBle', `[autoLink] ${reason} → 无已知 MAC，启动扫描找 LunaMira`);
+    // ★ 2026-11-13（用户）：不再按持久化 MAC 直连，一律先扫描全部候选，
+    //   由 decideAfterScan() 按最终数量决定「1 枚直连 / 多枚列出来让用户选」。
+    postLog('RingBle', `[autoLink] ${reason} → 扫描全部戒指（1 枚直连 / 多枚列出待选）`);
     try {
       await this.startScan();
     } catch (e) {
@@ -6770,24 +7201,137 @@ class RingConnectionImpl {
     this.scheduleAutoLink('扫描兜底', 16_000);
   }
 
-  /** scanResult 命中即连：优先已知 MAC，其次广播名含 luna/mira（真机名是 `Lunamira`，无空格）。 */
-  private onAutoLinkDevices(list: any[]): void {
-    if (!this.useNative || this.userStoppedLink) return;
-    const st = this.getState();
-    if (st.status === 'connected' || st.status === 'connecting') return;
-    const mac = this.knownMac ?? st.deviceId;
-    const isLuna = (n: unknown) => /luna|mira/i.test(String(n ?? ''));
-    const hit =
-      (mac ? list.find((d: any) => String(d?.id ?? d?.deviceId ?? '') === String(mac)) : null) ??
-      list.find((d: any) => isLuna(d?.name)) ??
-      null;
-    if (!hit) return;
-    const id = String(hit?.id ?? '');
-    if (!id) return;
-    this.knownMac = id;
-    this.autoLinkBusyUntil = Date.now() + 8000;
-    postLog('RingBle', `[autoLink] 🔎 扫到 ${hit?.name ?? '?'}@${id} → 立即自动连接`);
-    void this.connectToId(id);
+  /**
+   * ★ 2026-11-13（用户）+ 上线前真机验收：扫描窗口结束后按「已知戒指环境」决策。
+   *   · 单枚环境（从没同时见过 2 枚）+ 本轮 1 枚 → 自动直连（不用用户点）
+   *   · 本轮跨帧累计 ≥2 枚，或已确认过多戒指环境 → 全部列出，状态回 idle 等用户自己选
+   *   · 0 枚 → 回 idle，由保活继续重试扫描
+   *   注意：不能只看某一帧或最后一帧的台数。SDK 是流式上报，两枚戒指常分在不同帧；
+   *   且某轮可能只有一枚在广播，此时按「只有 1 枚」直连就会把用户切到另一枚戒指。
+   */
+  private decideAfterScan(list: any[]): void {
+    if (this.scanDecisionDone) return;
+    this.scanDecisionDone = true;
+    this.clearScanDecisionTimer();
+    const devices = (Array.isArray(list) ? list : [])
+      .filter((d) => d && typeof d.id === 'string' && d.id.length > 0)
+      .map((d) => ({
+        id: String(d.id),
+        name: String(d.name ?? 'Luna Mira'),
+        rssi: typeof d.rssi === 'number' ? d.rssi : null,
+        recommended: !!d.recommended,
+      }));
+    const cur = this.getState().status;
+    if (cur === 'connected' || cur === 'connecting') return;
+
+    // ★ 2026-11-13 真机验收（上线前）：不能用「本帧/本轮 scan 到的台数」决定要不要直连。
+    //   用户有两枚戒指，某轮只有一枚在广播时，旧逻辑会判定「只有 1 枚」→ 自动直连，
+    //   把用户切到另一枚戒指（实测电量 96% → 43%），正是明令禁止的「不要连另一个」。
+    //   合并本轮跨帧累计 + 历史已知 MAC；一旦确认过多戒指环境，永远列出让用户选。
+    const seen = new Set<string>([
+      ...this.scanSeenThisRound,
+      ...devices.map((d) => String(d.id).toUpperCase()),
+    ]);
+    const allIds = this.multiRingKnown
+      ? [...new Set([...seen, ...this.knownRingIds])]
+      : [...seen];
+
+    if (this.multiRingKnown || allIds.length >= 2) {
+      // ★ 2026-11-14（用户确认：退出 App 戒指就断连，上次连接的那枚要自动连回来，别再让人手动点）：
+      //   多戒指环境仍保留 11-13 防误连保护，但「上次连接的那枚」（activeDeviceKey）本轮正在
+      //   广播时直接静默直连它——那枚本来就是用户自己选的，不存在「连到另一枚」的误连；
+      //   它没在广播时才维持原保护（全部列出等用户点选）。
+      const lastId = String(this.activeDeviceKey ?? '').trim().toUpperCase();
+      const hitLast = lastId
+        ? devices.find((d) => String(d.id).trim().toUpperCase() === lastId)
+        : undefined;
+      if (hitLast) {
+        this.awaitingDeviceChoice = false;
+        postLog('RingBle', `[Scan] 多戒指环境：上次连接的 ${hitLast.name}@${lastId} 正在广播 → 自动直连（其余戒指仍可手动切换）`);
+        void this.connectToId(lastId);
+        return;
+      }
+      // 已知但本轮没广播的戒指也要列出来（信号显示为空），用户仍可点选。
+      const listed = allIds.map((id) => {
+        const hit = devices.find((d) => String(d.id).toUpperCase() === id);
+        return hit ?? { id, name: 'Luna Mira', rssi: null, recommended: false };
+      });
+      this.awaitingDeviceChoice = true;
+      this.applyPatch({ status: 'idle', error: null, devices: listed });
+      postLog('RingBle', `[Scan] 已知/检测到 ${listed.length} 枚戒指 → 全部列出，等待用户选择（不自动连）`);
+      return;
+    }
+    if (allIds.length === 1) {
+      this.awaitingDeviceChoice = false;
+      const only = devices.find((d) => String(d.id).toUpperCase() === allIds[0]) ?? devices[0];
+      postLog('RingBle', `[Scan] 只检测到 1 枚戒指 ${only?.name}@${allIds[0]} → 自动直连`);
+      void this.connectToId(String(allIds[0]));
+      return;
+    }
+    this.awaitingDeviceChoice = false;
+    this.applyPatch({ status: 'idle', error: null });
+    postLog('RingBle', '[Scan] 本轮未搜索到戒指，保活会继续重试');
+  }
+
+  /** 已知戒指集合的存档路径（与数据分桶同放私有目录，覆盖安装不丢）。 */
+  private knownRingsPath(): string | null {
+    if (!FileSystem.documentDirectory) return null;
+    return FileSystem.documentDirectory + 'mira_known_rings_v1.json';
+  }
+
+  /** 启动时恢复「这台手机上有几枚戒指」。读不到就按单枚环境处理，不影响首次体验。 */
+  private async loadKnownRings(): Promise<void> {
+    const p = this.knownRingsPath();
+    if (!p) return;
+    try {
+      const info = await FileSystem.getInfoAsync(p);
+      if (!info.exists) return;
+      const obj = JSON.parse(await FileSystem.readAsStringAsync(p));
+      const ids = Array.isArray(obj?.ids) ? obj.ids : [];
+      this.knownRingIds = [...new Set<string>(
+        ids.map((x: unknown) => String(x).trim().toUpperCase()).filter(Boolean),
+      )];
+      this.multiRingKnown = !!obj?.multi && this.knownRingIds.length >= 2;
+      if (this.multiRingKnown) {
+        postLog('RingBle', `[Scan] 已知多戒指环境（${this.knownRingIds.length} 枚）→ 始终列出等用户选，不自动连`);
+      }
+    } catch { /* 存档损坏按单枚环境处理 */ }
+  }
+
+  /** 同一轮扫描累计见到 ≥2 枚 → 确认「多戒指环境」并持久化。 */
+  private async confirmMultiRing(ids: string[]): Promise<void> {
+    const merged = [...new Set([...this.knownRingIds, ...ids])].filter(Boolean);
+    if (merged.length < 2) return;
+    const changed = !this.multiRingKnown || merged.length !== this.knownRingIds.length;
+    this.knownRingIds = merged;
+    this.multiRingKnown = true;
+    if (!changed) return;
+    postLog('RingBle', `[Scan] 确认多戒指环境，记住 ${merged.length} 枚：${merged.join(' | ')}`);
+    const p = this.knownRingsPath();
+    if (p) {
+      try {
+        await FileSystem.writeAsStringAsync(p, JSON.stringify({ ids: merged, multi: true, at: Date.now() }));
+      } catch { /* ignore */ }
+    }
+  }
+
+  /** 原生没回调 scanFinished 时，12s 后用当前累计列表兜底决策，避免状态卡死。 */
+  private armScanDecisionFallback(): void {
+    this.clearScanDecisionTimer();
+    this.scanDecisionTimer = setTimeout(() => {
+      this.scanDecisionTimer = null;
+      if (!this.scanDecisionDone) {
+        postLog('RingBle', '[Scan] ⏱ 未收到原生 scanFinished，用兜底定时器决策');
+        this.decideAfterScan(this.getState().devices);
+      }
+    }, 12_000);
+  }
+
+  private clearScanDecisionTimer(): void {
+    if (this.scanDecisionTimer) {
+      clearTimeout(this.scanDecisionTimer);
+      this.scanDecisionTimer = null;
+    }
   }
 
   /**
@@ -7145,7 +7689,7 @@ class RingConnectionImpl {
         // 3) lastUpdated 合并 healthStore 时间戳，避免 dataStale 误判「从未采到过数据」
         const hsLU = healthStore.getLastUpdated();
         if (hsLU && Object.keys(hsLU).length > 0) {
-          const mergedLU = { ...(this.state.lastUpdated ?? {}) };
+          const mergedLU: Record<string, number | null> = { ...(this.state.lastUpdated ?? {}) };
           for (const k of Object.keys(hsLU)) {
             const v = hsLU[k];
             if (typeof v === 'number' && (mergedLU[k] == null || v > (mergedLU[k] as number))) mergedLU[k] = v;
@@ -7257,6 +7801,8 @@ class RingConnectionImpl {
       clearTimeout(this.syncProgressTimer);
       this.syncProgressTimer = null;
     }
+    // ★ 先存快照再广播：页面挂载时读 getSyncProgress() 也能拿到当前同步态
+    this.lastSyncProgress = p;
     this.syncProgressListeners.forEach((cb) => {
       try {
         cb(p);
@@ -7267,6 +7813,7 @@ class RingConnectionImpl {
     if (p && p.active) {
       this.syncProgressTimer = setTimeout(() => {
         this.syncProgressTimer = null;
+        this.lastSyncProgress = null;
         this.syncProgressListeners.forEach((cb) => {
           try {
             cb(null);
@@ -7278,13 +7825,29 @@ class RingConnectionImpl {
     }
   }
 
+  /** 最近一次同步进度（页面挂载时判断「是否正在加载中」用）。null = 当前没有同步在跑。 */
+  getSyncProgress(): SyncProgress | null {
+    return this.lastSyncProgress;
+  }
+
   getState(): RingState {
     return this.state;
   }
 
   async startScan(): Promise<void> {
+    // ★ 2026-11-13：Android 蓝牙权限闸门（扫描前必须申请 BLUETOOTH_SCAN，否则扫不到设备）
+    if (this.useNative && !(await ensureBlePermissions())) {
+      this.applyPatch({ status: 'error', error: 'permission_denied' });
+      return;
+    }
     // ★ 2026-11-07：用户主动断开会拆掉保活；再次点「连接」是唯一的恢复入口。
     if (this.useNative && !this.autoLinkInstalled) this.startAutoLink();
+    // ★ 2026-11-13：每轮扫描都重置决策状态；用户点「重新扫描全部戒指」也会重新走
+    //   1 枚直连 / 多枚待选 的流程（同时解除上一轮可能残留的「待选择」状态）。
+    this.awaitingDeviceChoice = false;
+    this.scanDecisionDone = false;
+    this.scanSeenThisRound.clear();
+    this.armScanDecisionFallback();
     this.applyPatch({ status: 'scanning', error: null, devices: [], flashResult: null });
     if (this.useNative) {
       this.native.scan();
@@ -7299,7 +7862,27 @@ class RingConnectionImpl {
     }
   }
 
-  async connect(): Promise<void> {
+  /**
+   * ★ 2026-11-13 修复「按已知 MAC 直连」断链：
+   *   此前本方法签名无参，runAutoLink() 的 connect(mac) 与 connectToId() 的 connect(id)
+   *   传入的 MAC 被静默丢弃，实际只执行 startScan()（只扫描、从不发起 GATT 连接），
+   *   日志表现为 connecting → scanning 之后无任何回调，设置页又被 ringBusy 永久禁用按钮。
+   *   有 MAC 时走 NativeRingSource.connect(id)：内部过 Android 蓝牙权限闸门 + VeepooNative.connect(id)。
+   */
+  async connect(id?: string): Promise<void> {
+    if (id && this.useNative) {
+      this.applyPatch({ status: 'connecting', error: null });
+      await this.native.connect(id);
+      // 原生偶发静默（既不发 connected 也不发 error）时按时释放状态，避免 UI 死锁
+      setTimeout(() => {
+        const s = this.getState().status;
+        if (s === 'connecting' || s === 'scanning') {
+          postLog('RingBle', '[connect] ⏱ 20s 未收到连接回调，释放状态避免按钮死锁');
+          this.applyPatch({ status: 'idle' });
+        }
+      }, 20_000);
+      return;
+    }
     await this.startScan();
   }
 
@@ -7307,10 +7890,18 @@ class RingConnectionImpl {
     // 手动点选设备 = 用户同意连接 → 恢复保活并记住这枚戒指的 MAC
     this.userStoppedLink = false;
     if (id) this.knownMac = String(id);
+    // ★ 2026-11-13：用户已做出选择，撤销「多枚待选」并停掉兜底决策，避免覆盖这次连接
+    this.awaitingDeviceChoice = false;
+    this.scanDecisionDone = true;
+    this.clearScanDecisionTimer();
     if (!this.autoLinkInstalled) this.startAutoLink();
+    // ★ 2026-11-13：连接前先切到这枚戒指的独立数据桶。
+    //   放在 connect() 之前是为了避开「原生已开始回填、这边才清空」的竞态。
+    await this.switchDeviceData(id);
     this.applyPatch({ status: 'connecting', error: null });
     if (this.useNative) {
-      this.native.connect(id);
+      // ★ 2026-11-13：改走 connect() 以便经过 Android 蓝牙权限闸门
+      void this.connect(id);
     } else {
       // 后端模式：直接以该设备刷新
       this.backend.disconnect();
@@ -7322,6 +7913,12 @@ class RingConnectionImpl {
     // ★ 2026-11-07：用户主动断开 → 停掉常驻保活，不再自动连回来。
     //   必须在 applyPatch(idle) 之前拆订阅，否则 idle 会立刻触发补连。
     this.userStoppedLink = true;
+    // ★ 2026-11-13：断开时清掉同步进度快照与兜底定时器，
+    //   避免下次进洞察页读到上一枚戒指遗留的「同步中」而误报「正在加载中」。
+    this.pushSyncProgress(null);
+    // ★ 2026-11-13：主动断开后下次重新扫描列全量，不沿用旧选择
+    this.awaitingDeviceChoice = false;
+    this.clearScanDecisionTimer();
     this.stopAutoLink();
     this.clearStatusTimer();
     if (this.useNative) this.native.disconnect();

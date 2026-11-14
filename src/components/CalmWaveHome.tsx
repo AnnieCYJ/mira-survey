@@ -58,6 +58,24 @@ import {
   type NarrativePoint,
   type NarrativeEvent,
 } from '../lib/homeNarrative';
+import { dayPhase, type DayPhase } from '../lib/timePhase'; // ★ 2026-11-13：圆环中心状态词按时段取词
+
+// ★ 2026-11-13（用户）：圆环中心状态词由「4 个静态词」升级为「时段 × 档位」自然大标题
+//   （见《首页状态词与场景建议梳理.md》4.2）。档位规范词（元气满满/状态良好/平平静静/休息一下）
+//   仍由 mood.label 传给叙事引擎（homeNarrative 用正则 /休息一下|平平静静/ 判定低档，不可改），
+//   此处词表只影响圆环中心「展示词」，不动下游任何逻辑。
+//   level 映射：0=元气满满(76-100) / 1=状态良好(51-75) / 2=平平静静(26-50) / 3=休息一下(0-25)
+const STATUS_HEADLINE: Record<DayPhase, [string, string, string, string]> = {
+  morning:     ['满电出发', '清醒够用', '慢慢醒透', '再赖会儿'],
+  lateMorning: ['满电出发', '清醒够用', '慢慢醒透', '再赖会儿'],
+  preNoon:     ['好好吃一顿', '七分饱就好', '散个步消化', '优先补个觉'],
+  afternoon:   ['午后也稳', '换件轻活', '起来走走', '摸个鱼吧'],
+  evening:     ['利落收个尾', '按时收工', '到点就走', '今天够累了'],
+  bedtime:     ['今天圆满', '护肤时放空', '灯调暗些', '今天先睡吧'],
+};
+function statusHeadline(level: 0 | 1 | 2 | 3, phase: DayPhase): string {
+  return STATUS_HEADLINE[phase][level];
+}
 import { useHomePolish } from '../ai/homePolish';
 import { allInterventionEntries, ensureInterventionLogLoaded } from '../data/interventionLog';
 
@@ -79,7 +97,7 @@ function lastDayWithData(keys: string[], maxDays = 30): string {
         continue;
       }
       const d = healthStore.getDay(k as any, dk);
-      if (d && ((d.last != null && d.last > 0) || (d.mean != null && d.mean > 0) || (d.count ?? 0) > 0)) return dk;
+      if (d && ((d.last != null && d.last > 0) || (d.mean != null && d.mean > 0) || (d.samples ?? 0) > 0)) return dk;
       const intra = healthStore.getIntraday(k as any, dk);
       if (intra && intra.length > 0) return dk;
     }
@@ -400,13 +418,13 @@ export default function CalmWaveHome() {
   //   取最近一次数据刷新时刻：优先一键体检完成时刻；否则戒指最近同步时刻；
   //   否则取各项指标里最新的真实采样时刻（ring.lastUpdated）。空态不显示。
   // ★ 2026-11-11（用户：更新时间应落在整点 / 半点，如 15:00、15:30，不要出现 15:47 这类任意分钟）：
-  //   展示前把时刻对齐到最近的 :00 / :30（<15 取整点、<45 取半点、≥45 进位下一整点）。
+  //   展示前把时刻对齐到最近的 :00 / :30。**向下取整**（<30 取整点、≥30 取半点），
+  //   绝不进位到未来——否则 18:25 会被取整成 18:30（明明还没到），用户看到「更新时间是未来」很困惑。
   const snapHalfHour = (ts: number): number => {
     const d = new Date(ts);
     const m = d.getMinutes();
-    if (m < 15) d.setMinutes(0, 0, 0);
-    else if (m < 45) d.setMinutes(30, 0, 0);
-    else { d.setHours(d.getHours() + 1, 0, 0, 0); }
+    if (m < 30) d.setMinutes(0, 0, 0);
+    else d.setMinutes(30, 0, 0);
     return d.getTime();
   };
   const statusUpdatedAt: number | null = (() => {
@@ -426,6 +444,15 @@ export default function CalmWaveHome() {
     : { label: '休息一下', color: '#F0B5C4' };
   const moodLabel = mood.label;
   const moodColor = mood.color;
+  // ★ 2026-11-13（用户）：圆环中心展示词 = 时段 × 档位 自然大标题（不改动 moodLabel，后者仍喂叙事引擎）
+  const moodLevel: 0 | 1 | 2 | 3 = !hasStatusData
+    ? 0
+    : displayStatus! >= 76 ? 0
+    : displayStatus! >= 51 ? 1
+    : displayStatus! >= 26 ? 2
+    : 3;
+  const phaseNow = dayPhase(new Date());
+  const moodHeadline = hasStatusData ? statusHeadline(moodLevel, phaseNow) : '暂无数据';
   // ★ 2026-11-11：叙事按半小时节拍推进。圆环的 :00/:30 状态点会触发 RingBle.onState 重渲染，
   //   但断流时没有新点 —— 仍要一个墙钟滴答，保证跨时段（傍晚 → 睡前）必定翻页，
   //   绝不出现「已经深夜了，下面还挂着下午那段话」。
@@ -476,8 +503,9 @@ export default function CalmWaveHome() {
   })();
 
   // 生理周期
-  const dayInCycle = status?.dayInCycle ?? null;
-  const phaseLabel = status?.phaseLabel ?? null;
+  // ★ 本轮（用户）：男性不展示生理周期相位，首页分析里也不出现「处于卵泡期/黄体期」等措辞
+  const dayInCycle = showCycle ? (status?.dayInCycle ?? null) : null;
+  const phaseLabel = showCycle ? (status?.phaseLabel ?? null) : null;
   // ★ 2026-10-27 修复：双弧周期药丸此前写死 CYCLE_DAY=14，与上方真实「生理周期」卡不一致；
   //   改用真实周期日（无记录时回退 14），让弧与卡口径统一。
   const cycleDay = dayInCycle ?? CYCLE_DAY;
@@ -781,7 +809,7 @@ export default function CalmWaveHome() {
             <Text style={s.gBig}>{hasStatusData ? displayStatus : '—'}</Text>
             {/* ★ 2026-11-03（用户）：档位词右边加向右箭头 —— 提示整块可点、进入全天状态趋势（外层 gauge 已是 TouchableOpacity） */}
             <View style={s.gLabelRow}>
-              <Text style={s.gLabel}>{moodLabel}</Text>
+              <Text style={s.gLabel}>{moodHeadline}</Text>
               <Icon name="chevronRight" size={theme.fontSize.body} color="rgba(255,255,255,0.85)" strokeWidth={2.4} />
             </View>
             {/* ★ 2026-11-10（用户）：状态词下方一行「更新时间 几时几点」——取最近一次数据刷新时刻（见 statusUpdatedAt） */}

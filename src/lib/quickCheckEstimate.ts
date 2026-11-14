@@ -64,8 +64,8 @@ export function hrvRatio(i: EstimateInput): number | null {
 
 /**
  * 今日状态分（0-100）。
- * 优先用后端 status_score 实测；没有实测时，用 HRV 相对基线为主、
- * 心率/血氧/睡眠/交感为辅的加权估算。缺 HRV 但有心率时给一个较弱置信的估算，
+ * 优先用后端 status_score 实测；没有实测时，用本次现场心率 / 血氧 + 今天已同步的睡眠
+ * 加权估算（★ 2026-11-13：体检报告不再引入当场测不了的 HRV）。
  * 全无输入则返回 null（界面显示「—」，绝不编数字）。
  */
 export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
@@ -73,7 +73,7 @@ export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
     return {
       value: Math.round(clamp(i.statusMeasured, 0, 100)),
       source: 'measured',
-      reason: '综合心率、HRV、睡眠等信号给出的当下状态分；分数越高代表当前状态越平稳，看趋势比单次更有意义。',
+      reason: '综合多项生理信号给出的当下状态分；分数越高代表当前状态越平稳，看趋势比单次更有意义。',
     };
   }
 
@@ -99,7 +99,7 @@ export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
   const raw = 55 + hrvTerm + hrTerm + spo2Term + snsTerm + sleepTerm + shortTerm;
   const value = Math.round(clamp(raw, 0, 100));
 
-  const basis = [ratio != null ? '当前 HRV' : null, hr != null ? '心率' : null,
+  const basis = [hr != null ? '心率' : null,
     spo2 != null ? '血氧' : null, sns != null ? '交感神经活跃度' : null,
     sleep != null ? '睡眠' : null].filter(Boolean).join(' / ');
   return {
@@ -112,7 +112,7 @@ export function estimateTodayStatus(i: EstimateInput): EstimateValue | null {
 /**
  * 压力分（0-100，越高越紧张）。
  * Pro 有 healthGlance 实测压力 → 直接用；基础版该通道为空，
- * 用 HRV 下降幅度 + 交感活跃度 + 心率偏高推算，明确标注估算。
+ * 用本次现场心率 + 交感活跃度推算，明确标注估算（不再引入 HRV）。
  */
 export function estimateStress(i: EstimateInput): EstimateValue | null {
   if (i.stressMeasured != null && Number.isFinite(i.stressMeasured)) {
@@ -133,7 +133,7 @@ export function estimateStress(i: EstimateInput): EstimateValue | null {
   const hrTerm = hr != null ? clamp((hr - 70) / 30, -1, 1) * 8 : 0;
   const value = Math.round(clamp(45 + hrvTerm + snsTerm + hrTerm, 0, 100));
 
-  const basis = [ratio != null ? 'HRV 相对基线' : null, sns != null ? '交感神经活跃度' : null,
+  const basis = [sns != null ? '交感神经活跃度' : null,
     hr != null ? '心率' : null].filter(Boolean).join(' / ');
   return {
     value,

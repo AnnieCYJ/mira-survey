@@ -16,7 +16,7 @@
  * 数据：当日自感状态 → PeriodDayLog（本机沙盒）；经期开始日 → CycleLog + 戒指 female。
  * 全部走 design token，无裸值。
  */
-import React, { useEffect, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -42,15 +42,21 @@ import { RingBle, type FemaleInfo } from '../ble/RingBleManager';
 const FLOWS: FlowLevel[] = ['spotting', 'light', 'normal', 'heavy'];
 const PAINS: PainLevel[] = ['none', 'mild', 'moderate', 'severe'];
 
-export default function PeriodRecordPanel({
-  female,
-  currentLog,
-  onSaved,
-}: {
+export type PeriodRecordPanelHandle = { save: () => void };
+
+type Props = {
   female: FemaleInfo | null;
   currentLog: CycleLog | null;
   onSaved: () => void;
-}) {
+  /** 为 true 时不在面板内渲染「保存记录」按钮（由父组件以固定底部 Footer 触发 save），
+   *  确保全屏弹窗下按钮永远不被 OPPO 手势条 / 底部裁切。 */
+  hideSaveButton?: boolean;
+};
+
+const PeriodRecordPanel = forwardRef<PeriodRecordPanelHandle, Props>(function PeriodRecordPanel(
+  { female, currentLog, onSaved, hideSaveButton = false },
+  ref,
+) {
   const todayKey = dayKey(new Date());
   const [selDate, setSelDate] = useState(todayKey);
   const [flow, setFlow] = useState<FlowLevel>('');
@@ -58,6 +64,11 @@ export default function PeriodRecordPanel({
   const [mood, setMood] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [isStart, setIsStart] = useState(false);
+  // ★ 2026-11-13（用户：「经期记录里没有经期结束的按钮选项，一直没有结束这个记录」）：
+  //   算法层 derivePeriodRuns 已支持 periodEnd 强制收口当前经期段（见 cycleMath），
+  //   但此前只在日历格深层 DaySheet 里能写 —— 用户找不到。这里在面板显眼处补一个开关，
+  //   勾选即把当日 periodEnd=true 写入 PeriodDayLog，下次周期推算时该段在当天收口。
+  const [isEnd, setIsEnd] = useState(false);
   const [cycleLen, setCycleLen] = useState(
     female?.menstrualCircle ?? currentLog?.cycleLength ?? 28,
   );
@@ -73,7 +84,7 @@ export default function PeriodRecordPanel({
   const refreshHistory = () => {
     void loadPeriodDays().then((all) => {
       const list = Object.values(all)
-        .filter((e) => e && (e.flow || e.pain || e.mood || (e.tags && e.tags.length)))
+        .filter((e) => e && (e.flow || e.pain || e.mood || e.periodEnd || (e.tags && e.tags.length)))
         .sort((a, b) => (a.date < b.date ? 1 : -1));
       setHistory(list);
     });
@@ -139,6 +150,8 @@ export default function PeriodRecordPanel({
       setPain(e?.pain ?? '');
       setMood(e?.mood ?? '');
       setTags(e?.tags ?? []);
+      // ★ 2026-11-13：回填时同步恢复「经期结束」勾选（e 必须在本回调作用域内）
+      setIsEnd(!!e?.periodEnd);
     });
     setIsStart(!!(currentLog && selDate === currentLog.lastPeriodStart));
     return () => {
@@ -156,6 +169,8 @@ export default function PeriodRecordPanel({
       pain,
       mood: mood || undefined,
       tags: tags.length ? tags : undefined,
+      // ★ 2026-11-13：勾选「经期结束于今天」→ 写入 periodEnd，强制收口当前经期段。
+      periodEnd: isEnd ? true : undefined,
       updatedAt: Date.now(),
     };
     // 1) 当日自感状态：立即保存，保证「点击必有反应」
@@ -188,6 +203,10 @@ export default function PeriodRecordPanel({
     refreshHistory(); // ★ 保存后历史列表立即跟上
     onSaved();
   };
+
+  // ★ 本轮（修复缺陷 A）：暴露 save() 给父组件，使其能以固定底部 Footer 触发保存，
+  //   避免「保存记录」被 ScrollView 裁切 / 被 OPPO 手势条压住不可点。
+  useImperativeHandle(ref, () => ({ save: onSave }), [onSave]);
 
   return (
     <View style={styles.panel}>
@@ -361,13 +380,32 @@ export default function PeriodRecordPanel({
         </View>
       ) : null}
 
-      {/* ★ 本轮（用户 #283）：保存 CTA = 白色胶囊（替代原周期域紫实底） */}
-      <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.7}>
-        <Text style={styles.saveBtnText}>{justSaved ? '已保存 ✓' : '保存记录'}</Text>
+      {/* ★ 2026-11-13（用户：「经期记录里没有经期结束的按钮」）：经期结束开关。
+          勾选 = 告诉 App「这一天就是本次经期的最后一天」，下次推算时该段在当天收口，
+          月相环 / 周期日历不再把之后的日子算作经期。建议在还有经量的最后一天勾。 */}
+      <TouchableOpacity style={styles.endToggle} onPress={() => setIsEnd((v) => !v)}>
+        <View style={[styles.checkbox, isEnd && styles.checkboxOn]}>
+          {isEnd ? <Text style={styles.checkMark}>✓</Text> : null}
+        </View>
+        <View style={styles.startTextWrap}>
+          <Text style={styles.startTitle}>经期结束于这一天</Text>
+          <Text style={styles.startSub}>勾选后本次经期在这一天收口（建议在有经量的最后一天勾）</Text>
+        </View>
       </TouchableOpacity>
+
+      {/* ★ 本轮（用户 #283）：保存 CTA = 白色胶囊（替代原周期域紫实底）。
+          为 hideSaveButton 时（全屏经期记录弹窗），按钮由父组件以固定底部 Footer 渲染，
+          确保永远不被手势条 / 底部裁切（此前在 ScrollView 内被 OPPO 手势条压住不可点）。 */}
+      {hideSaveButton ? null : (
+        <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.7}>
+          <Text style={styles.saveBtnText}>{justSaved ? '已保存 ✓' : '保存记录'}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
-}
+});
+
+export default PeriodRecordPanel;
 
 const styles = StyleSheet.create({
   /* ★ 2026-11-06（用户：「生理周期那个记录，经期记录为什么背景还是黑的？去掉那个」）：
@@ -474,6 +512,7 @@ const styles = StyleSheet.create({
   symptomLabelOn: { color: theme.colors.textWhite, fontWeight: theme.weight.semibold as any },
 
   startToggle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.md },
+  endToggle: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.md },
   checkbox: {
     width: 22,
     height: 22,

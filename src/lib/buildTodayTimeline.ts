@@ -44,7 +44,7 @@ export interface TimelineExtras {
  *    睡眠/步数按天从 healthStore / ring.stepDaily 取；
  *    相位/情绪波动/脑力依赖当日实时报告，仅今天生成（历史日跳过，不做回溯臆测）。
  */
-export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): TimelineResult {
+export function buildTodayTimeline(extras?: TimelineExtras, date?: Date, showCycle = true): TimelineResult {
   const now0 = date ?? new Date();
   const T0 = new Date();
   const isToday =
@@ -62,8 +62,9 @@ export function buildTodayTimeline(extras?: TimelineExtras, date?: Date): Timeli
   const pushItem = (it: TimelineItem, k: number) => dated.push({ ...it, k });
 
   // 1. 周期相位（依赖当日实时报告，仅今天生成）
+  // ★ 男性（showCycle=false）不展示生理周期相位事件 —— 无生理周期，分析里也不出现「处于卵泡期/黄体期」等措辞
   const cs = ring?.curveStatus;
-  if (isToday && cs?.hasLog && cs.phaseLabel) {
+  if (isToday && showCycle && cs?.hasLog && cs.phaseLabel) {
     pushItem({
       time: '全天',
       color: theme.colors.accent1,

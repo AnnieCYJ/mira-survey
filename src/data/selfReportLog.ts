@@ -6,7 +6,7 @@
 // 一条摘要卡片所需的最小字段」（标题 / 内容 / 图 / 鼓励句 / 时间 / 配色），互不耦合。
 //
 // 持久化：走 utils/prefs（expo-file-system 版 KV，因 Expo Go 无 AsyncStorage 原生模块）。
-import AsyncStorage from '../utils/prefs';
+import * as AsyncStorage from '../utils/prefs';
 
 export type SelfReportType = 'food' | 'mood' | 'event';
 

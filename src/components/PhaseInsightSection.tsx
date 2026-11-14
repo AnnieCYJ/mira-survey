@@ -179,7 +179,7 @@ export default function PhaseInsightSection({
 
   return (
     <View style={styles.wrap}>
-      <AiAnalysis label={aiCycle.loading ? 'AI 分析 · 生成中…' : 'AI 分析'}>
+      <AiAnalysis title={aiCycle.loading ? 'AI 分析 · 生成中…' : 'AI 分析'}>
         <Text style={styles.phaseTitle}>{data.title}</Text>
         <Text style={styles.dayTag}>周期第 {dayInCycle} 天</Text>
         {rows.map((r, i) => (

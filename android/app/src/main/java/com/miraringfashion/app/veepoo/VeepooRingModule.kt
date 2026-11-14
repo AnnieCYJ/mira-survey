@@ -32,6 +32,7 @@ import com.veepoo.protocol.model.settings.ReadOriginSetting
 import com.veepoo.protocol.model.datas.TimeData
 import com.veepoo.protocol.model.datas.AutoMeasureData
 import com.veepoo.protocol.model.enums.EAutoMeasureType
+import com.veepoo.protocol.model.enums.EFunctionStatus
 import com.veepoo.protocol.model.datas.SleepData
 import com.inuker.bluetooth.library.search.SearchRequest
 import com.inuker.bluetooth.library.search.response.SearchResponse
@@ -63,6 +64,25 @@ import java.util.concurrent.atomic.AtomicBoolean
 class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
+    init {
+        // ★ 2026-11-13（用户：「刚连上戒指 This feature is not supported 怎么还在」）：
+        //   这句英文 Toast 不是 App 弹的，是 Veepoo SDK 的 FunctionCheckUtil 弹的。
+        //   反编译 vpprotocol aar 实证：FunctionCheckUtil.vp_b() 会先读
+        //   VPOperateManager.isShowFunctionNotSupportToast()，为 true 才 post 出
+        //   "This feature is not supported" 的 Toast。之前只按能力跳过单个命令，堵不住其它入口。
+        //   SDK 提供 public static setShowFunctionNotSupportToast(boolean)，这里从源头关掉，
+        //   整类英文提示都不会再出现（能力门禁仍保留，避免无谓写命令）。
+        try {
+            VPOperateManager.setShowFunctionNotSupportToast(false)
+            android.util.Log.i("VeepooRing", "[VeepooRing ANDROID] SDK unsupported-feature Toast disabled")
+        } catch (e: Throwable) {
+            android.util.Log.w("VeepooRing", "[VeepooRing ANDROID] disable SDK Toast failed: ${e.message}")
+        }
+    }
+
+    /** 当前正在连接的戒指 MAC：PwdData 回调里带上它，JS 才能按 MAC 记住固件名片。 */
+    private var connectedMac: String = ""
+
     private val manager: VPOperateManager by lazy { VPOperateManager.getMangerInstance(reactContext.applicationContext) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ready = AtomicBoolean(false)
@@ -75,9 +95,19 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private val hrSampleHandler = Handler(Looper.getMainLooper())
     private var hrSampleArmed = false
     private val HR_SAMPLE_INTERVAL_MS = 5 * 60_000L
+    // ★ 2026-11-13：设备能力缓存（来自 onFunctionSupportDataChange 的 FunctionDeviceSupportData）。
+    //   null = 尚未拿到（保守按「支持」处理，避免误关功能）；false = 设备明确 UNSUPPORT → 跳过对应命令，
+    //   从源头杜绝 SDK 内部弹 "This feature is not supported" Toast。
+    private var capBp: Boolean? = null
+    private var capHrv: Boolean? = null
+    private var capSpo2: Boolean? = null
+    private var capPulse: Boolean? = null
     private val hrSampleRunnable = object : Runnable {
         override fun run() {
-            if (monitorOn && ready.get()) {
+            // ★ 2026-11-12：让出 PPG 期间只跳过这一轮、不要停定时器。
+            //   旧版 releasePpgForAutoMeasure() 直接 stopHrSampling()，恢复后又要等满 5 分钟才采第一次，
+            //   加上每半小时让一次，心率节奏被无限推迟（真机 11/12 全天 hr=0 点、single HR detect 日志 0 条）。
+            if (monitorOn && ready.get() && !ppgReleaseActive) {
                 // 占用 PPG 通道 20s 采心率，startSingleHeartDetect 结束内部会恢复 spo2 流
                 startSingleHeartDetect()
             }
@@ -94,6 +124,69 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         hrSampleHandler.removeCallbacks(hrSampleRunnable)
     }
     private val scannedDevices = mutableListOf<JSONObject>()
+    /** ★ 2026-11-11：自动测量设置只写一次，防止 setAutoMeasureSettingData 回调本监听器造成循环写。 */
+    private val autoMeasureWritten = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<EAutoMeasureType, Boolean>()
+    )
+    /**
+     * ★ 2026-11-11（用户：HRV / 血压 20:00 后不再更新）：
+     * App 常开 startDetectSPO2H 连续血氧 + 每 5 分钟抢 20s 采心率，把 PPG 通道反复占住；
+     * 本固件「PPG 一次只能跑一个检测」，戒指端 30 分钟一轮的 HRV / 血压自动测量需要更长空闲。
+     * 每 30 分钟整段让出 90s（血氧 + 心率采样都停），让戒指自己完成周期测量，再恢复。
+     */
+    private val ppgReleaseHandler = Handler(Looper.getMainLooper())
+    private var ppgReleaseArmed = false
+    @Volatile private var ppgReleaseActive = false
+    private val PPG_RELEASE_HOLD_MS = 120_000L
+    private val ppgReleaseRunnable = object : Runnable {
+        override fun run() {
+            if (ready.get()) releasePpgForAutoMeasure()
+            if (!ppgReleaseArmed) return
+            val now = System.currentTimeMillis()
+            val half = 30 * 60_000L
+            // 对齐到下一个整点/半点，正好卡在戒指 30 分钟一轮的自动测量前
+            val delay = ((now / half) + 1) * half - now
+            ppgReleaseHandler.postDelayed(this, delay)
+        }
+    }
+    private fun startPpgReleaseCycle() {
+        if (ppgReleaseArmed) return
+        ppgReleaseArmed = true
+        // 先立刻让一次（装机后马上能看到有没有新读数），之后靠 runnable 自身对齐半点
+        ppgReleaseHandler.postDelayed(ppgReleaseRunnable, 5_000L)
+    }
+    private fun stopPpgReleaseCycle() {
+        ppgReleaseArmed = false
+        ppgReleaseHandler.removeCallbacks(ppgReleaseRunnable)
+    }
+    private fun releasePpgForAutoMeasure() {
+        val saved = spo2Listener
+        try {
+            ppgReleaseActive = true
+            // 不再停 hrSampleHandler：定时器继续按 5 分钟节奏走，只是静默窗口内被 hrSampleRunnable 跳过。
+            // 若此刻正在跑 20s 的即时心率检测，必须中止，否则它会占住 PPG 让戒指测不成 HRV/血压。
+            try { manager.stopDetectHeart(IBleWriteResponse { _ -> }) } catch (_: Exception) {}
+            hrListener = null
+            saved?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            log("[VeepooRing ANDROID] PPG release: paused ${PPG_RELEASE_HOLD_MS / 1000}s for HRV/BP auto measure (HR timer kept)")
+        } catch (e: Exception) {
+            ppgReleaseActive = false
+            log("[VeepooRing ANDROID] PPG release FAILED: ${e.message}")
+            return
+        }
+        mainHandler.postDelayed({
+            ppgReleaseActive = false
+            if (!ready.get()) return@postDelayed
+            if (spo2Listener == null) startSpo2hOnly()
+            startHrSampling()
+            // 恢复血氧后 25s 主动补一次心率，避免「等满 5 分钟才出第一个点」
+            mainHandler.postDelayed({
+                if (monitorOn && ready.get() && !ppgReleaseActive) startSingleHeartDetect()
+            }, 25_000L)
+            log("[VeepooRing ANDROID] PPG release: SPO2H restored, HR catch-up queued")
+        }, PPG_RELEASE_HOLD_MS)
+    }
     // ★ 2026-11-09：离线回填状态机——真正调 SDK 读历史，逐日 emit onBatch。
     private val backfillInProgress = AtomicBoolean(false)
     /**
@@ -217,15 +310,33 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
             override fun onSearchStopped() {
                 log("[VeepooRing ANDROID] scan stopped")
+                emitScanFinished()
             }
 
             override fun onSearchCanceled() {
                 log("[VeepooRing ANDROID] scan canceled")
+                emitScanFinished()
             }
         }
         // TODO(veepoo): 部分 SDK 版本 startScanDevice 仅接受 SearchResponse；
         // 若编译报参数不匹配，改为 manager.startScanDevice(request, response) 或 manager.search(request, response)。
         manager.startScanDevice(response)
+    }
+
+    /**
+     * ★ 2026-11-13（用户有两枚戒指）：扫描窗口结束后上报「最终设备列表」。
+     *   onDeviceFounded 是流式的，第一枚出现时第二枚可能还没广播；JS 必须等这一帧
+     *   final:true 才能按数量决策（1 枚直连 / ≥2 枚全部列出让用户选）。
+     *   onSearchStopped 与 onSearchCanceled 可能都回调，JS 侧用 scanDecisionDone 去重。
+     */
+    private fun emitScanFinished() {
+        val devices = JSONArray(scannedDevices.toList())
+        emit("onState", JSONObject().apply {
+            put("status", "scanResult")
+            put("devices", devices)
+            put("final", true)
+        })
+        log("[VeepooRing ANDROID] scan finished, devices=${devices.length()}")
     }
 
     @ReactMethod
@@ -240,6 +351,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun connect(address: String) {
         log("[VeepooRing ANDROID] connect $address")
+        connectedMac = address
+        // SDK 内部若重新 init，静态开关可能被重置；每次连接前再确认一次（开销为零）。
+        try { VPOperateManager.setShowFunctionNotSupportToast(false) } catch (_: Throwable) {}
         manager.connectDevice(address,
             IConnectResponse { code, _, _ ->
                 if (code == com.inuker.bluetooth.library.Code.REQUEST_SUCCESS) {
@@ -273,7 +387,22 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             // IPwdDataListener 有两个抽象方法，SAM lambda 不适用，用 object 表达式
             object : com.veepoo.protocol.listener.data.IPwdDataListener {
                 override fun onPwdDataChange(data: com.veepoo.protocol.model.datas.PwdData?) {
-                    log("[VeepooRing ANDROID] pwd ok")
+                    // ★ 2026-11-13（用户：「固件不显示，连的时候不知道要连哪个戒指」）：
+                    //   PwdData 里就有 deviceVersion（固件版本）/ deviceTestVersion / deviceNumber，
+                    //   旧实现只打了句 pwd ok 就丢掉，原生从没把固件传给 JS，
+                    //   所以设置页「固件」恒为「待同步」，扫描列表也无从区分两枚同名戒指。
+                    //   这里 emit 一帧 deviceInfo，JS 的通用 patch 分支会把 firmware 落到
+                    //   RingState.firmware，并按 MAC 写入 ringDeviceCard 名片供选戒指时展示。
+                    val fw = data?.deviceVersion?.takeIf { it.isNotBlank() }
+                    log("[VeepooRing ANDROID] pwd ok, deviceNumber=${data?.deviceNumber} " +
+                        "firmware=$fw testVersion=${data?.deviceTestVersion}")
+                    if (fw != null) {
+                        emit("onState", JSONObject().apply {
+                            put("status", "deviceInfo")
+                            put("firmware", fw)
+                            put("deviceAddress", connectedMac)
+                        })
+                    }
                 }
                 override fun onConnectionConfirmTimeout() {
                     log("[VeepooRing ANDROID] pwd confirm timeout")
@@ -286,6 +415,12 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     val wd = support?.wathcDay ?: 7
                     deviceWatchday = wd.coerceIn(1, 14)
                     log("[VeepooRing ANDROID] deviceWatchday=$deviceWatchday")
+                    // ★ 2026-11-13：缓存设备能力，供 ensureAutoMeasure / startSpo2hOnly 做门禁
+                    capBp = support?.bp?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    capHrv = support?.hrvFunction?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    capSpo2 = support?.spo2H?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    capPulse = support?.heartDetect?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    log("[VeepooRing ANDROID] caps bp=$capBp hrv=$capHrv spo2=$capSpo2 pulse=$capPulse")
                     // 密码校验回调里做个人信息同步
                     syncPersonInfo()
                 }
@@ -314,14 +449,19 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         }
         ready.set(true)
         emit("onState", JSONObject().apply { put("status", "ready") })
+        // ★ 2026-11-12：认证成功后立即给戒指对时，别再让它用自己的 RTC 记时间戳
+        syncDeviceTime(true)
         startRealtimeIfNeeded()
         // 确保戒指端心率/HRV 自动测量开着，否则整夜只会采血氧，App 无数据可回填
         ensureAutoMeasure()
+        startPpgReleaseCycle()
     }
 
     @ReactMethod
     fun disconnect() {
         ready.set(false)
+        stopPpgReleaseCycle()
+        autoMeasureWritten.clear()
         // SDK 方法名是 disconnectWatch（需传入写回调）
         manager.disconnectWatch(IBleWriteResponse { _ -> })
         log("[VeepooRing ANDROID] disconnected")
@@ -345,6 +485,11 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private fun startRealtimeIfNeeded() {
         if (!ready.get()) {
             log("[VeepooRing ANDROID] 设备仍在初始化，稍后再开启实时")
+            return
+        }
+        // 分时让出 PPG 通道期间不要被 ready 事件重新拉起血氧流，否则静默窗口失效
+        if (ppgReleaseActive) {
+            log("[VeepooRing ANDROID] PPG release in progress, skip realtime restart")
             return
         }
         // ★ 2026-11-09：本固件 PPG 通道一次只能跑一个检测。旧实现把
@@ -386,13 +531,18 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
             }
-            manager.startDetectSPO2H(IBleWriteResponse { _ -> }, spo2Listener)
+            if (capSpo2 == false) {
+                log("[VeepooRing ANDROID] spo2 unsupported by device, skip startDetectSPO2H (avoid SDK toast)")
+            } else {
+                manager.startDetectSPO2H(IBleWriteResponse { _ -> }, spo2Listener)
+            }
             startHrSampling()
         }
     }
 
     private fun stopRealtime() {
         stopHrSampling()
+        stopPpgReleaseCycle()
         // SDK 的 stop 方法都要求传入写回调；SpO2H 还需原监听器
         manager.stopDetectHeart(IBleWriteResponse { _ -> })
         spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
@@ -407,6 +557,8 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      */
     private fun startSingleHeartDetect() {
         if (!ready.get()) { startRealtimeIfNeeded(); return }
+        // 静默窗口内绝不抢 PPG，否则戒指的 HRV/血压自测又会被打断
+        if (ppgReleaseActive) return
         try {
             spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
             spo2Listener = null
@@ -428,13 +580,14 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             Handler(Looper.getMainLooper()).postDelayed({
                 try { manager.stopDetectHeart(IBleWriteResponse { _ -> }) } catch (_: Exception) {}
                 hrListener = null
-                if (monitorOn) startSpo2hOnly()
+                // 让出窗口期间这个迟到的回调不能把血氧拉起来，静默必须由 releasePpgForAutoMeasure 统一收口
+                if (monitorOn && !ppgReleaseActive) startSpo2hOnly()
                 log("[VeepooRing ANDROID] single HR detect done, spo2h resumed")
             }, 20_000L)
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] single HR detect FAILED: ${e.message}")
             hrListener = null
-            if (monitorOn) startSpo2hOnly()
+            if (monitorOn && !ppgReleaseActive) startSpo2hOnly()
         }
     }
 
@@ -443,23 +596,64 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      * 戒指端「自动测量」是按指标开开关的（EAutoMeasureType.PULSE_RATE / HRV / BLOOD_OXYGEN…）。
      * 血氧夜间自动检测是开的（整夜 9876 条），而心率/HRV 若被关掉，戒指根本不采，
      * 于是 OriginData.rateValue 恒 0、HRVOrigin 返回空包 —— App 侧再怎么解析也拿不到。
-     * 连接就绪后读回设置，把 PULSE_RATE 与 HRV 打开（保留原有间隔/时间窗）。
+     * 连接就绪后读回设置，把 PULSE_RATE / HRV / BLOOD_PRESSURE 打开（保留原有间隔/时间窗）。
+     *
+     * ★ 2026-11-11（用户：「血压、心率变异性停在 20 点不更新，问题很大」）：
+     * SDK 枚举里 BLOOD_PRESSURE(1) 是独立开关，旧实现只管 PULSE_RATE 与 HRV，
+     * **血压自动测量从来没被 App 主动开启**；且本函数原本只在首次认证 syncPersonInfo() 里
+     * 调一次，已配对设备重启后不再走认证 → logcat 里一条 autoMeasure 日志都没有。
+     * 现补齐血压开关，并由 JS 在每次 ready 时通过 ensureAutoMeasureNow() 复核。
      */
     private fun ensureAutoMeasure() {
         if (!ready.get()) return
         try {
+            val wanted = setOf(
+                EAutoMeasureType.PULSE_RATE,
+                EAutoMeasureType.HRV,
+                EAutoMeasureType.BLOOD_PRESSURE,
+                // ★ 2026-11-13（用户：呼吸暂停分析老是说没数据）：
+                //   呼吸暂停/缺氧分析依赖戒指的 SpO2 原始历史（onOriginSpo2OriginListDataChange 回读的那一路）。
+                //   该历史只有戒指端「全天血氧自动监测」开着才会持续落盘；旧实现漏开 BLOOD_OXYGEN，
+                //   于是很多夜晚根本没有 SpO2 原始点 → triggerOxygenAnalysis 读到空 → 一直「没数据」。
+                //   现在补齐该开关（受 capSpo2 能力门禁保护，设备不支持则跳过，避免 SDK 弹 Toast）。
+                EAutoMeasureType.BLOOD_OXYGEN,
+            )
             val listener = object : IAutoMeasureSettingDataListener {
                 override fun onSettingDataChange(list: MutableList<AutoMeasureData>?) {
                     val items = list ?: return
                     for (item in items) {
                         val type = item.funType
-                        log("[VeepooRing ANDROID] autoMeasure type=$type open=${item.isSwitchOpen} interval=${item.measureInterval}")
-                        if ((type == EAutoMeasureType.PULSE_RATE || type == EAutoMeasureType.HRV) && !item.isSwitchOpen) {
-                            item.isSwitchOpen = true
-                            if (item.measureInterval <= 0) item.measureInterval = 5
+                        // ★ 2026-11-11：之前只核对 open / interval，漏了 SDK 的「测量时间窗」。
+                        //   20:00 = 1200min 极像窗口终点——开关全开也可能只在窗口内测量。
+                        log("[VeepooRing ANDROID] autoMeasure type=$type open=${item.isSwitchOpen} " +
+                            "interval=${item.measureInterval} " +
+                            "window=[${item.currentStartMinute},${item.currentEndMinute}] " +
+                            "support=[${item.supportStartMinute},${item.supportEndMinute}] " +
+                            "slotModify=${item.isSlotModify} intervalModify=${item.isIntervalModify} " +
+                            "step=${item.stepUnit} proto=${item.protocolType}")
+                        if (!wanted.contains(type)) continue
+                        // ★ 2026-11-13：设备不支持该功能则跳过开启，避免 SDK 弹 "This feature is not supported"
+                        if (type == EAutoMeasureType.BLOOD_PRESSURE && capBp == false) {
+                            log("[VeepooRing ANDROID] autoMeasure skip BLOOD_PRESSURE (device unsupported)"); continue
+                        }
+                        if (type == EAutoMeasureType.HRV && capHrv == false) {
+                            log("[VeepooRing ANDROID] autoMeasure skip HRV (device unsupported)"); continue
+                        }
+                        if (type == EAutoMeasureType.PULSE_RATE && capPulse == false) {
+                            log("[VeepooRing ANDROID] autoMeasure skip PULSE_RATE (device unsupported)"); continue
+                        }
+                        if (type == EAutoMeasureType.BLOOD_OXYGEN && capSpo2 == false) {
+                            log("[VeepooRing ANDROID] autoMeasure skip BLOOD_OXYGEN (device unsupported)"); continue
+                        }
+                        var changed = false
+                        if (!item.isSwitchOpen) { item.isSwitchOpen = true; changed = true }
+                        if (item.measureInterval <= 0) { item.measureInterval = 30; changed = true }
+                        // 真机实证 window=[0,0] / support=[0,0] 表示「未启用时间窗限制」，
+                        // 不是 20:00 截断的原因，故不改写设备窗口配置（避免改坏固件设置）。
+                        if (changed && autoMeasureWritten.add(type)) {
                             try {
                                 manager.setAutoMeasureSettingData(IBleWriteResponse { _ -> }, item, this)
-                                log("[VeepooRing ANDROID] autoMeasure ENABLED $type")
+                                log("[VeepooRing ANDROID] autoMeasure WRITTEN $type")
                             } catch (e: Exception) {
                                 log("[VeepooRing ANDROID] autoMeasure set FAILED $type: ${e.message}")
                             }
@@ -474,9 +668,60 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             manager.readAutoMeasureSettingData(IBleWriteResponse { _ -> }, listener)
+            log("[VeepooRing ANDROID] autoMeasure read requested (wanted=$wanted)")
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] autoMeasure FAILED: ${e.message}")
         }
+    }
+
+    /**
+     * ★ 2026-11-12（用户：HRV 更新到 00:40 但实际才 00:24；洞察页趋势图全空）：
+     * SDK 的 settingTime() 从来没被调过，戒指一直跑出厂/上次写入的 RTC，比手机快约 35 分钟。
+     * 于是自动测量记录的时间戳超前，App 用 Date.now() 做查询上界时把今日数据全过滤掉。
+     * 每次连接把手机时间写进戒指，从根上对齐；对已入库的错位样本由 JS 侧平移校正。
+     */
+    private var lastTimeSyncAt = 0L
+    private fun syncDeviceTime(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastTimeSyncAt < 30 * 60_000L) return
+        lastTimeSyncAt = now
+        try {
+            val c = Calendar.getInstance()
+            val setting = com.veepoo.protocol.model.settings.DeviceTimeSetting(
+                c.get(Calendar.YEAR),
+                c.get(Calendar.MONTH) + 1,
+                c.get(Calendar.DAY_OF_MONTH),
+                c.get(Calendar.HOUR_OF_DAY),
+                c.get(Calendar.MINUTE),
+                c.get(Calendar.SECOND),
+                // ★ 6 参构造把 eTimeMode 留成 null，SDK 内部 .ordinal() 直接 NPE —— 必须显式给 24 小时制
+                com.veepoo.protocol.model.enums.ETimeMode.MODE_24,
+            )
+            manager.settingTime(
+                IBleWriteResponse { _ -> },
+                object : com.veepoo.protocol.listener.data.IResponseListener {
+                    override fun response(code: Int) {
+                        log("[VeepooRing ANDROID] device time SET resp=$code")
+                    }
+                },
+                setting,
+            )
+            log("[VeepooRing ANDROID] device time synced -> ${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)} ${c.get(Calendar.HOUR_OF_DAY)}:${c.get(Calendar.MINUTE)}:${c.get(Calendar.SECOND)}")
+        } catch (e: Exception) {
+            log("[VeepooRing ANDROID] device time sync FAILED: ${e.message}")
+        }
+    }
+
+    /** ★ 2026-11-11：供 JS 在每次 onState=ready 时复核自动测量开关（已配对设备重启后不再走首次认证）。 */
+    @ReactMethod
+    fun ensureAutoMeasureNow() {
+        ensureAutoMeasure()
+        // ★ 已配对设备重启不走 syncPersonInfo()，旧版只在那儿启动分时让通道 → 从未生效。
+        //   JS 每次 onState=ready 都会调本方法，挂在这里才保证一定启动。
+        startRealtimeIfNeeded()
+        startPpgReleaseCycle()
+        // 每次 ready 都复核一次戒指时钟（内部 30 分钟节流，避免频繁写 BLE）
+        syncDeviceTime()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1195,11 +1440,14 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             return
         }
         try {
+            // ★ 2026-11-13：回读设备可存储天数（默认 7，下限 3），覆盖多个夜晚，提高 SpO2 原始命中率。
+            val oxygenDays = deviceWatchday.coerceIn(3, 7)
             val collected = mutableListOf<Spo2hOriginData>()
             val finished = AtomicBoolean(false)
             val finish: () -> Unit = lambda@{
                 if (finished.compareAndSet(false, true)) {
                     if (collected.isEmpty()) {
+                        log("[VeepooRing ANDROID] oxygenAnalysis: no SpO2 origin collected in $oxygenDays days (device may not have all-day SpO2 monitoring on, or no nights worn)")
                         emit("onOxygenAnalysis", JSONObject().apply { put("error", "no_data") })
                         return@lambda
                     }
@@ -1294,9 +1542,13 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 override fun onReadOriginComplete() { finish() }
                 override fun onReadTimeout(code: Int) { finish() }
             }
-            manager.readOriginDataBySetting(IBleWriteResponse { _ -> }, listener, ReadOriginSetting(0, 1, false, 2))
-            Handler(Looper.getMainLooper()).postDelayed({ finish() }, 15_000L)
-            log("[VeepooRing ANDROID] oxygenAnalysis reading days=2 (via readOriginDataBySetting/IOriginData3Listener)")
+            // ★ 2026-11-13（用户：呼吸暂停分析老没数据）：旧实现只回读 2 天 SpO2 原始，
+            //   若这 2 天恰好没戴 / 没落 SpO2 原始点就整段空 → 一直「没数据」。
+            //   改成回读设备可存储天数（默认 7，下限 3，见上方 oxygenDays 声明），覆盖多个夜晚，命中率大幅提高；
+            //   超时也从 15s 放宽到 25s，避免多天回读被硬截断。
+            manager.readOriginDataBySetting(IBleWriteResponse { _ -> }, listener, ReadOriginSetting(0, 1, false, oxygenDays))
+            Handler(Looper.getMainLooper()).postDelayed({ finish() }, 25_000L)
+            log("[VeepooRing ANDROID] oxygenAnalysis reading days=$oxygenDays (via readOriginDataBySetting/IOriginData3Listener)")
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] oxygenAnalysis FAILED: ${e.message}")
             emit("onOxygenAnalysis", JSONObject().apply { put("error", "read_failed:${e.message}") })

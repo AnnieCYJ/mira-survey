@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from './src/theme/theme';
 import { AppStateProvider } from './src/state/AppState';
 import AuthGate from './src/AuthGate';
-import ErrorBoundary from './src/components/ErrorBoundary';
+import ErrorBoundary, { reportGlobalError } from './src/components/ErrorBoundary';
 import { postLog } from './src/lib/logger';
 import { VoiceTriggerProvider } from './src/hooks/useVoiceTrigger';
 import VoiceQuickOverlay from './src/components/VoiceQuickOverlay';
@@ -24,13 +24,16 @@ console.log('[BOOT-CHECK] App.tsx 顶层执行, warmupModel type =', typeof warm
 //   否则切 Tab 后旧 Tab 仍在后台订阅 BLE / healthStore 并反复重渲染 → 点击卡顿。
 enableFreeze(true);
 
-// 🔥 App 启动后后台预热端侧模型（2026-11-08 恢复，不阻塞 UI）
-warmupModel();
+// ★ 2026-11-12：移除「App 启动即预热端侧模型」。登录页用不到 AI，且 initLlama 在
+//   冷启动路径上有已知 EXC_BAD_ACCESS 白屏风险（见 model.ts）。模型改为进入 AI 界面时
+//   懒加载（FoodScanScreen 等已在挂载时调用 warmupModel），功能不受影响，启动更稳。
 
-// ★ 全局未捕获错误上报（开发期）：捕捉 React 红屏 / “Maximum update depth” /
-// 异步未处理拒绝等 ErrorBoundary 兜不住的致命 JS 错误，POST 到 :8899 收集器，
-// 便于真机复现时定位“回退不出去 / 页面卡死”的根因。
-if (__DEV__) {
+// ★ 全局未捕获错误兜底（2026-11-12 改为全量生效，原仅 __DEV__）：
+//   捕捉 Promise 回调 / 原生事件回调里抛出的异步致命 JS 错误——这类错误 ErrorBoundary
+//   渲染期捕获不到，会导致整棵 React 树被卸载、露出底层蓝底（蓝屏）。
+//   现在统一上报日志，并驱动最外层 ErrorBoundary 显示「页面出错了 + 原因」而非静默蓝屏。
+//   开发环境下额外保留 RN 默认红屏（prev），便于调试；生产环境仅显示我们的错误 UI。
+{
   const g = globalThis as any;
   if (g.ErrorUtils && typeof g.ErrorUtils.setGlobalHandler === 'function') {
     const prev = g.ErrorUtils.getGlobalHandler();
@@ -39,8 +42,12 @@ if (__DEV__) {
         const msg = err && err.message ? err.message : String(err);
         const stack = err && err.stack ? err.stack : '';
         postLog('GLOBAL_ERR', `[${msg}]${isFatal ? ' (FATAL)' : ''}\n${stack}`);
+        const e = err instanceof Error ? err : new Error(msg);
+        reportGlobalError(e);
       } catch { /* 静默 */ }
-      if (typeof prev === 'function') prev(err, isFatal);
+      if (__DEV__ && typeof prev === 'function') {
+        try { prev(err, isFatal); } catch { /* 静默 */ }
+      }
     });
   }
 }
@@ -78,22 +85,25 @@ export default function App() {
       >
         {/* ★ mira-ocean（2026-10-17）：全分支深底，状态栏恒亮 */}
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <SafeAreaProvider>
-          <AppStateProvider>
-            <NavigationContainer theme={navTheme}>
-              <ErrorBoundary>
+        {/* ★ 2026-11-12：把 ErrorBoundary 提到最外层，覆盖 SafeAreaProvider / 各 Provider /
+            NavigationContainer。任何渲染期 JS 异常都会显示「页面出错了+重试」而非整页空白，
+            避免用户看到无内容的深蓝渐变却无从排查。原生崩溃仍不可捕获（需看 logcat）。 */}
+        <ErrorBoundary>
+          <SafeAreaProvider>
+            <AppStateProvider>
+              <NavigationContainer theme={navTheme}>
                 <VoiceTriggerProvider>
                   {/* ★ 登录门禁：未登录→Login，未填资料→Onboarding，否则→主页 */}
                   <AuthGate />
                   <VoiceQuickOverlay />
                 </VoiceTriggerProvider>
-              </ErrorBoundary>
-            </NavigationContainer>
-            {/* 全局底部「正在同步数据 x%」浮层：绝对定位覆盖在导航之上；
-                pointerEvents="none" 保证纯展示、不拦截任何触摸。 */}
-            {/* <SyncProgressBanner />  ★ 临时注释排查白闪 */}
-          </AppStateProvider>
-        </SafeAreaProvider>
+              </NavigationContainer>
+              {/* 全局底部「正在同步数据 x%」浮层：绝对定位覆盖在导航之上；
+                  pointerEvents="none" 保证纯展示、不拦截任何触摸。 */}
+              {/* <SyncProgressBanner />  ★ 临时注释排查白闪 */}
+            </AppStateProvider>
+          </SafeAreaProvider>
+        </ErrorBoundary>
       </LinearGradient>
     </View>
   );
