@@ -1041,6 +1041,20 @@ function dailyBaseForNow(currentDaily: Record<string, number | null> | undefined
 
 const VeepooNative = (NativeModules as any).VeepooRing;
 
+// ★ 2026-11-14（用户：App 被杀掉戒指就断联，不行）：Android 前台保活服务开关。
+//   连上 → startKeepalive（进程常驻 → BLE 不随系统回收断开）；
+//   用户主动断开 → stopKeepalive（撤常驻通知）。
+//   后台调 startForegroundService 可能被 Android 12+ 限制 → 原生已 try/catch 静默，
+//   回前台时会再补调（ensureKeepaliveForConnected）。
+function startRingKeepalive(): void {
+  if (!VeepooNative || typeof VeepooNative.startKeepalive !== 'function') return; // iOS 无此方法，跳过
+  try { VeepooNative.startKeepalive(); } catch { /* 静默 */ }
+}
+function stopRingKeepalive(): void {
+  if (!VeepooNative || typeof VeepooNative.stopKeepalive !== 'function') return;
+  try { VeepooNative.stopKeepalive(); } catch { /* 静默 */ }
+}
+
 class NativeRingSource {
   private emitter: NativeEventEmitter | null = null;
   private jsMetricCount = 0;
@@ -4405,6 +4419,9 @@ class RingConnectionImpl {
   //   绝不按持久化 MAC / 硬编码兜底 MAC 启动直连（用户有两枚戒指，会连错那枚）。
   /** 多枚戒指正在等用户点选：此时不自动连、不自动重扫，避免把用户的选择冲掉 */
   private awaitingDeviceChoice = false;
+  /** ★ 2026-11-14：前台保活服务是否已启动（本进程内）。onState 每次 patch 都带 status=connected，
+   *  不去重会把 startForegroundService 每秒重打一遍；用户主动断开时复位。 */
+  private keepaliveStarted = false;
   /** 本轮扫描是否已决策（原生 onSearchStopped / onSearchCanceled 可能都回调） */
   private scanDecisionDone = false;
   /** 原生没回调 scanFinished 时的兜底决策定时器 */
@@ -4704,7 +4721,25 @@ class RingConnectionImpl {
       (p) => this.pushSyncProgress(p),
       (d: string | null) => { this.lastBackfillAt = Date.now(); this.persistSyncFlag(d); },
       // ★ 原生扫描结束 → 外层决策：只搜到 1 枚就直连，≥2 枚全部列出等用户选
-      (list: any[]) => this.decideAfterScan(list)
+      // ★ 2026-11-14（真机 12:29 实测）：原生在扫描刚发起时会立即回一帧「0 台 final」（伪 final，
+      //   12:29:18.129 发起 → .140 即 final），随后才是真正的流式发现。若让伪 final 消费一次性
+      //   决策闸门，本轮真正扫到的设备永远不会被决策 → 目标戒指明明在广播也连不上。
+      //   因此：0 台且本轮累计 0 台的 final 一律跳过，交给 12s 兜底定时器按累计列表决策。
+      //   用户正在连接/切数据桶时不重置闸门（保护手动选择，decideAfterScan 自身也会早退）。
+      (list: any[]) => {
+        try {
+          const st = this.getState().status;
+          if (this.deviceSwitching || st === 'connecting' || st === 'connected') {
+            this.decideAfterScan(list);
+            return;
+          }
+          if (Array.isArray(list) && list.length === 0 && this.scanSeenThisRound.size === 0) {
+            return; // 伪 final：不消费闸门、不决策，等兜底定时器/后续真 final
+          }
+          this.scanDecisionDone = false;
+        } catch { /* ignore */ }
+        this.decideAfterScan(list);
+      }
     );
     // ★ 2026-11-05：后端 refreshMetrics 现在每 10s 推一次 daily（真实日值投影）。
     //   applyPatch 是浅合并，直接推 daily 会整体覆盖 syncExtendedDaily 写进 state 的
@@ -4757,10 +4792,15 @@ class RingConnectionImpl {
         //   仅当非用户主动断开、非待选戒指、且当前确未连接时才补连（多戒指环境仍交用户点选）。
         try {
           const st = this.getState();
-          if (!this.userStoppedLink && !this.awaitingDeviceChoice
+          if (!this.userStoppedLink
               && (st.status === 'idle' || st.status === 'error')) {
             postLog('RingBle', '[autoLink] App 回前台检测到未连接 → 立即静默补连');
             void this.runAutoLink('App 回前台');
+          }
+          // ★ 2026-11-14：回前台且已连接时补一次保活启动（兜后台启动 FGS 被系统限制的情况）
+          if (st.status === 'connected' && !this.keepaliveStarted) {
+            this.keepaliveStarted = true;
+            startRingKeepalive();
           }
         } catch (e) {}
       });
@@ -7114,6 +7154,11 @@ class RingConnectionImpl {
         this.autoLinkBusyUntil = 0;
         if (s.deviceId) this.knownMac = String(s.deviceId);
         this.clearAutoLinkTimer();
+        // ★ 2026-11-14：连上即启动前台保活（本进程内仅一次）——进程常驻，BLE 不随系统回收断开
+        if (!this.keepaliveStarted) {
+          this.keepaliveStarted = true;
+          startRingKeepalive();
+        }
         if (!this.autoLinkWasConnected) {
           this.autoLinkWasConnected = true;
           postLog('RingBle', `[autoLink] ✅ 已连接 ${s.deviceName ?? ''}@${this.knownMac ?? '-'}，保活待命`);
@@ -7127,9 +7172,10 @@ class RingConnectionImpl {
     });
 
     // 低频 watchdog：覆盖「原生静默掉线、没发 disconnected」的情况
+    // ★ 2026-11-14：awaitingDeviceChoice 时也继续周期重扫——lastId 恢复广播即自动连回
     this.autoLinkWatchdog = setInterval(() => {
       const cur = this.getState();
-      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting' || this.awaitingDeviceChoice) return;
+      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting') return;
       void this.runAutoLink('watchdog');
     }, 30_000);
 
@@ -7158,9 +7204,11 @@ class RingConnectionImpl {
     }
   }
 
-  /** 退避排程：断线后 2s→4s→6s…（上限 30s）持续尝试，不设「3 次就放弃」。 */
+  /** 退避排程：断线后 2s→4s→6s…（上限 30s）持续尝试，不设「3 次就放弃」。
+   *  ★ 2026-11-14（用户）：awaitingDeviceChoice 不再阻止重试——上次连接的戒指恢复广播时
+   *  要能自动连回（decideAfterScan 已限制只自动连 lastId，不会乱连）。 */
   private scheduleAutoLink(reason: string, delay?: number): void {
-    if (!this.useNative || this.userStoppedLink || this.awaitingDeviceChoice) return;
+    if (!this.useNative || this.userStoppedLink) return;
     const cur = this.getState();
     if (cur.status === 'connected' || cur.status === 'connecting') return;
     this.clearAutoLinkTimer();
@@ -7168,7 +7216,7 @@ class RingConnectionImpl {
     this.autoLinkTimer = setTimeout(() => {
       this.autoLinkTimer = null;
       const s = this.getState();
-      if (this.userStoppedLink || this.awaitingDeviceChoice || s.status === 'connected' || s.status === 'connecting') return;
+      if (this.userStoppedLink || s.status === 'connected' || s.status === 'connecting') return;
       this.autoLinkRetries = Math.min(this.autoLinkRetries + 1, 12);
       void this.runAutoLink(reason);
     }, d);
@@ -7185,7 +7233,8 @@ class RingConnectionImpl {
     if (!this.useNative || this.userStoppedLink) return;
     const st = this.getState();
     if (st.status === 'connected' || st.status === 'connecting' || st.status === 'scanning') return;
-    if (this.awaitingDeviceChoice) return; // 多枚戒指待用户选，不自动连、不重扫
+    // ★ 2026-11-14（用户）：awaitingDeviceChoice 不再阻断——上次连接的戒指恢复广播时
+    //   要能被周期重扫发现并自动连回（decideAfterScan 只自动连 lastId，安全）。
     const now = Date.now();
     if (now < this.autoLinkBusyUntil) return;
     this.autoLinkBusyUntil = now + 8000;
@@ -7242,8 +7291,11 @@ class RingConnectionImpl {
       //   广播时直接静默直连它——那枚本来就是用户自己选的，不存在「连到另一枚」的误连；
       //   它没在广播时才维持原保护（全部列出等用户点选）。
       const lastId = String(this.activeDeviceKey ?? '').trim().toUpperCase();
-      const hitLast = lastId
-        ? devices.find((d) => String(d.id).trim().toUpperCase() === lastId)
+      // ★ 2026-11-14：用跨帧累计 seen 判定「上次连接的戒指本轮在广播」——
+      //   final 帧列表可能被截断（甚至为空），累计列表才完整。
+      const hitLast = lastId && seen.has(lastId)
+        ? (devices.find((d) => String(d.id).trim().toUpperCase() === lastId)
+          ?? { id: lastId, name: 'Luna Mira', rssi: null, recommended: false })
         : undefined;
       if (hitLast) {
         this.awaitingDeviceChoice = false;
@@ -7913,6 +7965,9 @@ class RingConnectionImpl {
     // ★ 2026-11-07：用户主动断开 → 停掉常驻保活，不再自动连回来。
     //   必须在 applyPatch(idle) 之前拆订阅，否则 idle 会立刻触发补连。
     this.userStoppedLink = true;
+    // ★ 2026-11-14：用户主动断开 → 撤前台保活服务与常驻通知（复位标志，重连时再启动）
+    this.keepaliveStarted = false;
+    stopRingKeepalive();
     // ★ 2026-11-13：断开时清掉同步进度快照与兜底定时器，
     //   避免下次进洞察页读到上一枚戒指遗留的「同步中」而误报「正在加载中」。
     this.pushSyncProgress(null);

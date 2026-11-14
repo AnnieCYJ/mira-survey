@@ -725,6 +725,44 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // 前台保活（2026-11-14，用户：App 被杀掉戒指就断联，不行）
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** 戒指连上后由 JS 调用：启动前台服务常驻进程，BLE 不再随系统回收断开。
+     *  幂等：重复调用只刷新通知。App 在后台时调用可能被 Android 12+ 限制，
+     *  抛异常静默吞掉——JS 会在回前台时补调。 */
+    @ReactMethod
+    fun startKeepalive() {
+        try {
+            val ctx = reactApplicationContext
+            val intent = android.content.Intent(ctx, com.miraringfashion.app.keepalive.RingKeepaliveService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
+            log("[VeepooRing ANDROID] keepalive started")
+        } catch (e: Exception) {
+            // 后台启动 FGS 受限（ForegroundServiceStartNotAllowedException）时走这里，
+            // 由 JS 回前台补调；不影响连接本身
+            log("[VeepooRing ANDROID] keepalive start failed: ${e.message}")
+        }
+    }
+
+    /** 用户在 App 内主动断开时由 JS 调用：停掉保活服务与常驻通知。 */
+    @ReactMethod
+    fun stopKeepalive() {
+        try {
+            reactApplicationContext.stopService(
+                android.content.Intent(reactApplicationContext, com.miraringfashion.app.keepalive.RingKeepaliveService::class.java),
+            )
+            log("[VeepooRing ANDROID] keepalive stopped")
+        } catch (e: Exception) {
+            log("[VeepooRing ANDROID] keepalive stop failed: ${e.message}")
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // 手动测量（对齐 iOS measure(key)）
     // ─────────────────────────────────────────────────────────────────────────
     @ReactMethod
