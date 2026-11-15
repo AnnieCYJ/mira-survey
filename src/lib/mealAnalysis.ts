@@ -15,6 +15,7 @@
 
 import type { MealItem } from './foodAi';
 import type { HormoneNutritionSnapshot } from './hormoneNutrition';
+import { showCycleContent } from '../data/cycleScope';
 
 export type ElementKey = 'mg' | 'zn' | 'fe' | 'ca' | 'b6' | 'fa' | 'se';
 
@@ -98,6 +99,9 @@ export function analyzeHormoneImpact(
   items: MealItem[],
   hormone: HormoneNutritionSnapshot | null,
 ): HormoneImpactResult {
+  // ★ 2026-11-14：男性用户不产出「经期补铁 / 雌激素代谢 / 黄体期孕酮」这类饮食建议。
+  //   本函数目前未挂 UI，但作为饮食建议生成层，先统一收口，避免后续接回时漏网。
+  const cycleOn = showCycleContent();
   const macros = items.reduce(
     (a, it) => {
       a.protein += it.protein ?? 0;
@@ -115,7 +119,9 @@ export function analyzeHormoneImpact(
 
   // 宏量结构
   if (macros.protein >= 30) {
-    impacts.push('蛋白较充足，是激素合成（尤其孕酮）所需的底物。');
+    impacts.push(cycleOn
+      ? '蛋白较充足，是激素合成（尤其孕酮）所需的底物。'
+      : '蛋白较充足，是日常修复与肌肉维持所需的底物。');
   }
   if (macros.carbs >= 60 && macros.protein < 20) {
     impacts.push('以碳水为主、蛋白偏少，餐后皮质醇可能小幅波动，可搭配蛋奶豆平衡。');
@@ -125,12 +131,16 @@ export function analyzeHormoneImpact(
 
   // 元素
   if (present('mg')) {
-    impacts.push('含镁，有助于放松与黄体期孕酮的支持。');
+    impacts.push(cycleOn
+      ? '含镁，有助于放松与黄体期孕酮的支持。'
+      : '含镁，有助于放松与夜间恢复。');
   }
   if (present('zn')) {
-    impacts.push('含锌，参与雌激素代谢与免疫调节。');
+    impacts.push(cycleOn
+      ? '含锌，参与雌激素代谢与免疫调节。'
+      : '含锌，参与日常代谢与免疫调节。');
   }
-  if (present('fe') && hormone?.estrogen?.status === 'reference') {
+  if (cycleOn && present('fe') && hormone?.estrogen?.status === 'reference') {
     impacts.push('含铁，适合经期前后补铁。');
   }
 
@@ -139,7 +149,7 @@ export function analyzeHormoneImpact(
   if (cortisolHigh) {
     impacts.push('今天皮质醇偏高，下一餐少咖啡因与高糖、多选含镁食物更稳。');
   }
-  if (hormone?.progesterone?.status === 'insufficient') {
+  if (cycleOn && hormone?.progesterone?.status === 'insufficient') {
     impacts.push('孕激素偏弱时，镁与 B6 对它的支持更值得留意。');
   }
 
@@ -147,7 +157,7 @@ export function analyzeHormoneImpact(
   let nextTip = '';
   if (!present('zn')) nextTip = '下一餐可补锌：贝类 / 瘦肉 / 坚果。';
   else if (!present('mg')) nextTip = '下一餐可留意镁：深绿菜 / 坚果 / 黑巧。';
-  else if (!present('fe') && hormone?.estrogen?.status === 'reference') nextTip = '下一餐可补铁：红肉 / 菠菜 / 蛋黄。';
+  else if (cycleOn && !present('fe') && hormone?.estrogen?.status === 'reference') nextTip = '下一餐可补铁：红肉 / 菠菜 / 蛋黄。';
   else if (impacts.length === 0) nextTip = '记录更多菜品后，这里会给出更贴合的营养素参考。';
 
   return { impacts: impacts.slice(0, 3), nextTip, hasHint: impacts.length > 0 || nextTip.length > 0 };

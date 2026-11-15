@@ -18,8 +18,14 @@
 import {
   computeCycle,
   parseDate,
+  addDays,
+  daysBetween,
   tempDailyToSeries,
   detectThermalShift,
+  modelEstrogenCurve,
+  modelProgesteroneCurve,
+  estrogenAt,
+  progesteroneAt,
   type CycleLog,
   type CyclePhase,
   type CycleInfo,
@@ -105,6 +111,40 @@ export function phaseOfDay(log: CycleLog | null, date: Date, ring: RingState): C
 }
 
 /**
+ * ★ 本轮（用户：激素卡空着时看不到任何分析，希望至少看到「升/降」趋势）：
+ * 当戒指尚未回读到足够真实信号（HRV/EDA 或 体温/静息心率）时，退回「按周期相位推算的预期曲线」。
+ * 这条曲线来自 cycleMath 的 modelEstrogenCurve / modelProgesteroneCurve（经典激素动力学建模），
+ * 仅按已知相位给出「经典走势」，明确标注为非实测、不构成诊断，连续佩戴取得真实信号后会切换为实测曲线。
+ */
+function buildExpectedSeries(
+  kind: 'estrogen' | 'progesterone',
+  log: CycleLog | null,
+  cycleInfo: CycleInfo | null,
+  win?: { startMs: number; days: number } | null,
+): { date: string; value: number }[] | null {
+  if (!win) return null; // 滚动窗口（无经期记录）无相位可锚定，不画预期线
+  const cycleLen = Math.max(20, Math.min(45, Math.round(log?.cycleLength || 28)));
+  const ovDate = cycleInfo?.ovulationDate ?? null;
+  const ovDay =
+    ovDate && log?.lastPeriodStart
+      ? Math.max(8, Math.min(cycleLen - 2, daysBetween(log.lastPeriodStart, ovDate) + 1))
+      : Math.round(cycleLen * 0.5);
+  const model =
+    kind === 'estrogen'
+      ? modelEstrogenCurve({ cycleLength: cycleLen, ovulationDay: ovDay, periodLength: 5 })
+      : modelProgesteroneCurve({ cycleLength: cycleLen, ovulationDay: ovDay, periodLength: 5 });
+  const at = kind === 'estrogen' ? estrogenAt : progesteroneAt;
+  const out: { date: string; value: number }[] = [];
+  for (let d = 0; d < win.days; d++) {
+    const v = at(model, d + 1);
+    if (v == null) continue;
+    const dt = new Date(win.startMs + d * 86_400_000);
+    out.push({ date: `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`, value: v });
+  }
+  return out.length >= 2 ? out : null;
+}
+
+/**
  * 雌激素波动（真实数据版）——基于戒指实测 HRV + EDA（皮肤电导）推算。
  * 依据：① HRV 随周期变化——meta 分析（1,004 名自然月经女性）证实卵泡期→黄体期 HRV 显著下降；
  *      ② EDA 在**排卵期显著升高**（Gómez-Amor 1990, Biol Psychol），与雌激素峰同相。
@@ -115,11 +155,14 @@ export function buildEstrogenData(
   ring: RingState,
   range: TrendRange,
   win?: { startMs: number; days: number } | null,
-): { real: { date: string; value: number }[] | null } {
+  log?: CycleLog | null,
+  cycleInfo?: CycleInfo | null,
+): { real: { date: string; value: number }[] | null; expected: { date: string; value: number }[] | null } {
   // ★ 2026-10-07（用户：经期第 2 天已佩戴多日却整卡空白）：
   //   横轴是「周期天锚定」——当前周期窗口 = 第 1 天 → 第 N 天，今天才第 2 天，
   //   窗口内天然只有 1~2 个真实点，被「至少 minPts(5) 点才成线」判成不成线 ⇒ 空白。
   //   规则改为：**周期窗口下只要有 ≥2 个真实点就画**（滚动窗口仍守 5 点门槛）。
+  const expected = buildExpectedSeries('estrogen', log ?? null, cycleInfo ?? null, win);
   const minPts = win ? 2 : trendMinPts(range);
   const { physio: allPhysio, startMs, endMs } = physioWindow(range, win);
   // 限定到所选窗口：历史周期时窗口落在过去，需按窗口过滤原始取数
@@ -133,10 +176,10 @@ export function buildEstrogenData(
   const rng = (v: number[]) => ({ lo: Math.min(...v), span: Math.max(...v) - Math.min(...v) });
   const hrvN = hrvDays.length >= 2 ? rng(hrvDays.map((p) => p.hrv)) : null;
   const edaN = edaDays.length >= 2 ? rng(edaDays.map((p) => p.eda)) : null;
-  if (!hrvN && !edaN) return { real: null };
+  if (!hrvN && !edaN) return { real: null, expected };
 
   const withData = physio.filter((p) => p.hrv != null || p.eda != null);
-  if (withData.length < minPts) return { real: null };
+  if (withData.length < minPts) return { real: null, expected };
 
   const hrvArr = hrvDays.map((p) => ({ date: p.date, v: p.hrv }));
   const edaArr = edaDays.map((p) => ({ date: p.date, v: p.eda }));
@@ -163,8 +206,8 @@ export function buildEstrogenData(
     const value = Math.round((parts.reduce((s, x) => s + x.v * x.w, 0) / wsum) * 100);
     real.push({ date: p.date, value });
   }
-  if (real.length < minPts) return { real: null };
-  return { real };
+  if (real.length < minPts) return { real: null, expected };
+  return { real, expected };
 }
 
 /**
@@ -180,8 +223,10 @@ export function buildProgesteroneData(
   cycleInfo: CycleInfo | null,
   range: TrendRange,
   win?: { startMs: number; days: number } | null,
-): { real: { date: string; value: number }[] | null } {
+  log?: CycleLog | null,
+): { real: { date: string; value: number }[] | null; expected: { date: string; value: number }[] | null } {
   // ★ 2026-10-07（同雌激素）：周期窗口下只要有 ≥2 个真实点就画，滚动窗口仍守 minPts
+  const expected = buildExpectedSeries('progesterone', log ?? null, cycleInfo, win);
   const minPts = win ? 2 : trendMinPts(range);
   const { physio, startMs: winStartMs, endMs: winEndMs } = physioWindow(range, win);
 
@@ -213,7 +258,7 @@ export function buildProgesteroneData(
   }
   const rhrUsable = rhrFol != null && rhrLut != null && rhrLut - rhrFol > 0.5;
 
-  if (!tempUsable && !rhrUsable) return { real: null };
+  if (!tempUsable && !rhrUsable) return { real: null, expected };
 
   // 以本地零点 ms 为 canonical key 合并同一天
   const tempByMs = new Map<number, number>();
@@ -247,6 +292,6 @@ export function buildProgesteroneData(
     real.push({ date: `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`, value });
   }
 
-  if (real.length < minPts) return { real: null };
-  return { real };
+  if (real.length < minPts) return { real: null, expected };
+  return { real, expected };
 }

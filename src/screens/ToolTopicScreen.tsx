@@ -44,6 +44,8 @@ import { LEARN_ARTICLES, LEARN_HERO_ID, getLearnArticle } from '../lib/learnArti
 import { GLOW_ARTICLES, GLOW_HERO_ID, getGlowArticle } from '../lib/glowArticles';
 import { SPORT_ARTICLES, SPORT_HERO_ID, getSportArticle } from '../lib/sportArticles';
 import { NUTRITION_ARTICLES, getNutritionArticle } from '../lib/nutritionArticles';
+import type { LearnArticle } from '../lib/learnArticles';
+import { useShowCycle } from '../data/cycleScope';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import type { TabParamList } from '../navigation/BottomTabNavigator';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
@@ -65,6 +67,27 @@ const TOPIC_META: Record<TopicKey, { title: string; sub: string }> = {
   sportArticles: { title: '运动科普', sub: '周期 × 荷尔蒙的运动科学' },
 };
 
+/** ★ 2026-11-14：男性用户专用副标题 —— 不带生理周期 / 荷尔蒙口径。 */
+const GENERAL_SUB: Record<TopicKey, string> = {
+  glow: '睡好、吃稳、防晒，把状态养回来',
+  sport: '按今天的状态开运动处方',
+  learn: '光 · 睡 · 压 · 动，四件影响状态的小事',
+  nutrition: '吃对了，一天的精力才稳',
+  sportArticles: '状态和恢复，决定今天怎么练',
+};
+
+/**
+ * ★ 2026-11-14（用户：选了男性，饮食建议和报告里还会出现经期、雌激素内容吗）
+ * 文章库里绑定女性生理周期的条目一律不进男性内容池。只看标题 / 短标题 / 眉行，
+ * 不扫正文（正文里「皮质醇也有昼夜周期」这类通用表述不该误伤）。
+ * 过滤后若为空，调用方会退回中性 hero，保证页面不塌。
+ */
+const ARTICLE_CYCLE_RE = /经期|月经|排卵|黄体|卵泡|雌激素|孕激素|孕酮|雌二醇|经前|PMS|周期|荷尔蒙|易孕期|备孕|怀孕|女性营养|女性最|暖宫|补铁时机/i;
+function visibleArticles<T extends LearnArticle>(all: T[], showCycle: boolean): T[] {
+  if (showCycle) return all;
+  return all.filter((a) => !ARTICLE_CYCLE_RE.test(`${a.title} ${a.shortTitle ?? ''} ${a.eyebrow}`));
+}
+
 export default function ToolTopicScreen() {
   // ★ v18.134（审查 04 🟡-5）：订阅 healthStore 版本号 —— backfill 落库后本组件立即重算
   const hsVer = useHealthStoreVersion();
@@ -72,6 +95,9 @@ export default function ToolTopicScreen() {
   const navigation = useNavigation<CompositeNavigationProp<BottomTabNavigationProp<TabParamList>, StackNavigationProp<RootStackParamList>>>();
   const topic: TopicKey = (route.params?.topic ?? 'learn') as TopicKey;
   const meta = TOPIC_META[topic] ?? TOPIC_META.learn;
+  /** 男性用户：标题保留，副标题换中性口径；内容池 / 提示行 / 节律卡同源开关。 */
+  const showCycle = useShowCycle();
+  const sub = showCycle ? meta.sub : (GENERAL_SUB[topic] ?? meta.sub);
   const scrollY = useRef(new Animated.Value(0)).current;
   /** 交给 ScreenContainer：供运动页「进入今日运动建议」滚到方案卡 */
   const scrollRef = useRef<ScrollView>(null);
@@ -128,7 +154,7 @@ export default function ToolTopicScreen() {
               <BackButton onPress={() => navigation.goBack()} />
               <Animated.View style={[styles.headText, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}>
                 <Text style={styles.title}>{meta.title}</Text>
-                <Text style={styles.subtitle}>{meta.sub}</Text>
+                <Text style={styles.subtitle}>{sub}</Text>
               </Animated.View>
               {/* v18.99：右上角相位 chip 删除——周期阶段已在分析卡的「周期」理由行里说清，不重复 */}
             </View>
@@ -190,16 +216,16 @@ export default function ToolTopicScreen() {
           </TouchableOpacity>
           <Animated.View style={[styles.headText, { opacity: headOpacity, transform: [{ translateY: headLift }] }]}>
             <Text style={styles.title}>{meta.title}</Text>
-            <Text style={styles.subtitle}>{meta.sub}</Text>
+            <Text style={styles.subtitle}>{sub}</Text>
           </Animated.View>
         </View>
         {topic === 'learn'
-          ? <LearnSection phase={phase} navigation={navigation} />
+          ? <LearnSection phase={showCycle ? phase : '未记录'} showCycle={showCycle} navigation={navigation} />
           : topic === 'glow'
-            ? <GlowSection sleepScore={sleepScore} sleepIsStale={sleepIsStale} navigation={navigation} />
+            ? <GlowSection sleepScore={sleepScore} sleepIsStale={sleepIsStale} showCycle={showCycle} navigation={navigation} />
             : topic === 'nutrition'
-              ? <NutritionSection navigation={navigation} />
-              : <SportArticlesSection navigation={navigation} />}
+              ? <NutritionSection showCycle={showCycle} navigation={navigation} />
+              : <SportArticlesSection showCycle={showCycle} navigation={navigation} />}
       </ScreenContainer>
     </View>
   );
@@ -215,9 +241,10 @@ type TopicNav = CompositeNavigationProp<
   StackNavigationProp<RootStackParamList>
 >;
 
-function LearnSection({ phase, navigation }: { phase: string; navigation: TopicNav }) {
-  const hero = getLearnArticle(LEARN_HERO_ID);
-  const articles = LEARN_ARTICLES.filter((a) => a.id !== LEARN_HERO_ID);
+function LearnSection({ phase, showCycle, navigation }: { phase: string; showCycle: boolean; navigation: TopicNav }) {
+  const pool = visibleArticles(LEARN_ARTICLES, showCycle);
+  const hero = pool.find((a) => a.id === LEARN_HERO_ID) ?? pool[0] ?? getLearnArticle(LEARN_HERO_ID);
+  const articles = pool.filter((a) => a.id !== hero.id);
   return (
     <>
       {/* Hero 插画卡：图铺满，左上叠白色信息卡 */}
@@ -244,18 +271,20 @@ function LearnSection({ phase, navigation }: { phase: string; navigation: TopicN
         </ImageBackground>
       </TouchableOpacity>
 
-      {/* 周期关联提示（诚实口径：未记录就直说） */}
+      {/* 周期关联提示（诚实口径：未记录就直说）；男性改中性状态口径 */}
       <Text style={ls.phaseTip}>
-        {phase === '未记录'
-          ? '记录经期后，内容会跟着你的周期阶段更新。'
-          : `当前 ${phase} · 内容跟着你的周期阶段更新`}
+        {!showCycle
+          ? '按今天的睡眠、压力和精力，挑一件能马上做的小事。'
+          : phase === '未记录'
+            ? '记录经期后，内容会跟着你的周期阶段更新。'
+            : `当前 ${phase} · 内容跟着你的周期阶段更新`}
       </Text>
 
-      <RhythmMethodStrip phase={phase} navigation={navigation} />
+      <RhythmMethodStrip phase={phase} showCycle={showCycle} navigation={navigation} />
 
       {/* 列表区标题 */}
       <View style={ls.secHead}>
-        <Text style={ls.secTitle}>为你现在的阶段挑的</Text>
+        <Text style={ls.secTitle}>{showCycle ? '为你现在的阶段挑的' : '从基础开始'}</Text>
         <Text style={ls.secCount}>{articles.length} 篇</Text>
       </View>
 
@@ -283,10 +312,14 @@ function LearnSection({ phase, navigation }: { phase: string; navigation: TopicN
 }
 
 /** 把节律理论拆成可执行的三张图文卡：先解释窗口，再给一个动作。 */
-function RhythmMethodStrip({ phase, navigation }: { phase: string; navigation: TopicNav }) {
-  const cards = [
+function RhythmMethodStrip({ phase, showCycle, navigation }: { phase: string; showCycle: boolean; navigation: TopicNav }) {
+  const cards = showCycle ? [
     { id: 'cortisol', title: '晨光校准', text: '起床后见光，让白天的节律先站稳。', tone: '晨间节律' },
     { id: phase === '黄体期' || phase === '经期' ? 'progesterone' : 'estrogen', title: phase === '黄体期' || phase === '经期' ? '给恢复留空间' : '把难事放在上行段', text: phase === '黄体期' || phase === '经期' ? '减少并列任务，先把睡眠和恢复稳住。' : '把需要创造力的事放在精力上行时段。', tone: '周期节律' },
+    { id: 'dopamine', title: '先难后易', text: '把最需要专注的事放在脑力上行时段。', tone: '脑力节律' },
+  ] : [
+    { id: 'cortisol', title: '晨光校准', text: '起床后见光，让白天的节律先站稳。', tone: '晨间节律' },
+    { id: 'ring', title: '先看清数据边界', text: '戒指给的是趋势，不是化验值。', tone: '读数据' },
     { id: 'dopamine', title: '先难后易', text: '把最需要专注的事放在脑力上行时段。', tone: '脑力节律' },
   ];
   return (
@@ -370,9 +403,10 @@ function TopicMethodStrip({
  * 内容：斯坦福皮肤科共识 + 明星极简护肤路线（glowArticles.ts，静态无假数据）。
  * 顶部提示行带昨晚睡眠分（有数据才展示，诚实口径）。
  */
-function GlowSection({ sleepScore, sleepIsStale, navigation }: { sleepScore: number | null; sleepIsStale?: boolean; navigation: TopicNav }) {
-  const hero = getGlowArticle(GLOW_HERO_ID);
-  const articles = GLOW_ARTICLES.filter((a) => a.id !== GLOW_HERO_ID);
+function GlowSection({ sleepScore, sleepIsStale, showCycle, navigation }: { sleepScore: number | null; sleepIsStale?: boolean; showCycle: boolean; navigation: TopicNav }) {
+  const pool = visibleArticles(GLOW_ARTICLES, showCycle);
+  const hero = pool.find((a) => a.id === GLOW_HERO_ID) ?? pool[0] ?? getGlowArticle(GLOW_HERO_ID);
+  const articles = pool.filter((a) => a.id !== hero.id);
   return (
     <>
       <TouchableOpacity
@@ -465,11 +499,16 @@ function SportRedesign({ sportDate, pickerOpen, setPickerOpen }: {
       return null;
     }
   })();
-  const phase = ring?.curveStatus?.phaseLabel ?? '未记录';
+  // ★ 2026-11-14：男性用户强制「未记录」相位 —— 周期同步训练法不适用，
+  //   否则理由行会出现「记一次经期，这里换成阶段定制版」。
+  const cycleOn = useShowCycle();
+  const phase = cycleOn ? (ring?.curveStatus?.phaseLabel ?? '未记录') : '未记录';
   // ★ 2026-10-12：运动建议采数与「运动消耗」详情页的「今日运动建议」卡共用同一 helper
   //   （collectWorkoutInput）——单一事实来源，保证工具页与卡片给出的处方完全一致，点进去不打架。
-  const plan = buildTodayWorkout(collectWorkoutInput(ring, dayTs));
-  const brief = buildSportBrief(phase, plan.timeSlot);
+  const workoutInput = collectWorkoutInput(ring, dayTs);
+  if (!cycleOn) workoutInput.phase = '未记录';
+  const plan = buildTodayWorkout(workoutInput);
+  const brief = buildSportBrief(phase, plan.timeSlot, !cycleOn);
   const statusLine = sportStatusReason({
     sleepTotalMin: sleepSel?.total ?? null,
     sleepDeepMin: sleepSel?.deep ?? null,
@@ -1033,9 +1072,10 @@ const styles = StyleSheet.create({
  * 内容：荷尔蒙 × 营养（nutritionArticles.ts，静态无假数据）。
  * 「更多科普」按钮落点之一（饮食页底部「更多科普」→ ToolTopic nutrition）。
  */
-function NutritionSection({ navigation }: { navigation: TopicNav }) {
-  const hero = NUTRITION_ARTICLES[0];
-  const articles = NUTRITION_ARTICLES.slice(1);
+function NutritionSection({ showCycle, navigation }: { showCycle: boolean; navigation: TopicNav }) {
+  const pool = visibleArticles(NUTRITION_ARTICLES, showCycle);
+  const hero = pool[0] ?? NUTRITION_ARTICLES[0];
+  const articles = pool.slice(1);
   return (
     <>
       <TouchableOpacity
@@ -1061,15 +1101,18 @@ function NutritionSection({ navigation }: { navigation: TopicNav }) {
         </ImageBackground>
       </TouchableOpacity>
 
-      <Text style={ls.phaseTip}>真实可查的营养科学，吃对了激素才稳。</Text>
+      <Text style={ls.phaseTip}>{showCycle ? '真实可查的营养科学，吃对了激素才稳。' : '真实可查的营养科学，先把一天的精力稳住。'}</Text>
 
       <TopicMethodStrip
         title="今天可以这样吃"
         hint="按节律挑一件"
         navigation={navigation}
-        cards={[
+        cards={showCycle ? [
           { id: 'cravings', title: '稳住餐后精力', text: '先吃蛋白质和纤维，再安排主食。', tone: '血糖节律', cover: getNutritionArticle('cravings').cover, collection: 'nutrition' },
           { id: 'proteinhormone', title: '给周期补对燃料', text: '根据阶段调整碳水和脂肪，不用硬扛。', tone: '周期营养', cover: getNutritionArticle('proteinhormone').cover, collection: 'nutrition' },
+        ] : [
+          { id: 'cravings', title: '稳住餐后精力', text: '先吃蛋白质和纤维，再安排主食。', tone: '血糖节律', cover: getNutritionArticle('cravings').cover, collection: 'nutrition' },
+          { id: 'proteinhormone', title: '蛋白质先吃够', text: '每餐有一掌心蛋白质，饱腹感更稳。', tone: '蛋白质', cover: getNutritionArticle('proteinhormone').cover, collection: 'nutrition' },
         ]}
       />
 
@@ -1103,9 +1146,10 @@ function NutritionSection({ navigation }: { navigation: TopicNav }) {
 /* ── 运动科普 · 图文版块（v18.86 从 SportSection 拆出）────────────────────────
  * 「查看更多科普」的落点：完整运动科学文章列表。
  */
-function SportArticlesSection({ navigation }: { navigation: TopicNav }) {
-  const hero = getSportArticle(SPORT_HERO_ID);
-  const articles = SPORT_ARTICLES.filter((a) => a.id !== SPORT_HERO_ID);
+function SportArticlesSection({ showCycle, navigation }: { showCycle: boolean; navigation: TopicNav }) {
+  const pool = visibleArticles(SPORT_ARTICLES, showCycle);
+  const hero = pool.find((a) => a.id === SPORT_HERO_ID) ?? pool[0] ?? getSportArticle(SPORT_HERO_ID);
+  const articles = pool.filter((a) => a.id !== hero.id);
   return (
     <>
       <TouchableOpacity
@@ -1131,15 +1175,18 @@ function SportArticlesSection({ navigation }: { navigation: TopicNav }) {
         </ImageBackground>
       </TouchableOpacity>
 
-      <Text style={ls.phaseTip}>周期阶段 × 荷尔蒙，给你可执行的训练节奏。</Text>
+      <Text style={ls.phaseTip}>{showCycle ? '周期阶段 × 荷尔蒙，给你可执行的训练节奏。' : '状态 × 恢复，给你可执行的训练节奏。'}</Text>
 
       <TopicMethodStrip
         title="今天怎么动"
-        hint="看周期，也看恢复"
+        hint={showCycle ? '看周期，也看恢复' : '看恢复，也看状态'}
         navigation={navigation}
-        cards={[
+        cards={showCycle ? [
           { id: 'cycletraining', title: '把强度放对时段', text: '上行段挑战，恢复段保留余量。', tone: '训练节律', cover: getSportArticle('cycletraining').cover, collection: 'sport' },
           { id: 'lutealtrain', title: '经前给恢复留空间', text: '保持频率，降低单次强度和并列任务。', tone: '黄体期', cover: getSportArticle('lutealtrain').cover, collection: 'sport' },
+        ] : [
+          { id: 'cortisoltrain', title: '把强度放对时段', text: '状态好再往上加，别硬顶。', tone: '训练节律', cover: getSportArticle('cortisoltrain').cover, collection: 'sport' },
+          { id: 'hrvtrain', title: '看 HRV 定强度', text: '连续偏低就先降一档。', tone: '恢复信号', cover: getSportArticle('hrvtrain').cover, collection: 'sport' },
         ]}
       />
 

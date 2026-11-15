@@ -121,6 +121,30 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+/**
+ * ★ 2026-11-15（上线门禁 P0-3）：正式 release 签名
+ *  - 密钥 + 口令放在 app/keystore.properties（chmod 600，.gitignore 排除），绝不入库。
+ *  - 默认 assembleRelease 使用正式签名；缺少密钥时直接 fail，绝不静默回退 debug 签名。
+ *  - 仅「内部回归」需要覆盖安装到已装 debug 签名包的测试机、并保留健康数据时，
+ *    才显式加 -Pmira.internalSigning=true 临时换回 debug 签名。发布时严禁带此参数。
+ *  - 换签名后无法覆盖安装旧版，需卸载重装；因此发布包与内部回归包必须分开构建。
+ */
+def releaseKeystoreProps = new Properties()
+def releaseKeystorePropsFile = file('keystore.properties')
+if (releaseKeystorePropsFile.exists()) {
+    releaseKeystorePropsFile.withInputStream { releaseKeystoreProps.load(it) }
+}
+def hasReleaseKeystore = releaseKeystorePropsFile.exists() &&
+    releaseKeystoreProps['storeFile'] &&
+    file(releaseKeystoreProps['storeFile'].toString()).exists()
+def miraInternalSigning = (findProperty('mira.internalSigning') ?: 'false').toString() == 'true'
+def miraBuildsRelease = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+if (miraBuildsRelease && !miraInternalSigning && !hasReleaseKeystore) {
+    throw new GradleException(
+        '缺少正式 release 签名：请把 keystore.properties 与 keystore 放到 android/app/。' +
+        '仅内部回归可显式加 -Pmira.internalSigning=true（禁止用于发布）。')
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -133,8 +157,8 @@ android {
         applicationId 'com.miraringfashion.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 28
-        versionName "1.4.4"
+        versionCode 35
+        versionName "1.4.6"
     }
     signingConfigs {
         debug {
@@ -143,15 +167,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseKeystore) {
+            release {
+                storeFile file(releaseKeystoreProps['storeFile'].toString())
+                storePassword releaseKeystoreProps['storePassword'].toString()
+                keyAlias releaseKeystoreProps['keyAlias'].toString()
+                keyPassword releaseKeystoreProps['keyPassword'].toString()
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // 默认正式签名；-Pmira.internalSigning=true 只用于保数据的内部回归包。
+            // 注意：三元必须写在同一条方法调用里，换行会被 Groovy 解析成 signingConfig(Boolean)。
+            signingConfig((miraInternalSigning || !hasReleaseKeystore) ? signingConfigs.debug : signingConfigs.release)
+            // ★ 2026-11-15（QA）：仅显式 -Pmira.debuggable=true 时才允许 run-as 注入本地测试数据。
+            //   默认 false，发布包始终 non-debuggable；此开关不得用于发布构建。
+            debuggable = (findProperty('mira.debuggable') ?: 'false').toString() == 'true'
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

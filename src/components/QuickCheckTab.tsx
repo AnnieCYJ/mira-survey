@@ -23,16 +23,13 @@ import {
   countQuickChecks,
   abnormalMetrics,
   tallyRecord,
-  QUICK_CHECK_DURATION_MS,
   runQuickCheckSession,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
 import { qc, statusColor, statusLabel, QCta } from './quickCheckShared';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
 
-// ★ 一键体检等待动画的分步文案在组件内按机型能力动态生成（见 checkSteps）
-// ★ 2026-11-13：测量窗口由 quickCheckStore.QUICK_CHECK_DURATION_MS 统一定义（35 秒），
-//   与体检记录页「再体检一次」共用 runQuickCheckSession()，避免两个入口时长/口径分叉。
+// ★ 一键体检等待浮层文案由 runQuickCheckSession 的 onPhase 阶段回调实时驱动（见 startCheck）
 
 export default function QuickCheckTab() {
   const navigation = useNavigation<any>();
@@ -45,25 +42,28 @@ export default function QuickCheckTab() {
   const canGlucose = hasCap(profile, 'glucose');
   const canGlance = hasCap(profile, 'cortisol');
   const checkupMetrics = [
-    '今日状态', '心率', '血氧', '体温',
+    '今日状态', '心率', '心率变异性', '血氧', '体温',
     '活动', '睡眠', '血脂', '压力', '身体成分',
     ...(canBp ? ['血压'] : []),
     ...(canGlucose ? ['血糖'] : []),
     ...(canGlance ? ['健康一览信号'] : []),
   ];
-  // ★ 四步均分 35 秒窗口，文案对齐真实阶段：0–21s 心率独占 PPG 通道，21s 后才起血氧流
-  const checkSteps = [
-    '正在现场测量心率，请保持手指静止…',
-    '心率测量进行中，请继续保持静止…',
-    '正在读取血氧与今天已同步的读数…',
-    '正在汇总数据并生成体检报告…',
-  ];
+  // ★ 2026-11-14（用户拍板「血压不出值自动重试」）：等待文案改为**阶段驱动** ——
+  //   runQuickCheckSession 每进入一个真实阶段回调 onPhase，浮层文案跟着切；
+  //   不再按总时长均分猜测（血压可能重试一轮，均分计时必然错位）。
+  const PHASE_STEPS: Record<string, string> = {
+    hr: '正在现场测量心率，请保持手指静止…',
+    bp: '正在测量血压，请保持手部放松、与心脏同高，不要说话…',
+    'bp-retry': '血压信号还没采够，正在再测一次，请保持手不动…',
+    hrv: '正在测量心率变异性…',
+    spo2: '正在读取血氧与今天已同步的读数…',
+    assemble: '正在汇总数据并生成体检报告…',
+  };
   const [latest, setLatest] = useState<QuickCheckRecord | null>(null);
   const [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [stepIdx, setStepIdx] = useState(0);
-  const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [phaseText, setPhaseText] = useState('正在现场测量心率，请保持手指静止…');
 
   const reload = async () => {
     const [last, c] = await Promise.all([getLatestQuickCheck(), countQuickChecks()]);
@@ -73,7 +73,6 @@ export default function QuickCheckTab() {
 
   useEffect(() => {
     (async () => { await reload(); })();
-    return () => { if (stepTimer.current) clearInterval(stepTimer.current); };
   }, []);
 
   const latestTally = latest ? tallyRecord(latest) : { done: 0, abnormal: 0 };
@@ -83,22 +82,22 @@ export default function QuickCheckTab() {
     if (busy) return;
     setBusy(true);
     setChecking(true);
-    setStepIdx(0);
+    setPhaseText(PHASE_STEPS.hr);
 
-    // ★ 2026-11-13（用户）：这 35 秒里**真的发起测量**，不是干等。
-    //   现场测量 + 等满窗口 + 组装报告统一在 runQuickCheckSession() 里，两个入口共用同一口径：
+    // ★ 2026-11-13（用户）：这个窗口里**真的发起测量**，不是干等。
+    //   现场测量 + 等待 + 组装报告统一在 runQuickCheckSession() 里，两个入口共用同一口径：
     //   · hr   → 原生 startSingleHeartDetect()，前 20 秒独占 PPG 通道，读数回流到 state.metrics.hr
-    //   · spo2 → 心率窗口结束后才起 startSpo2hOnly() 连续流（PPG 不能并行），剩余时间回传血氧
+    //   · bp   → 2026-11-14 新增：startDetectBP 主动测量，≤45s 没出值自动再测一轮，
+    //            阶段结束无论成败都 stopMeasure('bp') 归还 PPG
+    //   · hrv  → 2026-11-14 新增：startDetectHrv 主动测量（固件支持 App 主动测时才有读数）
+    //   · spo2 → 前面测量结束后才起 startSpo2hOnly() 连续流（PPG 不能并行），回传血氧
     //   报告里其它项目取今天已同步的读数或最近记录推算，各自标明来源，不冒充现场测量。
 
-    // 分步文案按整个测量窗口均分，每一步都对应真实在跑的阶段
-    const stepMs = Math.round(QUICK_CHECK_DURATION_MS / checkSteps.length);
-    stepTimer.current = setInterval(
-      () => setStepIdx((i) => Math.min(i + 1, checkSteps.length - 1)),
-      stepMs,
-    );
+    // 每进入一个真实阶段回调一次，浮层文案实时跟随（血压重试时文案会切到「再测一次」）
     try {
-      const res = await runQuickCheckSession();
+      const res = await runQuickCheckSession({
+        onPhase: (p) => setPhaseText(PHASE_STEPS[p] ?? PHASE_STEPS.hr),
+      });
       if (res.ok && res.record) {
         await reload();
         // ★ 成功不再弹 Alert，直接跳本次体检的详情页
@@ -106,7 +105,7 @@ export default function QuickCheckTab() {
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。没有读到数据的项目不会出现在报告里。',
+          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。',
           [{ text: '知道了' }]
         );
       }
@@ -114,7 +113,6 @@ export default function QuickCheckTab() {
       Alert.alert('体检未完成', '读取测量数据时出了问题，请稍后再试。', [{ text: '知道了' }]);
     } finally {
       setChecking(false);
-      if (stepTimer.current) { clearInterval(stepTimer.current); stepTimer.current = null; }
       setBusy(false);
     }
   };
@@ -134,19 +132,25 @@ export default function QuickCheckTab() {
             <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
           </Card>
         <Text style={qc.footerNote}>
-          现场测量约 {Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒。心率和血氧是这次现场测得的，今日状态与身心压力用这次的读数重新算出。
+          现场测量最长约 2 分半、通常 1 分多钟出报告；血压一次没出值时会自动再测一次。
+          心率、血压、心率变异性和血氧是这次现场测量的项目，今日状态与身心压力用这次的读数重新算出。
           报告最多包含 {checkupMetrics.length} 类结果，今天已同步的读数会一起列出并标明来源；戴了一段时间后，会加入基于最近记录的节律结论。
-          没有读到数据的项目不会出现在报告里，不会用「--」占位。Mira 只做描述与参考，不做诊断与评分。
+          Mira 只做描述与参考，不做诊断与评分。
         </Text>
         </View>
-        <CheckWaitOverlay visible={checking} step={checkSteps[stepIdx]} />
+        <CheckWaitOverlay visible={checking} step={phaseText} />
       </>
     );
   }
 
+  // ★ 2026-11-14（用户）：「最近一次体检的分析」要说清三件事 ——
+  //   共测了多少项、哪几项偏离参考区间（带数值）、这类偏离通常意味着什么。
+  const abnormalDesc = latestAbnormal
+    .map((m) => `${m.name} ${m.value}${m.unit || ''}（${statusLabel(m)}）`)
+    .join('、');
   const aiSummary = latestAbnormal.length
-    ? `本次体检共 ${latestTally.done} 项，${latestTally.abnormal} 项偏离参考区间（${latestAbnormal.map((m) => m.name).join('、')}）；其余指标均在正常范围内。结合你的荷尔蒙节律、昼夜节律与生理周期相位，这类波动多数属可观察范围，建议连续记录几天再看趋势。Mira 仅作描述，不做诊断与评分。`
-    : `本次完成 ${latestTally.done} 项检测，所有指标均在参考区间内，未见明显异常。保持当前作息与情绪节奏即可。Mira 仅作描述，不做诊断与评分。`;
+    ? `本次体检共完成 ${latestTally.done} 项，其中 ${latestTally.abnormal} 项偏离参考区间：${abnormalDesc}。单项偏离多与当下状态有关，比如刚活动过、情绪紧张或测量姿势不同；安静 5 分钟后复测一次，再对照近几天的趋势，比看单次数值更有意义。Mira 只描述不诊断。`
+    : `本次体检共完成 ${latestTally.done} 项，全部落在参考区间内，未见异常，说明当下身体状态平稳。保持当前作息与运动节奏即可。Mira 只描述不诊断。`;
 
   return (
     <>
@@ -194,11 +198,12 @@ export default function QuickCheckTab() {
             <QCta title={busy ? '体检中…' : '再体检一次'} onPress={startCheck} disabled={busy} />
           </View>
         </Card>
+        {/* ★ 2026-11-14（用户）：「没有读到数据的项目不会出现在报告里」这句去掉 */}
         <Text style={qc.footerNote}>
-          没有读到数据的项目不会出现在报告里，不会用「--」占位。参考区间仅供参考，Mira 不做诊断与评分。点击卡片可查看全部体检记录。
+          参考区间仅供参考，Mira 不做诊断与评分。点击卡片可查看全部体检记录。
         </Text>
       </View>
-      <CheckWaitOverlay visible={checking} step={checkSteps[stepIdx]} />
+      <CheckWaitOverlay visible={checking} step={phaseText} />
     </>
   );
 }
@@ -239,7 +244,7 @@ function CheckWaitOverlay({ visible, step }: { visible: boolean; step: string })
             </View>
           </View>
           <Text style={ov.stepText}>{step}</Text>
-          <Text style={ov.hint}>{`现场测量约 ${Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒，请保持戒指佩戴、手指放松`}</Text>
+          <Text style={ov.hint}>{'请保持戒指佩戴、手指放松；测血压时手与心脏同高、不要说话'}</Text>
         </View>
       </View>
     </Modal>

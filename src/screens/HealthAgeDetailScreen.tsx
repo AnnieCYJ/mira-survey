@@ -482,8 +482,7 @@ export default function HealthAgeDetailScreen() {
       <View style={styles.header}>
         <BackButton onPress={() => navigation.goBack()} />
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>身体年龄</Text>
-          <Text style={styles.headerSub}>活力调整 · 睡眠 / 运动 / 代谢 / 节律</Text>
+            <Text style={styles.headerTitle}>身体年龄</Text>
         </View>
       </View>
 

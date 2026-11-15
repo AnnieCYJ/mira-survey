@@ -40,7 +40,9 @@ const ok = (name, cond, extra = '') => {
   if (cond) { pass++; }
   else { fail++; console.log('  ✗ FAIL:', name, extra); }
 };
-const hasScore = (c) => typeof c.score === 'number' && Number.isFinite(c.score);
+// ★ 2026-11-15（上线测试 REG-01）：v1.4.4 起维度引擎重构，部分卡（vitals/task）
+//   改为条件产出，旧 hasScore 直接读 undefined.score 会 TypeError 崩掉整个脚本。
+const hasScore = (c) => !!c && typeof c.score === 'number' && Number.isFinite(c.score);
 const flat = (groups) => groups.flatMap((g) => g.cards);
 const card = (groups, id) => flat(groups).find((c) => c.id === id);
 
@@ -56,7 +58,10 @@ console.log('══ A. 维度卡：有分数才画进度条 ══');
     vitals: [{ label: '血压', value: '118/76' }, { label: '血氧', value: '98%' }],
     completedTasks: [{ label: '呼吸练习', count: 1 }, { label: '记了饮食', count: 2 }],
   });
-  ok('组数 = 5', g.length === 5, `实际 ${g.length}: ${g.map(x => x.title).join('/')}`);
+  // ★ 2026-11-15：当前引擎 = 3 个固定主题组（身体节律/活动与状态/情绪与压力）
+  //   + 最多 1 个条件组（身体指标合看，需 vitalsDetail 且有跨指标信号）；task 组已删除。
+  ok('组数 = 3（最多 4，旧 5 组断言已过时）', g.length >= 3 && g.length <= 4,
+    `实际 ${g.length}: ${g.map(x => x.title).join('/')}`);
   ok('睡眠有分数→进度条', hasScore(card(g, 'sleep')));
   ok('睡眠 92≥85 → goalMet', card(g, 'sleep').goalMet === true);
   ok('睡眠进度条 label 正确', card(g, 'sleep').scoreLabel === '睡眠评分 92 / 100');

@@ -157,11 +157,6 @@ export default function BreathingPlayer({
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgShade)" />
       </Svg>
 
-      {/* 关闭按钮 —— SafeAreaView 外层 */}
-      <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}>
-        <Icon name="close" size={18} color="#fff" />
-      </Pressable>
-
       <SafeAreaView style={styles.safe}>
         {/* 标题 */}
         <View style={styles.header}>
@@ -207,6 +202,11 @@ export default function BreathingPlayer({
         </View>
       </View>
     )}
+
+    {/* 右上角关闭按钮：置于最顶层，确保箱式呼吸等引导中随时可退出 */}
+    <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={14} accessibilityLabel="关闭呼吸引导">
+      <Text style={styles.closeX}>✕</Text>
+    </Pressable>
     </View>
   );
 }
@@ -221,8 +221,9 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 50, right: theme.space.card,
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: theme.colors.ui.black35,
-    justifyContent: 'center', alignItems: 'center', zIndex: 10,
+    justifyContent: 'center', alignItems: 'center', zIndex: 1003,
   },
+  closeX: { color: '#fff', fontSize: 20, fontWeight: '600' as any, textAlign: 'center' },
   header: { alignItems: 'center', marginBottom: theme.space.xl, zIndex: 10 },
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as any, color: theme.colors.textWhite, textShadowColor: theme.colors.ui.black30, textShadowRadius: 8 },
   subtitle: { fontSize: theme.fontSize.body, color: theme.colors.ui.white85, marginTop: 4, textShadowColor: theme.colors.ui.black30, textShadowRadius: 6 },

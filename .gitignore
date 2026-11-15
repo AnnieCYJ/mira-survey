@@ -20,6 +20,11 @@ android/
 .DS_Store
 .env
 
+# ★ 2026-11-15 正式 release 签名密钥与口令：绝不入库。
+#   本地副本在 ~/.android-toolchain/keystore-backup/，丢失将无法发布任何升级包。
+android/app/*.keystore
+**/keystore.properties
+
 # 端侧 LLM 模型权重（1.1GB，本地构建用，不进 git）
 *.gguf
 assets/models/

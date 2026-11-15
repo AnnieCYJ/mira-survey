@@ -84,9 +84,13 @@ export default function CyclePhaseCard({
     void loadPeriodDays().then((pd) => setPeriodDays(pd));
   }, []);
 
-  // 面板保存后：重载本地经期主记录，刷新月相环相位 / 关键日期
+  // 面板保存后：重载本地经期主记录 + 每日经期状态（含「经期结束」标记），
+  // ★ 2026-11-15（用户：记录经期结束后，洞察页月相环 / 周期推算没刷新）：
+  //   此前只重载 cycleLog 漏掉 periodDays，导致 periodEnd 收口后投影不更新。
+  //   现一并重载 periodDays，computeCycle 立即吃到最新经期区间 → 相位 / 月相环同步刷新。
   const handleSaved = () => {
     void loadCycleLog().then((l) => setLog(l));
+    void loadPeriodDays().then((pd) => setPeriodDays(pd));
   };
 
   // 经期数据来源合并：本地 log + 戒指 female，用 lastPeriodStart 更晚的那条。

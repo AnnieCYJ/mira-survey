@@ -88,18 +88,46 @@ function normalizeElements(raw?: Record<string, unknown>): ElementField | undefi
   return Object.keys(out).length ? (out as ElementField) : undefined;
 }
 
-const RECOGNIZE_PROMPT = `你是饮食记录助手。识别照片中的食物，返回 JSON（不要多余文字）：
-{"items":[{"name":"菜品名","portion":"份量描述如1碗/150g","kcal":估算热量整数,"protein":蛋白质克数,"carbs":碳水克数,"fat":脂肪克数,"elements":{"mg":镁毫克,"zn":锌毫克,"fe":铁毫克,"ca":钙毫克,"b6":维生素B6毫克,"fa":叶酸微克,"se":硒微克}}]}
-规则：每样食物单独一项；kcal 与宏量按常见做法估算；elements 为该菜品可食部常见含量的估算（毫克 mg，叶酸用微克 μg），识别不出某项就省略该键；最多 6 项；识别不出就返回 {"items":[]}。`;
+const RECOGNIZE_PROMPT = `你是饮食记录助手。识别照片里的餐食，只返回一个 JSON 对象，不要 markdown 代码块、不要解释文字。
+格式：{"items":[{"name":"名称","portion":"份量","kcal":整数,"protein":克数,"carbs":克数,"fat":克数,"elements":{"mg":镁毫克,"zn":锌毫克,"fe":铁毫克,"ca":钙毫克,"b6":维生素B6毫克,"fa":叶酸微克,"se":硒微克}}]}
+规则：
+- 食物和饮品都算：咖啡、奶茶、柠檬茶、果汁、牛奶、酸奶、酒都要识别，按杯型估算热量。
+- 只要画面里能看出是可食用/可饮用的东西，就必须给出至少 1 项，不要轻易返回空数组。
+- kcal 必须是纯数字整数，不要带单位或"约"字；其余营养字段也用数字。
+- 每样东西单独一项，最多 6 项；看不清具体名称时用合理通称（如"冰美式""柠檬茶"）。
+- elements 为该菜品可食部常见含量的估算（毫克 mg，叶酸用微克 μg），识别不出某项就省略该键。
+- 仅当照片完全不是餐食（如风景、人物、文档）时才返回 {"items":[]}。`;
+
+/** ★ 2026-11-14 真因修复：glm-4v-flash 的 max_tokens 上限是 1024，原代码写 1500，
+ *  带图片的请求被智谱直接拒为 HTTP 400「max_tokens参数非法」，两次重试全废 →
+ *  真机上「拍什么都认不出来」。历史注释「500→1500 防截断」踩了模型上限。 */
+const VLM_MAX_TOKENS = 900;
+
+/** 失败原因（供 UI 给准确提示，不再一律甩锅给「照片太暗」）。 */
+export type RecognizeFailure =
+  | 'config' | 'auth' | 'quota' | 'timeout' | 'network' | 'parse' | 'empty';
+let _lastFailure: RecognizeFailure | null = null;
+export function getLastRecognizeFailure(): RecognizeFailure | null { return _lastFailure; }
+
+/** 容忍模型返回「约 200」「200kcal」「"200"」这类值。 */
+function looseNumber(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/[^\d.\-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
 
 /** 调 VLM 识别餐食照片；任何失败返回 null（调用方走兜底）。
- *  ★ 2026-11-03（用户：识别慢且老是失败）：
- *  ① max_tokens 500→1500 —— 8 道菜×7 元素字段的 JSON 会被 500 截断 → 解析失败 =「识别不出来」的主因；
- *  ② 20s AbortController 超时（之前无超时，spinner 可以挂很久）；
- *  ③ 失败/空结果自动重试 1 次（flash 模型偶发返回 items:[] 或截断，重试可救回一大半）；
- *  ④ 菜品上限 8→6，降低截断概率。 */
+ *  ★ 2026-11-14（用户：拍照识别基本上认不出任何东西）：
+ *  ① max_tokens 1500→900（模型硬上限 1024）—— 这是 100% 失败的真因；
+ *  ② 剥离模型常带的 ```json 代码块，避免 JSON 解析失败；
+ *  ③ prompt 明确「饮品也算 / 不轻易返回空数组」，修复咖啡奶茶被判非食物；
+ *  ④ 容错数字字段；⑤ 4xx 鉴权/配额错误短路不重试；⑥ 记录失败原因给 UI。 */
 export async function recognizeMeal(base64Jpeg: string): Promise<MealItem[] | null> {
-  if (!FOOD_VLM.endpoint || !FOOD_VLM.apiKey || !FOOD_VLM.model) return null;
+  _lastFailure = null;
+  if (!FOOD_VLM.endpoint || !FOOD_VLM.apiKey || !FOOD_VLM.model) {
+    _lastFailure = 'config';
+    return null;
+  }
   for (let attempt = 1; attempt <= 2; attempt++) {
     const t0 = Date.now();
     try {
@@ -123,43 +151,59 @@ export async function recognizeMeal(base64Jpeg: string): Promise<MealItem[] | nu
               ],
             },
           ],
-          max_tokens: 1500,
+          max_tokens: VLM_MAX_TOKENS,
           temperature: 0.2,
         }),
       }).finally(() => clearTimeout(timer));
       if (!res.ok) {
-        console.warn('[FoodScan] VLM 请求失败:', res.status, (await res.text()).slice(0, 200));
-        continue; // 重试
+        const body = (await res.text()).slice(0, 200);
+        console.warn('[FoodScan] VLM 请求失败:', res.status, body);
+        // 鉴权/配额/参数错误重试也没用，直接短路并给出可诊断原因
+        if (res.status === 401 || res.status === 403) _lastFailure = 'auth';
+        else if (res.status === 429) _lastFailure = 'quota';
+        else if (res.status >= 500) _lastFailure = 'network';
+        else _lastFailure = 'parse';
+        if (res.status < 500 && res.status !== 429) return null;
+        continue;
       }
       const data = await res.json();
-      const text: string = data?.choices?.[0]?.message?.content ?? '';
+      const raw: string = data?.choices?.[0]?.message?.content ?? '';
+      // 模型经常回 ```json\n{...}\n```，先剥壳再取 JSON
+      const text = raw.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
       const m = text.match(/\{[\s\S]*\}/);
-      if (!m) { console.warn('[FoodScan] VLM 返回无 JSON（第', attempt, '次）:', text.slice(0, 100)); continue; }
+      if (!m) {
+        console.warn('[FoodScan] VLM 返回无 JSON（第', attempt, '次）:', text.slice(0, 100));
+        _lastFailure = 'parse';
+        continue;
+      }
       let parsed: { items?: Array<MealItem & { elements?: Record<string, number> }> };
       try {
         parsed = JSON.parse(m[0]) as { items?: Array<MealItem & { elements?: Record<string, number> }> };
       } catch {
         console.warn('[FoodScan] VLM JSON 截断/非法（第', attempt, '次）:', m[0].slice(-80));
-        continue; // 截断 → 重试
+        _lastFailure = 'parse';
+        continue;
       }
       const items = (parsed.items || [])
-        .filter((it) => it && it.name && Number.isFinite(Number(it.kcal)))
+        .filter((it) => it && it.name && looseNumber(it.kcal) !== null)
         .slice(0, 6)
         .map((it) => ({
           name: String(it.name),
           portion: String(it.portion || '1 份'),
-          kcal: Math.round(Number(it.kcal)),
-          protein: Number.isFinite(Number(it.protein)) ? Math.round(Number(it.protein)) : 0,
-          carbs: Number.isFinite(Number(it.carbs)) ? Math.round(Number(it.carbs)) : 0,
-          fat: Number.isFinite(Number(it.fat)) ? Math.round(Number(it.fat)) : 0,
+          kcal: Math.round(looseNumber(it.kcal) ?? 0),
+          protein: Math.round(looseNumber(it.protein) ?? 0),
+          carbs: Math.round(looseNumber(it.carbs) ?? 0),
+          fat: Math.round(looseNumber(it.fat) ?? 0),
           elements: normalizeElements(it.elements),
         }));
       console.log('[FoodScan] VLM 识别成功:', items.length, '项 |', Date.now() - t0, 'ms');
       if (items.length) return items;
+      _lastFailure = 'empty';
       // items:[] 空结果也重试一次
     } catch (e: unknown) {
       const aborted = e instanceof Error && e.name === 'AbortError';
       console.warn('[FoodScan] VLM 请求异常（第', attempt, '次）:', aborted ? '超时 20s' : e);
+      _lastFailure = aborted ? 'timeout' : 'network';
     }
   }
   return null;
@@ -236,12 +280,16 @@ export function dateKeyOf(ts: number = Date.now()): string {
  *   E3066767-…），绝对路径立刻失效 → 缩略图全挂。文件本身还在新容器的 Documents 里。
  *   所以：入库只存文件名，读取时一律按**当前** documentDirectory 重建路径。
  */
-function resolvePhotoUri(uri?: string | null): string | undefined {
+export function resolvePhotoUri(uri?: string | null): string | undefined {
   if (!uri) return undefined;
   // 入库只存文件名（容器 UUID 会变），读取时一律按当前 documentDirectory 重建完整路径
   if (uri.startsWith('food_')) return `${FileSystem.documentDirectory}${uri}`;
-  if (uri.startsWith('file://')) {
-    const name = uri.split('/').pop();
+  // ★ 2026-11-15（上线测试 FOOD-IMG）：回顾·日卡读的是 selfReportLog.imageUri，
+  //   它写的是「当时的完整绝对路径」或 copyAsync 失败时的 content:// / 缓存路径。
+  //   这些路径在容器迁移、缓存清理后必然失效 → <Image> 只剩半透明黑底 = 用户看到的黑方块。
+  //   一律抽出 food_* 文件名，按当前 documentDirectory 重建。
+  if (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/')) {
+    const name = uri.split(/[/?#]/).filter(Boolean).pop();
     if (name && name.startsWith('food_')) return `${FileSystem.documentDirectory}${name}`;
   }
   return uri;

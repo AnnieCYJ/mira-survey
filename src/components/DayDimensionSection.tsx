@@ -38,17 +38,18 @@ export const DIM_SOFT: Record<string, string> = {
 export const DIM_DEEP: Record<string, string> = {
   cycle: mm.colors.purpleCore,
   sleep: mm.colors.honeyDeep,
-  activity: mm.colors.limeDeep,
+  // ★ 本轮（用户：当天运动数值绿 = 洞察页主绿 limeCore #D5E384，原 #5E9A2E / limeDeep 暗橄榄绿太暗，禁用）
+  activity: mm.colors.lime,
   state: mm.colors.skyDeep,
   mood: mm.colors.roseCore,
   stress: mm.colors.skyDeep,
-  vitals: mm.colors.limeDeep,
+  // ★ 同步换成洞察页主绿，避免暗橄榄绿（limeDeep #6E7A24）在回顾日卡出现
+  vitals: mm.colors.lime,
   task: mm.colors.honeyDeep,
 };
 
 /** 单张维度卡：由 JourneyDayView 包在曲线节点（左/右交替）里渲染，自身不带标题与分组框 */
 export function DayDimensionCard({ card, style }: { card: DimensionCard; style?: object }) {
-  const soft = DIM_SOFT[card.dimension] ?? mm.colors.purpleSoft;
   const deep = DIM_DEEP[card.dimension] ?? mm.colors.purpleCore;
   const hasScore = typeof card.score === 'number' && Number.isFinite(card.score);
   return (
@@ -59,11 +60,9 @@ export function DayDimensionCard({ card, style }: { card: DimensionCard; style?:
         </View>
       ) : null}
       <View style={styles.head}>
-        <View style={[styles.icon, { backgroundColor: soft }]}>
-          <Text style={styles.iconTxt}>{card.emoji}</Text>
-        </View>
+        <Text style={styles.iconTxt}>{card.emoji}</Text>
         <View style={styles.headText}>
-          <Text style={styles.title}>{card.title}</Text>
+          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{card.title}</Text>
           {card.value ? <Text style={[styles.value, { color: deep }]}>{card.value}</Text> : null}
         </View>
       </View>
@@ -90,24 +89,20 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   sun: { position: 'absolute', top: theme.sp(1.25), right: theme.sp(1.5), zIndex: 3 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), paddingRight: theme.sp(7) },
-  icon: {
-    width: theme.sp(8), height: theme.sp(8), borderRadius: mm.radius.iconSq,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconTxt: { fontSize: theme.fontSize.body },
-  headText: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: theme.sp(2) },
+  head: { flexDirection: 'row', alignItems: 'center' },
+  headText: { flexDirection: 'column', justifyContent: 'center', flexShrink: 1 },
+  iconTxt: { fontSize: theme.fontSize.sm, marginRight: theme.sp(2) },
   title: {
     fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never,
-    color: mm.colors.ink, flexShrink: 0,
+    color: mm.colors.ink,
   },
-  value: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold as never, flex: 1 },
+  value: { fontSize: theme.fontSize.body, fontWeight: theme.weight.bold as never, marginTop: theme.sp(0.5) },
   sub: {
     fontSize: theme.fontSize.micro, color: mm.colors.inkFaint,
-    lineHeight: theme.fontSize.micro * 1.45, marginTop: theme.sp(1.5),
+    lineHeight: theme.fontSize.micro * 1.4, marginTop: theme.sp(0.75),
   },
   meaning: {
     fontSize: theme.fontSize.xs, color: mm.colors.inkSoft,
-    lineHeight: theme.fontSize.xs * 1.5, marginTop: theme.sp(1.5),
+    lineHeight: theme.fontSize.xs * 1.45, marginTop: theme.sp(0.75),
   },
 });

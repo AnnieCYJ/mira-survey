@@ -149,8 +149,12 @@ export default function AllDayBarsChart({
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { lo: yMin ?? 0, hi: yMax ?? (yMin != null ? yMin + 1 : 1) };
     if (lo === hi) { lo -= 1; hi += 1; }
     const pad = (hi - lo) * 0.12;
+    // ★ 2026-11-14（用户：身心压力日视图纵轴冒出 -3 这种不可能刻度）：
+    //   自适应分支下限不许穿 0 —— 生理指标没有负值；emotion 等真可负的指标走的是
+    //   显式 yMin={-10} 的固定分支，不受影响。
+    const loClamp = yMin != null ? yMin : 0;
     return {
-      lo: yMin != null ? Math.min(lo - pad, yMin) : lo - pad,
+      lo: Math.max(loClamp, yMin != null ? Math.min(lo - pad, yMin) : lo - pad),
       hi: yMax != null ? Math.max(hi + pad, yMax) : hi + pad,
     };
   }, [buckets, yMin, yMax]);

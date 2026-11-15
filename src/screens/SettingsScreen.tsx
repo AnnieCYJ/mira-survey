@@ -397,9 +397,19 @@ export default function SettingsScreen() {
               <Text style={styles.rowTitle} numberOfLines={1}>
                 {ringTitle}
               </Text>
-              <Text style={styles.rowDesc} numberOfLines={2}>
-                {ringSub}
-              </Text>
+              {/* ★ 2026-11-15（上线测试 UI-SET-01）：这句「点击连接你的智能戒指」
+                  原本是纯 Text，clickable=false、点了没反应。未连接时给真实点击热区。 */}
+              <TouchableOpacity
+                onPress={ringConnected ? undefined : connectRing}
+                disabled={ringConnected}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="点击连接戒指"
+              >
+                <Text style={styles.rowDesc} numberOfLines={2}>
+                  {ringSub}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 

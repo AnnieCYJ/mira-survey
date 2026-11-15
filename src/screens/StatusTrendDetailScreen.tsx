@@ -31,6 +31,9 @@ import { timeTickLabel } from '../lib/chartAxis';
 import { MOODS } from '../data/metrics';
 import { curveLevel, CURVE_DEFAULTS } from '../lib/dailyStatus';
 import { dayKey, healthStore } from '../data/healthStore';
+// ★ 2026-11-15（上线测试 DATA-10）：首页的今日状态优先取一键体检快照，
+//   趋势详情原本只认 statusTimeline，导致「首页有 40 分、详情说曲线尚未生成」自相矛盾。
+import { getQuickCheckResultSync, validQuickCheckResult } from '../data/quickCheckResult';
 import { computeCycle, parseDate, type CycleLog } from '../lib/cycleMath';
 import { loadCycleLog } from '../data/cycleLog';
 import { phaseBg, PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
@@ -61,6 +64,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PMS_WINDOW = 7;
 /** 经前 PMS 暖色标记（柔和暖橙，区别于 4 相位，且不用红斜纹） */
 const PMS_COLOR = '#E8894A';
+/** ★ 2026-11-14（用户）：月视图周期相位带 + 相位图例（经期/卵泡/排卵/黄体/经前PMS）先去掉不展示。
+ *  实现完整保留，改回 true 即可恢复。 */
+const SHOW_PHASE_BANDS = false;
 
 /** ★ 4 等级取色：任意数值 → 该点自己的等级色。
  *  与首页圆环/趋势图同源（curveLevel 的 index → MOODS 同索引），
@@ -440,6 +446,15 @@ export default function StatusTrendDetailScreen() {
   //   图表改为直接渲染，不依赖任何动画状态，切换周期必定可见。
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [w, setW] = useState(0);
+  /** ★ 2026-11-15：今天的一键体检快照分（与首页 displayStatus 同源，用于消除口径矛盾）。 */
+  const qcToday = useMemo(() => {
+    try {
+      const qc = validQuickCheckResult(getQuickCheckResultSync());
+      const v = qc?.status?.value;
+      return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null;
+    } catch { return null; }
+  }, []);
+  const anchorIsToday = dayKey(anchor.getTime()) === dayKey(Date.now());
   // ★ tooltip 状态
   const [tip, setTip] = useState<{ x: number; y: number; label: string; value: string; color: string } | null>(null);
   // ★ 周期相位 / PMS 标记需要的本地经期记录（异步加载一次）
@@ -1063,7 +1078,9 @@ export default function StatusTrendDetailScreen() {
                     不是只标 PMS：一个月必然横跨多个相位，每个相位的连续段各有一条带 + 顶部相位色描边 + 相位名。
                     经前 PMS 是叠加在黄体期末段的暖橙段（额外一层）。
                     等级信息在月视图不再走背景，改由「每个点的等级色」表达（见下方散点）。 */}
-                {dRange === 'month'
+                {/* ★ 2026-11-14（用户）：月视图的周期相位背景带（经期/卵泡期/排卵期/黄体期/经前PMS）
+                    先去掉不展示 —— 实现保留，置 SHOW_PHASE_BANDS=false 一键关停，之后想加回来改 true 即可。 */}
+                {SHOW_PHASE_BANDS && dRange === 'month'
                   ? phaseBands.map((b, i) => {
                       const x = Math.max(PAD_L, b.x0);
                       const wClip = Math.max(0, Math.min(PAD_L + plotW, b.x1) - x);
@@ -1160,7 +1177,9 @@ export default function StatusTrendDetailScreen() {
             <View style={styles.emptyBox}>
               <Text style={styles.emptyText}>
                 {dRange === 'day'
-                  ? '今日状态曲线尚未生成，佩戴戒指并打开数据同步后将实时记录'
+                  ? (anchorIsToday && qcToday != null
+                      ? `今日暂无连续状态曲线；首页显示的 ${qcToday} 分来自一键体检快照。佩戴戒指并完成数据同步后，会按每半小时记录实时曲线。`
+                      : '今日状态曲线尚未生成，佩戴戒指并打开数据同步后将实时记录')
                   : '当前范围内暂无数据，佩戴并同步后将逐日累积'}
               </Text>
             </View>
@@ -1185,7 +1204,8 @@ export default function StatusTrendDetailScreen() {
             ))}
           </View>
 
-          {dRange === 'month' ? (
+          {/* ★ 2026-11-14（用户）：月视图相位图例（经期/卵泡/排卵/黄体/经前PMS）随背景带一起去掉 */}
+          {SHOW_PHASE_BANDS && dRange === 'month' ? (
             <View style={styles.legendRow}>
               {(['period', 'follicular', 'ovulation', 'luteal'] as PhaseKey[]).map((p) => (
                 <View key={p} style={styles.legendItem}>

@@ -5,7 +5,11 @@
  * phase 传 `ring.curveStatus.phaseLabel`；无经期记录或未知相位返回引导语。
  * 铁律：只给相对强度/类型建议，绝不编造激素数值或具体数据。
  */
-export function buildWorkoutAdvice(phase: string): { headline: string; detail: string } {
+export function buildWorkoutAdvice(phase: string, male = false): { headline: string; detail: string } {
+  // ★ 2026-11-14：男性不给「记录经期后」引导，也不给雌激素/黄体期处方。
+  if (male) {
+    return { headline: '按今天的状态练', detail: '先看睡眠和恢复，强度从保守档起步，感觉有余量再加。' };
+  }
   switch (phase) {
     case '经期':
       return { headline: '低强度为主', detail: '散步·瑜伽·拉伸更合适，避开高强度与冷水，注意保暖和休息。' };
@@ -31,7 +35,10 @@ export function buildPhaseAnalysis(
   phase: string,
   dayInCycle: number | null,
   value: number | null,
+  male = false,
 ): string | null {
+  // ★ 2026-11-14：男性不输出「卵泡期第 8 天 · 精力回升」这类处境分析。
+  if (male) return null;
   const d = dayInCycle != null && Number.isFinite(dayInCycle) ? `第 ${dayInCycle} 天，` : '';
   // 今日状态前缀：只在明显偏低/在线时点一句，不硬凑
   const pre = value == null || !Number.isFinite(value) ? '' : value < 40 ? '今天状态偏低 · ' : value > 70 ? '今天状态在线 · ' : '';

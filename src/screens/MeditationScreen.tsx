@@ -18,6 +18,7 @@ import { RingBle } from '../ble/RingBleManager';
 import { buildToolCtx } from '../lib/toolRecommend';
 import { getToolPhaseLine } from '../lib/toolTips';
 import { listHabits, undoHabit, type HabitEntry } from '../data/habitSuggestions';
+import { useShowCycle } from '../data/cycleScope';
 
 
 /* ★ 2026-10-11 重做版：6 张工具卡图全部重新产出（源图按 4:5 精确裁切，无拉伸、无模糊补边）。
@@ -99,9 +100,12 @@ const FROST_STEPS = 8;
 const frostAlpha = (i: number) => Math.pow((i + 0.5) / FROST_STEPS, 1.25);
 
 function CardGlassCaption({
-  t, toolCtx, cardH,
-}: { t: ToolItem; toolCtx: any; cardH: number }) {
-  const phaseLine = toolCtx ? (getToolPhaseLine(toolCtx) || '周期未记录') : '周期未记录';
+  t, toolCtx, cardH, showCycle,
+}: { t: ToolItem; toolCtx: any; cardH: number; showCycle: boolean }) {
+  // ★ 2026-11-14（用户）：男性不展示「黄体期 · 第 24 天 / 周期未记录」这类女性周期口径。
+  const phaseLine = !showCycle
+    ? '按今天的状态挑一件'
+    : (toolCtx ? (getToolPhaseLine(toolCtx) || '周期未记录') : '周期未记录');
 
   const uri = TOOL_IMAGE_DATA[t.key];
   const fallback = TOOL_IMAGES_FALLBACK[t.key];
@@ -220,11 +224,21 @@ type ToolItem = {
   m?: string;
   route?: { name: keyof RootStackParamList | string; params?: any };
 };
-const TOOLS: ToolItem[] = [
+const TOOLS_CYCLE: ToolItem[] = [
   { key: '情绪调节', d: '缓一缓，把紧绷的情绪松下来。', m: '4 段冥想 · 3 个呼吸练习', route: { name: 'EmotionIntervene' } },
   { key: '提升颜值', d: '跟着周期养气色，状态更稳。', m: '5 个护肤提醒 · 周期建议', route: { name: 'ToolTopic', params: { topic: 'glow' } } },
   { key: '营养搭配', d: '吃对，激素稳，能量也更平稳。', m: '6 份食谱 · 经期饮食指南', route: { name: 'FoodScan' } },
   { key: '运动建议', d: '今天怎么动，看身体状态。', m: '4 类运动 · 按周期推荐', route: { name: 'ToolTopic', params: { topic: 'sport' } } },
+  { key: '稳定睡眠', d: '睡好，恢复更快，状态更稳。', m: '3 段助眠音 · 睡眠回顾', route: { name: 'Breathing' } },
+  { key: '知识科普', d: '读懂身体的每个变化。', m: '12 篇科普 · 每周更新', route: { name: 'ToolTopic', params: { topic: 'learn' } } },
+];
+
+/** ★ 2026-11-14（用户）：男性版工具卡 —— 入口与路由完全一致，只换掉周期/激素口径的文案。 */
+const TOOLS_GENERAL: ToolItem[] = [
+  { key: '情绪调节', d: '缓一缓，把紧绷的情绪松下来。', m: '4 段冥想 · 3 个呼吸练习', route: { name: 'EmotionIntervene' } },
+  { key: '提升颜值', d: '睡好、吃稳、防晒，状态更稳。', m: '5 个护肤提醒 · 日常建议', route: { name: 'ToolTopic', params: { topic: 'glow' } } },
+  { key: '营养搭配', d: '吃对，一天的精力更平稳。', m: '6 份食谱 · 日常饮食指南', route: { name: 'FoodScan' } },
+  { key: '运动建议', d: '今天怎么动，看身体状态。', m: '4 类运动 · 按恢复状态推荐', route: { name: 'ToolTopic', params: { topic: 'sport' } } },
   { key: '稳定睡眠', d: '睡好，恢复更快，状态更稳。', m: '3 段助眠音 · 睡眠回顾', route: { name: 'Breathing' } },
   { key: '知识科普', d: '读懂身体的每个变化。', m: '12 篇科普 · 每周更新', route: { name: 'ToolTopic', params: { topic: 'learn' } } },
 ];
@@ -248,6 +262,9 @@ function ToolIcon({ path, size, color }: { path: string; size: number; color: st
 }
 
 export default function MeditationScreen() {
+  // ★ 2026-11-14（用户）：工具页也要接统一性别闸门，否则男性仍看到「经期饮食指南」。
+  const showCycle = useShowCycle();
+  const tools = showCycle ? TOOLS_CYCLE : TOOLS_GENERAL;
   // ★ mira-ocean：深底 → 状态栏亮图标（失焦恢复，避免影响其它白底 tab）
   useFocusEffect(useCallback(() => {
     StatusBar.setBarStyle('light-content', true);
@@ -287,7 +304,7 @@ export default function MeditationScreen() {
   // ★ 横滑位移（原生驱动）→ 用来算每张卡的缩放：居中的 1，两侧缩到 SIDE_SCALE
   const scrollX = useRef(new Animated.Value(0)).current;
 
-  const N = TOOLS.length;
+  const N = tools.length;
   /* ★ 2026-10-12（用户参考图：卡片左右**只露出一个（圆）角**，带一点弧形的滑动感）——
      横滑区**全出血到屏幕两边**（负外边距抵消 ScreenContainer 的左右 24）：
        · 中间卡 = 出血宽 − 2×PEEK；卡间距 = GAP；吸附步长 PAGE = 卡宽 + GAP
@@ -361,7 +378,7 @@ export default function MeditationScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.toolTabs}
       >
-        {TOOLS.map((t, i) => (
+        {tools.map((t, i) => (
           <TouchableOpacity
             key={t.key}
             activeOpacity={0.8}
@@ -393,7 +410,7 @@ export default function MeditationScreen() {
           decelerationRate="fast"
           contentContainerStyle={{ paddingHorizontal: PEEK }}
         >
-          {TOOLS.map((t, i) => (
+          {tools.map((t, i) => (
             /* ★ 两侧卡片整体缩一圈（SIDE_SCALE）：缩了以后它在屏幕边缘露出的就不再是
                「一条平着的竖边」，而是**卡片的一个圆角**（上下都让出空间），
                正好是参考图那种「两边各留一个角」的滑动感。缩放走原生驱动，滑动过程连续。 */
@@ -417,7 +434,7 @@ export default function MeditationScreen() {
                       所以只给这三张渲染蒙层（其余整张在屏外，渲染了也看不见）。 */}
                 <ToolCardImage toolKey={t.key} />
                 {Math.abs(i - active) <= 1 ? (
-                  <CardGlassCaption t={t} toolCtx={toolCtx} cardH={cardH} />
+                  <CardGlassCaption t={t} toolCtx={toolCtx} cardH={cardH} showCycle={showCycle} />
                 ) : null}
               </TouchableOpacity>
             </Animated.View>
@@ -428,7 +445,7 @@ export default function MeditationScreen() {
       {/* ★ H2 版：tab 行删除后，用一排小点补上「共 6 张 / 滑到第几张」的位置感。
          当前项拉长为胶囊（墨色），未选中 = 18% 淡墨；点不可点（滑动即切换）。 */}
       <View style={styles.dots}>
-        {TOOLS.map((_, i) => (
+        {tools.map((_, i) => (
           <View key={i} style={[styles.dot, i === active && styles.dotOn]} />
         ))}
       </View>

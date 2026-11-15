@@ -52,6 +52,7 @@ import { buildTodayWorkout, buildSportBrief } from '../lib/todayWorkout';
 import { collectWorkoutInput } from '../lib/workoutInput';
 import { useDeviceModel } from '../config/deviceModel'; // ★ 2026-11-05：运动建议合并只对基础版生效
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
+import { useShowCycle } from '../data/cycleScope';
 
 type EnergyType = 'emotion' | 'cognitive' | 'activity';
 interface RouteParams { type: EnergyType; }
@@ -117,6 +118,8 @@ export default function EnergyDetailScreen() {
   const openChat = (q: string) => { setChatQuestion(q); setChatVisible(true); };
   // ★ 节流订阅 BLE 状态（rAF 合并，详见 hooks/useRingState）
   const ring = useRingState();
+  /** ★ 2026-11-14：男性用户在本页不产出任何周期相位相关的运动处方 / 处境分析。 */
+  const cycleOn = useShowCycle();
   // ★ 2026-11-05（用户）：把工具页「今天适合短时发力」并进「今日运动建议」——只对 BASE_UI 生效，
   //   PRO_UI 保持原来的「强度 / 主项 / 时长」三格与周期分析文案。
   const { model: energyModel } = useDeviceModel();
@@ -124,17 +127,22 @@ export default function EnergyDetailScreen() {
 
   // ★ 2026-10-12（用户）：运动消耗·日视图「今日运动建议」——按当前周期相位给处方（与 CyclePhaseCard 同源相位）。
   //   无经期记录（phaseLabel='未记录'）时返回引导语；绝不编造激素/数据。
-  const phaseLabel = (ring as any)?.curveStatus?.phaseLabel ?? '未记录';
-  const phaseKnown = phaseLabel !== '未记录';
-  const workoutAdvice = buildWorkoutAdvice(phaseLabel);
+  const phaseLabel = cycleOn ? ((ring as any)?.curveStatus?.phaseLabel ?? '未记录') : '未记录';
+  const phaseKnown = cycleOn && phaseLabel !== '未记录';
+  const workoutAdvice = buildWorkoutAdvice(phaseLabel, !cycleOn);
   // ★ 2026-10-12：与工具页「运动建议」共用 collectWorkoutInput + buildTodayWorkout，
   //   抽真实处方（目标/强度/主项/时长）到卡片；无数据（dataDriven=false）时退回引导文案。
   const workoutPlan = useMemo(
-    () => (type === 'activity' ? buildTodayWorkout(collectWorkoutInput(ring, Date.now())) : null),
+    () => {
+      if (type !== 'activity') return null;
+      const inp = collectWorkoutInput(ring, Date.now());
+      if (!cycleOn) inp.phase = '未记录';
+      return buildTodayWorkout(inp);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, ring]
+    [type, ring, cycleOn]
   );
-  const sportBrief = workoutPlan ? buildSportBrief(phaseLabel, workoutPlan.timeSlot) : null;
+  const sportBrief = workoutPlan ? buildSportBrief(phaseLabel, workoutPlan.timeSlot, !cycleOn) : null;
   // ★ 2026-11-05：工具页运动建议二级页的「今天适合短时发力 / 保持节奏 / 温和恢复」结论，
   //   与工具页共用 buildTodayWorkout(collectWorkoutInput(...)) 的同一份处方，不会出现两处口径打架。
   const workoutConclusion = workoutPlan
@@ -158,8 +166,9 @@ export default function EnergyDetailScreen() {
   const curveStatus = (ring as any)?.curveStatus;
   const phaseAnalysis = buildPhaseAnalysis(
     phaseLabel,
-    curveStatus?.dayInCycle ?? null,
+    cycleOn ? (curveStatus?.dayInCycle ?? null) : null,
     curveStatus?.value ?? null,
+    !cycleOn,
   );
 
   // ★ 心理压力 Hero 的日/周/月/年均值（2026-10-07）

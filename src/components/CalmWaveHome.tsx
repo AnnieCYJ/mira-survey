@@ -19,9 +19,10 @@ import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, Touchabl
 import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { RingBle } from '../ble/RingBleManager';
-import { healthStore, dayKey } from '../data/healthStore';
+import { healthStore, dayKey, dayStartMs } from '../data/healthStore';
 import { userStore, getCachedSession, onSessionChange, type Gender } from '../data/userStore';
 import { computeEmotionalStress, MIN_BASELINE_DAYS as ES_MIN_BASELINE_DAYS } from '../lib/emotionalStress';
+import { getLatestForDay } from '../data/emotionLog'; // ★ 2026-11-14：今日心情偏沉 → 进关系链归因
 import { computeStressReport } from '../lib/stressAlgorithm';
 import { estimateVo2maxFromStore } from '../lib/vo2max';
 import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
@@ -55,27 +56,25 @@ import type { TabParamList } from '../navigation/BottomTabNavigator';
 //   洞察页顶部仍可继续使用 overview 通道，首页不再直接吃它。
 import {
   buildHomeNarrative,
+  isMealCopy,
   type NarrativePoint,
   type NarrativeEvent,
 } from '../lib/homeNarrative';
-import { dayPhase, type DayPhase } from '../lib/timePhase'; // ★ 2026-11-13：圆环中心状态词按时段取词
+import { dayPhase, type DayPhase } from '../lib/timePhase'; // ★ 2026-11-14：时段不再由本组件自行取时，改用 narrative.phase
+// ★ 2026-11-15（用户）：场景词触发 30 分钟后必须回落到四档基础词，不能从傍晚挂到深夜；
+//   状态持久化到 prefs，App 重启后当天已展示过的场景不再重复冒出来。
+import {
+  pickHomeWord,
+  configureHomeWordPersist,
+  hydrateHomeWord,
+  HOME_WORD_STORAGE_KEY,
+} from '../lib/homeStatusWord'; // ★ 2026-11-14：圆环中心「场景词」引擎（短暂出现后回落底层档位词）
+import { getItem, setItem } from '../utils/prefs';
 
-// ★ 2026-11-13（用户）：圆环中心状态词由「4 个静态词」升级为「时段 × 档位」自然大标题
-//   （见《首页状态词与场景建议梳理.md》4.2）。档位规范词（元气满满/状态良好/平平静静/休息一下）
-//   仍由 mood.label 传给叙事引擎（homeNarrative 用正则 /休息一下|平平静静/ 判定低档，不可改），
-//   此处词表只影响圆环中心「展示词」，不动下游任何逻辑。
-//   level 映射：0=元气满满(76-100) / 1=状态良好(51-75) / 2=平平静静(26-50) / 3=休息一下(0-25)
-const STATUS_HEADLINE: Record<DayPhase, [string, string, string, string]> = {
-  morning:     ['满电出发', '清醒够用', '慢慢醒透', '再赖会儿'],
-  lateMorning: ['满电出发', '清醒够用', '慢慢醒透', '再赖会儿'],
-  preNoon:     ['好好吃一顿', '七分饱就好', '散个步消化', '优先补个觉'],
-  afternoon:   ['午后也稳', '换件轻活', '起来走走', '摸个鱼吧'],
-  evening:     ['利落收个尾', '按时收工', '到点就走', '今天够累了'],
-  bedtime:     ['今天圆满', '护肤时放空', '灯调暗些', '今天先睡吧'],
-};
-function statusHeadline(level: 0 | 1 | 2 | 3, phase: DayPhase): string {
-  return STATUS_HEADLINE[phase][level];
-}
+// ★ 2026-11-14（用户）：圆环中心状态词改由 lib/homeStatusWord「场景词引擎」统一输出
+//   （底层档位词 元气满满/状态良好/平平静静/休息一下 按档位常态展示，场景词短暂出现后回落）。
+//   档位规范词仍由 mood.label 传给叙事引擎（homeNarrative 用正则 /休息一下|平平静静/ 判定低档，不可改），
+//   此处不再单独维护词表。
 import { useHomePolish } from '../ai/homePolish';
 import { allInterventionEntries, ensureInterventionLogLoaded } from '../data/interventionLog';
 
@@ -93,7 +92,11 @@ function lastDayWithData(keys: string[], maxDays = 30): string {
     const dk = dayKey(Date.now() - i * 86400000);
     for (const k of keys) {
       if (k === 'sleep') {
-        if (healthStore.getSleep(dk)) return dk;
+        // ★ 2026-11-14（P30 真机：昨天没连戒指，首页却显示旧睡眠分、点进去是空态）：
+        //   原来只判对象存在，total=0 的空壳 / 快照残留会被当成「有睡眠」。
+        //   与 SleepDetailScreen 的 toRecords / sleepDaily 判据对齐：必须 total > 0。
+        const s = healthStore.getSleep(dk);
+        if (s && Number(s.total) > 0) return dk;
         continue;
       }
       const d = healthStore.getDay(k as any, dk);
@@ -265,6 +268,19 @@ export default function CalmWaveHome() {
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
+  // ★ 2026-11-15：注入场景词持久化并恢复当天状态。hydrate 完成前 pickHomeWord 不写盘，
+  //   避免首帧覆盖磁盘里「今天已展示过」的记录；恢复完触发一次重渲染让圆环词即时回落。
+  const [, setWordHydrated] = useState(0);
+  useEffect(() => {
+    configureHomeWordPersist({
+      load: async () => {
+        const raw = await getItem(HOME_WORD_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      },
+      save: (s) => { void setItem(HOME_WORD_STORAGE_KEY, JSON.stringify(s)).catch(() => {}); },
+    });
+    void hydrateHomeWord().then(() => setWordHydrated((v) => v + 1));
+  }, []);
   // ★ 2026-10-26（用户）：首页 5 张指标卡改为接真实数据（之前 4 张写死静态预览值）。
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
   const [ring, setRing] = useState(() => RingBle.getState());
@@ -359,11 +375,26 @@ export default function CalmWaveHome() {
   //   一律显示「暂无数据」，不再写死兜底 82 + 元气满满。取数本身按天（Date.now() 当日），
   //   24:00 跨天后自动回到空态，无需额外定时器。
   // 恢复分（睡眠指标，下沉到卡片行「睡眠恢复」）—— 仅供下方卡片行展示，不再作为首页「今日状态」大数字
-  // ★ 2026-11-09：睡眠恢复回落到最近一个有睡眠的天（今天无睡眠时显示最近一晚，避免「—」）
-  const recoveryDay = lastDayWithData(['sleep']);
-  const recoveryScore = useMemo(() => sleepRecoveryScoreForDay(dayKeyToTs(recoveryDay)), [refreshKey, recoveryDay]);
-  const hasRecoveryData = recoveryScore != null;
-  const RECOVERY = hasRecoveryData ? Math.round(recoveryScore) : 0;
+  // ★ 2026-11-14（P30 真机，用户：「昨天没连戒指，睡眠数据应该是空的，但首页显示了一个数字，
+  //   点进去又是个空页」）：取消睡眠的历史回落。
+  //   根因：原 `lastDayWithData(['sleep'])` 会往回扫 30 天，拿 N 天前的旧分数显示在首页；
+  //   而 SleepDetailScreen 严格只认今天（且要求 total>0）→ 首页有数字 / 详情空态。
+  //   睡眠是「每晚一条」的强时效指标，断连就该空，不能用历史值冒充今天。
+  //   口径与详情页完全一致：dayKey(今天) + healthStore.getSleep(今天).total > 0。
+  const recoveryDay = dayKey(Date.now());
+  const hasRealSleepToday = (() => {
+    try {
+      const s = healthStore.getSleep(recoveryDay);
+      return !!s && Number(s.total) > 0;
+    } catch { return false; }
+  })();
+  const recoveryScore = useMemo(
+    () => (hasRealSleepToday ? sleepRecoveryScoreForDay(dayKeyToTs(recoveryDay)) : null),
+    [refreshKey, recoveryDay, hasRealSleepToday],
+  );
+  const hasRecoveryData = hasRealSleepToday && recoveryScore != null;
+  // 无数据时不产出数字 0（避免 0 继续往叙事 / 圆环里传，被当成有效值）
+  const RECOVERY: number | null = hasRecoveryData ? Math.round(recoveryScore!) : null;
   // ★ 2026-10-26：首页指标卡全部接真实数据（替代原写死的静态预览值 82/46/38/320/第14天）。
   //   口径与 TodayScreen 顶部 chips 同源：
   //   · 睡眠恢复 → sleepRecoveryScoreForDay（上方已算）
@@ -410,10 +441,13 @@ export default function CalmWaveHome() {
   //   曲线优先（真实连续采样），体检结果兜底（首次进入、或戒指断流时也能看到今天的体检结果）。
   const qcValid = validQuickCheckResult(qcResult);
   const qcStatus = qcValid?.status ?? null;
+  const qcStress = qcValid?.stress?.value ?? null;
   const curveHasValue = CV != null && !CV_STALE;
-  const displayStatus = curveHasValue ? CV : (qcStatus?.value ?? null);
+  // ★ 本轮（用户：一键体检后今日状态/身心状态要同步到首页）：当日有效的体检结果优先于连续曲线，
+  //   曲线仅在「今天没做过体检」时兜底。体检结果按自然日有效（跨天清零），不会长期压住连续数据。
+  const displayStatus = qcStatus?.value != null ? qcStatus.value : (curveHasValue ? CV : null);
   const hasStatusData = displayStatus != null;
-  const statusFromCheck = !curveHasValue && qcStatus != null;
+  const statusFromCheck = qcStatus?.value != null;
   // ★ 2026-11-10（用户）：首页「今日状态」下方加一行「更新时间 几时几点」——
   //   取最近一次数据刷新时刻：优先一键体检完成时刻；否则戒指最近同步时刻；
   //   否则取各项指标里最新的真实采样时刻（ring.lastUpdated）。空态不显示。
@@ -451,8 +485,8 @@ export default function CalmWaveHome() {
     : displayStatus! >= 51 ? 1
     : displayStatus! >= 26 ? 2
     : 3;
-  const phaseNow = dayPhase(new Date());
-  const moodHeadline = hasStatusData ? statusHeadline(moodLevel, phaseNow) : '暂无数据';
+  // ★ 2026-11-14（用户）：标题词不再自己取 new Date()，改为复用 narrative.phase
+  //   （定义在下方 narrative 之后），与分析/建议/配图共用一个时段，杜绝跨时段边界错位。
   // ★ 2026-11-11：叙事按半小时节拍推进。圆环的 :00/:30 状态点会触发 RingBle.onState 重渲染，
   //   但断流时没有新点 —— 仍要一个墙钟滴答，保证跨时段（傍晚 → 睡前）必定翻页，
   //   绝不出现「已经深夜了，下面还挂着下午那段话」。
@@ -462,6 +496,12 @@ export default function CalmWaveHome() {
     return () => clearInterval(id);
   }, []);
   const halfSlotNow = Math.floor(nowTick / (30 * 60 * 1000));
+  // ★ 2026-11-14：场景词引擎需要的副信号（久坐判定），在 nowTick 之后算一次即可
+  const phaseNow = dayPhase(new Date(nowTick));
+  const drvSteps = healthStore.getTimeRange('steps', nowTick - 90 * 60e3, nowTick, { maxPoints: 240 });
+  const drvStepSum = drvSteps.reduce((a: number, p: any) => a + (Number.isFinite(p?.v) ? p.v : 0), 0);
+  const activityNow = drvSteps.length ? drvStepSum / (3 * 600) : 1;
+  const sedentary = phaseNow === 'afternoon' && activityNow < 0.2;
   // 干预行为日志异步读盘；加载完成后触发一次重算，让「刚缓了一缓」能进归因。
   const [interventionVersion, setInterventionVersion] = useState(0);
   useEffect(() => {
@@ -480,13 +520,41 @@ export default function CalmWaveHome() {
     ? Math.round(todaysSessions.reduce((a: number, s: any) => a + (s.totalCal || 0), 0))
     : (activityHasData ? Math.round(stepKcalToday) : null);
 
+  // ★ 2026-11-14（用户）：今日自报心情偏沉/紧 → 进关系链（与心率/运动/压力并列），丰富「状态为什么变」的归因
+  const lowMoods = new Set(['tired', 'stressed', 'anxious', 'sad', 'angry', 'lonely']);
+  const latestMood = (() => { try { return getLatestForDay(dkToday); } catch { return null; } })();
+  const moodLow = !!latestMood && lowMoods.has(latestMood.mood);
+  // 脑力准备度高峰：取今日状态曲线峰值时刻（与「脑力准备度」同源）；无数据则不给具体小时
+  const brainPeakHour = useMemo(() => {
+    const pts = (ring?.statusTimeline ?? []).filter((p: any) => {
+      const d = new Date(p?.t); const n = new Date(nowTick);
+      return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate() && p?.value > 0;
+    });
+    if (pts.length < 2) return null;
+    let best: any = pts[0];
+    for (const p of pts) if (p.value > best.value) best = p;
+    const d = new Date(best.t);
+    return d.getHours() + d.getMinutes() / 60;
+  }, [ring?.statusTimeline, dkToday, nowTick]);
+
   // 身心压力：与「基础指标 → 压力」卡同源 —— 设备 SDK 压力信号经 stressAlgorithm 算出的当前压力分（0–100，越高越紧张）。
   // ★ 2026-10-26 修复：此前误用 ring.metrics['stress']，但 RingBle 的 metrics 只填 hr/hr，daily 也不含 stress，
   //   该字段恒为 null → 身心压力卡永远「— / 暂无数据」；改用 computeStressReport().score（与 MetricDetail「压力」卡同源）。
   // ★ 2026-11-09：身心压力回落到最近一个有心率/皮电的天（今天无 hr/eda 时显示最近有数据的那天）
   const stressDay = lastDayWithData(['hr', 'eda']);
-  const stressReport = useMemo(() => { try { return computeStressReport(dayKeyToTs(stressDay)); } catch { return null; } }, [refreshKey, stressDay]);
+  // ★ 2026-11-15（用户：跨天首点保留值 + 修 dayKeyToTs=中午的潜 bug）：
+  //   今天 → 用 Date.now() 读「今天 00:00 → 此刻」（实时，且读完整天而非仅上午 00:00–12:00）；
+  //   过去天（跨天回退）→ 窗口上限取「当天 23:59」，读满整天压力，作为冻结保底值显示，直到今天出数据。
+  const stressReport = useMemo(() => {
+    try {
+      const isToday = stressDay === dayKey(Date.now());
+      const upper = isToday ? Date.now() : dayStartMs(dayKeyToTs(stressDay)) + 86400000 - 1;
+      return computeStressReport(upper);
+    } catch { return null; }
+  }, [refreshKey, stressDay]);
   const bodyLoad = stressReport?.score ?? null;
+  // ★ 本轮（用户：体检的身心压力也要同步到首页「身心压力」卡）：当日有效的体检压力优先，否则回退到戒指连续压力分。
+  const displayStress = qcStress != null ? qcStress : bodyLoad;
 
   // 情绪：emotionalStress 多信号融合（0–100，50=和平时差不多；越高压力越大）
   const esReport = useMemo(() => {
@@ -565,23 +633,56 @@ export default function CalmWaveHome() {
       activity = stepSum / (3 * 600); // 3 个 30min 窗 × CURVE 步数基线(600)
     }
 
+    // ★ 2026-11-14（用户点名「心率血氧身心心率变异性…可以展示出来」）：把血氧、心率变异性也并进
+    //   「状态为什么变」的关系链——状态下滑时，和心率升高、运动、压力、心情一样，
+    //   作为「可能和…有关」的可核对元素之一。口径：血氧取近 90 分钟均值，低于 94%（日常清醒态常见
+    //   下限，非诊断）视为偏低；HRV 取近 90 分钟均值相对近 6 小时自身基线（中位数）下降 >20% 视为
+    //   偏低，一律「相对自己」、不带绝对医学阈值，避免误报/诊断口径。无任何点则不给（不编造）。
+    const recentSpo2 = healthStore.getTimeRange('spo2', now - DRV_WIN, now, { maxPoints: 240 });
+    const spo2Vals = recentSpo2.map((p) => p.v).filter((v) => Number.isFinite(v) && v > 70 && v <= 100);
+    const spo2Mean = spo2Vals.length ? spo2Vals.reduce((a, b) => a + b, 0) / spo2Vals.length : null;
+    const spo2Low = spo2Mean != null && spo2Mean < 94 ? true : null;
+    const recentHrv = healthStore.getTimeRange('hrv', now - DRV_WIN, now, { maxPoints: 240 });
+    const hrvVals = recentHrv.map((p) => p.v).filter((v) => Number.isFinite(v) && v > 5 && v < 250);
+    const hrvMean = hrvVals.length ? hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length : null;
+    const wideHrv = healthStore
+      .getTimeRange('hrv', now - 6 * 3600e3, now, { maxPoints: 600 })
+      .map((p) => p.v)
+      .filter((v) => Number.isFinite(v) && v > 5 && v < 250)
+      .sort((a, b) => a - b);
+    const hrvBase = wideHrv.length ? wideHrv[Math.floor(wideHrv.length * 0.5)] : null;
+    const hrvLow = hrvMean != null && hrvBase != null ? (hrvMean < hrvBase * 0.8 ? true : null) : null;
+
     return buildHomeNarrative({
       now, points, mood: moodLabel,
-      stress: stressIsToday ? bodyLoad : null,
+      stress: qcStress != null ? qcStress : (stressIsToday ? bodyLoad : null),
       events, phaseLabel,
       recoveryScore: hasRecoveryData && recoveryIsRecent ? RECOVERY : null,
       hasStatusData, statusFromCheck,
       hrElev, activity,
+      // ★ 2026-11-14：把圆环档位喂给叙事引擎，作为标题/分析/建议/CTA 的共同主题真源
+      topicLevel: moodLevel,
+      // ★ 2026-11-14：场景词/久坐/脑力高峰/今日心情 四类信号，让「词→分析→建议」同源一致
+      sedentary, brainPeakHour, moodLow,
+      // ★ 2026-11-14（用户）：血氧 / 心率变异性 并进关系链，状态下滑时一并解释综合数据变化
+      spo2Low, hrvLow,
     });
   }, [
     halfSlotNow, ring?.statusTimeline, ring?.sportSessions, refreshKey, interventionVersion,
-    moodLabel, bodyLoad, phaseLabel, RECOVERY, hasRecoveryData, hasStatusData, statusFromCheck,
+    moodLabel, bodyLoad, qcStress, phaseLabel, RECOVERY, hasRecoveryData, hasStatusData, statusFromCheck,
     recoveryDay, stressDay,
+    sedentary, brainPeakHour, moodLow,
   ]);
   // AI 只负责换个说法：首帧显示规则句，润色到货才无声替换；判废则一直是规则句。
   const polished = useHomePolish(narrative.analysis, narrative.signature, narrative.polishCtx);
   const homeAnalysis = fitHomeAnalysis(polished ?? narrative.analysis);
-  // 半小时状态点 / 时段 / 方向任一变化 → 回到与分析同源的建议（清掉「点完换的下一条」）
+  // ★ 2026-11-14（用户）：圆环中心词 = 「场景词短暂出现后回落到底层档位词」。
+  //   底层四词（元气满满/状态良好/平平静静/休息一下）按档位常态展示；
+  //   刚醒/临近中午/午后久坐/傍晚下班/睡前 才短暂露出场景词（摸个鱼/收个工…），出现一两次即回落，不长时间霸屏。
+  const moodHeadline = hasStatusData
+    ? pickHomeWord({ phase: narrative.phase, level: moodLevel, sedentary, now: nowTick }).word
+    : '暂无数据';
+  // 半小时状态点 / 时段 / 方向 / 主题任一变化 → 回到与分析同源的建议（清掉「点完换的下一条」）
   useEffect(() => { setFollowUpSugg(null); }, [narrative.signature]);
 
   // ★ 2026-11-03（V2，对齐用户参考图）：近整圆几何——圆心(150,135) R=115，底部留 ~60° 开口。
@@ -612,25 +713,25 @@ export default function CalmWaveHome() {
   // 各卡展示数据（value / unit / tag / good）
   const chipDyn: Record<string, { value: string; unit?: string; tag: string; good?: boolean }> = {
     recovery: {
-      value: hasRecoveryData ? String(RECOVERY) : '—',
-      unit: hasRecoveryData ? '/100' : undefined,
-      tag: !hasRecoveryData ? '暂无数据'
+      // ★ 2026-11-14：无真实睡眠归档时一律「—」+「暂无数据」，不显示任何数字。
+      value: hasRecoveryData && RECOVERY != null ? String(RECOVERY) : '—',
+      unit: hasRecoveryData && RECOVERY != null ? '/100' : undefined,
+      tag: RECOVERY == null ? '暂无数据'
         : RECOVERY >= 76 ? '恢复良好'
         : RECOVERY >= 51 ? '恢复较好'
         : RECOVERY >= 26 ? '恢复中'
         : '恢复偏弱',
-      good: hasRecoveryData && RECOVERY >= 51,
+      good: RECOVERY != null && RECOVERY >= 51,
     },
     load: {
-      // ★ 2026-11-09（用户「日间夜间应该分开算平均」）：bodyLoad = stressAlgorithm score = 日间（07:00–23:00）均值，
-      //   夜间均值单独在详情页展示（日间/夜间 tab + hero 说明行）。
-      value: bodyLoad != null ? String(bodyLoad) : '—',
-      unit: bodyLoad != null ? '/100' : undefined,
-      tag: bodyLoad == null ? '暂无数据'
-        : bodyLoad < 30 ? '日间轻松'
-        : bodyLoad < 55 ? '日间适中'
+      // ★ 本轮（用户：体检的身心压力同步到首页）：displayStress 当日体检优先，否则回退戒指连续压力分。
+      value: displayStress != null ? String(displayStress) : '—',
+      unit: displayStress != null ? '/100' : undefined,
+      tag: displayStress == null ? '暂无数据'
+        : displayStress < 30 ? '日间轻松'
+        : displayStress < 55 ? '日间适中'
         : '日间偏重',
-      good: bodyLoad != null && bodyLoad < 30,
+      good: displayStress != null && displayStress < 30,
     },
     emo: {
       value: emoValue != null ? String(emoValue) : '—',
@@ -888,7 +989,15 @@ export default function CalmWaveHome() {
           if (!hasStatusData) {
             text = '去一键体检，获取最新的健康数据 ›';
             onPress = onGoQuickCheck;
-          } else if (followUpSugg?.cta) {
+          } else if (
+            followUpSugg?.cta &&
+            // ★ 2026-11-14（用户）：点完 CTA 换的「下一条」也必须服从当前主题，
+            //   否则午休主题下引擎仍可能塞回「快到饭点了，拍张照记这餐」。
+            !(narrative.topic !== 'meal' && (
+              isMealCopy(`${followUpSugg.headline ?? ''}${followUpSugg.action ?? ''}${followUpSugg.question ?? ''}`) ||
+              followUpSugg.cta.screen === 'FoodScan'
+            ))
+          ) {
             // 点过 CTA 从工具页回来后的下一条：仍是「说的 = 跳到的」
             const cta = followUpSugg.cta;
             text = `${followUpSugg.headline ?? followUpSugg.action ?? '缓一缓'} ›`;

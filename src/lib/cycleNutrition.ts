@@ -80,7 +80,23 @@ export const PHASE_NUTRITION: Record<PhaseKey, PhaseNutritionTarget> = {
   },
 };
 
-export function cycleNutritionTarget(phase: PhaseKey): PhaseNutritionTarget {
+/**
+ * ★ 2026-11-14（用户：选了男性，饮食建议里不该再出现经期/黄体期补铁这类内容）
+ * 男性用户的通用营养目标：数值沿用 unknown 基准，但文案全部中性化，
+ * 不含「记录经期后…」「经期失血」等引导语。
+ */
+export const GENERAL_NUTRITION_TARGET: PhaseNutritionTarget = {
+  phase: 'unknown', label: '通用参考',
+  kcal: BASE, proteinG: 60, carbsG: 210, fatG: 60,
+  kcalNote: '按通用参考目标，结合今日活动量微调',
+  focus: ['均衡饮食（谷薯 · 蛋奶 · 蔬果 · 肉鱼）', '每餐来点优质蛋白', '足量饮水'],
+  avoid: ['高盐高糖（甜点 · 含糖饮料 · 腌制品）'],
+  note: '按通用营养目标安排这一餐，重点看总热量与三大营养素是否均衡。',
+};
+
+/** showCycle=false（男性）时返回中性目标，不再产出任何周期阶段话术。 */
+export function cycleNutritionTarget(phase: PhaseKey, showCycle = true): PhaseNutritionTarget {
+  if (!showCycle) return GENERAL_NUTRITION_TARGET;
   return PHASE_NUTRITION[phase] ?? PHASE_NUTRITION.unknown;
 }
 

@@ -156,7 +156,21 @@ function buildDayPath(
     }))
     .slice()
     .sort((a, b) => a.t - b.t);
-  if (clean.length < 2) return { lineD: '', areaD: '', last: { x: 0, y: 0 }, hasData: false };
+  // ★ 2026-11-14（用户：跨天时「数值更新了但图上没有任何点」）：今天只有 1 个样本时旧实现
+  //   直接 hasData:false 整图留白——数值区读 ring.metrics/daily 照常显示，图上却连点都没有。
+  //   典型场景：① 跨天后刚落今天第一个点；② HRV 等日值型指标 fillDailyMean 只补出 1 个日均值点。
+  //   修法：单点也返回 hasData:true 并给出 last 坐标（只画末端圆点，不画线），Path 渲染处用 lineD !== '' 防空 d。
+  if (clean.length < 2) {
+    if (clean.length === 1) {
+      const pad0 = theme.sp(2);
+      const x0 = pad0 + ((w - pad0 * 2) * (clean[0].t - dayStart)) / (dayEnd - dayStart || 1);
+      const yR0 = yMax - yMin || 1;
+      const y0 = h - pad0 - (h - pad0 * 2) * ((clean[0].v - yMin) / yR0);
+      const yC0 = Math.max(pad0, Math.min(h - pad0, y0));
+      return { lineD: '', areaD: '', last: { x: x0, y: yC0 }, hasData: true };
+    }
+    return { lineD: '', areaD: '', last: { x: 0, y: 0 }, hasData: false };
+  }
 
   const pad = theme.sp(2);
   const xOf = (t: number) => pad + ((w - pad * 2) * (t - dayStart)) / (dayEnd - dayStart);
@@ -378,8 +392,9 @@ export default function BasicMetricCard({
                         <Stop offset="100%" stopColor={tc} stopOpacity={0.72} />
                       </LinearGradient>
                     </Defs>
-                    <Path d={areaD} fill={`url(#${gid}_grad)`} />
-                    <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />
+                    {/* ★ 单点场景 lineD/areaD 为空串：React Native SVG 对空 d 的 Path 会告警，条件渲染防掉 */}
+                    {areaD !== '' && <Path d={areaD} fill={`url(#${gid}_grad)`} />}
+                    {lineD !== '' && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />}
                   </>
                 ) : (
                   <Path d={placeholderPath} fill="none" stroke={tc} strokeWidth={chart.lw.series} strokeLinecap="round" opacity={0.3} />
@@ -465,8 +480,8 @@ export default function BasicMetricCard({
                   </LinearGradient>
                 </Defs>
                 {/* 与睡眠/激素卡片视觉同源：渐变面积 + 渐变曲线 + 末端白点；无数据则整张图留白 */}
-                {hasData && <Path d={areaD} fill={`url(#${gid}_grad)`} />}
-                {hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />}
+                {areaD !== '' && hasData && <Path d={areaD} fill={`url(#${gid}_grad)`} />}
+                {lineD !== '' && hasData && <Path d={lineD} fill="none" stroke={`url(#${gid}_line)`} strokeWidth={chart.lw.series} strokeLinecap="round" />}
                 {hasData && <Circle cx={last.x} cy={last.y} r={4.5} fill="#FFFFFF" stroke={tc} strokeWidth={chart.dot.stroke} />}
               </Svg>
             ) : null}

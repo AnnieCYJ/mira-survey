@@ -100,16 +100,7 @@ function mixWhite(hex: string, ratio: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
 
-/** ★ 2026-10-28（用户）：规律观察每条下方加「类别标签」，让用户一眼分清这观察是讲什么的。 */
-const PATTERN_KIND_LABEL: Record<string, string> = {
-  rhythm: '时间节律',
-  correlation: '相关',
-  group_diff: '组间差异',
-  coverage: '数据覆盖',
-};
-function patternKindLabel(kind: string): string {
-  return PATTERN_KIND_LABEL[kind] ?? '发现';
-}
+/** 规律观察的类别标签现由「话题合并」后统一以话题名呈现（见 ASPECT_META），不再按统计方法分标签。 */
 
 // ★ 2026-11-03（用户：不能有假数据/假分析）：原「示例规律」3 条已删除。
 //   真实规律还没生成时，展示诚实的空态说明，不再用编造的观察占位。
@@ -405,15 +396,7 @@ export default function MonthDiscoveryView({
     if (calendarFocused) void reloadPatterns();
   }, [calendarFocused]);
 
-  const onPatternRemove = async (id: string) => {
-    // ★ 2026-11-11（用户：睡眠相关观察合并成一张卡）：点合并卡的 ✕ → 删除全部睡眠子条目
-    if (id === '__merged_sleep__') {
-      for (const sid of sleepPatternIds) await dismissPattern(sid);
-    } else {
-      await dismissPattern(id);
-    }
-    await reloadPatterns();
-  };
+  // ★ onPatternRemove 在下方「规律观察」分组逻辑之后定义（依赖 aspectMemberIds）
 
   useEffect(() => {
     let alive = true;
@@ -741,23 +724,71 @@ export default function MonthDiscoveryView({
     () => patterns.filter((p) => p.kind !== 'coverage'),
     [patterns],
   );
-  // ★ 2026-11-11（用户：月视图「规律观察」里睡眠相关的观察应合并成一张卡，
-  //   不要出现好几张「深睡是 X / 睡眠是 Y」单独摆着）：
-  //   把 sleep 话题的 pattern 合并为一条（多段正文用空格连接），其余话题保持独立卡。
-  const SLEEP_TOPIC_RE = /睡眠|深睡|浅睡|入睡|起床|作息|sleep|deep[\s_-]?sleep/i;
-  const sleepPatternIds = useMemo(
-    () => observedPatterns.filter((p) => SLEEP_TOPIC_RE.test(`${p.text} ${p.title ?? ''}`)).map((p) => p.id),
-    [observedPatterns],
-  );
-  const observedPatternsMerged = useMemo(() => {
-    const sleep = observedPatterns.filter((p) => sleepPatternIds.includes(p.id));
-    const others = observedPatterns.filter((p) => !sleepPatternIds.includes(p.id));
-    if (sleep.length <= 1) return observedPatterns; // 只有 0~1 张睡眠卡时无需合并
-    return [
-      ...others,
-      { ...sleep[0], id: '__merged_sleep__', title: '睡眠规律', text: sleep.map((s) => s.text).join('　') },
-    ];
-  }, [observedPatterns, sleepPatternIds]);
+
+  // ★ 本轮（用户）：规律观察按「话题」合并成一张卡，而不是同一话题裂成好几张。
+  //   主题：睡眠整体 / 运动整体 / 心率习惯 / 情绪 / 周期 / 交叉观察（多话题相关）/ 其他。
+  //   每条本身已是 1~2 句口语观察，合并时只聚合同一主题的几条、正文用空格连接；
+  //   单主题超过 3 条时只取前 3 条并补「还有 N 条」，控制卡片长度，避免字太多。
+  type Aspect = 'sleep' | 'exercise' | 'heartrate' | 'mood' | 'cycle' | 'cross' | 'other';
+  const ASPECT_ORDER: Aspect[] = ['sleep', 'exercise', 'heartrate', 'mood', 'cycle', 'cross', 'other'];
+  const ASPECT_META: Record<Aspect, { label: string; icon: IconName; soft: string; deep: string }> = {
+    sleep: { label: '睡眠规律', icon: 'moon', soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep },
+    exercise: { label: '运动规律', icon: 'run', soft: mm.colors.limeSoft, deep: mm.colors.limeDeep },
+    heartrate: { label: '心率习惯', icon: 'heart', soft: mm.colors.roseSoft, deep: mm.colors.roseDeep },
+    mood: { label: '情绪规律', icon: 'mind', soft: mm.colors.roseSoft, deep: mm.colors.roseDeep },
+    cycle: { label: '周期规律', icon: 'drop', soft: mm.colors.purpleSoft, deep: mm.colors.purpleDeep },
+    cross: { label: '交叉观察', icon: 'sync', soft: mm.colors.skySoft, deep: mm.colors.skyDeep },
+    other: { label: '其他观察', icon: 'sparkle', soft: mm.colors.limeSoft, deep: mm.colors.limeDeep },
+  };
+  const classifyAspect = (p: { kind?: string; title?: string | null; text: string }): Aspect => {
+    const s = `${p.title ?? ''} ${p.text}`.toLowerCase();
+    if (p.kind === 'correlation') return 'cross';
+    if (/睡眠|深睡|浅睡|入睡|起床|作息|sleep|deep.?sleep|夜醒|早醒|眠/.test(s)) return 'sleep';
+    if (/运动|步数|步行|活动量|锻炼|exercise|steps|activity|走动|有氧|run/.test(s)) return 'exercise';
+    if (/静息心率|心率|hrv|心跳|窦性|resting.?heart|冠脉/.test(s)) return 'heartrate';
+    if (/情绪|心情|压力|焦虑|放松|低落|mood|stress|emotion|紧张/.test(s)) return 'mood';
+    if (/周期|经期|排卵|黄体|雌激素|孕酮|月经|cycle|period|pms|卵泡/.test(s)) return 'cycle';
+    return 'other';
+  };
+  // 合并后的「主题卡」结构（沿用 PatternEntry 字段，便于复用卡片 UI）
+  type MergedPattern = typeof observedPatterns[number] & {
+    aspect: Aspect; memberIds: string[];
+  };
+  const MAX_PER_ASPECT = 3;
+  const observedPatternsMerged = useMemo<MergedPattern[]>(() => {
+    const byAspect: Record<Aspect, typeof observedPatterns[number][]> = {
+      sleep: [], exercise: [], heartrate: [], mood: [], cycle: [], cross: [], other: [],
+    };
+    for (const p of observedPatterns) byAspect[classifyAspect(p)].push(p);
+    const out: MergedPattern[] = [];
+    for (const a of ASPECT_ORDER) {
+      const members = byAspect[a];
+      if (members.length === 0) continue;
+      const capped = members.slice(0, MAX_PER_ASPECT);
+      const extra = members.length - capped.length;
+      const text = capped.map((m) => m.text).join('　') + (extra > 0 ? `　（还有 ${extra} 条）` : '');
+      out.push({
+        ...members[0],
+        id: `__aspect_${a}__`,
+        aspect: a,
+        memberIds: members.map((m) => m.id),
+        title: ASPECT_META[a].label,
+        text,
+      });
+    }
+    return out;
+  }, [observedPatterns]);
+  // 主题卡成员 id（点 ✕ 时整组删除，而不是只删第一条）
+  const aspectMemberIds = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const p of observedPatternsMerged) m[p.id] = p.memberIds;
+    return m;
+  }, [observedPatternsMerged]);
+  const onPatternRemove = async (id: string) => {
+    const ids = aspectMemberIds[id] ?? [id];
+    for (const pid of ids) await dismissPattern(pid);
+    await reloadPatterns();
+  };
   // ★ 2026-11-06（用户：底下那句「这 30 天里有六天是有可用数据…」不需要写）→ coverageNote 随之移除。
 
   // 月历网格（周一起始，补齐整周）
@@ -1227,25 +1258,17 @@ export default function MonthDiscoveryView({
                   </Card>
                 );
               }
-              const p = it.p;
-              const accent =
-                p.kind === 'rhythm' ? { soft: mm.colors.honeySoft, deep: mm.colors.honeyDeep }
-                : p.kind === 'correlation' ? { soft: mm.colors.skySoft, deep: mm.colors.skyDeep }
-                : p.kind === 'group_diff' ? { soft: mm.colors.purpleSoft, deep: mm.colors.purpleDeep }
-                : { soft: mm.colors.limeSoft, deep: mm.colors.limeDeep };
-              const pIcon: IconName =
-                p.kind === 'rhythm' ? 'moon'
-                : p.kind === 'correlation' ? 'sync'
-                : p.kind === 'group_diff' ? 'activity'
-                : 'sparkle';
-              const kindLabel = patternKindLabel(p.kind);
-              // ★ 2026-11-11（用户）：光给数字变化不够，补一句「这对身体意味着什么」
+              const p = it.p as MergedPattern;
+              const meta = ASPECT_META[p.aspect];
+              const pIcon: IconName = meta.icon;
+              const kindLabel = meta.label;
+              // ★ 本轮（用户）：同一话题合并成一张卡，标签即该话题名；下方补一句健康意义
               const patMeaning = healthMeaningOf(p);
               return (
                 <Card key={p.id}>
                   <View style={styles.patObsRow}>
-                    <View style={[styles.obsIco, { backgroundColor: accent.soft }]}>
-                      <Icon name={pIcon} size={14} color={accent.deep} />
+                    <View style={[styles.obsIco, { backgroundColor: meta.soft }]}>
+                      <Icon name={pIcon} size={14} color={meta.deep} />
                     </View>
                     <View style={styles.obsBody}>
                       {/* ★ 2026-10-28：正文放大 + 纯白，确保一眼读清 */}
@@ -1253,8 +1276,8 @@ export default function MonthDiscoveryView({
                       {/* ★ 2026-11-11：数字变化带来的健康意义（用户点名的缺口） */}
                       {patMeaning ? <Text style={styles.patMeaning}>{patMeaning}</Text> : null}
                       {/* ★ 2026-10-28（用户）：每条下方加类别标签，分清这观察讲什么 */}
-                      <View style={[styles.patTag, { backgroundColor: accent.soft }]}>
-                        <Text style={[styles.patTagText, { color: accent.deep }]}>{kindLabel}</Text>
+                      <View style={[styles.patTag, { backgroundColor: meta.soft }]}>
+                        <Text style={[styles.patTagText, { color: meta.deep }]}>{kindLabel}</Text>
                       </View>
                     </View>
                     {/* ★ 2026-11-06（用户：「右边那个删掉，改成一个叉就行了，不要删掉那两个字」）
@@ -1286,7 +1309,10 @@ export default function MonthDiscoveryView({
 
 const styles = StyleSheet.create({
   // 根容器：卡片之间留白（对齐截图卡片间距）
-  root: { gap: theme.sp(3) },
+  // ★ 2026-11-15（上线测试 REV-05b）：末尾「规律观察」卡原本完全依赖
+  //   ScreenContainer 的 ~84dp paddingBottom，而悬浮提示条顶边约 136dp，
+  //   最后一张卡被压住、文字被盖。这里再补 48dp 内容底部留白。
+  root: { gap: theme.sp(3), paddingBottom: theme.sp(12) },
   // ★ 2026-11-09(5)：圆球/日历 双模式容器（relative 供右上角切换按钮定位）
   calWrap: { position: 'relative' },
   // ★ 2026-11-09(5)（用户）：切换按钮改版 —— 裸图标（无圆环底），与「稳步向上的一个月」

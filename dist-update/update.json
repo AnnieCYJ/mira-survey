@@ -1,9 +1,9 @@
 {
-  "versionCode": 27,
-  "versionName": "1.4.3",
-  "apkUrl": "https://app.lunamiraring.com/downloads/LunaMira-1.4.3-20261114.apk",
-  "sizeBytes": 82692892,
-  "sha256": "5074c7db5410beccb02281b163e193aeac5d6b9af8850aa4eb9b93a07d38a2ea",
-  "notes": "经期记录：保存记录按钮改为底部固定栏，彻底修复被滚动裁切；修复进入周期页崩溃(useRef缺失)；修复首页白屏(底部安全距离计算)。",
-  "releasedAt": "2026-11-13T23:22:23.125Z"
+  "versionCode": 35,
+  "versionName": "1.4.6",
+  "apkUrl": "https://app.lunamiraring.com/downloads/mira-app-1.4.6-35.apk",
+  "sizeBytes": 88685960,
+  "sha256": "55f44b519c4890aa8a7b990dc8d218906fa52f7ecebeec1394aeefe978d84170",
+  "notes": "蓝牙连接修复:连接看门狗20s改35s消除请求堆积与状态横跳,OPPO/API36真机16s冷启动重连两轮验证;回顾日时间线重设计落地:左侧渐变曲线精确过点+每卡带时间标记连接线(今天截至当前时刻/历史全天)+卡片统一20dp留白,饮食卡真实照片;首页场景词30分钟回落修复(收个工不再挂到晚上);跨天0点状态不清零;饮食卡点击复查与拍照闭环。离线回归11/11。",
+  "releasedAt": "2026-11-15T13:21:13.320Z"
 }

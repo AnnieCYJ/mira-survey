@@ -19,10 +19,12 @@ type TrendPoint = { date: string; value: number };
 
 interface Props {
   kind: 'estrogen' | 'progesterone';
-  data: { real: TrendPoint[] | null };
+  data: { real: TrendPoint[] | null; expected?: TrendPoint[] | null };
   cycleInfo: CycleInfo | null;
   /** 窗口跨度（天），用于文案 */
   windowDays: number;
+  /** 当前展示的是「按相位推算的预期曲线」（非实测） */
+  isModeled?: boolean;
 }
 
 const md = (s: string): string => {
@@ -33,8 +35,11 @@ const meanOf = (a: TrendPoint[]): number | null =>
   a.length ? a.reduce((s, p) => s + p.value, 0) / a.length : null;
 const r0 = (v: number): number => Math.round(v);
 
-export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Props) {
-  const pts = data.real ?? [];
+export default function TrendAnalysis({ kind, data, cycleInfo, windowDays, isModeled: isModeledProp }: Props) {
+  // 与 TrendCard 同一套选择逻辑：真实信号 ≥3 点用真实曲线，否则退回预期曲线
+  const useReal = !!data.real && data.real.length >= 3;
+  const pts = useReal ? (data.real as TrendPoint[]) : (data.expected ?? data.real ?? []);
+  const isModeled = isModeledProp ?? (!useReal && !!data.expected);
   // 数据太少（趋势卡本身会显示引导文案）时不重复给结论
   if (pts.length < 3) return null;
 
@@ -130,8 +135,8 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
     const phaseLabel = cycleInfo?.phaseLabel ?? '';
     const phaseDay = cycleInfo?.dayInCycle != null ? `周期第 ${cycleInfo.dayInCycle} 天` : `近 ${windowDays} 天`;
     const estroTitle = phaseLabel
-      ? `${phaseLabel} · ${knownPhase && consistent ? '雌激素正常' : knownPhase ? '信号不同步' : '趋势观察中'}`
-      : `近 ${windowDays} 天雌激素趋势`;
+      ? `${phaseLabel} · ${isModeled ? '预期走势（非实测）' : knownPhase && consistent ? '雌激素正常' : knownPhase ? '信号不同步' : '趋势观察中'}`
+      : `近 ${windowDays} 天雌激素趋势${isModeled ? '（预期）' : ''}`;
 
     const estroAdvice: string[] = [];
     if (knownPhase && !consistent) estroAdvice.push('雌激素信号与周期相位不同步，注意连续佩戴戒指');
@@ -149,6 +154,11 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
         advice={estroAdvice}
         foot={`基于戒指回读的 HRV / 心率 / 体温等多信号推算的 0–100 相对指数；戒指不直接测量雌激素，仅供了解自身趋势，不构成医学诊断。`}
       >
+        {isModeled ? (
+          <AiResultRow compact tone="neutral" title="说明">
+            以下为按你当前周期相位推算的<Text style={{ fontWeight: '600' }}>预期经典走势</Text>（非戒指实测，戒指不直接测量雌激素）。连续佩戴取得 HRV / EDA 真实信号后，会自动切换为你的实测曲线。
+          </AiResultRow>
+        ) : null}
         <AiResultRow compact tone={row1Tone} title="当前相位水平">
           最新（{md(last.date)}）推算指数 {last.value}，处于近 {windowDays} 天的{levelLabel}（区间 {r0(min)}–
           {r0(max)}）。{phaseExpect}
@@ -258,15 +268,16 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
   const pPhaseDay = cycleInfo?.dayInCycle != null ? `周期第 ${cycleInfo.dayInCycle} 天` : `近 ${windowDays} 天`;
   const progTitle =
     phase === 'luteal'
-      ? pPhaseLabel + ' · ' + (lutealTone === 'good' ? '黄体功能正常' : '黄体功能偏弱')
+      ? pPhaseLabel + ' · ' + (isModeled ? '预期走势（非实测）' : lutealTone === 'good' ? '黄体功能正常' : '黄体功能偏弱')
       : phase === 'ovulation'
         ? '排卵期 · 孕酮启动上行'
-        : pPhaseLabel ? pPhaseLabel + ' · 孕酮观察中' : `近 ${windowDays} 天孕酮趋势`;
+        : pPhaseLabel ? pPhaseLabel + ' · 孕酮观察中' : `近 ${windowDays} 天孕酮趋势${isModeled ? '（预期）' : ''}`;
 
   const progAdvice: string[] = [];
-  if (lutealTone === 'warn') progAdvice.push('黄体功能偏弱，建议连续佩戴更多周期确认，必要时就医');
-  if (phase === 'luteal' && level < 0.5) progAdvice.push('黄体期孕酮偏低，注意观察是否持续偏低');
-  if (!tempConfirmed && phase === 'luteal') progAdvice.push('体温尚未确认双相，保持连续佩戴覆盖排卵前后');
+  if (lutealTone === 'warn' && !isModeled) progAdvice.push('黄体功能偏弱，建议连续佩戴更多周期确认，必要时就医');
+  if (phase === 'luteal' && level < 0.5 && !isModeled) progAdvice.push('黄体期孕酮偏低，注意观察是否持续偏低');
+  if (!tempConfirmed && phase === 'luteal' && !isModeled) progAdvice.push('体温尚未确认双相，保持连续佩戴覆盖排卵前后');
+  if (isModeled) progAdvice.push('以下为按相位推算的预期波动（非实测）；连续佩戴测得体温后会切换为你的真实曲线');
   if (progAdvice.length === 0) progAdvice.push('孕酮趋势正常，保持规律作息');
 
   return (
@@ -277,6 +288,13 @@ export default function TrendAnalysis({ kind, data, cycleInfo, windowDays }: Pro
       advice={progAdvice}
       foot="基于戒指实测体温（BBT 双相）与静息心率的抬升推算的 0–100 相对指数；戒指不直接测量孕酮，仅供了解自身趋势，不构成医学诊断。"
     >
+      {isModeled ? (
+        <AiResultRow compact tone="neutral" title="能否展示 / 怎么看">
+          孕激素由<Text style={{ fontWeight: '600' }}>体温（主）＋ 静息心率（辅）</Text>推算，戒指不直接测量孕酮。你当前未测得足够体温 / 心率信号，
+          因此先显示<Text style={{ fontWeight: '600' }}>按相位推算的预期波动</Text>：排卵前低位 → 排卵后升到高位 → 经前回落（已标注"非实测"）。
+          连续佩戴测得体温后，这里会自动切换为你的真实波动曲线。
+        </AiResultRow>
+      ) : null}
       <AiResultRow compact tone={lutealTone} title="黄体相判断">
         {lutealText}
       </AiResultRow>

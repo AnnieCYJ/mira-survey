@@ -501,14 +501,17 @@ const PHASE_SPORT_FALLBACK: PhaseSportRow = {
   ],
 };
 
-export function buildSportBrief(phase: string, slot: TimeSlot): SportBrief {
-  const row = PHASE_SPORT[phase] ?? PHASE_SPORT_FALLBACK;
+export function buildSportBrief(phase: string, slot: TimeSlot, male = false): SportBrief {
+  // ★ 2026-11-14：男性用户强制走通用保守档，且理由行不提「记一次经期」——
+  //   周期同步训练法（Stacy Sims）只对有月经周期的人成立。
+  const row = male ? PHASE_SPORT_FALLBACK : (PHASE_SPORT[phase] ?? PHASE_SPORT_FALLBACK);
+  const reason = male ? '按今天的睡眠和恢复，先给一版通用保守档。' : row.reason;
   const t = SLOT_TIME[slot];
   return {
     ringColor: row.ringColor,
     gearName: row.gearName,
     gearSub: row.gearSub,
-    reason: row.reason,
+    reason,
     slotClock: t.clock,
     recs: row.recs.map((r) => ({
       name: r.name,

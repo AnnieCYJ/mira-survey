@@ -43,7 +43,7 @@ import {
   type CycleInfo,
   type CycleLog,
 } from '../lib/cycleMath';
-import { loadCycleLog } from '../data/cycleLog';
+import { loadCycleLog, loadPeriodDays, type PeriodDayLog } from '../data/cycleLog';
 import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from '../data/healthStore';
 import { hsKeyFor, DISPLAY_KEY_BY_HS } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
@@ -943,21 +943,24 @@ const _emotionHistoryArr: { t: number; arousalScore: number; valenceScore: numbe
 export function getEmotionHistory() { return _emotionHistoryArr.slice(); }
 function postLog(tag: string, msg: string) {
   pushMemLog(tag, msg);
-  // ★★ 关键：同时输出到 Metro 控制台！之前 postLog 只 fetch :8899，导致 Metro 里完全
-  //  看不到 RingBle 的任何日志。加 console.log 让 Metro 可见。
+  const now = Date.now();
+  // ★ 2026-11-15（上线测试 PERF-05）：release 日志刷屏治理。
+  //   真机实测：相同一句「没连戒指 + healthStore 全空」重复 8 次、
+  //   「origin3 emit days=0」重复 2 次，单次 863 行 / 304KB 被系统限流丢弃。
+  //   旧实现的 important 正则**完全豁免节流**，恰恰放过了这类诊断日志。
+  //   现在：① 相同消息 2s 内只输出一次；② 所有日志统一节流（诊断 60ms / 其它 250ms）；
+  //   ③ console.log 保留（logcat 仍可用于上线验收）；④ 远端 fetch 仅 dev 开启。
+  if (msg === _gLastMsg && now - _gLastMsgAt < 2_000) return;
+  const important = /\[(BACKFILL|CHAIN|RECOVER|FMDB|STEP|handleStepDay|handleSleepDay|AUTO-MONIT|连接状态)\]/i.test(msg);
+  const gap = important ? 60 : 250;
+  if (now - _gLastPostAt < gap) { _gPostDropped++; return; }
+  _gLastPostAt = now;
+  _gLastMsg = msg;
+  _gLastMsgAt = now;
+  _gPostDropped = 0;
   // eslint-disable-next-line no-console
   console.log(`[${tag}] ${msg}`);
-  // ★ 远端收集器限流（真机 2026-09-11 20:54 看门狗崩溃诱因之一）：日志风暴时若每行都
-  //   fetch 到 :8899，会把 Mac 单线程收集器打爆并堆积大量超时请求。
-  //   ★ 但**诊断类日志必须豁免**：原生 emitLog 的消息（[BACKFILL]/[CHAIN]/[STEP]/[RECOVER]…）
-  //   只能经 JS onLog 转发到收集器，若被限流吃掉，就再也看不到离线同步/步数的真实链路。
-  const now = Date.now();
-  const important = /\[(BACKFILL|CHAIN|RECOVER|FMDB|STEP|handleStepDay|handleSleepDay|AUTO-MONIT|连接状态)\]/i.test(msg);
-  if (!important) {
-    if (now - _gLastPostAt < 250) { _gPostDropped++; return; }
-    _gLastPostAt = now;
-    _gPostDropped = 0;
-  }
+  if (!(typeof __DEV__ !== 'undefined' && __DEV__)) return;
   const host = getLogHost();
   try {
     fetch(`http://${host}:8899/log`, {
@@ -973,6 +976,9 @@ function postLog(tag: string, msg: string) {
 // ★ 远端日志限流状态（模块级，跨实例共享）
 let _gLastPostAt = 0;
 let _gPostDropped = 0;
+/** ★ 2026-11-15：相同消息去重（release 日志刷屏治理） */
+let _gLastMsg = '';
+let _gLastMsgAt = 0;
 // ★ setSyncEnabled 幂等防线（模块级）：真机 2026-09-11 20:54 观测到原生
 //   `[VeepooRing LIFECYCLE] setSyncEnabled=1` 在 4.18s 内被打印 865 次（~207 次/秒），
 //   即 native setSyncEnabled 被以同值疯狂重复下发。每次还会触发原生 MRForward 的远端
@@ -1074,6 +1080,8 @@ class NativeRingSource {
   private syncAllInFlight = false;
   private syncAllRerunQueued = false;
   private syncAllInFlightUntil = 0;
+  /** ★ 2026-11-15：最近一次 connected 的时刻，用于过滤 SDK 认证期的假 connect_failed。 */
+  private lastConnectedAt = 0;
   /** ★ 2026-11-11：本轮同步事务的启动时刻。原生已把「主同步 + HRV/血氧历史回读」合成一件事，
    *  事务期间到达的排队请求在收尾时不再值得重跑全量（只会再占约 40s BLE 通道、无新数据）。 */
   private lastSyncStartedAt = 0;
@@ -1336,6 +1344,12 @@ class NativeRingSource {
     this.jsMetricKeys[metric] = (this.jsMetricKeys[metric] ?? 0) + 1;
 
     // V2 简化：直接写 healthStore + pushMetric + 更新 RingState.metrics
+    // ★ 2026-11-14（真机实锤）：BP 主动检测固件回过 progress=100 + sys=30 dia=20 的非生理值，
+    //   实时路径此前无闸门直接落库 → 洞察页血压卡被 30/20 顶掉真值 117/84。与批量路径同一把尺子。
+    if (!physioValid(hk, value)) {
+      postLog('HR-REALTIME', ` ⛔ 拦截非生理值 ${metric}=${value}（范围外，不入库不进卡片）`);
+      return;
+    }
     try {
       healthStore.upsertRealtime(hk, { t: ts, v: value }, ts);
       // ★ 触发派生指标重算（去抖 500ms，同一 dayKey 多次写入合并一次）
@@ -2035,6 +2049,15 @@ class NativeRingSource {
     if (!raw) return;
     const status = String(raw.status ?? '');
 
+    // ── 分流 0: backfillSkipped（2026-11-15 P0-1）──
+    // 原生在「设备未就绪」时不再直通 backfillDone，改发这个状态。
+    // 只解锁在途标记；绝不推进断点游标、绝不补跑、绝不缺口自愈——
+    // 旧实现这三条叠加会形成「掉线→直通→推进→800ms 补跑→再直通」无限空转。
+    if (status === 'backfillSkipped') {
+      this.skipSyncAll(String(raw.reason ?? 'not_ready'));
+      return;
+    }
+
     // ── 分流 1: backfillDone → 收尾（落盘 / 派生指标 / 状态重算 / 解锁排队）──
     // ★ 2026-11-09 修断链：Android 原生 emit 的是 { status: "backfillDone" }，
     //   旧代码只认 raw.backfillDone 布尔字段 → 这个事件**从来没被消费过**：
@@ -2088,30 +2111,23 @@ class NativeRingSource {
       //   这里通过 requestFlush 提供的上下文无法直接读 —— 改为「多等几拍 + 幂等重跑」：
       //   requestFlush 内部若正忙，rebuildHistoricalStatus 会记一次待补跑（v18.112），
       //   所以这里重复调用是安全的，且能确保回填后的最终状态一定被算进去。
-      const waitFlush = (attempt: number) => {
-        if (attempt < 5) {
-          setTimeout(() => {
-            try {
-              this.requestFlush();
-            } catch { /* 下一拍再试 */ }
-            waitFlush(attempt + 1);
-          }, 700);
-          return;
-        }
+      // ★ 2026-11-15（上线测试 PERF-05）：旧实现 600ms 后循环 5 次 + 末次共 6 次
+      //   requestFlush()，每次都触发 rebuildHistoricalStatus（30 天 × 48 窗重活）→
+      //   日志里一次事务出现 8 次重建、release 刷屏被系统限流丢弃 863 行。
+      //   原生已把主同步 + origin3 合成单次事务、批次在 backfillDone 前全部 emit 完，
+      //   这里只需在 patch 落地后跑一次；coverage 统计也挪到同一拍，避免「0/8」误报。
+      setTimeout(() => {
         try {
-          // ★ 修: recomputeDailyStatus 是 RingConnectionImpl 的方法，NativeRingSource 调不到！
-          // 用 this.requestFlush() 代替 —— 它实际指向 RingConnectionImpl 的回调：
-          //   requestFlush = () => { this.rebuildHistoricalStatus(); this.scheduleRecomputeDailyStatus(); ... }
+          // recomputeDailyStatus 是 RingConnectionImpl 的方法，NativeRingSource 调不到；
+          // requestFlush = () => { rebuildHistoricalStatus(); scheduleRecomputeDailyStatus(); ... }
           this.requestFlush();
           postLog('RingBle', `[State] ✅ requestFlush (rebuild+recompute) after backfill (settled)`);
         } catch (err: any) {
           postLog('RingBle', `[State] ❌ recomputeDailyStatus FAILED: ${err?.message ?? err}`);
         }
-      };
-      setTimeout(() => waitFlush(0), 600);
+        try { postLog('RingBle', `[Sync.coverage] ${this.logSyncCoverage()}`); } catch {}
+      }, 800);
       postLog('RingBle', `[State] ✅ backfillDone days=${raw.days ?? '?'} lastSyncDate=${today}`);
-      // ★ 通路自检：这次同步到底写进来多少，留一条可核对的日志（用户要「通路一直通」）
-      try { postLog('RingBle', `[Sync.coverage] ${this.logSyncCoverage()}`); } catch {}
       this.finishSyncAll();
       return;
     }
@@ -2221,7 +2237,16 @@ class NativeRingSource {
     //   设下的 'scanning'/'connecting' 永不释放 → 设置页「连接」按钮被 ringBusy
     //   永久禁用、错误提示也出不来，表现为「点了没反应 / 一直转圈」。
     if (status === 'error' || raw.error) {
-      this.push({ status: 'error', error: String(raw.error ?? status) });
+      // ★ 2026-11-15（上线测试 P0-1）：原生发的是 reason 字段，旧代码只读 raw.error
+      //   → undefined → 回落成字面量 'error'，设置页显示「连接失败 error」无有效原因。
+      const reason = String(raw.reason ?? raw.error ?? status);
+      // 认证/对时阶段 SDK 的 IConnectResponse 偶发报 connect_failed（原生缺 GATT 断连回调），
+      // 但设备其实已连上（电量/固件都已回传）。8s 内的这类误报直接忽略，避免状态机误判掉线。
+      if (reason === 'connect_failed' && this.lastConnectedAt > 0 && Date.now() - this.lastConnectedAt < 8_000) {
+        postLog('RingBle', '[State] 忽略连接成功后 8s 内的 connect_failed 误报（设备已认证中）');
+        return;
+      }
+      this.push({ status: 'error', error: reason });
       return;
     }
 
@@ -2230,6 +2255,7 @@ class NativeRingSource {
     const patch: StatePatch = {};
     if (status === 'connected' || status === 'disconnected' || status === 'connecting') {
       patch.status = (status === 'disconnected' ? 'idle' : status) as RingConnStatus;
+      if (status === 'connected') this.lastConnectedAt = Date.now();
     }
     if (typeof raw.rssi === 'number' && Number.isFinite(raw.rssi)) patch.rssi = raw.rssi;
     if (raw.deviceName) patch.deviceName = displayRingName(raw.deviceName);
@@ -2374,15 +2400,28 @@ class NativeRingSource {
     }
     if (this.syncAllRerunQueued) {
       this.syncAllRerunQueued = false;
-      // ★ 2026-11-11：backfillDone 现已是整轮事务（含 origin3）的唯一收口，
-      //   补跑绝不会再打断 origin3，故移除旧的 60s 跳过逻辑，确保排队请求一定补跑，
-      //   避免「回前台/周期触发被静默吞掉 → 看起来像没更新」。
-      postLog('RingBle', '[Sync] 在途期间有排队请求 → 800ms 后补跑一次同步');
-      setTimeout(() => this.syncAll('排队补跑'), 800);
+      // ★ 2026-11-15（上线测试 P0-1，真机铁证）：删除 800ms「排队补跑」。
+      //   原生事务已把主同步 + origin3 历史回读合成一次；收口后立刻再发一次
+      //   readAllHealthDataBySettingOrigin 会抢占同一条 BLE 写通道，把刚启动的
+      //   readOriginDataBySetting 打断 → `origin3 emit days=0 points=0`（真机 2 次、
+      //   192 条 SDK 原始数据一条都没落库）。事务期间到达的请求统一合并丢弃，
+      //   由下一次回前台 / 30 分钟周期同步自然补上。
+      postLog('RingBle', '[Sync] 在途期间的排队请求已合并进本次事务（不再补跑抢占 BLE 通道）');
     }
-    // ★ 2026-11-11（用户：不能接受丢数据）：收口后自检今日核心指标是否仍有「中间断连缺口」，
-    //   有则从戒指在端存储全量回补缺失窗口（绝不编造）。
-    this.checkAndRecoverGaps();
+    // ★ 收口后不要立刻再发同步：延后一拍，让原生把暂缓的 BLE 写命令回放到位。
+    //   checkAndRecoverGaps 本身有「每天最多一次」的同日防重，不会递归。
+    setTimeout(() => {
+      try { this.checkAndRecoverGaps(); } catch { /* 自愈失败不影响主链路 */ }
+    }, 4_000);
+  }
+
+  /** ★ 2026-11-15：设备未就绪导致事务被跳过 → 只解锁，不推进游标/不补跑/不自愈。 */
+  private skipSyncAll(reason: string): void {
+    this.syncAllInFlight = false;
+    this.syncAllInFlightUntil = 0;
+    this.syncAllRerunQueued = false;
+    this.gapRecoveryActive = false;
+    postLog('RingBle', `[Sync] 事务被跳过（${reason}）→ 仅解锁，等连接恢复后再同步`);
   }
 
   /**
@@ -2714,9 +2753,17 @@ class NativeRingSource {
       if (!raw) return;
       if (raw.error) {
         postLog('O2-ANALYSIS', ` ${String(raw.error)}`);
-        // ★ 2026-11-06 审查（docs/audit/03 🟡#11）：解析失败原因不再被吞 ——
-        //   UI 需能区分「读取失败」与「暂无数据」。
-        this.push({ oxygenAnalysis: null, oxygenAnalysisError: `血氧分析失败：${String(raw.error)}` });
+        // ★ 2026-11-14（用户：呼吸暂停经常没数据）：失败时**不再清空已有的分析结果**。
+        //   旧实现 `oxygenAnalysis: null` 会把上一次成功读到的结果一起抹掉 ——
+        //   进页面时戒指还没连上（真机实证 ring_not_connected）→ 一次失败就把历史结果清空，
+        //   于是卡片长期空态。现在只记错误原因，保留上次成功值；UI 侧另有本机血氧样本兜底。
+        const code = String(raw.error);
+        const reason = /ring_not_connected/i.test(code) ? '戒指未连接'
+          : /no_data/i.test(code) ? '设备暂无夜间血氧原始记录'
+          : /parse_failed/i.test(code) ? '血氧原始记录解析失败'
+          : /read_failed/i.test(code) ? '血氧历史读取失败'
+          : `血氧分析失败：${code}`;
+        this.push({ oxygenAnalysisError: reason });
         return;
       }
       const analysis: OxygenAnalysis = {
@@ -2740,9 +2787,9 @@ class NativeRingSource {
       postLog('O2-ANALYSIS', ` ✅ osahs=${analysis.osahsResult} aveO2=${analysis.aveOxygen} minO2=${analysis.minOxygen}`);
       this.push({ oxygenAnalysis: analysis, oxygenAnalysisError: null });
     } catch (e) {
-      // ★ 2026-11-06 审查（docs/audit/03 🟡#11）：不再完全静默 —— 记录并写错误态。
+      // ★ 2026-11-14：解析异常同样保留已有结果，只写错误原因。
       postLog('O2-ANALYSIS', ` ❌ 解析失败：${e}`);
-      this.push({ oxygenAnalysis: null, oxygenAnalysisError: '血氧分析数据解析失败，请重新连接戒指后重试' });
+      this.push({ oxygenAnalysisError: '血氧分析数据解析失败，请重新连接戒指后重试' });
     }
   };
 
@@ -3846,6 +3893,12 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     }
     VeepooNative?.measure(k);
   }
+  // ★ 2026-11-14（血压主动测不出值 → 体检自动重试）：显式停止原生主动检测。
+  //   体检会话 BP 阶段结束（无论是否出值）时调用，防止没出值时 PPG 通道被占住，
+  //   挡住后面的 HRV / 血氧流。Android 原生 stopMeasure；iOS 侧桥无此方法时静默跳过。
+  stopMeasure(k: string) {
+    try { (NativeModules as any).VeepooRing?.stopMeasure?.(k); } catch { /* 静默 */ }
+  }
   stopEcg() { VeepooNative?.stopEcg?.(); }
   flash() { VeepooNative?.findDevice(); }
   /** 重连后回填历史日数据（戒指离线期间累积的）：走统一常开通路。 */
@@ -4409,8 +4462,11 @@ class RingConnectionImpl {
   private autoLinkRetries = 0;
   /** 只在「首次连上」打一条日志，避免 connected 状态反复推送时刷屏 */
   private autoLinkWasConnected = false;
-  /** 8s 内不重复发起，避免 error/idle 回调引发连接风暴 */
+  /** ★ 2026-11-15（上线测试 P0-1）：20s 内不重复发起，避免 error/idle 回调引发连接风暴
+   *   （真机一轮测试出现 27 次扫描 / 105 次 applyPatch 抖动）。 */
   private autoLinkBusyUntil = 0;
+  /** ★ 2026-11-15：连接 watchdog 句柄，连上后立刻取消，避免叠加 12 个 20s 定时器。 */
+  private connectWatchdog: ReturnType<typeof setTimeout> | null = null;
   /** 上次连上的 MAC；仅用于日志与已连接展示，不再驱动启动直连（见 decideAfterScan） */
   private knownMac: string | null = null;
 
@@ -4478,6 +4534,11 @@ class RingConnectionImpl {
   private lastCurveAccumTs: number | null = null;
   /** 用户在 App 内手动记录的经期（本地 cycleLog 文件），作为相位的权威兜底来源 */
   private localCycle: CycleLog | null = null;
+  /** ★ 2026-11-14（#313 根因修复）：本地每日经期明细（含 periodEnd）。
+   *   与 localCycle 一起在 refreshLocalCycle 加载，并透传给 resolveCycle → computeCycle，
+   *   让 app 全局相位（curveStatus.phaseLabel）也按「真实经期起止」重算，
+   *   不再只靠 lastPeriodStart + periodLength 日历推算，从而经期结束后不再显示「经期」。 */
+  private localPeriodDays: Record<string, PeriodDayLog> | null = null;
   /** healthStore 写入后延迟落盘用的 debounce 定时器（见 scheduleHealthStorePersist） */
   private healthStorePersistTimer: ReturnType<typeof setTimeout> | null = null;
   private healthStorePersistSubscribed = false;
@@ -4502,14 +4563,28 @@ class RingConnectionImpl {
   // 与核心指标同宽（SLOT_MS），让这些原本只存"最新 1 点"的信号也能画出全天趋势曲线。
   private extBuckets: Record<string, Map<number, { sum: number; count: number; last: number }>> = {};
 
+  /** ★ 2026-11-14：全局去重。血氧页与睡眠恢复页各挂一个 OxygenApneaSection，
+   *  旧实现每次进页面会并发发起 2~4 次原生 readOriginDataBySetting（每次 25s），
+   *  互相打断导致「经常没数据」。这里统一收口：已有成功结果 60s 内不重拉，进行中不重入。 */
+  private _o2InFlight = false;
+  private _o2LastTriggerAt = 0;
+
   /** ★ 2026-10-16：触发呼吸暂停（OSAHS）分析——原生读设备血氧历史 → VPOxygenAnalysisModel 解析。结果经 onOxygenAnalysis 事件写入 RingState.oxygenAnalysis。 */
   /** ★ 2026-11-06 审查（docs/audit/03 🟡#10）：失败原因写入 state，不再静默吞错。 */
   async triggerOxygenAnalysis(): Promise<void> {
+    if (this._o2InFlight) return;
+    const now = Date.now();
+    // 已有成功结果时不必反复回读；没有结果也至少隔 30s，避免并发风暴。
+    if (this.state.oxygenAnalysis || now - this._o2LastTriggerAt < 30_000) return;
+    this._o2InFlight = true;
+    this._o2LastTriggerAt = now;
     try {
       await VeepooNative?.triggerOxygenAnalysis?.();
     } catch (e) {
       postLog('O2-ANALYSIS', ` ❌ 触发失败：${e}`);
       this.applyPatch({ oxygenAnalysisError: '血氧历史读取失败，请确认戒指已连接并佩戴' });
+    } finally {
+      this._o2InFlight = false;
     }
   }
   /** ★ 2026-11-06 审查（docs/audit/03 🟡#10）：失败原因写入 state，不再静默吞错。 */
@@ -4775,6 +4850,13 @@ class RingConnectionImpl {
     // 今日状态时间线：对齐「整点 / 整半点」墙钟边界落快照（用户要求 12:00/12:30 出值），
     // 而非从 App 启动时刻起算的 30 分钟漂移，保证每次结果都精确落在 :00 或 :30。
     this.scheduleStatusTick();
+    // ★ 2026-11-15（P0-2）：healthStore 落盘订阅必须在构造时安装。
+    //   旧实现只在 loadPersisted 内部安装，而 loadPersisted 在「无 legacy 快照」时
+    //   会提前 return → 订阅永远装不上，之后任何 healthStore 写入都不会落盘。
+    if (!this.healthStorePersistSubscribed) {
+      this.healthStorePersistSubscribed = true;
+      healthStore.subscribe(() => this.scheduleHealthStorePersist());
+    }
     // ★ v18.98：App 切回前台就重算一次今日状态（不必为了看新数据把进程杀掉重开）。
     //   原来只有「完全杀掉 App 重开」才会走 loadPersisted → 跨天重算（v18.97），
     //   而最常见的场景是「把 App 丢后台一夜、第二天早上切回来」——页面挂着的仍是昨天的数字。
@@ -4782,7 +4864,12 @@ class RingConnectionImpl {
     //   无新数据时它会把今日状态诚实置空，有回传数据时再补上。
     try {
       AppState.addEventListener('change', (next: AppStateStatus) => {
-        if (next !== 'active') return;
+        if (next !== 'active') {
+          // ★ 2026-11-15（P0-2）：进后台立即 flush 一次，抵御系统回收进程 /
+          //   force-stop 掐死 800ms 防抖定时器导致「杀进程后数值全丢」。
+          try { void this.saveSnapshot(); } catch { /* 静默 */ }
+          return;
+        }
         try {
           this.scheduleRecomputeDailyStatus(Date.now(), true);
           postLog('RingBle', '[FOREGROUND_RECOMPUTE] App 回到前台已重算今日状态');
@@ -5014,6 +5101,8 @@ class RingConnectionImpl {
     //   若每次都走这里，会把 setAutoMonitor/setSyncEnabled 打成日志风暴并灌爆主队列。
     if (patch.status === 'connected' && prevStatus !== 'connected') {
       this.state = { ...this.state, lastSyncedAt: Date.now() };
+      // ★ 2026-11-15：真正连上就取消 connect watchdog，别再打「20s 未收到回调」。
+      if (this.connectWatchdog) { clearTimeout(this.connectWatchdog); this.connectWatchdog = null; }
       if (this.useNative) {
         this.autoMonitor = true;
         this.native.setAutoMonitor(true);
@@ -5179,6 +5268,10 @@ class RingConnectionImpl {
           availability['skin'] = 'live';
         }
       } else {
+        // ★ 2026-11-14（真机实锤）：BP 主动检测固件可能回「30/20」这类非生理值（progress=100 也照回），
+        //   扩展指标分支此前没有闸门 → 直接污染 extDaily/intraday，洞察页血压卡被顶成 30/20。
+        //   与 CORE_KEYS 分支同一把 physioValid 尺子，越界一律拦下（未知 key 一律放行，不误伤）。
+        if (!physioValid(m.key, m.value)) { postLog('JS', `[applyMetric] ⛔ 拦截脏读数(扩展) key=${m.key} v=${m.value}`); continue; }
         // ★ v18.134（审查 04 🟡-6）：扩展指标同时写**原生 key** 与**展示别名 key**。
         //   旧实现只写 `daily[m.key]`（原生 key，如 'glucose' / 'ua' / 'cholesterol'），
         //   而洞察页 renderBasicsCard 读的是 `ring.daily[m.key]`（展示别名，如 'bloodSugar' / 'uricAcid'）
@@ -5554,10 +5647,10 @@ class RingConnectionImpl {
     const tempSeries = tempDailyToSeries(this.state.tempDaily);
     const periodHistory = this.localCycle?.history;
     if (candidates.length === 0) {
-      return computeCycle(null, new Date(), { tempSeries, periodHistory });
+      return computeCycle(null, new Date(), { tempSeries, periodHistory, periodDays: this.localPeriodDays ?? undefined });
     }
     candidates.sort((a, b) => daysBetween(a.lastPeriodStart, b.lastPeriodStart));
-    return computeCycle(candidates[candidates.length - 1], new Date(), { tempSeries, periodHistory });
+    return computeCycle(candidates[candidates.length - 1], new Date(), { tempSeries, periodHistory, periodDays: this.localPeriodDays ?? undefined });
   }
 
   /** 重新读取本地经期记录（cycleLog 文件），并触发相位/状态重算。用户在 App 内记经期后调用。 */
@@ -5566,6 +5659,12 @@ class RingConnectionImpl {
       this.localCycle = await loadCycleLog();
     } catch {
       this.localCycle = null;
+    }
+    // ★ 2026-11-14（#313）：同步加载每日经期明细（含 periodEnd），供 resolveCycle 重算相位
+    try {
+      this.localPeriodDays = await loadPeriodDays();
+    } catch {
+      this.localPeriodDays = null;
     }
     this.scheduleRecomputeDailyStatus();
   }
@@ -6083,8 +6182,45 @@ class RingConnectionImpl {
         );
       }
     } catch (_e) {}
+    // ★ 跨天保底（用户 2026-11-15）：今天尚无任何测量时，从 statusTimelineByDay 取最近一天的最后一笔状态点，
+    //   作为「冻结保底值」显示，直到当天出现真实采样（与 v18.121「断开冻结」口径一致；跨天清零改为冻结）。
+    //   仅看最近一天、且距现在 ≤24h（覆盖跨天首点 / 夜间佩戴），避免显示过旧的值。
+    const carried = (() => {
+      if (hasTodayMeasurement) return null;
+      const byDay = this.state.statusTimelineByDay ?? {};
+      const keys = Object.keys(byDay).sort(); // dateKey 已零填充，字典序 = 时间序
+      for (let i = keys.length - 1; i >= 0; i--) {
+        const arr = byDay[keys[i]];
+        if (!arr || arr.length === 0) continue;
+        const sorted = [...arr].sort((a: any, b: any) => a.t - b.t);
+        const last = sorted[sorted.length - 1];
+        if (last && typeof last.value === 'number' && Number.isFinite(last.value) && now - last.t <= 24 * 3600_000) {
+          return { value: last.value, t: last.t };
+        }
+        break; // 只看最近一天
+      }
+      return null;
+    })();
     if (!curve || !curveIsToday || curve.seed.value == null || tlAllZero || !hasTodayMeasurement || dataStale) {
       const pb = cycle.phase as PhaseBucket;
+      // ★ 跨天保底返回（用户 2026-11-15）：今天尚无测量 → 冻结显示近期最后一笔状态值（≤24h），等当天出真实采样再刷新。
+      if (carried) {
+        return {
+          value: Math.round(carried.value),
+          level: curveLevel(carried.value, CURVE_DEFAULTS).level,
+          phaseLabel: PHASE_TEXT[cycle.phase as PhaseBucket] ?? '未记录',
+          dayInCycle: cycle.dayInCycle,
+          hasLog: cycle.hasLog,
+          estrogenIndex: cycle.estrogenIndex ?? null,
+          seed: null,
+          narrative: '今日佩戴数据不足，暂显示最近一次状态',
+          hasData: true,
+          staleSleepDate: null,
+          lastPointAt: carried.t,
+          dataStale: false, // 冻结：有值但非实时；home 据此仍显示（区别于「从未采到」）
+          lastSampleAt: carried.t,
+        };
+      }
       // ★ 一致性修正：取时间最新点而非数组末位（数组可能因跨天清理/种子补点乱序）
       const tlSorted0 = tl.length ? [...tl].sort((a: any, b: any) => a.t - b.t) : [];
       const lastT = tlSorted0.length ? tlSorted0[tlSorted0.length - 1].t : null;
@@ -6157,34 +6293,44 @@ class RingConnectionImpl {
    * 诚实标注：这是基于 HRV/睡眠的推算分，不是当时逐 30 分钟的完整曲线。
    */
   private rebuildHistoricalStatus() {
-    if (this.rebuildHistoricalStatusRunning) {
-      // ★ v18.112 重入丢失是「回填完了趋势图还是没线」的真凶：
-      //   healthStore.subscribe(节流调和) 在回填期间几百毫秒一次地触发重建，
-      //   而 rebuildHistoricalStatusImpl 是同步重活（30 天 × 48 窗聚合），
-      //   第一次还在跑时后续调用全被这个锁静默丢弃 ——
-      //   包括 backfillDone 之后那次最关键的 requestFlush（实锤：日志里
-      //   `[Batch] ✅ hr dk=2026-10-03 n=147` 之后 `requestFlush` 跑了，
-      //   但 `合并今日 statusTimeline` 0 次）。
-      // 改成「记一次待重跑」：当前这次跑完立刻再跑一轮，保证回填最后状态被算进去。
+    // ★ 2026-11-15（上线测试 PERF-05）：一次同步事务里 applyPatch / healthStore.subscribe
+    //   会几十次触发本方法，旧实现「跑完立刻递归补跑」导致 30 天 × 48 窗的重活连跑 8 轮，
+    //   release logcat 单次 863 行被系统限流丢弃。这里统一做 1.5s 时间窗去重，
+    //   重复请求合并成一次延后补跑（仍保留 v18.112「最后一次一定算进去」的语义）。
+    const now = Date.now();
+    if (this.rebuildHistoricalStatusRunning || now - this._lastRebuildAt < 1500) {
       this._rebuildPending = true;
+      this.schedulePendingRebuild();
       return;
     }
+    this._lastRebuildAt = now;
     this.rebuildHistoricalStatusRunning = true;
     try {
       this.rebuildHistoricalStatusImpl();
     } finally {
       this.rebuildHistoricalStatusRunning = false;
+      this._lastRebuildAt = Date.now();
     }
-    if (this._rebuildPending) {
+    if (this._rebuildPending) this.schedulePendingRebuild();
+  }
+
+  private schedulePendingRebuild(): void {
+    if (this._rebuildTimer) return;
+    this._rebuildTimer = setTimeout(() => {
+      this._rebuildTimer = null;
+      if (!this._rebuildPending) return;
       this._rebuildPending = false;
-      postLog('RingBle', '[rebuildHistoricalStatus] 期间有请求被合并，补跑一轮');
       this.rebuildHistoricalStatus();
-    }
+    }, 1_600);
   }
 
   private rebuildHistoricalStatusRunning = false;
   /** v18.112：运行期间收到的重建请求（合并成一次补跑，避免丢最后一次） */
   private _rebuildPending = false;
+  /** ★ 2026-11-15：重建去重时间窗 / 延后补跑定时器 / 空态诊断只打一次 */
+  private _lastRebuildAt = 0;
+  private _rebuildTimer: ReturnType<typeof setTimeout> | null = null;
+  private _hsEmptyDiagDone = false;
   /** v18.112：今日合并判定只诊断一次 */
   private _hsTodayDiagDone = false;
   private _hsDiagCount = 0;
@@ -6245,7 +6391,11 @@ class RingConnectionImpl {
       const todayHasAny = hsHr0 + hsHrv0 + hsSteps0 + hsMet0 + hsEda0 > 0;
       const hasAnyDaily = Object.keys(hrv).length > 0 || Object.keys(sleep).length > 0;
       if (!todayHasAny && !hasAnyDaily) {
-        postLog('RingBle', '[rebuildHistoricalStatusImpl] 没连戒指 + healthStore 全空，跳过重建');
+        // ★ 2026-11-15：这条守卫在一次事务里会被触发 8 次，只打一次即可。
+        if (!this._hsEmptyDiagDone) {
+          this._hsEmptyDiagDone = true;
+          postLog('RingBle', '[rebuildHistoricalStatusImpl] 没连戒指 + healthStore 全空，跳过重建');
+        }
         return;
       }
     }
@@ -6892,14 +7042,29 @@ class RingConnectionImpl {
    */
   private scheduleHealthStorePersist(): void {
     if (this.healthStorePersistTimer != null) return;
+    // ★ 2026-11-15（P0-2）：5s 防抖 + `am force-stop` 会掐死 pending 定时器，
+    //   最后一批健康数据直接丢失（真机 2s/17s/47s 三次采样全空）。
+    //   收紧到 800ms；后台切换时另有立即 flush 兜底。
     this.healthStorePersistTimer = setTimeout(() => {
       this.healthStorePersistTimer = null;
       void this.saveSnapshot();
-    }, 5000);
+    }, 800);
   }
 
   private async saveSnapshot() {
-    if (!this.hasPersistableData()) return; // 不把空状态覆盖掉已有的好数据
+    if (!this.hasPersistableData()) {
+      // ★ 2026-11-15（上线测试 P0-2）：hasPersistableData() 只看 RingState，
+      //   会误拦掉「healthStore 有数据、RingState 恰好判空」的落盘。
+      //   这里让 healthStore 独立落盘；但空内存绝不覆盖磁盘上的好文件
+      //   （旧实现冷启动时空 v2 文件被反向写回，形成自 sustaining 的「全空」）。
+      if (healthStore.hasAnyData()) {
+        const p = this.healthStorePath();
+        if (p) {
+          try { await FileSystem.writeAsStringAsync(p, healthStore.serialize()); } catch { /* 静默 */ }
+        }
+      }
+      return;
+    }
     // 落盘前先把「当日」各核心指标日均写进 *Daily（不依赖跨天瞬间，避免当天被丢）
     this.syncDailyFromBuckets();
     const path = this.snapshotPath();
@@ -6979,6 +7144,11 @@ class RingConnectionImpl {
         sportSessions: this.state.sportSessions,
         syncEnabled: this.syncEnabled,
         userProfile: this.userProfile,
+        // ★ 2026-11-15（P0-2）：冻结分析值只存在 healthStore.analysis 里，
+        //   旧快照没备份 → 冷启动后「睡眠恢复 85 / 身体年龄 -2.3 岁」永久丢失。
+        //   这里只存两个小体积字段，不整包塞 v2（避免 legacy 快照膨胀）。
+        analysis: healthStore.exportAnalysis(),
+        hsSleep: healthStore.exportSleep(),
       };
       await FileSystem.writeAsStringAsync(path, JSON.stringify(snap));
       // ★ 单一数据源 healthStore 一并落盘（v2）。与 legacy 快照并存，重启优先恢复 healthStore。
@@ -6995,7 +7165,14 @@ class RingConnectionImpl {
             );
             postLog('RingBle', `[saveSnapshot] healthStore 今日 intraday: ${probe.join(' ')}`);
           }
-          await FileSystem.writeAsStringAsync(hsPath, healthStore.serialize());
+          // ★ 2026-11-15（P0-2）：空内存绝不覆盖磁盘上的好 v2 文件。
+          //   冷启动水合前那次 `void this.saveSnapshot()` 曾经把全空 healthStore
+          //   反写进 v2，之后再启动就永远读到空壳 → 数据自毁循环。
+          if (healthStore.hasAnyData()) {
+            await FileSystem.writeAsStringAsync(hsPath, healthStore.serialize());
+          } else {
+            postLog('RingBle', '[saveSnapshot] healthStore 内存为空 → 跳过写入，保护磁盘快照');
+          }
         } catch {
           /* 写盘失败静默：绝不阻塞 App */
         }
@@ -7173,11 +7350,14 @@ class RingConnectionImpl {
 
     // 低频 watchdog：覆盖「原生静默掉线、没发 disconnected」的情况
     // ★ 2026-11-14：awaitingDeviceChoice 时也继续周期重扫——lastId 恢复广播即自动连回
+    // ★ 2026-11-15（上线测试 P0-1）：30s → 45s。原来 onState 抖动排程 + 30s watchdog
+    //   + 16s 扫描兜底三条独立定时器并发，真机一轮测试扫了 27 次。现在只保留这一条
+    //   低频兜底，其余抖动统一被 autoLinkBusyUntil 冷却窗口挡掉。
     this.autoLinkWatchdog = setInterval(() => {
       const cur = this.getState();
       if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting') return;
       void this.runAutoLink('watchdog');
-    }, 30_000);
+    }, 45_000);
 
     postLog('RingBle', `[autoLink] 保活已启动 knownMac=${this.knownMac ?? '-'}`);
     // 启动即尝试连：有 MAC 就直连，没 MAC 才扫描
@@ -7211,6 +7391,11 @@ class RingConnectionImpl {
     if (!this.useNative || this.userStoppedLink) return;
     const cur = this.getState();
     if (cur.status === 'connected' || cur.status === 'connecting') return;
+    // ★ 2026-11-15（上线测试 P0-1）：冷却窗口内不再叠排。
+    //   decideAfterScan 在多戒指环境会 applyPatch({status:'idle'})，旧实现每次
+    //   都会触发 onState → scheduleAutoLink → 立刻重扫，把「等待用户选择」冲掉。
+    const now = Date.now();
+    if (reason !== '启动' && now < this.autoLinkBusyUntil) return;
     this.clearAutoLinkTimer();
     const d = delay ?? Math.min(30_000, 2000 + this.autoLinkRetries * 2000);
     this.autoLinkTimer = setTimeout(() => {
@@ -7237,7 +7422,7 @@ class RingConnectionImpl {
     //   要能被周期重扫发现并自动连回（decideAfterScan 只自动连 lastId，安全）。
     const now = Date.now();
     if (now < this.autoLinkBusyUntil) return;
-    this.autoLinkBusyUntil = now + 8000;
+    this.autoLinkBusyUntil = now + 20_000;
 
     // ★ 2026-11-13（用户）：不再按持久化 MAC 直连，一律先扫描全部候选，
     //   由 decideAfterScan() 按最终数量决定「1 枚直连 / 多枚列出来让用户选」。
@@ -7247,7 +7432,8 @@ class RingConnectionImpl {
     } catch (e) {
       postLog('RingBle', `[autoLink] 扫描启动失败：${e instanceof Error ? e.message : e}`);
     }
-    this.scheduleAutoLink('扫描兜底', 16_000);
+    // ★ 2026-11-15：删除 16s「扫描兜底」重排——与 45s watchdog 重复，且会在
+    //   BLE 认证/回填窗口里再插一轮扫描。重试统一由低频 watchdog 负责。
   }
 
   /**
@@ -7478,6 +7664,7 @@ class RingConnectionImpl {
 
   private async loadHealthStoreFromDisk(legacySnap: any): Promise<void> {
     const path = this.healthStorePath();
+    let v2Loaded = false;
     if (path) {
       try {
         const info = await FileSystem.getInfoAsync(path);
@@ -7486,27 +7673,39 @@ class RingConnectionImpl {
           const json = JSON.parse(raw);
           if (json && json.schema === 2) {
             healthStore.loadV2(json);
-            // ★ 补齐睡眠：v2 快照的 sleep 可能为空，而 legacy 快照的 sleepDaily 一直有数据；
-            //   走 v2 分支就不会再执行 v1 迁移，若不补，重启后「睡眠恢复摘要」会空白。
+            // ★ 补齐睡眠：v2 快照的 sleep 可能为空，而 legacy 快照的 sleepDaily 一直有数据。
             const v2SleepDays = json.sleep && typeof json.sleep === 'object' ? Object.keys(json.sleep).length : 0;
             const added = healthStore.hydrateSleepFromLegacy(legacySnap?.sleepDaily);
             postLog(
               'RingBle',
               `[healthStore] 已从 v2 快照恢复（v2.sleep=${v2SleepDays} 天，legacy 睡眠补齐 ${added} 天）`
             );
-            return;
+            v2Loaded = true;
           }
         }
       } catch {
         /* 损坏忽略，回落迁移 */
       }
     }
+    // ★ 2026-11-15（上线测试 P0-2，真机数据丢失根因）：
+    //   旧实现在 v2 分支末尾 `return`，跳过了 migrateFromV1。而磁盘上的 v2 文件
+    //   常是「存在但 stores/sleep/analysis 全空」的空壳（历史上被冷启动空内存反写过），
+    //   于是 stepDaily→calorie、seriesByDay→hr/hrv/spo2、sleepDaily→sleep 这些
+    //   legacy 快照里完好保存的数据全都没被恢复 → 杀进程后睡眠恢复 85 / 活动消耗 2kcal /
+    //   洞察恢复力 79 / 身体年龄 -2.3 岁集体变空态。
+    //   migrateFromV1 天生「只补不覆盖」，在 loadV2 之后安全执行即可补齐。
     try {
       healthStore.migrateFromV1(legacySnap);
-      postLog('RingBle', '[healthStore] 已从旧 v1 快照迁移');
+      postLog('RingBle', `[healthStore] ${v2Loaded ? 'v2 恢复后补齐 legacy 快照（v1 迁移）' : '已从旧 v1 快照迁移'}`);
     } catch {
       /* 忽略 */
     }
+    // ★ 恢复冻结分析值（睡眠恢复定稿 / 身体年龄）与睡眠原始测量值，
+    //   它们只存在 healthStore 里、且旧版 legacy 快照没有备份过。
+    try {
+      healthStore.mergeAnalysis(legacySnap?.analysis);
+      healthStore.mergeSleep(legacySnap?.hsSleep);
+    } catch { /* 忽略 */ }
   }
 
   /**
@@ -7887,6 +8086,13 @@ class RingConnectionImpl {
   }
 
   async startScan(): Promise<void> {
+    // ★ 2026-11-15（上线测试 P0-1）：已连接时绝不重扫。
+    //   autoLink 的 watchdog / 扫描兜底会把 status 打回 'scanning'，
+    //   表现为「刚连上 3 秒就掉线」+ 设置页按钮被 ringBusy 卡住。
+    if (this.getState().status === 'connected') {
+      postLog('RingBle', '[Scan] 已连接，忽略本轮自动重扫');
+      return;
+    }
     // ★ 2026-11-13：Android 蓝牙权限闸门（扫描前必须申请 BLUETOOTH_SCAN，否则扫不到设备）
     if (this.useNative && !(await ensureBlePermissions())) {
       this.applyPatch({ status: 'error', error: 'permission_denied' });
@@ -7925,14 +8131,23 @@ class RingConnectionImpl {
     if (id && this.useNative) {
       this.applyPatch({ status: 'connecting', error: null });
       await this.native.connect(id);
-      // 原生偶发静默（既不发 connected 也不发 error）时按时释放状态，避免 UI 死锁
-      setTimeout(() => {
+      // ★ 2026-11-15（上线测试 P0-1）：旧实现每次 connect() 都叠加一个 20s 定时器、
+      //   从不保存句柄也从不取消 → 连上后仍反复打「⏱ 20s 未收到连接回调」（真机 12 次）。
+      if (this.connectWatchdog) clearTimeout(this.connectWatchdog);
+      // 原生偶发静默（既不发 connected 也不发 error）时按时释放状态，避免 UI 死锁。
+      // ★ 2026-11-15 20:55（OPPO API36 真机实测）：旧值 20s 比原生层 30s GATT 超时**先**到——
+      //   JS 先置 idle → autoLink 又发起扫描/连接，而上一条原生连接还挂着 → 请求堆积、
+      //   状态机在 connecting/idle/scanning 之间反复横跳（真机日志 3 轮全中）。
+      //   改 35s：让原生 connect_failed（~30s）先到并走 error → autoLink 重排，
+      //   本定时器只兜「原生彻底静默」的底。
+      this.connectWatchdog = setTimeout(() => {
+        this.connectWatchdog = null;
         const s = this.getState().status;
         if (s === 'connecting' || s === 'scanning') {
-          postLog('RingBle', '[connect] ⏱ 20s 未收到连接回调，释放状态避免按钮死锁');
+          postLog('RingBle', '[connect] ⏱ 35s 未收到任何回调（原生静默），释放状态避免按钮死锁');
           this.applyPatch({ status: 'idle' });
         }
-      }, 20_000);
+      }, 35_000);
       return;
     }
     await this.startScan();
@@ -8016,6 +8231,14 @@ class RingConnectionImpl {
         this.applyPatch({ availability: { ...this.state.availability, [metric as MetricKey]: 'syncing' } });
       }
       this.backend.measure();
+    }
+  }
+
+  // ★ 2026-11-14（血压主动测不出值 → 体检自动重试）：显式停止原生主动检测（归还 PPG 通道）。
+  //   与 measure(metric) 同层暴露给 quickCheckStore；仅原生直连模式有意义，后端模式无操作。
+  stopMeasure(metric: string) {
+    if (this.useNative) {
+      try { this.native.stopMeasure?.(metric); } catch { /* 静默 */ }
     }
   }
 

@@ -8,6 +8,8 @@
  * 各指标逐条定制，周期/昼夜/激素语境通用，读起来自然、不机械。
  */
 
+import { showCycleContent } from '../data/cycleScope';
+
 type M = { key: string; name: string; unit?: string };
 
 /** ★ 2026-11-10（用户）：文案里的瞬时读数与卡片大数值必须同口径，一律整数
@@ -27,11 +29,34 @@ function lead(m: M, v: number | null): string {
  *   绝不长时间挂着「正在加载中」误导用户。
  */
 export function buildMetricAnalysis(m: M, value: number | null, loading = false): string {
+  // ★ 2026-11-14：男性用户的指标解读不出现「生理周期相位 / 黄体期 / 排卵后」等女性周期表述。
+  const cycleOn = showCycleContent();
   if (value == null) {
+    const tail = cycleOn
+      ? '并给出参考你荷尔蒙节律、昼夜节律与生理周期相位的分析。'
+      : '并给出参考你昼夜节律与近期趋势的分析。';
     if (loading) {
-      return `${m.name}今日暂未读到数据。正在加载中，戒指数据会分批回来，先到的指标先显示。连接戒指并佩戴一会儿后，这里会显示读数，并给出参考你荷尔蒙节律、昼夜节律与生理周期相位的分析。`;
+      return `${m.name}今日暂未读到数据。正在加载中，戒指数据会分批回来，先到的指标先显示。连接戒指并佩戴一会儿后，这里会显示读数，${tail}`;
     }
-    return `${m.name}今日暂未读到数据。连接戒指并佩戴一会儿后，这里会显示读数，并给出参考你荷尔蒙节律、昼夜节律与生理周期相位的分析。`;
+    return `${m.name}今日暂未读到数据。连接戒指并佩戴一会儿后，这里会显示读数，${tail}`;
+  }
+  if (!cycleOn) {
+    // 男性中性版：保留指标本身的生理解释，去掉全部周期绑定话术
+    switch (m.key) {
+      case 'hr':
+        return `${lead(m, value)}心率反映自主神经张力与循环负荷，会随昼夜节律、活动与压力自然波动——夜间静息、运动后偏高都属正常变化。把它和近期睡眠、压力趋势放在一起看，是日常状态最敏感的窗口之一。`;
+      case 'hrv':
+        return `${lead(m, value)}心率变异性体现自主神经的恢复与调节能力，受睡眠、压力与作息共同影响。偏低常对应疲劳或高压，偏高提示恢复较好；把它放进你的昼夜节律里看，比单看一个数字更有意义。`;
+      case 'temp':
+      case 'tempCore':
+        return `${lead(m, value)}体温受活动、环境温度与测量时间影响，昼夜之间有自然起伏。单日读数波动多为正常，建议结合多日趋势判断。`;
+      case 'eda':
+        return `${lead(m, value)}皮肤含水量（皮电 GSR 相关）随 hydration 与压力、情绪变化，短期起伏多为正常，长期偏离可结合饮水量与作息观察。`;
+      case 'rr':
+        return `${lead(m, value)}呼吸率与自主神经、代谢状态相关，睡眠中平稳放缓是恢复良好的表现，也受昼夜节律调制。`;
+      default:
+        return `${lead(m, value)}${m.name}反映身体的一项基础信号，会随昼夜节律、睡眠与压力自然波动。保持规律睡眠与稳定情绪，读数通常落在平稳区间。`;
+    }
   }
   switch (m.key) {
     case 'hr':

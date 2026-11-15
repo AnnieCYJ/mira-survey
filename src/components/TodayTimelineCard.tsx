@@ -41,6 +41,8 @@ export interface TimelineItem {
   scoreLabel?: string;
   /** ★ 2026-11-11：这个数字/达标对身体意味着什么（平实、不诊断、不评分说教） */
   meaning?: string;
+  /** ★ 本轮（用户）：回顾卡类型，用于决定点击后的跳转（food → 回到拍照识别页复查这一餐） */
+  type?: 'food' | 'mood' | 'event';
 }
 
 /** ★ 2026-11-11：可复用的分数进度条。有分数才画，无分数调用方直接不渲染。

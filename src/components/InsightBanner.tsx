@@ -49,7 +49,7 @@ export default function InsightBanner({ title = null, subtitle, advice, text, ro
         <Text style={[styles.text, bodyColor ? { color: bodyColor } : null]}>{text}</Text>
       ) : (
         <Text style={[styles.text, bodyColor ? { color: bodyColor } : null]}>
-          持续佩戴后，这里会结合你的 HRV、睡眠、体温与周期相位，生成属于你的综合分析。
+          持续佩戴后，这里会结合你的 HRV、睡眠、体温与近期趋势，生成属于你的综合分析。
         </Text>
       )}
 

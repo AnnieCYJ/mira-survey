@@ -132,7 +132,6 @@ export default function StressRecoveryDetailScreen() {
           <BackButton onPress={() => navigation.goBack()} />
           <View style={styles.titleWrap}>
             <Text style={styles.title}>压力恢复节律</Text>
-            <Text style={styles.unit}>恢复 · 心流 · 松弛 · 紧绷</Text>
           </View>
         </View>
 
@@ -254,36 +253,37 @@ function buildDayInsight(day: ReturnType<typeof computeDayRecovery>): string {
   const total = day.totalHrs || 1;
   const recPct = Math.round((day.recoveryHrs / total) * 100);
   const tensePct = Math.round((day.tenseHrs / total) * 100);
+  const rec = fmtHrs(day.recoveryHrs);
+  const tense = fmtHrs(day.tenseHrs);
   if (day.recoveryHrs >= day.tenseHrs && recPct >= 20) {
-    return `今天恢复充足，约有 ${fmtHrs(day.recoveryHrs)} 处于恢复态（占 ${recPct}%）。身体处在良好的修复窗口，可以顺势安排一些轻松的事。`;
+    return `今天恢复很够：约有 ${rec} 处在恢复态（占 ${recPct}%）。这段时间身体正慢慢把自己修回来，顺着劲做点轻松的事、早点收工，都是划算的。`;
   }
   if (day.tenseHrs > day.recoveryHrs) {
-    return `今天紧绷偏多，约 ${fmtHrs(day.tenseHrs)}（占 ${tensePct}%）处于紧绷态，HRV 持续走低。傍晚建议用一次呼吸练习，把身体切回松弛。`;
+    return `今天紧绷偏多，约 ${tense}（占 ${tensePct}%）处在紧绷态，HRV 一直往下走。说明身体还没来得及松下来——傍晚用一次呼吸练习帮它切回松弛，比硬撑更值。`;
   }
-  return `今天状态较平稳：恢复约 ${fmtHrs(day.recoveryHrs)}、紧绷约 ${fmtHrs(day.tenseHrs)}。保持节奏即可。`;
+  return `今天大致平稳：恢复约 ${rec}、紧绷约 ${tense}。没有大起大落，保持现在的节奏就挺好。`;
 }
 
 function buildRangeInsight(rr: ReturnType<typeof computeRangeRecovery> | null, range: RangeKey): string {
   if (!rr || rr.avgScore == null) {
-    return range === 'week'
-      ? '本周还没有足够的恢复数据，连接戒指并同步后，这里会自动绘制恢复分数趋势。'
-      : range === 'month'
-        ? '本月还没有足够的恢复数据，连接戒指并同步后，这里会自动绘制恢复分数趋势。'
-        : '本年还没有足够的恢复数据，连接戒指并同步后，这里会自动绘制恢复分数趋势。';
+    const name = range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
+    return `${name}还没有足够的恢复数据，连接戒指并同步后，这里会自动绘制恢复分数趋势。`;
   }
   const total = sumHours(rr.hours) || 1;
   const recPct = Math.round((rr.hours.recovery / total) * 100);
   const tensePct = Math.round((rr.hours.tense / total) * 100);
   const name = range === 'week' ? '本周' : range === 'month' ? '本月' : '本年';
-  let s = `${name}平均恢复分数 ${rr.avgScore} 分（${recoveryTag(rr.avgScore)}），恢复态约占 ${recPct}%。`;
+  let s = `${name}平均恢复分数 ${rr.avgScore} 分（${recoveryTag(rr.avgScore)}），恢复态约占 ${recPct}%、紧绷态约占 ${tensePct}%。`;
   if (rr.prevAvgScore != null) {
     const d = rr.avgScore - rr.prevAvgScore;
-    s += d >= 0 ? `较上一周期提升 ${d} 分。` : `较上一周期下降 ${-d} 分。`;
+    s += d >= 0 ? `跟上个周期比提了 ${d} 分，恢复在往上走。` : `跟上个周期比掉了 ${-d} 分，最近恢复没之前足。`;
   }
   if (tensePct > recPct) {
-    s += ` 紧绷占比偏高（${tensePct}%），长期韧性处于吃紧状态，建议周末安排一次彻底放松。`;
+    s += ' 紧绷占比压过恢复，说明身体长期处在「没接住」的状态——这段时间里把一两件赶时间的事往前提，或固定留一段不赶的缓冲，会把韧性慢慢养回来。';
   } else if (recPct >= 20) {
-    s += ' 恢复窗口充足，整体节奏健康。';
+    s += ' 恢复窗口够宽，身体有空间做日常修复，整体节奏是健康的。';
+  } else {
+    s += ' 恢复占比不算高，但也没持续紧绷；留意那些恢复分特别低的日子，它们往往和没睡好或连轴转叠在一起。';
   }
   return s;
 }

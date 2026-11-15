@@ -21,7 +21,7 @@
  *     今天用 14 天基线（可判偏高），历史日 baselineDays=1（偏高不可信，只判节律紊乱）。
  */
 import { useMemo, useState, useDeferredValue } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -39,8 +39,7 @@ import SleepAnalysisCard, { type DaySleepAnalysis, type DayPhys } from '../compo
 import SleepRecoveryHero from '../components/SleepRecoveryHero';
 import SleepDualAxisChart, { type DualPoint } from '../components/SleepDualAxisChart';
 
-// ★ 2026-11-08（用户）：睡眠呼吸冥想入口卡左侧用呼吸/冥想配图，替换原先丑白的 icon 块
-const IMG_SLEEP_BREATH = require('../assets/breathing/thumb_sleep_v2.jpg');
+// ★ 2026-11-08（用户）：睡眠呼吸冥想入口卡用呼吸/冥想配图
 import { timeTickLabel, type TimeRange } from '../lib/chartAxis';
 import SleepMultiDimCompare, { type MetricRow } from '../components/SleepMultiDimCompare';
 import CortisolAnomalySheet, { type CortAnomKind } from '../components/CortisolAnomalySheet';
@@ -536,7 +535,6 @@ export default function SleepDetailScreen() {
         <BackButton onPress={() => navigation.goBack()} />
         <View style={styles.titleWrap}>
           <Text style={styles.title}>睡眠恢复</Text>
-          <Text style={styles.unit}>整夜分期</Text>
         </View>
       </View>
 
@@ -582,11 +580,15 @@ export default function SleepDetailScreen() {
           </View>
 
           {/* ★ 2026-11-07（用户）：底部改成「睡眠呼吸冥想」入口卡 —— 卡片加大加宽、内容更丰富，
-              直达睡前助眠呼吸 / 冥想（Breathing） */}
+              直达睡前助眠呼吸 / 冥想（Breathing）
+              ★ 2026-11-14（用户）：小缩略图不好看 → 整卡换成「睡眠放松」模块同款紫色薰衣草星空大图
+              （bg_sleep_v2，与 BreathingEngine 睡前呼吸同源），图占满整卡，白字压深色渐变保证可读。 */}
           <TouchableOpacity style={[styles.stableSleepCard, styles.section]} activeOpacity={0.85} onPress={() => navigation.navigate('Breathing')}>
-            <Image source={IMG_SLEEP_BREATH} style={styles.stableSleepIcon} resizeMode="cover" />
             <View style={styles.stableSleepBody}>
-              <Text style={styles.stableSleepTitle}>睡眠呼吸冥想</Text>
+              <View style={styles.stableSleepHead}>
+                <Text style={styles.stableSleepTitle}>睡眠呼吸冥想</Text>
+                <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textSub} strokeWidth={2} />
+              </View>
               <Text style={styles.stableSleepSub}>
                 呼气比吸气长时，身体会自己慢下来。睡前 4-7-8 助眠呼吸、身体扫描冥想、3 段助眠音，跟着做不用自己数拍子。
               </Text>
@@ -596,7 +598,6 @@ export default function SleepDetailScreen() {
                 <View style={styles.stableSleepChip}><Text style={styles.stableSleepChipTxt}>助眠音</Text></View>
               </View>
             </View>
-            <Icon name="chevronRight" size={theme.fontSize.lg} color={theme.colors.textSub} strokeWidth={2} />
           </TouchableOpacity>
         </>
       ) : (
@@ -748,25 +749,26 @@ const styles = StyleSheet.create({
   scoreLegendText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18 },
   scoreLegendNote: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, lineHeight: 18, marginTop: theme.sp(1) },
   // ★ 2026-11-07（用户）：日视图底部「睡眠呼吸冥想」入口卡（→ Breathing），加大加宽、内容更丰富
+  // ★ 本轮（用户）：去掉整卡大图背景，改用与页面其他卡同款的磨砂玻璃（cardBg + cardBorder + 深色字）
   stableSleepCard: {
-    flexDirection: 'row', alignItems: 'flex-start', marginTop: theme.space.sm,
-    paddingVertical: theme.space.md, paddingHorizontal: theme.space.cardPad,
+    marginTop: theme.space.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: theme.space.lg, paddingHorizontal: theme.space.cardPad,
     borderRadius: mm.radius.card, backgroundColor: theme.colors.cardBg,
     borderWidth: 1, borderColor: theme.colors.cardBorder,
-  },
-  stableSleepIcon: {
-    width: 56, height: 56, borderRadius: theme.radius.card, marginRight: theme.space.sm,
+    ...theme.shadow.card,
   },
   stableSleepBody: { flex: 1 },
-  stableSleepTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
-  stableSleepSub: { fontSize: theme.fontSize.sm, color: theme.colors.textSub, lineHeight: 20, marginTop: theme.sp(1) },
+  stableSleepHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  stableSleepTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.weight.semibold, color: theme.colors.textTitle, flexShrink: 1, flexWrap: 'nowrap' },
+  stableSleepSub: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 20, marginTop: theme.sp(1) },
   stableSleepChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.sp(1), marginTop: theme.sp(1.5) },
   stableSleepChip: {
     paddingVertical: theme.sp(0.75), paddingHorizontal: theme.sp(1.5),
-    borderRadius: theme.radius.pill, backgroundColor: theme.colors.ui.white10,
+    borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBgSoft,
     borderWidth: 1, borderColor: theme.colors.cardBorder,
   },
-  stableSleepChipTxt: { fontSize: theme.fontSize.micro, color: theme.colors.textBody },
+  stableSleepChipTxt: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   /* 周/月/年：睡眠分析卡文本行 */
   saText: { fontSize: theme.fontSize.sm, color: theme.colors.textBody, lineHeight: 22, marginBottom: theme.sp(1) },
 });

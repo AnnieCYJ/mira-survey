@@ -13,6 +13,7 @@
  * 用法：getToolDailyTip(key, ctx) 返回 ≤2 行的短句；getToolPhaseLine(ctx) 返回可选的「阶段·周期第 N 天」。
  */
 import type { ToolCtx } from './toolRecommend';
+import { showCycleContent } from '../data/cycleScope';
 
 // 与 buildToolCtx 产出的 phase 取值对齐
 type PhaseKey = '经期' | '卵泡期' | '排卵期' | '黄体期' | 'default';
@@ -78,11 +79,13 @@ function dayHash(seed: string): number {
   return Math.abs(h % 9973);
 }
 
-/** 返回某张工具卡的今日微文案（≤2 行短句） */
+/** 返回某张工具卡的今日微文案（≤2 行短句）
+ *  ★ 2026-11-14：男性用户强制走 default 桶 —— 阶段桶里全是「经期补铁 / 黄体期馋得快」等
+ *    女性周期话术；default 桶是中性文案。 */
 export function getToolDailyTip(key: string, ctx: ToolCtx): string {
   const pool = TIP_POOL[key];
   if (!pool) return '';
-  const bucket = phaseBucket(ctx.phase);
+  const bucket = showCycleContent() ? phaseBucket(ctx.phase) : 'default';
   const arr = pool[bucket] ?? pool.default;
   const idx = dayHash(ctx.now + '|' + key) % arr.length;
   return arr[idx];
@@ -122,8 +125,10 @@ export function getToolStateLine(key: string, ctx: ToolCtx): string {
   }
 }
 
-/** 返回可选的阶段行（如「经期 · 周期第 12 天」）；未记录或无天数时返回空串 */
+/** 返回可选的阶段行（如「经期 · 周期第 12 天」）；未记录或无天数时返回空串
+ *  ★ 2026-11-14：男性用户不返回任何周期阶段行。 */
 export function getToolPhaseLine(ctx: ToolCtx): string {
+  if (!showCycleContent()) return '';
   if (!ctx.phase || ctx.phase === '未记录') return '';
   if (ctx.dayInCycle != null && ctx.dayInCycle > 0) {
     return `${ctx.phase} · 周期第 ${ctx.dayInCycle} 天`;

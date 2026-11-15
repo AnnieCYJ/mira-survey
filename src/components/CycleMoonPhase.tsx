@@ -20,6 +20,7 @@ import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from 'react-native-s
 import { theme } from '../theme/theme';
 import { PHASE_COLOR, PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 import type { CycleInfo, CycleLog } from '../lib/cycleMath';
+import { addDays, daysBetween } from '../lib/cycleMath';
 
 const MOON_LIT = '#F2C75C';
 const MOON_DARK = 'rgba(150,130,235,0.16)';
@@ -133,6 +134,12 @@ interface Props {
   headLabel?: string;
   /** ★ 覆盖中央副标题（如历史周期显示「共 N 天」）；不传则用距下次经期 */
   subLabel?: string;
+  /**
+   * ★ 本轮（用户 #323）：真实经期区间（derivePeriodRuns 产出）。传入后，已记录的日期用真实区间覆盖，
+   * 经期结束后环上对应的点不再画成「经期」（满黄），而是按真实相位着色。
+   * 不传时退回日历口径（兼容洞察页小环等无 periodDays 的调用方）。
+   */
+  periodRuns?: { start: string; end: string; source: 'flow' | 'explicit' }[];
   /** ★ 2026-10-12（用户：洞察页环缩到 220 后，环内文字显大）：compact 模式缩小中央文字，
    *  供 InsightScreen·CyclePhaseCard（小环）使用；周期日历页（大环 350）不传，保持原大小。 */
   compact?: boolean;
@@ -147,6 +154,7 @@ export default function CycleMoonPhase({
   activeDay,
   headLabel,
   subLabel,
+  periodRuns,
   compact,
 }: Props) {
   const screenW = Dimensions.get('window').width;
@@ -173,7 +181,21 @@ export default function CycleMoonPhase({
   const ovDay = Math.max(1, cycleLen - lutealLen);
 
   /** 周期第 d 天属于哪个相位（与 cycleMath 的日历法口径一致） */
+  const dayInCycle = cycleInfo?.dayInCycle ?? null;
+  const periodStart = log?.lastPeriodStart ?? null;
+  const inRun = (d: number): boolean => {
+    if (!periodRuns || !periodStart) return false;
+    const dt = addDays(periodStart, d - 1);
+    return periodRuns.some((r) => daysBetween(r.start, dt) >= 0 && daysBetween(dt, r.end) >= 0);
+  };
   const phaseOfDay = (d: number): PhaseKey => {
+    // ★ 本轮（用户 #323）：已记录的日期用真实经期区间覆盖，经期结束后不再显示「经期」
+    if (periodRuns && periodStart && dayInCycle != null && d <= dayInCycle) {
+      if (inRun(d)) return 'period';
+      if (Math.abs(d - ovDay) <= 2) return 'ovulation';
+      if (d > ovDay) return 'luteal';
+      return 'follicular';
+    }
     if (d <= periodLen) return 'period';
     if (d >= ovDay - 1 && d <= ovDay + 1) return 'ovulation';
     if (d > ovDay + 1) return 'luteal';

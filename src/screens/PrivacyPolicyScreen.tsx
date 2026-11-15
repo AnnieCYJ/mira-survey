@@ -73,8 +73,12 @@ function PolicyHeader({ onBack }: { onBack: () => void }) {
 function Section({ title, body }: { title: string; body: string }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionBody}>{body}</Text>
+      <Text style={styles.sectionTitle} accessible accessibilityLabel={title}>{title}</Text>
+      {/* ★ 2026-11-15（上线测试 A11Y-01）：新架构下长 ScrollView 视口外的
+          ReactTextView 在 uiautomator 里 text=""（TalkBack 也读不到）。
+          显式给 accessibilityLabel，保证第三~六节（含第五节 Apache-2.0 归属声明）
+          能被无障碍服务完整朗读。 */}
+      <Text style={styles.sectionBody} accessible accessibilityLabel={body}>{body}</Text>
     </View>
   );
 }

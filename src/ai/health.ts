@@ -13,6 +13,7 @@ import { collectDailyPhysio, inferHormones, type DailyPhysio } from '../lib/horm
 import { factsForDay, sleepFactForDay } from '../lib/analysisFacts';
 // ★ Phase 2：人生上下文（用户点过「挺准」的个人规律 + 最近观察），让 Mira 能引用长期规律
 import { buildPatternContextBlock } from './cloudPatterns';
+import { showCycleContent } from '../data/cycleScope';
 
 const FEMALE_STATE: Record<number, string> = {
   0: '未设置经期', 1: '月经期', 2: '备孕期', 3: '怀孕期', 4: '辣妈期',
@@ -387,12 +388,16 @@ function getTrendBlock(): string {
 
 // ★ 性能：健康快照计算极重（皮质醇 30 天 intraday / 激素 60 天 / 压力 / 准备度），且数据按天更新、变化慢。
 //   缓存 60s：同一会话内连续提问、或洞察页 AI 分析与聊天并发时，避免重复跑这几秒的同步重算（省 JS 线程）。
-let _healthSnapCache: { at: number; value: string } | null = null;
+let _healthSnapCache: { at: number; value: string; cycle: boolean } | null = null;
 const HEALTH_SNAP_TTL_MS = 60 * 1000;
 
 export function buildHealthSnapshot(): string {
   const now = Date.now();
-  if (_healthSnapCache && now - _healthSnapCache.at < HEALTH_SNAP_TTL_MS) return _healthSnapCache.value;
+  // ★ 2026-11-14：男性用户不产出「激素推断 / 周期相位」两块事实，
+  //   从源头杜绝 AI 综合分析、问答里出现雌激素/经期/「她正处于黄体期」。
+  const cycleOn = showCycleContent();
+  // 缓存 key 必须带性别，否则设置里改性别后 60s 内仍返回旧快照。
+  if (_healthSnapCache && _healthSnapCache.cycle === cycleOn && now - _healthSnapCache.at < HEALTH_SNAP_TTL_MS) return _healthSnapCache.value;
   const st = RingBle.getState();
   const daily = st.daily || {};
   const blocks: string[] = [];
@@ -493,17 +498,21 @@ export function buildHealthSnapshot(): string {
   const cortisol = getCortisolBlock();
   if (cortisol) blocks.push(`• 皮质醇节律：${cortisol}`);
 
-  // ④ 激素推断（雌二醇/孕激素/周期规律度）
-  const hormone = getHormoneBlock();
-  if (hormone) blocks.push(`• 激素推断：${hormone}`);
+  // ④ 激素推断（雌二醇/孕激素/周期规律度）—— 仅女性周期产品口径
+  if (cycleOn) {
+    const hormone = getHormoneBlock();
+    if (hormone) blocks.push(`• 激素推断：${hormone}`);
+  }
 
   // ⑤ 计算型结果（stress/cognitive）
   const analysis = getAnalysisBlock();
   if (analysis) blocks.push(`• 情绪脑力：${analysis}`);
 
-  // ⑥ 周期相位
-  const cycle = getCycleBlock();
-  if (cycle) blocks.push(`• 周期相位：${cycle}`);
+  // ⑥ 周期相位 —— 仅女性周期产品口径
+  if (cycleOn) {
+    const cycle = getCycleBlock();
+    if (cycle) blocks.push(`• 周期相位：${cycle}`);
+  }
 
   // ⑦ 历史趋势
   const trend = getTrendBlock();
@@ -526,7 +535,7 @@ export function buildHealthSnapshot(): string {
   if (patternCtx) blocks.push(patternCtx);
 
   if (blocks.length === 0) {
-    _healthSnapCache = { at: Date.now(), value: '' };
+    _healthSnapCache = { at: Date.now(), value: '', cycle: cycleOn };
     return '';
   }
   // 每块独占一行、以「• 块名：」开头：早期把多块用「；」串成一段，模型会把「皮质醇节律」
@@ -534,6 +543,6 @@ export function buildHealthSnapshot(): string {
   const value =
     '【用户健康数据（仅作解读参考；不要逐条播报原始数字，要给出结论与建议）】\n' +
     blocks.join('\n');
-  _healthSnapCache = { at: Date.now(), value };
+  _healthSnapCache = { at: Date.now(), value, cycle: cycleOn };
   return value;
 }

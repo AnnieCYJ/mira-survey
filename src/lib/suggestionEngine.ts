@@ -26,6 +26,7 @@ import {
 } from '../data/interventionLog';
 import { dayPhase } from './timePhase';
 import { peekAnalysisFeedback } from '../data/analysisFeedback';
+import { showCycleContent, containsCycleCopy, GENERAL_ARTICLE_ID } from '../data/cycleScope';
 
 const PATH = (FileSystem.documentDirectory ?? '') + 'mira_suggestion_float.json';
 const DAY_MS = 86400000; // 睡眠/HRV 等「近 N 天」窗口计算用
@@ -362,6 +363,10 @@ export function pickBreathTarget(level?: string | null): {
 
 /** 按周期相位挑一篇具体科普文章（lib/learnArticles.ts 的真实 id；未记录 → 总览篇） */
 export function pickReadTarget(phase?: string): { articleId: string; short: string } {
+  // ★ 2026-11-14（用户）：男性不推任何周期/激素科普，胶囊只指向通用节律文章。
+  if (!showCycleContent()) {
+    return { articleId: GENERAL_ARTICLE_ID.learn, short: '皮质醇的晨峰意义' };
+  }
   const h = phase ?? '';
   if (h === '经期') return { articleId: 'progesterone', short: '孕激素的镇静与代价' };
   if (h === '卵泡期') return { articleId: 'estrogen', short: '雌激素与大脑敏感性' };
@@ -482,7 +487,34 @@ export async function pickSuggestion(
   // ★ 2026-11-04（用户「建议要能跳进工具」）：requireCta = 只保留行动引导型；
   //   观察反馈型（要点按钮评价的）不适合胶囊形态，过滤后为空则回落默认。
   const finalPool = opts?.requireCta ? pool.filter((c) => !!c.cta) : pool;
-  if (finalPool.length === 0) {
+  // ★ 2026-11-14（用户）：男性用户的建议胶囊不能出现周期/激素话术，
+  //   也不能深链到周期文章（已缓存的旧建议同样在这里被改写）。
+  const safePool = showCycleContent()
+    ? finalPool
+    : finalPool
+        .filter((c) => !containsCycleCopy(
+          [c.headline, (c as any).action, c.question, c.cta?.label].filter(Boolean).join(' '),
+        ))
+        .map((c) => c.cta?.screen === 'LearnRead'
+          ? {
+              ...c,
+              cta: {
+                ...c.cta,
+                params: { ...(c.cta.params ?? {}), articleId: GENERAL_ARTICLE_ID.learn },
+              },
+            }
+          : c);
+  // 过滤后若为空，补一条中性的呼吸建议，避免胶囊直接消失
+  const pickPool = safePool.length > 0 ? safePool : [{
+    id: `act-breathing-${slot}`,
+    saveId: 'act-breathing-general',
+    kind: 'action' as const,
+    headline: '缓一缓，做个 4-2-6 放松呼吸吧',
+    question: '做完跟我说说感觉？',
+    cta: { label: '去呼吸 ›', screen: 'Breathing', params: { breath: 'calm' } },
+    noPersist: true,
+  }];
+  if (pickPool.length === 0) {
     await markShown(sig, '');
     return null;
   }
@@ -494,11 +526,11 @@ export async function pickSuggestion(
       .filter((f) => f.id === key || f.id === c.id)
       .reduce((sum, f) => sum + (f.value === 'accurate' ? 1 : -1), 0);
   };
-  finalPool.sort((a, b) => feedbackScore(b) - feedbackScore(a));
+  pickPool.sort((a, b) => feedbackScore(b) - feedbackScore(a));
   // 按槽位页码稳定取一条；force 换新时避开刚被否/刚展示过的那条
-  let pick = Math.abs(slot) % finalPool.length;
-  if (finalPool.length > 1 && finalPool[pick].id === lastId) pick = (pick + 1) % finalPool.length;
-  const chosen = finalPool[pick];
+  let pick = Math.abs(slot) % pickPool.length;
+  if (pickPool.length > 1 && pickPool[pick].id === lastId) pick = (pick + 1) % pickPool.length;
+  const chosen = pickPool[pick];
   await markShown(sig, chosen.id);
   return chosen;
 }

@@ -12,12 +12,11 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
-import BackButton from '../components/BackButton';
 import MiraTag from '../components/MiraTag';
 import { ArcGauge } from '../components/ArcGauge';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import {
-  recognizeMeal, loadFoodLogs, saveFoodLog, deleteFoodLog,
+  recognizeMeal, getLastRecognizeFailure, loadFoodLogs, saveFoodLog, deleteFoodLog,
   FOOD_VLM,
   BUILT_IN_FOODS, PORTION_FACTORS, dateKeyOf,
   sumMacros, macroCals,
@@ -28,6 +27,7 @@ import { logSelfReport } from '../data/selfReportLog';
 import { useRingState } from '../hooks/useRingState';
 import { loadLastViewDate, saveLastViewDate } from '../lib/lastViewDate';
 import { loadCycleLog } from '../data/cycleLog';
+import { useShowCycle, GENERAL_PHASE_LABEL } from '../data/cycleScope';
 import { phaseOfDay } from '../lib/hormoneTrend';
 import { PHASE_LABEL, type PhaseKey } from '../lib/phaseColors';
 import {
@@ -107,10 +107,35 @@ function dateKeyOfFromDate(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/** ★ 2026-11-15：兜底详情里的餐食缩略图；加载失败直接隐藏，不留黑色方块。 */
+function RecapThumb({ uri }: { uri: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <Image
+      source={{ uri }}
+      style={{ width: theme.sp(16), height: theme.sp(16), borderRadius: theme.radius.sm, backgroundColor: mm.colors.btnBusyBg }}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function FoodScanScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const ring = useRingState();
+  // ★ 本轮（用户）：从回顾·日点饮食卡进来会带 focusDate，直接定位到那一餐所在的日期
+  const route = useRoute<RouteProp<{
+    FoodScan: {
+      autoCamera?: boolean;
+      focusDate?: string;
+      /** ★ 2026-11-15：回顾·日点饮食卡带过来的这一餐自报内容（food_logs 无对应行时兜底展示） */
+      recap?: { time?: string; title?: string; sub?: string; analysis?: string; imageUri?: string };
+    } | undefined;
+  }, 'FoodScan'>>();
+  const focusDate = (route.params as { focusDate?: string } | undefined)?.focusDate;
+  const recap = (route.params as { recap?: { time?: string; title?: string; sub?: string; analysis?: string; imageUri?: string } } | undefined)?.recap;
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [items, setItems] = useState<MealItem[]>([]);
@@ -130,10 +155,12 @@ export default function FoodScanScreen() {
   const refreshLogs = useCallback(() => setLogs(loadFoodLogs()), []);
   useEffect(() => { refreshLogs(); }, [refreshLogs]);
 
-  /* ★ 记住最后查看的日期：切走/杀进程后再回来仍停在同一天（spec：「历史保留」） */
+  /* ★ 本轮（用户）：从回顾·日点饮食卡进来带 focusDate → 直接定位到那一餐所在日期，
+     不被「上次查看日期」覆盖（否则按错天过滤、看不到这一餐）。无 focusDate 才回退历史日期。 */
   useEffect(() => {
+    if (focusDate) { setSelDate(focusDate); return; }
     loadLastViewDate('food').then((k) => { if (k) setSelDate(k); }).catch(() => {});
-  }, []);
+  }, [focusDate]);
 
   const onFoodDateChange = useCallback((d: Date) => {
     const k = dateKeyOfFromDate(d);
@@ -142,21 +169,28 @@ export default function FoodScanScreen() {
   }, []);
 
   // 周期阶段：用于阶段化热量/营养目标与建议
+  // ★ 2026-11-14：男性用户不读取周期、不产出阶段化建议（经期补铁 / 黄体期碳水等）。
+  const showCycle = useShowCycle();
   const [cycleLog, setCycleLog] = useState<CycleLog | null>(null);
-  useEffect(() => { void loadCycleLog().then((l) => setCycleLog(l)); }, []);
-  const phase: PhaseKey = phaseOfDay(cycleLog, new Date(), ring);
-  const target: PhaseNutritionTarget = cycleNutritionTarget(phase);
+  useEffect(() => {
+    if (!showCycle) { setCycleLog(null); return; }
+    void loadCycleLog().then((l) => setCycleLog(l));
+  }, [showCycle]);
+  const phase: PhaseKey = showCycle ? phaseOfDay(cycleLog, new Date(), ring) : 'unknown';
+  const target: PhaseNutritionTarget = cycleNutritionTarget(phase, showCycle);
+  const phaseLabel = showCycle ? PHASE_LABEL[phase] : GENERAL_PHASE_LABEL;
 
   // 激素 × 饮食营养：把皮质醇 / 雌激素 / 孕激素的真实推算状态接到饮食建议
   const [hormoneSnap, setHormoneSnap] = useState<HormoneNutritionSnapshot | null>(null);
   useEffect(() => {
-    if (!cycleLog) return;
+    // ★ 男性：传 null 给快照函数 → 皮质醇照常推算（男女通用），
+    //   雌激素/孕激素自动落「数据不足」且 hint 为空，即使设备残留女性经期记录也不读。
     try {
-      setHormoneSnap(buildHormoneNutritionSnapshot(cycleLog, ring));
+      setHormoneSnap(buildHormoneNutritionSnapshot(showCycle ? cycleLog : null, ring));
     } catch {
       /* 异常时保持 null，UI 走空态 */
     }
-  }, [cycleLog, ring]);
+  }, [cycleLog, ring, showCycle]);
 
   // ★ 内存腾挪：进页挂起端侧大模型并释放，防相机缓冲区分配失败。
   useEffect(() => {
@@ -180,7 +214,6 @@ export default function FoodScanScreen() {
   })();
 
   // ★ 从工具页卡点进来：直接拉起相机
-  const route = useRoute<RouteProp<{ FoodScan: { autoCamera?: boolean } | undefined }, 'FoodScan'>>();
   const autoFired = React.useRef(false);
   useEffect(() => {
     if (route.params?.autoCamera && !autoFired.current) {
@@ -260,7 +293,15 @@ export default function FoodScanScreen() {
       } else {
         setSource('manual');
         setMode('detail'); // 没认出来 → 手动选菜页（不编造分析）
-        Alert.alert('这次没认出来', '照片可能太暗、太远或角度太斜。可以重拍一张（离食物近一点），或直接手动选你吃了什么。');
+        // ★ 2026-11-14：按真实失败原因给提示，不再一律甩锅给「照片太暗」。
+        const reason = getLastRecognizeFailure();
+        const msg =
+          reason === 'auth' ? '识别服务鉴权失效，请联系客服更新；这一餐可以先手动选一下。'
+          : reason === 'quota' ? '识别服务繁忙，稍后再试；这一餐可以先手动选一下。'
+          : reason === 'timeout' || reason === 'network' ? '网络似乎不稳定，识别没连上；检查网络后可重拍，或直接手动选你吃了什么。'
+          : reason === 'config' ? '识别服务暂未启用，请手动选你吃了什么。'
+          : '照片可能太暗、太远或角度太斜。可以重拍一张（离食物近一点），或直接手动选你吃了什么。';
+        Alert.alert('这次没认出来', msg);
       }
     } catch (e) {
       setScanning(false);
@@ -361,7 +402,9 @@ export default function FoodScanScreen() {
       <View style={[styles.col, { paddingTop: theme.space.screen + insets.top }]}>
         {/* 头部 */}
         <View style={styles.header}>
-          <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => navigation.goBack()}>
+          {/* ★ 2026-11-14：去掉页面内重复的「返回」圆钮后，顶部返回在拍照态先回记录页，
+              不再一点就直接退出整个饮食模块。 */}
+          <TouchableOpacity activeOpacity={0.7} style={styles.back} onPress={() => (mode === 'detail' ? setMode('home') : navigation.goBack())}>
             <Icon name="back" size={theme.fontSize.h2} color={mm.colors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={styles.headText}>
@@ -439,7 +482,7 @@ export default function FoodScanScreen() {
                     {/* 状态胶囊：你处于 X · 皮质醇 · 今天状态（有数据才出，不编） */}
                     <View style={hs.statusTags}>
                       <View style={hs.statusPill}>
-                        <Text style={hs.statusPillText}>{PHASE_LABEL[phase]}</Text>
+                        <Text style={hs.statusPillText}>{phaseLabel}</Text>
                       </View>
                       {(() => {
                         const c = hormoneSnap?.cortisol;
@@ -482,6 +525,25 @@ export default function FoodScanScreen() {
                   <Text style={hs.mealTitle}>{dayCardTitle(selDate)}</Text>
                   {dayLogs.map((l, i) => <MealRow key={l.id} log={l} index={i} onDelete={(id) => setLogs(deleteFoodLog(id))} />)}
                 </Card>
+              ) : recap ? (
+                // ★ 2026-11-15（上线测试 FOOD-SRC）：回顾·日卡来自 selfReportLog，
+                //   FoodScan 只查 food_logs。两套源不一致时（历史/迁移/旧数据），
+                //   至少要让用户看到「这一餐」本身，而不是一句「还没有记录」。
+                <Card style={[hs.card, { borderRadius: mm.radius.card }]}>
+                  <Text style={hs.mealTitle}>{dayCardTitle(selDate)} · 这一餐</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(2), marginTop: theme.sp(1) }}>
+                    {!!recap.imageUri && <RecapThumb uri={recap.imageUri} />}
+                    <View style={{ flex: 1 }}>
+                      <Text style={hs.emptyTitle}>{recap.title || '记录饮食'}</Text>
+                      {!!recap.sub && <Text style={hs.emptySub}>{recap.sub}</Text>}
+                      {!!recap.time && <Text style={hs.emptySub}>{recap.time}</Text>}
+                    </View>
+                  </View>
+                  {!!recap.analysis && <Text style={[hs.emptySub, { marginTop: theme.sp(1) }]}>{recap.analysis}</Text>}
+                  <Text style={[hs.emptySub, { marginTop: theme.sp(1) }]}>
+                    这条记录来自回顾·日，尚未同步到今日饮食库，暂时没有热量与营养明细。重新拍一餐即可补全。
+                  </Text>
+                </Card>
               ) : (
                 <Card style={[hs.card, { borderRadius: mm.radius.card }]}>
                   <Text style={hs.emptyTitle}>还没有记录</Text>
@@ -519,12 +581,7 @@ export default function FoodScanScreen() {
           </View>
         ) : (
           <>
-            {/* 拍照落地页 */}
-            <View style={styles.backDetail}>
-              <BackButton onPress={() => setMode('home')} />
-              <Text style={styles.backDetailText}>返回</Text>
-            </View>
-
+            {/* 拍照落地页（★ 2026-11-14：移除与顶部重复的灰色「返回」圆钮） */}
             <ScrollView style={dt.scroll} contentContainerStyle={dt.scrollContent} showsVerticalScrollIndicator={false} bounces>
               {/* 取景框：照片 + 四角角标 + AI pill（识别中盖遮罩） */}
               {photoUri ? (
@@ -535,23 +592,15 @@ export default function FoodScanScreen() {
                   <View style={[dt.ck, dt.ckTR]} />
                   <View style={[dt.ck, dt.ckBL]} />
                   <View style={[dt.ck, dt.ckBR]} />
+                  {/* ★ 2026-11-14（用户：下面又多出一个紫色的「Mira AI 没认出来」，可以去掉）：
+                      移除紫色 AI 胶囊。失败时下方「没认出来？选一下你吃了什么」已是唯一兜底入口，
+                      成功时直接弹餐食分析卡，都不需要这层重复提示。 */}
                   {scanning ? (
                     <View style={dt.vfScanning}>
                       <ActivityIndicator color={theme.colors.textWhite} />
                       <Text style={dt.vfScanningText}>AI 正在识别餐食…</Text>
                     </View>
-                  ) : (
-                    <LinearGradient
-                      colors={['#9D8AF0', '#7EA6F8']}
-                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                      style={dt.aiPill}
-                    >
-                      <Text style={dt.aiPillText}>✦</Text>
-                      <Text style={dt.aiPillText}>
-                        {hasResult ? `Mira AI · 已识别 ${currentItems.length} 项` : 'Mira AI · 没认出来，手动选一下'}
-                      </Text>
-                    </LinearGradient>
-                  )}
+                  ) : null}
                 </View>
               ) : null}
 
@@ -654,7 +703,7 @@ export default function FoodScanScreen() {
       items={currentItems}
       target={target}
       dayKcal={dayKcal}
-      phase={phase}
+      phaseLabel={phaseLabel}
       hormoneSnap={hormoneSnap}
       photoUri={photoUri}
       onUnderstood={onUnderstood}
@@ -940,12 +989,12 @@ function ItemList({ items, photoUri, onRemove }: {
  * 矿物质（镁锌铁钙 有/无）/ 适不适合现在吃（结合剩余预算 + 皮质醇）/ 建议。
  * 底部「重拍」（重拍）与「了解了」（保存并回主页）。
  */
-function MealModal({ visible, items, target, dayKcal, phase, hormoneSnap, photoUri, onUnderstood, onRetake, onClose }: {
+function MealModal({ visible, items, target, dayKcal, phaseLabel, hormoneSnap, photoUri, onUnderstood, onRetake, onClose }: {
   visible: boolean;
   items: MealItem[];
   target: PhaseNutritionTarget;
   dayKcal: number;
-  phase: PhaseKey;
+  phaseLabel: string;
   hormoneSnap: HormoneNutritionSnapshot | null;
   photoUri: string | null;
   onUnderstood: () => void;
@@ -1065,7 +1114,7 @@ function MealModal({ visible, items, target, dayKcal, phase, hormoneSnap, photoU
               </View>
               <Text style={mm_m.verdictSub}>{verdictSub}</Text>
               <View style={mm_m.verdictPhase}>
-                <Text style={mm_m.verdictPhaseText}>当前阶段 · {PHASE_LABEL[phase]}</Text>
+                <Text style={mm_m.verdictPhaseText}>当前阶段 · {phaseLabel}</Text>
               </View>
             </View>
 
@@ -1285,12 +1334,6 @@ const dt = StyleSheet.create({
   ckBR: { right: theme.sp(3), bottom: theme.sp(3), borderBottomWidth: 2.6, borderRightWidth: 2.6, borderBottomRightRadius: 8 },
   vfScanning: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.ui.scrimSoft, gap: theme.sp(2) },
   vfScanningText: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold as never, color: theme.colors.textWhite },
-  aiPill: {
-    position: 'absolute', left: theme.sp(3), bottom: theme.sp(3),
-    flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5),
-    borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(3), paddingVertical: theme.sp(1.5),
-  },
-  aiPillText: { fontSize: theme.fontSize.xs, fontWeight: theme.weight.bold as never, color: theme.colors.textWhite },
   ctaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(2.5), marginTop: theme.sp(1) },
   retakePill: {
     height: theme.sp(12), paddingHorizontal: theme.sp(3.25), borderRadius: theme.radius.pill,
@@ -1316,8 +1359,6 @@ const styles = StyleSheet.create({
   title: { fontSize: theme.fontSize.h2, fontWeight: theme.weight.medium as never, color: theme.colors.textTitle },
   headText: { flex: 1 },
   subtitle: { fontSize: theme.fontSize.body, color: theme.colors.textSub, marginTop: theme.sp(1) },
-  backDetail: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(0.5), marginBottom: theme.space.md },
-  backDetailText: { fontSize: theme.fontSize.sm, color: mm.colors.ink, fontWeight: theme.weight.medium as never },
   resultCard: { padding: theme.space.cardPadCompact, marginBottom: theme.space.md },
   resultTitle: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
   pickerHead: { flexDirection: 'row', alignItems: 'center', gap: theme.sp(1.5), marginBottom: theme.sp(1) },

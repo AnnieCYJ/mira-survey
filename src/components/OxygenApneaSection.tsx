@@ -5,18 +5,36 @@
  *   OSAHS（阻塞性睡眠呼吸暂停低通气综合征），因为呼吸暂停本质上是睡眠期现象。
  *   因此把该组件抽成独立可复用组件，血氧页与睡眠恢复页共用同一份实现与样式。
  *
- * 数据来自戒指血氧历史（原生 triggerOxygenAnalysis 读取设备库 → VPOxygenAnalysisModel 解析）：
- *   ring.oxygenAnalysis = { osahsResult:-1|0|1|2|3, aveOxygen, minOxygen, aveRespRate,
- *                          aveLowOxygenTime, aveCardiacLoad, freqTimes }。
- * 展示：平均血氧 / 最低血氧 / 呼吸暂停(OSAHS 分级) / 呼吸率 / 低氧时间 / 心脏负荷 + 频现时段 + 免责说明。
+ * ★ 2026-11-14（用户）：「睡眠呼吸暂停这里面经常是没有数据」，以及「几个模块一直没有数据，
+ *   比方说夜间低氧时间百分比是 0 就显示 0，不要显示杠」。两个根因：
+ *
+ *   ① 整卡空态：旧实现只认 `ring.oxygenAnalysis`。那条通道走原生 readOriginDataBySetting
+ *      回读设备 SpO2 原始历史包，要求戒指当时已连接 + 设备端全天血氧自动监测开着 +
+ *      最近几夜真的落了原始点。真机现场日志实证：进页面时直接 `[O2-ANALYSIS] ring_not_connected`，
+ *      随后 20s 连接超时，整卡就一直空着。而同一天 healthStore 里其实有 160 个真实血氧点
+ *      （`[Batch] ✅ spo2 n=160`），数据一直在，只是没被用。
+ *      → 现在改用 `computeNightOxygen()` 从**已落库的夜间血氧逐样本**兜底算客观指标，
+ *        设备原生分析只负责 OSAHS 分级 / 心脏负荷这类推不出来的字段。
+ *
+ *   ② 0 被显示成杠：旧代码 5 处 `a.xxx || '--'` + `!a.xxx` 提示，把「整夜没有低氧事件」
+ *      这种**合法且健康的 0** 当成「没数据」，还附一句误导的「需全天血氧监测数据」。
+ *      → 全部改成 nullish 判断，0 如实显示 0；只有 null / undefined 才显示 '--'。
+ *      → 新增「夜间低氧占比 %」：0% 就显示 0%，不显示杠。
+ *
+ * 数据纪律：不编造任何数值，全部来自已同步的真实血氧样本或设备原生分析；
+ *          来源与统计口径在卡底如实标注。
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
 import { useRingState } from '../hooks/useRingState';
+import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import { RingBle } from '../ble/RingBleManager';
+import { dayKey } from '../data/healthStore';
+import { computeNightOxygen } from '../lib/nightOxygen';
+import { fmtMetric, hasValue } from '../lib/metricFormat';
 
 export const OSAHS_LEVELS: { [k: number]: { label: string; color: string } } = {
   [-1]: { label: '暂无结果', color: theme.colors.textSub },
@@ -26,101 +44,176 @@ export const OSAHS_LEVELS: { [k: number]: { label: string; color: string } } = {
   3: { label: '重度', color: mm.colors.roseDeep },
 };
 
+/** 原生错误码 → 用户能看懂的中文原因（旧实现直接把 ring_not_connected 甩给用户） */
+function explainError(code: string | null | undefined): string | null {
+  if (!code) return null;
+  const c = String(code);
+  if (/ring_not_connected|戒指未连接/i.test(c)) return '戒指当时还没连上，已自动改用本机已同步的血氧数据。';
+  if (/no_data|暂无夜间血氧原始记录/i.test(c)) return '设备端还没有可回读的夜间血氧原始记录，已改用本机已同步的血氧数据。';
+  if (/parse_failed|解析失败/i.test(c)) return '设备血氧原始记录解析失败，已改用本机已同步的血氧数据。';
+  if (/read_failed|读取失败/i.test(c)) return '读取设备血氧历史失败，已改用本机已同步的血氧数据。';
+  return `血氧分析未完成（${c}），已改用本机已同步的血氧数据。`;
+}
+
 export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: string }) {
   const ring = useRingState();
+  // ★ 兜底读的是 healthStore，不经过 RingState；离线回填完成时若不订阅就不会刷新卡片。
+  const hsVer = useHealthStoreVersion();
   const [loading, setLoading] = useState(false);
   const a = ring.oxygenAnalysis;
   const osahs = a ? (OSAHS_LEVELS[a.osahsResult] ?? OSAHS_LEVELS[-1]) : null;
-  /**
-   * ★ 2026-11-06 审查（docs/audit/03 🔴#1）：渲染层防御。
-   *   oxygenAnalysis 是**可写字段**（快照恢复 / 未来新增写入路径都可能塞进缺字段的对象），
-   *   而 `a.freqTimes.length` 一旦 freqTimes 为 undefined 就抛 TypeError →
-   *   React 渲染期抛错 → 整页白屏（血氧页与睡眠恢复页同时中招）。
-   *   当前唯一写入点有 Array.isArray 守卫，但不应只靠「单一写入点的纪律」兜底。
-   */
   const freqTimes: string[] = Array.isArray(a?.freqTimes) ? a.freqTimes : [];
 
-  const reload = useCallback(async () => {
+  /**
+   * ★ 2026-11-14：兜底数据源。用已落库的夜间血氧逐样本算客观指标。
+   * 真机实证每天有 100~160 个 spo2 点，不依赖「设备那次 25s 回读」是否成功。
+   */
+  const local = useMemo(() => {
+    const dk = dayKey(Date.now());
+    const sum = (ring.sleepDaily as any)?.[dk]
+      ?? (ring.sleepDaily as any)?.[dayKey(Date.now() - 86400_000)]
+      ?? null;
+    return computeNightOxygen(dk, {
+      sleepTime: sum?.sleepTime ?? (ring as any)?.sleepTime ?? null,
+      wakeTime: sum?.wakeTime ?? (ring as any)?.wakeTime ?? null,
+      totalMin: sum?.total ?? null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ring, hsVer]);
+
+  /** 设备值与本地值合并：本地样本优先（更全、不依赖单次回读），设备值补本地算不出的字段。
+   *  ★ 2026-11-14（用户）：设备分析通道的呼吸率恒回 0（固件没算），0 次/分不是真实读数，
+   *  必须按生理下限（≥3 次/分）过滤掉，没数据就如实显示「—」。 */
+  const v = useMemo(() => ({
+    aveOxygen: local.hasData ? local.aveOxygen : (hasValue(a?.aveOxygen) && a!.aveOxygen > 0 ? a!.aveOxygen : null),
+    minOxygen: local.hasData ? local.minOxygen : (hasValue(a?.minOxygen) && a!.minOxygen > 0 ? a!.minOxygen : null),
+    aveRespRate: local.aveRespRate ?? (hasValue(a?.aveRespRate) && a!.aveRespRate >= 3 ? a!.aveRespRate : null),
+    lowOxygenSec: local.hasData ? local.lowOxygenSec : (hasValue(a?.aveLowOxygenTime) ? a!.aveLowOxygenTime : null),
+    lowOxygenPct: local.hasData ? local.lowOxygenPct : null,
+    aveCardiacLoad: hasValue(a?.aveCardiacLoad) ? a!.aveCardiacLoad : null,
+    samples: local.samples,
+  }), [local, a]);
+
+  // 触发去重：两个页面实例 + 挂载/ready 两个 effect 会并发多次发起原生 25s 回读。
+  const inFlightRef = useRef(false);
+  const lastTriggerRef = useRef(0);
+  const reload = useCallback(async (force = false) => {
+    if (inFlightRef.current) return;
+    const now = Date.now();
+    // 成功过就不重复拉；失败也至少隔 60s 再试，避免每次进页面都空等 26s。
+    if (!force && (a || now - lastTriggerRef.current < 60_000)) return;
+    inFlightRef.current = true;
+    lastTriggerRef.current = now;
     setLoading(true);
     try { await RingBle.triggerOxygenAnalysis(); } finally {
-      // ★ 2026-11-13：原生最多 25s 才回读完成（已放宽到 25s），这里给足 26s 的 loading 窗口，
-      //   避免数据还没回来就提前翻成「暂无数据」。
-      setTimeout(() => setLoading(false), 26000);
+      inFlightRef.current = false;
     }
-  }, []);
-  // 进入页面即拉一次
-  useEffect(() => { void reload(); }, [reload]);
+  }, [a]);
 
-  // ★ 2026-11-13（用户：呼吸暂停老说没数据）：页面可能在戒指就绪前就挂载 →
-  //   原生 triggerOxygenAnalysis 因未就绪直接 error；待 onState=ready 后再补跑一次，确保拿得到数据。
+  // 进入页面：仅在戒指已连接时才触发设备回读；未连接不发起必然失败的调用。
+  useEffect(() => {
+    if (ring.status === 'connected') void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 连接恢复后补跑一次（原生 ready 晚于 JS status 时有用）
   const ready = ring.status === 'connected';
   useEffect(() => {
-    if (ready && !a) void reload();
+    if (ready && !a) void reload(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+  // ★ loading 由「结果或错误到达」驱动结束，不再死等固定 26s。
+  useEffect(() => {
+    if (a || ring.oxygenAnalysisError) setLoading(false);
+  }, [a, ring.oxygenAnalysisError]);
+  // 兜底上限：原生最多 25s，多给 1s
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => setLoading(false), 26_000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  const errText = explainError(ring.oxygenAnalysisError);
+  /** 只有「设备分级没有」且「本机也没有血氧样本」时才是真的整卡无数据 */
+  const noDataAtAll = !a && !local.hasData;
 
   return (
     <Card>
       <Text style={styles.ecgTitle}>{title}</Text>
-      {!a && !loading ? (
+
+      {noDataAtAll ? (
         <View style={styles.emptyBox}>
-          {/* ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：区分「读取失败」与「暂无数据」。
-              此前两者文案完全一样 → 用户无法判断是设备不支持还是读取出了问题。 */}
-          <Text style={[styles.emptyText, ring.oxygenAnalysisError ? styles.errorText : null]}>
-            {ring.oxygenAnalysisError ?? '当天暂无血氧数据，请先佩戴一段时间或测量血氧后再查看。'}
+          <Text style={styles.emptyText}>
+            {errText ?? '这一夜还没有同步到血氧样本。连接戒指并完成一次夜间佩戴后，这里会自动出现数据。'}
           </Text>
         </View>
-      ) : !a && loading ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>正在读取戒指血氧历史…</Text>
-        </View>
-      ) : a ? (
+      ) : (
         <>
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>平均血氧</Text>
-              {/* ★ 2026-11-10（用户：蓝色字看不清）：原 skyDeep 在卡底对比度低。改为按数值分色——好=绿、临界=琥珀、异常=粉，与详情页柱色一致 */}
-              <Text style={[styles.statValue, { color: a.aveOxygen >= 95 ? mm.colors.limeMid : a.aveOxygen >= 90 ? mm.colors.honeyCore : a.aveOxygen > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>{a.aveOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
-              {!a.aveOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
+              <Text style={[styles.statValue, { color: (v.aveOxygen ?? 0) >= 95 ? mm.colors.limeMid : (v.aveOxygen ?? 0) >= 90 ? mm.colors.honeyCore : (v.aveOxygen ?? 0) > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>
+                {fmtMetric(v.aveOxygen, 1)}<Text style={styles.statLabel}> %</Text>
+              </Text>
+              {!hasValue(v.aveOxygen) ? <Text style={styles.statHint}>暂无血氧样本</Text> : null}
             </View>
             <View style={styles.statCell}>
               <Text style={styles.statLabel}>最低血氧</Text>
-              <Text style={[styles.statValue, { color: a.minOxygen >= 95 ? mm.colors.limeMid : a.minOxygen >= 90 ? mm.colors.honeyCore : a.minOxygen > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>{a.minOxygen || '--'}<Text style={styles.statLabel}> %</Text></Text>
-              {!a.minOxygen ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
+              <Text style={[styles.statValue, { color: (v.minOxygen ?? 0) >= 95 ? mm.colors.limeMid : (v.minOxygen ?? 0) >= 90 ? mm.colors.honeyCore : (v.minOxygen ?? 0) > 0 ? mm.colors.roseDeep : theme.colors.textTitle }]}>
+                {fmtMetric(v.minOxygen)}<Text style={styles.statLabel}> %</Text>
+              </Text>
+              {!hasValue(v.minOxygen) ? <Text style={styles.statHint}>暂无血氧样本</Text> : null}
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>呼吸暂停</Text>
-              <Text style={[styles.statValue, { color: osahs?.color, fontSize: theme.fontSize.body }]}>{osahs?.label ?? '—'}</Text>
+              {/* ★ 2026-11-14（用户）：标题改「呼吸暂停风险」；没有风险事件时（分级正常或暂无设备分级）
+                  统一写「暂无风险」，不写「无，暂无风险」这类冗余前缀。 */}
+              <Text style={styles.statLabel}>呼吸暂停风险</Text>
+              <Text style={[styles.statValue, { color: osahs && a && a.osahsResult >= 1 ? osahs.color : theme.colors.textTitle, fontSize: theme.fontSize.body }]}>
+                {a && a.osahsResult >= 1 ? (osahs?.label ?? '暂无结果') : '暂无风险'}
+              </Text>
             </View>
           </View>
+
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>呼吸率（均）</Text>
-              {/* ★ 2026-11-06：SDK 需连续血氧数据才解析呼吸率/低氧时间/心脏负荷；零星点测返回 0 → 显示 --。
-                  为 0 时改为「--」+ 灰色小字说明（需全天血氧监测数据，连接后 App 已自动开启）。 */}
-              <Text style={styles.statValue}>{a.aveRespRate || '--'}<Text style={styles.statLabel}> 次/分</Text></Text>
-              {!a.aveRespRate ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
+              <Text style={styles.statLabel}>低氧时间</Text>
+              {/* ★ 0 秒 = 整夜没有低氧事件，是健康的真实结果，必须显示 0，不能显示杠 */}
+              <Text style={styles.statValue}>{fmtMetric(v.lowOxygenSec)}<Text style={styles.statLabel}> s</Text></Text>
+              {!hasValue(v.lowOxygenSec) ? <Text style={styles.statHint}>暂无血氧样本</Text> : null}
             </View>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>低氧时间（均）</Text>
-              <Text style={styles.statValue}>{a.aveLowOxygenTime || '--'}<Text style={styles.statLabel}> s</Text></Text>
-              {!a.aveLowOxygenTime ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
-            </View>
-            <View style={styles.statCell}>
-              <Text style={styles.statLabel}>心脏负荷（均）</Text>
-              <Text style={styles.statValue}>{a.aveCardiacLoad || '--'}</Text>
-              {!a.aveCardiacLoad ? <Text style={styles.statHint}>需全天血氧监测数据</Text> : null}
+              {/* ★ 2026-11-14（用户）：呼吸率格整格去掉 —— 本机型固件恒不回传呼吸率（实测恒 0），
+                  过滤后永远显示「—」，按「没数据就删」纪律下线。 */}
+              <Text style={styles.statLabel}>夜间低氧占比</Text>
+              <Text style={styles.statValue}>{fmtMetric(v.lowOxygenPct, 1)}<Text style={styles.statLabel}> %</Text></Text>
+              {!local.hasData ? <Text style={styles.statHint}>暂无血氧样本</Text> : null}
             </View>
           </View>
+
+          <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>心脏负荷（均）</Text>
+              <Text style={styles.statValue}>{fmtMetric(v.aveCardiacLoad, 1)}</Text>
+              {hasValue(v.aveCardiacLoad)
+                ? <Text style={styles.statHint}>设备按夜间血氧与心率算出的负荷指数</Text>
+                : <Text style={styles.statHint}>本机型未回传心脏负荷</Text>}
+            </View>
+          </View>
+
           {freqTimes.length > 0 ? (
             <View style={styles.note}>
               <Text style={styles.note}>呼吸暂停频现时段：{freqTimes.join('、')}</Text>
             </View>
           ) : null}
-          {/* ★ 2026-11-08（用户）：进入页面已自动拉取血氧历史，去掉「重新读取」手动按钮 */}
-          <Text style={styles.note}>数据来自戒指血氧历史，仅供参考，不作为睡眠呼吸暂停综合征诊断依据。</Text>
+
+          {errText ? <Text style={styles.note}>{errText}</Text> : null}
+          <Text style={styles.note}>
+            低氧时间按每点约 1 分钟计，0 表示这一夜没有低氧事件。
+          </Text>
+          <Text style={styles.note}>数据来自戒指血氧测量，仅供参考，不作为睡眠呼吸暂停综合征诊断依据。</Text>
         </>
-      ) : null}
+      )}
     </Card>
   );
 }
@@ -147,7 +240,6 @@ const styles = StyleSheet.create({
   statHint: { fontSize: theme.fontSize.micro - 2, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },
   emptyText: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  errorText: { color: theme.colors.danger },
   note: {
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.7,

@@ -13,6 +13,7 @@ import { dayKey, healthStore } from '../data/healthStore';
 import type { TaskItem, TaskFlip } from '../data/tasks';
 import { curveLevel, CURVE_DEFAULTS } from './dailyStatus';
 import { computeStressReport } from './stressAlgorithm';
+import { showCycleContent, containsCycleCopy } from '../data/cycleScope';
 
 /** ★ v18.96：睡眠来源时间词。沿用昨天归档时写明日期（口径：睡眠可跨天，但日期要写明）。 */
 function sleepWhen(c: ToolCtx): string {
@@ -498,7 +499,30 @@ export function recommendTools(c: ToolCtx): TaskItem[] {
       picked.push({ cand, score: 0 });
     }
   }
-  return picked.map(({ cand }) => ({
+  // ★ 2026-11-14：男性用户过滤掉「经期补铁 / 黄体期减载 / 雌激素护肤」等周期绑定推荐，
+  //   从候选池里补中性卡，保证仍然返回 3 张（避免首页推荐区塌成空白）。
+  const cycleOn = showCycleContent();
+  const clean = (s: string) => !cycleOn && containsCycleCopy(s);
+  const poolAll = POOL
+    .filter((cand) => {
+      if (cycleOn) return true;
+      let d = '';
+      try { d = cand.desc(c); } catch { /* 忽略单条异常 */ }
+      return !clean(cand.title) && !clean(cand.badge) && !clean(d);
+    });
+  const cleanPicked = picked.filter(({ cand }) => {
+    let d = '';
+    try { d = cand.desc(c); } catch { /* 忽略单条异常 */ }
+    return cycleOn || (!clean(cand.title) && !clean(cand.badge) && !clean(d));
+  });
+  if (!cycleOn && cleanPicked.length < 3) {
+    const used = new Set(cleanPicked.map((x) => x.cand.id));
+    for (const cand of poolAll.filter((p) => !used.has(p.id))) {
+      if (cleanPicked.length >= 3) break;
+      cleanPicked.push({ cand, score: 0 });
+    }
+  }
+  return cleanPicked.map(({ cand }) => ({
     id: cand.id,
     type: cand.type,
     badge: cand.badge,

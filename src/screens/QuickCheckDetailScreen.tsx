@@ -96,7 +96,6 @@ export default function QuickCheckDetailScreen() {
         </TouchableOpacity>
         <Text style={qc.histTitle}>微体检报告</Text>
         <View style={{ flex: 1 }} />
-        <Text style={qc.shareIcon}>↗</Text>
       </View>
 
       {/* ★ 2026-11-08 B 稿落地：顶部异常概览（三分类口径 + 白卡 + 黄色异常数据），替换原 sumBox */}

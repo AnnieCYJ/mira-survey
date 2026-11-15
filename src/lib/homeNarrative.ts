@@ -53,13 +53,15 @@
  *
  * 纯函数：零 RN / 零 IO，可离线单测。
  */
-import { dayPhase, type DayPhase } from './timePhase';
+import { dayPhase, padHour, type DayPhase } from './timePhase';
+import { showCycleContent, containsCycleCopy } from '../data/cycleScope';
+import { HABIT_MORNING_LIGHT, HABIT_EYE_DAY, HABIT_EYE_SLEEP } from './wellnessHabits';
 
 const HALF_MS = 30 * 60 * 1000;
 const THREE_H_MS = 3 * 60 * 60 * 1000;
 
 export type Direction = 'up' | 'down' | 'flat' | 'unknown';
-export type ReasonKey = 'action' | 'sport' | 'stress' | 'phase' | 'sleep' | 'hr' | 'exercise' | 'none';
+export type ReasonKey = 'action' | 'sport' | 'stress' | 'phase' | 'sleep' | 'hr' | 'exercise' | 'sedentary' | 'none';
 
 export interface NarrativePoint {
   /** 状态点时刻（墙钟 :00 / :30 对齐） */
@@ -97,9 +99,58 @@ export interface HomeNarrativeInput {
   activity?: number | null;
   /** 睡眠恢复分 —— 仅早晨可能进入叙事，其余时段一律不看 */
   recoveryScore: number | null;
+  /** ★ 2026-11-14（用户）：午后久坐信号（活动强度低）—— 触发「摸个鱼」场景词与久坐分析 */
+  sedentary?: boolean;
+  /** ★ 2026-11-14（用户）：脑力准备度高峰小时（0–24，来自今日状态曲线峰值），仅早晨用于「把难事排到峰值」 */
+  brainPeakHour?: number | null;
+  /** ★ 2026-11-14（用户）：近段时间用户自报心情偏沉/紧 → 进关系链（与心率/运动/压力并列） */
+  moodLow?: boolean;
+  /** ★ 2026-11-14（用户点名「心率血氧身心心率变异性…可以展示出来」）：近 90 分钟血氧均值偏低
+   *   （<94%，日常清醒态常见下限，非诊断）→ 进关系链，作为状态下滑的「可能和…有关」元素之一。null = 无数据。 */
+  spo2Low?: boolean | null;
+  /** ★ 2026-11-14（用户）：近 90 分钟 HRV 均值相对近 6 小时自身基线（中位数）下降 >20% → 视为偏低，
+   *   一律「相对自己」、不带绝对医学阈值，避免误报/诊断口径。null = 无数据或无基线。 */
+  hrvLow?: boolean | null;
   hasStatusData: boolean;
   /** 状态来自一键体检（曲线无值时） */
   statusFromCheck?: boolean;
+  /** ★ 2026-11-14（用户）：圆环标题的状态档位 0–3，作为「今日主题」的单一真源输入。
+   *   标题词 / 配图 / 分析 / 建议胶囊必须共用同一个 topic，否则会出现
+   *   「上面写『优先补个觉』，下面还在讲吃饭拍照」。 */
+  topicLevel?: 0 | 1 | 2 | 3;
+}
+
+/** ★ 2026-11-14：首页「今日状态」四件套共用的主题。 */
+export type HomeTopic = 'meal' | 'rest' | 'activity' | 'focus' | 'wind' | 'sleep';
+
+/**
+ * 由「时段 × 状态档位」唯一决定今日主题。
+ * 与 CalmWaveHome.STATUS_HEADLINE.preNoon 四档严格一一对应：
+ *   level 0/1 好好吃一顿 / 七分饱就好 → meal
+ *   level 2   散个步消化               → activity
+ *   level 3   优先补个觉               → rest
+ * 纯函数，可离线单测。
+ */
+export function homeTopicOf(
+  phase: DayPhase,
+  level: 0 | 1 | 2 | 3 = 0,
+  direction: Direction = 'flat',
+): HomeTopic {
+  if (phase === 'preNoon') {
+    if (level >= 3) return 'rest';
+    if (level === 2) return 'activity';
+    return 'meal';
+  }
+  if (phase === 'bedtime') return 'sleep';
+  if (phase === 'evening') return 'wind';
+  if (phase === 'afternoon') return direction === 'down' ? 'rest' : 'focus';
+  return 'focus';
+}
+
+/** 饮食语义词：非 meal 主题时，任何一段文案命中都要被替换掉。 */
+const MEAL_TOPIC_RE = /饭点|这顿|吃点|吃饭|先吃|餐|营养|拍张照|拍一张|记下这|七分饱|消化|好好吃/i;
+export function isMealCopy(text: string): boolean {
+  return MEAL_TOPIC_RE.test(text);
 }
 
 export interface HomeCta {
@@ -122,6 +173,8 @@ export interface HomeNarrative {
   reasonKey: ReasonKey;
   direction: Direction;
   phase: DayPhase;
+  /** ★ 2026-11-14：标题 / 配图 / 分析 / 建议共用主题 */
+  topic: HomeTopic;
   /** 供 AI 润色校验用：当前允许/禁止的语义上下文 */
   polishCtx: { phase: DayPhase; direction: Direction; reasonKey: ReasonKey };
 }
@@ -201,13 +254,16 @@ function pickReason(
     if (cands.length) return cands.sort((a, b) => b[1] - a[1])[0][0];
   }
   if (typeof input.stress === 'number' && input.stress >= 55 && direction === 'down') return 'stress';
-  if (phase === 'afternoon' && direction === 'down' && input.phaseLabel === '黄体期') return 'phase';
+  // ★ 2026-11-14（用户）：午后久坐（活动强度低）→ 「摸个鱼」场景词 + 久坐分析 + 站起来建议，三者同源
+  if (phase === 'afternoon' && input.sedentary) return 'sedentary';
+  // ★ 2026-11-14（用户）：男性不能用「黄体期下午容易累 / 当前周期阶段」解释状态。
+  if (showCycleContent() && phase === 'afternoon' && direction === 'down' && input.phaseLabel === '黄体期') return 'phase';
   if (phase === 'morning' && input.recoveryScore != null) return 'sleep';
   return 'none';
 }
 
 /**
- * ★ 关系链从句：状态变差时，把真正在动的驱动元素串成一句（心率升高 / 运动 / 压力），软化表达。
+ * ★ 关系链从句：状态变差时，把真正在动的驱动元素串成一句（心率升高 / 运动 / 压力 / 血氧偏低 / 心率变异性偏低 / 心情偏沉），软化表达。
  * 与 pickReason 的「单一主因」互补 —— 这里把同时活跃的元素都列出来（最多 2 个），呈现你要的「关系链」。
  * 睡眠/昨晚只在早晨单独出现，绝不进这里（避免夜里讲昨晚）。
  * ★ 2026-11-11：措辞改「可能和…有关」（Oura 口径），压力用可核对的「还偏高」，不再写「没松开」这种感受词。
@@ -221,6 +277,11 @@ function chainClause(input: HomeNarrativeInput): string {
   if (act >= 0.5) parts.push('刚动了一阵');
   else if (act >= 0.25) parts.push('活动比平时多');
   if (stress >= 55) parts.push('压力还偏高');
+  if (input.moodLow) parts.push('心情有点沉');
+  // ★ 2026-11-14（用户）：血氧、心率变异性也并进关系链——状态下滑时和心率/运动/压力并列，
+  //   作为「可能和…有关」的可核对元素；措辞只讲「偏低」（相对自身/常见下限），不做诊断。
+  if (input.spo2Low === true) parts.push('血氧偏低');
+  if (input.hrvLow === true) parts.push('心率变异性偏低');
   if (!parts.length) return '';
   return '，可能和' + parts.slice(0, 2).join('、') + '有关';
 }
@@ -232,7 +293,7 @@ function variants(key: string): [string, string] | null {
   const V: Record<string, [string, string]> = {
     // ── 早晨：唯一允许提昨晚睡眠的时段 ──
     'morning|up|sleep': [
-      '昨晚睡得比较稳，早上状态比刚起时高了些，这会儿挺舒展。先把最要紧的一件排前面。',
+      '昨晚睡得比较稳，早上状态比刚起时高了些，人也松快了些。先把最要紧的一件排前面。',
       '这一觉睡得平稳，早上状态在往上走，人也放松了些。今天先做最要紧的那件事。',
     ],
     'morning|down|sleep': [
@@ -245,7 +306,7 @@ function variants(key: string): [string, string] | null {
     ],
     'morning|up|action': [
       '刚做完那一小段，早上状态比之前高了些，挺放松的。趁现在做费脑的事。',
-      '刚才缓了一缓，状态往上走了一点，这会儿挺舒展。把最难的一件放这会儿。',
+      '刚才缓了一缓，状态往上走了一点，人也松快了些。把最难的一件放这会儿。',
     ],
     'morning|flat|none': [
       '早上状态没什么起伏，和刚起时差不多。按自己的顺序开局。',
@@ -260,7 +321,7 @@ function variants(key: string): [string, string] | null {
       '这会儿状态往下走了些。上午先留一点余量。',
     ],
     'morning|up|none': [
-      '早上状态比之前高了些，这会儿挺舒展。先把最要紧的一件做了。',
+      '早上状态比之前高了些，人也松快了些。先把最要紧的一件做了。',
       '状态在往上走，人也放松了些。费脑的事可以放这会儿。',
     ],
     'morning|down|stress': [
@@ -270,7 +331,7 @@ function variants(key: string): [string, string] | null {
     // ── 上午 ──
     'lateMorning|up|action': [
       '刚才缓了一缓，上午状态比之前高了些，挺放松的。费脑的事可以放这会儿。',
-      '做完那一小段，状态往上走了一点，这会儿挺舒展。把最难的一件挪到上午。',
+      '做完那一小段，状态往上走了一点，人也松快了些。把最难的一件挪到上午。',
     ],
     'lateMorning|down|stress': [
       '上午状态比之前低了些，压力还偏高。先找个地方坐十分钟。',
@@ -283,7 +344,7 @@ function variants(key: string): [string, string] | null {
     // ── 临近中午 / 饭点：用户点名「吃点好的吧」+ 拍张照记饮食 ──
     'preNoon|up|action': [
       '刚才缓了一缓，状态比之前高了些，挺放松的。到饭点这顿好好吃一口。',
-      '做完那一小段，状态往上走了一点，这会儿挺舒展。这顿留够时间，吃点好的吧。',
+      '做完那一小段，状态往上走了一点，人也松快了些。这顿留够时间，吃点好的吧。',
     ],
     'preNoon|down|stress': [
       '快到饭点了，状态比上午低了些，压力还偏高。先把饭吃踏实。',
@@ -295,7 +356,7 @@ function variants(key: string): [string, string] | null {
     ],
     // ── 午后 ──
     'afternoon|up|sport': [
-      '刚才动了一阵，下午状态比之前高了些，挺舒展的。趁这会儿把收尾做掉。',
+      '刚才动了一阵，下午状态比之前高了些，人也松快了些。趁这会儿把收尾做掉。',
       '走动过之后状态往上走了一点，身体也放松了些。费脑的事可以挪到下午。',
     ],
     'afternoon|down|stress': [
@@ -308,11 +369,24 @@ function variants(key: string): [string, string] | null {
     ],
     'afternoon|up|action': [
       '刚才缓了一缓，下午状态比之前高了些，挺放松的。趁这会儿把收尾做掉。',
-      '做完那一小段，状态往上走了一点，这会儿挺舒展。难的事可以挪到这会儿。',
+      '做完那一小段，状态往上走了一点，人也松快了些。难的事可以挪到这会儿。',
     ],
     'afternoon|flat|none': [
       '下午到现在都是一个节奏，状态没什么起伏。手上的事照常推进。',
       '午后状态稳着，和上午差不多。按现在的步子走。',
+    ],
+    // ── 午后久坐（摸个鱼场景）：分析讲「久坐怎么拖累状态」，建议站起来/呼吸，三者同源 ──
+    'afternoon|up|sedentary': [
+      '这会儿状态在回升，人也松快了些；别老黏在椅子上，站起来伸个懒腰。',
+      '刚缓过劲儿，状态往上走了些；趁热动一动，别一直坐着。',
+    ],
+    'afternoon|down|sedentary': [
+      '坐了一下午，状态比之前低了些，该站起来晃晃了。',
+      '老坐着不动，下午状态往下走，去接杯水缓一缓。',
+    ],
+    'afternoon|flat|sedentary': [
+      '这会儿一直坐着，状态没大变化，起来伸个懒腰吧。',
+      '坐久了身子发沉，站起来走两步活络一下。',
     ],
     // ── 傍晚 ──
     'evening|down|stress': [
@@ -324,7 +398,7 @@ function variants(key: string): [string, string] | null {
       '这会儿状态没什么起伏，和下午接近。剩下的事挪到明天。',
     ],
     'evening|up|sport': [
-      '傍晚动了一阵，状态比下午高了些，挺舒展的。剩下的事挪到明天。',
+      '傍晚动了一阵，状态比下午高了些，人也松快了些。剩下的事挪到明天。',
       '刚才走动过，状态往上走了一点，人也放松了些。今晚留一件轻的事。',
     ],
     // ── 睡前：绝不讲昨晚 / 睡眠恢复 ──
@@ -365,7 +439,7 @@ function variants(key: string): [string, string] | null {
       '这会儿状态往下走。饭点先把饭吃踏实。',
     ],
     'afternoon|up|none': [
-      '下午状态比之前高了些，这会儿挺舒展。趁这会儿把收尾做掉。',
+      '下午状态比之前高了些，人也松快了些。趁这会儿把收尾做掉。',
       '午后状态在往上走，身体也放松了些。难的事可以挪到这会儿。',
     ],
     'afternoon|down|none': [
@@ -446,7 +520,8 @@ function analysisText(
   // sleep 只有早晨允许，但早晨的 sleep 组合已在表里命中；这里留空防止任何时段被拼进睡眠词
   const REASON: Record<ReasonKey, string> = {
     action: '刚缓了一缓，', sport: '刚才动了一阵，', stress: '压力还偏高，',
-    phase: '这个阶段容易累，', sleep: '', hr: '心率比平时高，', exercise: '刚动了一阵，', none: '',
+    phase: '这个阶段容易累，', sleep: '', hr: '心率比平时高，', exercise: '刚动了一阵，',
+    sedentary: '坐太久了，', none: '',
   };
   // ★ 2026-11-11：落地句一律是「一个能立刻做的动作」，不再用「慢慢收下来就好 / 别再往脑子里塞事」。
   const LAND: Record<DayPhase, [string, string]> = {
@@ -470,6 +545,11 @@ function analysisText(
 function suggestionOf(phase: DayPhase, direction: Direction, reason: ReasonKey, slot: number): HomeSuggestion {
   const p2 = Math.abs(slot) % 2;
 
+  // ★ 2026-11-14（用户）：午后久坐 → 与「摸个鱼」场景词、久坐分析同源：建议站起来/伸懒腰（无落地页 → 不画箭头）
+  if (reason === 'sedentary') {
+    return { text: p2 ? '站起来走两步，活络一下' : '别老坐着，伸个懒腰' };
+  }
+
   // ★ 午后：久坐高发时段 → 站起来 / 喝水 / 摸个鱼（真有心率升高或压力才给呼吸，避免硬塞）
   if (phase === 'afternoon') {
     if (direction === 'up') {
@@ -482,9 +562,11 @@ function suggestionOf(phase: DayPhase, direction: Direction, reason: ReasonKey, 
       };
     }
     if (direction === 'down') {
-      return { text: p2 ? '起来走走，下楼透口气' : '喝口水提提神，别硬撑' };
+      const a3 = Math.abs(slot) % 3;
+      return { text: ['起来走走，下楼透口气', '喝口水提提神，别硬撑', HABIT_EYE_DAY][a3] };
     }
-    return { text: p2 ? '摸个鱼缓一缓，喝口水' : '站起来伸个懒腰' };
+    const a3 = Math.abs(slot) % 3;
+    return { text: ['摸个鱼缓一缓，喝口水', '站起来伸个懒腰', HABIT_EYE_DAY][a3] };
   }
 
   // ★ 傍晚下班：收工 / 解压；状态好可顺势动一动
@@ -523,12 +605,15 @@ function suggestionOf(phase: DayPhase, direction: Direction, reason: ReasonKey, 
       };
     }
     if (direction === 'up') {
-      return { text: p2 ? '洗个热水澡再休息' : '睡前给自己做个护肤' };
+      const b3 = Math.abs(slot) % 3;
+      const upOpts = ['洗个热水澡再休息', '睡前给自己做个护肤', HABIT_EYE_SLEEP];
+      return { text: upOpts[b3] };
     }
-    return {
-      text: '睡前做个五分钟冥想',
-      cta: { label: '去冥想', screen: 'EmotionIntervene' },
-    };
+    // ★ 2026-11-14（用户）：睡前加入「眼部放松 / 手机放远」等温和助眠小习惯（纯观察型，无 CTA 不画箭头）。
+    const f3 = Math.abs(slot) % 3;
+    const flatOpts = ['睡前做个五分钟冥想', HABIT_EYE_SLEEP, '躺下前把手机放远一点'];
+    if (f3 === 0) return { text: flatOpts[0], cta: { label: '去冥想', screen: 'EmotionIntervene' } };
+    return { text: flatOpts[f3] };
   }
   // ③ 状态往下 / 压力堆着 → 放松呼吸（对应分析里的「先做一段放松呼吸」）
   if (direction === 'down' || reason === 'stress') {
@@ -566,7 +651,7 @@ function suggestionOf(phase: DayPhase, direction: Direction, reason: ReasonKey, 
     morning:
       direction === 'up'
         ? ['先把最要紧的一件做了', '趁精神把费脑事排前面']
-        : ['先喝杯水，见见光再开工', '按自己的顺序开局'],
+        : [HABIT_MORNING_LIGHT, '按自己的顺序开局'],
     lateMorning:
       direction === 'up'
         ? ['把费脑的事放这会儿', '手上的事照顺序做']
@@ -593,20 +678,79 @@ export function buildHomeNarrative(input: HomeNarrativeInput): HomeNarrative {
   // 变体文案里用「刚缓了一缓 / 刚才动了一阵」这类已发生的泛化说法，绝不编造具体动作名。
   // ★ 关系链：状态变差时把「心率升高 / 运动 / 压力」这些实际在拉低状态的元素串成一句。
   const chain = chainClause(input);
-  // 仅在「心率升高 / 运动 / 多元素同现」时走链句；lone-stress 仍用下方原有好文案（不退化）。
+  // 仅在「心率升高 / 运动 / 多元素同现 / 血氧·HRV 偏低」时走链句；lone-stress 仍用下方原有好文案（不退化）。
   const useChain =
     !!chain &&
     direction === 'down' &&
-    ((input.hrElev ?? 0) >= 0.15 || (input.activity ?? 0) >= 0.25 || chain.split('、').length >= 2);
-  const analysis = analysisText(phase, direction, reasonKey, slot, input.mood || '', chain, useChain);
-  const suggestion = suggestionOf(phase, direction, reasonKey, slot);
+    ((input.hrElev ?? 0) >= 0.15 || (input.activity ?? 0) >= 0.25 ||
+      input.spo2Low === true || input.hrvLow === true || chain.split('、').length >= 2);
+  // ★ 2026-11-14（用户）：男性把相位类归因整体降为中性，分析与建议都不会带周期词。
+  const cycleOn = showCycleContent();
+  const safeReason = cycleOn ? reasonKey : (reasonKey === 'phase' ? 'none' : reasonKey);
+  // ★ 2026-11-14（用户）：先由「时段 × 状态档位」定唯一主题，再让分析/建议都跟它走。
+  const topic = homeTopicOf(phase, input.topicLevel ?? 0, direction);
+  let analysis = analysisText(phase, direction, safeReason, slot, input.mood || '', chain, useChain);
+  let suggestion = suggestionOf(phase, direction, safeReason, slot);
+
+  // ★ 2026-11-14（用户）：早晨讲「昨夜睡眠 + 今天状态 + 脑力准备度高峰（把难事排到峰值）」。
+  //   峰值小时来自今日状态曲线（buildHomeNarrative 入参 brainPeakHour），与「脑力准备度」同源；
+  //   整段 ≤45 字（HOME_ANALYSIS_MAX），带具体小时——AI 润色因禁用数字会自动回落本规则句，故稳定展示。
+  if (phase === 'morning' && input.brainPeakHour != null) {
+    const hh = padHour(input.brainPeakHour);
+    if (input.recoveryScore != null && input.recoveryScore >= 51) {
+      analysis = `昨晚睡得稳，今天状态在线；脑力大概 ${hh} 最在线，重要的事排那时。`;
+    } else if (input.recoveryScore != null) {
+      analysis = `昨晚睡得浅，早上还没完全起来；脑力大概 ${hh} 最在线，费脑的事排那时。`;
+    } else {
+      analysis = `刚醒，今天状态平平；脑力大概 ${hh} 最在线，重要的事排那时。`;
+    }
+    suggestion = { text: `把费脑的事排到 ${hh} 前后` };
+  }
+
+  // 临近中午是唯一一个「标题档位会切换主题」的时段：
+  //   level 3 标题是「优先补个觉」、level 2 是「散个步消化」，
+  //   但历史模板（ANALYSIS 表 / suggestionOf 的 preNoon 硬编码）无条件写「吃饭 + 拍照记这餐」。
+  //   这里统一按 topic 覆盖，保证标题、分析、建议、CTA、配图不打架。
+  if (phase === 'preNoon' && topic !== 'meal') {
+    const p2 = Math.abs(slot) % 2;
+    if (topic === 'rest') {
+      analysis = direction === 'down'
+        ? '这会儿状态往下走，先放下手上的事，眯一会儿再接着来。'
+        : '这会儿先别排费脑的事，留十分钟空档给自己。';
+      suggestion = {
+        text: p2 ? '眯一会儿，先歇十分钟' : '先做一段放松呼吸',
+        cta: { label: '去呼吸', screen: 'Breathing', params: { breath: 'calm' } },
+      };
+    } else {
+      analysis = '坐了一上午，这会儿起来走动几分钟，缓一缓再接着做。';
+      suggestion = { text: p2 ? '起来走动几分钟' : '下楼透口气，散个步' };
+    }
+  }
+  // 兜底：任何非 meal 主题都不允许残留「吃饭/拍照记餐」字眼（含 AI 润色前的规则原文）。
+  if (topic !== 'meal' && isMealCopy(analysis)) {
+    analysis = topic === 'rest'
+      ? '这会儿状态需要缓一缓，先留十分钟空档给自己。'
+      : '这会儿起来走动几分钟，缓一缓再接着做。';
+  }
+  if (topic !== 'meal' && (isMealCopy(suggestion.text) || suggestion.cta?.screen === 'FoodScan')) {
+    suggestion = topic === 'rest'
+      ? { text: '先做一段放松呼吸', cta: { label: '去呼吸', screen: 'Breathing', params: { breath: 'calm' } } }
+      : { text: '起来走动几分钟，缓一缓' };
+  }
+
+  if (!cycleOn) {
+    if (containsCycleCopy(analysis)) analysis = '这会儿状态有些起伏，先照着今天的节奏来。';
+    if (containsCycleCopy(suggestion.text)) suggestion = { ...suggestion, text: '起来走动几分钟，缓一缓' };
+  }
 
   const lastPointAt = pts.length ? pts[pts.length - 1].t : 0;
   const signature = [
-    lastPointAt, slot, direction, phase, reasonKey,
+    lastPointAt, slot, direction, phase, reasonKey, topic,
     ev ? `${ev.kind}@${ev.at}` : 'noevent',
     `hr${input.hrElev != null ? input.hrElev.toFixed(2) : '-'}`,
     `ac${input.activity != null ? input.activity.toFixed(2) : '-'}`,
+    `sp${input.spo2Low === true ? '1' : '0'}`,
+    `hv${input.hrvLow === true ? '1' : '0'}`,
   ].join('|');
 
   return {
@@ -616,6 +760,7 @@ export function buildHomeNarrative(input: HomeNarrativeInput): HomeNarrative {
     reasonKey,
     direction,
     phase,
+    topic,
     polishCtx: { phase, direction, reasonKey },
   };
 }
@@ -645,6 +790,8 @@ const FACT_WORDS = [
   '睡眠', '昨晚', '饭', '吃', '呼吸', '缓了一缓', '动了一阵', '走动', '压力',
   '黄体', '节律', '收工', '躺下', '放空', '拍', '照', '灯', '空档', '要紧的一件',
   '心率', '活动',
+  // ★ 2026-11-14（用户）：血氧 / 心率变异性 也是关系链元素，防止润色凭空塞进规则句没出现过的信号
+  '血氧', '心率变异性',
   // ★ 睡前「小奖励」动作词：防止润色凭空塞进规则句里没出现过的具体动作
   '护肤', '热水澡',
 ];

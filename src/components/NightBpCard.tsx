@@ -204,7 +204,8 @@ export function NightBpCard({ anchorMs }: Props) {
       </View>
       <View style={styles.grid}>
         <View style={styles.cell}>
-          <Text style={styles.label}>夜间心率下降（dipping 参考）</Text>
+          {/* ★ 2026-11-14（用户）：去掉「（dipping 参考）」括号注释，只留「夜间心率下降」 */}
+          <Text style={styles.label}>夜间心率下降</Text>
           <Text style={[styles.big, { color: data.dipColor }]}>
             {data.dipPct != null ? `${data.dipPct.toFixed(0)}%` : '--'}
           </Text>

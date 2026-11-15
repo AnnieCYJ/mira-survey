@@ -25,6 +25,7 @@ import * as FileSystem from 'expo-file-system';
 import { runOnModel } from '../ai/model';
 import { evidenceBits, pickReadTarget, type SuggestionCandidate } from './suggestionEngine';
 import { dayPhase, DAY_PHASE_META, type DayPhase } from './timePhase';
+import { showCycleContent, containsCycleCopy } from '../data/cycleScope';
 
 const STORE_PATH = (FileSystem.documentDirectory ?? '') + 'mira_ai_suggestion.json';
 /** 整体超时（★ 十六改 45s → 60s，用户：「31 分给出来问题不大，但时间太长就不行」——
@@ -210,6 +211,19 @@ export async function requestAiSuggestion(
   const bits = evidenceBits();
   const phase = typeof cs?.phaseLabel === 'string' ? cs.phaseLabel : '';
   const key = `aisugg@${sig}`; // runOnModel 内置去重：同签名并发请求复用同一次推理
+  // ★ 2026-11-14（用户）：小模型会照抄 prompt 示例里的「黄体期 / 激素变化 / 闺蜜」，
+  //   男性用户在模板层先脱敏，输出层再兜一道，避免建议胶囊冒出周期话术。
+  const cycleOn = showCycleContent();
+  const sys = cycleOn ? SYSTEM : SYSTEM
+    .replace(/状态\/压力\/激素变化/g, '状态与压力变化')
+    .replace(/相位=黄体期/g, '状态=平稳')
+    .replace(/相位=卵泡期/g, '状态=平稳')
+    .replace(/AI 健康闺蜜/g, 'AI 健康伙伴')
+    + '\n【重要】当前用户为男性。不要提及经期、月经、排卵、黄体期、卵泡期、雌激素、孕激素、孕酮、生理周期，也不要用「闺蜜」称呼；只依据给出的事实写一句日常建议。';
+  const user = cycleOn
+    ? buildUserPrompt(level, phase, bits, opts?.avoidHeadline)
+    : buildUserPrompt(level, '未记录', bits, opts?.avoidHeadline)
+        .replace('周期相位：未记录', '当前状态：按今天的实测数据');
 
   try {
     const res: any = await Promise.race([
@@ -218,8 +232,8 @@ export async function requestAiSuggestion(
           ctx.completion(
             {
               messages: [
-                { role: 'system', content: SYSTEM },
-                { role: 'user', content: buildUserPrompt(level, phase, bits, opts?.avoidHeadline) },
+                { role: 'system', content: sys },
+                { role: 'user', content: user },
               ],
               n_predict: 80,
               temperature: 0.55, // ★ 2026-10-13：0.9→0.55，小模型高温易乱造词/说教腔（用户实锤「美容肌」）
@@ -236,6 +250,8 @@ export async function requestAiSuggestion(
 
     const cand = parseAiJson(String(res?.text ?? ''), bits);
     if (!cand) return null;
+    // 男性：模型照抄了周期词就丢弃这条，回落到规则建议（绝不展示给用户）。
+    if (!cycleOn && containsCycleCopy(String(cand.headline ?? ''))) return null;
     if (opts?.avoidId && cand.id === opts.avoidId) return null; // 刚被否的那条别再给
 
     // ★ 十八改：LearnRead 深链的具体文章由代码按周期相位挑（模型只决定「跳不跳」），

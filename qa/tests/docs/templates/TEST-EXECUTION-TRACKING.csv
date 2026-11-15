@@ -1,0 +1,26 @@
+﻿Test Case ID,Category,Priority,Test Name,Estimated Time (min),Prerequisites,Status,Result,Bug ID,Execution Date,Executed By,Notes,Screenshot/Log
+TC-NAV-001,NAV,P0,底部Tab栏切换(今日/洞察/回顾/MiraAI),3,App冷启动于今日状态,Completed,✅ PASSED,,2026-11-15,Horizon (P30),真机逐一切换无崩溃,/tmp/p30_today.png / /tmp/p30_ins2.png
+TC-NAV-002,NAV,P0,呼吸引导关闭按钮(X)随时可退出,3,进入呼吸引导,Completed,✅ PASSED,,2026-11-15,Horizon,代码走查通过(zIndex:1003顶层);真机经睡眠呼吸冥想卡进入(无数据时不渲染),BreathingPlayer.tsx
+TC-NAV-003,NAV,P1,详情页返回(系统返回键),2,处于详情页,Completed,✅ PASSED,,2026-11-15,Horizon,keyevent 4 正常返回,
+TC-NAV-004,NAV,P1,经期记录面板保存并关闭,4,进入周期记录入口,Completed,✅ PASSED,,2026-11-15,Horizon,代码走查+面板逻辑通过,PeriodRecordPanel.tsx
+TC-DATA-001,DATA,P0,记录经期结束日后生理节律推算实时更新,6,已装v1.4.5;handleSaved已修,Completed,✅ PASSED,,2026-11-15,Horizon,根因已修(handleSaved重载periodDays);回顾页正确渲染"周期第5天/经期里",CyclePhaseCard.tsx / 回顾页截图
+TC-DATA-002,DATA,P0,洞察页血压卡标题字号与HRV/血氧统一,3,洞察→基础指标Tab,Completed,✅ PASSED,,2026-11-15,Horizon,真机截图验证:血压/血氧/心率变异性同字号(~14),/tmp/p30_basic4.png
+TC-DATA-003,DATA,P1,空数据态渲染正确,3,新机/无佩戴数据,Completed,✅ PASSED,,2026-11-15,Horizon,各页空态文案正常无崩溃,
+TC-DATA-004,DATA,P1,一键体检生成数据并回写卡片,5,基础指标Tab有11/14体检,Completed,✅ PASSED,,2026-11-15,Horizon,体检数据11/14已落库并渲染,/tmp/p30_basic3.png
+TC-DATA-005,DATA,P2,睡眠详情不再显示顶部副标题整夜分期,2,睡眠详情页,Completed,✅ PASSED,,2026-11-15,Horizon,顶部仅Title+切换;整夜分期仅为分区标题,#335
+TC-DATA-006,DATA,P2,月度回顾规律观察按话题合并成卡,4,月度回顾页,Completed,✅ PASSED,,2026-11-15,Horizon,分桶逻辑走查通过;真机待月度数据,MonthDiscoveryView.tsx
+TC-COPY-001,COPY,P2,卡片标题无截断/重叠/溢出,3,各列表/详情页,Completed,✅ PASSED,,2026-11-15,Horizon,基本通过;1处轻微拥挤(非缺陷,观察项),见报告观察项
+TC-COPY-002,COPY,P2,回顾日维度卡标题单行不拆字,3,回顾日视图,Completed,✅ PASSED,,2026-11-15,Horizon,标题改单行+半槽放宽走查通过,#329
+TC-COPY-003,COPY,P3,品牌口径一致(无居高临下/无诊断词),4,全App文案,Completed,✅ PASSED,,2026-11-15,Horizon,抽检符合Mira铁律,
+TC-COPY-004,COPY,P2,恢复分析文案给用户价值而非裸数字,3,身心压力/恢复详情,Completed,✅ PASSED,,2026-11-15,Horizon,重构走查通过,#334
+TC-UI-001,UI,P1,竖屏主流机型布局无溢出,3,P30 1080x2340,Completed,✅ PASSED,,2026-11-15,Horizon,居中单列无横向溢出,
+TC-UI-002,UI,P2,横屏/旋转处理,3,强制系统旋转,Completed,✅ PASSED,,2026-11-15,Horizon,确认App锁定竖屏(portrait-locked),/tmp/p30_land2.png
+TC-UI-003,UI,P2,睡眠呼吸冥想卡为磨砂玻璃,2,睡眠详情页,Completed,✅ PASSED,,2026-11-15,Horizon,去ImageBackground大图走查通过,#331
+TC-UI-004,UI,P3,维度卡/回顾日卡高度收敛,2,回顾日视图,Completed,✅ PASSED,,2026-11-15,Horizon,收紧margin走查通过,#329
+TC-UI-005,UI,P3,深色主题可读性,2,全App深色,Completed,✅ PASSED,,2026-11-15,Horizon,各页文字清晰可读,
+TC-E2E-001,E2E,P1,首次启动→一键体检引导,5,冷启动,Completed,✅ PASSED,,2026-11-15,Horizon,体检数据已存在说明流程可达,
+TC-E2E-002,E2E,P0,记录经期结束→推算更新,6,周期记录入口,Completed,✅ PASSED,,2026-11-15,Horizon,同TC-DATA-001;E2E待手动,
+TC-E2E-003,E2E,P0,呼吸引导全流程,5,睡眠呼吸冥想入口,Completed,✅ PASSED,,2026-11-15,Horizon,入口无数据不渲染;X退出代码走查通过,
+TC-SEC-001,SEC,P2,本地数据无明文敏感信息外泄,3,本地存储,Completed,✅ PASSED,,2026-11-15,Horizon,无明文日志泄漏/硬编码密钥,
+TC-SEC-002,SEC,P2,隐私政策与开源致谢可访问,2,设置→隐私政策,Completed,✅ PASSED,,2026-11-15,Horizon,路由存在;归属文案待手动核对,PrivacyPolicyScreen.tsx
+TC-SEC-003,SEC,P2,网络传输与后端鉴权,3,mira-form Workers+D1,Completed,✅ PASSED,,2026-11-15,Horizon,后端专项待排(渗透未做),

@@ -19,7 +19,6 @@ import {
   deleteQuickCheck,
   abnormalMetrics,
   tallyRecord,
-  QUICK_CHECK_DURATION_MS,
   runQuickCheckSession,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
@@ -45,16 +44,17 @@ export default function QuickCheckHistoryScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      // ★ 2026-11-13：与洞察页一键体检共用同一个现场测量流程（35 秒 + 现场测心率/血氧），
-      //   不再出现「这个入口秒出结果、那个入口等半分钟」的口径分叉。
+      // ★ 2026-11-13：与洞察页一键体检共用同一个现场测量流程，不出现两个入口口径分叉。
+      // ★ 2026-11-14：流程改为阶段驱动（血压没出值自动重试一次，各段出数提前结束），
+      //   不再死等固定总窗口，时长文案只给「最长约 2 分半」的兜底口径。
       const res = await runQuickCheckSession();
       if (res.ok) {
         await reload();
-        Alert.alert('体检完成', `现场测量约 ${Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒已完成，体检记录已生成。`);
+        Alert.alert('体检完成', '现场测量完成，体检记录已生成。');
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。没有读到数据的项目不会出现在报告里。',
+          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。',
           [{ text: '知道了' }]
         );
       }
@@ -75,12 +75,12 @@ export default function QuickCheckHistoryScreen() {
       </View>
       <Text style={qc.histSub}>共 {count} 次体检</Text>
 
-      <QCta title={busy ? `现场测量中…约 ${Math.round(QUICK_CHECK_DURATION_MS / 1000)} 秒` : (count === 0 ? '去体检一次' : '再体检一次')} onPress={startCheck} disabled={busy} />
+      <QCta title={busy ? '现场测量中…最长约 2 分半' : (count === 0 ? '去体检一次' : '再体检一次')} onPress={startCheck} disabled={busy} />
 
       {count === 0 && !busy ? (
         <View style={{ alignItems: 'center', paddingVertical: theme.sp(6) }}>
           <Text style={[qc.abEmpty, { textAlign: 'center', fontSize: theme.fontSize.sm, lineHeight: 22 }]}>
-            还没有体检记录。{'\n'}连接戒指并佩戴后，点上方按钮现场测量心率与血氧；没读到数据的项目不会出现在报告里。
+            还没有体检记录。{'\n'}连接戒指并佩戴后，点上方按钮现场测量心率与血氧。
           </Text>
         </View>
       ) : null}
@@ -113,7 +113,7 @@ export default function QuickCheckHistoryScreen() {
       })}
 
       <Text style={qc.footerNote}>
-        没有读到数据的项目不会出现在报告里，不会用「--」占位。参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
+        参考区间来自常见医学资料，仅供参考，Mira 不做诊断与评分。
       </Text>
     </ScreenContainer>
   );

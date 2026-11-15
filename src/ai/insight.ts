@@ -15,6 +15,7 @@ import * as FileSystem from 'expo-file-system';
 import { runOnModel } from './model';
 import { fitContext } from './contextBudget';
 import { selectHealthFacts } from './healthSelection';
+import { showCycleContent, containsCycleCopy } from '../data/cycleScope';
 import {
   buildHealthSnapshot,
   getTodayCortisolSummary,
@@ -379,13 +380,16 @@ function overviewGuides(factsStr: string): { time: string; cycle: string; analys
     : seg === 'evening' ? '现在是晚上，今天的状态起伏到这会儿基本定下来了'
     : seg === 'night' ? '现在是深夜，今天到这儿该收尾了'
     : '现在是凌晨，身体在全天最低潮，安心休息就好';
+  // ★ 2026-11-14：男性用户绝不注入「她正处于黄体期 / 月经期」这类周期引导。
   let cycle = '';
-  const m = factsStr.match(/周期相位[:：]\s*([^\n；,，]+)/);
-  const phase = (m?.[1] || '').trim();
-  if (/月经期|经期/.test(phase)) cycle = '她正处于月经期：建议偏休息，减少高强度运动，照顾情绪';
-  else if (/排卵期/.test(phase)) cycle = '她正处于排卵期：状态在月内高点，适合安排重要的事或运动';
-  else if (/黄体期/.test(phase)) cycle = '她正处于黄体期：注意睡眠和情绪波动，别硬撑';
-  else if (/卵泡期/.test(phase)) cycle = '她正处于卵泡期（经期刚结束、精力在回升）：可以恢复运动、启动想做的事';
+  if (showCycleContent()) {
+    const m = factsStr.match(/周期相位[:：]\s*([^\n；,，]+)/);
+    const phase = (m?.[1] || '').trim();
+    if (/月经期|经期/.test(phase)) cycle = '她正处于月经期：建议偏休息，减少高强度运动，照顾情绪';
+    else if (/排卵期/.test(phase)) cycle = '她正处于排卵期：状态在月内高点，适合安排重要的事或运动';
+    else if (/黄体期/.test(phase)) cycle = '她正处于黄体期：注意睡眠和情绪波动，别硬撑';
+    else if (/卵泡期/.test(phase)) cycle = '她正处于卵泡期（经期刚结束、精力在回升）：可以恢复运动、启动想做的事';
+  }
   return { time, cycle, analysisTime };
 }
 /**
@@ -480,11 +484,37 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string, extraTag?:
   const task = (async (): Promise<string | null> => {
     try {
       // 同 key 去重：即便上层 inFlight 去重失效，模型层也不会对同一份数据重复推理
+      const cycleOn = showCycleContent();
+      // ★ 2026-11-14：男性用户的 AI 报告——人设去掉「女性健康伴侣」，
+      //   并追加硬约束，防止模型照抄 prompt 里的周期示例（经期/黄体期/雌激素）。
+      const MALE_HARD_RULE = '\n\n【重要】当前用户为男性。不要提及生理周期、经期、月经、排卵、黄体期、卵泡期、雌激素、孕激素、孕酮；不要使用「她」。只依据给出的实测数据解读。';
+      /** ★ 2026-11-14：1.5B 小模型会照抄 prompt 里的示例行，
+       *  光在末尾追加「不要提周期」压不住整张「经期 高能量 / 卵泡期 正常」语气表。
+       *  男性时先整行删掉周期示例、把人设与周期措辞改成中性，再叠硬约束。 */
+      const maleSystem = (s: string) =>
+        s
+          .replace(/^[ \t]*-[ \t]*[^\n]*(经期|卵泡期|排卵期|黄体期|经前|雌激素|孕激素)[^\n]*$/gm, '')
+          .replace(/女性健康伴侣/g, '健康伴侣')
+          .replace(/根据用户当前经期相位、能量等级和异常数据/g, '根据用户今日状态、能量等级和异常数据')
+          .replace(/\*\*绝对不要在建议开头重复经期相位名\*\*（界面上方已有相位标签）。/g, '')
+          .replace(/（如「HRV 比卵泡期低 8ms」「体温升高 0.3 度」），再说周期原因/g, '（如「HRV 比昨天低 8ms」「体温升高 0.3 度」），再解释可能原因')
+          .replace(/内容要围绕【当前生理周期阶段】展开[^\n]*/g, '内容要围绕【今日实测数据】展开：先说看到的事实，再解释可能的原因，最后给一个今天能做的动作。')
+          .replace(/参考对应相位的高能量风格/g, '给出偏积极的安排建议')
+          .replace(/参考对应相位的正常\/低能量风格/g, '给出偏稳妥的安排建议')
+          .replace(/经期相位/g, '今日状态')
+          .replace(/相位/g, '状态') + MALE_HARD_RULE;
       const runKind = (
         m: { role: string; content: string }[],
         nPredict: number,
         temperature: number
-      ) => runCompletion(m, nPredict, temperature, cKey);
+      ) => {
+        const msgs = cycleOn ? m : m.map((msg, i) =>
+          i === 0 && msg.role === 'system'
+            ? { ...msg, content: maleSystem(msg.content) }
+            : msg,
+        );
+        return runCompletion(msgs, nPredict, temperature, cKey);
+      };
       const text =
           kind === 'overview'
           ? await (() => {
@@ -589,6 +619,12 @@ export async function getAiInsight(kind: InsightKind, dayDk?: string, extraTag?:
         clean = clean.replace(/^(经期|卵泡期|排卵期|黄体期)/, '').trim();
       }
       if (!clean) return null;
+      // ★ 2026-11-14 最后一道闸：小模型仍可能漏出「雌激素 / 经期 / 黄体期」，
+      //   不让这类文案上屏，直接回落规则兜底（规则池不含周期话术）。
+      if (!cycleOn && containsCycleCopy(clean)) {
+        console.log('[AI-Insight] 男性用户拦截含周期话术的 AI 输出，回落规则文案');
+        return null;
+      }
 
       // 诊断：真机 Xcode/Metro 控制台看这一行就能判断「AI 到底有没有生效」
       //   rows=0 → 模型没吐出可解析内容（UI 会回落规则兜底，看起来就像「改了没生效」）

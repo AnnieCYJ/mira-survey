@@ -260,20 +260,15 @@ export default function SleepAnalysisCard({ day, segments, phys, onOpenMetric, s
                   onPress={onOpenMetric ? () => onOpenMetric({ key: 'temp', name: '体温', unit: '°C', yMin: 35, yMax: 38.5 }) : undefined} />}
             </>) : null}
             <Divider />
-            {phys.rr != null ? <Row name="呼吸率" value={fmtNum(phys.rr, 1)} unit="/min"
-              metric={{ key: 'rr', name: '呼吸率', unit: '次/分', yMin: 5, yMax: 40 }}
-              onPress={onOpenMetric ? () => onOpenMetric({ key: 'rr', name: '呼吸率', unit: '次/分', yMin: 5, yMax: 40 }) : undefined} /> : null}
-            {phys.rr != null ? <Divider /> : null}
+            {/* ★ 2026-11-14（用户）：呼吸率行整行去掉 —— 本机型固件恒不回传呼吸率（实测恒 0），
+                这张卡永远不会出真实数据，按「没数据就删」纪律下线。 */}
             <Row name="夜间血氧" value={fmtNum(phys.spo2, 0)} unit="%"
               metric={{ key: 'spo2', name: '血氧', unit: '%', yMin: 80, yMax: 100 }}
               onPress={onOpenMetric ? () => onOpenMetric({ key: 'spo2', name: '血氧', unit: '%', yMin: 80, yMax: 100 }) : undefined} />
             <Divider />
             {phys.recoveryIdx != null ? <Row name="恢复指数" value={fmtNum(phys.recoveryIdx, 1)} unit="bpm/h" last /> : null}
-            {/* ★ 2026-11-07（用户）：如实标注夜间指标的取数口径，避免把全天日均冒充夜间值 */}
-            {!!phys.physSourceNote ? (
-              <Text style={styles.physSourceNote}>{phys.physSourceNote}</Text>
-            ) : null}
-            {/* ★ 2026-11-07（用户「所有的采样频率都不需要写」）：夜间采样频率 / 协议频率说明已移除 */}
+            {/* ★ 2026-11-14（用户）：「按睡眠窗口内足样本计算 HR/HRV/血氧…」来源注释行去掉，不再展示。
+                数据口径仍在 nightPhysiology 内部保证，只是不向用户展示统计说明。 */}
           </View>
         </View>
       ) : null}

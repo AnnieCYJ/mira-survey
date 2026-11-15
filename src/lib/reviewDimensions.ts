@@ -52,6 +52,15 @@ export interface DayDimensionInput {
   stressMean?: number | null;
   // ── 可监测的身体指标（只展示数值，不打分、不画进度条） ──
   vitals?: { label: string; value: string }[];
+  /** ★ 本轮（用户：可看的数据要「多数据综合分析」）：结构化数值，供跨指标合看 */
+  vitalsDetail?: {
+    sys?: number | null;
+    dia?: number | null;
+    hr?: number | null;
+    hrv?: number | null;
+    spo2?: number | null;
+    stress?: number | null;
+  };
   // ── 完成的任务（无分数） ──
   completedTasks?: { label: string; count: number }[];
 }
@@ -157,6 +166,11 @@ export function composeDimensionGroups(input: DayDimensionInput, showCycle = tru
   }
   push('rhythm', '身体节律', rhythm);
 
+  /* ★ 2026-11-15 20:00（用户：今天还没过完，写「全天」很奇怪）：
+     今天的均值是算到当前时刻的 → 「截至现在平均」；历史日整天已结束 → 仍是「全天平均」。
+     与回顾·日连接线上的「截至 HH:MM / 全天」标记口径一致。 */
+  const avgWord = input.isToday ? '截至现在平均' : '全天平均';
+
   /* ── ② 活动与状态：当天运动 + 整体/平均状态 ─────────────────────── */
   const active: (DimensionCard | null)[] = [];
 
@@ -195,7 +209,7 @@ export function composeDimensionGroups(input: DayDimensionInput, showCycle = tru
       title: '整体状态',
       emoji: '〰️',
       value: `${v} 分`,
-      sub: input.stateLevel ? `全天平均 · ${input.stateLevel}` : '全天平均',
+      sub: input.stateLevel ? `${avgWord} · ${input.stateLevel}` : avgWord,
       score: v,
       scoreMax: 100,
       scoreLabel: `平均状态 ${v} / 100`,
@@ -212,10 +226,13 @@ export function composeDimensionGroups(input: DayDimensionInput, showCycle = tru
   const mind: (DimensionCard | null)[] = [];
 
   if (input.moodReports?.length) {
+    const first = input.moodReports[0];
     mind.push({
       id: 'mood', dimension: 'mood', title: '这一天的心情', emoji: '💗',
       sub: input.moodReports.slice(0, 3).join(' · '),
-      meaning: '自己记下的心情，比数字更能说明这一天过得怎么样。',
+      meaning: first
+        ? `你记下了「${first}」——把当天的心情写下来，情绪就不再是模糊的一团，回头看也更容易对上那天的状态。`
+        : '你记下了当天的心情，这比一个数字更能说明这一天过得怎么样。',
     });
   }
   if (fin(input.stressMean) && input.stressMean > 0) {
@@ -223,7 +240,7 @@ export function composeDimensionGroups(input: DayDimensionInput, showCycle = tru
     mind.push({
       id: 'stress', dimension: 'stress', title: '身心压力', emoji: '🌊',
       value: `${v}`,
-      sub: '全天平均',
+      sub: avgWord,
       score: Math.min(v, 100),
       scoreMax: 100,
       scoreLabel: `压力均值 ${v} / 100`,
@@ -236,35 +253,58 @@ export function composeDimensionGroups(input: DayDimensionInput, showCycle = tru
   }
   push('mind', '情绪与压力', mind);
 
-  /* ── ④ 可监测的身体指标：只给数值，不打分、不画进度条 ───────────── */
+  /* ── ④ 可监测的身体指标：多数据合看（跨指标综合分析） ───────────────── */
   if (input.vitals?.length) {
-    push('vitals', '身体指标', [{
-      id: 'vitals',
-      dimension: 'vitals',
-      title: '可看到的数据',
-      emoji: '🩺',
-      sub: input.vitals.map((v) => `${v.label} ${v.value}`).join(' · '),
-      meaning: '这些是当天读到的一组数值，放在一起看，更容易对上那天的身体感觉。',
-    }]);
-  }
-
-  /* ── ⑤ 完成的事：完成任务型，一律无分数、不画进度条 ─────────────── */
-  if (input.completedTasks?.length) {
-    const total = input.completedTasks.reduce((s, t) => s + (t.count > 0 ? t.count : 0), 0);
-    push('task', '完成的事', [{
-      id: 'task',
-      dimension: 'task',
-      title: total > 0 ? `做成了 ${total} 件小事` : '这一天做的事',
-      emoji: '✅',
-      sub: input.completedTasks
-        .slice(0, 5)
-        .map((t) => (t.count > 1 ? `${t.label} ×${t.count}` : t.label))
-        .join(' · '),
-      meaning: '建议了就去做，这些小事会一点点把状态往回拉。',
-    }]);
+    const vitalsMeaning = synthesizeVitals(input.vitalsDetail);
+    // ★ 本轮（用户：综合看要真能看出规律才写，看不出就不出这张卡）：
+    //   synthesizeVitals 在无跨指标信号时返回 null，整张「身体指标合看」不渲染。
+    if (vitalsMeaning) {
+      push('vitals', '身体指标合看', [{
+        id: 'vitals',
+        dimension: 'vitals',
+        title: '身体指标合看',
+        emoji: '🩺',
+        sub: input.vitals.map((v) => `${v.label} ${v.value}`).join(' · '),
+        meaning: vitalsMeaning,
+      }]);
+    }
   }
 
   return groups;
+}
+
+/**
+ * ★ 本轮（用户：可看的数据要「多数据综合分析」——比如血压升高＋心率升高可能因刚走动导致）：
+ * 把当天读到的几个身体数值合在一起给一句平实解读。不诊断、不吓人，用「常见原因是 / 可能和」软化。
+ * 没有结构化数值（detail 缺失）时退回一句通用的「合看」引导。
+ */
+function synthesizeVitals(d?: DayDimensionInput['vitalsDetail']): string | null {
+  // ★ 本轮（用户：看不出规律就不写）：没有任何可描述的跨指标信号时返回 null，调用方据此隐藏整张卡。
+  if (!d) return null;
+  const out: string[] = [];
+  const bpHigh = (d.sys != null && d.sys >= 130) || (d.dia != null && d.dia >= 85);
+  const hrHigh = d.hr != null && d.hr >= 85;
+  if (bpHigh && hrHigh) {
+    out.push('血压和心率都偏高，常见原因是刚走动或活动完；坐下来歇几分钟再测，通常会一起回落。');
+  } else if (bpHigh) {
+    out.push('血压略高，可能和今天盐分多一点、或刚活动完有关，放松后再看会更准。');
+  } else if (hrHigh) {
+    out.push('心率偏快，多半是刚动过或有点紧，缓一会儿会下来。');
+  } else if (d.sys != null && d.dia != null && d.sys < 120 && d.dia < 80 && d.hr != null && d.hr < 80) {
+    out.push('血压和心率都在平稳范围，身体这会儿比较松。');
+  }
+  if (d.spo2 != null && d.spo2 < 95) {
+    out.push('血氧偏低，可能刚结束运动、或环境通气差，缓一缓通常会回到正常区间。');
+  }
+  if (d.hrv != null && d.stress != null) {
+    if (d.hrv < 40 && d.stress >= 60) {
+      out.push('HRV 偏低加上身心压力偏高，说明身体这会儿还在绷着，一段呼吸练习常能帮它松下来。');
+    }
+  } else if (d.hrv != null) {
+    out.push('HRV 反映身体自主调节的余量，今天这项数值可以作为放松程度的参考。');
+  }
+  if (out.length === 0) return null;
+  return out.join('');
 }
 
 /** 当日达标来源（只数 goalMet，按维度分桶）—— 月视图「太阳币主要来自哪方面」用 */

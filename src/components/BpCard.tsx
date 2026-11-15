@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
+import Icon from './Icon';
 import { healthStore } from '../data/healthStore';
 import { dayStartMs } from '../data/healthStore';
 
@@ -49,28 +49,25 @@ export default function BpCard({ ring, onPress }: Props) {
 
   return (
     <View>
-      {/* ★ 统一头部：图标方 + 名称 + 时间 + 状态 pill */}
+      {/* ★ 统一头部：图标方 + 名称 + 时间 + 状态 pill
+          ★ 2026-11-14（用户：「血压 title 字号和左边 icon 跟心率变异性/血氧卡不一致」）：
+          图标换成 Icon 字体 heart（与心率/HRV 卡同源字形，弃用手绘 SVG 心形），
+          26×26 圆角方 + skySoft/skyDeep 配色与 BasicMetricCard 的 spo2 特例完全一致；
+          标题字重 medium + ink 色，对齐基础指标卡。 */}
       <View style={styles.ucTop}>
         <View style={styles.ucId}>
           <View style={styles.ic}>
-            <Svg width={15} height={15} viewBox="0 0 24 24">
-              <Path
-                d="M12 21s-7-4.5-9.5-9C1 9 2.5 5.5 6 5.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 16.5 12 21 12 21z"
-                fill="currentColor"
-              />
-            </Svg>
+            <Icon name="heart" size={14} color={mm.colors.skyDeep} />
           </View>
           <Text style={styles.ucName}>血压</Text>
           <Text style={styles.ucTime}>{fmtTime(lastT)}</Text>
         </View>
-        <View style={[styles.pill, hasData ? styles.pillLive : styles.pillOff]}>
-          <Text style={[styles.pillText, hasData ? styles.pillTextLive : styles.pillTextOff]}>
-            {hasData ? '已测' : '待接入'}
-          </Text>
-        </View>
+        {/* ★ 2026-11-14（用户）：右上角状态 pill 换成与其它指标卡一致的右箭头（洞察页 compact 卡口径） */}
+        <Icon name="chevronRight" size={14} color={mm.colors.inkFaint} />
       </View>
 
-      {/* 收缩/舒张 双行（保留真实数值，蓝家族） */}
+      {/* 收缩/舒张 双行（保留真实数值，蓝家族）
+          ★ 2026-11-14（用户）：两个数值字号从 card(18) 调到 body(15)，与其它卡数值层级看齐 */}
       <View style={styles.bpRows}>
         <View style={styles.bpRow}>
           <Text style={styles.bpLab}>收缩压</Text>
@@ -106,7 +103,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 2,
   },
-  ucName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
+  ucName: { fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink },
   ucTime: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginLeft: 8 },
   pill: { paddingHorizontal: theme.sp(2), paddingVertical: theme.sp(0.5), borderRadius: theme.radius.pill, alignSelf: 'flex-start' },
   pillLive: { backgroundColor: theme.colors.successSoft },
@@ -120,7 +117,8 @@ const styles = StyleSheet.create({
   bpRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sepLine: { height: 1, backgroundColor: mm.colors.chipBorder },
   bpLab: { fontSize: theme.fontSize.xs, color: theme.colors.textSub },
-  bpNum: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold },
+  // ★ 2026-11-14（用户）：数值字号 card(18)→body(15)，与其它指标卡的数值层级一致
+  bpNum: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold },
   bpSys: { color: COL_SYS },
   bpDia: { color: COL_DIA },
   emptyHint: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: 4 },

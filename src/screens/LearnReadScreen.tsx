@@ -19,6 +19,7 @@ import { getGlowArticle } from '../lib/glowArticles';
 import { getEmotionArticle } from '../lib/emotionArticles';
 import { getSportArticle } from '../lib/sportArticles';
 import { getNutritionArticle } from '../lib/nutritionArticles';
+import { safeArticleId } from '../data/cycleScope';
 
 /** v18.79/82/83/85：collection 区分文章库（科普/颜值/情绪/运动/营养），版式共用 */
 const GETTERS = {
@@ -40,7 +41,9 @@ export default function LearnReadScreen() {
   const route = useRoute<{ key: string; name: string; params: { articleId: string; collection?: 'learn' | 'glow' | 'emotion' | 'sport' | 'nutrition' } }>();
   const navigation = useNavigation();
   const collection = route.params?.collection ?? 'learn';
-  const article = GETTERS[collection](route.params?.articleId ?? '');
+  // ★ 2026-11-14（用户）：所有入口（首页建议胶囊 / 收藏建议 / 工具页 / 深链）统一兜底 ——
+  //   男性不会落到任何经期、雌激素、孕激素、周期阶段类文章，改投同库的中性科普。
+  const article = GETTERS[collection](safeArticleId(route.params?.articleId, collection));
   // ★ 封面尺寸显式计算（v18.73）：width:'100%'+aspectRatio 在真机上没生效、
   //   Image 退回原始 1080×569 被屏幕裁成「满屏大图」。这里用窗口宽-边距直接给像素宽高。
   const winW = useWindowDimensions().width;

@@ -99,15 +99,26 @@ const theme = { sp: n => n * 4, fs: n => n, space: { xs: 8, sm: 12, cardPadCompa
 const mm = { colors: new Proxy({}, { get: () => '#333333' }) };
 function formHarness(options = {}) {
   const h = hooks(); const calls = [];
-  const exam = { getLatestExamRecord: async () => options.record ?? null, saveExamRecord: async inputs => {
+  const exam = {
+    getLatestExamRecord: async () => options.record ?? null,
+    // ★ 2026-11-15（上线测试 REG-01）：ExamTab.tsx 新增 countExamRecords() 调用，
+    //   harness 的 examStore stub 缺它 → "is not a function" 让 3 个用例崩掉。
+    countExamRecords: async () => (options.record ? 1 : 0),
+    saveExamRecord: async inputs => {
     if (options.fail) throw Error('disk full');
-    calls.push(inputs); return { id: 'record', inputs, metrics: [{ key: 'bmi' }] };
+    // ★ 2026-11-15（REG-01）：ExamTab 会直接渲染保存结果里的 metrics
+    //   （m.value.toFixed(m.decimals)），旧 stub 只给 {key} → undefined.toFixed 崩溃。
+    calls.push(inputs);
+    return { id: 'record', inputs, metrics: [{ key: 'bmi', name: 'BMI', value: 20.4, decimals: 1, unit: '', status: 'normal' }] };
   } };
   const Form = load('src/components/ExamTab.tsx', {
     react: h.react,
     'react-native': { View: 'View', Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'Button', StyleSheet: { create: s => s } },
     '@react-navigation/native': { useNavigation: () => ({ navigate() {} }) },
     '../theme/theme': { theme }, '../theme/mindmate': { mm }, './Card': { default: 'Card', __esModule: true },
+    // ★ 2026-11-15（上线测试 REG-01）：ExamTab.tsx 新增了 `import Icon from './Icon'`，
+    //   harness 的 mock 表没跟上 → 相对 require 从 scripts/ 解析 → MODULE_NOT_FOUND。
+    './Icon': { default: 'Icon', __esModule: true },
     'expo-linear-gradient': { LinearGradient: 'Gradient' },
     '../lib/profileForm': { validateProfile: validate }, '../data/examStore': exam,
     '../ble/RingBleManager': { RingBle: { getUserProfile: () => null, setUserInfo() {} } },
@@ -157,7 +168,11 @@ test('body age uses the actual profile age and preserves the existing adjustment
 test('body age has no result for missing or invalid age, score or rhythm data', () => {
   assert.equal(estimateAge(null, 80, true, true), null);
   assert.equal(estimateAge(28, null, true, true), null);
-  assert.equal(estimateAge(28, 80, false, false), null);
+  // ★ 2026-11-15（上线测试 REG-01）：2026-10-16 起 healthAgeEstimate 的口径改为
+  //   「节律数据不足 → 中性调整」而不是返回 null（旧断言已过时，非功能退化）。
+  const neutral = estimateAge(28, 80, false, false);
+  assert.equal(typeof neutral, 'number', '节律数据不足应给中性调整而非 null');
+  assert.ok(Math.abs(neutral - 28) <= 3, '中性调整幅度应有限');
   assert.equal(estimateAge(28, NaN, true, true), null);
   assert.equal(estimateAge(17, 80, true, true), null);
 });

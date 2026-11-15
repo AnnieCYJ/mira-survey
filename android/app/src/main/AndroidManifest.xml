@@ -1,22 +1,34 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-  <uses-permission android:name="android.permission.BLUETOOTH"/>
-  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+  <!-- ★ 2026-11-15（上线门禁 REL-04/05/06）权限最小化：
+       - ACCESS_FINE_LOCATION / BLUETOOTH / BLUETOOTH_ADMIN 仅 Android 11 及以下需要
+         （Android 12+ 由 BLUETOOTH_SCAN neverForLocation / BLUETOOTH_CONNECT 取代）；
+       - 移除无代码引用的 SYSTEM_ALERT_WINDOW、RECORD_AUDIO、MODIFY_AUDIO_SETTINGS、
+         READ/WRITE_EXTERNAL_STORAGE（后者在 targetSdk 36 下本已失效）；
+         SYSTEM_ALERT_WINDOW 仍由 src/debug/AndroidManifest.xml 为开发期保留；
+       - REQUEST_INSTALL_PACKAGES 保留：App 内更新需调起系统安装器，系统仍会弹一次用户确认。 -->
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
   <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
   <uses-permission android:name="android.permission.INTERNET"/>
-  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-  <!-- ★ 2026-11-10：App 内直接下载并安装更新包（Android 8+ 必需） -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <!-- ★ 2026-11-15 权限最小化·第二轮：第三方库（Veepoo aar / expo-image-picker / androidx）
+       会在 manifest merger 阶段把下面三条权限合并回来。经 aapt dump badging 核实后剔除：
+       - READ/WRITE_EXTERNAL_STORAGE：targetSdk 34 下已被系统忽略，App 更新走私有目录 FileProvider，
+         相机/相册走 MediaStore，均不依赖这两个权限；
+       - ACCESS_COARSE_LOCATION：Android 12+ 由 BLUETOOTH_SCAN neverForLocation 覆盖，
+         Android 11 及以下由上面的 ACCESS_FINE_LOCATION(maxSdk=30) 覆盖。
+       ⚠️ RECORD_AUDIO 必须保留：src/hooks/useVoiceInput.ts 的语音输入仍在调用 VoiceModule.startSpeech。
+       ⚠️ SYSTEM_ALERT_WINDOW 已不在 release：仅留在 src/debug/AndroidManifest.xml 供开发期使用。 -->
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"/>
   <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
   <queries>
     <intent>
@@ -25,7 +37,9 @@
       <data android:scheme="https"/>
     </intent>
   </queries>
-  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:allowBackup="true" android:theme="@style/AppTheme" android:networkSecurityConfig="@xml/network_security_config">
+  <!-- ★ allowBackup=false：健康数据属敏感个人信息，禁止 adb backup / 云备份 / 设备迁移导出。 -->
+  <!-- tools:replace：Veepoo SDK 的 vpprotocol-2.3.81.15.aar 自带 allowBackup=true，必须显式覆盖，否则合并失败。 -->
+  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:theme="@style/AppTheme" android:networkSecurityConfig="@xml/network_security_config" tools:replace="android:allowBackup">
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>

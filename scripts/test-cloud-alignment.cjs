@@ -20,6 +20,13 @@ async function main() {
   const identity = load('src/data/ringIdentity.ts', {
     'expo-file-system': { documentDirectory: '/mock/', getInfoAsync: async () => ({ exists: true }), readAsStringAsync: async () => disk, writeAsStringAsync: async (_, value) => { disk = value; } },
     '../config': { BACKEND_BASE_URL: 'https://example.invalid', RING_SYNC_TOKEN: '' },
+    // ★ 2026-11-15（上线测试 REG-01）：ringIdentity.ts 新增了 deviceModel 依赖，
+    //   脚本的严格 mock 表没跟上 → "Unexpected import: ../config/deviceModel"。
+    '../config/deviceModel': {
+      getStoredDeviceInfo: async () => ({}),
+      getDeviceProfileId: () => 'BASE_UI',
+      getProfile: () => ({}),
+    },
   });
   const requests = [];
   const originalFetch = global.fetch;

@@ -42,7 +42,7 @@ export function buildRhythmInsights(r: CortisolRhythmResult, isToday: boolean): 
     insights.push(`${dayWord}皮质醇水平偏高（高于你 14 天基线 75 分位），身体可能处于较高压力负荷，注意放松与恢复。`);
   }
   if (todayDys) {
-    insights.push(`${dayWord}节律形态紊乱——昼夜曲线异常，可能和睡眠不规律、长期压力或激素波动有关。`);
+    insights.push(`${dayWord}节律形态紊乱——昼夜曲线异常，可能和睡眠不规律、长期压力或作息变化有关。`);
   }
   if (hasCos && cos.amplitude < 0.15 * cos.mesor) {
     insights.push('昼夜波动幅度偏低，节律扁平——皮质醇早上起不来、晚上降不去。');

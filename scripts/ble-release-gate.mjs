@@ -190,26 +190,33 @@ check(
   `文案 1 处 · 上限 90s · InsightScreen 已接入`,
 );
 
-// ── ⑨ 一键体检口径（现场测量 30–40s / 无数据不展示 / 激素只给方向） ────────
+// ── ⑨ 一键体检口径（2026-11-14：阶段驱动 + 血压不出值自动重试 / 无数据不展示 / 激素只给方向） ──
+// 时长口径（用户拍板「血压不出值就自动重试」）：不再死等固定总窗口，QUICK_CHECK_DURATION_MS
+// = 150s 是最坏情况硬上限（心率 21s + 血压两轮 ≤90s + HRV ≤10s + 血氧 10s + 组装），
+// 各段读数回流即提前结束。两入口共用 runQuickCheckSession，口径不分叉。
 const qcStore = read('src/data/quickCheckStore.ts');
 const qcTab = read('src/components/QuickCheckTab.tsx');
 const qcHistory = read('src/screens/QuickCheckHistoryScreen.tsx');
-// TS 数字字面量允许分隔符（35_000），先把下划线去掉再转数字
+// TS 数字字面量允许分隔符（150_000），先把下划线去掉再转数字
 const qcDur = Number((qcStore.match(/QUICK_CHECK_DURATION_MS\s*=\s*([\d_]+)/)?.[1] ?? '0').replace(/_/g, ''));
 check(
-  '一键体检 30–40s 现场测量、两入口同口径、无数据不生成报告、激素只给方向',
-  qcDur >= 30_000 && qcDur <= 40_000 &&
-  has(qcStore, /RingBle\.measure\('hr'\)/) && has(qcStore, /RingBle\.measure\('spo2'\)/) &&
-  // PPG 通道一次只能跑一个检测：hr / spo2 必须分时串行，不能同时下发
+  '一键体检阶段驱动 + 血压不出值自动重试、两入口同口径、无数据不生成报告、激素只给方向',
+  qcDur === 150_000 &&
+  has(qcStore, /RingBle\.measure\('hr'\)/) && has(qcStore, /RingBle\.measure\('bp'\)/) &&
+  has(qcStore, /RingBle\.measure\('hrv'\)/) && has(qcStore, /RingBle\.measure\('spo2'\)/) &&
+  // PPG 通道一次只能跑一个检测：各段分时串行，不能同时下发
   has(qcStore, /HR_DETECT_WINDOW_MS/) &&
   has(qcStore, /setTimeout\(r, HR_DETECT_WINDOW_MS \+ 1_000\)/) &&
+  // 血压第一轮没出值自动重试一轮 + 阶段结束显式归还 PPG（2026-11-14 用户拍板）
+  has(qcStore, /'bp-retry'/) &&
+  has(qcStore, /RingBle\.stopMeasure\('bp'\)/) &&
   has(qcStore, /assembleQuickCheckFromRealtime\(\{ since: startedAt \}\)/) &&
-  has(qcTab, /runQuickCheckSession\(\)/) && has(qcHistory, /runQuickCheckSession\(\)/) &&
+  has(qcTab, /runQuickCheckSession\(\{/) && has(qcHistory, /runQuickCheckSession\(\)/) &&
   has(qcStore, /if \(!hasRingReading\) return \{ ok: false, reason: 'no-data' \}/) &&
   has(qcStore, /trendLabel\(hl\.estrogenTrend\)/) && has(qcStore, /trendLabel\(hl\.progesteroneTrend\)/) &&
   !has(qcStore, /String\(Math\.round\(hl\.estrogen\)\)/) &&
   !has(qcStore, /黄体酮（周期建模）/),
-  `${Math.round(qcDur / 1000)}s`,
+  `${Math.round(qcDur / 1000)}s 硬上限 · 阶段驱动`,
 );
 
 // ── ⑩ 回顾页标题（原生驱动 scrollY 残留导致进入时透明） ────────────────────
@@ -235,18 +242,19 @@ check(
   !has(accountHubCode, /setAddOpen\(true\)/),
 );
 
-// ── ⑫ 体检报告不展示 HRV、不解释固件限制（用户 2026-11-13） ───────────────
-// 用户：「HRV 当场测不了，那也不展示 HRV 了吧……不用在报告里写当前固件没有
-// 即时测量 HRV 的接口，这个用户不关心」。HRV 只在洞察页独立卡片看已同步日值。
+// ── ⑫ 体检现场主动测 HRV 接回（用户 2026-11-14 拍板，推翻 11-13 的「不展示」） ──
+// 体检窗口内 startDetectHrv 主动测得的 HRV 最优先，其次今天已同步日值；
+// 估算输入仍不吃 HRV 基线（今日状态/压力算法口径不变）；报告不写任何固件接口限制说明。
 const qcCode = codeOnly(qcStore);
 check(
-  '体检报告不展示 HRV、不写固件接口说明，估算也不吃 HRV 基线',
+  '体检现场主动测 HRV 接回：窗口读数优先 + 报告展示，估算不吃 HRV 基线，不写固件限制说明',
+  has(qcCode, /liveHrv/) &&
+  has(qcCode, /windowReading\('hrv'\)/) &&
+  has(qcCode, /name: '心率变异性'/) &&
   !has(qcCode, /name: 'HRV'/) &&
   !has(qcCode, /当前固件没有即时测量 HRV 的接口/) &&
-  !has(qcCode, /liveHrv/) &&
-  !has(qcCode, /temp, hrv, steps/) &&
   has(qcCode, /hrv60: null, hrv30: null, hrvBaseline: null/),
-  'HRV 只在洞察页独立卡片展示',
+  'HRV 现场测得优先，估算口径不变',
 );
 
 // ── ⑬ 体检「最近的数据」只到今天；首次自动收窄（用户 2026-11-13） ──────────
@@ -269,8 +277,10 @@ check(
   has(scopeLib, /RHYTHM_MIN_DAYS = 7/) &&
   has(scopeLib, /export function classifyScope/) &&
   has(scopeLib, /export function scopeNote/) &&
-  !has(qcUserCopy, /HRV/),
-  '现场优先 / 当日闸门 / 三层依据说明 / 体检上下文无 HRV',
+  // 用户可见文案里不出现「HRV」缩写（用户不关心接口名；指标统一叫「心率变异性」）。
+  // 只查字符串字面量 —— 代码标识符（如 HRV_DETECT_WAIT_MS）不算文案。
+  !has((qcUserCopy.match(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g) ?? []).join('\n'), /HRV/),
+  '现场优先 / 当日闸门 / 三层依据说明 / 用户文案无 HRV 缩写',
 );
 
 // ── ⑬-补 上线前真机验收：报告「本次依据说明」必须真显示出来 ──────────────

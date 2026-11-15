@@ -17,6 +17,9 @@
 
 // 睡眠评分唯一实现（同样纯 TS、零依赖；此处用于「载入时按当前公式重算评分」）
 import { computeSleepScore } from '../lib/sleepScore';
+// ★ 2026-11-14：读取侧生理闸门——历史快照里可能存有闸门上线前落库的脏值
+//   （真机实锤：BP 主动检测回过 30/20），getTimeRange 统一过滤，图表/报告/卡片全受益。
+import { physioValid } from '../lib/physioRange';
 
 // ───────────────────────────────────────────────────────────────────────────
 // 日期工具（全仓唯一实现，禁止在别处 new Date('... 00:00:00')）
@@ -813,7 +816,8 @@ export class HealthStore {
       const dk = dayKey(cur);
       const arr = store.intraday[dk];
       if (arr && arr.length) {
-        for (const p of arr) if (p.t >= fromTs && p.t <= toTs) out.push(p);
+        // ★ 2026-11-14：越界脏值（如 BP 检测回的 30/20）读取时过滤，不进图表/报告
+        for (const p of arr) if (p.t >= fromTs && p.t <= toTs && physioValid(key as string, p.v)) out.push(p);
       } else if (opts?.fillDailyMean) {
         const d = store.daily[dk];
         if (d && d.mean != null) out.push({ t: cur + 12 * 3600000, v: d.mean });
@@ -983,6 +987,56 @@ export class HealthStore {
     });
   }
 
+  /**
+   * ★ 2026-11-15（上线测试 P0-2）：合并冻结分析值（睡眠恢复定稿 / 身体年龄等），
+   *   由 legacy 快照恢复时调用，绝不整体覆盖清空。
+   */
+  mergeAnalysis(raw: any): void {
+    if (!raw || typeof raw !== 'object') return;
+    this.analysis = { ...this.analysis, ...raw };
+    this.notify();
+  }
+
+  /** 轻量导出冻结分析值（给 legacy 快照备份，避免冷启动丢定稿值）。 */
+  exportAnalysis(): Record<string, any> {
+    return { ...this.analysis };
+  }
+
+  /** 轻量导出睡眠原始测量值（给 legacy 快照备份）。 */
+  exportSleep(): Record<string, any> {
+    return { ...this.sleep };
+  }
+
+  /** ★ 2026-11-15（P0-2）：从 legacy 备份合并睡眠原始值，只补不覆盖。 */
+  mergeSleep(raw: any): void {
+    if (!raw || typeof raw !== 'object') return;
+    let added = 0;
+    for (const [dk, v] of Object.entries(raw)) {
+      if (!this.sleep[dk] && v && typeof v === 'object') {
+        this.sleep[dk] = v as any;
+        added++;
+      }
+    }
+    if (added > 0) this.notify();
+  }
+
+  /** ★ 是否含任何可持久化数据：空内存绝不允许覆盖磁盘上的好文件。 */
+  hasAnyData(): boolean {
+    try {
+      if (Object.keys(this.analysis ?? {}).length > 0) return true;
+      if (Object.keys(this.sleep ?? {}).length > 0) return true;
+      if (Object.keys(this.glance ?? {}).length > 0) return true;
+      for (const k of ALL_METRIC_KEYS) {
+        const s = this.stores[k];
+        if (!s) continue;
+        if (Object.keys(s.daily ?? {}).length > 0) return true;
+        if (Object.keys(s.intraday ?? {}).length > 0) return true;
+        if ((s.manualMeasurements?.length ?? 0) > 0) return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
   /** 用 v2 结构直接载入（清掉旧状态）。 */
   loadV2(json: any): void {
     if (!json || json.schema !== SCHEMA_VERSION) return;
@@ -1024,14 +1078,20 @@ export class HealthStore {
     // ★ 睡眠评分是「由冻结的原始 total/deep/getUp 算出的**派生值**」，必须按**当前公式**重算。
     //   否则快照里按旧公式存下的 score（例如满屏 100）会被原样恢复 → 改了公式却"看不出变化"。
     //   原始测量值（total/deep/light/rem/awake/getUp/sleepTime/wakeTime）原样保留、不受影响。
-    this.sleep = this.rebuildSleepFromSnapshot(json.sleep);
+    // ★ 2026-11-15（上线测试 P0-2）：旧实现无条件 `this.sleep = ...`，冷启动时
+    //   v2 文件的 sleep 若为空就把内存清成 {}；改为「快照确实有数据才覆盖」。
+    const rebuiltSleep = this.rebuildSleepFromSnapshot(json.sleep);
+    if (Object.keys(rebuiltSleep).length > 0) this.sleep = rebuiltSleep;
     // ★ 分期段：快照里没有数据时保留内存现状（不清空），避免旧快照覆盖刚回填的内容
     if (json.sleepSegments && typeof json.sleepSegments === 'object' && Object.keys(json.sleepSegments).length > 0) {
       this.sleepSegments = json.sleepSegments as Record<string, unknown[]>;
     }
-    this.glance = json.glance ?? {};
-    this.lastUpdated = json.lastUpdated ?? {};
-    this.analysis = json.analysis ?? {};
+    // ★ 2026-11-15（P0-2）：一律合并而非覆盖。冷启动首帧这些内存桶可能已有值，
+    //   旧写法 `= json.xxx ?? {}` 会把它们整体抹掉（睡眠恢复 85 / 身体年龄 -2.3
+    //   这类冻结在 analysis 里的定稿值就是这样丢的）。
+    this.glance = { ...this.glance, ...(json.glance ?? {}) };
+    this.lastUpdated = { ...this.lastUpdated, ...(json.lastUpdated ?? {}) };
+    this.analysis = { ...this.analysis, ...(json.analysis ?? {}) };
     if (typeof json.syncEnabled === 'boolean') this.syncEnabled = json.syncEnabled;
     if (json.userProfile) this.userProfile = json.userProfile;
     if (typeof json.lastSyncDate === "string") this.lastSyncDate = json.lastSyncDate;

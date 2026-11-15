@@ -391,7 +391,8 @@ export default function InsightScreen() {
     // ④ 简化分析文案（综合两个维度）——★ 2026-10-08（用户：按 ISHO 风格，先事实再人话）
     let hormonalClause: string;
     if (hormonalLabel === '数据不足') {
-      hormonalClause = '荷尔蒙节律的数据还没攒够，再戴几天会更准';
+      // ★ 2026-11-14：这里读的是皮质醇昼夜数据，统一改「昼夜节律」，男性不再看到荷尔蒙口径。
+      hormonalClause = '昼夜节律的数据还没攒够，再戴几天会更准';
     } else if (hormonalLabel === '节律平稳') {
       hormonalClause = '皮质醇节律平稳，白天顶得住、夜里也降得下来';
     } else if (hormonalLabel === '持续偏高') {
@@ -690,6 +691,9 @@ export default function InsightScreen() {
       }
       if (k === 'hrv') return v > 0 && v <= 300;
       if (k === 'eda') return v >= 0 && v <= 99;
+      // ★ 2026-11-14：血压日值/实时值同样过闸（真机实锤 BP 检测回过 30/20 非生理值）
+      if (k === 'bpSys') return v >= 50 && v <= 280;
+      if (k === 'bpDia') return v >= 30 && v <= 180;
       return true;
     };
     const localLast = (key: string): { v: number; t: number } | null => {
@@ -817,6 +821,21 @@ export default function InsightScreen() {
           analysisText={bodyAgeInsight.analysis}
           suggestions={bodyAgeInsight.suggestions}
         />
+        {/* ★ 2026-11-15（上线测试 QC-01）：一键体检原本挂在「基础指标」顶层 tab 下，
+            默认停在「身体节律」时组件根本不挂载，竖向滚 6 屏也找不到。
+            这里给一个常驻可见的快捷入口，不改变默认视图。 */}
+        {topTab === 'rhythm' && (
+          <TouchableOpacity
+            onPress={() => { setTopTab('longevity'); setSubTab('quickcheck'); }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="一键体检"
+            style={styles.qcQuickEntry}
+          >
+            <Text style={styles.qcQuickTitle}>一键体检</Text>
+            <Text style={styles.qcQuickSub}>快速看看今天的身体状态 ›</Text>
+          </TouchableOpacity>
+        )}
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
@@ -1308,13 +1327,16 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           <View style={{ width: 26, height: 26, borderRadius: mm.radius.iconSq, backgroundColor: mm.colors.purpleSoft, alignItems: 'center', justifyContent: 'center', marginRight: theme.sp(1) }}>
             <Icon name="drop" size={14} color={mm.colors.purpleDeep} />
           </View>
-          <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
+          {/* ★ 2026-11-15（用户：洞察页血压卡抬头字号比 HRV/血氧大非常多，不一致）：
+              标题由 card(18) 改回 sm(14)，与 BasicMetricCard 的 HRV/血氧抬头完全对齐；
+              右箭头 16→14 同步对齐 compact 卡口径。 */}
+          <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
           <View style={{ flex: 1 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
                 {lastT > 0 ? formatRelativeTime(lastT) : '今日暂无测量'}
               </Text>
-              <Icon name="chevronRight" size={16} color={mm.colors.inkFaint} />
+              <Icon name="chevronRight" size={14} color={mm.colors.inkFaint} />
             </View>
           </View>
 
@@ -1603,6 +1625,14 @@ function UnderlineTabs({
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
+  /** ★ 2026-11-15：一键体检快捷入口（默认「身体节律」tab 也可见） */
+  qcQuickEntry: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
+    borderRadius: mm.radius.card, paddingVertical: theme.sp(3), paddingHorizontal: theme.sp(4),
+  },
+  qcQuickTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
+  qcQuickSub: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,

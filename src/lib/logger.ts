@@ -38,11 +38,17 @@ export function postLog(tag: string, msg: string, ...extra: any[]) {
     fullMsg = msg + ' ' + extra.map((e) => (typeof e === 'string' ? e : safeStringify(e))).join(' ');
   }
   const now = Date.now();
+  // ★ 2026-11-15（上线测试 PERF-05）：release 只保留轻量控制台输出。
+  //   旧实现每次都「读旧文件 + 拼接 + 整文件写回」JS_LOG.txt，还向硬编码的
+  //   192.168.1.10:8899 发 fetch（release 上根本连不上）—— 是日志刷屏与
+  //   LOG_FLOWCTRL OVER PROC QUOTA 配额丢弃的主要来源之一。
+  if (fullMsg === _lastMsg && now - _lastMsgAt < 2_000) return;
   const important = /\[(BACKFILL|CHAIN|RECOVER|FMDB|STEP|handleStepDay|handleSleepDay|AUTO-MONIT|连接状态)\]/i.test(fullMsg);
-  if (!important) {
-    if (now - _lastPostAt < 250) return;
-    _lastPostAt = now;
-  }
+  if (now - _lastPostAt < (important ? 60 : 250)) return;
+  _lastPostAt = now;
+  _lastMsg = fullMsg;
+  _lastMsgAt = now;
+  if (!(typeof __DEV__ !== 'undefined' && __DEV__)) return;
   try {
     fetch(`http://${getLogHost()}:8899/log`, {
       method: 'POST',
@@ -50,7 +56,7 @@ export function postLog(tag: string, msg: string, ...extra: any[]) {
       body: JSON.stringify({ tag, msg: fullMsg }),
     }).catch(() => {});
   } catch { /* 静默 */ }
-  // ★★ 同时写文件
+  // ★★ 同时写文件（仅 dev，避免 release 反复整文件重写）
   writeLogFile(tag, fullMsg);
 }
 
@@ -63,3 +69,5 @@ function safeStringify(e: any): string {
 }
 
 let _lastPostAt = 0;
+let _lastMsg = '';
+let _lastMsgAt = 0;

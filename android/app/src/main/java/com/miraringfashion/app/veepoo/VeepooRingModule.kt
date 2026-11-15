@@ -18,6 +18,16 @@ import com.veepoo.protocol.listener.data.ISpo2hOriginDataListener
 import com.veepoo.protocol.listener.data.IOriginData3Listener
 import com.veepoo.protocol.listener.data.IAutoMeasureSettingDataListener
 import com.veepoo.protocol.listener.data.IDeviceFuctionDataListener
+// ★ 2026-11-14（用户拍板「一键体检加血压/HRV 主动测量」）：App 主动测量接线。
+//   javap 核对 vpprotocol-2.3.81.15.aar：startDetectBP(IBleWriteResponse, IBPDetectDataListener, EBPDetectModel)
+//   / startDetectHrv(BleWriteResponse, IHrvDetectListener) 均存在；真机 caps bp=true hrv=true。
+//   注意 IBleWriteResponse 本身 extends BleWriteResponse，直接复用现有 SAM 写法。
+import com.veepoo.protocol.listener.data.IBPDetectDataListener
+import com.veepoo.protocol.listener.data.IHrvDetectListener
+import com.veepoo.protocol.model.datas.BpData
+import com.veepoo.protocol.model.enums.EBPDetectModel
+import com.veepoo.protocol.model.enums.HrvDetectState
+import com.veepoo.protocol.shareprence.VpSpGetUtil
 import com.veepoo.protocol.model.datas.BatteryData
 import com.veepoo.protocol.model.datas.HeartData
 import com.veepoo.protocol.model.datas.Spo2hData
@@ -107,7 +117,8 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             // ★ 2026-11-12：让出 PPG 期间只跳过这一轮、不要停定时器。
             //   旧版 releasePpgForAutoMeasure() 直接 stopHrSampling()，恢复后又要等满 5 分钟才采第一次，
             //   加上每半小时让一次，心率节奏被无限推迟（真机 11/12 全天 hr=0 点、single HR detect 日志 0 条）。
-            if (monitorOn && ready.get() && !ppgReleaseActive) {
+            if (monitorOn && ready.get() && !ppgReleaseActive &&
+                bpDetectListener == null && hrvDetectListener == null) {
                 // 占用 PPG 通道 20s 采心率，startSingleHeartDetect 结束内部会恢复 spo2 流
                 startSingleHeartDetect()
             }
@@ -138,6 +149,20 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private var ppgReleaseArmed = false
     @Volatile private var ppgReleaseActive = false
     private val PPG_RELEASE_HOLD_MS = 120_000L
+    // ★ 2026-11-14（真机 17:29 实锤）：让出窗口的恢复任务必须是可取消的具名 Runnable ——
+    //   用户点一键体检时若正好撞上 120s 窗口，重试/HRV/血氧全被静默吞掉
+    //   （`BP detect skip: ppg release window` / `skip realtime restart`）。
+    //   measure() 是用户主动行为，一律先 cancelPpgRelease 再测量，用户意图优先。
+    private var ppgRestoreRunnable: Runnable? = null
+
+    /** 取消进行中的 PPG 让出窗口（含未触发的恢复任务），让用户主动测量立即拿通道。 */
+    private fun cancelPpgRelease(reason: String) {
+        if (!ppgReleaseActive && ppgRestoreRunnable == null) return
+        ppgRestoreRunnable?.let { mainHandler.removeCallbacks(it) }
+        ppgRestoreRunnable = null
+        ppgReleaseActive = false
+        log("[VeepooRing ANDROID] PPG release canceled: $reason (user measure wins)")
+    }
     private val ppgReleaseRunnable = object : Runnable {
         override fun run() {
             if (ready.get()) releasePpgForAutoMeasure()
@@ -175,17 +200,22 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             log("[VeepooRing ANDROID] PPG release FAILED: ${e.message}")
             return
         }
-        mainHandler.postDelayed({
+        val restore = Runnable {
+            ppgRestoreRunnable = null
             ppgReleaseActive = false
-            if (!ready.get()) return@postDelayed
+            if (!ready.get()) return@Runnable
             if (spo2Listener == null) startSpo2hOnly()
             startHrSampling()
-            // 恢复血氧后 25s 主动补一次心率，避免「等满 5 分钟才出第一个点」
+            // 恢复血氧后 25s 主动补一次心率，避免「等满 5 分钟才出第一个点」；
+            // ★ BP/HRV 主动测量进行中不许抢 PPG（否则恰逢其时的一枪会把测量拦腰打断）
             mainHandler.postDelayed({
-                if (monitorOn && ready.get() && !ppgReleaseActive) startSingleHeartDetect()
+                if (monitorOn && ready.get() && !ppgReleaseActive &&
+                    bpDetectListener == null && hrvDetectListener == null) startSingleHeartDetect()
             }, 25_000L)
             log("[VeepooRing ANDROID] PPG release: SPO2H restored, HR catch-up queued")
-        }, PPG_RELEASE_HOLD_MS)
+        }
+        ppgRestoreRunnable = restore
+        mainHandler.postDelayed(restore, PPG_RELEASE_HOLD_MS)
     }
     // ★ 2026-11-09：离线回填状态机——真正调 SDK 读历史，逐日 emit onBatch。
     private val backfillInProgress = AtomicBoolean(false)
@@ -200,6 +230,37 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      * 现在只有 origin3 也收尾了，才 emit backfillDone 并释放 backfillInProgress。
      */
     private val origin3InProgress = AtomicBoolean(false)
+    /** ★ 2026-11-15：事务期间到达的重复回填请求只挂起，不再向 BLE 通道发第二次全量读。 */
+    private val pendingBackfillDuringTransaction = AtomicBoolean(false)
+    /**
+     * ★ 2026-11-15（上线测试 P0-1：连上 3 秒就掉线）：
+     * 认证成功后同一条 BLE 写通道会被「对时 / 实时血氧 / 4 个自动测量开关 / PPG 让出循环 /
+     * JS connected 边沿的 setAutoMonitor + setSyncEnabled + ready 分支的 ensureAutoMeasureNow /
+     * 以及全量回填补跑」在 3s 内并发打爆；而 origin3 历史读取也在同一通道。
+     * 这里把所有非必要写命令在同步事务期间排队，事务收口后错峰回放。
+     */
+    private val deferredWrites = java.util.concurrent.CopyOnWriteArrayList<Pair<String, () -> Unit>>()
+    private fun runOrDeferWrite(tag: String, block: () -> Unit) {
+        if (backfillInProgress.get() || origin3InProgress.get()) {
+            log("[VeepooRing ANDROID] defer BLE write '$tag' until sync settles")
+            deferredWrites.add(tag to block)
+        } else {
+            try { block() } catch (e: Exception) { log("[VeepooRing ANDROID] deferred write '$tag' failed: ${e.message}") }
+        }
+    }
+    private fun flushDeferredWrites() {
+        if (deferredWrites.isEmpty()) return
+        val list = ArrayList(deferredWrites)
+        deferredWrites.clear()
+        mainHandler.postDelayed({
+            list.forEachIndexed { i, (tag, block) ->
+                mainHandler.postDelayed({
+                    try { block() } catch (e: Exception) { log("[VeepooRing ANDROID] deferred write '$tag' failed: ${e.message}") }
+                }, i * 350L)
+            }
+            log("[VeepooRing ANDROID] flushed ${list.size} deferred BLE writes after sync settled")
+        }, 600L)
+    }
     // 设备可存储天数（来自 IDeviceFuctionDataListener 回调的 getWathcDay()，SDK 拼写如此）。
     private var deviceWatchday = 7
 
@@ -362,6 +423,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     emit("onState", JSONObject().apply {
                         put("status", "error")
                         put("reason", "connect_failed")
+                        put("error", "connect_failed")
                     })
                 }
             },
@@ -374,6 +436,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     emit("onState", JSONObject().apply {
                         put("status", "error")
                         put("reason", "notify_failed")
+                        put("error", "notify_failed")
                     })
                 }
             })
@@ -449,12 +512,19 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         }
         ready.set(true)
         emit("onState", JSONObject().apply { put("status", "ready") })
-        // ★ 2026-11-12：认证成功后立即给戒指对时，别再让它用自己的 RTC 记时间戳
-        syncDeviceTime(true)
-        startRealtimeIfNeeded()
-        // 确保戒指端心率/HRV 自动测量开着，否则整夜只会采血氧，App 无数据可回填
-        ensureAutoMeasure()
-        startPpgReleaseCycle()
+        // ★ 2026-11-15（P0-1）：旧实现在认证成功的同一帧连发 4 组写命令，和 JS 的
+        //   setAutoMonitor / ensureAutoMeasureNow / 全量回填读命令挤在 3 秒内打爆单通道
+        //   → 真机表现为「刚连上 3 秒就掉线」。现在错峰 0.8/1.4/2.0/2.6s，且若同步
+        //   事务已在途则统一排队到事务收口后回放（见 runOrDeferWrite / flushDeferredWrites）。
+        val writes: List<Pair<String, () -> Unit>> = listOf(
+            "syncDeviceTime" to { syncDeviceTime(true) },
+            "startRealtimeIfNeeded" to { startRealtimeIfNeeded() },
+            "ensureAutoMeasure" to { ensureAutoMeasure() },
+            "startPpgReleaseCycle" to { startPpgReleaseCycle() },
+        )
+        writes.forEachIndexed { i, (tag, block) ->
+            mainHandler.postDelayed({ runOrDeferWrite(tag, block) }, 800L + i * 600L)
+        }
     }
 
     @ReactMethod
@@ -471,7 +541,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setAutoMonitor(on: Boolean) {
         monitorOn = on
-        if (on) startRealtimeIfNeeded() else stopRealtime()
+        // ★ 2026-11-15：connected 边沿 JS 会立刻调本方法，与 origin3 读命令抢通道。
+        if (on) runOrDeferWrite("startRealtime(autoMonitor)") { startRealtimeIfNeeded() }
+        else runOrDeferWrite("stopRealtime(autoMonitor)") { stopRealtime() }
         log("[VeepooRing ANDROID] autoMonitor=$on")
     }
 
@@ -559,6 +631,13 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         if (!ready.get()) { startRealtimeIfNeeded(); return }
         // 静默窗口内绝不抢 PPG，否则戒指的 HRV/血压自测又会被打断
         if (ppgReleaseActive) return
+        // ★ 2026-11-14（真机 17:29:15 实锤）：5 分钟定时器在 BP 检测进行中也能开跑，
+        //   两个「single HR detect started」叠着把 PPG 从血压手里抢走 → 血压 progress 卡中段。
+        //   BP/HRV 主动测量独占期内心率采样必须让路。
+        if (bpDetectListener != null || hrvDetectListener != null) {
+            log("[VeepooRing ANDROID] single HR detect skip: BP/HRV detect in progress")
+            return
+        }
         try {
             spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
             spo2Listener = null
@@ -588,6 +667,119 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             log("[VeepooRing ANDROID] single HR detect FAILED: ${e.message}")
             hrListener = null
             if (monitorOn && !ppgReleaseActive) startSpo2hOnly()
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★ 2026-11-14（用户拍板「一键体检加 BP/HRV 主动测量」）：App 主动发起一次测量。
+    //   结果按 onRealtime {metric: bpSys/bpDia/hrv, value, ts} 回流 —— 与现有
+    //   handleRealtime → healthStore.upsertRealtime + scheduleRecompute 全链路同源，
+    //   洞察页卡片 / 首页 / 体检报告自动一起刷新，不需要第二条通道。
+    //   硬约束：PPG 一次只能跑一个检测（2026-11-09 实锤），进入前先停血氧流；
+    //   出数即停归还通道；超时兜底 stop，绝不长期占着 PPG。
+    // ─────────────────────────────────────────────────────────────────────────
+    private var bpDetectListener: IBPDetectDataListener? = null
+    private var hrvDetectListener: IHrvDetectListener? = null
+    // ★ 2026-11-14（用户反馈血压主动测「不出值」）：JS 侧会自动重试一次 measure('bp')，
+    //   startBpDetect 必须可重入 —— 重入时先取消上一次的兜底 stop，再停掉可能仍在跑的
+    //   上一轮检测，从干净状态发起本轮；否则两个 startDetectBP 叠加、旧 stop 会误杀新一轮。
+    private var bpPendingStop: Runnable? = null
+
+    /** App 主动发起一次血压测量（SDK startDetectBP，公开模式）。结果经 onRealtime 回流。 */
+    private fun startBpDetect() {
+        if (!ready.get()) { log("[VeepooRing ANDROID] BP detect skip: ring not ready"); return }
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] BP detect skip: ppg release window"); return }
+        try {
+            val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportBp()
+            if (!support) { log("[VeepooRing ANDROID] BP detect skip: firmware not support"); return }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] BP detect cap check failed: ${e.message}") // 能力位读取失败不阻断，交设备实测裁决
+        }
+        // 重入安全：取消上一次兜底 stop + 停掉上一轮检测（没在跑时 stop 是无害空操作）
+        bpPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+        bpPendingStop = null
+        try { manager.stopDetectBP(IBleWriteResponse { _ -> }, EBPDetectModel.DETECT_MODEL_PUBLIC) } catch (_: Throwable) {}
+        try {
+            spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            bpDetectListener = object : IBPDetectDataListener {
+                override fun onDataChange(data: BpData?) {
+                    val d = data ?: return
+                    val sys = d.highPressure
+                    val dia = d.lowPressure
+                    log("[VeepooRing ANDROID] BP detect progress=${d.progress} sys=$sys dia=$dia")
+                    if (sys > 0 && dia > 0) {
+                        val ts = System.currentTimeMillis()
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", "bpSys"); put("value", sys); put("unit", "mmHg"); put("ts", ts)
+                        })
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", "bpDia"); put("value", dia); put("unit", "mmHg"); put("ts", ts)
+                        })
+                        // 出数即停，归还 PPG 通道
+                        try { manager.stopDetectBP(IBleWriteResponse { _ -> }, EBPDetectModel.DETECT_MODEL_PUBLIC) } catch (_: Throwable) {}
+                        bpPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+                        bpPendingStop = null
+                        bpDetectListener = null
+                    }
+                }
+            }
+            manager.startDetectBP(IBleWriteResponse { _ -> }, bpDetectListener, EBPDetectModel.DETECT_MODEL_PUBLIC)
+            log("[VeepooRing ANDROID] BP detect started (PUBLIC model)")
+            // ★ 2026-11-14：兜底 stop 60s → 90s（第一轮 45s 没出值时 JS 会重试一轮，60s 会拦腰砍断第二轮）
+            val stop = Runnable {
+                try { manager.stopDetectBP(IBleWriteResponse { _ -> }, EBPDetectModel.DETECT_MODEL_PUBLIC) } catch (_: Throwable) {}
+                bpDetectListener = null
+            }
+            bpPendingStop = stop
+            Handler(Looper.getMainLooper()).postDelayed(stop, 90_000L)
+        } catch (e: Exception) {
+            log("[VeepooRing ANDROID] BP detect FAILED: ${e.message}")
+            bpDetectListener = null
+        }
+    }
+
+    /** App 主动发起一次 HRV 测量（SDK startDetectHrv）。需固件 isSupportHrvAppDetect=true（与全天自动 HRV 是两个能力位）。 */
+    private fun startHrvDetect() {
+        if (!ready.get()) { log("[VeepooRing ANDROID] HRV detect skip: ring not ready"); return }
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] HRV detect skip: ppg release window"); return }
+        try {
+            val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportHrvAppDetect()
+            if (!support) {
+                // 与 caps.hrv（全天自动 HRV）是两个能力位；不支持就明确留痕，绝不静默。
+                log("[VeepooRing ANDROID] HRV detect skip: firmware not support app detect")
+                return
+            }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] HRV detect cap check failed: ${e.message}")
+        }
+        try {
+            spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            hrvDetectListener = object : IHrvDetectListener {
+                override fun onHrvDetect(value: Int) {
+                    if (value <= 0) return
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "hrv"); put("value", value); put("unit", "ms"); put("ts", System.currentTimeMillis())
+                    })
+                    try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
+                    hrvDetectListener = null
+                }
+                override fun onDetectFailed(state: HrvDetectState) {
+                    log("[VeepooRing ANDROID] HRV detect failed: $state")
+                }
+                override fun onDetectStop() {
+                    log("[VeepooRing ANDROID] HRV detect stopped")
+                }
+            }
+            manager.startDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener)
+            log("[VeepooRing ANDROID] HRV detect started")
+            Handler(Looper.getMainLooper()).postDelayed({
+                try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
+            }, 20_000L)
+        } catch (e: Exception) {
+            log("[VeepooRing ANDROID] HRV detect FAILED: ${e.message}")
+            hrvDetectListener = null
         }
     }
 
@@ -715,13 +907,15 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     /** ★ 2026-11-11：供 JS 在每次 onState=ready 时复核自动测量开关（已配对设备重启后不再走首次认证）。 */
     @ReactMethod
     fun ensureAutoMeasureNow() {
-        ensureAutoMeasure()
+        // ★ 2026-11-15（P0-1）：与 syncPersonInfo 原本重复下发同一批写命令；
+        //   统一走事务感知队列，同步读取期间绝不并发写 BLE。
+        runOrDeferWrite("ensureAutoMeasure(ready)") { ensureAutoMeasure() }
         // ★ 已配对设备重启不走 syncPersonInfo()，旧版只在那儿启动分时让通道 → 从未生效。
         //   JS 每次 onState=ready 都会调本方法，挂在这里才保证一定启动。
-        startRealtimeIfNeeded()
-        startPpgReleaseCycle()
+        runOrDeferWrite("startRealtime(ready)") { startRealtimeIfNeeded() }
+        runOrDeferWrite("ppgRelease(ready)") { startPpgReleaseCycle() }
         // 每次 ready 都复核一次戒指时钟（内部 30 分钟节流，避免频繁写 BLE）
-        syncDeviceTime()
+        runOrDeferWrite("syncDeviceTime(ready)") { syncDeviceTime() }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -768,16 +962,48 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun measure(key: String) {
         log("[VeepooRing ANDROID] measure $key")
+        // ★ 2026-11-14（真机实锤：120s 让出窗口撞上一键体检 → 重试/HRV/血氧全被静默吞）：
+        //   用户主动测量 = 用户意图优先，一律先取消进行中的 PPG 让出窗口再发测量。
+        //   窗口的 30 分钟周期循环（ppgReleaseRunnable）不受影响，下个整点照常让出。
+        cancelPpgRelease("measure $key")
         when (key) {
             "hr" -> startSingleHeartDetect()
             "spo2" -> startRealtimeIfNeeded()
             "temp" -> triggerHealthGlance()
             "eda", "stress", "depression" -> triggerGSR()
-            "hrv", "cortisol", "healthGlance", "sns", "emotion", "skin", "fatigue",
+            // ★ 2026-11-14（用户拍板）：hrv / bp 从 triggerHealthGlance 组里拆出，接真正的
+            //   App 主动测量（startDetectHrv / startDetectBP）；此前 hrv 指向的还是 TODO stub。
+            "hrv" -> startHrvDetect()
+            "bp" -> startBpDetect()
+            "cortisol", "healthGlance", "sns", "emotion", "skin", "fatigue",
             "cholesterol", "triglyceride", "hdl", "ldl", "ua", "uricAcid" -> triggerHealthGlance()
             "ecg" -> startEcg()
             "rr" -> log("[VeepooRing ANDROID] rr: 本固件未开放（SDK NoFunction），以待接入呈现")
             else -> log("[VeepooRing ANDROID] 未知测量项: $key")
+        }
+    }
+
+    /**
+     * ★ 2026-11-14（血压主动测不出值 → 体检里自动重试）：显式停止主动检测，归还 PPG 通道。
+     *   体检会话在 BP 阶段结束（无论是否出值）时调用 stopMeasure('bp')：
+     *   出值时 SDK 已自停（无害重复 stop），没出值时防止 90s 兜底未触发就长期占道，
+     *   挡住后面的 HRV / 血氧流。与 measure(key) 成对，对齐 iOS 无此需求（iOS 走自己的桥）。
+     */
+    @ReactMethod
+    fun stopMeasure(key: String) {
+        log("[VeepooRing ANDROID] stopMeasure $key")
+        when (key) {
+            "bp" -> {
+                bpPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+                bpPendingStop = null
+                try { manager.stopDetectBP(IBleWriteResponse { _ -> }, EBPDetectModel.DETECT_MODEL_PUBLIC) } catch (_: Throwable) {}
+                bpDetectListener = null
+            }
+            "hrv" -> {
+                try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
+                hrvDetectListener = null
+            }
+            else -> log("[VeepooRing ANDROID] stopMeasure: 未知项 $key")
         }
     }
 
@@ -889,13 +1115,22 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun backfillSince(fromDateStr: String) {
         if (!ready.get()) {
+            // ★ 2026-11-15（上线测试 P0-1）：掉线时绝不 emit backfillDone。
+            //   旧实现直通 backfillDone → JS finishSyncAll 推进游标 + 800ms 补跑 →
+            //   掉线态再直通 → 无限空转（真机 27 次扫描 / 12 次 watchdog 的起点）。
+            //   改用独立状态：JS 只解锁、不推进游标、不补跑、不做缺口自愈。
             log("[VeepooRing ANDROID] backfill skipped: 设备未就绪（未 connected/ready）")
-            emit("onState", JSONObject().apply { put("status", "syncing"); put("progress", 0) })
-            emit("onState", JSONObject().apply { put("status", "backfillDone") })
+            emit("onState", JSONObject().apply {
+                put("status", "backfillSkipped")
+                put("reason", "not_ready")
+            })
             return
         }
         if (backfillInProgress.getAndSet(true)) {
-            log("[VeepooRing ANDROID] backfill 已在进行，忽略重复请求")
+            // ★ 2026-11-15：重复请求绝不能再发一次全量 BLE 读（会打断在途 origin3），
+            //   只记一个挂起标记，由事务唯一收口 finishBackfillTransaction 决定是否补跑。
+            log("[VeepooRing ANDROID] backfill 已在进行，合并为事务内挂起请求（不重发 BLE 读）")
+            pendingBackfillDuringTransaction.set(true)
             return
         }
 
@@ -1006,7 +1241,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             manager.readAllHealthDataBySettingOrigin(listener, 0, 1, n)
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] backfill read FAILED: ${e.message}")
-            emit("onState", JSONObject().apply { put("status", "error"); put("reason", "backfill_failed") })
+            emit("onState", JSONObject().apply { put("status", "error"); put("reason", "backfill_failed"); put("error", "backfill_failed") })
             finishBackfillTransaction()
         }
     }
@@ -1018,7 +1253,10 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      */
     private fun startOrigin3ThenFinish(days: Int) {
         if (!origin3InProgress.compareAndSet(false, true)) {
-            log("[VeepooRing ANDROID] origin3 已在本次事务内，忽略重复启动")
+            // ★ 2026-11-15（上线测试 P0-1）：旧实现直接 return，会让整轮事务永不 emit
+            //   backfillDone（JS 等到 300s 超时后 disconnect）。重复启动一律收口，不再挂死。
+            log("[VeepooRing ANDROID] origin3 已在本次事务内，重复启动改为直接收口事务")
+            finishBackfillTransaction()
             return
         }
         // 只等 300ms 让 SDK 写队列释放尾包；不再等 1.5s，缩短整轮同步耗时。
@@ -1031,9 +1269,16 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private fun finishBackfillTransaction() {
         if (!backfillInProgress.getAndSet(false)) return
         origin3InProgress.set(false)
+        // ★ 2026-11-15：事务期间的重复请求统一合并丢弃，绝不在 origin3 读取窗口内
+        //   或收口瞬间再发一次全量 BLE 读命令。
+        if (pendingBackfillDuringTransaction.getAndSet(false)) {
+            log("[VeepooRing ANDROID] pending backfill merged into this transaction (no extra BLE read)")
+        }
         emit("onState", JSONObject().apply { put("status", "syncing"); put("progress", 100) })
         emit("onState", JSONObject().apply { put("status", "backfillDone") })
         log("[VeepooRing ANDROID] backfill transaction done (origin3 settled)")
+        // 事务收口、BLE 读通道释放后，才错峰回放被暂缓的写命令。
+        flushDeferredWrites()
     }
 
     /**
@@ -1131,12 +1376,18 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      * 独立执行 + 15s 超时兜底，失败不影响主同步。
      */
     private fun readOrigin3History(days: Int, onDone: () -> Unit) {
-        if (!ready.get()) { onDone(); return }
+        if (!ready.get()) {
+            // ★ 2026-11-15：异常收口也要留痕，别再静默 produce 一个「零数据成功事务」。
+            log("[VeepooRing ANDROID] origin3 skipped: 设备未就绪（异常收口事务）")
+            onDone()
+            return
+        }
         try {
             val slotsByDate = mutableMapOf<String, MutableList<JSONObject>>()
             var hrHits = 0
             var hrvHits = 0
             var spo2Hits = 0
+            var bpHits = 0
             val finished = AtomicBoolean(false)
 
             /**
@@ -1178,6 +1429,27 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 return map.values.sortedBy { it.optLong("ts", 0L) }
             }
 
+            /**
+             * ★ 2026-11-15（上线测试 P0-1）：origin3 批次原来 hardcode `daily = {}`，
+             *   JS 只能靠 dailyMeanFromSlots 反算，一旦 slots 未到就是「今日 daily 0/8」。
+             *   这里按已解析 slots 直接产出 6 个核心指标的当日均值，供 JS handleBatch
+             *   的 SINGLE_MAP 直接落 *Daily（不编造数值，全来自 SDK 回读样本）。
+             */
+            fun dailyFromSlots(list: List<JSONObject>): JSONObject {
+                val d = JSONObject()
+                for (k in listOf("hr", "hrv", "spo2", "temp", "bpSys", "bpDia")) {
+                    var sum = 0.0
+                    var n = 0
+                    for (s in list) {
+                        val v = s.optDouble(k, Double.NaN)
+                        if (!v.isNaN() && v > 0.0) { sum += v; n++ }
+                    }
+                    if (n > 0) d.put(k, Math.round(sum / n * 100.0) / 100.0)
+                }
+                return d
+            }
+
+            /** 只由 SDK 的 onReadOriginComplete / onReadTimeout 触发：正常 emit 全部批次再收口。 */
             val finish: () -> Unit = {
                 if (finished.compareAndSet(false, true)) {
                     var emittedDays = 0
@@ -1188,13 +1460,27 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                         emit("onBatch", JSONObject().apply {
                             put("date", date)
                             put("slots", JSONArray(merged))
-                            put("daily", JSONObject())
+                            put("daily", dailyFromSlots(merged))
                         })
                         emittedDays++
                         emittedPts += merged.size
                     }
-                    log("[VeepooRing ANDROID] origin3 emit days=$emittedDays points=$emittedPts hr=$hrHits hrv=$hrvHits spo2=$spo2Hits")
+                    log("[VeepooRing ANDROID] origin3 emit days=$emittedDays points=$emittedPts hr=$hrHits hrv=$hrvHits spo2=$spo2Hits bp=$bpHits")
                     // ★ 历史回读收尾了，才允许整轮同步事务 emit backfillDone。
+                    onDone()
+                }
+            }
+
+            /**
+             * ★ 2026-11-15（上线测试 P0-1）：45s 守护定时器**不再抢占 finished**。
+             *   旧实现里超时先跑 finish() → 打出 `days=0 points=0` 空批次并收口事务，
+             *   随后 SDK 真正带回的 192 条数据被 finished 挡住，永久丢弃（真机实证）。
+             *   现在超时只收口事务（避免死锁），不写 finished、不发空批次、不伪造统计行；
+             *   晚到的数据仍可走 finish() emit onBatch 并落库。
+             */
+            val settleOnTimeout: () -> Unit = {
+                if (!finished.get()) {
+                    log("[VeepooRing ANDROID] origin3 settle by timeout (no empty batch; late SDK data still accepted)")
                     onDone()
                 }
             }
@@ -1209,16 +1495,35 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                             if (hr in 30..200) { s.put("hr", hr); hrHits++ }
                             val step = o.stepValue
                             if (step > 0) s.put("step", step)
+                            // ★ 2026-11-14（用户：血压长期不更新）：SDK 文档明确「五分钟原始数据中血压数据」
+                            //   位于 OriginData.highValue / lowValue（OriginData3 继承它）。旧实现只读 hr/step，
+                            //   把设备已经回传的血压整包丢掉了 —— 这才是 bpSys=0/bpDia=0 的直接原因之一。
+                            //   仅做生理范围过滤（高压 60-300 / 低压 20-200），不编造任何数值。
+                            val high = o.highValue
+                            val low = o.lowValue
+                            if (high in 60..300 && low in 20..200) {
+                                s.put("bpSys", high); s.put("bpDia", low); bpHits++
+                            }
                         }
                     }
                 }
                 override fun onOriginHalfHourDataChange(d: OriginHalfHourData?) {
-                    val rates = d?.halfHourRateDatas ?: return
-                    for (r in rates) {
+                    if (d == null) return
+                    for (r in d.halfHourRateDatas.orEmpty()) {
                         if (r == null) continue
                         val hr = r.rateValue
                         if (hr !in 30..200) continue
                         add(d.date ?: r.date, r.time) { s -> s.put("hr", hr); hrHits++ }
+                    }
+                    // ★ 30 分钟汇总包里的 halfHourBps 同样带血压，一并解析（与五分钟包按 ts 合并去重）。
+                    for (b in d.halfHourBps.orEmpty()) {
+                        if (b == null) continue
+                        val high = b.highValue
+                        val low = b.lowValue
+                        if (high !in 60..300 || low !in 20..200) continue
+                        add(b.date ?: d.date, b.time) { s ->
+                            s.put("bpSys", high); s.put("bpDia", low); bpHits++
+                        }
                     }
                 }
                 override fun onOriginHRVOriginListDataChange(list: List<HRVOriginData>?) {
@@ -1266,7 +1571,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             )
             // ★ 2026-11-11：增量回填每次只拉 [游标, 今天] 这几天，但仍保留充裕超时，
             // 避免多天 HRV/血氧历史回读被 15s 硬截断导致「很多数据没回填回来」。
-            Handler(Looper.getMainLooper()).postDelayed({ finish() }, 45_000L)
+            Handler(Looper.getMainLooper()).postDelayed({ settleOnTimeout() }, 45_000L)
             log("[VeepooRing ANDROID] origin3 requested days=$days")
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] origin3 FAILED: ${e.message}")

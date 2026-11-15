@@ -14,6 +14,7 @@
 import { healthStore, dayKey } from '../data/healthStore';
 import { RingBle } from '../ble/RingBleManager';
 import { computeCycle, type CycleLog } from './cycleMath';
+import type { PeriodDayLog } from '../data/cycleLog';
 import { getEntriesForDay, MOOD_LABEL } from '../data/emotionLog';
 import { getSelfReportsForDaySync } from '../data/selfReportLog';
 import { allInterventionEntries, type InterventionKind } from '../data/interventionLog';
@@ -138,6 +139,18 @@ function vitalsOf(dk: string): { label: string; value: string }[] {
   return out.slice(0, 6);
 }
 
+/** ★ 本轮（用户：可看的数据要「多数据综合分析」）：结构化数值，供跨指标合看 */
+function vitalsDetailOf(dk: string): DayDimensionInput['vitalsDetail'] {
+  return {
+    sys: dayMean('bpSys', dk) ?? dayMean('manualBpSys', dk),
+    dia: dayMean('bpDia', dk) ?? dayMean('manualBpDia', dk),
+    hr: dayMean('hr', dk),
+    hrv: dayMean('hrv', dk),
+    spo2: dayMean('spo2', dk),
+    stress: dayMean('stress', dk),
+  };
+}
+
 /**
  * 读某一天的全部维度数据并组卡。
  * @param date 任意一天（今天或历史日）
@@ -148,9 +161,10 @@ export function buildDayDimensionGroups(
   date: Date,
   cycleLog?: CycleLog | null,
   showCycle = true,
+  periodDays?: Record<string, PeriodDayLog> | null,
 ): DimensionGroup[] {
   try {
-    return buildDayDimensionGroupsInner(date, cycleLog, showCycle);
+    return buildDayDimensionGroupsInner(date, cycleLog, showCycle, periodDays);
   } catch {
     // ★ 顶层兜底：任何单源异常都只让维度区少一张卡，绝不让整个回顾页白屏
     return [];
@@ -161,6 +175,7 @@ function buildDayDimensionGroupsInner(
   date: Date,
   cycleLog?: CycleLog | null,
   showCycle = true,
+  periodDays?: Record<string, PeriodDayLog> | null,
 ): DimensionGroup[] {
   const anchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
   const dk = dayKey(anchor.getTime());
@@ -175,7 +190,7 @@ function buildDayDimensionGroupsInner(
       phaseLabel = ring.curveStatus.phaseLabel;
       dayInCycle = ring.curveStatus.dayInCycle ?? null;
     } else if (cycleLog?.lastPeriodStart) {
-      const info = computeCycle(cycleLog, anchor);
+      const info = computeCycle(cycleLog, anchor, { periodDays: periodDays ?? undefined });
       if (info.hasLog && info.phaseLabel && info.phaseLabel !== '未记录') {
         phaseLabel = info.phaseLabel;
         dayInCycle = info.dayInCycle ?? null;
@@ -235,6 +250,7 @@ function buildDayDimensionGroupsInner(
     moodReports,
     stressMean: dayMean('stress', dk),
     vitals: vitalsOf(dk),
+    vitalsDetail: vitalsDetailOf(dk),
     completedTasks: completedTasksOf(dk),
   };
 

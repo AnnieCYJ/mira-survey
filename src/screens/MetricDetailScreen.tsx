@@ -13,7 +13,7 @@
  *   （见 🔴#5：`age ?? 30` 曾导致 MHR 算出 192 并在 UI 明写「基于 30 岁」）。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, type LayoutChangeEvent } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop, Line } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
@@ -22,6 +22,7 @@ import { chart } from '../theme/chart';
 import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
+import { showCycleContent } from '../data/cycleScope';
 import ChartTooltip from '../components/ChartTooltip';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
@@ -1631,23 +1632,39 @@ export default function MetricDetailScreen() {
       for (const v of series.points) if (v != null) vals.push(v);
     }
     if (!vals.length) return { lo: series.yMin, hi: series.yMax };
-    const rawMin = Math.min(...vals);
-    const rawMax = Math.max(...vals);
+    // ★ 2026-11-14（用户：血氧趋势图冒出 -10、身心压力冒出 -3 这种不可能刻度）：
+    //   先剔除生理上不可能的异常采样点 —— 非负指标的负值、超出量程上限 5% 的离群值。
+    //   一个脏点就能把纵轴拉出负数刻度；剔掉后纵轴永远落在生理合理范围内。
+    // ★ 2026-11-14（#318/#319 加固）：血氧/压力这类生理上非负的指标，即使 series 固定下限未注入，
+    //   也强制把负值（实测出现的 -10 / -3 脏点）当异常剔除，纵轴永远落在生理合理范围。
+    //   双向指标（情绪 -10~10）不在名单内，负值仍保留。
+    const nonNeg = (series.yMin != null && series.yMin >= 0) || params.key === 'spo2' || params.key === 'stress';
+    const hardMax = series.yMax != null && series.yMax > 0 && params.key !== 'emotion' ? series.yMax : Infinity;
+    // 固定量程下限 > 0 的指标（血氧 80 / 心率 40 / 体温 35…），低于下限一半的采样必是脏点
+    // （血氧 0、心率 0 这类「没测到却落了 0」的历史点），一并剔除，不然纵轴会被拉穿 0。
+    const hardMin = series.yMin != null && series.yMin > 0 ? series.yMin * 0.5 : 0;
+    const clean = vals.filter((v) => (!nonNeg || v >= hardMin) && v <= hardMax * 1.05);
+    const use = clean.length ? clean : vals;
+    const rawMin = Math.min(...use);
+    const rawMax = Math.max(...use);
     // ★ 2026-10-08：非负 / 归一化指标（cortisol/eda/hrv/...）的 Y 轴下限钳 0，
     //   否则底部刻度会出现 -7 之类负值（用户实锤）。可负指标（如情绪 -10~10, yMin<0）不受影响。
     //   ★ 2026-10-12：emotion 虽在 RELATIVE_AXIS_KEYS（不显示数值轴），但它是**双向**指标
     //   （-10~10），一律钳 0 会把负值曲线整段切掉 → 排除出钳 0 名单。
-    //   ★ 本轮：相对 / 归一化指标（RELATIVE_AXIS_KEYS）除情绪外一律下限 0（0~100 活性）。
     const isRelative = RELATIVE_AXIS_KEYS.has(params.key) && params.key !== 'emotion';
-    const floor = isRelative ? 0 : (series.yMin != null && series.yMin >= 0 ? series.yMin : -Infinity);
+    const baseFloor = isRelative ? 0 : (series.yMin != null && series.yMin >= 0 ? series.yMin : -Infinity);
+    // ★ 2026-11-14（用户）：固定下限不再硬钳 —— 真实数据低于固定下限时（血氧确实低氧到 70 多），
+    //   下限跟着数据往下放（血氧常态 80–100，真低氧才自适应下探），曲线不再被压平底。
+    const hardZero = isRelative || nonNeg ? 0 : -Infinity;
+    const dipBelow = (v: number, pad: number) => Math.max(hardZero, Math.min(baseFloor as number, v - pad));
     if (rawMin === rawMax) {
       const pad = Math.abs(rawMin) * 0.1 || 1;
-      return { lo: Math.max(floor, rawMin - pad), hi: rawMax + pad };
+      return { lo: dipBelow(rawMin, pad), hi: rawMax + pad };
     }
     const span = rawMax - rawMin;
     const pad = span * 0.12;
-    return { lo: Math.max(floor, rawMin - pad), hi: rawMax + pad };
-  }, [series.tPoints, series.points, series.yMin, series.yMax]);
+    return { lo: dipBelow(rawMin, pad), hi: rawMax + pad };
+  }, [series.tPoints, series.points, series.yMin, series.yMax, params.key]);
   const yLo = yBounds.lo;
   const yHi = yBounds.hi;
   const yAt = (v: number) => {
@@ -2115,7 +2132,7 @@ export default function MetricDetailScreen() {
             <Text style={styles.chartNote}>
               {tempSignal === 'skinTemp'
                 ? '皮肤温度按「相对你自己的基线」显示，不是绝对温度——皮肤温噪声更大、受环境干扰更明显，曲线形状才有意义。'
-                : '体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，曲线形状才有意义（黄体期通常整体上移约 +0.3℃）。'}
+                : `体温按「相对你自己的基线」显示，不是绝对体温——白天的体温会被吃喝、运动、环境干扰，曲线形状才有意义${showCycleContent() ? '（黄体期通常整体上移约 +0.3℃）' : ''}。`}
             </Text>
           </View>
           </>
@@ -2246,11 +2263,7 @@ export default function MetricDetailScreen() {
                 <DayBarsLegend showMean={false} items={specLegendItems} />
                 <Text style={styles.chartNote}>
                   {isBaseLayout ? withBaseBinText(spec!.sourceNote, specDay.binMin ?? barBinMin) : spec!.sourceNote}
-                  {specDay.derived ? '（当日历史数据为推算值）' : ''}
                   {isBaseLayout ? ` ${baseBinNote(barBin, params.name)}` : ''}
-                  {stressPart === 'night'
-                    ? ` 当前为夜间视图（00:00–${stressClock.wake} 与 ${stressClock.bedTonight}–24:00），日间时段已隐藏。`
-                    : ` 当前为日间视图（${stressClock.wake}–${stressClock.bedTonight}），夜间时段已隐藏。`}
                 </Text>
                 {/* ★ 2026-10-17（对齐 Oura Daytime Stress 的「紧张 / 恢复时长」汇总）：
                     按档位把有数据的桶折算成小时，与日视图同套档位配色（低=灰 / 高=粉）。 */}
@@ -2332,7 +2345,10 @@ export default function MetricDetailScreen() {
         {/* ★ 2026-10-16（续 6）：血脂四项详情页主图 = 四项同图趋势（TC/TG/HDL/LDL 共享 0–10 坐标轴，随顶部日/周/月/年切换） */}
         {isLipid ? <LipidTrendCard range={range} anchor={anchor} title="血脂四项趋势图" /> : null}
 
-        {/* ★ 2026-11-05（用户：心率 / 心率变异性 周月年也展示成柱状图，与日视图同款） */}
+        {/* ★ 2026-11-05（用户：心率 / 心率变异性 周月年也展示成柱状图，与日视图同款）
+            ★ 2026-11-14（用户：「周里面心率变异性趋势图完全没有图，没数据要显示空图表」）：
+            HRV 属相对指标原本隐藏 Y 轴 → 空数据时只剩极淡网格，看起来像「没有图」。
+            改为恒显 Y 轴刻度（0–150 rMSSD ms 是绝对单位，有意义），空数据时坐标框架 + 空态文字始终在。 */}
         {!isEcg && (params.key === 'hr' || params.key === 'hrv') && range !== 'day' ? (
           <View style={styles.chartCard}>
             <Text style={styles.chartTitle}>{chartTitle}</Text>
@@ -2345,7 +2361,7 @@ export default function MetricDetailScreen() {
               yMax={yHi}
               unit={series.unit}
               valueFmt={fmtVal}
-              showYAxis={!hideYAxis}
+              showYAxis
               emptyText={ring.status !== 'connected' ? '连接戒指以加载历史数据' : backfilling ? '正在补拉历史数据…' : '当前范围内暂无数据'}
               derivedIndexes={series.derivedIndexes}
             />
@@ -3415,7 +3431,7 @@ function buildTempInsightText(
   const base = `今日${sigName}相对个人基线${avg > 0 ? '偏高' : '偏低'}约 ${Math.abs(avg).toFixed(2)}℃`;
   const trend =
     avg > 0.3
-      ? '，可能处于黄体期或近期活动 / 环境升温，留意身体感受'
+      ? (showCycleContent() ? '，可能处于黄体期或近期活动 / 环境升温，留意身体感受' : '，可能与近期活动 / 环境升温有关，留意身体感受')
       : avg < -0.3
       ? '，注意保暖与休息'
       : '，围绕基线小幅波动，属正常昼夜节律';
@@ -3462,7 +3478,10 @@ function EmptyChartFrame({ hint, height = 160, diagonal = false }: { hint: strin
 
 /* ★ 2026-10-16：HRV 详情页——Lorenz 散点（RR 间期相位图）+ 时域 HRV
  * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。
- * ★ 2026-11-08：标题改成人话；无数据时也展示带网格的空相位图，不再只留一行文字。 */
+ * ★ 2026-11-14（用户）：这枚戒指的 Android 原生 readRrAnalysis() 是空 stub，
+ *   设备侧没有「逐拍 RR 间期序列」（onBatch / origin3 只给 hrv 标量），
+ *   因此该图在 Android 上永远不会有数据 → 按用户要求直接不渲染这张卡片；
+ *   iOS 侧有 veepooSDK_readRRIntervalData 真实通路，拿到 ≥10 个 RR 才显示。 */
 function HrvLorenzSection() {
   const ring = useRingState();
   const [loading, setLoading] = useState(false);
@@ -3470,10 +3489,16 @@ function HrvLorenzSection() {
   const hrv = r ? computeRrHrv(r.rr) : null;
 
   const reload = useCallback(async () => {
+    // Android 空 stub：不发这次无意义的原生调用，也不再显示「正在读取…」的空架子。
+    if (Platform.OS === 'android') return;
     setLoading(true);
     try { await RingBle.readRrAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
   }, []);
   useEffect(() => { void reload(); }, [reload]);
+
+  // 没有真实 RR 逐拍数据 → 整张卡片不出现（不再是永远出不了数的空相位图）。
+  const hasData = !!(r && Array.isArray(r.lorentz) && r.lorentz.length > 0);
+  if (!hasData) return null;
 
   // Lorenz 散点缩放
   const SIZE = 240, PAD = 28;

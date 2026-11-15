@@ -52,13 +52,13 @@ import {
   addDays,
   daysBetween,
   tempDailyToSeries,
+  derivePeriodRuns,
   type CycleLog,
   type CyclePhase,
   type CycleInfo,
 } from '../lib/cycleMath';
 import { phaseOfDay, cycleAxis, buildEstrogenData, buildProgesteroneData, trendDays, type TrendRange } from '../lib/hormoneTrend';
 import { loadCycleLog, loadPeriodDays, savePeriodDay, saveCycleLog, FLOW_LABEL, PAIN_LABEL, type FlowLevel, type PainLevel, type PeriodDayLog } from '../data/cycleLog';
-import { allInterventionEntries, ensureInterventionLogLoaded } from '../data/interventionLog';
 import { PHASE_COLOR, PHASE_LABEL, phaseBg, phaseBand } from '../lib/phaseColors';
 import CycleMoonPhase from '../components/CycleMoonPhase';
 import CycleDerivedMetrics from '../components/CycleDerivedMetrics';
@@ -183,15 +183,11 @@ export default function CycleCalendarScreen() {
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>('cycle');
   const [selected, setSelected] = useState<string | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
-  // ★ 2026-10-13：今日练习卡（呼吸/冥想完成记录）数据源
-  const [practiceTick, setPracticeTick] = useState(0);
   // ★ P1-1（2026-10-28）：孕期模式开关（读取本地 log.pregnant；写入时连同 pregnancyLmp 一并保存）
   const [pregnancyOn, setPregnancyOn] = useState<boolean>(false);
   useEffect(() => {
     void loadCycleLog().then((l) => { setLocalLog(l); setPregnancyOn(!!l?.pregnant); });
     void loadPeriodDays().then(setPeriodDays);
-    // 确保干预记录已落盘加载，再触发一次重算
-    void ensureInterventionLogLoaded().then(() => setPracticeTick((t) => t + 1));
   }, []);
 
   /** 切换孕期模式并持久化（写入 cycleLog.pregnant；若开启且尚无 LMP，则用 lastPeriodStart 兜底） */
@@ -252,6 +248,12 @@ export default function CycleCalendarScreen() {
       .sort((a, b) => parseDate(b).getTime() - parseDate(a).getTime());
   }, [log, periodDays]);
 
+  // ★ 本轮（用户 #323）：真实经期区间，供月相环按真实经期着色（经期结束后环上不再画成「经期」）
+  const periodRuns = useMemo(
+    () => (periodDays && Object.keys(periodDays).length ? derivePeriodRuns(periodDays) : []),
+    [periodDays],
+  );
+
   // 选中周期（clamp 到可用范围）：0 = 当前周期；往前最多翻到最早一条记录
   const selIdx = Math.min(Math.max(-cycleOffset, 0), Math.max(0, cycleStarts.length - 1));
   const selStart = cycleStarts[selIdx] ?? log?.lastPeriodStart ?? null;
@@ -285,6 +287,47 @@ export default function CycleCalendarScreen() {
   const labelDay = isCurrentCycle ? cycAxis?.todayDay ?? 1 : cycleLen;
   const labelTotal = isCurrentCycle ? Math.max(cycleLen, cycAxis?.todayDay ?? 1) : cycleLen;
 
+  // ★ 本轮（用户：周期解读太薄、要给出明确的可执行建议）：按当前相位给出「建议安排 / 注意」两栏
+  const cycleTip = useMemo<{ lead: string; arrange: string; watch: string }>(() => {
+    const phase = cycleInfo?.phase ?? 'unknown';
+    const phaseLabel = cycleInfo?.phaseLabel ?? '周期';
+    const lead = hasRealCycleLen
+      ? `你正处在${phaseLabel}第 ${labelDay} 天 / 共 ${labelTotal} 天。`
+      : `你正处在周期第 ${labelDay} 天。`;
+    switch (phase) {
+      case 'period':
+        return {
+          lead,
+          arrange: '安排温和活动（散步 / 拉伸 / 瑜伽），多吃补铁与优质蛋白的食物；把高强度训练降到六成左右。',
+          watch: '避免冷水浴和剧烈运动；随手记录经量与腹痛，痛经明显时就及时休息。',
+        };
+      case 'follicular':
+        return {
+          lead,
+          arrange: '精力与代谢开始上扬，适合安排高强度运动、开启新计划或学习，也适合多和人见面。',
+          watch: '这是周期里体能最好的窗口，但别一下透支；记得多喝水和补充蛋白质。',
+        };
+      case 'ovulation':
+        return {
+          lead,
+          arrange: '精力与情绪都处于高峰，适合安排重要沟通、创造性工作，或难度较高的任务。',
+          watch: '部分人会感到乳房胀或分泌物增多，属正常；如有备孕计划，当前正是易孕窗口。',
+        };
+      case 'luteal':
+        return {
+          lead,
+          arrange: '孕酮上升，情绪与睡眠容易波动，多安排放松活动（呼吸 / 冥想），提前规划下周，降低高强度训练比例。',
+          watch: '留意经前情绪起伏和水肿；少碰咖啡因、少盐，保证睡眠，随手记录身体信号。',
+        };
+      default:
+        return {
+          lead,
+          arrange: '在下方「记录 / 修改」里补齐经期与周期长度，这里会给出更贴合你节奏的安排建议。',
+          watch: '连续佩戴戒指，越往后阶段判断越准。',
+        };
+    }
+  }, [cycleInfo?.phase, cycleInfo?.phaseLabel, hasRealCycleLen, labelDay, labelTotal]);
+
   // 选定周期覆盖到的自然月（历史周期可能跨 2 个月）
   const cycleMonths = useMemo(() => {
     if (!selStart) return [] as { y: number; m: number }[];
@@ -299,19 +342,6 @@ export default function CycleCalendarScreen() {
     }
     return out;
   }, [selStart, cycleLen]);
-
-  // ★ 2026-10-13：今日练习卡 —— 读今天完成的呼吸/冥想记录（与首页播放器完成卡同源）
-  const formatHM = (ts: number) => {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-  const todayPractices = useMemo(() => {
-    const todayStr = dayKey(new Date());
-    return allInterventionEntries()
-      .filter((e) => (e.kind === 'breath' || e.kind === 'meditate') && dayKey(new Date(e.ts)) === todayStr)
-      .slice(-8)
-      .reverse();
-  }, [practiceTick]);
 
   // 历史周期的月相环：把 log 换成该周期的首日与长度，环上圆点即按该周期天数铺开
   const ringLog = useMemo(() => {
@@ -330,8 +360,10 @@ export default function CycleCalendarScreen() {
         ring,
         TREND_RANGE,
         cycAxis ? { startMs: cycAxis.startMs, days: cycAxis.days } : null,
+        log,
+        cycleInfo,
       ),
-    [ring, cycAxis],
+    [ring, cycAxis, log, cycleInfo],
   );
   const progData = useMemo(
     () =>
@@ -340,8 +372,9 @@ export default function CycleCalendarScreen() {
         cycleInfo,
         TREND_RANGE,
         cycAxis ? { startMs: cycAxis.startMs, days: cycAxis.days } : null,
+        log,
       ),
-    [ring, cycleInfo, cycAxis],
+    [ring, cycleInfo, cycAxis, log],
   );
 
   const legendNode = <PhaseLegend />;
@@ -432,32 +465,6 @@ export default function CycleCalendarScreen() {
           </>
         ) : (
           <>
-            {/* ★ 2026-10-13：今日练习 —— 今天做过的呼吸/冥想完成记录（含前后状态变化），与首页完成卡同源 */}
-            {todayPractices.length > 0 && (
-              <View style={styles.practiceCard}>
-                <View style={styles.practiceHead}>
-                  <Text style={styles.practiceTitle}>今日练习</Text>
-                  <Text style={styles.practiceCount}>{todayPractices.length} 次</Text>
-                </View>
-                {todayPractices.map((e, i) => (
-                  <View key={i} style={styles.practiceRow}>
-                    <View style={[styles.practiceDot, { backgroundColor: e.kind === 'meditate' ? mm.colors.purpleCore : mm.colors.limeMid }]} />
-                    <View style={styles.practiceBody}>
-                      <Text style={styles.practiceName}>{e.detail}</Text>
-                      <Text style={styles.practiceState}>
-                        {e.stateBefore && e.stateAfter && e.stateBefore !== e.stateAfter
-                          ? `状态 ${e.stateBefore} → ${e.stateAfter}`
-                          : e.valueBefore != null && e.valueAfter != null && e.valueBefore !== e.valueAfter
-                            ? `状态值 ${e.valueBefore} → ${e.valueAfter}`
-                            : '状态慢慢松下来'}
-                      </Text>
-                    </View>
-                    <Text style={styles.practiceTime}>{formatHM(e.ts)}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
             {/* ★ 2026-10-07：顶部「周期切换」—— ‹ 上一个周期 / 下一个周期 ›（对齐 Clue / Flo / Oura） */}
             <View style={styles.cycleSwitch}>
               <TouchableOpacity
@@ -516,6 +523,7 @@ export default function CycleCalendarScreen() {
                 size={304}
                 cycleInfo={isCurrentCycle ? cycleInfo : null}
                 log={ringLog}
+                periodRuns={isCurrentCycle ? periodRuns : []}
                 activeDay={isCurrentCycle ? undefined : cycleLen}
                 headLabel={
                   !isCurrentCycle && selDate && selEndDate
@@ -544,13 +552,19 @@ export default function CycleCalendarScreen() {
             {/* ★ 2026-10-07（用户要求）：记录 / 修改入口 —— 月相环（或网格）正下方 */}
             {recordRowNode}
 
-            {/* ★ 2026-11-03（用户·统一 hero 结构）：周期页无单一大数字 hero，这里加「周期解读」摘要 */}
+            {/* ★ 本轮（用户：周期解读太薄、要给出明确的可执行建议）：相位感知的两栏建议 */}
             <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: theme.radius.md, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 }}>
               <Text style={{ fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textWhite, marginBottom: 4 }}>周期解读</Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, opacity: 0.85, lineHeight: 18, marginBottom: 6 }}>
+                {cycleTip.lead}
+              </Text>
               <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, opacity: 0.85, lineHeight: 18 }}>
-                {hasRealCycleLen
-                  ? `你正处在周期第 ${labelDay} 天 / 共 ${labelTotal} 天，按这个节奏安排休息与活动会更稳。`
-                  : `你正处在周期第 ${labelDay} 天。在下方「记录 / 修改」里补上周期长度，预测会更有依据。`}
+                <Text style={{ fontWeight: '600' }}>建议安排：</Text>
+                {cycleTip.arrange}
+              </Text>
+              <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textWhite, opacity: 0.85, lineHeight: 18, marginTop: 4 }}>
+                <Text style={{ fontWeight: '600' }}>注意：</Text>
+                {cycleTip.watch}
               </Text>
             </View>
 
@@ -741,7 +755,7 @@ function TrendCard({
   lineColor: string;
   note: React.ReactNode;
   emptyNote: React.ReactNode;
-  data: { real: { date: string; value: number }[] | null };
+  data: { real: { date: string; value: number }[] | null; expected?: { date: string; value: number }[] | null };
   log: CycleLog | null;
   ring: RingState;
   cycleInfo: CycleInfo | null;
@@ -754,11 +768,20 @@ function TrendCard({
   const PAD = 10;
   const plotW = W - PAD * 2;
   const plotH = H - PAD * 2;
-  const pts = data.real;
+  // ★ 本轮（用户：激素卡空着时看不到分析，至少要看得到升/降趋势）：
+  //   真实信号 ≥3 点 → 用真实曲线；否则退回「按相位推算的预期曲线」（明确标注非实测）。
+  const useReal = !!data.real && data.real.length >= 3;
+  const series = useReal ? (data.real as { date: string; value: number }[]) : (data.expected ?? data.real ?? []);
+  const isModeled = !useReal && !!data.expected;
 
   const head = (
     <View style={styles.estHead}>
       <Text style={styles.estTitle}>{title}</Text>
+      {isModeled ? (
+        <View style={styles.estModeledChip}>
+          <Text style={styles.estModeledText}>预期走势 · 非实测</Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -799,7 +822,7 @@ function TrendCard({
   }
 
   // 数据点按「周期第几天」落位；落在轴外的点丢弃（不硬塞到两端）
-  const placed = (pts ?? []).filter((p) => {
+  const placed = series.filter((p) => {
     const cd = cdOfDate(p.date);
     return cd >= 1 && cd <= axisN;
   });
@@ -890,10 +913,16 @@ function TrendCard({
       </View>
       {/* 四相标记：与体温双相图共用同一套图例，同一相位到处同色 */}
       <PhaseLegend />
-      <Text style={styles.estNote}>{hasData ? note : emptyNote}</Text>
+      <Text style={styles.estNote}>
+        {isModeled
+          ? '以下为按你当前周期相位推算的预期走势（非戒指实测，仅供了解经典节律）。连续佩戴取得 HRV / 体温等真实信号后，会自动切换为你的实测曲线。'
+          : hasData
+            ? note
+            : emptyNote}
+      </Text>
       {/* AI 解读：与体温卡下方解读同一视觉语言，结论由本卡同一份真实数据算出 */}
       {hasData ? (
-        <TrendAnalysis kind={kind} data={data} cycleInfo={cycleInfo} windowDays={axisN} />
+        <TrendAnalysis kind={kind} data={data} cycleInfo={cycleInfo} windowDays={axisN} isModeled={isModeled} />
       ) : null}
     </View>
   );
@@ -1181,6 +1210,13 @@ const styles = StyleSheet.create({
   estCard: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: theme.space.sm },
   estHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.sp(1) },
   estTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any, color: theme.colors.textTitle },
+  estModeledChip: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: theme.sp(4),
+    paddingVertical: theme.sp(1),
+  },
+  estModeledText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   estNote: { fontSize: theme.fontSize.micro, lineHeight: theme.fontSize.micro * 1.6, color: theme.colors.textSub, marginTop: theme.sp(1) },
   estAxis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.sp(0.5), paddingHorizontal: theme.sp(0.5) },
   estAxisText: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
