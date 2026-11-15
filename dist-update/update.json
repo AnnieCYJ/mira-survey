@@ -1,9 +1,9 @@
 {
-  "versionCode": 35,
-  "versionName": "1.4.6",
-  "apkUrl": "https://app.lunamiraring.com/downloads/mira-app-1.4.6-35.apk",
-  "sizeBytes": 88685960,
-  "sha256": "55f44b519c4890aa8a7b990dc8d218906fa52f7ecebeec1394aeefe978d84170",
-  "notes": "蓝牙连接修复:连接看门狗20s改35s消除请求堆积与状态横跳,OPPO/API36真机16s冷启动重连两轮验证;回顾日时间线重设计落地:左侧渐变曲线精确过点+每卡带时间标记连接线(今天截至当前时刻/历史全天)+卡片统一20dp留白,饮食卡真实照片;首页场景词30分钟回落修复(收个工不再挂到晚上);跨天0点状态不清零;饮食卡点击复查与拍照闭环。离线回归11/11。",
-  "releasedAt": "2026-11-15T13:21:13.320Z"
+  "versionCode": 36,
+  "versionName": "1.4.7",
+  "apkUrl": "https://app.lunamiraring.com/downloads/mira-app-1.4.7-36.apk",
+  "sizeBytes": 82728668,
+  "sha256": "30972ccb83a5b4bd26955e2f997bd8f4736feae3dbdf324be608a7a455d34159",
+  "notes": "正式签名版(CN=LunaMira):修复戒指静默断连不重连——原生注册SDK连接状态监听,掉线即归位并重连;新增5分钟无回包假连接活性探测;修复正式包构造期listener实例化导致的启动白屏。重连后自动增量回填HRV/血压等历史数据,戒指常戴不再出现长时间数据空档。升级注意:签名由debug切换为正式,已装旧版需卸载后再安装。",
+  "releasedAt": "2026-11-15T16:07:47.205Z"
 }

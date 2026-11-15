@@ -9,15 +9,15 @@
 | 项目 | 值 |
 | --- | --- |
 | 平台 / 构建 | **Android**（Expo 51 · RN 0.74 · 真机开发构建） |
-| 版本 | **1.4.6** · versionCode **35** |
-| 归档时间 | **2026-11-15 17:30 (GMT+8)** |
-| Git tag | `v-ui-20261115-1730`（对应 `src/version.ts`）· `v-android-1.4.6-20261115` |
-| 安装包 | [mira-app-1.4.6-35.apk](https://app.lunamiraring.com/downloads/mira-app-1.4.6-35.apk)（84.6 MB · debug 签名，可覆盖装保数据） |
-| SHA-256 | `55f44b519c4890aa8a7b990dc8d218906fa52f7ecebeec1394aeefe978d84170` |
-| 真机验收 | OPPO PMA110（API 36）+ HUAWEI P30 ELE-AL00（API 29）：冷启动重连 / 蓝牙连接 / 数据回填通过；`tsc` 0 错误、离线回归 11/11 |
+| 版本 | **1.4.7** · versionCode **36** |
+| 归档时间 | **2026-11-16 00:00 (GMT+8)** |
+| Git tag | `v-ui-20261115-2320`（对应 `src/version.ts`）· `v-android-1.4.7-20261116` |
+| 安装包 | [mira-app-1.4.7-36.apk](https://app.lunamiraring.com/downloads/mira-app-1.4.7-36.apk)（78.9 MB · **正式签名 `CN=LunaMira`**） |
+| SHA-256 | `30972ccb83a5b4bd26955e2f997bd8f4736feae3dbdf324be608a7a455d34159` |
+| 真机验收 | OPPO PMA110（API 36）：冷启动重连 / 断连被动监听→自动重连→重连即回填闭环通过；白屏回归已修；`tsc` 0 错误、离线回归 11/11 |
 
+> **升级注意**：1.4.6 及更早是 debug 签名，本版起切正式签名（`CN=LunaMira`）。已装旧版**无法覆盖安装，需先卸载再安装**；戒指端历史数据会在重连后自动回填，不会丢失。
 > 仓库分支说明：`master` = App 线（本仓库），`main` = Mira 调研问卷（mira-survey），两者互不相干。
-> 正式签名（`CN=LunaMira`）包留作商店轨道；当前线上包为 debug 签名，方便用户直接覆盖升级。
 
 ## 快速开始
 

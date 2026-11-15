@@ -1094,6 +1094,16 @@ class NativeRingSource {
    *  用于死锁判定区分「慢回填但仍在回传」（健康，不该踢连）与「原生 backfillInProgress 死锁、零回传」（真饿死，才踢连）。 */
   private lastBatchWriteAt = 0;
   /**
+   * ★ 2026-11-15（用户：戒指一直戴着但 App 很久不连、数据断档）：
+   *  「原生最后一次真正回包」的时刻。原生已注册 SDK 掉线监听（被动断连会 emit disconnected），
+   *  但 Android 系统 GATT 被回收等极端情况仍可能静默掉线、连 disconnected 都不发 →
+   *  JS 假停在 connected。此戳用于活性探测：已连接但超过阈值无任何原生回包 → 判定假连接，
+   *  主动 disconnect 让 autoLink 走重连。只由「数据/状态类」事件更新（onLog 日志噪音不计）。
+   */
+  private lastNativePacketAt = 0;
+  /** 假连接活性探测的静默阈值：5 分钟无任何原生回包即判定链路已死（戒指正常时每秒都有实时流）。 */
+  private static readonly STALE_LINK_MS = 5 * 60 * 1000;
+  /**
    * ★ 2026-11-11（用户：不能接受丢数据）：缺口自愈。
    * 增量回填后若今日 hr/hrv/spo2 intraday 仍存在「中间缺一段」（断连期间实时流中断、
    * 且增量锚点已跳过该窗口），触发一次全量回补——让原生 backfill() 重读戒指在端存储的
@@ -1125,6 +1135,23 @@ class NativeRingSource {
   /** 断点游标读写：加载时由 RingConnectionImpl 注入，同步完成时通过 onCursorPersist 回写持久化。 */
   setLastBackfillDate(d: string | null) { this.lastBackfillDate = d; }
   getLastBackfillDate(): string | null { return this.lastBackfillDate; }
+
+  /**
+   * ★ 2026-11-15：假连接活性探测——供外层 RingConnectionImpl 的 autoLink watchdog 读取。
+   * 戳只在本类内更新（reg() 收到数据/状态类原生回包时打戳），不跨类暴露私有字段。
+   * 已连接但超过 STALE_LINK_MS 无任何原生回包 → 判定链路已死（GATT 被静默回收）。
+   */
+  isLinkStale(): boolean {
+    const anchor = this.lastNativePacketAt || this.lastConnectedAt;
+    return anchor > 0 && Date.now() - anchor > NativeRingSource.STALE_LINK_MS;
+  }
+  /** 距上次原生回包/连接的秒数，仅供 watchdog 日志。 */
+  linkIdleSec(): number {
+    const anchor = this.lastNativePacketAt || this.lastConnectedAt;
+    return anchor > 0 ? Math.round((Date.now() - anchor) / 1000) : 0;
+  }
+  /** 软踢连前清戳，避免重连后 anchor 仍指向旧值导致连续误判。 */
+  clearLinkLiveness(): void { this.lastNativePacketAt = 0; this.lastConnectedAt = 0; }
 
   constructor(
     private push: (patch: StatePatch) => void,
@@ -1170,7 +1197,12 @@ class NativeRingSource {
       ]);
       const reg = (name: string, fn: (...a: any[]) => void) => {
         if (!V2_EVENTS.has(name)) return;
-        emitter.addListener(name, fn);
+        emitter.addListener(name, (...args: any[]) => {
+          // ★ 2026-11-15：活性探测——任何「数据/状态类」原生回包都打戳，证明链路还活着。
+          //   onLog 是原生调试日志（后台定时器也会刷），不作为链路活性证据，故排除。
+          if (name !== 'onLog') this.lastNativePacketAt = Date.now();
+          fn(...args);
+        });
       };
 
       // ── onLog：调试日志 ──
@@ -1233,25 +1265,27 @@ class NativeRingSource {
       // ★ 周期性轻量回填：修复「很多数据不更新」——原只在连接瞬间 / 手动 forceResync 才 backfill。
       //   ★ 2026-11-09(5)（用户：身心压力/心率/HRV 一直没更新）：30 分钟太慢、数值一整天不动，
       //   缩短为每 10 分钟（已连接且同步开启）重新拉一次戒指历史，保证数据持续补齐。
-      setInterval(() => {
+      // ★ 2026-11-15（HRV/血压停更兜底）：缺口自愈原先只在 backfillDone 收口后 4s 被调一次。
+      //   原生事务一旦静默失败（不发 backfillDone），自愈就永远没机会跑，HRV/血压末点
+      //   会一直停几小时。这里在「周期同步 / 回前台同步」之前都补一次自愈检测：
+      //   checkAndRecoverGaps 自带「每天≤3 次、间隔≥10min、只在尾点停更>1h 时触发」限流，
+      //   且用 from=昨天 的增量回拉（不重读整段历史），不会打爆 BLE 通道。
+      //   若自愈判定命中并发起同步，后面那次 syncAll 会进排队、不会重复下发写命令。
+      const nudgeSync = (trigger: string) => {
         try {
           const st = this.getState();
-          if (st.status === 'connected' && healthStore.syncEnabled) {
-            this.syncAll('10min 周期');
-          }
+          if (st.status !== 'connected' || !healthStore.syncEnabled) return;
+          if (!this.syncAllInFlight) this.checkAndRecoverGaps();
+          this.syncAll(trigger);
         } catch (e) {}
-      }, 10 * 60 * 1000);
+      };
+      setInterval(() => nudgeSync('10min 周期'), 10 * 60 * 1000);
       // ★ App 回到前台也触发一次回填（用户切回 App 时立即补齐历史）
       //   旧代码调 VeepooNative.recoverOffline?.() —— 两端原生都**没有导出这个方法**，
       //   `?.` 静默吞掉 → 回前台同步一直是 no-op。改走统一通路。
       AppState.addEventListener('change', (next: AppStateStatus) => {
         try {
-          if (next === 'active') {
-            const st = this.getState();
-            if (st.status === 'connected' && healthStore.syncEnabled) {
-              this.syncAll('App 回到前台');
-            }
-          }
+          if (next === 'active') nudgeSync('App 回到前台');
         } catch (e) {}
       });
     }
@@ -2303,7 +2337,7 @@ class NativeRingSource {
    * 同步统一入口（2026-11-09 常开通路 + 2026-11-11 断点增量）：
    * 「只要连上戒指，就主动回填历史数据」是**常开通路**。
    *
-   * 触发点：ready / connected 补触发 / 30min 周期 / App 回前台 / 设置页手动同步 /
+   * 触发点：ready / connected 补触发 / 10min 周期 / App 回前台 / 设置页手动同步 /
    * SDK 初始化 45s 兜底，全部走这里。
    *
    * ★ 断点续传（2026-11-11，用户要求：回填应从断点续传、已在的数据当快照）：
@@ -2353,6 +2387,10 @@ class NativeRingSource {
         this.syncAllInFlight = false;
         this.syncAllInFlightUntil = 0;
         this.syncAllConsecutiveTimeouts = 0;
+        // ★ 2026-11-15：自愈同步若也静默失败（永远收不到 backfillDone），
+        //   gapRecoveryActive 会一直挂着，导致后续自愈再也不触发。断开重连即视为本轮事务作废，
+        //   一并清掉激活标记，让重连后的检测还有机会自愈。
+        this.gapRecoveryActive = false;
         try { this.disconnect(); } catch { /* 重连由 autoLink 托管，忽略单次失败 */ }
         return;
       }
@@ -2374,7 +2412,11 @@ class NativeRingSource {
           VeepooNative?.backfill?.();
         }
       } catch (e: any) {
-        this.finishSyncAll();
+        // ★ 2026-11-15（深挖 BUG-3）：触发失败不等于同步成功。
+        //   旧代码这里调 finishSyncAll() 会把断点游标推进到今天并落盘，
+        //   而本轮数据其实一条都没回读 → 下次增量 from=今天 就不会重拉，静默丢当天数据。
+        //   改走 skipSyncAll()：只解锁在途标记，不推进游标、不补跑，等下一次触发重拉同一段。
+        this.skipSyncAll('触发失败');
         postLog('RingBle', `[Sync] 触发失败：${e?.message ?? e}`);
       }
     }, 500);
@@ -2405,7 +2447,7 @@ class NativeRingSource {
       //   readAllHealthDataBySettingOrigin 会抢占同一条 BLE 写通道，把刚启动的
       //   readOriginDataBySetting 打断 → `origin3 emit days=0 points=0`（真机 2 次、
       //   192 条 SDK 原始数据一条都没落库）。事务期间到达的请求统一合并丢弃，
-      //   由下一次回前台 / 30 分钟周期同步自然补上。
+      //   由下一次回前台 / 10 分钟周期同步自然补上。
       postLog('RingBle', '[Sync] 在途期间的排队请求已合并进本次事务（不再补跑抢占 BLE 通道）');
     }
     // ★ 收口后不要立刻再发同步：延后一拍，让原生把暂缓的 BLE 写命令回放到位。
@@ -7355,7 +7397,25 @@ class RingConnectionImpl {
     //   低频兜底，其余抖动统一被 autoLinkBusyUntil 冷却窗口挡掉。
     this.autoLinkWatchdog = setInterval(() => {
       const cur = this.getState();
-      if (this.userStoppedLink || cur.status === 'connected' || cur.status === 'connecting') return;
+      if (this.userStoppedLink || cur.status === 'connecting') return;
+      // ★ 2026-11-15：假连接活性探测。原生掉线监听覆盖了绝大多数情况，但 Android 系统
+      //   GATT 被静默回收等极端场景可能连 disconnected 都不发 → JS 假停在 connected，
+      //   旧 watchdog 的 `status==='connected' → return` 会永远跳过重连，数据断档。
+      //   现在：connected 但超过 STALE_LINK_MS 无任何原生回包 → 判定链路已死，主动踢连，
+      //   由 autoLink 走重连（disconnect 会 emit disconnected → idle → 补连）。
+      if (cur.status === 'connected') {
+        // 戳由 NativeRingSource 内部维护（原生回包打戳），这里只调探活方法，不跨类访问私有字段。
+        if (this.native.isLinkStale()) {
+          postLog('RingBle', `[autoLink] ⚠️ 假连接活性探测：已连接但 ${this.native.linkIdleSec()}s 无原生回包 → 主动踢连重连`);
+          // ★ 不能调 this.disconnect()：那是「用户主动断开」，会置 userStoppedLink=true 并
+          //   stopAutoLink() → 反而永不重连。这里做「软踢连」：清戳 + 归位 idle（触发 autoLink 补连排程）
+          //   + 原生真正断开（会 emit disconnected 再归位 idle，幂等），autoLink 随后自动重连。
+          this.native.clearLinkLiveness();
+          this.applyPatch({ status: 'idle' });
+          try { this.native.disconnect(); } catch { /* autoLink 托管重连 */ }
+        }
+        return;
+      }
       void this.runAutoLink('watchdog');
     }, 45_000);
 

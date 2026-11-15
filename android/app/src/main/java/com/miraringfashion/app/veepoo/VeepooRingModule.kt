@@ -9,6 +9,15 @@ import com.veepoo.protocol.VPOperateManager
 import com.veepoo.protocol.listener.base.IBleWriteResponse
 import com.veepoo.protocol.listener.base.IConnectResponse
 import com.veepoo.protocol.listener.base.INotifyResponse
+// ★ 2026-11-15（用户：戒指一直戴着，但 App 很久不连上、数据断档）：
+//   注册 SDK 的连接状态监听，戒指**被动掉线**（没电/离开范围/被旧手机占用/系统回收 GATT）时
+//   SDK 会回调 STATUS_DISCONNECTED —— 旧代码只监听「连接成功/失败」，被动掉线全程无通知，
+//   JS 假停在 connected → 既不重连也不回填。javap 核对：
+//   VPOperateManager.registerConnectStatusListener(String, IABleConnectStatusListener) /
+//   unregisterConnectStatusListener(...)；回调 onConnectStatusChanged(mac, status)；
+//   常量 com.inuker.bluetooth.library.Constants.STATUS_CONNECTED / STATUS_DISCONNECTED。
+import com.veepoo.protocol.listener.base.IABleConnectStatusListener
+import com.inuker.bluetooth.library.Constants as BleConstants
 import com.veepoo.protocol.listener.data.IAllHealthDataListener
 import com.veepoo.protocol.listener.data.IBatteryDataListener
 import com.veepoo.protocol.listener.data.IHeartDataListener
@@ -92,6 +101,78 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
     /** 当前正在连接的戒指 MAC：PwdData 回调里带上它，JS 才能按 MAC 记住固件名片。 */
     private var connectedMac: String = ""
+
+    /**
+     * ★ 2026-11-15：SDK 连接状态监听（戒指被动掉线通知）。
+     *   注册在 connect()，注销在 disconnect()；回调里只 emit，不做重型操作。
+     *   STATUS_DISCONNECTED → JS 归位 idle → autoLink 自动重连 → ready 回填 HRV/BP。
+     *   connectLifecycleLock 保证 register/unregister 串行，避免 SDK 内部 listener 集合并发改动。
+     */
+    private val connectLifecycleLock = Any()
+    private var connectStatusRegisteredMac: String = ""
+    // ★ 2026-11-15（白屏修复）：必须用 by lazy，不能在模块构造期实例化。
+    //   IABleConnectStatusListener 继承自 Inuker 库的 BleConnectStatusListener；某些机型上
+    //   其父类静态初始化在 React 原生模块构造阶段抛异常（message=null），会让 ReactInstance
+    //   task faulted → 整个 RN 白屏。改为首次 connect() 时才实例化，且registerConnectStatus
+    //   已有 try-catch 兜底，构造失败只影响监听注册、不再拖垮 App 启动。
+    private val connectStatusListener by lazy { object : IABleConnectStatusListener() {
+        override fun onConnectStatusChanged(mac: String, status: Int) {
+            log("[VeepooRing ANDROID] connStatus mac=$mac status=$status " +
+                "(CONNECTED=${BleConstants.STATUS_CONNECTED} DISCONNECTED=${BleConstants.STATUS_DISCONNECTED})")
+            when (status) {
+                BleConstants.STATUS_DISCONNECTED -> {
+                    // 戒指被动掉线：通知 JS 归位 idle → autoLink 立刻补连。
+                    // 幂等：主动 disconnect() 已发过一次，这里可能再来一帧，重复 emit 无害（JS 归位 idle 本就幂等）。
+                    ready.set(false)
+                    stopPpgReleaseCycle()
+                    emit("onState", JSONObject().apply {
+                        put("status", "disconnected")
+                        put("deviceAddress", if (mac.isNotBlank()) mac else connectedMac)
+                    })
+                }
+                BleConstants.STATUS_CONNECTED -> {
+                    // GATT 真正连上（比 INotifyResponse 更早的一帧），仅日志留痕；
+                    // 业务上的 connected/ready 仍由既有流程 emit，避免重复触发鉴权/回填。
+                    log("[VeepooRing ANDROID] connStatus STATUS_CONNECTED (GATT link up)")
+                }
+            }
+        }
+        } }
+
+    /** 注册连接状态监听（connect 前调用；同 MAC 只注册一次）。 */
+    private fun registerConnectStatus(mac: String) {
+        if (mac.isBlank()) return
+        synchronized(connectLifecycleLock) {
+            try {
+                if (connectStatusRegisteredMac.isNotBlank() && connectStatusRegisteredMac != mac) {
+                    manager.unregisterConnectStatusListener(connectStatusRegisteredMac, connectStatusListener)
+                }
+                if (connectStatusRegisteredMac != mac) {
+                    manager.registerConnectStatusListener(mac, connectStatusListener)
+                    connectStatusRegisteredMac = mac
+                    log("[VeepooRing ANDROID] connStatus listener registered mac=$mac")
+                }
+            } catch (e: Throwable) {
+                log("[VeepooRing ANDROID] connStatus register FAILED: ${e.message}")
+            }
+        }
+    }
+
+    /** 注销连接状态监听（disconnect 时调用）。 */
+    private fun unregisterConnectStatus() {
+        synchronized(connectLifecycleLock) {
+            try {
+                if (connectStatusRegisteredMac.isNotBlank()) {
+                    manager.unregisterConnectStatusListener(connectStatusRegisteredMac, connectStatusListener)
+                    log("[VeepooRing ANDROID] connStatus listener unregistered mac=$connectStatusRegisteredMac")
+                }
+            } catch (e: Throwable) {
+                log("[VeepooRing ANDROID] connStatus unregister FAILED: ${e.message}")
+            } finally {
+                connectStatusRegisteredMac = ""
+            }
+        }
+    }
 
     private val manager: VPOperateManager by lazy { VPOperateManager.getMangerInstance(reactContext.applicationContext) }
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -413,6 +494,10 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     fun connect(address: String) {
         log("[VeepooRing ANDROID] connect $address")
         connectedMac = address
+        // ★ 2026-11-15：连接前先注册掉线监听 —— 戒指被动断开（没电/离开范围/被旧手机占用）
+        //   时 SDK 会回调 STATUS_DISCONNECTED → emit onState → JS autoLink 自动重连。
+        //   必须在 connectDevice 之前注册，否则连接建立瞬间的掉线会漏掉。
+        registerConnectStatus(address)
         // SDK 内部若重新 init，静态开关可能被重置；每次连接前再确认一次（开销为零）。
         try { VPOperateManager.setShowFunctionNotSupportToast(false) } catch (_: Throwable) {}
         manager.connectDevice(address,
@@ -534,6 +619,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         autoMeasureWritten.clear()
         // SDK 方法名是 disconnectWatch（需传入写回调）
         manager.disconnectWatch(IBleWriteResponse { _ -> })
+        // ★ 2026-11-15：主动断开时注销掉线监听，避免与 SDK 随后回调的 STATUS_DISCONNECTED
+        //   重复 emit、也防止 listener 随连接反复累积造成泄漏。
+        unregisterConnectStatus()
         log("[VeepooRing ANDROID] disconnected")
         emit("onState", JSONObject().apply { put("status", "disconnected") })
     }
