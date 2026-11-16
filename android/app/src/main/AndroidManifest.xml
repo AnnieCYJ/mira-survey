@@ -18,6 +18,10 @@
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <!-- ★ 2026-11-16（真因修复）：掉线后由系统闹钟唤醒进程，穿透 ColorOS 熄屏冻结。
+       setAlarmClock 属系统闹钟，不需要 SCHEDULE_EXACT_ALARM；REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+       用于引导用户把 App 加入电池优化白名单（永久防冻结）。 -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
   <!-- ★ 2026-11-15 权限最小化·第二轮：第三方库（Veepoo aar / expo-image-picker / androidx）
        会在 manifest merger 阶段把下面三条权限合并回来。经 aapt dump badging 核实后剔除：
        - READ/WRITE_EXTERNAL_STORAGE：targetSdk 34 下已被系统忽略，App 更新走私有目录 FileProvider，
@@ -46,6 +50,12 @@
     <service android:name="com.inuker.bluetooth.library.BluetoothService"/>
     <!-- ★ 2026-11-14：戒指连接保活前台服务——进程常驻 → BLE 不随系统回收断开 -->
     <service android:name="com.miraringfashion.app.keepalive.RingKeepaliveService" android:foregroundServiceType="connectedDevice" android:exported="false"/>
+    <!-- ★ 2026-11-16：掉线后系统闹钟唤醒（冻结免疫）。显式 Intent 触发，exported=false 防外部伪造。 -->
+    <receiver android:name="com.miraringfashion.app.keepalive.RingReconnectReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="com.miraringfashion.app.RING_RECONNECT_ALARM"/>
+      </intent-filter>
+    </receiver>
     <!-- ★ 2026-11-10：App 内更新用 FileProvider，把下载的 APK 以 content:// 暴露给系统安装器 -->
     <provider
       android:name="androidx.core.content.FileProvider"

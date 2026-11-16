@@ -39,6 +39,16 @@ const phaseAt = (ms) => timePhase.dayPhase(new Date(ms));
 const call = (ms, level = 2, sedentary = false, phase) =>
   hsw.pickHomeWord({ phase: phase ?? phaseAt(ms), level, sedentary, now: ms });
 
+// ★ 2026-11-16：homeStatusWord.hydrateHomeWord() 用 dk(Date.now()) 判断「今天」，
+//   而本套件所有断言都造 2026-11-15 的时间。跨到 11-16 后 hydrate 判定磁盘记录过期，
+//   ⑥⑦ 两条持久化用例必然失败（与产品逻辑无关，纯测试日期硬编码缺陷）。
+//   固定 Date.now() 到测试当天，使 hydrate 的「今天」与 at() 对齐，测试永久免疫跨天。
+//   仅影响本进程；用 after() 恢复，不污染其他脚本。
+const { after } = require('node:test');
+const realNow = Date.now;
+Date.now = () => at(12, 0);
+after(() => { Date.now = realNow; });
+
 /** 从 18:00 起每 10 分钟采一次，直到 21:20（不跨 bedtime） */
 function eveningSweep(level = 2, sedentary = false) {
   const out = [];

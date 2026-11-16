@@ -157,8 +157,8 @@ android {
         applicationId 'com.miraringfashion.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 36
-        versionName "1.4.7"
+        versionCode 37
+        versionName "1.4.8"
     }
     signingConfigs {
         debug {

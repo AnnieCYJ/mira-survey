@@ -1061,6 +1061,24 @@ function stopRingKeepalive(): void {
   try { VeepooNative.stopKeepalive(); } catch { /* 静默 */ }
 }
 
+/**
+ * ★ 2026-11-16（真因修复，QA 9.19）：引导用户把 App 加入系统电池优化白名单。
+ *   OPPO ColorOS 熄屏会 freeze 整个进程（前台服务挡不住），掐死 JS 重连定时器，
+ *   实测导致掉线后 20 分 55 秒无人重连。加入白名单后熄屏不再冻结，是治本手段。
+ *   原生侧已做「只弹一次」去重；这里连上戒指时异步触发，失败静默，绝不阻塞连接流程。
+ */
+let batteryExemptionChecked = false;
+function ensureBatteryExemptionOnce(): void {
+  if (batteryExemptionChecked) return;
+  if (!VeepooNative || typeof VeepooNative.requestBatteryExemption !== 'function') return;
+  batteryExemptionChecked = true;
+  try {
+    Promise.resolve(VeepooNative.requestBatteryExemption())
+      .then((r: unknown) => postLog('RingBle', `[Keepalive] 电池优化白名单引导: ${String(r)}`))
+      .catch((e: unknown) => postLog('RingBle', `[Keepalive] 电池优化白名单引导跳过: ${String(e)}`));
+  } catch { /* 静默：无系统对话框权限时不影响使用 */ }
+}
+
 class NativeRingSource {
   private emitter: NativeEventEmitter | null = null;
   private jsMetricCount = 0;
@@ -4923,8 +4941,8 @@ class RingConnectionImpl {
           const st = this.getState();
           if (!this.userStoppedLink
               && (st.status === 'idle' || st.status === 'error')) {
-            postLog('RingBle', '[autoLink] App 回前台检测到未连接 → 立即静默补连');
-            void this.runAutoLink('App 回前台');
+            postLog('RingBle', '[autoLink] App 回前台检测到未连接 → 立即静默补连（解冻窗口，绕过冷却）');
+            void this.runAutoLink('App 回前台', true);
           }
           // ★ 2026-11-14：回前台且已连接时补一次保活启动（兜后台启动 FGS 被系统限制的情况）
           if (st.status === 'connected' && !this.keepaliveStarted) {
@@ -7378,6 +7396,8 @@ class RingConnectionImpl {
           this.keepaliveStarted = true;
           startRingKeepalive();
         }
+        // ★ 2026-11-16：引导电池优化白名单（防 ColorOS 熄屏冻结掐死重连定时器），只弹一次。
+        ensureBatteryExemptionOnce();
         if (!this.autoLinkWasConnected) {
           this.autoLinkWasConnected = true;
           postLog('RingBle', `[autoLink] ✅ 已连接 ${s.deviceName ?? ''}@${this.knownMac ?? '-'}，保活待命`);
@@ -7474,14 +7494,17 @@ class RingConnectionImpl {
    * ② 没有 MAC → 扫一轮，scanResult 命中 LunaMira 就立刻连；
    * ③ 每轮都留兜底重排，直到连上或用户主动断开。
    */
-  private async runAutoLink(reason: string): Promise<void> {
+  private async runAutoLink(reason: string, force = false): Promise<void> {
     if (!this.useNative || this.userStoppedLink) return;
     const st = this.getState();
     if (st.status === 'connected' || st.status === 'connecting' || st.status === 'scanning') return;
     // ★ 2026-11-14（用户）：awaitingDeviceChoice 不再阻断——上次连接的戒指恢复广播时
     //   要能被周期重扫发现并自动连回（decideAfterScan 只自动连 lastId，安全）。
     const now = Date.now();
-    if (now < this.autoLinkBusyUntil) return;
+    // ★ 2026-11-16（QA 9.19）：App 回前台 / 闹钟唤醒是「进程刚解冻」的最佳重连窗口，
+    //   必须绕过 20s 冷却——否则掉线当轮扫描设的 cooldown 会把解冻后的第一次补连直接吞掉。
+    if (!force && now < this.autoLinkBusyUntil) return;
+    if (force) this.autoLinkBusyUntil = 0;
     this.autoLinkBusyUntil = now + 20_000;
 
     // ★ 2026-11-13（用户）：不再按持久化 MAC 直连，一律先扫描全部候选，

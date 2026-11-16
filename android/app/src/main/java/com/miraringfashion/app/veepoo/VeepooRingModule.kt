@@ -37,6 +37,9 @@ import com.veepoo.protocol.model.datas.BpData
 import com.veepoo.protocol.model.enums.EBPDetectModel
 import com.veepoo.protocol.model.enums.HrvDetectState
 import com.veepoo.protocol.shareprence.VpSpGetUtil
+// ★ 2026-11-16（用户：戒指一直戴着、手机在旁边还断连）：ColorOS 熄屏会 freeze 整个进程，
+//   掐死 JS 重连定时器。掉线后的唤醒改由系统 AlarmManager 托管（不依赖 App 进程内定时器）。
+import com.miraringfashion.app.keepalive.RingReconnectAlarm
 import com.veepoo.protocol.model.datas.BatteryData
 import com.veepoo.protocol.model.datas.HeartData
 import com.veepoo.protocol.model.datas.Spo2hData
@@ -110,6 +113,52 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      */
     private val connectLifecycleLock = Any()
     private var connectStatusRegisteredMac: String = ""
+
+    // ★ 2026-11-16（冻结免疫重连）：系统闹钟唤醒后发来的「立即原生重连」请求。
+    //   动态注册（不进 Manifest），只在模块存活期间有效；进程冷启动时 JS autoLink 自己会连。
+    private var reconnectRequestReceiver: android.content.BroadcastReceiver? = null
+    /** 防止一次掉线里 JS autoLink 与原生闹钟重复并发 connect。 */
+    private var nativeReconnectAt = 0L
+    private val NATIVE_RECONNECT_GUARD_MS = 12_000L
+
+    private fun registerReconnectRequestReceiver() {
+        if (reconnectRequestReceiver != null) return
+        val r = object : android.content.BroadcastReceiver() {
+            override fun onReceive(_ctx: android.content.Context?, intent: android.content.Intent?) {
+                if (intent?.action != RingReconnectAlarm.ACTION_RECONNECT_REQUEST) return
+                val mac = intent.getStringExtra(RingReconnectAlarm.EXTRA_MAC)
+                    ?.takeIf { it.isNotBlank() } ?: return
+                val appCtx = reactContext.applicationContext
+                if (!RingReconnectAlarm.isActive(appCtx)) return
+                // 已连上就别重复连；并撤掉闹钟
+                try {
+                    if (manager.isDeviceConnected(mac)) {
+                        RingReconnectAlarm.cancel(appCtx)
+                        return
+                    }
+                } catch (_: Throwable) {}
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - nativeReconnectAt < NATIVE_RECONNECT_GUARD_MS) return
+                nativeReconnectAt = now
+                log("[VeepooRing ANDROID] ⏰ 闹钟唤醒 → 原生立即重连 $mac")
+                try { connect(mac) } catch (e: Throwable) {
+                    log("[VeepooRing ANDROID] 原生重连触发失败: ${e.message}")
+                }
+            }
+        }
+        try {
+            val filter = android.content.IntentFilter(RingReconnectAlarm.ACTION_RECONNECT_REQUEST)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                reactContext.registerReceiver(r, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                reactContext.registerReceiver(r, filter)
+            }
+            reconnectRequestReceiver = r
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] 注册重连 receiver 失败: ${e.message}")
+        }
+    }
     // ★ 2026-11-15（白屏修复）：必须用 by lazy，不能在模块构造期实例化。
     //   IABleConnectStatusListener 继承自 Inuker 库的 BleConnectStatusListener；某些机型上
     //   其父类静态初始化在 React 原生模块构造阶段抛异常（message=null），会让 ReactInstance
@@ -125,15 +174,39 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     // 幂等：主动 disconnect() 已发过一次，这里可能再来一帧，重复 emit 无害（JS 归位 idle 本就幂等）。
                     ready.set(false)
                     stopPpgReleaseCycle()
+                    val target = if (mac.isNotBlank()) mac else connectedMac
+                    val ctx = reactContext.applicationContext
+                    // ★ 2026-11-16：用户主动断开时不再自动连回；被动掉线才排冻结免疫闹钟。
+                    if (RingReconnectAlarm.isActive(ctx) && target.isNotBlank()) {
+                        RingReconnectAlarm.schedule(ctx, target)
+                        // 掉线这一瞬间进程还活着（还没被熄屏冻结），直接原生抢连一次，
+                        // 不必等 20s 闹钟；带 12s 去重避免与 JS autoLink 并发重复 connect。
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (now - nativeReconnectAt >= NATIVE_RECONNECT_GUARD_MS) {
+                            nativeReconnectAt = now
+                            mainHandler.postDelayed({
+                                try {
+                                    if (!ready.get() && RingReconnectAlarm.isActive(ctx) &&
+                                        !manager.isDeviceConnected(target)) {
+                                        log("[VeepooRing ANDROID] ⚡ 掉线即时原生重连 $target")
+                                        connect(target)
+                                    }
+                                } catch (e: Throwable) {
+                                    log("[VeepooRing ANDROID] 掉线即时重连失败: ${e.message}")
+                                }
+                            }, 1_200L)
+                        }
+                    }
                     emit("onState", JSONObject().apply {
                         put("status", "disconnected")
-                        put("deviceAddress", if (mac.isNotBlank()) mac else connectedMac)
+                        put("deviceAddress", target)
                     })
                 }
                 BleConstants.STATUS_CONNECTED -> {
-                    // GATT 真正连上（比 INotifyResponse 更早的一帧），仅日志留痕；
+                    // GATT 真正连上（比 INotifyResponse 更早的一帧）：撤掉重连闹钟。
                     // 业务上的 connected/ready 仍由既有流程 emit，避免重复触发鉴权/回填。
-                    log("[VeepooRing ANDROID] connStatus STATUS_CONNECTED (GATT link up)")
+                    RingReconnectAlarm.cancel(reactContext.applicationContext)
+                    log("[VeepooRing ANDROID] connStatus STATUS_CONNECTED (GATT link up), 重连闹钟已撤")
                 }
             }
         }
@@ -494,6 +567,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     fun connect(address: String) {
         log("[VeepooRing ANDROID] connect $address")
         connectedMac = address
+        // ★ 2026-11-16：记住 MAC 并开启「允许自动重连」（跨进程持久化，闹钟唤醒后要用）。
+        RingReconnectAlarm.rememberMac(reactContext.applicationContext, address)
+        registerReconnectRequestReceiver()
         // ★ 2026-11-15：连接前先注册掉线监听 —— 戒指被动断开（没电/离开范围/被旧手机占用）
         //   时 SDK 会回调 STATUS_DISCONNECTED → emit onState → JS autoLink 自动重连。
         //   必须在 connectDevice 之前注册，否则连接建立瞬间的掉线会漏掉。
@@ -617,6 +693,8 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         ready.set(false)
         stopPpgReleaseCycle()
         autoMeasureWritten.clear()
+        // ★ 2026-11-16：用户在 App 内主动断开 → 关掉自动重连、撤闹钟，别自己又连回来。
+        RingReconnectAlarm.setActive(reactContext.applicationContext, false)
         // SDK 方法名是 disconnectWatch（需传入写回调）
         manager.disconnectWatch(IBleWriteResponse { _ -> })
         // ★ 2026-11-15：主动断开时注销掉线监听，避免与 SDK 随后回调的 STATUS_DISCONNECTED
@@ -1028,6 +1106,58 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             // 后台启动 FGS 受限（ForegroundServiceStartNotAllowedException）时走这里，
             // 由 JS 回前台补调；不影响连接本身
             log("[VeepooRing ANDROID] keepalive start failed: ${e.message}")
+        }
+    }
+
+    /**
+     * ★ 2026-11-16（真因修复）：引导用户把 App 加入系统电池优化白名单。
+     *   OPPO ColorOS 熄屏后 OplusHansManager 会 freeze 整个进程，前台服务挡不住；
+     *   实测加入 Doze 白名单后熄屏 90s 不再被冻结。adb 加的白名单重启会丢，
+     *   必须由用户在系统对话框里确认一次才永久生效。只弹一次，避免反复打扰。
+     */
+    @ReactMethod
+    fun requestBatteryExemption(promise: Promise) {
+        try {
+            val ctx = reactContext.applicationContext
+            val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            val ignored = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                pm.isIgnoringBatteryOptimizations(ctx.packageName)
+            } else true
+            val sp = ctx.getSharedPreferences("mira_ring_reconnect", android.content.Context.MODE_PRIVATE)
+            val asked = sp.getBoolean("battery_exemption_asked", false)
+            if (ignored) {
+                promise.resolve("already_exempt")
+                return
+            }
+            sp.edit().putBoolean("battery_exemption_asked", true).apply()
+            // 用户已拒绝过或已弹过一次 → 不再强弹，改为返回需要手动设置的提示
+            if (asked) {
+                promise.resolve("needs_manual")
+                return
+            }
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                android.net.Uri.parse("package:${ctx.packageName}"),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(intent)
+            promise.resolve("dialog_shown")
+        } catch (e: Throwable) {
+            promise.resolve("unavailable: ${e.message}")
+        }
+    }
+
+    /** 查询当前是否已被电池优化豁免（供设置页显示状态，不弹窗）。 */
+    @ReactMethod
+    fun isBatteryExempt(promise: Promise) {
+        try {
+            val ctx = reactContext.applicationContext
+            val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            promise.resolve(
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
+                    pm.isIgnoringBatteryOptimizations(ctx.packageName) else true
+            )
+        } catch (e: Throwable) {
+            promise.resolve(false)
         }
     }
 

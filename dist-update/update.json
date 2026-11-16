@@ -1,9 +1,9 @@
 {
-  "versionCode": 36,
-  "versionName": "1.4.7",
-  "apkUrl": "https://app.lunamiraring.com/downloads/mira-app-1.4.7-36.apk",
-  "sizeBytes": 82728668,
-  "sha256": "30972ccb83a5b4bd26955e2f997bd8f4736feae3dbdf324be608a7a455d34159",
-  "notes": "正式签名版(CN=LunaMira):修复戒指静默断连不重连——原生注册SDK连接状态监听,掉线即归位并重连;新增5分钟无回包假连接活性探测;修复正式包构造期listener实例化导致的启动白屏。重连后自动增量回填HRV/血压等历史数据,戒指常戴不再出现长时间数据空档。升级注意:签名由debug切换为正式,已装旧版需卸载后再安装。",
-  "releasedAt": "2026-11-15T16:07:47.205Z"
+  "versionCode": 37,
+  "versionName": "1.4.8",
+  "apkUrl": "https://app.lunamiraring.com/downloads/mira-app-1.4.8-37.apk",
+  "sizeBytes": 82732948,
+  "sha256": "d6ee721e5c7b4bd5a4970d5049138ecaf35a83632f1aa9e3d068d3733a88ddfa",
+  "notes": "蓝牙连接保护:修复戒指放着也断连。真因是OPPO ColorOS熄屏冻结整个App进程掐死JS重连定时器,导致掉线后曾20分55秒无人重连。三层保护:①App内引导电池优化白名单永久化(实测熄屏90s不再冻结) ②掉线1.2s原生即时抢连(不再等JS定时器) ③系统AlarmManager闹钟冻结免疫兜底,连上即撤不耗电。熄屏后自动重连实测6秒(原20分55秒)。顺带修复场景词回归测试跨天失效。tsc 0错误/离线回归11/11/真机无白屏。升级注意:1.4.6及更早为debug签名需卸载重装;1.4.7可直接覆盖。",
+  "releasedAt": "2026-11-16T03:17:12.741Z"
 }
