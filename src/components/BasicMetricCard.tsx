@@ -386,20 +386,24 @@ export default function BasicMetricCard({
               原来「相对时间 + 右箭头」和标题挤在同一行，两者都flexShrink，
               标题先被压到只剩 3 个字（「心率变…」「皮肤含…」「交感神…」）。
               现在**标题独占一行**（右侧只留箭头），相对时间下移到「数值」那一行右端。*/}
+          {/* ★ 2026-11-25（用户：问号别贴着右箭头，否则点不到箭头进详情）：
+              原布局「标题 Text flex:1」把 InfoDot 顶到最右、紧贴 chevronRight，
+              InfoDot 的 hitSlop 四周扩 8px 正好盖住箭头 → 点箭头误开说明。
+              现在标题改 flexShrink（按内容宽），InfoDot 紧跟标题，中间用 flex:1
+              撑开 + InfoDot 右侧留 sp(2) 硬间距，箭头独占最右，二者彻底分开。 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.sp(2) }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: theme.sp(1) }}>
-              {metric.icon && (
-                <View style={{
-                  width: 26, height: 26, borderRadius: mm.radius.iconSq,
-                  backgroundColor: icBg, alignItems: 'center', justifyContent: 'center',
-                  marginRight: theme.sp(1),
-                }}>
-                  <Icon name={metric.icon} size={14} color={icFg} />
-                </View>
-              )}
-              <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flex: 1 }}>{metric.name}</Text>
-              {infoKey ? <InfoDot onPress={openInfo} /> : null}
-            </View>
+            {metric.icon && (
+              <View style={{
+                width: 26, height: 26, borderRadius: mm.radius.iconSq,
+                backgroundColor: icBg, alignItems: 'center', justifyContent: 'center',
+                marginRight: theme.sp(1),
+              }}>
+                <Icon name={metric.icon} size={14} color={icFg} />
+              </View>
+            )}
+            <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flexShrink: 1 }}>{metric.name}</Text>
+            {infoKey ? <View style={{ marginLeft: 4, marginRight: theme.sp(2) }}><InfoDot onPress={openInfo} /></View> : null}
+            <View style={{ flex: 1 }} />
             <Icon name="chevronRight" size={14} color={mm.colors.inkFaint} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
