@@ -3,6 +3,7 @@ package com.miraringfashion.app.veepoo
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.veepoo.protocol.VPOperateManager
@@ -33,8 +34,27 @@ import com.veepoo.protocol.listener.data.IDeviceFuctionDataListener
 //   注意 IBleWriteResponse 本身 extends BleWriteResponse，直接复用现有 SAM 写法。
 import com.veepoo.protocol.listener.data.IBPDetectDataListener
 import com.veepoo.protocol.listener.data.IHrvDetectListener
+// ★ 2026-11-17（用户「补吧补吧」：把 Pro 的 ECG/血糖真接进原生桥）：
+//   javap vpprotocol-2.3.81.15.aar 核对：
+//   startDetectECG(IBleWriteResponse, boolean, IECGDetectListener)
+//   / stopDetectECG(IBleWriteResponse, boolean, IECGDetectListener)
+//   / startBloodGlucoseDetect(IBleWriteResponse, IBloodGlucoseChangeListener)
+//   / stopBloodGlucoseDetect(IBleWriteResponse, IBloodGlucoseChangeListener) 均存在。
+//   回调契约对齐 iOS VeepooRing.m 的 onEcg/onEcgProgress/血糖 onRealtime。
+import com.veepoo.protocol.listener.data.IECGDetectListener
+import com.veepoo.protocol.listener.data.AbsBloodGlucoseChangeListener
+import com.veepoo.protocol.listener.data.IBloodComponentDetectListener
+import com.veepoo.protocol.model.datas.BloodComponent
+import com.veepoo.protocol.model.enums.EBloodComponentDetectState
 import com.veepoo.protocol.model.datas.BpData
+import com.veepoo.protocol.model.datas.EcgDetectInfo
+import com.veepoo.protocol.model.datas.EcgDetectState
+import com.veepoo.protocol.model.datas.EcgDetectResult
+import com.veepoo.protocol.model.datas.EcgDiagnosis
+import com.veepoo.protocol.util.EcgUtil
 import com.veepoo.protocol.model.enums.EBPDetectModel
+import com.veepoo.protocol.model.enums.EDeviceStatus
+import com.veepoo.protocol.model.enums.EBloodGlucoseStatus
 import com.veepoo.protocol.model.enums.HrvDetectState
 import com.veepoo.protocol.shareprence.VpSpGetUtil
 // ★ 2026-11-16（用户：戒指一直戴着、手机在旁边还断连）：ColorOS 熄屏会 freeze 整个进程，
@@ -54,6 +74,31 @@ import com.veepoo.protocol.model.settings.ReadOriginSetting
 import com.veepoo.protocol.model.datas.TimeData
 import com.veepoo.protocol.model.datas.AutoMeasureData
 import com.veepoo.protocol.model.enums.EAutoMeasureType
+// ★ 2026-11-18（用户：Pro 没看到血糖/血液成分）：接 readDeviceManualData 历史记录通道
+import com.veepoo.protocol.model.enums.DeviceManualDataType
+import com.veepoo.protocol.model.datas.BloodGlucoseManualData
+import com.veepoo.protocol.model.datas.BloodComponentManualData
+// ★ 2026-11-18(v61)（用户：EDA/压力/疲劳/情绪/皮肤含水量接上）：GSR 点测 + 微体检 + 历史记录
+//   javap vpprotocol-2.3.81.15.aar 核对：
+//   startDetectGsr(BleWriteResponse, IGsrDetectListener) / stopDetectGsr(BleWriteResponse)
+//   startMiniCheckup(BleWriteResponse, IMiniCheckupOptListener) / stopMiniCheckup(...)
+//   IGsrDetectListener: onGsrDetectProgress/onGsrDetectSuccess(GsrDetectResult)/onGsrDetectFailed/onGsrDetectStop
+//   GsrDetectResult: getEmotionLevel/getSkinMoisture/getSnsActivation/getCortisolValue/getDepressionRisk
+//   IMiniCheckupOptListener: onMiniCheckupSuccess(MiniCheckupResultData)/onMiniCheckupDetailTestSuccess(MiniCheckupDetailData)
+//   历史: PressureManualData.getPressure / FatigueManualData.getFatigue / SkinConductanceManualData.getSkinMoisture 等
+import com.veepoo.protocol.listener.data.IGsrDetectListener
+import com.veepoo.protocol.model.datas.GsrDetectResult
+import com.veepoo.protocol.model.enums.GsrDetectAck
+import com.veepoo.protocol.listener.IMiniCheckupOptListener
+import com.veepoo.protocol.model.datas.MiniCheckupResultData
+import com.veepoo.protocol.model.datas.MiniCheckupDetailData
+import com.veepoo.protocol.model.enums.EMiniCheckupTestErrorCode
+import com.veepoo.protocol.model.datas.PressureManualData
+import com.veepoo.protocol.model.datas.FatigueManualData
+import com.veepoo.protocol.model.datas.SkinConductanceManualData
+import com.veepoo.protocol.model.datas.EmotionManualData
+import com.veepoo.protocol.model.datas.MetoManualData
+import com.veepoo.protocol.listener.data.AbsDeviceManualDetectDataListener
 import com.veepoo.protocol.model.enums.EFunctionStatus
 import com.veepoo.protocol.model.datas.SleepData
 import com.inuker.bluetooth.library.search.SearchRequest
@@ -130,10 +175,38 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     ?.takeIf { it.isNotBlank() } ?: return
                 val appCtx = reactContext.applicationContext
                 if (!RingReconnectAlarm.isActive(appCtx)) return
-                // 已连上就别重复连；并撤掉闹钟
+                val isHourly = intent.getBooleanExtra(RingReconnectAlarm.EXTRA_HOURLY, false)
+                // ★ 2026-11-23：每小时这一路（含冷启动重连）回填收口后要补测压力/EDA。
+                //   置位后由 finishBackfillTransaction 消费；普通掉线重连不置位。
+                if (isHourly) nightlySnapPending = true
+                // 已连上就别重复连；并撤掉掉线闹钟。
+                // ★ 2026-11-18：来自「每小时同步」的请求，即使已经连着也要触发一次数据回填
+                //   （用户要求「每个小时连接一次上次戒指 + 更新数据」）。用今天的日期做增量，
+                //   backfillSince 内部有 ready 守卫 + 事务合并，不会重复下发写命令打爆通道。
                 try {
                     if (manager.isDeviceConnected(mac)) {
                         RingReconnectAlarm.cancel(appCtx)
+                        // ★ 2026-11-24（P0 状态卡死修复）：底层 BLE 已连（GATT link up + 实时数据
+                        //   在进），但 JS 的 status 可能仍停在 idle——典型于「App 重启 / 闹钟原生
+                        //   重连」场景：connect() 的 notify 回调 emit connected 发生在 JS listener
+                        //   就绪之前而丢失。EcgCard/详情页测量入口检查 `status === 'connected'`，
+                        //   status 卡 idle 会让所有手动测量（ECG/血液成分等）被误拦为「戒指未连接」。
+                        //   这里在「确认底层已连」时幂等补发一次 connected，让上层状态机自愈。
+                        //   JS 对重复 connected 幂等（仅刷新 lastConnectedAt / 机会式补测），无害。
+                        emit("onState", JSONObject().apply {
+                            put("status", "connected")
+                            put("deviceAddress", mac)
+                        })
+                        if (isHourly && ready.get()) {
+                            log("[VeepooRing ANDROID] ⏰ 每小时同步：已连接 → 触发增量回填更新数据")
+                            // backfillFrom 自身会 emit syncing/onBatch/backfillDone，走既有通道，
+                            // 无需额外状态；数据更新由这条完整链路覆盖。
+                            try {
+                                backfillFrom(todayDateKey())
+                            } catch (e: Throwable) {
+                                log("[VeepooRing ANDROID] 每小时回填触发失败: ${e.message}")
+                            }
+                        }
                         return
                     }
                 } catch (_: Throwable) {}
@@ -174,6 +247,10 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     // 幂等：主动 disconnect() 已发过一次，这里可能再来一帧，重复 emit 无害（JS 归位 idle 本就幂等）。
                     ready.set(false)
                     stopPpgReleaseCycle()
+                    stopChronicVitals()
+                    // ★ 2026-11-22（P0 死锁）：掉线时强制清掉悬挂的同步事务锁 + 暂缓写队列，
+                    //   否则重连后所有写命令被误判「同步在途」永久 defer → 连着但零数据。
+                    forceReleaseSyncLocksOnDisconnect()
                     val target = if (mac.isNotBlank()) mac else connectedMac
                     val ctx = reactContext.applicationContext
                     // ★ 2026-11-16：用户主动断开时不再自动连回；被动掉线才排冻结免疫闹钟。
@@ -251,6 +328,26 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ready = AtomicBoolean(false)
     private var monitorOn = false
+    // ★ 2026-11-23（用户：夜间身心压力没数据）：后台每小时闹钟唤醒时，进程虽活但 JS 层
+    //   snapshotRotation 的 30s Handler 可能被冻结停摆，导致夜间零点点测。此标志由后台
+    //   回填收口处置起，让下一次 tickSnapshotRotation 即便 monitorOn 尚未恢复也能强制跑一轮。
+    @Volatile private var nightlySnapPending = false
+    // ★ 2026-11-18(v61)：GSR/微体检单测轮询（对齐 iOS startRotationIfNeeded）。
+    //   EDA/情绪/皮肤含水量（GSR）与压力/疲劳度（微体检）都是「App 点测一次才出值」的快照指标，
+    //   设备不会连续自动测。每 30s 交替触发一路（比 iOS 的 10s 更保守，避免抢 PPG 通道影响
+    //   心率/血氧实时流与一键体检），单路在途时跳过，看门狗超时自动放行。
+    private val snapshotRotationHandler = Handler(Looper.getMainLooper())
+    private var snapshotRotationArmed = false
+    private var snapshotRotationIdx = 0
+    private var snapshotTestInProgress = false
+    private val SNAPSHOT_ROTATION_INTERVAL_MS = 30_000L
+    private val snapshotRotationRunnable = object : Runnable {
+        override fun run() {
+            if (!snapshotRotationArmed) return
+            tickSnapshotRotation()
+            snapshotRotationHandler.postDelayed(this, SNAPSHOT_ROTATION_INTERVAL_MS)
+        }
+    }
     // ★ 2026-11-10（用户：心率在图表上死活不更新，必须解决）：
     //   本固件 SpO2hData.rateValue（实时心率）恒为 0（原始 BLE 包 spo2h_read_oprate 里 HR 字节恒 00），
     //   实时流拿不到心率；PULSE_RATE 周期自动测量在 16:00 后也断流。心率唯一可靠来源是
@@ -266,13 +363,108 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private var capHrv: Boolean? = null
     private var capSpo2: Boolean? = null
     private var capPulse: Boolean? = null
+    // ★ 2026-11-17（用户：ECG 测到最后卡在「生成报告」）：VpSpGetUtil.isSupportECG() 读的是本地存的
+    //   设备类型，PRO_UI 档位下恒 true，但真机能力包 FunctionDeviceSupportData.ecg=UNSUPPORT
+    //   → 测量启动后只回 info 帧、永不出结果 → 99% 卡死。改用固件真实能力位做门禁。
+    //   null=尚未拿到能力包（保守放行，交设备实测）；false=固件明确不支持 → 拒绝启动。
+    private var capEcg: Boolean? = null
+    private var capGlucose: Boolean? = null
+    /** ★ 2026-11-18：血糖私有模式（多点校准固件）。私有模式固件对公开模式命令（vp_bs）不响应，
+     *  必须发私有命令（vp_bt）；由能力包 bloodGlucoseMultipleAdjusting 位判定。 */
+    private var glucosePrivateMode = false
+    private var capBloodComponent: Boolean? = null
+
+    // ★ 2026-11-16（用户：摘下戒指放桌上，数据还在更新）：
+    //   戒指摘下后固件会关闭 PPG → 连续血氧流停止（真机实证：摘下后 12s 内 0 条 spo2h 包，
+    //   但 BLE GATT 仍连接）。旧逻辑只看「连接没连接」，于是 5min HR 采样 / 30s 情绪重算 /
+    //   10min 同步照跑，派生指标用 Date.now() 继续变 → 用户看到「摘了还在更新」。
+    //   这里维护一个佩戴状态：null=未判定，true=佩戴，false=摘下。判定依据两条（见 onSpO2HADataChange）：
+    //     ① SDK 的 Spo2hData.deviceState==UNPASS_WEAR（强信号，立即脱手）
+    //     ② 血氧流静默超时（固件摘下后连 UNPASS_WEAR 包都不发，只能靠超时；阈值 > PPG 让出窗口 120s）
+    //   状态变化经 onWear 事件发给 JS，JS 据此冻结实时写入与派生重算（冻结在最后一笔，不空态）。
+    @Volatile private var worn: Boolean? = null
+    /** 最近一次收到「有效血氧样本」的时刻（spo2>0 且非让出/测量窗口）。 */
+    @Volatile private var lastSpO2SampleAt = 0L
+    /** ★ 2026-11-18：最近一次收到「任意血氧帧」的时刻——不管 value 是不是 0，只要帧到了就刷新。
+     *  「有没有戴戒指」的物理证据是**帧还在不在传**，不是读数是否有效。真机日志实锤：戴着戒指时
+     *  spo2h 帧每秒都到，但读数会短时=0（测量恢复期/佩戴姿势/温度）；旧逻辑只看 spo2>0，把
+     *  value=0 当成没数据 → 看门狗静默 20s 误判脱手 → 点快检被弹「未佩戴」。
+     *  判脱手一律用这个字段；value>0 仍用于「从脱手恢复」的正向判定。 */
+    @Volatile private var lastAnySpo2FrameAt = 0L
+    /** ★ 2026-11-17：最近一次主动测量(ECG/BP/HRV/血糖)结束时刻。测量会停血氧流数十秒，
+     *   结束后血氧流恢复需要时间；这段宽限期内不判脱手，否则戴着戒指做 ECG 后会被误判「未佩戴」。 */
+    @Volatile private var lastMeasureEndAt = 0L
+    /** 测量结束后的脱手判定宽限期：给血氧流重新启动 + 首批样本到达留足时间。 */
+    private val WEAR_GRACE_AFTER_MEASURE_MS = 30_000L
+    private val wearWatchdogHandler = Handler(Looper.getMainLooper())
+    private var wearWatchdogArmed = false
+    /** 静默判定阈值：正常佩戴时血氧流每秒一条，20s 无包即可判脱手（够快，体检时能及时提示）。
+     *  PPG 让出窗口(ppgReleaseActive)、主动测量(measuring)、5 分钟 HR 采样窗口(hrListener)已在上游排除——
+     *  ★ 2026-11-16 真机复验发现：HR 采样会停血氧流 20s，不排除的话每次采样都被误判脱手、
+     *    采样刚出的合法心率读数又被 JS 冻结闸门丢弃（21:07/21:12/21:17/21:22 四次 false→true 抖动作证）。 */
+    private val WEAR_OFF_SILENCE_MS = 20_000L
+    /** 看门狗检查间隔 */
+    private val WEAR_CHECK_INTERVAL_MS = 5_000L
+    private val wearWatchdogRunnable = object : Runnable {
+        override fun run() {
+            // 仅在实时监控开启 + 已就绪时判佩戴；让出窗口 / 主动测量 / HR 采样期间流本就会停，不算脱手
+            val measuring = bpDetectListener != null || hrvDetectListener != null || hrListener != null ||
+                ecgDetectListener != null || glucoseListener != null || bloodComponentListener != null
+            // ★ 2026-11-17：主动测量结束后血氧流要几十秒才恢复，宽限期内不判脱手
+            val justFinishedMeasure = lastMeasureEndAt > 0 &&
+                System.currentTimeMillis() - lastMeasureEndAt < WEAR_GRACE_AFTER_MEASURE_MS
+            // ★ 2026-11-18：判脱手改用「帧是否还在到」(lastAnySpo2FrameAt)，
+            //   不再用「有效读数是否出现」(lastSpO2SampleAt)。戴着但 value=0 时帧仍每秒到达，
+            //   不会被误判脱手；真摘戒指时帧彻底停止，20s 后正常判脱手。
+            if (monitorOn && ready.get() && !ppgReleaseActive && !measuring && !justFinishedMeasure && lastAnySpo2FrameAt > 0) {
+                val silent = System.currentTimeMillis() - lastAnySpo2FrameAt
+                if (silent >= WEAR_OFF_SILENCE_MS && worn != false) {
+                    setWorn(false, "spo2 frame silent ${silent / 1000}s")
+                }
+            }
+            if (wearWatchdogArmed) wearWatchdogHandler.postDelayed(this, WEAR_CHECK_INTERVAL_MS)
+        }
+    }
+
+    /** 更新佩戴状态，仅在变化时 emit onWear 给 JS。 */
+    private fun setWorn(next: Boolean?, reason: String) {
+        if (worn == next) return
+        val prev = worn
+        worn = next
+        try {
+            emit("onWear", JSONObject().apply {
+                put("worn", if (next == null) "unknown" else next.toString())
+                put("prev", if (prev == null) "unknown" else prev.toString())
+                put("reason", reason)
+            })
+        } catch (_: Throwable) {}
+        log("[VeepooRing ANDROID] wear=$prev -> $next ($reason)")
+    }
+
+    private fun startWearWatchdog() {
+        if (wearWatchdogArmed) return
+        wearWatchdogArmed = true
+        // ★ 2026-11-16：冷启动时戒指可能就是摘下的，从未收到过血氧包（lastSpO2SampleAt=0）。
+        //   此时以「看门狗启动时刻」为锚点，25s 内仍无有效血氧 → 判脱手，避免摘着戒指却永远不冻结。
+        if (lastAnySpo2FrameAt == 0L) lastAnySpo2FrameAt = System.currentTimeMillis()
+        wearWatchdogHandler.postDelayed(wearWatchdogRunnable, WEAR_CHECK_INTERVAL_MS)
+    }
+    private fun stopWearWatchdog() {
+        wearWatchdogArmed = false
+        wearWatchdogHandler.removeCallbacks(wearWatchdogRunnable)
+        lastSpO2SampleAt = 0L
+        lastAnySpo2FrameAt = 0L
+        setWorn(null, "watchdog stopped")
+    }
+
     private val hrSampleRunnable = object : Runnable {
         override fun run() {
             // ★ 2026-11-12：让出 PPG 期间只跳过这一轮、不要停定时器。
             //   旧版 releasePpgForAutoMeasure() 直接 stopHrSampling()，恢复后又要等满 5 分钟才采第一次，
             //   加上每半小时让一次，心率节奏被无限推迟（真机 11/12 全天 hr=0 点、single HR detect 日志 0 条）。
             if (monitorOn && ready.get() && !ppgReleaseActive &&
-                bpDetectListener == null && hrvDetectListener == null) {
+                bpDetectListener == null && hrvDetectListener == null &&
+                ecgDetectListener == null && glucoseListener == null && bloodComponentListener == null) {
                 // 占用 PPG 通道 20s 采心率，startSingleHeartDetect 结束内部会恢复 spo2 流
                 startSingleHeartDetect()
             }
@@ -287,6 +479,91 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private fun stopHrSampling() {
         hrSampleArmed = false
         hrSampleHandler.removeCallbacks(hrSampleRunnable)
+    }
+
+    // ★ 2026-11-21（用户拍板「除心电外全部自动测量，低频每2小时」）：
+    //   戒指端血糖/血液成分自动测量开关功能表=UNSUPPORT（真机实锤：ensureAutoMeasure 只回报 PULSE_RATE），
+    //   无法靠戒指自测，只能 App 侧定时主动测。每项每 2 小时一次、两项错开 3 分钟，避免同一 PPG 窗口互抢。
+    //   约束：必须有佩戴（血氧帧活跃）、无任何测量 listener 占用、非 PPG 让出窗口，否则跳过本轮。
+    private val chronicVitalsHandler = Handler(Looper.getMainLooper())
+    private var chronicVitalsArmed = false
+    private val CHRONIC_VITALS_INTERVAL_MS = 2 * 60 * 60_000L
+    // ★ v91（用户 2026-11-24：「血液成分要自动测量，不要手动测」）：
+    //   首轮改为血液成分优先——血糖有实时流持续回填（真机 glucose≈5.46 一直在回），不缺这一次点测；
+    //   血液成分是纯点测项，不主动发起就永远是「—」。戴上戒指连上 App 约 30s 后即自动测尿酸/血脂。
+    private var chronicVitalsNextGlucose = false // false = 首轮先血液成分；之后与血糖交替
+    private val chronicVitalsRunnable = object : Runnable {
+        override fun run() {
+            if (!chronicVitalsArmed) return
+            val key = if (chronicVitalsNextGlucose) "glucose" else "bloodcomp"
+            // ★ v92（2026-11-24 真机时序实锤）：tryRunChronicVital 返回「建议重试毫秒」，
+            //   -1 = 已成功发起；>0 = 按跳过原因重试。冷启动 PPG 窗口 5s 触发占 120s，
+            //   旧版首轮 30s 必撞车 + 死等 5min → 血液成分长期出不来值。
+            val retryMs = tryRunChronicVital(key)
+            if (retryMs < 0) {
+                // 成功发起：切到另一项，2 小时后再来
+                chronicVitalsNextGlucose = !chronicVitalsNextGlucose
+                if (chronicVitalsArmed) chronicVitalsHandler.postDelayed(this, CHRONIC_VITALS_INTERVAL_MS)
+            } else {
+                android.util.Log.e("AUTOVITAL", "retry $key in ${retryMs / 1000}s")
+                if (chronicVitalsArmed) chronicVitalsHandler.postDelayed(this, retryMs)
+            }
+        }
+    }
+    private fun startChronicVitals() {
+        if (chronicVitalsArmed) return
+        chronicVitalsArmed = true
+        // 首轮延后 30s：避开 connected 边沿的回填/实时流启动通道竞争
+        chronicVitalsHandler.postDelayed(chronicVitalsRunnable, 30_000L)
+        log("[VeepooRing ANDROID] chronicVitals auto-measure armed (glucose/bloodcomp every 2h, staggered)")
+    }
+    private fun stopChronicVitals() {
+        chronicVitalsArmed = false
+        chronicVitalsHandler.removeCallbacks(chronicVitalsRunnable)
+    }
+    /** 低频自动测量：佩戴 + 通道空闲才发起；发起后由 SDK 回调链路正常收口（出值即停、恢复血氧流）。
+     *  ★ v92：返回 -1 = 已成功发起；>0 = 建议多少毫秒后重试（按跳过原因分级，避免通道竞争把血液成分饿死）。 */
+    private fun tryRunChronicVital(key: String): Long {
+        // 全部用 android.util.Log.e 直写，避开 onLog→postLog 250ms 节流吞日志（诊断刚需）
+        val TAG = "AUTOVITAL"
+        val now = System.currentTimeMillis()
+        // 带小抖动的短重试：snapshot 轮询是 30s 周期，用 19~23s 错开，避免固定相位永远撞车
+        val quickRetry = 19_000L + (Math.random() * 4000).toLong()
+        if (!monitorOn || !ready.get()) {
+            android.util.Log.e(TAG, "skip $key: monitorOn=$monitorOn ready=${ready.get()}")
+            return 60_000L }
+        // 佩戴判定：最近 90s 内有血氧帧才认为戴着（PPG 窗口会停血氧流最长 120s，
+        //   旧 60s 阈值会把「窗口刚恢复、戴着戒指」误判成脱手 → 自动测量永远起不来）
+        if (lastAnySpo2FrameAt <= 0L || now - lastAnySpo2FrameAt > 90_000L) {
+            android.util.Log.e(TAG, "skip $key: ring not worn (lastSpo2FrameAge=${now - lastAnySpo2FrameAt}ms)")
+            return 5 * 60_000L }
+        // ★ v93（2026-11-24 真机死锁实锤）：用户已拍板「血液成分自动测量」= 用户意图，
+        //   与手动 measure() 同优先级。旧版遇 PPG 窗口就 skip，而只有 measure() 内部才会
+        //   cancelPpgRelease —— 形成「窗口挡住自动测量、自动测量够不到取消窗口」的死锁，
+        //   真机连续数分钟全被挡、一次都出不来值。这里在发起前主动取消 PPG 让出窗口（与手动同款，
+        //   安全无副作用：窗口本就每 30min 循环，下个整点照常让出）。
+        //   注意：不 stopSnapshotRotation——那会导致压力/EDA/疲劳快照永久停更（只有连接边沿才重启）。
+        if (ppgReleaseActive) {
+            android.util.Log.e(TAG, "cancel PPG release for AUTO $key (user intent wins)")
+            cancelPpgRelease("AUTO $key wins")
+        }
+        // 正在跑的实测（ECG/血糖/血液成分自身/snapshot的miniCheckup/GSR/HRV/BP）不抢占，
+        // 等它自然收口后快速重试（20s 抖动），避免掐断别人的测量。
+        if (ecgDetectListener != null || glucoseListener != null || bloodComponentListener != null
+            || gsrDetectListener != null || miniCheckupListener != null || hrListener != null
+            || hrvDetectListener != null || bpDetectListener != null) {
+            android.util.Log.e(TAG, "skip $key: another measure running (mini=${miniCheckupListener != null} gsr=${gsrDetectListener != null} hr=${hrListener != null})")
+            return quickRetry }
+        android.util.Log.e(TAG, "AUTO $key fired (worn, channel cleared, spo2Age=${now - lastAnySpo2FrameAt}ms)")
+        measure(key)
+        return -1L
+    }
+
+    /** 诊断入口：真机立即触发一次低频自动测量（免等 2h），仅调试用。 */
+    @ReactMethod
+    fun debugRunChronicVital(key: String) {
+        android.util.Log.e("AUTOVITAL", "debug trigger $key")
+        tryRunChronicVital(key)
     }
     private val scannedDevices = mutableListOf<JSONObject>()
     /** ★ 2026-11-11：自动测量设置只写一次，防止 setAutoMeasureSettingData 回调本监听器造成循环写。 */
@@ -358,6 +635,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             ppgRestoreRunnable = null
             ppgReleaseActive = false
             if (!ready.get()) return@Runnable
+            // ★ 2026-11-18：让出窗口刚结束、血氧流重启到首批帧到达有延迟，前移锚点避免误判脱手
+            val restoreAt = System.currentTimeMillis()
+            if (lastAnySpo2FrameAt < restoreAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = restoreAt
             if (spo2Listener == null) startSpo2hOnly()
             startHrSampling()
             // 恢复血氧后 25s 主动补一次心率，避免「等满 5 分钟才出第一个点」；
@@ -366,6 +646,16 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 if (monitorOn && ready.get() && !ppgReleaseActive &&
                     bpDetectListener == null && hrvDetectListener == null) startSingleHeartDetect()
             }, 25_000L)
+            // ★ v80 修复（用户：身心压力没数据）：PPG 让出窗口结束后立即补一次微体检/GSR 轮询，
+            //   不再空等下一个 30s tick（真机 SNAPDG 实锤：窗口 120s 吃掉多轮 tick 导致 EDA/stress 饿死）。
+            //   延后 8s 让血氧流先稳住，避免刚恢复就抢通道。
+            mainHandler.postDelayed({
+                if (monitorOn && ready.get() && !ppgReleaseActive && snapshotRotationArmed &&
+                    !snapshotTestInProgress) {
+                    android.util.Log.e("SNAPDG", "PPG restore -> catch-up snapshot tick")
+                    tickSnapshotRotation()
+                }
+            }, 8_000L)
             log("[VeepooRing ANDROID] PPG release: SPO2H restored, HR catch-up queued")
         }
         ppgRestoreRunnable = restore
@@ -373,6 +663,47 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     }
     // ★ 2026-11-09：离线回填状态机——真正调 SDK 读历史，逐日 emit onBatch。
     private val backfillInProgress = AtomicBoolean(false)
+
+    /**
+     * ★ 2026-11-22（用户："数据量大就线性逐步回填，不要中间给卡死"）：
+     * 原生回填事务级「无进展硬超时」看门狗。补 v77 死锁修复的最后一块短板——
+     * v77 只修了「断连时清锁」，但若戒指一直连着、SDK 第一段 readAllHealthData
+     * 静默不回调（既不 onReadOriginComplete 也不 onReadTimeout），回读锁仍会永久挂；
+     * JS 侧 150s watchdog 只解 JS 标记、解不了原生锁（重发请求进原生被 getAndSet 合并丢弃）。
+     *
+     * 机制：回填有实质进展（进度推进 / 收到任一天批次 / origin3 回调）就 touch 续命；
+     * 连续 BACKFILL_STALL_MS 无任何进展 → 强制走事务收口（清两把锁 + emit backfillDone +
+     * flush 被暂缓的写命令），让整条链路从干净状态继续，而不是永久卡死。
+     * 只要数据在持续回流（哪怕很慢、很多天），看门狗就一直不触发 → 实现"线性逐步回填"。
+     */
+    private var backfillLastProgressAt = 0L
+    private val BACKFILL_STALL_MS = 45_000L   // 无进展 45s 判定卡死（正常回填每批间隔远小于此）
+    private val BACKFILL_WD_TICK_MS = 15_000L // 每 15s 巡检一次
+    private val backfillWatchdogRunnable = object : Runnable {
+        override fun run() {
+            if (!backfillInProgress.get()) return  // 事务已正常收口，看门狗自然熄灭
+            val last = backfillLastProgressAt
+            val idle = if (last <= 0L) 0L else System.currentTimeMillis() - last
+            if (idle >= BACKFILL_STALL_MS) {
+                android.util.Log.e("BACKFILL-WD", "stall ${idle / 1000}s no progress -> force finish transaction")
+                finishBackfillTransaction()
+                return
+            }
+            mainHandler.postDelayed(this, BACKFILL_WD_TICK_MS)
+        }
+    }
+    private fun touchBackfillProgress() {
+        backfillLastProgressAt = System.currentTimeMillis()
+    }
+    private fun armBackfillWatchdog() {
+        backfillLastProgressAt = System.currentTimeMillis()
+        mainHandler.removeCallbacks(backfillWatchdogRunnable)
+        mainHandler.postDelayed(backfillWatchdogRunnable, BACKFILL_WD_TICK_MS)
+        android.util.Log.e("BACKFILL-WD", "armed (stall threshold ${BACKFILL_STALL_MS / 1000}s)")
+    }
+    private fun clearBackfillWatchdog() {
+        mainHandler.removeCallbacks(backfillWatchdogRunnable)
+    }
     /**
      * ★ 2026-11-11（用户：连上戒指后夜间血氧/HRV 还是不回填）：
      * 主同步（readAllHealthDataBySettingOrigin）与历史原始回读（readOriginDataBySetting /
@@ -402,6 +733,31 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             try { block() } catch (e: Exception) { log("[VeepooRing ANDROID] deferred write '$tag' failed: ${e.message}") }
         }
     }
+    /**
+     * ★ 2026-11-22（P0 死锁修复）：断连时强制收口悬挂的同步事务。
+     *
+     * 真机铁证：昨晚 21:12 戒指在 backfill 在途时掉线（status=8 监督超时），
+     * SDK 回调再也不来 → backfillInProgress/origin3InProgress 两把锁永不释放。
+     * App 进程 14h 未重启，今天 11:15 重连后所有写命令被 runOrDeferWrite 判定
+     * 「同步在途」塞进 deferredWrites，而队列只在 backfillDone 时 flush → 死锁：
+     * 戒指连着、握手正常、只回电量帧，实时 HR/血氧/历史回填全无。
+     *
+     * 本函数只做**本地状态清理**，刻意不 emit backfillDone（避免推进 JS 游标
+     * 触发补跑/缺口自愈的空转）。下次重连从干净状态开始，写命令直接执行。
+     */
+    private fun forceReleaseSyncLocksOnDisconnect() {
+        val wasInFlight = backfillInProgress.getAndSet(false) || origin3InProgress.getAndSet(false)
+        clearBackfillWatchdog()  // v78：断连解锁同时熄灭看门狗，避免空转
+        pendingBackfillDuringTransaction.set(false)
+        val pending = deferredWrites.size
+        if (wasInFlight || pending > 0) {
+            android.util.Log.e("SYNCUNLOCK", "disconnect released stuck locks: wasInFlight=$wasInFlight pendingWrites=$pending")
+            log("[VeepooRing ANDROID] 🔓 断连强制解锁同步事务 (wasInFlight=$wasInFlight, pendingWrites=$pending)")
+        }
+        // 丢弃所有暂缓写命令：它们属于已死的那次连接，重连后 JS 会重新下发整套。
+        deferredWrites.clear()
+    }
+
     private fun flushDeferredWrites() {
         if (deferredWrites.isEmpty()) return
         val list = ArrayList(deferredWrites)
@@ -431,14 +787,215 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             // ★ 2026-11-08：Bridgeless 新架构下 RCTDeviceEventEmitter.emit 不再做 javaArgs 自动转换，
             //   直接传 org.json.JSONObject 会 RuntimeException 崩溃（真机 19:48 铁证）。
             //   统一转成 WritableMap / 原生可接受类型再 emit。
-            val safe: Any? = when (data) {
-                null, is String, is Number, is Boolean, is WritableMap, is ReadableArray -> data
-                is JSONObject -> jsonToWritable(data)
-                else -> data.toString()
+            // ★ 2026-11-17 二次修复：整段包 try-catch。此前 onEcg 携带超大波形数组时若转换/emit
+            //   抛异常，会在主线程静默吞掉 → JS 收不到结果、UI 永久"生成报告"。现在异常必打日志。
+            try {
+                val safe: Any? = when (data) {
+                    null, is String, is Number, is Boolean, is WritableMap, is ReadableArray -> data
+                    is JSONObject -> jsonToWritable(data)
+                    else -> data.toString()
+                }
+                reactContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(name, safe)
+            } catch (e: Throwable) {
+                android.util.Log.e("VeepooRing", "[VeepooRing ANDROID] emit($name) FAILED: ${e.javaClass.simpleName}: ${e.message}")
             }
-            reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit(name, safe)
+        }
+    }
+
+    /** ★ 2026-11-18 修复：波形降采样改为「保峰」算法（min/max decimation）。
+     *   原等间隔取样每 ~10 点只取 1 点，窄 QRS 尖峰常被整段跳过 → 波形变畸形锯齿（用户反馈"奇奇怪怪"）。
+     *   保峰法把序列分成 max/2 段，每段取「最小值+最大值」一对（按原始时间序输出），
+     *   这样每个 R 波尖峰/深 S 谷都被保留，且点数仍 ≤ max，不会撑爆 RN bridge。 */
+    private fun downsampleWave(src: List<Double>, max: Int = 2000): JSONArray {
+        val arr = JSONArray()
+        if (src.isEmpty()) return arr
+        if (src.size <= max) {
+            for (v in src) arr.put(v)
+            return arr
+        }
+        val buckets = max / 2
+        val bucketSize = src.size.toDouble() / buckets
+        var b = 0
+        while (b < buckets) {
+            val start = (b * bucketSize).toInt()
+            val end = ((b + 1) * bucketSize).toInt().coerceAtMost(src.size)
+            if (start >= end) { b++; continue }
+            var minI = start
+            var maxI = start
+            for (i in start + 1 until end) {
+                if (src[i] < src[minI]) minI = i
+                if (src[i] > src[maxI]) maxI = i
+            }
+            // 按原始时间先后输出两个极值，保持波形相位正确
+            if (minI <= maxI) { arr.put(src[minI]); arr.put(src[maxI]) }
+            else { arr.put(src[maxI]); arr.put(src[minI]) }
+            b++
+        }
+        return arr
+    }
+
+    /** ★ 2026-11-18：统一组装 ECG analysis。
+     *  QTc / PWV 用 EcgDetectState 真实字段（本机一定持有），填进 analysis 供报告页 metrics 读取
+     *  （报告页 QTc 读 analysis.qtc、PWV 读 analysis.pwvMeanVal，之前只放顶层导致显示「—」）。
+     *  SDNN/RMSSD/QRS/ST/六风险来自设备多诊断报告 EcgDiagnosis —— 只有真的拿到才写，
+     *  拿不到时一个字段都不写：绝不写 0（0 会被 UI 当成"正常值"展示，属编造）。 */
+    private fun buildEcgAnalysis(hrv: Int, qtc: Int, pwv: Int, br: Int): JSONObject {
+        val a = JSONObject()
+        // 设备 state 自带的真实派生值（QT 原始值→JS 层按 Bazett 换算 QTc；PWV→m/s×10）
+        if (qtc > 0) a.put("qtcRaw", qtc)
+        if (pwv > 0) a.put("pwvMeanVal", pwv)
+        if (br > 0) a.put("respRate", br)
+        if (hrv > 0) a.put("hrv", hrv)
+        // 多诊断报告（本机只在新回调真的回传时才持有）
+        ecgDiagnosis?.let { d ->
+            if (d.diseaseRisk > 0) a.put("arrhythmiaRisk", d.diseaseRisk)
+            if (d.pressureIndex > 0) a.put("stressIndex", d.pressureIndex)
+            if (d.fatigueIndex > 0) a.put("fatigueIndex", d.fatigueIndex)
+            if (d.myocarditisRisk > 0) a.put("myocarditisRisk", d.myocarditisRisk)
+            if (d.chdRisk > 0) a.put("chdRisk", d.chdRisk)
+            if (d.angioscleroticRisk > 0) a.put("angiosclerosisRisk", d.angioscleroticRisk)
+            if (d.qrsTime > 0) a.put("qrsTime", d.qrsTime)
+            if (d.qrsAmp > 0) a.put("qrsAmp", d.qrsAmp)
+            if (d.stMeanAmp != 0) a.put("stMeanAmp", d.stMeanAmp)
+            if (d.pwvMeanVal > 0) a.put("pwvMeanVal", d.pwvMeanVal)
+            if (d.diseaseSdnn > 0) a.put("sdnn", d.diseaseSdnn)
+            if (d.diseaseRmssd > 0) a.put("rmssd", d.diseaseRmssd)
+            if (d.qtTime > 0) a.put("qtcRaw", d.qtTime)
+        }
+        // ★ 2026-11-19(v62)：设备多诊断没回传 SDNN/RMSSD 时，用本次 RR 间期本地统计补齐。
+        //   ≥10 个样本才算（30s 测量正常能收 20–30 个）；来源标注 'rr-local'，
+        //   EcgDetailScreen 据此在页脚注明「本地计算」，与设备真值区分。
+        if ((!a.has("sdnn") || !a.has("rmssd")) && ecgRrBuf.size >= 10) {
+            val rr = ecgRrBuf.map { it.toDouble() }
+            val mean = rr.average()
+            val sdnn = Math.sqrt(rr.sumOf { (it - mean) * (it - mean) } / (rr.size - 1).coerceAtLeast(1))
+            var sq = 0.0
+            for (i in 1 until rr.size) { val d = rr[i] - rr[i - 1]; sq += d * d }
+            val rmssd = Math.sqrt(sq / (rr.size - 1).coerceAtLeast(1))
+            if (!a.has("sdnn") && sdnn > 0) { a.put("sdnn", Math.round(sdnn)); a.put("sdnnSource", "rr-local") }
+            if (!a.has("rmssd") && rmssd > 0) { a.put("rmssd", Math.round(rmssd)); a.put("rmssdSource", "rr-local") }
+            log("[VeepooRing ANDROID] ECG RR-local n=${rr.size} sdnn=${Math.round(sdnn)} rmssd=${Math.round(rmssd)}")
+        }
+        return a
+    }
+
+    /** ★ 2026-11-20(v69)：诊断回调一到就把完整诊断字段 emit 给前端局部合并。
+     *  真机实证这枚戒指(ecgType=9)会回传完整 EcgDiagnosis，只是回调晚于结果帧；
+     *  这条事件让已交付的报告补上 6 大风险指数 + QRS/ST/SDNN/RMSSD，无需读历史。 */
+    private fun emitEcgDiagnosisUpdate(d: EcgDiagnosis) {
+        try {
+            val a = JSONObject()
+            if (d.diseaseRisk > 0) a.put("arrhythmiaRisk", d.diseaseRisk)
+            if (d.pressureIndex > 0) a.put("stressIndex", d.pressureIndex)
+            if (d.fatigueIndex > 0) a.put("fatigueIndex", d.fatigueIndex)
+            if (d.myocarditisRisk > 0) a.put("myocarditisRisk", d.myocarditisRisk)
+            if (d.chdRisk > 0) a.put("chdRisk", d.chdRisk)
+            if (d.angioscleroticRisk > 0) a.put("angiosclerosisRisk", d.angioscleroticRisk)
+            if (d.qrsTime > 0) a.put("qrsTime", d.qrsTime)
+            if (d.qrsAmp > 0) a.put("qrsAmp", d.qrsAmp)
+            if (d.stMeanAmp != 0) a.put("stMeanAmp", d.stMeanAmp)
+            if (d.pwvMeanVal > 0) a.put("pwvMeanVal", d.pwvMeanVal)
+            if (d.diseaseSdnn > 0) a.put("sdnn", d.diseaseSdnn)
+            if (d.diseaseRmssd > 0) a.put("rmssd", d.diseaseRmssd)
+            if (d.qtTime > 0) a.put("qtcRaw", d.qtTime)
+            if (d.hrv > 0) a.put("hrv", d.hrv)
+            if (d.heartRate > 0) a.put("deviceHeartRate", d.heartRate)
+            if (a.length() == 0) { android.util.Log.e("DIAGGATE", "DIAG-EMIT skip: all fields empty"); return }
+            android.util.Log.e("DIAGGATE", "DIAG-EMIT emit onEcgDiagnosis fields=${a.length()} $a")
+            emit("onEcgDiagnosis", a)
+        } catch (e: Throwable) {
+            android.util.Log.e("DIAGGATE", "DIAG-EMIT exception ${e.message}")
+        }
+    }
+
+    /** ★ 2026-11-20(v64→v66)：主动读回设备端 ECG 多诊断报告，补齐实时回调不返回的风险指数/医学指标。
+     *  竞品（用户截图同款）走 readECGId → readECGManuallyData 两步读历史诊断。
+     *  测量结束时设备可能还在算，故延迟 6s 再读；ALL / MANUALLY 两种类型都试，定位设备究竟存哪种。
+     *  读到后 emit onEcgDiagnosis 让前端局部更新最新一条报告（不新增记录、不改 ts）。 */
+    private fun scheduleEcgDiagnosisRead() {
+        mainHandler.postDelayed({
+            if (!ready.get()) return@postDelayed
+            tryEcgReadIds(com.veepoo.protocol.model.enums.EEcgDataType.ALL)
+            // MANUALLY 类型隔 1s 再试，覆盖"仅手动测量存诊断"的固件
+            mainHandler.postDelayed({
+                if (ready.get()) tryEcgReadIds(com.veepoo.protocol.model.enums.EEcgDataType.MANUALLY)
+            }, 1_000L)
+        }, 6_000L)
+    }
+
+    /** 用指定类型读 ECG 历史 ID 列表。 */
+    private fun tryEcgReadIds(typ: com.veepoo.protocol.model.enums.EEcgDataType) {
+        // 起始时间放宽到 1 年前，排除时间窗口问题
+        val start = TimeData(System.currentTimeMillis() - 365L * 86400 * 1000)
+        var idSettled = false
+        val idWd = Runnable { if (!idSettled) { idSettled = true; log("[VeepooRing ANDROID] ECG readId[$typ] timeout 8s") } }
+        mainHandler.postDelayed(idWd, 8_000L)
+        try {
+            manager.readECGId(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] ECG readId[$typ] write resp=$code")
+                if (code != 0) idWd.run()
+            }, start, typ, object : com.veepoo.protocol.listener.data.IECGReadIdListener {
+                override fun readIdFinish(ids: IntArray?) {
+                    mainHandler.removeCallbacks(idWd)
+                    if (idSettled) return
+                    idSettled = true
+                    log("[VeepooRing ANDROID] ECG readId[$typ] finish n=${ids?.size ?: 0} ids=${ids?.joinToString()}")
+                    if (ids == null || ids.isEmpty()) { log("[VeepooRing ANDROID] ECG readId[$typ] 无历史诊断记录"); return }
+                    readEcgDiagnosisByIds(ids)
+                }
+            })
+        } catch (e: Throwable) {
+            mainHandler.removeCallbacks(idWd)
+            log("[VeepooRing ANDROID] ECG readId[$typ] EXCEPTION ${e.message}")
+        }
+    }
+
+    /** 按 ECG 记录 ID 列表读回诊断报告（readECGManuallyData 第二步）。 */
+    private fun readEcgDiagnosisByIds(ids: IntArray) {
+        var settled = false
+        val wd = Runnable { if (!settled) { settled = true; log("[VeepooRing ANDROID] ECG diagnosis data timeout 10s") } }
+        mainHandler.postDelayed(wd, 10_000L)
+        try {
+            manager.readECGManuallyData(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] ECG diagnosis data write resp=$code")
+                if (code != 0) wd.run()
+            }, ids, object : com.veepoo.protocol.listener.data.IECGReadDataListener {
+                override fun readDataFinish(list: MutableList<EcgDetectResult>?) {
+                    log("[VeepooRing ANDROID] ECG diagnosis readDataFinish n=${list?.size ?: 0}")
+                }
+                override fun readDiagnosisDataFinish(list: MutableList<EcgDiagnosis>?) {
+                    mainHandler.removeCallbacks(wd)
+                    if (settled) return
+                    settled = true
+                    val items = list ?: run { log("[VeepooRing ANDROID] ECG diagnosis null list"); return }
+                    if (items.isEmpty()) { log("[VeepooRing ANDROID] ECG diagnosis empty"); return }
+                    val latest = items.maxByOrNull { it.timeBean?.getTimestampSeconds() ?: 0 } ?: return
+                    ecgDiagnosis = latest
+                    val d = latest
+                    val a = JSONObject()
+                    if (d.diseaseRisk > 0) a.put("arrhythmiaRisk", d.diseaseRisk)
+                    if (d.pressureIndex > 0) a.put("stressIndex", d.pressureIndex)
+                    if (d.fatigueIndex > 0) a.put("fatigueIndex", d.fatigueIndex)
+                    if (d.myocarditisRisk > 0) a.put("myocarditisRisk", d.myocarditisRisk)
+                    if (d.chdRisk > 0) a.put("chdRisk", d.chdRisk)
+                    if (d.angioscleroticRisk > 0) a.put("angiosclerosisRisk", d.angioscleroticRisk)
+                    if (d.qrsTime > 0) a.put("qrsTime", d.qrsTime)
+                    if (d.qrsAmp > 0) a.put("qrsAmp", d.qrsAmp)
+                    if (d.stMeanAmp != 0) a.put("stMeanAmp", d.stMeanAmp)
+                    if (d.pwvMeanVal > 0) a.put("pwvMeanVal", d.pwvMeanVal)
+                    if (d.diseaseSdnn > 0) a.put("sdnn", d.diseaseSdnn)
+                    if (d.diseaseRmssd > 0) a.put("rmssd", d.diseaseRmssd)
+                    if (d.qtTime > 0) a.put("qtcRaw", d.qtTime)
+                    if (d.heartRate > 0) a.put("deviceHeartRate", d.heartRate)
+                    log("[VeepooRing ANDROID] ECG diagnosis OK ts=${d.timeBean?.getTimestampSeconds()} risk=${d.diseaseRisk} chd=${d.chdRisk} qrs=${d.qrsTime} st=${d.stMeanAmp} sdnn=${d.diseaseSdnn}")
+                    emit("onEcgDiagnosis", a)
+                }
+            })
+        } catch (e: Throwable) {
+            mainHandler.removeCallbacks(wd)
+            log("[VeepooRing ANDROID] ECG diagnosis data EXCEPTION ${e.message}")
         }
     }
 
@@ -569,6 +1126,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         connectedMac = address
         // ★ 2026-11-16：记住 MAC 并开启「允许自动重连」（跨进程持久化，闹钟唤醒后要用）。
         RingReconnectAlarm.rememberMac(reactContext.applicationContext, address)
+        // ★ 2026-11-18（用户）：启动「每小时主动连接上次戒指 + 更新数据」常驻闹钟。
+        //   连上后不撤销，每小时到点唤醒进程；没连就直连、连着就回填数据。
+        RingReconnectAlarm.startHourly(reactContext.applicationContext, address)
         registerReconnectRequestReceiver()
         // ★ 2026-11-15：连接前先注册掉线监听 —— 戒指被动断开（没电/离开范围/被旧手机占用）
         //   时 SDK 会回调 STATUS_DISCONNECTED → emit onState → JS autoLink 自动重连。
@@ -644,7 +1204,17 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     capHrv = support?.hrvFunction?.let { it != EFunctionStatus.UNSUPPORT } ?: true
                     capSpo2 = support?.spo2H?.let { it != EFunctionStatus.UNSUPPORT } ?: true
                     capPulse = support?.heartDetect?.let { it != EFunctionStatus.UNSUPPORT } ?: true
-                    log("[VeepooRing ANDROID] caps bp=$capBp hrv=$capHrv spo2=$capSpo2 pulse=$capPulse")
+                    // ★ 2026-11-17：ECG/血糖用固件真实能力位（非 VpSpGetUtil 本地设备类型）
+                    capEcg = support?.ecg?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    capGlucose = support?.bloodGlucose?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    // ★ 2026-11-18：血糖模式三态实测（决定 startBloodGlucoseDetect 用公开还是私有命令）。
+                    //   Veepoo 血糖功能分级：基础=公开模式；MultipleAdjusting=SUPPORT → 私有模式+多点校准。
+                    //   真机此前表现（公开命令后设备 1s 内 stop）高度疑似私有模式固件。
+                    val gAdj = support?.bloodGlucoseAdjusting?.let { it != EFunctionStatus.UNSUPPORT } ?: false
+                    val gMulti = support?.bloodGlucoseMultipleAdjusting?.let { it != EFunctionStatus.UNSUPPORT } ?: false
+                    glucosePrivateMode = gMulti
+                    capBloodComponent = support?.bloodComponent?.let { it != EFunctionStatus.UNSUPPORT } ?: true
+                    log("[VeepooRing ANDROID] caps bp=$capBp hrv=$capHrv spo2=$capSpo2 pulse=$capPulse ecg=$capEcg glucose=$capGlucose adjusting=$gAdj multipleAdjusting=$gMulti (privateMode=$gMulti) bloodComponent=$capBloodComponent")
                     // 密码校验回调里做个人信息同步
                     syncPersonInfo()
                 }
@@ -692,7 +1262,14 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     fun disconnect() {
         ready.set(false)
         stopPpgReleaseCycle()
+        stopSnapshotRotation()
+        stopChronicVitals()
+        // ★ 2026-11-22（P0 死锁）：主动断开也清锁，避免残留事务锁污染下次连接。
+        forceReleaseSyncLocksOnDisconnect()
         autoMeasureWritten.clear()
+        // ★ 2026-11-17：断连时归还 ECG/血糖通道，避免 listener 残留占着 PPG 或误回调
+        stopEcgInternal("disconnect")
+        stopGlucoseInternal("disconnect")
         // ★ 2026-11-16：用户在 App 内主动断开 → 关掉自动重连、撤闹钟，别自己又连回来。
         RingReconnectAlarm.setActive(reactContext.applicationContext, false)
         // SDK 方法名是 disconnectWatch（需传入写回调）
@@ -710,7 +1287,29 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         // ★ 2026-11-15：connected 边沿 JS 会立刻调本方法，与 origin3 读命令抢通道。
         if (on) runOrDeferWrite("startRealtime(autoMonitor)") { startRealtimeIfNeeded() }
         else runOrDeferWrite("stopRealtime(autoMonitor)") { stopRealtime() }
+        // ★ v61：GSR/微体检快照轮询随自动监测启停（对齐 iOS startRotationIfNeeded）
+        if (on) startSnapshotRotation() else stopSnapshotRotation()
+        // ★ 2026-11-21：血糖/血液成分低频自动测量（每2h交替）随自动监测启停
+        if (on) startChronicVitals() else stopChronicVitals()
         log("[VeepooRing ANDROID] autoMonitor=$on")
+    }
+
+    private fun startSnapshotRotation() {
+        if (snapshotRotationArmed) return
+        snapshotRotationArmed = true
+        snapshotRotationIdx = 0
+        snapshotTestInProgress = false
+        // 首轮延后 8s：避开 connected 边沿的 origin3 回填/实时流启动，防通道竞争
+        snapshotRotationHandler.postDelayed(snapshotRotationRunnable, 8_000L)
+        log("[VeepooRing ANDROID] snapshot rotation started (miniCheckup/GSR every ${SNAPSHOT_ROTATION_INTERVAL_MS/1000}s)")
+    }
+
+    private fun stopSnapshotRotation() {
+        if (!snapshotRotationArmed) return
+        snapshotRotationArmed = false
+        snapshotTestInProgress = false
+        snapshotRotationHandler.removeCallbacks(snapshotRotationRunnable)
+        log("[VeepooRing ANDROID] snapshot rotation stopped")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -736,6 +1335,8 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         //   默认保持血氧连续流；心率改由 ensureAutoMeasure()（戒指端周期采集）
         //   与 measure("hr")（分时独占 PPG 的即时测量）两条路径提供。
         startSpo2hOnly()
+        // ★ 2026-11-16：启动佩戴看门狗（摘下后流静默 → 判脱手 → JS 冻结数据）
+        startWearWatchdog()
     }
 
     private fun startSpo2hOnly() {
@@ -746,6 +1347,27 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     val spo2 = data.value
                     val hr = data.rateValue
                     val ts = System.currentTimeMillis()
+
+                    // ★ 2026-11-16（用户：摘下戒指数据还在更新）：读 SDK 佩戴状态。
+                    //   Spo2hData.getDeviceState() 枚举含 UNPASS_WEAR（设备佩戴不通过），
+                    //   官方 Demo 的血氧页就用它拦「❌佩戴不通过」。用 name 字符串比较，
+                    //   不 import 枚举类，避免不同 SDK 版本枚举常量差异导致编译失败。
+                    val deviceStateName = try { data.deviceState?.name ?: "" } catch (_: Throwable) { "" }
+                    if (deviceStateName == "UNPASS_WEAR") {
+                        setWorn(false, "deviceState=UNPASS_WEAR")
+                        // 佩戴不通过时的血氧/心率是接触性脏值，不上报（源头拦截）
+                        return
+                    }
+                    // ★ 2026-11-18：任何血氧帧到达都刷新「帧锚点」（含 value=0 的帧），
+                    //   这是判脱手的唯一依据。注意必须放在 UNPASS_WEAR return 之后——
+                    //   佩戴不通过时 rings 虽仍发帧，但那是接触性脏值，不该算「戴着」。
+                    lastAnySpo2FrameAt = ts
+
+                    // 收到有效血氧（非让出/测量窗口）→ 判定已佩戴（从脱手态恢复的正向信号）
+                    if (spo2 > 0 && !ppgReleaseActive && bpDetectListener == null && hrvDetectListener == null) {
+                        lastSpO2SampleAt = ts
+                        if (worn != true) setWorn(true, "valid spo2=$spo2")
+                    }
                     if (spo2 > 0) {
                         emit("onRealtime", JSONObject().apply {
                             put("metric", "spo2")
@@ -781,6 +1403,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private fun stopRealtime() {
         stopHrSampling()
         stopPpgReleaseCycle()
+        stopWearWatchdog()
         // SDK 的 stop 方法都要求传入写回调；SpO2H 还需原监听器
         manager.stopDetectHeart(IBleWriteResponse { _ -> })
         spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
@@ -793,7 +1416,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
      * 让 HR 检测独占 PPG 通道 20 秒——先停连续血氧检测，测完再恢复。
      * 这是本固件下唯一能拿到实时心率的办法（两个检测不能并存）。
      */
-    private fun startSingleHeartDetect() {
+    /** ★ 2026-11-18：durationMs 可配（一键体检快速档用 12s 短窗口压总时长；5 分钟定时采样等
+     *  其余调用不传 → 维持 20s 原窗口，行为不变）。 */
+    private fun startSingleHeartDetect(durationMs: Long = 20_000L) {
         if (!ready.get()) { startRealtimeIfNeeded(); return }
         // 静默窗口内绝不抢 PPG，否则戒指的 HRV/血压自测又会被打断
         if (ppgReleaseActive) return
@@ -821,14 +1446,19 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             manager.startDetectHeart(IBleWriteResponse { _ -> }, hrListener)
-            log("[VeepooRing ANDROID] single HR detect started (20s window)")
+            log("[VeepooRing ANDROID] single HR detect started (${durationMs / 1000}s window)")
             Handler(Looper.getMainLooper()).postDelayed({
                 try { manager.stopDetectHeart(IBleWriteResponse { _ -> }) } catch (_: Exception) {}
                 hrListener = null
+                // ★ 2026-11-18：HR 采样独占 PPG 20s，血氧流刚恢复时帧还没到。
+                //   把帧锚点前移，给恢复期 20s 缓冲，否则采样结束瞬间静默已≈20s，
+                //   看门狗立刻误判脱手（真机 20:38 null->false 实锤）。
+                val hrDoneAt = System.currentTimeMillis()
+                if (lastAnySpo2FrameAt < hrDoneAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = hrDoneAt
                 // 让出窗口期间这个迟到的回调不能把血氧拉起来，静默必须由 releasePpgForAutoMeasure 统一收口
                 if (monitorOn && !ppgReleaseActive) startSpo2hOnly()
                 log("[VeepooRing ANDROID] single HR detect done, spo2h resumed")
-            }, 20_000L)
+            }, durationMs)
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] single HR detect FAILED: ${e.message}")
             hrListener = null
@@ -846,20 +1476,83 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     // ─────────────────────────────────────────────────────────────────────────
     private var bpDetectListener: IBPDetectDataListener? = null
     private var hrvDetectListener: IHrvDetectListener? = null
+    // ★ v81（用户：戒指戴着贴着传感器，但 GSR/微体检从不发起）：HRV listener 挂死自愈。
+    //   startHrvDetect 兜底 stop 后未置 null、失败/停止回调也未置 null → listener 永久挂着。
+    //   tickSnapshotRotation 见 hrvDetectListener!=null 就 return，导致 GSR/miniCheckup 永远轮不到。
+    //   记录发起时刻，超过 STALE 阈值由 tick 强制归还通道。
+    @Volatile private var hrvDetectStartedAt = 0L
+    private val HRV_STALE_MS = 35_000L
     // ★ 2026-11-14（用户反馈血压主动测「不出值」）：JS 侧会自动重试一次 measure('bp')，
     //   startBpDetect 必须可重入 —— 重入时先取消上一次的兜底 stop，再停掉可能仍在跑的
     //   上一轮检测，从干净状态发起本轮；否则两个 startDetectBP 叠加、旧 stop 会误杀新一轮。
     private var bpPendingStop: Runnable? = null
 
+    // ★ 2026-11-17：ECG / 血糖主动测量监听与兜底。与 BP/HRV 一样占用 PPG 通道，须串行、出值即停。
+    private var ecgDetectListener: IECGDetectListener? = null
+    private var ecgPendingStop: Runnable? = null
+    /** ★ 2026-11-17：最后一次收到进度/波形帧的时间戳。停滞看门狗据此判断是否真卡住，
+     *   避免"测量正常推进到 100%、结果帧还在算"时被固定超时误杀（曾导致卡在生成报告）。 */
+    private var ecgLastActiveAt = 0L
+    /** ECG 波形已回传给 JS 的采样数（增量 emit onEcgProgress.waveform，避免每帧重发整段）。 */
+    private var ecgSentCount = 0
+    /** ★ 2026-11-17：累积本次 ECG 波形(mV)，供 progress=100 从 state 兜底出结果时一并 emit。
+     *   这台戒指固件的 onEcgDetectResultChange 从不触发，结果须像 iOS 一样从 state 帧取。 */
+    private val ecgWaveBuf = mutableListOf<Double>()
+    /** ★ 2026-11-19(v62)：本次 ECG 的 RR 间期序列(ms)，来自 EcgDetectState.rr1（每秒 RR）。
+     *   设备多诊断报告只在「检出异常」时才回传 SDNN/RMSSD（协议行为），正常读数没有——
+     *   本地用 RR 序列统计补齐 SDNN/RMSSD，sdnnSource='rr-local' 与设备真值区分。 */
+    private val ecgRrBuf = mutableListOf<Int>()
+    /** 结果是否已 emit（state 兜底 与 result 回调 双路去重，只认第一次）。 */
+    private var ecgResultEmitted = false
+    /** ★ 2026-11-17 二次修复：结果是否已真正交付给 JS。独立于 ecgResultEmitted，
+     *   100% 兜底定时器只认这个标志——避免 result 回调把 ecgResultEmitted 提前置 true 后
+     *   既没出值、又把 state 兜底挡死（本次卡死的直接原因）。 */
+    private var ecgDelivered = false
+    /** ★ 进度首次到 100% 的时刻（0=未到）。100% 视为"测量完成"权威信号，到点起算强制交付兜底。 */
+    private var ecgReached100At = 0L
+    /** ★ 100% 后 1.5s 仍未出值时的强制交付任务（用 state 快照 + 累积波形出值）。 */
+    private var ecgFinishGuard: Runnable? = null
+    /** ★ 最近一帧 state 的结果字段快照，供 100% 兜底出值（回调对象在延迟任务里可能已释放）。 */
+    private var ecgSnapHr = 0
+    private var ecgSnapHrv = 0
+    private var ecgSnapQtc = 0
+    private var ecgSnapPwv = 0
+    private var ecgSnapBr = 0
+    /** ECG 导联脱落连续计数（三振容忍：前 2 次只发 hint，第 3 次判失败，对齐 iOS）。 */
+    private var ecgNotLeadCount = 0
+    /** 诊断日志节流：避免 ECG 状态帧高频刷屏。 */
+    private var ecgLastStateLog = ""
+    /** ECG 多诊断报告缓存（onEcgDetectDiagnosisChange 先到，结果帧再一起 emit）。 */
+    private var ecgDiagnosis: EcgDiagnosis? = null
+    private var glucoseListener: AbsBloodGlucoseChangeListener? = null
+    private var glucosePendingStop: Runnable? = null
+    private var bloodComponentListener: IBloodComponentDetectListener? = null
+    private var bloodComponentPendingStop: Runnable? = null
+    // ★ v90：戒指点测跑满100%常只回 onDetectStop、不回 onDetectComplete，
+    //   但 onDetecting(progress, data) 的 data 已含完整 BloodComponent 真值（aar 字节码实证
+    //   vp_i.vp_a: setUricAcid/setTCHO/setTAG/setHDL/setLDL）。缓存进度帧里的有效值，
+    //   stop/complete 时用缓存兜底 emit，避免重蹈 v84 压力漏读覆辙。
+    private var bcLastValues: Map<String, Float>? = null
+    private var bcResultEmitted = false
+
     /** App 主动发起一次血压测量（SDK startDetectBP，公开模式）。结果经 onRealtime 回流。 */
     private fun startBpDetect() {
         if (!ready.get()) { log("[VeepooRing ANDROID] BP detect skip: ring not ready"); return }
         if (ppgReleaseActive) { log("[VeepooRing ANDROID] BP detect skip: ppg release window"); return }
+        // ★ 2026-11-16（机会式补测引入，PPG 一次只能跑一个检测）：HR 采样 / HRV 检测进行中不开 BP。
+        //   本固件 PPG 独占，叠加会静默互杀；BP 自身的重入（JS 60s 重试）由下方 bpPendingStop 逻辑处理，不在此挡。
+        if (hrListener != null || hrvDetectListener != null) {
+            log("[VeepooRing ANDROID] BP detect skip: HR sampling / HRV detect in progress"); return
+        }
+        // ★ 2026-11-21（用户纠正）：血压能力位 SUPPORT，但即便 false 也不再拒绝——继续真正发起测量。
         try {
             val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportBp()
-            if (!support) { log("[VeepooRing ANDROID] BP detect skip: firmware not support"); return }
+            if (!support) {
+                log("[VeepooRing ANDROID] BP isSupportBp=false（记录但继续尝试测量）")
+                android.util.Log.e("GATECAP", "bp isSupportBp=false -> PROCEED")
+            }
         } catch (e: Throwable) {
-            log("[VeepooRing ANDROID] BP detect cap check failed: ${e.message}") // 能力位读取失败不阻断，交设备实测裁决
+            log("[VeepooRing ANDROID] BP detect cap check failed: ${e.message}")
         }
         // 重入安全：取消上一次兜底 stop + 停掉上一轮检测（没在跑时 stop 是无害空操作）
         bpPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
@@ -909,12 +1602,16 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     private fun startHrvDetect() {
         if (!ready.get()) { log("[VeepooRing ANDROID] HRV detect skip: ring not ready"); return }
         if (ppgReleaseActive) { log("[VeepooRing ANDROID] HRV detect skip: ppg release window"); return }
+        // ★ 2026-11-16（机会式补测引入）：HR 采样 / BP 检测进行中不开 HRV（PPG 独占，防静默互杀）。
+        if (hrListener != null || bpDetectListener != null) {
+            log("[VeepooRing ANDROID] HRV detect skip: HR sampling / BP detect in progress"); return
+        }
+        // ★ 2026-11-21（用户纠正）：HRV 历史回读每天有真值，不再用 app-detect 能力位拒绝——继续真正测量。
         try {
             val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportHrvAppDetect()
             if (!support) {
-                // 与 caps.hrv（全天自动 HRV）是两个能力位；不支持就明确留痕，绝不静默。
-                log("[VeepooRing ANDROID] HRV detect skip: firmware not support app detect")
-                return
+                log("[VeepooRing ANDROID] HRV isSupportAppDetect=false（记录但继续尝试测量）")
+                android.util.Log.e("GATECAP", "hrv isSupportAppDetect=false -> PROCEED")
             }
         } catch (e: Throwable) {
             log("[VeepooRing ANDROID] HRV detect cap check failed: ${e.message}")
@@ -930,18 +1627,31 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     })
                     try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
                     hrvDetectListener = null
+                    hrvDetectStartedAt = 0L
                 }
                 override fun onDetectFailed(state: HrvDetectState) {
                     log("[VeepooRing ANDROID] HRV detect failed: $state")
+                    // ★ v81：失败也必须归还通道，否则 listener 挂死挡住 GSR/miniCheckup
+                    android.util.Log.e("SNAPDG", "HRV onDetectFailed=$state -> release listener")
+                    hrvDetectListener = null
+                    hrvDetectStartedAt = 0L
                 }
                 override fun onDetectStop() {
                     log("[VeepooRing ANDROID] HRV detect stopped")
+                    // ★ v81：停止回调归还通道
+                    hrvDetectListener = null
+                    hrvDetectStartedAt = 0L
                 }
             }
+            hrvDetectStartedAt = System.currentTimeMillis()
             manager.startDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener)
             log("[VeepooRing ANDROID] HRV detect started")
             Handler(Looper.getMainLooper()).postDelayed({
                 try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
+                // ★ v81（根因）：原实现此处 stop 后未置 null → listener 永久挂死。
+                hrvDetectListener = null
+                hrvDetectStartedAt = 0L
+                android.util.Log.e("SNAPDG", "HRV 20s watchdog stop -> release listener")
             }, 20_000L)
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] HRV detect FAILED: ${e.message}")
@@ -975,6 +1685,16 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 //   于是很多夜晚根本没有 SpO2 原始点 → triggerOxygenAnalysis 读到空 → 一直「没数据」。
                 //   现在补齐该开关（受 capSpo2 能力门禁保护，设备不支持则跳过，避免 SDK 弹 Toast）。
                 EAutoMeasureType.BLOOD_OXYGEN,
+                // ★ 2026-11-18（用户：Pro 没看到血糖）：真机回报固件血糖自动测量本就
+                //   open=true interval=30，这里纳入守护清单——被关掉时自动开回
+                //   （受 capGlucose 能力门禁保护）。
+                EAutoMeasureType.BLOOD_GLUCOSE,
+                // ★ 2026-11-18(2)（用户：血液成分是不是也自动监测）：SDK 枚举里有
+                //   EAutoMeasureType.BLOOD_COMPOSITION（血液成分自动测量开关），
+                //   旧清单漏了它 → 无人开启也无从读到设备端状态。纳入守护清单，
+                //   连接时读取设备回报即可实锤血糖/血液成分两个开关的真实状态
+                //   （受 capBloodComponent 能力门禁保护）。
+                EAutoMeasureType.BLOOD_COMPOSITION,
             )
             val listener = object : IAutoMeasureSettingDataListener {
                 override fun onSettingDataChange(list: MutableList<AutoMeasureData>?) {
@@ -990,18 +1710,34 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                             "slotModify=${item.isSlotModify} intervalModify=${item.isIntervalModify} " +
                             "step=${item.stepUnit} proto=${item.protocolType}")
                         if (!wanted.contains(type)) continue
-                        // ★ 2026-11-13：设备不支持该功能则跳过开启，避免 SDK 弹 "This feature is not supported"
+                        // ★ 2026-11-21（用户第三次纠正「除心电外全部自动测量、戒指都支持」）：
+                        //   与 v72 主动测量同类问题——cap=false 来自不可靠的 getFunctionSupport 功能位
+                        //   （真机实测 HRV/血糖/血液成分功能位 UNSUPPORT，却能主动测出真值）。
+                        //   不再因 cap=false 就跳过打开戒指端自动测量开关；改为留痕后继续尝试打开，
+                        //   交戒指实测裁决。写失败有 onSettingDataChangeFail 日志 + try-catch 兜底，不编造数据。
                         if (type == EAutoMeasureType.BLOOD_PRESSURE && capBp == false) {
-                            log("[VeepooRing ANDROID] autoMeasure skip BLOOD_PRESSURE (device unsupported)"); continue
+                            log("[VeepooRing ANDROID] autoMeasure BLOOD_PRESSURE capBp=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure bp capBp=false -> PROCEED")
                         }
                         if (type == EAutoMeasureType.HRV && capHrv == false) {
-                            log("[VeepooRing ANDROID] autoMeasure skip HRV (device unsupported)"); continue
+                            log("[VeepooRing ANDROID] autoMeasure HRV capHrv=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure hrv capHrv=false -> PROCEED")
                         }
                         if (type == EAutoMeasureType.PULSE_RATE && capPulse == false) {
-                            log("[VeepooRing ANDROID] autoMeasure skip PULSE_RATE (device unsupported)"); continue
+                            log("[VeepooRing ANDROID] autoMeasure PULSE_RATE capPulse=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure pulse capPulse=false -> PROCEED")
                         }
                         if (type == EAutoMeasureType.BLOOD_OXYGEN && capSpo2 == false) {
-                            log("[VeepooRing ANDROID] autoMeasure skip BLOOD_OXYGEN (device unsupported)"); continue
+                            log("[VeepooRing ANDROID] autoMeasure BLOOD_OXYGEN capSpo2=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure spo2 capSpo2=false -> PROCEED")
+                        }
+                        if (type == EAutoMeasureType.BLOOD_GLUCOSE && capGlucose == false) {
+                            log("[VeepooRing ANDROID] autoMeasure BLOOD_GLUCOSE capGlucose=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure glucose capGlucose=false -> PROCEED")
+                        }
+                        if (type == EAutoMeasureType.BLOOD_COMPOSITION && capBloodComponent == false) {
+                            log("[VeepooRing ANDROID] autoMeasure BLOOD_COMPOSITION capBloodComponent=false（记录但继续开自动测量）")
+                            android.util.Log.e("GATECAP", "autoMeasure bloodcomp capBloodComponent=false -> PROCEED")
                         }
                         var changed = false
                         if (!item.isSwitchOpen) { item.isSwitchOpen = true; changed = true }
@@ -1178,14 +1914,14 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     // 手动测量（对齐 iOS measure(key)）
     // ─────────────────────────────────────────────────────────────────────────
     @ReactMethod
-    fun measure(key: String) {
-        log("[VeepooRing ANDROID] measure $key")
+    fun measure(key: String, durationMs: Int = 0) {
+        log("[VeepooRing ANDROID] measure $key durationMs=$durationMs")
         // ★ 2026-11-14（真机实锤：120s 让出窗口撞上一键体检 → 重试/HRV/血氧全被静默吞）：
         //   用户主动测量 = 用户意图优先，一律先取消进行中的 PPG 让出窗口再发测量。
         //   窗口的 30 分钟周期循环（ppgReleaseRunnable）不受影响，下个整点照常让出。
         cancelPpgRelease("measure $key")
         when (key) {
-            "hr" -> startSingleHeartDetect()
+            "hr" -> startSingleHeartDetect(if (durationMs > 0) durationMs.toLong() else 20_000L)
             "spo2" -> startRealtimeIfNeeded()
             "temp" -> triggerHealthGlance()
             "eda", "stress", "depression" -> triggerGSR()
@@ -1193,9 +1929,12 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             //   App 主动测量（startDetectHrv / startDetectBP）；此前 hrv 指向的还是 TODO stub。
             "hrv" -> startHrvDetect()
             "bp" -> startBpDetect()
-            "cortisol", "healthGlance", "sns", "emotion", "skin", "fatigue",
-            "cholesterol", "triglyceride", "hdl", "ldl", "ua", "uricAcid" -> triggerHealthGlance()
+            "cortisol", "healthGlance", "sns", "emotion", "skin", "fatigue" -> triggerHealthGlance()
+            // ★ 2026-11-18：血液成分（尿酸/血脂四项）接真实 SDK 测量，不再走空 stub
+            "cholesterol", "triglyceride", "hdl", "ldl", "ua", "uricAcid", "bloodcomp" -> startBloodComponentDetect()
             "ecg" -> startEcg()
+            // ★ 2026-11-17：血糖主动测量（仅 PRO_UI 会下发；SDK startBloodGlucoseDetect，结果经 onRealtime 回流）
+            "glucose" -> startGlucoseDetect()
             "rr" -> log("[VeepooRing ANDROID] rr: 本固件未开放（SDK NoFunction），以待接入呈现")
             else -> log("[VeepooRing ANDROID] 未知测量项: $key")
         }
@@ -1216,36 +1955,1417 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 bpPendingStop = null
                 try { manager.stopDetectBP(IBleWriteResponse { _ -> }, EBPDetectModel.DETECT_MODEL_PUBLIC) } catch (_: Throwable) {}
                 bpDetectListener = null
+                lastMeasureEndAt = System.currentTimeMillis()
             }
             "hrv" -> {
                 try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
                 hrvDetectListener = null
+                lastMeasureEndAt = System.currentTimeMillis()
             }
+            // ★ 2026-11-17：体检阶段结束归还通道（ECG/血糖出值即自停；此处兜底未出值场景）
+            "ecg" -> stopEcgInternal("js stopMeasure")
+            "glucose" -> stopGlucoseInternal("js stopMeasure")
+            "cholesterol", "triglyceride", "hdl", "ldl", "ua", "uricAcid", "bloodcomp" -> stopBloodComponentInternal("js stopMeasure")
             else -> log("[VeepooRing ANDROID] stopMeasure: 未知项 $key")
         }
     }
 
-    private fun triggerHealthGlance() {
-        // TODO(veepoo): 核对外层健康扫描方法名（startHealthGlance / startHealthGlanceTest）。
-        // 回调走 IHealthGlanceDataListener，需注册到 manager。
-        log("[VeepooRing ANDROID] healthGlance requested (verify listener wiring)")
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★ 2026-11-18(v61)（用户：EDA/压力/疲劳/情绪/皮肤含水量接上）：
+    //   iOS VeepooRing.m 早已实现 healthGlance + GSR 点测，Android 侧此前是空 stub
+    //   （只有 TODO 日志），导致 JS handleManualHealthGlance / onRealtime 链路全空转。
+    //   现按 javap vpprotocol-2.3.81.15.aar 核对的真实签名接上，emit 字段名与 iOS 完全对齐。
+    // ─────────────────────────────────────────────────────────────────────────
+    private var gsrDetectListener: IGsrDetectListener? = null
+    private var miniCheckupListener: IMiniCheckupOptListener? = null
+
+    // ★ 2026-11-23(v89)（用户：休班后回来「修吧」，EDA 点测成功率仅~1/3）：
+    //   真机铁证——戒指常在进度 83% 停发，既不回 success 也不回 failed/stop，
+    //   原实现只能干等 150s 看门狗 + 下个 30s tick（且常被 HRV/HR/glucose 挡掉），
+    //   导致 EDA 一天只出零星几个点。改为「进度停滞自愈」：进度 N 秒不推进即判定卡死，
+    //   立即归还通道 + 短延迟快速重试（有限次数），不再空耗 150s。
+    private var gsrLastProgressAt = 0L          // 最后一次进度回调时间戳
+    private var gsrLastProgress = -1            // 最后一次进度值（诊断用）
+    private var gsrRetryCount = 0              // 连续卡死重试计数（成功即清零）
+    private var gsrStallChecker: Runnable? = null
+    private var gsrWatchdog: Runnable? = null
+    private val GSR_STALL_MS = 15_000L          // 进度 15s 不推进=卡死（正常每秒一步，全程约33s）
+    private val GSR_STALL_CHECK_MS = 5_000L     // 每 5s 巡检一次进度
+    private val GSR_RETRY_DELAY_MS = 4_000L     // 卡死后 4s 快速重试（让通道+血氧流稳定）
+    private val GSR_MAX_RETRY = 3              // 连续卡死最多重试 3 次，避免无限循环
+
+    /** 单测轮询：体温(GSP 微体检) 与 皮电(GSR) 交替，与 iOS tickRotation 对齐。 */
+    private fun tickSnapshotRotation() {
+        // ★ v79 诊断直写：轮询为什么不发测量，一次看清（避开 onLog 250ms 节流）
+        val dtag = "SNAPDG"
+        android.util.Log.e(dtag, "tick: monitorOn=$monitorOn ready=${ready.get()} inProg=$snapshotTestInProgress " +
+            "ecg=${ecgDetectListener != null} glu=${glucoseListener != null} bc=${bloodComponentListener != null} " +
+            "gsr=${gsrDetectListener != null} mini=${miniCheckupListener != null} " +
+            "hr=${hrListener != null} hrv=${hrvDetectListener != null} bp=${bpDetectListener != null} ppgRel=$ppgReleaseActive")
+        // ★ 2026-11-23：后台夜间补测——monitorOn 因 JS 冻结可能仍为 false，但回填收口已置
+        //   nightlySnapPending，此时放行一轮并消费标志，让夜间也能产出压力/EDA 点。
+        val forceNightly = nightlySnapPending && ready.get()
+        if (forceNightly) nightlySnapPending = false
+        if ((!monitorOn && !forceNightly) || !ready.get()) return
+        if (forceNightly) android.util.Log.e(dtag, "NIGHTLY forced tick (monitorOn=$monitorOn)")
+        // ★ v80 修复（用户：身心压力一直没数据）：PPG 让出窗口期间，trigger 内部会静默拒绝测量，
+        //   若此处仍置 inProg=true 就会空耗 55s 看门狗 + 30s 轮询 → 微体检/GSR 长期饿死（真机 SNAPDG 实锤）。
+        //   正确做法：窗口期间直接 return，不置 inProg、不消耗 idx；恢复时由 restore 立即补测。
+        if (ppgReleaseActive) { android.util.Log.e(dtag, "tick SKIP: ppg release window (defer to restore)"); return }
+        // ★ v81（根因自愈）：HRV listener 挂死会永久挡住下面这行 return，使 GSR/miniCheckup
+        //   永远轮不到（真机 SNAPDG：tick 每 30s 都 hrv=true、GSR/mini STARTED=0）。
+        //   正常 HRV 测量最长 20s 兜底即归还；超过 35s 仍挂着=回调丢失挂死，强制清理归还通道。
+        if (hrvDetectListener != null && hrvDetectStartedAt > 0L &&
+            System.currentTimeMillis() - hrvDetectStartedAt > HRV_STALE_MS) {
+            val age = System.currentTimeMillis() - hrvDetectStartedAt
+            android.util.Log.e(dtag, "STALE-HRV force release (age=${age}ms) -> unblock GSR/mini")
+            try { manager.stopDetectHrv(IBleWriteResponse { _ -> }, hrvDetectListener) } catch (_: Throwable) {}
+            hrvDetectListener = null
+            hrvDetectStartedAt = 0L
+        }
+        if (snapshotTestInProgress) return
+        // ECG/血糖/血成分等主动测量进行中时不抢通道（用户测量意图优先）
+        if (ecgDetectListener != null || glucoseListener != null || bloodComponentListener != null
+            || gsrDetectListener != null || miniCheckupListener != null) return
+        if (hrListener != null || hrvDetectListener != null || bpDetectListener != null) return
+        snapshotTestInProgress = true
+        val idx = snapshotRotationIdx % 2
+        snapshotRotationIdx++
+        val name = if (idx == 0) "miniCheckup(压力/疲劳/情绪)" else "GSR(EDA/皮肤含水量/交感)"
+        log("[VeepooRing ANDROID] SNAPSHOT ROTATION -> $name")
+        if (idx == 0) triggerHealthGlance() else triggerGSR()
+        // 看门狗：单路 55s 无回调强制放行（固件不支持/未佩戴不永久卡死）
+        mainHandler.postDelayed({
+            if (snapshotTestInProgress) {
+                log("[VeepooRing ANDROID] SNAPSHOT ROTATION #$idx timeout → release")
+                snapshotTestInProgress = false
+            }
+        }, 55_000L)
     }
 
-    private fun triggerGSR() {
-        // TODO(veepoo): 核对 GSR 方法名（startGSRDetect / readGSR）。
-        log("[VeepooRing ANDROID] GSR requested (verify listener wiring)")
+    /** GSR 点测完成/失败后归还通道：停检测 + 恢复血氧流 + 前移脱手锚点（参考 HRV/BP 模板）。 */
+    private fun finishGsrDetect(reason: String) {
+        // ★ v89：先撤掉本轮的停滞巡检 + 150s 看门狗，避免旧定时器在快速重试的新一轮上误触发。
+        gsrStallChecker?.let { mainHandler.removeCallbacks(it) }
+        gsrStallChecker = null
+        gsrWatchdog?.let { mainHandler.removeCallbacks(it) }
+        gsrWatchdog = null
+        gsrDetectListener?.let { l ->
+            try { manager.stopDetectGsr(IBleWriteResponse { _ -> }) } catch (_: Throwable) {}
+        }
+        gsrDetectListener = null
+        val doneAt = System.currentTimeMillis()
+        if (lastAnySpo2FrameAt < doneAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = doneAt
+        if (monitorOn && ready.get() && !ppgReleaseActive) startSpo2hOnly()
+        snapshotTestInProgress = false
+        log("[VeepooRing ANDROID] GSR detect finished ($reason), spo2h resumed")
+    }
+
+    /**
+     * ★ v89：GSR 进度停滞自愈巡检。每 5s 看一次：若进度超过 GSR_STALL_MS 没推进，
+     * 判定戒指静默卡死（进度停发、无 success/failed 回调）→ 立即归还通道并快速重试，
+     * 而不是空耗 150s 看门狗。成功/明确失败由回调自己 finish，不计入重试。
+     */
+    private fun armGsrStallGuard() {
+        gsrStallChecker?.let { mainHandler.removeCallbacks(it) }
+        val checker = object : Runnable {
+            override fun run() {
+                if (gsrDetectListener == null) return  // 已结束（success/failed/stop 已收口）
+                val idle = System.currentTimeMillis() - gsrLastProgressAt
+                if (idle < GSR_STALL_MS) {
+                    mainHandler.postDelayed(this, GSR_STALL_CHECK_MS)
+                    return
+                }
+                // 进度停滞：戒指既没回结果也没回失败，主动收口
+                android.util.Log.e("SNAPDG", "GSR STALL ${idle / 1000}s at ${gsrLastProgress}% -> release")
+                finishGsrDetect("stall ${idle / 1000}s @${gsrLastProgress}%")
+                if (gsrRetryCount < GSR_MAX_RETRY && monitorOn && ready.get() && !ppgReleaseActive) {
+                    gsrRetryCount++
+                    android.util.Log.e("SNAPDG", "GSR fast retry #$gsrRetryCount in ${GSR_RETRY_DELAY_MS / 1000}s")
+                    mainHandler.postDelayed({
+                        if (monitorOn && ready.get() && !ppgReleaseActive && gsrDetectListener == null) {
+                            snapshotTestInProgress = true
+                            triggerGSR(isRetry = true)
+                        }
+                    }, GSR_RETRY_DELAY_MS)
+                } else {
+                    android.util.Log.e("SNAPDG", "GSR retry budget exhausted ($gsrRetryCount) -> defer to next tick")
+                }
+            }
+        }
+        gsrStallChecker = checker
+        mainHandler.postDelayed(checker, GSR_STALL_CHECK_MS)
+    }
+
+
+    /** @param isRetry true=停滞/失败后的快速重试（沿用重试预算）；false=新一轮测量（重置预算）。 */
+    private fun triggerGSR(isRetry: Boolean = false) {
+        if (!isRetry) gsrRetryCount = 0  // 新一轮满血复活的预算；快速重试则沿用累加计数
+        if (!ready.get()) { log("[VeepooRing ANDROID] GSR detect skip: ring not ready"); return }
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] GSR detect skip: ppg release window"); return }
+        try {
+            val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportGSR()
+            if (!support) {
+                // ★ 2026-11-21（用户纠正）：不再用 SP 能力位拒绝，记录后继续真正发起测量。
+                log("[VeepooRing ANDROID] GSR isSupportGSR=false（记录但继续尝试测量）")
+                android.util.Log.e("GATECAP", "gsr isSupportGSR=false -> PROCEED")
+            }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] GSR cap check failed: ${e.message}")
+        }
+        if (gsrDetectListener != null) {
+            log("[VeepooRing ANDROID] GSR detect already running, skip")
+            return
+        }
+        // 先让出血氧流（本固件一次只跑一个检测），避免 GSR 测量被 PPG 干扰
+        spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+        spo2Listener = null
+        try {
+            // ★ v89：本轮起始时间与进度复位（进度停滞巡检据此判定）
+            gsrLastProgressAt = System.currentTimeMillis()
+            gsrLastProgress = 0
+            gsrDetectListener = object : IGsrDetectListener {
+                override fun onGsrDetectProgress(progress: Int) {
+                    gsrLastProgressAt = System.currentTimeMillis()
+                    gsrLastProgress = progress
+                    log("[VeepooRing ANDROID] GSR progress=$progress%")
+                }
+                override fun onGsrDetectSuccess(result: GsrDetectResult) {
+                    gsrRetryCount = 0  // 出值即清零重试预算
+                    val r = result
+                    val ts = System.currentTimeMillis()
+                    // 字段名与 iOS VeepooRing.m triggerGSRWithToken 完全对齐：
+                    // skin_moisture → eda + skin（皮肤含水量，既进 EDA 卡也进皮肤含水量卡）
+                    val map = mutableListOf<Pair<String, Number>>()
+                    if (r.skinMoisture > 0) {
+                        map.add("eda" to r.skinMoisture)
+                        map.add("skin" to r.skinMoisture)
+                    }
+                    if (r.snsActivation > 0) map.add("sns" to r.snsActivation)
+                    if (r.cortisolValue > 0) map.add("cortisol" to r.cortisolValue)
+                    // emotion 值域 [-10,10]，0 是合法中性值；只在非 0 时写，避免伪造倾向
+                    if (r.emotionLevel != 0) map.add("emotion" to r.emotionLevel)
+                    // depressionRisk 是 enum（LOW/MEDIUM/HIGH），低风险=0 也合法 → 只取 ordinal
+                    val depRisk = try { r.depressionRisk.ordinal } catch (_: Throwable) { -1 }
+                    if (depRisk >= 0) map.add("depressionRisk" to depRisk)
+                    for ((k, v) in map) {
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", k); put("value", v.toDouble()); put("unit", ""); put("ts", ts)
+                            // ★ v82：标记为「主动测量结果帧」。测量 GSR 会停血氧流 → spo2 帧静默 23s
+                            //   → App 误判脱手(worn=false) → 结果帧被 JS 脱手冻结丢弃（真机 22:56:37 实锤）。
+                            //   JS 侧据此标记旁路脱手冻结，但正常实时流仍冻结防摘戒脏值。
+                            put("source", "measurement")
+                        })
+                    }
+                    log("[VeepooRing ANDROID] GSR ✅ eda=${r.skinMoisture} skin=${r.skinMoisture} " +
+                        "sns=${r.snsActivation} cortisol=${r.cortisolValue} emotion=${r.emotionLevel} " +
+                        "dep=$depRisk emitted=${map.size}")
+                    android.util.Log.e("SNAPDG", "GSR SUCCESS eda=${r.skinMoisture} sns=${r.snsActivation} " +
+                        "cortisol=${r.cortisolValue} emotion=${r.emotionLevel} dep=$depRisk emitted=${map.size}")
+                    finishGsrDetect("success")
+                }
+                override fun onGsrDetectFailed(ack: GsrDetectAck) {
+                    log("[VeepooRing ANDROID] GSR detect FAILED: $ack")
+                    android.util.Log.e("SNAPDG", "GSR FAILED $ack")
+                    // ★ v89：BUSY 等明确失败也走快速重试（成功才清零预算）
+                    finishGsrDetect("failed $ack")
+                    if (gsrRetryCount < GSR_MAX_RETRY && monitorOn && ready.get() && !ppgReleaseActive) {
+                        gsrRetryCount++
+                        android.util.Log.e("SNAPDG", "GSR fast retry #$gsrRetryCount after FAILED $ack")
+                        mainHandler.postDelayed({
+                            if (monitorOn && ready.get() && !ppgReleaseActive && gsrDetectListener == null) {
+                                snapshotTestInProgress = true
+                                triggerGSR(isRetry = true)
+                            }
+                        }, GSR_RETRY_DELAY_MS)
+                    }
+                }
+                override fun onGsrDetectStop() {
+                    log("[VeepooRing ANDROID] GSR detect STOP")
+                    android.util.Log.e("SNAPDG", "GSR STOP")
+                    finishGsrDetect("stop")
+                }
+            }
+            manager.startDetectGsr(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] GSR start write resp=$code")
+                android.util.Log.e("SNAPDG", "GSR start write resp=$code")
+            }, gsrDetectListener)
+            log("[VeepooRing ANDROID] GSR detect started")
+            android.util.Log.e("SNAPDG", "GSR detect STARTED (waiting callback)")
+            // ★ v89：启动 5s 粒度进度停滞巡检——卡住十几秒即快速收口重试，不用空耗 150s。
+            armGsrStallGuard()
+            // 兜底看门狗：150s 极端情况（连进度都没有）自动收口，绝不永久卡死通道。
+            // ★ v89：改为可取消句柄，finishGsrDetect 会撤掉它，避免误杀快速重试的新一轮。
+            val wd = Runnable {
+                if (gsrDetectListener != null) {
+                    android.util.Log.e("SNAPDG", "GSR watchdog 150s FIRED (no callback)")
+                    finishGsrDetect("watchdog 150s")
+                }
+            }
+            gsrWatchdog = wd
+            Handler(Looper.getMainLooper()).postDelayed(wd, 150_000L)
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] GSR detect FAILED(exception): ${e.javaClass.simpleName}: ${e.message}")
+            finishGsrDetect("exception")
+        }
+    }
+
+    /** 微体检点测完成/失败后归还通道 + 恢复血氧流。 */
+    private fun finishMiniCheckup(reason: String) {
+        miniCheckupListener?.let { l ->
+            try { manager.stopMiniCheckup(IBleWriteResponse { _ -> }, l) } catch (_: Throwable) {}
+        }
+        miniCheckupListener = null
+        val doneAt = System.currentTimeMillis()
+        if (lastAnySpo2FrameAt < doneAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = doneAt
+        if (monitorOn && ready.get() && !ppgReleaseActive) startSpo2hOnly()
+        snapshotTestInProgress = false
+        log("[VeepooRing ANDROID] miniCheckup finished ($reason), spo2h resumed")
+    }
+
+    private fun triggerHealthGlance() {
+        if (!ready.get()) { log("[VeepooRing ANDROID] miniCheckup skip: ring not ready"); return }
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] miniCheckup skip: ppg release window"); return }
+        // 微体检独占 PPG：HR/HRV/BP/血糖/血成分任一在跑就跳过，避免静默互杀
+        if (hrListener != null || hrvDetectListener != null || bpDetectListener != null
+            || glucoseListener != null || bloodComponentListener != null) {
+            log("[VeepooRing ANDROID] miniCheckup skip: other active detect")
+            return
+        }
+        if (miniCheckupListener != null) {
+            log("[VeepooRing ANDROID] miniCheckup already running, skip")
+            return
+        }
+        try {
+            val support = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportMiniCheckup()
+            if (!support) {
+                // ★ 2026-11-21（用户纠正）：不再用 SP 能力位拒绝，记录后继续真正发起测量。
+                log("[VeepooRing ANDROID] miniCheckup isSupportMiniCheckup=false（记录但继续尝试测量）")
+                android.util.Log.e("GATECAP", "miniCheckup isSupportMiniCheckup=false -> PROCEED")
+            }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] miniCheckup cap check failed: ${e.message}")
+        }
+        spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+        spo2Listener = null
+        try {
+            miniCheckupListener = object : IMiniCheckupOptListener {
+                override fun onMiniCheckupTestProgress(progress: Int) {
+                    log("[VeepooRing ANDROID] miniCheckup progress=$progress%")
+                }
+                override fun onMiniCheckupStopSuccess() {
+                    log("[VeepooRing ANDROID] miniCheckup stop success")
+                    finishMiniCheckup("stop success")
+                }
+                override fun onMiniCheckupTestFailed(code: EMiniCheckupTestErrorCode) {
+                    log("[VeepooRing ANDROID] miniCheckup FAILED: $code")
+                    finishMiniCheckup("failed $code")
+                }
+                override fun onMiniCheckupSuccess(data: MiniCheckupResultData) {
+                    android.util.Log.e("SNAPDG", "mini V1 callback stress=${data.stress} fatigue=${data.fatigue} emotion=${data.emotion}")
+                    emitMiniCheckup(data)
+                }
+                override fun onMiniCheckupDetailTestSuccess(data: MiniCheckupDetailData) {
+                    // V2 详情优先：含皮电子对象（皮肤含水量/情绪/交感/皮质醇/抑郁风险）
+                    android.util.Log.e("SNAPDG", "mini V2 callback stress=${data.stress} fatigue=${data.fatigue} emotion=${data.emotion}")
+                    emitMiniCheckupDetail(data)
+                }
+            }
+            manager.startMiniCheckup(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] miniCheckup start write resp=$code")
+                android.util.Log.e("SNAPDG", "mini start write resp=$code")
+            }, miniCheckupListener)
+            log("[VeepooRing ANDROID] miniCheckup started")
+            android.util.Log.e("SNAPDG", "miniCheckup STARTED (waiting callback)")
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (miniCheckupListener != null) {
+                    android.util.Log.e("SNAPDG", "mini watchdog 60s FIRED (no callback)")
+                    finishMiniCheckup("watchdog 60s")
+                }
+            }, 60_000L)
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] miniCheckup FAILED(exception): ${e.javaClass.simpleName}: ${e.message}")
+            finishMiniCheckup("exception")
+        }
+    }
+
+    /** V1 微体检结果 → onRealtime。SDK 文档标注 emotion/fatigue @Deprecated 未赋值 → 只在非 0 时写，绝不写假数据。 */
+    private fun emitMiniCheckup(data: MiniCheckupResultData?) {
+        val d = data ?: run { finishMiniCheckup("null v1 result"); return }
+        val ts = System.currentTimeMillis()
+        val map = linkedMapOf<String, Number>()
+        if (d.heartRate > 0) map["hr"] = d.heartRate
+        if (d.bloodOxygen > 0) map["spo2"] = d.bloodOxygen
+        if (d.hrv > 0) map["hrv"] = d.hrv
+        // 压力是微体检真值（0-100），0 视为未测
+        if (d.stress > 0) map["stress"] = d.stress
+        if (d.fatigue > 0) map["fatigue"] = d.fatigue
+        if (d.emotion != 0) map["emotion"] = d.emotion
+        if (d.bodyTemperature > 0f) map["temp"] = (d.bodyTemperature * 100.0).toLong() / 100.0
+        if (d.bloodGlucose > 0f) map["glucose"] = (d.bloodGlucose * 100.0).toLong() / 100.0
+        if (d.systolicBloodPressure > 0) map["bpSys"] = d.systolicBloodPressure
+        if (d.diastolicBloodPressure > 0) map["bpDia"] = d.diastolicBloodPressure
+        for ((k, v) in map) {
+            emit("onRealtime", JSONObject().apply {
+                put("metric", k); put("value", v.toDouble()); put("unit", ""); put("ts", ts)
+            })
+        }
+        log("[VeepooRing ANDROID] miniCheckup V1 ✅ stress=${d.stress} fatigue=${d.fatigue} emitted=${map.size}")
+        finishMiniCheckup("v1 success")
+    }
+
+    /** V2 微体检详情 → onRealtime，含皮电子对象（与 iOS healthGlance 全字段对齐）。 */
+    private fun emitMiniCheckupDetail(data: MiniCheckupDetailData?) {
+        val d = data ?: run { finishMiniCheckup("null v2 result"); return }
+        val ts = System.currentTimeMillis()
+        val map = linkedMapOf<String, Number>()
+        if (d.heartRate > 0) map["hr"] = d.heartRate
+        if (d.bloodOxygen > 0) map["spo2"] = d.bloodOxygen
+        if (d.hrv > 0) map["hrv"] = d.hrv
+        if (d.stress > 0) map["stress"] = d.stress
+        if (d.fatigue > 0) map["fatigue"] = d.fatigue
+        if (d.emotion != 0) map["emotion"] = d.emotion
+        if (d.bodyTemperature > 0f) map["temp"] = (d.bodyTemperature * 100.0).toLong() / 100.0
+        if (d.bloodGlucose > 0f) map["glucose"] = (d.bloodGlucose * 100.0).toLong() / 100.0
+        try { d.skinElectricity?.let { se ->
+            if (se.skinMoistureContent > 0) {
+                map["skin"] = se.skinMoistureContent
+                map["eda"] = se.skinMoistureContent
+            }
+            if (se.sympatheticActivity > 0) map["sns"] = se.sympatheticActivity
+            if (se.cortisolConcentration > 0) map["cortisol"] = se.cortisolConcentration
+            if (se.emotion != 0) map["emotion"] = se.emotion
+            if (se.depressionRisk in 0..2) map["depressionRisk"] = se.depressionRisk
+        } } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] miniCheckup skinElectricity parse failed: ${e.message}")
+        }
+        for ((k, v) in map) {
+            emit("onRealtime", JSONObject().apply {
+                put("metric", k); put("value", v.toDouble()); put("unit", ""); put("ts", ts)
+                // ★ v82：同 GSR，标记为主动测量结果帧 → JS 旁路脱手冻结（测量停血氧流致误判摘戒）
+                put("source", "measurement")
+            })
+        }
+        log("[VeepooRing ANDROID] miniCheckup V2 ✅ stress=${d.stress} fatigue=${d.fatigue} " +
+            "skin=${d.skinElectricity?.skinMoistureContent} emitted=${map.size}")
+        android.util.Log.e("SNAPDG", "mini V2 EMIT stress=${d.stress} fatigue=${d.fatigue} " +
+            "skin=${d.skinElectricity?.skinMoistureContent} eda=${map["eda"]} emitted=${map.size}")
+        finishMiniCheckup("v2 success")
     }
 
     @ReactMethod
     fun stopEcg() {
-        // TODO(veepoo): 本 SDK 版本 ECG 检测走 multi-lead API（startDetectMultiECG），
-        //   单导 stopECG 不存在；待接入 ECG 时按 IECGDetectListener 重写。
-        log("[VeepooRing ANDROID] ecg stopped (stub)")
+        stopEcgInternal("js stopEcg")
     }
 
+    /** 归还 ECG 通道：清兜底定时器 + stopDetectECG + 复位监听/缓冲。可重入、幂等。 */
+    private fun stopEcgInternal(reason: String) {
+        ecgPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+        ecgPendingStop = null
+        // ★ 2026-11-17 二次修复：正常交付路径里也会调 stop，此时 guard 已完成使命；
+        //   但若因手动停止/断连/异常进入，须撤销兜底任务，避免停测后又吐出旧结果。
+        //   emitEcgFromSnapshot 调用它时已经先撤过 guard，这里再撤一次是幂等的。
+        ecgFinishGuard?.let { mainHandler.removeCallbacks(it) }
+        ecgFinishGuard = null
+        // ★ 2026-11-17 三次修复：stop 即终结本次测量，标记 delivered 防止 watchdog 在停止后
+        //   又吐出旧快照结果（尤其手动停止/断连/异常路径）。正常出值路径本就已置 true，这里幂等。
+        ecgDelivered = true
+        val listener = ecgDetectListener
+        ecgDetectListener = null
+        if (listener != null) {
+            try { manager.stopDetectECG(IBleWriteResponse { _ -> }, true, listener) } catch (_: Throwable) {}
+        }
+        ecgSentCount = 0
+        ecgNotLeadCount = 0
+        ecgDiagnosis = null
+        // 注意：ecgResultEmitted 不在此重置——迟到的 result 回调要靠它去重，只在 startEcg 重置
+        // 测量占用血氧流较久，结束时把锚点前移 + 置宽限期，避免血氧流恢复期被误判脱手
+        lastMeasureEndAt = System.currentTimeMillis()
+        if (lastSpO2SampleAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastSpO2SampleAt = lastMeasureEndAt
+        if (lastAnySpo2FrameAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = lastMeasureEndAt
+        // ★ 2026-11-18（根治）：startEcg 停掉了血氧流(spo2Listener=null)，以前这里只前移锚点、
+        //   从不恢复 → 每次心电后血氧流永久停摆，几十秒后被看门狗误判脱手(worn=false)，
+        //   用户接着点快检/体检就被弹「未佩戴」。测量结束必须把血氧连续流拉回来。
+        if (monitorOn && ready.get() && !ppgReleaseActive && spo2Listener == null) {
+            startSpo2hOnly()
+            log("[VeepooRing ANDROID] ecg stopped: SPO2H stream resumed")
+        }
+        log("[VeepooRing ANDROID] ecg stopped ($reason)")
+    }
+
+    /**
+     * ★ 2026-11-17：ECG 实时心电测量真实接线（此前是 stub，导致 JS onEcg 死代码）。
+     *   SDK 状态机经 IECGDetectListener 回调：
+     *     onEcgDetectInfoChange   → 采样率/增益（画波形参数）
+     *     onEcgDetectStateChange  → 进度 + 实时心率 + 导联脱落(UNPASS_WEAR)/忙(BUSY)
+     *     onEcgDetectResultChange → 最终结果（aveHeart/aveHrv/aveResRate/aveQT/PWV + 波形），emit onEcg
+     *     onEcgDetectDiagnosisChange → 多诊断报告（缓存，随结果一起发）
+     *     onEcgADCChange          → 增量 ADC 波形，转 mV 后随进度 emit onEcgProgress.waveform
+     *   与 iOS startEcgTest / finishEcgWithModel 的 emit 契约完全一致。
+     */
     private fun startEcg() {
-        // TODO(veepoo): 核对 ECG 方法名（startECGTest / startECG）与回调 IECGTestDataListener。
-        log("[VeepooRing ANDROID] ecg start requested (verify listener wiring)")
+        if (!ready.get()) {
+            emit("onEcgProgress", JSONObject().apply { put("error", "戒指未连接，请先连接后再测") })
+            return
+        }
+        if (ecgDetectListener != null) stopEcgInternal("reenter")
+        // ★ 2026-11-24（真机实证 v95）：用户主动 ECG 优先。自动快照轮转的 miniCheckup/GSR
+        //   独占 PPG，若在 ECG 之前已启动，会把 ECG 波形从半途掐断（实测采到 63% 后断流，
+        //   ecg stopped(js stopEcg)）。启动 ECG 前先归还被自动快照占用的 PPG 通道。
+        //   注意：不调用 stopSnapshotRotation()——轮转本身继续，后续 tick 因 ecgDetectListener!=null 自动跳过。
+        if (miniCheckupListener != null) {
+            log("[VeepooRing ANDROID] ECG preempts in-flight miniCheckup (PPG)")
+            finishMiniCheckup("ecg preempts")
+        }
+        if (gsrDetectListener != null) {
+            log("[VeepooRing ANDROID] ECG preempts in-flight GSR (PPG)")
+            finishGsrDetect("ecg preempts")
+        }
+        // ★ 2026-11-17 二次修复：重进时清掉上一次可能残留的兜底任务/交付标志
+        ecgFinishGuard?.let { mainHandler.removeCallbacks(it) }
+        ecgFinishGuard = null
+        ecgDelivered = false
+        ecgReached100At = 0L
+        if (ppgReleaseActive) {
+            emit("onEcgProgress", JSONObject().apply { put("error", "设备正忙，请稍后再测") })
+            return
+        }
+        // ★ 2026-11-21（用户纠正）：ECG 固件实测支持（v69 真机已出 6 项风险真值），能力位 capEcg=false
+        //   是误判。不再用它拒绝测量——只记录日志，继续真正发起，交戒指裁决；看门狗兜底不卡死。
+        if (capEcg == false) {
+            log("[VeepooRing ANDROID] ECG capEcg=false（记录但按用户要求继续尝试测量）")
+            android.util.Log.e("GATECAP", "ecg capEcg=false -> PROCEED")
+        }
+        try {
+            if (!VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportECG()) {
+                log("[VeepooRing ANDROID] ECG isSupportECG=false（记录但继续尝试）")
+                android.util.Log.e("GATECAP", "ecg isSupportECG=false -> PROCEED")
+            }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] ECG cap check failed: ${e.message}")
+        }
+        // ★ 2026-11-20 协议深挖：打印诊断字段填充的两道门的真实值（Log.e 直写，防被JS日志流冲掉）
+        try {
+            val sp = VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext)
+            val ecgType = sp.getECGType()
+            val multiDiag = sp.isSupportEcgMultiDiagnoses()
+            val diseaseCap = manager.getFunctionCheck().checkEcgDisease()
+            android.util.Log.e("DIAGGATE", "GATE ecgType=$ecgType multiDiag=$multiDiag checkEcgDisease=$diseaseCap")
+        } catch (e: Throwable) {
+            android.util.Log.e("DIAGGATE", "GATE probe failed: ${e.message}")
+        }
+        try {
+            // ECG 与血氧共用 PPG：先停血氧流，出值/超时后由 stopEcgInternal 归还（JS measure 前 cancelPpgRelease 已调用）
+            spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            ecgSentCount = 0
+            ecgNotLeadCount = 0
+            ecgDiagnosis = null
+            ecgWaveBuf.clear()
+            ecgRrBuf.clear()
+            ecgResultEmitted = false // 每次新测量重置；不要在 stop 时重置（迟到的 result 回调会二次 emit）
+            val ecgType = try { VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).getECGType() } catch (_: Throwable) { 1 }
+            log("[VeepooRing ANDROID] ECG start (ecgType=$ecgType)")
+            ecgDetectListener = object : IECGDetectListener {
+                override fun onEcgDetectInfoChange(info: EcgDetectInfo?) {
+                    log("[VeepooRing ANDROID] ECG info freq=${info?.frequency} draw=${info?.drawFrequency}")
+                }
+
+                override fun onEcgDetectStateChange(state: EcgDetectState?) {
+                    val s = state ?: return
+                    ecgLastActiveAt = SystemClock.elapsedRealtime() // 有任何状态推进=测量活着，喂狗
+                    val hr = if (s.hr1 > 0) s.hr1 else 0
+                    // ★ 2026-11-17 诊断：实测这台戒指 ECG 只回 info 帧、疑似无 state/结果帧 →
+                    //   把进度/设备状态打出来确诊（节流： progress 或 deviceState 变化才打）
+                    val dbgKey = "${s.progress}/${s.deviceState}/adc=$ecgSentCount"
+                    if (dbgKey != ecgLastStateLog) {
+                        ecgLastStateLog = dbgKey
+                        log("[VeepooRing ANDROID] ECG state progress=${s.progress} devState=${s.deviceState} hr=$hr adcFrames=$ecgSentCount")
+                    }
+                    when (s.deviceState) {
+                        EDeviceStatus.BUSY -> {
+                            stopEcgInternal("device busy")
+                            emit("onEcgProgress", JSONObject().apply { put("error", "设备正忙，请稍后再测") })
+                            return
+                        }
+                        EDeviceStatus.UNPASS_WEAR -> {
+                            ecgNotLeadCount += 1
+                            log("[VeepooRing ANDROID] ECG 导联脱落 count=$ecgNotLeadCount")
+                            if (ecgNotLeadCount >= 3) {
+                                stopEcgInternal("not lead x3")
+                                emit("onEcgProgress", JSONObject().apply {
+                                    put("error", "导联脱落：请把戒指戴紧一点，用另一只手食指轻触戒指外侧电极再测")
+                                })
+                            } else {
+                                emit("onEcgProgress", JSONObject().apply { put("hint", "请保持手指接触戒指外侧电极…") })
+                            }
+                            return
+                        }
+                        else -> { ecgNotLeadCount = 0 } // 已闭合回路 → 清零脱落计数
+                    }
+                    // ★ 2026-11-17 三次修复（真机 23:17 铁证）：progress=100 的日志能打出来，
+                    //   但其后的快照读取(s.hrv/qtc/pwv/br1)或 emit 一旦在 SDK 反射回调里抛异常，
+                    //   整个 onEcgDetectStateChange 会被静默中断 → guard/watchdog 都挂不上 → UI 永久卡住。
+                    //   对策：整段 try-catch；任何异常都强制走 snapshot 兜底，绝不静默。
+                    try {
+                        emit("onEcgProgress", JSONObject().apply {
+                            put("progress", s.progress); put("hr", hr)
+                        })
+                        // 快照逐字段 try：某个 getter 抛异常也不能挡住 100% 出值
+                        ecgSnapHr = hr
+                        try { ecgSnapHrv = s.hrv } catch (e: Throwable) { ecgSnapHrv = 0 }
+                        try { ecgSnapQtc = s.qtc } catch (e: Throwable) { ecgSnapQtc = 0 }
+                        try { ecgSnapPwv = s.pwv } catch (e: Throwable) { ecgSnapPwv = 0 }
+                        try { ecgSnapBr = s.br1 } catch (e: Throwable) { ecgSnapBr = 0 }
+                        // ★ v62：采集 RR 间期（合理区间 300–2000ms），供本地 SDNN/RMSSD 统计
+                        try { val rr1 = s.rr1; if (rr1 in 300..2000) ecgRrBuf.add(rr1) } catch (_: Throwable) {}
+                        // 100% = 测量完成权威信号。同步立即挂 guard + 出值。
+                        if (s.progress >= 100 && hr > 0) {
+                            if (ecgReached100At == 0L) {
+                                ecgReached100At = SystemClock.elapsedRealtime()
+                                log("[VeepooRing ANDROID] ECG reached 100%, schedule guard")
+                                val guard = object : Runnable {
+                                    override fun run() {
+                                        if (ecgDelivered) return
+                                        log("[VeepooRing ANDROID] ECG 100% guard fire — 强制兜底交付")
+                                        emitEcgFromSnapshot("100%-guard")
+                                    }
+                                }
+                                ecgFinishGuard = guard
+                                mainHandler.postDelayed(guard, 1_500L)
+                            }
+                            if (!ecgDelivered) emitEcgFromState(s, hr)
+                        }
+                    } catch (e: Throwable) {
+                        // 兜底：即使上面任何一步炸了，只要到 100% 就用快照强制出值
+                        log("[VeepooRing ANDROID] ECG state handler EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                        ecgSnapHr = if (ecgSnapHr > 0) ecgSnapHr else hr
+                        if (s.progress >= 100 && ecgSnapHr > 0 && !ecgDelivered) {
+                            emitEcgFromSnapshot("100%-catch-fallback")
+                        }
+                    }
+                }
+
+                /** 从 EcgDetectState 的结果字段组装 onEcg 出值（对齐 iOS finishEcgWithModel）。 */
+                private fun emitEcgFromState(s: EcgDetectState, hr: Int) {
+                    if (ecgDelivered) return
+                    ecgDelivered = true
+                    ecgResultEmitted = true
+                    // 结果已交付，撤掉 100% 兜底任务
+                    ecgFinishGuard?.let { mainHandler.removeCallbacks(it) }
+                    ecgFinishGuard = null
+                    log("[VeepooRing ANDROID] ECG result FROM STATE hr=$hr hrv=${s.hrv} qtc=${s.qtc} pwv=${s.pwv} br=${s.br1} wave=${ecgWaveBuf.size}")
+                    val analysis = buildEcgAnalysis(s.hrv, s.qtc, s.pwv, s.br1)
+                    // ★ 注意：SDNN/RMSSD/QRS/ST/风险指数来自设备多诊断报告 EcgDiagnosis；
+                    //   这台戒指的 diagnosis 回调从未触发 → 这些字段本机无数据，
+                    //   一律不写 0（0 会被 UI 误读成"正常"），交由前端显示"—/未获取"。
+                    emit("onEcg", JSONObject().apply {
+                        put("aveHeart", hr)
+                        put("aveHrv", s.hrv)
+                        put("aveResRate", if (s.br1 > 0) s.br1 else (ecgDiagnosis?.respRate ?: 0))
+                        put("aveQT", s.qtc)
+                        put("avePWV", if (s.pwv > 0) s.pwv else (ecgDiagnosis?.pwvMeanVal ?: 0))
+                        put("waveform", downsampleWave(ecgWaveBuf))
+                        // ★ 2026-11-24：波形真实采样率/原始帧数，供 JS 估算呼吸率时推算等效采样率
+                        //   （downsampleWave 压到 2000 点，若按固定 36s 猜会因实际采样时长不同而算错频率）
+                        put("waveHz", 500)
+                        put("waveFrames", ecgWaveBuf.size)
+                        put("analysis", analysis)
+                    })
+                    // ★ 2026-11-20(v64)：实时测量回调不带诊断报告，主动读回设备端存储的那份，
+                    //   把 6 大风险指数 + QRS/ST/SDNN/RMSSD 补进报告页（竞品同款，读历史 ECG 诊断）。
+                    scheduleEcgDiagnosisRead()
+                    stopEcgInternal("result from state")
+                }
+
+                override fun onEcgDetectResultChange(result: EcgDetectResult?) {
+                    val r = result ?: return
+                    // ★ 双路去重（统一用 ecgDelivered）：若 state/兜底已交付，忽略这个迟到的结果回调
+                    if (ecgDelivered) { log("[VeepooRing ANDROID] ECG result callback ignored (already delivered)"); return }
+                    val aveHeart = r.aveHeart
+                    if (aveHeart <= 0) {
+                        stopEcgInternal("invalid result hr=$aveHeart")
+                        emit("onEcgProgress", JSONObject().apply { put("error", "未获得有效读数，请重试") })
+                        return
+                    }
+                    // 波形转 mV（对齐 iOS convertToMvWithValue）：优先 filterSignals，回退 originSign
+                    val raw = if (r.filterSignals?.isNotEmpty() == true) r.filterSignals else r.originSign
+                    val wave = mutableListOf<Double>()
+                    if (raw != null) {
+                        for (v in raw) {
+                            if (v == Int.MAX_VALUE) continue
+                            val mv = EcgUtil.convertToMvWithValue(v, ecgType, false, 20)
+                            wave.add((mv * 100.0).toLong() / 100.0) // 保留 2 位
+                        }
+                    }
+                    // 多诊断报告（设备返回，非本地测算）—— 仅透传数值，不本地诊断/评分
+                    val analysis = JSONObject()
+                    ecgDiagnosis?.let { d ->
+                        analysis.put("arrhythmiaRisk", d.diseaseRisk)
+                        analysis.put("stressIndex", d.pressureIndex)
+                        analysis.put("fatigueIndex", d.fatigueIndex)
+                        analysis.put("myocarditisRisk", d.myocarditisRisk)
+                        analysis.put("chdRisk", d.chdRisk)
+                        analysis.put("angiosclerosisRisk", d.angioscleroticRisk)
+                        analysis.put("qrsTime", d.qrsTime)
+                        analysis.put("qrsAmp", d.qrsAmp)
+                        analysis.put("stMeanAmp", d.stMeanAmp)
+                        analysis.put("pwvMeanVal", d.pwvMeanVal)
+                        analysis.put("sdnn", d.diseaseSdnn)
+                        analysis.put("rmssd", d.diseaseRmssd)
+                    }
+                    // javap 核对：EcgDetectResult 只有 aveHeart/aveHrv/aveResRate/aveQT；
+                    //   PWV 在 EcgDiagnosis.pwvMeanVal（Device 多诊断报告）里，无报告则为 0。
+                    val pwv = ecgDiagnosis?.pwvMeanVal ?: 0
+                    ecgResultEmitted = true
+                    ecgDelivered = true
+                    ecgFinishGuard?.let { mainHandler.removeCallbacks(it) }
+                    ecgFinishGuard = null
+                    emit("onEcg", JSONObject().apply {
+                        put("aveHeart", aveHeart)
+                        put("aveHrv", r.aveHrv)
+                        put("aveResRate", if (r.aveResRate > 0) r.aveResRate else (ecgDiagnosis?.respRate ?: 0))
+                        put("aveQT", r.aveQT)
+                        put("avePWV", pwv)
+                        put("waveform", downsampleWave(wave))
+                        put("waveHz", 500)
+                        put("waveFrames", wave.size)
+                        put("analysis", analysis)
+                    })
+                    // ★ 2026-11-20(v64)：同 state 路径，主动读回设备诊断报告补齐风险指数
+                    scheduleEcgDiagnosisRead()
+                    stopEcgInternal("result ok")
+                }
+
+                override fun onEcgDetectDiagnosisChange(diagnosis: EcgDiagnosis?) {
+                    ecgDiagnosis = diagnosis
+                    if (diagnosis == null) return
+                    android.util.Log.e("DIAGGATE", "DIAG-CALLBACK risk=${diagnosis.diseaseRisk} chd=${diagnosis.chdRisk} angio=${diagnosis.angioscleroticRisk} myo=${diagnosis.myocarditisRisk} pressure=${diagnosis.pressureIndex} fatigue=${diagnosis.fatigueIndex} qrsT=${diagnosis.qrsTime} qrsA=${diagnosis.qrsAmp} st=${diagnosis.stMeanAmp} sdnn=${diagnosis.diseaseSdnn} rmssd=${diagnosis.diseaseRmssd} hr=${diagnosis.heartRate}")
+                    // ★ 2026-11-20(v69) 真机实证：这枚戒指(ecgType=9, checkEcgDisease=true)确实回传完整诊断，
+                    //   但该回调比结果帧晚到（或报告已先交付），导致 analysis 组装时 ecgDiagnosis 还是 null。
+                    //   修复：诊断一到就立刻组装并 emit onEcgDiagnosis，让前端局部合并进最新报告（不新增记录）。
+                    //   若报告尚未交付，前端 handler 会因「无当前报告」忽略——此时 emitEcgFromState 里的
+                    //   buildEcgAnalysis 会直接从 ecgDiagnosis 读到值（因为回调已先写入），两条路都覆盖。
+                    emitEcgDiagnosisUpdate(diagnosis)
+                }
+
+                override fun onEcgADCChange(data: IntArray?, power: IntArray?) {
+                    val adc = data ?: return
+                    if (adc.isEmpty()) return
+                    ecgLastActiveAt = SystemClock.elapsedRealtime() // 波形持续到达=测量活着，喂狗
+                    // ★ 2026-11-17 诊断：首帧波形到达 = 手指/导联已闭合、设备确在采样。
+                    if (ecgSentCount == 0) log("[VeepooRing ANDROID] ECG first ADC frame len=${adc.size}（导联已闭合，开始采样）")
+                    val delta = JSONArray()
+                    for (i in adc.indices) {
+                        val v = adc[i]
+                        if (v == Int.MAX_VALUE) continue
+                        val p = if (power != null && i < power.size) power[i] else 20
+                        val mv = EcgUtil.convertToMvWithValue(v, ecgType, false, p)
+                        val rounded = (mv * 100.0).toLong() / 100.0
+                        delta.put(rounded)
+                        ecgWaveBuf.add(rounded) // 缓存完整波形，供 progress=100 从 state 兜底出结果
+                    }
+                    ecgSentCount += adc.size
+                    emit("onEcgProgress", JSONObject().apply {
+                        put("progress", -1) // -1 = 纯波形增量帧，JS 侧不更新进度数字
+                        put("waveform", delta)
+                    })
+                }
+            }
+            manager.startDetectECG(IBleWriteResponse { _ -> }, true, ecgDetectListener)
+            // ★ 2026-11-17 修复「卡在生成报告」真因：
+            //   原实现是固定 90s 硬超时，但实测这台戒指进度会正常走到 100、波形采满 18000+ 帧、
+            //   心率都测到 82 了，结果帧还在设备端计算时——90s 到点直接 stopDetectECG，把结果掐死，
+            //   UI 永远停在 99%。改为「停滞看门狗」：每 5s 检查一次，只要 state/波形还在推进就喂狗、
+            //   绝不打断；只有连续 25s 无任何进展（真卡住/导联一直接触不上）才停并报错。
+            //   另设 180s 绝对上限兜底，防止固件异常时无限等待。
+            val startedAt = SystemClock.elapsedRealtime()
+            ecgLastActiveAt = startedAt
+            val watchdog = object : Runnable {
+                override fun run() {
+                    // ★ 2026-11-17 三次修复：只要结果还没交付就继续兜底，不再因 listener 被置 null 直接放弃。
+                    //   原逻辑 `if (listener==null) return` 会在异常导致 listener 提前清空时误杀看门狗。
+                    if (ecgDelivered) return // 唯一退出条件：结果已真正交付
+                    val now = SystemClock.elapsedRealtime()
+                    val idle = now - ecgLastActiveAt
+                    // ★ 100% 后用独立计时，不受波形继续刷新喂狗影响。3s 强制兜底交付。
+                    val since100 = if (ecgReached100At > 0L) now - ecgReached100At else -1L
+                    when {
+                        (since100 in 0 until 3_000L) -> {
+                            // 已到 100% 但还没交付：短轮询给 guard 机会
+                            Handler(Looper.getMainLooper()).postDelayed(this, 1_000L)
+                        }
+                        since100 >= 3_000L -> {
+                            log("[VeepooRing ANDROID] ECG 100% waited ${since100/1000}s, force deliver (listener=${ecgDetectListener != null})")
+                            emitEcgFromSnapshot("100%-watchdog")
+                        }
+                        now - startedAt >= 180_000L -> {
+                            stopEcgInternal("absolute timeout 180s")
+                            emit("onEcgProgress", JSONObject().apply { put("error", "心电测量超时，请重试") })
+                        }
+                        idle >= 25_000L -> {
+                            log("[VeepooRing ANDROID] ECG stall ${idle/1000}s no progress, stop")
+                            stopEcgInternal("stall ${idle/1000}s")
+                            emit("onEcgProgress", JSONObject().apply { put("error", "心电信号中断，请确认手指持续按住电极后重试") })
+                        }
+                        else -> Handler(Looper.getMainLooper()).postDelayed(this, 5_000L)
+                    }
+                }
+            }
+            ecgPendingStop = watchdog
+            Handler(Looper.getMainLooper()).postDelayed(watchdog, 5_000L)
+        } catch (e: Throwable) {
+            // ★ 2026-11-17：UnsatisfiedLinkError 等是 Error 不是 Exception，必须兜 Throwable，
+            //   否则 SDK 内部 so 加载失败会直接杀掉整个 RN 进程（真机已复现闪退）。
+            log("[VeepooRing ANDROID] ECG start FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            stopEcgInternal("start exception")
+            emit("onEcgProgress", JSONObject().apply { put("error", "心电测量启动失败：${e.javaClass.simpleName}，请重试") })
+        }
+    }
+
+    /** ★ 2026-11-17 二次修复：从快照强制交付 ECG 结果（100% 兜底任务 / 看门狗调用，类级别方法）。
+     *   只读快照字段；整段 try-catch，任何异常都转成明确的 onEcgProgress.error，绝不静默卡住 UI。 */
+    private fun emitEcgFromSnapshot(source: String) {
+        if (ecgDelivered) return
+        ecgDelivered = true
+        ecgResultEmitted = true
+        ecgFinishGuard?.let { mainHandler.removeCallbacks(it) }
+        ecgFinishGuard = null
+        val hr = ecgSnapHr
+        log("[VeepooRing ANDROID] ECG result FROM $source hr=$hr hrv=$ecgSnapHrv qtc=$ecgSnapQtc pwv=$ecgSnapPwv br=$ecgSnapBr wave=${ecgWaveBuf.size}")
+        if (hr <= 0) {
+            stopEcgInternal("snapshot invalid hr")
+            emit("onEcgProgress", JSONObject().apply { put("error", "心电测量未获得有效读数，请重试") })
+            return
+        }
+        try {
+            val analysis = buildEcgAnalysis(ecgSnapHrv, ecgSnapQtc, ecgSnapPwv, ecgSnapBr)
+            android.util.Log.e("DIAGGATE", "DELIVER ecgDiagnosisPresent=${ecgDiagnosis != null} analysisLen=${analysis.length()} analysis=$analysis")
+            emit("onEcg", JSONObject().apply {
+                put("aveHeart", hr)
+                put("aveHrv", ecgSnapHrv)
+                put("aveResRate", if (ecgSnapBr > 0) ecgSnapBr else (ecgDiagnosis?.respRate ?: 0))
+                put("aveQT", ecgSnapQtc)
+                put("avePWV", if (ecgSnapPwv > 0) ecgSnapPwv else (ecgDiagnosis?.pwvMeanVal ?: 0))
+                put("waveform", downsampleWave(ecgWaveBuf))
+                put("waveHz", 500)
+                put("waveFrames", ecgWaveBuf.size)
+                put("analysis", analysis)
+            })
+            stopEcgInternal("result $source")
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] ECG snapshot deliver FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            stopEcgInternal("snapshot deliver failed")
+            emit("onEcgProgress", JSONObject().apply { put("error", "心电结果处理失败，请重试") })
+        }
+    }
+
+    /**
+     * ★ 2026-11-17：血糖主动测量真实接线（此前无分支）。SDK startBloodGlucoseDetect 的
+     *   onBloodGlucoseDetect(progress, value, level) 逐帧回传，value>0 即经 onRealtime 落库
+     *   （metric=glucose，与 JS handleRealtime → healthStore → 体检报告同源）。
+     */
+    private fun startGlucoseDetect() {
+        if (!ready.get()) { log("[VeepooRing ANDROID] Glucose detect skip: ring not ready"); return }
+        if (glucoseListener != null) stopGlucoseInternal("reenter")
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] Glucose detect skip: ppg release window"); return }
+        if (bpDetectListener != null || hrvDetectListener != null || hrListener != null || ecgDetectListener != null) {
+            log("[VeepooRing ANDROID] Glucose detect skip: other measure in progress"); return
+        }
+        // ★ 2026-11-21（用户明确纠正）：不再用能力位拒绝测量。历史回传实证戒指能给出血糖真值
+        //   （extValues.glucose=4.51），能力位来自 SP 默认 false / 能力包，不可靠。改为只记录、继续真正
+        //   发起测量，交戒指实测裁决；真不支持时 SDK 会回 error 或走 150s 看门狗收口，不会卡死。
+        if (capGlucose == false) {
+            log("[VeepooRing ANDROID] Glucose capGlucose=false（记录但按用户要求继续尝试测量）")
+            android.util.Log.e("GATECAP", "glucose capGlucose=false -> PROCEED")
+        }
+        try {
+            if (!VpSpGetUtil.getVpSpVariInstance(reactContext.applicationContext).isSupportBloodGlucoseDetect()) {
+                log("[VeepooRing ANDROID] Glucose isSupportDetect=false（记录但继续尝试）")
+                android.util.Log.e("GATECAP", "glucose isSupportDetect=false -> PROCEED")
+            }
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] Glucose cap check failed: ${e.message}")
+        }
+        try {
+            spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            log("[VeepooRing ANDROID] Glucose detect started")
+            glucoseListener = object : AbsBloodGlucoseChangeListener() {
+                override fun onDetectError(opt: Int, status: EBloodGlucoseStatus?) {
+                    log("[VeepooRing ANDROID] Glucose detect error opt=$opt status=$status")
+                    // ★ 2026-11-18：错误必须反馈到 UI（此前静默 stop，用户感知「点了没反应」）
+                    val msg = when (status) {
+                        com.veepoo.protocol.model.enums.EBloodGlucoseStatus.WEARING_ERROR -> "未检测到正确佩戴，请调整戒指后重试"
+                        com.veepoo.protocol.model.enums.EBloodGlucoseStatus.LOW_POWER -> "戒指电量不足，请充电后重试"
+                        com.veepoo.protocol.model.enums.EBloodGlucoseStatus.BUSY -> "戒指繁忙（可能有其它测量），稍后重试"
+                        com.veepoo.protocol.model.enums.EBloodGlucoseStatus.NONSUPPORT -> "当前戒指固件不支持血糖测量"
+                        else -> "血糖检测出错($status)，请重试"
+                    }
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "glucose"); put("error", msg); put("ts", System.currentTimeMillis())
+                    })
+                    stopGlucoseInternal("detect error")
+                }
+                override fun onBloodGlucoseDetect(progress: Int, bloodGlucose: Float, level: com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel?) {
+                    log("[VeepooRing ANDROID] Glucose progress=$progress value=$bloodGlucose level=$level")
+                    // ★ 2026-11-18（用户：血糖点了没反应）：progress 帧必须推到 JS 驱动 UI。
+                    //   真机实锤：检测正常跑（0→6→12%，约 1.3s/6%），但此前 progress 只打日志不 emit，
+                    //   界面毫无变化 → 用户连点 → 每次点击 reenter 清掉检测重来 → 永远到不了 100。
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "glucoseProgress")
+                        put("value", progress.coerceIn(0, 100))
+                        put("ts", System.currentTimeMillis())
+                    })
+                    if (bloodGlucose > 0 && bloodGlucose < 40f) {
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", "glucoseProgress")
+                            put("value", 100)
+                            put("ts", System.currentTimeMillis())
+                        })
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", "glucose")
+                            put("value", (bloodGlucose * 100.0).toLong() / 100.0) // mmol/L 保留 2 位
+                            put("unit", "mmol/L")
+                            put("ts", System.currentTimeMillis())
+                        })
+                        // ★ 2026-11-19(v62)：设备血糖风险等级真实回传（SDK 回调第 3 参此前只打日志）。
+                        //   LOW=1 / MIDDLE=2 / HIGH=3 与 MetricDetailScreen.GLUCOSE_LEVELS 对齐；
+                        //   NONE 不发（UI 显示"—"，绝不写假值）。
+                        if (level != null) {
+                            val lv = when (level) {
+                                com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.LOW -> 1
+                                com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.MIDDLE -> 2
+                                com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.HIGH -> 3
+                                else -> null
+                            }
+                            if (lv != null) emit("onRealtime", JSONObject().apply {
+                                put("metric", "glucoseLevel")
+                                put("value", lv)
+                                put("ts", System.currentTimeMillis())
+                            })
+                        }
+                        stopGlucoseInternal("value ok")
+                    }
+                }
+                override fun onBloodGlucoseStopDetect() {
+                    log("[VeepooRing ANDROID] Glucose detect stopped by device")
+                    // ★ 2026-11-18：设备主动停止（多为佩戴不稳/条件不满足）——反馈到 UI，不再静默。
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "glucose"); put("error", "戒指中断了血糖检测，请保持佩戴静止后重试"); put("ts", System.currentTimeMillis())
+                    })
+                    // 设备已自行停止，不发 stopBloodGlucoseDetect（避免来回停）；
+                    // 但要清兜底 + 复位通道状态（lastMeasureEndAt 宽限），走幂等清理。
+                    glucosePendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+                    glucosePendingStop = null
+                    glucoseListener = null
+                    lastMeasureEndAt = System.currentTimeMillis()
+                }
+            }
+            // ★ 2026-11-18（用户：血糖点了没反应）：换带模式的 3 参重载。
+            //   血压当时就是换 DETECT_MODEL_PUBLIC（公开模式）才通的；此前 2 参重载用 SDK 默认
+            //   模式，真机表现是设备立刻 onBloodGlucoseStopDetect / 90s 零回调。
+            //   写响应码照 BP 的做法打日志，失败可见。
+            // ★ 2026-11-18（用户：血糖点了没反应）：按能力位选命令。
+            //   反编译实锤：2 参重载发公开命令字节（profile vp_bs）；3 参 PRIVATE 发 vp_bt。
+            //   Veepoo 血糖分级固件（MultipleAdjusting=SUPPORT）只认私有命令，公开命令设备 1s 内 stop。
+            val gModel = if (glucosePrivateMode)
+                com.veepoo.protocol.model.enums.EBloodGlucoseDetectModel.DETECT_MODEL_PRIVATE
+            else
+                com.veepoo.protocol.model.enums.EBloodGlucoseDetectModel.DETECT_MODEL_PUBLIC
+            log("[VeepooRing ANDROID] Glucose detect model=$gModel (privateMode=$glucosePrivateMode)")
+            manager.startBloodGlucoseDetect(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] Glucose detect write resp=$code")
+            }, glucoseListener, gModel)
+            // ★ 2026-11-18：真机 progress 0→6→12% 约 1.3s/6% → 全程 ~130s，90s 兜底会在检测中途
+            //   把检测杀掉（timeout 时 value 还没出）——改 150s 留足余量。
+            val stop = Runnable { stopGlucoseInternal("timeout 150s") }
+            glucosePendingStop = stop
+            Handler(Looper.getMainLooper()).postDelayed(stop, 150_000L)
+        } catch (e: Throwable) {
+            // ★ 2026-11-17：同 ECG，兜 Throwable 防止 Error 杀进程
+            log("[VeepooRing ANDROID] Glucose detect FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            stopGlucoseInternal("start exception")
+            emit("onRealtime", JSONObject().apply {
+                put("metric", "glucose"); put("error", "血糖测量启动失败：${e.javaClass.simpleName}")
+            })
+        }
+    }
+
+    /** 归还血糖通道：清兜底 + stop + 复位。幂等。 */
+    private fun stopGlucoseInternal(reason: String) {
+        glucosePendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+        glucosePendingStop = null
+        val listener = glucoseListener
+        glucoseListener = null
+        if (listener != null) {
+            // ★ 2026-11-18：stop 命令同样分模式（反编译：PUBLIC 发 vp_bu、PRIVATE 发 vp_bv），
+            //   私有模式固件对公开 stop 不响应 → 带模型参数下发。
+            try {
+                manager.stopBloodGlucoseDetect(IBleWriteResponse { _ -> }, listener,
+                    if (glucosePrivateMode) com.veepoo.protocol.model.enums.EBloodGlucoseDetectModel.DETECT_MODEL_PRIVATE
+                    else com.veepoo.protocol.model.enums.EBloodGlucoseDetectModel.DETECT_MODEL_PUBLIC)
+            } catch (_: Throwable) {}
+        }
+        lastMeasureEndAt = System.currentTimeMillis()
+        if (lastSpO2SampleAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastSpO2SampleAt = lastMeasureEndAt
+        if (lastAnySpo2FrameAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = lastMeasureEndAt
+        // ★ 2026-11-18(2)：超时兜底也要反馈到 UI（错误帧无 value，JS 已在 value 闸门前处理），
+        //   否则用户会永远卡在「测量中 x%」。
+        if (reason.startsWith("timeout")) {
+            emit("onRealtime", JSONObject().apply {
+                put("metric", "glucose"); put("error", "血糖检测超时，请保持佩戴静止后重试"); put("ts", System.currentTimeMillis())
+            })
+        }
+        log("[VeepooRing ANDROID] glucose stopped ($reason)")
+    }
+
+    /**
+     * ★ 2026-11-18：血液成分主动测量（尿酸 + 血脂四项）。
+     *   此前 measure('ua'/'cholesterol'/...) 全落到 triggerHealthGlance() 空 stub，从不调 SDK、不 emit →
+     *   洞察页血液成分 tab 永远无数据。这里接真实 SDK startDetectBloodComponent，
+     *   onDetectComplete 拿到 BloodComponent（设备评估值）→ 逐项 emit onRealtime 落 healthStore。
+     *   合规：仅透传设备返回值，不本地测算/诊断；能力位 capBloodComponent 门禁。
+     */
+    private fun startBloodComponentDetect() {
+        if (!ready.get()) { log("[VeepooRing ANDROID] BloodComponent skip: not ready"); return }
+        if (bloodComponentListener != null) stopBloodComponentInternal("reenter")
+        if (ppgReleaseActive) { log("[VeepooRing ANDROID] BloodComponent skip: ppg release window"); return }
+        if (bpDetectListener != null || hrvDetectListener != null || hrListener != null || ecgDetectListener != null || glucoseListener != null) {
+            log("[VeepooRing ANDROID] BloodComponent skip: other measure in progress"); return
+        }
+        // ★ 2026-11-21（用户纠正）：不再用能力位拒绝。历史回传实证血脂真值在库（TG0.88/HDL1.02/LDL0.76），
+        //   能力位不可靠 → 继续真正发起测量，戒指实测裁决；失败有 90s 看门狗兜底。
+        if (capBloodComponent == false) {
+            log("[VeepooRing ANDROID] BloodComponent capBloodComponent=false（记录但继续尝试测量）")
+            android.util.Log.e("GATECAP", "bloodcomp capBloodComponent=false -> PROCEED")
+        }
+        // ★ v90：每次新测量重置结果状态，防止上一轮缓存/已发标志污染本轮
+        bcLastValues = null
+        bcResultEmitted = false
+        try {
+            spo2Listener?.let { manager.stopDetectSPO2H(IBleWriteResponse { _ -> }, it) }
+            spo2Listener = null
+            log("[VeepooRing ANDROID] BloodComponent detect started")
+            bloodComponentListener = object : IBloodComponentDetectListener {
+                override fun onDetectFailed(errorState: EBloodComponentDetectState) {
+                    log("[VeepooRing ANDROID] BloodComponent detect failed: $errorState")
+                    emit("onRealtime", JSONObject().apply { put("metric", "bloodcomp"); put("error", "血液成分测量失败，请重试") })
+                    stopBloodComponentInternal("detect failed")
+                }
+                override fun onDetecting(progress: Int, data: BloodComponent) {
+                    log("[VeepooRing ANDROID] BloodComponent detecting progress=$progress")
+                    // ★ 2026-11-18：进度推到 JS（与血糖同通道），界面显示「测量中 x%」
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "bloodcompProgress")
+                        put("value", progress.coerceIn(0, 100))
+                        put("ts", System.currentTimeMillis())
+                    })
+                    // ★ v90 核心修复：进度帧 data 已携带完整 BloodComponent 真值
+                    //   （aar 字节码 vp_i.vp_a 实证 setUricAcid/setTCHO/setTAG/setHDL/setLDL）。
+                    //   戒指常在 96~100% 就填好真值、随后只回 onDetectStop 不回 complete，
+                    //   所以每一帧都尝试提取，一旦有 >0 的值就缓存下来供 stop 兜底。
+                    val vals = readBloodComponentValues(data)
+                    if (vals != null && vals.values.any { it > 0f }) {
+                        bcLastValues = vals
+                        android.util.Log.e("SNAPDG", "BC progress=$progress cached ua=${vals["ua"]} tc=${vals["cholesterol"]} tg=${vals["triglyceride"]} hdl=${vals["hdl"]} ldl=${vals["ldl"]}")
+                    }
+                }
+                override fun onDetectStop() {
+                    log("[VeepooRing ANDROID] BloodComponent detect stopped by device")
+                    // ★ v90 兜底：戒指跑满后只回 stop 不回 complete 是本机常态。
+                    //   若进度帧已缓存真值 → 当作成功结果落库（这才是尿酸/胆固醇的真来源）；
+                    //   没有缓存才报「中断」错误。
+                    val cached = bcLastValues
+                    if (cached != null && cached.values.any { it > 0f }) {
+                        android.util.Log.e("SNAPDG", "BC onDetectStop -> flush cached as RESULT ua=${cached["ua"]} tc=${cached["cholesterol"]}")
+                        flushBloodComponentResult(cached, "stop-cached")
+                        stopBloodComponentInternal("stop-with-result")
+                    } else {
+                        emit("onRealtime", JSONObject().apply {
+                            put("metric", "bloodcomp"); put("error", "戒指中断了血液成分检测，请保持佩戴静止后重试"); put("ts", System.currentTimeMillis())
+                        })
+                        stopBloodComponentInternal("device stop")
+                    }
+                }
+                override fun onDetectComplete(data: BloodComponent) {
+                    val ts = System.currentTimeMillis()
+                    emit("onRealtime", JSONObject().apply {
+                        put("metric", "bloodcompProgress"); put("value", 100); put("ts", ts)
+                    })
+                    val map = readBloodComponentValues(data)
+                    log("[VeepooRing ANDROID] BloodComponent complete $map")
+                    if (map != null && map.values.any { it > 0f }) bcLastValues = map
+                    flushBloodComponentResult(map ?: bcLastValues, "complete")
+                    stopBloodComponentInternal("complete")
+                }
+            }
+            manager.startDetectBloodComponent(IBleWriteResponse { _ -> }, true, bloodComponentListener)
+            val stop = Runnable { stopBloodComponentInternal("timeout 90s") }
+            bloodComponentPendingStop = stop
+            Handler(Looper.getMainLooper()).postDelayed(stop, 90_000L)
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] BloodComponent detect FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            stopBloodComponentInternal("start exception")
+            emit("onRealtime", JSONObject().apply { put("metric", "bloodcomp"); put("error", "血液成分测量启动失败：${e.javaClass.simpleName}") })
+        }
+    }
+
+    /** 归还血液成分通道：清兜底 + stop + 复位。幂等。 */
+    private fun stopBloodComponentInternal(reason: String) {
+        bloodComponentPendingStop?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
+        bloodComponentPendingStop = null
+        val listener = bloodComponentListener
+        bloodComponentListener = null
+        if (listener != null) {
+            try { manager.stopDetectBloodComponent(IBleWriteResponse { _ -> }) } catch (_: Throwable) {}
+        }
+        lastMeasureEndAt = System.currentTimeMillis()
+        if (lastSpO2SampleAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastSpO2SampleAt = lastMeasureEndAt
+        if (lastAnySpo2FrameAt < lastMeasureEndAt - WEAR_OFF_SILENCE_MS) lastAnySpo2FrameAt = lastMeasureEndAt
+        // ★ 2026-11-18(2)：超时兜底同样反馈到 UI，避免卡「测量中」。
+        if (reason.startsWith("timeout")) {
+            // ★ v90：超时也先试缓存真值（有值就当成功落库，不再误报超时）
+            val cached = bcLastValues
+            if (cached != null && cached.values.any { it > 0f } && !bcResultEmitted) {
+                flushBloodComponentResult(cached, "timeout-cached")
+            } else if (!bcResultEmitted) {
+                emit("onRealtime", JSONObject().apply {
+                    put("metric", "bloodcomp"); put("error", "血液成分检测超时，请保持佩戴静止后重试"); put("ts", System.currentTimeMillis())
+                })
+            }
+        }
+        log("[VeepooRing ANDROID] bloodComponent stopped ($reason)")
+    }
+
+    /** ★ v90：用反射从 BloodComponent 提取 5 项真值（Java 全大写 getter 名推断不稳，绕开编译期差异）。 */
+    private fun readBloodComponentValues(data: BloodComponent): Map<String, Float>? {
+        fun fv(getter: String): Float = try {
+            val m = BloodComponent::class.java.getMethod(getter)
+            (m.invoke(data) as Number).toFloat()
+        } catch (_: Throwable) { 0f }
+        val ua = fv("getUricAcid")
+        val tc = fv("getTCHO")
+        val tg = fv("getTAG")
+        val hdl = fv("getHDL")
+        val ldl = fv("getLDL")
+        if (ua == 0f && tc == 0f && tg == 0f && hdl == 0f && ldl == 0f) return null
+        return linkedMapOf(
+            "ua" to ua, "cholesterol" to tc, "triglyceride" to tg,
+            "hdl" to hdl, "ldl" to ldl,
+        )
+    }
+
+    /** ★ v90：把血液成分真值逐项 emit 落库；bcResultEmitted 保证一轮测量只发一次。 */
+    private fun flushBloodComponentResult(map: Map<String, Float>?, source: String) {
+        if (map == null) return
+        if (bcResultEmitted) {
+            log("[VeepooRing ANDROID] BloodComponent flush skipped (already emitted, source=$source)")
+            return
+        }
+        val ts = System.currentTimeMillis()
+        var n = 0
+        for ((k, v) in map) {
+            if (v > 0f && v < 10000f) {
+                emit("onRealtime", JSONObject().apply {
+                    put("metric", k)
+                    put("value", (v * 100.0).toLong() / 100.0)
+                    put("unit", if (k == "ua") "μmol/L" else "mmol/L")
+                    put("ts", ts)
+                    put("historical", false)
+                    put("source", "measurement")
+                })
+                n++
+            }
+        }
+        if (n > 0) {
+            bcResultEmitted = true
+            android.util.Log.e("SNAPDG", "BC RESULT EMITTED source=$source n=$n ua=${map["ua"]} tc=${map["cholesterol"]} tg=${map["triglyceride"]}")
+            log("[VeepooRing ANDROID] BloodComponent result emitted n=$n source=$source")
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★ 2026-11-18：血糖/血液成分历史记录回读（readDeviceManualData）
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * 真机实锤：戒指端血糖自动测量本来就是开的（autoMeasure type=BLOOD_GLUCOSE open=true
+     * interval=30，固件每 30 分钟测一次并落盘），但 App 此前只接了「主动检测」通道
+     * （startBloodGlucoseDetect / startDetectBloodComponent），从不回读戒指上存的测量记录
+     * → 洞察页血糖/血液成分永远无值。
+     *
+     * 现接 SDK readDeviceManualData(IBleWriteResponse, long, ask, reply, listener)：
+     * 按起始时间戳回读 BLOOD_GLUCOSE + BLOOD_COMPOSITION 记录，逐条经 onRealtime 回流
+     * （metric=glucose/ua/cholesterol/triglyceride/hdl/ldl，ts=记录原始时间戳，historical=true），
+     * 与主动检测同一落库链路（JS handleRealtime → healthStore.upsertRealtime(t=记录时间)）。
+     *
+     * 调用时机：finishBackfillTransaction 收口后错峰 2.5s —— 每次连接 ready / 每小时
+     * 常驻闹钟同步都会触发一轮回填 → 本读取自然覆盖，无需额外定时器。
+     * ABI 已 javap vpprotocol-2.3.81.15.aar 核对：BloodGlucoseManualData.getBloodGlucoseValue /
+     * BloodComponentManualData.getUricAcid/gettCHO/gettAG/gethDL/getlDL 均存在。
+     */
+    private val manualDetectReadRunning = AtomicBoolean(false)
+    /** ★ 2026-11-18：0xDE 历史记录读取在真机上偶发无任何回调（BLE 通道被排队回填占用/固件静默），
+     *  允许自动重试一轮（最多 2 次发起），仍无回调则判定本固件不响应该读取协议。 */
+    private var manualDetectAttempts = 0
+
+    private fun readManualDetectHistory() {
+        if (!ready.get()) return
+        if (!manualDetectReadRunning.compareAndSet(false, true)) {
+            log("[VeepooRing ANDROID] manualDetect read already running, skip")
+            return
+        }
+        manualDetectAttempts++
+        // 起始时间戳：回读最近 7 天（秒级；BloodGlucoseManualData.getTimeStamp 为 int 秒）
+        val startSec = System.currentTimeMillis() / 1000 - 7L * 86400L
+        // ★ 2026-11-18(v61)（用户：EDA/压力/疲劳/情绪/皮肤含水量接上）：
+        //   除血糖/血液成分外，追加回读戒指端已落盘的 GSR/压力/疲劳/情绪/MET 测量记录，
+        //   按记录原始时间戳写库（historical=true，不参与脱手冻结/现场证据判据）。
+        val types = arrayListOf(
+            DeviceManualDataType.BLOOD_GLUCOSE, DeviceManualDataType.BLOOD_COMPOSITION,
+            DeviceManualDataType.STRESS, DeviceManualDataType.FATIGUE,
+            DeviceManualDataType.SKIN_CONDUCTANCE, DeviceManualDataType.EMOTION,
+            DeviceManualDataType.MET, DeviceManualDataType.MINI_CHECKUP,  // ★ v86：微体检历史也带皮电+压力
+        )
+        // ★ v86：SDK 文档明确第4参数 optionsList「传空数组即可」；此前误传 types 可能导致固件拒绝回读
+        val emptyOptions = arrayListOf<DeviceManualDataType>()
+        var settled = false
+        fun settle(reason: String) {
+            if (settled) return
+            settled = true
+            manualDetectReadRunning.set(false)
+            log("[VeepooRing ANDROID] manualDetect read settled ($reason)")
+            // 超时且还有重试额度：30s 后自动重试（避开可能的 BLE 通道占用窗口）
+            if (reason == "timeout 15s" && manualDetectAttempts < 2) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try { readManualDetectHistory() } catch (_: Throwable) {}
+                }, 30_000L)
+            }
+        }
+        // 看门狗：SDK 若静默不回调，15s 后释放占位（绝不阻塞后续轮次）。
+        val watchdog = Runnable { settle("timeout 15s") }
+        Handler(Looper.getMainLooper()).postDelayed(watchdog, 15_000L)
+        try {
+            manager.readDeviceManualData(IBleWriteResponse { code ->
+                log("[VeepooRing ANDROID] manualDetect write resp=$code")
+            }, startSec, types, emptyOptions,
+                object : AbsDeviceManualDetectDataListener() {
+                    override fun onBloodGlucoseDataChange(list: MutableList<BloodGlucoseManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val v = item.bloodGlucoseValue
+                            val tsMs = item.timeStamp * 1000L
+                            // 血糖 mmol/L，保留 2 位；0 为占位无效值，与主动检测同一闸门
+                            if (v > 0f && v < 100f && tsMs > 0) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "glucose")
+                                    put("value", (v * 100.0).toLong() / 100.0)
+                                    put("unit", "mmol/L")
+                                    put("ts", tsMs)
+                                    put("historical", true)
+                                })
+                                // ★ 2026-11-19(v62)：历史记录同样回传设备风险等级（NONE 不发）
+                                val lv = try {
+                                    when (item.risk) {
+                                        com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.LOW -> 1
+                                        com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.MIDDLE -> 2
+                                        com.veepoo.protocol.model.enums.EBloodGlucoseRiskLevel.HIGH -> 3
+                                        else -> null
+                                    }
+                                } catch (_: Throwable) { null }
+                                if (lv != null) emit("onRealtime", JSONObject().apply {
+                                    put("metric", "glucoseLevel")
+                                    put("value", lv)
+                                    put("ts", tsMs)
+                                    put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect glucose records=${items.size} emitted=$n")
+                    }
+
+                    override fun onBloodComponentManualDataChange(list: MutableList<BloodComponentManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val tsMs = item.timeStamp * 1000L
+                            if (tsMs <= 0) continue
+                            // Kotlin 对该 bean 的大小写混排 getter（gettCHO/gettAG/gethDL/getlDL）
+                            // 属性名推断不稳定 —— 与检测通道一致，直接调用 Java getter 方法。
+                            val ua = try { item.getUricAcid() } catch (_: Throwable) { 0f }
+                            val tc = try { item.gettCHO() } catch (_: Throwable) { 0f }
+                            val tg = try { item.gettAG() } catch (_: Throwable) { 0f }
+                            val hdl = try { item.gethDL() } catch (_: Throwable) { 0f }
+                            val ldl = try { item.getlDL() } catch (_: Throwable) { 0f }
+                            // 单位与主动检测通道一致：尿酸 μmol/L、血脂 mmol/L；0 视为无效不写
+                            val map: Map<String, Float> = linkedMapOf(
+                                "ua" to ua, "cholesterol" to tc, "triglyceride" to tg,
+                                "hdl" to hdl, "ldl" to ldl,
+                            )
+                            for ((k, v) in map) {
+                                if (v > 0f && v < 10000f) {
+                                    emit("onRealtime", JSONObject().apply {
+                                        put("metric", k)
+                                        put("value", (v * 100.0).toLong() / 100.0)
+                                        put("unit", if (k == "ua") "μmol/L" else "mmol/L")
+                                        put("ts", tsMs)
+                                        put("historical", true)
+                                    })
+                                    n++
+                                }
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect bloodcomp records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v61：压力历史（PressureManualData.getPressure [0-100]）
+                    override fun onPressureManualDataChange(list: MutableList<PressureManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val v = item.pressure
+                            val tsMs = item.timeStamp * 1000L
+                            if (v > 0 && tsMs > 0) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "stress"); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect stress records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v61：疲劳度历史（FatigueManualData.getFatigue）
+                    override fun onFatigueManualDataChange(list: MutableList<FatigueManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val v = item.fatigue
+                            val tsMs = item.timeStamp * 1000L
+                            if (v > 0 && tsMs > 0) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "fatigue"); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect fatigue records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v61：皮电历史（SkinConductanceManualData：皮肤含水量/交感/皮质醇/情绪/抑郁风险）
+                    override fun onSkinConductanceManualDataChange(list: MutableList<SkinConductanceManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val tsMs = item.timeStamp * 1000L
+                            if (tsMs <= 0) continue
+                            val map = linkedMapOf<String, Number>()
+                            if (item.skinMoisture > 0) {
+                                map["eda"] = item.skinMoisture
+                                map["skin"] = item.skinMoisture
+                            }
+                            if (item.snsActivation > 0) map["sns"] = item.snsActivation
+                            if (item.cortisolValue > 0) map["cortisol"] = item.cortisolValue
+                            if (item.emotionLevel != 0) map["emotion"] = item.emotionLevel
+                            if (item.depressionRisk in 0..2) map["depressionRisk"] = item.depressionRisk
+                            for ((k, v) in map) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", k); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect skinConductance records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v86：微体检历史（MiniCheckupManualData：压力 + 皮电子对象），带时间戳的历史快照
+                    override fun onMiniCheckupManualDataChange(list: MutableList<com.veepoo.protocol.model.datas.MiniCheckupManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val tsMs = item.timeStamp * 1000L
+                            if (tsMs <= 0) continue
+                            val p = item.pressure
+                            if (p in 1..100) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "stress"); put("value", p.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                }); n++
+                            }
+                            val se = item.skinElectricity
+                            if (se != null) {
+                                val map = linkedMapOf<String, Number>()
+                                if (se.skinMoistureContent > 0) { map["eda"] = se.skinMoistureContent; map["skin"] = se.skinMoistureContent }
+                                if (se.sympatheticActivity > 0) map["sns"] = se.sympatheticActivity
+                                if (se.cortisolConcentration > 0) map["cortisol"] = se.cortisolConcentration
+                                if (se.emotion != 0) map["emotion"] = se.emotion
+                                if (se.depressionRisk in 0..2) map["depressionRisk"] = se.depressionRisk
+                                for ((k, v) in map) {
+                                    emit("onRealtime", JSONObject().apply {
+                                        put("metric", k); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                    }); n++
+                                }
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect miniCheckup records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v61：MET 历史（MetoManualData.getMeto）
+                    override fun onMetoManualDataChange(list: MutableList<MetoManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val v = item.meto
+                            val tsMs = item.timeStamp * 1000L
+                            if (v > 0 && tsMs > 0) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "met"); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect met records=${items.size} emitted=$n")
+                    }
+
+                    // ★ v61：情绪历史（EmotionManualData.getEmotion，[-10,10]）
+                    override fun onEmotionManualDataChange(list: MutableList<EmotionManualData>?) {
+                        val items = list ?: return
+                        var n = 0
+                        for (item in items) {
+                            val v = item.emotion
+                            val tsMs = item.timeStamp * 1000L
+                            if (v != 0 && tsMs > 0) {
+                                emit("onRealtime", JSONObject().apply {
+                                    put("metric", "emotion"); put("value", v.toDouble()); put("unit", ""); put("ts", tsMs); put("historical", true)
+                                })
+                                n++
+                            }
+                        }
+                        log("[VeepooRing ANDROID] manualDetect emotion records=${items.size} emitted=$n")
+                    }
+
+                    override fun onReadProgress(p: Float) {
+                        log("[VeepooRing ANDROID] manualDetect read progress=${(p * 100).toInt()}%")
+                    }
+
+                    override fun onReadComplete() {
+                        Handler(Looper.getMainLooper()).removeCallbacks(watchdog)
+                        settle("complete")
+                    }
+
+                    override fun onReadFail() {
+                        log("[VeepooRing ANDROID] manualDetect read FAIL")
+                        Handler(Looper.getMainLooper()).removeCallbacks(watchdog)
+                        settle("fail")
+                    }
+                })
+            log("[VeepooRing ANDROID] manualDetect read started from=$startSec (7d, glucose+bloodcomp)")
+        } catch (e: Throwable) {
+            log("[VeepooRing ANDROID] manualDetect read FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            Handler(Looper.getMainLooper()).removeCallbacks(watchdog)
+            settle("exception")
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1349,9 +3469,11 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             //   只记一个挂起标记，由事务唯一收口 finishBackfillTransaction 决定是否补跑。
             log("[VeepooRing ANDROID] backfill 已在进行，合并为事务内挂起请求（不重发 BLE 读）")
             pendingBackfillDuringTransaction.set(true)
+            touchBackfillProgress()  // v78：重复请求本身也是链路存活的证据，续命看门狗
             return
         }
 
+        armBackfillWatchdog()  // v78：事务启动即挂「无进展硬超时」看门狗
         emit("onState", JSONObject().apply {
             put("status", "syncing")
             put("progress", 0)
@@ -1375,16 +3497,39 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
         val listener = object : IAllHealthDataListener {
             override fun onProgress(p: Float) {
+                touchBackfillProgress()  // v78：有进度推进→续命
                 val pct = (p * 100).toInt().coerceIn(0, 100)
                 emit("onState", JSONObject().apply { put("status", "syncing"); put("progress", pct) })
             }
 
             override fun onSleepDataChange(day: String?, sleepData: SleepData?) {
                 sleepData ?: return
-                // 以 SleepData.Date 为准并归一化为 yyyy-MM-dd；异常时回落到 day 参数（"0"/"1"...）。
-                val key = normDateKey(sleepData.date) ?: normDateKey(day) ?: return
-                sleepByDate[key] = sleepData
-                log("[VeepooRing ANDROID] sleep d=$key total=${sleepData.allSleepTime} deep=${sleepData.deepSleepTime} light=${sleepData.lowSleepTime}")
+                touchBackfillProgress()  // v78：收到数据批次→续命
+                // ★ 2026-11-16（用户反馈）：戒指带历史睡眠数据、昨天寄出、今早新用户首次连上，
+                //   App 立刻显示「今天」有一整晚睡眠。真因：Veepoo SDK 读「第 0 天 / 今天」时，
+                //   若今天没有记录会回传设备里**最后一晚**并把 SleepData.date 标成请求日（今天），
+                //   旧实现完全信任这个 date → 历史睡眠被写进今天。
+                //   TimeData 自带 year/month/day，起床日才是这一觉真正的归档日，优先用它做真值。
+                val up = sleepData.sleepUp
+                val wakeKey = up?.let { t ->
+                    val y = t.getYear(); val mo = t.getMonth(); val dd = t.getDay()
+                    if (y in 2020..2030 && mo in 1..12 && dd in 1..31)
+                        "%04d-%02d-%02d".format(y, mo, dd) else null
+                }
+                val sdkKey = normDateKey(sleepData.date)
+                val key = wakeKey ?: sdkKey ?: normDateKey(day) ?: return
+                if (wakeKey != null && sdkKey != null && wakeKey != sdkKey) {
+                    log("[VeepooRing ANDROID] ⛔ sleep 日期错配: SDK date=$sdkKey 起床日=$wakeKey → 按起床日归档")
+                }
+                // ★ 2026-11-20(v64)：同一天可能回传多条记录（整夜睡眠 + 多段午睡）。
+                //   旧实现 last-wins → 午睡（56min）把整夜主睡眠（615min）盖掉，
+                //   健康档案里 11-19 的 sleep 变成 56 分钟。改为保留时长最长的一条做主睡眠。
+                val existing = sleepByDate[key]
+                if (existing == null || sleepData.allSleepTime > existing.allSleepTime) {
+                    sleepByDate[key] = sleepData
+                }
+                // v64 诊断直写（不经 JS 节流）：验证 SDK 睡眠回调与归档键
+                android.util.Log.e("DIAGGATE", "SLEEP-CB d=$key sdk=$sdkKey wake=$wakeKey total=${sleepData.allSleepTime} down=${sleepData.sleepDown?.getHour()}:${sleepData.sleepDown?.getMinute()} up=${sleepData.sleepUp?.getHour()}:${sleepData.sleepUp?.getMinute()}")
             }
 
             override fun onReadSleepComplete() {
@@ -1393,6 +3538,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
             override fun onOringinFiveMinuteDataChange(originData: OriginData?) {
                 originData ?: return
+                touchBackfillProgress()  // v78
                 val key = normDateKey(originData.date) ?: return
                 val list = originByDate.getOrPut(key) { mutableListOf() }
                 list.add(originData)
@@ -1400,6 +3546,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
             override fun onOringinHalfHourDataChange(d: OriginHalfHourData?) {
                 d ?: return
+                touchBackfillProgress()  // v78
                 val rates = d.halfHourRateDatas ?: return
                 val key = normDateKey(d.date) ?: normDateKey(rates.firstOrNull()?.date) ?: return
                 val list = halfHourByDate.getOrPut(key) { mutableListOf() }
@@ -1407,7 +3554,59 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             }
 
             override fun onReadOriginComplete() {
+                touchBackfillProgress()  // v78：主段读完进入 origin3，续命
                 // 全部读完：按日期聚合并发出 onBatch。
+
+                // ★ 2026-11-20(v64) 睡眠日期语义修正（用户实证确认）：
+                //   本固件的睡眠记录日期 = 「这一觉所属的夜晚」（入睡当晚的日历日），
+                //   不是起床日。实证：0:31→10:46（11-20 清晨醒）的整夜睡眠被标成 11-19，
+                //   用户确认那就是昨晚的觉。而 App 全链路的归档口径是「起床日」
+                //   （SleepDetailScreen 铁律：昨晚入睡→今早起床落在 today key）。
+                //   → 把「标签 D + 清晨醒来」的整夜睡眠移到 D+1。
+                //   三道门槛防误挪（尤其防 11-16 工厂历史睡眠重新混进今天）：
+                //     ① 时长 ≥180min（真整夜睡眠；短打盹/久坐误判不动）
+                //     ② 起床时刻在清晨窗口 [5:00, 12:00)（下午的午睡不挪）
+                //     ③ D+1 的 5 分钟原始数据在 入睡→起床 时间窗内 ≥3 个点
+                //        （证明那晚真的戴着；工厂测试的历史睡眠在 D+1 没有夜间数据，不会挪）
+                run {
+                    val todayKey = todayDateKey()
+                    val cal = Calendar.getInstance()
+                    val moved = mutableListOf<String>()
+                    for ((dKey, sd) in sleepByDate.toList()) {
+                        if (sd.allSleepTime < 180) continue
+                        val up = sd.sleepUp ?: continue
+                        val upMin = up.getHour() * 60 + up.getMinute()
+                        if (upMin < 5 * 60 || upMin >= 12 * 60) continue
+                        val (y, mo, dd) = parseYmd(dKey) ?: continue
+                        cal.apply { set(y, mo - 1, dd, 12, 0, 0) ; add(Calendar.DAY_OF_YEAR, 1) }
+                        val nextKey = "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+                        if (nextKey > todayKey) continue   // 不往今天之后挪
+                        // 夜间原始数据验证：固件可能把整夜采样都打上「夜晚归属日 D」的标签，
+                        //   也可能落在起床日 D+1 → 两天的 [入睡−30min, 起床+30min] 窗口点取并集。
+                        val down = sd.sleepDown
+                        val winStart = (down?.getHour() ?: 0) * 60 + (down?.getMinute() ?: 0) - 30
+                        fun inWindowPts(key: String): Int = originByDate[key].orEmpty().count { o ->
+                            val t = o.getmTime() ?: return@count false
+                            val m = t.getHour() * 60 + t.getMinute()
+                            m >= winStart && m <= upMin + 30
+                        }
+                        val inWin = inWindowPts(dKey) + inWindowPts(nextKey)
+                        if (inWin < 3) {
+                            android.util.Log.e("DIAGGATE", "SLEEP-SHIFT SKIP $dKey (win pts D=${inWindowPts(dKey)} D+1=${inWindowPts(nextKey)}, originDates=${originByDate.keys.joinToString(",")})")
+                            continue
+                        }
+                        // 执行挪移：起床日语义 → D+1；若 D+1 已有记录，保留更长的那条
+                        sleepByDate.remove(dKey)
+                        val ex = sleepByDate[nextKey]
+                        if (ex == null || sd.allSleepTime > ex.allSleepTime) sleepByDate[nextKey] = sd
+                        // 起床时刻 TimeData 的年月日与固件标签同步修正（buildDaily 下发 sleepUpDate 用）
+                        up.year = cal.get(Calendar.YEAR); up.month = cal.get(Calendar.MONTH) + 1; up.day = cal.get(Calendar.DAY_OF_MONTH)
+                        moved.add("$dKey→$nextKey(total=${sd.allSleepTime},originPts=$inWin)")
+                        android.util.Log.e("DIAGGATE", "SLEEP-SHIFT $dKey -> $nextKey total=${sd.allSleepTime} originPts=$inWin")
+                    }
+                    if (moved.isNotEmpty()) log("[VeepooRing ANDROID] 睡眠按起床日重归档: ${moved.joinToString()}")
+                }
+
                 val dates = (sleepByDate.keys + originByDate.keys + halfHourByDate.keys).toSortedSet()
                 var emitted = 0
                 var halfHourPts = 0
@@ -1429,7 +3628,9 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                         })
                         halfHourPts++
                     }
-                    val daily = buildDaily(sleepByDate[date])
+                    val daily = buildDaily(sleepByDate[date], date)
+                    // ★ 2026-11-20(v73) 诊断：sleepByDate 实际收到了哪些日期、buildDaily 结果
+                    android.util.Log.e("DIAGGATE", "EMIT d=$date sleepByDateKeys=${sleepByDate.keys.joinToString(",")} hasSleep=${sleepByDate.containsKey(date)} dailySleep=${daily.optInt("sleepTotalMin", -1)}")
                     val obj = JSONObject().apply {
                         put("date", date)
                         put("slots", JSONArray(slots))
@@ -1447,6 +3648,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             }
 
             override fun onReadTimeout(code: Int) {
+                touchBackfillProgress()  // v78：收到 SDK 超时回调也算进展，续命
                 log("[VeepooRing ANDROID] backfill read timeout code=$code")
                 emit("onState", JSONObject().apply { put("status", "syncing"); put("progress", 100) })
                 // ★ 2026-11-11：超时同样要补 origin3，否则整条 HRV/血氧历史回读永远不会跑。
@@ -1456,6 +3658,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
 
         try {
             // day=0 表示从今天起、position=1 从第 1 条开始、watchday=n 读取 n 天。
+            android.util.Log.e("DIAGGATE", "BACKFILL-START days=$n")
             manager.readAllHealthDataBySettingOrigin(listener, 0, 1, n)
         } catch (e: Exception) {
             log("[VeepooRing ANDROID] backfill read FAILED: ${e.message}")
@@ -1486,6 +3689,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     /** 一次同步事务的唯一收口：emit backfillDone + 释放两个在途锁。幂等，可安全重复调用。 */
     private fun finishBackfillTransaction() {
         if (!backfillInProgress.getAndSet(false)) return
+        clearBackfillWatchdog()  // v78：事务收口，熄灭无进展看门狗
         origin3InProgress.set(false)
         // ★ 2026-11-15：事务期间的重复请求统一合并丢弃，绝不在 origin3 读取窗口内
         //   或收口瞬间再发一次全量 BLE 读命令。
@@ -1497,6 +3701,36 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
         log("[VeepooRing ANDROID] backfill transaction done (origin3 settled)")
         // 事务收口、BLE 读通道释放后，才错峰回放被暂缓的写命令。
         flushDeferredWrites()
+        // ★ 2026-11-18（用户：Pro 没看到血糖/血液成分）：回填收口后错峰 8s 回读
+        //   戒指上的血糖/血液成分测量记录（血糖是固件每 30 分钟自动测的，之前从没读过）。
+        manualDetectAttempts = 0
+        Handler(Looper.getMainLooper()).postDelayed({
+            try { readManualDetectHistory() } catch (e: Throwable) {
+                log("[VeepooRing ANDROID] manualDetect hook failed: ${e.message}")
+            }
+        }, 2_500L)
+        // ★ 2026-11-23（用户：夜间身心压力/EDA 没数据）：每小时后台唤醒的回填收口后，
+        //   补跑一轮 miniCheckup/GSR 点测，覆盖 App 被冻结期间缺失的快照采样。
+        //   只消费 nightlySnapPending（仅每小时分支置位），普通同步不触发。
+        //   延迟 130s：跳过 connect 时启动的 120s PPG 让出窗口，避免被 SKIP 白等一轮。
+        if (nightlySnapPending) {
+            nightlySnapPending = false
+            android.util.Log.e("NIGHTSNAP", "hourly backfill settled -> schedule nightly snap in 130s")
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!ready.get()) {
+                    android.util.Log.e("NIGHTSNAP", "skip: ring not ready at fire time")
+                    return@postDelayed
+                }
+                android.util.Log.e("NIGHTSNAP", "fire -> force 2 tick rounds (mini + GSR)")
+                nightlySnapPending = true
+                tickSnapshotRotation()
+                // 第二路错开 75s（第一路 mini 看门狗 60s + 通道归还），保证 GSR 不被 inProg 挡掉
+                Handler(Looper.getMainLooper()).postDelayed({
+                    nightlySnapPending = true
+                    tickSnapshotRotation()
+                }, 75_000L)
+            }, 130_000L)
+        }
     }
 
     /**
@@ -1606,6 +3840,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             var hrvHits = 0
             var spo2Hits = 0
             var bpHits = 0
+            var stressHits = 0   // ★ v84：OriginData3.pressure 每5分钟压力历史命中数
             val finished = AtomicBoolean(false)
 
             /**
@@ -1655,7 +3890,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
              */
             fun dailyFromSlots(list: List<JSONObject>): JSONObject {
                 val d = JSONObject()
-                for (k in listOf("hr", "hrv", "spo2", "temp", "bpSys", "bpDia")) {
+                for (k in listOf("hr", "hrv", "spo2", "temp", "bpSys", "bpDia", "stress")) {
                     var sum = 0.0
                     var n = 0
                     for (s in list) {
@@ -1683,7 +3918,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                         emittedDays++
                         emittedPts += merged.size
                     }
-                    log("[VeepooRing ANDROID] origin3 emit days=$emittedDays points=$emittedPts hr=$hrHits hrv=$hrvHits spo2=$spo2Hits bp=$bpHits")
+                    log("[VeepooRing ANDROID] origin3 emit days=$emittedDays points=$emittedPts hr=$hrHits hrv=$hrvHits spo2=$spo2Hits bp=$bpHits stress=$stressHits")
                     // ★ 历史回读收尾了，才允许整轮同步事务 emit backfillDone。
                     onDone()
                 }
@@ -1707,6 +3942,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                 override fun onReadOriginProgress(p: Float) {}
                 override fun onReadOriginProgressDetail(a: Int, b: String?, c: Int, d: Int) {}
                 override fun onOriginFiveMinuteListDataChange(list: List<OriginData3>?) {
+                    if (list.orEmpty().isNotEmpty()) touchBackfillProgress()  // v78
                     for (o in list.orEmpty()) {
                         add(o.date, o.getmTime()) { s ->
                             val hr = o.rateValue
@@ -1722,11 +3958,22 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                             if (high in 60..300 && low in 20..200) {
                                 s.put("bpSys", high); s.put("bpDia", low); bpHits++
                             }
+                            // ★ 2026-11-23(v84) 夜间压力缺失真根因：
+                            //   三端官方 SDK 证实压力是戒指「每5分钟自动记录、按天存储」的历史数据，
+                            //   就藏在 OriginData3.pressure(int, [0,100]) 里（安卓 SDK 文档漏写该字段，
+                            //   但 vpprotocol classes.jar 字节码明确有 pressure:I + getPressure():I；
+                            //   iOS VPDataBaseOperation.h 原始数据 stress=1；小程序 veepooSendReadDailyDataManager
+                            //   回调 pressure:[21]）。旧实现只解析 hr/step/bp，把这个字段整包丢弃，
+                            //   导致夜间段（App 被冻结无法点测）压力永久为空。这里按真实回读值补齐。
+                            //   不编造：仅当压力在 [1,100] 才写入；0 表示设备未测，跳过。
+                            val stress = o.getPressure()
+                            if (stress in 1..100) { s.put("stress", stress); stressHits++ }
                         }
                     }
                 }
                 override fun onOriginHalfHourDataChange(d: OriginHalfHourData?) {
                     if (d == null) return
+                    touchBackfillProgress()  // v78
                     for (r in d.halfHourRateDatas.orEmpty()) {
                         if (r == null) continue
                         val hr = r.rateValue
@@ -1745,6 +3992,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
                 override fun onOriginHRVOriginListDataChange(list: List<HRVOriginData>?) {
+                    if (list.orEmpty().isNotEmpty()) touchBackfillProgress()  // v78
                     for (d in list.orEmpty()) {
                         add(d.date, d.getmTime()) { s ->
                             val hrv = d.hrvValue
@@ -1755,6 +4003,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
                 override fun onOriginSpo2OriginListDataChange(list: List<Spo2hOriginData>?) {
+                    if (list.orEmpty().isNotEmpty()) touchBackfillProgress()  // v78
                     // ★ 2026-11-11（用户：夜间血氧还是会丢数据）：
                     // 本固件 Spo2hOriginData.getmTime() 只有「小时」有效，minute/second 恒 0，
                     // 整夜样本全撞在 HH:00:00；JS healthStore MERGE_MS=60s 会把同小时 N 条
@@ -1923,7 +4172,7 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     }
 
     /** 睡眠汇总 → JS daily。allSleepTime<=0 视为当天无睡眠记录，不写以免污染。 */
-    private fun buildDaily(s: SleepData?): JSONObject {
+    private fun buildDaily(s: SleepData?, wakeKey: String? = null): JSONObject {
         val d = JSONObject()
         if (s != null && s.allSleepTime > 0) {
             d.put("sleepTotalMin", s.allSleepTime)
@@ -1947,6 +4196,20 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
             }
             hhmm(s.sleepDown)?.let { d.put("sleepTime", it) }
             hhmm(s.sleepUp)?.let { d.put("wakeTime", it) }
+            // ★ 2026-11-16：把 TimeData 自带的完整年月日一并下发，JS 侧才能校验
+            //   「这条睡眠到底属于哪一天」。旧实现只发 HH:mm，把日期丢了，导致
+            //   lib/sleepTime.sleepSummaryDateOf 的「完整日期优先」分支在 Android 上永远失效。
+            fun ymd(t: TimeData?): String? {
+                if (t == null) return null
+                val y = t.getYear(); val mo = t.getMonth(); val dd = t.getDay()
+                if (y !in 2020..2030 || mo !in 1..12 || dd !in 1..31) return null
+                return "%04d-%02d-%02d".format(y, mo, dd)
+            }
+            ymd(s.sleepDown)?.let { d.put("sleepDownDate", it) }
+            // ★ 2026-11-20(v64)：sleepUpDate 必须等于归档键（起床日）。
+            //   固件的 sleepUp 日期是「夜晚归属日」（比起床日早一天，见 onReadOriginComplete 的重归档），
+            //   直接下发会让 JS 的 todaySleepMismatch 守卫把真睡眠整块拒掉。
+            if (wakeKey != null) d.put("sleepUpDate", wakeKey) else ymd(s.sleepUp)?.let { d.put("sleepUpDate", it) }
         }
         return d
     }
@@ -2119,9 +4382,13 @@ class VeepooRingModule(private val reactContext: ReactApplicationContext) :
     /** 一位小数四舍五入（避免 locale 问题，不用 String.format） */
     private fun r1(x: Double): Double = Math.round(x * 10) / 10.0
 
+    /**
+     * RR/Lorenz 卡已按用户要求移除：这枚戒指不记录逐拍 RR 间期（反编译+真机探针实证），
+     * 保留空 stub 仅为兼容旧 JS 调用，不再发任何 SDK 读取或诊断日志。
+     */
     @ReactMethod
     fun readRrAnalysis() {
-        log("[VeepooRing ANDROID] rrAnalysis requested")
+        log("[VeepooRing ANDROID] rrAnalysis requested (no-op: device has no per-beat RR)")
     }
 
     // ─────────────────────────────────────────────────────────────────────────

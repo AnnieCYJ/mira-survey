@@ -73,8 +73,12 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   return (
-    <View style={[styles.wrap, { marginBottom }]}>
-      <View style={styles.leftCard}>
+    // ★ 2026-11-18（用户：「点击测量血糖没有任何反应」真机实锤）：wrap/leftCard 是铺在内容上方的
+    //   普通 View，默认会整块吞掉触摸——洞察页血糖卡等滚到与胶囊重叠时，点在玻璃空隙上的触摸
+    //   全被拦截（用户以为按钮坏了），点在图标上则切 tab。改 box-none 后玻璃区域触摸穿透到
+    //   下方内容，只有真正的图标按钮可点；胶囊上滑动也能正常滚动页面。
+    <View pointerEvents="box-none" style={[styles.wrap, { marginBottom }]}>
+      <View pointerEvents="box-none" style={styles.leftCard}>
         {state.routes.map((route, idx) => {
           if (route.name === VOICE_ROUTE || HIDDEN_ROUTES.includes(route.name)) return null;
           const focused = state.index === idx;

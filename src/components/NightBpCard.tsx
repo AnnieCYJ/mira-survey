@@ -15,7 +15,7 @@
  *     （non-dipping 与心血管风险相关）。**此处用心率近似血压 dipping**，仅作生活方式参考，
  *     需连续夜间血压才能给出血压 dipping 本身。
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
@@ -23,6 +23,9 @@ import Card from './Card';
 import { healthStore, dayKey, type TimePoint } from '../data/healthStore';
 import { useHealthStoreVersion } from '../hooks/useHealthStore';
 import { parseClockMinutes } from '../lib/sleepTime';
+// ★ 2026-11-25（用户）：夜间心率下降 / 夜间日间心率 加「?」说明；底部改成基于当前数据的分析
+import InfoDot from './InfoDot';
+import SleepInfoSheet, { type SleepInfoKey } from './SleepInfoSheet';
 
 const DAY_MS = 86400000;
 
@@ -162,12 +165,45 @@ export function NightBpCard({ anchorMs }: Props) {
       : dipPct >= 0 ? '基本没降'
       : '夜间高于日间';
     const dipColor = dipPct == null ? theme.colors.textSub : dipPct >= 10 ? mm.colors.limeCore : dipPct >= 3 ? mm.colors.honeyDeep : theme.colors.danger;
-    return { sys, dia, measuredAt, measuredManual, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr, dayHrIsDaily };
+    // ★ 2026-11-25：卡片口径与代码保持一致 —— 夜间按真实入睡/起床切分，不是固定 22–06。
+    const hasSleepWindow = bedH != null && wakeH != null;
+    const windowDesc = hasSleepWindow
+      ? (dayHrIsDaily ? '夜=入睡→起床 · 日=全天均值' : '夜=入睡→起床 · 日=清醒时段')
+      : (dayHrIsDaily ? '夜 22–06 · 日=全天均值' : '夜 22–06 · 日 07–22');
+    return { sys, dia, measuredAt, measuredManual, sysAvg, diaAvg, measuredDayCount, dipPct, dipLabel, dipColor, nightHr, dayHr, dayHrIsDaily, windowDesc };
   }, [anchorMs, hsVer]);
 
   const hasBp = data.sys != null && data.dia != null;
+  const [infoKey, setInfoKey] = useState<SleepInfoKey | null>(null);
+  const [infoValue, setInfoValue] = useState<string | null>(null);
+
+  /** ★ 2026-11-25（用户：底部别再写一句免责，要写一段分析）：只用当前卡片里的真实数值说话 */
+  const analysis = useMemo(() => {
+    const parts: string[] = [];
+    if (data.sys != null && data.dia != null) {
+      const when = data.measuredAt
+        ? `${new Date(data.measuredAt).getMonth() + 1}/${new Date(data.measuredAt).getDate()}`
+        : '';
+      parts.push(`最近一次血压 ${Math.round(data.sys)}/${Math.round(data.dia)} mmHg（${data.measuredManual ? '手动记录' : '戒指光电'}${when ? ' · ' + when : ''}）`);
+      if (data.sysAvg != null && data.diaAvg != null) {
+        const near = Math.abs(data.sys - data.sysAvg) <= 8 && Math.abs(data.dia - data.diaAvg) <= 5;
+        parts.push(`近 ${data.measuredDayCount} 天均值 ${Math.round(data.sysAvg)}/${Math.round(data.diaAvg)}，这次${near ? '与均值接近' : '与均值有差别'}`);
+      } else {
+        parts.push('目前只有一天的测量记录，还看不出趋势');
+      }
+    } else {
+      parts.push('还没有血压测量记录');
+    }
+    if (data.dipPct != null && data.nightHr != null && data.dayHr != null) {
+      parts.push(`夜间心率 ${Math.round(data.nightHr)} 比日间 ${Math.round(data.dayHr)} ${data.dipPct >= 0 ? `低 ${data.dipPct.toFixed(0)}%` : `高 ${Math.abs(data.dipPct).toFixed(0)}%`}（${data.dipLabel}）`);
+    } else {
+      parts.push('这一夜的心率样本还不够，暂时算不出昼夜变化');
+    }
+    return `${parts.join('；')}。夜间血压需要连续夜间测量才能判断，这里用心率变化看趋势。`;
+  }, [data]);
 
   return (
+    <>
     <Card>
       <Text style={styles.title}>夜间血压参考</Text>
       <View style={styles.grid}>
@@ -204,8 +240,17 @@ export function NightBpCard({ anchorMs }: Props) {
       </View>
       <View style={styles.grid}>
         <View style={styles.cell}>
-          {/* ★ 2026-11-14（用户）：去掉「（dipping 参考）」括号注释，只留「夜间心率下降」 */}
-          <Text style={styles.label}>夜间心率下降</Text>
+          {/* ★ 2026-11-14（用户）：去掉「（dipping 参考）」括号注释，只留「夜间心率下降」
+              ★ 2026-11-25：名称旁加「?」说明口径与常见区间 */}
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>夜间心率下降</Text>
+            <InfoDot onPress={() => {
+              setInfoValue(data.dipPct != null
+                ? `${data.dipPct.toFixed(0)}% · ${data.dipLabel ?? ''}`
+                : null);
+              setInfoKey('dip');
+            }} />
+          </View>
           <Text style={[styles.big, { color: data.dipColor }]}>
             {data.dipPct != null ? `${data.dipPct.toFixed(0)}%` : '--'}
           </Text>
@@ -214,18 +259,34 @@ export function NightBpCard({ anchorMs }: Props) {
           </Text>
         </View>
         <View style={styles.cell}>
-          <Text style={styles.label}>夜间 / 日间心率</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>夜间 / 日间心率</Text>
+            <InfoDot onPress={() => {
+              setInfoValue(data.nightHr != null && data.dayHr != null
+                ? `${Math.round(data.nightHr)}/${Math.round(data.dayHr)} bpm`
+                : null);
+              setInfoKey('nightDayHr');
+            }} />
+          </View>
           <Text style={styles.big}>
             {data.nightHr != null && data.dayHr != null
               ? `${Math.round(data.nightHr)}/${Math.round(data.dayHr)}`
               : '--'}
             <Text style={styles.unit}> bpm</Text>
           </Text>
-          <Text style={styles.sub}>{data.dayHrIsDaily ? '夜 22–06 · 日=全天均值' : '夜 22–06 · 日 07–22'}</Text>
+          <Text style={styles.sub}>{data.windowDesc}</Text>
         </View>
       </View>
-      <Text style={styles.note}>仅供参考，不构成医疗建议。</Text>
+      {/* ★ 2026-11-25（用户）：底部不再是一句免责，改成基于本卡真实数值的一段分析 */}
+      <Text style={styles.note}>{analysis}</Text>
     </Card>
+    <SleepInfoSheet
+      visible={infoKey != null}
+      onClose={() => setInfoKey(null)}
+      metric={infoKey}
+      valueText={infoValue}
+    />
+    </>
   );
 }
 
@@ -243,6 +304,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.cardBorder,
   },
   label: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   big: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   unit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, fontWeight: '400' as any },
   sub: { fontSize: theme.fontSize.micro - 2, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },

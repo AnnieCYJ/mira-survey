@@ -190,10 +190,12 @@ export default function RingConnectScreen({ onDone }: Props) {
                 activeOpacity={0.8}
                 onPress={() => RingBle.connectToId(d.id)}
               >
+                {/* ★ 2026-11-16（用户）：纵向分行 —— 名字 / MAC / 固件·连接状态。
+                    旧实现 flexDirection:'row' + space-between 把三段横塞进 320px 卡片，
+                    长 MAC + 固件文案必然溢出换行、彼此错位。 */}
                 <Text style={s.deviceName}>{d.name}</Text>
-                {/* ★ 2026-11-13（用户）：点选前要能认出是哪一枚戒指 —— 完整 MAC + 固件 + 上次连接 */}
                 <Text style={s.deviceMac}>{`MAC ${String(d.id)}`}</Text>
-                <Text style={s.deviceMac}>
+                <Text style={s.deviceMeta}>
                   {d.firmware ? `固件 ${d.firmware}` : '固件待读取'}
                   {d.lastConnectedAt
                     ? ` · 上次连接 ${shortRingLastSeen(d.lastConnectedAt)}`
@@ -366,10 +368,11 @@ const s = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   deviceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
+    // ★ 2026-11-16：纵向三行（名字 / MAC / 固件·连接），避免横排溢出卡片
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    paddingVertical: 11,
     paddingHorizontal: 14,
     borderRadius: theme.radius.md,
     borderWidth: 1,
@@ -377,8 +380,23 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.13)',
     marginBottom: 8,
   },
-  deviceName: { fontSize: theme.fontSize.body, color: theme.colors.textWhite },
-  deviceMac: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, opacity: 0.75 },
+  deviceName: {
+    fontSize: theme.fontSize.body,
+    fontWeight: theme.weight.semibold,
+    color: theme.colors.textWhite,
+    marginBottom: 3,
+  },
+  deviceMac: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textWhite,
+    opacity: 0.82,
+    marginBottom: 2,
+  },
+  deviceMeta: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textWhite,
+    opacity: 0.6,
+  },
   skipBtn: { alignItems: 'center', paddingVertical: theme.space.sm, marginTop: theme.space.xs },
   skipTxt: {
     fontSize: theme.fontSize.sm,

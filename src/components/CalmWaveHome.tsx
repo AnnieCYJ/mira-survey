@@ -194,7 +194,8 @@ const CHIP_DEFS: ChipDef[] = [
 /**
  * ★ 2026-11-05（用户）：首页隐藏「情绪压力」「生理周期」；
  *   ★ 2026-11-06（用户纠偏）：「稳定睡眠」不再放首页 chip 行，移到睡眠恢复详情页（SleepDetail）底部最下面。
- *   ★ 仅 BASE_UI 使用 —— PRO_UI 仍走上面的完整 CHIP_DEFS，卡片顺序完全不变。
+ *   ★ 2026-11-16（用户）：BASE_CHIP_DEFS 不再是基础版专属——PRO_UI 首页也统一用这份
+ *     三卡列表（睡眠恢复/身心压力/活动消耗），情绪压力、生理周期不上首页。
  *   顺序：睡眠恢复 → 身心压力 → 活动消耗 → 心肺能力。
  */
 const BASE_CHIP_DEFS: ChipDef[] = [
@@ -925,10 +926,12 @@ export default function CalmWaveHome() {
       </View>
 
       {/* 指标卡行：★ 2026-11-07（用户）：取消横向滑动，改为整行等宽平铺，不再有右滑阴影。
-          位置在海浪/深色交界线正下方（过渡区深色渐变带上）。每张可点进对应详情页。 */}
+          位置在海浪/深色交界线正下方（过渡区深色渐变带上）。每张可点进对应详情页。
+          ★ 2026-11-16（用户）：PRO_UI 首页也只展示三张卡（睡眠恢复/身心压力/活动消耗），
+            与基础版完全一致——情绪压力、生理周期不再上首页（详情页路由保留，入口另说）。 */}
       <View style={[s.chipRowZone, { top: chipRowTop, height: CHIP_H }]}>
         <View style={s.chipRow}>
-          {(isBase ? BASE_CHIP_DEFS : CHIP_DEFS)
+          {BASE_CHIP_DEFS
             .filter((c) => c.key !== 'cardio' || !!vo2)
             .filter((c) => showCycle || c.key !== 'cycle')
             .map((c) => {

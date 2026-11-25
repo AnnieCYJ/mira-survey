@@ -390,7 +390,7 @@ export const BASICS_EXTRA_SIGNALS: BasicMetricDef[] = [
   // —— 身体成分（健康一览，需先在 App 录入身高/体重档案）——
   {
     key: 'bmi', name: 'BMI', icon: 'ring', dimension: 'metabolism',
-    value: '—', unit: '', range: '18.5–24 正常', data: [], live: false,
+    value: '—', unit: '', range: '18.5–23.9 正常（中国成人）', data: [], live: false,
     note: '身体质量指数，由身高体重推算。需先在「身体成分档案」录入身高体重。', freq: '健康一览自动同步（需录入档案）', yMin: 10, yMax: 40, hideMeasure: true, section: '身体成分',
   },
   {

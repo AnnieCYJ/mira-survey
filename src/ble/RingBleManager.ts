@@ -23,6 +23,7 @@
  */
 import { Alert, NativeModules, NativeEventEmitter, Platform, AppState, PermissionsAndroid, type AppStateStatus } from 'react-native';
 import { postLog as _postLog } from '../lib/logger';
+import { getItem as prefsGet, setItem as prefsSet } from '../utils/prefs';
 import * as FileSystem from 'expo-file-system';
 import { theme } from '../theme/theme';
 import { BACKEND_BASE_URL, RING_DATA_SOURCE } from '../config';
@@ -47,6 +48,8 @@ import { loadCycleLog, loadPeriodDays, type PeriodDayLog } from '../data/cycleLo
 import { healthStore, dayKey, parseDayKey, type MetricKey as HSMetricKey } from '../data/healthStore';
 import { hsKeyFor, DISPLAY_KEY_BY_HS } from '../data/metricKeyMap';
 import { parseClockMinutes, fmtClockHM, sleepClockToMs, sleepSummaryDateOf, sleepSegmentsDateOf } from '../lib/sleepTime';
+// ★ 2026-11-24：固件三条协议通道呼吸率恒 0 → ECG 波形 BW 法估算兜底（独立学术方法实现）
+import { estimateRespRateFromEcg } from '../lib/respRateFromEcg';
 import { estimateOfflineMetricsRecent } from '../lib/offlineEstimates';
 import { safeNativeEmitter } from '../lib/nativeEmitter';
 import { physioValid } from '../lib/physioRange';
@@ -86,6 +89,7 @@ import {
   getStoredDeviceInfo,
   getDeviceProfileId,
   getProfile,
+  guessModelFromName,
   DEFAULT_DEVICE_PROFILE,
   DEVICE_ID_PROFILES,
 } from '../config/deviceModel';
@@ -142,6 +146,49 @@ export function resolveBroadcastName(
     return { name: RECORDED_BROADCAST_NAMES[key], source: 'recorded' };
   }
   return { name: null, source: null };
+}
+
+/**
+ * ★ 2026-11-16（BUG-20261116-02）：冷启动「戴上戒指却连不上」的自动连接兜底决策。
+ *
+ * 背景：首次安装 / 清数据 / 换机用户没有 `mira_active_ring_v1.json`，
+ * `initDeviceBucket()` 把 activeDeviceKey 兜底成硬编码旧 MAC `41:42:E7:17:9B:1C`。
+ * 这枚戒指当前并不广播（现场是 49:C9 BASE + A8:5B Pro）→ decideAfterScan 的
+ * hitLast 落空 → 旧逻辑无脑「全部列出等用户选」，用户必须手动进设置点一下，
+ * 否则明明戴着戒指 App 也停在待选界面。
+ *
+ * 本函数给出「要不要自动连某一枚」的纯决策（无副作用，便于离线单测）：
+ *  - 若 lastId 是本机真正连过 / 本轮正在广播的戒指（出现在 seen 或 knownIds）
+ *    → 返回 null，交给既有 hitLast / 列出待选逻辑，绝不自作主张切戒指。
+ *    这一条护栏同时保住 11-13 的「防误连另一枚」铁律。
+ *  - 否则（幽灵 lastId：既没广播、本机也从没扫到过）且在播设备里
+ *    **恰好只有一枚 BASE 款**（用户长期佩戴款；Pro 是另一枚，靠广播名排除）
+ *    → 返回它的 MAC 供自动直连。
+ *  - 其余含糊场景（0 枚 / ≥2 枚 BASE / 分不清型号）→ 返回 null，维持列出待选。
+ */
+export function pickAutoConnectRingId(params: {
+  lastId: string | null | undefined;
+  seenIds: Array<string> | Set<string>;
+  knownIds: Array<string>;
+  devices: Array<{ id: string; name: string }>;
+}): string | null {
+  const norm = (x: unknown) => String(x ?? '').trim().toUpperCase();
+  const last = norm(params.lastId);
+  const seen = new Set(
+    (Array.isArray(params.seenIds) ? params.seenIds : [...params.seenIds]).map(norm),
+  );
+  const known = params.knownIds.map(norm);
+
+  // 护栏：本机真正见过（连过 / 扫到过）的上次戒指 → 不自动切，维持原决策。
+  if (last && (seen.has(last) || known.includes(last))) return null;
+
+  // 只在「本轮在播」设备里找 BASE，绝不用 knownIds 的兜底项（避免连到没在广播的戒指）。
+  const baseOnly = (params.devices ?? []).filter((d) => {
+    const rawName = resolveBroadcastName(d.id, d.name).name ?? d.name;
+    return guessModelFromName(rawName) === 'BASE_UI';
+  });
+  if (baseOnly.length !== 1) return null;
+  return norm(baseOnly[0].id) || null;
 }
 
 /** 今日状态每 30 分钟落一个快照；48 × 30min = 24h 滚动窗口 */
@@ -431,6 +478,26 @@ export interface RingState {
   } | null;
 
   status: RingConnStatus;
+  /**
+   * ★ 2026-11-16（用户：摘下戒指放桌上，数据还在更新）：佩戴状态。
+   *   null=未判定（未连接/刚连接还没收到血氧样本），true=戴着，false=摘下。
+   *   由原生 onWear 事件驱动。worn===false 时冻结实时写入与派生重算（冻结在最后一笔，不空态）。
+   */
+  worn: boolean | null;
+  /**
+   * ★ 2026-11-18：最近一次收到原生实时生理帧的 JS 时刻（epoch ms，0=从未收到）。
+   *  与 worn 解耦：worn 是推断值会滞后误判，帧还在到达才是戒指仍佩戴的可靠证据。
+   *  快检/体检入口据此复核，防止戴着戒指却被误判脱手而误拒。 */
+  lastRealtimeFrameAt?: number;
+  /**
+   * ★ 2026-11-18：血糖现场测量进度（0-100，原生 onRealtime metric=glucoseProgress 驱动）。
+   * null = 空闲/未在测量。血糖值只在检测完成（progress=100）时给出，中间帧 value=0 属正常。
+   */
+  glucoseMeasureProgress: number | null;
+  /** 血液成分现场测量进度（0-100，metric=bloodcompProgress 驱动）。null = 空闲。 */
+  bloodcompProgress: number | null;
+  /** 现场测量错误提示（检测出错/设备中断时原生经 onRealtime {metric, error} 下发） */
+  measureError: { metric: 'glucose' | 'bloodcomp'; msg: string; ts: number } | null;
   deviceName: string | null;
   /** 固件 BLE 广播原名（如 `Lunamira`），未做品牌规范化；null = 尚未读到。 */
   deviceBroadcastName: string | null;
@@ -560,7 +627,7 @@ export interface RingState {
    * ★ 2026-11-06 审查（docs/audit/03 🟡#10/#11）：**读取失败原因**（区别于「暂无数据」）。
    *   此前触发失败与事件解析失败都被静默吞掉 → UI 空态文案恒为「当天暂无血氧数据」，
    *   用户无法区分「设备不支持」「读取失败」与「确实没数据」。这里显式记录失败原因，
-   *   由 OxygenApneaSection / HrvLorenzSection 展示。
+   *   由 OxygenApneaSection 展示。
    */
   oxygenAnalysisError?: string | null;
   /** ★ 2026-10-16：HRV Lorenz 散点 + RR 间期（readRrAnalysis）。null = 未读取/读取失败。 */
@@ -602,7 +669,12 @@ export interface EcgAnalysis {
   pwvMeanVal?: number;         // PWV 均值 m/s×10（>150 异常）
   sdnn?: number;               // SDNN ms（(141±39)）
   rmssd?: number;              // RMSSD ms（(27±12)）
+  sdnnSource?: 'rr-local';     // ★ v62：'rr-local' = 本次 RR 间期本地计算（非设备诊断回传）
+  rmssdSource?: 'rr-local';    // ★ v62：同上
   qtc?: number;                // QTc（本地 Bazett 计算：aveQT/√RR）ms
+  qtcRaw?: number;             // SDK 原始 QT 值（Bazett 输入；无 aveQT 时用它兜底）
+  respRate?: number;           // SDK 呼吸率
+  hrv?: number;                // SDK HRV（state 真实值）
   riskParamArr?: (string | number)[]; // 32 种疾病风险等级
 }
 
@@ -610,7 +682,15 @@ export interface EcgAnalysis {
 export interface EcgReading {
   aveHeart: number;
   aveHrv: number;
+  /** 展示用呼吸率：固件真值 >0 时为真值，否则为 ECG 波形估算值；
+   *  两条路都没有时保持 0（UI 显示「—」）。 */
   aveResRate: number;
+  /** ★ 2026-11-24：呼吸率来源（protocol=固件直读；estimated=ECG 波形估算）。未取到时不写。 */
+  rrSource?: 'protocol' | 'estimated';
+  /** 固件原始呼吸率（恒 0 时用于诊断日志，不直接展示） */
+  rrProtocol?: number;
+  /** 估算谱峰显著度（越大越可信） */
+  rrQuality?: number;
   aveQT: number;
   avePWV: number;
   /** 波形点（已转 mV，单位 0.1mV），用于绘制迷你心电图 */
@@ -1098,6 +1178,17 @@ class NativeRingSource {
   private syncAllInFlight = false;
   private syncAllRerunQueued = false;
   private syncAllInFlightUntil = 0;
+  /**
+   * ★ 2026-11-21 S-01：回填收口看门狗。
+   *   真机铁证：14:57 发起增量回填后 backfillDone 丢失，inFlight 悬挂 300s；
+   *   期间 45s兜底 / 10min周期 / 回前台 三次触发全部「排队，完成后补跑」，
+   *   而排队补跑此前已被 P0-1 删除（防抢占 BLE）→ 三次同步全部静默丢弃，
+   *   HRV 历史回读（hasHrvSeries=false）等依赖回填的指标长久不刷新。
+   *   这里给在途事务装独立看门狗：150s 未收口即查历史批次写入，零写入则
+   *   强制解锁 + 重发排队请求，不再等 300s×2 的死锁判定（最坏 10min）。
+   */
+  private syncAllWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private static readonly SYNC_ALL_WATCHDOG_MS = 150_000;
   /** ★ 2026-11-15：最近一次 connected 的时刻，用于过滤 SDK 认证期的假 connect_failed。 */
   private lastConnectedAt = 0;
   /** ★ 2026-11-11：本轮同步事务的启动时刻。原生已把「主同步 + HRV/血氧历史回读」合成一件事，
@@ -1108,6 +1199,8 @@ class NativeRingSource {
   private syncAllConsecutiveTimeouts = 0;
   /** ★ 2026-11-11：断点续传游标 = 已完整同步到的最后一天 YYYY-MM-DD；下次只拉 [游标, 今天] 增量。null=首次→全量。 */
   private lastBackfillDate: string | null = null;
+  /** ★ 2026-11-16（机会式补测）：上次主动补测发起时刻，用于 6 分钟冷却（HRV 20s / BP 最长 90s+重试，防叠加）。 */
+  private lastCatchUpMeasureAt = 0;
   /** ★ 2026-11-14（用户：连上后不要轻易断开）：最近一次「真正写入数据」的时间戳。
    *  用于死锁判定区分「慢回填但仍在回传」（健康，不该踢连）与「原生 backfillInProgress 死锁、零回传」（真饿死，才踢连）。 */
   private lastBatchWriteAt = 0;
@@ -1150,6 +1243,8 @@ class NativeRingSource {
   /** ★ 2026-10-16（续）：ECG 实时波形累积缓冲（原生 onEcgProgress 增量回传，JS 在此拼接成完整 trace）。 */
   private _ecgLiveBuf: number[] = [];
   resetEcgLive() { this._ecgLiveBuf = []; }
+  /** ★ 2026-11-20(v69)：诊断回调可能早于报告落库到达，先缓存，落库时合并（兼顾两种时序）。 */
+  private _pendingEcgDiagnosis: EcgAnalysis | null = null;
   /** 断点游标读写：加载时由 RingConnectionImpl 注入，同步完成时通过 onCursorPersist 回写持久化。 */
   setLastBackfillDate(d: string | null) { this.lastBackfillDate = d; }
   getLastBackfillDate(): string | null { return this.lastBackfillDate; }
@@ -1212,6 +1307,10 @@ class NativeRingSource {
       const V2_EVENTS = new Set<string>([
         'onLog', 'onRealtime', 'onBatch', 'onState', 'onEcg', 'onEcgProgress',
         'onOxygenAnalysis', 'onRrAnalysis',
+        // ★ 2026-11-20(v64)：设备端 ECG 多诊断报告（风险指数/QRS/ST 等），测量后主动读回
+        'onEcgDiagnosis',
+        // ★ 2026-11-16：佩戴状态（摘下戒指 → JS 冻结数据，戴回恢复）
+        'onWear',
       ]);
       const reg = (name: string, fn: (...a: any[]) => void) => {
         if (!V2_EVENTS.has(name)) return;
@@ -1235,9 +1334,13 @@ class NativeRingSource {
       // ── onState：状态统一（status=ready 触发增量 backfill；status=syncing 进度；backfillDone 更新锚点）──
       reg('onState', (raw: any) => this.handleStateV2(raw));
 
+      // ── ★ 2026-11-16：佩戴状态（原生 deviceState=UNPASS_WEAR / 血氧流静默看门狗判定）──
+      reg('onWear', (raw: any) => this.handleWear(raw));
+
       // ── ★ 2026-10-10：ECG 实时测量（事件链此前两头都断，见 V2_EVENTS 注释）──
       reg('onEcg', (raw: any) => this.handleEcg(raw));
       reg('onEcgProgress', (raw: any) => this.handleEcgProgress(raw));
+      reg('onEcgDiagnosis', (raw: any) => this.handleEcgDiagnosis(raw));
       // ★ 2026-10-16：呼吸暂停分析 + HRV Lorenz 散点（设备历史库读取，事件名与原生 emit 对应）
       reg('onOxygenAnalysis', (raw: any) => this.handleOxygenAnalysis(raw));
       reg('onRrAnalysis', (raw: any) => this.handleRrAnalysis(raw));
@@ -1298,6 +1401,14 @@ class NativeRingSource {
         } catch (e) {}
       };
       setInterval(() => nudgeSync('10min 周期'), 10 * 60 * 1000);
+      // ★ 2026-11-16（用户拍板：不要把 HRV/血压更新押在「半点那一刻连接恰好活着」上）：
+      //   机会式补测 —— 每 5 分钟检查一次：连接健康 + 佩戴中 + HRV/血压超过 40 分钟没新值
+      //   （戒指 30 分钟自动轮 + 10 分钟余量）→ 主动下测量命令（measure('hrv')/'bp'），不等整点半点。
+      //   断连窗口错过自动轮时，重连后最多 5 分钟内补上（handleStateV2 connected 时也会补一次）。
+      //   同一时刻只补一项（HRV 20s / BP 最长 90s，本固件 PPG 独占）；测成功后 lastUpdated 由
+      //   onRealtime / 回填 slots 刷新 → 新鲜了就不再重复。原生侧另有 hrListener/bp/hrv 互斥守卫，
+      //   与 5 分钟 HR 采样、一键体检、PPG 让出窗口互不踩踏。
+      setInterval(() => this.maybeCatchUpMeasure('5min 补测周期'), 5 * 60 * 1000);
       // ★ App 回到前台也触发一次回填（用户切回 App 时立即补齐历史）
       //   旧代码调 VeepooNative.recoverOffline?.() —— 两端原生都**没有导出这个方法**，
       //   `?.` 静默吞掉 → 回前台同步一直是 no-op。改走统一通路。
@@ -1358,6 +1469,24 @@ class NativeRingSource {
   // V2 统一 Ingest Pipeline（3 个 handler 替换原来 28 个）
   // ═══════════════════════════════════════════════════════════════
 
+  /** ★ 2026-11-18(9)：只有「贴肤才可能产生」的生理帧才算一键体检的现场证据。
+   *   真机 F4 复验（22:49:52）实锤：摘戒时固件仍回 read_battery 帧（value=52>0），
+   *   旧判据把电量帧当成"现场测到"，导致摘戒仍出假报告。
+   *   排除：battery（设备状态）、steps/distance/calorie/met（加速度计，摘下拿着也会走）、
+   *   glucoseType/glucoseLevel/depressionRisk（派生分类）、historical（历史回读非现场）。 */
+  private static readonly LIVE_WEAR_METRIC_KEYS: ReadonlySet<string> = new Set([
+    'hr', 'hrv', 'spo2', 'temp', 'skinTemp', 'eda', 'rr',
+    'stress', 'fatigue', 'sns',
+    'bpSys', 'bpDia', 'ppgSys', 'ppgDia',
+    'glucose', 'lipid', 'ua', 'skin', 'emotion', 'cortisol',
+    'triglyceride', 'hdl', 'ldl', 'cholesterol',
+  ]);
+
+  /** ★ 2026-11-18(3)：血糖/血成分「测量会话」开表时间（measure() 打开，出值/错误关闭）。
+   *  用于丢弃出值成功后固件 stop ACK 与残留看门狗补发的迟到错误帧（真机实锤见 error 分支注释）。 */
+  private glucoseSessionAt: number | null = null;
+  private bloodcompSessionAt: number | null = null;
+
   /**
    * V2 handleRealtime：原生 onRealtime 事件 → healthStore.upsertRealtime
    * 原生 emit body: { metric: "hr", value: 72, unit: "bpm", ts: epochMs }
@@ -1365,9 +1494,80 @@ class NativeRingSource {
   private handleRealtime = (raw: any) => {
     if (!raw) return;
     const metric = String(raw.metric ?? raw.key ?? '');
+    if (!metric) return;
+    // ★ 2026-11-18：lastRealtimeFrameAt 用于「一键体检本次是否真测到」的判据（hasLiveRingEvidenceSince）。
+    //   ★ 现场证据的刷新点在 physioValid 之后（见下方 LIVE_WEAR_METRIC_KEYS 闸门）：
+    //     只认贴肤生理帧 + value>0 + 非历史回读。摘戒复验两次实锤：
+    //     ① 22:27 ECG 恢复血氧流后 spo2=0 空帧被当证据；
+    //     ② 22:49 固件回 read_battery 帧（value=52>0）被当证据。
+    //     这与原生层判脱手用的 lastAnySpo2FrameAt（认帧到达、不看值）用途不同、互不影响——
+    //     判脱手要容忍戴戒时 spo2=0 常态；判现场测到则必须见到贴肤生理数值。
+    // ★ 2026-11-18(2)（真机实锤）：错误帧没有 value 字段，必须放在 value 闸门**之前**，
+    //   否则被下面的 value==null 早退拦掉、永远走不到——设备中断后按钮会永远卡在「测量中 x%」。
+    //   （上一版把 error 分支放在闸门后面，真机验证按钮卡死在 6% —— 就是这个坑。）
+    if (raw.error != null) {
+      const m: 'glucose' | 'bloodcomp' | null = metric === 'glucose' ? 'glucose'
+        : metric === 'bloodcomp' ? 'bloodcomp' : null;
+      if (m) {
+        // ★ 2026-11-18(3)（真机实锤 16:39 全链路）：错误帧只在「测量会话内」接受。
+        //   会话 = measure(metric) 打开 → 出值成功或首个错误关闭。实测成功出值 5.62 后，
+        //   固件 1s 后补 stop（onBloodGlucoseStopDetect），150s 残留看门狗又补「血糖检测超时」——
+        //   这些迟到错误与已成功的结果矛盾，会让刚跳详情页的成功测量凭空变红，一律丢弃。
+        const sAt = m === 'glucose' ? this.glucoseSessionAt : this.bloodcompSessionAt;
+        if (sAt == null || Date.now() - sAt > 170_000) {
+          postLog('HR-REALTIME', ` 🧟 丢弃迟到/无会话的 ${m} 错误帧：${raw.error}`);
+          return;
+        }
+        // 会话被错误终结：关闭会话（此后再来的迟到错误同样丢弃）
+        if (m === 'glucose') this.glucoseSessionAt = null; else this.bloodcompSessionAt = null;
+        postLog('HR-REALTIME', ` ⚠️ ${m} 测量错误反馈到 UI：${raw.error}`);
+        this.push({
+          measureError: { metric: m, msg: String(raw.error), ts: Date.now() },
+          ...(m === 'glucose' ? { glucoseMeasureProgress: null } : { bloodcompProgress: null }),
+        });
+      }
+      return; // 其它 metric 的 error 帧无 value，维持旧行为丢弃
+    }
     const value = num(raw.value);
     const ts = num(raw.ts) ?? Date.now();
-    if (!metric || value == null || !Number.isFinite(value)) return;
+    if (value == null || !Number.isFinite(value)) return;
+
+    // ★ 2026-11-18：现场测量进度/错误通道（血糖/血成分检测的 UI 反馈，不落库、不计统计）。
+    //   血糖检测中间帧 value=0 属正常（值只在完成时给出），progress 帧才是用户能看到的关键。
+    if (metric === 'glucoseProgress' || metric === 'bloodcompProgress') {
+      const p = Math.max(0, Math.min(100, Math.round(value)));
+      if (metric === 'glucoseProgress') this.push({ glucoseMeasureProgress: p });
+      else this.push({ bloodcompProgress: p });
+      return;
+    }
+
+    // ★ 2026-11-16（用户：摘下戒指数据还在更新）：脱手后冻结实时写入。
+    //   原生在 UNPASS_WEAR / 流静默时会停止上报，但存在竞态（摘下瞬间残留包、看门狗 150s 判定窗口内
+    //   的接触性脏值）——这里在 JS 落库前再挡一道：worn===false 时一律不写、不刷 lastUpdated、
+    //   不触发派生重算，界面自然停在最后一笔。battery 是设备状态、不受佩戴影响，走下面的直通分支。
+    //   ★ 2026-11-18：historical=true 的记录是戒指落盘的历史测量（血糖自动测量/血液成分记录回读），
+    //   时间戳是记录原始时间而非"现在"，不属于脱手竞态脏值 —— 旁路本闸门（仍过生理范围校验）。
+    //   ★ 2026-11-18(3)（真机实锤 17:07 全链路）：手动测量会话内的 glucose/bloodcomp 出值同样旁路 ——
+    //   固件佩戴标志滞后（worn=false 但检测全程正常跑、值 5.61 真实有效），旧逻辑把值冻掉 →
+    //   会话关不掉 → 设备 stop 回执错误上屏 + 不跳详情页。用户主动点「测量」且 SDK 真出了值，
+    //   结果不该被滞后的佩戴标志吞掉。
+    const manualMeasureBypass = (metric === 'glucose' && this.glucoseSessionAt != null)
+      || (metric === 'bloodcomp' && this.bloodcompSessionAt != null);
+    // ★ v82（用户：戒指重启后 GSR/mini 回了真值却落不进库、首页身心压力仍"—"）：
+    //   真机时序实锤——测 GSR 会停血氧流(PPG 让出) → spo2 帧静默 23s → App 误判脱手(worn=false)
+    //   → 紧接着 22:56:37 GSR eda=22、22:57:37 mini stress=10 两个结果帧被下面的脱手冻结丢弃。
+    //   原生已给主动测量结果帧打 source="measurement" 标记；这类帧本身就是贴肤测量的产物
+    //   （GSR/微体检必须在皮肤上才能测出），不可能是摘戒后的加速度计脏值 → 放行落库。
+    //   普通实时帧（血氧/心率流，无标记）仍按 worn=false 冻结，保留"摘戒防假报告"保护。
+    const activeMeasurementResult = raw.source === 'measurement' && raw.historical !== true;
+    if (this.getState().worn === false && metric !== 'battery' && raw.historical !== true
+        && !manualMeasureBypass && !activeMeasurementResult) {
+      postLog('HR-REALTIME', ` 🧊 脱手冻结：丢弃 ${metric}=${value}（worn=false，保持最后一笔）`);
+      return;
+    }
+    if (activeMeasurementResult && this.getState().worn === false) {
+      postLog('HR-REALTIME', ` ✅ 主动测量结果帧旁路脱手冻结：${metric}=${value}`);
+    }
 
     // ★ 2026-11-09（用户：电量必须传对）：原生 readBattery 走 onRealtime metric:"battery"，
     //   电量不是时序指标、也不进 healthStore，直接写 RingState.battery 即可驱动设置页「电量 xx%」。
@@ -1402,8 +1602,47 @@ class NativeRingSource {
       postLog('HR-REALTIME', ` ⛔ 拦截非生理值 ${metric}=${value}（范围外，不入库不进卡片）`);
       return;
     }
+
+    // ★ 2026-11-18(9)：现场证据只认「贴肤生理帧 + 真实数值 + 非历史回读」。
+    //   放在 battery 早退与 physioValid 之后：电量/步数/活动量/历史帧一律不算，
+    //   摘戒时固件仍回电量帧（22:49:52 实锤）不再被误判为「本次真测到」。
+    if (
+      !raw.error && value > 0 && raw.historical !== true &&
+      NativeRingSource.LIVE_WEAR_METRIC_KEYS.has(hk)
+    ) {
+      console.log('[QuickCheck][not-worn] LIVE WEAR FRAME: ' + metric + '=' + value);
+      this.push({ lastRealtimeFrameAt: Date.now() } as StatePatch);
+      // ★ 2026-11-24（P0 状态卡死修复）：贴肤生理实时帧只可能来自真正连通的戒指。
+      //   但「App 重启 / 闹钟原生重连」场景下，原生的 connect() notify 回调 emit connected
+      //   可能早于 JS listener 注册而丢失 → 底层数据在进、UI 却显示「待接入」(status=idle)，
+      //   EcgCard/详情页测量入口检查 `status === 'connected'` 就会把手动测量误拦为「戒指未连接」。
+      //   这里以「收到贴肤生理帧」为铁证，status 仍是 idle 时幂等补一次 connected 让状态自愈。
+      //   仅补 idle（不碰 scanning/connecting/connected/error 等其它态，避免干扰正常流程）。
+      if (this.getState().status === 'idle') {
+        this.push({ status: 'connected' } as StatePatch);
+        console.log('[RR-STATE] 贴肤实时帧自愈 idle→connected（底层已连）metric=' + metric);
+      }
+    }
+
     try {
       healthStore.upsertRealtime(hk, { t: ts, v: value }, ts);
+      // ★ 2026-11-18：血糖/血成分现场测量成功出值 → 清测量进度与错误（按钮复位），
+      //   并关闭测量会话（此后固件 stop ACK / 残留看门狗的迟到错误帧一律丢弃，见 error 分支）。
+      // ★ v93（2026-11-24）：血液成分自动测量收口时原生 emit 的是 ua/cholesterol/triglyceride/hdl/ldl
+      //   五项真值（BC RESULT EMITTED n=5），并无 metric==='bloodcomp' 汇总帧 —— 旧逻辑只认 'bloodcomp'，
+      //   导致 bloodcompProgress 永远停在 100%、UI 一直显示「自动测量中 100%」不复位。
+      //   这里把五项结果帧同样视为血成分测量收口，清进度（不动健康数据落库）。
+      // 自动测量由原生内部发起（不经 JS measure），不会设 bloodcompSessionAt，故不能用 session 判活。
+      // 历史回读走 onBatch、不经过本实时路径；此处收到 ua 等结果帧即视为一次现场/自动测量收口，清进度。
+      const bcResultMetric = metric === 'bloodcomp' || metric === 'ua' || metric === 'uricAcid'
+        || metric === 'cholesterol' || metric === 'triglyceride' || metric === 'hdl' || metric === 'ldl';
+      if (metric === 'glucose' || bcResultMetric) {
+        if (metric === 'glucose') this.glucoseSessionAt = null; else this.bloodcompSessionAt = null;
+        this.push({
+          ...(metric === 'glucose' ? { glucoseMeasureProgress: null } : { bloodcompProgress: null }),
+          ...(metric === 'glucose' || metric === 'bloodcomp' ? { measureError: null } : {}),
+        });
+      }
       // ★ 触发派生指标重算（去抖 500ms，同一 dayKey 多次写入合并一次）
       scheduleRecompute(dayKey(ts));
       // ★ 诊断日志：关键指标到了没
@@ -1912,8 +2151,22 @@ class NativeRingSource {
         statePatch.bpDiaDaily = { ...this.getState().bpDiaDaily, [dk]: _bpDia };
       }
 
+      // ★ 2026-11-16（用户：戒指寄出前存的历史睡眠，不能在今天凭空出现）：
+      //   Veepoo SDK 读「今天」这一槽时，若今天没有记录会回传设备里最后一晚并把
+      //   SleepData.date 标成今天。原生已优先用 sleepUp 的年月日纠正归档日；这里再做一道
+      //   JS 兜底——凡是「标成今天、但起床日不是今天」的睡眠，一律不写进今天。
+      const sleepUpDate = typeof d.sleepUpDate === 'string' ? d.sleepUpDate : null;
+      const todaySleepMismatch = isToday && !!sleepUpDate && sleepUpDate !== dk;
+      if (todaySleepMismatch) {
+        postLog('BATCH-SLEEP', `⛔ 日期错配：SDK 标 ${dk}、实际起床日 ${sleepUpDate} → 拒绝写入今天`);
+      }
+      // ★ 2026-11-20：被清理拉黑的脏日（如 11-19）不写任何睡眠，防止同步复活
+      const sleepSuppressed = healthStore.isSleepSuppressed(dk);
+      if (sleepSuppressed) {
+        postLog('BATCH-SLEEP', `⛔ dk=${dk} 在睡眠忽略黑名单，跳过睡眠写入`);
+      }
       // sleepDaily + sleepSummary（今日状态种子依赖 sleep）
-      if (d.sleepTotalMin != null) {
+      if (d.sleepTotalMin != null && !todaySleepMismatch && !sleepSuppressed) {
         const clockToHour = (s: string | null): number | null => {
           // ★ 复用 lib/sleepTime.parseClockMinutes（唯一解析实现，保留分钟精度）：
           //   旧实现写死 `/^(\d{1,2}):(\d{2})$/`，遇到原生完整 datetime 会返回 null。
@@ -2033,8 +2286,15 @@ class NativeRingSource {
           .map((s: any, i: number) => ({ t: parseSampleTs(date, s.time ?? s.t)!, v: Number(s.hrv) }))
           .filter((p: any) => p.t != null && Number.isFinite(p.t));
         if (hrvSeries.length > 0) {
+          // ★ v90 修复：统一为 seriesByDay['hrv'][dk] 结构（与 3790 行历史写入、
+          //   1371 行 STATE_DUMP 诊断读取一致）。旧代码写成 seriesByDay[dk].hrv，
+          //   导致今日 HRV 序列进错结构、hasHrvSeries=false、今日曲线画不出。
+          const prevHrv = this.getState().seriesByDay['hrv'] ?? {};
+          const mergedHrv = { ...prevHrv, [dk]: hrvSeries };
           statePatch.seriesByDay = {
             ...this.getState().seriesByDay,
+            ['hrv']: mergedHrv,
+            // 兼容旧结构（其它可能读 seriesByDay[dk].hrv 的地方），双写不丢数据
             [dk]: { ...(this.getState().seriesByDay[dk] ?? {}), hrv: hrvSeries },
           };
         }
@@ -2097,6 +2357,24 @@ class NativeRingSource {
    *   完成:    { status: "connected", progress: 1.0, backfillDone: true, days: 13 }
    *   错误:    { status: "error", error: "..." }
    */
+  /**
+   * ★ 2026-11-16（用户：摘下戒指放桌上，心率/血氧/今日状态/身心压力还在更新）：
+   * 原生佩戴状态事件。worn=false 时 JS 冻结实时写入与派生重算（冻结在最后一笔，不空态，
+   * 与用户已定的「断连保留最后值」口径一致）；worn=true 时恢复。
+   * body: { worn: 'true'|'false'|'unknown', prev, reason }
+   */
+  private handleWear = (raw: any) => {
+    if (!raw) return;
+    const v = String(raw.worn ?? '');
+    const worn: boolean | null = v === 'true' ? true : v === 'false' ? false : null;
+    const prev = this.getState().worn;
+    if (prev === worn) return;
+    // push 到外层 RingConnectionImpl 的 RingState；曲线/情绪定时器各自读该状态自行冻结，
+    // 戴回后血氧流恢复会自然触发重算（handleRealtime → scheduleRecompute + 下一边界 tick）。
+    this.push({ worn } as StatePatch);
+    postLog('Wear', `佩戴状态 ${prev} -> ${worn}（${String(raw.reason ?? '')}）→ ${worn === false ? '冻结实时写入与派生重算' : worn === true ? '恢复正常更新' : '未判定'}`);
+  };
+
   private handleStateV2 = (raw: any) => {
     if (!raw) return;
     const status = String(raw.status ?? '');
@@ -2222,7 +2500,9 @@ class NativeRingSource {
           deviceId: this.getState().deviceId,
         })
           .then((p) => {
+            // ★ 2026-11-16：识别不出也要留痕（此前 p=null 完全静默，「Pro 被当基础版」无从排查）。
             if (p) postLog('RingBle', `[DeviceProfile] 真机识别 → 应用 ${p}（ecgType=${raw.capabilities?.ecgType}，mac=${this.getState().deviceId}）`);
+            else postLog('RingBle', `[DeviceProfile] 真机识别未命中（caps=${raw.capabilities ? '有' : '无'}，mac=${this.getState().deviceId ?? '空'}，name=${this.getState().deviceName ?? '空'}）→ 保留现有 Profile 档位`);
           })
           // ★ 2026-11-06 审查（docs/audit/03 🟡#12）：**完全静默 → 带日志**。
           //   机型识别失败时至少要留痕，否则「Pro 被当成基础版」永远查不到原因。
@@ -2308,6 +2588,8 @@ class NativeRingSource {
     if (status === 'connected' || status === 'disconnected' || status === 'connecting') {
       patch.status = (status === 'disconnected' ? 'idle' : status) as RingConnStatus;
       if (status === 'connected') this.lastConnectedAt = Date.now();
+      // ★ 2026-11-16：断连/重连时佩戴状态归未知，避免旧戒指的「已摘下」状态滞留到新连接
+      if (status === 'disconnected') patch.worn = null;
     }
     if (typeof raw.rssi === 'number' && Number.isFinite(raw.rssi)) patch.rssi = raw.rssi;
     if (raw.deviceName) patch.deviceName = displayRingName(raw.deviceName);
@@ -2349,7 +2631,41 @@ class NativeRingSource {
       this._pendingReadyBackfill = false;
       this.syncAll('connected 补触发');
     }
+    // ★ 2026-11-16（机会式补测）：每次回到 connected（含断连自愈重连）都检查一次
+    //   HRV/血压是否已变旧——断连窗口错过半点自动轮时，重连当场就补测，不等下一个半点。
+    if (status === 'connected') this.maybeCatchUpMeasure('重连补测');
   };
+
+  /**
+   * ★ 2026-11-16 机会式补测（用户拍板：能测出的时候就更新，不要等半点）。
+   * 背景：戒指端 HRV/血压自动测量卡整点/半点（固件 30 分钟一轮），而 BLE 链路
+   * 约 7 分钟断连自愈一次——半点那一刻连接不健康，这一轮就失约，HRV/血压停更。
+   * 策略：连接健康 + 佩戴中 + 数据超过 40 分钟没新值 → 主动下 measure('hrv'/'bp')。
+   * 判旧口径：lastUpdated.hrv / lastUpdated.bpSys（onRealtime 与回填 slots 双路刷新）。
+   * 安全性：6 分钟冷却防叠加；原生侧 hrListener/bpDetect/hrvDetect 三向互斥 +
+   * ppgReleaseActive 守卫，不会与 HR 采样/一键体检/PPG 让出窗口相撞。
+   */
+  private maybeCatchUpMeasure(trigger: string): void {
+    try {
+      const st = this.getState();
+      if (st.status !== 'connected' || st.worn === false) return;
+      const now = Date.now();
+      if (now - this.lastCatchUpMeasureAt < 6 * 60 * 1000) return; // 冷却：上一轮补测还没走完
+      const STALE_MS = 40 * 60 * 1000;
+      const lu = (st.lastUpdated ?? {}) as Record<string, number | null>;
+      const hrvLast = lu.hrv ?? 0;
+      const bpLast = lu.bpSys ?? 0;
+      const hrvStale = hrvLast < now - STALE_MS;
+      const bpStale = bpLast < now - STALE_MS;
+      if (!hrvStale && !bpStale) return;
+      // 两项都旧时先 HRV（20s 快），BP 留给下一轮（5 分钟后再判），天然错开 PPG。
+      const pick = hrvStale ? 'hrv' : 'bp';
+      this.lastCatchUpMeasureAt = now;
+      const staleMin = Math.round((now - (pick === 'hrv' ? hrvLast : bpLast)) / 60000);
+      postLog('RingBle', `[补测] ${trigger}: ${pick} 已 ${staleMin} 分钟没新值 → 主动测量`);
+      this.measure(pick);
+    } catch (e) {}
+  }
 
   /**
    * 同步统一入口（2026-11-09 常开通路 + 2026-11-11 断点增量）：
@@ -2402,6 +2718,7 @@ class NativeRingSource {
           return;
         }
         postLog('RingBle', `[Sync] ⚠️ 判定回填死锁（${Math.round(sinceBatch / 1000)}s 零写入），断开重连以重置原生 backfillInProgress 状态机`);
+        this.clearSyncWatchdog();
         this.syncAllInFlight = false;
         this.syncAllInFlightUntil = 0;
         this.syncAllConsecutiveTimeouts = 0;
@@ -2416,6 +2733,8 @@ class NativeRingSource {
     this.syncAllInFlight = true;
     this.syncAllInFlightUntil = now + NativeRingSource.SYNC_ALL_TIMEOUT_MS;
     this.lastSyncStartedAt = now;
+    // ★ S-01：启动收口看门狗——原生若静默不发 backfillDone，150s 后主动解锁重发。
+    this.armSyncWatchdog(reason);
     setTimeout(() => {
       try {
         if (from === '') {
@@ -2440,8 +2759,50 @@ class NativeRingSource {
     }, 500);
   }
 
+  /** ★ S-01：装载回填收口看门狗（每次发起回填时重挂，收到 backfillDone/跳过时清除）。 */
+  private armSyncWatchdog(reason: string): void {
+    this.clearSyncWatchdog();
+    this.syncAllWatchdog = setTimeout(() => {
+      this.syncAllWatchdog = null;
+      if (!this.syncAllInFlight) return; // 已由 backfillDone 正常收口
+      // 判定「真饿死」：从本次事务启动至今，是否收到过任一天的历史批次写入。
+      // 注意用 lastSyncStartedAt 而非 lastBatchWriteAt 的绝对值——后者会被实时流刷新，
+      // 正是旧死锁判定 starved 永远为 false 的根因。
+      const sinceStart = Date.now() - this.lastSyncStartedAt;
+      const hadHistoryWrite = this.lastBatchWriteAt >= this.lastSyncStartedAt;
+      if (hadHistoryWrite && sinceStart < NativeRingSource.SYNC_ALL_TIMEOUT_MS) {
+        // 慢回填仍在回传（历史批次在陆续到达）→ 不计死锁，重新挂表再给一个窗口；
+        // 但总时长不超过 SYNC_ALL_TIMEOUT_MS，防止极端情况无限续挂。
+        postLog('RingBle', `[Sync] 看门狗：回填仍在回传（历史批写于 ${Math.round((Date.now() - this.lastBatchWriteAt) / 1000)}s 前）→ 续挂 ${NativeRingSource.SYNC_ALL_WATCHDOG_MS / 1000}s`);
+        this.armSyncWatchdog(reason);
+        return;
+      }
+      postLog('RingBle', `[Sync] ⚠️ 看门狗：回填已 ${Math.round(sinceStart / 1000)}s 零历史批写入（来源=${reason}）→ 强制解锁并重发排队请求`);
+      // 强制收口：不推进游标（没数据就没有「同步到哪」可推进），重发排队请求。
+      this.syncAllInFlight = false;
+      this.syncAllInFlightUntil = 0;
+      this.gapRecoveryActive = false;
+      const hadQueued = this.syncAllRerunQueued;
+      this.syncAllRerunQueued = false;
+      if (hadQueued) {
+        setTimeout(() => {
+          try { this.syncAll(`看门狗解锁后补跑(${reason})`); } catch { /* 忽略单次失败 */ }
+        }, 1500);
+      }
+    }, NativeRingSource.SYNC_ALL_WATCHDOG_MS);
+  }
+
+  /** ★ S-01：清除回填收口看门狗（正常收口 / 跳过时调用）。 */
+  private clearSyncWatchdog(): void {
+    if (this.syncAllWatchdog) {
+      clearTimeout(this.syncAllWatchdog);
+      this.syncAllWatchdog = null;
+    }
+  }
+
   /** backfillDone（两种格式都认）→ 解锁在途标记、推进断点游标、处理排队补跑。 */
   private finishSyncAll(): void {
+    this.clearSyncWatchdog();
     this.syncAllInFlight = false;
     this.syncAllInFlightUntil = 0;
     // ★ 2026-11-11：成功收口即清零连续超时计数——说明原生回填通路正常，死锁判定撤销。
@@ -2477,6 +2838,7 @@ class NativeRingSource {
 
   /** ★ 2026-11-15：设备未就绪导致事务被跳过 → 只解锁，不推进游标/不补跑/不自愈。 */
   private skipSyncAll(reason: string): void {
+    this.clearSyncWatchdog();
     this.syncAllInFlight = false;
     this.syncAllInFlightUntil = 0;
     this.syncAllRerunQueued = false;
@@ -2711,29 +3073,79 @@ class NativeRingSource {
     aveQT?: number;
     avePWV?: number;
     waveform?: number[];
+    waveHz?: number;      // ★ 2026-11-24：波形真实采样率（500Hz）
+    waveFrames?: number;  // ★ 2026-11-24：降采样前的原始帧数，用于推算真实时长
     analysis?: EcgAnalysis;
   }) => {
     try {
       if (!raw || typeof raw.aveHeart !== 'number' || !Number.isFinite(raw.aveHeart)) return;
       const aveHeart = num(raw.aveHeart) ?? 0;
       // ★ QTc 本地计算（Bazett）：QTc = QT / √(RR_s)，RR_s = 60 / 心率
-      const analysis: EcgAnalysis | undefined =
+      let analysis: EcgAnalysis | undefined =
         raw.analysis && typeof raw.analysis === 'object' ? { ...raw.analysis } : undefined;
-      const aveQT = num(raw.aveQT) ?? 0;
-      if (analysis && aveHeart > 0 && aveQT > 0) {
-        const rrS = 60 / aveHeart;
-        analysis.qtc = aveQT / Math.sqrt(rrS);
+      // ★ 2026-11-20(v69)：若诊断回调早于报告到达，合并预存的诊断真值（设备 6 大指数/QRS/ST/SDNN）
+      if (this._pendingEcgDiagnosis) {
+        analysis = { ...(analysis ?? {}), ...this._pendingEcgDiagnosis } as EcgAnalysis;
+        _postLog('RingBle', `[handleEcg] 合并预存诊断 risk=${this._pendingEcgDiagnosis.arrhythmiaRisk}`);
+        this._pendingEcgDiagnosis = null;
       }
+      const aveQT = num(raw.aveQT) ?? 0;
+      // ★ 2026-11-18：aveQT 为 0 时用 analysis.qtcRaw（SDK state 原始 QT）兜底，
+      //   让「QTc」这一项在本机有真实来源（state 一定持有），不再恒显示「—」。
+      const qtSource = aveQT > 0 ? aveQT : (num(analysis?.qtcRaw) ?? 0);
+      if (analysis && aveHeart > 0 && qtSource > 0) {
+        const rrS = 60 / aveHeart;
+        analysis.qtc = qtSource / Math.sqrt(rrS);
+      }
+      // ★ respRate/hrv 从 analysis 回填到 reading 顶层（state 出值时原生放进了 analysis，
+      //   顶层 aveResRate/aveHrv 可能仍为 0）→ 让报告头部「呼吸/HRV」显示真实值。
+      if (analysis && (num(raw.aveResRate) ?? 0) <= 0 && (num(analysis.respRate) ?? 0) > 0) {
+        (raw as any).aveResRate = analysis.respRate;
+      }
+      if (analysis && (num(raw.aveHrv) ?? 0) <= 0 && (num(analysis.hrv) ?? 0) > 0) {
+        (raw as any).aveHrv = analysis.hrv;
+      }
+      const protocolRr = num(raw.aveResRate) ?? 0;
       const reading: EcgReading = {
         aveHeart,
         aveHrv: num(raw.aveHrv) ?? 0,
-        aveResRate: num(raw.aveResRate) ?? 0,
+        aveResRate: protocolRr,
+        rrProtocol: protocolRr,
         aveQT,
         avePWV: num(raw.avePWV) ?? 0,
         waveform: Array.isArray(raw.waveform) ? raw.waveform.filter((v) => Number.isFinite(Number(v))).map((v) => Number(v)) : [],
         analysis,
         ts: Date.now(),
       };
+      // ★ 2026-11-24：固件呼吸率恒 0（三条协议通道实测）→ 用本次 ECG 波形估算兜底。
+      //   真值优先：固件哪天开始回真值了，自动切回 protocol，不再走估算。
+      // 用原生给的真实采样率/帧数推算降采样波形的等效采样率；缺字段时才回退到默认 36s 假设。
+      const waveHz = num(raw.waveHz) ?? 0;
+      const waveFrames = num(raw.waveFrames) ?? 0;
+      const trueSampleRate = waveHz > 0 && waveFrames > 0 && reading.waveform.length > 0
+        ? (reading.waveform.length * waveHz) / waveFrames
+        : undefined;
+      // ★ 诊断：dump 真机波形供离线调参（分 4 段输出，仅本次验证期保留）
+      if (reading.waveform.length >= 400) {
+        const seg = Math.ceil(reading.waveform.length / 4);
+        for (let s = 0; s < 4; s++) {
+          console.log(`[RR-WAVE][${s}] ${reading.waveform.slice(s * seg, (s + 1) * seg).map((v) => Math.round(v * 100) / 100).join(',')}`);
+        }
+      }
+      if (protocolRr > 0) {
+        reading.rrSource = 'protocol';
+        console.log(`[RR-SOURCE] protocol=${protocolRr} 次/分（固件真值优先）`);
+      } else {
+        const est = estimateRespRateFromEcg(reading.waveform, trueSampleRate);
+        if (est) {
+          reading.aveResRate = est.value;
+          reading.rrSource = 'estimated';
+          reading.rrQuality = est.quality;
+          console.log(`[RR-EST] ✅ 波形估算 ${est.value} 次/分 quality=${est.quality} ampStd=${est.amplitudeStd} pts=${est.debug.points} fs=${est.debug.sampleRate}Hz dur=${est.debug.durationSec}s peak=${est.debug.peakHz}Hz waveHz=${waveHz} frames=${waveFrames}`);
+        } else {
+          console.log(`[RR-EST] ⚠️ 波形不可估算（pts=${reading.waveform.length} fs=${trueSampleRate}），呼吸显示「—」`);
+        }
+      }
       // 追加到历史数组（最多保留 30 次）
       const curHistory = this.getState().ecgHistory ?? [];
       const newHistory = [reading, ...curHistory].slice(0, 30);
@@ -2773,6 +3185,44 @@ class NativeRingSource {
     }
   };
 
+  /** ★ 2026-11-20(v64)：设备端 ECG 多诊断报告（测量后主动读回）。
+   *  原生 readECGData 读回的 EcgDiagnosis 含 6 大风险指数 + QRS/ST/SDNN/RMSSD 真值。
+   *  只局部合并进最新一条报告（ring.ecg + ecgHistory[0]），不改 ts、不新增记录，
+   *  避免 and 触发"新报告 ts"的跳转判据。设备真值覆盖同名字段，本地算的 qtc 保留/重算。 */
+  private handleEcgDiagnosis = (raw: any) => {
+    try {
+      if (!raw || typeof raw !== 'object') return;
+      const st = this.getState();
+      const cur = st.ecg;
+      if (!cur) {
+        // ★ 2026-11-20(v69)：诊断早于报告到达 —— 先缓存，等 handleEcg 落库时合并
+        this._pendingEcgDiagnosis = { ...raw } as EcgAnalysis;
+        _postLog('RingBle', `[onEcgDiagnosis] 无当前报告，已缓存待合并 risk=${(raw as any).arrhythmiaRisk}`);
+        return;
+      }
+      const incoming: EcgAnalysis = { ...raw };
+      // QTc：设备给了原始 QT（qtcRaw）就用它按 Bazett 重算，与 handleEcg 口径一致
+      if (cur.aveHeart > 0) {
+        const qtSrc = num(incoming.qtcRaw) ?? num((cur.analysis as any)?.qtcRaw) ?? 0;
+        if (qtSrc > 0) incoming.qtc = qtSrc / Math.sqrt(60 / cur.aveHeart);
+      }
+      // 合并：现有 analysis（含本地 sdnnSource 等）打底，设备真值覆盖
+      const merged: EcgAnalysis = { ...(cur.analysis ?? {}), ...incoming };
+      // 设备回了真值，去掉本地来源标记，避免 UI 误标"本地计算"
+      if (incoming.sdnn != null) { delete merged.sdnnSource; }
+      if (incoming.rmssd != null) { delete merged.rmssdSource; }
+      const newEcg: EcgReading = { ...cur, analysis: merged };
+      const hist = st.ecgHistory ?? [];
+      const newHist = hist.length > 0
+        ? [newEcg, ...hist.slice(1)]
+        : [newEcg];
+      this.push({ ecg: newEcg, ecgHistory: newHist });
+      _postLog('RingBle', `[onEcgDiagnosis] ✅ 合并诊断报告 risk=${incoming.arrhythmiaRisk} chd=${incoming.chdRisk} qrs=${incoming.qrsTime} st=${incoming.stMeanAmp} sdnn=${incoming.sdnn}`);
+    } catch (e) {
+      _postLog('RingBle', `[onEcgDiagnosis] ❌ 解析失败：${e}`);
+    }
+  };
+
   /** ECG 实时测量进度（原生 onEcgProgress）：progress=0~100，hr=当前心率，waveform=本次新增的增量波形采样（mV）。
    *  仅测量期间有效，结果到达即由 handleEcg 清掉。JS 侧把增量拼接到 ecgLiveWaveform，供详情页实时绘制波形。
    *  ★ 2026-11-03（用户）：失败不再 Alert 打断（改为 UI 内联/浮层展示 ecgError）；新增 hint 轻提示
@@ -2790,8 +3240,14 @@ class NativeRingSource {
         this.push({ ecgHint: raw.hint });
         return;
       }
-      const progress = typeof raw.progress === 'number' ? raw.progress : 0;
-      const hr = typeof raw.hr === 'number' && Number.isFinite(raw.hr) ? raw.hr : undefined;
+      // ★ 2026-11-17：progress<0 = 原生纯波形增量帧（Android onEcgADCChange 不带进度）。
+      //   保留上一次进度数字，只拼接波形，避免 UI 出现「测量中 -1%」。
+      const isWaveOnly = typeof raw.progress === 'number' && raw.progress < 0;
+      const prevProgress = this.getState().ecgProgress;
+      const progress = isWaveOnly
+        ? (prevProgress?.progress ?? 0)
+        : (typeof raw.progress === 'number' ? raw.progress : 0);
+      const hr = typeof raw.hr === 'number' && Number.isFinite(raw.hr) ? raw.hr : prevProgress?.hr;
       // 拼接增量波形
       const inc = Array.isArray(raw.waveform)
         ? raw.waveform.filter((v) => Number.isFinite(Number(v))).map((v) => Number(v))
@@ -2900,10 +3356,12 @@ class NativeRingSource {
         const rrS = 60 / aveHeart;
         analysis.qtc = aveQT / Math.sqrt(rrS);
       }
+      const protocolRr = num(raw.aveResRate) ?? 0;
       const reading: EcgReading = {
         aveHeart,
         aveHrv: num(raw.aveHrv) ?? 0,
-        aveResRate: num(raw.aveResRate) ?? 0,
+        aveResRate: protocolRr,
+        rrProtocol: protocolRr,
         aveQT,
         avePWV: num(raw.avePWV) ?? 0,
         waveform: Array.isArray(raw.waveform)
@@ -2912,6 +3370,18 @@ class NativeRingSource {
         analysis,
         ts: typeof raw.ts === 'number' ? raw.ts : Date.now(),
       };
+      // ★ 2026-11-24：历史日 ECG 同样兜底（固件呼吸率恒 0）
+      if (protocolRr > 0) {
+        reading.rrSource = 'protocol';
+      } else {
+        const est = estimateRespRateFromEcg(reading.waveform);
+        if (est) {
+          reading.aveResRate = est.value;
+          reading.rrSource = 'estimated';
+          reading.rrQuality = est.quality;
+          _postLog('RingBle', `[RR-EST][${dk}] 历史日波形估算 ${est.value} 次/分 quality=${est.quality}`);
+        }
+      }
       const curEcg = this.getState().ecgDaily;
       const patch: StatePatch = { ecgDaily: { ...curEcg, [dk]: reading } };
       const todayKey = dayKeyOf(Date.now());
@@ -3795,6 +4265,8 @@ steps点数=${reshaped.steps?.length ?? 0}`,
         synthesized = true;
       }
       const dk = dateKeyOfStr(String(raw.date));
+      // ★ 2026-11-20：被清理拉黑的脏日（如 11-19）不写睡眠，防止同步复活
+      if (healthStore.isSleepSuppressed(dk)) return;
       healthStore.recordSleep(dk, v);
       const patch: StatePatch = {
         sleepDaily: { ...cur, [dk]: v },
@@ -3945,13 +4417,18 @@ steps点数=${reshaped.steps?.length ?? 0}`,
     }
   }
   setAutoMonitor(on: boolean) { VeepooNative?.setAutoMonitor(on); }
-  measure(k: string) {
+  /** ★ 2026-11-18：hrWindowMs 可配 —— 一键体检快速档用 12s 心率短窗口压总时长；
+   *  不传 → 原生维持 20s 原窗口（其余调用行为不变）。 */
+  measure(k: string, hrWindowMs?: number) {
+    // ★ 2026-11-18(3)：打开血糖/血成分「测量会话」——期间固件 error 帧才被接受为 UI 错误（见 handleRealtime error 分支）。
+    if (k === 'glucose') this.glucoseSessionAt = Date.now();
+    else if (k === 'bloodcomp') this.bloodcompSessionAt = Date.now();
     if (k === 'ecg') {
       // ★ 开始新的 ECG 测量前，清掉残留 progress + 旧读数 + 旧错误（避免显示上一次失败的 HRV=255/HR=0/ecgError）
       this.resetEcgLive();
       this.push({ ecgProgress: null, ecg: null, ecgLiveWaveform: null, ecgError: null, ecgHint: null });
     }
-    VeepooNative?.measure(k);
+    VeepooNative?.measure(k, hrWindowMs ?? 0);
   }
   // ★ 2026-11-14（血压主动测不出值 → 体检自动重试）：显式停止原生主动检测。
   //   体检会话 BP 阶段结束（无论是否出值）时调用，防止没出值时 PPG 通道被占住，
@@ -4441,6 +4918,12 @@ class RingConnectionImpl {
   private lastSyncProgress: SyncProgress | null = null;
   private state: RingState = {
     status: 'idle',
+    worn: null,
+    lastRealtimeFrameAt: 0,
+    // ★ 2026-11-18：现场测量进度/错误（glucose/bloodcomp 检测的 UI 反馈通道，不落库）
+    glucoseMeasureProgress: null,
+    bloodcompProgress: null,
+    measureError: null,
     deviceName: null,
     deviceBroadcastName: null,
     deviceBroadcastNameSource: null,
@@ -4520,6 +5003,9 @@ class RingConnectionImpl {
   private autoLinkWatchdog: ReturnType<typeof setInterval> | null = null;
   private autoLinkUnsub: (() => void) | null = null;
   private autoLinkRetries = 0;
+  /** ★ 2026-11-18（用户：秒连）：连续「已知 MAC 直连」失败次数。连上即归零；
+   *  达到阈值后本轮回退到扫描（覆盖「戒指换了 / 幽灵 MAC / 需重新发现」）。 */
+  private directConnectFails = 0;
   /** 只在「首次连上」打一条日志，避免 connected 状态反复推送时刷屏 */
   private autoLinkWasConnected = false;
   /** ★ 2026-11-15（上线测试 P0-1）：20s 内不重复发起，避免 error/idle 回调引发连接风暴
@@ -4987,6 +5473,9 @@ class RingConnectionImpl {
         this.applyPatch({ emotion: null });
         return;
       }
+      // ★ 2026-11-16（用户：摘下戒指数据还在更新）：脱手后冻结情绪快照，
+      //   保留最后一笔（不清 null），不每 30 秒用 Date.now() 重算造出新数字。
+      if (this.state.worn === false) return;
       const snap = computeEmotionSnapshot(Date.now(), this.resolveCycle());
       if (snap) {
         this.applyPatch({
@@ -5987,7 +6476,13 @@ class RingConnectionImpl {
       // （boundaryTs 是对齐到最近的 :00/:30，pushStatusPoint 按 ts 去重，不会重复）
       const gap = this.lastCurveAccumTs == null ? Infinity : boundaryTs - this.lastCurveAccumTs;
       const due = effectiveForce || this.lastCurveAccumTs == null || gap >= STATUS_SNAPSHOT_MS;
-      if (due) {
+      // ★ 2026-11-16（用户：摘下戒指数据还在更新）：原生判定脱手（worn=false）后直接冻结曲线，
+      //   不再按 :00/:30 边界推进今日状态——底部的「无新采样守卫」依赖 fresh 点，在摘下瞬间
+      //   残留包/看门狗判定窗口内会漏判，这里用佩戴状态做硬闸门，冻结在最后一笔。
+      if (this.state.worn === false) {
+        this.lastCurveAccumTs = boundaryTs; // 空档记为已处理，戴回后不补打错窗口
+        // 不推进 lastWearTs → 戴回时软重置照常生效
+      } else if (due) {
         const sig = this.deriveWindowSignals(now, curve);
         // ★ 未佩戴守卫（v18.30）：本累积窗口内没有任何真实生理采样（HR/EDA 无窗口内新点、步数零增量）
         //   → 视为「戒指没在采集」，跳过累积：不打卡点、不推进曲线，今日状态冻结在最后一个有数据的边界。
@@ -7388,6 +7883,7 @@ class RingConnectionImpl {
       // 2) 连上 → 归零退避、记住 MAC、停掉待重试
       if (s.status === 'connected') {
         this.autoLinkRetries = 0;
+        this.directConnectFails = 0;
         this.autoLinkBusyUntil = 0;
         if (s.deviceId) this.knownMac = String(s.deviceId);
         this.clearAutoLinkTimer();
@@ -7488,10 +7984,32 @@ class RingConnectionImpl {
   }
 
   /**
+   * ★ 2026-11-18（用户：「连接速度快一点，秒连」）：取一个「可信的上次连接 MAC」。
+   *  只认两种：① 原生确实连上过的 lastId（activeDeviceKey / knownMac）；
+   *  ② 本机持久化里真实扫到过/连过的 knownRingIds。
+   *  绝不用硬编码兜底 MAC（41:42:...），也绝不在从没连过的空环境里瞎直连。
+   *  直连 GATT 不走 10s 扫描窗口 → 戒指在范围内时 1~3s 连上（即「秒连」）。
+   */
+  private trustedLastMac(): string | null {
+    const norm = (x: unknown) => String(x ?? '').trim().toUpperCase();
+    const GHOST = '4142E7179B1C';
+    const st = this.getState();
+    const candidates = [norm(st.deviceId), norm(this.knownMac), norm(this.activeDeviceKey)];
+    for (const mac of candidates) {
+      if (!mac || mac === GHOST || !/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) continue;
+      // st.deviceId / knownMac 都是「原生确实连上过」写入的，直接可信
+      if (mac === norm(st.deviceId) || mac === norm(this.knownMac)) return mac;
+      // activeDeviceKey 需在本机真实见过才可信（防止换机/清数据后的幽灵 MAC）
+      if (mac === norm(this.activeDeviceKey) && this.knownRingIds.some((id) => norm(id) === mac)) return mac;
+    }
+    return null;
+  }
+
+  /**
    * 发起一轮自动连接。
-   * ① 已知 MAC → `native.connect(mac)` 直接开 GATT，**完全绕过 BLE 广播**
-   *    （系统扫描 10s 窗口容易错过戒指广播，这是「有时搜不到」的根因）；
-   * ② 没有 MAC → 扫一轮，scanResult 命中 LunaMira 就立刻连；
+   * ★ 2026-11-18：优先级改为「已知 MAC 直连秒连 → 失败几次才回退扫描」。
+   * ① 可信 MAC → `native.connect(mac)` 直接开 GATT，**完全绕过 BLE 广播 10s 窗口**（秒连）；
+   * ② 直连连续失败 2 次 → 扫一轮，scanResult 命中后用 decideAfterScan 决策；
    * ③ 每轮都留兜底重排，直到连上或用户主动断开。
    */
   private async runAutoLink(reason: string, force = false): Promise<void> {
@@ -7507,16 +8025,29 @@ class RingConnectionImpl {
     if (force) this.autoLinkBusyUntil = 0;
     this.autoLinkBusyUntil = now + 20_000;
 
-    // ★ 2026-11-13（用户）：不再按持久化 MAC 直连，一律先扫描全部候选，
-    //   由 decideAfterScan() 按最终数量决定「1 枚直连 / 多枚列出来让用户选」。
+    // ★ 2026-11-18（用户：秒连）——第一优先：可信的上次 MAC 直接开 GATT。
+    //   直连不依赖 BLE 广播，戒指在范围内通常 1~3s 就连上，跳过原生 10s 扫描窗口。
+    //   连续失败 2 次后本轮回退扫描（覆盖换戒指/幽灵 MAC/需重新发现）。
+    const mac = this.trustedLastMac();
+    if (mac && this.directConnectFails < 2) {
+      this.directConnectFails += 1;
+      postLog('RingBle', `[autoLink] ${reason} → ⚡ 已知 MAC 直连 ${mac}（第 ${this.directConnectFails} 次，跳过扫描）`);
+      await this.connect(mac);
+      return;
+    }
+    if (mac && this.directConnectFails >= 2) {
+      postLog('RingBle', `[autoLink] 直连 ${mac} 连续失败 ${this.directConnectFails} 次 → 回退扫描一轮`);
+    }
+
+    // 回退：扫描全部候选，由 decideAfterScan() 决定「1 枚直连 / 多枚列出来让用户选」。
     postLog('RingBle', `[autoLink] ${reason} → 扫描全部戒指（1 枚直连 / 多枚列出待选）`);
     try {
       await this.startScan();
     } catch (e) {
       postLog('RingBle', `[autoLink] 扫描启动失败：${e instanceof Error ? e.message : e}`);
     }
-    // ★ 2026-11-15：删除 16s「扫描兜底」重排——与 45s watchdog 重复，且会在
-    //   BLE 认证/回填窗口里再插一轮扫描。重试统一由低频 watchdog 负责。
+    // 扫描后重置直连计数：给下一轮 watchdog 再试一次直连的机会
+    this.directConnectFails = 0;
   }
 
   /**
@@ -7570,6 +8101,23 @@ class RingConnectionImpl {
         this.awaitingDeviceChoice = false;
         postLog('RingBle', `[Scan] 多戒指环境：上次连接的 ${hitLast.name}@${lastId} 正在广播 → 自动直连（其余戒指仍可手动切换）`);
         void this.connectToId(lastId);
+        return;
+      }
+      // ★ 2026-11-16（BUG-20261116-02）：幽灵 lastId（首次装 / 清数据 / 换机，
+      //   activeDeviceKey 兜底成过时 MAC，本轮没广播且本机从没扫到过）时，
+      //   若在播设备里能唯一确定一枚 BASE 款 → 自动直连，避免戴戒指却卡在待选界面。
+      //   pickAutoConnectRingId 内含护栏：lastId 在本机真正见过时返回 null，不误切戒指。
+      const autoId = pickAutoConnectRingId({
+        lastId,
+        seenIds: seen,
+        knownIds: this.knownRingIds,
+        devices,
+      });
+      if (autoId) {
+        this.awaitingDeviceChoice = false;
+        const hit = devices.find((d) => String(d.id).trim().toUpperCase() === autoId);
+        postLog('RingBle', `[Scan] 首次/换机兜底：自动直连唯一 BASE 款 ${hit?.name ?? 'Luna Mira'}@${autoId}（幽灵上次 ID ${lastId || '—'} 未命中）`);
+        void this.connectToId(autoId);
         return;
       }
       // 已知但本轮没广播的戒指也要列出来（信号显示为空），用户仍可点选。
@@ -7743,6 +8291,53 @@ class RingConnectionImpl {
       fever: false,
       phase,
     } as DailyRecord;
+  }
+
+  /**
+   * ★ 2026-11-20 一次性数据迁移：清除 v65 修复前 last-wins 覆盖产生的脏睡眠。
+   *
+   * 背景：戒指回传某天多条记录（整夜 + 午睡），旧版原生 last-wins → 56 分钟午睡把
+   * 615 分钟主睡眠盖掉，落库为 11-19=56min 的错误归档；v65 已改「保留最长」并把整夜
+   * 睡眠 SLEEP-SHIFT 到起床日 11-20（真机首页睡眠恢复 81）。但历史快照里 11-19 的 56min
+   * 残留不会自动消失，回顾页仍显示这个小值。本迁移一次性清掉它并永久拉黑，杜绝复活。
+   *
+   * 只清 11-19，绝不碰 11-20 的真实整夜睡眠（615min）。用 prefs 标记保证全机只跑一次。
+   */
+  private async purgeDirtySleepOnce(): Promise<void> {
+    const flagKey = 'mira_dirty_sleep_purged_v1' + this.deviceBucketSuffix();
+    try {
+      const done = await prefsGet(flagKey);
+      if (done === '1') return;
+    } catch { /* 读标记失败也照常跑，幂等 */ }
+
+    const DIRTY_DAY = '2026-11-19';
+    try {
+      // ① v2 单一数据源：删 sleep + sleepSegments + 记入持久化黑名单
+      const removed = healthStore.suppressSleepDay(DIRTY_DAY);
+      // ② legacy RingState：删当天睡眠归档与分期段（saveSnapshot 会落盘）
+      const patch: Record<string, unknown> = {};
+      const sd = { ...(this.state.sleepDaily ?? {}) };
+      const ssd = { ...(this.state.sleepStagesDaily ?? {}) };
+      let legacyHad = false;
+      if (sd[DIRTY_DAY] != null) { delete sd[DIRTY_DAY]; legacyHad = true; }
+      if (ssd[DIRTY_DAY] != null) { delete ssd[DIRTY_DAY]; legacyHad = true; }
+      if (legacyHad) {
+        patch.sleepDaily = sd;
+        patch.sleepStagesDaily = ssd;
+        // sleepSummaryDate 若指向脏日，一并清掉摘要种子
+        if (this.state.sleepSummaryDate === DIRTY_DAY) {
+          patch.sleepSummaryDate = null;
+          patch.sleepSummary = null;
+        }
+        this.applyPatch(patch as any);
+      }
+      _postLog('RingBle', `[SLEEP-PURGE] 11-19 脏睡眠清理：v2=${removed ? '已删' : '无'} legacy=${legacyHad ? '已删' : '无'}（11-20 真实睡眠不动）`);
+      // ③ 落盘：让清理结果立即写入两个快照，重启不复活
+      await this.saveSnapshot();
+      await prefsSet(flagKey, '1');
+    } catch (e) {
+      _postLog('RingBle', `[SLEEP-PURGE] 清理失败（忽略，下次重启重试）: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private async loadHealthStoreFromDisk(legacySnap: any): Promise<void> {
@@ -7992,6 +8587,10 @@ class RingConnectionImpl {
       this.applyPatch(patch);
       // ★ 载入/迁移 healthStore（v2 单一数据源）：优先直接 loadV2；否则用旧 v1 快照迁移
       await this.loadHealthStoreFromDisk(snap);
+      // ★ 2026-11-20：一次性清理 v65 修复前残留的 11-19 脏睡眠（56min 午睡覆盖值）。
+      //   放在 loadHealthStoreFromDisk 之后：此时 v2 + legacy 已全部灌入，清理才彻底；
+      //   清理会拉黑该日，后续 hydrate/migrate/同步回写都进不来。
+      await this.purgeDirtySleepOnce();
       // ★ 2026-11-09：冷启动把 healthStore（v2 唯一数据源）里已同步的数据回填进 RingState。
       //   旧快照（RingState）与 healthStore 会失同步：healthStore 有今天的步数/睡眠，旧快照没有，
       //   于是首页读 ring.stepDaily / curveStatus 等「实时态」在冷启动为空 → 界面空白，
@@ -8164,6 +8763,12 @@ class RingConnectionImpl {
     return this.lastSyncProgress;
   }
 
+  /** ★ 2026-11-18：最近一次收到原生实时生理帧的 JS 时刻（epoch ms，0=从未收到）。
+   *  快检/体检入口据此复核佩戴状态：worn 是推断值会滞后，帧还在到就说明戒指仍戴着。 */
+  getLastRealtimeFrameAt(): number {
+    return this.state.lastRealtimeFrameAt ?? 0;
+  }
+
   getState(): RingState {
     return this.state;
   }
@@ -8279,6 +8884,9 @@ class RingConnectionImpl {
     this.autoMonitor = false;
     this.applyPatch({
       status: 'idle',
+      glucoseMeasureProgress: null,
+      bloodcompProgress: null,
+      measureError: null,
       deviceName: null,
       deviceBroadcastName: null,
       deviceBroadcastNameSource: null,
@@ -8303,12 +8911,13 @@ class RingConnectionImpl {
     });
   }
 
-  measure(metric: string) {
+  /** ★ 2026-11-18：opts.hrWindowMs 透传原生（一键体检快速档 12s 心率窗口），其余调用不受影响。 */
+  measure(metric: string, opts?: { hrWindowMs?: number }) {
     if (this.useNative) {
       if ((CORE_KEYS as string[]).includes(metric)) {
         this.applyPatch({ availability: { ...this.state.availability, [metric as MetricKey]: 'syncing' } });
       }
-      this.native.measure(metric);
+      this.native.measure(metric, opts?.hrWindowMs ?? 0);
     } else {
       if ((CORE_KEYS as string[]).includes(metric)) {
         this.applyPatch({ availability: { ...this.state.availability, [metric as MetricKey]: 'syncing' } });
@@ -8325,10 +8934,22 @@ class RingConnectionImpl {
     }
   }
 
-  /** 手动结束 ECG「关闭测试」：对齐 uni-app 文档的「关闭测试」按钮，可提前结束拿结果。 */
+  /** 手动结束 ECG「关闭测试」：对齐 uni-app 文档的「关闭测试」按钮，可提前结束拿结果。
+   *  ★ 2026-11-17（用户：点「停止测量」浮层没反应）：原实现只停原生、不写 ecgError，
+   *    详情页/浮层靠 ecgError 才退出 measuring 态 → 停在「即将完成/生成报告」不动。
+   *    这里补一个明确的结束态（与 abortEcg 同口径），保证浮层立即收起。 */
   stopEcg() {
-    if (this.useNative) this.native.stopEcg();
-    // 后端数据源不涉及原生 ECG，忽略。
+    if (this.useNative) {
+      try { this.native.stopEcg(); } catch { /* 静默 */ }
+      try { this.native?.resetEcgLive?.(); } catch { /* 静默 */ }
+    }
+    // 仅在「没拿到结果」时补结束态；一键体检出值后也会调 stopEcg，那次不该写错误。
+    const st = this.getState();
+    if (!st.ecg || !Number.isFinite(st.ecg.ts)) {
+      this.applyPatch({ ecgProgress: null, ecgLiveWaveform: null, ecgError: '已手动停止心电测量。', ecgHint: null });
+    } else {
+      this.applyPatch({ ecgProgress: null, ecgLiveWaveform: null, ecgHint: null });
+    }
   }
 
   /** ★ 2026-10-16：ECG 测量超时/卡死兜底中止——原生无回包时 UI 会永久停在「测量中 99%」。

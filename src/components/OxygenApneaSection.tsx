@@ -35,6 +35,9 @@ import { RingBle } from '../ble/RingBleManager';
 import { dayKey } from '../data/healthStore';
 import { computeNightOxygen } from '../lib/nightOxygen';
 import { fmtMetric, hasValue } from '../lib/metricFormat';
+// ★ 2026-11-25（用户）：心脏负荷旁「?」→ 底部说明弹层
+import InfoDot from './InfoDot';
+import SleepInfoSheet, { type SleepInfoKey } from './SleepInfoSheet';
 
 export const OSAHS_LEVELS: { [k: number]: { label: string; color: string } } = {
   [-1]: { label: '暂无结果', color: theme.colors.textSub },
@@ -60,6 +63,8 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
   // ★ 兜底读的是 healthStore，不经过 RingState；离线回填完成时若不订阅就不会刷新卡片。
   const hsVer = useHealthStoreVersion();
   const [loading, setLoading] = useState(false);
+  const [infoKey, setInfoKey] = useState<SleepInfoKey | null>(null);
+  const [infoValue, setInfoValue] = useState<string | null>(null);
   const a = ring.oxygenAnalysis;
   const osahs = a ? (OSAHS_LEVELS[a.osahsResult] ?? OSAHS_LEVELS[-1]) : null;
   const freqTimes: string[] = Array.isArray(a?.freqTimes) ? a.freqTimes : [];
@@ -139,6 +144,7 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
   const noDataAtAll = !a && !local.hasData;
 
   return (
+    <>
     <Card>
       <Text style={styles.ecgTitle}>{title}</Text>
 
@@ -193,7 +199,15 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
 
           <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
             <View style={styles.statCell}>
-              <Text style={styles.statLabel}>心脏负荷（均）</Text>
+              {/* ★ 2026-11-25（用户）：一直不知道这项是什么意思 → 名称旁加「?」说明。
+                  SDK 只给数值、没给公式和分级线，说明里如实写清，不编造参考区间。 */}
+              <View style={styles.labelRow}>
+                <Text style={styles.statLabel}>心脏负荷（均）</Text>
+                <InfoDot onPress={() => {
+                  setInfoValue(hasValue(v.aveCardiacLoad) ? `这一夜 ${fmtMetric(v.aveCardiacLoad, 1)}` : null);
+                  setInfoKey('cardiacLoad');
+                }} />
+              </View>
               <Text style={styles.statValue}>{fmtMetric(v.aveCardiacLoad, 1)}</Text>
               {hasValue(v.aveCardiacLoad)
                 ? <Text style={styles.statHint}>设备按夜间血氧与心率算出的负荷指数</Text>
@@ -215,6 +229,13 @@ export function OxygenApneaSection({ title = '呼吸暂停分析' }: { title?: s
         </>
       )}
     </Card>
+    <SleepInfoSheet
+      visible={infoKey != null}
+      onClose={() => setInfoKey(null)}
+      metric={infoKey}
+      valueText={infoValue}
+    />
+    </>
   );
 }
 
@@ -236,6 +257,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.cardBorder,
   },
   statLabel: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   statHint: { fontSize: theme.fontSize.micro - 2, color: theme.colors.textSub, marginTop: theme.sp(0.5), textAlign: 'center' },
   emptyBox: { alignItems: 'center', paddingVertical: theme.space.lg },

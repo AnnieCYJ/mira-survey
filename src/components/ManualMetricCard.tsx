@@ -6,6 +6,10 @@ import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
+import InfoDot from './InfoDot';
+import SleepInfoSheet from './SleepInfoSheet';
+import VerdictPill from './VerdictPill';
+import { infoKeyFor, verdictFor } from '../lib/metricVerdict';
 import { formatClockTime } from '../utils/format';
 import type { BasicMetricDef } from '../data/metrics';
 
@@ -30,10 +34,17 @@ interface Props {
   onPress?: () => void;
   /** ★ 本轮（用户）：AI 分析句 —— 渲染为卡片内底部区块，整张卡为「一张卡」 */
   analysis?: string;
+  /** 原始数值，用于按临床标准标正常/异常 */
+  numericValue?: number | null;
 }
 
-export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure, onPress, analysis }: Props) {
+export default function ManualMetricCard({ metric, live, value, measureTime, onMeasure, onPress, analysis, numericValue }: Props) {
   const [measuring, setMeasuring] = useState(false);
+  const [infoVisible, setInfoVisible] = useState(false);
+  const infoPressed = useRef(false);
+  const infoKey = infoKeyFor(metric.key);
+  const parsed = parseFloat(value);
+  const vd = verdictFor(metric.key, numericValue ?? (Number.isFinite(parsed) ? parsed : null));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   // 一旦真实测量值回传（live 翻 true），立即结束「测量中」过渡，按钮切回「重新测量」。
@@ -57,7 +68,11 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
   const fam = pastelFamilyFor(metric.key);
 
   return (
-    <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity
+      activeOpacity={onPress ? theme.press.opacity : 1}
+      onPress={() => { if (!infoPressed.current) onPress?.(); }}
+      disabled={!onPress}
+    >
       <Card>
       {/* 顶部：名称 + 状态标签（无按钮，按钮统一置底） */}
       <View style={styles.top}>
@@ -68,6 +83,9 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
             </View>
           )}
           <Text style={[styles.name, { color: mm.colors.ink }]}>{metric.name}</Text>
+          {infoKey ? (
+            <InfoDot onPress={() => { infoPressed.current = true; setInfoVisible(true); setTimeout(() => { infoPressed.current = false; }, 80); }} />
+          ) : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
           <View style={[styles.tag, live ? styles.tagLive : styles.tagOff]}>
@@ -84,6 +102,7 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
         <View style={styles.valueBox}>
           <Text style={[styles.val, { color: mm.colors.ink }]}>{value}</Text>
           <Text style={styles.unit}>{metric.unit}</Text>
+          {vd ? <View style={{ marginLeft: theme.sp(1) }}><VerdictPill verdict={vd} /></View> : null}
         </View>
         <View style={styles.timeBox}>
           <Text style={styles.timeLabel}>测量时间</Text>
@@ -129,6 +148,14 @@ export default function ManualMetricCard({ metric, live, value, measureTime, onM
             </AiResultRow>
           </AiAnalysis>
         </View>
+      ) : null}
+      {infoKey ? (
+        <SleepInfoSheet
+          visible={infoVisible}
+          onClose={() => setInfoVisible(false)}
+          metric={infoKey}
+          valueText={value !== '—' ? `${metric.name} ${value} ${metric.unit}`.trim() : null}
+        />
       ) : null}
       </Card>
     </TouchableOpacity>

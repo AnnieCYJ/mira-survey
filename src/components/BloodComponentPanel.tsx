@@ -4,6 +4,10 @@ import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
+import InfoDot from './InfoDot';
+import SleepInfoSheet from './SleepInfoSheet';
+import VerdictPill from './VerdictPill';
+import { infoKeyFor, verdictFor } from '../lib/metricVerdict';
 import { RingBle, type RingState } from '../ble/RingBleManager';
 
 /**
@@ -65,6 +69,8 @@ function timeAgo(ts: number | null | undefined): string {
 
 export default function BloodComponentPanel({ ring, onOpenDetail, headerless = false }: Props) {
   const [measuring, setMeasuring] = useState(false);
+  const [infoItem, setInfoItem] = useState<BCItem | null>(null);
+  const infoPressed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -113,25 +119,47 @@ export default function BloodComponentPanel({ ring, onOpenDetail, headerless = f
           const v = (ring as any).daily?.[it.key] ?? null;
           const live = v != null && v > 0;
           const tone = ITEM_TONE[it.key];
+          const vd = live ? verdictFor(it.key, v) : null;
           return (
             <TouchableOpacity
               key={it.key}
               activeOpacity={0.7}
               style={[styles.item, { backgroundColor: tone.tint, borderColor: tone.soft }]}
-              onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
+              onPress={() => { if (!infoPressed.current) onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax); }}
             >
               <View style={[styles.itemBar, { backgroundColor: tone.core }]} />
-              <Text style={[styles.itemName, { color: tone.deep }]}>{it.name}</Text>
+              <View style={styles.itemNameRow}>
+                <Text style={[styles.itemName, { color: tone.deep }]}>{it.name}</Text>
+                <InfoDot onPress={() => {
+                  infoPressed.current = true;
+                  setInfoItem(it);
+                  setTimeout(() => { infoPressed.current = false; }, 80);
+                }} />
+              </View>
               <Text style={[styles.itemVal, !live && styles.itemValIdle, live && { color: tone.deep }]}>
                 {fmt(v, it.unit)}
               </Text>
               <Text style={styles.itemUnit}>{live ? it.unit : '待检测'}</Text>
+              {vd ? <View style={styles.itemVerdict}><VerdictPill verdict={vd} small /></View> : null}
             </TouchableOpacity>
           );
         })}
       </View>
+      <SleepInfoSheet
+        visible={infoItem != null}
+        onClose={() => setInfoItem(null)}
+        metric={infoItem ? infoKeyFor(infoItem.key) : null}
+        valueText={infoItem && liveValue(ring, infoItem.key) != null
+          ? `${infoItem.name} ${fmt(liveValue(ring, infoItem.key), infoItem.unit)} ${infoItem.unit}`
+          : null}
+      />
     </Wrap>
   );
+}
+
+function liveValue(ring: RingState, key: string): number | null {
+  const v = (ring as any).daily?.[key];
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 const styles = StyleSheet.create({
@@ -206,11 +234,17 @@ const styles = StyleSheet.create({
     right: 0,
     height: 3,
   },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginBottom: 2,
+  },
   itemName: {
     fontSize: theme.fontSize.micro,
     fontWeight: theme.weight.medium,
-    marginBottom: 2,
   },
+  itemVerdict: { marginTop: 3 },
   itemVal: {
     fontSize: theme.fontSize.body,
     fontWeight: theme.weight.semibold,

@@ -5,7 +5,15 @@
 
 export JAVA_HOME="/Users/annie/.android-toolchain/jdk17/Contents/Home"
 export ANDROID_HOME="$HOME/Android/Sdk"
-export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+# ★ 2026-11-22(v81)：后台/非交互 shell 的 PATH 常丢失 workbuddy 的 node →
+#   gradle getRNVersion 调 `node -e` 失败（Process 'node' exit 1）。显式补 node bin 目录。
+NODE_BIN_DIR="$(dirname "$(/usr/bin/which node 2>/dev/null || command -v node 2>/dev/null)")"
+if [ -z "$NODE_BIN_DIR" ] || [ "$NODE_BIN_DIR" = "." ]; then
+  # fallback：workbuddy 内置 node 固定路径（按实际版本目录）
+  NODE_BIN_DIR="$(ls -d "$HOME"/.workbuddy/binaries/node/versions/*/bin 2>/dev/null | tail -1)"
+fi
+echo "NODE_BIN_DIR=$NODE_BIN_DIR ($( "$NODE_BIN_DIR/node" --version 2>/dev/null ))"
+export PATH="$NODE_BIN_DIR:$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
 PROJ=/Users/annie/WorkBuddy/2026-08-30-10-09-01/mira-app
 cd "$PROJ" || exit 1

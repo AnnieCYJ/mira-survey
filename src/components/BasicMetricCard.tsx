@@ -14,6 +14,10 @@ import { mm, pastelFamilyFor } from '../theme/mindmate';
 import Card from './Card';
 import Icon from './Icon';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
+import InfoDot from './InfoDot';
+import SleepInfoSheet from './SleepInfoSheet';
+import VerdictPill from './VerdictPill';
+import { infoKeyFor, verdictFor } from '../lib/metricVerdict';
 import type { BasicMetricDef } from '../data/metrics';
 
 // 与 DimensionCard 同源的折线算法，但 X 轴改为"今日时间"（0:00→24:00），
@@ -251,6 +255,8 @@ interface Props {
   lineGapMs?: number;
   /** ★ 本轮（用户）：AI 分析句 —— 渲染为卡片内底部区块（与节律卡同源），使整张卡为「一张卡」 */
   analysis?: string;
+  /** 原始数值（用于按临床标准标正常/异常；不给时从 value 字符串解析） */
+  numericValue?: number | null;
 }
 
 export default function BasicMetricCard({
@@ -271,9 +277,29 @@ export default function BasicMetricCard({
   analysis,
   nightFirst = false,
   lineGapMs,
+  numericValue,
 }: Props) {
   const [w, setW] = useState(0);
   const [measuring, setMeasuring] = useState(false);
+  // ★ 2026-11-25（用户）：指标名旁「?」→ 底部说明；数值旁按临床标准标正常/异常。
+  const [infoVisible, setInfoVisible] = useState(false);
+  const infoPressed = useRef(false);
+  const infoKey = infoKeyFor(metric.key);
+  const openInfo = () => {
+    infoPressed.current = true;
+    setInfoVisible(true);
+    setTimeout(() => { infoPressed.current = false; }, 80);
+  };
+  const parsed = parseFloat(value);
+  const vd = verdictFor(metric.key, numericValue ?? (Number.isFinite(parsed) ? parsed : null));
+  const infoSheet = (
+    <SleepInfoSheet
+      visible={infoVisible}
+      onClose={() => setInfoVisible(false)}
+      metric={infoKey}
+      valueText={value !== '—' ? `${metric.name} ${value} ${metric.unit}`.trim() : null}
+    />
+  );
   const [lastMeasured, setLastMeasured] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const h = theme.fs(84);
@@ -348,7 +374,11 @@ export default function BasicMetricCard({
       return d.trim();
     })();
     return (
-      <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
+      <TouchableOpacity
+        activeOpacity={onPress ? theme.press.opacity : 1}
+        onPress={() => { if (!infoPressed.current) onPress?.(); }}
+        disabled={!onPress}
+      >
         <Card style={{ padding: theme.sp(3.5), borderRadius: theme.radius.md }}>
           {/* ★ compact 卡文字层级（对齐 design token）：
               标题 body/medium（原 card 18 过大，窄列易挤压）→ 数值 h2/semibold 拉开主次
@@ -368,14 +398,20 @@ export default function BasicMetricCard({
                 </View>
               )}
               <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink, flex: 1 }}>{metric.name}</Text>
+              {infoKey ? <InfoDot onPress={openInfo} /> : null}
             </View>
             <Icon name="chevronRight" size={14} color={mm.colors.inkFaint} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: mm.colors.ink, flexShrink: 1 }}>{value}</Text>
             <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>{metric.unit}</Text>
+            {vd ? <View style={{ marginLeft: theme.sp(1) }}><VerdictPill verdict={vd} small /></View> : null}
             <Text numberOfLines={1} style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>{updatedAt ? formatUpdateTime(updatedAt) : ''}</Text>
           </View>
+          {/* ★ 2026-11-25（用户：参考范围写了却没显示）：compact 卡统一显示参考范围 */}
+          {metric.range && metric.range !== '—' ? (
+            <Text numberOfLines={1} style={styles.compactRange}>{metric.range}</Text>
+          ) : null}
           {showTrend && (
           <View onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}>
             {w > 0 ? (
@@ -418,19 +454,24 @@ export default function BasicMetricCard({
               </AiAnalysis>
             </View>
           ) : null}
-
+          {infoSheet}
         </Card>
       </TouchableOpacity>
     );
   }
 
   return (
-    <TouchableOpacity activeOpacity={onPress ? theme.press.opacity : 1} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity
+      activeOpacity={onPress ? theme.press.opacity : 1}
+      onPress={() => { if (!infoPressed.current) onPress?.(); }}
+      disabled={!onPress}
+    >
       <Card>
       {/* 顶部：名称 + 状态标签 + 手动测量按钮（与 DimensionCard 顶部节奏一致） */}
       <View style={styles.top}>
         <View style={styles.topLeft}>
           <Text style={styles.name}>{metric.name}</Text>
+          {infoKey ? <InfoDot onPress={openInfo} /> : null}
           <View style={[styles.tag, live ? styles.tagLive : syncing ? styles.tagSync : styles.tagOff]}>
             <Text style={[styles.tagText, live ? styles.tagTextLive : styles.tagTextOff]}>{statusTag}</Text>
           </View>
@@ -458,6 +499,7 @@ export default function BasicMetricCard({
       <View style={styles.main}>
         <Text style={styles.val}>{value}</Text>
         <Text style={styles.unit}>{metric.unit}</Text>
+        {vd ? <View style={{ marginLeft: theme.sp(1) }}><VerdictPill verdict={vd} /></View> : null}
         <Text style={styles.measuredAt}>{updatedAt ? formatUpdateTime(updatedAt) : ''}</Text>
       </View>
 
@@ -525,6 +567,7 @@ export default function BasicMetricCard({
           </AiAnalysis>
         </View>
       ) : null}
+      {infoSheet}
       </Card>
     </TouchableOpacity>
   );
@@ -609,6 +652,11 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.micro,
     color: theme.colors.textSub,
     opacity: 0.75,
+  },
+  compactRange: {
+    fontSize: theme.fontSize.micro,
+    color: mm.colors.inkFaint,
+    marginTop: 2,
   },
   axisLabels: {
     flexDirection: 'row',

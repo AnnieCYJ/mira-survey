@@ -14,6 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import { theme } from '../theme/theme';
 import { mm } from '../theme/mindmate';
 import type { QCMetric, QCStatus, QCGroup, QuickCheckRecord } from '../data/quickCheckStore';
@@ -152,9 +153,44 @@ export function MetricRow({ m, useAi, groupTitle }: { m: QCMetric; useAi?: boole
 }
 
 /** 渲染一个分组（核心体征 / 血液 / 心理 / 压力疲劳通用）。 */
+/**
+ * ★ 2026-11-18（用户：一键体检心电组要展示小的心电图预览）：
+ * 本次现场心电的迷你波形卡（降采样 ~160 点，单位 0.1mV，已在组装时归一采样）。
+ *Svg viewBox 320x64 + preserveAspectRatio="none" 横向铺满；基线灰线 + 心电绿色走线。
+ */
+function EcgWavePreview({ wave }: { wave: number[] }) {
+  const W = 320, H = 64;
+  const n = wave.length;
+  const lo = Math.min(...wave);
+  const hi = Math.max(...wave);
+  const span = Math.max(0.1, hi - lo);
+  // y 轴：0.1mV 单位，反转（mV 越高 y 越小）；上下留 6px 边距
+  const pts = wave.map((v, i) => {
+    const x = n > 1 ? (i / (n - 1)) * W : W / 2;
+    const y = 6 + (1 - (v - lo) / span) * (H - 12);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const baseline = (6 + (1 - (0 - lo) / span) * (H - 12)).toFixed(1);
+  return (
+    <View style={{ marginTop: theme.sp(1), marginBottom: theme.sp(2) }}>
+      <View style={{ borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder, overflow: 'hidden', backgroundColor: 'rgba(10,22,20,0.35)' }}>
+        <Svg width="100%" height={92} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <Path d={`M0,${baseline} L${W},${baseline}`} stroke="rgba(255,255,255,0.22)" strokeWidth={0.6} fill="none" />
+          <Path d={`M${pts.join(' L')}`} stroke={theme.colors.success} strokeWidth={1.4} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        </Svg>
+      </View>
+      <Text style={[qc.metricNote, { marginTop: theme.sp(1) }]}>本次 90 秒心电记录的波形缩略</Text>
+    </View>
+  );
+}
+
 export function GroupBlock({ group, useAi }: { group: QCGroup; useAi?: boolean }) {
   const g = group;
   const inner: React.ReactNode[] = [];
+  // ★ 2026-11-18：心电组的迷你心电图预览（波形置顶，风险指数行跟在后面）
+  if (g.key === 'ecg' && g.ecgWave && g.ecgWave.length > 10) {
+    inner.push(<EcgWavePreview key="ecg-wave" wave={g.ecgWave} />);
+  }
   if (g.risk) {
     inner.push(
       <View key={`r-${g.key}`} style={{ marginBottom: theme.sp(2) }}>

@@ -12,6 +12,9 @@ import { mm } from '../theme/mindmate';
 import { LinearGradient } from 'expo-linear-gradient';
 import Card from './Card';
 import Icon from './Icon';
+import InfoDot from './InfoDot';
+import SleepInfoSheet from './SleepInfoSheet';
+import { infoKeyFor } from '../lib/metricVerdict';
 import { validateProfile } from '../lib/profileForm';
 import { RingBle } from '../ble/RingBleManager';
 import {
@@ -63,6 +66,8 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
   const savingRef = useRef(false);
   const touchedRef = useRef(false);
   const [editing, setEditing] = useState(true);
+  const [infoMetric, setInfoMetric] = useState<{ key: string; name: string; value: string; unit: string } | null>(null);
+  const infoPressed = useRef(false);
   const [errors, setErrors] = useState<Partial<Record<'weight' | 'height' | 'age', string>>>({});
   const [error, setError] = useState('');
   const fieldRefs = { weight: useRef<TextInput>(null), height: useRef<TextInput>(null), age: useRef<TextInput>(null) };
@@ -207,7 +212,7 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
           {/* 已测过：直接展示「最近一次测量结果」，整卡可点 → 历史（几次测量）。 */}
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => navigation.navigate('BodyCompositionHistory')}
+            onPress={() => { if (!infoPressed.current) navigation.navigate('BodyCompositionHistory'); }}
             accessibilityRole="button"
             accessibilityLabel="查看身体成分历史"
           >
@@ -221,7 +226,14 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
                 if (!m) return null;
                 return (
                   <View style={styles.metricCell} key={k}>
-                    <Text style={styles.metricName}>{m.name}</Text>
+                    <View style={styles.metricNameRow}>
+                      <Text style={styles.metricName}>{m.name}</Text>
+                      <InfoDot onPress={() => {
+                        infoPressed.current = true;
+                        setInfoMetric({ key: m.key, name: m.name, value: m.value.toFixed(m.decimals), unit: m.unit });
+                        setTimeout(() => { infoPressed.current = false; }, 80);
+                      }} />
+                    </View>
                     <View style={styles.metricValRow}>
                       <Text style={[styles.metricVal, { color: m.status === 'info' ? theme.colors.textTitle : STATUS_COLOR[m.status] }]} numberOfLines={1}>{m.value.toFixed(m.decimals)}</Text>
                       {m.unit ? <Text style={styles.metricUnit}>{m.unit}</Text> : null}
@@ -253,6 +265,12 @@ export default function ExamTab({ onProfileSaved }: { onProfileSaved?: (age: num
           </TouchableOpacity>
         </>
       )}
+      <SleepInfoSheet
+        visible={infoMetric != null}
+        onClose={() => setInfoMetric(null)}
+        metric={infoMetric ? infoKeyFor(infoMetric.key) : null}
+        valueText={infoMetric ? `${infoMetric.name} ${infoMetric.value}${infoMetric.unit}` : null}
+      />
     </Card>
   );
 }
@@ -333,7 +351,8 @@ const styles = StyleSheet.create({
     minHeight: theme.sp(22),
     justifyContent: 'center',
   },
-  metricName: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  metricNameRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: theme.sp(1) },
+  metricName: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   metricValRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   metricVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   metricUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

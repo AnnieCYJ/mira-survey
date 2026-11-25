@@ -27,7 +27,7 @@ import ChartTooltip from '../components/ChartTooltip';
 import RangeSwitch from '../components/RangeSwitch';
 import DateAnchorPicker from '../components/DateAnchorPicker';
 import Icon from '../components/Icon';
-import { RingBle, type RingState, type EcgReading, computeRrHrv } from '../ble/RingBleManager';
+import { RingBle, type RingState, type EcgReading } from '../ble/RingBleManager';
 import { useRingState } from '../hooks/useRingState';
 import { loadCycleLog } from '../data/cycleLog';
 import { getCachedSession, userStore } from '../data/userStore';
@@ -44,6 +44,10 @@ import { fmtEcgUnit } from '../lib/ecgFormat';
 import { physioValid } from '../lib/physioRange';
 import { saneBodyTemp } from '../data/ringDataIsolation';
 import { computeStressReport } from '../lib/stressAlgorithm';
+// ★ 2026-11-18(8)：修「身心压力详情页一直无数据」——用 dayAnchor 把锚定日换成报告查询时刻，
+//   并接入当日体检压力兜底（与首页 CalmWaveHome 同源）。
+import { reportNowMsForDay, reportNowMsForPrevDay } from '../lib/dayAnchor';
+import { getQuickCheckResultSync, validQuickCheckResult } from '../data/quickCheckResult';
 import { healthStore, dayKey, type MetricKey as HSMetricKey, type ManualMeasurement } from '../data/healthStore';
 import { dateKeyOf, startOfWeek, addDays } from '../lib/dateUtils';
 import { isMonthTickDay, isYearTickMonth } from '../lib/chartAxis';
@@ -1810,16 +1814,31 @@ export default function MetricDetailScreen() {
   // ★ 2026-11-09（用户「日间夜间应该分开算平均」）：stress 报告整体取一次（含 dayMean/nightMean）。
   //   日视图 hero 跟随「日间 / 夜间」tab：日间 tab 显示日间均值，夜间 tab 显示夜间均值；
   //   周/月/年仍用 score（日间口径）。
-  const stressRep = isStress ? (() => { try { return computeStressReport(anchor.getTime()); } catch { return null; } })() : null;
+  // ★ 2026-11-18(8)：原写法 computeStressReport(anchor.getTime()) 在用户切过日期后 anchor 变成
+  //   当天 00:00 → 报告取数窗口 [00:00,00:00] 空区间 → 整体 null → 详情页永久「—」。
+  //   改用 dayAnchor 的 reportNowMsForDay/PrevDay（今天=此刻、历史日=当天23:59），与其余 9 处调用对齐。
+  //   同时补首页同源的「当日体检压力」兜底：今天做过一键体检时优先用体检里的压力值。
+  const qcStressToday = isStress && anchorKey === dateKeyOf(Date.now())
+    ? (validQuickCheckResult(getQuickCheckResultSync())?.stress?.value ?? null)
+    : null;
+  const stressRep = isStress ? (() => {
+    let r: ReturnType<typeof computeStressReport> | null = null;
+    try { r = computeStressReport(reportNowMsForDay(anchor.getTime())); } catch { r = null; }
+    // 戒指压力分没算出来、但今天有体检压力 → 用体检值兜底（首页同口径）
+    if (qcStressToday != null && r?.score == null) {
+      return { ...(r ?? {}), score: qcStressToday, dayMean: qcStressToday, nightMean: qcStressToday } as typeof r;
+    }
+    return r;
+  })() : null;
   const stressScore = isStress ? stressRep?.score ?? null : null;
   // ★ 2026-11-06（用户）：压力 hero 右侧加定性档位（放松/正常/中等/偏高）+ 较昨日升降
   const stressYday = isStress ? (() => {
-    try { const d = new Date(anchor.getTime()); d.setDate(d.getDate() - 1); return computeStressReport(d.getTime()).score; } catch { return null; }
+    try { return computeStressReport(reportNowMsForPrevDay(anchor.getTime())).score; } catch { return null; }
   })() : null;
   // 较昨日也跟随当前 tab 的口径（日间 tab 比日间、夜间 tab 比夜间）
   const stressYdayPart = isStress && range === 'day' ? (() => {
-    try { const d = new Date(anchor.getTime()); d.setDate(d.getDate() - 1);
-      const r = computeStressReport(d.getTime());
+    try {
+      const r = computeStressReport(reportNowMsForPrevDay(anchor.getTime()));
       return stressPart === 'night' ? (r.nightMean ?? r.score) : (r.dayMean ?? r.score);
     } catch { return null; }
   })() : null;
@@ -1886,7 +1905,7 @@ export default function MetricDetailScreen() {
   }, [params.key, range, ring, cycleLog, prevAnchor]);
   // ★ 压力（身心压力）用 computeStressReport 0–100 口径（与 heroVal 同源）；其余用上一周期区间均值
   const prevVal = isStress
-    ? (() => { try { return computeStressReport(prevAnchor.getTime()).score; } catch { return null; } })()
+    ? (() => { try { return computeStressReport(reportNowMsForDay(prevAnchor.getTime())).score; } catch { return null; } })()
     : (prevSeries?.avg ?? null);  const prevDeltaPct =
     typeof heroVal === 'number' && prevVal != null && prevVal !== 0
       ? Math.round(((heroVal - prevVal) / Math.abs(prevVal)) * 100)
@@ -2615,7 +2634,7 @@ export default function MetricDetailScreen() {
                   //   （字段不全）→ Math.round(undefined) = NaN 会直接显示给用户。
                   ['平均心率', fmtEcgUnit(ring.ecg?.aveHeart, 'bpm')],
                   ['HRV', fmtEcgUnit(ring.ecg?.aveHrv, 'ms')],
-                  ['呼吸率', fmtEcgUnit(ring.ecg?.aveResRate, '次/分')],
+                  ['呼吸率' + (ring.ecg?.rrSource === 'estimated' ? '(波形估算)' : ''), fmtEcgUnit(ring.ecg?.aveResRate, '次/分')],
                   ['QT', fmtEcgUnit(ring.ecg?.aveQT, 'ms')],
                   ['PWV', fmtEcgUnit(ring.ecg?.avePWV, 'cm/s')],
                 ] as [string, string][]
@@ -2646,8 +2665,6 @@ export default function MetricDetailScreen() {
         ) : null}
         {/* ★ 2026-10-16：血氧页——呼吸暂停（OSAHS）分析（读设备血氧历史，进入页面自动拉取） */}
         {params.key === 'spo2' ? <OxygenApneaSection /> : null}
-        {/* ★ 2026-10-16：HRV 页——Lorenz 散点 + RR 间期时域分析（读设备 RR 历史，进入页面自动拉取） */}
-        {params.key === 'hrv' ? <HrvLorenzSection /> : null}
         {/* ★ 2026-10-16：血糖页——测量类型 / 风险等级 / 参考区间（戒指健康一览回传）。
             注意：洞察页传入的 key 是 'bloodSugar'，需同时命中。 */}
         {params.key === 'glucose' || params.key === 'bloodSugar' ? <GlucoseSummaryCard /> : null}
@@ -2727,7 +2744,23 @@ function GlucoseSummaryCard() {
   const dk = dateKeyOf(Date.now());
   const tType = latestVal('glucoseType', dk);
   const tLevel = latestVal('glucoseLevel', dk);
-  const tTypeLabel = tType != null ? (GLUCOSE_TYPES[tType] ?? `类型 ${tType}`) : '—';
+  // ★ 2026-11-19(v62)：SDK 血糖协议不含测量类型（空腹/餐后需用户标注，Mira 不编造）。
+  //   设备记录也未回传类型 → 按测量时间做保守推断：清晨 5–10 点的读数按空腹呈现，
+  //   其余时段不推断（显示"—"），并加「按时间推断」标注与用户可自行修正的说明。
+  const lastGlucoseAt = (() => {
+    try {
+      const pts = healthStore.getIntraday('glucose' as any, dk);
+      return pts.length ? pts[pts.length - 1].t : null;
+    } catch { return null; }
+  })();
+  const inferredType = (() => {
+    if (tType != null || lastGlucoseAt == null) return null;
+    const h = new Date(lastGlucoseAt).getHours();
+    return h >= 5 && h < 10 ? 1 : null; // 1 = 空腹
+  })();
+  const tTypeLabel = tType != null
+    ? (GLUCOSE_TYPES[tType] ?? `类型 ${tType}`)
+    : inferredType != null ? `${GLUCOSE_TYPES[inferredType]}（按时间推断）` : '—';
   const level = tLevel != null ? (GLUCOSE_LEVELS[tLevel] ?? null) : null;
   // 当日最小/最大血糖
   const dayPts = (() => { try { return healthStore.getIntraday('glucose' as any, dk); } catch { return []; } })();
@@ -2769,7 +2802,7 @@ function GlucoseSummaryCard() {
         </View>
         {GLUCOSE_BANDS.map((b) => <GlucoseRefBand key={b.label} label={b.label} lo={b.lo} hi={b.hi} />)}
       </View>
-      <Text style={styles.note}>参考区间按 mmol/L 临床常规给出，仅供参考，不替代医学检测。</Text>
+      <Text style={styles.note}>风险等级来自戒指测量回传。测量类型按测量时间推断（清晨 5–10 点按空腹），仅供参考；参考区间按 mmol/L 临床常规给出，不替代医学检测。</Text>
     </Card>
   );
 }
@@ -3473,102 +3506,6 @@ function EmptyChartFrame({ hint, height = 160, diagonal = false }: { hint: strin
         <Text style={[styles.emptyText, { textAlign: 'center' }]}>{hint}</Text>
       </View>
     </View>
-  );
-}
-
-/* ★ 2026-10-16：HRV 详情页——Lorenz 散点（RR 间期相位图）+ 时域 HRV
- * 数据来自戒指 RR 间期历史（原生 readRrAnalysis 读取设备库 → Lorenz 散点）。
- * ★ 2026-11-14（用户）：这枚戒指的 Android 原生 readRrAnalysis() 是空 stub，
- *   设备侧没有「逐拍 RR 间期序列」（onBatch / origin3 只给 hrv 标量），
- *   因此该图在 Android 上永远不会有数据 → 按用户要求直接不渲染这张卡片；
- *   iOS 侧有 veepooSDK_readRRIntervalData 真实通路，拿到 ≥10 个 RR 才显示。 */
-function HrvLorenzSection() {
-  const ring = useRingState();
-  const [loading, setLoading] = useState(false);
-  const r = ring.rrAnalysis;
-  const hrv = r ? computeRrHrv(r.rr) : null;
-
-  const reload = useCallback(async () => {
-    // Android 空 stub：不发这次无意义的原生调用，也不再显示「正在读取…」的空架子。
-    if (Platform.OS === 'android') return;
-    setLoading(true);
-    try { await RingBle.readRrAnalysis(); } finally { setTimeout(() => setLoading(false), 1200); }
-  }, []);
-  useEffect(() => { void reload(); }, [reload]);
-
-  // 没有真实 RR 逐拍数据 → 整张卡片不出现（不再是永远出不了数的空相位图）。
-  const hasData = !!(r && Array.isArray(r.lorentz) && r.lorentz.length > 0);
-  if (!hasData) return null;
-
-  // Lorenz 散点缩放
-  const SIZE = 240, PAD = 28;
-  let scatter: string[] = [];
-  if (r && r.lorentz.length) {
-    const xs = r.lorentz.map((p) => p.x), ys = r.lorentz.map((p) => p.y);
-    const mn = Math.max(0, Math.min(...xs, ...ys) - 50);
-    const mx = Math.max(...xs, ...ys) + 50;
-    const sx = (v: number) => PAD + ((v - mn) / (mx - mn || 1)) * (SIZE - PAD * 2);
-    scatter = r.lorentz.map((p) => `M ${sx(p.x).toFixed(1)} ${sx(p.y).toFixed(1)} l 0.1 0.1`);
-  }
-
-  const emptyHint = loading
-    ? '正在读取戒指心跳间期历史…'
-    : ring.rrAnalysisError ?? (r ? '数据量不足以绘制相位图。' : '当天暂无 RR 间期数据，请先佩戴一段时间后再查看。');
-
-  return (
-    <Card>
-      <Text style={styles.ecgTitle}>二维相位图（相邻心跳间期）</Text>
-      <Text style={styles.chartNote}>
-        横轴是前一次心跳间隔，纵轴是紧接着的下一次心跳间隔。点云越分散，说明心率变异性越高；越贴着对角线聚成一条，说明相邻心跳差别越小。
-      </Text>
-      <View style={styles.chartCard}>
-        {scatter.length ? (
-          <Svg width="100%" height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet">
-            <Defs>
-              <LinearGradient id="lorenzDot" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0%" stopColor={mm.colors.limeMid} stopOpacity={0.9} />
-                <Stop offset="100%" stopColor={mm.colors.skyDeep} stopOpacity={0.9} />
-              </LinearGradient>
-            </Defs>
-            {[0.25, 0.5, 0.75].map((g, i) => (
-              <Line key={`gx${i}`} x1={PAD} y1={PAD + g * (SIZE - PAD * 2)} x2={SIZE - PAD} y2={PAD + g * (SIZE - PAD * 2)} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
-            ))}
-            {[0.25, 0.5, 0.75].map((g, i) => (
-              <Line key={`gy${i}`} x1={PAD + g * (SIZE - PAD * 2)} y1={PAD} x2={PAD + g * (SIZE - PAD * 2)} y2={SIZE - PAD} stroke={theme.colors.ui.borderSoft} strokeWidth={1} />
-            ))}
-            {scatter.map((d, i) => (
-              <Path key={i} d={d} stroke="url(#lorenzDot)" strokeWidth={2.4} strokeLinecap="round" />
-            ))}
-          </Svg>
-        ) : (
-          /* ★ 2026-11-08（用户）：没有 RR 数据时也展示带网格 + 对角线的空相位图，
-             而不是让整块图表消失、只剩一行文字。 */
-          <EmptyChartFrame diagonal hint={emptyHint} height={SIZE} />
-        )}
-      </View>
-      {hrv ? (
-        <View style={[styles.statGrid, { marginTop: theme.sp(2) }]}>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>SDNN</Text>
-            <Text style={styles.statValue}>{hrv.sdnn}<Text style={styles.statLabel}> ms</Text></Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>RMSSD</Text>
-            <Text style={styles.statValue}>{hrv.rmssd}<Text style={styles.statLabel}> ms</Text></Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>pNN50</Text>
-            <Text style={styles.statValue}>{hrv.pnn50}<Text style={styles.statLabel}> %</Text></Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statLabel}>平均心率</Text>
-            <Text style={styles.statValue}>{Math.round(hrv.meanHr)}<Text style={styles.statLabel}> bpm</Text></Text>
-          </View>
-        </View>
-      ) : null}
-      {/* ★ 2026-11-08（用户）：进入页面已自动拉取 RR 历史，不需要「重新读取」手动按钮 */}
-      <Text style={styles.note}>数据来自戒指记录的心跳间期历史（RR 间期），需连续佩戴一段时间才有足够的点；仅作趋势参考，不构成医学判断。</Text>
-    </Card>
   );
 }
 

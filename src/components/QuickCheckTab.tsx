@@ -24,11 +24,11 @@ import {
   abnormalMetrics,
   tallyRecord,
   runQuickCheckSession,
+  isDefinitelyNotWorn,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
 import { qc, statusColor, statusLabel, QCta } from './quickCheckShared';
 import AiAnalysis, { AiResultRow } from './AiAnalysis';
-
 // ★ 一键体检等待浮层文案由 runQuickCheckSession 的 onPhase 阶段回调实时驱动（见 startCheck）
 
 export default function QuickCheckTab() {
@@ -40,12 +40,15 @@ export default function QuickCheckTab() {
   //   旧实现读 healthStore 遗留的血压/血糖/尿酸/皮肤/情绪/皮质醇，属 HK18 数据混显，已移除。
   const canBp = hasCap(profile, 'bp');
   const canGlucose = hasCap(profile, 'glucose');
+  const canEc = hasCap(profile, 'ecg');
+  const canBloodComp = hasCap(profile, 'bloodComponents') || hasCap(profile, 'cholesterol');
   const canGlance = hasCap(profile, 'cortisol');
   const checkupMetrics = [
     '今日状态', '心率', '心率变异性', '血氧', '体温',
     '活动', '睡眠', '血脂', '压力', '身体成分',
     ...(canBp ? ['血压'] : []),
     ...(canGlucose ? ['血糖'] : []),
+    ...(canEc ? ['心电'] : []),
     ...(canGlance ? ['健康一览信号'] : []),
   ];
   // ★ 2026-11-14（用户拍板「血压不出值自动重试」）：等待文案改为**阶段驱动** ——
@@ -57,13 +60,54 @@ export default function QuickCheckTab() {
     'bp-retry': '血压信号还没采够，正在再测一次，请保持手不动…',
     hrv: '正在测量心率变异性…',
     spo2: '正在读取血氧与今天已同步的读数…',
+    ecg: '正在测量心电，请用另一只手食指轻触戒指外侧电极、保持静止…',
+    glucose: '正在测量血糖，请保持戒指佩戴、手指放松…',
+    bloodcomp: '正在测量血液成分（尿酸/血脂），请保持戒指佩戴、手指放松…',
     assemble: '正在汇总数据并生成体检报告…',
   };
+  // ★ 2026-11-17（用户：体检到底多长时间、一直没显示）：浮层显示「第 N/M 步 · 已用 Xs」。
+  //   步骤随机型能力增减（血压/心电/血糖仅支持的机型才有），血压重试归入同一"血压"步。
+  const STEP_ORDER = [
+    'hr',
+    ...(canBp ? ['bp'] : []),
+    'hrv',
+    'spo2',
+    ...(canEc ? ['ecg'] : []),
+    ...(canGlucose ? ['glucose'] : []),
+    ...(canBloodComp ? ['bloodcomp'] : []),
+    'assemble',
+  ];
+  // ★ 2026-11-18（用户：不知道要等多久）：每步「典型耗时」→ 整体进度百分比 + 预计剩余时间。
+  //   取真机实测典型值（不是超时上限）：心率固定 21s；血压典型 40s（出值即提前结束）；
+  //   HRV 10s；血氧 10s；心电固件实测 ~90s 进度走到 100% 出值（18:05 真机轮实锤支持，取 90s，
+  //   出值即提前结束）；血糖实测 ~15s 出值取 20s；血液成分 30-60s 取 55s；汇总 3s。
+  //   完整档 PRO_UI 合计 ≈249s（约 4 分钟）；快检档序列（ecg/glucose/assemble）预算 ≈113s（1-2 分钟，
+  //   ★ 心电第 0 秒启动占 90s 固件计时，血糖仅当日无值才现场补测）；血压重试运行时 +40s；完整档最坏 ≈5 分钟。
+  const STEP_EXPECTED_SEC: Record<string, number> = {
+    hr: 21, bp: 40, 'bp-retry': 40, hrv: 10, spo2: 10,
+    ecg: 90, glucose: 20, bloodcomp: 55, assemble: 3,
+  };
+  const [stepIdx, setStepIdx] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  // ★ 2026-11-18（用户：不知道要等多久）：整体进度 0-100% 与预计剩余秒数（浮层进度条）。
+  const [qcProgress, setQcProgress] = useState(0);
+  const [qcRemain, setQcRemain] = useState(0);
+  // 进度核算 refs：phaseStart=当前阶段开始时刻；completedElapsed=已完成阶段实际耗时之和；
+  // plannedTotal=全流程预算 ms（bp-retry 运行时追加）；phaseKey=当前阶段 key（查典型耗时用）。
+  const phaseStartRef = useRef(0);
+  const completedElapsedRef = useRef(0);
+  const plannedTotalRef = useRef(0);
+  const phaseKeyRef = useRef('hr');
   const [latest, setLatest] = useState<QuickCheckRecord | null>(null);
   const [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  // ★ 2026-11-18(2)：双档位——fast 快检（1-2 分钟，心电第 0 秒启动，其余走当日同步值）/ full 完整体检（3-5 分钟）。
+  const [qcSteps, setQcSteps] = useState<string[]>(STEP_ORDER);
+  const stepOrderRef = useRef<string[]>(STEP_ORDER);
   const [phaseText, setPhaseText] = useState('正在现场测量心率，请保持手指静止…');
+  // ★ 2026-11-16：摘下戒指点体检 → 浮层显示「未佩戴」提示（不启动真实测量、不造数据）
+  const [notWorn, setNotWorn] = useState(false);
 
   const reload = async () => {
     const [last, c] = await Promise.all([getLatestQuickCheck(), countQuickChecks()]);
@@ -75,14 +119,75 @@ export default function QuickCheckTab() {
     (async () => { await reload(); })();
   }, []);
 
+  // ★ 2026-11-17：体检进行中每秒累计用时（纯展示，让浮层显示已等待时长）。未佩戴提示态不计时。
+  // ★ 2026-11-18：同一计时器顺带算整体进度 =（已完成阶段实际耗时 + 当前阶段已用/典型耗时封顶）
+  //   ÷ 全流程预算；到 99% 封顶（不谎报 100，出值跳转瞬间由 finish 分支置 100）。
+  useEffect(() => {
+    if (!checking || notWorn) return;
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      const now = Date.now();
+      setElapsedSec(Math.floor((now - t0) / 1000));
+      const curExpected = (STEP_EXPECTED_SEC[phaseKeyRef.current] ?? 10) * 1000;
+      const done = completedElapsedRef.current + Math.min(now - phaseStartRef.current, curExpected);
+      const total = Math.max(1, plannedTotalRef.current);
+      setQcProgress(Math.min(99, Math.floor((done / total) * 100)));
+      setQcRemain(Math.max(0, Math.round((total - done) / 1000)));
+    }, 1000);
+    return () => { clearInterval(iv); setElapsedSec(0); };
+  }, [checking, notWorn]);
+
   const latestTally = latest ? tallyRecord(latest) : { done: 0, abnormal: 0 };
   const latestAbnormal = latest ? abnormalMetrics(latest) : [];
 
-  const startCheck = async () => {
+  const startCheck = async (mode: 'fast' | 'full' = 'fast') => {
     if (busy) return;
+
+    // ★ 2026-11-18(10)（用户：摘了戒指就几秒弹未佩戴，不要跑满 90 秒）：
+    //   原生看门狗已判脱手 + 贴肤帧静默 → 入口直接弹框，不启动任何测量、不出现等待浮层。
+    //   双判据任一存疑（worn=null / 帧还在到）都不拦，保持"直接放行"策略，绝不误拒戴戒用户。
+    if (isDefinitelyNotWorn()) {
+      Alert.alert(
+        '未佩戴戒指',
+        '这次没有读到戒指数据，请先戴上戒指、让电极贴住皮肤，再开始一键体检。',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
+
+    // ★ 2026-11-16（用户：摘了戒指点一键体检，应在动画中间展示「未佩戴，需要佩戴才能测量」）：
+    //   原生已判定摘下（worn=false）时，打开浮层但切到未佩戴提示态，不发起任何真实测量命令
+    //   （摘下时测心率/血压只会拿到接触性脏值）。停留数秒后自动关闭，用户戴上再点即可。
+    //   ★ 2026-11-18（快检误报未佩戴修复）：worn 是推断值、有滞后——真机实锤戴着戒指但血氧读数
+    //   短时=0 时被看门狗判成脱手。复核：最近 15s 内仍有原生实时生理帧到达 → 戒指还在传数据、
+    //   物理上戴着，放行测量；只有「worn=false 且近期确实无任何帧」才认定真摘下、提示未佩戴。
+    // ★ 2026-11-18(5)（用户拍板「直接放行，测量失败再提示」）：取消基于 worn 的前置拦截。
+    //   worn 是靠血氧流推断的状态，戒指戴着但在读数=0 / PPG 让出 / 测量恢复期会被误判脱手，
+    //   导致点快检被拒。现在一律直接测量；真没戴时测量会失败，走下方 res.ok=false 的
+    //   「暂时没有可用数据，请保持佩戴」提示——既不误拒，也不静默给脏数据。
+    //   佩戴状态不再作为体检入口的门禁。
+
+    // ★ 2026-11-18(2)：快检流程=心电第 0 秒启动 + 血糖(当日无值才补测) + 汇总；
+    //   心率/血压/血氧/血液成分走当日已同步值，不占现场步骤（用户：这些历史都有）。
+    // ★ 2026-11-18(3)（用户「完整体检为什么还要 3-5 分钟」）：完整档重排=心电第 0 秒启动
+    //   + 只补测当日缺失项（血压/血液成分/血糖，有当日值直接跳过）+ 汇总，典型 ≈2-3 分钟。
+    const order = mode === 'fast'
+      ? [...(canEc ? ['ecg'] : []), ...(canGlucose ? ['glucose'] : []), 'assemble']
+      : [...(canEc ? ['ecg'] : []), 'bp', ...(canBloodComp ? ['bloodcomp'] : []), ...(canGlucose ? ['glucose'] : []), 'assemble'];
+    stepOrderRef.current = order;
+    setQcSteps(order);
+
     setBusy(true);
     setChecking(true);
+    setNotWorn(false);
     setPhaseText(PHASE_STEPS.hr);
+    // ★ 2026-11-18：重置整体进度核算（预算 = 本档位各步典型耗时之和）
+    completedElapsedRef.current = 0;
+    phaseStartRef.current = Date.now();
+    phaseKeyRef.current = 'hr';
+    plannedTotalRef.current = order.reduce((s, k) => s + (STEP_EXPECTED_SEC[k] ?? 0), 0) * 1000;
+    setQcProgress(0);
+    setQcRemain(Math.round(plannedTotalRef.current / 1000));
 
     // ★ 2026-11-13（用户）：这个窗口里**真的发起测量**，不是干等。
     //   现场测量 + 等待 + 组装报告统一在 runQuickCheckSession() 里，两个入口共用同一口径：
@@ -95,17 +200,39 @@ export default function QuickCheckTab() {
 
     // 每进入一个真实阶段回调一次，浮层文案实时跟随（血压重试时文案会切到「再测一次」）
     try {
-      const res = await runQuickCheckSession({
-        onPhase: (p) => setPhaseText(PHASE_STEPS[p] ?? PHASE_STEPS.hr),
+      const res = await runQuickCheckSession({ mode,
+        onPhase: (p) => {
+          setPhaseText(PHASE_STEPS[p] ?? PHASE_STEPS.hr);
+          // ★ 2026-11-18：阶段切换 → 结算上一阶段实际耗时（进度按真实推进走，
+          //   血压提前出值时进度条会明显前跳），bp-retry 运行时把预算 +40s。
+          const now = Date.now();
+          completedElapsedRef.current += now - phaseStartRef.current;
+          phaseStartRef.current = now;
+          phaseKeyRef.current = p;
+          if (p === 'bp-retry') plannedTotalRef.current += (STEP_EXPECTED_SEC['bp-retry'] ?? 0) * 1000;
+          const key = p === 'bp-retry' ? 'bp' : p; // 重试不额外占一步
+          const idx = stepOrderRef.current.indexOf(key);
+          if (idx >= 0) setStepIdx(idx + 1);
+        },
       });
+      // ★ 2026-11-18：会话结束（无论成败）→ 进度定格 100%，浮层随即关闭
+      setQcProgress(100);
       if (res.ok && res.record) {
         await reload();
         // ★ 成功不再弹 Alert，直接跳本次体检的详情页
         navigation.navigate('QuickCheckDetail', { recordId: res.record.id });
+      } else if (res.reason === 'not-worn') {
+        // ★ 2026-11-18(7)（用户：真没戴就弹「未佩戴」）：本次窗口内没读到任何戒指数据 →
+        //   明确提示未佩戴，不再拿当日历史值拼一份假报告。
+        Alert.alert(
+          '未佩戴戒指',
+          '这次没有读到戒指数据，请先戴上戒指、让电极贴住皮肤，再开始一键体检。',
+          [{ text: '知道了' }]
+        );
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。',
+          '这次还没读到戒指数据。请确认戒指已连接、并且正戴在手上（测量需要佩戴），保持静止一会儿再试一次。',
           [{ text: '知道了' }]
         );
       }
@@ -129,16 +256,11 @@ export default function QuickCheckTab() {
                 还没有体检记录。{'\n'}点下面按钮，现场测量心率与血氧，并算出今天的「今日状态」和「身心压力」。戴久一点，报告里会逐步加入睡眠、血压与节律。
               </Text>
             </View>
-            <QCta title={busy ? '体检中…' : '去体检一次'} onPress={startCheck} disabled={busy} />
+            {/* ★ 2026-11-18(6)（用户）：只保留一个「一键体检」按钮，去掉完整体检次按钮。 */}
+            <QCta title={busy ? '体检中…' : '一键体检'} onPress={() => startCheck('fast')} disabled={busy} />
           </Card>
-        <Text style={qc.footerNote}>
-          现场测量最长约 2 分半、通常 1 分多钟出报告；血压一次没出值时会自动再测一次。
-          心率、血压、心率变异性和血氧是这次现场测量的项目，今日状态与身心压力用这次的读数重新算出。
-          报告最多包含 {checkupMetrics.length} 类结果，今天已同步的读数会一起列出并标明来源；戴了一段时间后，会加入基于最近记录的节律结论。
-          Mira 只做描述与参考，不做诊断与评分。
-        </Text>
         </View>
-        <CheckWaitOverlay visible={checking} step={phaseText} />
+        <CheckWaitOverlay visible={checking} step={phaseText} notWorn={notWorn} stepIdx={stepIdx} totalSteps={qcSteps.length} elapsedSec={elapsedSec} qcProgress={qcProgress} qcRemain={qcRemain} />
       </>
     );
   }
@@ -193,9 +315,9 @@ export default function QuickCheckTab() {
                 {aiSummary}
               </AiResultRow>
             </AiAnalysis>
-          {/* ★ 本轮（用户）：再体检一次按钮移入卡片内 */}
+          {/* ★ 2026-11-18(6)（用户）：只保留一个「一键体检」按钮，去掉完整体检次按钮。 */}
           <View style={qc.ctaInside}>
-            <QCta title={busy ? '体检中…' : '再体检一次'} onPress={startCheck} disabled={busy} />
+            <QCta title={busy ? '体检中…' : '一键体检'} onPress={() => startCheck('fast')} disabled={busy} />
           </View>
         </Card>
         {/* ★ 2026-11-14（用户）：「没有读到数据的项目不会出现在报告里」这句去掉 */}
@@ -203,7 +325,7 @@ export default function QuickCheckTab() {
           参考区间仅供参考，Mira 不做诊断与评分。点击卡片可查看全部体检记录。
         </Text>
       </View>
-      <CheckWaitOverlay visible={checking} step={phaseText} />
+      <CheckWaitOverlay visible={checking} step={phaseText} notWorn={notWorn} stepIdx={stepIdx} totalSteps={qcSteps.length} elapsedSec={elapsedSec} qcProgress={qcProgress} qcRemain={qcRemain} />
     </>
   );
 }
@@ -213,10 +335,13 @@ export default function QuickCheckTab() {
  * 呼吸脉冲双环 + 🫀 核心图标 + 分步文案轮播；深色 backdrop 盖住洞察页，
  * 玻璃卡走 theme token（cardBg / cardBorder），与深海主题一致。
  */
-function CheckWaitOverlay({ visible, step }: { visible: boolean; step: string }) {
+function CheckWaitOverlay({ visible, step, notWorn = false, stepIdx = 0, totalSteps = 0, elapsedSec = 0, qcProgress = 0, qcRemain = 0 }: {
+  visible: boolean; step: string; notWorn?: boolean; stepIdx?: number; totalSteps?: number; elapsedSec?: number; qcProgress?: number; qcRemain?: number;
+}) {
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!visible) return;
+    // ★ 2026-11-16：未佩戴提示态不跑测量脉冲动画（没有正在进行的测量）
+    if (!visible || notWorn) return;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }),
@@ -240,11 +365,35 @@ function CheckWaitOverlay({ visible, step }: { visible: boolean; step: string })
             <Animated.View style={[ov.ringOuter, { transform: [{ scale: outerScale }], opacity: outerOpacity }]} />
             <Animated.View style={[ov.ringMid, { transform: [{ scale: midScale }], opacity: midOpacity }]} />
             <View style={ov.core}>
-              <Text style={ov.coreEmoji}>🫀</Text>
+              {/* ★ 2026-11-16：未佩戴用💤手势提示，测量中用🫀 */}
+              <Text style={ov.coreEmoji}>{notWorn ? '🚫' : '🫀'}</Text>
             </View>
           </View>
-          <Text style={ov.stepText}>{step}</Text>
-          <Text style={ov.hint}>{'请保持戒指佩戴、手指放松；测血压时手与心脏同高、不要说话'}</Text>
+          {notWorn ? (
+            <>
+              <Text style={ov.stepText}>检测到你没有佩戴戒指</Text>
+              <Text style={[ov.hint, ov.hintWarn]}>请先戴上戒指，再开始一键体检。{'\n'}需要佩戴才能测量心率、血压和血氧。</Text>
+            </>
+          ) : (
+            <>
+              <Text style={ov.stepText}>{step}</Text>
+              {/* ★ 2026-11-18（用户：不知道要等多久）：整体进度条 + 百分比 + 预计剩余时间。
+                  进度按每步典型耗时加权（阶段提前出值会前跳），99% 封顶、出值完成才到 100。 */}
+              <View style={ov.barWrap}>
+                <View style={[ov.barFill, { width: `${Math.max(3, qcProgress)}%` as any }]} />
+              </View>
+              <Text style={ov.progressLine}>
+                {`${qcProgress}% · 预计还需约 ${qcRemain > 0 ? (qcRemain >= 60 ? `${Math.floor(qcRemain / 60)} 分 ${qcRemain % 60} 秒` : `${qcRemain} 秒`) : '1 分钟内'}`}
+              </Text>
+              {/* ★ 2026-11-17（用户：体检时间一直没显示）：客观展示当前步序与已用秒数 */}
+              {totalSteps > 0 && (
+                <Text style={ov.progressLine}>
+                  {`第 ${Math.max(1, stepIdx)} / ${totalSteps} 步 · 已用 ${elapsedSec} 秒`}
+                </Text>
+              )}
+              <Text style={ov.hint}>{'请保持戒指佩戴、手指放松；测血压时手与心脏同高、不要说话'}</Text>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -314,12 +463,41 @@ const ov = StyleSheet.create({
     color: theme.colors.ui.onGlassInk,
     textAlign: 'center',
   },
+  // ★ 2026-11-18：进度条样式（浅底上墨色描边槽 + 品牌墨色填充，宽随 qcProgress）
+  barWrap: {
+    width: 208,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(46,42,58,0.12)',
+    overflow: 'hidden',
+    marginTop: theme.sp(2),
+  },
+  barFill: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(46,42,58,0.78)',
+  },
+  progressLine: {
+    marginTop: theme.sp(1.5),
+    fontSize: theme.fontSize.micro,
+    fontWeight: theme.weight.medium,
+    lineHeight: 18,
+    color: 'rgba(74,70,96,0.92)',
+    textAlign: 'center',
+  },
   hint: {
     marginTop: theme.sp(2),
     fontSize: theme.fontSize.micro,
     lineHeight: 18,
     color: 'rgba(74,70,96,0.88)',
     textAlign: 'center',
+  },
+  // ★ 2026-11-16：未佩戴提示的强调文案（品牌墨色，不用刺眼红）
+  hintWarn: {
+    color: theme.colors.ui.onGlassInk,
+    fontWeight: theme.weight.medium,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 22,
   },
 });
 

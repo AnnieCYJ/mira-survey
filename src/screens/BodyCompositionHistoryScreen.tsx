@@ -15,6 +15,9 @@ import { mm } from '../theme/mindmate';
 import ScreenContainer from '../components/ScreenContainer';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
+import InfoDot from '../components/InfoDot';
+import SleepInfoSheet from '../components/SleepInfoSheet';
+import { infoKeyFor } from '../lib/metricVerdict';
 import {
   getAllExamRecords,
   deleteExamRecord,
@@ -48,6 +51,7 @@ function fmtDate(ts: number): string {
 export default function BodyCompositionHistoryScreen() {
   const navigation = useNavigation<any>();
   const [records, setRecords] = useState<ExamRecord[]>([]);
+  const [infoMetric, setInfoMetric] = useState<BodyMetric | null>(null);
 
   const load = useCallback(async () => {
     const recs = await getAllExamRecords(); // 升序：最早 → 最新
@@ -130,7 +134,10 @@ export default function BodyCompositionHistoryScreen() {
                   <View style={styles.metricGrid}>
                     {r.metrics.map((m) => (
                       <View style={styles.metricCell} key={m.key}>
-                        <Text style={styles.metricName}>{m.name}</Text>
+                        <View style={styles.metricNameRow}>
+                          <Text style={styles.metricName}>{m.name}</Text>
+                          <InfoDot onPress={() => setInfoMetric(m)} />
+                        </View>
                         <View style={styles.metricValRow}>
                           <Text style={[styles.metricVal, { color: m.status === 'info' ? theme.colors.textTitle : STATUS_COLOR[m.status] }]} numberOfLines={1}>{fmtMetric(m)}</Text>
                           {m.unit ? <Text style={styles.metricUnit}>{m.unit}</Text> : null}
@@ -153,6 +160,12 @@ export default function BodyCompositionHistoryScreen() {
           </View>
         )}
       </View>
+      <SleepInfoSheet
+        visible={infoMetric != null}
+        onClose={() => setInfoMetric(null)}
+        metric={infoMetric ? infoKeyFor(infoMetric.key) : null}
+        valueText={infoMetric ? `${infoMetric.name} ${fmtMetric(infoMetric)}${infoMetric.unit}` : null}
+      />
     </ScreenContainer>
     </View>
   );
@@ -229,7 +242,8 @@ const styles = StyleSheet.create({
     minHeight: theme.sp(22),
     justifyContent: 'center',
   },
-  metricName: { fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) },
+  metricNameRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: theme.sp(1) },
+  metricName: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },
   metricValRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   metricVal: { fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle },
   metricUnit: { fontSize: theme.fontSize.micro, color: theme.colors.textSub },

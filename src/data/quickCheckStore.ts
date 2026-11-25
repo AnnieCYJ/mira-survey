@@ -83,6 +83,8 @@ export interface QCGroup {
   metrics?: QCMetric[];
   risk?: QCRiskBlock;
   standalone?: QCMetric[];
+  /** ★ 2026-11-18（用户：心电组要展示迷你心电图预览）：本次现场心电的波形缩略（降采样 ~160 点，单位 0.1mV）。 */
+  ecgWave?: number[];
 }
 
 export interface QuickCheckRecord {
@@ -419,7 +421,14 @@ export async function assembleQuickCheckFromRealtime(
   //   注意：估算输入仍不含 HRV（hrv60/30/baseline 维持 null），
   //   「今日状态 / 身心压力」算法口径不变，避免这批改动引入分数漂移。
   const hrvVal = liveHrv ?? d('hrv');
-  const glucose = isPro && hasCap(profile, 'glucose') ? todayVal('glucose') : null;
+  // ★ 2026-11-17（ECG/血糖补进一键体检）：血糖现场主动测量经 onRealtime 落 healthStore，
+  //   窗口内读数优先（和血压/HRV 同口径）；没有现场值再回退今天已同步日值。
+  const liveGlucose = windowReading('glucose');
+  const glucose = isPro && hasCap(profile, 'glucose') ? (liveGlucose ?? todayVal('glucose')) : null;
+  // ★ 心电现场读数：仅 Pro + 本次体检窗口内新测的才进报告（来源戒指校验已在 RingBle 状态层做）。
+  //   EcgReading 经 onEcg 落到 state.ecg，ts 为测量完成时刻；非本窗口的不冒充本次现场测量。
+  const ecgReading = isPro && hasCap(profile, 'ecg') && state.ecg && since != null &&
+    num(state.ecg.ts) != null && state.ecg.ts >= since - 60_000 ? state.ecg : null;
   const ua = isPro && hasCap(profile, 'uricAcid') ? todayVal('ua') : null;
   const tc = isPro && hasCap(profile, 'cholesterol') ? todayVal('cholesterol') : null;
   const skin = isPro && hasCap(profile, 'skin') ? todayVal('skin') : null;
@@ -556,6 +565,80 @@ export async function assembleQuickCheckFromRealtime(
     ? '心率、血压、心率变异性与血氧为本次现场测量所得（以这次实际测到的为准），其余项目取今天已同步的读数；每项都标了来源。'
     : '以下为今天已同步的读数，本次没有现场读到新值。', metrics: core });
 
+  // ── 心电（Pro 专属，本次现场测量）─────────────────────────────────────
+  // ★ 2026-11-18(4)（用户「心电 QTc 看不懂；就说是心电有没有异常，没有就显示没有风险，
+  //   有什么风险展示什么风险就行」）：把 QTc / PWV / 呼吸率这些专业术语从报告里全部拿掉，
+  //   只给一条大白话的「心电结果」结论：
+  //     · 没有发现异常 → 显示「本次心电未见明显异常」，状态正常；
+  //     · 发现异常     → 显示「发现需留意的地方」，并在说明里用大白话点出是哪方面。
+  //   判据仍来自设备真实回传（心律失常风险指数；无该指数时用 QTc/呼吸率是否越界），
+  //   只是不再把术语和数值摆到用户面前。固件从不触发 EcgDiagnosis，风险指数拿不到时不编造。
+  //   波形缩略照旧保留（迷你心电图）。
+  if (ecgReading) {
+    const ecgItems: QCMetric[] = [];
+    const analysis = ecgReading.analysis;
+
+    // 收集"需要注意"的大白话描述（不出现 QTc / PWV 等术语）
+    const concerns: string[] = [];
+    const arr = analysis?.arrhythmiaRisk;
+    if (arr != null && arr > 0 && Math.round(arr) > 30) {
+      concerns.push('心跳节律');
+    }
+    const qtc = analysis?.qtc;
+    if (qtc != null && qtc > 450 && qtc < 700) {
+      concerns.push('心脏电活动恢复时间');
+    }
+    const br = ecgReading.aveResRate > 0 ? ecgReading.aveResRate : analysis?.respRate;
+    if (br != null && br > 0 && (br < 10 || br > 24)) {
+      concerns.push('呼吸节奏');
+    }
+
+    if (concerns.length === 0) {
+      ecgItems.push(measured({
+        key: 'ecgResult', name: '心电结果', value: '未见明显异常', unit: '',
+        status: 'ok', label: '正常',
+        ref: '本次现场心电测量',
+        note: '本次心电没有发现明显异常的地方。单次测量受佩戴姿势与电极接触影响，仅供参考；如持续有不适，请以医疗心电图检查为准。Mira 不做诊断。',
+      }));
+    } else {
+      const uniq = Array.from(new Set(concerns));
+      ecgItems.push(measured({
+        key: 'ecgResult', name: '心电结果', value: '有需留意的地方', unit: '',
+        status: 'risk', label: '需留意',
+        ref: '本次现场心电测量',
+        note: `本次心电在${uniq.join('、')}方面有必要留意的地方。单次测量受佩戴姿势与电极接触影响较大，建议安静状态下复测；如持续有不适，请以医疗心电图检查为准。Mira 不做诊断。`,
+      }));
+    }
+
+    // 波形降采样：每段取与段均值偏差最大的点（保留 R 波尖峰形状，简单平均会削峰）。
+    const rawWave = ecgReading.waveform ?? [];
+    let waveThumb: number[] | undefined;
+    if (rawWave.length > 40) {
+      const N = 160;
+      const step = rawWave.length / N;
+      const mean = rawWave.reduce((a, b) => a + b, 0) / rawWave.length;
+      waveThumb = Array.from({ length: N }, (_, i) => {
+        const s = Math.floor(i * step);
+        const e = Math.max(s + 1, Math.floor((i + 1) * step));
+        let best = rawWave[s];
+        let bestD = Math.abs(best - mean);
+        for (let j = s + 1; j < e; j++) {
+          const d = Math.abs(rawWave[j] - mean);
+          if (d > bestD) { bestD = d; best = rawWave[j]; }
+        }
+        return Math.round(best * 10) / 10;
+      });
+    }
+    if (ecgItems.length || waveThumb) {
+      groups.push({
+        key: 'ecg', title: '心电', icon: '📈',
+        ...(waveThumb ? { ecgWave: waveThumb } : {}),
+        note: '本次现场心电测量的结果与波形，来自戒指电极信号，仅供参考；Mira 不做诊断与评分。完整心电波形可在洞察页心电卡片查看。',
+        metrics: ecgItems,
+      });
+    }
+  }
+
   // ── 活动与睡眠（实测）───────────────────────────────────────────────────
   const activity: QCMetric[] = [];
   if (steps != null) activity.push(measured({ key: 'steps', name: '今日步数', value: String(Math.round(steps)), unit: '步', status: sb('steps', steps), label: sb('steps', steps) === 'low' ? '偏少' : undefined, note: '步数反映日常活动量，一般建议每日 6000–8000 步以上以维持基础活动水平；偏少时可分两段各走 10 分钟补齐。' }));
@@ -568,7 +651,7 @@ export async function assembleQuickCheckFromRealtime(
   if (tg != null) blood.push(measured({ key: 'tg', name: '甘油三酯', value: String(r2(tg)), unit: 'mmol/L', status: sb('triglyceride', tg), ref: '参考 <1.7', note: '甘油三酯偏高常与饮食油腻、运动不足相关，建议结合饮食调整与复查。' }));
   if (hdl != null) blood.push(measured({ key: 'hdl', name: '高密度脂蛋白', value: String(r2(hdl)), unit: 'mmol/L', status: sb('hdl', hdl), ref: '参考 >1.0', note: '高密度脂蛋白（“好胆固醇”）偏低时，可通过有氧运动与均衡饮食改善。' }));
   if (ldl != null) blood.push(measured({ key: 'ldl', name: '低密度脂蛋白', value: String(r2(ldl)), unit: 'mmol/L', status: sb('ldl', ldl), ref: '参考 <3.4', note: '低密度脂蛋白（“坏胆固醇”）偏高与心血管风险相关，建议结合饮食与体检关注。' }));
-  if (glucose != null) blood.push(measured({ key: 'glucose', name: '血糖', value: String(r2(glucose)), unit: 'mmol/L', status: sb('glucose', glucose), ref: '空腹参考 3.9~6.1', note: '空腹血糖异常建议以医用检测确认，单点读数受进食时间影响较大。' }));
+  if (glucose != null) blood.push(measured({ key: 'glucose', name: '血糖', value: String(r2(glucose)), unit: 'mmol/L', status: sb('glucose', glucose), ref: '空腹参考 3.9~6.1', note: `空腹血糖异常建议以医用检测确认，单点读数受进食时间影响较大。${liveGlucose != null ? liveTag : dailyTag}` }));
   if (ua != null) blood.push(measured({ key: 'uricAcid', name: '尿酸', value: String(Math.round(ua)), unit: 'μmol/L', status: sb('ua', ua), ref: '常见参考 155~428', scale: { min: 100, max: 500, v: Math.round(ua) }, note: '尿酸偏高与饮食、代谢相关，持续升高需关注痛风风险，建议减少高嘌呤饮食。' }));
   if (tc != null) blood.push(measured({ key: 'tc', name: '总胆固醇', value: String(r2(tc)), unit: 'mmol/L', status: sb('cholesterol', tc), ref: '参考 <5.2', note: '总胆固醇偏高与心血管风险相关，建议结合饮食与体检关注。' }));
   if (blood.length) groups.push({ key: 'blood', title: '血液指标', icon: '🩸', note: '以下血液相关指标供你了解血脂、血糖等趋势；单点读数受进食与近期状态影响，异常请以医用检测为准。', metrics: blood });
@@ -817,9 +900,25 @@ const BP_DETECT_RETRY_WAIT_MS = 45_000;
 const HRV_DETECT_WAIT_MS = 10_000;
 /** 血氧实时流最短采集窗（流每秒回传，10s 足够攒出现场血氧读数）。 */
 const SPO2_MIN_WINDOW_MS = 10_000;
+/** ★ 2026-11-17：心电 / 血糖主动测量等待上限（Pro 专属）。心电全程约 30-60s，血糖约 30s，
+ *  超时没出值就过（不编数字）。两者均需电极/PPG 接触，与前面测量串行、不并行。 */
+/** ECG 现场测量实测需约 90s 进度才走到 100 + 结果帧计算，65s 会误掐断；给到 100s（出值即提前结束）。 */
+const ECG_DETECT_WAIT_MS = 100_000;
+/** ★ 2026-11-18（用户：快检也要有心电）：快检档心电等待上限——固件实测 ~90s 走到 100%，
+ *  100s 能覆盖真实完成（出值即提前结束，不会白等满）；压缩到 60s 会在 90s 固件计时下掐断出值。 */
+const ECG_FAST_WAIT_MS = 100_000;
+const GLUCOSE_DETECT_WAIT_MS = 40_000;
+/** ★ 2026-11-18：血液成分（尿酸/血脂）现场测量等待上限；SDK startDetectBloodComponent 约 30-60s。 */
+const BLOODCOMP_DETECT_WAIT_MS = 90_000;
 
 /** 体检会话阶段（等待浮层文案按这个实时切换，不再按总时长均分猜测）。 */
-export type QCSessionPhase = 'hr' | 'bp' | 'bp-retry' | 'hrv' | 'spo2' | 'assemble';
+export type QCSessionPhase = 'hr' | 'bp' | 'bp-retry' | 'hrv' | 'spo2' | 'ecg' | 'glucose' | 'bloodcomp' | 'assemble';
+
+/** ★ 2026-11-18（用户：3 分钟太长，压到 1 分钟）：体检档位。
+ *  · fast  快速体检（约 1 分钟）：心率 12s 短窗 → 血压一轮 ≤30s → 血氧 6s → 血糖 → 报告；
+ *    跳过 ECG（固件实测 ~90s）与血液成分（30-60s）——PPG 物理串行塞不进 1 分钟，不编数据。
+ *  · full  完整体检（约 3-5 分钟）：现流程全量（含心电/血液成分/血压重试）。 */
+export type QCSessionMode = 'fast' | 'full';
 
 /**
  * 等待指定指标在体检窗口内出现新落库样本（healthStore 时间轴）。
@@ -836,6 +935,47 @@ async function waitForLiveSamples(keys: string[], since: number, timeoutMs: numb
         (k) => healthStore.getTimeRange(k as any, since - 60_000, now, { maxPoints: 4 }).length > 0,
       );
       if (all) return true;
+    } catch {
+      // 查询失败继续等，不阻断体检
+    }
+  }
+  return false;
+}
+
+/** ★ 2026-11-18：等待任一项指标在体检窗口内出现新样本（血液成分可能只回部分项）。 */
+async function waitForAnyLiveSample(keys: string[], since: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise<void>((r) => setTimeout(r, 2_000));
+    try {
+      const now = Date.now();
+      const any = keys.some(
+        (k) => healthStore.getTimeRange(k as any, since - 60_000, now, { maxPoints: 4 }).length > 0,
+      );
+      if (any) return true;
+    } catch {
+      // 查询失败继续等
+    }
+  }
+  return false;
+}
+
+/**
+ * ★ 2026-11-17：等待本次体检窗口内出现新的 ECG 读数（state.ecg.ts >= since）。
+ *   ECG 不走 healthStore 时间轴（经 onEcg 直接落 state.ecg + ecgDaily），故单独轮询 state。
+ *   注：进度帧 onEcgProgress 只更新 ecgProgress，不写 ecg，因此这里拿到 ecg 即为最终结果。
+ */
+async function waitForEcgSince(since: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise<void>((r) => setTimeout(r, 2_000));
+    try {
+      const st = RingBle.getState();
+      // ★ 2026-11-17：原生明确回传失败（不支持/导联脱落/启动失败/超时）时立即结束等待，
+      //   不再干等满 65s —— 否则用户看到的就是「测半天没反应」。
+      if (st?.ecgError) return false;
+      const ecg = st?.ecg;
+      if (ecg && Number.isFinite(ecg.ts) && ecg.ts >= since - 60_000) return true;
     } catch {
       // 查询失败继续等，不阻断体检
     }
@@ -862,11 +1002,83 @@ async function waitForLiveSamples(keys: string[], since: number, timeoutMs: numb
  * ★ HRV 测量需固件 isSupportHrvAppDetect=true（与全天自动 HRV 是两个能力位）；
  *   原生侧不支持时只留日志、不产数，报告里该项自然不出现，不向用户解释固件限制。
  */
+/**
+ * ★ 2026-11-18(7)（用户：真没戴戒指要弹「未佩戴」框、不要出一份全是旧数据的假报告）：
+ *   判断本次体检窗口内是否真的读到了戒指数据。
+ *   · 现场心电读数（state.ecg.ts >= started）——需手指接触电极，最硬的证据；
+ *   · 窗口内新到的实时生理帧（spo2/hr/temp/bp… 走 handleRealtime，进度/错误帧被原生排除）——
+ *     戒指物理戴着就会持续回传，摘下则完全静默（真机 21:22-21:25 实锤）。
+ *   两者都没有 ⇒ 本次没真测到，即便当日历史值齐全也不组装报告，返回 not-worn 让 UI 明确提示佩戴。
+ *   注意：worn 是推断值、不在此判据中使用——它在血氧读数=0 / PPG 让出 / 测量恢复期会误判脱手
+ *   （正是本次要根治的「戴着却被弹未佩戴」根因）， physiological frames 才是可靠证据。
+ */
+/**
+ * ★ 2026-11-18(10)：秒级预检 —— 点体检入口时用「原生看门狗的佩戴结论」直接判摘戒，
+ *   不用再跑 90 秒心电才在组装阶段发现没数据。用户明确要求「摘了就几秒弹未佩戴框」。
+ * 为什么现在敢用 worn 做门禁（而 21:00 拍板「直接放行」时不敢）：
+ *   · 当时 worn 靠「血氧读数>0」推断，戴戒时 spo2 短时=0 就被误判脱手 → 戴戒被误拒；
+ *   · 现在原生看门狗已改为「任意血氧帧到达」判活（lastAnySpo2FrameAt），并排除了
+ *     PPG 让出窗口 / 主动测量 / 测量恢复期，且静默满 20s 才置 false —— 真机 UAT 0 误判。
+ * 双判据（都成立才秒级拦截，任一存疑则放行、交由组装阶段裁决）：
+ *   ① 原生 worn === false（看门狗已确认脱手）；
+ *   ② JS 贴肤生理帧已静默 ≥ 12s（v59 白名单帧，摘戒后必然停）。
+ * 任何一项拿不到（null / 0 / 查询异常）都返回 false，宁可慢也不误拒戴戒用户。
+ */
+export function isDefinitelyNotWorn(): boolean {
+  try {
+    const st = RingBle.getState();
+    if (st?.worn !== false) return false;
+    const last = RingBle.getLastRealtimeFrameAt();
+    const silentMs = last > 0 ? Date.now() - last : Number.POSITIVE_INFINITY;
+    const ok = silentMs >= 12_000;
+    console.log('[QuickCheck][not-worn] INSTANT CHECK worn=false frameSilentMs=' + (Number.isFinite(silentMs) ? Math.round(silentMs) : 'never') + ' → ' + (ok ? 'BLOCK' : 'PASS'));
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function hasLiveRingEvidenceSince(started: number): boolean {
+  try {
+    const ecg = RingBle.getState()?.ecg;
+    // ★ 2026-11-18(8)（真机 F4 摘戒实测失败）：摘戒/手指没碰电极时，固件仍会 emit 一个 ECG 结果帧，
+    //   但 aveHeart=0（数字、合法）——旧判据只看 ts 就当成"现场测到"，导致摘戒仍出假报告。
+    //   必须要求 aveHeart>0（真测到心率）才算数是硬证据。
+    if (ecg && Number.isFinite(ecg.ts) && ecg.ts >= started - 60_000 && ecg.aveHeart > 0) {
+      console.log('[QuickCheck][not-worn] LIVE EVIDENCE: ecg aveHeart=' + ecg.aveHeart + ' ts=' + ecg.ts);
+      return true;
+    }
+  } catch { /* 查询失败按无证据处理 */ }
+  try {
+    const lastFrame = RingBle.getLastRealtimeFrameAt();
+    if (Number.isFinite(lastFrame) && lastFrame >= started) {
+      console.log('[QuickCheck][not-worn] LIVE EVIDENCE: realtime frame at ' + lastFrame + ' (started ' + started + ')');
+      return true;
+    }
+  } catch { /* 查询失败按无证据处理 */ }
+  console.log('[QuickCheck][not-worn] NO LIVE EVIDENCE → not-worn (ecgHeart=' + (RingBle.getState()?.ecg?.aveHeart ?? 'null') + ' lastFrame=' + RingBle.getLastRealtimeFrameAt() + ' started=' + started + ')');
+  return false;
+}
+
 export async function runQuickCheckSession(
-  opts?: { onPhase?: (phase: QCSessionPhase) => void },
+  opts?: { onPhase?: (phase: QCSessionPhase) => void; mode?: QCSessionMode },
 ): Promise<{ ok: boolean; record?: QuickCheckRecord; reason?: string }> {
   const startedAt = Date.now();
   const onPhase = opts?.onPhase ?? (() => {});
+  const fast = opts?.mode === 'fast';
+  // ★ 2026-11-17：只有 Pro 且硬件支持时才跑心电/血糖阶段（基础版不出现这两段等待）。
+  let proEc = false;
+  let proGlucose = false;
+  let proBloodComp = false;
+  try {
+    const pid = await getDeviceProfileId();
+    const prof = getProfile(pid);
+    proEc = pid === 'PRO_UI' && hasCap(prof, 'ecg');
+    proGlucose = pid === 'PRO_UI' && hasCap(prof, 'glucose');
+    proBloodComp = pid === 'PRO_UI' && (hasCap(prof, 'bloodComponents') || hasCap(prof, 'cholesterol'));
+  } catch {
+    // 档案读取失败：保守跳过 Pro 阶段，不影响基础体检
+  }
   const samplesInWindow = (keys: string[]): boolean => {
     try {
       const now = Date.now();
@@ -877,56 +1089,116 @@ export async function runQuickCheckSession(
       return false;
     }
   };
-  // ① 心率独占窗口（20s）
-  onPhase('hr');
-  try {
-    RingBle.measure('hr');
-  } catch {
-    // 测量指令失败不阻断体检，仍按已同步的真实读数出报告
+  // ★ 2026-11-18(2)（用户：争取 1-2 分钟出报告；心电从按下那一刻就开始测；其余数据历史都有）：
+  //   快速档专属流程 ——
+  //   · 心电立即启动（固件 0→100% 实测 ~90s，是全程物理下限，放在最前不浪费一秒）；
+  //   · 心率/血压/血氧/HRV/血液成分不再现场测 —— assemble 的 `liveX ?? d(k) ?? todayVal(k)` 口径
+  //     会自动回退到当日已同步值，报告照常有数（历史确实都有，不编数字）；
+  //   · 血糖只在「今天还没有血糖值」时现场补测一次（实测 ~15s 出值），有值直接用，省 15-20s。
+  //   典型全程：90s 心电 + 15s 血糖 + 3s 汇总 ≈ 1 分 50 秒；当日已有血糖 ≈ 1 分 35 秒。
+  if (fast) {
+    if (proEc) {
+      onPhase('ecg');
+      try {
+        RingBle.measure('ecg');
+      } catch {
+        // 测量指令失败不阻断，报告按无心电组装
+      }
+      await waitForEcgSince(startedAt, ECG_FAST_WAIT_MS);
+      try { RingBle.stopEcg(); } catch { /* 出值已自停，重复停无害 */ }
+    }
+    if (proGlucose) {
+      const hasGlucoseToday = (() => {
+        try { return healthStore.getTodayValue('glucose', Date.now()) != null; } catch { return false; }
+      })();
+      if (!hasGlucoseToday) {
+        onPhase('glucose');
+        try {
+          RingBle.measure('glucose');
+        } catch {
+          // 同上，不阻断
+        }
+        await waitForLiveSamples(['glucose'], startedAt, GLUCOSE_DETECT_WAIT_MS);
+        try { RingBle.stopMeasure('glucose'); } catch { /* 静默 */ }
+      }
+    }
+    onPhase('assemble');
+    // ★ 2026-11-18(7)：本次一个都没测到（摘戒/接触不良）→ 不组装假报告，明确提示未佩戴。
+    if (!hasLiveRingEvidenceSince(startedAt)) return { ok: false, reason: 'not-worn' };
+    return assembleQuickCheckFromRealtime({ since: startedAt });
   }
-  await new Promise<void>((r) => setTimeout(r, HR_DETECT_WINDOW_MS + 1_000));
-  // ② 血压主动测量（PPG 空出后发起；读数回流即提前进入下一步）
-  onPhase('bp');
-  try {
-    RingBle.measure('bp');
-  } catch {
-    // 同上，不阻断
+  // ★ 2026-11-18(3)（用户「完整体检为什么还要 3-5 分钟」）：完整档同样重排——
+  //   ① 心电第 0 秒启动（90s 固件计时是全程物理下限，放最前不浪费一秒）；
+  //   ② 之后只现场补测「当天还没有」的项：血压（≤45s×最多两轮）→ 血液成分（30-60s）→ 血糖（~15s）；
+  //   ③ 心率/血氧/HRV 一律走当日已同步值（实时流/自动测量本来就回传，不再各花 10-20s 现场等）。
+  //   典型 ≈90-150s（约 2 分半）；当天所有项都缺时最长 ≈260s（约 4 分半）。
+  const hasToday = (k: string): boolean => {
+    try { return healthStore.getTodayValue(k as any, Date.now()) != null; } catch { return false; }
+  };
+  // ① 心电（Pro 专属）现场测量 —— 需手指接触戒指电极，读数经 onEcg 落 state.ecg。
+  //   只要窗口内出现新的 ECG 读数就提前结束；超时没出值就过，不阻断后面的补测与组装。
+  if (proEc) {
+    onPhase('ecg');
+    try {
+      RingBle.measure('ecg');
+    } catch {
+      // 测量指令失败不阻断
+    }
+    await waitForEcgSince(startedAt, ECG_FAST_WAIT_MS);
+    try { RingBle.stopEcg(); } catch { /* 出值已自停，重复停无害 */ }
   }
-  await waitForLiveSamples(['bpSys', 'bpDia'], startedAt, BP_DETECT_WAIT_MS);
-  if (!samplesInWindow(['bpSys', 'bpDia'])) {
-    // ★ 2026-11-14（用户拍板）：第一轮没出值自动再测一次 —— 固件判信号质量不够会中途
-    //   放弃不回值（progress 走到中段就停），重测是这类 PPG 血压测量的正常策略。
-    onPhase('bp-retry');
+  // ② 血压主动测量 —— 当日已有血压值就不再测（历史都用上了）；没有才现场测。
+  //   第一轮没出值自动再测一次（固件判信号质量不够会中途放弃，重测是 PPG 血压的正常策略）。
+  if (!hasToday('bpSys')) {
+    onPhase('bp');
     try {
       RingBle.measure('bp');
     } catch {
       // 不阻断
     }
-    await waitForLiveSamples(['bpSys', 'bpDia'], startedAt, BP_DETECT_RETRY_WAIT_MS);
+    await waitForLiveSamples(['bpSys', 'bpDia'], startedAt, BP_DETECT_WAIT_MS);
+    if (!samplesInWindow(['bpSys', 'bpDia'])) {
+      onPhase('bp-retry');
+      try {
+        RingBle.measure('bp');
+      } catch {
+        // 不阻断
+      }
+      await waitForLiveSamples(['bpSys', 'bpDia'], startedAt, BP_DETECT_RETRY_WAIT_MS);
+    }
+    // 无论成败都显式归还 PPG 通道（出值时原生已自停，重复 stop 无害；没出值时防止占道）
+    try {
+      RingBle.stopMeasure('bp');
+    } catch {
+      // iOS 桥暂无此方法，静默
+    }
   }
-  // 无论成败都显式归还 PPG 通道（出值时原生已自停，重复 stop 无害；没出值时防止占道）
-  try {
-    RingBle.stopMeasure('bp');
-  } catch {
-    // iOS 桥暂无此方法，静默
+  // ③ 血液成分（尿酸 + 血脂四项）—— 当日已有任一项就不再测；都没有才现场测（30-60s）。
+  //   任一项落在窗口内出现新样本即结束（不必全部，戒指可能只回部分项）；超时没出值就过，不编数字。
+  if (proBloodComp && !hasToday('ua') && !hasToday('cholesterol')) {
+    onPhase('bloodcomp');
+    try {
+      RingBle.measure('bloodcomp');
+    } catch {
+      // 指令失败不阻断
+    }
+    await waitForAnyLiveSample(['ua', 'cholesterol', 'triglyceride', 'hdl', 'ldl'], startedAt, BLOODCOMP_DETECT_WAIT_MS);
+    try { RingBle.stopMeasure('bloodcomp'); } catch { /* 静默 */ }
   }
-  // ③ HRV 主动测量
-  onPhase('hrv');
-  try {
-    RingBle.measure('hrv');
-  } catch {
-    // 同上，不阻断
+  // ④ 血糖（Pro 专属）—— 当日已有血糖值就直接用；没有才现场补测一次（实测 ~15s 出值）。
+  if (proGlucose && !hasToday('glucose')) {
+    onPhase('glucose');
+    try {
+      RingBle.measure('glucose');
+    } catch {
+      // 同上，不阻断
+    }
+    await waitForLiveSamples(['glucose'], startedAt, GLUCOSE_DETECT_WAIT_MS);
+    try { RingBle.stopMeasure('glucose'); } catch { /* 静默 */ }
   }
-  await waitForLiveSamples(['hrv'], startedAt, HRV_DETECT_WAIT_MS);
-  // ④ 血氧实时流（每秒回传，10s 足够攒出现场读数）
-  onPhase('spo2');
-  try {
-    RingBle.measure('spo2');
-  } catch {
-    // 同上，不阻断
-  }
-  await new Promise<void>((r) => setTimeout(r, SPO2_MIN_WINDOW_MS));
-  // ⑤ 等到现场数据都回流了，才组装报告
+  // ⑤ 等到数据都回流了，才组装报告（现场补测值优先，当日已同步值兜底）
   onPhase('assemble');
+  // ★ 2026-11-18(7)：本次一个都没测到（摘戒/接触不良）→ 不组装假报告，明确提示未佩戴。
+  if (!hasLiveRingEvidenceSince(startedAt)) return { ok: false, reason: 'not-worn' };
   return assembleQuickCheckFromRealtime({ since: startedAt });
 }

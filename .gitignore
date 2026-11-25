@@ -39,3 +39,8 @@ hermes-engine/
 # OTA 发布产物：APK 约 341 MB，绝不进 git；清单 update.json 保留（几百字节）
 dist-update/*.apk
 dist-update/app-debug.apk
+
+# 本地 APK 构建产物（约 2.9G）、真机验证证据、临时源码备份：不进源码仓库
+apk/
+_qa/
+*.bak-*

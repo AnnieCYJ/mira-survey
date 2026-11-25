@@ -129,7 +129,7 @@ export function computeBodyComposition(inputs: ExamInputs): BodyMetric[] {
   const bone = weight * 0.045;
 
   const defs: Omit<BodyMetric, 'status'>[] = [
-    { key: 'bmi', name: 'BMI', value: bmi, decimals: 1, unit: '', range: '18.5–24 正常' },
+    { key: 'bmi', name: 'BMI', value: bmi, decimals: 1, unit: '', range: '18.5–23.9 正常' },
     { key: 'bodyFatPercentage', name: '体脂率', value: bf, decimals: 1, unit: '%', range: male ? '10–20% 健康' : '20–30% 健康' },
     { key: 'fatMass', name: '脂肪量', value: fatMass, decimals: 1, unit: 'kg', range: '—' },
     { key: 'leanBodyMass', name: '瘦体重', value: lean, decimals: 1, unit: 'kg', range: '—' },

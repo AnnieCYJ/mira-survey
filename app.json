@@ -2,7 +2,7 @@
   "expo": {
     "name": "Luna Mira",
     "slug": "miraringfashion",
-    "version": "1.4.8",
+    "version": "1.5.3",
     "icon": "./assets/lunamira-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -36,7 +36,7 @@
     },
     "android": {
       "package": "com.miraringfashion.app",
-      "versionCode": 37,
+      "versionCode": 42,
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.BLUETOOTH",

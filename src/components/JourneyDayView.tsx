@@ -377,7 +377,10 @@ export default function JourneyDayView({ date, showDatePicker = true, onSummaryC
 
   // ★ 2026-11-15 19:50：交界处的负 margin 已撤销，改为每一行统一 ROW_GAP 留白。
 
-  const measured = rowLayouts.length === nodes.length;
+  // ★ 2026-11-16（QA P0）：空数据时 nodes.length===0 且 rowLayouts.length===0，
+  //   旧判定 measured=true 导致下方 rowLayouts[-1].y 访问 undefined 崩溃（「我的」页打不开）。
+  //   必须要求 nodes 非空才算测量到位。
+  const measured = nodes.length > 0 && rowLayouts.length === nodes.length;
   const yCenters = measured
     ? rowLayouts.map((l) => l.y + l.height / 2)
     : nodes.map((_, i) => i * ROW_H + ROW_H / 2);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions, StatusBar } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated, useWindowDimensions, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect, Text as SvgText, Line as SvgLine, Circle as SvgCircle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,6 +14,10 @@ import SleepStructureCard from '../components/SleepStructureCard';
 import CyclePhaseCard from '../components/CyclePhaseCard';
 import BasicMetricCard from '../components/BasicMetricCard';
 import ManualMetricCard from '../components/ManualMetricCard';
+import InfoDot from '../components/InfoDot';
+import SleepInfoSheet from '../components/SleepInfoSheet';
+import VerdictPill from '../components/VerdictPill';
+import { verdictFor, bpStageOf, infoKeyFor } from '../lib/metricVerdict';
 import ListCard, { type ListItem } from '../components/ListCard';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
@@ -61,9 +65,11 @@ import { formatRelativeTime } from '../utils/format';
 
 /** ★ 2026-11-10（用户）：设备采集的生理指标一律整数显示（心率变异性 59.5 → 60）。
  *  全 App 唯一允许 1 位小数的是「身体年龄」（HealthAgeCard / 身体年龄解读文案）。 */
-function formatValue(v: number | null): string {
+function formatValue(v: number | null, decimals = 0): string {
   if (v == null || !Number.isFinite(v)) return '—';
-  return String(Math.round(v));
+  // ★ 2026-11-24（用户）：血糖卡显示一位小数（5.46 → 5.5），避免取整成「5」被误看成没数据/不变。
+  //   仅血糖卡传 decimals=1；其余生理指标沿用默认取整口径。
+  return decimals > 0 ? v.toFixed(decimals) : String(Math.round(v));
 }
 
 // 以 ima 归档（04-屏幕Screens）的权威洞察页设计为底：
@@ -756,6 +762,7 @@ export default function InsightScreen() {
           metric={m}
           live={real != null}
           value={real != null ? formatValue(real) : m.value}
+          numericValue={real}
           measureTime={measureTime}
           onMeasure={() => RingBle.measure(rk)}
           onPress={() => openDetail(m.key, m.name, m.unit, m.yMin, m.yMax)}
@@ -772,6 +779,7 @@ export default function InsightScreen() {
         live={isRealtime ? (!dataStale && ring.availability[rk] === 'live') : real != null}
         syncing={isRealtime ? ring.availability[rk] === 'syncing' : false}
         value={formatValue(real)}
+        numericValue={real}
         data={hist}
         onMeasure={() => RingBle.measure(rk)}
         hideMeasure={m.hideMeasure ?? true}
@@ -821,21 +829,8 @@ export default function InsightScreen() {
           analysisText={bodyAgeInsight.analysis}
           suggestions={bodyAgeInsight.suggestions}
         />
-        {/* ★ 2026-11-15（上线测试 QC-01）：一键体检原本挂在「基础指标」顶层 tab 下，
-            默认停在「身体节律」时组件根本不挂载，竖向滚 6 屏也找不到。
-            这里给一个常驻可见的快捷入口，不改变默认视图。 */}
-        {topTab === 'rhythm' && (
-          <TouchableOpacity
-            onPress={() => { setTopTab('longevity'); setSubTab('quickcheck'); }}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="一键体检"
-            style={styles.qcQuickEntry}
-          >
-            <Text style={styles.qcQuickTitle}>一键体检</Text>
-            <Text style={styles.qcQuickSub}>快速看看今天的身体状态 ›</Text>
-          </TouchableOpacity>
-        )}
+        {/* ★ 2026-11-16（用户）：移除「身体节律 / 基础指标」上方的常驻「一键体检」快捷卡片。
+            一键体检功能仍保留在「基础指标」tab 的 quickcheck 子 tab 内，可从顶部分组进入。 */}
         <Segmented
           options={TOP_TABS.map(t => t.label)}
           activeIndex={TOP_TABS.findIndex(t => t.key === topTab)}
@@ -939,7 +934,13 @@ export default function InsightScreen() {
             {effSub === 'ecg' ? (
               <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('EcgDetail')}>
                 <Card style={{ padding: theme.space.cardPadCompact }}>
-                  <EcgCard ring={ring} onPress={() => {}} compactMode />
+                  {/* ★ 2026-11-17（用户）：测量成功出值后直接跳报告页，不再停留在洞察页 */}
+                  <EcgCard
+                    ring={ring}
+                    onPress={() => navigation.navigate('EcgDetail')}
+                    compactMode
+                    onMeasureSuccess={() => navigation.navigate('EcgDetail')}
+                  />
                 </Card>
               </TouchableOpacity>
             ) : effSub === 'bp' ? (
@@ -954,33 +955,24 @@ export default function InsightScreen() {
                   daily.bloodSugar 缺失时也能出值；无采样 → 空骨架 + 「—」，绝不画假曲线（空态铁律）。
                   替换原「静态数字卡 + 血液成分面板」。 */
               <TouchableOpacity activeOpacity={0.7} onPress={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)}>
-                <SugarTrendCard ring={ring} />
+                {/* ★ 2026-11-18（用户）：测完自动跳血糖详情页（与 ECG 出报告跳报告页同交互） */}
+                <SugarTrendCard ring={ring} onMeasureCompleted={() => openDetail('bloodSugar', '血糖', 'mmol/L', 3, 12)} />
               </TouchableOpacity>
             ) : effSub === 'bodycomp' ? (
               // v18：一键体检 = 本地估算身体成分并持久化，独立成「身体成分」子 tab
               <ExamTab onProfileSaved={age => { profileRevision.current += 1; setActualAge(age); }} />
             ) : effSub === 'bloodcomp' ? (
               // ★ 2026-10-16（用户）：血液成分 = 尿酸 + 血脂四项，紧邻「身体成分」的独立子 tab
-              <BloodPanelTab onOpenDetail={openDetail} />
+              <BloodPanelTab onOpenDetail={openDetail} bcProgress={ring.bloodcompProgress} />
             ) : effSub === 'quickcheck' ? (
               // ★ 2026-10-26（用户）：一键体检 = HealthGlance 聚合快检（概览 → 记录 → 报告详情）
               <QuickCheckTab />
             ) : (
-              // basics
-              <>
-                {basicsGroups.map((g, gi) => (
-                  <React.Fragment key={g.section ?? `basics-group-${gi}`}>
-                    {g.section ? <Text style={styles.sectionLabel}>{g.section}</Text> : null}
-                    <View style={styles.masonry}>
-                      {g.columns.map((col, ci) => (
-                        <View key={ci} style={styles.masonryCol}>
-                          {col.map((m) => renderBasicsCard(m))}
-                        </View>
-                      ))}
-                    </View>
-                  </React.Fragment>
-                ))}
-              </>
+              // basics — ★ 2026-11-17（用户）：Pro 档基础指标从双列瀑布流改为单列卡片罗列，
+              //   与精简版 Luna Mira 一致（一个卡片一个卡片往下平铺，内容不再挤两列放不下）。
+              <View style={styles.basicsList}>
+                {basicsSignals.map((m) => renderBasicsCard(m))}
+              </View>
             )}
             {/* ★ 2026-10-07（用户：长期健康里面，AI 综合分析先隐藏）：由 SHOW_LONGEVITY_AI 控制 */}
             {SHOW_LONGEVITY_AI ? <InsightBanner rows={insightRows} pending={aiOverview.loading} /> : null}
@@ -1013,8 +1005,10 @@ const BLOOD_PANEL: {
 }[] = [
   {
     key: 'ua', name: '尿酸', unit: 'μmol/L', yMin: 50, yMax: 600, decimals: 0,
-    status: (v) => v < 90 ? { tone: 'neutral', label: '偏低' } : v <= 360 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
-    rangeText: '偏低 0–90 / 正常 90–360 / 偏高 360–1000 µmol/L',
+    // ★ 2026-11-25（用户：临床标准优先）：与尿酸详情页 / 全 App 统一 155–428，
+    //   不再用旧的 90–360（同一份数据两处判定打架）。
+    status: (v) => v < 155 ? { tone: 'neutral', label: '偏低' } : v <= 428 ? { tone: 'good', label: '正常' } : { tone: 'warn', label: '偏高' },
+    rangeText: '偏低 <155 / 正常 155–428 / 偏高 >428 µmol/L',
   },
   {
     key: 'cholesterol', name: '总胆固醇', unit: 'mmol/L', yMin: 0, yMax: 10, decimals: 2,
@@ -1038,16 +1032,33 @@ const BLOOD_PANEL: {
   },
 ];
 
-const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOpenDetail: (key: string, name: string, unit: string, yMin: number, yMax: number) => void }) {
+const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail, bcProgress }: {
+  onOpenDetail: (key: string, name: string, unit: string, yMin: number, yMax: number) => void;
+  /** ★ 2026-11-18：血液成分检测进度（RingState.bloodcompProgress，原生 onDetecting 帧驱动） */
+  bcProgress: number | null;
+}) {
   const hsVer = useHealthStoreVersion();
   const { model: bpModel } = useDeviceModel();
+  const [infoItem, setInfoItem] = useState<(typeof BLOOD_PANEL)[number] | null>(null);
+  const infoPressed = useRef(false);
   const dk = dayKey(Date.now());
   const getLatest = useCallback((k: string): number | null => {
     try {
+      // ★ 2026-11-21（用户：血液成分一直全「—」）：血液成分来自健康一览**历史日回填**，
+      //   走 upsertBackfillDay 只写 healthStore 日均 store.daily[dk]，日内 intraday 恒空。
+      //   旧实现只读 getIntraday → 明明 extValues 里有甘油三酯/HDL/LDL 真值也读不到。
+      //   改为「日内逐点优先，回退当日日均回填值」，两条存储路径都覆盖。
       const pts = healthStore.getIntraday(k as any, dk);
-      return pts.length ? pts[pts.length - 1].v : null;
+      if (pts.length) return pts[pts.length - 1].v;
+      const day = healthStore.getDay(k as any, dk);
+      const mean = day?.mean;
+      return typeof mean === 'number' && Number.isFinite(mean) ? mean : null;
     } catch { return null; }
   }, [dk, hsVer]);
+  // ★ 2026-11-24（用户拍板「血液成分要自动测量，不要手动测」）：
+  //   移除手动测量按钮；血液成分改由原生 chronicVitals 调度自动测量（佩戴+通道空闲时每 2h 一轮，
+  //   连接后首轮即测），进度帧 bloodcompProgress 由原生 onDetecting 驱动，结果落 healthStore。
+  //   UI 只读真实回流值，没有就保持「—」，不编造；测量中显示进度提示。
 
   // ★ 2026-10-16（续）：仿「身体成分」小卡片样式（2 列网格 + 圆角小卡），而非整行大卡。
   const chipBase: any = {
@@ -1070,31 +1081,34 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
   };
   const renderChip = (it: (typeof BLOOD_PANEL)[number], wide?: boolean) => {
     const v = getLatest(it.key);
-    const st = v == null ? null : it.status(v);
-    const toneColor = st == null ? theme.colors.ui.status.neutral
-      : st.tone === 'good' ? theme.colors.ui.status.good
-      : st.tone === 'warn' ? theme.colors.ui.status.warn : theme.colors.ui.status.neutral;
+    // ★ 2026-11-25：标记统一走临床判定（尿酸 155–428、血脂四项同详情页）
+    const vd = v == null ? null : verdictFor(it.key, v);
     return (
       <TouchableOpacity
         key={it.key}
         activeOpacity={0.7}
-        onPress={() => onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax)}
+        onPress={() => { if (!infoPressed.current) onOpenDetail(it.key, it.name, it.unit, it.yMin, it.yMax); }}
         style={[
           chipBase,
           { flexBasis: wide ? '100%' : '46%', flexGrow: 1, marginBottom: theme.space.sm },
         ]}
       >
-        <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, marginBottom: theme.sp(1) }}>{it.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: theme.sp(1) }}>
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{it.name}</Text>
+          <InfoDot onPress={() => {
+            infoPressed.current = true;
+            setInfoItem(it);
+            setTimeout(() => { infoPressed.current = false; }, 80);
+          }} />
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.semibold, color: theme.colors.textTitle }}>
             {v == null ? '—' : v.toFixed(it.decimals)}
           </Text>
           <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{it.unit}</Text>
         </View>
-        {st ? (
-          <View style={{ alignSelf: 'flex-start', marginTop: theme.sp(1), borderRadius: theme.radius.pill, paddingHorizontal: theme.sp(2.5), paddingVertical: 2, backgroundColor: toneColor + '22' }}>
-            <Text style={{ fontSize: theme.fontSize.micro, fontWeight: theme.weight.semibold, color: toneColor }}>{st.label}</Text>
-          </View>
+        {vd ? (
+          <View style={{ alignSelf: 'flex-start', marginTop: theme.sp(1) }}><VerdictPill verdict={vd} small /></View>
         ) : (
           <Text style={{ marginTop: theme.sp(1), fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{it.rangeText}</Text>
         )}
@@ -1115,6 +1129,23 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
 
   return (
     <View>
+      {/* ★ 2026-11-24：血液成分已改为自动测量，移除手动按钮。
+          佩戴戒指且通道空闲时 App 自动发起（连接后首轮即测、之后约每 2h），进度由原生帧驱动。
+          只显示真实状态提示；不编造数据，没回流就保持「—」。 */}
+      {bcProgress != null ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(1.5),
+          backgroundColor: mm.colors.limeSoft, borderRadius: theme.radius.md,
+          paddingVertical: theme.space.sm, paddingHorizontal: theme.space.md, marginBottom: theme.sp(1) }}>
+          <ActivityIndicator size="small" color={mm.colors.limeDeep} />
+          <Text style={{ fontSize: theme.fontSize.sm, fontWeight: '600', color: mm.colors.limeDeep }}>
+            自动测量中 {Math.min(100, Math.round(bcProgress))}% · 请保持佩戴
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, textAlign: 'center', marginBottom: theme.sp(1) }}>
+          佩戴戒指时自动测量尿酸/血脂，约每 2 小时更新一次
+        </Text>
+      )}
       {uricItems.length > 0 ? (
         <>
           <Text style={subHead}>尿酸</Text>
@@ -1136,6 +1167,14 @@ const BloodPanelTab = React.memo(function BloodPanelTab({ onOpenDetail }: { onOp
         </View>
       </View>
       <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textSub, marginTop: theme.sp(2), lineHeight: theme.sp(5) }}>参考区间仅供参考，不替代医学检测。数据来自戒指健康一览自动评估，需连接戒指完成一次测量后更新。</Text>
+      <SleepInfoSheet
+        visible={infoItem != null}
+        onClose={() => setInfoItem(null)}
+        metric={infoItem ? infoKeyFor(infoItem.key) : null}
+        valueText={infoItem && getLatest(infoItem.key) != null
+          ? `${infoItem.name} ${getLatest(infoItem.key)!.toFixed(infoItem.decimals)} ${infoItem.unit}`
+          : null}
+      />
     </View>
   );
 });
@@ -1184,7 +1223,7 @@ function smoothSpline(pts: { x: number; y: number }[]): string {
 /** ★ 2026-10-10（用户）：血糖 tab 卡 = 最新值 + 「全天血糖趋势」。
  *  数据 = healthStore intraday 'glucose'（RingBle 把血糖增量写入 15 分钟槽，与指标详情页同源）；
  *  无采样 → 空骨架（虚线基线 + 「—」），绝不画假曲线（空态铁律）。视觉走 chart token（S 档 96）。 */
-const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any }) {
+const SugarTrendCard = React.memo(function SugarTrendCard({ ring, onMeasureCompleted }: { ring: any; onMeasureCompleted?: () => void }) {
   const hsVer = useHealthStoreVersion();
   const pts = useMemo(() => {
     try {
@@ -1195,8 +1234,39 @@ const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any 
   }, [ring, hsVer]);
   const last = pts.length > 0 ? pts[pts.length - 1] : null;
   const latest = last != null ? last.v : ((ring?.daily?.bloodSugar as number | undefined) ?? null);
+  // ★ 2026-11-18：现场测量进度/错误（RingState.glucoseMeasureProgress 由原生 progress 帧驱动）
+  const gProg = Math.max(0, Math.min(100, Math.round(ring?.glucoseMeasureProgress ?? -1)));
+  const gMeasuring = ring?.glucoseMeasureProgress != null;
+  const gErr = ring?.measureError?.metric === 'glucose' ? ring.measureError.msg : null;
+  // ★ 2026-11-18 二轮（用户：跟 ECG 一样——按钮内进度条 + 百分比，测完自动跳详情页）：
+  //   ① 时间渐近兜底：真机实测 ~15s 出值；原生 progress 帧万一停发，UI 仍持续推进（与原生取大、封顶 99）；
+  //   ② 测量结束且无错误（=出值落库）→ onMeasureCompleted 跳血糖详情页（与 ECG 出报告跳报告页同交互）。
+  const [, forceTick] = useState(0);
+  const prevMeasuringRef = useRef(false);
+  const measureStartRef = useRef(0);
+  const completedCbRef = useRef<(() => void) | undefined>(onMeasureCompleted);
+  completedCbRef.current = onMeasureCompleted;
+  useEffect(() => {
+    const prev = prevMeasuringRef.current;
+    prevMeasuringRef.current = gMeasuring;
+    if (gMeasuring && !prev) measureStartRef.current = Date.now();
+    if (!gMeasuring && prev && measureStartRef.current > 0 && !gErr) {
+      measureStartRef.current = 0;
+      completedCbRef.current?.();
+    }
+  }, [gMeasuring, gErr]);
+  // 测量中 500ms 心跳：驱动时间渐近进度刷新
+  useEffect(() => {
+    if (!gMeasuring) return;
+    const iv = setInterval(() => forceTick((t) => (t + 1) % 1000), 500);
+    return () => clearInterval(iv);
+  }, [gMeasuring]);
+  const elapsedSec = gMeasuring ? (Date.now() - measureStartRef.current) / 1000 : 0;
+  const timeBased = Math.min(95, (elapsedSec / 18) * 100);
+  const gDisplay = gMeasuring ? Math.min(99, Math.max(gProg, timeBased)) : 0;
 
   const [w, setW] = useState(0);
+  const [infoVisible, setInfoVisible] = useState(false);
   const H = chart.h.s;                      // ★ 规范：全宽卡内嵌趋势 = S 档 96
   const PAD_L = 30, PAD_R = 10, PAD_T = 8, PAD_B = 16;
   const plotW = Math.max(1, w - PAD_L - PAD_R);
@@ -1220,6 +1290,7 @@ const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any 
             <Icon name="drop" size={14} color={mm.colors.honeyDeep} />
           </View>
           <Text style={{ fontSize: theme.fontSize.card, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血糖</Text>
+          <View style={{ marginLeft: theme.sp(1) }}><InfoDot onPress={() => setInfoVisible(true)} /></View>
           <View style={{ flex: 1 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
@@ -1229,10 +1300,15 @@ const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any 
             </View>
           </View>
 
-        {/* 大数字：intraday 最新 → daily 兜底 → 「—」；单位保留 */}
-        <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink, marginTop: theme.sp(1) }}>
-          {formatValue(latest)}
-        </Text>
+        {/* 大数字：intraday 最新 → daily 兜底 → 「—」；单位保留。血糖显示一位小数（用户 2026-11-24） */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: theme.sp(1) }}>
+          <Text style={{ fontSize: theme.fontSize.h1, fontWeight: theme.weight.medium, color: mm.colors.ink }}>
+            {formatValue(latest, 1)}
+          </Text>
+          {verdictFor('glucose', latest) ? (
+            <View style={{ marginLeft: theme.sp(2) }}><VerdictPill verdict={verdictFor('glucose', latest)!} /></View>
+          ) : null}
+        </View>
         <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.honeyDeep, marginTop: theme.sp(0.5) }}>mmol/L · 今日</Text>
 
         {/* 全天趋势（S 档）：有数据画平滑曲线 + 末点；无数据画虚线基线骨架 */}
@@ -1279,7 +1355,58 @@ const SugarTrendCard = React.memo(function SugarTrendCard({ ring }: { ring: any 
         <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub, textAlign: 'center', marginTop: theme.sp(1) }}>
           纵轴 = mmol/L · 横轴 = 一天 24h{hasData ? '' : ' · 暂无血糖采样'}
         </Text>
+        {/* ★ 2026-11-18：血糖现场测量入口（SDK startBloodGlucoseDetect → onRealtime 落库），不编造数据。
+            ★ 2026-11-18 修「点了没反应」：真机实锤检测正常跑（~130s 出值），但此前
+            ① progress 帧不推 UI ② 无防连点（连点=清掉检测重来，永远到不了 100）
+            ③ JS 的 60s 自动 stop 比检测耗时还短（自杀式）。
+            现在：进度驱动按钮文案「测量中 x%」，测量中禁点，错误（含设备中断/佩戴问题）明示。 */}
+        {/* ★ 2026-11-18 二轮（用户）：测量按钮与 ECG 同款——空闲渐变按钮 / 测量中内嵌进度条+百分比 /
+            错误红字。出值后自动跳血糖详情页（onMeasureCompleted）。
+            ★ 防静默失败：未连接直接 Alert 提示（此前「点了没反应」的另一来源）。 */}
+        {gMeasuring ? (
+          <View style={{ borderRadius: theme.radius.md, backgroundColor: mm.colors.honeyDeep,
+            paddingVertical: theme.space.sm, paddingHorizontal: theme.space.md, marginTop: theme.sp(2) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.sp(1.5) }}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={{ fontSize: theme.fontSize.sm, fontWeight: '600', color: '#fff' }}>
+                测量中 {Math.round(gDisplay)}% · 请保持佩戴静止
+              </Text>
+            </View>
+            <View style={{ marginTop: theme.sp(1.5), height: 4, borderRadius: theme.sp(0.5),
+              backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${Math.max(4, Math.min(99, gDisplay))}%`,
+                borderRadius: theme.sp(0.5), backgroundColor: '#FFFFFF' }} />
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              if (ring?.status !== 'connected' || !ring?.deviceId) { Alert.alert('提示', '请先连接戒指再测量血糖'); return; }
+              try { RingBle.measure('glucose'); } catch { /* 静默 */ }
+            }}
+            style={{ borderRadius: theme.radius.md, overflow: 'hidden', marginTop: theme.sp(2) }}
+          >
+            <LinearGradient colors={[mm.colors.btnGradFrom, mm.colors.btnGradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={{ paddingVertical: theme.space.sm, alignItems: 'center' }}>
+              <Text style={{ fontSize: theme.fontSize.sm, fontWeight: '600', color: mm.colors.btnTextOnGrad }}>
+                {latest != null ? '重新测量' : '测量血糖'}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+        {gErr ? (
+          <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.ui.status.warn, textAlign: 'center', marginTop: theme.sp(1) }}>
+            {gErr}
+          </Text>
+        ) : null}
       </View>
+      <SleepInfoSheet
+        visible={infoVisible}
+        onClose={() => setInfoVisible(false)}
+        metric="glucose"
+        valueText={latest != null ? `血糖 ${formatValue(latest, 1)} mmol/L` : null}
+      />
     </Card>
   );
 });
@@ -1304,8 +1431,10 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
   const lastDia = diaPts.length > 0 ? diaPts[diaPts.length - 1] : null;
   const lastT = Math.max(lastSys?.t ?? 0, lastDia?.t ?? 0);
   const hasData = sysPts.length >= 2 || diaPts.length >= 2;
+  const bpVd = lastSys?.v != null && lastDia?.v != null ? bpStageOf(lastSys.v, lastDia.v) : null;
 
   const [w, setW] = useState(0);
+  const [infoVisible, setInfoVisible] = useState(false);
   const H = chart.h.s;                      // ★ 规范：全宽卡内嵌趋势 = S 档 96（与血糖卡等高）
   const PAD_L = 30, PAD_R = 10, PAD_T = 8, PAD_B = 16;
   const plotW = Math.max(1, w - PAD_L - PAD_R);
@@ -1331,6 +1460,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
               标题由 card(18) 改回 sm(14)，与 BasicMetricCard 的 HRV/血氧抬头完全对齐；
               右箭头 16→14 同步对齐 compact 卡口径。 */}
           <Text numberOfLines={1} style={{ fontSize: theme.fontSize.sm, fontWeight: theme.weight.medium, color: mm.colors.ink }}>血压</Text>
+          <View style={{ marginLeft: theme.sp(1) }}><InfoDot onPress={() => setInfoVisible(true)} /></View>
           <View style={{ flex: 1 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.sp(1) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>
@@ -1349,6 +1479,7 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
             {lastSys != null && lastDia != null ? `${Math.round(lastSys.v)}/${Math.round(lastDia.v)}` : '—'}
           </Text>
           <Text style={{ fontSize: theme.fontSize.sm, color: mm.colors.inkSoft, marginLeft: theme.sp(1) }}>mmHg</Text>
+          {bpVd ? <View style={{ marginLeft: theme.sp(1) }}><VerdictPill verdict={bpVd} small /></View> : null}
           <Text style={{ fontSize: theme.fontSize.micro, color: mm.colors.inkFaint, marginLeft: 'auto', paddingLeft: theme.sp(1) }}>收缩压 / 舒张压</Text>
         </View>
 
@@ -1458,6 +1589,14 @@ const BpTrendCard = React.memo(function BpTrendCard({ ring }: { ring: any }) {
           );
         })()}
       </View>
+      <SleepInfoSheet
+        visible={infoVisible}
+        onClose={() => setInfoVisible(false)}
+        metric="bp"
+        valueText={lastSys?.v != null && lastDia?.v != null
+          ? `血压 ${Math.round(lastSys.v)}/${Math.round(lastDia.v)} mmHg`
+          : null}
+      />
     </Card>
   );
 });
@@ -1625,14 +1764,6 @@ function UnderlineTabs({
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.md },
-  /** ★ 2026-11-15：一键体检快捷入口（默认「身体节律」tab 也可见） */
-  qcQuickEntry: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: mm.colors.cardBg, borderWidth: 1, borderColor: mm.colors.cardBorder,
-    borderRadius: mm.radius.card, paddingVertical: theme.sp(3), paddingHorizontal: theme.sp(4),
-  },
-  qcQuickTitle: { fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as never, color: mm.colors.ink },
-  qcQuickSub: { fontSize: theme.fontSize.micro, color: mm.colors.inkFaint },
   title: {
     fontSize: theme.fontSize.h1,
     fontWeight: theme.weight.medium,

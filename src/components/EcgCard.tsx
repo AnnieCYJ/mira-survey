@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { theme } from '../theme/theme';
@@ -15,6 +15,8 @@ interface Props {
   ring: RingState;
   onPress: () => void;
   compactMode?: boolean;
+  /** ★ 2026-11-17（用户）：本次心电测量成功出值后回调（洞察页据此直接跳报告页，不回洞察页）。 */
+  onMeasureSuccess?: () => void;
 }
 
 /** ECG 波形路径：取一段能清楚展示几个心动周期的代表窗口（避免整条长轨迹压进 160 像素挤成一团），
@@ -44,7 +46,7 @@ function miniWaveform(values: number[]): string {
   return d;
 }
 
-export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
+export default function EcgCard({ ring, onPress, compactMode = false, onMeasureSuccess }: Props) {
   const prog = ring.ecgProgress;
   const latest = ring.ecg;
 
@@ -56,18 +58,57 @@ export default function EcgCard({ ring, onPress, compactMode = false }: Props) {
   const isMeasuring = prog != null && progress >= 0 && progress < 100;
   const isDone = prog != null && progress >= 100;
 
-  // ★ 平滑进度：HK18 固件 ECG 的 progress 回调长期停在低位（如 6%）才跳完成，
-  // 原生无补间，UI 看着像卡死。这里用计时器把显示进度平滑推到 99 封顶（不再写死 92，
-  // 避免「卡在92%」错觉），与「原生真实 progress」取较大值，complete 时由原生跳 100。
-  const [anim, setAnim] = useState(0);
+  // ★ 2026-11-17（用户）测量完成自动跳报告页：
+  //   用一个 ref 记住「本次测量开始前的最新报告时间戳」。当测量态结束（ecgProgress 由非 null → null）
+  //   且 ring.ecg 的 ts 比基线更新时，说明本次真的出了新报告 → 触发回调跳 EcgDetail。
+  //   失败中止（ecg 无更新）或历史旧值都不会误触发。
+  const measureBaselineTs = useRef<number | null>(null);
+  const wasActive = useRef(false);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isActive = isMeasuring || isDone;
   useEffect(() => {
-    if (!isMeasuring) { setAnim(0); return; }
-    const id = setInterval(() => {
-      setAnim((p) => (p >= 99 ? p : Math.min(99, p + 1.2)));
-    }, 250);
-    return () => clearInterval(id);
-  }, [isMeasuring]);
-  const displayProgress = isMeasuring ? Math.max(progress, anim) : progress;
+    if (isActive && !wasActive.current) {
+      // 测量刚开始：记下当前报告 ts 作为基线
+      measureBaselineTs.current = latest?.ts ?? 0;
+    }
+    if (!isActive && wasActive.current) {
+      // 测量态刚结束：判断是否有新报告落库
+      const base = measureBaselineTs.current ?? 0;
+      if (latest && latest.ts > base) {
+        // ★ 2026-11-17（用户）：结果落库那一刻进度条正好补满 100%，短暂停留让用户看到，再跳报告页。
+        jumpTimer.current = setTimeout(() => onMeasureSuccess?.(), 350);
+      }
+    }
+    wasActive.current = isActive;
+  }, [isActive, latest?.ts, onMeasureSuccess]);
+  // 组件卸载时清掉跳转定时器，避免页面已离开还触发导航
+  useEffect(() => () => { if (jumpTimer.current) clearTimeout(jumpTimer.current); }, []);
+
+  // ★ 2026-11-17 三次调整（用户）：进度条匀速慢爬、全程不"卡在某个数字干等"，
+  //   只在报告真正落库那一刻补到 100% 并跳报告页。
+  //   做法：以「测量开始时刻」为基准做时间驱动的渐近曲线 p = 100*(1-e^(-t/TAU))，
+  //   越接近 100 爬得越慢、但一直在动；与原生真实进度取较大值（并压在 99 以内），
+  //   这样既不会像之前 20 秒就冲到 99 干等，也不会无视戒指实际采样的推进。
+  //   TAU 越大越慢：TAU=26s 时约 15s→44%、30s→68%、45s→82%、60s→90%。
+  const TAU_MS = 26_000;
+  const [elapsed, setElapsed] = useState(0);
+  const measureStartAt = useRef(0);
+  useEffect(() => {
+    if (isActive) {
+      if (measureStartAt.current === 0) measureStartAt.current = Date.now();
+      const id = setInterval(() => setElapsed(Date.now() - measureStartAt.current), 200);
+      return () => clearInterval(id);
+    }
+    // 测量结束：归零，供下次测量用
+    measureStartAt.current = 0;
+    setElapsed(0);
+  }, [isActive]);
+  const timeBased = 100 * (1 - Math.exp(-elapsed / TAU_MS));
+  // 原生 progress=100 只代表波形采完、SDK 还在算结果，压到 99 不提前暴露；
+  // 与渐近曲线取大，让戒指真实推进也能带动进度；全程封顶 99，结果落库才补 100。
+  const displayProgress = isActive
+    ? Math.min(99, Math.max(timeBased, progress >= 100 ? 99 : progress))
+    : 100;
 
 // ★ 2026-10-16：设备能力门禁——ecgType=0 表示当前戒指固件不支持 ECG，提前告知而非盲目测量后卡死
 // ★ 2026-11-06 审查（docs/audit/03 🔴#2）：双保险判定 ——
@@ -101,18 +142,32 @@ const ecgUnsupported = !hasCap(model, 'ecg') || ecgType === 0;
   useEffect(() => {
     if (!isMeasuring) return;
     let lastP = -1;
+    let lastWaveLen = -1;
     let lastChangeAt = Date.now();
+    const startedAt = Date.now();
+    let reached100At = 0;
     const iv = setInterval(() => {
-      const p = RingBle.getState().ecgProgress?.progress ?? 0;
-      if (p !== lastP) {
+      const st = RingBle.getState();
+      const p = st.ecgProgress?.progress ?? 0;
+      const waveLen = st.ecgLiveWaveform?.length ?? 0;
+      // 结果已落库/报错就停，避免 abort 干扰
+      if (st.ecg || st.ecgError) return;
+      const advanced = p !== lastP || waveLen !== lastWaveLen;
+      if (advanced) {
         lastP = p;
+        lastWaveLen = waveLen;
         lastChangeAt = Date.now();
-        return;
       }
-      if (p > 0 && Date.now() - lastChangeAt > 12000) {
+      // ★ 2026-11-17 二次修复：100% 独立计时。原生 1.5s 兜底出值；
+      //   若原生整体失效，JS 12s 后强制中止，UI 不再永久停在"生成报告"。
+      if (p >= 100 && reached100At === 0) reached100At = Date.now();
+      const wait100Stuck = reached100At > 0 && Date.now() - reached100At > 12000;
+      const progressStalled = p < 100 && Date.now() - lastChangeAt > 15000;
+      const noDataAtAll = Date.now() - startedAt > 25000 && p < 100 && waveLen === 0;
+      if (wait100Stuck || progressStalled || noDataAtAll) {
         RingBle.abortEcg();
         if (typeof Alert !== 'undefined') {
-          Alert.alert('ECG 测量未完成', '末段长时间无进展，已自动结束。请确认手指持续接触戒指外侧电极后重试。');
+          Alert.alert('ECG 测量未完成', '未收到有效的测量结果，已自动结束。请确认戒指戴紧、手指持续接触外侧金属电极后重试；若多次如此，可能是当前戒指的 ECG 固件未开放。');
         }
       }
     }, 1000);
@@ -187,7 +242,8 @@ const ecgUnsupported = !hasCap(model, 'ecg') || ecgType === 0;
             //   绝不把 Math.round(undefined)=NaN 递给用户。
             ['心率', fmtEcgNum(latest.aveHeart), 'bpm'],
             ['HRV', fmtEcgNum(latest.aveHrv), 'ms'],
-            ['呼吸', fmtEcgNum(latest.aveResRate), '次/分'],
+            // ★ 2026-11-24：固件呼吸率恒 0，估算值须标来源，避免与设备直读混淆
+            ['呼吸', fmtEcgNum(latest.aveResRate), latest.rrSource === 'estimated' ? '次/分·波形估算' : '次/分'],
           ].map(([k, v, u]) => (
             <View key={k} style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.sm, paddingVertical: theme.sp(1.5) }}>
               <Text style={{ fontSize: theme.fontSize.micro, color: theme.colors.textSub }}>{k}</Text>
@@ -223,11 +279,16 @@ const ecgUnsupported = !hasCap(model, 'ecg') || ecgType === 0;
           </View>
         </TouchableOpacity>
       ) : isDone ? (
-        // 状态 2：刚完成（100%）→ 短暂过渡态，等 ring.ecg 写入
-        // ★ mira-ocean（2026-10-17）：success 已改亮档文字色，按钮底改用 limeDeep（白字可读）
+        // 状态 2：波形采完、SDK 还在算结果 → ★ 2026-11-17：继续显示进度条（封顶 99%），
+        //   文案改「正在生成报告…」，让等待有进度感，不再是无进度干等；结果落库后自动跳报告页。
         <View style={[styles.btn, { backgroundColor: mm.colors.limeDeep }]}>
-          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.btnLabel}>处理结果中…</Text>
+          <View style={styles.btnContent}>
+            <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.btnLabel}>正在生成报告… {Math.round(displayProgress)}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${displayProgress}%` }]} />
+          </View>
         </View>
       ) : ecgUnsupported ? (
         // 状态 3b：设备不支持 ECG → 禁用按钮 + 提示（ecgType=0）

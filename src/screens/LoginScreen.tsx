@@ -6,6 +6,19 @@
  * 认证：本地 mock（userStore），后续替换为云端账号体系时调用方零改动。
  *
  * 本页由 App 入口的 AuthGate 在「未登录」时渲染，通过 onAuthenticated 回调切走。
+ *
+ * ★ 2026-11-16（1.4.9，用户「注册报已注册 → 点登录 tab 只剩蓝色空页」）：
+ *   RN 0.74 Fabric 的 Differ 在同一批次里处理「多个子节点 unmount + Animated 改 transform」
+ *   时会生成乱序 mount 指令。OPPO PMA110 真机 logcat 实锤：
+ *     SurfaceMountingManager: removeViewAt tried to remove a React View that was actually
+ *     reused. This indicates a bug in the Differ (specifically instruction ordering). [802]
+ *   后果是原生视图树被静默撕成空容器（不崩溃、无 redbox、JS 错误边界抓不到），
+ *   只剩最外层 LinearGradient 蓝底；uiautomator 抓到 13 个节点、0 个文本节点。
+ *   典型触发路径：注册失败 → mount error Text → 切登录 tab → 同批 unmount
+ *   「验证码 Field + error Text + 演示码提示」3 个节点 + 改动画 transform → Differ 乱序。
+ *   2026-11-12 只修了密码框的 relative/absolute 嵌套，没修条件渲染，故切 tab 又复现。
+ *   → 本页所有字段/提示一律常驻渲染，显隐只用 display:'none'（纯 style 更新，不产生
+ *     removeViewAt），从源头规避 Fabric 视图复用 bug。
  */
 import React, { useRef, useState } from 'react';
 import {
@@ -39,13 +52,12 @@ export default function LoginScreen({ onAuthenticated }: Props) {
   const [mode, setMode] = useState<Mode>('login');
   const [phone, setPhone] = useState('');
   const [accountName, setAccountName] = useState('');
-  const [code, setCode] = useState('');
+  // ★ 2026-11-16：演示验证码自动填好，用户不用点「获取验证码」也不用手动输入；
+  //   同时删掉倒计时那套定时器（少一个状态源，也少一批 Fabric 样式更新）。
+  const [code, setCode] = useState<string>(DEMO_CODE);
   const [pwd, setPwd] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const slide = useRef(new Animated.Value(0)).current;
   const [segW, setSegW] = useState(0);
 
@@ -53,30 +65,14 @@ export default function LoginScreen({ onAuthenticated }: Props) {
     if (m === mode) return;
     setMode(m);
     setError('');
+    // 回到注册页时把演示码重新填好，避免用户改过之后留下非法值。
+    if (m === 'register') setCode(DEMO_CODE);
     Animated.spring(slide, { toValue: m === 'register' ? 1 : 0, useNativeDriver: true }).start();
   };
 
-  const startCountdown = () => {
-    setCountdown(60);
-    timer.current = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          if (timer.current) clearInterval(timer.current);
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-  };
-
-  const sendCode = () => {
-    if (!PHONE_RE.test(phone)) {
-      setError('请输入正确的 11 位手机号');
-      return;
-    }
-    setCodeSent(true);
-    startCountdown();
-    setError('');
+  /** 把分段滑块归到指定模式（供「已注册自动切登录」复用）。 */
+  const slideTo = (m: Mode) => {
+    Animated.spring(slide, { toValue: m === 'register' ? 1 : 0, useNativeDriver: true }).start();
   };
 
   const submit = async () => {
@@ -85,13 +81,16 @@ export default function LoginScreen({ onAuthenticated }: Props) {
       setError('请输入正确的 11 位手机号');
       return;
     }
-    if (!accountName.trim()) {
-      setError('请填写账户名');
-      return;
-    }
     if (mode === 'register') {
+      // ★ 2026-11-16（完整矩阵发现）：账户名是注册字段，login() 根本不校验它。
+      //   原来无条件校验，导致「已注册 → 切登录 → 填手机号+密码」被「请填写账户名」
+      //   拦住，正是用户反馈的「注册了却登录不进去」的第二层原因。
+      if (!accountName.trim()) {
+        setError('请填写账户名');
+        return;
+      }
       if (!/^\d{6}$/.test(code)) {
-        setError('请输入 6 位验证码（演示验证码见下方）');
+        setError('请输入 6 位验证码');
         return;
       }
       if (pwd.length < 6) {
@@ -102,6 +101,12 @@ export default function LoginScreen({ onAuthenticated }: Props) {
       const err = await userStore.register(phone, accountName.trim(), pwd);
       setBusy(false);
       if (err) {
+        // ★ 账号表是本地 mock：这个号码以前在本机注册过。自动切到登录页并保留
+        //   手机号/账户名，用户只要输密码即可；也避免用户被迫手动点 tab（蓝屏触发路径）。
+        if (err.includes('已注册')) {
+          setMode('login');
+          slideTo('login');
+        }
         setError(err);
         return;
       }
@@ -132,9 +137,14 @@ export default function LoginScreen({ onAuthenticated }: Props) {
         pointerEvents="none"
       />
       <StatusBar barStyle="light-content" />
+      {/* ★ 2026-11-16（1.5.0）：Android 不再让 KeyboardAvoidingView 改高度。
+          2026-11-12 已在 OnboardingScreen 验证：ColorOS/EMUI + RN 下 `behavior='height'`
+          会在键盘弹起时改根布局高度，触发原生视图重排/卸载，表现为整页只剩蓝底。
+          这里保持组件结构不变，Android 只依赖 manifest 的 windowSoftInputMode=adjustResize，
+          iOS 仍保留 padding。 */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
           contentContainerStyle={[
@@ -185,36 +195,29 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               value={phone}
               onChange={setPhone}
             />
+            {/* 账户名只在注册态出现；仍常驻渲染，显隐只用 display:none，
+                避免切 tab 时 unmount TextInput 触发 Fabric removeViewAt。 */}
             <Field
               icon="user"
               placeholder="账户名"
               autoCapitalize="none"
               value={accountName}
               onChange={setAccountName}
+              hidden={mode !== 'register'}
             />
 
-            {mode === 'register' && (
-              <Field
-                icon="shield"
-                placeholder="短信验证码"
-                keyboardType="number-pad"
-                maxLength={6}
-                value={code}
-                onChange={setCode}
-                trailing={
-                  <TouchableOpacity
-                    style={[s.codeBtn, countdown > 0 && s.codeBtnOff]}
-                    activeOpacity={0.8}
-                    disabled={countdown > 0}
-                    onPress={sendCode}
-                  >
-                    <Text style={[s.codeTxt, countdown > 0 && s.codeTxtOff]}>
-                      {countdown > 0 ? `${countdown}s` : codeSent ? '重新发送' : '获取验证码'}
-                    </Text>
-                  </TouchableOpacity>
-                }
-              />
-            )}
+            {/* ★ 2026-11-16：常驻渲染。切 tab 只改 display:'none'，不再 unmount TextInput，
+                从源头消除 Fabric 的 removeViewAt / Differ 乱序（见文件头说明）。 */}
+            <Field
+              icon="shield"
+              placeholder="短信验证码"
+              keyboardType="number-pad"
+              maxLength={6}
+              value={code}
+              onChange={setCode}
+              hidden={mode !== 'register'}
+              trailing={<Text style={s.codeAuto}>已自动填写</Text>}
+            />
 
             <PasswordField
               value={pwd}
@@ -222,7 +225,8 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               placeholder="密码（至少 6 位）"
             />
 
-            {error ? <Text style={s.error}>{error}</Text> : null}
+            {/* 错误提示常驻：内容用空格占位，保证节点始终存在，不产生 remove 指令。 */}
+            <Text style={[s.error, !error && s.hidden]}>{error || ' '}</Text>
 
             <TouchableOpacity
               style={[s.primary, busy && s.primaryOff]}
@@ -233,11 +237,10 @@ export default function LoginScreen({ onAuthenticated }: Props) {
               <Text style={s.primaryTxt}>{busy ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}</Text>
             </TouchableOpacity>
 
-            {/* ★ 2026-11-06 审查（docs/audit/02 🔵#6）：Release 包不展示演示验证码。
-                联调期只在 __DEV__ 下展示，避免正式包被截图传播「这是个可以随便登录的后门」。 */}
-            {mode === 'register' ? (
-              <Text style={s.demoHint}>演示验证码：直接输入 {DEMO_CODE}（测试环境）</Text>
-            ) : null}
+            {/* 演示环境无短信后端，验证码已预填，不再要求用户点「获取验证码」。常驻渲染。 */}
+            <Text style={[s.demoHint, mode !== 'register' && s.hidden]}>
+              演示验证码 {DEMO_CODE} 已自动填写（测试环境）
+            </Text>
           </View>
 
           <Text style={s.privacy}>登录即表示同意《隐私政策》与《用户协议》</Text>
@@ -259,6 +262,7 @@ function Field({
   maxLength,
   autoCapitalize,
   trailing,
+  hidden,
 }: {
   icon: 'phone' | 'user' | 'lock' | 'shield';
   placeholder: string;
@@ -269,9 +273,11 @@ function Field({
   maxLength?: number;
   autoCapitalize?: 'none' | 'sentences';
   trailing?: React.ReactNode;
+  /** ★ 2026-11-16：显隐只改 style，绝不 unmount 节点（Fabric Differ 保护）。 */
+  hidden?: boolean;
 }) {
   return (
-    <View style={s.field}>
+    <View style={[s.field, hidden && s.hidden]}>
       <View style={s.fieldIcon}>
         <FieldIcon name={icon} />
       </View>
@@ -281,6 +287,7 @@ function Field({
         placeholderTextColor={theme.colors.ui.white55}
         value={value}
         onChangeText={onChange}
+        editable={!hidden}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         maxLength={maxLength}
@@ -480,17 +487,17 @@ const s = StyleSheet.create({
   },
   eye: { paddingHorizontal: theme.space.xs },
   eyeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textSub },
-  codeBtn: {
-    backgroundColor: theme.colors.ui.white12,
-    borderWidth: 1,
-    borderColor: theme.colors.ui.white22,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 6,
+  /** ★ 2026-11-16：验证码已自动填好，右侧只做静态说明，不再有可点按钮/倒计时。 */
+  codeAuto: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSub,
+    marginLeft: theme.space.xs,
   },
-  codeBtnOff: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  codeTxt: { fontSize: theme.fontSize.sm, color: theme.colors.textWhite, fontWeight: theme.weight.medium as any },
-  codeTxtOff: { color: theme.colors.textSub },
+  /**
+   * ★ 2026-11-16：Fabric 安全显隐。display:'none' 只更新 style、保留原生节点，
+   *   不产生 removeViewAt 指令；不要用条件渲染（&& / 三元）来切字段。
+   */
+  hidden: { display: 'none' },
   error: {
     color: theme.colors.ui.status.danger,
     fontSize: theme.fontSize.sm,

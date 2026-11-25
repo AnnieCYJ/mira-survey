@@ -54,6 +54,7 @@
     <receiver android:name="com.miraringfashion.app.keepalive.RingReconnectReceiver" android:exported="false">
       <intent-filter>
         <action android:name="com.miraringfashion.app.RING_RECONNECT_ALARM"/>
+        <action android:name="com.miraringfashion.app.RING_HOURLY_SYNC"/>
       </intent-filter>
     </receiver>
     <!-- ★ 2026-11-10：App 内更新用 FileProvider，把下载的 APK 以 content:// 暴露给系统安装器 -->

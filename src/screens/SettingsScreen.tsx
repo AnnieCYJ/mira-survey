@@ -101,6 +101,10 @@ export default function SettingsScreen() {
   }, [updateInfo, downloading]);
   const [ring, setRing] = useState<RingState>({
     status: 'idle',
+    worn: null,
+    glucoseMeasureProgress: null,
+    bloodcompProgress: null,
+    measureError: null,
     deviceName: null,
     deviceBroadcastName: null,
     deviceBroadcastNameSource: null,
@@ -263,14 +267,7 @@ export default function SettingsScreen() {
     ? '连接失败'
     : '未连接';
 
-  // RSSI(dBm) → 信号格数（1-4），默认 0
-  const signalBars = (() => {
-    if (ring.rssi == null) return 0;
-    if (ring.rssi >= -55) return 4;
-    if (ring.rssi >= -70) return 3;
-    if (ring.rssi >= -85) return 2;
-    return 1;
-  })();
+  // ★ 2026-11-16（用户）：删除信号栏后，RSSI→格数的 signalBars 计算一并移除。
 
   // ★ 2026-11-07（用户）：卡片标题直接用**固件广播名**（如 Lunamira），不再显示品牌占位名。
   //   按 MAC 直连时 resolveBroadcastName 会退回本机已记录的真实广播名，仍是固件原名，不是编的名字。
@@ -342,7 +339,7 @@ export default function SettingsScreen() {
             tone="cyan"
             title="数据同步"
             desc={sync
-              ? '每次连上戒指自动回填全部历史数据；回前台、每 30 分钟也会补一次'
+              ? '每次连上戒指自动回填全部历史数据；回前台、每 10 分钟也会补一次'
               : '已关闭：连上戒指不再自动回填历史数据'}
             value={sync}
             onValueChange={(v) => {
@@ -471,7 +468,8 @@ export default function SettingsScreen() {
             <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
 
-          {/* 已连接：电量 / 信号 / 固件 明细 */}
+          {/* 已连接：电量 / 固件 / 机型明细
+              ★ 2026-11-16（用户）：删除「信号」栏（一直无数据反馈）与「协议」栏。 */}
           {ringConnected && (
             <View style={styles.detailWrap}>
               <View style={styles.metricRow}>
@@ -491,31 +489,15 @@ export default function SettingsScreen() {
               </View>
 
               <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>信号</Text>
-                <View style={styles.bars}>
-                  {[1, 2, 3, 4].map((i) => (
-                    <View key={i} style={[styles.bar, i <= signalBars && styles.barOn]} />
-                  ))}
-                </View>
-                <Text style={styles.metricVal}>{ring.rssi != null ? `${ring.rssi}dBm` : '—'}</Text>
-              </View>
-
-              <View style={styles.metricRow}>
                 <Text style={styles.metricLabel}>固件</Text>
                 <Text style={styles.metricVal}>{ring.firmware ?? '待同步'}</Text>
               </View>
 
-              {/* ★ 2026-11-07：固件广播名已上移为卡片标题；这里补机型 / 协议，不再重复占位文案 */}
+              {/* ★ 2026-11-07：固件广播名已上移为卡片标题；这里补机型 */}
               <View style={styles.metricRow}>
                 <Text style={styles.metricLabel}>机型</Text>
                 <Text style={styles.metricVal}>
                   {model.id === 'BASE_UI' ? 'LunaMira 精简版' : 'HK18 / 全量版'}
-                </Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>协议</Text>
-                <Text style={styles.metricVal}>
-                  {model.id === 'BASE_UI' ? 'v5 · 存储 3 天' : 'SDK 全量协议'}
                 </Text>
               </View>
             </View>
@@ -1097,21 +1079,6 @@ const styles = StyleSheet.create({
     height: theme.fs(8),
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.ui.status.good,
-  },
-  bars: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: theme.fs(3),
-  },
-  bar: {
-    width: theme.fs(6),
-    height: theme.fontSize.tiny,
-    borderRadius: theme.fs(2),
-    backgroundColor: theme.colors.cardBorder,
-  },
-  barOn: {
-    backgroundColor: mm.colors.limeCore,
   },
   errorBox: {
     marginTop: theme.space.sm,

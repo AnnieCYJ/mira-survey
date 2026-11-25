@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Line, Text as SvgText } from 'react-native-svg';
 import { LinearGradient as BgGradient } from 'expo-linear-gradient';
@@ -49,13 +49,25 @@ function EcgGrid({ W, H }: { W: number; H: number }) {
 /** 心电波形「不压缩」查看器：按自然横向比例铺开（PX_PER_SAMPLE 像素/采样点），超出屏幕宽度时用横向滚动看全部；
  *  点击可放大到全屏。竖向按本段 min/max 自适应高度，避免压扁形态。 */
 const PX_PER_SAMPLE = 0.7;
+/** ★ 2026-11-20(v65) 崩溃修复：设备一次测量可回传数万个波形点（实测 38000+），
+ *  旧逻辑 W=点数×0.7≈26000px + 每10px一条网格线 → SVG bitmap 105MB，
+ *  超出 Android 单 bitmap 上限触发 `Canvas: trying to draw too large bitmap` 崩溃。
+ *  绘制前等距下采样到 ≤3600 点（W≈2520px，bitmap <2MB），形态保留、不再崩。 */
+function downsampleWaveForDraw(values: number[], max = 3600): number[] {
+  if (!values || values.length <= max) return values;
+  const out: number[] = [];
+  const stride = values.length / max;
+  for (let i = 0; i < max; i++) out.push(values[Math.floor(i * stride)]);
+  return out;
+}
 function EcgScrollTrace({ waveform, height = 150, color = mm.colors.ecgRed, onTap }: { waveform: number[]; height?: number; color?: string; onTap?: () => void }) {
-  const W = Math.max(320, waveform.length * PX_PER_SAMPLE);
+  const wave = downsampleWaveForDraw(waveform);
+  const W = Math.max(320, wave.length * PX_PER_SAMPLE);
   const Inner = (
     <Svg width={W} height={height} viewBox={`0 0 ${W} ${height}`}>
       <EcgGrid W={W} H={height} />
-      {waveform.length > 4 ? (
-        <Path d={wavePath(waveform, W, height)} fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+      {wave.length > 4 ? (
+        <Path d={wavePath(wave, W, height)} fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
       ) : null}
     </Svg>
   );
@@ -138,14 +150,20 @@ function RiskRadar({ data }: { data: { label: string; value: number }[] }) {
 
 function RiskBar({ label, value }: { label: string; value: number }) {
   const v = Math.max(0, Math.min(99, value ?? 0));
-  // 中性分级：<50 偏低/平稳，50–75 适中，>75 偏高（仅描述强度，不开诊断）
+  // ★ 2026-11-20（用户：补上竞品那种"较低/中等/较高"分级措辞）：
+  //   仅把设备返回值的强度区间翻译成大白话，与既有配色共用同一套阈值，
+  //   文字与颜色永不矛盾；不做评分、不开诊断，口径见风险页 hint 文案。
   const level = v > 75 ? 'high' : v > 50 ? 'mid' : 'low';
+  const levelText = level === 'high' ? '较高' : level === 'mid' ? '中等' : '较低';
   const color = level === 'high' ? theme.colors.warn : level === 'mid' ? theme.colors.accentSolid : theme.colors.success;
   return (
     <View style={styles.riskRow}>
       <View style={styles.riskHead}>
         <Text style={styles.riskLabel}>{label}</Text>
-        <Text style={[styles.riskValue, { color }]}>{v}</Text>
+        <View style={styles.riskHeadRight}>
+          <Text style={[styles.riskLevelTag, { color, borderColor: color }]}>{levelText}</Text>
+          <Text style={[styles.riskValue, { color }]}>{v}</Text>
+        </View>
       </View>
       <View style={styles.riskTrack}>
         <View style={[styles.riskFill, { width: `${(v / 99) * 100}%`, backgroundColor: color }]} />
@@ -167,10 +185,20 @@ export default function EcgDetailScreen() {
   const liveWave = ring.ecgLiveWaveform;
   const zoomH = Math.round(Dimensions.get('window').height * 0.55);
 
+  // ★ 2026-11-19（用户：测完心电图没跳分析、又回到测量里）：
+  //   根因——旧实现 `measuring && ring.ecg` 用「全局有没有心电图」判断本次是否测完，
+  //   但进页面时 ring.ecg 已经是上一次的旧报告（非零），于是刚点测量就被误判完成，
+  //   measuring 立刻被 set false → 浮层收起、退回「重新测量」按钮，看起来像又回到测量里。
+  //   正确口径：记录「本次测量开始时的报告 ts」作基线；只有本次真的落库了更新的
+  //   ecg（ts 变大）或写出 ecgError 才退出测量态。旧报告/历史值一律不算完成。
+  const ecgBaseTs = useRef<number | null>(null);
   useEffect(() => {
-    // 成功（ecg 落库）或失败/超时（ecgError 写入）都回到空闲态，避免按钮永久卡在「测量中」
-    if (measuring && (ring.ecg || ring.ecgError)) setMeasuring(false);
-  }, [measuring, ring.ecg, ring.ecgError]);
+    if (!measuring) return;
+    const base = ecgBaseTs.current ?? 0;
+    const gotNewReport = !!ring.ecg && Number.isFinite(ring.ecg.ts) && ring.ecg.ts > base;
+    const gotError = !!ring.ecgError;
+    if (gotNewReport || gotError) setMeasuring(false);
+  }, [measuring, ring.ecg?.ts, ring.ecgError]);
 
   // ★ 2026-10-16：测量超时兜底（与 EcgCard 一致）：120s 内无结果则 abort + 写 ecgError
   useEffect(() => {
@@ -184,15 +212,30 @@ export default function EcgDetailScreen() {
   useEffect(() => {
     if (!measuring) return;
     let lastP = -1;
+    let lastWaveLen = -1;
     let lastChangeAt = Date.now();
+    const startedAt = Date.now();
+    let reached100At = 0;
     const iv = setInterval(() => {
-      const p = RingBle.getState().ecgProgress?.progress ?? 0;
-      if (p !== lastP) {
+      const st = RingBle.getState();
+      const p = st.ecgProgress?.progress ?? 0;
+      const waveLen = st.ecgLiveWaveform?.length ?? 0;
+      // ★ 结果一旦落库/报错就停止看门狗（避免 abort 已经出值的结果）
+      if (st.ecg || st.ecgError) return;
+      const advanced = p !== lastP || waveLen !== lastWaveLen;
+      if (advanced) {
         lastP = p;
+        lastWaveLen = waveLen;
         lastChangeAt = Date.now();
-        return;
       }
-      if (p > 0 && Date.now() - lastChangeAt > 12000) {
+      // ★ 2026-11-17 二次修复：进度到 100 后独立计时。
+      //   100% 是这台戒指的"测量完成"信号，原生会在 1.5s 兜底出值；
+      //   但若原生链路整体失效，JS 这里 12s 后必须主动中止，绝不让 UI 永久停在"生成报告"。
+      if (p >= 100 && reached100At === 0) reached100At = Date.now();
+      const wait100Stuck = reached100At > 0 && Date.now() - reached100At > 12000;
+      const progressStalled = p < 100 && Date.now() - lastChangeAt > 15000;
+      const noDataAtAll = Date.now() - startedAt > 25000 && p < 100 && waveLen === 0;
+      if (wait100Stuck || progressStalled || noDataAtAll) {
         RingBle.abortEcg();
       }
     }, 1000);
@@ -210,6 +253,8 @@ export default function EcgDetailScreen() {
     if (!st.deviceId) { Alert.alert('提示', '请先连接戒指'); return; }
     if (st.status !== 'connected') { Alert.alert('提示', '戒指未连接（当前: ' + st.status + '）'); return; }
     if (!ecgSupported) { Alert.alert('提示', '当前戒指硬件不支持 ECG 测量'); return; }
+    // 基线 = 开始这次测量前的报告时间；只有比它更新的 ecg 才算本次结果（防旧报告误判完成）
+    ecgBaseTs.current = Number.isFinite(st.ecg?.ts) ? st.ecg!.ts : 0;
     setMeasuring(true);
     RingBle.measure('ecg');
   }, [measuring, ecgSupported]);
@@ -221,7 +266,8 @@ export default function EcgDetailScreen() {
 
   const history = ring.ecgHistory ?? [];
   const latest = history.length > 0 ? history[0] : null;
-  const fullW = Math.max(320, (latest?.waveform?.length ?? 0) * PX_PER_SAMPLE);
+  const zoomWave = downsampleWaveForDraw(latest?.waveform ?? []); // v65：全屏同样下采样，防 bitmap 过大崩溃
+  const fullW = Math.max(320, zoomWave.length * PX_PER_SAMPLE);
   const a: EcgAnalysis | undefined = latest?.analysis;
 
   // 医学指标（参考区间中性描述）
@@ -240,14 +286,17 @@ export default function EcgDetailScreen() {
     { label: 'PWV', value: a?.pwvMeanVal != null ? `${(a.pwvMeanVal / 10).toFixed(1)}` : '—', unit: 'm/s', refText: '6–20', status: a?.pwvMeanVal != null ? (a.pwvMeanVal / 10 > 15 ? 'high' : 'normal') : undefined },
   ];
 
-  const risks: { label: string; value: number }[] = [
-    { label: '心律失常', value: a?.arrhythmiaRisk ?? 0 },
-    { label: '精神压力', value: a?.stressIndex ?? 0 },
-    { label: '疲劳', value: a?.fatigueIndex ?? 0 },
-    { label: '心肌炎', value: a?.myocarditisRisk ?? 0 },
-    { label: '冠心病', value: a?.chdRisk ?? 0 },
-    { label: '血管硬化', value: a?.angiosclerosisRisk ?? 0 },
+  // ★ 2026-11-18：风险项来自设备多诊断报告；本机未回传时不能显示 0（=误导成"正常"）。
+  //   hasRiskReport=false 时整个"风险分析"改为明确的"本次未获取"空态，不画塌缩雷达图。
+  const riskVals: (number | undefined)[] = [
+    a?.arrhythmiaRisk, a?.stressIndex, a?.fatigueIndex,
+    a?.myocarditisRisk, a?.chdRisk, a?.angiosclerosisRisk,
   ];
+  const riskLabels = ['心律失常', '精神压力', '疲劳', '心肌炎', '冠心病', '血管硬化'];
+  const hasRiskReport = riskVals.some((v) => typeof v === 'number' && v > 0);
+  const risks: { label: string; value: number }[] = riskLabels.map((label, i) => ({
+    label, value: riskVals[i] ?? 0,
+  }));
 
   // ★ 2026-11-06 审查（docs/audit/03 🔴#3）：整页早退门禁 ——
   //   基础版（无 ECG 传感器）不应该看到「HK18 ECG 硬件 + 开始心电图测量」的完整界面，
@@ -388,6 +437,14 @@ export default function EcgDetailScreen() {
                     ? '本次测量缺少心率与 HRV 数值'
                     : `本次平均心率 ${hrTxt} bpm，HRV ${hrvTxt} ms`;
                   if (highs.length) return `${base}；有 ${highs.length} 项风险指标偏高（${highs.join('、')}），建议关注并咨询医生。`;
+                  // ★ 无诊断报告时不说"各项在参考范围内"（那是把"没数据"说成"正常"）
+                  // ★ 2026-11-19(v62)：SDNN/RMSSD 已由 RR 间期本地补算，解读文案同步更新
+                  if (!hasRiskReport) {
+                    const local = a?.sdnn != null || a?.rmssd != null;
+                    return local
+                      ? `${base}。SDNN/RMSSD 由本次 RR 间期本地计算；设备诊断报告仅在检出异常时回传，正常读数不包含，属协议设计。数据仅作健康参考，不构成诊断。`
+                      : `${base}。设备本次未返回诊断分析数据。数据仅作健康参考，不构成诊断。`;
+                  }
                   return `${base}，各项指标在参考范围内。数据仅作健康参考，不构成诊断。`;
                 })()}
               </Text>
@@ -404,18 +461,24 @@ export default function EcgDetailScreen() {
               <View style={styles.metricGrid}>
                 {metrics.map((m) => (<MetricCell key={m.label} {...m} />))}
               </View>
-            ) : (
+            ) : hasRiskReport ? (
               <View style={styles.riskBox}>
                 <RiskRadar data={risks} />
-                <Text style={styles.riskHint}>数值为设备评估参考（0–99，越靠外强度越高）</Text>
+                <Text style={styles.riskHint}>数值为设备评估参考（0–99，越靠外强度越高）；较低/中等/较高仅描述强度区间，不构成诊断</Text>
                 <View style={{ marginTop: 4 }}>
                   {risks.map((r) => (<RiskBar key={r.label} {...r} />))}
                 </View>
               </View>
+            ) : (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>本次测量设备未返回诊断分析数据，风险项暂不可用。可重新测量获取；如多次如此，可能是当前戒指固件未开放该报告。</Text>
+              </View>
             )}
 
             <Text style={styles.disclaimer}>
-              以上数据来自戒指硬件评估，仅作健康参考，不构成医疗诊断建议。如有不适请咨询专业医生。
+              {a?.sdnnSource === 'rr-local' || a?.rmssdSource === 'rr-local'
+                ? 'SDNN/RMSSD 由本次测量的 RR 间期序列本地计算；其余医学指标与风险分析来自戒指硬件评估（设备仅在检出异常时回传诊断报告，正常读数不含这些字段，显示"—"属预期）。仅作健康参考，不构成医疗诊断建议。'
+                : '以上数据来自戒指硬件评估，仅作健康参考，不构成医疗诊断建议。如有不适请咨询专业医生。'}
             </Text>
           </>
         ) : (
@@ -446,7 +509,7 @@ export default function EcgDetailScreen() {
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
                   <Text style={styles.hStat}>心率 <Text style={styles.hStatVal}>{fmtEcgNum(r.aveHeart)}</Text> bpm</Text>
                   <Text style={styles.hStat}>HRV <Text style={styles.hStatVal}>{fmtEcgNum(r.aveHrv)}</Text> ms</Text>
-                  <Text style={styles.hStat}>呼吸 <Text style={styles.hStatVal}>{fmtEcgNum(r.aveResRate)}</Text></Text>
+                  <Text style={styles.hStat}>呼吸 <Text style={styles.hStatVal}>{fmtEcgNum(r.aveResRate)}</Text>{r.rrSource === 'estimated' ? ' 次/分·波形估算' : ''}</Text>
                 </View>
               </View>
             ))}
@@ -478,8 +541,8 @@ export default function EcgDetailScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ paddingVertical: 10 }}>
                 <Svg width={fullW} height={zoomH} viewBox={`0 0 ${fullW} ${zoomH}`}>
                   <EcgGrid W={fullW} H={zoomH} />
-                  {latest.waveform && latest.waveform.length > 4 ? (
-                    <Path d={wavePath(latest.waveform, fullW, zoomH)} fill="none" stroke={mm.colors.ecgRed} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                  {zoomWave.length > 4 ? (
+                    <Path d={wavePath(zoomWave, fullW, zoomH)} fill="none" stroke={mm.colors.ecgRed} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
                   ) : null}
                 </Svg>
               </ScrollView>
@@ -597,8 +660,10 @@ const styles = StyleSheet.create({
   riskBox: { backgroundColor: theme.colors.cardBg, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.cardBorder, padding: 14, marginBottom: 12 },
   riskHint: { fontSize: theme.fontSize.tiny, color: theme.colors.textSub, textAlign: 'center', marginTop: 4, marginBottom: 10 },
   riskRow: { marginBottom: 12 },
-  riskHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  riskHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   riskLabel: { fontSize: theme.fontSize.xs, fontWeight: '600', color: theme.colors.textTitle },
+  riskHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  riskLevelTag: { fontSize: theme.fontSize.tiny, fontWeight: '600', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
   riskValue: { fontSize: theme.fontSize.xs, fontWeight: '700' },
   riskTrack: { height: 7, backgroundColor: 'rgba(157,138,240,0.14)', borderRadius: 4, overflow: 'hidden' },
   riskFill: { height: '100%', borderRadius: 4 },

@@ -564,6 +564,10 @@ export async function applyProfileFromCapabilities(
 export const DEVICE_ID_PROFILES: Record<string, DeviceProfileId> = {
   '41:42:E7:17:9B:1C': 'BASE_UI', // ★ 用户确认的 LunaMira 基础版 MAC（当前在用）
   'C9:00:9C:D7:C2:D8': 'PRO_UI',  // ★ 旧设备 / HK18 时期，仅用于识别，数据不得混入基础版
+  // ★ 2026-11-16：Luna Mira Pro 实机（用户华为 P30 连接验证）。
+  //   广播名 "Lunamira Pro" / 固件 00.18.03 / SDK 能力包 ECG=SUPPORT·血压=SUPPORT·HRV=SUPPORT。
+  //   Android 原生 ready 不透传 *Type 能力字段（见 RingCapabilities 注释），MAC 是唯一稳定证据。
+  'F0:77:5D:ED:A8:5B': 'PRO_UI',
 };
 
 function normDeviceId(id?: string | null): string {

@@ -160,18 +160,27 @@ export const userStore = {
     return null;
   },
 
-  /** 登录：校验手机号 + 密码。返回错误文案（null = 成功）。 */
+  /**
+   * 登录：校验手机号 + 密码。返回错误文案（null = 成功）。
+   *
+   * ★ 2026-11-16（1.5.0 完整矩阵验证发现）：原实现无条件把 onboardingDone /
+   *   ringSetupDone / profile 重置，与 signOut() 注释「保留已填资料，仅清登录态，
+   *   重新登录直达主页」矛盾——用户退出登录后重新登录会被迫重填问卷、重连戒指。
+   *   改为：同一手机号沿用原会话的进度与资料；换账号登录才回到首次流程。
+   */
   async login(phone: string, password: string): Promise<string | null> {
     const accounts = await loadAccounts();
     const rec = accounts[phone];
     if (!rec) return '账号不存在，请先注册';
     if (rec.password !== password) return '密码不正确';
+    const prev = await loadSession();
+    const sameAccount = prev.account?.phone === phone;
     await saveSession({
+      ...(sameAccount
+        ? prev
+        : { ...prev, onboardingDone: false, ringSetupDone: false, profile: {} }),
       loggedIn: true,
-      onboardingDone: false,
-      ringSetupDone: false,
       account: { phone, accountName: rec.accountName },
-      profile: {},
     });
     return null;
   },

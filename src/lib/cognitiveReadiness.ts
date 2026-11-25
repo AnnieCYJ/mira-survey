@@ -141,8 +141,29 @@ export function computeReadinessSeries(report?: CognitiveLoadReport, nowMs: numb
   const nightSlots = [40, 41, 42, 43, 44, 45, 46, 47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
   const nightVals = nightSlots.map((s) => points[s]).filter((p) => p?.hasData).map((p) => p.score);
 
-  const peak = valid.length ? valid.reduce((a, b) => (b.score > a.score ? b : a)) : null;
-  const trough = valid.length ? valid.reduce((a, b) => (b.score < a.score ? b : a)) : null;
+  // ★ 2026-11-16（用户）：脑力峰值/低谷时段只看**非睡眠时间**——凌晨 1–4 点人都睡着了，
+  //   那是「睡眠时段」不是「脑力时段」，不能参与评选。
+  //   有睡眠窗（sleepWindow.bedHour/wakeHour，钟点浮点）时把窗内半小时槽剔除，再取峰谷；
+  //   剔完一份都没剩（极端：全天数据都在睡眠窗内）→ 回退全天口径，UI 不至于空「—」。
+  const sleepSlots = new Set<number>();
+  const bedH = (rep as any).sleepWindow?.bedHour;
+  const wakeH = (rep as any).sleepWindow?.wakeHour;
+  if (bedH != null && wakeH != null && Number.isFinite(bedH) && Number.isFinite(wakeH)) {
+    const bs = Math.max(0, Math.min(47, Math.round(bedH * 2)));
+    const ws = Math.max(0, Math.min(47, Math.round(wakeH * 2)));
+    let s = bs;
+    let guard = 0;
+    while (s !== ws && guard < 48) {
+      sleepSlots.add(s);
+      s = (s + 1) % 48;
+      guard++;
+    }
+  }
+  const awakeValid = valid.filter((p) => !sleepSlots.has(p.hour));
+  const peakPool = awakeValid.length ? awakeValid : valid;
+  const troughPool = awakeValid.length ? awakeValid : valid;
+  const peak = peakPool.length ? peakPool.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+  const trough = troughPool.length ? troughPool.reduce((a, b) => (b.score < a.score ? b : a)) : null;
 
   return {
     points,

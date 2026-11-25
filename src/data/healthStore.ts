@@ -339,7 +339,13 @@ function recomputeDaily(
   //   emotion（带符号）与 depressionRisk（零值有效档位）例外。
   const signed = key ? SIGNED_METRICS.has(key) : false;
   const zeroValid = key ? ZERO_VALID_METRICS.has(key) : false;
-  const clean = intraday.filter((p) => Number.isFinite(p.v) && (signed || zeroValid || p.v > 0));
+  // ★ 2026-11-16（用户：脱手/没出值时心率可能回 1 这种无效读数，算进均值会把平均拉低非常多）：
+  //   均值/min/max/last 聚合叠加 physioValid 生理范围闸门——hr=1、spo2=20 这类
+  //   「大于 0 但不可能是真实生理值」的脏值（历史回填/存量污染/摘戒指残留包）一律剔除，
+  //   不进任何聚合。未登记 key（steps/calorie/met…）physioValid 放行，行为不变。
+  const clean = intraday.filter(
+    (p) => Number.isFinite(p.v) && (signed || zeroValid || (p.v > 0 && physioValid(key ?? '', p.v))),
+  );
   const vals = clean.map((p) => p.v);
   const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   const min = vals.length ? Math.min(...vals) : null;
@@ -394,6 +400,13 @@ export class HealthStore {
    * healthStore 的 v2 快照落盘可靠，改为在这里存一份，详情页优先读它。
    */
   private sleepSegments: Record<string, unknown[]> = {};
+  /**
+   * ★ 2026-11-20：一次性数据清理的「睡眠忽略日」黑名单。
+   *   用途：v65 修复前 last-wins 覆盖产生的脏睡眠（如 11-19 的 56 分钟午睡）清掉后，
+   *   防止 legacy 快照 hydrate/migrate/merge 或下次全量同步把它重新补回来。
+   *   持久化在 v2 快照里，重启后仍生效；recordSleep/recordSleepSegments 一律尊重它。
+   */
+  private suppressedSleepDays: Record<string, 1> = {};
   private glance: Record<string, HealthGlanceDay> = {}; // dayKey -> 各子指标末值
   private lastUpdated: Record<string, number> = {};     // metricKey or 'sleep'/'glance:<sub>' -> ts
   /** V2 incremental sync anchor: last successful backfill date (YYYY-MM-DD).
@@ -470,7 +483,11 @@ export class HealthStore {
     if (dk === dayKeyRaw && Number.isNaN(parseDayKey(dk))) return; // 非法 key 丢弃
     if (!samples || samples.length === 0) return;
     // ★ v18.134（审查 04 🟡-4）：过滤非法值，杜绝 NaN 进入 intraday（会污染日聚合与 SVG 坐标）
-    const valid = samples.filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v));
+    // ★ 2026-11-16（用户：无效值会拉低均值）：回填逐样本同样过 physioValid 生理范围闸门——
+    //   历史回填的 slots 里混进的 hr=1/spo2=20 这类脏值在入口就剔除，不入 intraday、不画进趋势图。
+    const valid = samples.filter(
+      (p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && physioValid(key, p.v),
+    );
     if (valid.length === 0) return;
     // ★ 实时真值优先：该日已有 realtime/mixed 来源的样本时，backfill 不覆盖同刻（±MERGE_MS）样本，
     //   避免「实时刚测的真值被历史精度值回写覆盖」且两条通路覆盖顺序不同、结果不同。
@@ -618,9 +635,29 @@ export class HealthStore {
   }
 
   // ── 睡眠（结构化） ───────────────────────────────────────────────────────
+  /**
+   * ★ 2026-11-20：彻底清除某一天的错误睡眠并永久拉黑，防止任何通路复活。
+   * 清掉内存 sleep/sleepSegments + 记入持久化黑名单；后续 recordSleep / hydrate /
+   * migrate / merge / rebuild 都会跳过被拉黑的日。返回是否确实删掉了东西。
+   */
+  suppressSleepDay(dayKeyRaw: string): boolean {
+    const dk = normalizeDayKey(dayKeyRaw);
+    if (Number.isNaN(parseDayKey(dk))) return false;
+    const had = this.sleep[dk] != null || this.sleepSegments[dk] != null;
+    delete this.sleep[dk];
+    delete this.sleepSegments[dk];
+    this.suppressedSleepDays[dk] = 1;
+    if (had) this.notify();
+    return had;
+  }
+  isSleepSuppressed(dayKeyRaw: string): boolean {
+    return this.suppressedSleepDays[normalizeDayKey(dayKeyRaw)] === 1;
+  }
+
   recordSleep(dayKeyRaw: string, summary: SleepSummary): void {
     const dk = normalizeDayKey(dayKeyRaw);
     if (Number.isNaN(parseDayKey(dk))) return;
+    if (this.suppressedSleepDays[dk] === 1) return; // 被清理的脏日：拒绝写入
     // ★ 自动从 sleepTime/wakeTime 解析 bedHour/wakeHour（如果还没填）
     const v: SleepSummary = { ...summary };
     if ((v.bedHour == null || v.wakeHour == null) && (v.sleepTime || v.wakeTime)) {
@@ -640,6 +677,7 @@ export class HealthStore {
   }
   getSleep(dayKeyRaw: string): SleepSummary | null {
     const dk = normalizeDayKey(dayKeyRaw);
+    if (this.suppressedSleepDays[dk] === 1) return null; // 被清理的脏日：一律不返回
     return this.sleep[dk] ?? null;
   }
 
@@ -647,6 +685,7 @@ export class HealthStore {
   recordSleepSegments(dayKeyRaw: string, segments: unknown[]): void {
     const dk = normalizeDayKey(dayKeyRaw);
     if (Number.isNaN(parseDayKey(dk)) || !Array.isArray(segments) || segments.length === 0) return;
+    if (this.suppressedSleepDays[dk] === 1) return; // 被清理的脏日：拒绝写入
     this.sleepSegments[dk] = segments;
     // 只保留最近 60 天，避免快照无限膨胀
     const keys = Object.keys(this.sleepSegments).sort();
@@ -656,6 +695,7 @@ export class HealthStore {
   }
   getSleepSegments<T = unknown>(dayKeyRaw: string): T[] | null {
     const dk = normalizeDayKey(dayKeyRaw);
+    if (this.suppressedSleepDays[dk] === 1) return null;
     const v = this.sleepSegments[dk];
     return Array.isArray(v) && v.length > 0 ? (v as T[]) : null;
   }
@@ -704,10 +744,18 @@ export class HealthStore {
     const dk = normalizeDayKey(dayKeyRaw);
     const arr = store.intraday[dk];
     if (!arr || arr.length === 0) return [];
+    // ★ 2026-11-16（无效值不入图）：趋势图/柱状图/详情页/realSeries 的统一数据出口。
+    //   与 recomputeDaily 同一套闸门：hr=1、spo2=20 这类「大于 0 但不可能是真实生理值」
+    //   的存量污染点在读取时剔除——即使它已躺在库里（历史回填/旧版本写入），也不会被画出。
+    //   emotion（带符号）与 depressionRisk（零值有效）例外；未登记 key 放行，行为不变。
+    const signed = SIGNED_METRICS.has(key);
+    const zeroValid = ZERO_VALID_METRICS.has(key);
     const sorted = arr.every((p, i) => i === 0 || arr[i - 1].t <= p.t)
       ? arr
       : arr.slice().sort((a, b) => a.t - b.t);
-    return sorted.slice();
+    return sorted
+      .filter((p) => Number.isFinite(p.v) && (signed || zeroValid || (p.v > 0 && physioValid(key, p.v))))
+      .slice();
   }
   /**
    * ★ 2026-11-09：读取 lastUpdated 映射副本。
@@ -981,6 +1029,7 @@ export class HealthStore {
       stores: this.stores,
       sleep: this.sleep,
       sleepSegments: this.sleepSegments,
+      suppressedSleepDays: this.suppressedSleepDays,
       glance: this.glance,
       lastUpdated: this.lastUpdated,
       analysis: this.analysis,
@@ -1011,7 +1060,9 @@ export class HealthStore {
   mergeSleep(raw: any): void {
     if (!raw || typeof raw !== 'object') return;
     let added = 0;
-    for (const [dk, v] of Object.entries(raw)) {
+    for (const [dk0, v] of Object.entries(raw)) {
+      const dk = normalizeDayKey(dk0);
+      if (this.suppressedSleepDays[dk] === 1) continue; // 被清理的脏日：禁止从 legacy 复活
       if (!this.sleep[dk] && v && typeof v === 'object') {
         this.sleep[dk] = v as any;
         added++;
@@ -1082,9 +1133,20 @@ export class HealthStore {
     //   v2 文件的 sleep 若为空就把内存清成 {}；改为「快照确实有数据才覆盖」。
     const rebuiltSleep = this.rebuildSleepFromSnapshot(json.sleep);
     if (Object.keys(rebuiltSleep).length > 0) this.sleep = rebuiltSleep;
+    // ★ 2026-11-20：恢复「睡眠忽略日」黑名单，并对已恢复的 sleep/segments 再过滤一遍，
+    //   杜绝历史快照里残留的脏日（如 11-19 的 56 分钟）在重启后复活。
+    if (json.suppressedSleepDays && typeof json.suppressedSleepDays === 'object') {
+      for (const dk of Object.keys(json.suppressedSleepDays)) {
+        if (Number.isNaN(parseDayKey(normalizeDayKey(dk)))) continue;
+        this.suppressedSleepDays[normalizeDayKey(dk)] = 1;
+        delete this.sleep[normalizeDayKey(dk)];
+        delete this.sleepSegments[normalizeDayKey(dk)];
+      }
+    }
     // ★ 分期段：快照里没有数据时保留内存现状（不清空），避免旧快照覆盖刚回填的内容
     if (json.sleepSegments && typeof json.sleepSegments === 'object' && Object.keys(json.sleepSegments).length > 0) {
       this.sleepSegments = json.sleepSegments as Record<string, unknown[]>;
+      for (const dk of Object.keys(this.suppressedSleepDays)) delete this.sleepSegments[dk];
     }
     // ★ 2026-11-15（P0-2）：一律合并而非覆盖。冷启动首帧这些内存桶可能已有值，
     //   旧写法 `= json.xxx ?? {}` 会把它们整体抹掉（睡眠恢复 85 / 身体年龄 -2.3
@@ -1112,6 +1174,7 @@ export class HealthStore {
     for (const k of Object.keys(raw)) {
       const dk = normalizeDayKey(k);
       if (Number.isNaN(parseDayKey(dk))) continue;
+      if (this.suppressedSleepDays[dk] === 1) continue; // 被清理的脏日：禁止从快照复活
       const s = raw[k];
       if (!s || typeof s !== 'object') continue;
       const total = Number(s.total) || 0;
@@ -1376,8 +1439,9 @@ export class HealthStore {
 
     if (snap.sleepDaily) {
       // v1 睡眠同样走「保留原始测量值 + 按当前公式重算 score」；只补 v1 缺失的日，不覆盖已有
-      const fixed = this.rebuildSleepFromSnapshot(snap.sleepDaily);
+      const fixed = this.rebuildSleepFromSnapshot(snap.sleepDaily); // 已按黑名单过滤
       for (const dk of Object.keys(fixed)) {
+        if (this.suppressedSleepDays[dk] === 1) continue;
         if (!this.sleep[dk]) this.sleep[dk] = fixed[dk];
       }
     }

@@ -20,6 +20,7 @@ import {
   abnormalMetrics,
   tallyRecord,
   runQuickCheckSession,
+  isDefinitelyNotWorn,
   type QuickCheckRecord,
 } from '../data/quickCheckStore';
 import { qc, statusColor, QCta } from '../components/quickCheckShared';
@@ -42,19 +43,33 @@ export default function QuickCheckHistoryScreen() {
 
   const startCheck = async () => {
     if (busy) return;
+    // ★ 2026-11-18(10)：摘戒秒级预检——原生判脱手 + 贴肤帧静默，入口直接弹框不跑 90 秒。
+    if (isDefinitelyNotWorn()) {
+      Alert.alert(
+        '未佩戴戒指',
+        '这次没有读到戒指数据，请先戴上戒指、让电极贴住皮肤，再开始一键体检。',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
     setBusy(true);
     try {
-      // ★ 2026-11-13：与洞察页一键体检共用同一个现场测量流程，不出现两个入口口径分叉。
-      // ★ 2026-11-14：流程改为阶段驱动（血压没出值自动重试一次，各段出数提前结束），
-      //   不再死等固定总窗口，时长文案只给「最长约 2 分半」的兜底口径。
-      const res = await runQuickCheckSession();
+      // ★ 2026-11-18(6)：与洞察页统一为单一「一键体检」，走同一现场测量流程。
+      const res = await runQuickCheckSession({ mode: 'fast' });
       if (res.ok) {
         await reload();
         Alert.alert('体检完成', '现场测量完成，体检记录已生成。');
+      } else if (res.reason === 'not-worn') {
+        // ★ 2026-11-18(7)：与洞察页一致——真没读到戒指数据就明确提示未佩戴。
+        Alert.alert(
+          '未佩戴戒指',
+          '这次没有读到戒指数据，请先戴上戒指、让电极贴住皮肤，再开始一键体检。',
+          [{ text: '知道了' }]
+        );
       } else {
         Alert.alert(
           '暂时没有可用数据',
-          '这次还没读到戒指数据。请连接戒指、保持佩戴一会儿，再来做一次体检。',
+          '这次还没读到戒指数据。请确认戒指已连接、并且正戴在手上（测量需要佩戴），保持静止一会儿再试一次。',
           [{ text: '知道了' }]
         );
       }
@@ -75,7 +90,8 @@ export default function QuickCheckHistoryScreen() {
       </View>
       <Text style={qc.histSub}>共 {count} 次体检</Text>
 
-      <QCta title={busy ? '现场测量中…最长约 2 分半' : (count === 0 ? '去体检一次' : '再体检一次')} onPress={startCheck} disabled={busy} />
+      {/* ★ 2026-11-18(6)（用户）：与洞察页统一为单一「一键体检」按钮，去掉完整体检次按钮。 */}
+      <QCta title={busy ? '体检中…' : '一键体检'} onPress={() => startCheck()} disabled={busy} />
 
       {count === 0 && !busy ? (
         <View style={{ alignItems: 'center', paddingVertical: theme.sp(6) }}>

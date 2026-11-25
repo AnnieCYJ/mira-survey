@@ -45,6 +45,24 @@ interface Question {
   placeholder?: string;
   defaultText?: string;
   keyboardType?: 'number-pad' | 'default';
+  /** ★ 2026-11-16：数字题的合理取值区间（含端点）。超出即判为填错，提示重填。 */
+  min?: number;
+  max?: number;
+}
+
+/**
+ * ★ 2026-11-16（用户）：数字题范围校验。超出人类合理极限（如 5555 kg）时
+ * 不让进入下一题，给出明确提示请用户重填，避免脏数据进档案并让后续参考区间算错。
+ * 返回 null 表示合法；否则返回给用户的提示文案。
+ */
+function validateNumberAnswer(q: Question, raw: string): string | null {
+  const v = Number(raw);
+  if (!raw.trim() || !Number.isFinite(v)) return '请输入有效的数字';
+  // 非数字题（选择题）不校验
+  if (q.type !== 'number') return null;
+  if (q.min != null && v < q.min) return `这个数值偏小，请填写 ${q.min}–${q.max} 之间的数字`;
+  if (q.max != null && v > q.max) return `这个数值超出正常范围（${q.min}–${q.max}），请重新填写`;
+  return null;
 }
 
 const QUESTIONS: Question[] = [
@@ -58,9 +76,9 @@ const QUESTIONS: Question[] = [
       { label: '不愿透露', value: 'undisclosed' },
     ],
   },
-  { id: 'age', ai: '你今年多少岁啦？', type: 'number', unit: '岁', placeholder: '请输入年龄', keyboardType: 'number-pad' },
-  { id: 'height', ai: '你的身高大概是多少？', type: 'number', unit: 'cm', placeholder: '例如 165', keyboardType: 'number-pad' },
-  { id: 'weight', ai: '那体重呢？', type: 'number', unit: 'kg', placeholder: '例如 55', keyboardType: 'number-pad' },
+  { id: 'age', ai: '你今年多少岁啦？', type: 'number', unit: '岁', placeholder: '请输入年龄', keyboardType: 'number-pad', min: 1, max: 120 },
+  { id: 'height', ai: '你的身高大概是多少？', type: 'number', unit: 'cm', placeholder: '例如 165', keyboardType: 'number-pad', min: 80, max: 250 },
+  { id: 'weight', ai: '那体重呢？', type: 'number', unit: 'kg', placeholder: '例如 55', keyboardType: 'number-pad', min: 20, max: 300 },
   {
     id: 'sleep',
     ai: '平时的作息习惯更接近哪一种？',
@@ -95,8 +113,8 @@ const QUESTIONS: Question[] = [
 
 /** ★ 本轮（用户 #259）：女性专属生理期追问 —— 选「女」后追加在基础 7 题之后 */
 const PERIOD_QUESTIONS: Question[] = [
-  { id: 'periodStart', ai: '了解～ 最近一次生理期，大概是几天前开始的？', type: 'number', unit: '天前', placeholder: '例如 14', keyboardType: 'number-pad' },
-  { id: 'periodDuration', ai: '那一次持续了几天呢？', type: 'number', unit: '天', placeholder: '例如 5', keyboardType: 'number-pad' },
+  { id: 'periodStart', ai: '了解～ 最近一次生理期，大概是几天前开始的？', type: 'number', unit: '天前', placeholder: '例如 14', keyboardType: 'number-pad', min: 0, max: 60 },
+  { id: 'periodDuration', ai: '那一次持续了几天呢？', type: 'number', unit: '天', placeholder: '例如 5', keyboardType: 'number-pad', min: 1, max: 15 },
   {
     id: 'periodRegular',
     ai: '你的周期一般规律吗？',
@@ -106,7 +124,7 @@ const PERIOD_QUESTIONS: Question[] = [
       { label: '不太规律', value: 'irregular' },
     ],
   },
-  { id: 'periodCycle', ai: '那平均周期大概是几天？（常见 28 天左右）', type: 'number', unit: '天', placeholder: '28', defaultText: '28', keyboardType: 'number-pad' },
+  { id: 'periodCycle', ai: '那平均周期大概是几天？（常见 28 天左右）', type: 'number', unit: '天', placeholder: '28', defaultText: '28', keyboardType: 'number-pad', min: 15, max: 90 },
 ];
 
 type Bubble = { role: 'ai' | 'user'; text: string };
@@ -117,14 +135,48 @@ const RESPONSES: Record<string, string> = {
   age: '收到～ 年龄会让参考区间更贴合你，不会拿错标准。',
   height: '好嘞，身高记下啦。',
   weight: '嗯嗯，体重也记下咯～',
-  sleep: '懂了～ 作息对恢复和情绪影响不小，我会多留意。',
-  exercise: '收到！运动是很棒的恢复信号 💪',
-  work: '明白～ 工作节奏我会算进你的精力消耗里。',
+  sleep: '记下了～ 作息时间会用来对齐入睡和醒来的节奏。',
+  exercise: '记下了～ 运动频率会作为活动量的参考。',
+  work: '记下了～ 白天的节奏会算进精力消耗。',
   periodStart: '收到～ 这个时间点帮我定位周期起点。',
   periodDuration: '好嘞，持续天数记下啦。',
   periodRegular: '明白，规律与否我都会留意。',
   periodCycle: '记下了，平均周期会帮我更稳妥地预判下次时间。',
 };
+
+/**
+ * ★ 2026-11-16（用户「填了基本不运动，还是回『运动是很棒的恢复信号』」）：
+ * 原实现 `pushAi(RESPONSES[q.id])` 按题目 id 固定一句，选择题无论选什么都同一句，
+ * 会出现答非所议、甚至像在夸一个并不存在的行为。改为按答案分支。
+ *
+ * 口径（品牌铁律）：只中性说明这条信息之后会怎么被用，不评价行为好坏、不鼓励、
+ * 不打分、不用「很棒 / 继续保持 / 帮你」这类居高临下或带激励意味的措辞。
+ */
+const ANSWER_RESPONSES: Record<string, Record<string, string>> = {
+  exercise: {
+    rare: '记下了～ 运动量偏少可能会影响白天的精力和夜间的恢复节奏。',
+    weekly12: '记下了～ 每周 1–2 次会作为活动量的参考。',
+    weekly3plus: '记下了～ 每周 3 次以上会作为活动量的参考。',
+  },
+  sleep: {
+    early: '记下了～ 作息时间会用来对齐入睡和醒来的节奏。',
+    late: '记下了～ 偏晚的入睡时间会按实际记录来看。',
+    irregular: '记下了～ 作息不规律时，入睡时间以每天实际记录为准。',
+  },
+  work: {
+    sedentary: '记下了～ 久坐时段的消耗会单独算。',
+    active: '记下了～ 走动较多会算进白天的活动量。',
+    highintensity: '记下了～ 高强度奔波会算进白天的精力消耗。',
+  },
+  periodRegular: {
+    regular: '记下了～ 周期规律会用来推算下一次的时间。',
+    irregular: '记下了～ 周期不太规律时，推算会更多参考近期记录。',
+  },
+};
+
+function responseFor(qId: string, raw: string): string {
+  return ANSWER_RESPONSES[qId]?.[raw] ?? RESPONSES[qId] ?? '记下了～';
+}
 
 export default function OnboardingScreen({ onDone }: Props) {
   const insets = useSafeAreaInsets();
@@ -133,6 +185,7 @@ export default function OnboardingScreen({ onDone }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState(false);
   const [numText, setNumText] = useState('');
+  const [numError, setNumError] = useState<string | null>(null); // ★ 2026-11-16：数字超范围提示
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const dot = useRef(new Animated.Value(0)).current;
@@ -173,13 +226,14 @@ export default function OnboardingScreen({ onDone }: Props) {
     setAnswers((a) => ({ ...a, [q.id]: raw }));
     setBubbles((b) => [...b, { role: 'user', text: label }]);
     setNumText('');
+    setNumError(null); // ★ 2026-11-16：成功作答后清除上一题的范围提示
 
     const next = step + 1;
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
       // ★ 2026-11-04：每答一题，Mira 先给一个柔和活泼的回应，再抛下一题（更像真实对话）
-      pushAi(RESPONSES[q.id] ?? '记下了～');
+      pushAi(responseFor(q.id, raw));
       setTimeout(() => {
         if (next < Q.length) {
           const nq = Q[next];
@@ -339,7 +393,7 @@ export default function OnboardingScreen({ onDone }: Props) {
                 keyboardType={current.keyboardType}
                 maxLength={4}
                 defaultValue=""
-                onChangeText={setNumText}
+                onChangeText={(t) => { setNumText(t); if (numError) setNumError(null); }}
                 selectionColor={mm.colors.ink}
               />
               {current.unit && <Text style={s.numUnit}>{current.unit}</Text>}
@@ -349,12 +403,20 @@ export default function OnboardingScreen({ onDone }: Props) {
                 onPress={() => {
                   const v = numText.trim();
                   if (!v) return;
+                  // ★ 2026-11-16：范围校验，超出人类合理极限时提示重填，不前进。
+                  const err = validateNumberAnswer(current, v);
+                  if (err) { setNumError(err); return; }
+                  setNumError(null);
                   answer(current, v);
                 }}
               >
                 <Text style={s.numNextTxt}>下一步</Text>
               </TouchableOpacity>
             </View>
+          )}
+          {/* ★ 2026-11-16：数字超出合理范围时的提示，请用户重填 */}
+          {current.type === 'number' && !!numError && (
+            <Text style={s.numError}>{numError}</Text>
           )}
         </View>
       )}
@@ -536,6 +598,12 @@ const s = StyleSheet.create({
   },
   numNextOff: { opacity: 0.5 },
   numNextTxt: { color: '#132A4A', fontSize: theme.fontSize.body, fontWeight: theme.weight.semibold as any },
+  numError: {
+    marginTop: theme.space.sm,
+    color: theme.colors.ui.status.danger,
+    fontSize: theme.fontSize.sm,
+    textAlign: 'center',
+  },
   summaryCard: {
     marginTop: theme.space.lg,
     backgroundColor: theme.colors.cardBg,
