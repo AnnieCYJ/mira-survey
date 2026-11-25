@@ -562,7 +562,11 @@ export async function applyProfileFromCapabilities(
  *   后续新增已知设备直接在此追加即可。
  */
 export const DEVICE_ID_PROFILES: Record<string, DeviceProfileId> = {
-  '41:42:E7:17:9B:1C': 'BASE_UI', // ★ 用户确认的 LunaMira 基础版 MAC（当前在用）
+  '41:42:E7:17:9B:1C': 'BASE_UI', // ★ 用户确认的 LunaMira 基础版 MAC（历史广播地址）
+  // ★ 2026-11-25 真机验证：同一基础版当前广播的 MAC（固件 00.12.09、广播名 "Luna Mira"）。
+  //   之前连 Pro 后深链强连这枚时，MAC 表查不到 → 判定失败 → 残留 PRO_UI 档位，
+  //   设置页机型错显示「HK18 / 全量版」。两条 MAC 同属基础版。
+  '41:42:14:AE:49:C9': 'BASE_UI',
   'C9:00:9C:D7:C2:D8': 'PRO_UI',  // ★ 旧设备 / HK18 时期，仅用于识别，数据不得混入基础版
   // ★ 2026-11-16：Luna Mira Pro 实机（用户华为 P30 连接验证）。
   //   广播名 "Lunamira Pro" / 固件 00.18.03 / SDK 能力包 ECG=SUPPORT·血压=SUPPORT·HRV=SUPPORT。

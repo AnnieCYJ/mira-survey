@@ -1,5 +1,6 @@
 import React from 'react';
-import { StatusBar, View, StyleSheet } from 'react-native';  // LogBox 已注释
+import { StatusBar, View, StyleSheet, Linking } from 'react-native';  // LogBox 已注释
+import { RingBle } from './src/ble/RingBleManager';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -75,7 +76,54 @@ const styles = StyleSheet.create({
   gradient: { ...StyleSheet.absoluteFillObject },
 });
 
+/**
+ * ★ 隐藏调试深链：强制连接指定戒指（不改秒连逻辑，仅验证用）。
+ *   adb shell am start -a android.intent.action.VIEW \
+ *     -d "miraringfashion://ring/connect?mac=41:42:14:AE:49:C9"
+ * 只有命中白名单 MAC 才动作；先断开当前戒指，再强制连目标。
+ * 连上后 App 自身的「记住上次那枚」会把后续秒连指向这枚戒指。
+ */
+const FORCE_CONNECT_ALLOWLIST = ['41:42:14:AE:49:C9', 'F0:77:5D:ED:A8:5B'];
+
+function useForceConnectDeepLink() {
+  React.useEffect(() => {
+    const handle = (url: string | null) => {
+      if (!url) return;
+      try {
+        const u = new URL(url);
+        const isConnect =
+          u.pathname.replace(/^\/+/, '').toLowerCase().endsWith('connect') ||
+          u.searchParams.get('action')?.toLowerCase() === 'connect';
+        const raw = (u.searchParams.get('mac') || '').trim().toUpperCase();
+        if (!isConnect || !FORCE_CONNECT_ALLOWLIST.includes(raw)) return;
+        postLog('FORCE-CONNECT', `深链强制连接目标 ${raw}`);
+        // 断开当前连接会置 userStoppedLink=true 停掉保活；随后 connectToId 会恢复，
+        // 并把 knownMac/activeDeviceKey 切到目标 MAC，后续秒连自然指向它。
+        (async () => {
+          try {
+            if (RingBle.getState().status === 'connected') {
+              await RingBle.disconnect();
+              await new Promise((r) => setTimeout(r, 600));
+            }
+            await RingBle.connectToId(raw);
+            postLog('FORCE-CONNECT', `已发起连接 ${raw}`);
+          } catch (e) {
+            postLog('FORCE-CONNECT', `连接失败：${e instanceof Error ? e.message : String(e)}`);
+          }
+        })();
+      } catch { /* 非法 URL 忽略 */ }
+    };
+    let sub: { remove: () => void } | null = null;
+    try {
+      Linking.getInitialURL().then(handle).catch(() => {});
+      sub = Linking.addEventListener('url', (e) => handle(e.url));
+    } catch { /* 不支持深链时静默 */ }
+    return () => { try { sub?.remove(); } catch { /* noop */ } };
+  }, []);
+}
+
 export default function App() {
+  useForceConnectDeepLink();
   return (
     <View style={styles.root}>
       <LinearGradient
