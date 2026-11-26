@@ -829,8 +829,9 @@ export default function CalmWaveHome() {
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       />
-      {/* 整体磨砂：轻高斯模糊，统一磨砂玻璃质感（tint=default 保照片本色） */}
-      <BlurView style={StyleSheet.absoluteFill} intensity={18} tint="default" />
+      {/* 整体磨砂：★ 2026-11-26 强度 18 → 6。原图仅 491×968 且叠 18 强度高斯模糊，
+          真机反馈背景糊；已换 1024×1366 高清图，模糊降到 6 保磨砂质感但保留风景细节。 */}
+      <BlurView style={StyleSheet.absoluteFill} intensity={6} tint="default" />
       {/* 顶部微提亮 + 底部加深：上半照片清晰，下半为卡片/tab 提供对比底 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
