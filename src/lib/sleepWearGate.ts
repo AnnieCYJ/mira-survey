@@ -1,36 +1,33 @@
 /**
- * 睡眠非佩戴伪影闸门 —— ★ 2026-11-26（用户拍板 B 方案）
+ * 睡眠非佩戴伪影闸门 —— ★ 2026-11-26 v118 判据定稿
  *
- * 背景（真机事实）：用户 11-25 夜间没有佩戴基础版戒指，但同步上来一条
- * 「01:06 → 11:10 / 10h04m」的睡眠摘要，睡眠效率 97%（整夜静止 = 无夜醒），
- * 夜间 HRV / 血氧逐样本全缺，夜间 HR 52 也不可信。戒指端把「长时间静置」
- * 误判成睡眠，App 如实显示后污染了睡眠恢复分与 14 天个人基线。
+ * 【判据演进（真机事实）】
+ * - v117：夜间 HRV/SpO2 逐样本全 0 → 判非佩戴。清掉了 11-25（10h04m）。
+ * - v118 中途曾误改成「全天 HR/EDA 有值即佩戴」，把 11-25 恢复了 —— 错。
+ *   真机 dump 事实：11-25 全天 HR=23 EDA=25，但**夜间 SpO2=0**；这些 HR/EDA
+ *   来自白天佩戴，混进了 01:06–11:10 的伪睡眠窗口，不代表那晚戴着。
+ * - 定稿：以「真实睡眠窗口内的 SpO2 逐样本数」为主判据。
+ *   真睡觉血氧传感器持续出数（对照：11-26 真睡眠夜间 SpO2=313）；
+ *   戒指摘下静置则整夜 SpO2=0。HRV 可作补充但基础版上报不稳，不单独依赖。
  *
- * 判定纪律（严格双条件，避免误杀真实睡眠）：
- *   ① 总睡眠 > 9.5h（570min）—— 普通夜不会被误判；
- *   ② 真实睡眠窗口内 HRV 逐样本数 = 0 且 SpO2 逐样本数 = 0 —— 真戴着手睡觉必有。
- * 两条同时成立才判为非佩戴伪影；只满足其一（例如真睡 10h 但生理采样齐全）一律放行。
- *
- * 数据来源：computeNightPhys 直接读 healthStore.intraday 的逐样本，不拿全天日均兜底，
- * 因此不会因为白天有 HRV/血氧读数就误判为「已佩戴」。
+ * 判定：总睡眠 > 9.5h 且睡眠窗口内 SpO2=0（且 HRV=0）→ 非佩戴伪影。
+ * 任一有逐样本一律放行，避免误杀真睡眠。短睡眠（<=570min）不判非佩戴。
  */
 import type { SleepSummary } from '../data/healthStore';
 import { computeNightPhys } from './nightPhysiology';
 
-/** 超过该时长才进入非佩戴嫌疑区（分钟） */
+/** 超过该时长才进入非佩戴嫌疑区（分钟）—— 短午睡不做非佩戴判定 */
 export const NON_WEAR_MAX_TOTAL_MIN = 570;
 
 export interface NonWearCheck {
-  /** 是否非佩戴伪影 */
   nonWear: boolean;
-  /** 触发检查的原因，供日志/诊断，不直接展示给用户 */
   reason: string;
   counts: { hr: number; hrv: number; spo2: number };
 }
 
 /**
  * 判定某一天的睡眠摘要是否为「非佩戴伪影」。
- * @param dk 归档日 key（YYYY-M-D，按起床日归档）
+ * @param dk 归档日 key（YYYY-MM-DD，按起床日归档）
  */
 export function checkSleepWear(dk: string, s: SleepSummary | null | undefined): NonWearCheck {
   const total = Number(s?.total ?? 0);
@@ -47,12 +44,14 @@ export function checkSleepWear(dk: string, s: SleepSummary | null | undefined): 
     counts.hr = phys.counts.hr;
     counts.hrv = phys.counts.hrv;
     counts.spo2 = phys.counts.spo2;
-    const nonWear = phys.counts.hrv === 0 && phys.counts.spo2 === 0;
+    // ★ 主判据：睡眠窗口内 SpO2 与 HRV 逐样本。基础版夜间 SpO2 稳定上报（真睡眠 313 点），
+    //   摘下静置整夜为 0。用窗口内样本而非全天计数，避免白天佩戴的 HR/EDA 混入窗口误判。
+    const nonWear = phys.counts.spo2 === 0 && phys.counts.hrv === 0;
     return {
       nonWear,
       reason: nonWear
-        ? `total=${Math.round(total)}min>570 且夜间 HRV/SpO2 逐样本均为 0（HR=${phys.counts.hr}）`
-        : `total=${Math.round(total)}min>570 但夜间有生理样本（HR ${phys.counts.hr}/HRV ${phys.counts.hrv}/SpO2 ${phys.counts.spo2}）`,
+        ? `total=${Math.round(total)}min>570 且夜间 SpO2/HRV 逐样本均为 0（HR=${phys.counts.hr}）→ 非佩戴伪影`
+        : `total=${Math.round(total)}min>570 但夜间有生理样本（SpO2=${phys.counts.spo2}/HRV=${phys.counts.hrv}/HR=${phys.counts.hr}）→ 真睡眠，放行`,
       counts,
     };
   } catch {

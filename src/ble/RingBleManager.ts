@@ -8354,9 +8354,39 @@ class RingConnectionImpl {
   }
 
   /**
-   * ★ 2026-11-26（用户拍板 B 方案）：巡检所有睡眠归档，清掉「非佩戴伪影」。
+   * ★ 2026-11-26 v118（判据修正）：诊断 dump——把最近 10 天每晚的原始睡眠摘要 +
+   * 当日全天贴肤信号（HR/EDA/HRV/SpO2 逐样本数）打到 logcat，供真机对账。
+   * release 下 postLog 不出控制台，用 console.log 保证可见。
+   */
+  private dumpSleepWearFacts(): void {
+    try {
+      const base = new Date();
+      base.setHours(0, 0, 0, 0);
+      const lines: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(base);
+        d.setDate(d.getDate() - i);
+        const dk = dayKeyOf(d.getTime());
+        const s = healthStore.getSleep(dk);
+        const suppressed = healthStore.isSleepSuppressed(dk);
+        const cnt = (k: string) => (healthStore.getIntraday(k as any, dk) ?? []).length;
+        lines.push(
+          `${dk} supp=${suppressed ? 1 : 0} total=${s?.total ?? '-'} ` +
+          `sleep=${s?.sleepTime ?? '-'} wake=${s?.wakeTime ?? '-'} ` +
+          `HR=${cnt('hr')} EDA=${cnt('eda')} HRV=${cnt('hrv')} SpO2=${cnt('spo2')}`,
+        );
+      }
+      console.log('[WEAR-FACTS]', JSON.stringify(lines));
+    } catch (e) {
+      console.log('[WEAR-FACTS] dump 异常', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * ★ 2026-11-26（用户拍板 B 方案，v118 判据定稿）：巡检所有睡眠归档，清掉「非佩戴伪影」。
    *
-   * 判定双条件见 lib/sleepWearGate：总时长 >9.5h 且夜间 HRV/SpO2 逐样本全为 0。
+   * 判据见 lib/sleepWearGate：总时长 >9.5h 且睡眠窗口内 SpO2/HRV 逐样本全为 0。
+   * 不用全天 HR/EDA——白天佩戴的少量点会混进伪睡眠窗口（11-25 实锤 HR=23/EDA=25 但夜间 SpO2=0）。
    * 命中即永久拉黑该日（复用 healthStore.suppressSleepDay），同时清 legacy 快照与
    * 冻结的睡眠恢复分，避免任何通路复活。返回实际清掉的天数。
    *
@@ -8655,8 +8685,11 @@ class RingConnectionImpl {
       //   放在 loadHealthStoreFromDisk 之后：此时 v2 + legacy 已全部灌入，清理才彻底；
       //   清理会拉黑该日，后续 hydrate/migrate/同步回写都进不来。
       await this.purgeDirtySleepOnce();
-      // ★ 2026-11-26：清掉历史存量中的非佩戴伪影（如 11-25 的 10h04m 假睡眠）。
-      //   两代存档均已载入，此时判定最完整；拉黑后恢复分与个人基线都不再读它。
+      // ★ 2026-11-26 v118：诊断对账（dump 最近 10 天每晚事实，供真机核对），
+      //   再用定稿判据（夜间 SpO2/HRV 窗口内逐样本）巡检非佩戴伪影。
+      //   注：v118 中途误解除的 11-25 摘要已清空、不会显示；若同步写回，
+      //   validateNonWearSleepDays 会按窗口内 SpO2=0 再次拉黑，无需额外一次性修正。
+      this.dumpSleepWearFacts();
       this.validateNonWearSleepDays();
       // ★ 2026-11-09：冷启动把 healthStore（v2 唯一数据源）里已同步的数据回填进 RingState。
       //   旧快照（RingState）与 healthStore 会失同步：healthStore 有今天的步数/睡眠，旧快照没有，

@@ -654,6 +654,25 @@ export class HealthStore {
     return this.suppressedSleepDays[normalizeDayKey(dayKeyRaw)] === 1;
   }
 
+  /**
+   * ★ 2026-11-26 v118：误杀恢复——把某日从黑名单移除，允许同步重新写入。
+   * 仅用于修正 v117 判据错误（用 HRV/SpO2=0 判非佩戴，误杀了戴着的真睡眠）。
+   * 返回是否确实解除了拉黑。解除后需重新 backfill 才能把睡眠摘要拉回。
+   */
+  unsuppressSleepDay(dayKeyRaw: string): boolean {
+    const dk = normalizeDayKey(dayKeyRaw);
+    if (Number.isNaN(parseDayKey(dk))) return false;
+    if (this.suppressedSleepDays[dk] !== 1) return false;
+    delete this.suppressedSleepDays[dk];
+    this.notify();
+    return true;
+  }
+
+  /** 全部被拉黑的睡眠日 key（含误杀的），供 v118 一次性复查恢复。 */
+  getSuppressedSleepDays(): string[] {
+    return Object.keys(this.suppressedSleepDays);
+  }
+
   /** 已归档睡眠的全部日 key（未拉黑的），供非佩戴伪影巡检使用。 */
   getSleepDayKeys(): string[] {
     return Object.keys(this.sleep).filter((dk) => this.suppressedSleepDays[dk] !== 1);
