@@ -854,7 +854,7 @@ export default function CalmWaveHome() {
       {/* 顶部微提亮 + 底部加深：上半照片清晰，下半为卡片/tab 提供对比底 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
-        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(10,41,79,0.05)', 'rgba(10,41,79,0.30)']}
+        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(10,41,79,0)', 'rgba(10,41,79,0.06)']}
         locations={[0, 0.42, 0.72, 1]}
       />
 

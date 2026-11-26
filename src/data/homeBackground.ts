@@ -24,31 +24,32 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     id: 'cabin',
     label: '藏蓝小屋',
     desc: '深蓝 · 小屋在圆环内',
-    source: require('../assets/home_bg_main_20261126.jpg'),
+    source: require('../assets/home_bg_cabin_new_thumb.jpg'),
   },
   {
     id: 'snow',
     label: '雪景小屋',
     desc: '默认 · 深蓝雪坡',
-    source: require('../assets/home_bg.jpg'),
+    // ★ 2026-11-26 v3：缩略图专用 400×400 方图（裁到主体），避免 cover 从 1080×2340 竖图中段裁到纯蓝水面
+    source: require('../assets/home_bg_thumb.jpg'),
   },
   {
     id: 'alpine',
     label: '雪山木屋',
     desc: '夜空雪山 · 暖窗小屋',
-    source: require('../assets/home_bg_alpine.jpg'),
+    source: require('../assets/home_bg_alpine_thumb.jpg'),
   },
   {
     id: 'night',
     label: '深蓝夜湖',
     desc: 'Pexels · 夜色雪峰',
-    source: require('../assets/home_bg_night.jpg'),
+    source: require('../assets/home_bg_night_thumb.jpg'),
   },
   {
     id: 'reflection',
     label: '蓝调倒影',
     desc: 'Pexels · 湖面雪山',
-    source: require('../assets/home_bg_reflection.jpg'),
+    source: require('../assets/home_bg_reflection_thumb.jpg'),
   },
 ];
 
@@ -73,11 +74,11 @@ export function getHomeBackgroundId(): HomeBackgroundId {
 
 /** 显式 id→图 映射，避免从对象数组里 find 取 source 在 Metro 打包后引用错乱。 */
 const SOURCE_MAP: Record<HomeBackgroundId, ImageSourcePropType> = {
-  cabin: require('../assets/home_bg_main_20261126.jpg'),
-  snow: require('../assets/home_bg.jpg'),
-  alpine: require('../assets/home_bg_alpine.jpg'),
-  night: require('../assets/home_bg_night.jpg'),
-  reflection: require('../assets/home_bg_reflection.jpg'),
+  cabin: require('../assets/home_bg_cabin_new_thumb.jpg'),
+  snow: require('../assets/home_bg_thumb.jpg'),
+  alpine: require('../assets/home_bg_alpine_thumb.jpg'),
+  night: require('../assets/home_bg_night_thumb.jpg'),
+  reflection: require('../assets/home_bg_reflection_thumb.jpg'),
 };
 
 export function getHomeBackgroundSource(): ImageSourcePropType {
