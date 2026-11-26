@@ -380,7 +380,7 @@ export default function SettingsScreen() {
                   accessibilityLabel={'首页背景：' + b.label}
                 >
                   <Image
-                    source={b.source}
+                    source={b.thumb}
                     style={[styles.bgThumb, active && styles.bgThumbOn]}
                     resizeMode="cover"
                   />

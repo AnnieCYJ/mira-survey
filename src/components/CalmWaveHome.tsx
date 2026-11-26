@@ -291,13 +291,14 @@ export default function CalmWaveHome() {
   //     hydrate/订阅仍保留，让用户在设置页选的图即时生效。
   // ★ 2026-11-26 定稿：首页背景用内联 base64（同工具卡方案），彻底绕开 Metro asset id
   //   映射错位——真机上 require 的图片 id 曾渲染成旧的雪坡图，无论换文件名/清缓存都无效。
+  // ★ 2026-11-26 v120：切换真正打通——5 张候选全部内联 base64（homeBgData.ts），
+  //   恢复订阅：设置页点选 → emit → 这里换图；冷启动 hydrate 恢复上次选择。
   const [homeBgSource, setHomeBgSource] = useState<ImageSourcePropType>({ uri: HOME_BG_DATA_URI });
   useEffect(() => {
-    // ★ 2026-11-26 定稿：首页固定用藏蓝小屋新图（上面 require 写死）。
-    //   旧 prefs 里残留的 snow/alpine/night/reflection 会经 hydrate 的 emit 把图冲回旧版，
-    //   所以首页彻底不订阅背景切换——设置页选择器作为「预览其它图」入口保留，
-    //   但默认首页永远是新图。需要恢复切换时把这里改回订阅即可。
+    // 先订阅再 hydrate：hydrate 完成时的 emit 会把上次选择刷进来
+    const unsub = subscribeHomeBackground(() => setHomeBgSource(getHomeBackgroundSource()));
     void hydrateHomeBackground();
+    return unsub;
   }, []);
   // ★ 2026-10-26（用户）：首页 5 张指标卡改为接真实数据（之前 4 张写死静态预览值）。
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
