@@ -37,6 +37,8 @@ import {
 // ★ 2026-11-05：两套戒指数据源隔离（旧 HK18 数据不得混进当前戒指）+ 体温合法性校验
 import { trustedCurrentRingDeviceId, isBlockedRingDeviceId, saneBodyTemp, normDeviceId } from '../data/ringDataIsolation';
 import { ringUploadExtFields } from '../lib/ringUploadFields';
+// ★ 2026-11-26：睡眠非佩戴伪影闸门（静置被误判为睡眠 → 污染恢复分与基线）
+import { checkSleepWear } from '../lib/sleepWearGate';
 import {
   computeCycle,
   daysBetween,
@@ -1277,7 +1279,9 @@ class NativeRingSource {
     /** ★ 2026-11-11：断点游标推进后回传持有方持久化（NativeRingSource 自身不碰 FileSystem） */
     private onCursorPersist: (date: string | null) => void,
     /** ★ 2026-11-13：扫描窗口结束（final 帧）→ 交外层按设备数量决策（1 枚直连 / 多枚列出） */
-    private onScanFinished: (list: any[]) => void = () => {}
+    private onScanFinished: (list: any[]) => void = () => {},
+    /** ★ 2026-11-26：睡眠非佩戴伪影巡检（清存量/当日，返回清除天数） */
+    private onValidateSleepWear: () => number = () => 0
   ) {
     if (VeepooNative) {
       // ★ 2026-11-07：改走 safeNativeEmitter —— VeepooRing 原生缺 add/removeListeners，
@@ -2447,6 +2451,8 @@ class NativeRingSource {
       //   原生已把主同步 + origin3 合成单次事务、批次在 backfillDone 前全部 emit 完，
       //   这里只需在 patch 落地后跑一次；coverage 统计也挪到同一拍，避免「0/8」误报。
       setTimeout(() => {
+        // ★ 2026-11-26：所有睡眠/生理样本已落地，此时做非佩戴伪影终检（清当日）后再重算。
+        try { this.onValidateSleepWear(); } catch { /* 不影响主链路 */ }
         try {
           // recomputeDailyStatus 是 RingConnectionImpl 的方法，NativeRingSource 调不到；
           // requestFlush = () => { rebuildHistoricalStatus(); scheduleRecomputeDailyStatus(); ... }
@@ -4297,6 +4303,11 @@ steps点数=${reshaped.steps?.length ?? 0}`,
       // sleepTime/wakeTime 一并打出：睡眠负载的「晚睡/规律性」维度依赖它，便于核对
       postLog('JS-SLEEP', `handleSleepDay date=${raw.date} total=${total} deep=${deep} light=${light} rem=${rem} awake=${awake} insomnia=${insomnia} score=${score.toFixed(1)} sdkScore=${sdkScore} 入睡=${v.sleepTime ?? '-'} 起床=${v.wakeTime ?? '-'} getUp=${getUp}`);
       this.push(patch);
+      // ★ 2026-11-26：超长睡眠延时复查——BLE 批次里生理样本可能晚于睡眠摘要到达。
+      //   延时后若夜间 HRV/SpO2 逐样本仍为 0，判定非佩戴并清掉（含冻结恢复分）。
+      if (total > 570) {
+        setTimeout(() => { this.onValidateSleepWear(); }, 5_000);
+      }
     } catch (e) {
     }
   };
@@ -5360,7 +5371,9 @@ class RingConnectionImpl {
           this.scanDecisionDone = false;
         } catch { /* ignore */ }
         this.decideAfterScan(list);
-      }
+      },
+      // ★ 2026-11-26：同步收口/超长睡眠时的非佩戴巡检，交给持有两代存档的外层执行。
+      () => this.validateNonWearSleepDays()
     );
     // ★ 2026-11-05：后端 refreshMetrics 现在每 10s 推一次 daily（真实日值投影）。
     //   applyPatch 是浅合并，直接推 daily 会整体覆盖 syncExtendedDaily 写进 state 的
@@ -8340,6 +8353,57 @@ class RingConnectionImpl {
     }
   }
 
+  /**
+   * ★ 2026-11-26（用户拍板 B 方案）：巡检所有睡眠归档，清掉「非佩戴伪影」。
+   *
+   * 判定双条件见 lib/sleepWearGate：总时长 >9.5h 且夜间 HRV/SpO2 逐样本全为 0。
+   * 命中即永久拉黑该日（复用 healthStore.suppressSleepDay），同时清 legacy 快照与
+   * 冻结的睡眠恢复分，避免任何通路复活。返回实际清掉的天数。
+   *
+   * 调用时机：① 冷启动载入两代存档后（清存量）；② backfillDone 数据全部落地后（清当日）；
+   * ③ handleSleepDay 收到超长睡眠后延时复查（防止同步时序导致生理样本后到）。
+   */
+  private validateNonWearSleepDays(): number {
+    let removed = 0;
+    try {
+      const days = healthStore.getSleepDayKeys();
+      const patch: Record<string, unknown> = {};
+      const sd = { ...(this.state.sleepDaily ?? {}) };
+      const ssd = { ...(this.state.sleepStagesDaily ?? {}) };
+      let legacyTouched = false;
+      for (const dk of days) {
+        const s = healthStore.getSleep(dk);
+        if (!s) continue;
+        const gate = checkSleepWear(dk, s);
+        // ★ release 下 postLog 不输出控制台，这里用 console.log 保证真机 logcat 可见判定依据
+        console.log('[WEAR-GATE] check', dk, gate.reason);
+        if (!gate.nonWear) continue;
+        console.log('[WEAR-GATE] ⛔ 非佩戴伪影，拉黑并清除', dk, gate.reason);
+        healthStore.suppressSleepDay(dk);
+        healthStore.deleteAnalysisForDay(dk); // 冻结的恢复分一并清掉
+        removed++;
+        if (sd[dk] != null) { delete sd[dk]; legacyTouched = true; }
+        if (ssd[dk] != null) { delete ssd[dk]; legacyTouched = true; }
+        if (this.state.sleepSummaryDate === dk) {
+          patch.sleepSummaryDate = null;
+          patch.sleepSummary = null;
+          patch.sleepTime = null;
+          patch.wakeTime = null;
+          legacyTouched = true;
+        }
+      }
+      if (legacyTouched) {
+        patch.sleepDaily = sd;
+        patch.sleepStagesDaily = ssd;
+        this.applyPatch(patch as any);
+      }
+      if (removed > 0) void this.saveSnapshot();
+    } catch (e) {
+      _postLog('RingBle', `[WEAR-GATE] 巡检异常（不影响主链路）：${e instanceof Error ? e.message : String(e)}`);
+    }
+    return removed;
+  }
+
   private async loadHealthStoreFromDisk(legacySnap: any): Promise<void> {
     const path = this.healthStorePath();
     let v2Loaded = false;
@@ -8591,6 +8655,9 @@ class RingConnectionImpl {
       //   放在 loadHealthStoreFromDisk 之后：此时 v2 + legacy 已全部灌入，清理才彻底；
       //   清理会拉黑该日，后续 hydrate/migrate/同步回写都进不来。
       await this.purgeDirtySleepOnce();
+      // ★ 2026-11-26：清掉历史存量中的非佩戴伪影（如 11-25 的 10h04m 假睡眠）。
+      //   两代存档均已载入，此时判定最完整；拉黑后恢复分与个人基线都不再读它。
+      this.validateNonWearSleepDays();
       // ★ 2026-11-09：冷启动把 healthStore（v2 唯一数据源）里已同步的数据回填进 RingState。
       //   旧快照（RingState）与 healthStore 会失同步：healthStore 有今天的步数/睡眠，旧快照没有，
       //   于是首页读 ring.stepDaily / curveStatus 等「实时态」在冷启动为空 → 界面空白，

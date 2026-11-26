@@ -654,6 +654,11 @@ export class HealthStore {
     return this.suppressedSleepDays[normalizeDayKey(dayKeyRaw)] === 1;
   }
 
+  /** 已归档睡眠的全部日 key（未拉黑的），供非佩戴伪影巡检使用。 */
+  getSleepDayKeys(): string[] {
+    return Object.keys(this.sleep).filter((dk) => this.suppressedSleepDays[dk] !== 1);
+  }
+
   recordSleep(dayKeyRaw: string, summary: SleepSummary): void {
     const dk = normalizeDayKey(dayKeyRaw);
     if (Number.isNaN(parseDayKey(dk))) return;
@@ -1251,6 +1256,19 @@ export class HealthStore {
   getAnalysis(dateKey?: string): Partial<AnalysisSnapshot> | null {
     const dk = dateKey ?? dayKey(Date.now());
     return this.analysis[dk] ?? null;
+  }
+
+  /**
+   * 删除某天的冻结分析结果（如睡眠恢复定稿）。
+   * ★ 2026-11-26：睡眠被判非佩戴拉黑后必须一并清掉，否则 freeze 快照会让假分数继续显示。
+   */
+  deleteAnalysisForDay(dateKeyRaw: string): boolean {
+    const dk = normalizeDayKey(dateKeyRaw);
+    const had = this.analysis[dk] != null;
+    if (!had) return false;
+    delete this.analysis[dk];
+    this.notify();
+    return true;
   }
 
   // ── 第三步: 用户标注数据模型 (训练个性化分类器的壁垒) ──
