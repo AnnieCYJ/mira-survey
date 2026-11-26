@@ -11,7 +11,7 @@
  * 本文件与两个 Screen 的调用方式不变。
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
 import { theme } from './theme/theme';
@@ -56,6 +56,33 @@ export default function AuthGate() {
         setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone, ringSetupDone: !!s.ringSetupDone }),
       );
     });
+  }, []);
+
+  // ★ 2026-11-26 本地真机验证用隐藏深链：miraringfashion://dev/login
+  //   仅重建一个已登录+已完成引导的本地会话，跳过登录页，方便验证首页背景。
+  //   不影响正常用户（需手动 adb 发深链才会触发）。
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      if (!url) return;
+      try {
+        // miraringfashion://dev/login → host='dev', pathname='/login'
+        const u = new URL(url);
+        if (u.host.toLowerCase() !== 'dev' || u.pathname.replace(/^\/+/, '').toLowerCase() !== 'login') return;
+        void (async () => {
+          await userStore.register('13900000000', '本地验证', 'devonly');
+          await userStore.completeOnboarding({});
+          await userStore.completeRingSetup();
+          const s = await userStore.loadSession();
+          setSession({ loggedIn: s.loggedIn, onboardingDone: s.onboardingDone, ringSetupDone: !!s.ringSetupDone });
+        })();
+      } catch { /* 非法 URL 忽略 */ }
+    };
+    let sub: { remove: () => void } | null = null;
+    try {
+      Linking.getInitialURL().then(handle).catch(() => {});
+      sub = Linking.addEventListener('url', (e) => handle(e.url));
+    } catch { /* 不支持深链时静默 */ }
+    return () => { try { sub?.remove(); } catch { /* noop */ } };
   }, []);
 
   const refresh = () => {

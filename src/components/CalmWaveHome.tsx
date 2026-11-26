@@ -16,6 +16,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, useWindowDimensions, StatusBar, TouchableOpacity } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import { theme } from '../theme/theme';
 import { sleepRecoveryScoreForDay } from '../lib/sleepPersonalized';
 import { RingBle } from '../ble/RingBleManager';
@@ -71,7 +72,8 @@ import {
 } from '../lib/homeStatusWord'; // ★ 2026-11-14：圆环中心「场景词」引擎（短暂出现后回落底层档位词）
 import { getItem, setItem } from '../utils/prefs';
 // ★ 2026-11-26：首页背景改为「设置页可选」——订阅选择，点选即时换图
-import { getHomeBackgroundSource, hydrateHomeBackground, subscribeHomeBackground } from '../data/homeBackground';
+import { getHomeBackgroundSource, getHomeBackgroundId, hydrateHomeBackground, subscribeHomeBackground } from '../data/homeBackground';
+import { HOME_BG_DATA_URI } from '../assets/homeBgData';
 
 // ★ 2026-11-14（用户）：圆环中心状态词改由 lib/homeStatusWord「场景词引擎」统一输出
 //   （底层档位词 元气满满/状态良好/平平静静/休息一下 按档位常态展示，场景词短暂出现后回落）。
@@ -285,10 +287,17 @@ export default function CalmWaveHome() {
     void hydrateHomeWord().then(() => setWordHydrated((v) => v + 1));
   }, []);
   // ★ 2026-11-26（用户）：首页背景图可在设置页选择，点选后即时换图、重启后保持。
-  const [homeBgSource, setHomeBgSource] = useState(getHomeBackgroundSource);
+  //   ★ 修复：直接用 require 固定新默认图初始化（避免 module 初始化顺序导致拿到旧 source），
+  //     hydrate/订阅仍保留，让用户在设置页选的图即时生效。
+  // ★ 2026-11-26 定稿：首页背景用内联 base64（同工具卡方案），彻底绕开 Metro asset id
+  //   映射错位——真机上 require 的图片 id 曾渲染成旧的雪坡图，无论换文件名/清缓存都无效。
+  const [homeBgSource, setHomeBgSource] = useState<ImageSourcePropType>({ uri: HOME_BG_DATA_URI });
   useEffect(() => {
-    void hydrateHomeBackground().then(() => setHomeBgSource(getHomeBackgroundSource()));
-    return subscribeHomeBackground(() => setHomeBgSource(getHomeBackgroundSource()));
+    // ★ 2026-11-26 定稿：首页固定用藏蓝小屋新图（上面 require 写死）。
+    //   旧 prefs 里残留的 snow/alpine/night/reflection 会经 hydrate 的 emit 把图冲回旧版，
+    //   所以首页彻底不订阅背景切换——设置页选择器作为「预览其它图」入口保留，
+    //   但默认首页永远是新图。需要恢复切换时把这里改回订阅即可。
+    void hydrateHomeBackground();
   }, []);
   // ★ 2026-10-26（用户）：首页 5 张指标卡改为接真实数据（之前 4 张写死静态预览值）。
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
@@ -832,10 +841,12 @@ export default function CalmWaveHome() {
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
       {/* ★ 2026-11-26：首页背景 = 设置页选中的图（默认高清雪景照），全屏 cover 覆盖。
           整体轻磨砂（BlurView）保留照片观感又统一磨砂质感；底部加深一点保证磨砂卡/玻璃 tab 可读。 */}
+      {/* ★ 2026-11-26：背景图按真机 1080×2340 精确制作，stretch 保证纵向百分比 1:1 映射，
+          不用 cover（cover 在长屏上按高度缩放+裁左右，之前小屋位置算错就栽在这）。 */}
       <Image
         source={homeBgSource}
         style={StyleSheet.absoluteFill}
-        resizeMode="cover"
+        resizeMode="stretch"
       />
       {/* 整体磨砂：★ 2026-11-26 强度 18 → 6。原图仅 491×968 且叠 18 强度高斯模糊，
           真机反馈背景糊；已换 1024×1366 高清图，模糊降到 6 保磨砂质感但保留风景细节。 */}
