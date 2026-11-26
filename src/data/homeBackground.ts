@@ -8,21 +8,26 @@
  * ★ 2026-11-26 v120 定稿：
  *  - 全部图源改用内联 base64 data URI（homeBgData.ts），彻底绕开 Metro asset id 映射错位
  *    （真机曾出现 require 图片渲染成旧图，换文件名/清缓存均无效）。
- *  - 全尺寸图统一按真机 1080×2340 制作，构图 = 天空海面在上、雪/主体在底部小部分
- *    （用户指定「按之前版本」的自然构图）；设置页缩略图与首页共用同一 data URI。
- *  - 首页恢复订阅切换（此前因映射错位曾锁死为单张内联图）。
+ *  - 全尺寸图统一按真机 1080×2340 制作；首页恢复订阅切换。
+ *
+ * ★ 2026-11-26 v122：色调统一深蓝藏蓝（用户要求「要跟我们 APP 主题蓝色接近，不能搞别的颜色」）。
+ *  - 淘汰跑色三张：alpine（色相 198° 偏青绿）、night（饱和度不足发灰）、reflection（偏亮蓝）。
+ *  - 新增：coast（用户提供的深蓝海岸飞鸟图，裁水印+按 1080×2340 延展）、
+ *          deepwave / darkwave（Pexels 15305602 / 15305609，深藏蓝海浪，免版权可商用）。
+ *  - 全部候选整体色相 205-216°、深蓝调，与主题 #1F4C7E→#113861→#0A294F 同族。
+ *  - 旧 id（snow→保留；alpine/night/reflection→迁移回默认 cabin）。
  */
 import type { ImageSourcePropType } from 'react-native';
 import { getItem, setItem } from '../utils/prefs';
 import {
   HOME_BG_DATA_URI,
   HOME_BG_SNOW_URI,
-  HOME_BG_ALPINE_URI,
-  HOME_BG_NIGHT_URI,
-  HOME_BG_REFLECTION_URI,
+  HOME_BG_COAST_URI,
+  HOME_BG_DEEPWAVE_URI,
+  HOME_BG_DARKWAVE_URI,
 } from '../assets/homeBgData';
 
-export type HomeBackgroundId = 'cabin' | 'snow' | 'alpine' | 'night' | 'reflection';
+export type HomeBackgroundId = 'cabin' | 'snow' | 'coast' | 'deepwave' | 'darkwave';
 
 export type HomeBackgroundOption = {
   id: HomeBackgroundId;
@@ -38,9 +43,9 @@ export type HomeBackgroundOption = {
 const SOURCE_MAP: Record<HomeBackgroundId, ImageSourcePropType> = {
   cabin: { uri: HOME_BG_DATA_URI },
   snow: { uri: HOME_BG_SNOW_URI },
-  alpine: { uri: HOME_BG_ALPINE_URI },
-  night: { uri: HOME_BG_NIGHT_URI },
-  reflection: { uri: HOME_BG_REFLECTION_URI },
+  coast: { uri: HOME_BG_COAST_URI },
+  deepwave: { uri: HOME_BG_DEEPWAVE_URI },
+  darkwave: { uri: HOME_BG_DARKWAVE_URI },
 };
 
 export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
@@ -59,25 +64,25 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     thumb: require('../assets/home_bg_thumb.jpg'),
   },
   {
-    id: 'alpine',
-    label: '雪山木屋',
-    desc: '夜空雪山 · 暖窗小屋',
-    source: SOURCE_MAP.alpine,
-    thumb: require('../assets/home_bg_alpine_thumb.jpg'),
+    id: 'coast',
+    label: '海岸飞鸟',
+    desc: '深蓝海岸 · 雪岸飞鸟',
+    source: SOURCE_MAP.coast,
+    thumb: require('../assets/thumb_coast.jpg'),
   },
   {
-    id: 'night',
-    label: '深蓝夜湖',
-    desc: 'Pexels · 夜色雪峰',
-    source: SOURCE_MAP.night,
-    thumb: require('../assets/home_bg_night_thumb.jpg'),
+    id: 'deepwave',
+    label: '深海波纹',
+    desc: 'Pexels · 深藏蓝海浪',
+    source: SOURCE_MAP.deepwave,
+    thumb: require('../assets/thumb_deepwave.jpg'),
   },
   {
-    id: 'reflection',
-    label: '蓝调倒影',
-    desc: 'Pexels · 湖面雪山',
-    source: SOURCE_MAP.reflection,
-    thumb: require('../assets/home_bg_reflection_thumb.jpg'),
+    id: 'darkwave',
+    label: '暗涌海面',
+    desc: 'Pexels · 暗蓝涌浪',
+    source: SOURCE_MAP.darkwave,
+    thumb: require('../assets/thumb_darkwave.jpg'),
   },
 ];
 
@@ -105,20 +110,18 @@ export function getHomeBackgroundSource(): ImageSourcePropType {
 }
 
 /**
- * 冷启动从 prefs 恢复上次选择；无记录保持默认（藏蓝小屋）。
- * v120：切换已真正生效，legacy 迁移逻辑保留（旧测试残留一次性归到 cabin）。
+ * 冷启动从 prefs 恢复上次选择；无记录/记录失效保持默认（藏蓝小屋）。
+ * v122：v1/v2 里残留的已淘汰 id（alpine/night/reflection 等）一律回落 cabin。
  */
 const V2_KEY = 'homeBackgroundId_v2';
-const LEGACY_IDS: ReadonlySet<string> = new Set(['snow', 'alpine', 'night', 'reflection']);
 export async function hydrateHomeBackground(): Promise<void> {
   try {
     const v2 = await getItem(V2_KEY);
     if (isHomeBackgroundId(v2)) {
       current = v2;
     } else {
-      // 新 key 无记录：迁移旧选择（旧 id 或首次都归到 cabin）
-      const old = await getItem(STORAGE_KEY);
-      current = isHomeBackgroundId(old) && !LEGACY_IDS.has(old) ? old : 'cabin';
+      // v2 无记录或记录的是已淘汰 id：回落默认并覆写
+      current = DEFAULT_ID;
       void setItem(V2_KEY, current).catch(() => {});
       void setItem(STORAGE_KEY, current).catch(() => {});
     }
