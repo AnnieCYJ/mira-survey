@@ -70,6 +70,8 @@ import {
   HOME_WORD_STORAGE_KEY,
 } from '../lib/homeStatusWord'; // ★ 2026-11-14：圆环中心「场景词」引擎（短暂出现后回落底层档位词）
 import { getItem, setItem } from '../utils/prefs';
+// ★ 2026-11-26：首页背景改为「设置页可选」——订阅选择，点选即时换图
+import { getHomeBackgroundSource, hydrateHomeBackground, subscribeHomeBackground } from '../data/homeBackground';
 
 // ★ 2026-11-14（用户）：圆环中心状态词改由 lib/homeStatusWord「场景词引擎」统一输出
 //   （底层档位词 元气满满/状态良好/平平静静/休息一下 按档位常态展示，场景词短暂出现后回落）。
@@ -109,7 +111,7 @@ function lastDayWithData(keys: string[], maxDays = 30): string {
 }
 
 const WAVE_VIDEO = require('../assets/wave-video.mp4');
-const HOME_BG = require('../assets/home_bg.jpg'); // ★ 2026-11-03 首页背景：用户指定雪景照（已裁掉状态栏/Home 黑条）
+// ★ 2026-11-26：首页背景不再写死，改由设置页选择（data/homeBackground），默认仍是雪景照
 const WAVE_SOUND = require('../assets/wave-sound.mp3'); // ★ 2026-10-18 用户：海浪白噪音（FFmpeg 合成 30s 无缝循环）
 const THUMB_RELAX = require('../assets/card_relax.jpg');
 
@@ -281,6 +283,12 @@ export default function CalmWaveHome() {
       save: (s) => { void setItem(HOME_WORD_STORAGE_KEY, JSON.stringify(s)).catch(() => {}); },
     });
     void hydrateHomeWord().then(() => setWordHydrated((v) => v + 1));
+  }, []);
+  // ★ 2026-11-26（用户）：首页背景图可在设置页选择，点选后即时换图、重启后保持。
+  const [homeBgSource, setHomeBgSource] = useState(getHomeBackgroundSource);
+  useEffect(() => {
+    void hydrateHomeBackground().then(() => setHomeBgSource(getHomeBackgroundSource()));
+    return subscribeHomeBackground(() => setHomeBgSource(getHomeBackgroundSource()));
   }, []);
   // ★ 2026-10-26（用户）：首页 5 张指标卡改为接真实数据（之前 4 张写死静态预览值）。
   //   订阅 RingBle 实时状态，数据推送/重连即刷新卡片；派生值口径与 TodayScreen 顶部 chips 同源。
@@ -822,10 +830,10 @@ export default function CalmWaveHome() {
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
-      {/* ★ 2026-11-03：首页背景 = 用户指定雪景照（home_bg.jpg，已裁掉状态栏/Home 黑条），全屏覆盖。
+      {/* ★ 2026-11-26：首页背景 = 设置页选中的图（默认高清雪景照），全屏 cover 覆盖。
           整体轻磨砂（BlurView）保留照片观感又统一磨砂质感；底部加深一点保证磨砂卡/玻璃 tab 可读。 */}
       <Image
-        source={HOME_BG}
+        source={homeBgSource}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       />

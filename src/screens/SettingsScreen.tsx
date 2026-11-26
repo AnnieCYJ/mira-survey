@@ -2,7 +2,7 @@ import { uploadSelfReports } from '../data/selfReportSync';
 import { getLocalDeviceId } from '../data/ringIdentity';
 import { getAutoUploadEnabled, setAutoUploadEnabled } from '../data/autoUpload';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -23,6 +23,11 @@ import { healthStore } from '../data/healthStore';
 import { checkAppUpdate, openApkDownload, downloadAndInstallApk, formatApkSize, type AppUpdateInfo } from '../data/appUpdate';
 // ★ Phase 1/2：上传成功后重拉规律摘要
 import { syncPatterns } from '../ai/cloudPatterns';
+// ★ 2026-11-26：首页背景图选择（设置页点选 → 首页即时换图）
+import {
+  HOME_BACKGROUNDS, getHomeBackgroundId, setHomeBackground,
+  hydrateHomeBackground, subscribeHomeBackground,
+} from '../data/homeBackground';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -42,6 +47,12 @@ export default function SettingsScreen() {
     }
   }, [navigation]);
   const [sync, setSync] = useState(RingBle.getSyncEnabled());
+  // ★ 2026-11-26：首页背景图（点选即时生效，prefs 持久化）
+  const [homeBgId, setHomeBgId] = useState(getHomeBackgroundId());
+  useEffect(() => {
+    void hydrateHomeBackground();
+    return subscribeHomeBackground(() => setHomeBgId(getHomeBackgroundId()));
+  }, []);
   const [autoUpload, setAutoUpload] = useState(true);
   React.useEffect(() => {
     getAutoUploadEnabled().then((v) => setAutoUpload(v));
@@ -350,6 +361,39 @@ export default function SettingsScreen() {
               if (v) RingBle.syncBackfill();
             }}
           />
+        </Card>
+
+        {/* ★ 2026-11-26（用户）：首页背景图选择——点一下即换首页背景，返回首页看整体效果 */}
+        <Text style={styles.sectionTitle}>首页背景</Text>
+        <Card style={styles.noteCard}>
+          <Text style={styles.footnote}>选一张，返回首页即可看到效果；下次打开仍保持。</Text>
+          <View style={styles.bgRow}>
+            {HOME_BACKGROUNDS.map((b) => {
+              const active = homeBgId === b.id;
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => setHomeBackground(b.id)}
+                  activeOpacity={0.75}
+                  style={styles.bgItem}
+                  accessibilityRole="button"
+                  accessibilityLabel={'首页背景：' + b.label}
+                >
+                  <Image
+                    source={b.source}
+                    style={[styles.bgThumb, active && styles.bgThumbOn]}
+                    resizeMode="cover"
+                  />
+                  <Text style={[styles.bgLabel, active && styles.bgLabelOn]} numberOfLines={1}>
+                    {b.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.footnote, styles.footnoteSub]}>
+            {HOME_BACKGROUNDS.find((b) => b.id === homeBgId)?.desc}
+          </Text>
         </Card>
 
         {/* 自动监测 */}
@@ -914,6 +958,28 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
     marginHorizontal: theme.space.sm,
   },
+  // ★ 2026-11-26：首页背景选择四宫格
+  bgRow: {
+    flexDirection: 'row',
+    marginTop: theme.space.sm,
+    marginHorizontal: theme.space.sm,
+  },
+  bgItem: { flex: 1, alignItems: 'center', paddingHorizontal: theme.space.xs },
+  bgThumb: {
+    width: '100%',
+    height: theme.sp(17),
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  bgThumbOn: { borderColor: theme.colors.accentText },
+  bgLabel: {
+    marginTop: 6,
+    fontSize: theme.fontSize.micro,
+    color: theme.colors.textSub,
+    textAlign: 'center',
+  },
+  bgLabelOn: { color: theme.colors.textWhite, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
