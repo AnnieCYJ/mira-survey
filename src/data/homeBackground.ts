@@ -11,6 +11,8 @@
  *  - 全尺寸图统一按真机 1080×2340 制作；首页恢复订阅切换。
  *
  * ★ 2026-11-26 v122：色调统一深蓝藏蓝（用户要求「要跟我们 APP 主题蓝色接近，不能搞别的颜色」）。
+ * ★ 2026-11-26 v123：v122 的 deepwave/darkwave（海浪纹理）被用户否决（浪花太扎眼），
+ *   换成 duskcoast / dusksea / mistmount 三张（共 6 张）；islet 原生粉霞无法压净弃用。
  *  - 淘汰跑色三张：alpine（色相 198° 偏青绿）、night（饱和度不足发灰）、reflection（偏亮蓝）。
  *  - 新增：coast（用户提供的深蓝海岸飞鸟图，裁水印+按 1080×2340 延展）、
  *          deepwave / darkwave（Pexels 15305602 / 15305609，深藏蓝海浪，免版权可商用）。
@@ -23,11 +25,12 @@ import {
   HOME_BG_DATA_URI,
   HOME_BG_SNOW_URI,
   HOME_BG_COAST_URI,
-  HOME_BG_DEEPWAVE_URI,
-  HOME_BG_DARKWAVE_URI,
+  HOME_BG_DUSKCOAST_URI,
+  HOME_BG_MISTMOUNT_URI,
+  HOME_BG_DUSKSEA_URI,
 } from '../assets/homeBgData';
 
-export type HomeBackgroundId = 'cabin' | 'snow' | 'coast' | 'deepwave' | 'darkwave';
+export type HomeBackgroundId = 'cabin' | 'snow' | 'coast' | 'duskcoast' | 'dusksea' | 'mistmount';
 
 export type HomeBackgroundOption = {
   id: HomeBackgroundId;
@@ -44,8 +47,9 @@ const SOURCE_MAP: Record<HomeBackgroundId, ImageSourcePropType> = {
   cabin: { uri: HOME_BG_DATA_URI },
   snow: { uri: HOME_BG_SNOW_URI },
   coast: { uri: HOME_BG_COAST_URI },
-  deepwave: { uri: HOME_BG_DEEPWAVE_URI },
-  darkwave: { uri: HOME_BG_DARKWAVE_URI },
+  duskcoast: { uri: HOME_BG_DUSKCOAST_URI },
+  mistmount: { uri: HOME_BG_MISTMOUNT_URI },
+  dusksea: { uri: HOME_BG_DUSKSEA_URI },
 };
 
 export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
@@ -71,18 +75,25 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     thumb: require('../assets/thumb_coast.jpg'),
   },
   {
-    id: 'deepwave',
-    label: '深海波纹',
-    desc: 'Pexels · 深藏蓝海浪',
-    source: SOURCE_MAP.deepwave,
-    thumb: require('../assets/thumb_deepwave.jpg'),
+    id: 'duskcoast',
+    label: '暮色海岸',
+    desc: 'Pexels · 深蓝暮岸礁石剪影',
+    source: SOURCE_MAP.duskcoast,
+    thumb: require('../assets/thumb_duskcoast.jpg'),
   },
   {
-    id: 'darkwave',
-    label: '暗涌海面',
-    desc: 'Pexels · 暗蓝涌浪',
-    source: SOURCE_MAP.darkwave,
-    thumb: require('../assets/thumb_darkwave.jpg'),
+    id: 'mistmount',
+    label: '雾山远黛',
+    desc: 'Pexels · 深蓝雾山层叠',
+    source: SOURCE_MAP.mistmount,
+    thumb: require('../assets/thumb_mistmount.jpg'),
+  },
+  {
+    id: 'dusksea',
+    label: '暮海天光',
+    desc: 'Pexels · 深蓝暮空海面',
+    source: SOURCE_MAP.dusksea,
+    thumb: require('../assets/thumb_dusksea.jpg'),
   },
 ];
 
