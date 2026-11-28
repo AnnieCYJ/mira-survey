@@ -28,9 +28,14 @@ import {
   HOME_BG_DUSKCOAST_URI,
   HOME_BG_MISTMOUNT_URI,
   HOME_BG_DUSKSEA_URI,
+  HOME_BG_STREET_URI,
+  HOME_BG_SNOWCOAST_URI,
+  HOME_BG_DUNE_URI,
 } from '../assets/homeBgData';
 
-export type HomeBackgroundId = 'cabin' | 'snow' | 'coast' | 'duskcoast' | 'dusksea' | 'mistmount';
+export type HomeBackgroundId =
+  | 'cabin' | 'snow' | 'coast' | 'duskcoast' | 'dusksea' | 'mistmount'
+  | 'street' | 'snowcoast' | 'dune';
 
 export type HomeBackgroundOption = {
   id: HomeBackgroundId;
@@ -50,6 +55,9 @@ const SOURCE_MAP: Record<HomeBackgroundId, ImageSourcePropType> = {
   duskcoast: { uri: HOME_BG_DUSKCOAST_URI },
   mistmount: { uri: HOME_BG_MISTMOUNT_URI },
   dusksea: { uri: HOME_BG_DUSKSEA_URI },
+  street: { uri: HOME_BG_STREET_URI },
+  snowcoast: { uri: HOME_BG_SNOWCOAST_URI },
+  dune: { uri: HOME_BG_DUNE_URI },
 };
 
 export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
@@ -95,6 +103,28 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     source: SOURCE_MAP.dusksea,
     thumb: require('../assets/thumb_dusksea.jpg'),
   },
+  {
+    id: 'street',
+    label: '蓝色街角',
+    desc: '深蓝街景 · 橙色店铺灯光',
+    source: SOURCE_MAP.street,
+    thumb: require('../assets/thumb_street.jpg'),
+  },
+  {
+    id: 'snowcoast',
+    label: '雪山海岸',
+    desc: '深蓝海湾 · 雪坡松林',
+    source: SOURCE_MAP.snowcoast,
+    thumb: require('../assets/thumb_snowcoast.jpg'),
+  },
+  {
+    id: 'dune',
+    label: '雪丘曲径',
+    desc: '深蓝海面 · 雪丘树林',
+    source: SOURCE_MAP.dune,
+    thumb: require('../assets/thumb_dune.jpg'),
+  },
+
 ];
 
 const STORAGE_KEY = 'homeBackgroundId';

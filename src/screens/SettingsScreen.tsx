@@ -2,7 +2,7 @@ import { uploadSelfReports } from '../data/selfReportSync';
 import { getLocalDeviceId } from '../data/ringIdentity';
 import { getAutoUploadEnabled, setAutoUploadEnabled } from '../data/autoUpload';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -367,34 +367,36 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>首页背景</Text>
         <Card style={styles.noteCard}>
           <Text style={styles.footnote}>选一张，返回首页即可看到效果；下次打开仍保持。</Text>
-          <View style={styles.bgRow}>
-            {[0, 1].map((row) => (
-              <View key={row} style={styles.bgRowLine}>
-                {HOME_BACKGROUNDS.slice(row * 3, row * 3 + 3).map((b) => {
-                  const active = homeBgId === b.id;
-                  return (
-                    <TouchableOpacity
-                      key={b.id}
-                      onPress={() => setHomeBackground(b.id)}
-                      activeOpacity={0.75}
-                      style={styles.bgItem}
-                      accessibilityRole="button"
-                      accessibilityLabel={'首页背景：' + b.label}
-                    >
-                      <Image
-                        source={b.thumb}
-                        style={[styles.bgThumb, active && styles.bgThumbOn]}
-                        resizeMode="cover"
-                      />
-                      <Text style={[styles.bgLabel, active && styles.bgLabelOn]} numberOfLines={1}>
-                        {b.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
+          {/* ★ v135（用户）：背景选择器改单行横向滑动，9 张全部一行展示、左右滑 */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            style={styles.bgScroll}
+            contentContainerStyle={styles.bgScrollContent}
+          >
+            {HOME_BACKGROUNDS.map((b) => {
+              const active = homeBgId === b.id;
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => setHomeBackground(b.id)}
+                  activeOpacity={0.75}
+                  style={styles.bgItem}
+                  accessibilityRole="button"
+                  accessibilityLabel={'首页背景：' + b.label}
+                >
+                  <Image
+                    source={b.thumb}
+                    style={[styles.bgThumb, active && styles.bgThumbOn]}
+                    resizeMode="cover"
+                  />
+                  <Text style={[styles.bgLabel, active && styles.bgLabelOn]} numberOfLines={1}>
+                    {b.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
           <Text style={[styles.footnote, styles.footnoteSub]}>
             {HOME_BACKGROUNDS.find((b) => b.id === homeBgId)?.desc}
           </Text>
@@ -963,22 +965,21 @@ const styles = StyleSheet.create({
     marginHorizontal: theme.space.sm,
   },
   // ★ 2026-11-26：首页背景选择；v132 改 2行3列大图（用户反馈原来一行6张太小）
-  bgRow: {
+  bgScroll: {
     marginTop: theme.space.sm,
-    marginHorizontal: theme.space.sm,
   },
-  bgRowLine: {
-    flexDirection: 'row',
-    marginBottom: theme.space.sm,
+  bgScrollContent: {
+    paddingHorizontal: theme.space.sm,
+    alignItems: 'flex-start',
   },
   bgItem: {
-    flex: 1,
+    width: 108,
     alignItems: 'center',
-    paddingHorizontal: theme.space.xs,
+    marginRight: theme.space.sm,
   },
   bgThumb: {
     width: '100%',
-    height: 118,
+    height: 190,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
