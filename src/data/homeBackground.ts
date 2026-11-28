@@ -32,6 +32,17 @@ import {
   HOME_BG_SNOWCOAST_URI,
   HOME_BG_DUNE_URI,
 } from '../assets/homeBgData';
+import {
+  HOME_BG_THUMB_CABIN_URI,
+  HOME_BG_THUMB_SNOW_URI,
+  HOME_BG_THUMB_COAST_URI,
+  HOME_BG_THUMB_DUSKCOAST_URI,
+  HOME_BG_THUMB_MISTMOUNT_URI,
+  HOME_BG_THUMB_DUSKSEA_URI,
+  HOME_BG_THUMB_STREET_URI,
+  HOME_BG_THUMB_SNOWCOAST_URI,
+  HOME_BG_THUMB_DUNE_URI,
+} from '../assets/homeBgThumbData';
 
 export type HomeBackgroundId =
   | 'cabin' | 'snow' | 'coast' | 'duskcoast' | 'dusksea' | 'mistmount'
@@ -43,7 +54,7 @@ export type HomeBackgroundOption = {
   desc: string;
   /** 首页全屏用（data URI 全图 1080×2340） */
   source: ImageSourcePropType;
-  /** 设置页缩略图用（本地 400×400 主体方图；小图 require 真机渲染正常） */
+  /** 设置页缩略图用（400×706 竖版清晰图，内联 data URI 绕开 require 映射错位；v140 起不去模糊） */
   thumb: ImageSourcePropType;
 };
 
@@ -66,63 +77,63 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     label: '藏蓝小屋',
     desc: '默认 · 雪坡小屋 · 底部小部分雪',
     source: SOURCE_MAP.cabin,
-    thumb: require('../assets/home_bg_cabin_new_thumb.jpg'),
+    thumb: { uri: HOME_BG_THUMB_CABIN_URI },
   },
   {
     id: 'snow',
     label: '雪景塔屋',
     desc: '深蓝水面 · 塔屋炊烟',
     source: SOURCE_MAP.snow,
-    thumb: require('../assets/home_bg_thumb.jpg'),
+    thumb: { uri: HOME_BG_THUMB_SNOW_URI },
   },
   {
     id: 'coast',
     label: '海岸飞鸟',
     desc: '深蓝海岸 · 雪岸飞鸟',
     source: SOURCE_MAP.coast,
-    thumb: require('../assets/thumb_coast.jpg'),
+    thumb: { uri: HOME_BG_THUMB_COAST_URI },
   },
   {
     id: 'duskcoast',
     label: '孤帆远航',
     desc: '深蓝海面 · 白帆浅滩',
     source: SOURCE_MAP.duskcoast,
-    thumb: require('../assets/thumb_duskcoast.jpg'),
+    thumb: { uri: HOME_BG_THUMB_DUSKCOAST_URI },
   },
   {
     id: 'mistmount',
     label: '冰川秘境',
     desc: '蓝冰拱门 · 雪山湖面',
     source: SOURCE_MAP.mistmount,
-    thumb: require('../assets/thumb_mistmount.jpg'),
+    thumb: { uri: HOME_BG_THUMB_MISTMOUNT_URI },
   },
   {
     id: 'dusksea',
     label: '雪夜孤树',
     desc: '深蓝夜空 · 弯月雪原',
     source: SOURCE_MAP.dusksea,
-    thumb: require('../assets/thumb_dusksea.jpg'),
+    thumb: { uri: HOME_BG_THUMB_DUSKSEA_URI },
   },
   {
     id: 'street',
     label: '蓝色街角',
     desc: '深蓝街景 · 橙色店铺灯光',
     source: SOURCE_MAP.street,
-    thumb: require('../assets/thumb_street.jpg'),
+    thumb: { uri: HOME_BG_THUMB_STREET_URI },
   },
   {
     id: 'snowcoast',
     label: '雪山海岸',
     desc: '深蓝海湾 · 雪坡松林',
     source: SOURCE_MAP.snowcoast,
-    thumb: require('../assets/thumb_snowcoast.jpg'),
+    thumb: { uri: HOME_BG_THUMB_SNOWCOAST_URI },
   },
   {
     id: 'dune',
     label: '雪丘曲径',
     desc: '深蓝海面 · 雪丘树林',
     source: SOURCE_MAP.dune,
-    thumb: require('../assets/thumb_dune.jpg'),
+    thumb: { uri: HOME_BG_THUMB_DUNE_URI },
   },
 
 ];
