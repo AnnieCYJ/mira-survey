@@ -30,7 +30,8 @@ import { useDebouncedHealthStoreRefresh } from '../hooks/useHealthStore';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as AsyncStorage from '../utils/prefs'; // ★ 2026-10-18：Expo Go 无 AsyncStorage 原生模块，改用 file-system 版同接口 KV
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur'; // ★ 2026-10-30（用户要真·磨砂玻璃）：对标题下方海浪视频做真实高斯模糊
+// ★ 2026-11-28：全屏 BlurView 已移除（真机实测背景锐度损失约 57%）。
+//   历史：2026-10-30 引入，用于对标题下方海浪视频做真·高斯模糊；卡片自身磨砂玻璃保留不变。
 import Icon from './Icon'; // ★ 2026-11-03：档位词右箭头（chevronRight）
 import { pickSuggestion, type SuggestionCandidate } from '../lib/suggestionEngine'; // ★ 2026-11-04：动态建议
 import { useDeviceModel } from '../config/deviceModel'; // ★ 2026-11-05：首页排布按机型分支，Pro 不受影响
@@ -840,8 +841,9 @@ export default function CalmWaveHome() {
 
   return (
     <View style={[s.root, { backgroundColor: PAGE_BG }]}>
-      {/* ★ 2026-11-26：首页背景 = 设置页选中的图（默认高清雪景照），全屏 cover 覆盖。
-          整体轻磨砂（BlurView）保留照片观感又统一磨砂质感；底部加深一点保证磨砂卡/玻璃 tab 可读。 */}
+      {/* ★ 2026-11-28：首页背景 = 设置页选中的图，全屏 stretch 覆盖。
+          去掉全屏 BlurView：源图为 1080×2340 与真机 1:1，叠加 6 强度高斯模糊实测锐度只剩 43%，
+          保留卡片/玻璃的自身磨砂即可，背景高清可见（用户 2026-11-28 确认）。 */}
       {/* ★ 2026-11-26：背景图按真机 1080×2340 精确制作，stretch 保证纵向百分比 1:1 映射，
           不用 cover（cover 在长屏上按高度缩放+裁左右，之前小屋位置算错就栽在这）。 */}
       <Image
@@ -849,9 +851,6 @@ export default function CalmWaveHome() {
         style={StyleSheet.absoluteFill}
         resizeMode="stretch"
       />
-      {/* 整体磨砂：★ 2026-11-26 强度 18 → 6。原图仅 491×968 且叠 18 强度高斯模糊，
-          真机反馈背景糊；已换 1024×1366 高清图，模糊降到 6 保磨砂质感但保留风景细节。 */}
-      <BlurView style={StyleSheet.absoluteFill} intensity={6} tint="default" />
       {/* 顶部微提亮 + 底部加深：上半照片清晰，下半为卡片/tab 提供对比底 */}
       <LinearGradient
         style={StyleSheet.absoluteFill}
