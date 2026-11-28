@@ -368,28 +368,32 @@ export default function SettingsScreen() {
         <Card style={styles.noteCard}>
           <Text style={styles.footnote}>选一张，返回首页即可看到效果；下次打开仍保持。</Text>
           <View style={styles.bgRow}>
-            {HOME_BACKGROUNDS.map((b) => {
-              const active = homeBgId === b.id;
-              return (
-                <TouchableOpacity
-                  key={b.id}
-                  onPress={() => setHomeBackground(b.id)}
-                  activeOpacity={0.75}
-                  style={styles.bgItem}
-                  accessibilityRole="button"
-                  accessibilityLabel={'首页背景：' + b.label}
-                >
-                  <Image
-                    source={b.thumb}
-                    style={[styles.bgThumb, active && styles.bgThumbOn]}
-                    resizeMode="cover"
-                  />
-                  <Text style={[styles.bgLabel, active && styles.bgLabelOn]} numberOfLines={1}>
-                    {b.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {[0, 1].map((row) => (
+              <View key={row} style={styles.bgRowLine}>
+                {HOME_BACKGROUNDS.slice(row * 3, row * 3 + 3).map((b) => {
+                  const active = homeBgId === b.id;
+                  return (
+                    <TouchableOpacity
+                      key={b.id}
+                      onPress={() => setHomeBackground(b.id)}
+                      activeOpacity={0.75}
+                      style={styles.bgItem}
+                      accessibilityRole="button"
+                      accessibilityLabel={'首页背景：' + b.label}
+                    >
+                      <Image
+                        source={b.thumb}
+                        style={[styles.bgThumb, active && styles.bgThumbOn]}
+                        resizeMode="cover"
+                      />
+                      <Text style={[styles.bgLabel, active && styles.bgLabelOn]} numberOfLines={1}>
+                        {b.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
           </View>
           <Text style={[styles.footnote, styles.footnoteSub]}>
             {HOME_BACKGROUNDS.find((b) => b.id === homeBgId)?.desc}
@@ -958,17 +962,24 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
     marginHorizontal: theme.space.sm,
   },
-  // ★ 2026-11-26：首页背景选择四宫格
+  // ★ 2026-11-26：首页背景选择；v132 改 2行3列大图（用户反馈原来一行6张太小）
   bgRow: {
-    flexDirection: 'row',
     marginTop: theme.space.sm,
     marginHorizontal: theme.space.sm,
   },
-  bgItem: { flex: 1, alignItems: 'center', paddingHorizontal: theme.space.xs },
+  bgRowLine: {
+    flexDirection: 'row',
+    marginBottom: theme.space.sm,
+  },
+  bgItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: theme.space.xs,
+  },
   bgThumb: {
     width: '100%',
-    height: theme.sp(17),
-    borderRadius: 10,
+    height: 118,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
   },
