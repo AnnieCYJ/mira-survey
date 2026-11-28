@@ -71,6 +71,8 @@ const SOURCE_MAP: Record<HomeBackgroundId, ImageSourcePropType> = {
   dune: { uri: HOME_BG_DUNE_URI },
 };
 
+// ★ v141：按用户要求隐藏「雪景塔屋」(snow)「冰川秘境」(mistmount)——仅从可选列表移除，
+//   数据/缩略图/SURCE_MAP 保留，旧选择自动回落默认，随时可恢复。
 export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
   {
     id: 'cabin',
@@ -78,13 +80,6 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     desc: '默认 · 雪坡小屋 · 底部小部分雪',
     source: SOURCE_MAP.cabin,
     thumb: { uri: HOME_BG_THUMB_CABIN_URI },
-  },
-  {
-    id: 'snow',
-    label: '雪景塔屋',
-    desc: '深蓝水面 · 塔屋炊烟',
-    source: SOURCE_MAP.snow,
-    thumb: { uri: HOME_BG_THUMB_SNOW_URI },
   },
   {
     id: 'coast',
@@ -99,13 +94,6 @@ export const HOME_BACKGROUNDS: HomeBackgroundOption[] = [
     desc: '深蓝海面 · 白帆浅滩',
     source: SOURCE_MAP.duskcoast,
     thumb: { uri: HOME_BG_THUMB_DUSKCOAST_URI },
-  },
-  {
-    id: 'mistmount',
-    label: '冰川秘境',
-    desc: '蓝冰拱门 · 雪山湖面',
-    source: SOURCE_MAP.mistmount,
-    thumb: { uri: HOME_BG_THUMB_MISTMOUNT_URI },
   },
   {
     id: 'dusksea',
